@@ -42,9 +42,12 @@ result <- st_join(x, y, join = st_within, left = FALSE)
 # Find nearest school to each census tract centroid
 result <- st_join(tracts, schools, join = st_nearest_feature)
 
-# Note: st_nearest_feature does not take a distance limit.
-# To limit distance, filter after join:
-result$dist <- st_distance(result, schools[result$school_id, ], by_element = TRUE)
+# Note: st_nearest_feature joins do not take a distance limit.
+# To limit distance, compute the nearest-feature distances via row indices
+# (verified pattern -- indexing by an id column is only correct when ids
+# happen to equal row positions):
+nearest_idx <- st_nearest_feature(tracts, schools)
+result$dist <- st_distance(tracts, schools[nearest_idx, ], by_element = TRUE)
 result <- result[as.numeric(result$dist) <= 10000, ]  # 10 km max
 ```
 

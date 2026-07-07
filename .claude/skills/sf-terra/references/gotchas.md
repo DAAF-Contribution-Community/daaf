@@ -99,28 +99,30 @@ After a dplyr operation, the geometry column disappears or the result is a plain
 
 ### Cause
 
-Most dplyr verbs preserve the sf class and geometry column automatically. However, some operations can drop it:
+Most dplyr verbs preserve the sf class and geometry column automatically. The
+geometry column is **sticky**: even `select(-geometry)` still returns an sf
+object with the geometry attached (verified — the result keeps class
+`c("sf", "data.frame")`). Operations that actually drop it:
 
-- `select()` that excludes the geometry column
-- `as.data.frame()` or `as_tibble()` conversions
+- `st_drop_geometry()`, `st_set_geometry(NULL)`, or `as.data.frame()` /
+  `as_tibble()` conversions
 - `pull()` extracts a vector, not an sf object
-- Operations on columns without touching geometry
 
 ### Fix
 
 ```r
-# select() automatically includes geometry even if not listed
-# But if you explicitly exclude it:
-result <- x |> select(-geometry)  # Now a plain data.frame
+# select() auto-includes geometry even if not listed:
+result <- x |> select(name, population)  # still sf, geometry retained
 
-# To explicitly keep geometry:
-result <- x |> select(name, population)  # geometry is auto-included
+# select(-geometry) does NOT remove it — geometry is sticky:
+result <- x |> select(-geometry)  # STILL an sf object with geometry
 
-# If geometry was lost, re-attach it:
-result_sf <- st_as_sf(result, sf_column_name = "geometry")
-
-# Or use st_drop_geometry() intentionally when you want a plain data.frame:
+# To actually get a plain data.frame, be explicit:
 df <- st_drop_geometry(x)
+df <- st_set_geometry(x, NULL)   # equivalent
+
+# If geometry was lost (e.g., after as.data.frame()), re-attach it:
+result_sf <- st_as_sf(result, sf_column_name = "geometry")
 ```
 
 ### group_by + summarize Preserves Geometry

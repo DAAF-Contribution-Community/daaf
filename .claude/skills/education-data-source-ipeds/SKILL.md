@@ -252,7 +252,10 @@ url = get_codebook_url("ipeds/codebook_colleges_ipeds_directory")
 ```
 
 ```r
-url <- get_codebook_url("ipeds/codebook_colleges_ipeds_directory")
+# get_codebook_url() is a Python helper; in R, build the URL from the mirror root.
+# Mirror failover: see `education-data-query/references/fetch-patterns.md` (R pattern)
+mirror <- yaml::read_yaml("mirrors.yaml")$mirrors[[1]]
+url <- paste0(mirror$root_url, "/", "ipeds/codebook_colleges_ipeds_directory", ".xls")
 ```
 
 > **Truth Hierarchy:** When interpreting variable values, apply this priority:

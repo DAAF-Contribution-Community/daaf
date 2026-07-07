@@ -230,6 +230,10 @@ A numeric value (e.g., 13) allows the seasonal pattern to evolve.
 
 ## Stationarity Tests
 
+The `tseries` package ships pre-installed in the DAAF container image; the
+`urca` package (a different, richer API for the same tests: `ur.df()`,
+`ur.kpss()`, `ur.pp()`) is also installed.
+
 ### Augmented Dickey-Fuller (ADF) Test
 
 ```r
@@ -389,7 +393,7 @@ explicit frequency setting.
 
 ## References
 
-- R Core Team (2025). R: A Language and Environment for Statistical Computing.
+- R Core Team (2026). R: A Language and Environment for Statistical Computing.
 - Hyndman, R.J. & Athanasopoulos, G. (2021). *Forecasting: Principles and
   Practice*, 3rd ed. OTexts.
 - Brockwell, P.J. & Davis, R.A. (2016). *Introduction to Time Series and

@@ -183,7 +183,7 @@ df |> mutate(
   school_type = fct_lump_n(school_type, n = 5, other_level = "All other")
 )
 
-# Lump least frequent (keep N least common separate)
+# Lump least frequent levels (no n argument) so "Other" stays the smallest level
 df |> mutate(
   school_type = fct_lump_lowfreq(school_type)
 )

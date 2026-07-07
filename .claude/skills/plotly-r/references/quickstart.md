@@ -71,15 +71,17 @@ p <- plot_ly(
 | Argument | Purpose | Example |
 |----------|---------|---------|
 | `color = ~col` | Map to data column (automatic palette) | `color = ~factor(cyl)` |
-| `colors = "Set1"` | Choose palette for mapped color | `colors = "Viridis"` |
+| `colors = "Set1"` | Choose palette for mapped color | `colors = viridisLite::viridis(256)` |
 | `marker = list(color = "red")` | Fixed color for all points | Single color |
 
 ```r
 # Mapped color (discrete)
 plot_ly(df, x = ~x, y = ~y, color = ~group, type = "scatter", mode = "markers")
 
-# Mapped color (continuous)
-plot_ly(df, x = ~x, y = ~y, color = ~value, colors = "Viridis",
+# Mapped color (continuous) -- colors takes RColorBrewer names, color vectors,
+# or interpolation functions. "Viridis" is NOT a brewer name and errors here;
+# use a viridisLite color vector instead.
+plot_ly(df, x = ~x, y = ~y, color = ~value, colors = viridisLite::viridis(256),
         type = "scatter", mode = "markers")
 
 # Fixed color

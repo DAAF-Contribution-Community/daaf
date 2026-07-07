@@ -342,7 +342,7 @@ layout(shapes = list(
 
 ```r
 plot_ly(df, x = ~x, y = ~y, color = ~value,
-        colors = "Viridis",
+        colors = viridisLite::viridis(256),
         type = "scatter", mode = "markers") |>
   layout(coloraxis = list(colorbar = list(title = "Value")))
 ```
@@ -374,7 +374,12 @@ plot_ly(df, x = ~x, y = ~y, color = ~group,
 ```
 
 Common palettes: `"Set1"`, `"Set2"`, `"Dark2"`, `"Paired"`, `"Pastel1"`,
-`"Blues"`, `"Reds"`, `"Viridis"`.
+`"Blues"`, `"Reds"`.
+
+Note: `"Viridis"` is NOT an RColorBrewer palette -- `colors = "Viridis"` errors
+(`invalid color name 'Viridis'`). Use `colors = viridisLite::viridis(256)` for
+the viridis palette. (`"Viridis"` is valid only as a trace-level plotly.js
+`colorscale`, e.g. `marker = list(colorscale = "Viridis")`.)
 
 ---
 

@@ -44,7 +44,7 @@ You see what no other agent sees: the **complete picture**. Individual scripts m
 | Input | Source | Required | How Used |
 |-------|--------|----------|----------|
 | Plan.md | Stage 4 output | Yes | Source of truth: research question, research outcomes, hypotheses (if any), methodology, file manifest |
-| Notebook.py | Stage 9 output | Yes | Code implementation to verify against Plan methodology |
+| Notebook (`.py`/`.qmd`) | Stage 9 output | Yes | Code implementation to verify against Plan methodology |
 | Report.md | Stage 11 output | Yes | Final deliverable: claims, figures, findings to verify |
 | Project folder | All stages | Yes | Complete artifact tree for existence/substantiveness checks |
 | STATE.md | Orchestrator | Yes | Checkpoint history, QA status, session decisions |
@@ -203,6 +203,26 @@ CODE_ANTI_PATTERNS = [
     r'["\']CHANGE_ME["\']',
     r'["\']your_.*_here["\']',
 ]
+
+# R equivalents — apply to .R scripts and .qmd chunks with the same rigor
+# (comment-marker and placeholder-value patterns above are language-neutral
+# and apply to R files too)
+CODE_ANTI_PATTERNS_R = [
+    # Empty implementations
+    r'\{\s*\}',                          # empty {} block body
+    r'stop\s*\(\s*["\']TODO',
+    r'stop\s*\(\s*["\'][Nn]ot implemented',
+    r'\.NotYetImplemented\s*\(',
+    r'invisible\s*\(\s*NULL\s*\)\s*#.*implement',
+
+    # Debug code left in
+    r'cat\s*\(\s*["\']DEBUG',
+    r'print\s*\(\s*["\']DEBUG',
+    r'browser\s*\(\s*\)',
+    r'\bdebug\s*\(',
+    r'\bdebugonce\s*\(',
+    r'\btraceback\s*\(\s*\)',
+]
 ```
 
 ---
@@ -360,7 +380,7 @@ For at least one key finding, trace the complete chain from raw data through cle
 
 Use STATE.md's QA Findings Summary as the authoritative source for aggregated QA outcomes. The QA Checkpoint Summary table provides per-stage aggregate counts; BLOCKERs Resolved shows how blocking issues were fixed; WARNINGs Logged shows accepted non-blocking issues.
 
-- **BLOCKER resolutions:** Read revision scripts (`_a.py`, `_b.py`) and verify fixes address root causes. Cross-reference against STATE.md's BLOCKERs Resolved entries for completeness.
+- **BLOCKER resolutions:** Read revision scripts (`_a.py`/`_b.py`, or `_a.R`/`_b.R` for R projects) and verify fixes address root causes. Cross-reference against STATE.md's BLOCKERs Resolved entries for completeness.
 - **WARNING patterns:** Look across all WARNINGs for systemic patterns that compound into significance. Use STATE.md's WARNINGs Logged as the aggregate view.
 - **Unaddressed concerns:** Are there QA findings logged but never addressed that affect conclusions?
 

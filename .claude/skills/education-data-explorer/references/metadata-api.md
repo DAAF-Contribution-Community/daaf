@@ -238,7 +238,10 @@ print(f"CCD Directory available years: {min(years)}-{max(years)}")
 ```
 ```r
 get_years_available <- function(endpoint_url) {
-  base_url <- sub("/[^/]*$", "", trimws(endpoint_url, whitespace = "/"))
+  # Strip trailing slashes only — trimws(whitespace = "/") strips BOTH sides,
+  # which would drop the leading "/" that the endpoint_url API filter requires
+  # (Python twin uses rstrip("/")).
+  base_url <- sub("/[^/]*$", "", sub("/+$", "", endpoint_url))
   if (grepl("\\}$", base_url)) base_url <- sub("/[^/]*$", "", base_url)
   endpoints <- get_json("/api-endpoints/", params = list(endpoint_url = base_url))
   if (length(endpoints$results) > 0) return(endpoints$results[[1]]$years_available)

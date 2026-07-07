@@ -363,7 +363,7 @@ To share learnings with the broader community, [open an issue](https://github.co
 
 ## Customizing Your Python and R Environment
 
-DAAF ships with a comprehensive Python data science stack (50+ packages covering statistics, econometrics, geospatial analysis, machine learning, visualization, and more), plus a full R environment with 10+ library skills covering data manipulation, visualization, econometrics, spatial analysis, machine learning, and more. But research is unpredictable -- you may need a package we didn't anticipate. This section covers how to add Python packages, R packages, system-level libraries, and other software to your DAAF environment. The Python instructions come first, followed by [R Packages](#r-packages) at the end of this section.
+DAAF ships with a comprehensive Python data science stack (50+ packages covering statistics, econometrics, geospatial analysis, machine learning, visualization, and more), plus a full R environment with 11 library skills covering data manipulation, visualization, econometrics, spatial analysis, machine learning, and more. But research is unpredictable -- you may need a package we didn't anticipate. This section covers how to add Python packages, R packages, system-level libraries, and other software to your DAAF environment. The Python instructions come first, followed by [R Packages](#r-packages) at the end of this section.
 
 ### The Recommended Path: Modify the Dockerfile (Python)
 
@@ -552,7 +552,7 @@ No. The container runs as a non-root user (`appuser`) with all Linux capabilitie
 
 > R is a standard, always-available part of DAAF, and adding R packages follows the same Dockerfile-modification path as adding Python packages.
 
-DAAF installs **R 4.5.3** with a curated set of 30+ packages covering the most common needs for social science research: data manipulation (tidyverse), visualization (ggplot2, plotly), econometrics (fixest, plm), spatial analysis (sf, terra), machine learning (tidymodels), complex survey analysis (survey), and more. It also includes the **Quarto CLI 1.7.29** for producing reproducible R research notebooks (the R equivalent of marimo for Python).
+DAAF installs **R 4.5.3** with a curated set of 60+ pinned packages covering the most common needs for social science research: data manipulation (tidyverse), visualization (ggplot2, plotly), econometrics (fixest, plm), spatial analysis (sf, terra), machine learning (tidymodels), complex survey analysis (survey), and more. It also includes the **Quarto CLI 1.7.29** for producing reproducible R research notebooks (the R equivalent of marimo for Python).
 
 If you need an R package that isn't pre-installed, the process mirrors the Python approach: you can install it temporarily for quick testing, or add it to the Dockerfile for persistence.
 

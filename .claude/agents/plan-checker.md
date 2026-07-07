@@ -599,7 +599,7 @@ Awaiting guidance before proceeding.
 | # | Anti-Pattern | Problem | Correct Approach |
 |---|--------------|---------|------------------|
 | 1 | Checking code existence | Conflates plan verification with artifact verification | Verify plan structure only; data-verifier checks artifacts post-execution |
-| 2 | Executing code or queries | Plan-checker is static analysis; execution wastes context | Read task descriptions; never run Python, marimo, or data queries |
+| 2 | Executing code or queries | Plan-checker is static analysis; execution wastes context | Read task descriptions; never run Python, Rscript, marimo, quarto, or data queries |
 | 3 | Accepting vague tasks | "Process the data" causes downstream QA BLOCKERs | Require specific file paths, variable names, filter conditions, join keys |
 | 4 | Skipping dependency analysis | Circular or broken dependencies cause execution deadlocks | Always build and validate the full dependency graph |
 | 5 | Ignoring scope | 15+ tasks degrades execution quality | Report scope issues and recommend phase splitting |

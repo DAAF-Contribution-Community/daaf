@@ -53,12 +53,16 @@ tbl |> fmt_date(columns = date_col, date_style = "yMMMd")
 #                "iso" (2023-01-15), "wd_MMMd" (Sun, Jan 15)
 ```
 
-### fmt_missing — NA Display
+### sub_missing — NA Display
 
 ```r
-tbl |> fmt_missing(columns = everything(), missing_text = "---")
-tbl |> fmt_missing(columns = c(col1, col2), missing_text = "N/A")
+tbl |> sub_missing(columns = everything(), missing_text = "---")
+tbl |> sub_missing(columns = c(col1, col2), missing_text = "N/A")
 ```
+
+`sub_missing()` replaced `fmt_missing()`, which is deprecated since gt 0.6.0
+("Since gt v0.6.0 `fmt_missing()` is deprecated and will soon be removed. Use
+`sub_missing()` instead."). Do not use `fmt_missing()` in new code.
 
 ### Applying to Specific Rows
 
@@ -67,7 +71,7 @@ All `fmt_*()` functions accept a `rows` argument:
 ```r
 tbl |>
   fmt_percent(columns = rate, decimals = 1, rows = rate > 0) |>
-  fmt_missing(columns = rate, rows = is.na(rate))
+  sub_missing(columns = rate, rows = is.na(rate))
 ```
 
 ### Custom Patterns

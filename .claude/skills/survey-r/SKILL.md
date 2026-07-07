@@ -7,10 +7,10 @@ description: >-
   analysis.
 autoload: never
 metadata:
-  audience: code-producing agents
+  audience: research-coders
   domain: r-library
   library-version: "survey 4.5"
-  skill-last-updated: "2026-05-08"
+  skill-last-updated: "2026-07-07"
   tags: ["r", "survey", "complex-samples", "stratification", "clustering"]
 ---
 

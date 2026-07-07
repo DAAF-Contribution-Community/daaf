@@ -112,7 +112,8 @@ preprocessor <- extract_preprocessor(fit)
 ### Common Extractions
 
 ```r
-# Variable importance from ranger
+# Variable importance from ranger — requires importance = "impurity" (or
+# "permutation") in set_engine(); errors otherwise (see engines.md)
 library(vip)
 fit |> extract_fit_parsnip() |> vip()
 

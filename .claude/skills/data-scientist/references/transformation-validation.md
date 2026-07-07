@@ -485,6 +485,12 @@ stopifnot("Missing columns" = length(missing) == 0)
 stopifnot("Expected integer for id" = is.integer(df$id))
 ```
 
+> **Tool note (Pandera):** the Python `pandera` library offers declarative DataFrame
+> schema validation, but it is **not installed** in the DAAF environment, and no
+> equivalent R schema-validation package is installed either. The supported route in
+> both languages is the inline pattern shown above (`assert` in Python,
+> `stopifnot()` in R) — consistent with DAAF's sequential-script code style.
+
 ## Common Errors and Detection
 
 ### Silent Type Coercion

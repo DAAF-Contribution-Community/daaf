@@ -5,7 +5,7 @@ These are the building blocks of every tidyverse pipeline.
 
 ## The Pipe Operator
 
-R 4.1+ provides the native pipe `|>`. DAAF uses `|>` exclusively (not magrittr's `%>`):
+R 4.1+ provides the native pipe `|>`. DAAF uses `|>` exclusively (not magrittr's `%>%`):
 
 ```r
 # Each step takes the result of the previous step as its first argument
@@ -345,8 +345,8 @@ stopifnot(length(states) > 0)
 ## across() -- Apply Functions to Multiple Columns
 
 ```r
-# Summarize all numeric columns
-df |> summarize(across(where(is.numeric), mean, na.rm = TRUE))
+# Summarize all numeric columns (lambda -- passing na.rm through ... is deprecated)
+df |> summarize(across(where(is.numeric), \(x) mean(x, na.rm = TRUE)))
 
 # Mutate specific columns
 df |> mutate(across(c(col1, col2), \(x) round(x, 2)))

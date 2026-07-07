@@ -76,7 +76,8 @@ listw_W <- nb2listw(nb_queen, style = "W", zero.policy = TRUE)
 Tests whether a variable is spatially clustered (positive I), dispersed (negative I), or random (I ~ 0).
 
 ```r
-# Moran's I test (permutation-based)
+# Moran's I test (analytical, under the randomisation assumption --
+# for a permutation test use moran.mc() below)
 moran_result <- moran.test(counties$poverty_rate, listw_W)
 print(moran_result)
 
@@ -278,7 +279,11 @@ After fitting a spatial model, verify that residuals no longer exhibit spatial a
 
 ```r
 moran.test(residuals(sar), listw_W)
-# p > 0.05 indicates spatial dependence has been adequately modeled
+# A non-significant result (p > 0.05) means no residual spatial autocorrelation
+# was DETECTED -- consistent with adequate modeling, but absence of evidence is
+# not evidence of absence (low power with few units or weak dependence).
+# Corroborate with model comparison (AIC, LR tests) rather than relying on
+# this test alone.
 ```
 
 ---

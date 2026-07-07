@@ -405,22 +405,26 @@ def check_variable_availability(variable, years):
 ```
 
 ```r
-# check_variable_availability(variable, years)
 # Check which years a variable is available.
-    availability <- {
-        'chronic_absenteeism': [2015, 2017, 2020, 2021],
-        'computer_science': [2017, 2020, 2021],
-        'suspension_instances': [2020, 2021],
-        'teacher_absenteeism': [2017, 2020, 2021],
-        'oss_total': [2011, 2013, 2015, 2017, 2020, 2021],
-        'restraint_physical': [2011, 2013, 2015, 2017, 2020, 2021],
-    }
+availability <- list(
+  chronic_absenteeism = c(2015, 2017, 2020, 2021),
+  computer_science = c(2017, 2020, 2021),
+  suspension_instances = c(2020, 2021),
+  teacher_absenteeism = c(2017, 2020, 2021),
+  oss_total = c(2011, 2013, 2015, 2017, 2020, 2021),
+  restraint_physical = c(2011, 2013, 2015, 2017, 2020, 2021)
+)
 
-    var_years <- availability.get(variable, [])
-    {
-        'available_years': [y for y in years if y in var_years],
-        'missing_years': [y for y in years if y not in var_years]
-    }
+variable <- "chronic_absenteeism"
+years <- c(2013, 2015, 2017)
+
+# Unknown variables default to no available years
+# (equivalent of Python's availability.get(variable, []))
+var_years <- availability[[variable]]
+if (is.null(var_years)) var_years <- integer(0)
+
+available_years <- years[years %in% var_years]
+missing_years <- years[!(years %in% var_years)]
 ```
 
 ### Comparing Across Years

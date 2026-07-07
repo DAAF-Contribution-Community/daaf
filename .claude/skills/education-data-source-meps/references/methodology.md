@@ -147,12 +147,14 @@ library(dplyr)
 precise_schools <- df |> filter(meps_poverty_se < 2.0)
 
 # Flag close comparisons between two schools
-# compare_schools(pct_a: float, se_a: float, pct_b: float, se_b: float) -> str
-    diff <- abs(pct_a - pct_b)
-    se_combined <- (se_a^2 + se_b^2)^0.5
-    if (diff < 1.96 * se_combined) {
-        "Not statistically different"
-    "Statistically different"
+# pct_a/se_a and pct_b/se_b: estimates and standard errors for schools A and B
+diff <- abs(pct_a - pct_b)
+se_combined <- sqrt(se_a^2 + se_b^2)
+comparison <- if (diff < 1.96 * se_combined) {
+  "Not statistically different"
+} else {
+  "Statistically different"
+}
 ```
 
 ## MEPS 2.0 Updates

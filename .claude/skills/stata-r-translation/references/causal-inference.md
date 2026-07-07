@@ -9,11 +9,11 @@ them.
 > augsynth (latest), MatchIt (latest), binsreg (latest)
 > Stata: Stata 18
 
-> **Availability:** Only `fixest` is pre-installed in DAAF. The specialized
-> causal packages used below — `did2s`, `did`, `DIDmultiplegt`, `rdrobust`,
-> `rddensity`, `MatchIt`, `augsynth`, `Synth`, `binsreg`, `AIPW`, `lmtp` — are
-> NOT pre-installed; run `install.packages("<pkg>")` at analysis time before
-> using them.
+> **Availability:** `fixest`, `rdrobust` (3.0.0), and `marginaleffects` are
+> pre-installed in DAAF. The specialized causal packages used below — `did2s`,
+> `did`, `DIDmultiplegt`, `rddensity`, `MatchIt`, `augsynth`, `Synth`,
+> `binsreg`, `AIPW`, `lmtp` — are NOT pre-installed; run
+> `install.packages("<pkg>")` at analysis time before using them.
 
 ---
 

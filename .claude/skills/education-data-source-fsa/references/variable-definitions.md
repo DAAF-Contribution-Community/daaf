@@ -99,8 +99,13 @@ df_pell_ca = df.filter(
 library(arrow)
 library(dplyr)
 
-# Fetch grants data via mirror system
-df <- arrow::read_parquet("fsa/colleges_fsa_grants")
+# Fetch grants data via mirror system (fetch_from_mirrors() is a Python helper;
+# in R, build the URL from the mirror root in mirrors.yaml).
+# Mirror failover: see `education-data-query/references/fetch-patterns.md` (R pattern).
+config <- yaml::read_yaml("mirrors.yaml")
+mirror <- config$mirrors[[1]]
+url <- paste0(mirror$root_url, "/", "fsa/colleges_fsa_grants", ".", mirror$format)
+df <- arrow::read_parquet(url)
 
 # Get Pell Grant data for California in 2020
 df_pell_ca <- df |> filter(
@@ -184,8 +189,13 @@ df_plus = df.filter(pl.col("loan_type") == 7)  # 7 = Parent PLUS
 library(arrow)
 library(dplyr)
 
-# Fetch loans data via mirror system
-df <- arrow::read_parquet("fsa/colleges_fsa_loans")
+# Fetch loans data via mirror system (fetch_from_mirrors() is a Python helper;
+# in R, build the URL from the mirror root in mirrors.yaml).
+# Mirror failover: see `education-data-query/references/fetch-patterns.md` (R pattern).
+config <- yaml::read_yaml("mirrors.yaml")
+mirror <- config$mirrors[[1]]
+url <- paste0(mirror$root_url, "/", "fsa/colleges_fsa_loans", ".", mirror$format)
+df <- arrow::read_parquet(url)
 
 # Get Direct Subsidized Undergraduate loan data for a specific institution
 df_sub <- df |> filter(
@@ -258,8 +268,13 @@ df_fseog = df.filter(pl.col("award_type") == 1)  # 1 = FSEOG
 library(arrow)
 library(dplyr)
 
-# Fetch campus-based data via mirror system
-df <- arrow::read_parquet("fsa/colleges_fsa_campus_based_volume")
+# Fetch campus-based data via mirror system (fetch_from_mirrors() is a Python
+# helper; in R, build the URL from the mirror root in mirrors.yaml).
+# Mirror failover: see `education-data-query/references/fetch-patterns.md` (R pattern).
+config <- yaml::read_yaml("mirrors.yaml")
+mirror <- config$mirrors[[1]]
+url <- paste0(mirror$root_url, "/", "fsa/colleges_fsa_campus_based_volume", ".", mirror$format)
+df <- arrow::read_parquet(url)
 
 # Get Federal Work-Study data for 2020
 df_fws <- df |> filter(
@@ -325,8 +340,13 @@ df_at_risk = df.filter(pl.col("financial_resp_score") < 1.0)
 library(arrow)
 library(dplyr)
 
-# Fetch financial responsibility data via mirror system
-df <- arrow::read_parquet("fsa/colleges_fsa_composite_scores")
+# Fetch financial responsibility data via mirror system (fetch_from_mirrors()
+# is a Python helper; in R, build the URL from the mirror root in mirrors.yaml).
+# Mirror failover: see `education-data-query/references/fetch-patterns.md` (R pattern).
+config <- yaml::read_yaml("mirrors.yaml")
+mirror <- config$mirrors[[1]]
+url <- paste0(mirror$root_url, "/", "fsa/colleges_fsa_composite_scores", ".", mirror$format)
+df <- arrow::read_parquet(url)
 
 # Get institutions in the "zone" (1.0 to 1.49)
 df_zone <- df |> filter(
@@ -399,8 +419,13 @@ df_violations = df.filter(pl.col("rev_pct_90_10") > 0.90)
 library(arrow)
 library(dplyr)
 
-# Fetch 90/10 data via mirror system
-df <- arrow::read_parquet("fsa/colleges_fsa_90_10_revenue_percentages")
+# Fetch 90/10 data via mirror system (fetch_from_mirrors() is a Python helper;
+# in R, build the URL from the mirror root in mirrors.yaml).
+# Mirror failover: see `education-data-query/references/fetch-patterns.md` (R pattern).
+config <- yaml::read_yaml("mirrors.yaml")
+mirror <- config$mirrors[[1]]
+url <- paste0(mirror$root_url, "/", "fsa/colleges_fsa_90_10_revenue_percentages", ".", mirror$format)
+df <- arrow::read_parquet(url)
 
 # Get institutions near the threshold (85%+ = 0.85 as proportion)
 df_at_risk <- df |> filter(rev_pct_90_10 >= 0.85)
@@ -471,17 +496,17 @@ df = df.with_columns(
 library(dplyr)
 
 # Filter out missing sentinel values from numeric columns
-df <- df |> filter(~grant_recipients_unitid %in% c(-1, -2, -3)
+df <- df |> filter(!(grant_recipients_unitid %in% c(-1, -2, -3)))
 
 # Or filter to positive values only
 df <- df |> filter(grant_recipients_unitid > 0)
 
-# Replace sentinel values with null
+# Replace sentinel values with NA
 df <- df |> mutate(
-    pl.when(grant_recipients_unitid %in% c(-1, -2, -3))
-    .then(NULL)
-    .otherwise(grant_recipients_unitid)
-    
+  grant_recipients_unitid = if_else(
+    grant_recipients_unitid %in% c(-1, -2, -3),
+    NA, grant_recipients_unitid
+  )
 )
 ```
 
@@ -565,7 +590,7 @@ df.filter(
 
 # Comparison operators
 df.filter(pl.col("financial_resp_score") < 1.5)
-df.filter(pl.col("rev_pct_90_10") >= 85)
+df.filter(pl.col("rev_pct_90_10") >= 0.85)  # proportion (0-1), not percent
 ```
 
 ```r
@@ -582,7 +607,7 @@ df |> filter(
 
 # Comparison operators
 df |> filter(financial_resp_score < 1.5)
-df |> filter(rev_pct_90_10 >= 85)
+df |> filter(rev_pct_90_10 >= 0.85)  # proportion (0-1), not percent
 ```
 
 ### Aggregations

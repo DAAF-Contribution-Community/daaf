@@ -206,11 +206,12 @@ print(school_data.select(["ncessch", "tract", "block_group", "census_region"]))
 library(arrow)
 library(dplyr)
 
-# Uses fetch_from_mirrors() — tries each mirror in priority order per mirrors.yaml.
-# See fetch-patterns.md for the fetch_from_mirrors() function.
+# fetch_from_mirrors() is a Python helper; in R, build the URL from the mirror root.
+# Mirror failover: see `education-data-query/references/fetch-patterns.md` (R pattern)
+mirror <- yaml::read_yaml("mirrors.yaml")$mirrors[[1]]
 
 # Load from Portal mirror
-df <- fetch_from_mirrors("nhgis/schools_nhgis_geog_2020")
+df <- read_parquet(paste0(mirror$root_url, "/", "nhgis/schools_nhgis_geog_2020", ".", mirror$format))
 
 # Filter to specific school and year
 school_data <- df |>
@@ -317,18 +318,18 @@ tract = result["result"]["addressMatches"][0]["geographies"]["Census Tracts"][0]
 ```
 
 ```r
-library(httr)
-library(jsonlite)
+library(httr2)
 
 address <- "1600 Pennsylvania Avenue NW, Washington, DC 20500"
-url <- "https://geocoding.geo.census.gov/geocoder/geographies/onelineaddress"
-response <- GET(url, query = list(
-  address = address,
-  benchmark = "Public_AR_Current",
-  vintage = "Census2020_Current",
-  format = "json"
-))
-result <- content(response, as = "parsed")
+resp <- request("https://geocoding.geo.census.gov/geocoder/geographies/onelineaddress") |>
+  req_url_query(
+    address = address,
+    benchmark = "Public_AR_Current",
+    vintage = "Census2020_Current",
+    format = "json"
+  ) |>
+  req_perform()
+result <- resp_body_json(resp)
 
 # Extract tract
 tract <- result$result$addressMatches[[1]]$geographies$`Census Tracts`[[1]]$GEOID

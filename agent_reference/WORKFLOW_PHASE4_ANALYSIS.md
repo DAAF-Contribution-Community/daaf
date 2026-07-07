@@ -217,7 +217,7 @@ if (invariant_passed) {
 4. Check for unexpected nulls introduced
 5. Verify invariants (totals, IDs preserved)
 
-**CP3 Validation Report (Python):**
+**CP3 Validation Report (language-agnostic pseudocode — implement in the project's execution language):**
 ```python
 # Overall change summary
 print(f"Overall: {original_shape} → {final_shape}")
@@ -235,6 +235,8 @@ new_nulls_by_col = {col: post_nulls - pre_nulls for col in ...}
 # CP3 Status
 cp3_status = "PASSED" | "WARNING" | "FAILED"
 ```
+
+> **R projects:** implement the same report with `cat()` for the change summary, a `data.frame`/`tibble` for the transformation summary table, `sapply()`/`dplyr::summarise()` for per-column null deltas, and `stopifnot()`-backed status assignment. The checks and the PASSED/WARNING/FAILED contract are identical.
 
 ### Invocation Template: data-scientist + polars (Python) or tidyverse (R)
 
@@ -474,7 +476,7 @@ MANDATORY EXECUTION PATTERN:
 - [ ] **Script saved to `scripts/stage7_transform/`** with standard header
 - [ ] **QA review completed IMMEDIATELY AFTER THIS SCRIPT, before the next script begins** (code-reviewer separately invoked per script, not batched)
 - [ ] **QA status:** PASSED/WARNING (any BLOCKER resolved via revision before next script)
-- [ ] **QA scripts saved to `scripts/cr/stage7_{step}_cr1.py`** (+ cr2..cr5 if warranted)
+- [ ] **QA scripts saved to `scripts/cr/stage7_{step}_cr1.py`** (`.R` for R projects) (+ cr2..cr5 if warranted)
 
 **After Stage 7.3 (G7):**
 - [ ] All transformations complete
@@ -898,7 +900,7 @@ htmlwidgets::saveWidget(fig, sprintf("output/figures/%s_plot_name.html", date_pr
 - [ ] **All QA4a statuses:** PASSED/WARNING (any BLOCKER resolved via revision before next script)
 - [ ] **QA4b review completed for EACH visualization script** (code-reviewer separately invoked IMMEDIATELY AFTER each individual script, before the next script begins — not batched)
 - [ ] **All QA4b statuses:** PASSED/WARNING (any BLOCKER resolved via revision before next script)
-- [ ] **QA scripts saved to `scripts/cr/stage8_{step}_cra1.py`** (analysis) and **`stage8_{step}_crb1.py`** (viz)
+- [ ] **QA scripts saved to `scripts/cr/stage8_{step}_cra1.py`** (analysis) and **`stage8_{step}_crb1.py`** (viz) (`.R` for R projects)
 - [ ] **STATE.md updated:** Current Stage: 8, QA4a and QA4b status, analysis result paths, figure paths recorded
 
 ### Multi-Skill Invocation Templates
@@ -979,7 +981,7 @@ Return all plotting code and confirm files saved.""",
 ### Key Constraints (Summary)
 
 - **LITERAL COPY** — Read each script file and copy contents verbatim into cells
-- NO new analysis code — Python: only `pl.read_parquet()` + `mo.ui.table()` for data inspection; R: only `arrow::read_parquet()` for data inspection
+- NO new analysis code — Python: only `pl.read_parquet()` + `mo.ui.table()` for data inspection; R: only `arrow::read_parquet()` + `glimpse(df)` + `head(df, 20)` for data inspection
 - NO dashboards, widgets, dropdowns, sliders
 - All script code presented as-is; execution logs in accordions
 - Script versioning: use final successful version (`_b.py` > `_a.py` > base)
@@ -1032,9 +1034,9 @@ Also call the skill tool with name 'marimo' (Python) or 'quarto' (R) for basic n
 
 Your job is to:
 1. READ each script file from `scripts/`
-2. COPY the Python code VERBATIM into a marimo cell
-3. COPY the execution log VERBATIM into a collapsed accordion
-4. ADD ONLY a simple `pl.read_parquet() + mo.ui.table()` cell
+2. COPY the script code VERBATIM into a marimo cell (Python) or Quarto chunk (R)
+3. COPY the execution log VERBATIM into a collapsed accordion (Python) or collapsed callout block (R)
+4. ADD ONLY a simple data-inspection cell: `pl.read_parquet()` + `mo.ui.table()` (Python) or `arrow::read_parquet()` + `glimpse(df)` + `head(df, 20)` (R)
 
 You are a COPY-PASTE MACHINE with formatting. Nothing more.
 
@@ -1054,13 +1056,19 @@ scripts/
 
 **Cell 1 (Markdown):** Header with script name, paths, status
 **Cell 2 (Code):** VERBATIM COPY of script code (before execution log marker)
-**Cell 3 (Markdown):** VERBATIM COPY of execution log in accordion
+**Cell 3 (Markdown):** VERBATIM COPY of execution log in accordion (Python) or collapsed callout block (R)
 **Cell 4 (Code):** THE ONLY NEW CODE ALLOWED:
     ```python
     df = pl.read_parquet("path/to/output.parquet")
     mo.ui.table(df.head(100))
     ```
-    NOTHING ELSE. No .filter(), no .with_columns(), no aggregations.
+    (R/Quarto chunk equivalent:)
+    ```r
+    df <- arrow::read_parquet("path/to/output.parquet")
+    glimpse(df)
+    head(df, 20)
+    ```
+    NOTHING ELSE. No .filter()/no dplyr filter(), no .with_columns()/no mutate(), no aggregations.
 
 ## LITERAL COPY EXAMPLE
 
@@ -1097,15 +1105,15 @@ And Cell 3 accordion should contain EXACTLY:
 ## VERIFICATION BEFORE RETURNING
 
 Count your code cells. If you have ANY of these, you failed:
-- mo.ui.dropdown: FAIL
-- mo.ui.slider: FAIL
-- mo.ui.multiselect: FAIL
-- group_by outside script code: FAIL
-- pivot outside script code: FAIL
-- filter in data inspection: FAIL
-- with_columns in data inspection: FAIL
+- mo.ui.dropdown (R: shiny/htmlwidgets inputs): FAIL
+- mo.ui.slider (R: sliderInput or any widget): FAIL
+- mo.ui.multiselect (R: selectInput or any widget): FAIL
+- group_by outside script code (Polars or dplyr): FAIL
+- pivot outside script code (Polars pivot or tidyr pivot_*): FAIL
+- filter in data inspection (Polars .filter() or dplyr filter()): FAIL
+- with_columns / mutate in data inspection: FAIL
 
-The ONLY acceptable new code is `pl.read_parquet()` + `mo.ui.table()`.""",
+The ONLY acceptable new code is `pl.read_parquet()` + `mo.ui.table()` (Python) or `arrow::read_parquet()` + `glimpse(df)` + `head(df, 20)` (R).""",
     subagent_type: "notebook-assembler"
 })
 ```

@@ -30,7 +30,7 @@ saveWidget(p, "plot.html", selfcontained = FALSE)
 ### Title in HTML
 
 ```r
-saveWidget(p, "plot.html", selfcontained = TRUE,
+saveWidget(p, "plot.html", selfcontained = FALSE,
            title = "My Interactive Chart")
 ```
 
@@ -164,8 +164,9 @@ p2
 ### Save to JSON
 
 ```r
-plotly_json(p, jsonedit = FALSE)           # Print JSON
-plotly_json(p, file = "plot.json")         # Write to file (if supported)
+plotly_json(p, jsonedit = FALSE)           # Print JSON to console
+# Note: plotly_json() has no file argument (signature: p, jsonedit, pretty, ...).
+# To write JSON to a file, use the string-conversion pattern below.
 ```
 
 ### Alternative: Convert to JSON String

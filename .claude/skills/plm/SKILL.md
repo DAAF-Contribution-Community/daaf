@@ -8,7 +8,7 @@ description: |
   dimensional FE use fixest; for cross-sectional OLS/GLM use r-stats.
 autoload: never
 metadata:
-  audience: code-producing agents
+  audience: research-coders
   domain: r-library
   library-version: "plm 2.6-7"
   skill-last-updated: "2026-05-08"
@@ -18,11 +18,12 @@ metadata:
 # plm Skill
 
 R's canonical panel data modeling package. Covers within (FE), random effects
-(RE), between, first difference, pooled OLS, and Fama-MacBeth estimators via
-`plm()`. Provides the Hausman test (`phtest()`) for FE vs RE selection, panel
-serial correlation tests (`plmtest()`, `pbsytest()`), cross-sectional
-dependence tests (`pcdtest()`), and panel unit root tests (`purtest()`,
-`cipstest()`). Includes `estimatr` for robust/cluster-robust estimation
+(RE), between, first difference, and pooled OLS estimators via `plm()`, plus
+Fama-MacBeth via `pmg()` (requires a reversed, time-first index — see
+models.md). Provides the Hausman test (`phtest()`) for FE vs RE selection,
+LM tests for unobserved effects (`plmtest()`), panel serial correlation tests
+(`pbgtest()`, `pwartest()`, `pbsytest()`), cross-sectional dependence tests
+(`pcdtest()`), and panel unit root tests (`purtest()`, `cipstest()`). Includes `estimatr` for robust/cluster-robust estimation
 (`lm_robust()`, `iv_robust()`) and `lme4` for mixed-effects models
 (`lmer()`, `glmer()`). Use when execution language is R and the analysis
 involves panel data requiring RE, between, first-difference, or Hausman
@@ -39,7 +40,9 @@ adds panel-aware estimation:
 - **Panel-aware data**: `pdata.frame()` declares entity and time identifiers
 - **Five estimators**: within (FE), random (RE), between, first difference (fd),
   pooling -- selected via the `model=` argument to `plm()`
-- **Fama-MacBeth**: `pmg()` with `model = "mg"` or `model = "cmg"`
+- **Fama-MacBeth**: `pmg(model = "mg")` with a **reversed (time-first) index**
+  — `index = c("time", "entity")` — so the per-group regressions are
+  cross-sectional per period, not per-entity time series (see models.md)
 - **Hausman test**: `phtest()` for FE vs RE model selection
 - **Dynamic panels**: `pgmm()` for Arellano-Bond and Blundell-Bond GMM
 - **Panel IV**: `plm()` with `instruments` argument for 2SLS within panels
@@ -86,6 +89,14 @@ This skill targets **plm 2.6-7** (R 4.5.3). Key features:
 5. **Mixed-effects models?** Read `mixed-effects.md`
 6. **Coming from linearmodels (Python)?** Read `quickstart.md` then `gotchas.md`
 
+**The reference-file routing in this skill applies to advisory and brainstorming
+turns as much as implementation.** Recommending an estimator, reviewing a panel
+analysis plan, or answering a question that touches a routed topic calls for
+reading the routed reference file just as much as writing code does — the
+reference files carry curated caveats and environment-specific constraints
+(e.g., the Fama-MacBeth index reversal) that this overview and general
+knowledge lack.
+
 ## Related Skills
 
 | Skill | Relationship |
@@ -118,7 +129,7 @@ What panel estimation method?
 |   --> ./references/models.md
 +-- Pooled OLS (panel-aware) --> plm (model = "pooling")
 |   --> ./references/models.md
-+-- Fama-MacBeth --> plm pmg(model = "mg")
++-- Fama-MacBeth --> pmg(model = "mg") with REVERSED index c("time","entity")
 |   --> ./references/models.md
 +-- Dynamic panel (Arellano-Bond/Blundell-Bond) --> plm pgmm()
 |   --> ./references/iv.md
@@ -149,7 +160,9 @@ What diagnostic?
 |   +-- Hausman test: phtest()
 +-- Serial correlation --> ./references/diagnostics.md
 |   +-- Breusch-Godfrey: pbgtest()
-|   +-- Breusch-Pagan LM: plmtest()
+|   +-- Wooldridge AR(1) FE test: pwartest() / first-difference: pwfdtest()
++-- Unobserved individual/time effects (LM) --> ./references/diagnostics.md
+|   +-- plmtest() (Breusch-Pagan, Honda, GHM -- NOT a serial correlation test)
 +-- Cross-sectional dependence --> ./references/diagnostics.md
 |   +-- Pesaran CD: pcdtest()
 +-- Unit root (stationarity) --> ./references/diagnostics.md

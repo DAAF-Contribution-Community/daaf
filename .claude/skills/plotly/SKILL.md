@@ -1,7 +1,7 @@
 ---
 name: plotly
 description: >-
-  Plotly interactive visualization. Express and Graph Objects: scatter, line, bar, heatmap, 3D, geographic charts; subplots; styling; export. Use when interactivity (hover/zoom) is needed. For static figures use plotnine; for GIS use geopandas.
+  Plotly interactive visualization. Express and Graph Objects: scatter, line, bar, heatmap, 3D, geographic charts; subplots; styling; export. Use when interactivity (hover/zoom) is needed. For static figures use plotnine; for GIS use geopandas. R equivalent: plotly-r (use when execution language is R).
 metadata:
   audience: research-coders
   domain: python-library

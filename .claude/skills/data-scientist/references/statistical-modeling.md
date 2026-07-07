@@ -1,6 +1,6 @@
 # Statistical Modeling Methodology
 
-Guidance for model selection, assumption checking, robust inference, and interpretation. This reference covers the *why* and *when* of statistical modeling decisions. Whenever a specific library enters the discussion — in advice or in code — load the `pyfixest` or `statsmodels` skill: it carries the syntax plus environment constraints and curated caveats that general knowledge lacks.
+Guidance for model selection, assumption checking, robust inference, and interpretation. This reference covers the *why* and *when* of statistical modeling decisions. Whenever a specific library enters the discussion — in advice or in code — load the routed library skill: `pyfixest` or `statsmodels` (Python), or `fixest` or `r-stats` (R). The library skills carry the syntax plus environment constraints and curated caveats that general knowledge lacks.
 
 **When to read this file:** Stage 8.1 analysis tasks involving regression, modeling, hypothesis testing, or robustness checks.
 
@@ -221,6 +221,8 @@ This table is the primary quick-reference for SE selection. When uncertain, defa
 | HAC (Newey-West) | Time series with serial correlation | `vcov="HAC"` | `cov_type='HAC'` |
 | Wild cluster bootstrap | Very few clusters (< 20) | `.wildboottest()` | Via wildboottest |
 
+> **R route:** the same SE menu is available in R. `fixest` covers iid, heteroskedasticity-robust, cluster-robust, two-way, and Newey-West via its `vcov` argument; the `sandwich` + `lmtest` packages (both installed) cover the HC1/HC2/HC3 family for `lm()`/`glm()` models. Load the `fixest` or `r-stats` skill for exact syntax and coverage before writing R code.
+
 **SE selection decision tree:**
 
 ```
@@ -305,7 +307,7 @@ For nonlinear models, raw coefficients are not directly interpretable as margina
 2. AME respects the actual distribution of covariates in the sample rather than evaluating at a potentially unrepresentative point
 3. AME is closer to the quantity of interest for policy evaluation: the average effect across the population, not the effect for a fictitious "average" person
 
-The `marginaleffects` package provides a unified interface for computing AME and MEM across model types. Load the `pyfixest` skill for implementation details on integrating marginal effects computation with model estimation.
+The `marginaleffects` package provides a unified interface for computing AME and MEM across model types (it exists in both Python and R; the R version is installed in the DAAF environment). Load the `pyfixest` skill (Python) or the `fixest` skill (R) for implementation details on integrating marginal effects computation with model estimation.
 
 ### Effect Sizes vs. Statistical Significance
 

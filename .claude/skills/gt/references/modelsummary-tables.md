@@ -38,7 +38,10 @@ modelsummary(list(
 ## Output Formats
 
 ```r
-# gt object (default -- richest formatting)
+# Default (no output argument): a tinytable object in modelsummary 2.x
+modelsummary(models)
+
+# gt object (richest formatting -- must be requested explicitly)
 modelsummary(models, output = "gt")
 
 # kableExtra (good for Quarto)
@@ -60,8 +63,10 @@ modelsummary(models, output = "results_table.docx")
 modelsummary(models, output = "data.frame")
 ```
 
-When `output = "gt"` (default), the return value is a gt table object that can
-be further customized with gt functions:
+The default output backend in modelsummary 2.x is **tinytable** — calling
+`modelsummary(models)` with no `output` argument returns a `tinytable` object,
+not a gt table. When `output = "gt"` is specified, the return value is a gt
+table object that can be further customized with gt functions:
 
 ```r
 modelsummary(models, output = "gt") |>

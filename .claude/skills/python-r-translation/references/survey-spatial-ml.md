@@ -5,6 +5,9 @@ explains R code in terms of the Python equivalents you know: survey (`survey`
 package for `svy` users), spatial (`sf` for `geopandas` users), and ML
 (`tidymodels`/`caret` for `scikit-learn` users).
 
+For full R-side API details, load the dedicated skill: `survey-r`, `sf-terra`, or
+`tidymodels`.
+
 > **Versions referenced:**
 > R: survey 4.5, sf 1.1-0, terra 1.9-11, tidymodels 1.4.1
 > Python: svy 0.13.0, geopandas 1.1.3, scikit-learn 1.8.0
@@ -77,7 +80,7 @@ and properties on GeoDataFrame objects.
 | `st_read("file.shp")` | `gpd.read_file("file.shp")` |
 | `st_read("file.gpkg")` | `gpd.read_file("file.gpkg")` |
 | `st_write(df, "file.gpkg")` | `gdf.to_file("file.gpkg")` |
-| `sfarrow::st_read_parquet("f.parquet")` | `gpd.read_parquet("f.parquet")` |
+| `sfarrow::st_read_parquet("f.parquet")` (sfarrow not pre-installed) | `gpd.read_parquet("f.parquet")` |
 
 ### Core Operations
 
@@ -102,8 +105,12 @@ or module-level `gpd` functions.
 | R | Python |
 |---|--------|
 | `ggplot2::geom_sf()` | No plotnine equivalent; use `gdf.plot()` |
-| `mapview::mapview(gdf)` | `gdf.explore()` (folium-based) |
-| `tmap::tm_shape() + tm_fill()` | `gdf.plot(column="var")` |
+| `leaflet::leaflet(gdf)` (pre-installed) | `gdf.explore()` (folium-based) |
+| `ggplot(gdf) + geom_sf(aes(fill = var))` | `gdf.plot(column="var")` |
+
+`mapview` and `tmap` are common in the wild but NOT pre-installed in DAAF; the
+pre-installed routes are `leaflet` (interactive) and `ggplot2::geom_sf()`
+(static choropleths).
 
 ---
 
@@ -143,8 +150,8 @@ or module-level `gpd` functions.
 |---|--------|
 | `kmeans(x, centers = k)` | `KMeans(n_clusters=k).fit(X)` |
 | `prcomp(x, scale. = TRUE)` | `PCA().fit_transform(StandardScaler().fit_transform(X))` |
-| `Rtsne::Rtsne(x)` | `TSNE().fit_transform(X)` |
-| `umap::umap(x)` | `umap.UMAP().fit_transform(X)` |
+| `Rtsne::Rtsne(x)` (not pre-installed) | `TSNE().fit_transform(X)` |
+| `uwot::umap(x)` (pre-installed) | `umap.UMAP().fit_transform(X)` |
 
 ### Model Evaluation
 
@@ -165,8 +172,15 @@ or module-level `gpd` functions.
 | Survey | Full formula interface | Pre-compute interactions manually |
 | Spatial | `geom_sf()` in ggplot2 | Use `gdf.plot()` (matplotlib) |
 | Spatial | `terra` raster unified | `rasterio` + `rioxarray` + `rasterstats` |
-| ML | `NbClust` all-in-one cluster count | Manual silhouette/elbow/gap |
+| ML | `NbClust` all-in-one cluster count (not pre-installed in DAAF) | Manual silhouette/elbow/gap |
 | ML | `recipes` tidy selectors | `ColumnTransformer` + `make_column_selector()` |
+
+The gaps above run R-ward, but the reverse holds for ML depth overall: Python's
+scikit-learn ecosystem is deeper than tidymodels for model interpretation,
+fairness auditing, and clustering diagnostics, so for ML-heavy work it is
+reasonable to stay in Python (scikit-learn) even when the rest of the pipeline
+is in R; the R-side interpretation/fairness tooling (iml, fairmodels, vip) is
+covered in the `tidymodels` skill.
 
 > **Sources:** Lumley, *Complex Surveys* (2010);
 > Pebesma, *sf* (r-spatial.github.io/sf/, accessed 2026-03-28);

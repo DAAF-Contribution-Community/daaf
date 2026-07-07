@@ -518,7 +518,8 @@ What kind of structure am I looking for?
 ├─ Groups of similar observations (typology, classification)
 │   ├─ Know number of groups → K-means or GMM (scikit-learn / tidymodels)
 │   ├─ Don't know number → Try multiple k + validation (scikit-learn / tidymodels)
-│   ├─ Arbitrary shapes / noise → DBSCAN or HDBSCAN (scikit-learn / tidymodels)
+│   ├─ Arbitrary shapes / noise → DBSCAN or HDBSCAN (scikit-learn — Python only;
+│   │   the R `dbscan` package is not installed and tidymodels does not cover it)
 │   └─ Uncertain → Read exploratory-unsupervised.md "Algorithm Selection" table
 ├─ Reducing a large variable set
 │   ├─ Linear reduction → PCA (scikit-learn / tidymodels)
@@ -974,7 +975,7 @@ Use narrative text chunks liberally:
 | Before/after validation | `./references/transformation-validation.md` |
 | Join validation | `./references/transformation-validation.md` |
 | Aggregation validation | `./references/transformation-validation.md` |
-| Schema validation (Pandera) | `./references/transformation-validation.md` |
+| Schema validation (inline) | `./references/transformation-validation.md` |
 | Common transformation errors | `./references/transformation-validation.md` |
 | Comment philosophy | `./references/code-documentation.md` |
 | Docstring patterns | `./references/code-documentation.md` |

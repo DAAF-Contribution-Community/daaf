@@ -12,13 +12,20 @@ library(ggplot2)
 
 ggplot(counties) +
   geom_sf(aes(fill = poverty_rate), color = "white", linewidth = 0.2) +
-  scale_fill_viridis_c(option = "YlOrRd", direction = -1) +
+  scale_fill_distiller(palette = "YlOrRd", direction = 1) +
   labs(
     title = "Poverty Rate by County",
     fill = "Poverty Rate"
   ) +
   theme_void()
 ```
+
+Note: "YlOrRd" is a ColorBrewer palette (use `scale_fill_distiller()` /
+`scale_fill_brewer()`), not a viridis option. Passing it to
+`scale_fill_viridis_c(option = ...)` does not error — it warns "Option 'YlOrRd'
+does not exist" and silently falls back to the default viridis palette
+(verified), so the map renders with the wrong colors. Valid viridis options are
+"viridis", "magma", "plasma", "inferno", "cividis", "rocket", "mako", "turbo".
 
 ### geom_sf() Key Parameters
 

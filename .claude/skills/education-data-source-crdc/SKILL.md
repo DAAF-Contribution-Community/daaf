@@ -152,7 +152,7 @@ Data quality issue?
 
 > **Note:** The OCR-internal `combokey` (e.g., `AL-0010-00002`) does NOT appear as a column in Portal data. Use `crdc_id` or `ncessch` for school-level identification.
 
-> **WARNING: String Type Override Required.** When reading CRDC data from CSV, `ncessch`, `leaid`, and `crdc_id` must be read as String (`pl.Utf8`) via `schema_overrides`. Polars infers these as Int64, silently destroying leading zeros for ~19% of rows (FIPS 01-09 states: AL, AK, AZ, AR, CA, CO, CT). Parquet files preserve types automatically.
+> **WARNING: String Type Override Required.** When reading CRDC data from CSV, `ncessch`, `leaid`, and `crdc_id` must be read as String (`pl.Utf8`) via `schema_overrides`. Polars infers these as Int64, silently destroying leading zeros for ~19% of rows (FIPS 01-09 states: AL, AK, AZ, AR, CA, CO, CT). In R, `readr::read_csv()` has the identical failure mode — apply the same guard with `col_types = cols(ncessch = col_character(), leaid = col_character(), crdc_id = col_character())`. Parquet files preserve types automatically.
 
 ### Race/Ethnicity (Portal Integer Codes)
 
@@ -237,7 +237,12 @@ url = get_codebook_url("crdc/codebook_schools_crdc_discipline")
 ```
 
 ```r
-url <- # get_codebook_url("crdc/codebook_schools_crdc_discipline") -- use same path with mirror URL
+# get_codebook_url() is a Python helper; in R, construct the codebook URL from the
+# mirror root in mirrors.yaml (codebooks are .xls files co-located with the data).
+# Mirror failover: see `education-data-query/references/fetch-patterns.md` (R pattern).
+config <- yaml::read_yaml("mirrors.yaml")
+mirror <- config$mirrors[[1]]
+url <- paste0(mirror$root_url, "/", "crdc/codebook_schools_crdc_discipline", ".xls")
 ```
 
 > **Truth Hierarchy:** When interpreting variable values, apply this priority:
@@ -295,7 +300,7 @@ df <- df |> filter(
 | **Sample years** | Early years sampled | Use 2015+ for national estimates |
 | **Definition drift** | Variables change over time | Check codebooks for each year |
 | **Forgetting code 99** | Including totals in calculations | Filter `race < 99` for disaggregated analysis |
-| **CSV type inference** | Polars infers `ncessch`/`leaid`/`crdc_id` as Int64 | Use `schema_overrides={"ncessch": pl.Utf8, "leaid": pl.Utf8, "crdc_id": pl.Utf8}` |
+| **CSV type inference** | Polars and readr infer `ncessch`/`leaid`/`crdc_id` as integer, destroying leading zeros | Python: `schema_overrides={"ncessch": pl.Utf8, "leaid": pl.Utf8, "crdc_id": pl.Utf8}`; R: `readr::read_csv(..., col_types = cols(ncessch = col_character(), leaid = col_character(), crdc_id = col_character()))` |
 
 ## Equity Analysis Framework
 
@@ -341,34 +346,24 @@ def discipline_disparity(df, discipline_var, group_a, group_b):
 ```r
 library(dplyr)
 
-# Calculate discipline disparity using Portal integer codes
-# discipline_disparity(df, discipline_var, group_a, group_b)
-# Calculate risk ratio between two groups.
-# Value > 1 indicates group_a has higher rate.
-#
-# Args:
-# df: DataFrame with CRDC data
-# discipline_var: Column with discipline counts
-# group_a: Integer race code (e.g., 2 for Black)
-# group_b: Integer race code (e.g., 1 for White)
-#
-# Example:
-# # Black vs White OSS disparity
-# disparity = discipline_disparity(df, 'students_susp_out_sch_single', 2, 1)
-    # Filter to each group (using integer codes)
-    df_a <- df |> filter(race == group_a)
-    df_b <- df |> filter(race == group_b)
+# Calculate discipline disparity using Portal integer codes.
+# Risk ratio between two groups; value > 1 indicates group_a has a higher rate.
+# Example: Black (race=2) vs White (race=1) OSS disparity
+discipline_var <- "students_susp_out_sch_single"
+group_a <- 2  # Black
+group_b <- 1  # White
 
-    # Calculate rates
-    rate_a <- df_a |> summarise(s = sum(.data[[discipline_var]], na.rm = TRUE)) |> pull(s) /
-              df_a |> summarise(s = sum(enrollment_crdc, na.rm = TRUE)) |> pull(s)
-    rate_b <- df_b |> summarise(s = sum(.data[[discipline_var]], na.rm = TRUE)) |> pull(s) /
-              df_b |> summarise(s = sum(enrollment_crdc, na.rm = TRUE)) |> pull(s)
+# Filter to each group (using integer codes)
+df_a <- df |> filter(race == group_a)
+df_b <- df |> filter(race == group_b)
 
-    rate_a / rate_b
+# Calculate rates
+rate_a <- sum(df_a[[discipline_var]], na.rm = TRUE) /
+  sum(df_a$enrollment_crdc, na.rm = TRUE)
+rate_b <- sum(df_b[[discipline_var]], na.rm = TRUE) /
+  sum(df_b$enrollment_crdc, na.rm = TRUE)
 
-# Example: Black (race=2) vs White (race=1) disparity
-# disparity = discipline_disparity(df, 'students_susp_out_sch_single', 2, 1)
+disparity <- rate_a / rate_b
 ```
 
 ### Composition vs. Representation

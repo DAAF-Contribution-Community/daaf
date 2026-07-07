@@ -427,8 +427,11 @@ library(arrow)
 library(dplyr)
 
 # Load NCCS data via unified mirror system
+# fetch_from_mirrors() is a Python helper; in R, build the URL from the mirror root.
+# Mirror failover: see `education-data-query/references/fetch-patterns.md` (R pattern)
 DATASET_PATH <- "nccs/colleges_nccs_all"
-df <- fetch_from_mirrors(DATASET_PATH)
+mirror <- yaml::read_yaml("mirrors.yaml")$mirrors[[1]]
+df <- read_parquet(paste0(mirror$root_url, "/", DATASET_PATH, ".", mirror$format))
 
 # Filter out null and rare negative codes
 df_clean <- df |>

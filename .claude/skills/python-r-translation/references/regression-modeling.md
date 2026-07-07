@@ -11,10 +11,11 @@ DAAF's R modeling stack:
 - **fixest** (primary): OLS, Poisson, IV, FE regression -- closest to pyfixest
 - **base R stats** (general): lm/glm for simple models -- closest to statsmodels
 - **plm** (panel): Within/RE/between estimators -- closest to linearmodels
+- **lme4** (mixed effects): `lmer()`/`glmer()` -- closest to statsmodels MixedLM
 
 > **Versions referenced:**
 > R: fixest 0.14.0, lmtest 0.9-40, sandwich 3.1-1, plm 2.6-7, lme4 2.0-1
-> Python: pyfixest 0.40.0, statsmodels 0.14.6, linearmodels (unpinned)
+> Python: pyfixest 0.40.0, statsmodels 0.14.6, linearmodels 7.0
 > See SKILL.md § Library Versions for the complete version table.
 
 ---
@@ -125,6 +126,35 @@ fit = PanelOLS.from_formula("y ~ x1 + x2 + EntityEffects", data=df_panel).fit()
 
 R uses `pdata.frame()` with an `index` argument. Python requires manually setting
 a pandas MultiIndex.
+
+### Mixed Effects Models (lme4 for MixedLM users)
+
+The Python route for mixed/multilevel models is `statsmodels` MixedLM
+(`smf.mixedlm`), NOT linearmodels — linearmodels has no mixed-effects estimator.
+lme4 is available in the DAAF R environment (installed as a dependency).
+
+```r
+# R (lme4) -- you know this as smf.mixedlm("y ~ x", df, groups=df["group"]).fit()
+library(lme4)
+fit <- lmer(y ~ x + (1 | group), data = df)            # Random intercept
+fit <- lmer(y ~ x + (1 + x | group), data = df)        # Random slope + intercept
+```
+
+```python
+# Python (statsmodels MixedLM)
+fit = smf.mixedlm("y ~ x", data=df, groups=df["group"]).fit()                      # Random intercept
+fit = smf.mixedlm("y ~ x", data=df, groups=df["group"], re_formula="~x").fit()     # Random slope + intercept
+```
+
+| R (lme4) | Python (statsmodels) |
+|----------|----------------------|
+| `lmer(y ~ x + (1 \| g))` | `smf.mixedlm("y ~ x", df, groups=df["g"]).fit()` |
+| `lmer(y ~ x + (1 + x \| g))` | `smf.mixedlm("y ~ x", df, groups=df["g"], re_formula="~x").fit()` |
+| `glmer(..., family = binomial)` | `BinomialBayesMixedGLM` (approximate; no exact equivalent) |
+
+Key difference: R encodes random effects inside the formula (`(1 | group)`);
+Python passes them as separate `groups=` / `re_formula=` arguments. lme4's
+generalized mixed models (`glmer`) have no exact statsmodels equivalent.
 
 ---
 

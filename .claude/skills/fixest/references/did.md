@@ -220,8 +220,10 @@ iplot(fit,
       xlab = "Periods Relative to Treatment",
       ylab = "Estimated Effect",
       ref.line = -1,           # Vertical reference line
-      zero.line = TRUE,        # Horizontal line at y=0
-      ci.width = 0.05,         # 95% CI (alpha)
+      zero = TRUE,             # Horizontal line at y=0 (the arg is `zero`,
+                               # not `zero.line`; TRUE is the default)
+      ci_level = 0.95,         # Confidence level (`ci.width` is the WIDTH of
+                               # the CI bracket ends, not the level)
       ci.fill = TRUE,          # Filled confidence bands
       pt.pch = 20,             # Point shape
       col = "steelblue")       # Color
@@ -234,9 +236,10 @@ iplot(fit,
 fit1 <- feols(y ~ i(rel_year, ref = -1) | id + year, data = df)
 fit2 <- feols(y ~ sunab(cohort, year) | id + year, data = df)
 
-iplot(list(fit1, fit2),
-      main = "TWFE vs Sun-Abraham",
-      legendtext = c("TWFE", "Sun-Abraham"))
+# There is no `legendtext` argument — add the legend with base graphics
+iplot(list(fit1, fit2), main = "TWFE vs Sun-Abraham")
+legend("topright", col = 1:2, pch = 20, lwd = 1,
+       legend = c("TWFE", "Sun-Abraham"))
 ```
 
 ### Saving Plots

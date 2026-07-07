@@ -235,8 +235,10 @@ url = get_codebook_url("csafety/codebook_colleges_csafety_hate_crimes")
 ```
 
 ```r
-# R equivalent
-url <- get_codebook_url("csafety/codebook_colleges_csafety_hate_crimes")
+# get_codebook_url() is a Python helper; in R, build the URL from the mirror root.
+# Mirror failover: see `education-data-query/references/fetch-patterns.md` (R pattern)
+mirror <- yaml::read_yaml("mirrors.yaml")$mirrors[[1]]
+url <- paste0(mirror$root_url, "/", "csafety/codebook_colleges_csafety_hate_crimes", ".xls")
 ```
 
 ### Fetching Data
@@ -270,8 +272,12 @@ california = df.filter(pl.col("fips") == 6)
 library(arrow)
 library(dplyr)
 
-# Fetch hate crimes data (all years, single-file dataset)
-df <- read_parquet("csafety/colleges_csafety_hate_crimes.parquet")
+# fetch_from_mirrors() is a Python helper; in R, build the URL from the mirror
+# root — the canonical path is NOT a local file. Mirror failover: see
+# `education-data-query/references/fetch-patterns.md` (R pattern)
+mirror <- yaml::read_yaml("mirrors.yaml")$mirrors[[1]]
+df <- read_parquet(paste0(mirror$root_url, "/",
+                          "csafety/colleges_csafety_hate_crimes", ".", mirror$format))
 
 # Filter by year
 df_2021 <- df |> filter(year == 2021)

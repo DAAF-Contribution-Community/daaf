@@ -243,10 +243,10 @@ For users coming from the caret package:
 | `trainControl()` | `vfold_cv()` + `tune_grid()` |
 | `preProcess` | `recipe()` with step functions |
 | `method = "rf"` | `rand_forest() \|> set_engine("ranger")` |
-| `tuneGrid` | `grid_regular()` or `grid_latin_hypercube()` |
+| `tuneGrid` | `grid_regular()` or `grid_space_filling()` |
 | `confusionMatrix()` | `conf_mat()` + `summary()` |
 | `predict(model, newdata)` | `predict(fit, new_data)` or `augment(fit, new_data)` |
-| `varImp()` | `vip::vip()` on extracted parsnip fit |
+| `varImp()` | `vip::vip()` on extracted parsnip fit (ranger: requires `importance =` in `set_engine()`) |
 
 Key differences:
 - caret uses `newdata`; tidymodels uses `new_data` (with underscore)

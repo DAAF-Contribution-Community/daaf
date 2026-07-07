@@ -26,14 +26,16 @@ df_colleges = fetch_from_mirrors("nhgis/colleges_nhgis_geog_2020")
 ```r
 library(arrow)
 
-# Uses fetch_from_mirrors() — tries each mirror in priority order per mirrors.yaml.
-# See fetch-patterns.md and datasets-reference.md for canonical paths.
+# fetch_from_mirrors() is a Python helper; in R, build URLs from the mirror root.
+# Mirror failover: see `education-data-query/references/fetch-patterns.md` (R pattern);
+# canonical paths: datasets-reference.md.
+mirror <- yaml::read_yaml("mirrors.yaml")$mirrors[[1]]
 
 # School-to-census geography (2020 Census boundaries)
-df <- fetch_from_mirrors("nhgis/schools_nhgis_geog_2020")
+df <- read_parquet(paste0(mirror$root_url, "/", "nhgis/schools_nhgis_geog_2020", ".", mirror$format))
 
 # College-to-census geography (2020 Census boundaries)
-df_colleges <- fetch_from_mirrors("nhgis/colleges_nhgis_geog_2020")
+df_colleges <- read_parquet(paste0(mirror$root_url, "/", "nhgis/colleges_nhgis_geog_2020", ".", mirror$format))
 
 # Available census years: 1990, 2000, 2010, 2020
 # All files contain ALL data years (schools: 1986-2023, colleges: 1980-2023)
@@ -171,8 +173,7 @@ extract_id = response.json()["number"]
 ```
 
 ```r
-library(httr)
-library(jsonlite)
+library(httr2)
 
 api_key <- "YOUR_API_KEY"
 
@@ -189,13 +190,12 @@ extract_def <- list(
 )
 
 # Submit extract
-response <- POST(
-  "https://api.ipums.org/extracts/?collection=nhgis&version=v1",
-  add_headers(Authorization = api_key),
-  body = extract_def, encode = "json"
-)
+resp <- request("https://api.ipums.org/extracts/?collection=nhgis&version=v1") |>
+  req_headers(Authorization = api_key) |>
+  req_body_json(extract_def) |>
+  req_perform()
 
-extract_id <- content(response)$number
+extract_id <- resp_body_json(resp)$number
 ```
 
 ### Checking Extract Status

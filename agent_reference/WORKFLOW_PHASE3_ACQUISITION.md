@@ -70,6 +70,7 @@ All relative paths in referenced files resolve from BASE_DIR.
 
 Call the skill tool with name '{domain_query_skill}'.  # e.g., 'education-data-query'
 If user has R/Stata background, also include: "User has [R/Stata] background. Load [r-python-translation/stata-python-translation] skill. Add inline [R/Stata]-equivalent comments for non-trivial data operations."
+When execution language is R and user has Python/Stata background, instead include: "User has [Python/Stata] background. Load [python-r-translation/stata-r-translation] skill. Add inline [Python/Stata]-equivalent comments for non-trivial data operations."
 
 **QUERY SPECIFICATION:**
 - Dataset Path: {dataset_path}  (from datasets-reference.md, flat format e.g. "ccd/schools_ccd_directory")
@@ -182,7 +183,7 @@ stopifnot("WARNING: Unexpected years" = all(df$year %in% expected_years))
 - [ ] STATE.md updated with Data Freshness Check findings
 - [ ] **QA review completed for EACH Stage 5 script** (code-reviewer separately invoked immediately after each individual script, not batched)
 - [ ] **All QA1 statuses:** PASSED/WARNING (any BLOCKER resolved via revision before next script)
-- [ ] **QA scripts saved to `scripts/cr/stage5_{step}_cr1.py`** (+ cr2..cr5 if warranted)
+- [ ] **QA scripts saved to `scripts/cr/stage5_{step}_cr1.py`** (`.R` for R projects) (+ cr2..cr5 if warranted)
 - [ ] **STATE.md updated:** Current Stage: 5, CP1 status, raw data paths recorded
 
 ---
@@ -256,6 +257,7 @@ All relative paths in referenced files resolve from BASE_DIR.
 
 Call the skill tool with name '{domain_context_skill}'.  # e.g., 'education-data-context'
 If user has R/Stata background, also include: "User has [R/Stata] background. Load [r-python-translation/stata-python-translation] skill. Add inline [R/Stata]-equivalent comments for non-trivial data operations."
+When execution language is R and user has Python/Stata background, instead include: "User has [Python/Stata] background. Load [python-r-translation/stata-r-translation] skill. Add inline [Python/Stata]-equivalent comments for non-trivial data operations."
 
 **DATA SOURCE:** {source_name}
 
@@ -369,7 +371,7 @@ stopifnot("STOP: >90% data loss" = nrow(clean_df) > nrow(raw_df) * 0.1)
 - [ ] **All scripts saved to `scripts/stage6_clean/`** (one per clean task) with standard header
 - [ ] **QA review completed for EACH Stage 6 script** (code-reviewer separately invoked immediately after each individual script, not batched)
 - [ ] **All QA2 statuses:** PASSED/WARNING (any BLOCKER resolved via revision before next script)
-- [ ] **QA scripts saved to `scripts/cr/stage6_{step}_cr1.py`** (+ cr2..cr5 if warranted)
+- [ ] **QA scripts saved to `scripts/cr/stage6_{step}_cr1.py`** (`.R` for R projects) (+ cr2..cr5 if warranted)
 - [ ] **STATE.md updated:** Current Stage: 6, CP2 status, suppression rate, processed data paths
 - [ ] **PSU3 presented to user with data quality summary**
 - [ ] **User confirmed PSU3**

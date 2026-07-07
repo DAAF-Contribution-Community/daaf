@@ -5,8 +5,9 @@ covers how to recognize survey design features, select appropriate weights, esti
 correct standard errors, and avoid the most consequential errors in survey analysis. It is
 written for the applied data analyst who *uses* survey data, not the survey methodologist
 who *designs* surveys. Whenever survey estimation comes up — advising or coding —
-load the `svy` skill (it carries the syntax plus environment constraints and curated
-caveats); for weighted descriptive statistics, see `./descriptive-analysis.md`.
+load the `svy` skill (Python) or the `survey-r` skill (R); they carry the syntax plus
+environment constraints and curated caveats. For weighted descriptive statistics, see
+`./descriptive-analysis.md`.
 
 **What this file does NOT cover:** survey design (sample size calculation, stratification
 design, allocation), weight construction or calibration methodology, response rate
@@ -399,7 +400,8 @@ uncertainty, making Rubin's combining rules the appropriate aggregation method.
 - Most education researchers use the NAEP Data Explorer or the `EdSurvey` R package,
   which handles the plausible value and replicate weight combination automatically.
   In Python, the combination must be implemented manually (see the `svy` skill for
-  guidance).
+  guidance). In R, load the `survey-r` skill for replicate-weight and combining-rule
+  patterns with the `survey` package.
 
 ## Survey-Weighted Regression
 
@@ -550,13 +552,13 @@ real research conclusions.
 
 | If you need to... | Go to |
 |-------------------|-------|
-| Write or advise on survey-weighted estimation in Python | Load the `svy` skill for design specification patterns, worked examples, and syntax |
-| Compute weighted descriptive statistics (means, medians, proportions) | `./descriptive-analysis.md` > "Weighted Analysis" section, plus the `svy` skill for code |
-| Run survey-weighted regression with covariates | Load the `svy` skill for design specification, plus `statsmodels` skill for model diagnostics |
-| Apply causal inference methods to survey data | `./causal-inference.md` for methodology (DiD, IV, RD), plus the `svy` skill for survey-aware implementation |
+| Write or advise on survey-weighted estimation | Load the `svy` skill (Python) or `survey-r` skill (R) for design specification patterns, worked examples, and syntax |
+| Compute weighted descriptive statistics (means, medians, proportions) | `./descriptive-analysis.md` > "Weighted Analysis" section, plus the `svy` (Python) or `survey-r` (R) skill for code |
+| Run survey-weighted regression with covariates | Load the `svy` (Python) or `survey-r` (R) skill for design specification, plus the `statsmodels` (Python) or `r-stats` (R) skill for model diagnostics |
+| Apply causal inference methods to survey data | `./causal-inference.md` for methodology (DiD, IV, RD), plus the `svy` (Python) or `survey-r` (R) skill for survey-aware implementation |
 | Understand a specific federal education survey's design | Load the relevant data source skill (e.g., `education-data-source-ccd`, `education-data-source-ipeds`) for survey-specific documentation |
 | Produce publication-quality tables of survey estimates | `./descriptive-analysis.md` > "Summary Statistics That Tell a Story" for table design principles |
-| Estimate models with fixed effects on survey data | Load `pyfixest` skill for FE estimation, noting that survey weight support requires additional configuration |
+| Estimate models with fixed effects on survey data | Load the `pyfixest` (Python) or `fixest` (R) skill for FE estimation, noting that survey weight support requires additional configuration |
 
 ## References and Further Reading
 

@@ -6,10 +6,10 @@ description: >-
   geometry ops. Use when execution language is R. Python equivalent: geopandas.
 autoload: never
 metadata:
-  audience: code-producing agents
+  audience: research-coders
   domain: r-library
   library-version: "sf 1.1-0"
-  skill-last-updated: "2026-05-08"
+  skill-last-updated: "2026-07-07"
   tags: ["r", "geospatial", "sf", "terra", "mapping"]
 ---
 
@@ -62,6 +62,24 @@ Versions installed in the DAAF container (R 4.5.3):
 - s2 geometry engine enabled by default for geographic CRS (spherical geometry) -- this changes area/distance/intersection behavior from earlier versions
 - Use `sf_use_s2(FALSE)` to temporarily revert to planar GEOS operations when s2 produces unexpected results (see `gotchas.md`)
 - `st_make_valid()` is now built into sf (no longer needs lwgeom)
+
+## Also Available in This Environment
+
+Four additional spatial packages are installed (versions verified) that map to
+capabilities the `geopandas` skill documents on the Python side:
+
+| Package | Version | Purpose | geopandas-skill equivalent |
+|---------|---------|---------|---------------------------|
+| maptiles | 0.11.0 | Basemap tiles for static maps (`get_tiles()`) | contextily |
+| exactextractr | 0.10.1 | Fast, exact zonal statistics of rasters over polygons (`exact_extract()`) | rasterstats zonal stats |
+| osmdata | 0.3.0 | Download OpenStreetMap features via the Overpass API | osmnx / OSM download |
+| tidygeocoder | 1.0.6 | Geocoding addresses to coordinates (`geocode()`) | geopy geocoding |
+
+**Honest asymmetry:** point-pattern analysis (Ripley's K/G/F functions, spatial
+point process models) requires `spatstat`, which is **not installed** — for
+point-pattern methods, Python (PySAL `pointpats` via the `geopandas` skill) is
+the routed path. Areal interpolation (`tobler`-style) also has no installed R
+equivalent.
 
 ## How to Use This Skill
 
@@ -257,7 +275,7 @@ library(classInt)    # classification intervals
 | Operation | Code | Package |
 |-----------|------|---------|
 | Read vector | `st_read("data.gpkg")` | sf |
-| Read parquet | `sfarrow::st_read_parquet("data.parquet")` | sfarrow |
+| Read parquet (WKB geometry) | `arrow::read_parquet()` + `st_as_sfc(structure(as.list(col), class = "WKB"), crs = ...)` — sfarrow NOT installed; see `quickstart.md` | sf + arrow |
 | From lat/lon | `st_as_sf(df, coords = c("lon", "lat"), crs = 4326)` | sf |
 | Check CRS | `st_crs(x)` | sf |
 | Reproject | `st_transform(x, crs = 5070)` | sf |

@@ -178,7 +178,8 @@ theme(panel.grid.minor = element_blank())
 
 | Element | Description | Type |
 |---------|-------------|------|
-| `legend.position` | Position: "top", "bottom", "left", "right", "none", or c(x, y) | character/numeric |
+| `legend.position` | Position: "top", "bottom", "left", "right", "none", "inside" (numeric c(x, y) deprecated since 3.5.0) | character |
+| `legend.position.inside` | Coordinates c(x, y) used when legend.position = "inside" (3.5.0+) | numeric |
 | `legend.justification` | Anchor point for positioned legends | numeric |
 | `legend.title` | Legend title | text |
 | `legend.text` | Legend labels | text |
@@ -217,8 +218,13 @@ theme(panel.grid.minor = element_blank())
 ```r
 theme(legend.position = "bottom")       # bottom, top, left, right
 theme(legend.position = "none")         # remove legend
-theme(legend.position = c(0.8, 0.2))   # coordinates (0-1)
-theme(legend.position = "inside")       # 4.0: explicitly inside
+
+# Inside the panel at coordinates (0-1): set both arguments together
+theme(legend.position = "inside", legend.position.inside = c(0.8, 0.2))
+
+# theme(legend.position = c(0.8, 0.2))  # numeric form deprecated since 3.5.0;
+#                                       # still works in 4.0.x -- prefer the
+#                                       # "inside" idiom above
 ```
 
 ### Remove Grid Lines

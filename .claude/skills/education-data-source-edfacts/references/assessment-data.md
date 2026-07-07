@@ -382,8 +382,11 @@ def compare_schools_within_state(df, state_fips, year):
 library(dplyr)
 
 # Valid: Compare schools within same state
+# NOTE: name the year variable distinctly from the `year` column and unquote it
+# with !! — `filter(year == year)` compares the column to itself (always TRUE).
+target_year <- 2018
 state_schools <- df |>
-  filter(fips == state_fips, year == year) |>
+  filter(fips == state_fips, year == !!target_year) |>
   select(ncessch, school_name, read_test_pct_prof_midpt, math_test_pct_prof_midpt) |>
   arrange(desc(read_test_pct_prof_midpt))
 ```

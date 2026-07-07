@@ -154,7 +154,9 @@ RUN curl -fsSL -o /tmp/r-${R_VERSION}.deb \
 # in the "Install Geospatial System Libraries" block above (shared with Python),
 # so they are NOT re-listed here. libudunits2-dev is critical — must be present
 # before installing sf. libtbb-dev required by terra; cmake required by the
-# lightgbm R bindings.
+# lightgbm R bindings. libglpk40 required at load time by igraph (a kknn
+# dependency) — P3M's pre-built igraph binary links libglpk.so.40, and the
+# presence gate below fails on kknn without it.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         gfortran \
         libcurl4-openssl-dev \
@@ -166,6 +168,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libsqlite3-dev \
         libssl-dev \
         libhdf5-dev \
+        libglpk40 \
         cmake \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
@@ -300,7 +303,7 @@ RUN RPROFILE="$(Rscript -e 'cat(file.path(R.home("etc"), "Rprofile.site"))')" \
 # Core data manipulation and I/O
 RUN Rscript -e 'install.packages(c( \
         "data.table", "dplyr", "tidyr", "tibble", "readr", "purrr", "stringr", \
-        "forcats", "lubridate", "glue", "rlang", \
+        "forcats", "lubridate", "glue", "rlang", "skimr", \
         "arrow", "readxl", "writexl", "haven", "jsonlite", "yaml" \
         ))'
 
@@ -311,7 +314,7 @@ RUN Rscript -e 'install.packages(c( \
 RUN Rscript -e 'install.packages(c( \
         "fixest", "sandwich", "lmtest", "car", "plm", "estimatr", \
         "marginaleffects", "rdrobust", \
-        "survey", "rugarch", "broom", "modelsummary" \
+        "survey", "rugarch", "tseries", "broom", "modelsummary" \
         ))'
 
 # Geospatial
@@ -329,8 +332,8 @@ RUN Rscript -e 'install.packages(c( \
 
 # ML and interpretation
 RUN Rscript -e 'install.packages(c( \
-        "tidymodels", "ranger", "glmnet", "xgboost", "lightgbm", \
-        "iml", "uwot", "fairmodels" \
+        "tidymodels", "ranger", "glmnet", "xgboost", "lightgbm", "kknn", \
+        "iml", "uwot", "fairmodels", "vip" \
         ))'
 
 # Presence gate: verify every intended R package actually installed. install.packages()
@@ -341,18 +344,18 @@ RUN Rscript -e 'install.packages(c( \
 # blocks above when adding or removing packages.
 RUN Rscript -e 'pkgs <- c( \
         "data.table", "dplyr", "tidyr", "tibble", "readr", "purrr", "stringr", \
-        "forcats", "lubridate", "glue", "rlang", \
+        "forcats", "lubridate", "glue", "rlang", "skimr", \
         "arrow", "readxl", "writexl", "haven", "jsonlite", "yaml", \
         "fixest", "sandwich", "lmtest", "car", "plm", "estimatr", \
         "marginaleffects", "rdrobust", \
-        "survey", "rugarch", "broom", "modelsummary", \
+        "survey", "rugarch", "tseries", "broom", "modelsummary", \
         "sf", "terra", "stars", \
         "spdep", "spatialreg", "classInt", "exactextractr", \
         "leaflet", "maptiles", "tidygeocoder", "osmdata", \
         "ggplot2", "scales", "ggridges", "ggrepel", "patchwork", "ggdist", \
         "plotly", "gt", "knitr", "kableExtra", "viridis", \
-        "tidymodels", "ranger", "glmnet", "xgboost", "lightgbm", \
-        "iml", "uwot", "fairmodels" \
+        "tidymodels", "ranger", "glmnet", "xgboost", "lightgbm", "kknn", \
+        "iml", "uwot", "fairmodels", "vip" \
         ); \
         missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]; \
         if (length(missing)) stop("Missing R packages: ", paste(missing, collapse = ", ")); \

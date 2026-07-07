@@ -885,6 +885,7 @@ Format-specific read behavior is driven by the mirror's `read_strategy` field in
 - Apply filters in the lazy frame before `.collect()` to minimize memory
 - Large files (500MB+) — always use lazy loading, never `pl.read_csv()` directly
 - **CRDC ID columns:** When reading any CRDC dataset from CSV, pass `schema_overrides={"ncessch": pl.Utf8, "leaid": pl.Utf8, "crdc_id": pl.Utf8}` to preserve zero-padded identifiers. Without this override, Polars infers Int64, destroying leading zeros for FIPS 01-09 states (~19% of rows). See `education-data-source-crdc` skill.
+- **CRDC ID columns (R):** `readr::read_csv()` has the identical failure mode — its type inference reads zero-padded IDs as numeric. Pass `col_types = readr::cols(ncessch = readr::col_character(), leaid = readr::col_character(), crdc_id = readr::col_character())` on any CRDC CSV read.
 
 ---
 

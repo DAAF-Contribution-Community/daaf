@@ -379,12 +379,12 @@ out_of_pocket <- 4000
 # Institution A (selective private)
 net_price_a = 25000
 pct_ftft = 80  # FTFT is 80% of students
-interpretation: net_price reflects most students
+# interpretation: net_price reflects most students
 
 # Institution B (community college)
 net_price_b = 8000
 pct_ftft = 20  # FTFT is 20% of students
-interpretation: net_price reflects minority of students
+# interpretation: net_price reflects minority of students
 ```
 
 ```r
@@ -636,7 +636,10 @@ url = get_codebook_url("ipeds/codebook_colleges_ipeds_ay_tuition_fees")
 ```
 
 ```r
-url <- get_codebook_url("ipeds/codebook_colleges_ipeds_ay_tuition_fees")
+# get_codebook_url() is a Python helper; in R, build the URL from the mirror root.
+# Mirror failover: see `education-data-query/references/fetch-patterns.md` (R pattern)
+mirror <- yaml::read_yaml("mirrors.yaml")$mirrors[[1]]
+url <- paste0(mirror$root_url, "/", "ipeds/codebook_colleges_ipeds_ay_tuition_fees", ".xls")
 ```
 
 #### NCES Cost Variable Names (for reference only)

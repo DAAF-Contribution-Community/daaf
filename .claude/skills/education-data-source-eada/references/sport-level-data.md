@@ -265,17 +265,20 @@ for sport in institution_sports:
 ```
 
 ```r
+library(dplyr)
+library(purrr)
+
 # Example: Aggregating sport-level data
-sports_data <- []
-for (sport in institution_sports) {
-    sports_data.append({
-        'sport_name': sport.name,
-        'gender': sport.gender,
-        'participation': sport.participation,
-        'expenses': sport.total_expenses,
-        'revenue': sport.revenue,
-        'coaches': sport.total_coaches
-    })
+sports_data <- institution_sports |>
+  map(\(sport) tibble(
+    sport_name = sport$name,
+    gender = sport$gender,
+    participation = sport$participation,
+    expenses = sport$total_expenses,
+    revenue = sport$revenue,
+    coaches = sport$total_coaches
+  )) |>
+  bind_rows()
 ```
 
 ### Comparison Framework

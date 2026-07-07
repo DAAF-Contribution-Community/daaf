@@ -6,7 +6,7 @@ description: |
   Use when execution language is R. Python equivalent: plotnine.
 autoload: never
 metadata:
-  audience: code-producing agents
+  audience: research-coders
   domain: r-library
   library-version: "ggplot2 4.0.2"
   skill-last-updated: "2026-05-08"

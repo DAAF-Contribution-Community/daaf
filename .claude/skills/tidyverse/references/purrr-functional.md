@@ -250,9 +250,8 @@ df <- map(files, \(f) {
 }) |> list_rbind()
 
 # Read CSV files with error handling
-df <- map(files, possibly(read_csv, otherwise = NULL)) |>
-  compact() |>
-  list_rbind()
+results <- map(files, possibly(read_csv, otherwise = NULL))
+df <- compact(results) |> list_rbind()
 cat("Successfully read:", length(compact(results)), "of", length(files), "files\n")
 ```
 

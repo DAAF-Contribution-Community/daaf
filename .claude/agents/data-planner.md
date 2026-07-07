@@ -151,11 +151,28 @@ Each stage has distinct required elements in its `<task>` XML. Use this as a che
 |-------|-------------------|----------------|
 | **5 (Fetch)** | `<skill>` (query skill), `<files><output>` (raw path), mirror fetch pattern in `<action>`, year/filter params | `<verify>`: row count range, required columns, years present, null rate |
 | **6 (Clean)** | `<skill>` (context skill), `<files><input><output>`, coded value filters in `<action>`, suppression rate calc | `<verify>`: suppression rate < threshold, no coded values remain, data loss < 90%, citation text |
-| **7 (Transform)** | `<skill>` (data-scientist, polars, geopandas if spatial data), `<cardinality>` (for joins), `<files><input><output>`, pre/post state capture | `<verify>`: join key overlap, fan-out check, row change within tolerance, no unexpected nulls |
-| **8.1 (Analysis)** | `<skill>` (data-scientist + modeling library: `statsmodels`/`pyfixest`/`linearmodels`/`svy`/`geopandas`/`scikit-learn` per methodology), model type, DV/IV/controls, assumptions to check, effect sizes | `<verify>`: output file exists, sample sizes documented, assumptions validated |
-| **8.2 (Visualization)** | `<skill>` (plotnine, plotly, or geopandas for maps), chart type, axes, facets, DPI/styling | `<verify>`: file exists, file size > 0 |
+| **7 (Transform)** | `<skill>` (data-scientist, polars — `tidyverse` for R; geopandas — `sf-terra` for R — if spatial data), `<cardinality>` (for joins), `<files><input><output>`, pre/post state capture | `<verify>`: join key overlap, fan-out check, row change within tolerance, no unexpected nulls |
+| **8.1 (Analysis)** | `<skill>` (data-scientist + modeling library per methodology and execution language: Python `statsmodels`/`pyfixest`/`linearmodels`/`svy`/`geopandas`/`scikit-learn`; R `r-stats`/`fixest`/`plm`/`survey-r`/`sf-terra`/`tidymodels`), model type, DV/IV/controls, assumptions to check, effect sizes | `<verify>`: output file exists, sample sizes documented, assumptions validated |
+| **8.2 (Visualization)** | `<skill>` (plotnine, plotly, or geopandas for maps — R: ggplot2, plotly-r, or sf-terra for maps; `gt` for formatted tables), chart type, axes, facets, DPI/styling | `<verify>`: file exists, file size > 0 |
 
 **Every task must also have:** `<depends_on>`, `<agent>research-executor</agent>`, `<done>` with measurable CP status.
+
+#### Language-Conditional Skill Routing
+
+The orchestrator's prompt includes an execution language directive (**"Execution language: Python"** — or no directive, the default — vs. **"Execution language: R"**). Every `<skill>` element you write must name skills from the matching column below. This is load-bearing: research-executor loads exactly the library skill the task names (its fallback routing only triggers when *no* library is specified), so a wrong-language skill name degrades execution rigor for the whole pipeline.
+
+| When Task Involves | Python Skill | R Skill |
+|-------------------|-------------|---------|
+| Data manipulation | `polars` | `tidyverse` |
+| Static visualization | `plotnine` | `ggplot2` |
+| Interactive visualization | `plotly` | `plotly-r` |
+| Fixed effects / DiD | `pyfixest` | `fixest` |
+| OLS / GLM / time series | `statsmodels` | `r-stats` |
+| Panel RE / GMM | `linearmodels` | `plm` |
+| Complex surveys | `svy` | `survey-r` |
+| Geospatial (maps or spatial modeling) | `geopandas` | `sf-terra` |
+| ML / clustering | `scikit-learn` | `tidymodels` |
+| Table formatting | — | `gt` |
 
 ### 6. Dependency Mapping
 
@@ -213,7 +230,9 @@ Work backward from outputs to inputs. For each task, apply the Methodology Rigor
 
 **Stage 8 Planning Note:** Stage 8 tasks should be split into analysis tasks (8.1.x) and visualization tasks (8.2.x) in the Transformation Sequence. Analysis tasks (e.g., regression, statistical tests) produce parquet results to `output/analysis/` and are validated by QA4a. Visualization tasks produce figures to `output/figures/` and are validated by QA4b. Both substage types belong in `scripts/stage8_analysis/`.
 
-**Modeling Library Selection:** When specifying Stage 8.1 analysis tasks, select the appropriate modeling library based on the planned methodology (the `data-scientist` skill's routing tree provides the canonical decision logic):
+**Modeling Library Selection:** When specifying Stage 8.1 analysis tasks, select the appropriate modeling library based on the planned methodology AND the orchestrator's execution-language directive (the `data-scientist` skill's routing tree provides the canonical decision logic for both languages).
+
+*Python execution (default):*
 - Standard regression (OLS, GLM, logit/probit) or diagnostic tests → `statsmodels`
 - Time series modeling (ARIMA/SARIMAX, VAR, forecasting, stationarity tests) → `statsmodels`
 - Fixed effects, IV with FE, or difference-in-differences → `pyfixest`
@@ -222,7 +241,17 @@ Work backward from outputs to inputs. For each task, apply the Methodology Rigor
 - Spatial regression or spatial analysis → `geopandas`
 - Supervised ML (classification, prediction, risk scoring) → `scikit-learn`
 - Unsupervised analysis (clustering, PCA, dimensionality reduction) → `scikit-learn`
-Include the selected library skill name in the task's `<skill>` element (e.g., `<skill>data-scientist, pyfixest</skill>`) so the orchestrator can pass it to the research-executor.
+
+*R execution (orchestrator directive "Execution language: R"):*
+- Standard regression (OLS, GLM, logit/probit), diagnostic tests, or time series → `r-stats`
+- Fixed effects, IV with FE, or difference-in-differences → `fixest`
+- Random effects, between estimation, or other panel models → `plm`
+- Survey-weighted analysis (complex survey design) → `survey-r`
+- Spatial regression or spatial analysis → `sf-terra`
+- Supervised or unsupervised ML (classification, prediction, clustering, PCA/UMAP) → `tidymodels`
+- Visualization tasks (8.2) → `ggplot2` (static), `plotly-r` (interactive); formatted tables → `gt`
+
+Include the selected library skill name in the task's `<skill>` element (e.g., `<skill>data-scientist, pyfixest</skill>` — or `<skill>data-scientist, fixest</skill>` under an R directive) so the orchestrator can pass it to the research-executor.
 
 ### Step 7: Assign Waves
 

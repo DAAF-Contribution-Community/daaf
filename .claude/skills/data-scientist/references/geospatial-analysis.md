@@ -1,6 +1,6 @@
 # Geospatial Analysis Methodology
 
-Conceptual foundations for spatial analysis — when to use spatial methods, how to think about geographic data, and how to interpret spatial results. This guide is code-agnostic. Whenever maps or spatial operations enter the discussion — in advice or in code — load the `geopandas` skill (which also covers the PySAL ecosystem for spatial statistics): it carries the syntax plus environment constraints and curated caveats that general knowledge lacks.
+Conceptual foundations for spatial analysis — when to use spatial methods, how to think about geographic data, and how to interpret spatial results. This guide is code-agnostic. Whenever maps or spatial operations enter the discussion — in advice or in code — load the `geopandas` skill (Python — also covers the PySAL ecosystem for spatial statistics) or the `sf-terra` skill (R — sf vectors, terra rasters, spdep/spatialreg spatial statistics): they carry the syntax plus environment constraints and curated caveats that general knowledge lacks.
 
 ## Acknowledgments
 

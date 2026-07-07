@@ -256,7 +256,7 @@ format:
   html:
     toc: true
     toc-depth: 2
-    code-fold: false
+    code-fold: show
     embed-resources: true
     theme: cosmo
 execute:
@@ -268,8 +268,10 @@ execute:
 Key choices:
 - `echo: true` -- code is the audit trail, must be visible
 - `eval: false` -- scripts already executed; showing code, not re-running
+  (script-archive chunks additionally carry a per-chunk `#| eval: false`;
+  see `daaf-notebook.md` for the belt-and-suspenders contract)
 - `embed-resources: true` -- single file for archiving
-- `code-fold: false` -- code should be visible by default
+- `code-fold: show` -- code visible by default, collapsible for review
 
 ### Analysis Report
 

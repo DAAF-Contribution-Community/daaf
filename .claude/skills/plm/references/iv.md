@@ -26,11 +26,15 @@ panel transformations (within, between, etc.) with 2SLS.
 ```r
 library(plm)
 data("Wages", package = "plm")
-pdf <- pdata.frame(Wages, index = c("nr", "year"))
+# Wages has no index columns (595 individuals x 7 years, ordered rows):
+# declare the panel by giving the number of individuals
+pdf <- pdata.frame(Wages, index = 595)
 
-# Panel IV: educ is endogenous, instrumented by father's education
-# All exogenous variables must appear on BOTH sides of |
-fit_iv <- plm(lwage ~ exp + wks + educ | exp + wks + father_educ,
+# Panel IV (syntax illustration): wks treated as endogenous, instrumented
+# by married and union. All exogenous variables must appear on BOTH sides
+# of |. Note: time-invariant variables (like ed) are absorbed by the
+# within transformation and cannot be instrumented in a within model.
+fit_iv <- plm(lwage ~ exp + I(exp^2) + wks | exp + I(exp^2) + married + union,
               data = pdf, model = "within")
 summary(fit_iv)
 ```
@@ -102,8 +106,15 @@ checks whether the overidentifying restrictions are valid.
 fit_iv <- plm(y ~ x1 + x_endog | x1 + z1 + z2,
               data = pdf, model = "within")
 
-# The Sargan test is printed in summary for overidentified models
-summary(fit_iv)
+# NOTE: summary() of a plm() IV model does NOT report the Sargan test --
+# only pgmm() summaries print it (see the GMM Diagnostics section below).
+# For an overidentified plm() IV model, either compute it manually
+# (regress the 2SLS residuals on the within-transformed instrument set;
+# N * R-squared ~ chi-squared with df = #instruments - #endogenous), or
+# re-estimate with fixest and read the test directly:
+library(fixest)
+fit_fx <- feols(y ~ x1 | entity | x_endog ~ z1 + z2, data = df)
+fitstat(fit_fx, type = "sargan")
 ```
 
 ### Weak Instrument Checks

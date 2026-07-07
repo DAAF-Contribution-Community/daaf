@@ -178,7 +178,8 @@ coefplot(fit1,
          main = "Coefficient Estimates",
          xlab = "Estimate",
          horiz = TRUE,                 # Horizontal layout (default)
-         ci.width = 0.05,             # 95% CI
+         ci_level = 0.95,              # Confidence level (`ci.width` is the
+                                       # bracket-end width, not the level)
          col = "steelblue",
          pch = 20)
 ```
@@ -186,10 +187,12 @@ coefplot(fit1,
 ### Comparing Models
 
 ```r
+# There is no `legendtext` argument — add the legend with base graphics
 coefplot(list(fit1, fit2, fit3),
          keep = "log",
-         main = "Model Comparison",
-         legendtext = c("No FE", "Origin FE", "Two-Way FE"))
+         main = "Model Comparison")
+legend("topright", col = 1:3, pch = 20, lwd = 1,
+       legend = c("No FE", "Origin FE", "Two-Way FE"))
 ```
 
 ## iplot: Event Study / Interaction Plots
@@ -212,18 +215,19 @@ iplot(fit,
       xlab = "Periods Relative to Treatment",
       ylab = "Estimated Effect",
       ref.line = -1,                  # Vertical reference line
-      zero.line = TRUE,               # Horizontal line at y=0
-      ci.width = 0.05,               # 95% CI
-      ci.fill = TRUE,                # Filled confidence bands
+      zero = TRUE,                    # Horizontal line at y=0 (not `zero.line`)
+      ci_level = 0.95,                # Confidence level (not `ci.width`)
+      ci.fill = TRUE,                 # Filled confidence bands
       col = "steelblue")
 ```
 
 ### Comparing Models
 
 ```r
-iplot(list(fit_twfe, fit_sa),
-      main = "TWFE vs Sun-Abraham",
-      legendtext = c("TWFE", "Sun-Abraham"))
+# There is no `legendtext` argument — add the legend with base graphics
+iplot(list(fit_twfe, fit_sa), main = "TWFE vs Sun-Abraham")
+legend("topright", col = 1:2, pch = 20, lwd = 1,
+       legend = c("TWFE", "Sun-Abraham"))
 ```
 
 ## fixef: Extracting Fixed Effects

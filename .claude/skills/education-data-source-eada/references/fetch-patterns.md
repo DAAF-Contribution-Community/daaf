@@ -33,18 +33,23 @@ print(f"Columns: {len(df.columns)}")
 library(arrow)
 library(dplyr)
 
-# Fetch EADA institutional data via unified mirror system
-DATASET_PATH <- "eada/colleges_eada_inst_characteristics"
-df <- fetch_from_mirrors(DATASET_PATH)
+# fetch_from_mirrors() is a Python helper; in R, build the URL from the mirror
+# root in mirrors.yaml and read directly.
+# Mirror failover: see `education-data-query/references/fetch-patterns.md` (R pattern).
+config <- yaml::read_yaml("mirrors.yaml")
+mirror <- config$mirrors[[1]]
+dataset_path <- "eada/colleges_eada_inst_characteristics"
+url <- paste0(mirror$root_url, "/", dataset_path, ".", mirror$format)
+df <- arrow::read_parquet(url)
 
 # Filter by year and state
 df <- df |> filter(
-    (year == 2021) &
-    (fips == 6)  # California
+  year == 2021,
+  fips == 6  # California
 )
 
-cat(paste0("Shape: ", dim(df)), "\n")
-cat(paste0("Columns: ", len(df.columns)), "\n")
+cat(sprintf("Shape: %d x %d\n", nrow(df), ncol(df)))
+cat(sprintf("Columns: %d\n", ncol(df)))
 ```
 
 ## Available Years
@@ -89,11 +94,11 @@ valid = df.filter(
 library(dplyr)
 
 # Filter out BOTH nulls AND coded missing values
-missing_codes <- [-1, -2, -3]
+missing_codes <- c(-1, -2, -3)
 
 valid <- df |> filter(
-    !is.na(ath_exp_men) &
-    ~ath_exp_men.is_in(missing_codes)
+  !is.na(ath_exp_men),
+  !(ath_exp_men %in% missing_codes)
 )
 ```
 
@@ -106,14 +111,19 @@ print(f"Codebook: {codebook_url}")
 ```
 
 ```r
-# Get the codebook URL for manual reference
-codebook_url <- # get_codebook_url("eada/codebook_colleges_eada_inst-characteristics") -- use same path with mirror URL
-cat(paste0("Codebook: ", codebook_url), "\n")
+# Get the codebook URL for manual reference.
+# get_codebook_url() is a Python helper; in R, construct the codebook URL from
+# the mirror root in mirrors.yaml (codebooks are .xls files co-located with data).
+# Mirror failover: see `education-data-query/references/fetch-patterns.md` (R pattern).
+config <- yaml::read_yaml("mirrors.yaml")
+mirror <- config$mirrors[[1]]
+codebook_url <- paste0(mirror$root_url, "/", "eada/codebook_colleges_eada_inst-characteristics", ".xls")
+cat(sprintf("Codebook: %s\n", codebook_url))
 ```
 
 ## Important Notes
 
 - **No `sector` column:** EADA data does not include institutional sector. Join with IPEDS directory on `unitid` if sector filtering is needed.
-- **Single-file dataset:** All years are in one file. Filter locally with `pl.col("year").is_in(years)`.
+- **Single-file dataset:** All years are in one file. Filter locally with `pl.col("year").is_in(years)` (Python) or `filter(year %in% years)` (R).
 - **165 columns:** The dataset is wide. Use column selection to reduce memory usage for focused analyses.
 - **Early years sparse:** Some columns are null for 2002 (e.g., `opeid`, `num_sports`, `_all` aggregates).

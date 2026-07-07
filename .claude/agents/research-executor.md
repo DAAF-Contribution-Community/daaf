@@ -471,7 +471,7 @@ If nothing novel, emit "None" -- this is the expected common case.
 | Orchestrator | Status + Findings + File paths | Gate decision (proceed / revise / escalate) |
 | code-reviewer | Script path + execution log + output files | Secondary QA review for correctness and methodology |
 | Next wave tasks | Data files in data/raw/ or data/processed/ | Input data for subsequent transformations |
-| notebook-assembler (Stage 9) | Saved data files + successful scripts | Compiles scripts into marimo notebook |
+| notebook-assembler (Stage 9) | Saved data files + successful scripts | Compiles scripts into Marimo notebook (Python) or Quarto notebook (R) |
 | report-writer (Stage 11) | Validation findings | References in stakeholder report |
 | data-verifier (Stage 12) | All artifacts | Checks existence, substance, and coherence |
 

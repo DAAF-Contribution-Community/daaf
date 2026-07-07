@@ -380,7 +380,7 @@ And here's what each of them do in more detail, and how the workflow works so yo
 
 **Trigger words:** "verify," "reproduce," "reproduction," "does this replicate," "check reproducibility," "verify this analysis..."
 
-**What it is:** You have an existing completed analysis (from a Full Pipeline run or otherwise) and you want to mechanically verify that it reproduces from its marimo notebook. DAAF decompiles the notebook back into standalone scripts, re-executes each one, compares the new outputs against the originals, and cross-references the Report's claims against the actual analytic results. The goal is to provide an independent, systematic assessment of whether the analysis holds up end-to-end.
+**What it is:** You have an existing completed analysis (from a Full Pipeline run or otherwise) and you want to mechanically verify that it reproduces from its marimo or Quarto notebook. DAAF decompiles the notebook back into standalone scripts, re-executes each one, compares the new outputs against the originals, and cross-references the Report's claims against the actual analytic results. The goal is to provide an independent, systematic assessment of whether the analysis holds up end-to-end.
 
 **What you get:**
 - A Reproduction Report documenting what matched, what diverged, and any methodological concerns discovered during the process
@@ -644,7 +644,7 @@ research/2026-01-24_School_Poverty_Analysis/
 
 > **Note on execution language:** The folder structure is identical whether using Python or R. The differences are in file extensions (`.py` vs `.R` for scripts) and notebook format (`.py` marimo notebook vs `.qmd` Quarto notebook). Your execution language is set in CLAUDE.md's User Preferences section -- DAAF handles the rest automatically.
 
-**Tip:** The easiest way to browse a completed project is with the browser-based code editor. Run `bash run_vscode.sh` (or `.\run_vscode.ps1` on Windows) from your `daaf-docker` folder, then navigate the file tree in the sidebar. You can preview Markdown reports and plans with `Shift+Ctrl+V`, read Python scripts with syntax highlighting, and inspect the Git history to see what changed and when. See [**03. Best Practices — Using the Browser-Based Code Editor**](03_best_practices.md#using-the-browser-based-code-editor) for more.
+**Tip:** The easiest way to browse a completed project is with the browser-based code editor. Run `bash run_vscode.sh` (or `.\run_vscode.ps1` on Windows) from your `daaf-docker` folder, then navigate the file tree in the sidebar. You can preview Markdown reports and plans with `Shift+Ctrl+V`, read Python and R scripts with syntax highlighting, and inspect the Git history to see what changed and when. See [**03. Best Practices — Using the Browser-Based Code Editor**](03_best_practices.md#using-the-browser-based-code-editor) for more.
 
 Let's go through each piece.
 
@@ -918,7 +918,7 @@ You don't need to know what's in most of these directories -- the two that matte
 
 DAAF includes convenience scripts for viewing your files, notebooks, and session logs outside of the terminal. Run these from your `daaf-docker` folder on the host (i.e., outside the container):
 
-- **Browse and edit project files:** `bash run_vscode.sh` (macOS/Linux) or `.\run_vscode.ps1` (Windows) -- opens a browser-based VS Code editor. You can preview Markdown reports and plans with `Shift+Ctrl+V`, read Python scripts with syntax highlighting, and inspect the Git history to see what changed and when. See [**03. Best Practices — Using the Browser-Based Code Editor**](03_best_practices.md#using-the-browser-based-code-editor) for more.
+- **Browse and edit project files:** `bash run_vscode.sh` (macOS/Linux) or `.\run_vscode.ps1` (Windows) -- opens a browser-based VS Code editor. You can preview Markdown reports and plans with `Shift+Ctrl+V`, read Python and R scripts with syntax highlighting, and inspect the Git history to see what changed and when. See [**03. Best Practices — Using the Browser-Based Code Editor**](03_best_practices.md#using-the-browser-based-code-editor) for more.
 - **View interactive notebooks:** `bash view_notebooks.sh` (macOS/Linux) or `.\view_notebooks.ps1` (Windows) -- opens marimo's notebook browser at [http://localhost:2718](http://localhost:2718), where you can browse and open any project notebook.
 - **View session logs:** `bash view_logs.sh` (macOS/Linux) or `.\view_logs.ps1` (Windows) -- opens the **DAAF Log Explorer**, an interactive timeline that shows orchestrator actions, subagent dispatches, and tool calls in your browser at [http://localhost:2719](http://localhost:2719). See the [Installation Guide — Viewing Session Logs](01_installation_and_quickstart.md#viewing-session-logs-in-your-browser) for details.
 

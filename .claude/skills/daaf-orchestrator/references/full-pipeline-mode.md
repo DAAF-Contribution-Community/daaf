@@ -263,7 +263,7 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**.
 │      │   or Quarto chunks (R)                                               │
 │      ├─ VERBATIM execution logs in accordions (not summaries)               │
 │      ├─ NO new code except pl.read_parquet()+mo.ui.table() (Python)         │
-│      │   or arrow::read_parquet()+DT::datatable() (R)                       │
+│      │   or arrow::read_parquet()+glimpse()+head(df, 20) (R)                │
 │      ├─ NO dashboards, NO widgets, NO filters, NO aggregations              │
 │      └─ Gate G9: Notebook runs, all scripts represented, no prohibited items│
 │                          ↓                                                  │

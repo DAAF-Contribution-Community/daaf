@@ -166,11 +166,16 @@ state_stats <- df |>
 
 | Stata | R | Notes |
 |-------|---|-------|
-| `merge 1:1 key using file2` | `inner_join(df2, by = "key")` | |
-| `merge m:1 key using file2` | `left_join(df2, by = "key")` | |
-| `merge 1:m key using file2` | `left_join(df2, by = "key")` | |
+| `merge 1:1 key using file2` | `full_join(df2, by = "key")` | Bare merge keeps unmatched rows from BOTH sides (full-join semantics) |
+| `merge m:1 key using file2` | `left_join(df2, by = "key")` | Common `keep(1 3)` usage; bare merge is full-join |
+| `merge 1:m key using file2` | `left_join(df2, by = "key")` | Common `keep(1 3)` usage; bare merge is full-join |
 | `merge ..., keep(3)` | `inner_join(df2, by = "key")` | Matched only |
 | `merge ..., keep(1 3)` | `left_join(df2, by = "key")` | Master + matched |
+
+> **Bare-merge semantics:** A Stata `merge` without `keep()` retains ALL rows —
+> matched, master-only, and using-only — flagged via `_merge`. The exact dplyr
+> equivalent is `full_join()`; use the `keep()` rows above for precise mappings
+> when the do-file filters on `_merge`.
 
 ```stata
 merge m:1 state_fips using "state_names.dta"

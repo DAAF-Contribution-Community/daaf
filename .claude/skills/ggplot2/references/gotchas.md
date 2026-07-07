@@ -11,8 +11,15 @@ geom_abline, geom_smooth, geom_ribbon (outline):**
 - `size` throws a deprecation warning
 - Use `linewidth` instead
 
-**For geom_bar, geom_col, geom_boxplot, geom_crossbar (border):**
-- `size` is silently **ignored** (fallback removed in 4.0)
+**For geom_bar, geom_col (border):**
+- `size` is **ignored** with a warning (`Ignoring unknown parameters: 'size'`) --
+  the 3.x size-to-linewidth fallback was removed in 4.0 (#4848); the border
+  keeps its default width
+- Use `linewidth` for border width
+
+**For geom_boxplot, geom_crossbar (border):**
+- `size` still maps to line width in 4.0.2 (crossbar emits a lifecycle
+  deprecation warning; boxplot converts silently) -- do not rely on this
 - Use `linewidth` for border width
 
 **For geom_point, geom_jitter, geom_count:**
@@ -25,7 +32,7 @@ geom_abline, geom_smooth, geom_ribbon (outline):**
 ```r
 # WRONG (4.0)
 geom_line(size = 1)                    # Warning
-geom_bar(size = 0.5)                   # Silently ignored
+geom_bar(size = 0.5)                   # Ignored with "unknown parameters" warning
 element_line(size = 0.5)               # Deprecated
 
 # CORRECT (4.0)
@@ -55,7 +62,7 @@ geom_point(size = 3)                   # size is correct for points
 | `geom_errorbarh()` | `geom_errorbar(orientation = "y")` |
 | `geom_violin(draw_quantiles = ...)` | `geom_violin(quantiles = c(...), quantile.linetype = 1)` — in 4.0 quantiles are hidden unless `quantile.linetype` is set to a non-`0` value |
 | `fatten` in boxplot/crossbar/pointrange | Use specific styling arguments |
-| `facet_wrap(as.table = ...)` | `facet_wrap(dir = ...)` |
+| `facet_wrap(as.table = ...)` (superseded) | `facet_wrap(dir = ...)` two-letter codes |
 | Pre-3.0 deprecated functions | Now throw errors (not just warnings) |
 
 ### New Dependencies

@@ -179,13 +179,7 @@ Institutions report:
 ### Meaningful Comparisons
 
 Better approach: Compare coaches of similar sports
-```python
-# Example: Compare basketball coaches
-# Rather than all men's vs all women's coaches
-basketball_men_salary vs basketball_women_salary
 ```
-
-```r
 # Example: Compare basketball coaches
 # Rather than all men's vs all women's coaches
 basketball_men_salary vs basketball_women_salary
@@ -288,13 +282,7 @@ Common pattern:
 
 Athletic aid should be proportional to participation:
 
-```python
-# If participation is 45% women, 55% men
-# Aid should be approximately:
-aid_women / (aid_men + aid_women) ≈ 0.45
 ```
-
-```r
 # If participation is 45% women, 55% men
 # Aid should be approximately:
 aid_women / (aid_men + aid_women) ≈ 0.45

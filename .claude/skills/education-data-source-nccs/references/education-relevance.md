@@ -214,9 +214,13 @@ combined = nccs.join(
 library(arrow)
 library(dplyr)
 
+# fetch_from_mirrors() is a Python helper; in R, build URLs from the mirror root.
+# Mirror failover: see `education-data-query/references/fetch-patterns.md` (R pattern)
+mirror <- yaml::read_yaml("mirrors.yaml")$mirrors[[1]]
+
 # Portal data already has unitid
-nccs <- fetch_from_mirrors("nccs/colleges_nccs_all")
-ipeds <- fetch_from_mirrors("ipeds/colleges_ipeds_directory")
+nccs <- read_parquet(paste0(mirror$root_url, "/", "nccs/colleges_nccs_all", ".", mirror$format))
+ipeds <- read_parquet(paste0(mirror$root_url, "/", "ipeds/colleges_ipeds_directory", ".", mirror$format))
 
 # Direct join on unitid and year
 combined <- nccs |>
@@ -234,6 +238,16 @@ from rapidfuzz import fuzz
 
 # This is inherently row-level work; consider converting to pandas for iterrows()
 # or use Polars with map_elements for small datasets
+```
+
+```r
+# Fuzzy matching on name (base R). stringdist/fuzzyjoin offer richer string
+# distances but are NOT installed in this environment — agrepl()/adist() are
+# always available in base R.
+# agrepl: approximate matching via edit distance; adist: edit-distance matrix
+candidates <- ipeds_names[agrepl(nccs_name, ipeds_names, max.distance = 0.15)]
+distances <- adist(nccs_name, candidates)
+best_match <- candidates[which.min(distances)]
 ```
 
 **3. Address Matching**
@@ -293,10 +307,11 @@ NCCS provides individual-level compensation data:
 ```python
 # Get compensation for college presidents
 # Use Efile Part VII or Schedule J data
+import polars as pl
 
-compensation = efile_partVII[
-    efile_partVII['TITLE'].str.contains('President|Chancellor', case=False)
-]
+compensation = efile_partVII.filter(
+    pl.col("TITLE").str.contains("(?i)President|Chancellor")
+)
 ```
 
 ```r
@@ -382,16 +397,15 @@ governance_vars <- c(
 Functional expense allocation enables efficiency analysis:
 
 ```python
-# Calculate fundraising efficiency
-df['fundraising_ratio'] = (
-    df['F9_PC_09_FUNC_EXP_FUNDRAISING'] / 
-    df['F9_PC_08_CONTRIBUTIONS']
-)
+import polars as pl
 
-# Program expense ratio
-df['program_ratio'] = (
-    df['F9_PC_09_FUNC_EXP_PROGRAM'] / 
-    df['F9_PC_09_FUNC_EXP_TOTAL']
+# Calculate fundraising efficiency
+df = df.with_columns(
+    (pl.col("F9_PC_09_FUNC_EXP_FUNDRAISING")
+     / pl.col("F9_PC_08_CONTRIBUTIONS")).alias("fundraising_ratio"),
+    # Program expense ratio
+    (pl.col("F9_PC_09_FUNC_EXP_PROGRAM")
+     / pl.col("F9_PC_09_FUNC_EXP_TOTAL")).alias("program_ratio"),
 )
 ```
 
@@ -479,8 +493,11 @@ library(arrow)
 library(dplyr)
 
 # Load NCCS data via unified mirror system
+# fetch_from_mirrors() is a Python helper; in R, build the URL from the mirror root.
+# Mirror failover: see `education-data-query/references/fetch-patterns.md` (R pattern)
 DATASET_PATH <- "nccs/colleges_nccs_all"
-nccs <- fetch_from_mirrors(DATASET_PATH)
+mirror <- yaml::read_yaml("mirrors.yaml")$mirrors[[1]]
+nccs <- read_parquet(paste0(mirror$root_url, "/", DATASET_PATH, ".", mirror$format))
 
 # Filter to California (FIPS = 6) - note: integer codes!
 ca_institutions <- nccs |> filter(fips == 6)
@@ -518,13 +535,17 @@ combined = nccs.join(
 library(arrow)
 library(dplyr)
 
+# fetch_from_mirrors() is a Python helper; in R, build URLs from the mirror root.
+# Mirror failover: see `education-data-query/references/fetch-patterns.md` (R pattern)
+mirror <- yaml::read_yaml("mirrors.yaml")$mirrors[[1]]
+
 # NCCS data includes unitid for IPEDS matching
 NCCS_PATH <- "nccs/colleges_nccs_all"
-nccs <- fetch_from_mirrors(NCCS_PATH)
+nccs <- read_parquet(paste0(mirror$root_url, "/", NCCS_PATH, ".", mirror$format))
 
 # IPEDS directory for institution names
 IPEDS_PATH <- "ipeds/colleges_ipeds_directory"
-ipeds <- fetch_from_mirrors(IPEDS_PATH)
+ipeds <- read_parquet(paste0(mirror$root_url, "/", IPEDS_PATH, ".", mirror$format))
 
 # Join on unitid and year
 combined <- nccs |>
@@ -628,8 +649,9 @@ library(dplyr)
 sched_d <- read.csv("efile_schedule_d_part_v.csv")
 
 # Join with BMF for institution names
+# (inner_join matches the Python twin: Polars .join() defaults to how="inner")
 endowments <- sched_d |>
-  left_join(bmf |> select(EIN, NAME, STATE), by = "EIN")
+  inner_join(bmf |> select(EIN, NAME, STATE), by = "EIN")
 
 # Filter to higher ed
 endowments <- endowments |> filter(EIN %in% ca_universities$EIN)

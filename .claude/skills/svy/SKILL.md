@@ -1,7 +1,7 @@
 ---
 name: svy
 description: >-
-  Complex survey analysis: strata/PSU/weights, variance estimation (Taylor, BRR, jackknife, bootstrap), survey GLM, domain analysis, calibration, survey data I/O (SAS, SPSS, Stata formats). Polars-native. Use for any complex-sample survey: NHANES, CPS, ACS PUMS, BRFSS, DHS, ECLS-K, MEPS-HC. CRITICAL: statsmodels WLS and pyfixest clustered SEs are NOT substitutes for proper survey-weighted analysis — they ignore stratification and unequal probability sampling. Non-survey regression: statsmodels/pyfixest.
+  Complex survey analysis: strata/PSU/weights, variance estimation (Taylor, BRR, jackknife, bootstrap), survey GLM, domain analysis, calibration, survey data I/O (SAS, SPSS, Stata formats). Polars-native. Use for any complex-sample survey: NHANES, CPS, ACS PUMS, BRFSS, DHS, ECLS-K, MEPS-HC. CRITICAL: statsmodels WLS and pyfixest clustered SEs are NOT substitutes for proper survey-weighted analysis — they ignore stratification and unequal probability sampling. Non-survey regression: statsmodels/pyfixest. R equivalent: survey-r (use when execution language is R).
 metadata:
   audience: research-coders
   domain: python-library
@@ -157,6 +157,8 @@ What statistic?
 For models svy does not support (ordinal logistic, survival models, negative binomial GLM, cumulative link models), fall back to R's `survey` package via rpy2:
 
 **Decision rule:** If the model family is not `"gaussian"`, `"binomial"`, or `"poisson"`, use rpy2.
+
+**If the session's execution language is R**, skip the bridge entirely: load the `survey-r` skill instead — it covers the full R `survey` package (including `svyolr` and `svycoxph`) natively, with no rpy2 involved. The bridge below is for Python-execution sessions only.
 
 The R survey package (`survey::svyglm`, `survey::svyolr`, `survey::svycoxph`) covers the full range of survey-weighted models. Set up the survey design in R using the same design variables you would pass to `svy.Design`. See R survey package documentation at `r-survey.r-forge.r-project.org` for API details.
 

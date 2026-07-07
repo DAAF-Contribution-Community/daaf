@@ -195,8 +195,13 @@ url = get_codebook_url("saipe/codebook_districts_saipe")
 ```
 
 ```r
-# R equivalent
-url <- get_codebook_url("saipe/codebook_districts_saipe")
+# R equivalent.
+# get_codebook_url() is a Python helper; in R, construct the codebook URL from
+# the mirror root in mirrors.yaml (codebooks are .xls files co-located with data).
+# Mirror failover: see `education-data-query/references/fetch-patterns.md` (R pattern).
+config <- yaml::read_yaml("mirrors.yaml")
+mirror <- config$mirrors[[1]]
+url <- paste0(mirror$root_url, "/", "saipe/codebook_districts_saipe", ".xls")
 ```
 
 > **Truth Hierarchy:** When interpreting variable values, apply this priority:

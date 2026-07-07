@@ -1,7 +1,7 @@
 ---
 name: plotnine
 description: >-
-  plotnine static visualization (ggplot2 syntax for Python). Geoms, aesthetics, scales, coordinates, facets, themes. Use for static publication-quality figures with grammar-of-graphics syntax. For interactive charts use plotly; for maps use geopandas.
+  plotnine static visualization (ggplot2 syntax for Python). Geoms, aesthetics, scales, coordinates, facets, themes. Use for static publication-quality figures with grammar-of-graphics syntax. For interactive charts use plotly; for maps use geopandas. R equivalent: ggplot2 (use when execution language is R).
 metadata:
   audience: research-coders
   domain: python-library

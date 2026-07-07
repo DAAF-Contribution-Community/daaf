@@ -47,7 +47,9 @@ fit <- feols(y ~ x1 | entity + year, data = df, vcov = ~entity)
 # Restore old behavior for the session.
 # setFixest_vcov() takes named arguments keyed by FE structure
 # (no_FE, one_FE, two_FE, panel, all, reset) — there is no `vcov = ` argument.
-setFixest_vcov(all = "cluster")   # Cluster everywhere
+# The `all` key only accepts "iid" or "hetero"; clustering must be set via
+# the per-structure keys:
+setFixest_vcov(one_FE = "cluster", two_FE = "cluster", panel = "cluster")
 # Or
 setFixest_vcov(all = "hetero")    # Always use robust
 ```
@@ -317,8 +319,7 @@ etable(fit_ols, fit_pois, fit_logit,
 # Match Stata's vce(cluster state)
 fit <- feols(y ~ x1 | fe, data = df,
              vcov = ~state,
-             ssc = ssc(adj = TRUE, fixef.K = "none",
-                       cluster.adj = TRUE))
+             ssc = ssc(K.adj = TRUE, K.fixef = "none", G.adj = TRUE))
 ```
 
 ### Two-Way Clustering
@@ -327,7 +328,7 @@ fit <- feols(y ~ x1 | fe, data = df,
 # Match Stata's conventional two-way clustering
 fit <- feols(y ~ x1 | fe, data = df,
              vcov = ~state + year,
-             ssc = ssc(cluster.df = "conventional"))
+             ssc = ssc(G.df = "conv"))
 ```
 
 ### Fixed Effects OLS
@@ -336,9 +337,10 @@ With IID standard errors, fixest and Stata match to very high precision.
 Differences are typically due to small-sample correction choices:
 
 ```r
-# Check ssc settings
-# Stata default: adj=TRUE, fixef.K="none" (FE not counted in k)
-# fixest default: same
+# Check ssc settings with print(ssc()) / getFixest_ssc()
+# Stata (vce(cluster)): FE not counted in K -- equivalent to K.fixef = "none"
+# fixest default: K.fixef = "nonnested" -- NOT the same; set
+# ssc(K.fixef = "none") explicitly when matching Stata clustered SEs
 ```
 
 ## Quick Diagnostic Table

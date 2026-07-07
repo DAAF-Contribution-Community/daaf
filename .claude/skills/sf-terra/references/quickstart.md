@@ -107,21 +107,25 @@ counties <- st_read("large_file.gpkg", query = "SELECT * FROM counties LIMIT 100
 
 ### Read GeoParquet
 
-GeoParquet is the fastest format for analytical workflows. sf does not natively read GeoParquet; use the sfarrow package:
-
-```r
-library(sfarrow)
-counties <- st_read_parquet("counties.parquet")
-```
-
-If sfarrow is not available, read with arrow and convert:
+GeoParquet is the fastest format for analytical workflows. sf does not natively
+read GeoParquet, and the sfarrow package is **not installed** in this
+environment. Read with arrow and convert the WKB geometry column (this pattern
+is verified against the installed sf 1.1-0 + arrow):
 
 ```r
 library(arrow)
+library(sf)
+
 df <- read_parquet("counties.parquet")
-# If geometry is stored as WKB:
-counties <- st_as_sf(df, wkb = "geometry", crs = 4326)
+# geometry arrives as a list of raw vectors (WKB); convert to sfc, then sf.
+# Check the source's CRS metadata — geopandas GeoParquet defaults to EPSG:4326.
+df$geometry <- st_as_sfc(structure(as.list(df$geometry), class = "WKB"), crs = 4326)
+counties <- st_as_sf(df)
 ```
+
+Note: `st_as_sf()` has a `wkt =` argument for well-known-text columns but **no
+`wkb =` argument** (verified against `formals()`) — WKB must go through
+`st_as_sfc()` as above.
 
 ### Shapefile Limitations
 
@@ -151,9 +155,15 @@ st_write(x, "output.geojson", driver = "GeoJSON")
 # Shapefile (legacy -- avoid if possible)
 st_write(x, "output.shp")
 
-# GeoParquet (via sfarrow)
-library(sfarrow)
-st_write_parquet(x, "output.parquet")
+# Parquet with WKB geometry (sfarrow is NOT installed; use arrow directly).
+# unclass() strips the WKB class so arrow stores a plain binary column (verified):
+library(arrow)
+out <- st_drop_geometry(x)
+out$geometry <- unclass(st_as_binary(st_geometry(x)))
+write_parquet(out, "output.parquet")
+# Note: this is plain parquet + WKB, not full GeoParquet (no CRS metadata) --
+# record the CRS alongside (e.g., in the data dictionary). For a self-describing
+# spatial format, prefer st_write() to GeoPackage.
 ```
 
 ---

@@ -154,6 +154,7 @@ For complete mode values see `./references/coded-values.md`.
 > df = df.with_columns(pl.col("county_fips").cast(pl.Utf8).str.zfill(5).alias("county_fips_str"))
 > ```
 > ```r
+> library(dplyr)
 > library(stringr)  # str_pad()
 > df <- df |> mutate(county_fips_str = str_pad(county_fips, width = 5, pad = "0"))
 > ```

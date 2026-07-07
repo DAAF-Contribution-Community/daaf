@@ -252,9 +252,16 @@ threats. This is the central decision reference for Stage 8 analysis work.
 | **Difference-in-Differences** | Policy change affects some units but not others | Parallel trends, no anticipation | ATT | Parallel trends violations, anticipation | pyfixest (did2s, lpdid) |
 | **Synthetic Control** | Few treated units, long pre-treatment period | Weighted controls can match pre-treatment trajectory | ATT for treated unit(s) | No good match, interpolation bias | scipy manual or pip install (see causal-synth.md) |
 
-**Implementation status note:** The DAAF environment includes `pyfixest` and `statsmodels`
-as installed causal inference packages. Entries marked with * require either manual
-implementation using available packages or installation of specialized packages:
+*(The package column shows Python implementations; in R, map to `fixest` for FE/IV/DiD,
+`plm` for panel RE/IV-GMM, and base `stats` for regression with controls, per the
+Language Routing table in SKILL.md and the R library skills' own references.)*
+
+**Implementation status note:** For Python, the DAAF environment includes `pyfixest`
+and `statsmodels` as installed causal inference packages; R ships unconditionally in
+the same environment with `fixest` and `plm` installed (load the `fixest`, `plm`, or
+`r-stats` skill), covering the same FE/IV/DiD/panel ground. Entries marked with *
+require either manual implementation using available packages or installation of
+specialized packages:
 - **pyfixest** covers: OLS/FE regression, IV (via `~` and `|` formula syntax), panel
   models (`feols` with fixed effects), DiD (`did2s`, `lpdid`, `event_study`), event
   studies, and multiple testing corrections (`rwolf`, `bonferroni`)
@@ -541,7 +548,9 @@ result increases rapidly. This is the multiple comparisons problem.
 
 **Correction methods:**
 - **Bonferroni**: Divide the significance threshold by the number of tests.
-  Conservative but simple. Available in pyfixest: `bonferroni()`.
+  Conservative but simple. Available in pyfixest: `bonferroni()` (Python); in R,
+  use base `stats::p.adjust(p, method = "bonferroni")` — R's `fixest` does not
+  export a Bonferroni routine.
 - **Holm (step-down Bonferroni)**: Less conservative than Bonferroni while still
   controlling the family-wise error rate. Order p-values and apply increasingly
   relaxed thresholds.
@@ -550,7 +559,10 @@ result increases rapidly. This is the multiple comparisons problem.
   tolerating some false positives.
 - **Romano-Wolf**: Accounts for dependence among test statistics using resampling.
   The gold standard for multiple testing in applied economics. Available in
-  pyfixest: `rwolf()`.
+  pyfixest: `rwolf()`. This is a Python-side asymmetry in the DAAF environment:
+  R's `fixest` has no Romano-Wolf routine and the `wildrwolf` package is not
+  installed — in R, fall back to `stats::p.adjust` methods (holm, BH) or request
+  installation of `wildrwolf`.
 
 **When corrections are appropriate:**
 - Multiple outcomes tested for the same treatment effect

@@ -133,7 +133,10 @@ stem_completions <- bio_completions + chem_completions + physics_completions
 > url = get_codebook_url("ipeds/codebook_colleges_ipeds_completions-2digcip")
 > ```
 > ```r
-> url <- get_codebook_url("ipeds/codebook_colleges_ipeds_completions-2digcip")
+> # get_codebook_url() is a Python helper; in R, build the URL from the mirror root.
+> # Mirror failover: see `education-data-query/references/fetch-patterns.md` (R pattern)
+> mirror <- yaml::read_yaml("mirrors.yaml")$mirrors[[1]]
+> url <- paste0(mirror$root_url, "/", "ipeds/codebook_colleges_ipeds_completions-2digcip", ".xls")
 > ```
 
 #### NCES Raw File Award Level Codes (for reference only)
@@ -578,7 +581,10 @@ url = get_codebook_url("ipeds/codebook_colleges_ipeds_completers")
 ```
 
 ```r
-url <- get_codebook_url("ipeds/codebook_colleges_ipeds_completers")
+# get_codebook_url() is a Python helper; in R, build the URL from the mirror root.
+# Mirror failover: see `education-data-query/references/fetch-patterns.md` (R pattern)
+mirror <- yaml::read_yaml("mirrors.yaml")$mirrors[[1]]
+url <- paste0(mirror$root_url, "/", "ipeds/codebook_colleges_ipeds_completers", ".xls")
 ```
 
 ### CIP-Related Resources

@@ -11,7 +11,7 @@ marginaleffects) have released official Python ports of their own tools.
 DAAF's Python stack provides strong coverage for the most common causal designs:
 - **Difference-in-differences:** pyfixest (TWFE, did2s, lpdid, Sun-Abraham)
 - **Event studies:** pyfixest (i() operator, iplot)
-- **Regression discontinuity:** rdrobust (installable; same authors as R version)
+- **Regression discontinuity:** rdrobust (pre-installed; same authors as R version)
 - **Instrumental variables:** pyfixest (with FE) and linearmodels (LIML, GMM)
 - **Marginal effects:** marginaleffects (same author as R version)
 
@@ -20,7 +20,7 @@ equivalent in DAAF), generalized random forests (no grf port), and multiple
 imputation (no mice equivalent). These are documented honestly in this reference.
 
 > **Versions referenced:**
-> Python: pyfixest 0.40.0, marginaleffects (unpinned), rdrobust (unpinned)
+> Python: pyfixest 0.40.0, marginaleffects 0.5.0, rdrobust 1.3.0 (all pre-installed)
 > R: fixest 0.14.0, marginaleffects 0.32.0, rdrobust 3.0.0, did 2.3.0, did2s 1.2.1
 > See SKILL.md § Library Versions for the complete version table.
 
@@ -384,7 +384,7 @@ summary(bw)
 
 **Python (rdrobust):**
 ```python
-# Requires: pip install rdrobust
+# rdrobust is pre-installed in DAAF (pinned 1.3.0)
 from rdrobust import rdrobust, rdplot, rdbwselect
 
 # Point estimate with robust bias-corrected CI
@@ -433,7 +433,7 @@ covariates.
 
 | Tool | R Package | Python Package | Install |
 |------|-----------|----------------|---------|
-| Local polynomial RD | `rdrobust` | `rdrobust` | `pip install rdrobust` |
+| Local polynomial RD | `rdrobust` | `rdrobust` | Pre-installed (1.3.0) |
 | RD plots | `rdrobust::rdplot()` | `rdrobust.rdplot()` | Included |
 | Bandwidth selection | `rdrobust::rdbwselect()` | `rdrobust.rdbwselect()` | Included |
 | Manipulation testing | `rddensity` | `rddensity` | `pip install rddensity` |
@@ -556,7 +556,7 @@ avg_slopes(fit)
 
 **Python (marginaleffects):**
 ```python
-# Requires: pip install marginaleffects
+# marginaleffects is pre-installed in DAAF (pinned 0.5.0)
 from marginaleffects import avg_slopes
 
 fit = smf.logit("y ~ x1 * x2 + x3", data=df).fit()
@@ -774,6 +774,9 @@ summary(fit)
 **Python:**
 ```python
 # Requires: pip install lifelines
+# DAAF note: lifelines is NOT installable here — its latest release (0.30.3)
+# requires pandas<3.0, incompatible with the pinned pandas 3.0.0 (see Dockerfile).
+# Use R's pre-installed survival::coxph() for survival analysis instead.
 from lifelines import CoxPHFitter
 
 cph = CoxPHFitter()
@@ -782,7 +785,10 @@ cph.print_summary()
 ```
 
 `lifelines` is mature and well-maintained. It covers Cox PH, Kaplan-Meier,
-Nelson-Aalen, and parametric survival models. Good Python coverage.
+Nelson-Aalen, and parametric survival models. However, in DAAF it cannot be
+installed: its latest release (0.30.3) requires `pandas<3.0`, which conflicts
+with the pinned pandas 3.0.0. The working route for survival analysis is R's
+pre-installed `survival` package.
 
 ### Bayesian Causal Impact (Time Series Intervention)
 
@@ -877,22 +883,22 @@ exporting the completed datasets.
 | **Callaway-Sant'Anna** | `did::att_gt()` | `csdid.att_gt()` | Medium | `pip install csdid` | Community port |
 | **LP-DiD** | Manual/emerging | `pf.lpdid()` | N/A | Pre-installed | Python has better wrapper |
 | **Event study (iplot)** | `fixest::iplot()` | `fit.iplot()` | Very High | Pre-installed | Method vs function syntax |
-| **RD (sharp/fuzzy)** | `rdrobust::rdrobust()` | `rdrobust.rdrobust()` | Very High | `pip install rdrobust` | Same authors |
-| **RD plots** | `rdrobust::rdplot()` | `rdrobust.rdplot()` | Very High | `pip install rdrobust` | Same authors |
+| **RD (sharp/fuzzy)** | `rdrobust::rdrobust()` | `rdrobust.rdrobust()` | Very High | Pre-installed | Same authors |
+| **RD plots** | `rdrobust::rdplot()` | `rdrobust.rdplot()` | Very High | Pre-installed | Same authors |
 | **RD density test** | `rddensity::rddensity()` | `rddensity.rddensity()` | Very High | `pip install rddensity` | Same authors |
 | **IV + FE** | `fixest::feols()` | `pf.feols()` | Very High | Pre-installed | Identical 3-part formula |
-| **IV (2SLS, no FE)** | `ivreg::ivreg()` | `linearmodels.IV2SLS()` | High | Pre-installed | Formula syntax differs |
-| **LIML** | `ivreg(method="LIML")` | `linearmodels.IVLIML()` | High | Pre-installed | |
+| **IV (2SLS, no FE)** | `ivreg::ivreg()` | `linearmodels.IV2SLS()` | High | Pre-installed (Python); R `ivreg` not pre-installed | Formula syntax differs |
+| **LIML** | `ivreg(method="LIML")` | `linearmodels.IVLIML()` | High | Pre-installed (Python); R `ivreg` not pre-installed | |
 | **GMM-IV** | Limited | `linearmodels.IVGMM()` | N/A | Pre-installed | Python has broader coverage |
 | **Panel FE** | `plm::plm(model="within")` | `linearmodels.PanelOLS()` | High | Pre-installed | MultiIndex vs pdata.frame |
 | **Panel RE** | `plm::plm(model="random")` | `linearmodels.RandomEffects()` | High | Pre-installed | MultiIndex vs pdata.frame |
-| **Marginal effects** | `marginaleffects` | `marginaleffects` | High | `pip install marginaleffects` | Same author; Python is alpha |
+| **Marginal effects** | `marginaleffects` | `marginaleffects` | High | Pre-installed | Same author; Python version is younger |
 | **Matching (PSM)** | `MatchIt::matchit()` | `pymatchit-causal` | Low | `pip install pymatchit-causal` | **Significant gap** |
 | **Weighting (IPW)** | `WeightIt::weightit()` | No equivalent | N/A | N/A | **Significant gap** |
 | **Synthetic control** | `Synth`, `augsynth` | `CausalPy` (Bayesian) | Low | `pip install CausalPy` | Different methodology |
 | **Causal impact** | `CausalImpact` | `CausalPy` (ITS) | Medium | `pip install CausalPy` | Different methodology |
 | **Causal forests** | `grf` | `econml` | Medium | `pip install econml` | Different implementation |
-| **Survival/Cox** | `survival::coxph()` | `lifelines.CoxPHFitter()` | High | `pip install lifelines` | Good Python coverage |
+| **Survival/Cox** | `survival::coxph()` | `lifelines.CoxPHFitter()` | High | Not installable (`lifelines` needs pandas<3.0; DAAF pins 3.0.0) | Use pre-installed R `survival` |
 | **Multiple imputation** | `mice::mice()` | No equivalent | N/A | N/A | **Significant gap** |
 
 ### Fidelity Legend

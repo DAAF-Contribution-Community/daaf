@@ -1,7 +1,7 @@
 ---
 name: statsmodels
 description: >-
-  Statistical modeling: OLS/WLS/GLS, GLM (logit, probit, Poisson), time series (ARIMA, VAR), mixed effects, diagnostics. Formula API. Use for regressions without fixed effects, GLMs, or time series. For FE/DiD use pyfixest; panel/IV use linearmodels.
+  Statistical modeling: OLS/WLS/GLS, GLM (logit, probit, Poisson), time series (ARIMA, VAR), mixed effects, diagnostics. Formula API. Use for regressions without fixed effects, GLMs, or time series. For FE/DiD use pyfixest; panel/IV use linearmodels. R equivalent: r-stats (use when execution language is R).
 metadata:
   audience: research-coders
   domain: python-library

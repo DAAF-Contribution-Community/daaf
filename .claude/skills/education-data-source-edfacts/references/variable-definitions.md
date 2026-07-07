@@ -536,13 +536,15 @@ def suppression_report(df, value_col):
 
 ```r
 # Generate suppression report for a variable
-# value_col: unquoted column name
+# value_col: column name as a string (df$value_col would look up a column
+# literally named "value_col" and silently return 0 counts — use df[[value_col]])
+value_col <- "read_test_pct_prof_midpt"
 total <- nrow(df)
-valid <- sum(df$value_col >= 0, na.rm = TRUE)
-missing_na <- sum(df$value_col == -1, na.rm = TRUE)
-not_reported <- sum(df$value_col == -2, na.rm = TRUE)
-suppressed <- sum(df$value_col == -3, na.rm = TRUE)
-rounds_to_zero <- sum(df$value_col == -9, na.rm = TRUE)
+valid <- sum(df[[value_col]] >= 0, na.rm = TRUE)
+missing_na <- sum(df[[value_col]] == -1, na.rm = TRUE)
+not_reported <- sum(df[[value_col]] == -2, na.rm = TRUE)
+suppressed <- sum(df[[value_col]] == -3, na.rm = TRUE)
+rounds_to_zero <- sum(df[[value_col]] == -9, na.rm = TRUE)
 
 cat("Total records:", total, "\n")
 cat("Valid:", valid, sprintf("(%.1f%%)", valid / total * 100), "\n")
@@ -625,16 +627,22 @@ grad_df = fetch_yearly_from_mirrors(
 library(arrow)
 library(dplyr)
 
+# fetch_yearly_from_mirrors() is a Python helper; in R, build the URL from the
+# mirror root. Mirror failover: see
+# `education-data-query/references/fetch-patterns.md` (R pattern)
+mirror <- yaml::read_yaml("mirrors.yaml")$mirrors[[1]]
+
 # School-level assessments (yearly dataset)
-# fetch_yearly_from_mirrors() is a Python helper; in R, read parquet directly
-df <- read_parquet("path/to/edfacts_schools_assessments_2018.parquet")
+df <- read_parquet(paste0(mirror$root_url, "/",
+                          "edfacts/schools_edfacts_assessments_2018", ".", mirror$format))
 
 # Filter to California, grade 4
 ca_grade4 <- df |>
   filter(fips == 6, grade_edfacts == 4)
 
 # School-level graduation rates (yearly dataset)
-grad_df <- read_parquet("path/to/edfacts_schools_grad_rates_2019.parquet")
+grad_df <- read_parquet(paste0(mirror$root_url, "/",
+                               "edfacts/schools_edfacts_grad_rates_2019", ".", mirror$format))
 ```
 
 ### Codebook Authority

@@ -135,7 +135,9 @@ ggplot(df, aes(y = category, x = value)) +
 ```
 
 Note: In 4.0, `geom_violin(draw_quantiles = ...)` is deprecated. Use
-`stat_ydensity(quantiles = ...)` instead.
+`geom_violin(quantiles = c(...), quantile.linetype = 1)` -- quantiles are
+hidden by default (`quantile.linetype = 0`), so a non-`0` `quantile.linetype`
+is required to display them.
 
 ### Area and Ribbon
 

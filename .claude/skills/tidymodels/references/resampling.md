@@ -144,13 +144,21 @@ folds <- vfold_cv(train_data, v = 10, strata = income)
 
 ## Validation Set (Single Split)
 
-For large datasets where v-fold CV is too expensive:
+For large datasets where v-fold CV is too expensive. `validation_split()` was
+deprecated in rsample 1.2.0 (verified: calling it warns "Please use
+`initial_validation_split()` instead"). The current pattern makes a three-way
+train/validation/test split, then derives the resample object:
 
 ```r
 set.seed(42)
-val_split <- validation_split(train_data, prop = 0.8, strata = outcome)
-# Single split: 80% analysis, 20% assessment
-# Compatible with fit_resamples() and tune_grid()
+iv <- initial_validation_split(data, prop = c(0.6, 0.2), strata = outcome)
+# 60% training, 20% validation, 20% test
+train_data <- training(iv)
+val_data   <- validation(iv)
+test_data  <- testing(iv)
+
+val_set <- validation_set(iv)
+# Single-split rset: compatible with fit_resamples() and tune_grid()
 ```
 
 ## Quick Reference
@@ -163,6 +171,6 @@ val_split <- validation_split(train_data, prop = 0.8, strata = outcome)
 | Bootstrap | `bootstraps(data, times, strata)` | Confidence intervals |
 | LOO CV | `loo_cv(data)` | Small datasets only |
 | Group V-fold | `group_vfold_cv(data, group, v)` | Clustered/nested data |
-| Validation set | `validation_split(data, prop, strata)` | Large datasets |
+| Validation set | `initial_validation_split(data, prop = c(.6, .2))` + `validation_set()` | Large datasets |
 | Get training fold | `analysis(split)` | Manual access |
 | Get validation fold | `assessment(split)` | Manual access |

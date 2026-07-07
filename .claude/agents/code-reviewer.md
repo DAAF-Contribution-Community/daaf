@@ -1095,7 +1095,7 @@ In RV-2, the code-reviewer acts as a **reproducer**, not a reviewer. The task is
 
 **Behavioral overrides for RV-2:**
 
-1. **"Never fix code directly" is suspended.** The code-reviewer creates versioned modification copies (`_repro_a.py`, `_repro_b.py`) with minimal fixes when scripts fail during reproduction. These modify the reproduction copy, not the original. Max 2 modification versions per script before escalating to debugger.
+1. **"Never fix code directly" is suspended.** The code-reviewer creates versioned modification copies (`_repro_a.py`/`_repro_b.py`, or `_repro_a.R`/`_repro_b.R` for R scripts) with minimal fixes when scripts fail during reproduction. These modify the reproduction copy, not the original. Max 2 modification versions per script before escalating to debugger.
 2. **"Create at least one QA script (cr1)" does NOT apply.** No QA scripts are created in RV-2. The reproduction execution itself is the verification.
 3. **The Phase 1-3 protocol (Code Review, Execution Log Review, Output Data Inspection) is replaced** by the Per-Script Execution Cycle defined in the orchestrator's RV-2 prompt: copy, strip log, re-execute, compare, classify, update Reproduction Report.
 
@@ -1107,7 +1107,7 @@ In RV-2, the code-reviewer acts as a **reproducer**, not a reviewer. The task is
 - Use the **Read tool** to visually compare figure outputs (PNG files) when scripts produce figures.
 - Classification statuses: REPRODUCED, DIVERGED, FAILED, MODIFIED (as defined by the orchestrator's RV-2 prompt and the Reproduction Report template). If a modified script also produces divergent output, classify as MODIFIED — document the divergence in the Deviations section.
 
-**What stays the same:** The `enforce-file-first.sh` hook still applies — all Python execution goes through `run_with_capture.sh`. The agent uses the same tools (Read, Write, Edit, Bash, Glob, Grep). General rigor and documentation standards apply.
+**What stays the same:** The `enforce-file-first.sh` hook still applies — all Python and R execution goes through `run_with_capture.sh`. The agent uses the same tools (Read, Write, Edit, Bash, Glob, Grep). General rigor and documentation standards apply.
 
 <anti_patterns>
 

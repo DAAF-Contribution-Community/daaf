@@ -128,17 +128,21 @@ Each facet becomes a separate subplot panel with independent hover behavior.
 
 ## Sizing
 
-### Dynamic Sizing
-
-```r
-# Fill container (default)
-p <- ggplotly(g, dynamicTicks = TRUE)
-```
-
-### Fixed Sizing
+By default the widget fills its container. For fixed dimensions:
 
 ```r
 p <- ggplotly(g, width = 800, height = 600)
+```
+
+## Dynamic Axis Ticks
+
+`dynamicTicks` has nothing to do with sizing -- it controls whether plotly.js
+regenerates axis tick labels in response to zoom/pan interactions (default
+`FALSE`: static ticks copied from the ggplot2 render):
+
+```r
+# Recompute tick labels on zoom/pan (may not match the static ggplot2 labels)
+p <- ggplotly(g, dynamicTicks = TRUE)
 ```
 
 ## Animations with frame
@@ -170,7 +174,7 @@ Note: the gapminder package must be installed for this example.
 | `geom_text()` / `geom_label()` | Labels may overlap; no repulsion (unlike ggrepel) |
 | Complex custom themes | Many theme() elements are ignored or approximated |
 | `annotation_custom()` | Not supported |
-| `geom_sf()` | Spatial geometries not supported; use plotly's geo traces |
+| `geom_sf()` | Converts (supported since plotly 4.x), but companions like `geom_sf_label()`/`geom_sf_text()` may not; slow for many features -- prefer `plot_ly()`/`plot_mapbox()` for large maps |
 | `coord_polar()` | Not supported |
 | `geom_raster()` | Use geom_tile() instead for conversion |
 | Patchwork compositions | Each plot must be converted separately; use subplot() |

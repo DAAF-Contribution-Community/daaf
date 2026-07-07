@@ -95,8 +95,11 @@ library(arrow)
 library(dplyr)
 
 # Download NCCS 990 data from Portal mirror
+# fetch_from_mirrors() is a Python helper; in R, build the URL from the mirror root.
+# Mirror failover: see `education-data-query/references/fetch-patterns.md` (R pattern)
 DATASET_PATH <- "nccs/colleges_nccs_all"
-nccs <- fetch_from_mirrors(DATASET_PATH)
+mirror <- yaml::read_yaml("mirrors.yaml")$mirrors[[1]]
+nccs <- read_parquet(paste0(mirror$root_url, "/", DATASET_PATH, ".", mirror$format))
 
 # Data is pre-filtered to higher education institutions matched to IPEDS
 # Variables are lowercase (e.g., fips, unitid, contributions_total)
@@ -224,8 +227,11 @@ library(arrow)
 library(dplyr)
 
 # NCCS data for higher education institutions
+# fetch_from_mirrors() is a Python helper; in R, build the URL from the mirror root.
+# Mirror failover: see `education-data-query/references/fetch-patterns.md` (R pattern)
 DATASET_PATH <- "nccs/colleges_nccs_all"
-nccs <- fetch_from_mirrors(DATASET_PATH)
+mirror <- yaml::read_yaml("mirrors.yaml")$mirrors[[1]]
+nccs <- read_parquet(paste0(mirror$root_url, "/", DATASET_PATH, ".", mirror$format))
 
 # Variables use Portal naming (lowercase, descriptive)
 # e.g., contributions_total, prog_serv_rev, revenue_total
@@ -410,8 +416,11 @@ library(arrow)
 library(dplyr)
 
 # NCCS Form 990 data for colleges/universities
+# fetch_from_mirrors() is a Python helper; in R, build the URL from the mirror root.
+# Mirror failover: see `education-data-query/references/fetch-patterns.md` (R pattern)
 DATASET_PATH <- "nccs/colleges_nccs_all"
-nccs <- fetch_from_mirrors(DATASET_PATH)
+mirror <- yaml::read_yaml("mirrors.yaml")$mirrors[[1]]
+nccs <- read_parquet(paste0(mirror$root_url, "/", DATASET_PATH, ".", mirror$format))
 
 # Data is pre-matched to IPEDS UNITID
 # Covers 1993-2016 (24 years)

@@ -1,7 +1,7 @@
 ---
 name: marimo
 description: >-
-  Reactive Python notebook system with cell reactivity, UI elements, SQL cells, plotting, and app deployment. DAAF's standard notebook format — stored as Git-friendly .py files, not .ipynb. For DAAF pipelines: Stage 9 notebooks compile existing executed scripts into cells verbatim as audit artifacts — no new analysis code or interactive widgets. Use when assembling Stage 9 research notebooks, building standalone interactive data apps, or converting Jupyter notebooks to marimo format.
+  Reactive Python notebook system with cell reactivity, UI elements, SQL cells, plotting, and app deployment. DAAF's standard notebook format — stored as Git-friendly .py files, not .ipynb. For DAAF pipelines: Stage 9 notebooks compile existing executed scripts into cells verbatim as audit artifacts — no new analysis code or interactive widgets. Use when assembling Stage 9 research notebooks, building standalone interactive data apps, or converting Jupyter notebooks to marimo format. R equivalent: quarto — when execution language is R, use quarto instead.
 metadata:
   audience: research-coders
   domain: python-library
@@ -95,6 +95,13 @@ Stage 9 is handled by the **notebook-assembler agent** (see `.claude/agents/note
 3. COPIES execution logs VERBATIM into accordion cells
 4. ADDS ONLY simple `pl.read_parquet() + mo.ui.table()` cells
 
+**Archival mechanism:** script code is archived as *commented-out* content —
+every copied line is prefixed with `# ` and the cell ends with a bare `pass`
+statement inside the `def _():` cell wrapper. This keeps the code visible,
+verbatim, and searchable without executing it (marimo cells are live;
+uncommented copies would collide on imports and variable names). See
+`.claude/agents/notebook-assembler.md` for the emitting template.
+
 ### ABSOLUTE PROHIBITIONS for Stage 9
 
 The following are **NEVER ALLOWED** in Stage 9 notebooks:
@@ -141,11 +148,12 @@ filtered = df.filter(pl.col("state") == "VA")
 ```
 
 ```python
-# ✅ CORRECT — Verbatim script code in code cell
-# SOURCE: scripts/stage5_fetch/01_fetch.py
-import polars as pl
+# ✅ CORRECT — Verbatim script code, commented out, inside a cell wrapper
 def _():
-    # ... exact script contents (marimo cell wrapper) ...
+    # SOURCE: scripts/stage5_fetch/01_fetch.py
+    # import polars as pl
+    # ... every script line copied verbatim, each prefixed with "# " ...
+    pass  # Cell must have executable statement
 
 # ✅ CORRECT — Simple load + display
 df = pl.read_parquet("data/raw/file.parquet")

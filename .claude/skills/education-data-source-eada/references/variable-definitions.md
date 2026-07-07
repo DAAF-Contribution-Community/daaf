@@ -493,17 +493,17 @@ df_clean = df.with_columns(
 library(dplyr)
 
 # Identify coded missing values
-missing_codes <- [-1, -2, -3]
+missing_codes <- c(-1, -2, -3)
 
 # Filter to valid data only for a specific column
-df_valid <- df |> filter(~undup_athpartic_women.is_in(missing_codes)
+df_valid <- df |> filter(!(undup_athpartic_women %in% missing_codes))
 
-# Or convert coded values to null for calculations
+# Or convert coded values to NA for calculations
 df_clean <- df |> mutate(
-    pl.when(ath_stuaid_men.is_in(missing_codes))
-    .then(NULL)
-    .otherwise(ath_stuaid_men)
-    
+  ath_stuaid_men_clean = if_else(
+    ath_stuaid_men %in% missing_codes,
+    NA, ath_stuaid_men
+  )
 )
 ```
 
@@ -535,7 +535,7 @@ eada_df.join(ipeds_df, on=["unitid", "year"], how="left")
 library(dplyr)
 
 # Example join with IPEDS
-eada_df.join(ipeds_df, on=["unitid", "year"], how="left")
+eada_df |> left_join(ipeds_df, by = c("unitid", "year"))
 ```
 
 ### Year Alignment

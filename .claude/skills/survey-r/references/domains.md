@@ -229,8 +229,11 @@ svymean(~bmi, design = des_adult, na.rm = TRUE)
 ```r
 # INTENT: Compare mean income between men and women
 # REASONING: svyby + svycontrast gives design-based difference with SE
+# ASSUMES: gender has alphabetical levels (Female, Male), so svyby rows are
+#   ordered Female first — contrast coefficients follow that row order
+#   (verified: c(1, -1) computes first-level MINUS second-level)
 by_gender <- svyby(~income, ~gender, design = des, svymean, na.rm = TRUE)
-diff <- svycontrast(by_gender, list(male_minus_female = c(1, -1)))
+diff <- svycontrast(by_gender, list(male_minus_female = c(-1, 1)))
 cat("Difference:", coef(diff), "SE:", SE(diff), "\n")
 confint(diff)
 ```

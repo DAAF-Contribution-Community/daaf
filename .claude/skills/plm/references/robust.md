@@ -28,7 +28,7 @@ library(lmtest)
 
 data("Grunfeld", package = "plm")
 pdf <- pdata.frame(Grunfeld, index = c("firm", "year"))
-fit <- plm(invest ~ value + capital, data = pdf, model = "within")
+fit <- plm(inv ~ value + capital, data = pdf, model = "within")
 
 # HC0 (White)
 coeftest(fit, vcov = vcovHC(fit, type = "HC0"))
@@ -249,7 +249,7 @@ Default for panel data: **entity-clustered SEs** (`vcovHC(cluster = "group")`).
 | HC robust | `vcovHC(type = "HC1")` | `vcov = "hetero"` | `cov_type="robust"` |
 | Entity-clustered | `vcovHC(cluster = "group")` | `vcov = ~entity` | `cluster_entity=True` |
 | Time-clustered | `vcovHC(cluster = "time")` | `vcov = ~time` | `cluster_time=True` |
-| Two-way cluster | Not directly | `vcov = ~e + t` | `cluster_entity + cluster_time` |
+| Two-way cluster | `vcovDC()` (double clustering) | `vcov = ~e + t` | `cluster_entity + cluster_time` |
 | Newey-West | `vcovNW()` | `vcov = "NW"` | `cov_type="kernel"` |
 | Driscoll-Kraay | `vcovSCC()` | `vcov = "DK"` | `cov_type="kernel"` |
 | Post-estimation switch | Yes (coeftest) | Yes (summary vcov=) | No (must re-fit) |

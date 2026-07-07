@@ -1611,33 +1611,80 @@ cat("\nCP{n} VALIDATION: PASSED\n")
 # Task: fetch-ccd
 # Wave: 1, Step: 1, Stage: 5
 # Depends on: None
-# Input: Mirror download (CSV via arrow)
+# Input: Mirror download (per mirrors.yaml priority order)
 # Output: data/raw/2026-01-24_ccd_directory.parquet
 # Checkpoint: CP1
 # ==============================================================================
 
 # --- Config ---
 # INTENT: Fetch CCD school directory data for 2020
-# REASONING: Parquet mirror provides pre-formatted data matching Portal schema
-# ASSUMES: Mirror URL is accessible; data contains expected columns
+# REASONING: Mirrors are loaded from mirrors.yaml (the single source of truth);
+#            each mirror specifies its own url_template, read_strategy, and format
+# ASSUMES: At least one mirror is reachable; data contains expected columns
 
 library(arrow)
+library(dplyr)
+library(readr)
+library(yaml)
+library(glue)
 
 BASE_DIR <- "/daaf"
 PROJECT_DIR <- file.path(BASE_DIR, "research/2026-01-24_School_Analysis")
 DATA_RAW <- file.path(PROJECT_DIR, "data/raw")
 OUTPUT_PATH <- file.path(DATA_RAW, "2026-01-24_ccd_directory.parquet")
 
+# Education domain example — substitute your domain's query skill path
+MIRRORS_YAML <- file.path(BASE_DIR, ".claude/skills/education-data-query/references/mirrors.yaml")
+# Dataset path: canonical path string from datasets-reference.md.
+# All mirrors use the same path — only root_url and format differ.
+DATASET_PATH <- "ccd/schools_ccd_directory"
+TARGET_YEAR <- 2020
+
 # --- Fetch ---
 cat("==============================================================\n")
 cat("Stage 5.1: Fetch CCD school directory\n")
 cat("==============================================================\n")
 
-# INTENT: Download from education data mirror
-# REASONING: CSV mirror provides full dataset; filter locally with dplyr
-# ASSUMES: URL is stable; dataset contains "year" and "ncessch" columns
-url <- "https://educationdata.urban.org/csv/ccd/schools_ccd_directory_2020.csv"
-df <- arrow::read_csv_arrow(url)
+# INTENT: Download from the first available education data mirror
+# REASONING: MANDATORY mirror policy — try each mirror in priority order
+#            (per mirrors.yaml); fall through to the next mirror on failure;
+#            apply filters locally with dplyr after fetch
+# ASSUMES: mirrors.yaml priority order reflects current mirror health;
+#          dataset contains "year" and "ncessch" columns
+mirrors <- yaml::read_yaml(MIRRORS_YAML)$mirrors
+
+df <- NULL
+last_error <- NULL
+for (mirror in mirrors) {
+  # Build URL from the mirror's template + canonical dataset path
+  url <- glue::glue(mirror$url_template,
+                    root_url = mirror$root_url,
+                    path = DATASET_PATH,
+                    format = mirror$format)
+  cat(sprintf("  Trying %s: %s\n", mirror$name, url))
+  result <- tryCatch({
+    if (mirror$read_strategy == "eager_parquet") {
+      # REASONING: Parquet has embedded schema; arrow reads HTTP URLs natively
+      arrow::read_parquet(url)
+    } else {
+      # REASONING: lazy_csv strategy — readr handles large CSVs efficiently
+      readr::read_csv(url, show_col_types = FALSE)
+    }
+  }, error = function(e) e)
+  if (inherits(result, "error")) {
+    last_error <- conditionMessage(result)
+    cat(sprintf("  [FAIL] %s: %s\n", mirror$name, last_error))
+    next
+  }
+  df <- result
+  cat(sprintf("  [OK] Fetched from mirror: %s\n", mirror$name))
+  break
+}
+stopifnot("STOP: All mirrors failed — see [FAIL] lines above" = !is.null(df))
+
+# INTENT: Apply local filters (mirror files contain all years)
+# REASONING: Mirror files are full extracts; year filtering happens locally
+df <- df |> filter(year == TARGET_YEAR)
 cat("Fetched:", nrow(df), "rows x", ncol(df), "cols\n")
 
 # --- Validate ---

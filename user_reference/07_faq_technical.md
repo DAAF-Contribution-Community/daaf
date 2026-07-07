@@ -273,7 +273,7 @@ Cost remains a meaningful barrier to entry for DAAF, but it's shrinking. As open
 
 ### Q: How much disk space does DAAF use?
 
-The Docker image is roughly **8.6 GB** after building. It includes a Debian Bookworm base image, Python 3.12, 57 pinned Python packages (data science, geospatial, econometrics, visualization, ML), geospatial system libraries (GDAL/GEOS/PROJ), Claude Code, R, 30+ pinned R packages (tidyverse, fixest, survey, sf, and more), and the Quarto CLI. The R runtime, packages, and Quarto account for roughly **2.2 GB** of that total (measured: 8.61 GB with R vs. 6.4 GB without). Docker also keeps build cache layers, so total Docker disk usage may be somewhat higher.
+The Docker image is roughly **8.6 GB** after building. It includes a Debian Bookworm base image, Python 3.12, 57 pinned Python packages (data science, geospatial, econometrics, visualization, ML), geospatial system libraries (GDAL/GEOS/PROJ), Claude Code, R, 60+ pinned R packages (tidyverse, fixest, survey, sf, and more), and the Quarto CLI. The R runtime, packages, and Quarto account for roughly **2.2 GB** of that total (measured: 8.61 GB with R vs. 6.4 GB without). Docker also keeps build cache layers, so total Docker disk usage may be somewhat higher.
 
 Beyond the image, your Docker volume will grow as you create research projects. Each project accumulates scripts, parquet data files, session logs, and notebooks. A typical full-pipeline project might add 50-500 MB depending on how many datasets you fetch and how large they are.
 
@@ -352,7 +352,19 @@ For permanent installation, add the package to the `Dockerfile`'s R package inst
 
 ### Q: What R packages come pre-installed?
 
-DAAF ships with 30+ R packages covering the core data science stack: tidyverse (dplyr, tidyr, readr, purrr, stringr, forcats, lubridate), ggplot2, arrow (for parquet I/O), fixest (high-dimensional fixed effects), plm (panel data), survey (complex survey analysis), sf and terra (spatial data), tidymodels (machine learning), plotly, data.table, sandwich, lmtest, modelsummary, marginaleffects, and more. DAAF also includes 11 R library skills that provide curated guidance for using these packages effectively within the framework.
+DAAF ships with 60+ pinned R packages covering the core data science stack: tidyverse (dplyr, tidyr, readr, purrr, stringr, forcats, lubridate), ggplot2, arrow (for parquet I/O), fixest (high-dimensional fixed effects), plm (panel data), survey (complex survey analysis), sf and terra (spatial data), tidymodels (machine learning), plotly, data.table, sandwich, lmtest, modelsummary, marginaleffects, and more. DAAF also includes 11 R library skills that provide curated guidance for using these packages effectively within the framework.
+
+### Q: Are there any known differences between Python and R support?
+
+Python and R are functional peers across the pipeline — the same file-first execution protocol, validation standards, QA review, and notebook assembly apply to both. In the interest of transparency, a few capability asymmetries are worth knowing about:
+
+- **ML interpretation and fairness tooling is deeper on the Python side** (SHAP, fairlearn, LightGBM guidance). R ships iml and fairmodels with tidymodels interpretation/fairness references, but Python's coverage is more mature.
+- **gt table export is HTML-first.** Exporting gt tables to PNG requires a headless browser that isn't shipped in the image; save tables as HTML instead.
+- **Interactive plotly HTML from R needs internet access to view.** The image doesn't include pandoc, so saved R plotly widgets are not self-contained and load their JavaScript from a CDN when opened in a browser.
+- **PDF rendering uses Typst, not LaTeX.** Quarto's bundled Typst engine handles PDF output; LaTeX-specific features are not available.
+- **Point-pattern spatial analysis is Python-only** (the spatstat package is not installed). Standard vector/raster spatial work is fully supported in R via sf and terra.
+
+None of these affect the core pipeline (fetch, clean, transform, analyze, visualize, report) — they are edge-of-stack differences documented so you're never surprised by them mid-project.
 
 ---
 
@@ -523,9 +535,9 @@ So a typical full run can easily exceed **2-3 hours of Claude's active processin
 
 ### Q: Can I allocate more resources to the Docker container?
 
-Yes, but it's probably not necessary. DAAF's Docker container is running Claude Code (which talks to Anthropic's servers for the AI part) and Python scripts (which run locally for data processing). The AI inference isn't happening on your machine -- it happens on Anthropic's infrastructure. The local compute is just for running Python data operations.
+Yes, but it's probably not necessary. DAAF's Docker container is running Claude Code (which talks to Anthropic's servers for the AI part) and Python/R scripts (which run locally for data processing). The AI inference isn't happening on your machine -- it happens on Anthropic's infrastructure. The local compute is just for running Python or R data operations.
 
-That said, if you're working with very large datasets and the Python scripts themselves are running slowly, you can adjust Docker Desktop's resource allocation:
+That said, if you're working with very large datasets and the Python or R scripts themselves are running slowly, you can adjust Docker Desktop's resource allocation:
 
 1. Open **Docker Desktop**
 2. Go to **Settings** (gear icon)
@@ -643,6 +655,23 @@ If you're using the manual `marimo run` command and can't see anything at `http:
 5. **Try a different browser or incognito/private window.** Occasionally, browser extensions or cached state can interfere.
 
 6. **Check for errors in the terminal.** If marimo itself hit an error (e.g., a missing dependency or a syntax error in the notebook), the error will appear in the terminal where you ran the `marimo run` command.
+
+### Q: How do I view a Quarto notebook (R projects)?
+
+Quarto notebooks (`.qmd`) render to a static HTML file rather than being served live like marimo. From inside the container, render the notebook:
+
+```bash
+quarto render research/YYYY-MM-DD_Your_Project/notebook.qmd
+```
+
+Then copy the resulting HTML file out to your host machine and open it in any browser:
+
+```bash
+# From your host terminal (not inside the container)
+docker cp daaf-docker:/daaf/research/YYYY-MM-DD_Your_Project/notebook.html ./notebook.html
+```
+
+You can also read the `.qmd` source directly in the browser-based VS Code editor -- it's plain Markdown with R code chunks. See [Installation Guide — Viewing Quarto Documents](01_installation_and_quickstart.md#viewing-quarto-documents) for the full walkthrough.
 
 ### Q: "Context utilization CRITICAL" and the session seems to stop
 

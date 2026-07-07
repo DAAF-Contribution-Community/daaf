@@ -105,19 +105,24 @@ grouping persistence issue entirely.
 
 ## 3. across() Patterns and Pitfalls
 
-### Old vs New Syntax
+### Passing Extra Arguments: Use a Lambda
+
+Only the dots-forwarding form is deprecated (dplyr 1.1.0). Plain functions and
+named function lists remain fully supported -- but they give you no way to pass
+`na.rm = TRUE`, so in practice you usually want a lambda:
 
 ```r
-# OLD (deprecated in dplyr 1.1+):
-df |> summarize(across(where(is.numeric), mean))
+# DEPRECATED (dplyr 1.1+): forwarding extra args through ...
+df |> summarize(across(where(is.numeric), mean, na.rm = TRUE))
+# Warning: The `...` argument of `across()` is deprecated as of dplyr 1.1.0.
 
-# NEW (use lambda):
+# CORRECT: use a lambda to pass na.rm
 df |> summarize(across(where(is.numeric), \(x) mean(x, na.rm = TRUE)))
 
-# OLD (deprecated):
-df |> mutate(across(c(a, b), list(mean = mean, sd = sd)))
+# STILL FINE: plain function with no extra args (but NAs propagate)
+df |> summarize(across(where(is.numeric), mean))
 
-# NEW:
+# STILL FINE: named function list -- use lambdas when you need na.rm
 df |> mutate(across(c(a, b), list(
   mean = \(x) mean(x, na.rm = TRUE),
   sd = \(x) sd(x, na.rm = TRUE)
@@ -197,18 +202,27 @@ every numeric aggregation unless NA propagation is specifically desired.
 
 ## 6. Type Coercion Surprises
 
-### if_else() is Strict, ifelse() is Not
+### if_else() is Type-Safe, ifelse() is Not
+
+Since dplyr 1.1.0, `if_else()` casts `true` and `false` to their common type
+(vctrs rules), so integer/double mixes work -- but genuinely incompatible types
+still error:
 
 ```r
-# if_else requires matching types (strict)
-if_else(TRUE, 1L, 2.0)   # Error: true and false must be same type
+# Compatible types are cast to the common type
+if_else(TRUE, 1L, 2.0)   # Returns 1 (double -- integer and double share a common type)
+
+# Incompatible types still error (this is the safety net)
+if_else(TRUE, 1L, "a")
+# Error: Can't combine `true` <integer> and `false` <character>.
 
 # ifelse is loose (may coerce unexpectedly)
 ifelse(TRUE, 1L, 2.0)    # Returns 1 (numeric, not integer)
 ```
 
-**DAAF recommendation:** Use `if_else()` (dplyr) -- the type strictness catches
-bugs. If you need mixed types, explicitly cast first.
+**DAAF recommendation:** Use `if_else()` (dplyr) -- the common-type check
+catches bugs like mixing labels and numbers. If you need mixed types,
+explicitly cast first.
 
 ### case_when() Type Matching
 
@@ -260,13 +274,19 @@ df1 |> left_join(df2, by = "id")
 df1 |> left_join(df2 |> select(id, district_name), by = "id")
 ```
 
-### Implicit NA in Anti-Joins
+### NA Keys Match Each Other by Default
+
+Unlike SQL, dplyr's default (`na_matches = "na"`) treats two NA keys as equal --
+an NA key in `df` matches an NA key in `ref`:
 
 ```r
-# anti_join with NAs in the key column
-# NA != NA in joins, so rows with NA keys are always "unmatched"
+# Default: NA matches NA
 df |> anti_join(ref, by = "key")
-# Rows where key is NA will always appear in the result
+# NA-key rows appear in the result ONLY if ref has no NA keys
+
+# For SQL semantics (NA never matches anything), use na_matches = "never"
+df |> anti_join(ref, by = "key", na_matches = "never")
+# Now rows where key is NA are always "unmatched"
 ```
 
 ---
@@ -349,9 +369,9 @@ df |> mutate(across(starts_with("enrollment_"), as.numeric)) |>
 ### Numeric-Looking Factors
 
 ```r
-# Factor levels that look like numbers
+# Factor levels that look like numbers (levels sort as text: "1", "10", "2")
 x <- factor(c("10", "2", "1"))
-as.numeric(x)    # Returns 3, 2, 1 (internal codes, NOT the values!)
+as.numeric(x)    # Returns 2, 3, 1 (internal codes, NOT the values!)
 
 # Correct: convert to character first
 as.numeric(as.character(x))    # Returns 10, 2, 1

@@ -52,7 +52,7 @@ See `resampling.md` for details on resampling strategies.
 ## Step 3: Run tune_grid()
 
 ```r
-# --- Automatic grid (random Latin hypercube) ---
+# --- Automatic grid (space-filling design) ---
 set.seed(42)
 tune_results <- tune_grid(
   wf,
@@ -81,8 +81,11 @@ tune_results <- tune_grid(
 |----------|----------|-------------|
 | `grid_regular()` | All combinations of evenly-spaced values | Few parameters (2-3), small grids |
 | `grid_random()` | Random sampling from parameter ranges | Many parameters, exploration phase |
-| `grid_latin_hypercube()` | Space-filling Latin hypercube | Many parameters, better coverage than random |
-| Integer (e.g., `grid = 20`) | Auto Latin hypercube with N points | Quick exploration |
+| `grid_space_filling()` | Space-filling design (Latin hypercube and variants) | Many parameters, better coverage than random |
+| Integer (e.g., `grid = 20`) | Auto space-filling design with N points | Quick exploration |
+
+`grid_latin_hypercube()` was deprecated in dials 1.3.0 (verified: calling it warns
+"Please use `grid_space_filling()` instead") — use `grid_space_filling()`.
 
 ## Step 4: Inspect Results
 
@@ -218,18 +221,23 @@ tune_results <- tune_grid(
 
 ## Parallel Processing
 
-Speed up tuning with parallel backends:
+tune 2.0 changed its parallel backend: foreach/doParallel is **no longer supported**
+(tune 2.0.1 NEWS: "The `foreach` package is no longer supported. Instead, use the
+future or mirai packages."). In this environment, use future — doParallel and mirai
+are not installed.
 
 ```r
-library(doParallel)
-cl <- makePSOCKcluster(parallel::detectCores() - 1)
-registerDoParallel(cl)
+library(future)
+plan(multisession, workers = 2)   # size to available cores
 
-# tune_grid will now use parallel workers
+# tune_grid dispatches resamples to the future workers automatically
 tune_results <- tune_grid(wf, resamples = folds, grid = 50)
 
-stopCluster(cl)
+plan(sequential)   # release the workers when done
 ```
+
+See `?tune::parallelism` for details. Old `registerDoParallel()` code silently
+runs sequentially under tune 2.0 — migrate it to `plan(multisession)`.
 
 ## dials: Parameter Ranges
 
@@ -258,7 +266,7 @@ penalty(range = c(-5, -1))
 | Auto grid | `tune_grid(wf, resamples, grid = 20)` |
 | Regular grid | `grid_regular(mtry(), min_n(), levels = 5)` |
 | Random grid | `grid_random(mtry(), min_n(), size = 20)` |
-| Latin hypercube | `grid_latin_hypercube(mtry(), min_n(), size = 20)` |
+| Space-filling grid | `grid_space_filling(mtry(), min_n(), size = 20)` |
 | See all results | `collect_metrics(tune_results)` |
 | Top N results | `show_best(tune_results, metric = "accuracy")` |
 | Best params | `select_best(tune_results, metric = "accuracy")` |
@@ -266,3 +274,4 @@ penalty(range = c(-5, -1))
 | Finalize | `finalize_workflow(wf, best_params)` |
 | Last fit | `last_fit(final_wf, split)` |
 | Custom metrics | `tune_grid(..., metrics = metric_set(accuracy, roc_auc))` |
+| Parallel tuning | `library(future); plan(multisession)` before `tune_grid()` |

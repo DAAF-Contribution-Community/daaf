@@ -188,20 +188,28 @@ V_nw <- NeweyWest(fit, lag = 4, prewhite = FALSE)
 coeftest(fit, vcov = V_nw)
 ```
 
-### vcovHAC Options
+### Choosing Kernel and Bandwidth: use kernHAC(), not vcovHAC()
+
+`vcovHAC()` has NO `kernel` or `bw` arguments — passing them is a silent
+no-op (they vanish into `...` and you get the default estimator back,
+a wrong-inference hazard). Kernel and bandwidth control lives in
+`kernHAC()`:
 
 ```r
-# Bartlett kernel (default, same as Newey-West)
-V_hac <- vcovHAC(fit, kernel = "Bartlett")
+# Bartlett kernel
+V_hac <- kernHAC(fit, kernel = "Bartlett")
 
-# Quadratic Spectral kernel
-V_hac <- vcovHAC(fit, kernel = "Quadratic Spectral")
+# Quadratic Spectral kernel (the kernHAC default; prewhitening on by default)
+V_hac <- kernHAC(fit, kernel = "Quadratic Spectral")
 
 # Parzen kernel
-V_hac <- vcovHAC(fit, kernel = "Parzen")
+V_hac <- kernHAC(fit, kernel = "Parzen")
 
 # Custom bandwidth
-V_hac <- vcovHAC(fit, bw = 5)
+V_hac <- kernHAC(fit, bw = 5)
+
+# For the classic Newey-West estimator with a chosen lag, use NeweyWest()
+V_nw <- NeweyWest(fit, lag = 4, prewhite = FALSE)
 ```
 
 ### Rule of Thumb for Bandwidth
@@ -332,7 +340,7 @@ modelsummary(
 | HC1 robust SEs | `coeftest(fit, vcov = vcovHC(fit, "HC1"))` | `smf.ols(...).fit(cov_type="HC1")` |
 | HC3 robust SEs | `coeftest(fit, vcov = vcovHC(fit, "HC3"))` | `smf.ols(...).fit(cov_type="HC3")` |
 | One-way clustered | `coeftest(fit, vcov = vcovCL(fit, ~state))` | `.fit(cov_type="cluster", cov_kwds={"groups": df["state"]})` |
-| Two-way clustered | `coeftest(fit, vcov = vcovCL(fit, ~state + year))` | Not built-in (use pyfixest) |
+| Two-way clustered | `coeftest(fit, vcov = vcovCL(fit, ~state + year))` | `.fit(cov_type="cluster", cov_kwds={"groups": df[["state","year"]]})` (CGM two-way) |
 | Newey-West | `coeftest(fit, vcov = NeweyWest(fit))` | `.fit(cov_type="HAC", cov_kwds={"maxlags": 4})` |
 | Bootstrap | `vcovBS(fit, R = 999)` | Not built-in |
 

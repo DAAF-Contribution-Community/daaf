@@ -77,7 +77,7 @@ You are a **Debugger** -- an agent that diagnoses problems in data pipelines and
 | Repeated QA BLOCKER | Same script fails QA multiple times with different issues |
 | Methodology-adjacent issue | BLOCKER is borderline methodology (needs investigation before deciding) |
 
-If invoked due to QA BLOCKER, review the QA script output at `scripts/cr/stage{N}_{step}_cr{iteration}.py` (Full Pipeline) or `scripts/cr/profile_{phase}_{step}_cr{iteration}.py` (Data Onboarding), and subsequent iterations up to cr5, for the specific check that failed.
+If invoked due to QA BLOCKER, review the QA script output at `scripts/cr/stage{N}_{step}_cr{iteration}.py` (Full Pipeline) or `scripts/cr/profile_{phase}_{step}_cr{iteration}.py` (Data Onboarding) — `.R` in place of `.py` for R projects — and subsequent iterations up to cr5, for the specific check that failed.
 
 </upstream_input>
 
@@ -379,7 +379,7 @@ Return debugging report in this structure:
 ### Fix
 **Recommended Fix:**
 ```python
-[Code showing the fix -- keep under 30 lines]
+[Code showing the fix -- keep under 30 lines. Use an ```r fence for R-script fixes]
 ```
 
 **Verification:** [How to verify the fix works]
@@ -433,7 +433,7 @@ Categories: Access | Data | Method | Perf | Process
 | Consumer | Receives | How They Use It |
 |----------|----------|-----------------|
 | Orchestrator | Status + Root Cause + Fix | Gate decision (apply fix / escalate / adjust scope) |
-| research-executor | Recommended Fix | Creates revision script (`_a.py`) |
+| research-executor | Recommended Fix | Creates revision script (`_a.py`/`_a.R`) |
 | data-planner | Prevention strategies | Incorporates into Plan revision (if methodology change) |
 | LEARNINGS.md | Learning Signal | Captured for future analyses |
 

@@ -307,7 +307,13 @@ df_at_risk = df.filter(pl.col("financial_resp_score") < 1.0)
 library(arrow)
 library(dplyr)
 
-df <- arrow::read_parquet("fsa/colleges_fsa_composite_scores")
+# fetch_from_mirrors() is a Python helper; in R, build the URL from the mirror
+# root in mirrors.yaml.
+# Mirror failover: see `education-data-query/references/fetch-patterns.md` (R pattern).
+config <- yaml::read_yaml("mirrors.yaml")
+mirror <- config$mirrors[[1]]
+url <- paste0(mirror$root_url, "/", "fsa/colleges_fsa_composite_scores", ".", mirror$format)
+df <- arrow::read_parquet(url)
 
 # Financially Responsible
 df_responsible <- df |> filter(financial_resp_score >= 1.5)
@@ -350,7 +356,13 @@ df_at_risk = df.filter(pl.col("financial_resp_score") < 1.0)
 library(arrow)
 library(dplyr)
 
-df <- arrow::read_parquet("fsa/colleges_fsa_composite_scores")
+# fetch_from_mirrors() is a Python helper; in R, build the URL from the mirror
+# root in mirrors.yaml.
+# Mirror failover: see `education-data-query/references/fetch-patterns.md` (R pattern).
+config <- yaml::read_yaml("mirrors.yaml")
+mirror <- config$mirrors[[1]]
+url <- paste0(mirror$root_url, "/", "fsa/colleges_fsa_composite_scores", ".", mirror$format)
+df <- arrow::read_parquet(url)
 
 # Filter for institutions in the zone or below
 df_concern <- df |> filter(financial_resp_score < 1.5)

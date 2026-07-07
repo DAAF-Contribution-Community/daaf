@@ -269,3 +269,33 @@ etable(fit, vcov = list("iid", "hetero"))  # Compare SEs side-by-side
 | Polynomial | `c.x#c.x` | `I(x^2)` | `I(x^2)` |
 | Multiple depvars | Not in base | `c(y1, y2) ~ x` | Not supported |
 | Stepwise | Not native | `sw(x1, x2)` | Not supported |
+
+---
+
+## 10. SUR (Seemingly Unrelated Regressions)
+
+R's SUR estimator lives in the `systemfit` package. Note that `plm` does NOT
+provide a SUR estimator -- panel models only.
+
+> **Availability:** `systemfit` is NOT pre-installed in DAAF; run
+> `install.packages("systemfit")` at analysis time before using it (the Stata
+> equivalent of `ssc install`).
+
+```stata
+sureg (eq1: y1 x1 x2) (eq2: y2 x3 x4)
+```
+
+```r
+# install.packages("systemfit")   # not pre-installed
+library(systemfit)
+
+eq1 <- y1 ~ x1 + x2
+eq2 <- y2 ~ x3 + x4
+fit <- systemfit(list(eq1 = eq1, eq2 = eq2), method = "SUR", data = df)
+summary(fit)
+```
+
+| Stata | R (systemfit) | Notes |
+|-------|---------------|-------|
+| `sureg (eq1: ...) (eq2: ...)` | `systemfit(list(...), method = "SUR")` | Cross-equation error correlation |
+| `test [eq1]x1 = [eq2]x3` | `linearHypothesis(fit, "eq1_x1 = eq2_x3")` | Cross-equation tests via car |

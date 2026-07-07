@@ -244,7 +244,7 @@ The report follows a standard structure (Executive Summary, Key Findings, Data &
 
 ### Reading the Notebook
 
-The marimo notebook is a walkthrough tool -- it assembles the actual scripts that were executed (verbatim, not rewritten) alongside their execution logs. When you open it in your browser, you will see:
+The marimo notebook is a walkthrough tool -- it assembles the actual scripts that were executed (verbatim, not rewritten) alongside their execution logs. (For R projects the notebook is a Quarto `.qmd` instead -- see [02 § The Research Notebook](02_understanding_daaf.md#the-research-notebook-marimo-or-quarto) -- and the same review guidance applies.) When you open it in your browser, you will see:
 
 - **Section headers** identifying which stage and script is being displayed
 - **Code cells** containing the literal code from the script files
@@ -275,6 +275,8 @@ If a script failed, you will also find versioned revisions:
 - `01_fetch-ccd.py` -- Original (with its failed log embedded)
 - `01_fetch-ccd_a.py` -- First revision (with its own log)
 - `01_fetch-ccd_b.py` -- Second revision, if the first fix did not work
+
+(R projects follow the same pattern with `.R` files: `01_fetch-ccd.R`, `01_fetch-ccd_a.R`, and so on.)
 
 The notebook only includes the final successful version, but all versions are preserved in the `scripts/` directory for audit trail purposes. If you want to understand *why* a script needed revision, read the original's execution log and the QA review that flagged the issue (stored in `scripts/cr/`).
 
@@ -487,7 +489,7 @@ bash run_vscode.sh              # macOS / Linux
 
 Then open **http://localhost:2720** in your browser. The password is displayed in the terminal output (default: `daaf`). The script handles starting the container if it isn't already running.
 
-The browser editor comes pre-loaded with extensions for Python syntax highlighting, Markdown preview, Git history visualization, and CSV viewing -- everything you need to comfortably browse and review DAAF's output. A few key features worth knowing:
+The browser editor comes pre-loaded with extensions for Python and R syntax highlighting, Markdown preview, Git history visualization, and CSV viewing -- everything you need to comfortably browse and review DAAF's output. A few key features worth knowing:
 
 - **Markdown preview:** Right-click any `.md` file and select **"Open Preview"**, or press `Shift+Ctrl+V`, to see the rendered report with proper formatting. This is by far the easiest way to read DAAF's reports and plans.
 - **File management:** Drag and drop files from your computer into the file explorer sidebar to import them into the Docker volume (e.g., a dataset you want to profile). Create, rename, move, and delete files directly.
@@ -544,7 +546,7 @@ For a detailed step-by-step guide to adding your own data, see [**04. Extending 
 
 ## Recommended Next Steps
 
-- [**04. Extending DAAF**](04_extending_daaf.md) — How to add new data source skills, analytical tools and methodologies, creating your own additional specialized agents, and customizing the Python environment
+- [**04. Extending DAAF**](04_extending_daaf.md) — How to add new data source skills, analytical tools and methodologies, creating your own additional specialized agents, and customizing the Python and R environment
 - [**06. FAQ: Philosophy**](06_faq_philosophy.md) — Grapples with the broader implications of this work, AI automation in general, model advancement pace, approaching the "exponential", environmental ethics, what this means for the next generation of researchers, and more
 - [**07. FAQ: Technical Support**](07_faq_technical.md) — Covers frequently asked questions about Docker, issues with Claude Code, usage limits, authentication errors, and other common errors
 - [**Back to main**](https://github.com/DAAF-Contribution-Community/daaf/tree/main)

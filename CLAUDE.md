@@ -115,7 +115,8 @@ no module abstractions. The same philosophy applies to both Python and R.
 
 1. **No function definitions** — No reusable functions, no `source()` of external
    modules
-   - *Exception:* Quarto cell structure
+   - *Exceptions:* Quarto cell structure and standalone CLI tools requiring
+     `commandArgs` argument handling (parallel to the Python argparse exception)
 2. **Inline validation** — Use `cat()` for output and `stopifnot()` for
    assertions, never a separate `validation.R` module
 3. **Section separators** — Same convention as Python:

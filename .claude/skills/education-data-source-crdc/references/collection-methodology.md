@@ -90,35 +90,34 @@ def check_coverage_appropriateness(year, analysis_type):
 ```
 
 ```r
-# check_coverage_appropriateness(year, analysis_type)
-# Determine if CRDC year is appropriate for analysis type.
-    sample_years <- [2011, 2013]
-    universe_years <- [2015, 2017, 2020, 2021]
+# Determine if a CRDC year is appropriate for the analysis type.
+sample_years <- c(2011, 2013)
+universe_years <- c(2015, 2017, 2020, 2021)
 
-    if (analysis_type == 'national_totals') {
-        if (year in sample_years) {
-            {
-                'appropriate': FALSE,
-                'reason': 'Sample years cannot produce national totals without weighting',
-                'recommendation': 'Use 2015+ for national estimates'
-            }
+year <- 2013
+analysis_type <- "national_totals"  # or "school_level", "time_series"
 
-    if (analysis_type == 'school_level') {
-        if (year in sample_years) {
-            {
-                'appropriate': TRUE,
-                'warning': 'Not all schools included; cannot generalize',
-                'recommendation': 'Verify school is in sample'
-            }
-
-    if (analysis_type == 'time_series') {
-        {
-            'appropriate': year in universe_years,
-            'reason': 'Time series requires consistent coverage',
-            'recommendation': 'Use only 2015+ for trends'
-        }
-
-    {'appropriate': TRUE}
+if (analysis_type == "national_totals" && year %in% sample_years) {
+  result <- list(
+    appropriate = FALSE,
+    reason = "Sample years cannot produce national totals without weighting",
+    recommendation = "Use 2015+ for national estimates"
+  )
+} else if (analysis_type == "school_level" && year %in% sample_years) {
+  result <- list(
+    appropriate = TRUE,
+    warning = "Not all schools included; cannot generalize",
+    recommendation = "Verify school is in sample"
+  )
+} else if (analysis_type == "time_series") {
+  result <- list(
+    appropriate = year %in% universe_years,
+    reason = "Time series requires consistent coverage",
+    recommendation = "Use only 2015+ for trends"
+  )
+} else {
+  result <- list(appropriate = TRUE)
+}
 ```
 
 ### Sample Years (2011, 2013) Limitations
@@ -399,30 +398,21 @@ def link_crdc_ccd(crdc_df: pl.DataFrame, ccd_df: pl.DataFrame) -> pl.DataFrame:
 ```r
 library(dplyr)
 
-# Linking CRDC to CCD
-# link_crdc_ccd(crdc_df: pl.DataFrame, ccd_df: pl.DataFrame) -> pl.DataFrame
-# Link CRDC data to CCD school characteristics.
-#
-# Args:
-# crdc_df: CRDC data (must have ncessch as String)
-# ccd_df: CCD directory data (must have ncessch as String)
-#
-# Returns:
-# Joined DataFrame with CCD characteristics
-    ccd_cols <- ccd_df |> select(
-        ncessch, school_name, leaid,
-        urban_centric_locale, charter,
-        free_or_reduced_price_lunch
-    )
+# Linking CRDC to CCD school characteristics.
+# ASSUMES: ncessch is a character (string) column in both data frames.
+ccd_cols <- ccd_df |> select(
+  ncessch, school_name, leaid,
+  urban_centric_locale, charter,
+  free_or_reduced_price_lunch
+)
 
-    merged <- crdc_df |> left_join(ccd_cols, by = "ncessch")
+merged <- crdc_df |> left_join(ccd_cols, by = "ncessch")
 
-    # Check join success
-    unmatched <- merged |> filter(is.na(school_name)) |> nrow()
-    if (unmatched > 0) {
-        cat(paste0("Warning: ", unmatched, " CRDC schools not matched to CCD"), "\n")
-
-    merged
+# Check join success
+unmatched <- merged |> filter(is.na(school_name)) |> nrow()
+if (unmatched > 0) {
+  cat(sprintf("Warning: %d CRDC schools not matched to CCD\n", unmatched))
+}
 ```
 
 > **Note:** Some CRDC rows have `ncessch` as null. Use `crdc_id` or `leaid` for alternative linkage when `ncessch` is unavailable.

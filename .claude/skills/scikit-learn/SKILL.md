@@ -1,7 +1,7 @@
 ---
 name: scikit-learn
 description: >-
-  Machine learning: clustering, PCA/t-SNE/UMAP, classification, prediction regression (Ridge/Lasso/ensemble), cross-validation, Pipelines. For unsupervised analysis, classification, or prediction. For econometric regression use pyfixest/statsmodels.
+  Machine learning: clustering, PCA/t-SNE/UMAP, classification, prediction regression (Ridge/Lasso/ensemble), cross-validation, Pipelines. For unsupervised analysis, classification, or prediction. For econometric regression use pyfixest/statsmodels. R equivalent: tidymodels (use when execution language is R).
 metadata:
   audience: research-coders
   domain: python-library

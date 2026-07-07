@@ -190,7 +190,7 @@ df |>
 | `fmt_percent()` | Percentage formatting | 0.15 -> 15.0% |
 | `fmt_currency()` | Currency formatting | 1234 -> $1,234 |
 | `fmt_date()` | Date formatting | ISO to readable |
-| `fmt_missing()` | Missing value display | NA -> "---" |
+| `sub_missing()` | Missing value display | NA -> "---" (`fmt_missing()` is deprecated since gt 0.6.0) |
 
 ### gt Styling
 

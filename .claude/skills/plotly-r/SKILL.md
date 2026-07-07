@@ -8,7 +8,7 @@ description: |
   static figures use ggplot2.
 autoload: never
 metadata:
-  audience: code-producing agents
+  audience: research-coders
   domain: r-library
   library-version: "plotly 4.12.0"
   skill-last-updated: "2026-05-08"

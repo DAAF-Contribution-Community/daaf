@@ -155,7 +155,7 @@ Which Stata command?
 |   +-- ./references/regression-modeling.md
 +-  xtreg (fe/re) -> fixest (FE) / plm (RE)
 |   +-- ./references/regression-modeling.md
-+-  ivregress / ivreg2 / ivreghdfe -> fixest / ivreg
++-  ivregress / ivreg2 / ivreghdfe -> fixest (ivreg not pre-installed)
 |   +-- ./references/regression-modeling.md
 +-  logit / probit / ologit / mlogit -> stats::glm / MASS / nnet
 |   +-- ./references/regression-modeling.md
@@ -196,7 +196,7 @@ Which Stata command?
 | `regress`, `areg`, `reghdfe` | fixest | Very High | Near-identical formula syntax; `\|` for FE absorption |
 | `xtreg, fe` | fixest | Very High | No `xtset` needed; FE specified in formula |
 | `xtreg, re` | plm | High | Requires panel structure via `pdata.frame` or formula index |
-| `ivregress`, `ivreg2`, `ivreghdfe` | fixest / ivreg | Very High | Three-part formula for IV in fixest |
+| `ivregress`, `ivreg2`, `ivreghdfe` | fixest (`ivreg` not pre-installed) | Very High | Three-part formula for IV in fixest; `ivreg` requires `install.packages("ivreg")` first |
 | `logit`, `probit`, `ologit`, `mlogit` | stats::glm / MASS / nnet | High | `family = binomial` for logit; separate packages for ordered/multinomial |
 | `poisson`, `ppmlhdfe` | fixest `fepois` / stats::glm | Very High | `fepois` for Poisson with multi-way FE |
 | `margins`, `marginsplot` | marginaleffects | Very High | Same author as R version; near-identical API |
@@ -214,7 +214,7 @@ Which Stata command?
 
 **Fidelity key:** Very High = same authors, near-identical API. High = same capability, similar syntax. Medium = same capability, different API patterns. Low = fundamentally different paradigm requiring conceptual remapping.
 
-> **Package availability:** The core mappings above (`fixest`, `plm`, `survey`, `marginaleffects`, base `stats`, `dplyr`/`tidyr`, `ggplot2`) are pre-installed in DAAF. The specialized causal packages — `rdrobust`, `binsreg`, `augsynth`, `Synth`, `MatchIt`, `did`, `rddensity` — are NOT pre-installed; run `install.packages("<pkg>")` at analysis time before using them (the Stata equivalent of `ssc install`).
+> **Package availability:** The core mappings above (`fixest`, `plm`, `survey`, `marginaleffects`, `rdrobust`, base `stats`, `dplyr`/`tidyr`, `ggplot2`) are pre-installed in DAAF. The specialized causal packages — `ivreg`, `binsreg`, `augsynth`, `Synth`, `MatchIt`, `did`, `rddensity` — are NOT pre-installed (for IV, pre-installed `fixest` three-part formulas or `plm` cover most cases); run `install.packages("<pkg>")` at analysis time before using them (the Stata equivalent of `ssc install`).
 
 ## Library Versions
 
@@ -228,14 +228,15 @@ versions, the reference files note the change.
 | dplyr + tidyr | 1.2.0, 1.3.2 | Data management commands (gen, replace, merge, etc.) | Stata 18 |
 | fixest | 0.14.0 | regress, areg, reghdfe, ivreghdfe, ppmlhdfe, esttab | Stata 18 + reghdfe 6.x |
 | stats (base R) | 4.5.x | regress, logit, probit, glm | Stata 18 |
-| plm | 2.6-7 | xtreg, sureg | Stata 18 |
+| plm | 2.6-7 | xtreg | Stata 18 |
+| systemfit | not pre-installed | sureg | Stata 18 |
 | ggplot2 | 4.0.2 | graph twoway, graph bar, graph box, histogram | Stata 18 |
 | plotly (R) | 4.12.0 | (no direct Stata equivalent; interactive charts) | N/A |
 | survey | 4.5 | svyset, svy: prefix commands | Stata 18 |
 | marginaleffects | 0.32.0 | margins, marginsplot, lincom, nlcom | Stata 18 |
 | rdrobust (R) | 3.0.0 | rdrobust, rdplot, rdbwselect | rdrobust (SSC) |
-| binsreg (R) | unpinned | binsreg, binscatter | binsreg (SSC) |
-| modelsummary | unpinned | esttab, outreg2 | Stata 18 |
+| binsreg (R) | not pre-installed | binsreg, binscatter | binsreg (SSC) |
+| modelsummary | 2.6.0 | esttab, outreg2 | Stata 18 |
 | sandwich + lmtest | 3.1-1, 0.9-40 | robust, vce(robust), vce(hc3) | Stata 18 |
 | MASS | 7.3-x | nbreg, ologit | Stata 18 |
 | nnet | 7.3-x | mlogit | Stata 18 |
@@ -300,7 +301,7 @@ fit <- feols(wage ~ education + experience | industry + year,
 # Stata: drop if missing(income)
 df <- df |> filter(!is.na(income))
 
-# Stata: merge 1:1 school_id using "districts.dta"
+# Stata: merge 1:1 school_id using "districts.dta", keep(3) nogen
 df <- df |> inner_join(districts, by = "school_id")
 ```
 
@@ -325,7 +326,7 @@ df <- df |> inner_join(districts, by = "school_id")
 | `ggplot2` | R-side static visualization -- detailed API for the graph twoway equivalent |
 | `plotly-r` | R-side interactive visualization -- no direct Stata equivalent |
 | `r-stats` | R-side general modeling -- covers base R stats, sandwich, lmtest (logit, probit, glm equivalents) |
-| `plm` | R-side panel/IV models -- covers xtreg, sureg equivalents |
+| `plm` | R-side panel/IV models -- covers xtreg equivalents (plm has no SUR estimator; for sureg see `systemfit` in regression-modeling.md) |
 | `survey-r` | R-side survey analysis -- covers svyset and svy: prefix command equivalents |
 | `sf-terra` | R-side spatial data -- covers Stata spmap/spregress equivalents |
 | `tidymodels` | R-side ML -- covers limited teffects/matching equivalents |

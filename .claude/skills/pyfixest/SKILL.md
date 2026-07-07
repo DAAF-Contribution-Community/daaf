@@ -1,7 +1,7 @@
 ---
 name: pyfixest
 description: >-
-  Fast high-dimensional fixed effects: OLS, Poisson, IV with multi-way FE; DiD (TWFE, did2s, Sun-Abraham); clustered SEs; etable/coefplot/iplot. Use for FE regressions or DiD. For panel RE/between use linearmodels; for GLM without FE use statsmodels.
+  Fast high-dimensional fixed effects: OLS, Poisson, IV with multi-way FE; DiD (TWFE, did2s, Sun-Abraham); clustered SEs; etable/coefplot/iplot. Use for FE regressions or DiD. For panel RE/between use linearmodels; for GLM without FE use statsmodels. R equivalent: fixest (use when execution language is R).
 metadata:
   audience: research-coders
   domain: python-library

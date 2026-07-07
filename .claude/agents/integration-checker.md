@@ -127,7 +127,7 @@ For every file reference, verify at three levels:
 |-------|-------|---------------|
 | **Existence** | File exists at path | `Glob` or `ls` command |
 | **Non-empty** | File has content | Size > 0 bytes |
-| **Accessible** | File can be consumed | For parquet: read schema with Polars (no error). For images: file size >1KB. For markdown: file contains non-whitespace text. |
+| **Accessible** | File can be consumed | For parquet: read schema with Polars (Python) or `arrow::open_dataset()`/`arrow::read_parquet()` schema read (R) — no error. For images: file size >1KB. For markdown: file contains non-whitespace text. |
 
 The "Accessible" threshold exists because a zero-byte parquet or a corrupt image will pass existence checks but break the deliverable at presentation time.
 
@@ -172,9 +172,9 @@ Read Plan.md's File Manifest and Transformation Sequence to construct the expect
 
 Check all file paths resolve across all artifacts:
 
-**Notebook-to-Data:** Extract all `pl.read_parquet()`, `pl.read_csv()`, `pd.read_*()` statements. Verify each target file exists and is accessible.
+**Notebook-to-Data:** Extract all `pl.read_parquet()`, `pl.read_csv()`, `pd.read_*()` statements — and, for R/Quarto notebooks, all `arrow::read_parquet()` and `readr::read_*()` statements. Verify each target file exists and is accessible.
 
-**Report-to-Figures:** Extract all `![...](...)` and `[Figure N](path)` references. Verify each target file exists and has size >1KB.
+**Report-to-Figures:** Extract all `![...](...)` and `[Figure N](path)` references — and, for Quarto notebooks, `knitr::include_graphics(` calls. Verify each target file exists and has size >1KB.
 
 **Script-to-QA-Script:** For each execution script in `scripts/stage{5,6,7,8}_*/`, verify a corresponding QA script exists in `scripts/cr/` (at minimum `cr1`).
 

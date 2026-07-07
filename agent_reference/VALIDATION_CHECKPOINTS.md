@@ -1454,6 +1454,8 @@ cat(strrep("=", 60), "\n")
 
 #### Text Substantiveness Check
 
+> *Language note: this is verifier tooling that scans text files, not pipeline code — it may run in Python even on R projects.*
+
 ```python
 import re
 from pathlib import Path
@@ -1512,6 +1514,8 @@ print("=" * 60)
 ```
 
 #### Code Substantiveness Check
+
+> *Language note: this is verifier tooling that scans script text (including `.R` files), not pipeline code — it may run in Python even on R projects.*
 
 ```python
 import re
@@ -2070,6 +2074,8 @@ cat("============================================================\n")
 
 #### Wiring Check (Inline)
 
+> *Language note: this is verifier tooling that scans file references across artifacts, not pipeline code — it may run in Python even on R projects.*
+
 ```python
 import re
 from pathlib import Path
@@ -2424,6 +2430,8 @@ cat(sprintf("CPP4 PASSED: All interpretations marked PRELIMINARY, documentation 
 ### CPP-SKILL: Post-Authoring Validation
 
 **Embedded in:** Stage DI-7 skill authoring subagent output
+
+> *Language note: this is verifier tooling that scans the generated SKILL.md (markdown), not pipeline code — it may run in Python even on R projects.*
 
 ```python
 # --- CPP-SKILL: Template Compliance Check ---

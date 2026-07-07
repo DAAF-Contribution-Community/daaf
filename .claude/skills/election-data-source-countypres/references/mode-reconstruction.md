@@ -169,7 +169,6 @@ if dup_groups.shape[0] > 0:
 ```
 ```r
 library(dplyr)
-library(stringr)
 
 # --- Constants ---
 GROUP_COLS <- c("county_fips", "year", "state_po", "state", "county_name", "candidate", "party")
@@ -227,8 +226,9 @@ if (nrow(df_no_total) > 0) {
       candidatevotes = sum(candidatevotes, na.rm = TRUE),
       totalvotes = first(totalvotes),
       mode = "TOTAL",
-      office = first(office),
-      version = first(version),
+      # any_of(): carry office/version only when present (matches Python's
+      # `if col in df.columns` conditional check)
+      across(any_of(CARRY_COLS), first),
       .groups = "drop"
     )
   df <- bind_rows(df_total, df_reconstructed)
@@ -248,8 +248,9 @@ if (nrow(dup_groups) > 0) {
       state_po = first(state_po),
       state = first(state),
       county_name = first(county_name),
-      office = first(office),
-      version = first(version),
+      # any_of(): carry office/version only when present (matches Python's
+      # `if col in df.columns` conditional check)
+      across(any_of(CARRY_COLS), first),
       .groups = "drop"
     )
 }

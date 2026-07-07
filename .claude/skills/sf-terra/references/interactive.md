@@ -279,7 +279,7 @@ In DAAF research pipelines, interactive maps are saved to the project output dir
 
 ## CRS Considerations
 
-leaflet expects data in **WGS84 (EPSG:4326)** -- longitude/latitude coordinates. sf objects in other CRS will be automatically transformed by the leaflet package. However, it is good practice to be explicit:
+leaflet expects data in **WGS84 (EPSG:4326)** -- longitude/latitude coordinates. leaflet does **not** reproject other CRS for you: passing a projected sf object produces the warning "sf layer is not long-lat data" (verified with EPSG:3857 input) and the layer will not render at the correct location. Always transform explicitly:
 
 ```r
 # Ensure WGS84 for leaflet

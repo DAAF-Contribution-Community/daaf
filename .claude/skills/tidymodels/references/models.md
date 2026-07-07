@@ -60,7 +60,10 @@ spec <- linear_reg(penalty = 0.01, mixture = 0.5) |>
 
 ## logistic_reg (Logistic Regression)
 
-Binary and multiclass classification via logistic regression.
+**Binary** classification via logistic regression. `logistic_reg()` has no
+multiclass argument (its parameters are only `penalty` and `mixture` — there is
+no `multi_class` argument; that is scikit-learn's API). For outcomes with 3+
+classes, use `multinom_reg()` below.
 
 ```r
 # --- Standard logistic ---
@@ -82,7 +85,31 @@ spec <- logistic_reg(penalty = 0.01, mixture = 1) |>
 | Engine | Notes |
 |--------|-------|
 | `"glm"` | Base R `glm(family = binomial)`. No regularization. |
-| `"glmnet"` | Regularized. Handles multiclass via multinomial. |
+| `"glmnet"` | Regularized. Binary outcomes only — for 3+ classes use `multinom_reg()`. |
+
+## multinom_reg (Multinomial Regression)
+
+Multiclass (3+ level) classification via multinomial logistic regression.
+
+```r
+# --- Regularized multinomial (glmnet) ---
+spec <- multinom_reg(penalty = 0.01) |>
+  set_engine("glmnet") |>
+  set_mode("classification")
+
+# --- Unregularized multinomial (nnet) ---
+spec <- multinom_reg() |>
+  set_engine("nnet") |>
+  set_mode("classification")
+```
+
+| Engine | Notes |
+|--------|-------|
+| `"nnet"` | Base multinomial via `nnet::multinom()`. No regularization. |
+| `"glmnet"` | Regularized; requires `penalty`. |
+
+Both engines are installed and verified in this environment. Tree models
+(`rand_forest`, `boost_tree`) also handle multiclass outcomes natively.
 
 ## rand_forest (Random Forest)
 
@@ -108,7 +135,7 @@ spec <- rand_forest(trees = 500) |>
 |-----------|---------|---------|
 | `trees` | Number of trees | 500 |
 | `mtry` | Predictors sampled per split | floor(sqrt(p)) for classification, floor(p/3) for regression |
-| `min_n` | Minimum node size to split | 1 (classification), 5 (regression) |
+| `min_n` | Minimum node size to split | 10 (classification), 5 (regression) — parsnip fits ranger *probability* forests for classification, whose ranger default `min.node.size` is 10 (verified on a fitted model), not the 1 used by plain classification forests |
 
 | Engine | Notes |
 |--------|-------|
@@ -181,7 +208,8 @@ spec <- nearest_neighbor(
 | Model | Regression | Classification | Key Engines | Tunable Params |
 |-------|-----------|----------------|-------------|----------------|
 | `linear_reg` | Yes | No | lm, glmnet | penalty, mixture |
-| `logistic_reg` | No | Yes | glm, glmnet | penalty, mixture |
+| `logistic_reg` | No | Yes (binary) | glm, glmnet | penalty, mixture |
+| `multinom_reg` | No | Yes (multiclass) | nnet, glmnet | penalty, mixture |
 | `rand_forest` | Yes | Yes | ranger | trees, mtry, min_n |
 | `boost_tree` | Yes | Yes | xgboost | trees, tree_depth, learn_rate, min_n |
 | `nearest_neighbor` | Yes | Yes | kknn | neighbors, weight_func, dist_power |
@@ -199,13 +227,18 @@ parsnip_fit <- extract_fit_parsnip(fit)
 # Extract the raw engine object (e.g., ranger object)
 engine_fit <- extract_fit_engine(fit)
 
-# For ranger: variable importance
+# For ranger: variable importance — ONLY works if importance was requested at
+# fit time via set_engine("ranger", importance = "impurity"); otherwise vip
+# errors with "No variable importance found" (verified)
 library(vip)
 vip(parsnip_fit)
 
 # For glmnet: coefficient path
 coef(engine_fit, s = 0.01)
 ```
+
+For the full interpretation toolkit (permutation importance, PDP/ICE, SHAP via
+DALEX / iml / kernelshap), see `interpretation.md`.
 
 ## Quick Reference
 
@@ -214,7 +247,8 @@ coef(engine_fit, s = 0.01)
 | OLS | `linear_reg() \|> set_engine("lm")` |
 | Ridge | `linear_reg(penalty = 0.01, mixture = 0) \|> set_engine("glmnet")` |
 | Lasso | `linear_reg(penalty = 0.01, mixture = 1) \|> set_engine("glmnet")` |
-| Logistic | `logistic_reg() \|> set_engine("glm")` |
+| Logistic (binary) | `logistic_reg() \|> set_engine("glm")` |
+| Multinomial (3+ classes) | `multinom_reg() \|> set_engine("nnet")` |
 | Random forest | `rand_forest(trees = 500) \|> set_engine("ranger")` |
 | XGBoost | `boost_tree(trees = 500) \|> set_engine("xgboost")` |
 | KNN | `nearest_neighbor(neighbors = 5) \|> set_engine("kknn")` |

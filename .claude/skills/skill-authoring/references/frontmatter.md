@@ -223,6 +223,8 @@ DAAF uses a controlled vocabulary for `audience` and `domain` to enable consiste
 | `research-coders` | Anyone writing or reviewing code | Python libraries, education-data-query |
 | `research-writers` | Anyone writing or reviewing narrative | science-communication |
 
+> **Canonical value note:** `research-coders` is the canonical `audience` value for skills targeting code-writing or code-reviewing agents. Some older skill text uses the legacy phrasing "code-producing agents" — normalization to `research-coders` is in progress. Always use `research-coders` in new skills.
+
 #### `domain` — What functional category does this skill belong to?
 
 | Value | Covers | Example Skills |
@@ -230,7 +232,9 @@ DAAF uses a controlled vocabulary for `audience` and `domain` to enable consiste
 | `data-source` | Reference guides for specific datasets | education-data-source-ccd, election-data-source-countypres |
 | `data-access` | Fetching/discovering data | education-data-query, education-data-explorer |
 | `data-documentation` | Provenance, caveats, interpretation | education-data-context |
-| `python-library` | Library syntax/API reference | polars, plotly, statsmodels |
+| `python-library` | Python library syntax/API reference | polars, plotly, statsmodels |
+| `r-library` | R library syntax/API reference | tidyverse, fixest, gt |
+| `cross-language` | Cross-language translation/annotation guidance | python-r-translation, stata-r-translation |
 | `research-methodology` | Analytical approach, rigor, mindset | data-scientist |
 | `research-orchestration` | Workflow/pipeline management | daaf-orchestrator |
 | `research-communication` | Translating findings for audiences | science-communication |
@@ -240,13 +244,13 @@ DAAF uses a controlled vocabulary for `audience` and `domain` to enable consiste
 
 | Key | Purpose | Example Values | When to Include |
 |-----|---------|----------------|-----------------|
-| `library-version` | Library version tracked by the skill | `"1.x"`, `"0.40.0"` | Python library skills only |
+| `library-version` | Library version tracked by the skill | `"1.x"`, `"0.40.0"` | Python and R library skills only |
 | `skill-authored` | ISO-8601 creation date | `"2026-02-09"` | Data source skills (required) |
-| `skill-last-updated` | ISO-8601 last-verified date | `"2026-02-09"` | Data source skills (required); Python library skills (recommended) |
+| `skill-last-updated` | ISO-8601 last-verified date | `"2026-02-09"` | Data source skills (required); Python and R library skills (recommended) |
 
 > **Provenance in metadata:** Data source skills MUST include `skill-authored` and `skill-last-updated` as metadata keys. These track when the skill was created and when it was last verified against actual data. On updates, change only `skill-last-updated`; `skill-authored` remains fixed. If `skill-last-updated` is more than a few months old, treat skill claims with caution — re-run data onboarding to re-verify.
 
-> **Library skill staleness:** Python library skills SHOULD include `skill-last-updated` to signal when the `library-version` claim was last verified. Library APIs evolve — if the tracked version is outdated, the skill's syntax examples and API patterns may have drifted.
+> **Library skill staleness:** Library skills (Python and R) SHOULD include `skill-last-updated` to signal when the `library-version` claim was last verified. Library APIs evolve — if the tracked version is outdated, the skill's syntax examples and API patterns may have drifted.
 
 > **Metadata routing semantics:** The `audience` and `domain` fields are used for skill inventory management, human auditing, and maintenance — not for programmatic agent routing. Agent skill selection is driven by description text matching and explicit skill name references in orchestrator dispatch tables and agent frontmatter. These fields help maintainers answer questions like "show me all skills relevant to code-writing agents" or "list all data source skills" without affecting runtime behavior.
 
@@ -268,6 +272,8 @@ Unknown frontmatter fields are ignored but may cause validation errors in strict
 - `description`
 - `when_to_use`
 - `metadata`
+
+> **Legacy non-spec fields in R skills:** Some R library skills carry a top-level `autoload` field and a `metadata.tags` list from their initial port (e.g., `tidyverse`, `fixest`, `gt`). These are non-spec fields: nothing in the framework consumes them (probe quoted in the R_Support project's sessionD_05 notes, item E8). They are tolerated in existing skills but must NOT be copied into new skills.
 
 ## Complete Example
 

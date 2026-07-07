@@ -107,7 +107,7 @@ tbl <- df |>
   )
 ```
 
-Common `fmt_*()` functions:
+Common formatting functions:
 
 | Function | Formats | Example Output |
 |----------|---------|----------------|
@@ -116,7 +116,10 @@ Common `fmt_*()` functions:
 | `fmt_percent()` | Percentages (input 0-1 scale) | 45.2% |
 | `fmt_currency()` | Currency | $1,235 |
 | `fmt_date()` | Dates | Jan 15, 2023 |
-| `fmt_missing()` | NA values | -- |
+| `sub_missing()` | NA values | -- |
+
+Note: `sub_missing()` replaced `fmt_missing()`, which is deprecated since
+gt 0.6.0 and emits a deprecation warning.
 
 For `fmt_percent()`, the input values should be on the 0-1 scale (e.g., 0.452
 displays as 45.2%). If your data is already on the 0-100 scale, use

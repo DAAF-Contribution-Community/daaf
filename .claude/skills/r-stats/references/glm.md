@@ -346,10 +346,20 @@ phi_hat <- fit_pois$deviance / fit_pois$df.residual
 cat("Estimated dispersion:", round(phi_hat, 2), "\n")
 # phi >> 1 indicates overdispersion
 
-# Formal test: use lmtest or AER
-library(AER)
-dispersiontest(fit_pois)
-# H0: no overdispersion (equidispersion)
+# Formal check 1: quasi-Poisson dispersion estimate
+# (same coefficients as Poisson; dispersion >> 1 signals overdispersion)
+fit_qpois <- glm(count ~ x1 + x2, data = df, family = quasipoisson)
+summary(fit_qpois)$dispersion
+
+# Formal check 2: manual Cameron-Trivedi (1990) auxiliary regression
+# (this is what AER::dispersiontest() computes; AER is NOT pre-installed
+# in the DAAF image, so compute it directly)
+mu <- fitted(fit_pois)
+aux <- ((df$count - mu)^2 - df$count) / mu
+summary(lm(aux ~ 1))
+# t-test on the intercept: H0 no overdispersion (Var = mu);
+# a significantly positive intercept indicates overdispersion
+# (alternative Var = mu + c * mu)
 ```
 
 ### Addressing Overdispersion

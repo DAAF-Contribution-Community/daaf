@@ -1,7 +1,7 @@
 ---
 name: geopandas
 description: >-
-  Spatial data: GeoDataFrames, spatial joins, CRS/projections, choropleth/interactive maps, spatial autocorrelation, PySAL. Use for geographic data, spatial files (Shapefile, GeoPackage, GeoParquet), or spatial stats. For charts without GIS use plotly.
+  Spatial data: GeoDataFrames, spatial joins, CRS/projections, choropleth/interactive maps, spatial autocorrelation, PySAL. Use for geographic data, spatial files (Shapefile, GeoPackage, GeoParquet), or spatial stats. For charts without GIS use plotly. R equivalent: sf-terra (use when execution language is R).
 metadata:
   audience: research-coders
   domain: python-library

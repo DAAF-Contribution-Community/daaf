@@ -64,7 +64,10 @@ def classify_cell(cell_text):
     if '# SOURCE:' in cell_text:
         return 'source_code', extract_source_code(cell_text)
 
-    if 'mo.accordion({"Execution Log' in cell_text or "mo.accordion({'Execution Log" in cell_text:
+    # Whitespace/newline-tolerant: matches the canonical single-line form
+    # (mo.accordion({"Execution Log ...) as well as wrapped forms where the
+    # dict literal or its key sits on following line(s).
+    if re.search(r'mo\.accordion\(\s*\{\s*["\']Execution Log', cell_text):
         return 'execution_log', extract_execution_log(cell_text)
 
     if 'mo.ui.table(' in cell_text:
@@ -74,8 +77,10 @@ def classify_cell(cell_text):
         return 'data_inspect', {}
 
     if 'mo.md(' in cell_text:
-        # Could be a header or stage marker
-        if '#### ' in cell_text:
+        # Could be a header or stage marker. Step headers appear at either
+        # heading depth: real notebooks and the assembler docs emit "### N.M:",
+        # while older manifests used "#### N.M:". Accept both.
+        if re.search(r'#{3,4} [\d.]+:', cell_text):
             return 'markdown_header', extract_header_metadata(cell_text)
         return 'stage_marker', {}
 
@@ -157,14 +162,16 @@ def extract_header_metadata(cell_text):
     """Extract metadata from a Cell 1 markdown header."""
     metadata = {}
 
-    # Extract step and label: #### 1.1: Fetch IPEDS Directory
-    step_match = re.search(r'#### ([\d.]+): (.+)', cell_text)
+    # Extract step and label: "### 5.1: Fetch IPEDS Directory" (real notebooks /
+    # assembler docs) or "#### 1.1: Fetch IPEDS Directory" (older form) — accept both
+    step_match = re.search(r'#{3,4} ([\d.]+): (.+)', cell_text)
     if step_match:
         metadata['step'] = step_match.group(1)
         metadata['label'] = step_match.group(2)
 
-    # Extract final script path
-    script_match = re.search(r'\*\*Final Script:\*\* `scripts/(.+?)`', cell_text)
+    # Extract script path: "**Script:**" (real notebooks / assembler docs) or
+    # "**Final Script:**" (older form) — accept both
+    script_match = re.search(r'\*\*(?:Final )?Script:\*\* `scripts/(.+?)`', cell_text)
     if script_match:
         metadata['script_path'] = script_match.group(1)
 

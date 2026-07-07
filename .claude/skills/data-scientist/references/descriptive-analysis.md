@@ -1,6 +1,6 @@
 # Rigorous Descriptive Analysis
 
-Methodological guidance for descriptive analysis — the systematic characterization of data patterns, distributions, and associations. This reference covers the *why* and *when* of descriptive methods. Whenever a specific library enters the discussion — in advice or in code — load the appropriate library skill (`polars`, `pyfixest`, `statsmodels`): it carries the syntax plus environment constraints and curated caveats that general knowledge lacks.
+Methodological guidance for descriptive analysis — the systematic characterization of data patterns, distributions, and associations. This reference covers the *why* and *when* of descriptive methods. Whenever a specific library enters the discussion — in advice or in code — load the appropriate library skill (Python: `polars`, `pyfixest`, `statsmodels`; R: `tidyverse`, `fixest`, `r-stats`): it carries the syntax plus environment constraints and curated caveats that general knowledge lacks.
 
 **Relationship to EDA:** The `eda-checklist.md` reference covers initial data profiling — understanding what is in the data before transforming it. This file covers the analysis phase — systematically characterizing patterns, distributions, and associations to answer research questions. EDA asks "what does this data look like?" This file asks "what does this data tell us?"
 
@@ -345,7 +345,7 @@ Time series data typically exhibit some combination of:
 - **Cyclicality**: Longer-run fluctuations not tied to a fixed period (business cycles)
 - **Noise**: Irregular, unpredictable variation
 
-Descriptive time series analysis aims to characterize these components, not forecast or model them causally. For forecasting or formal time-series modeling (ARIMA/SARIMAX, VAR, stationarity testing, exponential smoothing), load the `statsmodels` skill — its time-series references cover estimation, diagnostics, and forecasting workflows.
+Descriptive time series analysis aims to characterize these components, not forecast or model them causally. For forecasting or formal time-series modeling (ARIMA/SARIMAX, VAR, stationarity testing, exponential smoothing), load the `statsmodels` skill (Python) or the `r-stats` skill (R) — their time-series references cover estimation, diagnostics, and forecasting workflows.
 
 ### Moving Averages for Trend Extraction
 
@@ -552,7 +552,7 @@ Not all weights serve the same purpose. Using the wrong type of weight is a comm
 
 When computing weighted statistics for a subgroup (e.g., female students, low-income households), you must NOT filter the dataframe before analysis. Correct survey variance estimation requires information about the full design — all strata and all PSUs. Filtering the data first may drop entire PSUs or strata, corrupting the variance estimates and producing standard errors that are too small.
 
-**The correct approach:** Use your survey software's domain/subpopulation mechanism, which retains the full design structure but zeros out contributions from out-of-domain observations for the point estimate. For implementation details, load the `svy` skill. For a thorough treatment of why this matters and what goes wrong, see `./survey-analysis.md`.
+**The correct approach:** Use your survey software's domain/subpopulation mechanism, which retains the full design structure but zeros out contributions from out-of-domain observations for the point estimate. For implementation details, load the `svy` skill (Python) or the `survey-r` skill (R). For a thorough treatment of why this matters and what goes wrong, see `./survey-analysis.md`.
 
 This rule applies to all survey-weighted analyses: descriptive statistics, cross-tabulations, and regression. It is one of the most common and most consequential errors in applied survey research.
 
@@ -560,7 +560,7 @@ This rule applies to all survey-weighted analyses: descriptive statistics, cross
 
 Many federal surveys provide **replicate weight columns** alongside the main analysis weight (e.g., ACS PUMS provides 80, CPS ASEC provides 160, MEPS provides 128). Replicate weights are constructed from the true (internal) survey design before disclosure avoidance masking, so they produce more accurate variance estimates than Taylor linearization with the (possibly perturbed) public-use design variables.
 
-**Practical rule:** If the data file provides replicate weights, prefer them over Taylor linearization. Whenever replicate-weight estimation comes up — advising or coding — load the `svy` skill. For the full conceptual treatment of variance estimation methods, see `./survey-analysis.md`.
+**Practical rule:** If the data file provides replicate weights, prefer them over Taylor linearization. Whenever replicate-weight estimation comes up — advising or coding — load the `svy` skill (Python) or the `survey-r` skill (R). For the full conceptual treatment of variance estimation methods, see `./survey-analysis.md`.
 
 ### Weighted Percentiles
 
@@ -568,7 +568,7 @@ Computing weighted percentiles is less straightforward than weighted means. The 
 
 ### Further Reading
 
-For comprehensive guidance on complex survey analysis methodology — including survey design anatomy, weight selection, variance estimation methods, plausible values, and a pitfalls checklist — see `./survey-analysis.md`. Whenever survey-weighted estimation comes up — advising or coding — load the `svy` skill.
+For comprehensive guidance on complex survey analysis methodology — including survey design anatomy, weight selection, variance estimation methods, plausible values, and a pitfalls checklist — see `./survey-analysis.md`. Whenever survey-weighted estimation comes up — advising or coding — load the `svy` skill (Python) or the `survey-r` skill (R).
 
 ## Inequality Measurement
 

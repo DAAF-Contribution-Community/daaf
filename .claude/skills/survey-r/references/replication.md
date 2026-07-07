@@ -288,8 +288,22 @@ estimation call.
 | Survey | Type | Reps | Weight Prefix | Main Weight | Notes |
 |--------|------|------|---------------|-------------|-------|
 | **ACS PUMS** | ACS/SDR | 80 | `pwgtp` / `wgtp` | `pwgtp` / `wgtp` | Use `type = "ACS"` |
-| **CPS ASEC** | BRR/Fay | 160 | `repwtp` | `marsupwt` | rho varies by vintage |
+| **CPS ASEC** | SDR | 160 | `repwtp` | `marsupwt` | `type = "successive-difference"`; no rho — scale 4/160 is automatic |
 | **ECLS-K:2011** | JKn | varies | Round-specific | Round-specific | Check per-round docs |
+
+CPS ASEC uses **successive difference replication (SDR)**, not BRR/Fay:
+
+```r
+des <- svrepdesign(
+  weights = ~marsupwt,
+  repweights = "repwtp[1-9]+",
+  type = "successive-difference",
+  combined.weights = TRUE,
+  mse = TRUE,
+  data = asec
+)
+# The SDR scale factor 4/160 is applied automatically for this type.
+```
 | **SIPP** | BRR | varies | `repwgt` | `wpfinwgt` | Panel-specific |
 | **NHANES III** | Fay BRR | varies | Survey-specific | Survey-specific | rho = 0.3 |
 

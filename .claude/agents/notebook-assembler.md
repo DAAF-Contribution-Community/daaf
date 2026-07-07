@@ -187,9 +187,19 @@ format:
     toc: true
 execute:
   echo: true
+  eval: false
   warning: false
 ---
 ```
+
+**Execution-flag contract (belt-and-suspenders):** the notebook sets
+`eval: false` globally in the YAML `execute:` block AND every script-archive
+chunk carries its own `#| eval: false`; data inspection chunks are the ONLY
+chunks that opt back in with `#| eval: true`. The redundancy is deliberate:
+the global flag protects chunks that lose their per-chunk option in editing,
+and the per-chunk flag keeps each archive chunk safe even if the frontmatter
+is changed. This contract is stated identically in
+`.claude/skills/quarto/references/daaf-notebook.md`.
 
 **3. Script-to-chunk conversion:** Each executed `.R` script becomes a fenced code chunk:
 
@@ -205,6 +215,8 @@ execute:
 ```{r}
 #| label: [step-name]
 #| eval: false
+
+# --- VERBATIM COPY of scripts/stage{N}_{type}/{script_name}.R ---
 [Script content — code only, NOT the appended execution log]
 ```
 
@@ -215,6 +227,11 @@ execute:
 :::
 ````
 
+The `# --- VERBATIM COPY of scripts/<path> ---` marker line is MANDATORY and
+must follow that exact format — it is the anchor `scripts/decompile_notebook.R`
+uses to identify script chunks and recover source paths during Reproducibility
+Verification. A chunk without the marker decompiles to nothing.
+
 **4. Execution log handling:** Appended execution logs are placed in a collapsible callout block below the chunk (analogous to Marimo's `mo.accordion()` pattern).
 
 **5. Section separators:** `# --- Config ---` etc. in the R script remain as comments inside the chunk. Stage-level organization uses Quarto markdown headings (`##`, `###`).
@@ -222,22 +239,66 @@ execute:
 **6. Data inspection cells:** The ONLY new code in a Quarto notebook is simple data loading for display:
 ```{r}
 #| label: inspect-[step-name]
+#| eval: true
+#| echo: false
 df <- arrow::read_parquet("[path/to/output.parquet]")
-glimpse(df)
+dplyr::glimpse(df)
 head(df, 20)
 ```
+(`dplyr::glimpse()` is namespace-qualified because inspection chunks attach no
+libraries — a bare `glimpse()` fails at render time.)
 
 **7. Key differences from Marimo assembly:**
 - No `def _():` wrappers — use ```` ```{r} ```` fencing
 - No `mo.md()` — use raw markdown between chunks
 - No `mo.accordion()` — use Quarto callout blocks with `collapse="true"`
-- No `mo.ui.table()` — use `glimpse()` + `head()` for data preview
+- No `mo.ui.table()` — use `dplyr::glimpse()` + `head()` for data preview
 - No `mo.image()` — use `knitr::include_graphics()` or standard markdown `![](path)`
 - No cell reactivity — Quarto renders linearly (matches DAAF sequential philosophy)
-- Use `#| eval: false` on all script archive chunks (scripts already executed; notebook is archive)
+- Use `#| eval: false` on all script archive chunks AND `eval: false` globally in the frontmatter `execute:` block (belt-and-suspenders — see the execution-flag contract above)
 - Code is NOT commented out (unlike Marimo) — `eval: false` prevents execution while keeping syntax highlighting
 
 **8. Version history:** Same principle as Marimo — show version history in markdown above the chunk, display only the final successful version's code in the chunk.
+
+**9. Worked example (compact `.qmd` skeleton — one script bundle):** parallel to the Marimo Four-Cell template below; substitute actual script names.
+
+````markdown
+### 5.1: Fetch CCD Data
+
+**Script:** `scripts/stage5_fetch/01_fetch-ccd.R`
+**Output:** `data/raw/2026-01-24_ccd_schools.parquet`
+**Status:** CP1 PASSED
+
+```{r}
+#| label: stage5-01-fetch-ccd
+#| eval: false
+
+# --- VERBATIM COPY of scripts/stage5_fetch/01_fetch-ccd.R ---
+# --- Config ---
+library(arrow)
+library(tidyverse)
+# [remaining script lines, copied exactly — IAT comments, validation, all of it]
+```
+
+::: {.callout-note collapse="true" title="Execution Log"}
+```
+Executed: 2026-01-24 14:32:05
+Fetched: 6,234 rows x 15 columns
+Saved to: data/raw/2026-01-24_ccd_schools.parquet
+CP1 STATUS: PASSED
+```
+:::
+
+```{r}
+#| label: inspect-stage5-01
+#| eval: true
+#| echo: false
+
+df <- arrow::read_parquet("data/raw/2026-01-24_ccd_schools.parquet")
+dplyr::glimpse(df)
+head(df, 20)
+```
+````
 
 ---
 
@@ -376,10 +437,12 @@ def find_final_version(task_name: str, stage_dir: Path) -> tuple[Path, list[Path
     Find final version of a script and its revision history.
 
     Returns: (final_path, [all_versions])
+
+    NOTE: For R pipelines, glob "*.R" instead of "*.py".
     """
     import glob
 
-    # Find all versions
+    # Find all versions (R pipelines: f"{task_name}*.R")
     pattern = str(stage_dir / f"{task_name}*.py")
     all_files = sorted(glob.glob(pattern))
 
@@ -512,11 +575,11 @@ def _():
 def _(mo):
     # INSTRUCTION: Copy the ENTIRE execution log section from the script.
     # Everything AFTER the "# EXECUTION LOG" marker. VERBATIM.
-    mo.accordion({
-        "Execution Log (01_fetch-ccd.py)": mo.md('''```
+    # NOTE: keep the accordion opener on ONE line exactly as below —
+    # scripts/decompile_notebook.py classifies log cells by this pattern.
+    mo.accordion({"Execution Log (01_fetch-ccd.py)": mo.md('''```
 # EXECUTION LOG - VERBATIM COPY FROM SCRIPT
-```''')
-    })
+```''')})
     return
 
 
@@ -725,7 +788,7 @@ If nothing novel, emit "None" — this is the expected common case.
 - Adding any cell type beyond the four prescribed types
 
 ### Never Do
-- Write new analysis code (group_by, agg, pivot, filter, with_columns)
+- Write new analysis code (Python: group_by, agg, pivot, filter, with_columns; R: group_by, summarise/summarize, mutate, filter, pivot_wider/pivot_longer)
 - Create interactive widgets (dropdown, slider, multiselect, text input)
 - Summarize or paraphrase script code or execution logs
 - Modify the original script files in `scripts/`
@@ -735,9 +798,9 @@ If nothing novel, emit "None" — this is the expected common case.
 ### Autonomous Deviation Rules
 
 You MAY deviate without asking for:
-- **RULE 1:** Import fixes — Add missing imports to the imports cell if marimo run fails
-- **RULE 2:** Path fixes — Correct data file paths if the absolute path has changed but the file exists elsewhere in the project
-- **RULE 3:** Cell ordering — Reorder cells to satisfy marimo's dependency graph if execution fails
+- **RULE 1:** Import fixes — Add missing imports to the imports cell if `marimo run` fails (Marimo); add missing namespace qualifications (e.g., `dplyr::glimpse`) in inspection chunks if `quarto render` fails (Quarto)
+- **RULE 2:** Path fixes — Correct data file paths if the absolute path has changed but the file exists elsewhere in the project (applies to both `marimo run` and `quarto render` failures)
+- **RULE 3:** Cell ordering — Reorder cells to satisfy marimo's dependency graph if execution fails (Marimo); deduplicate colliding `#| label:` values if `quarto render` fails (Quarto — labels must be unique)
 
 You MUST ask before:
 - Adding any code beyond `pl.read_parquet()` + `mo.ui.table()` / `mo.image()`
@@ -804,7 +867,7 @@ Awaiting guidance before proceeding.
 **This notebook assembly is COMPLETE when:**
 1. [ ] Every script from `scripts/stage{5,6,7,8}_*/` is represented in the notebook
 2. [ ] Each script follows the correct cell pattern (Four-Cell for Marimo; heading + chunk + callout + inspection for Quarto)
-3. [ ] Script code is properly archived (commented with `# ` + `pass` for Marimo; `#| eval: false` chunks for Quarto)
+3. [ ] Script code is properly archived (commented with `# ` + `pass` for Marimo; for Quarto, per-chunk `#| eval: false` on every script-archive chunk PLUS global `execute: eval: false` in the frontmatter, and the `# --- VERBATIM COPY of scripts/... ---` marker line in every script chunk)
 4. [ ] All execution logs are copied verbatim (not summarized)
 5. [ ] Version history is documented for all revised scripts
 6. [ ] Notebook executes/renders without errors (`marimo run` for Python, `quarto render` for R)
@@ -813,7 +876,7 @@ Awaiting guidance before proceeding.
 **This notebook assembly is INCOMPLETE if:**
 - Any script from Stages 5-8 is missing from the notebook
 - (Marimo) Any code archive cell contains uncommented script code
-- (Quarto) Any script archive chunk is missing `#| eval: false`
+- (Quarto) Any script archive chunk is missing `#| eval: false`, or the frontmatter lacks the global `execute: eval: false` (belt-and-suspenders contract), or any script chunk lacks its `# --- VERBATIM COPY of scripts/... ---` marker line
 - Any execution log is summarized rather than verbatim
 - The notebook contains new analysis code not from the original scripts
 - The notebook contains interactive widgets (Marimo: `mo.ui.dropdown()`, etc.)
@@ -829,7 +892,7 @@ Before returning output, verify:
 | 2 | Is script code properly archived? (Marimo: `# ` prefix + `pass`; Quarto: `#| eval: false`) | Fix archiving method for the notebook format |
 | 3 | Are execution logs verbatim (not summarized)? | Re-copy logs from script files |
 | 4 | Are there ZERO interactive widgets or new analysis code? | Remove all widgets and non-inspection code |
-| 5 | Is the ONLY new code simple data load + display? (Marimo: `pl.read_parquet()` + `mo.ui.table()`; Quarto: `arrow::read_parquet()` + `glimpse()`) | Remove any other new code |
+| 5 | Is the ONLY new code simple data load + display? (Marimo: `pl.read_parquet()` + `mo.ui.table()`; Quarto: `arrow::read_parquet()` + `dplyr::glimpse()`) | Remove any other new code |
 | 6 | Does the notebook execute/render without errors? | Fix errors (max 2 attempts, then STOP) |
 | 7 | Is version history documented for all revised scripts? | Add version tables to headers |
 | 8 | Did I detect the correct format from script extensions? | Verify `.py` → Marimo, `.R` → Quarto |
@@ -944,11 +1007,10 @@ def _():
     #
     pass  # Cell must have executable statement
 
-# RIGHT: VERBATIM copy of execution log in accordion
+# RIGHT: VERBATIM copy of execution log in accordion (opener on ONE line)
 @app.cell
 def _(mo):
-    mo.accordion({
-        "Execution Log (01_fetch-ccd.py)": mo.md('''```
+    mo.accordion({"Execution Log (01_fetch-ccd.py)": mo.md('''```
 Executed: 2026-01-24 14:32:05
 Duration: 12.5s
 
@@ -959,8 +1021,7 @@ EXECUTING: 01_fetch-ccd
 Fetched: 6,234 rows x 15 columns
 Saved to: data/raw/2026-01-24_ccd_schools.parquet
 CP1 STATUS: PASSED
-```''')
-    })
+```''')})
 
 # RIGHT: Simple data load + display (THE ONLY NEW CODE)
 @app.cell

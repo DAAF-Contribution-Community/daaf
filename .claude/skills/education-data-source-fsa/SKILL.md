@@ -53,8 +53,13 @@ url = get_codebook_url("fsa/codebook_colleges_fsa_grants")
 ```
 
 ```r
-# Example: Get codebook for FSA grants
-url <- # get_codebook_url("fsa/codebook_colleges_fsa_grants") -- use same path with mirror URL
+# Example: Get codebook for FSA grants.
+# get_codebook_url() is a Python helper; in R, construct the codebook URL from
+# the mirror root in mirrors.yaml (codebooks are .xls files co-located with data).
+# Mirror failover: see `education-data-query/references/fetch-patterns.md` (R pattern).
+config <- yaml::read_yaml("mirrors.yaml")
+mirror <- config$mirrors[[1]]
+url <- paste0(mirror$root_url, "/", "fsa/codebook_colleges_fsa_grants", ".xls")
 ```
 
 | Dataset | Codebook Path |
@@ -272,8 +277,14 @@ df_recent = df_grants.filter(pl.col("year").is_between(2015, 2021))
 library(arrow)
 library(dplyr)
 
-# Using fetch_from_mirrors() from fetch-patterns.md
-df_grants <- arrow::read_parquet("fsa/colleges_fsa_grants")
+# fetch_from_mirrors() is a Python helper; in R, build the URL from the mirror
+# root in mirrors.yaml, read directly, and filter years locally.
+# Mirror failover: see `education-data-query/references/fetch-patterns.md` (R pattern).
+config <- yaml::read_yaml("mirrors.yaml")
+mirror <- config$mirrors[[1]]
+url <- paste0(mirror$root_url, "/", "fsa/colleges_fsa_grants", ".", mirror$format)
+df_grants <- arrow::read_parquet(url) |>
+  filter(year %in% c(2019, 2020, 2021))
 
 # Filter by grant type (1 = Federal Pell Grant)
 df_pell <- df_grants |> filter(grant_type == 1)
@@ -282,7 +293,7 @@ df_pell <- df_grants |> filter(grant_type == 1)
 df_inst <- df_grants |> filter(unitid == 110635)
 
 # Filter by year range
-df_recent <- df_grants |> filter(between(year, 2015, 2021)
+df_recent <- df_grants |> filter(between(year, 2015, 2021))
 ```
 
 ## Common Pitfalls

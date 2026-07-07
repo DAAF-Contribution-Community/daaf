@@ -357,7 +357,7 @@ cor(df[, c("x1", "x2", "x3")], method = "spearman")
 
 ## References
 
-- R Core Team (2025). R: A Language and Environment for Statistical Computing.
+- R Core Team (2026). R: A Language and Environment for Statistical Computing.
   R Foundation for Statistical Computing, Vienna, Austria.
 - Hollander, M., Wolfe, D.A., & Chicken, E. (2014). *Nonparametric Statistical
   Methods*, 3rd ed. Wiley.

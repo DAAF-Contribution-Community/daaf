@@ -47,10 +47,10 @@ library(dplyr)
 
 # 95% confidence interval
 df <- df |> mutate(
-    (meps_poverty_pct - 1.96 * meps_poverty_se),
-    (meps_poverty_pct + 1.96 * meps_poverty_se),
-    (meps_poverty_se < 2.0),
-])
+  ci_lower = meps_poverty_pct - 1.96 * meps_poverty_se,
+  ci_upper = meps_poverty_pct + 1.96 * meps_poverty_se,
+  reliable = meps_poverty_se < 2.0
+)
 ```
 
 ## Known Limitations
@@ -175,19 +175,15 @@ def statistically_different(pct_a: float, se_a: float, pct_b: float, se_b: float
 ```
 
 ```r
-# statistically_different(pct_a: float, se_a: float, pct_b: float, se_b: float, alpha: float = 0.05) -> bool
-#
-# Args:
-# pct_a: meps_poverty_pct for school A
-# se_a: meps_poverty_se for school A
-# pct_b: meps_poverty_pct for school B
-# se_b: meps_poverty_se for school B
-# alpha: significance level (0.05 or 0.01)
-    diff <- pct_a - pct_b
-    se_diff <- (se_a^2 + se_b^2)^0.5
-    z_score <- abs(diff) / se_diff
-    z_critical <- 1.96 if alpha == 0.05 else 2.58
-    z_score > z_critical
+# Test if two schools have significantly different poverty rates.
+#   pct_a, se_a: meps_poverty_pct and meps_poverty_se for school A
+#   pct_b, se_b: meps_poverty_pct and meps_poverty_se for school B
+#   alpha: significance level (0.05 or 0.01)
+diff <- pct_a - pct_b
+se_diff <- sqrt(se_a^2 + se_b^2)
+z_score <- abs(diff) / se_diff
+z_critical <- if (alpha == 0.05) 1.96 else 2.58
+statistically_different <- z_score > z_critical
 ```
 
 ### Aggregating to Higher Levels
@@ -219,21 +215,18 @@ district_agg = (
 library(dplyr)
 
 # Enrollment-weighted aggregation with proper SE propagation
-district_agg <- (
-    df |> filter(
-        !is.na(meps_poverty_pct)
-        & !is.na(enrollment)
-    )
-    .group_by("leaid")
-    .agg(
-        ((meps_poverty_pct * enrollment).sum()
-         / sum(enrollment, na.rm = TRUE)),
-        sum(enrollment, na.rm = TRUE),
-        # SE of weighted average (approximate)
-        ((meps_poverty_se^2 * enrollment^2).sum().sqrt()
-         / sum(enrollment, na.rm = TRUE)),
-    )
-)
+district_agg <- df |>
+  filter(!is.na(meps_poverty_pct), !is.na(enrollment)) |>
+  group_by(leaid) |>
+  summarise(
+    meps_weighted = sum(meps_poverty_pct * enrollment, na.rm = TRUE) /
+      sum(enrollment, na.rm = TRUE),
+    total_enrollment = sum(enrollment, na.rm = TRUE),
+    # SE of weighted average (approximate)
+    meps_se_agg = sqrt(sum(meps_poverty_se^2 * enrollment^2, na.rm = TRUE)) /
+      sum(enrollment, na.rm = TRUE),
+    .groups = "drop"
+  )
 ```
 
 ### Regression with MEPS
@@ -274,10 +267,10 @@ assert valid["meps_poverty_se"].min() >= 0, "Negative SE values"
 ```r
 library(dplyr)
 
-valid <- df |> filter(!is.na(meps_poverty_pct)
-stopifnot("Negative poverty values" = valid["meps_poverty_pct"].min() >= 0)
-stopifnot("MEPS out of range" = valid["meps_poverty_pct"].max() <= 100)
-stopifnot("Negative SE values" = valid["meps_poverty_se"].min() >= 0)
+valid <- df |> filter(!is.na(meps_poverty_pct))
+stopifnot("Negative poverty values" = min(valid$meps_poverty_pct) >= 0)
+stopifnot("MEPS out of range" = max(valid$meps_poverty_pct) <= 100)
+stopifnot("Negative SE values" = min(valid$meps_poverty_se, na.rm = TRUE) >= 0)
 ```
 
 3. **Check coverage**
@@ -290,9 +283,9 @@ print(f"Years covered: {df['year'].unique().sort().to_list()}")
 ```r
 library(dplyr)
 
-cat(paste0("Schools covered: ", format(df['ncessch'].n_unique(), big.mark = ",")), "\n")
-cat(paste0("States covered: ", df['fips'].n_unique()), "\n")
-cat(paste0("Years covered: ", df['year'].unique().sort()), "\n")
+cat(sprintf("Schools covered: %s\n", format(n_distinct(df$ncessch), big.mark = ",")))
+cat(sprintf("States covered: %d\n", n_distinct(df$fips)))
+cat(sprintf("Years covered: %s\n", paste(sort(unique(df$year)), collapse = ", ")))
 ```
 
 4. **Assess reliability distribution**
@@ -305,9 +298,9 @@ print(f"Reliable estimates (SE<2.0): {reliable_pct:.1%}")
 ```r
 library(dplyr)
 
-cat(summary(df$meps_poverty_se), "\n")
-reliable_pct <- df |> filter(meps_poverty_se < 2.0).height / nrow(df)
-cat(paste0("Reliable estimates (SE<2.0): ", sprintf("%.1f%%", reliable_pct * 100)), "\n")
+print(summary(df$meps_poverty_se))
+reliable_pct <- sum(df$meps_poverty_se < 2.0, na.rm = TRUE) / nrow(df)
+cat(sprintf("Reliable estimates (SE<2.0): %.1f%%\n", reliable_pct * 100))
 ```
 
 ## Reporting Recommendations

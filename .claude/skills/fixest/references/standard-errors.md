@@ -101,8 +101,11 @@ default.
 ### Custom Bandwidth
 
 ```r
-# Explicit bandwidth (number of lags)
-summary(fit, vcov = NW ~ 5)  # 5-lag Newey-West
+# Explicit bandwidth (number of lags): pass the lag to the NW() helper
+summary(fit, vcov = NW(5))   # 5-lag Newey-West
+# NOTE: `vcov = NW ~ 5` is NOT valid syntax and errors — the formula RHS of
+# vcov helpers is reserved for panel/cluster variables, not the lag count.
+# A formula is used when overriding the panel variables, e.g. NW ~ id + period.
 ```
 
 ## Driscoll-Kraay
@@ -132,31 +135,38 @@ For spatially correlated errors (units that are geographically close may have
 correlated errors):
 
 ```r
-# Requires latitude and longitude columns
-fit <- feols(y ~ x1, data = df,
-             vcov = conley(cutoff = 100, lat = "latitude", lon = "longitude"))
+# Requires latitude and longitude columns (auto-detected from common names)
+fit <- feols(y ~ x1, data = df, vcov = conley(cutoff = 100))
 
-# With distance in miles (default is km)
-fit <- feols(y ~ x1, data = df,
-             vcov = conley(cutoff = 50, lat = "lat", lon = "lon", distance = "miles"))
+# conley() has NO lat/lon arguments — its only arguments are
+# cutoff, pixel, and distance. To name the coordinate columns explicitly,
+# use vcov_conley() post-estimation:
+fit <- feols(y ~ x1, data = df)
+vcov_conley(fit, lat = "latitude", lon = "longitude", cutoff = 100)
+
+# Cutoff is in km; use an "mi" suffix string for miles
+fit <- feols(y ~ x1, data = df, vcov = conley(cutoff = "50mi"))
 ```
 
-The `cutoff` parameter specifies the distance beyond which spatial correlation
-is assumed to be zero. Units farther apart than `cutoff` contribute zero to the
-spatial covariance kernel.
+The `cutoff` parameter specifies the distance (in km, or `"Xmi"` for miles)
+beyond which spatial correlation is assumed to be zero. Units farther apart
+than `cutoff` contribute zero to the spatial covariance kernel. If `cutoff` is
+omitted, fixest deduces one via a rule of thumb — convenient, but a deliberate
+cutoff is preferable in research scripts.
 
-### Conley Parameters
+### Conley Parameters (conley() / vcov_conley())
 
 | Parameter | Default | Purpose |
 |-----------|---------|---------|
-| `cutoff` | Required | Distance cutoff (km or miles) |
-| `lat` | Auto-detected | Latitude column name |
-| `lon` | Auto-detected | Longitude column name |
-| `distance` | `"km"` | Distance units: `"km"` or `"miles"` |
+| `cutoff` | Rule-of-thumb if missing | Distance cutoff in km (`"100mi"` string for miles) |
+| `pixel` | `NULL` | Aggregate points into pixel-km squares (speed vs precision) |
+| `distance` | `"triangular"` | Distance computation: `"triangular"` or `"spherical"` (great circle) |
+| `lat`, `lon` | Auto-detected | Coordinate column names — `vcov_conley()` only |
 
-fixest will attempt to auto-detect latitude and longitude columns from common
-column names (e.g., "lat", "latitude", "lon", "longitude"). If detection fails,
-specify them explicitly.
+fixest auto-detects latitude and longitude columns from common column names
+(e.g., "lat", "latitude", "lon", "longitude"). If detection fails, specify them
+explicitly via `vcov_conley()` — the in-formula `conley()` helper cannot take
+column names.
 
 ## Two-Way Clustering
 
@@ -187,45 +197,52 @@ V_twoway = V_state + V_year - V_state_x_year
 The `ssc()` function controls degrees-of-freedom adjustments:
 
 ```r
-# View default SSC settings
-fixest::setFixest_ssc()
+# View default SSC settings (getFixest_ssc() reads; setFixest_ssc() SETS)
+print(fixest::ssc())        # Shows the package defaults
+fixest::getFixest_ssc()     # Shows any session-level override
 
-# Customize
+# Customize (canonical 0.14 argument names)
 fit <- feols(y ~ x1 | fe, data = df,
              vcov = ~state,
-             ssc = ssc(adj = TRUE, fixef.K = "none",
-                       cluster.adj = TRUE, cluster.df = "min"))
+             ssc = ssc(K.adj = TRUE, K.fixef = "none",
+                       G.adj = TRUE, G.df = "min"))
 ```
 
 ### `ssc()` Parameters
 
+Canonical names in 0.14 are `K.*` (parameter counting) and `G.*` (cluster
+adjustment); the pre-0.13 names (`adj`, `fixef.K`, `cluster.adj`,
+`cluster.df`) still work as deprecated aliases.
+
 | Parameter | Default | Meaning |
 |-----------|---------|---------|
-| `adj` | `TRUE` | Apply (N-1)/(N-k) small-sample adjustment |
-| `fixef.K` | `"none"` | Count FE in k: `"none"`, `"full"`, or `"nested"` |
-| `cluster.adj` | `TRUE` | Apply G/(G-1) cluster adjustment |
-| `cluster.df` | `"min"` | Two-way cluster DOF: `"min"` (conservative) or `"conventional"` |
+| `K.adj` | `TRUE` | Apply (N-1)/(N-K) small-sample adjustment |
+| `K.fixef` | `"nonnested"` | Count FE in K: `"none"`, `"full"`, or `"nonnested"` (FEs nested in clusters excluded) |
+| `K.exact` | `FALSE` | Compute the exact number of FE parameters (collinearity-aware) |
+| `G.adj` | `TRUE` | Apply G/(G-1) cluster adjustment |
+| `G.df` | `"min"` | Two-way cluster DOF: `"min"` (conservative) or `"conv"` (conventional) |
+| `t.df` | `"min"` | DOF for the t distribution of test statistics |
 
 ### Matching Stata Results
 
 ```r
-# Match Stata's one-way clustering (vce(cluster state))
+# Match Stata's one-way clustering (vce(cluster state)).
+# NOTE: fixest's default K.fixef is "nonnested", so set "none" explicitly.
 fit <- feols(y ~ x1 | fe, data = df,
              vcov = ~state,
-             ssc = ssc(adj = TRUE, fixef.K = "none",
-                       cluster.adj = TRUE))
+             ssc = ssc(K.adj = TRUE, K.fixef = "none", G.adj = TRUE))
 
 # Match Stata's two-way clustering
 fit <- feols(y ~ x1 | fe, data = df,
              vcov = ~state + year,
-             ssc = ssc(cluster.df = "conventional"))
+             ssc = ssc(G.df = "conv"))
 ```
 
 ### Setting Defaults Globally
 
 ```r
 # Set SSC defaults for the entire session
-setFixest_ssc(ssc(adj = TRUE, fixef.K = "none", cluster.adj = TRUE))
+setFixest_ssc(ssc(K.adj = TRUE, K.fixef = "none", G.adj = TRUE))
 ```
 
 ## Default SE Behavior
@@ -252,8 +269,12 @@ summary(fit, vcov = ~entity)
 # setFixest_vcov() takes NAMED arguments keyed by FE structure, not a
 # `vcov = ` argument. The recognized keys are: no_FE, one_FE, two_FE,
 # panel, all, and reset.
-setFixest_vcov(all = "cluster")         # Default to clustering everywhere
+# CAVEAT: the `all` key only accepts "iid" or "hetero" (clustering is
+# structure-dependent, so "cluster" must go through the per-structure keys).
 setFixest_vcov(all = "hetero")          # Default to robust everywhere
+setFixest_vcov(one_FE = "cluster",      # Default to clustering whenever
+               two_FE = "cluster",      # the model has FE / panel structure
+               panel = "cluster")
 setFixest_vcov(reset = TRUE)            # Reset to package defaults (IID)
 
 # Structure-conditional defaults: apply different SEs by FE count

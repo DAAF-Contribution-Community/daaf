@@ -155,7 +155,7 @@ valid_data = df.filter(pl.col("meps_poverty_pct").is_not_null())
 library(dplyr)
 
 # Correct
-valid_data <- df |> filter(!is.na(meps_poverty_pct)
+valid_data <- df |> filter(!is.na(meps_poverty_pct))
 
 # Wrong (MEPS doesn't use -1, -2, -3 coded values)
 # df |> filter(meps_poverty_pct >= 0)  # Unnecessary
@@ -176,7 +176,10 @@ url = get_codebook_url("meps/codebook_schools_meps")
 ```
 
 ```r
-url <- # get_codebook_url("meps/codebook_schools_meps") -- use same path with mirror URL
+# get_codebook_url() is a Python helper; in R, build the URL from the mirror root.
+# Mirror failover: see `education-data-query/references/fetch-patterns.md` (R pattern)
+mirror <- yaml::read_yaml("mirrors.yaml")$mirrors[[1]]
+url <- paste0(mirror$root_url, "/", "meps/codebook_schools_meps", ".xls")
 ```
 
 > **Truth Hierarchy:** When interpreting variable values, apply this priority:
@@ -208,17 +211,15 @@ df = df.with_columns(
 library(dplyr)
 
 # Filter to valid poverty estimates only (drop nulls)
-df <- df |> filter(!is.na(meps_poverty_pct)
+df <- df |> filter(!is.na(meps_poverty_pct))
 
 # High-poverty schools (top quartile nationally)
 high_poverty <- df |> filter(meps_poverty_ptl >= 75)
 
 # Use modified MEPS for high-poverty districts
+# (coalesce = take modified estimate when present, else original)
 df <- df |> mutate(
-    pl.when(!is.na(meps_mod_poverty_pct))
-    .then(meps_mod_poverty_pct)
-    .otherwise(meps_poverty_pct)
-    
+  poverty_pct_best = coalesce(meps_mod_poverty_pct, meps_poverty_pct)
 )
 ```
 

@@ -13,13 +13,14 @@ DAAF's R stack provides strong coverage:
 
 > **Versions referenced:**
 > R: fixest 0.14.0, marginaleffects 0.32.0, rdrobust 3.0.0
-> Python: pyfixest 0.40.0, marginaleffects (unpinned), rdrobust (unpinned)
+> Python: pyfixest 0.40.0, marginaleffects 0.5.0, rdrobust 1.3.0
 > See SKILL.md § Library Versions for the complete version table.
 
-> **Availability:** Of the R packages below, only `fixest` and `marginaleffects`
-> are pre-installed in DAAF. The specialized causal packages referenced here —
-> `did2s`, `rdrobust`, `MatchIt`, `WeightIt`, `cobalt`, `grf`, `Synth`,
-> `augsynth`, `gsynth`, `survival` — are NOT pre-installed; add
+> **Availability:** Of the R packages below, `fixest`, `marginaleffects`,
+> `rdrobust` (3.0.0), and `survival` (ships with the R distribution) are
+> pre-installed in DAAF. The specialized causal packages referenced here —
+> `did2s`, `did`, `MatchIt`, `WeightIt`, `cobalt`, `grf`, `Synth`,
+> `augsynth`, `gsynth` — are NOT pre-installed; add
 > `install.packages("<pkg>")` at analysis time before using them.
 
 ---
@@ -162,6 +163,7 @@ statsmodels, pyfixest, and scikit-learn.
 |--------|---|--------|----------|
 | TWFE DiD | `fixest::feols()` | `pf.feols()` | Very High |
 | did2s | `did2s::did2s()` | `pf.did2s()` | Very High |
+| Callaway-Sant'Anna | `did::att_gt()` (not pre-installed) | `csdid` (`pip install csdid`) | Medium |
 | Sun-Abraham | `fixest::sunab()` | `pf.event_study(est="saturated")` | High |
 | LP-DiD | Manual | `pf.lpdid()` | Python has better wrapper |
 | RD | `rdrobust` | `rdrobust` (Python) | Very High (same authors) |

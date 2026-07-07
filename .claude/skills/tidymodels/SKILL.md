@@ -3,15 +3,17 @@ name: tidymodels
 description: |
   R machine learning with tidymodels: recipes (preprocessing), parsnip
   (model specs), workflows (fit pipelines), tune (hyperparameters), rsample
-  (resampling). Engines: ranger (RF), glmnet (lasso/ridge), xgboost. UMAP
-  via uwot. Use when execution language is R. Python equivalent: scikit-learn.
+  (resampling). Engines: ranger (RF), glmnet (lasso/ridge), xgboost, kknn.
+  Model interpretation (permutation importance, PDP/ICE, SHAP via
+  DALEX/iml/kernelshap) and fairness assessment (fairmodels). UMAP via uwot.
+  Use when execution language is R. Python equivalent: scikit-learn.
   For econometric regression use fixest or r-stats.
 autoload: never
 metadata:
-  audience: code-producing agents
+  audience: research-coders
   domain: r-library
   library-version: "tidymodels 1.4.1"
-  skill-last-updated: "2026-05-08"
+  skill-last-updated: "2026-07-07"
   tags: ["r", "machine-learning", "tidymodels", "classification", "prediction"]
 ---
 
@@ -25,7 +27,9 @@ pipeline, tune for hyperparameter optimization via grid search and cross-validat
 rsample for resampling (v-fold CV, bootstrap, LOO), and yardstick for evaluation
 metrics (rmse, accuracy, roc_auc, confusion matrix). Engines: ranger (random
 forest), glmnet (lasso/ridge/elasticnet), xgboost (gradient boosting), kknn
-(k-nearest neighbors). UMAP via uwot (not part of tidymodels). Use when execution
+(k-nearest neighbors). Also covers model interpretation (permutation importance,
+PDP/ICE, SHAP via DALEX, iml, and kernelshap) and fairness assessment
+(fairmodels). UMAP via uwot (not part of tidymodels). Use when execution
 language is R and the task involves classification, prediction, clustering via
 recipes, or preprocessing for ML. Python equivalent: scikit-learn. For econometric
 regression (OLS, FE, IV, DiD) use fixest or r-stats.
@@ -65,9 +69,15 @@ This skill targets **tidymodels 1.4.1** (R 4.5.3). Key package versions:
 | yardstick | 1.4.0 | Evaluation metrics |
 | dials | 1.4.3 | Parameter ranges for tuning |
 | ranger | 0.18.0 | Random forest engine |
-| glmnet | 4.1.10 | Regularized regression engine |
+| glmnet | 4.1-10 | Regularized regression engine |
 | xgboost | 3.2.1.1 | Gradient boosting engine |
+| kknn | 1.4.1 | K-nearest neighbors engine |
 | uwot | 0.2.4 | UMAP (not tidymodels, standalone) |
+| vip | 0.4.5 | Variable importance plots |
+| DALEX | 2.5.3 | Model interpretation framework |
+| iml | 0.11.4 | Model interpretation framework |
+| kernelshap | 0.9.1 | Kernel SHAP |
+| fairmodels | 1.2.2 | Fairness assessment |
 
 ## How to Use This Skill
 
@@ -86,6 +96,8 @@ Each topic in `./references/` contains focused documentation:
 | `engines.md` | ranger, glmnet, xgboost, kknn: engine-specific args, installation, tuning params | Engine configuration |
 | `unsupervised.md` | PCA via recipes::step_pca, UMAP via uwot::umap(), k-means via stats::kmeans | Dimension reduction, clustering |
 | `evaluation.md` | yardstick metrics: rmse, accuracy, roc_auc, conf_mat, metric_set() | Evaluating model performance |
+| `interpretation.md` | Permutation importance, PDP/ICE, SHAP via DALEX/iml/kernelshap, vip, native engine importance | Explaining model predictions |
+| `fairness.md` | fairness_check() via fairmodels + DALEX, yardstick group metrics, reweight/roc_pivot mitigation | Fairness assessment of classifiers |
 | `gotchas.md` | Recipe baking order, data leakage, parsnip mode, engine args, tidymodels vs caret | Debugging common mistakes |
 
 ### Reading Order
@@ -95,9 +107,11 @@ Each topic in `./references/` contains focused documentation:
 3. **Choosing a model?** Read `models.md` then `engines.md`
 4. **Need tuning?** Read `tuning.md` then `resampling.md`
 5. **Evaluating results?** Read `evaluation.md`
-6. **Unsupervised task?** Read `unsupervised.md`
-7. **Coming from scikit-learn?** Read `quickstart.md` then `gotchas.md`
-8. **Having issues?** Check `gotchas.md` first
+6. **Explaining predictions or feature importance?** Read `interpretation.md`
+7. **Fairness assessment?** Read `fairness.md`
+8. **Unsupervised task?** Read `unsupervised.md`
+9. **Coming from scikit-learn?** Read `quickstart.md` then `gotchas.md`
+10. **Having issues?** Check `gotchas.md` first
 
 ## Related Skills
 
@@ -135,8 +149,8 @@ What kind of prediction?
 |       use fixest or r-stats instead
 +-- Categorical outcome (classification)
 |   +-- Binary --> logistic_reg() (./references/models.md)
-|   +-- Multi-class --> logistic_reg(multi_class) or rand_forest()
-|   |   (./references/models.md)
+|   +-- Multi-class --> multinom_reg() or rand_forest()
+|   |   (./references/models.md; logistic_reg() is binary-only)
 |   +-- Best performance --> boost_tree() with xgboost
 |   |   (./references/models.md + ./references/engines.md)
 |   +-- Need tuning --> ./references/tuning.md
@@ -169,6 +183,24 @@ What evaluation?
 |   +-- collect_metrics() from tune_grid --> ./references/tuning.md
 +-- Compare multiple models
 |   +-- collect_metrics() + bind_rows --> ./references/evaluation.md
+```
+
+### "I need to interpret a model or assess fairness"
+
+```
+What do I need?
++-- Feature importance (permutation, model-agnostic) --> DALEX model_parts()
+|   or iml FeatureImp (./references/interpretation.md)
++-- Feature importance (engine-native, fast) --> ranger/xgboost importance + vip
+|   (./references/interpretation.md; ranger needs importance= in set_engine)
++-- Feature effects (PDP / ICE) --> DALEX model_profile() or iml FeatureEffect
+|   (./references/interpretation.md)
++-- SHAP values --> kernelshap (many rows) or predict_parts/Shapley (single row)
+|   (./references/interpretation.md)
++-- Fairness metrics by protected group --> fairmodels fairness_check()
+|   (./references/fairness.md)
++-- NOTE: methodology (when to interpret, causal caveats, fairness criteria)
+    --> data-scientist skill: supervised-ml.md
 ```
 
 ### "I need to tune hyperparameters"
@@ -311,6 +343,7 @@ preds <- fit |> predict(new_data = test_data)
 | Selector functions | `./references/recipes.md` |
 | linear_reg | `./references/models.md` |
 | logistic_reg | `./references/models.md` |
+| multinom_reg (multiclass) | `./references/models.md` |
 | rand_forest | `./references/models.md` |
 | boost_tree | `./references/models.md` |
 | nearest_neighbor | `./references/models.md` |
@@ -329,6 +362,8 @@ preds <- fit |> predict(new_data = test_data)
 | finalize_workflow() | `./references/tuning.md` |
 | show_best() | `./references/tuning.md` |
 | dials parameter ranges | `./references/tuning.md` |
+| grid_space_filling / grid types | `./references/tuning.md` |
+| Parallel tuning (future backend) | `./references/tuning.md` |
 | vfold_cv | `./references/resampling.md` |
 | bootstraps | `./references/resampling.md` |
 | loo_cv | `./references/resampling.md` |
@@ -336,6 +371,7 @@ preds <- fit |> predict(new_data = test_data)
 | strata argument | `./references/resampling.md` |
 | analysis() / assessment() | `./references/resampling.md` |
 | initial_split / training / testing | `./references/resampling.md` |
+| initial_validation_split / validation_set | `./references/resampling.md` |
 | ranger (random forest) | `./references/engines.md` |
 | glmnet (lasso / ridge / elasticnet) | `./references/engines.md` |
 | xgboost (gradient boosting) | `./references/engines.md` |
@@ -349,13 +385,19 @@ preds <- fit |> predict(new_data = test_data)
 | roc_auc, roc_curve | `./references/evaluation.md` |
 | conf_mat | `./references/evaluation.md` |
 | metric_set() | `./references/evaluation.md` |
+| Permutation importance (DALEX / iml) | `./references/interpretation.md` |
+| PDP / ICE plots | `./references/interpretation.md` |
+| SHAP (kernelshap, predict_parts, Shapley) | `./references/interpretation.md` |
+| vip / engine-native importance | `./references/interpretation.md` |
+| fairness_check (fairmodels) | `./references/fairness.md` |
+| Group-wise yardstick metrics | `./references/fairness.md` |
+| Fairness mitigation (reweight, roc_pivot) | `./references/fairness.md` |
 | Recipe baking order | `./references/gotchas.md` |
 | Data leakage in recipes | `./references/gotchas.md` |
 | parsnip mode requirement | `./references/gotchas.md` |
 | Engine-specific args (set_engine) | `./references/gotchas.md` |
 | tidymodels vs caret | `./references/gotchas.md` |
 | Prediction type (.pred vs .pred_class) | `./references/gotchas.md` |
-| set_output for scikit-learn comparison | `./references/gotchas.md` |
 
 ## Citation
 

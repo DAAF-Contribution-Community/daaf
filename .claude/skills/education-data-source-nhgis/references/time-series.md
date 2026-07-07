@@ -187,7 +187,9 @@ crosswalk <- read_csv("nhgis_blk2000_tr2010.csv")
 blocks_2000 <- read_csv("nhgis_2000_blocks.csv")
 
 # Join crosswalk to block data
-merged <- crosswalk |> left_join(blocks_2000, by = c("GJOIN2000" = "GISJOIN"))
+# (inner_join matches the Python twin: Polars .join() defaults to how="inner";
+# left_join would propagate NA into the sum() aggregation for unmatched blocks)
+merged <- crosswalk |> inner_join(blocks_2000, by = c("GJOIN2000" = "GISJOIN"))
 
 # Apply weights to allocate population
 merged <- merged |> mutate(pop_allocated = total_pop * wt_pop)

@@ -132,7 +132,7 @@ The actual output will include more detail as each step progresses, but these ar
 ### What the installer does
 
 1. **Creates an installation directory** called `daaf-docker/` in whatever folder your terminal is currently in, containing all the files you'll need to run and manage DAAF from here on. For example, if you open your terminal and it starts in your home folder (`~` on Mac/Linux, `C:\Users\YourName` on Windows), that's where `daaf-docker/` will be created. You can `cd` to a different location first if you'd prefer to install elsewhere.
-2. **Builds the Docker image** with Python 3.12, 50+ data science packages, geospatial libraries, and Claude Code pre-installed, plus R 4.5.3 with 30+ R data science packages and the Quarto CLI 1.7.29 (see [**R support (included)**](#r-support-included) below). The first build downloads everything and takes a few minutes; subsequent rebuilds use Docker's layer cache and are much faster.
+2. **Builds the Docker image** with Python 3.12, 50+ data science packages, geospatial libraries, and Claude Code pre-installed, plus R 4.5.3 with 60+ pinned R data science packages and the Quarto CLI 1.7.29. R is a first-class execution language in every DAAF image — it ships alongside Python with nothing to enable (see [**R support (included)**](#r-support-included) below for details). The first build downloads everything and takes a few minutes; subsequent rebuilds use Docker's layer cache and are much faster.
 3. **Downloads the DAAF repository** directly into the Docker volume inside the container. This gives you a full file edit and version history via Git.
 4. **Enforces security controls on Claude.** One of the big benefits of using Docker is that we can really keep Claude Code under control. The Docker container runs as a non-root user with all Linux capabilities dropped (`cap_drop: ALL`) and privilege escalation explicitly blocked (`no-new-privileges`). Even if Claude Code somehow tried to do something it shouldn't, the operating system kernel would stop it.
 
@@ -345,7 +345,7 @@ bash run_vscode.sh              # macOS / Linux
 .\run_vscode.ps1                # Windows
 ```
 
-This opens a full VS Code editor at the URL [http://localhost:2720](http://localhost:2720) running in your favorite browser where you can explore the entire DAAF file tree, edit files, preview Markdown reports, view/edit Python scripts, and track changes with the built-in Git tools. It comes pre-loaded with extensions for Python and R syntax highlighting, Markdown preview, Git history visualization, and CSV viewing. The password is displayed in the terminal when you launch the script (default: `daaf`). A few things worth highlighting:
+This opens a full VS Code editor at the URL [http://localhost:2720](http://localhost:2720) running in your favorite browser where you can explore the entire DAAF file tree, edit files, preview Markdown reports, view/edit Python and R scripts, and track changes with the built-in Git tools. It comes pre-loaded with extensions for Python and R syntax highlighting, Markdown preview, Git history visualization, and CSV viewing. The password is displayed in the terminal when you launch the script (default: `daaf`). A few things worth highlighting:
 
 - **The default access password is "daaf"** but the password can be customized at any time in your environment_settings.txt file. See the environment_settings_example.txt in your daaf-docker folder for instructions there.
 - **Markdown preview:** Right-click any `.md` file and select **"Open Preview"**, or press `Shift+Ctrl+V`, to see rendered Markdown with proper formatting — headers, tables, links, and all. This is the easiest way to read DAAF's reports and plans.
@@ -697,10 +697,12 @@ When `DAAF_DEV` is unset or `0` (the default for every normal install), none of 
 Every DAAF image ships with **R** as a first-class execution language alongside Python — there is nothing to enable and no flag to set. The build installs:
 
 - **R 4.5.3** (the current DAAF-pinned R release)
-- **30+ R packages** covering data manipulation (tidyverse), visualization (ggplot2, plotly, gt), econometrics (fixest, plm, survey), spatial analysis (sf, terra), and machine learning (tidymodels) — installed from a **date-pinned Posit Package Manager (P3M) snapshot** so rebuilds produce identical package versions
+- **60+ pinned R packages** covering data manipulation (tidyverse), visualization (ggplot2, plotly, gt), econometrics (fixest, plm, survey), spatial analysis (sf, terra), and machine learning (tidymodels) — installed from a **date-pinned Posit Package Manager (P3M) snapshot** so rebuilds produce identical package versions
 - **Quarto CLI 1.7.29** — R's literate-programming notebook system, the R equivalent of Marimo for Python
 
 Including R (with the full package set and Quarto) accounts for roughly **2.2 GB** of the image size (measured: 8.61 GB with R vs. 6.4 GB without).
+
+**To use R**, just tell DAAF "set execution language to R" at the start of a session — no configuration files to edit. See the [R and Language Support FAQ](07_faq_technical.md#r-and-language-support) for details on switching between languages.
 
 The R smoke tests and their runner in `scripts/smoke_tests/` exercise each R library skill and run in any DAAF container.
 

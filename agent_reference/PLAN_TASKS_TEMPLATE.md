@@ -79,7 +79,7 @@ total_waves: 0                        # Total wave count (populated by data-plan
   <action>
     1. Load education-data-query skill
     2. Use mirror fetch pattern for MEPS poverty data
-    3. Apply local filters with Polars
+    3. Apply local filters with Polars (dplyr/arrow for R)
     4. Save to parquet format
     5. Run CP1 validation
   </action>
@@ -131,7 +131,7 @@ total_waves: 0                        # Total wave count (populated by data-plan
 
 <task name="join-ccd-meps" type="auto" wave="3">
   <depends_on>clean-ccd, clean-meps</depends_on>
-  <skill>data-scientist, polars</skill>
+  <skill>data-scientist, polars</skill>  <!-- R equivalent: data-scientist, tidyverse -->
   <agent>research-executor</agent>
   <cardinality>1:1</cardinality>
   <files>
@@ -193,14 +193,14 @@ total_waves: 0                        # Total wave count (populated by data-plan
 
 <task name="subgroup-poverty-profile" type="auto" wave="4">
   <depends_on>join-ccd-meps</depends_on>
-  <skill>data-scientist, polars</skill>
+  <skill>data-scientist, polars</skill>  <!-- R equivalent: data-scientist, tidyverse -->
   <agent>research-executor</agent>
   <files>
     <input>data/processed/YYYY-MM-DD_analysis.parquet</input>
     <output>output/analysis/YYYY-MM-DD_subgroup_profile.parquet</output>
   </files>
   <action>
-    1. Load polars skill
+    1. Load polars skill (tidyverse for R)
     2. Load analysis dataset
     3. Compute summary statistics (mean, median, SD, IQR, N) by {subgroup_variable}
     4. Compute distributional measures (percentile ratios, Gini if applicable)

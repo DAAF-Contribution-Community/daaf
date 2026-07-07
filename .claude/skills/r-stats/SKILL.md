@@ -103,6 +103,14 @@ The extension packages covered by this skill complete the modeling toolkit:
 5. **Building publication tables?** Read `reporting.md`
 6. **Coming from Python?** Read `quickstart.md` (R is the original formula syntax)
 
+**The reference-file routing in this skill applies to advisory and brainstorming
+turns as much as implementation.** Recommending a model, reviewing an analysis
+plan, or answering a question that touches a routed topic calls for reading the
+routed reference file just as much as writing code does — the reference files
+carry curated caveats and environment-specific constraints (e.g., which
+packages are pre-installed, sandwich function signatures) that this overview
+and general knowledge lack.
+
 ## Related Skills
 
 - **statsmodels**: Python equivalent for OLS/GLM/time series. If execution
@@ -369,7 +377,7 @@ y ~ (x1 + x2 + x3)^2
 When base R stats functions are used as a primary analytical tool, include in
 the report's Software & Tools references:
 
-> R Core Team (2025). R: A Language and Environment for Statistical Computing.
+> R Core Team (2026). R: A Language and Environment for Statistical Computing.
 > R Foundation for Statistical Computing, Vienna, Austria.
 > https://www.R-project.org/
 

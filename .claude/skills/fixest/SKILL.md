@@ -8,7 +8,7 @@ description: |
   use plm; for GLM without FE use r-stats.
 autoload: never
 metadata:
-  audience: code-producing agents
+  audience: research-coders
   domain: r-library
   library-version: "fixest 0.14.0"
   skill-last-updated: "2026-05-08"
@@ -59,7 +59,9 @@ release building on those defaults.
 Key defaults in 0.14.0:
 - Default standard errors: `"iid"` (not cluster-by-first-FE as in pre-0.13)
 - Singleton removal: on by default (`fixef.rm = "perfect_fit"`)
-- `ssc()` arguments: `adj`, `fixef.K`, `cluster.adj`, `cluster.df`
+- `ssc()` arguments (canonical 0.14 names): `K.adj`, `K.fixef`, `K.exact`,
+  `G.adj`, `G.df`, `t.df` — the pre-0.13 names (`adj`, `fixef.K`,
+  `cluster.adj`, `cluster.df`) still work as deprecated back-compat aliases
 
 ## How to Use This Skill
 
@@ -86,6 +88,14 @@ Each topic in `./references/` contains focused documentation:
 4. **Making tables?** Check `reporting.md`
 5. **Non-OLS models?** Read `models.md`
 6. **Coming from pyfixest?** Read `quickstart.md` then `gotchas.md`
+
+**The reference-file routing in this skill applies to advisory and brainstorming
+turns as much as implementation.** Recommending an SE choice, reviewing a DiD
+plan, or answering a question that touches a routed topic calls for reading the
+routed reference file just as much as writing code does — the reference files
+carry curated caveats and environment-specific constraints (e.g., exact
+`fitstat` type names, `ssc()` defaults) that this overview and general
+knowledge lack.
 
 ## Related Skills
 

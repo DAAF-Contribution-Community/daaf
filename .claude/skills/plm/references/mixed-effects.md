@@ -291,11 +291,11 @@ summary(fit_logit)
 fit_pois <- glmer(count ~ x1 + (1 | group),
                   data = df, family = poisson)
 
-# Negative binomial (via MASS::glm.nb link or lme4 nAGQ)
-# lme4 does not natively support negative binomial
-# Use glmmTMB package instead:
-# library(glmmTMB)
-# fit_nb <- glmmTMB(count ~ x1 + (1 | group), family = nbinom2, data = df)
+# Negative binomial mixed model: lme4 provides glmer.nb()
+# (theta is estimated by alternating between glmer fits and theta updates)
+fit_nb <- glmer.nb(count ~ x1 + (1 | group), data = df)
+# glmmTMB is a faster/more flexible alternative but is not pre-installed
+# in the DAAF image
 ```
 
 ---

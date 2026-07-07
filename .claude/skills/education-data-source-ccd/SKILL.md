@@ -259,8 +259,10 @@ url = get_codebook_url("ccd/codebook_schools_ccd_directory")
 ```
 
 ```r
-# R equivalent
-url <- get_codebook_url("ccd/codebook_schools_ccd_directory")
+# R equivalent -- get_codebook_url() is a Python helper; construct the URL directly
+# Mirror failover: see education-data-query/references/fetch-patterns.md (R pattern)
+mirrors <- yaml::read_yaml("mirrors.yaml")
+url <- paste0(mirrors$mirrors[[1]]$root_url, "ccd/codebook_schools_ccd_directory.xls")
 ```
 
 > **Truth Hierarchy:** When interpreting variable values, apply this priority:

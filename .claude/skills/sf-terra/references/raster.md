@@ -64,9 +64,11 @@ r_multi <- c(r1, r2, r3)  # Stack layers
 # GeoTIFF (default and recommended)
 writeRaster(r, "output.tif", overwrite = TRUE)
 
-# With compression
+# With compression and internal tiling (the GTiff option is TILED=YES;
+# "TILEDB" is a different GDAL driver — GDAL warns "driver GTiff does not
+# support creation option TILEDB" and ignores it, verified)
 writeRaster(r, "output.tif", overwrite = TRUE,
-            gdal = c("COMPRESS=LZW", "TILEDB=YES"))
+            gdal = c("COMPRESS=LZW", "TILED=YES"))
 
 # NetCDF
 writeRaster(r, "output.nc", overwrite = TRUE)

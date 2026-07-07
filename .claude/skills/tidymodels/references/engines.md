@@ -58,8 +58,13 @@ spec <- rand_forest(trees = 500, mtry = 4, min_n = 5) |>
 
 ### Variable Importance
 
+Importance must be requested at fit time via `set_engine("ranger", importance =
+"impurity")` (or `"permutation"`) — with ranger's default `importance = "none"`,
+both `$variable.importance` and vip fail with "No variable importance found"
+(verified).
+
 ```r
-fit <- wf |> fit(data = train_data)
+fit <- wf |> fit(data = train_data)  # spec must include importance = "impurity"
 
 # Extract ranger object for importance
 engine_fit <- extract_fit_engine(fit)
@@ -69,6 +74,9 @@ importance_vals <- engine_fit$variable.importance
 library(vip)
 fit |> extract_fit_parsnip() |> vip()
 ```
+
+For model-agnostic alternatives (permutation importance via DALEX/iml, SHAP),
+see `interpretation.md`.
 
 ### Probability Calibration
 
@@ -168,7 +176,7 @@ install.packages("xgboost")
 | `min_n` | `min_child_weight` | Minimum sum of instance weight in a child |
 | `loss_reduction` | `gamma` | Minimum loss reduction for a split |
 | `sample_size` | `subsample` | Row subsampling fraction |
-| `mtry` | `colsample_bytree` | Column subsampling (as proportion when passed through parsnip) |
+| `mtry` | `colsample_bynode` | Column subsampling per split. Passed as a **count** by default (verified via `translate()`: `mtry = 2` becomes `colsample_bynode = 2`). To pass a proportion, add `set_engine("xgboost", counts = FALSE)` and give `mtry` a value in (0, 1]. |
 
 ### Engine-Specific Arguments
 
@@ -275,4 +283,4 @@ spec <- nearest_neighbor(neighbors = tune()) |>
 | xgboost with threads | `set_engine("xgboost", nthread = 4)` |
 | kknn optimal kernel | `set_engine("kknn") with weight_func = "optimal"` |
 | Extract engine fit | `extract_fit_engine(fitted_wf)` |
-| Variable importance | `library(vip); vip(extract_fit_parsnip(fit))` |
+| Variable importance | `library(vip); vip(extract_fit_parsnip(fit))` (ranger: requires `importance =` in `set_engine()`) |

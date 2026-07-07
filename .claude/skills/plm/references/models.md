@@ -33,7 +33,7 @@ data("Grunfeld", package = "plm")
 pdf <- pdata.frame(Grunfeld, index = c("firm", "year"))
 
 # Entity fixed effects (default)
-fit_fe <- plm(invest ~ value + capital, data = pdf, model = "within")
+fit_fe <- plm(inv ~ value + capital, data = pdf, model = "within")
 summary(fit_fe)
 
 # Extract entity fixed effects
@@ -55,7 +55,7 @@ within_intercept(fit_fe)
 
 ```r
 # F-test for FE significance
-pFtest(fit_fe, plm(invest ~ value + capital, data = pdf, model = "pooling"))
+pFtest(fit_fe, plm(inv ~ value + capital, data = pdf, model = "pooling"))
 ```
 
 ### Time-Invariant Variables
@@ -68,7 +68,7 @@ need to include time-invariant regressors, use RE or the Mundlak approach:
 # Mundlak approach: include entity means of time-varying vars in RE model
 # to approximate FE while retaining time-invariant vars
 pdf$value_mean <- ave(pdf$value, pdf$firm, FUN = mean)
-fit_mundlak <- plm(invest ~ value + capital + value_mean,
+fit_mundlak <- plm(inv ~ value + capital + value_mean,
                    data = pdf, model = "random")
 ```
 
@@ -82,7 +82,7 @@ Includes an explicit intercept and preserves time-invariant regressors.
 
 ```r
 # Random effects (default: Swamy-Arora variance component estimation)
-fit_re <- plm(invest ~ value + capital, data = pdf, model = "random")
+fit_re <- plm(inv ~ value + capital, data = pdf, model = "random")
 summary(fit_re)
 ```
 
@@ -99,9 +99,9 @@ The `random.method=` argument controls how variance components are estimated:
 
 ```r
 # Compare variance component methods
-fit_re_swar <- plm(invest ~ value + capital, data = pdf,
+fit_re_swar <- plm(inv ~ value + capital, data = pdf,
                    model = "random", random.method = "swar")
-fit_re_amem <- plm(invest ~ value + capital, data = pdf,
+fit_re_amem <- plm(inv ~ value + capital, data = pdf,
                    model = "random", random.method = "amemiya")
 ```
 
@@ -132,7 +132,7 @@ between-entity variation. Useful for understanding cross-sectional
 relationships and as a diagnostic tool.
 
 ```r
-fit_be <- plm(invest ~ value + capital, data = pdf, model = "between")
+fit_be <- plm(inv ~ value + capital, data = pdf, model = "between")
 summary(fit_be)
 
 # Effective N = number of entities (not total observations)
@@ -155,7 +155,7 @@ delta_y_it = y_it - y_{i,t-1}. Alternative to within estimation with
 different properties under serial correlation.
 
 ```r
-fit_fd <- plm(invest ~ value + capital, data = pdf, model = "fd")
+fit_fd <- plm(inv ~ value + capital, data = pdf, model = "fd")
 summary(fit_fd)
 ```
 
@@ -184,7 +184,7 @@ assumes no entity-specific effects (or that they are uncorrelated with
 regressors and have constant variance).
 
 ```r
-fit_pool <- plm(invest ~ value + capital, data = pdf, model = "pooling")
+fit_pool <- plm(inv ~ value + capital, data = pdf, model = "pooling")
 summary(fit_pool)
 
 # Compare with FE to test for entity effects
@@ -213,25 +213,47 @@ Two-step procedure: (1) estimate a cross-sectional regression for each time
 period, (2) average coefficients across periods. Standard in empirical asset
 pricing.
 
-plm provides Fama-MacBeth via `pmg()` (panel mean group estimator):
+plm's `pmg()` (panel mean group estimator) averages one regression **per group
+in the first index dimension**. With the usual `c("entity", "time")` index,
+`pmg(model = "mg")` is the **Pesaran-Smith Mean Groups estimator** — it
+averages per-entity *time-series* regressions, which is NOT Fama-MacBeth and
+silently produces different numbers. To get Fama-MacBeth, **reverse the index
+to time-first** so each group regression is a per-period cross-section:
 
 ```r
-# Fama-MacBeth: mean group estimator
-fit_fm <- pmg(invest ~ value + capital, data = pdf, model = "mg")
+# Fama-MacBeth: per-PERIOD cross-sectional regressions, averaged
+# NOTE the reversed, time-first index -- this is what makes it FMB
+fit_fm <- pmg(inv ~ value + capital, data = Grunfeld,
+              index = c("year", "firm"), model = "mg")
 summary(fit_fm)
+# Verified on Grunfeld: coef(value) = 0.1306 (matches a manual per-year loop);
+# the entity-first index gives 0.0913 (Pesaran-Smith MG), a different estimator.
+
+# Equivalent manual per-period loop (useful as a cross-check)
+years <- sort(unique(Grunfeld$year))
+fm_coefs <- matrix(NA_real_, length(years), 3)
+for (i in seq_along(years)) {
+  fm_coefs[i, ] <- coef(lm(inv ~ value + capital,
+                           data = Grunfeld[Grunfeld$year == years[i], ]))
+}
+colMeans(fm_coefs)   # Fama-MacBeth point estimates
 ```
 
 ### pmg Model Types
 
+`pmg()` groups on the **first** index dimension. Descriptions below assume the
+standard entity-first index; under the reversed time-first index, `"mg"`
+becomes Fama-MacBeth as shown above.
+
 | model= | Description |
 |--------|-------------|
-| `"mg"` | Mean group -- period-by-period OLS, average coefficients |
-| `"dmg"` | Demeaned mean group -- entity-demeaned before cross-sectional OLS |
+| `"mg"` | Mean group (Pesaran-Smith) -- per-group OLS, average coefficients |
+| `"dmg"` | Demeaned mean group -- cross-sectionally demeaned before per-group OLS |
 | `"cmg"` | Correlated common effects (Pesaran 2006) -- includes cross-sectional averages |
 
 ```r
-# Correlated common effects mean group (CCE-MG)
-fit_ccemg <- pmg(invest ~ value + capital, data = pdf, model = "cmg")
+# Correlated common effects mean group (CCE-MG) -- entity-first index
+fit_ccemg <- pmg(inv ~ value + capital, data = pdf, model = "cmg")
 summary(fit_ccemg)
 ```
 
@@ -239,7 +261,7 @@ summary(fit_ccemg)
 
 | Feature | plm pmg() | linearmodels FamaMacBeth |
 |---------|-----------|------------------------|
-| Basic FM | `model = "mg"` | `FamaMacBeth.from_formula()` |
+| Basic FM | `model = "mg"` + reversed `index = c("time", "entity")` | `FamaMacBeth.from_formula()` |
 | HAC SEs | Not built in (use Newey-West manually) | `cov_type="kernel"` |
 | CCE extension | `model = "cmg"` | Not available |
 
@@ -254,7 +276,7 @@ Model both entity and time effects simultaneously. Available for within
 
 ```r
 # Entity + time fixed effects
-fit_twfe <- plm(invest ~ value + capital, data = pdf,
+fit_twfe <- plm(inv ~ value + capital, data = pdf,
                 model = "within", effect = "twoways")
 summary(fit_twfe)
 
@@ -267,7 +289,7 @@ fixef(fit_twfe, effect = "time")
 
 ```r
 # Entity + time random effects
-fit_twre <- plm(invest ~ value + capital, data = pdf,
+fit_twre <- plm(inv ~ value + capital, data = pdf,
                 model = "random", effect = "twoways")
 summary(fit_twre)
 ```
@@ -276,7 +298,7 @@ summary(fit_twre)
 
 ```r
 # Time effects only (unusual but available)
-fit_time_fe <- plm(invest ~ value + capital, data = pdf,
+fit_time_fe <- plm(inv ~ value + capital, data = pdf,
                    model = "within", effect = "time")
 summary(fit_time_fe)
 ```
@@ -290,7 +312,7 @@ observation-level and must have the same length as the data.
 
 ```r
 # WLS panel estimation
-fit_wls <- plm(invest ~ value + capital, data = pdf,
+fit_wls <- plm(inv ~ value + capital, data = pdf,
                model = "within", weights = pdf$some_weight)
 summary(fit_wls)
 ```

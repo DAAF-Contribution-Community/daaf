@@ -1,5 +1,8 @@
 # Survey, Spatial, and Machine Learning: Stata to R
 
+For full R-side API details, load the dedicated skill: `survey-r`, `sf-terra`, or
+`tidymodels`.
+
 ---
 
 ## Part A: Complex Surveys (Stata `svy:` to R `survey`)
@@ -64,6 +67,11 @@ Stata's limited spatial tools.
 ## Part C: Machine Learning (tidymodels)
 
 R's tidymodels framework is dramatically more capable than Stata's limited ML.
+That said, Python's scikit-learn ecosystem is deeper still — especially for model
+interpretation, fairness auditing, and clustering diagnostics — so for ML-heavy
+work it is reasonable to execute in Python (scikit-learn) even when the rest of
+the pipeline is in R; the R-side interpretation/fairness tooling (iml,
+fairmodels, vip) is covered in the `tidymodels` skill.
 
 | Stata | R (tidymodels) |
 |-------|----------------|

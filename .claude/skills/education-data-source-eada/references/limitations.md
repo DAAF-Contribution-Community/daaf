@@ -217,17 +217,16 @@ df_clean = df_valid.with_columns(
 library(dplyr)
 
 # Always filter coded missing values before analysis
-missing_codes <- [-1, -2, -3]
+missing_codes <- c(-1, -2, -3)
 df_valid <- df |> filter(
-    ~undup_athpartic_women.is_in(missing_codes) &
-    ~undup_athpartic_men.is_in(missing_codes)
+  !(undup_athpartic_women %in% missing_codes),
+  !(undup_athpartic_men %in% missing_codes)
 )
 
 # Calculate ratios only on valid data
 df_clean <- df_valid |> mutate(
-    (undup_athpartic_women / (
-        undup_athpartic_men + undup_athpartic_women
-    ))
+  female_share = undup_athpartic_women /
+    (undup_athpartic_men + undup_athpartic_women)
 )
 ```
 

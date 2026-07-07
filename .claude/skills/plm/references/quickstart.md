@@ -38,9 +38,9 @@ plm ships with classic panel datasets:
 
 | Dataset | Description | Key Columns |
 |---------|-------------|-------------|
-| `Grunfeld` | Investment data (10 firms, 20 years) | `invest`, `value`, `capital`, `firm`, `year` |
+| `Grunfeld` | Investment data (10 firms, 20 years) | `inv`, `value`, `capital`, `firm`, `year` |
 | `Produc` | US state production (48 states, 17 years) | `gsp`, `pcap`, `pc`, `emp`, `unemp`, `state`, `year` |
-| `Wages` | Individual wage panel (595 persons, 7 years) | `lwage`, `exp`, `wks`, `ed`, `nr`, `year` |
+| `Wages` | Individual wage panel (595 persons, 7 years) | `lwage`, `exp`, `wks`, `ed`, `married`, `union` -- no index columns; declare with `pdata.frame(Wages, index = 595)` |
 | `EmplUK` | UK employment (140 firms, 7-9 years) | `emp`, `wage`, `capital`, `output`, `firm`, `year` |
 
 ```r
@@ -131,7 +131,7 @@ data("Grunfeld", package = "plm")
 pdf <- pdata.frame(Grunfeld, index = c("firm", "year"))
 
 # Entity fixed effects
-fit_fe <- plm(invest ~ value + capital, data = pdf, model = "within")
+fit_fe <- plm(inv ~ value + capital, data = pdf, model = "within")
 summary(fit_fe)
 ```
 
@@ -139,7 +139,7 @@ summary(fit_fe)
 
 ```r
 # Random effects (GLS quasi-demeaning)
-fit_re <- plm(invest ~ value + capital, data = pdf, model = "random")
+fit_re <- plm(inv ~ value + capital, data = pdf, model = "random")
 summary(fit_re)
 ```
 
@@ -200,7 +200,7 @@ fit_re_time <- plm(y ~ x1 + x2, data = pdf, model = "random", effect = "time")
 ### Fixed Effects Summary
 
 ```r
-fit <- plm(invest ~ value + capital, data = pdf, model = "within")
+fit <- plm(inv ~ value + capital, data = pdf, model = "within")
 summary(fit)
 ```
 
@@ -227,7 +227,7 @@ Random effects summary additionally shows:
 | **theta** | Quasi-demeaning parameter (0 = pooled, 1 = within) |
 
 ```r
-fit_re <- plm(invest ~ value + capital, data = pdf, model = "random")
+fit_re <- plm(inv ~ value + capital, data = pdf, model = "random")
 summary(fit_re)
 
 # The theta value indicates how much quasi-demeaning is applied
@@ -239,7 +239,7 @@ summary(fit_re)
 ## Post-Estimation Essentials
 
 ```r
-fit <- plm(invest ~ value + capital, data = pdf, model = "within")
+fit <- plm(inv ~ value + capital, data = pdf, model = "within")
 
 # Coefficients
 coef(fit)
@@ -352,7 +352,8 @@ pdf_bal <- make.pbalanced(pdf, balance.type = "fill")
 **Use plm when:**
 - You need random effects, between estimation, or first difference
 - Running the Hausman test (FE vs RE)
-- Fama-MacBeth cross-sectional regressions
+- Fama-MacBeth cross-sectional regressions (via `pmg(model = "mg")` with a
+  reversed, time-first index -- see `./models.md`)
 - Panel diagnostic tests (serial correlation, cross-sectional dependence, unit root)
 - Dynamic GMM (Arellano-Bond, Blundell-Bond)
 - Panel IV within entity-demeaned data

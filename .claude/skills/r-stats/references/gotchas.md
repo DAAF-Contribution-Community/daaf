@@ -506,4 +506,4 @@ which can be slow but are more accurate than Wald intervals. Use
   4th ed. Springer.
 - Fox, J. & Weisberg, S. (2019). *An R Companion to Applied Regression*, 3rd ed.
   Sage.
-- R Core Team (2025). R: A Language and Environment for Statistical Computing.
+- R Core Team (2026). R: A Language and Environment for Statistical Computing.

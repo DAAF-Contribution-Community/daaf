@@ -292,11 +292,17 @@ change across cycles.
 |--------|--------|-----|-----------|-----------------|-------|
 | **NHANES** | `sdmvstra` | `sdmvpsu` | `wtmec2yr`, `wtint2yr`, subsample weights | Taylor | TRUE |
 | **ACS PUMS** | N/A (use replicate weights) | N/A | `pwgtp` / `wgtp` | Bootstrap/SDR (80 reps) | N/A |
-| **CPS ASEC** | `gestfips` + `gtco` (approx.) | Implicit | `marsupwt` | Replicate (160 reps) | TRUE |
+| **CPS ASEC** | N/A (use replicate weights) | N/A | `marsupwt` | Replicate: successive difference (SDR), 160 reps | N/A |
 | **MEPS** | `varstr` | `varpsu` | `perwt__f` (year-specific) | Taylor | TRUE |
 | **ECLS-K:2011** | Survey-specific | Survey-specific | Round-specific | Taylor or JKn | TRUE |
 | **BRFSS** | `_ststr` | `_psu` | `_llcpwt` | Taylor | TRUE |
-| **NHIS** | `strat_p` | `psu_p` | `wtfa_sa` | Taylor | TRUE |
+| **NHIS** | `pstrat` | `ppsu` | `wtfa_a` (adult), `wtfa_c` (child) | Taylor | TRUE |
+
+NHIS design variables changed with the 2019 redesign: current files use
+`pstrat`/`ppsu` with weights `wtfa_a` (adult) / `wtfa_c` (child); 2016-2018
+used `pstrat`/`ppsu` with weight `wtfa_sa`; 2006-2015 used
+`strat_p`/`psu_p`/`wtfa_sa`. For CPS ASEC replicate-weight setup, see
+`replication.md`.
 
 ### NHANES Setup Pattern
 

@@ -210,17 +210,14 @@ df = df.with_columns(
 library(dplyr)
 
 # Approach 1: Filter to non-null records
-df <- df |> filter(!is.na(grant_recipients_unitid)
+df <- df |> filter(!is.na(grant_recipients_unitid))
 
 # Approach 2: Filter out missing data codes
-df <- df |> filter(~fips %in% c(-1, -2, -3)
+df <- df |> filter(!(fips %in% c(-1, -2, -3)))
 
-# Approach 3: Replace missing codes with null
+# Approach 3: Replace missing codes with NA
 df <- df |> mutate(
-    pl.when(fips %in% c(-1, -2, -3))
-    .then(NULL)
-    .otherwise(fips)
-    
+  fips_clean = if_else(fips %in% c(-1, -2, -3), NA, fips)
 )
 ```
 
@@ -265,11 +262,14 @@ df = df.with_columns(
 library(dplyr)
 
 # Example: Adjust to 2021 dollars using CPI multipliers
-cpi_multipliers <- {2018: 1.08, 2019: 1.06, 2020: 1.04, 2021: 1.00}
-
 df <- df |> mutate(
-    (value_grants_disbursed_unitid *
-     year.replace(cpi_multipliers))
+  cpi_multiplier = case_match(year,
+    2018 ~ 1.08,
+    2019 ~ 1.06,
+    2020 ~ 1.04,
+    2021 ~ 1.00
+  ),
+  grants_real_2021 = value_grants_disbursed_unitid * cpi_multiplier
 )
 ```
 
@@ -361,13 +361,12 @@ library(dplyr)
 # Check: 90/10 calculation matches components
 # NOTE: rev_pct_90_10 is a proportion (0-1), not percentage (0-100)
 df <- df |> mutate(
-    (numerator_90_10 / denominator_90_10)
-    
+  calculated_pct = numerator_90_10 / denominator_90_10
 )
 
 # Flag discrepancies > 0.01 (1 percentage point)
 df_discrepancy <- df |> filter(
-    (rev_pct_90_10 - calculated_pct).abs() > 0.01
+  abs(rev_pct_90_10 - calculated_pct) > 0.01
 )
 ```
 

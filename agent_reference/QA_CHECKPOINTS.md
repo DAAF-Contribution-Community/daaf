@@ -1237,7 +1237,7 @@ scripts/
 
 ### Naming Convention
 
-**Standard pattern (Stages 5-7):** `stage{N}_{step:02d}_cr{iteration}.py`
+**Standard pattern (Stages 5-7):** `stage{N}_{step:02d}_cr{iteration}.py` (`.R` for R projects)
 
 | Component | Description | Example |
 |-----------|-------------|---------|
@@ -1245,7 +1245,7 @@ scripts/
 | `{step}` | Step number from reviewed script | `01`, `02` |
 | `_cr{iteration}` | QA script suffix with iteration number (1-5) | `_cr1`, `_cr2` |
 
-**Stage 8 pattern (split QA):** `stage8_{step:02d}_cr{a|b}{iteration}.py`
+**Stage 8 pattern (split QA):** `stage8_{step:02d}_cr{a|b}{iteration}.py` (`.R` for R projects)
 
 | Component | Description | Example |
 |-----------|-------------|---------|
@@ -1440,6 +1440,8 @@ scripts/cr/
   profile_relational_cr{N}.py     # QAP3 review scripts
   profile_interpretation_cr{N}.py # QAP4 review scripts
 ```
+
+(`.R` in place of `.py` for R projects — the pattern is otherwise identical.)
 
 ---
 

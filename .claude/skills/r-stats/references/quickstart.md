@@ -438,7 +438,11 @@ library(MASS)
 fit_rlm <- rlm(y ~ x1 + x2, data = df)
 
 # Bisquare (Tukey) M-estimator (more resistant to outliers)
-fit_rlm <- rlm(y ~ x1 + x2, data = df, method = "MM")
+fit_rlm <- rlm(y ~ x1 + x2, data = df, psi = psi.bisquare)
+
+# MM-estimation is a DIFFERENT method: an S-estimator initialization
+# followed by an M-step with Tukey's biweight (high breakdown point)
+fit_mm <- rlm(y ~ x1 + x2, data = df, method = "MM")
 
 summary(fit_rlm)
 ```
@@ -503,7 +507,7 @@ Key differences:
 
 ## References
 
-- R Core Team (2025). R: A Language and Environment for Statistical Computing.
+- R Core Team (2026). R: A Language and Environment for Statistical Computing.
   R Foundation for Statistical Computing, Vienna, Austria.
 - Chambers, J.M. & Hastie, T.J. (1992). *Statistical Models in S*. Chapman & Hall.
 - Venables, W.N. & Ripley, B.D. (2002). *Modern Applied Statistics with S*,

@@ -32,7 +32,7 @@ The table below maps each GUIDE-LLM core item to its DAAF artifact source and in
 | **D.1** | Handling of personal/sensitive data | Safety guardrails in CLAUDE.md | `[RESEARCHER]` — researcher must confirm what data was processed and any PII considerations |
 | **E.1** | Human validation of LLM outputs | QA checkpoints + user gates | `[AUTO]` — derived from STATE.md checkpoint statuses and QA summary |
 | **E.2** | Filtering, reformatting, or post-processing | Script execution logs | `[RESEARCHER]` — researcher documents any manual edits made to AI-generated outputs after delivery |
-| **F.1** | Code/scripts shared | Marimo notebook + `scripts/` archive | `[AUTO]` — file paths from project structure |
+| **F.1** | Code/scripts shared | Marimo notebook (or Quarto notebook for R) + `scripts/` archive | `[AUTO]` — file paths from project structure |
 | **G.1** | Funding, support, or relevant relationships | N/A — external to DAAF | `[RESEARCHER]` — researcher must disclose funding sources, API cost disclosure, and any relevant relationships |
 
 ### Optional Items
@@ -127,7 +127,7 @@ Different engagement modes involve different levels of AI assistance. The disclo
 - Human researcher reviewed the final Reproduction Report and assessed the significance of all findings and deviations
 
 **Template paragraph:**
-> This reproduction was conducted using the DAAF Reproducibility Verification mode. An AI agent re-executed all [N] analysis scripts from the original marimo notebook, compared outputs against the original execution logs, and cross-referenced the Report's quantitative claims against reproduced results. The human researcher reviewed the resulting Reproduction Report, including all deviations and methodological concerns, and determined the overall reproducibility assessment.
+> This reproduction was conducted using the DAAF Reproducibility Verification mode. An AI agent re-executed all [N] analysis scripts from the original marimo notebook (or Quarto notebook for R), compared outputs against the original execution logs, and cross-referenced the Report's quantitative claims against reproduced results. The human researcher reviewed the resulting Reproduction Report, including all deviations and methodological concerns, and determined the overall reproducibility assessment.
 
 ### User Support Mode
 

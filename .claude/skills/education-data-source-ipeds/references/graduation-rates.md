@@ -457,7 +457,10 @@ url = get_codebook_url("ipeds/codebook_colleges_ipeds_outcome-measures")
 ```
 
 ```r
-url <- get_codebook_url("ipeds/codebook_colleges_ipeds_outcome-measures")
+# get_codebook_url() is a Python helper; in R, build the URL from the mirror root.
+# Mirror failover: see `education-data-query/references/fetch-patterns.md` (R pattern)
+mirror <- yaml::read_yaml("mirrors.yaml")$mirrors[[1]]
+url <- paste0(mirror$root_url, "/", "ipeds/codebook_colleges_ipeds_outcome-measures", ".xls")
 ```
 
 #### All 38 Columns (Verified from Mirror)

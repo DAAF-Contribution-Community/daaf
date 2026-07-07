@@ -158,7 +158,7 @@ Profiling scripts use the execution language specified by the orchestrator. The 
 |---------|--------|---|
 | **Data loading (parquet)** | `polars.read_parquet()` | `arrow::read_parquet()` |
 | **Structural profiling** | `df.schema`, `df.describe()` | `dplyr::glimpse()`, `str()`, `summary()` |
-| **Statistical profiling** | `df.describe()`, custom Polars expressions | `skimr::skim()` (if available), `summary()` |
+| **Statistical profiling** | `df.describe()`, custom Polars expressions | `skimr::skim()`, `summary()` |
 | **Relational profiling** | Polars `group_by`, `join`, `filter` | `dplyr` verbs: `group_by`, `left_join`, `filter` |
 | **Assertions** | `assert` + `print()` | `stopifnot()` + `cat()` |
 | **API fetching (DI-0)** | `requests` | `httr2` |
@@ -232,6 +232,8 @@ Part C writes: 07a_key-integrity.py, 07b_cross-level-linkage.py,
 
 When invoked, check the `profiling_part` parameter and execute the corresponding section below. For script templates and detailed profiling instructions, see `.claude/skills/daaf-orchestrator/references/WORKFLOW_PHASE_DO_PROFILING.md`.
 
+**R pipelines:** All `.py` script names in DI-0 and Parts A-D below read as `.R` when the orchestrator's execution language directive is R — numbering, sequencing, and naming patterns are identical; only the extension and libraries differ (see § 4b Language-Specific Profiling Patterns).
+
 ### DI-0: API Discovery & Acquisition
 
 **Prerequisites:** Access method = API, API key env var name provided, project scripts directory exists.
@@ -242,9 +244,9 @@ When invoked, check the `profiling_part` parameter and execute the corresponding
 
 1. **Research the API:** Use WebFetch to read API documentation. Use WebSearch if documentation URL is not provided. Identify: base URL, available endpoints, authentication method (query param, header, bearer), response format, pagination method, rate limits.
 
-2. **Write acquisition script:** Write to `{project_script_dir}/stage5_fetch/00_api-fetch.py`
-   - Check `os.environ["{env_var_name}"]` with clear `KeyError` message if missing
-   - Use `requests` library for API calls
+2. **Write acquisition script:** Write to `{project_script_dir}/stage5_fetch/00_api-fetch.py` (R: `00_api-fetch.R`)
+   - Check `os.environ["{env_var_name}"]` with clear `KeyError` message if missing (R: `Sys.getenv("{env_var_name}")` + `stop()` with a clear message when empty)
+   - Use `requests` library for API calls (R: `httr2`)
    - Handle pagination if the API paginates results
    - Save result as parquet to `{project_dir}/data/raw/{date}_{source}.parquet`
    - Print: rows fetched, columns, file size, file path

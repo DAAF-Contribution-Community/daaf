@@ -410,11 +410,14 @@ ca_grads.select([
 library(arrow)
 library(dplyr)
 
-# Fetch graduation rate data via mirror system
-grad_data <- fetch_yearly_from_mirrors(
-  path_template = "edfacts/schools_edfacts_grad_rates_{year}",
-  years = c(2018, 2019)
-)
+# fetch_yearly_from_mirrors() is a Python helper; in R, build per-year URLs
+# from the mirror root. Mirror failover: see
+# `education-data-query/references/fetch-patterns.md` (R pattern)
+mirror <- yaml::read_yaml("mirrors.yaml")$mirrors[[1]]
+years <- c(2018, 2019)
+paths <- sprintf("edfacts/schools_edfacts_grad_rates_%d", years)
+urls <- paste0(mirror$root_url, "/", paths, ".", mirror$format)
+grad_data <- bind_rows(lapply(urls, arrow::read_parquet))
 
 # Filter to California
 ca_grads <- grad_data |> filter(fips == 6)
@@ -487,8 +490,11 @@ def comprehensive_grad_analysis(df, state_fips, year):
 library(dplyr)
 
 # Analyze graduation rates with appropriate context
+# NOTE: name the year variable distinctly from the `year` column and unquote it
+# with !! — `filter(year == year)` compares the column to itself (always TRUE).
+target_year <- 2019
 state_data <- df |>
-  filter(fips == state_fips, year == year, grad_rate_midpt >= 0)
+  filter(fips == state_fips, year == !!target_year, grad_rate_midpt >= 0)
 
 # Overall rate: race=99 (total), all other filter cols=99 (total)
 overall <- state_data |>

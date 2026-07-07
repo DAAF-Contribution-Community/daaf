@@ -130,7 +130,7 @@ shapiro.test(residuals(fit))
 ### Jarque-Bera Test
 
 ```r
-library(tseries)
+library(tseries)   # pre-installed in the DAAF container image
 jarque.bera.test(residuals(fit))
 
 # Tests skewness and kurtosis jointly

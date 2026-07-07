@@ -10,11 +10,12 @@ All agents in this directory MUST follow the canonical template at `agent_refere
 
 All code-producing agents support both Python and R. The execution language is determined by the user's `Primary execution language` preference in CLAUDE.md and propagated by the orchestrator to each agent's prompt; the separate `Primary analysis language background` preference drives cross-language annotation direction, not which language the pipeline runs in. Agents detect the pipeline language from script file extensions (`.py` vs `.R`) and load the appropriate library skills on demand.
 
-Read-only agents (search-agent, plan-checker, data-verifier, integration-checker) and planning/synthesis agents (data-planner, source-researcher, research-synthesizer, report-writer, framework-engineer) are language-agnostic — they reason about artifacts rather than authoring executable pipeline scripts, so they are not listed below.
+Read-only agents (search-agent, plan-checker, data-verifier, integration-checker) and planning/synthesis agents (source-researcher, research-synthesizer, report-writer, framework-engineer) are language-agnostic — they reason about artifacts rather than authoring executable pipeline scripts, so they are not listed below. data-planner does not author scripts either, but its Plan_Tasks `<skill>` elements are language-load-bearing (research-executor loads exactly the library skills the task names), so it appears in the table.
 
 | Agent | Python Support | R Support |
 |-------|---------------|-----------|
 | research-executor | Default. polars, plotnine, statsmodels, pyfixest | R execution via `run_with_capture.sh`. tidyverse, ggplot2, fixest, r-stats |
+| data-planner | Routes Python skills into `<skill>` elements (polars, plotnine, statsmodels, pyfixest, ...) | Routes R skills under an R execution directive (tidyverse, ggplot2, r-stats, fixest, ...) |
 | code-reviewer | Reviews `.py` scripts; QA scripts in Polars | Reviews `.R` scripts; QA scripts in dplyr/arrow |
 | debugger | Diagnoses Python errors; writes `.py` diagnostics | Diagnoses R errors; writes `.R` diagnostics |
 | data-ingest | Profiles with Python (polars, arrow) | Profiles with R (dplyr, arrow, skimr) |

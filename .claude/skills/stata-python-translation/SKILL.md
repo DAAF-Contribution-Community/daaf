@@ -1,10 +1,10 @@
 ---
 name: stata-python-translation
 description: >-
-  Stata-to-Python translation for data analysis. Maps Stata commands (reghdfe, xtreg, ivregress, margins, esttab, svy:) to Python (polars, pyfixest, statsmodels, svy). Use when user has Stata background or requests Stata-equivalent code comments.
+  Stata-to-Python translation for data analysis. Maps Stata commands (reghdfe, xtreg, ivregress, margins, esttab, svy:) to Python (polars, pyfixest, statsmodels, svy). Use when user has Stata background or requests Stata-equivalent code comments in Python pipelines.
 metadata:
   audience: research-coders
-  domain: research-methodology
+  domain: cross-language
   skill-last-updated: "2026-03-28"
 ---
 
@@ -205,8 +205,8 @@ Which Stata command?
 | `graph twoway`, `histogram`, `graph bar` | plotnine / plotly | Low | Declarative grammar of graphics vs imperative graph syntax |
 | `svyset`, `svy:` | svy | Medium | Explicit `Design`/`Sample` objects instead of persistent `svyset` |
 | `rdrobust`, `rdplot` | rdrobust (Python) | Very High | Same authors; nearly identical API |
-| `binscatter`, `binsreg` | binsreg (Python) | Very High | Same authors; nearly identical API |
-| `synth` | scpi | High | Same authors; includes prediction intervals |
+| `binscatter`, `binsreg` | binsreg (Python) | Very High | Same authors; nearly identical API; not pre-installed |
+| `synth` | scpi | High | Same authors; includes prediction intervals; not pre-installed |
 | `local`, `global`, `foreach`, `forvalues` | Python variables, f-strings, for loops | Low | Fundamentally different paradigm (text substitution vs value binding) |
 
 **Fidelity key:** Very High = same authors, near-identical API. High = same capability, similar syntax. Medium = same capability, different API patterns. Low = fundamentally different paradigm requiring conceptual remapping.
@@ -223,20 +223,23 @@ versions, the reference files note the change.
 | polars | 1.38.1 | Data management commands (gen, replace, merge, etc.) | Stata 18 |
 | pyfixest | 0.40.0 | regress, areg, reghdfe, ivreghdfe, ppmlhdfe, esttab | Stata 18 + reghdfe 6.x |
 | statsmodels | 0.14.6 | regress, logit, probit, poisson, nbreg, glm | Stata 18 |
-| linearmodels | unpinned | xtreg, sureg, ivregress | Stata 18 |
+| linearmodels | 7.0 | xtreg, sureg, ivregress | Stata 18 |
 | plotnine | 0.15.3 | graph twoway, graph bar, graph box, histogram | Stata 18 |
 | plotly | 6.5.2 | (no direct Stata equivalent; interactive charts) | N/A |
 | svy | 0.13.0 | svyset, svy: prefix commands | Stata 18 |
-| marginaleffects | unpinned | margins, marginsplot, lincom, nlcom | Stata 18 |
-| rdrobust | unpinned | rdrobust, rdplot, rdbwselect | rdrobust (SSC) |
-| binsreg | unpinned | binsreg, binscatter | binsreg (SSC) |
-| scpi | unpinned | synth, synth_runner | synth (SSC) |
+| marginaleffects | 0.5.0 | margins, marginsplot, lincom, nlcom | Stata 18 |
+| rdrobust | 1.3.0 | rdrobust, rdplot, rdbwselect | rdrobust (SSC) |
+| binsreg | not pre-installed | binsreg, binscatter | binsreg (SSC) |
+| scpi | not pre-installed | synth, synth_runner | synth (SSC) |
 | scikit-learn | 1.8.0 | (limited; teffects, psmatch2 partially) | Stata 18 |
 | marimo | 0.19.11 | (no equivalent; replaces do-file + log workflow) | N/A |
 
-**Unpinned packages:** linearmodels, marginaleffects, rdrobust, binsreg, and scpi install
-the latest version at Docker build time. Translations reference their documented API as
-of March 2026.
+> **Package availability:** The core mappings above (`polars`, `pyfixest`, `statsmodels`,
+> `plotnine`, `svy`) plus `linearmodels` (7.0), `marginaleffects` (0.5.0), and
+> `rdrobust` (1.3.0) are version-pinned in DAAF's Dockerfile and pre-installed.
+> `binsreg` and `scpi` are NOT pre-installed; run `pip install binsreg` /
+> `pip install scpi` at analysis time before using them (the Python equivalent of
+> `ssc install`). Translations reference the documented APIs as of March 2026.
 
 **Stata version note:** Stata 18 is the current release as of March 2026. Most command
 mappings apply to Stata 15+; version-specific features (frames, `hdidregress`) are noted
@@ -294,7 +297,7 @@ fit = pf.feols("wage ~ education + experience | industry + year",
 # Stata: drop if missing(income)
 df = df.filter(pl.col("income").is_not_null())
 
-# Stata: merge 1:1 school_id using "districts.dta"
+# Stata: merge 1:1 school_id using "districts.dta", keep(3) nogen
 df = df.join(districts, on="school_id", how="inner")
 ```
 

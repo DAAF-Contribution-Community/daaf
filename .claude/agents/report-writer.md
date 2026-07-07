@@ -161,7 +161,7 @@ Read the notebook file (Marimo `.py` or Quarto `.qmd`). Scan all script executio
 - Key statistics: row counts, column counts, validation statuses, timing
 - Transformation results: join outcomes, aggregation summaries, derived column logic
 - EDA findings: distributions, outliers, notable patterns
-- Focus on the execution log accordion cells — these contain the runtime record.
+- Focus on the execution log accordion cells (Marimo/Python) or callout blocks (Quarto/R) — these contain the runtime record.
 
 ### Step 3: Read STATE.md
 

@@ -91,23 +91,30 @@ summary(fit, stage = 1)
 # First-stage F-statistic
 fitstat(fit, type = "ivf")
 
-# Wald statistic on excluded instruments
+# Wald statistic on excluded instruments (uses the model's vcov, so it is
+# robust/cluster-aware when the model was estimated that way)
 fitstat(fit, type = "ivwald")
 
 # All IV diagnostics at once
-fitstat(fit, type = ~ivf + ivwald + ivf.kp + ivwald.kp + sargan + wh)
+fitstat(fit, type = ~ivf + ivwald + kpr + cd + sargan + wh)
 ```
 
 ### fitstat() Types for IV
 
+There are no `"ivf.kp"` / `"ivwald.kp"` types — the `.` in a fitstat type
+denotes a component (e.g., `ivf.stat`, `ivf.p`), so those names error. The
+Kleibergen-Paap and Cragg-Donald statistics have their own type names:
+
 | Type | Description | When to Use |
 |------|-------------|-------------|
 | `"ivf"` | First-stage F-statistic | Always check (rule of thumb: F > 10) |
-| `"ivwald"` | Wald statistic on excluded instruments | Alternative to F |
-| `"ivf.kp"` | Kleibergen-Paap rk Wald F | Robust to heteroskedasticity/clustering |
-| `"ivwald.kp"` | Kleibergen-Paap rk LM statistic | Underidentification test |
+| `"ivwald"` | Wald statistic on excluded instruments, computed with the model's vcov | Preferred with robust/clustered errors |
+| `"kpr"` | Kleibergen-Paap rank test | Underidentification test. Only computed for IID vcov or exactly identified models (returns NA otherwise, with a warning) |
+| `"cd"` | Cragg-Donald F | Weak-instrument statistic under IID errors; compare to Stock-Yogo critical values |
 | `"sargan"` | Sargan test of overidentification | When # instruments > # endogenous |
 | `"wh"` | Wu-Hausman endogeneity test | Whether IV is needed (H0: exogenous) |
+
+Run `fitstat(show_types = TRUE)` for the full list of valid type names.
 
 ### Interpreting First Stage
 
@@ -126,7 +133,8 @@ Key checks:
   variable in the expected direction
 - **F-statistic > 10**: Staiger & Stock (1997) rule of thumb for single
   endogenous variable
-- **Kleibergen-Paap rk F**: Preferred with non-IID errors (clustered/robust)
+- **`ivwald` with robust/clustered vcov**: Preferred first-stage strength
+  check with non-IID errors
 
 ## Weak Instrument Tests
 
@@ -135,13 +143,21 @@ severely distorted inference (size distortion of Wald tests).
 
 ### Stock-Yogo Critical Values
 
-For the traditional Cragg-Donald F (under IID errors):
+For the traditional Cragg-Donald F (under IID errors), with **1 endogenous
+regressor** (Stock & Yogo 2005; as tabulated in Stata's ivregress
+postestimation documentation):
 
-| Max Relative Bias | 1 Instrument | 2 Instruments | 3 Instruments |
-|-------------------|-------------|---------------|---------------|
+| Maximal Size of 5% Wald Test | 1 Instrument | 2 Instruments | 3 Instruments |
+|------------------------------|-------------|---------------|---------------|
 | 10% | 16.38 | 19.93 | 22.30 |
+| 15% | 8.96 | 11.59 | 12.83 |
 | 20% | 6.66 | 8.75 | 9.54 |
-| 30% | 5.34 | 6.28 | 6.57 |
+| 25% | 5.53 | 7.25 | 7.80 |
+
+These are the *maximal size* critical values: a Cragg-Donald F above the
+threshold bounds the true size of a nominal 5% Wald test at the stated level.
+Stock-Yogo *relative-bias* critical values are a different table and exist
+only for 3 or more instruments.
 
 ### Comprehensive Diagnostics
 
@@ -149,16 +165,16 @@ For the traditional Cragg-Donald F (under IID errors):
 fit <- feols(y ~ 1 | fe | x_endog ~ z1 + z2, data = df, vcov = ~entity)
 
 # All IV stats
-fitstat(fit, type = ~ivf + ivf.kp + sargan + wh)
+fitstat(fit, type = ~ivf + ivwald + cd + sargan + wh)
 ```
 
 ### Recommendations by Situation
 
 | Situation | Recommended Test | Threshold |
 |-----------|-----------------|-----------|
-| Single endogenous, IID | First-stage F (`ivf`) | > 10 (Staiger-Stock) |
-| Single endogenous, clustered | KP rk Wald F (`ivf.kp`) | > 10 (approximate) |
-| Multiple endogenous | Cragg-Donald or KP rk | Stock-Yogo tables |
+| Single endogenous, IID | First-stage F (`ivf`) or Cragg-Donald (`cd`) | > 10 (Staiger-Stock) / Stock-Yogo tables |
+| Single endogenous, clustered | First-stage Wald with model vcov (`ivwald`) | > 10 (approximate) |
+| Multiple endogenous | Cragg-Donald (`cd`) | Stock-Yogo tables |
 | Over-identified | Sargan test (`sargan`) | p > 0.05 (instruments valid) |
 | Suspected exogeneity | Wu-Hausman (`wh`) | p < 0.05 (endogenous) |
 

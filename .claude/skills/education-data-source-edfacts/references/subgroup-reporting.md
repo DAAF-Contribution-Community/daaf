@@ -622,7 +622,10 @@ def comprehensive_subgroup_report(df, year, state_fips, value_col):
 library(dplyr)
 
 # Generate comprehensive subgroup analysis with quality metrics
-data <- df |> filter(year == year, fips == state_fips)
+# NOTE: name the year variable distinctly from the `year` column and unquote it
+# with !! — `filter(year == year)` compares the column to itself (always TRUE).
+target_year <- 2018
+data <- df |> filter(year == !!target_year, fips == state_fips)
 
 report <- data |>
   group_by(subgroup) |>

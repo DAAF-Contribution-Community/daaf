@@ -423,38 +423,19 @@ def exclude_totals_and_missing(df, categorical_cols):
 ```r
 library(dplyr)
 
-# clean_crdc_values(df, value_columns)
-# Handle CRDC special codes appropriately.
-#
-# Args:
-# df: DataFrame with CRDC data
-# value_columns: List of columns to clean
-#
-# Returns:
-# DataFrame with nulls for special codes
-    for (col in value_columns) {
-        df <- df |> mutate(
-            pl.when(pl.col(col) < 0)
-            .then(NULL)
-            .otherwise(pl.col(col))
-            .alias(col)
-        )
-    df
+# Flag suppressed values separately (do this BEFORE recoding codes to NA)
+df <- df |> mutate(oss_suppressed = students_susp_out_sch_single == -3)
 
-# flag_suppressed(df, column)
-# Flag suppressed values separately.
-    df |> mutate(
-        (pl.col(column) == -3).alias(f"{column}_suppressed")
-    )
+# Handle CRDC special codes appropriately: convert coded values (< 0) to NA
+value_columns <- c("students_susp_out_sch_single", "enrollment_crdc")
+df <- df |> mutate(
+  across(all_of(value_columns), \(x) if_else(x < 0, NA, x))
+)
 
-# exclude_totals_and_missing(df, categorical_cols)
-# Filter out total rows (99) and missing/suppressed values.
-# Use this to get individual subgroup rows only.
-    for (col in categorical_cols) {
-        df <- df |> filter(
-            (pl.col(col) > 0) & (pl.col(col) < 99)
-        )
-    df
+# Filter out total rows (99) and missing/suppressed values (< 0)
+# to get individual subgroup rows only
+categorical_cols <- c("race", "sex")
+df <- df |> filter(if_all(all_of(categorical_cols), \(x) x > 0 & x < 99))
 ```
 
 ### Suppression Rules
@@ -530,10 +511,12 @@ black_male_oss = df.filter(
 library(dplyr)
 
 # Cross-tab: Black male students
-black_male_oss <- df |> filter(
-    (race == 2) &    # Black
-    (sex == 1)        # Male
-).select("students_susp_out_sch_single")
+black_male_oss <- df |>
+  filter(
+    race == 2,  # Black
+    sex == 1    # Male
+  ) |>
+  select(students_susp_out_sch_single)
 ```
 
 > **Note on OCR raw files:** Original OCR data uses compound variable names like `oss_bl_male` or `oss_bl_idea`. The Portal flattens these into a row-based structure with integer-coded categorical columns (`race`, `sex`, `disability`).

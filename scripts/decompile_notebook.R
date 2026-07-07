@@ -32,9 +32,21 @@
 #     carry `#| eval: true` and no VERBATIM COPY marker — they are NOT scripts
 #     and are skipped.
 #
+# The "# --- VERBATIM COPY of scripts/<path> ---" marker is the SINGLE contract
+# for script identification: chunks without it are not scripts and are skipped.
+# Narrative lines ("Source:", "**Script:**") are display-only and deliberately
+# NOT used as extraction anchors. The narrative "**Output:**" line IS captured,
+# but only as manifest metadata (the "Original Output" column), never as an
+# extraction anchor.
+#
 # Unlike the marimo format, R chunk code is stored VERBATIM (not comment-
 # prefixed), so there is no un-commenting step — the VERBATIM COPY marker line
 # is stripped and everything else in the chunk is the code.
+#
+# After extraction, a cross-chunk variable reference validation pass runs via
+# codetools::findGlobals() (the R analogue of the Python version's ast pass).
+# Scripts that reference variables never assigned within them are flagged with
+# warnings in stdout and a "Dangling Reference Warnings" section in MANIFEST.md.
 #
 # Usage:
 #     Rscript decompile_notebook.R <notebook_path> <output_dir>
@@ -108,9 +120,12 @@ nb_lines <- readLines(notebook_path, warn = FALSE)
 # Example: "# --- VERBATIM COPY of scripts/stage5_fetch/01_fetch-source.R ---"
 verbatim_re <- "^\\s*#\\s*---\\s*VERBATIM COPY of scripts/(.+?)\\s*---\\s*$"
 
-# Fallback anchor: the narrative "Source:" line that precedes many chunks.
-# Example: "Source: `scripts/stage5_fetch/01_fetch-source.R`"
-source_re <- "^\\s*Source:\\s*`scripts/(.+?)`\\s*$"
+# Header-metadata anchor: the narrative "**Output:**" line the assembler emits
+# above each script chunk. Captured ONLY for the MANIFEST "Original Output"
+# column (mirrors extract_header_metadata() in decompile_notebook.py) — never
+# used as an extraction anchor.
+# Example: "**Output:** `data/raw/2026-01-24_ccd_schools.parquet`"
+output_re <- "^\\s*\\*\\*Output:\\*\\*\\s*`(.+?)`\\s*$"
 
 scripts_extracted <- list()   # each: list(source_path, code, log_text)
 
@@ -123,8 +138,9 @@ log_block_kind <- NA_character_  # "callout" or "details" — controls the close
 in_log_fence <- FALSE         # inside the ``` fence within the exec-log block
 log_lines <- character(0)
 
-# Track the most recent "Source:" narrative path as a fallback source path.
-pending_source <- NA_character_
+# Track the most recent "**Output:**" narrative path; attached to the next
+# script chunk as manifest metadata.
+pending_output <- NA_character_
 
 # When a script chunk closes, we stash it here awaiting its (optional) log,
 # which appears in the next Execution Log <details> block before the next chunk.
@@ -183,9 +199,10 @@ while (i <= n) {
         pending_script <<- list(
           source_path = src,
           code = paste(body, collapse = "\n"),
-          log_text = ""
+          log_text = "",
+          original_output = pending_output
         )
-        pending_source <<- NA_character_
+        pending_output <<- NA_character_
       }
       # Non-script chunks (data inspection, etc.) are simply dropped.
       chunk_lines <- character(0)
@@ -198,9 +215,9 @@ while (i <= n) {
     next
   }
 
-  # --- Narrative Source: line (fallback path capture) ---
-  if (grepl(source_re, line)) {
-    pending_source <- sub(source_re, "\\1", line)
+  # --- Narrative **Output:** line (header-metadata capture for the manifest) ---
+  if (grepl(output_re, line)) {
+    pending_output <- sub(output_re, "\\1", line)
   }
 
   # --- Execution Log container detection ---
@@ -365,15 +382,68 @@ for (s in scripts_extracted) {
   stage_dir <- if (grepl("/", src)) dirname(src) else "—"
   code_lines <- length(strsplit(code, "\n", fixed = TRUE)[[1]])
   has_log <- nzchar(trimws(log_text))
+  original_output <- s$original_output
+  if (is.null(original_output) || is.na(original_output)) original_output <- "—"
 
   manifest_rows[[length(manifest_rows) + 1]] <- list(
     source_path = src,
     stage = stage_dir,
+    original_output = original_output,
     code_lines = code_lines,
     has_log = has_log
   )
   cat(sprintf("  -> %s (%d code lines, log: %s)\n",
               src, code_lines, if (has_log) "yes" else "no"))
+}
+
+# --- Validate cross-chunk references ---
+# Mirrors validate_references() in decompile_notebook.py. R has no ast module;
+# codetools::findGlobals() on a function wrapper yields the same signal: free
+# variables the code reads but never assigns. Function NAMES are excluded
+# (merge = FALSE, $variables only) so every library call does not appear as
+# noise; base constants are filtered below. eval() of the parsed
+# `function() {...}` wrapper only BUILDS the closure — the body is not run.
+# KNOWN LIMITATION: column names used inside tidyverse NSE verbs (mutate,
+# filter, summarise, ggplot aes, ...) are not statically resolvable and appear
+# as false positives. Warnings are review prompts, not errors — deliberately
+# conservative, mirroring the Python version's stance.
+cat("\n")
+KNOWN_SAFE <- c("T", "F", "pi", "letters", "LETTERS", "month.name",
+                "month.abb", ".Machine")
+
+scripts_with_warnings <- list()
+codetools_ok <- requireNamespace("codetools", quietly = TRUE)
+if (codetools_ok) {
+  for (s in scripts_extracted) {
+    dangling <- character(0)
+    wrapped <- tryCatch(
+      eval(parse(text = paste0("function() {\n", s$code, "\n}"))),
+      error = function(e) NULL   # unparseable code: skip validation
+    )
+    if (!is.null(wrapped)) {
+      globals <- tryCatch(
+        codetools::findGlobals(wrapped, merge = FALSE)$variables,
+        error = function(e) character(0)
+      )
+      dangling <- setdiff(globals, KNOWN_SAFE)
+    }
+    if (length(dangling) > 0) {
+      scripts_with_warnings[[length(scripts_with_warnings) + 1]] <-
+        list(source_path = s$source_path, dangling = dangling)
+      cat(sprintf("  WARNING: %s — dangling references: %s\n",
+                  s$source_path, paste(dangling, collapse = ", ")))
+    }
+  }
+  if (length(scripts_with_warnings) > 0) {
+    cat(sprintf("\n  %d script(s) have dangling references (variables used but never defined).\n",
+                length(scripts_with_warnings)))
+    cat("  These may be cross-chunk dependencies lost during decompilation.\n")
+    cat("  Review these scripts before re-execution in Reproducibility Verification.\n")
+  } else {
+    cat("  Reference validation: all scripts are self-contained (no dangling references detected).\n")
+  }
+} else {
+  cat("  Reference validation SKIPPED: codetools not available.\n")
 }
 
 # --- Write MANIFEST.md ---
@@ -384,15 +454,36 @@ ml <- c(
   sprintf("**Source Notebook:** `%s`", basename(notebook_path)),
   sprintf("**Decompiled:** %d scripts", length(scripts_extracted)),
   "",
-  "| # | Script | Stage | Code Lines | Has Log |",
-  "|---|--------|-------|-----------|---------|"
+  "| # | Script | Stage | Original Output | Code Lines | Has Log |",
+  "|---|--------|-------|-----------------|-----------|---------|"
 )
 idx <- 1
 for (m in manifest_rows) {
-  ml <- c(ml, sprintf("| %d | `%s` | %s | %d | %s |",
-                      idx, m$source_path, m$stage, m$code_lines,
-                      if (m$has_log) "Yes" else "No"))
+  ml <- c(ml, sprintf("| %d | `%s` | %s | `%s` | %d | %s |",
+                      idx, m$source_path, m$stage, m$original_output,
+                      m$code_lines, if (m$has_log) "Yes" else "No"))
   idx <- idx + 1
+}
+
+# Dangling-reference section (mirrors the Python manifest section).
+if (!codetools_ok) {
+  ml <- c(ml, "", "## Dangling Reference Warnings", "",
+          "Reference validation not run: codetools package unavailable.")
+} else if (length(scripts_with_warnings) > 0) {
+  ml <- c(ml, "", "## Dangling Reference Warnings", "",
+          "The following scripts reference variables that are not defined within the script.",
+          "These may be cross-chunk dependencies from the Quarto notebook that were lost during decompilation.",
+          "Scripts with dangling references may fail during re-execution and require modification.",
+          "NOTE: column names used inside tidyverse NSE verbs (mutate, filter, summarise, aes, ...)",
+          "are not statically resolvable and may appear here as false positives — treat these",
+          "warnings as review prompts, not errors.",
+          "",
+          "| Script | Undefined Names |",
+          "|--------|-----------------|")
+  for (w in scripts_with_warnings) {
+    ml <- c(ml, sprintf("| `%s` | %s |", w$source_path,
+                        paste(sprintf("`%s`", w$dangling), collapse = ", ")))
+  }
 }
 writeLines(paste0(paste(ml, collapse = "\n"), "\n"), manifest_path, sep = "")
 cat(sprintf("\nManifest written to: %s\n", manifest_path))

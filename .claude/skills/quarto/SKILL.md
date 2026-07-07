@@ -7,7 +7,7 @@ description: |
   audit artifacts. Use when execution language is R. Python equivalent: marimo.
 autoload: never
 metadata:
-  audience: code-producing agents
+  audience: research-coders
   domain: r-library
   library-version: "Quarto 1.7.29"
   skill-last-updated: "2026-05-08"
@@ -103,7 +103,7 @@ Stage 9 is handled by the **notebook-assembler agent** (see `.claude/agents/note
 1. READS script files from `scripts/stage{5,6,7,8}_*/`
 2. COPIES script code VERBATIM into .qmd code chunks
 3. COPIES execution logs VERBATIM into fenced blocks
-4. ADDS ONLY simple `arrow::read_parquet() |> head()` data inspection chunks
+4. ADDS ONLY simple `arrow::read_parquet()` + `dplyr::glimpse()`/`head(df, 20)` data inspection chunks
 
 ### ABSOLUTE PROHIBITIONS for Stage 9
 
@@ -122,10 +122,13 @@ Stage 9 is handled by the **notebook-assembler agent** (see `.claude/agents/note
 Data inspection chunks may contain ONLY these lines:
 ```r
 df <- arrow::read_parquet("path/to/file.parquet")
-head(df, 100)
+dplyr::glimpse(df)
+head(df, 20)
 ```
 
 No filtering. No mutating. No selecting. No aggregations. Just load and display.
+(`dplyr::glimpse()` is namespace-qualified because inspection chunks attach no
+libraries — a bare `glimpse()` fails at render time.)
 
 **See:**
 - `.claude/agents/notebook-assembler.md` for the complete behavioral protocol

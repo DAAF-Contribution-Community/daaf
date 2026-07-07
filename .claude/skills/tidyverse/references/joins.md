@@ -180,13 +180,22 @@ issues at join time rather than downstream.
 
 ### unmatched Argument (dplyr 1.1+)
 
-```r
-# Error if any left-side row is unmatched (inner join semantics check)
-df1 |> left_join(df2, by = "key", unmatched = "error")
+`unmatched` governs rows of the *other* table (`y` -- the right side in
+`left_join()`) that would be silently dropped. Left-side rows are never dropped
+by a left join; they are kept and NA-filled regardless of this argument:
 
-# Default: silently fill with NA
+```r
+# Error if any RIGHT-side (df2) row has no match in df1 -- catches reference
+# rows that would otherwise silently vanish
+df1 |> left_join(df2, by = "key", unmatched = "error")
+# Error: Each row of `y` must be matched by `x`.
+
+# Default: unmatched right-side rows are silently dropped
 df1 |> left_join(df2, by = "key", unmatched = "drop")
 ```
+
+To detect unmatched *left*-side rows, count NAs in a joined column after the
+join (see the validation pattern above).
 
 ---
 

@@ -1,6 +1,6 @@
 # Exploratory Unsupervised Analysis
 
-Methodological guidance for exploratory unsupervised analysis — discovering structure, groupings, and patterns in data without pre-specified outcome variables. This reference covers the *why* and *when* of unsupervised methods. Whenever scikit-learn methods enter the discussion — in advice or in code — load the `scikit-learn` skill: it carries the syntax plus environment constraints and curated caveats that general knowledge lacks.
+Methodological guidance for exploratory unsupervised analysis — discovering structure, groupings, and patterns in data without pre-specified outcome variables. This reference covers the *why* and *when* of unsupervised methods. Whenever clustering or dimension-reduction tooling enters the discussion — in advice or in code — load the `scikit-learn` skill (Python) or the `tidymodels` skill (R — its `unsupervised.md` reference covers PCA via recipes, k-means, and UMAP via uwot): they carry the syntax plus environment constraints and curated caveats that general knowledge lacks.
 
 **When to read this file:** Stage 8 analysis tasks involving clustering, typology construction, dimension reduction, mixture models, or any task where the goal is discovering structure rather than testing hypotheses about known relationships.
 
@@ -84,7 +84,7 @@ The choice of clustering algorithm is consequential — different algorithms imp
 | K-means | Large N; spherical, equal-size clusters | Spherical; equal variance; continuous data | k (number of clusters) |
 | K-medoids (PAM) | Small-to-medium N; robust to outliers; any distance | Convex clusters | k; distance metric |
 
-> **Implementation note:** K-medoids/PAM is not available in scikit-learn core. Use `sklearn_extra.cluster.KMedoids` from the `scikit-learn-extra` package, or the standalone `kmedoids` package.
+> **Implementation note:** K-medoids/PAM is not available in scikit-learn core. In Python, use `sklearn_extra.cluster.KMedoids` from the `scikit-learn-extra` package, or the standalone `kmedoids` package. In R, PAM is natively available via `cluster::pam()` (the `cluster` package is installed).
 | Hierarchical (agglomerative) | Small-to-medium N; dendrogram visualization; nested structure | Depends on linkage (Ward's assumes spherical) | Linkage method; distance metric; cut height |
 | DBSCAN (Ester et al., 1996) | Arbitrary shapes; outlier detection; unknown k | Density-based separation; uniform density | epsilon; MinPts |
 | HDBSCAN | Varying-density clusters; robust to parameters | Density-based; varying density | min_cluster_size |
@@ -95,7 +95,7 @@ The choice of clustering algorithm is consequential — different algorithms imp
 
 **Practical guidance:** For most applied social science work, start with K-means (simple, fast, widely understood) and hierarchical clustering (provides a dendrogram for visual assessment). If clusters appear non-spherical, overlapping, or varying in density, move to GMM or DBSCAN. A useful initialization strategy: use Ward's hierarchical clustering to generate initial centroids, then refine with K-means — this avoids K-means's sensitivity to random initialization (Steinley, 2006).
 
-For implementation details of these algorithms, load the `scikit-learn` skill.
+For implementation details of these algorithms, load the `scikit-learn` skill (Python) or the `tidymodels` skill, specifically `unsupervised.md` (R).
 
 ### Choosing the Number of Clusters
 
@@ -258,7 +258,7 @@ These limitations mean t-SNE and UMAP plots should be treated as **hypothesis-ge
 - Always label plots with the exact parameter values and random seed used
 - Prefer UMAP over t-SNE for large datasets or when global structure preservation matters
 
-Whenever these embeddings come up — advising or coding — load the `scikit-learn` skill (t-SNE) or see the `umap-learn` companion library documentation.
+Whenever these embeddings come up — advising or coding — load the `scikit-learn` skill (Python t-SNE; UMAP via the `umap-learn` companion library) or the `tidymodels` skill, specifically `unsupervised.md` (R — UMAP via `uwot`).
 
 ## Gaussian Mixture Models
 
@@ -433,7 +433,7 @@ Jolliffe, I.T. (2002). *Principal Component Analysis*, 2nd Edition. Springer.
 
 Horn, J.L. (1965). "A rationale and test for the number of factors in factor analysis." *Psychometrika*, 30(2), 179-185.
 
-> **Implementation note:** Parallel analysis implementation guidance is available in the scikit-learn skill's `decomposition.md` reference.
+> **Implementation note:** Parallel analysis implementation guidance is available in the scikit-learn skill's `decomposition.md` reference (Python-only depth; R: see the tidymodels skill's `unsupervised.md` for the PCA workflow — it does not cover parallel analysis).
 
 ### Nonlinear Embeddings
 

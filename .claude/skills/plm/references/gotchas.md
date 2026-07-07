@@ -122,7 +122,7 @@ one wastes time or limits capabilities.
 | Hausman test | plm | fixest has no phtest() |
 | Panel diagnostics (serial corr, CD) | plm | Full diagnostic suite |
 | First difference | plm | fixest has no FD |
-| Fama-MacBeth | plm (pmg) | fixest has no FM |
+| Fama-MacBeth | plm (pmg, with reversed time-first index -- see models.md) | fixest has no FM |
 | Dynamic GMM (Arellano-Bond) | plm (pgmm) | Unique to plm |
 | 3+ way FE | fixest | plm max 2-way |
 | FE + IV combined | fixest or plm | Both support it |
@@ -150,7 +150,7 @@ be positive semi-definite in large samples, but may not be in practice.
 
 ```r
 # Solution: use the auxiliary regression version
-phtest(invest ~ value + capital, data = pdf, method = "aux")
+phtest(inv ~ value + capital, data = pdf, method = "aux")
 ```
 
 **Issue 2: Different regressors in FE and RE**

@@ -32,14 +32,22 @@ facet_wrap(vars(var1, var2))
 
 ### Panel Direction (4.0 update)
 
-The `as.table` argument is deprecated in 4.0. Use `dir` instead:
+The `as.table` argument is superseded in 4.0 -- its behavior is absorbed into
+`dir` via new two-letter codes. `dir` still accepts `"h"` (horizontal, the
+default) and `"v"` (vertical), or a two-letter code combining `"t"`/`"b"`
+(top/bottom) with `"l"`/`"r"` (left/right): the two letters give the starting
+corner, and the first letter gives the growing direction. All 8 codes:
+`"lt"`, `"tl"`, `"lb"`, `"bl"`, `"rt"`, `"tr"`, `"rb"`, `"br"`.
 
 ```r
-# Left-to-right, top-to-bottom (default)
+# Left-to-right, then top-to-bottom (equivalent to the default dir = "h")
 facet_wrap(~ variable, dir = "lt")
 
-# 4.0 dir options: "lt" (left-top, default), "rt", "lb", "rb",
-# plus "h" and "v" (deprecated in 4.0)
+# First panel in the top-right, filling right-to-left
+facet_wrap(~ variable, dir = "rt")
+
+# dir = "tr" is equivalent to the old dir = "v", as.table = FALSE
+facet_wrap(~ variable, dir = "tr")
 ```
 
 ### Free Space (1-row or 1-column layouts)

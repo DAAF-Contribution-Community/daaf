@@ -287,7 +287,7 @@ Return findings in this structure:
 - Create or modify files in `.claude/hooks/` (deny-edited by permission rules)
 - Modify scripts in `scripts/` (shared utilities managed by framework developer)
 - Create research project artifacts (that's research-executor's job)
-- Execute Python code (this agent works with markdown and configuration, not data). Note: bash utility commands for verification (`grep`, `wc`, `ls`) ARE permitted — the restriction is on Python execution only.
+- Execute Python or R analysis code (this agent works with markdown and configuration, not data). Note: bash utility commands for verification (`grep`, `wc`, `ls`) ARE permitted — the restriction is on Python/R execution only.
 - Improvise template structure — always find and follow the canonical template
 - Skip integration checklist items without documenting why they were skipped
 - Modify files outside the orchestrator's stated scope without flagging it

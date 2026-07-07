@@ -27,8 +27,8 @@ library(plm)
 data("Grunfeld", package = "plm")
 pdf <- pdata.frame(Grunfeld, index = c("firm", "year"))
 
-fit_fe <- plm(invest ~ value + capital, data = pdf, model = "within")
-fit_re <- plm(invest ~ value + capital, data = pdf, model = "random")
+fit_fe <- plm(inv ~ value + capital, data = pdf, model = "within")
+fit_re <- plm(inv ~ value + capital, data = pdf, model = "random")
 
 # Hausman test
 ht <- phtest(fit_fe, fit_re)
@@ -53,7 +53,7 @@ finite-sample problem.
 ```r
 # If phtest() gives a warning about non-positive definite matrix,
 # use the auxiliary regression version:
-phtest(invest ~ value + capital, data = pdf, method = "aux")
+phtest(inv ~ value + capital, data = pdf, method = "aux")
 ```
 
 **Two-way effects**: When using `effect = "twoways"`, both models must use
@@ -79,8 +79,8 @@ Tests whether entity fixed effects are jointly significant. H0: all entity
 effects are zero (pooled OLS is appropriate). Rejection supports FE.
 
 ```r
-fit_fe <- plm(invest ~ value + capital, data = pdf, model = "within")
-fit_pool <- plm(invest ~ value + capital, data = pdf, model = "pooling")
+fit_fe <- plm(inv ~ value + capital, data = pdf, model = "within")
+fit_pool <- plm(inv ~ value + capital, data = pdf, model = "pooling")
 
 # F-test for individual effects
 pFtest(fit_fe, fit_pool)
@@ -96,8 +96,9 @@ plmtest(fit_pool, type = "bp")
 # Honda test (one-sided, more powerful)
 plmtest(fit_pool, type = "honda")
 
-# Ghosh-Kim-Sun-Weidner test (for unbalanced panels)
-plmtest(fit_pool, type = "ghm")
+# Gourieroux, Holly & Monfort test (two-way effects; chi-bar-squared
+# distribution). Only valid with effect = "twoways".
+plmtest(fit_pool, type = "ghm", effect = "twoways")
 ```
 
 | Test | H0 | When to Use |
@@ -123,19 +124,21 @@ pbgtest(fit_fe)
 pbgtest(fit_fe, order = 2)
 ```
 
-### Wooldridge First-Difference Test
+### Wooldridge Tests
 
 ```r
-# Wooldridge test for AR(1) serial correlation in FE models
+# Wooldridge test for AR(1) serial correlation in FE panels
 pwartest(fit_fe)
+
+# Wooldridge first-difference-based test for serial correlation
+# (the FD variant is a separate function, not pwartest; it takes the
+# formula or an "fd" model -- NOT a within model)
+pwfdtest(inv ~ value + capital, data = pdf)
 ```
 
-### Breusch-Pagan LM Test for Serial Correlation
-
-```r
-# LM test variant
-plmtest(fit_pool, type = "bp", effect = "time")
-```
+Note: `plmtest()` is NOT a serial correlation test — it is the LM test for
+unobserved individual/time effects (see the poolability section above).
+`plmtest(effect = "time")` tests for time effects, not serial correlation.
 
 ### Durbin-Watson for Panel
 
@@ -163,12 +166,18 @@ pcdtest(fit_fe, test = "cd")
 # -> Consider Driscoll-Kraay SEs (vcovSCC)
 ```
 
-### Friedman Test
+### Scaled LM Test
 
 ```r
-# Friedman rank test for cross-sectional dependence
+# Scaled LM test for cross-sectional dependence (Pesaran 2004)
 pcdtest(fit_fe, test = "sclm")
+
+# Bias-corrected scaled LM (Baltagi, Feng & Kao 2012)
+pcdtest(fit_fe, test = "bcsclm")
 ```
+
+Valid `test=` values are `"cd"`, `"sclm"`, `"bcsclm"`, `"lm"`, `"rho"`, and
+`"absrho"` — there is no Friedman option in `pcdtest()`.
 
 ### Breusch-Pagan LM Test
 
@@ -179,9 +188,9 @@ pcdtest(fit_fe, test = "lm")
 
 | Test | Requirements | Best For |
 |------|-------------|----------|
-| Pesaran CD | Any N, T | Large panels (default choice) |
-| Friedman | Any N, T | Non-parametric alternative |
-| LM (Breusch-Pagan) | T > N | Small panels only |
+| Pesaran CD (`"cd"`) | Any N, T | Large panels (default choice) |
+| Scaled LM (`"sclm"`, `"bcsclm"`) | Moderate N relative to T | Large-T panels; bcsclm corrects small-sample bias |
+| LM (Breusch-Pagan, `"lm"`) | T > N | Small panels only |
 
 ### When Cross-Sectional Dependence Is Detected
 
@@ -203,16 +212,16 @@ spurious regressions in panel data with long T.
 
 ```r
 # Im-Pesaran-Shin (IPS) test
-purtest(pdf$invest, test = "ips", exo = "intercept", lags = "AIC")
+purtest(pdf$inv, test = "ips", exo = "intercept", lags = "AIC")
 
 # Levin-Lin-Chu (LLC) test
-purtest(pdf$invest, test = "levinlin", exo = "intercept")
+purtest(pdf$inv, test = "levinlin", exo = "intercept")
 
 # Maddala-Wu (Fisher-type) test
-purtest(pdf$invest, test = "madwu", exo = "intercept")
+purtest(pdf$inv, test = "madwu", exo = "intercept")
 
 # Hadri test (H0: stationarity, opposite null)
-purtest(pdf$invest, test = "hadri", exo = "intercept")
+purtest(pdf$inv, test = "hadri", exo = "intercept")
 ```
 
 | Test | H0 | H1 | Best When |
@@ -226,7 +235,7 @@ purtest(pdf$invest, test = "hadri", exo = "intercept")
 
 ```r
 # Cross-sectionally augmented IPS (CIPS) -- robust to cross-sect dependence
-cipstest(pdf$invest, type = "drift")
+cipstest(pdf$inv, type = "drift")
 ```
 
 The CIPS test is preferable when cross-sectional dependence is present

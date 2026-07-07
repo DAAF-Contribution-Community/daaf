@@ -47,7 +47,9 @@ gtsave(tbl, "output/tables/my_table.tex")
 latex_str <- as_latex(tbl)
 ```
 
-LaTeX output produces a `\begin{longtable}` environment. Some gt features
+In gt 1.3.0, LaTeX output produces a floating `\begin{table}` environment
+containing a `tabular*`. A `longtable` environment (for tables that span pages)
+is opt-in via `tab_options(latex.use_longtable = TRUE)`. Some gt features
 (color gradients, complex borders) may not translate perfectly to LaTeX.
 
 ### Word/RTF Output

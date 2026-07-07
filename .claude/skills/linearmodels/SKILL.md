@@ -1,7 +1,7 @@
 ---
 name: linearmodels
 description: >-
-  Panel data, IV/GMM, system regression. PanelOLS (FE/RE), BetweenOLS, Fama-MacBeth, IV2SLS/LIML/GMM, SUR, 3SLS, Driscoll-Kraay SEs. Use for RE/between, system estimation, or GMM. Complements pyfixest (FE + DiD) and statsmodels (GLM + time series).
+  Panel data, IV/GMM, system regression. PanelOLS (FE/RE), BetweenOLS, Fama-MacBeth, IV2SLS/LIML/GMM, SUR, 3SLS, Driscoll-Kraay SEs. Use for RE/between, system estimation, or GMM. Complements pyfixest (FE + DiD) and statsmodels (GLM + time series). R equivalent: plm (use when execution language is R).
 metadata:
   audience: research-coders
   domain: python-library

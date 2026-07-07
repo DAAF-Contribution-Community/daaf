@@ -3,7 +3,8 @@ name: python-r-translation
 description: >-
   Python-to-R translation for data analysis. Maps Python (polars, plotnine, pyfixest,
   statsmodels, svy, geopandas) to R (tidyverse, ggplot2, fixest, survey, sf). Use
-  when user has Python background or requests Python-equivalent code comments.
+  when user has Python background or requests Python-equivalent code comments in
+  R pipelines.
 metadata:
   audience: research-coders
   domain: cross-language
@@ -112,7 +113,9 @@ Which Python package?
 |   +-- ./references/regression-modeling.md
 |-- statsmodels (OLS, GLM) --> base R stats (lm, glm) + lmtest + sandwich
 |   +-- ./references/regression-modeling.md
-|-- linearmodels (panel, IV) --> plm + lme4 + estimatr
+|-- linearmodels (panel, IV) --> plm + estimatr
+|   +-- ./references/regression-modeling.md
+|-- statsmodels MixedLM --> lme4 (lmer)
 |   +-- ./references/regression-modeling.md
 |-- svy --> survey (Lumley)
 |   +-- ./references/survey-spatial-ml.md
@@ -157,7 +160,8 @@ What went wrong?
 | ggplot2 | plotnine | High | Same grammar of graphics; bare names vs string quoting for aes |
 | plotly (R) | plotly (Python) | High | `plot_ly()` vs `px.scatter()`; similar output |
 | base R stats + lmtest + sandwich | statsmodels | Medium | Single formula syntax vs three Python dialects |
-| plm + lme4 + estimatr | linearmodels | Medium | pdata.frame vs pandas MultiIndex for panel structure |
+| plm + estimatr | linearmodels | Medium | pdata.frame vs pandas MultiIndex for panel structure |
+| lme4 | statsmodels MixedLM | Medium | `(1 \| group)` in formula vs separate `groups=`/`re_formula=` arguments |
 | tidymodels / caret | scikit-learn | Medium | Declarative recipe pipeline vs imperative fit/predict |
 | sf + terra | geopandas | Medium | st_*() functions vs GeoDataFrame methods; different CRS handling |
 | survey (Lumley) | svy | Medium | Full GLM family coverage vs limited (gaussian/binomial/Poisson) |
@@ -179,17 +183,19 @@ reference files note the change.
 | ggplot2 | 4.0.2 | plotnine | 0.15.3 |
 | plotly (R) | 4.12.0 | plotly | 6.5.2 |
 | base R stats + lmtest + sandwich | lmtest 0.9-40, sandwich 3.1-1 | statsmodels | 0.14.6 |
-| plm + lme4 + estimatr | plm 2.6-7, lme4 2.0-1 | linearmodels | unpinned |
+| plm + estimatr | plm 2.6-7, estimatr 1.0.6 | linearmodels | 7.0 |
+| lme4 | 2.0-1 | statsmodels MixedLM | 0.14.6 |
 | tidymodels / caret | tidymodels 1.4.1, caret 7.0-1 | scikit-learn | 1.8.0 |
 | sf + terra | sf 1.1-0, terra 1.9-11 | geopandas | 1.1.3 |
 | survey | survey 4.5 | svy | 0.13.0 |
-| marginaleffects (R) | 0.32.0 | marginaleffects | unpinned |
-| rdrobust (R) | 3.0.0 | rdrobust | unpinned |
+| marginaleffects (R) | 0.32.0 | marginaleffects | 0.5.0 |
+| rdrobust (R) | 3.0.0 | rdrobust | 1.3.0 |
 | Quarto / RMarkdown | Quarto 1.7.29 | marimo | 0.19.11 |
 
-**Unpinned packages:** linearmodels, marginaleffects, and rdrobust install the latest
-version at Docker build time. Translations for these packages reference their documented
-API as of March 2026.
+**Pinning note:** linearmodels, marginaleffects, and rdrobust are version-pinned in
+DAAF's Dockerfile (`linearmodels==7.0`, `marginaleffects==0.5.0`, `rdrobust==1.3.0`)
+and pre-installed alongside the rest of the Python stack. Translations reference their
+documented APIs as of March 2026.
 
 ## Top 10 Paradigm Differences
 

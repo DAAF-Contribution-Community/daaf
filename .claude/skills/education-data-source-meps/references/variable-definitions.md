@@ -150,7 +150,7 @@ null_count = df["meps_poverty_pct"].null_count()
 library(dplyr)
 
 # Filter to non-null values
-valid_data <- df |> filter(!is.na(meps_poverty_pct)
+valid_data <- df |> filter(!is.na(meps_poverty_pct))
 
 # Count missing
 null_count <- sum(is.na(df$meps_poverty_pct))
@@ -199,17 +199,18 @@ library(dplyr)
 
 # Policy-relevant thresholds
 df <- df |> mutate(
-    (meps_poverty_pct >= 30.0),
-    (meps_poverty_pct < 10.0),
-])
+  high_poverty = meps_poverty_pct >= 30.0,
+  low_poverty = meps_poverty_pct < 10.0
+)
 
 # Title I style categories
 df <- df |> mutate(
-    pl.when(meps_poverty_pct >= 40.0).then("Very High")
-    .when(meps_poverty_pct >= 25.0).then("High")
-    .when(meps_poverty_pct >= 10.0).then("Moderate")
-    .otherwise("Low")
-    
+  poverty_level = case_when(
+    meps_poverty_pct >= 40.0 ~ "Very High",
+    meps_poverty_pct >= 25.0 ~ "High",
+    meps_poverty_pct >= 10.0 ~ "Moderate",
+    .default = "Low"
+  )
 )
 ```
 
@@ -229,7 +230,7 @@ library(dplyr)
 
 # After joining MEPS with CCD enrollment on ncessch + year:
 df <- df |> mutate(
-    (meps_poverty_pct / 100.0 * enrollment).round(0)
+  poverty_count = round(meps_poverty_pct / 100.0 * enrollment, 0)
 )
 ```
 
@@ -253,14 +254,14 @@ district_meps = (
 library(dplyr)
 
 # Enrollment-weighted district average
-district_meps <- (
-    df |> filter(!is.na(meps_poverty_pct) & !is.na(enrollment)
-    .group_by("leaid")
-    .agg(
-        (meps_poverty_pct * enrollment).sum()
-        / sum(enrollment, na.rm = TRUE)
-    ).rename({"meps_poverty_pct": "meps_weighted_avg"})
-)
+district_meps <- df |>
+  filter(!is.na(meps_poverty_pct), !is.na(enrollment)) |>
+  group_by(leaid) |>
+  summarise(
+    meps_weighted_avg = sum(meps_poverty_pct * enrollment, na.rm = TRUE) /
+      sum(enrollment, na.rm = TRUE),
+    .groups = "drop"
+  )
 ```
 
 ## Variable Relationships
@@ -309,23 +310,21 @@ meps_schema = {
 
 ```r
 library(arrow)
-library(dplyr)
 
-# Polars types - matches actual Portal parquet files
-
-meps_schema <- {
-    'year': pl.Int64,
-    'fips': pl.Int64,
-    'gleaid': pl.Int64,
-    'ncessch': pl.Int64,           # Integer, not string!
-    'meps_poverty_pct': pl.Float64,
-    'meps_poverty_se': pl.Float64,
-    'meps_mod_poverty_pct': pl.Float64,
-    'meps_poverty_ptl': pl.Int64,
-    'meps_mod_poverty_ptl': pl.Int64,
-    'ncessch_num': pl.Int64,
-    'leaid': pl.Int64,             # Integer, not string!
-}
+# Arrow schema - matches actual Portal parquet files
+meps_schema <- schema(
+  year = int64(),
+  fips = int64(),
+  gleaid = int64(),
+  ncessch = int64(),           # Integer, not string!
+  meps_poverty_pct = float64(),
+  meps_poverty_se = float64(),
+  meps_mod_poverty_pct = float64(),
+  meps_poverty_ptl = int64(),
+  meps_mod_poverty_ptl = int64(),
+  ncessch_num = int64(),
+  leaid = int64()              # Integer, not string!
+)
 ```
 
 ### SQL table definition
@@ -366,9 +365,9 @@ library(dplyr)
 
 # Convert integer IDs to zero-padded strings
 df <- df |> mutate(
-    as.character(ncessch).str.zfill(12),
-    as.character(leaid).str.zfill(7),
-])
+  ncessch_str = stringr::str_pad(as.character(ncessch), width = 12, pad = "0"),
+  leaid_str = stringr::str_pad(as.character(leaid), width = 7, pad = "0")
+)
 ```
 
 ## Quick Reference Card
@@ -398,6 +397,6 @@ result = df.filter(pl.col("ncessch") == 60000100001).select("meps_poverty_pct")
 library(dplyr)
 
 # "What's the poverty rate at this school?"
-result <- df |> filter(ncessch == 60000100001).select("meps_poverty_pct")
+result <- df |> filter(ncessch == 60000100001) |> select(meps_poverty_pct)
 # Returns value like 25.0 (meaning 25% estimated in poverty)
 ```

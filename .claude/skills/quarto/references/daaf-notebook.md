@@ -57,6 +57,7 @@ Source: `scripts/stage5_fetch/01_fetch-source.R`
 ```{r}
 #| label: stage5-01-fetch
 #| code-fold: false
+#| eval: false
 
 # --- VERBATIM COPY of scripts/stage5_fetch/01_fetch-source.R ---
 [Exact script contents pasted here]
@@ -76,7 +77,7 @@ Source: `scripts/stage5_fetch/01_fetch-source.R`
 #| echo: false
 
 df <- arrow::read_parquet("data/raw/YYYY-MM-DD_source_data.parquet")
-glimpse(df)
+dplyr::glimpse(df)
 head(df, 20)
 ```
 
@@ -91,6 +92,7 @@ Source: `scripts/stage6_clean/01_clean-source.R`
 ```{r}
 #| label: stage6-01-clean
 #| code-fold: false
+#| eval: false
 
 # --- VERBATIM COPY of scripts/stage6_clean/01_clean-source.R ---
 [Exact script contents pasted here]
@@ -135,8 +137,14 @@ execute:
 - `eval: false` -- Scripts were already executed; re-running would fail
   (dependencies, data paths, etc. may not resolve in notebook context)
 
-The ONLY chunks with `eval: true` are data inspection chunks that load
-parquet files for display.
+**Execution-flag contract (belt-and-suspenders):** the notebook sets
+`eval: false` globally in the YAML `execute:` block AND every script-archive
+chunk carries its own `#| eval: false`; data inspection chunks are the ONLY
+chunks that opt back in with `#| eval: true`. The redundancy is deliberate:
+the global flag protects chunks that lose their per-chunk option in editing,
+and the per-chunk flag keeps each archive chunk safe even if the frontmatter
+is changed. This contract is stated identically in
+`.claude/agents/notebook-assembler.md`.
 
 ## Chunk Patterns
 
@@ -146,6 +154,7 @@ parquet files for display.
 ```{r}
 #| label: stage5-01-fetch
 #| code-fold: false
+#| eval: false
 
 # --- VERBATIM COPY of scripts/stage5_fetch/01_fetch-source.R ---
 # [Full script contents, including all comments, IAT annotations, etc.]
@@ -155,6 +164,11 @@ parquet files for display.
 Rules:
 - Label follows pattern: `stage{N}-{step}-{description}`
 - `code-fold: false` -- code must be visible (overrides any global setting)
+- `#| eval: false` -- per-chunk half of the belt-and-suspenders contract
+  (in addition to the global `execute: eval: false`)
+- The `# --- VERBATIM COPY of scripts/<path> ---` marker line is MANDATORY —
+  it is the anchor `scripts/decompile_notebook.R` uses to identify script
+  chunks and recover source paths
 - Script code is pasted EXACTLY as written, including:
   - All `# INTENT:`, `# REASONING:`, `# ASSUMES:` IAT annotations
   - All inline validation code
@@ -184,14 +198,16 @@ but would clutter the document if always expanded.
 #| echo: false
 
 df <- arrow::read_parquet("data/processed/YYYY-MM-DD_cleaned.parquet")
-glimpse(df)
+dplyr::glimpse(df)
 head(df, 20)
 ```
 ````
 
 These are the ONLY chunks with `eval: true`. They:
 - Load a parquet file with `arrow::read_parquet()`
-- Preview structure with `glimpse(df)` and the first 20 rows with `head(df, 20)`
+- Preview structure with `dplyr::glimpse(df)` and the first 20 rows with
+  `head(df, 20)` — `glimpse` must be namespace-qualified because inspection
+  chunks attach no libraries and a bare `glimpse()` fails at render time
 - Nothing else -- no filtering, no transforming, no summarizing
 
 ### Narrative Cell (Markdown)
@@ -225,7 +241,7 @@ The notebook-assembler agent follows this sequence:
 
 | Prohibited | Why | What to Do Instead |
 |-----------|-----|-------------------|
-| New R code beyond `arrow::read_parquet()` + `glimpse()`/`head()` | Stage 9 compiles, not creates | Put new analysis in Stage 8 scripts |
+| New R code beyond `arrow::read_parquet()` + `dplyr::glimpse()`/`head()` | Stage 9 compiles, not creates | Put new analysis in Stage 8 scripts |
 | `library()` calls beyond `arrow` | No new dependencies | Libraries are in the copied scripts |
 | Parameterized rendering (`params:`) | Not a dynamic report | The notebook is a static artifact |
 | Shiny runtime | Not an interactive app | Use standalone Shiny for interactivity |
@@ -240,7 +256,7 @@ The notebook-assembler agent follows this sequence:
 | Code blocks | ```` ```{r} ```` fenced chunks | `@app.cell` decorated functions |
 | Execution model | Sequential, top-to-bottom | Reactive (DAG-based) |
 | Non-execution flag | `eval: false` in YAML | Code is display-only in cell wrappers |
-| Data display | `glimpse(df)` + `head(df, 20)` | `mo.ui.table(df.head(100))` |
+| Data display | `dplyr::glimpse(df)` + `head(df, 20)` | `mo.ui.table(df.head(100))` |
 | Collapsible logs | `::: {.callout-note collapse="true"}` block | `mo.accordion()` |
 | Output format | Rendered HTML via `quarto render` | marimo app or exported HTML |
 | Git format | Plain text .qmd | Plain text .py |

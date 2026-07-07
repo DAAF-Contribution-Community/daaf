@@ -264,13 +264,17 @@ url = get_codebook_url("edfacts/codebook_districts_edfacts_graduation")
 ```
 
 ```r
+# get_codebook_url() is a Python helper; in R, build the URL from the mirror root.
+# Mirror failover: see `education-data-query/references/fetch-patterns.md` (R pattern)
+mirror <- yaml::read_yaml("mirrors.yaml")$mirrors[[1]]
+
 # Assessment codebooks:
-url <- get_codebook_url("edfacts/codebook_schools_edfacts_assessments")
-url <- get_codebook_url("edfacts/codebook_districts_edfacts_assessments")
+url <- paste0(mirror$root_url, "/", "edfacts/codebook_schools_edfacts_assessments", ".xls")
+url <- paste0(mirror$root_url, "/", "edfacts/codebook_districts_edfacts_assessments", ".xls")
 
 # Graduation rate codebooks:
-url <- get_codebook_url("edfacts/codebook_schools_edfacts_graduation")
-url <- get_codebook_url("edfacts/codebook_districts_edfacts_graduation")
+url <- paste0(mirror$root_url, "/", "edfacts/codebook_schools_edfacts_graduation", ".xls")
+url <- paste0(mirror$root_url, "/", "edfacts/codebook_districts_edfacts_graduation", ".xls")
 ```
 
 > **Codebook naming note:** Graduation rate codebooks use `_graduation` (not `_grad_rates`), while the data files use `_grad_rates`. This follows the same pattern as other Portal sources where codebook names differ from data file names. See `datasets-reference.md` for the authoritative path mapping.

@@ -140,10 +140,10 @@ directory. Relative paths with `../` can fail:
 
 ```r
 # SAFE: absolute path
-saveWidget(p, "/daaf/research/project/output/plot.html", selfcontained = TRUE)
+saveWidget(p, "/daaf/research/project/output/plot.html", selfcontained = FALSE)
 
 # SAFE: file.path() construction
-saveWidget(p, file.path(OUTPUT_DIR, "plot.html"), selfcontained = TRUE)
+saveWidget(p, file.path(OUTPUT_DIR, "plot.html"), selfcontained = FALSE)
 
 # RISKY: relative path with parent traversal
 # saveWidget(p, "../output/plot.html")  # May fail depending on temp dir behavior
