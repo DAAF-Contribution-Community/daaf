@@ -182,12 +182,12 @@ while IFS=$'\x1f' read -r id type name status tokens label; do
         case "$task_model" in
             *fable-5*|*mythos-5*|*opus-4-7*|*opus-4-8*|*\[1m\]*) row_window=1000000 ;;
             # GPT (OpenAI) windows, ordered most-specific first: mini/chat
-            # variants are smaller than the gpt-5.4/5.5 flagships, so they must
+            # variants are smaller than the gpt-5.4/5.5/5.6 flagships, so they must
             # precede the broad matches. Verified vs OpenRouter /api/v1/models
             # 2026-07-09. Keep aligned with context-bar.sh + context-reporter.sh.
             *gpt-5*-mini*) row_window=400000 ;;
             *gpt-5*-chat*) row_window=128000 ;;
-            *gpt-5.4*|*gpt-5.5*) row_window=1050000 ;;
+            *gpt-5.4*|*gpt-5.5*|*gpt-5.6*) row_window=1050000 ;;
             *gpt-5*) row_window=400000 ;;
             *) row_window=200000 ;;
         esac

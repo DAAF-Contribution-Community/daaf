@@ -136,8 +136,9 @@ fi
 # OpenAI / provider-shim sessions (localhost base URL). When the model id looks
 # like a GPT model and max_context is still the 200k default, substitute the
 # model's real window. Patterns are ordered most-specific first: *-mini* and
-# *-chat* variants have smaller windows than the base gpt-5.4/5.5 flagships, so
-# they must match before the broad *gpt-5.4*/*gpt-5.5* and *gpt-5* fallbacks.
+# *-chat* variants have smaller windows than the base gpt-5.4/5.5/5.6 flagships
+# (the whole gpt-5.6 Sol/Terra/Luna family is 1,050,000), so they must match
+# before the broad flagship and *gpt-5* fallbacks.
 # Verified live against OpenRouter /api/v1/models, 2026-07-09. Only applied when
 # max_context looks like the untrusted 200k default so a real OpenRouter lookup
 # (or an explicit override below) always wins.
@@ -145,7 +146,7 @@ if [[ -n "$model_id" && "$max_context" -eq 200000 ]]; then
     case "$model_id" in
         *gpt-5*-mini*)      max_context=400000 ;;
         *gpt-5*-chat*)      max_context=128000 ;;
-        *gpt-5.4*|*gpt-5.5*) max_context=1050000 ;;
+        *gpt-5.4*|*gpt-5.5*|*gpt-5.6*) max_context=1050000 ;;
         *gpt-5*)            max_context=400000 ;;
     esac
 fi

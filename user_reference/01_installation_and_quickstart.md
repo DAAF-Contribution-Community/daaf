@@ -781,9 +781,9 @@ Uncomment the OpenRouter section and set the model variables to GPT slugs (note 
 ANTHROPIC_BASE_URL=https://openrouter.ai/api
 ANTHROPIC_AUTH_TOKEN=your_openrouter_api_key_here
 ANTHROPIC_API_KEY=
-ANTHROPIC_MODEL=openai/gpt-5.5
-ANTHROPIC_DEFAULT_OPUS_MODEL=openai/gpt-5.5           # strong tier
-ANTHROPIC_DEFAULT_SONNET_MODEL=openai/gpt-5.2         # fast tier
+ANTHROPIC_MODEL=openai/gpt-5.6-sol
+ANTHROPIC_DEFAULT_OPUS_MODEL=openai/gpt-5.6-sol       # strong tier (Opus-analog)
+ANTHROPIC_DEFAULT_SONNET_MODEL=openai/gpt-5.6-terra   # fast tier (Sonnet-analog)
 CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000               # see "known limitations" below
 ```
 
@@ -791,15 +791,16 @@ Recommended GPT slugs (context windows and roles verified against OpenRouter on 
 
 | Slug | Context window | Role in DAAF | Notes |
 |------|---------------|--------------|-------|
-| `openai/gpt-5.5` | 1,050,000 | Strong tier (Opus-analog) | Highest-judgment work |
-| `openai/gpt-5.2` | 400,000 | Fast tier (Sonnet-analog) | Well-defined work; set `ANTHROPIC_DEFAULT_SONNET_MODEL` |
-| `openai/gpt-5.4` | 1,050,000 | Budget flagship alternative | Cheaper than 5.5 at similar window; reasonable strong-tier choice |
-| `openai/gpt-5.4-mini` | 400,000 | Economy option | Lowest cost |
+| `openai/gpt-5.6-sol` | 1,050,000 | **Strong tier (Opus-analog) — recommended default** | $5 / $30 per M tokens in/out |
+| `openai/gpt-5.6-terra` | 1,050,000 | **Fast tier (Sonnet-analog) — recommended default** | $2.50 / $15 per M tokens |
+| `openai/gpt-5.6-luna` | 1,050,000 | Economy (Haiku-analog) | $1 / $6 per M tokens; unused by DAAF's two-tier routing (Haiku tier excluded by policy) |
+| `openai/gpt-5.5` / `openai/gpt-5.4` | 1,050,000 | Previous strong-tier options | Still work; superseded by the 5.6 family at equal-or-better pricing |
+| `openai/gpt-5.2` | 400,000 | Previous fast-tier option | Smaller window than Terra at similar price |
 | `openai/gpt-5.*-chat` | 128,000 | Not recommended | Small window; avoid for pipeline work |
 
 The two-tier routing described above works identically: map `ANTHROPIC_DEFAULT_OPUS_MODEL` / `ANTHROPIC_DEFAULT_SONNET_MODEL` to your chosen GPT slugs, and DAAF's cost-control ceiling stands down automatically for non-Claude models.
 
-> **Looking ahead:** OpenAI's GPT-5.6 line (not yet on OpenRouter as of this writing) introduces tier-analog naming — *Sol*, *Terra*, and *Luna* — that maps loosely onto fast / strong / economy roles. When it lands, the same Option C pattern will apply with the new slugs.
+> **GPT-5.6 tier naming:** the GPT-5.6 family uses OpenAI's tier-analog names — *Sol* (strong; Opus-analog), *Terra* (mid; Sonnet-analog), and *Luna* (economy; Haiku-analog) — all with 1,050,000-token windows. DAAF's recommended defaults are Sol and Terra, validated live through the full agentic stack (including subagent dispatch on the tier remaps) on 2026-07-09, the day of the OpenRouter release.
 
 **Restart the container** (`docker compose down`, then `bash run_daaf.sh`) to pick up the changes. No rebuild is needed for OpenRouter — it is config-only.
 
@@ -818,9 +819,9 @@ OPENAI_API_KEY=sk-your_openai_api_key_here
 ANTHROPIC_BASE_URL=http://127.0.0.1:4141
 ANTHROPIC_AUTH_TOKEN=daaf-shim-local
 ANTHROPIC_API_KEY=
-ANTHROPIC_MODEL=gpt-5.5
-ANTHROPIC_DEFAULT_OPUS_MODEL=gpt-5.5                 # strong tier
-ANTHROPIC_DEFAULT_SONNET_MODEL=gpt-5.2               # fast tier
+ANTHROPIC_MODEL=gpt-5.6-sol
+ANTHROPIC_DEFAULT_OPUS_MODEL=gpt-5.6-sol             # strong tier (Opus-analog)
+ANTHROPIC_DEFAULT_SONNET_MODEL=gpt-5.6-terra         # fast tier (Sonnet-analog)
 CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000               # see "known limitations" below
 ```
 

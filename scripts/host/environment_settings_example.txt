@@ -57,17 +57,18 @@
 # no proxy, no rebuild — just the Option C lines above plus these
 # (validated live 2026-07-09):
 #
-# ANTHROPIC_MODEL=openai/gpt-5.5                    # your session model
-# ANTHROPIC_DEFAULT_OPUS_MODEL=openai/gpt-5.5       # strong tier (1,050,000-token window)
-# ANTHROPIC_DEFAULT_SONNET_MODEL=openai/gpt-5.2     # fast tier (400,000-token window)
+# ANTHROPIC_MODEL=openai/gpt-5.6-sol                # your session model
+# ANTHROPIC_DEFAULT_OPUS_MODEL=openai/gpt-5.6-sol   # strong tier / Opus-analog (1,050,000-token window)
+# ANTHROPIC_DEFAULT_SONNET_MODEL=openai/gpt-5.6-terra # fast tier / Sonnet-analog (1,050,000-token window)
 # CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000            # match your SESSION model's real window
 #
 # Notes: context-utilization numbers are estimates on GPT sessions (OpenRouter
 # doesn't serve Claude Code's token-counting endpoint), and GPT models keep
-# DAAF's conservative context-quality thresholds by design. openai/gpt-5.4
-# (1,050,000-token window at roughly half the price of gpt-5.5) is a credible
-# budget-strong alternative. See the installation guide's "GPT (OpenAI) models
-# via OpenRouter" section for details and current model guidance.
+# DAAF's conservative context-quality thresholds by design. The GPT-5.6 family
+# uses OpenAI's tier-analog naming -- Sol (strong/Opus-analog), Terra
+# (mid/Sonnet-analog), Luna (economy/Haiku-analog) -- all with 1,050,000-token
+# windows; older gpt-5.5/5.4/5.2 slugs still work. See the installation guide's
+# "GPT (OpenAI) models via OpenRouter" section for current model guidance.
 
 # --- Optional: Subagent model routing (applies to Options C and F) ---------
 # DAAF routes specialist subagents to Claude model tiers: 'opus' for high-
@@ -79,8 +80,8 @@
 # aliases don't exist on your endpoint. Remap them so DAAF's two-tier routing
 # uses YOUR models instead:
 #
-# ANTHROPIC_DEFAULT_OPUS_MODEL=your-strong-model-slug      # e.g. openai/gpt-5.5 or z-ai/glm-5.2
-# ANTHROPIC_DEFAULT_SONNET_MODEL=your-fast-model-slug      # e.g. openai/gpt-5.2 or z-ai/glm-5.2-air
+# ANTHROPIC_DEFAULT_OPUS_MODEL=your-strong-model-slug      # e.g. openai/gpt-5.6-sol or z-ai/glm-5.2
+# ANTHROPIC_DEFAULT_SONNET_MODEL=your-fast-model-slug      # e.g. openai/gpt-5.6-terra or z-ai/glm-5.2-air
 #
 # Or, to switch tiered routing off and run every subagent on a single model:
 #
@@ -124,10 +125,10 @@
 # ANTHROPIC_API_KEY=
 #
 # Model selection — bare OpenAI slugs here (no "openai/" prefix):
-# ANTHROPIC_MODEL=gpt-5.5
-# ANTHROPIC_DEFAULT_OPUS_MODEL=gpt-5.5
-# ANTHROPIC_DEFAULT_SONNET_MODEL=gpt-5.2
-# CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000            # gpt-5.5 / gpt-5.4: 1050000; gpt-5.2: 400000
+# ANTHROPIC_MODEL=gpt-5.6-sol
+# ANTHROPIC_DEFAULT_OPUS_MODEL=gpt-5.6-sol
+# ANTHROPIC_DEFAULT_SONNET_MODEL=gpt-5.6-terra
+# CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000            # gpt-5.6 family (sol/terra/luna) + gpt-5.5/5.4: 1050000; gpt-5.2: 400000
 #
 # Advanced shim tuning (defaults are correct for OpenAI; rarely needed):
 # SHIM_PORT=4141

@@ -223,7 +223,7 @@ I would honestly be thrilled if someone forked DAAF and adapted it for another p
 
 Yes, and it's been validated live (2026-07-09). There are two ways in, both documented step-by-step in [**01. Installation & Quick Start**](01_installation_and_quickstart.md#gpt-openai-models-via-openrouter-option-c-extended):
 
-- **Via OpenRouter (config-only, no rebuild):** point the existing "Option C" OpenRouter setup at GPT slugs like `openai/gpt-5.5` (strong tier) and `openai/gpt-5.2` (fast tier). GPT runs the full agentic stack — multi-tool loops, subagent dispatch, two-tier routing — with just environment variables.
+- **Via OpenRouter (config-only, no rebuild):** point the existing "Option C" OpenRouter setup at GPT slugs like `openai/gpt-5.6-sol` (strong tier) and `openai/gpt-5.6-terra` (fast tier). GPT runs the full agentic stack — multi-tool loops, subagent dispatch, two-tier routing — with just environment variables.
 - **Via the DAAF provider shim (direct OpenAI API):** set `DAAF_PROVIDER_SHIM=openai` and `OPENAI_API_KEY`, then point Claude Code at the local shim (`http://127.0.0.1:4141`). This one requires an image rebuild because the shim auto-starts from the container entrypoint.
 
 GPT support is a power-user option offered with honest framing (see the limitation entries below). Anthropic does not officially support routing Claude Code to non-Claude models, and OpenRouter's Anthropic-compatible endpoint is officially scoped to Claude models — GPT works through it in practice, but it is unsupported territory a vendor could change.
@@ -234,7 +234,7 @@ Not exactly — treat it as a close estimate. OpenRouter's Anthropic-compatible 
 
 ### Q: The statusline shows the wrong context window on a GPT session (e.g. 200k when my model has more)
 
-Claude Code assumes a 200k context window for any model it doesn't recognize, which is wrong for the 400k `gpt-5.2` / `gpt-5.4-mini` and the 1,050,000-token `gpt-5.4` / `gpt-5.5`. Fix it by setting `CLAUDE_CODE_MAX_CONTEXT_TOKENS` in `environment_settings.txt` to your model's real window (e.g. `1050000` for `gpt-5.5`), then restart the container. DAAF's statuslines carry a built-in GPT window map as a backstop, but the explicit variable is authoritative and is the recommended fix.
+Claude Code assumes a 200k context window for any model it doesn't recognize, which is wrong for the 400k `gpt-5.2` / `gpt-5.4-mini` and the 1,050,000-token `gpt-5.4` / `gpt-5.5` / `gpt-5.6` family (Sol/Terra/Luna). Fix it by setting `CLAUDE_CODE_MAX_CONTEXT_TOKENS` in `environment_settings.txt` to your model's real window (e.g. `1050000` for `gpt-5.6-sol`), then restart the container. DAAF's statuslines carry a built-in GPT window map as a backstop, but the explicit variable is authoritative and is the recommended fix.
 
 ### Q: The provider shim doesn't seem to be responding (Option F)
 

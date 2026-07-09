@@ -153,7 +153,7 @@ if [[ -n "$AGENT_ID" ]]; then
             # GPT keeps the conservative threshold FAMILY in calculate() below.
             *gpt-5*-mini*) MAX_CONTEXT=400000 ;;
             *gpt-5*-chat*) MAX_CONTEXT=128000 ;;
-            *gpt-5.4*|*gpt-5.5*) MAX_CONTEXT=1050000 ;;
+            *gpt-5.4*|*gpt-5.5*|*gpt-5.6*) MAX_CONTEXT=1050000 ;;
             *gpt-5*) MAX_CONTEXT=400000 ;;
             *) MAX_CONTEXT=200000 ;;
         esac
