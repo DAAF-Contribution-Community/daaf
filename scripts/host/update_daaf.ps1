@@ -664,19 +664,35 @@ function Sync-HostScript {
 
     if ($printedHeader) { Write-Host "" }
 
-    # --- Tier C: drift warning (never overwrite) ---
+    # --- Tier C: drift heal (overwrite with rolling backup) ---
     # A file that EXISTS on host but differs from the repo copy and was NOT
     # copied this run (not missing, not changed in-range) would otherwise be
     # left silently stale -- the last silent failure mode after interrupted
-    # syncs, manual copies, or user customizations. We WARN but NEVER overwrite:
-    # the difference may be a deliberate local customization, and clobbering it
-    # would destroy user work. This is a deliberate design decision. Mirrors the
-    # Bash tier-C design in update_daaf.sh sync_host_scripts.
+    # syncs, upstream changes the diff missed, or manual copies. We OVERWRITE
+    # with the repo version, first saving the existing host copy to
+    # "<name>.pre-update" (rolling: any previous .pre-update is overwritten, so
+    # backups never accumulate). Mirrors the Bash tier-C design in
+    # update_daaf.sh sync_host_scripts.
+    #
+    # DESIGN DECISION (2026-07-09): the files this updater syncs -- host utility
+    # scripts (*.ps1) and the example template (environment_settings_example.txt,
+    # README.txt) -- have NO supported local-edit use-case. All user-serviceable
+    # configuration lives exclusively in environment_settings.txt, which this
+    # updater never syncs or touches. Therefore drift here means STALENESS, not
+    # a deliberate customization worth preserving, and silently keeping a stale
+    # copy is the worst outcome. Overwrite + rolling backup is the deliberate
+    # design: the host always ends up with the current repo version, and the
+    # user's prior bytes are recoverable from the .pre-update file if ever needed.
+    # This supersedes the earlier warn-never-overwrite behavior.
     #
     # One bulk `docker compose cp` of scripts/host into a temp dir, then a
     # per-file Get-FileHash compare (Get-FileHash exists in PS 5.1). Files copied
     # this run ($copied) are fresh by construction and excluded. Failure to stage
     # or compare degrades to a single notice -- best-effort, never aborts.
+    # The .pre-update backup files are never themselves sync candidates: the
+    # $syncList is derived purely from repo paths (git ls-files scripts/host/*),
+    # and .pre-update files exist only on the host, so they can never appear in
+    # that list or match a repo basename.
     $driftFound = $false
     $driftDegraded = $false
     $driftDir = $null
@@ -712,6 +728,11 @@ function Sync-HostScript {
             if (-not (Test-Path "./$scriptName")) { continue }
             # Exclude files copied this run (tier A or tier B) -- fresh already.
             if ($copied -contains $scriptName) { continue }
+            # Never overwrite the RUNNING updater from the drift loop: replacing
+            # this file mid-execution risks executing corrupted content. Tier B's
+            # self-update path (with its explicit re-run notice) is the sanctioned
+            # way the updater refreshes itself.
+            if ($scriptName -eq 'update_daaf.ps1') { continue }
             $repoCopy = Join-Path (Join-Path $driftDir "repo_host") $scriptName
             # If the repo copy is missing from the staged tree, we cannot
             # compare -- skip rather than guessing.
@@ -726,13 +747,47 @@ function Sync-HostScript {
                 continue
             }
             if ($differs) {
-                Write-Host "  WARNING: $scriptName differs from the repository version." -ForegroundColor Yellow
-                Write-Host "    It was NOT overwritten in case the difference is a" -ForegroundColor Yellow
-                Write-Host "    deliberate local customization of yours. To adopt the" -ForegroundColor Yellow
-                Write-Host "    repository version, run:" -ForegroundColor Yellow
-                $daafProj = if ($env:DAAF_PROJECT_NAME) { $env:DAAF_PROJECT_NAME } else { 'daaf' }
-                Write-Host "      docker cp ${daafProj}-daaf-docker-1:/daaf/$repoPath ./$scriptName" -ForegroundColor Yellow
-                $driftFound = $true
+                # Drift detected. Back up the existing host copy to a rolling
+                # "<name>.pre-update" (overwrite any prior backup), THEN overwrite
+                # the host copy with the repo version. If the backup step fails we
+                # do NOT overwrite -- never destroy the only copy -- and fall back
+                # to the old warning for that file.
+                $backupOk = $false
+                try {
+                    Copy-Item -Path "./$scriptName" -Destination "./$scriptName.pre-update" -Force -ErrorAction Stop
+                    $backupOk = $true
+                } catch {
+                    $backupOk = $false
+                }
+                if ($backupOk) {
+                    $overwriteOk = $false
+                    try {
+                        Copy-Item -Path $repoCopy -Destination "./$scriptName" -Force -ErrorAction Stop
+                        $overwriteOk = $true
+                    } catch {
+                        $overwriteOk = $false
+                    }
+                    if ($overwriteOk) {
+                        Write-Host "  Updated: $scriptName (your previous copy was saved as $scriptName.pre-update)"
+                        $driftFound = $true
+                    } else {
+                        # Backup succeeded but overwrite failed -- the host copy is
+                        # untouched and the backup is a redundant duplicate. Warn.
+                        Write-Host "  WARNING: $scriptName is stale but could not be updated" -ForegroundColor Yellow
+                        Write-Host "    (write failed). Your file is unchanged. To adopt the" -ForegroundColor Yellow
+                        Write-Host "    repository version manually, run:" -ForegroundColor Yellow
+                        $daafProj = if ($env:DAAF_PROJECT_NAME) { $env:DAAF_PROJECT_NAME } else { 'daaf' }
+                        Write-Host "      docker cp ${daafProj}-daaf-docker-1:/daaf/$repoPath ./$scriptName" -ForegroundColor Yellow
+                    }
+                } else {
+                    # Could not create the backup -- do NOT overwrite (never
+                    # destroy the only copy). Fall back to the old warning.
+                    Write-Host "  WARNING: $scriptName is stale but could not be updated" -ForegroundColor Yellow
+                    Write-Host "    (backup step failed). Your file was left unchanged to" -ForegroundColor Yellow
+                    Write-Host "    avoid losing it. To adopt the repository version, run:" -ForegroundColor Yellow
+                    $daafProj = if ($env:DAAF_PROJECT_NAME) { $env:DAAF_PROJECT_NAME } else { 'daaf' }
+                    Write-Host "      docker cp ${daafProj}-daaf-docker-1:/daaf/$repoPath ./$scriptName" -ForegroundColor Yellow
+                }
             }
         }
     }
@@ -742,12 +797,15 @@ function Sync-HostScript {
         Remove-Item -Path $driftDir -Recurse -Force -ErrorAction SilentlyContinue
     }
 
-    # Closing summary if any drift was found -- mirrors the sync-failure summary
-    # so the message is not missed if it scrolled past.
+    # Closing summary if any stale files were updated -- mirrors the sync-failure
+    # summary so the message is not missed if it scrolled past.
     if ($driftFound) {
         Write-Host ""
-        Write-Host "Warning: one or more host scripts differ from the repository version"
-        Write-Host "and were left unchanged -- see the messages above. Nothing was overwritten."
+        Write-Host "One or more host files were stale and have been updated to the"
+        Write-Host "repository version -- see the messages above. Your previous copies"
+        Write-Host "were saved as <name>.pre-update files in this folder; you can delete"
+        Write-Host "them once you have confirmed everything works, or restore one by"
+        Write-Host "renaming it back if something regresses."
         Write-Host ""
     }
 

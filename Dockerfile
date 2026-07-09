@@ -469,9 +469,12 @@ ENV PATH="/home/appuser/.local/bin:${PATH}"
 # the DAAF repo tree — a COPY of a repo path can never succeed there. Keeping
 # the wrapper inline makes the Dockerfile self-contained: rebuilds only ever
 # need the Dockerfile itself synced container -> host (rebuild_daaf.sh's flow).
+# Requires BuildKit with Dockerfile frontend >= 1.4 (heredoc syntax) — default
+# on Docker Engine 23+ / any modern Docker Desktop; a legacy builder with
+# DOCKER_BUILDKIT=0 would fail here with a syntax error.
 COPY <<'DAAF_ENTRYPOINT_EOF' /usr/local/bin/daaf-entrypoint.sh
 #!/usr/bin/env bash
-# daaf-entrypoint.sh — container ENTRYPOINT wrapper (generated from the
+# daaf-entrypoint.sh -- container ENTRYPOINT wrapper (generated from the
 # Dockerfile heredoc above; there is no separate source file).
 # Jobs: (1) best-effort auto-start of the provider shim (opt-in via
 # DAAF_PROVIDER_SHIM, handled entirely inside start_shim.sh --auto);

@@ -606,21 +606,38 @@ ${repo_path}
         echo ""
     fi
 
-    # --- Tier C: drift warning (never overwrite) ----------------------------
+    # --- Tier C: drift heal (overwrite with rolling backup) -----------------
     # A file that EXISTS on host but differs from the repo copy and was NOT
     # copied this run (not missing, not changed in-range) would otherwise be
     # left silently stale -- the last silent failure mode after interrupted
-    # syncs, manual copies, or user customizations. We WARN but NEVER overwrite:
-    # the difference may be a deliberate local customization, and clobbering it
-    # would destroy user work. This is a deliberate design decision.
+    # syncs, upstream changes the diff missed, or manual copies. We OVERWRITE
+    # with the repo version, first saving the existing host copy to
+    # "<name>.pre-update" (rolling: any previous .pre-update is overwritten, so
+    # backups never accumulate).
     #
-    # INTENT: surface stale-but-present host files without touching them.
+    # DESIGN DECISION (2026-07-09): the files this updater syncs -- host utility
+    # scripts (*.sh) and the example template (environment_settings_example.txt,
+    # README.txt) -- have NO supported local-edit use-case. All user-serviceable
+    # configuration lives exclusively in environment_settings.txt, which this
+    # updater never syncs or touches. Therefore drift here means STALENESS, not
+    # a deliberate customization worth preserving, and silently keeping a stale
+    # copy is the worst outcome. Overwrite + rolling backup is the deliberate
+    # design: the host always ends up with the current repo version, and the
+    # user's prior bytes are recoverable from the .pre-update file if ever needed.
+    # This supersedes the earlier warn-never-overwrite behavior.
+    #
+    # INTENT: bring stale-but-present host files up to date, preserving one
+    #   recoverable backup per file.
     # REASONING: one bulk `docker compose cp` of scripts/host into a temp dir,
     #   then local `cmp -s` per file, avoids N per-file docker execs. `cmp -s`
     #   is POSIX/BSD-safe (available on macOS's BSD userland).
     # ASSUMES: files already copied this run (SYNC_COPIED) are fresh by
     #   construction and are excluded. Failure to stage or compare degrades to
-    #   a single notice -- drift checking is best-effort and never aborts.
+    #   a single notice -- drift healing is best-effort and never aborts.
+    #   The .pre-update backup files are never themselves sync candidates: the
+    #   sync_list is derived purely from repo paths (git ls-files scripts/host/*),
+    #   and .pre-update files exist only on the host, so they can never appear in
+    #   that list or match a repo basename.
     local drift_dir=""
     local drift_found=false
     local drift_degraded=false
@@ -657,17 +674,45 @@ ${repo_path}
             case " ${SYNC_COPIED} " in
                 *" ${script} "*) continue ;;
             esac
+            # Never overwrite the RUNNING updater from the drift loop: bash reads
+            # scripts lazily, so replacing this file mid-execution can execute
+            # corrupted content. Tier B's self-update path (with its explicit
+            # re-run notice) is the sanctioned way the updater refreshes itself.
+            [ "${script}" = "update_daaf.sh" ] && continue
             local repo_copy="${drift_dir}/repo_host/${script}"
             # If the repo copy is missing from the staged tree, we cannot compare
             # -- skip this file rather than guessing.
             [ -f "${repo_copy}" ] || continue
             if ! cmp -s "./${script}" "${repo_copy}"; then
-                echo "  WARNING: ${script} differs from the repository version."
-                echo "    It was NOT overwritten in case the difference is a"
-                echo "    deliberate local customization of yours. To adopt the"
-                echo "    repository version, run:"
-                echo "      docker cp ${DAAF_PROJECT_NAME:-daaf}-daaf-docker-1:/daaf/${repo_path} ./${script}"
-                drift_found=true
+                # Drift detected. Back up the existing host copy to a rolling
+                # "<name>.pre-update" (overwrite any prior backup), THEN overwrite
+                # the host copy with the repo version. If the backup step fails we
+                # do NOT overwrite -- never destroy the only copy -- and fall back
+                # to the old warning for that file.
+                if cp -f "./${script}" "./${script}.pre-update" 2>/dev/null; then
+                    if cp -f "${repo_copy}" "./${script}" 2>/dev/null; then
+                        # Text files (.txt) do not need the executable bit; scripts do.
+                        case "${script}" in
+                            *.sh) chmod +x "./${script}" 2>/dev/null || true ;;
+                        esac
+                        echo "  Updated: ${script} (your previous copy was saved as ${script}.pre-update)"
+                        drift_found=true
+                    else
+                        # Backup succeeded but overwrite failed -- the host copy is
+                        # untouched and the backup is a redundant duplicate. Warn.
+                        echo "  WARNING: ${script} is stale but could not be updated"
+                        echo "    (write failed). Your file is unchanged. To adopt the"
+                        echo "    repository version manually, run:"
+                        echo "      docker cp ${DAAF_PROJECT_NAME:-daaf}-daaf-docker-1:/daaf/${repo_path} ./${script}"
+                    fi
+                else
+                    # Could not create the backup -- do NOT overwrite (never
+                    # destroy the only copy). Fall back to the old warning.
+                    echo "  WARNING: ${script} is stale but could not be updated"
+                    echo "    (backup step failed). Your file was left unchanged to"
+                    echo "    avoid losing it. To adopt the repository version, run:"
+                    echo "      docker cp ${DAAF_PROJECT_NAME:-daaf}-daaf-docker-1:/daaf/${repo_path} ./${script}"
+                fi
             fi
         done <<< "${sync_list}"
     fi
@@ -677,12 +722,15 @@ ${repo_path}
         rm -rf "${drift_dir}" 2>/dev/null || true
     fi
 
-    # Closing summary if any drift was found -- mirrors the SYNC_COPY_FAILED
-    # summary so the message is not missed if it scrolled past.
+    # Closing summary if any stale files were updated -- mirrors the
+    # SYNC_COPY_FAILED summary so the message is not missed if it scrolled past.
     if [ "${drift_found}" = true ]; then
         echo ""
-        echo "Warning: one or more host scripts differ from the repository version"
-        echo "and were left unchanged -- see the messages above. Nothing was overwritten."
+        echo "One or more host files were stale and have been updated to the"
+        echo "repository version -- see the messages above. Your previous copies"
+        echo "were saved as <name>.pre-update files in this folder; you can delete"
+        echo "them once you have confirmed everything works, or restore one by"
+        echo "renaming it back if something regresses."
         echo ""
     fi
 
@@ -757,7 +805,7 @@ check_build_changes() {
         else
             echo "rebuild_daaf.sh is not in your daaf-docker folder."
             echo "You can retrieve it from the container and run it:"
-            echo "  docker compose cp daaf-docker:/daaf/scripts/host/rebuild_daaf.sh ./rebuild_daaf.sh"
+            echo "  docker cp ${DAAF_PROJECT_NAME:-daaf}-daaf-docker-1:/daaf/scripts/host/rebuild_daaf.sh ./rebuild_daaf.sh"
             echo "  chmod +x ./rebuild_daaf.sh"
             echo "  bash rebuild_daaf.sh"
         fi
