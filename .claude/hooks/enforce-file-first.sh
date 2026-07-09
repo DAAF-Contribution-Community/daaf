@@ -1,6 +1,21 @@
 #!/usr/bin/env bash
 # enforce-file-first.sh — PreToolUse hook that blocks direct python/R execution
 #
+# [SESSION E STAGED PATCH — 2026-07-07]
+# Staged copy for MANUAL HUMAN DEPLOYMENT. Diff vs the live hook closes two
+# bypass classes found by the Session E live probe matrix, symmetrically for
+# Python and R:
+#   ADV11 — quote-wrapped interpreter tokens ('R' -e 'x', "python3" -c 'x'):
+#           optional ["']? added around every interpreter alternation.
+#   ADV12 — no-space stdin redirect (R --no-save<foo.R, python3<foo.py):
+#           '<' added to every TRAIL alternation.
+# Deliberately NOT addressed (documented residuals, symmetric across both
+# languages): xargs-style argument injection (echo foo.R | xargs R -f),
+# variable indirection (X=R; $X -e), interpreter copies under other names,
+# Windows .exe suffixes (binaries absent on Linux), and quote-unaware
+# boundary scanning inside string arguments (pre-existing, fail-closed
+# direction only).
+#
 # Enforces the file-first execution protocol: all Python and R scripts must be
 # executed via run_with_capture.sh, which appends an execution log to the
 # script file as an immutable audit artifact. Direct `python`, `python3`,
@@ -96,6 +111,8 @@ fi
 #   python, python3            — standard names
 #   python3.11, python3.12     — versioned interpreters (python3?[.0-9]*)
 #   /usr/bin/python3           — absolute path variants
+#   'python3' / "python"       — quote-wrapped interpreter (shell strips quotes
+#                                 at execution; the hook must too) [SESSION E]
 #
 # BLOCKS:
 #   python script.py                      — direct execution, no audit trail
@@ -105,6 +122,8 @@ fi
 #   exec python3 script.py               — exec builtin
 #   PYTHONPATH=/foo python script.py      — env var prefix
 #   /usr/bin/python3 script.py            — absolute path
+#   'python3' script.py                   — quote-wrapped interpreter [SESSION E]
+#   python3<script.py                     — no-space stdin redirect  [SESSION E]
 #
 # ALLOWS:
 #   bash .../run_with_capture.sh script.py  — correct file-first pattern
@@ -112,20 +131,24 @@ fi
 #   pip install polars                      — package management
 #   marimo run notebook.py                  — marimo runtime
 #   grep python file.txt                   — python as argument, not command
+#   grep "python3 -c" file.txt             — interpreter-like token inside a
+#                                             string argument (no boundary)
 #   ls /usr/lib/python3/dist-packages      — python in path argument
 # ---------------------------------------------------------------------------
 
 # Pattern components (composed for readability):
 #   BOUNDARY: start of command or after chain operators
 #   PREFIX:   optional command wrappers and env var assignments
-#   PYTHON:   interpreter name (bare, versioned, or absolute path)
-#   TRAIL:    followed by space, semicolon, or end of string
+#   PYTHON:   interpreter name (bare, versioned, or absolute path), optionally
+#             wrapped in single or double quotes [SESSION E]
+#   TRAIL:    followed by space, semicolon, end of string, or a no-space
+#             stdin redirect '<' [SESSION E]
 
 PATTERN='(^|&&|\|\||;|\|)\s*'               # BOUNDARY
 PATTERN+='([A-Za-z_][A-Za-z0-9_]*=[^ ]+ )*'  # PREFIX: zero or more VAR=val assignments
 PATTERN+='(env|exec|command|eval|nohup|nice|time|strace)?\s*'  # PREFIX: optional wrapper
-PATTERN+='(python3?[.0-9]*|[^ ]*\/python3?[.0-9]*)'           # PYTHON interpreter
-PATTERN+='(\s|;|$)'                          # TRAIL
+PATTERN+='["'\'']?(python3?[.0-9]*|[^ ]*\/python3?[.0-9]*)["'\'']?'  # PYTHON interpreter (quotes optional)
+PATTERN+='(\s|;|$|<)'                        # TRAIL (incl. no-space stdin redirect)
 
 if echo "$NORM_CMD" | grep -qE "$PATTERN"; then
     cat >&2 <<'EOF'
@@ -159,6 +182,8 @@ fi
 #                                 `R -e`, `R -f`, `R CMD BATCH`, and
 #                                 input-redirection flags (--no-save, --vanilla, ...)
 #   /usr/local/bin/R            — absolute path variant of bare R
+#   'R' / "Rscript"            — quote-wrapped interpreter (shell strips quotes
+#                                 at execution; the hook must too) [SESSION E]
 #
 # The bare-R alternative requires the SAME boundary structure as Rscript
 # (start/chain-operator boundary, optional env-assignment + wrapper prefix)
@@ -179,12 +204,16 @@ fi
 #   R --no-save < script.R                — redirected batch execution
 #   R --vanilla < script.R                — redirected batch execution
 #   /usr/local/bin/R -e 'code'            — absolute-path bare R
+#   'R' -e 'code'                         — quote-wrapped interpreter [SESSION E]
+#   R --no-save<script.R                  — no-space redirected batch [SESSION E]
 #
 # ALLOWS:
 #   bash .../run_with_capture.sh script.R  — correct file-first pattern
 #   Rscript /daaf/scripts/utility.R        — whitelisted framework utility
 #   grep Rscript file.txt                 — Rscript as argument, not command
 #   grep R file.txt                       — R as argument, not command
+#   grep "R -e" notes.md                  — interpreter-like token inside a
+#                                            string argument (no boundary)
 #   git log -R                            — R inside another command's flag
 #   FOO=R bash x                          — R as env var value
 #   R --version                           — harmless interpreter probe
@@ -194,8 +223,8 @@ fi
 RPATTERN='(^|&&|\|\||;|\|)\s*'               # BOUNDARY
 RPATTERN+='([A-Za-z_][A-Za-z0-9_]*=[^ ]+ )*'  # PREFIX: zero or more VAR=val assignments
 RPATTERN+='(env|exec|command|eval|nohup|nice|time|strace)?\s*'  # PREFIX: optional wrapper
-RPATTERN+='((Rscript[.0-9]*|[^ ]*\/Rscript[.0-9]*)(\s|;|$)'    # Rscript interpreter + TRAIL
-RPATTERN+='|(R|[^ ]*\/R)\s+(CMD|-e|-f|--no-save|--vanilla|--no-restore|--no-echo|--slave|--silent|--quiet|-q|--no-init-file|--no-environ|--no-site-file)(\s|;|$))'  # bare R + batch flag + TRAIL
+RPATTERN+='(["'\'']?(Rscript[.0-9]*|[^ ]*\/Rscript[.0-9]*)["'\'']?(\s|;|$|<)'    # Rscript interpreter (quotes optional) + TRAIL
+RPATTERN+='|["'\'']?(R|[^ ]*\/R)["'\'']?\s+(CMD|-e|-f|--no-save|--vanilla|--no-restore|--no-echo|--slave|--silent|--quiet|-q|--no-init-file|--no-environ|--no-site-file)(\s|;|$|<))'  # bare R (quotes optional) + batch flag + TRAIL
 
 if echo "$NORM_CMD" | grep -qE "$RPATTERN"; then
     cat >&2 <<'EOF'
