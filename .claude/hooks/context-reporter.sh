@@ -147,6 +147,14 @@ if [[ -n "$AGENT_ID" ]]; then
     if [[ -n "${AGENT_MODEL:-}" && "$AGENT_MODEL" != "${SESSION_MODEL:-}" ]]; then
         case "$AGENT_MODEL" in
             *fable-5*|*mythos-5*|*opus-4-7*|*opus-4-8*|*\[1m\]*) MAX_CONTEXT=1000000 ;;
+            # GPT (OpenAI) windows, most-specific first (mini/chat before the
+            # flagships). Verified vs OpenRouter /api/v1/models 2026-07-09; keep
+            # aligned with context-bar.sh + subagent-bar.sh. Window size only —
+            # GPT keeps the conservative threshold FAMILY in calculate() below.
+            *gpt-5*-mini*) MAX_CONTEXT=400000 ;;
+            *gpt-5*-chat*) MAX_CONTEXT=128000 ;;
+            *gpt-5.4*|*gpt-5.5*) MAX_CONTEXT=1050000 ;;
+            *gpt-5*) MAX_CONTEXT=400000 ;;
             *) MAX_CONTEXT=200000 ;;
         esac
         # CLAUDE_CODE_MAX_CONTEXT_TOKENS overrides provisioning when set.

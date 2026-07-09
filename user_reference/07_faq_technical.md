@@ -219,6 +219,38 @@ What would need adaptation:
 
 I would honestly be thrilled if someone forked DAAF and adapted it for another provider. The more researchers who have access to rigorous AI-assisted analysis tooling, the better. We've made significant progress testing open-source models via [DAAFBench](https://daaf.openaugments.org/bench/) — GLM 5.2 is already viable — but there's much more to explore, especially around analytical depth and domain-specific tasks. If you're running DAAF with non-default models, **please** share your experiences so we can continue refining this guidance!
 
+### Q: Can I run DAAF on OpenAI GPT models?
+
+Yes, and it's been validated live (2026-07-09). There are two ways in, both documented step-by-step in [**01. Installation & Quick Start**](01_installation_and_quickstart.md#gpt-openai-models-via-openrouter-option-c-extended):
+
+- **Via OpenRouter (config-only, no rebuild):** point the existing "Option C" OpenRouter setup at GPT slugs like `openai/gpt-5.5` (strong tier) and `openai/gpt-5.2` (fast tier). GPT runs the full agentic stack — multi-tool loops, subagent dispatch, two-tier routing — with just environment variables.
+- **Via the DAAF provider shim (direct OpenAI API):** set `DAAF_PROVIDER_SHIM=openai` and `OPENAI_API_KEY`, then point Claude Code at the local shim (`http://127.0.0.1:4141`). This one requires an image rebuild because the shim auto-starts from the container entrypoint.
+
+GPT support is a power-user option offered with honest framing (see the limitation entries below). Anthropic does not officially support routing Claude Code to non-Claude models, and OpenRouter's Anthropic-compatible endpoint is officially scoped to Claude models — GPT works through it in practice, but it is unsupported territory a vendor could change.
+
+### Q: On a GPT session, is the context bar accurate?
+
+Not exactly — treat it as a close estimate. OpenRouter's Anthropic-compatible endpoint (and the provider shim) do not implement precise token counting, so Claude Code falls back to *estimating* context usage on GPT sessions. The context bar and the elevated/high/critical utilization warnings still work and are a good guide, but the percentages are approximations rather than exact counts. DAAF deliberately keeps its conservative context-quality thresholds (elevated/high/critical at 40/60/75%) on GPT models, since their long-context quality behavior isn't DAAF-validated yet.
+
+### Q: The statusline shows the wrong context window on a GPT session (e.g. 200k when my model has more)
+
+Claude Code assumes a 200k context window for any model it doesn't recognize, which is wrong for the 400k `gpt-5.2` / `gpt-5.4-mini` and the 1,050,000-token `gpt-5.4` / `gpt-5.5`. Fix it by setting `CLAUDE_CODE_MAX_CONTEXT_TOKENS` in `environment_settings.txt` to your model's real window (e.g. `1050000` for `gpt-5.5`), then restart the container. DAAF's statuslines carry a built-in GPT window map as a backstop, but the explicit variable is authoritative and is the recommended fix.
+
+### Q: The provider shim doesn't seem to be responding (Option F)
+
+The shim auto-starts from the container entrypoint and is kept alive by a supervisor, so it should already be running. To diagnose:
+
+```bash
+bash /daaf/scripts/provider_shim/start_shim.sh --status   # is it running?
+curl -s http://127.0.0.1:4141/health                       # health check
+```
+
+Its log is at `/daaf/scripts/provider_shim/logs/shim.log` — check there first. The manager script also accepts `--start`, `--stop`, and `--auto`. Remember that Option F requires the image to have been **rebuilt** after you set `DAAF_PROVIDER_SHIM=openai` (the auto-launch is baked into the entrypoint), so if nothing is running, confirm you rebuilt.
+
+### Q: A scripted `claude -p` call on a GPT model returned an empty result
+
+Occasionally a GPT turn ends with a reasoning-only block and no visible text, which can surface as an empty `result` field in scripted (non-interactive) `claude -p` usage. This is a GPT quirk, not a DAAF fault, and is only relevant to automated/batch tooling — interactive sessions are unaffected. If you hit it in a script, re-issue the call or add a follow-up turn that requests the answer explicitly.
+
 ### Q: Is my data sent to Anthropic? What about privacy?
 
 The answers are yes and no depending on exactly what we're talking about when we say, "data." Here's the complex picture:

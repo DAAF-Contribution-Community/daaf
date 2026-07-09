@@ -24,7 +24,7 @@
 #
 # Priority order:
 #   1. Bedrock / Vertex / Foundry (cloud provider)
-#   2. ANTHROPIC_AUTH_TOKEN (proxy / gateway)
+#   2. ANTHROPIC_AUTH_TOKEN (proxy / gateway — used by Options C and F)
 #   3. ANTHROPIC_API_KEY (direct API — pay-per-use)
 #   4. CLAUDE_CODE_OAUTH_TOKEN (subscription — Max, Pro, Team, Enterprise)
 #   5. Interactive login (browser-based, no env var needed)
@@ -51,25 +51,44 @@
 # ANTHROPIC_API_KEY=
 # OPENROUTER_API_KEY=your_openrouter_api_key_here
 
-    # --- Optional: Subagent model routing (alternative providers) ----------------
-    # DAAF routes specialist subagents to Claude model tiers: 'opus' for high-
-    # judgment work (planning, QA review, verification, debugging) and 'sonnet'
-    # for well-specified work (fetching, profiling, notebook assembly).
-    #
-    # If you point Claude Code at an alternative provider (e.g., OpenRouter
-    # serving GLM, Kimi, Qwen), those Claude aliases don't exist on your endpoint.
-    # Remap them so DAAF's two-tier routing uses YOUR models instead:
-    #
-    # ANTHROPIC_DEFAULT_OPUS_MODEL=your-strong-model-slug      # e.g. z-ai/glm-5.2
-    # ANTHROPIC_DEFAULT_SONNET_MODEL=your-fast-model-slug      # e.g. z-ai/glm-5.2-air
-    #
-    # Or, to switch tiered routing off and run every subagent on a single model:
-    #
-    # CLAUDE_CODE_SUBAGENT_MODEL=your-model-slug
-    #
-    # If you set none of these on a non-Claude session, DAAF's model-routing guard
-    # blocks mismatched Claude-tier dispatches and subagents run on your session
-    # model.
+# --- Option C, extended: OpenAI GPT models through OpenRouter ---
+# OpenRouter also serves OpenAI GPT models, and DAAF runs its full agentic
+# stack on them (multi-tool loops, subagent dispatch, two-tier routing) with
+# no proxy, no rebuild — just the Option C lines above plus these
+# (validated live 2026-07-09):
+#
+# ANTHROPIC_MODEL=openai/gpt-5.5                    # your session model
+# ANTHROPIC_DEFAULT_OPUS_MODEL=openai/gpt-5.5       # strong tier (1,050,000-token window)
+# ANTHROPIC_DEFAULT_SONNET_MODEL=openai/gpt-5.2     # fast tier (400,000-token window)
+# CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000            # match your SESSION model's real window
+#
+# Notes: context-utilization numbers are estimates on GPT sessions (OpenRouter
+# doesn't serve Claude Code's token-counting endpoint), and GPT models keep
+# DAAF's conservative context-quality thresholds by design. openai/gpt-5.4
+# (1,050,000-token window at roughly half the price of gpt-5.5) is a credible
+# budget-strong alternative. See the installation guide's "GPT (OpenAI) models
+# via OpenRouter" section for details and current model guidance.
+
+# --- Optional: Subagent model routing (applies to Options C and F) ---------
+# DAAF routes specialist subagents to Claude model tiers: 'opus' for high-
+# judgment work (planning, QA review, verification, debugging) and 'sonnet'
+# for well-specified work (fetching, profiling, notebook assembly).
+#
+# If you point Claude Code at an alternative provider (e.g., OpenRouter
+# serving GPT, GLM, Kimi, Qwen — or the Option F shim below), those Claude
+# aliases don't exist on your endpoint. Remap them so DAAF's two-tier routing
+# uses YOUR models instead:
+#
+# ANTHROPIC_DEFAULT_OPUS_MODEL=your-strong-model-slug      # e.g. openai/gpt-5.5 or z-ai/glm-5.2
+# ANTHROPIC_DEFAULT_SONNET_MODEL=your-fast-model-slug      # e.g. openai/gpt-5.2 or z-ai/glm-5.2-air
+#
+# Or, to switch tiered routing off and run every subagent on a single model:
+#
+# CLAUDE_CODE_SUBAGENT_MODEL=your-model-slug
+#
+# If you set none of these on a non-Claude session, DAAF's model-routing guard
+# blocks mismatched Claude-tier dispatches and subagents run on your session
+# model.
 
 # --- Option D: Amazon Bedrock ---
 # Docs: https://code.claude.com/docs/en/bedrock-vertex
@@ -82,6 +101,43 @@
 # CLAUDE_CODE_USE_VERTEX=1
 # ANTHROPIC_VERTEX_PROJECT_ID=your_project_id
 # CLOUD_ML_REGION=us-central1
+
+# --- Option F: OpenAI API directly (DAAF provider shim) ---
+# Runs GPT models against your own OpenAI API key, with no gateway in between.
+# OpenAI's API doesn't speak Anthropic's wire format, so DAAF ships a small
+# translation shim (scripts/provider_shim/ — one auditable file, zero extra
+# dependencies). When DAAF_PROVIDER_SHIM is set, the container starts and
+# supervises the shim automatically at boot; there is nothing to run manually.
+# Get a key: https://platform.openai.com/api-keys
+# Setup guide: user_reference/01_installation_and_quickstart.md, Option F
+#
+# NOTE: Requires ONE image rebuild after first enabling this option (the
+# auto-launch hook is baked into the container entrypoint):
+#   bash rebuild_daaf.sh          (macOS / Linux)
+#   .\rebuild_daaf.ps1            (Windows)
+# After that, config changes here only need the usual container recreate.
+#
+# DAAF_PROVIDER_SHIM=openai
+# OPENAI_API_KEY=sk-your_openai_key_here
+# ANTHROPIC_BASE_URL=http://127.0.0.1:4141
+# ANTHROPIC_AUTH_TOKEN=daaf-shim-local
+# ANTHROPIC_API_KEY=
+#
+# Model selection — bare OpenAI slugs here (no "openai/" prefix):
+# ANTHROPIC_MODEL=gpt-5.5
+# ANTHROPIC_DEFAULT_OPUS_MODEL=gpt-5.5
+# ANTHROPIC_DEFAULT_SONNET_MODEL=gpt-5.2
+# CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000            # gpt-5.5 / gpt-5.4: 1050000; gpt-5.2: 400000
+#
+# Advanced shim tuning (defaults are correct for OpenAI; rarely needed):
+# SHIM_PORT=4141
+# SHIM_BACKEND_BASE_URL=https://api.openai.com/v1
+# SHIM_BACKEND_API_KEY=                             # defaults to OPENAI_API_KEY
+# SHIM_STRIP_MODEL_PREFIX=openai/                   # literal prefix stripped from model ids before the backend; only needed with prefixed slugs — leave unset for the bare slugs shown above
+#
+# Troubleshooting (inside the container):
+#   bash /daaf/scripts/provider_shim/start_shim.sh --status
+#   cat /daaf/scripts/provider_shim/logs/shim.log
 
 
 # === DATA SOURCE API KEYS ===================================================

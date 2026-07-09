@@ -710,7 +710,7 @@ The smoke tests and their runner in `scripts/smoke_tests/` exercise each R libra
 
 By default, Claude Code prompts you to log in interactively the first time you launch it (browser-based OAuth or pasting an API key). This works great for Max subscription and direct API key setups. However, if you're using **OpenRouter**, a **cloud provider** (Bedrock/Vertex), or simply want your authentication to persist automatically without interactive login, you can configure it through the `environment_settings.txt` file in your `daaf-docker` folder.
 
-Your `daaf-docker` folder includes an `environment_settings_example.txt` template that documents all five supported authentication methods with the exact environment variables needed for each. To set it up:
+Your `daaf-docker` folder includes an `environment_settings_example.txt` template that documents all six supported authentication methods with the exact environment variables needed for each. To set it up:
 
 1. **Copy the template** (if you haven't already):
 
@@ -769,6 +769,81 @@ If you point DAAF at an **alternative provider** (OpenRouter, or a cloud platfor
   Every helper agent runs on that one model.
 
 If you set **neither** on a non-Claude session, DAAF still works: a built-in check keeps helper agents on your session's model instead of trying to reach a Claude model that isn't there. Setting one of the options above is recommended for the best results. The exact variable names are documented in `environment_settings_example.txt` as well.
+
+#### GPT (OpenAI) models via OpenRouter (Option C, extended)
+
+OpenRouter also serves **OpenAI GPT models**, and DAAF can drive them through the same "Option C" setup above — GPT runs the full DAAF agentic stack (multi-tool loops, subagent dispatch, the two-tier model routing) with **no proxy or code changes**, just environment variables. Validated live on 2026-07-09.
+
+Uncomment the OpenRouter section and set the model variables to GPT slugs (note the `openai/` prefix that OpenRouter uses):
+
+```bash
+# --- Option C: OpenRouter, pointed at GPT models ---
+ANTHROPIC_BASE_URL=https://openrouter.ai/api
+ANTHROPIC_AUTH_TOKEN=your_openrouter_api_key_here
+ANTHROPIC_API_KEY=
+ANTHROPIC_MODEL=openai/gpt-5.5
+ANTHROPIC_DEFAULT_OPUS_MODEL=openai/gpt-5.5           # strong tier
+ANTHROPIC_DEFAULT_SONNET_MODEL=openai/gpt-5.2         # fast tier
+CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000               # see "known limitations" below
+```
+
+Recommended GPT slugs (context windows and roles verified against OpenRouter on 2026-07-09):
+
+| Slug | Context window | Role in DAAF | Notes |
+|------|---------------|--------------|-------|
+| `openai/gpt-5.5` | 1,050,000 | Strong tier (Opus-analog) | Highest-judgment work |
+| `openai/gpt-5.2` | 400,000 | Fast tier (Sonnet-analog) | Well-defined work; set `ANTHROPIC_DEFAULT_SONNET_MODEL` |
+| `openai/gpt-5.4` | 1,050,000 | Budget flagship alternative | Cheaper than 5.5 at similar window; reasonable strong-tier choice |
+| `openai/gpt-5.4-mini` | 400,000 | Economy option | Lowest cost |
+| `openai/gpt-5.*-chat` | 128,000 | Not recommended | Small window; avoid for pipeline work |
+
+The two-tier routing described above works identically: map `ANTHROPIC_DEFAULT_OPUS_MODEL` / `ANTHROPIC_DEFAULT_SONNET_MODEL` to your chosen GPT slugs, and DAAF's cost-control ceiling stands down automatically for non-Claude models.
+
+> **Looking ahead:** OpenAI's GPT-5.6 line (not yet on OpenRouter as of this writing) introduces tier-analog naming — *Sol*, *Terra*, and *Luna* — that maps loosely onto fast / strong / economy roles. When it lands, the same Option C pattern will apply with the new slugs.
+
+**Restart the container** (`docker compose down`, then `bash run_daaf.sh`) to pick up the changes. No rebuild is needed for OpenRouter — it is config-only.
+
+#### Option F: OpenAI API directly (DAAF provider shim)
+
+If you have an **OpenAI API key** and would rather talk to OpenAI directly (no OpenRouter middle-hop), DAAF ships a lightweight translation shim that presents an Anthropic-compatible endpoint on `localhost` and forwards to OpenAI. It has **zero new dependencies** and starts automatically inside the container.
+
+Set two variables in `environment_settings.txt` to turn it on, plus the Claude Code side that points at the local shim:
+
+```bash
+# --- Option F: OpenAI API directly, via the DAAF provider shim ---
+DAAF_PROVIDER_SHIM=openai
+OPENAI_API_KEY=sk-your_openai_api_key_here
+
+# Point Claude Code at the local shim (bare GPT slugs — no openai/ prefix here):
+ANTHROPIC_BASE_URL=http://127.0.0.1:4141
+ANTHROPIC_AUTH_TOKEN=daaf-shim-local
+ANTHROPIC_API_KEY=
+ANTHROPIC_MODEL=gpt-5.5
+ANTHROPIC_DEFAULT_OPUS_MODEL=gpt-5.5                 # strong tier
+ANTHROPIC_DEFAULT_SONNET_MODEL=gpt-5.2               # fast tier
+CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000               # see "known limitations" below
+```
+
+**This option requires an image rebuild** (the shim's auto-launch is baked into the container entrypoint), whereas Option C is config-only. After setting the variables, rebuild and restart per the [rebuild instructions](#keeping-daaf-updated) (`bash rebuild_daaf.sh` / `.\rebuild_daaf.ps1`). On boot, the container entrypoint starts the shim automatically and supervises it (a keepalive restarts it if it exits); you do not normally need to touch it.
+
+For troubleshooting, a manager script controls the shim and a health endpoint reports its status:
+
+```bash
+bash /daaf/scripts/provider_shim/start_shim.sh --status   # is it running?
+curl -s http://127.0.0.1:4141/health                       # health check
+```
+
+The shim's log lives at `/daaf/scripts/provider_shim/logs/shim.log`. The manager also accepts `--start`, `--stop`, and `--auto`. Defaults are fine for almost everyone; the tuning variables (`SHIM_PORT`, `SHIM_BACKEND_BASE_URL`, `SHIM_BACKEND_API_KEY`, `SHIM_STRIP_MODEL_PREFIX`) are documented in `environment_settings_example.txt`.
+
+#### Known limitations of GPT sessions (both lanes)
+
+GPT support is a **power-user option**, offered with honest framing rather than as a first-class guarantee. Be aware of the following:
+
+- **Context utilization is estimated, not exact.** OpenRouter's Anthropic-compatible endpoint does not implement token counting, so Claude Code falls back to estimation on GPT sessions (the shim does the same). The context bar and utilization warnings are close approximations, not precise counts.
+- **Set `CLAUDE_CODE_MAX_CONTEXT_TOKENS` to your model's real window.** Claude Code assumes a 200k window for models it doesn't recognize, which is wrong for the 400k and 1,050,000-token GPT models. Setting this variable (as shown in the blocks above) makes the statusline and context-management thresholds accurate. DAAF's statuslines also carry a built-in GPT window map as a backstop, but the explicit variable is authoritative.
+- **GPT keeps DAAF's conservative context thresholds.** DAAF applies its cautious context-quality gates (elevated/high/critical at 40/60/75%) to GPT models by policy, because their quality-at-long-context behavior is not yet DAAF-validated. This is deliberate and not configurable.
+- **OpenRouter's Anthropic endpoint is officially scoped to Anthropic models.** GPT works through it (proven live), but OpenRouter documents this endpoint for Claude models — it is effectively unsupported territory the vendor could change at any time.
+- **Anthropic does not officially support routing Claude Code to non-Claude models** through any gateway. DAAF offers these lanes as a tested power-user capability, not something either vendor guarantees.
 
 ### Set up data source API keys
 

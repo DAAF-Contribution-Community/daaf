@@ -131,6 +131,31 @@ if [[ "${ANTHROPIC_BASE_URL:-}" == *openrouter.ai* ]]; then
     fi
 fi
 
+# GPT (OpenAI) static window map. Claude Code reports a hardcoded 200k for
+# unknown models, and the OpenRouter API lookup above is unavailable on direct
+# OpenAI / provider-shim sessions (localhost base URL). When the model id looks
+# like a GPT model and max_context is still the 200k default, substitute the
+# model's real window. Patterns are ordered most-specific first: *-mini* and
+# *-chat* variants have smaller windows than the base gpt-5.4/5.5 flagships, so
+# they must match before the broad *gpt-5.4*/*gpt-5.5* and *gpt-5* fallbacks.
+# Verified live against OpenRouter /api/v1/models, 2026-07-09. Only applied when
+# max_context looks like the untrusted 200k default so a real OpenRouter lookup
+# (or an explicit override below) always wins.
+if [[ -n "$model_id" && "$max_context" -eq 200000 ]]; then
+    case "$model_id" in
+        *gpt-5*-mini*)      max_context=400000 ;;
+        *gpt-5*-chat*)      max_context=128000 ;;
+        *gpt-5.4*|*gpt-5.5*) max_context=1050000 ;;
+        *gpt-5*)            max_context=400000 ;;
+    esac
+fi
+
+# CLAUDE_CODE_MAX_CONTEXT_TOKENS is the user's explicit override and wins over
+# every inference above (JSON default, OpenRouter lookup, GPT static map).
+if [[ "${CLAUDE_CODE_MAX_CONTEXT_TOKENS:-}" =~ ^[0-9]+$ ]] && [[ "$CLAUDE_CODE_MAX_CONTEXT_TOKENS" -gt 0 ]]; then
+    max_context="$CLAUDE_CODE_MAX_CONTEXT_TOKENS"
+fi
+
 max_k=$((max_context / 1000))
 
 # Share context window size with hooks (which don't receive it in their input payload)

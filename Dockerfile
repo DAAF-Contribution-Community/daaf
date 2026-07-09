@@ -458,5 +458,14 @@ ARG CLAUDE_CODE_VERSION=2.1.187
 RUN curl -fsSL https://claude.ai/install.sh | bash -s ${CLAUDE_CODE_VERSION}
 ENV PATH="/home/appuser/.local/bin:${PATH}"
 
+# Install the DAAF entrypoint wrapper. It best-effort auto-starts the provider
+# shim (opt-in via DAAF_PROVIDER_SHIM) then execs CMD. Boot-safe: never fatal,
+# and a silent no-op for users who have not opted into the shim. The /daaf named
+# volume shadows the image at runtime, so the wrapper only references the shim
+# manager defensively (guarded on existence + executability).
+COPY scripts/container/daaf-entrypoint.sh /usr/local/bin/daaf-entrypoint.sh
+RUN chmod +x /usr/local/bin/daaf-entrypoint.sh
+ENTRYPOINT ["/usr/local/bin/daaf-entrypoint.sh"]
+
 # Default command
 CMD ["bash"]

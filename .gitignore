@@ -67,3 +67,6 @@ environment_settings*.txt
 
 # Generated log viewer artifacts (regenerated on demand)
 **/logs/session_manifest.json
+
+# Provider shim runtime logs and pidfiles (regenerated at runtime)
+scripts/provider_shim/logs/

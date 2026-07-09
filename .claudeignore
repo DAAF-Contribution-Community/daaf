@@ -4,7 +4,6 @@
 .env.local
 .env.production
 environment_settings.txt
-environment_settings*.txt
 *.pem
 *.key
 *.p12
