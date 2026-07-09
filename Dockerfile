@@ -463,7 +463,36 @@ ENV PATH="/home/appuser/.local/bin:${PATH}"
 # and a silent no-op for users who have not opted into the shim. The /daaf named
 # volume shadows the image at runtime, so the wrapper only references the shim
 # manager defensively (guarded on existence + executability).
-COPY scripts/container/daaf-entrypoint.sh /usr/local/bin/daaf-entrypoint.sh
+#
+# NOTE: written inline via a BuildKit heredoc (not COPY) deliberately. The host
+# build context is the distributed daaf-docker folder, which does NOT contain
+# the DAAF repo tree — a COPY of a repo path can never succeed there. Keeping
+# the wrapper inline makes the Dockerfile self-contained: rebuilds only ever
+# need the Dockerfile itself synced container -> host (rebuild_daaf.sh's flow).
+COPY <<'DAAF_ENTRYPOINT_EOF' /usr/local/bin/daaf-entrypoint.sh
+#!/usr/bin/env bash
+# daaf-entrypoint.sh — container ENTRYPOINT wrapper (generated from the
+# Dockerfile heredoc above; there is no separate source file).
+# Jobs: (1) best-effort auto-start of the provider shim (opt-in via
+# DAAF_PROVIDER_SHIM, handled entirely inside start_shim.sh --auto);
+# (2) exec the container CMD so the container behaves exactly as an
+# un-wrapped container for everyone who has not opted into the shim.
+# Boot-safety: /daaf is a named volume that shadows the image copy at runtime,
+# so the shim manager may be absent, empty, or broken. Every reference is
+# guarded, there is deliberately NO `set -e`, and no code path may prevent
+# `exec "$@"` from running.
+set -u
+
+readonly SHIM_MANAGER="/daaf/scripts/provider_shim/start_shim.sh"
+
+if [ -x "$SHIM_MANAGER" ]; then
+    if ! "$SHIM_MANAGER" --auto; then
+        echo "daaf-entrypoint: provider shim --auto returned non-zero; continuing boot." >&2
+    fi
+fi
+
+exec "$@"
+DAAF_ENTRYPOINT_EOF
 RUN chmod +x /usr/local/bin/daaf-entrypoint.sh
 ENTRYPOINT ["/usr/local/bin/daaf-entrypoint.sh"]
 

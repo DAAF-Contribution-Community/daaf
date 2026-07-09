@@ -466,7 +466,7 @@ _sync_copy_one() {
         return 0
     else
         echo "  Warning: could not copy ${script}. You can copy it manually:"
-        echo "    docker compose cp daaf-docker:/daaf/${repo_path} ./${script}"
+        echo "    docker cp ${DAAF_PROJECT_NAME:-daaf}-daaf-docker-1:/daaf/${repo_path} ./${script}"
         SYNC_COPY_FAILED=true
         return 1
     fi
@@ -630,8 +630,11 @@ ${repo_path}
         drift_degraded=true
     else
         # Bulk-copy the repo's scripts/host tree out of the container once.
-        # `docker compose cp` is project-aware (tracks DAAF_PROJECT_NAME), the
-        # same courtesy form used in manual-recovery hints. On failure, degrade.
+        # `docker compose cp` is project-aware HERE because this script parsed
+        # and exported DAAF_PROJECT_NAME. Printed user-facing hints instead use
+        # the explicit `docker cp <project>-daaf-docker-1:` form, because a
+        # fresh user shell lacks that env and compose would resolve the default
+        # project. On failure, degrade.
         if ! docker compose cp daaf-docker:/daaf/scripts/host "${drift_dir}/repo_host" \
             >/dev/null 2>&1; then
             drift_degraded=true
@@ -663,7 +666,7 @@ ${repo_path}
                 echo "    It was NOT overwritten in case the difference is a"
                 echo "    deliberate local customization of yours. To adopt the"
                 echo "    repository version, run:"
-                echo "      docker compose cp daaf-docker:/daaf/${repo_path} ./${script}"
+                echo "      docker cp ${DAAF_PROJECT_NAME:-daaf}-daaf-docker-1:/daaf/${repo_path} ./${script}"
                 drift_found=true
             fi
         done <<< "${sync_list}"

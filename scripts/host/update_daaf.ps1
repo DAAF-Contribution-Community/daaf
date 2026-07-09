@@ -572,7 +572,8 @@ function Copy-HostScript {
         return $true
     } else {
         Write-Host "  Warning: could not copy $scriptName. You can copy it manually:" -ForegroundColor Yellow
-        Write-Host "    docker compose cp daaf-docker:/daaf/$RepoPath ./$scriptName" -ForegroundColor Yellow
+        $daafProj = if ($env:DAAF_PROJECT_NAME) { $env:DAAF_PROJECT_NAME } else { 'daaf' }
+        Write-Host "    docker cp ${daafProj}-daaf-docker-1:/daaf/$RepoPath ./$scriptName" -ForegroundColor Yellow
         return $false
     }
 }
@@ -729,7 +730,8 @@ function Sync-HostScript {
                 Write-Host "    It was NOT overwritten in case the difference is a" -ForegroundColor Yellow
                 Write-Host "    deliberate local customization of yours. To adopt the" -ForegroundColor Yellow
                 Write-Host "    repository version, run:" -ForegroundColor Yellow
-                Write-Host "      docker compose cp daaf-docker:/daaf/$repoPath ./$scriptName" -ForegroundColor Yellow
+                $daafProj = if ($env:DAAF_PROJECT_NAME) { $env:DAAF_PROJECT_NAME } else { 'daaf' }
+                Write-Host "      docker cp ${daafProj}-daaf-docker-1:/daaf/$repoPath ./$scriptName" -ForegroundColor Yellow
                 $driftFound = $true
             }
         }
@@ -815,7 +817,8 @@ function Test-BuildChange {
         } else {
             Write-Host "rebuild_daaf.ps1 is not in your daaf-docker folder."
             Write-Host "You can retrieve it from the container and run it:"
-            Write-Host "  docker compose cp daaf-docker:/daaf/scripts/host/rebuild_daaf.ps1 .\rebuild_daaf.ps1"
+            $daafProj = if ($env:DAAF_PROJECT_NAME) { $env:DAAF_PROJECT_NAME } else { 'daaf' }
+            Write-Host "  docker cp ${daafProj}-daaf-docker-1:/daaf/scripts/host/rebuild_daaf.ps1 .\rebuild_daaf.ps1"
             Write-Host "  .\rebuild_daaf.ps1"
         }
     } else {
