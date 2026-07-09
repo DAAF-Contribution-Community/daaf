@@ -51,16 +51,23 @@ INSTALL_DIR="$(pwd)/daaf-docker"
 # When DAAF_DRY_RUN=1, simulate external commands (Docker, curl) for CI
 # cross-platform smoke testing without a Docker daemon.
 if [ "${DAAF_DRY_RUN:-}" = "1" ]; then
+    # Match patterns are space/flag-anchored so they cannot collide with the
+    # random mktemp INSTALL_DIR path embedded in "$*". The former
+    # *"compose"*"up"* / *"compose"*"build"* substring forms were functionally
+    # immune here (every real arm returns 0), but are hardened to the same
+    # path-proof style used in tests/bash/install.bats and daaf.bats for
+    # consistency and future-proofing (a "$*" containing "up" or "build" in its
+    # temp path can no longer route to the wrong arm).
     docker() {
         case "$*" in
             "info") return 0 ;;
             *"volume inspect"*) return 1 ;;
-            *"compose"*"build"*) return 0 ;;
-            *"compose"*"up"*) return 0 ;;
-            *"compose"*"exec"*"true"*) return 0 ;;
-            *"compose"*"exec"*"git clone"*) return 0 ;;
-            *"compose"*"exec"*"bash -c"*) return 0 ;;
-            *"compose"*"exec"*"test -f"*) return 0 ;;
+            *" build --progress"*) return 0 ;;
+            *" up -d"*) return 0 ;;
+            *"exec -T daaf-docker true"*) return 0 ;;
+            *"git clone"*) return 0 ;;
+            *"bash -c"*) return 0 ;;
+            *"test -f /daaf/CLAUDE.md"*) return 0 ;;
             *)
                 echo "[DRY-RUN] docker $*" >&2
                 return 0

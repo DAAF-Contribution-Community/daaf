@@ -37,19 +37,28 @@ if ($env:DAAF_DRY_RUN -eq "1") {
     function docker {
         $argStr = $args -join ' '
         $global:LASTEXITCODE = 0
+        # Match patterns are space/flag-anchored so they cannot collide with the
+        # random InstallDir path embedded in $argStr. switch -Wildcard uses the
+        # same `*` globbing as Bash `case`, so the same reasoning applies as in
+        # install.sh: a temp-directory path fragment (no spaces, no hyphenated
+        # flags, no long literals) can no longer route to the wrong arm. The
+        # former *compose*build* / *compose*up* substring forms were functionally
+        # immune here (every real arm returns via $LASTEXITCODE = 0), but are
+        # hardened to the path-proof style used in install.sh and the .bats mocks
+        # for cross-file parity and future-proofing.
         switch -Wildcard ($argStr) {
-            "*info*" { return }
+            "info" { return }
             "*volume inspect*" {
                 # Simulate volume-not-found for fresh install path
                 $global:LASTEXITCODE = 1
                 return
             }
-            "*compose*build*" { return }
-            "*compose*up*" { return }
-            "*compose*exec*true*" { return }
-            "*compose*exec*git clone*" { return }
-            "*compose*exec*bash -c*" { return }
-            "*compose*exec*test -f*" { return }
+            "* build --progress*" { return }
+            "* up -d*" { return }
+            "*exec -T daaf-docker true*" { return }
+            "*git clone*" { return }
+            "*bash -c*" { return }
+            "*test -f /daaf/CLAUDE.md*" { return }
             default {
                 Write-Host "[DRY-RUN] docker $argStr"
                 return

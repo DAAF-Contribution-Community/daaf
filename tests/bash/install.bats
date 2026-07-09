@@ -331,11 +331,14 @@ teardown() {
     export DAAF_NESTED=1
     # Custom docker mock: volume inspect fails (no existing install),
     # compose build returns non-zero
+    # Match patterns are space/flag-anchored so they cannot collide with the
+    # random mktemp INSTALL_DIR path embedded in "$*" (a "/tmp/tmp.XXXXXXXX"
+    # suffix is alphanumeric -- no spaces, no hyphens, no long literals).
     docker() {
         case "$*" in
-            info*)   return 0 ;;
-            *volume*) return 1 ;;
-            *compose*build*) return 1 ;;
+            "info")   return 0 ;;
+            *"volume inspect"*) return 1 ;;
+            *" build --progress"*) return 1 ;;
             *) return 0 ;;
         esac
     }
@@ -351,12 +354,13 @@ teardown() {
 @test "install.sh: fails when docker compose up -d fails" {
     export DAAF_NESTED=1
     # Custom docker mock: build succeeds, up fails
+    # Space/flag-anchored patterns -- immune to the random mktemp path in "$*".
     docker() {
         case "$*" in
-            info*)   return 0 ;;
-            *volume*) return 1 ;;
-            *compose*build*) return 0 ;;
-            *compose*up*) return 1 ;;
+            "info")   return 0 ;;
+            *"volume inspect"*) return 1 ;;
+            *" build --progress"*) return 0 ;;
+            *" up -d"*) return 1 ;;
             *) return 0 ;;
         esac
     }
@@ -372,13 +376,16 @@ teardown() {
 @test "install.sh: fails on container readiness timeout" {
     export DAAF_NESTED=1
     # Custom docker mock: build and up succeed, exec always fails (readiness never achieved)
+    # Space/flag-anchored patterns -- immune to the random mktemp path in "$*".
+    # The generic-exec fallback matches "exec -T daaf-docker" (the fixed flag +
+    # service string every install.sh exec call carries), never a path fragment.
     docker() {
         case "$*" in
-            info*)   return 0 ;;
-            *volume*) return 1 ;;
-            *compose*build*) return 0 ;;
-            *compose*up*) return 0 ;;
-            *compose*exec*) return 1 ;;
+            "info")   return 0 ;;
+            *"volume inspect"*) return 1 ;;
+            *" build --progress"*) return 0 ;;
+            *" up -d"*) return 0 ;;
+            *"exec -T daaf-docker"*) return 1 ;;
             *) return 0 ;;
         esac
     }
@@ -410,14 +417,15 @@ teardown() {
 @test "install.sh: fails when git clone into container fails" {
     export DAAF_NESTED=1
     # Custom docker mock: build/up/readiness succeed, but exec for git clone fails
+    # Space/flag-anchored patterns -- immune to the random mktemp path in "$*".
     docker() {
         case "$*" in
-            info*)   return 0 ;;
-            *volume*) return 1 ;;
-            *compose*build*) return 0 ;;
-            *compose*up*) return 0 ;;
-            *compose*exec*git*clone*) return 1 ;;
-            *compose*exec*) return 0 ;;
+            "info")   return 0 ;;
+            *"volume inspect"*) return 1 ;;
+            *" build --progress"*) return 0 ;;
+            *" up -d"*) return 0 ;;
+            *"git clone"*) return 1 ;;
+            *"exec -T daaf-docker"*) return 0 ;;
             *) return 0 ;;
         esac
     }
@@ -433,14 +441,19 @@ teardown() {
 @test "install.sh: fails when CLAUDE.md verification fails post-install" {
     export DAAF_NESTED=1
     # Custom docker mock: everything succeeds except the final test -f check
+    # Space/flag-anchored patterns -- immune to the random mktemp path in "$*".
+    # The verification arm matches the full literal "test -f /daaf/CLAUDE.md"
+    # so it can never be shadowed by an earlier loose arm colliding with the
+    # temp path (the historical flake: "$*" containing "up" matched *compose*up*
+    # first and returned 0, so the intended verification failure never fired).
     docker() {
         case "$*" in
-            info*)   return 0 ;;
-            *volume*) return 1 ;;
-            *compose*build*) return 0 ;;
-            *compose*up*) return 0 ;;
-            *compose*exec*test*-f*) return 1 ;;
-            *compose*exec*) return 0 ;;
+            "info")   return 0 ;;
+            *"volume inspect"*) return 1 ;;
+            *" build --progress"*) return 0 ;;
+            *" up -d"*) return 0 ;;
+            *"test -f /daaf/CLAUDE.md"*) return 1 ;;
+            *"exec -T daaf-docker"*) return 0 ;;
             *) return 0 ;;
         esac
     }
@@ -495,14 +508,23 @@ teardown() {
 @test "install.sh: fails when copy repo files into container fails" {
     export DAAF_NESTED=1
     # Custom docker mock: git clone succeeds, but bash -c cp fails
+    # Space/flag-anchored patterns -- immune to the random mktemp path in "$*".
+    # NOTE: install.sh issues TWO `bash -c` exec calls -- the pre-clone
+    # `rm -rf /daaf/.git ...` cleanup (line ~275) and the post-clone `cp -a`
+    # (line ~294). This test targets the copy step, but the earlier rm cleanup
+    # runs with `|| true`, so returning 1 for it is harmless; the assertion
+    # ("Failed to copy repository files") fires only when the cp `bash -c`
+    # returns non-zero, which this arm forces. Matching the full literal
+    # "cp -a /tmp/daaf-clone" would be more precise, but "bash -c" preserves the
+    # original arm's intent (both calls carry it) and is path-proof.
     docker() {
         case "$*" in
-            info*)   return 0 ;;
-            *volume*) return 1 ;;
-            *compose*build*) return 0 ;;
-            *compose*up*) return 0 ;;
-            *compose*exec*bash*-c*) return 1 ;;
-            *compose*exec*) return 0 ;;
+            "info")   return 0 ;;
+            *"volume inspect"*) return 1 ;;
+            *" build --progress"*) return 0 ;;
+            *" up -d"*) return 0 ;;
+            *"bash -c"*) return 1 ;;
+            *"exec -T daaf-docker"*) return 0 ;;
             *) return 0 ;;
         esac
     }

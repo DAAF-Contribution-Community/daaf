@@ -444,7 +444,7 @@ teardown() {
             case "$*" in
                 *rev-parse*HEAD*) echo "samehash" ;;
                 *ls-files*) printf "scripts/host/run_daaf.sh\n" ;;
-                *compose*cp*)
+                *"compose cp"*)
                     # Last arg is the destination repo_host dir. Populate it with
                     # the pristine repo copy (different from the host copy above).
                     dest="${@: -1}"
@@ -477,7 +477,7 @@ teardown() {
             case "$*" in
                 *rev-parse*HEAD*) echo "samehash" ;;
                 *ls-files*) printf "scripts/host/run_daaf.sh\n" ;;
-                *compose*cp*)
+                *"compose cp"*)
                     dest="${@: -1}"
                     mkdir -p "${dest}"
                     printf "identical\n" > "${dest}/run_daaf.sh"
@@ -506,7 +506,7 @@ teardown() {
             case "$*" in
                 *rev-parse*HEAD*) echo "samehash" ;;
                 *ls-files*) printf "scripts/host/run_daaf.sh\n" ;;
-                *compose*cp*)
+                *"compose cp"*)
                     dest="${@: -1}"
                     mkdir -p "${dest}"
                     printf "pristine-repo\n" > "${dest}/run_daaf.sh"
@@ -541,7 +541,7 @@ teardown() {
             case "$*" in
                 *rev-parse*HEAD*) echo "samehash" ;;
                 *ls-files*) printf "scripts/host/daaf.sh\nscripts/host/run_daaf.sh\n" ;;
-                *compose*cp*)
+                *"compose cp"*)
                     dest="${@: -1}"
                     mkdir -p "${dest}"
                     # Staged repo copy of daaf.sh differs from whatever tier A put
@@ -575,7 +575,7 @@ teardown() {
             case "$*" in
                 *rev-parse*HEAD*) echo "samehash" ;;
                 *ls-files*) printf "scripts/host/run_daaf.sh\n" ;;
-                *compose*cp*) return 1 ;;
+                *"compose cp"*) return 1 ;;
                 cp*) return 0 ;;
                 *) return 0 ;;
             esac
