@@ -135,6 +135,7 @@
 # SHIM_BACKEND_BASE_URL=https://api.openai.com/v1
 # SHIM_BACKEND_API_KEY=                             # defaults to OPENAI_API_KEY
 # SHIM_STRIP_MODEL_PREFIX=openai/                   # literal prefix stripped from model ids before the backend; only needed with prefixed slugs — leave unset for the bare slugs shown above
+# SHIM_SANITIZE_TOOLS=0                             # sanitization is ON by default (strips known GPT tool-call quirks: empty pages:"", Agent isolation fills, redundant sandbox flags — each otherwise costs a wasted error round-trip); set to 0 ONLY when benchmarking shim-routed models (DAAFBench must see raw model behavior; flag is read at shim startup, so a restart is required)
 #
 # Troubleshooting (inside the container):
 #   bash /daaf/scripts/provider_shim/start_shim.sh --status

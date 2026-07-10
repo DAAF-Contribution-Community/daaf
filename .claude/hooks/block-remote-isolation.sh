@@ -2,21 +2,33 @@
 # block-remote-isolation.sh
 # ---------------------------------------------------------------------------
 # PURPOSE
-#   PreToolUse hook for Agent/Task dispatches: DENY any dispatch that sets
-#   isolation: "remote". Remote cloud environments are gated/unavailable in
+#   PreToolUse hook for Agent/Task dispatches: DENY any dispatch that fills
+#   the optional isolation parameter (any value).
+#
+#   isolation: "remote" — remote cloud environments are gated/unavailable in
 #   the DAAF container, and such dispatches never return a tool_result — the
 #   session waits silently until killed.
+#
+#   isolation: "worktree" — worktrees are checked out from the repo default
+#   branch (origin/main), NOT the live session branch: subagents run inside a
+#   stale framework snapshot (old CLAUDE.md/hooks/agents) and cannot see
+#   untracked files (benchmark fixtures, uncommitted work). Worktrees also
+#   accumulate under .claude/worktrees/ and require manual cleanup.
 #
 #   First observed in the GPT DAAFBench smoke battery (2026-07-09/10): GPT
 #   models fill the optional `isolation` param on every Agent dispatch;
 #   the value "remote" hung case pc-03 reproducibly at both 300s and 600s
 #   timeouts (evidence: research/2026-07-09_FrameworkDev_GPTBenchSmoke/
-#   SESSION_NOTES.md Issue #2). Claude models do not normally fill this
-#   param, so the hook is inert for them.
+#   SESSION_NOTES.md Issue #2). The stale-main worktree checkout was
+#   confirmed 2026-07-10 (worktree-agent-* branches all at origin/main tip
+#   e56f2f0; SESSION_NOTES.md Iteration 5). Claude models do not normally
+#   fill this param, so the hook is inert for them.
 #
 # DECISION
-#   tool_input.isolation == "remote"  -> DENY with corrective guidance
-#   anything else (absent, worktree)  -> ALLOW (exit 0, no JSON)
+#   tool_input.isolation == "remote"    -> DENY (hang prevention)
+#   tool_input.isolation == any other
+#     non-empty value (e.g. "worktree") -> DENY (stale-checkout prevention)
+#   isolation absent/empty              -> ALLOW (exit 0, no JSON)
 #
 # FAIL-OPEN RATIONALE
 #   This is an availability guard (prevents a hang), not a safety boundary.
@@ -50,7 +62,18 @@ if [ "$ISOLATION" = "remote" ]; then
     "hookSpecificOutput": {
       "hookEventName": "PreToolUse",
       "permissionDecision": "deny",
-      "permissionDecisionReason": "isolation: \"remote\" requests a remote cloud environment that is unavailable inside the DAAF container — the dispatch would hang forever. Re-dispatch this subagent WITHOUT the isolation parameter (omit it entirely; do not substitute \"worktree\", which hides untracked project files from the subagent)."
+      "permissionDecisionReason": "isolation: \"remote\" requests a remote cloud environment that is unavailable inside the DAAF container — the dispatch would hang forever. Re-dispatch this subagent WITHOUT the isolation parameter (omit it entirely; do not substitute \"worktree\", which runs the subagent in a stale copy of the project)."
+    }
+  }'
+  exit 0
+fi
+
+if [ -n "$ISOLATION" ]; then
+  jq -n --arg iso "$ISOLATION" '{
+    "hookSpecificOutput": {
+      "hookEventName": "PreToolUse",
+      "permissionDecision": "deny",
+      "permissionDecisionReason": ("isolation: \"" + $iso + "\" is disabled in DAAF: isolated worktrees are checked out from the repository default branch, so the subagent would run against a stale framework snapshot and could not see untracked project files (fixtures, uncommitted work). Re-dispatch this subagent WITHOUT the isolation parameter (omit it entirely).")
     }
   }'
   exit 0

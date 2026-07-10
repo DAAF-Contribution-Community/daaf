@@ -39,6 +39,14 @@
 #   SHIM_BACKEND_BASE_URL   default https://api.openai.com/v1
 #   SHIM_BACKEND_API_KEY    default: value of OPENAI_API_KEY
 #   SHIM_STRIP_MODEL_PREFIX default "" (e.g. "openai/" to strip for api.openai.com)
+#   SHIM_SANITIZE_TOOLS     default ON ("0"/"false"/"no" to disable). Strips
+#                           known GPT "fill-every-optional" tool-call quirks
+#                           before they reach Claude Code (see
+#                           _sanitize_tool_args for the evidence-based rules).
+#                           MUST be set to 0 for DAAFBench runs of shim-routed
+#                           models — the benchmark measures raw model
+#                           behavior. Read once at startup: that means
+#                           RESTARTING the shim with the opt-out set.
 # =============================================================================
 
 import os
@@ -54,7 +62,7 @@ import httpx
 import uvicorn
 
 # --- Config ---
-SHIM_VERSION = "1.0.0"
+SHIM_VERSION = "1.1.0"
 
 SHIM_PORT = int(os.environ.get("SHIM_PORT", "4141"))
 # HARDENING: default backend is now api.openai.com/v1 (the production target).
@@ -68,6 +76,15 @@ SHIM_BACKEND_API_KEY = os.environ.get("SHIM_BACKEND_API_KEY") or os.environ.get(
     "OPENAI_API_KEY", ""
 )
 SHIM_STRIP_MODEL_PREFIX = os.environ.get("SHIM_STRIP_MODEL_PREFIX", "")
+# Tool-argument sanitization (2026-07-10). Default ON (user decision
+# 2026-07-10 after review): production sessions get the quirk cleanup out of
+# the box. Set SHIM_SANITIZE_TOOLS=0 to disable — REQUIRED when benchmarking
+# shim-routed models, and the flag is read once at daemon startup, so
+# benchmarking means restarting the shim with the opt-out set (verify via
+# /health "sanitize_tools").
+SHIM_SANITIZE_TOOLS = os.environ.get(
+    "SHIM_SANITIZE_TOOLS", "1"
+).strip().lower() not in ("0", "false", "no")
 
 # HARDENING: retry policy. Retry only on transient backend failures, and only
 # before any bytes have been emitted to the client (a partially-streamed
@@ -267,6 +284,43 @@ def _anthropic_to_openai_request(body):
 
 # --- Helpers: response translation (OpenAI -> Anthropic) ---
 
+def _sanitize_tool_args(tool_name, args):
+    # Evidence-based cleanup of the GPT "fill-every-optional" tool-call habit,
+    # quantified in the 2026-07-09/10 GPT DAAFBench smoke battery
+    # (research/2026-07-09_FrameworkDev_GPTBenchSmoke/SESSION_NOTES.md):
+    #   * Read.pages == ""            — 724 occurrences; each one costs a
+    #     rejected tool call + an error round-trip before the model retries.
+    #   * Agent/Task isolation=<any>  — filled on essentially every dispatch;
+    #     "remote" hangs the session forever (Issue #2), "worktree" runs the
+    #     subagent in a stale origin/main checkout (Iteration 5). Stripped for
+    #     ANY value, mirroring the block-remote-isolation.sh hook v2 policy;
+    #     the hook remains the second line of defense for non-shim routes.
+    #   * Bash dangerouslyDisableSandbox == false — filled on every Bash call;
+    #     dropping the explicit default is a semantic no-op. A `true` fill is
+    #     deliberately passed through UNTOUCHED so the harness permission
+    #     layer (not this shim) decides what to do with it.
+    # Deliberately NOT touched: `model` on Agent/Task — DAAF's model-selection
+    # doctrine depends on legitimate tier choices, and the shim cannot tell a
+    # compulsive fill from an intentional one.
+    #
+    # Targeted rules only — no generic empty-value stripping, because "" is a
+    # legitimate value for some params (e.g. Edit.new_string deletes text).
+    # Returns (args, dropped) where dropped is a list of human-readable
+    # "key=value" strings for the caller to log.
+    if not SHIM_SANITIZE_TOOLS or not isinstance(args, dict):
+        return args, []
+    dropped = []
+    if tool_name == "Read" and args.get("pages") == "":
+        del args["pages"]
+        dropped.append('pages=""')
+    if tool_name in ("Agent", "Task") and "isolation" in args:
+        dropped.append(f"isolation={args.pop('isolation')!r}")
+    if tool_name == "Bash" and args.get("dangerouslyDisableSandbox") is False:
+        del args["dangerouslyDisableSandbox"]
+        dropped.append("dangerouslyDisableSandbox=false")
+    return args, dropped
+
+
 def _map_finish_reason(fr):
     # OpenAI finish_reason -> Anthropic stop_reason.
     return {
@@ -356,6 +410,9 @@ def _openai_response_to_anthropic(oai, model):
             args = json.loads(fn.get("arguments") or "{}")
         except (ValueError, TypeError):
             args = {}
+        args, dropped = _sanitize_tool_args(fn.get("name", ""), args)
+        if dropped:
+            log.info("sanitize tool=%s dropped=%s", fn.get("name", ""), ",".join(dropped))
         content.append({
             "type": "tool_use",
             "id": tc.get("id") or f"toolu_{uuid.uuid4().hex[:24]}",
@@ -635,7 +692,8 @@ async def _handle_messages(body, receive, send):
                         next_index += 1
                         st = {"anth_index": anth_index, "opened": False,
                               "id": tcd.get("id") or f"toolu_{uuid.uuid4().hex[:24]}",
-                              "name": (tcd.get("function") or {}).get("name", "")}
+                              "name": (tcd.get("function") or {}).get("name", ""),
+                              "args_buf": ""}
                         tool_state[idx] = st
                     # Backfill id/name if they arrive after the first delta.
                     if tcd.get("id"):
@@ -654,9 +712,18 @@ async def _handle_messages(body, receive, send):
                     # Argument fragments -> input_json_delta (partial JSON string).
                     arg_frag = fn.get("arguments")
                     if arg_frag:
-                        await emit("content_block_delta", {"type": "content_block_delta",
-                            "index": st["anth_index"],
-                            "delta": {"type": "input_json_delta", "partial_json": arg_frag}})
+                        if SHIM_SANITIZE_TOOLS:
+                            # SANITIZE MODE: buffer fragments instead of
+                            # forwarding them. Tool args are only actionable
+                            # once complete, so deferring emission to block
+                            # close loses nothing except incremental display.
+                            # The complete, sanitized JSON is emitted as ONE
+                            # input_json_delta in the close loop below.
+                            st["args_buf"] += arg_frag
+                        else:
+                            await emit("content_block_delta", {"type": "content_block_delta",
+                                "index": st["anth_index"],
+                                "delta": {"type": "input_json_delta", "partial_json": arg_frag}})
 
             # Close any open content blocks (text first, then tools in order).
             if text_block_open:
@@ -664,6 +731,28 @@ async def _handle_messages(body, receive, send):
             for idx in sorted(tool_state, key=lambda k: tool_state[k]["anth_index"]):
                 st = tool_state[idx]
                 if st["opened"]:
+                    if SHIM_SANITIZE_TOOLS and st.get("args_buf"):
+                        # SANITIZE MODE: the whole argument string was buffered
+                        # (never forwarded); parse, sanitize, and emit it as a
+                        # single complete input_json_delta. Claude Code only
+                        # parses tool args at block stop, so one full fragment
+                        # is wire-equivalent to many partials.
+                        try:
+                            parsed = json.loads(st["args_buf"])
+                            parsed, dropped = _sanitize_tool_args(st["name"], parsed)
+                            if dropped:
+                                log.info("sanitize tool=%s dropped=%s",
+                                         st["name"], ",".join(dropped))
+                            out_json = json.dumps(parsed)
+                        except (ValueError, TypeError):
+                            # Fail-open: unparseable args pass through verbatim
+                            # — sanitization must never break a tool call that
+                            # would have worked without it.
+                            log.warning("sanitize: unparseable args for tool=%s; passing through", st["name"])
+                            out_json = st["args_buf"]
+                        await emit("content_block_delta", {"type": "content_block_delta",
+                            "index": st["anth_index"],
+                            "delta": {"type": "input_json_delta", "partial_json": out_json}})
                     await emit("content_block_stop", {"type": "content_block_stop", "index": st["anth_index"]})
 
             # HARDENING (empty-response guard): if the model produced neither text
@@ -748,6 +837,7 @@ async def _handle_health(send):
         "status": "ok",
         "backend": SHIM_BACKEND_BASE_URL,
         "version": SHIM_VERSION,
+        "sanitize_tools": SHIM_SANITIZE_TOOLS,
     })
 
 
@@ -788,8 +878,8 @@ async def app(scope, receive, send):
 # --- Entry point ---
 if __name__ == "__main__":
     # NOTE: never log the key itself — only whether one is present.
-    log.info("shim v%s starting port=%d backend=%s strip_prefix=%r key_present=%s",
+    log.info("shim v%s starting port=%d backend=%s strip_prefix=%r key_present=%s sanitize_tools=%s",
              SHIM_VERSION, SHIM_PORT, SHIM_BACKEND_BASE_URL,
-             SHIM_STRIP_MODEL_PREFIX, bool(SHIM_BACKEND_API_KEY))
+             SHIM_STRIP_MODEL_PREFIX, bool(SHIM_BACKEND_API_KEY), SHIM_SANITIZE_TOOLS)
     # log_config=None: keep uvicorn from clobbering our stderr handler.
     uvicorn.run(app, host="127.0.0.1", port=SHIM_PORT, log_level="warning", log_config=None)

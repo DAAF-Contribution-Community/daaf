@@ -246,6 +246,15 @@ models:
   # NOTE: the gpt-5.6 -pro variants and gpt-5.5-pro were removed on
   # 2026-07-10 after the smoke battery — see the REMOVED block below the
   # GPT-5.5 entry for the evidence trail.
+  #
+  # SHIM LANE CAVEAT (2026-07-10): the Option F provider shim sanitizes GPT
+  # tool-call quirks BY DEFAULT (SHIM_SANITIZE_TOOLS=1). Benchmarking any
+  # future shim-routed model entry requires restarting the shim with
+  # SHIM_SANITIZE_TOOLS=0 first (the flag is read at daemon startup; verify
+  # via /health "sanitize_tools": false) — otherwise measured tool-use
+  # behavior is sanitized, not raw. env_overrides here CANNOT flip it: they
+  # reach the session, not the already-running shim daemon. The OpenRouter
+  # entries above are unaffected (they bypass the shim).
 
   - id: "openai/gpt-5.6-sol"
     name: "GPT-5.6 Sol"
@@ -304,8 +313,17 @@ models:
   #     GPTBenchSmoke/SESSION_NOTES.md Issue #9.
   #   gpt-5.5-pro — never run: premium pricing ($30/$180 per M, no cache
   #     discount) projected a $400+ battery, and the pro-wall likely applies.
-  # Do not re-add without first re-testing the pro accounting behavior
-  # (poc probe pattern in the session workspace above).
+  # RETEST 2026-07-10 (research/2026-07-10_FrameworkDev_ShimToolSanitization/
+  #   poc/01_pro_wall_probe.py, via OpenRouter's OPENAI-format endpoint —
+  #   the wire format the DAAF provider shim uses): NO hard wall there
+  #   (sol-pro accepted a ~250k-token prompt, HTTP 200), so the "Prompt is
+  #   too long" ceiling is specific to the Anthropic-compat endpoint. BUT
+  #   the token-accounting inflation is intrinsic to the pro slugs: 4.01x
+  #   the prompt tokens of non-pro sol on byte-identical input (668,328 vs
+  #   166,711). Same listed per-token price x 4x tokens = ~4x effective
+  #   cost. Removal stands for both lanes: hard-broken on anthropic-compat,
+  #   economically irrational via the shim unless a future benchmark shows
+  #   pro-tier quality worth 4x.
 
   - id: "openai/gpt-5.4-mini"
     name: "GPT-5.4 Mini"

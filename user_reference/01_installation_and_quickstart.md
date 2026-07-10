@@ -836,7 +836,7 @@ bash /daaf/scripts/provider_shim/start_shim.sh --status   # is it running?
 curl -s http://127.0.0.1:4141/health                       # health check
 ```
 
-The shim's log lives at `/daaf/scripts/provider_shim/logs/shim.log`. The manager also accepts `--start`, `--stop`, and `--auto`. Defaults are fine for almost everyone; the tuning variables (`SHIM_PORT`, `SHIM_BACKEND_BASE_URL`, `SHIM_BACKEND_API_KEY`, `SHIM_STRIP_MODEL_PREFIX`) are documented in `environment_settings_example.txt`.
+The shim's log lives at `/daaf/scripts/provider_shim/logs/shim.log`. The manager also accepts `--start`, `--stop`, and `--auto`. Defaults are fine for almost everyone; the tuning variables (`SHIM_PORT`, `SHIM_BACKEND_BASE_URL`, `SHIM_BACKEND_API_KEY`, `SHIM_STRIP_MODEL_PREFIX`, `SHIM_SANITIZE_TOOLS`) are documented in `environment_settings_example.txt`. Tool-call sanitization is **on by default** (`SHIM_SANITIZE_TOOLS`): the shim silently strips known GPT tool-call quirks (empty `pages` parameters, `isolation` fills on subagent dispatches, redundant sandbox flags) that otherwise each cost a wasted error round-trip; every strip is recorded in the shim log. Set `SHIM_SANITIZE_TOOLS=0` (and restart the shim — the flag is read at startup) when running DAAFBench against shim-routed models, which must observe raw model behavior; confirm via the `/health` endpoint's `sanitize_tools` field.
 
 #### Known limitations of GPT sessions (both lanes)
 

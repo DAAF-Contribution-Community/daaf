@@ -21,6 +21,9 @@
 #   SHIM_BACKEND_BASE_URL   default https://api.openai.com/v1
 #   SHIM_BACKEND_API_KEY    default: value of OPENAI_API_KEY
 #   SHIM_STRIP_MODEL_PREFIX default ""
+#   SHIM_SANITIZE_TOOLS     default "1" (enabled); strips known GPT tool-call
+#                           quirks — set to 0 (and restart the shim) for
+#                           DAAFBench runs of shim-routed models
 #
 # Keepalive: a background supervisor restarts the shim if it exits, with a short
 # sleep between restarts. A restart-storm guard stops after 10 crashes in 60s
