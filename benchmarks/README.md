@@ -25,12 +25,20 @@ and still score poorly here if it skips confirmation gates or dispatches
 free-form prompts. Conversely, a weaker model that faithfully follows protocol
 scores well.
 
-**Model matrix:** 20 models — 8 Anthropic (Haiku 4.5, Sonnet 4.6, Sonnet 5, Opus
-4.5/4.6/4.7/4.8, Fable 5) via the container's Claude Code subscription, and 12
+**Model matrix:** 25 models — 8 Anthropic (Haiku 4.5, Sonnet 4.6, Sonnet 5, Opus
+4.5/4.6/4.7/4.8, Fable 5) via the container's Claude Code subscription, and 17
 OpenRouter models (GLM 5.1/5.2, Kimi K2.6, Kimi K2.7 Code, Qwen 3.6 27B,
 Gemma 4 31B/26B, DeepSeek V4 Pro/Flash, Gemini 3.1 Pro, Nemotron 3 Ultra,
-Gemini 3.1 Flash Lite) via an Anthropic-compatible endpoint. The matrix is defined in
-`config/models.yaml`.
+Gemini 3.1 Flash Lite, and — added 2026-07-09 for the GPT smoke battery —
+GPT-5.6 Sol/Terra/Luna, GPT-5.5, and GPT-5.4 Mini) via an Anthropic-compatible
+endpoint. The matrix is defined in `config/models.yaml`. GPT entries carry
+per-model `env_overrides` remapping both tier aliases to the model under test
+so subagent dispatches stay model-pure (see the comment block in models.yaml).
+The GPT-5.6 -pro slugs and GPT-5.5 Pro were tested and REMOVED (2026-07-10):
+the -pro variants hit hard "Prompt is too long" API errors at realistic DAAF
+context sizes through this endpoint (~4x inflated token accounting against a
+~200k ceiling; smoke evidence in the models.yaml REMOVED block), and GPT-5.5
+Pro's premium pricing ($30/$180 per M) made its battery not worth running.
 
 **Scope:** The original design specified six test categories; four are
 implemented as the phases above. The remaining designed-but-unbuilt
@@ -196,7 +204,7 @@ All four runners share an identical CLI:
 | `--test-id a,b` | all | Specific case IDs (e.g., `mc-01,mc-05`) |
 | `--sequential` | off | Run one at a time instead of parallel |
 | `--delay S` | 2 | Seconds between parallel launches (ThreadPoolExecutor stagger). Parallel-mode only — the sequential loop has no sleep, so this flag is a no-op with `--sequential` |
-| `--timeout S` | tier-based | Override per-run timeout (defaults: low 120s, medium 300s, high 600s by case `cost_tier`) |
+| `--timeout S` | phase-based | Per-run timeout in seconds. Defaults baked into each runner (2026-07-10): 120 (Phase 1), 180 (Phase 2), 300 (Phases 3 & 4). Pass explicitly to override; the old cost-tier fallback only fires if a caller passes `timeout_override=None` programmatically |
 | `--yes` / `-y` | off | Skip the cost confirmation prompt |
 
 `run_dispatch_compliance.py` additionally accepts `--no-fixture-restore`,

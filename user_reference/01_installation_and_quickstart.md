@@ -801,6 +801,8 @@ Recommended GPT slugs (context windows and roles verified against OpenRouter on 
 The two-tier routing described above works identically: map `ANTHROPIC_DEFAULT_OPUS_MODEL` / `ANTHROPIC_DEFAULT_SONNET_MODEL` to your chosen GPT slugs, and DAAF's cost-control ceiling stands down automatically for non-Claude models.
 
 > **GPT-5.6 tier naming:** the GPT-5.6 family uses OpenAI's tier-analog names — *Sol* (strong; Opus-analog), *Terra* (mid; Sonnet-analog), and *Luna* (economy; Haiku-analog) — all with 1,050,000-token windows. DAAF's recommended defaults are Sol and Terra, validated live through the full agentic stack (including subagent dispatch on the tier remaps) on 2026-07-09, the day of the OpenRouter release.
+>
+> **Avoid the `-pro` slugs via OpenRouter (Option C):** despite listing the same 1,050,000-token windows and identical pricing, `gpt-5.6-sol-pro` / `-terra-pro` / `-luna-pro` fail with hard "Prompt is too long" API errors once a session's real context reaches roughly 50k tokens — through the Anthropic-compatible endpoint their token accounting runs ~4x the non-pro count against an enforced ~200k ceiling, and the inflation also makes them bill ~2-4x more for identical work. Empirically verified across all three -pro variants in the 2026-07-10 DAAFBench smoke battery (see `benchmarks/README.md` § 1). The non-pro slugs are unaffected.
 
 **Restart the container** (`docker compose down`, then `bash run_daaf.sh`) to pick up the changes. No rebuild is needed for OpenRouter — it is config-only.
 

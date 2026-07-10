@@ -565,8 +565,9 @@ def main():
                         help="Run sequentially instead of parallel")
     parser.add_argument("--delay", type=float, default=LAUNCH_DELAY_SECONDS,
                         help="Seconds between parallel launches (default: 2)")
-    parser.add_argument("--timeout", type=int, default=None,
-                        help="Override per-run timeout in seconds (default: cost-tier based)")
+    parser.add_argument("--timeout", type=int, default=180,
+                        help="Per-run timeout in seconds (Phase 2 default: 180; "
+                             "standardized 2026-07-10, replacing cost-tier defaults)")
     parser.add_argument("--yes", "-y", action="store_true",
                         help="Skip cost confirmation prompt")
     args = parser.parse_args()

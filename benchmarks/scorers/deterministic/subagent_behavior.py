@@ -230,11 +230,18 @@ def _check_reads_min_matching(tool_calls: list[dict], pattern: str, min_count: i
 
 
 # --- Agent type behavior specifications ---
+#
+# R-awareness (2026-07-10): script-writing patterns accept .py OR .R. The
+# framework's execution-language preference switched to R (CLAUDE.md § User
+# Preferences, 2026-07-06), so subagents faithfully writing .R scripts were
+# false-negatives under the old \.py$ patterns (first observed: GPT smoke
+# battery dc-01/dc-02, research/2026-07-09_FrameworkDev_GPTBenchSmoke/).
+# Archived result sets scored before this date used the .py-only patterns.
 
 BEHAVIOR_SPECS: dict[str, list[dict]] = {
     "research-executor": [
         {"name": "subagent_writes_script", "tier": "tier1",
-         "check": "writes_file", "pattern": r"\.py$"},
+         "check": "writes_file", "pattern": r"\.(py|R)$"},
         {"name": "subagent_writes_to_adhoc", "tier": "tier2",
          "check": "writes_to_dir", "pattern": r"scripts/adhoc/"},
         {"name": "subagent_uses_run_with_capture", "tier": "tier2",
@@ -272,7 +279,7 @@ BEHAVIOR_SPECS: dict[str, list[dict]] = {
         {"name": "subagent_reads_data_file", "tier": "tier1",
          "check": "references_file", "pattern": r"test_fixtures/data_ingest/"},
         {"name": "subagent_writes_profiling_script", "tier": "tier2",
-         "check": "writes_file", "pattern": r"\.py$"},
+         "check": "writes_file", "pattern": r"\.(py|R)$"},
         {"name": "subagent_uses_run_with_capture", "tier": "tier2",
          "check": "bash_contains", "pattern": r"run_with_capture"},
     ],

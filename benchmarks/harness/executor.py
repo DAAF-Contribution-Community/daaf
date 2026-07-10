@@ -92,6 +92,10 @@ def execute_run(config: RunConfig) -> RunResult:
         env["CLAUDE_CODE_EFFORT_LEVEL"] = model.effort_level
     env.update(model.env_overrides)
 
+    # Since 2026-07-10 the phase runners set per-phase --timeout defaults
+    # (120/180/300/300), so timeout_override is always truthy on the default
+    # path and the cost-tier fallback below only fires if a caller passes
+    # timeout_override=None explicitly.
     timeout = config.timeout_override or TIMEOUT_BY_TIER.get(test_case.cost_tier, 300)
 
     result = RunResult(

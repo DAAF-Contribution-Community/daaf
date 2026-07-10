@@ -228,6 +228,97 @@ models:
       input: 0.25
       output: 1.50
 
+  # --- OpenAI GPT models (via OpenRouter Anthropic-compatible endpoint) ---
+  #
+  # Added 2026-07-09 for GPT smoke-test battery. Pricing pulled live from
+  # OpenRouter /api/v1/models on 2026-07-09 (cached_input = 10% of input,
+  # except gpt-5.5-pro which lists no cache discount).
+  #
+  # env_overrides remap BOTH tier aliases to the model under test so that
+  # subagent dispatches stay model-pure: agent frontmatter now declares
+  # model: opus/sonnet tiers (commit 1f9103c, 2026-07-05), and without the
+  # remaps the enforce-model-ceiling hook denies Claude-tier requests on
+  # non-Claude sessions. With the remaps set, the hook stands down (rule b)
+  # and every resolution path lands on the tested model — live-verified via
+  # research/2026-07-09_FrameworkDev_GPTBenchSmoke/poc/01_dual_tier_remap_probe.sh
+  # (both search-agent and research-executor subagents ran on the session model).
+  #
+  # NOTE: the gpt-5.6 -pro variants and gpt-5.5-pro were removed on
+  # 2026-07-10 after the smoke battery — see the REMOVED block below the
+  # GPT-5.5 entry for the evidence trail.
+
+  - id: "openai/gpt-5.6-sol"
+    name: "GPT-5.6 Sol"
+    provider: openrouter
+    cost_tier: "medium"
+    pricing:
+      input: 5.00
+      output: 30.00
+      cached_input: 0.50
+    env_overrides:
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "openai/gpt-5.6-sol"
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "openai/gpt-5.6-sol"
+
+  - id: "openai/gpt-5.6-terra"
+    name: "GPT-5.6 Terra"
+    provider: openrouter
+    cost_tier: "medium"
+    pricing:
+      input: 2.50
+      output: 15.00
+      cached_input: 0.25
+    env_overrides:
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "openai/gpt-5.6-terra"
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "openai/gpt-5.6-terra"
+
+  - id: "openai/gpt-5.6-luna"
+    name: "GPT-5.6 Luna"
+    provider: openrouter
+    cost_tier: "medium"
+    pricing:
+      input: 1.00
+      output: 6.00
+      cached_input: 0.10
+    env_overrides:
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "openai/gpt-5.6-luna"
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "openai/gpt-5.6-luna"
+
+  - id: "openai/gpt-5.5"
+    name: "GPT-5.5"
+    provider: openrouter
+    cost_tier: "medium"
+    pricing:
+      input: 5.00
+      output: 30.00
+      cached_input: 0.50
+    env_overrides:
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "openai/gpt-5.5"
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "openai/gpt-5.5"
+
+  # REMOVED 2026-07-10 (user decision after the GPT smoke battery):
+  #   gpt-5.6-sol-pro, gpt-5.6-terra-pro, gpt-5.6-luna-pro — all three hit
+  #     hard "Prompt is too long" API errors at realistic context sizes via
+  #     the OpenRouter Anthropic-compatible endpoint (~4x inflated token
+  #     accounting vs non-pro against a ~200k ceiling; P4 perfect-rate 0 for
+  #     all three). Full evidence: research/2026-07-09_FrameworkDev_
+  #     GPTBenchSmoke/SESSION_NOTES.md Issue #9.
+  #   gpt-5.5-pro — never run: premium pricing ($30/$180 per M, no cache
+  #     discount) projected a $400+ battery, and the pro-wall likely applies.
+  # Do not re-add without first re-testing the pro accounting behavior
+  # (poc probe pattern in the session workspace above).
+
+  - id: "openai/gpt-5.4-mini"
+    name: "GPT-5.4 Mini"
+    provider: openrouter
+    cost_tier: "low"
+    pricing:
+      input: 0.75
+      output: 4.50
+      cached_input: 0.075
+    env_overrides:
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "openai/gpt-5.4-mini"
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "openai/gpt-5.4-mini"
+
 # Thinking level variants (uncomment to include in benchmark runs)
 #
 #  - id: "claude-sonnet-4-6"
