@@ -431,6 +431,10 @@ library(dplyr)
 # Mirror failover: see `education-data-query/references/fetch-patterns.md` (R pattern)
 DATASET_PATH <- "nccs/colleges_nccs_all"
 mirror <- yaml::read_yaml("mirrors.yaml")$mirrors[[1]]
+# NOTE: illustrative only — mirror parquet files are Polars-written and may
+# declare string_view columns, so a plain read can fail under R arrow
+# ("cannot handle Array of type <utf8_view>"). Real fetch scripts must use the
+# view-safe parquet read from `education-data-query/references/fetch-patterns.md`.
 df <- read_parquet(paste0(mirror$root_url, "/", DATASET_PATH, ".", mirror$format))
 
 # Filter out null and rare negative codes

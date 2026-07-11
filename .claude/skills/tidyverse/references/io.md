@@ -25,6 +25,56 @@ df <- read_parquet("data/schools.parquet", col_select = c(ncessch, state, enroll
 df <- read_parquet("data/schools.parquet", col_select = starts_with("enroll"))
 ```
 
+#### View-Safe Read for External / Polars-Written Parquet
+
+`read_parquet()` works directly on DAAF's own outputs, but parquet files written
+by **Polars** (notably the HuggingFace education-data mirror,
+`brhkim/education_data_portal_mirror`) may declare string columns as Arrow *view*
+types (`string_view`, `large_string_view`, `binary_view`) in the parquet-native
+schema. The R `arrow` binding reads these at the C++ layer but cannot convert them
+to R vectors directly — the plain `read_parquet(src)` call fails at the
+Table -> data.frame step with:
+
+```
+Error: cannot handle Array of type <utf8_view>
+```
+
+When reading parquet from any external source that might be Polars-written, use
+the **view-safe read**: read as an Arrow Table, cast any view columns to their
+materialized equivalents, then convert to a data frame. The cast is a **no-op on
+files without view types**, so it is safe to use for every external read.
+
+```r
+library(arrow)
+
+# INTENT: read external parquet robustly against Arrow "view" string/binary types
+#   that Polars emits but the R arrow binding cannot convert to R vectors directly.
+src <- "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/saipe/districts_saipe.parquet"
+
+tbl <- read_parquet(src, as_data_frame = FALSE)   # C++ read tolerates view types
+sch <- tbl$schema
+fields <- lapply(seq_len(length(sch$names)), function(i) {
+  fld <- sch$field(i - 1L)                         # $field() is 0-indexed (C++ convention)
+  ts  <- fld$type$ToString()
+  # Check large_string_view before string_view: the former's ToString() contains
+  # the substring "string_view", so an unordered check would misclassify it.
+  new_type <- if (grepl("large_string_view", ts, fixed = TRUE)) large_utf8()
+    else if (grepl("string_view", ts, fixed = TRUE)) utf8()
+    else if (grepl("binary_view", ts, fixed = TRUE)) binary()
+    else fld$type
+  field(fld$name, new_type)
+})
+df <- as.data.frame(tbl$cast(schema(fields)))      # cast view->materialized, then convert
+```
+
+Notes:
+- **Do not** reach for `open_dataset(src) |> collect()` as a workaround — it hits
+  the identical `utf8_view` conversion error.
+- Non-view columns (including integer ID columns) pass through untouched, so there
+  is no leading-zero or type-coercion risk from the cast.
+- Python (Polars/pyarrow) reads these files without any special handling — this is
+  an R `arrow`-binding limitation only.
+
 ### Write Parquet
 
 ```r
@@ -37,6 +87,11 @@ write_parquet(df, "data/output.parquet")
 write_parquet(df, "data/output.parquet", compression = "zstd")
 write_parquet(df, "data/output.parquet", compression = "gzip")
 ```
+
+R `arrow` does not write Arrow *view* types, so DAAF's own parquet outputs never
+contain `string_view`/`binary_view` columns — the view-safe read above is only
+needed for externally-sourced (e.g., Polars-written) parquet, never for files
+this pipeline writes.
 
 ### Arrow Dataset for Large/Multi-File Data
 

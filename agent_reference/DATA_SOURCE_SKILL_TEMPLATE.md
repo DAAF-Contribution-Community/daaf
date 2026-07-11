@@ -358,6 +358,12 @@ df = fetch_from_mirrors(
 library(arrow)
 library(dplyr)
 
+# NOTE: illustrative only — mirror parquet files are typically Polars-written and
+# may declare string_view columns, so a plain read can fail under R arrow
+# ("cannot handle Array of type <utf8_view>"). Real fetch scripts must use the
+# view-safe parquet read from the domain query skill's fetch-patterns.md (e.g.,
+# education-data-query for the education domain). Carry this NOTE into the skill
+# you author — keep the error signature and the term "view-safe parquet read".
 df <- read_parquet("[mirror_url]/[source]/[dataset_path].parquet") |>
   filter(fips == 6, year %in% c([year]))
 ```

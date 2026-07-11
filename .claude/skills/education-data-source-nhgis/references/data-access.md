@@ -32,6 +32,10 @@ library(arrow)
 mirror <- yaml::read_yaml("mirrors.yaml")$mirrors[[1]]
 
 # School-to-census geography (2020 Census boundaries)
+# NOTE: illustrative only — mirror parquet files are Polars-written and may
+# declare string_view columns, so a plain read can fail under R arrow
+# ("cannot handle Array of type <utf8_view>"). Real fetch scripts must use the
+# view-safe parquet read from `education-data-query/references/fetch-patterns.md`.
 df <- read_parquet(paste0(mirror$root_url, "/", "nhgis/schools_nhgis_geog_2020", ".", mirror$format))
 
 # College-to-census geography (2020 Census boundaries)

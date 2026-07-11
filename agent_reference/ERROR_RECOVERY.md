@@ -404,6 +404,11 @@ for (i in seq_along(mirrors)) {
   url <- sprintf(mirror$url_template, path = dataset_path)
   tryCatch({
     if (identical(mirror$read_strategy, "eager_parquet")) {
+      # NOTE: plain read shown for template brevity — mirror parquet may be
+      # Polars-written with string_view columns that fail a plain read under R
+      # arrow ("cannot handle Array of type <utf8_view>"). Real recovery scripts
+      # use the view-safe parquet read from the domain query skill's
+      # fetch-patterns.md (e.g., education-data-query).
       fetch_result <- arrow::read_parquet(url)
     } else {
       fetch_result <- readr::read_csv(url, show_col_types = FALSE)

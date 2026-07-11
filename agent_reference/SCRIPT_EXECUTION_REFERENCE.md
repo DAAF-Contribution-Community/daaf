@@ -1664,7 +1664,13 @@ for (mirror in mirrors) {
   cat(sprintf("  Trying %s: %s\n", mirror$name, url))
   result <- tryCatch({
     if (mirror$read_strategy == "eager_parquet") {
-      # REASONING: Parquet has embedded schema; arrow reads HTTP URLs natively
+      # REASONING: Parquet has embedded schema; arrow reads HTTP URLs natively.
+      # NOTE: plain read shown for template brevity — mirror parquet may be
+      # Polars-written with string_view columns that fail a plain read under R
+      # arrow ("cannot handle Array of type <utf8_view>"). Real Stage 5 R scripts
+      # use the view-safe parquet read from the domain query skill's
+      # fetch-patterns.md (e.g., education-data-query), also documented in
+      # tidyverse/references/io.md.
       arrow::read_parquet(url)
     } else {
       # REASONING: lazy_csv strategy — readr handles large CSVs efficiently

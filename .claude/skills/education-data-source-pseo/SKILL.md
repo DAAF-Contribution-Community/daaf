@@ -206,6 +206,10 @@ mirror <- config$mirrors[[1]]
 
 # PSEO is a yearly dataset -- fetch individual years and bind
 frames <- list()
+# NOTE: illustrative only — mirror parquet files are Polars-written and may
+# declare string_view columns, so a plain read can fail under R arrow
+# ("cannot handle Array of type <utf8_view>"). Real fetch scripts must use the
+# view-safe parquet read from `education-data-query/references/fetch-patterns.md`.
 for (y in c(2018, 2019, 2020)) {
   url <- paste0(mirror$root_url, "/", "pseo/colleges_pseo_", y, ".", mirror$format)
   frames[[length(frames) + 1]] <- arrow::read_parquet(url)

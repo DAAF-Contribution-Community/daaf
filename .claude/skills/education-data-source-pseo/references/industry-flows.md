@@ -104,6 +104,10 @@ prof_services = df.filter(
 config <- yaml::read_yaml("mirrors.yaml")
 mirror <- config$mirrors[[1]]
 url <- paste0(mirror$root_url, "/", "pseo/colleges_pseo_2020", ".", mirror$format)
+# NOTE: illustrative only — mirror parquet files are Polars-written and may
+# declare string_view columns, so a plain read can fail under R arrow
+# ("cannot handle Array of type <utf8_view>"). Real fetch scripts must use the
+# view-safe parquet read from `education-data-query/references/fetch-patterns.md`.
 df <- arrow::read_parquet(url)
 
 # Employment in Professional Services sector ("54"), 1 year post-graduation

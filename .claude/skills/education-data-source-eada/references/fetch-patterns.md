@@ -40,6 +40,10 @@ config <- yaml::read_yaml("mirrors.yaml")
 mirror <- config$mirrors[[1]]
 dataset_path <- "eada/colleges_eada_inst_characteristics"
 url <- paste0(mirror$root_url, "/", dataset_path, ".", mirror$format)
+# NOTE: illustrative only — mirror parquet files are Polars-written and may
+# declare string_view columns, so a plain read can fail under R arrow
+# ("cannot handle Array of type <utf8_view>"). Real fetch scripts must use the
+# view-safe parquet read from `education-data-query/references/fetch-patterns.md`.
 df <- arrow::read_parquet(url)
 
 # Filter by year and state

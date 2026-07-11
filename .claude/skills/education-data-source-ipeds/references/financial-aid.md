@@ -610,6 +610,10 @@ library(dplyr)
 
 MIRROR <- "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main"
 url <- paste0(MIRROR, "/ipeds/colleges_ipeds_sfa_grants_and_net_price.parquet")
+# NOTE: illustrative only — mirror parquet files are Polars-written and may
+# declare string_view columns, so a plain read can fail under R arrow
+# ("cannot handle Array of type <utf8_view>"). Real fetch scripts must use the
+# view-safe parquet read from `education-data-query/references/fetch-patterns.md`.
 df <- read_parquet(url)
 
 # Net price by income level for a specific institution and year

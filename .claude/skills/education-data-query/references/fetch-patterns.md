@@ -233,8 +233,32 @@ for (mirror in mirrors) {
   result <- tryCatch({
     if (strategy == "eager_parquet") {
       # REASONING: Parquet files have embedded schema, no inference needed.
-      # arrow reads HTTP URLs natively via arrow::read_parquet().
-      df <<- arrow::read_parquet(url)
+      #   arrow reads HTTP URLs natively via arrow::read_parquet().
+      # REASONING (view-safe read): mirror files are Polars-written; some declare
+      #   string columns as `string_view` in the parquet-native schema. The R arrow
+      #   binding reads these at the C++ layer but fails at Table->data.frame with
+      #   "cannot handle Array of type <utf8_view>". So read as an Arrow Table
+      #   (as_data_frame = FALSE tolerates view types), cast any view columns to
+      #   their materialized equivalents, THEN convert. The cast is a no-op on files
+      #   without view types, so this is safe for every mirror read.
+      # ASSUMES: arrow::open_dataset(url) |> dplyr::collect() is NOT a valid
+      #   alternative — it hits the identical utf8_view conversion error. Non-view
+      #   columns (including integer IDs) pass through untouched: no leading-zero risk.
+      tbl <- arrow::read_parquet(url, as_data_frame = FALSE)
+      sch <- tbl$schema
+      fields <- lapply(seq_len(length(sch$names)), function(i) {
+        fld <- sch$field(i - 1L)                   # $field() is 0-indexed (C++ convention)
+        ts  <- fld$type$ToString()
+        # REASONING: check large_string_view before string_view — the former's
+        #   ToString() contains the substring "string_view", so an unordered check
+        #   would misclassify large_string_view as plain string_view.
+        new_type <- if (grepl("large_string_view", ts, fixed = TRUE)) arrow::large_utf8()
+          else if (grepl("string_view", ts, fixed = TRUE)) arrow::utf8()
+          else if (grepl("binary_view", ts, fixed = TRUE)) arrow::binary()
+          else fld$type
+        arrow::field(fld$name, new_type)
+      })
+      df <<- as.data.frame(tbl$cast(arrow::schema(fields)))
     } else if (strategy == "lazy_csv") {
       # REASONING: CSV files can be large. readr handles efficiently.
       # ASSUMES: CSV has standard column names matching parquet schema.
@@ -351,7 +375,24 @@ for (year in years) {
 
       year_result <- tryCatch({
         if (mirror$read_strategy == "eager_parquet") {
-          year_df <<- arrow::read_parquet(url)
+          # REASONING (view-safe read): same utf8_view hazard as the single-file
+          #   branch above — Polars-written mirror parquet may declare string_view
+          #   columns the R arrow binding cannot convert directly. Read as an Arrow
+          #   Table, cast view types to materialized, then convert. No-op on files
+          #   without view types. Do NOT substitute open_dataset()|>collect() (same
+          #   failure). See the single-file eager_parquet branch for the annotated form.
+          tbl <- arrow::read_parquet(url, as_data_frame = FALSE)
+          sch <- tbl$schema
+          fields <- lapply(seq_len(length(sch$names)), function(i) {
+            fld <- sch$field(i - 1L)               # 0-indexed (C++ convention)
+            ts  <- fld$type$ToString()
+            new_type <- if (grepl("large_string_view", ts, fixed = TRUE)) arrow::large_utf8()
+              else if (grepl("string_view", ts, fixed = TRUE)) arrow::utf8()
+              else if (grepl("binary_view", ts, fixed = TRUE)) arrow::binary()
+              else fld$type
+            arrow::field(fld$name, new_type)
+          })
+          year_df <<- as.data.frame(tbl$cast(arrow::schema(fields)))
         } else if (mirror$read_strategy == "lazy_csv") {
           year_df <<- readr::read_csv(url, show_col_types = FALSE)
         }
@@ -878,6 +919,17 @@ Format-specific read behavior is driven by the mirror's `read_strategy` field in
 - Columnar format: efficient for column-subset reads
 - Compressed: typically 3-10x smaller than CSV
 - Filters applied after loading into memory
+- **R only — view-safe parquet read required:** The mirror files are Polars-written,
+  and some declare string columns as `string_view` in the parquet-native schema
+  (confirmed: `saipe/districts_saipe`, `edfacts/schools_edfacts_grad_rates_2015..2019`).
+  The R `arrow` binding reads these at the C++ layer but fails at the
+  Table->data.frame step with `cannot handle Array of type <utf8_view>`. Use the
+  view-safe read pattern shown in the R mirror-loop `eager_parquet` branch above:
+  read as an Arrow Table (`as_data_frame = FALSE`), cast any view columns to their
+  materialized types, then convert. The cast is a no-op on plain-string files
+  (e.g., `meps/schools_meps`), so it is safe for every read. **Do not** substitute
+  `arrow::open_dataset(url) |> dplyr::collect()` — it hits the same error. Python
+  (Polars/pyarrow) is unaffected.
 
 ### `lazy_csv` (e.g., CSV files)
 - Use `pl.scan_csv(url, infer_schema_length=10000)` for lazy loading

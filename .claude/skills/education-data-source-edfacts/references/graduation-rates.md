@@ -417,6 +417,10 @@ mirror <- yaml::read_yaml("mirrors.yaml")$mirrors[[1]]
 years <- c(2018, 2019)
 paths <- sprintf("edfacts/schools_edfacts_grad_rates_%d", years)
 urls <- paste0(mirror$root_url, "/", paths, ".", mirror$format)
+# NOTE: illustrative only — schools_edfacts_grad_rates_* are Polars-written with
+# string_view columns, so this plain arrow::read_parquet() fails under R arrow
+# ("cannot handle Array of type <utf8_view>"). Real fetch scripts must use the
+# view-safe parquet read from `education-data-query/references/fetch-patterns.md`.
 grad_data <- bind_rows(lapply(urls, arrow::read_parquet))
 
 # Filter to California

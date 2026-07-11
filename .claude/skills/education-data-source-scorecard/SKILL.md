@@ -264,6 +264,10 @@ valid = valid.join(
 config <- yaml::read_yaml("mirrors.yaml")
 mirror <- config$mirrors[[1]]
 url <- paste0(mirror$root_url, "/", "scorecard/colleges_scorecard_earnings", ".", mirror$format)
+# NOTE: illustrative only — mirror parquet files are Polars-written and may
+# declare string_view columns, so a plain read can fail under R arrow
+# ("cannot handle Array of type <utf8_view>"). Real fetch scripts must use the
+# view-safe parquet read from `education-data-query/references/fetch-patterns.md`.
 earnings <- arrow::read_parquet(url)
 
 # Filter by time horizon (LONG format — filter, don't use wide column names)

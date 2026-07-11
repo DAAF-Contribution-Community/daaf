@@ -219,6 +219,10 @@ library(dplyr)
 mirror <- yaml::read_yaml("mirrors.yaml")$mirrors[[1]]
 
 # Portal data already has unitid
+# NOTE: illustrative only — mirror parquet files are Polars-written and may
+# declare string_view columns, so a plain read can fail under R arrow
+# ("cannot handle Array of type <utf8_view>"). Real fetch scripts must use the
+# view-safe parquet read from `education-data-query/references/fetch-patterns.md`.
 nccs <- read_parquet(paste0(mirror$root_url, "/", "nccs/colleges_nccs_all", ".", mirror$format))
 ipeds <- read_parquet(paste0(mirror$root_url, "/", "ipeds/colleges_ipeds_directory", ".", mirror$format))
 
@@ -497,6 +501,10 @@ library(dplyr)
 # Mirror failover: see `education-data-query/references/fetch-patterns.md` (R pattern)
 DATASET_PATH <- "nccs/colleges_nccs_all"
 mirror <- yaml::read_yaml("mirrors.yaml")$mirrors[[1]]
+# NOTE: illustrative only — mirror parquet files are Polars-written and may
+# declare string_view columns, so a plain read can fail under R arrow
+# ("cannot handle Array of type <utf8_view>"). Real fetch scripts must use the
+# view-safe parquet read from `education-data-query/references/fetch-patterns.md`.
 nccs <- read_parquet(paste0(mirror$root_url, "/", DATASET_PATH, ".", mirror$format))
 
 # Filter to California (FIPS = 6) - note: integer codes!
@@ -540,6 +548,10 @@ library(dplyr)
 mirror <- yaml::read_yaml("mirrors.yaml")$mirrors[[1]]
 
 # NCCS data includes unitid for IPEDS matching
+# NOTE: illustrative only — mirror parquet files are Polars-written and may
+# declare string_view columns, so a plain read can fail under R arrow
+# ("cannot handle Array of type <utf8_view>"). Real fetch scripts must use the
+# view-safe parquet read from `education-data-query/references/fetch-patterns.md`.
 NCCS_PATH <- "nccs/colleges_nccs_all"
 nccs <- read_parquet(paste0(mirror$root_url, "/", NCCS_PATH, ".", mirror$format))
 

@@ -632,6 +632,12 @@ library(dplyr)
 # `education-data-query/references/fetch-patterns.md` (R pattern)
 mirror <- yaml::read_yaml("mirrors.yaml")$mirrors[[1]]
 
+# NOTE: the plain read_parquet() calls below are illustrative only. EDFacts
+# mirror files are Polars-written with string_view columns — a plain read fails
+# under R arrow with "cannot handle Array of type <utf8_view>". Real fetch
+# scripts must use the view-safe parquet read from
+# `education-data-query/references/fetch-patterns.md`.
+
 # School-level assessments (yearly dataset)
 df <- read_parquet(paste0(mirror$root_url, "/",
                           "edfacts/schools_edfacts_assessments_2018", ".", mirror$format))

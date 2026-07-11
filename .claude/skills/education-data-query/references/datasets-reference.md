@@ -27,12 +27,17 @@ df = fetch_from_mirrors(DATASET_PATH, years=[2020, 2021, 2022])
 
 ```r
 # Example: SAIPE district poverty
-# See fetch-patterns.md for the full R mirror resolution pattern
+# See fetch-patterns.md for the full R mirror resolution pattern.
+# NOTE: this abbreviated snippet uses a plain arrow::read_parquet() for brevity, but
+# saipe/districts_saipe is a Polars-written file with string_view columns — a plain
+# read fails under R arrow with "cannot handle Array of type <utf8_view>". In real
+# fetch scripts use the VIEW-SAFE read pattern from fetch-patterns.md (eager_parquet
+# branch), not this one-liner.
 dataset_path <- "saipe/districts_saipe"
 config <- yaml::read_yaml(mirrors_yaml_path)
 mirror <- config$mirrors[[1]]
 url <- paste0(mirror$root_url, "/", dataset_path, ".", mirror$format)
-df <- arrow::read_parquet(url) |>
+df <- arrow::read_parquet(url) |>   # illustrative only — see view-safe note above
   filter(year %in% c(2020, 2021, 2022))
 ```
 
