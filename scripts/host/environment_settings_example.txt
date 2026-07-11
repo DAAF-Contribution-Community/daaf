@@ -69,6 +69,10 @@
 # (mid/Sonnet-analog), Luna (economy/Haiku-analog) -- all with 1,050,000-token
 # windows; older gpt-5.5/5.4/5.2 slugs still work. See the installation guide's
 # "GPT (OpenAI) models via OpenRouter" section for current model guidance.
+# The `[1m]` model-slug suffix that advertises the 1M window to Claude Code is
+# verified for the direct-OpenAI shim lane (Option F below); it is UNTESTED on
+# these `openai/`-prefixed OpenRouter slugs. On Option C, prefer the explicit
+# CLAUDE_CODE_MAX_CONTEXT_TOKENS above (or CLAUDE_CODE_AUTO_COMPACT_WINDOW=1000000).
 
 # --- Optional: Subagent model routing (applies to Options C and F) ---------
 # DAAF routes specialist subagents to Claude model tiers: 'opus' for high-
@@ -124,11 +128,15 @@
 # ANTHROPIC_AUTH_TOKEN=daaf-shim-local
 # ANTHROPIC_API_KEY=
 #
-# Model selection — bare OpenAI slugs here (no "openai/" prefix):
-# ANTHROPIC_MODEL=gpt-5.6-sol
-# ANTHROPIC_DEFAULT_OPUS_MODEL=gpt-5.6-sol
-# ANTHROPIC_DEFAULT_SONNET_MODEL=gpt-5.6-terra
-# CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000            # gpt-5.6 family (sol/terra/luna) + gpt-5.5/5.4: 1050000; gpt-5.2: 400000
+# Model selection — bare OpenAI slugs here (no "openai/" prefix). The [1m]
+# suffix tells Claude Code the model has a 1M context window so it budgets the
+# full window locally; Claude Code strips [1m] before sending, so the shim/backend
+# see the bare slug. Without it, Claude Code assumes ~200K for these unknown slugs
+# and ends sessions early ("Prompt is too long") well below the real 1,050,000.
+# ANTHROPIC_MODEL=gpt-5.6-sol[1m]
+# ANTHROPIC_DEFAULT_OPUS_MODEL=gpt-5.6-sol[1m]
+# ANTHROPIC_DEFAULT_SONNET_MODEL=gpt-5.6-terra[1m]
+# CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000            # gpt-5.6 family (sol/terra/luna) + gpt-5.5/5.4: 1050000; gpt-5.2: 400000. Alternative to the [1m] suffix: CLAUDE_CODE_AUTO_COMPACT_WINDOW=1000000
 #
 # Advanced shim tuning (defaults are correct for OpenAI; rarely needed):
 # SHIM_PORT=4141
@@ -136,6 +144,7 @@
 # SHIM_BACKEND_API_KEY=                             # defaults to OPENAI_API_KEY
 # SHIM_STRIP_MODEL_PREFIX=openai/                   # literal prefix stripped from model ids before the backend; only needed with prefixed slugs — leave unset for the bare slugs shown above
 # SHIM_SANITIZE_TOOLS=0                             # sanitization is ON by default (strips known GPT tool-call quirks: empty pages:"", Agent isolation fills, redundant sandbox flags — each otherwise costs a wasted error round-trip); set to 0 ONLY when benchmarking shim-routed models (DAAFBench must see raw model behavior; flag is read at shim startup, so a restart is required)
+# SHIM_REASONING_EFFORT=                            # sets reasoning.effort on the OpenAI Responses request; valid values none|low|medium|high|xhigh|max ("max" is gpt-5.6-only); leave unset for the server default ("medium" for gpt-5.6); read at shim startup, so a restart is required
 #
 # Troubleshooting (inside the container):
 #   bash /daaf/scripts/provider_shim/start_shim.sh --status

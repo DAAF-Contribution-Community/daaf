@@ -3,7 +3,8 @@
 # start_shim.sh — idempotent lifecycle manager for the Anthropic->OpenAI shim.
 #
 # The shim (anthropic_openai_shim.py) translates Anthropic Messages API calls
-# from Claude Code into OpenAI Chat Completions calls to a configured backend.
+# from Claude Code into OpenAI Responses API calls (POST /v1/responses) to a
+# configured backend.
 # This script starts it, stops it, reports status, and — under --auto — silently
 # no-ops unless the user has opted in via DAAF_PROVIDER_SHIM=openai.
 #
@@ -24,6 +25,9 @@
 #   SHIM_SANITIZE_TOOLS     default "1" (enabled); strips known GPT tool-call
 #                           quirks — set to 0 (and restart the shim) for
 #                           DAAFBench runs of shim-routed models
+#   SHIM_REASONING_EFFORT   default unset (server default, "medium" for gpt-5.6);
+#                           sets reasoning.effort on the Responses request. Valid:
+#                           none|low|medium|high|xhigh|max ("max" is gpt-5.6-only)
 #
 # Keepalive: a background supervisor restarts the shim if it exits, with a short
 # sleep between restarts. A restart-storm guard stops after 10 crashes in 60s

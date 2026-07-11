@@ -236,6 +236,15 @@ Not exactly — treat it as a close estimate. OpenRouter's Anthropic-compatible 
 
 Claude Code assumes a 200k context window for any model it doesn't recognize, which is wrong for the 400k `gpt-5.2` / `gpt-5.4-mini` and the 1,050,000-token `gpt-5.4` / `gpt-5.5` / `gpt-5.6` family (Sol/Terra/Luna). Fix it by setting `CLAUDE_CODE_MAX_CONTEXT_TOKENS` in `environment_settings.txt` to your model's real window (e.g. `1050000` for `gpt-5.6-sol`), then restart the container. DAAF's statuslines carry a built-in GPT window map as a backstop, but the explicit variable is authoritative and is the recommended fix.
 
+### Q: My GPT session says "Context limit reached" / "Prompt is too long" at low utilization
+
+This is a *client-side* budget error — Claude Code decided the request is too big before it ever reached the model — and on a GPT session at genuinely low utilization it has two compounding causes. First, Claude Code assumes a small (~200K) window for a model slug it doesn't recognize, so it thinks the window is nearly full when it is not. Second, before shim v1.2.1 the provider shim (Option F) estimated a request's token count from its raw JSON byte length, which over-counted realistic Claude Code envelopes (large tool schemas plus JSON escaping) by roughly 1.6–1.9×, pushing the perceived size over the already-too-small window. The fix is two-part:
+
+- **Append `[1m]` to your GPT slugs** in `environment_settings.txt` (e.g. `ANTHROPIC_DEFAULT_OPUS_MODEL=gpt-5.6-sol[1m]`). Claude Code reads `[1m]` as a 1M-window hint and budgets the full window, then strips the suffix before sending — the shim and OpenAI backend still see the bare `gpt-5.6-sol`. `CLAUDE_CODE_AUTO_COMPACT_WINDOW=1000000` is an equivalent env-var alternative if you prefer not to change the slugs.
+- **Ensure the shim is v1.2.1 or newer** (check `curl -s http://127.0.0.1:4141/health` — the `version` field). v1.2.1 calibrates its token-count estimates against the backend's own reported counts and biases slightly low, so it no longer inflates the perceived request size.
+
+Restart the container after editing `environment_settings.txt`.
+
 ### Q: The provider shim doesn't seem to be responding (Option F)
 
 The shim auto-starts from the container entrypoint and is kept alive by a supervisor, so it should already be running. To diagnose:
