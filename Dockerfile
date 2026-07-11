@@ -472,7 +472,7 @@ ENV PATH="/home/appuser/.local/bin:${PATH}"
 # Requires BuildKit with Dockerfile frontend >= 1.4 (heredoc syntax) — default
 # on Docker Engine 23+ / any modern Docker Desktop; a legacy builder with
 # DOCKER_BUILDKIT=0 would fail here with a syntax error.
-COPY <<'DAAF_ENTRYPOINT_EOF' /usr/local/bin/daaf-entrypoint.sh
+COPY --chmod=0755 <<'DAAF_ENTRYPOINT_EOF' /usr/local/bin/daaf-entrypoint.sh
 #!/usr/bin/env bash
 # daaf-entrypoint.sh -- container ENTRYPOINT wrapper (generated from the
 # Dockerfile heredoc above; there is no separate source file).
@@ -496,7 +496,6 @@ fi
 
 exec "$@"
 DAAF_ENTRYPOINT_EOF
-RUN chmod +x /usr/local/bin/daaf-entrypoint.sh
 ENTRYPOINT ["/usr/local/bin/daaf-entrypoint.sh"]
 
 # Default command
