@@ -34,6 +34,25 @@
 #     bodies). The manager script (start_shim.sh) redirects stderr to the log.
 #   * GET /health endpoint for the manager's idempotency/status checks.
 #
+# Changelog:
+#   v1.1.2 (2026-07-11): Diagnostics logging hardening (no wire/retry change).
+#     (1) Broadened the credential scrubber from sk-only to the common secret
+#     prefixes {sk,rk,org,proj,sess} with either separator, case-insensitive,
+#     keeping the scrub-before-truncate ordering. (2) Wrapped the two non-
+#     streaming .text reads in the same defensive try/except -> "(body
+#     unavailable)" the two streaming aread() sites already use, so all four
+#     non-2xx log sites are symmetric and no read edge can escape as an
+#     unhandled exception mid-retry-loop.
+#   v1.1.1 (2026-07-11): Backend-error diagnostics. On every backend non-2xx
+#     response (both paths, every retry attempt and the final failure) the shim
+#     now logs a truncated (~500 char, newline-collapsed) copy of the error
+#     BODY plus an allowlisted set of diagnostic headers (retry-after,
+#     x-ratelimit-*). This distinguishes OpenAI insufficient_quota 429s from
+#     rate_limit_exceeded 429s, which the status-only lines could not. Bodies
+#     are scrubbed of any sk-... key material as defense in depth; the header
+#     allowlist structurally excludes Authorization. Logging only — no retry,
+#     sanitization, or wire-format behavior changed. Always on; no new env flag.
+#
 # Config (all via env):
 #   SHIM_PORT               default 4141
 #   SHIM_BACKEND_BASE_URL   default https://api.openai.com/v1
@@ -62,7 +81,7 @@ import httpx
 import uvicorn
 
 # --- Config ---
-SHIM_VERSION = "1.1.0"
+SHIM_VERSION = "1.1.2"
 
 SHIM_PORT = int(os.environ.get("SHIM_PORT", "4141"))
 # HARDENING: default backend is now api.openai.com/v1 (the production target).
@@ -94,6 +113,43 @@ MAX_RETRIES = 3
 BACKOFF_BASE = 0.5   # seconds; doubles each attempt
 BACKOFF_CAP = 8.0    # seconds; ceiling before jitter
 RETRY_AFTER_CAP = 30.0  # seconds; never honor an absurd Retry-After
+
+# v1.1.1: backend-error diagnostics. The status code alone cannot tell an
+# operator whether a 429 is insufficient_quota (unfunded project) or
+# rate_limit_exceeded (tier TPM/RPM), nor surface retry-after guidance — that
+# information lives in the JSON error body and the x-ratelimit-* headers. On
+# every backend non-2xx we log a bounded slice of both.
+ERR_BODY_MAXLEN = 500  # chars; truncate the logged error body to keep lines bounded
+# Allowlist ONLY — never dump all headers. This structurally guarantees the
+# Authorization header (and any other credential-bearing header) is never
+# logged: a header is logged only if its lowercased name is in this set.
+DIAG_HEADER_ALLOWLIST = (
+    "retry-after",
+    "x-ratelimit-limit-requests",
+    "x-ratelimit-remaining-requests",
+    "x-ratelimit-reset-requests",
+    "x-ratelimit-limit-tokens",
+    "x-ratelimit-remaining-tokens",
+    "x-ratelimit-reset-tokens",
+)
+# Defense in depth: even though the allowlist excludes Authorization, a
+# backend could conceivably echo a secret inside its JSON error body. Compiled
+# once at import.
+#
+# v1.1.2: broaden beyond OpenAI `sk-` keys. SHIM_BACKEND_BASE_URL is user-
+# configurable (OpenRouter, Azure, etc.), and OpenAI error bodies additionally
+# echo org/project identifiers (`org-...`, `proj_...`) that are lower-
+# sensitivity but still identifying. Match the common secret prefixes
+# {sk, rk, org, proj, sess} followed by either separator, case-insensitively.
+# ASSUMES: the >=8 trailing-char floor plus the leading \b and mandatory
+#   separator keep this from over-matching normal prose — an English word does
+#   not begin with e.g. "proj-" or "sess_" followed by 8+ [A-Za-z0-9_-] chars,
+#   and short accidental collisions ("org-1", "proj_x") fall under the floor.
+#   The floor is a deliberate precision/recall tradeoff: real secrets are long
+#   (OpenAI keys are 40+ chars), so an 8-char minimum captures every real
+#   credential while excluding the short hyphenated tokens common in prose.
+import re
+_SK_KEY_RE = re.compile(r"(?i)\b(sk|rk|org|proj|sess)[-_][A-Za-z0-9_-]{8,}")
 
 # HARDENING: structured logging to stderr ONLY. The manager script redirects
 # stderr to the log file. No FileHandler here (keeps the shim agnostic about
@@ -341,6 +397,46 @@ def _sse(event, data):
     return f"event: {event}\ndata: {json.dumps(data)}\n\n".encode("utf-8")
 
 
+# --- v1.1.1: backend-error diagnostics helpers ---
+
+def _scrub_and_trim_body(text):
+    # Produce a single-line, bounded, credential-safe rendering of a backend
+    # error body for logging.
+    # INTENT: give the operator the *diagnostic content* of the error (e.g.
+    #   OpenAI's {"error":{"code":"insufficient_quota",...}}) without ever
+    #   leaking key material or blowing up the log with a huge/multiline body.
+    # REASONING: scrub BEFORE truncation so a key that straddles the truncation
+    #   boundary can't survive as a half-token; collapse whitespace so each log
+    #   entry stays exactly one line (the shim's logging contract).
+    # ASSUMES: `text` is already a decoded str (callers decode bytes first).
+    if not text:
+        return ""
+    # Scrub BEFORE truncation (load-bearing safety ordering): a secret that
+    # straddles the ERR_BODY_MAXLEN boundary must be redacted before the slice,
+    # or a half-token could survive in the log. v1.1.2 uses a generic
+    # <REDACTED> marker since the broadened pattern matches more than sk- keys.
+    scrubbed = _SK_KEY_RE.sub("<REDACTED>", text)
+    # Collapse all runs of whitespace (incl. newlines/tabs) to single spaces.
+    collapsed = " ".join(scrubbed.split())
+    if len(collapsed) > ERR_BODY_MAXLEN:
+        collapsed = collapsed[:ERR_BODY_MAXLEN] + "...[truncated]"
+    return collapsed
+
+
+def _diag_headers(headers):
+    # Extract the allowlisted diagnostic headers into a compact "k=v k=v" string.
+    # INTENT: surface rate-limit / retry-after guidance next to the error body.
+    # REASONING: allowlist-only lookup means credential headers (Authorization)
+    #   are structurally unreachable here — we never iterate all headers.
+    # ASSUMES: `headers` is an httpx.Headers (case-insensitive .get()).
+    parts = []
+    for name in DIAG_HEADER_ALLOWLIST:
+        val = headers.get(name)
+        if val is not None:
+            parts.append(f"{name}={val}")
+    return " ".join(parts) if parts else "(none)"
+
+
 # --- HARDENING: retry helper ---
 
 def _retry_delay(attempt, retry_after):
@@ -381,8 +477,21 @@ async def _post_with_retry(url, headers, payload, is_disconnected):
             raise
         if r.status_code in RETRY_STATUSES and attempt < MAX_RETRIES:
             delay = _retry_delay(attempt, r.headers.get("retry-after"))
-            log.warning("backend %d (attempt %d/%d), retrying in %.2fs",
-                        r.status_code, attempt + 1, MAX_RETRIES + 1, delay)
+            # v1.1.1: read the body BEFORE aclose() so we can log the backend's
+            # diagnostic payload (e.g. insufficient_quota vs rate_limit_exceeded)
+            # on every retry attempt, not just the final failure.
+            # v1.1.2: wrap the buffered .text read in the same defensive
+            # try/except the streaming aread() sites use. httpx .text is non-
+            # raising in normal buffered operation, but symmetry across all four
+            # log sites means no exotic decode/transport edge can turn a
+            # retryable 429 into an unhandled exception mid-retry-loop.
+            try:
+                err_body = _scrub_and_trim_body(r.text)
+            except Exception:
+                err_body = "(body unavailable)"
+            log.warning("backend %d (attempt %d/%d), retrying in %.2fs | headers: %s | body: %s",
+                        r.status_code, attempt + 1, MAX_RETRIES + 1, delay,
+                        _diag_headers(r.headers), err_body)
             await r.aclose()
             await asyncio.sleep(delay)
             continue
@@ -521,10 +630,25 @@ async def _handle_messages(body, receive, send):
                 await _send_json(send, 502, {"type": "error", "error": {"type": "api_error", "message": "backend transport error"}})
                 return
             if r.status_code >= 400:
-                # Do not echo backend body verbatim in the log (may be large); a
-                # trimmed copy goes to the client for debuggability only.
-                log.error("backend error status=%d retries=%d", r.status_code, retries)
-                await _send_json(send, r.status_code, {"type": "error", "error": {"type": "api_error", "message": r.text[:500]}})
+                # v1.1.1: log a scrubbed, truncated copy of the backend body plus
+                # allowlisted diagnostic headers so the operator can distinguish
+                # e.g. insufficient_quota from rate_limit_exceeded. The client
+                # still receives the trimmed body for debuggability.
+                # v1.1.2: guard the buffered .text read with the same try/except
+                # the streaming aread() sites use, so all four non-2xx log sites
+                # are symmetric and no exotic read edge escapes as an unhandled
+                # exception. The client-facing body read is guarded too.
+                try:
+                    err_body = _scrub_and_trim_body(r.text)
+                except Exception:
+                    err_body = "(body unavailable)"
+                log.error("backend error status=%d retries=%d | headers: %s | body: %s",
+                          r.status_code, retries, _diag_headers(r.headers), err_body)
+                try:
+                    client_msg = r.text[:500]
+                except Exception:
+                    client_msg = "backend error (body unavailable)"
+                await _send_json(send, r.status_code, {"type": "error", "error": {"type": "api_error", "message": client_msg}})
                 return
             anth = _openai_response_to_anthropic(r.json(), model)
             usage = anth["usage"]
@@ -579,8 +703,17 @@ async def _handle_messages(body, receive, send):
             resp = await stream_cm.__aenter__()
             if resp.status_code in RETRY_STATUSES and attempt < MAX_RETRIES:
                 delay = _retry_delay(attempt, resp.headers.get("retry-after"))
-                log.warning("backend stream %d (attempt %d/%d), retrying in %.2fs",
-                            resp.status_code, attempt + 1, MAX_RETRIES + 1, delay)
+                # v1.1.1: the streaming response body has NOT been read yet
+                # (stream() defers it), so aread() it before teardown to log the
+                # backend's diagnostic payload on every retry attempt.
+                try:
+                    err_body = _scrub_and_trim_body(
+                        (await resp.aread()).decode("utf-8", "replace"))
+                except Exception:
+                    err_body = "(body unavailable)"
+                log.warning("backend stream %d (attempt %d/%d), retrying in %.2fs | headers: %s | body: %s",
+                            resp.status_code, attempt + 1, MAX_RETRIES + 1, delay,
+                            _diag_headers(resp.headers), err_body)
                 await stream_cm.__aexit__(None, None, None)
                 resp = None
                 retries = attempt + 1
@@ -608,10 +741,19 @@ async def _handle_messages(body, receive, send):
             if resp is None or resp.status_code >= 400:
                 status = resp.status_code if resp is not None else 502
                 if resp is not None:
-                    err_text = (await resp.aread()).decode("utf-8", "replace")[:500]
+                    raw_err = (await resp.aread()).decode("utf-8", "replace")
+                    err_text = raw_err[:500]
+                    # v1.1.1: log scrubbed/trimmed body + allowlisted headers so
+                    # the operator can diagnose the failure class (e.g.
+                    # insufficient_quota vs rate_limit_exceeded).
+                    diag_body = _scrub_and_trim_body(raw_err)
+                    diag_headers = _diag_headers(resp.headers)
                 else:
                     err_text = "backend transport error"
-                log.error("backend stream error status=%d retries=%d", status, retries)
+                    diag_body = "(no response)"
+                    diag_headers = "(none)"
+                log.error("backend stream error status=%d retries=%d | headers: %s | body: %s",
+                          status, retries, diag_headers, diag_body)
                 # Emit a minimal well-formed error stream so Claude Code fails cleanly.
                 await emit("message_start", {"type": "message_start", "message": {
                     "id": msg_id, "type": "message", "role": "assistant", "model": model,

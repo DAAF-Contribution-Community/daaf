@@ -245,7 +245,15 @@ bash /daaf/scripts/provider_shim/start_shim.sh --status   # is it running?
 curl -s http://127.0.0.1:4141/health                       # health check
 ```
 
-Its log is at `/daaf/scripts/provider_shim/logs/shim.log` — check there first. The manager script also accepts `--start`, `--stop`, and `--auto`. Remember that Option F requires the image to have been **rebuilt** after you set `DAAF_PROVIDER_SHIM=openai` (the auto-launch is baked into the entrypoint), so if nothing is running, confirm you rebuilt.
+Its log is at `/daaf/scripts/provider_shim/logs/shim.log` — check there first. The manager script also accepts `--start`, `--stop`, and `--auto`. Remember that Option F requires the image to have been **rebuilt** after you set `DAAF_PROVIDER_SHIM=openai` (the auto-launch is baked into the entrypoint), so if nothing is running, confirm you rebuilt. If the shim *is* running but every request fails instantly with a 429, see the next entry.
+
+### Q: My GPT session fails instantly with 429 errors on every request (Option F)
+
+An immediate, deterministic 429 on *every* request — including the very first one after a restart — is almost never a real rate limit. Check the shim log (`/daaf/scripts/provider_shim/logs/shim.log`): since shim v1.1.1, every backend error line includes the OpenAI error body and rate-limit headers (credential-scrubbed), so the log names the cause directly. What to look for:
+
+- **`"code": "insufficient_quota"`** — the key's platform.openai.com project has no credits, or hit its monthly spend cap. This is by far the most common cause: ChatGPT Plus/Pro does **not** include API credits, new API accounts get no free credits, and adding a payment card without completing the separate credit *purchase* step leaves the account unfunded. Retrying can never fix this — buy credits at platform.openai.com → Settings → Billing.
+- **A rate-limit error with a `retry-after` header** — a genuine per-minute request/token limit for your usage tier. This clears on its own; current Tier 1 token-per-minute limits are generous (500K TPM for gpt-5/gpt-5-mini as of late 2025 — OpenAI has not published per-tier tables for the gpt-5.6 variants), but heavily parallel agentic sessions can still burst past request-per-minute caps. Sustained work may warrant a higher usage tier (tiers advance with cumulative spend).
+- **401 `invalid_api_key`** — the key itself is wrong: check for truncation or stray whitespace in `environment_settings.txt`, and remember the container only picks up environment changes after `docker compose down` + `run_daaf.sh` (the shim reads its key at startup).
 
 ### Q: A scripted `claude -p` call on a GPT model returned an empty result
 
