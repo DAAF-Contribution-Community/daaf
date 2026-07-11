@@ -35,6 +35,12 @@
 #   * GET /health endpoint for the manager's idempotency/status checks.
 #
 # Changelog:
+#   v1.1.3 (2026-07-11): Request-translation bugfix. Emit `max_completion_tokens`
+#     (not deprecated `max_tokens`) in the OpenAI Chat Completions payload — the
+#     gpt-5.x family rejects `max_tokens` with an unsupported_parameter 400/error.
+#     Inbound Anthropic contract unchanged (still reads `max_tokens`); only the
+#     outbound OpenAI key is renamed. No retry/streaming/sanitization/diagnostics
+#     change.
 #   v1.1.2 (2026-07-11): Diagnostics logging hardening (no wire/retry change).
 #     (1) Broadened the credential scrubber from sk-only to the common secret
 #     prefixes {sk,rk,org,proj,sess} with either separator, case-insensitive,
@@ -81,7 +87,7 @@ import httpx
 import uvicorn
 
 # --- Config ---
-SHIM_VERSION = "1.1.2"
+SHIM_VERSION = "1.1.3"
 
 SHIM_PORT = int(os.environ.get("SHIM_PORT", "4141"))
 # HARDENING: default backend is now api.openai.com/v1 (the production target).
@@ -312,10 +318,30 @@ def _anthropic_to_openai_request(body):
         "messages": messages,
     }
 
-    # max_tokens: Anthropic requires it; OpenAI accepts max_tokens (still honored
-    # by chat/completions and OpenRouter). Pass through.
+    # max_tokens (Anthropic) -> max_completion_tokens (OpenAI Chat Completions).
+    # INTENT: the Anthropic Messages API REQUIRES `max_tokens` on every request,
+    #   so Claude Code always sends it; we forward that ceiling to the backend.
+    # REASONING: the OUTBOUND OpenAI key is `max_completion_tokens`, not
+    #   `max_tokens`. As of the gpt-5.x family the Chat Completions endpoint
+    #   *rejects* `max_tokens` outright — verified against api.openai.com on
+    #   2026-07-11, which returned: "Unsupported parameter: 'max_tokens' is not
+    #   supported with this model. Use 'max_completion_tokens' instead."
+    #   (error.code=unsupported_parameter). `max_tokens` is the deprecated legacy
+    #   key; `max_completion_tokens` is the current standard and is accepted by
+    #   every current OpenAI chat model, so the rename is done UNCONDITIONALLY for
+    #   the chat/completions backend rather than guarded behind a model check —
+    #   a per-model guard would add fragility (a hardcoded model allowlist that
+    #   rots as new models ship) for no benefit, since the new key is universally
+    #   accepted. The inbound Anthropic contract is untouched: we still READ
+    #   `max_tokens` from the client request; only the emitted OpenAI key changes.
+    # ASSUMES: OpenRouter's OpenAI-format (/chat/completions) endpoint accepts
+    #   `max_completion_tokens`. OpenRouter is a normalizing proxy that maps
+    #   OpenAI request fields to each upstream provider, and `max_completion_tokens`
+    #   is the current OpenAI-standard field it normalizes; the direct-OpenAI
+    #   backend (the one that was hard-failing) is the primary target this fix
+    #   must satisfy. See the OpenRouter caveat in the framework-engineer report.
     if body.get("max_tokens") is not None:
-        payload["max_tokens"] = body["max_tokens"]
+        payload["max_completion_tokens"] = body["max_tokens"]
     if body.get("temperature") is not None:
         payload["temperature"] = body["temperature"]
 
