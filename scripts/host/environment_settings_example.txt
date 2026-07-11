@@ -138,13 +138,23 @@
 # ANTHROPIC_DEFAULT_SONNET_MODEL=gpt-5.6-terra[1m]
 # CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000            # gpt-5.6 family (sol/terra/luna) + gpt-5.5/5.4: 1050000; gpt-5.2: 400000. Alternative to the [1m] suffix: CLAUDE_CODE_AUTO_COMPACT_WINDOW=1000000
 #
+# Reasoning-effort control (shim v1.2.2+): the outbound OpenAI request always
+# carries reasoning.effort, resolved by a four-tier precedence chain (first
+# present wins): (1) a per-request signal from Claude Code, (2) a "#<effort>"
+# suffix you append to a model slug, (3) the SHIM_REASONING_EFFORT env var
+# below, (4) the default "high" (parity with DAAF Claude sessions). The
+# "#<effort>" suffix works ALONGSIDE the "[1m]" window hint — Claude Code
+# consumes "[1m]" itself and passes "#<effort>" through to the shim, which
+# strips it before the request reaches OpenAI. Example (per-model override):
+# ANTHROPIC_DEFAULT_SONNET_MODEL=gpt-5.6-terra[1m]#medium   # fast tier at medium effort
+#
 # Advanced shim tuning (defaults are correct for OpenAI; rarely needed):
 # SHIM_PORT=4141
 # SHIM_BACKEND_BASE_URL=https://api.openai.com/v1
 # SHIM_BACKEND_API_KEY=                             # defaults to OPENAI_API_KEY
 # SHIM_STRIP_MODEL_PREFIX=openai/                   # literal prefix stripped from model ids before the backend; only needed with prefixed slugs — leave unset for the bare slugs shown above
 # SHIM_SANITIZE_TOOLS=0                             # sanitization is ON by default (strips known GPT tool-call quirks: empty pages:"", Agent isolation fills, redundant sandbox flags — each otherwise costs a wasted error round-trip); set to 0 ONLY when benchmarking shim-routed models (DAAFBench must see raw model behavior; flag is read at shim startup, so a restart is required)
-# SHIM_REASONING_EFFORT=                            # sets reasoning.effort on the OpenAI Responses request; valid values none|low|medium|high|xhigh|max ("max" is gpt-5.6-only); leave unset for the server default ("medium" for gpt-5.6); read at shim startup, so a restart is required
+# SHIM_REASONING_EFFORT=                            # TIER 3 of the effort precedence chain (per-request signal > "#<effort>" slug suffix > this env var > default "high"). Sets reasoning.effort ONLY when neither a per-request signal nor a slug suffix is present. Valid values none|low|medium|high|xhigh|max ("max" is gpt-5.6-only). Leave unset to use the default "high" (v1.2.2 always sends an effort now — the old implicit "medium" server default no longer applies). Read at shim startup, so a restart is required
 #
 # Troubleshooting (inside the container):
 #   bash /daaf/scripts/provider_shim/start_shim.sh --status

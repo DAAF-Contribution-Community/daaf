@@ -240,7 +240,7 @@ Claude Code assumes a 200k context window for any model it doesn't recognize, wh
 
 This is a *client-side* budget error — Claude Code decided the request is too big before it ever reached the model — and on a GPT session at genuinely low utilization it has two compounding causes. First, Claude Code assumes a small (~200K) window for a model slug it doesn't recognize, so it thinks the window is nearly full when it is not. Second, before shim v1.2.1 the provider shim (Option F) estimated a request's token count from its raw JSON byte length, which over-counted realistic Claude Code envelopes (large tool schemas plus JSON escaping) by roughly 1.6–1.9×, pushing the perceived size over the already-too-small window. The fix is two-part:
 
-- **Append `[1m]` to your GPT slugs** in `environment_settings.txt` (e.g. `ANTHROPIC_DEFAULT_OPUS_MODEL=gpt-5.6-sol[1m]`). Claude Code reads `[1m]` as a 1M-window hint and budgets the full window, then strips the suffix before sending — the shim and OpenAI backend still see the bare `gpt-5.6-sol`. `CLAUDE_CODE_AUTO_COMPACT_WINDOW=1000000` is an equivalent env-var alternative if you prefer not to change the slugs.
+- **Append `[1m]` to your GPT slugs** in `environment_settings.txt` (e.g. `ANTHROPIC_DEFAULT_OPUS_MODEL=gpt-5.6-sol[1m]`). Claude Code reads `[1m]` as a 1M-window hint and budgets the full window, then strips the suffix before sending — the shim and OpenAI backend still see the bare `gpt-5.6-sol`. `CLAUDE_CODE_AUTO_COMPACT_WINDOW=1000000` is an equivalent env-var alternative if you prefer not to change the slugs. (`[1m]` also composes with a `#<effort>` reasoning-effort suffix — e.g. `gpt-5.6-sol[1m]#medium` — if you want to set both at once; see [How do I control GPT reasoning effort?](#q-how-do-i-control-gpt-reasoning-effort-option-f).)
 - **Ensure the shim is v1.2.1 or newer** (check `curl -s http://127.0.0.1:4141/health` — the `version` field). v1.2.1 calibrates its token-count estimates against the backend's own reported counts and biases slightly low, so it no longer inflates the perceived request size.
 
 Restart the container after editing `environment_settings.txt`.
@@ -267,6 +267,17 @@ An immediate, deterministic 429 on *every* request — including the very first 
 ### Q: A scripted `claude -p` call on a GPT model returned an empty result
 
 Occasionally a GPT turn ends with a reasoning-only block and no visible text, which can surface as an empty `result` field in scripted (non-interactive) `claude -p` usage. This is a GPT quirk, not a DAAF fault, and is only relevant to automated/batch tooling — interactive sessions are unaffected. If you hit it in a script, re-issue the call or add a follow-up turn that requests the answer explicitly.
+
+### Q: How do I control GPT reasoning effort? (Option F)
+
+On the direct-OpenAI shim lane (shim v1.2.2+), every request to OpenAI carries a `reasoning.effort` value, and the shim resolves it from a **four-tier precedence chain** — the first tier present wins:
+
+1. **Per-request signal from Claude Code** — when Claude Code itself specifies an effort for a turn, that takes precedence over everything below.
+2. **A `#<effort>` suffix on the model slug** — append it in `environment_settings.txt`, e.g. `ANTHROPIC_DEFAULT_SONNET_MODEL=gpt-5.6-terra[1m]#medium`. This works *alongside* the `[1m]` window hint (Claude Code consumes `[1m]` locally and passes `#medium` through), and the shim strips the suffix before the request reaches OpenAI — the backend only ever sees the bare `gpt-5.6-terra`.
+3. **The `SHIM_REASONING_EFFORT` env var** — a single default for the whole shim, applied when there is no per-request signal and no slug suffix.
+4. **The built-in default, `high`** — used when none of the above is set, for posture parity with DAAF's Claude sessions.
+
+Valid values are `none`, `low`, `medium`, `high`, `xhigh`, and `max` (`max` is gpt-5.6-only; `none` disables reasoning). An unrecognized value at any tier is ignored with a log warning and the next tier applies. You can confirm what the shim resolved by checking the shim log (`/daaf/scripts/provider_shim/logs/shim.log`): each request line ends with `effort=<value>:<source>`, where source is one of `inbound`, `slug`, `env`, or `default`. Most users need to set nothing — leaving everything unset gives `high` everywhere. Both the env var and slug suffixes are read at shim startup / request time; changes to `environment_settings.txt` require the usual container recreate. See also the Option F [reasoning-effort paragraph](01_installation_and_quickstart.md#option-f-openai-api-directly-daaf-provider-shim) in the installation guide.
 
 ### Q: Is my data sent to Anthropic? What about privacy?
 

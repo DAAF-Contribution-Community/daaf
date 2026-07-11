@@ -63,6 +63,37 @@
 #   * GET /health endpoint for the manager's idempotency/status checks.
 #
 # Changelog:
+#   v1.2.2 (2026-07-11): Reasoning-effort flexibility via a four-tier precedence
+#     chain, replacing the single startup-only SHIM_REASONING_EFFORT knob. The
+#     outbound payload now ALWAYS carries reasoning.effort (previously it was
+#     omitted unless the env var was set, letting the backend default of "medium"
+#     apply). Precedence, first present wins:
+#       1. Inbound per-request signal — output_config.effort (Claude Code v2.1.187
+#          sends this top-level field for custom slugs; wire-captured 2026-07-11).
+#          thinking:{"type":"disabled"} inbound also counts as tier 1 -> the
+#          minimum-reasoning value ("none"). thinking:{"type":"adaptive"} is NOT a
+#          level and does not satisfy tier 1.
+#       2. Slug suffix — "#<effort>" parsed and stripped from the inbound model
+#          (e.g. "gpt-5.6-sol#high"). The [1m] window hint is consumed client-side
+#          and never reaches the shim, so only "#<effort>" is ever parsed here.
+#       3. Env — SHIM_REASONING_EFFORT (unchanged name; still read once at startup).
+#       4. Default — "high" (posture parity with DAAF Claude sessions).
+#     Value handling: values in the gpt-5.6 accepted set (none|low|medium|high|
+#     xhigh|max, per notes file 04 §5) map through identity; any other value at any
+#     tier is treated as unknown for that tier — one WARNING is logged and the tier
+#     is IGNORED (fall through to the next), EXCEPT a known-but-unsupported clamp
+#     path is retained for defensiveness (currently only "minimal" -> "low", which
+#     notes file 04 flags as LOW-confidence for gpt-5.6). The "#<effort>" suffix is
+#     ALWAYS stripped from the model everywhere it is consumed (backend payload,
+#     count_tokens path, and every log line) even when its value is unknown/ignored
+#     — a "#"-bearing model is never forwarded to OpenAI. Observability: the per-
+#     request "req ..." log line gains effort=<value>:<source> (source in
+#     {inbound,slug,env,default}). output_config is NEVER forwarded to OpenAI (the
+#     Anthropic-inbound-only contract is otherwise unchanged; thinking is still
+#     dropped from the outbound payload). SHIM_VERSION -> 1.2.2 (/health reports it).
+#     Hardening (CP2): the bare model is control-char-scrubbed (\x00-\x1f,\x7f)
+#     before it is logged (closes a log-injection vector via a CR/LF-bearing model
+#     slug); a malformed non-string/empty effort value now logs a WARNING too.
 #   v1.2.1 (2026-07-11): Self-calibrating count_tokens estimator. Claude Code
 #     enforces its LOCAL context-window budget by POSTing the whole request
 #     envelope to the base URL's /v1/messages/count_tokens and treating the
@@ -144,13 +175,22 @@
 #                           models — the benchmark measures raw model
 #                           behavior. Read once at startup: that means
 #                           RESTARTING the shim with the opt-out set.
-#   SHIM_REASONING_EFFORT   default unset (server default, "medium" for gpt-5.6).
-#                           When set, adds `reasoning.effort` to every request.
+#   SHIM_REASONING_EFFORT   TIER 3 of the reasoning-effort precedence chain
+#                           (v1.2.2). Read once at startup like the other flags.
+#                           Precedence, first present wins:
+#                             1. inbound output_config.effort (per-request)
+#                             2. "#<effort>" slug suffix on the model
+#                             3. SHIM_REASONING_EFFORT (this env var)
+#                             4. default "high"
+#                           So the outbound payload ALWAYS carries reasoning.effort
+#                           now — this env var only sets the value used when no
+#                           per-request signal and no slug suffix are present.
 #                           Valid values: none | low | medium | high | xhigh |
 #                           max ("max" is gpt-5.6-specific). "none" disables
 #                           reasoning (and, per the API, re-enables temperature —
-#                           but this shim never sends temperature regardless).
-#                           Read once at startup like the other flags.
+#                           but this shim never sends temperature regardless). An
+#                           unrecognized value here is ignored with a WARNING and
+#                           the default applies.
 # =============================================================================
 
 import os
@@ -167,7 +207,7 @@ import httpx
 import uvicorn
 
 # --- Config ---
-SHIM_VERSION = "1.2.1"
+SHIM_VERSION = "1.2.2"
 
 SHIM_PORT = int(os.environ.get("SHIM_PORT", "4141"))
 # HARDENING: default backend is api.openai.com/v1 (the production target). Live
@@ -187,9 +227,51 @@ SHIM_STRIP_MODEL_PREFIX = os.environ.get("SHIM_STRIP_MODEL_PREFIX", "")
 SHIM_SANITIZE_TOOLS = os.environ.get(
     "SHIM_SANITIZE_TOOLS", "1"
 ).strip().lower() not in ("0", "false", "no")
-# v1.2.0: optional reasoning effort. Unset -> omit `effort` (server default,
-# "medium" for gpt-5.6). Read once at startup. Empty/whitespace treated as unset.
+# v1.2.0/v1.2.2: reasoning effort. This env var is TIER 3 of the v1.2.2 precedence
+# chain (inbound output_config.effort > "#<effort>" slug suffix > this env var >
+# default "high"). Read once at startup; empty/whitespace treated as unset (falls
+# through to the default). Its value is validated at RESOLVE time (below) so an
+# unrecognized env value degrades to the default with a WARNING rather than being
+# blindly forwarded.
 SHIM_REASONING_EFFORT = os.environ.get("SHIM_REASONING_EFFORT", "").strip() or None
+
+# v1.2.2: reasoning-effort resolution machinery.
+# INTENT: the outbound Responses payload now ALWAYS carries reasoning.effort. The
+#   resolver picks the value + its source by the four-tier precedence chain and
+#   returns both (the source is logged in the per-request line for observability).
+# REASONING: the accepted set is the gpt-5.6 family's documented effort enum
+#   (notes file 04 §5: none|low|medium|high|xhigh|max). A value in this set maps
+#   through IDENTITY. A value NOT in the set is "unknown" for the tier that carried
+#   it: we log ONE warning and IGNORE that tier (fall through) — never forward a
+#   value OpenAI would reject. The one deliberate exception is a known-but-LOW-
+#   confidence-for-gpt-5.6 alias ("minimal"), which we CLAMP to the nearest
+#   supported value ("low") rather than dropping, because it is a real effort
+#   level on the gpt-5/gpt-5-mini family and a caller sending it clearly wants
+#   minimal reasoning. Everything genuinely unknown (typos, future levels we have
+#   not validated) falls through.
+# ASSUMES: the accepted set matches the live backend for gpt-5.6 (notes file 04
+#   §1/§5, HIGH confidence for none/low/medium/high; MEDIUM for xhigh/max — both
+#   community-confirmed). If OpenAI later rejects xhigh/max, the fix is to remove
+#   them from _EFFORT_SUPPORTED and add a clamp entry; the resolver logic is
+#   unchanged. The default "high" (not "medium") is a user-locked posture choice
+#   for parity with DAAF Claude sessions.
+_EFFORT_SUPPORTED = frozenset({"none", "low", "medium", "high", "xhigh", "max"})
+_EFFORT_DEFAULT = "high"
+# Minimum-reasoning value for an explicit thinking:{"type":"disabled"} inbound.
+# "none" is a valid /v1/responses effort for gpt-5.6 (notes file 04 §1/§5, MEDIUM
+# confidence — community-confirmed, not quoted from the official effort enum; it
+# also empirically re-enables temperature, which the shim never sends regardless).
+# ASSUMES: a real client actually sends thinking:{"type":"disabled"} AND the
+#   backend accepts effort:"none" for gpt-5.6. NOT live-verified in the v1.2.2
+#   validation battery (the 10_diag-effort-live.py run exercised default/slug/
+#   inbound-low lanes only; no observed client sends disabled thinking today). If
+#   OpenAI rejects "none", swap this to the lowest live-accepted value ("low").
+_EFFORT_DISABLED = "none"
+# Known-but-clamp map: a value we recognize as a real effort level on a sibling
+# model family but which is not in the gpt-5.6 accepted set -> nearest supported.
+# ASSUMES: "minimal" is LOW-confidence for gpt-5.6 specifically (notes file 04
+#   §5) — clamp to "low" rather than forward-and-risk-a-400.
+_EFFORT_CLAMP = {"minimal": "low"}
 
 # HARDENING: retry policy. Retry only on transient backend failures, and only
 # before any bytes have been emitted to the client (a partially-streamed
@@ -230,6 +312,12 @@ DIAG_HEADER_ALLOWLIST = (
 #   hyphenated tokens common in prose.
 import re
 _SK_KEY_RE = re.compile(r"(?i)\b(sk|rk|org|proj|sess)[-_][A-Za-z0-9_-]{8,}")
+
+# v1.2.2 hardening: control-character scrubber for the bare model string. The
+# model is logged verbatim as `model=%s` (grep-stable), so C0/DEL control bytes in
+# an inbound model could forge log lines (log injection). Strip \x00-\x1f and \x7f.
+# Compiled once at import. See _split_effort_suffix for the injection vector.
+_SCRUB_CTRL_RE = re.compile(r"[\x00-\x1f\x7f]")
 
 # v1.2.0: reasoning-item cache (module-level, bounded LRU).
 # INTENT: the Responses API pairs a `reasoning` output item with the
@@ -309,10 +397,122 @@ _client = httpx.AsyncClient(timeout=httpx.Timeout(600.0, connect=30.0))
 
 # --- Helpers: request translation (Anthropic -> OpenAI Responses) ---
 
+def _split_effort_suffix(model):
+    # v1.2.2: parse and STRIP a "#<effort>" suffix from a model slug.
+    # INTENT: Claude Code v2.1.187 passes a custom slug's "#<effort>" suffix to the
+    #   wire verbatim inside `model` (e.g. "gpt-5.6-sol#high"). The shim must strip
+    #   it before the model reaches OpenAI (a "#"-bearing model is not a valid
+    #   backend slug) and surface the parsed effort as precedence TIER 2.
+    # REASONING: the "[1m]" window hint is consumed CLIENT-side and never reaches
+    #   the shim (wire-captured 2026-07-11, both orderings), so the only suffix the
+    #   shim ever sees is "#<effort>". We split on the FIRST "#" and treat
+    #   everything after it as the raw effort token (lowercased, whitespace-
+    #   stripped). Returns (bare_model, raw_suffix_or_None). The suffix is ALWAYS
+    #   stripped even when its value is later judged unknown — the caller decides
+    #   whether the value satisfies tier 2, but the bare model is what gets used
+    #   everywhere regardless.
+    # ASSUMES: a single "#" separator; an empty token after "#" (e.g. "model#")
+    #   yields raw_suffix None (nothing to parse) while still stripping the "#".
+    # SECURITY (log injection): the bare model string is logged verbatim as
+    #   `model=%s` on every req line (grep-stable, NOT %r — awk/grep forensics key
+    #   on `model=gpt-5.6-sol`). An inbound model carrying control characters —
+    #   e.g. `"gpt-5.6-sol\r\nFAKE LOG#low"` (reviewer probe) — would otherwise
+    #   inject a forged newline-delimited log line. We scrub C0/DEL control chars
+    #   (\x00-\x1f, \x7f) and strip surrounding whitespace from the BARE model
+    #   before returning, so no model string can break the one-line-per-request
+    #   contract. Normal slugs contain none of these bytes and pass through
+    #   byte-identical.
+    bare_raw, _, raw = model.partition("#") if "#" in model else (model, "", "")
+    bare = _SCRUB_CTRL_RE.sub("", bare_raw).strip()
+    if "#" not in model:
+        return bare, None
+    raw = raw.strip().lower()
+    return bare, (raw or None)
+
+
+def _normalize_effort_value(raw, source):
+    # v1.2.2: validate one raw effort token for a given precedence source.
+    # INTENT: return a backend-acceptable effort string, or None if this tier's
+    #   value is unusable (caller falls through to the next tier).
+    # REASONING: identity for anything in the gpt-5.6 accepted set; clamp for a
+    #   recognized-but-unsupported-for-gpt-5.6 alias (log the clamp once); None
+    #   (with one WARNING) for anything genuinely unknown so the tier is ignored.
+    # ASSUMES: `raw` is already lowercased/stripped by the caller (both the slug
+    #   parser and output_config path normalize before calling). A non-string raw
+    #   is treated as unknown.
+    if not isinstance(raw, str) or not raw:
+        # FIX 2: a non-string (e.g. output_config.effort=123) or empty/whitespace-
+        # only value is malformed. Log one WARNING (parity with the unknown-string
+        # branch below) so it leaves an audit trail, then fall through.
+        log.warning("reasoning effort %r (%s) is not a usable string; ignoring this tier",
+                    raw, source)
+        return None
+    if raw in _EFFORT_SUPPORTED:
+        return raw
+    if raw in _EFFORT_CLAMP:
+        clamped = _EFFORT_CLAMP[raw]
+        log.warning("reasoning effort %r (%s) not supported for gpt-5.6; clamped to %r",
+                    raw, source, clamped)
+        return clamped
+    log.warning("reasoning effort %r (%s) unrecognized; ignoring this tier", raw, source)
+    return None
+
+
+def _resolve_effort(body, slug_effort_raw):
+    # v1.2.2: resolve reasoning.effort by the four-tier precedence chain.
+    # INTENT: return (effort_value, source) where source is one of
+    #   "inbound" | "slug" | "env" | "default". The value is ALWAYS a supported
+    #   string (the payload now always carries reasoning.effort).
+    # REASONING (tier order, first present-and-valid wins):
+    #   1. inbound per-request signal:
+    #        a. output_config.effort (string) — Claude Code's per-request level;
+    #        b. thinking:{"type":"disabled"} — an explicit request to disable
+    #           reasoning -> the minimum value (_EFFORT_DISABLED = "none").
+    #      thinking:{"type":"adaptive"} is NOT a level (tier 1 absent -> fall
+    #      through). If output_config.effort is present its value takes precedence
+    #      over a disabled-thinking signal (an explicit level beats a toggle).
+    #   2. slug "#<effort>" suffix (already parsed by the caller).
+    #   3. SHIM_REASONING_EFFORT env var.
+    #   4. default "high".
+    # ASSUMES: a malformed value at ANY tier is ignored (not fatal) and we fall
+    #   through — _normalize_effort_value logs the one warning. The default is
+    #   always supported so the chain always terminates with a valid value.
+    oc = body.get("output_config")
+    if isinstance(oc, dict) and oc.get("effort") is not None:
+        raw = oc.get("effort")
+        raw = raw.strip().lower() if isinstance(raw, str) else raw
+        val = _normalize_effort_value(raw, "inbound")
+        if val is not None:
+            return val, "inbound"
+    # Explicit disabled-thinking -> minimum reasoning (only if no usable
+    # output_config.effort above). adaptive/other thinking types are not levels.
+    thinking = body.get("thinking")
+    if isinstance(thinking, dict) and thinking.get("type") == "disabled":
+        return _EFFORT_DISABLED, "inbound"
+
+    # Tier 2: slug suffix.
+    if slug_effort_raw is not None:
+        val = _normalize_effort_value(slug_effort_raw, "slug")
+        if val is not None:
+            return val, "slug"
+
+    # Tier 3: env var.
+    if SHIM_REASONING_EFFORT is not None:
+        val = _normalize_effort_value(SHIM_REASONING_EFFORT.strip().lower(), "env")
+        if val is not None:
+            return val, "env"
+
+    # Tier 4: default.
+    return _EFFORT_DEFAULT, "default"
+
+
 def _map_model(model):
     # INTENT: pass the model slug through unchanged by default so a proxy
     # receives e.g. "openai/gpt-5.6-sol". Optionally strip a prefix for direct
     # api.openai.com use where the slug is bare "gpt-5.6-sol".
+    # NOTE (v1.2.2): callers strip any "#<effort>" suffix via _split_effort_suffix
+    #   BEFORE this function, so `model` here is already suffix-free. Prefix
+    #   stripping is independent of effort-suffix stripping.
     if SHIM_STRIP_MODEL_PREFIX and model.startswith(SHIM_STRIP_MODEL_PREFIX):
         return model[len(SHIM_STRIP_MODEL_PREFIX):]
     return model
@@ -494,13 +694,17 @@ def _tools_to_responses(tools):
     return out
 
 
-def _anthropic_to_responses_request(body):
+def _anthropic_to_responses_request(body, bare_model, slug_effort_raw):
     # Build the OpenAI Responses payload from an Anthropic Messages body.
-    # Returns (payload, missing_reasoning_count).
+    # Returns (payload, missing_reasoning_count, effort_value, effort_source).
+    # v1.2.2: `bare_model` is the inbound model with any "#<effort>" suffix already
+    # stripped (by _split_effort_suffix in the caller); `slug_effort_raw` is that
+    # stripped suffix's raw token (tier 2). The suffix-free model is what reaches
+    # the backend — a "#"-bearing model is never forwarded.
     input_items, missing_reasoning = _messages_to_input(body.get("messages", []))
 
     payload = {
-        "model": _map_model(body.get("model", "")),
+        "model": _map_model(bare_model),
         "input": input_items,
         # PRIVACY POSTURE: never persist server-side. Combined with `include`
         # below this is the stateless / Zero-Data-Retention mode.
@@ -534,17 +738,17 @@ def _anthropic_to_responses_request(body):
     #   / body["top_p"] into the payload — the safest approach is to never send them.
 
     # reasoning object: always request an auto summary so we can surface a
-    # thinking block; add effort only when SHIM_REASONING_EFFORT is set.
-    # ASSUMES: a bare {"summary":"auto"} WITHOUT effort is accepted by the backend
-    #   (server applies the model default, "medium" for gpt-5.6). MEDIUM confidence
-    #   — a live test will confirm. Documented fallback if it 400s live: send the
-    #   `reasoning` object ONLY when SHIM_REASONING_EFFORT is set (i.e. gate the
-    #   whole object on effort). raine requests summary:"auto" only when effort is
-    #   set (notes file 05 §3e); we request the summary unconditionally so the
-    #   thinking block is available even at the server default effort.
-    reasoning_obj = {"summary": "auto"}
-    if SHIM_REASONING_EFFORT is not None:
-        reasoning_obj["effort"] = SHIM_REASONING_EFFORT
+    # thinking block, and (v1.2.2) ALWAYS set effort via the precedence resolver.
+    # REASONING: prior to v1.2.2 effort was set only when SHIM_REASONING_EFFORT was
+    #   present, letting the backend default ("medium" for gpt-5.6) apply. v1.2.2
+    #   resolves an effort value on every request (inbound > slug > env > default
+    #   "high") so the outbound payload always carries reasoning.effort — posture
+    #   parity with DAAF Claude sessions and full per-request control. The summary
+    #   is still requested unconditionally so the thinking block is available at
+    #   any effort level (raine requests summary:"auto" only when effort is set,
+    #   notes file 05 §3e; we are stricter for reliable thinking surfacing).
+    effort_value, effort_source = _resolve_effort(body, slug_effort_raw)
+    reasoning_obj = {"summary": "auto", "effort": effort_value}
     payload["reasoning"] = reasoning_obj
 
     ot = _tools_to_responses(body.get("tools"))
@@ -562,9 +766,11 @@ def _anthropic_to_responses_request(body):
                 # FLAT name (sibling of type), not nested — spec file 04 §1.
                 payload["tool_choice"] = {"type": "function", "name": tc["name"]}
 
-    # `thinking`, `metadata`, `stream` (handled by transport), and any unknown
-    # fields are intentionally dropped.
-    return payload, missing_reasoning
+    # `thinking`, `output_config`, `metadata`, `stream` (handled by transport),
+    # and any unknown fields are intentionally dropped — output_config is an
+    # Anthropic-inbound-only signal (its effort was consumed into reasoning.effort
+    # above) and MUST NOT be forwarded to OpenAI.
+    return payload, missing_reasoning, effort_value, effort_source
 
 
 # --- Helpers: response translation (OpenAI Responses -> Anthropic) ---
@@ -994,8 +1200,13 @@ async def _handle_messages(body, receive, send):
         return
 
     stream = bool(req.get("stream", False))
-    model = req.get("model", "")
-    responses_payload, missing_reasoning = _anthropic_to_responses_request(req)
+    # v1.2.2: strip any "#<effort>" suffix from the inbound model up front, so the
+    # BARE model is used everywhere it is consumed — the outbound backend payload,
+    # every log line below, and the response echoed to Claude Code. `model` from
+    # here on is suffix-free; `slug_effort_raw` is the parsed tier-2 token (or None).
+    model, slug_effort_raw = _split_effort_suffix(req.get("model", ""))
+    responses_payload, missing_reasoning, effort_value, effort_source = \
+        _anthropic_to_responses_request(req, model, slug_effort_raw)
     n_msgs = len(responses_payload["input"])
     n_tools = len(responses_payload.get("tools", []))
 
@@ -1040,11 +1251,15 @@ async def _handle_messages(body, receive, send):
             _calibrate_count_ratio(usage["input_tokens"], len(body))
             dur = time.time() - t0
             # HARDENING (structured log line): one line, no bodies, no creds.
+            # v1.2.2: effort=<value>:<source> surfaces the resolved reasoning effort
+            # and which precedence tier won (inbound|slug|env|default). `model` is
+            # the suffix-stripped slug.
             miss_suffix = f" reasoning_cache_miss={missing_reasoning}" if missing_reasoning > 0 else ""
             log.info("req method=POST path=/v1/messages model=%s stream=n msgs=%d tools=%d "
-                     "dur=%.2fs stop=%s in=%s out=%s retries=%d%s",
+                     "dur=%.2fs stop=%s in=%s out=%s retries=%d effort=%s:%s%s",
                      model, n_msgs, n_tools, dur, anth["stop_reason"],
-                     usage["input_tokens"], usage["output_tokens"], retries, miss_suffix)
+                     usage["input_tokens"], usage["output_tokens"], retries,
+                     effort_value, effort_source, miss_suffix)
             await _send_json(send, 200, anth)
             return
 
@@ -1455,8 +1670,9 @@ async def _handle_messages(body, receive, send):
                 await send({"type": "http.response.body", "body": b"", "more_body": False})
                 dur = time.time() - t0
                 log.info("req method=POST path=/v1/messages model=%s stream=y msgs=%d tools=%d "
-                         "dur=%.2fs stop=FAILED tools_called=%d retries=%d",
-                         model, n_msgs, n_tools, dur, len(tool_state), retries)
+                         "dur=%.2fs stop=FAILED tools_called=%d retries=%d effort=%s:%s",
+                         model, n_msgs, n_tools, dur, len(tool_state), retries,
+                         effort_value, effort_source)
                 return
 
             # Fallback cache population from collected items if the terminal event
@@ -1515,10 +1731,11 @@ async def _handle_messages(body, receive, send):
             dur = time.time() - t0
             miss_suffix = f" reasoning_cache_miss={missing_reasoning}" if missing_reasoning > 0 else ""
             log.info("req method=POST path=/v1/messages model=%s stream=y msgs=%d tools=%d "
-                     "dur=%.2fs stop=%s in=%s out=%s tools_called=%d retries=%d usage=%s%s",
+                     "dur=%.2fs stop=%s in=%s out=%s tools_called=%d retries=%d usage=%s effort=%s:%s%s",
                      model, n_msgs, n_tools, dur, stop_reason, input_tokens,
                      output_tokens, len(tool_state), retries,
-                     "estimated" if usage_estimated else "backend", miss_suffix)
+                     "estimated" if usage_estimated else "backend",
+                     effort_value, effort_source, miss_suffix)
 
         except httpx.HTTPError as e:
             log.error("stream transport error: %s", type(e).__name__)
@@ -1548,6 +1765,28 @@ async def _handle_messages(body, receive, send):
             pass
 
 
+def _count_tokens_bare_model(body):
+    # v1.2.2: suffix-strip discipline for the count_tokens path. Claude Code POSTs
+    # the whole request envelope (including model="gpt-5.6-sol#high") here. The
+    # estimate itself is byte-length based and does NOT depend on the model, so
+    # this is purely to keep the "#<effort>" suffix from ever leaking out of the
+    # count_tokens handler (e.g. into a future log line or a model echo) — a
+    # "#"-bearing model must be stripped everywhere the model is consumed.
+    # INTENT: best-effort parse; return the suffix-stripped model or None. Never
+    #   raises — a malformed body just yields None (nothing to strip/log).
+    try:
+        req = json.loads(body.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError, AttributeError):
+        return None
+    if not isinstance(req, dict):
+        return None
+    m = req.get("model")
+    if not isinstance(m, str):
+        return None
+    bare, _suffix = _split_effort_suffix(m)
+    return bare
+
+
 async def _handle_count_tokens(body, send):
     # v1.2.1: return a self-calibrated estimate instead of the naive
     # len(raw_json)//4 (which inflated realistic Claude Code envelopes ~1.6-1.9x
@@ -1556,6 +1795,13 @@ async def _handle_count_tokens(body, send):
     # a pure function of the inbound BYTE length, so junk/undecodable content
     # still yields a floored (>=1) number rather than a 4xx (Claude Code tolerates
     # failure here, but a calibrated estimate keeps its local budget meaningful).
+    #
+    # v1.2.2: strip any "#<effort>" suffix from the model on this path too, so the
+    # suffix never leaks out of count_tokens handling. The estimate is UNCHANGED
+    # (byte-length based, v1.2.1 calibration invariant); _count_tokens_bare_model
+    # is a pure, non-raising helper whose only job is to guarantee the strip
+    # discipline holds uniformly across every endpoint that reads the model.
+    _bare_model = _count_tokens_bare_model(body)  # noqa: F841 — strip discipline; see above
     est = _count_tokens_estimate(len(body))
     await _send_json(send, 200, {"input_tokens": est})
 
