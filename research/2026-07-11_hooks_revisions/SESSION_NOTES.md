@@ -61,6 +61,14 @@
 Live (already applied): settings.json (+11 denies), scripts/test_safety_hooks.sh, CLAUDE.md, BOUNDARIES.md, user_reference/07_faq_technical.md, user_reference/04_extending_daaf.md, CONTRIBUTING.md.
 Scratch: research/2026-07-11_hooks_revisions/scripts/scratch/regex_proto.sh (provenance).
 
+## Round 2 (2026-07-12): prose false-positive fix — COMPLETE, INSTALLED
+
+- Round-1 hook was installed by user; battery confirmed 97/97 live. Committed 89a18d3 (only this session's 17 files; unrelated working-tree changes excluded). Optional items (ERROR_RECOVERY.md hook-block recovery section; shell-scripting skill battery index) done + reviewed + included.
+- During commit, the new guard false-blocked two commit messages that *described* blocked commands — root cause: §7 `sed -i` check and §8 `easy_install`/`conda` alternation branches were un-anchored (matched prose anywhere). Logged as LEARNINGS.md System Update Action Plan items 1+2 (commit 5d704fb), then executed same session at user request.
+- Fix: staged/bash-safety_r2.sh — the two checks anchored to command-segment start; battery +6 cases (103 total: 4 prose ALLOW regressions + real `sed -i`/`easy_install` BLOCKs). Adversarial re-probe: no weakening (all real invocations still BLOCK); wrapper-prefix residual (`time`/`env`/`nice` + conda/easy_install) surfaced, judged same pre-existing class as anchored pip/uv checks, documented in-hook per reviewer request. Completeness review: change surface exact, round-1 artifacts untouched, docs-of-record skip decision verified sound.
+- User installed r2 (single cp; no update-index needed — mode already 100755). Live battery: TOTAL: 103, PASS: 103, FAIL: 0. Installed file diff-identical to reviewed draft (empty diff).
+- LEARNINGS.md items 1+2 marked addressed (Resolution section).
+
 ## Open Questions
 
 - Adopt settings.json self-protection extension? (recommended yes)

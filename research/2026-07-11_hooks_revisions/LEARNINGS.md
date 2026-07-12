@@ -44,6 +44,31 @@ candidate false-positive class; this confirms it for the two un-anchored checks.
 | 1 | Two new safety checks match blocked tokens in descriptive prose because they are un-anchored | `.claude/hooks/bash-safety.sh` (LIVE safety file — requires staged-draft → user-install protocol; agent cannot self-install) | Modify Existing | Anchor the §7 `sed -i` check and the §8 `easy_install`/`conda` alternatives to command position `(^\|[;&\|]) ?`, matching how the mutation-verb and pip/uv checks are already anchored, so descriptive text (commit messages, echoes) stops tripping them. Verify real in-place-edit and real conda/easy_install invocations still BLOCK. | P3 | 2026-07-11_hooks_revisions |
 | 2 | Regression battery lacks cases proving prose/description does not false-trigger | `scripts/test_safety_hooks.sh` | Modify Existing | Add ALLOW cases for command strings that *mention* blocked tokens without invoking them: a `git commit -m` whose message names `sed -i`, `easy_install`, `conda install`, and a protected path; an `echo` mentioning `pip install`. These lock in the anchoring fix from item 1 and prevent regression. | P3 | 2026-07-11_hooks_revisions |
 
+### Resolution (2026-07-12 follow-up round)
+
+Items **1 and 2 addressed** in a scoped Framework Development pass — the original
+table rows above are kept intact for the record.
+
+- **Item 1 (hook anchoring):** Staged draft at
+  `research/2026-07-11_hooks_revisions/staged/bash-safety_r2.sh` (copy of the live
+  hook with ONLY the two un-anchored checks changed, verified by diff). The §7
+  `sed -i` check is now anchored `(^|[;&|]) ?sed ...`, and the §8
+  `uvx`/`easy_install`/`conda` alternation is grouped under a single
+  command-segment anchor `(^|[;&|]) ?(uvx\b|easy_install\b|conda ...)`. Real
+  in-place edits and real conda/easy_install/uvx invocations still BLOCK
+  (verified). Accepted residual documented in-hook: pipeline-fed forms
+  (`xargs sed -i ...`, `xargs conda install`) where the verb is not at a segment
+  start are no longer caught — the same accepted class as the `find -exec`
+  residual. **Install pending user action** (the live hook blocks agent shell
+  writes into `.claude/hooks/`) — see the install command in the round report.
+- **Item 2 (battery regression cases):** `scripts/test_safety_hooks.sh` gains a
+  "prose/description must NOT false-block" section (commit-message and echo cases
+  reciting `sed -i`/`easy_install`/`conda install`/`pip`/`uvx` tokens) plus a
+  real `sed -i` on a hook and an `easy_install` BLOCK case. The r2 draft passes
+  103/103; the live round-1 hook fails the 3 prose cases that hit its two
+  un-anchored checks (pip+uvx prose already passed live — those branches were
+  already segment-anchored), which is exactly the gap this round closes.
+
 ## Notes for whoever picks this up
 
 - Both items are a matched pair — item 2's ALLOW cases will fail until item 1's

@@ -85,6 +85,18 @@ run_case "$B" ALLOW "redirect elsewhere"         'echo hello > out.txt'
 run_case "$B" ALLOW "project-init cp template"   'cp template.md research/2026-01-01_Project/'
 run_case "$B" ALLOW "cp settings.json to backup" 'cp .claude/settings.json backup.json'
 run_case "$B" ALLOW "cp hook to research backup" 'cp .claude/hooks/bash-safety.sh /daaf/research/backup.sh'
+echo "=== bash-safety: prose/description must NOT false-block (anchoring regression) ==="
+# Commit messages and echoes that RECITE trigger tokens without invoking them.
+# These modeled on the two real false-blocks observed after the round-1 hook
+# went live: a message naming `sed -i) into .claude/hooks/`, and a message
+# listing `easy_install/conda install`-type commands. They ALLOW on the r2 draft
+# (segment-anchored) and FAIL on the live round-1 hook (un-anchored) — that gap
+# is exactly what this round closes.
+run_case "$B" ALLOW "commit msg names sed -i + hooks"  'git commit -m "route sed -i) into .claude/hooks/ scanner"'
+run_case "$B" ALLOW "commit msg lists easy_install"    'git commit -m "block easy_install/conda install-type commands"'
+run_case "$B" ALLOW "commit msg names pip + uvx"       'git commit -m "guard pip install and uvx runners in prose"'
+run_case "$B" ALLOW "echo mentions conda install"      'echo "run conda install numpy on the host"'
+run_case "$B" BLOCK "real sed -i on hook (verb start)" 'sed -i s/a/b/ .claude/hooks/bash-safety.sh'
 echo "=== bash-safety: backslash line-continuation evasions (bug fix) ==="
 run_case "$B" BLOCK "multiline cp into hooks"    $'cp f \\\n  .claude/hooks/x.sh'
 run_case "$B" BLOCK "multiline rm -rf root"      $'rm -rf \\\n  /'
@@ -109,6 +121,7 @@ run_case "$B" BLOCK "pipx run"                   'pipx run black .'
 run_case "$B" BLOCK "conda install"              'conda install scipy'
 run_case "$B" BLOCK "conda env update"           'conda env update -f environment.yml'
 run_case "$B" BLOCK "conda create"               'conda create -n test numpy'
+run_case "$B" BLOCK "easy_install"               'easy_install requests'
 echo "=== bash-safety: package cmds that must stay ALLOWED ==="
 run_case "$B" ALLOW "pip list"                   'pip list'
 run_case "$B" ALLOW "pip show"                   'pip show polars'
