@@ -6,12 +6,18 @@ services:
     volumes:
       - daaf-data:/daaf
       - daaf-claude-config:/claude-config   # Repair ownership of the Claude state volume too
-    command: sh -c 'chown -R 1000:1000 /daaf /claude-config'
+    command: sh -c 'mkdir -p /claude-config/codex-daaf && chown -R 1000:1000 /daaf /claude-config'
     # Runs as root to fix volume ownership for appuser (UID 1000).
     # Docker named volumes may have files owned by root or the host UID
     # (e.g., UID 501 on macOS), which blocks appuser from reading/writing.
     # This init container repairs ownership on every startup. A single chown
     # covers both mounts (data volume + Claude Code state volume).
+    # The mkdir pre-creates the Codex CLI state dir (CODEX_HOME, see the
+    # daaf-docker environment block) BEFORE the chown so it is owned by appuser:
+    # the Codex CLI hard-errors ("CODEX_HOME ... does not exist") rather than
+    # creating it, and a Dockerfile mkdir cannot help because this named volume
+    # shadows the image at the mount point at runtime. Dev-only in effect (an
+    # empty dir is harmless for non-DAAF_DEV users who have no codex binary).
 
   daaf-docker:
     build:
