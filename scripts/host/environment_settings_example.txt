@@ -133,7 +133,17 @@
 # full window locally; Claude Code strips [1m] before sending, so the shim/backend
 # see the bare slug. Without it, Claude Code assumes ~200K for these unknown slugs
 # and ends sessions early ("Prompt is too long") well below the real 1,050,000.
-# ANTHROPIC_MODEL=gpt-5.6-sol[1m]
+#
+# Session START model: do NOT set ANTHROPIC_MODEL in this file — it will not
+# take effect. DAAF's project settings.json sets ANTHROPIC_MODEL in its "env"
+# block (shipped default: claude-opus-4-8[1m], since most DAAF users run
+# Claude), and a settings.json env value OVERRIDES the container environment
+# (verified empirically 2026-07-12). GPT sessions therefore open on the Claude
+# default; the first message fails loudly, which makes the needed "/model"
+# switch obvious. To make GPT your STANDING default instead, edit the
+# "ANTHROPIC_MODEL" line in /daaf/.claude/settings.json (e.g. to
+# "gpt-5.6-sol[1m]") — see the technical FAQ entry "My GPT session starts on
+# a Claude model" for details.
 # ANTHROPIC_DEFAULT_OPUS_MODEL=gpt-5.6-sol[1m]
 # ANTHROPIC_DEFAULT_SONNET_MODEL=gpt-5.6-terra[1m]
 # CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000            # gpt-5.6 family (sol/terra/luna) + gpt-5.5/5.4: 1050000; gpt-5.2: 400000. Alternative to the [1m] suffix: CLAUDE_CODE_AUTO_COMPACT_WINDOW=1000000
@@ -148,13 +158,21 @@
 # strips it before the request reaches OpenAI. Example (per-model override):
 # ANTHROPIC_DEFAULT_SONNET_MODEL=gpt-5.6-terra[1m]#medium   # fast tier at medium effort
 #
+# IMPORTANT (shim v1.2.3+): the /model reasoning-effort selector in the Claude
+# Code UI does NOT work for GPT slugs. Claude Code gates effort by model-ID
+# pattern and pins "high" on every request for unrecognized (GPT) slugs, so the
+# UI selector is inert. As of v1.2.3 the shim treats an inbound "high" as that
+# pin (unset) and falls through to your slug/env steer. Steer GPT effort with the
+# "#<effort>" suffix (tier 2, above) or SHIM_REASONING_EFFORT (tier 3, below).
+#
 # Advanced shim tuning (defaults are correct for OpenAI; rarely needed):
 # SHIM_PORT=4141
 # SHIM_BACKEND_BASE_URL=https://api.openai.com/v1
 # SHIM_BACKEND_API_KEY=                             # defaults to OPENAI_API_KEY
 # SHIM_STRIP_MODEL_PREFIX=openai/                   # literal prefix stripped from model ids before the backend; only needed with prefixed slugs — leave unset for the bare slugs shown above
 # SHIM_SANITIZE_TOOLS=0                             # sanitization is ON by default (strips known GPT tool-call quirks: empty pages:"", Agent isolation fills, redundant sandbox flags — each otherwise costs a wasted error round-trip); set to 0 ONLY when benchmarking shim-routed models (DAAFBench must see raw model behavior; flag is read at shim startup, so a restart is required)
-# SHIM_REASONING_EFFORT=                            # TIER 3 of the effort precedence chain (per-request signal > "#<effort>" slug suffix > this env var > default "high"). Sets reasoning.effort ONLY when neither a per-request signal nor a slug suffix is present. Valid values none|low|medium|high|xhigh|max ("max" is gpt-5.6-only). Leave unset to use the default "high" (v1.2.2 always sends an effort now — the old implicit "medium" server default no longer applies). Read at shim startup, so a restart is required
+# SHIM_REASONING_EFFORT=                            # TIER 3 of the effort precedence chain (per-request signal > "#<effort>" slug suffix > this env var > default "high"). Sets reasoning.effort when no usable per-request signal and no slug suffix are present. NOTE (v1.2.3): an inbound per-request "high" is treated as Claude Code's pinned constant (unset) and demoted, so for GPT slugs this env var and the "#<effort>" suffix are the real steering surfaces. Valid values none|low|medium|high|xhigh|max ("max" is gpt-5.6-only). Leave unset to use the default "high" (v1.2.2+ always sends an effort now — the old implicit "medium" server default no longer applies). Read at shim startup, so a restart is required
+# SHIM_TEXT_VERBOSITY=                              # Response verbosity (shim v1.2.4+): the outbound OpenAI request always carries text.verbosity. Valid values low|medium|high. Default "high" (parity with DAAF's warm/educational posture) — "high" adds warmth/volume, "low" is terse. Set this to dial GPT responses that feel too brief or too long. Unset -> "high". Read at shim startup, so a restart is required
 #
 # Troubleshooting (inside the container):
 #   bash /daaf/scripts/provider_shim/start_shim.sh --status

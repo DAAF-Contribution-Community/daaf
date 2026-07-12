@@ -228,6 +228,16 @@ Yes, and it's been validated live (2026-07-09). There are two ways in, both docu
 
 GPT support is a power-user option offered with honest framing (see the limitation entries below). Anthropic does not officially support routing Claude Code to non-Claude models, and OpenRouter's Anthropic-compatible endpoint is officially scoped to Claude models — GPT works through it in practice, but it is unsupported territory a vendor could change.
 
+If your session still starts on a Claude model after configuring, see [My GPT session starts on a Claude model](#q-my-gpt-session-starts-on-a-claude-model-instead-of-my-gpt-model).
+
+### Q: My GPT session starts on a Claude model instead of my GPT model
+
+Sessions open on the model named by `ANTHROPIC_MODEL` in the `env` block of DAAF's project `.claude/settings.json`, which ships as `claude-opus-4-8[1m]` — a deliberate Claude-first default, since most DAAF users run Claude. Importantly, that settings.json value **overrides** the container environment (verified empirically 2026-07-12: a process-environment `ANTHROPIC_MODEL` lost to the settings.json value on the wire), so setting `ANTHROPIC_MODEL` in `environment_settings.txt` does **not** work — don't use that route.
+
+You have two options on a GPT setup:
+- **Per session (default expectation):** just run `/model` after launch and pick your GPT model. If you forget, the very first message fails with a loud authentication/model error, so there's no silent wrong-model risk.
+- **Standing default:** edit the `"ANTHROPIC_MODEL"` line in `/daaf/.claude/settings.json` to your GPT slug — bare with the window hint for the Option F shim lane (`"gpt-5.6-sol[1m]"`), prefixed for the Option C OpenRouter lane (`"openai/gpt-5.6-sol"`). This is a deliberate manual edit to a tracked framework file; expect to re-apply it after DAAF updates that touch settings.json.
+
 ### Q: On a GPT session, is the context bar accurate?
 
 Not exactly — treat it as a close estimate. OpenRouter's Anthropic-compatible endpoint (and the provider shim) do not implement precise token counting, so Claude Code falls back to *estimating* context usage on GPT sessions. The context bar and the elevated/high/critical utilization warnings still work and are a good guide, but the percentages are approximations rather than exact counts. DAAF deliberately keeps its conservative context-quality thresholds (elevated/high/critical at 40/60/75%) on GPT models, since their long-context quality behavior isn't DAAF-validated yet.
@@ -272,12 +282,22 @@ Occasionally a GPT turn ends with a reasoning-only block and no visible text, wh
 
 On the direct-OpenAI shim lane (shim v1.2.2+), every request to OpenAI carries a `reasoning.effort` value, and the shim resolves it from a **four-tier precedence chain** — the first tier present wins:
 
-1. **Per-request signal from Claude Code** — when Claude Code itself specifies an effort for a turn, that takes precedence over everything below.
+1. **Per-request signal from Claude Code** — when Claude Code specifies an effort for a turn, that takes precedence over the tiers below. **Important caveat (shim v1.2.3+):** the `/model` reasoning-effort selector in the Claude Code UI does **not** work for GPT slugs. Claude Code gates that selector by model-ID pattern and, for an unrecognized (GPT) slug, pins the per-request signal to `high` on *every* request regardless of what you select — so the selector is inert. To keep it from masking your real preference, the shim treats an inbound `high` as that pin (i.e. as unset) and falls through to the tiers below; any *other* inbound value (`low`, `medium`, etc.) is still honored. The practical consequence: **steer GPT effort with tier 2 or tier 3 below, not the `/model` selector.**
 2. **A `#<effort>` suffix on the model slug** — append it in `environment_settings.txt`, e.g. `ANTHROPIC_DEFAULT_SONNET_MODEL=gpt-5.6-terra[1m]#medium`. This works *alongside* the `[1m]` window hint (Claude Code consumes `[1m]` locally and passes `#medium` through), and the shim strips the suffix before the request reaches OpenAI — the backend only ever sees the bare `gpt-5.6-terra`.
-3. **The `SHIM_REASONING_EFFORT` env var** — a single default for the whole shim, applied when there is no per-request signal and no slug suffix.
+3. **The `SHIM_REASONING_EFFORT` env var** — a single default for the whole shim, applied when there is no usable per-request signal and no slug suffix.
 4. **The built-in default, `high`** — used when none of the above is set, for posture parity with DAAF's Claude sessions.
 
-Valid values are `none`, `low`, `medium`, `high`, `xhigh`, and `max` (`max` is gpt-5.6-only; `none` disables reasoning). An unrecognized value at any tier is ignored with a log warning and the next tier applies. You can confirm what the shim resolved by checking the shim log (`/daaf/scripts/provider_shim/logs/shim.log`): each request line ends with `effort=<value>:<source>`, where source is one of `inbound`, `slug`, `env`, or `default`. Most users need to set nothing — leaving everything unset gives `high` everywhere. Both the env var and slug suffixes are read at shim startup / request time; changes to `environment_settings.txt` require the usual container recreate. See also the Option F [reasoning-effort paragraph](01_installation_and_quickstart.md#option-f-openai-api-directly-daaf-provider-shim) in the installation guide.
+Valid values are `none`, `low`, `medium`, `high`, `xhigh`, and `max` (`max` is gpt-5.6-only; `none` disables reasoning). An unrecognized value at any tier is ignored with a log warning and the next tier applies. You can confirm what the shim resolved by checking the shim log (`/daaf/scripts/provider_shim/logs/shim.log`): each request line ends with `effort=<value>:<source>`, where source is one of `inbound`, `slug`, `env`, or `default`. (Because of the v1.2.3 demotion, an inbound `high` with no slug/env override logs `effort=high:default`, not `effort=high:inbound`.) Most users need to set nothing — leaving everything unset gives `high` everywhere. Both the env var and slug suffixes are read at shim startup / request time; changes to `environment_settings.txt` require the usual container recreate. See also the Option F [reasoning-effort paragraph](01_installation_and_quickstart.md#option-f-openai-api-directly-daaf-provider-shim) in the installation guide. If GPT replies also feel *shorter* or *terser* than you expect, that is a separate knob — see [GPT responses feel terse compared to Claude](#q-gpt-responses-feel-terse-compared-to-claude-option-f) below.
+
+### Q: GPT responses feel terse compared to Claude (Option F)
+
+Two things are in play, and only one of them is tunable.
+
+**Model personality (not fully fixable).** DAAF's prompts, agent protocols, and skill documents are written and tuned for Claude, whose default register is comparatively warm and explanatory. A GPT model running the same prompts brings its own default style, which tends to read as more clipped or matter-of-fact. No shim setting fully closes that gap — some of the difference is just the model, and the DAAF prompts can't override a model's underlying voice.
+
+**Response verbosity (tunable).** On the direct-OpenAI shim lane, the shim (v1.2.4+) sends OpenAI's `text.verbosity` control on every request, and it defaults to **`high`** — chosen for parity with DAAF's warm, educational posture (the same rationale as the reasoning-effort default). `high` adds warmth and volume to responses; `low` makes them terse. So by default you are already getting the most expansive setting.
+
+If responses still feel too brief, verbosity is already maxed and the remaining gap is model personality (above). If instead you find GPT responses too *long* or padded, dial verbosity down: set `SHIM_TEXT_VERBOSITY=low` (or `medium`) in `environment_settings.txt`. Valid values are `low`, `medium`, and `high`; the value is read once at shim startup, so a change requires the usual container recreate. You can confirm what the shim resolved via the `/health` endpoint's `text_verbosity` field, and the shim startup log line records it as `text_verbosity=<value>`. This is independent of reasoning effort — [that control](#q-how-do-i-control-gpt-reasoning-effort-option-f) governs how hard the model *thinks*, while verbosity governs how much it *writes*.
 
 ### Q: Is my data sent to Anthropic? What about privacy?
 

@@ -25,13 +25,19 @@
 #   SHIM_SANITIZE_TOOLS     default "1" (enabled); strips known GPT tool-call
 #                           quirks — set to 0 (and restart the shim) for
 #                           DAAFBench runs of shim-routed models
-#   SHIM_REASONING_EFFORT   tier 3 of the v1.2.2 effort precedence chain
+#   SHIM_REASONING_EFFORT   tier 3 of the v1.2.3 effort precedence chain
 #                           (per-request signal > "#<effort>" slug suffix > this
 #                           env var > default "high"); sets reasoning.effort only
 #                           when no per-request signal or slug suffix is present.
+#                           An inbound per-request "high" is treated as unset
+#                           since v1.2.3 (the client pins it for GPT slugs).
 #                           Valid: none|low|medium|high|xhigh|max ("max" is
-#                           gpt-5.6-only). Unset -> default "high" (v1.2.2 always
-#                           sends an effort now)
+#                           gpt-5.6-only). Unset -> default "high" (the shim
+#                           always sends an effort since v1.2.2)
+#   SHIM_TEXT_VERBOSITY     response verbosity (v1.2.4+); the outbound request
+#                           always carries text.verbosity. Valid low|medium|high;
+#                           default "high" (warmth/volume, parity with DAAF's
+#                           posture). Read once at startup like the flags above.
 #
 # Keepalive: a background supervisor restarts the shim if it exits, with a short
 # sleep between restarts. A restart-storm guard stops after 10 crashes in 60s

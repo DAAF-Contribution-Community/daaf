@@ -63,6 +63,66 @@
 #   * GET /health endpoint for the manager's idempotency/status checks.
 #
 # Changelog:
+#   v1.2.4 (2026-07-12): Response verbosity control via a new SHIM_TEXT_VERBOSITY
+#     env knob (default "high"), user-approved. The outbound /v1/responses payload
+#     now ALWAYS carries text:{"verbosity": V}. V resolves once at startup from
+#     SHIM_TEXT_VERBOSITY (case-insensitive, whitespace-trimmed): values low|medium|
+#     high map through identity; an unrecognized/empty/whitespace value logs ONE
+#     startup WARNING and falls back to the default "high". The default "high" is a
+#     user-locked posture choice — parity with DAAF's warm/educational Claude
+#     sessions, same rationale as the SHIM_REASONING_EFFORT default "high".
+#     WHY the field is always sent: text.verbosity is LIVE-CONFIRMED accepted by
+#       gpt-5.6-sol on /v1/responses (HTTP 200 for both "high" and "low", probe
+#       research/2026-07-11_FrameworkDev_ShimDiagnostics_AuthOptions/scripts/
+#       live_tests/18_diag-verbosity-compare.py, 2026-07-12) — reclassifying the
+#       notes-04 §5/confidence-table "verbosity: LOW/not confirmed" claim to
+#       CONFIRMED. "medium" is the documented middle value; NOT independently
+#       live-probed here (the 18-probe exercised default/high/low only) — asserted
+#       in mock and marked # ASSUMES: at the resolver.
+#     EFFECT (observed in the 18-probe, informational): "high" adds warmth/volume
+#       — at a 1600-token cap "high" truncated (status incomplete) while "low"
+#       completed at 1109 tokens. This is NOT a production concern: real Claude
+#       Code sessions send max_tokens=32000, far above where verbosity=high would
+#       clip a normal turn; the effect surfaces only against an artificially small
+#       cap.
+#     Read at startup like SHIM_REASONING_EFFORT; the shim's "starting" startup
+#     log line gains a text_verbosity=<v> field (per-request "req" lines are
+#     unchanged — verbosity is a startup constant, not per-request). SHIM_VERSION -> 1.2.4 (/health reports it,
+#     single-source). All v1.2.3 invariants preserved untouched: the four-tier
+#     effort resolver, "#<effort>" suffix strip, tool-arg scrubber, reasoning
+#     cache, store:false, retry/backoff, backend-error diagnostics, count_tokens
+#     calibration, and the max_output_tokens floor.
+#   v1.2.3 (2026-07-12): Two fixes from a live real-GPT session (shim.log
+#     1377-1416), user-approved.
+#     FIX 1 — Demote inbound "high". Claude Code v2.1.187 PINS
+#       output_config.effort="high" on EVERY request for unknown/custom slugs
+#       (the effort capability is model-ID-pattern-gated; docs-verified — a slug
+#       the client doesn't recognize as effort-capable gets the hardcoded default
+#       "high"). With tier 1 honoring that constant, every request logged
+#       effort=high:inbound, the /model effort UI was INERT for GPT slugs, and the
+#       slug/env tiers were dead in practice. Fix: in the effort resolver, when the
+#       inbound output_config.effort normalizes to exactly "high", treat it as the
+#       pinned constant — SKIP tier 1 and fall through (slug > env > default), with
+#       NO warning log (it fires on essentially every request; silent by design).
+#       All OTHER inbound values keep tier-1 status: low/medium/xhigh/max honored,
+#       thinking:{"type":"disabled"}->none unchanged, malformed->existing
+#       warn+fall-through unchanged. Consequences (intentional): a deliberate UI
+#       "high" is now indistinguishable from the pin and equals the fall-through
+#       default anyway; users steer via the "#<effort>" slug suffix or
+#       SHIM_REASONING_EFFORT. The effort=<value>:<source> log field now reports
+#       whichever tier actually supplied the value (an inbound-high request with no
+#       slug/env logs effort=high:default, NOT high:inbound).
+#     FIX 2 — max_output_tokens floor. On a /model switch the client sent a probe
+#       request with max_tokens:1; OpenAI rejected it with a verbatim
+#       400 invalid_request_error on param max_output_tokens:
+#       "Expected a value >= 16, but got 1" (shim.log 02:06:41 + 02:07:26),
+#       blocking /model switching TO GPT slugs in the UI. Fix: clamp the outbound
+#       max_output_tokens to max(16, value) (OpenAI's documented minimum). No other
+#       max-tokens behavior change; the client's max_tokens=1 model-switch probe
+#       origin is undocumented (observed, noted as such).
+#     All v1.2.2 invariants preserved (control-char scrub, suffix-strip discipline,
+#     output_config drop, reasoning cache, store:false, scrubber, retry,
+#     diagnostics, count_tokens calibration). SHIM_VERSION -> 1.2.3 (/health).
 #   v1.2.2 (2026-07-11): Reasoning-effort flexibility via a four-tier precedence
 #     chain, replacing the single startup-only SHIM_REASONING_EFFORT knob. The
 #     outbound payload now ALWAYS carries reasoning.effort (previously it was
@@ -178,19 +238,38 @@
 #   SHIM_REASONING_EFFORT   TIER 3 of the reasoning-effort precedence chain
 #                           (v1.2.2). Read once at startup like the other flags.
 #                           Precedence, first present wins:
-#                             1. inbound output_config.effort (per-request)
+#                             1. inbound output_config.effort (per-request),
+#                                EXCEPT exactly "high" is demoted (v1.2.3): the
+#                                client PINS "high" on every request for custom
+#                                slugs, so it is treated as unset and falls through.
 #                             2. "#<effort>" slug suffix on the model
 #                             3. SHIM_REASONING_EFFORT (this env var)
 #                             4. default "high"
 #                           So the outbound payload ALWAYS carries reasoning.effort
 #                           now — this env var only sets the value used when no
-#                           per-request signal and no slug suffix are present.
+#                           usable per-request signal and no slug suffix are present.
+#                           Because inbound "high" is demoted (v1.2.3), for GPT
+#                           slugs the real steering surfaces are the "#<effort>"
+#                           slug suffix (tier 2) and this env var (tier 3).
 #                           Valid values: none | low | medium | high | xhigh |
 #                           max ("max" is gpt-5.6-specific). "none" disables
 #                           reasoning (and, per the API, re-enables temperature —
 #                           but this shim never sends temperature regardless). An
 #                           unrecognized value here is ignored with a WARNING and
 #                           the default applies.
+#   SHIM_TEXT_VERBOSITY     Response verbosity (v1.2.4). Read once at startup like
+#                           the other flags. The outbound payload ALWAYS carries
+#                           text:{"verbosity": <value>}. Valid values: low | medium
+#                           | high (case-insensitive; surrounding whitespace
+#                           trimmed). Default "high" — parity with DAAF's
+#                           warm/educational posture (same rationale as the
+#                           SHIM_REASONING_EFFORT "high" default). "high" adds
+#                           warmth/volume; "low" is terse. An unrecognized, empty,
+#                           or whitespace-only value logs ONE startup WARNING and
+#                           falls back to "high". Live-confirmed accepted by
+#                           gpt-5.6-sol on /v1/responses (high/low HTTP 200, probe
+#                           live_tests/18); "medium" is the documented middle value
+#                           (asserted in mock, not independently live-probed here).
 # =============================================================================
 
 import os
@@ -207,7 +286,7 @@ import httpx
 import uvicorn
 
 # --- Config ---
-SHIM_VERSION = "1.2.2"
+SHIM_VERSION = "1.2.4"
 
 SHIM_PORT = int(os.environ.get("SHIM_PORT", "4141"))
 # HARDENING: default backend is api.openai.com/v1 (the production target). Live
@@ -234,6 +313,50 @@ SHIM_SANITIZE_TOOLS = os.environ.get(
 # unrecognized env value degrades to the default with a WARNING rather than being
 # blindly forwarded.
 SHIM_REASONING_EFFORT = os.environ.get("SHIM_REASONING_EFFORT", "").strip() or None
+
+# v1.2.4: response verbosity. The outbound Responses payload ALWAYS carries
+# text:{"verbosity": <value>}. Resolved ONCE here at startup (parallel to
+# SHIM_REASONING_EFFORT's startup read), not per-request — verbosity is a
+# whole-session posture, not a per-turn signal, and Claude Code sends no inbound
+# verbosity field.
+# INTENT: pick a backend-acceptable verbosity string now, so the hot request path
+#   just reads the resolved constant.
+# REASONING: the accepted set is low|medium|high. A value in the set (case-
+#   insensitive, whitespace-trimmed) maps through identity; anything else — a
+#   typo, an empty string, whitespace only — logs ONE startup WARNING and degrades
+#   to the default rather than being blindly forwarded (a rejected verbosity would
+#   400 every request). Resolving at startup means the WARNING fires exactly once,
+#   not on every request.
+# ASSUMES: high and low are LIVE-CONFIRMED accepted by gpt-5.6-sol on /v1/responses
+#   (both HTTP 200, probe live_tests/18, 2026-07-12). "medium" is the DOCUMENTED
+#   middle value and is treated as accepted here on that basis — it was NOT
+#   independently live-probed (the 18-probe exercised only default/high/low). If a
+#   backend later rejects "medium", drop it from _VERBOSITY_SUPPORTED. The default
+#   "high" is a user-locked posture choice for parity with DAAF Claude sessions.
+_VERBOSITY_SUPPORTED = frozenset({"low", "medium", "high"})
+_VERBOSITY_DEFAULT = "high"
+
+
+def _resolve_startup_verbosity():
+    # INTENT: resolve the process-wide verbosity from SHIM_TEXT_VERBOSITY once.
+    # REASONING: mirror the effort-normalizer's shape (identity for a supported
+    #   value; WARNING + default for anything else) but as a startup-only, no-tier
+    #   resolution since verbosity has a single source.
+    # WARNING semantics: distinguish "var not set at all" (the common, deliberate
+    #   unset -> silent default "high") from "var IS set but to an invalid value,
+    #   including an empty/whitespace-only string" (a misconfiguration the operator
+    #   should see -> ONE WARNING, then default). A present-but-blank value is a
+    #   config mistake, not an intentional unset, so it warns.
+    raw = os.environ.get("SHIM_TEXT_VERBOSITY")
+    if raw is None:
+        return _VERBOSITY_DEFAULT  # unset entirely — silent default.
+    norm = raw.strip().lower() if isinstance(raw, str) else ""
+    if norm in _VERBOSITY_SUPPORTED:
+        return norm
+    log.warning("SHIM_TEXT_VERBOSITY %r invalid (valid: low|medium|high); "
+                "falling back to default %r", raw, _VERBOSITY_DEFAULT)
+    return _VERBOSITY_DEFAULT
+
 
 # v1.2.2: reasoning-effort resolution machinery.
 # INTENT: the outbound Responses payload now ALWAYS carries reasoning.effort. The
@@ -391,6 +514,11 @@ logging.basicConfig(
 )
 log = logging.getLogger("shim")
 
+# v1.2.4: resolve the process-wide response verbosity now that `log` exists (the
+# resolver emits its one WARNING via `log` for an invalid value). Read once at
+# startup; the hot path just reads this constant into text:{"verbosity": ...}.
+SHIM_TEXT_VERBOSITY = _resolve_startup_verbosity()
+
 # Shared async client (connection pooling; long read timeout for slow models).
 _client = httpx.AsyncClient(timeout=httpx.Timeout(600.0, connect=30.0))
 
@@ -477,15 +605,56 @@ def _resolve_effort(body, slug_effort_raw):
     # ASSUMES: a malformed value at ANY tier is ignored (not fatal) and we fall
     #   through — _normalize_effort_value logs the one warning. The default is
     #   always supported so the chain always terminates with a valid value.
+    #
+    # FIX 1 (v1.2.3): DEMOTE an inbound output_config.effort of exactly "high".
+    # INTENT: skip tier 1 (fall through to slug/env/default) whenever the inbound
+    #   per-request effort normalizes to "high", treating that value as the client's
+    #   PINNED CONSTANT rather than a user choice.
+    # REASONING: live-observed (shim.log 1377-1416, real GPT session 2026-07-12)
+    #   that Claude Code v2.1.187 pins output_config.effort="high" on EVERY request
+    #   for unknown/custom slugs — the effort capability is model-ID-pattern-gated
+    #   (docs-verified), so a slug the client doesn't recognize as effort-capable
+    #   gets the hardcoded default "high" on every turn. With tier 1 honoring that,
+    #   the /model effort UI was INERT for GPT slugs (every line logged
+    #   effort=high:inbound) and the slug/env tiers were dead in practice. Demoting
+    #   exactly "high" reactivates the #<effort> slug suffix and SHIM_REASONING_EFFORT
+    #   as the real steering surfaces for GPT sessions.
+    # CONSEQUENCE (intentional, documented): a user who DELIBERATELY selects "high"
+    #   in the /model UI is now indistinguishable from the pinned constant — both
+    #   fall through. This is acceptable because (a) the pinned "high" is
+    #   indistinguishable on the wire from a deliberate one, and (b) the fall-through
+    #   default is itself "high" (posture parity with DAAF Claude sessions), so a
+    #   user wanting "high" still gets it unless a slug/env tier overrides — which is
+    #   exactly the steering we are restoring. To pin a non-default level, users
+    #   steer via the #<effort> slug suffix or SHIM_REASONING_EFFORT.
+    # NO WARNING: this fires on essentially every request, so logging here would
+    #   flood the log. It is silent by design; the effort=<value>:<source> field on
+    #   the req line already reports which tier actually supplied the value (an
+    #   inbound-high request with no slug/env now logs effort=high:default).
+    # SCOPE: ONLY exactly "high" is demoted. All OTHER inbound values keep tier-1
+    #   status — low/medium/xhigh/max are honored, thinking:{"type":"disabled"}->none
+    #   is unchanged, and a malformed/unknown inbound value still warns+falls through
+    #   via _normalize_effort_value below.
+    # ASSUMES: the pin value is literally "high" (verified in shim.log 1377-1416).
+    #   If a future client pins a different constant, this guard needs to track it.
     oc = body.get("output_config")
     if isinstance(oc, dict) and oc.get("effort") is not None:
         raw = oc.get("effort")
         raw = raw.strip().lower() if isinstance(raw, str) else raw
-        val = _normalize_effort_value(raw, "inbound")
-        if val is not None:
-            return val, "inbound"
+        if raw == "high":
+            # Pinned client constant — skip tier 1, fall through (no warning).
+            pass
+        else:
+            val = _normalize_effort_value(raw, "inbound")
+            if val is not None:
+                return val, "inbound"
     # Explicit disabled-thinking -> minimum reasoning (only if no usable
     # output_config.effort above). adaptive/other thinking types are not levels.
+    # v1.2.3 co-occurrence note: when inbound output_config.effort=="high" (the
+    #   demoted pin) AND thinking:{"type":"disabled"} are BOTH present, the demoted
+    #   high falls through to here and this branch wins -> ("none","inbound"); an
+    #   honored (non-"high") inbound level would have returned above and never
+    #   reached this toggle (explicit level beats the disable toggle).
     thinking = body.get("thinking")
     if isinstance(thinking, dict) and thinking.get("type") == "disabled":
         return _EFFORT_DISABLED, "inbound"
@@ -722,12 +891,23 @@ def _anthropic_to_responses_request(body, bare_model, slug_effort_raw):
         payload["instructions"] = system_text
 
     # max_tokens (Anthropic, REQUIRED on every request) -> max_output_tokens.
-    # INTENT: forward the client's generation ceiling.
+    # INTENT: forward the client's generation ceiling, CLAMPED to OpenAI's
+    #   documented minimum of 16.
     # REASONING: the Responses key is `max_output_tokens`; truncation surfaces as
     #   status:"incomplete" (spec file 04 §1, §3). The inbound Anthropic contract
     #   is untouched — we still READ `max_tokens` from the client.
+    # FIX 2 (v1.2.3): clamp to max(16, value). Live-observed (real GPT session
+    #   2026-07-12) that on a /model switch Claude Code sent a probe request with
+    #   max_tokens:1, which OpenAI rejected with a verbatim
+    #   400 invalid_request_error on param max_output_tokens:
+    #   "Expected a value >= 16, but got 1" (shim.log 02:06:41 + 02:07:26). That
+    #   rejection blocked /model switching TO GPT slugs in the UI. The origin of
+    #   the client's max_tokens=1 model-switch probe is UNDOCUMENTED (noted as
+    #   such — observed behavior, not a spec'd contract). Clamping the outbound
+    #   floor to 16 (OpenAI's documented minimum, quoted above) lets the probe
+    #   succeed without altering any legitimate larger ceiling.
     if body.get("max_tokens") is not None:
-        payload["max_output_tokens"] = body["max_tokens"]
+        payload["max_output_tokens"] = max(16, body["max_tokens"])
 
     # temperature and top_p: DROPPED UNCONDITIONALLY — never forwarded.
     # REASONING: gpt-5.x reasoning models REJECT any non-default temperature/top_p
@@ -750,6 +930,15 @@ def _anthropic_to_responses_request(body, bare_model, slug_effort_raw):
     effort_value, effort_source = _resolve_effort(body, slug_effort_raw)
     reasoning_obj = {"summary": "auto", "effort": effort_value}
     payload["reasoning"] = reasoning_obj
+
+    # v1.2.4: ALWAYS carry response verbosity. text:{"verbosity": V} where V is the
+    # startup-resolved SHIM_TEXT_VERBOSITY (default "high").
+    # REASONING: verbosity is a whole-session posture (no inbound per-request signal
+    #   exists on the Anthropic wire), so it is resolved once at startup and applied
+    #   uniformly. text.verbosity is live-confirmed accepted by gpt-5.6-sol on
+    #   /v1/responses (high/low HTTP 200, probe live_tests/18). Sent unconditionally
+    #   for the same reason effort is: posture parity with DAAF Claude sessions.
+    payload["text"] = {"verbosity": SHIM_TEXT_VERBOSITY}
 
     ot = _tools_to_responses(body.get("tools"))
     if ot:
@@ -1822,6 +2011,7 @@ async def _handle_health(send):
         "version": SHIM_VERSION,
         "sanitize_tools": SHIM_SANITIZE_TOOLS,
         "reasoning_effort": SHIM_REASONING_EFFORT,
+        "text_verbosity": SHIM_TEXT_VERBOSITY,
     })
 
 
@@ -1862,9 +2052,9 @@ async def app(scope, receive, send):
 # --- Entry point ---
 if __name__ == "__main__":
     # NOTE: never log the key itself — only whether one is present.
-    log.info("shim v%s starting port=%d backend=%s strip_prefix=%r key_present=%s sanitize_tools=%s reasoning_effort=%s",
+    log.info("shim v%s starting port=%d backend=%s strip_prefix=%r key_present=%s sanitize_tools=%s reasoning_effort=%s text_verbosity=%s",
              SHIM_VERSION, SHIM_PORT, SHIM_BACKEND_BASE_URL,
              SHIM_STRIP_MODEL_PREFIX, bool(SHIM_BACKEND_API_KEY), SHIM_SANITIZE_TOOLS,
-             SHIM_REASONING_EFFORT)
+             SHIM_REASONING_EFFORT, SHIM_TEXT_VERBOSITY)
     # log_config=None: keep uvicorn from clobbering our stderr handler.
     uvicorn.run(app, host="127.0.0.1", port=SHIM_PORT, log_level="warning", log_config=None)
