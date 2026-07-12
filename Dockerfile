@@ -53,9 +53,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 #   - bats                       (Bash test runner, Debian repo)
 #   - PowerShell 7 + Pester +
 #     PSScriptAnalyzer           (PowerShell test/lint stack)
-# The goal is to let a developer run the repo's own test suites INSIDE the
-# container so `bats tests/bash/` and `Invoke-Pester tests/powershell/`
+#   - OpenAI Codex CLI           (framework-developer capability, GitHub release)
+# The primary goal is to let a developer run the repo's own test suites INSIDE
+# the container so `bats tests/bash/` and `Invoke-Pester tests/powershell/`
 # reproduce what .github/workflows/ci-scripts.yml runs in CI.
+#
+# This block ALSO provisions the OpenAI Codex CLI as a framework-developer
+# capability for provider-shim development — running `codex login` and
+# `codex --debug` wire traces to reverse-engineer the ChatGPT-subscription
+# backend lane for DAAF's provider shim. It is pinned to DAAF_DEV_CODEX_VERSION
+# and installed Node-free from the pinned GitHub release binary (the musl static
+# build), so no Node/npm toolchain is added. Like every other layer here it is
+# guarded on DAAF_DEV=1, preserving the byte-for-byte-unchanged guarantee for
+# normal builds.
 #
 # CI PARITY (bats): the CI `bats-tests` job installs bats with a plain
 # `apt-get install -y bats` and does NOT vendor bats-support/bats-assert; the
@@ -72,6 +82,7 @@ ARG DAAF_DEV=0
 ARG DAAF_DEV_PWSH_VERSION=7.6.3
 ARG DAAF_DEV_PESTER_VERSION=5.7.1
 ARG DAAF_DEV_PSSA_VERSION=1.24.0
+ARG DAAF_DEV_CODEX_VERSION=0.144.1
 
 # shellcheck + bats from the Debian repo (mirrors the CI bats-tests job).
 RUN if [ "${DAAF_DEV}" = "1" ]; then \
@@ -112,6 +123,31 @@ RUN if [ "${DAAF_DEV}" = "1" ]; then \
         pwsh -NoProfile -Command "Set-PSRepository -Name PSGallery -InstallationPolicy Trusted; \
             Install-Module -Name Pester -RequiredVersion '${DAAF_DEV_PESTER_VERSION}' -Force -Scope AllUsers -SkipPublisherCheck; \
             Install-Module -Name PSScriptAnalyzer -RequiredVersion '${DAAF_DEV_PSSA_VERSION}' -Force -Scope AllUsers"; \
+    fi
+
+# OpenAI Codex CLI from the GitHub release tarball (arch-mapped for amd64/arm64).
+# Node-free install: these assets are self-contained musl static binaries, so no
+# Node/npm toolchain is required. The GitHub release TAG is `rust-v${VERSION}`
+# (the `rust-v` prefix, not a bare `v`). Each tarball contains a single
+# executable named for the full target triple
+# (codex-<triple>-unknown-linux-musl); it is renamed to the arch-generic path
+# /usr/local/bin/codex so `codex` is on PATH for all users (matching R's symlink
+# convention). Used by framework developers for `codex login` + `codex --debug`
+# provider-shim work.
+RUN if [ "${DAAF_DEV}" = "1" ]; then \
+        DEB_ARCH=$(dpkg --print-architecture) \
+        && case "${DEB_ARCH}" in \
+             amd64) CODEX_TRIPLE=x86_64 ;; \
+             arm64) CODEX_TRIPLE=aarch64 ;; \
+             *) echo "DAAF_DEV: unsupported architecture '${DEB_ARCH}' for Codex CLI" >&2; exit 1 ;; \
+           esac \
+        && CODEX_TGZ="codex-${CODEX_TRIPLE}-unknown-linux-musl.tar.gz" \
+        && curl -fsSL -o "/tmp/${CODEX_TGZ}" \
+             "https://github.com/openai/codex/releases/download/rust-v${DAAF_DEV_CODEX_VERSION}/${CODEX_TGZ}" \
+        && tar zxf "/tmp/${CODEX_TGZ}" -C /tmp \
+        && mv "/tmp/codex-${CODEX_TRIPLE}-unknown-linux-musl" /usr/local/bin/codex \
+        && chmod +x /usr/local/bin/codex \
+        && rm -f "/tmp/${CODEX_TGZ}"; \
     fi
 
 # ============================================

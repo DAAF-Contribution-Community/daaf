@@ -51,6 +51,19 @@ services:
       # official Claude Code docs (see anthropics/claude-code issue #3833) --
       # re-verify if a Claude Code upgrade changes where state files land.
       - CLAUDE_CONFIG_DIR=/home/appuser/.claude
+      # Point the Codex CLI's state home into a subfolder of the persisted
+      # .claude volume. Codex stores its OAuth tokens (auth.json) under
+      # CODEX_HOME, so nesting it here means a `codex login` survives rebuilds
+      # AND is captured by backup_daaf.sh (which backs up the daaf-claude-config
+      # volume) -- reusing the same credential-holding volume Claude Code already
+      # uses, so no new volume is needed. The daaf-init container's
+      # `chown -R 1000:1000 /claude-config` (this same volume) fixes ownership of
+      # the codex-daaf subfolder on every boot, so no explicit mkdir/chown here.
+      # Dev-only: the Codex CLI it configures only exists in DAAF_DEV builds, so
+      # this var is inert (harmless) in normal builds. Set in compose (not the
+      # Dockerfile) so it is adjustable without a rebuild, matching
+      # CLAUDE_CONFIG_DIR.
+      - CODEX_HOME=/home/appuser/.claude/codex-daaf
     working_dir: /daaf
     stdin_open: true  # Required for interactive Claude Code sessions
     tty: true
