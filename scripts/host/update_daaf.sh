@@ -451,7 +451,8 @@ handle_stash_conflict() {
 #   changed-file (tier B) passes format success/failure output identically.
 # ASSUMES: CONTAINER_ID points at the running container; docker cp is
 #   ID/name-sensitive (docker compose exec is not, but cp is). The manual-recovery
-#   hint offers `docker compose cp` (project-aware) as the copy/paste-safe form.
+#   hint prints the project-resolved `docker cp <project>-daaf-docker-1:...` form
+#   so it works from a fresh shell where DAAF_PROJECT_NAME may not be exported.
 _sync_copy_one() {
     local repo_path="$1"
     local script

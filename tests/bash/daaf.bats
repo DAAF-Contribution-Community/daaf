@@ -534,6 +534,10 @@ teardown() {
 }
 
 @test "handle_notebooks calls open_url" {
+    # Pin the host-published port to the default so the assertion is independent
+    # of the container's environment. daaf.sh:44 reads DAAF_PORT_MARIMO from the
+    # env (default 2718); a custom-port host (e.g. 3718) would otherwise leak in.
+    export DAAF_PORT_MARIMO=2718
     mock_port_check "2718:yes"
 
     run handle_notebooks
@@ -550,6 +554,10 @@ teardown() {
 }
 
 @test "handle_vscode calls open_url with port 2720" {
+    # Pin the host-published port to the default so the assertion is independent
+    # of the container's environment. daaf.sh:46 reads DAAF_PORT_VSCODE from the
+    # env (default 2720); a custom-port host (e.g. 3720) would otherwise leak in.
+    export DAAF_PORT_VSCODE=2720
     mock_port_check "2720:yes"
 
     run handle_vscode

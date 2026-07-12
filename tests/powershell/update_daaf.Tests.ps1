@@ -326,6 +326,10 @@ Describe "update_daaf.ps1 behavioral tests" {
         }
 
         It "reports copy failures by name with a recovery hint" {
+            # Clear DAAF_PROJECT_NAME so the hint resolves deterministically to the
+            # fallback 'daaf', independent of the host/container environment (this
+            # container exports DAAF_PROJECT_NAME).
+            Remove-Item Env:DAAF_PROJECT_NAME -ErrorAction SilentlyContinue
             Mock docker {
                 $allArgs = $args -join " "
                 if ($allArgs -match "rev-parse HEAD") { return "samehash" }
@@ -337,7 +341,10 @@ Describe "update_daaf.ps1 behavioral tests" {
 
             $output = Sync-HostScript "samehash" 6>&1
             ($output | Where-Object { $_ -match "Warning: could not copy daaf.ps1" }) | Should -Not -BeNullOrEmpty
-            ($output | Where-Object { $_ -match "docker compose cp" }) | Should -Not -BeNullOrEmpty
+            # Manual-recovery hint now uses the project-resolved `docker cp
+            # <project>-daaf-docker-1:` form (c5f69b6). DAAF_PROJECT_NAME is cleared
+            # above, so the fallback 'daaf' is used.
+            ($output | Where-Object { $_ -match "docker cp daaf-daaf-docker-1:/daaf/scripts/host/daaf.ps1 ./daaf.ps1" }) | Should -Not -BeNullOrEmpty
         }
 
         It "existence-heals with an empty OldHead (up-to-date path)" {
@@ -353,13 +360,15 @@ Describe "update_daaf.ps1 behavioral tests" {
             ($output | Where-Object { $_ -match "Updated: daaf.ps1" }) | Should -Not -BeNullOrEmpty
         }
 
-        # --- Tier C: drift warning (never overwrite) ---
+        # --- Tier C: drift heal (overwrite with rolling backup) ---
         # Mirrors the Bash tier-C drift tests. The docker mock implements the bulk
         # `compose cp scripts/host <tmp>/repo_host` stage by creating the repo_host
-        # tree with known contents so a real Get-FileHash compare can run. Drift
-        # never overwrites the host file.
+        # tree with known contents so a real Get-FileHash compare can run. On drift
+        # (f0506f6), the host file is HEALED: back up to <name>.pre-update, then
+        # overwrite with the repo copy. If the backup fails, the host file is left
+        # untouched (old-style warning). The drift loop also skips the running updater.
 
-        It "warns when an unchanged host file drifts from the repo copy" {
+        It "heals a drifted host file with a .pre-update backup" {
             Set-Content -Path "./run_daaf.ps1" -Value "host-customized" -NoNewline
             Mock docker {
                 $allArgs = $args -join " "
@@ -379,9 +388,14 @@ Describe "update_daaf.ps1 behavioral tests" {
             }
 
             $output = Sync-HostScript "samehash" 6>&1
-            ($output | Where-Object { $_ -match "WARNING: run_daaf.ps1 differs from the repository version" }) | Should -Not -BeNullOrEmpty
-            ($output | Where-Object { $_ -match "NOT overwritten" }) | Should -Not -BeNullOrEmpty
-            ($output | Where-Object { $_ -match "one or more host scripts differ" }) | Should -Not -BeNullOrEmpty
+            # (c) per-file "Updated:" line naming the .pre-update backup + closing summary.
+            ($output | Where-Object { $_ -match "Updated: run_daaf.ps1 \(your previous copy was saved as run_daaf.ps1.pre-update\)" }) | Should -Not -BeNullOrEmpty
+            ($output | Where-Object { $_ -match "One or more host files were stale and have been updated" }) | Should -Not -BeNullOrEmpty
+            ($output | Where-Object { $_ -match "restore one by" }) | Should -Not -BeNullOrEmpty
+            # (a) host file now holds the repo version.
+            (Get-Content -Path "./run_daaf.ps1" -Raw) | Should -Match "pristine-repo"
+            # (b) the .pre-update backup holds the OLD host content.
+            (Get-Content -Path "./run_daaf.ps1.pre-update" -Raw) | Should -Match "host-customized"
         }
 
         It "does not warn when the host file matches the repo copy" {
@@ -405,7 +419,7 @@ Describe "update_daaf.ps1 behavioral tests" {
             ($output | Where-Object { $_ -match "differs from the repository version" }) | Should -BeNullOrEmpty
         }
 
-        It "does not overwrite the drifted host file" {
+        It "overwrites the drifted host file with the repo version" {
             Set-Content -Path "./run_daaf.ps1" -Value "host-customized" -NoNewline
             Mock docker {
                 $allArgs = $args -join " "
@@ -423,8 +437,140 @@ Describe "update_daaf.ps1 behavioral tests" {
             }
 
             Sync-HostScript "samehash" 6>&1 | Out-Null
+            # Host file is now the repo copy; the old content is preserved in the backup.
+            (Get-Content -Path "./run_daaf.ps1" -Raw) | Should -Match "pristine-repo"
+            (Get-Content -Path "./run_daaf.ps1" -Raw) | Should -Not -Match "host-customized"
+            (Get-Content -Path "./run_daaf.ps1.pre-update" -Raw) | Should -Match "host-customized"
+        }
+
+        It "does not overwrite when the .pre-update backup fails" {
+            # Backup-failure safety valve (f0506f6): if the rolling .pre-update
+            # backup cannot be written, the host file is NEVER overwritten and the
+            # old-style warning with the project-resolved manual hint is printed.
+            #
+            # Force the backup step to fail with a Copy-Item mock that throws
+            # whenever the destination is the ".pre-update" backup path, and calls
+            # through for every other invocation (e.g. the repo overwrite, which
+            # must never be reached here). This targets exactly the backup
+            # `Copy-Item -Path ./run_daaf.ps1 -Destination ./run_daaf.ps1.pre-update`.
+            Remove-Item Env:DAAF_PROJECT_NAME -ErrorAction SilentlyContinue
+            Set-Content -Path "./run_daaf.ps1" -Value "host-customized" -NoNewline
+            Mock Copy-Item {
+                if ($Destination -match "\.pre-update$") {
+                    throw "simulated backup failure"
+                }
+                & (Get-Command Copy-Item -CommandType Cmdlet) @PSBoundParameters
+            }
+            Mock docker {
+                $allArgs = $args -join " "
+                if ($allArgs -match "rev-parse HEAD") { return "samehash" }
+                if ($allArgs -match "ls-files") { return "scripts/host/run_daaf.ps1" }
+                if ($allArgs -match "compose cp") {
+                    $dest = $args[$args.Count - 1]
+                    New-Item -ItemType Directory -Path $dest -Force | Out-Null
+                    Set-Content -Path (Join-Path $dest "run_daaf.ps1") -Value "pristine-repo" -NoNewline
+                    $global:LASTEXITCODE = 0
+                    return ""
+                }
+                $global:LASTEXITCODE = 0
+                return ""
+            }
+
+            $output = Sync-HostScript "samehash" 6>&1
+            # Host file must be UNCHANGED (backup failed -> never overwrite).
             (Get-Content -Path "./run_daaf.ps1" -Raw) | Should -Match "host-customized"
             (Get-Content -Path "./run_daaf.ps1" -Raw) | Should -Not -Match "pristine-repo"
+            (Test-Path "./run_daaf.ps1.pre-update") | Should -BeFalse
+            # Old-style warning + project-resolved manual hint (fallback 'daaf').
+            ($output | Where-Object { $_ -match "WARNING: run_daaf.ps1 is stale but could not be updated" }) | Should -Not -BeNullOrEmpty
+            ($output | Where-Object { $_ -match "backup step failed" }) | Should -Not -BeNullOrEmpty
+            ($output | Where-Object { $_ -match "docker cp daaf-daaf-docker-1:/daaf/scripts/host/run_daaf.ps1 ./run_daaf.ps1" }) | Should -Not -BeNullOrEmpty
+            # No heal summary since nothing was actually updated.
+            ($output | Where-Object { $_ -match "One or more host files were stale and have been updated" }) | Should -BeNullOrEmpty
+        }
+
+        It "does not overwrite when the repo-to-host write fails after a successful backup" {
+            # Third contract branch (f0506f6): the .pre-update backup SUCCEEDS but
+            # the subsequent repo->host overwrite FAILS. The host file is left
+            # unchanged, the (now-redundant) backup remains, and the "(write
+            # failed)" warning with the project-resolved manual hint is printed.
+            # Distinct, separately worded branch from the "backup step failed" path.
+            #
+            # Force ONLY the overwrite to fail with a Copy-Item mock: the backup
+            # copy (destination "*.pre-update") calls through and succeeds; the
+            # overwrite copy (destination "./run_daaf.ps1", NOT .pre-update) throws.
+            Remove-Item Env:DAAF_PROJECT_NAME -ErrorAction SilentlyContinue
+            Set-Content -Path "./run_daaf.ps1" -Value "host-customized" -NoNewline
+            Mock Copy-Item {
+                if ($Destination -match "\.pre-update$") {
+                    # Backup call-through: perform the real copy via .NET rather than
+                    # calling Copy-Item (Pester intercepts Copy-Item by name even when
+                    # module-qualified -> infinite recursion / call-depth overflow).
+                    $src = (Resolve-Path $Path).Path
+                    $dst = Join-Path (Get-Location).Path (Split-Path $Destination -Leaf)
+                    [System.IO.File]::Copy($src, $dst, $true)
+                } else {
+                    throw "simulated overwrite failure"
+                }
+            }
+            Mock docker {
+                $allArgs = $args -join " "
+                if ($allArgs -match "rev-parse HEAD") { return "samehash" }
+                if ($allArgs -match "ls-files") { return "scripts/host/run_daaf.ps1" }
+                if ($allArgs -match "compose cp") {
+                    $dest = $args[$args.Count - 1]
+                    New-Item -ItemType Directory -Path $dest -Force | Out-Null
+                    Set-Content -Path (Join-Path $dest "run_daaf.ps1") -Value "pristine-repo" -NoNewline
+                    $global:LASTEXITCODE = 0
+                    return ""
+                }
+                $global:LASTEXITCODE = 0
+                return ""
+            }
+
+            $output = Sync-HostScript "samehash" 6>&1
+            # Host file UNCHANGED (overwrite failed -> never leaves a partial copy).
+            (Get-Content -Path "./run_daaf.ps1" -Raw) | Should -Match "host-customized"
+            (Get-Content -Path "./run_daaf.ps1" -Raw) | Should -Not -Match "pristine-repo"
+            # Backup SUCCEEDED, so the .pre-update file exists with the old content.
+            (Test-Path "./run_daaf.ps1.pre-update") | Should -BeTrue
+            (Get-Content -Path "./run_daaf.ps1.pre-update" -Raw) | Should -Match "host-customized"
+            # "(write failed)"-branch warning + project-resolved manual hint (fallback 'daaf').
+            ($output | Where-Object { $_ -match "WARNING: run_daaf.ps1 is stale but could not be updated" }) | Should -Not -BeNullOrEmpty
+            ($output | Where-Object { $_ -match "write failed" }) | Should -Not -BeNullOrEmpty
+            ($output | Where-Object { $_ -match "docker cp daaf-daaf-docker-1:/daaf/scripts/host/run_daaf.ps1 ./run_daaf.ps1" }) | Should -Not -BeNullOrEmpty
+            # No heal summary, and NOT the "backup step failed" wording (other branch).
+            ($output | Where-Object { $_ -match "One or more host files were stale and have been updated" }) | Should -BeNullOrEmpty
+            ($output | Where-Object { $_ -match "backup step failed" }) | Should -BeNullOrEmpty
+        }
+
+        It "skips the running updater script itself in the drift loop" {
+            # The drift loop must never overwrite update_daaf.ps1 from tier C, even
+            # when it exists on host and drifts from the repo copy (self-overwrite
+            # mid-execution risks corrupted content; Tier B is the sanctioned refresh).
+            Set-Content -Path "./update_daaf.ps1" -Value "host-updater" -NoNewline
+            Set-Content -Path "./run_daaf.ps1" -Value "identical" -NoNewline
+            Mock docker {
+                $allArgs = $args -join " "
+                if ($allArgs -match "rev-parse HEAD") { return "samehash" }
+                if ($allArgs -match "ls-files") { return "scripts/host/update_daaf.ps1`nscripts/host/run_daaf.ps1" }
+                if ($allArgs -match "compose cp") {
+                    $dest = $args[$args.Count - 1]
+                    New-Item -ItemType Directory -Path $dest -Force | Out-Null
+                    Set-Content -Path (Join-Path $dest "update_daaf.ps1") -Value "repo-updater" -NoNewline
+                    Set-Content -Path (Join-Path $dest "run_daaf.ps1") -Value "identical" -NoNewline
+                    $global:LASTEXITCODE = 0
+                    return ""
+                }
+                $global:LASTEXITCODE = 0
+                return ""
+            }
+
+            $output = Sync-HostScript "samehash" 6>&1
+            # The running updater must be byte-for-byte unchanged (never healed).
+            (Get-Content -Path "./update_daaf.ps1" -Raw) | Should -Match "host-updater"
+            (Test-Path "./update_daaf.ps1.pre-update") | Should -BeFalse
+            ($output | Where-Object { $_ -match "Updated: update_daaf.ps1" }) | Should -BeNullOrEmpty
         }
 
         It "does not drift-check a freshly-copied (tier A) file" {

@@ -37,12 +37,12 @@ Windows now has its own native Control Panel, `daaf.ps1` (with its `daaf_lib.ps1
 
 The macOS/Linux Control Panel (`daaf.sh`) was hardened for older shells -- most importantly, it now runs correctly on the Bash 3.2 that ships by default with macOS, so Mac users no longer need a newer Bash to use it.
 
-### Self-Healing Updater and Drift Warnings
+### Self-Healing Updater and Drift Healing
 
 The `update_daaf` script continues to get more resilient:
 
 - **Self-healing sync:** Host tool files that a previous update missed (for example, because they were added in a release you skipped over) are now delivered automatically on the next run, even when there is nothing new to pull.
-- **Drift warnings:** If a host script on your machine differs from the repository version and was not part of this update, the updater now *warns* you by name instead of silently leaving it stale. It **never overwrites** the file -- the difference may be a deliberate customization of yours -- and tells you the exact command to adopt the repository version if you want it.
+- **Drift healing:** If a host script on your machine differs from the repository version and was not part of this update, the updater now heals it automatically: your existing copy is first saved alongside it as `<name>.pre-update`, then the file is updated to the repository version. Host tool scripts have no supported local-edit use case -- all of your configuration lives in `environment_settings.txt`, which the updater never syncs or touches -- so a differing host script means staleness, not customization. If the backup cannot be written, the file is **never overwritten**; the updater instead warns you by name and prints the exact command to adopt the repository version manually. The closing summary explains which files were healed and how to restore any of them by renaming its `.pre-update` copy back.
 - **Clearer conflict guidance:** When re-applying your local Dockerfile / docker-compose customizations conflicts with an update, the message now explains plainly what happened, reassures you that your changes are safe in a git stash, and points you to DAAF's User Support mode for a guided walkthrough.
 
 ### Multi-Instance Support

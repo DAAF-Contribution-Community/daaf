@@ -382,6 +382,11 @@ teardown() {
         trap - ERR
         set +eu
 
+        # Unset DAAF_PROJECT_NAME so the hint resolves deterministically to the
+        # fallback "daaf", independent of the host/container environment (this
+        # container exports DAAF_PROJECT_NAME).
+        unset DAAF_PROJECT_NAME
+
         docker() {
             case "$*" in
                 *rev-parse*HEAD*) echo "samehash" ;;
@@ -396,8 +401,12 @@ teardown() {
     assert_success
     assert_output --partial "Warning: could not copy daaf.sh"
     assert_output --partial "Warning: could not copy run_daaf.sh"
-    # Manual-recovery hint now uses the project-aware `docker compose cp` form.
-    assert_output --partial "docker compose cp"
+    # Manual-recovery hint now uses the project-resolved `docker cp
+    # <project>-daaf-docker-1:` form (c5f69b6): a fresh user shell lacks
+    # DAAF_PROJECT_NAME, so `docker compose cp` would resolve the wrong project.
+    # DAAF_PROJECT_NAME is unset above, so the fallback 'daaf' is used.
+    assert_output --partial "docker cp daaf-daaf-docker-1:/daaf/scripts/host/daaf.sh ./daaf.sh"
+    assert_output --partial "docker cp daaf-daaf-docker-1:/daaf/scripts/host/run_daaf.sh ./run_daaf.sh"
 }
 
 @test "update: sync_host_scripts up-to-date path heals with empty old_head" {
@@ -423,16 +432,20 @@ teardown() {
     assert_output --partial "Updated: daaf.sh"
 }
 
-# --- sync_host_scripts drift-warning tests (tier C) ---
+# --- sync_host_scripts drift-heal tests (tier C) ---
 #
 # Tier C compares host files that EXIST and were NOT copied this run against the
 # repo copy staged via a bulk `docker compose cp scripts/host <tmp>/repo_host`.
 # The mock below implements `compose cp` by populating the destination tree so a
-# local `cmp -s` can run for real. It NEVER overwrites a drifted host file.
+# local `cmp -s` can run for real. On drift (f0506f6), it now HEALS the host
+# file: back up the old copy to `<name>.pre-update`, then overwrite with the repo
+# version. If the backup step fails, the host file is left untouched (old-style
+# warning). The drift loop also skips the currently-running updater script.
 
-@test "update: sync_host_scripts warns when an unchanged host file drifts from repo" {
+@test "update: sync_host_scripts heals a drifted host file with a .pre-update backup" {
     # run_daaf.sh exists on host with DIFFERENT content than the repo copy, and
-    # is NOT in the changed range -> tier A/B skip it, tier C must warn.
+    # is NOT in the changed range -> tier A/B skip it, tier C must heal it:
+    # overwrite with the repo version and save the old copy as run_daaf.sh.pre-update.
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
         trap - ERR
@@ -457,11 +470,22 @@ teardown() {
         }
 
         sync_host_scripts "samehash"
+        echo "---HOSTFILE---"
+        cat ./run_daaf.sh
+        echo "---BACKUP---"
+        cat ./run_daaf.sh.pre-update
     '
     assert_success
-    assert_output --partial "WARNING: run_daaf.sh differs from the repository version"
-    assert_output --partial "NOT overwritten"
-    assert_output --partial "one or more host scripts differ"
+    # (c) per-file "Updated:" line naming the .pre-update backup, plus the closing summary.
+    assert_output --partial "Updated: run_daaf.sh (your previous copy was saved as run_daaf.sh.pre-update)"
+    assert_output --partial "One or more host files were stale and have been updated"
+    assert_output --partial "restore one by"
+    # (a) host file now holds the repo version.
+    assert_output --partial "---HOSTFILE---"
+    assert_output --partial "pristine-repo"
+    # (b) the .pre-update backup holds the OLD host content.
+    assert_output --partial "---BACKUP---"
+    assert_output --partial "host-customized"
 }
 
 @test "update: sync_host_scripts does NOT warn when host file matches repo" {
@@ -493,8 +517,9 @@ teardown() {
     refute_output --partial "differs from the repository version"
 }
 
-@test "update: sync_host_scripts drift check does NOT overwrite the host file" {
-    # The drifted host file must be byte-for-byte unchanged after the run.
+@test "update: sync_host_scripts drift heal overwrites the host file with the repo version" {
+    # The drifted host file must end up byte-for-byte identical to the repo copy,
+    # and the OLD host content must be preserved in <name>.pre-update.
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
         trap - ERR
@@ -517,12 +542,170 @@ teardown() {
         }
 
         sync_host_scripts "samehash"
-        cat ./run_daaf.sh
+        # Assert the byte-for-byte outcome directly (not via --partial): the host
+        # file is now the repo copy, and the backup is exactly the old content.
+        [ "$(cat ./run_daaf.sh)" = "pristine-repo" ] && echo "HOST_OK"
+        [ "$(cat ./run_daaf.sh.pre-update)" = "host-customized" ] && echo "BACKUP_OK"
     '
     assert_success
-    # Content unchanged: still the host customization, never the repo copy.
-    assert_output --partial "host-customized"
-    refute_output --partial "pristine-repo"
+    assert_output --partial "HOST_OK"
+    assert_output --partial "BACKUP_OK"
+}
+
+@test "update: sync_host_scripts drift does NOT overwrite when the .pre-update backup fails" {
+    # Backup-failure safety valve (f0506f6): if the rolling .pre-update backup
+    # cannot be written, the host file is NEVER overwritten and the old-style
+    # warning with the project-resolved manual hint is printed instead.
+    #
+    # Force the backup step to fail with a `cp` shell-function override that
+    # returns non-zero whenever the destination is the ".pre-update" backup path,
+    # and delegates to the real `cp` for every other invocation (e.g. the repo
+    # overwrite, which must never be reached here). This targets exactly the
+    # `cp -f "./run_daaf.sh" "./run_daaf.sh.pre-update"` backup line.
+    run bash -c '
+        DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+        trap - ERR
+        set +eu
+
+        unset DAAF_PROJECT_NAME
+        printf "host-customized\n" > ./run_daaf.sh
+
+        cp() {
+            case "${!#}" in
+                *.pre-update) return 1 ;;
+                *) command cp "$@" ;;
+            esac
+        }
+
+        docker() {
+            case "$*" in
+                *rev-parse*HEAD*) echo "samehash" ;;
+                *ls-files*) printf "scripts/host/run_daaf.sh\n" ;;
+                *"compose cp"*)
+                    dest="${@: -1}"
+                    command mkdir -p "${dest}"
+                    printf "pristine-repo\n" > "${dest}/run_daaf.sh"
+                    return 0 ;;
+                cp*) return 0 ;;
+                *) return 0 ;;
+            esac
+        }
+
+        sync_host_scripts "samehash"
+        # Host file must be UNCHANGED (backup failed -> never overwrite).
+        [ "$(cat ./run_daaf.sh)" = "host-customized" ] && echo "HOST_UNCHANGED"
+        [ ! -e ./run_daaf.sh.pre-update ] && echo "NO_BACKUP_FILE"
+    '
+    assert_success
+    assert_output --partial "HOST_UNCHANGED"
+    assert_output --partial "NO_BACKUP_FILE"
+    # Old-style warning with the project-resolved manual hint (DAAF_PROJECT_NAME
+    # unset -> fallback "daaf"). The "backup step failed" branch is the one hit.
+    assert_output --partial "WARNING: run_daaf.sh is stale but could not be updated"
+    assert_output --partial "backup step failed"
+    assert_output --partial "docker cp daaf-daaf-docker-1:/daaf/scripts/host/run_daaf.sh ./run_daaf.sh"
+    # No heal summary since nothing was actually updated.
+    refute_output --partial "One or more host files were stale and have been updated"
+}
+
+@test "update: sync_host_scripts drift does NOT overwrite when the repo->host write fails after a successful backup" {
+    # Third contract branch (f0506f6): the .pre-update backup SUCCEEDS but the
+    # subsequent repo->host overwrite FAILS. The host file is left unchanged, the
+    # (now-redundant) backup remains, and the "(write failed)" warning with the
+    # project-resolved manual hint is printed. This is a distinct, separately
+    # worded branch from the "backup step failed" path above.
+    #
+    # Force ONLY the overwrite to fail with a destination-aware `cp` override: the
+    # backup copy (destination "*.pre-update") delegates to the real `cp` and
+    # succeeds; the overwrite copy (destination "./run_daaf.sh", NOT .pre-update)
+    # returns non-zero. Order matters -- the backup runs first and must succeed,
+    # so the .pre-update file exists before the failing overwrite.
+    run bash -c '
+        DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+        trap - ERR
+        set +eu
+
+        unset DAAF_PROJECT_NAME
+        printf "host-customized\n" > ./run_daaf.sh
+
+        cp() {
+            case "${!#}" in
+                *.pre-update) command cp "$@" ;;
+                *) return 1 ;;
+            esac
+        }
+
+        docker() {
+            case "$*" in
+                *rev-parse*HEAD*) echo "samehash" ;;
+                *ls-files*) printf "scripts/host/run_daaf.sh\n" ;;
+                *"compose cp"*)
+                    dest="${@: -1}"
+                    command mkdir -p "${dest}"
+                    printf "pristine-repo\n" > "${dest}/run_daaf.sh"
+                    return 0 ;;
+                cp*) return 0 ;;
+                *) return 0 ;;
+            esac
+        }
+
+        sync_host_scripts "samehash"
+        # Host file UNCHANGED (overwrite failed -> never leaves a partial repo copy).
+        [ "$(cat ./run_daaf.sh)" = "host-customized" ] && echo "HOST_UNCHANGED"
+        # Backup SUCCEEDED, so the .pre-update file exists and holds the old content.
+        [ "$(cat ./run_daaf.sh.pre-update)" = "host-customized" ] && echo "BACKUP_EXISTS"
+    '
+    assert_success
+    assert_output --partial "HOST_UNCHANGED"
+    assert_output --partial "BACKUP_EXISTS"
+    # "(write failed)"-branch warning + project-resolved manual hint (fallback "daaf").
+    assert_output --partial "WARNING: run_daaf.sh is stale but could not be updated"
+    assert_output --partial "write failed"
+    assert_output --partial "docker cp daaf-daaf-docker-1:/daaf/scripts/host/run_daaf.sh ./run_daaf.sh"
+    # This branch does not set drift_found -> no heal summary, and it is NOT the
+    # "backup step failed" wording (that is the other branch).
+    refute_output --partial "One or more host files were stale and have been updated"
+    refute_output --partial "backup step failed"
+}
+
+@test "update: sync_host_scripts drift loop skips the running updater script itself" {
+    # The drift loop must never overwrite update_daaf.sh from tier C, even when it
+    # exists on host and drifts from the repo copy (self-overwrite mid-execution
+    # risks running corrupted content; Tier B is the sanctioned self-refresh).
+    run bash -c '
+        DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+        trap - ERR
+        set +eu
+
+        # update_daaf.sh present on host and DRIFTED; run_daaf.sh present + identical
+        # (so the run has no other drift and prints no heal output).
+        printf "host-updater\n" > ./update_daaf.sh
+        printf "identical\n" > ./run_daaf.sh
+
+        docker() {
+            case "$*" in
+                *rev-parse*HEAD*) echo "samehash" ;;
+                *ls-files*) printf "scripts/host/update_daaf.sh\nscripts/host/run_daaf.sh\n" ;;
+                *"compose cp"*)
+                    dest="${@: -1}"
+                    mkdir -p "${dest}"
+                    printf "repo-updater\n" > "${dest}/update_daaf.sh"
+                    printf "identical\n" > "${dest}/run_daaf.sh"
+                    return 0 ;;
+                cp*) return 0 ;;
+                *) return 0 ;;
+            esac
+        }
+
+        sync_host_scripts "samehash"
+        # The running updater must be byte-for-byte unchanged (never healed).
+        [ "$(cat ./update_daaf.sh)" = "host-updater" ] && echo "UPDATER_UNTOUCHED"
+        [ ! -e ./update_daaf.sh.pre-update ] && echo "NO_UPDATER_BACKUP"
+    '
+    assert_success
+    assert_output --partial "UPDATER_UNTOUCHED"
+    assert_output --partial "NO_UPDATER_BACKUP"
+    refute_output --partial "Updated: update_daaf.sh"
 }
 
 @test "update: sync_host_scripts does NOT drift-check a freshly-copied file" {
