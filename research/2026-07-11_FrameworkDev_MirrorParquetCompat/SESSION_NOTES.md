@@ -72,8 +72,77 @@
   (one benign local-path FAQ mention, correctly uncautioned).
   Template phrase-count of 2 explained: 1 NOTE + its carry-forward directive
   quoting the term.
-- Awaiting final user approval at Checkpoint 2. All changes uncommitted on
-  branch daaf_dev_R2 (commits are user-initiated per harness rule).
+- User approved final state; committed as 15fa813 on daaf_dev_R2
+  (41 files: view-safe pattern + caution propagation + session workspace;
+  parquet samples excluded via gitignore *.parquet rule)
+
+## Extension 1: CCD Directory Truncation Diagnosis (COMPLETE, 2026-07-11)
+
+- ROOT CAUSE (confirmed via hypothesis testing, scripts/debug/01-02): R default
+  getOption("timeout") = 60s. arrow::read_parquet(https-url) delegates to R
+  download.file(), which caps the ENTIRE transfer at 60s. CCD directory is
+  224,216,539 bytes at 0.55-1.4 MB/s HF-CDN throughput (needs 150-400s) ->
+  truncated at ~103.7MB (~71s). CDN itself stable (accept-ranges, no resets).
+- Confirmation: identical call with options(timeout=600) succeeded:
+  3,688,237 rows x 52 cols in 282.9s. curl::multi_download(resume=TRUE) also
+  fetched full file (bytes == content-length). CCD directory has 0 view columns.
+- Fixes verified: (A) options(timeout = max(600, getOption("timeout"))) —
+  one-liner; (B) curl::multi_download to disk + view-safe local read for
+  100MB+ files. mirrors.yaml declares timeout: 300 but R pattern never applied
+  it — Python unaffected (polars does not use R socket timeout).
+- Documentation recommendations (NOT yet applied): fetch-patterns.md R branches
+  (both eager_parquet and lazy_csv route through download.file), Format
+  Handling caveat, Error Handling timeout row, mirrors.yaml coverage_notes.
+
+## Extension 2: Python-R Equivalence Smoke Tests (COMPLETE, 2026-07-11)
+
+- ZERO DRIFT. 5 datasets (SAIPE, MEPS, EDFacts 2018 [2 string_view cols],
+  CRDC [zero-pad IDs], IPEDS [141 cols]) x 8 checks: all PASS
+  (scripts/smoke_tests/01-08; 07 failed+versioned to 07_b per protocol).
+- Rigor: whole-column SHA-256 digests on 8 risk columns (all match);
+  negative control caught 4/4 injected drifts; non-vacuity confirmed
+  (1.58M leading-zero CRDC IDs, 58 multibyte-UTF-8 names, big int64s present).
+- Type mapping (lossless, value-exact): Int64 -> R integer (<2^31) or
+  bit64::integer64 (>=2^31; ncessch up to 720e9 verified exact via digest);
+  Float64 -> double; String/string_view -> character. No boolean cols sampled.
+- Known gap (MEDIUM generalization): binary_view/large_string_view and true
+  empty-vs-null string cases absent from samples, so untested empirically.
+- Documentation recommendation (NOT yet applied): int64/integer64 caveat near
+  view-safe pattern in io.md and/or fetch-patterns.md.
+
+## Extension 3: Timeout/int64 Documentation Pass + df/stats::df Blocker (COMPLETE, 2026-07-11)
+
+- framework-engineer encoded timeout fix (options(timeout = max(600,
+  getOption("timeout"))) + curl::multi_download large-file variant) and int64
+  caveat across fetch-patterns.md, SKILL.md, mirrors.yaml, io.md; verified
+  end-to-end via scripts/smoke_tests/09_ccd-directory-hf-fetch_a.R
+  (huggingface mirror, 3,688,237 x 52, 103.6s; 09 failed with locked-binding
+  error, versioned per protocol).
+- 3-angle review found a REAL BLOCKER the engineer had misattributed to the
+  harness: the canonical single-file loop's `df <<-` collides with locked
+  stats::df (top-level <<- skips globalenv, searches package path). Reviewer
+  reproduced with live probes. PRE-EXISTING bug, exposed by verification.
+- Orchestrator fixes (all verified): renamed loop target df -> mirror_df with
+  mechanism REASONING + `df <- mirror_df` handoff (fetch-patterns.md);
+  282.9s -> observed range; honest Validate comment (parquet footer argument);
+  "CSV mirror" -> "next mirror" x3 (SKILL.md, fetch-patterns.md, mirrors.yaml);
+  lazy_csv timeout bullet (fetch-patterns.md) + timeout line in SKILL.md
+  lazy_csv R block; io.md int64 lead-in ("general R-arrow behavior — not
+  caused by the view cast").
+- Empirical proof: scripts/smoke_tests/10_verify-fixed-mirror-loop.R (exit 0,
+  3s): df <<- fails / mirror_df <<- assigns; fixed loop fetches SAIPE from
+  huggingface (368,967 x 10, values match reference).
+- Re-review (2-angle): all CLEAN. Zero stale `df <<-` in executable/template
+  positions framework-wide; every live <<- target empirically probed
+  collision-free (only remaining unsafe name `df` appears solely in
+  explanatory comments); all 9 options(timeout ...) occurrences identical;
+  YAML parses.
+- Uncommitted: education-data-query (SKILL.md, fetch-patterns.md, mirrors.yaml),
+  tidyverse io.md, session workspace additions (debug/01-02, smoke_tests/01-10,
+  scratch 09, SESSION_NOTES). NOTE: working tree also carries UNRELATED user
+  modifications (block-remote-isolation.sh, settings.json, CLAUDE.md,
+  BOUNDARIES.md, test_safety_hooks.sh, user_reference/07_faq_technical.md) —
+  do not stage those with this session's commit.
 
 ## Phase 3 Step 2 + Verification (COMPLETE)
 

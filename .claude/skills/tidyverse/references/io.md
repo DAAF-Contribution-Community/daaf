@@ -74,6 +74,19 @@ Notes:
   is no leading-zero or type-coercion risk from the cast.
 - Python (Polars/pyarrow) reads these files without any special handling — this is
   an R `arrow`-binding limitation only.
+- **Int64 column mapping (general R-arrow behavior — not caused by the view
+  cast):** R `arrow` maps a parquet `Int64` column to base R
+  `integer` when every value fits in 32 bits, and to `bit64::integer64` when any
+  value exceeds it (e.g., NCES school IDs `ncessch` reach ~720 billion). This is
+  value-exact — verified byte-identical against Python polars via whole-column
+  SHA-256 digests, so no data is lost — but downstream joins and arithmetic on an
+  `integer64` column need `bit64`-aware handling (load `library(bit64)`; naive
+  `as.integer()` or mixing with plain-integer keys will overflow or mis-compare).
+- **Large HTTP reads need a raised timeout:** reading parquet or CSV from a URL in
+  R routes through `download.file()`, which caps the whole transfer at
+  `getOption("timeout")` (default 60s), so large remote files truncate mid-transfer.
+  Raise it first with `options(timeout = max(600, getOption("timeout")))`, or use
+  `curl::multi_download()` for very large or flaky transfers.
 
 ### Write Parquet
 

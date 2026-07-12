@@ -178,6 +178,19 @@ library(httr2)
 FETCH_DELAY_SECONDS <- 3
 last_fetch_time <- 0.0
 
+# --- Download Timeout (R only) ---
+# INTENT: Prevent large mirror files from truncating mid-transfer.
+# REASONING: Both arrow::read_parquet(url) and readr::read_csv(url) route their
+#   HTTP transfer through R's download.file(), which enforces getOption("timeout")
+#   (default 60s) on the ENTIRE transfer — not per-idle-period. Large mirror files
+#   (e.g., ccd/schools_ccd_directory.parquet, ~224MB) need 150-400s at real CDN
+#   throughput (~0.55-1.4 MB/s), so they truncate at ~60s with a
+#   "downloaded length X != reported length Y" warning and silently fall through
+#   to the next (CSV) mirror. mirrors.yaml declares timeout: 300 per mirror, but
+#   the R read functions never consult it — the setting must be applied here.
+#   Python (Polars/pyarrow) uses its own HTTP client and is unaffected.
+options(timeout = max(600, getOption("timeout")))
+
 rate_limit <- function() {
   if (last_fetch_time > 0) {
     elapsed <- as.numeric(Sys.time()) - last_fetch_time
@@ -217,7 +230,14 @@ DATASET_PATH <- "saipe/districts_saipe"
 
 rate_limit()
 last_error <- NULL
-df <- NULL
+# REASONING (variable name): the loop target is mirror_df, deliberately NOT df.
+#   `<<-` evaluated at the top level of a script searches the package search path
+#   (it skips the global environment's own frame), so `df <<- ...` finds the
+#   LOCKED binding stats::df first and fails with
+#   "cannot change value of locked binding for 'df'". Any loop variable whose
+#   name masks an attached-package object (df, c, t, T, data, ...) breaks the
+#   <<- idiom this way — use a distinctive name.
+mirror_df <- NULL
 
 for (mirror in mirrors) {
   mirror_name <- mirror$name
@@ -258,16 +278,16 @@ for (mirror in mirrors) {
           else fld$type
         arrow::field(fld$name, new_type)
       })
-      df <<- as.data.frame(tbl$cast(arrow::schema(fields)))
+      mirror_df <<- as.data.frame(tbl$cast(arrow::schema(fields)))
     } else if (strategy == "lazy_csv") {
       # REASONING: CSV files can be large. readr handles efficiently.
       # ASSUMES: CSV has standard column names matching parquet schema.
-      df <<- readr::read_csv(url, show_col_types = FALSE)
+      mirror_df <<- readr::read_csv(url, show_col_types = FALSE)
     } else {
       cat(sprintf("  Skipping %s: unknown read_strategy '%s'\n", mirror_name, strategy))
       next
     }
-    cat(sprintf("  Success %s: %s rows\n", mirror_name, format(nrow(df), big.mark = ",")))
+    cat(sprintf("  Success %s: %s rows\n", mirror_name, format(nrow(mirror_df), big.mark = ",")))
     "success"
   }, error = function(e) {
     last_error <<- e
@@ -278,7 +298,11 @@ for (mirror in mirrors) {
   if (identical(result, "success")) break
 }
 
-if (is.null(df)) stop(paste("All mirrors failed. Last error:", conditionMessage(last_error)))
+if (is.null(mirror_df)) stop(paste("All mirrors failed. Last error:", conditionMessage(last_error)))
+
+# Hand off to the conventional working name (plain <- in the global frame is
+# unaffected by the stats::df masking that breaks <<- above)
+df <- mirror_df
 
 # Apply filters locally
 if (!is.null(years)) {
@@ -350,6 +374,11 @@ def fetch_yearly_from_mirrors(
 #     Example: "ccd/schools_ccd_enrollment_{year}"
 #   years: Integer vector of years to fetch.
 # Returns: Combined tibble across all years.
+# NOTE (R download timeout): if you run this yearly block WITHOUT the single-file
+#   Config block above, set the download timeout here too — download.file()'s 60s
+#   default truncates large yearly files. Any large per-year file needs it:
+#     options(timeout = max(600, getOption("timeout")))
+#   (See the single-file Config block for the full REASONING. Python is unaffected.)
 
 path_template <- "ccd/schools_ccd_enrollment_{year}"
 years <- c(2020, 2021, 2022)
@@ -420,6 +449,81 @@ for (year in years) {
 if (length(frames) == 0) stop(paste("No data retrieved for any year in", paste(years, collapse = ", ")))
 result <- bind_rows(frames)
 cat(sprintf("\n  Combined: %s rows x %d cols\n", format(nrow(result), big.mark = ","), ncol(result)))
+```
+
+### Large Files (100MB+), R: download-to-disk variant
+
+For large mirror files, raising `options(timeout = ...)` (shown in the patterns
+above) is sufficient — `arrow::read_parquet(url)` completes once the timeout
+exceeds the transfer time (confirmed: `ccd/schools_ccd_directory.parquet`, ~224MB,
+read directly from URL in ~100-285s across observed runs — CDN throughput varies
+several-fold, so treat any single timing as an observation, not a guarantee).
+Prefer that in-memory path when it works, since it leaves no on-disk artifact to
+manage.
+
+When you want a **resumable, progress-aware** download instead — for very large
+files (>~100MB) or flaky links where a mid-transfer failure is costly — download
+to disk with `curl::multi_download()` and then do a view-safe local read. Unlike
+`download.file()`, `curl::multi_download()` streams to disk, resumes partial
+transfers, and does not depend on `getOption("timeout")` (it uses libcurl's own
+connect/low-speed timeouts).
+
+```r
+library(arrow)
+library(curl)
+
+# --- Config ---
+# INTENT: Fetch a large mirror parquet file to disk, resumably, then read it.
+# REASONING: curl::multi_download() streams to disk and resumes partial transfers,
+#   so a dropped connection does not restart from zero. It bypasses R's
+#   download.file() 60s timeout entirely (uses libcurl connect/low-speed timeouts).
+# ASSUMES: DATASET_PATH and the huggingface root_url resolve to a real parquet URL;
+#   cache_dir is inside the project (never /tmp — outside the backup/audit boundary).
+DATASET_PATH <- "ccd/schools_ccd_directory"
+root_url <- "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main"
+url <- sprintf("%s/%s.parquet", root_url, DATASET_PATH)
+
+cache_dir <- file.path(PROJECT_DIR, "scripts", "scratch")   # inside project; NOT /tmp
+dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+dest <- file.path(cache_dir, paste0(gsub("/", "_", DATASET_PATH), ".parquet"))
+
+# --- Download (resumable) ---
+dl <- curl::multi_download(url, dest, resume = TRUE)
+# REASONING: multi_download() returns a status frame rather than throwing on HTTP
+#   errors, so validate explicitly. status_code 200 == fresh full transfer;
+#   206 == a resume completed. Both are byte-complete successes.
+stopifnot(isTRUE(dl$success), dl$status_code %in% c(200L, 206L))
+cat(sprintf("  Downloaded %s to %s\n",
+            format(file.info(dest)$size, big.mark = ","), dest))
+
+# --- View-safe local read ---
+# REASONING: identical view-safe cast as the URL read — mirror files are
+#   Polars-written and may declare string_view columns the R arrow binding cannot
+#   convert directly. The cast is a no-op on plain-string files, so it is safe here.
+tbl <- arrow::read_parquet(dest, as_data_frame = FALSE)
+sch <- tbl$schema
+fields <- lapply(seq_len(length(sch$names)), function(i) {
+  fld <- sch$field(i - 1L)                                # 0-indexed (C++ convention)
+  ts  <- fld$type$ToString()
+  new_type <- if (grepl("large_string_view", ts, fixed = TRUE)) arrow::large_utf8()
+    else if (grepl("string_view", ts, fixed = TRUE)) arrow::utf8()
+    else if (grepl("binary_view", ts, fixed = TRUE)) arrow::binary()
+    else fld$type
+  arrow::field(fld$name, new_type)
+})
+df <- as.data.frame(tbl$cast(arrow::schema(fields)))
+
+# --- Validate ---
+# INTENT: confirm the download succeeded and the file reads fully.
+# REASONING: dl$success + status 200/206 above guard the transfer, and parquet
+#   stores its footer at END of file — so a successful arrow read of dest is
+#   itself strong evidence the file is not truncated. For strict byte-level
+#   verification, HEAD the URL for content-length and compare to
+#   file.info(dest)$size before reading.
+stopifnot(nrow(df) > 0)
+cat(sprintf("  Read %s rows x %d cols\n", format(nrow(df), big.mark = ","), ncol(df)))
+# Optional: delete the artifact once loaded to avoid retaining a large scratch file.
+# file.remove(dest)
 ```
 
 ---
@@ -930,6 +1034,16 @@ Format-specific read behavior is driven by the mirror's `read_strategy` field in
   (e.g., `meps/schools_meps`), so it is safe for every read. **Do not** substitute
   `arrow::open_dataset(url) |> dplyr::collect()` — it hits the same error. Python
   (Polars/pyarrow) is unaffected.
+- **R only — large-file download timeout:** `arrow::read_parquet(url)` routes its
+  transfer through R's `download.file()`, which caps the ENTIRE transfer at
+  `getOption("timeout")` (default 60s). Large mirror files (e.g.,
+  `ccd/schools_ccd_directory.parquet`, ~224MB) truncate at ~60s with a
+  `downloaded length X != reported length Y` warning and silently fall through to
+  the next mirror in priority order (the CSV fallback, in the default
+  configuration). Raise the timeout before the mirror loop:
+  `options(timeout = max(600, getOption("timeout")))`. For very large or flaky
+  transfers, prefer the download-to-disk variant (`curl::multi_download()`) in the
+  Mirror Resolution section. Python (Polars/pyarrow) is unaffected.
 
 ### `lazy_csv` (e.g., CSV files)
 - Use `pl.scan_csv(url, infer_schema_length=10000)` for lazy loading
@@ -938,6 +1052,7 @@ Format-specific read behavior is driven by the mirror's `read_strategy` field in
 - Large files (500MB+) — always use lazy loading, never `pl.read_csv()` directly
 - **CRDC ID columns:** When reading any CRDC dataset from CSV, pass `schema_overrides={"ncessch": pl.Utf8, "leaid": pl.Utf8, "crdc_id": pl.Utf8}` to preserve zero-padded identifiers. Without this override, Polars infers Int64, destroying leading zeros for FIPS 01-09 states (~19% of rows). See `education-data-source-crdc` skill.
 - **CRDC ID columns (R):** `readr::read_csv()` has the identical failure mode — its type inference reads zero-padded IDs as numeric. Pass `col_types = readr::cols(ncessch = readr::col_character(), leaid = readr::col_character(), crdc_id = readr::col_character())` on any CRDC CSV read.
+- **R only — large-file download timeout:** `readr::read_csv(url)` routes its transfer through `download.file()` exactly like the parquet read, so the same 60s `getOption("timeout")` cap truncates large CSVs (these files reach 500MB+). Apply the same `options(timeout = max(600, getOption("timeout")))` before reading — see the `eager_parquet` bullet above.
 
 ---
 
@@ -946,7 +1061,7 @@ Format-specific read behavior is driven by the mirror's `read_strategy` field in
 | Error | Cause | Resolution |
 |-------|-------|------------|
 | HTTP 404 | File not in this mirror | Fall through to next mirror |
-| Timeout | Large file or slow connection | Increase timeout; fall through |
+| Timeout | Large file or slow connection | Increase timeout; fall through. **R only:** both read strategies route through `download.file()`, capped at `getOption("timeout")` (default 60s) — raise it with `options(timeout = max(600, getOption("timeout")))` before the loop, or use `curl::multi_download()` for very large files. A silent truncation shows as `downloaded length X != reported length Y`. |
 | Schema mismatch | CSV column types differ from parquet | Use `infer_schema_length=10000` |
 | Empty DataFrame | Filters too restrictive | Check filter values; verify year availability |
 | All mirrors failed | Dataset not available in any mirror | STOP and escalate to user |

@@ -1,0 +1,53 @@
+{
+ "columns": {
+  "crdc.crdc_id": {
+   "digest": "6196ab3b1b441b68be1586608d06d48f3781469ff1f77614ae2426702343e81c",
+   "kind": "str",
+   "n_distinct": 97632,
+   "n_null": 0
+  },
+  "crdc.leaid": {
+   "digest": "5df4aee9ffffd8c962c2674e0b34e0272a0d6e180767a6ccfad2ab7d95d673f2",
+   "kind": "str",
+   "n_distinct": 16724,
+   "n_null": 81816
+  },
+  "crdc.ncessch": {
+   "digest": "3f4c0027e2b70f2d9e2f6534fbb7844f0db5a15083dbcd0290f1f82efb6c8233",
+   "kind": "str",
+   "n_distinct": 96570,
+   "n_null": 81816
+  },
+  "edfacts.ncessch": {
+   "digest": "8b41ac5fb6edefe60ff168247d7793d6caecbfc653a8f641846b4d78fce6c9cd",
+   "kind": "int",
+   "n_distinct": 22900,
+   "n_null": 0
+  },
+  "edfacts.ncessch_num": {
+   "digest": "8b41ac5fb6edefe60ff168247d7793d6caecbfc653a8f641846b4d78fce6c9cd",
+   "kind": "int",
+   "n_distinct": 22900,
+   "n_null": 0
+  },
+  "meps.ncessch": {
+   "digest": "780c1afc2aeec29ce65832ed7879652200a0f9ba3adecee9bee19f6954e4ddd9",
+   "kind": "int",
+   "n_distinct": 116681,
+   "n_null": 0
+  },
+  "meps.ncessch_num": {
+   "digest": "780c1afc2aeec29ce65832ed7879652200a0f9ba3adecee9bee19f6954e4ddd9",
+   "kind": "int",
+   "n_distinct": 116681,
+   "n_null": 0
+  },
+  "saipe.district_name": {
+   "digest": "21c3a400c9efb340886ef6ffb8caf29cd9f2104ebf24261d42296c4d6db6d9fd",
+   "kind": "str",
+   "n_distinct": 36517,
+   "n_null": 0
+  }
+ },
+ "engine": "polars"
+}

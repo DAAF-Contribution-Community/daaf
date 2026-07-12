@@ -185,6 +185,12 @@ df = pl.read_parquet(url)  # Polars reads HTTP URLs natively
 ```
 
 ```r
+# R only — raise the download timeout BEFORE reading. arrow::read_parquet(url)
+# transfers via download.file(), which caps the whole transfer at getOption("timeout")
+# (default 60s); large mirror files (e.g. ccd/schools_ccd_directory, ~224MB) truncate
+# at ~60s and silently fall through to the next mirror (the CSV fallback, in the
+# default configuration). Python is unaffected.
+options(timeout = max(600, getOption("timeout")))
 # View-safe parquet read: arrow reads HTTP URLs natively, but mirror files are
 # Polars-written and some declare string columns as `string_view` — the R arrow
 # binding cannot convert those to R vectors directly (fails at Table->data.frame
@@ -223,6 +229,10 @@ df = (
 ```
 
 ```r
+# R only — raise the download timeout BEFORE reading. readr::read_csv(url)
+# transfers via download.file() exactly like the parquet read (60s default cap),
+# and CSV mirror files reach 500MB+.
+options(timeout = max(600, getOption("timeout")))
 # Read CSV then filter (R reads eagerly; arrow handles large files efficiently)
 df <- readr::read_csv(url, show_col_types = FALSE) |>
   filter(year %in% YEARS) |>
