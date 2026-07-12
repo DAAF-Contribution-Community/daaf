@@ -164,14 +164,21 @@ echo "$max_context" > "/tmp/claude-ctx-window-${session_id}" 2>/dev/null
 
 # Calculate context bar from transcript
 if [[ -n "$transcript_path" && -f "$transcript_path" ]]; then
+    # Map each main-chain usage entry to its token sum and take the last
+    # POSITIVE sum rather than the last entry outright. Defensive: shim-routed
+    # (GPT) transcripts end with streaming-placeholder usage entries whose token
+    # fields are all 0; taking `last` unconditionally would compute 0 and stall
+    # the bar at the ~baseline reading. Not currently triggered on main
+    # transcripts (the main session is native Claude today) but mirrors the
+    # context-reporter.sh / subagent-bar.sh fix so all three stay consistent.
+    # Native Claude transcripts are unaffected (last entry is already positive,
+    # so last-positive == last). `// 0` preserves the fail-open contract.
     context_length=$(jq -s '
-        map(select(.message.usage and .isSidechain != true and .isApiErrorMessage != true)) |
-        last |
-        if . then
+        [.[] | select(.message.usage and .isSidechain != true and .isApiErrorMessage != true) | (
             (.message.usage.input_tokens // 0) +
             (.message.usage.cache_read_input_tokens // 0) +
             (.message.usage.cache_creation_input_tokens // 0)
-        else 0 end
+        )] | map(select(. > 0)) | last // 0
     ' < "$transcript_path")
 
     # 20k baseline: conservative default estimate for system prompt, tools, memory,
@@ -232,8 +239,42 @@ fi
 # one (low/medium/high/xhigh/max), e.g. "Fable 5 (high)". Kept inside the model
 # segment so effort reads as a property of the model rather than a standalone
 # indicator.
-model_disp="$model"
-[[ -n "$effort_level" ]] && model_disp="${model} (${effort_level})"
+#
+# D2 display sanitization (shim/GPT models routed through the provider shim).
+# The client reports the *configured* model slug as the display name, which for
+# shim sessions can carry an effort suffix (#high/#xhigh/#medium/...) AND a
+# duplicated [1m] context badge (the client re-appends its own [1m] to a slug
+# that already ends in [1m]) -> e.g. "gpt-5.6-sol[1m]#xhigh[1m]". It also pins
+# effort=high for unknown (GPT) models, so the "(high)" label is meaningless
+# here. All three are display-only cosmetics; native Claude models are untouched.
+# Fail-open: pure string ops, no external calls; on any surprise the worst case
+# is the unmodified name.
+model_name="$model"
+gpt_model=0
+# Detect a GPT/shim model from either the id or the display name (belt-and-braces:
+# some payloads carry the slug only in display_name).
+case "${model_id}${model_name}" in
+    *gpt-*|*GPT-*) gpt_model=1 ;;
+esac
+
+if [[ "$gpt_model" -eq 1 ]]; then
+    # 1) strip a trailing "#<effort>" token (and anything the client appended
+    #    after it, e.g. a duplicate [1m]): keep everything before the first '#'.
+    model_name="${model_name%%#*}"
+    # 2) collapse a duplicated trailing "[1m]" to a single one (covers the case
+    #    where the slug itself ended in [1m] and the client added another).
+    while [[ "$model_name" == *'[1m][1m]' ]]; do
+        model_name="${model_name%'[1m]'}"
+    done
+fi
+
+model_disp="$model_name"
+# Effort label: keep it for native Claude models (a real, user-controlled
+# setting); suppress it for GPT/shim models where the client pins it to "high"
+# regardless of the actual routing.
+if [[ -n "$effort_level" && "$gpt_model" -ne 1 ]]; then
+    model_disp="${model_name} (${effort_level})"
+fi
 
 # --- Rate-limit segment ---
 # Present only for Claude.ai subscriber sessions (absent on API-key sessions).

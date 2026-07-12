@@ -151,6 +151,30 @@ while IFS=$'\x1f' read -r id type name status tokens label; do
     tokens=${tokens%.*}
     [[ "$tokens" =~ ^[0-9]+$ ]] || tokens=0
 
+    # Transcript fallback for shim-routed (GPT) subagents: the harness stdin
+    # .tokenCount field is 0/absent for shim-routed subagents, so the panel
+    # would render "0 ░░░░░ 0%" for the whole task. When tokenCount is <= 0,
+    # recover the count from the subagent's own transcript (path already used
+    # for the model lookup just below) with the SAME last-POSITIVE-usage logic
+    # as context-reporter.sh calculate(). Subagent transcripts are entirely
+    # isSidechain:true, so no sidechain filter is needed. Shim transcripts end
+    # with streaming-placeholder usage entries whose token fields are all 0, so
+    # `last` outright would recover 0 too — map to token sums, drop zeros, take
+    # the last positive. Fail-open: only attempt when the transcript file
+    # exists; any jq failure yields empty, and the numeric re-guard leaves
+    # tokens at 0 (which keeps native rendering, this script's failure mode).
+    if [[ "$tokens" -le 0 && -n "$subagents_dir" && -f "${subagents_dir}/agent-${id}.jsonl" ]]; then
+        tokens=$(tail -n 50 "${subagents_dir}/agent-${id}.jsonl" 2>/dev/null | jq -s '
+            [.[] | select(.message.usage and .isApiErrorMessage != true) | (
+                (.message.usage.input_tokens // 0) +
+                (.message.usage.cache_read_input_tokens // 0) +
+                (.message.usage.cache_creation_input_tokens // 0)
+            )] | map(select(. > 0)) | last // 0
+        ' 2>/dev/null) || tokens=0
+        tokens=${tokens%.*}
+        [[ "$tokens" =~ ^[0-9]+$ ]] || tokens=0
+    fi
+
     # Per-row context window: a subagent on a different model than the session
     # gets a different window than the session's (e.g. a sonnet subagent
     # dispatched from a 1M fable session is provisioned 200k — its bar must
@@ -180,15 +204,19 @@ while IFS=$'\x1f' read -r id type name status tokens label; do
         # Mapping verified against installed CC 2.1.187 binary, 2026-07-05;
         # re-verify after Claude Code upgrades.
         case "$task_model" in
-            *fable-5*|*mythos-5*|*opus-4-7*|*opus-4-8*|*\[1m\]*) row_window=1000000 ;;
-            # GPT (OpenAI) windows, ordered most-specific first: mini/chat
+            # GPT (OpenAI) windows FIRST, ordered most-specific first: mini/chat
             # variants are smaller than the gpt-5.4/5.5/5.6 flagships, so they must
-            # precede the broad matches. Verified vs OpenRouter /api/v1/models
-            # 2026-07-09. Keep aligned with context-bar.sh + context-reporter.sh.
+            # precede the broad matches. The flagships legitimately carry a
+            # [1m]-suffixed context-length variant, so GPT ids must be matched
+            # BEFORE the generic *\[1m\]* Claude branch below — otherwise
+            # gpt-5.6-terra[1m] would resolve 1,000,000 instead of its real
+            # 1,050,000. Verified vs OpenRouter /api/v1/models 2026-07-09. Keep
+            # aligned with context-bar.sh + context-reporter.sh.
             *gpt-5*-mini*) row_window=400000 ;;
             *gpt-5*-chat*) row_window=128000 ;;
             *gpt-5.4*|*gpt-5.5*|*gpt-5.6*) row_window=1050000 ;;
             *gpt-5*) row_window=400000 ;;
+            *fable-5*|*mythos-5*|*opus-4-7*|*opus-4-8*|*\[1m\]*) row_window=1000000 ;;
             *) row_window=200000 ;;
         esac
         # CLAUDE_CODE_MAX_CONTEXT_TOKENS overrides provisioning when set.

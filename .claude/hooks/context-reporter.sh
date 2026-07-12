@@ -146,15 +146,19 @@ if [[ -n "$AGENT_ID" ]]; then
     fi
     if [[ -n "${AGENT_MODEL:-}" && "$AGENT_MODEL" != "${SESSION_MODEL:-}" ]]; then
         case "$AGENT_MODEL" in
-            *fable-5*|*mythos-5*|*opus-4-7*|*opus-4-8*|*\[1m\]*) MAX_CONTEXT=1000000 ;;
-            # GPT (OpenAI) windows, most-specific first (mini/chat before the
-            # flagships). Verified vs OpenRouter /api/v1/models 2026-07-09; keep
+            # GPT (OpenAI) windows FIRST, most-specific first (mini/chat before
+            # the flagships). The gpt-5.4/5.5/5.6 flagships legitimately carry a
+            # [1m]-suffixed context-length variant, so GPT ids must be matched
+            # BEFORE the generic *\[1m\]* Claude branch below — otherwise
+            # gpt-5.6-terra[1m] would resolve 1,000,000 instead of its real
+            # 1,050,000. Verified vs OpenRouter /api/v1/models 2026-07-09; keep
             # aligned with context-bar.sh + subagent-bar.sh. Window size only —
             # GPT keeps the conservative threshold FAMILY in calculate() below.
             *gpt-5*-mini*) MAX_CONTEXT=400000 ;;
             *gpt-5*-chat*) MAX_CONTEXT=128000 ;;
             *gpt-5.4*|*gpt-5.5*|*gpt-5.6*) MAX_CONTEXT=1050000 ;;
             *gpt-5*) MAX_CONTEXT=400000 ;;
+            *fable-5*|*mythos-5*|*opus-4-7*|*opus-4-8*|*\[1m\]*) MAX_CONTEXT=1000000 ;;
             *) MAX_CONTEXT=200000 ;;
         esac
         # CLAUDE_CODE_MAX_CONTEXT_TOKENS overrides provisioning when set.
@@ -208,17 +212,25 @@ calculate() {
     [[ -z "$transcript" || ! -f "$transcript" ]] && return
 
     local tokens
+    # Map each qualifying usage entry to its token sum, then take the last
+    # POSITIVE sum rather than the last entry outright. Shim-routed (GPT)
+    # transcripts end with streaming-placeholder usage entries whose token
+    # fields are all 0 (stop_reason:null, input_tokens:0); taking `last`
+    # unconditionally computes 0, and the `[[ tokens -le 0 ]] && return` below
+    # then silently suppresses the utilization <system-reminder> for GPT
+    # agents. Native Claude transcripts are unaffected: their last usage entry
+    # is already positive, so last-positive == last. `// 0` keeps the fail-open
+    # contract (no usage / no positive entry → 0 → the guard below returns).
     tokens=$(tail -50 "$transcript" 2>/dev/null | jq -s --argjson allow_sidechain "$allow_sidechain" '
         [.[] | select(
             .message.usage and
             ((.isSidechain != true) or $allow_sidechain) and
             .isApiErrorMessage != true
-        )] | last |
-        if . then
+        ) | (
             (.message.usage.input_tokens // 0) +
             (.message.usage.cache_read_input_tokens // 0) +
             (.message.usage.cache_creation_input_tokens // 0)
-        else 0 end
+        )] | map(select(. > 0)) | last // 0
     ' 2>/dev/null) || tokens=0
 
     [[ "$tokens" -le 0 ]] && return
