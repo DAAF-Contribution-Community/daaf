@@ -299,6 +299,18 @@ The answers are yes and no depending on exactly what we're talking about when we
 
 ---
 
+### Q: Can Claude change its own safety hooks or settings? How do I edit them myself?
+
+No — and that's by design. The hook scripts (`.claude/hooks/`), their logs (`.claude/logs/`), the benchmark harness hooks, and `.claude/settings.json`/`settings.local.json` are the framework's root of trust, so DAAF blocks Claude from modifying them through the shell (`cp`, `mv`, `tee`, output redirection, `sed -i`, `chmod`, etc.). If Claude could overwrite `settings.json` with a shell command, it could deregister every safety hook — so those writes are refused. Claude can still *read* these files (helpful when you ask it to explain a guardrail) and run git index commands like `git add` on them.
+
+To change a hook or a setting yourself, edit the file from **outside** the agent's blocked path: use the browser-based code editor (or any host editor pointed at the Docker volume), or type the change as a `!`-prefixed command in the Claude Code prompt — `!` commands run directly in your shell and are **not** subject to the hooks, so they're your escape hatch for maintaining the safety system. Supported settings edits Claude makes through its `Edit`/`Write` tools still work (those changes are diff-visible for you to review); only opaque shell overwrites are blocked.
+
+### Q: Why can't Claude just `pip install` a package it needs?
+
+Because the container's environment is defined entirely by its Dockerfile, and anything installed at runtime disappears the next time the image is rebuilt — which makes analyses hard to reproduce. To keep the environment reproducible, DAAF blocks runtime package installs (`pip`/`pip3`/`pipx install`, `python -m pip install`, `uv`/`uvx`, `conda install`, etc.); read-only inspection like `pip list` and `pip show` still works. If you genuinely need a new package, add it to the Dockerfile and rebuild: exit the container, then run `bash rebuild_daaf.sh` (`.\rebuild_daaf.ps1` on Windows) from your `daaf-docker` folder. See [Keeping DAAF Updated](01_installation_and_quickstart.md#keeping-daaf-updated) for the rebuild procedure.
+
+---
+
 ### Q: Why are the notebook and log viewer ports bound to localhost only?
 
 DAAF's `docker-compose.yml` binds ports 2718 (Marimo notebook), 2719 (session log viewer), and 2720 (code-server browser editor) to `127.0.0.1` — meaning only your local machine can access them. This is a deliberate security measure: Marimo notebooks and code-server are **interactive**, so an unauthenticated server exposed to your local network would allow anyone on that network to execute arbitrary code inside your container.
@@ -378,15 +390,19 @@ If you need system-level packages (for example, a C library that a Python packag
 
 ### Q: Will packages I install at runtime persist across restarts?
 
-No. Packages installed at runtime (via `uv pip install --user` or `pip install --user`) are stored in the container's filesystem, which is **separate** from the Docker volume where your research data lives. Your research files, scripts, and outputs persist across restarts because they're in the named volume (`daaf_daaf-data`). But runtime-installed packages live in the container image layer, so they disappear whenever the container is rebuilt or recreated (e.g., after `docker compose down` + `docker compose up -d`, or after `docker compose up -d --build`).
+No. First, a note on *who* can run a runtime install: **DAAF's agents are blocked from runtime package installs** by the bash-safety hook and settings.json deny rules (`pip`/`pip3`/`pipx install`, `python -m pip install`, `uv`/`uvx`, `conda install`, and friends) — see [Why can't Claude just `pip install` a package it needs?](#q-why-cant-claude-just-pip-install-a-package-it-needs) above. *You* can still run a runtime install yourself: type it as a `!`-prefixed command in the Claude Code prompt, or run it from a host terminal into the container — `!` commands and host-shell commands are **not** subject to the hooks.
 
-To make a package permanently part of your container, add it to the `Dockerfile` and rebuild. See [**04. Extending DAAF -- Customizing Your Python and R Environment**](04_extending_daaf.md#the-recommended-path-modify-the-dockerfile-python) for the full process.
+But even when you install one yourself, it is **ephemeral**. Runtime-installed packages (via `uv pip install --user` or `pip install --user`) are stored in the container's filesystem, which is **separate** from the Docker volume where your research data lives. Your research files, scripts, and outputs persist across restarts because they're in the named volume (`daaf_daaf-data`). But runtime-installed packages live in the container image layer, so they disappear whenever the container is rebuilt or recreated (e.g., after `docker compose down` + `docker compose up -d`, or after `docker compose up -d --build`).
+
+The durable path — the only one that survives a rebuild and keeps your analysis reproducible — is to add the package to the `Dockerfile` and rebuild. See [**04. Extending DAAF -- Customizing Your Python and R Environment**](04_extending_daaf.md#the-recommended-path-modify-the-dockerfile-python) for the full process.
 
 ### Q: What package manager does DAAF use?
 
 DAAF uses **[uv](https://docs.astral.sh/uv/)**, a fast Rust-based Python package manager by Astral (the makers of Ruff). It's fully compatible with pip -- it reads the same package index (PyPI) and supports the same package specifiers -- but it's significantly faster, often 10-50x for large installs.
 
-In the `Dockerfile`, packages are installed with `uv pip install --system` (system-wide, during the root build phase). At runtime inside the container, use `uv pip install --user <package>` (user-local, since you're not root). Regular `pip install --user <package>` also works if you prefer -- both tools install from the same source.
+In the `Dockerfile`, packages are installed with `uv pip install --system` (system-wide, during the root build phase) — this is where packages *should* go, since Dockerfile installs are the reproducible, rebuild-durable path.
+
+Runtime installs are a different story. DAAF's agents are **blocked** from runtime installs by the safety hook and deny rules (see [Why can't Claude just `pip install` a package it needs?](#q-why-cant-claude-just-pip-install-a-package-it-needs)), so you cannot ask DAAF to run `uv pip install` for you. If *you* want an ad-hoc, throwaway install for quick testing, run it yourself via a `!`-prefixed command in the prompt or from a host terminal — `uv pip install --user <package>` or `pip install --user <package>` both work (user-local, since you're not root, and both read the same PyPI source). Just remember such installs are **ephemeral** and vanish on the next rebuild; anything you want to keep belongs in the `Dockerfile`.
 
 ---
 

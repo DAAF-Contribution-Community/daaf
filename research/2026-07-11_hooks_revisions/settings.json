@@ -1,11 +1,12 @@
 {
-  "statusLine": {
-    "type": "command",
-    "command": "$CLAUDE_PROJECT_DIR/.claude/scripts/context-bar.sh"
-  },
-  "subagentStatusLine": {
-    "type": "command",
-    "command": "$CLAUDE_PROJECT_DIR/.claude/scripts/subagent-bar.sh"
+  "env": {
+    "ANTHROPIC_MODEL": "claude-fable-5[1m]",
+    "CLAUDE_CODE_EFFORT_LEVEL": "high",
+    "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1",
+    "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1",
+    "DISABLE_AUTOUPDATER": "1",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "ENABLE_PROMPT_CACHING_1H": "1"
   },
   "permissions": {
     "allow": [
@@ -59,17 +60,6 @@
       "Bash(docker exec *)",
       "Bash(mount *)",
       "Bash(chroot *)",
-      "Bash(pip install*)",
-      "Bash(pip3 install*)",
-      "Bash(pipx install*)",
-      "Bash(python -m pip install*)",
-      "Bash(python3 -m pip install*)",
-      "Bash(uv pip install*)",
-      "Bash(uv add*)",
-      "Bash(uvx *)",
-      "Bash(conda install*)",
-      "Bash(conda create*)",
-      "Bash(easy_install*)",
       "Bash(git push --force *)",
       "Bash(git push -f *)",
       "Bash(git reset --hard *)",
@@ -78,19 +68,40 @@
       "Bash(git checkout .)",
       "Bash(git restore .)",
       "Bash(git branch -D *)",
+      "Bash(gws auth export*)",
+      "Bash(gws auth export)",
+      "Bash(gws drive files delete*)",
+      "Bash(gws drive files emptyTrash*)",
+      "Bash(gws drive revisions delete*)",
+      "Bash(gws gmail users messages delete*)",
+      "Bash(gws gmail users messages batchDelete*)",
+      "Bash(gws gmail users messages trash*)",
+      "Bash(gws gmail users messages send*)",
+      "Bash(gws script *)",
+      "mcp__claude_ai_Google_Calendar__delete_event",
+      "Bash(pip install*)",
+      "Bash(pip3 install*)",
+      "Bash(pipx install*)",
+      "Bash(python -m pip install*)",
+      "Bash(python3 -m pip install*)",
+      "Bash(uv pip install*)",
+      "Bash(uv add*)",
+      "Bash(uvx *)",
       "Read(.env)",
       "Read(.env.*)",
+      "Read(**/environment_settings.txt)",
+      "Write(**/environment_settings.txt)",
+      "Edit(**/environment_settings.txt)",
       "Read(**/*.pem)",
       "Read(**/*.key)",
       "Read(**/credentials*)",
       "Read(**/*secret*)",
+      "Read(**/gws/**)",
+      "Read(**/.encryption_key)",
       "Write(.env)",
       "Write(.env.*)",
       "Edit(.env)",
       "Edit(.env.*)",
-      "Read(environment_settings.txt)",
-      "Write(environment_settings.txt)",
-      "Edit(environment_settings.txt)",
       "Edit(.claude/hooks/*)",
       "Write(.claude/hooks/*)",
       "Edit(.claude/logs/*)",
@@ -99,17 +110,6 @@
       "Edit(//tmp/**)"
     ]
   },
-  "env": {
-    "ANTHROPIC_MODEL": "claude-opus-4-8[1m]",
-    "CLAUDE_CODE_EFFORT_LEVEL": "high",
-    "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1",
-    "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1",
-    "DISABLE_AUTOUPDATER": "1",
-    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
-    "ENABLE_PROMPT_CACHING_1H": "1"
-  },
-  "outputStyle": "Explanatory",
-  "showThinkingSummaries": true,
   "hooks": {
     "UserPromptSubmit": [
       {
@@ -118,11 +118,6 @@
           {
             "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/context-reporter.sh",
-            "timeout": 5
-          },
-          {
-            "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/remind-orchestrator.sh",
             "timeout": 5
           }
         ]
@@ -144,22 +139,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/enforce-explore-model.sh",
-            "timeout": 5
-          },
-          {
-            "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/deny-claude-code-guide.sh",
-            "timeout": 5
-          },
-          {
-            "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/enforce-model-ceiling.sh",
-            "timeout": 5
-          },
-          {
-            "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/block-remote-isolation.sh",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/enforce-no-haiku.sh",
             "timeout": 5
           }
         ]
@@ -169,22 +149,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/enforce-explore-model.sh",
-            "timeout": 5
-          },
-          {
-            "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/deny-claude-code-guide.sh",
-            "timeout": 5
-          },
-          {
-            "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/enforce-model-ceiling.sh",
-            "timeout": 5
-          },
-          {
-            "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/block-remote-isolation.sh",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/enforce-no-haiku.sh",
             "timeout": 5
           }
         ]
@@ -199,12 +164,7 @@
           },
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/benchmarks/harness/hooks/block-git-writes.sh",
-            "timeout": 5
-          },
-          {
-            "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/enforce-single-command.sh",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/gws-safety.sh",
             "timeout": 5
           }
         ]
@@ -225,14 +185,16 @@
             "timeout": 5
           }
         ]
-      },
+      }
+    ],
+    "SubagentStop": [
       {
-        "matcher": "Skill",
+        "matcher": "",
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/flag-orchestrator-loaded.sh",
-            "timeout": 5
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/subagent-registry.sh",
+            "timeout": 10
           }
         ]
       }
@@ -255,11 +217,24 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/recover-session-logs.sh",
+            "command": "mkdir -p \"$CLAUDE_PROJECT_DIR\"/.claude/logs && echo \"Session started: $(date '+%Y-%m-%d %H:%M:%S') | DAAF: $(git -C \"$CLAUDE_PROJECT_DIR\" describe --always --dirty 2>/dev/null || echo 'unknown')\" >> \"$CLAUDE_PROJECT_DIR\"/.claude/logs/activity.log",
             "timeout": 5
           }
         ]
       }
     ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "$CLAUDE_PROJECT_DIR/.claude/scripts/context-bar.sh"
+  },
+  "subagentStatusLine": {
+    "type": "command",
+    "command": "$CLAUDE_PROJECT_DIR/.claude/scripts/subagent-bar.sh"
+  },
+  "outputStyle": "Explanatory",
+  "showThinkingSummaries": true,
+  "enabledPlugins": {
+    "superpowers@claude-plugins-official": true
   }
 }

@@ -494,7 +494,11 @@ If you're unsure whether a Python package needs a system library, try adding jus
 
 ### Runtime Installation for Quick Testing
 
-Sometimes you just want to try a package quickly during a session without going through the rebuild process. You can do that:
+Sometimes you just want to try a package quickly during a session without going through the rebuild process.
+
+> **This is a *you*-only action — DAAF cannot do it for you.** DAAF's agents are blocked from runtime package installs by the bash-safety hook and settings.json deny rules (`pip`/`pip3`/`pipx install`, `python -m pip install`, `uv pip install`, `uvx`, `conda install`, and friends), so asking DAAF to "install networkx real quick" will be refused. Runtime installs are yours to run: type the command as a `!`-prefixed command in the Claude Code prompt, or run it from a host terminal into the container — `!` commands and host-shell commands are **not** subject to the hooks. And whichever way you install it, it's a throwaway: the durable path is always the `Dockerfile`. See [`07_faq_technical.md` — Why can't Claude just `pip install` a package it needs?](07_faq_technical.md#q-why-cant-claude-just-pip-install-a-package-it-needs) for the reasoning.
+
+To install one yourself for a quick test, run (via `!`-prefix or host terminal):
 
 ```bash
 uv pip install --user networkx
@@ -505,9 +509,9 @@ This installs the package into your user directory inside the container, which w
 **Important caveat:** Runtime-installed packages are **ephemeral**. They are stored in the container's filesystem, not in the Docker volume where your research data lives. This means they will be **lost** when the container is rebuilt or restarted (e.g., after running `docker compose up -d --build` or `docker compose down` followed by `docker compose up -d`). Think of runtime installs as a test drive -- once you've confirmed the package works for your needs, add it to the Dockerfile to make it permanent.
 
 The recommended workflow is:
-1. Install at runtime to test: `uv pip install --user <package>`
+1. Install at runtime to test — **you** run `uv pip install --user <package>` via `!`-prefix or a host terminal (DAAF is blocked from running it)
 2. Verify it works for your use case
-3. Add it to the Dockerfile and rebuild to make it permanent
+3. Ask DAAF to add it to the Dockerfile, then rebuild to make it permanent
 
 ### Building with the developer test toolchain (DAAF_DEV)
 
@@ -515,7 +519,7 @@ If you are **developing the framework itself** (not just running research) and w
 
 ### Understanding the `uv` Package Manager
 
-You may have noticed that DAAF uses `uv` rather than plain `pip` for package installation. `uv` is a fast, Rust-based Python package manager that's fully compatible with pip but significantly faster -- often 10-50x faster for large installs. The Dockerfile uses `uv pip install --system` (which installs packages system-wide during the build, when running as root). At runtime, since you're running as a non-root user, use `uv pip install --user` instead.
+You may have noticed that DAAF uses `uv` rather than plain `pip` for package installation. `uv` is a fast, Rust-based Python package manager that's fully compatible with pip but significantly faster -- often 10-50x faster for large installs. The Dockerfile uses `uv pip install --system` (which installs packages system-wide during the build, when running as root). For a one-off runtime install — which only *you* can run, via `!`-prefix or a host terminal, since DAAF's agents are blocked from runtime installs (see the callout above) — use `uv pip install --user` instead, because you're running as a non-root user.
 
 Both `uv` and regular `pip` work at runtime -- `pip install --user <package>` is equally valid. The main advantage of `uv` is speed, which matters more during Dockerfile rebuilds than during one-off runtime installs.
 

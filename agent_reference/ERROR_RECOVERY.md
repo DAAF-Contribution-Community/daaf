@@ -798,6 +798,28 @@ Validation Failure
 
 ---
 
+## PreToolUse Safety-Hook Blocks
+
+**Definition:** A `PreToolUse` safety hook denied a Bash command before it ran. A `bash-safety` block surfaces as **exit code 2** with a `BLOCKED by ...` message on stderr; `enforce-single-command` and `enforce-file-first` block the same way.
+
+**A hook block is a deliberate guardrail, not a transient error.** It is not an access timeout or a flaky failure — the hook evaluated the command and refused it by design. Retrying the identical command will fail identically and consumes budget for nothing. The recovery is always to change *what* you are doing, per the block category below, not to re-issue the same command.
+
+CLAUDE.md's § Boundaries & Safety and its Defense-in-Depth Architecture table are the authoritative source for exactly which commands each hook blocks and why; the paths below are the recovery action, not a restatement of the rules.
+
+| Block category | Why it fired | Recovery |
+|----------------|-------------|----------|
+| **Anti-tampering (`bash-safety.sh` §7)** | A shell *write* targeting `.claude/hooks/`, `.claude/logs/`, `.claude/settings*.json`, or `benchmarks/harness/hooks/` — these are user-only. | Do not retry as an agent. Draft the change to a project scratch/staged location (`scripts/scratch/` or a project-local staged path) and ask the **user** to apply it via a `!`-prefixed session command or a host terminal. Hooks do not vet user-typed `!` commands. (Reads and git index ops on these paths remain open; the Edit/Write tools on `settings.json` are also unaffected — only shell writes are blocked.) |
+| **Package install (`bash-safety.sh` §8)** | A runtime `pip`/`uv`/`conda`-type install — these drift from the Dockerfile and vanish on the next rebuild. | Add the dependency to the Dockerfile and rebuild (`bash rebuild_daaf.sh` from the `daaf-docker/` folder). For a one-off exploratory need, the user can run the install themselves via `!`-prefix (ephemeral — gone on rebuild). |
+| **/tmp provenance (`bash-safety.sh` §6)** | A shell *write* to `/tmp`, which is outside the backup and audit boundary. | Write inside the project instead — `{PROJECT_DIR}/scripts/scratch/`. (Reading DAAF's own `/tmp` coordination caches stays allowed; only writes are blocked.) |
+| **`enforce-single-command`** | The command chained multiple statements (`&&`, `;`, `||`, or newlines). | Split into separate Bash calls, one command each. |
+| **`enforce-file-first`** (coding agents) | Direct `python`/`python3`/`Rscript` (or bare `R` batch) execution, bypassing the audit trail. | Write the script to `scripts/` and run it via `run_with_capture.sh` (see `SCRIPT_EXECUTION_REFERENCE.md`). |
+
+**Staged-draft → user-install pattern (anti-tampering):** Because hook, log, and settings changes cannot be applied by an agent's shell, the working pattern is: (1) draft the full change in a project scratch/staged file, (2) if it is a `bash-safety.sh` change, test the draft against the regression battery *before* install — `bash scripts/test_safety_hooks.sh <draft-path>` (see the `shell-scripting` skill's `testing.md`), then (3) hand the user the exact command to install it from a host terminal or a `!`-prefixed session command. The agent never writes the protected path directly.
+
+**Do not count a hook block against a retry budget as if it were a code-execution error** — it is not fixable by a second attempt at the same command. If the correct recovery path above is itself blocked or unavailable, escalate to the user rather than looping.
+
+---
+
 ## Stage-Specific Recovery
 
 ### Stage 2 (Data Exploration) Failures

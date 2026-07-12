@@ -396,6 +396,21 @@ Notes:
 
 ---
 
+## DAAF Safety-Hook Regression Batteries
+
+DAAF ships two standing regression batteries for the security-critical PreToolUse hooks. Read these before writing or modifying `bash-safety.sh` or `enforce-single-command.sh` — the battery is where you add a case for any new block (or allow) behavior, and how you prove a change before it goes live.
+
+| Battery | Covers | Invocation |
+|---------|--------|------------|
+| `scripts/test_safety_hooks.sh` | `bash-safety.sh` (destructive commands, pipe-to-shell, exfiltration, container escape, /tmp provenance guard, anti-tampering, package-install guard) | `bash scripts/test_safety_hooks.sh` tests the **live** hook. Pass a path to test a **staged draft** before install: `bash scripts/test_safety_hooks.sh <draft-path>` |
+| `scripts/test_enforce_single_command.sh` | `enforce-single-command.sh` (command-chaining detection: `&&`/`;`/`\|\|`/newlines, quote- and nesting-aware) | `bash scripts/test_enforce_single_command.sh` |
+
+The draft-path argument on `test_safety_hooks.sh` is the sanctioned way to validate a hook change **before** it is installed: `.claude/hooks/` is write-protected (anti-tampering guard), so the workflow is stage the draft to a scratch path, run the battery against it, then hand the user the install command (see `../../../../agent_reference/ERROR_RECOVERY.md` > "PreToolUse Safety-Hook Blocks" for the staged-draft → user-install pattern).
+
+**Key technique — case strings live inside the battery, never on the command line.** Each battery feeds its test-case command strings to the hook from *inside* the battery file. Passing a case string as a command-line argument to the invocation would route it through the live PreToolUse hooks, which would vet (and potentially block) the case string itself before the battery ever ran. So the batteries are always invoked **bare** (the single optional argument to `test_safety_hooks.sh` is a hook *path*, not a case string). When adding coverage, add the case to the battery file — do not try to exercise it from the invoking command line.
+
+---
+
 ## CI Workflow (GitHub Actions)
 
 ### Recommended Matrix

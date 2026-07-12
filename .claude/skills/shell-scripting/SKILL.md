@@ -22,7 +22,7 @@ Coding quality standards and best practices for all `.sh` (Bash) and `.ps1` (Pow
 | `bash-standards.md` | Preambles, quoting, variables, ShellCheck, signal handling, host-script Bash 3.2 portability | Writing or reviewing any `.sh` file; anything under `scripts/host/` |
 | `powershell-standards.md` | Preambles, dual error system, defensive coding, PSScriptAnalyzer | Writing or reviewing any `.ps1` file |
 | `error-handling.md` | Fail-closed philosophy, output conventions, exit codes, Docker errors, dependency validation | Designing error paths for any script |
-| `testing.md` | BATS, Pester, CI workflows, Docker mocking, test taxonomy | Setting up or running script tests |
+| `testing.md` | BATS, Pester, CI workflows, Docker mocking, test taxonomy, DAAF safety-hook regression batteries | Setting up or running script tests; writing or modifying a `bash-safety.sh` / `enforce-single-command.sh` hook |
 | `gotchas.md` | Bash traps, PowerShell surprises, cross-platform pitfalls | Debugging unexpected script behavior |
 
 ### Reading Order
@@ -200,6 +200,7 @@ Existing patterns in DAAF scripts that this skill codifies:
 | Docker mocking strategies | `./references/testing.md` |
 | Test taxonomy (lint/unit/smoke/integration) | `./references/testing.md` |
 | In-container validation toolchain (DAAF_DEV: pwsh, Pester, PSScriptAnalyzer, shellcheck, bats) | `./references/testing.md` |
+| Safety-hook regression batteries (`test_safety_hooks.sh`, `test_enforce_single_command.sh`) | `./references/testing.md` |
 | What to test and what to skip | `./references/testing.md` |
 | Bash exit code masking | `./references/gotchas.md` |
 | Bash set -e edge cases | `./references/gotchas.md` |
