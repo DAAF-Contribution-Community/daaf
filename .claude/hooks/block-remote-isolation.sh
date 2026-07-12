@@ -7,7 +7,7 @@
 #   in-place instead of in an isolated worktree/remote environment.
 #
 #   NOTE ON FILENAME: this file is still named block-remote-isolation.sh for
-#   registration stability (settings.json PreToolUse matcher references it by
+#   registration stability (settings.json PreToolUse matchers reference it by
 #   name). "block" is now a slight misnomer — the hook no longer DENIES; it
 #   SANITIZES (strips the param) and allows. The name is retained deliberately
 #   to avoid a settings.json edit and re-registration.
@@ -22,8 +22,8 @@
 #   untracked files (benchmark fixtures, uncommitted work). Worktrees also
 #   accumulate under .claude/worktrees/ and require manual cleanup.
 #
-#   Both values are undesirable in DAAF, so ANY non-empty isolation value is
-#   stripped rather than honored.
+#   Both values are undesirable in DAAF, so the isolation KEY is stripped
+#   whenever present, regardless of its value.
 #
 # WHY STRIP INSTEAD OF DENY
 #   First observed in the GPT DAAFBench smoke battery (2026-07-09/10): GPT
@@ -32,24 +32,52 @@
 #   prior DENY-on-isolation behavior therefore produced deny->retry loops that
 #   exhausted the turn budget without ever dispatching a subagent (observed:
 #   DAAFBench dispatch_compliance scored agent_dispatched 0/12 for
-#   GPT-5.6-Luna). Stripping the param (merge-patch it to null via
-#   updatedInput) lets the dispatch proceed in-place on the first try, for all
-#   models, with no retry loop. Claude models rarely fill this param, so the
-#   hook is usually inert for them; when they do fill it, the strip applies
-#   uniformly.
+#   GPT-5.6-Luna). Stripping the param lets the dispatch proceed in-place on
+#   the first try, for all models, with no retry loop. Claude models rarely
+#   fill this param, so the hook is usually inert for them; when they do fill
+#   it, the strip applies uniformly.
 #
-# DECISION
-#   tool_input.isolation present AND non-empty (any value: "remote",
-#     "worktree", or anything else) -> ALLOW + strip (updatedInput.isolation=null)
-#   isolation absent/empty          -> ALLOW (exit 0, no JSON) — unchanged
+# DECISION  (keyed on KEY PRESENCE, not truthiness — see the guard below)
+#   tool_input has the "isolation" key (ANY value: "remote", "worktree", an
+#     unknown string, "", null, false, an object, or an array) -> ALLOW +
+#     strip (isolation key removed from the reconstructed tool_input)
+#   isolation key absent (or tool_input missing / not an object) -> ALLOW
+#     (exit 0, no JSON)
+#
+#   Note: this INCLUDES isolation:"" — an empty string now STRIPS (whereas a
+#   truthiness guard would pass it through). strip-the-key-whenever-present is
+#   a cleaner contract, matches the provider shim sanitizer exactly
+#   (anthropic_openai_shim.py:996 — `if tool_name in ("Agent","Task") and
+#   "isolation" in args: args.pop("isolation")`), and an empty string would
+#   fail the Agent tool's enum schema anyway. This shared contract with the
+#   shim is deliberate.
 #
 # MECHANISM
 #   PreToolUse hooks may mutate tool input via
-#   hookSpecificOutput.updatedInput, which is MERGED into the original
-#   tool_input (JSON merge-patch semantics), combinable with
-#   permissionDecision:"allow" in the same response. Setting a field to null
-#   removes it (merge-patch). Verified against Claude Code 2.1.187 hooks docs
-#   (https://code.claude.com/docs/en/hooks.md).
+#   hookSpecificOutput.updatedInput, combinable with permissionDecision:
+#   "allow" in the same response. Per the official docs
+#   (https://code.claude.com/docs/en/hooks.md): "PreToolUse: updatedInput
+#   directly under hookSpecificOutput REPLACES a tool's arguments before it
+#   runs." updatedInput is a full REPLACEMENT of tool_input, NOT a merge —
+#   there is no documented JSON merge-patch / null-deletion mechanism, so
+#   `null` is NOT a deletion marker. Whatever object we emit under
+#   updatedInput becomes the ENTIRE new tool_input. Therefore the hook must
+#   emit the COMPLETE original tool_input reconstructed with only `isolation`
+#   removed (jq `del(.isolation)`) — anything less drops the required fields
+#   (description, prompt, subagent_type, ...) and the Agent/Task tool rejects
+#   the dispatch as schema-invalid.
+#
+# DEFECT HISTORY
+#   v3 (commit 3444e11) emitted a PARTIAL object `{"isolation": null}` under
+#   the incorrect assumption that updatedInput is merge-patched into
+#   tool_input (with null deleting the field). Because updatedInput actually
+#   REPLACES tool_input wholesale, this replaced the entire Agent/Task payload
+#   with just `{"isolation": null}`, dropping `description` and `prompt` and
+#   breaking EVERY isolation-filled dispatch with a schema validation error
+#   ("The required parameter 'description' is missing / The required parameter
+#   'prompt' is missing"). Fixed in v4 (this version) by full-object
+#   reconstruction: `.tool_input | del(.isolation)`.
+#   Regression tests: tests/bash/block_remote_isolation.bats.
 #
 # FAIL-OPEN RATIONALE
 #   This is an availability/sanitization guard (prevents a hang and a stale
@@ -60,14 +88,17 @@
 #
 # INPUT   JSON on stdin: tool_input.isolation (among other fields)
 # OUTPUT  Silent allow: exit 0 (no JSON).
-#         Strip: permissionDecision=allow + updatedInput.isolation=null JSON.
+#         Strip: permissionDecision=allow + updatedInput=(full tool_input with
+#         isolation removed) JSON.
 #
 # DEPLOYMENT
 #   Authored as a session-workspace deliverable
-#   (research/2026-07-09_FrameworkDev_GPTBenchSmoke/deliverables/), deployed
-#   to .claude/hooks/ (human-only, permission-gated path) and registered in
-#   settings.json under PreToolUse matcher "Task|Agent". Filename unchanged on
-#   deploy so no settings.json edit is required.
+#   (research/2026-07-12_FrameworkDev_AgentDispatchHookFix/deliverables/),
+#   deployed to .claude/hooks/ (human-only, permission-gated path). The hook
+#   is registered under TWO separate PreToolUse matchers — "Task"
+#   (settings.json line ~162) and "Agent" (line ~187) — not a single
+#   "Task|Agent" matcher. Filename unchanged on deploy so no settings.json
+#   edit is required.
 # ---------------------------------------------------------------------------
 
 set -uo pipefail
@@ -79,15 +110,28 @@ if ! command -v jq >/dev/null 2>&1; then
 fi
 
 INPUT=$(cat)
-ISOLATION=$(echo "$INPUT" | jq -r '.tool_input.isolation // empty' 2>/dev/null) || ISOLATION=""
+# Gate on KEY PRESENCE, not truthiness. jq's `//` alternative operator treats
+# JSON `false` and `null` as empty, so a truthiness guard would leak
+# isolation:false / isolation:null through UNSTRIPPED — contradicting the
+# strip-any-value contract and likely still failing the Agent tool's enum
+# schema downstream. `has("isolation")` (guarded by `(.tool_input? | type) ==
+# "object"`) strips whenever the key is present regardless of value, matching
+# the provider shim sanitizer exactly. Non-object or missing tool_input, or
+# malformed stdin, yields "no" (via the `?` operator / 2>/dev/null path) ->
+# silent exit 0.
+HAS_ISOLATION=$(echo "$INPUT" | jq -r 'if (.tool_input? | type) == "object" and (.tool_input | has("isolation")) then "yes" else "no" end' 2>/dev/null) || HAS_ISOLATION="no"
 
-if [ -n "$ISOLATION" ]; then
-  jq -n --arg iso "$ISOLATION" '{
+if [ "$HAS_ISOLATION" = "yes" ]; then
+  # updatedInput REPLACES tool_input, so emit the FULL original tool_input with
+  # only `isolation` removed — reconstructed in a single jq pass over $INPUT.
+  # No shell string interpolation into JSON: additionalContext derives the
+  # stripped value from .tool_input.isolation within the same jq program.
+  echo "$INPUT" | jq '{
     "hookSpecificOutput": {
       "hookEventName": "PreToolUse",
       "permissionDecision": "allow",
-      "updatedInput": { "isolation": null },
-      "additionalContext": ("DAAF stripped the isolation parameter (was \"" + $iso + "\"); subagents run in-place, not in an isolated worktree/remote env. Isolated worktrees check out the repo default branch (stale framework snapshot, no visibility of untracked fixtures/uncommitted work); \"remote\" cloud envs are unavailable in the container and hang forever. Do not re-add the isolation parameter on retry — it will be stripped again.")
+      "updatedInput": (.tool_input | del(.isolation)),
+      "additionalContext": ("DAAF stripped the isolation parameter (was \"" + (.tool_input.isolation | tostring) + "\"); subagents run in-place, not in an isolated worktree/remote env. Isolated worktrees check out the repo default branch (stale framework snapshot, no visibility of untracked fixtures/uncommitted work); \"remote\" cloud envs are unavailable in the container and hang forever. Do not re-add the isolation parameter on retry — it will be stripped again.")
     }
   }'
   exit 0
