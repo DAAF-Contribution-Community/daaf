@@ -1050,8 +1050,42 @@ Format-specific read behavior is driven by the mirror's `read_strategy` field in
 - Set `infer_schema_length=10000` to avoid type inference errors on large files
 - Apply filters in the lazy frame before `.collect()` to minimize memory
 - Large files (500MB+) — always use lazy loading, never `pl.read_csv()` directly
-- **CRDC ID columns:** When reading any CRDC dataset from CSV, pass `schema_overrides={"ncessch": pl.Utf8, "leaid": pl.Utf8, "crdc_id": pl.Utf8}` to preserve zero-padded identifiers. Without this override, Polars infers Int64, destroying leading zeros for FIPS 01-09 states (~19% of rows). See `education-data-source-crdc` skill.
-- **CRDC ID columns (R):** `readr::read_csv()` has the identical failure mode — its type inference reads zero-padded IDs as numeric. Pass `col_types = readr::cols(ncessch = readr::col_character(), leaid = readr::col_character(), crdc_id = readr::col_character())` on any CRDC CSV read.
+- **Zero-padded ID columns (CRDC, EDFacts, SAIPE) — general principle:** Portal ID columns (`ncessch`→12 chars, `leaid`→7 chars, and CRDC's `crdc_id`) are zero-padded strings whose leading zeros carry state-FIPS identity (FIPS 01-09 states: AL, AK, AZ, AR, CA, CO, CT — ~19% of school rows). CSV type inference reads them as Int64 and silently drops the leading zeros, splitting the join key for those states. Parquet reads preserve types automatically, so this only bites CSV-fallback reads. **Two defenses are needed, not one:** (1) force-string on read, AND (2) pad-and-assert *after* read. Force-string alone is insufficient because a source file can ship an ID that is *already* truncated — see the EDFacts 2019 note below — in which case `col_character()`/`schema_overrides` faithfully preserve a value that is already wrong. Only pad-to-width plus a width assertion recovers and verifies these.
+- **EDFacts 2019 truncated-ID trap (field-confirmed, HIGH impact):** In a native R-mode pipeline run, 2019 EDFacts grad-rate CSVs delivered 11-character `ncessch` for single-digit-FIPS states (1/2/4/5/6/8/9), versus 12-character in 2015-2018 — the source file itself had already lost the leading zero. Forcing string on read did **not** restore it (there was nothing to restore; the character was gone from the file). The working fix was `str_pad(ncessch, 12)` / `str_pad(leaid, 7)` immediately after each CSV read, before any bind/join, plus `stopifnot(nchar == 12/7)` (R) or an `assert` on `.str.len_chars()` (Python) to catch the failure loudly. In that run this repaired 43,223 short IDs, all localized to 2019. Treat force-string + pad + width-assert as the standard CSV-fallback ID recipe for EDFacts and SAIPE, not just CRDC.
+- **Force-string on read (Python, Polars):** `schema_overrides={"ncessch": pl.Utf8, "leaid": pl.Utf8}` — add `"crdc_id": pl.Utf8` for CRDC datasets. This is defense (1).
+- **Pad-and-assert after read (Python, Polars):** defense (2) — recovers already-truncated IDs and fails loudly if a width is unexpected:
+  ```python
+  # INTENT: enforce canonical zero-padded ID widths after CSV fallback read.
+  # REASONING: force-string preserves what the file holds, but 2019 EDFacts ships
+  #   already-truncated ncessch (11-char) for single-digit-FIPS states; only
+  #   pad-to-width recovers them. ncessch=12, leaid=7.
+  # ASSUMES: ids are strings (defense 1 applied); a value longer than target width
+  #   is a genuine anomaly, not a pad candidate.
+  df = df.with_columns(
+      pl.col("ncessch").cast(pl.Utf8).str.zfill(12),
+      pl.col("leaid").cast(pl.Utf8).str.zfill(7),
+  )
+  assert (df["ncessch"].str.len_chars() == 12).all(), "ncessch width != 12 after pad"
+  assert (df["leaid"].str.len_chars() == 7).all(), "leaid width != 7 after pad"
+  ```
+- **Force-string on read (R, readr):** `col_types = readr::cols(ncessch = readr::col_character(), leaid = readr::col_character())` — add `crdc_id = readr::col_character()` for CRDC. This is defense (1).
+- **Pad-and-assert after read (R, readr/stringr):** defense (2):
+  ```r
+  # INTENT: enforce canonical zero-padded ID widths after CSV fallback read.
+  # REASONING: col_character() preserves what the file holds, but 2019 EDFacts ships
+  #   already-truncated ncessch (11-char) for single-digit-FIPS states; only
+  #   str_pad recovers them. ncessch=12, leaid=7.
+  # ASSUMES: ids are character (defense 1 applied); a value wider than the target is
+  #   a genuine anomaly, not a pad candidate.
+  library(stringr)
+  df <- df |>
+    mutate(
+      ncessch = str_pad(ncessch, 12, pad = "0"),
+      leaid   = str_pad(leaid, 7, pad = "0")
+    )
+  stopifnot(all(nchar(df$ncessch) == 12), all(nchar(df$leaid) == 7))
+  ```
+- **Per-source specifics:** CRDC also has `crdc_id` (force-string; not an FIPS-padded key). EDFacts is the confirmed truncated-ID case (2019 grad rates). SAIPE's `leaid` is Int64 in the Portal even in parquet — a numeric read lost leading zeros for 14.6% of rows in the field run — so SAIPE needs `leaid`→7 pad-and-assert before any school→district join. See `education-data-source-crdc`, `education-data-source-edfacts`, and `education-data-source-saipe` skills for source-level detail.
 - **R only — large-file download timeout:** `readr::read_csv(url)` routes its transfer through `download.file()` exactly like the parquet read, so the same 60s `getOption("timeout")` cap truncates large CSVs (these files reach 500MB+). Apply the same `options(timeout = max(600, getOption("timeout")))` before reading — see the `eager_parquet` bullet above.
 
 ---

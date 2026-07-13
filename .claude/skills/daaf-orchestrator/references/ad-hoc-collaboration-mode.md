@@ -107,7 +107,7 @@ Additional domain skills are loaded by subagents when dispatched, following the 
 | `svy` | `survey-r` | Complex survey analysis |
 | `scikit-learn` | `tidymodels` | Machine learning |
 | `geopandas` | `sf-terra` | Spatial analysis |
-| — (no Python skill yet) | `gt` | Table formatting |
+| `great-tables` | `gt` | Table formatting |
 | `marimo` | `quarto` | Notebook format |
 
 Domain-specific data source skills (e.g., `education-data-source-ccd`) are language-agnostic.

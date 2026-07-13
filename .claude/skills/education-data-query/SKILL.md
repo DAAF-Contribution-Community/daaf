@@ -320,11 +320,11 @@ See `./references/filters-reference.md` for complete list.
 | Source | Skill | Key Fetch Considerations |
 |--------|-------|--------------------------|
 | CCD | `education-data-source-ccd` | Use grade-99 for totals; FRPL affected by CEP |
-| CRDC | `education-data-source-crdc` | Biennial only; 2015+ for complete coverage; CSV requires `schema_overrides` for ID cols (see CRDC skill) |
-| EDFacts | `education-data-source-edfacts` | Use `_midpt` vars; states not comparable |
+| CRDC | `education-data-source-crdc` | Biennial only; 2015+ for complete coverage; CSV requires force-string + pad-and-assert on ID cols (ncessch→12, leaid→7, crdc_id) — see fetch-patterns.md "Zero-padded ID columns" |
+| EDFacts | `education-data-source-edfacts` | Use `_midpt` vars; states not comparable; CSV fallback needs force-string + `str_pad`/`zfill` + width-assert on ncessch/leaid (2019 ships already-truncated IDs) |
 | IPEDS | `education-data-source-ipeds` | GRS limited to first-time full-time |
 | Scorecard | `education-data-source-scorecard` | High suppression; Title IV recipients only |
-| SAIPE | `education-data-source-saipe` | Model estimates; population not enrollment |
+| SAIPE | `education-data-source-saipe` | Model estimates; population not enrollment; `leaid` is Int64 (pad→7 + assert before joins); `_poverty_pct` is a 0-1 proportion, not 0-100% |
 | FSA | `education-data-source-fsa` | Federal aid only; 1-3 year lag |
 | MEPS | `education-data-source-meps` | Better than FRPL for cross-state |
 | PSEO | `education-data-source-pseo` | Experimental; check state coverage |

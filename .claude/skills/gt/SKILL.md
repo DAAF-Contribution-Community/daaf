@@ -3,8 +3,8 @@ name: gt
 description: >-
   R table formatting with gt, kableExtra, modelsummary. Publication-quality
   tables: gt() grammar-of-tables, fmt_*() formatting, tab_*() structure,
-  gtsave() export. Use when execution language is R. No dedicated Python skill
-  yet; for Python, the installed great-tables package covers similar needs.
+  gtsave() export. Use when execution language is R. Python equivalent:
+  great-tables (use when execution language is Python).
 autoload: never
 metadata:
   audience: research-coders
@@ -22,11 +22,10 @@ cols_*() column operations, gtsave() export), kableExtra 1.4.0 for knitr/kable
 HTML and LaTeX table styling in Quarto documents, and modelsummary 2.6.0 for
 formatting regression output from lm/glm/fixest/plm models into publication tables.
 Use when execution language is R and the task involves creating formatted data
-tables, summary tables, or regression tables for reports or papers. No dedicated
-Python-side skill exists yet, but the `great-tables` Python package (same author,
-same grammar of tables) is installed in DAAF and usable directly. For
-visualization (charts/plots), use ggplot2 instead. For document structure and
-rendering, use quarto instead.
+tables, summary tables, or regression tables for reports or papers. Python
+counterpart: the `great-tables` skill (same author, same grammar of tables) —
+use it when execution language is Python. For visualization (charts/plots), use
+ggplot2 instead. For document structure and rendering, use quarto instead.
 
 ## What is gt?
 
@@ -98,12 +97,15 @@ graphics but for tabular output:
 | `plm` | Panel model output -- plm models feed into modelsummary/gt tables |
 | `data-scientist` | Methodology guidance for what to present in tables |
 
-**Python counterpart:** There is no dedicated Python table-formatting skill in
-DAAF yet, but the `great-tables` Python package (version 0.21.0, by the same
-author as gt, implementing the same grammar of tables) **is installed** and can
-be used directly in Python pipelines. For regression tables in Python,
-modelsummary-equivalent functionality is partially covered by pyfixest's
-`etable()` and statsmodels' `summary()`.
+**Python counterpart:** Use the `great-tables` skill for Python table
+formatting. The `great-tables` package (version 0.21.0, by the same author as
+gt, implementing the same grammar of tables) is DAAF's Python table-formatting
+tool — load that skill when execution language is Python. Note surface
+differences from gt: method chaining instead of `|>`, 0-based `cols_merge`
+pattern indices, Polars expressions in `grand_summary_rows`, and HTML/LaTeX
+export in-process (but no working PNG export in the container). For regression
+tables in Python, great-tables has no modelsummary equivalent — use pyfixest's
+`etable()` or statsmodels' `summary()`.
 
 ## Quick Decision Trees
 

@@ -154,7 +154,7 @@ When no language is specified, default to Python.
 | Complex survey statistics | `svy` | `survey-r` |
 | ML / clustering / PCA | `scikit-learn` | `tidymodels` |
 | Geospatial | `geopandas` | `sf-terra` |
-| Table formatting | — (no Python skill yet) | `gt` |
+| Table formatting | `great-tables` | `gt` |
 | Notebook | `marimo` | `quarto` |
 
 All decision trees below use Python skill names as the primary label, with the R
@@ -244,10 +244,11 @@ What task are you performing?
 │       └─ Advanced models not in svy (ordinal, survival, IV) → rpy2 + R survey package
 │           (Python: see svy skill "rpy2 Bridge" section; R: use `survey-r` skill directly — rpy2 bridge not needed)
 ├─ Creating formatted tables (data summaries, regression output)
-│   └─ R: Load `gt` skill (gt for data tables, modelsummary for regression
+│   └─ Python: Load `great-tables` skill (grammar-of-tables display tables,
+│       HTML/LaTeX export). No modelsummary equivalent — for regression tables
+│       use library-specific output (e.g., pyfixest etable(), statsmodels summary())
+│       R: Load `gt` skill (gt for data tables, modelsummary for regression
 │       tables, kableExtra for simple Quarto tables)
-│       Python: No dedicated table skill yet — use library-specific output
-│       (e.g., pyfixest etable())
 ├─ Communicating to non-technical audiences
 │   └─ Load `science-communication` skill
 ├─ Geospatial / spatial analysis (any kind)

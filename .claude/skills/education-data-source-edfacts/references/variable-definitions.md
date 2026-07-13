@@ -462,6 +462,60 @@ race_comparison <- df |>
 # NCES source:        ncessch = "060000100001" (12-char string)
 ```
 
+### CSV Fallback: Force-String + Pad-and-Assert (2019 truncated-ID trap)
+
+> **Field-confirmed, HIGH impact.** When the parquet mirror is unavailable and a fetch
+> falls back to the CSV source, EDFacts `ncessch`/`leaid` need more than a force-string
+> read. In a native R-mode pipeline run, the **2019 grad-rate CSVs delivered 11-character
+> `ncessch`** for single-digit-FIPS states (FIPS 1, 2, 4, 5, 6, 8, 9), versus 12-character
+> in 2015-2018 — the source file had *already* lost the leading zero. Forcing string on
+> read did not restore it (there was nothing to restore). Only pad-to-width plus a width
+> assertion recovers and verifies these IDs. In that run the fix repaired 43,223 short
+> IDs, all localized to 2019, and prevented a split join key for terminal-year ACGR.
+
+Canonical widths: `ncessch` → 12, `leaid` → 7. Two defenses, applied in order, on every CSV-fallback read:
+
+1. **Force-string on read** (preserves zeros the file still has).
+2. **Pad-and-assert after read** (recovers zeros the file already dropped, and fails loudly on any unexpected width).
+
+```python
+import polars as pl
+
+# INTENT: enforce canonical EDFacts ID widths after a CSV fallback read.
+# REASONING: force-string keeps what the file holds, but 2019 grad-rate CSVs ship
+#   11-char ncessch for single-digit-FIPS states; only pad-to-width recovers them.
+# ASSUMES: defense 1 (schema_overrides={"ncessch": pl.Utf8, "leaid": pl.Utf8}) applied;
+#   a value wider than the target width is a genuine anomaly, not a pad candidate.
+df = df.with_columns(
+    pl.col("ncessch").cast(pl.Utf8).str.zfill(12),
+    pl.col("leaid").cast(pl.Utf8).str.zfill(7),
+)
+assert (df["ncessch"].str.len_chars() == 12).all(), "ncessch width != 12 after pad"
+assert (df["leaid"].str.len_chars() == 7).all(), "leaid width != 7 after pad"
+```
+
+```r
+library(stringr)
+
+# INTENT: enforce canonical EDFacts ID widths after a CSV fallback read.
+# REASONING: col_character() keeps what the file holds, but 2019 grad-rate CSVs ship
+#   11-char ncessch for single-digit-FIPS states; only str_pad recovers them.
+# ASSUMES: defense 1 (col_types = cols(ncessch = col_character(), leaid =
+#   col_character())) applied; do the pad+assert immediately after each read,
+#   BEFORE any bind_rows/join, so a split key never enters a downstream frame.
+df <- df |>
+  mutate(
+    ncessch = str_pad(ncessch, 12, pad = "0"),
+    leaid   = str_pad(leaid, 7, pad = "0")
+  )
+stopifnot(all(nchar(df$ncessch) == 12), all(nchar(df$leaid) == 7))
+```
+
+> The parquet mirror stores these as Int64 (no leading zeros) but round-trips them
+> losslessly, so parquet reads are unaffected — this recipe is specifically for the
+> CSV fallback. See `education-data-query` → `fetch-patterns.md` § Format Handling
+> ("Zero-padded ID columns") for the cross-source version of this pattern.
+
 ## Handling Special Values
 
 ### Complete Data Cleaning Function

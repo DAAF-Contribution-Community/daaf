@@ -493,7 +493,7 @@ MANDATORY EXECUTION PATTERN:
 ## Stage 8: Analysis & Visualization
 
 **Executor:** Subagent (general-purpose) — ITERATIVE INVOCATION REQUIRED
-**Skills:** `data-scientist`, `polars` (Python) or `tidyverse` (R), modeling library per Plan — Python: `statsmodels` / `pyfixest` / `linearmodels` / `svy` / `geopandas` / `scikit-learn`; R: `r-stats` / `fixest` / `plm` / `survey-r` / `sf-terra` / `tidymodels` (Stage 8.1), `gt` (R, if formatted tables needed), `plotnine` (Python) or `ggplot2` (R), `plotly` (Python) or `plotly-r` (R), `geopandas` (Python) or `sf-terra` (R) (if map viz) (Stage 8.2)
+**Skills:** `data-scientist`, `polars` (Python) or `tidyverse` (R), modeling library per Plan — Python: `statsmodels` / `pyfixest` / `linearmodels` / `svy` / `geopandas` / `scikit-learn`; R: `r-stats` / `fixest` / `plm` / `survey-r` / `sf-terra` / `tidymodels` (Stage 8.1), `great-tables` (Python) or `gt` (R) (if formatted tables needed), `plotnine` (Python) or `ggplot2` (R), `plotly` (Python) or `plotly-r` (R), `geopandas` (Python) or `sf-terra` (R) (if map viz) (Stage 8.2)
 **Purpose:** Conduct final statistical analyses on the analysis dataset AND generate visualizations specified in Plan
 
 ### Execution Pattern
@@ -545,7 +545,7 @@ All relative paths in referenced files resolve from BASE_DIR.
 
 Call the skill tool with name 'polars' (Python) or 'tidyverse' (R).
 Call the skill tool with name '{modeling_library}' — Python options: statsmodels, pyfixest, linearmodels, svy, geopandas, scikit-learn; R options: r-stats, fixest, plm, survey-r, sf-terra, tidymodels — as specified in the <skill> element of Plan_Tasks.md for this task. For spatial regression tasks, geopandas (Python) or sf-terra (R) IS the modeling library. For complex survey data, svy (Python) or survey-r (R) IS the modeling library (design-based inference with Taylor/BRR/jackknife variance).
-If execution language is R and formatted tables are needed: "Load `gt` skill for publication-quality R table formatting."
+If formatted tables are needed: "Load `great-tables` skill (Python) or `gt` skill (R) for publication-quality table formatting."
 If user has R/Stata background, also include: "User has [R/Stata] background. Load [r-python-translation/stata-python-translation] skill. Add inline [R/Stata]-equivalent comments for non-trivial data operations."
 When execution language is R and user has Python/Stata background, instead include: "User has [Python/Stata] background. Load [python-r-translation/stata-r-translation] skill. Add inline [Python/Stata]-equivalent comments for non-trivial data operations."
 
@@ -669,7 +669,7 @@ Agent({
 All relative paths in referenced files resolve from BASE_DIR.
 
 Call the skill tool with name 'plotnine' (Python) or 'ggplot2' (R).
-If execution language is R and formatted summary tables are needed: "Load `gt` skill for publication-quality R table formatting."
+If formatted summary tables are needed: "Load `great-tables` skill (Python) or `gt` skill (R) for publication-quality table formatting."
 If user has R/Stata background, also include: "User has [R/Stata] background. Load [r-python-translation/stata-python-translation] skill. Add inline [R/Stata]-equivalent comments for non-trivial data operations."
 When execution language is R and user has Python/Stata background, instead include: "User has [Python/Stata] background. Load [python-r-translation/stata-r-translation] skill. Add inline [Python/Stata]-equivalent comments for non-trivial data operations."
 

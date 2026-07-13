@@ -123,6 +123,8 @@ No per-mirror path dicts needed — one path works for all mirrors.
 > **CRDC naming note:** CRDC codebook filenames frequently use hyphens where data paths use underscores or concatenated names. Additionally, some codebook names differ structurally from their data counterparts (e.g., data `harass_bully_students` vs codebook `harrassment-bullying-students`; data `restraint_seclusion_students` vs codebook `restraint-seclusion-students`). Note the mirror's codebook files spell "harassment" as "harrassment" (double r) — this is intentional and must be preserved. Always use the exact paths shown above.
 
 > **CRDC ID columns:** All CRDC datasets have `crdc_id`, `ncessch`, and `leaid` as String columns (zero-padded IDs). When reading from CSV, these **must** be forced to String via `schema_overrides` — Polars infers them as Int64, silently destroying leading zeros for ~19% of rows (FIPS 01-09 states: AL, AK, AZ, AR, CA, CO, CT). Parquet preserves types automatically. See `education-data-source-crdc` skill for full details.
+>
+> **Zero-padded IDs are not CRDC-only.** The same CSV-fallback trap applies to EDFacts and SAIPE `ncessch`/`leaid`, and force-string alone is not always enough: 2019 EDFacts source files ship *already-truncated* IDs, so the canonical recipe is force-string **plus** pad-and-assert (`ncessch`→12, `leaid`→7) after read. See the "Zero-padded ID columns" bullets in `fetch-patterns.md` § Format Handling for the bilingual pattern and per-source specifics.
 
 ### MEPS
 

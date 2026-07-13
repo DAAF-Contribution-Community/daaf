@@ -321,7 +321,8 @@ df <- df |> filter(grade >= 0, grade <= 12)
 | Pitfall | Issue | Solution |
 |---------|-------|----------|
 | Summing grades | Misses ungraded students | Use `grade=99` (total) instead |
-| Assuming `-1` is missing | In grade data, `-1` = Pre-K | Check variable format in codebook |
+| Assuming `-1` is missing | In enrollment `grade` data, `-1` = Pre-K | Check variable format in codebook |
+| Reading `highest_grade_offered == -1` as a grade | In directory grade-span (GSLO/GSHI), `-1` = MISSING, not Pre-K/≥9 | Exclude `-1` before grade-span filters (see variable-definitions.md) |
 | Cross-state comparison | Different state definitions | Check state methodology first |
 | Using FRPL as poverty measure | CEP schools show 100% | Supplement with MEPS or SAIPE data |
 | Locale time series | 2006 code system change | Analyze pre/post-2006 separately |

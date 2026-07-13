@@ -33,7 +33,7 @@ Detailed definitions of SAIPE variables, population universes, and coding conven
 
 | Variable | Calculation | Notes |
 |----------|-------------|-------|
-| `population_5_17_poverty_pct` | `population_5_17_poverty / population_5_17 * 100` | Not a true poverty "rate" - numerator excludes some in denominator |
+| `population_5_17_poverty_pct` | `population_5_17_poverty / population_5_17 * 100` | Not a true poverty "rate" - numerator excludes some in denominator. **NOTE:** the Portal's `est_population_5_17_poverty_pct` is delivered on a **0-1 proportion** scale despite the `_pct` name (MEPS is 0-100) — see the scale-trap warning under "Education Data Portal Variable Names" before combining with other poverty measures |
 
 ## State and County Variables
 
@@ -252,6 +252,41 @@ df |> filter(leaid == 622710)  # California district 22710
 df <- df |> mutate(leaid_str = str_pad(as.character(leaid), 7, pad = "0"))
 ```
 
+> **CSV fallback: pad-and-assert `leaid` before any join (field-confirmed).** SAIPE
+> `leaid` is Int64 in the Portal (parquet round-trips it losslessly), but when a fetch
+> falls back to the CSV source, a numeric read drops the leading zero for single-digit-FIPS
+> districts. In a native R-mode pipeline run this affected **14.6% of rows**, splitting the
+> school→district join key. Force-string on read is not always enough (a source file can ship
+> an already-truncated ID), so pad `leaid` to 7 and assert the width *before* joining SAIPE
+> district poverty to any school-level or MEPS frame:
+
+```python
+import polars as pl
+
+# INTENT: enforce canonical 7-char leaid before school->district join.
+# REASONING: CSV read drops leading zeros for FIPS 01-09 districts (14.6% of rows
+#   in a field run); a split key silently under-joins those districts.
+# ASSUMES: force-string applied on read (schema_overrides={"leaid": pl.Utf8});
+#   a value wider than 7 is a genuine anomaly, not a pad candidate.
+df = df.with_columns(pl.col("leaid").cast(pl.Utf8).str.zfill(7))
+assert (df["leaid"].str.len_chars() == 7).all(), "leaid width != 7 after pad"
+```
+
+```r
+library(stringr)
+
+# INTENT: enforce canonical 7-char leaid before school->district join.
+# REASONING: CSV read drops leading zeros for FIPS 01-09 districts (14.6% of rows
+#   in a field run); a split key silently under-joins those districts.
+# ASSUMES: col_types = cols(leaid = col_character()) applied on read; pad+assert
+#   before the join so a split key never enters the joined frame.
+df <- df |> mutate(leaid = str_pad(as.character(leaid), 7, pad = "0"))
+stopifnot(all(nchar(df$leaid) == 7))
+```
+
+> See `education-data-query` → `fetch-patterns.md` § Format Handling ("Zero-padded ID
+> columns") for the cross-source version of this pattern (EDFacts + CRDC + SAIPE).
+
 ### County FIPS Codes
 
 - 5-character string
@@ -364,3 +399,19 @@ In the Education Data Portal, estimate variable names include the `est_` prefix:
 | Census district name | `district_name` | String |
 
 > **Note:** All Portal variables are lowercase. The `est_` prefix indicates these are estimates, not direct counts.
+
+> **SCALE TRAP: `est_population_5_17_poverty_pct` is a 0-1 PROPORTION, not a 0-100 percent (field-confirmed).**
+> Despite the `_pct` suffix, the Portal SAIPE district poverty measure is expressed on a
+> **0-1 proportion** scale (e.g., `0.185` = 18.5% child poverty), **not** 0-100. This is a
+> double-scaling hazard when SAIPE is combined or compared with other poverty measures — in
+> particular **MEPS `meps_poverty_pct`, which is on a 0-100 scale** (observed max ~60.5 in a
+> field run). Naively treating both as the same units, or multiplying SAIPE by 100 twice,
+> corrupts any triangulation, ratio, or side-by-side chart.
+>
+> - **Verify before scaling:** check the observed range (`df["est_population_5_17_poverty_pct"].max()` ≲ 1 confirms proportion).
+> - **Scale at most once:** multiply SAIPE by 100 *only if* you need percent units to match MEPS, and never twice.
+> - **Reconcile scales explicitly** in any SAIPE↔MEPS comparison or combined visualization.
+>
+> This differs from the *state/county* `*_poverty_pct` variables documented above (context
+> only — not in Portal mirrors), which follow the Census "percent" convention. Trust the
+> observed data range and the live codebook over any suffix-based assumption.
