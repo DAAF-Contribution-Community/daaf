@@ -762,13 +762,22 @@ If you're using the manual `marimo run` command and can't see anything at `http:
 
 ### Q: How do I view a Quarto notebook (R projects)?
 
-Quarto notebooks (`.qmd`) render to a static HTML file rather than being served live like marimo. From inside the container, render the notebook:
+Quarto notebooks (`.qmd`) render to a static HTML file rather than being served live like marimo. The easiest way to view one is the convenience script -- run `bash view_quarto.sh` (or `.\view_quarto.ps1` on Windows) from your `daaf-docker` folder. Run it with no argument to list every `.qmd` notebook, or pass a project folder to render and open one:
+
+```bash
+cd daaf-docker
+bash view_quarto.sh                            # macOS / Linux: list notebooks
+bash view_quarto.sh 2026-01-24_Your_Project    # render and open one
+.\view_quarto.ps1 2026-01-24_Your_Project      # Windows
+```
+
+The script renders the notebook to a single self-contained HTML file inside the container, copies it out to a `quarto_html/` folder next to your `docker-compose.yml`, and opens it in your browser -- handling container startup automatically.
+
+If you'd rather do it by hand, render from inside the container and copy the result out yourself:
 
 ```bash
 quarto render research/YYYY-MM-DD_Your_Project/notebook.qmd
 ```
-
-Then copy the resulting HTML file out to your host machine and open it in any browser:
 
 ```bash
 # From your host terminal (not inside the container)

@@ -62,6 +62,8 @@ if [ "${DAAF_DRY_RUN:-}" = "1" ]; then
         case "$*" in
             "info") return 0 ;;
             *"volume inspect"*) return 1 ;;
+            *"buildx inspect"*) return 1 ;;
+            *"buildx create"*) return 0 ;;
             *" build --progress"*) return 0 ;;
             *" up -d"*) return 0 ;;
             *"exec -T daaf-docker true"*) return 0 ;;
@@ -228,6 +230,48 @@ if ! curl -fsSL "${RAW_BASE}/Dockerfile"                          -o "${INSTALL_
 fi
 chmod +x "${INSTALL_DIR}/daaf.sh" "${INSTALL_DIR}/daaf_lib.sh" "${INSTALL_DIR}/run_daaf.sh" "${INSTALL_DIR}/backup_daaf.sh" "${INSTALL_DIR}/restore_from_backup.sh" "${INSTALL_DIR}/rebuild_daaf.sh" "${INSTALL_DIR}/update_daaf.sh" "${INSTALL_DIR}/view_logs.sh" "${INSTALL_DIR}/view_notebooks.sh" "${INSTALL_DIR}/run_vscode.sh"
 
+# --- Apple Silicon (arm64) build-time notice ---
+# On arm64 every R package compiles from source (P3M has no Bookworm arm64
+# binaries -- see the Dockerfile's P3M repo-config note), which adds a long,
+# mostly-silent stretch to the build. Warn up front so the user does not mistake
+# the quiet compile phase for a hang.
+DAAF_ARCH="$(uname -m 2>/dev/null || echo unknown)"
+if [ "${DAAF_ARCH}" = "arm64" ] || [ "${DAAF_ARCH}" = "aarch64" ]; then
+    echo ""
+    echo "NOTE: Apple Silicon / arm64 detected. R packages compile from source on"
+    echo "      this architecture, so expect roughly 25-35 extra minutes of build"
+    echo "      time with long silent stretches (heavy C++ compiles: arrow, sf/terra,"
+    echo "      xgboost). This is normal -- the build is not hung."
+    echo ""
+fi
+
+# --- Optional diagnostic builder (DAAF_DIAG_BUILD=1) ---
+# BuildKit clips each step's log at 2 MiB by default, and Docker Desktop's DEFAULT
+# builder does not let that limit be raised. The only mechanism is a custom
+# docker-container builder with a larger BUILDKIT_STEP_LOG_MAX_SIZE, selected via
+# BUILDX_BUILDER. That builder has real costs (separate build cache; the built
+# image must be loaded back into the Docker image store), so it is opt-in only.
+# Fail-open: any failure creating/inspecting it falls back to the default builder.
+BUILD_ENV_PREFIX=""
+if [ "${DAAF_DIAG_BUILD:-}" = "1" ]; then
+    if docker buildx inspect daaf-diag-builder >/dev/null 2>&1; then
+        BUILD_ENV_PREFIX="daaf-diag-builder"
+        echo "NOTE: Reusing existing diagnostic buildx builder 'daaf-diag-builder' (16 MiB step-log clip)."
+    elif docker buildx create --name daaf-diag-builder --driver docker-container \
+            --driver-opt env.BUILDKIT_STEP_LOG_MAX_SIZE=16777216 >/dev/null 2>&1; then
+        BUILD_ENV_PREFIX="daaf-diag-builder"
+        echo "NOTE: Created diagnostic buildx builder 'daaf-diag-builder' (16 MiB step-log clip)."
+    else
+        echo "NOTE: DAAF_DIAG_BUILD=1 set, but the diagnostic buildx builder could not be"
+        echo "      created. Falling back to the default builder (logs may be clipped at 2 MiB)."
+    fi
+    if [ -n "${BUILD_ENV_PREFIX}" ]; then
+        echo "      This build uses a separate build cache (slower first run); the image is"
+        echo "      loaded back into Docker when the build completes."
+        echo ""
+    fi
+fi
+
 # --- Build the Docker image ---
 echo "[3/4] Building Docker image (this may take a few minutes on first run since there are a lot of Python libraries to install)..."
 # Project name is set declaratively via the top-level "name: daaf" key in
@@ -236,10 +280,15 @@ echo "[3/4] Building Docker image (this may take a few minutes on first run sinc
 # applied to the build step (where it is universally supported) without relying
 # on `docker compose up --progress`, which is rejected as "unknown flag" on
 # Docker Compose versions prior to ~v2.27.
-if ! docker compose -f "${INSTALL_DIR}/docker-compose.yml" build --progress plain; then
+# BUILDX_BUILDER is set inline only when the diagnostic builder was selected
+# above; otherwise it stays empty and Docker uses the default builder unchanged.
+if ! BUILDX_BUILDER="${BUILD_ENV_PREFIX}" docker compose -f "${INSTALL_DIR}/docker-compose.yml" build --progress plain; then
     echo ""
     echo "ERROR: Docker image build failed. Check the output above for details."
     echo "You can safely re-run this installer to retry (set DAAF_FORCE_REINSTALL=1 if prompted)."
+    echo "If the failing error above was truncated ('[output clipped, log limit 2MiB reached]'),"
+    echo "re-run with DAAF_DIAG_BUILD=1 for unclipped build logs:"
+    echo "  DAAF_DIAG_BUILD=1 bash -c \"\$(curl -fsSL ${RAW_BASE}/scripts/host/install.sh)\""
     exit 1
 fi
 echo "Starting container..."

@@ -50,7 +50,7 @@ Versions installed in the DAAF container (R 4.5.3):
 - `.by` argument in `mutate()`, `summarize()`, `filter()`, `slice_*()` for inline grouping (no `group_by()` needed)
 - `reframe()` replaces `summarize()` when results have multiple rows per group
 - `pick()` replaces `across()` inside `cur_data()` contexts
-- `case_match()` for value-matching (simpler than `case_when()` for direct mappings)
+- `recode_values()` for value-matching (simpler than `case_when()` for direct mappings; supersedes `case_match()`, which is soft-deprecated as of dplyr 1.2.0)
 - `consecutive_id()` for run-length grouping
 - `join_by()` for inequality and overlap joins
 

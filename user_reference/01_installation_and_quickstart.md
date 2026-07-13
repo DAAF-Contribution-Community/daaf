@@ -318,7 +318,8 @@ claude
 | Start session | `bash run_daaf.sh` | `.\run_daaf.ps1` |
 | End session | `/exit` → `exit` → `docker compose down` | Same |
 | Browse/edit files | `bash run_vscode.sh` | `.\run_vscode.ps1` |
-| View notebooks | `bash view_notebooks.sh` | `.\view_notebooks.ps1` |
+| View notebooks (Python/marimo) | `bash view_notebooks.sh` | `.\view_notebooks.ps1` |
+| View documents (R/Quarto) | `bash view_quarto.sh` | `.\view_quarto.ps1` |
 | View session logs | `bash view_logs.sh` | `.\view_logs.ps1` |
 | Back up research | `bash backup_daaf.sh` | `.\backup_daaf.ps1` |
 | Update DAAF | `bash update_daaf.sh` | `.\update_daaf.ps1` |
@@ -453,7 +454,26 @@ This opens marimo's built-in notebook browser at [http://localhost:2718](http://
 
 R projects produce **Quarto** notebooks (`.qmd` files) instead of Marimo notebooks. Quarto renders to HTML by default, giving you a polished document with narrative text, executed code, tables, and figures -- all viewable in any web browser.
 
-**Rendering a Quarto document from inside the container:**
+**Quickest way -- from your host machine (no container shell needed):**
+
+```bash
+cd daaf-docker
+bash view_quarto.sh                                 # macOS / Linux: list available notebooks
+.\view_quarto.ps1                                   # Windows: list available notebooks
+```
+
+Run with no argument to list every `.qmd` notebook across your research projects. To render and open one, re-run with its project folder name (or a direct path to the `.qmd`):
+
+```bash
+bash view_quarto.sh 2026-01-24_Your_Project         # macOS / Linux
+.\view_quarto.ps1 2026-01-24_Your_Project           # Windows
+```
+
+The script renders the notebook to a single self-contained HTML file inside the container, copies it out to a `quarto_html/` folder next to your `docker-compose.yml`, and opens it in your default browser. It handles starting the container if it isn't already running. This is the R-notebook counterpart to `view_notebooks.sh` for Python (marimo) projects.
+
+**Manual alternative -- rendering from inside the container:**
+
+If you'd rather render by hand (or want the HTML in a specific place), you can run Quarto directly inside the container:
 
 ```bash
 quarto render research/YYYY-MM-DD_Your_Project/notebook.qmd

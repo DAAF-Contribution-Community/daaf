@@ -138,13 +138,14 @@ df |> mutate(
   )
 )
 
-# case_match for direct value mapping (dplyr 1.1+)
+# recode_values for direct value mapping (dplyr 1.2+; supersedes case_match,
+# which is soft-deprecated as of dplyr 1.2.0)
 df |> mutate(
-  region = case_match(
+  region = recode_values(
     state,
     c("CA", "OR", "WA") ~ "West",
     c("NY", "NJ", "CT") ~ "Northeast",
-    .default = "Other"
+    default = "Other"
   )
 )
 

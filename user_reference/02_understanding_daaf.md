@@ -704,7 +704,7 @@ marimo run 'research/YYYY-MM-DD_Title/YYYY-MM-DD_Notebook.py' --host 0.0.0.0 --p
 ```
 You can also open the `.py` file in any text editor -- marimo notebooks are just Python.
 
-**How to view Quarto notebooks (R):** Quarto notebooks are `.qmd` files that render to HTML. From inside the container, render with `quarto render 'research/YYYY-MM-DD_Title/YYYY-MM-DD_Notebook.qmd'`, then view the resulting HTML file in the browser-based code editor. You can also open the `.qmd` file directly in any text editor -- Quarto notebooks are plain text with YAML frontmatter and code chunks.
+**How to view Quarto notebooks (R):** The easiest way is to run `bash view_quarto.sh` (or `.\view_quarto.ps1` on Windows) from your `daaf-docker` folder -- run it with no argument to list every `.qmd` notebook, or pass a project folder to render and open one. It renders the notebook to a single self-contained HTML file inside the container, copies it out to a `quarto_html/` folder on your host, and opens it in your browser (the R-notebook counterpart to `view_notebooks.sh` for Python). Alternatively, from inside the container you can render by hand with `quarto render 'research/YYYY-MM-DD_Title/YYYY-MM-DD_Notebook.qmd'`, then view the resulting HTML file in the browser-based code editor. You can also open the `.qmd` file directly in any text editor -- Quarto notebooks are plain text with YAML frontmatter and code chunks.
 
 ### The Report
 
@@ -910,7 +910,7 @@ You don't need to know what's in most of these directories -- the two that matte
 | `agent_reference/` | Detailed workflow documentation, templates, validation rules | **DAAF** (internal reference material for the orchestrator and agents) |
 | `.claude/skills/` | Skill definitions providing domain knowledge | **DAAF** (and users who want to create new skills) |
 | `scripts/` | Shared utility scripts (`run_with_capture.sh`, `collect_session_logs.sh`, `generate_log_viewer.sh`, `launch_marimo.sh`, `launch_code_server.sh`) | **DAAF** (used from the DAAF root directory; not copied into projects) |
-| `scripts/host/` (copied to your `daaf-docker/` folder during installation) | Host-side convenience scripts (`run_daaf`, `view_logs`, `view_notebooks`, `run_vscode`, `backup_daaf`, `restore_from_backup`, `rebuild_daaf`, `update_daaf` -- `.sh` and `.ps1` variants) | **You** (run from your `daaf-docker` folder on the host, outside the container) |
+| `scripts/host/` (copied to your `daaf-docker/` folder during installation) | Host-side convenience scripts (`run_daaf`, `view_logs`, `view_notebooks`, `view_quarto`, `run_vscode`, `backup_daaf`, `restore_from_backup`, `rebuild_daaf`, `update_daaf` -- `.sh` and `.ps1` variants) | **You** (run from your `daaf-docker` folder on the host, outside the container) |
 
 **Key insight for new users:** Everything you need to review, share, or reproduce is inside the project folder. You can copy the entire folder to a colleague and they'd have everything needed to understand and verify the analysis. That's the whole point of reproducibility.
 
@@ -919,7 +919,8 @@ You don't need to know what's in most of these directories -- the two that matte
 DAAF includes convenience scripts for viewing your files, notebooks, and session logs outside of the terminal. Run these from your `daaf-docker` folder on the host (i.e., outside the container):
 
 - **Browse and edit project files:** `bash run_vscode.sh` (macOS/Linux) or `.\run_vscode.ps1` (Windows) -- opens a browser-based VS Code editor. You can preview Markdown reports and plans with `Shift+Ctrl+V`, read Python and R scripts with syntax highlighting, and inspect the Git history to see what changed and when. See [**03. Best Practices — Using the Browser-Based Code Editor**](03_best_practices.md#using-the-browser-based-code-editor) for more.
-- **View interactive notebooks:** `bash view_notebooks.sh` (macOS/Linux) or `.\view_notebooks.ps1` (Windows) -- opens marimo's notebook browser at [http://localhost:2718](http://localhost:2718), where you can browse and open any project notebook.
+- **View interactive notebooks (Python):** `bash view_notebooks.sh` (macOS/Linux) or `.\view_notebooks.ps1` (Windows) -- opens marimo's notebook browser at [http://localhost:2718](http://localhost:2718), where you can browse and open any project notebook.
+- **View Quarto documents (R):** `bash view_quarto.sh` (macOS/Linux) or `.\view_quarto.ps1` (Windows) -- renders an R project's Quarto (`.qmd`) notebook to a self-contained HTML file, copies it out to a `quarto_html/` folder on your host, and opens it in your browser. Run it with no argument to list available notebooks, or pass a project folder to render one.
 - **View session logs:** `bash view_logs.sh` (macOS/Linux) or `.\view_logs.ps1` (Windows) -- opens the **DAAF Log Explorer**, an interactive timeline that shows orchestrator actions, subagent dispatches, and tool calls in your browser at [http://localhost:2719](http://localhost:2719). See the [Installation Guide — Viewing Session Logs](01_installation_and_quickstart.md#viewing-session-logs-in-your-browser) for details.
 
 ---

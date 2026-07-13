@@ -263,7 +263,7 @@ library(dplyr)
 
 # Example: Adjust to 2021 dollars using CPI multipliers
 df <- df |> mutate(
-  cpi_multiplier = case_match(year,
+  cpi_multiplier = recode_values(year,  # recode_values supersedes case_match (soft-deprecated dplyr 1.2.0)
     2018 ~ 1.08,
     2019 ~ 1.06,
     2020 ~ 1.04,

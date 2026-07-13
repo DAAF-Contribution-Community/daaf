@@ -177,7 +177,7 @@ library(dplyr)
 # For time series spanning 2010
 # Option 1: Collapse new categories to match old 5-category system
 df <- df |> mutate(
-  race_collapsed = case_match(
+  race_collapsed = recode_values(
     race,
     5 ~ 5L,   # American Indian/Alaska Native stays same
     4 ~ 4L,   # Asian stays Asian
@@ -186,7 +186,7 @@ df <- df |> mutate(
     3 ~ 3L,   # Hispanic stays Hispanic
     1 ~ 1L,   # White stays White
     7 ~ -1L,  # Two or more -> cannot map (treat as missing)
-    .default = -1L
+    default = -1L  # recode_values supersedes case_match (soft-deprecated dplyr 1.2.0)
   )
 )
 
