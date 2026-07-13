@@ -299,6 +299,10 @@ quarto render analysis.qmd --output-dir output/
 With `embed-resources: true` in YAML, no `_files/` directory is created --
 everything is in the single HTML file.
 
+For users on the host, the `scripts/host/view_quarto.sh` / `.ps1` convenience
+scripts wrap render + copy-out + browser-open in one step (the R counterpart to
+`view_notebooks.sh` for marimo).
+
 ## Render Performance
 
 ### Speed Tips

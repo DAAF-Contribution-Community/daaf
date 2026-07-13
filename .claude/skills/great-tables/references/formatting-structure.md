@@ -123,15 +123,25 @@ aggregator names, and the `columns=` selection argument is **not supported**
 (raises `NotImplementedError`) — the summary spans all numeric columns.
 
 ```python
+import polars.selectors as cs
+
 tbl = (
-    gt.GT(df)
+    gt.GT(df, rowname_col="label")
     .grand_summary_rows(
-        fns={"Total": pl.all().sum(), "Mean": pl.all().mean()},
+        # cs.numeric() scopes the aggregation to numeric columns only.
+        fns={"Total": cs.numeric().sum(), "Mean": cs.numeric().mean()},
     )
 )
 ```
 
-Common pitfalls (both probe-verified as errors):
+Scope the expression to numeric columns: bare `pl.all().sum()` raises
+`InvalidOperationError: sum operation not supported for dtype str` the moment the
+frame has any string column (including the `rowname_col` stub) — probe-verified on
+a mixed-type frame. Use `cs.numeric()` (shown) or an explicit
+`pl.col("revenue","units")` list instead.
+
+Common pitfalls (all probe-verified as errors):
+- `fns={"Total": pl.all().sum()}` → `InvalidOperationError` on any string column.
 - `fns={"Total": "sum"}` → `ColumnNotFoundError` (string treated as a column name).
 - `grand_summary_rows(fns=..., columns=["x"])` → `NotImplementedError`.
 

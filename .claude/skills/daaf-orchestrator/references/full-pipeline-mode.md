@@ -487,8 +487,8 @@ These operations may be executed without preview:
 | **6-QA** | `data-scientist` | general-purpose | `code-reviewer` agent (after each Stage 6 script) |
 | 7 | `data-scientist`, `polars` (Python) or `tidyverse` (R), `geopandas`/`sf-terra` (if spatial data) | general-purpose | Subagent invokes skills |
 | **7-QA** | `data-scientist` | general-purpose | `code-reviewer` agent (after each Stage 7 script) |
-| 8.1 | `data-scientist`, `polars`/`tidyverse`, modeling library per Plan (Python: `statsmodels` / `pyfixest` / `linearmodels` / `svy` / `scikit-learn` / `geopandas`; R: `r-stats` / `fixest` / `plm` / `survey-r` / `tidymodels` / `sf-terra`), `gt` (R, if formatted tables needed) | general-purpose | Subagent invokes skills |
-| 8.2 | `data-scientist`, `plotnine` or `plotly` (Python) or `ggplot2` or `plotly-r` (R), `geopandas` (Python) or `sf-terra` (R) if map visualization, `gt` (R, if formatted summary tables needed) | general-purpose | Subagent invokes skills |
+| 8.1 | `data-scientist`, `polars`/`tidyverse`, modeling library per Plan (Python: `statsmodels` / `pyfixest` / `linearmodels` / `svy` / `scikit-learn` / `geopandas`; R: `r-stats` / `fixest` / `plm` / `survey-r` / `tidymodels` / `sf-terra`), `great-tables` (Python) or `gt` (R) (if formatted tables needed) | general-purpose | Subagent invokes skills |
+| 8.2 | `data-scientist`, `plotnine` or `plotly` (Python) or `ggplot2` or `plotly-r` (R), `geopandas` (Python) or `sf-terra` (R) if map visualization, `great-tables` (Python) or `gt` (R) (if formatted summary tables needed) | general-purpose | Subagent invokes skills |
 | **8-QA** | `data-scientist` | general-purpose | `code-reviewer` agent (after each Stage 8 script) |
 | 9 | `marimo` (Python) or `quarto` (R) | general-purpose | `notebook-assembler` agent (COMPILES scripts — NO new code, NO dashboards) |
 | 10 | — | — | Orchestrator aggregates QA findings (no subagent) |
@@ -507,7 +507,7 @@ These operations may be executed without preview:
 
 **Note:** Stages 2, 3, 5, and 6 use domain-specific skills resolved by the orchestrator based on the active domain configuration in Plan.md.
 
-**Skill loading mechanism:** All named agents preload `data-scientist` via frontmatter (full content injected at startup). The orchestrator's Agent prompts should only include `Call the skill tool` instructions for **additional** skills (domain skills, Python: `polars`, `plotnine`, `plotly`, `statsmodels`, `pyfixest`, `linearmodels`, `svy`, `scikit-learn`, `geopandas`; R: `tidyverse`, `ggplot2`, `plotly-r`, `r-stats`, `fixest`, `plm`, `survey-r`, `tidymodels`, `sf-terra`, `gt`; either: `science-communication`). Route by execution language preference in CLAUDE.md User Preferences. Stage 2 uses `search-agent` and Stage 3 uses `source-researcher` — both are named agents that preload `data-scientist` via frontmatter, but still require explicit skill tool calls for domain-specific skills (explorer, source).
+**Skill loading mechanism:** All named agents preload `data-scientist` via frontmatter (full content injected at startup). The orchestrator's Agent prompts should only include `Call the skill tool` instructions for **additional** skills (domain skills, Python: `polars`, `plotnine`, `plotly`, `statsmodels`, `pyfixest`, `linearmodels`, `svy`, `scikit-learn`, `geopandas`, `great-tables`; R: `tidyverse`, `ggplot2`, `plotly-r`, `r-stats`, `fixest`, `plm`, `survey-r`, `tidymodels`, `sf-terra`, `gt`; either: `science-communication`). Route by execution language preference in CLAUDE.md User Preferences. Stage 2 uses `search-agent` and Stage 3 uses `source-researcher` — both are named agents that preload `data-scientist` via frontmatter, but still require explicit skill tool calls for domain-specific skills (explorer, source).
 
 **Cross-language annotation preference:** When the user's primary analysis language background differs from the execution language and cross-language code annotations are enabled in CLAUDE.md User Preferences, add the appropriate translation directive to all Stage 5-8 agent prompts. Select the directive based on execution language and background (see orchestrator SKILL.md § User Language Preference Propagation for the full 4-way table): Python execution with R/Stata background loads `r-python-translation`/`stata-python-translation`; R execution with Python/Stata background loads `python-r-translation`/`stata-r-translation`. This propagates to research-executor (code annotation), code-reviewer (annotation verification), debugger (framed error explanations), and data-ingest (profiling script annotation during Data Onboarding). The translation skills are loaded on demand via the Skill tool — they are NOT preloaded in any agent's frontmatter.
 
@@ -1066,7 +1066,7 @@ Named agents already have `data-scientist` injected at startup — do not re-loa
 Call the skill tool only for additional skills — route by execution language
 (per CLAUDE.md User Preferences):
   Python: polars, plotnine, plotly, statsmodels, pyfixest, linearmodels, svy,
-          geopandas, scikit-learn
+          geopandas, scikit-learn, great-tables
   R: tidyverse, ggplot2, plotly-r, r-stats, fixest, plm, survey-r, tidymodels,
      sf-terra, gt
   Either: science-communication, domain skills]

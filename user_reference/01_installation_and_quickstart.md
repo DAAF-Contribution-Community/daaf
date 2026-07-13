@@ -471,6 +471,19 @@ bash view_quarto.sh 2026-01-24_Your_Project         # macOS / Linux
 
 The script renders the notebook to a single self-contained HTML file inside the container, copies it out to a `quarto_html/` folder next to your `docker-compose.yml`, and opens it in your default browser. It handles starting the container if it isn't already running. This is the R-notebook counterpart to `view_notebooks.sh` for Python (marimo) projects.
 
+> **Don't see `view_quarto.sh` / `.ps1` in your `daaf-docker` folder yet?** It's a recent addition, so a slightly older install may not have it copied out. You can grab it straight from the container -- run one of these from your `daaf-docker` folder (with the container running):
+>
+> ```bash
+> # macOS / Linux
+> docker compose cp daaf-docker:/daaf/scripts/host/view_quarto.sh ./view_quarto.sh
+> chmod +x view_quarto.sh
+> ```
+>
+> ```powershell
+> # Windows
+> docker compose cp daaf-docker:/daaf/scripts/host/view_quarto.ps1 .\view_quarto.ps1
+> ```
+
 **Manual alternative -- rendering from inside the container:**
 
 If you'd rather render by hand (or want the HTML in a specific place), you can run Quarto directly inside the container:

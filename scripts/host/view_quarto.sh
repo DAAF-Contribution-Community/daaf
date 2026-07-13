@@ -209,11 +209,9 @@ if [ -z "${TARGET_ARG}" ]; then
     echo "Available Quarto notebooks:"
     echo ""
     # Bash 3.2 safe: iterate the newline-delimited list with a while-read loop
-    # (no mapfile). Numbering is purely cosmetic here -- this mode lists and exits.
-    n=0
+    # (no mapfile). This mode lists and exits.
     while IFS= read -r qmd_path; do
         [ -z "${qmd_path}" ] && continue
-        n=$((n + 1))
         printf "  %s\n" "${qmd_path}"
     done <<< "${QMDS_RAW}"
     echo ""
