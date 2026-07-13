@@ -215,7 +215,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 #
 # CUSTOMIZATION: Adding Your Own Python Packages
 # -----------------------------------------------
-# To add a Python package, append it to the appropriate RUN block below
+# RECOMMENDED DEFAULT (when feasible): add your own packages in the "USER
+# ADDITIONS" block near the END of this file, not here. That block sits below
+# every expensive layer, so Docker layer caching re-runs only your additions;
+# appending to the categorized blocks below re-runs all the expensive Python/R
+# layers underneath them. Use these mid-file blocks only when placement here is
+# actually required — e.g. a system library a downstream package needs at build
+# time, or an R package you want covered by the presence gate. See the USER
+# ADDITIONS banner for the full rationale and caveats.
+#
+# To add a Python package here, append it to the appropriate RUN block below
 # (or add a new block), then rebuild.
 #
 # IMPORTANT — CONTAINER-HOST BOUNDARY: If you (or DAAF/Claude Code) are
@@ -227,7 +236,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # build will "succeed" with no errors, but your new package will not
 # be installed). From your host terminal, in your DAAF project folder:
 #
-#   docker cp daaf-daaf-docker-1:/daaf/Dockerfile ./Dockerfile
+#   docker compose cp daaf-docker:/daaf/Dockerfile ./Dockerfile
 #   docker compose up -d --build
 #
 # Docker layer caching makes rebuilds fast — only changed layers re-run.
@@ -315,10 +324,14 @@ RUN uv pip install --system \
 # CLI. Together with the runtime and system libs, the R stack accounts for
 # roughly ~2.2 GB of the image.
 #
-# CUSTOMIZATION: To add an R package, append it to the appropriate Rscript
-# install block below (or add a new block). For R packages needing C/Fortran
-# libraries, add the system deps to the apt-get block in the "R toolchain"
-# section above.
+# CUSTOMIZATION: When feasible, add your own R packages in the "USER ADDITIONS"
+# block near the END of this file — it rebuilds fast because Docker layer caching
+# spares the expensive layers above it. Append an R package to the appropriate
+# Rscript install block below (or add a new block) only when you need it here —
+# most importantly, when you want the package covered by the presence gate below
+# (the gate only verifies packages listed in these blocks). For R packages
+# needing C/Fortran libraries, add the system deps to the apt-get block in the
+# "R toolchain" section above. See the USER ADDITIONS banner for full rationale.
 #
 # QUARTO SCOPING: Quarto is a standalone system binary that does not depend on
 # R or Python package managers; within DAAF it renders R-mode Stage 9 notebooks
@@ -493,6 +506,88 @@ RUN git config --global user.email "daaf@local" \
 ARG CLAUDE_CODE_VERSION=2.1.187
 RUN curl -fsSL https://claude.ai/install.sh | bash -s ${CLAUDE_CODE_VERSION}
 ENV PATH="/home/appuser/.local/bin:${PATH}"
+
+# ============================================
+# USER ADDITIONS — add your own packages and tools here
+# ============================================
+# This is the recommended default place to add your own software: Python
+# packages, R packages, system libraries, or standalone CLI tools. It sits as
+# late as possible in the build on purpose.
+#
+# WHY HERE (fast rebuilds via Docker layer caching): Docker caches each build
+# layer and only re-runs a layer when it (or a layer above it) changes. This
+# block is below every expensive framework layer — the apt/GDAL system libs, the
+# ~2.2 GB R stack, the Python installs, the code-server + VS Code extension
+# layers — so editing it invalidates essentially nothing downstream. A rebuild
+# takes only as long as installing your additions themselves (typically seconds
+# to a couple of minutes). By contrast, appending to the mid-file categorized
+# Python/R blocks re-runs every expensive layer below them (all the R packages,
+# all later Python blocks, the extensions), which can turn a quick rebuild into
+# a many-minute one.
+#
+# CAVEAT — convenience default, not an absolute rule; functionality wins. Some
+# additions MUST go earlier and will legitimately trigger a longer rebuild:
+#   (a) A system library that a mid-file Python/R package needs at IMAGE BUILD
+#       TIME must be installed BEFORE that package's install block (e.g. a
+#       geospatial lib a pip/Rscript block links against). Put it in the
+#       relevant apt-get block up top, not here.
+#   (b) An R package you want covered by the framework's install-verification
+#       presence gate belongs with the framework R blocks above (and its name
+#       added to the presence-gate list), not here — the gate only checks the
+#       packages listed there.
+#   (c) Anything a later framework layer depends on must precede that layer.
+# A standalone tool that nothing else depends on (a CLI utility, an extra
+# analysis package) is the ideal candidate for this block.
+#
+# CONTAINER-HOST BOUNDARY: the same warning that applies to the mid-file
+# customization blocks applies here — if you edit this file from inside a running
+# DAAF container you are editing the VOLUME copy, not the HOST copy Docker
+# Compose builds from. Copy it back to the host before rebuilding (the
+# rebuild_daaf.sh / .ps1 scripts do this for you). See
+# user_reference/04_extending_daaf.md § "The Recommended Path: Modify the
+# Dockerfile" for the full procedure.
+#
+# HOW TO USE: everything below is COMMENTED OUT so an unused block adds ZERO
+# instructions and produces a byte-for-byte identical image to a default build.
+# Uncomment the directives and the example(s) you need, following the patterns
+# already used elsewhere in this file.
+#
+# ---- ROOT-LEVEL INSTALLS (uncomment `USER root` + your install line[s]) ----
+# Root is needed for apt-get and for system-wide (`--system`) package installs.
+#
+# USER root
+#
+# System package (apt) — matches the apt hygiene pattern used up top:
+# RUN apt-get update && apt-get install -y --no-install-recommends \
+#         your-package-here \
+#     && apt-get clean \
+#     && rm -rf /var/lib/apt/lists/*
+#
+# Python package (uv, system-wide) — matches the Python install blocks above:
+# RUN uv pip install --system \
+#     your-package==1.2.3
+#
+# R package (installs from the P3M snapshot configured above) — matches the
+# R install blocks above. NOTE: packages added here are NOT covered by the
+# presence gate; if you need gate coverage, add them to the framework R blocks
+# instead (see caveat (b)).
+# RUN Rscript -e 'install.packages("yourPackage")'
+#
+# ---- RESTORE THE NON-ROOT RUNTIME USER (REQUIRED if you used `USER root`) ----
+# The FINAL `USER` directive in the Dockerfile determines the container's
+# runtime user, and DAAF's security posture depends on running as the non-root
+# `appuser`. If you switched to root above, you MUST switch back here. Do not
+# remove or reorder this relative to your root installs.
+#
+# USER appuser
+#
+# ---- USER-LEVEL / HOME-DIRECTORY INSTALLS (place AFTER `USER appuser`) ----
+# Anything that writes into /home/appuser belongs here, after the user is
+# restored: curl|bash-style per-user installers, editor extensions, dotfiles,
+# `uv pip install --user` / `pip install --user`, etc. Running these as root
+# would write into /root or leave root-owned files in /home/appuser.
+# RUN curl -fsSL https://example.com/install.sh | bash
+# ============================================
 
 # Install the DAAF entrypoint wrapper. It best-effort auto-starts the provider
 # shim (opt-in via DAAF_PROVIDER_SHIM) then execs CMD. Boot-safe: never fatal,

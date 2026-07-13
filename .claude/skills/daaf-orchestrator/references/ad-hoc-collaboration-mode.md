@@ -383,7 +383,7 @@ These boundaries supplement the universal safety boundaries in `CLAUDE.md`. See 
 - Running queries that might return >100K records
 - Scope expansion that would effectively constitute a Full Pipeline analysis
 - Modifying user's original files in place (vs. copying to workspace)
-- Installing packages or making environment changes
+- Installing packages or making environment changes (runtime installs are blocked; the path is a Dockerfile edit — recommend the user additions block near the end for a fast rebuild — see `agent_reference/BOUNDARIES.md`)
 
 ### Never Do
 

@@ -398,9 +398,9 @@ For self-guided reading, the full user documentation suite is in `user_reference
 
 ### Q: How do I install additional Python or R packages?
 
-**Python:** The recommended approach is to ask DAAF to add the package to the `Dockerfile` and rebuild the container. For detailed step-by-step instructions, common scenarios, and examples, see [**04. Extending DAAF -- Customizing Your Python and R Environment**](04_extending_daaf.md#the-recommended-path-modify-the-dockerfile-python).
+**Python:** The recommended approach is to ask DAAF to add the package to the `Dockerfile` and rebuild the container. By default DAAF adds it to the **user additions block** near the end of the Dockerfile, which rebuilds fast because Docker's layer caching spares every expensive layer above it (see [Why does my rebuild take so long?](#q-why-does-my-rebuild-take-so-long--how-do-i-keep-rebuilds-fast) below). For detailed step-by-step instructions, common scenarios, and examples, see [**04. Extending DAAF -- Customizing Your Python and R Environment**](04_extending_daaf.md#the-recommended-path-modify-the-dockerfile-python).
 
-**R:** For quick, session-only use, run `install.packages("pkgname")` inside the container -- the package will be available for the rest of that session but will not survive a container restart. For permanent installation, add the package to the `Dockerfile`'s R package install block and rebuild the container. DAAF uses Posit Package Manager (P3M) with date-pinned snapshots for R package reproducibility, so permanent additions go through the Dockerfile just like Python packages. See [**04. Extending DAAF**](04_extending_daaf.md) for more details.
+**R:** For quick, session-only use, run `install.packages("pkgname")` inside the container -- the package will be available for the rest of that session but will not survive a container restart. For permanent installation, add the package to the `Dockerfile` and rebuild the container. As with Python, the fast-rebuilding user additions block is the default location; the exception is a package you want covered by the R presence gate, which belongs in the framework R blocks. DAAF uses Posit Package Manager (P3M) with date-pinned snapshots for R package reproducibility, so permanent additions go through the Dockerfile just like Python packages. See [**04. Extending DAAF**](04_extending_daaf.md) for more details.
 
 ### Q: Can I use `apt-get` or `sudo` inside the container?
 
@@ -423,6 +423,14 @@ DAAF uses **[uv](https://docs.astral.sh/uv/)**, a fast Rust-based Python package
 In the `Dockerfile`, packages are installed with `uv pip install --system` (system-wide, during the root build phase) — this is where packages *should* go, since Dockerfile installs are the reproducible, rebuild-durable path.
 
 Runtime installs are a different story. DAAF's agents are **blocked** from runtime installs by the safety hook and deny rules (see [Why can't Claude just `pip install` a package it needs?](#q-why-cant-claude-just-pip-install-a-package-it-needs)), so you cannot ask DAAF to run `uv pip install` for you. If *you* want an ad-hoc, throwaway install for quick testing, run it yourself via a `!`-prefixed command in the prompt or from a host terminal — `uv pip install --user <package>` or `pip install --user <package>` both work (user-local, since you're not root, and both read the same PyPI source). Just remember such installs are **ephemeral** and vanish on the next rebuild; anything you want to keep belongs in the `Dockerfile`.
+
+### Q: Why does my rebuild take so long? / How do I keep rebuilds fast?
+
+It depends entirely on *where* in the Dockerfile your change lands, because of how Docker **layer caching** works. Docker builds the image as a stack of layers, top to bottom. When you rebuild, it reuses every cached layer up to the first one that changed, then re-runs that layer and **everything below it**. So a change high in the file (say, a system library in an early `apt-get` block) forces the expensive layers underneath -- the ~2.2 GB R package stack, the Python install blocks, the editor extensions -- to rebuild too, which can take many minutes. A change at the very bottom rebuilds almost nothing.
+
+That's exactly why DAAF's Dockerfile has a **user additions block** near the end, and why it's the recommended default place for your own packages and tools. Because nothing downstream depends on it, a package added there is the only thing rebuilt -- the rebuild takes only as long as installing that package, typically seconds to a couple of minutes depending on its size. (Note that a change to an *earlier* layer -- including a framework update that touches the package blocks -- still re-runs everything below it, your additions included; that first rebuild after an update will be slow regardless.)
+
+**To keep rebuilds fast:** let DAAF add your standalone packages and tools to the user additions block (its default), and reserve edits to the early/mid-file blocks for the cases that genuinely require them -- a system library a framework package needs at *build time*, or an R package you want covered by the presence gate. Those cases will legitimately re-run everything below them; that's expected, not a mistake. The [Extending DAAF guide](04_extending_daaf.md#the-recommended-path-modify-the-dockerfile-python) walks through both paths in detail.
 
 ---
 

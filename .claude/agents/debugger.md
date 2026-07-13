@@ -168,7 +168,7 @@ Recognize these frequent error patterns by language to form initial hypotheses q
 |---------------|----------|--------------|
 | `Error in ...` | General | Syntax errors, type mismatches, object not found |
 | `subscript out of bounds` | Indexing | Accessing vector/list element beyond its length |
-| `could not find function` | Missing library | `library()` call missing or package not installed |
+| `could not find function` | Missing library | `library()` call missing or package not installed (installs are Dockerfile-only — user adds to the user additions block and rebuilds; see ERROR_RECOVERY.md) |
 | `non-conformable arguments` | Dimension mismatch | Matrix/vector operations with incompatible dimensions |
 | `cannot allocate vector of size` | Memory | Dataset too large for available RAM |
 | `replacement has [n] rows, data has [m]` | Recycling/length | Assignment with incompatible lengths |

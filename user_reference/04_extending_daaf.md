@@ -399,9 +399,31 @@ I'd like to add networkx==3.4.2 to the Dockerfile so I can use
 it for graph analysis. Please add it to the appropriate block.
 ```
 
-DAAF will recognize this as a Framework Development task and pause for your approval before modifying the Dockerfile (modifying the Dockerfile is one of DAAF's "ask first" boundaries -- it never edits this file silently). You'll see exactly which block DAAF wants to add the package to and the version pin it's proposing. You can approve the change, adjust it, or ask DAAF to verify version compatibility against the existing pinned packages first -- a `uv pip compile` dry-run is a good safety check before committing to a rebuild, especially for packages with many transitive dependencies.
+DAAF will recognize this as a Framework Development task and pause for your approval before modifying the Dockerfile (modifying the Dockerfile is one of DAAF's "ask first" boundaries -- it never edits this file silently). You'll see exactly where DAAF wants to add the package and the version pin it's proposing. You can approve the change, adjust it, or ask DAAF to verify version compatibility against the existing pinned packages first -- a `uv pip compile` dry-run is a good safety check before committing to a rebuild, especially for packages with many transitive dependencies.
 
-The Dockerfile organizes Python packages into several `RUN uv pip install --system` blocks with comment headers describing each category (core data science, econometrics, geospatial, visualization, ML). DAAF will pick the most appropriate block. Here's what the resulting block might look like for the `networkx` example:
+**Where the package goes — and why it matters for rebuild speed.** DAAF's default is to add your package to the **user additions block** near the *end* of the Dockerfile — a clearly marked section (the banner reads `USER ADDITIONS — add your own packages and tools here`) that exists specifically for your own software. The reason is Docker **layer caching**: Docker rebuilds each layer only when that layer (or something above it) changes, and it reuses everything else from cache. The user additions block sits below every expensive framework layer -- the system libraries, the large R package stack, the Python install blocks, the editor extensions -- so adding a package there invalidates essentially nothing downstream — the rebuild takes only as long as installing your package itself, typically seconds to a couple of minutes. If instead you append your package to one of the mid-file categorized blocks (see below), every expensive layer *underneath* that block has to re-run, which can turn a quick rebuild into a many-minute one.
+
+Here's what a `networkx` addition looks like in the user additions block — you (or DAAF) uncomment the `uv pip install --system` example and add your package:
+
+```dockerfile
+# ============================================
+# USER ADDITIONS — add your own packages and tools here
+# ============================================
+# ... (explanatory comments) ...
+USER root
+RUN uv pip install --system \
+    networkx==3.4.2
+USER appuser
+```
+
+The `USER root` / `USER appuser` pair is important: the block ships with those lines commented out (so an unused block is zero-cost), and you uncomment `USER root` to run a system-wide install, then `USER appuser` to restore the non-root runtime user DAAF's security posture depends on. DAAF handles this framing for you.
+
+**When mid-file placement is the right call instead.** The user additions block is a convenience default, not an absolute rule -- functionality always wins. A few cases genuinely belong in the mid-file categorized blocks (or the apt-get blocks up top):
+
+- A **system library that a framework package needs at build time** must be installed *before* that package's install block -- see [Adding System-Level Dependencies](#adding-system-level-dependencies) below.
+- An **R package you want covered by the framework's install-verification presence gate** belongs with the framework R blocks (the gate only checks packages listed there) -- see [R Packages](#r-packages) below.
+
+For these cases DAAF will propose the correct mid-file location and explain why. The Dockerfile organizes Python packages into several `RUN uv pip install --system` blocks with comment headers describing each category (core data science, econometrics, geospatial, visualization, ML); a mid-file addition to the core block would look like:
 
 ```dockerfile
 # Install core data science packages
@@ -435,7 +457,7 @@ bash rebuild_daaf.sh         # macOS / Linux
 .\rebuild_daaf.ps1           # Windows
 ```
 
-The rebuild script handles the tricky part automatically: it copies the updated Dockerfile and docker-compose.yml from inside the container back to your host build directory (where `docker compose` reads them), then rebuilds the Docker image. Docker uses **layer caching**, so only the changed layers are rebuilt -- you'll see the new package being downloaded and installed in the build output.
+The rebuild script handles the tricky part automatically: it copies the updated Dockerfile and docker-compose.yml from inside the container back to your host build directory (where `docker compose` reads them), then rebuilds the Docker image. Docker uses **layer caching**, so only the changed layers (and anything below them) are rebuilt. This is exactly why the **user additions block** near the end of the Dockerfile is the recommended default location: because nothing downstream depends on it, a package added there is the *only* thing rebuilt, and you'll see just the new package being downloaded and installed -- the build takes only as long as that install, typically seconds to a couple of minutes. A package added to a mid-file block, by contrast, forces every expensive layer below it to rebuild too.
 
 **Why is this step needed?** The Dockerfile lives in two places -- inside the Docker volume (where DAAF just edited it) and in your `daaf-docker/` folder on your computer (where `docker compose` reads it for builds). The rebuild script bridges this gap so the two copies stay in sync.
 
@@ -487,6 +509,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 ```
 
 **2. Add the Python package** to the appropriate `RUN uv pip install --system` block (as described above).
+
+**A note on rebuild time for system libraries.** Unlike a standalone package that can live in the fast-rebuilding user additions block, a system library that a framework package needs *at build time* has to be installed near the **top** of the Dockerfile, before the package that links against it. Editing an early apt-get block invalidates every layer below it, so this kind of change will legitimately trigger a longer rebuild of the downstream Python and R layers -- that's expected, not a mistake. (By contrast, a *standalone* system tool that nothing else in the build depends on -- say, a CLI utility you just want available in the container -- can go in the user additions block via its own apt-get example and rebuild fast, exactly like a standalone package.)
 
 Both changes go in the same Dockerfile, so a single rebuild covers them both. After DAAF finishes both edits, follow Steps 2-3 from "Step-by-Step Process" above: exit the container, then run `bash rebuild_daaf.sh` (or `.\rebuild_daaf.ps1` on Windows) from your `daaf-docker` folder. The rebuild script copies the updated Dockerfile and docker-compose.yml from the container to the host and rebuilds the image in one step.
 
@@ -581,11 +605,15 @@ I'd like to add the broom.mixed package to the Dockerfile so I
 can use it for tidying mixed effects model output.
 ```
 
-DAAF will add a line like this to the R package installation section of the Dockerfile:
+DAAF will add a line like this:
 
 ```dockerfile
 RUN Rscript -e 'install.packages("broom.mixed")'
 ```
+
+**Where the R line goes.** Just like Python packages, the recommended default is the **user additions block** near the end of the Dockerfile -- an added `RUN Rscript -e 'install.packages(...)'` line there rebuilds fast thanks to layer caching, whereas appending to the mid-file R install blocks re-runs the (large, ~2.2 GB) R stack and everything below it. The R packages install from the same P3M date-pinned snapshot wherever the line sits, so reproducibility is unaffected by the choice.
+
+**One R-specific nuance — the presence gate.** The framework's R install blocks are followed by a *presence gate* that verifies every package it lists actually installed (a safety net against a package silently failing to install). That gate only checks the packages named in the framework blocks. So if you want your added R package covered by that verification, add it to the appropriate framework R block *and* to the presence-gate list, rather than to the user additions block. For a package you're comfortable verifying yourself (e.g. by loading it once), the fast-rebuilding user additions block is the simpler choice. DAAF will explain this tradeoff when it proposes the edit.
 
 Then follow the same exit-and-rebuild process described in the Python section above: exit Claude Code, exit the container, and run `bash rebuild_daaf.sh` (or `.\rebuild_daaf.ps1` on Windows) from your `daaf-docker` folder.
 
