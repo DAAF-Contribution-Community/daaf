@@ -24,6 +24,11 @@
 # unstripped -- also strip. Only KEY-ABSENT (or missing/non-object tool_input)
 # yields the silent exit-0 pass-through.
 #
+# v4.1 (2026-07-13, advisory wording only): test 2 additionally pins the
+# anti-re-dispatch advisory phrases ("proceeded successfully", "do not
+# re-dispatch") after a GPT session re-dispatched 5x, misreading the sanitized
+# rendered input as a failed parameter submission.
+#
 # SCRIPT UNDER TEST is parameterized: BLOCK_REMOTE_ISOLATION_SH defaults to the
 # installed hook but can be pointed at a proposed copy for pre-deployment
 # testing, e.g.:
@@ -137,6 +142,12 @@ _expected_updated_input() {
     # additionalContext non-empty and mentions the stripped value.
     echo "$output" | jq -e '.hookSpecificOutput.additionalContext | length > 0' >/dev/null
     echo "$output" | jq -e '.hookSpecificOutput.additionalContext | contains("remote")' >/dev/null
+    # v4.1 anti-re-dispatch sentinels: the advisory must state that the dispatch
+    # SUCCEEDED and must forbid re-dispatching — a GPT session misread the
+    # sanitized (isolation-free) rendered input as a failed submission and
+    # re-dispatched 5x. These phrases are load-bearing model-facing contract.
+    echo "$output" | jq -e '.hookSpecificOutput.additionalContext | contains("proceeded successfully")' >/dev/null
+    echo "$output" | jq -e '.hookSpecificOutput.additionalContext | contains("do not re-dispatch")' >/dev/null
 }
 
 # =========================================================================

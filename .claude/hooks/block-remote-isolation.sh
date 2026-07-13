@@ -75,9 +75,18 @@
 #   with just `{"isolation": null}`, dropping `description` and `prompt` and
 #   breaking EVERY isolation-filled dispatch with a schema validation error
 #   ("The required parameter 'description' is missing / The required parameter
-#   'prompt' is missing"). Fixed in v4 (this version) by full-object
-#   reconstruction: `.tool_input | del(.isolation)`.
+#   'prompt' is missing"). Fixed in v4 by full-object reconstruction:
+#   `.tool_input | del(.isolation)`.
 #   Regression tests: tests/bash/block_remote_isolation.bats.
+#
+#   v4.1 (2026-07-13): advisory wording only — no behavioral change. During
+#   cross-container validation, a GPT session issued FIVE redundant re-dispatches
+#   after misreading the sanitized (isolation-free) rendered tool input as a
+#   failed parameter submission: the old advisory said "do not re-add the
+#   isolation parameter on retry" but never said the dispatch itself had
+#   SUCCEEDED, so the model retried the whole dispatch. The additionalContext
+#   now leads with dispatch success and explicitly instructs no re-dispatch.
+#   The anti-re-dispatch phrases are pinned by the regression tests.
 #
 # FAIL-OPEN RATIONALE
 #   This is an availability/sanitization guard (prevents a hang and a stale
@@ -131,7 +140,7 @@ if [ "$HAS_ISOLATION" = "yes" ]; then
       "hookEventName": "PreToolUse",
       "permissionDecision": "allow",
       "updatedInput": (.tool_input | del(.isolation)),
-      "additionalContext": ("DAAF stripped the isolation parameter (was \"" + (.tool_input.isolation | tostring) + "\"); subagents run in-place, not in an isolated worktree/remote env. Isolated worktrees check out the repo default branch (stale framework snapshot, no visibility of untracked fixtures/uncommitted work); \"remote\" cloud envs are unavailable in the container and hang forever. Do not re-add the isolation parameter on retry — it will be stripped again.")
+      "additionalContext": ("DAAF stripped the isolation parameter (was \"" + (.tool_input.isolation | tostring) + "\") and this dispatch has proceeded successfully without it — the subagent runs in-place. If the rendered tool input no longer shows the isolation field, that is this sanitization working as intended, not a failed submission: do not re-dispatch this subagent, and do not re-add the isolation parameter on future dispatches (it will be stripped again). Background: isolated worktrees check out the repo default branch (stale framework snapshot, no visibility of untracked files or uncommitted work); \"remote\" cloud environments are unavailable in the container and hang forever.")
     }
   }'
   exit 0
