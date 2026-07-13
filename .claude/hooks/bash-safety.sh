@@ -373,7 +373,7 @@ fi
 #    pip/pipx: `pipx run` and `pipx runpip` fetch+execute ephemeral packages, so
 #    they join install/uninstall.
 if echo "$NORM_CMD" | grep -qiE '(^|[;&|]) ?(pip3?|pipx) (install|uninstall|run|runpip)\b'; then
-    block "Runtime package changes drift from the Dockerfile and vanish on rebuild. Add the package to the Dockerfile and rebuild (exit the container, then run \`bash rebuild_daaf.sh\` from the daaf-docker folder)."
+    block "Runtime package changes drift from the Dockerfile and vanish on rebuild. Add the package to the Dockerfile and rebuild (exit the container, then run \`bash rebuild_daaf.sh\` from the daaf-docker folder) — preferably in the user additions block near the end of the Dockerfile for a fast rebuild."
 fi
 
 #    python -m pip: interpreter may be versioned (`python3.11`) or the `py`
@@ -382,18 +382,18 @@ fi
 #    `-m pip install` appear as its args (`python myscript.py -m pip install`) —
 #    is an accepted edge, far rarer than the evasions this closes.
 if echo "$NORM_CMD" | grep -qiE '\b(python[0-9.]*|py) [^|;&]*-m pip (install|uninstall)\b'; then
-    block "Runtime package changes (python -m pip) drift from the Dockerfile and vanish on rebuild. Add the package to the Dockerfile and rebuild (exit the container, then run \`bash rebuild_daaf.sh\` from the daaf-docker folder)."
+    block "Runtime package changes (python -m pip) drift from the Dockerfile and vanish on rebuild. Add the package to the Dockerfile and rebuild (exit the container, then run \`bash rebuild_daaf.sh\` from the daaf-docker folder) — preferably in the user additions block near the end of the Dockerfile for a fast rebuild."
 fi
 
 #    uv: pip/add/remove/sync/tool subcommands, plus `uv run --with pkg` which
 #    installs pkg into the run's ephemeral environment (checked separately below
 #    because --with may trail other `uv run` args).
 if echo "$NORM_CMD" | grep -qiE '(^|[;&|]) ?uv (pip (install|uninstall|sync)|add|remove|sync|tool (install|run))\b'; then
-    block "Runtime package changes via uv drift from the Dockerfile and vanish on rebuild. Add the package to the Dockerfile and rebuild (exit the container, then run \`bash rebuild_daaf.sh\` from the daaf-docker folder)."
+    block "Runtime package changes via uv drift from the Dockerfile and vanish on rebuild. Add the package to the Dockerfile and rebuild (exit the container, then run \`bash rebuild_daaf.sh\` from the daaf-docker folder) — preferably in the user additions block near the end of the Dockerfile for a fast rebuild."
 fi
 
 if echo "$NORM_CMD" | grep -qiE '(^|[;&|]) ?uv run [^|;&]*--with\b'; then
-    block "\`uv run --with\` implicitly installs the named package into an ephemeral environment (runtime drift). Add the package to the Dockerfile and rebuild (exit the container, then run \`bash rebuild_daaf.sh\` from the daaf-docker folder)."
+    block "\`uv run --with\` implicitly installs the named package into an ephemeral environment (runtime drift). Add the package to the Dockerfile and rebuild (exit the container, then run \`bash rebuild_daaf.sh\` from the daaf-docker folder) — preferably in the user additions block near the end of the Dockerfile for a fast rebuild."
 fi
 
 #    conda: install/remove/update/create, plus `conda env update`/`conda env
@@ -410,7 +410,7 @@ fi
 #      that has always applied to the segment-anchored pip/uv checks above and
 #      the §7 mutation verbs (e.g. `time cp ...`), now extended to these two.
 if echo "$NORM_CMD" | grep -qiE '(^|[;&|]) ?(uvx\b|easy_install\b|conda (install|remove|update|create|env (update|create))\b)'; then
-    block "Runtime package execution/installation (uvx/easy_install/conda) drifts from the Dockerfile. Add the tool to the Dockerfile and rebuild (exit the container, then run \`bash rebuild_daaf.sh\` from the daaf-docker folder)."
+    block "Runtime package execution/installation (uvx/easy_install/conda) drifts from the Dockerfile. Add the tool to the Dockerfile and rebuild (exit the container, then run \`bash rebuild_daaf.sh\` from the daaf-docker folder) — preferably in the user additions block near the end of the Dockerfile for a fast rebuild."
 fi
 
 # ---------------------------------------------------------------------------
