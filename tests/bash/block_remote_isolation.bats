@@ -14,6 +14,16 @@
 # the regression sentinel (updatedInput still has description + prompt) fail
 # against the v3 hook and pass against the v4 fix.
 #
+# The v4 guard keys on KEY PRESENCE, not truthiness: the isolation KEY is
+# stripped whenever present regardless of value (string, "", null, false,
+# object, array), matching the provider shim sanitizer
+# (anthropic_openai_shim.py:996 -- pop "isolation" whenever present). This
+# CHANGES the empty-string case relative to the truthiness draft: isolation:""
+# now STRIPS (it previously passed through silently). isolation:false and
+# isolation:null -- which jq's `//` operator would have leaked through
+# unstripped -- also strip. Only KEY-ABSENT (or missing/non-object tool_input)
+# yields the silent exit-0 pass-through.
+#
 # SCRIPT UNDER TEST is parameterized: BLOCK_REMOTE_ISOLATION_SH defaults to the
 # installed hook but can be pointed at a proposed copy for pre-deployment
 # testing, e.g.:
@@ -58,8 +68,29 @@ _payload() {
     }'
 }
 
+# Same multi-field Agent payload but with a TYPED (non-string) isolation value,
+# so the JSON types false / null / 0 survive as themselves rather than becoming
+# strings. Arg $1 is a raw JSON literal (e.g. false, null, "", "worktree").
+_payload_typed() {
+    local iso_json="$1"
+    jq -nc --argjson iso "$iso_json" '{
+        "tool_name": "Agent",
+        "tool_input": {
+            "description": "Profile the CCD enrollment extract",
+            "prompt": "Read the parquet, compute enrollment by grade, save summary.",
+            "subagent_type": "research-executor",
+            "model": "sonnet",
+            "run_in_background": true,
+            "isolation": $iso,
+            "env": { "STAGE": "profile", "retries": 2 }
+        }
+    }'
+}
+
 # The expected updatedInput for the fixtures above: the same tool_input with
 # `isolation` removed. Deep-equality target for the reconstruction assertions.
+# Shared by both _payload and _payload_typed (they differ only in the isolation
+# value, which is stripped either way).
 _expected_updated_input() {
     jq -nc '{
         "description": "Profile the CCD enrollment extract",
@@ -89,6 +120,12 @@ _expected_updated_input() {
     expected="$(_expected_updated_input)"
     run bash "$BLOCK_REMOTE_ISOLATION_SH" < <(_payload "Agent" "remote")
     assert_success
+    # Output must be NON-EMPTY. Critical: on empty stdin jq -e produces zero
+    # outputs and exits 0, so every downstream `echo "$output" | jq -e` would
+    # VACUOUSLY PASS against a hook that (wrongly) emitted nothing. This bare
+    # test aborts the test on empty output (bats fails on a mid-test non-zero
+    # command), forcing the strip cases to actually detect a no-emit defect.
+    [ -n "$output" ]
     # Output parses as JSON.
     echo "$output" | jq -e '.' >/dev/null
     # DEEP structural equality of updatedInput against the expected object.
@@ -111,6 +148,7 @@ _expected_updated_input() {
     expected="$(_expected_updated_input)"
     run bash "$BLOCK_REMOTE_ISOLATION_SH" < <(_payload "Agent" "worktree")
     assert_success
+    [ -n "$output" ]  # non-empty guard (see case 1) — abort on no-emit defect
     echo "$output" | jq --argjson exp "$expected" -e \
         '.hookSpecificOutput.updatedInput == $exp' >/dev/null
     echo "$output" | jq -e '.hookSpecificOutput.permissionDecision == "allow"' >/dev/null
@@ -126,6 +164,7 @@ _expected_updated_input() {
     expected="$(_expected_updated_input)"
     run bash "$BLOCK_REMOTE_ISOLATION_SH" < <(_payload "Task" "remote")
     assert_success
+    [ -n "$output" ]  # non-empty guard (see case 1) — abort on no-emit defect
     echo "$output" | jq --argjson exp "$expected" -e \
         '.hookSpecificOutput.updatedInput == $exp' >/dev/null
     echo "$output" | jq -e '.hookSpecificOutput.permissionDecision == "allow"' >/dev/null
@@ -140,6 +179,7 @@ _expected_updated_input() {
     expected="$(_expected_updated_input)"
     run bash "$BLOCK_REMOTE_ISOLATION_SH" < <(_payload "Agent" "banana")
     assert_success
+    [ -n "$output" ]  # non-empty guard (see case 1) — abort on no-emit defect
     # isolation key must be gone regardless of the (unrecognized) value.
     echo "$output" | jq -e '.hookSpecificOutput.updatedInput | has("isolation") | not' >/dev/null
     echo "$output" | jq --argjson exp "$expected" -e \
@@ -171,6 +211,7 @@ _expected_updated_input() {
     }')"
     run bash "$BLOCK_REMOTE_ISOLATION_SH" <<<"$input"
     assert_success
+    [ -n "$output" ]  # non-empty guard (see case 1) — abort on no-emit defect
     echo "$output" | jq --argjson exp "$expected" -e \
         '.hookSpecificOutput.updatedInput == $exp' >/dev/null
 }
@@ -188,19 +229,89 @@ _expected_updated_input() {
 }
 
 # =========================================================================
-# Case 7: isolation:"" (empty string) -> exit 0, empty stdout (current policy)
+# Case 7: isolation:"" (empty string) -> now STRIPPED (key-presence contract).
+# This deliberately differs from the earlier truthiness draft, where "" passed
+# through silently. Under key-presence semantics the key is present, so it is
+# removed and the rest of tool_input is preserved. (An empty string would fail
+# the Agent enum schema anyway.)
 # =========================================================================
 
-@test "empty-string isolation: exit 0, empty stdout (silent pass-through)" {
+@test "empty-string isolation: STRIPPED, other fields preserved (key-presence contract)" {
+    local expected
+    expected="$(_expected_updated_input)"
+    run bash "$BLOCK_REMOTE_ISOLATION_SH" < <(_payload_typed '""')
+    assert_success
+    # Non-empty guard is load-bearing here: a truthiness-guarded hook (or v3)
+    # emits NOTHING for isolation:"" and would vacuously pass every jq -e below.
+    [ -n "$output" ]
+    echo "$output" | jq -e '.' >/dev/null
+    echo "$output" | jq -e '.hookSpecificOutput.updatedInput | has("isolation") | not' >/dev/null
+    echo "$output" | jq --argjson exp "$expected" -e \
+        '.hookSpecificOutput.updatedInput == $exp' >/dev/null
+    echo "$output" | jq -e '.hookSpecificOutput.permissionDecision == "allow"' >/dev/null
+}
+
+# =========================================================================
+# Case 7a: isolation:false -> STRIPPED. jq's `//` alternative operator treats
+# JSON false as empty, so a truthiness guard would have LEAKED this through
+# unstripped. The key-presence guard strips it. This is a direct regression
+# guard on WARNING-1.
+# =========================================================================
+
+@test "isolation:false: STRIPPED (jq // would have leaked it), deep-equals rest" {
+    local expected
+    expected="$(_expected_updated_input)"
+    run bash "$BLOCK_REMOTE_ISOLATION_SH" < <(_payload_typed 'false')
+    assert_success
+    # Load-bearing: jq's // treats false as empty, so a truthiness guard (and
+    # v3) emit NOTHING here. Without this guard the jq -e assertions below would
+    # vacuously pass, hiding the WARNING-1 leak. This is the crux regression.
+    [ -n "$output" ]
+    echo "$output" | jq -e '.' >/dev/null
+    echo "$output" | jq -e '.hookSpecificOutput.updatedInput | has("isolation") | not' >/dev/null
+    echo "$output" | jq --argjson exp "$expected" -e \
+        '.hookSpecificOutput.updatedInput == $exp' >/dev/null
+    echo "$output" | jq -e '.hookSpecificOutput.permissionDecision == "allow"' >/dev/null
+}
+
+# =========================================================================
+# Case 7b: isolation:null -> STRIPPED. Same WARNING-1 leak class as false
+# under a truthiness guard. additionalContext must still render safely
+# (tostring -> "null").
+# =========================================================================
+
+@test "isolation:null: STRIPPED (jq // would have leaked it), deep-equals rest" {
+    local expected
+    expected="$(_expected_updated_input)"
+    run bash "$BLOCK_REMOTE_ISOLATION_SH" < <(_payload_typed 'null')
+    assert_success
+    # Load-bearing (same as the false case): // treats null as empty, so a
+    # truthiness guard / v3 emit NOTHING and would vacuously pass without this.
+    [ -n "$output" ]
+    echo "$output" | jq -e '.' >/dev/null
+    echo "$output" | jq -e '.hookSpecificOutput.updatedInput | has("isolation") | not' >/dev/null
+    echo "$output" | jq --argjson exp "$expected" -e \
+        '.hookSpecificOutput.updatedInput == $exp' >/dev/null
+    # additionalContext renders the stripped null safely (jq tostring).
+    echo "$output" | jq -e '.hookSpecificOutput.additionalContext | length > 0' >/dev/null
+}
+
+# =========================================================================
+# Case 7c: non-object tool_input (a string) -> silent exit 0. The guard's
+# `(.tool_input? | type) == "object"` check must not crash or emit JSON when
+# tool_input is not an object.
+# =========================================================================
+
+@test "non-object tool_input: exit 0, empty stdout (guard rejects non-object)" {
     local input
-    input="$(jq -nc '{"tool_name":"Agent","tool_input":{"description":"d","prompt":"p","isolation":""}}')"
+    input="$(jq -nc '{"tool_name":"Agent","tool_input":"i-am-a-string"}')"
     run bash "$BLOCK_REMOTE_ISOLATION_SH" <<<"$input"
     assert_success
     assert_output ""
 }
 
 # =========================================================================
-# Case 8: Malformed / non-JSON stdin -> exit 0, no crash (fail-open)
+# Fail-open: Malformed / non-JSON stdin -> exit 0, no crash
 # =========================================================================
 
 @test "malformed stdin: exit 0, fail-open (no crash)" {
@@ -209,7 +320,7 @@ _expected_updated_input() {
 }
 
 # =========================================================================
-# Case 9: Missing jq -> exit 0 with fail-open stderr message.
+# Fail-open: Missing jq -> exit 0 with fail-open stderr message.
 # Simulated with a restricted PATH containing only symlinks to the binaries the
 # hook needs MINUS jq (bash + cat). `command -v jq` then fails, hitting the
 # fail-open jq-guard. We invoke via `env -i` to drop the ambient PATH entirely.
@@ -228,14 +339,15 @@ _expected_updated_input() {
 }
 
 # =========================================================================
-# Case 10: Regression sentinel -- the exact fields whose ABSENCE caused the
-# production failure. Asserts updatedInput still HAS description + prompt.
-# This is the case that fails loudest against the v3 partial-object hook.
+# Regression sentinel -- the exact fields whose ABSENCE caused the production
+# failure. Asserts updatedInput still HAS description + prompt. This is the
+# case that fails loudest against the v3 partial-object hook.
 # =========================================================================
 
 @test "regression sentinel: updatedInput retains description and prompt (the fields the v3 defect dropped)" {
     run bash "$BLOCK_REMOTE_ISOLATION_SH" < <(_payload "Agent" "remote")
     assert_success
+    [ -n "$output" ]  # non-empty guard (see case 1) — abort on no-emit defect
     echo "$output" | jq -e '.hookSpecificOutput.updatedInput | has("description")' >/dev/null
     echo "$output" | jq -e '.hookSpecificOutput.updatedInput | has("prompt")' >/dev/null
     # And isolation must be gone.
