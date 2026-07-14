@@ -15,7 +15,15 @@ ENV DEBIAN_FRONTEND=noninteractive
 # --system` semantics used throughout this file. Astral publishes no uv-on-noble
 # image, so uv is vendored in as a static binary via the COPY below (the
 # canonical pattern from Astral's Docker docs) instead of via a base-image tag.
+# UV_BREAK_SYSTEM_PACKAGES=1 lifts noble's PEP 668 "externally-managed" guard:
+# Ubuntu's apt python3.12 ships /usr/lib/python3.12/EXTERNALLY-MANAGED, which
+# makes every `uv pip install --system` layer refuse with exit 2 (the old base
+# image's Python had no such marker). That guard protects live systems from
+# apt/pip conflicts; this image IS the managed environment (uv-only, pinned
+# versions, runtime installs hook-blocked), and uv's docs designate this
+# variable for exactly this containerized use.
 ENV UV_SYSTEM_PYTHON=1
+ENV UV_BREAK_SYSTEM_PACKAGES=1
 ENV UV_COMPILE_BYTECODE=1
 
 # ============================================
@@ -602,6 +610,15 @@ RUN ARCH=$(dpkg --print-architecture) \
 # ============================================
 # Create non-root user for security
 # ============================================
+# ubuntu:24.04 ships a default `ubuntu` user at UID/GID 1000 (bookworm did not),
+# which collides with the explicit --gid/--uid 1000 below ("GID 1000 is not
+# unique", exit 4). Remove it first; keeping appuser at 1000 preserves file
+# ownership parity for existing volumes. The mail-spool touch/chown suppresses
+# a harmless "mail spool not found" warning from userdel so build logs stay
+# clean. userdel -r also removes /home/ubuntu and the ubuntu group (GID 1000).
+RUN touch /var/mail/ubuntu \
+    && chown ubuntu /var/mail/ubuntu \
+    && userdel -r ubuntu
 RUN groupadd --gid 1000 appuser \
     && useradd --uid 1000 --gid 1000 --create-home appuser
 
