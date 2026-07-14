@@ -243,6 +243,28 @@
 # DAAF_DEV=1
 
 # ----------------------------------------------------------------------------
+# GitHub CLI token (GH_TOKEN) -- framework developers only
+# ----------------------------------------------------------------------------
+# GH_TOKEN authenticates the GitHub CLI (`gh`), which is installed ONLY when you
+# build with DAAF_DEV=1 (see above). Framework developers use `gh` to inspect CI
+# runs and logs, open/work PRs and issues, and as git's HTTPS credential helper
+# for pushing over HTTPS. Leave this unset if you are not doing framework
+# development -- a normal install has no `gh` binary and no use for it.
+#
+# Unlike DAAF_DIAG_BUILD (a one-off shell prefix, NOT a key for this file),
+# GH_TOKEN IS a persistent environment_settings.txt key: it is injected into the
+# container environment at startup via docker-compose env_file, and `gh` reads
+# it directly with no `gh auth login` (it takes precedence over any stored
+# credential and survives image rebuilds).
+#
+# Recommended token: a classic Personal Access Token with `repo` + `workflow`
+# scopes (repo access, HTTPS push, PR/issue access, CI logs). Create one at:
+# https://github.com/settings/tokens
+#
+# IMPORTANT: never commit your real token -- not here, not anywhere.
+# GH_TOKEN=ghp_your_token_here
+
+# ----------------------------------------------------------------------------
 # Build diagnostics (DAAF_DIAG_BUILD) -- NOT a key for this file
 # ----------------------------------------------------------------------------
 # DAAF_DIAG_BUILD is NOT a persistent environment_settings.txt key -- do not set

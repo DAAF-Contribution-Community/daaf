@@ -54,6 +54,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 #   - PowerShell 7 + Pester +
 #     PSScriptAnalyzer           (PowerShell test/lint stack)
 #   - OpenAI Codex CLI           (framework-developer capability, GitHub release)
+#   - GitHub CLI (gh)            (CI runs/logs inspection, PR/issue access, and
+#                                 git HTTPS credential helper for framework devs;
+#                                 GitHub release tarball)
 # The primary goal is to let a developer run the repo's own test suites INSIDE
 # the container so `bats tests/bash/` and `Invoke-Pester tests/powershell/`
 # reproduce what .github/workflows/ci-scripts.yml runs in CI.
@@ -83,6 +86,7 @@ ARG DAAF_DEV_PWSH_VERSION=7.6.3
 ARG DAAF_DEV_PESTER_VERSION=5.7.1
 ARG DAAF_DEV_PSSA_VERSION=1.24.0
 ARG DAAF_DEV_CODEX_VERSION=0.144.1
+ARG DAAF_DEV_GH_VERSION=2.95.0
 
 # shellcheck + bats from the Debian repo (mirrors the CI bats-tests job).
 RUN if [ "${DAAF_DEV}" = "1" ]; then \
@@ -148,6 +152,32 @@ RUN if [ "${DAAF_DEV}" = "1" ]; then \
         && mv "/tmp/codex-${CODEX_TRIPLE}-unknown-linux-musl" /usr/local/bin/codex \
         && chmod +x /usr/local/bin/codex \
         && rm -f "/tmp/${CODEX_TGZ}"; \
+    fi
+
+# GitHub CLI (gh) from the GitHub release tarball (arch-mapped for amd64/arm64).
+# Unlike PowerShell/Codex above, gh's release assets use the SAME arch tokens
+# Debian does (amd64/arm64), so `dpkg --print-architecture` feeds the URL
+# directly with no case-mapping. The tarball unpacks to a versioned dir
+# (gh_<version>_linux_<arch>/) with the executable at bin/gh inside it; that
+# binary is moved to the arch-generic path /usr/local/bin/gh so `gh` is on PATH
+# for all users (matching R's/Codex's symlink convention). Used by framework
+# developers to inspect CI runs/logs, work PRs/issues, and (see the appuser
+# setup-git RUN below) as git's HTTPS credential helper.
+#
+# AUTH: gh authenticates at RUNTIME from the GH_TOKEN env var, injected from the
+# host-side environment_settings.txt via docker-compose env_file (see
+# scripts/host/environment_settings_example.txt). gh honors GH_TOKEN with no
+# `gh auth login`, so there is no stored credential baked into the image and
+# auth survives rebuilds. Nothing about auth happens at build time here.
+RUN if [ "${DAAF_DEV}" = "1" ]; then \
+        DEB_ARCH=$(dpkg --print-architecture) \
+        && GH_TGZ="gh_${DAAF_DEV_GH_VERSION}_linux_${DEB_ARCH}.tar.gz" \
+        && curl -fsSL -o "/tmp/${GH_TGZ}" \
+             "https://github.com/cli/cli/releases/download/v${DAAF_DEV_GH_VERSION}/${GH_TGZ}" \
+        && tar zxf "/tmp/${GH_TGZ}" -C /tmp \
+        && mv "/tmp/gh_${DAAF_DEV_GH_VERSION}_linux_${DEB_ARCH}/bin/gh" /usr/local/bin/gh \
+        && chmod +x /usr/local/bin/gh \
+        && rm -rf "/tmp/${GH_TGZ}" "/tmp/gh_${DAAF_DEV_GH_VERSION}_linux_${DEB_ARCH}"; \
     fi
 
 # ============================================
@@ -577,6 +607,26 @@ RUN echo '{"workbench.colorTheme":"GitHub Dark Default","editor.fontSize":14,"ed
 # This identity is used for those automated commits inside the container only.
 RUN git config --global user.email "daaf@local" \
     && git config --global user.name "DAAF Container"
+
+# Register gh as git's HTTPS credential helper (DAAF_DEV only).
+# This lives HERE, in the appuser section (after USER appuser above), rather than
+# beside the gh install in the DAAF_DEV root block, because `gh auth setup-git`
+# writes the credential-helper line into the INVOKING user's ~/.gitconfig — and
+# git operations in the container run as appuser. The DAAF_DEV root install block
+# runs as root before `USER appuser`, so it cannot configure appuser's gitconfig.
+# ARG DAAF_DEV (declared once near the top of this single build stage) is still
+# in scope here — there is no intervening FROM.
+#
+# FAIL-SOFT by design: `|| echo ...` swallows a non-zero exit so a dev build
+# never dies here. gh's flag/setup-git behavior cannot be exercised in this
+# authoring environment (no gh binary, no Docker), and with no authenticated
+# host gh needs `--force --hostname github.com` (cli/cli#8521) — a hard failure
+# on that edge would break every DAAF_DEV build for a non-essential convenience.
+# Runtime GH_TOKEN auth (see the install RUN above) does not depend on this step.
+RUN if [ "${DAAF_DEV}" = "1" ]; then \
+        gh auth setup-git --force --hostname github.com \
+        || echo "gh setup-git skipped (non-fatal)"; \
+    fi
 
 # Install Claude Code as appuser (pinned version)
 # Latest stable as of 2026-07-02

@@ -76,7 +76,7 @@ Check three things: (1) `ANTHROPIC_BASE_URL` must be exactly `https://openrouter
 
 ### Container seems really slow to build the first time
 
-The first build downloads and compiles 50+ Python packages including geospatial libraries (GDAL, GEOS, PROJ) that can take 5-15 minutes depending on your internet speed and hardware. This is normal and only happens once -- subsequent starts are fast because the image is cached.
+The first build downloads and compiles 50+ Python packages including geospatial libraries (GDAL, GEOS, PROJ) that can take 5-15 minutes depending on your internet speed and hardware. This is normal and only happens once -- subsequent starts are fast because the image is cached. On **Apple Silicon Macs**, the R packages additionally compile from source, adding roughly 25-35 minutes with long silent stretches -- see "If a build is slow or fails" in [01_installation_and_quickstart.md](01_installation_and_quickstart.md) for details (including the `DAAF_DIAG_BUILD` option for diagnosing build failures).
 
 ### I can't find my research files on my computer
 

@@ -658,6 +658,24 @@ DAAF_FORCE_REINSTALL=1 bash -c "$(curl -fsSL https://raw.githubusercontent.com/D
 $env:DAAF_FORCE_REINSTALL = "1"; irm https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scripts/host/install.ps1 | iex
 ```
 
+### If a build is slow or fails
+
+**Apple Silicon (arm64) build times.** On Apple Silicon Macs, DAAF's R packages compile from source during the image build — the pinned R package mirror publishes pre-built Linux binaries only for x86_64. Expect roughly **25-35 extra minutes**, including long stretches (5-10 minutes at a time) with no output at all while the heaviest C++ libraries compile (arrow, sf/terra, xgboost). This is normal: the build is not hung, and it behaves the same on any network connection. The installer and `rebuild_daaf` scripts print a notice when they detect an arm64 machine.
+
+**Unclipped build logs (`DAAF_DIAG_BUILD`).** If a build fails and the useful error detail was cut off — you'll see a line like `[output clipped, log limit 2MiB reached]` (the exact limit varies by Docker version) — re-run the installer or rebuild with the `DAAF_DIAG_BUILD=1` prefix to capture the full, unclipped log:
+
+**macOS / Linux:**
+```bash
+DAAF_DIAG_BUILD=1 bash rebuild_daaf.sh
+```
+
+**Windows (PowerShell):**
+```powershell
+$env:DAAF_DIAG_BUILD = "1"; .\rebuild_daaf.ps1
+```
+
+This routes the build through a separate diagnostic builder with raised log limits. Two things to know: it uses its own build cache (so the first diagnostic build is slower than a normal cached rebuild), and it is a **one-off command prefix**, not a key to put in `environment_settings.txt`. If the diagnostic builder can't be created for any reason, the scripts automatically fall back to a normal build.
+
 Back up your Docker volume first (see [**Backing Up Your Work**](#backing-up-your-work)) if you have research data or framework customizations you want to preserve.
 
 If the installer detects a previous attempt that didn't complete successfully (e.g., the Docker build failed partway through), it will note this and proceed automatically — no override needed.
@@ -713,7 +731,7 @@ bash rebuild_daaf.sh         # macOS / Linux
 .\rebuild_daaf.ps1           # Windows
 ```
 
-With `DAAF_DEV=1`, the build additionally installs `shellcheck`, `bats`, PowerShell 7, Pester, and PSScriptAnalyzer. You can then run the suites from inside the container (`bash run_daaf.sh bash`):
+With `DAAF_DEV=1`, the build additionally installs `shellcheck`, `bats`, PowerShell 7, Pester, PSScriptAnalyzer, and the GitHub CLI (`gh`). You can then run the suites from inside the container (`bash run_daaf.sh bash`):
 
 ```
 bats tests/bash/
@@ -722,6 +740,8 @@ shellcheck -x scripts/host/*.sh
 ```
 
 When `DAAF_DEV` is unset or `0` (the default for every normal install), none of this tooling is installed and the image is byte-for-byte identical to a standard build — so leaving it off costs you nothing.
+
+**Authenticating the GitHub CLI (`GH_TOKEN`).** To use `gh` without interactive login, add a `GH_TOKEN=...` line to your `environment_settings.txt` — a classic Personal Access Token with `repo` + `workflow` scopes (the commented `GH_TOKEN` entry in `environment_settings_example.txt` documents this). With the token in place, `gh` authenticates automatically: framework developers can inspect CI runs and failure logs (`gh run view --log-failed`), work pull requests and issues from inside the container, and push over HTTPS (the dev image pre-registers `gh` as git's credential helper). Changing the token later only requires recreating the container — not a rebuild.
 
 > **DAAF_DEV is a build flag, not a runtime setting.** It only matters at `docker compose build` time. The install and rebuild scripts bridge it from `environment_settings.txt` into the shell environment so the build picks it up; if you run bare `docker compose build` yourself, put `DAAF_DEV=1` in a `.env` file (or your shell environment) the same way you would for the multi-instance keys. Turning it on or off requires a rebuild to change the installed toolchain.
 
