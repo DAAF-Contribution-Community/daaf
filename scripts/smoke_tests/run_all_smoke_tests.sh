@@ -8,8 +8,16 @@
 # logic in the loop keeps only the latest revision of each skill so superseded
 # copies are skipped rather than re-run.
 
-SMOKE_DIR="$(dirname "$0")"
-BASE_DIR="$(cd "$SMOKE_DIR/../.." && pwd)"
+# SMOKE_DIR (the smoke-script glob directory) defaults to this runner's own
+# directory but is overridable via env for harnesses that stage log-stripped
+# copies elsewhere (the CI smoke job stages under scripts/scratch/smoke_live/).
+# BASE_DIR intentionally derives from the runner's REAL location, never from
+# SMOKE_DIR: deriving it from a staged copy's location broke the capture-wrapper
+# path in CI (/daaf/scripts/scripts/... — staging depth moved the presumed repo
+# root). Invoke the runner from its home; point SMOKE_DIR wherever the scripts are.
+RUNNER_DIR="$(cd "$(dirname "$0")" && pwd)"
+SMOKE_DIR="${SMOKE_DIR:-$RUNNER_DIR}"
+BASE_DIR="$(cd "$RUNNER_DIR/../.." && pwd)"
 CAPTURE="$BASE_DIR/scripts/run_with_capture.sh"
 # pipefail so `<test> | tail` reports the test's exit status, not tail's —
 # without it a failing smoke would be counted PASS. Applies to both loops below.
