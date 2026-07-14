@@ -109,6 +109,9 @@
     "ENABLE_PROMPT_CACHING_1H": "1"
   },
   "outputStyle": "Explanatory",
+  "disableWorkflows": true,
+  "verbose": true,
+  "autoCompactEnabled": false,
   "showThinkingSummaries": true,
   "hooks": {
     "UserPromptSubmit": [
