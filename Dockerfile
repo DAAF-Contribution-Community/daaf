@@ -1,7 +1,7 @@
 # Data Science Dockerfile with uv and Claude Code
-# Base: Astral uv with Python 3.12 on Debian Bookworm
+# Base: Ubuntu 24.04 (noble) with Python 3.12 + Astral uv (binary COPY)
 
-FROM ghcr.io/astral-sh/uv:0.9.30-python3.12-bookworm
+FROM ubuntu:24.04
 
 LABEL maintainer="Data Science Environment"
 LABEL description="Python data science with uv and Claude Code"
@@ -10,11 +10,29 @@ LABEL description="Python data science with uv and Claude Code"
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Set up uv environment variables
+# UV_SYSTEM_PYTHON=1 tells uv to install into the system Python (the apt-provided
+# python3.12 below) rather than a managed venv, preserving the `uv pip install
+# --system` semantics used throughout this file. Astral publishes no uv-on-noble
+# image, so uv is vendored in as a static binary via the COPY below (the
+# canonical pattern from Astral's Docker docs) instead of via a base-image tag.
 ENV UV_SYSTEM_PYTHON=1
 ENV UV_COMPILE_BYTECODE=1
 
 # ============================================
-# Install System Dependencies (Git)
+# Vendor the uv/uvx binaries + provision Python 3.12
+# ============================================
+# Copy the pinned uv/uvx static binaries from Astral's published image (no
+# uv-on-noble image exists, so this is the canonical way to get a pinned uv onto
+# an Ubuntu base). The tag carries the same uv version the old bookworm base
+# pinned (0.9.30). noble's default `python3` is 3.12, so the interpreter, its dev
+# headers, and venv support are installed from apt to back UV_SYSTEM_PYTHON=1.
+# The bare `python3` metapackage is required too: minimal ubuntu:24.04 ships no
+# /usr/bin/python3 symlink, and DAAF's execution wrapper (run_with_capture.sh)
+# invokes the bare `python3` name for every Python script.
+COPY --from=ghcr.io/astral-sh/uv:0.9.30 /uv /uvx /usr/local/bin/
+
+# ============================================
+# Install System Dependencies (Git, Python 3.12)
 # ============================================
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
@@ -22,8 +40,44 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     jq \
     git \
     poppler-utils \
+    python3 \
+    python3.12 \
+    python3.12-dev \
+    python3.12-venv \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+# ============================================
+# Ensure the apt `universe` component is enabled
+# ============================================
+# Several apt deps DAAF installs live in Ubuntu's `universe` component, and the
+# FIRST of them appears in the very next block: libgdal-dev and gdal-bin
+# (geospatial). More arrive later in the R system-libs block (libnode-dev,
+# libtbb-dev, libhdf5-dev, libnetcdf-dev, libglpk40). This guard therefore runs
+# BEFORE the geospatial block — its earliest consumer — so a base with universe
+# disabled fails here with a clear message instead of dying later inside an
+# apt-install with a cryptic "unable to locate package" error.
+#
+# The official ubuntu:24.04 image ships universe enabled in
+# /etc/apt/sources.list.d/ubuntu.sources, so on the normal base this guard is a
+# fast no-op. It exists to make that assumption explicit and to self-heal a
+# minimal base: it enables universe if absent and fails fast (exit 1) only if it
+# still cannot. `apt-get update` for the real installs is left to the blocks
+# below, so the no-op path costs nothing beyond a grep.
+RUN if grep -rqE '^[[:space:]]*(Components:.*\buniverse\b|deb .*\buniverse\b)' \
+        /etc/apt/sources.list /etc/apt/sources.list.d/ 2>/dev/null; then \
+        echo "universe component already enabled"; \
+    else \
+        echo "universe component not found; enabling via add-apt-repository"; \
+        apt-get update; \
+        apt-get install -y --no-install-recommends software-properties-common; \
+        add-apt-repository -y universe; \
+        apt-get clean; \
+        rm -rf /var/lib/apt/lists/*; \
+        grep -rqE '^[[:space:]]*(Components:.*\buniverse\b|deb .*\buniverse\b)' \
+            /etc/apt/sources.list /etc/apt/sources.list.d/ \
+            || { echo "FATAL: could not enable the apt 'universe' component" >&2; exit 1; }; \
+    fi
 
 # ============================================
 # Install Geospatial System Libraries (GDAL/GEOS/PROJ)
@@ -198,19 +252,22 @@ RUN if [ "${DAAF_DEV}" = "1" ]; then \
 #   - R build/link system libs  (gfortran, libcurl/xml2/ssl/udunits2, etc.)
 #
 # R VERSION NOTE: Pinned to R 4.5.x for P3M binary package compatibility.
-# R 4.6.0 (released 2026-04-24) lacks P3M pre-built binaries as of May 2026 —
-# all packages compile from source, and S7 <=0.2.1 fails due to removed C API
-# symbols. Posit CDN .deb installs to /opt/R/{VERSION}/; symlinks expose on
-# PATH. Upgrade path: bump R_VERSION once P3M announces R 4.6 binary support.
-# P3M binary availability is also architecture-conditional: the Debian Bookworm
-# repo serves pre-built binaries on x86_64 only — on arm64 (Apple Silicon) every
-# package compiles from source regardless of R version (see the P3M repo-config
-# note further below).
+# On the Ubuntu 24.04 (noble) base, P3M serves pre-built binaries for R 4.5.3 on
+# BOTH x86_64 and arm64 (verified 2026-07-14: x-package-binary-tag 4.5-noble and
+# 4.5-noble-arm64 on the pinned snapshot), so neither architecture compiles the
+# framework R packages from source — the Apple Silicon source-build path that the
+# old Debian Bookworm base forced (bookworm being end-of-support for P3M binaries)
+# is gone. R 4.6.x is deliberately NOT adopted here: as of 2026-07-14 P3M still
+# serves NO noble R 4.6 binaries on either arch (live-probe UA fallback to source,
+# contradicting Posit's docs), and the pinned snapshot's S7 0.2.1 is broken under
+# R 4.6. Posit CDN .deb installs to /opt/R/{VERSION}/; symlinks expose on PATH.
+# Upgrade path: bump R_VERSION only once a live probe confirms 4.6-noble /
+# 4.6-noble-arm64 binary tags AND the snapshot date is >= 2026-04-22 (S7 0.2.2).
 ARG R_VERSION=4.5.3
 
-# R runtime from Posit pre-built binaries (Debian Bookworm).
+# R runtime from Posit pre-built binaries (Ubuntu 24.04 / noble).
 RUN curl -fsSL -o /tmp/r-${R_VERSION}.deb \
-      "https://cdn.posit.co/r/debian-12/pkgs/r-${R_VERSION}_1_$(dpkg --print-architecture).deb" \
+      "https://cdn.posit.co/r/ubuntu-2404/pkgs/r-${R_VERSION}_1_$(dpkg --print-architecture).deb" \
     && apt-get update \
     && apt-get install -y --no-install-recommends /tmp/r-${R_VERSION}.deb \
     && rm /tmp/r-${R_VERSION}.deb \
@@ -228,27 +285,35 @@ RUN curl -fsSL -o /tmp/r-${R_VERSION}.deb \
 # dependency) — P3M's pre-built igraph binary links libglpk.so.40, and the
 # presence gate below fails on kknn without it.
 #
-# The last four dev libs (libuv1-dev, libharfbuzz-dev, libfribidi-dev,
-# libnode-dev) are the compile-time headers R packages need when they build
-# FROM SOURCE — which is EVERY package on arm64/Apple Silicon, since P3M serves
-# no Debian Bookworm arm64 binaries (x86_64 gets binaries; arm64 always source).
-# Without them the source builds fail with fatal missing-header errors that
-# install.packages() only surfaces as warnings, so the build limps on and then
-# dies ~20 min later at the presence gate. Specifically:
-#   - libuv1-dev     -> uv.h    for the `fs` package (cascades: fs -> sass ->
-#                       bslib -> rmarkdown/htmlwidgets -> leaflet/plotly)
-#   - libharfbuzz-dev,
-#     libfribidi-dev -> hb-ft.h for `textshaping` (cascades: textshaping ->
-#                       svglite -> kableExtra/gt)
-#   - libnode-dev    -> v8.h    for the `V8` package (V8 officially supports
-#                       building against libnode-dev on Debian; cascades: V8 ->
-#                       juicyjuice -> gt)
-# libnode-dev pulls double duty: beyond the arm64 v8.h headers, it also installs
-# the libnode.so RUNTIME library that the V8 package dlopens at load time even
-# on x86_64 BINARY installs. Without it, gt::as_raw_html() fails at runtime with
-# `libnode.so.NNN: cannot open shared object file` (R-support Parity Matrix
-# Ticket 8) — so this one apt line fixes both the arm64 build failure and the
-# x86_64 runtime failure.
+# On the noble base BOTH arches install the framework R packages as P3M
+# pre-built binaries (no source compilation), so the last four dev libs
+# (libuv1-dev, libharfbuzz-dev, libfribidi-dev, libnode-dev) are NOT needed to
+# build the framework's own package set. They are retained for two ongoing
+# reasons:
+#   1. USER-ADDED source packages. A user who adds an R package (USER ADDITIONS
+#      block, or an analysis-time install.packages()) that is absent from the
+#      pinned P3M snapshot — or that has no binary — compiles it from source and
+#      needs these headers present. Keeping them installed preserves that path:
+#        - libuv1-dev     -> uv.h    (fs -> sass -> bslib -> rmarkdown/leaflet)
+#        - libharfbuzz-dev,
+#          libfribidi-dev -> hb-ft.h (textshaping -> svglite -> kableExtra/gt)
+#        - libnode-dev    -> v8.h    (V8 -> juicyjuice -> gt)
+#   2. libnode RUNTIME linkage (the load-bearing reason on noble). libnode-dev
+#      installs the libnode.so RUNTIME library that P3M's pre-built V8 binary
+#      dlopens at load time on EVERY arch — a runtime dlopen, not a NEEDED link
+#      (objdump-confirmed on the noble V8 binary), so V8 installs cleanly but
+#      gt::as_raw_html() fails at first use with
+#      `libnode.so.NNN: cannot open shared object file` if libnode-dev is absent
+#      (R-support Parity Matrix Ticket 8). The presence gate's
+#      requireNamespace("V8") dlopens libnode.so and so catches this at build
+#      time. Do NOT drop libnode-dev.
+#
+# UNIVERSE NOTE: five of the deps below (libnode-dev, libtbb-dev, libhdf5-dev,
+# libnetcdf-dev, libglpk40) live in Ubuntu's `universe` component. universe is
+# guaranteed present by the "Ensure the apt `universe` component is enabled"
+# guard RUN earlier in this file (placed before the geospatial block, universe's
+# first consumer), which fails fast if it cannot be enabled — so these installs
+# do not need to re-check it.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         gfortran \
         libcurl4-openssl-dev \
@@ -400,21 +465,19 @@ RUN uv pip install --system \
 # Configure R package repository (P3M date-pinned snapshot for reproducibility).
 # Pin to a specific date snapshot so rebuilds produce identical package versions.
 # Update the date when intentionally upgrading R packages (and update skill
-# metadata). P3M provides pre-built binaries for Debian Bookworm — much faster
-# than source compilation — but ONLY on x86_64. On arm64 (Apple Silicon) the
-# same date-pinned repo serves source tarballs only (P3M has no Bookworm arm64
-# binaries and will not add them — Bookworm is end-of-support for P3M binaries;
-# verified 2026-07-13 via live x-package-type: source response headers). So on
-# Apple Silicon EVERY R package compiles from source: expect ~25-35 min of extra
-# build time with long silent stretches (heavy C++ compiles) — this is normal,
-# not a hang. That source path is why the four extra dev headers (libuv1-dev,
-# libharfbuzz-dev, libfribidi-dev, libnode-dev) are installed in the R-toolchain
-# apt block above. The future path to arm64 binaries is a base-image migration
-# to Ubuntu noble, which DOES publish P3M arm64 binaries (verified 2026-07-13) —
-# out of scope for this change.
+# metadata). On the Ubuntu 24.04 (noble) base P3M provides pre-built binaries on
+# BOTH x86_64 and arm64 — much faster than source compilation — so no framework R
+# package compiles from source on either architecture (verified 2026-07-14:
+# x-package-binary-tag 4.5-noble on x86_64 and 4.5-noble-arm64 on aarch64 for the
+# pinned snapshot). This replaced the former Debian Bookworm base, which served
+# binaries on x86_64 only and forced ~25-35 min of all-source R compilation on
+# Apple Silicon (bookworm being end-of-support for P3M binaries). The four extra
+# dev headers (libuv1-dev, libharfbuzz-dev, libfribidi-dev, libnode-dev) are
+# still installed in the R-toolchain apt block above, now for USER-ADDED source
+# packages and for libnode's runtime dlopen linkage under V8 (see that block).
 ARG P3M_SNAPSHOT_DATE=2026-04-15
 RUN RPROFILE="$(Rscript -e 'cat(file.path(R.home("etc"), "Rprofile.site"))')" \
-    && echo "options(repos = c(CRAN = 'https://p3m.dev/cran/__linux__/bookworm/${P3M_SNAPSHOT_DATE}'))" \
+    && echo "options(repos = c(CRAN = 'https://p3m.dev/cran/__linux__/noble/${P3M_SNAPSHOT_DATE}'))" \
         >> "${RPROFILE}" \
     && echo 'options(Ncpus = parallel::detectCores())' \
         >> "${RPROFILE}"
@@ -423,13 +486,14 @@ RUN RPROFILE="$(Rscript -e 'cat(file.path(R.home("etc"), "Rprofile.site"))')" \
 #
 # PER-BLOCK FAIL-FAST PATTERN (used by all five R install blocks below):
 # install.packages() reports a failed package only as a WARNING, not an error,
-# so a source-build failure (the common case on arm64 — see the P3M repo-config
-# note above) would let the build limp on and only surface ~20+ min later at the
-# presence gate, far from the compile output that explains it. Each block below
-# therefore verifies its OWN package list with requireNamespace() immediately
-# after install and stop()s inside the failing layer — so the build dies in
-# minutes, with the fatal compiler error adjacent in the same layer's log. The
-# presence gate at the end remains the final identity check (see its comment).
+# so a failed install — a binary that fails to link a system lib, or a
+# USER-ADDED source package with a missing header (see the P3M repo-config note
+# above) — would let the build limp on and only surface later at the presence
+# gate, far from the output that explains it. Each block below therefore verifies
+# its OWN package list with requireNamespace() immediately after install and
+# stop()s inside the failing layer — so the build dies fast, with the failing
+# package's error adjacent in the same layer's log. The presence gate at the end
+# remains the final identity check (see its comment).
 RUN Rscript -e 'pkgs <- c( \
         "data.table", "dplyr", "tidyr", "tibble", "readr", "purrr", "stringr", \
         "forcats", "lubridate", "glue", "rlang", "skimr", \

@@ -76,7 +76,7 @@ Check three things: (1) `ANTHROPIC_BASE_URL` must be exactly `https://openrouter
 
 ### Container seems really slow to build the first time
 
-The first build downloads and compiles 50+ Python packages including geospatial libraries (GDAL, GEOS, PROJ) that can take 5-15 minutes depending on your internet speed and hardware. This is normal and only happens once -- subsequent starts are fast because the image is cached. On **Apple Silicon Macs**, the R packages additionally compile from source, adding roughly 25-35 minutes with long silent stretches -- see "If a build is slow or fails" in [01_installation_and_quickstart.md](01_installation_and_quickstart.md) for details (including the `DAAF_DIAG_BUILD` option for diagnosing build failures).
+The first build downloads and installs 50+ Python packages including geospatial libraries (GDAL, GEOS, PROJ), plus the R stack, and can take several minutes depending on your internet speed and hardware. This is normal and only happens once -- subsequent starts are fast because the image is cached. R packages install as pre-built binaries on **both x86_64 and Apple Silicon (arm64)**, so there is no longer an arm64-specific source-compile penalty -- the first build just takes a while to download either way. See "If a build is slow or fails" in [01_installation_and_quickstart.md](01_installation_and_quickstart.md) for details (including the `DAAF_DIAG_BUILD` option for diagnosing genuine build failures).
 
 ### I can't find my research files on my computer
 
@@ -365,7 +365,7 @@ Cost remains a meaningful barrier to entry for DAAF, but it's shrinking. As open
 
 ### Q: How much disk space does DAAF use?
 
-The Docker image is roughly **8.61 GB** after building. It includes a Debian Bookworm base image, Python 3.12, 46 pinned Python packages (data science, geospatial, econometrics, visualization, ML), geospatial system libraries (GDAL/GEOS/PROJ), Claude Code, R, 60+ pinned R packages (tidyverse, fixest, survey, sf, and more), and the Quarto CLI. The R runtime, packages, and Quarto account for roughly **2.2 GB** of that total (measured: 8.61 GB with R vs. 6.4 GB without). Docker also keeps build cache layers, so total Docker disk usage may be somewhat higher.
+The Docker image is roughly **8.61 GB** after building. It includes an Ubuntu 24.04 (Noble) base image, Python 3.12, 46 pinned Python packages (data science, geospatial, econometrics, visualization, ML), geospatial system libraries (GDAL/GEOS/PROJ), Claude Code, R, 60+ pinned R packages (tidyverse, fixest, survey, sf, and more), and the Quarto CLI. The R runtime, packages, and Quarto account for roughly **2.2 GB** of that total (measured: 8.61 GB with R vs. 6.4 GB without). Docker also keeps build cache layers, so total Docker disk usage may be somewhat higher.
 
 Beyond the image, your Docker volume will grow as you create research projects. Each project accumulates scripts, parquet data files, session logs, and notebooks. A typical full-pipeline project might add 50-500 MB depending on how many datasets you fetch and how large they are.
 
@@ -574,7 +574,7 @@ A virtual environment (venv, conda, etc.) handles one thing well: Python package
 
 **Security isolation.** DAAF lets an AI agent write and execute arbitrary code on your behalf. That's inherently risky. Docker runs the entire environment as a non-root user with all Linux capabilities dropped and privilege escalation explicitly blocked. Even if Claude Code somehow tried to `rm -rf /` or `sudo` something malicious, the operating system kernel would stop it cold. A virtualenv gives you none of that -- Claude would run with your full user permissions.
 
-**Complete reproducibility.** Docker pins *everything*: the OS (Debian Bookworm), Python version (3.12), system packages, Python libraries, and Claude Code itself. When I say DAAF works, I mean it works in that exact environment. Virtualenvs only manage Python packages, not system-level dependencies, OS differences, or tool versions.
+**Complete reproducibility.** Docker pins *everything*: the OS (Ubuntu 24.04), Python version (3.12), system packages, Python libraries, and Claude Code itself. When I say DAAF works, I mean it works in that exact environment. Virtualenvs only manage Python packages, not system-level dependencies, OS differences, or tool versions.
 
 **Clean recovery.** If something goes wrong -- a corrupted package, a broken state, whatever -- you can tear down the container and rebuild from scratch in minutes. Your research data persists in its Docker volume, and Claude Code's own login and session history persist in a second dedicated volume (`daaf-claude-config`), so both are completely unaffected by a rebuild. (Only an explicit `docker compose down -v` or `docker volume rm` deletes those volumes.) Try doing that with a corrupted virtualenv.
 

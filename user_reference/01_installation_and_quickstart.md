@@ -660,7 +660,7 @@ $env:DAAF_FORCE_REINSTALL = "1"; irm https://raw.githubusercontent.com/DAAF-Cont
 
 ### If a build is slow or fails
 
-**Apple Silicon (arm64) build times.** On Apple Silicon Macs, DAAF's R packages compile from source during the image build — the pinned R package mirror publishes pre-built Linux binaries only for x86_64. Expect roughly **25-35 extra minutes**, including long stretches (5-10 minutes at a time) with no output at all while the heaviest C++ libraries compile (arrow, sf/terra, xgboost). This is normal: the build is not hung, and it behaves the same on any network connection. The installer and `rebuild_daaf` scripts print a notice when they detect an arm64 machine.
+**First build takes a while (both architectures).** The first image build downloads a large stack of Python and R packages, so it takes several minutes and has quiet stretches with little output. This is normal — the build is not hung — and it happens only once; later starts are fast because Docker caches the image. DAAF's R packages install as pre-built binaries on **both x86_64 and Apple Silicon (arm64)** — there is no longer an arm64-specific "compile from source" penalty (the pinned R package mirror publishes binaries for both architectures on DAAF's Ubuntu base). The installer and `rebuild_daaf` scripts print a brief heads-up on arm64 machines so the quiet phase is not mistaken for a hang.
 
 **Unclipped build logs (`DAAF_DIAG_BUILD`).** If a build fails and the useful error detail was cut off — you'll see a line like `[output clipped, log limit 2MiB reached]` (the exact limit varies by Docker version) — re-run the installer or rebuild with the `DAAF_DIAG_BUILD=1` prefix to capture the full, unclipped log:
 

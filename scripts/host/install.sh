@@ -231,17 +231,18 @@ fi
 chmod +x "${INSTALL_DIR}/daaf.sh" "${INSTALL_DIR}/daaf_lib.sh" "${INSTALL_DIR}/run_daaf.sh" "${INSTALL_DIR}/backup_daaf.sh" "${INSTALL_DIR}/restore_from_backup.sh" "${INSTALL_DIR}/rebuild_daaf.sh" "${INSTALL_DIR}/update_daaf.sh" "${INSTALL_DIR}/view_logs.sh" "${INSTALL_DIR}/view_notebooks.sh" "${INSTALL_DIR}/run_vscode.sh"
 
 # --- Apple Silicon (arm64) build-time notice ---
-# On arm64 every R package compiles from source (P3M has no Bookworm arm64
-# binaries -- see the Dockerfile's P3M repo-config note), which adds a long,
-# mostly-silent stretch to the build. Warn up front so the user does not mistake
-# the quiet compile phase for a hang.
+# On the Ubuntu noble base, arm64 gets P3M pre-built R binaries (same as x86_64),
+# so Apple Silicon no longer compiles R packages from source. The first build is
+# still a sizable one-time download, but there is no arm64-specific source-compile
+# penalty. A brief heads-up keeps the quiet download/install phase from looking
+# like a hang.
 DAAF_ARCH="$(uname -m 2>/dev/null || echo unknown)"
 if [ "${DAAF_ARCH}" = "arm64" ] || [ "${DAAF_ARCH}" = "aarch64" ]; then
     echo ""
-    echo "NOTE: arm64 detected (Apple Silicon or other ARM64 host). R packages compile"
-    echo "      from source on this architecture, so expect roughly 25-35 extra minutes"
-    echo "      of build time with long silent stretches (heavy C++ compiles: arrow,"
-    echo "      sf/terra, xgboost). This is normal -- the build is not hung."
+    echo "NOTE: arm64 detected (Apple Silicon or other ARM64 host). The first build"
+    echo "      downloads a large stack of Python and R packages, so it takes a while"
+    echo "      with some quiet stretches -- this is normal, not a hang. arm64 now"
+    echo "      installs pre-built R binaries (no source compilation)."
     echo ""
 fi
 

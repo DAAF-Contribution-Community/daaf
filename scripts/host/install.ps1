@@ -262,17 +262,17 @@ try {
 }
 
 # --- Apple Silicon / arm64 build-time notice ---
-# On arm64 every R package compiles from source (P3M has no Bookworm arm64
-# binaries -- see the Dockerfile's P3M repo-config note), which adds a long,
-# mostly-silent stretch to the build. Warn up front so the user does not mistake
-# the quiet compile phase for a hang.
+# On the Ubuntu noble base, arm64 gets P3M pre-built R binaries (same as x86_64),
+# so Apple Silicon no longer compiles R packages from source. The first build is
+# still a sizable one-time download, but there is no arm64-specific source-compile
+# penalty. A brief heads-up keeps the quiet install phase from looking like a hang.
 $DaafArch = $env:PROCESSOR_ARCHITECTURE
 if ($DaafArch -eq "ARM64") {
     Write-Host ""
-    Write-Host "NOTE: arm64 detected. R packages compile from source on this architecture,"
-    Write-Host "      so expect roughly 25-35 extra minutes of build time with long silent"
-    Write-Host "      stretches (heavy C++ compiles: arrow, sf/terra, xgboost). This is"
-    Write-Host "      normal -- the build is not hung."
+    Write-Host "NOTE: arm64 detected. The first build downloads a large stack of Python"
+    Write-Host "      and R packages, so it takes a while with some quiet stretches -- this"
+    Write-Host "      is normal, not a hang. arm64 now installs pre-built R binaries (no"
+    Write-Host "      source compilation)."
     Write-Host ""
 }
 

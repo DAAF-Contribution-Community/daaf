@@ -336,7 +336,7 @@ Describe "install.ps1 error paths" {
             $Content | Should -Match 'Falling back to the default builder'
         }
 
-        It "warns on arm64 about source-compile build time" {
+        It "prints an arm64 first-build heads-up notice" {
             $Content | Should -Match 'arm64 detected'
         }
 
