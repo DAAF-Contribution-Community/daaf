@@ -79,6 +79,13 @@ $ClaudeSubDir = ".daaf-claude-config"
 # put POSIX modes back after a Windows round-trip (NTFS) erased them. Absent on
 # older backups -- restore handles that gracefully (no normalization; see Step 2d).
 $PermissionsManifest = ".daaf-permissions"
+# Symlink manifest written into the backup root (and the Claude subfolder root) by
+# backup_daaf.ps1's staging step. Lists each symlink's path and target (TAB-
+# separated). Restore replays it container-side to recreate the links that the
+# staging step stripped so `docker cp` could stream a symlink-free tree on Windows.
+# Absent on older backups / volumes with no symlinks -- restore no-ops (see Step 2e),
+# matching the ".daaf-permissions" "no manifest, no action" rule.
+$SymlinksManifest = ".daaf-symlinks"
 
 # --- Dry-Run Support ---
 # When DAAF_DRY_RUN=1, simulate external commands (Docker) for CI
@@ -219,15 +226,16 @@ Write-Host ""
 for ($i = 0; $i -lt $Backups.Count; $i++) {
     $dir = $Backups[$i]
     # Count and size the DATA-volume contents only -- exclude the hidden Claude
-    # subfolder (it restores to its own volume, not the data volume) and the
-    # ".daaf-permissions" manifest (metadata, not restored content). This makes the
-    # listing count agree exactly with the "Scanning backup" count below, the
-    # post-restore verification count, and the backup script's completion report
-    # (all four count data-volume files only). When Claude state is present it is
-    # noted inline rather than folded silently into the number.
+    # subfolder (it restores to its own volume, not the data volume) and BOTH
+    # metadata manifests (".daaf-permissions", ".daaf-symlinks" -- neither is
+    # restored content). This makes the listing count agree exactly with the
+    # "Scanning backup" count below, the post-restore verification count, and the
+    # backup script's completion report (all four count data-volume files only).
+    # When Claude state is present it is noted inline rather than folded silently
+    # into the number.
     $claudeSub = Join-Path $dir.FullName $ClaudeSubDir
     $dataItems = @(Get-ChildItem -Path $dir.FullName -Recurse -File -Force -ErrorAction SilentlyContinue |
-        Where-Object { $_.FullName -notlike "$claudeSub*" -and $_.Name -ne $PermissionsManifest })
+        Where-Object { $_.FullName -notlike "$claudeSub*" -and $_.Name -ne $PermissionsManifest -and $_.Name -ne $SymlinksManifest })
     $fileCount = $dataItems.Count
     $sizeBytes = ($dataItems | Measure-Object -Property Length -Sum).Sum
     if ($null -eq $sizeBytes) { $sizeBytes = 0 }
@@ -293,15 +301,16 @@ if (Test-Path -LiteralPath $ClaudeBackupPath -PathType Container) {
 
 # --- Count source files ---
 # Exclude the Claude subfolder from the DATA-volume count -- it is restored to a
-# separate volume below, not into the data volume. Also exclude the
-# ".daaf-permissions" manifest: it is metadata (consumed by Step 2d, then removed),
-# not restored content, so counting it would make this scan disagree with the
-# post-restore verification count (which runs after the manifest is stripped from
-# the volume) and with the listing count above.
+# separate volume below, not into the data volume. Also exclude BOTH metadata
+# manifests: ".daaf-permissions" (consumed by Step 2d, then removed) and
+# ".daaf-symlinks" (consumed by Step 2e, then removed). Neither is restored content,
+# so counting them would make this scan disagree with the post-restore verification
+# count (which runs after both manifests are stripped from the volume) and with the
+# listing count above.
 Write-Host ""
 Write-Host "Scanning backup..."
-$TotalFiles = @(Get-ChildItem -Path $SelectedPath -Recurse -File -Force -ErrorAction SilentlyContinue | Where-Object { $_.FullName -notlike "$ClaudeBackupPath*" -and $_.Name -ne $PermissionsManifest }).Count
-$TotalSizeBytes = (Get-ChildItem -Path $SelectedPath -Recurse -Force -ErrorAction SilentlyContinue | Where-Object { $_.FullName -notlike "$ClaudeBackupPath*" -and $_.Name -ne $PermissionsManifest } | Measure-Object -Property Length -Sum).Sum
+$TotalFiles = @(Get-ChildItem -Path $SelectedPath -Recurse -File -Force -ErrorAction SilentlyContinue | Where-Object { $_.FullName -notlike "$ClaudeBackupPath*" -and $_.Name -ne $PermissionsManifest -and $_.Name -ne $SymlinksManifest }).Count
+$TotalSizeBytes = (Get-ChildItem -Path $SelectedPath -Recurse -Force -ErrorAction SilentlyContinue | Where-Object { $_.FullName -notlike "$ClaudeBackupPath*" -and $_.Name -ne $PermissionsManifest -and $_.Name -ne $SymlinksManifest } | Measure-Object -Property Length -Sum).Sum
 if ($null -eq $TotalSizeBytes) { $TotalSizeBytes = 0 }
 if ($TotalSizeBytes -ge 1073741824) {
     $TotalSizeStr = "{0:N1}G" -f ($TotalSizeBytes / 1073741824)
@@ -522,6 +531,62 @@ if ($manifestPresent) {
     Write-Host "      permission preservation, or the manifest write may have failed during"
     Write-Host "      backup). File permissions were left as-is -- no normalization was applied."
 }
+
+# Step 2e: replay symlinks from the manifest. The symlink manifest
+# ("$SymlinksManifest") was copied into the volume by the whole-folder `docker cp`
+# above. backup_daaf.ps1's staging step stripped every symlink from the tree (so
+# `docker cp` could stream a symlink-free archive that does not abort on Windows)
+# and recorded each link's path + target here, TAB-separated. When the manifest is
+# PRESENT, recreate each link, chown it to appuser (-h: the link, not its target),
+# then remove the manifest from the volume.
+#
+# SAFETY / no manifest, no action: when the manifest is ABSENT (older backups, a
+# volume with no symlinks, or a manifest whose write failed at backup time), do
+# NOTHING -- matching the $PermissionsManifest rule. Replay failure is a WARNING
+# (regular files are intact; such links are typically regenerable), never fatal.
+#
+# Windows quoting: the `sh -c` program reaches docker.exe as a single command-line
+# string, so it must contain NO embedded double-quotes (they get re-parsed by the
+# Windows C runtime and silently mangle the argument -- see shell-scripting
+# gotchas.md). Unquoted sh expansions are exact because of `set -f` (no globbing) +
+# an empty global IFS (no word splitting); the `IFS=$tab` prefix scopes field
+# splitting to the `read` alone. Trailing CR / leading BOM are stripped as parameter-
+# expansion suffix/prefix (never `tr -d`); the BOM is derived via octal printf
+# (busybox sed has no \xNN escapes). This is a PS double-quoted outer string using
+# sh single-quotes throughout; sh variables are backtick-escaped (`$p, `$t, `$cr,
+# `$bom, `$tab) so PowerShell does not interpolate them, and $SymlinksManifest (a
+# fixed constant, no user input) IS interpolated by PowerShell to build the path.
+#
+# Double backslashes (\\r, \\357...) so the sh that runs this program receives a
+# SINGLE backslash after its own unquoted-backslash processing, which printf then
+# interprets as the escape. A single backslash here would be eaten by sh before
+# printf sees it (yielding literal digits, not the byte) -- verified against the
+# busybox/ash + dash behavior; this mirrors the .sh twin's `printf \\357...`.
+#
+# Defined UNCONDITIONALLY (before the manifest probe) so the Claude-volume replay
+# below can reuse it even when the DATA volume had no symlink manifest -- otherwise
+# a strict-mode read of an unset variable would throw. Building the string is a
+# harmless no-op when no manifest is present. Both replay call sites (data volume
+# here, Claude volume in the "Restore the Claude Code state volume" block) run the
+# SAME program against their own `/dest`.
+$symlinkReplayScript = "set -ef; IFS=; cr=`$(printf \\r); bom=`$(printf \\357\\273\\277); tab=`$(printf \\t); while IFS=`$tab read -r p t; do p=`${p#`$bom}; t=`${t%`$cr}; [ -z `$p ] && continue; [ -z `$t ] && continue; ln -sf -- `$t /dest/`$p; chown -h 1000:1000 /dest/`$p; done < /dest/$SymlinksManifest; rm -f /dest/$SymlinksManifest"
+$savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+$null = docker run --rm -v "${VolumeName}:/dest:ro" busybox test -f "/dest/${SymlinksManifest}" 2>&1
+$symlinkManifestPresent = ($LASTEXITCODE -eq 0)
+$ErrorActionPreference = $savedEAP
+if ($symlinkManifestPresent) {
+    Write-Host "Restoring symlinks from $SymlinksManifest..."
+    $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+    $null = docker run --rm -v "${VolumeName}:/dest" busybox sh -c $symlinkReplayScript 2>&1
+    $symlinkReplayOk = ($LASTEXITCODE -eq 0)
+    $ErrorActionPreference = $savedEAP
+    if (-not $symlinkReplayOk) {
+        Write-Host "WARNING: Could not fully replay symlinks from the manifest." -ForegroundColor Yellow
+        Write-Host "         Your data was restored intact; only symbolic links may be missing."
+        Write-Host "         Such links are usually regenerable (e.g. by re-running the step that"
+        Write-Host "         created them). Inspect $SymlinksManifest in the backup for the list."
+    }
+}
 Write-Host "Copy complete."
 Write-Host ""
 
@@ -589,6 +654,22 @@ if ($HasClaudeBackup) {
                 if ($claudeCpOk) {
                     $null = docker run --rm -v "${ClaudeVolumeName}:/dest" busybox chown -R 1000:1000 /dest 2>&1
                     $claudeCopyOk = ($LASTEXITCODE -eq 0)
+                    if ($claudeCopyOk) {
+                        # Replay the Claude volume's own symlink manifest (staged out
+                        # by backup), then strip it. Same $symlinkReplayScript program
+                        # + no-manifest-no-op + WARNING-not-fatal semantics as the
+                        # data-volume Step 2e. The manifest copied into this volume's
+                        # root as /dest/.daaf-symlinks. Replay failure must NOT flip
+                        # $claudeCopyOk to false (the state itself restored fine).
+                        $null = docker run --rm -v "${ClaudeVolumeName}:/dest:ro" busybox test -f "/dest/${SymlinksManifest}" 2>&1
+                        if ($LASTEXITCODE -eq 0) {
+                            $null = docker run --rm -v "${ClaudeVolumeName}:/dest" busybox sh -c $symlinkReplayScript 2>&1
+                            if ($LASTEXITCODE -ne 0) {
+                                Write-Host "WARNING: Could not fully replay Claude state symlinks." -ForegroundColor Yellow
+                                Write-Host "         Claude state was restored; only symbolic links may be missing."
+                            }
+                        }
+                    }
                 }
             }
         } finally {

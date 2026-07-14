@@ -124,16 +124,19 @@ teardown() {
     assert_success
 }
 
-@test "backup_daaf.sh uses docker cp (not bind-mounted cp -a)" {
-    # The copy mechanism is `docker create` + `docker cp` -- it must invoke a
-    # quoted `docker cp "` (one for the data volume, one for the Claude state
-    # volume) and must NOT use the old bind-mounted `cp -a /source` busybox copy.
-    run grep -c 'docker create' "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+@test "backup_daaf.sh uses staging + docker cp (not bind-mounted cp -a)" {
+    # The copy mechanism is a STAGING container (`docker run -d`) + `docker cp` from
+    # /staging -- it must invoke a quoted `docker cp "` (one for the data volume, one
+    # for the Claude state volume) and must NOT use the old bind-mounted
+    # `cp -a /source` busybox copy of the LIVE volume. (The `cp -a /source /staging`
+    # INSIDE the staging program is a different thing -- a container-internal freeze,
+    # not a host bind-mount copy -- so the anti-pattern grep targets `cp -a /source `
+    # with a trailing space, which the staging program's `cp -a /source /staging`
+    # would match; hence assert the staging markers positively instead.)
+    run grep -c 'docker run -d' "${REPO_ROOT}/scripts/host/backup_daaf.sh"
     assert_success
     run grep -c 'docker cp "' "${REPO_ROOT}/scripts/host/backup_daaf.sh"
     assert_success
-    run grep -c "cp -a /source" "${REPO_ROOT}/scripts/host/backup_daaf.sh"
-    assert_failure
 }
 
 # --- Executable-permission manifest ---
@@ -152,6 +155,128 @@ teardown() {
     # A manifest write failure must not fail the backup (the data is still valid).
     run grep -c 'Could not record the executable-permission manifest' "${REPO_ROOT}/scripts/host/backup_daaf.sh"
     assert_success
+}
+
+# --- Symlink-safe staging ---
+
+@test "backup_daaf.sh stages the volume to strip symlinks before docker cp" {
+    # Windows `docker cp` aborts on symlinks it cannot create, silently truncating
+    # the archive. Backup must stage into a throwaway container (`docker run -d`),
+    # `docker wait` for it, then cp from /staging -- NOT cp the volume directly.
+    run grep -c 'docker run -d' "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_success
+    run grep -c 'docker wait' "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_success
+    run grep -c ':/staging/\.' "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_success
+}
+
+@test "backup_daaf.sh staging program is quote-free and writes .daaf-symlinks" {
+    # The container-side staging program must contain NO embedded double quotes
+    # (shared with the .ps1 twin; double quotes corrupt Windows PS 5.1 arg parsing).
+    run grep -c 'find /staging -type l -exec rm -f' "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_success
+    run grep -c '\.daaf-symlinks' "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_success
+}
+
+@test "backup_daaf.sh staging program gates on tab/newline in symlink names" {
+    # The gate lives INSIDE the container-side STAGE_PROGRAM, which the docker mock
+    # replaces wholesale -- so its runtime behavior is verified empirically against
+    # real sh in scripts/scratch/gate_test/ (CLEAN 0, TAB 3, NEWLINE 3, EMPTY 0),
+    # not here. This structural test asserts the gate is PRESENT and uses the
+    # newline-immune true-count idiom (`-exec printf x`) plus the octal-printf tab
+    # pattern (`printf \\011`, double backslash so container sh hands printf one) fed
+    # to `grep -qf` (avoids IFS word-splitting on a bare tab), and that it exits
+    # nonzero via distinct markers so the fatal staging-failure path fires.
+    run grep -c 'STAGE_ERR_NEWLINE' "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_success
+    run grep -c 'STAGE_ERR_TAB' "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_success
+    run grep -c 'exec printf x' "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_success
+    run grep -c 'printf .*011' "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_success
+    run grep -c 'grep -qf /tmp/tab_pat' "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_success
+}
+
+@test "backup_daaf.sh staging-failure error names the tab/newline cause and disk image" {
+    # The host-side staging-failure error text must explain BOTH an exit-3 unsupported
+    # character (tab/newline -- rename/remove the link) AND the Docker Desktop disk
+    # image (staging transiently doubles usage on the VM's internal disk).
+    run grep -c 'TAB or a NEWLINE' "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_success
+    run grep -c 'Docker Desktop disk image' "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_success
+}
+
+@test "backup_daaf.sh treats a staging failure as a fatal ERROR before any host bytes" {
+    export DAAF_NESTED=1
+
+    # Model a nonzero staging exit (`docker wait` prints "1"): the backup must abort
+    # fatally with an ERROR, because nothing useful was produced.
+    docker() {
+        case "$1" in
+            info)   return 0 ;;
+            volume) return 0 ;;
+            run)
+                if [ "${2:-}" = "-d" ]; then echo "stagecid0000"; return 0; fi
+                printf '5\n512\t/source\n500K\t/source\n500\n'
+                return 0
+                ;;
+            wait) echo "1"; return 0 ;;
+            cp)   return 0 ;;
+            rm)   return 0 ;;
+            *)  return 0 ;;
+        esac
+    }
+    export -f docker
+
+    run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_failure
+    assert_output --partial "ERROR"
+    assert_output --partial "stage the Docker volume"
+}
+
+@test "backup_daaf.sh excludes .daaf-symlinks from the copied file count" {
+    export DAAF_NESTED=1
+    local today
+    today=$(date +%Y-%m-%d)
+
+    # Staging + cp create one real data file AND a .daaf-symlinks manifest. The
+    # scan reports 1 source file; the completion count must be 1 (manifest
+    # excluded) -- with no file-count-mismatch WARNING.
+    docker() {
+        case "$1" in
+            info)   return 0 ;;
+            volume) return 0 ;;
+            run)
+                if [ "${2:-}" = "-d" ]; then echo "stagecid0000"; return 0; fi
+                printf '1\n512\t/source\n500K\t/source\n500\n'
+                return 0
+                ;;
+            wait) echo "0"; return 0 ;;
+            cp)
+                local dest_dir=""
+                for arg in "$@"; do dest_dir="${arg}"; done
+                dest_dir="${dest_dir%/}"
+                if [ -n "${dest_dir}" ]; then
+                    mkdir -p "${dest_dir}"
+                    touch "${dest_dir}/realfile"
+                    printf 'sub/link\ttarget\n' > "${dest_dir}/.daaf-symlinks"
+                fi
+                return 0
+                ;;
+            rm) return 0 ;;
+            *)  return 0 ;;
+        esac
+    }
+    export -f docker
+
+    run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_output --partial "1 files copied"
+    refute_output --partial "file-count mismatch"
 }
 
 # --- Date-suffix versioning edge cases ---
@@ -288,23 +413,29 @@ teardown() {
 @test "backup: warns when backup size differs from source by more than 1 percent" {
     export DAAF_NESTED=1
 
-    # Custom docker mock: scan reports 9800 logical KB source; the docker cp copy
-    # creates a small file in the destination dir so FILE_COUNT > 0 and size
-    # verification triggers. The backup file is ~1 KB vs 9800 KB source -- well
-    # beyond 1% tolerance. The mock keys on docker subcommands (create/cp/rm) now
-    # that the copy uses `docker create` + `docker cp` instead of a bind-mounted
-    # `busybox cp -a`.
+    # Custom docker mock: scan reports 9800 logical KB source; the `docker cp` from
+    # the staging container creates a small file in the destination dir so
+    # FILE_COUNT > 0 and size verification triggers. The backup file is ~1 KB vs
+    # 9800 KB source -- well beyond 1% tolerance. The copy path is now
+    # `docker run -d` (staging) + `docker wait` + `docker cp`, so the mock models
+    # staging launch (returns a CID), wait (exit 0), and cp.
     docker() {
         case "$1" in
             info)   return 0 ;;
             volume) return 0 ;;
-            create)
-                # Emit a fake container ID for the caller to cp from.
-                echo "mockcid0000"
+            run)
+                if [ "${2:-}" = "-d" ]; then
+                    # Staging launch -- emit a CID for `docker wait`/`docker cp`.
+                    echo "stagecid0000"
+                    return 0
+                fi
+                # `run --rm` scan call: file count, du -sk, du -sh, logical KB
+                printf '10\n10000\t/source\n10M\t/source\n9800\n'
                 return 0
                 ;;
+            wait) echo "0"; return 0 ;;
             cp)
-                # `docker cp <cid>:/source/. <dest>/` -- the destination is the
+                # `docker cp <cid>:/staging/. <dest>/` -- the destination is the
                 # last positional arg. Create a file there so the backup is non-empty.
                 local dest_dir=""
                 for arg in "$@"; do dest_dir="${arg}"; done
@@ -317,11 +448,6 @@ teardown() {
                 return 0
                 ;;
             rm) return 0 ;;
-            run)
-                # Scan call: file count, du -sk, du -sh, logical KB
-                printf '10\n10000\t/source\n10M\t/source\n9800\n'
-                return 0
-                ;;
             *)  return 0 ;;
         esac
     }
@@ -337,12 +463,18 @@ teardown() {
 @test "backup: reports file count in output on success" {
     export DAAF_NESTED=1
 
-    # Custom docker mock: the docker cp copy step creates files so FILE_COUNT > 0.
+    # Custom docker mock: staging (`run -d` -> CID, `wait` -> 0) then `docker cp`
+    # creates files so FILE_COUNT > 0.
     docker() {
         case "$1" in
             info)   return 0 ;;
             volume) return 0 ;;
-            create) echo "mockcid0000"; return 0 ;;
+            run)
+                if [ "${2:-}" = "-d" ]; then echo "stagecid0000"; return 0; fi
+                printf '5\n512\t/source\n500K\t/source\n500\n'
+                return 0
+                ;;
+            wait) echo "0"; return 0 ;;
             cp)
                 local dest_dir=""
                 for arg in "$@"; do dest_dir="${arg}"; done
@@ -354,10 +486,6 @@ teardown() {
                 return 0
                 ;;
             rm) return 0 ;;
-            run)
-                printf '5\n512\t/source\n500K\t/source\n500\n'
-                return 0
-                ;;
             *)  return 0 ;;
         esac
     }
@@ -374,13 +502,18 @@ teardown() {
     local today
     today=$(date +%Y-%m-%d)
 
-    # Custom docker mock: the docker cp copy step creates a file so the script
-    # reaches success.
+    # Custom docker mock: staging (`run -d` -> CID, `wait` -> 0) then `docker cp`
+    # creates a file so the script reaches success.
     docker() {
         case "$1" in
             info)   return 0 ;;
             volume) return 0 ;;
-            create) echo "mockcid0000"; return 0 ;;
+            run)
+                if [ "${2:-}" = "-d" ]; then echo "stagecid0000"; return 0; fi
+                printf '5\n512\t/source\n500K\t/source\n500\n'
+                return 0
+                ;;
+            wait) echo "0"; return 0 ;;
             cp)
                 local dest_dir=""
                 for arg in "$@"; do dest_dir="${arg}"; done
@@ -392,10 +525,6 @@ teardown() {
                 return 0
                 ;;
             rm) return 0 ;;
-            run)
-                printf '5\n512\t/source\n500K\t/source\n500\n'
-                return 0
-                ;;
             *)  return 0 ;;
         esac
     }
@@ -411,15 +540,28 @@ teardown() {
     local today
     today=$(date +%Y-%m-%d)
 
-    # Custom docker mock: the data copy creates files; the manifest `docker run ...
-    # find /source -perm -0100` call is distinguished from the scan `docker run ...
-    # wc -l` call by the "-perm" substring, and returns two exec paths under
-    # /source (which the script strips to volume-relative before writing).
+    # Custom docker mock: staging (`run -d` -> CID, `wait` -> 0) then `docker cp`
+    # creates files; the permissions-manifest `docker run --rm ... find /source
+    # -perm -0100` call is distinguished from the scan `docker run --rm ... wc -l`
+    # call by the "-perm" substring, and returns two exec paths under /source
+    # (which the script strips to volume-relative before writing).
     docker() {
         case "$1" in
             info)   return 0 ;;
             volume) return 0 ;;
-            create) echo "mockcid0000"; return 0 ;;
+            run)
+                if [ "${2:-}" = "-d" ]; then echo "stagecid0000"; return 0; fi
+                local args_str="$*"
+                if [[ "${args_str}" == *"-perm -0100"* ]]; then
+                    # Manifest generation: two exec files (absolute /source paths).
+                    printf '/source/scripts/run.sh\n/source/hook.sh\n'
+                else
+                    # Scan: file count, du -sk, du -sh, logical KB
+                    printf '5\n512\t/source\n500K\t/source\n500\n'
+                fi
+                return 0
+                ;;
+            wait) echo "0"; return 0 ;;
             cp)
                 local dest_dir=""
                 for arg in "$@"; do dest_dir="${arg}"; done
@@ -431,17 +573,6 @@ teardown() {
                 return 0
                 ;;
             rm) return 0 ;;
-            run)
-                local args_str="$*"
-                if [[ "${args_str}" == *"-perm -0100"* ]]; then
-                    # Manifest generation: two exec files (absolute /source paths).
-                    printf '/source/scripts/run.sh\n/source/hook.sh\n'
-                else
-                    # Scan: file count, du -sk, du -sh, logical KB
-                    printf '5\n512\t/source\n500K\t/source\n500\n'
-                fi
-                return 0
-                ;;
             *)  return 0 ;;
         esac
     }
@@ -473,7 +604,18 @@ teardown() {
         case "$1" in
             info)   return 0 ;;
             volume) return 0 ;;
-            create) echo "mockcid0000"; return 0 ;;
+            run)
+                if [ "${2:-}" = "-d" ]; then echo "stagecid0000"; return 0; fi
+                local args_str="$*"
+                if [[ "${args_str}" == *"-perm -0100"* ]]; then
+                    # One exec path with spaces in a directory component.
+                    printf '/source/research/path with spaces/run.sh\n'
+                else
+                    printf '5\n512\t/source\n500K\t/source\n500\n'
+                fi
+                return 0
+                ;;
+            wait) echo "0"; return 0 ;;
             cp)
                 local dest_dir=""
                 for arg in "$@"; do dest_dir="${arg}"; done
@@ -485,16 +627,6 @@ teardown() {
                 return 0
                 ;;
             rm) return 0 ;;
-            run)
-                local args_str="$*"
-                if [[ "${args_str}" == *"-perm -0100"* ]]; then
-                    # One exec path with spaces in a directory component.
-                    printf '/source/research/path with spaces/run.sh\n'
-                else
-                    printf '5\n512\t/source\n500K\t/source\n500\n'
-                fi
-                return 0
-                ;;
             *)  return 0 ;;
         esac
     }
@@ -548,20 +680,21 @@ teardown() {
 @test "backup: copy failure with zero files exits with error" {
     export DAAF_NESTED=1
 
-    # Custom docker mock: scan succeeds, the docker cp copy fails (non-zero exit)
-    # and creates no files.
+    # Custom docker mock: staging succeeds (`run -d` -> CID, `wait` -> 0), scan
+    # succeeds, the `docker cp` copy fails (non-zero exit) and creates no files.
     docker() {
         case "$1" in
             info)   return 0 ;;
             volume) return 0 ;;
-            create) echo "mockcid0000"; return 0 ;;
-            cp)     return 1 ;;
-            rm)     return 0 ;;
             run)
+                if [ "${2:-}" = "-d" ]; then echo "stagecid0000"; return 0; fi
                 # Scan output: file count, du -sk, du -sh, logical KB
                 printf '50\n512\t/source\n500K\t/source\n500\n'
                 return 0
                 ;;
+            wait) echo "0"; return 0 ;;
+            cp)     return 1 ;;
+            rm)     return 0 ;;
             *)  return 0 ;;
         esac
     }
@@ -575,12 +708,19 @@ teardown() {
 @test "backup: copy partially succeeds with non-zero exit but files copied shows warning" {
     export DAAF_NESTED=1
 
-    # Custom docker mock: the docker cp copy returns non-zero but still creates files
+    # Custom docker mock: staging succeeds; the `docker cp` copy returns non-zero
+    # but still creates files.
     docker() {
         case "$1" in
             info)   return 0 ;;
             volume) return 0 ;;
-            create) echo "mockcid0000"; return 0 ;;
+            run)
+                if [ "${2:-}" = "-d" ]; then echo "stagecid0000"; return 0; fi
+                # Scan output
+                printf '5\n512\t/source\n500K\t/source\n500\n'
+                return 0
+                ;;
+            wait) echo "0"; return 0 ;;
             cp)
                 local dest_dir=""
                 for arg in "$@"; do dest_dir="${arg}"; done
@@ -593,11 +733,6 @@ teardown() {
                 return 1
                 ;;
             rm) return 0 ;;
-            run)
-                # Scan output
-                printf '5\n512\t/source\n500K\t/source\n500\n'
-                return 0
-                ;;
             *)  return 0 ;;
         esac
     }

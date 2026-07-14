@@ -108,6 +108,65 @@ Describe "restore_from_backup.ps1" {
             $Content | Should -Match 'no normalization was applied'
         }
 
+        It "replays symlinks from the manifest (Step 2e)" {
+            # When ".daaf-symlinks" is present, recreate each link (path TAB target)
+            # container-side, chown -h it to appuser, and strip the manifest.
+            $Content | Should -Match '\.daaf-symlinks'
+            $Content | Should -Match 'ln -sf -- '
+            $Content | Should -Match 'chown -h 1000:1000'
+        }
+
+        It "passes the symlink-replay sh -c program without embedded double-quotes" {
+            # The Step 2e replay program is shared logically with the .sh twin; an
+            # embedded double quote would be re-parsed by the Windows C runtime and
+            # mangle the argument. Assert the $symlinkReplayScript VALUE (text between
+            # the outer PS delimiters) contains no double-quote char, and that it uses
+            # the octal-printf BOM idiom (busybox sed has no \xNN escapes), not sed.
+            # The BOM printf uses DOUBLE backslashes in the PS source so sh receives a
+            # single backslash after its own unquoted-backslash processing.
+            $replayLine = ($Content -split "`n") | Where-Object { $_ -match '\$symlinkReplayScript\s*=' }
+            $replayLine | Should -Not -BeNullOrEmpty
+            $value = ($replayLine -replace '^\s*\$symlinkReplayScript\s*=\s*"', '') -replace '"\s*$', ''
+            $value | Should -Not -Match '"'
+            $value | Should -Match "printf \\\\357\\\\273\\\\277"
+        }
+
+        It "invokes the symlink replay for BOTH the data volume AND the Claude volume" {
+            # Regression guard for the review BLOCKER: an earlier draft ported the
+            # symlink-replay call only to the DATA volume and silently omitted it from
+            # the Claude-state restore block, so Claude-volume symlinks were never
+            # recreated. A file-wide grep for ".daaf-symlinks" (or even for
+            # "$symlinkReplayScript") PASSES on that broken state because the string is
+            # present once -- which is exactly how the gap slipped through review. Assert
+            # the program is actually INVOKED against two DISTINCT `/dest` volumes: one
+            # bound to $VolumeName (data) and one bound to $ClaudeVolumeName (Claude).
+            # Match the full `docker run ... sh -c $symlinkReplayScript` invocation lines
+            # so a bare definition without a second call site cannot satisfy this.
+            $invokeLines = ($Content -split "`n") | Where-Object {
+                $_ -match 'docker run .*-v "\$\{[A-Za-z]+\}:/dest".*busybox sh -c \$symlinkReplayScript'
+            }
+            @($invokeLines).Count | Should -BeGreaterOrEqual 2
+            # One invocation must bind the DATA volume, the other the CLAUDE volume.
+            ($invokeLines -join "`n") | Should -Match '\$\{VolumeName\}:/dest'
+            ($invokeLines -join "`n") | Should -Match '\$\{ClaudeVolumeName\}:/dest'
+        }
+
+        It "defines the symlink replay program unconditionally before the manifest probe" {
+            # The program must be defined BEFORE the DATA-volume manifest probe so the
+            # Claude-volume replay can reuse it even when the data volume had no symlink
+            # manifest -- otherwise a Set-StrictMode read of an unset variable would
+            # throw. Assert the definition precedes both the data-volume probe and the
+            # Claude-restore block. Ordering is what makes the shared-program reuse safe.
+            $defIdx    = $Content.IndexOf('$symlinkReplayScript =')
+            $probeIdx  = $Content.IndexOf('$symlinkManifestPresent = ')
+            # Anchor on the section-header marker (unique) rather than the bare phrase,
+            # which also appears in an explanatory comment ABOVE the definition.
+            $claudeIdx = $Content.IndexOf('--- Restore the Claude Code state volume ---')
+            $defIdx    | Should -BeGreaterThan -1
+            $probeIdx  | Should -BeGreaterThan $defIdx
+            $claudeIdx | Should -BeGreaterThan $defIdx
+        }
+
         It "passes the replay sh -c program without embedded double-quotes (Windows arg safety)" {
             # Regression: embedded " in a string passed to a native exe on Windows
             # is silently mangled by the C runtime (see shell-scripting gotchas.md).
@@ -127,11 +186,12 @@ Describe "restore_from_backup.ps1" {
             $value | Should -Not -Match "sed '1s"
         }
 
-        It "excludes the manifest and Claude subfolder from the listing/scan counts" {
-            # The listing loop and the Scanning-backup count must both exclude the
-            # ".daaf-permissions" manifest so all four counts (listing, scan,
-            # verification, backup completion report) agree exactly.
+        It "excludes both manifests and the Claude subfolder from the listing/scan counts" {
+            # The listing loop and the Scanning-backup count must exclude BOTH the
+            # ".daaf-permissions" and ".daaf-symlinks" manifests so all four counts
+            # (listing, scan, verification, backup completion report) agree exactly.
             $Content | Should -Match '\$_\.Name -ne \$PermissionsManifest'
+            $Content | Should -Match '\$_\.Name -ne \$SymlinksManifest'
             $Content | Should -Match '\+ Claude state'
         }
 

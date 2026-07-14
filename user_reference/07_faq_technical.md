@@ -91,7 +91,7 @@ From your `daaf-docker` folder on your host computer, run `bash update_daaf.sh` 
 
 ### How do I back up my research files?
 
-From your `daaf-docker` folder: `bash backup_daaf.sh` (macOS/Linux) or `.\backup_daaf.ps1` (Windows). This copies your entire research directory to a timestamped folder on your computer. The backup folder also contains two hidden items you can safely ignore — a `.daaf-claude-config/` subfolder holding your Claude Code login and session history, and a small `.daaf-permissions` manifest that lets the restore put file permissions back correctly (see the quickstart's *Backing Up Your Work* section for details). You can also use the browser file manager (`bash run_vscode.sh`) to browse and download individual files.
+From your `daaf-docker` folder: `bash backup_daaf.sh` (macOS/Linux) or `.\backup_daaf.ps1` (Windows). This copies your entire research directory to a timestamped folder on your computer. The backup folder also contains a few hidden items you can safely ignore — a `.daaf-claude-config/` subfolder holding your Claude Code login and session history, a small `.daaf-permissions` manifest that lets the restore put file permissions back correctly, and (only when your data contains symbolic links) a `.daaf-symlinks` manifest that lets the restore recreate them — which is what lets backups complete cleanly on Windows, where the copy would otherwise stop at the first symbolic link (see the quickstart's *Backing Up Your Work* section for details). You can also use the browser file manager (`bash run_vscode.sh`) to browse and download individual files.
 
 ---
 

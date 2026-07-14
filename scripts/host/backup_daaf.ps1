@@ -38,6 +38,12 @@ if ($env:DAAF_DRY_RUN -eq "1") {
         switch -Wildcard ($argStr) {
             "*info*" { return }
             "*volume inspect*" { return }
+            "run -d*" {
+                # Staging container launch (symlink strip) -- emit a fake CID.
+                Write-Output "stagecid0000"
+                return
+            }
+            "wait*" { Write-Output "0"; return }
             "*run --rm*" {
                 # Scan command -- return 4 lines matching the parsing expectations:
                 # Line 0: file count, Line 1: "KB\t/source", Line 2: "size\t/source", Line 3: logical KB
@@ -118,6 +124,23 @@ $VolumeName = "${projectName}_daaf-data"
 # the volume -- handled gracefully below.
 $ClaudeVolumeName = "${projectName}_daaf-claude-config"
 $ClaudeSubDir = ".daaf-claude-config"
+# Symlink manifest: backup-root sibling of .daaf-permissions. On Windows hosts,
+# `docker cp` extraction ABORTS the moment it hits a symlink it cannot create
+# (symlink creation needs admin/Developer Mode), silently dropping every file that
+# sorts after it in the archive stream. To make backups symlink-safe, the volume is
+# first STAGED into a throwaway container: the staging step records each symlink's
+# path+target into this manifest and then removes the symlinks, so the tree
+# `docker cp` streams contains NO symlinks. Restore replays the manifest to
+# recreate the links. Absent manifest (older backup, or a volume with no symlinks)
+# = no-op on restore, matching the ".daaf-permissions" "no manifest, no action" rule.
+#
+# SYNC NOTE: the container-side $StageProgram here-string below is single-quoted
+# (`@'...'@`), so it CANNOT interpolate this variable -- it hardcodes the literal
+# ".daaf-symlinks" (in the `paste ... > /staging/.daaf-symlinks` line). If this
+# manifest name ever changes, update the here-string literal by hand to match.
+# (The .sh twin interpolates ${SYMLINKS_MANIFEST} into its single-quoted program via
+# a quote break, so it needs no such manual sync.)
+$SymlinksManifest = ".daaf-symlinks"
 $Today = Get-Date -Format "yyyy-MM-dd"
 
 Write-Host ""
@@ -188,6 +211,12 @@ Write-Host "Found $TotalFiles files to copy ($TotalSize)."
 Write-Host ""
 
 # --- Disk space pre-check ---
+# This checks free space on the HOST drive where the backup folder lands. Note it
+# does NOT cover the staging step's transient cost: staging `cp -a /source /staging`
+# inside the throwaway container roughly DOUBLES the volume's footprint on the Docker
+# VM's own internal disk (the Docker Desktop disk image), which is invisible to this
+# host-drive check. If that internal disk is full, staging fails and the fatal
+# staging-failure error below points the user at the Docker Desktop disk image.
 $BackupDrive = (Get-Item -Path ".").PSDrive.Name
 $DriveInfo = New-Object System.IO.DriveInfo($BackupDrive)
 $AvailableKB = [long]($DriveInfo.AvailableFreeSpace / 1024)
@@ -217,38 +246,109 @@ if ($env:DAAF_DRY_RUN -eq "1") {
 # --- Create backup ---
 New-Item -ItemType Directory -Path $BackupName -Force | Out-Null
 $HostPath = (Resolve-Path $BackupName).Path
-Write-Host "Copying files from Docker volume..."
-Write-Host "  Progress: 0 / $TotalFiles files (0%)" -NoNewline
 
-# Copy the data volume out via `docker create` + `docker cp` instead of a
-# bind-mounted `busybox cp -a`. On Docker Desktop for Windows, every file a
-# bind-mounted copy writes crosses the 9p/gRPC-FUSE host<->VM boundary
-# individually, so a large volume takes minutes; `docker cp` streams the whole
-# tree through the daemon in one pass and avoids that per-file overhead. The
-# helper container is created but never started -- `docker cp` still reads the
-# volume because the daemon mounts the container root AND its volume MountPoints
-# into the archive view regardless of container state. `docker cp` (without
-# -a/--archive) also extracts files as the invoking user, so ownership is correct
-# by construction and no chown-repair step is needed. The trailing "/." on the
-# source copies the volume's CONTENTS into $HostPath rather than nesting a dir.
-# docker writes directly to disk here; PowerShell only starts and polls the
-# process (via Start-Process, as before) -- no binary data is piped through the
-# PS 5.1 pipeline, which would corrupt it.
+# Copy the data volume out via a STAGING container + `docker cp`, instead of
+# `docker cp`ing the volume directly. On Windows hosts, `docker cp`'s host-side
+# extraction ABORTS the instant it meets a symlink it cannot create (symlink
+# creation needs admin/Developer Mode), silently truncating the archive stream and
+# dropping every file that sorts after the failing link. To make the tree
+# `docker cp` streams symlink-free, first stage the volume into a throwaway busybox
+# container: `cp -a /source /staging` freezes the tree, two `find` passes record
+# each symlink's path and target line-for-line (identical traversal order, so
+# `paste` pairs them exactly -- the `cp -a` freeze is a correctness requirement,
+# not an optimization) into the ".daaf-symlinks" manifest at the staging root, and
+# `find -type l -exec rm` strips the links. Restore replays the manifest.
+#
+# The staging program contains NO embedded double quotes -- embedded double quotes
+# corrupt Windows arg parsing on PS 5.1. Its /tmp writes are inside the throwaway
+# container's own layer (NOT the DAAF container's /tmp), so no provenance concern.
+# It is passed as a single array-form ArgumentList element (robust quoting), the
+# same way the docker cp path below passes $HostPath.
+#
+# FATAL unsupported-character gate (twin of backup_daaf.sh): the ".daaf-symlinks"
+# manifest is a line-based, TAB-separated "path<TAB>target" file, and restore replays
+# it by splitting each line on the first tab. A TAB in a symlink's own path or target
+# shifts that field boundary (restore parses the wrong path/target); a NEWLINE in a
+# name splits one logical entry across lines, which also desyncs `paste` (it pairs
+# path line N with target line N) for every entry after it. Neither is detectable at
+# restore time, so gate HERE, loudly: a newline-immune true link count is
+# `find . -type l -exec printf x ;` (one x per link, `wc -c`); if either `wc -l` of
+# link_paths/link_targets disagrees, a name holds a newline. A literal tab is caught
+# by `grep -qf` against a one-tab pattern file. Any hit exits 3, which trips the fatal
+# staging-failure path below -- NO corrupt manifest is written. This here-string is a
+# SINGLE-quoted (`@'...'@`) literal, so its bytes reach the container `sh` verbatim;
+# the `\\011` DOUBLE backslash therefore survives to hand printf ONE backslash (the
+# same octal-escape trap the .sh twin and the restore-replay `\\357` idiom hit).
+$StageProgram = @'
+set -e
+cp -a /source /staging
+cd /staging
+find . -type l > /tmp/link_paths
+find . -type l -exec readlink {} \; > /tmp/link_targets
+printf \\011 > /tmp/tab_pat
+true_links=$(find . -type l -exec printf x \; | wc -c)
+path_lines=$(wc -l < /tmp/link_paths)
+target_lines=$(wc -l < /tmp/link_targets)
+if [ $true_links -ne $path_lines ] || [ $true_links -ne $target_lines ]; then
+echo STAGE_ERR_NEWLINE >&2
+exit 3
+fi
+if grep -qf /tmp/tab_pat /tmp/link_paths || grep -qf /tmp/tab_pat /tmp/link_targets; then
+echo STAGE_ERR_TAB >&2
+exit 3
+fi
+paste /tmp/link_paths /tmp/link_targets > /staging/.daaf-symlinks
+find /staging -type l -exec rm -f {} +
+'@
+
+Write-Host "Preparing volume snapshot (staging + symlink strip)... (this may take a while for large volumes)"
+# Launch the staging container detached and wait for it. `docker run -d` returns a
+# CID; `docker wait` blocks until the staging program finishes and prints its exit
+# status, which MUST be checked -- a nonzero status means staging failed before any
+# host bytes were written, so the backup aborts fatally (nothing useful produced).
 $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-$Cid = (docker create -v "${VolumeName}:/source:ro" busybox 2>&1).Trim()
-$createOk = ($LASTEXITCODE -eq 0)
+$StageCid = (docker run -d -v "${VolumeName}:/source:ro" busybox sh -c $StageProgram 2>&1 | Select-Object -Last 1)
+if ($null -ne $StageCid) { $StageCid = "$StageCid".Trim() }
+$stageStartOk = ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrEmpty($StageCid))
 $ErrorActionPreference = $savedEAP
-if (-not $createOk) {
-    Write-Host "ERROR: Could not create the helper container for the volume copy." -ForegroundColor Red
+if (-not $stageStartOk) {
+    if (-not [string]::IsNullOrEmpty($StageCid)) {
+        $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+        $null = docker rm -f $StageCid 2>&1
+        $ErrorActionPreference = $savedEAP
+    }
+    Write-Host "ERROR: Could not start the staging container for a symlink-safe backup." -ForegroundColor Red
     Wait-AndExit 1
 }
+$savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+$StageStatusRaw = (docker wait $StageCid 2>&1 | Select-Object -Last 1)
+$ErrorActionPreference = $savedEAP
+$StageStatus = 1
+if ($null -ne $StageStatusRaw) { $null = [int]::TryParse("$StageStatusRaw".Trim(), [ref]$StageStatus) }
+if ($StageStatus -ne 0) {
+    $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+    $null = docker rm -f $StageCid 2>&1
+    $ErrorActionPreference = $savedEAP
+    Write-Host "ERROR: Failed to stage the Docker volume for a symlink-safe backup (exit $StageStatus)." -ForegroundColor Red
+    Write-Host "       No backup files were written."
+    Write-Host "       Exit 3 means a symlink's path or target contains an unsupported"
+    Write-Host "       character (a TAB or a NEWLINE), which would corrupt the symlink"
+    Write-Host "       manifest -- rename or remove the offending symbolic link and re-run."
+    Write-Host "       Otherwise, staging can also fail if the Docker Desktop disk image is"
+    Write-Host "       full (staging transiently duplicates the volume inside it); check"
+    Write-Host "       Docker Desktop for errors, free space, and re-run."
+    Wait-AndExit 1
+}
+
+Write-Host "Copying files from Docker volume..."
+Write-Host "  Progress: 0 / $TotalFiles files (0%)" -NoNewline
 
 # Array-form ArgumentList: each element is quoted robustly by PowerShell, so a
 # $HostPath containing parentheses or ampersands (e.g. OneDrive-style folders)
 # cannot silently corrupt the single-string parse that an embedded-quote form
-# risks on PS 5.1.
+# risks on PS 5.1. Source is the staged (symlink-free) tree, not the volume.
 $CopyProcess = Start-Process -FilePath "docker" `
-    -ArgumentList @("cp", "${Cid}:/source/.", $HostPath) `
+    -ArgumentList @("cp", "${StageCid}:/staging/.", $HostPath) `
     -NoNewWindow -PassThru
 
 try {
@@ -267,10 +367,10 @@ try {
     if (-not $CopyProcess.HasExited) {
         Stop-Process -Id $CopyProcess.Id -Force -ErrorAction SilentlyContinue
     }
-    # Remove the helper container. Best-effort: the copy is already done (or was
+    # Remove the staging container. Best-effort: the copy is already done (or was
     # interrupted), so a failure here must never fail the backup.
     $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-    $null = docker rm -f $Cid 2>&1
+    $null = docker rm -f $StageCid 2>&1
     $ErrorActionPreference = $savedEAP
 }
 
@@ -279,10 +379,24 @@ try {
 # WaitForExit here settles it before we trust ExitCode.)
 $CopyProcess.WaitForExit()
 $CopyExitCode = if ($null -ne $CopyProcess.ExitCode) { $CopyProcess.ExitCode } else { 0 }
-Write-Host "`r  Progress: $TotalFiles / $TotalFiles files (100%)   "
 
 # --- Verify ---
-$FileCount = @(Get-ChildItem -Path $BackupName -Recurse -File -Force -ErrorAction SilentlyContinue).Count
+# The staged tree the copy streamed = volume regular files + 1 symlink manifest
+# - symlinks. Symlinks were never counted by the source scan (TotalFiles), and the
+# manifest is metadata, not volume content -- so exclude the manifest here to keep
+# the copied count aligned with TotalFiles.
+$FileCount = @(Get-ChildItem -Path $BackupName -Recurse -File -Force -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -ne $SymlinksManifest }).Count
+
+# Print the ACTUAL final host-side count, not a fabricated "100%". On a truncated
+# copy (the Windows symlink-abort this staging step now prevents, or any other
+# partial copy) an unconditional "100%" would lie about completeness.
+if ($TotalFiles -gt 0) {
+    $FinalPercent = [math]::Min(100, [math]::Floor($FileCount * 100 / $TotalFiles))
+} else {
+    $FinalPercent = 0
+}
+Write-Host "`r  Progress: $FileCount / $TotalFiles files ($FinalPercent%)   "
 
 if ($FileCount -eq 0) {
     Write-Host ""
@@ -297,13 +411,33 @@ if ($FileCount -eq 0) {
 }
 
 if ($CopyExitCode -ne 0) {
-    Write-Host "Note: File copy reported warnings (exit code $CopyExitCode) but all $FileCount files were transferred." -ForegroundColor Yellow
+    Write-Host "Note: File copy reported warnings (exit code $CopyExitCode); $FileCount of $TotalFiles expected files were transferred." -ForegroundColor Yellow
+}
+
+# --- File-count verification ---
+# Do NOT trust docker cp's exit code as the sole failure signal: the Windows
+# symlink-abort truncation surfaced with a ZERO exit on the user's run. Compare the
+# copied data-file count (manifest excluded) against the source scan count and warn
+# loudly on a shortfall beyond a 1% tolerance -- the count and size checks are the
+# authoritative completeness signals, not $CopyExitCode.
+if ($TotalFiles -gt 0 -and $FileCount -gt 0) {
+    $CountTolerance = [math]::Max(1, [long]($TotalFiles / 100))
+    $CountDiff = [math]::Abs($TotalFiles - $FileCount)
+    if ($CountDiff -gt $CountTolerance) {
+        Write-Host ""
+        Write-Host "WARNING: Backup file-count mismatch." -ForegroundColor Yellow
+        Write-Host "         Source: $TotalFiles files, Backup: $FileCount files (difference: $CountDiff)"
+        Write-Host "         The backup may be incomplete. Consider re-running."
+    }
 }
 
 # --- Size verification ---
 # Compare source vs backup logical byte sums to detect truncated files
 $SourceSizeKB = $VolumeLogicalKB
-$BackupSizeKB = [long]((Get-ChildItem -Path $BackupName -Recurse -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum / 1024)
+# Exclude the ".daaf-symlinks" manifest from the backup byte sum: it exists in the
+# backup but not the volume, and the source side (VolumeLogicalKB) never counted it
+# -- so counting it here would skew the comparison.
+$BackupSizeKB = [long]((Get-ChildItem -Path $BackupName -Recurse -Force -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne $SymlinksManifest } | Measure-Object -Property Length -Sum).Sum / 1024)
 if ($SourceSizeKB -gt 0 -and $BackupSizeKB -gt 0) {
     # Allow 1% tolerance for filesystem metadata differences
     $ToleranceKB = [math]::Max(1, [long]($SourceSizeKB / 100))
@@ -331,37 +465,50 @@ if ($claudeVolumeExists) {
     Write-Host "Backing up Claude Code state (credentials, session history, plugins)..."
     $ClaudeDestPath = Join-Path $HostPath $ClaudeSubDir
     New-Item -ItemType Directory -Path $ClaudeDestPath -Force | Out-Null
-    # Same `docker create` + `docker cp` + `docker rm` mechanism as the data
-    # volume above, run synchronously (this copy is small). `docker cp` extracts as
-    # the invoking user, so the Claude state files land user-owned with no chown
-    # repair -- which is why the old ownership-repair step is gone entirely. Only
-    # docker cp's text status line reaches stdout here (the file data goes straight
-    # to disk), so a synchronous inline call is pipeline-safe on PS 5.1.
-    $ClaudeCid = $null
+    # Same STAGING mechanism as the data volume above (this volume ALSO carries
+    # symlinks -- e.g. codex-daaf/tmp/arg0/... -- which is why the "Failed to back
+    # up the Claude Code state volume" warning appeared on Windows: `docker cp`
+    # aborted on the first link). Stage into a throwaway container to strip the
+    # symlinks into this subfolder's own ".daaf-symlinks" manifest, then cp the
+    # symlink-free staged tree out. Run synchronously (this copy is small). Only
+    # docker's text status lines reach stdout (the file data goes straight to disk),
+    # so synchronous inline calls are pipeline-safe on PS 5.1.
+    $ClaudeStageCid = $null
     $claudeCopyOk = $false
     try {
         $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-        $ClaudeCid = (docker create -v "${ClaudeVolumeName}:/source:ro" busybox 2>&1).Trim()
-        $claudeCreateOk = ($LASTEXITCODE -eq 0)
+        $ClaudeStageCid = (docker run -d -v "${ClaudeVolumeName}:/source:ro" busybox sh -c $StageProgram 2>&1 | Select-Object -Last 1)
+        if ($null -ne $ClaudeStageCid) { $ClaudeStageCid = "$ClaudeStageCid".Trim() }
+        $claudeStageStartOk = ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrEmpty($ClaudeStageCid))
         $ErrorActionPreference = $savedEAP
-        if ($claudeCreateOk) {
+        if ($claudeStageStartOk) {
             $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-            $null = docker cp "${ClaudeCid}:/source/." "${ClaudeDestPath}" 2>&1
-            $claudeCopyOk = ($LASTEXITCODE -eq 0)
+            $ClaudeStageStatusRaw = (docker wait $ClaudeStageCid 2>&1 | Select-Object -Last 1)
             $ErrorActionPreference = $savedEAP
+            $ClaudeStageStatus = 1
+            if ($null -ne $ClaudeStageStatusRaw) { $null = [int]::TryParse("$ClaudeStageStatusRaw".Trim(), [ref]$ClaudeStageStatus) }
+            if ($ClaudeStageStatus -eq 0) {
+                $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+                $null = docker cp "${ClaudeStageCid}:/staging/." "${ClaudeDestPath}" 2>&1
+                $claudeCopyOk = ($LASTEXITCODE -eq 0)
+                $ErrorActionPreference = $savedEAP
+            }
         }
     } finally {
-        # Remove the helper container even if the copy is interrupted (PS finally
+        # Remove the staging container even if the copy is interrupted (PS finally
         # runs on pipeline stop / Ctrl-C), mirroring the data-copy cleanup idiom.
         # Best-effort; guarded so an unset/empty CID is a no-op.
-        if (-not [string]::IsNullOrEmpty($ClaudeCid)) {
+        if (-not [string]::IsNullOrEmpty($ClaudeStageCid)) {
             $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-            $null = docker rm -f $ClaudeCid 2>&1
+            $null = docker rm -f $ClaudeStageCid 2>&1
             $ErrorActionPreference = $savedEAP
         }
     }
     if ($claudeCopyOk) {
-        $ClaudeFileCount = @(Get-ChildItem -Path $ClaudeDestPath -Recurse -File -Force -ErrorAction SilentlyContinue).Count
+        # Count data files only -- exclude the symlink manifest (metadata, not
+        # volume content), mirroring the data-volume FileCount exclusion.
+        $ClaudeFileCount = @(Get-ChildItem -Path $ClaudeDestPath -Recurse -File -Force -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -ne $SymlinksManifest }).Count
         Write-Host "Claude Code state backed up ($ClaudeFileCount files)."
         $ClaudeBackedUp = $true
     } else {

@@ -117,6 +117,15 @@ mock_docker() {
     export MOCK_DOCKER_PS_OUTPUT=""
     export MOCK_DOCKER_RUN_EXIT=0
     export MOCK_DOCKER_RUN_OUTPUT=""
+    # `docker run -d ... busybox sh -c <STAGE_PROGRAM>` launches the symlink-strip
+    # staging container (backup_daaf.{sh,ps1}). It returns a CID on stdout; `docker
+    # wait <cid>` then prints the staging program's exit status. Defaults: staging
+    # starts (emits a stable fake CID) and waits to a 0 (success) status. Override
+    # MOCK_DOCKER_WAIT_OUTPUT per-test to model a nonzero staging exit.
+    export MOCK_DOCKER_RUND_OUTPUT="stagecid0000"
+    export MOCK_DOCKER_RUND_EXIT=0
+    export MOCK_DOCKER_WAIT_OUTPUT="0"
+    export MOCK_DOCKER_WAIT_EXIT=0
     export MOCK_DOCKER_INSPECT_EXIT=0
     export MOCK_DOCKER_INSPECT_OUTPUT=""
     export MOCK_DOCKER_START_EXIT=0
@@ -202,8 +211,20 @@ mock_docker() {
                 return "${MOCK_DOCKER_VOLUME_EXIT:-0}"
                 ;;
             run)
+                # Distinguish the detached staging launch (`run -d ...`) from the
+                # ephemeral `run --rm ...` scan/replay calls: the former returns a CID
+                # for `docker wait` to block on; the latter emits scan/verify output.
+                if [ "${2:-}" = "-d" ]; then
+                    echo "${MOCK_DOCKER_RUND_OUTPUT:-stagecid0000}"
+                    return "${MOCK_DOCKER_RUND_EXIT:-0}"
+                fi
                 echo "${MOCK_DOCKER_RUN_OUTPUT:-}"
                 return "${MOCK_DOCKER_RUN_EXIT:-0}"
+                ;;
+            wait)
+                # `docker wait <cid>` prints the staging container's exit status.
+                echo "${MOCK_DOCKER_WAIT_OUTPUT:-0}"
+                return "${MOCK_DOCKER_WAIT_EXIT:-0}"
                 ;;
             inspect)
                 echo "${MOCK_DOCKER_INSPECT_OUTPUT:-}"

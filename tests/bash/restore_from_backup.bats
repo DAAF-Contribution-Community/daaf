@@ -236,6 +236,142 @@ teardown() {
     assert_success
 }
 
+@test "restore: replays symlinks from the manifest (Step 2e)" {
+    # Step 2e: when ".daaf-symlinks" is present, recreate each link (path TAB target)
+    # container-side and chown -h it, then strip the manifest from the volume.
+    run grep -c '\.daaf-symlinks' "${REPO_ROOT}/scripts/host/restore_from_backup.sh"
+    assert_success
+    run grep -c 'ln -sf -- ' "${REPO_ROOT}/scripts/host/restore_from_backup.sh"
+    assert_success
+    run grep -c 'chown -h 1000:1000' "${REPO_ROOT}/scripts/host/restore_from_backup.sh"
+    assert_success
+}
+
+@test "restore: replays symlinks for BOTH the data volume AND the Claude volume" {
+    # Regression guard for the review BLOCKER (which surfaced first in the .ps1 twin):
+    # a draft that recreates symlinks only for the DATA volume and silently omits the
+    # Claude-state volume still PASSES a file-wide grep for ".daaf-symlinks" or
+    # "ln -sf --", because the string is present at least once. Assert the replay
+    # idiom (`ln -sf --`) appears exactly TWICE -- once in the data-volume Step 2e
+    # block and once in the Claude-state restore block -- and that a replay is
+    # actually nested inside the CLAUDE_VOLUME_NAME restore path, not only the data one.
+    run bash -c "grep -c 'ln -sf -- ' \"${REPO_ROOT}/scripts/host/restore_from_backup.sh\""
+    assert_success
+    assert_output "2"
+    # The Claude-volume replay must live below the "Restore the Claude Code state
+    # volume" header and bind CLAUDE_VOLUME_NAME:/dest. Slice the file from that header
+    # to EOF and confirm both a CLAUDE_VOLUME_NAME-bound `docker run ... sh -c` and an
+    # `ln -sf --` inside that region -- proving the replay is wired for the second
+    # volume, not just referenced globally.
+    run bash -c "awk '/Restore the Claude Code state volume/{f=1} f' \"${REPO_ROOT}/scripts/host/restore_from_backup.sh\" | grep -c 'CLAUDE_VOLUME_NAME}:/dest'"
+    assert_success
+    run bash -c "awk '/Restore the Claude Code state volume/{f=1} f' \"${REPO_ROOT}/scripts/host/restore_from_backup.sh\" | grep -c 'ln -sf -- '"
+    assert_success
+    assert_output "1"
+}
+
+@test "restore: symlink replay program is quote-free (Windows arg safety)" {
+    # The Step 2e sh -c replay program is shared logically with the .ps1 twin; an
+    # embedded double quote would corrupt Windows PS 5.1 arg parsing. It uses octal
+    # printf for the BOM (busybox sed has no \\xNN escapes), never tr -d.
+    run grep -c 'bom=$(printf' "${REPO_ROOT}/scripts/host/restore_from_backup.sh"
+    assert_success
+    run grep -c 'IFS=$tab read -r p t' "${REPO_ROOT}/scripts/host/restore_from_backup.sh"
+    assert_success
+}
+
+@test "restore: excludes .daaf-symlinks from listing and scan counts" {
+    # A backup with 1 data file, both manifests, and no Claude state must list and
+    # scan as "1 files" (neither manifest counted).
+    local today
+    today=$(date +%Y-%m-%d)
+    mkdir -p "${TEST_DIR}/${today}_daaf_backup"
+    touch "${TEST_DIR}/${today}_daaf_backup/data1"
+    printf 'scripts/run.sh\n' > "${TEST_DIR}/${today}_daaf_backup/.daaf-permissions"
+    printf 'sub/link\ttarget\n' > "${TEST_DIR}/${today}_daaf_backup/.daaf-symlinks"
+
+    MOCK_DOCKER_VOLUME_EXIT=0
+    export DAAF_NESTED=1
+
+    run bash -c 'echo "" | bash "'"${REPO_ROOT}"'/scripts/host/restore_from_backup.sh"'
+    assert_output --partial "(1 files,"
+    refute_output --partial "(2 files"
+    refute_output --partial "(3 files"
+}
+
+@test "restore: replays symlinks when the backup contains a symlink manifest" {
+    mkdir -p "${TEST_DIR}/2026-01-01_daaf_backup"
+    touch "${TEST_DIR}/2026-01-01_daaf_backup/f1"
+    printf 'sub/link\t../target\n' > "${TEST_DIR}/2026-01-01_daaf_backup/.daaf-symlinks"
+
+    export DAAF_NESTED=1
+
+    # Step 2e probes the volume with `docker run ... test -f /dest/.daaf-symlinks`.
+    # Model the symlink manifest as PRESENT; the permissions manifest as ABSENT.
+    docker() {
+        case "$1" in
+            info)   return 0 ;;
+            volume) return 0 ;;
+            ps)     return 0 ;;
+            create) echo "mockcid0000"; return 0 ;;
+            cp)     return 0 ;;
+            run)
+                shift
+                local args_str="$*"
+                if [[ "${args_str}" == *"test -f"* ]] && [[ "${args_str}" == *".daaf-permissions"* ]]; then
+                    return 1  # permissions manifest absent
+                elif [[ "${args_str}" == *"find /dest"* ]] && [[ "${args_str}" == *"wc -l"* ]]; then
+                    echo "1"; return 0
+                fi
+                # symlink test -f (present), replay sh -c, clear, strip, chown: OK.
+                return 0
+                ;;
+            *)  return 0 ;;
+        esac
+    }
+    export -f docker
+
+    run bash -c 'printf "1\nRESTORE\n" | bash "'"${REPO_ROOT}"'/scripts/host/restore_from_backup.sh"'
+    assert_output --partial "Restoring symlinks"
+}
+
+@test "restore: no-ops symlink replay when the manifest is absent" {
+    mkdir -p "${TEST_DIR}/2026-01-01_daaf_backup"
+    touch "${TEST_DIR}/2026-01-01_daaf_backup/f1"
+    # No .daaf-symlinks manifest in this backup.
+
+    export DAAF_NESTED=1
+
+    # Both manifests probe ABSENT (test -f => 1); verification returns a count.
+    docker() {
+        case "$1" in
+            info)   return 0 ;;
+            volume) return 0 ;;
+            ps)     return 0 ;;
+            create) echo "mockcid0000"; return 0 ;;
+            cp)     return 0 ;;
+            run)
+                shift
+                local args_str="$*"
+                if [[ "${args_str}" == *"test -f"* ]]; then
+                    return 1  # both manifests absent
+                elif [[ "${args_str}" == *"find /dest"* ]] && [[ "${args_str}" == *"wc -l"* ]]; then
+                    echo "1"; return 0
+                fi
+                return 0
+                ;;
+            *)  return 0 ;;
+        esac
+    }
+    export -f docker
+
+    run bash -c 'printf "1\nRESTORE\n" | bash "'"${REPO_ROOT}"'/scripts/host/restore_from_backup.sh"'
+    # No symlink manifest => the "Restoring symlinks" line must NOT appear, and the
+    # restore still completes.
+    refute_output --partial "Restoring symlinks"
+    assert_output --partial "Restore complete"
+}
+
 @test "restore: checks for running containers before restoring" {
     run grep -c "docker ps --filter" "${REPO_ROOT}/scripts/host/restore_from_backup.sh"
     assert_success

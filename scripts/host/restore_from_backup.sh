@@ -74,6 +74,13 @@ CLAUDE_SUBDIR=".daaf-claude-config"
 # put POSIX modes back after a Windows round-trip erased them. Absent on older
 # backups -- restore handles that gracefully (no normalization; see Step 2d).
 PERMISSIONS_MANIFEST=".daaf-permissions"
+# Symlink manifest written into the backup root (and the Claude subfolder root) by
+# backup_daaf.sh's staging step. Lists each symlink's path and target (TAB-
+# separated). Restore replays it container-side to recreate the links that the
+# staging step stripped so `docker cp` could stream a symlink-free tree on Windows.
+# Absent on older backups / volumes with no symlinks -- restore no-ops (see Step 2e),
+# matching the ".daaf-permissions" "no manifest, no action" rule.
+SYMLINKS_MANIFEST=".daaf-symlinks"
 
 # --- Dry-Run Support ---
 # When DAAF_DRY_RUN=1, simulate external commands (Docker) for CI
@@ -205,19 +212,28 @@ for i in "${!SORTED_BACKUPS[@]}"; do
     dir="${SORTED_BACKUPS[$i]}"
     name="$(basename "${dir}")"
     # Count and size the DATA-volume contents only -- exclude the hidden Claude
-    # subfolder (it restores to its own volume, not the data volume) and the
-    # ".daaf-permissions" manifest (metadata, not restored content). This makes the
-    # listing count agree exactly with the "Scanning backup" count below, the
-    # post-restore verification count, and the backup script's completion report
-    # (all four count data-volume files only). When Claude state is present it is
-    # noted inline rather than folded silently into the number.
+    # subfolder (it restores to its own volume, not the data volume) and BOTH
+    # metadata manifests (".daaf-permissions", ".daaf-symlinks" -- neither is
+    # restored content). This makes the listing count agree exactly with the
+    # "Scanning backup" count below, the post-restore verification count, and the
+    # backup script's completion report (all four count data-volume files only).
+    # When Claude state is present it is noted inline rather than folded silently
+    # into the number.
     claude_sub="${dir}/${CLAUDE_SUBDIR}"
-    count=$(find "${dir}" -type f -not -path "${claude_sub}/*" -not -name "${PERMISSIONS_MANIFEST}" 2>/dev/null | wc -l | tr -d '[:space:]') || count="?"
+    count=$(find "${dir}" -type f -not -path "${claude_sub}/*" -not -name "${PERMISSIONS_MANIFEST}" -not -name "${SYMLINKS_MANIFEST}" 2>/dev/null | wc -l | tr -d '[:space:]') || count="?"
     # BSD du has no --exclude, so total the data-volume KB by subtracting the Claude
-    # subfolder's KB from the whole-folder KB (the manifest is negligibly small), then
-    # humanize with awk. Mirrors the "Scanning backup" size logic below.
+    # subfolder's KB AND both metadata manifests' KB from the whole-folder KB, then
+    # humanize with awk. Subtracting the manifests (not just the Claude subfolder)
+    # keeps this size aligned with the .ps1 twin's Measure-Object, which excludes both
+    # ".daaf-permissions" and ".daaf-symlinks". Mirrors the "Scanning backup" logic below.
     total_kb=$(du -sk "${dir}" 2>/dev/null | awk '{print $1}')
     total_kb=${total_kb:-0}
+    for mf in "${dir}/${PERMISSIONS_MANIFEST}" "${dir}/${SYMLINKS_MANIFEST}"; do
+        if [ -f "${mf}" ]; then
+            mf_kb=$(du -sk "${mf}" 2>/dev/null | awk '{print $1}')
+            total_kb=$(( total_kb - ${mf_kb:-0} ))
+        fi
+    done
     has_claude=0
     if [ -d "${claude_sub}" ] && [ -n "$(ls -A "${claude_sub}" 2>/dev/null)" ]; then
         has_claude=1
@@ -276,19 +292,28 @@ fi
 
 # --- Count source files ---
 # Exclude the Claude subfolder from the DATA-volume count -- it is restored to a
-# separate volume below, not into the data volume. Also exclude the
-# ".daaf-permissions" manifest: it is metadata (consumed by Step 2d, then removed),
-# not restored content, so counting it would make this scan disagree with the
-# post-restore verification count (which runs after the manifest is stripped from
-# the volume) and with the listing count above.
+# separate volume below, not into the data volume. Also exclude BOTH metadata
+# manifests: ".daaf-permissions" (consumed by Step 2d, then removed) and
+# ".daaf-symlinks" (consumed by Step 2e, then removed). Neither is restored content,
+# so counting them would make this scan disagree with the post-restore verification
+# count (which runs after both manifests are stripped from the volume) and with the
+# listing count above.
 echo ""
 echo "Scanning backup..."
-TOTAL_FILES=$(find "${SELECTED_PATH}" -type f -not -path "${CLAUDE_BACKUP_PATH}/*" -not -name "${PERMISSIONS_MANIFEST}" | wc -l | tr -d '[:space:]')
+TOTAL_FILES=$(find "${SELECTED_PATH}" -type f -not -path "${CLAUDE_BACKUP_PATH}/*" -not -name "${PERMISSIONS_MANIFEST}" -not -name "${SYMLINKS_MANIFEST}" | wc -l | tr -d '[:space:]')
 # Size must match the file count above: data-volume contents only, excluding the
-# Claude subfolder (which restores to its own volume). BSD du has no --exclude,
-# so subtract the subfolder's KB from the total and humanize with awk.
+# Claude subfolder (which restores to its own volume) AND both metadata manifests.
+# BSD du has no --exclude, so subtract the subfolder's KB and each manifest's KB from
+# the total and humanize with awk. Subtracting the manifests keeps this aligned with
+# the .ps1 twin's Measure-Object (which excludes both) and with the file count above.
 TOTAL_KB=$(du -sk "${SELECTED_PATH}" 2>/dev/null | awk '{print $1}')
 TOTAL_KB=${TOTAL_KB:-0}
+for mf in "${SELECTED_PATH}/${PERMISSIONS_MANIFEST}" "${SELECTED_PATH}/${SYMLINKS_MANIFEST}"; do
+    if [ -f "${mf}" ]; then
+        MF_KB=$(du -sk "${mf}" 2>/dev/null | awk '{print $1}')
+        TOTAL_KB=$(( TOTAL_KB - ${MF_KB:-0} ))
+    fi
+done
 if [ "${HAS_CLAUDE_BACKUP}" -eq 1 ]; then
     CLAUDE_KB=$(du -sk "${CLAUDE_BACKUP_PATH}" 2>/dev/null | awk '{print $1}')
     TOTAL_KB=$(( TOTAL_KB - ${CLAUDE_KB:-0} ))
@@ -498,6 +523,56 @@ else
     echo "      permission preservation, or the manifest write may have failed during"
     echo "      backup). File permissions were left as-is -- no normalization was applied."
 fi
+
+# --- Step 2e: Replay symlinks from the manifest ---
+# The symlink manifest ("${SYMLINKS_MANIFEST}") was copied into the data volume by
+# the whole-folder `docker cp` above. backup_daaf.sh's staging step stripped every
+# symlink from the tree (so `docker cp` could stream a symlink-free archive that
+# does not abort on Windows) and recorded each link's path + target here, TAB-
+# separated. When the manifest is PRESENT, recreate each link, chown it to appuser
+# (-h: the link itself, not its target), then remove the manifest from the volume.
+#
+# SAFETY / no manifest, no action: when the manifest is ABSENT (older backups, a
+# volume with no symlinks, or a manifest whose write failed at backup time), do
+# NOTHING -- matching the ".daaf-permissions" rule. Replay failure is a WARNING
+# (the regular files are intact; such links are typically regenerable), never fatal.
+#
+# Windows quoting: this `sh -c` program reaches docker.exe as one command-line
+# string, so it must contain NO embedded double-quotes (the Windows C runtime would
+# re-parse and mangle them -- see shell-scripting gotchas.md). Unquoted expansions
+# are exact because of `set -f` (no globbing) + an empty global IFS (no word
+# splitting on expansion); the `IFS=$tab` prefix scopes field splitting to the
+# `read` alone. A trailing CR and a leading UTF-8 BOM are stripped as parameter-
+# expansion suffix/prefix (never `tr -d`, which would corrupt multi-byte UTF-8
+# filenames); the BOM bytes are derived via octal printf (busybox sed has no \xNN).
+if docker run --rm -v "${VOLUME_NAME}:/dest:ro" busybox test -f "/dest/${SYMLINKS_MANIFEST}"; then
+    echo "Restoring symlinks from ${SYMLINKS_MANIFEST}..."
+    if ! docker run --rm -v "${VOLUME_NAME}:/dest" busybox sh -c '
+        set -ef
+        IFS=
+        cr=$(printf \\r)
+        bom=$(printf \\357\\273\\277)
+        tab=$(printf \\t)
+        while IFS=$tab read -r p t; do
+            p=${p#$bom}
+            t=${t%$cr}
+            [ -z $p ] && continue
+            [ -z $t ] && continue
+            ln -sf -- $t /dest/$p
+            chown -h 1000:1000 /dest/$p
+        done < /dest/'"${SYMLINKS_MANIFEST}"'
+        rm -f /dest/'"${SYMLINKS_MANIFEST}"'
+    '; then
+        echo "WARNING: Could not fully replay symlinks from the manifest." >&2
+        echo "         Your data was restored intact; only symbolic links may be missing." >&2
+        echo "         Such links are usually regenerable (e.g. by re-running the step that" >&2
+        echo "         created them). Inspect ${SYMLINKS_MANIFEST} in the backup for the list." >&2
+    fi
+else
+    # No symlink manifest: older backup, or a volume that had no symlinks. Silent
+    # no-op (there is nothing to recreate) -- mirrors the ".daaf-permissions" rule.
+    :
+fi
 echo "Copy complete."
 echo ""
 
@@ -559,6 +634,31 @@ if [ "${HAS_CLAUDE_BACKUP}" -eq 1 ]; then
         if [ -n "${CLAUDE_CID}" ] \
             && docker cp "${CLAUDE_BACKUP_PATH}/." "${CLAUDE_CID}:/dest/" \
             && docker run --rm -v "${CLAUDE_VOLUME_NAME}:/dest" busybox chown -R 1000:1000 /dest; then
+            # Replay the Claude volume's own symlink manifest (staged out by backup),
+            # then strip it. Same program + no-manifest-no-op + WARNING-not-fatal
+            # semantics as the data-volume Step 2e. The manifest lives at the Claude
+            # subfolder root, so it copied into this volume's root as /dest/.daaf-symlinks.
+            if docker run --rm -v "${CLAUDE_VOLUME_NAME}:/dest:ro" busybox test -f "/dest/${SYMLINKS_MANIFEST}"; then
+                if ! docker run --rm -v "${CLAUDE_VOLUME_NAME}:/dest" busybox sh -c '
+                    set -ef
+                    IFS=
+                    cr=$(printf \\r)
+                    bom=$(printf \\357\\273\\277)
+                    tab=$(printf \\t)
+                    while IFS=$tab read -r p t; do
+                        p=${p#$bom}
+                        t=${t%$cr}
+                        [ -z $p ] && continue
+                        [ -z $t ] && continue
+                        ln -sf -- $t /dest/$p
+                        chown -h 1000:1000 /dest/$p
+                    done < /dest/'"${SYMLINKS_MANIFEST}"'
+                    rm -f /dest/'"${SYMLINKS_MANIFEST}"'
+                '; then
+                    echo "WARNING: Could not fully replay Claude state symlinks." >&2
+                    echo "         Claude state was restored; only symbolic links may be missing." >&2
+                fi
+            fi
             echo "Claude Code state restored."
         else
             echo "WARNING: Failed to restore the Claude Code state volume." >&2

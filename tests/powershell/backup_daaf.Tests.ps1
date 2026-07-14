@@ -80,20 +80,48 @@ Describe "backup_daaf.ps1" {
             $Content | Should -Match 'files copied'
         }
 
-        It "uses docker cp (not bind-mounted cp -a) for the volume copy" {
-            # The copy mechanism is `docker create` + `docker cp`, which streams the
-            # tree through the daemon instead of writing file-by-file across the
-            # Docker Desktop bind-mount layer. It must NOT use the old busybox cp -a.
-            $Content | Should -Match 'docker create -v'
-            $Content | Should -Match 'docker cp'
-            $Content | Should -Not -Match 'cp -a /source'
+        It "uses staging + docker cp (not bind-mounted cp -a) for the volume copy" {
+            # The copy mechanism is a STAGING container (`docker run -d`) + `docker
+            # wait` + `docker cp` from /staging, which strips symlinks so a Windows
+            # `docker cp` does not abort mid-archive. It streams through the daemon,
+            # not file-by-file across the Docker Desktop bind-mount layer, and does
+            # NOT `docker cp` the live volume directly.
+            $Content | Should -Match 'docker run -d -v'
+            $Content | Should -Match 'docker wait'
+            $Content | Should -Match ':/staging/\.'
         }
 
-        It "removes the helper container after copying" {
+        It "removes the staging container after copying" {
             # Both the data-volume copy (finally block) and the Claude copy must
-            # tear down their `docker create` helper container with docker rm -f.
-            $Content | Should -Match 'docker rm -f \$Cid'
-            $Content | Should -Match 'docker rm -f \$ClaudeCid'
+            # tear down their `docker run -d` staging container with docker rm -f.
+            $Content | Should -Match 'docker rm -f \$StageCid'
+            $Content | Should -Match 'docker rm -f \$ClaudeStageCid'
+        }
+
+        It "stages the volume to strip symlinks and records .daaf-symlinks" {
+            # Windows `docker cp` aborts on symlinks it cannot create, truncating the
+            # archive. The staging program strips symlinks into a ".daaf-symlinks"
+            # manifest so the copied tree is symlink-free. The program must be
+            # quote-free (shared with the .sh twin; embedded " breaks PS 5.1 args).
+            $Content | Should -Match '\.daaf-symlinks'
+            $Content | Should -Match 'find /staging -type l -exec rm -f'
+        }
+
+        It "treats a nonzero staging exit as a fatal error before any host bytes" {
+            $Content | Should -Match 'Failed to stage the Docker volume'
+            $Content | Should -Match '\$StageStatus -ne 0'
+        }
+
+        It "verifies the copied file count against the source scan" {
+            # Do not trust docker cp's exit code alone (the Windows symlink-abort
+            # surfaced with a zero exit): a count-shortfall must warn loudly.
+            $Content | Should -Match 'Backup file-count mismatch'
+        }
+
+        It "prints the actual final host-side count, not a fabricated 100%" {
+            # The old unconditional "100%" lied on truncated copies. The final line
+            # must derive the percent from the real FileCount.
+            $Content | Should -Match '\$FinalPercent'
         }
 
         It "checks available disk space before copying" {
