@@ -417,6 +417,9 @@ Evidence requirements:
 - Any language- or tool-semantics claim must include a minimal repro you executed.
 - Any count or inventory (files touched, occurrences) must be derived from quoted
   tool output (git diff --stat, ls, grep -c), not from memory.
+- If your verification creates filesystem objects (symlinks, fixtures, temp files),
+  delete them before returning and quote a `bash {BASE_DIR}/scripts/check_workspace_invariants.sh`
+  run showing the OK line (exit 0).
 - Your findings are claims for orchestrator adjudication — label inference as inference.
 
 Report: list of inconsistencies found, with file paths and line numbers.
@@ -447,6 +450,9 @@ Evidence requirements:
 - Any language- or tool-semantics claim must include a minimal repro you executed.
 - Any count or inventory (files touched, occurrences) must be derived from quoted
   tool output (git diff --stat, ls, grep -c), not from memory.
+- If your verification creates filesystem objects (symlinks, fixtures, temp files),
+  delete them before returning and quote a `bash {BASE_DIR}/scripts/check_workspace_invariants.sh`
+  run showing the OK line (exit 0).
 - Your findings are claims for orchestrator adjudication — label inference as inference.
 
 Report: quality issues found, with specific improvement suggestions.
@@ -476,6 +482,9 @@ Evidence requirements:
 - Any language- or tool-semantics claim must include a minimal repro you executed.
 - Any count or inventory (registrations checked, occurrences) must be derived from
   quoted tool output (git diff --stat, ls, grep -c), not from memory.
+- If your verification creates filesystem objects (symlinks, fixtures, temp files),
+  delete them before returning and quote a `bash {BASE_DIR}/scripts/check_workspace_invariants.sh`
+  run showing the OK line (exit 0).
 - Your findings are claims for orchestrator adjudication — label inference as inference.
 
 Report: missing registrations, orphaned components, and suggested extensions.
@@ -675,6 +684,7 @@ These boundaries supplement the universal safety boundaries in `CLAUDE.md`. See 
 - Load `skill-authoring` and `agent-authoring` at mode start
 - Commit intermediate state (or update SESSION_NOTES.md) before non-trivial multi-file modifications, so that a session interruption does not leave the framework in an inconsistent state
 - Set executable permissions (`chmod +x` + `git update-index --chmod=+x`) on any newly created or modified `.sh` files (hooks, utility scripts) and verify with `git ls-files -s` that the mode is `100755`
+- Run `bash {BASE_DIR}/scripts/check_workspace_invariants.sh` and quote its output (the `OK:` line, exit 0, expected) before presenting Checkpoint 2 — this catches invariant-violating scratch artifacts (e.g., leftover probe symlinks) that reviewers or the framework-engineer may have created; git cannot see untracked scratch, so this live-filesystem lint is the gate
 
 ### Ask First Before
 

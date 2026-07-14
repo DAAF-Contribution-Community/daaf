@@ -42,7 +42,8 @@ What kind of script?
 ├─ Bash (.sh)
 │   ├─ Preamble and structure → ./references/bash-standards.md
 │   ├─ Error handling design → ./references/error-handling.md
-│   └─ Signal handling / cleanup → ./references/bash-standards.md
+│   ├─ Signal handling / cleanup → ./references/bash-standards.md
+│   └─ Scratch probe that makes symlinks (self-cleaning) → ./references/bash-standards.md
 ├─ PowerShell (.ps1)
 │   ├─ Preamble and structure → ./references/powershell-standards.md
 │   ├─ Native command error handling → ./references/powershell-standards.md
@@ -177,6 +178,7 @@ Existing patterns in DAAF scripts that this skill codifies:
 | Bash variable handling | `./references/bash-standards.md` |
 | ShellCheck integration | `./references/bash-standards.md` |
 | Bash signal handling and cleanup | `./references/bash-standards.md` |
+| Probe / test-harness hygiene (self-cleaning symlinks, workspace invariant checker) | `./references/bash-standards.md` |
 | Bash never-do list | `./references/bash-standards.md` |
 | Host-script Bash 3.2 portability (macOS `/bin/bash`) | `./references/bash-standards.md` |
 | Banned Bash-4.x-only constructs for host scripts | `./references/bash-standards.md` |
@@ -213,3 +215,5 @@ Existing patterns in DAAF scripts that this skill codifies:
 | Cross-platform alias differences | `./references/gotchas.md` |
 | Cross-platform exit code truncation | `./references/gotchas.md` |
 | Cross-platform path separators | `./references/gotchas.md` |
+| Cross-language octal `printf` escaping (`\\357`/`\\011` to `sh`) | `./references/gotchas.md` |
+| Detached-container (`docker run -d`) diagnostics routing | `./references/error-handling.md` |

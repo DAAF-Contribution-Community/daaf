@@ -269,6 +269,44 @@ trap 'echo "ERROR: Script failed at line $LINENO. Command: $BASH_COMMAND" >&2' E
 
 The `-E` flag ensures the ERR trap is inherited by functions and subshells.
 
+### Probe and Test-Harness Hygiene (Self-Cleaning Filesystem Objects)
+
+A scratch probe or test harness that creates **invariant-violating filesystem objects** — symlinks, and especially symlinks with pathological names (embedded tabs or newlines) — must delete those objects before it exits, from **inside the probe script itself**. The cleanup binds via a `trap`, not via the dispatch prompt that launched the probe:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+# --- Config ---
+readonly PROBE_DIR="${PROJECT_DIR}/scripts/scratch"
+
+# --- Cleanup (register before creating any objects) ---
+cleanup() {
+    # Delete every symlink this probe may have created under its own dir.
+    # `find … -type l -delete` removes only symlinks (not real files) and is
+    # NOT blocked by bash-safety.sh — unlike `rm -rf` of the scratch tree.
+    find "$PROBE_DIR" -type l -delete 2>/dev/null || true
+}
+trap cleanup EXIT INT TERM
+
+# --- Probe body: create symlinks, exercise the code under test ---
+mkdir -p "$PROBE_DIR"
+ln -s /some/target "$PROBE_DIR/$(printf 'pathological\tname')"
+# ... run the gate/verification logic against the symlink ...
+```
+
+**Why cleanup lives in the probe, not the dispatch prompt.** A dispatch-prompt instruction ("clean up your symlinks before returning") binds only the one agent it addresses. It does not bind a *future* runner — another engineer's harness, or a reviewer manually re-running the gate logic outside the harness's own trap. This bit DAAF concretely on 2026-07-14: verification probes left symlinks with tab/newline names under `scripts/scratch/`, and the leftovers broke real user backups **three separate times** (twice via engineers' harnesses, once via a reviewer running gate logic by hand outside any trap). A `trap cleanup EXIT INT TERM` inside the probe covers every one of those runners; a prompt covers only the addressee.
+
+**Why `find … -type l -delete` and not `rm -rf`.** The `bash-safety.sh` hook blocks `rm -rf` of scratch directories, but plain `rm` and `find … -delete` are allowed. `find "$PROBE_DIR" -type l -delete` is also *narrower* than deleting the tree — it removes exactly the symlinks (the invariant-violating objects) and leaves real scratch files intact for provenance.
+
+**Verification step.** After the probe runs, confirm the workspace is clean by invoking the workspace invariant checker, which walks the live filesystem for unauthorized symlinks (git cannot see untracked scratch):
+
+```bash
+bash "${BASE_DIR}/scripts/check_workspace_invariants.sh"   # prints an OK line on pass; exits 1 and lists offenders (control chars escaped) on violation
+```
+
+The checker is the *checkable invariant* that binds everyone, complementing the per-probe trap that binds each runner. A green run here is the gate: if it lists an offending symlink, a probe leaked it — delete the object before proceeding.
+
 ### Composable Scripts (DAAF_NESTED)
 
 When one script calls another, suppress interactive features (like pause-before-exit) in the inner script:
