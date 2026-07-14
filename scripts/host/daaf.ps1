@@ -323,10 +323,10 @@ function Show-DaafMenu {
     # --- Menu options ---
     Write-Host "  LAUNCH"
     Write-Host "    1) Start Claude Code"
-    Write-Host "    2) Browse Notebooks"
+    Write-Host "    2) View Marimo Notebooks (Python)"
     Write-Host "    3) Browse Files (VS Code)"
     Write-Host "    4) View Session Logs"
-    Write-Host "    5) View Quarto Notebooks"
+    Write-Host "    5) View Quarto Notebooks (R)"
     Write-Host "    6) Open Container Shell"
 
     Write-Host ""
@@ -1006,7 +1006,7 @@ function Show-DaafHelp {
     Write-Host "     Launch an interactive Claude Code session inside the DAAF"
     Write-Host "     container. Type /exit within Claude to return to this menu."
     Write-Host ""
-    Write-Host "  2) Browse Notebooks" -ForegroundColor Cyan
+    Write-Host "  2) View Marimo Notebooks (Python)" -ForegroundColor Cyan
     Write-Host "     Open the marimo notebook browser (port 2718). Browse, open,"
     Write-Host "     create, and edit research notebooks across all projects."
     Write-Host ""
@@ -1018,7 +1018,7 @@ function Show-DaafHelp {
     Write-Host "     Browse session transcripts from previous DAAF sessions."
     Write-Host "     Select a project or the full archive to view logs."
     Write-Host ""
-    Write-Host "  5) View Quarto Notebooks" -ForegroundColor Cyan
+    Write-Host "  5) View Quarto Notebooks (R)" -ForegroundColor Cyan
     Write-Host "     Render a Quarto notebook (.qmd) from an R project to a"
     Write-Host "     self-contained HTML file and open it in your browser."
     Write-Host ""

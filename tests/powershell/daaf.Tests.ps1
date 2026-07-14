@@ -155,8 +155,8 @@ Describe "daaf.ps1" {
 
         It "offers all eleven numbered options" {
             foreach ($opt in @(
-                "Start Claude Code", "Browse Notebooks", "Browse Files \(VS Code\)",
-                "View Session Logs", "View Quarto Notebooks", "Open Container Shell",
+                "Start Claude Code", "View Marimo Notebooks \(Python\)", "Browse Files \(VS Code\)",
+                "View Session Logs", "View Quarto Notebooks \(R\)", "Open Container Shell",
                 "Create Backup", "Restore from Backup", "Check for Updates",
                 "Rebuild Container", "Stop Web Services")) {
                 $Content | Should -Match $opt

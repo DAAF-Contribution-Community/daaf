@@ -634,10 +634,10 @@ teardown() {
     )'
     assert_success
     assert_output --partial "Start Claude Code"
-    assert_output --partial "Browse Notebooks"
+    assert_output --partial "View Marimo Notebooks (Python)"
     assert_output --partial "Browse Files"
     assert_output --partial "View Session Logs"
-    assert_output --partial "View Quarto Notebooks"
+    assert_output --partial "View Quarto Notebooks (R)"
     assert_output --partial "Open Container Shell"
     assert_output --partial "Create Backup"
     assert_output --partial "Restore from Backup"
