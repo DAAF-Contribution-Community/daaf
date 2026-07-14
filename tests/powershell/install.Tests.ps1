@@ -222,6 +222,15 @@ Describe "install.ps1 dry-run mode" {
         $output = & "$RepoRoot/scripts/host/install.ps1" *>&1
         ($output | Out-String) | Should -BeLike "*Installation complete*"
     }
+
+    It "creates the diagnostic builder under DAAF_DIAG_BUILD=1 (dry-run mock: inspect miss -> create)" {
+        $env:DAAF_DRY_RUN = "1"
+        $env:DAAF_NESTED = "1"
+        $env:DAAF_DIAG_BUILD = "1"
+        $output = & "$RepoRoot/scripts/host/install.ps1" *>&1
+        $env:DAAF_DIAG_BUILD = $null
+        ($output | Out-String) | Should -BeLike "*Created diagnostic buildx builder*"
+    }
 }
 
 # ============================================================================
@@ -303,6 +312,71 @@ Describe "install.ps1 error paths" {
 
         It "suggests update_daaf.ps1 as alternative" {
             $Content | Should -Match 'update_daaf\.ps1'
+        }
+    }
+
+    Context "Diagnostic builder (DAAF_DIAG_BUILD)" {
+        It "gates the diagnostic builder behind DAAF_DIAG_BUILD=1" {
+            $Content | Should -Match 'DAAF_DIAG_BUILD -eq "1"'
+        }
+
+        It "creates a docker-container buildx builder with raised size AND speed step-log limits" {
+            $Content | Should -Match 'buildx create --name daaf-diag-builder'
+            $Content | Should -Match 'BUILDKIT_STEP_LOG_MAX_SIZE=16777216'
+            $Content | Should -Match 'BUILDKIT_STEP_LOG_MAX_SPEED=10485760'
+        }
+
+        It "selects the builder via BUILDX_BUILDER and clears it after the build" {
+            $Content | Should -Match '\$env:BUILDX_BUILDER = "daaf-diag-builder"'
+            $Content | Should -Match '\$env:BUILDX_BUILDER = \$null'
+        }
+
+        It "falls open to the default builder when the builder cannot be created" {
+            $Content | Should -Match 'could not be'
+            $Content | Should -Match 'Falling back to the default builder'
+        }
+
+        It "warns on arm64 about source-compile build time" {
+            $Content | Should -Match 'arm64 detected'
+        }
+
+        It "uses version-robust wording in the clipped-log hint" {
+            $Content | Should -Match 'the exact limit varies by Docker version'
+        }
+
+        It "extends the build-failure hint to mention DAAF_DIAG_BUILD" {
+            $Content | Should -Match 'DAAF_DIAG_BUILD=1'
+        }
+    }
+
+    Context "Diagnostic builder: fail-open behavior (dry-run: create fails)" {
+        BeforeAll {
+            $script:OrigDryRun2 = $env:DAAF_DRY_RUN
+            $script:OrigNested2 = $env:DAAF_NESTED
+            $script:OrigDiag2 = $env:DAAF_DIAG_BUILD
+            $script:TestDir2 = New-Item -ItemType Directory -Path (Join-Path ([System.IO.Path]::GetTempPath()) "daaf-install-failopen-$(Get-Random)")
+            Push-Location $script:TestDir2
+        }
+        AfterAll {
+            $env:DAAF_DRY_RUN = $script:OrigDryRun2
+            $env:DAAF_NESTED = $script:OrigNested2
+            $env:DAAF_DIAG_BUILD = $script:OrigDiag2
+            if ((Get-Location).Path -eq $script:TestDir2.FullName) { Pop-Location }
+            Remove-Item -Recurse -Force $script:TestDir2 -ErrorAction SilentlyContinue
+        }
+
+        It "completes the install on the default builder when buildx create fails" {
+            # The script's dry-run docker mock honors DAAF_DIAG_BUILD_TEST_CREATE_FAIL
+            # to simulate a `buildx create` failure, exercising the fail-open path
+            # end-to-end (parity with the bash fail-open test).
+            $env:DAAF_DRY_RUN = "1"
+            $env:DAAF_NESTED = "1"
+            $env:DAAF_DIAG_BUILD = "1"
+            $env:DAAF_DIAG_BUILD_TEST_CREATE_FAIL = "1"
+            $output = & "$RepoRoot/scripts/host/install.ps1" *>&1
+            $env:DAAF_DIAG_BUILD_TEST_CREATE_FAIL = $null
+            ($output | Out-String) | Should -BeLike "*could not be*"
+            ($output | Out-String) | Should -Not -BeLike "*Created diagnostic buildx builder*"
         }
     }
 }

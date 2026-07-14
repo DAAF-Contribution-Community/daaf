@@ -80,6 +80,17 @@ if ($env:DAAF_DRY_RUN -eq "1") {
         switch -Wildcard ($argStr) {
             "*info*" { return }
             "*compose ps -aq daaf-docker*" { Write-Output "abc123" }
+            "*buildx inspect*" {
+                # Simulate builder-not-found so the create arm is exercised
+                $global:LASTEXITCODE = 1
+                return
+            }
+            "*buildx create*" {
+                # Test hook: DAAF_DIAG_BUILD_TEST_CREATE_FAIL=1 simulates a
+                # create failure so the fail-open path can be exercised in tests.
+                if ($env:DAAF_DIAG_BUILD_TEST_CREATE_FAIL -eq "1") { $global:LASTEXITCODE = 1 }
+                return
+            }
             "*inspect*" { return }
             "*cp *" { return }
             "*compose build*" { return }
@@ -218,6 +229,56 @@ if ((-not $DockerfileChanged) -and (-not $ComposefileChanged)) {
     Write-Host "      Rebuilding anyway to make sure the image is up to date."
 }
 
+# --- Apple Silicon / arm64 build-time notice ---
+# On arm64 every R package compiles from source (P3M has no Bookworm arm64
+# binaries -- see the Dockerfile's P3M repo-config note), which adds a long,
+# mostly-silent stretch to the build. Warn up front so the user does not mistake
+# the quiet compile phase for a hang.
+$DaafArch = $env:PROCESSOR_ARCHITECTURE
+if ($DaafArch -eq "ARM64") {
+    Write-Host ""
+    Write-Host "NOTE: arm64 detected. R packages compile from source on this architecture,"
+    Write-Host "      so expect roughly 25-35 extra minutes of build time with long silent"
+    Write-Host "      stretches (heavy C++ compiles: arrow, sf/terra, xgboost). This is"
+    Write-Host "      normal -- the build is not hung."
+    Write-Host ""
+}
+
+# --- Optional diagnostic builder (DAAF_DIAG_BUILD=1) ---
+# BuildKit clips each step's log output (by size AND by rate), and Docker
+# Desktop's DEFAULT builder does not let those limits be raised. The only
+# mechanism is a custom docker-container builder with larger
+# BUILDKIT_STEP_LOG_MAX_SIZE / _MAX_SPEED, selected via the BUILDX_BUILDER env
+# var. That builder has real costs (separate build cache; the built image must be
+# loaded back into the Docker image store), so it is opt-in only. Fail-open: any
+# failure creating/inspecting it falls back to the default builder.
+$UseDiagBuilder = $false
+if ($env:DAAF_DIAG_BUILD -eq "1") {
+    $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+    docker buildx inspect daaf-diag-builder 2>&1 | Out-Null
+    $ErrorActionPreference = $savedEAP
+    if ($LASTEXITCODE -eq 0) {
+        $UseDiagBuilder = $true
+        Write-Host "NOTE: Reusing existing diagnostic buildx builder 'daaf-diag-builder' (raised step-log limits)."
+    } else {
+        $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+        docker buildx create --name daaf-diag-builder --driver docker-container --driver-opt env.BUILDKIT_STEP_LOG_MAX_SIZE=16777216 --driver-opt env.BUILDKIT_STEP_LOG_MAX_SPEED=10485760 2>&1 | Out-Null
+        $ErrorActionPreference = $savedEAP
+        if ($LASTEXITCODE -eq 0) {
+            $UseDiagBuilder = $true
+            Write-Host "NOTE: Created diagnostic buildx builder 'daaf-diag-builder' (raised step-log limits)."
+        } else {
+            Write-Host "NOTE: DAAF_DIAG_BUILD=1 set, but the diagnostic buildx builder could not be"
+            Write-Host "      created. Falling back to the default builder (build logs may be clipped)."
+        }
+    }
+    if ($UseDiagBuilder) {
+        Write-Host "      This build uses a separate build cache (slower first run); the image is"
+        Write-Host "      loaded back into Docker when the build completes."
+        Write-Host ""
+    }
+}
+
 # --- Rebuild ---
 Write-Host ""
 Write-Host "[2/3] Rebuilding Docker image (this may take a few minutes if packages changed)..."
@@ -226,15 +287,24 @@ Write-Host ""
 # applied to the build step (where it is universally supported) without relying
 # on `docker compose up --progress`, which is rejected as "unknown flag" on
 # Docker Compose versions prior to ~v2.27.
+# BUILDX_BUILDER is set only when the diagnostic builder was selected above, then
+# cleared right after the build so it does not leak into later docker calls.
+if ($UseDiagBuilder) { $env:BUILDX_BUILDER = "daaf-diag-builder" }
 $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
 docker compose build --progress plain
 $ErrorActionPreference = $savedEAP
+if ($UseDiagBuilder) { $env:BUILDX_BUILDER = $null }
 if ($LASTEXITCODE -ne 0) {
     Write-Host ""
     Write-Host "ERROR: Rebuild failed. Check the output above for details." -ForegroundColor Red
     if (Test-Path "Dockerfile.pre-rebuild") {
         Write-Host "Your previous Dockerfile was saved as Dockerfile.pre-rebuild"
     }
+    Write-Host "If the output above contains a line like '[output clipped, log limit 2MiB reached]'"
+    Write-Host "(the exact limit varies by Docker version), re-run with DAAF_DIAG_BUILD=1 for"
+    Write-Host "unclipped build logs:"
+    Write-Host '  $env:DAAF_DIAG_BUILD = "1"'
+    Write-Host "  .\rebuild_daaf.ps1"
     Wait-AndExit 1
 }
 $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"

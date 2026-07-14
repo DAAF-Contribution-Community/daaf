@@ -172,6 +172,10 @@ RUN if [ "${DAAF_DEV}" = "1" ]; then \
 # all packages compile from source, and S7 <=0.2.1 fails due to removed C API
 # symbols. Posit CDN .deb installs to /opt/R/{VERSION}/; symlinks expose on
 # PATH. Upgrade path: bump R_VERSION once P3M announces R 4.6 binary support.
+# P3M binary availability is also architecture-conditional: the Debian Bookworm
+# repo serves pre-built binaries on x86_64 only — on arm64 (Apple Silicon) every
+# package compiles from source regardless of R version (see the P3M repo-config
+# note further below).
 ARG R_VERSION=4.5.3
 
 # R runtime from Posit pre-built binaries (Debian Bookworm).
@@ -193,6 +197,28 @@ RUN curl -fsSL -o /tmp/r-${R_VERSION}.deb \
 # lightgbm R bindings. libglpk40 required at load time by igraph (a kknn
 # dependency) — P3M's pre-built igraph binary links libglpk.so.40, and the
 # presence gate below fails on kknn without it.
+#
+# The last four dev libs (libuv1-dev, libharfbuzz-dev, libfribidi-dev,
+# libnode-dev) are the compile-time headers R packages need when they build
+# FROM SOURCE — which is EVERY package on arm64/Apple Silicon, since P3M serves
+# no Debian Bookworm arm64 binaries (x86_64 gets binaries; arm64 always source).
+# Without them the source builds fail with fatal missing-header errors that
+# install.packages() only surfaces as warnings, so the build limps on and then
+# dies ~20 min later at the presence gate. Specifically:
+#   - libuv1-dev     -> uv.h    for the `fs` package (cascades: fs -> sass ->
+#                       bslib -> rmarkdown/htmlwidgets -> leaflet/plotly)
+#   - libharfbuzz-dev,
+#     libfribidi-dev -> hb-ft.h for `textshaping` (cascades: textshaping ->
+#                       svglite -> kableExtra/gt)
+#   - libnode-dev    -> v8.h    for the `V8` package (V8 officially supports
+#                       building against libnode-dev on Debian; cascades: V8 ->
+#                       juicyjuice -> gt)
+# libnode-dev pulls double duty: beyond the arm64 v8.h headers, it also installs
+# the libnode.so RUNTIME library that the V8 package dlopens at load time even
+# on x86_64 BINARY installs. Without it, gt::as_raw_html() fails at runtime with
+# `libnode.so.NNN: cannot open shared object file` (R-support Parity Matrix
+# Ticket 8) — so this one apt line fixes both the arm64 build failure and the
+# x86_64 runtime failure.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         gfortran \
         libcurl4-openssl-dev \
@@ -205,6 +231,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libssl-dev \
         libhdf5-dev \
         libglpk40 \
+        libuv1-dev \
+        libharfbuzz-dev \
+        libfribidi-dev \
+        libnode-dev \
         cmake \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
@@ -341,7 +371,17 @@ RUN uv pip install --system \
 # Pin to a specific date snapshot so rebuilds produce identical package versions.
 # Update the date when intentionally upgrading R packages (and update skill
 # metadata). P3M provides pre-built binaries for Debian Bookworm — much faster
-# than source compilation.
+# than source compilation — but ONLY on x86_64. On arm64 (Apple Silicon) the
+# same date-pinned repo serves source tarballs only (P3M has no Bookworm arm64
+# binaries and will not add them — Bookworm is end-of-support for P3M binaries;
+# verified 2026-07-13 via live x-package-type: source response headers). So on
+# Apple Silicon EVERY R package compiles from source: expect ~25-35 min of extra
+# build time with long silent stretches (heavy C++ compiles) — this is normal,
+# not a hang. That source path is why the four extra dev headers (libuv1-dev,
+# libharfbuzz-dev, libfribidi-dev, libnode-dev) are installed in the R-toolchain
+# apt block above. The future path to arm64 binaries is a base-image migration
+# to Ubuntu noble, which DOES publish P3M arm64 binaries (verified 2026-07-13) —
+# out of scope for this change.
 ARG P3M_SNAPSHOT_DATE=2026-04-15
 RUN RPROFILE="$(Rscript -e 'cat(file.path(R.home("etc"), "Rprofile.site"))')" \
     && echo "options(repos = c(CRAN = 'https://p3m.dev/cran/__linux__/bookworm/${P3M_SNAPSHOT_DATE}'))" \
@@ -350,47 +390,84 @@ RUN RPROFILE="$(Rscript -e 'cat(file.path(R.home("etc"), "Rprofile.site"))')" \
         >> "${RPROFILE}"
 
 # Core data manipulation and I/O
-RUN Rscript -e 'install.packages(c( \
+#
+# PER-BLOCK FAIL-FAST PATTERN (used by all five R install blocks below):
+# install.packages() reports a failed package only as a WARNING, not an error,
+# so a source-build failure (the common case on arm64 — see the P3M repo-config
+# note above) would let the build limp on and only surface ~20+ min later at the
+# presence gate, far from the compile output that explains it. Each block below
+# therefore verifies its OWN package list with requireNamespace() immediately
+# after install and stop()s inside the failing layer — so the build dies in
+# minutes, with the fatal compiler error adjacent in the same layer's log. The
+# presence gate at the end remains the final identity check (see its comment).
+RUN Rscript -e 'pkgs <- c( \
         "data.table", "dplyr", "tidyr", "tibble", "readr", "purrr", "stringr", \
         "forcats", "lubridate", "glue", "rlang", "skimr", \
         "arrow", "readxl", "writexl", "haven", "jsonlite", "yaml" \
-        ))'
+        ); \
+        install.packages(pkgs); \
+        missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]; \
+        if (length(missing)) stop("R install block failed — missing: ", paste(missing, collapse = ", "))'
 
 # Statistics and econometrics
 # NOTE: the wild-cluster-bootstrap package was removed here — archived on CRAN,
 # no R 4.5 binary in the P3M snapshot. It can be installed at analysis time if
 # needed (e.g. via a source/archive build).
-RUN Rscript -e 'install.packages(c( \
+RUN Rscript -e 'pkgs <- c( \
         "fixest", "sandwich", "lmtest", "car", "plm", "estimatr", \
         "marginaleffects", "rdrobust", "lme4", \
         "survey", "rugarch", "tseries", "broom", "modelsummary" \
-        ))'
+        ); \
+        install.packages(pkgs); \
+        missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]; \
+        if (length(missing)) stop("R install block failed — missing: ", paste(missing, collapse = ", "))'
 
 # Geospatial
-RUN Rscript -e 'install.packages(c( \
+RUN Rscript -e 'pkgs <- c( \
         "sf", "terra", "stars", \
         "spdep", "spatialreg", "classInt", "exactextractr", \
         "leaflet", "maptiles", "tidygeocoder", "osmdata" \
-        ))'
+        ); \
+        install.packages(pkgs); \
+        missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]; \
+        if (length(missing)) stop("R install block failed — missing: ", paste(missing, collapse = ", "))'
 
 # Visualization
-RUN Rscript -e 'install.packages(c( \
+# "V8" is pinned explicitly (it would otherwise arrive only as a transitive
+# dependency of gt's HTML path) because gt's HTML rendering — gt::as_raw_html(),
+# used to inline tables into reports — requires it, and requireNamespace("V8")
+# dlopens libnode.so. Listing V8 here and in the presence gate means the gate now
+# EXERCISES that native linkage at build time, catching the missing-runtime-lib
+# failure class (libnode.so absent) rather than letting it surface only when a
+# report is first rendered (R-support Parity Matrix Ticket 8).
+RUN Rscript -e 'pkgs <- c( \
         "ggplot2", "scales", "ggridges", "ggrepel", "patchwork", "ggdist", \
-        "plotly", "gt", "knitr", "kableExtra", "viridis" \
-        ))'
+        "plotly", "gt", "V8", "knitr", "kableExtra", "viridis" \
+        ); \
+        install.packages(pkgs); \
+        missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]; \
+        if (length(missing)) stop("R install block failed — missing: ", paste(missing, collapse = ", "))'
 
 # ML and interpretation
-RUN Rscript -e 'install.packages(c( \
+RUN Rscript -e 'pkgs <- c( \
         "tidymodels", "ranger", "glmnet", "xgboost", "lightgbm", "kknn", \
         "iml", "uwot", "fairmodels", "vip" \
-        ))'
+        ); \
+        install.packages(pkgs); \
+        missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]; \
+        if (length(missing)) stop("R install block failed — missing: ", paste(missing, collapse = ", "))'
 
-# Presence gate: verify every intended R package actually installed. install.packages()
-# does NOT fail the build on a single package error, so a missing binary (as happened
-# with the archived wild-bootstrap package) can slip through silently. This RUN loops the full
-# intended list — the union of the install.packages() blocks above — and stops the build
-# with an explicit list if any namespace is unavailable. Keep this list in sync with the
-# blocks above when adding or removing packages.
+# Presence gate: the FINAL identity check that the installed package set matches the
+# union of the install.packages() blocks above. Its role changed with the per-block
+# fail-fast pattern: the per-block requireNamespace() checks now catch a failed package
+# INSIDE its own layer (fast, adjacent to the compile error), so this gate is no longer
+# the first line of defense against a silently-dropped package (as happened with the
+# archived wild-bootstrap package). It still earns its keep as the union check — one
+# authoritative list that must stay identical to the blocks — and it additionally
+# EXERCISES native linkage: requireNamespace("V8") dlopens libnode.so, so the gate
+# fails at build time if the libnode.so runtime library is missing (the gt::as_raw_html
+# failure class; R-support Parity Matrix Ticket 8) rather than deferring it to first use.
+# Keep this list in sync with the blocks above when adding or removing packages.
 RUN Rscript -e 'pkgs <- c( \
         "data.table", "dplyr", "tidyr", "tibble", "readr", "purrr", "stringr", \
         "forcats", "lubridate", "glue", "rlang", "skimr", \
@@ -402,7 +479,7 @@ RUN Rscript -e 'pkgs <- c( \
         "spdep", "spatialreg", "classInt", "exactextractr", \
         "leaflet", "maptiles", "tidygeocoder", "osmdata", \
         "ggplot2", "scales", "ggridges", "ggrepel", "patchwork", "ggdist", \
-        "plotly", "gt", "knitr", "kableExtra", "viridis", \
+        "plotly", "gt", "V8", "knitr", "kableExtra", "viridis", \
         "tidymodels", "ranger", "glmnet", "xgboost", "lightgbm", "kknn", \
         "iml", "uwot", "fairmodels", "vip" \
         ); \

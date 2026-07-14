@@ -202,34 +202,36 @@ fi
 DAAF_ARCH="$(uname -m 2>/dev/null || echo unknown)"
 if [ "${DAAF_ARCH}" = "arm64" ] || [ "${DAAF_ARCH}" = "aarch64" ]; then
     echo ""
-    echo "NOTE: Apple Silicon / arm64 detected. R packages compile from source on"
-    echo "      this architecture, so expect roughly 25-35 extra minutes of build"
-    echo "      time with long silent stretches (heavy C++ compiles: arrow, sf/terra,"
-    echo "      xgboost). This is normal -- the build is not hung."
+    echo "NOTE: arm64 detected (Apple Silicon or other ARM64 host). R packages compile"
+    echo "      from source on this architecture, so expect roughly 25-35 extra minutes"
+    echo "      of build time with long silent stretches (heavy C++ compiles: arrow,"
+    echo "      sf/terra, xgboost). This is normal -- the build is not hung."
     echo ""
 fi
 
 # --- Optional diagnostic builder (DAAF_DIAG_BUILD=1) ---
-# BuildKit clips each step's log at 2 MiB by default, and Docker Desktop's DEFAULT
-# builder does not let that limit be raised. The only mechanism is a custom
-# docker-container builder with a larger BUILDKIT_STEP_LOG_MAX_SIZE, selected via
-# BUILDX_BUILDER. That builder has real costs (separate build cache; the built
-# image must be loaded back into the Docker image store), so it is opt-in only.
-# Fail-open: any failure creating/inspecting it falls back to the default builder.
-BUILD_ENV_PREFIX=""
+# BuildKit clips each step's log output (by size AND by rate), and Docker
+# Desktop's DEFAULT builder does not let those limits be raised. The only
+# mechanism is a custom docker-container builder with larger
+# BUILDKIT_STEP_LOG_MAX_SIZE / _MAX_SPEED, selected via BUILDX_BUILDER. That
+# builder has real costs (separate build cache; the built image must be loaded
+# back into the Docker image store), so it is opt-in only. Fail-open: any failure
+# creating/inspecting it falls back to the default builder.
+DIAG_BUILDER_SELECTED=0
 if [ "${DAAF_DIAG_BUILD:-}" = "1" ]; then
     if docker buildx inspect daaf-diag-builder >/dev/null 2>&1; then
-        BUILD_ENV_PREFIX="daaf-diag-builder"
-        echo "NOTE: Reusing existing diagnostic buildx builder 'daaf-diag-builder' (16 MiB step-log clip)."
+        DIAG_BUILDER_SELECTED=1
+        echo "NOTE: Reusing existing diagnostic buildx builder 'daaf-diag-builder' (raised step-log limits)."
     elif docker buildx create --name daaf-diag-builder --driver docker-container \
-            --driver-opt env.BUILDKIT_STEP_LOG_MAX_SIZE=16777216 >/dev/null 2>&1; then
-        BUILD_ENV_PREFIX="daaf-diag-builder"
-        echo "NOTE: Created diagnostic buildx builder 'daaf-diag-builder' (16 MiB step-log clip)."
+            --driver-opt env.BUILDKIT_STEP_LOG_MAX_SIZE=16777216 \
+            --driver-opt env.BUILDKIT_STEP_LOG_MAX_SPEED=10485760 >/dev/null 2>&1; then
+        DIAG_BUILDER_SELECTED=1
+        echo "NOTE: Created diagnostic buildx builder 'daaf-diag-builder' (raised step-log limits)."
     else
         echo "NOTE: DAAF_DIAG_BUILD=1 set, but the diagnostic buildx builder could not be"
-        echo "      created. Falling back to the default builder (logs may be clipped at 2 MiB)."
+        echo "      created. Falling back to the default builder (build logs may be clipped)."
     fi
-    if [ -n "${BUILD_ENV_PREFIX}" ]; then
+    if [ "${DIAG_BUILDER_SELECTED}" = "1" ]; then
         echo "      This build uses a separate build cache (slower first run); the image is"
         echo "      loaded back into Docker when the build completes."
         echo ""
@@ -244,16 +246,29 @@ echo ""
 # applied to the build step (where it is universally supported) without relying
 # on `docker compose up --progress`, which is rejected as "unknown flag" on
 # Docker Compose versions prior to ~v2.27.
-# BUILDX_BUILDER is set inline only when the diagnostic builder was selected
-# above; otherwise it stays empty and Docker uses the default builder unchanged.
-if ! BUILDX_BUILDER="${BUILD_ENV_PREFIX}" docker compose build --progress plain; then
+#
+# The BUILDX_BUILDER prefix is applied ONLY on the diagnostic path. On the normal
+# path the command must NOT reference BUILDX_BUILDER at all: setting it to the
+# empty string still EXPORTS it (set-but-empty, not unset), which relies on
+# undocumented docker empty==default semantics and would clobber a user's own
+# pre-exported BUILDX_BUILDER. Two explicit branches avoid that. `set -e` is
+# active, so capture the exit code with `|| BUILD_EXIT=$?` to reach the error
+# message below on failure.
+BUILD_EXIT=0
+if [ "${DIAG_BUILDER_SELECTED}" = "1" ]; then
+    BUILDX_BUILDER="daaf-diag-builder" docker compose build --progress plain || BUILD_EXIT=$?
+else
+    docker compose build --progress plain || BUILD_EXIT=$?
+fi
+if [ "${BUILD_EXIT}" -ne 0 ]; then
     echo ""
     echo "ERROR: Rebuild failed. Check the output above for details."
     if [ -f "Dockerfile.pre-rebuild" ]; then
         echo "Your previous Dockerfile was saved as Dockerfile.pre-rebuild"
     fi
-    echo "If the failing error above was truncated ('[output clipped, log limit 2MiB reached]'),"
-    echo "re-run with DAAF_DIAG_BUILD=1 for unclipped build logs:"
+    echo "If the output above contains a line like '[output clipped, log limit 2MiB reached]'"
+    echo "(the exact limit varies by Docker version), re-run with DAAF_DIAG_BUILD=1 for"
+    echo "unclipped build logs:"
     echo "  DAAF_DIAG_BUILD=1 bash rebuild_daaf.sh"
     exit 1
 fi

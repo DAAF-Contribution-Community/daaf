@@ -120,6 +120,13 @@ mock_docker() {
     export MOCK_DOCKER_INSPECT_EXIT=0
     export MOCK_DOCKER_INSPECT_OUTPUT=""
     export MOCK_DOCKER_START_EXIT=0
+    # `docker buildx inspect <name>` probes an existing builder; `buildx create`
+    # makes one. Both are used only by the opt-in DAAF_DIAG_BUILD path in
+    # install.sh / rebuild_daaf.sh. Default: inspect FAILS (builder absent) so the
+    # create arm is exercised, and create SUCCEEDS. Override per-test when a
+    # different builder state must be modeled.
+    export MOCK_DOCKER_BUILDX_INSPECT_EXIT=1
+    export MOCK_DOCKER_BUILDX_CREATE_EXIT=0
     # `docker compose ps -q`/`-aq daaf-docker` returns a container ID (empty when
     # the container is not running / does not exist). By default this MIRRORS
     # MOCK_DOCKER_PS_OUTPUT so existing tests that model running/stopped purely via
@@ -166,6 +173,14 @@ mock_docker() {
                     *)
                         return "${MOCK_DOCKER_COMPOSE_EXIT:-0}"
                         ;;
+                esac
+                ;;
+            buildx)
+                shift
+                case "$1" in
+                    inspect) return "${MOCK_DOCKER_BUILDX_INSPECT_EXIT:-1}" ;;
+                    create)  return "${MOCK_DOCKER_BUILDX_CREATE_EXIT:-0}" ;;
+                    *)       return "${MOCK_DOCKER_EXIT:-0}" ;;
                 esac
                 ;;
             create)

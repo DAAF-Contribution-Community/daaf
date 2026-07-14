@@ -114,6 +114,115 @@ teardown() {
 }
 
 # =========================================================================
+# Diagnostic builder (DAAF_DIAG_BUILD=1)
+# =========================================================================
+
+@test "rebuild_daaf.sh: DAAF_DIAG_BUILD=1 creates the diagnostic builder (inspect miss -> create)" {
+    # The dry-run docker mock returns non-zero for `buildx inspect` (builder
+    # absent) and zero for `buildx create`, so the create arm runs.
+    run env DAAF_DRY_RUN=1 DAAF_DIAG_BUILD=1 DAAF_NESTED=1 bash "${REPO_ROOT}/scripts/host/rebuild_daaf.sh" 2>&1
+    assert_success
+    assert_output --partial "Created diagnostic buildx builder"
+    assert_output --partial "separate build cache"
+}
+
+@test "rebuild_daaf.sh: DAAF_DIAG_BUILD=1 reuses an existing diagnostic builder (inspect hit -> no create)" {
+    export DAAF_NESTED=1
+    export DAAF_DIAG_BUILD=1
+    # Custom mock: buildx inspect SUCCEEDS (builder already exists), so the reuse
+    # arm runs and create is never reached (create returns non-zero to prove the
+    # reuse path does not depend on it).
+    docker() {
+        case "$1" in
+            info)    return 0 ;;
+            buildx)
+                shift
+                case "$1" in
+                    inspect) return 0 ;;
+                    create)  return 1 ;;
+                    *)       return 0 ;;
+                esac
+                ;;
+            cp)      return 0 ;;
+            compose)
+                shift
+                case "$1" in
+                    ps) echo "abc123"; return 0 ;;
+                    *)  return 0 ;;
+                esac
+                ;;
+            *) return 0 ;;
+        esac
+    }
+    export -f docker
+    sleep() { true; }
+    export -f sleep
+    run bash "${REPO_ROOT}/scripts/host/rebuild_daaf.sh"
+    assert_success
+    assert_output --partial "Reusing existing diagnostic buildx builder"
+    refute_output --partial "Created diagnostic buildx builder"
+}
+
+@test "rebuild_daaf.sh: DAAF_DIAG_BUILD=1 falls back to default builder when create fails (fail-open)" {
+    export DAAF_NESTED=1
+    export DAAF_DIAG_BUILD=1
+    # Custom mock: container exists; buildx inspect AND create both fail; the
+    # rebuild must still complete via the default builder.
+    docker() {
+        case "$1" in
+            info)    return 0 ;;
+            buildx)
+                shift
+                case "$1" in
+                    inspect) return 1 ;;
+                    create)  return 1 ;;
+                    *)       return 0 ;;
+                esac
+                ;;
+            cp)      return 0 ;;
+            compose)
+                shift
+                case "$1" in
+                    ps) echo "abc123"; return 0 ;;
+                    *)  return 0 ;;
+                esac
+                ;;
+            *) return 0 ;;
+        esac
+    }
+    export -f docker
+    sleep() { true; }
+    export -f sleep
+    run bash "${REPO_ROOT}/scripts/host/rebuild_daaf.sh"
+    assert_success
+    assert_output --partial "could not be"
+    refute_output --partial "Created diagnostic buildx builder"
+}
+
+@test "rebuild_daaf.sh: build-failure hint mentions DAAF_DIAG_BUILD for clipped logs" {
+    export DAAF_NESTED=1
+    docker() {
+        case "$1" in
+            info)    return 0 ;;
+            cp)      return 0 ;;
+            compose)
+                shift
+                case "$1" in
+                    ps)    echo "abc123"; return 0 ;;
+                    build) return 1 ;;
+                    *)     return 0 ;;
+                esac
+                ;;
+            *) return 0 ;;
+        esac
+    }
+    export -f docker
+    run bash "${REPO_ROOT}/scripts/host/rebuild_daaf.sh"
+    assert_failure
+    assert_output --partial "DAAF_DIAG_BUILD=1"
+}
+
+# =========================================================================
 # Error paths
 # =========================================================================
 

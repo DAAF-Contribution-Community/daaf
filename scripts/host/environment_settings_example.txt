@@ -241,3 +241,17 @@
 # to a standard build -- leaving it off costs you nothing.
 #
 # DAAF_DEV=1
+
+# ----------------------------------------------------------------------------
+# Build diagnostics (DAAF_DIAG_BUILD) -- NOT a key for this file
+# ----------------------------------------------------------------------------
+# DAAF_DIAG_BUILD is NOT a persistent environment_settings.txt key -- do not set
+# it here. It is a one-off, run-time shell prefix for a SINGLE install/rebuild
+# invocation. Set it only when a build failed with truncated output (a line like
+# "[output clipped, log limit 2MiB reached]"); it routes the build through a
+# custom buildx builder with raised step-log limits so you can see the full,
+# unclipped error. Note: that builder uses a SEPARATE build cache (the first such
+# build is slower) and loads the finished image back into Docker when done.
+# Usage (prefix the command; do not persist it):
+#   bash:       DAAF_DIAG_BUILD=1 bash rebuild_daaf.sh
+#   PowerShell: $env:DAAF_DIAG_BUILD = "1"; .\rebuild_daaf.ps1
