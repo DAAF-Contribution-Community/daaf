@@ -112,6 +112,49 @@ Describe "backup_daaf.ps1" {
             $Content | Should -Match '\$StageStatus -ne 0'
         }
 
+        It "staging gate NAMES the offending symlink(s) before exit 3" {
+            # On a gate trip the container-side program prints the offenders to stderr
+            # before `exit 3` (empirically verified against real sh in
+            # scripts/scratch/V8_gate_harness.sh: tab -> matching line via `grep -f`;
+            # newline -> the full link_paths list). Structurally assert both branches
+            # emit a header and dump the offenders, staying quote-free.
+            $Content | Should -Match 'embeds a newline'
+            $Content | Should -Match 'cat /tmp/link_paths'
+            $Content | Should -Match 'embed a tab'
+            $Content | Should -Match 'grep -f /tmp/tab_pat /tmp/link_paths'
+        }
+
+        It "relays the detached staging container log on the fatal failure path" {
+            # The staging container is DETACHED (`docker run -d`), so the gate's
+            # offender output goes to the container LOG, not the terminal. The driver
+            # must fetch it with `docker logs` and relay it under a "Details from the
+            # staging scan" header. Assert the fatal path captures $StageLog via
+            # `docker logs $StageCid` and prints the header.
+            $Content | Should -Match 'docker logs \$StageCid'
+            $Content | Should -Match 'Details from the staging scan'
+        }
+
+        It "fetches the staging log before removing the container (fatal path)" {
+            # Ordering guard: in the fatal failure block, the `docker logs $StageCid`
+            # capture must appear BEFORE the `docker rm -f $StageCid` that follows it
+            # -- after removal the log is gone. `$null = docker rm -f $StageCid` occurs
+            # in three places (start-failure guard, this fatal path, and the copy
+            # finally), so anchor on the FIRST rm occurrence AT OR AFTER the $StageLog
+            # capture rather than the first rm in the whole file.
+            $logsIdx = $Content.IndexOf('$StageLog = (docker logs $StageCid')
+            $logsIdx | Should -BeGreaterThan -1
+            $rmIdx   = $Content.IndexOf('$null = docker rm -f $StageCid 2>&1', $logsIdx)
+            $rmIdx   | Should -BeGreaterThan $logsIdx
+        }
+
+        It "relays the detached staging log on the Claude-volume WARNING path" {
+            # The Claude staging failure stays a WARNING (asymmetric with the fatal
+            # data-volume path) but must still relay the offender list captured from
+            # the detached container's log before the finally removes it.
+            $Content | Should -Match 'docker logs \$ClaudeStageCid'
+            $Content | Should -Match '\$ClaudeStageLog'
+        }
+
         It "verifies the copied file count against the source scan" {
             # Do not trust docker cp's exit code alone (the Windows symlink-abort
             # surfaced with a zero exit): a count-shortfall must warn loudly.

@@ -201,6 +201,48 @@ teardown() {
     assert_success
 }
 
+@test "backup_daaf.sh staging gate NAMES the offending symlink(s) before exit 3" {
+    # On a gate trip the container-side program must print the offenders to stderr
+    # before `exit 3` (empirically verified against real sh in
+    # scripts/scratch/V8_gate_harness.sh: tab -> the matching line via `grep -f`
+    # without -q; newline -> the full link_paths list, since the culprit cannot be
+    # isolated from mismatched line counts). Structurally assert both branches emit a
+    # header and dump the offenders, and that the new lines stay quote-free.
+    run grep -c 'embeds a newline' "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_success
+    run grep -c 'cat /tmp/link_paths' "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_success
+    run grep -c 'embed a tab' "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_success
+    run grep -c 'grep -f /tmp/tab_pat /tmp/link_paths' "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_success
+}
+
+@test "backup_daaf.sh relays the detached staging container log on failure" {
+    # The staging container is DETACHED (`docker run -d`), so the gate's offender
+    # output goes to the container LOG, not the terminal. The driver must fetch that
+    # log with `docker logs` and relay it under a "Details from the staging scan"
+    # header BEFORE `docker rm -f` removes the container. Both the data-volume fatal
+    # path and the Claude-volume WARNING path do this.
+    run grep -c 'docker logs' "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_success
+    run grep -c 'Details from the staging scan' "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_success
+}
+
+@test "backup_daaf.sh fetches the staging log before removing the container" {
+    # Ordering guard: on the data-volume failure path, the `docker logs` capture must
+    # appear BEFORE the `docker rm -f "${STAGE_CID}"` in the same failure block --
+    # otherwise the log is gone by the time it is read. Assert the STAGE_LOG capture
+    # line precedes the STAGE_CID removal on the fatal path.
+    local logs_line rm_line
+    logs_line=$(grep -n 'STAGE_LOG=.*docker logs' "${REPO_ROOT}/scripts/host/backup_daaf.sh" | head -1 | cut -d: -f1)
+    rm_line=$(grep -n '^    docker rm -f "\${STAGE_CID}"' "${REPO_ROOT}/scripts/host/backup_daaf.sh" | head -1 | cut -d: -f1)
+    [ -n "${logs_line}" ]
+    [ -n "${rm_line}" ]
+    [ "${logs_line}" -lt "${rm_line}" ]
+}
+
 @test "backup_daaf.sh staging-failure error names the tab/newline cause and disk image" {
     # The host-side staging-failure error text must explain BOTH an exit-3 unsupported
     # character (tab/newline -- rename/remove the link) AND the Docker Desktop disk

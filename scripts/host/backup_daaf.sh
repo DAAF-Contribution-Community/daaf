@@ -247,9 +247,17 @@ mkdir -p "${BACKUP_NAME}"
 # link, counted by `wc -c`); if either `wc -l` of link_paths/link_targets disagrees
 # with it, a name holds a newline. A literal tab in either file is caught by grep. Any
 # hit exits nonzero, which trips the fatal staging-failure path host-side (see the
-# `docker wait` status check below) -- so NO corrupt manifest is ever written. The
-# `\\t` / `\\011` double-backslash forms survive the single-quote string so the
-# container `sh` hands printf ONE backslash (mirrors the restore-replay octal idiom).
+# `docker wait` status check below) -- so NO corrupt manifest is ever written. On a
+# hit the gate first NAMES the offenders to stderr before `exit 3`: the tab branch
+# prints the matching lines (`grep -f` without `-q`, re-using the pattern file); the
+# newline branch cannot isolate the culprit from mismatched line counts, so it prints
+# the whole (typically short) symlink path list under a "one of these embeds a
+# newline" header. The driver relays that stderr to the user via `docker logs` on the
+# failure path below (the staging container is detached, so its output would
+# otherwise be lost). The `\\t` / `\\011` double-backslash forms survive the
+# single-quote string so the container `sh` hands printf ONE backslash (mirrors the
+# restore-replay octal idiom); the new echo/cat/grep lines add no printf escapes and
+# stay quote-free for PS 5.1 twin parity.
 STAGE_PROGRAM='set -e
 cp -a /source /staging
 cd /staging
@@ -261,10 +269,15 @@ path_lines=$(wc -l < /tmp/link_paths)
 target_lines=$(wc -l < /tmp/link_targets)
 if [ $true_links -ne $path_lines ] || [ $true_links -ne $target_lines ]; then
 echo STAGE_ERR_NEWLINE >&2
+echo One of these symlink names embeds a newline -- rename or remove the offending link: >&2
+cat /tmp/link_paths >&2
 exit 3
 fi
 if grep -qf /tmp/tab_pat /tmp/link_paths || grep -qf /tmp/tab_pat /tmp/link_targets; then
 echo STAGE_ERR_TAB >&2
+echo These symlink paths or targets embed a tab -- rename or remove the offending link: >&2
+grep -f /tmp/tab_pat /tmp/link_paths >&2 || true
+grep -f /tmp/tab_pat /tmp/link_targets >&2 || true
 exit 3
 fi
 paste /tmp/link_paths /tmp/link_targets > /staging/'"${SYMLINKS_MANIFEST}"'
@@ -292,14 +305,27 @@ fi
 trap 'docker rm -f "${STAGE_CID:-}" > /dev/null 2>&1 || true' INT TERM
 STAGE_STATUS="$(docker wait "${STAGE_CID}" 2>/dev/null || echo 1)"
 if [ "${STAGE_STATUS}" != "0" ]; then
+    # The staging container is DETACHED (`docker run -d`), so the gate's stderr --
+    # including the offender list it now prints on an exit-3 -- went to the container
+    # log, NOT this terminal. Fetch and show that log BEFORE `docker rm -f` removes
+    # the container (order matters: after removal the log is gone). Best-effort: a
+    # `docker logs` failure must not mask the original staging error.
+    STAGE_LOG="$(docker logs "${STAGE_CID}" 2>&1 || true)"
     docker rm -f "${STAGE_CID}" > /dev/null 2>&1 || true
     trap - INT TERM
     echo "" >&2
     echo "ERROR: Failed to stage the Docker volume for a symlink-safe backup (exit ${STAGE_STATUS})." >&2
     echo "       No backup files were written." >&2
+    if [ -n "${STAGE_LOG}" ]; then
+        echo "" >&2
+        echo "Details from the staging scan:" >&2
+        printf '%s\n' "${STAGE_LOG}" | sed 's/^/       /' >&2
+        echo "" >&2
+    fi
     echo "       Exit 3 means a symlink's path or target contains an unsupported" >&2
     echo "       character (a TAB or a NEWLINE), which would corrupt the symlink" >&2
-    echo "       manifest -- rename or remove the offending symbolic link and re-run." >&2
+    echo "       manifest -- rename or remove the offending symbolic link named above" >&2
+    echo "       and re-run." >&2
     echo "       Otherwise, staging can also fail if the Docker Desktop disk image is" >&2
     echo "       full (staging transiently duplicates the volume inside it); check" >&2
     echo "       Docker Desktop for errors, free space, and re-run." >&2
@@ -446,6 +472,14 @@ if docker volume inspect "${CLAUDE_VOLUME_NAME}" &> /dev/null; then
     # would leak the helper container. Best-effort removal; guarded under set -u.
     trap 'docker rm -f "${CLAUDE_STAGE_CID:-}" > /dev/null 2>&1 || true' INT TERM
     CLAUDE_STAGE_STATUS="$(docker wait "${CLAUDE_STAGE_CID}" 2>/dev/null || echo 1)"
+    # On a staging-gate trip the offender list went to the DETACHED container's log.
+    # Capture it now, before the `docker rm -f` below removes the container, so the
+    # WARNING branch can relay it. Kept asymmetric with the data volume: this stays a
+    # WARNING (best-effort), never fatal. Best-effort fetch (only when staging failed).
+    CLAUDE_STAGE_LOG=""
+    if [ "${CLAUDE_STAGE_STATUS}" != "0" ]; then
+        CLAUDE_STAGE_LOG="$(docker logs "${CLAUDE_STAGE_CID}" 2>&1 || true)"
+    fi
     if [ "${CLAUDE_STAGE_STATUS}" = "0" ] && docker cp "${CLAUDE_STAGE_CID}:/staging/." "${BACKUP_NAME}/${CLAUDE_SUBDIR}/"; then
         # Count data files only -- exclude the symlink manifest (metadata, not
         # volume content), mirroring the data-volume FILE_COUNT exclusion.
@@ -454,6 +488,10 @@ if docker volume inspect "${CLAUDE_VOLUME_NAME}" &> /dev/null; then
         CLAUDE_BACKED_UP=1
     else
         echo "WARNING: Failed to back up the Claude Code state volume." >&2
+        if [ -n "${CLAUDE_STAGE_LOG}" ]; then
+            echo "         Details from the staging scan:" >&2
+            printf '%s\n' "${CLAUDE_STAGE_LOG}" | sed 's/^/         /' >&2
+        fi
         echo "         The data volume backup above is still valid." >&2
     fi
     docker rm -f "${CLAUDE_STAGE_CID}" > /dev/null 2>&1 || true

@@ -275,10 +275,17 @@ $HostPath = (Resolve-Path $BackupName).Path
 # `find . -type l -exec printf x ;` (one x per link, `wc -c`); if either `wc -l` of
 # link_paths/link_targets disagrees, a name holds a newline. A literal tab is caught
 # by `grep -qf` against a one-tab pattern file. Any hit exits 3, which trips the fatal
-# staging-failure path below -- NO corrupt manifest is written. This here-string is a
-# SINGLE-quoted (`@'...'@`) literal, so its bytes reach the container `sh` verbatim;
-# the `\\011` DOUBLE backslash therefore survives to hand printf ONE backslash (the
-# same octal-escape trap the .sh twin and the restore-replay `\\357` idiom hit).
+# staging-failure path below -- NO corrupt manifest is written. On a hit the gate
+# first NAMES the offenders to stderr before `exit 3`: the tab branch prints the
+# matching lines (`grep -f` without `-q`); the newline branch prints the whole
+# (typically short) symlink path list, since mismatched line counts cannot isolate
+# the culprit. The driver relays that stderr via `docker logs` on the failure path
+# below (the staging container is detached, so its output would otherwise be lost).
+# This here-string is a SINGLE-quoted (`@'...'@`) literal, so its bytes reach the
+# container `sh` verbatim; the `\\011` DOUBLE backslash therefore survives to hand
+# printf ONE backslash (the same octal-escape trap the .sh twin and the restore-replay
+# `\\357` idiom hit). The new echo/cat/grep lines add no printf escapes and stay
+# quote-free for twin parity.
 $StageProgram = @'
 set -e
 cp -a /source /staging
@@ -291,10 +298,15 @@ path_lines=$(wc -l < /tmp/link_paths)
 target_lines=$(wc -l < /tmp/link_targets)
 if [ $true_links -ne $path_lines ] || [ $true_links -ne $target_lines ]; then
 echo STAGE_ERR_NEWLINE >&2
+echo One of these symlink names embeds a newline -- rename or remove the offending link: >&2
+cat /tmp/link_paths >&2
 exit 3
 fi
 if grep -qf /tmp/tab_pat /tmp/link_paths || grep -qf /tmp/tab_pat /tmp/link_targets; then
 echo STAGE_ERR_TAB >&2
+echo These symlink paths or targets embed a tab -- rename or remove the offending link: >&2
+grep -f /tmp/tab_pat /tmp/link_paths >&2 || true
+grep -f /tmp/tab_pat /tmp/link_targets >&2 || true
 exit 3
 fi
 paste /tmp/link_paths /tmp/link_targets > /staging/.daaf-symlinks
@@ -326,14 +338,29 @@ $ErrorActionPreference = $savedEAP
 $StageStatus = 1
 if ($null -ne $StageStatusRaw) { $null = [int]::TryParse("$StageStatusRaw".Trim(), [ref]$StageStatus) }
 if ($StageStatus -ne 0) {
+    # The staging container is DETACHED (`docker run -d`), so the gate's stderr --
+    # including the offender list it now prints on an exit-3 -- went to the container
+    # log, NOT this terminal. Fetch and show that log BEFORE `docker rm -f` removes
+    # the container (order matters). Best-effort: a `docker logs` failure must not
+    # mask the original staging error.
     $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+    $StageLog = (docker logs $StageCid 2>&1 | Out-String)
     $null = docker rm -f $StageCid 2>&1
     $ErrorActionPreference = $savedEAP
     Write-Host "ERROR: Failed to stage the Docker volume for a symlink-safe backup (exit $StageStatus)." -ForegroundColor Red
     Write-Host "       No backup files were written."
+    if (-not [string]::IsNullOrWhiteSpace($StageLog)) {
+        Write-Host ""
+        Write-Host "Details from the staging scan:"
+        foreach ($logLine in ($StageLog -split "`r?`n")) {
+            if ($logLine -ne "") { Write-Host "       $logLine" }
+        }
+        Write-Host ""
+    }
     Write-Host "       Exit 3 means a symlink's path or target contains an unsupported"
     Write-Host "       character (a TAB or a NEWLINE), which would corrupt the symlink"
-    Write-Host "       manifest -- rename or remove the offending symbolic link and re-run."
+    Write-Host "       manifest -- rename or remove the offending symbolic link named above"
+    Write-Host "       and re-run."
     Write-Host "       Otherwise, staging can also fail if the Docker Desktop disk image is"
     Write-Host "       full (staging transiently duplicates the volume inside it); check"
     Write-Host "       Docker Desktop for errors, free space, and re-run."
@@ -475,6 +502,7 @@ if ($claudeVolumeExists) {
     # so synchronous inline calls are pipeline-safe on PS 5.1.
     $ClaudeStageCid = $null
     $claudeCopyOk = $false
+    $ClaudeStageLog = ""
     try {
         $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
         $ClaudeStageCid = (docker run -d -v "${ClaudeVolumeName}:/source:ro" busybox sh -c $StageProgram 2>&1 | Select-Object -Last 1)
@@ -491,6 +519,14 @@ if ($claudeVolumeExists) {
                 $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
                 $null = docker cp "${ClaudeStageCid}:/staging/." "${ClaudeDestPath}" 2>&1
                 $claudeCopyOk = ($LASTEXITCODE -eq 0)
+                $ErrorActionPreference = $savedEAP
+            } else {
+                # Staging gate tripped: the offender list went to the DETACHED
+                # container's log. Capture it now, before the finally below removes
+                # the container. Best-effort; kept a WARNING (never fatal), asymmetric
+                # with the data volume.
+                $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+                $ClaudeStageLog = (docker logs $ClaudeStageCid 2>&1 | Out-String)
                 $ErrorActionPreference = $savedEAP
             }
         }
@@ -513,6 +549,12 @@ if ($claudeVolumeExists) {
         $ClaudeBackedUp = $true
     } else {
         Write-Host "WARNING: Failed to back up the Claude Code state volume." -ForegroundColor Yellow
+        if (-not [string]::IsNullOrWhiteSpace($ClaudeStageLog)) {
+            Write-Host "         Details from the staging scan:"
+            foreach ($logLine in ($ClaudeStageLog -split "`r?`n")) {
+                if ($logLine -ne "") { Write-Host "         $logLine" }
+            }
+        }
         Write-Host "         The data volume backup above is still valid."
     }
 } else {
