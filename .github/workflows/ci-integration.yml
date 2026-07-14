@@ -867,7 +867,6 @@ jobs:
             rm -rf "$DST"
             mkdir -p "$DST"
             # Copy runner + all smoke scripts, then strip logs from the copies.
-            cp "$SRC/run_all_smoke_tests.sh" "$DST/"
             cp "$SRC"/smoke_*.R "$SRC"/smoke_*.py "$DST/"
             for f in "$DST"/smoke_*.R "$DST"/smoke_*.py; do
               # Delete from the first EXECUTION LOG banner to EOF if present.
@@ -888,8 +887,8 @@ jobs:
       - name: Run smoke suite (live) inside container
         working-directory: daaf-docker
         run: |
-          docker compose exec -T daaf-docker \
-            bash /daaf/scripts/scratch/smoke_live/run_all_smoke_tests.sh
+          docker compose exec -T -e SMOKE_DIR=/daaf/scripts/scratch/smoke_live daaf-docker \
+            bash /daaf/scripts/smoke_tests/run_all_smoke_tests.sh
 
       # --- Cleanup ---
       - name: Docker cleanup
