@@ -248,16 +248,21 @@ mkdir -p "${BACKUP_NAME}"
 # with it, a name holds a newline. A literal tab in either file is caught by grep. Any
 # hit exits nonzero, which trips the fatal staging-failure path host-side (see the
 # `docker wait` status check below) -- so NO corrupt manifest is ever written. On a
-# hit the gate first NAMES the offenders to stderr before `exit 3`: the tab branch
+# hit the gate first NAMES the offenders to STDOUT before `exit 3`: the tab branch
 # prints the matching lines (`grep -f` without `-q`, re-using the pattern file); the
 # newline branch cannot isolate the culprit from mismatched line counts, so it prints
 # the whole (typically short) symlink path list under a "one of these embeds a
-# newline" header. The driver relays that stderr to the user via `docker logs` on the
+# newline" header. The driver relays that STDOUT to the user via `docker logs` on the
 # failure path below (the staging container is detached, so its output would
-# otherwise be lost). The `\\t` / `\\011` double-backslash forms survive the
-# single-quote string so the container `sh` hands printf ONE backslash (mirrors the
-# restore-replay octal idiom); the new echo/cat/grep lines add no printf escapes and
-# stay quote-free for PS 5.1 twin parity.
+# otherwise be lost). WHY STDOUT, not stderr: on a real Windows host, PS 5.1's
+# native-command `2>&1` merge dropped the staging container's stderr, so the offender
+# list never reached the user's terminal (field failure 2026-07-14). The staging
+# program's stdout is otherwise unused (`docker run -d` detaches; the CID comes from
+# the daemon, not the program), and stdout survives `docker logs` retrieval on every
+# PowerShell version -- stderr was the fragile leg. The `\\t` / `\\011`
+# double-backslash forms survive the single-quote string so the container `sh` hands
+# printf ONE backslash (mirrors the restore-replay octal idiom); the echo/cat/grep
+# offender lines add no printf escapes and stay quote-free for PS 5.1 twin parity.
 STAGE_PROGRAM='set -e
 cp -a /source /staging
 cd /staging
@@ -268,16 +273,16 @@ true_links=$(find . -type l -exec printf x \; | wc -c)
 path_lines=$(wc -l < /tmp/link_paths)
 target_lines=$(wc -l < /tmp/link_targets)
 if [ $true_links -ne $path_lines ] || [ $true_links -ne $target_lines ]; then
-echo STAGE_ERR_NEWLINE >&2
-echo One of these symlink names embeds a newline -- rename or remove the offending link: >&2
-cat /tmp/link_paths >&2
+echo STAGE_ERR_NEWLINE
+echo One of these symlink names embeds a newline -- rename or remove the offending link:
+cat /tmp/link_paths
 exit 3
 fi
 if grep -qf /tmp/tab_pat /tmp/link_paths || grep -qf /tmp/tab_pat /tmp/link_targets; then
-echo STAGE_ERR_TAB >&2
-echo These symlink paths or targets embed a tab -- rename or remove the offending link: >&2
-grep -f /tmp/tab_pat /tmp/link_paths >&2 || true
-grep -f /tmp/tab_pat /tmp/link_targets >&2 || true
+echo STAGE_ERR_TAB
+echo These symlink paths or targets embed a tab -- rename or remove the offending link:
+grep -f /tmp/tab_pat /tmp/link_paths || true
+grep -f /tmp/tab_pat /tmp/link_targets || true
 exit 3
 fi
 paste /tmp/link_paths /tmp/link_targets > /staging/'"${SYMLINKS_MANIFEST}"'
@@ -305,23 +310,31 @@ fi
 trap 'docker rm -f "${STAGE_CID:-}" > /dev/null 2>&1 || true' INT TERM
 STAGE_STATUS="$(docker wait "${STAGE_CID}" 2>/dev/null || echo 1)"
 if [ "${STAGE_STATUS}" != "0" ]; then
-    # The staging container is DETACHED (`docker run -d`), so the gate's stderr --
-    # including the offender list it now prints on an exit-3 -- went to the container
+    # The staging container is DETACHED (`docker run -d`), so the gate's STDOUT --
+    # including the offender list it prints on an exit-3 -- went to the container
     # log, NOT this terminal. Fetch and show that log BEFORE `docker rm -f` removes
     # the container (order matters: after removal the log is gone). Best-effort: a
-    # `docker logs` failure must not mask the original staging error.
+    # `docker logs` failure must not mask the original staging error. (The gate prints
+    # offenders to STDOUT, not stderr: PS 5.1's native `2>&1` merge dropped the
+    # container's stderr in the field 2026-07-14, so the offender list never reached
+    # the user; stdout is version-agnostic. The `2>&1` here still merges both streams
+    # into the log for completeness.)
     STAGE_LOG="$(docker logs "${STAGE_CID}" 2>&1 || true)"
     docker rm -f "${STAGE_CID}" > /dev/null 2>&1 || true
     trap - INT TERM
     echo "" >&2
     echo "ERROR: Failed to stage the Docker volume for a symlink-safe backup (exit ${STAGE_STATUS})." >&2
     echo "       No backup files were written." >&2
+    echo "" >&2
+    echo "Details from the staging scan:" >&2
     if [ -n "${STAGE_LOG}" ]; then
-        echo "" >&2
-        echo "Details from the staging scan:" >&2
         printf '%s\n' "${STAGE_LOG}" | sed 's/^/       /' >&2
-        echo "" >&2
+    else
+        # Empty/whitespace log: label the silence rather than omit the block, so a
+        # future stream regression is visible rather than ambiguous.
+        echo "       (no details could be retrieved from the staging container)" >&2
     fi
+    echo "" >&2
     echo "       Exit 3 means a symlink's path or target contains an unsupported" >&2
     echo "       character (a TAB or a NEWLINE), which would corrupt the symlink" >&2
     echo "       manifest -- rename or remove the offending symbolic link named above" >&2
@@ -488,9 +501,13 @@ if docker volume inspect "${CLAUDE_VOLUME_NAME}" &> /dev/null; then
         CLAUDE_BACKED_UP=1
     else
         echo "WARNING: Failed to back up the Claude Code state volume." >&2
+        echo "         Details from the staging scan:" >&2
         if [ -n "${CLAUDE_STAGE_LOG}" ]; then
-            echo "         Details from the staging scan:" >&2
             printf '%s\n' "${CLAUDE_STAGE_LOG}" | sed 's/^/         /' >&2
+        else
+            # Empty/whitespace log: label the silence rather than omit the detail,
+            # so a future stream regression is visible rather than ambiguous.
+            echo "         (no details could be retrieved from the staging container)" >&2
         fi
         echo "         The data volume backup above is still valid." >&2
     fi

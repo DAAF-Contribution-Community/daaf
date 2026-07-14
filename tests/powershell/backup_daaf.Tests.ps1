@@ -112,16 +112,22 @@ Describe "backup_daaf.ps1" {
             $Content | Should -Match '\$StageStatus -ne 0'
         }
 
-        It "staging gate NAMES the offending symlink(s) before exit 3" {
-            # On a gate trip the container-side program prints the offenders to stderr
+        It "staging gate NAMES the offending symlink(s) to STDOUT before exit 3" {
+            # On a gate trip the container-side program prints the offenders to STDOUT
             # before `exit 3` (empirically verified against real sh in
-            # scripts/scratch/V8_gate_harness.sh: tab -> matching line via `grep -f`;
-            # newline -> the full link_paths list). Structurally assert both branches
-            # emit a header and dump the offenders, staying quote-free.
+            # scripts/scratch/backup_gate_probe/run_probe.sh: tab -> matching line via
+            # `grep -f`; newline -> the full link_paths list). The offenders go to
+            # STDOUT, not stderr: PS 5.1's native `2>&1` merge dropped the container's
+            # stderr in the field (2026-07-14), so the offender list never reached the
+            # user; stdout is version-agnostic. Structurally assert both branches emit a
+            # header and dump the offenders, stay quote-free, and do NOT redirect to
+            # stderr (the fragile PS 5.1 leg -- `>&2` must be gone from those lines).
             $Content | Should -Match 'embeds a newline'
             $Content | Should -Match 'cat /tmp/link_paths'
             $Content | Should -Match 'embed a tab'
             $Content | Should -Match 'grep -f /tmp/tab_pat /tmp/link_paths'
+            $Content | Should -Not -Match 'cat /tmp/link_paths >&2'
+            $Content | Should -Not -Match 'grep -f /tmp/tab_pat /tmp/link_paths >&2'
         }
 
         It "relays the detached staging container log on the fatal failure path" {
@@ -153,6 +159,19 @@ Describe "backup_daaf.ps1" {
             # the detached container's log before the finally removes it.
             $Content | Should -Match 'docker logs \$ClaudeStageCid'
             $Content | Should -Match '\$ClaudeStageLog'
+        }
+
+        It "labels an empty staging log instead of silently omitting details" {
+            # When the fetched staging log is empty/whitespace, the driver must print a
+            # clearly labeled fallback line rather than dropping the details block -- so
+            # a future stream regression (like the PS 5.1 stderr-drop that motivated
+            # moving the gate to stdout) is VISIBLE, not ambiguous. Both the data-volume
+            # fatal path and the Claude-volume WARNING path emit this fallback, each
+            # indented under the always-printed "Details from the staging scan:" header.
+            $Content | Should -Match 'no details could be retrieved from the staging container'
+            # Exactly two occurrences (data-fatal + Claude-WARNING).
+            $matchCount = ([regex]::Matches($Content, 'no details could be retrieved from the staging container')).Count
+            $matchCount | Should -Be 2
         }
 
         It "verifies the copied file count against the source scan" {

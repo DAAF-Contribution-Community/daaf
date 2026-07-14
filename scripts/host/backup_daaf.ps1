@@ -276,15 +276,21 @@ $HostPath = (Resolve-Path $BackupName).Path
 # link_paths/link_targets disagrees, a name holds a newline. A literal tab is caught
 # by `grep -qf` against a one-tab pattern file. Any hit exits 3, which trips the fatal
 # staging-failure path below -- NO corrupt manifest is written. On a hit the gate
-# first NAMES the offenders to stderr before `exit 3`: the tab branch prints the
+# first NAMES the offenders to STDOUT before `exit 3`: the tab branch prints the
 # matching lines (`grep -f` without `-q`); the newline branch prints the whole
 # (typically short) symlink path list, since mismatched line counts cannot isolate
-# the culprit. The driver relays that stderr via `docker logs` on the failure path
+# the culprit. The driver relays that STDOUT via `docker logs` on the failure path
 # below (the staging container is detached, so its output would otherwise be lost).
+# WHY STDOUT, not stderr: on a real Windows host, PS 5.1's native-command `2>&1` merge
+# dropped the staging container's stderr, so the offender list never reached the
+# user's terminal (field failure 2026-07-14). The staging program's stdout is
+# otherwise unused (`docker run -d` detaches; the CID comes from the daemon, not the
+# program), and stdout survives `docker logs` retrieval on every PowerShell version --
+# stderr was the fragile leg.
 # This here-string is a SINGLE-quoted (`@'...'@`) literal, so its bytes reach the
 # container `sh` verbatim; the `\\011` DOUBLE backslash therefore survives to hand
 # printf ONE backslash (the same octal-escape trap the .sh twin and the restore-replay
-# `\\357` idiom hit). The new echo/cat/grep lines add no printf escapes and stay
+# `\\357` idiom hit). The echo/cat/grep offender lines add no printf escapes and stay
 # quote-free for twin parity.
 $StageProgram = @'
 set -e
@@ -297,16 +303,16 @@ true_links=$(find . -type l -exec printf x \; | wc -c)
 path_lines=$(wc -l < /tmp/link_paths)
 target_lines=$(wc -l < /tmp/link_targets)
 if [ $true_links -ne $path_lines ] || [ $true_links -ne $target_lines ]; then
-echo STAGE_ERR_NEWLINE >&2
-echo One of these symlink names embeds a newline -- rename or remove the offending link: >&2
-cat /tmp/link_paths >&2
+echo STAGE_ERR_NEWLINE
+echo One of these symlink names embeds a newline -- rename or remove the offending link:
+cat /tmp/link_paths
 exit 3
 fi
 if grep -qf /tmp/tab_pat /tmp/link_paths || grep -qf /tmp/tab_pat /tmp/link_targets; then
-echo STAGE_ERR_TAB >&2
-echo These symlink paths or targets embed a tab -- rename or remove the offending link: >&2
-grep -f /tmp/tab_pat /tmp/link_paths >&2 || true
-grep -f /tmp/tab_pat /tmp/link_targets >&2 || true
+echo STAGE_ERR_TAB
+echo These symlink paths or targets embed a tab -- rename or remove the offending link:
+grep -f /tmp/tab_pat /tmp/link_paths || true
+grep -f /tmp/tab_pat /tmp/link_targets || true
 exit 3
 fi
 paste /tmp/link_paths /tmp/link_targets > /staging/.daaf-symlinks
@@ -338,25 +344,32 @@ $ErrorActionPreference = $savedEAP
 $StageStatus = 1
 if ($null -ne $StageStatusRaw) { $null = [int]::TryParse("$StageStatusRaw".Trim(), [ref]$StageStatus) }
 if ($StageStatus -ne 0) {
-    # The staging container is DETACHED (`docker run -d`), so the gate's stderr --
-    # including the offender list it now prints on an exit-3 -- went to the container
+    # The staging container is DETACHED (`docker run -d`), so the gate's STDOUT --
+    # including the offender list it prints on an exit-3 -- went to the container
     # log, NOT this terminal. Fetch and show that log BEFORE `docker rm -f` removes
     # the container (order matters). Best-effort: a `docker logs` failure must not
-    # mask the original staging error.
+    # mask the original staging error. (The gate prints offenders to STDOUT, not
+    # stderr: PS 5.1's native `2>&1` merge dropped the container's stderr in the field
+    # 2026-07-14, so the offender list never reached the user; stdout is
+    # version-agnostic. The `2>&1` here still merges both streams into the log.)
     $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
     $StageLog = (docker logs $StageCid 2>&1 | Out-String)
     $null = docker rm -f $StageCid 2>&1
     $ErrorActionPreference = $savedEAP
     Write-Host "ERROR: Failed to stage the Docker volume for a symlink-safe backup (exit $StageStatus)." -ForegroundColor Red
     Write-Host "       No backup files were written."
+    Write-Host ""
+    Write-Host "Details from the staging scan:"
     if (-not [string]::IsNullOrWhiteSpace($StageLog)) {
-        Write-Host ""
-        Write-Host "Details from the staging scan:"
         foreach ($logLine in ($StageLog -split "`r?`n")) {
             if ($logLine -ne "") { Write-Host "       $logLine" }
         }
-        Write-Host ""
+    } else {
+        # Empty/whitespace log: label the silence rather than omit the block, so a
+        # future stream regression is visible rather than ambiguous.
+        Write-Host "       (no details could be retrieved from the staging container)"
     }
+    Write-Host ""
     Write-Host "       Exit 3 means a symlink's path or target contains an unsupported"
     Write-Host "       character (a TAB or a NEWLINE), which would corrupt the symlink"
     Write-Host "       manifest -- rename or remove the offending symbolic link named above"
@@ -549,11 +562,15 @@ if ($claudeVolumeExists) {
         $ClaudeBackedUp = $true
     } else {
         Write-Host "WARNING: Failed to back up the Claude Code state volume." -ForegroundColor Yellow
+        Write-Host "         Details from the staging scan:"
         if (-not [string]::IsNullOrWhiteSpace($ClaudeStageLog)) {
-            Write-Host "         Details from the staging scan:"
             foreach ($logLine in ($ClaudeStageLog -split "`r?`n")) {
                 if ($logLine -ne "") { Write-Host "         $logLine" }
             }
+        } else {
+            # Empty/whitespace log: label the silence rather than omit the detail,
+            # so a future stream regression is visible rather than ambiguous.
+            Write-Host "         (no details could be retrieved from the staging container)"
         }
         Write-Host "         The data volume backup above is still valid."
     }

@@ -201,13 +201,17 @@ teardown() {
     assert_success
 }
 
-@test "backup_daaf.sh staging gate NAMES the offending symlink(s) before exit 3" {
-    # On a gate trip the container-side program must print the offenders to stderr
+@test "backup_daaf.sh staging gate NAMES the offending symlink(s) to STDOUT before exit 3" {
+    # On a gate trip the container-side program must print the offenders to STDOUT
     # before `exit 3` (empirically verified against real sh in
-    # scripts/scratch/V8_gate_harness.sh: tab -> the matching line via `grep -f`
-    # without -q; newline -> the full link_paths list, since the culprit cannot be
-    # isolated from mismatched line counts). Structurally assert both branches emit a
-    # header and dump the offenders, and that the new lines stay quote-free.
+    # scripts/scratch/backup_gate_probe/run_probe.sh: tab -> the matching line via
+    # `grep -f` without -q; newline -> the full link_paths list, since the culprit
+    # cannot be isolated from mismatched line counts). The offenders go to STDOUT, not
+    # stderr: PS 5.1's native `2>&1` merge dropped the container's stderr in the field
+    # (2026-07-14), so the offender list never reached the user; stdout is
+    # version-agnostic. Structurally assert both branches emit a header and dump the
+    # offenders, that the new lines stay quote-free, and that they do NOT redirect to
+    # stderr (`>&2` must be absent from the offender-print lines).
     run grep -c 'embeds a newline' "${REPO_ROOT}/scripts/host/backup_daaf.sh"
     assert_success
     run grep -c 'cat /tmp/link_paths' "${REPO_ROOT}/scripts/host/backup_daaf.sh"
@@ -216,6 +220,12 @@ teardown() {
     assert_success
     run grep -c 'grep -f /tmp/tab_pat /tmp/link_paths' "${REPO_ROOT}/scripts/host/backup_daaf.sh"
     assert_success
+    # The offender-print lines inside the gate must NOT go to stderr anymore. Assert
+    # the stderr-redirected forms are gone (the fragile PS 5.1 leg).
+    run grep -c 'cat /tmp/link_paths >&2' "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_failure
+    run grep -c 'grep -f /tmp/tab_pat /tmp/link_paths >&2' "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_failure
 }
 
 @test "backup_daaf.sh relays the detached staging container log on failure" {
@@ -228,6 +238,21 @@ teardown() {
     assert_success
     run grep -c 'Details from the staging scan' "${REPO_ROOT}/scripts/host/backup_daaf.sh"
     assert_success
+}
+
+@test "backup_daaf.sh labels an empty staging log instead of silently omitting details" {
+    # When the fetched staging log is empty/whitespace, the driver must print a
+    # clearly labeled fallback line rather than dropping the details block -- so a
+    # future stream regression (like the PS 5.1 stderr-drop that motivated moving the
+    # gate to stdout) is VISIBLE, not ambiguous. Both the data-volume fatal path and
+    # the Claude-volume WARNING path emit this fallback; both indent under the always-
+    # printed "Details from the staging scan:" header. Assert the fallback line exists
+    # on both paths (two occurrences: one 7-space indent, one 9-space indent).
+    run grep -c 'no details could be retrieved from the staging container' "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_success
+    # Exactly two occurrences (data-fatal + Claude-WARNING).
+    run bash -c "grep -c 'no details could be retrieved from the staging container' \"${REPO_ROOT}/scripts/host/backup_daaf.sh\""
+    assert_output "2"
 }
 
 @test "backup_daaf.sh fetches the staging log before removing the container" {
