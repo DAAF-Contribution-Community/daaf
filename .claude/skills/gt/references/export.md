@@ -19,11 +19,6 @@ gtsave(tbl, "output/tables/my_table.html")
 HTML is the default and richest format. All gt features (colors, fonts, borders,
 interactive hover) are preserved.
 
-> **Environment note:** `as_raw_html()` and other HTML-inlining paths that rely on
-> the V8 package are currently broken in this image (`library(V8)` fails with
-> `libnode.so.108: cannot open shared object file`). `gtsave("*.html")` works and
-> does not require V8.
-
 ### PNG Output
 
 ```r

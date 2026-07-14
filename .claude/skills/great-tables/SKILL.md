@@ -64,8 +64,7 @@ indices, `save()` needing selenium) are documented at their point of use.
 - **`cols_merge(pattern=...)` uses 0-based `{0}`, `{1}` indices** — differs from R
   gt's 1-based `{1}`, `{2}`.
 - **HTML and LaTeX export work in-process** (`as_raw_html`, `write_raw_html`,
-  `as_latex`) — no external dependency. This differs from the R `gt` sibling, whose
-  `as_raw_html()` currently fails in DAAF due to a missing libnode.
+  `as_latex`) — no external dependency.
 - **Image export (`save()` to PNG/PDF) does NOT work in the DAAF container** — it
   requires `selenium` + a headless Chrome driver, neither of which is installed
   (and runtime `pip install` is blocked by DAAF policy). Export tables as HTML

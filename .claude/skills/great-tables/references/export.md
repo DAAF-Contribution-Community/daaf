@@ -18,8 +18,7 @@ export does not work in the container.**
 
 `as_raw_html()` returns the fully self-contained HTML for the table (inline CSS by
 default is off; see `inline_css=`). This is the primary DAAF export path — it works
-in-process with no external dependency, unlike the R `gt` sibling whose
-`as_raw_html()` currently fails in DAAF due to a missing libnode.
+in-process with no external dependency.
 
 ```python
 html_str = tbl.as_raw_html()
