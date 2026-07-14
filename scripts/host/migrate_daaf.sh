@@ -280,7 +280,7 @@ echo "Downloading utility scripts from GitHub..."
 
 DOWNLOAD_FAILED=false
 
-for FILE in daaf.sh daaf_lib.sh backup_daaf.sh restore_from_backup.sh rebuild_daaf.sh update_daaf.sh run_daaf.sh view_logs.sh view_notebooks.sh run_vscode.sh environment_settings_example.txt README.txt; do
+for FILE in daaf.sh daaf_lib.sh backup_daaf.sh restore_from_backup.sh rebuild_daaf.sh update_daaf.sh run_daaf.sh view_logs.sh view_notebooks.sh view_quarto.sh run_vscode.sh environment_settings_example.txt README.txt; do
     if curl -fsSL "${RAW_BASE}/scripts/host/${FILE}" -o "${HOST_DIR}/${FILE}"; then
         echo "  Downloaded: ${FILE}"
     else
@@ -1002,5 +1002,6 @@ echo "  bash restore_from_backup.sh    Restore from a backup"
 echo "  bash rebuild_daaf.sh           Rebuild the Docker image"
 echo "  bash view_logs.sh              Browse session logs"
 echo "  bash view_notebooks.sh         Browse and edit marimo notebooks"
+echo "  bash view_quarto.sh            Render and view Quarto notebooks in your browser"
 echo "  bash run_vscode.sh             Open VS Code in your browser (code-server)"
 echo ""

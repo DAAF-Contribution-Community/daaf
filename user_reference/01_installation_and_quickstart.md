@@ -578,7 +578,7 @@ If you installed DAAF **v2.0.1 or earlier** — back when the installation proce
 
 **What the migration does:**
 
-- Downloads some utility scripts (`run_daaf`, `update_daaf`, `backup_daaf`, `restore_from_backup`, `rebuild_daaf`, `view_logs`, `view_notebooks`, `run_vscode`) to your host machine so you have all the same convenience tools as a fresh install
+- Downloads some utility scripts (`run_daaf`, `update_daaf`, `backup_daaf`, `restore_from_backup`, `rebuild_daaf`, `view_logs`, `view_notebooks`, `view_quarto`, `run_vscode`) to your host machine so you have all the same convenience tools as a fresh install
 - Creates a full backup of your Docker volume before making any changes
 - Connects your local git history to the official DAAF repository so that future updates can merge in cleanly
 - Preserves everything — your research files, any framework customizations you've made, and your full git audit trail are all kept intact

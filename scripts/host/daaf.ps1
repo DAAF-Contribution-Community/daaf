@@ -326,16 +326,17 @@ function Show-DaafMenu {
     Write-Host "    2) Browse Notebooks"
     Write-Host "    3) Browse Files (VS Code)"
     Write-Host "    4) View Session Logs"
-    Write-Host "    5) Open Container Shell"
+    Write-Host "    5) View Quarto Notebooks"
+    Write-Host "    6) Open Container Shell"
 
     Write-Host ""
 
     Write-Host "  MANAGE"
-    Write-Host "    6) Create Backup"
-    Write-Host "    7) Restore from Backup"
-    Write-Host "    8) Check for Updates"
-    Write-Host "    9) Rebuild Container"
-    Write-Host "   10) Stop Web Services"
+    Write-Host "    7) Create Backup"
+    Write-Host "    8) Restore from Backup"
+    Write-Host "    9) Check for Updates"
+    Write-Host "   10) Rebuild Container"
+    Write-Host "   11) Stop Web Services"
 
     Write-Host ""
 
@@ -394,23 +395,24 @@ function Invoke-DaafChoice {
         "2"  { Invoke-DaafNotebookBrowser }
         "3"  { Invoke-DaafVSCode }
         "4"  { Invoke-DaafLogViewer }
-        "5"  { Invoke-DaafShell }
-        "6"  { Invoke-DaafBackup }
-        "7"  { Invoke-DaafRestore }
-        "8"  { Invoke-DaafUpdate }
-        "9"  { Invoke-DaafRebuild }
-        "10" { Invoke-DaafServiceStop }
+        "5"  { Invoke-DaafQuartoViewer }
+        "6"  { Invoke-DaafShell }
+        "7"  { Invoke-DaafBackup }
+        "8"  { Invoke-DaafRestore }
+        "9"  { Invoke-DaafUpdate }
+        "10" { Invoke-DaafRebuild }
+        "11" { Invoke-DaafServiceStop }
         { $_ -in @("h", "H") } { Show-DaafHelp }
         { $_ -in @("q", "Q") } { Invoke-DaafQuit; $script:DaafMenuRunning = $false }
         "" { }  # Empty input -- just redraw
         default {
-            Write-Host "  Invalid choice. Please enter a number (1-10), h, or q."
+            Write-Host "  Invalid choice. Please enter a number (1-11), h, or q."
         }
     }
 }
 
 # ============================================================================
-# Handlers: Interactive (options 1, 5)
+# Handlers: Interactive (options 1, 6)
 # ============================================================================
 
 # run_delegate equivalent for a delegated .ps1 that takes over the terminal
@@ -526,7 +528,7 @@ function Invoke-DaafShell {
 }
 
 # ============================================================================
-# Handlers: Web services (options 2, 3, 4)
+# Handlers: Web services (options 2, 3, 4, 5)
 # ============================================================================
 
 function Invoke-DaafNotebookBrowser {
@@ -801,7 +803,20 @@ function Invoke-DaafLogViewer {
 }
 
 # ============================================================================
-# Handlers: Maintenance (options 6-9)
+# Handler: View Quarto Notebooks (option 5)
+# ============================================================================
+
+# view_quarto.ps1 is a HOST sibling script (like backup/restore/update), not a
+# container-side launcher: it renders a Quarto .qmd to self-contained HTML inside
+# the container, copies it out, and opens it in the browser. With no argument it
+# lists the available notebooks and exits, which is what this menu entry drives.
+# Delegate to it via Invoke-DaafDelegate (Start-Process child + DAAF_NESTED=1) so
+# it gets real console handles and control returns cleanly to the menu -- the same
+# guarded-child pattern the maintenance delegates use.
+function Invoke-DaafQuartoViewer { Invoke-DaafDelegate "view_quarto.ps1" }
+
+# ============================================================================
+# Handlers: Maintenance (options 7-10)
 # ============================================================================
 
 # Invoke-DaafDelegate <script-name> -- run a delegated child .ps1 with
@@ -877,7 +892,7 @@ function Invoke-DaafUpdate  { Invoke-DaafDelegate "update_daaf.ps1" }
 function Invoke-DaafRebuild { Invoke-DaafDelegate "rebuild_daaf.ps1" }
 
 # ============================================================================
-# Handler: Stop Services (option 10)
+# Handler: Stop Services (option 11)
 # ============================================================================
 
 # Named with Invoke- (like the other menu handlers) rather than the natural
@@ -1003,28 +1018,32 @@ function Show-DaafHelp {
     Write-Host "     Browse session transcripts from previous DAAF sessions."
     Write-Host "     Select a project or the full archive to view logs."
     Write-Host ""
-    Write-Host "  5) Open Container Shell" -ForegroundColor Cyan
+    Write-Host "  5) View Quarto Notebooks" -ForegroundColor Cyan
+    Write-Host "     Render a Quarto notebook (.qmd) from an R project to a"
+    Write-Host "     self-contained HTML file and open it in your browser."
+    Write-Host ""
+    Write-Host "  6) Open Container Shell" -ForegroundColor Cyan
     Write-Host "     Drop into a bash shell inside the DAAF container."
     Write-Host "     Type 'exit' to return to this menu."
     Write-Host ""
     Write-Host "  MANAGE"
     Write-Host ""
-    Write-Host "  6) Create Backup" -ForegroundColor Cyan
+    Write-Host "  7) Create Backup" -ForegroundColor Cyan
     Write-Host "     Create a timestamped backup of your DAAF Docker volume."
     Write-Host "     Backups are saved in the current directory."
     Write-Host ""
-    Write-Host "  7) Restore from Backup" -ForegroundColor Cyan
+    Write-Host "  8) Restore from Backup" -ForegroundColor Cyan
     Write-Host "     Restore a previous backup to the DAAF Docker volume."
     Write-Host "     You will be prompted to select which backup to restore."
     Write-Host ""
-    Write-Host "  8) Check for Updates" -ForegroundColor Cyan
+    Write-Host "  9) Check for Updates" -ForegroundColor Cyan
     Write-Host "     Check for and apply updates to the DAAF framework."
     Write-Host ""
-    Write-Host "  9) Rebuild Container" -ForegroundColor Cyan
+    Write-Host "  10) Rebuild Container" -ForegroundColor Cyan
     Write-Host "     Rebuild the DAAF Docker container from the latest image."
     Write-Host "     Your data volume is preserved during rebuilds."
     Write-Host ""
-    Write-Host "  10) Stop Web Services" -ForegroundColor Cyan
+    Write-Host "  11) Stop Web Services" -ForegroundColor Cyan
     Write-Host "      Stop any running web services (notebooks, log viewer,"
     Write-Host "      VS Code) without stopping the container itself."
     Write-Host ""

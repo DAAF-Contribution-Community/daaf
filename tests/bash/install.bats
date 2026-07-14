@@ -216,6 +216,9 @@ teardown() {
     assert_output --partial "run_daaf.sh"
     assert_output --partial "backup_daaf.sh"
     assert_output --partial "update_daaf.sh"
+    assert_output --partial "view_logs.sh"
+    assert_output --partial "view_notebooks.sh"
+    assert_output --partial "view_quarto.sh"
     assert_output --partial "environment_settings_example.txt"
     assert_output --partial "README.txt"
 }

@@ -77,6 +77,8 @@ Describe "install.ps1" {
             $Content | Should -Match 'rebuild_daaf\.ps1'
             $Content | Should -Match 'update_daaf\.ps1'
             $Content | Should -Match 'view_logs\.ps1'
+            $Content | Should -Match 'view_notebooks\.ps1'
+            $Content | Should -Match 'view_quarto\.ps1'
         }
 
         It "verifies CLAUDE.md exists in container" {

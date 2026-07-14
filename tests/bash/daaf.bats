@@ -221,7 +221,7 @@ teardown() {
 # Tier 6 -- Menu Display
 # =========================================================================
 
-@test "display_menu shows all numbered options 1-10" {
+@test "display_menu shows all numbered options 1-11" {
     # Set status variables for display
     STATUS_CONTAINER="Running"
     STATUS_VERSION="v2.0.0"
@@ -245,6 +245,7 @@ teardown() {
     assert_output --partial "8)"
     assert_output --partial "9)"
     assert_output --partial "10)"
+    assert_output --partial "11)"
     assert_output --partial "h)"
     assert_output --partial "q)"
 }
@@ -375,11 +376,20 @@ teardown() {
     assert_output --partial "CALLED_CLAUDE_CODE"
 }
 
-@test "dispatch_choice routes option 10 to handle_stop_services" {
+@test "dispatch_choice routes option 5 to handle_quarto" {
+    handle_quarto() { echo "CALLED_QUARTO"; }
+    export -f handle_quarto
+
+    run dispatch_choice "5"
+    assert_success
+    assert_output --partial "CALLED_QUARTO"
+}
+
+@test "dispatch_choice routes option 11 to handle_stop_services" {
     handle_stop_services() { echo "CALLED_STOP_SERVICES"; }
     export -f handle_stop_services
 
-    run dispatch_choice "10"
+    run dispatch_choice "11"
     assert_success
     assert_output --partial "CALLED_STOP_SERVICES"
 }
@@ -454,6 +464,18 @@ teardown() {
     run handle_shell
     assert_output --partial "run_daaf.sh"
     assert_output --partial "bash"
+    assert_output --partial "NESTED=1"
+}
+
+@test "handle_quarto calls view_quarto.sh with DAAF_NESTED" {
+    bash() {
+        echo "BASH_CALLED: $*"
+        echo "NESTED=${DAAF_NESTED:-unset}"
+    }
+    export -f bash
+
+    run handle_quarto
+    assert_output --partial "view_quarto.sh"
     assert_output --partial "NESTED=1"
 }
 
@@ -615,6 +637,7 @@ teardown() {
     assert_output --partial "Browse Notebooks"
     assert_output --partial "Browse Files"
     assert_output --partial "View Session Logs"
+    assert_output --partial "View Quarto Notebooks"
     assert_output --partial "Open Container Shell"
     assert_output --partial "Create Backup"
     assert_output --partial "Restore from Backup"

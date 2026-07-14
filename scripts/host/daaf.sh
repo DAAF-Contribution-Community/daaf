@@ -265,16 +265,17 @@ display_menu() {
     echo "    2) Browse Notebooks"
     echo "    3) Browse Files (VS Code)"
     echo "    4) View Session Logs"
-    echo "    5) Open Container Shell"
+    echo "    5) View Quarto Notebooks"
+    echo "    6) Open Container Shell"
 
     echo ""
 
     echo "  ${BOLD}MANAGE${RESET}"
-    echo "    6) Create Backup"
-    echo "    7) Restore from Backup"
-    echo "    8) Check for Updates"
-    echo "    9) Rebuild Container"
-    echo "   10) Stop Web Services"
+    echo "    7) Create Backup"
+    echo "    8) Restore from Backup"
+    echo "    9) Check for Updates"
+    echo "   10) Rebuild Container"
+    echo "   11) Stop Web Services"
 
     echo ""
 
@@ -307,21 +308,22 @@ dispatch_choice() {
         2)  handle_notebooks ;;
         3)  handle_vscode ;;
         4)  handle_logs ;;
-        5)  handle_shell ;;
-        6)  handle_backup ;;
-        7)  handle_restore ;;
-        8)  handle_update ;;
-        9)  handle_rebuild ;;
-        10) handle_stop_services ;;
+        5)  handle_quarto ;;
+        6)  handle_shell ;;
+        7)  handle_backup ;;
+        8)  handle_restore ;;
+        9)  handle_update ;;
+        10) handle_rebuild ;;
+        11) handle_stop_services ;;
         h|H) handle_help ;;
         q|Q) handle_quit ;;
         "") ;;  # Empty input -- just redraw
-        *)  echo "  Invalid choice. Please enter a number (1-10), h, or q." ;;
+        *)  echo "  Invalid choice. Please enter a number (1-11), h, or q." ;;
     esac
 }
 
 # ============================================================================
-# Handlers: Interactive (options 1, 5)
+# Handlers: Interactive (options 1, 6)
 # ============================================================================
 
 handle_claude_code() {
@@ -353,7 +355,7 @@ handle_shell() {
 }
 
 # ============================================================================
-# Handlers: Web services (options 2, 3, 4)
+# Handlers: Web services (options 2, 3, 4, 5)
 # ============================================================================
 
 handle_notebooks() {
@@ -599,7 +601,31 @@ handle_logs() {
 }
 
 # ============================================================================
-# Handlers: Maintenance (options 6-9)
+# Handler: View Quarto Notebooks (option 5)
+# ============================================================================
+
+# view_quarto.sh is a HOST sibling script (like backup/restore/update), not a
+# container-side launcher: it renders a Quarto .qmd to self-contained HTML inside
+# the container, copies it out, and opens it in the browser. With no argument it
+# lists the available notebooks and exits, which is what this menu entry drives.
+# Delegate to it with DAAF_NESTED=1 (suppresses its own pause-on-exit trap) so
+# control returns cleanly to the menu, mirroring run_delegate's guarded child call.
+handle_quarto() {
+    echo ""
+    echo "Discovering Quarto notebooks..."
+    if DAAF_NESTED=1 bash "${SCRIPT_DIR}/view_quarto.sh"; then
+        echo ""
+        echo "Returned to DAAF Control Panel."
+    else
+        local ec=$?
+        echo ""
+        echo "  ${YELLOW}view_quarto.sh exited without completing (code ${ec}).${RESET}"
+        echo "Returned to DAAF Control Panel."
+    fi
+}
+
+# ============================================================================
+# Handlers: Maintenance (options 7-10)
 # ============================================================================
 
 # run_delegate <script-name> — run a delegated child script with DAAF_NESTED=1.
@@ -637,7 +663,7 @@ handle_rebuild() {
 }
 
 # ============================================================================
-# Handler: Stop Services (option 10)
+# Handler: Stop Services (option 11)
 # ============================================================================
 
 handle_stop_services() {
@@ -735,28 +761,32 @@ handle_help() {
     echo "     Browse session transcripts from previous DAAF sessions."
     echo "     Select a project or the full archive to view logs."
     echo ""
-    echo "  ${CYAN}5) Open Container Shell${RESET}"
+    echo "  ${CYAN}5) View Quarto Notebooks${RESET}"
+    echo "     Render a Quarto notebook (.qmd) from an R project to a"
+    echo "     self-contained HTML file and open it in your browser."
+    echo ""
+    echo "  ${CYAN}6) Open Container Shell${RESET}"
     echo "     Drop into a bash shell inside the DAAF container."
     echo "     Type 'exit' to return to this menu."
     echo ""
     echo "  ${BOLD}MANAGE${RESET}"
     echo ""
-    echo "  ${CYAN}6) Create Backup${RESET}"
+    echo "  ${CYAN}7) Create Backup${RESET}"
     echo "     Create a timestamped backup of your DAAF Docker volume."
     echo "     Backups are saved in the current directory."
     echo ""
-    echo "  ${CYAN}7) Restore from Backup${RESET}"
+    echo "  ${CYAN}8) Restore from Backup${RESET}"
     echo "     Restore a previous backup to the DAAF Docker volume."
     echo "     You will be prompted to select which backup to restore."
     echo ""
-    echo "  ${CYAN}8) Check for Updates${RESET}"
+    echo "  ${CYAN}9) Check for Updates${RESET}"
     echo "     Check for and apply updates to the DAAF framework."
     echo ""
-    echo "  ${CYAN}9) Rebuild Container${RESET}"
+    echo "  ${CYAN}10) Rebuild Container${RESET}"
     echo "     Rebuild the DAAF Docker container from the latest image."
     echo "     Your data volume is preserved during rebuilds."
     echo ""
-    echo "  ${CYAN}10) Stop Web Services${RESET}"
+    echo "  ${CYAN}11) Stop Web Services${RESET}"
     echo "      Stop any running web services (notebooks, log viewer,"
     echo "      VS Code) without stopping the container itself."
     echo ""

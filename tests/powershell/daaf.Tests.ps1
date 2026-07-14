@@ -153,12 +153,12 @@ Describe "daaf.ps1" {
             $script:Content = Get-Content "$RepoRoot/scripts/host/daaf.ps1" -Raw
         }
 
-        It "offers all ten numbered options" {
+        It "offers all eleven numbered options" {
             foreach ($opt in @(
                 "Start Claude Code", "Browse Notebooks", "Browse Files \(VS Code\)",
-                "View Session Logs", "Open Container Shell", "Create Backup",
-                "Restore from Backup", "Check for Updates", "Rebuild Container",
-                "Stop Web Services")) {
+                "View Session Logs", "View Quarto Notebooks", "Open Container Shell",
+                "Create Backup", "Restore from Backup", "Check for Updates",
+                "Rebuild Container", "Stop Web Services")) {
                 $Content | Should -Match $opt
             }
         }
@@ -169,6 +169,7 @@ Describe "daaf.ps1" {
             $Content | Should -Match 'restore_from_backup\.ps1'
             $Content | Should -Match 'update_daaf\.ps1'
             $Content | Should -Match 'rebuild_daaf\.ps1'
+            $Content | Should -Match 'view_quarto\.ps1'
         }
 
         It "mirrors the code-server default password source" {

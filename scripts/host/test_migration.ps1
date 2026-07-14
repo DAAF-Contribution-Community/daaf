@@ -1070,7 +1070,7 @@ Write-Host "  Host Script Checks:" -ForegroundColor White
 # shipped text files. Note this DIFFERS from the .sh twin: daaf.sh/daaf_lib.sh
 # are never shipped to Windows (commit 4fa8c43), so they are absent here by
 # design; Windows gets daaf.ps1/daaf_lib.ps1 instead.
-foreach ($Script in @("daaf.ps1", "daaf_lib.ps1", "backup_daaf.ps1", "restore_from_backup.ps1", "rebuild_daaf.ps1", "update_daaf.ps1", "run_daaf.ps1", "view_logs.ps1", "view_notebooks.ps1", "run_vscode.ps1", "environment_settings_example.txt", "README.txt")) {
+foreach ($Script in @("daaf.ps1", "daaf_lib.ps1", "backup_daaf.ps1", "restore_from_backup.ps1", "rebuild_daaf.ps1", "update_daaf.ps1", "run_daaf.ps1", "view_logs.ps1", "view_notebooks.ps1", "view_quarto.ps1", "run_vscode.ps1", "environment_settings_example.txt", "README.txt")) {
     Test-Check "Host script downloaded: $Script" (Test-Path (Join-Path $HostDir $Script))
 }
 

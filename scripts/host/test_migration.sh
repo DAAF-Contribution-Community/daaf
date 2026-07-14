@@ -975,7 +975,7 @@ echo "${BOLD}  Host Script Checks:${RESET}"
 # text files. The .ps1 twin uses a DIFFERENT list (see test_migration.ps1):
 # daaf.sh/daaf_lib.sh are never shipped to Windows (commit 4fa8c43), and Windows
 # gets the .ps1 variants instead.
-for SCRIPT in daaf.sh daaf_lib.sh backup_daaf.sh restore_from_backup.sh rebuild_daaf.sh update_daaf.sh run_daaf.sh view_logs.sh view_notebooks.sh run_vscode.sh environment_settings_example.txt README.txt; do
+for SCRIPT in daaf.sh daaf_lib.sh backup_daaf.sh restore_from_backup.sh rebuild_daaf.sh update_daaf.sh run_daaf.sh view_logs.sh view_notebooks.sh view_quarto.sh run_vscode.sh environment_settings_example.txt README.txt; do
     if [ -f "${HOST_DIR}/${SCRIPT}" ]; then
         check "Host script downloaded: ${SCRIPT}" "0"
     else

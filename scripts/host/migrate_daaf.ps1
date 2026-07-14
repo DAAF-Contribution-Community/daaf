@@ -423,7 +423,7 @@ Write-Host "Downloading utility scripts from GitHub..."
 
 $DownloadFailed = $false
 
-foreach ($File in @("daaf.ps1", "daaf_lib.ps1", "backup_daaf.ps1", "restore_from_backup.ps1", "rebuild_daaf.ps1", "update_daaf.ps1", "run_daaf.ps1", "view_logs.ps1", "view_notebooks.ps1", "run_vscode.ps1", "environment_settings_example.txt", "README.txt")) {
+foreach ($File in @("daaf.ps1", "daaf_lib.ps1", "backup_daaf.ps1", "restore_from_backup.ps1", "rebuild_daaf.ps1", "update_daaf.ps1", "run_daaf.ps1", "view_logs.ps1", "view_notebooks.ps1", "view_quarto.ps1", "run_vscode.ps1", "environment_settings_example.txt", "README.txt")) {
     try {
         Invoke-WebRequest -UseBasicParsing -Uri "$RawBase/scripts/host/$File" -OutFile "$HostDir\$File"
         Write-Host "  Downloaded: $File"
@@ -1221,6 +1221,7 @@ Write-Host "  .\restore_from_backup.ps1      Restore from a backup"
 Write-Host "  .\rebuild_daaf.ps1             Rebuild the Docker image"
 Write-Host "  .\view_logs.ps1                Browse session logs"
 Write-Host "  .\view_notebooks.ps1           Browse and edit marimo notebooks"
+Write-Host "  .\view_quarto.ps1              Render and view Quarto notebooks in your browser"
 Write-Host "  .\run_vscode.ps1               Open VS Code in your browser (code-server)"
 Write-Host ""
 
