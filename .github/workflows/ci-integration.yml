@@ -12,6 +12,7 @@
 #   2. migrate-era1         - Migration of clone-based installations (origin remote present)
 #   3. migrate-era2         - Migration of ZIP-based installations (no remote, requires graft)
 #   4. failure-resilience   - Graceful failure handling and edge cases
+#   5: Smoke Suite          - run R + Python skill smokes inside the built image
 #
 # Not tested here:
 #   - view_logs.sh/ps1: Invokes `docker compose logs --follow`, which is a
@@ -803,6 +804,92 @@ jobs:
 
       - name: Clean up stale lock if present
         run: rmdir /tmp/daaf-update.lock.d 2>/dev/null || true
+
+      # --- Cleanup ---
+      - name: Docker cleanup
+        if: always()
+        run: |
+          if [ -d daaf-docker ]; then
+            cd daaf-docker
+            docker compose down -v --rmi local --remove-orphans
+          fi
+
+  # ---------------------------------------------------------------------------
+  # Job 5: Smoke Suite — run R + Python skill smokes inside the built image
+  # ---------------------------------------------------------------------------
+  smoke-suite:
+    name: Smoke Suite (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
+    timeout-minutes: 30   # build dominates; smoke run is ~2-4 min. Bump to 45
+                          # only if the Noble build is measured slower. See note 3.
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # --- Build + start the container (single build; reused by exec below) ---
+      # install.sh builds the image and clones the repo into the /daaf volume,
+      # exactly as a user's first install does. This is the ONLY build in the job.
+      - name: Install DAAF via install.sh
+        run: bash scripts/host/install.sh
+
+      - name: Verify container is running
+        working-directory: daaf-docker
+        run: |
+          for i in 1 2 3 4 5; do
+            docker compose ps | grep -q "Up" && exit 0
+            echo "Waiting for container to be ready (attempt $i/5)..."
+            sleep 3
+          done
+          echo "ERROR: Container did not reach running state"
+          docker compose ps
+          exit 1
+
+      - name: Verify CLAUDE.md present in container (repo populated)
+        working-directory: daaf-docker
+        run: docker compose exec -T daaf-docker test -f /daaf/CLAUDE.md
+
+      # --- Prepare log-stripped copies so R smokes run LIVE (see note 2) ---
+      # Strip each smoke_*.R's appended EXECUTION LOG block into a throwaway
+      # copy under scripts/scratch/smoke_live/ (inside the project, audit
+      # boundary -- never /tmp). The runner globs smoke_*.R in its own dir, so
+      # we copy the runner alongside the stripped scripts and run it there.
+      - name: Stage log-stripped smoke copies
+        working-directory: daaf-docker
+        run: |
+          docker compose exec -T daaf-docker bash -c '
+            set -eu
+            SRC=/daaf/scripts/smoke_tests
+            DST=/daaf/scripts/scratch/smoke_live
+            rm -rf "$DST"
+            mkdir -p "$DST"
+            # Copy runner + all smoke scripts, then strip logs from the copies.
+            cp "$SRC/run_all_smoke_tests.sh" "$DST/"
+            cp "$SRC"/smoke_*.R "$SRC"/smoke_*.py "$DST/"
+            for f in "$DST"/smoke_*.R "$DST"/smoke_*.py; do
+              # Delete from the first EXECUTION LOG banner to EOF if present.
+              if grep -q "^# EXECUTION LOG" "$f"; then
+                line=$(grep -n "^# EXECUTION LOG" "$f" | head -1 | cut -d: -f1)
+                # Cut the banner line above it too (the ==== rule) for cleanliness.
+                start=$((line - 1))
+                head -n $((start - 1)) "$f" > "$f.stripped"
+                mv "$f.stripped" "$f"
+              fi
+            done
+            echo "Staged $(ls "$DST"/smoke_*.R "$DST"/smoke_*.py | wc -l) log-stripped smokes"
+          '
+
+      # --- Run the full suite live inside the container ---
+      # The runner tallies PASS/FAIL/SKIP and exits nonzero if any smoke FAILS.
+      # With logs stripped, R smokes run live rather than SKIP.
+      - name: Run smoke suite (live) inside container
+        working-directory: daaf-docker
+        run: |
+          docker compose exec -T daaf-docker \
+            bash /daaf/scripts/scratch/smoke_live/run_all_smoke_tests.sh
 
       # --- Cleanup ---
       - name: Docker cleanup
