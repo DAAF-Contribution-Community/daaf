@@ -918,17 +918,24 @@ The same shim can route Claude Code through your **ChatGPT subscription's Codex 
 
 > **This is an unofficial, dev-lane path — read this first.** It reuses Codex's OAuth against an **undocumented, OpenAI-controlled backend**. It is **not** an OpenAI-sanctioned API method (OpenAI's terms scope subscription usage to their own official apps), it **may break at any time** if OpenAI changes the backend, and **you are responsible for compliance with OpenAI's terms of service.** Treat it as a proof-of-concept / dev lane. The API-key lane above (`SHIM_BACKEND_MODE` unset → `openai`) is the sanctioned, robust fallback.
 
-**Prerequisites.** This lane needs the **developer image** — set `DAAF_DEV=1` in `environment_settings.txt` and rebuild (it installs the Codex CLI the login depends on; see [Building with the developer test toolchain](#building-with-the-developer-test-toolchain-daaf_dev)).
+**Prerequisites — the developer image.** This lane needs the **Codex CLI**, which is installed into the image **only** when `DAAF_DEV=1` is set in `environment_settings.txt` **before the image is built** (see [Building with the developer test toolchain](#building-with-the-developer-test-toolchain-daaf_dev)). Confirm it inside the container before going further:
 
-**Setup.**
+```bash
+codex --version    # expect 0.144.1 or newer
+```
 
-1. In your **ChatGPT security settings** (on chatgpt.com), enable **device-code login** — this is what lets you authenticate without a browser/loopback callback inside the container.
-2. Inside the container, run the device-auth login:
+If that reports `codex: command not found`, you are not on the developer image — set `DAAF_DEV=1`, rebuild (`bash rebuild_daaf.sh` / `.\rebuild_daaf.ps1`), and re-enter the container before continuing.
+
+**Setup.** With the developer image confirmed, five steps take you from a fresh container to a working ChatGPT lane.
+
+1. **Enable device-code login in your ChatGPT settings — do this first.** On chatgpt.com, open your **personal account → security settings** and turn on **device-code login**. This toggle is **off by default** and is the single easiest step to miss: the login in step 2 fails immediately without it. Device-code login is what lets you authenticate with no browser or loopback callback inside the container.
+2. **Log in inside the container.** Run:
    ```bash
    codex login --device-auth
    ```
-   Follow the printed code/URL prompt on any device. `CODEX_HOME` is already set by Docker Compose to the persisted, backed-up `codex-daaf` store (`/home/appuser/.claude/codex-daaf`), so **your login survives container rebuilds** — you only do this once.
-3. In `environment_settings.txt`, switch the shim to the ChatGPT lane:
+   It prints a **URL and a one-time code**. Open the URL in a browser on **any device** — your laptop or phone, it need not be the container — sign in to ChatGPT, and enter the code. There is no in-container browser, no `localhost:1455` loopback, and no port forwarding to set up. (The command is `codex login --device-auth`, **not** `codex auth`, which does not exist — and bare `codex login` defaults to a browser-loopback flow that cannot complete headless in the container, so the `--device-auth` flag is essential.)
+3. **The login is stored in a persisted, backed-up location.** `CODEX_HOME` is already set by Docker Compose to the `codex-daaf` store (`/home/appuser/.claude/codex-daaf`), and the container pre-creates that directory on a fresh volume. After a successful login, `auth.json` exists there — and because the store is persisted and backed up, **your login survives container rebuilds**, so you only do this once.
+4. **Switch the shim to the ChatGPT lane.** In `environment_settings.txt`:
    ```bash
    DAAF_PROVIDER_SHIM=openai        # still the master on/off switch for the shim
    SHIM_BACKEND_MODE=chatgpt        # route through the Codex/OAuth lane, not the API-key lane
@@ -939,12 +946,28 @@ The same shim can route Claude Code through your **ChatGPT subscription's Codex 
    ANTHROPIC_DEFAULT_SONNET_MODEL=gpt-5.6-terra[1m]
    CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000
    ```
-   In this mode `OPENAI_API_KEY` / `SHIM_BACKEND_API_KEY` are **ignored** — the OAuth token is the credential.
-4. Restart the container to apply (`docker compose down`, then `bash run_daaf.sh` / `.\run_daaf.ps1`).
+   In this mode `OPENAI_API_KEY` / `SHIM_BACKEND_API_KEY` are **ignored** — the OAuth token is the credential. (Switching an already-built developer image between the two Option F lanes needs no further rebuild; only the initial `DAAF_DEV=1` image build does.)
+5. **Recreate the container** to apply (`docker compose down`, then `bash run_daaf.sh` / `.\run_daaf.ps1`). The shim reads `SHIM_BACKEND_MODE` at startup.
 
-**How auth stays fresh.** The shim reads the OAuth token from `auth.json` in your `CODEX_HOME` store and **refreshes it automatically** (the access token lasts ~10 days; the shim refreshes only when it is near expiry or after a backend rejection, and it never logs any token value). If a refresh ever fails permanently, the shim's log tells you to run `codex login --device-auth` again.
+**Confirm it's working.** After the container comes back up, check the shim log:
 
-**Parallel use (optional — grow into it later).** The shim shares the one `codex-daaf` `auth.json` with the `codex` CLI and `codex-plugin-cc`. Running another codex-based tool **concurrently on the same login** is usually fine, but can *rarely* trigger a refresh-token-rotation race that forces a re-login, and the ChatGPT usage pool is shared (running things in parallel drains it faster). If you want clean, isolated parallel use, give each tool its **own** `codex login` under a **separate `CODEX_HOME`**. `CODEX_HOME` and the two OAuth override variables (`SHIM_OAUTH_TOKEN_URL`, `SHIM_OAUTH_CLIENT_ID`) exist as the customization hooks for exactly this — see the notes in `environment_settings_example.txt`. You do not need any of this for a normal single-tool setup.
+```bash
+cat /daaf/scripts/provider_shim/logs/shim.log
+```
+
+A healthy ChatGPT lane logs `backend_mode=chatgpt` at startup and then healthy `200` responses once a GPT session is running. Start a session, run `/model` to select your GPT slug (the [API-key lane above](#option-f-openai-api-directly-daaf-provider-shim) explains why sessions open on the Claude default), and send a message.
+
+**How auth stays fresh.** The shim reads the OAuth access token from `auth.json` in your `CODEX_HOME` store and **refreshes it automatically** (the access token lasts ~10 days; the shim refreshes only when it is near expiry or after a backend rejection, and it never logs any token value). If a refresh ever fails permanently, the shim's log tells you to run `codex login --device-auth` again.
+
+**Troubleshooting.**
+
+| Symptom | Cause and fix |
+|---------|---------------|
+| `codex login --device-auth` fails immediately | Device-code login is not enabled in your ChatGPT security settings — do step 1 above. |
+| `codex: command not found` | You are not on the developer image. Set `DAAF_DEV=1` and rebuild (`rebuild_daaf.sh` / `rebuild_daaf.ps1`). |
+| Shim log tells you to re-login | The OAuth token refresh failed permanently — run `codex login --device-auth` again inside the container. |
+
+**Running more than one container.** Each DAAF container does its **own** `codex login`, which creates an **independent refresh-token grant** — there is no credential collision between containers. They share only your ChatGPT **usage pool** (the 5-hour and weekly caps), so running two in parallel simply draws that pool down faster. This is the clean way to run parallel DAAF instances. (The subtler case is running several codex-based tools — the `codex` CLI, `codex-plugin-cc`, the shim — inside a *single* container off the *same* login: that can rarely trigger a refresh-token-rotation race. To isolate them, give each its own `codex login` under a separate `CODEX_HOME`; `CODEX_HOME` and the `SHIM_OAUTH_TOKEN_URL` / `SHIM_OAUTH_CLIENT_ID` override variables in `environment_settings_example.txt` are the hooks for that. None of this is needed for a normal single-tool setup.)
 
 See the [technical FAQ entry on the ChatGPT subscription lane](07_faq_technical.md#q-can-i-use-my-chatgpt-subscription-instead-of-an-openai-api-key-option-f).
 

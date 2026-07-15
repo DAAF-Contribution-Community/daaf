@@ -288,15 +288,16 @@ Yes — via an **unofficial, dev-lane** path, with important caveats. The same p
 
 **Read the caveat first.** This lane reuses Codex's OAuth against an **undocumented, OpenAI-controlled backend**. It is **not an OpenAI-sanctioned API method** — OpenAI scopes subscription usage to its own official apps — so it may break at any time if OpenAI changes the backend, and **you are responsible for compliance with OpenAI's terms of service.** Treat it as a proof-of-concept / dev lane. The sanctioned, robust path is the API-key lane (`SHIM_BACKEND_MODE` unset → `openai`), covered by the [instant-429 entry above](#q-my-gpt-session-fails-instantly-with-429-errors-on-every-request-option-f).
 
-**Setup, in brief** (full steps in the installation guide):
+**Setup, in brief** (full step-by-step in the [installation guide](01_installation_and_quickstart.md#option-f-alternate-lane-chatgpt-subscription-codex-backend)):
 
-- It needs the **developer image** — set `DAAF_DEV=1` and rebuild (this installs the Codex CLI).
-- Enable **device-code login** in your ChatGPT security settings, then run `codex login --device-auth` inside the container (no browser/loopback needed). `CODEX_HOME` is preset by Compose to the persisted, backed-up `codex-daaf` store, so the login survives rebuilds — you do it once.
-- Set `SHIM_BACKEND_MODE=chatgpt` in `environment_settings.txt` (alongside the usual Option F `ANTHROPIC_BASE_URL`/model lines) and restart the container. In this mode `OPENAI_API_KEY` is ignored — the OAuth token is the credential.
+- It needs the **developer image** — set `DAAF_DEV=1` and rebuild (this installs the Codex CLI; confirm with `codex --version` inside the container, expecting 0.144.1 or newer).
+- **Enable device-code login in your ChatGPT security settings first.** This toggle is **off by default** and is the most common thing to miss — the login fails immediately without it.
+- Log in with `codex login --device-auth` inside the container — that exact flag (`codex auth` does not exist, and bare `codex login` uses a browser loopback that cannot complete headless). It prints a URL + one-time code you approve on any device (laptop/phone); no in-container browser or port forwarding. `CODEX_HOME` is preset by Compose to the persisted, backed-up `codex-daaf` store, so the login survives rebuilds — you do it once.
+- Set `SHIM_BACKEND_MODE=chatgpt` in `environment_settings.txt` (alongside the usual Option F `ANTHROPIC_BASE_URL`/model lines) and restart the container. In this mode `OPENAI_API_KEY` is ignored — the OAuth token is the credential. Confirm the lane is live in the shim log (`/daaf/scripts/provider_shim/logs/shim.log`): it shows `backend_mode=chatgpt` and healthy `200`s.
 
 The shim reads the OAuth token from `auth.json` and **refreshes it automatically** (the token lasts ~10 days and is never logged); if a refresh fails permanently, the shim log tells you to re-run `codex login --device-auth`.
 
-**Parallel use.** The shim shares the one `codex-daaf` login with the `codex` CLI and `codex-plugin-cc`. Running another codex tool concurrently on the same login is usually fine but can *rarely* force a re-login via a refresh-token-rotation race, and the ChatGPT usage pool is shared (parallel drains it faster). For clean isolation, give each tool its own `codex login` under a separate `CODEX_HOME` — `CODEX_HOME` and the `SHIM_OAUTH_*` override vars in `environment_settings_example.txt` are the customization hooks for that. Not needed for a normal single-tool setup.
+**Parallel use.** Running more than one container is the clean way to parallelize: each container does its own `codex login` (an independent token grant — no collision), and they share only your ChatGPT usage pool, so running them in parallel just draws that pool down faster. For several codex tools inside a *single* container, give each its own login under a separate `CODEX_HOME` to avoid a rare token-rotation race.
 
 See the full walkthrough in [**01. Installation & Quick Start — Option F, alternate lane: ChatGPT subscription**](01_installation_and_quickstart.md#option-f-alternate-lane-chatgpt-subscription-codex-backend).
 
