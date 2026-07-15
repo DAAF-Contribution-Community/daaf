@@ -2,6 +2,8 @@
 
 Loaded by the orchestrator when profiling is complete and the user has confirmed interpretations at PSU-DI2. Contains the optional pre-authoring research dispatch, the skill authoring invocation template, CPP-SKILL validation, reference file guidance, and delivery format. The main mode reference file (`data-onboarding-mode.md`) contains the workflow overview, gate definitions, execution cycle, and PSU templates.
 
+> **Synthetic path rejoin.** When the session arrived via the synthetic (privacy-preserving) path — DI-1 sensitivity gate → Stages DS-1–DS-5 — these stages still apply, but the DI-7 authoring invocation MUST include the synthetic-provenance overrides defined in `WORKFLOW_PHASE_DO_SYNTHETIC.md` § "Rejoin DI-7 / DI-8: Skill Authoring with Synthetic Provenance" (`data-provenance` frontmatter value, the mandatory "Synthetic Data Notice" section, bundling of the customized profiling + generation scripts, and the scaffold-not-substitute doctrine). Read that section alongside this file before dispatching DI-7 on the synthetic path.
+
 ---
 
 ## Pre-Authoring Research (Optional)

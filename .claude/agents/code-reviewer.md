@@ -1088,6 +1088,8 @@ When reviewing profiling scripts in Data Onboarding mode, apply these adaptation
 5. **Research question maps to intended use.** When the orchestrator provides `Research question / Intended use`, use this for methodology alignment in place of Plan.md's research question.
 6. **Multi-file (HIERARCHICAL) QA:** When reviewing profiling parts that contain per-file suffixed scripts (e.g., `01a_`, `01b_`, `07a_`, `09a_`), one QA script per part reviews ALL suffixed scripts together. Verify: (a) consistent canonical load patterns across suffixed scripts, (b) suffix-to-file mapping matches the schema map, (c) per-file conditional script decisions are independently correct. For cross-file script `07b_cross-level-linkage.py`, additionally verify: key type comparison was performed before join simulation, orphan counts are plausible given the coverage rates, and join loss simulation includes both inner-join survival rate and duplication check.
 
+7. **Synthetic (privacy-preserving) path QA (QAS-A/B/C).** When Data Onboarding takes the synthetic path, the code-reviewer performs three different QA reviews instead of QAP1-QAP4: QAS-A (disclosure-safety of the outbound profiling script, at DS-1), QAS-B (returned-report internal consistency, at DS-3), and QAS-C (synthetic-vs-profile fidelity, at DS-5). These are fully specified — including checklists, severity mapping, and skill loading — in the orchestrator's synthetic-path invocation templates; follow the prompt you receive rather than the QAP adaptations above. See `.claude/skills/daaf-orchestrator/references/WORKFLOW_PHASE_DO_SYNTHETIC.md`.
+
 ---
 
 ## Reproducibility Verification Mode (RV-2)

@@ -463,6 +463,16 @@ RUN uv pip install --system \
 RUN uv pip install --system \
     igraph==1.0.0
 
+# Install synthetic data generation packages
+# faker: seeded, locale-aware synthetic values for identifier-shaped columns
+# (names, emails, phones) in the synthetic-data-workflow skill's generation
+# step (generation-patterns-python.md). Statistical structure comes from the
+# NumPy/SciPy copula patterns (packages already above). Tier 4 synthesis tools
+# (sdv, synthcity) are deliberately NOT installed — T4 runs on the user's own
+# machine against their real data, never in-container.
+RUN uv pip install --system \
+    faker==40.31.0
+
 # ============================================
 # Install R Data Science Packages + Quarto
 # ============================================
@@ -587,6 +597,20 @@ RUN Rscript -e 'pkgs <- c( \
         missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]; \
         if (length(missing)) stop("R install block failed — missing: ", paste(missing, collapse = ", "))'
 
+# Synthetic data generation (privacy-preserving onboarding path)
+# simstudy: profile-only generation via Gaussian copula from declared marginals
+# + correlation matrix — the flagship in-container generation path of the
+# synthetic-data-workflow skill (generation-patterns-r.md); fabricatr:
+# hierarchical/design-shaped structure generation named by the same skill.
+# Tier 4 synthesis tools (synthpop) are deliberately NOT installed — T4 runs
+# on the user's own machine against their real data, never in-container.
+RUN Rscript -e 'pkgs <- c( \
+        "simstudy", "fabricatr" \
+        ); \
+        install.packages(pkgs); \
+        missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]; \
+        if (length(missing)) stop("R install block failed — missing: ", paste(missing, collapse = ", "))'
+
 # Presence gate: the FINAL identity check that the installed package set matches the
 # union of the install.packages() blocks above. Its role changed with the per-block
 # fail-fast pattern: the per-block requireNamespace() checks now catch a failed package
@@ -612,7 +636,8 @@ RUN Rscript -e 'pkgs <- c( \
         "plotly", "gt", "V8", "knitr", "kableExtra", "viridis", \
         "tidymodels", "ranger", "glmnet", "xgboost", "lightgbm", "kknn", \
         "iml", "uwot", "fairmodels", "vip", \
-        "igraph", "tidygraph", "ggraph" \
+        "igraph", "tidygraph", "ggraph", \
+        "simstudy", "fabricatr" \
         ); \
         missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]; \
         if (length(missing)) stop("Missing R packages: ", paste(missing, collapse = ", ")); \

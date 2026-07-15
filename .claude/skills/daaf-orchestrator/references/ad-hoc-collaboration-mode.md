@@ -183,6 +183,8 @@ The orchestrator dispatches to a specialized agent when:
 
 **Requests outside DAAF's capabilities:** If the user asks for something DAAF genuinely cannot/should not do (e.g., "access my university's database," "submit my draft to this journal"), explain the limitation clearly and suggest alternatives the user can pursue independently. Maintain the collaborative spirit -- frame it as "here's what I can't do and here's what might work instead" rather than a refusal.
 
+**Sensitive or restricted data (synthetic-data protocol):** If, during ad hoc work, the user reveals that their data is sensitive, proprietary, PII-bearing, HIPAA/FERPA-governed, held in a secure enclave, or otherwise "can't be uploaded" / "can't leave my environment," do **not** ask them to paste or import the raw data. Instead, mention DAAF's privacy-preserving **synthetic-data protocol**: the user profiles their data locally with a disclosure-controlled script, shares only a summary profile report, and DAAF builds a synthetic stand-in to develop analysis code against (findings are then finalized against the real data where it lives). This runs through Data Onboarding's **sensitivity gate** — offer to escalate (see Escalation Triggers). For the doctrine and tier ladder, load the `synthetic-data-workflow` skill. If raw sensitive microdata has already been pasted into the conversation, stop, note it, and redirect to the sensitivity gate rather than continuing to work with it inline.
+
 **Invocation template variability:** Unlike pipeline modes, Ad Hoc tasks are inherently variable and unpredictable. The Standard Agent Prompt Structure below is a skeleton, not a rigid template. The orchestrator should adapt the prompt content to fit each specific request, providing whatever context the agent needs to do its work well. When in doubt, err toward providing more context rather than less.
 
 ---
@@ -404,6 +406,7 @@ These boundaries supplement the universal safety boundaries in `CLAUDE.md`. See 
 | User requests formal deliverables (Plan + Notebook + Report) | Full Pipeline | Propose escalation; workspace artifacts carry forward |
 | User wants systematic data exploration across multiple sources | Data Discovery | Propose escalation; ad hoc findings inform discovery |
 | User has raw data file that needs profiling and a new skill | Data Onboarding | Propose escalation |
+| User reveals their data is sensitive/PII/proprietary or can't leave their environment | Data Onboarding | Propose escalation to the **sensitivity gate** — DAAF's synthetic-data protocol keeps the real data out of the container (profile locally → share only a disclosure-controlled report → DAAF builds a synthetic stand-in; finalize findings against the real data). See the `synthetic-data-workflow` skill. |
 | Session has naturally produced a research plan | Full Pipeline | Suggest: "This is shaping up to be a full analysis -- want me to formalize it?" |
 | Debugging reveals an existing analysis needs revision | Revision and Extension | Propose escalation to modify the original project |
 | User wants to verify an existing analysis reproduces | Reproducibility Verification | Propose escalation |

@@ -73,6 +73,7 @@ For questions that go beyond the four pre-loaded documents -- questions about DA
 |----------------|---------------|
 | How a specific mode works | `.claude/skills/daaf-orchestrator/references/{mode-name}-mode.md` |
 | Mode routing and classification | `.claude/skills/daaf-orchestrator/SKILL.md` > Mode Decision Framework |
+| The privacy-preserving / synthetic-data path (sensitivity gate) within Data Onboarding | `synthetic-data-workflow` skill + `.claude/skills/daaf-orchestrator/references/data-onboarding-mode.md` (DI-1 sensitivity gate) |
 | What happens at each pipeline stage | `agent_reference/WORKFLOW_PHASE1_DISCOVERY.md` through `WORKFLOW_PHASE5_SYNTHESIS.md` |
 | Session recovery / resuming work | `.claude/skills/daaf-orchestrator/references/session-recovery.md` |
 | Error recovery protocols | `agent_reference/ERROR_RECOVERY.md` |
@@ -93,6 +94,7 @@ For questions that go beyond the four pre-loaded documents -- questions about DA
 | How skills work (loading, authoring) | `.claude/skills/` directory; `skill-authoring` skill |
 | Data source coverage | Skills prefixed with `education-data-source-*` |
 | Methodology and tool skills | Skills like `data-scientist`, `polars`, `plotnine`, `statsmodels`, `pyfixest`, etc. |
+| Using DAAF with sensitive data that can't enter the container (synthetic-data protocol) | `synthetic-data-workflow` skill (privacy-preserving workflow: profile locally → share a disclosure-controlled report → DAAF builds a synthetic stand-in) |
 
 ### Templates and Reference Files
 

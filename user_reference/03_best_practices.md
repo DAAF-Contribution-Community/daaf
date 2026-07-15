@@ -523,6 +523,8 @@ DAAF's permission rules and safety hooks are designed to block manipulation at t
 
 **A note on data privacy:** All computation happens locally on your machine, and DAAF prevents Claude from bulk-uploading your data files. However, analytical output (sample rows, summary statistics, diagnostic results) does transit through Anthropic's servers as part of the conversation -- that's how Claude Code works. If you're working with private, proprietary, or regulated data (FERPA, HIPAA, etc.), the implications depend on your specific Anthropic license and access method (Enterprise agreements, AWS Bedrock, and Google Vertex AI each offer different data governance guarantees). It's your responsibility to understand these nuances before using DAAF with non-public data. See the [Data Privacy FAQ](07_faq_technical.md#q-is-my-data-sent-to-anthropic-what-about-privacy) for the full picture.
 
+If your data truly can't leave your environment, you're not out of options: DAAF now includes a built-in **synthetic-data protocol** for exactly this case. You profile your sensitive data locally with a disclosure-controlled script, share only a summary report, and DAAF builds a realistically-shaped synthetic stand-in you can develop all your analysis code against -- then you run that finished code against the real data yourself, where it lives. The real data never enters the container. See [Can I use DAAF with data that can't leave my secure environment?](07_faq_technical.md#q-can-i-use-daaf-with-data-that-cant-leave-my-secure-environment) for how it works.
+
 ---
 
 ## Tips for Data Onboarding

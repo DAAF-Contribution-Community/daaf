@@ -166,12 +166,13 @@ Ready to continue from Stage 7, Transformation #4?
 
 ## Recovery from Different Stages (Data Onboarding)
 
-Data Onboarding projects use a different STATE.md structure (from `agent_reference/STATE_TEMPLATE_ONBOARDING.md`) with onboarding-specific sections: DI-0 through DI-8 stages, Profiling Progress table, Interpretation Tracking, Documentation Reconciliation Summary, Skill Authoring Status, and optionally API Access Info and Multi-File Structure sections.
+Data Onboarding projects use a different STATE.md structure (from `agent_reference/STATE_TEMPLATE_ONBOARDING.md`) with onboarding-specific sections: DI-0 through DI-8 stages, Profiling Progress table, Interpretation Tracking, Documentation Reconciliation Summary, Skill Authoring Status, and optionally API Access Info, Multi-File Structure, and Synthetic Path Tracking (synthetic path only) sections.
 
 **Identification:** A Data Onboarding project can be recognized by:
 - STATE.md contains `Phase DI-` stage references instead of numbered Stages 1-12
 - STATE.md contains a `Profiling Progress` table with script-level tracking
 - STATE.md contains `User Request` and `Data Source Info` sections (no separate Plan.md in Data Onboarding mode)
+- **Synthetic (privacy-preserving) path:** STATE.md contains a **`Synthetic Path Tracking`** section (with a `DS-` stage sequence and `QAS-A/B/C` status). Its presence means the sensitivity gate (DI-1) routed this onboarding to the synthetic path — the raw data never entered the container and the profile report is the source of truth. When detected, **load `WORKFLOW_PHASE_DO_SYNTHETIC.md`** and recover using the synthetic-path table below instead of the DI-3 to DI-6 rows.
 
 | Stage Interrupted | Recovery Action | Additional Sections to Load |
 |-------------------|-----------------|---------------------------|
@@ -184,6 +185,18 @@ Data Onboarding projects use a different STATE.md structure (from `agent_referen
 | DI-6 (Interpretation) | Check scripts 10-11 execution status; check Interpretation Tracking and Documentation Reconciliation Summary | STATE.md Profiling Progress + Interpretation Tracking + Documentation Reconciliation Summary |
 | DI-7 (Skill Authoring) | Check if SKILL.md exists in `.claude/skills/{skill-name}/`; check Skill Authoring Status in STATE.md | STATE.md Skill Authoring Status + Interpretation Tracking |
 | DI-8 (Review & Delivery) | Check if skill is finalized; present to user for review | STATE.md Skill Authoring Status |
+
+### Synthetic Path Recovery (DS-1 through DS-5)
+
+When the Synthetic Path Tracking section is present (see Identification above), recover from these stages instead of DI-3 to DI-6. The raw data never entered the container, so there is no `data/raw/` to check; the profile report in `data/profile_report/` and the synthetic parquet in `data/synthetic/` are the artifacts to verify. Restart-boundary detail is in `WORKFLOW_PHASE_DO_SYNTHETIC.md` (§ DS-2 Wait State, and § STATE.md Update Points) — point there rather than duplicating it.
+
+| Stage Interrupted | Recovery Action | Additional Sections to Load |
+|-------------------|-----------------|---------------------------|
+| DS-1 (Script Preparation) | Check for the customized profiling script in `scripts/local_profiling/`; check QAS-A result in Synthetic Path Tracking. If QAS-A not yet PASSED, re-dispatch the DS-1 → QAS-A cycle | STATE.md Synthetic Path Tracking + Synthetic QA Status |
+| **DS-2 (User Local Run — wait state)** | **Common suspension boundary:** the session typically pauses while the user runs the profiling script on their own machine. On resume, check whether the returned report has arrived at `data/profile_report/{dataset_slug}_profile_report.json`. If present and non-empty, proceed to DS-3; if absent, re-issue the DS-2 handoff instructions and remain in the wait state | STATE.md Synthetic Path Tracking (Wait-State Status, expected Report Path) |
+| DS-3 (Report Intake & Validation) | Check for `scripts/profile_report_intake/01_validate-report.R` and QAS-B result; if the report is present but not yet validated, run the DS-3 → QAS-B cycle | STATE.md Synthetic Path Tracking + Synthetic QA Status |
+| DS-4 (Interpretation) | Check the Interpretation Tracking table; if past PSU-DS2, user decisions must be preserved (same rule as DI-6). If interpretations exist but PSU-DS2 not yet collected, present findings before proceeding | STATE.md Interpretation Tracking + Synthetic Path Tracking |
+| DS-5 (Synthetic Generation & Validation) | Check for the synthetic parquet in `data/synthetic/`, the recorded generation seed, and QAS-C result; if generation incomplete, run the DS-5 → QAS-C cycle. After DS-5 passes, rejoin DI-7/DI-8 | STATE.md Synthetic Path Tracking (Generation Seed, Report Path) + Synthetic QA Status |
 
 **HIERARCHICAL partial-recovery:** For HIERARCHICAL projects with per-file suffixed scripts, the Profiling Progress table tracks each suffixed script independently (e.g., `01a` DONE, `01b` PENDING). When resuming mid-part, re-invoke data-ingest for the full part with a note in the prompt indicating which per-file scripts are already complete. The agent should check existing scripts in the project directory and resume from the first incomplete per-file script rather than re-running the entire part.
 

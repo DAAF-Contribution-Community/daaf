@@ -201,6 +201,8 @@ When invoked, you execute ONLY the profiling part specified in `profiling_part`:
 
 Do NOT execute scripts from other parts. Do NOT author the skill (that is Stage DI-7, handled by a separate subagent). Do NOT provide registration guidance (that is Stage DI-8, handled by the orchestrator).
 
+> **Synthetic (privacy-preserving) path — DS-4.** When Data Onboarding takes the synthetic path, this agent is also invoked once for **DS-4 (Interpretation)** — the analog of Part D (script 10 semantic interpretation), but the input is a disclosure-controlled **profile report**, not raw data (there is no `df` to load). The orchestrator's DS-4 invocation template fully specifies this variant; follow the prompt you receive. See `.claude/skills/daaf-orchestrator/references/WORKFLOW_PHASE_DO_SYNTHETIC.md`.
+
 ### 6. Multi-File Script Naming (HIERARCHICAL Only)
 
 When `file_structure` = "HIERARCHICAL", scripts are suffixed per-file using lowercase letters mapped to the schema map ordering:

@@ -41,6 +41,9 @@ Data Onboarding is designed for **tabular datasets** — files with rows and col
 │      ├─ Collect: domain context, documentation links, priority columns      │
 │      ├─ Collect: known exclusions (populations/periods/geographies NOT in   │
 │      │   the data — feeds analytical-context.md Population Coverage)        │
+│      ├─ SENSITIVITY GATE: is the data sensitive/proprietary/regulated?      │
+│      │   unsure or unprotected -> SYNTHETIC PATH (data never enters DAAF)     │
+│      │   see WORKFLOW_PHASE_DO_SYNTHETIC.md; else continue below              │
 │      ├─ Determine access method:                                            │
 │      │   ├─ LOCAL FILE — user provides file path(s) on disk                │
 │      │   │   └─ Continue DI-1 (file structure classification below)        │
@@ -219,7 +222,29 @@ All data source skills follow this pattern. The `{domain}` groups related source
 3. **Always check** for conflicts against existing skills in `.claude/skills/` before confirming.
 4. **Record** the confirmed skill name in STATE.md's Data Source Info section.
 
+### Sensitivity Gate (DI-1 — Before Access-Method Determination)
+
+**This is a mandatory DI-1 step, asked before determining the access method.** Before any data is brought into the container, establish whether the dataset is sensitive and whether the user has adequate protections. The framing below is user-directed — adapt the wording, keep the substance. It draws on the existing privacy guidance in `{BASE_DIR}/README.md` (§ data-privacy note), `user_reference/03_best_practices.md` (§ data privacy), and `user_reference/07_faq_technical.md` (§ Data Privacy FAQ) — reference those for depth rather than restating them. The gate fires identically regardless of how the user reached Data Onboarding — including when they were routed here from an Ad Hoc Collaboration or User Support escalation (e.g., a help conversation that surfaced sensitive data): the entry path does not change whether, or how, this gate is applied.
+
+Present, in plain language:
+
+> Before we proceed: does this dataset contain proprietary, private, or regulated information (for example student records, health data, personnel data, trade secrets)? If so, please make sure your current account setup has sufficient data privacy and security protections before we continue — analytical output (sample rows, summary statistics) transits Anthropic's servers as part of how Claude Code works, and the protections that apply depend on your license and access method (Enterprise agreements, AWS Bedrock, and Google Vertex AI each offer different guarantees; see the Data Privacy FAQ). If you've confirmed your setup is appropriate, we can proceed normally. If you aren't sure, or you don't have those protections, we can run this process using the synthetic data protocol instead: your real data never enters DAAF — you'll run a profiling script on your own machine, review exactly what it captured before sharing anything, and I'll build a realistic synthetic stand-in from that profile for developing all the analysis code.
+
+**Three outcomes:**
+
+| Outcome | Condition | Routing |
+|---------|-----------|---------|
+| **1 — Not sensitive** | Data is not proprietary/private/regulated | Normal path — proceed to Access Method Determination below |
+| **2 — Sensitive, protections confirmed** | Sensitive, but the user confirms an appropriate license/access method (Enterprise, Bedrock, Vertex) | Normal path — proceed to Access Method Determination; **record the user's protection confirmation in STATE.md** (Data Source Info / Key Decisions Made) |
+| **3 — Sensitive, unsure or unprotected** | Sensitive, and the user is unsure of, or lacks, adequate protections | **Synthetic path** — the raw data never enters DAAF. Do NOT proceed to normal access-method determination. Load `{SKILL_REFS}/WORKFLOW_PHASE_DO_SYNTHETIC.md` and follow Stages DS-1 through DS-5, then rejoin DI-7. |
+
+**"Not sure" is a respected, first-class choice — treat it exactly like outcome 3.** A user who cannot confirm their protections should never be nudged toward the normal path; the synthetic path exists precisely so that uncertainty carries no privacy cost. If sensitivity was later re-decided (e.g., the user confirms protections after all), that is a re-decision at this gate, not an ad hoc reversal mid-workflow.
+
+Record the sensitivity-gate outcome in STATE.md (Data Source Info; and the Synthetic Path Tracking section if outcome 3).
+
 ### Access Method Determination
+
+Reached only for sensitivity-gate outcomes 1 and 2 (see above). Outcome 3 takes the synthetic path and skips in-container access entirely — the raw data is never staged.
 
 At DI-1, determine how the user's data will be accessed:
 
@@ -466,6 +491,8 @@ Return findings in this structure (max 3500 words):
 | GDI-8 | DI-8 | User confirms skill is acceptable | N/A (user decision point) |
 
 **Gate enforcement:** Gates GDI-1 through GDI-7 are mandatory checkpoints. If a gate's STOP condition is triggered, halt execution, present the issue to the user, and await guidance before proceeding. Update STATE.md with the gate failure and resolution.
+
+**Synthetic path (sensitivity-gate outcome 3):** When DI-1 routes to the synthetic path, gates GDI-2 through GDI-6 are replaced by the synthetic-path gates **GDS-0 through GDS-5** (tier selection, disclosure-safety of the outbound script, user local run, report intake, interpretation, synthetic generation), defined in full in `{SKILL_REFS}/WORKFLOW_PHASE_DO_SYNTHETIC.md` § Gate Definitions (Synthetic Path). GDI-1 (intake), GDI-7 (skill authoring), and GDI-8 (delivery) still apply after rejoin.
 
 ---
 
@@ -893,7 +920,7 @@ research/YYYY-MM-DD_{Source_Name}_Onboarding/
 1. **Stage DI-2:** Create the research project folder under `research/`
 2. **Create `data/raw/`** and **`output/preliminary_notes/`** subdirectories inside the research project
 3. **Copy** user-provided data files into `data/raw/`
-4. **Initialize STATE.md** from `{BASE_DIR}/agent_reference/STATE_TEMPLATE_ONBOARDING.md` — this template has onboarding-specific sections (DI-1 through DI-8 stages, Profiling Progress table, Interpretation Tracking, Skill Authoring Status) that differ from the Full Pipeline template. Populate the Data Source Info and User Request sections with intake information.
+4. **Initialize STATE.md** from `{BASE_DIR}/agent_reference/STATE_TEMPLATE_ONBOARDING.md` — this template has onboarding-specific sections (DI-1 through DI-8 stages, Profiling Progress table, Interpretation Tracking, Synthetic Path Tracking (synthetic path), Skill Authoring Status) that differ from the Full Pipeline template. Populate the Data Source Info and User Request sections with intake information.
 5. **Instruct user** if files need manual placement (e.g., files too large to copy, or user prefers to place them directly)
 
 ---
@@ -961,6 +988,7 @@ The orchestrator loads these files progressively — only when the corresponding
 | Phase | Reference File | When to Load |
 |-------|---------------|--------------|
 | DO-2 (Profiling) | `WORKFLOW_PHASE_DO_PROFILING.md` | Before dispatching the first profiling subagent (Stage DI-3) |
+| DO-2 (Synthetic path) | `WORKFLOW_PHASE_DO_SYNTHETIC.md` | When the DI-1 sensitivity gate returns outcome 3, before Stage DS-1 (replaces the standard profiling phase; raw data never enters the container) |
 | DO-3 (Skill Authoring) | `WORKFLOW_PHASE_DO_AUTHORING.md` | After PSU-DI2 user confirmation, before the Pre-Authoring Research Offer / Stage DI-7 (this file also contains the optional pre-authoring research dispatch) |
 
 **Do NOT load both files at mode start.** Load each file just-in-time for its phase to conserve orchestrator context.
@@ -973,7 +1001,7 @@ These boundaries supplement the universal safety boundaries in `CLAUDE.md`. This
 
 **Always Do:**
 1. Verify file accessibility and non-emptiness before starting profiling
-2. Place raw data files inside the research project's `data/raw/` folder and record provenance in STATE.md's Data Source Info section
+2. Place raw data files inside the research project's `data/raw/` folder and record provenance in STATE.md's Data Source Info section (**exception — synthetic path:** no raw data is ever staged; the profile report lives in `data/profile_report/` and synthetic parquet in `data/synthetic/` — see the synthetic-path Boundaries in `{SKILL_REFS}/WORKFLOW_PHASE_DO_SYNTHETIC.md`)
 3. Run all mandatory scripts (01-04, 07, 09, 10) regardless of file characteristics
 4. Apply conditional script rules strictly based on Part A findings and intake info
 5. Present all interpretations to the user at PSU-DI2 and wait for confirmation
@@ -994,6 +1022,7 @@ These boundaries supplement the universal safety boundaries in `CLAUDE.md`. This
 3. Skip QA review for any profiling part
 4. Create analysis scripts or run statistical models (profiling only, not analysis)
 5. Proceed past PSU-DI2 without explicit user confirmation of interpretations
+6. **(Synthetic path)** Request or accept the raw sensitive file, write synthetic data to `data/raw/`, or present synthetic-data results as findings — the full synthetic-path boundaries (including redirecting a user who tries to paste raw microdata) are in `{SKILL_REFS}/WORKFLOW_PHASE_DO_SYNTHETIC.md` § Boundaries
 
 ---
 

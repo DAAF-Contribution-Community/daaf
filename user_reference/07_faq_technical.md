@@ -346,6 +346,27 @@ The answers are yes and no depending on exactly what we're talking about when we
 
 ---
 
+### Q: Can I use DAAF with data that can't leave my secure environment?
+
+Yes -- and this is exactly the scenario I built DAAF's **synthetic-data protocol** for. It's the built-in, zero-trust default for data that is sensitive, proprietary, PII-bearing, HIPAA/FERPA-governed, or locked in a secure enclave. The core idea is simple: **your real data never enters the DAAF container at all.** Here's the flow:
+
+1. **You profile the data locally.** DAAF hands you a small, self-contained profiling script (it has no DAAF or container dependencies) that you run yourself, wherever the sensitive data actually lives -- your laptop, your enclave, your locked-down VM. You pick a **disclosure tier** (below) that controls exactly how much the script is allowed to measure.
+2. **You review everything before sharing.** The script produces a human-readable summary alongside the machine-readable report. You read that summary and confirm you're comfortable with every number in it *before* anything leaves your environment. Nothing crosses the boundary until you say so.
+3. **DAAF builds a synthetic stand-in.** You bring only that summary report into the container. From the report alone -- never the real data -- DAAF generates a *synthetic* dataset that's shaped like your real one (right columns, right types, plausible distributions) and authors a reusable data source skill for it.
+4. **You develop all your analysis code against the synthetic data.** Write it, debug it, dry-run it -- the synthetic data behaves enough like the real thing to build a complete, working pipeline.
+5. **You finalize results against the real data.** When the code is finished and vetted, you run it yourself against the real data, in its own secure environment, to get the actual numbers. The synthetic data is a **code-development scaffold, not an analytic substitute** -- it's for building the pipeline, never for producing findings.
+
+**The four disclosure tiers** (you pick the lowest one that still lets you build your code):
+
+- **T1 -- Schema:** Only column names, data types, and the row count cross the boundary. No values, no statistics.
+- **T2 -- Marginals (the default):** Per-column summaries -- category levels (with small groups suppressed for privacy), numeric percentiles, missingness rates -- but never raw minimums/maximums or example values.
+- **T3 -- Relationships:** Everything in T2 plus how columns relate to each other (correlations, cross-tabs with small cells suppressed), so the synthetic data can reproduce those relationships too.
+- **T4 -- Local high-fidelity synthesis:** For the highest fidelity, *you* run a synthesizer locally that learns from the real data inside your environment, and only the resulting synthetic rows cross the boundary -- the real data and the fitted model both stay put.
+
+**What if you have enterprise-grade protections?** If your organization already has stronger guarantees in place -- an Anthropic Enterprise agreement, AWS Bedrock or Google Vertex AI governance, or an institutional secure enclave with an approved model access path -- then DAAF can be configured to access those environments properly and work with the data directly, no synthetic stand-in required. I'd flag, though, that this is a more involved setup: in my experience it typically needs bespoke support from your IT department, because network access, credential management, and compliance sign-off are all organization-specific. So my recommendation is to treat the synthetic protocol as your starting point -- it's the zero-trust default that works *without* any of that -- unless and until your organization has stood up one of those governed access paths.
+
+---
+
 ### Q: Can Claude change its own safety hooks or settings? How do I edit them myself?
 
 No — and that's by design. The hook scripts (`.claude/hooks/`), their logs (`.claude/logs/`), the benchmark harness hooks, and `.claude/settings.json`/`settings.local.json` are the framework's root of trust, so DAAF blocks Claude from modifying them through the shell (`cp`, `mv`, `tee`, output redirection, `sed -i`, `chmod`, etc.). If Claude could overwrite `settings.json` with a shell command, it could deregister every safety hook — so those writes are refused. Claude can still *read* these files (helpful when you ask it to explain a guardrail) and run git index commands like `git add` on them.

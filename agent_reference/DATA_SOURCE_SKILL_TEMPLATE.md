@@ -33,6 +33,12 @@ Every data source SKILL.md MUST contain these sections in this exact order:
 12. ## Topic Index
 ```
 
+Conditional top-of-skill section (synthetic-derived skills ONLY):
+- `## Synthetic Data Notice` — MANDATORY when `metadata.data-provenance` is any `synthetic-*`
+  value; MUST NOT appear for real sources. Placed immediately after the Value Encodings
+  Warnings blockquote (position 4), before the "What is [Source]?" section, so it is among
+  the first things any agent reads. See the annotated Section 4.6 below.
+
 Optional sections (insert between 10 and 11 if needed):
 - `## Limitations` — only if content doesn't fit naturally in Common Pitfalls
 - `## Common Use Cases` — if the source has distinct research applications worth enumerating
@@ -63,6 +69,7 @@ metadata:
   domain: data-source
   skill-authored: "YYYY-MM-DD"      # Date this skill was first created
   skill-last-updated: "YYYY-MM-DD"  # Date this skill was last updated or re-verified
+  data-provenance: real             # OPTIONAL — omit (or set "real") for conventionally-onboarded sources; see rules below
 ---
 ```
 
@@ -106,6 +113,23 @@ metadata:
     - On updates: change skill-last-updated only; skill-authored remains fixed
     - STALENESS: If skill-last-updated is more than a few months old, treat skill
       claims with caution — data sources evolve and skill documentation may have drifted
+  - DATA-PROVENANCE (OPTIONAL for conventionally-onboarded sources; MANDATORY for
+    synthetic-derived skills — those built via the `synthetic-data-workflow` skill from a
+    disclosure-controlled profile rather than from the real data in-container):
+    - Purpose: declares whether the skill describes real data profiled in-container or a
+      synthetic stand-in generated from a profile report, so any agent loading the skill
+      knows the data is a code-development scaffold, not an analytic substitute.
+    - Permitted values (exactly one):
+      - `real` — the default; source was profiled in-container from the real file/API
+        (Data Onboarding DI-2 onward). Absent key is treated as `real`.
+      - `synthetic-profile-t1` — synthetic data generated from a Tier 1 (Schema) profile
+      - `synthetic-profile-t2` — synthetic data generated from a Tier 2 (Marginals) profile
+      - `synthetic-profile-t3` — synthetic data generated from a Tier 3 (Relationships) profile
+      - `synthetic-local-t4` — synthetic rows produced locally by a Tier 4 high-fidelity
+        synthesizer inside the user's environment (real data never crossed the boundary)
+    - Any `synthetic-*` value REQUIRES the "Synthetic Data Notice" section (below).
+    - See the `synthetic-data-workflow` skill for the tier ladder and the workflow that
+      produces these skills.
 -->
 
 ---
@@ -192,6 +216,55 @@ When in doubt, re-run data-ingest to re-verify against fresh data.
 
 ---
 
+### Section 4.6 (Conditional): Synthetic Data Notice
+
+> **Include this section ONLY for synthetic-derived skills** — those whose
+> `metadata.data-provenance` is a `synthetic-*` value. Real sources MUST NOT include it.
+> Place it immediately after the Value Encodings Warnings blockquote (Section 4) and before
+> the "What is [Source]?" section. The purpose is to make the synthetic origin unmissable and
+> to bind every downstream analysis to the finalize-against-real-data requirement.
+
+```markdown
+## Synthetic Data Notice
+
+> **This skill describes SYNTHETIC data — a code-development scaffold, not an analytic substitute.**
+>
+> The data this skill references was generated from a **disclosure-controlled profile at Tier [N]
+> ([Schema / Marginals / Relationships / Local high-fidelity synthesis])** of the real source, which
+> never entered the DAAF container. It is *structurally* representative of the real data but
+> *statistically* an approximation: use it to develop, debug, and dry-run analysis code — never to
+> produce findings.
+>
+> **All analysis findings MUST be finalized by re-running the vetted analysis code against the real
+> data, inside the environment where the real data lives.** Numbers computed on this synthetic data
+> are provisional scaffolding only.
+>
+> **Reproducibility:**
+> - Generation seed: `[seed]`
+> - Profiling report: `[path to profile report, e.g., data/profile_report/...]`
+> - Generation script(s): `[path(s), e.g., scripts/stage5_fetch/... and data/synthetic/...]`
+>
+> **What the Tier [N] profile preserved:** [e.g., univariate distributions (percentile-based) and
+> selected pairwise correlations].
+> **What it did NOT preserve:** [e.g., conditional/joint relationships, true missingness mechanisms,
+> tail behavior, real categorical co-occurrence]. Do not rely on any structure listed here as
+> preserved-not.
+```
+
+<!-- RULES:
+  - MANDATORY iff metadata.data-provenance is `synthetic-profile-t1/t2/t3` or `synthetic-local-t4`;
+    OMIT entirely for real sources
+  - MUST state: the tier and what it means; the scaffold-not-substitute doctrine; the explicit
+    finalize-against-real-data instruction; the generation seed and script/report paths for
+    reproducibility; and a preserved / NOT-preserved split so no reader over-trusts the synthetic
+    joint structure
+  - Keep it a blockquote so it renders as a prominent callout, mirroring the Value Encodings warning
+  - The tier, seed, paths, and preserved/not-preserved content come from the synthetic-data-workflow
+    run that produced the skill (see that skill's validation-checks.md and generation-patterns-*.md)
+-->
+
+---
+
 ### Section 5: What is [Source]?
 
 ```markdown
@@ -204,6 +277,9 @@ When in doubt, re-run data-ingest to re-verify against fresh data.
 - **[Attribute 3]**: [Value] (e.g., "Frequency: Annual collection")
 - **[Attribute 4]**: [Value] (e.g., "Available years: 1986-present")
 - **[Attribute 5]**: [Value] (e.g., "Primary identifier: NCESSCH (12-digit school ID)")
+- **Data Provenance**: [Real — profiled in-container / Synthetic — generated from a
+  Tier [N] disclosure-controlled profile; see Synthetic Data Notice] (INCLUDE this bullet
+  only for synthetic-derived skills; omit entirely for real/conventionally-onboarded sources)
 ```
 
 <!-- RULES:
@@ -212,6 +288,10 @@ When in doubt, re-run data-ingest to re-verify against fresh data.
     frequency, available years, and primary identifier
   - NOT paragraphs, NOT numbered lists, NOT subsections
   - Keep to 5-8 bullets max
+  - DATA PROVENANCE BULLET: add only when metadata.data-provenance is a `synthetic-*`
+    value — it gives an at-a-glance signal that the source is synthetic and points to the
+    Synthetic Data Notice. Omit the bullet for real sources (the absent bullet and the
+    absent/`real` metadata key both mean "real data").
 -->
 
 ---
@@ -819,6 +899,8 @@ Use this checklist when reviewing a skill for template compliance:
 - [ ] Title: `# [ACRONYM] Data Source Reference` format
 - [ ] Summary: optional value-proposition sentence after the description paragraph (Section 3 allows 2-5 sentences total across both paragraphs)
 - [ ] Value Encodings Warnings: blockquote in position 4 with comparison table
+- [ ] If synthetic-derived: `metadata.data-provenance` is a `synthetic-*` value AND the Synthetic Data Notice section (4.6) is present with tier, seed, script/report paths, and preserved/NOT-preserved split
+- [ ] If real source: no `data-provenance` key (or `real`) AND no Synthetic Data Notice section
 - [ ] "What is" section: bullet list with bold keys
 - [ ] Reference File Structure: 3-column table present
 - [ ] Decision Trees: at least 2 trees in code blocks

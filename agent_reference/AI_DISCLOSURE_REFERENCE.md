@@ -116,6 +116,11 @@ Different engagement modes involve different levels of AI assistance. The disclo
 **Template:**
 > Dataset profiling was conducted using DAAF (Data Analyst Augmentation Framework) with [session model ID, plus specialist model IDs for dispatched subagents — see STATE.md Session Metadata] via Claude Code CLI on [date]. DAAF version: [commit hash]. The AI executed structured profiling scripts across four phases (structural, statistical, relational, interpretation) to characterize the dataset. All profiling scripts underwent automated QA review. The researcher reviewed profiling findings at two checkpoints before the data source skill was finalized. All profiling scripts and execution logs are archived in the project's `scripts/` directory.
 
+**Synthetic Data Path (sensitivity gate):** When onboarding takes the privacy-preserving synthetic-data path — the raw data never entered the container, and DAAF worked only from a user-produced, disclosure-controlled profile report — the disclosure MUST additionally state the synthetic provenance, the disclosure tier, and the finalize-against-real-data requirement. Any deliverable derived from the synthetic data (a data source skill, a report, an analysis output) carries this disclosure. This also satisfies GUIDE-LLM item **D.1** (handling of personal/sensitive data): the raw sensitive data was never transmitted to the model. See the `synthetic-data-workflow` skill.
+
+**Template addition (append to the Data Onboarding paragraph when the synthetic path was used):**
+> The source data was sensitive and never entered the DAAF container. Profiling was performed by the researcher locally using a DAAF-provided, disclosure-controlled script at **Tier [N] ([Schema / Marginals / Relationships / Local high-fidelity synthesis])**; only a summary profile report crossed the boundary. DAAF generated a **synthetic** dataset and data source skill from that report alone (generation seed [seed]). This synthetic data is a code-development scaffold, not an analytic substitute — **all findings must be finalized by running the vetted analysis code against the real data in the environment where it lives.** No raw sensitive data or personally identifiable information was transmitted to the AI model.
+
 ### Reproducibility Verification Mode
 
 **Disclosure depth:** Moderate

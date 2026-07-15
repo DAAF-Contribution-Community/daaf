@@ -184,6 +184,24 @@ Mode-specific boundaries for these engagement modes are defined in their respect
 
 ---
 
+### Synthetic Data Path (Privacy-Preserving Onboarding)
+
+These boundaries apply whenever the Data Onboarding **sensitivity gate** has routed an engagement to the privacy-preserving synthetic-data workflow (raw data must never enter the container). They supplement the general Data Security boundaries above. See the `synthetic-data-workflow` skill for the full doctrine.
+
+**Always Do:**
+- Keep the real data out of the container. Once the synthetic path is chosen, the only artifact that crosses the boundary is the user's disclosure-controlled **profile report** (and, for T4, locally-generated synthetic rows).
+- Label every synthetic artifact with its provenance. Skills built this way carry `metadata.data-provenance: synthetic-*` and a Synthetic Data Notice; reports and outputs carry the scaffold-not-substitute caveat and the "finalize against the real data" requirement.
+- Treat the disclosure-safety review of the outbound profiling script (QAS-A) as a **BLOCKER** gate, never a WARNING — a leak is irreversible once the report is shared.
+
+**Never Do:**
+- Request or accept raw sensitive data — raw extracts, unsuppressed cross-tabs, example values, or the fitted synthesis model — once the synthetic path is chosen. If a request would require any of these, stop and re-scope to a tier that does not.
+- Attempt to reconstruct, infer, or reverse suppressed values, small cells binned to `__OTHER__`, or identifier contents from the profile report.
+- Present synthetic-data results as findings, or ship a synthetic-derived skill or output without provenance labeling.
+
+**If raw microdata is pasted into the conversation:** STOP. Do not analyze, transform, or persist it. Note that raw sensitive data was exposed inline, and redirect the user to the sensitivity gate / synthetic-data protocol (per the general "If You Catch Yourself Violating a Boundary" procedure below).
+
+---
+
 ### Reproducibility Verification Mode
 
 **See** `reproducibility-verification-mode.md` § Boundaries for Always Do / Never Do / Ask First rules specific to reproduction workflows.

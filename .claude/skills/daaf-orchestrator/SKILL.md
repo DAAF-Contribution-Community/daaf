@@ -189,7 +189,7 @@ Keywords are heuristics, not deterministic. When multiple modes seem applicable,
 
 | Mode | Trigger Keywords | Primary Output | Reference File |
 |------|------------------|----------------|----------------|
-| **Data Onboarding** | "ingest", "onboard", "profile", "new dataset", "add data source" | SKILL.md + Research Project with profiling scripts | `data-onboarding-mode.md` |
+| **Data Onboarding** | "ingest", "onboard", "profile", "new dataset", "add data source", "sensitive data", "PII", "can't share the data" | SKILL.md + Research Project with profiling scripts | `data-onboarding-mode.md` |
 | **Data Lookup** | "what are the values", "how is X defined", "lookup" | Direct answer | `data-lookup-mode.md` |
 | **Data Discovery** | "what data", "is it possible", "feasibility", "explore" | Findings summary | `data-discovery-mode.md` |
 | **Ad Hoc Collaboration** | "help me with", "review this", "debug this", "how do I", "advise on", "think through" | Conversation + optional workspace artifacts | `ad-hoc-collaboration-mode.md` |
@@ -283,7 +283,7 @@ Even for simple lookups, always confirm — the user may want broader context th
 | Reproducibility Verification | Full Pipeline | Original analysis is fundamentally broken |
 | Ad Hoc Collaboration | Full Pipeline | User wants a complete analysis with formal deliverables |
 | Ad Hoc Collaboration | Data Discovery | User wants systematic data exploration |
-| Ad Hoc Collaboration | Data Onboarding | User has raw data that needs profiling and a new skill |
+| Ad Hoc Collaboration | Data Onboarding | User has data that needs profiling and a new skill — including sensitive/proprietary/PII data, which routes to the synthetic (privacy-preserving) path at the DI-1 sensitivity gate |
 | Ad Hoc Collaboration | Revision and Extension | Debugging reveals an existing analysis needs revision |
 | Data Discovery | Ad Hoc Collaboration | User wants to discuss findings and iterate on approach |
 | Full Pipeline (early) | Ad Hoc Collaboration | User realizes they just want to talk through the approach, not run the full pipeline |
@@ -375,6 +375,7 @@ During any mode, watch for signals that the user needs additional guidance and r
 |----------------|---------|--------------|
 | `{SKILL_REFS}/data-onboarding-mode.md` | Data Onboarding workflow, gates, execution cycle, PSU templates, intake decisions, boundaries | After confirming Data Onboarding mode |
 | `{SKILL_REFS}/WORKFLOW_PHASE_DO_PROFILING.md` | Part A-D details, CPP/QAP checks, profiling invocation templates, multi-file protocols, verification checklists | Before dispatching first profiling subagent (Stage DI-3) |
+| `{SKILL_REFS}/WORKFLOW_PHASE_DO_SYNTHETIC.md` | Synthetic (privacy-preserving) onboarding path: DS-1–DS-5 stages, tier-selection PSU, inverted three-part QA (disclosure-safety / report-consistency / synthetic-vs-profile), seeded generation, rejoin with synthetic provenance | Before entering the synthetic path at the DI-1 sensitivity gate (Data Onboarding, sensitive-data outcome) |
 | `{SKILL_REFS}/WORKFLOW_PHASE_DO_AUTHORING.md` | Optional pre-authoring research dispatch, skill authoring invocation template, CPP-SKILL validation, DI-8 iteration loop, skill maturity framing | After PSU-DI2 confirmation, before the Pre-Authoring Research Offer / Stage DI-7 |
 | `{SKILL_REFS}/data-lookup-mode.md` | Single skill invocation, response format | After confirming Data Lookup mode |
 | `{SKILL_REFS}/data-discovery-mode.md` | Data Discovery workflow, exploration patterns, escalation | After confirming Data Discovery mode |
@@ -395,6 +396,7 @@ Mode Confirmed
     │   └─ Read: {SKILL_REFS}/data-onboarding-mode.md
     │          ├─ Stage DI-2 (project setup): Read {BASE_DIR}/agent_reference/STATE_TEMPLATE_ONBOARDING.md
     │          ├─ Profiling (Stages DI-3–6): Read {SKILL_REFS}/WORKFLOW_PHASE_DO_PROFILING.md
+    │          ├─ Synthetic path (DI-1 sensitivity gate → sensitive data, Stages DS-1–5): Read {SKILL_REFS}/WORKFLOW_PHASE_DO_SYNTHETIC.md
     │          ├─ Skill Authoring (Stages DI-7–8): Read {SKILL_REFS}/WORKFLOW_PHASE_DO_AUTHORING.md
     │          └─ Error handling: Read {BASE_DIR}/agent_reference/ERROR_RECOVERY.md
     │
