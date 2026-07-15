@@ -274,6 +274,24 @@ An immediate, deterministic 429 on *every* request — including the very first 
 - **A rate-limit error with a `retry-after` header** — a genuine per-minute request/token limit for your usage tier. This clears on its own; current Tier 1 token-per-minute limits are generous (500K TPM for gpt-5/gpt-5-mini as of late 2025 — OpenAI has not published per-tier tables for the gpt-5.6 variants), but heavily parallel agentic sessions can still burst past request-per-minute caps. Sustained work may warrant a higher usage tier (tiers advance with cumulative spend).
 - **401 `invalid_api_key`** — the key itself is wrong: check for truncation or stray whitespace in `environment_settings.txt`, and remember the container only picks up environment changes after `docker compose down` + `run_daaf.sh` (the shim reads its key at startup).
 
+### Q: Can I use my ChatGPT subscription instead of an OpenAI API key? (Option F)
+
+Yes — via an **unofficial, dev-lane** path, with important caveats. The same provider shim (Option F) has an alternate backend mode, `SHIM_BACKEND_MODE=chatgpt`, that routes Claude Code through your **ChatGPT subscription's Codex backend** using your `codex` OAuth login instead of a pay-per-token `api.openai.com` API key. It is the same shim and the same translator; only the authentication and endpoint differ.
+
+**Read the caveat first.** This lane reuses Codex's OAuth against an **undocumented, OpenAI-controlled backend**. It is **not an OpenAI-sanctioned API method** — OpenAI scopes subscription usage to its own official apps — so it may break at any time if OpenAI changes the backend, and **you are responsible for compliance with OpenAI's terms of service.** Treat it as a proof-of-concept / dev lane. The sanctioned, robust path is the API-key lane (`SHIM_BACKEND_MODE` unset → `openai`), covered by the [instant-429 entry above](#q-my-gpt-session-fails-instantly-with-429-errors-on-every-request-option-f).
+
+**Setup, in brief** (full steps in the installation guide):
+
+- It needs the **developer image** — set `DAAF_DEV=1` and rebuild (this installs the Codex CLI).
+- Enable **device-code login** in your ChatGPT security settings, then run `codex login --device-auth` inside the container (no browser/loopback needed). `CODEX_HOME` is preset by Compose to the persisted, backed-up `codex-daaf` store, so the login survives rebuilds — you do it once.
+- Set `SHIM_BACKEND_MODE=chatgpt` in `environment_settings.txt` (alongside the usual Option F `ANTHROPIC_BASE_URL`/model lines) and restart the container. In this mode `OPENAI_API_KEY` is ignored — the OAuth token is the credential.
+
+The shim reads the OAuth token from `auth.json` and **refreshes it automatically** (the token lasts ~10 days and is never logged); if a refresh fails permanently, the shim log tells you to re-run `codex login --device-auth`.
+
+**Parallel use.** The shim shares the one `codex-daaf` login with the `codex` CLI and `codex-plugin-cc`. Running another codex tool concurrently on the same login is usually fine but can *rarely* force a re-login via a refresh-token-rotation race, and the ChatGPT usage pool is shared (parallel drains it faster). For clean isolation, give each tool its own `codex login` under a separate `CODEX_HOME` — `CODEX_HOME` and the `SHIM_OAUTH_*` override vars in `environment_settings_example.txt` are the customization hooks for that. Not needed for a normal single-tool setup.
+
+See the full walkthrough in [**01. Installation & Quick Start — Option F, alternate lane: ChatGPT subscription**](01_installation_and_quickstart.md#option-f-alternate-lane-chatgpt-subscription-codex-backend).
+
 ### Q: A scripted `claude -p` call on a GPT model returned an empty result
 
 Occasionally a GPT turn ends with a reasoning-only block and no visible text, which can surface as an empty `result` field in scripted (non-interactive) `claude -p` usage. This is a GPT quirk, not a DAAF fault, and is only relevant to automated/batch tooling — interactive sessions are unaffected. If you hit it in a script, re-issue the call or add a follow-up turn that requests the answer explicitly.

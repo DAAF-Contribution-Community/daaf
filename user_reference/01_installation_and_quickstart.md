@@ -863,7 +863,7 @@ The two-tier routing described above works identically: map `ANTHROPIC_DEFAULT_O
 
 If you have an **OpenAI API key** and would rather talk to OpenAI directly (no OpenRouter middle-hop), DAAF ships a lightweight translation shim that presents an Anthropic-compatible endpoint on `localhost` and forwards to OpenAI. It has **zero new dependencies** and starts automatically inside the container.
 
-> **Billing prerequisite — API credits are separate from ChatGPT.** An OpenAI API key only works if its platform.openai.com project has **prepaid credits purchased**: adding a payment card alone is not enough (the $5+ credit purchase is a separate step), and new API accounts receive no free credits. A ChatGPT Plus/Pro subscription does **not** include API access — ChatGPT and the API are separate billing systems, and there is no OpenAI-sanctioned way to run a third-party tool like DAAF on a ChatGPT subscription (subscription usage is scoped to OpenAI's official apps; verified against OpenAI's terms and Codex documentation, 2026-07-11). An unfunded key fails with an instant `429 insufficient_quota` on every request — see the [technical FAQ entry on instant 429s](07_faq_technical.md#q-my-gpt-session-fails-instantly-with-429-errors-on-every-request-option-f).
+> **Billing prerequisite — API credits are separate from ChatGPT.** An OpenAI API key only works if its platform.openai.com project has **prepaid credits purchased**: adding a payment card alone is not enough (the $5+ credit purchase is a separate step), and new API accounts receive no free credits. A ChatGPT Plus/Pro subscription does **not** include API access — ChatGPT and the API are separate billing systems, and there is **no OpenAI-sanctioned** way to run a third-party tool like DAAF on a ChatGPT subscription (subscription usage is scoped to OpenAI's official apps; verified against OpenAI's terms and Codex documentation, 2026-07-11). An unfunded key fails with an instant `429 insufficient_quota` on every request — see the [technical FAQ entry on instant 429s](07_faq_technical.md#q-my-gpt-session-fails-instantly-with-429-errors-on-every-request-option-f). DAAF *does* ship an **unofficial, dev-lane** path that reuses your Codex (ChatGPT) OAuth login against OpenAI's undocumented Codex backend — see the ["ChatGPT subscription lane"](#option-f-alternate-lane-chatgpt-subscription-codex-backend) below. It is a proof-of-concept, **not** an OpenAI-sanctioned API method: it may break if OpenAI changes the backend, and you are responsible for compliance with OpenAI's terms. The sanctioned, robust path remains the API-key lane described here.
 
 Set two variables in `environment_settings.txt` to turn it on, plus the Claude Code side that points at the local shim:
 
@@ -903,6 +903,42 @@ See the [technical FAQ entry on controlling GPT reasoning effort](07_faq_technic
 **Response verbosity (shim v1.2.4+).** Separately from reasoning effort, the shim sends OpenAI's `text.verbosity` control on every request, defaulting to `high` for parity with DAAF's warm, educational posture (`high` adds warmth and volume; `low` is terse); set `SHIM_TEXT_VERBOSITY=low` or `medium` in `environment_settings.txt` if GPT responses feel too long, and see the [technical FAQ entry on terse GPT responses](07_faq_technical.md#q-gpt-responses-feel-terse-compared-to-claude-option-f) if they feel too brief.
 
 **Context window on GPT sessions.** Claude Code enforces its context-window budget *locally*, and for a model slug it does not recognize it assumes a small (~200K) window — far below the real 1,050,000 of the gpt-5.6 family. Two things keep GPT sessions from ending prematurely at a fraction of the true window. First, **append `[1m]` to your GPT slugs** in the model variables (e.g. `ANTHROPIC_DEFAULT_OPUS_MODEL=gpt-5.6-sol[1m]`, as shown above): Claude Code reads `[1m]` as a "this model has a 1M window" hint and budgets the full window, then strips the suffix before sending, so the shim and OpenAI backend see the bare `gpt-5.6-sol`. (`CLAUDE_CODE_AUTO_COMPACT_WINDOW=1000000` is an equivalent env-var alternative if you prefer not to touch the slugs.) Second, **shim v1.2.1 calibrates its token-count estimates against the real backend counts**: earlier versions estimated a request's size from its raw JSON byte length, which over-counted realistic Claude Code envelopes (large tool schemas plus escaping) by roughly 1.6–1.9× and could end a session client-side ("Prompt is too long") well below the real window; v1.2.1 learns the true tokens-per-byte ratio from each backend response and estimates slightly *under* the real count, so the failure mode is a loud, recoverable backend error rather than silent premature death. If a GPT session still reports "Context limit reached" / "Prompt is too long" at low utilization, see the [technical FAQ entry on low-utilization context errors](07_faq_technical.md#q-my-gpt-session-says-context-limit-reached--prompt-is-too-long-at-low-utilization).
+
+#### Option F, alternate lane: ChatGPT subscription (Codex backend)
+
+The same shim can route Claude Code through your **ChatGPT subscription's Codex backend** instead of a pay-per-token OpenAI API key. It is the *same* shim and the *same* Responses translator — only the **authentication and endpoint** differ: instead of a `SHIM_BACKEND_API_KEY`, the shim reads an OAuth access token from your `codex` login and POSTs to OpenAI's Codex Responses backend.
+
+> **This is an unofficial, dev-lane path — read this first.** It reuses Codex's OAuth against an **undocumented, OpenAI-controlled backend**. It is **not** an OpenAI-sanctioned API method (OpenAI's terms scope subscription usage to their own official apps), it **may break at any time** if OpenAI changes the backend, and **you are responsible for compliance with OpenAI's terms of service.** Treat it as a proof-of-concept / dev lane. The API-key lane above (`SHIM_BACKEND_MODE` unset → `openai`) is the sanctioned, robust fallback.
+
+**Prerequisites.** This lane needs the **developer image** — set `DAAF_DEV=1` in `environment_settings.txt` and rebuild (it installs the Codex CLI the login depends on; see [Building with the developer test toolchain](#building-with-the-developer-test-toolchain-daaf_dev)).
+
+**Setup.**
+
+1. In your **ChatGPT security settings** (on chatgpt.com), enable **device-code login** — this is what lets you authenticate without a browser/loopback callback inside the container.
+2. Inside the container, run the device-auth login:
+   ```bash
+   codex login --device-auth
+   ```
+   Follow the printed code/URL prompt on any device. `CODEX_HOME` is already set by Docker Compose to the persisted, backed-up `codex-daaf` store (`/home/appuser/.claude/codex-daaf`), so **your login survives container rebuilds** — you only do this once.
+3. In `environment_settings.txt`, switch the shim to the ChatGPT lane:
+   ```bash
+   DAAF_PROVIDER_SHIM=openai        # still the master on/off switch for the shim
+   SHIM_BACKEND_MODE=chatgpt        # route through the Codex/OAuth lane, not the API-key lane
+   ANTHROPIC_BASE_URL=http://127.0.0.1:4141
+   ANTHROPIC_AUTH_TOKEN=daaf-shim-local
+   ANTHROPIC_API_KEY=
+   ANTHROPIC_DEFAULT_OPUS_MODEL=gpt-5.6-sol[1m]
+   ANTHROPIC_DEFAULT_SONNET_MODEL=gpt-5.6-terra[1m]
+   CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000
+   ```
+   In this mode `OPENAI_API_KEY` / `SHIM_BACKEND_API_KEY` are **ignored** — the OAuth token is the credential.
+4. Restart the container to apply (`docker compose down`, then `bash run_daaf.sh` / `.\run_daaf.ps1`).
+
+**How auth stays fresh.** The shim reads the OAuth token from `auth.json` in your `CODEX_HOME` store and **refreshes it automatically** (the access token lasts ~10 days; the shim refreshes only when it is near expiry or after a backend rejection, and it never logs any token value). If a refresh ever fails permanently, the shim's log tells you to run `codex login --device-auth` again.
+
+**Parallel use (optional — grow into it later).** The shim shares the one `codex-daaf` `auth.json` with the `codex` CLI and `codex-plugin-cc`. Running another codex-based tool **concurrently on the same login** is usually fine, but can *rarely* trigger a refresh-token-rotation race that forces a re-login, and the ChatGPT usage pool is shared (running things in parallel drains it faster). If you want clean, isolated parallel use, give each tool its **own** `codex login` under a **separate `CODEX_HOME`**. `CODEX_HOME` and the two OAuth override variables (`SHIM_OAUTH_TOKEN_URL`, `SHIM_OAUTH_CLIENT_ID`) exist as the customization hooks for exactly this — see the notes in `environment_settings_example.txt`. You do not need any of this for a normal single-tool setup.
+
+See the [technical FAQ entry on the ChatGPT subscription lane](07_faq_technical.md#q-can-i-use-my-chatgpt-subscription-instead-of-an-openai-api-key-option-f).
 
 #### Known limitations of GPT sessions (both lanes)
 

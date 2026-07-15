@@ -174,6 +174,31 @@
 # SHIM_REASONING_EFFORT=                            # TIER 3 of the effort precedence chain (per-request signal > "#<effort>" slug suffix > this env var > default "high"). Sets reasoning.effort when no usable per-request signal and no slug suffix are present. NOTE (v1.2.3): an inbound per-request "high" is treated as Claude Code's pinned constant (unset) and demoted, so for GPT slugs this env var and the "#<effort>" suffix are the real steering surfaces. Valid values none|low|medium|high|xhigh|max ("max" is gpt-5.6-only). Leave unset to use the default "high" (v1.2.2+ always sends an effort now — the old implicit "medium" server default no longer applies). Read at shim startup, so a restart is required
 # SHIM_TEXT_VERBOSITY=                              # Response verbosity (shim v1.2.4+): the outbound OpenAI request always carries text.verbosity. Valid values low|medium|high. Default "high" (parity with DAAF's warm/educational posture) — "high" adds warmth/volume, "low" is terse. Set this to dial GPT responses that feel too brief or too long. Unset -> "high". Read at shim startup, so a restart is required
 #
+# --- Option F, alternate lane: ChatGPT subscription (Codex backend) ---------
+# Instead of a pay-per-token OpenAI API key, the SAME shim can route Claude Code
+# through your CHATGPT SUBSCRIPTION's Codex backend (via the shim's Responses
+# translator). Same shim, different auth + endpoint: it reads an OAuth token from
+# your codex login (auth.json) instead of an API key. This is an UNOFFICIAL /
+# dev-lane path (reuses Codex's OAuth against an undocumented OpenAI backend, NOT
+# an OpenAI-sanctioned API method) — the API-key lane above (SHIM_BACKEND_MODE
+# unset -> "openai") is the sanctioned fallback. Requires the dev image
+# (DAAF_DEV=1, which installs the Codex CLI). Full setup + caveats:
+# user_reference/01_installation_and_quickstart.md, Option F ("ChatGPT
+# subscription lane"), and the technical FAQ entry "Can I use my ChatGPT
+# subscription instead of an OpenAI API key?".
+#
+# SHIM_BACKEND_MODE=chatgpt                         # switch the shim from the api.openai.com API-key lane to the ChatGPT/Codex OAuth lane. With this set, OPENAI_API_KEY / SHIM_BACKEND_API_KEY are ignored; the shim reads $CODEX_HOME/auth.json (set by compose to the persisted codex-daaf store) for the Bearer and refreshes it automatically. Set up the login first: run 'codex login --device-auth' inside the container (enable device-code login in your ChatGPT security settings first).
+#
+# Parallel use (grow into it later): the shim shares the codex-daaf auth.json, so
+# running the `codex` CLI or codex-plugin-cc CONCURRENTLY on the same login can
+# rarely trigger a refresh-token-rotation race (forcing a re-login), and the usage
+# pool is shared (parallel drains it faster). For clean parallel use, give each
+# tool its OWN `codex login` under a SEPARATE CODEX_HOME. CODEX_HOME and the two
+# OAuth override vars below are the customization hooks for that:
+# CODEX_HOME=/home/appuser/.claude/codex-daaf       # (chatgpt mode) directory holding auth.json. Compose already sets this to the persisted, backed-up store; override only to point at a separate per-tool login store for parallel use.
+# SHIM_OAUTH_TOKEN_URL=                             # (chatgpt mode) TEST/STAGING OVERRIDE only — production default is auth.openai.com/oauth/token. Leave unset.
+# SHIM_OAUTH_CLIENT_ID=                             # (chatgpt mode) TEST/STAGING OVERRIDE only — production default is the codex first-party client_id. Leave unset.
+#
 # Troubleshooting (inside the container):
 #   bash /daaf/scripts/provider_shim/start_shim.sh --status
 #   cat /daaf/scripts/provider_shim/logs/shim.log

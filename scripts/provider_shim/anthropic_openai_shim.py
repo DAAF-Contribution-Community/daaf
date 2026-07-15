@@ -63,6 +63,79 @@
 #   * GET /health endpoint for the manager's idempotency/status checks.
 #
 # Changelog:
+#   v1.2.5 (2026-07-15): ChatGPT-subscription (Codex) backend lane. A new
+#     SHIM_BACKEND_MODE env knob (default "openai") adds a mode-switched second
+#     backend lane, "chatgpt", that routes Claude Code through the ChatGPT
+#     subscription's Codex Responses backend
+#     (POST https://chatgpt.com/backend-api/codex/responses) using the OAuth
+#     access_token from $CODEX_HOME/auth.json as the Bearer — NO api.openai.com
+#     API key. The api.openai.com API-key lane ("openai") keeps working unchanged;
+#     the two lanes diverge in auth + base URL and ONE small body delta (below).
+#     The proven v1.2.0+ Responses translator (tools, SSE, reasoning cache,
+#     sanitizer, retry, diagnostics, count_tokens calibration) is REUSED UNCHANGED —
+#     the chatgpt lane forks nothing in the translator's structure.
+#     BODY DELTA (live-observed, smoke 30, 2026-07-15): the Codex backend REJECTS
+#       max_output_tokens with a verbatim 400 "Unsupported parameter:
+#       max_output_tokens" (it is not in the notes/08 body floor), whereas the
+#       api.openai.com lane requires/accepts it. So max_output_tokens is emitted
+#       (clamped to >=16) in openai mode and OMITTED entirely in chatgpt mode; the
+#       Codex backend applies its own output ceiling. The inbound max_tokens contract
+#       is untouched (still read from the client).
+#     WHY the backend needs almost nothing (notes/08, 7 live ablation requests):
+#       chatgpt.com/backend-api/codex/responses gates on a valid OAuth Bearer and
+#       nothing else. ALL codex telemetry/fingerprint (x-codex-*, chatgpt-account-id,
+#       originator, user-agent, client_metadata, prompt_cache_key) is IGNORED; the
+#       backend accepts a STANDARD top-level Responses `tools` array (auto-upgrades
+#       strict:false->true) and returns STANDARD Responses SSE. So chatgpt mode emits
+#       ONLY the 3-header floor: authorization (Bearer <access_token>),
+#       content-type: application/json, accept: text/event-stream.
+#     TOKEN LAYER (the only genuinely new component; notes/09 + notes/10, live-
+#       verified): the access_token TTL is ~10 days, so within any DAAF session the
+#       shim refreshes ~never — it is read-mostly. It decodes the access_token JWT
+#       PAYLOAD ONLY (never the signature) for the `exp` claim and refreshes only
+#       when exp is within a 30-min safety margin OR on a backend 401 (lazy).
+#       Refresh = POST https://auth.openai.com/oauth/token with
+#       client_id=app_EMoamEEZ73f0CkXaXp7hrann, grant_type=refresh_token. The
+#       refresh_token ROTATES on every refresh (consuming a stale one -> permanent
+#       refresh_token_reused lockout), so the new tokens MUST be persisted. Persist
+#       is ATOMIC (temp file in the same dir -> chmod 0600 -> os.replace()),
+#       preserving OPENAI_API_KEY/auth_mode/tokens.account_id and writing
+#       last_refresh in codex's exact format (RFC3339 UTC, 9-digit nanosecond
+#       fractional seconds, trailing Z — Python gives 6 digits, zero-padded to 9).
+#       Before refreshing, the shim does a GUARDED reload-before-refresh (mirror
+#       codex manager.rs:2388): re-read auth.json; if the on-disk access_token's exp
+#       is newer than the one held, adopt it and SKIP the refresh (another writer
+#       beat us to it). Own refreshes are serialized with an in-process asyncio.Lock.
+#       A permanent refresh failure fast-fails with an actionable re-login message
+#       ("run 'codex login --device-auth' inside the container to re-authenticate")
+#       rather than spinning. The refresh response is deserialized LENIENTLY —
+#       undocumented fields (earliest_refresh_at, oai_is) are tolerated/ignored;
+#       earliest_refresh_at is NOT honored for scheduling (the shim keys on the live
+#       exp claim).
+#     CREDENTIAL SAFETY: no token value (access_token, refresh_token, id_token, the
+#       JWT, the Bearer, or OPENAI_API_KEY) is ever logged/printed/echoed. Writing
+#       token values INTO auth.json (0600) is the intended credential-store
+#       operation, not a leak. The _diag_headers Authorization exclusion invariant is
+#       preserved. Presence is checked with `if not tok:` guards, never by printing.
+#     HEALTH/LOG (cycle 1, uncommitted — no version bump): four adjudicated
+#       cleanups. (a) The OAuth refresh POST gets a DEDICATED short timeout (10s
+#       connect / 30s read) instead of the shared _client's 600s read window, so a
+#       hung auth.openai.com cannot hold _token_refresh_lock (and block concurrent
+#       chatgpt-lane requests) for up to 600s; httpx timeout -> the existing clean
+#       RuntimeError(_RELOGIN_MSG). (b) The two OAuth test/staging override env vars
+#       (SHIM_OAUTH_TOKEN_URL, SHIM_OAUTH_CLIENT_ID) are now documented in the Config
+#       block here and in start_shim.sh (production leaves them unset -> hardcoded
+#       codex defaults). (c) codex_home_present is now HONEST — it reflects actual
+#       auth.json readability (os.access R_OK), not merely CODEX_HOME being set,
+#       matching the "resolvable auth.json" docstring; applied to BOTH /health and
+#       the startup log field so they agree. Still a presence-only boolean (no
+#       path/secret leak).
+#     HEALTH/LOG: /health and the startup log gain backend_mode and a
+#       codex_home_present boolean (no secret/path leak). SHIM_VERSION -> 1.2.5.
+#     All v1.2.4 invariants preserved untouched (verbosity resolver, four-tier
+#     effort resolver, suffix strip, tool-arg scrubber, reasoning cache, store:false,
+#     retry/backoff, backend-error diagnostics, count_tokens calibration, the
+#     max_output_tokens floor).
 #   v1.2.4 (2026-07-12): Response verbosity control via a new SHIM_TEXT_VERBOSITY
 #     env knob (default "high"), user-approved. The outbound /v1/responses payload
 #     now ALWAYS carries text:{"verbosity": V}. V resolves once at startup from
@@ -224,8 +297,55 @@
 #
 # Config (all via env):
 #   SHIM_PORT               default 4141
-#   SHIM_BACKEND_BASE_URL   default https://api.openai.com/v1
-#   SHIM_BACKEND_API_KEY    default: value of OPENAI_API_KEY
+#   SHIM_BACKEND_MODE       backend lane selector (v1.2.5). "openai" (default) |
+#                           "chatgpt". Read once at startup (case-insensitive,
+#                           whitespace-trimmed). An unknown value logs ONE startup
+#                           WARNING and falls back to "openai".
+#                             * openai  — api.openai.com/v1 API-key lane (the
+#                               original, unchanged). Auth = Bearer of
+#                               SHIM_BACKEND_API_KEY (from env); default base URL
+#                               https://api.openai.com/v1.
+#                             * chatgpt — ChatGPT-subscription Codex backend lane.
+#                               Routes to https://chatgpt.com/backend-api/codex
+#                               (default; still overridable via SHIM_BACKEND_BASE_URL).
+#                               Auth = Bearer of the OAuth access_token read from
+#                               $CODEX_HOME/auth.json (NOT an API key); the outbound
+#                               request emits ONLY the 3-header floor (authorization,
+#                               content-type: application/json, accept:
+#                               text/event-stream) — the backend gates on nothing
+#                               else (notes/08). REQUIRES CODEX_HOME set and a
+#                               readable auth.json; if either is missing the shim
+#                               fails fast with the re-login message rather than
+#                               inventing a default path. The request BODY, tools,
+#                               and SSE handling are IDENTICAL to the openai lane —
+#                               the proven v1.2.0+ Responses translator is reused
+#                               unchanged; only auth + base URL differ.
+#   SHIM_BACKEND_BASE_URL   default depends on SHIM_BACKEND_MODE: openai ->
+#                           https://api.openai.com/v1; chatgpt ->
+#                           https://chatgpt.com/backend-api/codex. An explicit env
+#                           value overrides the mode default in either lane. The
+#                           Responses endpoint is always {base}/responses.
+#   SHIM_BACKEND_API_KEY    default: value of OPENAI_API_KEY. Used only in openai
+#                           mode; ignored in chatgpt mode (the OAuth access_token
+#                           is the Bearer there).
+#   CODEX_HOME              (chatgpt mode only) directory holding auth.json (the
+#                           codex OAuth token store, mode 0600). Compose sets it to
+#                           /home/appuser/.claude/codex-daaf. In chatgpt mode the
+#                           shim reads $CODEX_HOME/auth.json for the access_token
+#                           and refreshes it in place when near expiry or on a 401.
+#                           Never logged as a path-of-secrets; /health reports only
+#                           a codex_home_present boolean (True iff auth.json is
+#                           readable).
+#   SHIM_OAUTH_TOKEN_URL    (chatgpt mode only) TEST/STAGING OVERRIDE for the OAuth
+#                           token endpoint. Default (production) is the hardcoded
+#                           https://auth.openai.com/oauth/token. Set only to point
+#                           the refresh POST at a mock/staging token endpoint (the
+#                           mock rig uses this); leave unset in production.
+#   SHIM_OAUTH_CLIENT_ID    (chatgpt mode only) TEST/STAGING OVERRIDE for the OAuth
+#                           client_id sent on refresh. Default (production) is the
+#                           hardcoded codex first-party client_id. Set only for a
+#                           mock/staging token endpoint that expects a different
+#                           client_id; leave unset in production.
 #   SHIM_STRIP_MODEL_PREFIX default "" (e.g. "openai/" to strip for api.openai.com)
 #   SHIM_SANITIZE_TOOLS     default ON ("0"/"false"/"no" to disable). Strips
 #                           known GPT "fill-every-optional" tool-call quirks
@@ -286,19 +406,64 @@ import httpx
 import uvicorn
 
 # --- Config ---
-SHIM_VERSION = "1.2.4"
+SHIM_VERSION = "1.2.5"
 
 SHIM_PORT = int(os.environ.get("SHIM_PORT", "4141"))
-# HARDENING: default backend is api.openai.com/v1 (the production target). Live
-# re-validation overrides this via SHIM_BACKEND_BASE_URL. The Responses endpoint
-# is {SHIM_BACKEND_BASE_URL}/responses (assembled in _handle_messages).
+
+# v1.2.5: backend lane selector. "openai" (default) drives the api.openai.com
+# API-key lane unchanged; "chatgpt" drives the ChatGPT-subscription Codex backend
+# with an OAuth Bearer read from $CODEX_HOME/auth.json.
+# INTENT: pick the lane ONCE at startup so the hot request path just reads a
+#   constant and branches auth/base-URL, never re-parses env.
+# REASONING: an unknown value must not silently route to a surprising backend;
+#   we degrade to the safe, original "openai" default with ONE startup WARNING
+#   (parity with the verbosity resolver's invalid-value posture). The WARNING is
+#   emitted after `log` exists (see the deferred warning below), because config is
+#   read before logging is configured.
+# ASSUMES: the two lanes are the only valid values (notes/08 — chatgpt is a lean
+#   impersonation = existing translator + base-URL swap + Bearer-from-auth.json).
+_BACKEND_MODE_SUPPORTED = frozenset({"openai", "chatgpt"})
+_BACKEND_MODE_DEFAULT = "openai"
+_raw_backend_mode = os.environ.get("SHIM_BACKEND_MODE", _BACKEND_MODE_DEFAULT)
+_backend_mode_norm = (_raw_backend_mode or "").strip().lower()
+if _backend_mode_norm in _BACKEND_MODE_SUPPORTED:
+    SHIM_BACKEND_MODE = _backend_mode_norm
+    _backend_mode_warn = None
+else:
+    SHIM_BACKEND_MODE = _BACKEND_MODE_DEFAULT
+    # Deferred: `log` is configured further down. Stash the message and emit it
+    # once logging exists so the operator sees the misconfiguration.
+    _backend_mode_warn = (
+        "SHIM_BACKEND_MODE %r invalid (valid: openai|chatgpt); "
+        "falling back to default %r" % (_raw_backend_mode, _BACKEND_MODE_DEFAULT)
+    )
+
+# HARDENING: the backend base URL default is MODE-CONDITIONAL. openai ->
+# api.openai.com/v1 (the original production target); chatgpt -> the Codex backend
+# (notes/08). An explicit SHIM_BACKEND_BASE_URL env value overrides the mode
+# default in EITHER lane. The Responses endpoint is always {base}/responses
+# (assembled in _handle_messages) — the /responses suffix assembly is unchanged.
+_BACKEND_BASE_URL_DEFAULTS = {
+    "openai": "https://api.openai.com/v1",
+    "chatgpt": "https://chatgpt.com/backend-api/codex",
+}
 SHIM_BACKEND_BASE_URL = os.environ.get(
-    "SHIM_BACKEND_BASE_URL", "https://api.openai.com/v1"
+    "SHIM_BACKEND_BASE_URL", _BACKEND_BASE_URL_DEFAULTS[SHIM_BACKEND_MODE]
 ).rstrip("/")
-# API key is read from env and never logged. Default to OPENAI_API_KEY.
+# API key is read from env and never logged. Default to OPENAI_API_KEY. Used only
+# in openai mode; in chatgpt mode the OAuth access_token (from auth.json) is the
+# Bearer and this value is ignored.
 SHIM_BACKEND_API_KEY = os.environ.get("SHIM_BACKEND_API_KEY") or os.environ.get(
     "OPENAI_API_KEY", ""
 )
+
+# v1.2.5: chatgpt-lane token store. CODEX_HOME points at the directory holding
+# auth.json (the codex OAuth token store, mode 0600). Resolved to a path here;
+# validated at first use (or fail-fast) in chatgpt mode. In openai mode this is
+# unused. We do NOT invent a default path in chatgpt mode — a missing CODEX_HOME
+# is a hard, actionable error, not a silent fallback (notes/09 F).
+CODEX_HOME = os.environ.get("CODEX_HOME", "").strip() or None
+_CODEX_AUTH_PATH = os.path.join(CODEX_HOME, "auth.json") if CODEX_HOME else None
 SHIM_STRIP_MODEL_PREFIX = os.environ.get("SHIM_STRIP_MODEL_PREFIX", "")
 # Tool-argument sanitization (2026-07-10). Default ON. Set SHIM_SANITIZE_TOOLS=0
 # to disable — REQUIRED when benchmarking shim-routed models. Read once at
@@ -514,6 +679,12 @@ logging.basicConfig(
 )
 log = logging.getLogger("shim")
 
+# v1.2.5: emit the deferred SHIM_BACKEND_MODE warning now that `log` exists (the
+# value was resolved above, before logging was configured). Fires ONCE for an
+# invalid value; silent for a valid one.
+if _backend_mode_warn is not None:
+    log.warning(_backend_mode_warn)
+
 # v1.2.4: resolve the process-wide response verbosity now that `log` exists (the
 # resolver emits its one WARNING via `log` for an invalid value). Read once at
 # startup; the hot path just reads this constant into text:{"verbosity": ...}.
@@ -521,6 +692,298 @@ SHIM_TEXT_VERBOSITY = _resolve_startup_verbosity()
 
 # Shared async client (connection pooling; long read timeout for slow models).
 _client = httpx.AsyncClient(timeout=httpx.Timeout(600.0, connect=30.0))
+
+
+# --- v1.2.5: ChatGPT-subscription OAuth token layer (chatgpt mode ONLY) ---
+# INTENT: in chatgpt mode the Bearer is the OAuth access_token from
+#   $CODEX_HOME/auth.json, not an api.openai.com API key. The access_token TTL is
+#   ~10 days (notes/09 A), so within any DAAF session the shim refreshes ~never:
+#   this layer is READ-MOSTLY. It reads the access_token, sends it as Bearer, and
+#   refreshes ONLY when the JWT `exp` is within a 30-min safety margin OR on a
+#   backend 401 (lazy). Refresh rotates the refresh_token (notes/10) and MUST
+#   persist atomically; a guarded reload-before-refresh (notes/09 B2, codex
+#   manager.rs:2388) skips the refresh when another writer already produced a
+#   newer on-disk token. All own-refreshes are serialized by an asyncio.Lock.
+# CREDENTIAL SAFETY: no token value is ever logged. Writing token values INTO
+#   auth.json (0600) is the intended credential-store operation, not a leak.
+#   Presence is checked with `if not tok:` guards, never by printing.
+
+# OAuth refresh endpoint + client_id (first-party, notes/09 B). Both are the codex
+# constants; env-overridable purely for testing (the mock rig points them at a
+# local mock token endpoint). Real production leaves them unset -> these defaults.
+_OAUTH_TOKEN_URL = os.environ.get(
+    "SHIM_OAUTH_TOKEN_URL", "https://auth.openai.com/oauth/token"
+)
+_OAUTH_CLIENT_ID = os.environ.get(
+    "SHIM_OAUTH_CLIENT_ID", "app_EMoamEEZ73f0CkXaXp7hrann"
+)
+# Refresh when the access_token is within this many seconds of its `exp` (notes/09
+# F: 30-min safety margin — deliberately wider than codex's 5-min window because a
+# DAAF session is long and a mid-turn expiry is worse than a slightly-early refresh).
+_TOKEN_REFRESH_MARGIN_S = 30 * 60
+# Actionable message surfaced on a permanent refresh failure or a missing/unreadable
+# auth store. No secret content — just the recovery instruction (notes/09 B/F).
+_RELOGIN_MSG = ("ChatGPT OAuth token refresh failed permanently; run "
+                "'codex login --device-auth' inside the container to re-authenticate")
+
+# In-process serialization of our OWN refreshes (the shim is async; concurrent
+# requests must not each fire a refresh). Per-process only — cross-process
+# coordination is the guarded reload-before-refresh below (notes/09 B2).
+_token_refresh_lock = asyncio.Lock()
+# The access_token currently held in memory. Seeded lazily from disk on first use.
+# Value is a secret string; never logged.
+_token_state = {"access_token": None, "exp": None}
+
+
+def _b64url_decode(seg):
+    # INTENT: decode one base64url JWT segment to bytes, tolerating missing padding.
+    # REASONING: JWT segments are base64url WITHOUT padding; urlsafe_b64decode
+    #   requires padding, so pad to a multiple of 4. Never raises to the caller for
+    #   a malformed segment — callers treat a decode failure as "no exp".
+    import base64
+    seg = seg + "=" * (-len(seg) % 4)
+    return base64.urlsafe_b64decode(seg.encode("ascii"))
+
+
+def _jwt_exp(access_token):
+    # INTENT: extract the `exp` (unix seconds) claim from a JWT access_token by
+    #   decoding its PAYLOAD ONLY — the middle segment. The signature is NEVER
+    #   decoded or verified (we are not the token issuer; we only need the expiry
+    #   to decide when to refresh).
+    # REASONING: a JWT is header.payload.signature (base64url). We split on ".",
+    #   decode segment[1], json-parse it, and read "exp". Any structural problem
+    #   (not 3 segments, bad base64, bad JSON, missing/non-numeric exp) yields None,
+    #   which the caller treats as "unknown expiry" (forces a conservative refresh).
+    # CREDENTIAL SAFETY: the token string is handled in-memory only; neither the
+    #   token nor any decoded claim is logged.
+    # ASSUMES: the access_token is a JWT (notes/09: it carries exp + account claims).
+    #   If it is ever opaque (non-JWT), _jwt_exp returns None and the layer refreshes
+    #   conservatively rather than trusting a stale token.
+    if not access_token or not isinstance(access_token, str):
+        return None
+    parts = access_token.split(".")
+    if len(parts) != 3:
+        return None
+    try:
+        payload = json.loads(_b64url_decode(parts[1]))
+    except Exception:
+        return None
+    exp = payload.get("exp")
+    if isinstance(exp, (int, float)) and exp == exp:  # exp==exp rejects NaN
+        return int(exp)
+    return None
+
+
+def _read_auth_json():
+    # INTENT: read and parse $CODEX_HOME/auth.json, returning the parsed dict.
+    # REASONING: chatgpt mode REQUIRES a resolvable auth store. A missing
+    #   CODEX_HOME, a missing file, or unparseable JSON is a hard, actionable error
+    #   (raise RuntimeError with the re-login message) — we NEVER invent a default
+    #   path or a synthetic token (notes/09 F).
+    # CREDENTIAL SAFETY: the returned dict CONTAINS token values; callers must not
+    #   log it. The error message carries no secret content.
+    if not _CODEX_AUTH_PATH:
+        raise RuntimeError(
+            "CODEX_HOME is not set; chatgpt backend mode requires an auth store. "
+            + _RELOGIN_MSG)
+    try:
+        with open(_CODEX_AUTH_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError) as e:
+        # OSError = missing/unreadable; ValueError = malformed JSON. Do NOT echo the
+        # file body — only the exception TYPE and the recovery instruction.
+        raise RuntimeError(
+            "cannot read auth.json (%s); %s" % (type(e).__name__, _RELOGIN_MSG))
+    if not isinstance(data, dict) or not isinstance(data.get("tokens"), dict):
+        raise RuntimeError("auth.json missing 'tokens'; " + _RELOGIN_MSG)
+    return data
+
+
+def _codex_last_refresh_now():
+    # INTENT: produce a `last_refresh` timestamp string matching codex's EXACT
+    #   format so an external codex reload treats our write as well-formed.
+    # REASONING: codex writes RFC3339 UTC with 9-digit (nanosecond) fractional
+    #   seconds + trailing "Z" (chrono's DateTime<Utc>::to_rfc3339() default,
+    #   notes/10). Python's datetime sources only microseconds (6 digits), so we
+    #   format to microseconds and zero-pad the fractional field to 9 digits.
+    # ASSUMES: nanosecond-precision beyond microseconds is not required for
+    #   correctness — codex only parses the field; the padding matches its STRING
+    #   shape (notes/10 wrote 2026-07-15T00:46:57.074803000Z this exact way).
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    # e.g. 2026-07-15T00:46:57.074803 -> pad microseconds (6) to nanoseconds (9).
+    return now.strftime("%Y-%m-%dT%H:%M:%S.") + ("%06d000" % now.microsecond) + "Z"
+
+
+def _atomic_write_auth_json(new_data):
+    # INTENT: persist the updated auth.json ATOMICALLY, mode 0600, in the SAME
+    #   directory as the real file (same-fs rename requirement for os.replace).
+    # REASONING: temp file in the same dir -> chmod 0600 on the temp -> os.replace()
+    #   (atomic same-fs rename). This fixes the torn-write hazard codex itself has
+    #   (notes/09 B2) — a reader never sees a partial file. Live-validated write
+    #   path (notes/10). The temp is uniquely named to avoid colliding with a
+    #   concurrent writer's temp.
+    # CREDENTIAL SAFETY: writing token values into the 0600 store is the INTENDED
+    #   operation, not a leak. Nothing is logged here.
+    import tempfile
+    d = os.path.dirname(_CODEX_AUTH_PATH)
+    fd, tmp = tempfile.mkstemp(prefix=".auth.json.tmp.", dir=d)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(new_data, f)
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, _CODEX_AUTH_PATH)  # atomic same-fs rename
+    except Exception:
+        # Best-effort cleanup of the temp on any failure so we never leave a
+        # partial credential file behind.
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+async def _refresh_tokens(current):
+    # INTENT: exchange the current refresh_token for a fresh token set, persist the
+    #   rotated tokens atomically, and update in-memory state. Returns the new
+    #   access_token.
+    # REASONING: POST _OAUTH_TOKEN_URL with client_id + grant_type=refresh_token +
+    #   the current refresh_token. On HTTP 200 the response carries a ROTATED
+    #   refresh_token (notes/10) plus new access_token/id_token; we MUST persist the
+    #   rotation or a later reuse of the consumed refresh_token triggers a permanent
+    #   refresh_token_reused lockout (notes/09 B). Deserialize LENIENTLY — the live
+    #   response also carries undocumented fields (earliest_refresh_at, oai_is) that
+    #   we tolerate/ignore (notes/10). We do NOT honor earliest_refresh_at for
+    #   scheduling; the shim keys refresh decisions on the live JWT `exp` claim.
+    # FAST-FAIL: a non-200, or a 200 missing access_token, is a permanent failure
+    #   for this session — raise RuntimeError(_RELOGIN_MSG). We do NOT spin.
+    # CREDENTIAL SAFETY: the refresh_token/access_token/id_token are handled
+    #   in-memory and written into auth.json only; never logged. The request body
+    #   contains the refresh_token — httpx does not log bodies, and we never print it.
+    tokens = current.get("tokens") or {}
+    refresh_token = tokens.get("refresh_token")
+    if not refresh_token:
+        raise RuntimeError("auth.json has no refresh_token; " + _RELOGIN_MSG)
+    payload = {
+        "client_id": _OAUTH_CLIENT_ID,
+        "grant_type": "refresh_token",
+        "refresh_token": refresh_token,
+    }
+    try:
+        # TIMEOUT: this single OAuth POST gets a DEDICATED short timeout, NOT the
+        #   shared _client's 600s read window.
+        # REASONING: _refresh_tokens runs inside _token_refresh_lock; a hung
+        #   auth.openai.com would otherwise hold that lock for up to 600s and stall
+        #   every concurrent chatgpt-lane request behind it. The OAuth token
+        #   endpoint is a fast, small JSON exchange — 10s connect / 30s read is
+        #   generous for it while capping the worst-case lock hold. On timeout httpx
+        #   raises httpx.HTTPError (TimeoutException is a subclass), which the
+        #   existing except-clause converts to a clean RuntimeError(_RELOGIN_MSG),
+        #   releasing the lock via the `async with` in _get_access_token.
+        r = await _client.post(_OAUTH_TOKEN_URL, json=payload,
+                               headers={"Content-Type": "application/json"},
+                               timeout=httpx.Timeout(30.0, connect=10.0))
+    except httpx.HTTPError as e:
+        # A transport error is not necessarily permanent, but we do not retry-spin
+        # a refresh (rare path); surface it as a clean failure for this attempt.
+        raise RuntimeError("token refresh transport error (%s); %s"
+                           % (type(e).__name__, _RELOGIN_MSG))
+    if r.status_code != 200:
+        # Permanent: refresh_token_reused, invalid_grant, etc. Do NOT log the body
+        # (may echo token fragments); log only the status.
+        log.error("token refresh failed status=%d (permanent); %s",
+                  r.status_code, _RELOGIN_MSG)
+        raise RuntimeError(_RELOGIN_MSG)
+    try:
+        resp = r.json()
+    except ValueError:
+        raise RuntimeError("token refresh returned non-JSON; " + _RELOGIN_MSG)
+    new_access = resp.get("access_token")
+    new_refresh = resp.get("refresh_token")   # ROTATED — differs from the input
+    new_id = resp.get("id_token")
+    if not new_access:
+        raise RuntimeError("token refresh response missing access_token; " + _RELOGIN_MSG)
+
+    # Build the new auth.json preserving the fields codex owns, updating only the
+    # rotated tokens + last_refresh. Lenient: unknown response fields are ignored.
+    new_data = dict(current)  # shallow copy preserves OPENAI_API_KEY/auth_mode/etc.
+    new_tokens = dict(tokens)  # preserves tokens.account_id (not returned by refresh)
+    new_tokens["access_token"] = new_access
+    if new_refresh:
+        new_tokens["refresh_token"] = new_refresh
+    if new_id:
+        new_tokens["id_token"] = new_id
+    new_data["tokens"] = new_tokens
+    new_data["last_refresh"] = _codex_last_refresh_now()
+    _atomic_write_auth_json(new_data)
+
+    _token_state["access_token"] = new_access
+    _token_state["exp"] = _jwt_exp(new_access)
+    # SAFETY: log ONLY the fact of a refresh and the new expiry (a unix ts / ISO is
+    # NOT a secret); never the token itself.
+    log.info("chatgpt token refreshed (new exp=%s)", _token_state["exp"])
+    return new_access
+
+
+async def _get_access_token(force_refresh=False, rejected_token=None):
+    # INTENT: return a currently-valid access_token for the chatgpt-lane Bearer.
+    #   Refresh (guarded reload -> POST -> rotate -> atomic persist) only when the
+    #   token is within _TOKEN_REFRESH_MARGIN_S of exp, OR when force_refresh is set
+    #   (the lazy-401 path forces one refresh regardless of exp).
+    # REASONING (read-mostly): the common path reads auth.json (or the cached
+    #   in-memory token), checks exp, and returns the Bearer with NO network call —
+    #   the ~10-day TTL means this is the path ~always taken. Only near-expiry or a
+    #   401 triggers the refresh branch, which is serialized by _token_refresh_lock.
+    # GUARDED RELOAD-BEFORE-REFRESH (notes/09 B2, codex manager.rs:2388): inside the
+    #   lock we re-read auth.json; if another writer (codex CLI/plugin) already
+    #   rotated the on-disk token, adopt it and SKIP our own refresh — this avoids
+    #   consuming (and rotating away) a refresh_token another process just replaced.
+    #   The comparison differs by path (see below): the proactive path keys on exp
+    #   margin; the lazy-401 path keys on TOKEN IDENTITY vs. the rejected token,
+    #   because a 401'd token can still be far from its nominal exp (it was rejected
+    #   server-side, so exp margin cannot decide whether a refresh is needed).
+    # CREDENTIAL SAFETY: token values live in memory / auth.json only; never logged.
+    now = time.time()
+
+    # Fast path (no lock): a cached in-memory token that is comfortably valid and no
+    # forced refresh -> return it directly.
+    if not force_refresh:
+        cached = _token_state["access_token"]
+        cached_exp = _token_state["exp"]
+        if cached and cached_exp is not None and cached_exp - now > _TOKEN_REFRESH_MARGIN_S:
+            return cached
+
+    async with _token_refresh_lock:
+        # Re-read from disk under the lock (this IS the guarded reload). This picks
+        # up any external writer's refresh and is the authoritative current state.
+        current = _read_auth_json()
+        disk_access = (current.get("tokens") or {}).get("access_token")
+        disk_exp = _jwt_exp(disk_access)
+
+        # Adopt the on-disk token into memory (it is at least as fresh as ours).
+        if disk_access:
+            _token_state["access_token"] = disk_access
+            _token_state["exp"] = disk_exp
+
+        if force_refresh:
+            # Lazy-401 path. Guarded reload by TOKEN IDENTITY (not exp margin): if the
+            # on-disk token DIFFERS from the token the backend just rejected, another
+            # writer already rotated it — adopt it and skip our refresh, retrying with
+            # the fresh on-disk token first. If the on-disk token is the SAME one that
+            # got 401'd (the common single-writer case), we MUST refresh — its exp
+            # margin is irrelevant because the server has already rejected it.
+            if (disk_access and rejected_token is not None
+                    and disk_access != rejected_token):
+                log.info("chatgpt 401 refresh skipped: on-disk token rotated by another writer (guarded reload)")
+                return disk_access
+            return await _refresh_tokens(current)
+
+        # Proactive path: refresh only if the (authoritative on-disk) token is
+        # missing or within the safety margin of exp.
+        if disk_access and disk_exp is not None and disk_exp - now > _TOKEN_REFRESH_MARGIN_S:
+            # Guarded reload already adopted a fresh on-disk token — no refresh.
+            return disk_access
+        return await _refresh_tokens(current)
 
 
 # --- Helpers: request translation (Anthropic -> OpenAI Responses) ---
@@ -906,7 +1369,18 @@ def _anthropic_to_responses_request(body, bare_model, slug_effort_raw):
     #   such — observed behavior, not a spec'd contract). Clamping the outbound
     #   floor to 16 (OpenAI's documented minimum, quoted above) lets the probe
     #   succeed without altering any legitimate larger ceiling.
-    if body.get("max_tokens") is not None:
+    # v1.2.5: the Codex (chatgpt-lane) backend REJECTS max_output_tokens with a
+    # verbatim 400 "Unsupported parameter: max_output_tokens" (live-observed
+    # 2026-07-15, smoke 30) — it is NOT in the notes/08 ablation body floor. The
+    # api.openai.com (openai-lane) backend REQUIRES/accepts it (v1.2.3 FIX 2 clamp).
+    # So the field is lane-conditional: emit it (clamped) in openai mode; OMIT it
+    # entirely in chatgpt mode. The client's max_tokens contract is untouched — we
+    # still read it; in chatgpt mode the backend applies its own output ceiling.
+    # ASSUMES: dropping the ceiling in chatgpt mode is acceptable — real Claude Code
+    #   sessions send max_tokens=32000 (a soft cap, not a truncation goal), and the
+    #   Codex backend enforces its own limits. If a hard client-side ceiling is ever
+    #   needed on this lane, it must be expressed via a parameter the backend accepts.
+    if body.get("max_tokens") is not None and SHIM_BACKEND_MODE != "chatgpt":
         payload["max_output_tokens"] = max(16, body["max_tokens"])
 
     # temperature and top_p: DROPPED UNCONDITIONALLY — never forwarded.
@@ -1359,6 +1833,45 @@ async def _send_json(send, status, obj, extra_headers=None):
     await send({"type": "http.response.body", "body": payload})
 
 
+def _bearer_of(headers):
+    # INTENT: extract the raw token from an already-built header dict's
+    #   authorization/Authorization Bearer, for the lazy-401 guarded-reload identity
+    #   check. Returns the token string or None. Never logged.
+    if not isinstance(headers, dict):
+        return None
+    val = headers.get("authorization") or headers.get("Authorization") or ""
+    if isinstance(val, str) and val.startswith("Bearer "):
+        return val[len("Bearer "):]
+    return None
+
+
+async def _build_backend_headers(force_token_refresh=False, rejected_token=None):
+    # v1.2.5: assemble the backend request headers for the active lane.
+    # INTENT: openai mode -> {Authorization: Bearer <env key>, Content-Type}. chatgpt
+    #   mode -> the 3-header floor {authorization: Bearer <access_token>,
+    #   content-type: application/json, accept: text/event-stream} the Codex backend
+    #   gates on (notes/08); NO api-key/openai-specific headers.
+    # REASONING: keeping this in one helper means the lazy-401 retry path can rebuild
+    #   the headers (with force_token_refresh=True + the rejected token for the
+    #   guarded-reload identity check) identically to the first attempt.
+    # CREDENTIAL SAFETY: returns a dict CONTAINING the Bearer; callers must never log
+    #   it. In chatgpt mode a token-layer failure raises RuntimeError(_RELOGIN_MSG)
+    #   (no secret content) for the caller to surface as a clean client error.
+    if SHIM_BACKEND_MODE == "chatgpt":
+        access_token = await _get_access_token(
+            force_refresh=force_token_refresh, rejected_token=rejected_token)
+        return {
+            "authorization": f"Bearer {access_token}",
+            "content-type": "application/json",
+            "accept": "text/event-stream",
+        }
+    # openai mode (unchanged behavior).
+    return {
+        "Authorization": f"Bearer {SHIM_BACKEND_API_KEY}",
+        "Content-Type": "application/json",
+    }
+
+
 async def _handle_messages(body, receive, send):
     t0 = time.time()
 
@@ -1399,10 +1912,27 @@ async def _handle_messages(body, receive, send):
     n_msgs = len(responses_payload["input"])
     n_tools = len(responses_payload.get("tools", []))
 
-    headers = {
-        "Authorization": f"Bearer {SHIM_BACKEND_API_KEY}",
-        "Content-Type": "application/json",
-    }
+    # v1.2.5: build the backend auth headers by lane.
+    # INTENT: in openai mode, Bearer the env API key (unchanged). In chatgpt mode,
+    #   Bearer the OAuth access_token from auth.json and emit ONLY the 3-header floor
+    #   the Codex backend gates on (notes/08). The request BODY/tools/SSE handling is
+    #   IDENTICAL across lanes — only these headers diverge.
+    # CREDENTIAL SAFETY: the token/key are placed into the header dict (which is
+    #   never logged — _diag_headers is allowlist-only and excludes Authorization)
+    #   but never printed. A token-layer failure surfaces as a clean client error
+    #   with the re-login message, no secret content.
+    # NOTE: build headers BEFORE the disconnect watcher is spawned below, so a
+    # fail-fast auth error returns without needing to tear down a watcher.
+    try:
+        headers = await _build_backend_headers()
+    except RuntimeError as e:
+        # chatgpt-mode auth store missing/unreadable, or a permanent refresh
+        # failure at header-build time. Fail fast with the actionable message; no
+        # token value in the error (RuntimeError text is the re-login instruction).
+        log.error("chatgpt auth unavailable: %s", str(e))
+        await _send_json(send, 401, {"type": "error", "error": {
+            "type": "authentication_error", "message": str(e)}})
+        return
     url = f"{SHIM_BACKEND_BASE_URL}/responses"
 
     watcher = asyncio.ensure_future(_watch_disconnect())
@@ -1416,6 +1946,35 @@ async def _handle_messages(body, receive, send):
                 log.error("messages non-stream transport error: %s", type(e).__name__)
                 await _send_json(send, 502, {"type": "error", "error": {"type": "api_error", "message": "backend transport error"}})
                 return
+            # v1.2.5: lazy-401 refresh (chatgpt lane only). A 401 from the Codex
+            # backend means the access_token expired between our exp check and the
+            # request; refresh ONCE, rebuild the Authorization header, and retry the
+            # request a single time. A second 401 -> surface the fast-fail re-login
+            # message. openai mode is untouched (SHIM_BACKEND_MODE guard).
+            if SHIM_BACKEND_MODE == "chatgpt" and r.status_code == 401:
+                await r.aclose()
+                log.warning("chatgpt backend 401; attempting one token refresh + retry")
+                _rejected = _bearer_of(headers)
+                try:
+                    headers = await _build_backend_headers(
+                        force_token_refresh=True, rejected_token=_rejected)
+                except RuntimeError as e:
+                    log.error("chatgpt lazy-401 refresh failed: %s", str(e))
+                    await _send_json(send, 401, {"type": "error", "error": {
+                        "type": "authentication_error", "message": str(e)}})
+                    return
+                try:
+                    r, retries = await _post_with_retry(url, headers, responses_payload, _is_disconnected)
+                except httpx.HTTPError as e:
+                    log.error("messages non-stream transport error (post-refresh): %s", type(e).__name__)
+                    await _send_json(send, 502, {"type": "error", "error": {"type": "api_error", "message": "backend transport error"}})
+                    return
+                if r.status_code == 401:
+                    log.error("chatgpt backend still 401 after refresh; %s", _RELOGIN_MSG)
+                    await r.aclose()
+                    await _send_json(send, 401, {"type": "error", "error": {
+                        "type": "authentication_error", "message": _RELOGIN_MSG}})
+                    return
             if r.status_code >= 400:
                 # v1.1.1/1.1.2: log a scrubbed, truncated backend body + allowlisted
                 # diagnostic headers so the operator can distinguish failure classes.
@@ -1535,12 +2094,38 @@ async def _handle_messages(body, receive, send):
         # a partially-streamed response cannot be safely restarted.
         resp = None
         stream_cm = None
+        # v1.2.5: guard so the chatgpt lazy-401 refresh fires at most once per
+        # stream connect. A 401 before any client bytes are on the wire is safe to
+        # refresh + reconnect (message_start has NOT been emitted yet).
+        did_401_refresh = False
         for attempt in range(MAX_RETRIES + 1):
             if disconnected["flag"]:
                 log.info("client disconnected before stream start; aborting")
                 return
             stream_cm = _client.stream("POST", url, headers=headers, json=responses_payload)
             resp = await stream_cm.__aenter__()
+            # v1.2.5: lazy-401 (chatgpt lane). A 401 here means the access_token
+            # expired between our exp check and this connect. Refresh ONCE, rebuild
+            # the Authorization header, tear down this attempt, and reconnect — all
+            # BEFORE http.response.start, so the client has seen no bytes. A second
+            # 401 falls through to the error-stream branch with the re-login message.
+            if (SHIM_BACKEND_MODE == "chatgpt" and resp.status_code == 401
+                    and not did_401_refresh):
+                log.warning("chatgpt backend stream 401; attempting one token refresh + reconnect")
+                await stream_cm.__aexit__(None, None, None)
+                resp = None
+                did_401_refresh = True
+                _rejected = _bearer_of(headers)
+                try:
+                    headers = await _build_backend_headers(
+                        force_token_refresh=True, rejected_token=_rejected)
+                except RuntimeError as e:
+                    # Permanent refresh failure. Emit a clean SSE error stream below
+                    # by leaving resp=None -> the error branch surfaces it. Log the
+                    # actionable message (no secret content).
+                    log.error("chatgpt stream lazy-401 refresh failed: %s", str(e))
+                    break
+                continue
             if resp.status_code in RETRY_STATUSES and attempt < MAX_RETRIES:
                 delay = _retry_delay(attempt, resp.headers.get("retry-after"))
                 # v1.1.1: aread() the deferred body before teardown to log the
@@ -2008,6 +2593,20 @@ async def _handle_health(send):
     await _send_json(send, 200, {
         "status": "ok",
         "backend": SHIM_BACKEND_BASE_URL,
+        "backend_mode": SHIM_BACKEND_MODE,
+        # v1.2.5: presence-only boolean — never the path/contents of the secret
+        # store. True iff chatgpt mode has a READABLE auth.json (openai mode is
+        # trivially True since it does not use CODEX_HOME).
+        # HONEST-BOOLEAN: check actual readability, not merely CODEX_HOME being set.
+        #   bool(_CODEX_AUTH_PATH) is True the moment CODEX_HOME is set even if
+        #   auth.json is absent/unreadable — which contradicts the "resolvable
+        #   auth.json" claim. os.access(path, R_OK) confirms the file exists AND is
+        #   readable without opening it (no secret/content leak, non-crashing:
+        #   returns False for a missing path).
+        "codex_home_present": (
+            _CODEX_AUTH_PATH is not None and os.access(_CODEX_AUTH_PATH, os.R_OK)
+            if SHIM_BACKEND_MODE == "chatgpt" else True
+        ),
         "version": SHIM_VERSION,
         "sanitize_tools": SHIM_SANITIZE_TOOLS,
         "reasoning_effort": SHIM_REASONING_EFFORT,
@@ -2051,10 +2650,16 @@ async def app(scope, receive, send):
 
 # --- Entry point ---
 if __name__ == "__main__":
-    # NOTE: never log the key itself — only whether one is present.
-    log.info("shim v%s starting port=%d backend=%s strip_prefix=%r key_present=%s sanitize_tools=%s reasoning_effort=%s text_verbosity=%s",
-             SHIM_VERSION, SHIM_PORT, SHIM_BACKEND_BASE_URL,
-             SHIM_STRIP_MODEL_PREFIX, bool(SHIM_BACKEND_API_KEY), SHIM_SANITIZE_TOOLS,
-             SHIM_REASONING_EFFORT, SHIM_TEXT_VERBOSITY)
+    # NOTE: never log the key itself — only whether one is present. v1.2.5:
+    # backend_mode + codex_home_present (presence booleans only; no secret/path).
+    # Readability check mirrors /health so the two fields agree (see _handle_health).
+    _codex_present = (
+        _CODEX_AUTH_PATH is not None and os.access(_CODEX_AUTH_PATH, os.R_OK)
+        if SHIM_BACKEND_MODE == "chatgpt" else True
+    )
+    log.info("shim v%s starting port=%d backend_mode=%s backend=%s strip_prefix=%r key_present=%s codex_home_present=%s sanitize_tools=%s reasoning_effort=%s text_verbosity=%s",
+             SHIM_VERSION, SHIM_PORT, SHIM_BACKEND_MODE, SHIM_BACKEND_BASE_URL,
+             SHIM_STRIP_MODEL_PREFIX, bool(SHIM_BACKEND_API_KEY), _codex_present,
+             SHIM_SANITIZE_TOOLS, SHIM_REASONING_EFFORT, SHIM_TEXT_VERBOSITY)
     # log_config=None: keep uvicorn from clobbering our stderr handler.
     uvicorn.run(app, host="127.0.0.1", port=SHIM_PORT, log_level="warning", log_config=None)

@@ -19,8 +19,31 @@
 # Config (env, all optional — defaults mirror the shim's own):
 #   DAAF_PROVIDER_SHIM      activation switch; must equal "openai" to auto-start
 #   SHIM_PORT               default 4141
-#   SHIM_BACKEND_BASE_URL   default https://api.openai.com/v1
-#   SHIM_BACKEND_API_KEY    default: value of OPENAI_API_KEY
+#   SHIM_BACKEND_MODE       backend lane (v1.2.5): "openai" (default) API-key lane,
+#                           or "chatgpt" ChatGPT-subscription Codex lane. In chatgpt
+#                           mode the shim reads the OAuth access_token from
+#                           $CODEX_HOME/auth.json (NOT an API key) and routes to
+#                           https://chatgpt.com/backend-api/codex/responses with the
+#                           3-header floor. REQUIRES CODEX_HOME set + a readable
+#                           auth.json (this manager warns loudly at start if absent;
+#                           the shim itself fails fast per request).
+#   SHIM_BACKEND_BASE_URL   default is mode-conditional: openai ->
+#                           https://api.openai.com/v1; chatgpt ->
+#                           https://chatgpt.com/backend-api/codex. Explicit value
+#                           overrides either default.
+#   SHIM_BACKEND_API_KEY    default: value of OPENAI_API_KEY (openai mode only;
+#                           ignored in chatgpt mode)
+#   CODEX_HOME              (chatgpt mode) directory holding auth.json, the codex
+#                           OAuth token store (mode 0600). Compose sets it to
+#                           /home/appuser/.claude/codex-daaf.
+#   SHIM_OAUTH_TOKEN_URL    (chatgpt mode) TEST/STAGING OVERRIDE only. Production
+#                           default is the hardcoded auth.openai.com/oauth/token;
+#                           set only to point the token refresh at a mock/staging
+#                           endpoint. Leave unset in production.
+#   SHIM_OAUTH_CLIENT_ID    (chatgpt mode) TEST/STAGING OVERRIDE only. Production
+#                           default is the hardcoded codex first-party client_id;
+#                           set only for a mock/staging endpoint expecting a
+#                           different client_id. Leave unset in production.
 #   SHIM_STRIP_MODEL_PREFIX default ""
 #   SHIM_SANITIZE_TOOLS     default "1" (enabled); strips known GPT tool-call
 #                           quirks — set to 0 (and restart the shim) for
@@ -191,6 +214,26 @@ do_start() {
     if ! command -v python3 >/dev/null 2>&1; then
         echo "ERROR: python3 not found on PATH; cannot start shim." >&2
         return 1
+    fi
+
+    # v1.2.5: surface the backend mode, and in chatgpt mode preflight the OAuth
+    # auth store. This is a WARNING, not a hard stop — the shim itself fails fast
+    # per request with the re-login message, and a transient auth.json (e.g. mid
+    # codex login) should not block the manager. But surfacing it here gives the
+    # operator an immediate, actionable signal instead of a per-request 401.
+    local backend_mode="${SHIM_BACKEND_MODE:-openai}"
+    echo "Shim backend mode: ${backend_mode}." >&2
+    if [ "${backend_mode}" = "chatgpt" ]; then
+        if [ -z "${CODEX_HOME:-}" ]; then
+            echo "WARNING: SHIM_BACKEND_MODE=chatgpt but CODEX_HOME is unset." >&2
+            echo "  The shim needs \$CODEX_HOME/auth.json for the OAuth Bearer." >&2
+            echo "  Fix: set CODEX_HOME and run 'codex login --device-auth' inside the container." >&2
+        elif [ ! -r "${CODEX_HOME}/auth.json" ]; then
+            echo "WARNING: chatgpt mode auth store not found/readable at \$CODEX_HOME/auth.json." >&2
+            echo "  Fix: run 'codex login --device-auth' inside the container to authenticate." >&2
+        else
+            echo "chatgpt auth store present at \$CODEX_HOME/auth.json." >&2
+        fi
     fi
 
     # Idempotency: already healthy? Nothing to do.
