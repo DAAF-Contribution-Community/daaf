@@ -100,37 +100,34 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # ============================================
-# Optional dev tooling: in-container test toolchain (DAAF_DEV)
+# Install Codex CLI + optional developer test tooling (DAAF_DEV)
 # ============================================
-# OPT-IN, FRAMEWORK-DEVELOPER-ONLY. Everything in this section is skipped
-# entirely unless DAAF_DEV=1 is passed as a build arg. A framework developer
-# opts in by setting DAAF_DEV=1 in the host-side environment_settings.txt; the
-# install/rebuild scripts bridge that key into the shell environment, and
-# docker-compose.yml forwards it here as `--build-arg DAAF_DEV=${DAAF_DEV:-0}`.
-# When DAAF_DEV is unset or 0 (the default for every normal user), the guarded
-# RUN layers below are no-ops, so a standard build is byte-for-byte unchanged.
+# The pinned OpenAI Codex CLI ships in EVERY DAAF image. Installing the binary
+# does not activate a provider route or authenticate anything: the default
+# provider remains unchanged unless the user explicitly enables the shim, and
+# the ChatGPT-subscription lane additionally requires SHIM_BACKEND_MODE=chatgpt
+# plus a user-created `codex login --device-auth` OAuth state. Codex is installed
+# Node-free from the pinned GitHub release binary (the musl static build), so no
+# Node/npm toolchain is added.
 #
-# What it installs (only when DAAF_DEV=1):
+# The test toolchain remains OPT-IN and FRAMEWORK-DEVELOPER-ONLY. Its guarded RUN
+# layers are skipped unless DAAF_DEV=1 is passed as a build arg. A framework
+# developer opts in by setting DAAF_DEV=1 in the host-side
+# environment_settings.txt; the install/rebuild scripts bridge that key into the
+# shell environment, and docker-compose.yml forwards it here as
+# `--build-arg DAAF_DEV=${DAAF_DEV:-0}`.
+#
+# What DAAF_DEV=1 additionally installs:
 #   - shellcheck                 (Bash linter, Debian repo)
 #   - bats                       (Bash test runner, Debian repo)
 #   - PowerShell 7 + Pester +
 #     PSScriptAnalyzer           (PowerShell test/lint stack)
-#   - OpenAI Codex CLI           (framework-developer capability, GitHub release)
 #   - GitHub CLI (gh)            (CI runs/logs inspection, PR/issue access, and
 #                                 git HTTPS credential helper for framework devs;
 #                                 GitHub release tarball)
 # The primary goal is to let a developer run the repo's own test suites INSIDE
 # the container so `bats tests/bash/` and `Invoke-Pester tests/powershell/`
 # reproduce what .github/workflows/ci-scripts.yml runs in CI.
-#
-# This block ALSO provisions the OpenAI Codex CLI as a framework-developer
-# capability for provider-shim development — running `codex login` and
-# `codex --debug` wire traces to reverse-engineer the ChatGPT-subscription
-# backend lane for DAAF's provider shim. It is pinned to DAAF_DEV_CODEX_VERSION
-# and installed Node-free from the pinned GitHub release binary (the musl static
-# build), so no Node/npm toolchain is added. Like every other layer here it is
-# guarded on DAAF_DEV=1, preserving the byte-for-byte-unchanged guarantee for
-# normal builds.
 #
 # CI PARITY (bats): the CI `bats-tests` job installs bats with a plain
 # `apt-get install -y bats` and does NOT vendor bats-support/bats-assert; the
@@ -147,7 +144,7 @@ ARG DAAF_DEV=0
 ARG DAAF_DEV_PWSH_VERSION=7.6.3
 ARG DAAF_DEV_PESTER_VERSION=5.7.1
 ARG DAAF_DEV_PSSA_VERSION=1.24.0
-ARG DAAF_DEV_CODEX_VERSION=0.144.1
+ARG CODEX_VERSION=0.144.1
 ARG DAAF_DEV_GH_VERSION=2.95.0
 
 # shellcheck + bats from the Debian repo (mirrors the CI bats-tests job).
@@ -198,23 +195,21 @@ RUN if [ "${DAAF_DEV}" = "1" ]; then \
 # executable named for the full target triple
 # (codex-<triple>-unknown-linux-musl); it is renamed to the arch-generic path
 # /usr/local/bin/codex so `codex` is on PATH for all users (matching R's symlink
-# convention). Used by framework developers for `codex login` + `codex --debug`
-# provider-shim work.
-RUN if [ "${DAAF_DEV}" = "1" ]; then \
-        DEB_ARCH=$(dpkg --print-architecture) \
-        && case "${DEB_ARCH}" in \
-             amd64) CODEX_TRIPLE=x86_64 ;; \
-             arm64) CODEX_TRIPLE=aarch64 ;; \
-             *) echo "DAAF_DEV: unsupported architecture '${DEB_ARCH}' for Codex CLI" >&2; exit 1 ;; \
-           esac \
-        && CODEX_TGZ="codex-${CODEX_TRIPLE}-unknown-linux-musl.tar.gz" \
-        && curl -fsSL -o "/tmp/${CODEX_TGZ}" \
-             "https://github.com/openai/codex/releases/download/rust-v${DAAF_DEV_CODEX_VERSION}/${CODEX_TGZ}" \
-        && tar zxf "/tmp/${CODEX_TGZ}" -C /tmp \
-        && mv "/tmp/codex-${CODEX_TRIPLE}-unknown-linux-musl" /usr/local/bin/codex \
-        && chmod +x /usr/local/bin/codex \
-        && rm -f "/tmp/${CODEX_TGZ}"; \
-    fi
+# convention). The binary is available in every image; provider activation and
+# authentication remain separate, explicit runtime choices.
+RUN DEB_ARCH=$(dpkg --print-architecture) \
+    && case "${DEB_ARCH}" in \
+         amd64) CODEX_TRIPLE=x86_64 ;; \
+         arm64) CODEX_TRIPLE=aarch64 ;; \
+         *) echo "Unsupported architecture '${DEB_ARCH}' for Codex CLI" >&2; exit 1 ;; \
+       esac \
+    && CODEX_TGZ="codex-${CODEX_TRIPLE}-unknown-linux-musl.tar.gz" \
+    && curl -fsSL -o "/tmp/${CODEX_TGZ}" \
+         "https://github.com/openai/codex/releases/download/rust-v${CODEX_VERSION}/${CODEX_TGZ}" \
+    && tar zxf "/tmp/${CODEX_TGZ}" -C /tmp \
+    && mv "/tmp/codex-${CODEX_TRIPLE}-unknown-linux-musl" /usr/local/bin/codex \
+    && chmod +x /usr/local/bin/codex \
+    && rm -f "/tmp/${CODEX_TGZ}"
 
 # GitHub CLI (gh) from the GitHub release tarball (arch-mapped for amd64/arm64).
 # Unlike PowerShell/Codex above, gh's release assets use the SAME arch tokens

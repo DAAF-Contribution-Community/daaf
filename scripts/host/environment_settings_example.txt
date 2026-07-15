@@ -348,11 +348,11 @@
 # SETUP CHECKLIST (full walkthrough: user_reference/01_installation_and_quickstart.md,
 # "Option F, alternate lane: ChatGPT subscription"; quick version: user_reference/
 # 07_faq_technical.md, "Can I use my ChatGPT subscription instead of an OpenAI API key?"):
-#   1. DEV IMAGE REQUIRED. This lane needs the Codex CLI, which is installed ONLY
-#      when DAAF_DEV=1 was set BEFORE the image was built (see section [6]). Verify
-#      inside the container with `codex --version` (expect 0.144.1 or newer). If it
-#      says "command not found", set DAAF_DEV=1 and rebuild (rebuild_daaf.sh /
-#      rebuild_daaf.ps1).
+#   1. CONFIRM CODEX. The pinned Codex CLI ships in every DAAF image; DAAF_DEV=1
+#      is NOT required merely to obtain it or log in. Verify inside the container
+#      with `codex --version` (expect 0.144.1). If the command is missing, update
+#      DAAF and rebuild the image (rebuild_daaf.sh / rebuild_daaf.ps1) so the host
+#      build uses the current Dockerfile.
 #   2. ENABLE DEVICE-CODE LOGIN FIRST. In your ChatGPT personal-account security
 #      settings (chatgpt.com), turn on device-code login. It is OFF BY DEFAULT and
 #      is the easy-to-miss step — `codex login --device-auth` fails without it.
@@ -402,11 +402,11 @@
 #SHIM_OAUTH_CLIENT_ID=
 #
 # Troubleshooting (inside the container):
-#     codex --version                                          (confirm the dev image / Codex CLI is present)
+#     codex --version                                          (confirm the standard-image Codex CLI is present)
 #     bash /daaf/scripts/provider_shim/start_shim.sh --status  (is the shim up?)
 #     cat /daaf/scripts/provider_shim/logs/shim.log            (look for backend_mode=chatgpt + 200s)
 #   login fails immediately   -> device-code login not enabled in ChatGPT settings (step 2)
-#   codex: command not found  -> not the dev image (set DAAF_DEV=1 + rebuild)
+#   codex: command not found  -> update DAAF + rebuild so the current Dockerfile is used
 #   shim log says to re-login -> token refresh failed; run `codex login --device-auth` again
 #
 # ----------------------------------------------------------------------------
@@ -501,9 +501,10 @@
 # ----------------------------------------------------------------------------
 # DAAF_DEV is an OPT-IN, BUILD-TIME flag. Set it to 1 to have the Docker image
 # additionally install the in-container test toolchain (shellcheck, bats,
-# PowerShell 7, Pester, PSScriptAnalyzer) — plus the Codex CLI used by the ChatGPT
-# lane (4.3) and the `gh` CLI used with GH_TOKEN below — so you can run DAAF's own
-# shell and PowerShell test suites inside the container and reproduce what CI runs:
+# PowerShell 7, Pester, PSScriptAnalyzer) and the `gh` CLI used with GH_TOKEN
+# below — so you can run DAAF's own shell and PowerShell test suites inside the
+# container and reproduce what CI runs. Codex is standard-image software and does
+# not require DAAF_DEV=1:
 #     bats tests/bash/
 #     pwsh -NoProfile -Command "Invoke-Pester -Path ./tests/powershell/"
 #

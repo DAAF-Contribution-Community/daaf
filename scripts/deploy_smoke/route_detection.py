@@ -321,8 +321,11 @@ def build_route_info(env, asserted_route: str = "") -> RouteInfo:
 # --- Tier 0 route/env coherence probes ------------------------------------
 
 def probe_daaf_dev(env) -> ProbeResult:
-    """Tier 0 fail-fast: the suite assumes DAAF_DEV=1 (dev image). Absent -> FAIL
-    with a clear message, since shim routes and several dev affordances require it."""
+    """Tier 0 policy gate: the deployment smoke suite is intentionally restricted
+    to DAAF_DEV=1 development images as contributor tooling. Tier D additionally
+    uses development-only deterministic/test tools. Codex ships in every image;
+    shim routing and Codex authentication are separate explicit opt-ins, and
+    neither requires a development image."""
     r = ProbeResult(probe_id="T0.0", name="DAAF_DEV assertion", tier="0")
     val = env.get("DAAF_DEV")
     r.add_evidence("env: DAAF_DEV", output=str(val) if val is not None else "<unset>")
@@ -332,9 +335,12 @@ def probe_daaf_dev(env) -> ProbeResult:
     else:
         r.verdict = Verdict.FAIL
         r.detail = (
-            "DAAF_DEV is not 1. The deployment smoke suite assumes the DAAF_DEV=1 "
-            "development image (shim routes, codex login, and dev tooling require it). "
-            "Rebuild with DAAF_DEV=1 or run inside the dev container."
+            "DAAF_DEV is not 1. The deployment smoke suite is intentionally restricted to "
+            "DAAF_DEV=1 development images as a contributor tool, including for --tiers 0. "
+            "Tier D additionally relies on development-only deterministic/test tooling; "
+            "missing Tier-D tools can otherwise SKIP. Codex itself ships in every image. "
+            "Shim routing and codex login are separate explicit opt-ins and do not require "
+            "a development image. Rebuild with DAAF_DEV=1 or run inside the dev container."
         )
     return r
 

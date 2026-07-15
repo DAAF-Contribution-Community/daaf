@@ -489,8 +489,8 @@ teardown() {
 }
 
 @test "docker-compose.yml forwards DAAF_DEV as a build arg defaulting to 0" {
-    # The opt-in dev-tooling flag reaches the Dockerfile as a build arg; its
-    # interpolation default must be 0 so a standard build is unchanged.
+    # The opt-in dev-tooling flag reaches the Dockerfile as a build arg; 0 builds
+    # the standard image with Codex included and contributor/test tooling excluded.
     run grep -F 'DAAF_DEV: "${DAAF_DEV:-0}"' "${REPO_ROOT}/docker-compose.yml"
     assert_success
 }
@@ -502,6 +502,39 @@ teardown() {
     assert_success
     run grep -F 'if [ "${DAAF_DEV}" = "1" ]' "${REPO_ROOT}/Dockerfile"
     assert_success
+}
+
+@test "Dockerfile installs Codex in every image while developer tools remain opt-in" {
+    # Match active ARG directives only; comments cannot satisfy either assertion.
+    run grep -E '^[[:space:]]*ARG CODEX_VERSION=0\.144\.1[[:space:]]*$' "${REPO_ROOT}/Dockerfile"
+    assert_success
+    run grep -E '^[[:space:]]*ARG DAAF_DEV_CODEX_VERSION([=[:space:]]|$)' "${REPO_ROOT}/Dockerfile"
+    assert_failure
+
+    # Extract active syntax between stable section headers. The first active
+    # Codex directive must be an unconditional RUN, with no DAAF_DEV guard.
+    run awk '
+        /^# OpenAI Codex CLI from the GitHub release tarball/ { in_block = 1; next }
+        /^# GitHub CLI \(gh\) from the GitHub release tarball/ { in_block = 0 }
+        in_block && $0 !~ /^[[:space:]]*#/ && $0 !~ /^[[:space:]]*$/ { print }
+    ' "${REPO_ROOT}/Dockerfile"
+    assert_success
+    [ "${lines[0]}" = 'RUN DEB_ARCH=$(dpkg --print-architecture) \' ]
+    refute_output --partial 'if [ "${DAAF_DEV}" = "1" ]'
+    assert_output --partial 'CODEX_TGZ="codex-${CODEX_TRIPLE}-unknown-linux-musl.tar.gz"'
+    assert_output --partial 'https://github.com/openai/codex/releases/download/rust-v${CODEX_VERSION}/${CODEX_TGZ}'
+    assert_output --partial 'mv "/tmp/codex-${CODEX_TRIPLE}-unknown-linux-musl" /usr/local/bin/codex'
+    assert_output --partial 'chmod +x /usr/local/bin/codex'
+    assert_output --partial 'rm -f "/tmp/${CODEX_TGZ}"'
+
+    # A representative true developer-tool block must retain its active guard.
+    run awk '
+        /^# shellcheck \+ bats from the Debian repo/ { in_block = 1; next }
+        /^# PowerShell 7 from the GitHub release tarball/ { in_block = 0 }
+        in_block && $0 !~ /^[[:space:]]*#/ && $0 !~ /^[[:space:]]*$/ { print }
+    ' "${REPO_ROOT}/Dockerfile"
+    assert_success
+    [ "${lines[0]}" = 'RUN if [ "${DAAF_DEV}" = "1" ]; then \' ]
 }
 
 @test "Dockerfile installs the R toolchain unconditionally (no DAAF_R guard)" {

@@ -964,15 +964,15 @@ The same shim can route Claude Code through your **ChatGPT subscription's Codex 
 
 > **This is an unofficial, dev-lane path — read this first.** It reuses Codex's OAuth against an **undocumented, OpenAI-controlled backend**. It is **not** an OpenAI-sanctioned API method (OpenAI's terms scope subscription usage to their own official apps), it **may break at any time** if OpenAI changes the backend, and **you are responsible for compliance with OpenAI's terms of service.** Treat it as a proof-of-concept / dev lane. The API-key lane above (`SHIM_BACKEND_MODE` unset → `openai`) is the sanctioned, robust fallback.
 
-**Prerequisites — the developer image.** This lane needs the **Codex CLI**, which is installed into the image **only** when `DAAF_DEV=1` is set in `environment_settings.txt` **before the image is built** (see [Building with the developer test toolchain](#building-with-the-developer-test-toolchain-daaf_dev)). Confirm it inside the container before going further:
+**Prerequisite — confirm the standard-image Codex CLI.** The pinned **Codex CLI ships in every DAAF image**. Its presence is optional infrastructure only: it does not change DAAF's default provider, authenticate you, or activate the shim. `DAAF_DEV=1` is not required merely to obtain Codex or log in; that flag is reserved for the contributor/test toolchain described under [Building with the developer test toolchain](#building-with-the-developer-test-toolchain-daaf_dev). Confirm Codex inside the container before going further:
 
 ```bash
-codex --version    # expect 0.144.1 or newer
+codex --version    # expect 0.144.1
 ```
 
-If that reports `codex: command not found`, you are not on the developer image — set `DAAF_DEV=1`, rebuild (`bash rebuild_daaf.sh` / `.\rebuild_daaf.ps1`), and re-enter the container before continuing.
+If that reports `codex: command not found`, your image predates the universal installation or was built from a stale Dockerfile. Update DAAF, then rebuild (`bash rebuild_daaf.sh` / `.\rebuild_daaf.ps1`) so the host build uses the current Dockerfile, and re-enter the container before continuing. Setting `DAAF_DEV=1` is not the fix for a current image.
 
-**Setup.** With the developer image confirmed, five steps take you from a fresh container to a working ChatGPT lane.
+**Setup.** With Codex confirmed, five steps take you from a fresh container to a working ChatGPT lane. The lane remains explicitly opt-in: device-code OAuth and the shim settings below are both required.
 
 1. **Enable device-code login in your ChatGPT settings — do this first.** On chatgpt.com, open your **personal account → security settings** and turn on **device-code login**. This toggle is **off by default** and is the single easiest step to miss: the login in step 2 fails immediately without it. Device-code login is what lets you authenticate with no browser or loopback callback inside the container.
 2. **Log in inside the container.** Run:
@@ -992,7 +992,7 @@ If that reports `codex: command not found`, you are not on the developer image �
    ANTHROPIC_DEFAULT_SONNET_MODEL=gpt-5.6-terra[1m]
    CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000
    ```
-   In this mode `OPENAI_API_KEY` / `SHIM_BACKEND_API_KEY` are **ignored** — the OAuth token is the credential. (Switching an already-built developer image between the two Option F lanes needs no further rebuild; only the initial `DAAF_DEV=1` image build does.)
+   In this mode `OPENAI_API_KEY` / `SHIM_BACKEND_API_KEY` are **ignored** — the OAuth token is the credential. Codex availability alone does not select this lane; both `DAAF_PROVIDER_SHIM=openai` and `SHIM_BACKEND_MODE=chatgpt` are explicit opt-ins.
 5. **Recreate the container** to apply (`docker compose down`, then `bash run_daaf.sh` / `.\run_daaf.ps1`). The shim reads `SHIM_BACKEND_MODE` at startup.
 
 **Confirm it's working.** After the container comes back up, check the shim log:
@@ -1010,7 +1010,7 @@ A healthy ChatGPT lane logs `backend_mode=chatgpt` at startup and then healthy `
 | Symptom | Cause and fix |
 |---------|---------------|
 | `codex login --device-auth` fails immediately | Device-code login is not enabled in your ChatGPT security settings — do step 1 above. |
-| `codex: command not found` | You are not on the developer image. Set `DAAF_DEV=1` and rebuild (`rebuild_daaf.sh` / `rebuild_daaf.ps1`). |
+| `codex: command not found` | The image predates the universal Codex installation or was built from a stale Dockerfile. Update DAAF and rebuild (`rebuild_daaf.sh` / `rebuild_daaf.ps1`) so the current Dockerfile is used; `DAAF_DEV=1` is not required. |
 | Shim log tells you to re-login | The OAuth token refresh failed permanently — run `codex login --device-auth` again inside the container. |
 
 **Running more than one container.** Each DAAF container does its **own** `codex login`, which creates an **independent refresh-token grant** — there is no credential collision between containers. They share only your ChatGPT **usage pool** (the 5-hour and weekly caps), so running two in parallel simply draws that pool down faster. This is the clean way to run parallel DAAF instances. (The subtler case is running several codex-based tools — the `codex` CLI, `codex-plugin-cc`, the shim — inside a *single* container off the *same* login: that can rarely trigger a refresh-token-rotation race. To isolate them, give each its own `codex login` under a separate `CODEX_HOME`; `CODEX_HOME` and the `SHIM_OAUTH_TOKEN_URL` / `SHIM_OAUTH_CLIENT_ID` override variables in `environment_settings_example.txt` are the hooks for that. None of this is needed for a normal single-tool setup.)

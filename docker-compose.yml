@@ -16,16 +16,17 @@ services:
     # daaf-docker environment block) BEFORE the chown so it is owned by appuser:
     # the Codex CLI hard-errors ("CODEX_HOME ... does not exist") rather than
     # creating it, and a Dockerfile mkdir cannot help because this named volume
-    # shadows the image at the mount point at runtime. Dev-only in effect (an
-    # empty dir is harmless for non-DAAF_DEV users who have no codex binary).
+    # shadows the image at the mount point at runtime. The directory is harmless
+    # unless a user explicitly logs in with Codex and enables the ChatGPT lane.
 
   daaf-docker:
     build:
       context: .
       args:
         # Opt-in dev-tooling build path (framework developers only). Defaults to
-        # 0 so a normal build is identical to before. Compose interpolation reads
-        # DAAF_DEV from the HOST shell environment / project .env file, not from
+        # 0 for the standard image: Codex is included, while contributor/test
+        # tooling remains excluded. Compose interpolation reads DAAF_DEV from the
+        # HOST shell environment / project .env file, not from
         # env_file above -- the install/rebuild scripts bridge the key from
         # environment_settings.txt into the shell env before invoking the build.
         # See the DAAF_DEV block in the Dockerfile for what this installs.
@@ -65,10 +66,10 @@ services:
       # uses, so no new volume is needed. The daaf-init container's
       # `chown -R 1000:1000 /claude-config` (this same volume) fixes ownership of
       # the codex-daaf subfolder on every boot, so no explicit mkdir/chown here.
-      # Dev-only: the Codex CLI it configures only exists in DAAF_DEV builds, so
-      # this var is inert (harmless) in normal builds. Set in compose (not the
-      # Dockerfile) so it is adjustable without a rebuild, matching
-      # CLAUDE_CONFIG_DIR.
+      # Codex ships in every image, but this state path is inert until the user
+      # explicitly runs `codex login`; installing Codex does not activate the
+      # optional ChatGPT provider lane. Set in compose (not the Dockerfile) so it
+      # is adjustable without a rebuild, matching CLAUDE_CONFIG_DIR.
       - CODEX_HOME=/home/appuser/.claude/codex-daaf
     working_dir: /daaf
     stdin_open: true  # Required for interactive Claude Code sessions

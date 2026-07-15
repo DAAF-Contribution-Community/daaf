@@ -122,7 +122,7 @@ The shim gate is checked before the OpenRouter base-URL test because shim routes
 
 ## Boundaries
 
-- **Requires `DAAF_DEV=1`.** Tier 0 fails fast otherwise — shim routes, `codex login`, and the deterministic-battery tooling all live in the dev image. This is a contributor/developer tool; it is intentionally absent from the end-user install guide.
+- **Requires `DAAF_DEV=1`.** The deployment smoke suite is intentionally restricted to development images as a contributor tool; the Tier 0 policy gate applies even to `--tiers 0`. Tier D additionally relies on development-only deterministic/test tooling, although an unavailable Tier-D tool can produce a probe-level SKIP. Codex itself ships in every image. Shim routing and `codex login` are separate explicit opt-ins and do not require a development image. The suite remains intentionally absent from the end-user install guide.
 - **Secrets never leak.** The env fingerprint redacts any var whose name contains `KEY`/`TOKEN`/`SECRET`/`AUTH`, but preserves the load-bearing empty-vs-unset distinction (e.g. OpenRouter needs `ANTHROPIC_API_KEY` present-and-empty).
 - **Reads `/tmp` caches, never writes them.** Reading DAAF's coordination caches is the sanctioned pattern; the suite writes only inside the project.
 - **Do not confuse tiers with cost tiers.** Tier 0 and Tier D are free; Tiers 1 and 2 make live API calls billed to your configured provider. The pre-launch summary quotes the call count before any live tier runs (skip it with `--yes`).
