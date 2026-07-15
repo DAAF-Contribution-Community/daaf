@@ -10,8 +10,10 @@
 # This is the PowerShell counterpart to daaf_lib.sh. It provides the same
 # helpers the Bash Control Panel relies on, adapted to PowerShell idiom:
 #   Import-DaafSettingsFile -- export the whitelisted DAAF_* vars (four multi-instance
-#                              keys + the DAAF_DEV build flag) from
-#                              environment_settings.txt
+#                              keys + the DAAF_DEV build flag + the DAAF_BRANCH
+#                              updater ref) from environment_settings.txt
+#   Set-DaafSettingsKey -- insert/update a single KEY=value line in a settings
+#                              file (write counterpart to Import-DaafSettingsFile)
 #   Read-DaafLine       -- read one input line, working under redirected stdin (CI)
 #   Open-DaafUrl        -- open a URL in the default browser (best-effort)
 #   Test-DaafPort       -- test whether a port is listening inside the container
@@ -65,11 +67,13 @@ if (Get-Command Read-DaafLine -ErrorAction SilentlyContinue) { return }
 
 # --- Multi-Instance / Build-Flag Settings Loader ---
 # PowerShell counterpart to daaf_lib.sh load_daaf_settings. Bridges
-# environment_settings.txt -> process environment for the five whitelisted
+# environment_settings.txt -> process environment for the six whitelisted
 # DAAF_* variables: the four multi-instance keys so `docker compose`
 # interpolation in docker-compose.yml (${DAAF_PROJECT_NAME:-daaf},
 # ${DAAF_PORT_*:-27xx}) resolves them, plus DAAF_DEV, the opt-in
-# BUILD flag consumed as `--build-arg DAAF_DEV=${DAAF_DEV:-0}`.
+# BUILD flag consumed as `--build-arg DAAF_DEV=${DAAF_DEV:-0}`, plus DAAF_BRANCH,
+# the updater's target ref (read env-only today; whitelisting it here lets a
+# value persisted in environment_settings.txt reach update_daaf.ps1).
 #
 # WHY: environment_settings.txt is a compose `env_file` (feeds the CONTAINER
 # env only). Compose *interpolation* (and build args) read the host/process
@@ -78,7 +82,7 @@ if (Get-Command Read-DaafLine -ErrorAction SilentlyContinue) { return }
 # ports / build flag to take effect.
 #
 # PARSING SAFETY: we never dot-source the file (it holds API keys with arbitrary
-# characters). We extract only the five known DAAF_* keys via a line scan and a
+# characters). We extract only the six known DAAF_* keys via a line scan and a
 # regex on KEY=VALUE. CR is stripped for CRLF tolerance.
 #
 # PRECEDENCE: an already-set process env var WINS over the file value (matches
@@ -93,7 +97,7 @@ function Import-DaafSettingsFile {
         return
     }
 
-    $known = @('DAAF_PROJECT_NAME', 'DAAF_PORT_MARIMO', 'DAAF_PORT_LOGVIEWER', 'DAAF_PORT_VSCODE', 'DAAF_DEV')
+    $known = @('DAAF_PROJECT_NAME', 'DAAF_PORT_MARIMO', 'DAAF_PORT_LOGVIEWER', 'DAAF_PORT_VSCODE', 'DAAF_DEV', 'DAAF_BRANCH')
 
     foreach ($rawLine in (Get-Content -LiteralPath $SettingsFile)) {
         $line = $rawLine -replace "`r", ""
@@ -306,4 +310,154 @@ function Confirm-DaafContainer {
     }
 
     return ($exit -eq 0)
+}
+
+# --- Settings-File Key Upsert ---
+# PowerShell counterpart to daaf_lib.sh upsert_settings_key. Insert or update a
+# single KEY=value line in a dotenv-style settings file (environment_settings.txt),
+# preserving comments, key order, and surrounding layout. WRITE counterpart to
+# Import-DaafSettingsFile (which only reads).
+#
+# Usage:
+#   Set-DaafSettingsKey -File <path> -Key <name> -Value <val> [-Mode if-absent|replace] [-BackupSuffix <suffix>]
+#     -Mode:         "if-absent" (default) writes only when no active KEY= line
+#                    exists; "replace" rewrites an existing active line's value.
+#     -BackupSuffix: optional; when given (e.g. ".pre-update") a one-time backup
+#                    copy <File><suffix> is made before the first write, and only
+#                    if it does not already exist.
+#
+# Placement rules mirror the Bash twin (git-config-style conservative default):
+#   1. Active `KEY=` line -> if-absent leaves it; replace rewrites its value.
+#   2. Commented example (`#KEY=` / `# KEY=`, first match) -> insert active line
+#      directly below it.
+#   3. Key absent entirely -> append under a dated provenance comment.
+#
+# ATOMICITY / ENCODING: writes to a temp file in the SAME directory then
+# Move-Item -Force (rename). The payload is joined with "`n" (LF) and written via
+# [System.IO.File]::WriteAllText with a UTF8Encoding($false) encoder so there is
+# NO BOM -- Windows PowerShell 5.1's `-Encoding UTF8` writes a BOM, which
+# corrupts the first key for the strict bash/Compose parser, so Set-Content /
+# Out-File are deliberately NOT used for the payload. CR is stripped on read for
+# CRLF-tolerance. $File is resolved to a full path so the .NET WriteAllText call
+# (which honors [Environment]::CurrentDirectory, not $PWD) writes where intended.
+#
+# DRY-RUN: when $env:DAAF_DRY_RUN -eq "1", print the intended action and the exact
+# line that WOULD be written, and touch nothing on disk -- satisfies
+# FRAMEWORK_INTEGRATION_CHECKLIST item HSM5.
+#
+# Strict-clean: no reads of never-assigned variables, collection reads guarded;
+# runs under whatever Set-StrictMode the caller imposes (the library sets none).
+#
+# DUPLICATE KEYS (replace mode): "replace" updates the FIRST active `KEY=` line
+# and assumes a single active occurrence per key. A settings file should never
+# hold two active lines for the same key: Docker Compose's env_file ingestion is
+# last-wins while DAAF's own loader (Import-DaafSettingsFile) is first-wins, so a
+# duplicate already means the container and the host scripts would disagree on the
+# value. If a file was hand-edited to contain duplicates, replace mode rewrites
+# only the first and leaves later ones stale -- deduplicate the file by hand
+# rather than relying on this function to reconcile it.
+#
+# SYMLINKED TARGET: the same-directory temp + Move-Item -Force REPLACES the
+# settings path with a freshly written regular file. If -File is a symlink, the
+# rename swaps the symlink itself for a regular file and the original link target
+# is left untouched (stale) -- a symlinked environment_settings.txt is therefore
+# not supported; point the tools at a real file.
+function Set-DaafSettingsKey {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string]$File,
+        [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string]$Key,
+        [Parameter(Mandatory)][AllowEmptyString()][string]$Value,
+        [ValidateSet('if-absent', 'replace')][string]$Mode = 'if-absent',
+        [string]$BackupSuffix = ''
+    )
+
+    if (-not (Test-Path -LiteralPath $File)) {
+        Write-Error "Set-DaafSettingsKey: file not found: $File"
+        return
+    }
+    # Resolve to a full path so [System.IO.File]::WriteAllText (which uses the
+    # .NET current directory, not $PWD) targets the intended file.
+    $File = (Resolve-Path -LiteralPath $File).Path
+
+    # Read lines; Get-Content strips EOLs. Strip any stray CR for CRLF tolerance.
+    $lines = @(Get-Content -LiteralPath $File | ForEach-Object { $_ -replace "`r", "" })
+
+    $activeIdx = -1
+    $commentIdx = -1
+    $keyPattern = '^' + [regex]::Escape($Key) + '='
+    $commentPattern = '^\s*#\s*' + [regex]::Escape($Key) + '='
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        if ($activeIdx -lt 0 -and $lines[$i] -match $keyPattern) { $activeIdx = $i }
+        if ($commentIdx -lt 0 -and $lines[$i] -match $commentPattern) { $commentIdx = $i }
+    }
+
+    $newLine = "$Key=$Value"
+    $action = ''
+    $out = New-Object System.Collections.Generic.List[string]
+
+    if ($activeIdx -ge 0) {
+        if ($Mode -ne 'replace') {
+            Write-Host "Set-DaafSettingsKey: $Key skipped (exists)"
+            return
+        }
+        if ($lines[$activeIdx] -eq $newLine) {
+            Write-Host "Set-DaafSettingsKey: $Key unchanged (value already present)"
+            return
+        }
+        for ($i = 0; $i -lt $lines.Count; $i++) {
+            if ($i -eq $activeIdx) { $out.Add($newLine) } else { $out.Add($lines[$i]) }
+        }
+        $action = 'replaced'
+    }
+    elseif ($commentIdx -ge 0) {
+        for ($i = 0; $i -lt $lines.Count; $i++) {
+            $out.Add($lines[$i])
+            if ($i -eq $commentIdx) { $out.Add($newLine) }
+        }
+        $action = 'inserted below commented example'
+    }
+    else {
+        for ($i = 0; $i -lt $lines.Count; $i++) { $out.Add($lines[$i]) }
+        if ($out.Count -gt 0 -and -not [string]::IsNullOrEmpty($out[$out.Count - 1])) {
+            $out.Add('')
+        }
+        $out.Add('# Added by DAAF on ' + (Get-Date -Format 'yyyy-MM-dd'))
+        $out.Add($newLine)
+        $action = 'appended (new)'
+    }
+
+    if ($env:DAAF_DRY_RUN -eq '1') {
+        Write-Host "[DRY-RUN] Set-DaafSettingsKey would write ${File}: $action"
+        Write-Host "[DRY-RUN]   line: $newLine"
+        return
+    }
+
+    # One-time backup (only when a suffix was given and no backup exists yet).
+    if (-not [string]::IsNullOrEmpty($BackupSuffix)) {
+        $backupPath = $File + $BackupSuffix
+        if (-not (Test-Path -LiteralPath $backupPath)) {
+            Copy-Item -LiteralPath $File -Destination $backupPath
+        }
+    }
+
+    # LF-joined payload, single trailing LF, UTF-8 NO BOM.
+    $payload = ($out -join "`n") + "`n"
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+
+    # Atomic write: temp in the SAME directory, then Move-Item -Force (rename).
+    $dir = Split-Path -Parent $File
+    if ([string]::IsNullOrEmpty($dir)) { $dir = '.' }
+    $tmp = Join-Path $dir ('.daaf_upsert.' + [System.IO.Path]::GetRandomFileName())
+    try {
+        [System.IO.File]::WriteAllText($tmp, $payload, $utf8NoBom)
+        Move-Item -LiteralPath $tmp -Destination $File -Force
+    }
+    catch {
+        if (Test-Path -LiteralPath $tmp) { Remove-Item -LiteralPath $tmp -Force }
+        Write-Error "Set-DaafSettingsKey: write failed for ${File}: $_"
+        return
+    }
+
+    Write-Host "Set-DaafSettingsKey: $Key $action"
 }

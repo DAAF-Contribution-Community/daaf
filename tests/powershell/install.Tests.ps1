@@ -182,6 +182,51 @@ Describe "install.ps1 behavioral tests" {
             $Content | Should -Match 'Start-Sleep -Seconds 2'
         }
     }
+
+    # -----------------------------------------------------------------
+    # Settings seeding (environment_settings.txt from process-env DAAF_*)
+    # -----------------------------------------------------------------
+    # Parity twin of the bash install.bats seeder tests. The Pester suite verifies
+    # the seeder by source-analysis (its harness has no docker function-mock), plus
+    # a dry-run behavioral zero-write assertion in the dry-run Describe below.
+    Context "Settings seeding" {
+        It "defines the Set-DaafSettingsKey upsert helper inline" {
+            $Content | Should -Match 'function Set-DaafSettingsKey'
+        }
+
+        It "seeds environment_settings.txt from the example template" {
+            $Content | Should -Match '\$SeedSrc = Join-Path \$InstallDir "environment_settings_example\.txt"'
+            $Content | Should -Match '\$SeedDst = Join-Path \$InstallDir "environment_settings\.txt"'
+        }
+
+        It "never overwrites an existing environment_settings.txt" {
+            $Content | Should -Match 'left untouched'
+        }
+
+        It "skips DAAF_BRANCH when it resolves to a version tag (symbolic-ref probe)" {
+            $Content | Should -Match 'symbolic-ref -q HEAD'
+            $Content | Should -Match '\$SeedBranchSkipTag'
+            $Content | Should -Match 'is a version tag'
+        }
+
+        It "runs a health probe first so an exec failure is 'could not verify', not a false tag claim" {
+            # A cheap `git rev-parse HEAD` health probe must precede the symbolic-ref
+            # branch/tag classification, gating it behind $probeOk, so a stopped
+            # container / transient exec error reports UNVERIFIED rather than "tag".
+            $Content | Should -Match 'rev-parse HEAD'
+            $Content | Should -Match '\$probeOk'
+            $Content | Should -Match '\$SeedBranchUnverified'
+            $Content | Should -Match 'could not verify whether'
+        }
+
+        It "degrades to a manual-fallback note when seeding fails (install still completes)" {
+            $Content | Should -Match 'did not fully complete'
+        }
+
+        It "is DAAF_DRY_RUN gated (prints intent, writes nothing)" {
+            $Content | Should -Match '\[DRY-RUN\] Would seed'
+        }
+    }
 }
 
 # ============================================================================
@@ -249,6 +294,16 @@ Describe "install.ps1 dry-run mode" {
         $output = & "$RepoRoot/scripts/host/install.ps1" *>&1
         $env:DAAF_DIAG_BUILD = $null
         ($output | Out-String) | Should -BeLike "*Created diagnostic buildx builder*"
+    }
+
+    It "dry-run does not create environment_settings.txt (seeder zero-write)" {
+        $env:DAAF_DRY_RUN = "1"
+        $env:DAAF_NESTED = "1"
+        $env:DAAF_PROJECT_NAME = "myproj"
+        $output = & "$RepoRoot/scripts/host/install.ps1" *>&1
+        $env:DAAF_PROJECT_NAME = $null
+        ($output | Out-String) | Should -BeLike "*Would seed*"
+        (Test-Path (Join-Path $script:TestDir "daaf-docker/environment_settings.txt")) | Should -Be $false
     }
 }
 

@@ -121,17 +121,25 @@ $Mutex = $null  # Initialized before trap; set to actual mutex after helper func
 # Set-StrictMode, masking the real error with a strict-mode violation.
 $Stashed = $false
 
+# Pre-initialize for the same reason as $Stashed above: Complete-Update is
+# defined before the test-mode guard (so it is callable under Pester) and reads
+# $PersistBranch, which Set-StrictMode would flag as uninitialized if a test
+# invokes the function without the main body having run. The real update branch
+# is assigned during branch resolution below (env-origin branch only; never a
+# tag), so it is written back to environment_settings.txt on a successful update.
+$PersistBranch = ""
+
 # --- Multi-instance settings (shared pattern) ---
 # Bridge environment_settings.txt's four DAAF_* multi-instance keys into the
 # process environment so `docker compose` interpolation resolves the project name
 # and published host ports. Canonical shared pattern (kept in sync with
 # Import-DaafSettingsFile in daaf_lib.ps1); standalone scripts that do NOT dot-source
-# daaf_lib.ps1 inline it. Parse only these four keys (never dot-source -- the file
+# daaf_lib.ps1 inline it. Parse only these whitelisted keys (never dot-source -- the file
 # holds API keys); process env wins; absent file = no-op; CR stripped; PS 5.1 safe.
 function Import-DaafSettingsInline {
     param([string]$SettingsFile = "./environment_settings.txt")
     if (-not (Test-Path -LiteralPath $SettingsFile)) { return }
-    $known = @('DAAF_PROJECT_NAME', 'DAAF_PORT_MARIMO', 'DAAF_PORT_LOGVIEWER', 'DAAF_PORT_VSCODE')
+    $known = @('DAAF_PROJECT_NAME', 'DAAF_PORT_MARIMO', 'DAAF_PORT_LOGVIEWER', 'DAAF_PORT_VSCODE', 'DAAF_DEV', 'DAAF_BRANCH')
     foreach ($rawLine in (Get-Content -LiteralPath $SettingsFile)) {
         $line = $rawLine -replace "`r", ""
         $trimmed = $line.Trim()
@@ -150,6 +158,11 @@ function Import-DaafSettingsInline {
         }
     }
 }
+# Capture whether DAAF_BRANCH came from the process environment BEFORE the
+# settings bridge runs (Import-DaafSettingsInline only adopts the file value when
+# the env var is empty). After the call: DAAF_BRANCH set + FromEnv=$false =>
+# file-origin; $true => env-origin. Drives tag handling and branch persistence.
+$DaafBranchFromEnv = -not [string]::IsNullOrEmpty($env:DAAF_BRANCH)
 Import-DaafSettingsInline
 
 # --- Trap handler for unexpected failures ---
@@ -913,6 +926,152 @@ function Complete-Update {
     Write-Host "  To launch DAAF:"
     Write-Host "    .\run_daaf.ps1"
     Write-Host ""
+    # Persist an env-origin update branch so future runs track it without
+    # re-exporting $env:DAAF_BRANCH. Extracted into Save-BranchChoice so the
+    # no-op success paths ("Already up to date"), which return before
+    # Complete-Update runs, can persist the same way -- otherwise re-running with
+    # $env:DAAF_BRANCH set while already current would never save the choice.
+    Save-BranchChoice
+}
+
+# --- Settings-File Key Upsert (inlined from daaf_lib.ps1) ---
+# INLINE COPY of daaf_lib.ps1 Set-DaafSettingsKey (byte-equivalent to the copy in
+# install.ps1), used to persist an env-origin DAAF_BRANCH after a successful
+# update. update_daaf is a standalone recovery tool that must run even if
+# daaf_lib is broken and, like install.ps1, does not dot-source it (mirroring the
+# inline settings *reader* above). Semantics, placement rules, atomicity,
+# no-BOM/LF encoding, DRY-RUN gating and strict-mode cleanliness are identical to
+# the library version -- see daaf_lib.ps1 for the full annotation. Defined before
+# the DAAF_TEST_MODE guard so it is available to Complete-Update under test
+# dot-sourcing.
+function Set-DaafSettingsKey {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string]$File,
+        [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string]$Key,
+        [Parameter(Mandatory)][AllowEmptyString()][string]$Value,
+        [ValidateSet('if-absent', 'replace')][string]$Mode = 'if-absent',
+        [string]$BackupSuffix = ''
+    )
+
+    if (-not (Test-Path -LiteralPath $File)) {
+        Write-Error "Set-DaafSettingsKey: file not found: $File"
+        return
+    }
+    $File = (Resolve-Path -LiteralPath $File).Path
+
+    $lines = @(Get-Content -LiteralPath $File | ForEach-Object { $_ -replace "`r", "" })
+
+    $activeIdx = -1
+    $commentIdx = -1
+    $keyPattern = '^' + [regex]::Escape($Key) + '='
+    $commentPattern = '^\s*#\s*' + [regex]::Escape($Key) + '='
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        if ($activeIdx -lt 0 -and $lines[$i] -match $keyPattern) { $activeIdx = $i }
+        if ($commentIdx -lt 0 -and $lines[$i] -match $commentPattern) { $commentIdx = $i }
+    }
+
+    $newLine = "$Key=$Value"
+    $action = ''
+    $out = New-Object System.Collections.Generic.List[string]
+
+    if ($activeIdx -ge 0) {
+        if ($Mode -ne 'replace') {
+            Write-Host "Set-DaafSettingsKey: $Key skipped (exists)"
+            return
+        }
+        if ($lines[$activeIdx] -eq $newLine) {
+            Write-Host "Set-DaafSettingsKey: $Key unchanged (value already present)"
+            return
+        }
+        for ($i = 0; $i -lt $lines.Count; $i++) {
+            if ($i -eq $activeIdx) { $out.Add($newLine) } else { $out.Add($lines[$i]) }
+        }
+        $action = 'replaced'
+    }
+    elseif ($commentIdx -ge 0) {
+        for ($i = 0; $i -lt $lines.Count; $i++) {
+            $out.Add($lines[$i])
+            if ($i -eq $commentIdx) { $out.Add($newLine) }
+        }
+        $action = 'inserted below commented example'
+    }
+    else {
+        for ($i = 0; $i -lt $lines.Count; $i++) { $out.Add($lines[$i]) }
+        if ($out.Count -gt 0 -and -not [string]::IsNullOrEmpty($out[$out.Count - 1])) {
+            $out.Add('')
+        }
+        $out.Add('# Added by DAAF on ' + (Get-Date -Format 'yyyy-MM-dd'))
+        $out.Add($newLine)
+        $action = 'appended (new)'
+    }
+
+    if ($env:DAAF_DRY_RUN -eq '1') {
+        Write-Host "[DRY-RUN] Set-DaafSettingsKey would write ${File}: $action"
+        Write-Host "[DRY-RUN]   line: $newLine"
+        return
+    }
+
+    if (-not [string]::IsNullOrEmpty($BackupSuffix)) {
+        $backupPath = $File + $BackupSuffix
+        if (-not (Test-Path -LiteralPath $backupPath)) {
+            Copy-Item -LiteralPath $File -Destination $backupPath
+        }
+    }
+
+    $payload = ($out -join "`n") + "`n"
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+
+    $dir = Split-Path -Parent $File
+    if ([string]::IsNullOrEmpty($dir)) { $dir = '.' }
+    $tmp = Join-Path $dir ('.daaf_upsert.' + [System.IO.Path]::GetRandomFileName())
+    try {
+        [System.IO.File]::WriteAllText($tmp, $payload, $utf8NoBom)
+        Move-Item -LiteralPath $tmp -Destination $File -Force
+    }
+    catch {
+        if (Test-Path -LiteralPath $tmp) { Remove-Item -LiteralPath $tmp -Force }
+        Write-Error "Set-DaafSettingsKey: write failed for ${File}: $_"
+        return
+    }
+
+    Write-Host "Set-DaafSettingsKey: $Key $action"
+}
+
+# --- Persist an env-origin update branch (shared by every success path) ---
+# Writes $PersistBranch back to environment_settings.txt so future runs track it
+# without re-exporting $env:DAAF_BRANCH. Called from Complete-Update AND from the
+# no-op "already up to date" success exits, which return before Complete-Update
+# runs (the most common re-run case: DAAF_BRANCH set while already current). Every
+# property of the original inline block is preserved: fires only when
+# $PersistBranch is non-empty (env-origin *branch* only, never a tag or a file-
+# origin value, so "never persist a tag" holds by construction), replace mode,
+# .pre-update backup, skip-with-note when the settings file is absent.
+# Set-DaafSettingsKey is itself DAAF_DRY_RUN gated (writes nothing in dry run);
+# the try/catch keeps a persistence hiccup from failing a completed update.
+# Defined before the DAAF_TEST_MODE guard so it is available to Complete-Update
+# (and the no-op exits) under test dot-sourcing. Named with the approved verb
+# "Save" (the Bash sibling is persist_branch_choice) to keep PSScriptAnalyzer's
+# approved-verb rule clean, consistent with every other function in this file.
+function Save-BranchChoice {
+    [CmdletBinding()]
+    param()
+    if (-not [string]::IsNullOrEmpty($PersistBranch)) {
+        if (Test-Path -LiteralPath "./environment_settings.txt") {
+            try {
+                Set-DaafSettingsKey -File "./environment_settings.txt" -Key "DAAF_BRANCH" -Value $PersistBranch -Mode replace -BackupSuffix ".pre-update" | Out-Null
+                Write-Host "Saved DAAF_BRANCH=$PersistBranch to environment_settings.txt for future updates."
+            }
+            catch {
+                Write-Verbose "Silenced settings-persistence error: $_"
+            }
+        }
+        else {
+            Write-Host "NOTE: DAAF_BRANCH=$PersistBranch was used for this update but not saved"
+            Write-Host "      (no environment_settings.txt). Copy environment_settings_example.txt to"
+            Write-Host "      persist it for future runs."
+        }
+    }
 }
 
 # --- Test Mode Guard ---
@@ -1198,43 +1357,76 @@ if ($LASTEXITCODE -eq 0) {
 # Resolve remote branch
 # =====================================================================
 $RemoteBranch = if ($env:DAAF_BRANCH) { $env:DAAF_BRANCH } else { "" }
+# $PersistBranch (pre-initialized near the top with $Stashed) is set only for an
+# env-origin *branch* (never a tag, never a file-origin value); on a successful
+# update it is written back to environment_settings.txt so future runs track it.
 
 if ($RemoteBranch) {
-    # User specified a branch - verify it exists on the remote
+    # Classify the DAAF_BRANCH value against the remote: branch, tag, or unknown.
     $null = Invoke-ComposeGit rev-parse --verify "$UpstreamRemote/$RemoteBranch"
-    if ($LASTEXITCODE -ne 0) {
-
-        # Check if the value is a version tag rather than a branch.
-        # Tags live in refs/tags/, not refs/remotes/origin/, so the branch
-        # check above correctly fails for them.
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "Using branch: $RemoteBranch (from DAAF_BRANCH)"
+        # Persist only an env-origin branch: a file-origin value is already in
+        # the file, and a tag is handled below and never persisted.
+        if ($DaafBranchFromEnv) { $PersistBranch = $RemoteBranch }
+    } else {
+        # Not a branch. Check whether the value is a version tag. Tags live in
+        # refs/tags/, not refs/remotes/origin/, so the branch check above failed.
         $null = Invoke-ComposeGit rev-parse --verify "refs/tags/$RemoteBranch"
         if ($LASTEXITCODE -eq 0) {
+            if ($DaafBranchFromEnv) {
+                # Env-origin tag: refuse informatively. The updater tracks a
+                # *branch* to pull ongoing changes; a tag is a fixed snapshot the
+                # branch-comparison machinery cannot advance (it silently no-ops
+                # as "already up to date"). A tag is never persisted, so ongoing
+                # updates would track the auto-detected default branch. Point the
+                # user at the supported way onto a release: re-install at the tag.
+                Write-Host ""
+                Write-Host "'$RemoteBranch' is a version tag, not a branch." -ForegroundColor Yellow
+                Write-Host "(You set it via `$env:DAAF_BRANCH in your environment.)"
+                Write-Host ""
+                Write-Host "The updater can only track a branch for ongoing updates. A tag is a"
+                Write-Host "fixed snapshot, so it cannot be followed for updates - and a tag is"
+                Write-Host "never saved as your update branch."
+                Write-Host ""
+                Write-Host "To move this installation onto the '$RemoteBranch' release, re-run the"
+                Write-Host "installer pinned to that tag (the supported path for this container-based"
+                Write-Host "layout):"
+                Write-Host "  `$env:DAAF_BRANCH = '$RemoteBranch'; irm https://raw.githubusercontent.com/$UpstreamRepo/main/scripts/host/install.ps1 | iex"
+                Write-Host ""
+                Write-Host "To keep receiving ongoing updates instead, clear `$env:DAAF_BRANCH (or"
+                Write-Host "set it to a branch). Updates then track the default branch (auto-"
+                Write-Host "detected main/master)."
+                Write-Host ""
+                Write-Host "No changes were made. Your research files are not affected."
+                Wait-AndExit 1
+            } else {
+                # File-origin tag: a persisted tag would otherwise lock every
+                # future update out. Warn, name the file and key, and fall back to
+                # the auto-detected default branch for THIS run (no hard exit).
+                Write-Host ""
+                Write-Host "NOTE: DAAF_BRANCH in environment_settings.txt is set to '$RemoteBranch'," -ForegroundColor Yellow
+                Write-Host "      which is a version tag, not a branch. Tags can't be tracked for"
+                Write-Host "      updates. Edit environment_settings.txt and set DAAF_BRANCH to a"
+                Write-Host "      branch (or remove it) to silence this. Continuing this run with the"
+                Write-Host "      auto-detected default branch."
+                $RemoteBranch = ""
+            }
+        } else {
             Write-Host ""
-            Write-Host "'$RemoteBranch' is a version tag, not a branch." -ForegroundColor Yellow
+            Write-Host "The branch '$RemoteBranch' (from DAAF_BRANCH) was not found on" -ForegroundColor Red
+            Write-Host "$UpstreamRemote."
             Write-Host ""
-            Write-Host "The updater needs a branch to pull changes from. Tags are fixed"
-            Write-Host "snapshots and cannot receive updates."
-            Write-Host ""
-            Write-Host "To update to the latest release on the main branch:"
-            Write-Host "  .\update_daaf.ps1"
-            Write-Host "  (without setting `$env:DAAF_BRANCH)"
-            Write-Host ""
-            Write-Host "To update from a specific branch:"
-            Write-Host "  `$env:DAAF_BRANCH = 'dev'; .\update_daaf.ps1"
+            Write-Host "Your installation is unchanged. Double-check the branch name and try"
+            Write-Host "again, or omit DAAF_BRANCH to use the default branch."
             Wait-AndExit 1
         }
-
-        Write-Host ""
-        Write-Host "The branch '$RemoteBranch' (from DAAF_BRANCH) was not found on" -ForegroundColor Red
-        Write-Host "$UpstreamRemote."
-        Write-Host ""
-        Write-Host "Your installation is unchanged. Double-check the branch name and try"
-        Write-Host "again, or omit DAAF_BRANCH to use the default branch."
-        Wait-AndExit 1
     }
-    Write-Host "Using branch: $RemoteBranch (from DAAF_BRANCH)"
-} else {
-    # Auto-detect: try main, then master
+}
+
+if (-not $RemoteBranch) {
+    # Auto-detect: try main, then master. Reached when DAAF_BRANCH was unset, or
+    # when a file-origin tag was cleared just above.
     $null = Invoke-ComposeGit rev-parse --verify "$UpstreamRemote/main"
     if ($LASTEXITCODE -eq 0) {
         $RemoteBranch = "main"
@@ -1327,6 +1519,10 @@ if (($CurrentBranch -eq $RemoteBranch) -and ($Local -eq $Remote) -and `
     # Even with nothing to pull, run the existence-heal sync so host scripts a
     # prior update missed are delivered now. No OldHead -> only tier A runs.
     Sync-HostScript
+    # Persist an env-origin branch on this no-op success too (returns before
+    # Complete-Update); re-running with DAAF_BRANCH set while already current is
+    # the most common case where the choice would otherwise never be saved.
+    Save-BranchChoice
     Wait-AndExit 0
 }
 
@@ -1354,6 +1550,9 @@ if (($CurrentBranch -ne $RemoteBranch) -and ($Behind -eq "0")) {
     Write-Host ""
     # Existence-heal sync (tier A only) even when there is nothing new to pull.
     Sync-HostScript
+    # Persist an env-origin branch on this no-op success too (returns before
+    # Complete-Update) -- see the default-branch up-to-date path above.
+    Save-BranchChoice
     Wait-AndExit 0
 }
 

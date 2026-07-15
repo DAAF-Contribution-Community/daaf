@@ -539,7 +539,9 @@ The update script handles everything for you:
 
 > **If the updater tells you it updated itself, run it once more.** The update script is one of the files it keeps in sync, so occasionally an update includes a newer version of the updater. When that happens it copies the new updater into place and prints a notice asking you to run `bash update_daaf.sh` (or `.\update_daaf.ps1`) again. This second run uses the new updater and finishes applying everything. This is expected and safe — running it twice never does any harm, and if there is nothing left to do it will simply report "Already up to date!" and exit.
 
-By default, the update script auto-detects the remote's default branch (`main` or `master`). If you installed from a specific branch (e.g., `dev`) and want to keep updating from that branch, set the `DAAF_BRANCH` environment variable:
+By default, the update script auto-detects the remote's default branch (`main` or `master`). If you want to update from a specific branch instead (e.g., `dev`), you can tell the updater which branch to track in one of three ways.
+
+**Direct invocation (one-off).** Set `DAAF_BRANCH` right on the update command:
 
 ```bash
 # macOS / Linux
@@ -549,9 +551,31 @@ DAAF_BRANCH=dev bash update_daaf.sh
 $env:DAAF_BRANCH = "dev"; .\update_daaf.ps1
 ```
 
-If `DAAF_BRANCH` is not set, the updater defaults to `main` (or `master` if `main` doesn't exist). The script validates that the specified branch exists on the remote before proceeding.
+**From the Control Panel.** If you run updates through the DAAF Control Panel (`daaf.sh` / `daaf.ps1`) rather than calling `update_daaf` directly, the variable must be **exported** (macOS/Linux) or set as a process-scoped `$env:` variable (Windows) *before* you launch the panel. The panel runs the updater as a child process, and a child process only inherits variables that were exported or process-scoped — a plain, unexported shell variable will not carry through:
 
-> **Note:** `DAAF_BRANCH` must be a **branch name** for the updater — not a version tag like `v2.1.0`. Tags are fixed snapshots and cannot receive updates. If you installed from a tag, the updater will automatically pull from `main` when `DAAF_BRANCH` is not set. You can use tags with the installer (see "Installing a specific version or branch" below), but for ongoing updates, use the default or specify a branch.
+```bash
+# macOS / Linux
+export DAAF_BRANCH=dev
+bash daaf.sh
+
+# Windows PowerShell
+$env:DAAF_BRANCH = "dev"
+.\daaf.ps1
+```
+
+**Persisted in `environment_settings.txt`.** `DAAF_BRANCH` is now a recognized key in your `environment_settings.txt` file, so you can set it there once and every future update follows it without re-typing:
+
+```
+DAAF_BRANCH=dev
+```
+
+You usually don't even have to add that line by hand: when you run an update with `DAAF_BRANCH` set in your environment (either of the two methods above) and the update succeeds, the updater **saves that branch into your existing `environment_settings.txt` for you** (keeping a `.pre-update` backup of the prior file), so later updates track it automatically. If you have no `environment_settings.txt` yet, it prints a short note instead of creating one. When a branch is set in both places, the environment value always wins for that run.
+
+If `DAAF_BRANCH` is set nowhere, the updater defaults to `main` (or `master` if `main` doesn't exist). Either way, the script validates that the branch exists on the remote before proceeding.
+
+> **Tags behave differently from branches for updates.** `DAAF_BRANCH` steers *ongoing* updates, and only a **branch** can be followed — a version tag like `v2.1.0` is a fixed snapshot with nowhere newer to move to. The updater handles a tag two ways depending on where it came from:
+> - **Set in your environment** (e.g. `DAAF_BRANCH=v2.1.0 bash update_daaf.sh`): the updater **declines**, explains why, makes no changes, and points you at the supported way to move onto a release — re-running the installer pinned to that tag (see ["Installing a specific version or branch"](#installing-a-specific-version-or-branch) below). A tag is never saved as your update branch, so ongoing updates keep tracking your persisted or default branch.
+> - **Left over in `environment_settings.txt`** (for example after a tagged install): the updater prints a warning naming the file and key, then falls back to the auto-detected default branch for that run so you are never locked out. Edit the file to set a real branch (or remove the line) to silence the warning.
 
 Your research files in `research/` are not tracked by git (they're local to your volume), so they are completely unaffected by updates.
 
@@ -586,7 +610,7 @@ If you installed DAAF **v2.0.1 or earlier** — back when the installation proce
 
 **What the migration does:**
 
-- Downloads some utility scripts (`run_daaf`, `update_daaf`, `backup_daaf`, `restore_from_backup`, `rebuild_daaf`, `view_logs`, `view_notebooks`, `view_quarto`, `run_vscode`) to your host machine so you have all the same convenience tools as a fresh install
+- Downloads the host-side utility scripts (the `daaf` Control Panel and its `daaf_lib` helper library, plus `run_daaf`, `update_daaf`, `backup_daaf`, `restore_from_backup`, `rebuild_daaf`, `view_logs`, `view_notebooks`, `view_quarto`, and `run_vscode`) to your host machine so you have all the same convenience tools as a fresh install
 - Creates a full backup of your Docker volume before making any changes
 - Connects your local git history to the official DAAF repository so that future updates can merge in cleanly
 - Preserves everything — your research files, any framework customizations you've made, and your full git audit trail are all kept intact
@@ -638,7 +662,16 @@ $env:DAAF_BRANCH="dev"; irm "https://raw.githubusercontent.com/DAAF-Contribution
 
 This fetches the installer itself from the specified branch or tag, and also controls the Docker build files and repository clone, so everything comes from the specified ref consistently. The `export` on macOS/Linux is required so that the variable is inherited by the `bash` process on the other side of the pipe. Check the [Releases page](https://github.com/DAAF-Contribution-Community/daaf/releases) to see available versions. If `DAAF_BRANCH` is not set, the installer defaults to `main`.
 
-> **Note:** The installer accepts both branch names and version tags, but the **updater** (`update_daaf.sh` / `update_daaf.ps1`) only accepts branch names. If you install from a tag, you do not need to set `DAAF_BRANCH` when updating — the updater will automatically pull from `main`.
+> **Note:** The installer accepts both branch names and version tags, but the **updater** (`update_daaf.sh` / `update_daaf.ps1`) tracks branches only. Because of this, when you install pinned to a *tag* the installer deliberately does **not** persist it into `environment_settings.txt` (a persisted tag would block future updates), so you do not need to do anything special at update time — updates fall back to the default branch automatically. See [Keeping DAAF Updated](#keeping-daaf-updated) above for exactly how the updater treats a tag set in your environment versus one left in the settings file.
+
+### Automatic settings seeding at install time
+
+When the installer finishes, it sets up your `environment_settings.txt` so any DAAF options you chose at install time carry forward on their own:
+
+- **If you have no `environment_settings.txt` yet** (a typical fresh install), the installer copies the `environment_settings_example.txt` template into place as your new `environment_settings.txt`, then activates any of the six install-time `DAAF_*` options it finds in your environment — `DAAF_PROJECT_NAME`, `DAAF_PORT_MARIMO`, `DAAF_PORT_LOGVIEWER`, `DAAF_PORT_VSCODE`, `DAAF_DEV`, and `DAAF_BRANCH` — writing each one into the file in its proper place (in context, right where that setting is documented). So if you exported any of these before installing (for a specific branch, a second instance, or a developer build), you don't have to re-enter them: they're already saved for every future launch and update.
+- **`DAAF_BRANCH` is seeded only when it names a branch.** If you installed pinned to a version *tag* (e.g. `v2.1.0`), the installer does **not** write that tag into the file — a persisted tag would block future updates — and prints a short note saying so. Ongoing updates then track the default branch (see [Keeping DAAF Updated](#keeping-daaf-updated)).
+- **A reinstall never overwrites an existing `environment_settings.txt`.** If the file already exists, the installer leaves it completely untouched — your real API keys and settings are safe — and notes that any `DAAF_*` variables you set were used for that install run only. Because a reinstall reuses your existing file rather than re-reading your environment, install-time env vars must be set again on each reinstall to steer *that run*, and if you want to persist a *changed* value you edit the file yourself.
+- **The installer always prints an outcome note** at the end telling you exactly what happened — which values were seeded, that an existing file was preserved, or (in the rare event seeding can't complete) manual instructions for copying the template yourself. Seeding never blocks or fails the install.
 
 ### Re-installing DAAF
 
@@ -697,18 +730,31 @@ Two things must be unique per install so they don't collide:
 1. **The Compose project name** — this determines the container name and the Docker volume (`<project>_daaf-data`) that holds your files. Two installs sharing a project name would share a volume.
 2. **The three published localhost ports** — `2718` (notebooks), `2719` (log viewer), and `2720` (VS Code). Two installs cannot both publish the same host port.
 
-To set up a second instance, install DAAF into a second, separate `daaf-docker` folder as usual, then in **that folder's** `environment_settings.txt` set a distinct project name and three free ports:
+To set up a second instance, choose a distinct project name and three free host ports, **set them as environment variables first, then run the installer** into a second, separate folder. Setting them *before* the install matters: they take effect during the install itself — so the second instance builds with the right project name and ports and never collides with the first — and the installer's [automatic settings seeding](#automatic-settings-seeding-at-install-time) writes them straight into the new instance's `environment_settings.txt`, so they persist for every later launch and update with nothing more to do.
 
+**macOS / Linux (Terminal):**
+
+```bash
+export DAAF_PROJECT_NAME=daaf-personal
+export DAAF_PORT_MARIMO=2818
+export DAAF_PORT_LOGVIEWER=2819
+export DAAF_PORT_VSCODE=2820
+curl -fsSL https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scripts/host/install.sh | bash
 ```
-DAAF_PROJECT_NAME=daaf-personal
-DAAF_PORT_MARIMO=2818
-DAAF_PORT_LOGVIEWER=2819
-DAAF_PORT_VSCODE=2820
+
+**Windows (PowerShell):**
+
+```powershell
+$env:DAAF_PROJECT_NAME = "daaf-personal"
+$env:DAAF_PORT_MARIMO = "2818"
+$env:DAAF_PORT_LOGVIEWER = "2819"
+$env:DAAF_PORT_VSCODE = "2820"
+irm https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scripts/host/install.ps1 | iex
 ```
 
-(These four variables are documented in `environment_settings_example.txt`. Any free ports work — the numbers above are just an example offset by 100.)
+(These four variables are documented in `environment_settings_example.txt`. Any free ports work — the numbers above are just an example offset by 100. On macOS/Linux the `export` is what lets the values carry through the pipe into the installer; on Windows `$env:` values are process-scoped and carry through automatically.)
 
-Then recreate that instance's container so Compose picks up the new project name and ports:
+After the install, `environment_settings.txt` in that second folder is the permanent home for these values — the installer seeded them there for you. To change them later, edit that file and recreate the container:
 
 ```
 docker compose down
@@ -761,7 +807,7 @@ Every DAAF image ships with **R** as a first-class execution language alongside 
 - **60+ pinned R packages** covering data manipulation (tidyverse), visualization (ggplot2, plotly, gt), econometrics (fixest, plm, survey), spatial analysis (sf, terra), and machine learning (tidymodels) — installed from a **date-pinned Posit Package Manager (P3M) snapshot** so rebuilds produce identical package versions
 - **Quarto CLI 1.7.29** — R's literate-programming notebook system, the R equivalent of Marimo for Python
 
-Including R (with the full package set and Quarto) accounts for roughly **2.2 GB** of the image size (measured: 8.61 GB with R vs. 6.4 GB without).
+Including R (with the full package set and Quarto) accounts for roughly **2 GB** of the image size — approximately 8.6 GB with R versus 6.4 GB without — though the exact figures vary with your Docker version and platform.
 
 **To use R**, just tell DAAF "set execution language to R" at the start of a session — no configuration files to edit. See the [R and Language Support FAQ](07_faq_technical.md#r-and-language-support) for details on switching between languages.
 
@@ -771,9 +817,9 @@ The smoke tests and their runner in `scripts/smoke_tests/` exercise each R libra
 
 By default, Claude Code prompts you to log in interactively the first time you launch it (browser-based OAuth or pasting an API key). This works great for Max subscription and direct API key setups. However, if you're using **OpenRouter**, a **cloud provider** (Bedrock/Vertex), or simply want your authentication to persist automatically without interactive login, you can configure it through the `environment_settings.txt` file in your `daaf-docker` folder.
 
-Your `daaf-docker` folder includes an `environment_settings_example.txt` template that documents all six supported authentication methods with the exact environment variables needed for each. To set it up:
+Your `daaf-docker` folder includes an `environment_settings_example.txt` template. It opens with a table of contents and is organized into six numbered, lifecycle-tagged sections — **[1] Install & Update Settings**, **[2] Claude Code Authentication**, **[3] Model Routing**, **[4] Alternative Providers & Shim**, **[5] Data Source API Keys**, and **[6] Workspace & Developer Options** — so you can jump straight to the part you need. Authentication lives in **section [2]**, which covers the five direct authentication options (Options A-E) — plus interactive browser login, which needs no environment variables — and points to **section [4]** for the OpenAI/ChatGPT provider shim (Option F). To set it up:
 
-1. **Copy the template** (if you haven't already):
+1. **Make sure you have an `environment_settings.txt` file.** Recent installs seed one for you automatically ([see above](#automatic-settings-seeding-at-install-time)), so you may already have one — check your `daaf-docker` folder. If it isn't there yet, copy the template:
 
    **macOS / Linux (Terminal):**
    ```bash
@@ -993,7 +1039,7 @@ However, some data domains require API keys from their hosting platforms. The ta
 
 #### Recommended: Use an environment_settings.txt file (persistent across restarts)
 
-Your `daaf-docker` folder includes an `environment_settings_example.txt` template. Copy it to `environment_settings.txt` and fill in your keys:
+Your `daaf-docker` folder includes an `environment_settings_example.txt` template (data source keys live in its **section [5]**). If you don't already have an `environment_settings.txt` — recent installs seed one for you — copy the template, then fill in your keys:
 
 **macOS / Linux (Terminal):**
 ```bash
@@ -1062,9 +1108,9 @@ If you skip this step and later try to analyze election data, DAAF will inform y
 - **"service "daaf-docker" is not running"** — Make sure Docker Desktop is running and that you've started the container. The `run_daaf` script handles this automatically, but you can also confirm the container is running in the Docker Desktop app Containers panel on the left-side toolbar. If the container isn't listed, try running the installer again.
 - **Container seems really slow to build the first time** — The initial installation downloads base images and installs all packages. This is a one-time cost — subsequent starts are fast since Docker caches everything.
 - **"I can't find my research files on my computer"** — With Docker volumes, your research files live inside Docker's managed storage, not in the project folder on your computer. See **How to Manage DAAF Project Files and Output** above for more information.
-- **"Port 2718 already in use" when trying to view Marimo notebooks** — Another process is using that port. Either stop it, or change the port mapping in `docker-compose.yml` (e.g., `"127.0.0.1:3000:2718"` to use port 3000 on your host).
-- **"Port 2719 already in use" when trying to view session logs** — Same fix: stop the conflicting process, or change the port mapping (e.g., `"127.0.0.1:3001:2719"`). Port 2719 is used by the DAAF Log Explorer (`generate_log_viewer.sh`).
-- **"Port 2720 already in use" when trying to open the browser-based code editor** — Same fix: stop the conflicting process, or change the port mapping (e.g., `"127.0.0.1:3002:2720"`). Port 2720 is used by the browser-based code editor (`run_vscode.sh` / `run_vscode.ps1`).
+- **"Port 2718 already in use" when trying to view Marimo notebooks** — Another process is using that port. Either stop it, or move DAAF's notebook port by setting `DAAF_PORT_MARIMO` (e.g. `DAAF_PORT_MARIMO=3718`) in your `daaf-docker` folder's `environment_settings.txt`, then recreate the container (`docker compose down`, then `bash run_daaf.sh` / `.\run_daaf.ps1`). Prefer this over hand-editing `docker-compose.yml` — updates and rebuilds regenerate that file and would discard a manual port change.
+- **"Port 2719 already in use" when trying to view session logs** — Same fix: stop the conflicting process, or set `DAAF_PORT_LOGVIEWER` (e.g. `DAAF_PORT_LOGVIEWER=3719`) in `environment_settings.txt` and recreate the container. Port 2719 is used by the DAAF Log Explorer (`generate_log_viewer.sh`).
+- **"Port 2720 already in use" when trying to open the browser-based code editor** — Same fix: stop the conflicting process, or set `DAAF_PORT_VSCODE` (e.g. `DAAF_PORT_VSCODE=3720`) in `environment_settings.txt` and recreate the container. Port 2720 is used by the browser-based code editor (`run_vscode.sh` / `run_vscode.ps1`).
 - **Permission denied errors inside the container (especially on macOS)** — If you see errors like `Permission denied` when Claude tries to read or write files, the Docker volume likely has files owned by root or your host UID instead of the container's `appuser` (UID 1000). This is a known issue with Docker Desktop on macOS. The `docker-compose.yml` includes an init service (`daaf-init`) that automatically fixes file ownership on every startup. To resolve this: stop the container (`docker compose down`), then restart it (`docker compose up -d`) — the init service will repair permissions before the main container starts. If you still have issues, you can fix permissions manually:
   ```bash
   docker run --rm -v "daaf_daaf-data:/daaf" busybox chown -R 1000:1000 /daaf

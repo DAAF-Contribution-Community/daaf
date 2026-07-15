@@ -391,6 +391,251 @@ if ! docker compose -f "${INSTALL_DIR}/docker-compose.yml" exec -T daaf-docker \
     exit 1
 fi
 
+# --- Settings-File Key Upsert (inlined from daaf_lib.sh) ---
+# Insert/update a single KEY=value line in the seeded environment_settings.txt.
+# This is an INLINE COPY of daaf_lib.sh upsert_settings_key: the installer is a
+# deliberately standalone `curl | bash` script that does not source daaf_lib
+# (mirroring its existing inline settings parsers above), so the write helper is
+# carried inline for the same reason. Semantics, placement rules, atomicity,
+# encoding, DRY-RUN gating and Bash 3.2 safety are identical to the library
+# version -- see daaf_lib.sh for the full annotation.
+upsert_settings_key() {
+    local file key value mode backup_suffix
+    file="${1:?upsert_settings_key requires a file path}"
+    key="${2:?upsert_settings_key requires a key}"
+    value="${3-}"
+    mode="${4:-if-absent}"
+    backup_suffix="${5:-}"
+
+    if [ ! -f "${file}" ]; then
+        echo "upsert_settings_key: ERROR: file not found: ${file}" >&2
+        return 1
+    fi
+
+    local -a lines=()
+    local _l
+    while IFS= read -r _l || [ -n "${_l}" ]; do
+        _l="${_l%$'\r'}"
+        lines+=("${_l}")
+    done < "${file}"
+
+    local active_idx=-1 comment_idx=-1 i line stripped
+    for (( i=0; i<${#lines[@]}; i++ )); do
+        line="${lines[$i]}"
+        if [ "${active_idx}" -lt 0 ]; then
+            case "${line}" in
+                "${key}="*) active_idx=$i ;;
+            esac
+        fi
+        if [ "${comment_idx}" -lt 0 ]; then
+            case "${line}" in
+                '#'*)
+                    stripped="${line#\#}"
+                    stripped="${stripped#"${stripped%%[![:space:]]*}"}"
+                    case "${stripped}" in
+                        "${key}="*) comment_idx=$i ;;
+                    esac
+                    ;;
+            esac
+        fi
+    done
+
+    local new_line="${key}=${value}"
+    local action=""
+    local -a out=()
+
+    if [ "${active_idx}" -ge 0 ]; then
+        if [ "${mode}" != "replace" ]; then
+            echo "upsert_settings_key: ${key} skipped (exists)"
+            return 0
+        fi
+        if [ "${lines[$active_idx]}" = "${new_line}" ]; then
+            echo "upsert_settings_key: ${key} unchanged (value already present)"
+            return 0
+        fi
+        for (( i=0; i<${#lines[@]}; i++ )); do
+            if [ "${i}" -eq "${active_idx}" ]; then
+                out+=("${new_line}")
+            else
+                out+=("${lines[$i]}")
+            fi
+        done
+        action="replaced"
+    elif [ "${comment_idx}" -ge 0 ]; then
+        for (( i=0; i<${#lines[@]}; i++ )); do
+            out+=("${lines[$i]}")
+            if [ "${i}" -eq "${comment_idx}" ]; then
+                out+=("${new_line}")
+            fi
+        done
+        action="inserted below commented example"
+    else
+        for (( i=0; i<${#lines[@]}; i++ )); do
+            out+=("${lines[$i]}")
+        done
+        if [ "${#out[@]}" -gt 0 ] && [ -n "${out[$(( ${#out[@]} - 1 ))]}" ]; then
+            out+=("")
+        fi
+        out+=("# Added by DAAF on $(date +%Y-%m-%d)")
+        out+=("${new_line}")
+        action="appended (new)"
+    fi
+
+    if [ "${DAAF_DRY_RUN:-}" = "1" ]; then
+        echo "[DRY-RUN] upsert_settings_key would write ${file}: ${action}"
+        echo "[DRY-RUN]   line: ${new_line}"
+        return 0
+    fi
+
+    if [ -n "${backup_suffix}" ] && [ ! -f "${file}${backup_suffix}" ]; then
+        if ! cp -p "${file}" "${file}${backup_suffix}"; then
+            echo "upsert_settings_key: ERROR: backup failed: ${file}${backup_suffix}" >&2
+            return 1
+        fi
+    fi
+
+    local payload="" ln
+    for ln in "${out[@]}"; do
+        payload="${payload}${ln}"$'\n'
+    done
+
+    local dir tmp
+    dir="$(dirname "${file}")"
+    tmp="${dir}/.daaf_upsert.$$.${RANDOM}"
+    if ! cp -p "${file}" "${tmp}"; then
+        echo "upsert_settings_key: ERROR: could not create temp file in ${dir}" >&2
+        rm -f "${tmp}"
+        return 1
+    fi
+    if ! printf '%s' "${payload}" > "${tmp}"; then
+        echo "upsert_settings_key: ERROR: write failed: ${tmp}" >&2
+        rm -f "${tmp}"
+        return 1
+    fi
+    if ! mv -f "${tmp}" "${file}"; then
+        echo "upsert_settings_key: ERROR: rename failed: ${tmp} -> ${file}" >&2
+        rm -f "${tmp}"
+        return 1
+    fi
+
+    echo "upsert_settings_key: ${key} ${action}"
+    return 0
+}
+
+# --- Seed environment_settings.txt from process-env DAAF_* variables ---
+# A fresh install can carry the user's DAAF_* choices (project name, ports, dev
+# flag, branch) straight into a new environment_settings.txt so future launches
+# and updates pick them up without re-exporting. We copy the just-downloaded
+# example template and upsert each seedable key that is present (non-empty) in
+# the process environment. Binding rules:
+#   - Never overwrite an existing environment_settings.txt: a reinstall preserves
+#     the user's real API keys; env vars are then used for THIS install only.
+#   - Never fail the install: every mutation is composed under `if` so a seeding
+#     failure (set -e is active) degrades to a printed manual-fallback note.
+#   - Never persist a DAAF_BRANCH that is a version tag: a persisted tag would
+#     break every future update (see update_daaf.sh). Tag-vs-branch is detected
+#     from the container clone -- `git clone -b <ref>` leaves HEAD on a symbolic
+#     ref for a branch and detached for a tag, so `symbolic-ref -q HEAD` is a
+#     cheap, local (no-network) discriminator. If DAAF_BRANCH is unset it is
+#     simply not seeded.
+#   - Always print an outcome note (keys seeded / file preserved / seeding failed
+#     with manual instructions).
+#   - Fully DAAF_DRY_RUN gated: prints intent and touches nothing (HSM5).
+SEED_SRC="${INSTALL_DIR}/environment_settings_example.txt"
+SEED_DST="${INSTALL_DIR}/environment_settings.txt"
+
+if [ "${DAAF_DRY_RUN:-}" = "1" ]; then
+    echo ""
+    echo "[DRY-RUN] Would seed ${SEED_DST} from process-env DAAF_* variables (if absent, never overwriting an existing file)."
+elif [ -f "${SEED_DST}" ]; then
+    echo ""
+    echo "NOTE: An existing environment_settings.txt was found and left untouched."
+    echo "      Any DAAF_* environment variables you set were used for THIS install"
+    echo "      only; your existing settings file was preserved."
+elif [ ! -f "${SEED_SRC}" ]; then
+    echo ""
+    echo "NOTE: Could not seed environment_settings.txt (the example template was"
+    echo "      not found). To configure settings manually:"
+    echo "        cd ${INSTALL_DIR}"
+    echo "        cp environment_settings_example.txt environment_settings.txt"
+    echo "        # then edit environment_settings.txt with your keys and settings"
+else
+    # Determine whether DAAF_BRANCH (if set) is a branch or a version tag.
+    # Three outcomes are distinguished so a docker-exec failure is never
+    # misreported as "is a tag" (a false tag claim + a silently dropped seed):
+    #   1. exec healthy + attached HEAD (symbolic-ref succeeds) -> branch, seed
+    #   2. exec healthy + detached HEAD (symbolic-ref fails)    -> tag, skip w/ note
+    #   3. exec/probe failure (health probe fails)             -> cannot verify, skip
+    # A cheap health probe (`git rev-parse HEAD`) runs first over the SAME exec
+    # path; only if it succeeds is a subsequent symbolic-ref failure trusted as
+    # "detached HEAD = tag". Both probes are local (no network) and this whole
+    # else-arm is skipped under DAAF_DRY_RUN, so it stays dry-run inert.
+    SEED_BRANCH_OK=0
+    SEED_BRANCH_SKIP_TAG=0
+    SEED_BRANCH_UNVERIFIED=0
+    if [ -n "${DAAF_BRANCH:-}" ]; then
+        if docker compose -f "${INSTALL_DIR}/docker-compose.yml" exec -T daaf-docker \
+            git -C /daaf rev-parse HEAD </dev/null >/dev/null 2>&1; then
+            if docker compose -f "${INSTALL_DIR}/docker-compose.yml" exec -T daaf-docker \
+                git -C /daaf symbolic-ref -q HEAD </dev/null >/dev/null 2>&1; then
+                SEED_BRANCH_OK=1
+            else
+                SEED_BRANCH_SKIP_TAG=1
+            fi
+        else
+            SEED_BRANCH_UNVERIFIED=1
+        fi
+    fi
+
+    SEED_OK=1
+    SEED_KEYS=""
+    if cp "${SEED_SRC}" "${SEED_DST}"; then
+        for _k in DAAF_PROJECT_NAME DAAF_PORT_MARIMO DAAF_PORT_LOGVIEWER DAAF_PORT_VSCODE DAAF_DEV DAAF_BRANCH; do
+            _v="${!_k:-}"
+            [ -n "${_v}" ] || continue
+            if [ "${_k}" = "DAAF_BRANCH" ] && [ "${SEED_BRANCH_OK}" != "1" ]; then
+                continue
+            fi
+            if upsert_settings_key "${SEED_DST}" "${_k}" "${_v}" "if-absent" >/dev/null 2>&1; then
+                SEED_KEYS="${SEED_KEYS} ${_k}"
+            else
+                SEED_OK=0
+            fi
+        done
+    else
+        SEED_OK=0
+    fi
+
+    echo ""
+    if [ "${SEED_OK}" = "1" ]; then
+        if [ -n "${SEED_KEYS}" ]; then
+            echo "NOTE: Created environment_settings.txt and seeded these values from your"
+            echo "      environment:${SEED_KEYS}"
+        else
+            echo "NOTE: Created environment_settings.txt from the template (no DAAF_* values"
+            echo "      were set in your environment to seed)."
+        fi
+        if [ "${SEED_BRANCH_SKIP_TAG}" = "1" ]; then
+            echo "      DAAF_BRANCH was NOT seeded because '${DAAF_BRANCH}' is a version tag;"
+            echo "      persisting a tag would break future updates. Ongoing updates track the"
+            echo "      default branch. Edit environment_settings.txt to pin a branch if desired."
+        fi
+        if [ "${SEED_BRANCH_UNVERIFIED}" = "1" ]; then
+            echo "      DAAF_BRANCH was NOT seeded: could not verify whether '${DAAF_BRANCH}' is"
+            echo "      a branch (the container clone was not reachable). Add DAAF_BRANCH to"
+            echo "      environment_settings.txt manually if desired."
+        fi
+        echo "      Review it and add any data source API keys before your next launch."
+    else
+        echo "NOTE: Automatic settings seeding did not fully complete, so your other"
+        echo "      installation steps finished but environment_settings.txt may be absent"
+        echo "      or partial. To configure it manually:"
+        echo "        cd ${INSTALL_DIR}"
+        echo "        cp environment_settings_example.txt environment_settings.txt"
+        echo "        # then edit environment_settings.txt with your keys and settings"
+    fi
+fi
+
 echo ""
 echo "=========================================="
 echo "  Installation complete!"

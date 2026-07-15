@@ -35,12 +35,12 @@ function Wait-AndExit {
 # process environment so `docker compose` interpolation resolves the project name
 # and published host ports. Canonical shared pattern (kept in sync with
 # Import-DaafSettingsFile in daaf_lib.ps1); standalone scripts that do NOT dot-source
-# daaf_lib.ps1 inline it. Parse only these four keys (never dot-source -- the file
+# daaf_lib.ps1 inline it. Parse only these whitelisted keys (never dot-source -- the file
 # holds API keys); process env wins; absent file = no-op; CR stripped; PS 5.1 safe.
 function Import-DaafSettingsInline {
     param([string]$SettingsFile = "./environment_settings.txt")
     if (-not (Test-Path -LiteralPath $SettingsFile)) { return }
-    $known = @('DAAF_PROJECT_NAME', 'DAAF_PORT_MARIMO', 'DAAF_PORT_LOGVIEWER', 'DAAF_PORT_VSCODE')
+    $known = @('DAAF_PROJECT_NAME', 'DAAF_PORT_MARIMO', 'DAAF_PORT_LOGVIEWER', 'DAAF_PORT_VSCODE', 'DAAF_DEV', 'DAAF_BRANCH')
     foreach ($rawLine in (Get-Content -LiteralPath $SettingsFile)) {
         $line = $rawLine -replace "`r", ""
         $trimmed = $line.Trim()

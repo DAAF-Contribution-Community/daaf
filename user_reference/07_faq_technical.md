@@ -60,7 +60,7 @@ Run `docker compose up -d` from your `daaf-docker` folder first, then try `bash 
 
 ### Port conflicts (2718, 2719, or 2720 already in use)
 
-Another application is using one of DAAF's ports. Close the conflicting application, or edit `docker-compose.yml` in your `daaf-docker` folder to map different host ports (change the left side of the colon, e.g., `3718:2718`).
+Another application is using one of DAAF's ports. Either close the conflicting application, or move DAAF's host ports by setting the port variables in your `daaf-docker` folder's `environment_settings.txt` — `DAAF_PORT_MARIMO` (notebooks, default 2718), `DAAF_PORT_LOGVIEWER` (session logs, default 2719), and `DAAF_PORT_VSCODE` (browser code editor, default 2720). For example, to move the notebook port, add `DAAF_PORT_MARIMO=3718`, then recreate the container so the change takes effect (`docker compose down`, then `bash run_daaf.sh` / `.\run_daaf.ps1`). This is the supported way to change DAAF's ports — don't hand-edit `docker-compose.yml`, since updates and rebuilds regenerate it and would discard a manual port change.
 
 ### Permission denied errors inside the container (macOS)
 
@@ -401,6 +401,8 @@ With localhost binding, the ports are only reachable from your own machine, not 
 
 After changing, rebuild the container — see [Keeping DAAF Updated](01_installation_and_quickstart.md#keeping-daaf-updated) for the procedure.
 
+**Heads-up about updates:** unlike port *numbers* (which have a supported home in `environment_settings.txt` via `DAAF_PORT_*`), the bind address has no settings-file key today — this is a manual edit to a framework-managed file. DAAF updates preserve local edits where they can (your change is stashed and re-applied), but an update that touches the same lines can conflict with or supersede it. After any update or rebuild, re-check the `ports:` section and re-apply this change if it has been reset to the localhost default.
+
 ---
 
 ### Q: Is there a free way to use DAAF?
@@ -413,7 +415,7 @@ Cost remains a meaningful barrier to entry for DAAF, but it's shrinking. As open
 
 ### Q: How much disk space does DAAF use?
 
-The Docker image is roughly **8.61 GB** after building. It includes an Ubuntu 24.04 (Noble) base image, Python 3.12, 46 pinned Python packages (data science, geospatial, econometrics, visualization, ML), geospatial system libraries (GDAL/GEOS/PROJ), Claude Code, R, 60+ pinned R packages (tidyverse, fixest, survey, sf, and more), and the Quarto CLI. The R runtime, packages, and Quarto account for roughly **2.2 GB** of that total (measured: 8.61 GB with R vs. 6.4 GB without). Docker also keeps build cache layers, so total Docker disk usage may be somewhat higher.
+The Docker image is roughly **8.6 GB** after building (the exact size varies with your Docker version and platform). It includes an Ubuntu 24.04 (Noble) base image, Python 3.12, 46 pinned Python packages (data science, geospatial, econometrics, visualization, ML), geospatial system libraries (GDAL/GEOS/PROJ), Claude Code, R, 60+ pinned R packages (tidyverse, fixest, survey, sf, and more), and the Quarto CLI. The R runtime, packages, and Quarto account for roughly **2 GB** of that total (approximately 8.6 GB with R versus 6.4 GB without). Docker also keeps build cache layers, so total Docker disk usage may be somewhat higher.
 
 Beyond the image, your Docker volume will grow as you create research projects. Each project accumulates scripts, parquet data files, session logs, and notebooks. A typical full-pipeline project might add 50-500 MB depending on how many datasets you fetch and how large they are.
 

@@ -659,3 +659,132 @@ teardown() {
     assert_output --partial "ERROR"
     assert_output --partial "Failed to copy repository files"
 }
+
+# =========================================================================
+# Settings seeding (environment_settings.txt from process-env DAAF_*)
+# =========================================================================
+# The installer seeds a fresh environment_settings.txt from the example template,
+# upserting any DAAF_* choices present in the process environment. Binding rules:
+# never overwrite an existing file, never fail the install, never persist a
+# DAAF_BRANCH that resolves to a version tag (symbolic-ref probe), and stay fully
+# DAAF_DRY_RUN gated. These behavioral tests reach the seeder via the full
+# success path (MOCK_DOCKER_EXEC_EXIT=0 -> CLAUDE.md verify passes -> completion).
+
+@test "install.sh: seeds environment_settings.txt from process-env DAAF_* when absent" {
+    export DAAF_NESTED=1
+    export DAAF_PROJECT_NAME="myproj"
+    export DAAF_PORT_MARIMO="9990"
+    MOCK_DOCKER_EXEC_EXIT=0
+    cd "${TEST_DIR}"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    assert_success
+    assert_output --partial "seeded these values"
+    assert_output --partial "DAAF_PROJECT_NAME"
+    [ -f "${TEST_DIR}/daaf-docker/environment_settings.txt" ]
+    run cat "${TEST_DIR}/daaf-docker/environment_settings.txt"
+    assert_output --partial "DAAF_PROJECT_NAME=myproj"
+    assert_output --partial "DAAF_PORT_MARIMO=9990"
+}
+
+@test "install.sh: preserves an existing environment_settings.txt (never overwrites)" {
+    export DAAF_NESTED=1
+    export DAAF_PROJECT_NAME="ignored"
+    MOCK_DOCKER_EXEC_EXIT=0
+    cd "${TEST_DIR}"
+    mkdir -p "${TEST_DIR}/daaf-docker"
+    printf 'DAAF_PROJECT_NAME=original\n# my real API keys\n' > "${TEST_DIR}/daaf-docker/environment_settings.txt"
+    before="$(cat "${TEST_DIR}/daaf-docker/environment_settings.txt")"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    assert_success
+    assert_output --partial "left untouched"
+    after="$(cat "${TEST_DIR}/daaf-docker/environment_settings.txt")"
+    [ "${before}" = "${after}" ]
+}
+
+@test "install.sh: does not seed DAAF_BRANCH when it resolves to a version tag" {
+    export DAAF_NESTED=1
+    export DAAF_BRANCH="v1.2.3"
+    export DAAF_PROJECT_NAME="myproj"
+    # Custom mock: container clone is detached (tag) -> symbolic-ref fails; every
+    # other exec (readiness, clone, cp, CLAUDE.md verify) succeeds so the install
+    # completes and reaches the seeder.
+    docker() {
+        case "$*" in
+            "info") return 0 ;;
+            *"volume inspect"*) return 1 ;;
+            *" build --progress"*) return 0 ;;
+            *" up -d"*) return 0 ;;
+            *"symbolic-ref"*) return 1 ;;
+            *) return 0 ;;
+        esac
+    }
+    export -f docker
+    mock_curl
+    cd "${TEST_DIR}"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    assert_success
+    assert_output --partial "is a version tag"
+    [ -f "${TEST_DIR}/daaf-docker/environment_settings.txt" ]
+    run cat "${TEST_DIR}/daaf-docker/environment_settings.txt"
+    refute_output --partial "DAAF_BRANCH="
+    assert_output --partial "DAAF_PROJECT_NAME=myproj"
+}
+
+@test "install.sh: could-not-verify (exec failure) skips DAAF_BRANCH without a false tag claim" {
+    export DAAF_NESTED=1
+    export DAAF_BRANCH="v1.2.3"
+    export DAAF_PROJECT_NAME="myproj"
+    # Custom mock: the health probe (`git rev-parse HEAD`) fails, simulating a
+    # stopped container / transient exec error; the branch-vs-tag classification
+    # is therefore UNVERIFIED (not "tag"). Every other exec succeeds so the install
+    # completes and reaches the seeder. rev-parse HEAD is used ONLY by the seeder's
+    # health probe (verified), so failing it is surgical.
+    docker() {
+        case "$*" in
+            "info") return 0 ;;
+            *"volume inspect"*) return 1 ;;
+            *" build --progress"*) return 0 ;;
+            *" up -d"*) return 0 ;;
+            *"rev-parse HEAD"*) return 1 ;;
+            *) return 0 ;;
+        esac
+    }
+    export -f docker
+    mock_curl
+    cd "${TEST_DIR}"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    assert_success
+    # Honest "could not verify" note, and crucially NO false "is a version tag" claim.
+    assert_output --partial "could not verify whether 'v1.2.3' is"
+    refute_output --partial "is a version tag"
+    # DAAF_BRANCH was not seeded; the other key still was.
+    [ -f "${TEST_DIR}/daaf-docker/environment_settings.txt" ]
+    run cat "${TEST_DIR}/daaf-docker/environment_settings.txt"
+    refute_output --partial "DAAF_BRANCH="
+    assert_output --partial "DAAF_PROJECT_NAME=myproj"
+}
+
+@test "install.sh: settings-seeding failure does not fail the install" {
+    export DAAF_NESTED=1
+    export DAAF_PROJECT_NAME="myproj"
+    MOCK_DOCKER_EXEC_EXIT=0
+    # Force the seeder's `cp "${SEED_SRC}" "${SEED_DST}"` to fail. cp is used on
+    # the host ONLY by the seeder (and its inlined upsert, which is never reached
+    # once the seed copy fails), so overriding it is surgical.
+    cp() { return 1; }
+    export -f cp
+    cd "${TEST_DIR}"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    assert_success
+    assert_output --partial "did not fully complete"
+    [ ! -f "${TEST_DIR}/daaf-docker/environment_settings.txt" ]
+}
+
+@test "install.sh: dry-run does not create environment_settings.txt (seeder zero-write)" {
+    cd "${TEST_DIR}"
+    run env DAAF_DRY_RUN=1 DAAF_NESTED=1 DAAF_PROJECT_NAME=myproj bash "${REPO_ROOT}/scripts/host/install.sh" 2>&1
+    assert_success
+    assert_output --partial "Would seed"
+    [ ! -f "${TEST_DIR}/daaf-docker/environment_settings.txt" ]
+    [ ! -e "${TEST_DIR}/daaf-docker" ]
+}

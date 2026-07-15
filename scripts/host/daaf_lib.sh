@@ -11,8 +11,10 @@
 #
 # Functions provided:
 #   load_daaf_settings -- export the whitelisted DAAF_* vars (four multi-instance
-#                         keys + the DAAF_DEV build flag) from
-#                         environment_settings.txt
+#                         keys + the DAAF_DEV build flag + the DAAF_BRANCH updater
+#                         ref) from environment_settings.txt
+#   upsert_settings_key -- insert/update a single KEY=value line in a settings
+#                         file (write counterpart to load_daaf_settings)
 #   setup_colors    -- populate color variables (respects NO_COLOR + non-TTY)
 #   open_url        -- open a URL in the default browser (best-effort)
 #   check_port      -- test whether a port is listening inside the DAAF container
@@ -28,14 +30,16 @@ fi
 _DAAF_LIB_LOADED=1
 
 # --- Multi-Instance / Build-Flag Settings Loader ---
-# Bridge environment_settings.txt -> host shell environment for the five
+# Bridge environment_settings.txt -> host shell environment for the six
 # whitelisted DAAF_* variables: the four multi-instance keys
 # (DAAF_PROJECT_NAME, DAAF_PORT_MARIMO, DAAF_PORT_LOGVIEWER, DAAF_PORT_VSCODE)
 # plus DAAF_DEV, the opt-in BUILD flag consumed as
-# `--build-arg DAAF_DEV=${DAAF_DEV:-0}` in docker-compose.yml. The build flag
-# rides the same bridge for the same reason: env_file feeds the container env
-# only, while compose interpolation (and build args) resolve from the host shell
-# env.
+# `--build-arg DAAF_DEV=${DAAF_DEV:-0}` in docker-compose.yml, plus DAAF_BRANCH,
+# the updater's target ref (read env-only today; whitelisting it here lets a
+# value persisted in environment_settings.txt reach update_daaf.sh). The build
+# flag and branch ref ride the same bridge for the same reason: env_file feeds
+# the container env only, while compose interpolation (and build args) resolve
+# from the host shell env.
 #
 # WHY THIS EXISTS: environment_settings.txt is wired into docker-compose.yml as a
 # service-level `env_file`, which feeds the CONTAINER environment only. Docker
@@ -44,13 +48,13 @@ _DAAF_LIB_LOADED=1
 # HOST shell environment and the project-folder .env file -- NOT from env_file.
 # So without this bridge, setting DAAF_PROJECT_NAME in environment_settings.txt
 # would change the in-container env but leave the compose project name and
-# published ports at their defaults. This function reads those four keys from the
-# file and exports them so compose interpolation sees them.
+# published ports at their defaults. This function reads the whitelisted keys
+# from the file and exports them so compose interpolation sees them.
 #
 # PARSING SAFETY: we deliberately do NOT `source`/`.` the file. It holds API keys
 # with arbitrary characters (quotes, $, backticks, spaces) that would be
 # interpreted by the shell -- a correctness and safety hazard. We extract only the
-# five known DAAF_* keys via a line-oriented grep/sed/case scan, stripping CR for
+# six known DAAF_* keys via a line-oriented grep/sed/case scan, stripping CR for
 # CRLF tolerance (matches how the rest of the codebase handles container output).
 #
 # PRECEDENCE: an already-set shell environment variable WINS over the file value.
@@ -76,9 +80,9 @@ load_daaf_settings() {
         case "${line}" in
             ''|'#'*) continue ;;
         esac
-        # Only lines of the form KEY=VALUE for our five known keys.
+        # Only lines of the form KEY=VALUE for our six known keys.
         case "${line}" in
-            DAAF_PROJECT_NAME=*|DAAF_PORT_MARIMO=*|DAAF_PORT_LOGVIEWER=*|DAAF_PORT_VSCODE=*|DAAF_DEV=*)
+            DAAF_PROJECT_NAME=*|DAAF_PORT_MARIMO=*|DAAF_PORT_LOGVIEWER=*|DAAF_PORT_VSCODE=*|DAAF_DEV=*|DAAF_BRANCH=*)
                 key="${line%%=*}"
                 val="${line#*=}"
                 # Strip one layer of surrounding quotes if present (tolerant of
@@ -251,4 +255,191 @@ ensure_container() {
     fi
 
     return 1
+}
+
+# --- Settings-File Key Upsert ---
+# Insert or update a single KEY=value line in a dotenv-style settings file
+# (environment_settings.txt), preserving comments, key order, and surrounding
+# layout. This is the WRITE counterpart to load_daaf_settings (which only reads).
+#
+# Usage:
+#   upsert_settings_key <file> <key> <value> [mode] [backup_suffix]
+#     mode:          "if-absent" (default) writes only when no active KEY= line
+#                    exists; "replace" rewrites an existing active line's value.
+#     backup_suffix: optional; when given (e.g. ".pre-update") a one-time backup
+#                    copy <file><suffix> is made before the first write, and only
+#                    if it does not already exist.
+#
+# Placement rules (git-config-style conservative default):
+#   1. Active `KEY=` line present:
+#        - if-absent -> leave untouched, report "skipped (exists)".
+#        - replace   -> rewrite that line's value in place (position preserved;
+#                       the surrounding comment lines are untouched).
+#   2. No active line but a commented example (`#KEY=` / `# KEY=`, first match)
+#      present -> insert the active line directly below the commented example.
+#   3. Key absent entirely -> append at end under a dated provenance comment.
+#
+# ATOMICITY / ENCODING: writes to a temp file in the SAME directory (so the
+# rename is atomic on one filesystem) then `mv -f`; the temp is a `cp -p` clone
+# of the original so the file MODE is preserved without a non-portable `stat`.
+# Output is LF-terminated and never carries a BOM; CR is stripped on read for
+# CRLF-tolerance, so a Windows-edited file is normalized to LF.
+#
+# DRY-RUN: when DAAF_DRY_RUN=1, print the intended action and the exact line that
+# WOULD be written, and touch nothing on disk (no temp, no backup, no rename) --
+# satisfies FRAMEWORK_INTEGRATION_CHECKLIST item HSM5.
+#
+# Bash 3.2 safe: indexed arrays only (no mapfile / declare -A / ${var,,} /
+# negative subscripts); portable date/cp; no GNU-only flags. Note: an inline
+# trailing `# comment` on an active line being REPLACED is not preserved (the
+# whole active line is rewritten) -- DAAF settings files never inline-comment
+# active keys, and Compose's strict parser discourages it, so this is a
+# documented, intentional limitation rather than a supported case.
+#
+# DUPLICATE KEYS (replace mode): "replace" updates the FIRST active `KEY=` line
+# and assumes a single active occurrence per key. A settings file should never
+# hold two active lines for the same key: Docker Compose's env_file ingestion is
+# last-wins while DAAF's own loader (load_daaf_settings) is first-wins, so a
+# duplicate already means the container and the host scripts would disagree on the
+# value. If a file was hand-edited to contain duplicates, replace mode rewrites
+# only the first and leaves later ones stale -- deduplicate the file by hand
+# rather than relying on this function to reconcile it.
+#
+# SYMLINKED TARGET: the same-directory temp + atomic rename REPLACES the settings
+# path with a freshly written regular file. If <file> is a symlink, the rename
+# swaps the symlink itself for a regular file and the original link target is left
+# untouched (stale) -- a symlinked environment_settings.txt is therefore not
+# supported; point the tools at a real file.
+upsert_settings_key() {
+    local file key value mode backup_suffix
+    file="${1:?upsert_settings_key requires a file path}"
+    key="${2:?upsert_settings_key requires a key}"
+    value="${3-}"
+    mode="${4:-if-absent}"
+    backup_suffix="${5:-}"
+
+    if [ ! -f "${file}" ]; then
+        echo "upsert_settings_key: ERROR: file not found: ${file}" >&2
+        return 1
+    fi
+
+    # Read the file into an indexed array (Bash 3.2: while-read, not mapfile).
+    # Strip a trailing CR so CRLF-edited files parse and rewrite as LF.
+    local -a lines=()
+    local _l
+    while IFS= read -r _l || [ -n "${_l}" ]; do
+        _l="${_l%$'\r'}"
+        lines+=("${_l}")
+    done < "${file}"
+
+    # Locate the first active `KEY=` line and the first commented example.
+    local active_idx=-1 comment_idx=-1 i line stripped
+    for (( i=0; i<${#lines[@]}; i++ )); do
+        line="${lines[$i]}"
+        if [ "${active_idx}" -lt 0 ]; then
+            case "${line}" in
+                "${key}="*) active_idx=$i ;;
+            esac
+        fi
+        if [ "${comment_idx}" -lt 0 ]; then
+            case "${line}" in
+                '#'*)
+                    stripped="${line#\#}"
+                    # Trim leading whitespace (Bash 3.2 safe parameter expansion).
+                    stripped="${stripped#"${stripped%%[![:space:]]*}"}"
+                    case "${stripped}" in
+                        "${key}="*) comment_idx=$i ;;
+                    esac
+                    ;;
+            esac
+        fi
+    done
+
+    local new_line="${key}=${value}"
+    local action=""
+    local -a out=()
+
+    if [ "${active_idx}" -ge 0 ]; then
+        if [ "${mode}" != "replace" ]; then
+            echo "upsert_settings_key: ${key} skipped (exists)"
+            return 0
+        fi
+        if [ "${lines[$active_idx]}" = "${new_line}" ]; then
+            echo "upsert_settings_key: ${key} unchanged (value already present)"
+            return 0
+        fi
+        for (( i=0; i<${#lines[@]}; i++ )); do
+            if [ "${i}" -eq "${active_idx}" ]; then
+                out+=("${new_line}")
+            else
+                out+=("${lines[$i]}")
+            fi
+        done
+        action="replaced"
+    elif [ "${comment_idx}" -ge 0 ]; then
+        for (( i=0; i<${#lines[@]}; i++ )); do
+            out+=("${lines[$i]}")
+            if [ "${i}" -eq "${comment_idx}" ]; then
+                out+=("${new_line}")
+            fi
+        done
+        action="inserted below commented example"
+    else
+        for (( i=0; i<${#lines[@]}; i++ )); do
+            out+=("${lines[$i]}")
+        done
+        # Blank separator only when the file does not already end with one.
+        if [ "${#out[@]}" -gt 0 ] && [ -n "${out[$(( ${#out[@]} - 1 ))]}" ]; then
+            out+=("")
+        fi
+        out+=("# Added by DAAF on $(date +%Y-%m-%d)")
+        out+=("${new_line}")
+        action="appended (new)"
+    fi
+
+    # DRY-RUN: describe the write and touch nothing (HSM5).
+    if [ "${DAAF_DRY_RUN:-}" = "1" ]; then
+        echo "[DRY-RUN] upsert_settings_key would write ${file}: ${action}"
+        echo "[DRY-RUN]   line: ${new_line}"
+        return 0
+    fi
+
+    # One-time backup (only when a suffix was given and no backup exists yet).
+    if [ -n "${backup_suffix}" ] && [ ! -f "${file}${backup_suffix}" ]; then
+        if ! cp -p "${file}" "${file}${backup_suffix}"; then
+            echo "upsert_settings_key: ERROR: backup failed: ${file}${backup_suffix}" >&2
+            return 1
+        fi
+    fi
+
+    # Build the LF-terminated payload (one trailing LF, never a BOM).
+    local payload="" ln
+    for ln in "${out[@]}"; do
+        payload="${payload}${ln}"$'\n'
+    done
+
+    # Atomic write: same-dir temp cloned for mode via cp -p, overwritten, then
+    # renamed over the original. The temp is removed explicitly on any failure
+    # (no global EXIT trap, so a caller's own trap is never clobbered).
+    local dir tmp
+    dir="$(dirname "${file}")"
+    tmp="${dir}/.daaf_upsert.$$.${RANDOM}"
+    if ! cp -p "${file}" "${tmp}"; then
+        echo "upsert_settings_key: ERROR: could not create temp file in ${dir}" >&2
+        rm -f "${tmp}"
+        return 1
+    fi
+    if ! printf '%s' "${payload}" > "${tmp}"; then
+        echo "upsert_settings_key: ERROR: write failed: ${tmp}" >&2
+        rm -f "${tmp}"
+        return 1
+    fi
+    if ! mv -f "${tmp}" "${file}"; then
+        echo "upsert_settings_key: ERROR: rename failed: ${tmp} -> ${file}" >&2
+        rm -f "${tmp}"
+        return 1
+    fi
+
+    echo "upsert_settings_key: ${key} ${action}"
+    return 0
 }

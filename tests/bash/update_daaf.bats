@@ -1418,7 +1418,13 @@ setup_state_machine() {
     refute_output --partial "version tag"
 }
 
-@test "update: DAAF_BRANCH is a tag gives tag-specific error" {
+# An env-origin DAAF_BRANCH that resolves to a version tag gives an informative
+# REFUSAL (exit 1): the updater tracks a branch for ongoing updates and cannot
+# advance to a fixed tag, so it names the tag, points at the supported re-install
+# path, and states which branch ongoing updates track. It never persists a tag.
+# (Repurposed from the former "tag-specific error" test after the env-tag design
+# decision -- the file-origin tag path below is the softer warn-and-continue arm.)
+@test "update: env-origin DAAF_BRANCH tag is refused with re-install guidance" {
     setup_state_machine
     run bash -c '
         export DAAF_BRANCH="v2.1.0"
@@ -1444,8 +1450,195 @@ setup_state_machine() {
         bash "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
     '
     assert_failure
+    assert_output --partial "v2.1.0"
     assert_output --partial "version tag"
     assert_output --partial "not a branch"
+    # Names the supported re-install path (pinned to the tag)...
+    assert_output --partial "DAAF_BRANCH=v2.1.0 bash -c"
+    # ...and states which branch ongoing updates track.
+    assert_output --partial "default branch"
+    # A tag is never saved as the update branch.
+    assert_output --partial "never saved as your update branch"
+}
+
+# A file-origin DAAF_BRANCH tag (set in environment_settings.txt, NOT the
+# environment) must NOT lock the user out: warn, name the file, and fall back to
+# the auto-detected default branch for this run (exit 0, the update proceeds).
+@test "update: file-origin DAAF_BRANCH tag warns and auto-detects (no hard exit)" {
+    setup_state_machine
+    printf 'DAAF_BRANCH=v2.1.0\n' > "${TEST_DIR}/environment_settings.txt"
+    run bash -c '
+        unset DAAF_BRANCH
+        docker() {
+            local all_args="$*"
+            case "$all_args" in
+                "info") return 0 ;;
+                *"compose ps"*"--format"*) echo "daaf-docker" ;;
+                *"compose exec"*"true"*) return 0 ;;
+                *"compose exec"*"test -f"*"/daaf/CLAUDE.md"*) return 0 ;;
+                *"compose exec"*"test -f"*"/daaf/.git/shallow"*) return 1 ;;
+                *"compose exec"*"remote get-url"*"origin"*) echo "https://github.com/DAAF-Contribution-Community/daaf.git" ;;
+                *"compose exec"*"fetch"*) return 0 ;;
+                *"compose exec"*"rev-parse --verify"*"backup/"*) return 1 ;;
+                *"compose exec"*"rev-parse --verify"*"origin/v2.1.0"*) return 1 ;;
+                *"compose exec"*"rev-parse --verify"*"refs/tags/v2.1.0"*) return 0 ;;
+                *"compose exec"*"rev-parse --verify"*"origin/main"*) return 0 ;;
+                *"compose exec"*"branch --show-current"*) echo "main" ;;
+                *"compose exec"*"rev-parse"*"origin/main"*) echo "samehash" ;;
+                *"compose exec"*"rev-parse"*"HEAD"*) echo "samehash" ;;
+                *"compose exec"*"diff --name-only"*"HEAD"*) echo "" ;;
+                *"compose exec"*"rev-list --count"*) echo "0" ;;
+                *"compose exec"*"symbolic-ref"*) echo "main" ;;
+                *) return 0 ;;
+            esac
+        }
+        export -f docker
+        bash "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+    '
+    assert_success
+    assert_output --partial "environment_settings.txt"
+    assert_output --partial "version tag"
+    assert_output --partial "auto-detected default branch"
+    assert_output --partial "Already up to date"
+    # The file-tag warning is a soft warning, not the env-tag refusal.
+    refute_output --partial "never saved as your update branch"
+}
+
+# An env-origin DAAF_BRANCH that IS a real branch is persisted back to
+# environment_settings.txt (replace mode, with a .pre-update backup) after a
+# successful update, so future runs track it without re-exporting.
+@test "update: env-origin DAAF_BRANCH branch is persisted after a successful update" {
+    setup_state_machine
+    printf 'DAAF_PROJECT_NAME=daaf\n' > "${TEST_DIR}/environment_settings.txt"
+    run bash -c '
+        export DAAF_BRANCH="dev"
+        docker() {
+            local all_args="$*"
+            case "$all_args" in
+                "info") return 0 ;;
+                *"compose ps"*"--format"*) echo "daaf-docker" ;;
+                *"compose exec"*"true"*) return 0 ;;
+                *"compose exec"*"test -f"*"/daaf/CLAUDE.md"*) return 0 ;;
+                *"compose exec"*"test -f"*"/daaf/.git/shallow"*) return 1 ;;
+                *"compose exec"*"remote get-url"*"origin"*) echo "https://github.com/DAAF-Contribution-Community/daaf.git" ;;
+                *"compose exec"*"fetch"*) return 0 ;;
+                *"compose exec"*"rev-parse --verify"*"backup/"*) return 1 ;;
+                *"compose exec"*"rev-parse --verify"*"origin/dev"*) return 0 ;;
+                *"compose exec"*"branch --show-current"*) echo "dev" ;;
+                *"compose exec"*"rev-parse"*"origin/dev"*) echo "def456remote" ;;
+                *"compose exec"*"rev-parse"*"HEAD"*) echo "abc123local" ;;
+                *"compose exec"*"diff --name-only"*"HEAD"*) echo "" ;;
+                *"compose exec"*"rev-list --count"*"origin/dev..HEAD"*) echo "0" ;;
+                *"compose exec"*"rev-list --count"*"HEAD..origin/dev"*) echo "3" ;;
+                *"compose exec"*"pull"*) echo "Updating abc123..def456" ; return 0 ;;
+                *"compose exec"*"branch"*) return 0 ;;
+                *"compose exec"*"symbolic-ref"*) echo "dev" ;;
+                "cp"*) return 0 ;;
+                *) return 0 ;;
+            esac
+        }
+        export -f docker
+        bash "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+    '
+    assert_success
+    assert_output --partial "Update complete!"
+    assert_output --partial "Saved DAAF_BRANCH=dev"
+    run cat "${TEST_DIR}/environment_settings.txt"
+    assert_output --partial "DAAF_BRANCH=dev"
+    [ -f "${TEST_DIR}/environment_settings.txt.pre-update" ]
+}
+
+# finish_update's persistence block is fully DAAF_DRY_RUN gated (HSM5): with a
+# PERSIST_BRANCH set and DAAF_DRY_RUN=1, it must write NOTHING -- no DAAF_BRANCH
+# line, no .pre-update backup -- while still printing the upsert intent.
+@test "update: finish_update branch persistence writes nothing under DAAF_DRY_RUN" {
+    printf 'DAAF_PROJECT_NAME=daaf\n' > "${TEST_DIR}/environment_settings.txt"
+    before="$(cat "${TEST_DIR}/environment_settings.txt")"
+    run bash -c '
+        cd "'"${TEST_DIR}"'"
+        DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+        trap - ERR
+        set +eu
+        # Export AFTER sourcing so the gate is live when upsert runs inside
+        # finish_update (a source-time prefix would not survive to the call).
+        export DAAF_DRY_RUN=1
+        BACKUP_BRANCH="backup/test-branch"
+        PERSIST_BRANCH="dev"
+        sync_host_scripts() { :; }
+        check_build_changes() { :; }
+        finish_update "oldhash123"
+    '
+    assert_success
+    assert_output --partial "Update complete!"
+    assert_output --partial "[DRY-RUN] upsert_settings_key would write"
+    after="$(cat "${TEST_DIR}/environment_settings.txt")"
+    [ "${before}" = "${after}" ]
+    [ ! -f "${TEST_DIR}/environment_settings.txt.pre-update" ]
+}
+
+# W3: the env-origin branch must persist even on a NO-OP success ("Already up to
+# date"), which exits before finish_update. This is the most common re-run case
+# (`DAAF_BRANCH=dev update` while already current): persist_branch_choice is now
+# called on the no-op path so the choice is still saved.
+@test "update: env-origin branch persists on the already-up-to-date no-op path" {
+    setup_state_machine
+    printf 'DAAF_PROJECT_NAME=daaf\n' > "${TEST_DIR}/environment_settings.txt"
+    run bash -c '
+        export DAAF_BRANCH="dev"
+        docker() {
+            local all_args="$*"
+            case "$all_args" in
+                "info") return 0 ;;
+                *"compose ps"*"--format"*) echo "daaf-docker" ;;
+                *"compose exec"*"true"*) return 0 ;;
+                *"compose exec"*"test -f"*"/daaf/CLAUDE.md"*) return 0 ;;
+                *"compose exec"*"test -f"*"/daaf/.git/shallow"*) return 1 ;;
+                *"compose exec"*"remote get-url"*"origin"*) echo "https://github.com/DAAF-Contribution-Community/daaf.git" ;;
+                *"compose exec"*"fetch"*) return 0 ;;
+                *"compose exec"*"rev-parse --verify"*"backup/"*) return 1 ;;
+                *"compose exec"*"rev-parse --verify"*"origin/dev"*) return 0 ;;
+                *"compose exec"*"branch --show-current"*) echo "dev" ;;
+                *"compose exec"*"rev-parse"*"origin/dev"*) echo "abc123same" ;;
+                *"compose exec"*"rev-parse"*"HEAD"*) echo "abc123same" ;;
+                *"compose exec"*"diff --name-only"*"HEAD"*) echo "" ;;
+                *"compose exec"*"branch"*) return 0 ;;
+                "cp"*) return 0 ;;
+                *) return 0 ;;
+            esac
+        }
+        export -f docker
+        bash "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+    '
+    assert_success
+    assert_output --partial "Already up to date"
+    assert_output --partial "Saved DAAF_BRANCH=dev"
+    run cat "${TEST_DIR}/environment_settings.txt"
+    assert_output --partial "DAAF_BRANCH=dev"
+    [ -f "${TEST_DIR}/environment_settings.txt.pre-update" ]
+}
+
+# W3 / HSM5: the extracted persist_branch_choice call path (shared by finish_update
+# AND the no-op success exits) must write NOTHING under DAAF_DRY_RUN -- no
+# DAAF_BRANCH line, no .pre-update backup -- while still printing the upsert intent.
+@test "update: persist_branch_choice writes nothing under DAAF_DRY_RUN (no-op call path)" {
+    printf 'DAAF_PROJECT_NAME=daaf\n' > "${TEST_DIR}/environment_settings.txt"
+    before="$(cat "${TEST_DIR}/environment_settings.txt")"
+    run bash -c '
+        cd "'"${TEST_DIR}"'"
+        DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+        trap - ERR
+        set +eu
+        # Export AFTER sourcing so the gate is live when upsert runs inside
+        # persist_branch_choice (a source-time prefix would not survive the call).
+        export DAAF_DRY_RUN=1
+        PERSIST_BRANCH="dev"
+        persist_branch_choice
+    '
+    assert_success
+    assert_output --partial "[DRY-RUN] upsert_settings_key would write"
+    after="$(cat "${TEST_DIR}/environment_settings.txt")"
+    [ "${before}" = "${after}" ]
+    [ ! -f "${TEST_DIR}/environment_settings.txt.pre-update" ]
 }
 
 @test "update: DAAF_BRANCH is neither branch nor tag gives generic error" {

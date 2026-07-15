@@ -1,180 +1,340 @@
 # ============================================================================
-# DAAF Environment Variables
+# DAAF ENVIRONMENT SETTINGS
 # ============================================================================
-# Copy this file to environment_settings.txt in your daaf-docker folder and fill in your keys:
+# HOW TO USE THIS FILE
+#   1. Copy this file to environment_settings.txt in your daaf-docker folder:
+#          cp environment_settings_example.txt environment_settings.txt          (macOS / Linux)
+#          Copy-Item environment_settings_example.txt environment_settings.txt   (Windows PowerShell)
+#   2. Turn a setting ON by deleting the single leading '#' on its "#KEY=value"
+#      line, then fill in your value. The long "# ..." prose lines are
+#      explanations — leave those commented; only "#KEY=value" lines are meant
+#      to be uncommented.
+#   3. Apply your change. Most settings need a container recreate; a few need an
+#      image rebuild, and a few must be set BEFORE install — each section's
+#      banner carries a lifecycle tag saying which (and the CONTENTS map below
+#      summarizes them). The usual recreate is:
+#          docker compose down
+#          bash run_daaf.sh    (macOS / Linux)   |   .\run_daaf.ps1   (Windows)
+#   Full walkthrough: user_reference/01_installation_and_quickstart.md
 #
-#   cp environment_settings_example.txt environment_settings.txt            (macOS / Linux)
-#   Copy-Item environment_settings_example.txt environment_settings.txt     (Windows PowerShell)
+# CONVENTIONS USED BELOW
+#   #KEY=value   An activatable example. Always flush at column 0 with the '#'
+#                immediately in front of the key, never indented, and never with
+#                a trailing "# ..." comment on the same line (a value followed by
+#                an inline comment breaks some parsers). Delete the one leading
+#                '#' to turn it on.
+#   # text       An explanatory prose line (it may be indented AFTER the '#').
+#   Adjacent #KEY lines introduced with "pick ONE" are mutually exclusive
+#   alternatives — uncomment only the set for the method you chose.
 #
-# The environment_settings.txt file is loaded automatically when the container starts.
-# After editing environment_settings.txt, recreate the container to pick up changes:
-#
-#   docker compose down
-#   bash run_daaf.sh            (macOS / Linux)
-#   .\run_daaf.ps1              (Windows)
-#
-# IMPORTANT: Never commit environment_settings.txt to version control — it is gitignored by default.
+# IMPORTANT: environment_settings.txt is gitignored by default. Never commit it
+# and never paste real keys or tokens anywhere. This example file holds NO real
+# values and sets NOTHING by default — everything ships commented out, so a fresh
+# copy is safe by default.
 # ============================================================================
-
-
-# === CLAUDE CODE AUTHENTICATION =============================================
-# Uncomment ONE section below matching your setup. Claude Code checks
-# credentials in priority order — if multiple are set, the highest-priority
-# one wins. See: https://code.claude.com/docs/en/authentication
 #
-# Priority order:
-#   1. Bedrock / Vertex / Foundry (cloud provider)
-#   2. ANTHROPIC_AUTH_TOKEN (proxy / gateway — used by Options C and F)
-#   3. ANTHROPIC_API_KEY (direct API — pay-per-use)
-#   4. CLAUDE_CODE_OAUTH_TOKEN (subscription — Max, Pro, Team, Enterprise)
-#   5. Interactive login (browser-based, no env var needed)
+#
 # ============================================================================
-
-# --- Option A: Anthropic API Key (pay-per-use) ---
+# CONTENTS
+# ============================================================================
+#   [1] Install & Update Settings ........ (set BEFORE install/update)
+#   [2] Claude Code Authentication ....... (restart required)
+#   [3] Model Routing (advanced) ......... (restart required)
+#   [4] Alternative Providers & Shim ..... (rebuild required, once)
+#   [5] Data Source API Keys ............. (restart required)
+#   [6] Workspace & Developer Options .... (varies, noted per key)
+# ============================================================================
+#
+#
+# ============================================================================
+# [1] Install & Update Settings  (set BEFORE install/update)
+# ============================================================================
+# These DAAF_* settings are read by the host-side launcher and lifecycle scripts
+# (install, update, run, backup, rebuild) on your OWN machine — not only inside
+# the container. Because the host scripts read them, they behave a little
+# differently from the container-only keys in later sections:
+#
+#   * For a STANDARD single install, leave everything in this section unset —
+#     the defaults reproduce the original behavior exactly.
+#   * The multi-instance keys (DAAF_PROJECT_NAME, DAAF_PORT_*) only matter when
+#     you run a SECOND DAAF install on the same machine.
+#
+# WHEN ARE THESE READ? At install time this file may not exist yet — install is
+# what CREATES it. So for a brand-new SECOND instance you set these as real
+# environment variables BEFORE the first install/run (export them, or prefix the
+# command). AFTER the install exists, this file becomes their permanent home and
+# the host scripts read them from here.
+#
+# LIFECYCLE NUANCE: the section banner's "(set BEFORE install/update)" tag is
+# strictly true only for DAAF_PROJECT_NAME, which is fixed at creation time --
+# changing it on an existing install detaches it from its data volume. The PORT
+# keys CAN be changed later: set the new value here, then recreate the container
+# (docker compose down, then run_daaf.sh / run_daaf.ps1) per the header's recreate
+# guidance. DAAF_BRANCH is likewise read on every update, so it too can change at
+# any time.
+#
+# AUTO-SEEDING: at install time DAAF seeds this file for you from any DAAF_*
+# environment variables you had set for the install — so if you exported
+# DAAF_PROJECT_NAME / DAAF_PORT_* / DAAF_BRANCH before installing a second
+# instance, they are written here automatically and persist for later updates.
+#
+# ----------------------------------------------------------------------------
+# Update channel: which branch DAAF updates track
+# ----------------------------------------------------------------------------
+# DAAF_BRANCH selects the git branch that update_daaf.sh (and the control panel's
+# update option) pull from. It can live HERE — persisted for every future update
+# — OR be exported / prefixed for a single update run, in which case the
+# environment value wins for that one run:
+#
+#     DAAF_BRANCH=dev bash update_daaf.sh          (one-off; no export needed)
+#
+# DEFAULT: main (the stable release branch) when unset.
+#
+# A release TAG (e.g. v2.1.0) is NOT an update channel. The updater tracks
+# BRANCHES only -- it follows a moving branch to pull ongoing changes, whereas a
+# tag is a fixed snapshot with nowhere newer to advance to. Concretely:
+#
+#   * Set DAAF_BRANCH to a tag in your ENVIRONMENT and the updater declines with
+#     an explanation and makes NO changes -- it neither silently no-ops nor locks
+#     you out. To move an installation onto a specific release, do a FRESH INSTALL
+#     pinned to the tag instead (the installer accepts a tag as DAAF_BRANCH).
+#   * A tag accidentally written into THIS file is not fatal either: the updater
+#     warns and falls back to the default branch for that run (no lockout).
+#
+# So persist a moving BRANCH name here, never a tag.
+#
+# --- To activate, remove the leading '#' and set your channel: ---
+#DAAF_BRANCH=main
+#
+# ----------------------------------------------------------------------------
+# Multi-instance: run more than one DAAF on the same machine
+# ----------------------------------------------------------------------------
+# Give each install folder its own project name and host ports so two instances
+# never collide. All DAAF scripts read these automatically. Leave everything
+# unset for a standard single install — the defaults match the original behavior
+# exactly.
+#
+# NOTE: if you run `docker compose` commands DIRECTLY (outside the provided
+# scripts), also create a .env file in this folder with the same values — bare
+# docker compose does not read environment_settings.txt for these.
+#
+# Compose project name (prefixes the container and data volume). DEFAULT: daaf
+# WARNING: changing this on an EXISTING install detaches it from its current data
+# volume — only set it when creating a NEW second install.
+# --- To activate, remove the leading '#': ---
+#DAAF_PROJECT_NAME=daaf2
+#
+# Host ports for the web services. DEFAULTS: 2718 / 2719 / 2720
+# (These replace the old "hand-edit docker-compose.yml" method for port changes.)
+# --- To activate, remove the leading '#' on the lines you need: ---
+#DAAF_PORT_MARIMO=3718
+#DAAF_PORT_LOGVIEWER=3719
+#DAAF_PORT_VSCODE=3720
+#
+# The developer build flag DAAF_DEV also belongs to this install-time family, but
+# it is documented alongside the other developer options in section [6].
+#
+#
+# ============================================================================
+# [2] Claude Code Authentication  (restart required)
+# ============================================================================
+# Pick ONE authentication method below and uncomment its lines. Claude Code
+# checks credentials in priority order — if several are set, the highest-priority
+# one wins. Docs: https://code.claude.com/docs/en/authentication
+#
+# PRIORITY ORDER (highest first):
+#   1. Bedrock / Vertex / Foundry (cloud provider)   — Options D, E
+#   2. ANTHROPIC_AUTH_TOKEN (proxy / gateway)         — Option C, and the shim in [4]
+#   3. ANTHROPIC_API_KEY (direct API, pay-per-use)    — Option A
+#   4. CLAUDE_CODE_OAUTH_TOKEN (subscription)         — Option B
+#   5. Interactive browser login (no env var needed)
+#
+# After changing auth, recreate the container (docker compose down, then
+# run_daaf.sh / run_daaf.ps1). To run OpenAI GPT models on your OWN OpenAI API
+# key or a ChatGPT subscription, see the provider shim in section [4].
+#
+# ----------------------------------------------------------------------------
+# Option A: Anthropic API key (pay-per-use)
+# ----------------------------------------------------------------------------
 # Get a key: https://console.anthropic.com/
-# ANTHROPIC_API_KEY=sk-ant-api03-your_key_here
-
-# --- Option B: Max / Pro / Team / Enterprise Subscription ---
+# --- To activate, remove the leading '#': ---
+#ANTHROPIC_API_KEY=sk-ant-api03-your_key_here
+#
+# ----------------------------------------------------------------------------
+# Option B: Max / Pro / Team / Enterprise subscription
+# ----------------------------------------------------------------------------
 # Run `claude setup-token` once inside the container to generate a long-lived
 # OAuth token (valid ~1 year), then paste it here for persistent auth.
-# NOTE: Do NOT also set ANTHROPIC_API_KEY — it takes priority and you'll be
+# NOTE: do NOT also set ANTHROPIC_API_KEY — it takes priority and you would be
 # billed per-use instead of through your subscription.
-# CLAUDE_CODE_OAUTH_TOKEN=your_oauth_token_here
-
-# --- Option C: OpenRouter (third-party model gateway) ---
+# --- To activate, remove the leading '#': ---
+#CLAUDE_CODE_OAUTH_TOKEN=your_oauth_token_here
+#
+# ----------------------------------------------------------------------------
+# Option C: OpenRouter (third-party model gateway)
+# ----------------------------------------------------------------------------
 # Docs: https://openrouter.ai/docs/guides/coding-agents/claude-code-integration
 # Get a key: https://openrouter.ai/settings/keys
-# If you previously logged in with Anthropic, run /logout in Claude Code first.
-# Leave the ANTHROPIC_API_KEY blank below
-# ANTHROPIC_BASE_URL=https://openrouter.ai/api
-# ANTHROPIC_AUTH_TOKEN=your_openrouter_api_key_here
-# ANTHROPIC_API_KEY=
-# OPENROUTER_API_KEY=your_openrouter_api_key_here
-
-# --- Option C, extended: OpenAI GPT models through OpenRouter ---
-# OpenRouter also serves OpenAI GPT models, and DAAF runs its full agentic
-# stack on them (multi-tool loops, subagent dispatch, two-tier routing) with
-# no proxy, no rebuild — just the Option C lines above plus these
-# (validated live 2026-07-09):
+# If you previously logged in with Anthropic, run /logout in Claude Code first,
+# and leave the ANTHROPIC_API_KEY value blank (shown below).
+# --- To activate, remove the leading '#' on all four lines: ---
+#ANTHROPIC_BASE_URL=https://openrouter.ai/api
+#ANTHROPIC_AUTH_TOKEN=your_openrouter_api_key_here
+#ANTHROPIC_API_KEY=
+#OPENROUTER_API_KEY=your_openrouter_api_key_here
 #
-# ANTHROPIC_MODEL=openai/gpt-5.6-sol                # your session model
-# ANTHROPIC_DEFAULT_OPUS_MODEL=openai/gpt-5.6-sol   # strong tier / Opus-analog (1,050,000-token window)
-# ANTHROPIC_DEFAULT_SONNET_MODEL=openai/gpt-5.6-terra # fast tier / Sonnet-analog (1,050,000-token window)
-# CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000            # match your SESSION model's real window
+# Option C also serves OpenAI GPT models, and DAAF runs its full agentic stack on
+# them (multi-tool loops, subagent dispatch, two-tier routing) with no proxy and
+# no rebuild — just the four Option C lines above plus the model-routing keys in
+# section [3] (validated live 2026-07-09). See section [3] for the GPT model
+# slugs, context-window sizing, and the tier-analog naming (Sol / Terra / Luna).
 #
-# Notes: context-utilization numbers are estimates on GPT sessions (OpenRouter
-# doesn't serve Claude Code's token-counting endpoint), and GPT models keep
-# DAAF's conservative context-quality thresholds by design. The GPT-5.6 family
-# uses OpenAI's tier-analog naming -- Sol (strong/Opus-analog), Terra
-# (mid/Sonnet-analog), Luna (economy/Haiku-analog) -- all with 1,050,000-token
-# windows; older gpt-5.5/5.4/5.2 slugs still work. See the installation guide's
-# "GPT (OpenAI) models via OpenRouter" section for current model guidance.
-# The `[1m]` model-slug suffix that advertises the 1M window to Claude Code is
-# verified for the direct-OpenAI shim lane (Option F below); it is UNTESTED on
-# these `openai/`-prefixed OpenRouter slugs. On Option C, prefer the explicit
-# CLAUDE_CODE_MAX_CONTEXT_TOKENS above (or CLAUDE_CODE_AUTO_COMPACT_WINDOW=1000000).
-
-# --- Optional: Subagent model routing (applies to Options C and F) ---------
-# DAAF routes specialist subagents to Claude model tiers: 'opus' for high-
-# judgment work (planning, QA review, verification, debugging) and 'sonnet'
-# for well-specified work (fetching, profiling, notebook assembly).
-#
-# If you point Claude Code at an alternative provider (e.g., OpenRouter
-# serving GPT, GLM, Kimi, Qwen — or the Option F shim below), those Claude
-# aliases don't exist on your endpoint. Remap them so DAAF's two-tier routing
-# uses YOUR models instead:
-#
-# ANTHROPIC_DEFAULT_OPUS_MODEL=your-strong-model-slug      # e.g. openai/gpt-5.6-sol or z-ai/glm-5.2
-# ANTHROPIC_DEFAULT_SONNET_MODEL=your-fast-model-slug      # e.g. openai/gpt-5.6-terra or z-ai/glm-5.2-air
-#
-# Or, to switch tiered routing off and run every subagent on a single model:
-#
-# CLAUDE_CODE_SUBAGENT_MODEL=your-model-slug
-#
-# If you set none of these on a non-Claude session, DAAF's model-routing guard
-# blocks mismatched Claude-tier dispatches and subagents run on your session
-# model.
-
-# --- Option D: Amazon Bedrock ---
+# ----------------------------------------------------------------------------
+# Option D: Amazon Bedrock
+# ----------------------------------------------------------------------------
 # Docs: https://code.claude.com/docs/en/bedrock-vertex
-# CLAUDE_CODE_USE_BEDROCK=1
-# AWS_REGION=us-east-1
-# ANTHROPIC_BEDROCK_BASE_URL=https://bedrock-runtime.us-east-1.amazonaws.com
-
-# --- Option E: Google Vertex AI ---
-# Docs: https://code.claude.com/docs/en/bedrock-vertex
-# CLAUDE_CODE_USE_VERTEX=1
-# ANTHROPIC_VERTEX_PROJECT_ID=your_project_id
-# CLOUD_ML_REGION=us-central1
-
-# --- Option F: OpenAI API directly (DAAF provider shim) ---
-# Runs GPT models against your own OpenAI API key, with no gateway in between.
-# OpenAI's API doesn't speak Anthropic's wire format, so DAAF ships a small
-# translation shim (scripts/provider_shim/ — one auditable file, zero extra
-# dependencies). When DAAF_PROVIDER_SHIM is set, the container starts and
-# supervises the shim automatically at boot; there is nothing to run manually.
-# Get a key: https://platform.openai.com/api-keys
-# Setup guide: user_reference/01_installation_and_quickstart.md, Option F
+# --- To activate, remove the leading '#' on the lines you need: ---
+#CLAUDE_CODE_USE_BEDROCK=1
+#AWS_REGION=us-east-1
+#ANTHROPIC_BEDROCK_BASE_URL=https://bedrock-runtime.us-east-1.amazonaws.com
 #
-# NOTE: Requires ONE image rebuild after first enabling this option (the
-# auto-launch hook is baked into the container entrypoint):
-#   bash rebuild_daaf.sh          (macOS / Linux)
-#   .\rebuild_daaf.ps1            (Windows)
+# ----------------------------------------------------------------------------
+# Option E: Google Vertex AI
+# ----------------------------------------------------------------------------
+# Docs: https://code.claude.com/docs/en/bedrock-vertex
+# --- To activate, remove the leading '#' on the lines you need: ---
+#CLAUDE_CODE_USE_VERTEX=1
+#ANTHROPIC_VERTEX_PROJECT_ID=your_project_id
+#CLOUD_ML_REGION=us-central1
+#
+#
+# ============================================================================
+# [3] Model Routing (advanced)  (restart required)
+# ============================================================================
+# You only need this section if you point Claude Code at an ALTERNATIVE provider
+# — OpenRouter / GPT / GLM / etc. via Option C in [2], or the provider shim in
+# [4]. On a standard Anthropic setup (Options A / B / D / E) the defaults are
+# correct and you can skip everything here.
+#
+# WHY REMAP? DAAF routes specialist subagents to Claude model TIERS: 'opus' for
+# high-judgment work (planning, QA review, verification, debugging) and 'sonnet'
+# for well-specified work (fetching, profiling, notebook assembly). On a non-
+# Claude endpoint those Claude tier aliases don't exist, so you remap them to
+# YOUR models. If you set none of these on a non-Claude session, DAAF's model-
+# routing guard blocks mismatched Claude-tier dispatches and subagents fall back
+# to your session model.
+#
+# ----------------------------------------------------------------------------
+# Two-tier routing: map DAAF's strong / fast tiers to your models
+# ----------------------------------------------------------------------------
+# Strong tier (Opus-analog) and fast tier (Sonnet-analog).
+# Examples: openai/gpt-5.6-sol or z-ai/glm-5.2 (strong);
+#           openai/gpt-5.6-terra or z-ai/glm-5.2-air (fast).
+# --- To activate, remove the leading '#' and set your model slugs: ---
+#ANTHROPIC_DEFAULT_OPUS_MODEL=your-strong-model-slug
+#ANTHROPIC_DEFAULT_SONNET_MODEL=your-fast-model-slug
+#
+# Or switch tiered routing OFF and run every subagent on a SINGLE model:
+# --- To activate, remove the leading '#': ---
+#CLAUDE_CODE_SUBAGENT_MODEL=your-model-slug
+#
+# ----------------------------------------------------------------------------
+# Session model (the model a session OPENS on)
+# ----------------------------------------------------------------------------
+# On Option C (OpenRouter) this key works and sets your session model.
+# IMPORTANT: on the provider shim (Option F, section [4]) it does NOT take effect
+# from this file — DAAF's settings.json "env" block overrides it; section [4]
+# explains how to change the standing default there.
+# --- To activate, remove the leading '#': ---
+#ANTHROPIC_MODEL=openai/gpt-5.6-sol
+#
+# ----------------------------------------------------------------------------
+# Context window size
+# ----------------------------------------------------------------------------
+# Tell Claude Code the real context window of your model so it budgets the full
+# window locally instead of assuming ~200K for an unknown slug (which ends
+# sessions early with "Prompt is too long"). Match your SESSION model's window:
+# --- To activate, remove the leading '#': ---
+#CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000
+#
+# Window sizes: the gpt-5.6 family (sol / terra / luna) and gpt-5.5 / 5.4 are
+# 1050000; gpt-5.2 is 400000. An alternative to this key is to set
+# CLAUDE_CODE_AUTO_COMPACT_WINDOW to 1000000.
+#
+# GPT-5.6 FAMILY & TIER-ANALOG NAMING: Sol (strong / Opus-analog), Terra
+# (mid / Sonnet-analog), Luna (economy / Haiku-analog) — all with 1,050,000-token
+# windows; the older gpt-5.5 / 5.4 / 5.2 slugs still work. Context-utilization
+# numbers are ESTIMATES on GPT sessions (OpenRouter doesn't serve Claude Code's
+# token-counting endpoint), and GPT models keep DAAF's conservative context-
+# quality thresholds by design. See the installation guide's "GPT (OpenAI) models
+# via OpenRouter" section for current model guidance.
+#
+# THE [1m] SLUG SUFFIX: appending [1m] to a model slug advertises a 1M window to
+# Claude Code, which budgets the full window locally and then strips [1m] before
+# sending (so the shim / backend see the bare slug). It is VERIFIED for the
+# direct-OpenAI shim lane (Option F in [4]) but UNTESTED on "openai/"-prefixed
+# OpenRouter slugs — so on Option C prefer the explicit
+# CLAUDE_CODE_MAX_CONTEXT_TOKENS above (or CLAUDE_CODE_AUTO_COMPACT_WINDOW).
+#
+#
+# ============================================================================
+# [4] Alternative Providers & Shim  (rebuild required, once)
+# ============================================================================
+# Run OpenAI GPT models against your OWN OpenAI API key or your ChatGPT
+# subscription, with no gateway in between. OpenAI's API doesn't speak Anthropic's
+# wire format, so DAAF ships a small translation shim (scripts/provider_shim/ —
+# one auditable file, zero extra dependencies). When DAAF_PROVIDER_SHIM is set,
+# the container starts and supervises the shim automatically at boot; there is
+# nothing to run manually.
+#
+# ONE-TIME REBUILD: enabling the shim for the first time requires ONE image
+# rebuild (the auto-launch hook is baked into the container entrypoint):
+#     bash rebuild_daaf.sh     (macOS / Linux)   |   .\rebuild_daaf.ps1   (Windows)
 # After that, config changes here only need the usual container recreate.
 #
-# DAAF_PROVIDER_SHIM=openai
-# OPENAI_API_KEY=sk-your_openai_key_here
-# ANTHROPIC_BASE_URL=http://127.0.0.1:4141
-# ANTHROPIC_AUTH_TOKEN=daaf-shim-local
-# ANTHROPIC_API_KEY=
+# Setup guide: user_reference/01_installation_and_quickstart.md, Option F.
 #
-# Model selection — bare OpenAI slugs here (no "openai/" prefix). The [1m]
-# suffix tells Claude Code the model has a 1M context window so it budgets the
-# full window locally; Claude Code strips [1m] before sending, so the shim/backend
-# see the bare slug. Without it, Claude Code assumes ~200K for these unknown slugs
-# and ends sessions early ("Prompt is too long") well below the real 1,050,000.
+# ----------------------------------------------------------------------------
+# 4.1 Basic shim setup (both auth lanes need these)
+# ----------------------------------------------------------------------------
+# --- To activate, remove the leading '#' on all four lines: ---
+#DAAF_PROVIDER_SHIM=openai
+#ANTHROPIC_BASE_URL=http://127.0.0.1:4141
+#ANTHROPIC_AUTH_TOKEN=daaf-shim-local
+#ANTHROPIC_API_KEY=
 #
-# Session START model: do NOT set ANTHROPIC_MODEL in this file — it will not
-# take effect. DAAF's project settings.json sets ANTHROPIC_MODEL in its "env"
-# block (shipped default: claude-opus-4-8[1m], since most DAAF users run
+# Then pick ONE auth lane below: 4.2 (OpenAI API key, sanctioned) or 4.3 (ChatGPT
+# subscription via Codex OAuth, an unofficial dev lane).
+#
+# MODEL SLUGS: the shim lane is the one place the [1m] window suffix is verified
+# (see section [3] for what these keys do). Use BARE OpenAI slugs here — no
+# "openai/" prefix:
+# --- To activate, remove the leading '#': ---
+#ANTHROPIC_DEFAULT_OPUS_MODEL=gpt-5.6-sol[1m]
+#ANTHROPIC_DEFAULT_SONNET_MODEL=gpt-5.6-terra[1m]
+#CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000
+#
+# SESSION-START MODEL: do NOT set ANTHROPIC_MODEL in this file for the shim — it
+# will not take effect. DAAF's project settings.json sets ANTHROPIC_MODEL in its
+# "env" block (shipped default: claude-opus-4-8[1m], since most DAAF users run
 # Claude), and a settings.json env value OVERRIDES the container environment
 # (verified empirically 2026-07-12). GPT sessions therefore open on the Claude
-# default; the first message fails loudly, which makes the needed "/model"
-# switch obvious. To make GPT your STANDING default instead, edit the
-# "ANTHROPIC_MODEL" line in /daaf/.claude/settings.json (e.g. to
-# "gpt-5.6-sol[1m]") — see the technical FAQ entry "My GPT session starts on
-# a Claude model" for details.
-# ANTHROPIC_DEFAULT_OPUS_MODEL=gpt-5.6-sol[1m]
-# ANTHROPIC_DEFAULT_SONNET_MODEL=gpt-5.6-terra[1m]
-# CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000            # gpt-5.6 family (sol/terra/luna) + gpt-5.5/5.4: 1050000; gpt-5.2: 400000. Alternative to the [1m] suffix: CLAUDE_CODE_AUTO_COMPACT_WINDOW=1000000
+# default; the first message fails loudly, which makes the needed "/model" switch
+# obvious. To make GPT your STANDING default instead, edit the ANTHROPIC_MODEL
+# line in /daaf/.claude/settings.json (e.g. to gpt-5.6-sol[1m]) — see the
+# technical FAQ entry "My GPT session starts on a Claude model" for details.
 #
-# Reasoning-effort control (shim v1.2.2+): the outbound OpenAI request always
-# carries reasoning.effort, resolved by a four-tier precedence chain (first
-# present wins): (1) a per-request signal from Claude Code, (2) a "#<effort>"
-# suffix you append to a model slug, (3) the SHIM_REASONING_EFFORT env var
-# below, (4) the default "high" (parity with DAAF Claude sessions). The
-# "#<effort>" suffix works ALONGSIDE the "[1m]" window hint — Claude Code
-# consumes "[1m]" itself and passes "#<effort>" through to the shim, which
-# strips it before the request reaches OpenAI. Example (per-model override):
-# ANTHROPIC_DEFAULT_SONNET_MODEL=gpt-5.6-terra[1m]#medium   # fast tier at medium effort
+# ----------------------------------------------------------------------------
+# 4.2 Auth lane A: OpenAI API key  (sanctioned)
+# ----------------------------------------------------------------------------
+# Get a key: https://platform.openai.com/api-keys
+# This is the default lane (SHIM_BACKEND_MODE unset -> "openai").
+# --- To activate, remove the leading '#': ---
+#OPENAI_API_KEY=sk-your_openai_key_here
 #
-# IMPORTANT (shim v1.2.3+): the /model reasoning-effort selector in the Claude
-# Code UI does NOT work for GPT slugs. Claude Code gates effort by model-ID
-# pattern and pins "high" on every request for unrecognized (GPT) slugs, so the
-# UI selector is inert. As of v1.2.3 the shim treats an inbound "high" as that
-# pin (unset) and falls through to your slug/env steer. Steer GPT effort with the
-# "#<effort>" suffix (tier 2, above) or SHIM_REASONING_EFFORT (tier 3, below).
-#
-# Advanced shim tuning (defaults are correct for OpenAI; rarely needed):
-# SHIM_PORT=4141
-# SHIM_BACKEND_BASE_URL=https://api.openai.com/v1
-# SHIM_BACKEND_API_KEY=                             # defaults to OPENAI_API_KEY
-# SHIM_STRIP_MODEL_PREFIX=openai/                   # literal prefix stripped from model ids before the backend; only needed with prefixed slugs — leave unset for the bare slugs shown above
-# SHIM_SANITIZE_TOOLS=0                             # sanitization is ON by default (strips known GPT tool-call quirks: empty pages:"", Agent isolation fills, redundant sandbox flags — each otherwise costs a wasted error round-trip); set to 0 ONLY when benchmarking shim-routed models (DAAFBench must see raw model behavior; flag is read at shim startup, so a restart is required)
-# SHIM_REASONING_EFFORT=                            # TIER 3 of the effort precedence chain (per-request signal > "#<effort>" slug suffix > this env var > default "high"). Sets reasoning.effort when no usable per-request signal and no slug suffix are present. NOTE (v1.2.3): an inbound per-request "high" is treated as Claude Code's pinned constant (unset) and demoted, so for GPT slugs this env var and the "#<effort>" suffix are the real steering surfaces. Valid values none|low|medium|high|xhigh|max ("max" is gpt-5.6-only). Leave unset to use the default "high" (v1.2.2+ always sends an effort now — the old implicit "medium" server default no longer applies). Read at shim startup, so a restart is required
-# SHIM_TEXT_VERBOSITY=                              # Response verbosity (shim v1.2.4+): the outbound OpenAI request always carries text.verbosity. Valid values low|medium|high. Default "high" (parity with DAAF's warm/educational posture) — "high" adds warmth/volume, "low" is terse. Set this to dial GPT responses that feel too brief or too long. Unset -> "high". Read at shim startup, so a restart is required
-#
-# --- Option F, alternate lane: ChatGPT subscription (Codex backend) ---------
+# ----------------------------------------------------------------------------
+# 4.3 Auth lane B: ChatGPT subscription (Codex backend)  (unofficial dev lane)
+# ----------------------------------------------------------------------------
 # Instead of a pay-per-token OpenAI API key, the SAME shim can route Claude Code
 # through your CHATGPT SUBSCRIPTION's Codex backend (via the shim's Responses
 # translator). Same shim, different auth + endpoint: it reads an OAuth token from
@@ -183,24 +343,23 @@
 # UNOFFICIAL / DEV-LANE PATH: this reuses Codex's OAuth against an undocumented,
 # OpenAI-controlled backend — NOT an OpenAI-sanctioned API method. It may break if
 # OpenAI changes the backend, and you are responsible for compliance with OpenAI's
-# terms. The API-key lane above (SHIM_BACKEND_MODE unset -> "openai") is the
-# sanctioned fallback.
+# terms. The API-key lane (4.2) is the sanctioned fallback.
 #
 # SETUP CHECKLIST (full walkthrough: user_reference/01_installation_and_quickstart.md,
 # "Option F, alternate lane: ChatGPT subscription"; quick version: user_reference/
 # 07_faq_technical.md, "Can I use my ChatGPT subscription instead of an OpenAI API key?"):
 #   1. DEV IMAGE REQUIRED. This lane needs the Codex CLI, which is installed ONLY
-#      when DAAF_DEV=1 was set BEFORE the image was built (see the developer
-#      tooling block near the end of this file). Verify inside the container with
-#      `codex --version` (expect 0.144.1 or newer). If it says "command not found",
-#      set DAAF_DEV=1 and rebuild (rebuild_daaf.sh / rebuild_daaf.ps1).
+#      when DAAF_DEV=1 was set BEFORE the image was built (see section [6]). Verify
+#      inside the container with `codex --version` (expect 0.144.1 or newer). If it
+#      says "command not found", set DAAF_DEV=1 and rebuild (rebuild_daaf.sh /
+#      rebuild_daaf.ps1).
 #   2. ENABLE DEVICE-CODE LOGIN FIRST. In your ChatGPT personal-account security
 #      settings (chatgpt.com), turn on device-code login. It is OFF BY DEFAULT and
 #      is the easy-to-miss step — `codex login --device-auth` fails without it.
 #   3. LOG IN inside the container:  codex login --device-auth
 #      (The flag is --device-auth. `codex auth` does NOT exist, and bare
 #      `codex login` uses a browser loopback that does not work headless.) It
-#      prints a URL + one-time code; open the URL on ANY device (laptop/phone),
+#      prints a URL + one-time code; open the URL on ANY device (laptop / phone),
 #      sign in to ChatGPT, enter the code. No in-container browser, no
 #      localhost:1455 loopback, no port forwarding.
 #   4. SWITCH THE SHIM ON: set SHIM_BACKEND_MODE=chatgpt below, then recreate the
@@ -213,124 +372,183 @@
 # never logged). If refresh ever fails permanently, the shim log tells you to run
 # `codex login --device-auth` again.
 #
-# SHIM_BACKEND_MODE=chatgpt                         # switch the shim from the api.openai.com API-key lane to the ChatGPT/Codex OAuth lane. With this set, OPENAI_API_KEY / SHIM_BACKEND_API_KEY are ignored; the shim reads $CODEX_HOME/auth.json (set by compose to the persisted codex-daaf store) for the Bearer and refreshes it automatically.
+# Running more than one container? Each container does its OWN `codex login`,
+# which creates an INDEPENDENT refresh-token grant — no credential collision
+# between them. They share only your ChatGPT usage pool (the 5-hour + weekly
+# caps), so running both draws it down faster. This is the clean way to run
+# parallel instances. (By contrast, running several codex-based tools inside ONE
+# container off the SAME login can rarely trigger a refresh-token-rotation race;
+# give each its own login under a separate CODEX_HOME to isolate them. The two
+# OAuth override vars below are the other customization hooks.)
 #
-# Running more than one container? Each container does its OWN `codex login`, which
-# creates an INDEPENDENT refresh-token grant — no credential collision between them.
-# They share only your ChatGPT usage pool (the 5-hour + weekly caps), so running
-# both draws it down faster. This is the clean way to run parallel instances. (By
-# contrast, running several codex-based tools inside ONE container off the SAME
-# login can rarely trigger a refresh-token-rotation race; give each its own login
-# under a separate CODEX_HOME to isolate them. The two OAuth override vars below are
-# the other customization hooks.)
-# CODEX_HOME=/home/appuser/.claude/codex-daaf       # (chatgpt mode) directory holding auth.json. Compose already sets this to the persisted, backed-up store and pre-creates it on fresh volumes; override only to point at a separate per-tool login store for parallel use.
-# SHIM_OAUTH_TOKEN_URL=                             # (chatgpt mode) TEST/STAGING OVERRIDE only — production default is auth.openai.com/oauth/token. Leave unset.
-# SHIM_OAUTH_CLIENT_ID=                             # (chatgpt mode) TEST/STAGING OVERRIDE only — production default is the codex first-party client_id. Leave unset.
+# SHIM_BACKEND_MODE switches the shim from the api.openai.com API-key lane to the
+# ChatGPT / Codex OAuth lane. With this set, OPENAI_API_KEY / SHIM_BACKEND_API_KEY
+# are ignored; the shim reads $CODEX_HOME/auth.json (set by compose to the
+# persisted codex-daaf store) for the Bearer and refreshes it automatically.
+# --- To activate, remove the leading '#': ---
+#SHIM_BACKEND_MODE=chatgpt
+#
+# CODEX_HOME (chatgpt mode): the directory holding auth.json. Compose already sets
+# this to the persisted, backed-up store and pre-creates it on fresh volumes;
+# override only to point at a separate per-tool login store for parallel use.
+# --- To activate, remove the leading '#': ---
+#CODEX_HOME=/home/appuser/.claude/codex-daaf
+#
+# The two OAuth override vars below are TEST / STAGING overrides only — the
+# production defaults are correct (auth.openai.com/oauth/token and the codex
+# first-party client_id). Leave them unset for normal use.
+# --- To activate, remove the leading '#' on the lines you need: ---
+#SHIM_OAUTH_TOKEN_URL=
+#SHIM_OAUTH_CLIENT_ID=
 #
 # Troubleshooting (inside the container):
-#   codex --version                                            # confirm the dev image / Codex CLI is present
-#   bash /daaf/scripts/provider_shim/start_shim.sh --status    # is the shim up?
-#   cat /daaf/scripts/provider_shim/logs/shim.log              # look for backend_mode=chatgpt + 200s
+#     codex --version                                          (confirm the dev image / Codex CLI is present)
+#     bash /daaf/scripts/provider_shim/start_shim.sh --status  (is the shim up?)
+#     cat /daaf/scripts/provider_shim/logs/shim.log            (look for backend_mode=chatgpt + 200s)
 #   login fails immediately   -> device-code login not enabled in ChatGPT settings (step 2)
 #   codex: command not found  -> not the dev image (set DAAF_DEV=1 + rebuild)
 #   shim log says to re-login -> token refresh failed; run `codex login --device-auth` again
-
-
-# === DATA SOURCE API KEYS ===================================================
-# These are for datasets that require authentication to download.
-# Most DAAF data sources (including all education data) need no keys.
-# ============================================================================
-
-# Harvard Dataverse (required for County Presidential Election Returns)
-# Get a token: https://dataverse.harvard.edu/ -> Log in -> Account name (top-right) -> API Token -> Create Token
-# HARVARD_DATAVERSE_API_KEY=your_token_here
-
-# --- Add your own keys below ---
-# When you onboard new data sources via DAAF's Data Onboarding Mode,
-# it will tell you which environment variable to add here.
-
-# === CODE-SERVER (BROWSER-BASED VS CODE) ====================================
-# Set a custom password for code-server's browser login.
-# If not set, the default password is "daaf".
-# ============================================================================
-
-# PASSWORD=your_password_here
-
-
-# === MULTI-INSTANCE SETTINGS (OPTIONAL) =====================================
-# Run more than one DAAF install on the same machine by giving each install
-# folder its own project name and host ports. All DAAF scripts read these
-# values automatically. Leave everything unset for a standard single install —
-# the defaults match the original behavior exactly.
 #
-# NOTE: If you run `docker compose` commands directly (outside the provided
-# scripts), also create a .env file in this folder with the same values —
-# bare docker compose does not read environment_settings.txt for these.
-# After changing any of these on an existing install, recreate the container:
-#   docker compose down, then bash run_daaf.sh (or .\run_daaf.ps1)
-# ============================================================================
-
-# Compose project name (prefixes the container and data volume). Default: daaf
-# WARNING: changing this on an EXISTING install detaches it from its current
-# data volume — only set this when creating a NEW second install.
-# DAAF_PROJECT_NAME=daaf2
-
-# Host ports for the web services. Defaults: 2718 / 2719 / 2720
-# DAAF_PORT_MARIMO=3718
-# DAAF_PORT_LOGVIEWER=3719
-# DAAF_PORT_VSCODE=3720
-
 # ----------------------------------------------------------------------------
-# Developer tooling (framework developers only)
+# 4.4 Advanced shim tuning (defaults are correct for OpenAI; rarely needed)
+# ----------------------------------------------------------------------------
+# Network / backend overrides (SHIM_BACKEND_API_KEY defaults to OPENAI_API_KEY):
+# --- To activate, remove the leading '#' on the lines you need: ---
+#SHIM_PORT=4141
+#SHIM_BACKEND_BASE_URL=https://api.openai.com/v1
+#SHIM_BACKEND_API_KEY=
+#
+# SHIM_STRIP_MODEL_PREFIX: a literal prefix stripped from model ids before the
+# backend; only needed with prefixed slugs — leave unset for the bare slugs shown
+# in 4.1.
+# --- To activate, remove the leading '#': ---
+#SHIM_STRIP_MODEL_PREFIX=openai/
+#
+# SHIM_SANITIZE_TOOLS: sanitization is ON by default (it strips known GPT tool-
+# call quirks: empty pages:"", Agent isolation fills, redundant sandbox flags —
+# each otherwise costs a wasted error round-trip). Set to 0 ONLY when benchmarking
+# shim-routed models (DAAFBench must see raw model behavior). The flag is read at
+# shim startup, so a restart is required.
+# --- To activate, remove the leading '#': ---
+#SHIM_SANITIZE_TOOLS=0
+#
+# REASONING-EFFORT CONTROL (shim v1.2.2+): the outbound OpenAI request always
+# carries reasoning.effort, resolved by a four-tier precedence chain (first
+# present wins): (1) a per-request signal from Claude Code, (2) a "#<effort>"
+# suffix you append to a model slug, (3) the SHIM_REASONING_EFFORT env var below,
+# (4) the default "high" (parity with DAAF Claude sessions). The "#<effort>"
+# suffix works ALONGSIDE the "[1m]" window hint — Claude Code consumes "[1m]"
+# itself and passes "#<effort>" through to the shim, which strips it before the
+# request reaches OpenAI. Example per-model override (fast tier at medium effort):
+#     ANTHROPIC_DEFAULT_SONNET_MODEL=gpt-5.6-terra[1m]#medium
+#
+# IMPORTANT (shim v1.2.3+): the /model reasoning-effort selector in the Claude
+# Code UI does NOT work for GPT slugs. Claude Code gates effort by model-ID
+# pattern and pins "high" on every request for unrecognized (GPT) slugs, so the UI
+# selector is inert. As of v1.2.3 the shim treats an inbound "high" as that pin
+# (unset) and falls through to your slug / env steer. Steer GPT effort with the
+# "#<effort>" suffix (tier 2, above) or SHIM_REASONING_EFFORT (tier 3, below).
+#
+# SHIM_REASONING_EFFORT (tier 3 of the effort precedence chain): sets
+# reasoning.effort when no usable per-request signal and no slug suffix are
+# present. Valid values none|low|medium|high|xhigh|max ("max" is gpt-5.6-only).
+# Leave unset to use the default "high" (v1.2.2+ always sends an effort now — the
+# old implicit "medium" server default no longer applies). Read at shim startup,
+# so a restart is required.
+# --- To activate, remove the leading '#': ---
+#SHIM_REASONING_EFFORT=
+#
+# SHIM_TEXT_VERBOSITY (shim v1.2.4+): the outbound OpenAI request always carries
+# text.verbosity. Valid values low|medium|high. Default "high" (parity with
+# DAAF's warm / educational posture) — "high" adds warmth and volume, "low" is
+# terse. Set this to dial GPT responses that feel too brief or too long. Unset ->
+# "high". Read at shim startup, so a restart is required.
+# --- To activate, remove the leading '#': ---
+#SHIM_TEXT_VERBOSITY=
+#
+#
+# ============================================================================
+# [5] Data Source API Keys  (restart required)
+# ============================================================================
+# Keys for datasets that require authentication to download. Most DAAF data
+# sources (including all education data) need no keys at all.
+#
+# Harvard Dataverse (required for the County Presidential Election Returns
+# dataset). Get a token: https://dataverse.harvard.edu/ -> Log in -> Account name
+# (top-right) -> API Token -> Create Token
+# --- To activate, remove the leading '#': ---
+#HARVARD_DATAVERSE_API_KEY=your_token_here
+#
+# Add your own keys below. When you onboard a new data source via DAAF's Data
+# Onboarding Mode, it will tell you which environment variable to add here.
+#
+#
+# ============================================================================
+# [6] Workspace & Developer Options  (varies, noted per key)
+# ============================================================================
+# The browser-editor password (restart required) plus framework-developer
+# tooling. A normal install needs none of this.
+#
+# ----------------------------------------------------------------------------
+# Code-server (browser-based VS Code) password  (restart required)
+# ----------------------------------------------------------------------------
+# Set a custom password for code-server's browser login. DEFAULT: daaf
+# --- To activate, remove the leading '#': ---
+#PASSWORD=your_password_here
+#
+# ----------------------------------------------------------------------------
+# Developer tooling (framework developers only)  (rebuild required)
 # ----------------------------------------------------------------------------
 # DAAF_DEV is an OPT-IN, BUILD-TIME flag. Set it to 1 to have the Docker image
 # additionally install the in-container test toolchain (shellcheck, bats,
-# PowerShell 7, Pester, PSScriptAnalyzer) so you can run DAAF's own shell and
-# PowerShell test suites inside the container and reproduce what CI runs:
-#
-#   bats tests/bash/
-#   pwsh -NoProfile -Command "Invoke-Pester -Path ./tests/powershell/"
+# PowerShell 7, Pester, PSScriptAnalyzer) — plus the Codex CLI used by the ChatGPT
+# lane (4.3) and the `gh` CLI used with GH_TOKEN below — so you can run DAAF's own
+# shell and PowerShell test suites inside the container and reproduce what CI runs:
+#     bats tests/bash/
+#     pwsh -NoProfile -Command "Invoke-Pester -Path ./tests/powershell/"
 #
 # This is a BUILD flag, not a runtime setting: it only takes effect at
-# `docker compose build`, so after changing it you must rebuild
-# (rebuild_daaf.sh / rebuild_daaf.ps1). When unset or 0 (the default for every
-# normal install), NONE of this tooling is installed and the image is identical
-# to a standard build -- leaving it off costs you nothing.
+# `docker compose build`, so after changing it you must rebuild (rebuild_daaf.sh /
+# rebuild_daaf.ps1). When unset or 0 (the default for every normal install), NONE
+# of this tooling is installed and the image is identical to a standard build —
+# leaving it off costs you nothing. (DAAF_DEV is part of the install-time family
+# in section [1]; it is documented here with the other developer options.)
+# --- To activate, remove the leading '#': ---
+#DAAF_DEV=1
 #
-# DAAF_DEV=1
-
 # ----------------------------------------------------------------------------
-# GitHub CLI token (GH_TOKEN) -- framework developers only
+# GitHub CLI token (GH_TOKEN)  (framework developers only, restart required)
 # ----------------------------------------------------------------------------
 # GH_TOKEN authenticates the GitHub CLI (`gh`), which is installed ONLY when you
-# build with DAAF_DEV=1 (see above). Framework developers use `gh` to inspect CI
-# runs and logs, open/work PRs and issues, and as git's HTTPS credential helper
-# for pushing over HTTPS. Leave this unset if you are not doing framework
-# development -- a normal install has no `gh` binary and no use for it.
+# build with DAAF_DEV=1 (above). Framework developers use `gh` to inspect CI runs
+# and logs, open / work PRs and issues, and as git's HTTPS credential helper for
+# pushing over HTTPS. Leave this unset if you are not doing framework development
+# — a normal install has no `gh` binary and no use for it.
 #
 # Unlike DAAF_DIAG_BUILD (a one-off shell prefix, NOT a key for this file),
 # GH_TOKEN IS a persistent environment_settings.txt key: it is injected into the
-# container environment at startup via docker-compose env_file, and `gh` reads
-# it directly with no `gh auth login` (it takes precedence over any stored
-# credential and survives image rebuilds).
+# container environment at startup via docker-compose env_file, and `gh` reads it
+# directly with no `gh auth login` (it takes precedence over any stored credential
+# and survives image rebuilds).
 #
 # Recommended token: a classic Personal Access Token with `repo` + `workflow`
-# scopes (repo access, HTTPS push, PR/issue access, CI logs). Create one at:
+# scopes (repo access, HTTPS push, PR / issue access, CI logs). Create one at:
 # https://github.com/settings/tokens
+# IMPORTANT: never commit your real token — not here, not anywhere.
+# --- To activate, remove the leading '#': ---
+#GH_TOKEN=ghp_your_token_here
 #
-# IMPORTANT: never commit your real token -- not here, not anywhere.
-# GH_TOKEN=ghp_your_token_here
-
 # ----------------------------------------------------------------------------
-# Build diagnostics (DAAF_DIAG_BUILD) -- NOT a key for this file
+# Build diagnostics (DAAF_DIAG_BUILD) — NOT a key for this file
 # ----------------------------------------------------------------------------
-# DAAF_DIAG_BUILD is NOT a persistent environment_settings.txt key -- do not set
-# it here. It is a one-off, run-time shell prefix for a SINGLE install/rebuild
+# DAAF_DIAG_BUILD is NOT a persistent environment_settings.txt key — do not set it
+# here. It is a one-off, run-time shell PREFIX for a SINGLE install / rebuild
 # invocation. Set it only when a build failed with truncated output (a line like
 # "[output clipped, log limit 2MiB reached]"); it routes the build through a
 # custom buildx builder with raised step-log limits so you can see the full,
 # unclipped error. Note: that builder uses a SEPARATE build cache (the first such
 # build is slower) and loads the finished image back into Docker when done.
-# Usage (prefix the command; do not persist it):
-#   bash:       DAAF_DIAG_BUILD=1 bash rebuild_daaf.sh
-#   PowerShell: $env:DAAF_DIAG_BUILD = "1"; .\rebuild_daaf.ps1
+# Usage (prefix the command; do NOT persist it):
+#     bash:       DAAF_DIAG_BUILD=1 bash rebuild_daaf.sh
+#     PowerShell: $env:DAAF_DIAG_BUILD = "1"; .\rebuild_daaf.ps1
+# ============================================================================

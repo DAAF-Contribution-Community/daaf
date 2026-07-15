@@ -433,6 +433,215 @@ if ($LASTEXITCODE -ne 0) {
     Wait-ForUser; return
 }
 
+# --- Settings-File Key Upsert (inlined from daaf_lib.ps1) ---
+# INLINE COPY of daaf_lib.ps1 Set-DaafSettingsKey: the installer is a deliberately
+# standalone `irm | iex` script that does not dot-source daaf_lib.ps1 (mirroring
+# its existing inline settings parsers above), so the write helper is carried
+# inline. Semantics, placement rules, atomicity, no-BOM/LF encoding, DRY-RUN
+# gating and strict-mode cleanliness are identical to the library version -- see
+# daaf_lib.ps1 for the full annotation.
+function Set-DaafSettingsKey {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string]$File,
+        [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string]$Key,
+        [Parameter(Mandatory)][AllowEmptyString()][string]$Value,
+        [ValidateSet('if-absent', 'replace')][string]$Mode = 'if-absent',
+        [string]$BackupSuffix = ''
+    )
+
+    if (-not (Test-Path -LiteralPath $File)) {
+        Write-Error "Set-DaafSettingsKey: file not found: $File"
+        return
+    }
+    $File = (Resolve-Path -LiteralPath $File).Path
+
+    $lines = @(Get-Content -LiteralPath $File | ForEach-Object { $_ -replace "`r", "" })
+
+    $activeIdx = -1
+    $commentIdx = -1
+    $keyPattern = '^' + [regex]::Escape($Key) + '='
+    $commentPattern = '^\s*#\s*' + [regex]::Escape($Key) + '='
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        if ($activeIdx -lt 0 -and $lines[$i] -match $keyPattern) { $activeIdx = $i }
+        if ($commentIdx -lt 0 -and $lines[$i] -match $commentPattern) { $commentIdx = $i }
+    }
+
+    $newLine = "$Key=$Value"
+    $action = ''
+    $out = New-Object System.Collections.Generic.List[string]
+
+    if ($activeIdx -ge 0) {
+        if ($Mode -ne 'replace') {
+            Write-Host "Set-DaafSettingsKey: $Key skipped (exists)"
+            return
+        }
+        if ($lines[$activeIdx] -eq $newLine) {
+            Write-Host "Set-DaafSettingsKey: $Key unchanged (value already present)"
+            return
+        }
+        for ($i = 0; $i -lt $lines.Count; $i++) {
+            if ($i -eq $activeIdx) { $out.Add($newLine) } else { $out.Add($lines[$i]) }
+        }
+        $action = 'replaced'
+    }
+    elseif ($commentIdx -ge 0) {
+        for ($i = 0; $i -lt $lines.Count; $i++) {
+            $out.Add($lines[$i])
+            if ($i -eq $commentIdx) { $out.Add($newLine) }
+        }
+        $action = 'inserted below commented example'
+    }
+    else {
+        for ($i = 0; $i -lt $lines.Count; $i++) { $out.Add($lines[$i]) }
+        if ($out.Count -gt 0 -and -not [string]::IsNullOrEmpty($out[$out.Count - 1])) {
+            $out.Add('')
+        }
+        $out.Add('# Added by DAAF on ' + (Get-Date -Format 'yyyy-MM-dd'))
+        $out.Add($newLine)
+        $action = 'appended (new)'
+    }
+
+    if ($env:DAAF_DRY_RUN -eq '1') {
+        Write-Host "[DRY-RUN] Set-DaafSettingsKey would write ${File}: $action"
+        Write-Host "[DRY-RUN]   line: $newLine"
+        return
+    }
+
+    if (-not [string]::IsNullOrEmpty($BackupSuffix)) {
+        $backupPath = $File + $BackupSuffix
+        if (-not (Test-Path -LiteralPath $backupPath)) {
+            Copy-Item -LiteralPath $File -Destination $backupPath
+        }
+    }
+
+    $payload = ($out -join "`n") + "`n"
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+
+    $dir = Split-Path -Parent $File
+    if ([string]::IsNullOrEmpty($dir)) { $dir = '.' }
+    $tmp = Join-Path $dir ('.daaf_upsert.' + [System.IO.Path]::GetRandomFileName())
+    try {
+        [System.IO.File]::WriteAllText($tmp, $payload, $utf8NoBom)
+        Move-Item -LiteralPath $tmp -Destination $File -Force
+    }
+    catch {
+        if (Test-Path -LiteralPath $tmp) { Remove-Item -LiteralPath $tmp -Force }
+        Write-Error "Set-DaafSettingsKey: write failed for ${File}: $_"
+        return
+    }
+
+    Write-Host "Set-DaafSettingsKey: $Key $action"
+}
+
+# --- Seed environment_settings.txt from process-env DAAF_* variables ---
+# Parity twin of the seeder in install.sh. A fresh install carries the user's
+# DAAF_* choices straight into a new environment_settings.txt so future launches
+# and updates pick them up without re-exporting. Binding rules (identical to the
+# Bash installer):
+#   - Never overwrite an existing environment_settings.txt (a reinstall preserves
+#     the user's real API keys; env vars are used for THIS install only).
+#   - Never fail the install: seeding runs in a try/catch so any failure degrades
+#     to a printed manual-fallback note.
+#   - Never persist a DAAF_BRANCH that is a version tag (a persisted tag would
+#     break future updates). Tag-vs-branch is detected from the container clone:
+#     `git clone -b <ref>` leaves HEAD symbolic for a branch and detached for a
+#     tag, so `symbolic-ref -q HEAD` is a cheap local (no-network) discriminator.
+#   - Always print an outcome note; fully DAAF_DRY_RUN gated (HSM5).
+$SeedSrc = Join-Path $InstallDir "environment_settings_example.txt"
+$SeedDst = Join-Path $InstallDir "environment_settings.txt"
+
+if ($env:DAAF_DRY_RUN -eq "1") {
+    Write-Host ""
+    Write-Host "[DRY-RUN] Would seed $SeedDst from process-env DAAF_* variables (if absent, never overwriting an existing file)."
+}
+elseif (Test-Path -LiteralPath $SeedDst) {
+    Write-Host ""
+    Write-Host "NOTE: An existing environment_settings.txt was found and left untouched."
+    Write-Host "      Any DAAF_* environment variables you set were used for THIS install"
+    Write-Host "      only; your existing settings file was preserved."
+}
+elseif (-not (Test-Path -LiteralPath $SeedSrc)) {
+    Write-Host ""
+    Write-Host "NOTE: Could not seed environment_settings.txt (the example template was"
+    Write-Host "      not found). To configure settings manually:"
+    Write-Host "        cd $InstallDir"
+    Write-Host "        Copy-Item environment_settings_example.txt environment_settings.txt"
+    Write-Host "        # then edit environment_settings.txt with your keys and settings"
+}
+else {
+    # Determine whether DAAF_BRANCH (if set) is a branch or a version tag.
+    # Three outcomes are distinguished so a docker-exec failure is never
+    # misreported as "is a tag" (a false tag claim + a silently dropped seed):
+    #   1. exec healthy + attached HEAD (symbolic-ref succeeds) -> branch, seed
+    #   2. exec healthy + detached HEAD (symbolic-ref fails)    -> tag, skip w/ note
+    #   3. exec/probe failure (health probe fails)             -> cannot verify, skip
+    # A cheap health probe (git rev-parse HEAD) runs first over the SAME exec
+    # path; only if it succeeds is a subsequent symbolic-ref failure trusted as
+    # "detached HEAD = tag". Both probes are local (no network) and this whole
+    # else-branch is skipped under DAAF_DRY_RUN, so it stays dry-run inert.
+    $SeedBranchOk = $false
+    $SeedBranchSkipTag = $false
+    $SeedBranchUnverified = $false
+    if (-not [string]::IsNullOrEmpty($env:DAAF_BRANCH)) {
+        $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+        docker compose -f "$InstallDir\docker-compose.yml" exec -T daaf-docker git -C /daaf rev-parse HEAD 2>&1 | Out-Null
+        $probeOk = ($LASTEXITCODE -eq 0)
+        if ($probeOk) {
+            docker compose -f "$InstallDir\docker-compose.yml" exec -T daaf-docker git -C /daaf symbolic-ref -q HEAD 2>&1 | Out-Null
+            if ($LASTEXITCODE -eq 0) { $SeedBranchOk = $true } else { $SeedBranchSkipTag = $true }
+        } else {
+            $SeedBranchUnverified = $true
+        }
+        $ErrorActionPreference = $savedEAP
+    }
+
+    $SeedOk = $true
+    $SeedKeys = @()
+    try {
+        Copy-Item -LiteralPath $SeedSrc -Destination $SeedDst
+        foreach ($k in @('DAAF_PROJECT_NAME', 'DAAF_PORT_MARIMO', 'DAAF_PORT_LOGVIEWER', 'DAAF_PORT_VSCODE', 'DAAF_DEV', 'DAAF_BRANCH')) {
+            $v = [Environment]::GetEnvironmentVariable($k, "Process")
+            if ([string]::IsNullOrEmpty($v)) { continue }
+            if ($k -eq 'DAAF_BRANCH' -and -not $SeedBranchOk) { continue }
+            Set-DaafSettingsKey -File $SeedDst -Key $k -Value $v -Mode if-absent | Out-Null
+            $SeedKeys += $k
+        }
+    }
+    catch {
+        $SeedOk = $false
+    }
+
+    Write-Host ""
+    if ($SeedOk) {
+        if ($SeedKeys.Count -gt 0) {
+            Write-Host "NOTE: Created environment_settings.txt and seeded these values from your"
+            Write-Host ("      environment: " + ($SeedKeys -join ' '))
+        } else {
+            Write-Host "NOTE: Created environment_settings.txt from the template (no DAAF_* values"
+            Write-Host "      were set in your environment to seed)."
+        }
+        if ($SeedBranchSkipTag) {
+            Write-Host "      DAAF_BRANCH was NOT seeded because '$($env:DAAF_BRANCH)' is a version tag;"
+            Write-Host "      persisting a tag would break future updates. Ongoing updates track the"
+            Write-Host "      default branch. Edit environment_settings.txt to pin a branch if desired."
+        }
+        if ($SeedBranchUnverified) {
+            Write-Host "      DAAF_BRANCH was NOT seeded: could not verify whether '$($env:DAAF_BRANCH)' is"
+            Write-Host "      a branch (the container clone was not reachable). Add DAAF_BRANCH to"
+            Write-Host "      environment_settings.txt manually if desired."
+        }
+        Write-Host "      Review it and add any data source API keys before your next launch."
+    } else {
+        Write-Host "NOTE: Automatic settings seeding did not fully complete, so your other"
+        Write-Host "      installation steps finished but environment_settings.txt may be absent"
+        Write-Host "      or partial. To configure it manually:"
+        Write-Host "        cd $InstallDir"
+        Write-Host "        Copy-Item environment_settings_example.txt environment_settings.txt"
+        Write-Host "        # then edit environment_settings.txt with your keys and settings"
+    }
+}
+
 Write-Host ""
 Write-Host "=========================================="
 Write-Host "  Installation complete!"

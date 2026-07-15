@@ -33,7 +33,7 @@ fi
 # environment so the volume name below reflects DAAF_PROJECT_NAME and the
 # `docker compose down` further below targets the right project. Canonical shared
 # pattern (kept in sync with load_daaf_settings in daaf_lib.sh). Parse only these
-# four keys (never `source` -- the file holds API keys); shell env wins; absent
+# whitelisted keys (never `source` -- the file holds API keys); shell env wins; absent
 # file = no-op; CR stripped; Bash 3.2 safe.
 _daaf_load_settings() {
     local settings_file="./environment_settings.txt"
@@ -43,7 +43,7 @@ _daaf_load_settings() {
         line="$(printf '%s' "${line}" | tr -d '\r')"
         case "${line}" in ''|'#'*) continue ;; esac
         case "${line}" in
-            DAAF_PROJECT_NAME=*|DAAF_PORT_MARIMO=*|DAAF_PORT_LOGVIEWER=*|DAAF_PORT_VSCODE=*)
+            DAAF_PROJECT_NAME=*|DAAF_PORT_MARIMO=*|DAAF_PORT_LOGVIEWER=*|DAAF_PORT_VSCODE=*|DAAF_DEV=*|DAAF_BRANCH=*)
                 key="${line%%=*}"; val="${line#*=}"
                 case "${val}" in
                     \"*\") val="${val#\"}"; val="${val%\"}" ;;

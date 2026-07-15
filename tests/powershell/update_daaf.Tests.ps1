@@ -711,6 +711,49 @@ Describe "update_daaf.ps1 behavioral tests" {
     }
 
     # -----------------------------------------------------------------
+    # Save-BranchChoice (branch persistence, extracted for the no-op paths)
+    # -----------------------------------------------------------------
+    # W3 / HSM5: the extracted Save-BranchChoice call path (shared by
+    # Complete-Update AND the no-op success exits) must write NOTHING under
+    # DAAF_DRY_RUN. Called directly here; both $PWD (Push-Location) and the .NET
+    # CurrentDirectory are pointed at the temp dir so the relative settings path
+    # resolves deterministically without launching a child process.
+    Context "Save-BranchChoice" {
+        BeforeEach {
+            $script:PbcDir = New-Item -ItemType Directory -Path (Join-Path ([System.IO.Path]::GetTempPath()) "daaf-pbc-$(Get-Random)")
+            Push-Location $script:PbcDir
+            Remove-Item Env:DAAF_DRY_RUN -ErrorAction SilentlyContinue
+        }
+        AfterEach {
+            Pop-Location
+            Remove-Item -Recurse -Force $script:PbcDir -ErrorAction SilentlyContinue
+            Remove-Item Env:DAAF_DRY_RUN -ErrorAction SilentlyContinue
+        }
+
+        It "writes nothing under DAAF_DRY_RUN (HSM5, shared no-op call path)" {
+            $settings = Join-Path $script:PbcDir "environment_settings.txt"
+            Set-Content -Path $settings -Value "DAAF_PROJECT_NAME=daaf"
+            $before = Get-Content -Raw $settings
+            $savedCwd = [Environment]::CurrentDirectory
+            [Environment]::CurrentDirectory = $script:PbcDir
+            $env:DAAF_DRY_RUN = "1"
+            $PersistBranch = "dev"
+            try {
+                $output = Save-BranchChoice 6>&1
+            }
+            finally {
+                $env:DAAF_DRY_RUN = $null
+                [Environment]::CurrentDirectory = $savedCwd
+            }
+            # -Match (regex, escaped brackets); -BeLike would read [DRY-RUN] as a
+            # wildcard character class.
+            ($output | Out-String) | Should -Match '\[DRY-RUN\] Set-DaafSettingsKey would write'
+            (Get-Content -Raw $settings) | Should -Be $before
+            (Test-Path (Join-Path $script:PbcDir "environment_settings.txt.pre-update")) | Should -Be $false
+        }
+    }
+
+    # -----------------------------------------------------------------
     # Resolve-Conflict
     # -----------------------------------------------------------------
     Context "Resolve-Conflict" {
@@ -857,6 +900,12 @@ Describe "update_daaf.ps1 integrated state-machine tests" {
         $script:TestDir = New-Item -ItemType Directory -Path (Join-Path ([System.IO.Path]::GetTempPath()) "daaf-update-int-$(Get-Random)")
         Push-Location $script:TestDir
         New-FakeComposeFile
+        # Clear any ambient DAAF_BRANCH (a dev container may export the current
+        # working branch, e.g. daaf_dev_r2) so state-machine tests that model the
+        # default-branch flow are not silently steered onto another branch. Parity
+        # with the bash setup()'s `unset DAAF_BRANCH`. Tests that need it set it
+        # explicitly; AfterEach clears it again.
+        Remove-Item Env:DAAF_BRANCH -ErrorAction SilentlyContinue
     }
 
     AfterEach {
@@ -1105,7 +1154,12 @@ function docker {
         Remove-Item Env:DAAF_BRANCH -ErrorAction SilentlyContinue
     }
 
-    It "DAAF_BRANCH is a tag gives tag-specific error" {
+    # An env-origin DAAF_BRANCH tag gives an informative REFUSAL (exit 1): the
+    # updater names the tag, points at the supported re-install path, and states
+    # which branch ongoing updates track. It never persists a tag. (Repurposed
+    # from the former "tag-specific error" test after the env-tag design decision;
+    # the file-origin tag path below is the softer warn-and-continue arm.)
+    It "env-origin DAAF_BRANCH tag is refused with re-install guidance" {
         $env:DAAF_NESTED = "1"
         $env:DAAF_BRANCH = "v2.1.0"
         $wrapperScript = Join-Path $script:TestDir "test_wrapper_tag.ps1"
@@ -1139,8 +1193,161 @@ function docker {
         $output = & pwsh -NoProfile -File $wrapperScript *>&1
         $outputStr = $output | Out-String
         $LASTEXITCODE | Should -Be 1
+        $outputStr | Should -BeLike "*v2.1.0*"
         $outputStr | Should -BeLike "*version tag*"
         $outputStr | Should -BeLike "*not a branch*"
+        # Names the supported re-install path (pinned to the tag)...
+        $outputStr | Should -BeLike "*install.ps1 | iex*"
+        # ...states which branch ongoing updates track...
+        $outputStr | Should -BeLike "*default branch*"
+        # ...and never saves a tag as the update branch.
+        $outputStr | Should -BeLike "*never saved as your update branch*"
+        Remove-Item Env:DAAF_BRANCH -ErrorAction SilentlyContinue
+    }
+
+    # A file-origin DAAF_BRANCH tag (in environment_settings.txt, NOT the env)
+    # must NOT lock the user out: warn, name the file, and fall back to the
+    # auto-detected default branch for this run (exit 0, the update proceeds).
+    It "file-origin DAAF_BRANCH tag warns and auto-detects (no hard exit)" {
+        $env:DAAF_NESTED = "1"
+        Remove-Item Env:DAAF_BRANCH -ErrorAction SilentlyContinue
+        Set-Content -Path (Join-Path $script:TestDir "environment_settings.txt") -Value "DAAF_BRANCH=v2.1.0"
+        $wrapperScript = Join-Path $script:TestDir "test_wrapper_filetag.ps1"
+        Set-Content -Path $wrapperScript -Value @'
+$ErrorActionPreference = "Stop"
+function docker {
+    $argStr = $args -join ' '
+    $global:LASTEXITCODE = 0
+    switch -Wildcard ($argStr) {
+        "*info*" { return }
+        "*compose ps*--format*" { Write-Output "daaf-docker" }
+        "*compose exec*true*" { return }
+        "*compose exec*test -f*/daaf/.git/shallow*" { $global:LASTEXITCODE = 1; return }
+        "*compose exec*test -f*" { return }
+        "*compose exec*git -C /daaf remote get-url origin*" {
+            Write-Output "https://github.com/DAAF-Contribution-Community/daaf.git"
+        }
+        "*compose exec*git -C /daaf fetch*" { return }
+        "*compose exec*git -C /daaf rev-parse --verify*backup/*" { $global:LASTEXITCODE = 1; return }
+        "*compose exec*git -C /daaf rev-parse --verify*origin/v2.1.0*" { $global:LASTEXITCODE = 1; return }
+        "*compose exec*git -C /daaf rev-parse --verify*refs/tags/v2.1.0*" { $global:LASTEXITCODE = 0; return }
+        "*compose exec*git -C /daaf rev-parse --verify*origin/main*" { $global:LASTEXITCODE = 0; return }
+        "*compose exec*git -C /daaf branch --show-current*" { Write-Output "main" }
+        "*compose exec*git -C /daaf rev-parse*origin/main*" { Write-Output "samehash" }
+        "*compose exec*git -C /daaf rev-parse*HEAD*" { Write-Output "samehash" }
+        "*compose exec*git -C /daaf diff --name-only*HEAD*" { return }
+        "*compose exec*git -C /daaf rev-list --count*" { Write-Output "0" }
+        "*compose exec*git -C /daaf symbolic-ref*" { Write-Output "main" }
+        "*compose exec*git*" { return }
+        "*compose exec*" { return }
+        default { return }
+    }
+}
+'@
+        Add-Content -Path $wrapperScript -Value ". '$RepoRoot/scripts/host/update_daaf.ps1'"
+        $output = & pwsh -NoProfile -File $wrapperScript *>&1
+        $outputStr = $output | Out-String
+        $LASTEXITCODE | Should -Be 0
+        $outputStr | Should -BeLike "*environment_settings.txt*"
+        $outputStr | Should -BeLike "*version tag*"
+        $outputStr | Should -BeLike "*auto-detected default branch*"
+        $outputStr | Should -BeLike "*Already up to date*"
+        $outputStr | Should -Not -BeLike "*never saved as your update branch*"
+    }
+
+    # An env-origin DAAF_BRANCH that IS a real branch is persisted back to
+    # environment_settings.txt (replace mode, .pre-update backup) after a
+    # successful update, so future runs track it without re-exporting.
+    It "env-origin DAAF_BRANCH branch is persisted after a successful update" {
+        $env:DAAF_NESTED = "1"
+        $env:DAAF_BRANCH = "dev"
+        Set-Content -Path (Join-Path $script:TestDir "environment_settings.txt") -Value "DAAF_PROJECT_NAME=daaf"
+        $wrapperScript = Join-Path $script:TestDir "test_wrapper_persist.ps1"
+        Set-Content -Path $wrapperScript -Value @'
+$ErrorActionPreference = "Stop"
+function docker {
+    $argStr = $args -join ' '
+    $global:LASTEXITCODE = 0
+    switch -Wildcard ($argStr) {
+        "*info*" { return }
+        "*compose ps*--format*" { Write-Output "daaf-docker" }
+        "*compose exec*true*" { return }
+        "*compose exec*test -f*/daaf/.git/shallow*" { $global:LASTEXITCODE = 1; return }
+        "*compose exec*test -f*" { return }
+        "*compose exec*git -C /daaf remote get-url origin*" {
+            Write-Output "https://github.com/DAAF-Contribution-Community/daaf.git"
+        }
+        "*compose exec*git -C /daaf fetch*" { return }
+        "*compose exec*git -C /daaf rev-parse --verify*backup/*" { $global:LASTEXITCODE = 1; return }
+        "*compose exec*git -C /daaf rev-parse --verify*origin/dev*" { $global:LASTEXITCODE = 0; return }
+        "*compose exec*git -C /daaf branch --show-current*" { Write-Output "dev" }
+        "*compose exec*git -C /daaf rev-parse*origin/dev*" { Write-Output "def456remote" }
+        "*compose exec*git -C /daaf rev-parse*HEAD*" { Write-Output "abc123local" }
+        "*compose exec*git -C /daaf diff --name-only*HEAD*" { return }
+        "*compose exec*git -C /daaf rev-list --count*origin/dev..HEAD*" { Write-Output "0" }
+        "*compose exec*git -C /daaf rev-list --count*HEAD..origin/dev*" { Write-Output "3" }
+        "*compose exec*git -C /daaf pull*" { Write-Output "Updating abc123..def456" }
+        "*compose exec*git -C /daaf symbolic-ref*" { Write-Output "dev" }
+        "*compose exec*git*" { return }
+        "*compose exec*" { return }
+        default { return }
+    }
+}
+'@
+        Add-Content -Path $wrapperScript -Value ". '$RepoRoot/scripts/host/update_daaf.ps1'"
+        $output = & pwsh -NoProfile -File $wrapperScript *>&1
+        $outputStr = $output | Out-String
+        $LASTEXITCODE | Should -Be 0
+        $outputStr | Should -BeLike "*Update complete!*"
+        $outputStr | Should -BeLike "*Saved DAAF_BRANCH=dev*"
+        (Get-Content -Raw (Join-Path $script:TestDir "environment_settings.txt")) | Should -BeLike "*DAAF_BRANCH=dev*"
+        (Test-Path (Join-Path $script:TestDir "environment_settings.txt.pre-update")) | Should -Be $true
+        Remove-Item Env:DAAF_BRANCH -ErrorAction SilentlyContinue
+    }
+
+    # W3: the env-origin branch must persist even on a NO-OP success ("Already up
+    # to date"), which returns before Complete-Update. Most common re-run case:
+    # DAAF_BRANCH=dev while already current. Save-BranchChoice runs on the no-op path.
+    It "env-origin branch persists on the already-up-to-date no-op path" {
+        $env:DAAF_NESTED = "1"
+        $env:DAAF_BRANCH = "dev"
+        Set-Content -Path (Join-Path $script:TestDir "environment_settings.txt") -Value "DAAF_PROJECT_NAME=daaf"
+        $wrapperScript = Join-Path $script:TestDir "test_wrapper_noop_persist.ps1"
+        Set-Content -Path $wrapperScript -Value @'
+$ErrorActionPreference = "Stop"
+function docker {
+    $argStr = $args -join ' '
+    $global:LASTEXITCODE = 0
+    switch -Wildcard ($argStr) {
+        "*info*" { return }
+        "*compose ps*--format*" { Write-Output "daaf-docker" }
+        "*compose exec*true*" { return }
+        "*compose exec*test -f*/daaf/.git/shallow*" { $global:LASTEXITCODE = 1; return }
+        "*compose exec*test -f*" { return }
+        "*compose exec*git -C /daaf remote get-url origin*" {
+            Write-Output "https://github.com/DAAF-Contribution-Community/daaf.git"
+        }
+        "*compose exec*git -C /daaf fetch*" { return }
+        "*compose exec*git -C /daaf rev-parse --verify*backup/*" { $global:LASTEXITCODE = 1; return }
+        "*compose exec*git -C /daaf rev-parse --verify*origin/dev*" { $global:LASTEXITCODE = 0; return }
+        "*compose exec*git -C /daaf branch --show-current*" { Write-Output "dev" }
+        "*compose exec*git -C /daaf rev-parse*origin/dev*" { Write-Output "abc123same" }
+        "*compose exec*git -C /daaf rev-parse*HEAD*" { Write-Output "abc123same" }
+        "*compose exec*git -C /daaf diff --name-only*HEAD*" { return }
+        "*compose exec*git*" { return }
+        "*compose exec*" { return }
+        default { return }
+    }
+}
+'@
+        Add-Content -Path $wrapperScript -Value ". '$RepoRoot/scripts/host/update_daaf.ps1'"
+        $output = & pwsh -NoProfile -File $wrapperScript *>&1
+        $outputStr = $output | Out-String
+        $LASTEXITCODE | Should -Be 0
+        $outputStr | Should -BeLike "*Already up to date*"
+        $outputStr | Should -BeLike "*Saved DAAF_BRANCH=dev*"
+        (Get-Content -Raw (Join-Path $script:TestDir "environment_settings.txt")) | Should -BeLike "*DAAF_BRANCH=dev*"
+        (Test-Path (Join-Path $script:TestDir "environment_settings.txt.pre-update")) | Should -Be $true
         Remove-Item Env:DAAF_BRANCH -ErrorAction SilentlyContinue
     }
 

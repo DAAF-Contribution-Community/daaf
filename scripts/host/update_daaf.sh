@@ -65,7 +65,7 @@ BACKUP_BRANCH="backup/pre-update-${TIMESTAMP}"
 # Bridge environment_settings.txt's four DAAF_* multi-instance keys into the
 # environment so `docker compose` interpolation resolves the project name and
 # published host ports. Canonical shared pattern (kept in sync with
-# load_daaf_settings in daaf_lib.sh). Parse only these four keys (never `source`
+# load_daaf_settings in daaf_lib.sh). Parse only these whitelisted keys (never `source`
 # -- the file holds API keys); shell env wins; absent file = no-op; CR stripped;
 # Bash 3.2 safe.
 _daaf_load_settings() {
@@ -76,7 +76,7 @@ _daaf_load_settings() {
         line="$(printf '%s' "${line}" | tr -d '\r')"
         case "${line}" in ''|'#'*) continue ;; esac
         case "${line}" in
-            DAAF_PROJECT_NAME=*|DAAF_PORT_MARIMO=*|DAAF_PORT_LOGVIEWER=*|DAAF_PORT_VSCODE=*)
+            DAAF_PROJECT_NAME=*|DAAF_PORT_MARIMO=*|DAAF_PORT_LOGVIEWER=*|DAAF_PORT_VSCODE=*|DAAF_DEV=*|DAAF_BRANCH=*)
                 key="${line%%=*}"; val="${line#*=}"
                 case "${val}" in
                     \"*\") val="${val#\"}"; val="${val%\"}" ;;
@@ -90,6 +90,13 @@ _daaf_load_settings() {
         esac
     done < "${settings_file}"
 }
+# Capture whether DAAF_BRANCH came from the process environment BEFORE the
+# settings bridge runs. _daaf_load_settings only adopts the file's value when the
+# env var is unset (the `if [ -z "${!key:-}" ]` guard above), so after the call:
+# DAAF_BRANCH set + FROM_ENV=0 => file-origin; FROM_ENV=1 => env-origin. This
+# distinction drives tag handling and branch persistence in the resolver below.
+DAAF_BRANCH_FROM_ENV=0
+if [ -n "${DAAF_BRANCH:-}" ]; then DAAF_BRANCH_FROM_ENV=1; fi
 _daaf_load_settings
 
 # --- Dry-Run Support ---
@@ -842,6 +849,172 @@ finish_update() {
     echo "  To launch DAAF:"
     echo "    bash run_daaf.sh"
     echo ""
+    # Persist an env-origin update branch so future runs track it without
+    # re-exporting DAAF_BRANCH. Extracted into persist_branch_choice so the no-op
+    # success paths ("Already up to date"), which exit before finish_update runs,
+    # can persist the same way -- otherwise a re-run of `DAAF_BRANCH=x update`
+    # while already current would never save the choice.
+    persist_branch_choice
+}
+
+# --- Settings-File Key Upsert (inlined from daaf_lib.sh) ---
+# Insert/update a single KEY=value line in environment_settings.txt when
+# persisting an env-origin DAAF_BRANCH after a successful update. This is an
+# INLINE COPY of daaf_lib.sh upsert_settings_key (byte-equivalent to the copy in
+# install.sh): update_daaf is a standalone recovery tool that must run even if
+# daaf_lib is broken and, like install.sh, does not source it (mirroring the
+# inline settings *reader* above). Semantics, placement rules, atomicity,
+# encoding, DRY-RUN gating and Bash 3.2 safety are identical to the library
+# version -- see daaf_lib.sh for the full annotation. Defined before the
+# DAAF_TEST_MODE guard so it is available to finish_update under test dot-source.
+upsert_settings_key() {
+    local file key value mode backup_suffix
+    file="${1:?upsert_settings_key requires a file path}"
+    key="${2:?upsert_settings_key requires a key}"
+    value="${3-}"
+    mode="${4:-if-absent}"
+    backup_suffix="${5:-}"
+
+    if [ ! -f "${file}" ]; then
+        echo "upsert_settings_key: ERROR: file not found: ${file}" >&2
+        return 1
+    fi
+
+    local -a lines=()
+    local _l
+    while IFS= read -r _l || [ -n "${_l}" ]; do
+        _l="${_l%$'\r'}"
+        lines+=("${_l}")
+    done < "${file}"
+
+    local active_idx=-1 comment_idx=-1 i line stripped
+    for (( i=0; i<${#lines[@]}; i++ )); do
+        line="${lines[$i]}"
+        if [ "${active_idx}" -lt 0 ]; then
+            case "${line}" in
+                "${key}="*) active_idx=$i ;;
+            esac
+        fi
+        if [ "${comment_idx}" -lt 0 ]; then
+            case "${line}" in
+                '#'*)
+                    stripped="${line#\#}"
+                    stripped="${stripped#"${stripped%%[![:space:]]*}"}"
+                    case "${stripped}" in
+                        "${key}="*) comment_idx=$i ;;
+                    esac
+                    ;;
+            esac
+        fi
+    done
+
+    local new_line="${key}=${value}"
+    local action=""
+    local -a out=()
+
+    if [ "${active_idx}" -ge 0 ]; then
+        if [ "${mode}" != "replace" ]; then
+            echo "upsert_settings_key: ${key} skipped (exists)"
+            return 0
+        fi
+        if [ "${lines[$active_idx]}" = "${new_line}" ]; then
+            echo "upsert_settings_key: ${key} unchanged (value already present)"
+            return 0
+        fi
+        for (( i=0; i<${#lines[@]}; i++ )); do
+            if [ "${i}" -eq "${active_idx}" ]; then
+                out+=("${new_line}")
+            else
+                out+=("${lines[$i]}")
+            fi
+        done
+        action="replaced"
+    elif [ "${comment_idx}" -ge 0 ]; then
+        for (( i=0; i<${#lines[@]}; i++ )); do
+            out+=("${lines[$i]}")
+            if [ "${i}" -eq "${comment_idx}" ]; then
+                out+=("${new_line}")
+            fi
+        done
+        action="inserted below commented example"
+    else
+        for (( i=0; i<${#lines[@]}; i++ )); do
+            out+=("${lines[$i]}")
+        done
+        if [ "${#out[@]}" -gt 0 ] && [ -n "${out[$(( ${#out[@]} - 1 ))]}" ]; then
+            out+=("")
+        fi
+        out+=("# Added by DAAF on $(date +%Y-%m-%d)")
+        out+=("${new_line}")
+        action="appended (new)"
+    fi
+
+    if [ "${DAAF_DRY_RUN:-}" = "1" ]; then
+        echo "[DRY-RUN] upsert_settings_key would write ${file}: ${action}"
+        echo "[DRY-RUN]   line: ${new_line}"
+        return 0
+    fi
+
+    if [ -n "${backup_suffix}" ] && [ ! -f "${file}${backup_suffix}" ]; then
+        if ! cp -p "${file}" "${file}${backup_suffix}"; then
+            echo "upsert_settings_key: ERROR: backup failed: ${file}${backup_suffix}" >&2
+            return 1
+        fi
+    fi
+
+    local payload="" ln
+    for ln in "${out[@]}"; do
+        payload="${payload}${ln}"$'\n'
+    done
+
+    local dir tmp
+    dir="$(dirname "${file}")"
+    tmp="${dir}/.daaf_upsert.$$.${RANDOM}"
+    if ! cp -p "${file}" "${tmp}"; then
+        echo "upsert_settings_key: ERROR: could not create temp file in ${dir}" >&2
+        rm -f "${tmp}"
+        return 1
+    fi
+    if ! printf '%s' "${payload}" > "${tmp}"; then
+        echo "upsert_settings_key: ERROR: write failed: ${tmp}" >&2
+        rm -f "${tmp}"
+        return 1
+    fi
+    if ! mv -f "${tmp}" "${file}"; then
+        echo "upsert_settings_key: ERROR: rename failed: ${tmp} -> ${file}" >&2
+        rm -f "${tmp}"
+        return 1
+    fi
+
+    echo "upsert_settings_key: ${key} ${action}"
+    return 0
+}
+
+# --- Persist an env-origin update branch (shared by every success path) ---
+# Writes PERSIST_BRANCH back to environment_settings.txt so future runs track it
+# without re-exporting DAAF_BRANCH. Called from finish_update AND from the no-op
+# "already up to date" success exits, which return before finish_update runs (the
+# most common re-run case: `DAAF_BRANCH=x update` while already current). Every
+# property of the original inline block is preserved: fires only when
+# PERSIST_BRANCH is non-empty (env-origin *branch* only, never a tag or a file-
+# origin value, so "never persist a tag" holds by construction), replace mode,
+# .pre-update backup, skip-with-note when the settings file is absent.
+# upsert_settings_key is itself DAAF_DRY_RUN gated (writes nothing in dry run);
+# `|| true` keeps a persistence hiccup from failing a completed update. Guarded
+# with ${PERSIST_BRANCH:-} because this runs under set -u and is dot-sourced under
+# DAAF_TEST_MODE. Defined before the DAAF_TEST_MODE guard so it is available to
+# finish_update (and the no-op exits) under test dot-source.
+persist_branch_choice() {
+    if [ -n "${PERSIST_BRANCH:-}" ]; then
+        if [ -f "./environment_settings.txt" ]; then
+            upsert_settings_key "./environment_settings.txt" "DAAF_BRANCH" "${PERSIST_BRANCH}" "replace" ".pre-update" || true
+            echo "Saved DAAF_BRANCH=${PERSIST_BRANCH} to environment_settings.txt for future updates."
+        else
+            echo "NOTE: DAAF_BRANCH=${PERSIST_BRANCH} was used for this update but not saved"
+            echo "      (no environment_settings.txt). Copy environment_settings_example.txt to"
+            echo "      persist it for future runs."
+        fi
+    fi
 }
 
 # --- Test Mode Guard ---
@@ -1104,34 +1277,68 @@ fi
 # Resolve remote branch
 # =====================================================================
 REMOTE_BRANCH="${DAAF_BRANCH:-}"
+# PERSIST_BRANCH is set only when DAAF_BRANCH names a real branch AND came from
+# the process environment (not the settings file). On a successful update it is
+# written back to environment_settings.txt (in finish_update) so future runs
+# track it without re-exporting. It is never set for a tag or for a file-origin
+# value, so tags are never persisted.
+PERSIST_BRANCH=""
 
 if [ -n "${REMOTE_BRANCH}" ]; then
-    # User specified a branch -- verify it exists on the remote
-    if ! docker compose exec -T daaf-docker \
+    # Classify the DAAF_BRANCH value against the remote: branch, tag, or unknown.
+    if docker compose exec -T daaf-docker \
         git -C /daaf rev-parse --verify "${UPSTREAM_REMOTE}/${REMOTE_BRANCH}" \
         </dev/null >/dev/null 2>&1; then
-
-        # Check if the value is a version tag rather than a branch.
-        # Tags live in refs/tags/, not refs/remotes/origin/, so the branch
-        # check above correctly fails for them.
-        if docker compose exec -T daaf-docker \
-            git -C /daaf rev-parse --verify "refs/tags/${REMOTE_BRANCH}" \
-            </dev/null >/dev/null 2>&1; then
+        echo "Using branch: ${REMOTE_BRANCH} (from DAAF_BRANCH)"
+        # Persist only an env-origin branch: a file-origin value is already in the
+        # file, and a tag is handled below and never persisted.
+        if [ "${DAAF_BRANCH_FROM_ENV}" = "1" ]; then
+            PERSIST_BRANCH="${REMOTE_BRANCH}"
+        fi
+    elif docker compose exec -T daaf-docker \
+        git -C /daaf rev-parse --verify "refs/tags/${REMOTE_BRANCH}" \
+        </dev/null >/dev/null 2>&1; then
+        # The value is a version tag, not a branch. Tags live in refs/tags/, not
+        # refs/remotes/origin/, so the branch check above correctly failed.
+        if [ "${DAAF_BRANCH_FROM_ENV}" = "1" ]; then
+            # Env-origin tag: refuse informatively. The updater tracks a *branch*
+            # to pull ongoing changes; a tag is a fixed snapshot the branch-
+            # comparison machinery cannot advance (it silently no-ops as "already
+            # up to date"). A tag is never persisted, so ongoing updates would
+            # track the auto-detected default branch. Point the user at the one
+            # supported way to move onto a release: re-install pinned to the tag.
             echo ""
             echo "'${REMOTE_BRANCH}' is a version tag, not a branch."
+            echo "(You set it via DAAF_BRANCH in your environment.)"
             echo ""
-            echo "The updater needs a branch to pull changes from. Tags are fixed"
-            echo "snapshots and cannot receive updates."
+            echo "The updater can only track a branch for ongoing updates. A tag is a"
+            echo "fixed snapshot, so it cannot be followed for updates -- and a tag is"
+            echo "never saved as your update branch."
             echo ""
-            echo "To update to the latest release on the main branch:"
-            echo "  bash update_daaf.sh"
-            echo "  (without setting DAAF_BRANCH)"
+            echo "To move this installation onto the '${REMOTE_BRANCH}' release, re-run the"
+            echo "installer pinned to that tag (the supported path for this container-based"
+            echo "layout):"
+            echo "  DAAF_BRANCH=${REMOTE_BRANCH} bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/${UPSTREAM_REPO}/main/scripts/host/install.sh)\""
             echo ""
-            echo "To update from a specific branch:"
-            echo "  DAAF_BRANCH=dev bash update_daaf.sh"
+            echo "To keep receiving ongoing updates instead, unset DAAF_BRANCH (or set it"
+            echo "to a branch). Updates then track the default branch (auto-detected"
+            echo "main/master)."
+            echo ""
+            echo "No changes were made. Your research files are not affected."
             exit 1
+        else
+            # File-origin tag: a persisted tag would otherwise lock every future
+            # update out. Warn, name the file and key, and fall back to the
+            # auto-detected default branch for THIS run (do not hard-exit).
+            echo ""
+            echo "NOTE: DAAF_BRANCH in environment_settings.txt is set to '${REMOTE_BRANCH}',"
+            echo "      which is a version tag, not a branch. Tags can't be tracked for"
+            echo "      updates. Edit environment_settings.txt and set DAAF_BRANCH to a"
+            echo "      branch (or remove it) to silence this. Continuing this run with the"
+            echo "      auto-detected default branch."
+            REMOTE_BRANCH=""
         fi
-
+    else
         echo ""
         echo "The branch '${REMOTE_BRANCH}' (from DAAF_BRANCH) was not found on"
         echo "${UPSTREAM_REMOTE}."
@@ -1140,9 +1347,11 @@ if [ -n "${REMOTE_BRANCH}" ]; then
         echo "again, or omit DAAF_BRANCH to use the default branch."
         exit 1
     fi
-    echo "Using branch: ${REMOTE_BRANCH} (from DAAF_BRANCH)"
-else
-    # Auto-detect: try main, then master
+fi
+
+if [ -z "${REMOTE_BRANCH}" ]; then
+    # Auto-detect: try main, then master. Reached when DAAF_BRANCH was unset, or
+    # when a file-origin tag was cleared just above.
     if docker compose exec -T daaf-docker \
         git -C /daaf rev-parse --verify "${UPSTREAM_REMOTE}/main" \
         </dev/null >/dev/null 2>&1; then
@@ -1243,6 +1452,10 @@ if [ "${CURRENT_BRANCH}" = "${REMOTE_BRANCH}" ] \
     # updated across) are delivered now. Called with no old_head so only the
     # cheap tier-A (missing-file) pass runs -- no diff, no changed-file copies.
     sync_host_scripts
+    # Persist an env-origin branch even on this no-op success: this exits before
+    # finish_update, and re-running with DAAF_BRANCH set while already current is
+    # the most common case where the choice would otherwise never be saved.
+    persist_branch_choice
     exit 0
 fi
 
@@ -1273,6 +1486,9 @@ if [ "${CURRENT_BRANCH}" != "${REMOTE_BRANCH}" ] && [ "${BEHIND}" = "0" ]; then
     # are delivered even when there is nothing new to pull. See the note on the
     # default-branch up-to-date path above.
     sync_host_scripts
+    # Persist an env-origin branch on this no-op success too (exits before
+    # finish_update) -- see the default-branch up-to-date path above.
+    persist_branch_choice
     exit 0
 fi
 

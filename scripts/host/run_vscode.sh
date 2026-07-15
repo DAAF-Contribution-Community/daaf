@@ -31,7 +31,7 @@ fi
 # Bridge environment_settings.txt's four DAAF_* multi-instance keys into the
 # environment so `docker compose` interpolation resolves the project name and
 # published host ports. Canonical shared pattern (kept in sync with
-# load_daaf_settings in daaf_lib.sh). Parse only these four keys (never `source`
+# load_daaf_settings in daaf_lib.sh). Parse only these whitelisted keys (never `source`
 # -- the file holds API keys); shell env wins; absent file = no-op; CR stripped;
 # Bash 3.2 safe. Prefer the library function when daaf_lib.sh was sourced.
 if command -v load_daaf_settings >/dev/null 2>&1; then
@@ -45,7 +45,7 @@ else
             line="$(printf '%s' "${line}" | tr -d '\r')"
             case "${line}" in ''|'#'*) continue ;; esac
             case "${line}" in
-                DAAF_PROJECT_NAME=*|DAAF_PORT_MARIMO=*|DAAF_PORT_LOGVIEWER=*|DAAF_PORT_VSCODE=*)
+                DAAF_PROJECT_NAME=*|DAAF_PORT_MARIMO=*|DAAF_PORT_LOGVIEWER=*|DAAF_PORT_VSCODE=*|DAAF_DEV=*|DAAF_BRANCH=*)
                     key="${line%%=*}"; val="${line#*=}"
                     case "${val}" in
                         \"*\") val="${val#\"}"; val="${val%\"}" ;;

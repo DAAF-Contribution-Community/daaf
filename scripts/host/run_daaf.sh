@@ -30,7 +30,7 @@ COMMAND="${1:-claude}"
 # published host ports. This inline block is the canonical shared pattern (kept
 # in sync with load_daaf_settings in daaf_lib.sh); standalone scripts that do NOT
 # source daaf_lib.sh inline it so a second install's settings take effect.
-# Parse only these four keys (never `source` -- the file holds API keys with
+# Parse only these whitelisted keys (never `source` -- the file holds API keys with
 # arbitrary characters). Shell env wins over the file value; absent file = no-op;
 # CR is stripped for CRLF tolerance. Bash 3.2 safe.
 _daaf_load_settings() {
@@ -41,7 +41,7 @@ _daaf_load_settings() {
         line="$(printf '%s' "${line}" | tr -d '\r')"
         case "${line}" in ''|'#'*) continue ;; esac
         case "${line}" in
-            DAAF_PROJECT_NAME=*|DAAF_PORT_MARIMO=*|DAAF_PORT_LOGVIEWER=*|DAAF_PORT_VSCODE=*)
+            DAAF_PROJECT_NAME=*|DAAF_PORT_MARIMO=*|DAAF_PORT_LOGVIEWER=*|DAAF_PORT_VSCODE=*|DAAF_DEV=*|DAAF_BRANCH=*)
                 key="${line%%=*}"; val="${line#*=}"
                 case "${val}" in
                     \"*\") val="${val#\"}"; val="${val%\"}" ;;
