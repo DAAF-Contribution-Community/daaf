@@ -263,6 +263,72 @@ Keep output under 1500 words.
 
 **Note:** Subagents 2 and 3 depend on earlier results. The orchestrator may run Subagent 1 first, then Subagents 2 and 3 in sequence (or parallel if the orchestrator inlines findings). Alternatively, the orchestrator can run all three with standing instructions and let each subagent scan independently — trading some duplication for parallelism.
 
+### Pre-Authoring Research Offer
+
+Before authoring a new framework artifact, the orchestrator proactively offers to run a scoped online survey of how the problem has already been solved — best practices, alternative implementations, and practitioner guides for the artifact's domain. This is the **Pre-Authoring Research Offer**.
+
+**Why offer this.** LLM-authored specifications improve markedly when grounded in how practitioners and other frameworks have already solved the problem. Without external grounding, the author (framework-engineer) relies on ungrounded inference — the same "skill information awareness" concern raised in `CLAUDE.md` § Execution Philosophy: information an agent supplies beyond what is explicitly encoded in a skill is LLM-generated inference, not curated knowledge, and deserves verification. Pre-authoring research substitutes external evidence for that inference at the design stage, where it is cheapest to incorporate.
+
+**Trigger.** The offer fires when the work type is **New Skill**, **New Agent**, or **New Mode**. It is optional at orchestrator discretion for substantial **Modify Existing** or **Multi-Component** work (e.g., a major agent-protocol rewrite), and is skipped for trivial modifications (typo fixes, single count-word updates). The offer is **advisory, not a gate** — the user can decline it in one word and authoring proceeds without it.
+
+**Three decisions (with defaults):**
+
+| Decision | Default | Options |
+|----------|---------|---------|
+| **Research scope** | Focused (best practices + 1-2 alternative/analogous implementations) | Skip / Focused / Deep (broader survey incl. related papers and practitioner guides) |
+| **Source mix** | Mixed (official documentation + academic + practitioner/engineering blogs) | Any subset — e.g., academic-only, or documentation + practitioner blogs only |
+| **Focus areas** | Free-form; orchestrator seeds a concrete recommendation derived from the specific artifact | e.g., for a new survey-data skill: "weighting conventions and common misuse patterns" |
+
+Seed the **Focus areas** recommendation from the artifact being authored — do not present it blank. A concrete, artifact-specific suggestion the user can accept or adjust is far more useful than an open prompt.
+
+**Execution path (when accepted).** The orchestrator dispatches a **`search-agent`** for the research — **not** framework-engineer, which has no WebSearch/WebFetch tools and therefore cannot perform the survey itself. The research must run *before* the Phase 3 authoring dispatch so its findings can inform the design. When the search-agent returns:
+
+1. Persist the return **losslessly** to the session workspace, following the Subagent Return Processing / preliminary notes pattern (`SKILL.md` § Subagent Return Processing and § Preliminary Notes Persistence). Write the full, unmodified return under the mode's `research/YYYY-MM-DD_FrameworkDev_{Topic}/` workspace with the provenance header.
+2. Feed the findings into the **Phase 2** design presentation (grounding the proposed structure and design decisions in the surveyed practices).
+3. Inline or reference the findings (by path) in the **Phase 3** framework-engineer dispatch prompt, so the author works from external evidence rather than inference.
+
+**Wave barrier discipline.** The research dispatch is subject to the same wave-barrier discipline as every other dispatch: if run alongside other subagents, treat mid-wave completion notifications as status-only and do not synthesize or advance to Phase 2 until the whole wave has returned. See `SKILL.md` § Subagent Coordination > "Wave Barrier Discipline (Async Dispatch)."
+
+**Model tier.** A mechanical survey (gathering best practices and enumerating alternative implementations) stays at the search-agent default (Sonnet). When the task is interpretive synthesis across sources — reconciling conflicting practitioner conventions, generalizing a design pattern from several frameworks — it is review/synthesis-role work and warrants an explicit `model: opus` override per the orchestrator SKILL.md § Model Selection for Subagent Dispatch ("a search-agent dispatch is review-role or interpretive-synthesis work... rather than mechanical lookup").
+
+#### Pre-Authoring Research Prompt Template
+
+```
+**BASE_DIR:** {absolute path to DAAF root}
+
+## Task: Pre-Authoring Research — [artifact type and domain]
+
+You are a READ-ONLY research agent with web access (WebSearch, WebFetch).
+Do NOT write or modify any files.
+
+## Focus
+
+Survey how [the artifact's problem/domain] has been solved by practitioners and
+other frameworks, to ground the authoring of a new [Skill | Agent | Mode] for
+[concrete purpose]. Cover:
+- Best practices and established conventions for [domain]
+- 1-2 alternative or analogous implementations (other frameworks, libraries, tools)
+- Practitioner guides and common misuse/failure patterns
+[For Deep scope, add: related papers and broader practitioner-guide survey.]
+
+Source mix: [Mixed | academic-only | documentation + practitioner blogs | ...].
+Focus areas: [seeded recommendation, e.g., "weighting conventions and common
+misuse patterns"].
+
+## Expected Output
+
+A structured report with:
+1. Best-practice conventions found, each with a source URL
+2. Alternative/analogous implementations surveyed, with URLs and a one-line
+   takeaway each
+3. Common pitfalls / misuse patterns to design against, with URLs
+4. Concrete recommendations for the artifact being authored
+
+Every factual claim MUST carry a source URL so findings are auditable. Distinguish
+observed facts (quoted from a source) from your own synthesis. Keep output under
+1500 words.
+```
+
 ### PSU-FD1: Scope Confirmation
 
 Present after Phase 1 exploration completes. All user-facing text uses plain language — no internal terms (gate, GFD, PSU, subagent).
@@ -294,6 +360,21 @@ Present after Phase 1 exploration completes. All user-facing text uses plain lan
 [If Moderate:] I'll dispatch to the framework specialist, then run a full 3-angle review pass.
 [If Complex:] I'll present a design for your review first, then proceed with authoring and a full 3-angle review pass.
 
+[Conditional block — include ONLY when the Pre-Authoring Research Offer trigger applies
+(New Skill / New Agent / New Mode, or substantial Modify/Multi-Component work):]
+
+**Optional — Grounding Research:**
+Before we design this, I can run a quick online survey of how this kind of
+[skill | agent | mode] has been built elsewhere — best practices, a couple of
+alternative implementations, and practitioner guides — so the design is grounded
+in prior art rather than built from scratch. My suggested defaults:
+
+- **Scope:** Focused (best practices + 1-2 comparable implementations). *You can skip this, or go Deep for a broader survey including related papers.*
+- **Sources:** A mix of official documentation, academic work, and practitioner/engineering blogs. *You can narrow this — e.g., academic-only.*
+- **Focus:** [seeded, artifact-specific recommendation — e.g., "weighting conventions and common misuse patterns"]. *Adjust or add areas you care about.*
+
+Want me to run this first? (Accept the defaults, adjust them, or skip — your call.)
+
 **Does this scope and approach look right? Any adjustments before I proceed?**
 ```
 
@@ -310,6 +391,8 @@ Phase 2 is **adaptive** — its depth scales with the complexity of the work:
 | **Simple** (updating a description, adding a table row, fixing a cross-reference) | Skip Phase 2 entirely. Proceed directly to Phase 3. |
 | **Moderate** (creating a new skill, modifying an agent's protocol) | Brief design summary in the orchestrator's CP1 response. Proceed to Phase 3 after user confirms. |
 | **Complex** (creating a new agent, creating a new mode, multi-component work) | Present detailed design for user review: proposed structure, key design decisions, template deviations (if any). Wait for user approval before Phase 3. |
+
+When pre-authoring research was run (see Phase 1 § Pre-Authoring Research Offer), fold its findings into the design presentation — grounding the proposed structure, design decisions, and template choices in the surveyed best practices and alternative implementations rather than in ungrounded inference.
 
 For complex work, the design presentation should include:
 - Proposed artifact structure (section outline for agents/modes, frontmatter for skills)
@@ -354,6 +437,7 @@ The orchestrator dispatches to the `framework-engineer` agent for authoring and 
 
 [Phase 1 scoping findings summary]
 [User's confirmed scope and design decisions]
+[Pre-authoring research findings, when they exist — inlined or referenced by path to the losslessly persisted search-agent return, so the author works from external evidence rather than inference]
 [For modifications: specific sections/content to change]
 
 ## Affected Files
@@ -684,7 +768,7 @@ These boundaries supplement the universal safety boundaries in `CLAUDE.md`. See 
 - Load `skill-authoring` and `agent-authoring` at mode start
 - Commit intermediate state (or update SESSION_NOTES.md) before non-trivial multi-file modifications, so that a session interruption does not leave the framework in an inconsistent state
 - Set executable permissions (`chmod +x` + `git update-index --chmod=+x`) on any newly created or modified `.sh` files (hooks, utility scripts) and verify with `git ls-files -s` that the mode is `100755`
-- Run `bash {BASE_DIR}/scripts/check_workspace_invariants.sh` and quote its output (the `OK:` line, exit 0, expected) before presenting Checkpoint 2 — this catches invariant-violating scratch artifacts (e.g., leftover probe symlinks) that reviewers or the framework-engineer may have created; git cannot see untracked scratch, so this live-filesystem lint is the gate
+- Run `bash {BASE_DIR}/scripts/check_workspace_invariants.sh` and quote its output (the `OK:` line, exit 0, expected) before presenting Checkpoint 2 — this catches invariant-violating scratch artifacts (leftover probe symlinks, and repo-root leak artifacts — zero-byte stubs, `*.pre-migrate` backups, or a stray `daaf-docker/` dir from a wrong-CWD host-tool dry-run) that reviewers or the framework-engineer may have created; git cannot see untracked scratch, so this live-filesystem lint is the gate
 
 ### Ask First Before
 

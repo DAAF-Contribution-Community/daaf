@@ -191,6 +191,7 @@ Data Onboarding projects use a different STATE.md structure (from `agent_referen
 - **DI-0 script written but not executed:** Check if acquisition script exists in `scripts/stage5_fetch/` but no data file in `data/raw/`. Re-present the script to the user for approval and execute.
 - **Between DI-2 and DI-3 (PSU-DI1 pending):** Check if PSU-DI1 was presented but not yet confirmed. Look at Current Position — if stage is DI-2 and status is "Awaiting Confirmation," re-present PSU-DI1 to the user.
 - **Between DI-6 and DI-7 (PSU-DI2 pending):** Check the Interpretation Tracking table. If the "User Decision" column is empty for all rows, PSU-DI2 has not been collected yet — present findings to user before proceeding to DI-7.
+- **Between PSU-DI2 and DI-7 (Pre-Authoring Research Offer in play):** Check the Key Decisions Made table in STATE.md for the recorded pre-authoring research decision. If no decision is recorded, the offer may never have been presented — present it (do not assume it was declined). If the decision is skipped/declined, proceed directly to DI-7. If the decision is accepted, check whether `output/preliminary_notes/{date}_preDI7_research_{source}.md` exists on disk: if it exists, proceed to DI-7 with the research notes as an additional input; if it does not, re-dispatch the pre-authoring research per `WORKFLOW_PHASE_DO_AUTHORING.md` § Pre-Authoring Research (Optional) using the recorded scope, source mix, and focus areas, then persist its return before dispatching DI-7.
 
 ## On-Demand Plan Loading
 

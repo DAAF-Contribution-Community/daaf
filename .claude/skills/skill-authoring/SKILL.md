@@ -190,6 +190,7 @@ Content here.
 ### Essential Do's
 
 - Before creating a new skill, read 1-2 existing skills of the same type as structural exemplars (e.g., for data source skills, read an existing data source SKILL.md; for tool skills, read `polars` or `plotnine`)
+- Before authoring, consider a scoped online survey of the skill's domain (best practices, alternative implementations, practitioner guides) — external grounding beats ungrounded inference. When working with a user, offer this rather than silently skipping it (formalized in Framework Development mode as the Pre-Authoring Research Offer: `.claude/skills/daaf-orchestrator/references/framework-development-mode.md` § Pre-Authoring Research Offer)
 - Include "what it does" AND "when to use it" in description
 - Write a complete, information-rich frontmatter description (up to the 1,024-char validation limit) — this is the ONLY text agents see when deciding whether to load a skill, so it should carry the full triggering context, not a compressed teaser
 - Practice budget-aware economy: 40+ DAAF skills share an aggregate skill-listing budget (~1% of the context window). When the listing overflows, descriptions for the least-invoked skills are dropped first — so spend characters where they earn triggering accuracy, not on exhaustive feature lists

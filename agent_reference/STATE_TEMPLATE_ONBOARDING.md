@@ -252,6 +252,7 @@ States
 | Decision | Choice | Rationale | Stage |
 |----------|--------|-----------|-------|
 | [Topic] | [What was decided] | [Why] | [DI-N] |
+| Pre-Authoring Research offer | [Skipped / Accepted — Focused / Accepted — Deep] | [brief rationale / focus areas] | Post-PSU-DI2 |
 
 ---
 

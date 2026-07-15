@@ -375,7 +375,7 @@ During any mode, watch for signals that the user needs additional guidance and r
 |----------------|---------|--------------|
 | `{SKILL_REFS}/data-onboarding-mode.md` | Data Onboarding workflow, gates, execution cycle, PSU templates, intake decisions, boundaries | After confirming Data Onboarding mode |
 | `{SKILL_REFS}/WORKFLOW_PHASE_DO_PROFILING.md` | Part A-D details, CPP/QAP checks, profiling invocation templates, multi-file protocols, verification checklists | Before dispatching first profiling subagent (Stage DI-3) |
-| `{SKILL_REFS}/WORKFLOW_PHASE_DO_AUTHORING.md` | Skill authoring invocation template, CPP-SKILL validation, DI-8 iteration loop, skill maturity framing | After PSU-DI2 confirmation, before Stage DI-7 |
+| `{SKILL_REFS}/WORKFLOW_PHASE_DO_AUTHORING.md` | Optional pre-authoring research dispatch, skill authoring invocation template, CPP-SKILL validation, DI-8 iteration loop, skill maturity framing | After PSU-DI2 confirmation, before the Pre-Authoring Research Offer / Stage DI-7 |
 | `{SKILL_REFS}/data-lookup-mode.md` | Single skill invocation, response format | After confirming Data Lookup mode |
 | `{SKILL_REFS}/data-discovery-mode.md` | Data Discovery workflow, exploration patterns, escalation | After confirming Data Discovery mode |
 | `{SKILL_REFS}/ad-hoc-collaboration-mode.md` | Ad hoc dispatch loop, workspace setup, agent invocation patterns, output handling | After confirming Ad Hoc Collaboration mode |

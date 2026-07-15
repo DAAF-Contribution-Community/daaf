@@ -750,7 +750,7 @@ After the Part D data-ingest agent returns, the orchestrator persists the full r
 |-------------|----------|
 | data-ingest (Part D) | `{project_dir}/output/preliminary_notes/{date}_partD_interpretation-reconciliation.md` |
 
-**Gate condition:** Part D preliminary notes must exist on disk before presenting PSU-DI2 to the user and before dispatching DI-7 (skill authoring). All four profiling preliminary notes (Parts A-D) must be on disk before DI-7 can proceed.
+**Gate condition:** Part D preliminary notes must exist on disk before presenting PSU-DI2 to the user and before dispatching DI-7 (skill authoring). All four profiling preliminary notes (Parts A-D) must be on disk before DI-7 can proceed. In addition, the Pre-Authoring Research Offer (presented after PSU-DI2) must be resolved before DI-7 is dispatched: if the user accepted it, the research return must be persisted to preliminary notes first (see `WORKFLOW_PHASE_DO_AUTHORING.md` § Pre-Authoring Research (Optional)); if skipped, DI-7 proceeds directly.
 
 ### QA Invocation Template
 

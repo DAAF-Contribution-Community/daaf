@@ -46,6 +46,8 @@ What are you doing?
 
 ### Phase 1: Design (before writing)
 
+Before locking in answers to the design questions below, consider whether a scoped online survey of analogous agent architectures and role designs — how other frameworks decompose specialist responsibilities, structure agent protocols, and draw boundaries between overlapping roles — would sharpen those answers. External grounding beats ungrounded inference: seeing how the problem has already been solved tends to produce a crisper role definition and a cleaner Core Distinction than reasoning from first principles alone. When the authoring is user-initiated, offer this survey to the user rather than deciding unilaterally. In Framework Development mode this is formalized as the **Pre-Authoring Research Offer** (`.claude/skills/daaf-orchestrator/references/framework-development-mode.md` § Pre-Authoring Research Offer), where the orchestrator dispatches a web-capable search-agent before authoring; outside that mode, apply the same instinct proportionately.
+
 Before beginning, you MUST have a clear, coherent, and compelling answer to each of the following questions:
 
 1. **Define the role** in one sentence — what does this agent do and why does it exist?

@@ -8,6 +8,7 @@ After mode confirmation, briefly orient the user. Key points:
 
 - 3 phases: Setup, Profiling (4 parts of scripted analysis), Skill Creation
 - 2 checkpoints where you review: after setup (to confirm scope) and after profiling (to confirm interpretations before they become part of the skill)
+- 1 optional offer between the profiling review and skill creation: I can research the source online first to enrich the skill (skippable in one word)
 - You receive: a standalone data source skill ready for use in future analyses, plus a research project folder with all profiling evidence
 - You need to provide: data file(s), source name, file format, and optionally any documentation, priority columns, and known exclusions
 - Key characteristic: thorough automated profiling, but you review all interpretations before they are encoded into the skill
@@ -150,10 +151,24 @@ Data Onboarding is designed for **tabular datasets** — files with rows and col
             │  skill authoring proceeds         │
             └──────────────────────────────────┘
                           ↓
+            ┌──────────────────────────────────┐
+            │  Pre-Authoring Research Offer    │
+            │  OPTIONAL — offer targeted online │
+            │  research about the source before │
+            │  the skill is written; skippable, │
+            │  never a gate. If accepted, a     │
+            │  search-agent runs and completes  │
+            │  before DI-7; findings feed the   │
+            │  skill's analytical context.      │
+            └──────────────────────────────────┘
+                          ↓
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │ PHASE DO-3: SKILL AUTHORING & DELIVERY                                      │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │  Stage DI-7: Skill Authoring                                       │
+│      ├─ [Optional] Pre-Authoring Research Offer resolved (see PSU          │
+│      │   Templates § Pre-Authoring Research Offer); if accepted, notes      │
+│      │   persisted and passed to DI-7 as input                              │
 │      ├─ Synthesize profiling results + user-confirmed interpretations       │
 │      ├─ Create SKILL.md using DATA_SOURCE_SKILL_TEMPLATE.md                 │
 │      ├─ Create reference files in .claude/skills/{skill-name}/references/   │
@@ -609,6 +624,8 @@ After the user responds to PSU-DI2 (confirming/rejecting/modifying interpretatio
 
 This is a **mandatory gate** — DI-7 cannot be invoked until Interpretation Tracking has Final Interpretation values for all rows.
 
+After this update procedure completes, present the **Pre-Authoring Research Offer** (see PSU Templates below) before dispatching DI-7. The offer is optional and skippable; it does not gate DI-7, but if accepted, the research runs to completion first (see `WORKFLOW_PHASE_DO_AUTHORING.md` § Pre-Authoring Research (Optional)).
+
 ---
 
 ## PSU Templates
@@ -758,6 +775,50 @@ Please review each interpretation above. For each row, indicate:
 **Are these interpretations accurate? Please confirm, reject, or modify each one.**
 ```
 
+### Pre-Authoring Research Offer
+
+Present **after** the user has responded to PSU-DI2 and the Post-PSU-DI2 Update Procedure is complete, and **before** dispatching Stage DI-7 skill authoring. This is an **optional, skippable offer — never a gate**. Profiling has already produced the full picture (structure, column semantics, temporal scope, quality anomalies), so the orchestrator can propose *targeted* research rather than a generic web crawl.
+
+**Why offer this:** The reference-file sections that make a data source skill genuinely useful for analysis — study/survey design, population coverage, valid vs. invalid analyses, and limitations — are exactly the ones profiling alone cannot populate. Profiling observes *what the data looks like*; it cannot tell you *why the collection methodology produces a temporal break in 2015* or *whether a coded value reflects a known suppression convention*. External grounding from official documentation, methodology literature, and practitioner guidance beats ungrounded LLM inference here (the same concern raised in `CLAUDE.md` § "Skill information awareness" — information an agent supplies beyond curated knowledge is inference and should be verified).
+
+**Seed the focus-areas recommendation from profiling findings.** Before presenting the offer, review the confirmed interpretations and the Quality Issues surfaced at PSU-DI2 (anomalies, temporal breaks, ambiguous coded values, suppression patterns) and turn the most salient one or two into a concrete, source-specific recommendation. A generic "research the source" offer is far less useful than "profiling found a temporal break in 2015 — I'd focus the research on whether that corresponds to a known methodology change."
+
+All user-facing text uses plain language — no internal terms (subagent, dispatch, DI-7). Present the offer like this:
+
+```
+**Before I write the skill — want me to research this source online first?**
+
+Profiling told us what the data *looks like*. But the parts of the skill that make
+it genuinely useful for analysis — how the data was collected, who's included and
+excluded, what analyses are valid vs. misleading, and known limitations — often
+depend on context that only the source's documentation and the research literature
+can provide. I can research that now and fold it into the skill before writing it,
+so those sections are grounded in real sources rather than my best guess.
+
+This is entirely optional — just say **"skip"** and I'll go straight to writing the
+skill. If you'd like the research, here's how I'd approach it (adjust anything):
+
+| Decision | Default | Options |
+|----------|---------|---------|
+| **Research scope** | Focused — official source documentation plus known caveats and analytical guidance | Skip / Focused / Deep (broader survey including methodology literature and practitioner guides) |
+| **Source mix** | Mixed — official documentation + academic + practitioner sources | Steer toward any subset (e.g., "official docs only" or "add academic") |
+| **Focus areas** | {profiling-seeded recommendation — e.g., "the 2015 temporal break and the -3 suppression code found during profiling"} | Anything you want me to prioritize or add |
+
+If you accept, the research runs and finishes *before* I start writing the skill, and
+I'll incorporate what it finds — especially into the analytical context and
+limitations sections. If sources conflict with what profiling actually observed,
+profiling wins and I'll note the discrepancy.
+
+**Skip and write the skill now, or adjust the research plan above?**
+```
+
+**Interaction rules:**
+- **One word skips it.** If the user says "skip" (or equivalent), proceed directly to DI-7 with no research step. Do not re-prompt.
+- **Defaults stand unless adjusted.** If the user accepts without changing the table, use the stated defaults (Focused scope, Mixed source mix, the seeded focus areas).
+- **Per-session only.** This is solicited fresh each onboarding — do not record a durable preference in CLAUDE.md or ask to remember the choice for future sessions.
+- **If accepted:** dispatch the pre-authoring research per `WORKFLOW_PHASE_DO_AUTHORING.md` § Pre-Authoring Research (Optional). The research runs to completion and its findings are persisted to `output/preliminary_notes/` **before** the DI-7 skill-authoring subagent is dispatched, and the notes file is passed to DI-7 as an additional input.
+- **STATE.md:** record the user's choice (skipped / scope / source mix / focus areas) in Key Decisions Made, and if accepted, add the research notes file to Files Created This Session.
+
 ---
 
 ## Context Completeness Checklists
@@ -900,7 +961,7 @@ The orchestrator loads these files progressively — only when the corresponding
 | Phase | Reference File | When to Load |
 |-------|---------------|--------------|
 | DO-2 (Profiling) | `WORKFLOW_PHASE_DO_PROFILING.md` | Before dispatching the first profiling subagent (Stage DI-3) |
-| DO-3 (Skill Authoring) | `WORKFLOW_PHASE_DO_AUTHORING.md` | After PSU-DI2 user confirmation, before Stage DI-7 |
+| DO-3 (Skill Authoring) | `WORKFLOW_PHASE_DO_AUTHORING.md` | After PSU-DI2 user confirmation, before the Pre-Authoring Research Offer / Stage DI-7 (this file also contains the optional pre-authoring research dispatch) |
 
 **Do NOT load both files at mode start.** Load each file just-in-time for its phase to conserve orchestrator context.
 
