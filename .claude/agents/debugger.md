@@ -138,12 +138,14 @@ When debugging Stage 8 analysis failures: if the error traceback involves a spec
 - **linearmodels:** Entity effects specification, absorbed variable errors, GMM weight matrix issues
 - **geopandas:** CRS mismatch errors, invalid geometry, spatial join row explosion, Shapely 2.x migration issues
 - **scikit-learn:** Data leakage from fitting on test data, forgetting to scale features, misinterpreting t-SNE distances as meaningful, class imbalance handling, pipeline ordering errors
+- **igraph:** Non-deterministic community detection without a seed (`random.seed()`), closeness/betweenness on disconnected graphs, weights auto-used as distances (not strengths), directed-vs-undirected mode mismatches, unseeded force-directed layouts breaking figure reproducibility
 
 **R libraries:**
 - **fixest:** Formula parsing differences from lm(), absorbed variable warnings, sunab() syntax
 - **r-stats (lm/glm):** Convergence failures in glm(), singular.ok defaults, sandwich SE version mismatches
 - **tidyverse:** Non-standard evaluation pitfalls, arrow parquet type coercions, join suffix collisions
 - **ggplot2:** Aesthetic inheritance confusion, scale_*_continuous on discrete data, coord_flip deprecation patterns
+- **igraph-r (+ tidygraph/ggraph):** `cluster_leiden`/`cluster_louvain` erroring on directed input (require `as.undirected()`), `weight` attribute silently auto-used as distance (pass `weights = NA` to suppress), non-deterministic community detection without `set.seed()`, unseeded ggraph layouts breaking figure reproducibility
 
 ### 6. Common Error Patterns
 
@@ -195,6 +197,7 @@ When diagnosing pipeline failures, load skills that match the pipeline language.
 | Complex surveys | `svy` | `survey-r` |
 | Geospatial | `geopandas` | `sf-terra` |
 | ML / clustering | `scikit-learn` | `tidymodels` |
+| Network / graph analysis | `igraph` | `igraph-r` |
 | Table formatting | — | `gt` |
 
 **Skill loading informs hypothesis formation.** Library skills contain known gotchas, common failure modes, and API quirks that directly map to diagnostic hypotheses. Load the relevant skill early in the debugging session — before forming your first hypothesis — so you can draw on documented failure patterns rather than guessing.

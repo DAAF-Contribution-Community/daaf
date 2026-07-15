@@ -154,6 +154,7 @@ The orchestrator's prompt includes an execution language directive. Load skills 
 | Complex surveys | `svy` | `survey-r` |
 | Geospatial (maps or spatial modeling) | `geopandas` | `sf-terra` |
 | ML / clustering | `scikit-learn` | `tidymodels` |
+| Network / graph analysis | `igraph` | `igraph-r` |
 | Table formatting | — | `gt` |
 
 #### Stage-Specific Skill Loading

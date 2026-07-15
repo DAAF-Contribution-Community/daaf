@@ -172,6 +172,7 @@ The orchestrator's prompt includes an execution language directive (**"Execution
 | Complex surveys | `svy` | `survey-r` |
 | Geospatial (maps or spatial modeling) | `geopandas` | `sf-terra` |
 | ML / clustering | `scikit-learn` | `tidymodels` |
+| Network / graph analysis | `igraph` | `igraph-r` |
 | Table formatting | — | `gt` |
 
 ### 6. Dependency Mapping
@@ -241,6 +242,7 @@ Work backward from outputs to inputs. For each task, apply the Methodology Rigor
 - Spatial regression or spatial analysis → `geopandas`
 - Supervised ML (classification, prediction, risk scoring) → `scikit-learn`
 - Unsupervised analysis (clustering, PCA, dimensionality reduction) → `scikit-learn`
+- Network / graph analysis (centrality, community detection, bipartite) → `igraph`
 
 *R execution (orchestrator directive "Execution language: R"):*
 - Standard regression (OLS, GLM, logit/probit), diagnostic tests, or time series → `r-stats`
@@ -249,6 +251,7 @@ Work backward from outputs to inputs. For each task, apply the Methodology Rigor
 - Survey-weighted analysis (complex survey design) → `survey-r`
 - Spatial regression or spatial analysis → `sf-terra`
 - Supervised or unsupervised ML (classification, prediction, clustering, PCA/UMAP) → `tidymodels`
+- Network / graph analysis (centrality, community detection, bipartite) → `igraph-r`
 - Visualization tasks (8.2) → `ggplot2` (static), `plotly-r` (interactive); formatted tables → `gt`
 
 Include the selected library skill name in the task's `<skill>` element (e.g., `<skill>data-scientist, pyfixest</skill>` — or `<skill>data-scientist, fixest</skill>` under an R directive) so the orchestrator can pass it to the research-executor.

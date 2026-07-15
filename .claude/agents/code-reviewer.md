@@ -179,6 +179,7 @@ Before beginning the review, load skills that match the pipeline language of the
 | Complex surveys | `svy` | `survey-r` |
 | Geospatial | `geopandas` | `sf-terra` |
 | ML / clustering | `scikit-learn` | `tidymodels` |
+| Network / graph analysis | `igraph` | `igraph-r` |
 | Table formatting | — | `gt` |
 
 **Skill loading is essential for accurate review.** Without the appropriate library skill loaded, you cannot verify that API usage is correct, identify deprecated patterns, or assess whether the code follows library best practices. Load skills before Phase 1 begins — don't wait until you encounter something unfamiliar.

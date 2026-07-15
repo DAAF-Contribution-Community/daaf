@@ -387,7 +387,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN uv pip install --system \
     numpy==2.4.2 \
     pandas==3.0.0 \
-    polars==1.38.1 \
+    polars==1.39.1 \
     scipy==1.17.0 \
     openpyxl==3.1.5 \
     fastexcel==0.19.0 \
@@ -409,13 +409,18 @@ RUN uv pip install --system \
 # Primary: pyfixest + statsmodels already above
 # Secondary: panel models, RDD, marginal effects, volatility, dynamic panels, survey statistics
 # NOTE: lifelines excluded — latest (0.30.3) requires pandas<3.0, incompatible with pandas==3.0.0
+# NOTE: svy-rs/svy-io are svy's own runtime deps, pinned explicitly for reproducibility
+#       (svy 0.19.0 declares svy-rs>=0.10.0,<0.11.0 and svy-io>=0.1.1,<0.2.0;
+#       svy-rs 0.10.0 sets the effective polars floor of >=1.39.1 — see polars pin above)
 RUN uv pip install --system \
     linearmodels==7.0 \
     rdrobust==1.3.0 \
     marginaleffects==0.5.0 \
     arch==8.0.0 \
     pydynpd==0.2.1 \
-    svy==0.13.0
+    svy==0.19.0 \
+    svy-rs==0.10.0 \
+    svy-io==0.1.1
 
 # Install geospatial packages
 # Core: vector (geopandas + deps), raster (rasterio + xarray), mapping, PySAL spatial stats
@@ -447,6 +452,14 @@ RUN uv pip install --system \
     shap==0.51.0 \
     fairlearn==0.12.0 \
     lightgbm==4.6.0
+
+# Install network analysis packages
+# python-igraph ships a manylinux wheel (no compilation, no extra system libs
+# for the core install — verified against PyPI 2026-07-15); plotting uses the
+# matplotlib backend from the visualization block above, so cairocffi is not
+# installed. Same C core as the R igraph package (cross-language skill pair).
+RUN uv pip install --system \
+    igraph==1.0.0
 
 # ============================================
 # Install R Data Science Packages + Quarto
@@ -559,6 +572,19 @@ RUN Rscript -e 'pkgs <- c( \
         missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]; \
         if (length(missing)) stop("R install block failed — missing: ", paste(missing, collapse = ", "))'
 
+# Network analysis
+# igraph is already present as a kknn transitive dependency (see ML block and the
+# libglpk40 note in the R-toolchain apt block); listing it here makes it a
+# first-class framework package — explicitly installed and gate-covered — so it
+# survives any future change to the ML stack. tidygraph/ggraph are the
+# tidyverse-native manipulation and grammar-of-graphics layers over igraph.
+RUN Rscript -e 'pkgs <- c( \
+        "igraph", "tidygraph", "ggraph" \
+        ); \
+        install.packages(pkgs); \
+        missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]; \
+        if (length(missing)) stop("R install block failed — missing: ", paste(missing, collapse = ", "))'
+
 # Presence gate: the FINAL identity check that the installed package set matches the
 # union of the install.packages() blocks above. Its role changed with the per-block
 # fail-fast pattern: the per-block requireNamespace() checks now catch a failed package
@@ -583,7 +609,8 @@ RUN Rscript -e 'pkgs <- c( \
         "ggplot2", "scales", "ggridges", "ggrepel", "patchwork", "ggdist", \
         "plotly", "gt", "V8", "knitr", "kableExtra", "viridis", \
         "tidymodels", "ranger", "glmnet", "xgboost", "lightgbm", "kknn", \
-        "iml", "uwot", "fairmodels", "vip" \
+        "iml", "uwot", "fairmodels", "vip", \
+        "igraph", "tidygraph", "ggraph" \
         ); \
         missing <- pkgs[!vapply(pkgs, requireNamespace, logical(1), quietly = TRUE)]; \
         if (length(missing)) stop("Missing R packages: ", paste(missing, collapse = ", ")); \
@@ -710,8 +737,11 @@ RUN if [ "${DAAF_DEV}" = "1" ]; then \
     fi
 
 # Install Claude Code as appuser (pinned version)
-# Latest stable as of 2026-07-02
-ARG CLAUDE_CODE_VERSION=2.1.187
+# Latest stable as of 2026-07-15 (user-verified stable channel; 2.1.210 was latest).
+# Delta review 2.1.188-2.1.202 + regression checklist:
+#   research/2026-07-15_FrameworkDev_ClaudeCode_Upgrade_2.1.202/
+# Rollback target: 2.1.187
+ARG CLAUDE_CODE_VERSION=2.1.202
 RUN curl -fsSL https://claude.ai/install.sh | bash -s ${CLAUDE_CODE_VERSION}
 ENV PATH="/home/appuser/.local/bin:${PATH}"
 

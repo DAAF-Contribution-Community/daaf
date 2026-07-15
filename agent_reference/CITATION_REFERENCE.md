@@ -48,6 +48,10 @@ Cite when the library's **analytical functionality** drives a result. Do NOT cit
 | gt | Iannone, R. et al. gt: Easily Create Presentation-Ready Display Tables [Computer software]. https://gt.rstudio.com/ | Used for formatted table output in R | — |
 | plm | Croissant, Y. & Millo, G. (2008). "Panel Data Econometrics in R: The plm Package." *Journal of Statistical Software*, 27(2), 1-43. | Used for panel data models in R | — |
 | modelsummary | Arel-Bundock, V. (2022). "modelsummary: Data and Model Summaries in R." *Journal of Statistical Software*, 103(1), 1-23. | Used for regression table output in R | — |
+| igraph (Python) | Csárdi, G. & Nepusz, T. (2006). "The igraph software package for complex network research." *InterJournal, Complex Systems*, 1695. https://igraph.org/ (python-igraph's CITATION.cff names the 2006 paper as preferred; adding Antonov, M. et al. (2023). "igraph enables fast and robust network analysis across programming languages." *arXiv:2311.10260*. https://doi.org/10.48550/arXiv.2311.10260 as a supplemental reference is recommended for cross-language or reproducibility-focused work. License: GPL-2.0-or-later.) | Used for network construction, centrality, community detection, or bipartite analysis in Python | Only imported but not used for analysis |
+| igraph (R) | Cite ALL THREE per the package's CITATION file: Csárdi, G. & Nepusz, T. (2006). "The igraph software package for complex network research." *InterJournal, Complex Systems*, 1695; Antonov, M., Csárdi, G., Horvát, S., Müller, K., Nepusz, T., Noom, D., Salmon, M., Traag, V., Foucault Welles, B., & Zanini, F. (2023). "igraph enables fast and robust network analysis across programming languages." *arXiv:2311.10260*. https://doi.org/10.48550/arXiv.2311.10260; Csárdi, G., Nepusz, T., Traag, V., Horvát, S., Zanini, F., Noom, D., Müller, K., Schoch, D., & Salmon, M. (2026). *igraph: Network Analysis and Visualization in R.* R package version 2.2.3. https://doi.org/10.5281/zenodo.7682609. License: GPL-2 or later. | Used for network construction, centrality, community detection, or bipartite analysis in R | Only imported but not used for analysis |
+| tidygraph | Pedersen, T.L. (2024). *tidygraph: A Tidy API for Graph Manipulation.* R package version 1.3.1. https://CRAN.R-project.org/package=tidygraph. License: MIT. | Used for tidy-API graph manipulation (tbl_graph) in R network analysis | Only imported but not used for graph manipulation |
+| ggraph | Pedersen, T.L. (2025). *ggraph: An Implementation of Grammar of Graphics for Graphs and Networks.* R package version 2.2.2. https://CRAN.R-project.org/package=ggraph. License: MIT. | Used to produce network figures (grammar-of-graphics) in R | Only used for a quick exploratory network plot |
 
 ### Methodological References
 
@@ -97,6 +101,12 @@ Cite the **primary** citation per method — the one paper you would cite in a j
 | Method | Primary Citation | Cite When |
 |--------|-----------------|-----------|
 | Spatial autocorrelation | Anselin, L. (1995). "Local Indicators of Spatial Association--LISA." *Geographical Analysis*, 27(2), 93-115. | Moran's I or LISA computed |
+
+#### Network Analysis
+
+| Method | Primary Citation | Cite When |
+|--------|-----------------|-----------|
+| Leiden community detection | Traag, V.A., Waltman, L., & van Eck, N.J. (2019). "From Louvain to Leiden: guaranteeing well-connected communities." *Scientific Reports*, 9, 5233. | Leiden algorithm used for community detection (also the reference motivating Leiden over Louvain) |
 
 #### Decomposition
 

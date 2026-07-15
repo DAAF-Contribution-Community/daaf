@@ -568,7 +568,7 @@ Ask DAAF to edit the version pin in the Dockerfile. For example, to change Polar
 
 **"I need an R package that isn't included"**
 
-DAAF includes R as a first-class execution language with 11 library skills (tidyverse, ggplot2, fixest, r-stats, quarto, plotly-r, sf-terra, plm, tidymodels, survey-r, and gt). See the **R Packages** subsection below for how to add additional R packages. If you're coming from a Python background and want to understand R equivalents, DAAF includes a `python-r-translation` skill; from Stata, there's a `stata-r-translation` skill. If you prefer to work in Python, the `r-python-translation` and `stata-python-translation` skills can help you find Python equivalents for R or Stata operations you're familiar with.
+DAAF includes R as a first-class execution language with 12 library skills (tidyverse, ggplot2, fixest, r-stats, quarto, plotly-r, sf-terra, plm, tidymodels, survey-r, gt, and igraph-r). See the **R Packages** subsection below for how to add additional R packages. If you're coming from a Python background and want to understand R equivalents, DAAF includes a `python-r-translation` skill; from Stata, there's a `stata-r-translation` skill. If you prefer to work in Python, the `r-python-translation` and `stata-python-translation` skills can help you find Python equivalents for R or Stata operations you're familiar with.
 
 **"I need a package that requires compilation and it's failing"**
 

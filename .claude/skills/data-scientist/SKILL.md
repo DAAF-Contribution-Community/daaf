@@ -1,7 +1,7 @@
 ---
 name: data-scientist
 description: >-
-  Data science methodology and method-selection routing for quantitative research. Covers EDA, data validation, descriptive analysis, causal inference (IV, DiD, RD, synthetic control), clustering/PCA/UMAP, supervised ML, geospatial analysis, and visualization design. Contains the canonical method-to-library routing tree, routed by execution language — Python: statsmodels (OLS/GLM/time series), pyfixest (FE/DiD), linearmodels (RE/GMM/SUR), svy (complex surveys), scikit-learn (clustering/prediction ML), geopandas (spatial); R: r-stats (OLS/GLM/time series), fixest (FE/DiD), plm (panel/RE/IV), survey-r (complex surveys), tidymodels (ML), sf-terra (spatial). Load the routed tool-specific skill before giving tool-specific advice or writing code — library skills encode environment constraints and curated caveats absent from general knowledge.
+  Data science methodology and method-selection routing for quantitative research. Covers EDA, data validation, descriptive analysis, causal inference (IV, DiD, RD, synthetic control), clustering/PCA/UMAP, supervised ML, geospatial analysis, network analysis, and visualization design. Contains the canonical method-to-library routing tree, routed by execution language — Python: statsmodels (OLS/GLM/time series), pyfixest (FE/DiD), linearmodels (RE/GMM/SUR), svy (complex surveys), scikit-learn (clustering/prediction ML), geopandas (spatial), igraph (network analysis); R: r-stats (OLS/GLM/time series), fixest (FE/DiD), plm (panel/RE/IV), survey-r (complex surveys), tidymodels (ML), sf-terra (spatial), igraph-r (network analysis). Load the routed tool-specific skill before giving tool-specific advice or writing code — library skills encode environment constraints and curated caveats absent from general knowledge.
 metadata:
   audience: any-agent
   domain: research-methodology
@@ -9,7 +9,7 @@ metadata:
 
 # Data Scientist Skill
 
-Rigorous data science methodology and mindset for quantitative research in Python or R. Covers EDA, data validation, transformation verification, documentation standards, visualization design, descriptive analysis, statistical modeling, causal inference method selection (IV, DiD, RD, synthetic control), unsupervised analysis (clustering, PCA, UMAP), supervised ML methodology (prediction vs. inference, cross-validation, model interpretation, fairness), and geospatial analysis. Provides methodology decisions and analytical approach guidance. Load the routed, language-appropriate tool-specific skill (Python: polars, statsmodels, plotnine, pyfixest, scikit-learn, geopandas; R: tidyverse, r-stats, ggplot2, fixest, tidymodels, sf-terra; etc.) before giving tool-specific advice or writing code — library skills encode environment-specific constraints and curated caveats that general knowledge lacks or gets wrong. Use for any data analysis, exploration, transformation, or modeling task — especially when choosing methods, checking assumptions, or structuring an analysis.
+Rigorous data science methodology and mindset for quantitative research in Python or R. Covers EDA, data validation, transformation verification, documentation standards, visualization design, descriptive analysis, statistical modeling, causal inference method selection (IV, DiD, RD, synthetic control), unsupervised analysis (clustering, PCA, UMAP), supervised ML methodology (prediction vs. inference, cross-validation, model interpretation, fairness), geospatial analysis, and network analysis (centrality, community detection, bipartite graphs). Provides methodology decisions and analytical approach guidance. Load the routed, language-appropriate tool-specific skill (Python: polars, statsmodels, plotnine, pyfixest, scikit-learn, geopandas, igraph; R: tidyverse, r-stats, ggplot2, fixest, tidymodels, sf-terra, igraph-r; etc.) before giving tool-specific advice or writing code — library skills encode environment-specific constraints and curated caveats that general knowledge lacks or gets wrong. Use for any data analysis, exploration, transformation, or modeling task — especially when choosing methods, checking assumptions, or structuring an analysis.
 
 Establishes a rigorous, methodical approach to data science work. This skill is about *how* to think and work, not specific tools. The moment a specific tool enters the conversation — in advice and brainstorming as much as in code — load its specialized skill (Python: polars, plotnine, plotly, marimo; R: tidyverse, ggplot2, plotly-r, quarto; etc.): those skills know this environment's tooling in ways general knowledge does not.
 
@@ -154,6 +154,7 @@ When no language is specified, default to Python.
 | Complex survey statistics | `svy` | `survey-r` |
 | ML / clustering / PCA | `scikit-learn` | `tidymodels` |
 | Geospatial | `geopandas` | `sf-terra` |
+| Network analysis | `igraph` | `igraph-r` |
 | Table formatting | `great-tables` | `gt` |
 | Notebook | `marimo` | `quarto` |
 
@@ -256,6 +257,15 @@ What task are you performing?
 │       ├─ ./references/geospatial-analysis.md (spatial thinking, methods, interpretation)
 │       └─ ./references/geospatial-operations.md (joins, weights, interpolation, operations)
 │       THEN load `geopandas` skill (Python) or `sf-terra` skill (R)
+├─ Network / graph analysis (relationships, centrality, community detection,
+│   bipartite/two-mode data, paths/components, ego networks, network visualization)
+│   └─ FIRST read ./references/network-analysis.md (when a network frame fits,
+│       node/edge/directedness/weight conceptualization, centrality selection,
+│       community detection + seed discipline, bipartite projection, disconnected-graph
+│       and weights-as-distances guardrails, reproducibility requirements)
+│       THEN load `igraph` skill (Python) or `igraph-r` skill (R)
+│       (ERGM / statistical network models are not currently covered — see the
+│       reference's "Out of Current Scope" note; escalate to orchestrator)
 └─ Not currently covered by DAAF skills:
     ├─ Bayesian modeling (PyMC, bambi / brms) → escalate to orchestrator
     ├─ Survival / time-to-event analysis → escalate to orchestrator
@@ -301,6 +311,7 @@ This skill assumes familiarity with:
 | `survey-analysis.md` | Complex survey methodology: design anatomy, weight selection, variance estimation, domain estimation, plausible values, survey-weighted regression, federal survey reference table, pitfalls checklist | **Any task involving data from a complex probability survey** (NHANES, ACS PUMS, CPS, ECLS-K, HSLS, MEPS, NAEP, etc.) |
 | `geospatial-analysis.md` | Spatial thinking, MAUP, CRS, methods decision guide, autocorrelation, regression | **Any task involving geographic/spatial data** |
 | `geospatial-operations.md` | Spatial joins, weights, LISA interpretation, interpolation, zonal statistics, geometry validity | **Planning or executing spatial operations (joins, overlays, weights, interpolation, zonal statistics), or interpreting spatial statistics results (Moran's I, LISA)** |
+| `network-analysis.md` | Network/graph methodology: when a network frame fits, node/edge/directedness/weight conceptualization, centrality selection by research question, community detection + seed discipline, bipartite/two-mode data and projection, disconnected-graph and weights-as-distances guardrails, reproducibility; ERGM out of scope | **Any task involving relational/network data — centrality, community detection, paths/components, bipartite graphs, ego networks, or network visualization** |
 | `exploratory-unsupervised.md` | Cluster analysis, dimension reduction (PCA), Gaussian mixture models, nonlinear embeddings (t-SNE, UMAP), cluster validation, classify-analyze problem | Stage 8 tasks involving unsupervised methods, typology construction, or pattern discovery |
 | `supervised-ml.md` | Supervised ML methodology: prediction vs. inference (Shmueli 2010), bias-variance tradeoff, cross-validation for structured data (grouped, temporal, spatial), model selection, classification and ML regression methodology, ensemble methods, interpretation caveats (feature importance is not causation), algorithmic fairness and equity (impossibility theorems), deep learning orientation, reporting standards | Stage 8 tasks involving classification, prediction, risk scoring, ML-based variable selection, or any task where the goal is predicting outcomes rather than estimating causal parameters |
 
@@ -558,6 +569,50 @@ Geospatial analysis task?
 │       THEN → ./references/visualization-execution.md (color, accessibility)
 └─ Working with or advising on geopandas/PySAL/rasterio or sf/terra/spdep
     └─ Load `geopandas` skill (Python) or `sf-terra` skill (R)
+```
+
+### "I need to analyze relationships or network structure"
+
+```
+Is a network frame appropriate for this question?
+├─ Question is about attributes of individual units (how much, how many, what predicts Y)
+│   └─ A network frame is NOT needed — use descriptive/regression/ML routing above.
+│       Relational data can often be analyzed as ordinary tabular features.
+├─ Question is about relationships, connectivity, or position within a web of ties
+│   (who is central, who bridges groups, what clusters exist, how far apart are units)
+│   └─ A network frame fits → ./references/network-analysis.md, then load
+│       `igraph` skill (Python) or `igraph-r` skill (R)
+│
+├─ Which centrality answers my research question?
+│   ├─ Activity / volume of direct ties → degree centrality
+│   ├─ Brokerage / bridging between groups → betweenness
+│   │   (NOTE: betweenness is NOT a resilience/robustness metric — do not read it that way)
+│   ├─ Reach / average closeness to all others → closeness
+│   │   (requires a connected component — see disconnected-graph guardrail below)
+│   └─ Influence via being connected to well-connected units → eigenvector / PageRank
+│       → ./references/network-analysis.md "Centrality Selection"
+│
+├─ I want to find groups / communities
+│   └─ Community detection → prefer Leiden over Louvain (Louvain can yield
+│       disconnected communities); ALWAYS set a seed (results are non-deterministic)
+│       and record it; in R, cluster_leiden/cluster_louvain require an UNDIRECTED graph
+│       → ./references/network-analysis.md "Community Detection"
+│
+├─ My data is two-mode / bipartite (e.g., people × events, authors × papers)
+│   └─ Construct a bipartite graph, then project to one mode if needed — but
+│       projection loses information and inflates ties; interpret projected
+│       edges with care → ./references/network-analysis.md "Bipartite / Two-Mode Data"
+│
+├─ Before computing closeness/betweenness or trusting distances
+│   ├─ Check connectivity/components first (these measures are ill-defined across
+│   │   disconnected components) → network-analysis.md "Disconnected-Graph Guardrail"
+│   └─ Confirm whether edge weights mean distance or strength — igraph treats a
+│       `weight` attribute as DISTANCE and uses it automatically; pass weights=NA
+│       to suppress → network-analysis.md "Weights-as-Distances Trap"
+│
+└─ I need statistical inference / generative network models (ERGM, SAOM, TERGM)
+    └─ NOT currently covered by DAAF skills → escalate to orchestrator
+        (noted as a future extension in network-analysis.md)
 ```
 
 ### "I need to predict an outcome or classify observations"
@@ -1130,6 +1185,16 @@ Use narrative text chunks liberally:
 | Algorithmic fairness and bias | `./references/supervised-ml.md` |
 | Deep learning orientation | `./references/supervised-ml.md` |
 | Reporting standards for ML | `./references/supervised-ml.md` |
+| When a network frame is appropriate (relational vs. attribute questions) | `./references/network-analysis.md` |
+| Graph construction from edge lists | `./references/network-analysis.md` |
+| Centrality selection (degree, betweenness, closeness, eigenvector, PageRank) | `./references/network-analysis.md` |
+| Community detection (Leiden, Louvain, walktrap) and seed discipline | `./references/network-analysis.md` |
+| Bipartite / two-mode networks and projection | `./references/network-analysis.md` |
+| Ego networks and neighborhoods | `./references/network-analysis.md` |
+| Shortest paths, components, and connectivity | `./references/network-analysis.md` |
+| Network visualization (seeded layouts, reproducibility) | `./references/network-analysis.md` |
+| Directedness and weighted-edge (weights-as-distances) handling | `./references/network-analysis.md` |
+| ERGM / statistical network models (out of current scope) | `./references/network-analysis.md` |
 
 ## Citation Responsibility
 
