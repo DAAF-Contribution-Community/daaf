@@ -160,7 +160,7 @@ After completing each item, note the status: Done, Skipped (with reason), or N/A
 
 | # | Item | Req | File | Section / Location |
 |---|------|-----|------|--------------------|
-| H1 | Create hook script in `.claude/hooks/` | [M] | `.claude/hooks/{hook-name}.sh` | Must follow fail-closed design (ERR trap → exit 2) |
+| H1 | Create hook script in `.claude/hooks/` | [M] | `.claude/hooks/{hook-name}.sh` | Failure posture must match the hook's role: fail-closed (ERR trap → exit 2) for safety gates; fail-open (`exit 0` on all paths) for observability/reminder hooks (see HM2) |
 | H1b | Set executable permissions and ensure Git tracks the executable bit | [M] | `.claude/hooks/{hook-name}.sh` | Run `chmod +x <file>`, then `git update-index --chmod=+x <file>`. Verify with `git ls-files -s <file>` — mode must be `100755`, not `100644`. |
 | H2 | Register in settings.json (project-wide) OR agent frontmatter (per-agent) | [M] | `.claude/settings.json` or `.claude/agents/{agent}.md` | `hooks` section with event type + matcher |
 | H3 | Add to CLAUDE.md Defense-in-Depth Architecture table | [M] | `CLAUDE.md` | Defense-in-Depth Architecture table |
@@ -168,6 +168,22 @@ After completing each item, note the status: Done, Skipped (with reason), or N/A
 | H5 | Test with both allow and block scenarios | [M] | — | Verify exit code 0 (allow) and exit code 2 (block) |
 
 > **Applies to all `.sh` files, not just hooks.** Item H1b (executable permissions) applies whenever any `.sh` file is created or modified in the repository — including utility scripts in `scripts/` (e.g., `run_with_capture.sh`, `collect_session_logs.sh`). Shell scripts that are not executable will fail silently when invoked with `./script.sh` syntax and will be stored incorrectly in Git history. Always run `chmod +x` and `git update-index --chmod=+x` for every `.sh` file.
+
+> **Cache placement principle (for hooks that persist state):** match a cache's storage to the lifetime of the fact it caches. `/tmp` holds **session-runtime facts** (active model, context window, throttle timestamps) — the container-rebuild wipe is free cache invalidation for them. Coordination state that must survive rebuilds — **transcript-lifetime facts**, e.g. the orchestrator-loaded flag (`orchestrator-loaded-<session_id>`) — lives in `~/.claude/daaf-state/` (claude-config volume, same lifetime as the session transcripts). Rationale and precedent: `.claude/hooks/remind-orchestrator.sh` header and `research/2026-07-15_FrameworkDev_ResumeReminderFix/`.
+
+### Modifying an Existing Hook
+
+> Precedent: the 2026-07-15 orchestrator-flag relocation (`research/2026-07-15_FrameworkDev_ResumeReminderFix/`), where these steps were derived by analogy from the New Hook Checklist.
+
+| # | Item | Req | File | What to Check |
+|---|------|-----|------|----|
+| HM1 | Read the full hook script before editing; identify its event type, matcher(s), input fields consumed, and exit-code contract | [M] | Target hook | Header comment vs. actual behavior |
+| HM2 | Preserve the hook's failure posture — fail-closed (ERR trap → block) for safety gates, fail-open (`exit 0` always) for observability/reminder hooks — unless changing that posture is the point of the edit | [M] | Target hook | ERR trap and exit codes before vs. after |
+| HM3 | Draft-test-deploy: `.claude/hooks/` is deny-protected, so author the revision as a draft in a session workspace, test it by piping synthetic JSON event payloads to the draft, then have the user copy it into place (`cp` onto the existing file preserves the executable bit) | [M] | Session workspace → `.claude/hooks/{hook-name}.sh` | Draft passes ShellCheck + functional probes before deployment |
+| HM4 | Verify deployment: deployed file byte-identical to the tested draft (`diff` empty) and Git mode still `100755` (`git ls-files -s`) | [M] | `.claude/hooks/{hook-name}.sh` | Empty diff; mode column |
+| HM5 | Confirm registrations still match the hook's behavior (event type + every matcher, in `settings.json` and any agent frontmatter) — or update them if the edit changes when the hook should fire | [M] | `.claude/settings.json`, `.claude/agents/*.md` | Grep for the hook name |
+| HM6 | If the edit changes paths, patterns, or state locations the hook reads/writes (cache files, flag files, log paths), sweep live framework surfaces for the old value and update — including the CLAUDE.md Defense-in-Depth Architecture row if the hook is listed there. Archival research documents and session logs are NOT updated | [C] | `CLAUDE.md`, live docs | Grep old fragment; zero hits outside archival locations |
+| HM7 | If regression tests cover the hook (`tests/bash/*.bats`), update and re-run them | [C] | `tests/bash/` | Grep for the hook name in `tests/` |
 
 ### Retiring a Hook
 
