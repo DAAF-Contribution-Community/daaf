@@ -388,6 +388,32 @@ pwsh -NoProfile -Command "Get-ChildItem ./scripts/host/*.ps1 | ForEach-Object { 
 
 **Working on R support?** The R execution environment (R, the R package set, and Quarto) is part of the standard DAAF image — there is nothing to enable. The R smoke tests in `scripts/smoke_tests/` exercise each R library skill and run in any container; a Python import-smoke (`smoke_imports.py`) additionally verifies every pinned Python analysis package imports. Both run via `run_all_smoke_tests.sh`. (The per-skill R smokes came first because the newly added R package set needed install verification the mature Python stack had long since earned; the Python import-smoke rounds out the suite.) See `user_reference/01_installation_and_quickstart.md` ("R support (included)") for what the image ships with.
 
+### For Deployment or Provider-Configuration Changes
+
+If your change touches how DAAF talks to a model provider -- a new or changed API key, a model remap (`ANTHROPIC_DEFAULT_*`), a provider-shim change, a base-URL switch -- or you just want to confirm a rebuilt install still works end-to-end, use the **deployment smoke suite** (`scripts/deploy_smoke/`). Unlike the R/Python library smokes above (which verify packages load) or DAAFBench (which scores model *behavior*), this suite verifies the *deployment itself* functions in whatever provider route it is configured for. It auto-detects the active route (anthropic-subscription, OpenRouter, or the chatgpt-subscription/openai-api shim routes) and runs tiered probes. It requires the `DAAF_DEV=1` image.
+
+Start with the free, no-API preflight, then add live tiers as needed:
+
+```bash
+# Free preflight — route/env coherence, hook registration, statuslines, shim health:
+python3 scripts/deploy_smoke/run_deploy_smoke.py --tiers 0 --yes
+
+# Add a live round-trip (~cents) and the functional battery (~$0.50–2.50, model-dependent):
+python3 scripts/deploy_smoke/run_deploy_smoke.py --tiers 0,1,2
+
+# Assert the route you expect — a detection mismatch is a FAIL (catches a mis-set env):
+python3 scripts/deploy_smoke/run_deploy_smoke.py --route openrouter --tiers 0
+
+# Across multiple OpenRouter model families in one run (edit slugs in profiles.yaml first):
+python3 scripts/deploy_smoke/run_deploy_smoke.py --route openrouter \
+    --profiles openrouter-claude,openrouter-gpt,openrouter-glm --yes
+
+# Zero-cost deterministic battery (bats, Pester, lint, safety-hook tests):
+python3 scripts/deploy_smoke/run_deploy_smoke.py --tiers D --yes
+```
+
+Each run writes an evidence-quoted `report.md` (plus a machine-readable `report.json`) under `scripts/deploy_smoke/reports/{timestamp}_{route}/`, and exits nonzero on any FAIL. Some `WARN`/`INFO` signals are expected mechanics of a headless probe rather than defects — the `daaf-deploy-smoke-testing` skill (and its `references/interpreting-results.md`) explains the per-probe meaning, route-conditional expectations, and how to route a real failure to its documented fix.
+
 ---
 
 ## Using Session Logs for Debugging and Issue Reports

@@ -177,6 +177,13 @@ Directory map (paths relative to `benchmarks/`):
 | `results/` | Timestamped, self-contained result sets |
 | `_sandbox/` | Per-run scratch directories (transient, gitignored) |
 
+> **Related tool — the deployment smoke suite.** `scripts/deploy_smoke/` reuses this
+> harness's output-parsing and subprocess-env machinery (it imports `_parse_json_output`,
+> `_extract_tool_failures`, and the graceful-kill ladder from `harness/executor.py`) but
+> serves a different purpose: verifying that a *live install* functions end-to-end in its
+> configured provider route, not scoring model behavior. See the `daaf-deploy-smoke-testing`
+> skill.
+
 ## 4. Quick Start
 
 **Environment.** Anthropic models authenticate via the container's Claude Code

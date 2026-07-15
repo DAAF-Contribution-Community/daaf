@@ -1,0 +1,132 @@
+# Interpreting Deployment Smoke Results
+
+Probe-by-probe interpretation for the DAAF deployment smoke suite: what each verdict means, which signals are expected mechanics rather than defects, route-conditional expectations, and how to route a real failure to its documented fix. Read this alongside a `report.md` from `scripts/deploy_smoke/reports/{timestamp}_{route}/`.
+
+## Verdict Semantics
+
+| Verdict | Meaning | Affects exit code? |
+|---------|---------|--------------------|
+| **PASS** | The probe's machinery worked as expected. | no |
+| **FAIL** | A real defect for this route. Fix before trusting the deployment. | **yes** (nonzero) |
+| **WARN** | Something worth a look, but not necessarily broken. Often expected on short headless runs (see below). | no |
+| **SKIP** | Not applicable to the detected route (e.g. shim `/health` on a non-shim route). Correct behavior. | no |
+| **INFO** | Informational context (e.g. the model-family/ceiling-hook posture), not a pass/fail signal. | no |
+
+Only **FAIL** flips the overall verdict, matching the `run_all_smoke_tests.sh` contract. When triaging a report, read every FAIL first, then scan WARNs against the "expected mechanics" notes below before treating one as a defect.
+
+The suite is **capability-structural**: Tier 1–2 probes check whether the machinery worked (did a subagent dispatch, did a script run, did a Skill load), *not* whether the model followed DAAF's protocols with high fidelity. Adherence quality is DAAFBench's job. A probe that PASSes confirms the plumbing is intact, not that the model behaves ideally.
+
+---
+
+## Tier 0 — Free Preflight (no LLM)
+
+| Probe | PASS means | FAIL means / how to fix |
+|-------|-----------|-------------------------|
+| **T0.0 DAAF_DEV assertion** | `DAAF_DEV=1`; dev image active. | `DAAF_DEV` not `1`. The suite requires the dev image (shim routes, `codex login`, deterministic-battery tooling live there). Set `DAAF_DEV=1` in the `daaf-docker` `environment_settings.txt` and rebuild. |
+| **T0.1 Route detection + assertion** | Detected route reported; matches `--route` if asserted. | `--route` asserted a route the live env does not produce. Detection is authoritative — the expectation is wrong or the env is misconfigured. Reconcile the env vars in the fingerprint against the intended route. |
+| **T0.2 Model family** | INFO — reports family (claude/gpt/glm/unknown) and the expected ceiling-hook posture. | Never FAILs. Use it to confirm the ceiling-hook expectation matches intent (see route sections below). |
+| **T0.3 Env coherence** | Required vars for the detected route are present and mutually coherent. | Route-specific missing/incoherent var. The `detail` names each problem; see the route sections below for the exact fix. |
+| **T0.4 Context-window declaration** | Window resolves natively, or a `[1m]` suffix / `CLAUDE_CODE_MAX_CONTEXT_TOKENS` is set for a GPT/shim config. | A GPT/shim model is configured without a `[1m]` slug or `CLAUDE_CODE_MAX_CONTEXT_TOKENS` — Claude Code silently assumes ~200k, under-reporting the real window. Add the `[1m]` suffix or set the token count. |
+| **T0.5 CLI available** | `claude --version` responds. | CLI missing/broken in the container. Rebuild; verify the image. |
+| **T0.6 Hook registration** | Every `.claude/hooks/*.sh` is registered in `settings.json` (or is a known per-agent-frontmatter hook like `enforce-file-first.sh`). | A hook script is present but unregistered. A shell overwrite of `settings.json`, or a partial deploy, dropped a registration. Restore the hook chain in `settings.json`. |
+| **T0.7 Statusline rendering** | Both `context-bar.sh` and `subagent-bar.sh` render non-empty output against a synthetic payload. | A statusline crashes or emits nothing. These are fail-open scripts (a crash still exits 0), so empty output is the real signal — inspect the script against the synthetic payload schema. |
+| **T0.8 Shim /health** | (shim routes) `backend_mode` matches the route; `codex_home_present`/`sanitize_tools`/`version` reported. SKIP on non-shim routes. | `/health` unreachable → shim daemon not running (`start_shim.sh`). `backend_mode` mismatch → wrong `SHIM_BACKEND_MODE`. `codex_home_present=false` (chatgpt) → `auth.json` missing (see T0.9). |
+| **T0.9 ChatGPT auth.json** | (chatgpt route) `$CODEX_HOME/auth.json` exists and is readable — contents never read. SKIP otherwise. | Missing/unreadable → run `codex login --device-auth`. |
+| **T0.10 Workspace invariants** | `check_workspace_invariants.sh -q` clean (no unauthorized symlinks / repo-root leak artifacts). | An invariant violation exists on the live filesystem. Run `bash /daaf/scripts/check_workspace_invariants.sh` (verbose) to see the offending path. |
+
+> **Tier 0 limitation — ambient env only.** Tier 0 runs **once**, against the ambient (as-launched) environment, before any profile overlay is applied. Its route/env-coherence and context-window checks (T0.1–T0.4) therefore describe the base installation, **not** any `--profiles` overlay. A profile that, say, sets `ANTHROPIC_MODEL` to a GLM slug and declares its window via `CLAUDE_CODE_MAX_CONTEXT_TOKENS` is exercised only in that profile's Tier 1/2 runs — Tier 0 never re-validates per-profile overlays. When multi-profiling, read each profile's overlay in `profiles.yaml` directly to confirm its window/remap declarations; the Tier 0 verdict speaks to the ambient config alone.
+
+---
+
+## Tier 1 — One Live Round-Trip
+
+A single cold-start `claude -p` call plus the plumbing checks around it. Two of these probes routinely emit non-PASS verdicts on short headless runs that are **expected mechanics, not install defects** — understanding them prevents false alarms.
+
+| Probe | PASS means | Non-PASS interpretation |
+|-------|-----------|-------------------------|
+| **T1.1 Live round-trip response** | The model returned a response. | FAIL = timeout or empty response. A real routing/auth failure surfaces here first — check the provider-specific failure modes below. |
+| **T1.2 Transcript located** | The session transcript was found (archived or live). | FAIL = transcript missing in both locations; session logging may be broken. |
+| **T1.3 Audit-log hook fired** | `audit.jsonl` has entries for the session. | FAIL = the audit-log hook did not fire; check its registration (T0.6). |
+| **T1.4 Context-reporter injection** | The context-reporter injection was visible in the transcript. | **INFO when absent is EXPECTED for a short headless probe.** `context-reporter.sh` injects at most once per 60s (`INJECT_INTERVAL`, context-reporter.sh:104/308); a cold-start probe finishes in seconds. The hook still fires and falls back to a 200k window when the cache is unresolved (context-reporter.sh:120). Absence is cadence-driven, not a defect. |
+| **T1.5 /tmp coordination caches** | `/tmp/claude-model-*` and `/tmp/claude-ctx-window-*` are populated (bounded ~5s retry). | **PASS with `window=200000` on a wide-window model is EXPECTED headless behavior.** In a headless `claude -p` run the statusline payload lacks the real window, so `context-bar.sh` (its sole writer, line 163) falls back to 200000; its remap map (lines 145–152) rewrites only GPT slugs, not Claude `[1m]`. The meaningful signal is whether the caches are populated *at all*, not the numeric value. A **WARN** here (cache absent after retries) is the real signal — the writer did not run for this session; investigate the statusline/hook stack. |
+| **T1.6 Statusline against real session** | `context-bar.sh` renders non-empty against the real session payload. | WARN = no output; SKIP = no transcript to render against. |
+| **T1.7 Token/cost parsing** | Token/turn/cost fields parsed from the JSON result. | WARN = all zero; the parse may have missed the result message (rarely a deployment issue). |
+
+**Why the headless caveats matter.** T1.4 and T1.5 were the two WARN signals in the first live anthropic-subscription run. They are the price of testing headlessly: no interactive statusline renders to write the real window, and the cache writes are async relative to CLI exit. The suite now polls with a bounded backoff and quotes both the first and final read. Treat an **absent-after-retry** cache as the real signal; a populated cache holding `200000` on a `[1m]` or GPT model is correct headless mechanics.
+
+---
+
+## Tier 2 — Five-Probe Functional Battery
+
+Each probe is a separate cold-start run. All checks are capability-structural and deliberately tolerant of stylistic/protocol variation.
+
+| Probe | PASS means | FAIL/SKIP interpretation |
+|-------|-----------|--------------------------|
+| **T2.1 Subagent dispatch + search** | An `Agent`/`Task` tool_use occurred and a subagent transcript and/or the marker token was observed. | FAIL = no dispatch or marker not returned. On non-Claude routes, cross-check the ceiling-hook posture (T0.2) — a mis-set remap can block dispatch. |
+| **T2.2 Coding agent write + execute** | `research-executor` wrote a script and ran it via `run_with_capture.sh` (execution log appended). | FAIL = script not created or no appended log. Confirms the file-first execution path and `enforce-file-first.sh` are intact. |
+| **T2.3 Web access (WebSearch)** | A `WebSearch`/`WebFetch` tool_use occurred in a subagent transcript. | FAIL = no web tool_use. May reflect a provider that does not surface the web tools, or a sandboxed network. |
+| **T2.4 Skill loading** | A `Skill` tool_use is present (skill body arrived in the transcript). | FAIL = no Skill tool_use; progressive disclosure may not be firing. |
+| **T2.5 Isolation-strip hook** | `block-remote-isolation.sh` stripped the `isolation` parameter (strip evidence in transcript). | **SKIP is tolerated** — if the model omitted/refused the `isolation` param there is nothing to strip (not a FAIL). WARN = isolation requested but no explicit strip evidence, yet the dispatch did not hang. |
+
+---
+
+## Tier D — Deterministic Battery (opt-in, zero API cost)
+
+Opt-in via `--tiers D` (with `--include-r-smoke` for TD.6). Every probe shells a repo test entry point and reports its exit code — no LLM, no cost. A missing tool is a **SKIP**, not a FAIL, so running Tier D outside the `DAAF_DEV=1` image degrades gracefully rather than failing spuriously.
+
+| Probe | PASS means | FAIL/SKIP interpretation |
+|-------|-----------|--------------------------|
+| **TD.1 bats tests/bash** | `bats tests/bash/` exits 0 (all Bash unit tests pass). | FAIL = a Bash test failed. SKIP = `bats` not installed (needs the `DAAF_DEV=1` image). |
+| **TD.2 Pester tests/powershell** | `Invoke-Pester -Path tests/powershell -CI` exits 0. | FAIL = a PowerShell test failed. SKIP = `pwsh` not installed (dev image only). |
+| **TD.3 daaf-conventions lint** | `tests/lint/check-daaf-conventions.sh` exits 0. | FAIL = a convention violation. Read the tail evidence for the offending file. |
+| **TD.4 safety-hook tests** | `scripts/test_safety_hooks.sh` exits 0 (the `bash-safety.sh` battery passes). | FAIL = a safety-hook regression — investigate before trusting the deployment's guardrails. |
+| **TD.5 single-command hook tests** | `scripts/test_enforce_single_command.sh` exits 0. | FAIL = an `enforce-single-command.sh` regression. |
+| **TD.6 R/Python skill smoke suite** | (opt-in) log-stripped copies of `scripts/smoke_tests/smoke_*` run clean via `SMOKE_DIR`. | FAIL = a library smoke failed. **SKIP by default** — pass `--include-r-smoke` to enable (it is slow). Mirrors the CI staging pattern; runs under `scripts/scratch/smoke_live/`, never `/tmp`. |
+
+---
+
+## Route-Conditional Expectations and Known Failure Modes
+
+Each route has a distinct configuration surface. Below: what Tier 0 expects for the route, and the known failure modes (with their documented fixes) that a live-tier FAIL most likely maps to.
+
+### Route 1 — anthropic-subscription (native, no shim)
+
+- **Expected:** No `DAAF_PROVIDER_SHIM`, no OpenRouter base URL. Model resolves via `settings.json` `ANTHROPIC_MODEL`. `enforce-model-ceiling.sh` actively **ranks** subagent dispatches (haiku < sonnet < opus < fable). T0.2 should report family `claude`, `remap_active=false`.
+- **Auth:** Interactive OAuth or `CLAUDE_CODE_OAUTH_TOKEN`. Tier 0 cannot verify interactive OAuth without an LLM call, so a genuine auth problem surfaces at **T1.1** (round-trip fails).
+- **Known failure mode:** `ANTHROPIC_BASE_URL` unexpectedly set while the route detects as native — T0.3 flags it. Unset it for the native route.
+
+### Route 2 — openrouter
+
+- **Expected:** `ANTHROPIC_BASE_URL` ends with `openrouter.ai/api`; `ANTHROPIC_AUTH_TOKEN` set (your OpenRouter key, Bearer auth); `ANTHROPIC_API_KEY` **present-and-empty** (`ANTHROPIC_API_KEY=`) so the `X-Api-Key` header does not override Bearer auth. For non-Claude models, `ANTHROPIC_DEFAULT_OPUS_MODEL`/`SONNET_MODEL` remap keeps subagents pure and makes the ceiling hook **stand down**; `CLAUDE_CODE_MAX_CONTEXT_TOKENS` declares the real window.
+- **Known failure modes (documented in `user_reference/01_installation_and_quickstart.md` § "Setup Troubleshooting", anchor `#setup-troubleshooting`):**
+  - *"model not found" / auth errors* — three causes: wrong base-URL suffix, `ANTHROPIC_API_KEY` unset vs. empty, or a stale login needing `/logout`. T0.3 catches the base-URL and empty-key cases directly.
+  - *`-pro` GPT slugs* — hard "Prompt is too long" failures at ~50k tokens with ~4x-inflated token accounting (`01_installation_and_quickstart.md` § "GPT (OpenAI) models via OpenRouter (Option C, extended)", anchor `#gpt-openai-models-via-openrouter-option-c-extended`). Avoid `-pro` slugs over OpenRouter; use a standard flagship slug.
+  - *Ceiling-hook DENY on a non-Claude session* — if a non-Claude family is configured **without** a remap var, a Claude-tier subagent request is denied with remap guidance (`enforce-model-ceiling.sh:189-192`). Set the `ANTHROPIC_DEFAULT_*` remap vars. T0.2's INFO posture is the early warning.
+  - *Context under-reporting* — a GPT/non-`[1m]` slug without a window declaration → T0.4 FAIL.
+
+### Routes 3 & 4 — shim (chatgpt-subscription, openai-api)
+
+- **Expected:** `DAAF_PROVIDER_SHIM=openai`; `ANTHROPIC_BASE_URL` → `http://127.0.0.1:4141`; `ANTHROPIC_AUTH_TOKEN=daaf-shim-local`. Route 3 additionally needs `SHIM_BACKEND_MODE=chatgpt` and `CODEX_HOME` (holds `auth.json`); Route 4 needs `OPENAI_API_KEY` or `SHIM_BACKEND_API_KEY`. T0.8 shim `/health` must report the matching `backend_mode`.
+- **Daemon state is not per-run overridable.** `SHIM_SANITIZE_TOOLS` and `backend_mode` are fixed at shim startup; `--profiles` overlays reach only the CLI session, so the runner WARNs if `--profiles` is used on a shim route. Verify daemon state read-only via T0.8.
+- **Known failure modes:**
+  - *Route 3 auth* — `codex_home_present=false` or T0.9 FAIL → `auth.json` missing/unreadable; run `codex login --device-auth`. Token refresh is JWT-`exp`-based and lazy; a genuinely expired, un-refreshable token surfaces at T1.1.
+  - *GPT tool-call quirks* — `isolation`-fill hangs and empty `Read.pages` are handled by the shim's `_sanitize_tools` (default on, Routes 3–4) and, for `isolation`, by `block-remote-isolation.sh` at the hook layer. T2.5 exercises the hook-layer strip. For DAAFBench raw-model runs `SHIM_SANITIZE_TOOLS=0` is required — but that is a benchmark concern, not a deployment-health one.
+  - *Route 4 instant 429* — an unfunded OpenAI API key returns 429 immediately (distinct from a ChatGPT subscription); surfaces at T1.1. Fund the API account or switch to the chatgpt route (`07_faq_technical.md` § "Q: My GPT session fails instantly with 429 errors on every request (Option F)", anchor `#q-my-gpt-session-fails-instantly-with-429-errors-on-every-request-option-f`).
+  - *ChatGPT lane is an unofficial dev lane* — explicitly flagged as not OpenAI-sanctioned and liable to break (`01_installation_and_quickstart.md` § "Option F, alternate lane: ChatGPT subscription (Codex backend)", anchor `#option-f-alternate-lane-chatgpt-subscription-codex-backend`); a sudden T1.1 failure here may be upstream, not a local misconfig.
+
+---
+
+## Where Evidence Lands (for manual follow-up)
+
+When a probe FAILs and the report evidence is not enough, these live locations carry more detail:
+
+| Signal | Location |
+|--------|----------|
+| Shim health/config | `curl http://127.0.0.1:4141/health` → `backend_mode`, `codex_home_present`, `sanitize_tools`, `reasoning_effort`, `version` |
+| Shim structured logs | `scripts/provider_shim/logs/shim.log` (credential-scrubbed) |
+| Session/subagent model | `/tmp/claude-model-{session}`, `/tmp/claude-subagent-model-{session}-{id}` |
+| Context-window cache | `/tmp/claude-ctx-window-{session}`, `/tmp/claude-or-models-{session}` (OpenRouter models cache) |
+| Ceiling-hook stand-down/deny reasons | stderr of `enforce-model-ceiling.sh` and its `permissionDecisionReason` JSON |
+| Report artifacts | `scripts/deploy_smoke/reports/{timestamp}_{route}/report.md`, `report.json`, `evidence/` |
+
+Reading these `/tmp` caches is the sanctioned pattern (reads allowed, writes blocked). The report's `evidence/` directory already snapshots the shim `/health` JSON and the redacted env fingerprint for offline audit.

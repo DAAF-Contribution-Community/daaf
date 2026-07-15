@@ -1,0 +1,7 @@
+# Deployment smoke suite — transient run artifacts (not tracked).
+# Generated per-run report directories; keep the folder via reports/.gitkeep.
+reports/*
+!reports/.gitkeep
+
+# Probe sandboxes (wiped at run start; fixtures + agent-written probe scripts).
+_sandbox/
