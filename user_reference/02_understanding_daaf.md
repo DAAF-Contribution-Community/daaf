@@ -842,16 +842,23 @@ Real research analyses take time -- often more time than a single Claude Code se
 
 Claude Code operates within a context window that can be up to 1M tokens. However, quality can degrade well before the window is full, so DAAF enforces dual thresholds — both percentage-based and absolute token counts, whichever fires first. As DAAF works through a Full Pipeline analysis, delegating tasks to agents, receiving results, and coordinating the workflow, it gradually fills up this context. When it gets too full, Claude's performance degrades, and it becomes increasingly susceptible to erratic behavior due to **context rot**.
 
-The exact points at which DAAF acts depend on which model you are running, because newer models hold their quality across a larger share of their context window than older ones. DAAF detects the model automatically and applies the right thresholds — you do not need to configure anything. Newer Claude Fable/Mythos-family models get higher thresholds (they can safely work deeper into their window before quality slips); Opus, Sonnet, and any model DAAF does not recognize use a more conservative set of thresholds, so DAAF errs on the side of caution.
+The exact points at which DAAF acts depend on the **context-quality threshold tier** assigned to the model you are running. DAAF detects the exact model identifier automatically and applies the right tier — you do not need to configure anything. The validated extended-horizon tier contains Claude Fable/Mythos models and exact GPT 5.6 Sol identifiers. Opus, Sonnet, unknown model IDs, every other GPT variant, and all other alternative-provider models use the conservative-default tier unless that exact model has been separately validated and registered.
 
-To prevent context rot, DAAF monitors its own context utilization continuously and manages this proactively. The thresholds below trigger the same set of protective actions for every model — only the exact trigger points differ by model family (percentage OR token count, whichever comes first):
+Threshold-tier selection is version-specific and separate from the model's physical context-window size. For GPT 5.6 Sol, the terminal model slug must be exactly `gpt-5.6-sol` or `gpt-5.6-sol[1m]`; the identifier may be bare or may contain one or more provider path prefixes ending in `/`. Malformed left-boundary strings such as `xgpt-5.6-sol`, `foo-gpt-5.6-sol`, and `vendor/notgpt-5.6-sol` remain conservative, as do right-side suffix or trailing variants. GPT is not part of Claude's Fable/Mythos family; the two groups simply share the same validated thresholds. Terra, Luna, Pro, mini, chat, date snapshots, future variants, and trailing modifiers remain conservative unless separately validated. This means a wider GPT 5.6 variant can still have a 1,050,000-token physical window while DAAF applies the conservative quality thresholds.
 
-| What Happens | Newer Claude Fable/Mythos models | Opus, Sonnet, and unrecognized models (conservative default) |
-|--------------|----------------------------------|--------------------------------------------------------------|
-| Normal operation, no special actions | below 30% and below 300k tokens | below 40% and below 150k tokens |
-| DAAF starts delegating more work to subagents to keep the orchestrator's context lean | ≥ 30% or ≥ 300k tokens | ≥ 40% or ≥ 150k tokens |
-| DAAF finishes its current work unit, updates STATE.md thoroughly, and warns you that a restart may be needed soon | ≥ 40% or ≥ 400k tokens | ≥ 60% or ≥ 200k tokens |
-| DAAF finalizes STATE.md and recommends restarting the session | ≥ 50% or ≥ 500k tokens | ≥ 75% or ≥ 250k tokens |
+To prevent context rot, DAAF monitors its own context utilization continuously and manages this proactively. The thresholds below trigger the same set of protective actions for every model — only the trigger points differ by threshold tier (percentage OR token count, whichever comes first):
+
+| Threshold Tier | Membership | ELEVATED at | HIGH at | CRITICAL at |
+|----------------|------------|-------------|---------|-------------|
+| **Validated extended-horizon** | Claude Fable/Mythos models; exact terminal GPT 5.6 Sol model slugs, bare or provider-prefixed: `gpt-5.6-sol` or `gpt-5.6-sol[1m]` | ≥ 30% or ≥ 300k tokens | ≥ 40% or ≥ 400k tokens | ≥ 50% or ≥ 500k tokens |
+| **Conservative-default** | Opus, Sonnet, unknown model IDs, every other GPT variant, and all other alternative-provider models unless individually validated and registered | ≥ 40% or ≥ 150k tokens | ≥ 60% or ≥ 200k tokens | ≥ 75% or ≥ 250k tokens |
+
+| Status | What DAAF Does |
+|--------|----------------|
+| NOMINAL | Normal operation; no special action |
+| ELEVATED | Starts delegating more work to subagents to keep the orchestrator's context lean |
+| HIGH | Finishes the current work unit, updates STATE.md thoroughly, and warns you that a restart may be needed soon |
+| CRITICAL | Finalizes STATE.md and recommends restarting the session |
 
 ### How Session Recovery Works
 

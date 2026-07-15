@@ -2,11 +2,11 @@
 # ============================================================================
 # Tests for subagent-bar.sh -- Claude Code subagentStatusLine renderer
 # ============================================================================
-# Focus: the model-family-conditional Context Quality Curve thresholds that
-# drive each row's severity COLOR. Fable/Mythos rows use the permissive family
-# (ELEVATED 30%/300k, HIGH 40%/400k, CRITICAL 50%/500k); every other model --
-# including opus-4-8[1m] -- uses the conservative family (40%/150k, 60%/200k,
-# 75%/250k).
+# Focus: the model-conditional Context Quality Curve threshold tiers that drive
+# each row's severity COLOR. Fable/Mythos and exact GPT 5.6 Sol rows use the
+# extended-horizon tier (ELEVATED 30%/300k, HIGH 40%/400k, CRITICAL 50%/500k);
+# every other model -- including opus-4-8[1m] and non-exact Sol variants -- uses
+# the conservative tier (40%/150k, 60%/200k, 75%/250k).
 #
 # ASSERTION TARGET: the severity is encoded as an ANSI 256-color code embedded
 # in each row's JSON `content`. The codes are unique per severity:
@@ -46,6 +46,7 @@ _clean_subbar_caches() {
 setup() {
     common_setup
     _clean_subbar_caches
+    unset CLAUDE_CODE_MAX_CONTEXT_TOKENS
     export FAKE_SESSION SUBAGENT_BAR_SH
 }
 
@@ -137,7 +138,88 @@ _payload_one_task() {
 }
 
 # =========================================================================
-# Conservative family (non-Fable)
+# GPT 5.6 Sol exact tier: 1.05M window, extended-horizon thresholds
+# =========================================================================
+
+@test "GPT 5.6 Sol row: different-model correction maps 299k to 1050k and NOMINAL" {
+    _seed_window 200000
+    _seed_session_model "claude-sonnet-4-6"
+    _seed_task_model "t1" "gpt-5.6-sol"
+    run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 299000)
+    assert_success
+    assert_output --partial "$COLOR_NOMINAL"
+    assert_output --partial "28%"
+}
+
+@test "GPT 5.6 Sol row: 300k on 1050k renders ELEVATED amber" {
+    _seed_window 200000
+    _seed_session_model "claude-sonnet-4-6"
+    _seed_task_model "t1" "gpt-5.6-sol"
+    run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 300000)
+    assert_success
+    assert_output --partial "$COLOR_ELEVATED"
+    assert_output --partial "28%"
+}
+
+@test "provider-prefixed GPT 5.6 Sol[1m] row: 400k renders HIGH orange" {
+    _seed_window 200000
+    _seed_session_model "claude-sonnet-4-6"
+    _seed_task_model "t1" "openrouter/openai/gpt-5.6-sol[1m]"
+    run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 400000)
+    assert_success
+    assert_output --partial "$COLOR_HIGH"
+    assert_output --partial "38%"
+}
+
+@test "provider-prefixed GPT 5.6 Sol row: 500k renders CRITICAL red" {
+    _seed_window 200000
+    _seed_session_model "claude-sonnet-4-6"
+    _seed_task_model "t1" "openai/gpt-5.6-sol"
+    run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 500000)
+    assert_success
+    assert_output --partial "$COLOR_CRITICAL"
+    assert_output --partial "47%"
+}
+
+@test "GPT 5.6 Sol row: same-model reuse keeps cached 1050k window and extended tier" {
+    _seed_window 1050000
+    _seed_session_model "gpt-5.6-sol[1m]"
+    _seed_task_model "t1" "gpt-5.6-sol[1m]"
+    run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 300000)
+    assert_success
+    assert_output --partial "$COLOR_ELEVATED"
+    assert_output --partial "28%"
+}
+
+@test "GPT 5.6 non-Sol and near-miss rows stay conservative" {
+    local model
+    for model in \
+        gpt-5.6-terra \
+        gpt-5.6-luna \
+        xgpt-5.6-sol \
+        foo-gpt-5.6-sol \
+        notgpt-5.6-sol \
+        'vendor/notgpt-5.6-sol[1m]' \
+        gpt-5.6-sol-pro \
+        gpt-5.6-sol-mini \
+        gpt-5.6-sol-chat \
+        gpt-5.6-sol-20260715 \
+        gpt-5.6-sol-future \
+        'gpt-5.6-sol[1m]-x'; do
+        _clean_subbar_caches
+        _seed_window 200000
+        _seed_session_model "claude-sonnet-4-6"
+        _seed_task_model "t1" "$model"
+        run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 300000)
+        assert_success
+        # Physical windows intentionally vary for mini/chat controls; only the
+        # conservative threshold color is invariant across every near miss.
+        assert_output --partial "$COLOR_CRITICAL"
+    done
+}
+
+# =========================================================================
+# Conservative tier (non-Fable/Mythos and non-exact-Sol)
 # =========================================================================
 
 @test "sonnet row: just under 40% on 200k window renders NOMINAL" {

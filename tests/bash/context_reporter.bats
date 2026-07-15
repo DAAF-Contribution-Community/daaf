@@ -2,11 +2,11 @@
 # ============================================================================
 # Tests for context-reporter.sh -- context utilization injection hook
 # ============================================================================
-# Focus: the model-family-conditional Context Quality Curve thresholds in
-# calculate(). Fable/Mythos get the permissive family (ELEVATED 30%/300k, HIGH
-# 40%/400k, CRITICAL 50%/500k); every other model -- including opus-4-8[1m],
-# whose 1M window does NOT relax its Opus-class quality horizon -- gets the
-# conservative family (ELEVATED 40%/150k, HIGH 60%/200k, CRITICAL 75%/250k).
+# Focus: the model-conditional Context Quality Curve threshold tiers in
+# calculate(). Fable/Mythos and exact GPT 5.6 Sol ids get the extended-horizon
+# tier (ELEVATED 30%/300k, HIGH 40%/400k, CRITICAL 50%/500k); every other model
+# -- including opus-4-8[1m] and non-exact Sol variants -- gets the conservative
+# tier (ELEVATED 40%/150k, HIGH 60%/200k, CRITICAL 75%/250k).
 #
 # Also covers the main/subagent measurement split (a subagent is measured with
 # ITS OWN model's family, not the session's) and fail-open behavior.
@@ -46,6 +46,7 @@ _clean_ctx_caches() {
 setup() {
     common_setup
     _clean_ctx_caches
+    unset CLAUDE_CODE_MAX_CONTEXT_TOKENS
     export FAKE_SESSION FAKE_AGENT CONTEXT_REPORTER_SH
 }
 
@@ -155,7 +156,87 @@ _seed_window() { printf '%s' "$1" > "/tmp/claude-ctx-window-${FAKE_SESSION}"; }
 }
 
 # =========================================================================
-# Conservative family (non-Fable) -- 40/60/75% & 150/200/250k
+# GPT 5.6 Sol exact tier: 1.05M window, extended-horizon thresholds
+# =========================================================================
+
+@test "GPT 5.6 Sol: 299k on 1050k window is NOMINAL" {
+    _seed_window 1050000
+    _write_main_transcript "${TEST_DIR}/t.jsonl" "gpt-5.6-sol" 299000
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
+    assert_success
+    assert_output --partial "[NOMINAL]"
+    assert_output --partial "299k / 1050k"
+}
+
+@test "GPT 5.6 Sol: 300k on 1050k window is ELEVATED" {
+    _seed_window 1050000
+    _write_main_transcript "${TEST_DIR}/t.jsonl" "gpt-5.6-sol" 300000
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
+    assert_success
+    assert_output --partial "[ELEVATED]"
+    assert_output --partial "300k / 1050k"
+}
+
+@test "provider-prefixed GPT 5.6 Sol[1m]: 400k on 1050k window is HIGH" {
+    _seed_window 1050000
+    _write_main_transcript "${TEST_DIR}/t.jsonl" "openrouter/openai/gpt-5.6-sol[1m]" 400000
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
+    assert_success
+    assert_output --partial "[HIGH]"
+    assert_output --partial "400k / 1050k"
+}
+
+@test "provider-prefixed GPT 5.6 Sol: 500k on 1050k window is CRITICAL" {
+    _seed_window 1050000
+    _write_main_transcript "${TEST_DIR}/t.jsonl" "openai/gpt-5.6-sol" 500000
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
+    assert_success
+    assert_output --partial "[CRITICAL]"
+    assert_output --partial "500k / 1050k"
+}
+
+@test "GPT 5.6 non-Sol and near-miss variants stay conservative" {
+    local model
+    for model in \
+        gpt-5.6-terra \
+        gpt-5.6-luna \
+        xgpt-5.6-sol \
+        foo-gpt-5.6-sol \
+        notgpt-5.6-sol \
+        'vendor/notgpt-5.6-sol[1m]' \
+        gpt-5.6-sol-pro \
+        gpt-5.6-sol-mini \
+        gpt-5.6-sol-chat \
+        gpt-5.6-sol-20260715 \
+        gpt-5.6-sol-future \
+        'gpt-5.6-sol[1m]-x'; do
+        _clean_ctx_caches
+        _seed_window 1050000
+        _write_main_transcript "${TEST_DIR}/t.jsonl" "$model" 300000
+        run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
+        assert_success
+        assert_output --partial "[CRITICAL]"
+        assert_output --partial "300k / 1050k"
+    done
+}
+
+@test "mixed: GPT 5.6 Sol subagent under sonnet session gets 1050k and extended-horizon tier" {
+    printf 'claude-sonnet-4-6' > "/tmp/claude-model-${FAKE_SESSION}"
+    printf 'openai/gpt-5.6-sol' > "/tmp/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
+    _seed_window 200000
+    parent="${TEST_DIR}/main.jsonl"
+    printf '{"type":"user","isSidechain":false,"message":{"content":"x"}}\n' > "$parent"
+    _write_subagent_transcript "${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl" "openai/gpt-5.6-sol" 300000
+
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
+    assert_success
+    assert_output --partial "[ELEVATED]"
+    assert_output --partial "300k / 1050k"
+    assert_output --partial "(28%)"
+}
+
+# =========================================================================
+# Conservative tier (non-Fable/Mythos and non-exact-Sol)
 # =========================================================================
 
 @test "sonnet: just under 40% on 200k window is NOMINAL" {

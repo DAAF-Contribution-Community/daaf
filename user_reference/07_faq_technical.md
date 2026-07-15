@@ -248,7 +248,9 @@ You have two options on a GPT setup:
 
 ### Q: On a GPT session, is the context bar accurate?
 
-Not exactly — treat it as a close estimate. OpenRouter's Anthropic-compatible endpoint (and the provider shim) do not implement precise token counting, so Claude Code falls back to *estimating* context usage on GPT sessions. The context bar and the elevated/high/critical utilization warnings still work and are a good guide, but the percentages are approximations rather than exact counts. DAAF deliberately keeps its conservative context-quality thresholds (elevated/high/critical at 40/60/75%) on GPT models, since their long-context quality behavior isn't DAAF-validated yet.
+Not exactly — treat it as a close estimate. OpenRouter's Anthropic-compatible endpoint (and the provider shim) do not implement precise token counting, so Claude Code falls back to *estimating* context usage on GPT sessions. The context bar and the ELEVATED/HIGH/CRITICAL utilization warnings still work and are a good guide, but the percentages are approximations rather than exact counts.
+
+DAAF's quality thresholds depend on the exact model identifier, not on whether the provider is GPT in general. For GPT 5.6 Sol, the terminal model slug must be exactly `gpt-5.6-sol` or `gpt-5.6-sol[1m]`; the identifier may be bare or may contain one or more provider path prefixes ending in `/`. These exact terminal GPT 5.6 Sol model slugs, bare or provider-prefixed, use the validated extended-horizon thresholds of 30%/300k, 40%/400k, and 50%/500k. Malformed left-boundary strings such as `xgpt-5.6-sol`, `foo-gpt-5.6-sol`, and `vendor/notgpt-5.6-sol` remain conservative, as do Terra, Luna, Pro, mini, chat, date snapshots, future GPT variants, and right-side suffix or trailing variants. Those use the conservative-default thresholds of 40%/150k, 60%/200k, and 75%/250k unless separately validated and registered. This threshold-tier selection is independent of physical context-window mapping: another GPT 5.6 variant can still map to a 1,050,000-token window while using conservative quality thresholds. GPT is not part of the Claude Fable/Mythos model family; exact Sol simply shares its validated threshold tier.
 
 ### Q: The statusline shows the wrong context window on a GPT session (e.g. 200k when my model has more)
 
@@ -842,14 +844,21 @@ This isn't an error -- it's DAAF being responsible about Claude's working memory
 
 Claude has a finite context window. As a session progresses and Claude processes more information, that window fills up. Even with large context windows (up to 1M tokens), quality can degrade well before the window is full, so DAAF enforces both percentage-based and absolute token thresholds — whichever fires first.
 
-The exact trigger points depend on which model you are running. Newer models keep their quality across a larger share of their context window, so DAAF gives them higher thresholds; older or unrecognized models get a more conservative set so DAAF errs on the side of caution. DAAF detects the model automatically — nothing to configure. The four status levels and what DAAF does at each are the same for every model; only the trigger points differ:
+The exact trigger points depend on the model's **context-quality threshold tier**. DAAF detects the exact model identifier automatically — nothing to configure. The validated extended-horizon tier contains Claude Fable/Mythos models and exact terminal GPT 5.6 Sol model slugs, bare or provider-prefixed: `gpt-5.6-sol` or `gpt-5.6-sol[1m]`. GPT is not part of Claude's Fable/Mythos family; the two groups simply share validated thresholds. Opus, Sonnet, unknown model IDs, every other GPT variant, and all other alternative-provider models use the conservative-default tier unless individually validated and registered.
 
-| Status | What happens | Newer Claude Fable/Mythos models | Opus, Sonnet, and unrecognized models (conservative default) |
-|--------|-------------|----------------------------------|--------------------------------------------------------------|
-| NOMINAL | Normal operations | below 30% and below 300k tokens | below 40% and below 150k tokens |
-| ELEVATED | Works normally but starts delegating more to subagents | ≥ 30% or ≥ 300k tokens | ≥ 40% or ≥ 150k tokens |
-| HIGH | Finishes current work, prepares for session restart | ≥ 40% or ≥ 400k tokens | ≥ 60% or ≥ 200k tokens |
-| CRITICAL | Stops new work, asks you to restart the session | ≥ 50% or ≥ 500k tokens | ≥ 75% or ≥ 250k tokens |
+For GPT 5.6 Sol, the terminal model slug must be exactly one of those two values; the identifier may be bare or may contain one or more provider path prefixes ending in `/`. Malformed left-boundary strings such as `xgpt-5.6-sol`, `foo-gpt-5.6-sol`, and `vendor/notgpt-5.6-sol` remain conservative, as do right-side suffix or trailing variants. Threshold-tier selection is version-specific and independent of physical context-window mapping. Terra, Luna, Pro, mini, chat, date snapshots, future variants, and trailing modifiers remain conservative unless separately validated, even when a wider GPT 5.6 variant maps to a 1,050,000-token physical window. The four status levels and what DAAF does at each are the same for every model; only the trigger points differ:
+
+| Threshold Tier | Membership | ELEVATED at | HIGH at | CRITICAL at |
+|----------------|------------|-------------|---------|-------------|
+| **Validated extended-horizon** | Claude Fable/Mythos models; exact terminal GPT 5.6 Sol model slugs, bare or provider-prefixed: `gpt-5.6-sol` or `gpt-5.6-sol[1m]` | ≥ 30% or ≥ 300k tokens | ≥ 40% or ≥ 400k tokens | ≥ 50% or ≥ 500k tokens |
+| **Conservative-default** | Opus, Sonnet, unknown model IDs, every other GPT variant, and all other alternative-provider models unless individually validated and registered | ≥ 40% or ≥ 150k tokens | ≥ 60% or ≥ 200k tokens | ≥ 75% or ≥ 250k tokens |
+
+| Status | What Happens |
+|--------|--------------|
+| NOMINAL | Normal operations |
+| ELEVATED | Works normally but starts delegating more to subagents |
+| HIGH | Finishes current work and prepares for a session restart |
+| CRITICAL | Stops new work and asks you to restart the session |
 
 When you see CRITICAL, it means Claude's context window is nearly full and continuing would degrade the quality of its work. This is by design -- DAAF would rather stop and restart cleanly than continue with increasingly unreliable output.
 

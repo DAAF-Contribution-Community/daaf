@@ -4,9 +4,9 @@
 # Injects context window utilization and a current timestamp into Claude's
 # conversation so the model can make informed decisions about delegation, state
 # persistence, and session recovery (see CLAUDE.md utilization gates — the
-# thresholds are model-family conditional: Fable/Mythos use 30%/40%/50% OR
-# 300k/400k/500k, everything else uses 40%/60%/75% OR 150k/200k/250k, whichever
-# fires first; see the calculate() threshold table below).
+# thresholds are quality-tier conditional: Fable/Mythos and exact GPT 5.6 Sol
+# ids use 30%/40%/50% OR 300k/400k/500k; all other models use 40%/60%/75% OR
+# 150k/200k/250k, whichever fires first; see calculate() below).
 #
 # Registered events:
 #   UserPromptSubmit  — stdout text → injected as <user-prompt-submit-hook>
@@ -44,17 +44,20 @@
 #   orchestrator's utilization into the subagent's context, causing subagents
 #   to falsely throttle or refuse work at HIGH/CRITICAL.
 #
-# Threshold family (see calculate()):
-#   The severity thresholds are keyed on the model FAMILY of the agent being
+# Threshold tier (see calculate()):
+#   The severity thresholds are keyed on the model identity of the agent being
 #   measured — main-session measurements use the session model; subagent
-#   measurements use that subagent's own model. Fable/Mythos models get the
-#   permissive family (30/40/50% OR 300/400/500k); everything else (Opus,
-#   Sonnet, unknown/empty) gets the conservative family (40/60/75% OR
-#   150/200/250k). This is DELIBERATELY separate from the window-size mapping:
-#   claude-opus-4-8[1m] has a 1M *window* but an Opus-class *quality horizon*,
-#   so it keeps the conservative thresholds even though it gets the 1M window.
-#   The model used here is resolved into MEASURE_MODEL below; if it is
-#   empty/unresolved the conservative family applies (fail-conservative).
+#   measurements use that subagent's own model. Fable/Mythos patterns and the
+#   exact terminal GPT slugs gpt-5.6-sol and gpt-5.6-sol[1m] get the validated
+#   extended-horizon tier (30/40/50% OR 300/400/500k). Provider paths are
+#   accepted only when one of those exact slugs is the final path segment. All
+#   other models (Opus, Sonnet, other GPT variants, unknown/empty) get the
+#   conservative tier (40/60/75% OR 150/200/250k). This is deliberately
+#   separate from physical-window mapping: the broad GPT 5.6 family maps to a
+#   1.05M physical window, while only exact GPT 5.6 Sol slugs receive the
+#   extended-horizon quality tier. Likewise, claude-opus-4-8[1m] has a 1M
+#   physical window but keeps the conservative tier. If model resolution fails,
+#   the conservative tier applies (fail-conservative).
 #
 # Exit codes:
 #   0 = success (stdout/JSON processed by Claude Code)
@@ -152,8 +155,9 @@ if [[ -n "$AGENT_ID" ]]; then
             # BEFORE the generic *\[1m\]* Claude branch below — otherwise
             # gpt-5.6-terra[1m] would resolve 1,000,000 instead of its real
             # 1,050,000. Verified vs OpenRouter /api/v1/models 2026-07-09; keep
-            # aligned with context-bar.sh + subagent-bar.sh. Window size only —
-            # GPT keeps the conservative threshold FAMILY in calculate() below.
+            # aligned with context-bar.sh + subagent-bar.sh. This broad GPT
+            # physical-window mapping is independent of the exact GPT 5.6 Sol
+            # exception in calculate(), which changes quality tier only.
             *gpt-5*-mini*) MAX_CONTEXT=400000 ;;
             *gpt-5*-chat*) MAX_CONTEXT=128000 ;;
             *gpt-5.4*|*gpt-5.5*|*gpt-5.6*) MAX_CONTEXT=1050000 ;;
@@ -174,15 +178,15 @@ fi
 MAX_K=$((MAX_CONTEXT / 1000))
 
 # ---------------------------------------------------------------------------
-# Threshold-family model resolution: which model's family governs the severity
+# Threshold-tier model resolution: which model's tier governs the severity
 # thresholds for THIS measurement. Subagent measurements use the subagent's own
 # model (already resolved into AGENT_MODEL above); main-session measurements use
 # the session model (cache populated by cache_model() on a prior turn — read it
 # here, falling back to the transcript's last model entry when the cache is not
 # yet warm). Empty/unresolved leaves MEASURE_MODEL empty, which the calculate()
-# case block treats as the conservative family (fail-conservative). This is
-# INTENTIONALLY independent of the window-size mapping above: family (quality
-# horizon) and window size are separate lookups.
+# case block treats as the conservative tier (fail-conservative). This is
+# INTENTIONALLY independent of the physical-window mapping above: quality tier
+# and physical window size are separate lookups.
 if [[ -n "$AGENT_ID" ]]; then
     MEASURE_MODEL="${AGENT_MODEL:-}"
 else
@@ -201,8 +205,8 @@ fi
 # Args: $1 = transcript path, $2 = allow_sidechain (true/false). When true,
 # sidechain entries count (required for subagent transcripts, where every
 # entry is isSidechain:true); when false, only main-chain entries count.
-# $3 = model id of the agent being measured (drives the threshold family; may
-# be empty → conservative family).
+# $3 = model id of the agent being measured (drives the threshold tier; may
+# be empty → conservative tier).
 # Outputs a single line to stdout, or nothing if data is unavailable.
 # ---------------------------------------------------------------------------
 calculate() {
@@ -239,18 +243,20 @@ calculate() {
     [[ $pct -gt 100 ]] && pct=100
     local used_k=$((tokens / 1000))
 
-    # Threshold family (percentage AND absolute k-token gates per severity),
-    # keyed on the measured agent's model. Fable/Mythos get the permissive
-    # family; everything else — INCLUDING opus-4-8[1m], whose 1M window does NOT
-    # relax its Opus-class quality horizon — gets the conservative family.
-    # Match ONLY *fable-5*/*mythos-5* (NOT [1m], NOT opus); unknown/empty falls
-    # through to the conservative default (fail-conservative). Deliberately
-    # different from the window-size case block above (which also matches opus
-    # and [1m]) — family and window size are separate lookups.
+    # Threshold tier (percentage AND absolute k-token gates per severity), keyed
+    # on the measured agent's model. Fable/Mythos and exact GPT 5.6 Sol ids get
+    # the validated extended-horizon tier; everything else — INCLUDING
+    # opus-4-8[1m], whose 1M window does NOT relax its Opus-class quality horizon
+    # — gets the conservative tier. GPT Sol matching accepts the bare slug or a
+    # provider path only when its final segment is exactly gpt-5.6-sol or
+    # gpt-5.6-sol[1m]; left- or right-boundary near misses and unknown/empty
+    # models fall through to the conservative default (fail-conservative).
+    # Deliberately different from the physical-window case block above — the
+    # broad GPT 5.6 physical map does not imply the exact Sol quality-tier rule.
     # See CLAUDE.md § Context Quality Curve for the authoritative threshold table.
     local elev_pct high_pct crit_pct elev_k high_k crit_k
     case "$model" in
-        *fable-5*|*mythos-5*)
+        *fable-5*|*mythos-5*|gpt-5.6-sol|*/gpt-5.6-sol|gpt-5.6-sol\[1m\]|*/gpt-5.6-sol\[1m\])
             elev_pct=30; high_pct=40; crit_pct=50
             elev_k=300;  high_k=400;  crit_k=500 ;;
         *)

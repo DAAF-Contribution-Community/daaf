@@ -66,13 +66,13 @@ C_RESET='\033[0m'
 C_GRAY='\033[38;5;245m'
 C_BAR_EMPTY='\033[38;5;238m'
 # Severity palette aligned to the Context Quality Curve. The exact numeric
-# thresholds are model-family conditional (see the per-row severity block near
-# the bottom of the loop): Fable/Mythos rows use the permissive family
-# (ELEVATED >= 30% OR >= 300k, HIGH >= 40% OR >= 400k, CRITICAL >= 50% OR >=
-# 500k); every other model — Opus (incl. opus-4-8[1m]), Sonnet, unknown — uses
-# the conservative family (ELEVATED >= 40% OR >= 150k, HIGH >= 60% OR >= 200k,
-# CRITICAL >= 75% OR >= 250k). Each severity keeps one color regardless of
-# family:
+# thresholds are quality-tier conditional (see the per-row severity block near
+# the bottom of the loop): Fable/Mythos patterns and exact terminal GPT 5.6 Sol
+# slugs use the extended-horizon tier (ELEVATED >= 30% OR >= 300k, HIGH >= 40%
+# OR >= 400k, CRITICAL >= 50% OR >= 500k). Every other model — including Opus,
+# Sonnet, other GPT variants, and unknown ids — uses the conservative tier
+# (ELEVATED >= 40% OR >= 150k, HIGH >= 60% OR >= 200k, CRITICAL >= 75% OR >=
+# 250k). Each severity keeps one color regardless of tier:
 #   NOMINAL  green
 #   ELEVATED amber
 #   HIGH     orange  (bold to distinguish from amber)
@@ -239,16 +239,19 @@ while IFS=$'\x1f' read -r id type name status tokens label; do
     [[ $pct -gt 100 ]] && pct=100
     used_k=$((tokens / 1000))
 
-    # Threshold family (percentage AND absolute k-token gates per severity),
-    # keyed on THIS row's model. Fable/Mythos get the permissive family;
-    # everything else — INCLUDING opus-4-8[1m], whose 1M window does NOT relax
-    # its Opus-class quality horizon — gets the conservative family. Match ONLY
-    # *fable-5*/*mythos-5* (NOT [1m], NOT opus); unknown/empty falls through to
-    # the conservative default (fail-conservative). Deliberately different from
-    # the window-size case block above (which also matches opus and [1m]) —
-    # family and window size are separate lookups.
+    # Threshold tier (percentage AND absolute k-token gates per severity), keyed
+    # on the measured agent's model. Fable/Mythos and exact GPT 5.6 Sol ids get
+    # the validated extended-horizon tier; everything else — INCLUDING
+    # opus-4-8[1m], whose 1M window does NOT relax its Opus-class quality horizon
+    # — gets the conservative tier. GPT Sol matching accepts the bare slug or a
+    # provider path only when its final segment is exactly gpt-5.6-sol or
+    # gpt-5.6-sol[1m]; left- or right-boundary near misses and unknown/empty
+    # models fall through to the conservative default (fail-conservative).
+    # Deliberately different from the physical-window case block above — the
+    # broad GPT 5.6 physical map does not imply the exact Sol quality-tier rule.
+    # See CLAUDE.md § Context Quality Curve for the authoritative threshold table.
     case "$task_model" in
-        *fable-5*|*mythos-5*)
+        *fable-5*|*mythos-5*|gpt-5.6-sol|*/gpt-5.6-sol|gpt-5.6-sol\[1m\]|*/gpt-5.6-sol\[1m\])
             elev_pct=30; high_pct=40; crit_pct=50
             elev_k=300;  high_k=400;  crit_k=500 ;;
         *)

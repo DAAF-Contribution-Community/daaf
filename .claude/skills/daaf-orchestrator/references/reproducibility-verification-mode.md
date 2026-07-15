@@ -713,14 +713,14 @@ Reproducibility Verification can span many scripts, each consuming subagent cont
 
 **Actions by utilization level:**
 
-Trigger points are **model-family-conditional** (percentage OR absolute tokens, whichever fires first); each agent is measured against its own model's family:
+Trigger points are **threshold-tier-conditional** (percentage OR absolute tokens, whichever fires first); each agent is measured against the tier selected from its own exact model ID. Tier selection is version-specific and independent of physical context-window mapping. For GPT 5.6 Sol, the terminal model slug must be exactly `gpt-5.6-sol` or `gpt-5.6-sol[1m]`; the identifier may be bare or may contain one or more provider path prefixes ending in `/`. Malformed left-boundary strings such as `xgpt-5.6-sol`, `foo-gpt-5.6-sol`, and `vendor/notgpt-5.6-sol` remain conservative, as do right-side suffix or trailing variants. GPT is not part of the Claude Fable/Mythos model family. Terra, Luna, Pro, mini, chat, date snapshots, future variants, and trailing modifiers remain conservative unless separately validated and registered, even when the wider GPT 5.6 family maps to a 1,050,000-token physical window.
 
-| Model Family | ELEVATED at | HIGH at | CRITICAL at |
-|--------------|-------------|---------|-------------|
-| **Claude Fable/Mythos-family models** | ≥ 30% or ≥ 300k tokens | ≥ 40% or ≥ 400k tokens | ≥ 50% or ≥ 500k tokens |
-| **All other models** (Opus, Sonnet, unknown/alternative providers — conservative default) | ≥ 40% or ≥ 150k tokens | ≥ 60% or ≥ 200k tokens | ≥ 75% or ≥ 250k tokens |
+| Threshold Tier | Membership | ELEVATED at | HIGH at | CRITICAL at |
+|----------------|------------|-------------|---------|-------------|
+| **Validated extended-horizon** | Claude Fable/Mythos models; exact terminal GPT 5.6 Sol model slugs, bare or provider-prefixed: `gpt-5.6-sol` or `gpt-5.6-sol[1m]` | ≥ 30% or ≥ 300k tokens | ≥ 40% or ≥ 400k tokens | ≥ 50% or ≥ 500k tokens |
+| **Conservative-default** | Opus, Sonnet, unknown model IDs, every other GPT variant, and all other alternative-provider models unless individually validated and registered | ≥ 40% or ≥ 150k tokens | ≥ 60% or ≥ 200k tokens | ≥ 75% or ≥ 250k tokens |
 
-The status levels and their actions are identical across families (NOMINAL is any utilization below the ELEVATED trigger):
+The status levels and their actions are identical across tiers (NOMINAL is any utilization below the ELEVATED trigger):
 
 | Status | Action |
 |--------|--------|
