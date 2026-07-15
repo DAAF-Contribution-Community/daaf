@@ -323,11 +323,11 @@ function Show-DaafMenu {
     # --- Menu options ---
     Write-Host "  LAUNCH"
     Write-Host "    1) Start Claude Code"
-    Write-Host "    2) View Marimo Notebooks (Python)"
-    Write-Host "    3) Browse Files (VS Code)"
-    Write-Host "    4) View Session Logs"
+    Write-Host "    2) Browse Files (VS Code)"
+    Write-Host "    3) View Session Logs"
+    Write-Host "    4) View Marimo Notebooks (Python)"
     Write-Host "    5) View Quarto Notebooks (R)"
-    Write-Host "    6) Open Container Shell"
+    Write-Host "    6) Open Terminal in Container"
 
     Write-Host ""
 
@@ -392,9 +392,9 @@ function Invoke-DaafChoice {
 
     switch ($Choice) {
         "1"  { Invoke-DaafClaudeCode }
-        "2"  { Invoke-DaafNotebookBrowser }
-        "3"  { Invoke-DaafVSCode }
-        "4"  { Invoke-DaafLogViewer }
+        "2"  { Invoke-DaafVSCode }
+        "3"  { Invoke-DaafLogViewer }
+        "4"  { Invoke-DaafNotebookBrowser }
         "5"  { Invoke-DaafQuartoViewer }
         "6"  { Invoke-DaafShell }
         "7"  { Invoke-DaafBackup }
@@ -519,10 +519,10 @@ function Invoke-DaafClaudeCode {
 
 function Invoke-DaafShell {
     Write-Host ""
-    Write-Host "Opening container shell..."
+    Write-Host "Opening terminal in container..."
     Write-Host "(Type 'exit' to return to this menu)"
     Write-Host ""
-    Invoke-DaafDelegateInteractive "run_daaf.ps1" @("bash") "Container shell ended with an error."
+    Invoke-DaafDelegateInteractive "run_daaf.ps1" @("bash") "Container terminal ended with an error."
     Write-Host ""
     Write-Host "Returned to DAAF Control Panel."
 }
@@ -1006,24 +1006,24 @@ function Show-DaafHelp {
     Write-Host "     Launch an interactive Claude Code session inside the DAAF"
     Write-Host "     container. Type /exit within Claude to return to this menu."
     Write-Host ""
-    Write-Host "  2) View Marimo Notebooks (Python)" -ForegroundColor Cyan
-    Write-Host "     Open the marimo notebook browser (port 2718). Browse, open,"
-    Write-Host "     create, and edit research notebooks across all projects."
-    Write-Host ""
-    Write-Host "  3) Browse Files (VS Code)" -ForegroundColor Cyan
+    Write-Host "  2) Browse Files (VS Code)" -ForegroundColor Cyan
     Write-Host "     Open code-server (port 2720) for browser-based file browsing"
     Write-Host "     and editing. Useful for reviewing scripts and data files."
     Write-Host ""
-    Write-Host "  4) View Session Logs" -ForegroundColor Cyan
+    Write-Host "  3) View Session Logs" -ForegroundColor Cyan
     Write-Host "     Browse session transcripts from previous DAAF sessions."
     Write-Host "     Select a project or the full archive to view logs."
+    Write-Host ""
+    Write-Host "  4) View Marimo Notebooks (Python)" -ForegroundColor Cyan
+    Write-Host "     Open the marimo notebook browser (port 2718). Browse, open,"
+    Write-Host "     create, and edit research notebooks across all projects."
     Write-Host ""
     Write-Host "  5) View Quarto Notebooks (R)" -ForegroundColor Cyan
     Write-Host "     Render a Quarto notebook (.qmd) from an R project to a"
     Write-Host "     self-contained HTML file and open it in your browser."
     Write-Host ""
-    Write-Host "  6) Open Container Shell" -ForegroundColor Cyan
-    Write-Host "     Drop into a bash shell inside the DAAF container."
+    Write-Host "  6) Open Terminal in Container" -ForegroundColor Cyan
+    Write-Host "     Open a terminal in the DAAF container."
     Write-Host "     Type 'exit' to return to this menu."
     Write-Host ""
     Write-Host "  MANAGE"

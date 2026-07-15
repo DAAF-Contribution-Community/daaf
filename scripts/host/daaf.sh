@@ -262,11 +262,11 @@ display_menu() {
     # --- Menu options ---
     echo "  ${BOLD}LAUNCH${RESET}"
     echo "    1) Start Claude Code"
-    echo "    2) View Marimo Notebooks (Python)"
-    echo "    3) Browse Files (VS Code)"
-    echo "    4) View Session Logs"
+    echo "    2) Browse Files (VS Code)"
+    echo "    3) View Session Logs"
+    echo "    4) View Marimo Notebooks (Python)"
     echo "    5) View Quarto Notebooks (R)"
-    echo "    6) Open Container Shell"
+    echo "    6) Open Terminal in Container"
 
     echo ""
 
@@ -305,9 +305,9 @@ read_choice() {
 dispatch_choice() {
     case "$1" in
         1)  handle_claude_code ;;
-        2)  handle_notebooks ;;
-        3)  handle_vscode ;;
-        4)  handle_logs ;;
+        2)  handle_vscode ;;
+        3)  handle_logs ;;
+        4)  handle_notebooks ;;
         5)  handle_quarto ;;
         6)  handle_shell ;;
         7)  handle_backup ;;
@@ -343,12 +343,12 @@ handle_claude_code() {
 
 handle_shell() {
     echo ""
-    echo "Opening container shell..."
+    echo "Opening terminal in container..."
     echo "(Type 'exit' to return to this menu)"
     echo ""
     if ! DAAF_NESTED=1 bash "${SCRIPT_DIR}/run_daaf.sh" bash; then
         echo ""
-        echo "  ${YELLOW}Container shell ended with an error.${RESET}"
+        echo "  ${YELLOW}Container terminal ended with an error.${RESET}"
     fi
     echo ""
     echo "Returned to DAAF Control Panel."
@@ -749,24 +749,24 @@ handle_help() {
     echo "     Launch an interactive Claude Code session inside the DAAF"
     echo "     container. Type /exit within Claude to return to this menu."
     echo ""
-    echo "  ${CYAN}2) View Marimo Notebooks (Python)${RESET}"
-    echo "     Open the marimo notebook browser (port 2718). Browse, open,"
-    echo "     create, and edit research notebooks across all projects."
-    echo ""
-    echo "  ${CYAN}3) Browse Files (VS Code)${RESET}"
+    echo "  ${CYAN}2) Browse Files (VS Code)${RESET}"
     echo "     Open code-server (port 2720) for browser-based file browsing"
     echo "     and editing. Useful for reviewing scripts and data files."
     echo ""
-    echo "  ${CYAN}4) View Session Logs${RESET}"
+    echo "  ${CYAN}3) View Session Logs${RESET}"
     echo "     Browse session transcripts from previous DAAF sessions."
     echo "     Select a project or the full archive to view logs."
+    echo ""
+    echo "  ${CYAN}4) View Marimo Notebooks (Python)${RESET}"
+    echo "     Open the marimo notebook browser (port 2718). Browse, open,"
+    echo "     create, and edit research notebooks across all projects."
     echo ""
     echo "  ${CYAN}5) View Quarto Notebooks (R)${RESET}"
     echo "     Render a Quarto notebook (.qmd) from an R project to a"
     echo "     self-contained HTML file and open it in your browser."
     echo ""
-    echo "  ${CYAN}6) Open Container Shell${RESET}"
-    echo "     Drop into a bash shell inside the DAAF container."
+    echo "  ${CYAN}6) Open Terminal in Container${RESET}"
+    echo "     Open a terminal in the DAAF container."
     echo "     Type 'exit' to return to this menu."
     echo ""
     echo "  ${BOLD}MANAGE${RESET}"

@@ -153,14 +153,72 @@ Describe "daaf.ps1" {
             $script:Content = Get-Content "$RepoRoot/scripts/host/daaf.ps1" -Raw
         }
 
-        It "offers all eleven numbered options" {
-            foreach ($opt in @(
-                "Start Claude Code", "View Marimo Notebooks \(Python\)", "Browse Files \(VS Code\)",
-                "View Session Logs", "View Quarto Notebooks \(R\)", "Open Container Shell",
-                "Create Backup", "Restore from Backup", "Check for Updates",
-                "Rebuild Container", "Stop Web Services")) {
-                $Content | Should -Match $opt
-            }
+        It "renders the exact numbered launch order and unchanged management choices" {
+            $expectedLaunchLines = @(
+                '    Write-Host "  LAUNCH"',
+                '    Write-Host "    1) Start Claude Code"',
+                '    Write-Host "    2) Browse Files (VS Code)"',
+                '    Write-Host "    3) View Session Logs"',
+                '    Write-Host "    4) View Marimo Notebooks (Python)"',
+                '    Write-Host "    5) View Quarto Notebooks (R)"',
+                '    Write-Host "    6) Open Terminal in Container"'
+            )
+            $launchPattern = ($expectedLaunchLines | ForEach-Object { [regex]::Escape($_) }) -join '\r?\n'
+            $Content | Should -Match $launchPattern
+
+            $expectedManageLines = @(
+                '    Write-Host "  MANAGE"',
+                '    Write-Host "    7) Create Backup"',
+                '    Write-Host "    8) Restore from Backup"',
+                '    Write-Host "    9) Check for Updates"',
+                '    Write-Host "   10) Rebuild Container"',
+                '    Write-Host "   11) Stop Web Services"'
+            )
+            $managePattern = ($expectedManageLines | ForEach-Object { [regex]::Escape($_) }) -join '\r?\n'
+            $Content | Should -Match $managePattern
+        }
+
+        It "renders the exact ordered launch headings in Show-DaafHelp" {
+            $helpStart = $Content.IndexOf('function Show-DaafHelp')
+            $helpEnd = $Content.IndexOf('function Invoke-DaafQuit', $helpStart)
+            $helpStart | Should -BeGreaterThan -1
+            $helpEnd | Should -BeGreaterThan $helpStart
+            $helpBody = $Content.Substring($helpStart, $helpEnd - $helpStart)
+
+            $actualHelpHeadings = @(
+                $helpBody -split '\r?\n' |
+                    Where-Object { $_ -match '^\s*Write-Host "  [1-6][)] ' } |
+                    ForEach-Object { $_.Trim() }
+            ) -join "`n"
+            $expectedHelpHeadings = @(
+                'Write-Host "  1) Start Claude Code" -ForegroundColor Cyan',
+                'Write-Host "  2) Browse Files (VS Code)" -ForegroundColor Cyan',
+                'Write-Host "  3) View Session Logs" -ForegroundColor Cyan',
+                'Write-Host "  4) View Marimo Notebooks (Python)" -ForegroundColor Cyan',
+                'Write-Host "  5) View Quarto Notebooks (R)" -ForegroundColor Cyan',
+                'Write-Host "  6) Open Terminal in Container" -ForegroundColor Cyan'
+            ) -join "`n"
+            $actualHelpHeadings | Should -BeExactly $expectedHelpHeadings
+        }
+
+        It "maps launch choices 1-6 to the matching handlers" {
+            $expectedDispatchLines = @(
+                '        "1"  { Invoke-DaafClaudeCode }',
+                '        "2"  { Invoke-DaafVSCode }',
+                '        "3"  { Invoke-DaafLogViewer }',
+                '        "4"  { Invoke-DaafNotebookBrowser }',
+                '        "5"  { Invoke-DaafQuartoViewer }',
+                '        "6"  { Invoke-DaafShell }'
+            )
+            $dispatchPattern = ($expectedDispatchLines | ForEach-Object { [regex]::Escape($_) }) -join '\r?\n'
+            $Content | Should -Match $dispatchPattern
+        }
+
+        It "uses terminal wording for option 6 and its handler messages" {
+            ([regex]::Matches($Content, 'Open Terminal in Container')).Count | Should -BeGreaterOrEqual 2
+            $Content | Should -Match 'Opening terminal in container'
+            $Content | Should -Match 'Container terminal ended with an error'
+            $Content | Should -Not -Match 'Open Container Shell'
         }
 
         It "delegates to the .ps1 siblings (not .sh)" {

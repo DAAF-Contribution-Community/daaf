@@ -221,8 +221,7 @@ teardown() {
 # Tier 6 -- Menu Display
 # =========================================================================
 
-@test "display_menu shows all numbered options 1-11" {
-    # Set status variables for display
+@test "display_menu shows exact ordered launch and manage blocks" {
     STATUS_CONTAINER="Running"
     STATUS_VERSION="v2.0.0"
     STATUS_DATE="2026-06-21"
@@ -232,22 +231,47 @@ teardown() {
     STATUS_PORT_2718=false
     STATUS_PORT_2719=false
     STATUS_PORT_2720=false
+    BOLD=""
+    RESET=""
 
     run display_menu
     assert_success
-    assert_output --partial "1)"
-    assert_output --partial "2)"
-    assert_output --partial "3)"
-    assert_output --partial "4)"
-    assert_output --partial "5)"
-    assert_output --partial "6)"
-    assert_output --partial "7)"
-    assert_output --partial "8)"
-    assert_output --partial "9)"
-    assert_output --partial "10)"
-    assert_output --partial "11)"
-    assert_output --partial "h)"
-    assert_output --partial "q)"
+
+    local launch_block
+    launch_block=$(printf '%s\n' "$output" | awk '
+        /^  LAUNCH$/ { in_launch=1 }
+        in_launch && /^$/ { exit }
+        in_launch { print }
+    ')
+    local expected_launch_block
+    expected_launch_block=$(printf '%s\n' \
+        '  LAUNCH' \
+        '    1) Start Claude Code' \
+        '    2) Browse Files (VS Code)' \
+        '    3) View Session Logs' \
+        '    4) View Marimo Notebooks (Python)' \
+        '    5) View Quarto Notebooks (R)' \
+        '    6) Open Terminal in Container')
+    [ "$launch_block" = "$expected_launch_block" ]
+
+    local manage_block
+    manage_block=$(printf '%s\n' "$output" | awk '
+        /^  MANAGE$/ { in_manage=1 }
+        in_manage && /^$/ { exit }
+        in_manage { print }
+    ')
+    local expected_manage_block
+    expected_manage_block=$(printf '%s\n' \
+        '  MANAGE' \
+        '    7) Create Backup' \
+        '    8) Restore from Backup' \
+        '    9) Check for Updates' \
+        '   10) Rebuild Container' \
+        '   11) Stop Web Services')
+    [ "$manage_block" = "$expected_manage_block" ]
+
+    assert_output --partial "h) Help"
+    assert_output --partial "q) Quit"
 }
 
 @test "display_menu shows status dashboard" {
@@ -376,6 +400,33 @@ teardown() {
     assert_output --partial "CALLED_CLAUDE_CODE"
 }
 
+@test "dispatch_choice routes option 2 to handle_vscode" {
+    handle_vscode() { echo "CALLED_VSCODE"; }
+    export -f handle_vscode
+
+    run dispatch_choice "2"
+    assert_success
+    assert_output --partial "CALLED_VSCODE"
+}
+
+@test "dispatch_choice routes option 3 to handle_logs" {
+    handle_logs() { echo "CALLED_LOGS"; }
+    export -f handle_logs
+
+    run dispatch_choice "3"
+    assert_success
+    assert_output --partial "CALLED_LOGS"
+}
+
+@test "dispatch_choice routes option 4 to handle_notebooks" {
+    handle_notebooks() { echo "CALLED_NOTEBOOKS"; }
+    export -f handle_notebooks
+
+    run dispatch_choice "4"
+    assert_success
+    assert_output --partial "CALLED_NOTEBOOKS"
+}
+
 @test "dispatch_choice routes option 5 to handle_quarto" {
     handle_quarto() { echo "CALLED_QUARTO"; }
     export -f handle_quarto
@@ -383,6 +434,15 @@ teardown() {
     run dispatch_choice "5"
     assert_success
     assert_output --partial "CALLED_QUARTO"
+}
+
+@test "dispatch_choice routes option 6 to handle_shell" {
+    handle_shell() { echo "CALLED_SHELL"; }
+    export -f handle_shell
+
+    run dispatch_choice "6"
+    assert_success
+    assert_output --partial "CALLED_SHELL"
 }
 
 @test "dispatch_choice routes option 11 to handle_stop_services" {
@@ -622,7 +682,7 @@ teardown() {
 # Tier 10 -- Help and Exit
 # =========================================================================
 
-@test "handle_help shows descriptions for all options" {
+@test "handle_help shows exact ordered launch headings and all management descriptions" {
     # Provide Enter as input for the "Press Enter to continue" prompt
     run bash -c 'echo "" | (
         source "'"${REPO_ROOT}"'/scripts/host/daaf_lib.sh"
@@ -630,15 +690,24 @@ teardown() {
         export DAAF_TEST_MODE=1
         source "'"${REPO_ROOT}"'/scripts/host/daaf.sh"
         unset DAAF_TEST_MODE
+        CYAN=""
+        RESET=""
         handle_help
     )'
     assert_success
-    assert_output --partial "Start Claude Code"
-    assert_output --partial "View Marimo Notebooks (Python)"
-    assert_output --partial "Browse Files"
-    assert_output --partial "View Session Logs"
-    assert_output --partial "View Quarto Notebooks (R)"
-    assert_output --partial "Open Container Shell"
+
+    local help_launch_headings
+    help_launch_headings=$(printf '%s\n' "$output" | awk '/^  [1-6][)] / { print }')
+    local expected_help_launch_headings
+    expected_help_launch_headings=$(printf '%s\n' \
+        '  1) Start Claude Code' \
+        '  2) Browse Files (VS Code)' \
+        '  3) View Session Logs' \
+        '  4) View Marimo Notebooks (Python)' \
+        '  5) View Quarto Notebooks (R)' \
+        '  6) Open Terminal in Container')
+    [ "$help_launch_headings" = "$expected_help_launch_headings" ]
+
     assert_output --partial "Create Backup"
     assert_output --partial "Restore from Backup"
     assert_output --partial "Check for Updates"
