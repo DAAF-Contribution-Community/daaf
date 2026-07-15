@@ -1,2 +1,0 @@
-1345122
-year,fips,gleaid,ncessch,meps_poverty_pct,meps_poverty_se,meps_mod_poverty_pct,meps_poverty_ptl,meps_mod_poverty_ptl,ncessch_num,leaid
