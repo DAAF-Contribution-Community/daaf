@@ -421,6 +421,25 @@ Describe "migrate_daaf.ps1 dry-run mode" {
         # Dry-run simulates Era 1 (clone-based) -- verify detection output
         ($output | Out-String) | Should -BeLike "*clone-based installation*"
     }
+
+    # --- Regression: non-writing dry-run (2026-07-14 root-stub incident) ---
+    # Root cause: the dry-run Invoke-WebRequest mock wrote an "exit 0" stub for
+    # every -OutFile target, and $HostDir resolves to the CWD when it holds a
+    # docker-compose.yml -- leaking stub scripts + a docker-compose.yml.pre-migrate
+    # into the caller's directory. The dry-run must now create NOTHING on disk.
+    # See: research/2026-07-15_FrameworkDev_CwdLeakRootStubs/SESSION_NOTES.md
+    It "dry-run from a compose-seeded dir creates no new files" {
+        $env:DAAF_DRY_RUN = "1"
+        $env:DAAF_NESTED = "1"
+        # TestDir already contains docker-compose.yml (New-FakeComposeFile) and a
+        # stub backup_daaf.ps1 (both seeded in BeforeAll). Snapshot before/after.
+        $before = (Get-ChildItem -Force $script:TestDir | Select-Object -ExpandProperty Name | Sort-Object) -join "`n"
+        $null = & "$RepoRoot/scripts/host/migrate_daaf.ps1" *>&1
+        $after = (Get-ChildItem -Force $script:TestDir | Select-Object -ExpandProperty Name | Sort-Object) -join "`n"
+        $after | Should -Be $before
+        # Explicit spot-check for the specific incident artifact.
+        (Test-Path (Join-Path $script:TestDir "docker-compose.yml.pre-migrate")) | Should -Be $false
+    }
 }
 
 # ============================================================================

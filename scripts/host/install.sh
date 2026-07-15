@@ -77,20 +77,11 @@ if [ "${DAAF_DRY_RUN:-}" = "1" ]; then
         esac
     }
     curl() {
-        # Parse -o flag to create empty target files so chmod +x succeeds
-        local outfile=""
-        local args=("$@")
-        local i
-        for (( i=0; i<${#args[@]}; i++ )); do
-            if [ "${args[$i]}" = "-o" ] && [ $((i+1)) -lt ${#args[@]} ]; then
-                outfile="${args[$((i+1))]}"
-                break
-            fi
-        done
-        if [ -n "${outfile}" ]; then
-            mkdir -p "$(dirname "${outfile}")"
-            touch "${outfile}"
-        fi
+        # Dry-run is fully non-writing: print the [DRY-RUN] line and succeed
+        # WITHOUT creating any files or directories. The former mock touched an
+        # empty stub for each -o target, which (with INSTALL_DIR under the
+        # caller's CWD) leaked zero-byte stubs on disk. The mkdir + explicit
+        # chmod sites below are gated so the full flow still walks end-to-end.
         echo "[DRY-RUN] curl $*" >&2
         return 0
     }
@@ -204,7 +195,11 @@ fi
 
 # --- Create minimal build directory ---
 echo "[1/4] Creating initial directory for installation files at ${INSTALL_DIR} ..."
-mkdir -p "${INSTALL_DIR}"
+if [ "${DAAF_DRY_RUN:-}" = "1" ]; then
+    echo "[DRY-RUN] Would create install directory: ${INSTALL_DIR}"
+else
+    mkdir -p "${INSTALL_DIR}"
+fi
 
 # --- Download build-context and utility files ---
 echo "[2/4] Downloading installation files ..."
@@ -229,7 +224,14 @@ if ! curl -fsSL "${RAW_BASE}/Dockerfile"                          -o "${INSTALL_
     echo "You can check available branches at: https://github.com/${REPO}/branches"
     exit 1
 fi
-chmod +x "${INSTALL_DIR}/daaf.sh" "${INSTALL_DIR}/daaf_lib.sh" "${INSTALL_DIR}/run_daaf.sh" "${INSTALL_DIR}/backup_daaf.sh" "${INSTALL_DIR}/restore_from_backup.sh" "${INSTALL_DIR}/rebuild_daaf.sh" "${INSTALL_DIR}/update_daaf.sh" "${INSTALL_DIR}/view_logs.sh" "${INSTALL_DIR}/view_notebooks.sh" "${INSTALL_DIR}/view_quarto.sh" "${INSTALL_DIR}/run_vscode.sh"
+if [ "${DAAF_DRY_RUN:-}" = "1" ]; then
+    # Dry-run downloaded nothing (the curl mock no longer writes stubs), so there
+    # are no files to chmod; an unguarded chmod on the missing explicit paths
+    # would hard-fail under `set -e`.
+    echo "[DRY-RUN] Would make downloaded host scripts executable (chmod +x)"
+else
+    chmod +x "${INSTALL_DIR}/daaf.sh" "${INSTALL_DIR}/daaf_lib.sh" "${INSTALL_DIR}/run_daaf.sh" "${INSTALL_DIR}/backup_daaf.sh" "${INSTALL_DIR}/restore_from_backup.sh" "${INSTALL_DIR}/rebuild_daaf.sh" "${INSTALL_DIR}/update_daaf.sh" "${INSTALL_DIR}/view_logs.sh" "${INSTALL_DIR}/view_notebooks.sh" "${INSTALL_DIR}/view_quarto.sh" "${INSTALL_DIR}/run_vscode.sh"
+fi
 
 # --- Apple Silicon (arm64) build-time notice ---
 # On the Ubuntu noble base, arm64 gets P3M pre-built R binaries (same as x86_64),

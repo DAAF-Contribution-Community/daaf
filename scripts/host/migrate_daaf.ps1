@@ -131,16 +131,15 @@ if ($env:DAAF_DRY_RUN -eq "1") {
             [string]$Uri,
             [string]$OutFile
         )
-        # Acknowledge parameters accepted for interface compatibility
-        $null = $UseBasicParsing, $Uri
-        if ($OutFile) {
-            $parentDir = Split-Path $OutFile -Parent
-            if ($parentDir -and -not (Test-Path $parentDir)) {
-                New-Item -ItemType Directory -Path $parentDir -Force | Out-Null
-            }
-            # Write a minimal stub that exits cleanly (for nested script calls)
-            Set-Content -Path $OutFile -Value "exit 0"
-        }
+        # Dry-run is fully non-writing: acknowledge the parameters and succeed
+        # WITHOUT creating any files or directories. The former mock wrote an
+        # "exit 0" stub for each -OutFile target; combined with $HostDir
+        # resolving to the current directory when it holds a docker-compose.yml,
+        # that leaked stub scripts + a docker-compose.yml.pre-migrate into the
+        # caller's directory (the 2026-07-14 root-stub incident). All downstream
+        # dry-run write sites (New-Item, compose backup, nested backup) are gated
+        # below so the full flow still walks end-to-end.
+        $null = $UseBasicParsing, $Uri, $OutFile
     }
 
     # Force non-interactive to skip the update prompt at the end
@@ -406,7 +405,11 @@ if (Test-Path "docker-compose.yml") {
 } else {
     $HostDir = Join-Path (Get-Location).Path "daaf-docker"
     Write-Host "Will create host directory: $HostDir"
-    New-Item -ItemType Directory -Path $HostDir -Force | Out-Null
+    if ($env:DAAF_DRY_RUN -eq "1") {
+        Write-Host "[DRY-RUN] Would create host directory: $HostDir"
+    } else {
+        New-Item -ItemType Directory -Path $HostDir -Force | Out-Null
+    }
 }
 
 Write-Host ""
@@ -464,19 +467,30 @@ if (-not (Test-Path "$HostDir\docker-compose.yml")) {
         Wait-ForUser -ExitCode 1; return
     }
 } else {
-    # Even if docker-compose.yml exists, update it so it has name: daaf
-    # (v1.0.0 installations may lack this)
+    # Even if docker-compose.yml exists, update it if it lacks a project-name
+    # declaration (v1.0.0 installations shipped without one). The predicate is
+    # "does the compose file already set a top-level `name:` key" -- matching
+    # any `^name: ` line. Both the legacy literal `name: daaf` and the current
+    # parameterized `name: ${DAAF_PROJECT_NAME:-daaf}` therefore count as
+    # up-to-date. The former `^name: daaf` anchor did NOT match the parameterized
+    # form, so a real migrate against a current install re-downloaded the compose
+    # file and wrote a docker-compose.yml.pre-migrate backup on every run. Kept
+    # byte-for-byte equivalent to the migrate_daaf.sh predicate (`^name: `).
     $composeContent = Get-Content "$HostDir\docker-compose.yml" -Raw
-    if ($composeContent -notmatch '(?m)^name: daaf') {
+    if ($composeContent -notmatch '(?m)^name: ') {
         Write-Host ""
         Write-Host "  Updating docker-compose.yml to current version..."
-        Copy-Item "$HostDir\docker-compose.yml" "$HostDir\docker-compose.yml.pre-migrate" -Force
-        try {
-            Invoke-WebRequest -UseBasicParsing -Uri "$RawBase/docker-compose.yml" -OutFile "$HostDir\docker-compose.yml"
-            Write-Host "  Updated: docker-compose.yml (old version saved as docker-compose.yml.pre-migrate)"
-        } catch {
-            Write-Host "  WARNING: Could not download updated docker-compose.yml. Restoring original." -ForegroundColor Yellow
-            Move-Item "$HostDir\docker-compose.yml.pre-migrate" "$HostDir\docker-compose.yml" -Force
+        if ($env:DAAF_DRY_RUN -eq "1") {
+            Write-Host "  [DRY-RUN] Would update docker-compose.yml (backing up to docker-compose.yml.pre-migrate)"
+        } else {
+            Copy-Item "$HostDir\docker-compose.yml" "$HostDir\docker-compose.yml.pre-migrate" -Force
+            try {
+                Invoke-WebRequest -UseBasicParsing -Uri "$RawBase/docker-compose.yml" -OutFile "$HostDir\docker-compose.yml"
+                Write-Host "  Updated: docker-compose.yml (old version saved as docker-compose.yml.pre-migrate)"
+            } catch {
+                Write-Host "  WARNING: Could not download updated docker-compose.yml. Restoring original." -ForegroundColor Yellow
+                Move-Item "$HostDir\docker-compose.yml.pre-migrate" "$HostDir\docker-compose.yml" -Force
+            }
         }
     }
 }
@@ -496,21 +510,30 @@ Write-Host "Before making any changes, a full backup of your DAAF volume will"
 Write-Host "be created. This protects your research data and local history."
 Write-Host ""
 
-$OriginalDir = (Get-Location).Path
-Set-Location $HostDir
-$env:DAAF_NESTED = "1"
-& .\backup_daaf.ps1
-$backupExit = $LASTEXITCODE
-Remove-Item Env:\DAAF_NESTED -ErrorAction SilentlyContinue
-Set-Location $OriginalDir
-if ($backupExit -ne 0) {
-    Write-Host ""
-    Write-Host "ERROR: Backup failed (exit code $backupExit)."
-    Write-Host "The migration will not proceed without a successful backup."
-    Write-Host "Please resolve the backup issue and re-run: .\migrate_daaf.ps1"
-    Wait-ForUser -ExitCode 1; return
+if ($env:DAAF_DRY_RUN -eq "1") {
+    # Dry-run creates nothing, so there is no downloaded backup_daaf.ps1 to run
+    # (the Invoke-WebRequest mock no longer writes stubs). Print the step and
+    # skip the nested call; keep $BackupCompleted = $true so the rest of the
+    # dry-run flow matches the real path's post-backup state.
+    Write-Host "[DRY-RUN] Would run backup_daaf.ps1 in $HostDir to back up the Docker volume"
+    $BackupCompleted = $true
+} else {
+    $OriginalDir = (Get-Location).Path
+    Set-Location $HostDir
+    $env:DAAF_NESTED = "1"
+    & .\backup_daaf.ps1
+    $backupExit = $LASTEXITCODE
+    Remove-Item Env:\DAAF_NESTED -ErrorAction SilentlyContinue
+    Set-Location $OriginalDir
+    if ($backupExit -ne 0) {
+        Write-Host ""
+        Write-Host "ERROR: Backup failed (exit code $backupExit)."
+        Write-Host "The migration will not proceed without a successful backup."
+        Write-Host "Please resolve the backup issue and re-run: .\migrate_daaf.ps1"
+        Wait-ForUser -ExitCode 1; return
+    }
+    $BackupCompleted = $true
 }
-$BackupCompleted = $true
 
 Write-Host ""
 

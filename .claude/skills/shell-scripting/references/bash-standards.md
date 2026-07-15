@@ -299,7 +299,7 @@ ln -s /some/target "$PROBE_DIR/$(printf 'pathological\tname')"
 
 **Why `find … -type l -delete` and not `rm -rf`.** The `bash-safety.sh` hook blocks `rm -rf` of scratch directories, but plain `rm` and `find … -delete` are allowed. `find "$PROBE_DIR" -type l -delete` is also *narrower* than deleting the tree — it removes exactly the symlinks (the invariant-violating objects) and leaves real scratch files intact for provenance.
 
-**Verification step.** After the probe runs, confirm the workspace is clean by invoking the workspace invariant checker, which walks the live filesystem for unauthorized symlinks (git cannot see untracked scratch):
+**Verification step.** After the probe runs, confirm the workspace is clean by invoking the workspace invariant checker, which walks the live filesystem for unauthorized symlinks (Invariant 1) and repo-root leak artifacts — zero-byte stubs, `*.pre-migrate` backups, or a stray `daaf-docker/` directory left by a wrong-CWD host-tool dry-run (Invariant 2) — since git cannot see untracked scratch:
 
 ```bash
 bash "${BASE_DIR}/scripts/check_workspace_invariants.sh"   # prints an OK line on pass; exits 1 and lists offenders (control chars escaped) on violation

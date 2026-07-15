@@ -14,6 +14,13 @@ setup() {
     common_setup
     mock_docker
     create_fake_compose_file
+    # Isolate the ambient environment: dev-container installs export
+    # DAAF_BRANCH (e.g. daaf_dev_r2), which steers update_daaf.sh onto the
+    # cross-branch update path and broke the "Already up to date" tests
+    # locally while CI (var unset) stayed green. Tests that exercise
+    # DAAF_BRANCH behavior export it explicitly inside their own subshells,
+    # so unsetting here pins every test to the CI-equivalent baseline.
+    unset DAAF_BRANCH
 }
 
 teardown() {

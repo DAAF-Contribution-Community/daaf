@@ -214,6 +214,7 @@ After completing each item, note the status: Done, Skipped (with reason), or N/A
 | HSM2 | Re-run the portability gate after editing | [M] | — | `bash tests/lint/check-daaf-conventions.sh` — no Bash-4.x-only constructs in `scripts/host/*.sh` |
 | HSM3 | If renaming, update both install download lists and the CI smoke lists | [M] | `install.sh`, `install.ps1`, `ci-scripts.yml` | The updater self-heals renames on next update, but installs and CI reference the name directly |
 | HSM4 | Keep `.sh` and `.ps1` behavior aligned | [M] | Both pair members | Parity is enforced for existence by CI, but not for behavior — that is on the author |
+| HSM5 | If the script has a `DAAF_DRY_RUN` arm, verify no write sites are reachable under dry-run after the edit | [M] | Target script(s) | Dry-run must create nothing on disk (see the 2026-07-14 root-stub incident, `research/2026-07-15_FrameworkDev_CwdLeakRootStubs/`): sweep the changed script for `touch`/`mkdir`/`cp`/`mv`/redirects/`chmod` (`New-Item`/`Set-Content`/`Copy-Item`/`Move-Item`/`Out-File` in `.ps1`) and confirm each is gated to the real-run branch; `scripts/check_workspace_invariants.sh` Invariant 2 and the "dry-run creates nothing" regression tests in `tests/bash/{migrate_daaf,install}.bats` are the mechanical backstops |
 
 ---
 

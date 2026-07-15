@@ -225,6 +225,23 @@ Describe "install.ps1 dry-run mode" {
         ($output | Out-String) | Should -BeLike "*Installation complete*"
     }
 
+    # --- Regression: non-writing dry-run (2026-07-14 root-stub incident) ---
+    # Root cause: the dry-run Invoke-WebRequest mock wrote an empty file for every
+    # -OutFile target under $InstallDir (=<CWD>/daaf-docker), leaking zero-byte
+    # stubs on disk. A dry-run install must now create NOTHING -- no daaf-docker/
+    # directory, no stub files. See:
+    # research/2026-07-15_FrameworkDev_CwdLeakRootStubs/SESSION_NOTES.md
+    It "dry-run creates no daaf-docker directory or files" {
+        $env:DAAF_DRY_RUN = "1"
+        $env:DAAF_NESTED = "1"
+        $before = (Get-ChildItem -Force $script:TestDir | Select-Object -ExpandProperty Name | Sort-Object) -join "`n"
+        $null = & "$RepoRoot/scripts/host/install.ps1" *>&1
+        # The daaf-docker/ install target must not have been created.
+        (Test-Path (Join-Path $script:TestDir "daaf-docker")) | Should -Be $false
+        $after = (Get-ChildItem -Force $script:TestDir | Select-Object -ExpandProperty Name | Sort-Object) -join "`n"
+        $after | Should -Be $before
+    }
+
     It "creates the diagnostic builder under DAAF_DIAG_BUILD=1 (dry-run mock: inspect miss -> create)" {
         $env:DAAF_DRY_RUN = "1"
         $env:DAAF_NESTED = "1"

@@ -326,6 +326,26 @@ teardown() {
     rm -r "${TEST_DIR}/daaf-docker" 2>/dev/null || true
 }
 
+# --- Regression: non-writing dry-run (2026-07-14 root-stub incident) ---
+# Root cause: the dry-run curl mock touched a zero-byte stub for every -o
+# target under $INSTALL_DIR (=<CWD>/daaf-docker). A dry-run install must now
+# create NOTHING on disk -- no daaf-docker/ directory, no stub files. See:
+# research/2026-07-15_FrameworkDev_CwdLeakRootStubs/SESSION_NOTES.md
+
+@test "install.sh: dry-run creates no daaf-docker directory or files" {
+    cd "${TEST_DIR}"
+    local before_listing
+    before_listing="$(ls -A "${TEST_DIR}" | sort)"
+    run env DAAF_DRY_RUN=1 DAAF_NESTED=1 bash "${REPO_ROOT}/scripts/host/install.sh"
+    assert_success
+    # No daaf-docker/ directory (the install target) should exist.
+    [ ! -e "${TEST_DIR}/daaf-docker" ]
+    # The directory contents must be identical before and after.
+    local after_listing
+    after_listing="$(ls -A "${TEST_DIR}" | sort)"
+    [ "${before_listing}" = "${after_listing}" ]
+}
+
 # =========================================================================
 # Diagnostic builder (DAAF_DIAG_BUILD=1)
 # =========================================================================

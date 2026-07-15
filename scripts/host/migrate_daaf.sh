@@ -81,20 +81,13 @@ if [ "${DAAF_DRY_RUN:-}" = "1" ]; then
         esac
     }
     curl() {
-        # Parse -o flag to create empty target files so chmod +x succeeds
-        local outfile=""
-        local args=("$@")
-        local i
-        for (( i=0; i<${#args[@]}; i++ )); do
-            if [ "${args[$i]}" = "-o" ] && [ $((i+1)) -lt ${#args[@]} ]; then
-                outfile="${args[$((i+1))]}"
-                break
-            fi
-        done
-        if [ -n "${outfile}" ]; then
-            mkdir -p "$(dirname "${outfile}")"
-            touch "${outfile}"
-        fi
+        # Dry-run is fully non-writing: print the [DRY-RUN] line and succeed
+        # WITHOUT creating any files or directories. The former mock touched an
+        # empty stub for each -o target; combined with HOST_DIR resolving to
+        # $(pwd) when the CWD holds a docker-compose.yml, that leaked zero-byte
+        # stubs into the caller's directory (the 2026-07-14 root-stub incident).
+        # All downstream dry-run write sites (chmod, compose-update, nested
+        # backup) are gated below so the full flow still walks end-to-end.
         echo "[DRY-RUN] curl $*" >&2
         return 0
     }
@@ -263,7 +256,11 @@ if [ -f "docker-compose.yml" ]; then
 else
     HOST_DIR="$(pwd)/daaf-docker"
     echo "Will create host directory: ${HOST_DIR}"
-    mkdir -p "${HOST_DIR}"
+    if [ "${DAAF_DRY_RUN:-}" = "1" ]; then
+        echo "[DRY-RUN] Would create host directory: ${HOST_DIR}"
+    else
+        mkdir -p "${HOST_DIR}"
+    fi
 fi
 
 echo ""
@@ -318,23 +315,37 @@ if [ ! -f "${HOST_DIR}/docker-compose.yml" ]; then
         exit 1
     fi
 else
-    # Even if docker-compose.yml exists, update it so it has name: daaf
-    # (v1.0.0 installations may lack this)
-    if ! grep -q '^name: daaf' "${HOST_DIR}/docker-compose.yml"; then
+    # Even if docker-compose.yml exists, update it if it lacks a project-name
+    # declaration (v1.0.0 installations shipped without one). The predicate is
+    # "does the compose file already set a top-level `name:` key" -- matching
+    # any `^name: ` line. Both the legacy literal `name: daaf` and the current
+    # parameterized `name: ${DAAF_PROJECT_NAME:-daaf}` therefore count as
+    # up-to-date. The former `^name: daaf` anchor did NOT match the parameterized
+    # form, so a real migrate against a current install re-downloaded the compose
+    # file and wrote a docker-compose.yml.pre-migrate backup on every run.
+    if ! grep -q '^name: ' "${HOST_DIR}/docker-compose.yml"; then
         echo ""
         echo "  Updating docker-compose.yml to current version..."
-        cp "${HOST_DIR}/docker-compose.yml" "${HOST_DIR}/docker-compose.yml.pre-migrate"
-        if curl -fsSL "${RAW_BASE}/docker-compose.yml" -o "${HOST_DIR}/docker-compose.yml"; then
-            echo "  Updated: docker-compose.yml (old version saved as docker-compose.yml.pre-migrate)"
+        if [ "${DAAF_DRY_RUN:-}" = "1" ]; then
+            echo "  [DRY-RUN] Would update docker-compose.yml (backing up to docker-compose.yml.pre-migrate)"
         else
-            echo "  WARNING: Could not download updated docker-compose.yml. Restoring original."
-            mv "${HOST_DIR}/docker-compose.yml.pre-migrate" "${HOST_DIR}/docker-compose.yml"
+            cp "${HOST_DIR}/docker-compose.yml" "${HOST_DIR}/docker-compose.yml.pre-migrate"
+            if curl -fsSL "${RAW_BASE}/docker-compose.yml" -o "${HOST_DIR}/docker-compose.yml"; then
+                echo "  Updated: docker-compose.yml (old version saved as docker-compose.yml.pre-migrate)"
+            else
+                echo "  WARNING: Could not download updated docker-compose.yml. Restoring original."
+                mv "${HOST_DIR}/docker-compose.yml.pre-migrate" "${HOST_DIR}/docker-compose.yml"
+            fi
         fi
     fi
 fi
 
 # Make all .sh files executable
-chmod +x "${HOST_DIR}"/*.sh 2>/dev/null || true
+if [ "${DAAF_DRY_RUN:-}" = "1" ]; then
+    echo "[DRY-RUN] Would make host scripts executable (chmod +x ${HOST_DIR}/*.sh)"
+else
+    chmod +x "${HOST_DIR}"/*.sh 2>/dev/null || true
+fi
 
 echo ""
 echo "All scripts downloaded to: ${HOST_DIR}/"
@@ -351,11 +362,20 @@ echo "Before making any changes, a full backup of your DAAF volume will"
 echo "be created. This protects your research data and local history."
 echo ""
 
-ORIGINAL_DIR="$(pwd)"
-cd "${HOST_DIR}"
-DAAF_NESTED=1 bash backup_daaf.sh
-cd "${ORIGINAL_DIR}"
-BACKUP_COMPLETED=true
+if [ "${DAAF_DRY_RUN:-}" = "1" ]; then
+    # Dry-run creates nothing, so there is no downloaded backup_daaf.sh to run
+    # (the curl mock no longer writes stubs). Print the step and skip the nested
+    # call; keep BACKUP_COMPLETED=true so the rest of the dry-run flow matches
+    # the real path's post-backup state.
+    echo "[DRY-RUN] Would run backup_daaf.sh in ${HOST_DIR} to back up the Docker volume"
+    BACKUP_COMPLETED=true
+else
+    ORIGINAL_DIR="$(pwd)"
+    cd "${HOST_DIR}"
+    DAAF_NESTED=1 bash backup_daaf.sh
+    cd "${ORIGINAL_DIR}"
+    BACKUP_COMPLETED=true
+fi
 
 echo ""
 

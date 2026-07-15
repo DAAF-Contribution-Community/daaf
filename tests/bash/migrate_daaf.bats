@@ -562,6 +562,86 @@ Initial commit"
     assert_output --partial "Migration complete"
 }
 
+# --- Regression: non-writing dry-run (2026-07-14 root-stub incident) ---
+# Root cause: the dry-run curl mock touched a zero-byte stub for every -o
+# target, and HOST_DIR resolves to $(pwd) when the CWD holds a
+# docker-compose.yml. Running the dry-run from a compose-seeded directory
+# therefore leaked ~13 zero-byte stubs (named after the host scripts) plus a
+# docker-compose.yml.pre-migrate at the caller's root. These tests pin that the
+# dry-run creates NOTHING on disk. See:
+# research/2026-07-15_FrameworkDev_CwdLeakRootStubs/SESSION_NOTES.md
+
+@test "migrate_daaf.sh: dry-run from a compose-seeded dir creates no new files" {
+    # Seed TEST_DIR with a docker-compose.yml so HOST_DIR resolves to it (the
+    # exact condition that triggered the incident at the repo root).
+    create_fake_compose_file "${TEST_DIR}"
+    cd "${TEST_DIR}"
+    # Capture the directory contents before the dry-run.
+    local before_listing
+    before_listing="$(ls -A "${TEST_DIR}" | sort)"
+    run env DAAF_DRY_RUN=1 DAAF_NESTED=1 bash "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    assert_success
+    # The directory contents must be identical afterward -- no zero-byte stubs,
+    # no docker-compose.yml.pre-migrate, no new files or directories.
+    local after_listing
+    after_listing="$(ls -A "${TEST_DIR}" | sort)"
+    [ "${before_listing}" = "${after_listing}" ]
+    # Explicit spot-checks for the specific incident artifacts.
+    [ ! -e "${TEST_DIR}/docker-compose.yml.pre-migrate" ]
+    [ ! -e "${TEST_DIR}/backup_daaf.sh" ]
+    [ ! -e "${TEST_DIR}/daaf.sh" ]
+}
+
+@test "migrate_daaf.sh: dry-run without a compose file creates no daaf-docker dir" {
+    # No docker-compose.yml in CWD: HOST_DIR would be $(pwd)/daaf-docker. The
+    # dry-run must announce but NOT create it (nothing on disk).
+    cd "${TEST_DIR}"
+    run env DAAF_DRY_RUN=1 DAAF_NESTED=1 bash "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    assert_success
+    [ ! -e "${TEST_DIR}/daaf-docker" ]
+}
+
+# --- Compose version-check predicate (^name: matches parameterized form) ---
+# The up-to-date check must treat BOTH `name: daaf` and the current
+# parameterized `name: ${DAAF_PROJECT_NAME:-daaf}` as already-current, so a
+# migrate against a current install does NOT re-download and does NOT print the
+# "Updating docker-compose.yml" line. A compose file with no `name:` key DOES
+# trigger the update branch. In dry-run the branch prints a [DRY-RUN] line
+# instead of writing, which these tests assert on.
+
+@test "migrate_daaf.sh: parameterized compose name does not trigger update branch" {
+    # Seed a compose file with the current parameterized name line.
+    cat > "${TEST_DIR}/docker-compose.yml" <<'YAML'
+name: ${DAAF_PROJECT_NAME:-daaf}
+services:
+  daaf-docker:
+    image: daaf:latest
+YAML
+    cd "${TEST_DIR}"
+    run env DAAF_DRY_RUN=1 DAAF_NESTED=1 bash "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    assert_success
+    # The update branch must NOT fire for an already-current compose file.
+    refute_output --partial "Updating docker-compose.yml to current version"
+    [ ! -e "${TEST_DIR}/docker-compose.yml.pre-migrate" ]
+}
+
+@test "migrate_daaf.sh: compose without a name key triggers the update branch" {
+    # Seed a legacy (v1.0.0-style) compose file with no top-level name: key.
+    cat > "${TEST_DIR}/docker-compose.yml" <<'YAML'
+services:
+  daaf-docker:
+    image: daaf:latest
+YAML
+    cd "${TEST_DIR}"
+    run env DAAF_DRY_RUN=1 DAAF_NESTED=1 bash "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    assert_success
+    # The update branch fires, and in dry-run prints the [DRY-RUN] gate line
+    # instead of writing a .pre-migrate backup.
+    assert_output --partial "Updating docker-compose.yml to current version"
+    assert_output --partial "[DRY-RUN] Would update docker-compose.yml"
+    [ ! -e "${TEST_DIR}/docker-compose.yml.pre-migrate" ]
+}
+
 # ============================================================================
 # Integrated state-machine tests
 # ============================================================================

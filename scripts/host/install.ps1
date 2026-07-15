@@ -83,16 +83,12 @@ if ($env:DAAF_DRY_RUN -eq "1") {
             [string]$Uri,
             [string]$OutFile
         )
-        # Acknowledge parameters accepted for interface compatibility
-        $null = $UseBasicParsing, $Uri
-        if ($OutFile) {
-            # Create parent directory if needed, then an empty file
-            $parentDir = Split-Path $OutFile -Parent
-            if ($parentDir -and -not (Test-Path $parentDir)) {
-                New-Item -ItemType Directory -Path $parentDir -Force | Out-Null
-            }
-            Set-Content -Path $OutFile -Value ""
-        }
+        # Dry-run is fully non-writing: acknowledge the parameters and succeed
+        # WITHOUT creating any files or directories. The former mock wrote an
+        # empty file for each -OutFile target, which (with $InstallDir under the
+        # caller's CWD) leaked zero-byte stubs on disk. The New-Item site below
+        # is gated so the full flow still walks end-to-end.
+        $null = $UseBasicParsing, $Uri, $OutFile
     }
 }
 
@@ -233,7 +229,11 @@ if (Test-Path "$InstallDir\docker-compose.yml") {
 
 # --- Create minimal build directory ---
 Write-Host "[1/4] Creating an initial directory for installation files at $InstallDir ..."
-New-Item -ItemType Directory -Path "$InstallDir" -Force | Out-Null
+if ($env:DAAF_DRY_RUN -eq "1") {
+    Write-Host "[DRY-RUN] Would create install directory: $InstallDir"
+} else {
+    New-Item -ItemType Directory -Path "$InstallDir" -Force | Out-Null
+}
 
 # --- Download build-context and utility files ---
 Write-Host "[2/4] Downloading installation files ..."
