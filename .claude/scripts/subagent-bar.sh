@@ -9,6 +9,9 @@
 # Verified against: Claude Code 2.1.187 — schema confirmed BOTH from the
 # installed binary's payload construction AND a live captured payload
 # (2026-07-05 session). See research/2026-07-05_FrameworkDev_StatuslineUpgrade.
+# Re-verified against CC 2.1.202 behaviorally (live subagent model caches +
+# per-model window computations, 2026-07-15 session). See
+# research/2026-07-15_FrameworkDev_ClaudeCode_Upgrade_2.1.202.
 #
 # INPUT CONTRACT (stdin, JSON — live-verified):
 #   Top level: session_id, transcript_path (main session's), cwd, columns,
@@ -201,7 +204,10 @@ while IFS=$'\x1f' read -r id type name status tokens label; do
     if [[ -n "$task_model" && "$task_model" != "$session_model" ]]; then
         # Window provisioning: [1m]-suffixed and natively-1M models (fable-5,
         # mythos-5, opus-4-7, opus-4-8) get 1,000,000; ALL others 200,000.
-        # Mapping verified against installed CC 2.1.187 binary, 2026-07-05;
+        # Mapping verified against installed CC 2.1.187 binary, 2026-07-05, and
+        # re-verified against CC 2.1.202, 2026-07-15 (no map changes; the [2m]
+        # id suffix is now validator-accepted upstream but no [2m] variants
+        # ship in the model tables — add a branch if they appear);
         # re-verify after Claude Code upgrades.
         case "$task_model" in
             # GPT (OpenAI) windows FIRST, ordered most-specific first: mini/chat

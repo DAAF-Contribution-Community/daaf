@@ -127,8 +127,8 @@ MAX_CONTEXT=${MAX_CONTEXT:-200000}
 # /tmp/claude-subagent-model-<session>-<agent> (a model never changes
 # mid-task; subagent-bar.sh shares this cache). Window mapping: [1m]-suffixed
 # and natively-1M models (fable-5, mythos-5, opus-4-7, opus-4-8) → 1,000,000;
-# ALL others → 200,000. Mapping verified against installed CC 2.1.187 binary,
-# 2026-07-05; re-verify after Claude Code upgrades. Same-model subagents (and
+# ALL others → 200,000. Mapping verified against installed CC 2.1.202 binary,
+# 2026-07-15; re-verify after Claude Code upgrades. Same-model subagents (and
 # alternative-provider sessions, where the model ids match the session cache)
 # keep the session window from above. Fail-open: any read failure leaves
 # MAX_CONTEXT untouched.
