@@ -93,6 +93,14 @@ From your `daaf-docker` folder on your host computer, run `bash update_daaf.sh` 
 
 From your `daaf-docker` folder: `bash backup_daaf.sh` (macOS/Linux) or `.\backup_daaf.ps1` (Windows). This copies your entire research directory to a timestamped folder on your computer. The backup folder also contains a few hidden items you can safely ignore — a `.daaf-claude-config/` subfolder holding your Claude Code login and session history, a small `.daaf-permissions` manifest that lets the restore put file permissions back correctly, and (only when your data contains symbolic links) a `.daaf-symlinks` manifest that lets the restore recreate them — which is what lets backups complete cleanly on Windows, where the copy would otherwise stop at the first symbolic link (see the quickstart's *Backing Up Your Work* section for details). You can also use the browser file manager (`bash run_vscode.sh`) to browse and download individual files.
 
+### How do I download a whole folder from the container?
+
+Downloading a single file from the browser editor is easy — right-click it in the explorer sidebar and choose **Download**, in any browser. A whole folder takes one extra step, because browsers don't have a built-in "download this folder" button the way they do for single files.
+
+The reliable, works-everywhere method is to zip the folder first: right-click the folder, choose **Compress → zip**, then right-click the new `.zip` file that appears next to the folder and choose **Download**. You end up with one archive on your computer that you can unzip normally. When compressing, use the **zip**, **tar**, or **tgz** options only — the **bz2** and **7z** choices will fail, because the tools they rely on aren't installed in the container. The **Compress** menu is provided by a built-in extension, so there's nothing to install. (If you don't see a **Compress** option, your container image predates the extension — update DAAF (see above) and rebuild once with `bash rebuild_daaf.sh` or `.\rebuild_daaf.ps1` from your `daaf-docker` folder to pick it up.)
+
+If you use **Chrome or Edge**, there's also a shortcut: right-click a folder and choose **Download** directly. Your browser asks where to save, then copies the files into that location individually (you get the files, not a single zip). This shortcut only works in Chrome and Edge — in Firefox or Safari, use the Compress → zip → Download method above. For a full backup of all your work, the `backup_daaf.sh` / `.ps1` script (see above) is still the simplest option.
+
 ---
 
 ## Working with DAAF

@@ -678,6 +678,7 @@ ARG EXT_GITLENS=17.12.2
 ARG EXT_RAINBOW_CSV=3.24.1
 ARG EXT_YAML=1.22.0
 ARG EXT_GITHUB_THEME=6.3.5
+ARG EXT_VSCODE_ARCHIVE=0.9.6
 RUN VSCODE_ARCH=$(if [ "$(dpkg --print-architecture)" = "amd64" ]; then echo x64; else echo arm64; fi) \
     && curl -fsSL -o /tmp/debugpy.vsix \
       "https://open-vsx.org/api/ms-python/debugpy/linux-${VSCODE_ARCH}/${EXT_MS_DEBUGPY}/file/ms-python.debugpy-${EXT_MS_DEBUGPY}@linux-${VSCODE_ARCH}.vsix" \
@@ -697,6 +698,8 @@ RUN VSCODE_ARCH=$(if [ "$(dpkg --print-architecture)" = "amd64" ]; then echo x64
       "https://open-vsx.org/api/redhat/vscode-yaml/${EXT_YAML}/file/redhat.vscode-yaml-${EXT_YAML}.vsix" \
     && curl -fsSL -o /tmp/github-theme.vsix \
       "https://open-vsx.org/api/GitHub/github-vscode-theme/${EXT_GITHUB_THEME}/file/GitHub.github-vscode-theme-${EXT_GITHUB_THEME}.vsix" \
+    && curl -fsSL -o /tmp/vscode-archive.vsix \
+      "https://open-vsx.org/api/YuTengjing/vscode-archive/${EXT_VSCODE_ARCHIVE}/file/YuTengjing.vscode-archive-${EXT_VSCODE_ARCHIVE}.vsix" \
     && code-server --install-extension /tmp/debugpy.vsix \
     && code-server --install-extension /tmp/python-envs.vsix \
     && code-server --install-extension /tmp/python.vsix \
@@ -706,6 +709,7 @@ RUN VSCODE_ARCH=$(if [ "$(dpkg --print-architecture)" = "amd64" ]; then echo x64
     && code-server --install-extension /tmp/rainbow-csv.vsix \
     && code-server --install-extension /tmp/yaml.vsix \
     && code-server --install-extension /tmp/github-theme.vsix \
+    && code-server --install-extension /tmp/vscode-archive.vsix \
     && rm /tmp/*.vsix
 
 # Set default code-server vscode settings (GitHub theme, sensible defaults)

@@ -489,10 +489,10 @@ bash run_vscode.sh              # macOS / Linux
 
 Then open **http://localhost:2720** in your browser. The password is displayed in the terminal output (default: `daaf`). The script handles starting the container if it isn't already running.
 
-The browser editor comes pre-loaded with extensions for Python and R syntax highlighting, Markdown preview, Git history visualization, and CSV viewing -- everything you need to comfortably browse and review DAAF's output. A few key features worth knowing:
+The browser editor comes pre-loaded with extensions for Python and R syntax highlighting, Markdown preview, Git history visualization, CSV viewing, and folder compression for easy downloads -- everything you need to comfortably browse and review DAAF's output. A few key features worth knowing:
 
 - **Markdown preview:** Right-click any `.md` file and select **"Open Preview"**, or press `Shift+Ctrl+V`, to see the rendered report with proper formatting. This is by far the easiest way to read DAAF's reports and plans.
-- **File management:** Drag and drop files from your computer into the file explorer sidebar to import them into the Docker volume (e.g., a dataset you want to profile). Create, rename, move, and delete files directly.
+- **File management:** Drag and drop files — or whole folders — from your computer into the file explorer sidebar to import them into the Docker volume (e.g., a dataset you want to profile). Create, rename, move, and delete files directly. To get files back out, right-click a file and choose **Download**; for a whole folder, right-click it, choose **Compress → zip**, then download the resulting `.zip` (see the quickstart's *Getting files OUT of the container* section for the full walkthrough).
 - **Git integration:** The Source Control panel (left sidebar) shows uncommitted changes, lets you view diffs, and browse commit history -- invaluable for reviewing what DAAF produced during a session.
 - **Search across files:** `Ctrl+Shift+F` (or `Cmd+Shift+F` on Mac) searches across all files in the project -- great for finding specific variables, scripts, or content.
 

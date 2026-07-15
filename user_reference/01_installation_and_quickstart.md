@@ -346,7 +346,7 @@ bash run_vscode.sh              # macOS / Linux
 .\run_vscode.ps1                # Windows
 ```
 
-This opens a full VS Code editor at the URL [http://localhost:2720](http://localhost:2720) running in your favorite browser where you can explore the entire DAAF file tree, edit files, preview Markdown reports, view/edit Python and R scripts, and track changes with the built-in Git tools. It comes pre-loaded with extensions for Python and R syntax highlighting, Markdown preview, Git history visualization, and CSV viewing. The password is displayed in the terminal when you launch the script (default: `daaf`). A few things worth highlighting:
+This opens a full VS Code editor at the URL [http://localhost:2720](http://localhost:2720) running in your favorite browser where you can explore the entire DAAF file tree, edit files, preview Markdown reports, view/edit Python and R scripts, and track changes with the built-in Git tools. It comes pre-loaded with extensions for Python and R syntax highlighting, Markdown preview, Git history visualization, CSV viewing, and folder compression (for easy downloads — see *Getting files OUT of the container* below). The password is displayed in the terminal when you launch the script (default: `daaf`). A few things worth highlighting:
 
 - **The default access password is "daaf"** but the password can be customized at any time in your environment_settings.txt file. See the environment_settings_example.txt in your daaf-docker folder for instructions there.
 - **Markdown preview:** Right-click any `.md` file and select **"Open Preview"**, or press `Shift+Ctrl+V`, to see rendered Markdown with proper formatting — headers, tables, links, and all. This is the easiest way to read DAAF's reports and plans.
@@ -354,7 +354,15 @@ This opens a full VS Code editor at the URL [http://localhost:2720](http://local
 - **Git integration:** The Source Control panel (left sidebar) shows uncommitted changes, lets you view diffs, and browse commit history — useful for reviewing what DAAF produced during a session.
 - **Search:** Use `Ctrl+Shift+F` (or `Cmd+Shift+F` on Mac) to search across all files — helpful for finding specific variables, scripts, or content across a project.
 
-**Importing files into the Docker volume:** To bring files from your computer into the Docker volume for DAAF to use (e.g., a dataset you want to profile), you can simply drag and drop files into the code editor's file explorer sidebar. You can also download files by right-clicking them and selecting Download.
+**Getting files INTO the container:** To bring files from your computer into the Docker volume for DAAF to use (e.g., a dataset you want to profile), simply drag and drop them from your computer onto the code editor's file explorer sidebar. This works for individual files *and* for whole folders — drop a folder and the editor copies its entire contents (including subfolders) into the location you drop it. Drag-and-drop upload works in Chrome, Edge, and Firefox.
+
+**Getting files OUT of the container:** How you export depends on whether you want a single file or a whole folder:
+
+- **A single file** — right-click the file in the explorer sidebar and choose **Download**. This works in every browser.
+- **A whole folder (works in any browser)** — the most reliable way to export a folder is to zip it first: right-click the folder, choose **Compress → zip**, then right-click the new `.zip` file that appears next to the folder and choose **Download**. You get one tidy archive on your computer that you can unzip normally. When compressing, stick to the **zip**, **tar**, or **tgz** options — the **bz2** and **7z** choices will fail, because the tools they need aren't installed in the container.
+- **A whole folder (Chrome or Edge only, shortcut)** — if you use Chrome or Edge, you can also right-click a folder and choose **Download** directly. Your browser asks you to pick a destination folder on your computer and then copies the files into it individually (you get the files themselves, not a single zip). This shortcut relies on a browser capability that only Chrome and Edge provide, so in Firefox or Safari, use the Compress → zip → Download method above instead.
+
+The **Compress → zip** submenu comes from a built-in extension, so it's ready to use immediately with no setup. (One caveat for long-time users: if your DAAF install predates this extension and you don't see the **Compress** menu, update DAAF and rebuild once — `bash rebuild_daaf.sh` or `.\rebuild_daaf.ps1` from your `daaf-docker` folder — to pick it up.) If you prefer working in the integrated terminal, `zip -r archive.zip myfolder/` (or `tar czf archive.tgz myfolder/`) produces the same kind of archive, which you can then download by right-clicking it.
 
 You can also use the Docker Desktop GUI to explore the DAAF docker volume by navigating to the Volumes panel, clicking the daaf_daaf-data volume, and interacting with the file navigator here.
 

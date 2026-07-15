@@ -16,7 +16,7 @@ All notable changes to DAAF for each release version are documented here, in rev
 
 ### Data Analyst Augmentation Framework -- Host Tooling and Update Reliability
 
-A maintenance release focused on the host-side experience: a native Windows Control Panel, a more self-reliant updater, and the ability to run more than one DAAF instance side by side. Most of these changes live in the helper scripts that run on your own computer, not inside the container, so they improve how you install, launch, and maintain DAAF rather than how it does research.
+A maintenance release focused on the host-side experience: a native Windows Control Panel, a more self-reliant updater, and the ability to run more than one DAAF instance side by side. Most of these changes live in the helper scripts that run on your own computer, not inside the container, so they improve how you install, launch, and maintain DAAF rather than how it does research. The one in-container improvement is to the browser editor, which gains an easier way to download whole folders (see below).
 
 ### Important: Updating from v2.1.x Requires Running the Updater Twice
 
@@ -48,6 +48,10 @@ The `update_daaf` script continues to get more resilient:
 ### Multi-Instance Support
 
 You can now run more than one DAAF instance on the same machine without them colliding. New `DAAF_PROJECT_NAME` and `DAAF_PORT_*` settings in `environment_settings.txt` let each instance use its own container name and its own published host ports (Marimo, log viewer, VS Code). The container name is derived from your compose project rather than hardcoded, so the helper scripts target the right container automatically.
+
+### Browser Editor: Easier Folder Downloads
+
+The browser code editor now ships with a tenth extension, [vscode-archive](https://open-vsx.org/extension/YuTengjing/vscode-archive), which adds a right-click **Compress** menu in the file explorer. This closes a long-standing gap: the editor's built-in "Download..." action only handles whole folders in Chrome and Edge (and even there copies files one by one rather than producing an archive). Now, in any browser, you can right-click a folder, compress it to a single `.zip`, and download that — making it much easier to get your research files out of the container. The Installation and Quickstart guide has a new walkthrough of getting files into and out of the container, and the technical FAQ has a new entry on downloading whole folders.
 
 ---
 
