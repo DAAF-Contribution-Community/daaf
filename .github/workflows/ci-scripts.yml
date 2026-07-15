@@ -235,8 +235,8 @@ jobs:
   # unresolved variable references, and control flow errors.
   #
   # Bash script coverage: install, backup, rebuild, update, migrate,
-  # restore_from_backup, view_logs, view_notebooks, run_vscode, run_daaf, and
-  # daaf.sh (the Control Panel). daaf.sh is the interactive menu entry point and
+  # restore_from_backup, view_logs, view_notebooks, view_quarto, run_vscode,
+  # run_daaf, and daaf.sh (the Control Panel). daaf.sh is the interactive menu entry point and
   # runs a persistent loop, so on macOS it is driven separately (see the
   # macOS-only step below) with `q` on stdin and a seeded backup dir — this
   # forces the gather_status last-backup code path that was historically fatal
@@ -323,6 +323,12 @@ jobs:
           out=$(DAAF_DRY_RUN=1 DAAF_NESTED=1 bash scripts/host/view_notebooks.sh 2>&1) || { echo "FAILED: view_notebooks.sh (exit code $?)"; failed=1; }
           assert_contains "view_notebooks.sh" "$out" "DAAF container is running."
           assert_contains "view_notebooks.sh" "$out" "Opening DAAF Notebook Browser"
+
+          # --- view_quarto.sh ---
+          echo "=== Smoke testing: scripts/host/view_quarto.sh ==="
+          out=$(DAAF_DRY_RUN=1 DAAF_NESTED=1 bash scripts/host/view_quarto.sh 2>&1) || { echo "FAILED: view_quarto.sh (exit code $?)"; failed=1; }
+          assert_contains "view_quarto.sh" "$out" "DAAF container is running."
+          assert_contains "view_quarto.sh" "$out" "Discovering Quarto notebooks under research/"
 
           # --- run_vscode.sh ---
           echo "=== Smoke testing: scripts/host/run_vscode.sh ==="
@@ -495,6 +501,11 @@ jobs:
             "Opening DAAF Notebook Browser"
           )
 
+          Invoke-SmokeTest "scripts/host/view_quarto.ps1" @(
+            "DAAF container is running.",
+            "Discovering Quarto notebooks under research/"
+          )
+
           Invoke-SmokeTest "scripts/host/run_vscode.ps1" @(
             "DAAF container is running.",
             "Opening DAAF Code Browser"
@@ -619,6 +630,11 @@ jobs:
             "Opening DAAF Notebook Browser"
           )
 
+          Invoke-SmokeTest "scripts/host/view_quarto.ps1" @(
+            "DAAF container is running.",
+            "Discovering Quarto notebooks under research/"
+          )
+
           Invoke-SmokeTest "scripts/host/run_vscode.ps1" @(
             "DAAF container is running.",
             "Opening DAAF Code Browser"
@@ -715,7 +731,7 @@ jobs:
         run: |
           failed=0
           for f in install backup_daaf rebuild_daaf update_daaf migrate_daaf \
-                   restore_from_backup view_logs view_notebooks run_vscode run_daaf; do
+                   restore_from_backup view_logs view_notebooks view_quarto run_vscode run_daaf; do
             echo "=== Bash 3.2 smoke: scripts/host/${f}.sh ==="
             if ! DAAF_DRY_RUN=1 DAAF_NESTED=1 bash "scripts/host/${f}.sh" >/dev/null 2>&1; then
               echo "FAILED: ${f}.sh (exit code $?) under Bash 3.2"
