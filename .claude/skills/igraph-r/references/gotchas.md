@@ -78,12 +78,12 @@ nonsensical partition, on a directed graph.
 **Cause:** both functions require undirected input. The official docs state
 plainly: *"The input graph. It must be undirected."*
 
-**Fix:** convert with `as.undirected()` and document the collapse choice as a
+**Fix:** convert with `as_undirected()` and document the collapse choice as a
 modeling decision:
 
 ```r
 # INTENT: Louvain requires undirected; collapse reciprocal directed edges to one
-g_undir <- as.undirected(g, mode = "collapse")   # or "each" / "mutual"
+g_undir <- as_undirected(g, mode = "collapse")   # or "each" / "mutual"
 set.seed(20260715); comm <- cluster_louvain(g_undir, weights = NA)
 ```
 

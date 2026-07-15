@@ -180,7 +180,7 @@ Centrality?
 Community detection?
 +-- Louvain / Leiden (fast modularity) -> ./references/community-detection.md (set.seed first!)
 +-- Walktrap (random-walk based) -> ./references/community-detection.md
-+-- Directed graph -> convert with as.undirected() first -> ./references/community-detection.md
++-- Directed graph -> convert with as_undirected() first -> ./references/community-detection.md
 +-- Reproducible results across runs -> ./references/community-detection.md (seed discipline)
 +-- Modularity / evaluating a partition -> ./references/community-detection.md
 ```
@@ -311,7 +311,7 @@ library(ggplot2)     # themes/scales for ggraph
 | Connected components | `components(g)` | igraph |
 | Is connected? | `is_connected(g)` | igraph |
 | Shortest path | `shortest_paths(g, from, to)` | igraph |
-| Convert to undirected | `as.undirected(g, mode = "collapse")` | igraph |
+| Convert to undirected | `as_undirected(g, mode = "collapse")` | igraph |
 | Bipartite projection | `bipartite_projection(g)` | igraph |
 | Static plot | `set.seed(s); ggraph(g, layout = "fr") + geom_edge_link() + geom_node_point()` | ggraph |
 

@@ -109,14 +109,14 @@ stopifnot(length(membership(comm_leiden)) == gorder(g))
 cat("  Leiden communities:", length(comm_leiden), "\n")
 cat("  PASS\n\n")
 
-# --- Test 8: Directed graph -> as.undirected() conversion ---
+# --- Test 8: Directed graph -> as_undirected() conversion ---
 cat("Test 8: Directed -> undirected conversion for community detection\n")
 dg <- as_tbl_graph(
   tibble::tibble(from = c("A","B","C","A","D"), to = c("B","C","A","C","A")),
   directed = TRUE
 )
 stopifnot(is_directed(dg))
-dg_undir <- as.undirected(dg, mode = "collapse")   # collapse reciprocal edges
+dg_undir <- as_undirected(dg, mode = "collapse")   # collapse reciprocal edges
 stopifnot(!is_directed(dg_undir))
 set.seed(SEED)
 comm_dg <- cluster_louvain(dg_undir, weights = NA)  # now valid (undirected)

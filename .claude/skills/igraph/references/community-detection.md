@@ -33,23 +33,29 @@ random.seed(0)   # BEFORE any community-detection (or stochastic-layout) call
 
 Leiden and Louvain are formulated for **undirected** graphs. The R igraph
 documentation states plainly that the input "must be undirected" for both
-`cluster_leiden` and `cluster_louvain`. On the Python side, the directed
-behavior of `community_leiden` / `community_multilevel` was **not verified** for
-1.0.0 (the API page did not yield a definitive answer). Therefore:
+`cluster_leiden` and `cluster_louvain`. On the Python side, the 1.0.0 behavior
+was **verified by runtime probe** (2026-07-15, directed 6-node test graph) and
+is **asymmetric**:
 
-- **Safe, portable path:** convert directed graphs to undirected with
+- `community_multilevel` (Louvain) on a directed graph **raises**
+  `ValueError: input graph must be undirected` — it fails loudly, like R.
+- `community_leiden` on a directed graph **silently accepts** the input and
+  returns a partition — no error, no warning. Whether and how edge direction
+  influences the result is not documented, so a silently-accepted directed
+  partition is **not trustworthy**.
+
+The silent-acceptance case makes explicit conversion mandatory discipline for
+Leiden in particular — the API will not catch the mistake for you:
+
+- **Required path:** convert directed graphs to undirected with
   `Graph.as_undirected()` before community detection, and document the collapse
   semantics.
-- **Do not assume** python-igraph silently handles directed input correctly for
-  these algorithms. If you have a specific reason to run community detection
-  directly on a directed graph, treat it as **verify-at-runtime**: test on a
-  small known case and confirm the behavior before trusting it.
 
 ```python
 # INTENT: guarantee undirected input for community detection.
-# REASONING: Leiden/Louvain are undirected algorithms; the R docs require
-#   undirected input and the Python directed behavior is unverified for 1.0.0.
-#   Converting explicitly is the safe, portable path.
+# REASONING: Leiden/Louvain are undirected algorithms. Louvain raises on
+#   directed input, but community_leiden silently accepts it (observed on
+#   igraph 1.0.0) — explicit conversion is the only reliable guardrail.
 # ASSUMES: summing reciprocal-edge weights is the right collapse for this network.
 if g.is_directed():
     g_u = g.as_undirected(mode="collapse", combine_edges={"weight": "sum"})

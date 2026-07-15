@@ -40,18 +40,23 @@ The official `cluster_leiden()` and `cluster_louvain()` docs both state:
 > "The input graph. **It must be undirected.**"
 
 A directed graph will error or silently mishandle. Convert first with
-`as.undirected()`, and document the collapse strategy as a modeling choice:
+`as_undirected()`, and document the collapse strategy as a modeling choice:
 
 ```r
 # INTENT: Louvain requires undirected input; collapse directed edges
 # REASONING: for community structure we treat A->B and B->A as one mutual tie
 # ASSUMES: direction is not analytically meaningful for the grouping question
-g_undir <- as.undirected(g, mode = "collapse")   # merge reciprocal edges into one
+g_undir <- as_undirected(g, mode = "collapse")   # merge reciprocal edges into one
 set.seed(SEED)
 comm <- cluster_louvain(g_undir, weights = NA)
 ```
 
-`as.undirected()` modes:
+> **Naming note (observed at runtime, igraph 2.2.3):** the dotted spelling
+> `as.undirected()` was deprecated in igraph 2.1.0 and emits a deprecation
+> warning — use the underscore spelling `as_undirected()`. Older documentation
+> and tutorials still show the dotted form.
+
+`as_undirected()` modes:
 
 | Mode | Behavior | When |
 |------|----------|------|
@@ -181,7 +186,7 @@ SEED <- 20260715
 # REASONING: Louvain requires undirected; collapse reciprocal ties
 # ASSUMES: no 'weight' attribute (verified); direction not meaningful for grouping
 stopifnot(!("weight" %in% edge_attr_names(g)))
-g_undir <- if (is_directed(g)) as.undirected(g, mode = "collapse") else g
+g_undir <- if (is_directed(g)) as_undirected(g, mode = "collapse") else g
 
 set.seed(SEED)   # stochastic — seed for reproducibility
 comm <- cluster_louvain(g_undir, weights = NA)

@@ -53,7 +53,7 @@ Before any computation, four modeling decisions determine what every downstream 
 
 Directedness is not cosmetic. In-degree (who is pointed *to*) and out-degree (who points *out*) answer different questions — a highly-cited paper has high in-degree, a review paper high out-degree. When in doubt about a metric under directedness, confirm the `mode` argument (`"in"`, `"out"`, `"all"`) the library applies.
 
-**Community detection is undirected-only in the common igraph algorithms.** In R, `cluster_leiden()` and `cluster_louvain()` require an undirected graph and will error or mishandle directed input — convert explicitly (`as.undirected()`) and decide *how* to collapse reciprocal/asymmetric ties before doing so. In Python, treat Leiden/Louvain as undirected by default and convert unless you have verified directed support at runtime.
+**Community detection is undirected-only in the common igraph algorithms.** In R, `cluster_leiden()` and `cluster_louvain()` require an undirected graph and will error or mishandle directed input — convert explicitly (`as_undirected()`) and decide *how* to collapse reciprocal/asymmetric ties before doing so. In Python (verified on igraph 1.0.0), Louvain raises an error on directed input but **Leiden silently accepts it** — no warning, undocumented semantics — so explicit conversion before community detection is mandatory discipline in both languages.
 
 ### Weights — and the Distance/Strength Trap
 

@@ -10,11 +10,15 @@ error — so they warrant explicit guardrails.
 `community_leiden` / `community_multilevel` on a directed graph.
 
 **Cause:** these algorithms are formulated for **undirected** graphs. The R
-igraph docs state the input "must be undirected." The Python-side directed
-behavior for 1.0.0 was **not verified** — do not assume it is handled correctly.
+igraph docs state the input "must be undirected." Python 1.0.0 behavior
+(verified by runtime probe, 2026-07-15) is asymmetric: `community_multilevel`
+**raises** `ValueError: input graph must be undirected`, but `community_leiden`
+**silently accepts** directed input with no error or warning — the most
+dangerous failure mode, because nothing tells you the partition may not mean
+what you think it means.
 
-**Fix:** convert explicitly before detecting communities, and document the
-collapse semantics:
+**Fix:** convert explicitly before detecting communities — the API will not
+reliably catch directed input for you — and document the collapse semantics:
 
 ```python
 if g.is_directed():
@@ -23,9 +27,7 @@ else:
     g_u = g
 ```
 
-If you have a specific need to run community detection on directed structure,
-treat it as **verify-at-runtime**: test on a small known example and confirm the
-behavior before trusting it. See `community-detection.md`.
+See `community-detection.md` for the observed per-algorithm behavior.
 
 ## 2. Non-Reproducible Results (Missing Seed)
 
