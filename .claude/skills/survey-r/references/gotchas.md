@@ -392,20 +392,21 @@ languages.
 |---------|---------|-----------|
 | Design object | `svydesign()` (one call) | `svy.Design()` + `svy.Sample()` (two objects) |
 | Variable specification | Formula (`~var`) | String (`"var"`) |
-| Categorical in regression | `factor(var)` in formula | `svy.Cat("var")` |
+| Categorical in regression | `factor(var)` in formula | `svy.Cat("var")` (required for strings in svy 0.19.0) |
 | Domain estimation | `svyby(~var, ~group, des, svymean)` | `sample.estimation.mean("var", by="group")` |
-| Subsetting | `subset(des, condition)` | Pre-filter data (limited in v0.13.0) |
+| Subsetting | `subset(des, condition)` | `where=` (polars expr) for domain estimation/regression in svy 0.19.0 |
 | Quasi-families | `quasibinomial()`, `quasipoisson()` | Handled internally by `family="binomial"` |
 | Ordinal logistic | `svyolr()` | Not available |
 | Cox PH | `svycoxph()` | Not available |
-| FPC | Fully functional | Non-functional in v0.13.0 |
+| FPC | Fully functional | Functional via `pop_size=` (svy 0.19.0) |
 | Lonely PSU | `options(survey.lonely.psu = ...)` | `sample.singleton.*()` methods |
 | Data format | Base R data.frame | Polars DataFrame |
-| Replicate weights | `svrepdesign()` | `svy.RepWeights()` + `svy.Design()` |
+| Replicate weights | `svrepdesign()` | `svy.RepWeights()` metadata + `sample.weighting.create_*_wgts()` (enum-vs-string method convention unverified at svy 0.19.0) |
 
 ### Key Advantage: R survey Has More Model Types
 
 R's survey package supports ordinal logistic (`svyolr`), Cox PH (`svycoxph`),
-and quasi-families natively. Python's svy is limited to gaussian, binomial, and
-poisson. For unsupported models in Python, the svy skill recommends using rpy2 to
-call R's survey package -- which is exactly what this skill documents.
+and quasi-families natively. Python's svy is limited to gaussian, binomial,
+poisson, and gamma. For unsupported models in Python, the svy skill recommends
+using rpy2 to call R's survey package -- which is exactly what this skill
+documents.

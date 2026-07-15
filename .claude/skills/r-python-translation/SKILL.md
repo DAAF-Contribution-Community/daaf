@@ -175,7 +175,7 @@ Which R package?
 | statsmodels MixedLM | lme4 | Medium | Separate `groups=`/`re_formula=` arguments vs `(1 \| group)` in formula |
 | scikit-learn | tidymodels / caret | Medium | Imperative fit/predict vs declarative recipe pipeline |
 | geopandas | sf + terra | Medium | shapely geometries vs sfc; different CRS handling |
-| svy | survey (Lumley) | Medium | Limited GLM family coverage (gaussian/binomial/Poisson only) |
+| svy | survey (Lumley) | Medium | Limited GLM family coverage (gaussian/binomial/Poisson/gamma) |
 | marimo | Quarto / RMarkdown | Medium | Reactive cells vs knit-based linear execution |
 
 **Fidelity key:** High = near-direct translation, same mental model. Medium = same capability, different API patterns. Low = fundamentally different paradigm requiring conceptual remapping.
@@ -189,7 +189,7 @@ files note the change.
 
 | Python Package | DAAF Version | R Equivalent | R Version (CRAN) |
 |---|---|---|---|
-| polars | 1.38.1 | dplyr + tidyr + data.table | dplyr 1.2.0, tidyr 1.3.2, data.table 1.18.2 |
+| polars | 1.39.3 | dplyr + tidyr + data.table | dplyr 1.2.0, tidyr 1.3.2, data.table 1.18.2 |
 | pyfixest | 0.40.0 | fixest | 0.14.0 |
 | plotnine | 0.15.3 | ggplot2 | 4.0.2 |
 | plotly | 6.5.2 | plotly (R) | 4.12.0 |
@@ -198,7 +198,7 @@ files note the change.
 | statsmodels (MixedLM) | 0.14.6 | lme4 | 2.0-1 |
 | scikit-learn | 1.8.0 | tidymodels / caret | tidymodels 1.4.1, caret 7.0-1 |
 | geopandas | 1.1.3 | sf + terra | sf 1.1-0, terra 1.9-11 |
-| svy | 0.13.0 | survey | survey 4.5 |
+| svy | 0.19.0 | survey | survey 4.5 |
 | marginaleffects | 0.5.0 | marginaleffects (R) | 0.32.0 |
 | rdrobust | 1.3.0 | rdrobust (R) | 3.0.0 |
 | marimo | 0.19.11 | Quarto / RMarkdown | Quarto 1.7.29 |

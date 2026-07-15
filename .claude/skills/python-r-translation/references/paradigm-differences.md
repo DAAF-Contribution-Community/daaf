@@ -9,7 +9,7 @@ explains what R does and maps it to the Python concept you already know.
 
 > **Versions referenced:**
 > R: R 4.5.3
-> Python: Python 3.12, polars 1.38.1
+> Python: Python 3.12, polars 1.39.3
 > See SKILL.md § Library Versions for the complete version table.
 
 ## Contents

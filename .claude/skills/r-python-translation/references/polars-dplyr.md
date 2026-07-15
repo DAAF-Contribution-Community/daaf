@@ -15,7 +15,7 @@ API. R users coming from dplyr will find that most operations have a direct
 equivalent, but the grammar is expression-first rather than verb-first.
 
 > **Versions referenced:**
-> Python: polars 1.38.1
+> Python: polars 1.39.3
 > R: dplyr 1.2.0, tidyr 1.3.2, stringr 1.6.0, lubridate 1.9.5, forcats 1.0.1, data.table 1.18.2
 > See SKILL.md § Library Versions for the complete version table.
 

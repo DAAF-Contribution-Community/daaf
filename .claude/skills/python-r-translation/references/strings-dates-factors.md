@@ -10,7 +10,7 @@ date/time, and categorical operations. The perspective is: **you know polars
 
 > **Versions referenced:**
 > R: stringr 1.6.0, lubridate 1.9.5, forcats 1.0.1, data.table 1.18.2
-> Python: polars 1.38.1
+> Python: polars 1.39.3
 > See SKILL.md § Library Versions for the complete version table.
 
 ---

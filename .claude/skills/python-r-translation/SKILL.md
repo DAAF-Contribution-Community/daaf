@@ -164,7 +164,7 @@ What went wrong?
 | lme4 | statsmodels MixedLM | Medium | `(1 \| group)` in formula vs separate `groups=`/`re_formula=` arguments |
 | tidymodels / caret | scikit-learn | Medium | Declarative recipe pipeline vs imperative fit/predict |
 | sf + terra | geopandas | Medium | st_*() functions vs GeoDataFrame methods; different CRS handling |
-| survey (Lumley) | svy | Medium | Full GLM family coverage vs limited (gaussian/binomial/Poisson) |
+| survey (Lumley) | svy | Medium | Full GLM family coverage vs limited (gaussian/binomial/Poisson/gamma) |
 | Quarto / RMarkdown | marimo | Medium | Knit-based linear execution vs reactive cells |
 
 **Fidelity key:** High = near-direct translation, same mental model. Medium = same capability, different API patterns. Low = fundamentally different paradigm requiring conceptual remapping.
@@ -178,7 +178,7 @@ reference files note the change.
 
 | R Package | R Version (CRAN) | Python Equivalent | DAAF Version |
 |---|---|---|---|
-| dplyr + tidyr + data.table | dplyr 1.2.0, tidyr 1.3.2, data.table 1.18.2 | polars | 1.38.1 |
+| dplyr + tidyr + data.table | dplyr 1.2.0, tidyr 1.3.2, data.table 1.18.2 | polars | 1.39.3 |
 | fixest | 0.14.0 | pyfixest | 0.40.0 |
 | ggplot2 | 4.0.2 | plotnine | 0.15.3 |
 | plotly (R) | 4.12.0 | plotly | 6.5.2 |
@@ -187,7 +187,7 @@ reference files note the change.
 | lme4 | 2.0-1 | statsmodels MixedLM | 0.14.6 |
 | tidymodels / caret | tidymodels 1.4.1, caret 7.0-1 | scikit-learn | 1.8.0 |
 | sf + terra | sf 1.1-0, terra 1.9-11 | geopandas | 1.1.3 |
-| survey | survey 4.5 | svy | 0.13.0 |
+| survey | survey 4.5 | svy | 0.19.0 |
 | marginaleffects (R) | 0.32.0 | marginaleffects | 0.5.0 |
 | rdrobust (R) | 3.0.0 | rdrobust | 1.3.0 |
 | Quarto / RMarkdown | Quarto 1.7.29 | marimo | 0.19.11 |

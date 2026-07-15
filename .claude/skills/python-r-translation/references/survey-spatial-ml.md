@@ -10,7 +10,7 @@ For full R-side API details, load the dedicated skill: `survey-r`, `sf-terra`, o
 
 > **Versions referenced:**
 > R: survey 4.5, sf 1.1-0, terra 1.9-11, tidymodels 1.4.1
-> Python: svy 0.13.0, geopandas 1.1.3, scikit-learn 1.8.0
+> Python: svy 0.19.0 (svy-rs 0.10.0, svy-io 0.1.1), geopandas 1.1.3, scikit-learn 1.8.0
 > See SKILL.md § Library Versions for the complete version table.
 
 ---
@@ -35,7 +35,7 @@ des <- svydesign(
 |-------------|----------------|
 | Formula: `~varname` | String: `"varname"` |
 | Single `svydesign()` call | Two-step: `Design()` then `Sample()` |
-| `fpc = ~pop_size` | `fpc="pop_size"` |
+| `fpc = ~pop_size` | `pop_size="pop_size"` (no `fpc=` in svy 0.19.0; FPC now functional) |
 | R data.frame | Polars DataFrame |
 
 ### Estimation
@@ -47,6 +47,10 @@ des <- svydesign(
 | `svyby(~x, ~group, design, svymean)` | `sample.estimation.mean("x", by="group")` |
 | `svyratio(~num, ~denom, design)` | `sample.estimation.ratio(y="num", x="denom")` |
 
+Each estimation call returns an `Estimate`; `.to_polars()` gives columns
+`est/se/lci/uci/cv` (svy 0.19.0). A list argument (`mean(["v1", "v2"])`) returns a
+`list[Estimate]`, one per variable — iterate it rather than expecting a stacked frame.
+
 ### Regression
 
 | R (`survey`) | Python (`svy`) |
@@ -54,10 +58,15 @@ des <- svydesign(
 | `svyglm(y ~ x1 + x2, design, family=gaussian())` | `sample.glm.fit(y="y", x=["x1", "x2"], family="gaussian")` |
 | `svyglm(y ~ x1, design, family=binomial())` | `sample.glm.fit(y="y", x=["x1"], family="binomial")` |
 | `svyglm(y ~ factor(x), design)` | `sample.glm.fit(y="y", x=[svy.Cat("x")])` |
+| `svyglm(y ~ x, design, family=Gamma())` | `sample.glm.fit(y="y", x=["x"], family="gamma")` |
 | `svyolr(y ~ x, design)` | **NOT AVAILABLE** (use rpy2 bridge) |
 | `svycoxph(Surv(t,d) ~ x, design)` | **NOT AVAILABLE** (use rpy2 bridge) |
 
-R's `survey` covers substantially more model families than Python's `svy`.
+R's `survey` covers substantially more model families than Python's `svy` (svy adds
+gamma at 0.19.0 but still lacks ordinal logistic, Cox PH, negative binomial). In svy
+0.19.0, `svy.Cat()` is **required** for string/categorical predictors — a raw string
+column raises a strict-cast `ValueError`. `glm.fit()` returns a `GLM`; call
+`.to_polars()` for the coefficient table.
 
 ### Replicate Weights
 

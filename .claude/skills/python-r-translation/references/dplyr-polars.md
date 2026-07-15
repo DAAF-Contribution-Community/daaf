@@ -16,7 +16,7 @@ natural language but relies on non-standard evaluation.
 
 > **Versions referenced:**
 > R: dplyr 1.2.0, tidyr 1.3.2
-> Python: polars 1.38.1
+> Python: polars 1.39.3
 > See SKILL.md § Library Versions for the complete version table.
 
 ---

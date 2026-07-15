@@ -220,13 +220,13 @@ versions, the reference files note the change.
 
 | Python Package | DAAF Version | Stata Equivalent | Stata Version |
 |---|---|---|---|
-| polars | 1.38.1 | Data management commands (gen, replace, merge, etc.) | Stata 18 |
+| polars | 1.39.3 | Data management commands (gen, replace, merge, etc.) | Stata 18 |
 | pyfixest | 0.40.0 | regress, areg, reghdfe, ivreghdfe, ppmlhdfe, esttab | Stata 18 + reghdfe 6.x |
 | statsmodels | 0.14.6 | regress, logit, probit, poisson, nbreg, glm | Stata 18 |
 | linearmodels | 7.0 | xtreg, sureg, ivregress | Stata 18 |
 | plotnine | 0.15.3 | graph twoway, graph bar, graph box, histogram | Stata 18 |
 | plotly | 6.5.2 | (no direct Stata equivalent; interactive charts) | N/A |
-| svy | 0.13.0 | svyset, svy: prefix commands | Stata 18 |
+| svy | 0.19.0 | svyset, svy: prefix commands | Stata 18 |
 | marginaleffects | 0.5.0 | margins, marginsplot, lincom, nlcom | Stata 18 |
 | rdrobust | 1.3.0 | rdrobust, rdplot, rdbwselect | rdrobust (SSC) |
 | binsreg | not pre-installed | binsreg, binscatter | binsreg (SSC) |

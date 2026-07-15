@@ -8,7 +8,7 @@ This reference focuses on the DAAF Python stack: polars for data manipulation,
 pyfixest/statsmodels for modeling, and plotnine for visualization.
 
 > **Versions referenced:**
-> Python: polars 1.38.1, pyfixest 0.40.0, statsmodels 0.14.6
+> Python: polars 1.39.3, pyfixest 0.40.0, statsmodels 0.14.6
 > Stata: Stata 18
 > See SKILL.md -- Library Versions for the complete version table.
 

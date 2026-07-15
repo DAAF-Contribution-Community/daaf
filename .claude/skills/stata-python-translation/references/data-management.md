@@ -12,7 +12,7 @@ but the grammar requires (a) naming the DataFrame, (b) wrapping column reference
 in `pl.col()`, and (c) reassigning the result (`df = df.operation(...)`).
 
 > **Versions referenced:**
-> Python: polars 1.38.1, pyreadstat 1.2.x
+> Python: polars 1.39.3, pyreadstat 1.2.x
 > See SKILL.md for the complete version table.
 
 > **Sources:** Sullivan, "Stata to Python Equivalents" (danielmsullivan.com, accessed

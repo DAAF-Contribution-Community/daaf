@@ -227,8 +227,8 @@ This is the same syntax used by `lm()` and `glm()`.
 | `svydesign(ids = ~psu, strata = ~strat, weights = ~wt, data = df)` | `svy.Design(psu="psu", stratum="strat", wgt="wt")` + `svy.Sample(data=df, design=design)` | R combines in one call |
 | `svyby(~var, ~group, des, svymean)` | `sample.estimation.mean("var", by="group")` | Domain estimation |
 | `svyglm(y ~ x1 + x2, des)` | `sample.glm.fit(y="y", x=["x1", "x2"])` | R formula vs. Python lists |
-| `subset(des, age >= 18)` | Pre-filter data (limited in svy 0.13.0) | R preserves design structure |
-| `factor(var)` in formula | `svy.Cat("var")` | Categorical specification |
+| `subset(des, age >= 18)` | `where=pl.col("age") >= 18` on estimation/`glm.fit` (svy 0.19.0; estimation domain variance verified vs R `svyby`, `glm.fit` `where=` domain regression not yet cross-validated) | R preserves design structure |
+| `factor(var)` in formula | `svy.Cat("var")` (required for string predictors in svy 0.19.0) | Categorical specification |
 
 ---
 

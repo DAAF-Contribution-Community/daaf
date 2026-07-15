@@ -85,15 +85,52 @@ for test_script in "$SMOKE_DIR"/smoke_*.R; do
     echo ""
 done
 
-# Python import-smoke tests. These are single-version .py files (not R skill
-# smokes), so no revision handling applies. Invoked via python3 directly — the
-# file-first run_with_capture.sh wrapper is for pipeline audit-trail scripts,
-# not for this test-harness invocation. The glob may not match any files; the
-# nullglob guard below prevents running the literal pattern in that case.
+# Python import-smoke tests. Invoked via python3 directly — the file-first
+# run_with_capture.sh wrapper is for pipeline audit-trail scripts, not for this
+# test-harness invocation. Revision handling mirrors the .R loop above: smoke_*.py
+# files also follow immutable versioning (a failed original keeps its appended
+# execution log; fixes go into a new _a/_b copy), so for any smoke_X.py family only
+# the highest revision runs and superseded copies are skipped. The glob may not
+# match any files; the nullglob guard below prevents running the literal pattern in
+# that case.
 shopt -s nullglob
 for py_script in "$SMOKE_DIR"/smoke_*.py; do
-    py_name=$(basename "$py_script" .py | sed 's/smoke_//')
-    echo "--- Running smoke test: $py_name (python) ---"
+    basename_noext=$(basename "$py_script" .py)
+
+    # Revision detection: a file is a revision only if it ends in _[a-z] AND
+    # the presumed original (with that suffix stripped) actually exists.
+    # This prevents skill names containing _r (plotly_r, survey_r) from being
+    # misidentified as revisions.
+    is_revision=false
+    if [[ "$basename_noext" =~ _[a-z]$ ]]; then
+        base="${basename_noext%_[a-z]}"
+        suffix="${basename_noext##*_}"
+        if [ -f "$SMOKE_DIR/${base}.py" ]; then
+            is_revision=true
+        fi
+    fi
+
+    if [ "$is_revision" = true ]; then
+        # This is a revision — check if a later revision supersedes it
+        next_suffix=$(echo "$suffix" | tr 'a-y' 'b-z')
+        if [ -f "$SMOKE_DIR/${base}_${next_suffix}.py" ]; then
+            echo "--- Skipping $basename_noext (superseded by ${base}_${next_suffix}) ---"
+            continue
+        fi
+        py_name=$(echo "$base" | sed 's/smoke_//')
+        echo "--- Running smoke test: $py_name (revision $suffix) (python) ---"
+    else
+        # Original or non-revision file — skip if a revision exists
+        for rev in "$SMOKE_DIR/${basename_noext}_"[a-z].py; do
+            if [ -f "$rev" ]; then
+                echo "--- Skipping $basename_noext (superseded by $(basename "$rev" .py)) ---"
+                continue 2
+            fi
+        done
+        py_name=$(echo "$basename_noext" | sed 's/smoke_//')
+        echo "--- Running smoke test: $py_name (python) ---"
+    fi
+
     if python3 "$py_script" 2>&1 | tail -5; then
         PASSED=$((PASSED + 1))
         echo "RESULT: PASS"

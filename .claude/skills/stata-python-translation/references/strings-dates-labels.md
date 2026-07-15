@@ -13,7 +13,7 @@ integers with display formatting; Python uses typed Date/Datetime objects. Stata
 value label system has no direct Python equivalent and requires explicit workarounds.
 
 > **Versions referenced:**
-> Python: polars 1.38.1, pyreadstat 1.2.x
+> Python: polars 1.39.3, pyreadstat 1.2.x
 > See SKILL.md for the complete version table.
 
 > **Sources:** Sullivan, "Stata to Python Equivalents" (danielmsullivan.com, accessed
