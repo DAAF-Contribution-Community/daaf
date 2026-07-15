@@ -387,7 +387,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN uv pip install --system \
     numpy==2.4.2 \
     pandas==3.0.0 \
-    polars==1.39.1 \
+    polars==1.39.3 \
     scipy==1.17.0 \
     openpyxl==3.1.5 \
     fastexcel==0.19.0 \
@@ -411,7 +411,9 @@ RUN uv pip install --system \
 # NOTE: lifelines excluded — latest (0.30.3) requires pandas<3.0, incompatible with pandas==3.0.0
 # NOTE: svy-rs/svy-io are svy's own runtime deps, pinned explicitly for reproducibility
 #       (svy 0.19.0 declares svy-rs>=0.10.0,<0.11.0 and svy-io>=0.1.1,<0.2.0;
-#       svy-rs 0.10.0 sets the effective polars floor of >=1.39.1 — see polars pin above)
+#       svy-rs 0.10.0 sets the effective polars floor of >=1.39.1 — see polars pin above;
+#       polars is pinned 1.39.3 because 1.39.1 was never published to PyPI and
+#       1.39.2 is yanked there — 1.39.3 is the patch-identical stable republication)
 RUN uv pip install --system \
     linearmodels==7.0 \
     rdrobust==1.3.0 \
