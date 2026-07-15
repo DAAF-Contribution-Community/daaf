@@ -119,6 +119,31 @@ jobs:
         working-directory: daaf-docker
         run: bash run_daaf.sh echo "DAAF is working"
 
+      # --- Seed pathological symlinks into the data volume (round-trip fixtures) ---
+      # These exercise the backup STAGE_PROGRAM strip+manifest and the restore
+      # SYMLINK_REPLAY across a REAL backup->restore cycle. Names/targets chosen to
+      # stress every branch: a space in the name, a unicode name, a broken target,
+      # an absolute target, and a relative target. NONE contain a tab or newline
+      # (those are the gate-trip cases, tested separately in Group C).
+      - name: Seed symlink fixtures for round-trip test
+        working-directory: daaf-docker
+        run: |
+          docker compose exec -T daaf-docker bash -c '
+            set -e
+            d=/daaf/research/_ci_symlink_fixtures
+            mkdir -p "$d/realdir"
+            echo content > "$d/realfile"
+            ln -sf realfile           "$d/rel link"          # space in NAME, relative target
+            ln -sf realfile           "$d/uniçode-límk"      # unicode name
+            ln -sf /nonexistent/target "$d/broken"           # broken (dangling) target
+            ln -sf /daaf/CLAUDE.md    "$d/abs_link"          # absolute target
+            ln -sf ../realfile        "$d/realdir/updir"     # relative w/ traversal
+            # Record the canonical (name -> target) set for post-restore comparison.
+            find "$d" -type l | sort > /daaf/research/_ci_link_names.txt
+            find "$d" -type l -exec readlink {} \; | sort > /daaf/research/_ci_link_targets.txt
+            echo "Seeded symlinks:"; cat /daaf/research/_ci_link_names.txt
+          '
+
       # --- Backup ---
       - name: Create backup via backup_daaf.sh
         working-directory: daaf-docker
@@ -155,6 +180,32 @@ jobs:
       - name: Verify CLAUDE.md present after restore
         working-directory: daaf-docker
         run: docker compose exec -T daaf-docker test -f /daaf/CLAUDE.md
+
+      # --- Verify the symlink fixtures round-tripped via the manifest ---
+      # After restore, every seeded link must exist again as a symlink with the
+      # SAME name and SAME target it had before backup. The backup stripped them
+      # into .daaf-symlinks and the restore replayed them; this proves the whole
+      # STAGE_PROGRAM -> manifest -> SYMLINK_REPLAY chain end to end.
+      - name: Verify symlinks reproduced by backup/restore round-trip
+        working-directory: daaf-docker
+        run: |
+          docker compose exec -T daaf-docker bash -c '
+            set -e
+            d=/daaf/research/_ci_symlink_fixtures
+            # Every recorded path must still BE a symlink (-L) after restore.
+            while IFS= read -r p; do
+              [ -L "$p" ] || { echo "MISSING or not-a-symlink after restore: $p"; exit 1; }
+            done < /daaf/research/_ci_link_names.txt
+            # Names and targets must match the pre-backup snapshot exactly.
+            find "$d" -type l | sort > /tmp/after_names.txt
+            find "$d" -type l -exec readlink {} \; | sort > /tmp/after_targets.txt
+            diff /daaf/research/_ci_link_names.txt   /tmp/after_names.txt
+            diff /daaf/research/_ci_link_targets.txt /tmp/after_targets.txt
+            # The manifest itself must NOT survive into the restored tree (it is
+            # metadata, stripped by replay).
+            test ! -e "$d/.daaf-symlinks"
+            echo "Symlink round-trip OK: all fixtures reproduced with matching targets."
+          '
 
       # --- Update (no-op on fresh install) ---
       - name: Run update_daaf.sh (no-op on fresh install)
@@ -252,6 +303,49 @@ jobs:
 
       - name: Verify already up to date
         run: grep -qi "Already up to date" /tmp/update_noop.txt
+
+      # --- Negative case: a tab-named symlink must trip the staging gate ---
+      # The backup STAGE_PROGRAM gate rejects symlink names/targets containing a
+      # TAB or NEWLINE (they break the TAB-separated .daaf-symlinks manifest). The
+      # backup MUST fail (nonzero) AND the driver MUST surface the offender in its
+      # captured output -- the exact contract the 2026-07-14 field failure broke
+      # (PS 5.1 dropped the container stderr, so the offender never reached the
+      # user). We assert BOTH: nonzero exit, and the offender text present.
+      - name: Seed a tab-named symlink (gate-trip fixture)
+        working-directory: daaf-docker
+        run: |
+          docker compose exec -T daaf-docker bash -c '
+            set -e
+            d=/daaf/research/_ci_gate_trip
+            mkdir -p "$d"
+            echo content > "$d/realfile"
+            # Create a symlink whose NAME contains a literal tab.
+            ln -sf realfile "$(printf "%s/bad\tname" "$d")"
+          '
+      - name: Backup must FAIL and name the tab offender
+        working-directory: daaf-docker
+        run: |
+          set +e
+          bash backup_daaf.sh > /tmp/gate_trip.log 2>&1
+          rc=$?
+          set -e
+          echo "backup exit code: $rc"; echo "----- captured -----"; cat /tmp/gate_trip.log
+          if [ "$rc" -eq 0 ]; then
+            echo "ERROR: backup succeeded but a tab-named symlink should have tripped the gate"; exit 1
+          fi
+          # The offender list must have reached the driver output (STAGE_ERR_TAB
+          # marker and/or the offending path). This is the field-failure guard.
+          grep -qi 'STAGE_ERR_TAB\|embed a tab' /tmp/gate_trip.log \
+            || { echo "ERROR: gate tripped but the offender text never reached the captured output"; exit 1; }
+          echo "Gate-trip negative case OK: backup failed and named the offender."
+      - name: Remove gate-trip fixture (so cleanup + any later steps are clean)
+        if: always()
+        working-directory: daaf-docker
+        run: |
+          docker compose exec -T daaf-docker sh -c '
+            find /daaf/research/_ci_gate_trip -type l -delete 2>/dev/null || true
+            rm -rf /daaf/research/_ci_gate_trip 2>/dev/null || true
+          ' || true
 
       # --- Cleanup ---
       # Use conditional directory check because install.sh may not have created

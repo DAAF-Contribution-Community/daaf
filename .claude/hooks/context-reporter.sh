@@ -140,7 +140,7 @@ if [[ -n "$AGENT_ID" ]]; then
         AGENT_MODEL=$(cat "$AGENT_MODEL_CACHE" 2>/dev/null)
     else
         AGENT_MODEL=$(tail -50 "$MEASURE_TRANSCRIPT" 2>/dev/null | jq -rs '
-            [.[] | .message.model // empty] | last // empty
+            [.[] | select(.message.model != "<synthetic>") | .message.model // empty] | last // empty
         ' 2>/dev/null)
         [[ -n "${AGENT_MODEL:-}" ]] && echo "$AGENT_MODEL" > "$AGENT_MODEL_CACHE" 2>/dev/null
     fi
@@ -189,7 +189,7 @@ else
     MEASURE_MODEL=$(cat "/tmp/claude-model-${SESSION_ID}" 2>/dev/null) || MEASURE_MODEL=""
     if [[ -z "${MEASURE_MODEL:-}" ]]; then
         MEASURE_MODEL=$(tail -50 "$MEASURE_TRANSCRIPT" 2>/dev/null | jq -rs '
-            [.[] | .message.model // empty] | last // empty
+            [.[] | select(.message.model != "<synthetic>") | .message.model // empty] | last // empty
         ' 2>/dev/null) || MEASURE_MODEL=""
     fi
 fi
@@ -288,7 +288,7 @@ cache_model() {
 
     local model
     model=$(tail -50 "$transcript" 2>/dev/null | jq -r '
-        select(.message.model) | .message.model
+        select(.message.model and .message.model != "<synthetic>") | .message.model
     ' 2>/dev/null | head -1)
 
     [[ -n "${model:-}" ]] && echo "$model" > "$cache" 2>/dev/null

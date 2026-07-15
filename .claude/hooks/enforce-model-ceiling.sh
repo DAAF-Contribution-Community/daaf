@@ -165,7 +165,7 @@ if [ -n "$TRANSCRIPT_PATH" ] && [ -f "$TRANSCRIPT_PATH" ]; then
   # recent assistant message carrying a `.message.model` field. tail -50 keeps
   # this cheap — the latest usage/model entry is always near the file end.
   SESSION_MODEL=$(tail -50 "$TRANSCRIPT_PATH" 2>/dev/null | jq -r '
-    select(.message.model) | .message.model
+    select(.message.model and .message.model != "<synthetic>") | .message.model
   ' 2>/dev/null | tail -1) || SESSION_MODEL=""
 fi
 
