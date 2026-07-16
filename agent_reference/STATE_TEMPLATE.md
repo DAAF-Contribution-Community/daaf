@@ -35,7 +35,7 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 
 | Field | Value |
 |-------|-------|
-| **DAAF Version** | [Short git commit hash — from `git rev-parse --short HEAD` at project setup] |
+| **DAAF Version (at setup)** | [Short git commit hash — from `git rev-parse --short HEAD` at project setup. Recorded once at setup; NOT refreshed to current HEAD on later sessions. A session resuming against a newer DAAF checkout should read this as the setup-time commit, not current HEAD] |
 | **Session Model ID** | [Model identifier driving the orchestrator/main session at session start — record the runtime value, not this example (e.g., "claude-opus-4-8[1m]")] |
 | **Subagent Model Tiers** | [Distinct specialist model IDs by tier, from agent frontmatter defaults (`model: opus` / `model: sonnet`) plus any per-dispatch overrides the orchestrator applied. Record resolved IDs where known, or the tier alias + session date otherwise — e.g., "opus tier: claude-opus-4-8[1m]; sonnet tier: claude-sonnet-4-5". See `.claude/skills/daaf-orchestrator/SKILL.md` > "Model Selection for Subagent Dispatch" and AI_DISCLOSURE_REFERENCE.md > Multi-Model Sessions.] |
 | **Execution Language** | [Python or R — from CLAUDE.md User Preferences] |
@@ -140,8 +140,10 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 | 1 | Fetch CCD schools | `scripts/stage5_fetch/01_fetch-ccd.py` | [PENDING/PASSED/FAILED] | [NOT_RUN/PENDING/PASSED/WARNING/REVISED] | `scripts/cr/stage5_01_cr1.py` | [1 of 5] | [0-2] | [N] | [N] | |
 | 2 | Clean CCD schools | `scripts/stage6_clean/01_clean-ccd.py` | [PENDING/PASSED/FAILED] | [NOT_RUN/PENDING/PASSED/WARNING/REVISED] | `scripts/cr/stage6_01_cr1.py` | [1 of 5] | [0-2] | [N] | [N] | |
 | 3 | Join CCD + MEPS | `scripts/stage7_transform/01_join-data.py` | [PENDING/PASSED/FAILED] | [NOT_RUN/PENDING/PASSED/WARNING/REVISED] | `scripts/cr/stage7_01_cr1.py` | [1 of 5] | [0-2] | [N] | [N] | |
+| 4 | Regression: poverty | `scripts/stage8_analysis/01_regression-poverty.py` | [PENDING/PASSED/FAILED] | [NOT_RUN/PENDING/PASSED/WARNING/REVISED] | `scripts/cr/stage8_01_cra1.py` | [1 of 5] | [0-2] | [N] | [N] | QA4a (statistical validity) |
+| 5 | Enrollment trends plot | `scripts/stage8_analysis/02_enrollment-trends.py` | [PENDING/PASSED/FAILED] | [NOT_RUN/PENDING/PASSED/WARNING/REVISED] | `scripts/cr/stage8_02_crb1.py` | [1 of 5] | [0-2] | [N] | [N] | QA4b (visualization quality) |
 
-> **Note:** Script extensions are `.py` for Python projects and `.R` for R projects. QA scripts use the same extension as the execution language.
+> **Note:** Script extensions are `.py` for Python projects and `.R` for R projects. QA scripts use the same extension as the execution language. Stages 5-7 use the standard QA suffix `_cr{N}` (e.g., `stage5_01_cr1`), but **Stage 8 uses the split-QA suffix**: `_cra{N}` for QA4a (analysis/statistical review) and `_crb{N}` for QA4b (visualization review) — e.g., `stage8_01_cra1` and `stage8_02_crb1`, per `agent_reference/QA_CHECKPOINTS.md`.
 
 **QA Status Values:**
 - **NOT_RUN** — code-reviewer has not been invoked for this script (blocks next script invocation)
@@ -553,6 +555,7 @@ Update STATE.md after:
 - Runtime risks discovered (append to Runtime Risks)
 - Stage 10 QA aggregation (finalize QA Findings Summary)
 - Stage 12 final review (populate Final Review Log)
+- A plan revision is accepted (Stage 4.5 revision loop, or Revision and Extension mode new-version creation) — rebuild the Transformation Progress table from the revised Plan_Tasks.md Task Index, update Current Position (Plan/Plan_Tasks paths, Current Stage) and Next Actions, then validate parity (row count == `total_tasks`; every script path present in both the table and the revised Task Index; no superseded plan-version filename remains). This is a blocking condition inside Gate G4.5; see `full-pipeline-mode.md` § STATE.md Update Gates
 
 ### Minimal Update Pattern
 

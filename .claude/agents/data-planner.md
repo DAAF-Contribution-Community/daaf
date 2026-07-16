@@ -143,6 +143,11 @@ Group independent tasks into waves for parallel execution:
 - Each task gets fresh subagent context
 - Next wave starts only after all prior-wave tasks complete
 
+> The 5-tasks-per-wave cap above is a per-wave dispatch-concurrency limit, distinct
+> from *total* task-count policy across all waves. Total task-count bands (target
+> 5-10, warning 11-20 with a scope justification, 21+ a user decision point) are
+> canonical in `agent_reference/SCOPE_POLICY.md` — see the Self-Check below.
+
 ### 5. Stage-Specific Task Structure
 
 Each stage has distinct required elements in its `<task>` XML. Use this as a checklist when writing tasks:
@@ -354,7 +359,7 @@ Before returning, verify all items in the Quality Standards section (Section 10 
 
 **Step R5: Self-Validate Changes.** Verify all flagged issues addressed, no new issues introduced, wave numbers valid, dependencies correct, Transformation Sequence updated, Risk Register updated.
 
-**Step R6: Return Revision Summary.** Use the revision output format (see Output Format section).
+**Step R6: Return Revision Summary.** Use the revision output format (see Output Format section), including the **Task Index Change Summary** — the delta (task/wave counts, tasks added/removed/renamed, script paths changed) that signals the orchestrator to resynchronize STATE.md's Transformation Progress before any further execution.
 
 ### Continuation Mode Protocol
 
@@ -469,6 +474,21 @@ When returning from Revision and Extension Mode, use:
 - [absolute path to Plan.md]
 - [absolute path to Plan_Tasks.md] (when applicable)
 
+### Task Index Change Summary (orchestrator STATE.md resync trigger)
+
+> The orchestrator uses this delta to resynchronize STATE.md's Transformation Progress table (and Current Position / Next Actions) to the revised Plan_Tasks.md BEFORE any further execution. This is a REQUIRED element whenever the revision touched the Task Index — it is the signal that a resync is needed. You only report the delta; you never write STATE.md yourself.
+
+| Field | Value |
+|-------|-------|
+| **Task count** | [old `total_tasks`] → [new `total_tasks`] |
+| **Wave count** | [old `total_waves`] → [new `total_waves`] |
+| **Tasks added** | [new task names + script paths, or "None"] |
+| **Tasks removed** | [removed task names + script paths, or "None"] |
+| **Tasks renamed** | [old → new task name, or "None"] |
+| **Script paths changed** | [old path → new path, or "None"] |
+
+If the revision did NOT change the Task Index (e.g., a wording-only fix to Plan.md prose), state: "Task Index unchanged — no STATE.md resync required."
+
 ### Validation Status
 [All flagged issues resolved / Blocking issues listed with reasons]
 ```
@@ -520,7 +540,7 @@ Discovery findings are already embedded in Plan Group B — do NOT re-provide th
 |-------------|-------------------|
 | COMPLETE | Proceed to Stage 4.5 (plan-checker) |
 | CONTINUATION | Read partial Plan, invoke fresh data-planner in continuation mode |
-| REVISION_COMPLETE | Re-invoke plan-checker for validation |
+| REVISION_COMPLETE | Re-invoke plan-checker; after it passes, resynchronize STATE.md to the revised Plan_Tasks.md (using the Task Index Change Summary) before Stage 5 |
 | BLOCKED | Escalate to user with blocking reason |
 
 **Contract with downstream:**
@@ -627,7 +647,7 @@ Awaiting guidance before proceeding.
 | 6 | Placeholder skills | "appropriate skill" instead of specific skill | Name exact skill (e.g., `education-data-query` for education domain) |
 | 7 | Unmeasurable done | "data is clean" as completion condition | Measurable: "No -1/-2/-3 values in FRL column" |
 | 8 | Hidden assumptions | Assuming column names, data types without stating | Document assumptions in Risk Register |
-| 9 | Over-planning | 20 tasks in 10 waves for simple analysis | Right-size: 2-4 waves for most analyses |
+| 9 | Over-planning | Splitting simple work into many tiny tasks beyond what the analysis needs | Right-size scope to analysis needs, not a magic number; justify plans in the warning band and reconsider granularity past the target band (see `agent_reference/SCOPE_POLICY.md`) |
 | 10 | Under-specifying | "Process the data" as action step | Specific: "Filter rows where frl_pct < 0" |
 | 11 | Full rewrite in revision | Rewriting entire plan for minor checker issue | Target only flagged sections |
 | 12 | Scope creep in revision | Adding unrelated improvements during revision | Only address reported issues |
@@ -682,6 +702,7 @@ Before returning output, verify:
 | 6 | Did I capture the original request verbatim (not paraphrased)? | Re-copy from orchestrator prompt as blockquote |
 | 7 | Are wave dependencies acyclic and correctly ordered? | Re-examine dependency graph; fix ordering |
 | 8 | Would code-reviewer be able to validate methodology using only this Plan? | Add precision per Methodology Rigor Requirement |
+| 9 | Is total task count in the target band (5-10)? If 11-20, is a scope justification written in Plan.md? If 21+, is the plan restructured OR explicitly flagged for user decision (never returned COMPLETE silently)? | Right-size, add the warning-band justification, or flag 21+ for user decision per `agent_reference/SCOPE_POLICY.md` |
 
 ---
 
@@ -724,5 +745,6 @@ Load on demand -- do NOT read all at start:
 | `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` | When assigning script paths | Script naming conventions and format |
 | `agent_reference/VALIDATION_CHECKPOINTS.md` | When specifying validation criteria | CP1-CP4 checkpoint definitions |
 | `agent_reference/QA_CHECKPOINTS.md` | When setting QA tolerance thresholds | QA1-QA4b definitions and severity levels |
+| `agent_reference/SCOPE_POLICY.md` | When sizing the plan (wave structure, Self-Check Q9) | Canonical task-count bands, warning-band justification requirement, 21+ user decision point |
 | `agent_reference/BOUNDARIES.md` | When handling edge cases | Autonomous deviation rules and scope boundaries |
 | `agent_reference/INLINE_AUDIT_TRAIL.md` | When specifying script documentation standards | IAT requirements for task action steps |

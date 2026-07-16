@@ -32,6 +32,7 @@ Classify Revision Type → Confirm with user
 Create New Version
     ├─ Create new versions of BOTH Plan.md AND Plan_Tasks.md (e.g., 2026-01-24a → 2026-01-24b)
     ├─ Document revision request and type in new Plan.md + updated task specs in new Plan_Tasks.md
+    ├─ Resync STATE.md to the revised Plan_Tasks.md BEFORE any re-execution (see Session Management § STATE.md)
     └─ Execute required stages (load full-pipeline-mode.md if needed)
     ↓
 Final Review
@@ -140,6 +141,8 @@ When re-executing pipeline stages for a revision, load these files based on the 
 ### Revision and Extension Session Management
 
 **STATE.md:** Update the existing project's STATE.md with the revision context. Do not create a new STATE.md. Add a "Revision" section noting the revision type, affected stages, and re-entry point.
+
+**Pre-execution STATE.md synchronization (mandatory, before any re-execution dispatch).** Immediately after the revised Plan.md + Plan_Tasks.md versions are written at "Create New Version" — and BEFORE dispatching any re-execution subagent — resynchronize STATE.md to the revised Plan_Tasks.md: rebuild the Transformation Progress table from the revised Task Index (reset rows for affected/regenerated tasks to pending; carry over completed rows for unaffected tasks ONLY when the task still exists with an identical script path), and update the Plan.md / Plan_Tasks.md paths, Current Stage, and Next Actions. Then validate: Transformation Progress row count == the revised Plan_Tasks.md `total_tasks`; every script path appears in both the table and the revised Task Index; no STATE.md content references a superseded plan-version filename. If any check fails, STOP — fix STATE.md and re-validate before dispatching. This mirrors the Gate G4.5 plan-revision synchronization in `full-pipeline-mode.md`. It is distinct from and complements the *post-execution* status update at Worked Example Step 8, which records executed script versions' QA status after re-execution completes. The orchestrator owns this synchronization; subagents never write STATE.md.
 
 **LEARNINGS.md:** Append revision-specific learnings to the existing LEARNINGS.md. Revision sessions often produce the richest learnings about data quality and methodology edge cases.
 
@@ -254,7 +257,7 @@ No revision-specific invocation templates are needed — the standard templates 
 
 **Step 7: QA loop.** Code-reviewer validates each re-executed script. Gates G7-G12 must pass.
 
-**Step 8: Update STATE.md.** Add entry to Revision History table. Update Transformation Progress with new script paths and QA status.
+**Step 8: Update STATE.md (post-execution status update).** Add entry to Revision History table. Update Transformation Progress with the executed script versions' QA status and row counts. This is the *post-execution* status update — it complements, and does NOT replace, the *pre-execution* STATE.md synchronization performed at "Create New Version" (see Revision and Extension Session Management § STATE.md), which rebuilt Transformation Progress from the revised Task Index before any re-execution began.
 
 **Step 9: Present Revision Status Update** to user with summary of changes made and verification results.
 

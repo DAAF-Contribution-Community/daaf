@@ -259,13 +259,13 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**.
 │      └─ Gate G8: Analyses + viz complete, QA4a AND QA4b PASSED/WARNING      │
 │                          ↓                                                  │
 │  Stage 9: Script Compilation ←── notebook-assembler agent                   │
-│      ├─ LITERALLY COPY script file contents into Marimo cells (Python)      │
-│      │   or Quarto chunks (R)                                               │
-│      ├─ VERBATIM execution logs in accordions (not summaries)               │
-│      ├─ NO new code except pl.read_parquet()+mo.ui.table() (Python)         │
-│      │   or arrow::read_parquet()+glimpse()+head(df, 20) (R)                │
+│      ├─ LITERALLY COPY scripts into Marimo Four-Cell archives (Python)      │
+│      │   or canonical Quarto archive sections (R)                           │
+│      ├─ VERBATIM execution logs in format-specific collapsed containers     │
+│      ├─ NO new analysis; only optional format-specific output inspection    │
+│      ├─ Quarto render validates assembly/previews, not archived re-execution│
 │      ├─ NO dashboards, NO widgets, NO filters, NO aggregations              │
-│      └─ Gate G9: Notebook runs, all scripts represented, no prohibited items│
+│      └─ Gate G9: `marimo run` or `quarto render` passes; scripts represented │
 │                          ↓                                                  │
 │  Stage 10: QA Aggregation                                                   │
 │      ├─ **Aggregate QA findings from Stages 5-8 (WARNINGs reviewed)**       │
@@ -314,7 +314,7 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**.
 
 ## Stage 5-8 Per-Script Execution & QA Loop
 
-**Every stage from 5 through 8 is executed as MULTIPLE subagent calls with interleaved QA, NOT as a single invocation per stage.** Each script in Plan.md's Transformation Sequence table is executed by research-executor, then **immediately and separately** reviewed by code-reviewer, before the next script begins. This applies equally to Stage 5 (fetch scripts), Stage 6 (clean scripts), Stage 7 (transformation scripts), and Stage 8 (analysis and visualization scripts). Any Stage writing net new code must adhere to this. QA scripts are saved to `scripts/cr/stage{N}_{step}_cr{1..5}.py`. The **Stage 5-8 Composite Execution Pattern** below defines the authoritative execution flow — it is the MANDATORY atomic unit for all Stage 5-8 work. See `.claude/agents/code-reviewer.md` for the complete QA protocol and `agent_reference/QA_CHECKPOINTS.md` for checkpoint definitions.
+**Every stage from 5 through 8 is executed as MULTIPLE subagent calls with interleaved QA, NOT as a single invocation per stage.** Each script in Plan.md's Transformation Sequence table is executed by research-executor, then **immediately and separately** reviewed by code-reviewer, before the next script begins. This applies equally to Stage 5 (fetch scripts), Stage 6 (clean scripts), Stage 7 (transformation scripts), and Stage 8 (analysis and visualization scripts). Any Stage writing net new code must adhere to this. QA scripts are saved to `scripts/cr/stage{N}_{step}_cr{1..5}.py` for Stages 5-7; **Stage 8 uses the split-QA suffix** `scripts/cr/stage8_{step}_cra{1..5}.py` (QA4a, statistical validity) and `scripts/cr/stage8_{step}_crb{1..5}.py` (QA4b, visualization quality), per `agent_reference/QA_CHECKPOINTS.md`. The **Stage 5-8 Composite Execution Pattern** below defines the authoritative execution flow — it is the MANDATORY atomic unit for all Stage 5-8 work. See `.claude/agents/code-reviewer.md` for the complete QA protocol and `agent_reference/QA_CHECKPOINTS.md` for checkpoint definitions.
 
 **Why this matters:**
 - The core principle "Every transformation has a validation" requires separate execution cycles
@@ -498,6 +498,7 @@ These operations may be executed without preview:
 **Notes:**
 - Stages 5 and 6 use `general-purpose` subagent type because they require file write capability (saving parquet files to `data/raw/` and `data/processed/`).
 - **Stage 4 responsibility split:** The `data-planner` agent creates Plan.md and Plan_Tasks.md. The **orchestrator** is responsible for creating STATE.md (from `agent_reference/STATE_TEMPLATE.md`) and the LEARNINGS.md skeleton (from `agent_reference/WORKFLOW_PHASE5_SYNTHESIS.md`) after the data-planner returns. Gate G4 requires all four files. **When creating STATE.md, populate the Session Metadata section:** run `git rev-parse --short HEAD` to capture the DAAF version, and record the Session Model ID, the Subagent Model Tiers in effect, and the session start date — see the authoritative creation checklist under **Creation Trigger** in the STATE.md section below. These feed into the AI Use Disclosure section of the final report.
+- **Stage 9 R/Quarto authority:** `.claude/skills/quarto/references/daaf-notebook.md` is the canonical DAAF assembly contract. It governs DAAF archive-shaped Quarto notebooks and their Reproducibility Verification anchors, not arbitrary Quarto documents. `quarto render` validates assembly and explicitly enabled previews; it does not re-run archived Stage 5-8 analysis scripts.
 - **Stage 10** has no dedicated agent — the orchestrator performs QA aggregation directly by reviewing accumulated code-reviewer findings from Stages 5-8.
 
 **Stage 10 Protocol:** Read STATE.md's Transformation Progress table as the sole input. For each script: (1) Check QA status (PASS / PASS_WITH_WARNINGS / N/A), (2) Aggregate WARNING items into a summary, (3) Verify no unresolved BLOCKERs exist, (4) Compose QA Aggregation Summary for PSU4. Do NOT re-read individual QA scripts — STATE.md already tracks all QA outcomes.
@@ -911,7 +912,7 @@ Each stage has explicit input/output contracts and gate criteria:
 | 6 | Stage 5 (raw data) | PSU3 to user, then Stage 7 | G6: CP2 PASSED per script, code-reviewer separately invoked per script immediately after completion, all QA2 ∈ {PASSED, WARNING}, suppression <50%, data saved to data/processed/, user confirmed PSU3 |
 | 7 | Stage 6 (clean data) | Stage 8, 9 | G7: All transformations validated (CP3) per script, code-reviewer separately invoked per script immediately after completion, all QA3 ∈ {PASSED, WARNING}, analysis dataset saved to `data/processed/[date]_analysis.parquet` (at Stage 7.3) |
 | 8 | Stage 7 (analysis data) | Stage 9, 11 | G8: Statistical results saved to output/analysis/, visualizations saved to output/figures/, code-reviewer separately invoked per 8.1 script (QA4a) and per 8.2 script (QA4b) immediately after each completes, all QA4a and QA4b ∈ {PASSED, WARNING} |
-| 9 | Stages 7, 8 | Stage 10 | G9: Notebook runs without errors, all scripts represented with code + execution logs |
+| 9 | Stages 7, 8 | Stage 10 | G9: Python `marimo run` succeeds, or R `quarto render` validates assembly and enabled previews; all scripts represented with code + execution logs; Quarto render does not re-run archived Stage 5-8 analysis scripts |
 | 10 | Stage 9 (notebook) | PSU4 to user, then Stage 11 | G10: QA findings aggregated, all BLOCKERs resolved, all WARNINGs documented, user confirmed PSU4 |
 | 11 | Stages 9, 10, Plan.md + Plan_Tasks.md, STATE.md, LEARNINGS.md | Stage 12 | G11: report-writer returned COMPLETE or COMPLETE_WITH_GAPS, all REPORT_TEMPLATE.md sections populated, figure references verified |
 | 12 | All prior stages | Delivery | G12: Final Review PASSED, all commitments fulfilled, LEARNINGS.md consolidated with System Update Action Plan, cross-artifact coherence verified |
@@ -1385,6 +1386,7 @@ Addressed when: {verification_condition}
 1. Review the executed script for correctness and methodology alignment
 2. Review the execution log for outcome verification
 3. Create iterative QA scripts at: scripts/cr/stage{N}_{step}_cr1.py (+ cr2..cr5 as warranted)
+   [For Stage 8, use the split-QA suffix instead: scripts/cr/stage8_{step}_cra1.py for QA4a (statistical validity) / scripts/cr/stage8_{step}_crb1.py for QA4b (visualization quality)]
 4. Execute QA scripts and synthesize findings across iterations
 5. Return QA report with severity classification
 
@@ -1762,7 +1764,7 @@ Forcing functions are mandatory design interventions that **prevent** poor pract
 | G6 | 6 → 7 | CP2 PASSED per script, suppression <50%, data saved to data/processed/, code-reviewer separately invoked per script immediately after completion, every QA2 ∈ {PASSED, WARNING}, **User confirmed PSU3** | Cannot proceed to transformation without user PSU3 confirmation |
 | G7 | 7 → 8 | All transformations CP3 PASSED per script, code-reviewer separately invoked per script immediately after completion, every QA3 ∈ {PASSED, WARNING} | Cannot proceed to analysis and visualization |
 | G8 | 8 → 9 | Analyses and visualizations complete, code-reviewer separately invoked per 8.1 script (QA4a) and per 8.2 script (QA4b) immediately after each completes, every QA4a and QA4b ∈ {PASSED, WARNING} | Cannot assemble notebook |
-| G9 | 9 → 10 | Notebook runs without errors, all scripts represented with code + execution logs | Cannot run QA aggregation |
+| G9 | 9 → 10 | Python: `marimo run` succeeds. R: `quarto render` validates assembly and explicitly enabled previews without re-running archived Stage 5-8 scripts. All scripts are represented with code + execution logs | Cannot run QA aggregation |
 | G10 | 10 → 11 | QA findings aggregated, all BLOCKERs resolved, all WARNINGs documented, **User confirmed PSU4** | Cannot generate report without user PSU4 confirmation |
 | G11 | 11 → 12 | Report complete with all sections and figure references | Cannot run final review |
 | G12 | 12 → Delivery | Final Review verification PASSED, all commitments fulfilled, LEARNINGS.md consolidated with System Update Action Plan, cross-artifact coherence verified | Cannot deliver |
@@ -1770,6 +1772,8 @@ Forcing functions are mandatory design interventions that **prevent** poor pract
 **Gate G4 Enforcement:** Plan-checker (Stage 4.5) CANNOT be invoked without all four files: Plan.md, Plan_Tasks.md, STATE.md (`agent_reference/STATE_TEMPLATE.md`), and LEARNINGS.md (`agent_reference/WORKFLOW_PHASE5_SYNTHESIS.md`). If any are missing, create before proceeding. After plan-checker returns, the orchestrator MUST present PSU2 to the user and wait for confirmation before proceeding to Stage 5.
 
 **Gate G4.5 Enforcement:** plan-checker MUST be invoked and return PASSED or PASSED_WITH_WARNINGS. If ISSUES_FOUND, revise Plan documents (max 2 attempts) then escalate. Update STATE.md "Plan Validation" section with the result before proceeding. See Stage 4.5 in `agent_reference/WORKFLOW_PHASE2_PLANNING.md` for the invocation pattern.
+
+**Plan-revision STATE.md synchronization (blocking, within G4.5):** After ANY accepted plan revision (data-planner returns REVISION_COMPLETE and plan-checker subsequently passes), and BEFORE proceeding to Stage 5, the orchestrator MUST resynchronize STATE.md to the revised Plan_Tasks.md — STATE.md's Transformation Progress table, Current Position paths, and Next Actions were first populated at Stage 4 from the *original* Plan_Tasks.md and go stale when a revision changes task count, task names, script paths, or wave structure. The orchestrator MUST: (1) read the revised Plan_Tasks.md frontmatter (`total_tasks`, `total_waves`, `version`) and full Task Index; (2) rebuild the Transformation Progress table from the revised Task Index (carry a completed row over ONLY when the task still exists with an identical script path — otherwise re-derive its status honestly); (3) update the Plan.md / Plan_Tasks.md paths, Current Stage, and Next Actions; (4) validate mechanically — Transformation Progress row count == `total_tasks`, every script path appears in both the table and the revised Task Index (and vice versa), and no STATE.md content references a superseded plan-version filename. If any check fails, STOP — fix STATE.md and re-validate before any further dispatch. This is a blocking condition inside Gate G4.5, not a new gate. See the STATE.md Update Gates table row "Plan revised (accepted revision)" for field-level detail.
 
 **CRITICAL:** Gate G4.5 requires POSITIVE confirmation that plan-checker was invoked and returned PASSED or PASSED_WITH_WARNINGS. If plan-checker was never invoked, the gate condition is NOT satisfied. Update STATE.md "Plan Validation" section with the result before proceeding to Stage 5. Additionally, after plan-checker returns PASSED or PASSED_WITH_WARNINGS, the orchestrator MUST present PSU2 (Phase Status Update) to the user including the plan-checker result, a Plan.md summary, and the exact filepath to Plan.md for the user's deeper inspection. Stage 5 CANNOT begin until the user confirms PSU2.
 
@@ -1802,7 +1806,7 @@ Agents use domain-specific status vocabularies. The orchestrator translates thes
 | | ISSUES_FOUND (severity: BLOCKER) | QA = BLOCKER |
 | **data-planner** | COMPLETE | Proceed to Stage 4.5 |
 | | CONTINUATION | Read partial Plan.md on disk, invoke fresh data-planner in continuation mode |
-| | REVISION_COMPLETE | Re-invoke plan-checker |
+| | REVISION_COMPLETE | Re-invoke plan-checker; after it passes, resynchronize STATE.md to the revised Plan_Tasks.md (rebuild Transformation Progress + Current Position + Next Actions + plan paths) and run the parity validation before Stage 5 (see Gate G4.5 Enforcement) |
 | | BLOCKED | Escalate to user |
 | **plan-checker** | PASSED | G4.5 = SATISFIED |
 | | PASSED_WITH_WARNINGS | G4.5 = SATISFIED (log warnings) |
@@ -1839,6 +1843,7 @@ Agents use domain-specific status vocabularies. The orchestrator translates thes
 | Event | Required STATE.md Field Updates |
 |-------|--------------------------------|
 | Stage N starts | Current Stage → N |
+| Plan revised (accepted revision — data-planner REVISION_COMPLETE and plan-checker passed; also applies to Revision and Extension mode new-version creation) | Rebuild Transformation Progress table from the revised Plan_Tasks.md Task Index (carry a completed row over ONLY when the task still exists with an identical script path; otherwise re-derive status honestly) + Current Position (Plan.md / Plan_Tasks.md paths, Current Stage) + Next Actions. Then validate: row count == Plan_Tasks `total_tasks`; every script path present in both the table and the Task Index; no reference to a superseded plan-version filename. Blocking within Gate G4.5 — STOP and fix if any check fails |
 | Checkpoint passes | Checkpoint Status table |
 | QA completes | QA Status section |
 | Blocker encountered | Blockers section + Next Actions |
@@ -1863,7 +1868,7 @@ These conditions trigger an immediate STOP with escalation to user. See `agent_r
 | Row count drops >90% after transformation | Stage 7 | STOP, verify transformation logic |
 | **QA BLOCKER after 2 revisions** | 5-QA to 8-QA | STOP, escalate to user |
 | **QA methodology violation** | 5-QA to 8-QA | STOP, escalate immediately |
-| Notebook execution error after 2 fix attempts | Stage 9 | STOP, report error details |
+| Python `marimo run` error or R `quarto render` assembly/enabled-preview error after 2 fix attempts | Stage 9 | STOP, report format-specific error details; do not treat Quarto render as archived analysis re-execution |
 | Data unavailable in configured data source | Stage 2-3 | STOP, escalate immediately |
 
 **STOP/Escalation Format:** See `agent_reference/ERROR_RECOVERY.md` "Escalation Template" for the detailed format. At minimum, include: what happened, what was tried, options with pros/cons, and a recommendation.
@@ -1958,7 +1963,7 @@ The orchestrator receives actual context utilization via the `context-reporter` 
 - **Gate:** Stage 5 CANNOT begin until STATE.md exists alongside Plan.md + Plan_Tasks.md (see Gate G4) and Plan-Checker Status is PASSED or PASSED_WITH_WARNINGS (see Gate G4.5).
 - **Required Sections:** STATE.md must include skeleton sections for Runtime Risks, QA Findings Summary, and Final Review Log at creation time.
 - **Session Metadata (required at creation):** Populate the Session Metadata section immediately when creating STATE.md:
-  - **DAAF Version:** Run `git rev-parse --short HEAD` in the DAAF repository root and record the result
+  - **DAAF Version (at setup):** Run `git rev-parse --short HEAD` in the DAAF repository root and record the result. This is captured once at project setup and is NOT refreshed to current HEAD on later sessions — a session resuming against a newer DAAF checkout should read this as the setup-time commit, not current HEAD
   - **Session Model ID:** Record the model identifier actually in use for the session (e.g., "claude-opus-4-8[1m]")
   - **Subagent Model Tiers:** Record the specialist model tiers/IDs in use — agent frontmatter defaults (`model: opus` / `model: sonnet`) plus any per-dispatch overrides applied; resolved IDs where known, tier alias + session date otherwise (see STATE_TEMPLATE.md)
   - **Session Date(s):** Record today's date; update if the project spans multiple sessions
