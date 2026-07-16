@@ -527,16 +527,35 @@ teardown() {
     assert_output --partial "NESTED=1"
 }
 
-@test "handle_quarto calls view_quarto.sh with DAAF_NESTED" {
+@test "handle_quarto calls view_quarto.sh with no target and DAAF_NESTED" {
     bash() {
         echo "BASH_CALLED: $*"
+        echo "ARGC=$#"
         echo "NESTED=${DAAF_NESTED:-unset}"
     }
     export -f bash
 
     run handle_quarto
+    assert_success
     assert_output --partial "view_quarto.sh"
+    assert_output --partial "ARGC=1"
     assert_output --partial "NESTED=1"
+    assert_output --partial "Returned to DAAF Control Panel"
+}
+
+@test "handle_help explains that option 5 recursively discovers and selects Quarto notebooks" {
+    run bash -c 'printf "\n" | (
+        source "'"${REPO_ROOT}"'/scripts/host/daaf_lib.sh"
+        setup_colors
+        export DAAF_TEST_MODE=1
+        source "'"${REPO_ROOT}"'/scripts/host/daaf.sh"
+        CYAN="" RESET=""
+        handle_help
+    )'
+    assert_success
+    assert_output --partial "recursively"
+    assert_output --partial "select"
+    assert_output --partial "cancel"
 }
 
 @test "handle_backup calls backup_daaf.sh with DAAF_NESTED" {

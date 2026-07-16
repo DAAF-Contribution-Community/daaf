@@ -230,6 +230,22 @@ Describe "daaf.ps1" {
             $Content | Should -Match 'view_quarto\.ps1'
         }
 
+        It "invokes the Quarto viewer with no target through the console-inheriting nested delegate" {
+            $Content | Should -Match 'function Invoke-DaafQuartoViewer\s*\{\s*Invoke-DaafDelegate "view_quarto\.ps1"\s*\}'
+            $Content | Should -Match '\$env:DAAF_NESTED = "1"'
+            $Content | Should -Match 'Remove-Item Env:\\DAAF_NESTED'
+            $Content | Should -Match 'Start-Process.*-FilePath'
+        }
+
+        It "explains recursive Quarto selection and cancellation in option 5 help" {
+            $helpStart = $Content.IndexOf('function Show-DaafHelp')
+            $helpEnd = $Content.IndexOf('function Invoke-DaafQuit', $helpStart)
+            $helpBody = $Content.Substring($helpStart, $helpEnd - $helpStart)
+            $helpBody | Should -Match 'recursiv'
+            $helpBody | Should -Match 'select'
+            $helpBody | Should -Match 'cancel'
+        }
+
         It "mirrors the code-server default password source" {
             $Content | Should -Match 'launch_code_server\.sh'
             $Content | Should -Match '"daaf"'

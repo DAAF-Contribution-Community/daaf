@@ -814,16 +814,23 @@ If you're using the manual `marimo run` command and can't see anything at `http:
 
 ### Q: How do I view a Quarto notebook (R projects)?
 
-Quarto notebooks (`.qmd`) render to a static HTML file rather than being served live like marimo. The easiest way to view one is the convenience script -- run `bash view_quarto.sh` (or `.\view_quarto.ps1` on Windows) from your `daaf-docker` folder. Run it with no argument to list every `.qmd` notebook, or pass a project folder to render and open one:
+Quarto notebooks (`.qmd`) render to a static HTML file rather than being served live like marimo. The easiest way to view one is the convenience script -- run `bash view_quarto.sh` (or `.\view_quarto.ps1` on Windows) from your `daaf-docker` folder. With no argument (also how Control Panel option 5 calls it), the script recursively discovers every `.qmd` anywhere below `research/`, sorts the paths, and displays a numbered picker. Select a number to render, or cancel cleanly with `0`, blank input, `q`/`Q`, or end-of-file:
 
 ```bash
 cd daaf-docker
-bash view_quarto.sh                            # macOS / Linux: list notebooks
-bash view_quarto.sh 2026-01-24_Your_Project    # render and open one
-.\view_quarto.ps1 2026-01-24_Your_Project      # Windows
+bash view_quarto.sh                            # macOS / Linux: recursive picker
+.\view_quarto.ps1                              # Windows: recursive picker
 ```
 
-The script renders the notebook to a single self-contained HTML file inside the container, copies it out to a `quarto_html/` folder next to your `docker-compose.yml`, and opens it in your browser -- handling container startup automatically.
+You can bypass the picker with a direct `.qmd` path, or pass a project folder when exactly one notebook exists anywhere below it. If a project contains multiple recursive matches, the viewer prints the sorted matches and refuses to guess:
+
+```bash
+bash view_quarto.sh 2026-01-24_Your_Project
+bash view_quarto.sh research/2026-01-24_Your_Project/output/analysis/notebook.qmd
+.\view_quarto.ps1 research/2026-01-24_Your_Project/output/analysis/notebook.qmd
+```
+
+The script renders the selected notebook to a single self-contained HTML file inside the container, copies it out to a `quarto_html/` folder next to your `docker-compose.yml`, and opens it in your browser -- handling container startup automatically. Output uses the notebook's flat basename, so rendering two notebooks named `report.qmd` targets the same `quarto_html/report.html` and the later render overwrites the earlier one. Set `QUARTO_HTML_DIR` to a different host directory when both must be retained.
 
 If you'd rather do it by hand, render from inside the container and copy the result out yourself:
 

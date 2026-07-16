@@ -2,10 +2,11 @@
 # ============================================================================
 # DAAF Quarto Document Viewer (macOS / Linux)
 # ============================================================================
-# Renders a Quarto notebook (.qmd) to a single self-contained HTML file inside
-# the DAAF container, copies the result out to your host machine, and opens it
-# in your default browser. This is the R-notebook counterpart to
-# view_notebooks.sh (which serves marimo for Python projects).
+# Recursively discovers Quarto notebooks (.qmd) under research/, lets you select
+# one, renders it to a single self-contained HTML file inside the DAAF container,
+# copies the result out to your host machine, and opens it in your default
+# browser. This is the R-notebook counterpart to view_notebooks.sh (which serves
+# marimo for Python projects).
 #
 # Unlike marimo, Quarto notebooks are not served live -- they render to a static
 # HTML file. This script closes that gap so you never have to run
@@ -13,13 +14,15 @@
 #
 # Usage:
 #   cd daaf-docker
-#   bash view_quarto.sh                                  # list available .qmd notebooks
+#   bash view_quarto.sh                                  # recursively select a .qmd notebook
 #   bash view_quarto.sh 2026-01-24_My_Project           # render the notebook in that project
 #   bash view_quarto.sh research/2026-01-24_My_Project/notebook.qmd   # render a specific .qmd
 #
 # Output:
 #   Rendered HTML is copied to ./quarto_html/ under your current directory
-#   (created on first use). Each render overwrites the file of the same name.
+#   (created on first use). Output uses the notebook's flat basename, so notebooks
+#   with the same basename overwrite one another. Set QUARTO_HTML_DIR to a
+#   different directory when both outputs must be retained.
 #
 # Prerequisites:
 #   - Docker Desktop installed and running
@@ -81,24 +84,24 @@ QUARTO_HTML_DIR="${QUARTO_HTML_DIR:-./quarto_html}"
 # Pause before exit so the user can review output.
 # Suppressed by DAAF_NESTED (to avoid double-pause when called from another
 # script) and in non-interactive contexts (CI, no controlling terminal).
-if [ -z "${DAAF_NESTED:-}" ] && [ -z "${CI:-}" ] && [ -c /dev/tty ] && [ -t 1 ]; then
+if [ -z "${DAAF_NESTED:-}" ] && [ -z "${CI:-}" ] && [ "${DAAF_DRY_RUN:-}" != "1" ] && [ -c /dev/tty ] && [ -t 1 ]; then
     trap 'echo ""; read -r -p "Press Enter to continue: " < /dev/tty' EXIT
 fi
 
 # --- Dry-Run Support ---
-# When DAAF_DRY_RUN=1, simulate external commands (Docker) for CI cross-platform
-# smoke testing without a Docker daemon. The `compose exec` arm echoes a fake
-# .qmd path so the discovery listing has something to show; `cp` is a no-op.
+# When DAAF_DRY_RUN=1, simulate Docker for CI cross-platform smoke testing. The
+# recursive find returns a deep fixture. Later branches skip every host write,
+# copy, output-directory resolution, and browser launch rather than merely
+# replacing those operations with no-ops.
 if [ "${DAAF_DRY_RUN:-}" = "1" ]; then
     docker() {
         case "$*" in
             "info") return 0 ;;
             *"compose ps -q daaf-docker"*) echo "abc123" ;;
             *"compose up"*) return 0 ;;
-            *"find research"*|*"find \"research"*) echo "research/2026-01-24_Sample_R_Project/2026-01-24_Sample_R_Project.qmd" ;;
+            *"find research"*|*"find \"research"*) echo "research/2026-07-15_Project/output/analysis/deep.qmd" ;;
             *"quarto render"*) return 0 ;;
             *"compose exec"*) return 0 ;;
-            *"compose cp"*) return 0 ;;
             *)
                 echo "[DRY-RUN] docker $*" >&2
                 return 0
@@ -116,16 +119,18 @@ fi
 
 # --- Parse arguments ---
 # Optional single positional argument: a project folder name (under research/)
-# or a direct path to a .qmd file. No argument => discovery-listing mode.
+# or a direct path to a .qmd file. No argument => recursive discovery picker.
 TARGET_ARG=""
 while [ $# -gt 0 ]; do
     case "$1" in
         -h|--help)
-            echo "Usage: bash $0                         # list available .qmd notebooks"
-            echo "       bash $0 <project-folder>        # render the .qmd in that research project"
+            echo "Usage: bash $0                         # recursively discover and select a .qmd"
+            echo "       bash $0 <project-folder>        # render the single .qmd in that project"
             echo "       bash $0 <path/to/notebook.qmd>  # render a specific .qmd file"
             echo ""
+            echo "The picker accepts a number; 0, blank, q/Q, or EOF cancels cleanly."
             echo "Rendered HTML is written to ${QUARTO_HTML_DIR}/ and opened in your browser."
+            echo "Flat basenames overwrite on collision; set QUARTO_HTML_DIR to retain both."
             exit 0
             ;;
         -*)
@@ -182,22 +187,34 @@ fi
 
 # --- Resolve the .qmd to render ---
 # Three input shapes are accepted:
-#   1. No argument              -> list all .qmd files under research/ and exit.
-#   2. A project folder name    -> find the .qmd inside research/<name>/.
+#   1. No argument              -> recursively discover and select under research/.
+#   2. A project folder name    -> recursively find its single .qmd.
 #   3. A direct .qmd path       -> use it verbatim (normalized to container-relative).
-# The .qmd path we ultimately hand to `quarto render` is expressed relative to
-# /daaf inside the container, because the container's working_dir is /daaf.
+# Discovery is newline-delimited, so literal-newline filenames are unsupported.
+# Spaces and ordinary shell metacharacters are preserved as literal path data.
+# The final path handed to `quarto render` is relative to /daaf, the container's
+# working_dir.
 QMD_REL=""
 
 if [ -z "${TARGET_ARG}" ]; then
-    # --- Discovery mode: list available notebooks ---
     echo ""
     echo "Discovering Quarto notebooks under research/ ..."
-    # `find` runs inside the container (its GNU userland is guaranteed); results
-    # are paths relative to /daaf. -maxdepth keeps this to project-level notebooks.
-    QMDS_RAW=$(docker compose exec -T daaf-docker bash -c 'cd /daaf && find research -maxdepth 3 -name "*.qmd" -type f 2>/dev/null | sort' 2>/dev/null | tr -d '\r') || QMDS_RAW=""
+    echo "Searching recursively at every depth."
+    if ! QMDS_RAW=$(docker compose exec -T daaf-docker bash -o pipefail -c 'cd /daaf && find research -type f -name "*.qmd" -print | LC_ALL=C sort' 2>/dev/null); then
+        echo "ERROR: Could not discover Quarto notebooks in the DAAF container." >&2
+        echo "  Check Docker/container status, then try again." >&2
+        exit 1
+    fi
+    QMDS_RAW="$(printf '%s' "${QMDS_RAW}" | tr -d '\r')"
 
-    if [ -z "${QMDS_RAW}" ]; then
+    qmd_paths=()
+    while IFS= read -r qmd_path; do
+        [ -z "${qmd_path}" ] && continue
+        qmd_paths+=("${qmd_path}")
+    done <<< "${QMDS_RAW}"
+
+    qmd_count="${#qmd_paths[@]}"
+    if [ "${qmd_count}" -eq 0 ]; then
         echo ""
         echo "No Quarto notebooks (.qmd) found under research/." >&2
         echo "  Quarto notebooks are produced by R projects. If you expected one here," >&2
@@ -208,58 +225,103 @@ if [ -z "${TARGET_ARG}" ]; then
     echo ""
     echo "Available Quarto notebooks:"
     echo ""
-    # Bash 3.2 safe: iterate the newline-delimited list with a while-read loop
-    # (no mapfile). This mode lists and exits.
-    while IFS= read -r qmd_path; do
-        [ -z "${qmd_path}" ] && continue
-        printf "  %s\n" "${qmd_path}"
-    done <<< "${QMDS_RAW}"
+    qmd_index=0
+    while [ "${qmd_index}" -lt "${qmd_count}" ]; do
+        printf "  %d) %s\n" "$((qmd_index + 1))" "${qmd_paths[${qmd_index}]}"
+        qmd_index=$((qmd_index + 1))
+    done
+    echo "  0) Cancel"
     echo ""
-    echo "To render one, re-run with its project folder or path, e.g.:"
-    echo "  bash $0 <project-folder>"
-    echo "  bash $0 <path/to/notebook.qmd>"
-    exit 0
+
+    if [ "${DAAF_DRY_RUN:-}" = "1" ]; then
+        QMD_REL="${qmd_paths[0]}"
+        echo "[DRY-RUN] Auto-selected 1) ${QMD_REL}"
+    else
+        while true; do
+            if ! IFS= read -r -p "Select a notebook (1-${qmd_count}, 0 to cancel): " selection; then
+                selection=""
+            fi
+
+            case "${selection}" in
+                ""|0|q|Q)
+                    echo "Quarto notebook selection cancelled."
+                    exit 0
+                    ;;
+                *[!0-9]*|0*)
+                    echo "Invalid selection. Enter a number from 1 to ${qmd_count}, or 0 to cancel." >&2
+                    continue
+                    ;;
+            esac
+
+            # Bound digit length before arithmetic conversion/indexing. Nine digits
+            # safely covers any practical candidate count on Bash 3.2 hosts.
+            if [ "${#selection}" -gt 9 ]; then
+                echo "Invalid selection. Enter a number from 1 to ${qmd_count}, or 0 to cancel." >&2
+                continue
+            fi
+            selection_number=$((10#${selection}))
+            if [ "${selection_number}" -lt 1 ] || [ "${selection_number}" -gt "${qmd_count}" ]; then
+                echo "Invalid selection. Enter a number from 1 to ${qmd_count}, or 0 to cancel." >&2
+                continue
+            fi
+
+            QMD_REL="${qmd_paths[$((selection_number - 1))]}"
+            break
+        done
+    fi
+else
+    case "${TARGET_ARG}" in
+        *.qmd)
+            # Direct .qmd path. Strip a leading ./ and /daaf/ so the value is
+            # relative to the container working_dir (/daaf).
+            QMD_REL="${TARGET_ARG#./}"
+            QMD_REL="${QMD_REL#/daaf/}"
+            if ! docker compose exec -T daaf-docker test -f "/daaf/${QMD_REL}" 2>/dev/null; then
+                echo "ERROR: Quarto notebook not found in the container: ${QMD_REL}" >&2
+                echo "  Run 'bash $0' with no arguments to select an available notebook." >&2
+                exit 1
+            fi
+            ;;
+        *)
+            # Keep the project value as a positional argument to container bash;
+            # never interpolate host-provided text into the command source.
+            proj="${TARGET_ARG#research/}"
+            proj="${proj%/}"
+            if ! FOUND_RAW=$(docker compose exec -T daaf-docker bash -o pipefail -c 'cd /daaf && find "research/$1" -type f -name "*.qmd" -print | LC_ALL=C sort' _ "${proj}" 2>/dev/null); then
+                echo "ERROR: Could not search project '${proj}' for Quarto notebooks." >&2
+                echo "  Check Docker/container status and the project name, then try again." >&2
+                exit 1
+            fi
+            FOUND_RAW="$(printf '%s' "${FOUND_RAW}" | tr -d '\r')"
+
+            found_paths=()
+            while IFS= read -r found_path; do
+                [ -z "${found_path}" ] && continue
+                found_paths+=("${found_path}")
+            done <<< "${FOUND_RAW}"
+            found_count="${#found_paths[@]}"
+
+            if [ "${found_count}" -eq 0 ]; then
+                echo "ERROR: No Quarto notebook (.qmd) found in project: ${proj}" >&2
+                echo "  Run 'bash $0' with no arguments to select an available notebook." >&2
+                exit 1
+            fi
+
+            if [ "${found_count}" -gt 1 ]; then
+                echo "ERROR: Multiple Quarto notebooks found in project '${proj}':" >&2
+                found_index=0
+                while [ "${found_index}" -lt "${found_count}" ]; do
+                    printf '    %s\n' "${found_paths[${found_index}]}" >&2
+                    found_index=$((found_index + 1))
+                done
+                echo "  Re-run with the full .qmd path to pick one." >&2
+                exit 1
+            fi
+
+            QMD_REL="${found_paths[0]}"
+            ;;
+    esac
 fi
-
-case "${TARGET_ARG}" in
-    *.qmd)
-        # Direct .qmd path. Strip a leading ./ and a leading /daaf/ so the value
-        # is expressed relative to the container working_dir (/daaf).
-        QMD_REL="${TARGET_ARG#./}"
-        QMD_REL="${QMD_REL#/daaf/}"
-        # Confirm it exists inside the container before attempting a render.
-        if ! docker compose exec -T daaf-docker test -f "/daaf/${QMD_REL}" 2>/dev/null; then
-            echo "ERROR: Quarto notebook not found in the container: ${QMD_REL}" >&2
-            echo "  Run 'bash $0' with no arguments to list available notebooks." >&2
-            exit 1
-        fi
-        ;;
-    *)
-        # Treat the argument as a project folder name (with or without a leading
-        # research/). Find the single .qmd inside it.
-        proj="${TARGET_ARG#research/}"
-        proj="${proj%/}"
-        FOUND=$(docker compose exec -T daaf-docker bash -c 'cd /daaf && find "research/$1" -maxdepth 2 -name "*.qmd" -type f 2>/dev/null | sort' _ "${proj}" 2>/dev/null | tr -d '\r') || FOUND=""
-
-        if [ -z "${FOUND}" ]; then
-            echo "ERROR: No Quarto notebook (.qmd) found in project: ${proj}" >&2
-            echo "  Run 'bash $0' with no arguments to list available notebooks." >&2
-            exit 1
-        fi
-
-        # If multiple .qmd files exist in the project, ask the user to be specific
-        # rather than guessing which one they meant.
-        qmd_count=$(printf '%s\n' "${FOUND}" | grep -c . || true)
-        if [ "${qmd_count}" -gt 1 ]; then
-            echo "ERROR: Multiple Quarto notebooks found in project '${proj}':" >&2
-            printf '%s\n' "${FOUND}" | sed 's/^/    /' >&2
-            echo "  Re-run with the full .qmd path to pick one." >&2
-            exit 1
-        fi
-
-        QMD_REL="${FOUND}"
-        ;;
-esac
 
 # --- Render inside the container ---
 # `-M embed-resources:true` forces a SINGLE self-contained HTML regardless of
@@ -284,9 +346,20 @@ fi
 # --- Copy the rendered HTML out to the host ---
 # `docker compose cp` copies from the container to the host without needing a
 # raw container name (it resolves the service from the compose project, so it
-# tracks DAAF_PROJECT_NAME just like the ps/exec calls above).
-mkdir -p "${QUARTO_HTML_DIR}"
+# tracks DAAF_PROJECT_NAME just like the ps/exec calls above). Preserve the flat
+# basename destination: a later render overwrites an earlier notebook with the
+# same basename. Set QUARTO_HTML_DIR differently when both must be retained.
 HOST_HTML="${QUARTO_HTML_DIR%/}/${HTML_BASENAME}"
+
+if [ "${DAAF_DRY_RUN:-}" = "1" ]; then
+    echo ""
+    echo "[DRY-RUN] Render simulated for: ${QMD_REL}"
+    echo "[DRY-RUN] Rendered document would be copied to: ${HOST_HTML}"
+    echo "[DRY-RUN] Skipping output-directory creation, copy, path resolution, and browser launch."
+    exit 0
+fi
+
+mkdir -p "${QUARTO_HTML_DIR}"
 
 if ! docker compose cp "daaf-docker:/daaf/${HTML_REL}" "${HOST_HTML}"; then
     echo "" >&2
@@ -301,15 +374,15 @@ echo ""
 echo "Rendered document copied to: ${HOST_HTML}"
 
 # --- Open in the default browser ---
-# Prefer the shared open_url helper (handles macOS/WSL/Linux). It expects a URL;
-# a file:// URL with an absolute path opens a local file in every supported
-# opener. Fall back silently if daaf_lib.sh was not sourced -- the file path is
-# printed above regardless, so the user can always open it by hand.
+# Prefer the shared open_url helper (handles macOS/WSL/Linux). Pass the raw local
+# path rather than constructing a file:// URI: literal #, ?, and % characters in
+# a valid filename otherwise acquire URI fragment/query/escape semantics. Fall
+# back silently if daaf_lib.sh was not sourced -- the path is printed regardless.
 ABS_HTML="$(cd "$(dirname "${HOST_HTML}")" && pwd)/$(basename "${HOST_HTML}")"
 if command -v open_url >/dev/null 2>&1; then
-    open_url "file://${ABS_HTML}"
+    open_url "${ABS_HTML}"
     echo "Opening in your default browser..."
 else
     echo "Open it in your browser to view:"
-    echo "  file://${ABS_HTML}"
+    echo "  ${ABS_HTML}"
 fi

@@ -1,10 +1,11 @@
 # ============================================================================
 # DAAF Quarto Document Viewer (Windows PowerShell)
 # ============================================================================
-# Renders a Quarto notebook (.qmd) to a single self-contained HTML file inside
-# the DAAF container, copies the result out to your host machine, and opens it
-# in your default browser. This is the R-notebook counterpart to
-# view_notebooks.ps1 (which serves marimo for Python projects).
+# Recursively discovers Quarto notebooks (.qmd) under research/, lets you select
+# one, renders it to a single self-contained HTML file inside the DAAF container,
+# copies the result out to your host machine, and opens it in your default
+# browser. This is the R-notebook counterpart to view_notebooks.ps1 (which serves
+# marimo for Python projects).
 #
 # Unlike marimo, Quarto notebooks are not served live -- they render to a static
 # HTML file. This script closes that gap so you never have to run
@@ -12,13 +13,15 @@
 #
 # Usage:
 #   cd daaf-docker
-#   .\view_quarto.ps1                                       # list available .qmd notebooks
+#   .\view_quarto.ps1                                       # recursively select a .qmd notebook
 #   .\view_quarto.ps1 2026-01-24_My_Project                # render the notebook in that project
 #   .\view_quarto.ps1 research/2026-01-24_My_Project/notebook.qmd   # render a specific .qmd
 #
 # Output:
 #   Rendered HTML is copied to .\quarto_html\ under your current directory
-#   (created on first use). Each render overwrites the file of the same name.
+#   (created on first use). Output uses the notebook's flat basename, so notebooks
+#   with the same basename overwrite one another. Set QUARTO_HTML_DIR to a
+#   different directory when both outputs must be retained.
 #
 # Prerequisites:
 #   - Docker Desktop installed and running
@@ -33,11 +36,29 @@ $ErrorActionPreference = "Stop"
 
 function Wait-AndExit {
     param([int]$Code = 0)
-    if (-not $env:DAAF_NESTED) {
+    if ((-not $env:DAAF_NESTED) -and ($env:DAAF_DRY_RUN -ne "1")) {
         Write-Host ""
         Read-Host "Press Enter to continue"
     }
     exit $Code
+}
+
+# Read one picker line without assuming stdin is attached to a console. Read-Host
+# provides the normal interactive prompt; redirected input uses Console.In and
+# returns $null at EOF. This works on Windows PowerShell 5.1 and pwsh 7.
+function Read-QuartoSelection {
+    param([string]$Prompt)
+
+    $inputRedirected = $false
+    try { $inputRedirected = [Console]::IsInputRedirected }
+    catch { $inputRedirected = $true }
+
+    if (-not $inputRedirected) {
+        return (Read-Host $Prompt)
+    }
+
+    Write-Host ($Prompt + ": ") -NoNewline
+    return [Console]::In.ReadLine()
 }
 
 # --- Multi-instance settings (shared pattern) ---
@@ -82,9 +103,10 @@ if ([string]::IsNullOrEmpty($env:QUARTO_HTML_DIR)) {
 }
 
 # --- Dry-Run Support ---
-# When DAAF_DRY_RUN=1, simulate external commands (Docker) for CI cross-platform
-# smoke testing without a Docker daemon. The find arm echoes a fake .qmd path so
-# discovery listing has content; render and cp are no-ops.
+# When DAAF_DRY_RUN=1, simulate Docker for CI cross-platform smoke testing. The
+# recursive find returns a deep fixture. Later branches skip every host write,
+# copy, output-directory resolution, and browser launch rather than merely
+# replacing those operations with no-ops.
 if ($env:DAAF_DRY_RUN -eq "1") {
     function docker {
         $argStr = $args -join ' '
@@ -93,10 +115,8 @@ if ($env:DAAF_DRY_RUN -eq "1") {
             "*info*" { return }
             "*compose ps -q daaf-docker*" { Write-Output "abc123" }
             "*compose up*" { return }
-            "*find research*" { Write-Output "research/2026-01-24_Sample_R_Project/2026-01-24_Sample_R_Project.qmd" }
-            "*find `"research*" { Write-Output "research/2026-01-24_Sample_R_Project/2026-01-24_Sample_R_Project.qmd" }
+            "*base64 -d*bash -o pipefail*" { Write-Output "research/2026-07-15_Project/output/analysis/deep.qmd" }
             "*quarto render*" { return }
-            "*compose cp*" { return }
             "*compose exec*" { return }
             default {
                 Write-Host "[DRY-RUN] docker $argStr"
@@ -121,15 +141,17 @@ Set-StrictMode -Version 3.0
 
 # --- Parse arguments ---
 # Optional single positional argument: a project folder name (under research/)
-# or a direct path to a .qmd file. No argument => discovery-listing mode.
+# or a direct path to a .qmd file. No argument => recursive discovery picker.
 $TargetArg = ""
 foreach ($a in $args) {
     if ($a -eq "-h" -or $a -eq "--help" -or $a -eq "-Help") {
-        Write-Host "Usage: .\view_quarto.ps1                         # list available .qmd notebooks"
-        Write-Host "       .\view_quarto.ps1 <project-folder>        # render the .qmd in that research project"
+        Write-Host "Usage: .\view_quarto.ps1                         # recursively discover and select a .qmd"
+        Write-Host "       .\view_quarto.ps1 <project-folder>        # render the single .qmd in that project"
         Write-Host "       .\view_quarto.ps1 <path/to/notebook.qmd>  # render a specific .qmd file"
         Write-Host ""
+        Write-Host "The picker accepts a number; 0, blank, q/Q, or EOF cancels cleanly."
         Write-Host "Rendered HTML is written to $QuartoHtmlDir\ and opened in your browser."
+        Write-Host "Flat basenames overwrite on collision; set QUARTO_HTML_DIR to retain both."
         exit 0
     }
     if ($TargetArg -ne "") {
@@ -186,25 +208,49 @@ if ($Running -eq 0) {
 
 # --- Resolve the .qmd to render ---
 # Three input shapes are accepted:
-#   1. No argument              -> list all .qmd files under research/ and exit.
-#   2. A project folder name    -> find the .qmd inside research/<name>/.
+#   1. No argument              -> recursively discover and select under research/.
+#   2. A project folder name    -> recursively find its single .qmd.
 #   3. A direct .qmd path       -> use it verbatim (normalized to container-relative).
-# The .qmd path handed to `quarto render` is expressed relative to /daaf inside
-# the container, because the container's working_dir is /daaf.
+# Discovery is newline-delimited, so literal-newline filenames are unsupported.
+# Spaces and ordinary shell metacharacters are preserved as literal path data.
+# The final path handed to `quarto render` is relative to /daaf, the container's
+# working_dir. Discovery programs and project values cross the Windows native
+# process boundary as base64 tokens: the tokens contain no quotes or whitespace,
+# avoiding Windows PowerShell 5.1 argument reconstruction of embedded quotes.
+$GlobalDiscoveryScript = 'cd /daaf && find research -type f -name "*.qmd" -print | LC_ALL=C sort'
+$ProjectDiscoveryScript = 'proj=$(printf "%s" "$1" | base64 -d) && cd /daaf && find "research/$proj" -type f -name "*.qmd" -print | LC_ALL=C sort'
+$GlobalDiscoveryB64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($GlobalDiscoveryScript))
+$ProjectDiscoveryB64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($ProjectDiscoveryScript))
 $QmdRel = ""
 
 if ($TargetArg -eq "") {
-    # --- Discovery mode: list available notebooks ---
     Write-Host ""
     Write-Host "Discovering Quarto notebooks under research/ ..."
-    # `find` runs inside the container (its GNU userland is guaranteed); results
-    # are paths relative to /daaf. -maxdepth keeps this to project-level notebooks.
-    $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-    $QmdsRaw = docker compose exec -T daaf-docker bash -c 'cd /daaf && find research -maxdepth 3 -name "*.qmd" -type f 2>/dev/null | sort' 2>$null
-    $ErrorActionPreference = $savedEAP
-    $QmdsText = (($QmdsRaw | Out-String) -replace "`r", "").Trim()
+    Write-Host "Searching recursively at every depth."
+    $savedEAP = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "SilentlyContinue"
+        $QmdsRaw = @(docker compose exec -T daaf-docker bash -c 'echo $1 | base64 -d | bash -o pipefail' _ $GlobalDiscoveryB64 2>$null)
+        $discoveryExit = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $savedEAP
+    }
+    if ($discoveryExit -ne 0) {
+        Write-Host "ERROR: Could not discover Quarto notebooks in the DAAF container." -ForegroundColor Red
+        Write-Host "  Check Docker/container status, then try again."
+        Wait-AndExit 1
+    }
 
-    if ([string]::IsNullOrWhiteSpace($QmdsText)) {
+    # Remove CR line endings only. Do not Trim(): leading/trailing spaces are
+    # meaningful path characters and must survive discovery unchanged.
+    $QmdPaths = @()
+    foreach ($rawPath in $QmdsRaw) {
+        if ($null -eq $rawPath) { continue }
+        $pathValue = ([string]$rawPath) -replace "`r", ""
+        if ($pathValue -ne "") { $QmdPaths += $pathValue }
+    }
+
+    if ($QmdPaths.Count -eq 0) {
         Write-Host ""
         Write-Host "No Quarto notebooks (.qmd) found under research/." -ForegroundColor Yellow
         Write-Host "  Quarto notebooks are produced by R projects. If you expected one here,"
@@ -215,51 +261,91 @@ if ($TargetArg -eq "") {
     Write-Host ""
     Write-Host "Available Quarto notebooks:"
     Write-Host ""
-    foreach ($qmdPath in ($QmdsText -split "`n")) {
-        $trimmedPath = $qmdPath.Trim()
-        if ($trimmedPath -ne "") {
-            Write-Host "  $trimmedPath"
+    for ($i = 0; $i -lt $QmdPaths.Count; $i++) {
+        Write-Host ("  {0}) {1}" -f ($i + 1), $QmdPaths[$i])
+    }
+    Write-Host "  0) Cancel"
+    Write-Host ""
+
+    if ($env:DAAF_DRY_RUN -eq "1") {
+        $QmdRel = $QmdPaths[0]
+        Write-Host "[DRY-RUN] Auto-selected 1) $QmdRel"
+    } else {
+        while ($true) {
+            $selection = Read-QuartoSelection "Select a notebook (1-$($QmdPaths.Count), 0 to cancel)"
+            if ($null -eq $selection -or $selection -eq "" -or $selection -eq "0" -or $selection -eq "q" -or $selection -eq "Q") {
+                Write-Host "Quarto notebook selection cancelled."
+                Wait-AndExit 0
+            }
+
+            if ($selection -notmatch '^[1-9][0-9]*$' -or $selection.Length -gt 9) {
+                Write-Host "Invalid selection. Enter a number from 1 to $($QmdPaths.Count), or 0 to cancel." -ForegroundColor Yellow
+                continue
+            }
+
+            $selectionNumber = 0
+            if (-not [int]::TryParse($selection, [ref]$selectionNumber)) {
+                Write-Host "Invalid selection. Enter a number from 1 to $($QmdPaths.Count), or 0 to cancel." -ForegroundColor Yellow
+                continue
+            }
+            if ($selectionNumber -lt 1 -or $selectionNumber -gt $QmdPaths.Count) {
+                Write-Host "Invalid selection. Enter a number from 1 to $($QmdPaths.Count), or 0 to cancel." -ForegroundColor Yellow
+                continue
+            }
+
+            $QmdRel = $QmdPaths[$selectionNumber - 1]
+            break
         }
     }
-    Write-Host ""
-    Write-Host "To render one, re-run with its project folder or path, e.g.:"
-    Write-Host "  .\view_quarto.ps1 <project-folder>"
-    Write-Host "  .\view_quarto.ps1 <path/to/notebook.qmd>"
-    Wait-AndExit 0
-}
-
-if ($TargetArg -like "*.qmd") {
-    # Direct .qmd path. Strip a leading ./ and a leading /daaf/ so the value is
-    # expressed relative to the container working_dir (/daaf).
+} elseif ($TargetArg -like "*.qmd") {
+    # Direct .qmd path. Strip a leading ./ and /daaf/ so the value is relative
+    # to the container working_dir (/daaf).
     $QmdRel = $TargetArg -replace "^\./", "" -replace "^/daaf/", ""
-    # Confirm it exists inside the container before attempting a render.
-    $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-    docker compose exec -T daaf-docker test -f "/daaf/$QmdRel" 2>$null
-    $testExit = $LASTEXITCODE
-    $ErrorActionPreference = $savedEAP
+    $savedEAP = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "SilentlyContinue"
+        docker compose exec -T daaf-docker test -f "/daaf/$QmdRel" 2>$null
+        $testExit = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $savedEAP
+    }
     if ($testExit -ne 0) {
         Write-Host "ERROR: Quarto notebook not found in the container: $QmdRel" -ForegroundColor Red
-        Write-Host "  Run '.\view_quarto.ps1' with no arguments to list available notebooks."
+        Write-Host "  Run '.\view_quarto.ps1' with no arguments to select an available notebook."
         Wait-AndExit 1
     }
 } else {
-    # Treat the argument as a project folder name (with or without a leading
-    # research/). Find the single .qmd inside it.
+    # Keep the project value as a positional argument to container bash; never
+    # interpolate host-provided text into the command source.
     $proj = ($TargetArg -replace "^research/", "").TrimEnd("/")
-    $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-    $FoundRaw = docker compose exec -T daaf-docker bash -c 'cd /daaf && find "research/$1" -maxdepth 2 -name "*.qmd" -type f 2>/dev/null | sort' _ $proj 2>$null
-    $ErrorActionPreference = $savedEAP
-    $FoundText = (($FoundRaw | Out-String) -replace "`r", "").Trim()
-
-    if ([string]::IsNullOrWhiteSpace($FoundText)) {
-        Write-Host "ERROR: No Quarto notebook (.qmd) found in project: $proj" -ForegroundColor Red
-        Write-Host "  Run '.\view_quarto.ps1' with no arguments to list available notebooks."
+    $ProjectB64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($proj))
+    $savedEAP = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "SilentlyContinue"
+        $FoundRaw = @(docker compose exec -T daaf-docker bash -c 'echo $1 | base64 -d | bash -o pipefail -s -- $2' _ $ProjectDiscoveryB64 $ProjectB64 2>$null)
+        $projectDiscoveryExit = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $savedEAP
+    }
+    if ($projectDiscoveryExit -ne 0) {
+        Write-Host "ERROR: Could not search project '$proj' for Quarto notebooks." -ForegroundColor Red
+        Write-Host "  Check Docker/container status and the project name, then try again."
         Wait-AndExit 1
     }
 
-    $FoundList = @($FoundText -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" })
-    # If multiple .qmd files exist in the project, ask the user to be specific
-    # rather than guessing which one they meant.
+    $FoundList = @()
+    foreach ($rawFound in $FoundRaw) {
+        if ($null -eq $rawFound) { continue }
+        $foundValue = ([string]$rawFound) -replace "`r", ""
+        if ($foundValue -ne "") { $FoundList += $foundValue }
+    }
+
+    if ($FoundList.Count -eq 0) {
+        Write-Host "ERROR: No Quarto notebook (.qmd) found in project: $proj" -ForegroundColor Red
+        Write-Host "  Run '.\view_quarto.ps1' with no arguments to select an available notebook."
+        Wait-AndExit 1
+    }
+
     if ($FoundList.Count -gt 1) {
         Write-Host "ERROR: Multiple Quarto notebooks found in project '$proj':" -ForegroundColor Red
         foreach ($f in $FoundList) { Write-Host "    $f" }
@@ -295,16 +381,30 @@ if ($renderExit -ne 0) {
 }
 
 # --- Copy the rendered HTML out to the host ---
-# `docker compose cp` copies from the container to the host without needing a
-# raw container name (it resolves the service from the compose project, so it
-# tracks DAAF_PROJECT_NAME just like the ps/exec calls above).
-$null = New-Item -ItemType Directory -Path $QuartoHtmlDir -Force
+# Preserve the existing flat-basename destination. Two notebooks with the same
+# basename therefore share a destination and the later copy overwrites the
+# earlier one; set QUARTO_HTML_DIR differently when both must be retained.
 $HostHtml = Join-Path $QuartoHtmlDir $HtmlBasename
 
-$savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-docker compose cp "daaf-docker:/daaf/$HtmlRel" $HostHtml
-$cpExit = $LASTEXITCODE
-$ErrorActionPreference = $savedEAP
+if ($env:DAAF_DRY_RUN -eq "1") {
+    Write-Host ""
+    Write-Host "[DRY-RUN] Render simulated for: $QmdRel"
+    Write-Host "[DRY-RUN] Rendered document would be copied to: $HostHtml"
+    Write-Host "[DRY-RUN] Skipping output-directory creation, copy, path resolution, and browser launch."
+    Wait-AndExit 0
+}
+
+# `docker compose cp` resolves the service from the compose project, so it
+# tracks DAAF_PROJECT_NAME just like the ps/exec calls above.
+$null = New-Item -ItemType Directory -Path $QuartoHtmlDir -Force
+$savedEAP = $ErrorActionPreference
+try {
+    $ErrorActionPreference = "SilentlyContinue"
+    docker compose cp "daaf-docker:/daaf/$HtmlRel" $HostHtml
+    $cpExit = $LASTEXITCODE
+} finally {
+    $ErrorActionPreference = $savedEAP
+}
 if ($cpExit -ne 0) {
     Write-Host ""
     Write-Host "ERROR: Failed to copy the rendered HTML out of the container." -ForegroundColor Red
@@ -319,27 +419,14 @@ Write-Host "Rendered document copied to: $HostHtml"
 
 # --- Open in the default browser ---
 # Start-Process is the native Windows opener and resolves the platform default
-# handler on PS 7 (macOS/Linux) too. In dry-run mode we skip the actual open so
-# CI never launches a browser. Any failure is swallowed -- the path is printed
-# above regardless, so the user can always open it by hand.
-#
-# Build the absolute path from the (existing) output DIRECTORY plus the file
-# basename rather than Resolve-Path on the file itself: under DAAF_DRY_RUN the
-# `docker compose cp` above is a no-op, so the HTML file does not exist and a
-# LiteralPath resolve of it would throw. The directory always exists (New-Item
-# -Force created it), so resolving that and joining the basename is safe in both
-# real and dry-run runs. Mirrors the Bash twin's `cd $(dirname) && pwd` pattern.
+# handler on PS 7 (macOS/Linux) too. Any failure is swallowed -- the path is
+# printed above regardless, so the user can always open it by hand.
 $AbsHtmlDir = (Resolve-Path -LiteralPath $QuartoHtmlDir).Path
 $AbsHtml = Join-Path $AbsHtmlDir $HtmlBasename
-if ($env:DAAF_DRY_RUN -ne "1") {
-    try {
-        Start-Process $AbsHtml | Out-Null
-        Write-Host "Opening in your default browser..."
-    } catch {
-        Write-Host "Open it in your browser to view:"
-        Write-Host "  $AbsHtml"
-    }
-} else {
+try {
+    $null = Start-Process $AbsHtml
+    Write-Host "Opening in your default browser..."
+} catch {
     Write-Host "Open it in your browser to view:"
     Write-Host "  $AbsHtml"
 }

@@ -605,11 +605,11 @@ handle_logs() {
 # ============================================================================
 
 # view_quarto.sh is a HOST sibling script (like backup/restore/update), not a
-# container-side launcher: it renders a Quarto .qmd to self-contained HTML inside
-# the container, copies it out, and opens it in the browser. With no argument it
-# lists the available notebooks and exits, which is what this menu entry drives.
-# Delegate to it with DAAF_NESTED=1 (suppresses its own pause-on-exit trap) so
-# control returns cleanly to the menu, mirroring run_delegate's guarded child call.
+# container-side launcher: with no argument it recursively discovers every .qmd
+# under research/, lets the user select or cancel, renders the selection to
+# self-contained HTML, copies it out, and opens it in the browser. Delegate with
+# DAAF_NESTED=1 (suppresses its own pause-on-exit trap) so control returns cleanly
+# to the menu, mirroring run_delegate's guarded child call.
 handle_quarto() {
     echo ""
     echo "Discovering Quarto notebooks..."
@@ -762,8 +762,8 @@ handle_help() {
     echo "     create, and edit research notebooks across all projects."
     echo ""
     echo "  ${CYAN}5) View Quarto Notebooks (R)${RESET}"
-    echo "     Render a Quarto notebook (.qmd) from an R project to a"
-    echo "     self-contained HTML file and open it in your browser."
+    echo "     Search recursively for every .qmd under research/, select one"
+    echo "     to render and open, or cancel to return to this menu."
     echo ""
     echo "  ${CYAN}6) Open Terminal in Container${RESET}"
     echo "     Open a terminal in the DAAF container."

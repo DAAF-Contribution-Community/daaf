@@ -807,12 +807,12 @@ function Invoke-DaafLogViewer {
 # ============================================================================
 
 # view_quarto.ps1 is a HOST sibling script (like backup/restore/update), not a
-# container-side launcher: it renders a Quarto .qmd to self-contained HTML inside
-# the container, copies it out, and opens it in the browser. With no argument it
-# lists the available notebooks and exits, which is what this menu entry drives.
-# Delegate to it via Invoke-DaafDelegate (Start-Process child + DAAF_NESTED=1) so
-# it gets real console handles and control returns cleanly to the menu -- the same
-# guarded-child pattern the maintenance delegates use.
+# container-side launcher: with no argument it recursively discovers every .qmd
+# under research/, lets the user select or cancel, renders the selection to
+# self-contained HTML, copies it out, and opens it in the browser. Delegate via
+# Invoke-DaafDelegate (Start-Process child + DAAF_NESTED=1) so it gets real console
+# handles and control returns cleanly to the menu -- the guarded-child pattern
+# used by the maintenance delegates.
 function Invoke-DaafQuartoViewer { Invoke-DaafDelegate "view_quarto.ps1" }
 
 # ============================================================================
@@ -1019,8 +1019,8 @@ function Show-DaafHelp {
     Write-Host "     create, and edit research notebooks across all projects."
     Write-Host ""
     Write-Host "  5) View Quarto Notebooks (R)" -ForegroundColor Cyan
-    Write-Host "     Render a Quarto notebook (.qmd) from an R project to a"
-    Write-Host "     self-contained HTML file and open it in your browser."
+    Write-Host "     Search recursively for every .qmd under research/, select one"
+    Write-Host "     to render and open, or cancel to return to this menu."
     Write-Host ""
     Write-Host "  6) Open Terminal in Container" -ForegroundColor Cyan
     Write-Host "     Open a terminal in the DAAF container."
