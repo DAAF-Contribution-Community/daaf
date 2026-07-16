@@ -83,7 +83,7 @@ A different mechanism, not just more statistics. At T1-T3 the profile crosses th
 
 **What the user runs:** `synthpop` (R, CART synthesis — the flagship: agency-grade, light dependencies, handles missingness patterns) or SDV `GaussianCopulaSynthesizer` (Python). Templates: `assets/synthesize_local_template.R` / `.py`. Detail in `local-synthesis-t4.md`.
 
-**What crosses the boundary:** a synthetic parquet (or CSV) of generated rows, plus a generation log (seed, library versions, the synthesizer's own utility comparison summary). 
+**What crosses the boundary:** the synthetic rows plus a generation log (seed, library versions, the synthesizer's own utility comparison summary). **Parquet is the preferred/default exchange format.** CSV is a permitted fallback only when the user's local environment lacks Arrow/PyArrow, and it is an **audited boundary exception**: on receipt the first in-container action converts the CSV to Parquet and records an exchange manifest (a JSON sidecar named `{converted_filename}_exchange_manifest.json`: original filename, source format, row/column counts, file hash, conversion timestamp) beside the converted file, after which all in-container work uses only the converted Parquet. The framework's in-container Parquet-only rule thus holds — Parquet-only, with one audited exception at the T4 local-exchange boundary (see `local-synthesis-t4.md` § Consuming T4 output).
 
 **What NEVER crosses the boundary:** the real data, and — critically — **the fitted model object**. A fitted synthesizer can memorize and regenerate real records; the model artifact is as sensitive as the data. The templates write only the synthetic output and are commented loudly to this effect.
 

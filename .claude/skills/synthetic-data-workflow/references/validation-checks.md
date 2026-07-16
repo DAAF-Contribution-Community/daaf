@@ -103,6 +103,6 @@ Profile-based synthesis is approximate; tolerances make "within reason" concrete
 | (c) c1/c2/c7/c8 failures | **BLOCKER** — generation bug or disclosure risk |
 | (c) c3/c4/c6/c9/c11 out of tolerance | WARNING — investigate; may be an acceptable approximation limit, may be a bug |
 | (b) b11/b12 cross-tab schema or lone-cell failure | **BLOCKER** — b12 is a disclosure event (a lone suppressed cell is recoverable by differencing); b11 signals a malformed/tampered report |
-| (c) c10 missing seed | **BLOCKER** — reproducibility is non-negotiable |
+| (c) c10 missing seed | **BLOCKER** by default — reproducibility is the rule; the one narrow exception is the researcher-authorized T4 missing-seed path (`WORKFLOW_PHASE_DO_SYNTHETIC.md` § T4 Variant), which proceeds only with explicit gate authorization and yields a labeled "non-reproducible T4 synthetic artifact" |
 
 Every synthetic dataset that passes carries forward the scaffold-not-substitute caveat regardless of how clean the validation is — passing validation means "structurally faithful to the profile," never "analytically valid."

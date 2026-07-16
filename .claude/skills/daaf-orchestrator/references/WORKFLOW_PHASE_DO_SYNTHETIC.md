@@ -63,9 +63,9 @@ These gates replace GDI-2 through GDI-6 for the synthetic path. GDI-7 and GDI-8 
 | GDS-2 | DS-2 | User confirms they ran the script, reviewed the `.txt` summary, and returned the JSON report; report file present in `data/profile_report/` | User cannot run the script, or the run failed, or the user is not comfortable sharing the report after review |
 | GDS-3 | DS-3 | Report loads; `report_version` recognized; **QAS-B internal-consistency PASSED** (or WARNING) | Report corrupt/untrustworthy (b2/b3/b4/b6/b9), or a sub-threshold cell slipped through (b5 — also a disclosure event; notify the user) |
 | GDS-4 | DS-4 | Interpretation complete, all `[PRELIMINARY]`; **PSU-DS2 findings confirmed by user** | User rejects the interpretation basis and no revised interpretation can be agreed |
-| GDS-5 | DS-5 | Synthetic parquet in `data/synthetic/`; seed recorded; **QAS-C synthetic-vs-profile PASSED** (or WARNING) | Generation bug or disclosure-adjacent failure (c1/c2/c7/c8), or missing seed (c10) |
+| GDS-5 | DS-5 | Synthetic parquet in `data/synthetic/`; seed recorded; **QAS-C synthetic-vs-profile PASSED** (or WARNING) | Generation bug or disclosure-adjacent failure (c1/c2/c7/c8), or a missing seed (c10 — a BLOCKER by default; only the narrow, researcher-authorized T4 exception in § T4 Variant may proceed without one) |
 
-**Severity mapping** for QAS-A/B/C is defined in `synthetic-data-workflow` `references/validation-checks.md` § Severity mapping — follow it verbatim. In short: any disclosure-safety uncertainty (QAS-A), any sub-threshold cell in a returned report (QAS-B b5), and any missing generation seed (QAS-C c10) are BLOCKERs, never WARNINGs.
+**Severity mapping** for QAS-A/B/C is defined in `synthetic-data-workflow` `references/validation-checks.md` § Severity mapping — follow it verbatim; it gives the default severity of each finding. In short: any disclosure-safety uncertainty (QAS-A), and any sub-threshold cell in a returned report — a categorical/`__OTHER__` cell (QAS-B b5) or a lone suppressed cross-tab cell (QAS-B b12) — are BLOCKERs, never WARNINGs. A missing generation seed (QAS-C c10) is a BLOCKER **by default**, with a single narrow carve-out layered on top of that default: the researcher-authorized T4 missing-seed exception defined in § T4 Variant.
 
 ---
 
@@ -207,10 +207,15 @@ data on the user's machine.
 **Chosen tier:** {1 | 2 | 3}   **Suppression threshold:** {n}
 
 **TASK:** Trace EVERY emission path for whether the configured script can emit anything
-the chosen tier forbids. Work the checklist a1–a7 from validation-checks.md § (a). Pay
+the chosen tier forbids. Work the FULL checklist a1–a10 from validation-checks.md § (a). Pay
 special attention to a6 (edge cases — the all-null column, the single-distinct-value
 column, the two-level column with one small cell, the identifier that slips the
-uniqueness heuristic): the common leak is the edge case, not the main path. Trace the
+uniqueness heuristic) and its companion edge-case checks: a8 (a residual `__OTHER__` below
+threshold must roll in the smallest retained levels — a bare `__OTHER__ = sum(binned)` with
+no roll-in is a leak), a9 (small-n / near-constant / all-missing numerics degrade to
+quartiles-only or withhold the value, and must not crash `quantile([])`), and a10 (T3
+cross-tab suppression is complementary and `null`-coded, so no row/col has a lone
+recoverable suppressed cell). The common leak is the edge case, not the main path. Trace the
 smallest-cell case for every categorical/cross-tab emission. You may write a probe that
 feeds SYNTHETIC toy input to the script to exercise these edge cases (never real data —
 you do not have it), but the review is primarily static.
@@ -222,7 +227,7 @@ shared). Do not pass the gate on "probably fine."
 **OUTPUT FORMAT (3500-word cap):**
 ### QAS-A: Disclosure-Safety Review
 **Status:** [PASSED | BLOCKER]
-**Checklist a1–a7:** [table with pass/fail + evidence per item]
+**Checklist a1–a10:** [table with pass/fail + evidence per item]
 **Edge cases traced:** [which, and the emission each produces]
 **Issues Found:** [BLOCKER list with exact code path + fix]
 **Recommendation:** [PROCEED (safe to hand to user) | REVISION_REQUIRED]""",
@@ -318,22 +323,27 @@ All relative paths in referenced files resolve from BASE_DIR.
 
 **REPORT:** {PROJECT_DIR}/data/profile_report/{dataset_slug}_profile_report.json
 
-**TASK:** Write and execute an R consistency-check script that re-verifies checks b1–b10
+**TASK:** Write and execute an R consistency-check script that re-verifies checks b1–b12
 from validation-checks.md § (b) against the report's own numbers — do NOT trust the
 embedded `all_passed`; recompute. Confirm: report_version recognized; percentiles
 monotone; category counts (incl. __OTHER__) ≤ row_count; missing rates in [0,1]; NO
 emitted cell has a count in (0, suppression_threshold); (T3) correlation matrices square,
 symmetric, unit-diagonal, entries in [-1,1], smallest eigenvalue ≥ -1e-6; suppression
 settings recorded; each column's stat block matches its role; embedded validation
-present and passing.
+present and passing; (T3) cross-tab schema well-formed — `cells` length = `rows`×`cols`,
+suppressed cells encoded as `null` (never `0`), and `cells_suppressed` equals the count of
+`null` cells (b11); (T3) no cross-tab row or column has exactly one `null` cell unless the
+whole table is marked `"collapsed": true` (b12 — a lone suppressed cell is recoverable by
+differencing against the margins).
 
 Script path: `{PROJECT_DIR}/scripts/profile_report_intake/01_validate-report.R`
 Execute: bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/profile_report_intake/01_validate-report.R
 Flat sequential style; IAT comments; stopifnot() + cat() validation.
 
-**OUTPUT FORMAT:** research-executor standard return. Emphasize per-check b1–b10 result,
+**OUTPUT FORMAT:** research-executor standard return. Emphasize per-check b1–b12 result,
 any check that failed and the specific column/value, and whether a sub-threshold cell is
-present (b5 — this is BOTH a consistency failure AND a disclosure event to escalate).""",
+present (b5, or a lone suppressed cross-tab cell b12 — each is BOTH a consistency failure
+AND a disclosure event to escalate).""",
     subagent_type: "research-executor"
 })
 ```
@@ -355,20 +365,23 @@ QA — no raw data; validate the report's coherence and the DS-3 script's correc
 **SCRIPT TO REVIEW:** {PROJECT_DIR}/scripts/profile_report_intake/01_validate-report.R
 **REPORT:** {PROJECT_DIR}/data/profile_report/{dataset_slug}_profile_report.json
 
-**TASK:** Verify the DS-3 script genuinely re-computes b1–b10 (not merely echoing the
+**TASK:** Verify the DS-3 script genuinely re-computes b1–b12 (not merely echoing the
 report's embedded all_passed). Independently spot-check the load-bearing checks (b2
-percentile monotonicity, b3 counts ≤ row_count, b5 no sub-threshold cells). Create QA
-script(s) at `scripts/cr/qas_b_report-consistency.R` and execute via run_with_capture.sh.
+percentile monotonicity, b3 counts ≤ row_count, b5 no sub-threshold cells) and, at T3, the
+cross-tab integrity checks (b11 schema well-formedness, b12 no lone suppressed cell). Create
+QA script(s) at `scripts/cr/qas_b_report-consistency.R` and execute via run_with_capture.sh.
 
 **SEVERITY** (validation-checks.md § Severity mapping): b5 sub-threshold cell present =
 BLOCKER + a disclosure event (tell the user their shared report contains a small cell);
-b2/b3/b4/b6/b9 failures = BLOCKER (report corrupt — do not generate from it); b7 mild
-non-PSD = WARNING (project to nearest PD, note it).
+b2/b3/b4/b6/b9 failures = BLOCKER (report corrupt — do not generate from it); (T3) b12 lone
+suppressed cross-tab cell = BLOCKER + a disclosure event (recoverable by differencing
+against the margins); b11 malformed cross-tab schema = BLOCKER (signals a tampered report);
+b7 mild non-PSD = WARNING (project to nearest PD, note it).
 
 **OUTPUT FORMAT (3500-word cap):**
 ### QAS-B: Report Consistency Review
 **Status:** [PASSED | WARNING | BLOCKER]
-**Checks b1–b10:** [table]
+**Checks b1–b12:** [table]
 **Issues Found / Recommendation**""",
     subagent_type: "code-reviewer"
 })
@@ -511,21 +524,25 @@ profile-based synthesis is approximate by design).
 **GENERATION SCRIPT:** {PROJECT_DIR}/scripts/synth_generate/01_generate-synthetic.R
 
 **TASK:** Create and execute QA script(s) at `scripts/cr/qas_c_synthetic-validation.R`
-checking c1–c10: row count matched; column set + types matched; numeric marginals within
+checking c1–c11: row count matched; column set + types matched; numeric marginals within
 tolerance; categorical proportions within tolerance; __OTHER__ preserved as a bucket;
 (T3) correlations reproduced within tolerance (looser for binary/low-cardinality);
 suppressed categories absent from synthetic; identifiers structurally shaped and value-
 free (do not resemble anything real, no routable domain/format); missingness within
-tolerance; **seed recorded in the generation log**. Use the § Tolerances defaults.
+tolerance; **seed recorded in the generation log**; (T3) each named relationship
+reproduced — the synthetic OLS slope of `outcome ~ predictor` within ±10% of the reported
+slope and R² within ±0.10 (c11). Use the § Tolerances defaults.
 
 **SEVERITY** (§ Severity mapping): c1/c2/c7/c8 = BLOCKER (generation bug or disclosure
-risk); c10 missing seed = BLOCKER (reproducibility non-negotiable); c3/c4/c6/c9 out of
+risk); c10 missing seed = BLOCKER **by default** — the reviewer always reports a missing
+seed as a BLOCKER finding; only the orchestrator, with explicit researcher authorization at
+the gate, may waive it via the T4 missing-seed path (see § T4 Variant below); c3/c4/c6/c9/c11 out of
 tolerance = WARNING (investigate — may be an acceptable approximation limit).
 
 **OUTPUT FORMAT (3500-word cap):**
 ### QAS-C: Synthetic-vs-Profile Review
 **Status:** [PASSED | WARNING | BLOCKER]
-**Checks c1–c10:** [table]
+**Checks c1–c11:** [table]
 **Issues Found / Recommendation**
 Note: passing means "structurally faithful to the profile," NEVER "analytically valid."""",
     subagent_type: "code-reviewer"
@@ -539,8 +556,9 @@ Revision flow mirrors the other stages. Update STATE.md Synthetic Path Tracking 
 If the user chose **Level 4** at PSU-DS1, DS-1/DS-2 hand the user a **synthesizer** template instead of (or alongside) the profiler:
 
 - **DS-1 (T4):** research-executor copies `assets/synthesize_local_template.R` (synthpop CART, flagship) — or `.py` (SDV GaussianCopula) — into `scripts/local_profiling/`, customizes the Config, and QAS-A reviews it for the same disclosure discipline **plus** the T4-specific guarantee that only synthetic *rows* — never the real data and never the fitted model artifacts — are emitted (see `synthetic-data-workflow` `references/local-synthesis-t4.md`).
-- **DS-2 (T4):** the user runs the synthesizer locally; only the synthetic parquet crosses the boundary (optionally alongside a T2/T3 profile report if they also ran the profiler, which enables a stronger QAS-C).
-- **DS-5 becomes import + validation** rather than generation: research-executor imports the user-supplied synthetic parquet into `data/synthetic/`; QAS-C validates it **against the profile report if one was also produced**, or **against the user's declared metadata** (row count, column set/types, declared marginals) if no report accompanies it. The seed requirement (c10) applies to the *user's* synthesis log — request it; if the user cannot supply a seed, record that reproducibility is user-side and note it in the skill's Synthetic Data Notice.
+- **DS-2 (T4):** the user runs the synthesizer locally; only the synthetic rows cross the boundary. **Parquet is the preferred exchange format**; CSV is a permitted fallback only when the user's local environment lacks Arrow/PyArrow — the **audited boundary exception** (see DS-5 below and `synthetic-data-workflow` `references/local-synthesis-t4.md`). Optionally a T2/T3 profile report crosses too, if they also ran the profiler, which enables a stronger QAS-C.
+- **DS-5 becomes import + validation** rather than generation. **If the rows arrived as CSV (the audited boundary exception), the FIRST in-container action is to convert the CSV to Parquet and record an exchange manifest** (a JSON sidecar named `{converted_filename}_exchange_manifest.json`) beside the converted file — capturing the original filename, source format, row and column counts, the file hash (e.g., SHA-256), and the conversion timestamp — after which all subsequent in-container work uses only the converted Parquet (the framework's in-container Parquet-only rule is thereby preserved: Parquet-only, with one audited exception at this T4 local-exchange boundary). If the rows arrived as Parquet, import them directly. research-executor imports the user-supplied synthetic data into `data/synthetic/`; QAS-C validates it **against the profile report if one was also produced**, or **against the user's declared metadata** (row count, column set/types, declared marginals) if no report accompanies it.
+- **Missing-seed policy (default BLOCKER, one narrow T4 exception).** The seed requirement (c10) applies to the *user's* synthesis log — request it. A missing seed is a **BLOCKER by default** (as at GDS-5 and in QAS-C severity): synthetic data without a recorded seed is not reproducible. T4 is the **sole exception path**, and it may proceed only under all three of these conditions: (1) **explicit researcher authorization at the gate** — the orchestrator must ask the researcher directly and may never auto-waive the requirement; (2) the resulting artifact is labeled a **"non-reproducible T4 synthetic artifact"**, and that status is carried both in the artifact's provenance and in the skill's Synthetic Data Notice; (3) the artifact remains eligible for downstream skill delivery (rejoin DI-7/DI-8), but the delivered skill's Synthetic Data Notice MUST carry the non-reproducibility qualification. If the researcher does not authorize the exception, the missing seed stays a BLOCKER — request a re-run that records one.
 
 Everything downstream of DS-5 (rejoin DI-7/DI-8) is identical across T1–T4 except the `data-provenance` value.
 
@@ -551,7 +569,7 @@ Everything downstream of DS-5 (rejoin DI-7/DI-8) is identical across T1–T4 exc
 After DS-5 passes, skill authoring proceeds per `WORKFLOW_PHASE_DO_AUTHORING.md` (Stages DI-7/DI-8) — same authoring agent, same template, same delivery — with these **synthetic-provenance overrides**. Pass all of them into the DI-7 authoring invocation:
 
 1. **`data-provenance` frontmatter** set to the tier value: `synthetic-profile-t1`, `synthetic-profile-t2`, `synthetic-profile-t3`, or `synthetic-local-t4` (never `real`). This key and its vocabulary are defined in `DATA_SOURCE_SKILL_TEMPLATE.md`.
-2. **Mandatory "Synthetic Data Notice" section** in the skill (per the template): states that the skill was built from a disclosure-controlled profile of sensitive data the container never saw; that the bundled/example data is synthetic; and — foregrounded — the scaffold-not-substitute doctrine: **all findings must be finalized by re-running the vetted code against the real data, in the environment where the real data lives.**
+2. **Mandatory "Synthetic Data Notice" section** in the skill (per the template): states that the skill was built from a disclosure-controlled profile of sensitive data the container never saw; that the bundled/example data is synthetic; and — foregrounded — the scaffold-not-substitute doctrine: **all findings must be finalized by re-running the vetted code against the real data, in the environment where the real data lives.** If the artifact was produced under the authorized T4 missing-seed exception (§ T4 Variant), the Notice MUST additionally carry the **"non-reproducible T4 synthetic artifact"** qualification.
 3. **Every skill mention of the data carries the scaffold caveat.** Decision trees, example fetches, and quick-reference tables that reference the dataset note that values are synthetic and structurally (not analytically) representative.
 4. **Bundle the provenance scripts** into `.claude/skills/{skill_name}/scripts/` (the existing DI-7 script-bundling pattern): the customized local profiling script (`profile_{dataset_slug}.R`), the DS-3 report-intake validator, and the DS-5 generation script — so the whole synthetic construction is reproducible. Do **not** bundle the profile report itself unless the user explicitly approves (it is a summary of their sensitive data); reference its schema instead.
 5. **Data Access section** documents the two-world reality: the synthetic parquet in `data/synthetic/` is for code development; real analysis runs where the real data lives. If the user documented an access pattern for the real data (path, enclave, connection), record it as the production path with the synthetic file as the development stand-in.
@@ -591,7 +609,7 @@ All synthetic-path state lives in the **Synthetic Path Tracking** section of STA
 | DS-1 complete (GDS-1) | Customized script path; QAS-A result; Files Created |
 | DS-2 handoff issued | DS-2 = awaiting user local run; expected report path; restart prompt (wait state) |
 | DS-2 report returned (GDS-2) | Report path confirmed present; DS-2 = complete |
-| DS-3 complete (GDS-3) | QAS-B result (b1–b10); any disclosure event (b5) escalated |
+| DS-3 complete (GDS-3) | QAS-B result (b1–b12); any disclosure event (b5 or b12) escalated |
 | DS-4 complete + PSU-DS2 (GDS-4) | Interpretation Tracking section (a separate top-level STATE section) — User Decision + Final Interpretation, all rows; Pre-Authoring Research choice |
 | DS-5 complete (GDS-5) | Synthetic parquet path; recorded seed; QAS-C result; provenance tier value |
 | Any QAS BLOCKER | QA Blockers table; Error Budget Consumed; revision status |
@@ -609,7 +627,7 @@ All synthetic-path state lives in the **Synthetic Path Tracking** section of STA
 - [ ] Only the Config block customized; suppression logic left structural
 - [ ] Zero-DAAF-dependency, self-contained, IAT + REVIEW-BEFORE-SHARING block intact
 - [ ] Script NOT executed in-container
-- [ ] QAS-A disclosure-safety PASSED (a1–a7, edge cases traced) — no forbidden emission reachable
+- [ ] QAS-A disclosure-safety PASSED (a1–a10, edge cases traced) — no forbidden emission reachable
 
 #### DS-2 (User Local Run)
 - [ ] Plain-language handoff issued (get script out, run one command locally, two outputs, review `.txt`, return only JSON)
@@ -618,8 +636,8 @@ All synthetic-path state lives in the **Synthetic Path Tracking** section of STA
 - [ ] Returned JSON present and non-empty in `data/profile_report/`
 
 #### DS-3 (Report Intake & Validation)
-- [ ] DS-3 script re-computes b1–b10 independently (not echoing embedded all_passed)
-- [ ] QAS-B PASSED/WARNING; any b5 sub-threshold cell escalated as a disclosure event
+- [ ] DS-3 script re-computes b1–b12 independently (not echoing embedded all_passed)
+- [ ] QAS-B PASSED/WARNING; any b5 sub-threshold cell or b12 lone suppressed cross-tab cell escalated as a disclosure event
 - [ ] Report confirmed trustworthy before any generation
 
 #### DS-4 (Interpretation)
@@ -633,8 +651,9 @@ All synthetic-path state lives in the **Synthetic Path Tracking** section of STA
 - [ ] Generation seeded; seed recorded in the log
 - [ ] Synthetic parquet written to `data/synthetic/` (not `data/raw/`)
 - [ ] Categoricals drawn only from emitted levels; `__OTHER__` preserved; identifiers value-free
-- [ ] QAS-C PASSED/WARNING (c1–c10); c1/c2/c7/c8/c10 clear
-- [ ] (T4) user-supplied synthetic imported + validated against report or declared metadata
+- [ ] QAS-C PASSED/WARNING (c1–c11); c1/c2/c7/c8 clear, and c10 clear unless the researcher-authorized T4 missing-seed exception applies
+- [ ] (T4) user-supplied synthetic imported + validated against report or declared metadata; if it arrived as CSV, converted to Parquet with an exchange manifest recorded as the first in-container action
+- [ ] (T4) missing seed handled per policy — BLOCKER by default, or the researcher-authorized "non-reproducible T4 synthetic artifact" exception recorded in provenance + Synthetic Data Notice
 
 #### Rejoin (DI-7/DI-8)
 - [ ] `data-provenance` frontmatter set to the tier value (not `real`)

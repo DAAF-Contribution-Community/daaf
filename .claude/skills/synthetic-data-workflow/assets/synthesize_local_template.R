@@ -65,11 +65,16 @@ stopifnot(nrow(syn_obj$syn) == k, ncol(syn_obj$syn) == ncol(real))
 cat(sprintf("Generated %d synthetic rows.\n", nrow(syn_obj$syn)))
 
 # --- Save (ONLY synthetic rows + log cross the boundary) ---------------------
+# OUTPUT FORMAT: Parquet is the PREFERRED exchange format. CSV is only a fallback for
+# when `arrow` is unavailable locally -- and it is an AUDITED boundary exception: on
+# receipt DAAF converts the CSV to Parquet and records an exchange manifest, after which
+# all in-container work uses the Parquet. Prefer installing `arrow` and sending Parquet.
 out_ext <- tolower(tools::file_ext(OUTPUT_SYNTHETIC_PATH))
 if (out_ext == "parquet" && requireNamespace("arrow", quietly = TRUE)) {
   arrow::write_parquet(syn_obj$syn, OUTPUT_SYNTHETIC_PATH)
 } else {
-  # fall back to CSV if arrow is unavailable
+  # Fallback: `arrow` unavailable -> write CSV (audited exception; DAAF converts to
+  # Parquet on receipt). Install arrow (install.packages("arrow")) to avoid this.
   OUTPUT_SYNTHETIC_PATH <- sub("\\.parquet$", ".csv", OUTPUT_SYNTHETIC_PATH)
   write.csv(syn_obj$syn, OUTPUT_SYNTHETIC_PATH, row.names = FALSE)
 }

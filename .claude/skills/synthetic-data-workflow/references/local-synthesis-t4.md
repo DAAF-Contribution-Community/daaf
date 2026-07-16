@@ -23,7 +23,7 @@ Two things stay local, always:
 1. **The real data** — obviously.
 2. **The fitted model object** — less obvious but equally critical. A fitted synthesizer (a CART ensemble in synthpop, a fitted copula in SDV) can memorize and regenerate real records; the model artifact is as sensitive as the data itself. The templates write **only** the synthetic rows and a generation log, and are commented loudly that the real data and the fitted model must never be shared.
 
-Only synthetic rows (parquet if `arrow`/`pyarrow` is available, else CSV) plus a generation log cross the boundary.
+Only synthetic rows plus a generation log cross the boundary. **Parquet is the preferred exchange format**; CSV is a permitted fallback only when the local environment lacks `arrow`/`pyarrow`. A CSV hand-off is an **audited boundary exception** — see § Consuming T4 output for the mandatory convert-to-Parquet-and-manifest first action that keeps the in-container Parquet-only rule intact.
 
 ## synthpop (R, flagship) {#synthpop}
 
@@ -33,7 +33,7 @@ The `assets/synthesize_local_template.R` template (the user runs this locally):
 - Reads the user's real data.
 - Fits `syn()` (CART) with a recorded seed.
 - Runs `compare.synds()` to produce a utility comparison the user can inspect (marginal overlap between real and synthetic) — this comparison summary is safe to share; the real-data side is aggregated.
-- Writes **only** `synthetic` rows to parquet/CSV + a generation log (seed, synthpop version, row count, the utility summary).
+- Writes **only** `synthetic` rows (Parquet preferred; CSV fallback if `arrow` is unavailable) + a generation log (seed, synthpop version, row count, the utility summary).
 - Loud header comments: the real data object and the fitted `syn` object must NOT be shared — only the synthetic output file.
 
 ```r
@@ -76,7 +76,7 @@ synthetic.to_csv(OUTPUT_SYNTHETIC_PATH, index=False)  # ONLY this file is sharea
 
 | Artifact | Crosses the boundary? |
 |----------|------------------------|
-| Synthetic rows (parquet/CSV) | Yes |
+| Synthetic rows (Parquet preferred; CSV = audited-exception fallback, converted to Parquet + manifested on receipt) | Yes |
 | Generation log (seed, versions, row count, utility summary) | Yes |
 | Real data | **Never** |
 | Fitted model object (`syn` object / fitted synthesizer) | **Never** |
@@ -85,7 +85,8 @@ synthetic.to_csv(OUTPUT_SYNTHETIC_PATH, index=False)  # ONLY this file is sharea
 ## Consuming T4 output on the DAAF side {#consuming}
 
 T4 synthetic rows arrive as an actual dataset (not a profile). DAAF treats them like any synthetic dataset:
-- They still carry synthetic provenance — the skill records `synthetic-local-t4` (vs. `synthetic-profile-tN`) and the same scaffold-not-substitute notice.
+- **Boundary format (audited exception).** If the rows arrived as CSV (the fallback for a local environment without Arrow/PyArrow), the **first in-container action converts the CSV to Parquet and writes an exchange manifest** (a JSON sidecar named `{converted_filename}_exchange_manifest.json`) beside the converted file — original filename, source format, row/column counts, file hash, and conversion timestamp — after which all subsequent work uses only the converted Parquet. Parquet arrivals are imported directly. This is what keeps a boundary CSV consistent with the framework's in-container Parquet-only rule (Parquet-only, with one audited exception at the T4 local-exchange boundary).
+- They still carry synthetic provenance — the skill records `synthetic-local-t4` (vs. `synthetic-profile-tN`) and the same scaffold-not-substitute notice. If the user could not supply a synthesis seed and the researcher authorized the missing-seed exception at the gate, the artifact is labeled a **"non-reproducible T4 synthetic artifact"** in both its provenance and the skill's Synthetic Data Notice (see `WORKFLOW_PHASE_DO_SYNTHETIC.md` § T4 Variant).
 - The synthetic-vs-profile validation (`validation-checks.md` QA(c)) is lighter here (there is no suppressed profile to check against), but the disclosure-safety concern shifts to confirming the user shared only synthetic rows — spot-check for anything that looks like a memorized real record (exact-duplicate rows, implausibly unique identifier values) and flag if found.
 - Findings are still never final on T4 data — re-run against real data inside the user's environment.
 

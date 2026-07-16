@@ -69,11 +69,17 @@ assert list(synthetic.columns) == list(real.columns), "column set mismatch"
 print(f"Generated {len(synthetic)} synthetic rows.")
 
 # --- Save (ONLY synthetic rows + log cross the boundary) ---------------------
+# OUTPUT FORMAT: Parquet is the PREFERRED exchange format. CSV is only a fallback for
+# when pyarrow is unavailable locally -- and it is an AUDITED boundary exception: on
+# receipt DAAF converts the CSV to Parquet and records an exchange manifest, after which
+# all in-container work uses the Parquet. Prefer installing pyarrow and sending Parquet.
 out_ext = os.path.splitext(OUTPUT_SYNTHETIC_PATH)[1].lower().lstrip(".")
 if out_ext == "parquet":
     try:
         synthetic.to_parquet(OUTPUT_SYNTHETIC_PATH)
     except ImportError:
+        # Fallback: pyarrow unavailable -> write CSV (audited exception; DAAF converts
+        # to Parquet on receipt). Install pyarrow to avoid this.
         OUTPUT_SYNTHETIC_PATH = OUTPUT_SYNTHETIC_PATH.rsplit(".", 1)[0] + ".csv"
         synthetic.to_csv(OUTPUT_SYNTHETIC_PATH, index=False)
 else:
