@@ -541,7 +541,7 @@ Closely read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the mandatory f
 
 When a script fails, DO NOT modify the original. Instead:
 1. Original script (`01_task.py`) keeps its failed output appended (audit trail)
-2. Create versioned copy (`01_task_a.py`) with fixes
+2. Create a clean versioned copy with `scripts/create_script_revision.sh` (`01_task_a.py`), then apply fixes — the utility strips the appended execution log so the copy runs (a plain `cp` would carry the marker and be refused)
 3. Execute with automatic output capture wrapper to the new version
 4. If still failing, create `01_task_b.py`, etc.
 5. Marimo notebook uses only the final successful version
@@ -550,7 +550,7 @@ When a script fails, DO NOT modify the original. Instead:
 ```
 1. Read the full error traceback in the script's appended output
 2. Identify the root cause
-3. Create new versioned copy (e.g., 01_task_a.py)
+3. Create a clean versioned copy: bash {BASE_DIR}/scripts/create_script_revision.sh {PROJECT_DIR}/scripts/.../01_task.py {PROJECT_DIR}/scripts/.../01_task_a.py
 4. Apply fix in the new copy
 5. Execute (single Bash call): `bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/.../01_task_a.py`
 ```
@@ -809,7 +809,8 @@ CLAUDE.md's § Boundaries & Safety and its Defense-in-Depth Architecture table a
 | Block category | Why it fired | Recovery |
 |----------------|-------------|----------|
 | **Anti-tampering (`bash-safety.sh` §7)** | A shell *write* targeting `.claude/hooks/`, `.claude/logs/`, `.claude/settings*.json`, or `benchmarks/harness/hooks/` — these are user-only. | Do not retry as an agent. Draft the change to a project scratch/staged location (`scripts/scratch/` or a project-local staged path) and ask the **user** to apply it via a `!`-prefixed session command or a host terminal. Hooks do not vet user-typed `!` commands. (Reads and git index ops on these paths remain open; the Edit/Write tools on `settings.json` are also unaffected — only shell writes are blocked.) |
-| **Package install (`bash-safety.sh` §8)** | A runtime `pip`/`uv`/`conda`-type install — these drift from the Dockerfile and vanish on the next rebuild. | Add the dependency to the Dockerfile and rebuild (`bash rebuild_daaf.sh` from the `daaf-docker/` folder) — by default in the user additions block near the end of the Dockerfile, which rebuilds fast via layer caching (place it earlier only when functionally required, e.g. a build-time system dependency). For a one-off exploratory need, the user can run the install themselves via `!`-prefix (ephemeral — gone on rebuild). |
+| **Package install (`bash-safety.sh` §8)** | A runtime command-line install — **Python** (`pip`/`uv`/`conda`-type) or **R** (`R CMD INSTALL`, `Rscript -e 'install.packages(...)'`, `remotes`/`devtools`/`pak`/`renv`/`BiocManager` verbs) — these drift from the Dockerfile and vanish on the next rebuild. | Add the dependency to the Dockerfile and rebuild (`bash rebuild_daaf.sh` from the `daaf-docker/` folder) — by default in the user additions block near the end of the Dockerfile, which rebuilds fast via layer caching (place it earlier only when functionally required, e.g. a build-time system dependency). For a one-off exploratory need, the user can run the install themselves via `!`-prefix (ephemeral — gone on rebuild). |
+| **In-script package install (`run_with_capture.sh` content scan, exit 3)** | The wrapper's pre-execution scan found an install call written *inside* the `.py`/`.R` script body (e.g. `install.packages(...)`, `os.system("pip install ...")`) — the path shell-level hooks cannot see. The script was **not** executed and **no** execution log was appended. | Remove the install call from the script and re-run the **same file** — because no execution log was appended, immutable versioning has not engaged, so the file stays editable in place (no `_a`/`_b` version needed). If the package is genuinely missing, escalate: add it to the Dockerfile and rebuild (as in the §8 row above). |
 | **/tmp provenance (`bash-safety.sh` §6)** | A shell *write* to `/tmp`, which is outside the backup and audit boundary. | Write inside the project instead — `{PROJECT_DIR}/scripts/scratch/`. (Reading DAAF's own `/tmp` coordination caches stays allowed; only writes are blocked.) |
 | **`enforce-single-command`** | The command chained multiple statements (`&&`, `;`, `||`, or newlines). | Split into separate Bash calls, one command each. |
 | **`enforce-file-first`** (coding agents) | Direct `python`/`python3`/`Rscript` (or bare `R` batch) execution, bypassing the audit trail. | Write the script to `scripts/` and run it via `run_with_capture.sh` (see `SCRIPT_EXECUTION_REFERENCE.md`). |
@@ -868,18 +869,24 @@ CLAUDE.md's § Boundaries & Safety and its Defense-in-Depth Architecture table a
 
 | Issue | Recovery |
 |-------|----------|
-| Cell execution error | Fix and retry |
-| Reactivity issues | Review variable dependencies |
-| UI element errors | Simplify or remove interactivity |
+| Archive/header/log bundle error | Restore the canonical adjacent header → commented source → non-placeholder execution-log sequence; never substitute `No execution log found` |
+| Reactivity or validation error | Review only notebook scaffolding, bounded Parquet preview, and existing-figure display dependencies; archived script code remains comment-prefixed |
+| New widget/analysis code detected | Remove it; Stage 9 permits only bounded preview of existing Parquet data or display of an already-created figure |
 
 **Quarto (R):**
 
+Archive chunks remain disabled by global and per-chunk `eval: false`; they do
+not execute or provide cross-chunk state. Only optional data-preview chunks and
+dedicated existing-figure display chunks that explicitly set `#| eval: true`
+execute during rendering.
+
 | Issue | Recovery |
 |-------|----------|
-| Chunk execution error | Fix code in chunk; verify library() calls present |
-| Render failure | Check YAML frontmatter; verify knitr engine set |
-| Package loading error | Verify package installed in Dockerfile |
-| Object not found across chunks | Verify chunk execution order; check chunk labels for conflicts |
+| Missing/empty/placeholder execution log | Block canonical assembly and correct the source script evidence; never archive `No execution log found` as a valid callout |
+| Enabled preview/display chunk execution error | Fix only the explicitly enabled chunk: use the exact `arrow::read_parquet()` + `dplyr::glimpse()` + `head()` preview, or a dedicated figure-display chunk containing only `knitr::include_graphics("existing/path.png")` with `#| echo: false`; preserve archive chunks unchanged and disabled |
+| Render failure | Check YAML frontmatter, Markdown/chunk syntax, callouts, and existing resource paths; verify the knitr engine is available |
+| Package loading error in an enabled data preview | Verify `arrow` and `dplyr` are available through the Dockerfile-defined environment; do not add runtime package installs or `library()` calls to archive chunks |
+| Object not found in an enabled data preview | Do not rely on cross-chunk state. Ensure that preview chunk loads its own existing parquet into `df`; for a figure, use a path-only Markdown image or dedicated `include_graphics()` display |
 
 ### R-Specific Recovery Patterns
 
@@ -1015,21 +1022,25 @@ For QA BLOCKER revision requests during re-execution, use the standard Revision 
 
 ### Reproducibility Verification Mode Error Recovery
 
-RV mode has a lightweight error recovery pattern. The per-script atomic cycle handles most failures inline — the code-reviewer creates versioned modifications (`_repro_a.py`, `_repro_b.py`) when scripts fail.
+RV mode has a lightweight, language-paired error recovery pattern. The per-script atomic cycle handles most failures inline — the code-reviewer creates Python versions (`_repro_a.py`, `_repro_b.py`) or R versions (`_repro_a.R`, `_repro_b.R`) to match the reproduced script's language.
 
 | Stage | Common Errors | Recovery Action |
 |-------|--------------|-----------------|
-| RV-1 (Intake) | Notebook not found, decompiler fails, Report missing | Verify paths; check notebook is valid marimo format; re-run decompiler with verbose output |
-| RV-2 (Re-execution) | Script fails to execute, execution log not stripped properly | Create `_repro_a.py` with minimal fixes; verify `# EXECUTION LOG` marker removed; dispatch debugger if modification also fails (max 3 debugger dispatches per session) |
+| RV-1 (Intake) | Missing/ambiguous Report or notebook; generic Marimo/Quarto input; existing reproduction/extraction root; decompiler failure | Require one user-selected Report and one canonical DAAF Stage 9 archive. Stop on multiple candidates or both formats. Use new destination/root only; decompilers never merge/overwrite. |
+| RV-1 (Containment) | Path audit exit 1 DIVERGED or exit 2 NOT DIRECTLY VERIFIED | Block RV-2. Correct and re-run until exit 0 MATCH, or obtain exact pre-RV-2 user exclusion for every affected script and verify no in-scope issue remains. Preserve the nonzero overall result rather than relabeling it MATCH. State bounded assurance; dynamic paths remain outside proof. |
+| RV-1 (Environment) | Original versions unpinned or R inventory incomplete | Record UNKNOWN / NOT DIRECTLY VERIFIED. Capture language-aware installed evidence via read-only commands or a diagnostic under project `scripts/repro_checks/`, executed through `run_with_capture.sh` with its appended log retained; never install packages at runtime. |
+| RV-2 (Frozen inputs) | Stage 5 would run, raw hash inventory changes, or frozen evidence absent | Do not execute Stage 5. If evidence is absent, reconfirm mode. If hashes differ, fail and investigate; acquisition/mirrors remain out of scope. |
+| RV-2 (Re-execution) | Python/R script fails or inherited log remains | Create `_repro_a` then `_repro_b` from clean log-free source. If `scripts/create_script_revision.sh` or a stripped failed copy is used, independently verify the inherited log marker is absent before fixes and re-execution. Apply minimal fixes, never rerun the just-failed appended file unchanged, and dispatch debugger after both revisions fail. |
+| RV-2 (Comparison) | Artifact helper exit 2 invalid/unsupported, exit 3 NOT DIRECTLY VERIFIED, unsupported artifact, or missing side | For exit 2, correct the invocation or route the artifact to its separate evidence path; for exit 3 or unavailable direct evidence, record NOT DIRECTLY VERIFIED. Never infer a match. Use the log helper only for shared metrics, the artifact helper for supported Parquet/exact evidence, Read for figures, and defined representations for tables/models. |
 | RV-2 (Re-execution) | Data re-fetch returns different data | Log as Data change deviation; if schema differs, STOP and present to user (escalation trigger) |
-| RV-3 (Verification) | Claim cannot be traced to any script | Document as unverifiable; note in Report Verification |
-| RV-4 (Synthesis) | Reproduction Report incomplete | Return to orchestrator; orchestrator fills gaps before re-dispatching |
+| RV-3 (Verification) | Claim/figure/finding/artifact/dimension lacks direct evidence | Record `NOT DIRECTLY VERIFIED` with reason; use only MATCH/DIVERGED/NOT DIRECTLY VERIFIED and derive coverage counts. |
+| RV-4 (Synthesis) | In-scope evidence gap or incomplete report | Any gap caps verdict at PARTIALLY REPRODUCED; return incomplete report before synthesis. Keep exact pre-RV-2 exclusions separate. |
 
 **RV-Specific Error Budget:**
 
 | Error Type | Per-Script Limit | Session Limit | After Max |
 |------------|-----------------|---------------|-----------|
-| Script modification versions | 2 (`_repro_a.py`, `_repro_b.py`) | — | Mark FAILED, continue to next script |
+| Script modification versions | 2 (`_repro_a.py`, `_repro_b.py` or `_repro_a.R`, `_repro_b.R`) | — | Mark FAILED, continue to next script |
 | Debugger dispatches | 1 per script | 3 per session | Mark FAILED, continue |
 | Data source schema change | — | — | STOP, present to user immediately |
 

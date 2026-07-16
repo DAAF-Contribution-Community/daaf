@@ -103,7 +103,7 @@ Apply these lenses to every script, in addition to the default checks:
 
 ### 3. Skill Provenance Check
 
-When reviewing a script that relies on coded value mappings, column definitions, or quality assumptions from a `*-data-source-*` skill, check that skill's `provenance.skill_last_updated` frontmatter field. If more than a few months old, flag this as a WARNING — the skill's documentation may have drifted from the current data, and the script's assumptions should be verified against the actual data file.
+When reviewing a script that relies on coded value mappings, column definitions, or quality assumptions from a `*-data-source-*` skill, check the `skill-last-updated` key in that skill's frontmatter `metadata:` block. If more than a few months old, flag this as a WARNING — the skill's documentation may have drifted from the current data, and the script's assumptions should be verified against the actual data file.
 
 ### 4. The "Sleeping Bug" Principle
 
@@ -631,7 +631,8 @@ cat(sprintf("Severity assessment: %s\n",
 ```
 
 **R QA script naming:** Same convention as Python but with `.R` extension:
-- Standard: `scripts/cr/stage{N}_{step}_cr{M}.R`
+- Standard (Stages 5-7): `scripts/cr/stage{N}_{step}_cr{M}.R`
+- Stage 8 (split QA): `scripts/cr/stage8_{step}_cra{M}.R` for QA4a (statistical validity) and `scripts/cr/stage8_{step}_crb{M}.R` for QA4b (visualization quality)
 - Data Onboarding: `scripts/cr/profile_{part}_cr{N}.R`
 - Ad Hoc: `scripts/cr/adhoc_{task-slug}_cr{N}.R`
 
@@ -672,7 +673,7 @@ if "year" in df.columns:
 ```
 
 Follow file-first execution:
-1. Write cr1 script to `scripts/cr/stage{N}_{step}_cr1.py` (Python) or `scripts/cr/stage{N}_{step}_cr1.R` (R)
+1. Write cr1 script to `scripts/cr/stage{N}_{step}_cr1.py` (Python) or `scripts/cr/stage{N}_{step}_cr1.R` (R) — for Stage 8, use the split-QA suffix instead: `stage8_{step}_cra1` for QA4a (statistical validity) and `stage8_{step}_crb1` for QA4b (visualization quality), per `agent_reference/QA_CHECKPOINTS.md`
 2. Execute as a single Bash call with absolute paths: `bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/cr/stage{N}_{step}_cr1.{py|R}`
 3. **Review the profiling output and all check results before proceeding**
 
@@ -694,7 +695,7 @@ After reviewing cr1 output, apply the iteration decision tree:
 1. **Document the trigger:** What in the prior script's output prompted this investigation?
 2. **State the hypothesis:** What does this script test?
 3. **Define expected outcome:** What confirms vs. refutes the hypothesis?
-4. Write investigation script to `scripts/cr/stage{N}_{step}_cr{M}.py` (Python) or `scripts/cr/stage{N}_{step}_cr{M}.R` (R) — match language of cr1
+4. Write investigation script to `scripts/cr/stage{N}_{step}_cr{M}.py` (Python) or `scripts/cr/stage{N}_{step}_cr{M}.R` (R) — match language of cr1 (Stage 8 uses the split suffix `cra{M}`/`crb{M}`)
 5. Execute as a single Bash call: `bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/cr/stage{N}_{step}_cr{M}.{py|R}`
 6. **Interpret:** CONFIRMED or REFUTED? Implications? Further investigation needed?
 7. Apply the decision tree again with updated findings
@@ -960,7 +961,7 @@ If nothing novel, emit "None" — this is the expected common case.
 - **If Escalate:** [What needs user decision]
 
 ## Files Created
-- QA Scripts: `scripts/cr/stage{N}_{step}_cr1.{py|R}` [+ cr2..cr5 if created]
+- QA Scripts: `scripts/cr/stage{N}_{step}_cr1.{py|R}` [+ cr2..cr5 if created] (Stage 8: `cra{N}`/`crb{N}`)
 ```
 
 ---
@@ -1094,20 +1095,33 @@ When reviewing profiling scripts in Data Onboarding mode, apply these adaptation
 
 ## Reproducibility Verification Mode (RV-2)
 
-In RV-2, the code-reviewer acts as a **reproducer**, not a reviewer. The task is: copy a script from `original_files/scripts/` into `scripts/repro/`, strip its execution log, re-execute it, compare outputs against original execution logs, classify the reproduction status, and review methodology. This is a fundamentally different role from the standard QA review cycle.
+In RV-2, the code-reviewer acts as a **reproducer**, not a reviewer. The task is to copy an in-scope script from `original_files/scripts/` into `scripts/repro/`, strip its execution log, re-execute it, compare both shared log metrics and direct original-versus-reproduced artifact evidence, classify the reproduction status without upgrading evidence gaps, and review methodology. This is a fundamentally different role from the standard QA review cycle.
+
+**Required RV-2 inputs:**
+- Original script path, reproduction target path, and Reproduction Report path
+- Copied original artifact root (`original_files/`) and reproduced project/artifact root
+- Every declared project-relative output path for the script
+- Data strategy (`RE-FETCH` or `FROZEN RAW INPUTS`) and the exact pre-RV-2 scope-design exclusions
+- Script-specific `audit_reproduction_paths.py` evidence showing exit 0 / `MATCH`
+- Methodological review depth and original preliminary-notes path when present
+- For frozen mode, the pre-RV-2 raw-file hash inventory and the post-execution integrity-check requirement
 
 **Behavioral overrides for RV-2:**
 
 1. **"Never fix code directly" is suspended.** The code-reviewer creates versioned modification copies (`_repro_a.py`/`_repro_b.py`, or `_repro_a.R`/`_repro_b.R` for R scripts) with minimal fixes when scripts fail during reproduction. These modify the reproduction copy, not the original. Max 2 modification versions per script before escalating to debugger.
-2. **"Create at least one QA script (cr1)" does NOT apply.** No QA scripts are created in RV-2. The reproduction execution itself is the verification.
+2. **"Create at least one QA script (cr1)" does NOT apply.** No QA scripts are created merely for RV-2 re-execution. Verification uses the reproduced execution plus direct review of available log and declared-artifact evidence; do not re-enable the standard cr1-cr5 QA cycle.
 3. **The Phase 1-3 protocol (Code Review, Execution Log Review, Output Data Inspection) is replaced** by the Per-Script Execution Cycle defined in the orchestrator's RV-2 prompt: copy, strip log, re-execute, compare, classify, update Reproduction Report.
+4. **Evidence-source accounting is mandatory.** Use `compare_execution_logs.py` only for metrics printed in both appended logs; `CONSISTENT` is never an artifact verdict. For each supported Parquet or intentionally exact-byte artifact pair, run `compare_reproduction_artifacts.py`, preserve its deterministic JSON/per-dimension evidence, and interpret exits exactly: 0 = `MATCH`; 1 = `DIVERGED`; 2 = invalid or unsupported invocation, reported as `NOT DIRECTLY VERIFIED` rather than retried as a different claim; 3 = `NOT DIRECTLY VERIFIED`. Parquet uses ordered names/dtypes, exact shape/nulls/supported scalars, 1e-6 relative float tolerance, and occurrence-aware order-independent rows; unsupported/nested/NaN/excess work is NOT DIRECTLY VERIFIED. Exact mode proves byte identity only. Compare PNGs visually with Read and persisted tables/models only through a defined inspectable representation; opaque models remain NOT DIRECTLY VERIFIED. Missing evidence is never a match.
+5. **Frozen-input design is not execution.** When the user selected frozen raw data, do not execute Stage 5. Record exact Stage 5 scripts as pre-RV-2 scope-design exclusions, begin with downstream consumers, and verify the supplied pre/post raw-file hash inventories match. Do not claim acquisition or mirrors reproduced.
+6. **Failure revisions start clean.** Create each `_repro_a`/`_repro_b` from a clean, log-free source, or with `scripts/create_script_revision.sh` (which strips any inherited execution log). Never copy the just-failed appended file and rerun it unchanged.
 
 **Key behavioral rules for RV-2:**
 
-- Scripts were batch path-normalized during RV-1 via `normalize_project_dir.py`. Path differences are infrastructure normalizations — do not flag as deviations.
-- Comparison uses tolerances from the Reproduction Report's "Comparison Standards" section (e.g., floating-point epsilon, row-count thresholds).
-- After each script, update the Reproduction Report's Per-Script Reproduction Results (not Plan_Tasks.md or any QA document).
-- Use the **Read tool** to visually compare figure outputs (PNG files) when scripts produce figures.
+- Scripts were normalized during RV-1 and must have passed the mandatory `audit_reproduction_paths.py` containment audit before dispatch. A pass is bounded to exact original-root absence plus one unique correct canonical assignment; it does not prove dynamic paths safe. If the report lacks MATCH/exit 0 evidence for this script, stop and return it to the orchestrator.
+- Apply tolerances only to dimensions supported by direct evidence. Preserve artifact-helper JSON/exit status and every `NOT DIRECTLY VERIFIED` dimension; never generalize a log-level result.
+- Branch on the confirmed data strategy: in re-fetch mode, execute Stage 5 normally; in frozen mode, Stage 5 is an explicit scope-design exclusion and is not dispatched. Frozen mode starts with downstream consumers and requires an exact pre/post raw-file hash comparison after RV-2.
+- After each in-scope script, update the Reproduction Report's Script Inventory, Per-Script Reproduction Results, Evidence Coverage Summary, and Session Continuity (not Plan_Tasks.md or any QA document). Derive declared-artifact and required-dimension counts from the evidence rows using the template's `MATCH` / `DIVERGED` / `NOT DIRECTLY VERIFIED` accounting; only exact exclusions approved before RV-2 leave denominators, while ad hoc skips remain gaps.
+- Use the **Read tool** to visually compare original and reproduced PNG outputs when both exist; an absent original or reproduction is an evidence gap, not a visual match.
 - Classification statuses: REPRODUCED, DIVERGED, FAILED, MODIFIED (as defined by the orchestrator's RV-2 prompt and the Reproduction Report template). If a modified script also produces divergent output, classify as MODIFIED — document the divergence in the Deviations section.
 
 **What stays the same:** The `enforce-file-first.sh` hook still applies — all Python and R execution goes through `run_with_capture.sh`. The agent uses the same tools (Read, Write, Edit, Bash, Glob, Grep). General rigor and documentation standards apply.

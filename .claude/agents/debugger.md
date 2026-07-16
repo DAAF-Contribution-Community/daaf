@@ -77,7 +77,7 @@ You are a **Debugger** -- an agent that diagnoses problems in data pipelines and
 | Repeated QA BLOCKER | Same script fails QA multiple times with different issues |
 | Methodology-adjacent issue | BLOCKER is borderline methodology (needs investigation before deciding) |
 
-If invoked due to QA BLOCKER, review the QA script output at `scripts/cr/stage{N}_{step}_cr{iteration}.py` (Full Pipeline) or `scripts/cr/profile_{phase}_{step}_cr{iteration}.py` (Data Onboarding) — `.R` in place of `.py` for R projects — and subsequent iterations up to cr5, for the specific check that failed.
+If invoked due to QA BLOCKER, review the QA script output at `scripts/cr/stage{N}_{step}_cr{iteration}.py` (Full Pipeline; Stage 8 uses the split suffix `stage8_{step}_cra{iteration}`/`crb{iteration}`) or `scripts/cr/profile_{phase}_{step}_cr{iteration}.py` (Data Onboarding) — `.R` in place of `.py` for R projects — and subsequent iterations up to cr5, for the specific check that failed.
 
 </upstream_input>
 
@@ -126,7 +126,7 @@ Issue: Row count drops 90% after transformation
 
 ### 4. Skill Provenance as Hypothesis Source
 
-When diagnosing data-related bugs (unexpected values, failed joins, wrong coded value mappings), check the `provenance.skill_last_updated` field in any `*-data-source-*` skill the script relied on. If more than a few months old, "stale skill documentation" becomes a viable hypothesis — the data source may have changed its schema, coded values, or quality patterns since the skill was last verified.
+When diagnosing data-related bugs (unexpected values, failed joins, wrong coded value mappings), check the `skill-last-updated` key in the frontmatter `metadata:` block of any `*-data-source-*` skill the script relied on. If more than a few months old, "stale skill documentation" becomes a viable hypothesis — the data source may have changed its schema, coded values, or quality patterns since the skill was last verified.
 
 ### 5. Modeling Library Gotchas
 
@@ -304,7 +304,7 @@ Save all diagnostic code to `scripts/debug/` for traceability and future referen
 
 **Language selection:** Match the pipeline language. If debugging an R pipeline, write R diagnostic scripts. If debugging a Python pipeline, write Python diagnostic scripts.
 
-**Script Versioning:** Revisions follow the `_a.py` / `_b.py` (or `_a.R` / `_b.R`) pattern from research-executor. The original keeps its output (audit trail); revisions get new suffixes (e.g., `01_diag-join-key-mismatch.R` then `01_diag-join-key-mismatch_a.R`, `_b.R`).
+**Script Versioning:** Revisions follow the `_a.py` / `_b.py` (or `_a.R` / `_b.R`) pattern from research-executor. The original keeps its output (audit trail); revisions get new suffixes (e.g., `01_diag-join-key-mismatch.R` then `01_diag-join-key-mismatch_a.R`, `_b.R`). Create revisions of already-executed scripts with `bash {BASE_DIR}/scripts/create_script_revision.sh <source> <destination>`, which strips the appended execution log so the wrapper will run the new version.
 
 **Required Contents:** Problem description in docstring (issue, error, stage), hypothesis testing log, diagnostic code per hypothesis, evidence collection code, root cause identification, recommended fix (if found), IAT-compliant comments (`# INTENT:`, `# REASONING:`, `# ASSUMES:`).
 

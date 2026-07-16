@@ -203,7 +203,7 @@ if (invariant_passed) {
 # bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage7_transform/01_join-data.R
 ```
 
-**If validation fails:** Create a new versioned script (`01_join-data_a.py` / `01_join-data_a.R`) with fixes. Do NOT modify the original -- it serves as audit trail.
+**If validation fails:** Create a new versioned script (`01_join-data_a.py` / `01_join-data_a.R`) with fixes using `bash {BASE_DIR}/scripts/create_script_revision.sh <source> <destination>` (which strips the appended execution log so the revision runs cleanly). Do NOT modify the original -- it serves as audit trail.
 
 #### Stage 7.3: Final CP3 Validation
 
@@ -975,16 +975,21 @@ Return all plotting code and confirm files saved.""",
 **Purpose:** LITERALLY COPY script file contents into notebook cells (marimo .py or Quarto .qmd)
 
 > **CRITICAL:** Stage 9 is a FILE COMPILATION task. See `.claude/agents/notebook-assembler.md`
-> for the complete protocol including the Four-Cell Pattern, helper functions, and
-> WRONG vs. RIGHT examples.
+> for the complete protocol. Python uses the canonical Marimo three-cell archive
+> bundle (header, source, immediately adjacent execution log) followed by an
+> optional display cell; R uses the canonical Quarto heading + archive chunk +
+> immediately following Execution Log callout + optional display pattern defined
+> in `.claude/skills/quarto/references/daaf-notebook.md`.
 
 ### Key Constraints (Summary)
 
-- **LITERAL COPY** — Read each script file and copy contents verbatim into cells
-- NO new analysis code — Python: only `pl.read_parquet()` + `mo.ui.table()` for data inspection; R: only `arrow::read_parquet()` + `dplyr::glimpse(df)` + `head(df, 20)` for data inspection
-- NO dashboards, widgets, dropdowns, sliders
-- All script code presented as-is; execution logs in accordions
-- Script versioning: use final successful version (`_b.py` > `_a.py` > base)
+- **LITERAL COPY** — Read each script and archive its code without changing its analysis logic
+- **Marimo/Python** — Three contiguous archive cells per script (header, comment-prefixed source ending with `pass`, and immediately adjacent `mo.accordion()` log); an optional post-bundle display may use `pl.read_parquet()` + `mo.ui.table()` or show an existing figure with `mo.image()`
+- **Quarto/R** — Heading + literal un-commented R archive chunk + immediately following collapsed Execution Log callout + optional display: either the non-transforming Parquet preview or an existing saved Stage 8 figure; every archive chunk has `#| code-fold: false`, `#| eval: false`, and the exact `# --- VERBATIM COPY of scripts/<path> ---` marker, while YAML sets global `execute: eval: false`
+- **Quarto figure display** — Prefer standard Markdown image syntax. The only chunk alternative is a dedicated `#| eval: true`, `#| echo: false` chunk containing only `knitr::include_graphics("existing/path.png")`; it never creates a new visualization.
+- **Execution evidence** — Every final script must have a real, non-empty execution log. A missing log or placeholder such as `No execution log found` blocks canonical Stage 9 assembly; do not archive it as evidence.
+- NO new analysis code, dashboards, widgets, filters, aggregations, summaries, or visualizations
+- Script versioning: use the final successful version (`_b.py`/`_b.R` > `_a.py`/`_a.R` > base) and document prior versions
 
 ### ABSOLUTE PROHIBITIONS
 
@@ -1015,7 +1020,7 @@ The following are **NEVER ALLOWED** in Stage 9 notebooks:
 **Agent:** notebook-assembler (see `.claude/agents/notebook-assembler.md`)
 **Subagent:** notebook-assembler
 
-> **Language note:** For Python projects, produce a Marimo notebook (.py). For R projects, produce a Quarto notebook (.qmd). The notebook-assembler agent handles both formats -- load `marimo` skill for Python or `quarto` skill for R. The Four-Cell Pattern applies to both; see `.claude/agents/notebook-assembler.md` for format-specific details.
+> **Language note:** For Python projects, produce a Marimo notebook (`.py`) using the canonical three-cell archive bundle plus optional post-bundle display. For R projects, produce a Quarto notebook (`.qmd`) using the canonical archive-section pattern in `.claude/skills/quarto/references/daaf-notebook.md`. The notebook-assembler agent handles both formats -- load `marimo` for Python or `quarto` for R.
 
 > **CRITICAL CONSTRAINT:** The notebook LITERALLY COPIES script file contents into cells. It does NOT generate new code, dashboards, filters, or interactive widgets. The notebook is a script viewer.
 
@@ -1034,9 +1039,9 @@ Also call the skill tool with name 'marimo' (Python) or 'quarto' (R) for basic n
 
 Your job is to:
 1. READ each script file from `scripts/`
-2. COPY the script code VERBATIM into a marimo cell (Python) or Quarto chunk (R)
-3. COPY the execution log VERBATIM into a collapsed accordion (Python) or collapsed callout block (R)
-4. ADD ONLY a simple data-inspection cell: `pl.read_parquet()` + `mo.ui.table()` (Python) or `arrow::read_parquet()` + `dplyr::glimpse(df)` + `head(df, 20)` (R)
+2. For Python, COPY code into the source cell of a canonical three-cell Marimo archive bundle; for R, COPY code literally and un-commented into a Quarto archive chunk with `#| code-fold: false`, `#| eval: false`, and the exact `# --- VERBATIM COPY of scripts/<path> ---` marker
+3. COPY the execution log VERBATIM into a collapsed Marimo accordion or the immediately following collapsed Quarto callout titled `Execution Log`
+4. OPTIONALLY ADD ONLY the format-specific display: `pl.read_parquet()` + `mo.ui.table()` or an existing-figure `mo.image()` (Python); for R, the canonical `arrow::read_parquet()` + `dplyr::glimpse(df)` + `head(df, 20)` preview or an existing saved figure (Markdown image preferred; a dedicated `knitr::include_graphics()` chunk is allowed only with `#| eval: true`, `#| echo: false`, and no other R statements)
 
 You are a COPY-PASTE MACHINE with formatting. Nothing more.
 
@@ -1052,23 +1057,47 @@ scripts/
 ├── stage7_transform/ ← Read each .py/.R file
 └── stage8_analysis/ ← Read each .py/.R file
 
-## FOR EACH SCRIPT, CREATE EXACTLY 4 CELLS
+## ASSEMBLE EACH SCRIPT USING THE SELECTED FORMAT
 
-**Cell 1 (Markdown):** Header with script name, paths, status
-**Cell 2 (Code):** VERBATIM COPY of script code (before execution log marker)
-**Cell 3 (Markdown):** VERBATIM COPY of execution log in accordion (Python) or collapsed callout block (R)
-**Cell 4 (Code):** THE ONLY NEW CODE ALLOWED:
+### Python / Marimo: Three-Cell Archive Bundle + Optional Display
+
+1. **Header cell (Markdown):** script name, paths, status, and version history
+2. **Code archive cell:** VERBATIM Python code copy, every line prefixed with `# `, ending with `pass`
+3. **Immediately adjacent execution-log cell:** VERBATIM log in a collapsed `mo.accordion()`
+
+After the complete three-cell bundle, an **optional inspection/display cell** may contain only:
     ```python
     df = pl.read_parquet("path/to/output.parquet")
     mo.ui.table(df.head(100))
     ```
-    (R/Quarto chunk equivalent:)
+    For an existing saved figure, use `mo.image()` instead of creating a plot.
+
+### R / Quarto: Canonical Archive-Section Pattern
+
+1. **Script heading:** script name, paths, status, and version history
+2. **Archive chunk:** literal, un-commented R code beneath all three required anchors:
     ```r
-    df <- arrow::read_parquet("path/to/output.parquet")
-    dplyr::glimpse(df)
-    head(df, 20)
+    #| code-fold: false
+    #| eval: false
+
+    # --- VERBATIM COPY of scripts/stageN_type/script.R ---
     ```
-    NOTHING ELSE. No .filter()/no dplyr filter(), no .with_columns()/no mutate(), no aggregations.
+3. **Execution Log callout:** VERBATIM log in the immediately following `::: {.callout-note collapse="true" title="Execution Log"}` block
+4. **Optional display:** one of exactly two permitted Stage 9 display types:
+    - **Non-transforming Parquet preview:** explicitly opts into `#| eval: true` and contains only:
+      ```r
+      df <- arrow::read_parquet("path/to/output.parquet")
+      dplyr::glimpse(df)
+      head(df, 20)
+      ```
+    - **Existing saved figure:** prefer standard Markdown image syntax. The dedicated chunk alternative uses `#| eval: true`, `#| echo: false`, and contains only `knitr::include_graphics("existing/path.png")`.
+
+    Neither display type may create a plot, transform data, summarize, or add other R statements.
+
+The Quarto YAML MUST use the canonical rich baseline (title, subtitle, author,
+date, HTML `toc`, `toc-depth`, `code-fold`, `embed-resources`, `theme`, and
+global `execute: echo: true`, `eval: false`, `warning: false`). Nothing in
+either format may filter, mutate, aggregate, summarize, or create a new figure.
 
 ## LITERAL COPY EXAMPLE
 
@@ -1083,16 +1112,17 @@ print("Hello")
 # STDOUT: Hello
 ```
 
-Then Cell 2 should contain EXACTLY:
+Then Marimo Cell 2 should contain the Python code as a comment-prefixed archive:
 ```python
 # SOURCE: scripts/stage5_fetch/01_example.py
-import polars as pl
-
-print("Hello")
+# import polars as pl
+#
+# print("Hello")
+pass
 ```
-(R/Quarto: Cell 2's first line is instead `# --- VERBATIM COPY of scripts/stage5_fetch/01_fetch-source.R ---` — the exact anchor `scripts/decompile_notebook.R` uses to extract scripts.)
+(R/Quarto: this is an archive chunk, not Cell 2. It includes `#| code-fold: false`, `#| eval: false`, then `# --- VERBATIM COPY of scripts/stage5_fetch/01_fetch-source.R ---` — the exact anchor `scripts/decompile_notebook.R` uses to extract scripts — followed by the literal, un-commented R code.)
 
-And Cell 3 accordion should contain EXACTLY:
+The Marimo Cell 3 accordion should contain EXACTLY:
 ```
 # EXECUTION LOG
 # Executed: 2026-01-24
@@ -1105,28 +1135,28 @@ And Cell 3 accordion should contain EXACTLY:
 
 ## VERIFICATION BEFORE RETURNING
 
-Count your code cells. If you have ANY of these, you failed:
-- mo.ui.dropdown (R: shiny/htmlwidgets inputs): FAIL
-- mo.ui.slider (R: sliderInput or any widget): FAIL
-- mo.ui.multiselect (R: selectInput or any widget): FAIL
-- group_by outside script code (Polars or dplyr): FAIL
-- pivot outside script code (Polars pivot or tidyr pivot_*): FAIL
-- filter in data inspection (Polars .filter() or dplyr filter()): FAIL
-- with_columns / mutate in data inspection: FAIL
+For Marimo, confirm every script has one complete three-cell header/source/log archive bundle, any optional display follows that bundle, and no archived Python code is live. For Quarto, confirm every script has one heading, one literal archive chunk with both eval guards plus `code-fold: false` and the exact marker, and the immediately following Execution Log callout. Then reject any of these in newly authored notebook scaffolding:
+- Marimo UI inputs or R/Shiny/htmlwidgets inputs
+- group-by/summarise operations outside archived script code
+- pivots outside archived script code
+- filters in optional inspection code
+- `with_columns` / `mutate` in optional inspection code
+- newly generated visualizations
 
-The ONLY acceptable new code is `pl.read_parquet()` + `mo.ui.table()` (Python) or `arrow::read_parquet()` + `dplyr::glimpse(df)` + `head(df, 20)` (R).""",
+The ONLY acceptable optional new code is `pl.read_parquet()` + `mo.ui.table()` / existing-figure display (Python), or `arrow::read_parquet()` + `dplyr::glimpse(df)` + `head(df, 20)` / existing-figure display (R).""",
     subagent_type: "notebook-assembler"
 })
 ```
 
 ### Gate Criteria (G9)
 
-- [ ] All final script versions identified
-- [ ] Each script represented with: header, code, execution log, data preview
-- [ ] Navigation cells link to all sections
-- [ ] Notebook executes without errors
-- [ ] Interactive elements (tables, accordions) work
-- [ ] Data flows correctly between cells
+- [ ] All final successful script versions identified; prior versions documented
+- [ ] **Marimo:** every script has a complete three-cell header/source/log archive bundle; archived Python is comment-prefixed with trailing `pass`; any optional display follows the bundle; `marimo run` completes without errors
+- [ ] **Quarto:** every script uses heading + literal archive chunk + immediately following Execution Log callout + optional inspection; archive chunks include `#| code-fold: false`, per-chunk `#| eval: false`, and the exact decompiler marker; canonical rich YAML includes global `execute: eval: false`
+- [ ] **Quarto render:** `quarto render` completes with only explicitly enabled optional previews evaluated; archived Stage 5-8 scripts are not re-run, and render success is not represented as full analysis reproduction
+- [ ] Navigation is format-appropriate (Marimo navigation/TOC cells; Quarto YAML TOC and Markdown headings)
+- [ ] Optional data and figure displays resolve existing artifacts without transformation or new visualization
+- [ ] Every final script has a real, non-placeholder execution log displayed verbatim in a collapsed Marimo accordion or immediately following collapsed Quarto callout
 
 ---
 
@@ -1226,7 +1256,7 @@ After each script execution:
 - Visualization inventory: file paths to all generated figures (so user can inspect them)
 - QA aggregation summary: all accumulated WARNINGs from Stages 5-8, with resolution status
 - Any deviations from Plan.md methodology (with rationale)
-- Notebook compilation status (Stage 9): runs successfully, all scripts represented
+- Notebook compilation status (Stage 9): `marimo run` succeeded for Python or `quarto render` validated R/Quarto assembly and enabled previews; all scripts represented
 - Research Outcomes progress: which can be evaluated, preliminary assessment
 
 **User Response Handling:**

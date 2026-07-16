@@ -86,11 +86,11 @@ You NEVER execute code interactively (neither Python nor R). Follow the mandator
 
 ### 3. Immutable Versioning
 
-When a script fails, the original keeps its appended execution log as a historical record. Fixes go into a new versioned copy (`_a.py`/`_a.R`, `_b.py`/`_b.R`, etc.). You never modify a script after its execution log is appended. All versions -- failed and successful -- are committed for audit trail.
+When a script fails, the original keeps its appended execution log as a historical record. Fixes go into a new versioned copy (`_a.py`/`_a.R`, `_b.py`/`_b.R`, etc.), created with `scripts/create_script_revision.sh` (which strips the appended execution log so the copy will run). You never modify a script after its execution log is appended. All versions -- failed and successful -- are preserved in the working tree for audit trail.
 
 ### 4. Skill Provenance Awareness
 
-When loading a `*-data-source-*` skill for a task, check its `provenance.skill_last_updated` frontmatter field. If more than a few months old, note this in the script's header comments as a staleness caveat — the skill's coded value mappings, column definitions, or quality patterns may have drifted from the current data.
+When loading a `*-data-source-*` skill for a task, check the `skill-last-updated` key in its frontmatter `metadata:` block. If more than a few months old, note this in the script's header comments as a staleness caveat — the skill's coded value mappings, column definitions, or quality patterns may have drifted from the current data.
 
 When skill-sourced details (mirror URLs, API parameters, variable names, coded values) produce unexpected errors during script execution, this may indicate skill drift rather than a code bug — flag the discrepancy in the Learning Signal output so the orchestrator can dispatch verification. Additionally, information the executor supplies beyond what the skill explicitly states (e.g., inferred column semantics, assumed API behavior, guessed coded value meanings) should be treated as inference and flagged for the orchestrator's awareness, since LLM-generated details not grounded in curated skill content are substantially more likely to be inaccurate.
 
@@ -291,14 +291,15 @@ For visualization scripts that generate PNG files, use the **Read tool** to view
 
 If execution fails or checkpoint validation fails:
 1. Keep original script with its failed output (audit trail)
-2. Create versioned copy: `{step}_{task-name}_a.py` (Python) or `{step}_{task-name}_a.R` (R)
+2. Create a clean versioned copy with the revision utility (single Bash call):
+   `bash {BASE_DIR}/scripts/create_script_revision.sh {PROJECT_DIR}/scripts/.../{step}_{task-name}.py {PROJECT_DIR}/scripts/.../{step}_{task-name}_a.py` (or `.R`). It strips the appended execution log so the copy runs — do **not** use `cp`.
 3. Apply fixes to the new copy only
 4. Execute new copy with `run_with_capture.sh`
 5. If still fails: `_b.py`/`_b.R`, `_c.py`/`_c.R`, etc. (max 2 self-revisions before escalating)
 
-### Step 6: Commit
+### Step 6: Preserve Versions (No Commit)
 
-Stage and commit all script versions (failed and successful) with this format:
+All script versions (failed and successful) stay in the working tree — that IS the audit trail. Do **not** run `git add` or `git commit`: DAAF does not commit research artifacts by default (see `agent_reference/BOUNDARIES.md` § Git Commit Protocol). Instead, include a **suggested** commit message in your return output for the user/orchestrator to use if git commit management is enabled:
 ```
 {type}({stage}-{step}): {description}
 
@@ -342,7 +343,7 @@ For Stage 5 fetch scripts, data is downloaded from configured mirrors. Read the 
 
 When you receive a revision request due to QA BLOCKER:
 1. Read the QA report to understand the specific issue
-2. Create the next version file (e.g., `_b.py`/`_b.R` if `_a.py`/`_a.R` was final)
+2. Create the next version file with `scripts/create_script_revision.sh` (e.g., `_b.py`/`_b.R` if `_a.py`/`_a.R` was final) — it strips the appended execution log so the copy runs
 3. Address the specific BLOCKER issue identified by code-reviewer
 4. Execute and capture via `run_with_capture.sh`
 5. Return new execution report
@@ -509,8 +510,8 @@ See `agent_reference/QA_CHECKPOINTS.md` for complete checkpoint definitions.
 - Include pre/post state capture in every script
 - Run the appropriate checkpoint (CP1-CP4) within the script
 - Follow IAT documentation standards for all inline comments
-- Commit all script versions (failed and successful)
-- Report structured output matching the Output Format specification
+- Preserve all script versions (failed and successful) in the working tree — that is the audit trail; do not run `git commit`
+- Report structured output matching the Output Format specification (include a suggested commit message)
 
 ### Ask First Before
 - Changing the transformation approach from what Plan.md specifies
@@ -577,7 +578,7 @@ Awaiting guidance before proceeding.
 
 **DO NOT assume transformations worked without checking.** Even simple operations like filters and joins can produce unexpected results. The execution log must show the validation results explicitly.
 
-**DO NOT delete failed script versions.** All versions form the audit trail. They document what was tried and what failed. Commit all versions.
+**DO NOT delete failed script versions.** All versions form the audit trail. They document what was tried and what failed. Preserve all versions in the working tree.
 
 **DO NOT execute code you do not understand.** Before running any transformation, ensure you understand what it does, what output it should produce, and what invariants it should preserve. Blindly executing code leads to undetected errors.
 
@@ -599,7 +600,7 @@ Awaiting guidance before proceeding.
 3. [ ] Checkpoint validation (CP1-CP4) passed within the script
 4. [ ] Output data file(s) saved as parquet to correct directory
 5. [ ] Pre/post state documented with row counts, shapes, sample IDs
-6. [ ] All script versions committed (failed and successful)
+6. [ ] All script versions preserved in the working tree (failed and successful)
 7. [ ] Structured execution report returned matching Output Format
 
 **This task execution is INCOMPLETE if:**

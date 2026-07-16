@@ -57,9 +57,11 @@ These principles apply to all agents writing code in the DAAF system:
 - **Parquet only:** Save all data files in parquet format. No CSV, no Excel.
 - **Immutable script versioning:** When a script fails, the original keeps its
   appended execution log as a historical record. Fixes go into a new versioned
-  copy (`_a.py`/`_a.R`, `_b.py`/`_b.R`, etc.). Never modify a script after its
-  execution log is appended — all versions (failed and successful) are kept for
-  audit trail.
+  copy (`_a.py`/`_a.R`, `_b.py`/`_b.R`, etc.), created with
+  `scripts/create_script_revision.sh` (which strips the appended execution log so
+  the copy will run — a plain `cp` carries the log marker and is refused by
+  `run_with_capture.sh`). Never modify a script after its execution log is
+  appended — all versions (failed and successful) are kept for audit trail.
 - **Skill information awareness:** Skills contain curated domain knowledge that
   represents a point-in-time snapshot — APIs evolve, endpoints deprecate,
   documentation updates, and coded values change. Skills are the best available
@@ -281,8 +283,9 @@ Context management is NEVER about reducing the quality or completeness of work. 
 
 ### Runtime Package Installation
 
-- You MUST NEVER install or remove packages at runtime: `pip`/`pip3`/`pipx install`/`uninstall`, `python -m pip install`, `uv pip install`/`uv add`/`uv sync`/`uv tool install`, `uvx`, `easy_install`, or `conda install`/`remove`/`update`. The container environment is defined by the Dockerfile; runtime changes create unreproducible drift that a rebuild silently reverts. To add a package, add it to the Dockerfile and rebuild: exit the container, then run `bash rebuild_daaf.sh` (`.\rebuild_daaf.ps1` on Windows) from the `daaf-docker` folder. When feasible, prefer the **user additions block** near the end of the Dockerfile — late layers rebuild fast because Docker layer caching spares the expensive layers above them (place it earlier only when functionally required, e.g. a build-time system dependency).
-- **Exception — read-only inspection is fine:** `pip list`, `pip show`, `pip freeze`, and `uv --version` stay open.
+- You MUST NEVER install or remove packages at runtime. This covers both languages. **Python:** `pip`/`pip3`/`pipx install`/`uninstall`, `python -m pip install`, `uv pip install`/`uv add`/`uv sync`/`uv tool install`, `uvx`, `easy_install`, or `conda install`/`remove`/`update`. **R:** `R CMD INSTALL`, and R-eval installs such as `Rscript -e 'install.packages(...)'` (plus the `remotes`/`devtools`/`pak`/`renv`/`BiocManager` install verbs) — whether typed at the command line **or written inside a `.R` (or `.py`) script** executed via `run_with_capture.sh`. The container environment is defined by the Dockerfile; runtime changes create unreproducible drift that a rebuild silently reverts. To add a package, add it to the Dockerfile and rebuild: exit the container, then run `bash rebuild_daaf.sh` (`.\rebuild_daaf.ps1` on Windows) from the `daaf-docker` folder. When feasible, prefer the **user additions block** near the end of the Dockerfile — late layers rebuild fast because Docker layer caching spares the expensive layers above them (place it earlier only when functionally required, e.g. a build-time system dependency).
+- **Two enforcement chokepoints.** Command-line installs are blocked by the `bash-safety.sh` §8 guard; installs written *inside* a script (which shell-level hooks cannot see) are blocked by a pre-execution content scan in `run_with_capture.sh` — the wrapper refuses to execute (exit 3) and appends no execution log, so the script stays editable in place once the install call is removed.
+- **Exception — read-only inspection is fine:** `pip list`, `pip show`, `pip freeze`, `uv --version`, and R's `installed.packages()`/`library()` stay open.
 
 ### Repository & Remote Safety
 
@@ -298,7 +301,8 @@ Context management is NEVER about reducing the quality or completeness of work. 
 
 | Layer | Mechanism | What It Covers |
 |-------|-----------|----------------|
-| **PreToolUse Hook** | `bash-safety.sh` — exit code 2 blocks execution | Destructive commands, privilege escalation, pipe-to-shell, data exfiltration, container escape, the /tmp provenance guard (write-operator-gated: blocks shell *writes* to /tmp — redirects, cp/mv/tee/mkdir/touch, downloads, sed -i, extraction, git clone — while allowing /tmp *reads* of DAAF coordination caches), a safety-system anti-tampering guard (§7: blocks command-segment-anchored shell *writes* — cp/mv/tee/redirect/sed -i/chmod — to `.claude/hooks/`, `.claude/logs/`, `benchmarks/harness/hooks/`, and `.claude/settings*.json`; these changes are user-only, while reads and git index ops like `git update-index --chmod=+x` stay open), and a runtime package-install guard (§8: blocks pip/pip3/pipx/`python -m pip`/uv/uvx/easy_install/conda install/uninstall, pointing to the Dockerfile-rebuild path — preferably the user additions block near the end of the Dockerfile for fast rebuilds — while pip list/show/freeze reads stay open). Command normalization strips backslash line-continuations before whitespace collapse, so multi-line commands cannot evade the adjacency patterns |
+| **PreToolUse Hook** | `bash-safety.sh` — exit code 2 blocks execution | Destructive commands, privilege escalation, pipe-to-shell, data exfiltration, container escape, the /tmp provenance guard (write-operator-gated: blocks shell *writes* to /tmp — redirects, cp/mv/tee/mkdir/touch, downloads, sed -i, extraction, git clone — while allowing /tmp *reads* of DAAF coordination caches), a safety-system anti-tampering guard (§7: blocks command-segment-anchored shell *writes* — cp/mv/tee/redirect/sed -i/chmod — to `.claude/hooks/`, `.claude/logs/`, `benchmarks/harness/hooks/`, and `.claude/settings*.json`; these changes are user-only, while reads and git index ops like `git update-index --chmod=+x` stay open), and a runtime package-install guard (§8: blocks pip/pip3/pipx/`python -m pip`/uv/uvx/easy_install/conda install/uninstall **and the R install paths** — `R CMD INSTALL` and segment-anchored R-eval installs such as `Rscript -e 'install.packages(...)'`/`remotes`/`devtools`/`pak`/`renv`/`BiocManager`, requiring both an R-interpreter invocation at a command-segment start and an install-family token — pointing to the Dockerfile-rebuild path (preferably the user additions block near the end of the Dockerfile for fast rebuilds) while pip list/show/freeze reads and `R --version` stay open). Command normalization strips backslash line-continuations before whitespace collapse, so multi-line commands cannot evade the adjacency patterns |
+| **Wrapper Content Scan** | `run_with_capture.sh` — exit code 3 blocks execution | Pre-execution scan of the script BODY for package-install calls that shell-level hooks cannot see (the dominant path for R `install.packages()` inside a `.R` script, and `os.system("pip install ...")`/`subprocess` forms in Python). Excludes full-line comments (an inline trailing-comment token is an accepted false positive). On a hit the wrapper refuses to execute, appends **no** execution log (so immutable versioning does not engage and the script stays editable in place), and points to the Dockerfile-rebuild path. Complements the `bash-safety.sh` §8 command-line guard. Regression suite: `tests/bash/run_with_capture.bats` |
 | **PreToolUse Hook** | `enforce-single-command.sh` — exit code 2 blocks execution | Blocks command chaining (`&&`, `||`, `;`, newline-separated commands). Quote-aware and nesting-aware scanner with compound-command exception. Enforces the "One Command Per Call" rule. |
 | **PreToolUse Hook (agent-scoped)** | `enforce-file-first.sh` — registered in agent frontmatter for coding agents only (research-executor, code-reviewer, debugger, data-ingest) | Blocks direct `python`/`python3` execution and all R batch entry points (`Rscript`, and bare `R` with `-e`/`-f`/`CMD BATCH`/redirected `--no-save` etc.); enforces `run_with_capture.sh` wrapper for audit trail. Not active for the orchestrator or read-only agents. |
 | **PreToolUse Hook** | `enforce-model-ceiling.sh` — registered on subagent dispatch (`Task`/`Agent`); denies via `permissionDecision: deny` | Blocks subagent dispatches on a model tier *above* the session model, preserving the user's cost-control choice; also blocks Claude-tier requests on non-Claude sessions (alternative providers) with a pointer to the env-var remaps. Cost-control guard, **fail-open by design** — if it cannot detect the session model (or `jq`/agent file is unavailable) it allows the dispatch, unlike the fail-closed safety hooks above. Stands down when alternative-provider model routing env vars are set. |
@@ -423,6 +427,7 @@ See `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for complete script template
 | `agent_reference/STATE_TEMPLATE_ONBOARDING.md` | Session state file template (Data Onboarding mode) |
 | `agent_reference/QA_CHECKPOINTS.md` | QA checkpoint definitions (QA1-QA4b) |
 | `agent_reference/VALIDATION_CHECKPOINTS.md` | Validation checkpoint code templates |
+| `agent_reference/SCOPE_POLICY.md` | Canonical plan scope / task-count policy (data-planner + plan-checker) |
 | `agent_reference/REPORT_TEMPLATE.md` | Output report template |
 | `agent_reference/AI_DISCLOSURE_REFERENCE.md` | AI use attribution and GUIDE-LLM checklist mapping for all modes |
 | `agent_reference/REPRODUCTION_REPORT_TEMPLATE.md` | Reproduction Report template (Reproducibility Verification mode) |
@@ -463,3 +468,14 @@ indicates a preference during conversation.
        load the appropriate translation skill (r-python-translation,
        python-r-translation, stata-python-translation, or stata-r-translation)
        and pass the annotation directive to all code-producing agents. -->
+- **Git commit management:** disabled
+  <!-- Options: disabled, enabled. Controls whether DAAF offers git commit
+       workflows for research artifacts. When disabled (the default), neither the
+       orchestrator nor any agent runs `git commit` — all script versions are
+       preserved in the working tree, which serves as the complete audit trail.
+       When enabled, the orchestrator may propose commits at natural milestones
+       (plan approval, phase completion, delivery) and executes a commit only
+       after the user approves it in-session. Subagents never run `git commit`
+       under either setting — commit execution is orchestrator-only, with user
+       consent. Agents always report a suggested commit message in their output
+       for the user/orchestrator to use if desired. -->

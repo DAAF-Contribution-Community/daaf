@@ -351,7 +351,7 @@ This opens a full VS Code editor at the URL [http://localhost:2720](http://local
 - **The default access password is "daaf"** but the password can be customized at any time in your environment_settings.txt file. See the environment_settings_example.txt in your daaf-docker folder for instructions there.
 - **Markdown preview:** Right-click any `.md` file and select **"Open Preview"**, or press `Shift+Ctrl+V`, to see rendered Markdown with proper formatting — headers, tables, links, and all. This is the easiest way to read DAAF's reports and plans.
 - **File management:** Use the file explorer sidebar to browse, create, rename, move, and delete files. You can also drag and drop files from your computer into the sidebar to import them into the Docker volume.
-- **Git integration:** The Source Control panel (left sidebar) shows uncommitted changes, lets you view diffs, and browse commit history — useful for reviewing what DAAF produced during a session.
+- **Git integration:** The Source Control panel (left sidebar) shows uncommitted changes and lets you view diffs — the most direct way to review exactly what DAAF produced during a session — and, if you've enabled the optional "Git commit management" preference, browse commit history too.
 - **Search:** Use `Ctrl+Shift+F` (or `Cmd+Shift+F` on Mac) to search across all files — helpful for finding specific variables, scripts, or content across a project.
 
 **Getting files INTO the container:** To bring files from your computer into the Docker volume for DAAF to use (e.g., a dataset you want to profile), simply drag and drop them from your computer onto the code editor's file explorer sidebar. This works for individual files *and* for whole folders — drop a folder and the editor copies its entire contents (including subfolders) into the location you drop it. Drag-and-drop upload works in Chrome, Edge, and Firefox.
@@ -412,7 +412,7 @@ cd daaf-docker
 
 If the backup contains Claude Code state (newer backups do — see above), the restore also brings back your Claude Code login and session history, replacing whatever login is currently in the installation. Older backups made before this feature restore your research data only, with a note that you'll need to run `/login` in Claude Code afterward.
 
-**A note on git and DAAF:** A full git repository is set up inside the Docker volume during installation (via the `git clone` in the installer). During research sessions, DAAF's agents will make **local git commits** inside the container to track every script version, data transformation, and plan update — this creates a detailed audit trail of your research that you can review with standard git tools (like `git log`). A remote is configured by default (pointing to the upstream DAAF repository for updates), but nothing is ever pushed there without your explicit instruction. Your research work lives safely in the Docker volume, and the local git history is there purely for traceability and reproducibility within your own projects. If you want a GitHub backup for your work, ask Claude how to make your own repository and save to it accordingly.
+**A note on git and DAAF:** A full git repository is set up inside the Docker volume during installation (via the `git clone` in the installer). By default, DAAF does **not** make git commits during your research sessions — and it doesn't need to. Every script version is preserved right in your project folder, including failed attempts (DAAF saves fixes as new numbered versions rather than overwriting the original), so the project folder itself is a complete, human-readable audit trail of your research. If you'd like git-based version tracking on top of that, you can turn on the optional **"Git commit management"** preference (in `CLAUDE.md`, under § User Preferences); once enabled, DAAF will suggest commits at natural milestones and always ask you before committing anything. Either way, a remote is configured by default (pointing to the upstream DAAF repository for updates), but nothing is ever pushed there without your explicit instruction. Your research work lives safely in the Docker volume. If you want a GitHub backup for your work, ask Claude how to make your own repository and save to it accordingly.
 
 ### Viewing Session Logs in Your Browser
 
@@ -460,7 +460,7 @@ This opens marimo's built-in notebook browser at [http://localhost:2718](http://
 
 > This applies to R projects.
 
-R projects produce **Quarto** notebooks (`.qmd` files) instead of Marimo notebooks. Quarto renders to HTML by default, giving you a polished document with narrative text, executed code, tables, and figures -- all viewable in any web browser.
+R projects produce **Quarto** notebooks (`.qmd` files) instead of Marimo notebooks. In a Full Pipeline project, the Quarto file is a polished **audit document**: it presents narrative context, the literal code from already-executed R scripts, their captured execution logs, existing figures, and small static data previews. The archived Stage 5-8 script chunks remain disabled during rendering; only explicitly enabled preview chunks run. Rendering therefore validates and formats the document—it does not rerun the analytical pipeline. The resulting HTML is viewable in any web browser.
 
 **Quickest way -- from your host machine (no container shell needed):**
 

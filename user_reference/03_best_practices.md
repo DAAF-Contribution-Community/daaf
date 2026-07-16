@@ -287,6 +287,8 @@ The `scripts/cr/` directory contains the code-reviewer's inspection scripts for 
 - `stage5_01_cr1.py` -- First QA review of Stage 5, script 01
 - `stage7_02_cr2.py` -- Second QA iteration for Stage 7, script 02
 
+Analysis-stage (Stage 8) reviews split into two tracks and use lettered suffixes to tell them apart: `_cra{N}` names a statistical/analysis review and `_crb{N}` names a visualization review. So `stage8_01_cra1.py` is the first analysis review of Stage 8 script 01, and `stage8_01_crb1.py` is the first visualization review of that same script. If you encounter these `cra`/`crb` files, they are expected -- Stage 8 simply gets reviewed from both angles.
+
 These scripts contain the adversarial checks that the code-reviewer ran, along with their results. If a QA review returned WARNING or BLOCKER, the findings will be in these files. You generally do not need to read these unless you are investigating a specific concern -- but they are there for full transparency.
 
 ---
@@ -465,7 +467,7 @@ There are also a ton of guides online and on YouTube, etc. Take some time to get
 Here are a few concrete commands that are especially handy when working with DAAF:
 
 - **`git diff HEAD~1`** -- See exactly what changed in the last session. This is great for reviewing what DAAF produced overnight or after a long run. It shows every file that was added, modified, or deleted, with the specific changes highlighted.
-- **`git log --oneline -10`** -- See the 10 most recent commits in a compact format. Since DAAF's sessions are typically committed at the end, this gives you a quick history of recent sessions and what they produced.
+- **`git log --oneline -10`** -- See the 10 most recent commits in a compact format. DAAF does not create commits on its own by default, but if you commit your work manually -- or enable the optional "Git commit management" preference, which has DAAF suggest commits at natural milestones and ask before making them -- this gives you a quick history of recent sessions and what they produced.
 - **`git stash` / `git stash pop`** -- Temporarily set aside all uncommitted changes and restore them later. This is useful if you want to experiment with something (like testing a different analysis approach) without committing to it. Run `git stash` to save your current changes, do your experiment, and then run `git stash pop` to bring your original changes back.
 
 You can run these commands in the Claude Code terminal inside the container, or in any terminal connected to the DAAF repository.
@@ -493,7 +495,7 @@ The browser editor comes pre-loaded with extensions for Python and R syntax high
 
 - **Markdown preview:** Right-click any `.md` file and select **"Open Preview"**, or press `Shift+Ctrl+V`, to see the rendered report with proper formatting. This is by far the easiest way to read DAAF's reports and plans.
 - **File management:** Drag and drop files — or whole folders — from your computer into the file explorer sidebar to import them into the Docker volume (e.g., a dataset you want to profile). Create, rename, move, and delete files directly. To get files back out, right-click a file and choose **Download**; for a whole folder, right-click it, choose **Compress → zip**, then download the resulting `.zip` (see the quickstart's *Getting files OUT of the container* section for the full walkthrough).
-- **Git integration:** The Source Control panel (left sidebar) shows uncommitted changes, lets you view diffs, and browse commit history -- invaluable for reviewing what DAAF produced during a session.
+- **Git integration:** The Source Control panel (left sidebar) shows uncommitted changes and lets you view diffs -- the most direct way to review exactly what DAAF produced during a session -- and, if you've enabled the optional "Git commit management" preference, browse commit history too.
 - **Search across files:** `Ctrl+Shift+F` (or `Cmd+Shift+F` on Mac) searches across all files in the project -- great for finding specific variables, scripts, or content.
 
 ### Alternative: Desktop VSCode with Dev Containers

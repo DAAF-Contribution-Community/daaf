@@ -25,7 +25,7 @@ Every agent that writes or executes code (research-executor, code-reviewer, debu
 Every script execution (Python or R) follows these steps in order. No exceptions.
 
 ```
-WRITE  -->  EXECUTE  -->  CAPTURE  -->  COMMIT
+WRITE  -->  EXECUTE  -->  CAPTURE  -->  REPORT
             (if failed: VERSION the script, then REPEAT from WRITE)
 ```
 
@@ -74,22 +74,36 @@ After execution, the script file itself contains both the code AND proof of what
 If the script fails (non-zero exit code or failed validation):
 
 1. The original script already has its failed output appended — leave it as-is
-2. Create a new versioned copy: `cp {step}_{task-name}.py {step}_{task-name}_a.py` (or `.R` → `_a.R`)
+2. Create a new versioned copy with the revision utility (a single Bash call):
+   ```
+   bash {BASE_DIR}/scripts/create_script_revision.sh {PROJECT_DIR}/scripts/.../{step}_{task-name}.py {PROJECT_DIR}/scripts/.../{step}_{task-name}_a.py
+   ```
+   (or `.R` → `_a.R`). The utility strips the appended execution-log block so the
+   new copy starts clean. **Do not use `cp`** — a plain copy drags the
+   `# EXECUTION LOG` marker into the new file, and `run_with_capture.sh` will then
+   refuse to run it.
 3. Apply fixes to the new copy only
 4. Execute the new copy with `run_with_capture.sh`
 5. If it fails again, create `_b.py`/`_b.R`, then `_c.py`/`_c.R`, etc.
 
 **Never modify a script after its execution log has been appended.** See Script Versioning below for complete suffix conventions, examples, and rules.
 
-### Step 5: Commit
+### Step 5: Report
 
 After successful execution:
-1. Commit the script (two separate Bash calls):
-   - `git add scripts/stage{N}_{type}/{step}_{task-name}.py`
-   - `git commit -m "feat(stage{N}-{step}): {brief description}"`
-2. Proceed to next step in the Transformation Sequence
+1. Report the execution result (checkpoint status, row counts, files created) to
+   the orchestrator, and include a **suggested** commit message for the user's
+   optional use (see the commit-message format in `agent_reference/BOUNDARIES.md`
+   § Git Commit Protocol).
+2. Do **not** run `git add` or `git commit` yourself. By default DAAF does not
+   commit research artifacts — every script version is preserved in the working
+   tree, which is the complete audit trail. Committing is an opt-in User
+   Preference (`CLAUDE.md` § User Preferences > "Git commit management") that,
+   when enabled, is executed only by the orchestrator with in-session user
+   approval.
+3. Proceed to next step in the Transformation Sequence.
 
-If the script went through versioned revisions (Step 4), commit **all** versions for audit trail completeness.
+All versions (failed and successful) remain in the working tree for audit-trail completeness.
 
 ---
 
@@ -107,11 +121,12 @@ All scripts reference this single canonical copy directly — there is no need t
 
 1. Validates the script path exists
 2. Checks whether the script already has an execution log (blocks re-runs if so)
-3. Detects language from file extension (`.py` → `python3`, `.R` → `Rscript`)
-4. Executes the script with stdout/stderr capture via `tee`
-5. Records timestamp, duration, and exit code
-6. Appends the complete execution log to the script file as comments (using `#` for both Python and R)
-7. Returns the script's exit code
+3. Scans the script body for runtime package-install calls and refuses to execute (exit 3) if any are found (see "Package-Install Content Scan" below)
+4. Detects language from file extension (`.py` → `python3`, `.R` → `Rscript`)
+5. Executes the script with stdout/stderr capture via `tee`
+6. Records timestamp, duration, and exit code
+7. Appends the complete execution log to the script file as comments (using `#` for both Python and R)
+8. Returns the script's exit code
 
 ### Usage
 
@@ -122,15 +137,21 @@ bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage5_fetch/0
 # Execute an R script (single Bash call, absolute paths)
 bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage5_fetch/01_fetch-ccd.R
 
-# If it fails, create a versioned copy and fix
-cp {PROJECT_DIR}/scripts/stage5_fetch/01_fetch-ccd.py {PROJECT_DIR}/scripts/stage5_fetch/01_fetch-ccd_a.py
+# If it fails, create a clean versioned copy (strips the appended execution log)
+bash {BASE_DIR}/scripts/create_script_revision.sh {PROJECT_DIR}/scripts/stage5_fetch/01_fetch-ccd.py {PROJECT_DIR}/scripts/stage5_fetch/01_fetch-ccd_a.py
 # Edit 01_fetch-ccd_a.py with fixes, then execute the new version
 bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage5_fetch/01_fetch-ccd_a.py
 ```
 
 ### Re-run Protection
 
-The wrapper checks for the marker `# EXECUTION LOG` in the script file. If found, it **refuses to run** and prints guidance to create a versioned copy instead. This enforces the versioning rule: once a script has been executed, it is a historical record.
+The wrapper checks for the marker `# EXECUTION LOG` in the script file. If found, it **refuses to run** (exit 1) and prints guidance to create a versioned copy instead. This enforces the versioning rule: once a script has been executed, it is a historical record.
+
+### Package-Install Content Scan
+
+Before executing, the wrapper scans the script **body** for runtime package-install calls in both languages — Python (`pip install`, `pipx`/`uv` subcommands, `easy_install`, `conda install`, including the `subprocess`/`os.system` string and list forms) and R (`install.packages()`, `R CMD INSTALL` is command-line-only, and the `remotes`/`devtools`/`pak`/`renv`/`BiocManager` install verbs). This is the one chokepoint that sees the script body: the `bash-safety.sh` §8 hook blocks command-line installs but cannot see an install call written *inside* a script — the dominant path for R's `install.packages()`. Full-line comments are excluded so a commented-out example does not false-block.
+
+If a token is found, the wrapper **refuses to execute** and exits **3**. Crucially, **no execution log is appended** — immutable script versioning has not engaged, so the script stays editable **in place**: remove the install call and re-run the *same file* (no `_a`/`_b` version needed). The error message points to the durable fix — add the package to the Dockerfile and rebuild (`bash rebuild_daaf.sh` from the `daaf-docker/` folder, preferably the user additions block near the end). See CLAUDE.md § Boundaries & Safety > Runtime Package Installation and `ERROR_RECOVERY.md` § PreToolUse Safety-Hook Blocks.
 
 ---
 
@@ -214,11 +235,11 @@ This separation — exhaustive in the files, concise in the message — is what 
 
 | Rule | Rationale |
 |------|-----------|
-| **ALWAYS create a new versioned copy for fixes** | Preserves the full history of attempts and outputs. |
+| **ALWAYS create a new versioned copy for fixes with `create_script_revision.sh`** | Preserves the full history of attempts and outputs; the utility strips the appended execution log so the copy runs. |
 | **ALWAYS use the wrapper for execution** | It handles capture, timing, log appending, and re-run protection. |
 | **ALWAYS use the final successful version downstream** | Notebook and report reference only the version that passed. |
 | **ALWAYS follow one-operation-per-script** | Mixing multiple transformations hides the source of errors. |
-| **ALWAYS commit all versions** | Audit trail shows evolution of code and results. |
+| **ALWAYS preserve all versions in the working tree** | Audit trail shows evolution of code and results; the preserved working-tree files are the audit trail (committing is opt-in — see BOUNDARIES.md § Git Commit Protocol). |
 | **ALWAYS include header metadata and config section** | Required for traceability and reproducibility. Python: shebang + docstring. R: comment block header. |
 | **ALWAYS use path constants (`PROJECT_DIR`)** | Hardcoded paths break when project location changes. Python: `Path()`. R: `file.path()`. |
 | **ALWAYS capture pre/post state around transformations** | Enables validation of row count changes and data integrity. |

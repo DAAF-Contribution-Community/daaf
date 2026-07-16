@@ -107,7 +107,7 @@ These actions are **prohibited** under all circumstances.
 | Expose raw data in public outputs | Privacy risk |
 | Write working files to `/tmp` (redirects, `cp`/`mv`/`tee`/`mkdir`/`touch`, downloads, `sed -i`, extraction, `git clone`) | Provenance loss — `/tmp` is outside the backup and audit boundary; blocked by the `bash-safety.sh` hook and `settings.json` deny rules. Correct approach: use `{PROJECT_DIR}/scripts/scratch/`. Reading DAAF's `/tmp` coordination caches is fine — only writes are blocked |
 | Modify the safety system via shell writes (`cp`/`mv`/`tee`/redirect/`sed -i`/`chmod` into `.claude/hooks/`, `.claude/logs/`, `benchmarks/harness/hooks/`, or `.claude/settings*.json`) | Bypasses the `Edit`/`Write` deny rules and risks deregistering hooks (settings.json is the root of trust); blocked by the `bash-safety.sh` §7 anti-tampering guard. Hook/log/settings changes are **user-only** — the user applies them directly (or via a `!`-typed command). Reads and git index ops (`git add`, `git update-index --chmod=+x`) stay open |
-| Install or remove packages at runtime (`pip`/`pip3`/`pipx`, `python -m pip`, `uv`/`uvx`, `easy_install`, `conda`) | Unreproducible drift — the container is defined by the Dockerfile and a rebuild silently reverts runtime installs; blocked by the `bash-safety.sh` §8 package guard and `settings.json` deny rules. Correct approach: add the package to the Dockerfile and rebuild (`bash rebuild_daaf.sh` from `daaf-docker`) — preferably in the user additions block near the end of the Dockerfile, which rebuilds fast via layer caching (place it earlier only when functionally required). `pip list`/`show`/`freeze` reads stay open |
+| Install or remove packages at runtime — **Python:** `pip`/`pip3`/`pipx`, `python -m pip`, `uv`/`uvx`, `easy_install`, `conda`; **R:** `R CMD INSTALL`, R-eval/in-script `install.packages()` (plus the `remotes`/`devtools`/`pak`/`renv`/`BiocManager` install verbs) | Unreproducible drift — the container is defined by the Dockerfile and a rebuild silently reverts runtime installs. Command-line forms are blocked by the `bash-safety.sh` §8 package guard and `settings.json` deny rules; install calls written *inside* a `.py`/`.R` script are blocked by `run_with_capture.sh`'s pre-execution content scan (exit 3, no log appended). Correct approach: add the package to the Dockerfile and rebuild (`bash rebuild_daaf.sh` from `daaf-docker`) — preferably in the user additions block near the end of the Dockerfile, which rebuilds fast via layer caching (place it earlier only when functionally required). `pip list`/`show`/`freeze` and R `installed.packages()` reads stay open |
 
 ### Analysis Integrity
 
@@ -151,7 +151,7 @@ These actions are **prohibited** under all circumstances.
 | Use `mcp__ide__executeCode` for analysis code (except quick exploration) | Hidden execution, no version control |
 | Save scripts without embedded execution logs | Missing proof of what happened |
 | Modify scripts after appending execution log (create new version instead) | Destroys audit trail |
-| Create Marimo/Quarto cells with code that wasn't first executed as a script | Unvalidated code in notebook |
+| Create new Stage 9 analysis code that was not first executed as a script (the format-specific, non-transforming data inspection/display chunk is the only exception) | Unvalidated analytical logic in notebook |
 
 **See:** Closely read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the mandatory file-first execution protocol covering complete code file writing, output capture, and file versioning rules.
 
@@ -207,7 +207,25 @@ These boundaries apply whenever the Data Onboarding **sensitivity gate** has rou
 
 ### Reproducibility Verification Mode
 
-**See** `reproducibility-verification-mode.md` § Boundaries for Always Do / Never Do / Ask First rules specific to reproduction workflows.
+**Always Do:**
+- Accept exactly one user-selected original Report and one supported DAAF Stage 9 Marimo or Quarto archive; stop on ambiguous candidates or mixed notebook formats.
+- Use a new reproduction destination and a new decompiler extraction root. Never reuse, merge, or overwrite either automatically.
+- Run `normalize_project_dir.py`, then require `audit_reproduction_paths.py` exit 0 / MATCH before RV-2. Exit 1 DIVERGED and exit 2 NOT DIRECTLY VERIFIED block because containment is unestablished, unless every affected script is exactly user-excluded before RV-2; verify no in-scope script remains in the issues and never relabel a retained nonzero overall result MATCH. State the bounded assurance; dynamic paths are not proven safe.
+- In frozen-input mode, hash copied raw files, exclude Stage 5 by explicit pre-RV-2 scope design, begin downstream, and verify raw hashes remain unchanged. Do not imply acquisition or mirrors were tested.
+- Use `compare_execution_logs.py` only for shared printed metrics. Use `compare_reproduction_artifacts.py` for supported Parquet/exact-byte evidence and preserve JSON under exit 0 MATCH, 1 DIVERGED, 2 invalid/unsupported, and 3 NOT DIRECTLY VERIFIED. Correct exit-2 invocations or use the separate evidence path; review figures visually and use defined inspectable representations for tables/models or mark NOT DIRECTLY VERIFIED.
+- Create `_repro_a`/`_repro_b` from clean, log-free source and verify no inherited log before fixes and execution.
+- Grade environment evidence by language: Python runtime, Marimo, and imported package versions; R runtime, Quarto, repository/snapshot metadata, and `installed.packages()` versions. Put any diagnostic scripts in project `scripts/repro_checks/`, execute them through `run_with_capture.sh`, and retain their logs; never infer exact R versions from unversioned install lists or snapshot dates.
+- Use only FULLY REPRODUCED / PARTIALLY REPRODUCED / NOT REPRODUCED overall, and MATCH / DIVERGED / NOT DIRECTLY VERIFIED for RV-3 rows. Any in-scope evidence gap caps the verdict at PARTIALLY REPRODUCED.
+
+**Never Do:**
+- Treat missing evidence, helper exit 2 or 3, or an unsupported comparison as a match; claim exact-byte identity proves semantic equivalence; or use the log helper as an artifact comparator. Exit 2 identifies an invalid/unsupported invocation and must be corrected or rerouted; exit 3 is NOT DIRECTLY VERIFIED.
+- Execute Stage 5 in frozen mode, relabel a design exclusion as reproduced/failed, or convert an ad hoc skip into a retroactive exclusion.
+- Write or recommend runtime package-install calls while inventorying environments.
+
+**Ask First:**
+- Before excluding any script, claim, figure, artifact, finding, or required dimension. Only exact user-approved exclusions recorded before RV-2 leave verdict denominators.
+
+**See** `reproducibility-verification-mode.md` § Boundaries for the full workflow contract.
 
 ---
 
@@ -612,17 +630,34 @@ Is this an improvement or optimization not required for correctness?
 
 ## Git Commit Protocol
 
-**Philosophy:** Commit outcomes, not process. Git log should read as a changelog of shipped work.
+**Default policy: DAAF does not commit research artifacts.** The DAAF user base is
+typically not git-native, and users must never be interrupted by git permission
+prompts they did not ask for. By default, neither the orchestrator nor any
+subagent runs `git add` or `git commit` for research work. **The working tree is
+the audit trail:** every script version (failed and successful), data file, and
+output is preserved on disk, which is what makes the analysis reviewable and
+reproducible. Read-only git commands (`git status`, `git diff`, `git log`) remain
+available to any agent.
 
-### Commit Timing
+**Git commit management is an opt-in User Preference** (`CLAUDE.md` § User
+Preferences > "Git commit management"). It is `disabled` by default.
 
-| Event | Commit? | Notes |
-|-------|---------|-------|
-| Task completion (CP passed) | Yes | Atomic commit per task |
-| Wave completion | Optional | Metadata update commit |
-| Stage completion | Yes | Summary commit if multiple tasks |
-| Plan update | Yes | Document changes |
-| Bug fix during execution | Yes | Separate fix commit |
+**Who may commit (only when the preference is enabled):**
+- **The orchestrator only.** Commits are *proposed* by the orchestrator at natural
+  milestones (plan approval, phase/stage completion, delivery) and executed *only
+  after the user approves in-session*. Committing is never autonomous.
+- **Subagents never commit — under either setting.** A subagent's role is to report
+  a *suggested* commit message in its output (see each agent's Output Format),
+  never to run `git`.
+
+**Suggested commit messages (always).** Regardless of the preference, agents may
+include a suggested commit message in their return output for the user/orchestrator
+to use if desired. The philosophy for those messages: *describe outcomes, not
+process — a git log built from them should read as a changelog of shipped work.*
+
+**The remainder of this section — message format, types, examples, and safety
+rules — applies only when git commit management is enabled and a commit has been
+user-approved.**
 
 ### Commit Message Format
 
@@ -741,7 +776,7 @@ These conditions trigger an immediate STOP with escalation to user.
 | Row count drops >90% after transformation | Stage 7 | STOP, verify transformation logic |
 | **QA BLOCKER after 2 revisions** | 5-QA to 8-QA | STOP, escalate to user |
 | **QA methodology violation** | 5-QA to 8-QA | STOP, escalate immediately |
-| Notebook execution error after 2 fix attempts | Stage 9 | STOP, report error details |
+| `marimo run` or `quarto render` fails after 2 fix attempts | Stage 9 | STOP, report error details; Quarto rendering validates document assembly and enabled previews, not archived Stage 5-8 re-execution |
 | Data unavailable in data skills | Stage 2-3 | STOP, escalate immediately |
 | LOW confidence finding unresolved | Any | Cannot proceed |
 

@@ -766,7 +766,7 @@ These boundaries supplement the universal safety boundaries in `CLAUDE.md`. See 
 - Always dispatch review subagents in Phase 4 — minimum 2 (Simple) or 3 (Moderate/Complex). The orchestrator must never self-review in lieu of subagent dispatch.
 - Present changes for user review at Checkpoint 2
 - Load `skill-authoring` and `agent-authoring` at mode start
-- Commit intermediate state (or update SESSION_NOTES.md) before non-trivial multi-file modifications, so that a session interruption does not leave the framework in an inconsistent state
+- Update SESSION_NOTES.md before non-trivial multi-file modifications, so that a session interruption does not leave the framework in an inconsistent state. Do not commit autonomously; if git commit management is enabled, *suggest* a commit to the user at natural boundaries (Checkpoint 1, Phase 3 completion) and let the user decide
 - Set executable permissions (`chmod +x` + `git update-index --chmod=+x`) on any newly created or modified `.sh` files (hooks, utility scripts) and verify with `git ls-files -s` that the mode is `100755`
 - Run `bash {BASE_DIR}/scripts/check_workspace_invariants.sh` and quote its output (the `OK:` line, exit 0, expected) before presenting Checkpoint 2 — this catches invariant-violating scratch artifacts (leftover probe symlinks, and repo-root leak artifacts — zero-byte stubs, `*.pre-migrate` backups, or a stray `daaf-docker/` dir from a wrong-CWD host-tool dry-run) that reviewers or the framework-engineer may have created; git cannot see untracked scratch, so this live-filesystem lint is the gate
 
