@@ -453,7 +453,7 @@ User-specific preferences that the orchestrator and agents should respect. These
 defaults can be updated by the orchestrator (with user confirmation) when a user
 indicates a preference during conversation.
 
-- **Primary execution language:** R
+- **Primary execution language:** Python
   <!-- Options: Python, R. Determines the language for all pipeline scripts,
        notebooks, and validation code. When set to R, agents load R library
        skills (tidyverse, ggplot2, fixest, etc.) instead of Python equivalents,
