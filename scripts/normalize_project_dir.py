@@ -2,106 +2,218 @@
 """Batch-normalize PROJECT_DIR paths in decompiled scripts.
 
 Standalone CLI tool for Reproducibility Verification mode (RV-1).
-Scans all .py files in a directory tree, finds PROJECT_DIR assignments
-(both `Path("...")` and plain string `"..."` styles), and rewrites them
-to point at the reproduction project path.
+Scans all .py and .R files in a directory tree, finds canonical PROJECT_DIR
+assignments, and rewrites them to point at the reproduction project path.
+
+Supported assignment forms:
+    Python: PROJECT_DIR = Path("...")
+    Python: PROJECT_DIR = "..."
+    R:      PROJECT_DIR <- "..." (or =)
+    R:      PROJECT_DIR <- file.path(...) (or =)
 
 Usage:
     python normalize_project_dir.py <scripts_dir> <target_project_dir>
 
 Arguments:
-    scripts_dir         Directory containing decompiled .py scripts
+    scripts_dir         Directory containing decompiled .py and/or .R scripts
     target_project_dir  Absolute path to the reproduction project folder
 
 Exit codes:
     0  Completed successfully (regardless of whether changes were made)
-    1  Error (directory not found, no .py files, I/O error)
+    1  Error (directory not found, no .py/.R files, I/O error)
 """
 
 import argparse
+import ast
 import re
 import sys
+import unicodedata
 from pathlib import Path
 
 
-def find_py_files(scripts_dir):
-    """Recursively find all .py files under scripts_dir."""
-    return sorted(scripts_dir.rglob("*.py"))
+def find_script_files(scripts_dir):
+    """Recursively find canonical Python and R scripts under scripts_dir."""
+    script_files = list(scripts_dir.rglob("*.py"))
+    script_files.extend(scripts_dir.rglob("*.R"))
+    return sorted(
+        script_files,
+        key=lambda path: path.relative_to(scripts_dir).as_posix(),
+    )
 
 
-def normalize_file(py_path, target_project_dir):
-    """Replace PROJECT_DIR = Path("...") or PROJECT_DIR = "..." with the target path.
+def contains_control_character(value):
+    """Return whether a path contains a Unicode control character."""
+    return any(unicodedata.category(character) == "Cc" for character in value)
 
-    Matches two patterns:
-      1. PROJECT_DIR = Path("...")   (pathlib style)
-      2. PROJECT_DIR = "..."         (plain string style)
 
-    Returns (original_value, was_modified, pattern_style) where pattern_style
-    is 'Path' or 'string' (or None if no match).
+def escape_quoted_literal(value, quote):
+    """Escape a path for Python and R's shared quoted-string subset."""
+    escaped = value.replace("\\", "\\\\")
+    escaped = escaped.replace(quote, f"\\{quote}")
+    return escaped
+
+
+def decode_quoted_literal(value, quote):
+    """Decode the supported quoted-string subset for equality comparison."""
+    try:
+        decoded = ast.literal_eval(f"{quote}{value}{quote}")
+    except (SyntaxError, ValueError):
+        return None
+    return decoded if isinstance(decoded, str) else None
+
+
+def normalize_file(script_path, target_project_dir):
+    """Replace the first canonical PROJECT_DIR assignment with the target path.
+
+    Returns (original_expression, normalized_expression, was_modified,
+    pattern_style), where pattern_style is 'Path', 'string', or 'file.path'
+    (or None if no canonical assignment matched).
     """
-    # Pattern 1: PROJECT_DIR = Path("...")
-    path_pattern = re.compile(
-        r"""^(\s*PROJECT_DIR\s*=\s*Path\()(['"])(.*?)\2(\).*)$"""
+    python_path_pattern = re.compile(
+        r"""^(\s*PROJECT_DIR\s*=\s*Path\()(['"])((?:\\.|(?!\2).)*)\2(\).*)$"""
     )
-    # Pattern 2: PROJECT_DIR = "..." or PROJECT_DIR = '...'
-    # Cannot match Path("...") lines because those start with Path( not a quote
-    string_pattern = re.compile(
-        r"""^(\s*PROJECT_DIR\s*=\s*)(['"])((?:(?!\2).)*)\2(\s*#.*)?$"""
+    python_string_pattern = re.compile(
+        r"""^(\s*PROJECT_DIR\s*=\s*)(['"])((?:\\.|(?!\2).)*)\2(\s*#.*)?$"""
+    )
+    r_string_pattern = re.compile(
+        r"""^(\s*PROJECT_DIR\s*(?:<-|=)\s*)(['"])((?:\\.|(?!\2).)*)\2(\s*#.*)?$"""
+    )
+    r_file_path_pattern = re.compile(
+        r"""^(\s*PROJECT_DIR\s*(?:<-|=)\s*file\.path\()(.+?)(\)\s*(?:#.*)?)$"""
     )
 
-    text = py_path.read_text(encoding="utf-8")
+    text = script_path.read_text(encoding="utf-8")
     lines = text.splitlines(keepends=True)
 
-    original_value = None
+    original_expression = None
+    normalized_expression = None
     modified = False
     pattern_style = None
 
     for i, line in enumerate(lines):
-        # Try Path("...") pattern first
-        m = path_pattern.match(line)
-        if m:
-            prefix = m.group(1)      # e.g. 'PROJECT_DIR = Path('
-            quote = m.group(2)        # ' or "
-            original_value = m.group(3)
-            suffix = m.group(4)       # e.g. ')'
-            pattern_style = 'Path'
-            if original_value != target_project_dir:
-                lines[i] = f"{prefix}{quote}{target_project_dir}{quote}{suffix}\n"
-                modified = True
-            break
+        if script_path.suffix == ".py":
+            match = python_path_pattern.match(line)
+            if match:
+                prefix = match.group(1)
+                quote = match.group(2)
+                original_value = match.group(3)
+                suffix = match.group(4)
+                escaped_target = escape_quoted_literal(target_project_dir, quote)
+                original_expression = (
+                    f"PROJECT_DIR = Path({quote}{original_value}{quote})"
+                )
+                normalized_expression = (
+                    f"PROJECT_DIR = Path({quote}{escaped_target}{quote})"
+                )
+                pattern_style = "Path"
+                if decode_quoted_literal(original_value, quote) != target_project_dir:
+                    lines[i] = (
+                        f"{prefix}{quote}{escaped_target}{quote}{suffix}\n"
+                    )
+                    modified = True
+                break
 
-        # Try plain string pattern
-        m = string_pattern.match(line)
-        if m:
-            prefix = m.group(1)      # e.g. 'PROJECT_DIR = '
-            quote = m.group(2)        # ' or "
-            original_value = m.group(3)
-            trailing = m.group(4) or ''  # optional inline comment
-            pattern_style = 'string'
-            if original_value != target_project_dir:
-                lines[i] = f"{prefix}{quote}{target_project_dir}{quote}{trailing}\n"
-                modified = True
-            break
+            match = python_string_pattern.match(line)
+            if match:
+                prefix = match.group(1)
+                quote = match.group(2)
+                original_value = match.group(3)
+                trailing = match.group(4) or ""
+                escaped_target = escape_quoted_literal(target_project_dir, quote)
+                original_expression = (
+                    f"PROJECT_DIR = {quote}{original_value}{quote}"
+                )
+                normalized_expression = (
+                    f"PROJECT_DIR = {quote}{escaped_target}{quote}"
+                )
+                pattern_style = "string"
+                if decode_quoted_literal(original_value, quote) != target_project_dir:
+                    lines[i] = (
+                        f"{prefix}{quote}{escaped_target}{quote}{trailing}\n"
+                    )
+                    modified = True
+                break
+
+        if script_path.suffix == ".R":
+            match = r_string_pattern.match(line)
+            if match:
+                prefix = match.group(1)
+                quote = match.group(2)
+                original_value = match.group(3)
+                trailing = match.group(4) or ""
+                escaped_target = escape_quoted_literal(target_project_dir, quote)
+                operator = "<-" if "<-" in prefix else "="
+                original_expression = (
+                    f"PROJECT_DIR {operator} {quote}{original_value}{quote}"
+                )
+                normalized_expression = (
+                    f"PROJECT_DIR {operator} {quote}{escaped_target}{quote}"
+                )
+                pattern_style = "string"
+                if decode_quoted_literal(original_value, quote) != target_project_dir:
+                    lines[i] = (
+                        f"{prefix}{quote}{escaped_target}{quote}{trailing}\n"
+                    )
+                    modified = True
+                break
+
+            match = r_file_path_pattern.match(line)
+            if match:
+                prefix = match.group(1)
+                original_arguments = match.group(2).strip()
+                suffix = match.group(3)
+                quote_match = re.search(r"['\"]", original_arguments)
+                quote = quote_match.group(0) if quote_match else '"'
+                escaped_target = escape_quoted_literal(target_project_dir, quote)
+                operator = "<-" if "<-" in prefix else "="
+                original_expression = (
+                    f"PROJECT_DIR {operator} file.path({original_arguments})"
+                )
+                normalized_expression = (
+                    f"PROJECT_DIR {operator} "
+                    f"file.path({quote}{escaped_target}{quote})"
+                )
+                pattern_style = "file.path"
+                normalized_arguments = f"{quote}{escaped_target}{quote}"
+                if original_arguments != normalized_arguments:
+                    lines[i] = (
+                        f"{prefix}{normalized_arguments}{suffix}\n"
+                    )
+                    modified = True
+                break
 
     if modified:
-        py_path.write_text("".join(lines), encoding="utf-8")
+        script_path.write_text("".join(lines), encoding="utf-8")
 
-    return original_value, modified, pattern_style
+    return (
+        original_expression,
+        normalized_expression,
+        modified,
+        pattern_style,
+    )
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Batch-normalize PROJECT_DIR in decompiled scripts."
+        description="Batch-normalize PROJECT_DIR in decompiled Python and R scripts."
     )
     parser.add_argument(
         "scripts_dir",
-        help="Directory containing decompiled .py scripts",
+        help="Directory containing decompiled .py and/or .R scripts",
     )
     parser.add_argument(
         "target_project_dir",
         help="Absolute path to the reproduction project folder",
     )
     args = parser.parse_args()
+
+    if contains_control_character(args.target_project_dir):
+        print(
+            "ERROR: target_project_dir contains an unsupported control character; "
+            "no files were modified.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
     scripts_dir = Path(args.scripts_dir).resolve()
     target_project_dir = str(Path(args.target_project_dir).resolve())
@@ -110,9 +222,12 @@ def main():
         print(f"ERROR: scripts_dir is not a directory: {scripts_dir}", file=sys.stderr)
         sys.exit(1)
 
-    py_files = find_py_files(scripts_dir)
-    if not py_files:
-        print(f"ERROR: No .py files found in {scripts_dir}", file=sys.stderr)
+    script_files = find_script_files(scripts_dir)
+    if not script_files:
+        print(
+            f"ERROR: No .py or .R files found in {scripts_dir}",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     # --- Report header ---
@@ -121,7 +236,7 @@ def main():
     print("=" * 72)
     print(f"Scripts directory : {scripts_dir}")
     print(f"Target PROJECT_DIR: {target_project_dir}")
-    print(f"Files scanned     : {len(py_files)}")
+    print(f"Files scanned     : {len(script_files)}")
     print("-" * 72)
 
     # --- Process each file ---
@@ -132,18 +247,30 @@ def main():
     # Collect rows for the Infrastructure Normalizations table
     table_rows = []
 
-    for py_path in py_files:
-        rel_path = py_path.relative_to(scripts_dir)
-        original_value, was_modified, pattern_style = normalize_file(py_path, target_project_dir)
+    for script_path in script_files:
+        rel_path = script_path.relative_to(scripts_dir)
+        (
+            original_expression,
+            normalized_expression,
+            was_modified,
+            pattern_style,
+        ) = normalize_file(script_path, target_project_dir)
 
-        if original_value is None:
+        if original_expression is None:
             no_match_count += 1
         elif was_modified:
             normalized_count += 1
-            table_rows.append((str(rel_path), original_value, target_project_dir, pattern_style))
+            table_rows.append(
+                (
+                    str(rel_path),
+                    original_expression,
+                    normalized_expression,
+                    pattern_style,
+                )
+            )
             print(f"  NORMALIZED: {rel_path}")
-            print(f"    original : {original_value}")
-            print(f"    new      : {target_project_dir}")
+            print(f"    original : {original_expression}")
+            print(f"    new      : {normalized_expression}")
         else:
             skipped_count += 1
             print(f"  UNCHANGED : {rel_path} (already has target value)")
@@ -159,27 +286,20 @@ def main():
     if table_rows:
         print("Infrastructure Normalizations (paste into Reproduction Report):")
         print()
-        print("| File | Original Value | Normalized Value | Type |")
-        print("|------|----------------|------------------|------|")
-        for rel, orig, new, style in table_rows:
-            if style == 'Path':
-                orig_display = f'PROJECT_DIR = Path("{orig}")'
-                new_display = f'PROJECT_DIR = Path("{new}")'
-            else:
-                orig_display = f'PROJECT_DIR = "{orig}"'
-                new_display = f'PROJECT_DIR = "{new}"'
-            note = " (string, not Path)" if style == 'string' else ""
+        print("| File | Original Expression | Normalized Expression | Type |")
+        print("|------|---------------------|-----------------------|------|")
+        for rel_path, original, normalized, style in table_rows:
             print(
-                f"| `{rel}` "
-                f"| `{orig_display}` "
-                f"| `{new_display}` "
-                f"| PROJECT_DIR path{note} |"
+                f"| `{rel_path}` "
+                f"| `{original}` "
+                f"| `{normalized}` "
+                f"| PROJECT_DIR {style} |"
             )
     else:
         print("No normalizations were required.")
 
     print("-" * 72)
-    total = len(py_files)
+    total = len(script_files)
     print(
         f"RESULT: {normalized_count} normalized, {skipped_count} unchanged, "
         f"{no_match_count} no match (out of {total} files scanned)"

@@ -1,0 +1,75 @@
+---
+title: "Research Notebook: R RV Round-Trip Fixture"
+subtitle: "Canonical DAAF Stage 9 archive contract"
+author: "DAAF Test Fixture"
+date: 2026-07-16
+format:
+  html:
+    toc: true
+    toc-depth: 2
+    code-fold: show
+    embed-resources: true
+    theme: cosmo
+execute:
+  echo: true
+  eval: false
+  warning: false
+---
+
+## Stage 5: Data Acquisition
+
+### 5.1 Write deterministic fixture output
+
+**Script:** `scripts/stage5_fetch/01_write-fixture.R`
+**Output:** `output/roundtrip.txt`
+**Status:** CP1 PASSED
+
+```{r}
+#| label: stage5-01-write-fixture
+#| code-fold: false
+#| eval: false
+
+# --- VERBATIM COPY of scripts/stage5_fetch/01_write-fixture.R ---
+# --- Config ---
+PROJECT_DIR <- "/daaf/research/original_fixture"
+OUTPUT_PATH <- file.path(PROJECT_DIR, "output", "roundtrip.txt")
+
+# --- Save ---
+dir.create(dirname(OUTPUT_PATH), recursive = TRUE, showWarnings = FALSE)
+writeLines("R RV round trip", OUTPUT_PATH)
+
+# --- Validate ---
+stopifnot(file.exists(OUTPUT_PATH))
+cat("ROUNDTRIP STATUS: PASSED\n")
+cat(sprintf("Output: %s\n", OUTPUT_PATH))
+```
+
+::: {.callout-note collapse="true" title="Execution Log"}
+```
+========================================================================
+EXECUTION LOG
+========================================================================
+Executed: 2026-07-16 00:00:00 UTC
+Command: Rscript 01_write-fixture.R
+Exit code: 0
+--- stdout/stderr ---
+ROUNDTRIP STATUS: PASSED
+Output: /daaf/research/original_fixture/output/roundtrip.txt
+========================================================================
+```
+:::
+
+#### Data Inspection
+
+```{r}
+#| label: inspect-unmarked-fixture
+#| eval: false
+#| echo: false
+
+cat("This unmarked chunk is notebook scaffolding and must not decompile.\n")
+```
+
+## Metadata
+
+**Scripts compiled:** 1
+**Notebook format:** Quarto .qmd with knitr engine
