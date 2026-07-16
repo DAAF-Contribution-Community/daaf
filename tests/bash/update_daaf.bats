@@ -1571,6 +1571,7 @@ setup_state_machine() {
     assert_success
     assert_output --partial "Update complete!"
     assert_output --partial "[DRY-RUN] upsert_settings_key would write"
+    refute_output --partial "Saved DAAF_BRANCH="
     after="$(cat "${TEST_DIR}/environment_settings.txt")"
     [ "${before}" = "${after}" ]
     [ ! -f "${TEST_DIR}/environment_settings.txt.pre-update" ]
@@ -1636,6 +1637,7 @@ setup_state_machine() {
     '
     assert_success
     assert_output --partial "[DRY-RUN] upsert_settings_key would write"
+    refute_output --partial "Saved DAAF_BRANCH="
     after="$(cat "${TEST_DIR}/environment_settings.txt")"
     [ "${before}" = "${after}" ]
     [ ! -f "${TEST_DIR}/environment_settings.txt.pre-update" ]

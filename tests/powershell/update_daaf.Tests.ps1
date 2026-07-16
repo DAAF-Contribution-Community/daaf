@@ -720,11 +720,15 @@ Describe "update_daaf.ps1 behavioral tests" {
     # resolves deterministically without launching a child process.
     Context "Save-BranchChoice" {
         BeforeEach {
+            # The updater was dot-sourced in Pester's parent scope; reset the
+            # production variable in that same scope before every test.
+            Set-Variable -Name PersistBranch -Value "" -Scope 1
             $script:PbcDir = New-Item -ItemType Directory -Path (Join-Path ([System.IO.Path]::GetTempPath()) "daaf-pbc-$(Get-Random)")
             Push-Location $script:PbcDir
             Remove-Item Env:DAAF_DRY_RUN -ErrorAction SilentlyContinue
         }
         AfterEach {
+            Set-Variable -Name PersistBranch -Value "" -Scope 1
             Pop-Location
             Remove-Item -Recurse -Force $script:PbcDir -ErrorAction SilentlyContinue
             Remove-Item Env:DAAF_DRY_RUN -ErrorAction SilentlyContinue
@@ -737,7 +741,7 @@ Describe "update_daaf.ps1 behavioral tests" {
             $savedCwd = [Environment]::CurrentDirectory
             [Environment]::CurrentDirectory = $script:PbcDir
             $env:DAAF_DRY_RUN = "1"
-            $PersistBranch = "dev"
+            Set-Variable -Name PersistBranch -Value "dev" -Scope 1
             try {
                 $output = Save-BranchChoice 6>&1
             }
@@ -748,6 +752,7 @@ Describe "update_daaf.ps1 behavioral tests" {
             # -Match (regex, escaped brackets); -BeLike would read [DRY-RUN] as a
             # wildcard character class.
             ($output | Out-String) | Should -Match '\[DRY-RUN\] Set-DaafSettingsKey would write'
+            ($output | Out-String) | Should -Not -Match 'Saved DAAF_BRANCH='
             (Get-Content -Raw $settings) | Should -Be $before
             (Test-Path (Join-Path $script:PbcDir "environment_settings.txt.pre-update")) | Should -Be $false
         }

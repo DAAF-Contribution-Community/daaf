@@ -363,7 +363,7 @@ function Confirm-DaafContainer {
 # is left untouched (stale) -- a symlinked environment_settings.txt is therefore
 # not supported; point the tools at a real file.
 function Set-DaafSettingsKey {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Low')]
     param(
         [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string]$File,
         [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string]$Key,
@@ -433,11 +433,15 @@ function Set-DaafSettingsKey {
         return
     }
 
+    if (-not $PSCmdlet.ShouldProcess($File, "Update settings key $Key ($action)")) {
+        return
+    }
+
     # One-time backup (only when a suffix was given and no backup exists yet).
     if (-not [string]::IsNullOrEmpty($BackupSuffix)) {
         $backupPath = $File + $BackupSuffix
         if (-not (Test-Path -LiteralPath $backupPath)) {
-            Copy-Item -LiteralPath $File -Destination $backupPath
+            Copy-Item -LiteralPath $File -Destination $backupPath -Confirm:$false
         }
     }
 
@@ -451,10 +455,10 @@ function Set-DaafSettingsKey {
     $tmp = Join-Path $dir ('.daaf_upsert.' + [System.IO.Path]::GetRandomFileName())
     try {
         [System.IO.File]::WriteAllText($tmp, $payload, $utf8NoBom)
-        Move-Item -LiteralPath $tmp -Destination $File -Force
+        Move-Item -LiteralPath $tmp -Destination $File -Force -Confirm:$false
     }
     catch {
-        if (Test-Path -LiteralPath $tmp) { Remove-Item -LiteralPath $tmp -Force }
+        if (Test-Path -LiteralPath $tmp) { Remove-Item -LiteralPath $tmp -Force -Confirm:$false }
         Write-Error "Set-DaafSettingsKey: write failed for ${File}: $_"
         return
     }

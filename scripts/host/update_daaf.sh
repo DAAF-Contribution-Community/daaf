@@ -1008,7 +1008,9 @@ persist_branch_choice() {
     if [ -n "${PERSIST_BRANCH:-}" ]; then
         if [ -f "./environment_settings.txt" ]; then
             upsert_settings_key "./environment_settings.txt" "DAAF_BRANCH" "${PERSIST_BRANCH}" "replace" ".pre-update" || true
-            echo "Saved DAAF_BRANCH=${PERSIST_BRANCH} to environment_settings.txt for future updates."
+            if [ "${DAAF_DRY_RUN:-}" != "1" ]; then
+                echo "Saved DAAF_BRANCH=${PERSIST_BRANCH} to environment_settings.txt for future updates."
+            fi
         else
             echo "NOTE: DAAF_BRANCH=${PERSIST_BRANCH} was used for this update but not saved"
             echo "      (no environment_settings.txt). Copy environment_settings_example.txt to"

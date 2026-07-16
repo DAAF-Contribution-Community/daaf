@@ -441,7 +441,7 @@ if ($LASTEXITCODE -ne 0) {
 # gating and strict-mode cleanliness are identical to the library version -- see
 # daaf_lib.ps1 for the full annotation.
 function Set-DaafSettingsKey {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Low')]
     param(
         [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string]$File,
         [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string]$Key,
@@ -508,10 +508,14 @@ function Set-DaafSettingsKey {
         return
     }
 
+    if (-not $PSCmdlet.ShouldProcess($File, "Update settings key $Key ($action)")) {
+        return
+    }
+
     if (-not [string]::IsNullOrEmpty($BackupSuffix)) {
         $backupPath = $File + $BackupSuffix
         if (-not (Test-Path -LiteralPath $backupPath)) {
-            Copy-Item -LiteralPath $File -Destination $backupPath
+            Copy-Item -LiteralPath $File -Destination $backupPath -Confirm:$false
         }
     }
 
@@ -523,10 +527,10 @@ function Set-DaafSettingsKey {
     $tmp = Join-Path $dir ('.daaf_upsert.' + [System.IO.Path]::GetRandomFileName())
     try {
         [System.IO.File]::WriteAllText($tmp, $payload, $utf8NoBom)
-        Move-Item -LiteralPath $tmp -Destination $File -Force
+        Move-Item -LiteralPath $tmp -Destination $File -Force -Confirm:$false
     }
     catch {
-        if (Test-Path -LiteralPath $tmp) { Remove-Item -LiteralPath $tmp -Force }
+        if (Test-Path -LiteralPath $tmp) { Remove-Item -LiteralPath $tmp -Force -Confirm:$false }
         Write-Error "Set-DaafSettingsKey: write failed for ${File}: $_"
         return
     }

@@ -945,7 +945,7 @@ function Complete-Update {
 # the DAAF_TEST_MODE guard so it is available to Complete-Update under test
 # dot-sourcing.
 function Set-DaafSettingsKey {
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Low')]
     param(
         [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string]$File,
         [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string]$Key,
@@ -1012,10 +1012,14 @@ function Set-DaafSettingsKey {
         return
     }
 
+    if (-not $PSCmdlet.ShouldProcess($File, "Update settings key $Key ($action)")) {
+        return
+    }
+
     if (-not [string]::IsNullOrEmpty($BackupSuffix)) {
         $backupPath = $File + $BackupSuffix
         if (-not (Test-Path -LiteralPath $backupPath)) {
-            Copy-Item -LiteralPath $File -Destination $backupPath
+            Copy-Item -LiteralPath $File -Destination $backupPath -Confirm:$false
         }
     }
 
@@ -1027,10 +1031,10 @@ function Set-DaafSettingsKey {
     $tmp = Join-Path $dir ('.daaf_upsert.' + [System.IO.Path]::GetRandomFileName())
     try {
         [System.IO.File]::WriteAllText($tmp, $payload, $utf8NoBom)
-        Move-Item -LiteralPath $tmp -Destination $File -Force
+        Move-Item -LiteralPath $tmp -Destination $File -Force -Confirm:$false
     }
     catch {
-        if (Test-Path -LiteralPath $tmp) { Remove-Item -LiteralPath $tmp -Force }
+        if (Test-Path -LiteralPath $tmp) { Remove-Item -LiteralPath $tmp -Force -Confirm:$false }
         Write-Error "Set-DaafSettingsKey: write failed for ${File}: $_"
         return
     }
@@ -1060,7 +1064,9 @@ function Save-BranchChoice {
         if (Test-Path -LiteralPath "./environment_settings.txt") {
             try {
                 Set-DaafSettingsKey -File "./environment_settings.txt" -Key "DAAF_BRANCH" -Value $PersistBranch -Mode replace -BackupSuffix ".pre-update" | Out-Null
-                Write-Host "Saved DAAF_BRANCH=$PersistBranch to environment_settings.txt for future updates."
+                if ($env:DAAF_DRY_RUN -ne "1") {
+                    Write-Host "Saved DAAF_BRANCH=$PersistBranch to environment_settings.txt for future updates."
+                }
             }
             catch {
                 Write-Verbose "Silenced settings-persistence error: $_"

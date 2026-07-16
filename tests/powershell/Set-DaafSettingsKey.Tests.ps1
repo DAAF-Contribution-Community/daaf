@@ -154,6 +154,57 @@ Describe "daaf_lib.ps1 Set-DaafSettingsKey" {
     }
 
     # ---------------------------------------------------------------------
+    # WhatIf -- declines the entire mutation boundary, including backup
+    # ---------------------------------------------------------------------
+    It "WhatIf leaves the file byte-identical and does not create a requested backup" {
+        Write-LfFile $script:S "DAAF_BRANCH=old`n"
+        $before = [System.IO.File]::ReadAllBytes($script:S)
+        $backup = $script:S + '.bak'
+        Set-DaafSettingsKey -File $script:S -Key DAAF_BRANCH -Value new -Mode replace -BackupSuffix '.bak' -WhatIf 6>$null
+        $after = [System.IO.File]::ReadAllBytes($script:S)
+        ($after -join ',') | Should -Be ($before -join ',')
+        Test-Path -LiteralPath $backup | Should -BeFalse
+    }
+
+    # ---------------------------------------------------------------------
+    # Confirm -- one aggregate decision, no delegated child prompts
+    # ---------------------------------------------------------------------
+    It "suppresses confirmation on backup and replacement after aggregate approval" {
+        Write-LfFile $script:S "DAAF_BRANCH=old`n"
+        Mock Copy-Item {}
+        Mock Move-Item {}
+
+        Set-DaafSettingsKey -File $script:S -Key DAAF_BRANCH -Value new -Mode replace -BackupSuffix '.bak' -Confirm:$false 6>$null
+
+        Should -Invoke Copy-Item -Times 1 -Exactly -ParameterFilter {
+            $LiteralPath -eq $script:S -and
+            $Destination -eq ($script:S + '.bak') -and
+            $Confirm -eq $false
+        }
+        Should -Invoke Move-Item -Times 1 -Exactly -ParameterFilter {
+            $Destination -eq $script:S -and $Force -and $Confirm -eq $false
+        }
+    }
+
+    It "suppresses confirmation when cleaning up after replacement failure" {
+        Write-LfFile $script:S "DAAF_BRANCH=old`n"
+        Mock Move-Item { throw "simulated replacement failure" }
+        Mock Remove-Item {} -ParameterFilter {
+            $LiteralPath -like (Join-Path $script:TmpDir '.daaf_upsert.*')
+        }
+
+        Set-DaafSettingsKey -File $script:S -Key DAAF_BRANCH -Value new -Mode replace -Confirm:$false -ErrorAction SilentlyContinue 6>$null
+
+        Should -Invoke Move-Item -Times 1 -Exactly -ParameterFilter {
+            $Destination -eq $script:S -and $Force -and $Confirm -eq $false
+        }
+        Should -Invoke Remove-Item -Times 1 -Exactly -ParameterFilter {
+            $LiteralPath -like (Join-Path $script:TmpDir '.daaf_upsert.*') -and
+            $Force -and $Confirm -eq $false
+        }
+    }
+
+    # ---------------------------------------------------------------------
     # Backup -- one-time creation, never overwritten on a later call
     # ---------------------------------------------------------------------
     It "backup suffix creates a one-time backup, not overwritten on 2nd call" {
