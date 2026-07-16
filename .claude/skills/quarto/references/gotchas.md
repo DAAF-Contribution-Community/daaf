@@ -173,8 +173,12 @@ ggsave("output/plot.png", p)
 p  # This also creates a figure in _files/
 ```
 
-In Stage 9 notebooks this is not an issue because `eval: false` prevents
-execution.
+In DAAF Stage 9 notebooks, archive chunks do not execute because both global
+and per-chunk `eval: false` guard them. If an existing Stage 8 figure is
+included, use standard Markdown image syntax or a dedicated
+`knitr::include_graphics()` display chunk; do not run this plotting pattern in
+Stage 9. Optional data-preview and dedicated figure-display chunks explicitly
+using `#| eval: true` do execute, but contain no plotting code.
 
 ## knitr Cache Pitfalls
 
@@ -210,7 +214,10 @@ quarto render doc.qmd --cache-refresh
 
 Use `dependson` to explicitly declare inter-chunk dependencies.
 
-For DAAF Stage 9 notebooks, caching is irrelevant because `eval: false`.
+For DAAF Stage 9 notebooks, caching is irrelevant for archive chunks because
+they remain at `eval: false`. Optional canonical data-preview or existing-figure
+display chunks may execute, but are intentionally small and should not use the
+cache as a substitute for validating their current file references.
 
 ## PDF Rendering Issues
 

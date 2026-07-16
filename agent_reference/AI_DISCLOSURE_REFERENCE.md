@@ -126,13 +126,14 @@ Different engagement modes involve different levels of AI assistance. The disclo
 **Disclosure depth:** Moderate
 
 **Key points to disclose:**
-- AI performed mechanical re-execution of existing analysis scripts and output comparison
-- AI assessed methodological concerns at user-selected depth (light or full)
-- AI cross-referenced original Report claims against reproduced data
-- Human researcher reviewed the final Reproduction Report and assessed the significance of all findings and deviations
+- AI performed notebook decompilation, the bounded post-normalization path audit, mechanical re-execution of in-scope scripts, and direct artifact comparison; it distinguished log metrics, supported artifact evidence, visual figure review, and evidence that remained NOT DIRECTLY VERIFIED
+- The data strategy: re-fetch (Stage 5 executed) or frozen inputs (Stage 5 explicitly excluded by user-confirmed design, raw hashes verified, acquisition/mirrors not tested)
+- AI performed methodological review at the user-selected depth and claim verification across Report claims, figures, findings, artifacts, and required dimensions
+- Any exact user-approved pre-RV-2 scope exclusions, kept separate from evidence gaps and ad hoc skips
+- Human researcher reviewed the final Reproduction Report, exercised judgment about the significance of all findings, deviations, and evidence limitations, and remained responsible for the final verdict
 
 **Template paragraph:**
-> This reproduction was conducted using the DAAF Reproducibility Verification mode. An AI agent re-executed all [N] analysis scripts from the original marimo notebook (or Quarto notebook for R), compared outputs against the original execution logs, and cross-referenced the Report's quantitative claims against reproduced results. The human researcher reviewed the resulting Reproduction Report, including all deviations and methodological concerns, and determined the overall reproducibility assessment.
+> This reproduction was conducted using DAAF's Reproducibility Verification mode. An AI agent decompiled the delivered DAAF Stage 9 [Marimo/Quarto] archive, performed the bounded post-normalization path audit, and re-executed [N] in-scope scripts. [Data strategy: Stage 5 acquisition was re-executed / frozen raw inputs were hash-verified and Stage 5 was excluded by the user-confirmed design, so acquisition and mirrors were not tested.] Log comparison was limited to metrics printed in both logs; supported Parquet or exact-byte artifacts were compared directly, figures were visually reviewed, and unsupported or missing evidence was labeled NOT DIRECTLY VERIFIED. The AI performed artifact comparison, methodological review, and claim verification against reproduced evidence. The human researcher reviewed the Reproduction Report, applied judgment to deviations, scope exclusions, methodological concerns, provenance, and evidence gaps, and remained responsible for the final verdict of [FULLY REPRODUCED / PARTIALLY REPRODUCED / NOT REPRODUCED].
 
 ### User Support Mode
 

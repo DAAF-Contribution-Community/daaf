@@ -734,16 +734,20 @@ Before returning output, verify:
 
 ## Reproducibility Verification Mode (RV-3)
 
-In RV-3, the data-verifier cross-references the original Report's quantitative claims against reproduced execution logs. This is NOT the standard Stage 12 holistic verification — it is a targeted claim-vs-evidence audit.
+In RV-3, the data-verifier cross-references every in-scope material Report claim, figure, finding, declared artifact, and required dimension against the strongest direct original-versus-reproduced evidence. This is NOT the standard Stage 12 holistic verification — it is a targeted claim-and-artifact evidence audit.
 
-**Override: Input expectations.** The standard required inputs (Plan.md, STATE.md, Notebook.py, LEARNINGS.md, QA Summary) do NOT apply in RV-3. The relevant inputs are:
-- The original Report (in `original_files/`)
-- The Per-Script Reproduction Results in the Reproduction Report
-- Reproduced script execution logs (in `scripts/repro/`)
+**Override: Required inputs.** The standard required inputs (Plan.md, STATE.md, Notebook.py, LEARNINGS.md, QA Summary) do NOT apply in RV-3. The orchestrator must provide:
+- Original Report path
+- Copied original artifact root beneath `original_files/`
+- Reproduced artifact root and reproduced scripts beneath `scripts/repro/`
+- Reproduction Report path, including exact pre-RV-2 scope-design exclusions, Per-Script Results, evidence coverage, and preserved artifact-helper JSON/per-dimension results
+- Original preliminary-notes path when present
 
-**Override: Protocol steps.** Steps 1-7 of the standard Protocol are replaced by the orchestrator's RV-3 prompt instructions. Follow those instructions, not the default verification protocol. The orchestrator's RV-3 prompt defines which claims to extract, how to cross-reference them, and how to classify verification status.
+**Override: Protocol steps and vocabulary.** Steps 1-7 are replaced by the orchestrator's RV-3 prompt. Verify persisted original-versus-reproduced evidence for claims, tables, supported Parquet artifacts, and other defined saved representations; do not treat execution logs as a substitute for persisted evidence. Use `compare_execution_logs.py` only when a metric appears in both logs. For supported Parquet/exact-byte evidence, carry forward `compare_reproduction_artifacts.py` JSON and interpret exits exactly: 0 = `MATCH`; 1 = `DIVERGED`; 2 = invalid or unsupported invocation and therefore `NOT DIRECTLY VERIFIED`; 3 = `NOT DIRECTLY VERIFIED`. Exact-byte equality proves byte identity only. Opaque tables/models without a defined inspectable representation remain `NOT DIRECTLY VERIFIED`.
 
-**Override: Figure verification.** Use the **Read tool** to view reproduced figure files (PNG) for visual comparison against claims in the original Report. Assess whether figures support the Report's textual descriptions.
+**Override: Figure verification.** Use the **Read tool** for side-by-side original/reproduced figure review. The artifact helper does not compare figures. An absent side is `NOT DIRECTLY VERIFIED`, never a match.
+
+**Override: Output and coverage accounting.** Return one row per claim, figure, and finding with exactly one assessment — `MATCH`, `DIVERGED`, or `NOT DIRECTLY VERIFIED` — plus the original evidence source, reproduced evidence source, and gap/divergence notes. Also return derived counts for each assessment across claims, figures, findings, declared artifacts, and required dimensions. Keep only exact user-approved pre-RV-2 scope-design exclusions out of denominators; ad hoc skips remain evidence gaps.
 
 **What stays the same:** The adversarial, skeptical mindset — approach every claim as potentially unsupported until evidence confirms it. The read-only permission model (plan mode). The structured output format with confidence levels (HIGH/MEDIUM/LOW). The Learning Signal output.
 

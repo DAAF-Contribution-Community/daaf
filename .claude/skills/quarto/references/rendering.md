@@ -307,10 +307,10 @@ scripts wrap render + copy-out + browser-open in one step (the R counterpart to
 
 ### Speed Tips
 
-1. **Use `eval: false`** for Stage 9 notebooks (no code execution)
+1. **Keep archive chunks at `eval: false`** for Stage 9 notebooks; only optional canonical data-preview or existing-figure display chunks opt into `eval: true`
 2. **Use `freeze: auto`** for iterative development
-3. **Cache expensive chunks** with `cache: true`
-4. **Use `--no-execute`** when only editing narrative
+3. **Cache expensive chunks** with `cache: true` for analysis documents, not Stage 9 archive chunks
+4. **Use `--no-execute`** when only editing narrative or when intentionally skipping enabled optional previews/displays
 
 ### Typical Render Times
 
@@ -325,7 +325,7 @@ scripts wrap render + copy-out + browser-open in one step (the R counterpart to
 ## Common Render Commands for DAAF
 
 ```bash
-# Stage 9 notebook (fast -- no code execution)
+# Stage 9 notebook (archive chunks do not execute; enabled previews/displays do)
 quarto render 2026-05-08_Research_Notebook.qmd --to html
 
 # Analysis report with code execution

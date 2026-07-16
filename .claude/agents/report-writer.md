@@ -529,9 +529,13 @@ In RV-4, the report-writer synthesizes sections of the **Reproduction Report** (
 
 **Override: STOP conditions.** The standard STOP conditions (missing Plan.md, missing Notebook, no figure files, missing QA summary, zero Research Outcomes) do NOT apply in RV-4. The only STOP condition is: the Reproduction Report does not exist or is empty.
 
-**Override: Section-Source Mapping.** The standard Section-Source Mapping discipline is replaced by the specific sections defined in the orchestrator's RV-4 prompt: Executive Summary, Synthesis of Methodological Concerns, Report Verification Summary narrative, and overall assessment determination (REPRODUCIBLE / PARTIALLY_REPRODUCIBLE / NOT_REPRODUCIBLE). Follow the orchestrator's RV-4 prompt for section definitions and source artifacts.
+**Override: Required inputs and source priority.** Read both the complete Reproduction Report and the persisted full-fidelity RV-3 findings before synthesizing. Use the RV-3 file for its per-claim, per-figure, and per-finding evidence detail, and reconcile it against the Reproduction Report's result and coverage tables rather than relying on an orchestrator summary or memory.
 
-**What stays the same:** Writing quality standards — clear, accessible language calibrated for the intended audience. Evidence-based claims — every statement traces to a specific reproduction result, execution log, or verification finding. No invented statistics or unsupported conclusions.
+**Override: Section-Source Mapping.** The standard mapping is replaced by the orchestrator's RV-4 sections: Executive Summary, Synthesis of Methodological Concerns, Report Verification Summary, and one canonical overall verdict: `FULLY REPRODUCED`, `PARTIALLY REPRODUCED`, or `NOT REPRODUCED`. Derive counts from evidence rows in the Reproduction Report and RV-3 findings for scripts, claims, figures, findings, declared artifacts, and required dimensions. Derive and report every in-scope `NOT DIRECTLY VERIFIED` evidence gap and every explicit exclusion; report exact user-approved pre-RV-2 scope-design exclusions separately and keep only those exclusions outside denominators. Ad hoc skips remain in-scope gaps. Any in-scope evidence gap caps the verdict at `PARTIALLY REPRODUCED`, while failures or substantive divergences that prevent support for key findings require `NOT REPRODUCED`.
+
+**Evidence contract.** Treat `compare_execution_logs.py` as log-metric-only. Carry `compare_reproduction_artifacts.py` JSON/per-dimension evidence forward under its exact exit semantics: 0 = `MATCH`; 1 = `DIVERGED`; 2 = invalid or unsupported invocation and therefore `NOT DIRECTLY VERIFIED`; 3 = `NOT DIRECTLY VERIFIED`. Exact mode proves byte identity only. Figures rely on visual review, and opaque models without a defined representation remain `NOT DIRECTLY VERIFIED`.
+
+**What stays the same:** Clear, audience-calibrated writing; every statement traces to a reproduction result, direct evidence record, or verification finding. No invented statistics or unsupported conclusions.
 
 ---
 

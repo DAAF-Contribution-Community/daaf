@@ -297,14 +297,17 @@ df |>
 | PDF output | `knitr::kable()` or `gt` (kableExtra has PDF limitations) |
 | Cross-referenced | Any method + `tbl-` label + `tbl-cap` |
 
-For DAAF Stage 9 notebooks, `knitr::kable()` is sufficient -- the notebook
-displays data for inspection, not for publication formatting.
+For DAAF Stage 9 notebooks, do not add a `knitr::kable()` table. The canonical
+data preview is exactly `arrow::read_parquet()` + `dplyr::glimpse()` +
+`head()` in its permitted preview chunk. Formatted tables belong in already-
+executed Stage 8 scripts and may be referenced as existing outputs rather than
+created in the notebook.
 
 ## Tips
 
 1. **Always use `tbl-cap`** for any table you want to cross-reference
 2. **Use `tbl-` prefix on labels** -- cross-references require it
-3. **Keep tables simple** in Stage 9 notebooks -- `head(df) |> kable()` is enough
-4. **Use gt for reports** -- its formatting capabilities justify the verbosity
+3. **Use the canonical Stage 9 preview unchanged** -- `arrow::read_parquet()` + `dplyr::glimpse()` + `head()`; do not add `kable()`, `gt()`, or formatting code there
+4. **Use gt for reports or executed Stage 8 outputs** -- its formatting capabilities justify the verbosity
 5. **Test PDF output** if targeting PDF -- some kableExtra features are HTML-only
-6. **Format numbers consistently** -- use `digits` in kable or `fmt_number` in gt
+6. **Format numbers consistently** -- use `digits` in kable or `fmt_number` in gt outside Stage 9 preview chunks

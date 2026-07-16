@@ -24,7 +24,9 @@ must_haves:
     - path: "research/YYYY-MM-DD_[Title]/YYYY-MM-DD_[Title].py"   # or .qmd for R
       provides: "[What this file delivers]"
       min_lines: 200
-      contains: "[Pattern or text that must be present]"
+      contains:
+        Python / Marimo: "mo.md"
+        R / Quarto: "# --- VERBATIM COPY of scripts/<path> ---"
 
     - path: "research/YYYY-MM-DD_[Title]/data/processed/YYYY-MM-DD_analysis.parquet"
       provides: "[What this file delivers]"
@@ -207,9 +209,11 @@ must_haves:
   artifacts:
     # Python: .py (Marimo notebook); R: .qmd (Quarto notebook)
     - path: "research/YYYY-MM-DD_[Title]/YYYY-MM-DD_[Title].py"  # or .qmd for R
-      provides: "Interactive analysis notebook"
+      provides: "Stage 9 audit notebook compiled from executed scripts"
       min_lines: 200
-      contains: "mo.md"  # Marimo markdown cells (Python) or ```{r} chunks (R)
+      contains:
+        Python / Marimo: "mo.md"
+        R / Quarto: "# --- VERBATIM COPY of scripts/<path> ---"
 
     - path: "research/YYYY-MM-DD_[Title]/data/processed/YYYY-MM-DD_analysis.parquet"
       provides: "Cleaned analysis dataset"
@@ -226,12 +230,17 @@ must_haves:
   key_links:
     - from: "YYYY-MM-DD_[Title].py"  # or .qmd for R
       to: "data/processed/YYYY-MM-DD_analysis.parquet"
-      via: "pl.read_parquet() or arrow::read_parquet() in data loading cell"
+      via: "optional format-specific data inspection/display cell or chunk"
       pattern: "read_parquet.*analysis"
 
     - from: "YYYY-MM-DD_[Title].py"  # or .qmd for R
       to: "output/figures/"
-      via: "ggplot.save() or ggsave() or fig.write_html()"
+      via: "Stage 9 existing-figure display: Markdown image reference or Quarto knitr::include_graphics()"
+      pattern: "(!\\[.*\\]\\(.*figures/|include_graphics\\(.*figures/)"
+
+    - from: "scripts/stage8_analysis/*"
+      to: "output/figures/"
+      via: "Stage 8 figure-generation code"
       pattern: "(ggsave|write_image|write_html|savefig)"
 
     - from: "YYYY-MM-DD_[Title]_Report.md"
@@ -241,7 +250,7 @@ must_haves:
 
     - from: "data/processed/*"
       to: "data/raw/*"
-      via: "Cleaning transformations in notebook"
+      via: "Stage 6 cleaning scripts archived in the notebook"
       pattern: "filter.*-[123]"  # Coded value filtering
 ```
 
@@ -595,34 +604,32 @@ Define the expected data contracts between stages. The data-planner populates th
 
 ### Notebook Structure
 
-**Marimo Notebook Sections (Python):**
+Stage 9 notebooks are audit documents compiled from the final successful, already-executed Stage 5-8 scripts. They do not recreate the analysis as new notebook code.
 
-1. **Setup & Imports** — Dependencies, configuration
-2. **Data Loading** — Load from processed data files
-3. **Data Overview** — Shape, types, sample
-4. **Exploratory Analysis** — Distributions, patterns
-5. **Main Analysis** — [Specific analysis sections]
-6. **Visualizations** — Key charts and graphs
-7. **Findings Summary** — Markdown synthesis
-8. **Interactive Elements** — [If applicable: filters, selectors]
+**Marimo Notebook Structure (Python):**
 
-**Quarto Notebook Sections (R):**
+1. **Navigation** — Stage and script inventory
+2. **Stage Sections** — Fetch, clean, transform, analysis, and visualization
+3. **Per-Script Header Cell** — Source path, output, status, and version history
+4. **Archived Code Cell** — Literal script code comment-prefixed to prevent re-execution, ending in `pass`
+5. **Execution Log Cell** — Verbatim log in a collapsed `mo.accordion()`
+6. **Optional Inspection/Display Cell** — Non-transforming Parquet preview or existing figure display only
+7. **Summary** — Script and output inventory; no new findings or analysis
 
-1. **Setup** — `library()` calls, configuration
-2. **Data Loading** — Load from processed data via `arrow::read_parquet()`
-3. **Data Overview** — `glimpse()`, summary
-4. **Exploratory Analysis** — Distributions, patterns
-5. **Main Analysis** — [Specific analysis sections]
-6. **Visualizations** — ggplot2 charts
-7. **Findings Summary** — Markdown narrative
-8. **Appendix** — [If applicable: additional tables or figures]
+**Quarto Notebook Structure (R):**
 
-**UI Elements (if applicable, Python/Marimo only):**
+1. **Canonical YAML** — Project metadata, HTML output settings, and global `execute: eval: false`
+2. **Project Overview** — Brief context drawn from the approved Plan
+3. **Stage Sections** — Fetch, clean, transform, analysis, and visualization headings
+4. **Per-Script Metadata** — Source path, output, status, and version history
+5. **Archived R Chunk** — Literal, un-commented script code with per-chunk `#| eval: false`, `#| code-fold: false`, and the exact `# --- VERBATIM COPY of scripts/<path> ---` marker
+6. **Execution Log Callout** — Verbatim log in the immediately following collapsed Quarto callout
+7. **Optional Inspection/Display Chunk** — Non-transforming `arrow::read_parquet()` + `dplyr::glimpse()`/`head()` preview or existing figure display only
+8. **Metadata** — Script count and notebook format
 
-| Element | Type | Purpose |
-|---------|------|---------|
-| State selector | `mo.ui.dropdown` | Filter analysis by state |
-| Year range | `mo.ui.range_slider` | Select year range |
+**Validation semantics:** Python notebooks must pass `marimo run`. R notebooks must pass `quarto render`; that render validates the document and explicitly enabled previews while archived Stage 5-8 script chunks remain unevaluated. Full analysis reproduction is a separate Reproducibility Verification workflow.
+
+**Interactive UI elements:** Not part of a Full Pipeline Stage 9 audit notebook in either format. Build a separately scoped application if interactive controls are required.
 
 ### Report Structure
 
@@ -712,7 +719,7 @@ Define the expected data contracts between stages. The data-planner populates th
 |-------|----------|---------|
 | All planned figures generated | Yes | Missing figures |
 | Report sections complete | Yes | Missing sections |
-| Notebook runs without error | Yes | Execution errors |
+| Stage 9 notebook validates successfully | Yes | `marimo run` failure (Python) or `quarto render` failure (R); Quarto rendering validates assembly and enabled previews, not archived analysis re-execution |
 
 ### QA Tolerance Decisions
 
@@ -821,7 +828,7 @@ and QA reviewers understand what was intentionally accepted.*
 |------|------|-------------|
 | Plan | `research/YYYY-MM-DD_[Title]/YYYY-MM-DD_[Title]_Plan.md` | This document |
 | Plan Tasks | `research/YYYY-MM-DD_[Title]/YYYY-MM-DD_[Title]_Plan_Tasks.md` | Executable task sequence (companion to Plan) |
-| Notebook | `research/YYYY-MM-DD_[Title]/YYYY-MM-DD_[Title].py` (or `.qmd`) | Marimo (Python) or Quarto (R) analysis notebook |
+| Notebook | `research/YYYY-MM-DD_[Title]/YYYY-MM-DD_[Title].py` (or `.qmd`) | Marimo (Python) or Quarto (R) Stage 9 audit notebook compiled from executed scripts |
 | Report | `research/YYYY-MM-DD_[Title]/YYYY-MM-DD_[Title]_Report.md` | Stakeholder report |
 | **Learnings** | `research/YYYY-MM-DD_[Title]/LEARNINGS.md` | **Session learnings (skeleton at Stage 4, incremental during 5-8, consolidated at Stage 12)** |
 | Raw Data | `research/YYYY-MM-DD_[Title]/data/raw/YYYY-MM-DD_*.parquet` | Original data downloads |

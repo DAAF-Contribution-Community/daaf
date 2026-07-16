@@ -382,16 +382,22 @@ And here's what each of them do in more detail, and how the workflow works so yo
 
 **Trigger words:** "verify," "reproduce," "reproduction," "does this replicate," "check reproducibility," "verify this analysis..."
 
-**What it is:** You have an existing completed analysis (from a Full Pipeline run or otherwise) and you want to mechanically verify that it reproduces from its marimo or Quarto notebook. DAAF decompiles the notebook back into standalone scripts, re-executes each one, compares the new outputs against the originals, and cross-references the Report's claims against the actual analytic results. The goal is to provide an independent, systematic assessment of whether the analysis holds up end-to-end.
+**What it is:** You have an existing completed DAAF analysis and want an independent mechanical check from its delivered audit notebook. Intake requires one unambiguous original Report and one unambiguous DAAF Stage 9 archive: Marimo `.py` for Python or canonical Quarto `.qmd` for R. Generic Marimo apps and arbitrary Quarto projects are not supported. If there are multiple candidates or both formats, DAAF stops and asks you to choose. Reproduction always uses a new folder and a new extraction root; it never merges into or overwrites an earlier attempt.
+
+After extraction, DAAF normalizes the project root and runs a mandatory containment audit before execution. A passing audit gives bounded assurance: the known original-root string is absent and each supported script has one correct static `PROJECT_DIR` assignment. It does not prove every dynamically constructed path safe. A script with a nonpassing audit cannot run in RV-2 unless it is corrected and re-audited or you approve that exact script as an exclusion before RV-2.
+
+Evidence is graded rather than guessed. Log comparison covers only metrics actually printed in both logs. Supported Parquet artifacts receive direct schema/content comparison; selected files can receive exact-byte comparison, which proves byte identity only. Figures are reviewed side by side, and saved tables/models are compared only when an inspectable representation exists. Anything missing, unsupported, or unproven is labeled **NOT DIRECTLY VERIFIED**, never silently treated as a match.
 
 **What you get:**
-- A Reproduction Report documenting what matched, what diverged, and any methodological concerns discovered during the process
-- An overall assessment of **FULLY REPRODUCED** (all outputs match within tolerance, report claims supported), **PARTIALLY REPRODUCED** (some outputs diverge or some claims unsupported, but core findings hold), or **NOT REPRODUCED** (significant divergences or unsupported claims that undermine the analysis)
-- Detailed comparison logs showing exactly where and how outputs differed, if at all
+- A Reproduction Report with `MATCH`, `DIVERGED`, or `NOT DIRECTLY VERIFIED` assessments for in-scope claims, figures, findings, artifacts, and required dimensions
+- One canonical overall verdict: **FULLY REPRODUCED**, **PARTIALLY REPRODUCED**, or **NOT REPRODUCED**. Any in-scope evidence gap prevents FULLY REPRODUCED
+- Explicit scope-design exclusions kept separate from failures, ad hoc skips, and evidence gaps
 
 **Two key user decisions:**
-- **Whether to re-fetch data** (default: yes). Re-fetching tests whether the analysis reproduces against the current state of the data source. Skipping re-fetch tests whether the analysis reproduces from the already-downloaded raw data files.
-- **Methodological review depth** (default: light). A light review focuses on mechanical reproduction -- do the scripts run and produce matching outputs? A deep review additionally scrutinizes methodological choices, statistical assumptions, and interpretation quality.
+- **Whether to re-fetch data** (default: yes). Re-fetch mode executes Stage 5 and tests current acquisition behavior. Frozen-input mode copies and hashes the original raw files, does **not** run Stage 5, starts with downstream scripts, and verifies those raw hashes remain unchanged. In frozen mode, acquisition reproducibility and mirrors are explicitly out of scope.
+- **Methodological review depth** (default: light). Light review focuses on mechanical reproduction and notable concerns; full review also scrutinizes methodology, assumptions, and interpretation.
+
+Exact exclusions only leave the verdict denominator when you approve them before re-execution begins. A script skipped later remains an in-scope gap. Environment comparison is language-aware: Python inventories Python, Marimo, and imported packages; R inventories R, Quarto, repository/snapshot metadata, and installed imported packages. Unpinned original versions remain UNKNOWN / NOT DIRECTLY VERIFIED rather than being inferred. When DAAF needs a diagnostic script for that inventory, it keeps the script and its execution record under the reproduction project's `scripts/repro_checks/` folder.
 
 **Expected time investment:** Depends on the complexity of the original analysis. A straightforward single-source analysis might take 15-30 minutes; a multi-source analysis with extensive transformations could take longer. You'll review the Reproduction Report at the end.
 
@@ -681,12 +687,12 @@ A companion file, **Plan_Tasks.md**, contains the detailed machine-readable task
 **How to read scripts:** Scripts read top-to-bottom like a lab notebook -- no functions, no classes, no jumping around. Start at the top, follow the comments, and then check the execution log outputs at the bottom. The execution log is the "ground truth" for what actually happened when the script ran.
 
 **Script versioning:** When a script fails a quality review (part of the [Dual-Layer Validation](#dual-layer-validation) system explained below) and needs to be revised:
-- Original `01_task.py` keeps its failed output (it's part of the audit trail)
-- Revision `01_task_a.py` contains the fixes with its own execution log
-- Further revisions use `_b.py`, `_c.py`, etc.
+- Original `01_task.py` or `01_task.R` keeps its failed output (it's part of the audit trail)
+- Revision `01_task_a.py` or `01_task_a.R` contains the fixes with its own execution log
+- Further revisions use `_b`, `_c`, etc. before the language extension
 - The notebook only includes the final successful version
 
-**The `cr/` subdirectory:** This is where the code-reviewer's QA inspection scripts live. Each `cr` script is a diagnostic that the code-reviewer wrote and ran to verify a specific analysis script. The naming convention is `stage{N}_{step}_cr{iteration}.py` -- so `stage5_01_cr1.py` is the code-reviewer's first inspection of the first Stage 5 script. If the reviewer found something suspicious and needed to investigate further, you'll see `cr2`, `cr3`, etc.
+**The `cr/` subdirectory:** This is where the code-reviewer's quality-inspection scripts live. Each script is a diagnostic that the reviewer wrote and ran to verify a specific analysis script. The naming convention is `stage{N}_{step}_cr{iteration}.py` for Python or `.R` for R -- so `stage5_01_cr1.py` (or `stage5_01_cr1.R`) is the first inspection of the first Stage 5 script. If the reviewer found something suspicious and needed to investigate further, you'll see `cr2`, `cr3`, etc.
 
 ### The Research Notebook (Marimo or Quarto)
 
@@ -694,11 +700,11 @@ A companion file, **Plan_Tasks.md**, contains the detailed machine-readable task
 
 **What's inside:**
 - **Section headers** identifying which script stage is being shown
-- **Code cells** containing the literal code from each script file (commented out so it doesn't re-execute)
-- **Execution log accordions** showing exactly what happened when each script ran -- verbatim, not summarized
-- **Data inspection cells** that load the output parquet files and display them as interactive tables (the *only* new code in the notebook)
+- **Archived script code:** Marimo stores the literal Python code comment-prefixed so it cannot re-execute; Quarto keeps the literal R code un-commented for syntax highlighting but protects every archive chunk with `eval: false`
+- **Captured execution logs** showing exactly what happened when each script ran -- verbatim in a collapsed Marimo accordion or Quarto callout, never summarized
+- **Optional bounded display cells/chunks** -- the only permitted new display code: either preview an existing Parquet file without transforming it (first 100 rows in Marimo; `glimpse()` plus first 20 rows in Quarto) or display an already-created Stage 8 figure. They never perform new analysis or generate a new figure.
 
-**What you won't see:** New analysis code, interactive dashboards, filter widgets, or additional transformations. The notebook is a viewer, not an analysis tool. This is by design -- it ensures that what you see in the notebook is exactly what was executed and validated in the scripts, with nothing added or changed.
+**What you won't see:** New analysis code, interactive dashboards, filter widgets, additional transformations, or newly generated figures. Every archived script must also carry its real execution log; an empty log or placeholder such as `No execution log found` blocks canonical assembly. The notebook is a viewer, not an analysis tool.
 
 **How to view marimo notebooks (Python):** The easiest way is to run `bash view_notebooks.sh` (or `.\view_notebooks.ps1` on Windows) from your `daaf-docker` folder — this opens marimo's notebook browser at [http://localhost:2718](http://localhost:2718) where you can browse and open any notebook. Alternatively, from inside the container you can view a single notebook read-only with:
 ```bash
@@ -706,7 +712,7 @@ marimo run 'research/YYYY-MM-DD_Title/YYYY-MM-DD_Notebook.py' --host 0.0.0.0 --p
 ```
 You can also open the `.py` file in any text editor -- marimo notebooks are just Python.
 
-**How to view Quarto notebooks (R):** The easiest way is to run `bash view_quarto.sh` (or `.\view_quarto.ps1` on Windows) from your `daaf-docker` folder. With no argument, the viewer recursively finds every `.qmd` anywhere below `research/`, presents a sorted numbered picker, and renders the notebook you select; `0`, blank input, `q`/`Q`, or end-of-file cancels without rendering. You can bypass the picker with a direct `.qmd` path, or pass a project folder when that project contains exactly one recursive match (multiple matches are printed rather than guessed). The selected notebook is rendered to a single self-contained HTML file inside the container, copied to a `quarto_html/` folder on your host, and opened in your browser (the R-notebook counterpart to `view_notebooks.sh` for Python). The host filename is the flat notebook basename, so equal basenames overwrite; set `QUARTO_HTML_DIR` differently when both outputs must be retained. Alternatively, from inside the container you can render by hand with `quarto render 'research/YYYY-MM-DD_Title/YYYY-MM-DD_Notebook.qmd'`, then view the resulting HTML file in the browser-based code editor. You can also open the `.qmd` file directly in any text editor -- Quarto notebooks are plain text with YAML frontmatter and code chunks.
+**How to view Quarto notebooks (R):** The easiest way is to run `bash view_quarto.sh` (or `.\view_quarto.ps1` on Windows) from your `daaf-docker` folder. With no argument, the viewer recursively finds every `.qmd` anywhere below `research/`, presents a sorted numbered picker, and renders the notebook you select; `0`, blank input, `q`/`Q`, or end-of-file cancels without rendering. You can bypass the picker with a direct `.qmd` path, or pass a project folder when that project contains exactly one recursive match (multiple matches are printed rather than guessed). The selected notebook is rendered to a single self-contained HTML file inside the container, copied to a `quarto_html/` folder on your host, and opened in your browser (the R-notebook counterpart to `view_notebooks.sh` for Python). The host filename is the flat notebook basename, so equal basenames overwrite; set `QUARTO_HTML_DIR` differently when both outputs must be retained. In a Full Pipeline Stage 9 notebook, rendering evaluates only explicitly enabled preview chunks; archived analysis-script chunks remain disabled, so render success validates the audit document rather than reproducing the full analysis. Alternatively, from inside the container you can render by hand with `quarto render 'research/YYYY-MM-DD_Title/YYYY-MM-DD_Notebook.qmd'`, then view the resulting HTML file in the browser-based code editor. You can also open the `.qmd` file directly in any text editor -- Quarto notebooks are plain text with YAML frontmatter and code chunks.
 
 ### The Report
 

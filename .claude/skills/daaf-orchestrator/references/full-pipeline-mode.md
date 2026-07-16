@@ -259,7 +259,8 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**.
 │      └─ Gate G8: Analyses + viz complete, QA4a AND QA4b PASSED/WARNING      │
 │                          ↓                                                  │
 │  Stage 9: Script Compilation ←── notebook-assembler agent                   │
-│      ├─ LITERALLY COPY scripts into Marimo Four-Cell archives (Python)      │
+│      ├─ LITERALLY COPY scripts into canonical three-cell                    │
+│      │   header/source/log archive bundles (Python), with optional display, │
 │      │   or canonical Quarto archive sections (R)                           │
 │      ├─ VERBATIM execution logs in format-specific collapsed containers     │
 │      ├─ NO new analysis; only optional format-specific output inspection    │

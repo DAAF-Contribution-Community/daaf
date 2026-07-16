@@ -632,7 +632,7 @@ This one's pretty straightforward: Jupyter notebooks and AI code editors are a t
 
 **AI editability.** Because marimo notebooks are plain Python, Claude can read and write them the same way it handles any other `.py` file. Editing a Jupyter `.ipynb` file requires manipulating JSON structure, cell metadata, kernel info, and output encodings -- it's fragile and error-prone for AI tools. Marimo is dramatically simpler and more reliable for this use case. Far, far, far easier.
 
-**What about R projects?** R pipelines use **Quarto** (`.qmd` files) instead of Marimo. Quarto is R's native literate programming system -- it combines Markdown narrative with executable R code chunks, and renders to HTML, PDF, or other formats. Just as Marimo is the natural choice for Python (plain `.py` files, reactive execution, Git-friendly), Quarto is the natural choice for R (Markdown-based, knitr engine, first-class R support). The same principles apply: scripts are the primary artifact, and the Quarto document is assembled from completed scripts at the end for presentation.
+**What about R projects?** R pipelines use **Quarto** (`.qmd` files) instead of Marimo. Quarto is R's native literate programming system -- it combines Markdown narrative with R code chunks and renders to HTML, PDF, or other formats. Just as Marimo is the natural choice for Python (plain `.py` files, reactive execution, Git-friendly), Quarto is the natural choice for R (Markdown-based, knitr engine, first-class R support). The same principles apply: scripts are the primary artifact, and DAAF assembles the Quarto document from completed scripts at the end for presentation. In that Stage 9 audit document, archived script chunks are deliberately `eval: false`; only small, explicitly enabled preview chunks execute during rendering, so rendering does not rerun the analytical pipeline.
 
 ### Q: Why Docker instead of a virtual environment?
 
@@ -844,7 +844,7 @@ bash view_quarto.sh research/2026-01-24_Your_Project/output/analysis/notebook.qm
 .\view_quarto.ps1 research/2026-01-24_Your_Project/output/analysis/notebook.qmd
 ```
 
-The script renders the selected notebook to a single self-contained HTML file inside the container, copies it out to a `quarto_html/` folder next to your `docker-compose.yml`, and opens it in your browser -- handling container startup automatically. Output uses the notebook's flat basename, so rendering two notebooks named `report.qmd` targets the same `quarto_html/report.html` and the later render overwrites the earlier one. Set `QUARTO_HTML_DIR` to a different host directory when both must be retained.
+The script renders the selected notebook to a single self-contained HTML file inside the container, copies it out to a `quarto_html/` folder next to your `docker-compose.yml`, and opens it in your browser -- handling container startup automatically. For a Full Pipeline Stage 9 notebook, this render validates the document and explicitly enabled previews; archived Stage 5-8 script chunks remain disabled, so render success is not a full analysis reproduction. Output uses the notebook's flat basename, so rendering two notebooks named `report.qmd` targets the same `quarto_html/report.html` and the later render overwrites the earlier one. Set `QUARTO_HTML_DIR` to a different host directory when both must be retained.
 
 If you'd rather do it by hand, render from inside the container and copy the result out yourself:
 

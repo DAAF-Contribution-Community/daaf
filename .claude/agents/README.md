@@ -56,10 +56,10 @@ DAAF uses a two-tier model routing convention: `opus` for high-judgment and prim
 | Agent | Purpose | Subagent Type | Stage(s) | Model | Key Inputs | Key Outputs |
 |-------|---------|---------------|----------|-------|------------|-------------|
 | **research-executor** | Execute data tasks with atomic precision, rigorous validation, and full audit-trail capture | `research-executor` | 5, 6, 7, 8, DS-1/DS-3/DS-5 (synthetic path), Ad Hoc | `opus` | Task spec XML, Plan.md (or orchestrator context in Ad Hoc), skill knowledge, dependency outputs | Script + execution log + data files (parquet) |
-| **code-reviewer** | Iterative QA review verifying code correctness, methodology alignment, and output data quality | `code-reviewer` | 5-QA, 6-QA, 7-QA, 8-QA, QAS-A/B/C (synthetic path), RV-2, Ad Hoc | `opus` | Executed script + log, Plan.md (or orchestrator context in Ad Hoc), output data files, stage/step/wave context | QA scripts (cr1-cr5) + severity report (PASSED/WARNING/BLOCKER) |
+| **code-reviewer** | Iterative QA review verifying code correctness, methodology alignment, and output data quality | `code-reviewer` | 5-QA, 6-QA, 7-QA, 8-QA, QAS-A/B/C (synthetic path), RV-2, Ad Hoc | `opus` | Executed script + log, Plan.md (or orchestrator context in Ad Hoc), output files; RV-2: original/reproduction paths, declared artifacts, path-audit MATCH, data strategy/scope exclusions, preliminary notes, and frozen-hash context | QA scripts + severity report; RV-2: per-script status with separate log metrics and direct-artifact evidence, helper JSON/dimensions, deviations, and evidence gaps |
 | **data-planner** | Synthesize discovery findings into research plans with executable task sequences and wave-based parallelization | `data-planner` | 4, Ad Hoc | `opus` | User request, clarifications, Stage 2-3 findings (or user-provided context in Ad Hoc), project folder path | Plan.md + Plan_Tasks.md (Full Pipeline) or Advisory Outline (Ad Hoc) |
 | **plan-checker** | Verify research plans will achieve analysis goals via goal-backward analysis across six dimensions | `plan-checker` | 4.5 | `opus` | Plan.md + Plan_Tasks.md content (inlined), original user request, clarifications | Validation report: PASSED / PASSED_WITH_WARNINGS / ISSUES_FOUND |
-| **data-verifier** | Adversarial goal-backward verification of completed analyses with cross-artifact coherence | `data-verifier` | 12, RV-3 | `opus` | Plan.md, Notebook, Report, project folder, STATE.md, LEARNINGS.md, QA summary | Verification report: PASSED / ISSUES_FOUND with four-layer evidence; STATE.md Final Review Log |
+| **data-verifier** | Adversarial goal-backward verification of completed analyses with cross-artifact coherence | `data-verifier` | 12, RV-3 | `opus` | Standard: Plan/Notebook/Report/STATE/QA; RV-3: original Report and copied artifact root, reproduced scripts/artifact root, Reproduction Report, and preliminary notes when present | Standard verification report; RV-3: per-claim/figure/finding MATCH/DIVERGED/NOT DIRECTLY VERIFIED rows with both evidence sources, plus derived coverage counts for claims, figures, findings, artifacts, and dimensions |
 | **source-researcher** | Deep-dive into a single data source for caveats, coded values, suppression patterns, and pitfalls | `source-researcher` | 3 | `sonnet` | Source name, variables of interest, research question, years, geographic scope | Five-section source report (Summary, Variables, Caveats, Patterns, Pitfalls) |
 | **research-synthesizer** | Consolidate parallel Stage 2-3 findings into actionable planning guidance with conflict resolution | `research-synthesizer` | 3.5 | `sonnet` | Stage 2 findings, all Stage 3 findings, research question, year range, geographic scope | Integrated synthesis with conflicts, resolutions, and planning recommendations |
 | **debugger** | Diagnose data quality issues and analysis failures using scientific hypothesis-testing methodology | `debugger` | Any (on error) | `opus` | Error message/symptom, failed script path, Plan.md, Plan_Tasks.md (optional), last successful operation | Root cause report with hypothesis log and verified fix |
@@ -67,7 +67,7 @@ DAAF uses a two-tier model routing convention: `opus` for high-judgment and prim
 | **integration-checker** | Validate component wiring: data flows, file references, and orphan detection | `integration-checker` | 9, 11, 12 | `sonnet` | Plan.md, Notebook, Report, project folder, script-to-output mappings | Integration check report: CONNECTED / ISSUES FOUND with flow diagrams |
 | **data-ingest** | Profile new datasets and produce comprehensive findings for skill authoring; also handles API acquisition (DI-0) | `data-ingest` | Data Onboarding Mode (Stages DI-0, DI-3 to DI-6, DS-4 synthetic path) | `opus` | Data file path(s) + format, target skill name, intended use, domain context, optional docs, API details (if DI-0) | Part-specific profiling findings for orchestrator; DI-0: acquisition script + API findings |
 | **framework-engineer** | Author, modify, and integrate DAAF framework artifacts with template compliance and cross-file consistency | `framework-engineer` | Framework Development Mode | `opus` | Work type + scope + scoping findings + affected file paths | Framework artifacts (.md files) + integration checklist report |
-| **report-writer** | Synthesize pipeline artifacts into stakeholder report following REPORT_TEMPLATE.md | `report-writer` | 11, RV-4 | `opus` | Plan.md, Notebook, STATE.md, LEARNINGS.md, QA summary, figures, citations, dataset metadata | Report.md (stakeholder prose) |
+| **report-writer** | Synthesize pipeline artifacts into stakeholder report following REPORT_TEMPLATE.md | `report-writer` | 11, RV-4 | `opus` | Standard pipeline artifacts; RV-4: complete Reproduction Report plus persisted full-fidelity RV-3 findings | Report.md; RV-4 synthesis with derived gap/exclusion counts and canonical FULLY REPRODUCED / PARTIALLY REPRODUCED / NOT REPRODUCED verdict |
 | **search-agent** | Broad-purpose read-only exploration across codebases, documentation, and web sources | `search-agent` | Any (replaces generic Plan dispatches) | `sonnet` | Search prompt, BASE_DIR, optional scope constraints | Flexible findings report with source citations and confidence assessment |
 
 ### Commonly Confused Pairs
@@ -254,9 +254,9 @@ Shows which agents produce output consumed by other agents:
 | **report-writer** | Orchestrator | Status report (COMPLETE / COMPLETE_WITH_GAPS / BLOCKED) | After report generation |
 | **Orchestrator** | data-ingest | Part assignment (DI-0/A/B/C/D), prior part findings, conditional script decisions, API details (DI-0), multi-file paths + schema map (HIERARCHICAL) | Stages DI-0, DI-3 to DI-6 |
 | **data-ingest** | Orchestrator | Part-specific profiling findings, confidence assessment, issues; DI-0: acquisition script path + API findings | Stages DI-0, DI-3 to DI-6 |
-| **code-reviewer** (RV-2) | Orchestrator | Per-script reproduction status + comparison metrics + deviations | RV-2 (per script) |
-| **data-verifier** (RV-3) | Orchestrator | Report verification findings (claims, figures, findings checked) | RV-3 |
-| **report-writer** (RV-4) | Orchestrator | Completed Reproduction Report with synthesis | RV-4 |
+| **code-reviewer** (RV-2) | Orchestrator | Per-script status; separate shared-log and direct-artifact evidence; helper JSON/per-dimension results; deviations, NOT DIRECTLY VERIFIED gaps, and frozen-hash integrity when applicable | RV-2 (per in-scope script) |
+| **data-verifier** (RV-3) | Orchestrator | Per-claim/figure/finding MATCH/DIVERGED/NOT DIRECTLY VERIFIED rows with original and reproduced evidence sources, plus derived counts across all evidence-unit classes | RV-3 |
+| **report-writer** (RV-4) | Orchestrator | Reproduction Report synthesis sourced from full-fidelity RV-3 findings, with gaps/exclusions counted and one canonical FULLY REPRODUCED / PARTIALLY REPRODUCED / NOT REPRODUCED verdict | RV-4 |
 | **debugger** (RV-2) | Orchestrator | Root cause analysis + minimal fix for reproduction failure | RV-2 (on error) |
 | **Orchestrator** | framework-engineer | Work type, scope, scoping findings, affected file paths | Framework Development Mode |
 | **framework-engineer** | Orchestrator | Framework Engineering Report (status, artifacts, checklist, confidence) | Framework Development Mode |
@@ -330,7 +330,7 @@ Closely read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the mandatory f
 - Independent assessment before Plan anchoring
 - Stub detection and silent failure audit
 
-**Reproducibility Verification (RV-3):** In RV mode, data-verifier performs adversarial cross-checking of the original Report's claims against reproduced outputs. It RETURNS findings to the orchestrator (read-only) — it does not write the Reproduction Report directly. See `reproducibility-verification-mode.md` for the invocation template.
+**Reproducibility Verification (RV-3):** In RV mode, data-verifier compares persisted original and reproduced claims, tables, supported Parquet artifacts, and side-by-side figures using MATCH / DIVERGED / NOT DIRECTLY VERIFIED; logs alone are insufficient. It returns per-claim/figure/finding evidence sources and derived coverage counts, keeps exact pre-RV-2 scope exclusions separate, and RETURNS findings to the orchestrator (read-only) rather than writing the Reproduction Report.
 
 **Invocation template:** See the appropriate WORKFLOW_PHASE*.md or mode reference file for stage-specific invocation templates.
 
@@ -429,16 +429,16 @@ Closely read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the mandatory f
 **Key behaviors (Marimo — Python pipelines):**
 - READ script files from `scripts/`
 - COPY code VERBATIM into code cells (commented out with `# ` prefix)
-- COPY execution logs VERBATIM into accordion cells
-- ADD ONLY `pl.read_parquet() + mo.ui.table()` cells
-- Applies the Four-Cell Pattern per script (header, commented code, log accordion, data load)
+- REQUIRE non-placeholder execution logs and COPY them VERBATIM into adjacent accordion cells
+- OPTIONALLY ADD only a bounded existing-Parquet preview or `mo.image()` display of an already-created figure
+- Applies a canonical three-cell archive bundle per script (header, commented code, log accordion), followed by an optional display cell
 
 **Key behaviors (Quarto — R pipelines):**
 - READ script files from `scripts/`
 - COPY code VERBATIM into ```` ```{r} ```` chunks with `#| eval: false`
-- COPY execution logs VERBATIM into collapsible callout blocks
-- ADD ONLY `arrow::read_parquet()` + `glimpse()` inspection chunks
-- Applies heading + chunk + callout + inspection pattern per script
+- REQUIRE non-placeholder execution logs and COPY them VERBATIM into immediately following callouts
+- OPTIONALLY ADD only a bounded Parquet preview or display of an already-created figure (Markdown preferred; dedicated `knitr::include_graphics()` allowed)
+- Applies heading + chunk + callout + optional display pattern per script
 
 **PROHIBITIONS (agent FAILED if output contains):**
 - New analysis code (aggregations, pivots, filters, transforms) not from original scripts
@@ -462,7 +462,7 @@ Closely read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the mandatory f
 - Cross-checks all Research Outcomes from Plan against Key Findings
 - Verifies all figure file paths resolve before embedding references
 
-**Reproducibility Verification (RV-4):** In RV mode, report-writer synthesizes the Reproduction Report by writing the Executive Summary, Methodological Concerns Synthesis, and overall assessment. See `reproducibility-verification-mode.md` for the invocation template.
+**Reproducibility Verification (RV-4):** In RV mode, report-writer reads the complete Reproduction Report and persisted full-fidelity RV-3 findings, derives all completion/evidence-gap counts, reports exact scope-design exclusions separately, and assigns only FULLY REPRODUCED / PARTIALLY REPRODUCED / NOT REPRODUCED. Any in-scope evidence gap caps the verdict at PARTIALLY REPRODUCED.
 
 **Invocation template:** See the appropriate WORKFLOW_PHASE*.md or mode reference file for stage-specific invocation templates.
 
@@ -534,7 +534,7 @@ code-reviewer returns BLOCKER
                 +- YES -> ESCALATE to user
 ```
 
-**Reproducibility Verification (RV-2):** In RV mode, the code-reviewer both re-executes scripts and evaluates output comparison — combining mechanical reproduction with skeptical assessment. The invocation template in `reproducibility-verification-mode.md` provides all RV-specific context.
+**Reproducibility Verification (RV-2):** In RV mode, the code-reviewer re-executes each in-scope script and compares shared log metrics with direct original-versus-reproduced artifact evidence; logs alone never establish artifact equality. It requires prior path-audit MATCH, executes Stage 5 in re-fetch mode, excludes rather than executes Stage 5 under the pre-approved frozen-input design, verifies frozen raw hashes afterward, preserves artifact-helper JSON for supported Parquet/exact evidence, and creates failure revisions from clean log-free sources.
 
 **Ad Hoc Collaboration:** In Ad Hoc mode, code-reviewer can review user-provided scripts that may lack execution logs or Plan.md context. Methodology alignment is evaluated against the user's stated intent rather than a formal Plan. See `ad-hoc-collaboration-mode.md`.
 

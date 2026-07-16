@@ -3,8 +3,11 @@ name: quarto
 description: |
   Quarto document system for R: .qmd format with knitr engine, YAML frontmatter,
   code chunks with execution options, rendering to HTML/PDF. DAAF's R notebook
-  format — Stage 9 notebooks compile executed scripts into cells verbatim as
-  audit artifacts. Use when execution language is R. Python equivalent: marimo.
+  format — Stage 9 literally archives executed R scripts in globally and
+  per-chunk non-evaluating chunks paired with real execution logs. Optional
+  display-only content may preview existing Parquet data or show already-created
+  figures, but may not analyze data or generate figures. Use when execution
+  language is R. Python equivalent: marimo.
 autoload: never
 metadata:
   audience: research-coders
@@ -16,7 +19,7 @@ metadata:
 
 # Quarto
 
-Quarto open-source publishing system for R-based reproducible documents. Covers .qmd document format with knitr engine, YAML frontmatter configuration, R code chunks with `#|` execution options, inline R expressions, rendering to HTML/PDF/Word via `quarto render`, figure and table output from ggplot2/gt/kable, and cross-referencing. DAAF's R notebook format for Stage 9 pipeline notebooks -- compile executed scripts into .qmd cells verbatim as audit artifacts. Use when the execution language is R and you need to assemble research notebooks, render analysis reports, or produce reproducible documents. Python equivalent: marimo skill.
+Quarto open-source publishing system for R-based reproducible documents. Covers .qmd document format with knitr engine, YAML frontmatter configuration, R code chunks with `#|` execution options, inline R expressions, rendering to HTML/PDF/Word via `quarto render`, figure and table output from ggplot2/gt/kable, and cross-referencing. In DAAF Stage 9, its role narrows to literal non-evaluating script-and-log archival, with only bounded existing-data or existing-figure display allowed; broader report-authoring capabilities apply outside Stage 9. Use when the execution language is R and you need to assemble research notebooks, render analysis reports, or produce reproducible documents. Python equivalent: marimo skill.
 
 ## What is Quarto?
 
@@ -100,10 +103,13 @@ Each topic in `./references/` contains focused documentation:
 ### Stage 9 Notebook Assembly
 
 Stage 9 is handled by the **notebook-assembler agent** (see `.claude/agents/notebook-assembler.md`), which:
-1. READS script files from `scripts/stage{5,6,7,8}_*/`
-2. COPIES script code VERBATIM into .qmd code chunks
-3. COPIES execution logs VERBATIM into fenced blocks
-4. ADDS ONLY simple `arrow::read_parquet()` + `dplyr::glimpse()`/`head(df, 20)` data inspection chunks
+1. READS `.R` scripts from `scripts/stage{5,6,7,8}_*/`
+2. EMITS the canonical rich YAML with global `execute: eval: false`, then one literal R archive chunk per script with exactly one `#| code-fold: false`, exactly one `#| eval: false`, and the exact `# --- VERBATIM COPY of scripts/<stage>/<filename>.R ---` marker as the first nonblank non-option line
+3. COPIES the script code beneath that marker literally and un-commented
+4. REQUIRES and COPIES each real, non-empty, non-placeholder execution log VERBATIM into exactly one immediately adjacent `::: {.callout-note collapse="true" title="Execution Log"}` block with one plain fenced body; a missing or ambiguous log blocks assembly
+5. OPTIONALLY ADDS, only after the complete archive/log pair, either a bounded Parquet preview or display of an already-created figure; neither path performs analysis or creates/modifies a figure, and display content is not decompiled
+
+The assembler emits only this canonical form. Bounded legacy containers accepted by `scripts/decompile_notebook.R` exist solely for intake compatibility and are not valid templates for new Stage 9 output. Structural recognition intentionally centers on the exact `VERBATIM COPY` marker; the Python/Marimo Plan-template path instead centers on literal `mo.md()` headers.
 
 ### ABSOLUTE PROHIBITIONS for Stage 9
 
@@ -117,18 +123,23 @@ Stage 9 is handled by the **notebook-assembler agent** (see `.claude/agents/note
 | Shiny runtime elements | Not an interactive app |
 | `params:` YAML for dynamic reports | Not a parameterized report |
 
-### The ONLY New Code Allowed
+### The ONLY New Display Content Allowed
 
-Data inspection chunks may contain ONLY these lines:
+Stage 9 permits exactly two bounded display forms:
+
+1. Preview existing Parquet data without transforming it:
 ```r
 df <- arrow::read_parquet("path/to/file.parquet")
 dplyr::glimpse(df)
 head(df, 20)
 ```
+2. Display an already-created Stage 8 figure. Prefer non-executing Markdown:
+```markdown
+![Figure description](output/figures/existing-figure.png)
+```
+When a chunk is needed, it must contain only `knitr::include_graphics("output/figures/existing-figure.png")` with `#| eval: true` and `#| echo: false`.
 
-No filtering. No mutating. No selecting. No aggregations. Just load and display.
-(`dplyr::glimpse()` is namespace-qualified because inspection chunks attach no
-libraries — a bare `glimpse()` fails at render time.)
+No filtering, mutation, selection, aggregation, plotting, or figure generation. The preview is bounded to the first 20 rows. (`dplyr::glimpse()` is namespace-qualified because inspection chunks attach no libraries — a bare `glimpse()` fails at render time.)
 
 **See:**
 - `.claude/agents/notebook-assembler.md` for the complete behavioral protocol
