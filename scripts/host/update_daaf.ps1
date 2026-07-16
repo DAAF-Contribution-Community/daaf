@@ -140,7 +140,9 @@ function Import-DaafSettingsInline {
     param([string]$SettingsFile = "./environment_settings.txt")
     if (-not (Test-Path -LiteralPath $SettingsFile)) { return }
     $known = @('DAAF_PROJECT_NAME', 'DAAF_PORT_MARIMO', 'DAAF_PORT_LOGVIEWER', 'DAAF_PORT_VSCODE', 'DAAF_DEV', 'DAAF_BRANCH')
-    foreach ($rawLine in (Get-Content -LiteralPath $SettingsFile)) {
+    # -Encoding UTF8: PS 5.1's bare Get-Content misreads BOM-less UTF-8 as ANSI
+    # (cp1252); the settings writer is BOM-less UTF-8, so reads are pinned to match.
+    foreach ($rawLine in (Get-Content -LiteralPath $SettingsFile -Encoding UTF8)) {
         $line = $rawLine -replace "`r", ""
         $trimmed = $line.Trim()
         if ($trimmed -eq "" -or $trimmed.StartsWith("#")) { continue }
@@ -939,9 +941,11 @@ function Complete-Update {
 # install.ps1), used to persist an env-origin DAAF_BRANCH after a successful
 # update. update_daaf is a standalone recovery tool that must run even if
 # daaf_lib is broken and, like install.ps1, does not dot-source it (mirroring the
-# inline settings *reader* above). Semantics, placement rules, atomicity,
-# no-BOM/LF encoding, DRY-RUN gating and strict-mode cleanliness are identical to
-# the library version -- see daaf_lib.ps1 for the full annotation. Defined before
+# inline settings *reader* above). Semantics, placement rules, atomicity, paired
+# encoding (BOM-less UTF-8 write + `-Encoding UTF8` read), DRY-RUN gating and
+# strict-mode cleanliness are identical to the library version -- see daaf_lib.ps1
+# for the full annotation, including why read/write encodings stay pinned together.
+# Defined before
 # the DAAF_TEST_MODE guard so it is available to Complete-Update under test
 # dot-sourcing.
 function Set-DaafSettingsKey {
@@ -960,7 +964,10 @@ function Set-DaafSettingsKey {
     }
     $File = (Resolve-Path -LiteralPath $File).Path
 
-    $lines = @(Get-Content -LiteralPath $File | ForEach-Object { $_ -replace "`r", "" })
+    # -Encoding UTF8 is REQUIRED and paired with the BOM-less UTF-8 write below: a
+    # bare read on PS 5.1 would decode this function's own BOM-less UTF-8 output as
+    # ANSI and mojibake it (see daaf_lib.ps1 for the full note).
+    $lines = @(Get-Content -LiteralPath $File -Encoding UTF8 | ForEach-Object { $_ -replace "`r", "" })
 
     $activeIdx = -1
     $commentIdx = -1

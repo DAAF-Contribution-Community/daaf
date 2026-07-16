@@ -99,7 +99,11 @@ function Import-DaafSettingsFile {
 
     $known = @('DAAF_PROJECT_NAME', 'DAAF_PORT_MARIMO', 'DAAF_PORT_LOGVIEWER', 'DAAF_PORT_VSCODE', 'DAAF_DEV', 'DAAF_BRANCH')
 
-    foreach ($rawLine in (Get-Content -LiteralPath $SettingsFile)) {
+    # -Encoding UTF8 pins BOM-less UTF-8 decoding: a bare Get-Content on Windows
+    # PowerShell 5.1 misreads BOM-less UTF-8 as legacy ANSI (cp1252), corrupting
+    # any non-ASCII value. The write side (Set-DaafSettingsKey) is BOM-less UTF-8,
+    # so reads must be pinned to match. Harmless on PS 7 (UTF-8 by default).
+    foreach ($rawLine in (Get-Content -LiteralPath $SettingsFile -Encoding UTF8)) {
         $line = $rawLine -replace "`r", ""
         $trimmed = $line.Trim()
         if ($trimmed -eq "" -or $trimmed.StartsWith("#")) { continue }
@@ -341,6 +345,16 @@ function Confirm-DaafContainer {
 # CRLF-tolerance. $File is resolved to a full path so the .NET WriteAllText call
 # (which honors [Environment]::CurrentDirectory, not $PWD) writes where intended.
 #
+# READ/WRITE ENCODINGS ARE A PAIR: the read below pins `-Encoding UTF8` for the
+# same reason the write pins BOM-less UTF-8. This function WRITES BOM-less UTF-8,
+# and BOM-less UTF-8 is exactly what Windows PowerShell 5.1's BARE `Get-Content`
+# misreads as legacy ANSI (cp1252) -- mojibaking every multibyte character (e.g.
+# the em-dashes carried in the example template) once per read->rewrite cycle, so
+# a single install that seeds N keys compounds the corruption N times. `-Encoding
+# UTF8` decodes BOM-less UTF-8 correctly on PS 5.1 (the BOM hazard is write-only)
+# and is harmless on PS 7 (UTF-8 by default). Never drop it while the write stays
+# BOM-less -- the two are correct only together.
+#
 # DRY-RUN: when $env:DAAF_DRY_RUN -eq "1", print the intended action and the exact
 # line that WOULD be written, and touch nothing on disk -- satisfies
 # FRAMEWORK_INTEGRATION_CHECKLIST item HSM5.
@@ -381,7 +395,10 @@ function Set-DaafSettingsKey {
     $File = (Resolve-Path -LiteralPath $File).Path
 
     # Read lines; Get-Content strips EOLs. Strip any stray CR for CRLF tolerance.
-    $lines = @(Get-Content -LiteralPath $File | ForEach-Object { $_ -replace "`r", "" })
+    # -Encoding UTF8 is REQUIRED and paired with the BOM-less UTF-8 write below
+    # (see ATOMICITY / ENCODING above): a bare read on PS 5.1 would decode this
+    # function's own BOM-less UTF-8 output as ANSI and mojibake it.
+    $lines = @(Get-Content -LiteralPath $File -Encoding UTF8 | ForEach-Object { $_ -replace "`r", "" })
 
     $activeIdx = -1
     $commentIdx = -1

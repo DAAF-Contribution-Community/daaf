@@ -235,6 +235,44 @@ Describe "daaf_lib.ps1 Set-DaafSettingsKey" {
     }
 
     # ---------------------------------------------------------------------
+    # Encoding regression -- non-ASCII (em-dash) survives read->write cycles
+    # ---------------------------------------------------------------------
+    # Regression for the Windows PowerShell 5.1 read-encoding bug: this function
+    # WRITES BOM-less UTF-8, and a BARE `Get-Content` on PS 5.1 misreads BOM-less
+    # UTF-8 as legacy ANSI (cp1252), mojibaking every multibyte character once per
+    # read->rewrite cycle. A fresh install seeds several keys in sequence, so the
+    # corruption compounds per key. The read is pinned to `-Encoding UTF8` to
+    # prevent this; assert the em-dash (U+2014 -> UTF-8 bytes E2 80 94, exactly the
+    # character carried in environment_settings_example.txt) is byte-preserved
+    # across repeated upserts. This test fails on the pre-fix (bare-read) code.
+    It "preserves a non-ASCII em-dash across repeated upserts (PS 5.1 read-encoding regression)" {
+        $emdash = [char]0x2014
+        Write-LfFile $script:S "# comment with an em-dash $emdash inside`nDAAF_PORT_MARIMO=2718`n"
+        # Simulate an install seeding multiple keys in sequence (the compounding path).
+        Set-DaafSettingsKey -File $script:S -Key DAAF_PROJECT_NAME -Value myproj 6>$null
+        Set-DaafSettingsKey -File $script:S -Key DAAF_PORT_VSCODE -Value 2720 6>$null
+        Set-DaafSettingsKey -File $script:S -Key DAAF_BRANCH -Value main 6>$null
+        # The em-dash must survive verbatim as UTF-8 (E2 80 94), not degrade to the
+        # cp1252 mojibake (E2 -> "a-circumflex" + garbage) that a bare read produces.
+        $bytes = [System.IO.File]::ReadAllBytes($script:S)
+        $found = $false
+        for ($i = 0; $i -lt ($bytes.Length - 2); $i++) {
+            if ($bytes[$i] -eq 0xE2 -and $bytes[$i + 1] -eq 0x80 -and $bytes[$i + 2] -eq 0x94) {
+                $found = $true
+                break
+            }
+        }
+        $found | Should -BeTrue
+        # Exactly one em-dash remains (no duplication/corruption), read back as UTF-8.
+        $text = [System.IO.File]::ReadAllText($script:S, (New-Object System.Text.UTF8Encoding($false)))
+        ([regex]::Matches($text, [regex]::Escape([string]$emdash))).Count | Should -Be 1
+        # ...and the seeded keys are present and correct.
+        $lines = @(Get-Content -LiteralPath $script:S -Encoding UTF8)
+        $lines | Should -Contain 'DAAF_PROJECT_NAME=myproj'
+        $lines | Should -Contain 'DAAF_BRANCH=main'
+    }
+
+    # ---------------------------------------------------------------------
     # Error path -- missing file
     # ---------------------------------------------------------------------
     It "errors when the target file does not exist" {

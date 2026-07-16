@@ -152,7 +152,10 @@ $InstallProjectName = $env:DAAF_PROJECT_NAME
 if ([string]::IsNullOrEmpty($InstallProjectName)) {
     $SettingsPath = Join-Path $InstallDir "environment_settings.txt"
     if (Test-Path -LiteralPath $SettingsPath) {
-        foreach ($rawLine in (Get-Content -LiteralPath $SettingsPath)) {
+        # -Encoding UTF8: PS 5.1's bare Get-Content misreads BOM-less UTF-8 as ANSI
+        # (cp1252), corrupting any non-ASCII value. The settings writer is BOM-less
+        # UTF-8, so reads are pinned to match; no-op on PS 7 (UTF-8 by default).
+        foreach ($rawLine in (Get-Content -LiteralPath $SettingsPath -Encoding UTF8)) {
             $line = $rawLine -replace "`r", ""
             if ($line -match '^\s*DAAF_PROJECT_NAME\s*=(.*)$') {
                 $val = $Matches[1].Trim()
@@ -179,7 +182,10 @@ $DataVolumeName = "${InstallProjectName}_daaf-data"
 if ([string]::IsNullOrEmpty($env:DAAF_DEV)) {
     $DevSettingsPath = Join-Path $InstallDir "environment_settings.txt"
     if (Test-Path -LiteralPath $DevSettingsPath) {
-        foreach ($rawLine in (Get-Content -LiteralPath $DevSettingsPath)) {
+        # -Encoding UTF8: PS 5.1's bare Get-Content misreads BOM-less UTF-8 as ANSI
+        # (cp1252), corrupting any non-ASCII value. The settings writer is BOM-less
+        # UTF-8, so reads are pinned to match; no-op on PS 7 (UTF-8 by default).
+        foreach ($rawLine in (Get-Content -LiteralPath $DevSettingsPath -Encoding UTF8)) {
             $line = $rawLine -replace "`r", ""
             if ($line -match '^\s*DAAF_DEV\s*=(.*)$') {
                 $val = $Matches[1].Trim()
@@ -437,9 +443,10 @@ if ($LASTEXITCODE -ne 0) {
 # INLINE COPY of daaf_lib.ps1 Set-DaafSettingsKey: the installer is a deliberately
 # standalone `irm | iex` script that does not dot-source daaf_lib.ps1 (mirroring
 # its existing inline settings parsers above), so the write helper is carried
-# inline. Semantics, placement rules, atomicity, no-BOM/LF encoding, DRY-RUN
-# gating and strict-mode cleanliness are identical to the library version -- see
-# daaf_lib.ps1 for the full annotation.
+# inline. Semantics, placement rules, atomicity, paired encoding (BOM-less UTF-8
+# write + `-Encoding UTF8` read), DRY-RUN gating and strict-mode cleanliness are
+# identical to the library version -- see daaf_lib.ps1 for the full annotation,
+# including why the read and write encodings must stay pinned together.
 function Set-DaafSettingsKey {
     [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Low')]
     param(
@@ -456,7 +463,10 @@ function Set-DaafSettingsKey {
     }
     $File = (Resolve-Path -LiteralPath $File).Path
 
-    $lines = @(Get-Content -LiteralPath $File | ForEach-Object { $_ -replace "`r", "" })
+    # -Encoding UTF8 is REQUIRED and paired with the BOM-less UTF-8 write below: a
+    # bare read on PS 5.1 would decode this function's own BOM-less UTF-8 output as
+    # ANSI and mojibake it once per seeded key (see daaf_lib.ps1 for the full note).
+    $lines = @(Get-Content -LiteralPath $File -Encoding UTF8 | ForEach-Object { $_ -replace "`r", "" })
 
     $activeIdx = -1
     $commentIdx = -1
@@ -636,6 +646,34 @@ else {
             Write-Host "      environment_settings.txt manually if desired."
         }
         Write-Host "      Review it and add any data source API keys before your next launch."
+
+        # Recreate the container so the newly created environment_settings.txt takes
+        # effect. docker-compose.yml injects it via `env_file`, which is applied at
+        # container CREATION -- and this container was created (up -d above) BEFORE
+        # the seeder wrote the file, so without a recreate the seeded settings are
+        # not injected AND the run_daaf "modified since container started" freshness
+        # NOTE would fire on the very next launch of a fresh install. --force-recreate
+        # is deliberate: an all-commented seeded file resolves to an empty compose
+        # env and would NOT trigger config-hash recreate on its own, leaving the
+        # warning armed. Reached only in the SeedOk path (the file was actually
+        # created) and never under DAAF_DRY_RUN (that hits the dry-run branch above).
+        # The just-cloned repo lives in the daaf-data NAMED VOLUME, so recreating the
+        # container cannot lose it. Non-fatal: on failure, print the same
+        # down/relaunch guidance run_daaf gives and continue (never fail the install).
+        Write-Host ""
+        Write-Host "NOTE: Restarting the container to apply your seeded settings..."
+        $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+        docker compose -f "$InstallDir\docker-compose.yml" up -d --force-recreate
+        $RecreateExit = $LASTEXITCODE
+        $ErrorActionPreference = $savedEAP
+        if ($RecreateExit -ne 0) {
+            Write-Host "NOTE: Could not restart the container to apply the seeded settings. They"
+            Write-Host "      were written to environment_settings.txt but will not take effect"
+            Write-Host "      until you recreate the container. Close all DAAF sessions, then run:"
+            Write-Host "        cd $InstallDir"
+            Write-Host "        docker compose down"
+            Write-Host "        .\run_daaf.ps1"
+        }
     } else {
         Write-Host "NOTE: Automatic settings seeding did not fully complete, so your other"
         Write-Host "      installation steps finished but environment_settings.txt may be absent"
