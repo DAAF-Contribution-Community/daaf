@@ -10,7 +10,7 @@
 
 ## How to Use This Document
 
-Each section covers one component type (Skill, Agent, Mode, Reference File, Hook, Host-Facing Script). Items are marked:
+Each section covers one component type (Skill, Agent, Mode, Reference File, Hook, Host-Facing Script, Provider Shim). Items are marked:
 - **[M]** = Mandatory (must be completed for every instance)
 - **[C]** = Conditional (required only when the stated condition applies)
 
@@ -235,7 +235,44 @@ After completing each item, note the status: Done, Skipped (with reason), or N/A
 
 ---
 
-## 7. Cross-Cutting Consistency Checks
+## 7. Adding or Modifying the Provider Shim
+
+> **Scope:** The in-container provider shim under `scripts/provider_shim/` — the shim service (`anthropic_openai_shim.py`, an ASGI app translating the Anthropic Messages API to the OpenAI Responses API), its lifecycle manager (`start_shim.sh`), and companion CLIs (e.g., `probe_context_ceiling.py`). The shim is core infrastructure for the OpenAI/ChatGPT provider route: a persistent, contract-bearing daemon whose `/health` schema, `SHIM_*` env vars, and `SHIM_BACKEND_MODE` lane values are consumed by hooks, statuslines, the deploy-smoke harness, and the DAAFBench provenance layer. It is neither a hook (§ 5, `.claude/hooks/`) nor a host-facing script (§ 6, `scripts/host/`), so it carries its own registration points.
+
+> **Precedent:** These items derive from the shim's development history across six sessions (v1.0.0 → v1.2.10) — e.g., `research/2026-07-09_FrameworkDev_OpenAI_Provider/`, `research/2026-07-10_FrameworkDev_ShimToolSanitization/`, and `research/2026-07-16_FrameworkDev_ShimWireTolerance/`. The gap they close was recorded as a follow-up learning signal in `ShimWireTolerance/SESSION_NOTES.md`.
+
+### New Shim Capability or Backend Lane Checklist
+
+| # | Item | Req | File | Section / Location |
+|---|------|-----|------|--------------------|
+| P1 | Implement the capability or backend lane in the shim and bump `SHIM_VERSION` | [M] | `scripts/provider_shim/anthropic_openai_shim.py` | `SHIM_VERSION` constant; for a new lane, the supported-mode set `_BACKEND_MODE_SUPPORTED` |
+| P2 | Document every new/changed shim env var (`SHIM_*`, `CODEX_HOME`, `OPENAI_API_KEY`/`SHIM_BACKEND_API_KEY`) on all three lockstep surfaces, and register it in route detection's env-key allowlist | [M] | `scripts/provider_shim/anthropic_openai_shim.py` (Config header), `scripts/provider_shim/start_shim.sh` (header), `scripts/host/environment_settings_example.txt` (Option F), `scripts/deploy_smoke/route_detection.py` (env-key allowlist / `note_var` calls) | The shim Config block, the manager header, and the user-facing setup guide must stay identical — an env var added to one but not the others drifts silently. Route detection must recognize every env var the shim reads |
+| P3 | If the `/health` schema gains, renames, or drops a field — or the shim's usage/token reporting shape changes — reconcile every consumer | [C] | `benchmarks/harness/route_provenance.py` (`PROVENANCE_ALLOWLIST`, `_validate_health_payload()`), `scripts/deploy_smoke/smoke_probes.py` (`probe_shim_health()`), `benchmarks/harness/executor.py` (`*_not_exposed_by_deployed_shim` token-accounting caveat tags) | `/health` is the shim's serialization contract; `PROVENANCE_ALLOWLIST` is a fail-closed boundary and the validator/probe assert the field set. `executor.py`'s caveat tags assert which usage/token fields the deployed shim does *not* expose — they go silently stale if a shim change starts exposing them |
+| P4 | If `SHIM_BACKEND_MODE` gains a value, propagate the new lane to route classification | [C] | `scripts/deploy_smoke/route_detection.py` (`SHIM_ROUTES`), `benchmarks/harness/route_provenance.py` (lane checks) | Route detection and DAAFBench provenance both branch on the supported-mode set |
+| P5 | If the new lane needs context-window/threshold gating, update the lane-gate condition in all three consumers | [C] | `.claude/hooks/context-reporter.sh`, `.claude/scripts/context-bar.sh`, `.claude/scripts/subagent-bar.sh` | The condition `[[ "${DAAF_PROVIDER_SHIM:-}" == "openai" && "${SHIM_BACKEND_MODE:-}" == "chatgpt" ]]` is duplicated verbatim in all three (verified by grep; no shared helper) — change all three in lockstep. These are user-only surfaces (deny-protected hook / settings-registered statuslines) — flag for the user rather than shell-editing |
+| P6 | Restart the running daemon after any code change and confirm the new version via `GET /health` | [M] | `scripts/provider_shim/start_shim.sh` (`--stop`/`--start`/`--status`), `GET http://127.0.0.1:4141/health` | "Stale-process trap": editing the source does not update the live daemon — verify the `version` field in `/health` matches the new `SHIM_VERSION` |
+| P7 | Add or extend the test suites and re-run them | [M] | `tests/provider_shim/` (`test_reasoning_formatting.py`, `test_stream_hardening.py`, `_loopback_harness.py`), `benchmarks/tests/` (`test_chatgpt_route.py`, `test_probe_model_route.py`, `test_artifacts_and_preflight.py`), `tests/bash/` (the three consumer `.bats` suites) | Cover the new behavior in the shim suites and the DAAFBench route/provenance suites; the `.bats` suites cover the lane-gating consumers |
+| P8 | Rebase any loopback mock fixture on captured live-wire evidence, not documentation-derived shapes; never let a self-test reimplement the logic it tests | [M] | `tests/provider_shim/_loopback_harness.py`, `scripts/provider_shim/probe_context_ceiling.py` (`--self-test`) | Fixtures encoding doc-derived event shapes never seen on the live wire give false coverage (the v1.2.7 outage lesson) — reconcile mock vs. live before trusting a fixture. Likewise, a self-test must drive the real code path (e.g., via injection): a reimplemented check passes even when the real path is broken (the `probe_context_ceiling.py --self-test` precedent) |
+| P9 | Scrub any new upstream-controlled field before it enters a log line | [M] | `scripts/provider_shim/anthropic_openai_shim.py` (`_scrub_log_token()`, `_scrub_and_trim_body()`) | Log-injection recurred when new fields bypassed the control-char scrub (`_SCRUB_CTRL_RE`); any field sourced from the backend/upstream stream must pass one of the scrub helpers |
+| P10 | Sync the user- and contributor-facing doc surfaces where behavior claims change | [C] | `scripts/host/environment_settings_example.txt`, `user_reference/07_faq_technical.md`, `user_reference/01_installation_and_quickstart.md`, `README.md`, `CONTRIBUTING.md`, `CLAUDE.md` | Update only where a behavior claim actually changed; `CLAUDE.md` shim passages are gated — flag for user approval rather than editing unilaterally |
+| P11 | Run the `daaf-deploy-smoke-testing` skill's live smoke test after the change | [M] | `daaf-deploy-smoke-testing` skill (Tier 0 shim `/health` preflight + Tier 1 live round-trip) | Per `CONTRIBUTING.md` (deploy-smoke guidance), a provider-shim change requires a deploy-smoke run against the active route |
+
+> **Duplicated-constant caution:** Facts the shim asserts — context-window ceilings above all (e.g., the ~370k ChatGPT-subscription cap) — are restated across ~10 doc surfaces plus multiple benchmark/test sites with no single source. When a shim change alters such a fact, sweep every sibling consumer, not just the one literal you came in to change. CC1/CC7 catch count words; this catches duplicated *facts*.
+
+### Modifying Existing Shim Behavior
+
+| # | Item | Req | File | What to Check |
+|---|------|-----|------|----|
+| PM1 | Read the shim source region you are changing, its Config header, and the `/health` contract before editing | [M] | `scripts/provider_shim/anthropic_openai_shim.py` | Header comment / changelog vs. actual behavior; the shim is 4000+ lines — read generously around the target region |
+| PM2 | If the edit changes the `/health` schema, reconcile the three consumers (allowlist, validator, smoke probe) | [C] | `benchmarks/harness/route_provenance.py`, `scripts/deploy_smoke/smoke_probes.py` | Same reconciliation as P3 |
+| PM3 | If the edit adds/changes shim env vars (`SHIM_*`, `CODEX_HOME`, key vars) or `SHIM_BACKEND_MODE` values, update the tri-surface docs and route detection/provenance | [C] | env template, `start_shim.sh`, `route_detection.py`, `route_provenance.py` | Same lockstep as P2/P4 |
+| PM4 | Bump `SHIM_VERSION` and restart the daemon; confirm via `GET /health` | [M] | `anthropic_openai_shim.py`, `start_shim.sh` | Stale-process trap (see P6) — a code edit without a restart leaves the old daemon serving |
+| PM5 | Re-run the shim, benchmarks, and `.bats` suites; rebase touched loopback fixtures on live-wire evidence | [M] | `tests/provider_shim/`, `benchmarks/tests/`, `tests/bash/` | See P7/P8 |
+| PM6 | Retiring a backend lane: remove the value from every surface that enumerates it, and record the rationale | [C] | `_BACKEND_MODE_SUPPORTED`, `SHIM_ROUTES`, `route_provenance.py` lane checks, the three lane-gate consumers, tri-surface docs; `research/{workspace}/` | Inverse of P4/P5; a lane value typically appears in more places than the one that motivated the change — grep the value repo-wide. Record why in a dated research doc (per the § 5 HR5 precedent) |
+
+---
+
+## 8. Cross-Cutting Consistency Checks
 
 After completing any component checklist above, run these universal verification steps:
 

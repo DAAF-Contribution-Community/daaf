@@ -91,7 +91,7 @@ If any of these answers are vague, in doubt, or incomplete, the quality and reli
 1. Read `agent_reference/FRAMEWORK_INTEGRATION_CHECKLIST.md` § 2 for the canonical checklist of registration points
 2. Execute all [M] (mandatory) items — A1, A1b, A1c, A2-A5, A14
 3. Review and execute applicable [C] (conditional) items — A6-A13, A15-A16
-4. Run cross-cutting consistency checks (§ 7) — count words, cross-references, naming
+4. Run cross-cutting consistency checks (§ 8) — count words, cross-references, naming
 5. For supplementary walkthrough detail, also consult `references/integration-checklist.md`
 
 ### Phase 4: Validate (confirm completeness)
