@@ -50,8 +50,8 @@ The `model:` field is **expected on every DAAF agent** — it sets the model tie
 
 **DAAF policy — two tiers only:** assign `opus` or `sonnet`. Haiku is excluded: "turn count beats token price" — the cheapest models take 2-3× the turns on multi-step research work, costing more overall and degrading reliability, so `sonnet` is the floor. Choose the tier by the agent's core workload:
 
-- **`opus`** — high-judgment, adversarial, or synthesis roles (plan design, plan/data verification, code review, hypothesis-driven debugging, cross-file framework consistency, stakeholder report synthesis).
-- **`sonnet`** — well-specified, skill-guided, or mechanical roles (fetching/cleaning/transforming from a plan, structured source lookup, dataset profiling, verbatim notebook assembly, systematic reference tracing, broad read-only exploration).
+- **`opus`** — high-judgment, adversarial, synthesis, or primary data-production roles (pipeline execution — fetching/cleaning/transforming from a plan, dataset profiling, plan design, plan/data verification, code review, hypothesis-driven debugging, cross-file framework consistency, stakeholder report synthesis).
+- **`sonnet`** — well-specified, skill-guided, or mechanical roles (structured source lookup, multi-source consolidation, verbatim notebook assembly, systematic reference tracing, broad read-only exploration).
 
 **`inherit` is reserved** for the rare agent that must deliberately track the session model rather than pin a tier.
 

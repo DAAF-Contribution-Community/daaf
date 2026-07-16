@@ -7,7 +7,7 @@ description: >
 tools: [Read, Write, Edit, Bash, Glob, Grep, Skill]
 skills: data-scientist
 permissionMode: default
-model: opus   # Well-specified tier: atomic, well-specified execution steps (override per-dispatch allowed)
+model: opus   # High-judgment tier: analytical execution quality compounds through every downstream stage (override per-dispatch allowed)
 hooks:
   PreToolUse:
     - matcher: "Bash"

@@ -864,7 +864,7 @@ Your `daaf-docker` folder includes an `environment_settings_example.txt` templat
 
 #### Model routing for alternative providers (optional)
 
-DAAF splits its background helper agents across two Claude model tiers to balance quality against cost: a stronger tier (**Opus**) for high-judgment work like planning, review, and verification, and a faster tier (**Sonnet**) for well-defined work like fetching and profiling data. If you use Anthropic directly (Max subscription or API key), this happens automatically and you don't need to do anything.
+DAAF splits its background helper agents across two Claude model tiers to balance quality against cost: a stronger tier (**Opus**) for high-judgment and hands-on data work like planning, fetching and profiling data, review, and verification, and a faster tier (**Sonnet**) for well-defined support work like structured lookups and notebook assembly. If you use Anthropic directly (Max subscription or API key), this happens automatically and you don't need to do anything.
 
 If you point DAAF at an **alternative provider** (OpenRouter, or a cloud platform serving non-Claude models like GLM), the names "opus" and "sonnet" won't exist on your endpoint. You have two options, both set in `environment_settings.txt`:
 

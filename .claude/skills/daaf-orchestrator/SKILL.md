@@ -611,14 +611,14 @@ See `.claude/agents/README.md` for the complete agent index with key inputs and 
 
 ### Model Selection for Subagent Dispatch
 
-DAAF routes subagents across two model tiers, following a **least-capable-sufficient** baseline: use the least powerful model that can reliably handle each role, to conserve cost and latency. Haiku is excluded by policy — "turn count beats token price": the cheapest models routinely take 2-3× the turns on multi-step research work, costing more overall and degrading reliability, so `sonnet` is the floor, never Haiku. `opus` is reserved for high-judgment, adversarial, and synthesis roles.
+DAAF routes subagents across two model tiers, following a **least-capable-sufficient** baseline: use the least powerful model that can reliably handle each role, to conserve cost and latency. Haiku is excluded by policy — "turn count beats token price": the cheapest models routinely take 2-3× the turns on multi-step research work, costing more overall and degrading reliability, so `sonnet` is the floor, never Haiku. `opus` is reserved for high-judgment, adversarial, synthesis, and primary data-production roles.
 
 **Per-agent default tiers** (set in each agent's `model:` frontmatter):
 
 | Tier | Agents | Why |
 |------|--------|-----|
-| `opus` | data-planner, plan-checker, code-reviewer, data-verifier, debugger, framework-engineer, report-writer | High-judgment work: plan architecture, adversarial verification, hypothesis-driven diagnosis, cross-file consistency, stakeholder synthesis |
-| `sonnet` | research-executor, source-researcher, research-synthesizer, data-ingest, notebook-assembler, integration-checker, search-agent | Well-specified, skill-guided, or mechanical work: fetching/cleaning/transforming from a plan, structured lookup, profiling, verbatim notebook assembly, systematic reference tracing, broad read-only exploration |
+| `opus` | research-executor, data-planner, plan-checker, code-reviewer, data-verifier, debugger, framework-engineer, report-writer, data-ingest | High-judgment and primary data-production work: pipeline execution and dataset profiling (whose analytical quality compounds through every downstream stage), plan architecture, adversarial verification, hypothesis-driven diagnosis, cross-file consistency, stakeholder synthesis |
+| `sonnet` | source-researcher, research-synthesizer, notebook-assembler, integration-checker, search-agent | Well-specified, skill-guided, or mechanical work: structured lookup, multi-source consolidation, verbatim notebook assembly, systematic reference tracing, broad read-only exploration |
 
 **Always-explicit dispatch.** Frontmatter defaults are the *floor*, not a cap. The Agent tool accepts a per-dispatch `model` parameter that outranks frontmatter (per Claude Code's resolution order), so the orchestrator may override any dispatch when the task warrants it. Prefer to state the model explicitly on dispatches you are escalating or downgrading.
 
