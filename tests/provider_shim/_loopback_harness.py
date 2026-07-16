@@ -2100,8 +2100,14 @@ def lifecycle_report(frames: Iterable[TypedSSEFrame]) -> LifecycleReport:
 
 def failure_lifecycle_report(
     frames: Iterable[TypedSSEFrame],
+    expected_error_type: str = "api_error",
 ) -> FailureLifecycleReport:
-    """Validate the terminal-error contract independently of success lifecycle checks."""
+    """Validate the terminal-error contract independently of success lifecycle checks.
+
+    v1.2.10: `expected_error_type` lets a caller pin a status-aware terminal error
+    type (e.g. "invalid_request_error" for a pre-content backend 400) while every
+    existing post-content/mid-stream failure caller keeps the default "api_error".
+    """
 
     typed_frames = list(frames)
     semantic_frames = [frame for frame in typed_frames if isinstance(frame.data, dict)]
@@ -2131,8 +2137,9 @@ def failure_lifecycle_report(
             f"frame={final_frame.event!r} data={final_event!r}"
         )
     error = final_event.get("error") or {}
-    if error.get("type") != "api_error":
-        raise AssertionError(f"terminal error type is not api_error: {error!r}")
+    if error.get("type") != expected_error_type:
+        raise AssertionError(
+            f"terminal error type is not {expected_error_type}: {error!r}")
     if not isinstance(error.get("message"), str) or not error.get("message"):
         raise AssertionError(f"terminal api_error has no message: {error!r}")
 

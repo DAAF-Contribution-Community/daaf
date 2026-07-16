@@ -63,6 +63,55 @@
 #   * GET /health endpoint for the manager's idempotency/status checks.
 #
 # Changelog:
+#   v1.2.10 (2026-07-16): ChatGPT-lane error-contract fidelity + claude-slug
+#     fast-fail, from the first full live v1.2.8/v1.2.9 session (shim.log 14:15+).
+#     LIVE EVIDENCE: (1) the Codex subscription lane ACCEPTED a real 337,034-token
+#       input (13:35, gpt-5.6-sol) but REJECTED ~400k real tokens with a
+#       deterministic 400 context_length_exceeded (14:17, 14:54) — a far lower
+#       ceiling than the API lane's ~1.05M. The non-stream chatgpt adapter
+#       collapsed that 400 to a flat 502 api_error, which reads as transient; the
+#       client then retried the unsatisfiable input ~10x (client-side reaction —
+#       the shim's own RETRY_STATUSES excludes 400 and never retried it). (2) A
+#       background/scheduled runner using the saved default model produced a
+#       claude-fable-5 rejection burst (14:52-14:53, ~50 req/min) — the Codex
+#       backend 400s every claude-* slug ("not supported when using Codex with a
+#       ChatGPT account"), yet each was a full wasted round-trip.
+#     FIXES (chatgpt lane only unless noted; openai/API-key lane untouched):
+#       (a) NON-STREAM status passthrough: a backend HTTP rejection now reaches the
+#           client with its REAL status and a mapped Anthropic error type (400->
+#           invalid_request_error, 401->authentication_error, 403->permission_error,
+#           404->not_found_error, 429->rate_limit_error, 529->overloaded_error,
+#           other 5xx->api_error) instead of a flat 502 api_error. The scrubbed
+#           backend message is preserved; the 401-refresh-exhausted _RELOGIN_MSG
+#           special case is unchanged. Retryable statuses still exhaust the internal
+#           retry loop first — passthrough governs only what is finally sent.
+#       (b) STREAMING in-band error-type mapping (BOTH lanes): the pre-content
+#           status/connect failure finalizer now emits the same status-aware error
+#           type in its in-band SSE event:error (shared helper). HTTP status stays
+#           200 (the stream has already started — Claude Code reads errors from
+#           events). Mid-stream protocol/framing/transport failures (no backend
+#           status) keep api_error; the v1.2.8 finalizer block-closing and terminal
+#           ordering are unchanged.
+#       (c) CLAUDE-SLUG FAST-FAIL: a mapped model slug beginning with "claude"
+#           (case-insensitive) is rejected on the chatgpt lane with a 400
+#           invalid_request_error BEFORE any backend round-trip, for both stream and
+#           non-stream inbound requests, carrying an actionable remap instruction
+#           (ANTHROPIC_DEFAULT_OPUS_MODEL / ANTHROPIC_DEFAULT_SONNET_MODEL /
+#           CLAUDE_CODE_SUBAGENT_MODEL). One scrubbed WARNING per rejection.
+#     WHY: deterministic backend rejections must not look retryable. The intended
+#       effect is that Claude Code stops the retry storm on context_length_exceeded
+#       once it sees invalid_request_error; that suppression is EXPECTED but pending
+#       live verification (the retry multiplier originates client-side, not in this
+#       shim). A companion user-run probe (scripts/provider_shim/
+#       probe_context_ceiling.py) measures the exact Codex-lane ceiling; the window
+#       constant itself lands in the hooks/docs workstream, not here.
+#     REVIEW AMENDMENTS (pre-commit, same version): (c) the fast-fail now matches
+#       the LAST path segment of the mapped slug (rsplit "/"), so a provider-prefixed
+#       "anthropic/claude-*" is caught when SHIM_STRIP_MODEL_PREFIX is unset (a
+#       whole-slug startswith would have slipped it to the backend); companion probe
+#       hardened (URLError -> clean "shim not reachable" exit, --self-test now drives
+#       the real bisect via post_fn injection, bracket clamp on accept overshoot).
+#     SHIM_VERSION -> 1.2.10.
 #   v1.2.9 (2026-07-16): Live-evidence fixture rebase + request-accounting
 #     repair, from the first live v1.2.8 session (shim.log 14:15+).
 #     LIVE EVIDENCE: the Codex backend omits ONLY `name` on
@@ -552,7 +601,7 @@ import httpx
 import uvicorn
 
 # --- Config ---
-SHIM_VERSION = "1.2.9"
+SHIM_VERSION = "1.2.10"
 
 SHIM_PORT = int(os.environ.get("SHIM_PORT", "4141"))
 
@@ -2485,6 +2534,39 @@ async def _send_json(send, status, obj, extra_headers=None):
     await send({"type": "http.response.body", "body": payload})
 
 
+# v1.2.10: canonical backend-HTTP-status -> Anthropic top-level error `type` map.
+# INTENT: a deterministic backend rejection (esp. a 400 context_length_exceeded on
+#   the ChatGPT/Codex subscription lane) must reach Claude Code as a NON-retryable
+#   error shape so the client stops re-sending it; a flat api_error reads as a
+#   transient failure and provoked the observed ~10x client-side retry storms on a
+#   fixed, unsatisfiable input (live 14:17/14:54 context_length_exceeded).
+# REASONING: exactly one source of truth shared by BOTH the non-stream
+#   status-passthrough site and the streaming in-band-error finalizer, so the two
+#   error surfaces cannot drift. Only known-deterministic 4xx map to
+#   client-terminal Anthropic types; retry-eligible 429/5xx keep types that read as
+#   retryable (rate_limit_error / overloaded_error / api_error) — the shim's own
+#   RETRY_STATUSES loop has already exhausted its attempts before any status here
+#   is passed through to the client.
+# ASSUMES: the caller holds a real backend HTTP status. Sites with NO backend
+#   status (mid-stream protocol/framing/transport failures after a 200 stream
+#   start) do NOT call this — they keep api_error, per the v1.2.8 finalizer
+#   contract.
+_ANTHROPIC_ERROR_TYPE_BY_STATUS = {
+    400: "invalid_request_error",
+    401: "authentication_error",
+    403: "permission_error",
+    404: "not_found_error",
+    429: "rate_limit_error",
+    529: "overloaded_error",
+}
+
+
+def _anthropic_error_type_for_status(status):
+    # v1.2.10: exact-status lookup; unknown statuses and other 5xx fall back to the
+    # generic api_error (which reads as retryable — correct for genuine 5xx).
+    return _ANTHROPIC_ERROR_TYPE_BY_STATUS.get(status, "api_error")
+
+
 def _bearer_of(headers):
     # INTENT: extract the raw token from an already-built header dict's
     #   authorization/Authorization Bearer, for the lazy-401 guarded-reload identity
@@ -2662,6 +2744,47 @@ async def _handle_messages(body, receive, send):
     n_msgs = len(responses_payload["input"])
     n_tools = len(responses_payload.get("tools", []))
 
+    # v1.2.10: fast-fail a Claude-family model slug on the ChatGPT (Codex) lane
+    # BEFORE any backend round-trip.
+    # INTENT: the Codex backend rejects claude-* slugs with a 400 ("model ... is
+    #   not supported when using Codex with a ChatGPT account"). Live 14:52-14:53
+    #   a background/scheduled runner using the saved default model (Fable 5)
+    #   produced a ~50-request/min rejection burst against the subscription lane.
+    #   Fail deterministically here so the client sees a clear invalid_request_error
+    #   with the actionable remap instruction instead of consuming quota on a
+    #   guaranteed rejection.
+    # REASONING: gated on the chatgpt lane only (the openai/API-key lane forwards
+    #   whatever slug it is given and must not gain model-family opinions). The
+    #   check runs on the MAPPED slug (post prefix-strip) so a configured
+    #   SHIM_STRIP_MODEL_PREFIX cannot hide a claude alias. Match the LAST path
+    #   segment (rsplit on "/") rather than the whole slug so a provider-prefixed
+    #   form like "anthropic/claude-opus-4-8" is still caught when
+    #   SHIM_STRIP_MODEL_PREFIX is unset (the mapped slug retains its prefix). Applies
+    #   to BOTH stream and non-stream inbound requests: this runs before the streaming
+    #   branch's HTTP-200 stream start, so a plain JSON error is the correct pre-flight
+    #   shape for either (mirrors the pre-stream auth-failure return below).
+    # ASSUMES: no legitimate Codex model slug's final path segment begins with
+    #   "claude" (case-insensitive).
+    if SHIM_BACKEND_MODE == "chatgpt":
+        _mapped_slug = _map_model(model)
+        if isinstance(_mapped_slug, str) and _mapped_slug.rsplit("/", 1)[-1].lower().startswith("claude"):
+            # Scrub the upstream-controlled slug before it enters a log line
+            # (log-injection class, same posture as _scrub_log_token elsewhere).
+            _safe_slug = _scrub_log_token(_mapped_slug)
+            log.warning(
+                "chatgpt-lane claude-slug fast-fail: model %r rejected without "
+                "backend round-trip", _safe_slug)
+            await _send_json(send, 400, {"type": "error", "error": {
+                "type": "invalid_request_error",
+                "message": (
+                    "model %r is not available via the ChatGPT (Codex) lane; "
+                    "remap Claude aliases to GPT slugs via "
+                    "ANTHROPIC_DEFAULT_OPUS_MODEL / ANTHROPIC_DEFAULT_SONNET_MODEL "
+                    "/ CLAUDE_CODE_SUBAGENT_MODEL in environment_settings.txt"
+                ) % _safe_slug,
+            }})
+            return
+
     # v1.2.5: build the backend auth headers by lane.
     # INTENT: in openai mode, Bearer the env API key (unchanged). In chatgpt mode,
     #   Bearer the OAuth access_token from auth.json and emit ONLY the 3-header floor
@@ -2734,6 +2857,12 @@ async def _handle_messages(body, receive, send):
             # unbound at the `if terminal_response is not None` check below.
             terminal_response = None
             failure_message = None
+            # v1.2.10: capture the real backend HTTP status for a rejection so the
+            # final send can pass it through (mapped to an Anthropic error type)
+            # instead of collapsing every 4xx/5xx to a flat, retryable-looking 502.
+            # Stays None for post-200 accumulation/conversion failures, which have
+            # no backend rejection status and correctly keep the 502 api_error path.
+            backend_status = None
             try:
                 try:
                     resp, stream_cm, headers, retries, refreshed_401 = \
@@ -2754,6 +2883,8 @@ async def _handle_messages(body, receive, send):
 
                 if resp.status_code >= 400:
                     status = resp.status_code
+                    # v1.2.10: remember the backend rejection status for passthrough.
+                    backend_status = status
                     try:
                         raw_err = (
                             await _await_or_disconnect(
@@ -2808,8 +2939,18 @@ async def _handle_messages(body, receive, send):
             if anth is None:
                 safe_message = (_scrub_and_trim_body(failure_message or "")[:200]
                                 or "backend stream failed")
-                await _send_json(send, 502, {"type": "error", "error": {
-                    "type": "api_error", "message": safe_message}})
+                # v1.2.10: if the failure was a backend HTTP rejection, pass the real
+                # status through (mapped to the matching Anthropic error type) so a
+                # deterministic 400 (e.g. context_length_exceeded) is not retried by
+                # the client. Accumulation/conversion failures after a 200 (no
+                # backend_status) retain the original 502 api_error shape.
+                if backend_status is not None:
+                    await _send_json(send, backend_status, {"type": "error", "error": {
+                        "type": _anthropic_error_type_for_status(backend_status),
+                        "message": safe_message}})
+                else:
+                    await _send_json(send, 502, {"type": "error", "error": {
+                        "type": "api_error", "message": safe_message}})
                 return
             usage = anth["usage"]
             _calibrate_count_ratio(usage["input_tokens"], len(body))
@@ -3085,13 +3226,21 @@ async def _handle_messages(body, receive, send):
                     "index": text_index,
                     "content_block": {"type": "text", "text": ""}})
 
-        async def _finalize_stream_failure(message):
+        async def _finalize_stream_failure(message, error_type="api_error"):
             # v1.2.7 common post-start failure finalizer.
             # INTENT: leave every emitted block structurally closed, then make the
             # final semantic frame an Anthropic event:error rather than a success.
             # REASONING: every failure source must share one lifecycle implementation;
             # otherwise a new branch can accidentally double-stop a tool, omit a
             # thinking signature, or emit message_stop after partial content.
+            # v1.2.10: `error_type` lets a caller that KNOWS the backend HTTP status
+            # (only the pre-content status/connect failure site does) surface a
+            # status-aware Anthropic error type via _anthropic_error_type_for_status,
+            # so a deterministic 400 becomes invalid_request_error and the client
+            # stops retrying. HTTP status stays 200 (the stream already started);
+            # only the in-band error `type` string is status-aware. Every other caller
+            # (mid-stream protocol/framing/transport failures with no backend status)
+            # keeps the default api_error, preserving the v1.2.8 finalizer semantics.
             nonlocal text_block_open, thinking_block_open, failure_finalized
             if failure_finalized or disconnect_event.is_set():
                 return False
@@ -3116,7 +3265,7 @@ async def _handle_messages(body, receive, send):
                     await emit("content_block_stop", {
                         "type": "content_block_stop", "index": st["anth_index"]})
             await emit("error", {"type": "error", "error": {
-                "type": "api_error", "message": safe_message}})
+                "type": error_type, "message": safe_message}})
             await send({"type": "http.response.body", "body": b"", "more_body": False})
             return True
 
@@ -3191,7 +3340,16 @@ async def _handle_messages(body, receive, send):
                     "content": [], "stop_reason": None, "stop_sequence": None,
                     "usage": {"input_tokens": 0, "output_tokens": 0}}})
                 started = True
-                await _finalize_stream_failure(client_failure)
+                # v1.2.10: this is the ONLY finalizer caller that knows a real
+                # backend HTTP status (`status`). Map it to the Anthropic error type
+                # so a pre-content 400 (e.g. context_length_exceeded) surfaces as
+                # invalid_request_error in-band and the client stops retrying. A
+                # pre-content connect failure (resp is None) has status=502 -> the
+                # map's api_error default, unchanged. The did_401_refresh 401 case
+                # keeps its _RELOGIN_MSG message and now also carries the
+                # authentication_error type.
+                await _finalize_stream_failure(
+                    client_failure, _anthropic_error_type_for_status(status))
                 return
 
             # message_start (usage filled with 0s; refined at message_delta).

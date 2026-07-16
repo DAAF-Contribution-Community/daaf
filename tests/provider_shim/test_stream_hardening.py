@@ -82,6 +82,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
         marker: str,
         expected_kinds: list[str],
         expected_requests: int = 1,
+        expected_error_type: str = "api_error",
     ) -> list[object]:
         with MockResponsesServer(scenario) as backend:
             with RealShim(backend, "chatgpt") as shim:
@@ -92,7 +93,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                     f"{marker} status/body={result.status} {result.text}",
                 )
                 frames = parse_typed_sse(result.body)
-                lifecycle = failure_lifecycle_report(frames)
+                lifecycle = failure_lifecycle_report(frames, expected_error_type)
                 shim.assert_offline_contract()
                 backend.assert_request_counts(responses=expected_requests, oauth=0)
                 self.assertEqual(
@@ -254,10 +255,14 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
         )
 
     def test_stream_nonretryable_backend_status_uses_terminal_error(self) -> None:
+        # v1.2.10: a pre-content backend 400 now surfaces the status-aware type
+        # invalid_request_error in-band (was a hardcoded api_error), so Claude Code
+        # stops retrying a deterministic rejection. HTTP status is still 200.
         frames = self._assert_stream_failure(
             scenario=backend_status_scenario("status-400", 400),
             marker="PRECONTENT_STATUS_400_TERMINAL_ERROR",
             expected_kinds=[],
+            expected_error_type="invalid_request_error",
         )
         self.assertEqual(
             [frame.data.get("type") for frame in frames if isinstance(frame.data, dict)],
@@ -265,6 +270,9 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
         )
 
     def test_stream_exhausted_retryable_status_uses_terminal_error(self) -> None:
+        # 503 is not in the deterministic status->type map, so it keeps api_error
+        # (reads as retryable — correct for a genuine 5xx) after the internal retry
+        # loop exhausts its attempts.
         frames = self._assert_stream_failure(
             scenario=backend_status_scenario(
                 "status-503-exhausted",
@@ -274,11 +282,145 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
             marker="PRECONTENT_STATUS_503_EXHAUSTED_TERMINAL_ERROR",
             expected_kinds=[],
             expected_requests=4,
+            expected_error_type="api_error",
         )
         self.assertEqual(
             [frame.data.get("type") for frame in frames if isinstance(frame.data, dict)],
             ["message_start", "error"],
         )
+
+    def test_stream_exhausted_429_surfaces_rate_limit_error_inband(self) -> None:
+        # v1.2.10: an exhausted retryable 429 maps to rate_limit_error in-band.
+        frames = self._assert_stream_failure(
+            scenario=backend_status_scenario(
+                "status-429-exhausted",
+                429,
+                retry_after="0",
+            ),
+            marker="PRECONTENT_STATUS_429_EXHAUSTED_TERMINAL_ERROR",
+            expected_kinds=[],
+            expected_requests=4,
+            expected_error_type="rate_limit_error",
+        )
+        self.assertEqual(
+            [frame.data.get("type") for frame in frames if isinstance(frame.data, dict)],
+            ["message_start", "error"],
+        )
+
+    def test_stream_midstream_inband_failure_keeps_api_error(self) -> None:
+        # v1.2.10 (e): a mid-stream in-band failure after content has begun has NO
+        # backend HTTP status, so it must keep the generic api_error type — the
+        # v1.2.8 finalizer semantics are unchanged for these paths.
+        self._assert_terminal_error(
+            scenario=terminal_failure_scenario("text", "error"),
+            expected_kind="text",
+            marker="MIDSTREAM_INBAND_ERROR_KEEPS_API_ERROR",
+        )
+
+    def _nonstream_backend_status(
+        self,
+        *,
+        status: int,
+        expected_type: str,
+        expected_requests: int,
+        marker: str,
+    ) -> None:
+        scenario = backend_status_scenario(
+            f"nonstream-status-{status}", status, retry_after="0"
+        )
+        with MockResponsesServer(scenario) as backend:
+            with RealShim(backend, "chatgpt") as shim:
+                result = shim.post_messages(stream=False, tools=[READ_TOOL])
+                self.assertEqual(result.status, status, f"{marker}: {result.text}")
+                body = result.json()
+                self.assertEqual(body.get("type"), "error", marker)
+                error = body.get("error") or {}
+                self.assertEqual(error.get("type"), expected_type, marker)
+                self.assertIsInstance(error.get("message"), str, marker)
+                self.assertLessEqual(len(error.get("message", "")), 200, marker)
+                shim.assert_offline_contract()
+                backend.assert_request_counts(responses=expected_requests, oauth=0)
+
+    def test_nonstream_backend_400_passes_through_as_invalid_request_error(self) -> None:
+        # v1.2.10 (a): a deterministic 400 reaches the client as its real 400 with
+        # an invalid_request_error type (was a flat 502 api_error) and is NOT
+        # retried internally (400 is not in RETRY_STATUSES) -> exactly one request.
+        self._nonstream_backend_status(
+            status=400,
+            expected_type="invalid_request_error",
+            expected_requests=1,
+            marker="NONSTREAM_400_INVALID_REQUEST",
+        )
+
+    def test_nonstream_backend_retryable_statuses_surface_correct_type(self) -> None:
+        # v1.2.10 (b): retryable statuses exhaust the internal retry loop (4 total
+        # attempts) then surface with the mapped type: 429->rate_limit_error,
+        # 500->api_error (not in the deterministic map).
+        for status, expected_type in ((429, "rate_limit_error"), (500, "api_error")):
+            with self.subTest(status=status):
+                self._nonstream_backend_status(
+                    status=status,
+                    expected_type=expected_type,
+                    expected_requests=4,
+                    marker=f"NONSTREAM_{status}_{expected_type.upper()}",
+                )
+
+    def test_chatgpt_claude_slug_fast_fails_nonstream_without_round_trip(self) -> None:
+        # v1.2.10 (c): a claude-* slug on the chatgpt lane is rejected pre-flight
+        # with a 400 invalid_request_error and NO backend round-trip.
+        scenario = full_response_scenario()
+        with MockResponsesServer(scenario) as backend:
+            with RealShim(backend, "chatgpt") as shim:
+                result = shim.post_messages(stream=False, model="claude-fable-5")
+                self.assertEqual(result.status, 400, result.text)
+                error = (result.json().get("error") or {})
+                self.assertEqual(error.get("type"), "invalid_request_error")
+                self.assertIn("ChatGPT (Codex)", error.get("message", ""))
+                self.assertIn("environment_settings.txt", error.get("message", ""))
+                shim.assert_offline_contract()
+                backend.assert_request_counts(responses=0, oauth=0)
+
+    def test_chatgpt_claude_slug_fast_fails_stream_without_round_trip(self) -> None:
+        # v1.2.10 (c): the same fast-fail applies to a streaming inbound request —
+        # it fires before the HTTP-200 stream start, so the client sees a plain
+        # JSON 400, not a 200 SSE error stream.
+        scenario = full_response_scenario()
+        with MockResponsesServer(scenario) as backend:
+            with RealShim(backend, "chatgpt") as shim:
+                result = shim.post_messages(stream=True, model="claude-opus-4-8")
+                self.assertEqual(result.status, 400, result.text)
+                error = (result.json().get("error") or {})
+                self.assertEqual(error.get("type"), "invalid_request_error")
+                shim.assert_offline_contract()
+                backend.assert_request_counts(responses=0, oauth=0)
+
+    def test_chatgpt_provider_prefixed_claude_slug_fast_fails_without_round_trip(self) -> None:
+        # v1.2.10 review-amendment: a PROVIDER-PREFIXED claude slug
+        # ("anthropic/claude-opus-4-8") must also fast-fail on the chatgpt lane.
+        # The harness leaves SHIM_STRIP_MODEL_PREFIX unset, so _map_model returns the
+        # slug WITH its "anthropic/" prefix; the last-path-segment match catches it
+        # (a whole-slug .startswith("claude") would have slipped it to the backend).
+        scenario = full_response_scenario()
+        with MockResponsesServer(scenario) as backend:
+            with RealShim(backend, "chatgpt") as shim:
+                result = shim.post_messages(stream=False, model="anthropic/claude-opus-4-8")
+                self.assertEqual(result.status, 400, result.text)
+                error = (result.json().get("error") or {})
+                self.assertEqual(error.get("type"), "invalid_request_error")
+                self.assertIn("ChatGPT (Codex)", error.get("message", ""))
+                shim.assert_offline_contract()
+                backend.assert_request_counts(responses=0, oauth=0)
+
+    def test_openai_lane_does_not_fast_fail_claude_slug(self) -> None:
+        # v1.2.10 (c): the openai/API-key lane forwards any slug unchanged — no
+        # model-family opinion. A claude-* slug reaches the backend and succeeds.
+        scenario = full_response_scenario()
+        with MockResponsesServer(scenario) as backend:
+            with RealShim(backend, "openai") as shim:
+                result = shim.post_messages(stream=False, model="claude-fable-5")
+                self.assertEqual(result.status, 200, result.text)
+                shim.assert_offline_contract()
+                backend.assert_request_counts(responses=1, oauth=0)
 
     def test_terminal_incomplete_stream_and_nonstream_maps_max_tokens(self) -> None:
         scenario = incomplete_response_scenario()
