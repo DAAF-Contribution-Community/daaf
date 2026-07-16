@@ -375,6 +375,85 @@ _seed_window() { printf '%s' "$1" > "/tmp/claude-ctx-window-${FAKE_SESSION}"; }
 }
 
 # =========================================================================
+# GLM-5.2: 1,048,576 physical window, conservative quality thresholds
+# =========================================================================
+
+@test "mixed: exact GLM-5.2 subagent maps to 1048k and is ELEVATED at 150k" {
+    printf 'claude-fable-5' > "/tmp/claude-model-${FAKE_SESSION}"
+    printf 'z-ai/glm-5.2' > "/tmp/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
+    _seed_window 1000000
+    parent="${TEST_DIR}/main.jsonl"
+    printf '{"type":"user","isSidechain":false,"message":{"content":"x"}}\n' > "$parent"
+    _write_subagent_transcript "${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl" "z-ai/glm-5.2" 150000
+
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
+    assert_success
+    assert_output --partial "[ELEVATED]"
+    assert_output --partial "150k / 1048k"
+    assert_output --partial "(14%)"
+}
+
+@test "mixed: date-suffixed GLM-5.2 subagent maps to 1048k and is HIGH at 200k" {
+    printf 'claude-fable-5' > "/tmp/claude-model-${FAKE_SESSION}"
+    printf 'z-ai/glm-5.2-20260715' > "/tmp/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
+    _seed_window 1000000
+    parent="${TEST_DIR}/main.jsonl"
+    printf '{"type":"user","isSidechain":false,"message":{"content":"x"}}\n' > "$parent"
+    _write_subagent_transcript "${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl" "z-ai/glm-5.2-20260715" 200000
+
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
+    assert_success
+    assert_output --partial "[HIGH]"
+    assert_output --partial "200k / 1048k"
+    assert_output --partial "(19%)"
+}
+
+@test "mixed: GLM-5.2 Air subagent stays on the generic 200k window" {
+    printf 'claude-fable-5' > "/tmp/claude-model-${FAKE_SESSION}"
+    printf 'z-ai/glm-5.2-air' > "/tmp/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
+    _seed_window 1000000
+    parent="${TEST_DIR}/main.jsonl"
+    printf '{"type":"user","isSidechain":false,"message":{"content":"x"}}\n' > "$parent"
+    _write_subagent_transcript "${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl" "z-ai/glm-5.2-air" 90000
+
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
+    assert_success
+    assert_output --partial "[ELEVATED]"
+    assert_output --partial "90k / 200k"
+    assert_output --partial "(45%)"
+}
+
+@test "mixed: explicit override wins for an exact GLM-5.2 subagent" {
+    printf 'claude-fable-5' > "/tmp/claude-model-${FAKE_SESSION}"
+    printf 'z-ai/glm-5.2' > "/tmp/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
+    _seed_window 1000000
+    parent="${TEST_DIR}/main.jsonl"
+    printf '{"type":"user","isSidechain":false,"message":{"content":"x"}}\n' > "$parent"
+    _write_subagent_transcript "${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl" "z-ai/glm-5.2" 140000
+
+    run env CLAUDE_CODE_MAX_CONTEXT_TOKENS=333333 bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
+    assert_success
+    assert_output --partial "[ELEVATED]"
+    assert_output --partial "140k / 333k"
+    assert_output --partial "(42%)"
+}
+
+@test "mixed: exact GLM-5.2 subagent maps to 1048k and is CRITICAL at 250k" {
+    printf 'claude-fable-5' > "/tmp/claude-model-${FAKE_SESSION}"
+    printf 'z-ai/glm-5.2' > "/tmp/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
+    _seed_window 1000000
+    parent="${TEST_DIR}/main.jsonl"
+    printf '{"type":"user","isSidechain":false,"message":{"content":"x"}}\n' > "$parent"
+    _write_subagent_transcript "${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl" "z-ai/glm-5.2" 250000
+
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
+    assert_success
+    assert_output --partial "[CRITICAL]"
+    assert_output --partial "250k / 1048k"
+    assert_output --partial "(23%)"
+}
+
+# =========================================================================
 # Fail-open: missing caches / transcript -> exit 0, emit nothing
 # =========================================================================
 

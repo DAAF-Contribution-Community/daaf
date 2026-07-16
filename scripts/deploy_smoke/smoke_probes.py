@@ -25,6 +25,7 @@ benchmarks/harness/ — NOT the sequential no-functions research-script style.
 
 import json
 import os
+import re
 import socket
 import subprocess
 import time
@@ -56,6 +57,23 @@ from benchmarks.harness.executor import (
 
 BASE_DIR = "/daaf"
 SHIM_HEALTH_URL = "http://127.0.0.1:4141/health"
+_GLM52_STATIC_ID = re.compile(r"z-ai/glm-5\.2(?:-[0-9]{8})?")
+
+
+def _is_wide_context_model(model_id: str) -> bool:
+    """Classify models whose headless context cache may represent a wide window.
+
+    Keep GLM matching narrower than the existing GPT and ``[1m]`` checks: only
+    the exact canonical id and a terminal eight-digit snapshot qualify. Air and
+    arbitrary future suffixes deliberately fall through.
+    """
+    model_id = model_id or ""
+    return (
+        "[1m]" in model_id
+        or "gpt-5" in model_id.lower()
+        or _GLM52_STATIC_ID.fullmatch(model_id) is not None
+    )
+
 
 # The deliberate DAAF_BENCHMARK_RUN=1 overload: its SOLE behavioral consumer is
 # benchmarks/harness/hooks/block-git-writes.sh:33, which gives every probe
@@ -533,9 +551,10 @@ def run_tier1(profile_name: str, extra_env: dict, timeout: int) -> list:
 
     Checks (each a capability-structural ProbeResult): response returned;
     transcript located (archived-or-live); audit.jsonl entries exist for the
-    session; context-reporter injection visible; /tmp caches populated with sane
-    values (window != 200k for GPT/[1m] configs); statuslines render against the
-    REAL session; token/cost fields parse from the JSON result.
+    session; context-reporter injection visible; /tmp caches populated (with
+    headless 200k results interpreted against the narrow static model map);
+    statuslines render against the REAL session; token/cost fields parse from the
+    JSON result.
     """
     results = []
     result, meta = execute_smoke_run(
@@ -590,13 +609,13 @@ def run_tier1(profile_name: str, extra_env: dict, timeout: int) -> list:
     results.append(r3)
 
     # T1.4 — context-reporter injection visible in transcript.
-    # context-reporter.sh injects at most once per INJECT_INTERVAL=60s
-    # (context-reporter.sh:104, gated at :308). A cold-start headless probe
-    # completes in seconds — well under that cadence — so an absent injection is
-    # EXPECTED, not an install defect. The hook still fires and falls back to a
-    # 200k window when the ctx-window cache is unresolved (context-reporter.sh:120),
-    # so silence here is cadence-driven, never a window-resolution failure. Verdict
-    # is INFO (not WARN) when absent so it does not read as a possible defect.
+    # context-reporter.sh injects at most once per INJECT_INTERVAL=60s. A
+    # cold-start headless probe completes in seconds — well under that cadence —
+    # so an absent injection is EXPECTED, not an install defect. The hook still
+    # fires and falls back to a 200k window when the ctx-window cache is
+    # unresolved, so silence here is cadence-driven, never a window-resolution
+    # failure. Verdict is INFO (not WARN) when absent so it does not read as a
+    # possible defect.
     r4 = ProbeResult(probe_id="T1.4", name="Context-reporter injection", tier="1", profile=profile_name)
     injection_seen = False
     if transcript:
@@ -607,7 +626,7 @@ def run_tier1(profile_name: str, extra_env: dict, timeout: int) -> list:
                 break
     r4.add_evidence(
         "scan transcript for 'Context utilization'", output=str(injection_seen),
-        note="context-reporter injects at most once per 60s (INJECT_INTERVAL, context-reporter.sh:104/308)",
+        note="context-reporter injects at most once per 60s (INJECT_INTERVAL)",
     )
     if injection_seen:
         r4.verdict = Verdict.PASS
@@ -616,31 +635,29 @@ def run_tier1(profile_name: str, extra_env: dict, timeout: int) -> list:
         r4.verdict = Verdict.INFO
         r4.detail = (
             "No context-reporter injection this run — EXPECTED for a short headless probe. "
-            "context-reporter injects at most once per 60s (INJECT_INTERVAL, context-reporter.sh:104/308) "
-            "and a cold-start probe finishes in seconds. The hook still fires and falls back to a 200k window "
-            "when the cache is unresolved (context-reporter.sh:120), so absence is cadence-driven, not a defect."
+            "context-reporter injects at most once per 60s (INJECT_INTERVAL), and a cold-start probe "
+            "finishes in seconds. The hook still fires and falls back to a 200k window when the cache is "
+            "unresolved, so absence is cadence-driven, not a defect."
         )
     results.append(r4)
 
     # T1.5 — /tmp coordination caches (bounded-retry read; headless-mode-aware).
     #
-    # Writers (verified): /tmp/claude-ctx-window-<session> is written by the
-    # STATUSLINE context-bar.sh:163 (its sole writer); /tmp/claude-model-<session>
-    # is written by context-reporter.sh cache_model():285. Both fire during a
-    # headless run, but ASYNC relative to the CLI process exit — so the earlier
-    # single-shot read raced the write. We poll with a bounded ~5s backoff and
-    # quote BOTH the first and final read.
+    # Writers (verified): context-bar.sh is the sole writer of the per-session
+    # ctx-window cache; context-reporter.sh cache_model() writes the model cache.
+    # Both fire during a headless run but ASYNC relative to CLI exit, so an earlier
+    # single-shot read raced the writes. Poll with a bounded ~5s backoff and quote
+    # BOTH the first and final read.
     #
-    # Headless window value is EXPECTED to be the conservative default: in a
-    # headless `claude -p` run the statusline payload lacks the real
-    # .context_window.context_window_size, so context-bar.sh falls back to 200000
-    # (context-bar.sh:58/73), and its remap map (context-bar.sh:145-152) rewrites
-    # only GPT slugs, NOT Claude [1m] slugs. The full window resolves only in an
-    # interactive session where Claude Code supplies the real window in the
-    # statusline payload. So the meaningful signal here is whether the caches are
-    # POPULATED AT ALL — not the numeric window. A populated cache is PASS
-    # (value 200000 included, with an explanatory note); a genuinely absent cache
-    # after retries is WARN.
+    # A headless statusline payload may omit its real context-window size, so
+    # context-bar.sh begins from 200000. Its static map corrects supported GPT ids
+    # and exact z-ai/glm-5.2 or terminal -YYYYMMDD snapshots; Air and arbitrary
+    # future GLM suffixes do not inherit that constant. Dynamic OpenRouter metadata
+    # remains authoritative, including a resolved value of exactly 200000. Native
+    # Claude [1m] ids still depend on the supplied statusline window. Therefore the
+    # primary signal is whether both caches are POPULATED AT ALL; a populated cache
+    # is PASS, while a genuinely absent cache after retries is WARN. Physical GLM
+    # capacity does not alter its conservative context-quality threshold family.
     r5 = ProbeResult(probe_id="T1.5", name="/tmp coordination caches", tier="1", profile=profile_name)
     first_snap = snapshot_tmp_caches(sid)
     final_snap = first_snap
@@ -668,14 +685,15 @@ def run_tier1(profile_name: str, extra_env: dict, timeout: int) -> list:
         )
     else:
         r5.verdict = Verdict.PASS
-        is_wide = ("[1m]" in (result.model_id or "") or "gpt-5" in (result.model_id or "").lower())
+        is_wide = _is_wide_context_model(result.model_id)
         note = ""
         if is_wide and str(window_val).strip() == "200000":
             note = (
-                " Window value 200000 is the EXPECTED headless statusline default for a wide-window model: "
-                "context-bar.sh only remaps GPT slugs from 200k (lines 145-152), not Claude [1m], and the "
-                "headless statusline payload carries no real window — the full window resolves only in an "
-                "interactive session. Not a defect."
+                " Window value 200000 can be valid headless statusline behavior for a wide-window model: "
+                "context-bar.sh statically maps supported GPT ids plus exact/date-snapshot GLM-5.2, while "
+                "native Claude [1m] ids depend on the payload and authoritative dynamic OpenRouter metadata "
+                "may itself resolve to exactly 200000. Air and arbitrary GLM suffixes are intentionally not "
+                "classified as the exact GLM model. Cache population, not this one numeric value, is the probe."
             )
         r5.detail = f"/tmp caches populated (model={model_val}, window={window_val})." + note
     results.append(r5)

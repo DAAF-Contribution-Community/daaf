@@ -91,11 +91,19 @@ fi
 # OpenRouter context window override: Claude Code doesn't know the real context
 # window size for third-party models accessed via OpenRouter, so it reports a
 # hardcoded 200k default. Query the OpenRouter models API once per session to
-# get the actual context_length for the current model.
+# get the actual context_length for the current model. Track successful dynamic
+# resolution separately from the numeric value: 200000 can itself be an
+# authoritative catalogue result and must not be mistaken for the generic
+# fallback by the static map below.
+or_context_resolved=0
+# Production uses /tmp so hooks and statuslines share one session cache. The
+# override is a deterministic-test seam only: Bats points it at project scratch
+# so fake OpenRouter catalogues never write fixture data outside the repository.
+context_cache_dir="${DAAF_CONTEXT_BAR_CACHE_DIR:-/tmp}"
 if [[ "${ANTHROPIC_BASE_URL:-}" == *openrouter.ai* ]]; then
     # model_id already extracted in the consolidated jq pass above
     # (byte-identical to the old `.model.id // empty`).
-    or_cache="/tmp/claude-or-models-${session_id}"
+    or_cache="${context_cache_dir}/claude-or-models-${session_id}"
 
     if [[ -n "$model_id" && ! -s "$or_cache" ]]; then
         # Fetch models list once per session (3s timeout to avoid blocking statusline).
@@ -125,29 +133,37 @@ if [[ "${ANTHROPIC_BASE_URL:-}" == *openrouter.ai* ]]; then
                     "$or_cache" 2>/dev/null)
             fi
         fi
-        if [[ -n "$or_context" && "$or_context" -gt 0 ]]; then
+        if [[ "$or_context" =~ ^[0-9]+$ ]] && [[ "$or_context" -gt 0 ]]; then
             max_context="$or_context"
+            or_context_resolved=1
         fi
     fi
 fi
 
-# GPT (OpenAI) static window map. Claude Code reports a hardcoded 200k for
+# Static third-party window map. Claude Code reports a hardcoded 200k for
 # unknown models, and the OpenRouter API lookup above is unavailable on direct
-# OpenAI / provider-shim sessions (localhost base URL). When the model id looks
-# like a GPT model and max_context is still the 200k default, substitute the
-# model's real window. Patterns are ordered most-specific first: *-mini* and
-# *-chat* variants have smaller windows than the base gpt-5.4/5.5/5.6 flagships
-# (the whole gpt-5.6 Sol/Terra/Luna family is 1,050,000), so they must match
-# before the broad flagship and *gpt-5* fallbacks.
-# Verified live against OpenRouter /api/v1/models, 2026-07-09. Only applied when
-# max_context looks like the untrusted 200k default so a real OpenRouter lookup
-# (or an explicit override below) always wins.
-if [[ -n "$model_id" && "$max_context" -eq 200000 ]]; then
+# provider-shim sessions or may fail transiently. Apply this map only when
+# dynamic OpenRouter resolution did NOT succeed and max_context remains the
+# untrusted 200k default. An authoritative dynamic value of exactly 200000 stays
+# authoritative; the explicit user override below still has final precedence.
+#
+# GLM matching is deliberately narrow: exact z-ai/glm-5.2 plus Claude Code's
+# terminal -YYYYMMDD snapshot form. Do not broaden it to *glm-5.2*, which would
+# incorrectly assign this window to glm-5.2-air or future variants. Verified
+# against the exact OpenRouter catalogue entry on 2026-07-15: 1,048,576 tokens.
+#
+# GPT patterns are ordered most-specific first: *-mini* and *-chat* variants
+# have smaller windows than the base gpt-5.4/5.5/5.6 flagships (the whole
+# gpt-5.6 Sol/Terra/Luna family is 1,050,000), so they must precede the broad
+# flagship and *gpt-5* fallbacks. Verified against OpenRouter on 2026-07-09.
+if [[ -n "$model_id" && "$or_context_resolved" -eq 0 && "$max_context" -eq 200000 ]]; then
     case "$model_id" in
-        *gpt-5*-mini*)      max_context=400000 ;;
-        *gpt-5*-chat*)      max_context=128000 ;;
+        z-ai/glm-5.2|z-ai/glm-5.2-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9])
+                                max_context=1048576 ;;
+        *gpt-5*-mini*)          max_context=400000 ;;
+        *gpt-5*-chat*)          max_context=128000 ;;
         *gpt-5.4*|*gpt-5.5*|*gpt-5.6*) max_context=1050000 ;;
-        *gpt-5*)            max_context=400000 ;;
+        *gpt-5*)                max_context=400000 ;;
     esac
 fi
 
@@ -160,7 +176,7 @@ fi
 max_k=$((max_context / 1000))
 
 # Share context window size with hooks (which don't receive it in their input payload)
-echo "$max_context" > "/tmp/claude-ctx-window-${session_id}" 2>/dev/null
+echo "$max_context" > "${context_cache_dir}/claude-ctx-window-${session_id}" 2>/dev/null
 
 # Calculate context bar from transcript
 if [[ -n "$transcript_path" && -f "$transcript_path" ]]; then

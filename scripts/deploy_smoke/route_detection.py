@@ -479,12 +479,14 @@ def probe_context_window_coherence(route_info: RouteInfo, env) -> ProbeResult:
     r.add_evidence("env: CLAUDE_CODE_MAX_CONTEXT_TOKENS", output=max_ctx or "<unset>")
 
     # Any non-Claude family reached over a route Claude Code does not natively
-    # recognize needs an explicit window declaration. context-bar.sh's remap map
-    # (lines 145-152) only knows GPT slugs, so a GLM or otherwise-unrecognized
-    # non-Claude slug on OpenRouter hits the same silent ~200k assumption as a GPT
-    # slug — it is NOT enough to check family=="gpt". Shim routes always need it;
-    # on OpenRouter, ANY non-Claude family (gpt, glm, unknown) needs it; native
-    # Claude [1m] slugs and Anthropic-recognized models resolve natively.
+    # recognize needs an explicit window declaration. context-bar.sh has static
+    # fallbacks for GPT plus exact z-ai/glm-5.2 and terminal date snapshots, but
+    # T0.4 still requires explicit declarations for non-Claude routes because
+    # dynamic/headless resolution is not guaranteed in every smoke-test context.
+    # It is NOT enough to check family=="gpt": shim routes always need a
+    # declaration, and on OpenRouter ANY non-Claude family (gpt, glm, unknown)
+    # needs one. Native Claude [1m] slugs and Anthropic-recognized models resolve
+    # natively.
     needs_declaration = (
         route_info.detected_route in SHIM_ROUTES
         or route_info.model_family == "gpt"

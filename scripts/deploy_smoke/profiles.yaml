@@ -55,12 +55,7 @@ profiles:
       ANTHROPIC_MODEL: "z-ai/glm-5.2"
       ANTHROPIC_DEFAULT_OPUS_MODEL: "z-ai/glm-5.2"
       ANTHROPIC_DEFAULT_SONNET_MODEL: "z-ai/glm-5.2"
-      # Source: neither cited source carries an authoritative GLM window —
-      # benchmarks/config/models.yaml (the slug source) has no context-window
-      # field for any model, and context-bar.sh's remap map (lines 145-152) covers
-      # only GPT slugs, so GLM would otherwise fall to Claude Code's silent ~200k
-      # default. 200000 is the GLM family's published context window (GLM-4.5/4.6,
-      # carried forward to 5.2). ADJUST to your account's actual GLM 5.2 window if
-      # it differs — this declaration is what stops the statusline/hook stack from
-      # under-reporting it.
-      CLAUDE_CODE_MAX_CONTEXT_TOKENS: "200000"
+      # Exact current OpenRouter catalogue value for z-ai/glm-5.2 (2026-07-15).
+      # This declares the model's physical context capacity; it does not relax
+      # DAAF's conservative context-quality thresholds for GLM sessions.
+      CLAUDE_CODE_MAX_CONTEXT_TOKENS: "1048576"

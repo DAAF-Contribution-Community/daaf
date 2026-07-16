@@ -70,7 +70,7 @@ C_BAR_EMPTY='\033[38;5;238m'
 # the bottom of the loop): Fable/Mythos patterns and exact terminal GPT 5.6 Sol
 # slugs use the extended-horizon tier (ELEVATED >= 30% OR >= 300k, HIGH >= 40%
 # OR >= 400k, CRITICAL >= 50% OR >= 500k). Every other model — including Opus,
-# Sonnet, other GPT variants, and unknown ids — uses the conservative tier
+# Sonnet, other GPT variants, GLM, and unknown ids — uses the conservative tier
 # (ELEVATED >= 40% OR >= 150k, HIGH >= 60% OR >= 200k, CRITICAL >= 75% OR >=
 # 250k). Each severity keeps one color regardless of tier:
 #   NOMINAL  green
@@ -202,13 +202,15 @@ while IFS=$'\x1f' read -r id type name status tokens label; do
     # providers, where the mapping below does not apply).
     row_window="$max_context"
     if [[ -n "$task_model" && "$task_model" != "$session_model" ]]; then
-        # Window provisioning: [1m]-suffixed and natively-1M models (fable-5,
-        # mythos-5, opus-4-7, opus-4-8) get 1,000,000; ALL others 200,000.
-        # Mapping verified against installed CC 2.1.187 binary, 2026-07-05, and
-        # re-verified against CC 2.1.202, 2026-07-15 (no map changes; the [2m]
-        # id suffix is now validator-accepted upstream but no [2m] variants
-        # ship in the model tables — add a branch if they appear);
-        # re-verify after Claude Code upgrades.
+        # Window provisioning summary: GPT mini and broad gpt-5 ids map to 400k,
+        # chat variants to 128k, and 5.4/5.5/5.6 flagships to 1.05M; exact
+        # z-ai/glm-5.2 and only terminal -YYYYMMDD snapshots map to 1,048,576;
+        # native 1M Claude models
+        # and generic [1m]-suffixed Claude ids map to 1,000,000; all other models
+        # map to 200,000. This broad physical-window map is separate from the
+        # quality-tier selector below, where only exact terminal GPT 5.6 Sol slugs
+        # receive the extended-horizon exception. Re-verify this map after Claude
+        # Code/provider updates.
         case "$task_model" in
             # GPT (OpenAI) windows FIRST, ordered most-specific first: mini/chat
             # variants are smaller than the gpt-5.4/5.5/5.6 flagships, so they must
@@ -222,6 +224,11 @@ while IFS=$'\x1f' read -r id type name status tokens label; do
             *gpt-5*-chat*) row_window=128000 ;;
             *gpt-5.4*|*gpt-5.5*|*gpt-5.6*) row_window=1050000 ;;
             *gpt-5*) row_window=400000 ;;
+            # Exact GLM-5.2 plus terminal date snapshots only. Keep this narrow:
+            # glm-5.2-air and future variants have no verified static window.
+            # Window size only — GLM remains in the conservative threshold family.
+            z-ai/glm-5.2|z-ai/glm-5.2-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9])
+                row_window=1048576 ;;
             *fable-5*|*mythos-5*|*opus-4-7*|*opus-4-8*|*\[1m\]*) row_window=1000000 ;;
             *) row_window=200000 ;;
         esac

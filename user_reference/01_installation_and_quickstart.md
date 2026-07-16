@@ -466,18 +466,23 @@ R projects produce **Quarto** notebooks (`.qmd` files) instead of Marimo noteboo
 
 ```bash
 cd daaf-docker
-bash view_quarto.sh                                 # macOS / Linux: list available notebooks
-.\view_quarto.ps1                                   # Windows: list available notebooks
+bash view_quarto.sh                                 # macOS / Linux
+.\view_quarto.ps1                                   # Windows
 ```
 
-Run with no argument to list every `.qmd` notebook across your research projects. To render and open one, re-run with its project folder name (or a direct path to the `.qmd`):
+With no argument -- including when you choose **option 5** in the DAAF Control Panel -- the viewer recursively discovers every `.qmd` anywhere below `research/`, sorts the paths deterministically, and shows a numbered picker. Enter a notebook number to render it. Enter `0`, press Enter on a blank choice, type `q` or `Q`, or send end-of-file to cancel cleanly and return without rendering.
+
+You can still bypass the picker by passing either a project folder or a direct `.qmd` path. A project name is accepted only when exactly one notebook exists anywhere below that project; if recursive lookup finds multiple notebooks, the viewer refuses to guess and prints the paths so you can use the direct form:
 
 ```bash
-bash view_quarto.sh 2026-01-24_Your_Project         # macOS / Linux
-.\view_quarto.ps1 2026-01-24_Your_Project           # Windows
+bash view_quarto.sh 2026-01-24_Your_Project
+bash view_quarto.sh research/2026-01-24_Your_Project/output/analysis/notebook.qmd
+
+.\view_quarto.ps1 2026-01-24_Your_Project
+.\view_quarto.ps1 research/2026-01-24_Your_Project/output/analysis/notebook.qmd
 ```
 
-The script renders the notebook to a single self-contained HTML file inside the container, copies it out to a `quarto_html/` folder next to your `docker-compose.yml`, and opens it in your default browser. It handles starting the container if it isn't already running. This is the R-notebook counterpart to `view_notebooks.sh` for Python (marimo) projects.
+The script renders the selected notebook to a single self-contained HTML file inside the container, copies it out to a `quarto_html/` folder next to your `docker-compose.yml`, and opens it in your default browser. It handles starting the container if it isn't already running. The host output keeps only the notebook's **flat basename** (for example, both `project-a/output/analysis/report.qmd` and `project-b/report.qmd` become `quarto_html/report.html`), so a later render with the same basename overwrites the earlier file. Set `QUARTO_HTML_DIR` to a different host directory before each render when you need to retain both. This is the R-notebook counterpart to `view_notebooks.sh` for Python (marimo) projects.
 
 > **Don't see `view_quarto.sh` / `.ps1` in your `daaf-docker` folder yet?** It's a recent addition, so a slightly older install may not have it copied out. You can grab it straight from the container -- run one of these from your `daaf-docker` folder (with the container running):
 >
@@ -864,10 +869,33 @@ If you point DAAF at an **alternative provider** (OpenRouter, or a cloud platfor
 
 - **Keep the two tiers, using your own models** — map each tier to one of your provider's models:
   ```bash
-  ANTHROPIC_DEFAULT_OPUS_MODEL=your-strong-model-slug      # e.g. z-ai/glm-5.2
-  ANTHROPIC_DEFAULT_SONNET_MODEL=your-fast-model-slug      # e.g. z-ai/glm-5.2-air
+  ANTHROPIC_DEFAULT_OPUS_MODEL=your-strong-model-slug
+  ANTHROPIC_DEFAULT_SONNET_MODEL=your-fast-model-slug
   ```
   DAAF then routes high-judgment work to your strong model and routine work to your fast one.
+
+  `CLAUDE_CODE_MAX_CONTEXT_TOKENS` is a **global** override: the same value
+  applies to the main session and every subagent, not separately to each model.
+  For the recommended 1,048,576-token declaration for exact `z-ai/glm-5.2`,
+  keep every route on that exact model by mapping both tiers to it:
+  ```bash
+  ANTHROPIC_MODEL=z-ai/glm-5.2
+  ANTHROPIC_DEFAULT_OPUS_MODEL=z-ai/glm-5.2
+  ANTHROPIC_DEFAULT_SONNET_MODEL=z-ai/glm-5.2
+  CLAUDE_CODE_MAX_CONTEXT_TOKENS=1048576
+  ```
+  Equivalently, you can flatten subagent routing to exact `z-ai/glm-5.2` with
+  `CLAUDE_CODE_SUBAGENT_MODEL`. OpenRouter currently reports 1,048,576 tokens
+  for exact `z-ai/glm-5.2`. This is the model's **physical** capacity; it does
+  **not** claim that quality stays constant across the entire window. GLM keeps
+  DAAF's conservative context-quality gates: ELEVATED at 150k or 40%, HIGH at
+  200k or 60%, and CRITICAL at 250k or 75%, whichever trigger fires first.
+
+  If you want `z-ai/glm-5.2-air` as the fast tier, do **not** reuse exact
+  `z-ai/glm-5.2`'s 1,048,576 declaration unless you independently verify Air's
+  current physical window and confirm the chosen global value is valid for the
+  main session and every routed subagent. This runtime path has no supported
+  per-model context-window override.
 
 - **Use a single model for everything** — simplest if you'd rather not think about tiers:
   ```bash
@@ -960,7 +988,7 @@ See the [technical FAQ entry on controlling GPT reasoning effort](07_faq_technic
 
 #### Option F, alternate lane: ChatGPT subscription (Codex backend)
 
-The same shim can route Claude Code through your **ChatGPT subscription's Codex backend** instead of a pay-per-token OpenAI API key. It is the *same* shim and the *same* Responses translator — only the **authentication and endpoint** differ: instead of a `SHIM_BACKEND_API_KEY`, the shim reads an OAuth access token from your `codex` login and POSTs to OpenAI's Codex Responses backend.
+The same shim can route Claude Code through your **ChatGPT subscription's Codex backend** instead of a pay-per-token OpenAI API key. Request translation, tools, and the content-block lifecycle remain shared across both lanes; authentication and endpoint still differ. As of **shim v1.2.6**, one response-formatting rule is ChatGPT-only: reliably identified reasoning-summary part boundaries are preserved as blank lines (`\n\n`), while OpenAI/API-key mode retains legacy exact concatenation. The ChatGPT lane reads an OAuth access token from your `codex` login and POSTs to OpenAI's Codex Responses backend.
 
 > **This is an unofficial, dev-lane path — read this first.** It reuses Codex's OAuth against an **undocumented, OpenAI-controlled backend**. It is **not** an OpenAI-sanctioned API method (OpenAI's terms scope subscription usage to their own official apps), it **may break at any time** if OpenAI changes the backend, and **you are responsible for compliance with OpenAI's terms of service.** Treat it as a proof-of-concept / dev lane. The API-key lane above (`SHIM_BACKEND_MODE` unset → `openai`) is the sanctioned, robust fallback.
 

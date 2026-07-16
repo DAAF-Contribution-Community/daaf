@@ -283,6 +283,60 @@ _payload_one_task() {
 }
 
 # =========================================================================
+# GLM-5.2: 1,048,576 physical window, conservative quality thresholds
+# =========================================================================
+
+@test "GLM-5.2 row: 150k maps to 1048k window and renders ELEVATED" {
+    _seed_window 1000000
+    _seed_session_model "claude-fable-5"
+    _seed_task_model "t1" "z-ai/glm-5.2"
+    run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 150000)
+    assert_success
+    assert_output --partial "$COLOR_ELEVATED"
+    assert_output --partial "14%"
+}
+
+@test "date-suffixed GLM-5.2 row: 200k maps to 1048k window and renders HIGH" {
+    _seed_window 1000000
+    _seed_session_model "claude-fable-5"
+    _seed_task_model "t1" "z-ai/glm-5.2-20260715"
+    run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 200000)
+    assert_success
+    assert_output --partial "$COLOR_HIGH"
+    assert_output --partial "19%"
+}
+
+@test "GLM-5.2 Air row stays on the generic 200k window" {
+    _seed_window 1000000
+    _seed_session_model "claude-fable-5"
+    _seed_task_model "t1" "z-ai/glm-5.2-air"
+    run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 90000)
+    assert_success
+    assert_output --partial "$COLOR_ELEVATED"
+    assert_output --partial "45%"
+}
+
+@test "explicit override wins for an exact GLM-5.2 row" {
+    _seed_window 1000000
+    _seed_session_model "claude-fable-5"
+    _seed_task_model "t1" "z-ai/glm-5.2"
+    run env CLAUDE_CODE_MAX_CONTEXT_TOKENS=333333 bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 140000)
+    assert_success
+    assert_output --partial "$COLOR_ELEVATED"
+    assert_output --partial "42%"
+}
+
+@test "GLM-5.2 row: 250k maps to 1048k window and renders CRITICAL" {
+    _seed_window 1000000
+    _seed_session_model "claude-fable-5"
+    _seed_task_model "t1" "z-ai/glm-5.2"
+    run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 250000)
+    assert_success
+    assert_output --partial "$COLOR_CRITICAL"
+    assert_output --partial "23%"
+}
+
+# =========================================================================
 # Unknown model -> conservative family
 # =========================================================================
 

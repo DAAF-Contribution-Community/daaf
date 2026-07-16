@@ -51,7 +51,7 @@
 #   exact terminal GPT slugs gpt-5.6-sol and gpt-5.6-sol[1m] get the validated
 #   extended-horizon tier (30/40/50% OR 300/400/500k). Provider paths are
 #   accepted only when one of those exact slugs is the final path segment. All
-#   other models (Opus, Sonnet, other GPT variants, unknown/empty) get the
+#   other models (Opus, Sonnet, other GPT variants, GLM, unknown/empty) get the
 #   conservative tier (40/60/75% OR 150/200/250k). This is deliberately
 #   separate from physical-window mapping: the broad GPT 5.6 family maps to a
 #   1.05M physical window, while only exact GPT 5.6 Sol slugs receive the
@@ -128,13 +128,15 @@ MAX_CONTEXT=${MAX_CONTEXT:-200000}
 # severity must be computed against 200k, or HIGH/CRITICAL fire far too late).
 # The subagent's model is read once from its own transcript and cached in
 # /tmp/claude-subagent-model-<session>-<agent> (a model never changes
-# mid-task; subagent-bar.sh shares this cache). Window mapping: [1m]-suffixed
-# and natively-1M models (fable-5, mythos-5, opus-4-7, opus-4-8) → 1,000,000;
-# ALL others → 200,000. Mapping verified against installed CC 2.1.202 binary,
-# 2026-07-15; re-verify after Claude Code upgrades. Same-model subagents (and
-# alternative-provider sessions, where the model ids match the session cache)
-# keep the session window from above. Fail-open: any read failure leaves
-# MAX_CONTEXT untouched.
+# mid-task; subagent-bar.sh shares this cache). Window provisioning summary:
+# GPT mini and broad gpt-5 ids map to 400k, chat variants to 128k, and
+# 5.4/5.5/5.6 flagships to 1.05M; exact z-ai/glm-5.2 and only terminal
+# -YYYYMMDD snapshots map to 1,048,576; native 1M Claude models and generic
+# [1m]-suffixed Claude ids map to 1,000,000; all other models map to 200,000.
+# Physical window size is separate from the quality-family selection below.
+# Same-model subagents (and alternative-provider sessions, where model ids match
+# the session cache) keep the session window above. Fail-open: read failures leave
+# MAX_CONTEXT untouched. Re-verify this map after Claude Code/provider updates.
 if [[ -n "$AGENT_ID" ]]; then
     SESSION_MODEL=$(cat "/tmp/claude-model-${SESSION_ID}" 2>/dev/null) || SESSION_MODEL=""
     AGENT_MODEL_CACHE="/tmp/claude-subagent-model-${SESSION_ID}-${AGENT_ID}"
@@ -162,6 +164,11 @@ if [[ -n "$AGENT_ID" ]]; then
             *gpt-5*-chat*) MAX_CONTEXT=128000 ;;
             *gpt-5.4*|*gpt-5.5*|*gpt-5.6*) MAX_CONTEXT=1050000 ;;
             *gpt-5*) MAX_CONTEXT=400000 ;;
+            # Exact GLM-5.2 plus terminal date snapshots only. Keep this narrow:
+            # glm-5.2-air and future variants have no verified static window.
+            # Window size only — GLM remains in the conservative threshold family.
+            z-ai/glm-5.2|z-ai/glm-5.2-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9])
+                MAX_CONTEXT=1048576 ;;
             *fable-5*|*mythos-5*|*opus-4-7*|*opus-4-8*|*\[1m\]*) MAX_CONTEXT=1000000 ;;
             *) MAX_CONTEXT=200000 ;;
         esac

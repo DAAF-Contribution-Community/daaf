@@ -228,8 +228,9 @@
 # Two-tier routing: map DAAF's strong / fast tiers to your models
 # ----------------------------------------------------------------------------
 # Strong tier (Opus-analog) and fast tier (Sonnet-analog).
-# Examples: openai/gpt-5.6-sol or z-ai/glm-5.2 (strong);
-#           openai/gpt-5.6-terra or z-ai/glm-5.2-air (fast).
+# Same-window example: openai/gpt-5.6-sol (strong) with
+# openai/gpt-5.6-terra (fast). See the GLM-specific global-window guidance below
+# before routing exact GLM and Air together.
 # --- To activate, remove the leading '#' and set your model slugs: ---
 #ANTHROPIC_DEFAULT_OPUS_MODEL=your-strong-model-slug
 #ANTHROPIC_DEFAULT_SONNET_MODEL=your-fast-model-slug
@@ -251,23 +252,41 @@
 # ----------------------------------------------------------------------------
 # Context window size
 # ----------------------------------------------------------------------------
-# Tell Claude Code the real context window of your model so it budgets the full
-# window locally instead of assuming ~200K for an unknown slug (which ends
-# sessions early with "Prompt is too long"). Match your SESSION model's window:
-# --- To activate, remove the leading '#': ---
+# Tell Claude Code the real context window so it does not assume ~200K for an
+# unknown slug and end sessions early with "Prompt is too long." This override is
+# GLOBAL: it applies to the main session and every subagent, not per model. Choose
+# one value that is valid for every model the session can route to.
+# --- To activate, remove the leading '#' and set the global value: ---
 #CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000
 #
-# Window sizes: the gpt-5.6 family (sol / terra / luna) and gpt-5.5 / 5.4 are
-# 1050000; gpt-5.2 is 400000. An alternative to this key is to set
+# Exact z-ai/glm-5.2 guidance (current OpenRouter catalogue, 2026-07-15):
+# for the recommended 1,048,576 declaration, route the main session and BOTH
+# subagent tiers to exact z-ai/glm-5.2 (equivalently, flatten all routing to it):
+#ANTHROPIC_MODEL=z-ai/glm-5.2
+#ANTHROPIC_DEFAULT_OPUS_MODEL=z-ai/glm-5.2
+#ANTHROPIC_DEFAULT_SONNET_MODEL=z-ai/glm-5.2
+#CLAUDE_CODE_MAX_CONTEXT_TOKENS=1048576
+# This declares PHYSICAL capacity only. GLM still uses DAAF's conservative
+# context-quality thresholds (40%/150k, 60%/200k, 75%/250k; whichever fires
+# first). If you want z-ai/glm-5.2-air as the fast tier, do not reuse 1048576
+# unless you independently verify Air's current physical window and confirm that
+# the one global value is valid for every routed model. This runtime path has no
+# supported per-model context-window override.
+#
+# GPT window sizes: the gpt-5.6 family (sol / terra / luna) and gpt-5.5 / 5.4
+# are 1050000; gpt-5.2 is 400000. An alternative to this key is to set
 # CLAUDE_CODE_AUTO_COMPACT_WINDOW to 1000000.
 #
 # GPT-5.6 FAMILY & TIER-ANALOG NAMING: Sol (strong / Opus-analog), Terra
 # (mid / Sonnet-analog), Luna (economy / Haiku-analog) — all with 1,050,000-token
 # windows; the older gpt-5.5 / 5.4 / 5.2 slugs still work. Context-utilization
 # numbers are ESTIMATES on GPT sessions (OpenRouter doesn't serve Claude Code's
-# token-counting endpoint), and GPT models keep DAAF's conservative context-
-# quality thresholds by design. See the installation guide's "GPT (OpenAI) models
-# via OpenRouter" section for current model guidance.
+# token-counting endpoint). GPT models use DAAF's conservative context-quality
+# thresholds by default; exact gpt-5.6-sol and gpt-5.6-sol[1m] (including provider-
+# prefixed forms) are the validated extended-threshold exception: 30%/300k,
+# 40%/400k, and 50%/500k. Non-Sol and near-match variants remain conservative.
+# See the installation guide's "GPT (OpenAI) models via OpenRouter" section for
+# current model guidance.
 #
 # THE [1m] SLUG SUFFIX: appending [1m] to a model slug advertises a 1M window to
 # Claude Code, which budgets the full window locally and then strips [1m] before
@@ -336,9 +355,11 @@
 # 4.3 Auth lane B: ChatGPT subscription (Codex backend)  (unofficial dev lane)
 # ----------------------------------------------------------------------------
 # Instead of a pay-per-token OpenAI API key, the SAME shim can route Claude Code
-# through your CHATGPT SUBSCRIPTION's Codex backend (via the shim's Responses
-# translator). Same shim, different auth + endpoint: it reads an OAuth token from
-# your `codex` login (auth.json) instead of an API key.
+# through your CHATGPT SUBSCRIPTION's Codex backend. Request translation, tools,
+# and content-block lifecycle stay shared; v1.2.6 adds one ChatGPT-only response-
+# formatting rule that preserves reliably identified reasoning-summary part
+# boundaries as blank lines (`\n\n`). OpenAI/API-key mode retains legacy exact
+# concatenation. This lane reads OAuth from your `codex` login (auth.json).
 #
 # UNOFFICIAL / DEV-LANE PATH: this reuses Codex's OAuth against an undocumented,
 # OpenAI-controlled backend — NOT an OpenAI-sanctioned API method. It may break if
