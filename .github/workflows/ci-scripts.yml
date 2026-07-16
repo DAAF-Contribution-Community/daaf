@@ -183,10 +183,37 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install BATS and helpers
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Quarto
+        uses: quarto-dev/quarto-actions/setup@v2
+        with:
+          version: "1.7.29"
+
+      - name: Install BATS, R, and helpers
         run: |
           sudo apt-get update
-          sudo apt-get install -y bats
+          sudo apt-get install -y \
+            bats \
+            jq \
+            r-base \
+            r-cran-yaml
+
+      - name: Install Python RV test dependencies
+        run: |
+          python -m pip install --disable-pip-version-check \
+            "polars==1.39.3" \
+            "pyarrow==23.0.0"
+
+      - name: Verify RV test dependencies
+        run: |
+          python -c 'import polars, pyarrow; print("polars", polars.__version__); print("pyarrow", pyarrow.__version__)'
+          Rscript -e 'stopifnot(requireNamespace("yaml", quietly = TRUE)); cat("R ", getRversion(), "\n", sep = ""); cat("yaml ", as.character(packageVersion("yaml")), "\n", sep = "")'
+          quarto --version
+          bats --version
 
       # Run all .bats test files. The test helper includes fallback
       # assertions so tests work without bats-support/bats-assert submodules.
