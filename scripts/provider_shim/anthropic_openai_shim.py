@@ -63,6 +63,144 @@
 #   * GET /health endpoint for the manager's idempotency/status checks.
 #
 # Changelog:
+#   v1.2.9 (2026-07-16): Live-evidence fixture rebase + request-accounting
+#     repair, from the first live v1.2.8 session (shim.log 14:15+).
+#     LIVE EVIDENCE: the Codex backend omits ONLY `name` on
+#       response.function_call_arguments.done (dozens of "wire-divergence:
+#       arguments.done missing name" warnings; zero missing-arguments,
+#       missing-id, or usage-drop warnings). Item ids and the complete
+#       arguments string ARE present on the live wire, so the v1.2.8 name
+#       fallback is the live-exercised path. The loopback fixtures now encode
+#       this name-less live shape; a dedicated regression keeps the public-API
+#       name-bearing shape covered (matching name passes, conflicting fails).
+#     ACCOUNTING FIX: under v1.2.7/v1.2.8 the streamed-success "req ..." log
+#       line was skipped on essentially every live request — Claude Code closes
+#       the connection immediately after message_stop, and the disconnect-gated
+#       final empty-body send raised _ClientDisconnected before the log line
+#       (0 req lines since v1.2.7 activation vs 6,701 before), misreporting
+#       completed requests as "client disconnected" and losing per-request
+#       usage/duration/stop accounting. The req line is now logged once
+#       message_stop is delivered, and a disconnect on the trailing empty-body
+#       frame is treated as normal completion. Disconnects BEFORE message_stop
+#       keep the existing abort semantics. SHIM_VERSION -> 1.2.9.
+#   v1.2.8 (2026-07-16): Live-wire tolerance for the v1.2.7 strict validators.
+#     After v1.2.7 activated, EVERY real Codex tool-call turn died with a raised
+#     _ProtocolError after a 200 response (shim.log 13:37-13:38, 7/7 turns): the
+#     v1.2.7 validators hard-require fields that the loopback mock fabricates but
+#     that no live Codex tool-call stream has ever confirmed (the repo's live
+#     captures truncate before any arguments.done / output_item.done tool event).
+#     Because sanitize mode buffers argument deltas until .done, the failure
+#     finalizer closed the already-open tool_use block with input {} — Claude Code
+#     then executed EMPTY tool calls ("required parameter ... is missing") before
+#     the terminal event:error ("Server error mid-response").
+#     FIXES (wire-boundary leniency, conflict/ordering/status checks unchanged):
+#       (a) response.function_call_arguments.done requires only item_id; a missing
+#           name falls back to the name captured at output_item.added and missing
+#           arguments fall back to the buffered delta stream (argument deltas now
+#           buffer in BOTH sanitize modes so the fallback is always available);
+#       (b) function_call output-item id is optional (the Codex CLI's own struct
+#           models it as Option<String>); output_item.done matches the open tool
+#           by call_id when id is absent;
+#       (c) invalid terminal usage token counts degrade to a dropped field with a
+#           WARNING, never a stream failure — a bad counter must not discard a
+#           completed generation;
+#       (d) every tolerance fallback logs a grep-stable "wire-divergence:" WARNING
+#           so one live session documents the real Codex schema, providing the
+#           evidence base for rebasing the mock harness fixtures;
+#       (e) the post-start stream-failure log line now includes the scrubbed
+#           failure message (v1.2.7 logged only the exception TYPE, which is what
+#           made this incident statically undiagnosable to the exact field);
+#       (f) fixed an UnboundLocalError in the ChatGPT inbound-nonstream path when
+#           terminal accumulation raises before terminal_response is assigned.
+#     SHIM_VERSION -> 1.2.8.
+#   v1.2.7 (2026-07-16): Provider-stream lifecycle hardening. ChatGPT mode now
+#     always requests upstream Responses SSE, including when the inbound Anthropic
+#     request is non-streaming. For an inbound stream:false request, the shim
+#     consumes events in arrival order without retaining the raw transcript,
+#     accepts a complete response only from response.completed/incomplete, and
+#     sends the terminal event's response object through the existing
+#     _responses_to_anthropic() converter. This shares reasoning-cache behavior,
+#     thinking/text/tool ordering, sanitization, public call IDs, usage, and stop
+#     reasons with the established non-stream translator while adapting Codex's
+#     stream:true-only contract.
+#     FAILURE POSTURE: a common post-start finalizer closes open text, thinking
+#       (with an empty signature), and tool blocks exactly once, emits a bounded
+#       Anthropic event:error/api_error, ends the HTTP body, and emits no success
+#       terminal events. It covers response.failed, in-band error, post-start
+#       transport errors, malformed/oversized SSE, missing terminal events, and
+#       malformed block order. [DONE] and clean EOF are not success without a
+#       parsed response.completed/incomplete terminal object. Reasoning arriving
+#       while text or an unfinished tool block is open is rejected explicitly;
+#       reasoning after a fully closed tool remains supported.
+#     BOUNDS/INVARIANCE: each upstream SSE event is capped at a conservative 16
+#       MiB (ample for realistic 64K output and tool payloads), and failures return
+#       bounded scrubbed/generic messages. The OpenAI/API-key lane retains its real
+#       upstream stream:false JSON path and legacy conversion behavior. Deterministic
+#       real-shim regressions cover all new success, failure, ordering, and startup-
+#       retry contracts. SHIM_VERSION -> 1.2.7.
+#     PROTOCOL REVIEW FIXES (same v1.2.7): pre-content status/connect failures now
+#       use the common event:error finalizer; one shared validator enforces terminal
+#       event/status/container/token coherence before conversion or cache access;
+#       malformed event fields and narrow translation/state exceptions fail cleanly;
+#       duplicate tool lifecycle replays are idempotent only when identical and fail
+#       when conflicting; text/tool overlap and duplicate item IDs are rejected; EOF
+#       never synthesizes an SSE blank-line boundary; and the first valid terminal
+#       event stops semantic consumption promptly. The downstream success/failure
+#       lifecycle oracles enforce exact message-start/terminal grammar.
+#     DISCONNECT CANCELLATION REVIEW FIX (same v1.2.7): each response now owns an
+#       asyncio.Event set immediately by the ASGI disconnect watcher. One shared
+#       cancellation-race helper safely races stream header acquisition, upstream
+#       body reads, non-stream POSTs, and retry sleeps against that event, cancels
+#       and awaits losing tasks, preserves outer task cancellation, and retrieves
+#       completed-task exceptions. A narrow _ClientDisconnected control signal
+#       returns without downstream error/success bytes while caller finally blocks
+#       close the active upstream context. Deterministic real-loopback regressions
+#       cover blocked headers, blocked bodies, and Retry-After sleep cancellation.
+#     CANCELLATION-OWNERSHIP FOLLOW-UP (same v1.2.7): once a rotating OAuth refresh
+#       POST is launched, one explicitly owned refresh task now completes response
+#       validation, rotated-token extraction, atomic persistence, and in-memory state
+#       update before request disconnect or outer cancellation propagates. The token
+#       lock remains held until that task settles, so waiters observe either the new
+#       persisted token or the bounded refresh failure. Stream opening also closes a
+#       locally owned context when outer cancellation races a successful __aenter__;
+#       the shared race helper settles and retrieves both child outcomes on every
+#       cancellation path. Focused regressions cover refresh commit survival, the
+#       stream-enter ownership race, and a log-gated retry-sleep disconnect.
+#   v1.2.6 (2026-07-15): ChatGPT-subscription reasoning-summary boundary
+#     repair. An authorized live Codex probe observed 15 consecutive reasoning
+#     output items containing 44 nonempty summary parts. Every part carried a
+#     stable item_id/output_index/summary_index identity (summary_index restarted
+#     at 0 for each new reasoning item), completed the full part.added ->
+#     text.delta -> text.done -> part.done lifecycle, and arrived adjacent to the
+#     next reasoning part/item with no intervening text or tool transition. The
+#     shim consequently emitted all 44 source deltas in one Anthropic thinking
+#     block; because later source parts began with "*" rather than whitespace,
+#     legacy byte concatenation collapsed their Markdown boundaries.
+#     STREAMING FIX (chatgpt mode only): within each open Anthropic thinking
+#       block, identify a semantic summary part by the validated composite
+#       (item_id, output_index, summary_index), using nonempty item_id as the
+#       preferred item scope and a valid output_index as fallback. Before the
+#       first nonempty delta of each newly seen stable part after the first, emit
+#       one separate thinking_delta containing exactly "\n\n"; forward every
+#       source delta unchanged and never replay text from .done events. Identity
+#       is consumed in arrival order only — no sorting or buffering. Missing,
+#       malformed, mixed, or contradictory identity disables boundary synthesis
+#       for the remainder of that thinking block, preserving exact legacy append
+#       rather than guessing a split. Contradiction includes either one item_id
+#       moving between output indexes or one output_index being reused by different
+#       item IDs. Opening a new thinking block resets all reliability/maps. Focused
+#       real-shim regressions cover every malformed/partial identity branch,
+#       bidirectional item/output contradictions, and cleanup/env isolation.
+#     NON-STREAMING PARITY (chatgpt mode only): preserve source strings exactly,
+#       ignore only exactly-empty summary strings for separator decisions, and
+#       join nonempty parts and reasoning items with "\n\n". Whitespace-only
+#       strings remain real content. Equivalent streaming/non-streaming semantic
+#       content therefore reconstructs to the same text.
+#     OPENAI INVARIANCE: the API-key lane retains the exact legacy streaming
+#       forwarding and non-streaming empty-string concatenation behavior; it does
+#       not inspect summary identities or add response bytes. Auth, requests,
+#       tools, signatures, usage, cache, retry, count-token, and lifecycle logic
+#       are unchanged. SHIM_VERSION -> 1.2.6.
 #   v1.2.5 (2026-07-15): ChatGPT-subscription (Codex) backend lane. A new
 #     SHIM_BACKEND_MODE env knob (default "openai") adds a mode-switched second
 #     backend lane, "chatgpt", that routes Claude Code through the ChatGPT
@@ -316,10 +454,18 @@
 #                               else (notes/08). REQUIRES CODEX_HOME set and a
 #                               readable auth.json; if either is missing the shim
 #                               fails fast with the re-login message rather than
-#                               inventing a default path. The request BODY, tools,
-#                               and SSE handling are IDENTICAL to the openai lane —
-#                               the proven v1.2.0+ Responses translator is reused
-#                               unchanged; only auth + base URL differ.
+#                               inventing a default path. Request translation, tools,
+#                               and the Responses/Anthropic block lifecycle remain
+#                               shared with the openai lane. As of v1.2.7, chatgpt
+#                               mode always requests upstream SSE (Codex rejects
+#                               stream:false); inbound non-stream callers receive an
+#                               internally accumulated Anthropic JSON message. The
+#                               v1.2.6 response-formatting rule remains route-specific:
+#                               chatgpt mode synthesizes "\n\n" between reliably
+#                               identified adjacent reasoning-summary parts so
+#                               multipart Markdown boundaries survive; openai mode
+#                               retains exact legacy concatenation and its real
+#                               upstream JSON/non-stream request path.
 #   SHIM_BACKEND_BASE_URL   default depends on SHIM_BACKEND_MODE: openai ->
 #                           https://api.openai.com/v1; chatgpt ->
 #                           https://chatgpt.com/backend-api/codex. An explicit env
@@ -406,7 +552,7 @@ import httpx
 import uvicorn
 
 # --- Config ---
-SHIM_VERSION = "1.2.5"
+SHIM_VERSION = "1.2.9"
 
 SHIM_PORT = int(os.environ.get("SHIM_PORT", "4141"))
 
@@ -576,6 +722,145 @@ RETRY_AFTER_CAP = 30.0  # seconds; never honor an absurd Retry-After
 # information lives in the JSON error body and the x-ratelimit-* headers. On
 # every backend non-2xx we log a bounded slice of both.
 ERR_BODY_MAXLEN = 500  # chars; truncate the logged error body to keep lines bounded
+# v1.2.7: cap one decoded Responses SSE data event before JSON parsing. A complete
+# terminal Responses object can legitimately contain a 64K-token answer plus tool
+# payloads, so 16 MiB is deliberately generous while still preventing an unbounded
+# upstream line from exhausting shim memory. The raw SSE transcript is never stored.
+MAX_RESPONSES_SSE_EVENT_BYTES = 16 * 1024 * 1024
+
+
+class _ProtocolError(Exception):
+    """Controlled upstream Responses protocol/schema violation."""
+
+
+class _ClientDisconnected(Exception):
+    """Response-local control signal for a downstream client disconnect."""
+
+    def __init__(self, operation_result=None):
+        super().__init__("client disconnected")
+        # A successful operation can finish in the same event-loop turn as the
+        # disconnect waiter. Preserve that losing result so the caller can close
+        # a newly acquired response/context instead of leaking it.
+        self.operation_result = operation_result
+
+
+async def _settle_owned_task(task, cancel=False):
+    # INTENT: settle one explicitly owned child despite cancellation already pending
+    # on the current task, and retrieve its exact result/exception.
+    # REASONING: a second outer cancel can interrupt ordinary cleanup awaits. Shielding
+    # the child while repeatedly consuming only the *owner's* cancellation deliveries
+    # keeps ownership local; the child is cancelled only when the caller requests it.
+    # Returning a tagged outcome retrieves exceptions without turning cleanup into an
+    # unobserved-task warning. The third return value tells callers whether cancellation
+    # arrived during cleanup so they can preserve cancellation rather than convert it.
+    owner_cancellation = None
+    if cancel and not task.done():
+        task.cancel()
+    while not task.done():
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError as cancellation:
+            # shield() also raises CancelledError when the CHILD itself is cancelled.
+            # Distinguish that from cancellation pending on this owner; only the latter
+            # must be propagated after settlement. If the child is now done, leave the
+            # loop so its cancelled outcome is retrieved below.
+            current = asyncio.current_task()
+            if current is not None and current.cancelling():
+                owner_cancellation = cancellation
+            if task.done():
+                break
+            continue
+        except Exception:
+            # The child has failed; the tagged task.result() call below retrieves it.
+            break
+    if task.cancelled():
+        return "cancelled", None, owner_cancellation
+    try:
+        return "result", task.result(), owner_cancellation
+    except Exception as error:
+        return "exception", error, owner_cancellation
+
+
+async def _await_or_disconnect(operation, disconnect_event, discard_result=None):
+    # INTENT: race one awaitable operation against this response's disconnect
+    # event while leaving no child task, exception, or cancellation warning behind.
+    # REASONING: passive flag checks cannot interrupt a blocked connect/read/sleep.
+    # Giving disconnect priority when both children finish in the same loop turn
+    # prevents any post-disconnect downstream write; a completed operation result is
+    # retained on _ClientDisconnected so resource-owning callers can close it.
+    # On outer cancellation, only a caller-supplied discard_result callback may close
+    # a successful result: stream responses belong to their local context manager, so
+    # a generic duck-typed aclose here would violate exactly-once context ownership.
+    operation_task = asyncio.ensure_future(operation)
+    disconnect_task = asyncio.create_task(disconnect_event.wait())
+    try:
+        done, _pending = await asyncio.wait(
+            (operation_task, disconnect_task),
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+    except asyncio.CancelledError:
+        # Outer cancellation is not a backend/protocol failure. Explicitly cancel and
+        # settle both children, retrieving completed same-turn outcomes before the
+        # original cancellation propagates. A generic async-close result (notably a
+        # buffered httpx.Response) is closed here because no caller can receive it.
+        operation_kind, operation_outcome, _owner_cancelled = \
+            await _settle_owned_task(operation_task, cancel=True)
+        await _settle_owned_task(disconnect_task, cancel=True)
+        if operation_kind == "result" and discard_result is not None:
+            try:
+                close_task = asyncio.ensure_future(discard_result(operation_outcome))
+            except Exception:
+                close_task = None
+            if close_task is not None:
+                await _settle_owned_task(close_task)
+        raise
+
+    if disconnect_task in done and disconnect_event.is_set():
+        # Retrieve the disconnect wait result and cancel/await the operation. If
+        # the operation completed in the same turn, retrieve its result/exception;
+        # retain a successful result so the caller can close acquired resources.
+        disconnect_task.result()
+        operation_kind, operation_outcome, owner_cancellation = \
+            await _settle_owned_task(operation_task, cancel=not operation_task.done())
+        if owner_cancellation is not None:
+            # Simultaneous downstream disconnect and outer task cancellation remains
+            # outer cancellation. Retrieve and, where the caller explicitly supplied
+            # ownership policy, close a successful discarded result before propagating.
+            # Stream contexts provide no callback and are closed by their opener.
+            if operation_kind == "result" and discard_result is not None:
+                try:
+                    close_task = asyncio.ensure_future(
+                        discard_result(operation_outcome))
+                except Exception:
+                    close_task = None
+                if close_task is not None:
+                    await _settle_owned_task(close_task)
+            raise owner_cancellation
+        operation_result = (
+            operation_outcome if operation_kind == "result" else None
+        )
+        raise _ClientDisconnected(operation_result)
+
+    # The operation won. Stop and retrieve the response-local waiter before
+    # propagating the operation's result or exception. If outer cancellation lands
+    # during this cleanup turn, settle/retrieve the operation too and propagate
+    # cancellation instead of accidentally returning a resource to cancelled code.
+    _waiter_kind, _waiter_outcome, owner_cancellation = await _settle_owned_task(
+        disconnect_task, cancel=True)
+    if owner_cancellation is not None:
+        operation_kind, operation_outcome, _second_cancel = await _settle_owned_task(
+            operation_task)
+        if operation_kind == "result" and discard_result is not None:
+            try:
+                close_task = asyncio.ensure_future(discard_result(operation_outcome))
+            except Exception:
+                close_task = None
+            if close_task is not None:
+                await _settle_owned_task(close_task)
+        raise owner_cancellation
+    return operation_task.result()
+
+
 # Allowlist ONLY — never dump all headers. This structurally guarantees the
 # Authorization header (and any other credential-bearing header) is never
 # logged: a header is logged only if its lowercased name is in this set.
@@ -606,6 +891,14 @@ _SK_KEY_RE = re.compile(r"(?i)\b(sk|rk|org|proj|sess)[-_][A-Za-z0-9_-]{8,}")
 # an inbound model could forge log lines (log injection). Strip \x00-\x1f and \x7f.
 # Compiled once at import. See _split_effort_suffix for the injection vector.
 _SCRUB_CTRL_RE = re.compile(r"[\x00-\x1f\x7f]")
+
+
+def _scrub_log_token(value):
+    # v1.2.8: control-char scrub for upstream-controlled identifiers (call_id /
+    # item_id) logged verbatim in wire-divergence WARNINGs — same log-injection
+    # class as the model-slug scrub above (a newline-bearing id would forge a
+    # log line). Non-strings pass through for %s to render (e.g. None).
+    return _SCRUB_CTRL_RE.sub("", value) if isinstance(value, str) else value
 
 # v1.2.0: reasoning-item cache (module-level, bounded LRU).
 # INTENT: the Responses API pairs a `reasoning` output item with the
@@ -733,6 +1026,12 @@ _token_refresh_lock = asyncio.Lock()
 # The access_token currently held in memory. Seeded lazily from disk on first use.
 # Value is a secret string; never logged.
 _token_state = {"access_token": None, "exp": None}
+# Explicit ownership for the rotating-token commit. The task exists only while the
+# holder of _token_refresh_lock supervises one refresh exchange through persistence.
+# A bounded failure is retained for the process lifetime to prevent accidental reuse
+# of a possibly consumed refresh token. Neither field ever contains token values.
+_refresh_commit_task = None
+_refresh_commit_failure = None
 
 
 def _b64url_decode(seg):
@@ -925,6 +1224,48 @@ async def _refresh_tokens(current):
     return new_access
 
 
+async def _await_refresh_commit(current):
+    # INTENT: supervise one rotating-token refresh from POST launch through atomic
+    # persistence and in-memory update, regardless of request disconnect/cancellation.
+    # REASONING: the OAuth server may consume the old refresh token before the response
+    # arrives. Cancelling at that point could strand auth.json permanently stale. The
+    # token-lock holder therefore creates one explicit task and awaits it to settlement
+    # with _settle_owned_task; request cancellation is remembered and propagated only
+    # after response validation, rotated-token extraction, atomic replace, and state
+    # update finish. A failed exchange is retained as a bounded process-lifetime
+    # failure so no waiter can retry a refresh token that might already be consumed.
+    # CREDENTIAL SAFETY: supervision stores only the task and a generic exception;
+    # token values remain solely inside _refresh_tokens/auth.json and are never logged.
+    global _refresh_commit_task, _refresh_commit_failure
+
+    if _refresh_commit_failure is not None:
+        raise RuntimeError(_RELOGIN_MSG)
+    if _refresh_commit_task is not None:
+        # _get_access_token owns _token_refresh_lock across this call, so a second live
+        # task would mean lock ownership was violated rather than useful deduplication.
+        raise RuntimeError("token refresh commit ownership conflict; " + _RELOGIN_MSG)
+
+    refresh_task = asyncio.create_task(_refresh_tokens(current))
+    _refresh_commit_task = refresh_task
+    kind, outcome, owner_cancellation = await _settle_owned_task(refresh_task)
+    _refresh_commit_task = None
+
+    if kind == "exception":
+        _refresh_commit_failure = outcome
+    elif kind == "cancelled":
+        _refresh_commit_failure = RuntimeError(_RELOGIN_MSG)
+
+    # Cancellation remains cancellation even when the commit itself failed. The task
+    # outcome has already been retrieved and the bounded failure remains for waiters.
+    if owner_cancellation is not None:
+        raise owner_cancellation
+    if kind == "result":
+        return outcome
+    if kind == "exception":
+        raise outcome
+    raise asyncio.CancelledError
+
+
 async def _get_access_token(force_refresh=False, rejected_token=None):
     # INTENT: return a currently-valid access_token for the chatgpt-lane Bearer.
     #   Refresh (guarded reload -> POST -> rotate -> atomic persist) only when the
@@ -976,14 +1317,14 @@ async def _get_access_token(force_refresh=False, rejected_token=None):
                     and disk_access != rejected_token):
                 log.info("chatgpt 401 refresh skipped: on-disk token rotated by another writer (guarded reload)")
                 return disk_access
-            return await _refresh_tokens(current)
+            return await _await_refresh_commit(current)
 
         # Proactive path: refresh only if the (authoritative on-disk) token is
         # missing or within the safety margin of exp.
         if disk_access and disk_exp is not None and disk_exp - now > _TOKEN_REFRESH_MARGIN_S:
             # Guarded reload already adopted a fresh on-disk token — no refresh.
             return disk_access
-        return await _refresh_tokens(current)
+        return await _await_refresh_commit(current)
 
 
 # --- Helpers: request translation (Anthropic -> OpenAI Responses) ---
@@ -1475,6 +1816,180 @@ def _sanitize_tool_args(tool_name, args):
     return args, dropped
 
 
+def _validate_terminal_response(event_type, response):
+    # INTENT: enforce one terminal-event/status/schema contract before any cache or
+    # converter access. Both streamed translation and ChatGPT's inbound-nonstream
+    # SSE accumulator call this exact validator.
+    # REASONING: a terminal event name is not sufficient proof of success. The
+    # embedded response status must agree exactly, and converter-facing containers
+    # and token counters must have safe types. bool is rejected explicitly because
+    # it is an int subclass in Python but not a valid token count.
+    if event_type not in ("response.completed", "response.incomplete"):
+        raise _ProtocolError("backend emitted a non-success terminal event")
+    if not isinstance(response, dict):
+        raise _ProtocolError("backend terminal event omitted its response object")
+    expected_status = (
+        "completed" if event_type == "response.completed" else "incomplete"
+    )
+    status = response.get("status")
+    if not isinstance(status, str) or status != expected_status:
+        raise _ProtocolError("backend terminal event/status mismatch")
+    if "output" in response and not isinstance(response["output"], list):
+        raise _ProtocolError("backend terminal response output is not a list")
+    if "usage" in response:
+        usage = response["usage"]
+        if not isinstance(usage, dict):
+            # v1.2.8 wire tolerance: malformed usage must not fail a completed
+            # generation. Drop it and let downstream estimation apply.
+            log.warning("wire-divergence: terminal usage is not an object; dropping")
+            del response["usage"]
+        else:
+            for field in ("input_tokens", "output_tokens"):
+                if field not in usage:
+                    continue
+                value = usage[field]
+                if (
+                    not isinstance(value, int)
+                    or isinstance(value, bool)
+                    or value < 0
+                ):
+                    log.warning(
+                        "wire-divergence: terminal usage %s invalid; dropping field",
+                        field,
+                    )
+                    del usage[field]
+    return response
+
+
+def _validate_response_for_conversion(response):
+    # Defense in depth for the JSON/non-stream converter boundary. SSE callers
+    # already validated event/status coherence; the real OpenAI non-stream lane has
+    # only the response object, so infer the sole coherent terminal event from its
+    # exact status and then apply the same schema validator.
+    if not isinstance(response, dict):
+        raise _ProtocolError("backend response is not an object")
+    status = response.get("status")
+    if status == "completed":
+        event_type = "response.completed"
+    elif status == "incomplete":
+        event_type = "response.incomplete"
+    else:
+        raise _ProtocolError("backend response has no successful terminal status")
+    return _validate_terminal_response(event_type, response)
+
+
+def _require_protocol_string(value, field, allow_empty=False):
+    if not isinstance(value, str) or (not allow_empty and not value):
+        raise _ProtocolError("backend event contains an invalid %s" % field)
+    return value
+
+
+def _validate_output_item(item):
+    # Validate converter/cache-relevant output item fields before either subsystem
+    # sees the object. Unknown string item types remain forward-compatible and are
+    # ignored by conversion; known types receive the strict fields they rely on.
+    if not isinstance(item, dict):
+        raise _ProtocolError("backend output item is not an object")
+    item_type = _require_protocol_string(item.get("type"), "item type")
+    if "id" in item:
+        _require_protocol_string(item.get("id"), "item id")
+    if item_type == "reasoning":
+        summary = item.get("summary", [])
+        if not isinstance(summary, list):
+            raise _ProtocolError("backend reasoning summary is not a list")
+        for part in summary:
+            if not isinstance(part, dict):
+                raise _ProtocolError("backend reasoning summary part is not an object")
+            if part.get("type") == "summary_text":
+                _require_protocol_string(
+                    part.get("text"), "reasoning summary text", allow_empty=True
+                )
+    elif item_type == "message":
+        content = item.get("content", [])
+        if not isinstance(content, list):
+            raise _ProtocolError("backend message content is not a list")
+        for part in content:
+            if not isinstance(part, dict):
+                raise _ProtocolError("backend message content part is not an object")
+            if part.get("type") == "output_text":
+                _require_protocol_string(
+                    part.get("text"), "output text", allow_empty=True
+                )
+    elif item_type == "function_call":
+        # v1.2.8 wire tolerance: the item id is optional (the Codex CLI's own
+        # struct models function_call id as Option<String>); a present id is
+        # still validated by the generic check above.
+        if "id" not in item:
+            log.warning("wire-divergence: function_call item missing id (call_id=%s)",
+                        _scrub_log_token(item.get("call_id")))
+        _require_protocol_string(item.get("call_id"), "function call id")
+        _require_protocol_string(item.get("name"), "function name")
+        _require_protocol_string(
+            item.get("arguments"), "function arguments", allow_empty=True
+        )
+    return item
+
+
+def _validate_stream_event_fields(event):
+    # Validate event-specific fields before the streaming state machine mutates
+    # state or emits downstream bytes. This same routine also protects ChatGPT's
+    # inbound-nonstream accumulator, which otherwise might ignore malformed deltas
+    # that precede an apparently valid terminal object.
+    if not isinstance(event, dict):
+        raise _ProtocolError("backend stream contained a malformed event")
+    event_type = event.get("type")
+    if not isinstance(event_type, str) or not event_type:
+        raise _ProtocolError("backend stream event has no valid type")
+    if event_type == "response.reasoning_summary_text.delta":
+        _require_protocol_string(
+            event.get("delta"), "reasoning delta", allow_empty=True
+        )
+        if "item_id" in event and not isinstance(event.get("item_id"), str):
+            raise _ProtocolError("backend reasoning delta has an invalid item id")
+    elif event_type == "response.output_text.delta":
+        _require_protocol_string(event.get("delta"), "text delta", allow_empty=True)
+        if "item_id" in event and not isinstance(event.get("item_id"), str):
+            raise _ProtocolError("backend text delta has an invalid item id")
+    elif event_type == "response.function_call_arguments.delta":
+        _require_protocol_string(event.get("item_id"), "function item id")
+        _require_protocol_string(
+            event.get("delta"), "function argument delta", allow_empty=True
+        )
+    elif event_type == "response.function_call_arguments.done":
+        _require_protocol_string(event.get("item_id"), "function item id")
+        # v1.2.8 wire tolerance: the public API documents name/arguments on this
+        # event, but the Codex backend's own client never consumes it, so no live
+        # pressure guarantees their presence. Validate when present; the handler
+        # falls back to state captured at output_item.added (name) and to the
+        # buffered delta stream (arguments) when absent.
+        if "name" in event:
+            _require_protocol_string(event.get("name"), "function name")
+        else:
+            log.warning("wire-divergence: arguments.done missing name (item %s)",
+                        _scrub_log_token(event.get("item_id")))
+        if "arguments" in event:
+            _require_protocol_string(
+                event.get("arguments"), "function arguments", allow_empty=True
+            )
+        else:
+            log.warning("wire-divergence: arguments.done missing arguments (item %s)",
+                        _scrub_log_token(event.get("item_id")))
+    elif event_type == "response.output_item.added":
+        item = event.get("item")
+        if not isinstance(item, dict):
+            raise _ProtocolError("backend output_item.added item is not an object")
+        item_type = _require_protocol_string(item.get("type"), "item type")
+        if "id" in item:
+            _require_protocol_string(item.get("id"), "item id")
+        if item_type == "function_call":
+            _require_protocol_string(item.get("id"), "function item id")
+            _require_protocol_string(item.get("call_id"), "function call id")
+            _require_protocol_string(item.get("name"), "function name")
+    elif event_type == "response.output_item.done":
+        _validate_output_item(event.get("item"))
+    return event_type
+
+
 def _stop_reason_from_status(status, saw_tool_use):
     # Responses status -> Anthropic stop_reason.
     # INTENT/REASONING: incomplete (any incomplete status, regardless of
@@ -1495,11 +2010,18 @@ def _reasoning_summary_text(reasoning_item):
     # Concatenate the summary_text parts of a reasoning item into one string.
     # INTENT: the reasoning item's `summary` is an array of {type:"summary_text",
     #   text:...} parts; join them for the non-streaming thinking block.
+    # v1.2.6: only the chatgpt lane synthesizes paragraph boundaries. Preserve each
+    # source string byte-for-byte, ignore only exactly-empty strings when deciding
+    # where separators belong, and retain whitespace-only strings as real content.
+    # The openai lane deliberately keeps the legacy empty-string join unchanged.
     parts = []
     for s in (reasoning_item.get("summary") or []):
         if isinstance(s, dict) and s.get("type") == "summary_text":
-            parts.append(s.get("text", ""))
-    return "".join(parts)
+            text = s.get("text", "")
+            if SHIM_BACKEND_MODE != "chatgpt" or text != "":
+                parts.append(text)
+    separator = "\n\n" if SHIM_BACKEND_MODE == "chatgpt" else ""
+    return separator.join(parts)
 
 
 def _estimate_tokens(text):
@@ -1664,6 +2186,13 @@ def _diag_headers(headers):
 
 # --- HARDENING: retry helper (UNCHANGED) ---
 
+async def _discard_httpx_response(response):
+    """Close a successful buffered POST result discarded by outer cancellation."""
+
+    if isinstance(response, httpx.Response):
+        await response.aclose()
+
+
 def _retry_delay(attempt, retry_after):
     # Compute the sleep before the next attempt. Honor a backend Retry-After
     # header when present and sane; otherwise exponential backoff with jitter.
@@ -1679,33 +2208,42 @@ def _retry_delay(attempt, retry_after):
     return random.uniform(0, base)
 
 
-async def _post_with_retry(url, headers, payload, is_disconnected):
+async def _post_with_retry(url, headers, payload, disconnect_event):
     # HARDENING: non-streaming POST with bounded retry on transient errors.
-    # Returns (response, retry_count) on a response with status < 400 OR a
-    # non-retryable status. Raises httpx.HTTPError if transport keeps failing.
-    # `is_disconnected` is an async callable; if the client has gone away we
-    # abort rather than burn retries on a response nobody will read. UNCHANGED.
+    # Each potentially blocking POST/sleep races this response's disconnect event;
+    # _ClientDisconnected is control flow, not a backend transport failure.
     last_exc = None
     for attempt in range(MAX_RETRIES + 1):
-        if await is_disconnected():
-            raise httpx.HTTPError("client disconnected before backend response")
+        if disconnect_event.is_set():
+            raise _ClientDisconnected()
         try:
-            r = await _client.post(url, headers=headers, json=payload)
+            r = await _await_or_disconnect(
+                _client.post(url, headers=headers, json=payload),
+                disconnect_event,
+                discard_result=_discard_httpx_response,
+            )
+        except _ClientDisconnected as error:
+            # A same-turn successful POST can lose to disconnect. Close its response
+            # before propagating the control signal so the pooled connection is freed.
+            if isinstance(error.operation_result, httpx.Response):
+                try:
+                    await error.operation_result.aclose()
+                except Exception:
+                    pass
+            raise
         except httpx.HTTPError as e:
             last_exc = e
             if attempt < MAX_RETRIES:
                 delay = _retry_delay(attempt, None)
                 log.warning("backend transport error (attempt %d/%d), retrying in %.2fs: %s",
                             attempt + 1, MAX_RETRIES + 1, delay, type(e).__name__)
-                await asyncio.sleep(delay)
+                await _await_or_disconnect(asyncio.sleep(delay), disconnect_event)
                 continue
             raise
         if r.status_code in RETRY_STATUSES and attempt < MAX_RETRIES:
             delay = _retry_delay(attempt, r.headers.get("retry-after"))
-            # v1.1.1: read the body BEFORE aclose() so we can log the backend's
-            # diagnostic payload on every retry attempt, not just the final one.
-            # v1.1.2: wrap the buffered .text read in the same defensive
-            # try/except the streaming aread() sites use.
+            # _client.post buffers the response body, so this diagnostic access is
+            # nonblocking; only the following retry delay requires an active race.
             try:
                 err_body = _scrub_and_trim_body(r.text)
             except Exception:
@@ -1714,13 +2252,116 @@ async def _post_with_retry(url, headers, payload, is_disconnected):
                         r.status_code, attempt + 1, MAX_RETRIES + 1, delay,
                         _diag_headers(r.headers), err_body)
             await r.aclose()
-            await asyncio.sleep(delay)
+            await _await_or_disconnect(asyncio.sleep(delay), disconnect_event)
             continue
         return r, attempt
     # Unreachable in practice (loop returns or raises), but keeps intent explicit.
     if last_exc:
         raise last_exc
     raise httpx.HTTPError("retry loop exhausted")
+
+
+async def _close_stream_context(stream_cm):
+    """Best-effort close of one entered or partially entered stream context."""
+
+    try:
+        await stream_cm.__aexit__(None, None, None)
+    except Exception:
+        pass
+
+
+async def _open_backend_stream(url, headers, payload, disconnect_event):
+    # v1.2.7 shared streamed-connect helper.
+    # INTENT: give downstream streaming and ChatGPT inbound-nonstream accumulation
+    # the same pre-content retries/lazy-401 behavior while making every blocked
+    # connect, error-body read, refresh, and retry delay disconnect-cancellable.
+    # REASONING: replay remains safe only before semantic SSE content is consumed.
+    # Every discarded/losing context is closed exactly once here; the returned
+    # context is closed exactly once by its caller's finally block.
+    retry_count = 0
+    did_401_refresh = False
+    attempt = 0
+    while attempt <= MAX_RETRIES:
+        if disconnect_event.is_set():
+            raise _ClientDisconnected()
+        stream_cm = _client.stream("POST", url, headers=headers, json=payload)
+        try:
+            resp = await _await_or_disconnect(
+                stream_cm.__aenter__(),
+                disconnect_event,
+            )
+        except _ClientDisconnected:
+            # Cancellation can race a just-completed __aenter__. Exiting the context
+            # handles both partial and complete acquisition without a second owner.
+            await _close_stream_context(stream_cm)
+            raise
+        except asyncio.CancelledError as cancellation:
+            # Outer ASGI/process cancellation can arrive after __aenter__ completed but
+            # before _await_or_disconnect returned its response. The opener still owns
+            # stream_cm in that window, so it must close the discarded context exactly
+            # once before preserving cancellation. A caller owns only a returned tuple.
+            close_task = asyncio.create_task(_close_stream_context(stream_cm))
+            await _settle_owned_task(close_task)
+            raise cancellation
+        except httpx.HTTPError as e:
+            await _close_stream_context(stream_cm)
+            if attempt >= MAX_RETRIES:
+                raise
+            delay = _retry_delay(attempt, None)
+            log.warning("backend stream transport error (attempt %d/%d), retrying in %.2fs: %s",
+                        attempt + 1, MAX_RETRIES + 1, delay, type(e).__name__)
+            attempt += 1
+            retry_count = attempt
+            await _await_or_disconnect(asyncio.sleep(delay), disconnect_event)
+            continue
+
+        if (SHIM_BACKEND_MODE == "chatgpt" and resp.status_code == 401
+                and not did_401_refresh):
+            log.warning("chatgpt backend stream 401; attempting one token refresh + reconnect")
+            await _close_stream_context(stream_cm)
+            rejected = _bearer_of(headers)
+            headers = await _await_or_disconnect(
+                _build_backend_headers(
+                    force_token_refresh=True,
+                    rejected_token=rejected,
+                ),
+                disconnect_event,
+            )
+            did_401_refresh = True
+            # Token refresh is authentication recovery, not a transient replay;
+            # preserve the retry budget and reconnect before semantic content.
+            continue
+
+        if resp.status_code in RETRY_STATUSES and attempt < MAX_RETRIES:
+            delay = _retry_delay(attempt, resp.headers.get("retry-after"))
+            try:
+                raw_error = await _await_or_disconnect(
+                    resp.aread(),
+                    disconnect_event,
+                )
+                err_body = _scrub_and_trim_body(
+                    raw_error.decode("utf-8", "replace"))
+            except _ClientDisconnected:
+                await _close_stream_context(stream_cm)
+                raise
+            except Exception:
+                err_body = "(body unavailable)"
+            await _close_stream_context(stream_cm)
+            attempt += 1
+            retry_count = attempt
+            # Keep this existing non-secret diagnostic immediately adjacent to the
+            # raced delay. The real-subprocess regression uses the complete log line
+            # plus a bounded scheduler turn as evidence that the target phase is the
+            # retry sleep, not header acquisition or response-body consumption.
+            log.warning("backend stream %d (attempt %d/%d), retrying in %.2fs | headers: %s | body: %s",
+                        resp.status_code, attempt, MAX_RETRIES + 1, delay,
+                        _diag_headers(resp.headers), err_body)
+            await _await_or_disconnect(asyncio.sleep(delay), disconnect_event)
+            continue
+
+        return resp, stream_cm, headers, retry_count, did_401_refresh
+
+    raise httpx.HTTPError("stream retry loop exhausted")
 
 
 # --- Non-streaming path: full Responses object -> full Anthropic message ---
@@ -1731,19 +2372,30 @@ def _responses_to_anthropic(resp_obj, model):
     #   Claude Code expects: THINKING block (reasoning summary) FIRST, then TEXT
     #   (message output_text), then TOOL_USE (function_call, sanitized).
     # REASONING: thinking-before-text is a convergent empirical Claude Code
-    #   requirement (both prior-art references, notes file 05 §3c). Populate the
-    #   reasoning cache here too so a non-streaming turn seeds continuity.
-    output_items = resp_obj.get("output") or []
+    #   requirement (both prior-art references, notes file 05 §3c). Validate every
+    #   converter/cache-facing field before cache mutation, then populate the
+    #   reasoning cache so a non-streaming turn seeds continuity.
+    resp_obj = _validate_response_for_conversion(resp_obj)
+    output_items = resp_obj.get("output", [])
+    for item in output_items:
+        _validate_output_item(item)
     _populate_reasoning_cache(output_items)
 
     content = []
     saw_tool_use = False
 
     # 1) THINKING block first (concatenate all reasoning summaries in order).
-    thinking_text = ""
+    # v1.2.6: chatgpt mode joins each nonempty reasoning-item summary with the
+    # same paragraph boundary used between parts. Empty items do not arm or add a
+    # separator. openai mode retains exact legacy empty-string concatenation.
+    thinking_parts = []
     for item in output_items:
         if isinstance(item, dict) and item.get("type") == "reasoning":
-            thinking_text += _reasoning_summary_text(item)
+            summary_text = _reasoning_summary_text(item)
+            if SHIM_BACKEND_MODE != "chatgpt" or summary_text != "":
+                thinking_parts.append(summary_text)
+    thinking_separator = "\n\n" if SHIM_BACKEND_MODE == "chatgpt" else ""
+    thinking_text = thinking_separator.join(thinking_parts)
     if thinking_text:
         # ASSUMES: an empty-signature signature is tolerated by Claude Code on a
         #   thinking block emitted by a proxy — the reasoning summary is a plain
@@ -1872,26 +2524,124 @@ async def _build_backend_headers(force_token_refresh=False, rejected_token=None)
     }
 
 
+def _consume_sse_line(raw_line, data_lines, event_size, event_open):
+    # v1.2.7 bounded SSE framing primitive. SSE joins repeated data fields with a
+    # newline and dispatches only on a REAL blank line. Comments do not open an
+    # event. Return (payload-or-None, new_event_size, event-open-flag).
+    if raw_line.endswith(b"\r"):
+        raw_line = raw_line[:-1]
+    if raw_line == b"":
+        payload = b"\n".join(data_lines) if data_lines else None
+        data_lines.clear()
+        return payload, 0, False
+    if raw_line.startswith(b":"):
+        return None, event_size, event_open
+    field, separator, value = raw_line.partition(b":")
+    if separator and value.startswith(b" "):
+        value = value[1:]
+    event_open = True
+    if field == b"data":
+        event_size += len(value) + (1 if data_lines else 0)
+        if event_size > MAX_RESPONSES_SSE_EVENT_BYTES:
+            raise ValueError("upstream SSE event exceeded size limit")
+        data_lines.append(bytes(value))
+    return None, event_size, event_open
+
+
+async def _iter_bounded_sse_data(resp, disconnect_event):
+    # v1.2.7 incremental SSE reader. Do not use aiter_lines(): it may allocate an
+    # unbounded line before the caller can reject it. This parser retains only the
+    # current line and current data event, each capped at 16 MiB, and never stores
+    # the transcript. Every __anext__ body read races the response-local disconnect
+    # event; cancelling a pending read cannot dispatch the partial buffered event.
+    # EOF is NOT a synthetic blank line: any partial line or event that lacks a real
+    # blank-line terminator is a framing failure.
+    line_buffer = bytearray()
+    data_lines = []
+    event_size = 0
+    event_open = False
+    chunk_iterator = resp.aiter_bytes().__aiter__()
+    while True:
+        try:
+            chunk = await _await_or_disconnect(
+                chunk_iterator.__anext__(),
+                disconnect_event,
+            )
+        except StopAsyncIteration:
+            break
+        line_buffer.extend(chunk)
+        while True:
+            newline_at = line_buffer.find(b"\n")
+            if newline_at < 0:
+                if len(line_buffer) > MAX_RESPONSES_SSE_EVENT_BYTES:
+                    raise ValueError("upstream SSE line exceeded size limit")
+                break
+            raw_line = bytes(line_buffer[:newline_at])
+            del line_buffer[:newline_at + 1]
+            payload, event_size, event_open = _consume_sse_line(
+                raw_line, data_lines, event_size, event_open)
+            if payload is not None:
+                yield payload
+    if line_buffer or event_open or data_lines:
+        raise ValueError("upstream SSE ended before a blank-line event boundary")
+
+
+async def _accumulate_terminal_response(resp, disconnect_event):
+    # v1.2.7 ChatGPT inbound-nonstream adapter.
+    # INTENT: consume upstream SSE without emitting downstream bytes, accepting a
+    # complete Responses object only from response.completed/incomplete.
+    # REASONING: the terminal response is the single canonical aggregate; routing
+    # it through _responses_to_anthropic() prevents a second reducer from drifting
+    # on cache, ordering, sanitization, call IDs, usage, or stop reason. Event fields
+    # are validated in arrival order so malformed content cannot hide behind a later
+    # superficially valid terminal object. The first valid terminal ends consumption.
+    # Returns (terminal_response, failure_message). Exactly one is non-None.
+    try:
+        async for data_bytes in _iter_bounded_sse_data(resp, disconnect_event):
+            if data_bytes.strip() == b"[DONE]":
+                return None, "backend stream ended without a terminal response"
+            try:
+                ev = json.loads(data_bytes)
+            except (ValueError, UnicodeDecodeError):
+                return None, "backend stream contained malformed SSE JSON"
+            etype = _validate_stream_event_fields(ev)
+            if etype in ("response.completed", "response.incomplete"):
+                terminal = _validate_terminal_response(etype, ev.get("response"))
+                return terminal, None
+            if etype == "response.failed":
+                response_obj = ev.get("response")
+                if not isinstance(response_obj, dict):
+                    return None, "backend response.failed event was malformed"
+                details = (response_obj.get("error")
+                           or response_obj.get("incomplete_details")
+                           or response_obj)
+                message = _scrub_and_trim_body(json.dumps(details))[:200]
+                return None, message or "backend response failed"
+            if etype == "error":
+                details = ev.get("error") or ev
+                message = _scrub_and_trim_body(json.dumps(details))[:200]
+                return None, message or "backend stream failed"
+    except _ProtocolError as error:
+        return None, _scrub_and_trim_body(str(error))[:200] or "backend protocol error"
+    except ValueError as error:
+        return None, _scrub_and_trim_body(str(error))[:200] or "backend SSE framing error"
+    return None, "backend stream ended without a terminal response"
+
+
 async def _handle_messages(body, receive, send):
     t0 = time.time()
 
-    # HARDENING (client-disconnect): a background reader drains the receive
-    # channel and flips a flag when the client goes away, so both the retry
-    # loop (non-streaming) and the streaming loop can abort the backend request.
-    disconnected = {"flag": False}
+    # HARDENING (client-disconnect): a response-local Event is both the lightweight
+    # state check and the active wait signal raced against every blocking upstream
+    # operation. No disconnect state is shared across requests or processes.
+    disconnect_event = asyncio.Event()
 
     async def _watch_disconnect():
-        try:
-            while True:
-                event = await receive()
-                if event.get("type") == "http.disconnect":
-                    disconnected["flag"] = True
-                    return
-        except asyncio.CancelledError:
-            return
-
-    async def _is_disconnected():
-        return disconnected["flag"]
+        while True:
+            event = await receive()
+            if event.get("type") == "http.disconnect":
+                disconnect_event.set()
+                return
 
     # Decode Anthropic request. Malformed JSON -> 400.
     try:
@@ -1915,33 +2665,169 @@ async def _handle_messages(body, receive, send):
     # v1.2.5: build the backend auth headers by lane.
     # INTENT: in openai mode, Bearer the env API key (unchanged). In chatgpt mode,
     #   Bearer the OAuth access_token from auth.json and emit ONLY the 3-header floor
-    #   the Codex backend gates on (notes/08). The request BODY/tools/SSE handling is
-    #   IDENTICAL across lanes — only these headers diverge.
+    #   the Codex backend gates on (notes/08). Request translation, tools, and SSE
+    #   block lifecycle stay shared. v1.2.7 makes chatgpt transport always-streaming
+    #   (inbound non-stream callers are internally accumulated), while v1.2.6's one
+    #   route-specific response-formatting rule preserves reliable reasoning-summary
+    #   boundaries. openai mode keeps exact legacy reasoning bytes and JSON transport.
     # CREDENTIAL SAFETY: the token/key are placed into the header dict (which is
     #   never logged — _diag_headers is allowlist-only and excludes Authorization)
     #   but never printed. A token-layer failure surfaces as a clean client error
     #   with the re-login message, no secret content.
-    # NOTE: build headers BEFORE the disconnect watcher is spawned below, so a
-    # fail-fast auth error returns without needing to tear down a watcher.
+    # Start the watcher before any potentially blocking auth/header work. This
+    # makes an initial token refresh cancellable too, rather than waiting to begin
+    # disconnect observation only after credentials are ready.
+    watcher = asyncio.create_task(_watch_disconnect())
+    downstream_send = send
+
+    async def _send_connected(message):
+        # Every write after watcher startup is gated by the same active signal.
+        # This prevents terminal/error bytes from racing past a known disconnect.
+        if disconnect_event.is_set():
+            raise _ClientDisconnected()
+        await _await_or_disconnect(downstream_send(message), disconnect_event)
+
+    async def _stop_disconnect_watcher():
+        watcher.cancel()
+        try:
+            await watcher
+        except (asyncio.CancelledError, Exception):
+            pass
+
+    send = _send_connected
     try:
-        headers = await _build_backend_headers()
+        headers = await _await_or_disconnect(
+            _build_backend_headers(),
+            disconnect_event,
+        )
+    except _ClientDisconnected:
+        log.info("client disconnected during backend authentication")
+        await _stop_disconnect_watcher()
+        return
     except RuntimeError as e:
         # chatgpt-mode auth store missing/unreadable, or a permanent refresh
         # failure at header-build time. Fail fast with the actionable message; no
         # token value in the error (RuntimeError text is the re-login instruction).
         log.error("chatgpt auth unavailable: %s", str(e))
-        await _send_json(send, 401, {"type": "error", "error": {
-            "type": "authentication_error", "message": str(e)}})
+        try:
+            await _send_json(send, 401, {"type": "error", "error": {
+                "type": "authentication_error", "message": str(e)}})
+        except _ClientDisconnected:
+            log.info("client disconnected during backend authentication failure")
+        await _stop_disconnect_watcher()
         return
     url = f"{SHIM_BACKEND_BASE_URL}/responses"
 
-    watcher = asyncio.ensure_future(_watch_disconnect())
     try:
+        if not stream and SHIM_BACKEND_MODE == "chatgpt":
+            # v1.2.7: Codex requires stream:true even when the Anthropic caller
+            # requested JSON. Consume one real upstream SSE response internally,
+            # then translate only its complete terminal Responses object. No
+            # downstream bytes are sent until success/failure is known.
+            responses_payload["stream"] = True
+            resp = None
+            stream_cm = None
+            retries = 0
+            refreshed_401 = False
+            anth = None
+            # v1.2.8: pre-bind so an accumulator exception cannot leave this name
+            # unbound at the `if terminal_response is not None` check below.
+            terminal_response = None
+            failure_message = None
+            try:
+                try:
+                    resp, stream_cm, headers, retries, refreshed_401 = \
+                        await _open_backend_stream(
+                            url, headers, responses_payload, disconnect_event)
+                except RuntimeError as e:
+                    log.error("chatgpt non-stream lazy-401 refresh failed: %s", str(e))
+                    if not disconnect_event.is_set():
+                        await _send_json(send, 401, {"type": "error", "error": {
+                            "type": "authentication_error", "message": str(e)}})
+                    return
+                except httpx.HTTPError as e:
+                    log.error("chatgpt non-stream transport error: %s", type(e).__name__)
+                    if not disconnect_event.is_set():
+                        await _send_json(send, 502, {"type": "error", "error": {
+                            "type": "api_error", "message": "backend transport error"}})
+                    return
+
+                if resp.status_code >= 400:
+                    status = resp.status_code
+                    try:
+                        raw_err = (
+                            await _await_or_disconnect(
+                                resp.aread(),
+                                disconnect_event,
+                            )
+                        ).decode("utf-8", "replace")
+                        failure_message = (_scrub_and_trim_body(raw_err)[:200]
+                                           or "backend rejected the request")
+                    except _ClientDisconnected:
+                        raise
+                    except Exception:
+                        failure_message = "backend rejected the request"
+                    log.error("backend ChatGPT non-stream adapter error status=%d retries=%d | headers: %s | body: %s",
+                              status, retries, _diag_headers(resp.headers), failure_message)
+                    if refreshed_401 and status == 401:
+                        if not disconnect_event.is_set():
+                            await _send_json(send, 401, {"type": "error", "error": {
+                                "type": "authentication_error", "message": _RELOGIN_MSG}})
+                        return
+                else:
+                    try:
+                        terminal_response, failure_message = \
+                            await _accumulate_terminal_response(resp, disconnect_event)
+                    except httpx.HTTPError as e:
+                        log.error("chatgpt non-stream post-content transport error: %s",
+                                  type(e).__name__)
+                        if disconnect_event.is_set():
+                            return
+                        failure_message = "backend transport error"
+                    except (TypeError, AttributeError, KeyError, ValueError) as error:
+                        log.error("chatgpt non-stream protocol error: %s",
+                                  type(error).__name__)
+                        failure_message = "backend protocol error"
+                    if terminal_response is not None:
+                        try:
+                            anth = _responses_to_anthropic(terminal_response, model)
+                        except (_ProtocolError, TypeError, AttributeError,
+                                KeyError, ValueError) as error:
+                            log.error("chatgpt non-stream conversion error: %s",
+                                      type(error).__name__)
+                            failure_message = "backend response conversion failed"
+            finally:
+                # The caller owns the one context returned by the shared opener.
+                # Closing here promptly cancels reads after terminal/failure and also
+                # covers downstream disconnects and converter exceptions.
+                if stream_cm is not None:
+                    await _close_stream_context(stream_cm)
+
+            if disconnect_event.is_set():
+                return
+            if anth is None:
+                safe_message = (_scrub_and_trim_body(failure_message or "")[:200]
+                                or "backend stream failed")
+                await _send_json(send, 502, {"type": "error", "error": {
+                    "type": "api_error", "message": safe_message}})
+                return
+            usage = anth["usage"]
+            _calibrate_count_ratio(usage["input_tokens"], len(body))
+            dur = time.time() - t0
+            miss_suffix = f" reasoning_cache_miss={missing_reasoning}" if missing_reasoning > 0 else ""
+            log.info("req method=POST path=/v1/messages model=%s stream=n upstream=sse msgs=%d tools=%d "
+                     "dur=%.2fs stop=%s in=%s out=%s retries=%d effort=%s:%s%s",
+                     model, n_msgs, n_tools, dur, anth["stop_reason"],
+                     usage["input_tokens"], usage["output_tokens"], retries,
+                     effort_value, effort_source, miss_suffix)
+            await _send_json(send, 200, anth)
+            return
+
         if not stream:
-            # --- Non-streaming: one shot (with retry), translate the whole response. ---
+            # --- OpenAI/API-key non-streaming: retain the real upstream JSON POST. ---
             responses_payload["stream"] = False
             try:
-                r, retries = await _post_with_retry(url, headers, responses_payload, _is_disconnected)
+                r, retries = await _post_with_retry(url, headers, responses_payload, disconnect_event)
             except httpx.HTTPError as e:
                 log.error("messages non-stream transport error: %s", type(e).__name__)
                 await _send_json(send, 502, {"type": "error", "error": {"type": "api_error", "message": "backend transport error"}})
@@ -1964,7 +2850,7 @@ async def _handle_messages(body, receive, send):
                         "type": "authentication_error", "message": str(e)}})
                     return
                 try:
-                    r, retries = await _post_with_retry(url, headers, responses_payload, _is_disconnected)
+                    r, retries = await _post_with_retry(url, headers, responses_payload, disconnect_event)
                 except httpx.HTTPError as e:
                     log.error("messages non-stream transport error (post-refresh): %s", type(e).__name__)
                     await _send_json(send, 502, {"type": "error", "error": {"type": "api_error", "message": "backend transport error"}})
@@ -1990,7 +2876,16 @@ async def _handle_messages(body, receive, send):
                     client_msg = "backend error (body unavailable)"
                 await _send_json(send, r.status_code, {"type": "error", "error": {"type": "api_error", "message": client_msg}})
                 return
-            anth = _responses_to_anthropic(r.json(), model)
+            try:
+                anth = _responses_to_anthropic(r.json(), model)
+            except (_ProtocolError, TypeError, AttributeError,
+                    KeyError, ValueError) as error:
+                log.error("messages non-stream conversion error: %s",
+                          type(error).__name__)
+                await _send_json(send, 502, {"type": "error", "error": {
+                    "type": "api_error",
+                    "message": "backend response conversion failed"}})
+                return
             usage = anth["usage"]
             # v1.2.1: feed the count_tokens calibrator. Pair the backend's
             # reported input_tokens with the inbound Anthropic body size (len(body)
@@ -2027,15 +2922,29 @@ async def _handle_messages(body, receive, send):
         next_index = 0               # next Anthropic content-block index to assign
         thinking_block_open = False
         thinking_index = None
+        # v1.2.6 response-local ChatGPT boundary state for the CURRENT Anthropic
+        # thinking block. It is reset only when a NEW thinking block opens, never
+        # on a source summary-part .done lifecycle event.
+        thinking_part_keys = set()
+        thinking_item_to_output = {}
+        thinking_output_to_item = {}
+        thinking_emitted_nonempty = False
+        thinking_boundaries_reliable = True
         text_block_open = False
         text_index = None
         # Responses stream addresses function_call argument deltas by INTERNAL
         # item_id (fc_...), NOT public call_id (both prior-art references verify
         # this — notes file 05 §3c). So key tool routing state on item_id.
-        # item_id -> {"anth_index", "opened", "call_id", "name", "args_buf"}
+        # item_id -> lifecycle/canonical replay state for one function call.
         tool_state = {}
-        # Collect the full output_items as they complete, for cache population.
+        # Every output_item.added id is single-use, regardless of item kind. Completed
+        # item values retain canonical JSON so identical replays are idempotent while
+        # conflicting replays fail before duplicate stop/cache effects.
+        added_item_ids = set()
+        completed_item_values = {}
+        # Collect each distinct full output item once, for cache population.
         completed_items = []
+        terminal_output_items = None
         saw_tool_use = False
         final_status = "completed"
         # WARNING W1 FIX: track a terminal in-band failure separately from status.
@@ -2045,6 +2954,8 @@ async def _handle_messages(body, receive, send):
         # Anthropic streaming error semantics — an `error` SSE event — and stop.
         stream_failed = False
         failure_message = "backend stream failed"   # bounded, scrubbed at set time
+        saw_terminal_response = False
+        failure_finalized = False
         input_tokens = None
         output_tokens = None
         accumulated_text = ""        # for usage estimation fallback
@@ -2054,13 +2965,98 @@ async def _handle_messages(body, receive, send):
         async def emit(ev, data):
             await send({"type": "http.response.body", "body": _sse(ev, data), "more_body": True})
 
+        def _reasoning_part_key(ev):
+            # v1.2.6 chatgpt-only semantic identity extraction.
+            # INTENT: distinguish summary_index resets across reasoning items without
+            # guessing from delta count, punctuation, timing, sequence_number, or
+            # Markdown. The caller invokes this only in chatgpt mode; openai mode
+            # never inspects identity for formatting.
+            # REASONING: summary_index is valid only as a nonnegative integer (bool
+            # is excluded despite being an int subclass). A nonempty item_id is the
+            # preferred item scope; a valid output_index is retained when present to
+            # strengthen the composite and is the fallback scope when item_id is
+            # absent. With neither item_id nor output_index, identity is unreliable.
+            summary_index = ev.get("summary_index")
+            if (not isinstance(summary_index, int) or isinstance(summary_index, bool)
+                    or summary_index < 0):
+                return None
+            item_id = ev.get("item_id")
+            item_id = item_id if isinstance(item_id, str) and item_id else None
+            output_index = ev.get("output_index")
+            if (not isinstance(output_index, int) or isinstance(output_index, bool)
+                    or output_index < 0):
+                output_index = None
+            if item_id is None and output_index is None:
+                return None
+            return (item_id, output_index, summary_index)
+
+        def _item_output_mapping_conflicts(part_key):
+            # Detect contradictions between the two independently supplied item scopes.
+            # A complete identity is reliable only while the item_id <-> output_index
+            # relationship remains one-to-one inside the current thinking block. If
+            # either coordinate is rebound, even the current event cannot prove a new
+            # semantic part; disable synthesis before deciding whether to emit a split.
+            item_id, output_index, _summary_index = part_key
+            if item_id is None or output_index is None:
+                return False
+            known_output = thinking_item_to_output.get(item_id)
+            known_item = thinking_output_to_item.get(output_index)
+            conflict = ((known_output is not None and known_output != output_index)
+                        or (known_item is not None and known_item != item_id))
+            if not conflict:
+                thinking_item_to_output[item_id] = output_index
+                thinking_output_to_item[output_index] = item_id
+            return conflict
+
+        def _part_key_conflicts_with_seen(part_key):
+            # Detect a mixed/unstable identity for a semantic part already observed.
+            # If two keys agree on summary_index and every shared scope component but
+            # disagree only because one event omitted/changed item_id or output_index,
+            # they might be the SAME part under a degraded identity. Treat that as
+            # unreliable rather than inserting a false split mid-part. Conservative
+            # posture: once this fires, boundary synthesis stays disabled until a new
+            # Anthropic thinking block opens; all source deltas still pass unchanged.
+            item_id, output_index, summary_index = part_key
+            for seen_item_id, seen_output_index, seen_summary_index in thinking_part_keys:
+                if summary_index != seen_summary_index:
+                    continue
+                if item_id is not None and seen_item_id is not None:
+                    if item_id != seen_item_id:
+                        # A different preferred item scope is a reliably new item,
+                        # even when summary_index restarted to the same value.
+                        continue
+                    # Same preferred item + same summary index can only be the same
+                    # part; a changed/omitted output index is degraded identity.
+                    return True
+                if output_index is not None and seen_output_index is not None:
+                    if output_index != seen_output_index:
+                        # With item_id unavailable, output_index is the fallback
+                        # item scope; a different value is a reliably new item.
+                        continue
+                    return True
+                # One side lacks the only scope component available on the other.
+                # The relationship is unknowable, so suppress rather than split.
+                return True
+            return False
+
         async def _ensure_thinking_open():
             # Lazily open the thinking block (must be BEFORE any text/tool block).
             nonlocal thinking_block_open, thinking_index, next_index
+            nonlocal thinking_part_keys, thinking_item_to_output
+            nonlocal thinking_output_to_item, thinking_emitted_nonempty
+            nonlocal thinking_boundaries_reliable
             if not thinking_block_open:
                 thinking_index = next_index
                 next_index += 1
                 thinking_block_open = True
+                # Reset all boundary state for this newly opened block. In particular,
+                # reasoning after a text/tool transition must never inherit a stale
+                # seen-key set or emit a leading separator.
+                thinking_part_keys = set()
+                thinking_item_to_output = {}
+                thinking_output_to_item = {}
+                thinking_emitted_nonempty = False
+                thinking_boundaries_reliable = True
                 await emit("content_block_start", {"type": "content_block_start",
                     "index": thinking_index,
                     "content_block": {"type": "thinking", "thinking": ""}})
@@ -2089,61 +3085,63 @@ async def _handle_messages(body, receive, send):
                     "index": text_index,
                     "content_block": {"type": "text", "text": ""}})
 
-        # HARDENING: retry the *connection* to the backend before any bytes are
-        # emitted to the client. Once we've sent message_start we never retry —
-        # a partially-streamed response cannot be safely restarted.
+        async def _finalize_stream_failure(message):
+            # v1.2.7 common post-start failure finalizer.
+            # INTENT: leave every emitted block structurally closed, then make the
+            # final semantic frame an Anthropic event:error rather than a success.
+            # REASONING: every failure source must share one lifecycle implementation;
+            # otherwise a new branch can accidentally double-stop a tool, omit a
+            # thinking signature, or emit message_stop after partial content.
+            nonlocal text_block_open, thinking_block_open, failure_finalized
+            if failure_finalized or disconnect_event.is_set():
+                return False
+            failure_finalized = True
+            safe_message = (_scrub_and_trim_body(str(message or ""))[:200]
+                            or "backend stream failed")
+            if text_block_open:
+                text_block_open = False
+                await emit("content_block_stop", {
+                    "type": "content_block_stop", "index": text_index})
+            if thinking_block_open:
+                thinking_block_open = False
+                await emit("content_block_delta", {
+                    "type": "content_block_delta", "index": thinking_index,
+                    "delta": {"type": "signature_delta", "signature": ""}})
+                await emit("content_block_stop", {
+                    "type": "content_block_stop", "index": thinking_index})
+            for item_id in sorted(tool_state, key=lambda key: tool_state[key]["anth_index"]):
+                st = tool_state[item_id]
+                if st["opened"] and not st.get("closed"):
+                    st["closed"] = True
+                    await emit("content_block_stop", {
+                        "type": "content_block_stop", "index": st["anth_index"]})
+            await emit("error", {"type": "error", "error": {
+                "type": "api_error", "message": safe_message}})
+            await send({"type": "http.response.body", "body": b"", "more_body": False})
+            return True
+
+        # v1.2.7: open through the shared pre-content retry/lazy-401 helper.
+        # Once event consumption begins this response is never replayed.
         resp = None
         stream_cm = None
-        # v1.2.5: guard so the chatgpt lazy-401 refresh fires at most once per
-        # stream connect. A 401 before any client bytes are on the wire is safe to
-        # refresh + reconnect (message_start has NOT been emitted yet).
         did_401_refresh = False
-        for attempt in range(MAX_RETRIES + 1):
-            if disconnected["flag"]:
+        precontent_failure_message = None
+        try:
+            resp, stream_cm, headers, retries, did_401_refresh = \
+                await _open_backend_stream(
+                    url, headers, responses_payload, disconnect_event)
+        except RuntimeError as e:
+            # A permanent token-refresh failure is converted to a clean terminal
+            # error stream below; no credential material is included.
+            log.error("chatgpt stream lazy-401 refresh failed: %s", str(e))
+            precontent_failure_message = str(e)
+        except httpx.HTTPError as e:
+            if disconnect_event.is_set():
                 log.info("client disconnected before stream start; aborting")
                 return
-            stream_cm = _client.stream("POST", url, headers=headers, json=responses_payload)
-            resp = await stream_cm.__aenter__()
-            # v1.2.5: lazy-401 (chatgpt lane). A 401 here means the access_token
-            # expired between our exp check and this connect. Refresh ONCE, rebuild
-            # the Authorization header, tear down this attempt, and reconnect — all
-            # BEFORE http.response.start, so the client has seen no bytes. A second
-            # 401 falls through to the error-stream branch with the re-login message.
-            if (SHIM_BACKEND_MODE == "chatgpt" and resp.status_code == 401
-                    and not did_401_refresh):
-                log.warning("chatgpt backend stream 401; attempting one token refresh + reconnect")
-                await stream_cm.__aexit__(None, None, None)
-                resp = None
-                did_401_refresh = True
-                _rejected = _bearer_of(headers)
-                try:
-                    headers = await _build_backend_headers(
-                        force_token_refresh=True, rejected_token=_rejected)
-                except RuntimeError as e:
-                    # Permanent refresh failure. Emit a clean SSE error stream below
-                    # by leaving resp=None -> the error branch surfaces it. Log the
-                    # actionable message (no secret content).
-                    log.error("chatgpt stream lazy-401 refresh failed: %s", str(e))
-                    break
-                continue
-            if resp.status_code in RETRY_STATUSES and attempt < MAX_RETRIES:
-                delay = _retry_delay(attempt, resp.headers.get("retry-after"))
-                # v1.1.1: aread() the deferred body before teardown to log the
-                # backend's diagnostic payload on every retry attempt.
-                try:
-                    err_body = _scrub_and_trim_body(
-                        (await resp.aread()).decode("utf-8", "replace"))
-                except Exception:
-                    err_body = "(body unavailable)"
-                log.warning("backend stream %d (attempt %d/%d), retrying in %.2fs | headers: %s | body: %s",
-                            resp.status_code, attempt + 1, MAX_RETRIES + 1, delay,
-                            _diag_headers(resp.headers), err_body)
-                await stream_cm.__aexit__(None, None, None)
-                resp = None
-                retries = attempt + 1
-                await asyncio.sleep(delay)
-                continue
-            break
+            log.error("backend stream connect error: %s", type(e).__name__)
+            precontent_failure_message = "backend transport error"
+
 
         # HARDENING: send the SSE response-start exactly once, before any emit().
         # Both the error-stream branch and the success branch emit a well-formed
@@ -2163,29 +3161,37 @@ async def _handle_messages(body, receive, send):
             if resp is None or resp.status_code >= 400:
                 status = resp.status_code if resp is not None else 502
                 if resp is not None:
-                    raw_err = (await resp.aread()).decode("utf-8", "replace")
-                    diag_body = _scrub_and_trim_body(raw_err)
+                    try:
+                        raw_err = (
+                            await _await_or_disconnect(
+                                resp.aread(),
+                                disconnect_event,
+                            )
+                        ).decode("utf-8", "replace")
+                        diag_body = _scrub_and_trim_body(raw_err)
+                    except _ClientDisconnected:
+                        raise
+                    except Exception:
+                        diag_body = "(body unavailable)"
                     diag_headers = _diag_headers(resp.headers)
+                    client_failure = diag_body[:200] or "backend rejected the request"
+                    if did_401_refresh and status == 401:
+                        client_failure = _RELOGIN_MSG
                 else:
                     diag_body = "(no response)"
                     diag_headers = "(none)"
+                    client_failure = precontent_failure_message or "backend transport error"
                 log.error("backend stream error status=%d retries=%d | headers: %s | body: %s",
                           status, retries, diag_headers, diag_body)
-                # Emit a minimal well-formed error stream so Claude Code fails cleanly.
+                # Once the downstream SSE response has started, every backend status
+                # or connect failure uses the same failure grammar as post-content
+                # failures: one message_start followed by one terminal event:error.
                 await emit("message_start", {"type": "message_start", "message": {
                     "id": msg_id, "type": "message", "role": "assistant", "model": model,
                     "content": [], "stop_reason": None, "stop_sequence": None,
                     "usage": {"input_tokens": 0, "output_tokens": 0}}})
-                await emit("content_block_start", {"type": "content_block_start", "index": 0,
-                    "content_block": {"type": "text", "text": ""}})
-                await emit("content_block_delta", {"type": "content_block_delta", "index": 0,
-                    "delta": {"type": "text_delta", "text": f"[shim backend error {status}]"}})
-                await emit("content_block_stop", {"type": "content_block_stop", "index": 0})
-                await emit("message_delta", {"type": "message_delta",
-                    "delta": {"stop_reason": "end_turn", "stop_sequence": None},
-                    "usage": {"output_tokens": 0}})
-                await emit("message_stop", {"type": "message_stop"})
-                await send({"type": "http.response.body", "body": b"", "more_body": False})
+                started = True
+                await _finalize_stream_failure(client_failure)
                 return
 
             # message_start (usage filled with 0s; refined at message_delta).
@@ -2195,29 +3201,84 @@ async def _handle_messages(body, receive, send):
                 "usage": {"input_tokens": 0, "output_tokens": 0}}})
             started = True
 
-            async for line in resp.aiter_lines():
+            async for data_bytes in _iter_bounded_sse_data(
+                resp, disconnect_event
+            ):
                 # HARDENING (client-disconnect mid-stream): stop pulling from the
                 # backend the moment the client goes away.
-                if disconnected["flag"]:
+                if disconnect_event.is_set():
                     log.info("client disconnected mid-stream; aborting backend")
                     return
-                if not line or not line.startswith("data:"):
-                    continue
-                data_str = line[len("data:"):].strip()
-                if data_str == "[DONE]":
+                if data_bytes.strip() == b"[DONE]":
+                    if not saw_terminal_response:
+                        stream_failed = True
+                        failure_message = "backend stream ended without a terminal response"
                     break
                 try:
-                    ev = json.loads(data_str)
-                except ValueError:
-                    continue
-
-                etype = ev.get("type")
+                    ev = json.loads(data_bytes)
+                except (ValueError, UnicodeDecodeError):
+                    stream_failed = True
+                    failure_message = "backend stream contained malformed SSE JSON"
+                    break
+                etype = _validate_stream_event_fields(ev)
 
                 # --- reasoning summary delta -> thinking block (BEFORE text) ---
                 if etype == "response.reasoning_summary_text.delta":
                     delta = ev.get("delta", "")
                     if delta:
+                        # v1.2.7 protocol-order invariant: reasoning may reopen only
+                        # after prior text/tool blocks are fully closed. Closing and
+                        # continuing would reorder malformed upstream semantics and
+                        # could overlap Anthropic content blocks, so fail explicitly.
+                        unfinished_tool = any(
+                            st["opened"] and not st.get("closed")
+                            for st in tool_state.values()
+                        )
+                        if text_block_open or unfinished_tool:
+                            stream_failed = True
+                            failure_message = (
+                                "backend emitted reasoning while a content block was open"
+                            )
+                            break
                         await _ensure_thinking_open()
+                        if SHIM_BACKEND_MODE == "chatgpt":
+                            # v1.2.6: synthesize a boundary only before the first
+                            # nonempty delta of a NEW, reliable semantic part. Same-key
+                            # chunks pass consecutively with no separator. Empty source
+                            # deltas never reach this branch and therefore cannot arm a
+                            # boundary. Arrival order is authoritative; identities are
+                            # never sorted or buffered, and .done events remain ignored.
+                            part_key = _reasoning_part_key(ev)
+                            if part_key is None:
+                                # Missing/malformed identity: exact legacy append now,
+                                # and disable later synthesis for this thinking block so
+                                # a subsequently identified delta cannot create a false
+                                # mid-part split relative to this unidentified text.
+                                thinking_boundaries_reliable = False
+                            elif _item_output_mapping_conflicts(part_key):
+                                # Contradictory complete scopes are not a reliable new
+                                # part: one item moved outputs or one output was rebound
+                                # to another item. Preserve this and all later source
+                                # deltas by exact append for the rest of the block.
+                                thinking_boundaries_reliable = False
+                                thinking_part_keys.add(part_key)
+                            elif part_key not in thinking_part_keys:
+                                if _part_key_conflicts_with_seen(part_key):
+                                    # Identity changed or became more/less complete for
+                                    # what may be the same semantic part. Do not guess.
+                                    thinking_boundaries_reliable = False
+                                elif (thinking_boundaries_reliable
+                                      and thinking_emitted_nonempty):
+                                    await emit("content_block_delta", {
+                                        "type": "content_block_delta",
+                                        "index": thinking_index,
+                                        "delta": {
+                                            "type": "thinking_delta",
+                                            "thinking": "\n\n",
+                                        },
+                                    })
+                                thinking_part_keys.add(part_key)
+                            thinking_emitted_nonempty = True
                         await emit("content_block_delta", {"type": "content_block_delta",
                             "index": thinking_index,
                             "delta": {"type": "thinking_delta", "thinking": delta}})
@@ -2227,6 +3288,14 @@ async def _handle_messages(body, receive, send):
                 if etype == "response.output_text.delta":
                     delta = ev.get("delta", "")
                     if delta:
+                        unfinished_tool = any(
+                            st["opened"] and not st.get("closed")
+                            for st in tool_state.values()
+                        )
+                        if unfinished_tool:
+                            raise _ProtocolError(
+                                "backend emitted text while a tool block was open"
+                            )
                         await _ensure_text_open()
                         accumulated_text += delta
                         await emit("content_block_delta", {"type": "content_block_delta",
@@ -2236,33 +3305,33 @@ async def _handle_messages(body, receive, send):
 
                 # --- new output item added (function_call opens a tool_use block) ---
                 if etype == "response.output_item.added":
-                    item = ev.get("item") or {}
+                    item = ev["item"]
+                    item_id = item.get("id")
+                    if item_id is not None:
+                        if item_id in added_item_ids:
+                            raise _ProtocolError(
+                                "backend replayed response.output_item.added"
+                            )
+                        added_item_ids.add(item_id)
                     if item.get("type") == "function_call":
-                        # BLOCKER B1 FIX: close ALL open non-tool blocks before
-                        # opening a tool_use block. The Anthropic streaming contract
-                        # forbids overlapping content blocks — every block must run
-                        # start -> deltas -> stop before the next start (verified
-                        # against Anthropic's official text-then-tool streaming
-                        # example). On a text-then-tool stream (common gpt-5.x
-                        # pattern) BOTH a text block (index N) and this tool_use
-                        # block (index N+1) would otherwise be open simultaneously.
-                        # INTENT: emit content_block_stop for any open thinking/text
-                        #   block and reset its open-flag, so the tool_use block that
-                        #   follows is the only open block on the wire.
-                        # REASONING: mirror the existing thinking-close logic (the
-                        #   empty signature_delta then stop) and add the symmetric
-                        #   text-close. Order preserved: thinking closes before text
-                        #   (thinking precedes text within a turn). After this the
-                        #   state machine can still resume text: a later
-                        #   response.output_text.delta finds text_block_open False
-                        #   and _ensure_text_open() opens a NEW text block with a
-                        #   fresh index (it never reuses the closed index), so the
-                        #   sequence thinking -> text -> tool -> text yields four
-                        #   distinct, strictly-sequential block indexes.
+                        # Before a tool opens, every prior tool must be fully closed.
+                        # A second concurrent tool would overlap Anthropic blocks and
+                        # must fail rather than silently overwrite/reroute state.
+                        unfinished_tool = any(
+                            st["opened"] and not st.get("closed")
+                            for st in tool_state.values()
+                        )
+                        if unfinished_tool:
+                            raise _ProtocolError(
+                                "backend opened a tool while another tool was unfinished"
+                            )
+                        if item_id in tool_state:
+                            raise _ProtocolError("backend reused a function item id")
+
+                        # Close ALL open non-tool blocks before opening tool_use. This
+                        # preserves strict Anthropic block serialization while still
+                        # supporting normal text -> tool transitions.
                         if thinking_block_open:
-                            # Close the thinking block directly (do NOT route through
-                            # _ensure_text_open, which would open a spurious empty
-                            # text block just to close thinking).
                             await emit("content_block_delta", {"type": "content_block_delta",
                                 "index": thinking_index,
                                 "delta": {"type": "signature_delta", "signature": ""}})
@@ -2271,19 +3340,20 @@ async def _handle_messages(body, receive, send):
                         if text_block_open:
                             await emit("content_block_stop", {"type": "content_block_stop", "index": text_index})
                             text_block_open = False
-                        item_id = item.get("id") or f"fc_{uuid.uuid4().hex[:12]}"
                         anth_index = next_index
                         next_index += 1
                         st = {
                             "anth_index": anth_index,
-                            "opened": False,
-                            "call_id": item.get("call_id") or f"toolu_{uuid.uuid4().hex[:24]}",
-                            "name": item.get("name", ""),
+                            "opened": True,
+                            "call_id": item["call_id"],
+                            "name": item["name"],
                             "args_buf": "",
+                            "arguments_done": None,
+                            "completed_item": None,
+                            "closed": False,
                         }
                         tool_state[item_id] = st
                         saw_tool_use = True
-                        st["opened"] = True
                         await emit("content_block_start", {"type": "content_block_start",
                             "index": anth_index,
                             "content_block": {"type": "tool_use", "id": st["call_id"],
@@ -2292,18 +3362,25 @@ async def _handle_messages(body, receive, send):
 
                 # --- function_call argument deltas (route by item_id) ---
                 if etype == "response.function_call_arguments.delta":
-                    item_id = ev.get("item_id")
+                    item_id = ev["item_id"]
                     st = tool_state.get(item_id)
                     if st is None:
-                        continue  # delta for an item we never opened; ignore
-                    frag = ev.get("delta", "")
+                        raise _ProtocolError(
+                            "backend emitted arguments for an unknown tool item"
+                        )
+                    if st.get("closed") or st.get("arguments_done") is not None:
+                        raise _ProtocolError(
+                            "backend emitted argument delta after tool arguments completed"
+                        )
+                    frag = ev["delta"]
                     if not frag:
                         continue
-                    if SHIM_SANITIZE_TOOLS:
-                        # SANITIZE MODE (default): buffer deltas; the complete
-                        # string arrives in .done. Do NOT forward incrementally.
-                        st["args_buf"] += frag
-                    else:
+                    # v1.2.8: ALWAYS buffer — the buffered delta stream is the
+                    # canonical fallback when arguments.done omits the full string,
+                    # in both sanitize modes. Sanitize mode still defers emission
+                    # to .done; sanitize-off still forwards incrementally.
+                    st["args_buf"] += frag
+                    if not SHIM_SANITIZE_TOOLS:
                         await emit("content_block_delta", {"type": "content_block_delta",
                             "index": st["anth_index"],
                             "delta": {"type": "input_json_delta", "partial_json": frag}})
@@ -2311,16 +3388,53 @@ async def _handle_messages(body, receive, send):
 
                 # --- function_call arguments finalized ---
                 if etype == "response.function_call_arguments.done":
-                    item_id = ev.get("item_id")
+                    item_id = ev["item_id"]
                     st = tool_state.get(item_id)
                     if st is None:
-                        continue
-                    complete_args = ev.get("arguments", st.get("args_buf", ""))
+                        raise _ProtocolError(
+                            "backend completed arguments for an unknown tool item"
+                        )
+                    # v1.2.8 wire tolerance: fall back to the identity captured at
+                    # output_item.added and to the buffered delta stream when the
+                    # event omits name/arguments (validated-optional above).
+                    # ASSUMES: a replayed .done is consistent about whether it
+                    #   carries `arguments` — a replay that includes it once and
+                    #   omits it once compares against args_buf and is treated as
+                    #   conflicting (fail-closed) rather than idempotent.
+                    canonical_done = (
+                        ev.get("name") or st["name"],
+                        ev["arguments"] if "arguments" in ev else st["args_buf"],
+                    )
+                    prior_done = st.get("arguments_done")
+                    if prior_done is not None:
+                        if canonical_done == prior_done:
+                            continue
+                        raise _ProtocolError(
+                            "backend replayed conflicting completed tool arguments"
+                        )
+                    if canonical_done[0] != st["name"]:
+                        raise _ProtocolError(
+                            "backend completed arguments with a conflicting tool name"
+                        )
+                    if st.get("closed"):
+                        completed_item = st.get("completed_item")
+                        completed_done = None
+                        if isinstance(completed_item, dict):
+                            completed_done = (
+                                completed_item.get("name"),
+                                completed_item.get("arguments"),
+                            )
+                        if canonical_done == completed_done:
+                            st["arguments_done"] = canonical_done
+                            continue
+                        raise _ProtocolError(
+                            "backend completed conflicting arguments after tool closure"
+                        )
+                    complete_args = canonical_done[1]
                     if SHIM_SANITIZE_TOOLS:
                         # SANITIZE MODE: parse the complete string, sanitize, and
-                        # emit as ONE input_json_delta. Simpler than the chat-lane
-                        # buffer-at-close approach because .done carries the whole
-                        # string directly.
+                        # emit as ONE input_json_delta. Identical replay is ignored
+                        # above, so downstream sees this exact delta at most once.
                         try:
                             parsed = json.loads(complete_args or "{}")
                             parsed, dropped = _sanitize_tool_args(st["name"], parsed)
@@ -2336,54 +3450,111 @@ async def _handle_messages(body, receive, send):
                             "index": st["anth_index"],
                             "delta": {"type": "input_json_delta", "partial_json": out_json}})
                     # Sanitize-off already forwarded the deltas; nothing to emit.
-                    st["done"] = True
+                    st["arguments_done"] = canonical_done
                     continue
 
                 # --- an output item completed ---
                 if etype == "response.output_item.done":
-                    item = ev.get("item") or {}
-                    if isinstance(item, dict):
-                        completed_items.append(item)
-                        # Close the tool_use block for a completed function_call.
-                        if item.get("type") == "function_call":
-                            item_id = item.get("id")
-                            st = tool_state.get(item_id)
-                            if st is not None and st["opened"]:
-                                # Fallback: if no .done arguments event fired (some
-                                # backends only put the full args on the item),
-                                # emit them here under sanitize mode.
-                                if SHIM_SANITIZE_TOOLS and not st.get("done"):
-                                    raw = item.get("arguments", st.get("args_buf", ""))
-                                    try:
-                                        parsed = json.loads(raw or "{}")
-                                        parsed, dropped = _sanitize_tool_args(st["name"], parsed)
-                                        if dropped:
-                                            log.info("sanitize tool=%s dropped=%s", st["name"], ",".join(dropped))
-                                        out_json = json.dumps(parsed)
-                                    except (ValueError, TypeError):
-                                        log.warning("sanitize: unparseable args for tool=%s; passing through", st["name"])
-                                        out_json = raw or "{}"
-                                    await emit("content_block_delta", {"type": "content_block_delta",
-                                        "index": st["anth_index"],
-                                        "delta": {"type": "input_json_delta", "partial_json": out_json}})
-                                await emit("content_block_stop", {"type": "content_block_stop", "index": st["anth_index"]})
-                                st["closed"] = True
+                    item = ev["item"]
+                    item_id = item.get("id")
+                    if item_id is None and item.get("type") == "function_call":
+                        # v1.2.8 wire tolerance: function_call item id is optional
+                        # on the wire; match the open tool by its call_id instead.
+                        matched = [
+                            key for key, state in tool_state.items()
+                            if state["call_id"] == item.get("call_id")
+                        ]
+                        if len(matched) == 1:
+                            item_id = matched[0]
+                            log.warning(
+                                "wire-divergence: output_item.done function_call missing id; matched call_id=%s",
+                                _scrub_log_token(item.get("call_id")))
+                        else:
+                            # Distinct message: the generic "invalid item id" would
+                            # mask the true cause (id absent AND call_id unmatched
+                            # or ambiguous) — the diagnosability gap fix (e) closed.
+                            raise _ProtocolError(
+                                "backend output_item.done omitted the item id and "
+                                "its call_id matched %d open tools" % len(matched))
+                    item_id = _require_protocol_string(item_id, "item id")
+                    prior_item = completed_item_values.get(item_id)
+                    if prior_item is not None:
+                        if item == prior_item:
+                            continue
+                        raise _ProtocolError(
+                            "backend replayed a conflicting completed output item"
+                        )
+
+                    # Validate all state relationships before adding the item to the
+                    # completed/cache set or emitting a fallback delta/stop.
+                    if item.get("type") == "function_call":
+                        st = tool_state.get(item_id)
+                        if st is None:
+                            raise _ProtocolError(
+                                "backend completed an unknown tool output item"
+                            )
+                        if (
+                            item["call_id"] != st["call_id"]
+                            or item["name"] != st["name"]
+                        ):
+                            raise _ProtocolError(
+                                "backend completed a tool with conflicting identity"
+                            )
+                        item_done = (item["name"], item["arguments"])
+                        prior_done = st.get("arguments_done")
+                        if prior_done is not None and item_done != prior_done:
+                            raise _ProtocolError(
+                                "backend completed a tool with conflicting arguments"
+                            )
+                        if st.get("closed"):
+                            raise _ProtocolError(
+                                "backend completed a tool after an inconsistent closure"
+                            )
+
+                        # Fallback: if no arguments.done event fired, emit the full
+                        # item arguments once under sanitize mode.
+                        if SHIM_SANITIZE_TOOLS and prior_done is None:
+                            raw = item["arguments"]
+                            try:
+                                parsed = json.loads(raw or "{}")
+                                parsed, dropped = _sanitize_tool_args(st["name"], parsed)
+                                if dropped:
+                                    log.info("sanitize tool=%s dropped=%s", st["name"], ",".join(dropped))
+                                out_json = json.dumps(parsed)
+                            except (ValueError, TypeError):
+                                log.warning("sanitize: unparseable args for tool=%s; passing through", st["name"])
+                                out_json = raw or "{}"
+                            await emit("content_block_delta", {"type": "content_block_delta",
+                                "index": st["anth_index"],
+                                "delta": {"type": "input_json_delta", "partial_json": out_json}})
+                        if prior_done is None:
+                            st["arguments_done"] = item_done
+                        await emit("content_block_stop", {
+                            "type": "content_block_stop", "index": st["anth_index"]})
+                        st["closed"] = True
+                        st["completed_item"] = item
+
+                    completed_item_values[item_id] = item
+                    completed_items.append(item)
                     continue
 
                 # --- terminal SUCCESS/TRUNCATION events ---
                 if etype in ("response.completed", "response.incomplete"):
-                    r_obj = ev.get("response") or {}
-                    final_status = r_obj.get("status") or (
-                        "incomplete" if etype == "response.incomplete" else "completed")
-                    usage = r_obj.get("usage") or {}
-                    if usage:
-                        input_tokens = usage.get("input_tokens", input_tokens)
-                        output_tokens = usage.get("output_tokens", output_tokens)
-                    # Populate the reasoning cache from the full output if present
-                    # in the terminal event; else from the items we collected.
-                    if r_obj.get("output"):
-                        _populate_reasoning_cache(r_obj["output"])
-                    continue
+                    r_obj = _validate_terminal_response(etype, ev.get("response"))
+                    terminal_output = r_obj.get("output", [])
+                    for item in terminal_output:
+                        _validate_output_item(item)
+                    saw_terminal_response = True
+                    final_status = r_obj["status"]
+                    usage = r_obj.get("usage", {})
+                    input_tokens = usage.get("input_tokens", input_tokens)
+                    output_tokens = usage.get("output_tokens", output_tokens)
+                    # Retain only validated terminal output for one post-loop cache
+                    # population. The first valid terminal is final: stop semantic
+                    # consumption immediately and close the upstream context in the
+                    # surrounding finally block.
+                    terminal_output_items = terminal_output
+                    break
 
                 # --- terminal FAILURE event (W1) ---
                 if etype == "response.failed":
@@ -2395,7 +3566,11 @@ async def _handle_messages(body, receive, send):
                     #   scrubbed/trimmed error payload), then break so the post-loop
                     #   handler emits an Anthropic `error` SSE event and terminates —
                     #   no message_delta/message_stop pretending success.
-                    r_obj = ev.get("response") or {}
+                    r_obj = ev.get("response")
+                    if not isinstance(r_obj, dict):
+                        raise _ProtocolError(
+                            "backend response.failed event was malformed"
+                        )
                     err_payload = r_obj.get("error") or r_obj.get("incomplete_details") or r_obj
                     log.error("backend stream response.failed: %s",
                               _scrub_and_trim_body(json.dumps(err_payload)))
@@ -2415,44 +3590,29 @@ async def _handle_messages(body, receive, send):
                     break
                 # Any other event type is ignored gracefully.
 
-            # W1: terminal in-band failure -> emit an Anthropic `error` SSE event
-            # and terminate. Anthropic streams surface failures as `event: error`
-            # with {"type":"error","error":{"type":"api_error","message":...}}.
-            # We close any blocks left open before the failure so the client isn't
-            # left with a dangling open block, then emit the error and stop — no
-            # message_delta/message_stop, which would falsely signal success.
-            # ASSUMES: Claude Code handles a mid-stream `error` event by failing the
-            #   request (MEDIUM confidence, live-verifiable). The message text is
-            #   bounded and scrubbed via _scrub_and_trim_body at set time.
+            # v1.2.7 terminal invariant: [DONE] and clean EOF are framing signals,
+            # never proof that generation completed. Only a parsed complete terminal
+            # Responses event authorizes Anthropic success terminal events.
+            if not stream_failed and not saw_terminal_response:
+                stream_failed = True
+                failure_message = "backend stream ended without a terminal response"
+
             if stream_failed:
-                if text_block_open:
-                    await emit("content_block_stop", {"type": "content_block_stop", "index": text_index})
-                    text_block_open = False
-                if thinking_block_open:
-                    await emit("content_block_delta", {"type": "content_block_delta",
-                        "index": thinking_index,
-                        "delta": {"type": "signature_delta", "signature": ""}})
-                    await emit("content_block_stop", {"type": "content_block_stop", "index": thinking_index})
-                    thinking_block_open = False
-                for item_id in sorted(tool_state, key=lambda k: tool_state[k]["anth_index"]):
-                    st = tool_state[item_id]
-                    if st["opened"] and not st.get("closed"):
-                        await emit("content_block_stop", {"type": "content_block_stop", "index": st["anth_index"]})
-                        st["closed"] = True
-                await emit("error", {"type": "error",
-                    "error": {"type": "api_error", "message": failure_message}})
-                await send({"type": "http.response.body", "body": b"", "more_body": False})
-                dur = time.time() - t0
-                log.info("req method=POST path=/v1/messages model=%s stream=y msgs=%d tools=%d "
-                         "dur=%.2fs stop=FAILED tools_called=%d retries=%d effort=%s:%s",
-                         model, n_msgs, n_tools, dur, len(tool_state), retries,
-                         effort_value, effort_source)
+                finalized = await _finalize_stream_failure(failure_message)
+                if finalized:
+                    dur = time.time() - t0
+                    log.info("req method=POST path=/v1/messages model=%s stream=y msgs=%d tools=%d "
+                             "dur=%.2fs stop=FAILED tools_called=%d retries=%d effort=%s:%s",
+                             model, n_msgs, n_tools, dur, len(tool_state), retries,
+                             effort_value, effort_source)
                 return
 
-            # Fallback cache population from collected items if the terminal event
-            # did not carry a full output[] array.
-            if completed_items:
-                _populate_reasoning_cache(completed_items)
+            # Populate the cache exactly once. Prefer the validated terminal output
+            # when it is nonempty; otherwise use each distinct completed item collected
+            # from output_item.done events.
+            cache_items = terminal_output_items or completed_items
+            if cache_items:
+                _populate_reasoning_cache(cache_items)
 
             # Close any still-open text/thinking blocks (tools closed at .done).
             if text_block_open:
@@ -2501,7 +3661,13 @@ async def _handle_messages(body, receive, send):
                 "delta": {"stop_reason": stop_reason, "stop_sequence": None},
                 "usage": {"input_tokens": input_tokens, "output_tokens": output_tokens}})
             await emit("message_stop", {"type": "message_stop"})
-            await send({"type": "http.response.body", "body": b"", "more_body": False})
+            # v1.2.9: log the req accounting line as soon as message_stop is
+            # DELIVERED, before the final empty-body frame. Claude Code closes
+            # the connection promptly after message_stop, so that trailing frame
+            # routinely loses a race with http.disconnect; under v1.2.7/v1.2.8
+            # the disconnect-gated send raised first, skipping this line on
+            # essentially every live request (0 req lines post-v1.2.7 vs 6,701
+            # before) and misreporting completed requests as disconnects.
             dur = time.time() - t0
             miss_suffix = f" reasoning_cache_miss={missing_reasoning}" if missing_reasoning > 0 else ""
             log.info("req method=POST path=/v1/messages model=%s stream=y msgs=%d tools=%d "
@@ -2510,33 +3676,59 @@ async def _handle_messages(body, receive, send):
                      output_tokens, len(tool_state), retries,
                      "estimated" if usage_estimated else "backend",
                      effort_value, effort_source, miss_suffix)
+            try:
+                await send({"type": "http.response.body", "body": b"", "more_body": False})
+            except _ClientDisconnected:
+                # A disconnect AFTER message_stop delivery is a completed
+                # request, not an abort — the client already holds the terminal
+                # event. Swallow the control signal so the outer handler does
+                # not log a spurious "client disconnected". Disconnects BEFORE
+                # message_stop keep the existing abort semantics.
+                pass
 
-        except httpx.HTTPError as e:
-            log.error("stream transport error: %s", type(e).__name__)
-            if not started:
-                await _send_json(send, 502, {"type": "error", "error": {"type": "api_error", "message": "backend transport error"}})
+        except (_ProtocolError, httpx.HTTPError, TypeError,
+                AttributeError, KeyError, ValueError) as e:
+            # Transport, framing, controlled protocol, and narrow translation/state
+            # failures after response start share one terminal-error lifecycle. Do
+            # not catch asyncio.CancelledError: task cancellation remains cancellation.
+            if isinstance(e, _ProtocolError):
+                failure_kind = _scrub_and_trim_body(str(e))[:200] or "backend protocol error"
+            elif isinstance(e, ValueError):
+                failure_kind = "backend SSE framing error"
+            elif isinstance(e, httpx.HTTPError):
+                failure_kind = "backend transport error"
             else:
-                # Best-effort close of an already-open stream so the client isn't
-                # left hanging on a half-open SSE connection.
-                try:
-                    await emit("message_stop", {"type": "message_stop"})
-                    await send({"type": "http.response.body", "body": b"", "more_body": False})
-                except Exception:
-                    pass
+                failure_kind = "backend stream translation error"
+            # v1.2.8: include the scrubbed message — the exception TYPE alone made
+            # the v1.2.7 field-validation incident undiagnosable from the log.
+            log.error("stream failure after response start: %s: %s",
+                      type(e).__name__, _scrub_and_trim_body(str(e))[:200])
+            if disconnect_event.is_set():
+                return
+            if not started:
+                await emit("message_start", {"type": "message_start", "message": {
+                    "id": msg_id, "type": "message", "role": "assistant", "model": model,
+                    "content": [], "stop_reason": None, "stop_sequence": None,
+                    "usage": {"input_tokens": 0, "output_tokens": 0}}})
+                started = True
+            try:
+                await _finalize_stream_failure(failure_kind)
+            except Exception:
+                # A downstream write failure means the client is already gone; the
+                # finally block still closes the upstream stream promptly.
+                pass
         finally:
             # HARDENING: always tear down the backend stream. On client disconnect
             # this aborts the upstream request rather than leaking it.
             if stream_cm is not None:
-                try:
-                    await stream_cm.__aexit__(None, None, None)
-                except Exception:
-                    pass
+                await _close_stream_context(stream_cm)
+    except _ClientDisconnected:
+        # Expected response-local control flow: no downstream error/success bytes,
+        # no ERROR log, and the branch-level finally owns any active stream context.
+        log.info("client disconnected; upstream operation cancelled")
+        return
     finally:
-        watcher.cancel()
-        try:
-            await watcher
-        except (asyncio.CancelledError, Exception):
-            pass
+        await _stop_disconnect_watcher()
 
 
 def _count_tokens_bare_model(body):
