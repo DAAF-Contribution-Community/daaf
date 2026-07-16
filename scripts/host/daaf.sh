@@ -96,11 +96,11 @@ if [ "${DAAF_TEST_MODE:-}" != "1" ]; then
     trap 'echo ""; echo "Goodbye!"; exit 0' INT TERM
 
     # Any unexpected non-zero command (one not already guarded by `if`/`||`)
-    # trips the ERR trap. We print a diagnostic line — script, line number, and
-    # the failing command — so a failure is never silent. Important for users
+    # trips the ERR trap. We print a diagnostic line -- script, line number, and
+    # the failing command -- so a failure is never silent. Important for users
     # who launch the panel by double-clicking in Terminal, where the window
     # would otherwise close instantly on an uncaught error.
-    trap 'ec=$?; echo "" >&2; echo "ERROR: DAAF Control Panel hit an unexpected failure." >&2; echo "  Location: $(basename "$0"), line ${LINENO} (exit ${ec})" >&2; echo "  Command:  ${BASH_COMMAND}" >&2; echo "  This is a bug — please report it. The panel will now exit." >&2' ERR
+    trap 'ec=$?; echo "" >&2; echo "ERROR: DAAF Control Panel hit an unexpected failure." >&2; echo "  Location: $(basename "$0"), line ${LINENO} (exit ${ec})" >&2; echo "  Command:  ${BASH_COMMAND}" >&2; echo "  This is a bug -- please report it. The panel will now exit." >&2' ERR
 
     # On any error exit, pause so a double-clicked Terminal window does not
     # vanish before the diagnostic above can be read. Skips the clean-quit path
@@ -207,9 +207,9 @@ display_menu() {
 
     # --- Status dashboard ---
     if [ "$STATUS_CONTAINER" = "Running" ]; then
-        echo "  Container:  ${GREEN}●${RESET} Running"
+        echo "  Container:  ${GREEN}*${RESET} Running"
     else
-        echo "  Container:  ${DIM}○${RESET} Stopped"
+        echo "  Container:  ${DIM}o${RESET} Stopped"
     fi
 
     # Version line
@@ -242,19 +242,19 @@ display_menu() {
     # --- Services ---
     echo "  Services:"
     if [ "$STATUS_PORT_2718" = true ]; then
-        echo "    ${GREEN}●${RESET} Notebooks    localhost:${DAAF_PORT_MARIMO}"
+        echo "    ${GREEN}*${RESET} Notebooks    localhost:${DAAF_PORT_MARIMO}"
     else
-        echo "    ${DIM}○${RESET} Notebooks    (not running)"
+        echo "    ${DIM}o${RESET} Notebooks    (not running)"
     fi
     if [ "$STATUS_PORT_2719" = true ]; then
-        echo "    ${GREEN}●${RESET} Log Viewer   localhost:${DAAF_PORT_LOGVIEWER}"
+        echo "    ${GREEN}*${RESET} Log Viewer   localhost:${DAAF_PORT_LOGVIEWER}"
     else
-        echo "    ${DIM}○${RESET} Log Viewer   (not running)"
+        echo "    ${DIM}o${RESET} Log Viewer   (not running)"
     fi
     if [ "$STATUS_PORT_2720" = true ]; then
-        echo "    ${GREEN}●${RESET} VS Code      localhost:${DAAF_PORT_VSCODE}"
+        echo "    ${GREEN}*${RESET} VS Code      localhost:${DAAF_PORT_VSCODE}"
     else
-        echo "    ${DIM}○${RESET} VS Code      (not running)"
+        echo "    ${DIM}o${RESET} VS Code      (not running)"
     fi
 
     echo ""
@@ -426,8 +426,8 @@ handle_vscode() {
     if check_port 2720; then
         echo "  VS Code is already running."
     else
-        # Capture stderr (do NOT discard) so a container-side launch failure —
-        # e.g., a stale image without code-server — is visible rather than
+        # Capture stderr (do NOT discard) so a container-side launch failure --
+        # e.g., a stale image without code-server -- is visible rather than
         # masquerading as "still starting". Non-zero exit returns to the menu.
         local launch_err
         launch_err=$(docker compose exec -d daaf-docker \
@@ -563,7 +563,7 @@ handle_logs() {
     # --- Step 2: Ensure the log viewer server is running ---
     # Start the server against the SELECTED source, not always --archive. The
     # old code always launched with --archive, which exits before serving when
-    # the DAAF-wide archive is empty — leaving a valid project selection with a
+    # the DAAF-wide archive is empty -- leaving a valid project selection with a
     # dead URL. Serving from the chosen source decouples the two.
     if ! check_port 2719; then
         echo "  Starting log viewer server..."
@@ -628,7 +628,7 @@ handle_quarto() {
 # Handlers: Maintenance (options 7-10)
 # ============================================================================
 
-# run_delegate <script-name> — run a delegated child script with DAAF_NESTED=1.
+# run_delegate <script-name> -- run a delegated child script with DAAF_NESTED=1.
 # Guards the child's exit code: a non-zero exit (child failure, user abort, or
 # the graceful "no backups found" case in restore_from_backup.sh) prints a clear
 # message and returns to the menu rather than letting `set -e` kill the panel.
@@ -685,13 +685,13 @@ handle_stop_services() {
 
     echo "  Running services:"
     if [ "$marimo_running" = true ]; then
-        echo "    ${GREEN}●${RESET} Notebooks    (port 2718)"
+        echo "    ${GREEN}*${RESET} Notebooks    (port 2718)"
     fi
     if [ "$logs_running" = true ]; then
-        echo "    ${GREEN}●${RESET} Log Viewer   (port 2719)"
+        echo "    ${GREEN}*${RESET} Log Viewer   (port 2719)"
     fi
     if [ "$vscode_running" = true ]; then
-        echo "    ${GREEN}●${RESET} VS Code      (port 2720)"
+        echo "    ${GREEN}*${RESET} VS Code      (port 2720)"
     fi
     echo ""
     echo "    1) Stop all"

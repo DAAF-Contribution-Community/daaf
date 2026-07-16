@@ -242,9 +242,11 @@ Describe "daaf_lib.ps1 Set-DaafSettingsKey" {
     # UTF-8 as legacy ANSI (cp1252), mojibaking every multibyte character once per
     # read->rewrite cycle. A fresh install seeds several keys in sequence, so the
     # corruption compounds per key. The read is pinned to `-Encoding UTF8` to
-    # prevent this; assert the em-dash (U+2014 -> UTF-8 bytes E2 80 94, exactly the
-    # character carried in environment_settings_example.txt) is byte-preserved
-    # across repeated upserts. This test fails on the pre-fix (bare-read) code.
+    # prevent this; assert the em-dash (U+2014 -> UTF-8 bytes E2 80 94, a
+    # representative non-ASCII multibyte character -- the example template is now
+    # deliberately pure ASCII, enforced by lint, but a user may add non-ASCII
+    # content to their own environment_settings.txt) is byte-preserved across
+    # repeated upserts. This test fails on the pre-fix (bare-read) code.
     It "preserves a non-ASCII em-dash across repeated upserts (PS 5.1 read-encoding regression)" {
         $emdash = [char]0x2014
         Write-LfFile $script:S "# comment with an em-dash $emdash inside`nDAAF_PORT_MARIMO=2718`n"

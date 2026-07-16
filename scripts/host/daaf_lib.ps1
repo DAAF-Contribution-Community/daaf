@@ -348,9 +348,10 @@ function Confirm-DaafContainer {
 # READ/WRITE ENCODINGS ARE A PAIR: the read below pins `-Encoding UTF8` for the
 # same reason the write pins BOM-less UTF-8. This function WRITES BOM-less UTF-8,
 # and BOM-less UTF-8 is exactly what Windows PowerShell 5.1's BARE `Get-Content`
-# misreads as legacy ANSI (cp1252) -- mojibaking every multibyte character (e.g.
-# the em-dashes carried in the example template) once per read->rewrite cycle, so
-# a single install that seeds N keys compounds the corruption N times. `-Encoding
+# misreads as legacy ANSI (cp1252) -- mojibaking every multibyte character (any
+# non-ASCII content, such as user-added comments or values -- the example template
+# itself is deliberately pure ASCII, enforced by lint) once per read->rewrite
+# cycle, so a single install that seeds N keys compounds the corruption N times. `-Encoding
 # UTF8` decodes BOM-less UTF-8 correctly on PS 5.1 (the BOM hazard is write-only)
 # and is harmless on PS 7 (UTF-8 by default). Never drop it while the write stays
 # BOM-less -- the two are correct only together.

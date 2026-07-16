@@ -2,7 +2,7 @@
 # ============================================================================
 # DAAF Shared Function Library
 # ============================================================================
-# Reusable functions for DAAF host scripts. Source this file — do not execute
+# Reusable functions for DAAF host scripts. Source this file -- do not execute
 # it directly.
 #
 # Usage:
@@ -151,7 +151,7 @@ setup_colors() {
 
 # --- Browser Open ---
 # Open a URL in the default browser. Best-effort convenience function.
-# Always returns 0 — failure to open is never fatal.
+# Always returns 0 -- failure to open is never fatal.
 open_url() {
     local url="${1:?open_url requires a URL argument}"
 
@@ -180,7 +180,7 @@ open_url() {
         return 0
     fi
 
-    # No opener available — silent fallback
+    # No opener available -- silent fallback
     return 0
 }
 

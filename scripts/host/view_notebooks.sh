@@ -21,7 +21,7 @@
 
 set -euo pipefail
 
-# --- Source shared library (optional — backwards compatible without it) ---
+# --- Source shared library (optional -- backwards compatible without it) ---
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 if [ -f "${SCRIPT_DIR}/daaf_lib.sh" ]; then
     source "${SCRIPT_DIR}/daaf_lib.sh"

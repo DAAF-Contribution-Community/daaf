@@ -8,6 +8,7 @@
 #   3. DAAF_NESTED consistency: host lifecycle scripts reference DAAF_NESTED
 #   4. Numbered progress: host lifecycle scripts use [N/M] indicators (warn only)
 #   5. Bash 3.2 portability: host scripts avoid Bash-4.x-only constructs
+#   6. ASCII purity: host-facing files contain only printable ASCII (+ tab/LF/CR)
 #
 # Usage:
 #   bash tests/lint/check-daaf-conventions.sh
@@ -312,6 +313,65 @@ for shfile in "${REPO_ROOT}"/scripts/host/*.sh; do
     [ -f "${shfile}" ] || continue
     filename=$(basename "${shfile}")
     check_bash32_portability "${shfile}" "${filename}"
+done
+
+echo ""
+
+# =====================================================================
+# 6. ASCII purity (host-facing files)
+# =====================================================================
+echo "--- ASCII purity checks (host-facing files) ---"
+
+# Every file under scripts/host/ is either downloaded raw to a user's machine
+# (.sh / .ps1 lifecycle scripts) or round-tripped through Windows PowerShell 5.1
+# read/write cycles (environment_settings_example.txt, via the settings upsert).
+# Pure ASCII makes each file invariant under any codepage, editor, or PowerShell
+# version -- defense-in-depth atop the -Encoding UTF8 read pin (commit 93bfb55).
+# A single non-ASCII byte (em-dash, smart quote, NBSP) is exactly what a bare
+# PS 5.1 Get-Content mojibakes, so this gate keeps the class extinct at the door.
+#
+# Allowed bytes: tab (0x09), CR (0x0D), and printable ASCII (0x20-0x7E). LF (0x0A)
+# is the line delimiter and never appears within a line grep inspects. Any other
+# byte -- a high-bit byte (0x80-0xFF) or a stray control char -- is flagged.
+# LC_ALL=C forces byte-wise matching so the [ -~] range is exactly 0x20-0x7E on
+# both GNU and BSD grep; using -E (ERE) rather than -P (PCRE) keeps this gate
+# portable per the lint's own standards (BSD grep has no -P). The literal tab and
+# CR are built via printf so the lint's own source stays pure ASCII too.
+# -a (--text, portable on GNU and BSD grep) forces text mode so a NUL-containing
+# or UTF-16-mangled file -- the check's own motivating PS 5.1 Out-File scenario --
+# is flagged with line numbers instead of silently bailing to grep's binary mode
+# (GNU grep treats a NUL-bearing file as binary, printing "binary file matches" to
+# stderr, which 2>/dev/null discards, and nothing to stdout -- a silent false pass).
+# Caveat: this gate assumes a POSIX/GNU-compatible grep binary. Interactive shells
+# that alias or function grep to ugrep diverge on CR and invalid-UTF-8 handling, but
+# `bash <script>` does not inherit shell functions or aliases, so the invocation
+# path this lint actually runs under is unaffected.
+#
+# SCOPE: this walks the live filesystem under scripts/host/ (a maxdepth-1 glob),
+# matching how every other section here scopes host checks. In CI only tracked
+# files exist, so it is effectively a tracked-file gate; a local dev checkout may
+# also carry untracked host files (e.g. nuke_daaf.sh), which the existing preamble
+# / DAAF_NESTED / Bash-3.2 sections already scan the same way -- the ASCII gate
+# simply follows that established convention rather than adding a git dependency.
+
+non_ascii_re="[^$(printf '\t\r') -~]"
+
+for hostfile in "${REPO_ROOT}"/scripts/host/*; do
+    [ -f "${hostfile}" ] || continue
+    filename=$(basename "${hostfile}")
+
+    # LC_ALL=C: match on raw bytes, not the locale's multibyte interpretation.
+    offending=$(LC_ALL=C grep -anE "${non_ascii_re}" "${hostfile}" 2>/dev/null || true)
+    if [ -n "${offending}" ]; then
+        fail "scripts/host/${filename}: contains non-ASCII byte(s) outside printable ASCII (tab/LF/CR allowed):"
+        # cat -v renders the offending bytes visibly (e.g. an em-dash prints as
+        # M-bM-^@M-^T) so they are reportable without corrupting the terminal.
+        printf '%s\n' "${offending}" | LC_ALL=C cat -v | while IFS= read -r _line; do
+            printf '        %s\n' "${_line}"
+        done
+    else
+        pass "scripts/host/${filename}: pure ASCII"
+    fi
 done
 
 echo ""
