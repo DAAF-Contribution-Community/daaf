@@ -20,7 +20,7 @@ This skill provides critical context for interpreting data from the Urban Instit
 - **Definitions change over time**: Variable definitions, categories, and coding schemes evolve
 - **State comparisons require caution**: State-level data often cannot be directly compared
 - **Citation is required**: The ODC Attribution License mandates proper citation
-- **Skill provenance matters**: Each `*-data-source-*` skill includes `provenance.skill_last_updated` in its frontmatter. If this date is more than a few months old, treat the skill's claims about coded values, suppression patterns, and data quality with caution — data sources evolve and skill documentation may have drifted. Consider re-running data-ingest to re-verify.
+- **Skill provenance matters**: Each `*-data-source-*` skill includes a `skill-last-updated` key in its frontmatter `metadata:` block. If this date is more than a few months old, treat the skill's claims about coded values, suppression patterns, and data quality with caution — data sources evolve and skill documentation may have drifted. Consider re-running data-ingest to re-verify.
 
 ## Data Provenance: The Education Data Portal
 

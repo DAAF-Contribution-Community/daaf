@@ -21,7 +21,7 @@ Download datasets from the Education Data Portal via configured mirror sources (
 - Discover available files via each mirror's discovery endpoint
 
 > **Skill Provenance Note:** Each `*-data-source-*` skill includes
-> `provenance.skill_last_updated` in its frontmatter. Before fetching data,
+> a `skill-last-updated` key in its frontmatter `metadata:` block. Before fetching data,
 > check this date — if it is more than a few months old, the source skill's
 > documentation about column definitions, coded values, and quality patterns
 > may have drifted from the current data. Consider re-running data-ingest to

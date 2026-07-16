@@ -9,6 +9,10 @@
 #   4. Numbered progress: host lifecycle scripts use [N/M] indicators (warn only)
 #   5. Bash 3.2 portability: host scripts avoid Bash-4.x-only constructs
 #   6. ASCII purity: host-facing files contain only printable ASCII (+ tab/LF/CR)
+#   7. Skill-freshness key hygiene: live surfaces carry no stale
+#      skill_last_updated / provenance.skill-last-updated spellings
+#   8. Data-source provenance: each *data-source* SKILL.md declares
+#      skill-authored + skill-last-updated in its frontmatter metadata block
 #
 # Usage:
 #   bash tests/lint/check-daaf-conventions.sh
@@ -373,6 +377,94 @@ for hostfile in "${REPO_ROOT}"/scripts/host/*; do
         pass "scripts/host/${filename}: pure ASCII"
     fi
 done
+
+echo ""
+
+# =====================================================================
+# 7. Skill-freshness metadata key hygiene (live framework surfaces)
+# =====================================================================
+echo "--- Skill-freshness metadata key checks (live surfaces) ---"
+
+# The canonical skill-freshness convention is a flat, hyphenated key inside the
+# frontmatter `metadata:` block: `skill-last-updated` (paired with
+# `skill-authored`). See skill-authoring/references/frontmatter.md ("Data source
+# skills MUST include skill-authored and skill-last-updated as metadata keys")
+# and DATA_SOURCE_SKILL_TEMPLATE.md. Reader-side instructions historically
+# drifted to a nonexistent nested/snake_case spelling
+# (`provenance.skill_last_updated`), pointing agents at a field that does not
+# exist. This gate keeps that class extinct: no live framework surface may
+# contain the snake_case token `skill_last_updated` or the dotted
+# `provenance.skill-last-updated` nesting.
+#
+# SCOPE: live framework surfaces only -- the agent/skill/reference docs agents
+# actually read as instructions. Deliberately excludes research/ and benchmarks/
+# (archival project artifacts) and .claude/logs/ (immutable session transcripts),
+# which legitimately quote past buggy instructions and must not be rewritten. The
+# scope is expressed by listing live paths explicitly (rather than excluding), so
+# .claude/logs/ is naturally out of scope while .claude/agents and .claude/skills
+# are in. tests/lint/ is out of scope, so this script's own comments above do not
+# self-match.
+
+freshness_bad_re='skill_last_updated|provenance\.skill-last-updated'
+freshness_targets="
+${REPO_ROOT}/.claude/agents
+${REPO_ROOT}/.claude/skills
+${REPO_ROOT}/agent_reference
+${REPO_ROOT}/user_reference
+${REPO_ROOT}/CLAUDE.md
+${REPO_ROOT}/README.md
+"
+
+freshness_present=""
+while IFS= read -r t; do
+    [ -n "${t}" ] || continue
+    [ -e "${t}" ] && freshness_present="${freshness_present} ${t}"
+done <<EOF
+${freshness_targets}
+EOF
+
+# shellcheck disable=SC2086
+freshness_hits=$(grep -rnE "${freshness_bad_re}" ${freshness_present} 2>/dev/null || true)
+if [ -n "${freshness_hits}" ]; then
+    fail "stale skill-freshness key spelling on live surfaces (use the 'skill-last-updated' key in the frontmatter 'metadata:' block):"
+    printf '%s\n' "${freshness_hits}" | while IFS= read -r _line; do
+        printf '        %s\n' "${_line}"
+    done
+else
+    pass "no stale skill-freshness key spellings on live surfaces"
+fi
+
+echo ""
+
+# =====================================================================
+# 8. Data-source skill provenance completeness
+# =====================================================================
+echo "--- Data-source skill provenance metadata checks ---"
+
+# Every data-source skill MUST declare both provenance keys in its frontmatter
+# metadata block (skill-authoring/references/frontmatter.md). This gate is the
+# producer-side complement to check 7's reader-side hygiene: it fails if any
+# *data-source* SKILL.md is missing either key, guaranteeing the reader
+# instructions fixed in check 7 always have a real field to point at.
+
+ds_found=0
+for skillfile in "${REPO_ROOT}"/.claude/skills/*data-source*/SKILL.md; do
+    [ -f "${skillfile}" ] || continue
+    ds_found=1
+    relpath="${skillfile#"${REPO_ROOT}/"}"
+    missing=""
+    grep -qE '(^|[[:space:]])skill-authored:' "${skillfile}" || missing="${missing} skill-authored"
+    grep -qE '(^|[[:space:]])skill-last-updated:' "${skillfile}" || missing="${missing} skill-last-updated"
+    if [ -n "${missing}" ]; then
+        fail "${relpath}: missing required provenance metadata key(s):${missing}"
+    else
+        pass "${relpath}: has skill-authored + skill-last-updated"
+    fi
+done
+
+if [ "${ds_found}" -eq 0 ]; then
+    warn "no *data-source* SKILL.md files found to check (glob matched nothing)"
+fi
 
 echo ""
 

@@ -543,6 +543,15 @@ If analysis includes 2020 or 2021 data, CP1 Check 7 will flag this automatically
 
 > **Full Task Definitions:** The complete XML task specifications for each entry in this table are in the companion `Plan_Tasks.md` file. See `agent_reference/PLAN_TASKS_TEMPLATE.md` for the task definition template.
 
+#### Scope Sizing
+
+Record the plan's scope against the task-count bands in `agent_reference/SCOPE_POLICY.md` (the single source of truth for the bands). The data-planner completes this after finalizing the Wave-Based Task Table above; plan-checker reads it during D6 Scope verification.
+
+**Total Task Count:** [N — sum of all tasks across all waves]
+**Band (per SCOPE_POLICY.md):** [Target 5-10 | Warning 11-20 | Escalation 21+]
+**Scope Justification:** [Required if Warning band — why this many tasks is warranted; name the complexity drivers, not the raw count. Otherwise "N/A".]
+**Pre-Approved Scope Record:** [Required if user pre-approved a 21+ scope — who approved, when, and what count (e.g., "brhkim approved 24-task scope on 2026-07-16"). Otherwise "N/A".]
+
 ### Stage Interface Specifications
 
 Define the expected data contracts between stages. The data-planner populates these during Plan creation. Code-reviewer validates against them during QA.

@@ -385,7 +385,7 @@ Before returning, verify all items in the Quality Standards section (Section 10 
 
 ### Plan Document
 
-Write the complete Plan following `agent_reference/PLAN_TEMPLATE.md`. The plan includes all sections: Original Request, Research Outcomes, Data Sources, Transformation Sequence, Task Specifications, Risk Register, Validation Checkpoints, Trade-offs Accepted, and QA Tolerance Decisions.
+Write the complete Plan following `agent_reference/PLAN_TEMPLATE.md`, including ALL sections the template defines (no placeholders left behind). The template is the authoritative section inventory — do not work from a remembered list, as sections evolve (e.g., Scope Sizing per `agent_reference/SCOPE_POLICY.md`).
 
 ### Return Summary
 
