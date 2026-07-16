@@ -256,6 +256,9 @@
 # unknown slug and end sessions early with "Prompt is too long." This override is
 # GLOBAL: it applies to the main session and every subagent, not per model. Choose
 # one value that is valid for every model the session can route to.
+# NOTE: on the ChatGPT-subscription shim lane (Option F alternate lane, section
+# [4.3]) the Codex backend enforces a ~370k effective input ceiling regardless of
+# the model's API-route window -- set 370000 there (see [4.3]), not 1050000.
 # --- To activate, remove the leading '#' and set the global value: ---
 #CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000
 #
@@ -292,8 +295,26 @@
 # Claude Code, which budgets the full window locally and then strips [1m] before
 # sending (so the shim / backend see the bare slug). It is VERIFIED for the
 # direct-OpenAI shim lane (Option F in [4]) but UNTESTED on "openai/"-prefixed
-# OpenRouter slugs — so on Option C prefer the explicit
+# OpenRouter slugs -- so on Option C prefer the explicit
 # CLAUDE_CODE_MAX_CONTEXT_TOKENS above (or CLAUDE_CODE_AUTO_COMPACT_WINDOW).
+# Do NOT use [1m] on the ChatGPT-subscription lane ([4.3]): it advertises
+# capacity the Codex backend rejects (~370k measured ceiling) and suppresses the
+# local compaction that would keep you under it -- set 370000 per section [4.3].
+#
+# ----------------------------------------------------------------------------
+# Optional Claude Code output budget (restart required)
+# ----------------------------------------------------------------------------
+# Claude Code defaults CLAUDE_CODE_MAX_OUTPUT_TOKENS to 32000 and supports up to
+# 64000. On Claude Code 2.1.202, use the plain decimal value 64000 (not "64K").
+# Thinking tokens count toward this output budget. Raising it reserves more of the
+# context window for a possible response, leaving less room for conversation
+# history and tool results and potentially causing earlier compaction; the active
+# provider/model can also impose a lower limit. DAAF therefore keeps 32000 as the
+# default and recommends bounded specialist final returns even when you opt in.
+# Set this in the HOST daaf-docker/environment_settings.txt before starting Claude
+# Code/the container; the established host injection flow supplies it at startup.
+# --- Optional: remove the leading '#' to opt in to Claude Code's maximum: ---
+#CLAUDE_CODE_MAX_OUTPUT_TOKENS=64000
 #
 #
 # ============================================================================
@@ -326,21 +347,25 @@
 # subscription via Codex OAuth, an unofficial dev lane).
 #
 # MODEL SLUGS: the shim lane is the one place the [1m] window suffix is verified
-# (see section [3] for what these keys do). Use BARE OpenAI slugs here — no
+# (see section [3] for what these keys do). Use BARE OpenAI slugs here -- no
 # "openai/" prefix:
 # --- To activate, remove the leading '#': ---
 #ANTHROPIC_DEFAULT_OPUS_MODEL=gpt-5.6-sol[1m]
 #ANTHROPIC_DEFAULT_SONNET_MODEL=gpt-5.6-terra[1m]
-#CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000
 #
-# SESSION-START MODEL: do NOT set ANTHROPIC_MODEL in this file for the shim — it
+# CONTEXT WINDOW: CLAUDE_CODE_MAX_CONTEXT_TOKENS is LANE-SPECIFIC -- the two auth
+# lanes hit different effective ceilings (the ChatGPT/Codex backend is capped far
+# below the model's true 1M window), so it is set per-lane in 4.2 / 4.3 below,
+# not here.
+#
+# SESSION-START MODEL: do NOT set ANTHROPIC_MODEL in this file for the shim -- it
 # will not take effect. DAAF's project settings.json sets ANTHROPIC_MODEL in its
 # "env" block (shipped default: claude-opus-4-8[1m], since most DAAF users run
 # Claude), and a settings.json env value OVERRIDES the container environment
 # (verified empirically 2026-07-12). GPT sessions therefore open on the Claude
 # default; the first message fails loudly, which makes the needed "/model" switch
 # obvious. To make GPT your STANDING default instead, edit the ANTHROPIC_MODEL
-# line in /daaf/.claude/settings.json (e.g. to gpt-5.6-sol[1m]) — see the
+# line in /daaf/.claude/settings.json (e.g. to gpt-5.6-sol[1m]) -- see the
 # technical FAQ entry "My GPT session starts on a Claude model" for details.
 #
 # ----------------------------------------------------------------------------
@@ -351,18 +376,26 @@
 # --- To activate, remove the leading '#': ---
 #OPENAI_API_KEY=sk-your_openai_key_here
 #
+# CONTEXT WINDOW (API-key lane): this lane serves the model's full window
+# (live-confirmed clean at 400k input, 2026-07-16). Declare the real 1M window:
+# --- To activate, remove the leading '#': ---
+#CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000
+#
 # ----------------------------------------------------------------------------
 # 4.3 Auth lane B: ChatGPT subscription (Codex backend)  (unofficial dev lane)
 # ----------------------------------------------------------------------------
 # Instead of a pay-per-token OpenAI API key, the SAME shim can route Claude Code
 # through your CHATGPT SUBSCRIPTION's Codex backend. Request translation, tools,
-# and content-block lifecycle stay shared; v1.2.6 adds one ChatGPT-only response-
-# formatting rule that preserves reliably identified reasoning-summary part
-# boundaries as blank lines (`\n\n`). OpenAI/API-key mode retains legacy exact
-# concatenation. This lane reads OAuth from your `codex` login (auth.json).
+# and content-block lifecycle stay shared. As of v1.2.7, ChatGPT always uses
+# upstream SSE (including for inbound non-stream callers, which receive internally
+# accumulated JSON), fails explicitly on malformed/missing terminals or invalid
+# block order, and retains v1.2.6's ChatGPT-only reasoning-summary blank-line
+# boundaries (`\n\n`). OpenAI/API-key mode retains its real upstream non-stream
+# JSON path and legacy exact concatenation. This lane reads OAuth from your `codex`
+# login (auth.json).
 #
 # UNOFFICIAL / DEV-LANE PATH: this reuses Codex's OAuth against an undocumented,
-# OpenAI-controlled backend — NOT an OpenAI-sanctioned API method. It may break if
+# OpenAI-controlled backend -- NOT an OpenAI-sanctioned API method. It may break if
 # OpenAI changes the backend, and you are responsible for compliance with OpenAI's
 # terms. The API-key lane (4.2) is the sanctioned fallback.
 #
@@ -409,13 +442,24 @@
 # --- To activate, remove the leading '#': ---
 #SHIM_BACKEND_MODE=chatgpt
 #
+# CONTEXT WINDOW (chatgpt lane): the Codex subscription backend enforces a much
+# lower effective INPUT ceiling than the model's true 1M window -- measured ~370000
+# for gpt-5.6-sol (2026-07-16: accept 369,941, reject 372,905). The client-side
+# [1m] hint cannot raise it (it only suppresses local compaction, making backend
+# rejections MORE likely), so declare 370000 here to make Claude Code's own
+# auto-compaction fire before the backend ceiling. Big-window GPT slugs on this
+# lane are assumed capped the same way until individually measured; re-measure
+# with scripts/provider_shim/probe_context_ceiling.py.
+# --- To activate, remove the leading '#': ---
+#CLAUDE_CODE_MAX_CONTEXT_TOKENS=370000
+#
 # CODEX_HOME (chatgpt mode): the directory holding auth.json. Compose already sets
 # this to the persisted, backed-up store and pre-creates it on fresh volumes;
 # override only to point at a separate per-tool login store for parallel use.
 # --- To activate, remove the leading '#': ---
 #CODEX_HOME=/home/appuser/.claude/codex-daaf
 #
-# The two OAuth override vars below are TEST / STAGING overrides only — the
+# The two OAuth override vars below are TEST / STAGING overrides only -- the
 # production defaults are correct (auth.openai.com/oauth/token and the codex
 # first-party client_id). Leave them unset for normal use.
 # --- To activate, remove the leading '#' on the lines you need: ---
@@ -523,7 +567,7 @@
 # DAAF_DEV is an OPT-IN, BUILD-TIME flag. Set it to 1 to have the Docker image
 # additionally install the in-container test toolchain (shellcheck, bats,
 # PowerShell 7, Pester, PSScriptAnalyzer) and the `gh` CLI used with GH_TOKEN
-# below — so you can run DAAF's own shell and PowerShell test suites inside the
+# below -- so you can run DAAF's own shell and PowerShell test suites inside the
 # container and reproduce what CI runs. Codex is standard-image software and does
 # not require DAAF_DEV=1:
 #     bats tests/bash/

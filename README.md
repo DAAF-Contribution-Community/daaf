@@ -53,7 +53,7 @@ Watch the 4 minute v2.0.0 Showcase video below, or read on for more information!
 
 If you're already comfortable with the Terminal and Claude Code, you can get started almost immediately using the Quick Start instructions below. Otherwise, I recommend starting with the full [Installation Guide](user_reference/01_installation_and_quickstart.md) for beginner-friendly details, prerequisites, and troubleshooting.
 
-**Requirements:** [Docker Desktop](https://www.docker.com/products/docker-desktop/) (running) and an [Anthropic Max subscription](https://claude.com/pricing/max) ($100-200/mo), [API key](https://console.anthropic.com/), or [OpenRouter](https://openrouter.ai/) account (pay-per-token, no subscription — provides access to Anthropic models as well as high-performing open-weight alternatives like GLM 5.2). Open a terminal in your desired installation directory.
+**Requirements:** [Docker Desktop](https://www.docker.com/products/docker-desktop/) (running) and an [Anthropic Max subscription](https://claude.com/pricing/max) ($100-200/mo), [API key](https://console.anthropic.com/), or [OpenRouter](https://openrouter.ai/) account (pay-per-token, no subscription — provides access to Anthropic models as well as high-performing open-weight alternatives like GLM 5.2). OpenAI GPT models are also supported via DAAF's provider shim, using either an OpenAI API key or a ChatGPT subscription (note: the ChatGPT-subscription lane has a backend-enforced ~370k context ceiling — see the [Installation Guide](user_reference/01_installation_and_quickstart.md)'s Option F). Open a terminal in your desired installation directory.
 
 **macOS / Linux (Terminal):**
 

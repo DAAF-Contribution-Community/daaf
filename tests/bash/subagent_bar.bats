@@ -47,6 +47,8 @@ setup() {
     common_setup
     _clean_subbar_caches
     unset CLAUDE_CODE_MAX_CONTEXT_TOKENS
+    unset DAAF_PROVIDER_SHIM
+    unset SHIM_BACKEND_MODE
     export FAKE_SESSION SUBAGENT_BAR_SH
 }
 
@@ -351,6 +353,74 @@ _payload_one_task() {
     run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 90000)
     assert_success
     assert_output --partial "$COLOR_ELEVATED"
+}
+
+# =========================================================================
+# ChatGPT-subscription lane: gpt-5.4/5.5/5.6 row window drops to 370k
+# -------------------------------------------------------------------------
+# Canonical lane gate: DAAF_PROVIDER_SHIM=openai AND SHIM_BACKEND_MODE=chatgpt.
+# The per-row window mapping only fires when the task model differs from the
+# session model, so these seed a sonnet session with a gpt-5.6-sol task. The
+# window is proven via the rendered percentage: 111k tokens is 30% of the
+# lane-gated 370k but only 10% of the 1.05M API-lane window. The gate requires
+# BOTH vars; CLAUDE_CODE_MAX_CONTEXT_TOKENS still wins over both.
+# =========================================================================
+
+@test "chatgpt lane (both vars set): gpt-5.6-sol row uses the 370k window (30%)" {
+    _seed_window 200000
+    _seed_session_model "claude-sonnet-4-6"
+    _seed_task_model "t1" "gpt-5.6-sol"
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 111000)
+    assert_success
+    assert_output --partial "30%"
+    refute_output --partial "10%"
+}
+
+@test "lane vars unset: gpt-5.6-sol row keeps the 1.05M API-lane window (10%)" {
+    _seed_window 200000
+    _seed_session_model "claude-sonnet-4-6"
+    _seed_task_model "t1" "gpt-5.6-sol"
+    run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 111000)
+    assert_success
+    assert_output --partial "10%"
+    refute_output --partial "30%"
+}
+
+@test "SHIM_BACKEND_MODE=chatgpt alone (no DAAF_PROVIDER_SHIM) keeps 1.05M (10%)" {
+    _seed_window 200000
+    _seed_session_model "claude-sonnet-4-6"
+    _seed_task_model "t1" "gpt-5.6-sol"
+    run env SHIM_BACKEND_MODE=chatgpt \
+        bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 111000)
+    assert_success
+    assert_output --partial "10%"
+    refute_output --partial "30%"
+}
+
+@test "explicit CLAUDE_CODE_MAX_CONTEXT_TOKENS still wins on the chatgpt lane" {
+    # Override forces the row window to 200k: 100k -> 50%, not the lane's 27%.
+    _seed_window 200000
+    _seed_session_model "claude-sonnet-4-6"
+    _seed_task_model "t1" "gpt-5.6-sol"
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        CLAUDE_CODE_MAX_CONTEXT_TOKENS=200000 \
+        bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 100000)
+    assert_success
+    assert_output --partial "50%"
+    refute_output --partial "27%"
+}
+
+@test "chatgpt lane does not perturb a non-GPT (Claude) row window (fable 1M, 15%)" {
+    # The lane gate only rewrites the gpt-5.4/5.5/5.6 arm. A fable task still
+    # maps to its 1M window regardless of the lane env: 150k -> 15%.
+    _seed_window 200000
+    _seed_session_model "claude-sonnet-4-6"
+    _seed_task_model "t1" "claude-fable-5"
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 150000)
+    assert_success
+    assert_output --partial "15%"
 }
 
 # =========================================================================

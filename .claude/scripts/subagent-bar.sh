@@ -211,6 +211,22 @@ while IFS=$'\x1f' read -r id type name status tokens label; do
         # quality-tier selector below, where only exact terminal GPT 5.6 Sol slugs
         # receive the extended-horizon exception. Re-verify this map after Claude
         # Code/provider updates.
+        # Lane-gated big-window ceiling for the gpt-5.4/5.5/5.6 flagship family.
+        # On the ChatGPT-subscription shim lane the Codex backend enforces a
+        # measured ceiling far below the OpenAI API lane's 1.05M. Canonical lane
+        # gate (the same two-var idiom used by route_provenance.py and the
+        # daaf-deploy-smoke-testing skill): DAAF_PROVIDER_SHIM=openai AND
+        # SHIM_BACKEND_MODE=chatgpt — both plain container env vars, no network
+        # probe. Probe 2026-07-16 (gpt-5.6-sol): accepted real
+        # input_tokens=369,941, rejected 372,905 -> bracket 369,941–372,905;
+        # 370000 is assumed lane-wide for the whole big-window family (the
+        # measurement is Sol-specific; conservative to apply it to the 5.4/5.5/5.6
+        # arm on this lane). Unset vars resolve to the non-shim default via
+        # ${VAR:-} guards (fail-open); the API and every other lane keep 1,050,000.
+        gpt_big_window=1050000
+        if [[ "${DAAF_PROVIDER_SHIM:-}" == "openai" && "${SHIM_BACKEND_MODE:-}" == "chatgpt" ]]; then
+            gpt_big_window=370000
+        fi
         case "$task_model" in
             # GPT (OpenAI) windows FIRST, ordered most-specific first: mini/chat
             # variants are smaller than the gpt-5.4/5.5/5.6 flagships, so they must
@@ -222,7 +238,7 @@ while IFS=$'\x1f' read -r id type name status tokens label; do
             # aligned with context-bar.sh + context-reporter.sh.
             *gpt-5*-mini*) row_window=400000 ;;
             *gpt-5*-chat*) row_window=128000 ;;
-            *gpt-5.4*|*gpt-5.5*|*gpt-5.6*) row_window=1050000 ;;
+            *gpt-5.4*|*gpt-5.5*|*gpt-5.6*) row_window=$gpt_big_window ;;
             *gpt-5*) row_window=400000 ;;
             # Exact GLM-5.2 plus terminal date snapshots only. Keep this narrow:
             # glm-5.2-air and future variants have no verified static window.

@@ -47,6 +47,8 @@ setup() {
     common_setup
     _clean_ctx_caches
     unset CLAUDE_CODE_MAX_CONTEXT_TOKENS
+    unset DAAF_PROVIDER_SHIM
+    unset SHIM_BACKEND_MODE
     export FAKE_SESSION FAKE_AGENT CONTEXT_REPORTER_SH
 }
 
@@ -451,6 +453,104 @@ _seed_window() { printf '%s' "$1" > "/tmp/claude-ctx-window-${FAKE_SESSION}"; }
     assert_output --partial "[CRITICAL]"
     assert_output --partial "250k / 1048k"
     assert_output --partial "(23%)"
+}
+
+# =========================================================================
+# ChatGPT-subscription lane: gpt-5.4/5.5/5.6 subagent window drops to 370k
+# -------------------------------------------------------------------------
+# Canonical lane gate: DAAF_PROVIDER_SHIM=openai AND SHIM_BACKEND_MODE=chatgpt.
+# The per-subagent window correction only fires when the subagent model differs
+# from the session model, so these seed a sonnet session with a gpt-5.6-sol
+# subagent. The window is proven via the "used / MAX" denominator: on the lane
+# a gpt-5.6-sol subagent maps to 370k, vs 1,050,000 off it.
+#
+# PRE-APPLICATION EXPECTATION: only the lane-ACTIVE case below (370k denominator)
+# distinguishes the patched hook from the live one — it FAILS against the
+# unpatched /daaf/.claude/hooks/context-reporter.sh (which still emits "/ 1050k")
+# and PASSES when CONTEXT_REPORTER_SH points at the patched copy. The lane-INERT
+# cases (vars unset, one var only, override wins, Claude model) assert behavior
+# that already holds on the unpatched hook, so they pass against both.
+# =========================================================================
+
+@test "chatgpt lane (both vars set): gpt-5.6-sol subagent maps to 370k (81%)" {
+    printf 'claude-sonnet-4-6' > "/tmp/claude-model-${FAKE_SESSION}"
+    printf 'openai/gpt-5.6-sol' > "/tmp/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
+    _seed_window 200000
+    parent="${TEST_DIR}/main.jsonl"
+    printf '{"type":"user","isSidechain":false,"message":{"content":"x"}}\n' > "$parent"
+    _write_subagent_transcript "${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl" "openai/gpt-5.6-sol" 300000
+
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
+    assert_success
+    assert_output --partial "300k / 370k"
+    refute_output --partial "300k / 1050k"
+    assert_output --partial "(81%)"
+}
+
+@test "lane vars unset: gpt-5.6-sol subagent keeps the 1.05M API-lane window (28%)" {
+    printf 'claude-sonnet-4-6' > "/tmp/claude-model-${FAKE_SESSION}"
+    printf 'openai/gpt-5.6-sol' > "/tmp/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
+    _seed_window 200000
+    parent="${TEST_DIR}/main.jsonl"
+    printf '{"type":"user","isSidechain":false,"message":{"content":"x"}}\n' > "$parent"
+    _write_subagent_transcript "${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl" "openai/gpt-5.6-sol" 300000
+
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
+    assert_success
+    assert_output --partial "300k / 1050k"
+    refute_output --partial "300k / 370k"
+    assert_output --partial "(28%)"
+}
+
+@test "SHIM_BACKEND_MODE=chatgpt alone (no DAAF_PROVIDER_SHIM) keeps 1.05M (28%)" {
+    printf 'claude-sonnet-4-6' > "/tmp/claude-model-${FAKE_SESSION}"
+    printf 'openai/gpt-5.6-sol' > "/tmp/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
+    _seed_window 200000
+    parent="${TEST_DIR}/main.jsonl"
+    printf '{"type":"user","isSidechain":false,"message":{"content":"x"}}\n' > "$parent"
+    _write_subagent_transcript "${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl" "openai/gpt-5.6-sol" 300000
+
+    run env SHIM_BACKEND_MODE=chatgpt \
+        bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
+    assert_success
+    assert_output --partial "300k / 1050k"
+    refute_output --partial "300k / 370k"
+}
+
+@test "explicit CLAUDE_CODE_MAX_CONTEXT_TOKENS still wins on the chatgpt lane" {
+    # Override forces the window to 250k regardless of the lane gate: 200k -> 80%.
+    printf 'claude-sonnet-4-6' > "/tmp/claude-model-${FAKE_SESSION}"
+    printf 'openai/gpt-5.6-sol' > "/tmp/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
+    _seed_window 200000
+    parent="${TEST_DIR}/main.jsonl"
+    printf '{"type":"user","isSidechain":false,"message":{"content":"x"}}\n' > "$parent"
+    _write_subagent_transcript "${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl" "openai/gpt-5.6-sol" 200000
+
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        CLAUDE_CODE_MAX_CONTEXT_TOKENS=250000 \
+        bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
+    assert_success
+    assert_output --partial "200k / 250k"
+    refute_output --partial "200k / 370k"
+    assert_output --partial "(80%)"
+}
+
+@test "chatgpt lane does not perturb a non-GPT (Claude) subagent window (fable 1M, 25%)" {
+    # The lane gate only rewrites the gpt-5.4/5.5/5.6 arm. A fable subagent still
+    # maps to its 1M window regardless of the lane env: 250k -> 25% -> NOMINAL.
+    printf 'claude-sonnet-4-6' > "/tmp/claude-model-${FAKE_SESSION}"
+    printf 'claude-fable-5' > "/tmp/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
+    _seed_window 200000
+    parent="${TEST_DIR}/main.jsonl"
+    printf '{"type":"user","isSidechain":false,"message":{"content":"x"}}\n' > "$parent"
+    _write_subagent_transcript "${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl" "claude-fable-5" 250000
+
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
+    assert_success
+    assert_output --partial "250k / 1000k"
+    assert_output --partial "(25%)"
 }
 
 # =========================================================================

@@ -29,6 +29,8 @@ MOCK_CURL
     chmod +x "${MOCK_BIN}/curl"
     unset ANTHROPIC_BASE_URL
     unset CLAUDE_CODE_MAX_CONTEXT_TOKENS
+    unset DAAF_PROVIDER_SHIM
+    unset SHIM_BACKEND_MODE
     export CONTEXT_BAR_SH FAKE_SESSION SCRATCH_DIR MOCK_BIN
     export DAAF_CONTEXT_BAR_CACHE_DIR CTX_CACHE OR_CACHE
 }
@@ -119,4 +121,73 @@ _payload() {
     run cat "$CTX_CACHE"
     assert_success
     assert_output "333333"
+}
+
+# =========================================================================
+# ChatGPT-subscription lane: gpt-5.4/5.5/5.6 big-window ceiling drops to 370k
+# -------------------------------------------------------------------------
+# Canonical lane gate: DAAF_PROVIDER_SHIM=openai AND SHIM_BACKEND_MODE=chatgpt.
+# On that lane the Codex backend's measured ceiling for gpt-5.6-sol is ~370k
+# (probe 2026-07-16: accepted 369,941, rejected 372,905), vs 1,050,000 on the
+# OpenAI API lane. The gate requires BOTH env vars; either alone (or neither)
+# keeps the 1.05M mapping. CLAUDE_CODE_MAX_CONTEXT_TOKENS still wins over both.
+# =========================================================================
+
+@test "chatgpt lane (both vars set): gpt-5.6-sol maps to the 370k ceiling" {
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol[1m]")
+    assert_success
+    assert_output --partial "of 370k tokens"
+    refute_output --partial "of 1050k tokens"
+    run cat "$CTX_CACHE"
+    assert_success
+    assert_output "370000"
+}
+
+@test "lane vars unset: gpt-5.6-sol keeps the 1,050,000 API-lane window" {
+    run bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol[1m]")
+    assert_success
+    assert_output --partial "of 1050k tokens"
+    refute_output --partial "of 370k tokens"
+    run cat "$CTX_CACHE"
+    assert_success
+    assert_output "1050000"
+}
+
+@test "SHIM_BACKEND_MODE=chatgpt alone (no DAAF_PROVIDER_SHIM) keeps 1,050,000" {
+    # Gate requires BOTH vars; the backend-mode var alone must not trip it.
+    run env SHIM_BACKEND_MODE=chatgpt \
+        bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol[1m]")
+    assert_success
+    assert_output --partial "of 1050k tokens"
+    refute_output --partial "of 370k tokens"
+    run cat "$CTX_CACHE"
+    assert_success
+    assert_output "1050000"
+}
+
+@test "explicit CLAUDE_CODE_MAX_CONTEXT_TOKENS still wins on the chatgpt lane" {
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        CLAUDE_CODE_MAX_CONTEXT_TOKENS=333333 \
+        bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol[1m]")
+    assert_success
+    assert_output --partial "of 333k tokens"
+    refute_output --partial "of 370k tokens"
+    run cat "$CTX_CACHE"
+    assert_success
+    assert_output "333333"
+}
+
+@test "chatgpt lane does not perturb a non-GPT (Claude) model window" {
+    # The lane gate only rewrites the gpt-5.4/5.5/5.6 big-window arm. A Claude
+    # id matches no arm in the static map, so max_context stays the payload's
+    # 200000 regardless of the lane env.
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        bash "$CONTEXT_BAR_SH" < <(_payload "claude-fable-5")
+    assert_success
+    assert_output --partial "of 200k tokens"
+    refute_output --partial "of 370k tokens"
+    run cat "$CTX_CACHE"
+    assert_success
+    assert_output "200000"
 }

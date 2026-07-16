@@ -150,6 +150,23 @@ if [[ -n "$AGENT_ID" ]]; then
         [[ -n "${AGENT_MODEL:-}" ]] && echo "$AGENT_MODEL" > "$AGENT_MODEL_CACHE" 2>/dev/null
     fi
     if [[ -n "${AGENT_MODEL:-}" && "$AGENT_MODEL" != "${SESSION_MODEL:-}" ]]; then
+        # Lane-gated big-window ceiling for the gpt-5.4/5.5/5.6 flagship family.
+        # On the ChatGPT-subscription shim lane the Codex backend enforces a
+        # measured ceiling far below the OpenAI API lane's 1.05M. Canonical lane
+        # gate (the same two-var idiom used by route_provenance.py and the
+        # daaf-deploy-smoke-testing skill): DAAF_PROVIDER_SHIM=openai AND
+        # SHIM_BACKEND_MODE=chatgpt — both plain container env vars, no network
+        # probe. Probe 2026-07-16 (gpt-5.6-sol): accepted real
+        # input_tokens=369,941, rejected 372,905 -> bracket 369,941–372,905;
+        # 370000 is assumed lane-wide for the whole big-window family (the
+        # measurement is Sol-specific; conservative to apply it to the
+        # 5.4/5.5/5.6 arm on this lane). Unset vars resolve to the non-shim
+        # default via ${VAR:-} guards (fail-open); the API and every other lane
+        # keep 1,050,000.
+        GPT_BIG_WINDOW=1050000
+        if [[ "${DAAF_PROVIDER_SHIM:-}" == "openai" && "${SHIM_BACKEND_MODE:-}" == "chatgpt" ]]; then
+            GPT_BIG_WINDOW=370000
+        fi
         case "$AGENT_MODEL" in
             # GPT (OpenAI) windows FIRST, most-specific first (mini/chat before
             # the flagships). The gpt-5.4/5.5/5.6 flagships legitimately carry a
@@ -162,7 +179,7 @@ if [[ -n "$AGENT_ID" ]]; then
             # exception in calculate(), which changes quality tier only.
             *gpt-5*-mini*) MAX_CONTEXT=400000 ;;
             *gpt-5*-chat*) MAX_CONTEXT=128000 ;;
-            *gpt-5.4*|*gpt-5.5*|*gpt-5.6*) MAX_CONTEXT=1050000 ;;
+            *gpt-5.4*|*gpt-5.5*|*gpt-5.6*) MAX_CONTEXT=$GPT_BIG_WINDOW ;;
             *gpt-5*) MAX_CONTEXT=400000 ;;
             # Exact GLM-5.2 plus terminal date snapshots only. Keep this narrow:
             # glm-5.2-air and future variants have no verified static window.
