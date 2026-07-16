@@ -11,7 +11,7 @@ from the live environment, and runs route-appropriate probes across tiers:
 
   Tier 0  preflight, no LLM      route detection + env coherence + hooks/statusline/shim/invariants
   Tier 1  one live round-trip    one claude -p call + the plumbing evidence around it
-  Tier 2  functional battery     five capability-structural probes (dispatch, coding, web, skill, isolation)
+  Tier 2  functional battery     six capability-structural probes (dispatch, coding, web, skill, isolation, nested-dispatch deny)
   Tier D  deterministic battery  bats / Pester / lint / hook tests (opt-in, zero API cost)
 
 Reports land under scripts/deploy_smoke/reports/{YYYYMMDD_HHMMSS}_{route}/ with a
@@ -222,7 +222,7 @@ def confirm_launch(route_info, tiers, profiles, assume_yes: bool) -> bool:
     print(f"  Tiers          : {', '.join(tiers)}")
     print(f"  Profiles       : {', '.join(p[0] or '<ambient>' for p in profiles)}")
     if live_tiers:
-        n_runs = len(profiles) * (1 if "1" in tiers else 0) + len(profiles) * (5 if "2" in tiers else 0)
+        n_runs = len(profiles) * (1 if "1" in tiers else 0) + len(profiles) * (6 if "2" in tiers else 0)
         print(f"  COST NOTE      : Tiers {live_tiers} make ~{n_runs} live claude -p API calls "
               f"(billed to your configured provider).")
     else:

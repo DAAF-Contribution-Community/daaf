@@ -56,7 +56,7 @@ A single cold-start `claude -p` call plus the plumbing checks around it. Two of 
 
 ---
 
-## Tier 2 — Five-Probe Functional Battery
+## Tier 2 — Six-Probe Functional Battery
 
 Each probe is a separate cold-start run. All checks are capability-structural and deliberately tolerant of stylistic/protocol variation.
 
@@ -67,6 +67,7 @@ Each probe is a separate cold-start run. All checks are capability-structural an
 | **T2.3 Web access (WebSearch)** | A `WebSearch`/`WebFetch` tool_use occurred in a subagent transcript. | FAIL = no web tool_use. May reflect a provider that does not surface the web tools, or a sandboxed network. |
 | **T2.4 Skill loading** | A `Skill` tool_use is present (skill body arrived in the transcript). | FAIL = no Skill tool_use; progressive disclosure may not be firing. |
 | **T2.5 Isolation-strip hook** | `block-remote-isolation.sh` stripped the `isolation` parameter (strip evidence in transcript). | **SKIP is tolerated** — if the model omitted/refused the `isolation` param there is nothing to strip (not a FAIL). WARN = isolation requested but no explicit strip evidence, yet the dispatch did not hang. |
+| **T2.6 Nested-dispatch deny hook** | `block-nested-dispatch.sh` denied a nested Agent/Task dispatch attempted from *inside* a subagent: the probe subagent reports its one nested dispatch was BLOCKED and quotes a denial mentioning "nested subagents". No nested agent actually runs on PASS, so the probe costs only the two subagent invocations' overhead (~cents) — the outer probe subagent plus the denied inner attempt that never executes. | FAIL = the nested dispatch actually ran (a nested agent returned a result) — the deny path did not fire. Most likely the hook is unregistered or misregistered in `settings.json` (it must sit first in *both* the `Task` and `Agent` matcher chains), or the harness stopped sending the `agent_id`/`agent_type` caller-identifying fields the hook keys on. Diagnose with `tests/bash/block_nested_dispatch.bats` (deterministic Tier D coverage of the same hook) and re-check the hook's registration in `settings.json`. |
 
 ---
 

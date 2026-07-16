@@ -56,6 +56,7 @@ Before beginning, you MUST have a clear, coherent, and compelling answer to each
 4. **Determine subagent type:**
    - `general-purpose` — needs file writes, code execution, or tool access beyond reading
    - `Plan` — read-only validation, discovery, or verification
+   - **Enumerate the `tools:` list explicitly, and never include `Agent` or `Task`.** Omitting the `tools:` field inherits ALL tools (including `Agent`), which would let the agent dispatch nested subagents. DAAF's dispatch-authority invariant is that all dispatch authority belongs to the orchestrator (see `agent_reference/BOUNDARIES.md` § Process Violations); a subagent returns work to the orchestrator for redelegation rather than nesting. The `block-nested-dispatch.sh` hook is the second enforcement layer, but the explicit `tools:` list is the first — always spell it out.
 5. **Determine skill dependencies** — will this agent need to invoke any skills?
 6. **Determine hook requirements** — will this agent need per-agent hooks? (see "Per-Agent Hooks" below)
 7. **Determine model tier** — which model tier should this agent default to? `opus` for high-judgment, adversarial, or synthesis roles; `sonnet` for well-specified, mechanical, or skill-guided roles. Haiku is excluded by DAAF policy. See `.claude/skills/daaf-orchestrator/SKILL.md` > "Model Selection for Subagent Dispatch" for the routing rationale and the current per-agent tier table.
@@ -83,11 +84,12 @@ If any of these answers are vague, in doubt, or incomplete, the quality and reli
    - [ ] Large inline code blocks minimized (extract to `agent_reference/` only if shared across agents)
    - [ ] Per-agent hooks registered in frontmatter if agent executes Python (see "Per-Agent Hooks" below)
    - [ ] `model:` field present with a justified tier (`opus` or `sonnet` per DAAF policy; see design question 7)
+   - [ ] Explicit `tools:` list present and does NOT include `Agent` or `Task` (dispatch-authority invariant — omitting the field inherits ALL tools including `Agent`; see design question 4 and FRAMEWORK_INTEGRATION_CHECKLIST.md item A1c)
 
 ### Phase 3: Integrate (wire into the ecosystem)
 
 1. Read `agent_reference/FRAMEWORK_INTEGRATION_CHECKLIST.md` § 2 for the canonical checklist of registration points
-2. Execute all [M] (mandatory) items — A1, A1b, A2-A5, A14
+2. Execute all [M] (mandatory) items — A1, A1b, A1c, A2-A5, A14
 3. Review and execute applicable [C] (conditional) items — A6-A13, A15-A16
 4. Run cross-cutting consistency checks (§ 7) — count words, cross-references, naming
 5. For supplementary walkthrough detail, also consult `references/integration-checklist.md`

@@ -18,7 +18,11 @@ description: >
   [Third person. What it does AND when to use it.]
   Example: "Reviews executed scripts for correctness, methodology alignment,
   and data integrity. Invoked after each Stage 5-8 script execution."
-tools: [Read, Write, Edit, Bash, Glob, Grep, Skill]   # Explicit allowlist. Omit for all.
+tools: [Read, Write, Edit, Bash, Glob, Grep, Skill]   # REQUIRED explicit allowlist (checklist item A1c).
+# NEVER omit this field: omission inherits ALL tools — including Agent/Task, which
+# lets the agent spawn nested subagents. NEVER include Agent or Task in the list:
+# all dispatch authority belongs to the orchestrator (see BOUNDARIES.md § Process
+# Violations; enforced in depth by block-nested-dispatch.sh).
 permissionMode: default                          # Or: plan (read-only agents)
 model: sonnet            # DAAF two-tier routing: opus | sonnet (see "Model Field" below)
 # ── Optional fields ──

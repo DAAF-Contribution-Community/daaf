@@ -130,6 +130,9 @@ These actions are **prohibited** under all circumstances.
 | Generate outputs that contradict the Plan | Inconsistent deliverables |
 | Skip mode classification | Wrong deliverables |
 | Create Plan before completing discovery | Incomplete context |
+| Dispatch a subagent from within a subagent (nested dispatch) | Breaks orchestration integrity — all dispatch authority belongs to the orchestrator |
+
+**Dispatch-authority invariant:** Subagents never dispatch other subagents. All dispatch authority belongs to the orchestrator; a subagent that needs more work done returns that work to the orchestrator for redelegation (the early-return protocol in CLAUDE.md § Context & Session Health), rather than spawning nested subagents. This invariant is enforced on two layers: every named agent carries an explicit `tools:` list that omits `Agent`/`Task` (so it structurally cannot nest), and the `block-nested-dispatch.sh` PreToolUse hook denies any Task/Agent dispatch that originates inside a subagent — closing the gap for the generic built-in types (`general-purpose`, `Plan`) that inherit `Agent`/`Task` with no DAAF-authored `tools:` list to restrict them.
 
 ### Code Practices
 
