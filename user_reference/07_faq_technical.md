@@ -72,7 +72,7 @@ This should be uncommon. Claude Code's login, session history, and plugins live 
 
 ### OpenRouter: "model not found" or authentication errors
 
-Check three things: (1) `ANTHROPIC_BASE_URL` must be exactly `https://openrouter.ai/api` with no `/v1` suffix, (2) your `ANTHROPIC_API_KEY` must be a valid OpenRouter API key (starts with `sk-or-`), and (3) the model you're requesting must be available on OpenRouter. Verify at [openrouter.ai/activity](https://openrouter.ai/activity).
+Check three things: (1) `ANTHROPIC_BASE_URL` must be exactly `https://openrouter.ai/api` with no `/v1` suffix, (2) your OpenRouter API key (starts with `sk-or-`) must be in `ANTHROPIC_AUTH_TOKEN`, with `ANTHROPIC_API_KEY` set to an *empty* value (`ANTHROPIC_API_KEY=`) — present but empty, not removed: putting the key in `ANTHROPIC_API_KEY` interferes with Bearer authentication, and removing the variable entirely makes Claude Code fall back to Anthropic's servers, and (3) the model you're requesting must be available on OpenRouter. Verify at [openrouter.ai/activity](https://openrouter.ai/activity).
 
 ### Container seems really slow to build the first time
 
