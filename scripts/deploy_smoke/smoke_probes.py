@@ -510,9 +510,58 @@ def probe_workspace_invariants(base_dir: str = BASE_DIR) -> ProbeResult:
     return r
 
 
+def probe_r_locale() -> ProbeResult:
+    """Verify R starts under a UTF-8 locale (image ENV LANG/LC_ALL=C.UTF-8).
+
+    Route-independent image property. Without it, R silently corrupts UTF-8:
+    yaml::read_yaml() returns NULL with only a warning, and non-ASCII string
+    literals are escape-mangled at parse time (unfixable by runtime
+    Sys.setlocale). Python is immune via PEP 538 coercion; R has no equivalent,
+    so the image env is the only complete fix. See interpreting-results.md T0.11.
+
+    PEP 538 trap: this harness IS Python, and on a stale image (LANG/LC_ALL
+    unset) the interpreter's startup coercion exports LC_CTYPE=C.UTF-8 into
+    os.environ, which subprocesses inherit — an Rscript child would see a UTF-8
+    LC_CTYPE and PASS even though bash-spawned R sessions get POSIX. When
+    neither LANG nor LC_ALL is set, strip that coercion artifact from the child
+    env so the probe reflects the true image environment."""
+    r = ProbeResult(probe_id="T0.11", name="R UTF-8 locale", tier="0")
+    cmd = ["Rscript", "-e", 'quit(status = !isTRUE(l10n_info()[["UTF-8"]]))']
+    child_env = dict(os.environ)
+    if not child_env.get("LANG") and not child_env.get("LC_ALL"):
+        child_env.pop("LC_CTYPE", None)
+        r.add_evidence(
+            "env sanitization",
+            note="LANG/LC_ALL unset: dropped inherited LC_CTYPE (PEP 538 coercion artifact) from child env",
+        )
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=60, env=child_env)
+        out = (proc.stdout + proc.stderr).strip()
+        r.add_evidence(" ".join(cmd), output=out or f"<no output; exit {proc.returncode}>")
+        if proc.returncode == 0:
+            r.verdict = Verdict.PASS
+            r.detail = "R starts under a UTF-8 locale (l10n_info()[['UTF-8']] is TRUE)."
+        else:
+            r.verdict = Verdict.FAIL
+            r.detail = (
+                "R is NOT in a UTF-8 locale — LANG/LC_ALL are unset in this image "
+                "(stale or pre-v3.0.0 build) and R will silently corrupt UTF-8. "
+                "Confirm the ENV LANG=C.UTF-8 / ENV LC_ALL=C.UTF-8 block near the "
+                "top of the Dockerfile and rebuild (bash rebuild_daaf.sh from daaf-docker)."
+            )
+    except FileNotFoundError:
+        r.verdict = Verdict.SKIP
+        r.detail = "Rscript not on PATH — R locale check skipped."
+        r.add_evidence(" ".join(cmd), note="FileNotFoundError: Rscript not found")
+    except subprocess.TimeoutExpired:
+        r.verdict = Verdict.FAIL
+        r.detail = "Rscript locale check timed out."
+    return r
+
+
 def run_tier0(route_info: RouteInfo, env, base_dir: str = BASE_DIR):
     """Assemble the full Tier 0 preflight (route_detection probes + system probes).
-    route_detection contributes T0.0-T0.4; this adds T0.5-T0.10."""
+    route_detection contributes T0.0-T0.4; this adds T0.5-T0.11."""
     from route_detection import (
         probe_daaf_dev,
         probe_route_detection,
@@ -532,6 +581,7 @@ def run_tier0(route_info: RouteInfo, env, base_dir: str = BASE_DIR):
         probe_shim_health(route_info),
         probe_auth_json(route_info, env),
         probe_workspace_invariants(base_dir),
+        probe_r_locale(),
     ]
     return results
 

@@ -9,7 +9,7 @@ tests under scripts/smoke_tests/.
 The suite runs IN SITU inside a real installation, auto-detects the active route
 from the live environment, and runs route-appropriate probes across tiers:
 
-  Tier 0  preflight, no LLM      route detection + env coherence + hooks/statusline/shim/invariants
+  Tier 0  preflight, no LLM      route detection + env coherence + hooks/statusline/shim/invariants + R locale
   Tier 1  one live round-trip    one claude -p call + the plumbing evidence around it
   Tier 2  functional battery     six capability-structural probes (dispatch, coding, web, skill, isolation, nested-dispatch deny)
   Tier D  deterministic battery  bats / Pester / lint / hook tests (opt-in, zero API cost)

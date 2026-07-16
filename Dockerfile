@@ -26,6 +26,24 @@ ENV UV_SYSTEM_PYTHON=1
 ENV UV_BREAK_SYSTEM_PACKAGES=1
 ENV UV_COMPILE_BYTECODE=1
 
+# Set the process locale to UTF-8 (root-cause fix for R's Unicode handling).
+# Unlike Python — which self-coerces an unset/POSIX locale to UTF-8 at startup
+# via PEP 538, flipping sys.flags.utf8_mode to 1 — R has NO locale-coercion
+# mechanism of its own. The stock ubuntu:24.04 base leaves LANG/LC_ALL unset, so
+# every LC_* category resolves to POSIX and R 4.5 starts with codeset
+# ANSI_X3.4-1968 (MBCS off). Under that locale R silently corrupts UTF-8:
+# yaml::read_yaml() on a multibyte file returns NULL with only a warning, base
+# readLines() byte-mangles strings, and — the failure a runtime Sys.setlocale()
+# can NEVER repair — non-ASCII string literals are rewritten to octal-escape
+# text by the parser BEFORE execution. Only a UTF-8 locale present at process
+# startup fixes all three. C.UTF-8 (not a full locale like en_US.UTF-8) is
+# chosen deliberately: it ships in the stock image with no locale-gen or
+# `locales` package, and it keeps `.` as the decimal separator and English
+# diagnostics, so numeric parsing and date formatting are unchanged (the one
+# intended semantic shift is base-R sort()/order() moving to ICU collation).
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
+
 # ============================================
 # Vendor the uv/uvx binaries + provision Python 3.12
 # ============================================

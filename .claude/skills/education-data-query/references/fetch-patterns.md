@@ -170,6 +170,23 @@ library(readr)
 library(yaml)
 library(httr2)
 
+# --- Locale Guard (R only) ---
+# INTENT: Ensure R runs under a UTF-8 locale before any multibyte read below.
+# REASONING: The container image sets LANG/LC_ALL=C.UTF-8 at the image level (the
+#   root-cause fix), so on a current image this guard is a no-op. It is
+#   defense-in-depth for runs on a stale or pre-v3.0.0 image where the locale is
+#   still unset/POSIX: there R's codeset is ANSI_X3.4-1968 (MBCS off) and the
+#   yaml::read_yaml() call below silently returns NULL on mirrors.yaml's
+#   multibyte UTF-8 (warning only), while base readLines() byte-mangles strings.
+#   Unlike Python (PEP 538 startup coercion), R has no self-coercion mechanism,
+#   so the locale must be set explicitly.
+# ASSUMES: C.UTF-8 is available (it ships in the stock ubuntu:24.04 base).
+# LIMITATION: this runtime call fixes file *reads* only. It CANNOT repair
+#   non-ASCII string literals, which the R parser mangles to octal-escape text
+#   BEFORE this line runs — keep non-ASCII out of script literals, or rely on the
+#   image-level env (which fixes the parser too).
+if (!isTRUE(l10n_info()[["UTF-8"]])) Sys.setlocale("LC_ALL", "C.UTF-8")
+
 # --- Rate Limiting ---
 # INTENT: Prevent HTTP 429 (Too Many Requests) errors from mirrors.
 # REASONING: Mirrors may rate-limit rapid successive requests. A 3-second delay

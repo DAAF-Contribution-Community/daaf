@@ -4,7 +4,7 @@ All notable changes to DAAF for each release version are documented here, in rev
 
 ## Table of Contents
 
-- [Unreleased (v2.1.1)](#unreleased-v211)
+- [Unreleased (v3.0.0)](#unreleased-v300)
 - [v2.1.0 — 2026-05-02](#v210--2026-05-02)
 - [v2.0.1 — 2026-04-05](#v201--2026-04-05)
 - [v2.0.0 — 2026-03-31](#v200--2026-03-31)
@@ -12,7 +12,7 @@ All notable changes to DAAF for each release version are documented here, in rev
 
 ---
 
-## Unreleased (v2.1.1)
+## Unreleased (v3.0.0)
 
 ### Data Analyst Augmentation Framework -- Host Tooling and Update Reliability
 
@@ -58,6 +58,12 @@ The browser code editor now ships with a tenth extension, [vscode-archive](https
 DAAF can now help you work with data that **can't leave your secure environment** -- sensitive, proprietary, PII-bearing, HIPAA/FERPA-governed, or enclave-bound data that shouldn't enter the container at all. A new `synthetic-data-workflow` skill adds a privacy-preserving path to Data Onboarding: at the start of onboarding, a **sensitivity gate** asks directly whether your data is safe to bring in. If it isn't, DAAF hands you a self-contained, disclosure-controlled profiling script that you run locally, wherever the data lives. Only a summary profile report crosses the boundary -- you review every number in it first -- and DAAF builds a realistically-shaped **synthetic** dataset and a data source skill from that report alone. You develop and debug your entire analysis against the synthetic stand-in, then run the finished, vetted code against the real data yourself to get the actual results. The synthetic data is a code-development scaffold, not an analytic substitute, and every synthetic-derived skill and report says so. A four-tier disclosure ladder (schema, marginals, relationships, and full local high-fidelity synthesis) lets you share only as much as your work truly requires. See the new technical-FAQ entry, "Can I use DAAF with data that can't leave my secure environment?"
 
 To power the in-container generation step, the framework image now includes `simstudy` and `fabricatr` (R) and `faker` (Python) as core, presence-gated packages, with matching smoke tests (`scripts/smoke_tests/smoke_synthetic_data_workflow.R`/`.py`). Tier 4 synthesis tools (`synthpop`, `sdv`) are deliberately excluded from the image -- that tier runs on your own machine, never in the container.
+
+### R Unicode (UTF-8) Handling Fix
+
+DAAF's container previously shipped with no locale configured, which left R running under the bare POSIX/C locale. Python is immune to this -- it quietly coerces itself to UTF-8 at startup -- but R has no equivalent mechanism, so it would **silently corrupt non-ASCII (UTF-8) text**: reading a Unicode-containing YAML config could return nothing at all (a NULL with only a warning), and accented or non-Latin characters in data or scripts could come back byte-mangled. This release fixes the root cause by setting the image locale to `C.UTF-8` (via `LANG`/`LC_ALL`), so R handles Unicode correctly out of the box. `C.UTF-8` was chosen deliberately over a full locale like `en_US.UTF-8` because it ships in the base image with no extra packages and leaves number and date formatting untouched -- it keeps `.` as the decimal separator and English diagnostic messages. As defense-in-depth, the education-data-query skill's R fetch pattern now also self-heals the locale at runtime for anyone still on an older image, and a new zero-cost check in the deployment smoke suite asserts R's locale is correct after any rebuild.
+
+**One intentional behavior change to be aware of:** under a UTF-8 locale, base R's `sort()` and `order()` switch from raw byte order to ICU dictionary-style collation, so alphabetical sorts that mix upper/lower case or accented characters may order slightly differently than before. This is the correct, standard behavior and affects only base-R sorting -- `dplyr::arrange()` and the shell `sort` command are locale-independent and unaffected. An image rebuild is required for the fix to take effect.
 
 ---
 
