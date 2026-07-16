@@ -237,9 +237,11 @@ versions, the reference files note the change.
 > **Package availability:** The core mappings above (`polars`, `pyfixest`, `statsmodels`,
 > `plotnine`, `svy`) plus `linearmodels` (7.0), `marginaleffects` (0.5.0), and
 > `rdrobust` (1.3.0) are version-pinned in DAAF's Dockerfile and pre-installed.
-> `binsreg` and `scpi` are NOT pre-installed; run `pip install binsreg` /
-> `pip install scpi` at analysis time before using them (the Python equivalent of
-> `ssc install`). Translations reference the documented APIs as of March 2026.
+> `binsreg` and `scpi` are NOT pre-installed, and runtime installs are blocked in
+> DAAF (`pip install` is refused both at the command line and inside executed
+> scripts — see CLAUDE.md § Runtime Package Installation). If one is genuinely
+> required, escalate to the user to add it to the Dockerfile (user additions
+> block) and rebuild before use. Translations reference the documented APIs as of March 2026.
 
 **Stata version note:** Stata 18 is the current release as of March 2026. Most command
 mappings apply to Stata 15+; version-specific features (frames, `hdidregress`) are noted

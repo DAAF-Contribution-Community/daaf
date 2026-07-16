@@ -196,7 +196,7 @@ Which Stata command?
 | `regress`, `areg`, `reghdfe` | fixest | Very High | Near-identical formula syntax; `\|` for FE absorption |
 | `xtreg, fe` | fixest | Very High | No `xtset` needed; FE specified in formula |
 | `xtreg, re` | plm | High | Requires panel structure via `pdata.frame` or formula index |
-| `ivregress`, `ivreg2`, `ivreghdfe` | fixest (`ivreg` not pre-installed) | Very High | Three-part formula for IV in fixest; `ivreg` requires `install.packages("ivreg")` first |
+| `ivregress`, `ivreg2`, `ivreghdfe` | fixest (`ivreg` not pre-installed) | Very High | Three-part formula for IV in fixest; `ivreg` is not pre-installed and runtime installs are blocked (see Package availability note below) |
 | `logit`, `probit`, `ologit`, `mlogit` | stats::glm / MASS / nnet | High | `family = binomial` for logit; separate packages for ordered/multinomial |
 | `poisson`, `ppmlhdfe` | fixest `fepois` / stats::glm | Very High | `fepois` for Poisson with multi-way FE |
 | `margins`, `marginsplot` | marginaleffects | Very High | Same author as R version; near-identical API |
@@ -214,7 +214,7 @@ Which Stata command?
 
 **Fidelity key:** Very High = same authors, near-identical API. High = same capability, similar syntax. Medium = same capability, different API patterns. Low = fundamentally different paradigm requiring conceptual remapping.
 
-> **Package availability:** The core mappings above (`fixest`, `plm`, `survey`, `marginaleffects`, `rdrobust`, base `stats`, `dplyr`/`tidyr`, `ggplot2`) are pre-installed in DAAF. The specialized causal packages — `ivreg`, `binsreg`, `augsynth`, `Synth`, `MatchIt`, `did`, `rddensity` — are NOT pre-installed (for IV, pre-installed `fixest` three-part formulas or `plm` cover most cases); run `install.packages("<pkg>")` at analysis time before using them (the Stata equivalent of `ssc install`).
+> **Package availability:** The core mappings above (`fixest`, `plm`, `survey`, `marginaleffects`, `rdrobust`, base `stats`, `dplyr`/`tidyr`, `ggplot2`) are pre-installed in DAAF. The specialized causal packages — `ivreg`, `binsreg`, `augsynth`, `Synth`, `MatchIt`, `did`, `rddensity` — are NOT pre-installed (for IV, pre-installed `fixest` three-part formulas or `plm` cover most cases), and runtime installs are blocked in DAAF (`install.packages()` is refused both at the command line and inside executed scripts — see CLAUDE.md § Runtime Package Installation). If one of these packages is genuinely required, escalate to the user to add it to the Dockerfile (user additions block) and rebuild before use.
 
 ## Library Versions
 

@@ -182,18 +182,19 @@ fig.savefig("network.png", dpi=200, bbox_inches="tight")
 
 See `visualization.md`.
 
-## 10. Import Fails Before Container Rebuild
+## 10. igraph Is Pre-Installed — Do Not Runtime-Install
 
-**Symptom:** `ModuleNotFoundError: No module named 'igraph'`.
+**Reality:** `igraph==1.0.0` is pinned in the Dockerfile and pre-installed in the
+container — `import igraph` works out of the box (confirm with
+`python -c "import igraph; print(igraph.__version__)"`, expect `1.0.0`).
 
-**Cause:** `igraph==1.0.0` is pinned in the Dockerfile but the container has not
-yet been rebuilt.
-
-**Fix:** exit the container and run `bash rebuild_daaf.sh` (`.\rebuild_daaf.ps1`
-on Windows) from the `daaf-docker` folder. Do **not** attempt a runtime
-`pip install` — runtime package installation is blocked by DAAF safety hooks and
-creates unreproducible drift. Confirm with `python -c "import igraph; print(igraph.__version__)"`
-(expect `1.0.0`) after rebuild.
+**If you hit `ModuleNotFoundError: No module named 'igraph'`:** do **not** attempt
+a runtime `pip install igraph` — runtime package installation is blocked by DAAF
+safety hooks and creates unreproducible drift (see CLAUDE.md § Runtime Package
+Installation). For an additional graph package not in the image, escalate to the
+user to add it to the Dockerfile (user additions block near the end) and rebuild
+(`bash rebuild_daaf.sh`, or `.\rebuild_daaf.ps1` on Windows, from the
+`daaf-docker` folder).
 
 ## 11. Self-Loops and Multi-Edges Distort Measures
 

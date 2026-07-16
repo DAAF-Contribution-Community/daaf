@@ -413,6 +413,59 @@ if echo "$NORM_CMD" | grep -qiE '(^|[;&|]) ?(uvx\b|easy_install\b|conda (install
     block "Runtime package execution/installation (uvx/easy_install/conda) drifts from the Dockerfile. Add the tool to the Dockerfile and rebuild (exit the container, then run \`bash rebuild_daaf.sh\` from the daaf-docker folder) — preferably in the user additions block near the end of the Dockerfile for a fast rebuild."
 fi
 
+#    R package installation (added 2026-07-16). The Python guards above left R
+#    completely uncovered: `R CMD INSTALL`, `Rscript -e 'install.packages(...)'`,
+#    and the many `remotes`/`devtools`/`pak`/`renv`/`BiocManager` install verbs
+#    all created the same unreproducible runtime drift the Dockerfile is meant to
+#    prevent. This subsection closes the shell-visible R paths. (The dominant R
+#    path — `install.packages()` written INSIDE a `.R` script and executed via
+#    scripts/run_with_capture.sh — is invisible to any shell-level hook; it is
+#    covered at the wrapper by run_with_capture.sh's pre-execution content scan,
+#    and for coding agents additionally by enforce-file-first.sh blocking direct
+#    Rscript invocation. This hook covers the command-line R forms.)
+#
+#    8a. `R CMD INSTALL pkg.tar.gz` — segment-anchored. The R-eval gate in 8b
+#        cannot catch this because its install-token set keys on the R-function
+#        spellings (`install.packages`, `install_github`, ...), and `CMD INSTALL`
+#        is neither — so it needs its own check.
+if echo "$NORM_CMD" | grep -qiE '(^|[;&|]) ?R CMD INSTALL\b'; then
+    block "Runtime R package installation (R CMD INSTALL) drifts from the Dockerfile and vanishes on rebuild. Add the package to the Dockerfile and rebuild (exit the container, then run \`bash rebuild_daaf.sh\` from the daaf-docker folder) — preferably in the user additions block near the end of the Dockerfile for a fast rebuild."
+fi
+
+#    8b. R-eval installs: an R interpreter invoked at a command-segment start AND
+#        an install-family token appearing ANYWHERE in the command. The two
+#        conditions are ANDed so that neither alone false-blocks:
+#          - The R-invocation gate `(^|[;&|]) ?(Rscript[0-9.]*|R|r)\b` requires
+#            Rscript/R/littler-`r` to actually START a command segment. The `\b`
+#            keeps `rm`/`rsync`/`render` (r followed by a word char) from matching,
+#            and the segment anchor keeps a mid-string ` R ` (e.g. a commit-message
+#            word or a `.R` filename argument) from matching.
+#          - The install-token set is matched token-anywhere so heredocs and
+#            piped one-liners are caught after whitespace normalization:
+#            `echo 'install.packages("x")' | R --no-save` collapses to a single
+#            line whose `| R` trips the gate and whose `install.packages` trips
+#            the token set.
+#        Requiring BOTH means a bare `R --version` (gate yes, token no) and a
+#        `grep -rn "install.packages" scripts/` or `git commit -m "... in R"`
+#        (token yes, gate no — no segment-start R invocation) both pass.
+#      ACCEPTED RESIDUALS: (1) token obfuscation via variable expansion or base64
+#        (`R -e "$(echo ...)"`) is not decoded by a shell regex — the same class
+#        as the §6/§7 cwd/-exec residuals. (2) `R -f script.R` where the install
+#        lives in the file is not visible here — covered for coding agents by
+#        enforce-file-first.sh and at the wrapper by run_with_capture.sh's scan.
+#        (3) HOOK-WIDE residuals shared with the conda block (see the note at the
+#        uvx/easy_install/conda check above): wrapper-prefixed invocations
+#        (`env Rscript ...`, `time Rscript ...`, `nice Rscript ...`) put the R
+#        interpreter after a non-separator token so the segment-start gate does
+#        not fire, and a quoted interpreter name (`'Rscript' -e ...`) escapes the
+#        bare-word gate — the same evasion class that applies to every
+#        segment-anchored §8 check. Both are accepted here; for coding agents
+#        enforce-file-first.sh independently blocks these direct-Rscript forms.
+R_INSTALL_TOKENS='install\.packages|update\.packages|remove\.packages|install_(github|gitlab|bitbucket|cran|version|local|url|git|svn|bioc|dev)|pkg_install|pak::pak|renv::(install|restore|update|rebuild)|BiocManager::install|biocLite'
+if echo "$NORM_CMD" | grep -qiE '(^|[;&|]) ?(Rscript[0-9.]*|R|r)\b' && echo "$NORM_CMD" | grep -qiE "$R_INSTALL_TOKENS"; then
+    block "Runtime R package installation (install.packages / remotes / devtools / pak / renv / BiocManager, etc.) drifts from the Dockerfile and vanishes on rebuild. Add the package to the Dockerfile and rebuild (exit the container, then run \`bash rebuild_daaf.sh\` from the daaf-docker folder) — preferably in the user additions block near the end of the Dockerfile for a fast rebuild."
+fi
+
 # ---------------------------------------------------------------------------
 # All checks passed — allow the command
 # ---------------------------------------------------------------------------

@@ -2,28 +2,13 @@
 
 ## Installation
 
-### Basic Install
-
-```bash
-pip install polars
-# or
-uv add polars
-# or
-conda install -c conda-forge polars
-```
-
-### With Optional Dependencies
-
-```bash
-# All optional features
-pip install "polars[all]"
-
-# Specific extras
-pip install "polars[numpy,pandas,pyarrow]"  # Interop
-pip install "polars[timezone]"               # Timezone support
-pip install "polars[connectorx]"             # Database connections
-pip install "polars[fsspec]"                 # Cloud storage (S3, GCS, Azure)
-```
+No installation needed in DAAF: `polars` (1.39.3) is pre-installed in the
+container as the default DataFrame library. Runtime installs are blocked in DAAF
+(`pip install`/`uv add` are refused both at the command line and inside executed
+scripts — see CLAUDE.md § Runtime Package Installation). If an optional extra
+(`polars[timezone]`, `polars[connectorx]`, `polars[fsspec]`, etc.) is genuinely
+required, escalate to the user to add it to the Dockerfile (user additions block
+near the end) and rebuild.
 
 ### Verify Installation
 

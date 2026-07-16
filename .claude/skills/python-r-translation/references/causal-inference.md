@@ -20,8 +20,9 @@ DAAF's R stack provides strong coverage:
 > `rdrobust` (3.0.0), and `survival` (ships with the R distribution) are
 > pre-installed in DAAF. The specialized causal packages referenced here —
 > `did2s`, `did`, `MatchIt`, `WeightIt`, `cobalt`, `grf`, `Synth`,
-> `augsynth`, `gsynth` — are NOT pre-installed; add
-> `install.packages("<pkg>")` at analysis time before using them.
+> `augsynth`, `gsynth` — are NOT pre-installed, and runtime installs are blocked
+> (see CLAUDE.md § Runtime Package Installation) — escalate to the user to add the
+> needed package to the Dockerfile (user additions block) and rebuild before use.
 
 ---
 

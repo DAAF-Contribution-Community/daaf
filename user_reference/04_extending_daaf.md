@@ -598,6 +598,8 @@ install.packages("broom.mixed")
 
 Like Python runtime installs, this is **ephemeral** -- the package will be lost when the container is rebuilt or restarted. Use it for testing, then add the package to the Dockerfile to make it permanent.
 
+> **This is a *you*-only action, just like the Python case above.** DAAF's agents are blocked from runtime R installs too: the `bash-safety.sh` hook refuses command-line forms (`R CMD INSTALL`, `Rscript -e 'install.packages(...)'`, and the `remotes`/`devtools`/`pak`/`renv`/`BiocManager` verbs), and `run_with_capture.sh` scans each script before executing it and refuses to run one that contains an `install.packages()` (or similar) call. So asking DAAF to "just install broom.mixed real quick" will be refused — run it yourself via a `!`-prefixed command in the prompt or a host terminal (both bypass the hooks), and remember it's a throwaway. The durable path is always the Dockerfile.
+
 #### The Recommended Path: Modify the Dockerfile
 
 To permanently add an R package, ask DAAF to add an `Rscript -e 'install.packages("pkg")'` line to the Dockerfile. For example:

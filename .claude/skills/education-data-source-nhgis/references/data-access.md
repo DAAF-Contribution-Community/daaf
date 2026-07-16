@@ -243,11 +243,14 @@ if (status == "completed") {
 
 ## Method 3: ipumspy (Python)
 
-### Installation
+### Availability
 
-```bash
-pip install ipumspy
-```
+`ipumspy` is **not** pre-installed in DAAF, and runtime installs are blocked
+(`pip install` is refused at the command line and inside executed scripts — see
+CLAUDE.md § Runtime Package Installation). This access method is therefore
+unavailable until `ipumspy` is added to the Dockerfile (user additions block near
+the end) and the container is rebuilt. The direct-API methods shown above need no
+extra package and work today.
 
 ### Configuration
 
@@ -333,11 +336,14 @@ df = pl.read_csv(files["data"][0])
 
 ## Method 4: ipumsr (R)
 
-### Installation
+### Availability
 
-```r
-install.packages("ipumsr")
-```
+`ipumsr` is **not** pre-installed in DAAF, and runtime installs are blocked
+(`install.packages()` is refused at the command line and inside executed scripts —
+see CLAUDE.md § Runtime Package Installation). This access method is therefore
+unavailable until `ipumsr` is added to the Dockerfile (user additions block near
+the end) and the container is rebuilt. The direct-API methods shown above need no
+extra package and work today.
 
 ### Configuration
 

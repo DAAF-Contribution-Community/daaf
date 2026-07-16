@@ -277,16 +277,18 @@ etable(fit, vcov = list("iid", "hetero"))  # Compare SEs side-by-side
 R's SUR estimator lives in the `systemfit` package. Note that `plm` does NOT
 provide a SUR estimator -- panel models only.
 
-> **Availability:** `systemfit` is NOT pre-installed in DAAF; run
-> `install.packages("systemfit")` at analysis time before using it (the Stata
-> equivalent of `ssc install`).
+> **Availability:** `systemfit` is NOT pre-installed in DAAF, and runtime
+> installs are blocked (`install.packages()` is refused at the command line and
+> inside executed scripts — see CLAUDE.md § Runtime Package Installation). If SUR
+> is required, escalate to the user to add `systemfit` to the Dockerfile (user
+> additions block) and rebuild before use.
 
 ```stata
 sureg (eq1: y1 x1 x2) (eq2: y2 x3 x4)
 ```
 
 ```r
-# install.packages("systemfit")   # not pre-installed
+# systemfit is not pre-installed and runtime installs are blocked (see Availability note above)
 library(systemfit)
 
 eq1 <- y1 ~ x1 + x2

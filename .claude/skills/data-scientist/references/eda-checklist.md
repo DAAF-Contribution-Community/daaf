@@ -666,7 +666,9 @@ For comprehensive automated profiling:
 
 **Python:**
 ```python
-# Requires: pip install ydata-profiling
+# ydata-profiling is NOT pre-installed; runtime installs are blocked -- add it to
+# the Dockerfile (user additions block) and rebuild before use (see CLAUDE.md
+# § Runtime Package Installation)
 from ydata_profiling import ProfileReport
 
 # Note: Requires pandas DataFrame
@@ -679,14 +681,15 @@ profile = ProfileReport(df.to_pandas(), minimal=True)
 
 **R:**
 ```r
-# Requires: install.packages("skimr")
+# skimr is pre-installed in DAAF -- no install needed (runtime installs are blocked)
 library(skimr)
 
 # skimr provides a comprehensive profiling summary
 skim(df)
 
-# For HTML report output, use DataExplorer
-# install.packages("DataExplorer")
+# For HTML report output, use DataExplorer -- NOT pre-installed; runtime installs
+# are blocked, so add it to the Dockerfile (user additions block) and rebuild
+# before use (see CLAUDE.md § Runtime Package Installation), then:
 # DataExplorer::create_report(df, output_file = "data_profile.html")
 ```
 

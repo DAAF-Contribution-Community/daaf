@@ -70,6 +70,7 @@
       "Bash(conda install*)",
       "Bash(conda create*)",
       "Bash(easy_install*)",
+      "Bash(R CMD INSTALL*)",
       "Bash(git push --force *)",
       "Bash(git push -f *)",
       "Bash(git reset --hard *)",

@@ -7,6 +7,17 @@ discussion — in advice or in code — load the appropriate library skill (e.g.
 `pyfixest`, `statsmodels`): it carries the syntax plus environment constraints and
 curated caveats that general knowledge lacks.
 
+> **Package availability:** Where this guide names an estimation package with a
+> `pip install X` reference (e.g., pysyncon, synthdid, scpi-pkg, CausalPy, csdid),
+> that is a package-identity pointer, not an instruction to run. None of these are
+> pre-installed in the DAAF container, and runtime installs are blocked
+> (`pip install`/`uv add` are refused both at the command line and inside executed
+> scripts — see CLAUDE.md § Runtime Package Installation). Before planning an
+> analysis around one, verify availability with `pip show <pkg>` and, if it is
+> absent, escalate to the user to add it to the Dockerfile (user additions block
+> near the end) and rebuild before use. For the deeper synthetic-control catalog
+> see `./causal-synth.md`, which carries the same caveat.
+
 ## Contents
 
 - [Acknowledgments](#acknowledgments)

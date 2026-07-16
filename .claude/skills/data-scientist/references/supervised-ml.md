@@ -347,7 +347,7 @@ Ensemble methods combine multiple base models to achieve better predictive perfo
 | **Random Forest** | Robust default; hard to misconfigure; good first ensemble choice | n_estimators, max_depth, max_features |
 | **HistGradientBoosting** (scikit-learn) | Maximum performance with moderate tuning; handles NaN natively; supports categorical features | learning_rate, max_depth, max_iter |
 | **LightGBM** | Large datasets; native SHAP TreeExplainer support; available in DAAF Dockerfile | learning_rate, num_leaves, n_estimators |
-| **XGBoost** | Custom loss functions; GPU training | Optional install: `uv pip install --system --no-deps xgboost` |
+| **XGBoost** | Custom loss functions; GPU training | Not pre-installed; runtime installs blocked — escalate to add to the Dockerfile (see CLAUDE.md § Runtime Package Installation) |
 
 For most applied social science work, start with Random Forest (simple, robust), then try HistGradientBoosting or LightGBM if more performance is needed. The performance difference between gradient boosting implementations (scikit-learn, LightGBM, XGBoost) is usually small; choose based on practical considerations (SHAP compatibility, native categorical support, installation constraints).
 

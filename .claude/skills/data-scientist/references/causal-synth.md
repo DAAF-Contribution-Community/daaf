@@ -8,6 +8,18 @@ For methodology fundamentals (when to use SC, comparison with other designs,
 threats to validity), see `./causal-inference.md` > "Synthetic Control: Core
 Principles" and the Method Selection Guide.
 
+> **Package availability:** The `pip install X` lines throughout this catalog are
+> package-identity references, not instructions to run. The synthetic-control
+> packages named here — pysyncon, synthdid, scpi-pkg, CausalPy — are **not**
+> pre-installed in the DAAF container (none are present in the current image), and
+> runtime installs are blocked (`pip install`/`uv add` are refused both at the
+> command line and inside executed scripts — see CLAUDE.md § Runtime Package
+> Installation). The manual implementation in this file uses only pre-installed
+> dependencies (`scipy`, `numpy`). Before planning an analysis around a
+> package-based approach, verify availability with `pip show <pkg>` and, if it is
+> absent, escalate to the user to add it to the Dockerfile (user additions block
+> near the end) and rebuild before use.
+
 ## Contents
 
 - [When to Use Synthetic Control](#when-to-use-synthetic-control)

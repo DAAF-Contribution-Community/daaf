@@ -31,9 +31,8 @@ Fast C++ random forest implementation. The preferred engine for `rand_forest()`.
 
 ### Installation
 
-```r
-install.packages("ranger")
-```
+`ranger` is pre-installed in the DAAF container — no action needed. (Runtime
+`install.packages()` is blocked in DAAF; see the quickstart Installation note.)
 
 ### Parsnip-to-ranger Parameter Mapping
 
@@ -90,9 +89,8 @@ and `logistic_reg()`.
 
 ### Installation
 
-```r
-install.packages("glmnet")
-```
+`glmnet` is pre-installed in the DAAF container — no action needed. (Runtime
+`install.packages()` is blocked in DAAF; see the quickstart Installation note.)
 
 ### Parsnip-to-glmnet Parameter Mapping
 
@@ -162,9 +160,8 @@ Extreme gradient boosting. Used with `boost_tree()`.
 
 ### Installation
 
-```r
-install.packages("xgboost")
-```
+`xgboost` is pre-installed in the DAAF container — no action needed. (Runtime
+`install.packages()` is blocked in DAAF; see the quickstart Installation note.)
 
 ### Parsnip-to-xgboost Parameter Mapping
 
@@ -226,9 +223,8 @@ Weighted k-nearest neighbors. Used with `nearest_neighbor()`.
 
 ### Installation
 
-```r
-install.packages("kknn")
-```
+`kknn` is pre-installed in the DAAF container — no action needed. (Runtime
+`install.packages()` is blocked in DAAF; see the quickstart Installation note.)
 
 ### Parsnip-to-kknn Parameter Mapping
 

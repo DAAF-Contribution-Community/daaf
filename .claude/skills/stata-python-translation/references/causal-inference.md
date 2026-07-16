@@ -21,10 +21,21 @@ This reference documents both what translates cleanly and where real gaps remain
 
 > **Versions referenced:**
 > Python: pyfixest 0.40.0, rdrobust 1.3.0, marginaleffects 0.5.0 (all
-> pre-installed); scpi and binsreg are NOT pre-installed (`pip install` at
-> analysis time)
+> pre-installed).
 > Stata: Stata 18 (SE/MP)
 > See SKILL.md for the complete version table.
+
+> **Package availability:** The `pip install X` lines throughout this reference are
+> package-identity references, not instructions to run. Apart from the three
+> pre-installed packages above (pyfixest, rdrobust, marginaleffects), the packages
+> named here — including scpi, binsreg, csdid, rddensity, rdmulti, rdpower,
+> pymatchit-causal, psmpy, pysmatch, SyntheticControlMethods, synthdid, and
+> CausalPy — are **not** pre-installed in the DAAF container, and runtime installs
+> are blocked (`pip install`/`uv add` are refused both at the command line and
+> inside executed scripts — see CLAUDE.md § Runtime Package Installation). Before
+> planning an analysis around any of them, verify availability with
+> `pip show <pkg>` and, if it is absent, escalate to the user to add it to the
+> Dockerfile (user additions block near the end) and rebuild before use.
 
 > **Sources:** Cunningham, *Causal Inference: The Mixtape* (Yale, 2021);
 > Huntington-Klein, *The Effect* (CRC Press, 2021);

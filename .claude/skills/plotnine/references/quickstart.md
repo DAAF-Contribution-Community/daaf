@@ -2,11 +2,12 @@
 
 ## Installation
 
-```bash
-pip install plotnine
-# or
-conda install -c conda-forge plotnine
-```
+No installation needed in DAAF: `plotnine` (0.15.3) is pre-installed in the
+container. Runtime installs are blocked in DAAF (`pip install`/`uv add` are
+refused both at the command line and inside executed scripts — see CLAUDE.md
+§ Runtime Package Installation). If a package beyond the pinned install is needed,
+escalate to the user to add it to the Dockerfile (user additions block near the
+end) and rebuild.
 
 ## Basic Imports
 

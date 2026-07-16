@@ -32,6 +32,20 @@ imputation (no mice equivalent). These are documented honestly in this reference
 > Arel-Bundock, Greifer, & Heiss, "How to Interpret Statistical Models Using
 > marginaleffects for R and Python" (JSS, 2024)
 
+> **Package availability:** The `pip install X` lines throughout this reference —
+> in code comments and in the mapping-table cells — are package-identity
+> references, not instructions to run. The Python causal stack that IS
+> pre-installed comprises pyfixest, marginaleffects, rdrobust, and linearmodels.
+> The other packages named here — csdid, rddensity, rdmulti, rdpower,
+> SyntheticControlMethods, CausalPy, synthdid, lifelines, econml, miceforest, and
+> pymatchit-causal — are **not** pre-installed in the DAAF container, and runtime
+> installs are blocked (`pip install`/`uv add` are refused both at the command
+> line and inside executed scripts — see CLAUDE.md § Runtime Package
+> Installation). Before planning an analysis around any of them, verify
+> availability with `pip show <pkg>` and, if it is absent, escalate to the user to
+> add it to the Dockerfile (user additions block near the end) and rebuild before
+> use.
+
 ---
 
 ## 1. Difference-in-Differences

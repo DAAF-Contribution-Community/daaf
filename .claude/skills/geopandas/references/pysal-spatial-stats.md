@@ -2,6 +2,16 @@
 
 Spatial weights, autocorrelation, LISA cluster analysis, spatial regression, and point pattern analysis using the PySAL ecosystem. For methodology and interpretation guidance, see the `data-scientist` skill's `geospatial-analysis.md` and `geospatial-operations.md`.
 
+> **Package availability in DAAF:** The `pip install X` entries in the table below
+> are package-identity references, not instructions to run — runtime installs are
+> blocked (`pip install`/`uv add` are refused both at the command line and inside
+> executed scripts; see CLAUDE.md § Runtime Package Installation). Of the PySAL
+> federation, **libpysal, esda, spreg, and mapclassify are pre-installed** and
+> ready to import. **pointpats, tobler, and spaghetti are NOT pre-installed**, and
+> the `pip install pysal` meta-package is likewise unavailable at runtime. To use
+> an absent package, verify with `pip show <pkg>`, then escalate to the user to add
+> it to the Dockerfile (user additions block near the end) and rebuild before use.
+
 ---
 
 ## PySAL Ecosystem Overview

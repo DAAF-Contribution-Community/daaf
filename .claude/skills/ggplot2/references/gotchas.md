@@ -67,12 +67,10 @@ geom_point(size = 3)                   # size is correct for points
 
 ### New Dependencies
 
-In 4.0, `mgcv` and `tibble` moved from Imports to Suggests. If your code uses
-`geom_smooth(method = "gam")`, install mgcv separately:
-
-```r
-install.packages("mgcv")
-```
+In 4.0, `mgcv` and `tibble` moved from Imports to Suggests upstream. Both are
+pre-installed in the DAAF container (`mgcv` ships with R as a recommended
+package), so `geom_smooth(method = "gam")` works with no action needed. Runtime
+installs are blocked in any case (see CLAUDE.md § Runtime Package Installation).
 
 ## Common Errors
 

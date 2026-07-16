@@ -6,19 +6,20 @@ graph's basic structure. It is the foundation for every other reference file.
 
 ## Installation Status in DAAF
 
-`igraph==1.0.0` is pinned in the Dockerfile framework install block but **the
-container has not been rebuilt**, so `import igraph` currently raises
-`ModuleNotFoundError`. Rebuild by exiting the container and running
-`bash rebuild_daaf.sh` (`.\rebuild_daaf.ps1` on Windows) from the `daaf-docker`
-folder. Verify after rebuild:
+`igraph==1.0.0` is pinned in the Dockerfile framework install block and is
+**pre-installed in the DAAF container** — no installation needed (import
+verified against the live image on 2026-07-16). Runtime installs are blocked
+in DAAF (see CLAUDE.md § Runtime Package Installation); if a related extra is
+ever needed, escalate to the user for a Dockerfile addition (user additions
+block) and rebuild. Verify availability:
 
 ```python
 import igraph as ig
 print(ig.__version__)   # expect "1.0.0"
 ```
 
-The PyPI package is `igraph` (`pip install igraph`), imported as `import igraph`.
-The historical name `python-igraph` is now an alias for the same package.
+The PyPI package name is `igraph`, imported as `import igraph`. The historical
+name `python-igraph` is now an alias for the same package.
 
 ## Core Concepts
 

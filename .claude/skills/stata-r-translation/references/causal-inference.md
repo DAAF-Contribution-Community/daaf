@@ -12,8 +12,10 @@ them.
 > **Availability:** `fixest`, `rdrobust` (3.0.0), and `marginaleffects` are
 > pre-installed in DAAF. The specialized causal packages used below — `did2s`,
 > `did`, `DIDmultiplegt`, `rddensity`, `MatchIt`, `augsynth`, `Synth`,
-> `binsreg`, `AIPW`, `lmtp` — are NOT pre-installed; run
-> `install.packages("<pkg>")` at analysis time before using them.
+> `binsreg`, `AIPW`, `lmtp` — are NOT pre-installed, and runtime installs are
+> blocked (see CLAUDE.md § Runtime Package Installation) — escalate to the user
+> to add the needed package to the Dockerfile (user additions block) and rebuild
+> before use.
 
 ---
 

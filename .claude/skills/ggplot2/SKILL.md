@@ -69,7 +69,7 @@ geom_bar(linewidth = 0.5)
 | Pre-3.0 deprecations | Warnings | Now errors |
 | Theme geom defaults | Via `update_geom_defaults()` | New `theme(geom = element_geom(...))` for global defaults |
 | Binning defaults | Old boundary selection | Better adherence to `nbin` argument; may change existing plots |
-| `mgcv`, `tibble` | Imported | Moved to Suggests (install separately if needed) |
+| `mgcv`, `tibble` | Imported | Moved to Suggests upstream; both pre-installed in DAAF (no action needed) |
 
 ### New 4.0.x Features
 

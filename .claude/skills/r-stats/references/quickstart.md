@@ -449,8 +449,11 @@ summary(fit_rlm)
 
 Note: `rlm()` does not produce p-values in its summary by default. Use
 `sfsmisc::f.robftest()` or the `robustbase` package for inference. Neither
-`sfsmisc` nor `robustbase` is pre-installed in DAAF — run
-`install.packages("sfsmisc")` (or `"robustbase"`) at analysis time before use.
+`sfsmisc` nor `robustbase` is pre-installed in DAAF, and runtime installs are
+blocked (`install.packages()` is refused both at the command line and inside
+executed scripts — see CLAUDE.md § Runtime Package Installation). If robust
+inference is required, escalate to the user to add the package to the
+Dockerfile (user additions block) and rebuild.
 
 ### stepAIC for Model Selection
 

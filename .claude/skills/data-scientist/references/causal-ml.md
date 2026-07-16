@@ -10,6 +10,18 @@ For methodology fundamentals (when to use causal ML, comparison with traditional
 methods, the role of ML in the causal toolkit), see `./causal-inference.md` >
 "Machine Learning for Causal Inference" and the Method Selection Guide.
 
+> **Package availability:** The `pip install X` lines throughout this catalog are
+> package-identity references, not instructions to run. Most of the specialized
+> causal-ML packages named here — EconML, DoubleML, CausalML, DoWhy — are **not**
+> pre-installed in the DAAF container (none are present in the current image), and
+> runtime installs are blocked (`pip install`/`uv add` are refused both at the
+> command line and inside executed scripts — see CLAUDE.md § Runtime Package
+> Installation). The manual implementations in this file use only pre-installed
+> dependencies (`scikit-learn`, `statsmodels`, `pyfixest`, `scipy`). Before
+> planning an analysis around a package-based approach, verify availability with
+> `pip show <pkg>` and, if it is absent, escalate to the user to add it to the
+> Dockerfile (user additions block near the end) and rebuild before use.
+
 ## Contents
 
 - [When to Use Causal ML](#when-to-use-causal-ml)

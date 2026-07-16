@@ -2,34 +2,16 @@
 
 ## Installation
 
-### Basic Install
-
-```bash
-pip install geopandas
-# or
-conda install -c conda-forge geopandas
-```
-
-geopandas 1.x automatically installs core dependencies: shapely (>=2.0), pyproj (>=3.3), pyogrio (>=0.7.2, default I/O engine), and pandas.
-
-### Recommended Extras
-
-```bash
-# Visualization and basemaps
-pip install matplotlib contextily mapclassify folium
-
-# Raster integration
-pip install rasterio rasterstats rioxarray
-
-# Spatial statistics (PySAL ecosystem)
-pip install libpysal esda spreg pointpats
-
-# GPU-accelerated visualization for large datasets
-pip install lonboard
-
-# Interactive notebooks
-pip install mapwidget ipywidgets
-```
+No installation needed in DAAF: `geopandas` (1.1.3) is pre-installed in the
+container along with its core dependencies (`shapely`, `pyproj`, `pyogrio`,
+`pandas`) and the common spatial stack — `matplotlib`, `contextily`,
+`mapclassify`, `folium`, `rasterio`, `rasterstats`, `rioxarray`, and the PySAL
+packages `libpysal`, `esda`, `spreg`. Runtime installs are blocked in DAAF
+(`pip install`/`uv add` are refused both at the command line and inside executed
+scripts — see CLAUDE.md § Runtime Package Installation). If an extra that is not
+pre-installed (e.g., `lonboard`, `pointpats`, `mapwidget`) is genuinely required,
+escalate to the user to add it to the Dockerfile (user additions block near the
+end) and rebuild.
 
 ### Verify Installation
 

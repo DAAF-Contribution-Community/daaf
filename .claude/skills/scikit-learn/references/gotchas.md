@@ -198,7 +198,7 @@ r2 = r2_score(y_test, y_pred)
 
 ```python
 # --- Option 1: Gower distance with scipy + sklearn ---
-import gower  # pip install gower
+import gower  # NOT pre-installed and runtime installs are blocked (see CLAUDE.md § Runtime Package Installation) — prefer Option 2 below
 distance_matrix = gower.gower_matrix(df)
 
 from sklearn.cluster import AgglomerativeClustering
@@ -240,6 +240,8 @@ X_processed = preprocessor.fit_transform(df)
 ## Advanced Resampling for Class Imbalance
 
 For advanced resampling methods (SMOTE, ADASYN, BorderlineSMOTE), the
-`imbalanced-learn` library is available but not pre-installed. In most cases,
-`class_weight="balanced"` is sufficient for tree-based models. Install if needed:
-`uv pip install --system imbalanced-learn`
+`imbalanced-learn` library is not pre-installed, and runtime installs are blocked
+(see CLAUDE.md § Runtime Package Installation). In most cases,
+`class_weight="balanced"` is sufficient for tree-based models; if
+`imbalanced-learn` is genuinely required, escalate to the user to add it to the
+Dockerfile (user additions block) and rebuild before use.

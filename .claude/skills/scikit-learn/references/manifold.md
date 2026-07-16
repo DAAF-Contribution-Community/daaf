@@ -62,9 +62,9 @@ for perp in [5, 15, 30, 50]:
 
 Uniform Manifold Approximation and Projection. Generally preferred over t-SNE: faster, preserves more global structure, supports arbitrary output dimensions.
 
-```bash
-pip install umap-learn
-```
+> `umap-learn` (0.5.11) is **pre-installed** in the DAAF container — no install
+> needed; just `import umap`. Runtime installs are blocked in any case (see
+> CLAUDE.md § Runtime Package Installation).
 
 ```python
 import umap

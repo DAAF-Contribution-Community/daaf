@@ -99,11 +99,10 @@ gdf.plot(
 
 mapclassify provides statistical classification methods for choropleth maps. Without classification, continuous color ramps can obscure patterns.
 
-### Installation
+### Availability
 
-```bash
-pip install mapclassify
-```
+`mapclassify` is pre-installed in DAAF and ready to import — no runtime install
+needed (`pip install` is blocked; see CLAUDE.md § Runtime Package Installation).
 
 ### Using with `.plot()`
 
@@ -169,11 +168,10 @@ What's your data distribution?
 
 contextily adds web map tiles (OpenStreetMap, CartoDB, etc.) as background layers.
 
-### Installation
+### Availability
 
-```bash
-pip install contextily
-```
+`contextily` is pre-installed in DAAF and ready to import — no runtime install
+needed (`pip install` is blocked; see CLAUDE.md § Runtime Package Installation).
 
 ### Adding Basemaps
 
@@ -307,11 +305,12 @@ m.save("folium_map.html")
 
 lonboard uses deck.gl for GPU-accelerated rendering of very large datasets (millions of features) that would overwhelm matplotlib or folium.
 
-### Installation
+### Availability
 
-```bash
-pip install lonboard
-```
+`lonboard` is **not** pre-installed in DAAF, and runtime installs are blocked
+(`pip install` is refused at the command line and inside executed scripts — see
+CLAUDE.md § Runtime Package Installation). To use it, escalate to the user to add
+it to the Dockerfile (user additions block near the end) and rebuild before use.
 
 ### Quick Visualization
 
@@ -361,11 +360,12 @@ m.to_html("multi_layer.html")
 
 cartopy provides matplotlib-based map projections with proper geographic axes — essential for publication-quality maps requiring explicit projection control, graticules, and natural features.
 
-### Installation
+### Availability
 
-```bash
-pip install cartopy
-```
+`cartopy` is **not** pre-installed in DAAF, and runtime installs are blocked
+(`pip install` is refused at the command line and inside executed scripts — see
+CLAUDE.md § Runtime Package Installation). To use it, escalate to the user to add
+it to the Dockerfile (user additions block near the end) and rebuild before use.
 
 ### Basic Map with Projection
 
@@ -419,11 +419,12 @@ The `transform=` parameter is critical: it declares what CRS the input data is i
 
 datashader rasterizes point or line data into pixel grids before rendering, enabling visualization of billions of points without browser or memory limitations.
 
-### Installation
+### Availability
 
-```bash
-pip install datashader
-```
+`datashader` is **not** pre-installed in DAAF, and runtime installs are blocked
+(`pip install` is refused at the command line and inside executed scripts — see
+CLAUDE.md § Runtime Package Installation). To use it, escalate to the user to add
+it to the Dockerfile (user additions block near the end) and rebuild before use.
 
 ### Basic Point Density
 

@@ -2,25 +2,13 @@
 
 ## Installation
 
-### Minimal Install
-
-```bash
-pip install marimo
-# or
-uv add marimo
-# or
-conda install -c conda-forge marimo
-```
-
-### Recommended Install (SQL, AI, Plotting)
-
-```bash
-pip install "marimo[recommended]"
-# or
-uv add "marimo[recommended]"
-```
-
-This unlocks: SQL cells (DuckDB), AI completion, plotting in data viewer, Ruff formatting.
+No installation needed in DAAF: `marimo` (0.19.11) is pre-installed in the
+container as DAAF's standard notebook format. Runtime installs are blocked in
+DAAF (`pip install`/`uv add` are refused both at the command line and inside
+executed scripts — see CLAUDE.md § Runtime Package Installation). If a marimo
+extra (e.g., `marimo[recommended]` for SQL cells, AI completion, and in-viewer
+plotting) is genuinely required, escalate to the user to add it to the Dockerfile
+(user additions block near the end) and rebuild.
 
 ## CLI Commands
 

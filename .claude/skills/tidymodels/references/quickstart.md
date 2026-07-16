@@ -6,13 +6,13 @@ end-to-end examples for both classification and regression.
 
 ## Installation
 
-```r
-install.packages("tidymodels")
-# Engines (install separately)
-install.packages(c("ranger", "glmnet", "xgboost", "kknn"))
-# UMAP (standalone, not part of tidymodels)
-install.packages("uwot")
-```
+No installation needed in DAAF: `tidymodels`, all four engine packages
+(`ranger`, `glmnet`, `xgboost`, `kknn`), and `uwot` (UMAP) are pre-installed
+in the container. Runtime installs are blocked in DAAF (`install.packages()`
+is refused both at the command line and inside executed scripts — see
+CLAUDE.md § Runtime Package Installation). If a package beyond these is
+needed, escalate to the user to add it to the Dockerfile (user additions
+block near the end) and rebuild.
 
 ### Verify Installation
 

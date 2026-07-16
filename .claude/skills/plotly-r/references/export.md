@@ -89,8 +89,9 @@ orca(p, "plot.pdf")
 ### kaleido (via reticulate)
 
 ```r
-# Requires: reticulate + Python kaleido package
-# pip install kaleido (in Python environment)
+# Requires: reticulate + the Python kaleido package, which is NOT pre-installed in
+# DAAF; runtime installs are blocked -- add kaleido to the Dockerfile (user
+# additions block) and rebuild before use (see CLAUDE.md § Runtime Package Installation)
 kaleido(p, "plot.png", width = 1200, height = 800)
 ```
 

@@ -33,9 +33,11 @@ PNG output renders the HTML table to an image. Useful for embedding in
 presentations or documents that do not support HTML.
 
 **Dependency:** PNG export requires a headless-browser backend — either
-`chromote` or `webshot2` (both drive headless Chrome). Neither is installed in
-DAAF; install one at analysis time with `install.packages("chromote")` (or
-`install.packages("webshot2")`).
+`chromote` or `webshot2` (both drive headless Chrome). Neither is pre-installed
+in DAAF, and runtime installs are blocked (see CLAUDE.md § Runtime Package
+Installation), so PNG export is unavailable out of the box. Prefer HTML or LaTeX
+output; if PNG is genuinely required, escalate to the user to add `chromote` (or
+`webshot2`) to the Dockerfile (user additions block) and rebuild before use.
 
 ### LaTeX Output
 

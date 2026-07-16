@@ -500,7 +500,9 @@ print(f"[SAVED] {OUTPUT_DIR}/density_check.png")
 ### Formal Density Test (If rddensity Is Installed)
 
 ```python
-# pip install rddensity  # Not installed by default
+# rddensity is NOT pre-installed; runtime installs are blocked -- to use it, add
+# it to the Dockerfile (user additions block) and rebuild (see CLAUDE.md
+# § Runtime Package Installation)
 from rddensity import rddensity
 
 # Formal manipulation test

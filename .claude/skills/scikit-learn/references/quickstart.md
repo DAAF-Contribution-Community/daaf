@@ -4,28 +4,19 @@ Import patterns, the fit/predict/transform API, Pipeline construction, train-tes
 
 ## Installation
 
-```bash
-pip install scikit-learn
-# or
-uv add scikit-learn
-# or
-conda install -c conda-forge scikit-learn
-```
+No installation needed in DAAF: `scikit-learn` (1.8.0) is pre-installed in the
+container, along with its common companions `numpy`, `pandas`, `matplotlib`, and
+`umap-learn` (UMAP, not part of scikit-learn). Runtime installs are blocked in
+DAAF (`pip install`/`uv add` are refused both at the command line and inside
+executed scripts — see CLAUDE.md § Runtime Package Installation). If a package
+beyond these is needed, escalate to the user to add it to the Dockerfile (user
+additions block near the end) and rebuild.
 
 ### Verify Installation
 
 ```python
 import sklearn
 print(sklearn.__version__)  # Should be 1.8.x
-```
-
-### Common Companion Libraries
-
-```bash
-# Often needed alongside scikit-learn
-pip install numpy pandas matplotlib
-# For UMAP (not part of scikit-learn)
-pip install umap-learn
 ```
 
 ## Core Concept: The Estimator API
