@@ -125,6 +125,30 @@ Describe "test_migration.ps1 pure helper functions (tm_*)" {
             $r.SkipMultiCli | Should -BeFalse
         }
     }
+
+    Context "Test-ConflictAutoResolvable (round-5 conflict-journey eligibility)" {
+        # Eligible ONLY when a merge is in progress (MergeHead non-empty) AND the
+        # unmerged set is EXACTLY CLAUDE.md. Everything else fails loudly.
+        It "MergeHead + exactly CLAUDE.md is eligible" {
+            Test-ConflictAutoResolvable "abc123def456" "CLAUDE.md" | Should -BeTrue
+        }
+        It "tolerates trailing CR/whitespace on both inputs" {
+            Test-ConflictAutoResolvable "abc123`r" "  CLAUDE.md `r" | Should -BeTrue
+        }
+        It "empty MergeHead is not eligible" {
+            Test-ConflictAutoResolvable "" "CLAUDE.md" | Should -BeFalse
+            Test-ConflictAutoResolvable "  `r" "CLAUDE.md" | Should -BeFalse
+        }
+        It "a multi-file unmerged set is not eligible" {
+            Test-ConflictAutoResolvable "abc123" "CLAUDE.md`nDockerfile" | Should -BeFalse
+        }
+        It "a wrong single file (Dockerfile only) is not eligible" {
+            Test-ConflictAutoResolvable "abc123" "Dockerfile" | Should -BeFalse
+        }
+        It "MergeHead present but empty unmerged set is not eligible" {
+            Test-ConflictAutoResolvable "abc123" "" | Should -BeFalse
+        }
+    }
 }
 
 # Content pins for fixes whose absence caused real field failures (field run 4,
@@ -193,5 +217,89 @@ Describe "test_migration.ps1 field-run 4 regression pins" {
     It "Era-1 verify failure surfaces raw git stderr + ownership probes" {
         $script:HarnessText | Should -Match ([regex]::Escape('Raw git probe output'))
         $script:HarnessText | Should -Match ([regex]::Escape('ls -ldn /daaf /daaf/.git'))
+    }
+}
+
+# Content pins for the round-5 conflict -> resolve -> resume journey (2026-07-17):
+# a nonzero first driven update whose unmerged set is exactly CLAUDE.md is not a
+# FAIL -- the harness simulates the guided resolution and re-drives the resumable
+# updater, scoring the whole journey. Strings are byte-identical to the .sh twin.
+Describe "test_migration.ps1 field-run 5 conflict-journey pins" {
+    BeforeAll {
+        . "$PSScriptRoot/TestHelper.ps1"
+        $script:HarnessText = Get-Content -Raw "$RepoRoot/scripts/host/test_migration.ps1"
+    }
+
+    It "captures the mid-merge state (capture-then-test, no live grep)" {
+        $script:HarnessText | Should -Match ([regex]::Escape('Invoke-ContainerGit rev-parse -q --verify MERGE_HEAD'))
+        $script:HarnessText | Should -Match ([regex]::Escape('Invoke-ContainerGit diff --name-only --diff-filter=U'))
+    }
+
+    It "gates the recovery on the pure Test-ConflictAutoResolvable helper" {
+        $script:HarnessText | Should -Match ([regex]::Escape('Test-ConflictAutoResolvable $MergeHead $Unmerged'))
+    }
+
+    It "resolves via checkout --theirs + re-append + the frozen commit message" {
+        $script:HarnessText | Should -Match ([regex]::Escape('Invoke-ContainerGit checkout --theirs -- CLAUDE.md'))
+        $script:HarnessText | Should -Match ([regex]::Escape('Resolved merge conflicts from DAAF update (harness-simulated guided resolution)'))
+    }
+
+    It "scores the journey with its own check name (parity with the .sh twin)" {
+        ([regex]::Matches($script:HarnessText, [regex]::Escape('Update conflict journey completed (conflict -> resolved -> resumed update exit'))).Count | Should -Be 2
+    }
+
+    It "appends the resume run's capture to UpdateOut (union for the self-update grep)" {
+        $script:HarnessText | Should -Match ([regex]::Escape('$ResumeUpdateOut = "$($script:UpdateOut).resume"'))
+    }
+}
+
+# Content pins for the field-run 5 finding 3b/3c fixes (2026-07-17). 3b: a guarded
+# git safe.directory exemption window spanning the harness's own pre-migrate
+# old-container git ops (phase 3 verify + phase 4/5 fixture plants), opened before
+# the first such op and closed before migrate runs (only if the harness added it),
+# so migrate's own section-4b fix is still exercised end-to-end on the root-owned
+# Era-1 (v1.0.0) payload. 3c: the Era-1 raw-git diagnostics now capture native
+# stderr under PS 5.1 (empty on Windows before the fix). Docker-driven, so these
+# pin the load-bearing source ordering/guards. Notes are byte-identical to the .sh.
+Describe "test_migration.ps1 field-run 5 finding 3b/3c pins" {
+    BeforeAll {
+        . "$PSScriptRoot/TestHelper.ps1"
+        $script:HarnessText = Get-Content -Raw "$RepoRoot/scripts/host/test_migration.ps1"
+    }
+
+    It "opens the safe.directory window before the first phase-3 era-verify git op, and closes it before migrate" {
+        $idxVerifyHeader = $script:HarnessText.IndexOf('[3/7] Verify Era')
+        $idxAdd = $script:HarnessText.IndexOf('Invoke-ContainerExec git config --global --add safe.directory /daaf')
+        # First Invoke-ContainerGit call site AFTER the phase-3 header (the OPEN
+        # block uses Invoke-ContainerExec, so it never matches this).
+        $idxFirstGit = $script:HarnessText.IndexOf('Invoke-ContainerGit ', $idxVerifyHeader)
+        $idxUnset = $script:HarnessText.IndexOf('Invoke-ContainerExec git config --global --unset-all safe.directory')
+        $idxMigrate = $script:HarnessText.IndexOf('Invoke-HardenedScriptAuto -Path (Join-Path $HostDir "migrate_daaf.ps1")')
+        $idxVerifyHeader | Should -BeGreaterThan 0
+        $idxAdd | Should -BeGreaterThan $idxVerifyHeader
+        $idxAdd | Should -BeLessThan $idxFirstGit
+        $idxUnset | Should -BeGreaterThan 0
+        $idxAdd | Should -BeLessThan $idxUnset
+        $idxUnset | Should -BeLessThan $idxMigrate
+    }
+
+    It "gates the safe.directory window close on the harness having added it, with a targeted removal" {
+        $script:HarnessText | Should -Match ([regex]::Escape('if ($script:HarnessAddedSafeDir) {'))
+        $script:HarnessText | Should -Match ([regex]::Escape("Invoke-ContainerExec git config --global --unset-all safe.directory '^/daaf`$'"))
+    }
+
+    It "guards the safe.directory window open (capture-then-test) with byte-identical notes" {
+        $script:HarnessText | Should -Match ([regex]::Escape('@(Invoke-ContainerExec git config --global --get-all safe.directory)'))
+        $script:HarnessText | Should -Match ([regex]::Escape("-contains '/daaf'"))
+        $script:HarnessText | Should -Match ([regex]::Escape('Git safe.directory exemption window OPENED (harness added /daaf)'))
+        $script:HarnessText | Should -Match ([regex]::Escape('Git safe.directory exemption window CLOSED (harness removed its /daaf entry)'))
+    }
+
+    It "captures Era-1 raw git stderr under scoped EAP=Continue + per-object stringify (PS 5.1 fix)" {
+        # The prior SilentlyContinue + Out-String dropped native stderr ErrorRecords
+        # on PS 5.1, so $gitDiag came back EMPTY on Windows where the .sh twin printed
+        # git's dubious-ownership fatal. Continue + 2>&1 + ForEach-Object "$_" surfaces it.
+        $script:HarnessText | Should -Match ([regex]::Escape("git -C /daaf remote get-url origin 2>&1 | ForEach-Object { `"`$_`" }"))
+        $script:HarnessText | Should -Match ([regex]::Escape("ls -ldn /daaf /daaf/.git 2>&1 | ForEach-Object { `"`$_`" }"))
     }
 }

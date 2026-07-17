@@ -167,10 +167,19 @@
 #
 #   NOTE on B/C appends to tracked framework files: these deliberately exercise
 #   the updater's merge/stash paths that class-A new-file markers cannot. Appends
-#   land at END-OF-FILE, which 3-way-merges cleanly unless upstream also rewrote
-#   the file's final lines; if that ever happens the update aborts on a conflict
-#   and the class B/C checks FAIL loudly -- which is the correct signal, not a
-#   harness bug.
+#   land at END-OF-FILE, which 3-way-merges cleanly UNLESS upstream also rewrote
+#   the file's final lines. The COMMITTED CLAUDE.md append (Class C) is EXPECTED
+#   to collide on the v2.x -> v3.0.0 vectors (v3.0.0 rewrites CLAUDE.md wholesale):
+#   the first driven update aborts mid-merge on that conflict. That abort is no
+#   longer a dead end -- the harness EXERCISES the full conflict -> resolve ->
+#   resume journey. When the unmerged set is EXACTLY CLAUDE.md it simulates the
+#   guided resolution a real user performs with Claude Code (take upstream's file,
+#   re-preserve the user's prose), commits, and re-drives the now-resumable
+#   updater, which must finish cleanly (stash pop, tier-B host-script sync,
+#   rebuild). Only a CLAUDE.md-exactly conflict is auto-resolved this way; any
+#   OTHER unmerged set -- notably a Dockerfile B(i) append conflict, or a
+#   multi-file conflict -- is NOT eligible and the update FAILs loudly, which
+#   remains the correct signal for an unexpected conflict.
 #
 # ----------------------------------------------------------------------------
 # FLAGS / ENV REFERENCE
@@ -356,6 +365,35 @@ tm_parse_args() {
         esac
         shift
     done
+}
+
+tm_conflict_autoresolvable() {
+    # tm_conflict_autoresolvable <merge_head> <unmerged_list>
+    #   return 0  eligible for the harness's simulated resolution
+    #   return 1  not eligible -- fail loudly
+    # Decide whether a nonzero-exit driven update is the EXPECTED, auto-resolvable
+    # conflict the harness knows how to simulate a user resolving: a merge is in
+    # progress (MERGE_HEAD non-empty) AND the unmerged set is EXACTLY the single
+    # path CLAUDE.md -- the Class-C committed-append vs upstream-CLAUDE.md-rewrite
+    # collision. Anything else (no merge in progress, an empty unmerged set, a
+    # different single file such as Dockerfile, or a multi-file conflict) is NOT
+    # auto-resolvable and must fail loudly. Inputs may carry trailing whitespace or
+    # CR from the container_git capture; normalize before deciding. Pure (no docker,
+    # no side effects), Bash 3.2 clean.
+    local merge_head normalized
+    merge_head=$(printf '%s' "${1:-}" | tr -d '[:space:]')
+    if [ -z "${merge_head}" ]; then
+        return 1
+    fi
+    # Normalize the unmerged list: strip CR, trim each line, drop blank lines. The
+    # set is eligible only when what remains is exactly one line reading CLAUDE.md
+    # (a multi-line set can never equal the single literal, so this also rejects
+    # "CLAUDE.md plus others").
+    normalized=$(printf '%s\n' "${2:-}" | tr -d '\r' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | sed '/^$/d')
+    if [ "${normalized}" = "CLAUDE.md" ]; then
+        return 0
+    fi
+    return 1
 }
 
 # --- Source-only guard (D8) ---
@@ -1091,6 +1129,37 @@ if [ "${RETRIES}" -ge 30 ]; then
     exit 1
 fi
 
+# --- Harness git safe.directory exemption window (OPEN) ---
+# The harness performs its OWN git operations in the OLD-era container before
+# migrate runs: the Phase 3 era-state verify probes below, the Phase 4 committed-
+# fixture plant, and the Phase 5 dirty/uncommitted plant. On a root-owned Era-1
+# (v1.0.0) payload every one of those hits modern git's dubious-ownership fatal
+# ("detected dubious ownership in repository at '/daaf'"), so the vector INFRAs
+# at Phase 3 before migrate ever runs. Add a global safe.directory exemption for
+# the exec user NOW, spanning all pre-migrate old-container git usage. It is
+# CLOSED (removed) immediately before migrate is invoked (Phase 6), but ONLY if
+# the harness added it here -- so the field run still exercises migrate's own
+# section-4b safe.directory fix end-to-end on the v1.0.0 vector rather than the
+# harness masking it. Harmless on the v2.x vectors: their payload is already
+# exec-user-owned, so the add is a redundant no-op exemption that cannot change
+# any currently-passing check. Guarded (capture-then-test on --get-all, lint 9)
+# so a re-run never duplicates the entry; mirrors migrate_daaf.sh section 4b.
+HARNESS_ADDED_SAFE_DIR=false
+SAFE_DIR_PRE=$(container_exec git config --global --get-all safe.directory 2>/dev/null | tr -d '\r' || true)
+if echo "${SAFE_DIR_PRE}" | grep -qx '/daaf'; then
+    observe_note "Git safe.directory exemption window: /daaf was already a safe.directory before the harness ran, so the harness neither adds nor later removes it."
+else
+    if container_exec git config --global --add safe.directory /daaf; then
+        HARNESS_ADDED_SAFE_DIR=true
+        observe_note "Git safe.directory exemption window OPENED (harness added /daaf) for the pre-migration old-container git ops in phases 3-5; it is removed before migrate runs so migrate's own section-4b safe.directory fix is still exercised end-to-end on the v1.0.0 vector."
+    else
+        error "Could not configure the git safe.directory exemption for /daaf in the old container."
+        error "Every pre-migration git probe would fail silently (dubious-ownership refusal), so the vector cannot proceed."
+        exit 1
+    fi
+fi
+echo ""
+
 if [ "${TEST_ERA}" = "1" ]; then
     # Era 1 expectation: /daaf carries the clone's full .git -- origin remote
     # pointing at the official repo, branch main checked out.
@@ -1437,6 +1506,19 @@ else
     observe_note "Class D not applicable: no environment_settings.txt in ${HOST_DIR} (era predates it)."
 fi
 
+# --- Harness git safe.directory exemption window (CLOSE) ---
+# Remove the exemption the harness added in Phase 3, immediately BEFORE migrate is
+# invoked -- but ONLY if the harness added it (if it pre-existed, leave it). This
+# is the point of the window: closing it here means the field run exercises
+# migrate's OWN section-4b safe.directory fix on the v1.0.0 vector end-to-end,
+# instead of the harness's instrumentation masking whether migrate handles the
+# root-owned Era-1 payload. Targeted value-regex removal (^/daaf$) so any other
+# pre-existing safe.directory entries are untouched; tolerate a no-match exit.
+if [ "${HARNESS_ADDED_SAFE_DIR}" = "true" ]; then
+    container_exec git config --global --unset-all safe.directory '^/daaf$' 2>/dev/null || true
+    observe_note "Git safe.directory exemption window CLOSED (harness removed its /daaf entry) immediately before invoking migrate, so migrate's own section-4b safe.directory fix runs on the v1.0.0 vector instead of being masked by harness instrumentation."
+fi
+
 # Run migration with the branch env var. Do NOT pipe input in: migrate_daaf.sh
 # reads interactive prompts from /dev/tty (not stdin), so a piped "n" was a
 # no-op that only obscured intent. Non-interactive detection inside the migration
@@ -1514,7 +1596,55 @@ if [ "${AUTO_MODE}" = "1" ]; then
         if [ "${UPDATE_EXIT}" -eq 0 ]; then
             check "Update script completed (exit 0)" "0"
         else
-            check "Update script completed (exit ${UPDATE_EXIT})" "1"
+            # The first driven update exited nonzero. The EXPECTED cause on the
+            # remaining era vectors is the Class-C committed CLAUDE.md append vs
+            # v3.0.0's wholesale CLAUDE.md rewrite: `git merge` conflicts on
+            # CLAUDE.md and the non-interactive conflict handler exits mid-merge.
+            # That abort is the FIRST HALF of the conflict -> resolve -> resume
+            # journey a real user walks, NOT a harness failure. Probe the container
+            # for the mid-merge state (capture-then-test; lint  9 bans a
+            # live-producer `| grep -q`). container_git strips \r and suppresses
+            # stderr; the `|| echo ""` guards the pipefail exit when MERGE_HEAD is
+            # absent (`rev-parse -q --verify` exits 1), and the helper re-normalizes.
+            MERGE_HEAD=$(container_git rev-parse -q --verify MERGE_HEAD 2>/dev/null || echo "")
+            UNMERGED=$(container_git diff --name-only --diff-filter=U 2>/dev/null || echo "")
+            if tm_conflict_autoresolvable "${MERGE_HEAD}" "${UNMERGED}"; then
+                observe_note "First driven update exited ${UPDATE_EXIT} on the EXPECTED Class-C-vs-rewrite CLAUDE.md merge conflict (MERGE_HEAD present, unmerged set exactly CLAUDE.md). Simulating the guided resolution a real user would perform with Claude Code, then re-driving the resumable updater."
+                # Resolve the way update_daaf's own guidance tells a user to: take
+                # upstream's rewritten CLAUDE.md (--theirs); then, if the Class C
+                # prose marker was planted, re-append it (same printf as at planting,
+                # above) so the user's customization survives the resolution and the
+                # observe-only Class C content probe (Phase 7) stays meaningful.
+                container_git checkout --theirs -- CLAUDE.md
+                if [ "${PLANTED_C}" = "true" ]; then
+                    container_exec bash -c 'printf "\n<!-- test-migration-marker-C: committed CLAUDE.md prose line -->\n" >> /daaf/CLAUDE.md'
+                fi
+                container_git add CLAUDE.md
+                container_git commit -m "Resolved merge conflicts from DAAF update (harness-simulated guided resolution)"
+                info "Re-driving update_daaf.sh (resume path) after the simulated conflict resolution..."
+                echo ""
+                # Identical env/invocation as the first drive; tee -a APPENDS to
+                # UPDATE_OUT so the self-update grep below sees the union of both runs.
+                set +e
+                CI=1 DAAF_BRANCH="${MIGRATION_BRANCH}" DAAF_NESTED=1 bash "${HOST_DIR}/update_daaf.sh" 2>&1 | tee -a "${UPDATE_OUT}"
+                UPDATE_EXIT="${PIPESTATUS[0]}"
+                set -e
+                echo ""
+                # Only the RESUMED run is scored here; the first run's nonzero exit is
+                # the expected half of the journey (recorded in the observe_note above).
+                if [ "${UPDATE_EXIT}" -eq 0 ]; then
+                    check "Update conflict journey completed (conflict -> resolved -> resumed update exit 0)" "0"
+                else
+                    check "Update conflict journey completed (conflict -> resolved -> resumed update exit ${UPDATE_EXIT})" "1"
+                fi
+            else
+                # Not the expected auto-resolvable conflict: either no merge is in
+                # progress, or the unmerged set is not exactly CLAUDE.md (e.g. a
+                # Dockerfile B(i) conflict, or a multi-file conflict). Fail loudly,
+                # verbatim as before, and surface the unmerged set for triage.
+                check "Update script completed (exit ${UPDATE_EXIT})" "1"
+                observe_note "First driven update exited ${UPDATE_EXIT} but the conflict is NOT auto-resolvable (unexpected): MERGE_HEAD='${MERGE_HEAD}', unmerged set='$(printf '%s' "${UNMERGED}" | tr '\n' ' ')'. Failing loudly per design."
+            fi
         fi
         # Self-update two-run: if the updater reports it updated ITSELF, a real user
         # re-runs it once more. For the v2.1.0 vector migrate may have pre-seeded the

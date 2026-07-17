@@ -227,18 +227,61 @@ teardown() {
     [ "${SKIP_MULTI_CLI}" = "0" ]
 }
 
+# --- tm_conflict_autoresolvable (round-5 conflict-journey eligibility) ---
+# Eligible ONLY when a merge is in progress (MERGE_HEAD non-empty) AND the
+# unmerged set is EXACTLY CLAUDE.md. Everything else fails loudly.
+
+@test "tm_conflict_autoresolvable: MERGE_HEAD + exactly CLAUDE.md => eligible (rc 0)" {
+    run tm_conflict_autoresolvable "abc123def456" "CLAUDE.md"
+    [ "${status}" -eq 0 ]
+}
+
+@test "tm_conflict_autoresolvable: tolerates trailing CR/whitespace on both inputs" {
+    # container_git strips \r, but the helper re-normalizes so a stray CR or
+    # surrounding whitespace on either capture cannot flip the decision.
+    run tm_conflict_autoresolvable $'abc123\r' $'  CLAUDE.md \r'
+    [ "${status}" -eq 0 ]
+}
+
+@test "tm_conflict_autoresolvable: empty MERGE_HEAD => not eligible (rc 1)" {
+    # No merge in progress (a nonzero update exit for some OTHER reason).
+    run tm_conflict_autoresolvable "" "CLAUDE.md"
+    [ "${status}" -eq 1 ]
+    run tm_conflict_autoresolvable $'  \r' "CLAUDE.md"
+    [ "${status}" -eq 1 ]
+}
+
+@test "tm_conflict_autoresolvable: multi-file unmerged set => not eligible (rc 1)" {
+    # A conflict that spans CLAUDE.md AND another file is not auto-resolvable.
+    run tm_conflict_autoresolvable "abc123" $'CLAUDE.md\nDockerfile'
+    [ "${status}" -eq 1 ]
+}
+
+@test "tm_conflict_autoresolvable: wrong single file => not eligible (rc 1)" {
+    # A Dockerfile-only (Class B(i)) conflict must fail loudly, not auto-resolve.
+    run tm_conflict_autoresolvable "abc123" "Dockerfile"
+    [ "${status}" -eq 1 ]
+}
+
+@test "tm_conflict_autoresolvable: MERGE_HEAD present but empty unmerged set => not eligible (rc 1)" {
+    run tm_conflict_autoresolvable "abc123" ""
+    [ "${status}" -eq 1 ]
+}
+
 # --- Field-run 4 regression pins (2026-07-17) ---
 # Content pins for fixes whose absence caused real field failures. The
 # docker-driven phases cannot execute under bats, so these pin the load-bearing
 # lines instead: reverting a fix breaks the corresponding pin by construction.
 
-@test "pin: driven update is branch-faithful (DAAF_BRANCH on BOTH update drives)" {
+@test "pin: driven update is branch-faithful (DAAF_BRANCH on ALL update drives)" {
     # Without DAAF_BRANCH the updater auto-detects main and merges GitHub
     # origin/main instead of the branch under test -- field run 4 never got the
     # noble Dockerfile, so no rebuild was exercised and the noble check failed.
+    # THREE branch-faithful drives now: the first drive, the conflict-journey
+    # resume re-drive (round 5), and the self-update two-run second drive.
     run grep -cF 'DAAF_BRANCH="${MIGRATION_BRANCH}" DAAF_NESTED=1 bash "${HOST_DIR}/update_daaf.sh"' "${REPO_ROOT}/scripts/host/test_migration.sh"
     assert_success
-    [ "${output}" -eq 2 ]
+    [ "${output}" -eq 3 ]
 }
 
 @test "pin: Era-3 tag normalization completes refspec, origin/main, and tracking" {
@@ -277,4 +320,109 @@ teardown() {
     run grep -cF 'ls -ldn /daaf /daaf/.git' "${REPO_ROOT}/scripts/host/test_migration.sh"
     assert_success
     [ "${output}" -ge 1 ]
+}
+
+# --- Field-run 5 regression pins (2026-07-17) ---
+# The conflict -> resolve -> resume journey: a nonzero first driven update whose
+# unmerged set is exactly CLAUDE.md is not a FAIL -- the harness simulates the
+# guided resolution and re-drives the resumable updater, scoring the whole journey.
+
+@test "pin: eligible conflict is resolved via checkout --theirs + re-append + commit" {
+    # The simulated resolution mirrors what a real user does: take upstream's
+    # CLAUDE.md, re-preserve the planted Class C prose, commit with the frozen
+    # message the updater's resume path keys nothing on but the audit reads.
+    run grep -cF 'container_git checkout --theirs -- CLAUDE.md' "${REPO_ROOT}/scripts/host/test_migration.sh"
+    assert_success
+    [ "${output}" -ge 1 ]
+    run grep -cF 'Resolved merge conflicts from DAAF update (harness-simulated guided resolution)' "${REPO_ROOT}/scripts/host/test_migration.sh"
+    assert_success
+    [ "${output}" -ge 1 ]
+}
+
+@test "pin: conflict journey is scored by its own check, and the first exit is not failed" {
+    # The resumed run carries the journey check; the eligibility gate routes the
+    # first nonzero exit into an observe_note, never a bare FAIL.
+    run grep -cF 'Update conflict journey completed (conflict -> resolved -> resumed update exit' "${REPO_ROOT}/scripts/host/test_migration.sh"
+    assert_success
+    [ "${output}" -eq 2 ]
+    run grep -cF 'tm_conflict_autoresolvable "${MERGE_HEAD}" "${UNMERGED}"' "${REPO_ROOT}/scripts/host/test_migration.sh"
+    assert_success
+    [ "${output}" -eq 1 ]
+}
+
+@test "pin: mid-merge state is captured, not live-grepped (lint 9)" {
+    # capture-then-test: MERGE_HEAD + the unmerged set are captured into vars and
+    # passed to the pure eligibility helper, never piped into a live grep -q.
+    run grep -cF 'container_git rev-parse -q --verify MERGE_HEAD' "${REPO_ROOT}/scripts/host/test_migration.sh"
+    assert_success
+    [ "${output}" -ge 1 ]
+    run grep -cF 'container_git diff --name-only --diff-filter=U' "${REPO_ROOT}/scripts/host/test_migration.sh"
+    assert_success
+    [ "${output}" -ge 1 ]
+}
+
+# --- Field-run 5 finding 3b pins (git safe.directory exemption window) ---
+# The harness's OWN pre-migrate old-container git ops (phase 3 era-verify, phase
+# 4/5 fixture plants) hit modern git's dubious-ownership fatal on the root-owned
+# Era-1 (v1.0.0) payload. A guarded safe.directory exemption is OPENED before the
+# first such op and CLOSED before migrate runs -- but only if the harness added
+# it -- so migrate's own section-4b fix is still exercised end-to-end. Docker-
+# driven, so these pin the load-bearing source ordering/guards.
+
+@test "pin: safe.directory window opens before the first phase-3 old-container git op" {
+    local sh="${REPO_ROOT}/scripts/host/test_migration.sh"
+    local p3 add_ln firstgit
+    p3=$(grep -n 'Verify Era ${TEST_ERA} state' "${sh}" | head -1 | cut -d: -f1)
+    add_ln=$(grep -n 'container_exec git config --global --add safe.directory /daaf' "${sh}" | head -1 | cut -d: -f1)
+    # The first container_git call site strictly AFTER the phase-3 header (the OPEN
+    # block itself uses container_exec, not container_git, so it never matches).
+    firstgit=$(grep -n 'container_git ' "${sh}" | awk -F: -v p="${p3}" '$1>p {print $1; exit}')
+    [ -n "${p3}" ]
+    [ -n "${add_ln}" ]
+    [ -n "${firstgit}" ]
+    [ "${add_ln}" -gt "${p3}" ]
+    [ "${add_ln}" -lt "${firstgit}" ]
+}
+
+@test "pin: safe.directory window closes before migrate is invoked" {
+    local sh="${REPO_ROOT}/scripts/host/test_migration.sh"
+    local add_ln unset_ln migrate_ln
+    add_ln=$(grep -n 'container_exec git config --global --add safe.directory /daaf' "${sh}" | head -1 | cut -d: -f1)
+    unset_ln=$(grep -n 'container_exec git config --global --unset-all safe.directory' "${sh}" | head -1 | cut -d: -f1)
+    migrate_ln=$(grep -n 'bash migrate_daaf.sh 2>&1 | tee' "${sh}" | head -1 | cut -d: -f1)
+    [ -n "${unset_ln}" ]
+    [ -n "${migrate_ln}" ]
+    [ "${add_ln}" -lt "${unset_ln}" ]
+    [ "${unset_ln}" -lt "${migrate_ln}" ]
+}
+
+@test "pin: safe.directory window close only removes what the harness added" {
+    local sh="${REPO_ROOT}/scripts/host/test_migration.sh"
+    # The close is gated on HARNESS_ADDED_SAFE_DIR, so a pre-existing exemption is
+    # left intact; removal is targeted (value regex ^/daaf$) so other entries stay.
+    run grep -cF 'if [ "${HARNESS_ADDED_SAFE_DIR}" = "true" ]; then' "${sh}"
+    assert_success
+    [ "${output}" -eq 1 ]
+    run grep -cF "container_exec git config --global --unset-all safe.directory '^/daaf\$'" "${sh}"
+    assert_success
+    [ "${output}" -eq 1 ]
+}
+
+@test "pin: safe.directory window open uses a capture-then-test guard (lint 9) + byte-identical notes" {
+    local sh="${REPO_ROOT}/scripts/host/test_migration.sh"
+    # get-all captured into a var, then echo-of-captured-var into grep -qx (the
+    # sanctioned lint-9 form), never a live-producer pipe into grep -q.
+    run grep -cF 'SAFE_DIR_PRE=$(container_exec git config --global --get-all safe.directory' "${sh}"
+    assert_success
+    [ "${output}" -eq 1 ]
+    run grep -cF "echo \"\${SAFE_DIR_PRE}\" | grep -qx '/daaf'" "${sh}"
+    assert_success
+    [ "${output}" -eq 1 ]
+    # observe_note prose is byte-identical to the .ps1 twin (open + close).
+    run grep -cF 'Git safe.directory exemption window OPENED (harness added /daaf)' "${sh}"
+    assert_success
+    [ "${output}" -eq 1 ]
+    run grep -cF 'Git safe.directory exemption window CLOSED (harness removed its /daaf entry)' "${sh}"
+    assert_success
+    [ "${output}" -eq 1 ]
 }

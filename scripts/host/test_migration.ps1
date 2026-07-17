@@ -187,10 +187,22 @@
 #
 #   NOTE on B/C appends to tracked framework files: these deliberately exercise
 #   the updater's merge/stash paths that class-A new-file markers cannot. Appends
-#   land at END-OF-FILE, which 3-way-merges cleanly unless upstream also rewrote
-#   the file's final lines; if that happens the class B checks report CONFLICTED
-#   (an Add-Skip with a prominent note) rather than a bare FAIL, and Class C is
-#   observe-only as noted above.
+#   land at END-OF-FILE, which 3-way-merges cleanly UNLESS upstream also rewrote
+#   the file's final lines. The COMMITTED CLAUDE.md append (Class C) is EXPECTED
+#   to collide on the v2.x -> v3.0.0 vectors (v3.0.0 rewrites CLAUDE.md wholesale):
+#   the first driven update aborts mid-merge on that conflict. That abort is no
+#   longer a dead end -- the harness EXERCISES the full conflict -> resolve ->
+#   resume journey. When the unmerged set is EXACTLY CLAUDE.md it simulates the
+#   guided resolution a real user performs with Claude Code (take upstream's file,
+#   re-preserve the user's prose), commits, and re-drives the now-resumable
+#   updater, which must finish cleanly (stash pop, tier-B host-script sync,
+#   rebuild). Only a CLAUDE.md-exactly conflict is auto-resolved this way; any
+#   OTHER unmerged set -- notably a Dockerfile B(i) append conflict, or a
+#   multi-file conflict -- is NOT eligible and the update FAILs loudly, which
+#   remains the correct signal for an unexpected conflict. (Separately, the
+#   post-migration Class B(i)/B(ii) Phase-7 checks still report CONFLICTED via
+#   Add-Skip if git conflict markers remain in those files, and Class C's Phase-7
+#   probe stays observe-only.)
 #
 # ----------------------------------------------------------------------------
 # FLAGS / ENV REFERENCE
@@ -363,6 +375,29 @@ function tm_parse_args([string[]]$ArgList) {
     return [pscustomobject]@{ RunAll = $runAll; AutoMode = $autoMode; SkipMultiCli = $skipMulti }
 }
 
+function Test-ConflictAutoResolvable([string]$MergeHead, [string]$Unmerged) {
+    # Decide whether a nonzero-exit driven update is the EXPECTED, auto-resolvable
+    # conflict the harness knows how to simulate a user resolving: a merge is in
+    # progress (MergeHead non-empty) AND the unmerged set is EXACTLY the single
+    # path CLAUDE.md -- the Class-C committed-append vs upstream-CLAUDE.md-rewrite
+    # collision. Anything else (no merge in progress, an empty unmerged set, a
+    # different single file such as Dockerfile, or a multi-file conflict) is NOT
+    # auto-resolvable and must fail loudly. Inputs may carry trailing whitespace or
+    # CR from the Invoke-ContainerGit capture; normalize before deciding. Pure (no
+    # docker, no side effects); despite the Test- verb it lives here with the pure
+    # tm_* helpers, above the DAAF_TEST_MODE guard, so the Pester suite can
+    # dot-source it. Mirrors the .sh twin's tm_conflict_autoresolvable.
+    $head = ($MergeHead -replace '\s', '')
+    if ([string]::IsNullOrEmpty($head)) { return $false }
+    $lines = @()
+    foreach ($ln in (($Unmerged -replace "`r", '') -split "`n")) {
+        $t = $ln.Trim()
+        if ($t -ne '') { $lines += $t }
+    }
+    if ($lines.Count -eq 1 -and $lines[0] -eq 'CLAUDE.md') { return $true }
+    return $false
+}
+
 # --- Source-only guard (D8) ---
 # When dot-sourced with DAAF_TEST_MODE=1, return here: the Pester suite gets the
 # tm_* functions above without running any of the harness body below. Placed AFTER
@@ -426,6 +461,7 @@ $script:PlantedB2 = $false              # Class B(ii) uncommitted CLAUDE.md appe
 $script:UpdateRan = $false              # did a driven update_daaf.ps1 run (auto mode)?
 $script:ClassEPlanted = $false          # Class E host-script drift marker planted?
 $script:UpdateOut = ""                  # capture file for the driven update (auto mode)
+$script:HarnessAddedSafeDir = $false    # did the harness add the /daaf safe.directory exemption (Phase 3)?
 
 function Write-SummaryOnce {
     # Emit the machine-readable summary exactly ONCE, as the final stdout line, so
@@ -1371,6 +1407,36 @@ if ($retries -ge 30) {
     exit 1
 }
 
+# --- Harness git safe.directory exemption window (OPEN) ---
+# The harness performs its OWN git operations in the OLD-era container before
+# migrate runs: the Phase 3 era-state verify probes below, the Phase 4 committed-
+# fixture plant, and the Phase 5 dirty/uncommitted plant. On a root-owned Era-1
+# (v1.0.0) payload every one of those hits modern git's dubious-ownership fatal
+# ("detected dubious ownership in repository at '/daaf'"), so the vector INFRAs
+# at Phase 3 before migrate ever runs. Add a global safe.directory exemption for
+# the exec user NOW, spanning all pre-migrate old-container git usage. It is
+# CLOSED (removed) immediately before migrate is invoked (Phase 6), but ONLY if
+# the harness added it here -- so the field run still exercises migrate's own
+# section-4b safe.directory fix end-to-end on the v1.0.0 vector rather than the
+# harness masking it. Harmless on the v2.x vectors: their payload is already
+# exec-user-owned, so the add is a redundant no-op exemption that cannot change
+# any currently-passing check. Guarded (capture-then-test on --get-all) so a
+# re-run never duplicates the entry; mirrors migrate_daaf.ps1 section 4b.
+$SafeDirPre = @(Invoke-ContainerExec git config --global --get-all safe.directory) -join "`n"
+if (($SafeDirPre -split "`n") -contains '/daaf') {
+    Write-ObserveNote "Git safe.directory exemption window: /daaf was already a safe.directory before the harness ran, so the harness neither adds nor later removes it."
+} else {
+    Invoke-ContainerExec git config --global --add safe.directory /daaf
+    if ($LASTEXITCODE -eq 0) {
+        $script:HarnessAddedSafeDir = $true
+        Write-ObserveNote "Git safe.directory exemption window OPENED (harness added /daaf) for the pre-migration old-container git ops in phases 3-5; it is removed before migrate runs so migrate's own section-4b safe.directory fix is still exercised end-to-end on the v1.0.0 vector."
+    } else {
+        Write-Error "Could not configure the git safe.directory exemption for /daaf in the old container. Every pre-migration git probe would fail silently (dubious-ownership refusal), so the vector cannot proceed."
+        exit 1
+    }
+}
+Write-Host ""
+
 if ($TestEra -eq "1") {
     # Era 1 expectation: /daaf carries the clone's full .git -- origin remote
     # pointing at the official repo, branch main checked out.
@@ -1381,12 +1447,22 @@ if ($TestEra -eq "1") {
     } else {
         # Surface the RAW git error + /daaf ownership BEFORE the terminating
         # Write-Error (Invoke-ContainerGit discards stderr, which hid the
-        # diagnosis in field run 4 -- suspected modern-git "dubious ownership"
-        # refusal: root-owned volume payload vs the v1.0.0 image's non-root
-        # user, with no safe.directory config anywhere in that era).
-        $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-        $gitDiag = (docker exec $script:ContainerName git -C /daaf remote get-url origin 2>&1 | Out-String).Trim()
-        $ownerDiag = (docker exec $script:ContainerName ls -ldn /daaf /daaf/.git 2>&1 | Out-String).Trim()
+        # diagnosis in field run 4 -- modern-git "dubious ownership" refusal:
+        # root-owned volume payload vs the v1.0.0 image's non-root user, with
+        # no safe.directory config in that era).
+        # PS 5.1 native-stderr capture (round-5 field-confirmed, Windows): under a
+        # redirected error stream `docker exec ... 2>&1` renders git's stderr lines
+        # as ErrorRecords, and with EAP=SilentlyContinue + Out-String those records
+        # were DROPPED -- so $gitDiag came back EMPTY on Windows where the .sh twin
+        # printed git's dubious-ownership fatal. Capture them the way
+        # Invoke-NativeLogged surfaces native stderr: scoped EAP=Continue + 2>&1 +
+        # per-object stringify (ForEach-Object "$_"), joined into one string. The
+        # .sh side already surfaces this text (raw docker exec 2>&1) and is left
+        # unchanged; parity here means both twins surface git's stderr, not
+        # identical mechanics.
+        $savedEAP = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+        $gitDiag = ((docker exec $script:ContainerName git -C /daaf remote get-url origin 2>&1 | ForEach-Object { "$_" }) -join "`n").Trim()
+        $ownerDiag = ((docker exec $script:ContainerName ls -ldn /daaf /daaf/.git 2>&1 | ForEach-Object { "$_" }) -join "`n").Trim()
         $ErrorActionPreference = $savedEAP
         Write-Host "INFO: Raw git probe output: $gitDiag" -ForegroundColor Yellow
         Write-Host "INFO: Ownership probe (ls -ldn): $ownerDiag" -ForegroundColor Yellow
@@ -1731,6 +1807,19 @@ if (Test-Path $ClassDPath) {
     Write-ObserveNote "Class D not applicable: no environment_settings.txt in $HostDir (era predates it)."
 }
 
+# --- Harness git safe.directory exemption window (CLOSE) ---
+# Remove the exemption the harness added in Phase 3, immediately BEFORE migrate is
+# invoked -- but ONLY if the harness added it (if it pre-existed, leave it). This
+# is the point of the window: closing it here means the field run exercises
+# migrate's OWN section-4b safe.directory fix on the v1.0.0 vector end-to-end,
+# instead of the harness's instrumentation masking whether migrate handles the
+# root-owned Era-1 payload. Targeted value-regex removal (^/daaf$) so any other
+# pre-existing safe.directory entries are untouched.
+if ($script:HarnessAddedSafeDir) {
+    Invoke-ContainerExec git config --global --unset-all safe.directory '^/daaf$'
+    Write-ObserveNote "Git safe.directory exemption window CLOSED (harness removed its /daaf entry) immediately before invoking migrate, so migrate's own section-4b safe.directory fix runs on the v1.0.0 vector instead of being masked by harness instrumentation."
+}
+
 # Run migration non-interactively via the hardened child-process path. The copy
 # at $HostDir\migrate_daaf.ps1 is harness-owned (copied above), so Unblock-File +
 # -ExecutionPolicy Bypass inside Invoke-HardenedScript defeat the RemoteSigned
@@ -1825,7 +1914,67 @@ if ($script:AutoMode) {
         if ($UpdateExit -eq 0) {
             Test-Check "Update script completed (exit 0)" $true
         } else {
-            Test-Check "Update script completed (exit $UpdateExit)" $false
+            # The first driven update exited nonzero. The EXPECTED cause on the
+            # remaining era vectors is the Class-C committed CLAUDE.md append vs
+            # v3.0.0's wholesale CLAUDE.md rewrite: the merge conflicts on CLAUDE.md
+            # and the non-interactive conflict handler exits mid-merge. That abort is
+            # the FIRST HALF of the conflict -> resolve -> resume journey a real user
+            # walks, NOT a harness failure. Probe the container for the mid-merge
+            # state (capture-then-test; Invoke-ContainerGit strips \r, suppresses
+            # stderr, and returns "" when MERGE_HEAD is absent).
+            $MergeHead = Invoke-ContainerGit rev-parse -q --verify MERGE_HEAD
+            $Unmerged = Invoke-ContainerGit diff --name-only --diff-filter=U
+            if (Test-ConflictAutoResolvable $MergeHead $Unmerged) {
+                Write-ObserveNote "First driven update exited $UpdateExit on the EXPECTED Class-C-vs-rewrite CLAUDE.md merge conflict (MERGE_HEAD present, unmerged set exactly CLAUDE.md). Simulating the guided resolution a real user would perform with Claude Code, then re-driving the resumable updater."
+                # Resolve the way update_daaf's own guidance tells a user to: take
+                # upstream's rewritten CLAUDE.md (--theirs); then, if the Class C prose
+                # marker was planted, re-append it (same printf as at planting, above)
+                # so the user's customization survives the resolution and the
+                # observe-only Class C content probe (Phase 7) stays meaningful.
+                $null = Invoke-ContainerGit checkout --theirs -- CLAUDE.md
+                if ($script:PlantedC) {
+                    Invoke-ContainerExec bash -c 'printf ''\n<!-- test-migration-marker-C: committed CLAUDE.md prose line -->\n'' >> /daaf/CLAUDE.md'
+                }
+                $null = Invoke-ContainerGit add CLAUDE.md
+                $null = Invoke-ContainerGit commit -m "Resolved merge conflicts from DAAF update (harness-simulated guided resolution)"
+                Write-Host "INFO: Re-driving update_daaf.ps1 (resume path) after the simulated conflict resolution..." -ForegroundColor Cyan
+                Write-Host ""
+                # Identical env/invocation as the first drive. Start-Process truncates
+                # its capture file, so re-drive to a SIBLING file and APPEND it to
+                # $script:UpdateOut (parity with the .sh `tee -a`) so the self-update
+                # grep below sees the union of both runs.
+                $env:DAAF_BRANCH = $MigrationBranch
+                $env:DAAF_NESTED = "1"
+                $ResumeUpdateOut = "$($script:UpdateOut).resume"
+                $UpdateExit = 1
+                try {
+                    $UpdateExit = Invoke-HardenedScriptAuto -Path (Join-Path $HostDir "update_daaf.ps1") -CaptureFile $ResumeUpdateOut
+                } catch {
+                    Write-Host "ERROR: Could not run update_daaf.ps1 (resume): $_" -ForegroundColor Red
+                    $UpdateExit = 1
+                }
+                Remove-Item Env:\DAAF_NESTED -ErrorAction SilentlyContinue
+                Remove-Item Env:\DAAF_BRANCH -ErrorAction SilentlyContinue
+                if (Test-Path $ResumeUpdateOut) {
+                    Get-Content -LiteralPath $ResumeUpdateOut | Add-Content -LiteralPath $script:UpdateOut
+                }
+                Write-Host ""
+                # Only the RESUMED run is scored here; the first run's nonzero exit is
+                # the expected half of the journey (recorded in the note above).
+                if ($UpdateExit -eq 0) {
+                    Test-Check "Update conflict journey completed (conflict -> resolved -> resumed update exit 0)" $true
+                } else {
+                    Test-Check "Update conflict journey completed (conflict -> resolved -> resumed update exit $UpdateExit)" $false
+                }
+            } else {
+                # Not the expected auto-resolvable conflict: either no merge is in
+                # progress, or the unmerged set is not exactly CLAUDE.md (e.g. a
+                # Dockerfile B(i) conflict, or a multi-file conflict). Fail loudly,
+                # verbatim as before, and surface the unmerged set for triage.
+                Test-Check "Update script completed (exit $UpdateExit)" $false
+                $UnmergedFlat = ($Unmerged -replace "`r", " " -replace "`n", " ")
+                Write-ObserveNote "First driven update exited $UpdateExit but the conflict is NOT auto-resolvable (unexpected): MERGE_HEAD='$MergeHead', unmerged set='$UnmergedFlat'. Failing loudly per design."
+            }
         }
 
         # Self-update two-run: if the updater reports it updated ITSELF, a real user
