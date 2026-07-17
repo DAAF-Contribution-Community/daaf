@@ -143,11 +143,14 @@ models:
   # https://openrouter.ai/moonshotai/kimi-k3 (accessed 2026-07-17): slug
   # moonshotai/kimi-k3 — single listing, no thinking/turbo variants (K3 is
   # itself the thinking model; reasoning effort fixed at "max"); $3.00/M input,
-  # $15.00/M output; no cache discount listed on OpenRouter (Moonshot's own API
-  # lists $0.30/M cached input — not applicable to this route); context window
-  # 1,048,576 tokens; released 2026-07-16. Single upstream provider (Moonshot
-  # INT4 endpoint) as of access date, so no ":provider" pin suffix exists —
-  # bare slug is correct. K3 accepts no sampling params (temperature/top_p/seed).
+  # $15.00/M output; context window 1,048,576 tokens; released 2026-07-16.
+  # Cache pricing corrected 2026-07-17 from GET /api/v1/models/moonshotai/
+  # kimi-k3/endpoints: input_cache_read $0.30/M (the model page displays no
+  # cache rate; supports_implicit_caching=false, so discounts require explicit
+  # cache_control breakpoints, which the Claude CLI sends). Single upstream
+  # provider (Moonshot INT4 endpoint) as of access date, so no ":provider" pin
+  # suffix exists — bare slug is correct. K3 accepts no sampling params
+  # (temperature/top_p/seed).
   - id: "moonshotai/kimi-k3"
     name: "Kimi K3"
     provider: openrouter
@@ -155,6 +158,7 @@ models:
     pricing:
       input: 3.00
       output: 15.00
+      cached_input: 0.30
     env_overrides:
       ANTHROPIC_DEFAULT_OPUS_MODEL: "moonshotai/kimi-k3"
       ANTHROPIC_DEFAULT_SONNET_MODEL: "moonshotai/kimi-k3"

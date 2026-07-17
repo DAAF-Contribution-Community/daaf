@@ -172,8 +172,9 @@ class ModelRegistryTests(unittest.TestCase):
         self.assertEqual("openrouter", entry.provider)
         self.assertEqual(3.00, entry.pricing.input)
         self.assertEqual(15.00, entry.pricing.output)
-        # No cache discount listed on the OpenRouter route (2026-07-17).
-        self.assertIsNone(entry.pricing.cached_input)
+        # Cache-read rate from GET /api/v1/models/moonshotai/kimi-k3/endpoints
+        # (2026-07-17); the model page displays no cache rate.
+        self.assertEqual(0.30, entry.pricing.cached_input)
         # All three purity selectors pinned to the bare K3 slug so dispatched
         # children stay model-pure under the G1R validity gate.
         for selector in (
