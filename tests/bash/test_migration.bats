@@ -2,10 +2,12 @@
 # ============================================================================
 # Tests for test_migration.sh -- DAAF Migration/Fresh-Install Test Harness
 # ============================================================================
-# test_migration.sh is an UNTRACKED, dev-only end-to-end harness (it drives real
-# Docker and is never committed). These tests therefore cover only its PURE,
-# docker-free logic: the tm_* helper functions, which are unit-testable via
-# `DAAF_TEST_MODE=1 source` (the source-only guard returns before any execution).
+# test_migration.sh is a TRACKED, dev-only end-to-end harness (committed for CI
+# unit coverage as of 203c56c, but excluded from the updater's host-script sync
+# -- it drives real Docker and never ships to user hosts). These tests cover its
+# PURE, docker-free logic: the tm_* helper functions, unit-testable via
+# `DAAF_TEST_MODE=1 source` (the source-only guard returns before any
+# execution), plus content pins for field-run regression fixes.
 #
 # What is intentionally NOT covered here: the docker-driven phases (install,
 # migrate, update, multi-instance). Those require a live Docker daemon and are
@@ -223,4 +225,56 @@ teardown() {
     [ "${RUN_ALL}" = "0" ]
     [ "${AUTO_MODE}" = "0" ]
     [ "${SKIP_MULTI_CLI}" = "0" ]
+}
+
+# --- Field-run 4 regression pins (2026-07-17) ---
+# Content pins for fixes whose absence caused real field failures. The
+# docker-driven phases cannot execute under bats, so these pin the load-bearing
+# lines instead: reverting a fix breaks the corresponding pin by construction.
+
+@test "pin: driven update is branch-faithful (DAAF_BRANCH on BOTH update drives)" {
+    # Without DAAF_BRANCH the updater auto-detects main and merges GitHub
+    # origin/main instead of the branch under test -- field run 4 never got the
+    # noble Dockerfile, so no rebuild was exercised and the noble check failed.
+    run grep -cF 'DAAF_BRANCH="${MIGRATION_BRANCH}" DAAF_NESTED=1 bash "${HOST_DIR}/update_daaf.sh"' "${REPO_ROOT}/scripts/host/test_migration.sh"
+    assert_success
+    [ "${output}" -eq 2 ]
+}
+
+@test "pin: Era-3 tag normalization completes refspec, origin/main, and tracking" {
+    # The tag-pinned replay clone lacks the origin/main ref a real
+    # `clone -b main` install had; without these three commands migrate's
+    # set-upstream fails and the tracking checks FAIL (field run 4, v2.1.0).
+    run grep -cF 'git -C /daaf remote set-branches origin main' "${REPO_ROOT}/scripts/host/test_migration.sh"
+    assert_success
+    [ "${output}" -ge 1 ]
+    run grep -cF 'git -C /daaf fetch --depth 1 origin main' "${REPO_ROOT}/scripts/host/test_migration.sh"
+    assert_success
+    [ "${output}" -ge 1 ]
+    run grep -cF 'git -C /daaf branch --set-upstream-to=origin/main main' "${REPO_ROOT}/scripts/host/test_migration.sh"
+    assert_success
+    [ "${output}" -ge 1 ]
+}
+
+@test "pin: Class D comparison exempts the sanctioned DAAF_BRANCH persist" {
+    # The driven update runs with env-origin DAAF_BRANCH (branch fidelity),
+    # and update_daaf INTENTIONALLY persists that choice into
+    # environment_settings.txt -- both Class D cksum sites must therefore
+    # filter the active DAAF_BRANCH line, or the sanctioned write reads as
+    # fixture loss (quality-review finding, field-run-4 fix pass).
+    run grep -cF "grep -v '^DAAF_BRANCH='" "${REPO_ROOT}/scripts/host/test_migration.sh"
+    assert_success
+    [ "${output}" -eq 2 ]
+}
+
+@test "pin: Era-1 verify failure surfaces raw git stderr + ownership probes" {
+    # container_git discards stderr, which hid the v1.0.0 INFRA diagnosis
+    # (suspected modern-git dubious-ownership refusal). The failure path must
+    # print the raw git error and the /daaf ownership.
+    run grep -cF 'Raw git probe output' "${REPO_ROOT}/scripts/host/test_migration.sh"
+    assert_success
+    [ "${output}" -ge 1 ]
+    run grep -cF 'ls -ldn /daaf /daaf/.git' "${REPO_ROOT}/scripts/host/test_migration.sh"
+    assert_success
+    [ "${output}" -ge 1 ]
 }

@@ -126,3 +126,72 @@ Describe "test_migration.ps1 pure helper functions (tm_*)" {
         }
     }
 }
+
+# Content pins for fixes whose absence caused real field failures (field run 4,
+# 2026-07-17). The docker-driven phases cannot execute under Pester, so these
+# pin the load-bearing source lines: reverting a fix breaks the pin.
+Describe "test_migration.ps1 field-run 4 regression pins" {
+    BeforeAll {
+        . "$PSScriptRoot/TestHelper.ps1"
+        $script:HarnessText = Get-Content -Raw "$RepoRoot/scripts/host/test_migration.ps1"
+    }
+
+    It "defines the summary contract (function + trap) ABOVE the matrix driver" {
+        # PowerShell traps are scope-wide: the trap fires for driver-branch
+        # errors too, so Write-SummaryOnce must already be defined when the
+        # driver runs (field run 4: CommandNotFoundException in the trap killed
+        # the whole matrix mid-loop).
+        $idxFunc = $script:HarnessText.IndexOf('function Write-SummaryOnce')
+        $idxTrap = $script:HarnessText.IndexOf('trap { Write-SummaryOnce; break }')
+        $idxDriver = $script:HarnessText.IndexOf('--- Matrix driver')
+        $idxFunc | Should -BeGreaterThan 0
+        $idxTrap | Should -BeGreaterThan 0
+        $idxDriver | Should -BeGreaterThan 0
+        $idxFunc | Should -BeLessThan $idxDriver
+        $idxTrap | Should -BeLessThan $idxDriver
+    }
+
+    It "Write-SummaryOnce never emits from the matrix driver (RunAll guard)" {
+        # The grammar is one summary line per CHILD vector; the driver reports
+        # via scoreboard + exit code only.
+        $script:HarnessText | Should -Match '(?s)function Write-SummaryOnce.{0,2000}?if \(\$script:RunAll\) \{ return \}'
+    }
+
+    It "matrix child pipeline stringifies child stderr under scoped EAP" {
+        # PS 5.1 wraps child stderr as ErrorRecords under 2>&1; with EAP=Stop
+        # the first record (git clone progress) terminates the driver loop.
+        $script:HarnessText | Should -Match ([regex]::Escape('2>&1 | ForEach-Object { "$_" } | Tee-Object -FilePath $logf'))
+    }
+
+    It "wraps era-install bare native calls in Invoke-NativeLogged" {
+        $script:HarnessText | Should -Match ([regex]::Escape('Invoke-NativeLogged { git clone'))
+        $script:HarnessText | Should -Match ([regex]::Escape('Invoke-NativeLogged { docker compose up -d --build }'))
+    }
+
+    It "drives update_daaf.ps1 branch-faithfully (DAAF_BRANCH on both driven runs)" {
+        # Without DAAF_BRANCH the updater auto-detects main and merges GitHub
+        # origin/main instead of the branch under test.
+        $pair = [regex]::Escape('$env:DAAF_BRANCH = $MigrationBranch') + '\s+' + [regex]::Escape('$env:DAAF_NESTED = "1"')
+        ([regex]::Matches($script:HarnessText, $pair)).Count | Should -BeGreaterOrEqual 2
+    }
+
+    It "Era-3 tag normalization completes refspec, origin/main, and tracking" {
+        $script:HarnessText | Should -Match ([regex]::Escape('git -C /daaf remote set-branches origin main'))
+        $script:HarnessText | Should -Match ([regex]::Escape('git -C /daaf fetch --depth 1 origin main'))
+        $script:HarnessText | Should -Match ([regex]::Escape('git -C /daaf branch --set-upstream-to=origin/main main'))
+    }
+
+    It "Class D comparison exempts the sanctioned DAAF_BRANCH persist" {
+        # The driven update's env-origin DAAF_BRANCH is intentionally persisted
+        # into environment_settings.txt by update_daaf; both Class D hash sites
+        # must filter that line or the sanctioned write reads as fixture loss.
+        $script:HarnessText | Should -Match ([regex]::Escape('function Get-ClassDHash'))
+        $script:HarnessText | Should -Match ([regex]::Escape("Where-Object { `$_ -notmatch '^DAAF_BRANCH=' }"))
+        ([regex]::Matches($script:HarnessText, [regex]::Escape('Get-ClassDHash $ClassDPath'))).Count | Should -Be 2
+    }
+
+    It "Era-1 verify failure surfaces raw git stderr + ownership probes" {
+        $script:HarnessText | Should -Match ([regex]::Escape('Raw git probe output'))
+        $script:HarnessText | Should -Match ([regex]::Escape('ls -ldn /daaf /daaf/.git'))
+    }
+}

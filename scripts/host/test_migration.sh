@@ -157,7 +157,9 @@
 #            Marker: test-migration-marker-C
 #   Class D  HOST-side environment_settings.txt byte-identity across migration
 #            (and update). cksum captured pre-migration, re-checked in Phase 7.
-#            Applicable only when the era's install seeded the file.
+#            Applicable only when the era's install seeded the file. Compared
+#            MODULO the active DAAF_BRANCH line: the driven update's env-origin
+#            branch persist is a sanctioned single-line mutation.
 #   Class E  Host-script DRIFT-HEAL (auto-mode only). A marker line is appended
 #            to <host>/view_logs.sh before update; a healthy update re-syncs the
 #            script (marker gone) and backs up the drifted copy as
@@ -1099,6 +1101,15 @@ if [ "${TEST_ERA}" = "1" ]; then
     else
         error "Era 1 replay did not produce the expected state (origin: '${ORIGIN_CHECK}', branch: '${BRANCH_CHECK}')."
         error "Expected the documented clone flow to leave origin=${REPO} and branch=main."
+        # Surface the RAW git error (container_git discards stderr, which hid
+        # the diagnosis in field run 4 -- suspected modern-git "dubious
+        # ownership" refusal: root-owned volume payload vs the v1.0.0 image's
+        # non-root user, with no safe.directory config anywhere in that era).
+        # ls -ldn shows the numeric owner of /daaf and .git for the same reason.
+        GIT_DIAG=$(docker exec "${CONTAINER_NAME}" git -C /daaf remote get-url origin </dev/null 2>&1 || true)
+        OWNER_DIAG=$(docker exec "${CONTAINER_NAME}" ls -ldn /daaf /daaf/.git </dev/null 2>&1 || true)
+        error "Raw git probe output: ${GIT_DIAG}"
+        error "Ownership probe (ls -ldn): ${OWNER_DIAG}"
         exit 1
     fi
 
@@ -1163,6 +1174,30 @@ else
         BRANCH_CHECK=$(container_git branch --show-current 2>/dev/null || echo "")
         if [ "${BRANCH_CHECK}" != "main" ]; then
             error "Era 3 normalization failed -- expected branch main, got '${BRANCH_CHECK}'."
+            exit 1
+        fi
+        # Complete the time-machine state. A real era user's install ran
+        # `git clone --depth 1 -b main`, which ALSO left: a main-only fetch
+        # refspec, an origin/main remote-tracking ref, and main tracking
+        # origin/main. The tag-pinned replay clone has none of those (its
+        # refspec is pinned to the tag), so migrate's best-effort
+        # `--set-upstream-to=origin/main` failed on a git state no real user
+        # had (field run 4: tracking '' on the v2.1.0 vector). set-branches
+        # rewrites the refspec to main-only; the shallow fetch materializes
+        # origin/main at the CURRENT tip (the "old install, newer upstream"
+        # premise this harness exists to test); set-upstream then matches the
+        # tracking a real `clone -b main` had from day one. container_exec
+        # (not container_git) so a failure's stderr reaches the log.
+        if ! container_exec git -C /daaf remote set-branches origin main; then
+            error "Era 3 normalization failed -- could not set the origin fetch refspec to main."
+            exit 1
+        fi
+        if ! container_exec git -C /daaf fetch --depth 1 origin main; then
+            error "Era 3 normalization failed -- could not fetch origin/main (network?)."
+            exit 1
+        fi
+        if ! container_exec git -C /daaf branch --set-upstream-to=origin/main main; then
+            error "Era 3 normalization failed -- could not set main's upstream to origin/main."
             exit 1
         fi
     fi
@@ -1382,14 +1417,22 @@ else
 fi
 
 # --- Class D baseline: host environment_settings.txt must survive migration (and
-#     any driven update) byte-for-byte. cksum reads from stdin so the output is
-#     just the checksum+size, with no filename to differ. Bash 3.2 portable.
+#     any driven update) byte-for-byte -- EXCEPT the active DAAF_BRANCH line.
+#     The harness drives update_daaf with env-origin DAAF_BRANCH (branch
+#     fidelity), and the updater INTENTIONALLY persists that choice into
+#     environment_settings.txt (persist_branch_choice) -- a designed, single-
+#     line mutation, not fixture loss. Comparing modulo '^DAAF_BRANCH=' keeps
+#     the check byte-strict for everything else while tolerating the one
+#     sanctioned write (quality review, field-run-4 fix pass). cksum reads
+#     stdin so output is just checksum+size. `grep -v` exiting 1 when it
+#     emits nothing is absorbed so pipefail cannot abort the capture.
+#     Bash 3.2 portable.
 CLASS_D_APPLICABLE=false
 CLASS_D_PRE=""
 if [ -f "${HOST_DIR}/environment_settings.txt" ]; then
     CLASS_D_APPLICABLE=true
-    CLASS_D_PRE=$(cksum < "${HOST_DIR}/environment_settings.txt")
-    observe_note "Class D baseline captured (environment_settings.txt cksum: ${CLASS_D_PRE})."
+    CLASS_D_PRE=$({ grep -v '^DAAF_BRANCH=' "${HOST_DIR}/environment_settings.txt" || true; } | cksum)
+    observe_note "Class D baseline captured (environment_settings.txt cksum sans DAAF_BRANCH line: ${CLASS_D_PRE})."
 else
     observe_note "Class D not applicable: no environment_settings.txt in ${HOST_DIR} (era predates it)."
 fi
@@ -1457,8 +1500,13 @@ if [ "${AUTO_MODE}" = "1" ]; then
         fi
         info "Driving update_daaf.sh (non-interactive) from ${HOST_DIR}..."
         echo ""
+        # DAAF_BRANCH keeps the driven update BRANCH-FAITHFUL (parity with the
+        # migrate drive above): without it the updater auto-detects 'main' and
+        # merges GitHub origin/main instead of the branch under test -- field
+        # run 4 merged main's tip (describe v2.1.0-5-gc083d99), so the noble
+        # Dockerfile never arrived and no rebuild was exercised.
         set +e
-        CI=1 DAAF_NESTED=1 bash "${HOST_DIR}/update_daaf.sh" 2>&1 | tee "${UPDATE_OUT}"
+        CI=1 DAAF_BRANCH="${MIGRATION_BRANCH}" DAAF_NESTED=1 bash "${HOST_DIR}/update_daaf.sh" 2>&1 | tee "${UPDATE_OUT}"
         UPDATE_EXIT="${PIPESTATUS[0]}"
         set -e
         UPDATE_RAN=true
@@ -1477,7 +1525,7 @@ if [ "${AUTO_MODE}" = "1" ]; then
             info "Self-update detected -- running update once more (as a real user would)..."
             echo ""
             set +e
-            CI=1 DAAF_NESTED=1 bash "${HOST_DIR}/update_daaf.sh" 2>&1 | tee -a "${UPDATE_OUT}"
+            CI=1 DAAF_BRANCH="${MIGRATION_BRANCH}" DAAF_NESTED=1 bash "${HOST_DIR}/update_daaf.sh" 2>&1 | tee -a "${UPDATE_OUT}"
             UPDATE_EXIT2="${PIPESTATUS[0]}"
             set -e
             echo ""
@@ -1547,9 +1595,11 @@ fi
 # Check 2: Upstream tracking is set.
 # Expected tracking is era- and ref-aware:
 #   - Era 1/2 and Era 3 TAGS: local main exists (from the era pathway or the
-#     Phase 3 normalization), migrate sets main -> origin/main, and the
-#     updater always returns HEAD to the branch it started on. Expect
-#     origin/main.
+#     Phase 3 normalization), tracking main -> origin/main comes from the era
+#     pathway itself (Era 1 clone), migrate's set-upstream (Era 2, post-fetch),
+#     or the Phase 3 tag normalization (Era 3 tags -- replicating what a real
+#     `clone -b main` set at install time), and the updater always returns
+#     HEAD to the branch it started on. Expect origin/main.
 #   - Era 3 BRANCH installs (e.g. daaf_dev): no local main ever exists; the
 #     clone's branch keeps its own tracking (origin/<branch>). migrate's
 #     set-upstream to main is a silent no-op there. (Historical wart: migrate
@@ -1749,14 +1799,16 @@ else
     skip_note "Class B(ii): not planted (no 'Primary execution language' line at ${TEST_VERSION})."
 fi
 
-# Class D: host environment_settings.txt byte-identical across migration (+update).
+# Class D: host environment_settings.txt byte-identical across migration (+update),
+# modulo the active DAAF_BRANCH line (see the baseline capture comment: the
+# driven update's env-origin DAAF_BRANCH persist is a sanctioned mutation).
 if [ "${CLASS_D_APPLICABLE}" = "true" ]; then
     if [ -f "${HOST_DIR}/environment_settings.txt" ]; then
-        CLASS_D_POST=$(cksum < "${HOST_DIR}/environment_settings.txt")
+        CLASS_D_POST=$({ grep -v '^DAAF_BRANCH=' "${HOST_DIR}/environment_settings.txt" || true; } | cksum)
         if [ "${CLASS_D_POST}" = "${CLASS_D_PRE}" ]; then
-            check "Class D: environment_settings.txt byte-identical across migration" "0"
+            check "Class D: environment_settings.txt byte-identical across migration (sans DAAF_BRANCH line)" "0"
         else
-            check "Class D: environment_settings.txt byte-identical (pre='${CLASS_D_PRE}' post='${CLASS_D_POST}')" "1"
+            check "Class D: environment_settings.txt byte-identical sans DAAF_BRANCH line (pre='${CLASS_D_PRE}' post='${CLASS_D_POST}')" "1"
         fi
     else
         check "Class D: environment_settings.txt still present after migration" "1"

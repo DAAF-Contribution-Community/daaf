@@ -176,8 +176,10 @@
 #            OBSERVE note (never pass/fail) to avoid a spurious FAIL on an expected
 #            conflict -- a documented divergence from the .sh (see DIVERGENCES).
 #   Class D  HOST-side environment_settings.txt byte-identity across migration
-#            (and update). Get-FileHash captured pre-migration, re-checked in
+#            (and update). Content hash captured pre-migration, re-checked in
 #            Phase 7. Applicable only when the era's install seeded the file.
+#            Compared MODULO the active DAAF_BRANCH line: the driven update's
+#            env-origin branch persist is a sanctioned single-line mutation.
 #   Class E  Host-script DRIFT-HEAL (auto-mode only). A marker line is appended
 #            to <host>\view_logs.ps1 before update; a healthy update re-syncs the
 #            script (marker gone) and backs up the drifted copy as
@@ -370,6 +372,11 @@ function tm_parse_args([string[]]$ArgList) {
 if ($env:DAAF_TEST_MODE -eq "1") { return }
 
 Set-StrictMode -Version 3.0
+# MARGIN GUARD: do not insert fallible statements between here and the
+# summary-contract block below. The scope-wide trap calls Write-SummaryOnce,
+# so a terminating error thrown before that function (and its $script: state)
+# is defined resurrects the field-run-4 CommandNotFoundException crash. The
+# statements in between must remain null-safe casts and $env: reads only.
 
 # --- Argument / mode resolution ---
 # param() above binds -All/-Auto/-SkipMultiInstance; fold in the env entry points
@@ -383,6 +390,101 @@ if ($env:DAAF_TEST_MATRIX -eq "1") { $script:RunAll = $true }
 if ($env:DAAF_TEST_AUTO -eq "1") { $script:AutoMode = $true }
 if ($env:SKIP_MULTI_INSTANCE -eq "1") { $SkipMultiInstance = $true }
 if ($script:RunAll) { $script:AutoMode = $true }
+
+# --- Summary contract (state + emitter + trap) ---
+# Defined HERE -- above the matrix driver -- and not lower down, because
+# PowerShell `trap` statements are SCOPE-WIDE: the trap below is armed for the
+# WHOLE script scope (including the matrix-driver branch, which exits before
+# ever reaching later lines), while `function` definitions only exist once
+# execution passes them. Field run 4 (2026-07-17): with this block below the
+# driver, a child's stderr line ("Cloning into...") wrapped by 2>&1 under
+# EAP=Stop fired the trap inside the driver loop, and the trap died with
+# CommandNotFoundException on the not-yet-defined Write-SummaryOnce, killing
+# the whole matrix. Repro: scripts/scratch/probe_trap_scope.ps1.
+
+# Default install-from version: v2.0.1 -- the richest migration path (ZIP era:
+# no remote, synthetic root commit, graft + permission-fix machinery all get
+# exercised). Override with DAAF_TEST_VERSION for the other pathways.
+$TestVersion = if ($env:DAAF_TEST_VERSION) { $env:DAAF_TEST_VERSION } else { "v2.0.1" }
+
+# Track test results + machine-readable summary state. Initialized up front so the
+# summary emitter (Write-SummaryOnce) and the script-scope trap never dereference an
+# unset $script: var under Set-StrictMode 3.0, even on an early-exit path.
+$script:TestsPassed = 0
+$script:TestsFailed = 0
+$script:TestsSkipped = 0
+$script:Failures = @()
+$script:Skips = @()
+$script:VectorName = $TestVersion       # the vector this process reports as
+$script:MigrationReached = $false       # flipped true once the meaningful work begins
+$script:SummaryEmitted = $false         # guards single emission of the summary line
+# Fixture / update state read across phases. Initialized up front so StrictMode 3.0
+# never dereferences an unset $script: var on an early-exit or skipped-plant path.
+$script:PlantedB1 = $false              # Class B(i) committed Dockerfile append planted?
+$script:PlantedC = $false               # Class C committed CLAUDE.md append planted?
+$script:PlantedB2 = $false              # Class B(ii) uncommitted CLAUDE.md append planted?
+$script:UpdateRan = $false              # did a driven update_daaf.ps1 run (auto mode)?
+$script:ClassEPlanted = $false          # Class E host-script drift marker planted?
+$script:UpdateOut = ""                  # capture file for the driven update (auto mode)
+
+function Write-SummaryOnce {
+    # Emit the machine-readable summary exactly ONCE, as the final stdout line, so
+    # the matrix driver (and any CI wrapper) can parse this vector's outcome no
+    # matter where execution stopped. In interactive mode (not auto/matrix, not
+    # nested, real console) pause first so the tester can review output -- the
+    # matrix parse is pattern-anchored, so any trailing error text is inert.
+    #
+    # The matrix DRIVER never emits a vector summary line (the grammar is one
+    # line per CHILD vector; the driver reports via scoreboard + exit code).
+    # This guard is also what makes the scope-wide trap safe in the driver
+    # branch: on a driver-side terminating error the trap calls this function,
+    # which returns immediately, and `break` surfaces the real error.
+    if ($script:RunAll) { return }
+    if ($script:SummaryEmitted) { return }
+    $script:SummaryEmitted = $true
+    $interactive = $false
+    try { $interactive = [Environment]::UserInteractive -and (-not [Console]::IsInputRedirected) } catch { $interactive = $false }
+    if (-not $script:AutoMode -and -not $env:DAAF_NESTED -and $interactive) {
+        Write-Host ""
+        $null = Read-Host "Press Enter to continue"
+    }
+    $reached = if ($script:MigrationReached) { "true" } else { "false" }
+    $status = tm_classify_status $reached $script:TestsFailed
+    Write-Host (tm_emit_summary $script:VectorName $status $script:TestsPassed $script:TestsFailed $script:TestsSkipped)
+}
+
+function Complete-Run([int]$Code) {
+    # Single-vector exit path: emit the summary, then exit with the given code.
+    # (The matrix-driver branch below exits with plain `exit` and emits no summary.)
+    Write-SummaryOnce
+    exit $Code
+}
+
+# Script-scope safety net: any terminating error (a Write-Error under EAP=Stop, or
+# a StrictMode violation) still emits the summary before the script dies, so an
+# aborted vector stays INFRA/FAIL-classifiable rather than a silent, unparseable
+# gap. Verified: the trap body runs to completion before `break` propagates.
+# NOTE: this trap is armed for the ENTIRE script scope regardless of its line
+# position (PowerShell trap semantics) -- which is exactly why it and everything
+# it calls are defined above the matrix-driver branch.
+trap { Write-SummaryOnce; break }
+
+function Invoke-NativeLogged([scriptblock]$Command) {
+    # Run a native command with its stderr merged and stringified under a
+    # scoped EAP=Continue. Under PS 5.1 with a redirected error stream, a
+    # native command's routine stderr output (git clone progress, docker build
+    # chatter) becomes ErrorRecords; under EAP=Stop the first record is a
+    # TERMINATING error (field run 4). Continue + ForEach-Object "$_" renders
+    # them as plain text lines (parity with the .sh harness's `tee` output).
+    # Returns the native exit code. Simple positional parameter on purpose
+    # (PS 5.1-safe helper rules per the header constraints).
+    $savedEAP = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    & $Command 2>&1 | ForEach-Object { Write-Host "$_" }
+    $rc = $LASTEXITCODE
+    $ErrorActionPreference = $savedEAP
+    return $rc
+}
 
 # --- Matrix driver (-All / DAAF_TEST_MATRIX=1) ---
 # Runs the whole vector list as CHILD processes of this same script (one clean
@@ -430,8 +532,17 @@ if ($script:RunAll) {
             $env:DAAF_TEST_VERSION = $vec
             $env:DAAF_TEST_AUTO = "1"
             $env:SKIP_MULTI_INSTANCE = $thisSkip
-            & $hostExe -NoProfile -ExecutionPolicy Bypass -File $selfPath 2>&1 | Tee-Object -FilePath $logf
+            # Scoped EAP=Continue + stringification: under PS 5.1, `2>&1` wraps
+            # the child's stderr lines as ErrorRecords, and with EAP=Stop the
+            # FIRST such line (e.g. git clone's "Cloning into...") becomes a
+            # TERMINATING error in this loop (field run 4 killed the matrix
+            # here). Continue lets them flow; ForEach-Object "$_" stringifies
+            # records so the log gets clean text (parity with the .sh `tee`).
+            $savedEAP = $ErrorActionPreference
+            $ErrorActionPreference = 'Continue'
+            & $hostExe -NoProfile -ExecutionPolicy Bypass -File $selfPath 2>&1 | ForEach-Object { "$_" } | Tee-Object -FilePath $logf
             $childRc = $LASTEXITCODE
+            $ErrorActionPreference = $savedEAP
             $summaryLine = (Select-String -Path $logf -Pattern '^TEST_MIGRATION_SUMMARY ' | Select-Object -Last 1).Line
             $vstatus = tm_parse_summary_field $summaryLine 'status'
             $vpass = tm_parse_summary_field $summaryLine 'pass'
@@ -480,10 +591,8 @@ if ($script:RunAll) {
 }
 
 # --- Configuration ---
-# Default install-from version: v2.0.1 -- the richest migration path (ZIP era:
-# no remote, synthetic root commit, graft + permission-fix machinery all get
-# exercised). Override with DAAF_TEST_VERSION for the other pathways.
-$TestVersion = if ($env:DAAF_TEST_VERSION) { $env:DAAF_TEST_VERSION } else { "v2.0.1" }
+# ($TestVersion is derived in the summary-contract block ABOVE the matrix
+# driver, because $script:VectorName needs it there. Remaining config follows.)
 # Default migration branch: the branch whose migrate_daaf.ps1 + host scripts are
 # under test. Keep this pointing at the CURRENT update-testing branch (today:
 # daaf_dev). Overridable per-run via DAAF_MIGRATION_BRANCH without editing here.
@@ -591,57 +700,11 @@ $LocalInstallPath = Join-Path $LocalRepoRoot "scripts\host\install.ps1"
 $TestDir = Join-Path ([System.IO.Path]::GetTempPath()) "daaf-migration-test-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
 $null = New-Item -ItemType Directory -Path $TestDir -Force
 
-# Track test results + machine-readable summary state. Initialized up front so the
-# summary emitter (Write-SummaryOnce) and the script-scope trap never dereference an
-# unset $script: var under Set-StrictMode 3.0, even on an early-exit path.
-$script:TestsPassed = 0
-$script:TestsFailed = 0
-$script:TestsSkipped = 0
-$script:Failures = @()
-$script:Skips = @()
-$script:VectorName = $TestVersion       # the vector this process reports as
-$script:MigrationReached = $false       # flipped true once the meaningful work begins
-$script:SummaryEmitted = $false         # guards single emission of the summary line
-# Fixture / update state read across phases. Initialized up front so StrictMode 3.0
-# never dereferences an unset $script: var on an early-exit or skipped-plant path.
-$script:PlantedB1 = $false              # Class B(i) committed Dockerfile append planted?
-$script:PlantedC = $false               # Class C committed CLAUDE.md append planted?
-$script:PlantedB2 = $false              # Class B(ii) uncommitted CLAUDE.md append planted?
-$script:UpdateRan = $false              # did a driven update_daaf.ps1 run (auto mode)?
-$script:ClassEPlanted = $false          # Class E host-script drift marker planted?
-$script:UpdateOut = ""                  # capture file for the driven update (auto mode)
-
-function Write-SummaryOnce {
-    # Emit the machine-readable summary exactly ONCE, as the final stdout line, so
-    # the matrix driver (and any CI wrapper) can parse this vector's outcome no
-    # matter where execution stopped. In interactive mode (not auto/matrix, not
-    # nested, real console) pause first so the tester can review output -- the
-    # matrix parse is pattern-anchored, so any trailing error text is inert.
-    if ($script:SummaryEmitted) { return }
-    $script:SummaryEmitted = $true
-    $interactive = $false
-    try { $interactive = [Environment]::UserInteractive -and (-not [Console]::IsInputRedirected) } catch { $interactive = $false }
-    if (-not $script:AutoMode -and -not $env:DAAF_NESTED -and $interactive) {
-        Write-Host ""
-        $null = Read-Host "Press Enter to continue"
-    }
-    $reached = if ($script:MigrationReached) { "true" } else { "false" }
-    $status = tm_classify_status $reached $script:TestsFailed
-    Write-Host (tm_emit_summary $script:VectorName $status $script:TestsPassed $script:TestsFailed $script:TestsSkipped)
-}
-
-function Complete-Run([int]$Code) {
-    # Single-vector exit path: emit the summary, then exit with the given code.
-    # (The matrix-driver branch above exits with plain `exit` and emits no summary.)
-    Write-SummaryOnce
-    exit $Code
-}
-
-# Script-scope safety net: any terminating error (a Write-Error under EAP=Stop, or
-# a StrictMode violation) still emits the summary before the script dies, so an
-# aborted vector stays INFRA/FAIL-classifiable rather than a silent, unparseable
-# gap. Verified: the trap body runs to completion before `break` propagates.
-trap { Write-SummaryOnce; break }
+# (Summary state, Write-SummaryOnce, Complete-Run, and the script-scope trap
+# are defined ABOVE the matrix driver: PowerShell traps are scope-wide, so the
+# trap's machinery must already exist when a terminating error fires anywhere
+# in this scope -- including inside the driver branch, which exits before
+# reaching this point. See the summary-contract block after mode resolution.)
 
 function Add-Skip {
     # Record an intentional skip: a check that does not apply to this vector/mode,
@@ -1130,8 +1193,12 @@ if ($TestEra -eq "1") {
 
     Write-Host "INFO: Cloning DAAF repo (documented v1.0.0 flow)..." -ForegroundColor Cyan
     $CloneDir = Join-Path $TestDir "daaf"
-    git clone "https://github.com/$Repo.git" $CloneDir
-    if ($LASTEXITCODE -ne 0) {
+    # Invoke-NativeLogged on every bare native call in the era-install blocks:
+    # git clone/checkout and docker builds ALWAYS write progress to stderr,
+    # which is lethal under EAP=Stop with a redirected error stream (matrix
+    # children) -- see the helper's comment.
+    $rc = Invoke-NativeLogged { git clone "https://github.com/$Repo.git" $CloneDir }
+    if ($rc -ne 0) {
         Write-Error "git clone failed - cannot replay the Era 1 install."
         exit 1
     }
@@ -1139,16 +1206,16 @@ if ($TestEra -eq "1") {
     # Time-machine deviation (see header): rewind main to the tag, because a
     # 2026-era user's clone HAD main at v1.0.0. checkout -B moves the branch
     # pointer and working tree while keeping origin + tracking config intact.
-    git -C $CloneDir checkout -B main $TestVersion
-    if ($LASTEXITCODE -ne 0) {
+    $rc = Invoke-NativeLogged { git -C $CloneDir checkout -B main $TestVersion }
+    if ($rc -ne 0) {
         Write-Error "git checkout -B main $TestVersion failed - cannot pin the Era 1 tree."
         exit 1
     }
 
     Set-Location $CloneDir
     Write-Host "INFO: Copying the clone into the Docker volume (documented busybox step)..." -ForegroundColor Cyan
-    docker run --rm -v "${PWD}:/source:ro" -v "${VolumeName}:/dest" busybox cp -a /source/. /dest/
-    if ($LASTEXITCODE -ne 0) {
+    $rc = Invoke-NativeLogged { docker run --rm -v "${PWD}:/source:ro" -v "${VolumeName}:/dest" busybox cp -a /source/. /dest/ }
+    if ($rc -ne 0) {
         Write-Error "busybox copy into volume $VolumeName failed."
         exit 1
     }
@@ -1158,8 +1225,8 @@ if ($TestEra -eq "1") {
     # container/volume names (daaf-daaf-docker-1 / daaf_daaf-data).
     Write-Host "INFO: Building and starting the v1.0.0 container (docker compose up -d --build)..." -ForegroundColor Cyan
     Write-Host "INFO: This builds the OLD Dockerfile - authentic and slow on a cold cache..." -ForegroundColor Cyan
-    docker compose up -d --build
-    if ($LASTEXITCODE -ne 0) {
+    $rc = Invoke-NativeLogged { docker compose up -d --build }
+    if ($rc -ne 0) {
         Write-Error "docker compose up failed for the v1.0.0 build. If the base image or Claude installer has drifted upstream, that is a real finding about resurrecting this era - see the header BUILD COST note."
         exit 1
     }
@@ -1194,8 +1261,8 @@ if ($TestEra -eq "1") {
 
     Set-Location $ExtractDir.FullName
     Write-Host "INFO: Copying the extracted tree into the Docker volume (documented busybox step)..." -ForegroundColor Cyan
-    docker run --rm -v "${PWD}:/source:ro" -v "${VolumeName}:/dest" busybox sh -c 'cp -a /source/. /dest/'
-    if ($LASTEXITCODE -ne 0) {
+    $rc = Invoke-NativeLogged { docker run --rm -v "${PWD}:/source:ro" -v "${VolumeName}:/dest" busybox sh -c 'cp -a /source/. /dest/' }
+    if ($rc -ne 0) {
         Write-Error "busybox copy into volume $VolumeName failed."
         exit 1
     }
@@ -1204,8 +1271,8 @@ if ($TestEra -eq "1") {
     # regardless of this directory's name (daaf-2.0.1 etc.).
     Write-Host "INFO: Building and starting the $TestVersion container (docker compose up -d --build)..." -ForegroundColor Cyan
     Write-Host "INFO: This builds the OLD Dockerfile - authentic and slow on a cold cache..." -ForegroundColor Cyan
-    docker compose up -d --build
-    if ($LASTEXITCODE -ne 0) {
+    $rc = Invoke-NativeLogged { docker compose up -d --build }
+    if ($rc -ne 0) {
         Write-Error "docker compose up failed for the $TestVersion build - see the header BUILD COST note."
         exit 1
     }
@@ -1312,6 +1379,17 @@ if ($TestEra -eq "1") {
     if ($OriginCheck -match $Repo -and $BranchCheck -eq "main") {
         Write-Host "SUCCESS: Era 1 state verified (origin remote + branch main from the clone)." -ForegroundColor Green
     } else {
+        # Surface the RAW git error + /daaf ownership BEFORE the terminating
+        # Write-Error (Invoke-ContainerGit discards stderr, which hid the
+        # diagnosis in field run 4 -- suspected modern-git "dubious ownership"
+        # refusal: root-owned volume payload vs the v1.0.0 image's non-root
+        # user, with no safe.directory config anywhere in that era).
+        $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+        $gitDiag = (docker exec $script:ContainerName git -C /daaf remote get-url origin 2>&1 | Out-String).Trim()
+        $ownerDiag = (docker exec $script:ContainerName ls -ldn /daaf /daaf/.git 2>&1 | Out-String).Trim()
+        $ErrorActionPreference = $savedEAP
+        Write-Host "INFO: Raw git probe output: $gitDiag" -ForegroundColor Yellow
+        Write-Host "INFO: Ownership probe (ls -ldn): $ownerDiag" -ForegroundColor Yellow
         Write-Error "Era 1 replay did not produce the expected state (origin: '$OriginCheck', branch: '$BranchCheck'). Expected the documented clone flow to leave origin=$Repo and branch=main."
         exit 1
     }
@@ -1371,6 +1449,32 @@ if ($TestEra -eq "1") {
         $BranchCheck = Invoke-ContainerGit branch --show-current
         if ($BranchCheck -ne "main") {
             Write-Error "Era 3 normalization failed - expected branch main, got '$BranchCheck'."
+            exit 1
+        }
+        # Complete the time-machine state. A real era user's install ran
+        # `git clone --depth 1 -b main`, which ALSO left: a main-only fetch
+        # refspec, an origin/main remote-tracking ref, and main tracking
+        # origin/main. The tag-pinned replay clone has none of those (its
+        # refspec is pinned to the tag), so migrate's best-effort
+        # `--set-upstream-to=origin/main` failed on a git state no real user
+        # had (field run 4: tracking '' on the v2.1.0 vector). set-branches
+        # rewrites the refspec to main-only; the shallow fetch materializes
+        # origin/main at the CURRENT tip; set-upstream then matches the
+        # tracking a real `clone -b main` had from day one. Invoke-NativeLogged
+        # (not Invoke-ContainerGit) so a failure's stderr reaches the log.
+        $rc = Invoke-NativeLogged { docker exec $script:ContainerName git -C /daaf remote set-branches origin main }
+        if ($rc -ne 0) {
+            Write-Error "Era 3 normalization failed - could not set the origin fetch refspec to main."
+            exit 1
+        }
+        $rc = Invoke-NativeLogged { docker exec $script:ContainerName git -C /daaf fetch --depth 1 origin main }
+        if ($rc -ne 0) {
+            Write-Error "Era 3 normalization failed - could not fetch origin/main (network?)."
+            exit 1
+        }
+        $rc = Invoke-NativeLogged { docker exec $script:ContainerName git -C /daaf branch --set-upstream-to=origin/main main }
+        if ($rc -ne 0) {
+            Write-Error "Era 3 normalization failed - could not set main's upstream to origin/main."
             exit 1
         }
     }
@@ -1597,15 +1701,32 @@ $script:MigrationReached = $true
 $ClaudeVolumeExistedPreMigration = Test-DockerVolume $ClaudeVolumeName
 
 # --- Class D baseline: the host environment_settings.txt must survive migration
-#     (and any driven update) byte-for-byte. Get-FileHash gives a stable content
-#     hash independent of path/metadata (the .ps1 analogue of the .sh `cksum <`).
+#     (and any driven update) byte-for-byte -- EXCEPT the active DAAF_BRANCH
+#     line. The harness drives update_daaf with env-origin DAAF_BRANCH (branch
+#     fidelity), and the updater INTENTIONALLY persists that choice into
+#     environment_settings.txt -- a designed, single-line mutation, not fixture
+#     loss. Hashing modulo '^DAAF_BRANCH=' keeps the check byte-strict for
+#     everything else while tolerating the one sanctioned write (quality
+#     review, field-run-4 fix pass; mirrors the .sh `grep -v | cksum`).
+function Get-ClassDHash([string]$Path) {
+    # PS 5.1-safe string hash: Get-FileHash cannot hash filtered content, so
+    # SHA256 over the UTF8 bytes of the non-DAAF_BRANCH lines joined by LF.
+    $lines = @(Get-Content -LiteralPath $Path | Where-Object { $_ -notmatch '^DAAF_BRANCH=' })
+    $text = ($lines -join "`n")
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        return ([BitConverter]::ToString($sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($text))) -replace '-','')
+    } finally {
+        $sha.Dispose()
+    }
+}
 $script:ClassDApplicable = $false
 $script:ClassDPre = ""
 $ClassDPath = Join-Path $HostDir "environment_settings.txt"
 if (Test-Path $ClassDPath) {
     $script:ClassDApplicable = $true
-    $script:ClassDPre = (Get-FileHash -LiteralPath $ClassDPath -Algorithm SHA256).Hash
-    Write-ObserveNote "Class D baseline captured (environment_settings.txt SHA256: $($script:ClassDPre.Substring(0, 12))...)."
+    $script:ClassDPre = Get-ClassDHash $ClassDPath
+    Write-ObserveNote "Class D baseline captured (environment_settings.txt SHA256 sans DAAF_BRANCH line: $($script:ClassDPre.Substring(0, 12))...)."
 } else {
     Write-ObserveNote "Class D not applicable: no environment_settings.txt in $HostDir (era predates it)."
 }
@@ -1683,6 +1804,12 @@ if ($script:AutoMode) {
         }
         Write-Host "INFO: Driving update_daaf.ps1 (non-interactive) from $HostDir..." -ForegroundColor Cyan
         Write-Host ""
+        # DAAF_BRANCH keeps the driven update BRANCH-FAITHFUL (parity with the
+        # migrate drive above): without it the updater auto-detects 'main' and
+        # merges GitHub origin/main instead of the branch under test -- field
+        # run 4 merged main's tip, so the noble Dockerfile never arrived and no
+        # rebuild was exercised.
+        $env:DAAF_BRANCH = $MigrationBranch
         $env:DAAF_NESTED = "1"
         $UpdateExit = 1
         try {
@@ -1692,6 +1819,7 @@ if ($script:AutoMode) {
             $UpdateExit = 1
         }
         Remove-Item Env:\DAAF_NESTED -ErrorAction SilentlyContinue
+        Remove-Item Env:\DAAF_BRANCH -ErrorAction SilentlyContinue
         $script:UpdateRan = $true
         Write-Host ""
         if ($UpdateExit -eq 0) {
@@ -1712,6 +1840,7 @@ if ($script:AutoMode) {
         if ($selfUpdated) {
             Write-Host "INFO: Self-update detected - running update once more (as a real user would)..." -ForegroundColor Cyan
             Write-Host ""
+            $env:DAAF_BRANCH = $MigrationBranch
             $env:DAAF_NESTED = "1"
             $SecondUpdateOut = "$($script:UpdateOut).2"
             $UpdateExit2 = 1
@@ -1722,6 +1851,7 @@ if ($script:AutoMode) {
                 $UpdateExit2 = 1
             }
             Remove-Item Env:\DAAF_NESTED -ErrorAction SilentlyContinue
+            Remove-Item Env:\DAAF_BRANCH -ErrorAction SilentlyContinue
             # Append the second run's capture to the primary update.out (the .sh uses
             # `tee -a`) so the Phase 7b greps see the union of both runs.
             if (Test-Path $SecondUpdateOut) {
@@ -1791,7 +1921,10 @@ if (-not [string]::IsNullOrWhiteSpace($OriginUrl) -and $OriginUrl -match $Repo) 
 # Check 2: Upstream tracking is set.
 # Expected tracking is era- and ref-aware:
 #   - Era 1/2 and Era 3 TAGS: local main exists (from the era pathway or the
-#     Phase 3 normalization), migrate sets main -> origin/main, and the
+#     Phase 3 normalization), tracking main -> origin/main comes from the era
+#     pathway itself (Era 1 clone), migrate's set-upstream (Era 2, post-fetch),
+#     or the Phase 3 tag normalization (Era 3 tags -- replicating what a real
+#     `clone -b main` set at install time), and the
 #     updater always returns HEAD to the branch it started on. Expect
 #     origin/main.
 #   - Era 3 BRANCH installs (e.g. daaf_dev): no local main ever exists; the
@@ -1951,16 +2084,17 @@ if ($script:PlantedB2) {
     Add-Skip "Class B(ii): not planted (no 'Primary execution language' line at $TestVersion)."
 }
 
-# Class D: host environment_settings.txt byte-identical across migration (+update).
-# Get-FileHash is the .ps1 analogue of the .sh `cksum <`. Gated on the pre-migration
-# baseline captured in Phase 6 ($script:ClassDApplicable / $script:ClassDPre).
+# Class D: host environment_settings.txt byte-identical across migration (+update),
+# modulo the active DAAF_BRANCH line (see the baseline capture comment: the
+# driven update's env-origin DAAF_BRANCH persist is a sanctioned mutation).
+# Gated on the pre-migration baseline ($script:ClassDApplicable / $script:ClassDPre).
 if ($script:ClassDApplicable) {
     if (Test-Path $ClassDPath) {
-        $ClassDPost = (Get-FileHash -LiteralPath $ClassDPath -Algorithm SHA256).Hash
+        $ClassDPost = Get-ClassDHash $ClassDPath
         if ($ClassDPost -eq $script:ClassDPre) {
-            Test-Check "Class D: environment_settings.txt byte-identical across migration" $true
+            Test-Check "Class D: environment_settings.txt byte-identical across migration (sans DAAF_BRANCH line)" $true
         } else {
-            Test-Check "Class D: environment_settings.txt byte-identical (pre='$($script:ClassDPre.Substring(0,12))...' post='$($ClassDPost.Substring(0,12))...')" $false
+            Test-Check "Class D: environment_settings.txt byte-identical sans DAAF_BRANCH line (pre='$($script:ClassDPre.Substring(0,12))...' post='$($ClassDPost.Substring(0,12))...')" $false
         }
     } else {
         Test-Check "Class D: environment_settings.txt still present after migration" $false
