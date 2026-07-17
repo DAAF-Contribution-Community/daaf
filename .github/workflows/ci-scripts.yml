@@ -200,9 +200,10 @@ jobs:
           python-version: "3.12"
 
       - name: Set up Quarto
-        uses: quarto-dev/quarto-actions/setup@v2
-        with:
-          version: "1.7.29"
+        run: |
+          curl -fsSL -o /tmp/quarto.deb \
+            https://github.com/quarto-dev/quarto-cli/releases/download/v1.7.29/quarto-1.7.29-linux-amd64.deb
+          sudo dpkg -i /tmp/quarto.deb
 
       - name: Install BATS, R, and helpers
         run: |
