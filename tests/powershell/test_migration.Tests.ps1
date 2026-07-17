@@ -348,4 +348,26 @@ Describe "test_migration.ps1 field-run 6 ownership-window pins" {
         $script:HarnessText | Should -Match ([regex]::Escape('Post-migration container user can write /daaf (ownership repaired)'))
         $script:HarnessText | Should -Match ([regex]::Escape('touch /daaf/.daaf-write-probe && rm -f /daaf/.daaf-write-probe'))
     }
+
+    It "opens the identity window before the first fixture commit and closes it before the ownership re-break" {
+        $idxOpen = $script:HarnessText.IndexOf('Git identity window OPENED')
+        $idxCommit = $script:HarnessText.IndexOf('Test: Add research project and framework tweaks')
+        $idxClose = $script:HarnessText.IndexOf('Git identity window CLOSED')
+        $idxOwnClose = $script:HarnessText.IndexOf('Volume ownership repair window CLOSED')
+        $idxOpen | Should -BeGreaterThan 0
+        $idxCommit | Should -BeGreaterThan 0
+        $idxClose | Should -BeGreaterThan 0
+        $idxOwnClose | Should -BeGreaterThan 0
+        $idxOpen | Should -BeLessThan $idxCommit
+        $idxClose | Should -BeLessThan $idxOwnClose
+    }
+
+    It "guards + gates the identity window and makes fixture add/commit stderr-visible" {
+        $script:HarnessText | Should -Match ([regex]::Escape('$GitEmailPre = Invoke-ContainerGit config user.email'))
+        $script:HarnessText | Should -Match ([regex]::Escape('if ($script:HarnessSetGitIdentity) {'))
+        # Both add/commit pairs route through Invoke-NativeLogged (loud stderr),
+        # never the swallowing Invoke-ContainerGit.
+        ([regex]::Matches($script:HarnessText, [regex]::Escape('Invoke-NativeLogged { docker exec $script:ContainerName git -C /daaf add -A }')).Count) | Should -Be 2
+        ([regex]::Matches($script:HarnessText, [regex]::Escape('git -C /daaf commit -m')).Count) | Should -Be 2
+    }
 }

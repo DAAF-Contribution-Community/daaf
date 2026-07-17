@@ -465,6 +465,7 @@ $script:HarnessAddedSafeDir = $false    # did the harness add the /daaf safe.dir
 $script:HarnessRepairedOwnership = $false  # did the harness chown the Era-1 payload to 1000:1000 (ownership window)?
 $script:OrigOwnerUid = ""               # volume payload owner uid captured at ownership-window OPEN
 $script:OrigOwnerGid = ""               # volume payload owner gid captured at ownership-window OPEN
+$script:HarnessSetGitIdentity = $false  # did the harness set a repo-local git identity (Phase 4)?
 
 function Write-SummaryOnce {
     # Emit the machine-readable summary exactly ONCE, as the final stdout line, so
@@ -1611,6 +1612,34 @@ Write-Host ""
 
 Write-Host "INFO: Creating committed framework changes and research files..." -ForegroundColor Cyan
 
+# --- Harness git identity window (OPEN) ---
+# Round-6b field evidence (Mac + Windows): the v1.0.0 image provisions no git
+# identity (no entrypoint; v2.0.0+ eras set repo-local daaf@local on startup,
+# and the modern Dockerfile bakes one globally), and git refuses
+# commit-creating ops without one -- the fixture commit below produced
+# nothing SILENTLY (Invoke-ContainerGit swallows stderr) and only the
+# fixture-commit verify gate caught the aftermath. Set a harness identity
+# ONLY when none exists, and remove it before migrate runs so migrate's own
+# section-4d era-parity identity repair is exercised end-to-end on the
+# v1.0.0 vector. Third window, mirroring the safe.directory and ownership
+# windows (OPEN/CLOSE, fatal on window-management failure -> INFRA).
+# Era-agnostic by guard rather than by era test: v2.x containers already
+# have an identity, so this is a recorded no-op there.
+$GitEmailPre = Invoke-ContainerGit config user.email
+if (-not [string]::IsNullOrWhiteSpace($GitEmailPre)) {
+    Write-ObserveNote "Git identity window: container already has a git identity (user.email: $GitEmailPre), so the harness neither sets nor later removes one."
+} else {
+    $rcIdEmail = Invoke-NativeLogged { docker exec $script:ContainerName git -C /daaf config user.email harness@test-migration.local }
+    $rcIdName = Invoke-NativeLogged { docker exec $script:ContainerName git -C /daaf config user.name "DAAF Migration Test Harness" }
+    if ($rcIdEmail -eq 0 -and $rcIdName -eq 0) {
+        $script:HarnessSetGitIdentity = $true
+        Write-ObserveNote "Git identity window OPENED (harness set a repo-local identity) so Era-1 fixture commits can be created; it is removed before migrate runs so migrate's own section-4d identity repair is still exercised end-to-end on the v1.0.0 vector."
+    } else {
+        Write-Error "Could not set a git identity in the era container -- fixture commits cannot be created, so the vector cannot proceed."
+        exit 1
+    }
+}
+
 # FIXTURE RULES (both learned from field failures):
 #   - No embedded double quotes in any docker-exec argv (PS 5.1 mangles them;
 #     the old fixtures here silently created NOTHING and printed "Test"/"Work").
@@ -1644,8 +1673,12 @@ Write-ContainerFile -Path "/daaf/research/2026-01-15_Test_Analysis/README.md" -C
 Write-ContainerFile -Path "/daaf/agent_reference/test_migration_marker.md" -Content 'test-migration-marker: committed'
 
 # Commit everything
-$null = Invoke-ContainerGit add -A
-$null = Invoke-ContainerGit commit -m "Test: Add research project and framework tweaks"
+# Invoke-NativeLogged, NOT Invoke-ContainerGit: the latter swallows stderr,
+# which made the round-6b missing-identity failure invisible (the verify gate
+# below caught only the aftermath). Fixture commits must print git's own
+# message on failure; rc is discarded because the verify gate is the arbiter.
+$null = Invoke-NativeLogged { docker exec $script:ContainerName git -C /daaf add -A }
+$null = Invoke-NativeLogged { docker exec $script:ContainerName git -C /daaf commit -m "Test: Add research project and framework tweaks" }
 
 $CommittedSha = Invoke-ContainerGit rev-parse HEAD
 if ([string]::IsNullOrWhiteSpace($CommittedSha)) {
@@ -1693,8 +1726,10 @@ if ($LASTEXITCODE -eq 0) {
     Write-ObserveNote "Class C not planted: CLAUDE.md has no '## Identity' section at $TestVersion."
 }
 if ($script:PlantedB1 -or $script:PlantedC) {
-    $null = Invoke-ContainerGit add -A
-    $null = Invoke-ContainerGit commit -m "Test: class B(i)/C framework-file appends"
+    # Invoke-NativeLogged (loud stderr), not Invoke-ContainerGit -- see the
+    # round-6b note on the phase-4 fixture commit above.
+    $null = Invoke-NativeLogged { docker exec $script:ContainerName git -C /daaf add -A }
+    $null = Invoke-NativeLogged { docker exec $script:ContainerName git -C /daaf commit -m "Test: class B(i)/C framework-file appends" }
     $B1CFiles = Invoke-ContainerGit show --name-only --format= HEAD
     if ($script:PlantedB1 -and ($B1CFiles -notmatch 'Dockerfile')) {
         Write-Error "Class B(i) fixture missing from its commit - aborting before migration."
@@ -1862,6 +1897,25 @@ if (Test-Path $ClassDPath) {
 if ($script:HarnessAddedSafeDir) {
     Invoke-ContainerExec git config --global --unset-all safe.directory '^/daaf$'
     Write-ObserveNote "Git safe.directory exemption window CLOSED (harness removed its /daaf entry) immediately before invoking migrate, so migrate's own section-4b safe.directory fix runs on the v1.0.0 vector instead of being masked by harness instrumentation."
+}
+
+# --- Harness git identity window (CLOSE) ---
+# Remove the harness identity immediately BEFORE migrate -- only if the
+# harness set it -- so migrate's own section-4d era-parity identity repair
+# runs on the v1.0.0 vector instead of being masked by harness
+# instrumentation. ORDER MATTERS: this unset WRITES /daaf/.git/config, so it
+# must run BEFORE the ownership window CLOSE below re-breaks the payload
+# owner (after which the container user cannot write /daaf at all). Unset
+# failure is fatal for the same masking reason as the other windows.
+if ($script:HarnessSetGitIdentity) {
+    $rcIdEmail = Invoke-NativeLogged { docker exec $script:ContainerName git -C /daaf config --unset user.email }
+    $rcIdName = Invoke-NativeLogged { docker exec $script:ContainerName git -C /daaf config --unset user.name }
+    if ($rcIdEmail -eq 0 -and $rcIdName -eq 0) {
+        Write-ObserveNote "Git identity window CLOSED (harness removed its repo-local identity) immediately before invoking migrate, so migrate's own section-4d identity repair runs on the v1.0.0 vector instead of being masked by harness instrumentation."
+    } else {
+        Write-Error "Could not remove the harness git identity -- migrate would run against a harness-provisioned identity, masking its own section-4d repair. Cannot proceed."
+        exit 1
+    }
 }
 
 # --- Harness volume ownership repair window (CLOSE) ---

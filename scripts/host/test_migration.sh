@@ -1321,6 +1321,33 @@ echo ""
 
 info "Creating committed framework changes and research files..."
 
+# --- Harness git identity window (OPEN) ---
+# Round-6b field evidence (Mac + Windows): the v1.0.0 image provisions no git
+# identity (no entrypoint; v2.0.0+ eras set repo-local daaf@local on startup,
+# and the modern Dockerfile bakes one globally), and git refuses
+# commit-creating ops without one -- the fixture commit below died SILENTLY
+# (container_git swallows stderr) and the vector INFRA'd with no diagnosis.
+# Set a harness identity ONLY when none exists, and remove it before migrate
+# runs so migrate's own section-4d era-parity identity repair is exercised
+# end-to-end on the v1.0.0 vector. Third window, mirroring the safe.directory
+# and ownership windows (OPEN/CLOSE, fatal on window-management failure ->
+# INFRA). Era-agnostic by guard rather than by era test: v2.x containers
+# already have an identity, so this is a recorded no-op there.
+HARNESS_SET_GIT_IDENTITY=false
+GIT_EMAIL_PRE=$(container_git config user.email || true)
+if [ -n "${GIT_EMAIL_PRE}" ]; then
+    observe_note "Git identity window: container already has a git identity (user.email: ${GIT_EMAIL_PRE}), so the harness neither sets nor later removes one."
+else
+    if container_exec git -C /daaf config user.email "harness@test-migration.local" \
+       && container_exec git -C /daaf config user.name "DAAF Migration Test Harness"; then
+        HARNESS_SET_GIT_IDENTITY=true
+        observe_note "Git identity window OPENED (harness set a repo-local identity) so Era-1 fixture commits can be created; it is removed before migrate runs so migrate's own section-4d identity repair is still exercised end-to-end on the v1.0.0 vector."
+    else
+        error "Could not set a git identity in the era container -- fixture commits cannot be created, so the vector cannot proceed."
+        exit 1
+    fi
+fi
+
 # FIXTURE RULES (mirrored with the .ps1 twin):
 #   - Framework-change markers live in NEW files (upstream has no such path,
 #     so update merges can never conflict on them). The old CLAUDE.md-append
@@ -1351,9 +1378,12 @@ container_exec bash -c 'echo "# Test Analysis" > /daaf/research/2026-01-15_Test_
 # FIXTURE RULES above for why this is not a CLAUDE.md append).
 container_exec bash -c 'echo "test-migration-marker: committed" > /daaf/agent_reference/test_migration_marker.md'
 
-# Commit everything
-container_git add -A
-container_git commit -m "Test: Add research project and framework tweaks"
+# Commit everything. container_exec, NOT container_git: container_git swallows
+# stderr, which made the round-6b missing-identity failure die silently under
+# set -e (INFRA with no diagnosis). Fixture commits must fail LOUDLY, with
+# git's own message in the log.
+container_exec git -C /daaf add -A
+container_exec git -C /daaf commit -m "Test: Add research project and framework tweaks"
 
 COMMITTED_SHA=$(container_git rev-parse HEAD)
 if [ -z "${COMMITTED_SHA}" ]; then
@@ -1399,8 +1429,10 @@ else
     observe_note "Class C not planted: CLAUDE.md has no '## Identity' section at ${TEST_VERSION}."
 fi
 if [ "${PLANTED_B1}" = "true" ] || [ "${PLANTED_C}" = "true" ]; then
-    container_git add -A
-    container_git commit -m "Test: class B(i)/C framework-file appends"
+    # container_exec (loud stderr), not container_git -- see the round-6b
+    # note on the phase-4 fixture commit above.
+    container_exec git -C /daaf add -A
+    container_exec git -C /daaf commit -m "Test: class B(i)/C framework-file appends"
     B1C_FILES=$(container_git show --name-only --format= HEAD)
     if [ "${PLANTED_B1}" = "true" ] && ! echo "${B1C_FILES}" | grep -qF "Dockerfile"; then
         error "Class B(i) fixture missing from its commit -- aborting before migration."
@@ -1555,6 +1587,24 @@ fi
 if [ "${HARNESS_ADDED_SAFE_DIR}" = "true" ]; then
     container_exec git config --global --unset-all safe.directory '^/daaf$' 2>/dev/null || true
     observe_note "Git safe.directory exemption window CLOSED (harness removed its /daaf entry) immediately before invoking migrate, so migrate's own section-4b safe.directory fix runs on the v1.0.0 vector instead of being masked by harness instrumentation."
+fi
+
+# --- Harness git identity window (CLOSE) ---
+# Remove the harness identity immediately BEFORE migrate -- only if the
+# harness set it -- so migrate's own section-4d era-parity identity repair
+# runs on the v1.0.0 vector instead of being masked by harness
+# instrumentation. ORDER MATTERS: this unset WRITES /daaf/.git/config, so it
+# must run BEFORE the ownership window CLOSE below re-breaks the payload
+# owner (after which the container user cannot write /daaf at all). Unset
+# failure is fatal for the same masking reason as the other windows.
+if [ "${HARNESS_SET_GIT_IDENTITY}" = "true" ]; then
+    if container_exec git -C /daaf config --unset user.email \
+       && container_exec git -C /daaf config --unset user.name; then
+        observe_note "Git identity window CLOSED (harness removed its repo-local identity) immediately before invoking migrate, so migrate's own section-4d identity repair runs on the v1.0.0 vector instead of being masked by harness instrumentation."
+    else
+        error "Could not remove the harness git identity -- migrate would run against a harness-provisioned identity, masking its own section-4d repair. Cannot proceed."
+        exit 1
+    fi
 fi
 
 # --- Harness volume ownership repair window (CLOSE) ---

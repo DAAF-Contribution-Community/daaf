@@ -491,3 +491,45 @@ teardown() {
     assert_success
     [ "${output}" -eq 1 ]
 }
+
+# --- Field-run 6b pins (git identity window + loud fixture commits) ---
+# The v1.0.0 image provisions no git identity, so the fixture commit died
+# silently (container_git swallows stderr). The harness now sets a guarded
+# repo-local identity before fixture commits (OPEN), removes it before migrate
+# (CLOSE, before the ownership re-break that makes .git/config unwritable) so
+# migrate's own section-4d repair is exercised, and fixture add/commit run
+# through the stderr-visible exec helper.
+
+@test "pin: identity window opens before the first fixture commit and closes before the ownership re-break" {
+    local sh="${REPO_ROOT}/scripts/host/test_migration.sh"
+    local open_ln commit_ln close_ln own_close_ln
+    open_ln=$(grep -n 'Git identity window OPENED' "${sh}" | head -1 | cut -d: -f1)
+    commit_ln=$(grep -n 'Test: Add research project and framework tweaks' "${sh}" | head -1 | cut -d: -f1)
+    close_ln=$(grep -n 'Git identity window CLOSED' "${sh}" | head -1 | cut -d: -f1)
+    own_close_ln=$(grep -n 'Volume ownership repair window CLOSED' "${sh}" | head -1 | cut -d: -f1)
+    [ -n "${open_ln}" ]
+    [ -n "${commit_ln}" ]
+    [ -n "${close_ln}" ]
+    [ -n "${own_close_ln}" ]
+    [ "${open_ln}" -lt "${commit_ln}" ]
+    [ "${close_ln}" -lt "${own_close_ln}" ]
+}
+
+@test "pin: identity window is guarded + gated, and fixture add/commit are stderr-visible" {
+    local sh="${REPO_ROOT}/scripts/host/test_migration.sh"
+    # Guard: only set when no identity exists; gate: only unset what we set.
+    run grep -cF 'GIT_EMAIL_PRE=$(container_git config user.email || true)' "${sh}"
+    assert_success
+    [ "${output}" -eq 1 ]
+    run grep -cF 'if [ "${HARNESS_SET_GIT_IDENTITY}" = "true" ]; then' "${sh}"
+    assert_success
+    [ "${output}" -eq 1 ]
+    # Loud fixture commits: both add/commit pairs use container_exec (stderr
+    # visible), never the swallowing container_git.
+    run grep -cF 'container_exec git -C /daaf add -A' "${sh}"
+    assert_success
+    [ "${output}" -eq 2 ]
+    run grep -cF 'container_exec git -C /daaf commit -m' "${sh}"
+    assert_success
+    [ "${output}" -eq 2 ]
+}
