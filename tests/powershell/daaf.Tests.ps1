@@ -61,6 +61,23 @@ Describe "daaf.ps1" {
             $Content | Should -Match 'DAAF_NESTED'
         }
 
+        It "saves and restores DAAF_NESTED around each nested delegate (no unconditional clobber)" {
+            # Regression guard for the DAAF_NESTED clobber bug: each delegate must
+            # capture the parent's DAAF_NESTED before setting it to "1" and restore
+            # it in finally, so a value inherited when the panel itself runs nested
+            # survives instead of being unconditionally removed (which re-enabled
+            # child pause prompts for the rest of the panel session).
+            $setCount     = ([regex]::Matches($Content, '\$env:DAAF_NESTED = "1"')).Count
+            $saveCount    = ([regex]::Matches($Content, '\$savedNested = \$env:DAAF_NESTED')).Count
+            $restoreCount = ([regex]::Matches($Content, 'if \(\$null -ne \$savedNested\) \{ \$env:DAAF_NESTED = \$savedNested \} else \{ Remove-Item Env:\\DAAF_NESTED')).Count
+            $removeCount  = ([regex]::Matches($Content, 'Remove-Item Env:\\DAAF_NESTED')).Count
+            $setCount     | Should -BeGreaterOrEqual 2
+            $saveCount    | Should -Be $setCount
+            $restoreCount | Should -Be $setCount
+            # Every Remove-Item Env:\DAAF_NESTED must live inside a conditional restore.
+            $removeCount  | Should -Be $restoreCount
+        }
+
         It "supports DAAF_TEST_MODE dot-sourcing guard" {
             $Content | Should -Match 'DAAF_TEST_MODE'
         }
@@ -233,7 +250,11 @@ Describe "daaf.ps1" {
         It "invokes the Quarto viewer with no target through the console-inheriting nested delegate" {
             $Content | Should -Match 'function Invoke-DaafQuartoViewer\s*\{\s*Invoke-DaafDelegate "view_quarto\.ps1"\s*\}'
             $Content | Should -Match '\$env:DAAF_NESTED = "1"'
-            $Content | Should -Match 'Remove-Item Env:\\DAAF_NESTED'
+            # DAAF_NESTED is saved before the set and conditionally restored (not
+            # unconditionally removed), so a parent-inherited value survives the
+            # nested delegate. See the save/restore regression test above.
+            $Content | Should -Match '\$savedNested = \$env:DAAF_NESTED'
+            $Content | Should -Match 'if \(\$null -ne \$savedNested\) \{ \$env:DAAF_NESTED = \$savedNested \} else \{ Remove-Item Env:\\DAAF_NESTED'
             $Content | Should -Match 'Start-Process.*-FilePath'
         }
 
@@ -515,6 +536,41 @@ Describe "daaf.ps1 behavioral tests" {
             } finally {
                 $env:DAAF_DRY_RUN = $script:OrigDryRun
             }
+        }
+    }
+
+    Context "Invoke-DaafDelegate restores parent-inherited DAAF_NESTED" {
+        # Behavioral guard for the DAAF_NESTED clobber bug. Start-Process is mocked
+        # to a no-op child (ExitCode 0) so the delegate's save/restore logic runs
+        # without spawning a real host process or Docker. Ensure the delegate can
+        # resolve the child path regardless of dot-source scope.
+        BeforeAll {
+            $script:OrigNested = $env:DAAF_NESTED
+            $script:DaafScriptDir = "$RepoRoot/scripts/host"
+        }
+        AfterAll {
+            if ($null -ne $script:OrigNested) { $env:DAAF_NESTED = $script:OrigNested }
+            else { Remove-Item Env:DAAF_NESTED -ErrorAction SilentlyContinue }
+        }
+
+        It "restores DAAF_NESTED to the parent's value after the delegate returns" {
+            Mock Start-Process {
+                [pscustomobject]@{ ExitCode = 0 } |
+                    Add-Member -MemberType ScriptMethod -Name WaitForExit -Value { } -PassThru
+            }
+            $env:DAAF_NESTED = "outer"
+            Invoke-DaafDelegate "backup_daaf.ps1" 6>$null
+            $env:DAAF_NESTED | Should -Be "outer"
+        }
+
+        It "clears DAAF_NESTED when the parent had none set" {
+            Mock Start-Process {
+                [pscustomobject]@{ ExitCode = 0 } |
+                    Add-Member -MemberType ScriptMethod -Name WaitForExit -Value { } -PassThru
+            }
+            Remove-Item Env:DAAF_NESTED -ErrorAction SilentlyContinue
+            Invoke-DaafDelegate "backup_daaf.ps1" 6>$null
+            $env:DAAF_NESTED | Should -BeNullOrEmpty
         }
     }
 }

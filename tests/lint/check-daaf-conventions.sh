@@ -14,6 +14,8 @@
 #      skill_last_updated / provenance.skill-last-updated spellings
 #   8. Data-source provenance: each *data-source* SKILL.md declares
 #      skill-authored + skill-last-updated in its frontmatter metadata block
+#   9. grep -q pipefail hazard: host scripts never pipe a LIVE command into
+#      grep -q (only echo/printf of an already-captured value)
 #
 # Usage:
 #   bash tests/lint/check-daaf-conventions.sh
@@ -471,6 +473,65 @@ done
 if [ "${ds_found}" -eq 0 ]; then
     warn "no *data-source* SKILL.md files found to check (glob matched nothing)"
 fi
+
+echo ""
+
+# =====================================================================
+# 9. grep -q pipefail-inversion hazard (host scripts)
+# =====================================================================
+echo "--- grep -q pipefail-inversion checks (host scripts) ---"
+
+# HAZARD: piping a LIVE command into `grep -q` inverts under `set -o pipefail`.
+# grep -q exits on the FIRST match and closes the pipe; the still-running
+# upstream producer then dies of SIGPIPE (exit 141), and pipefail turns a FOUND
+# result into a false FAIL (PIPESTATUS='141 0'). Every scripts/host/*.sh runs
+# under pipefail, so this class is live everywhere here.
+#
+# SANCTIONED IDIOM: capture-then-grep -- assign the producer's output to a
+# variable first, then `printf '%s\n' "$var" | grep -q ...` (or
+# `echo "$var" | grep -q ...`). An echo/printf of an already-captured value
+# cannot SIGPIPE mid-stream, so the inversion cannot occur.
+#
+# This gate flags any `| grep -q` (any -q flag combo: -q/-qw/-qi/-qF/-qE) whose
+# IMMEDIATE producer stage is not an echo/printf. The pipe pattern requires a
+# non-`|` byte immediately before the `|` (`[^|]\|`) so a `||` logical-OR --
+# e.g. `grep -qf a b || grep -qf a c`, which contains NO pipe into grep -- is not
+# misread as a pipeline. The safe form is `(echo|printf) <non-pipe chars> |
+# grep -q...`; the `[^|]*` cannot cross a pipe, so the echo/printf must be the
+# direct producer to be exempt (`echo x | sort | grep -q` is still flagged --
+# sort is the live producer). Full-line comments are skipped; an inline
+# trailing-comment match is an accepted false positive (mirrors the
+# run_with_capture.sh install-scan tradeoff). Non-piped greps
+# (`grep -q PATTERN FILE`, `grep -qf`, `container_exec grep -q ...`) have no pipe
+# stage and are never matched. SCOPE: scripts/host/*.sh only, matching the sibling
+# host sections; the walk is over the live filesystem so untracked host scripts
+# are checked too.
+#
+# A second accepted false-positive class: an echoed/printf'd argument that itself
+# contains a literal '|' (e.g. `echo "a|b" | grep -q x`) trips the exemption regex,
+# because its `[^|]*` cannot cross that embedded pipe, so the safe idiom is falsely
+# flagged. This fails safe (over-flags, never under-flags), no such line exists in
+# the tree today, and the workaround is capture-then-grep on the variable (or
+# restructure the pipeline).
+
+for shfile in "${REPO_ROOT}"/scripts/host/*.sh; do
+    [ -f "${shfile}" ] || continue
+    filename=$(basename "${shfile}")
+
+    hazard_lines=$(grep -nE '[^|]\|[[:space:]]*grep[[:space:]]+-q' "${shfile}" \
+        | grep -vE '^[0-9]+:[[:space:]]*#' \
+        | grep -vE '(echo|printf)[^|]*\|[[:space:]]*grep[[:space:]]+-q' \
+        || true)
+
+    if [ -n "${hazard_lines}" ]; then
+        fail "scripts/host/${filename}: live command piped into 'grep -q' (pipefail-inversion hazard; use capture-then-grep):"
+        printf '%s\n' "${hazard_lines}" | while IFS= read -r _line; do
+            printf '        %s\n' "${_line}"
+        done
+    else
+        pass "scripts/host/${filename}: no unsafe '| grep -q' pipelines"
+    fi
+done
 
 echo ""
 

@@ -884,9 +884,16 @@ function Test-BuildChange {
     if ($choice -eq "y") {
         Write-Host ""
         if (Test-Path "rebuild_daaf.ps1") {
-            $env:DAAF_NESTED = "1"
-            & .\rebuild_daaf.ps1
-            Remove-Item Env:\DAAF_NESTED -ErrorAction SilentlyContinue
+            # Save/restore any parent-inherited DAAF_NESTED so a nested update
+            # keeps suppressing pauses for its remainder; a bare Remove-Item
+            # would clobber the parent's value.
+            $savedNested = $env:DAAF_NESTED
+            try {
+                $env:DAAF_NESTED = "1"
+                & .\rebuild_daaf.ps1
+            } finally {
+                if ($null -ne $savedNested) { $env:DAAF_NESTED = $savedNested } else { Remove-Item Env:\DAAF_NESTED -ErrorAction SilentlyContinue }
+            }
         } else {
             Write-Host "rebuild_daaf.ps1 is not in your daaf-docker folder."
             Write-Host "You can retrieve it from the container and run it:"
@@ -1244,9 +1251,16 @@ if (Test-Path "backup_daaf.ps1") {
     $choice = Read-UserChoice "  Run backup now? [y/n]" @("y", "n")
     if ($choice -eq "y") {
         Write-Host ""
-        $env:DAAF_NESTED = "1"
-        & .\backup_daaf.ps1
-        Remove-Item Env:\DAAF_NESTED -ErrorAction SilentlyContinue
+        # Save/restore any parent-inherited DAAF_NESTED (see the rebuild step
+        # above): a bare Remove-Item would clobber a value inherited from a
+        # parent process.
+        $savedNested = $env:DAAF_NESTED
+        try {
+            $env:DAAF_NESTED = "1"
+            & .\backup_daaf.ps1
+        } finally {
+            if ($null -ne $savedNested) { $env:DAAF_NESTED = $savedNested } else { Remove-Item Env:\DAAF_NESTED -ErrorAction SilentlyContinue }
+        }
         Write-Host ""
     }
 } else {

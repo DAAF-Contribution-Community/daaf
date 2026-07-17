@@ -151,3 +151,70 @@ teardown() {
     assert_success
     assert_output --partial "example.txt: pure ASCII"
 }
+
+# =========================================================================
+# grep -q pipefail-inversion check (section 9)
+# =========================================================================
+# Section 9 flags `| grep -q` fed by a LIVE producer (the pipefail-inversion
+# hazard) while exempting the capture-then-grep idiom (echo/printf of an
+# already-captured value). These tests lock in: the safe idiom passes, a live
+# producer is flagged, a `||` logical-OR is NOT misflagged as a pipeline, and
+# the real host tree carries no unsafe pipeline.
+
+@test "grep -q check: a safe capture-then-grep (echo | grep -q) passes" {
+    # The sanctioned idiom -- echo of a captured value into grep -q -- must PASS.
+    # Every other lint invariant is satisfied so section 9 is the sole variable.
+    {
+        printf '%s\n' '#!/usr/bin/env bash'
+        printf '%s\n' 'set -euo pipefail'
+        printf '%s\n' '# [1/1] fixture; references DAAF_NESTED for the lint'
+        printf '%s\n' 'val="a b c"'
+        printf '%s\n' 'if echo "${val}" | grep -q "b"; then echo "ok"; fi'
+    } > "${FAKE_ROOT}/scripts/host/fixture.sh"
+
+    run bash "${LINT}" "${FAKE_ROOT}"
+    assert_success
+    assert_output --partial "no unsafe '| grep -q' pipelines"
+}
+
+@test "grep -q check: a live command piped into grep -q is flagged (exit 1)" {
+    # Piping a LIVE producer (git log) straight into grep -q is the pipefail-
+    # inversion hazard: grep -q exits early, git dies of SIGPIPE, pipefail
+    # inverts the result. Only section 9 can fail here.
+    {
+        printf '%s\n' '#!/usr/bin/env bash'
+        printf '%s\n' 'set -euo pipefail'
+        printf '%s\n' '# [1/1] fixture; references DAAF_NESTED for the lint'
+        printf '%s\n' 'if git log --oneline | grep -q "abc123"; then echo "found"; fi'
+    } > "${FAKE_ROOT}/scripts/host/fixture.sh"
+
+    run bash "${LINT}" "${FAKE_ROOT}"
+    assert_failure
+    assert_output --partial "pipefail-inversion hazard"
+    assert_output --partial "fixture.sh"
+}
+
+@test "grep -q check: a || logical-OR of two file greps is not misflagged" {
+    # `grep -qf a b || grep -qf a c` contains a `||`, not a pipe into grep -- the
+    # producer-adjacency guard ([^|]\|) must not misread it as a pipeline. This is
+    # the exact backup_daaf.sh idiom that a naive `\| grep -q` regex false-flags.
+    {
+        printf '%s\n' '#!/usr/bin/env bash'
+        printf '%s\n' 'set -euo pipefail'
+        printf '%s\n' '# [1/1] fixture; references DAAF_NESTED for the lint'
+        printf '%s\n' 'if grep -qf /dev/null /dev/null || grep -qf /dev/null /dev/null; then echo "ok"; fi'
+    } > "${FAKE_ROOT}/scripts/host/fixture.sh"
+
+    run bash "${LINT}" "${FAKE_ROOT}"
+    assert_success
+    assert_output --partial "no unsafe '| grep -q' pipelines"
+}
+
+@test "grep -q check: the real scripts/host tree carries no unsafe pipeline" {
+    # Prove the LIVE tree passes the new rule. Assert on the section-9 PASS line
+    # and the absence of any hazard flag (not overall exit) so an unrelated future
+    # lint failure cannot mask -- or be mistaken for -- a section-9 regression.
+    run bash "${LINT}" "${REPO_ROOT}"
+    assert_output --partial "migrate_daaf.sh: no unsafe '| grep -q' pipelines"
+    refute_output --partial "pipefail-inversion hazard"
+}

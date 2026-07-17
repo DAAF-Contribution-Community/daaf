@@ -364,29 +364,6 @@ teardown() {
     echo "${ORIGIN_URL}" | grep -qi "DAAF-Contribution-Community/daaf"
 }
 
-@test "migrate: idempotency marker detected via root commit parent check" {
-    DAAF_TEST_MODE=1 source "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
-    trap - ERR
-    set +eu
-
-    # The script checks if the initial commit already has a parent (line 567-568):
-    #   INITIAL_PARENT_COUNT=$(container_git_verbose cat-file -p "$INITIAL_COMMIT" | grep -c '^parent ')
-    # If > 0, graft is already in place → skip graft step.
-
-    # Simulate a commit that already has a parent (graft already applied)
-    FAKE_CAT_FILE_OUTPUT="tree abc123
-parent def456
-author Test <test@test> 1700000000 +0000
-committer Test <test@test> 1700000000 +0000
-
-Initial commit"
-
-    INITIAL_PARENT_COUNT=$(echo "${FAKE_CAT_FILE_OUTPUT}" | grep -c '^parent ' || echo "0")
-
-    # Parent count > 0 means graft is in place → idempotency check passes
-    [ "${INITIAL_PARENT_COUNT}" -gt 0 ]
-}
-
 @test "migrate: corrupted volume (no .git) detected by container_exec test" {
     DAAF_TEST_MODE=1 source "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
     trap - ERR
@@ -704,6 +681,9 @@ SH
     '
     assert_success
     assert_output --partial "clone-based installation"
+    # Positive-path lock: the set-upstream arm returns 0 in this mock, so the
+    # success line must print (complements the failure-path refute_output test).
+    assert_output --partial "Tracking set: main -> origin/main"
     assert_output --partial "Migration complete"
 }
 
@@ -755,7 +735,11 @@ SH
     assert_output --partial "Migration complete"
 }
 
-@test "migrate: already migrated (idempotency) skips graft" {
+@test "migrate: already migrated (idempotency) skips graft via replace-ref leg" {
+    # Idempotency via LEG 1 (replace-ref): a non-empty `git replace -l` marks the
+    # graft as already done. cat-file returns NO parent here, so the ONLY thing
+    # that can produce the skip is the replace leg -- proving the replace-first
+    # detector (not the old parent-count check) is what catches re-runs.
     setup_migrate_integrated
     run bash -c '
         cd "'"${TEST_DIR}"'"
@@ -787,8 +771,10 @@ SH
                 *"exec"*"test -f"*"CLAUDE.md"*) return 0 ;;
                 *"exec"*"remote get-url"*"origin"*) echo "" ; return 1 ;;
                 *"exec"*"fetch"*) return 0 ;;
+                *"exec"*"replace -l"*) echo "refs/replace/aaa111rootcommit" ;;
+                *"exec"*"rev-parse --is-shallow-repository"*) echo "false" ;;
                 *"exec"*"rev-list --max-parents=0"*) echo "aaa111rootcommit" ;;
-                *"exec"*"cat-file -p"*) printf "tree abc123\nparent def456\nauthor Test\n" ;;
+                *"exec"*"cat-file -p"*) printf "tree abc123\nauthor Test\n" ;;
                 *"exec"*"branch --set-upstream"*) return 0 ;;
                 *"exec"*"remote add"*) return 0 ;;
                 *) return 0 ;;
@@ -799,6 +785,117 @@ SH
     '
     assert_success
     assert_output --partial "graft already in place"
+    assert_output --partial "replace ref present"
+    assert_output --partial "Migration complete"
+}
+
+@test "migrate: shallow clone forces the graft path (not falsely skipped)" {
+    # Regression for Finding 3: on a shallow clone the boundary commit shows a
+    # phantom parent, which the OLD detector read as "graft already in place" and
+    # skipped (the bug). The new LEG 2 shallow guard forces the match/graft path
+    # despite the phantom parent. Mock: no replace ref, shallow=true, cat-file has
+    # a (phantom) parent, and an origin/main tree that matches so the graft lands.
+    setup_migrate_integrated
+    run bash -c '
+        cd "'"${TEST_DIR}"'"
+        curl() {
+            local outfile=""
+            local args=("$@")
+            for ((i=0; i<${#args[@]}; i++)); do
+                if [ "${args[$i]}" = "-o" ]; then
+                    outfile="${args[$((i+1))]}"
+                    break
+                fi
+            done
+            if [ -n "${outfile}" ]; then
+                mkdir -p "$(dirname "${outfile}")"
+                echo "#!/usr/bin/env bash" > "${outfile}"
+                echo "exit 0" >> "${outfile}"
+            fi
+            return 0
+        }
+        export -f curl
+        docker() {
+            local all_args="$*"
+            case "$all_args" in
+                "info") return 0 ;;
+                *"volume inspect"*) return 0 ;;
+                *"ps -a"*"--filter"*"volume="*"--format"*) echo "daaf-test-1" ;;
+                *"inspect --format"*"State.Status"*) echo "running" ;;
+                *"exec"*"true"*) return 0 ;;
+                *"exec"*"test -f"*"CLAUDE.md"*) return 0 ;;
+                *"exec"*"remote get-url"*"origin"*) echo "" ; return 1 ;;
+                *"exec"*"fetch"*) return 0 ;;
+                *"exec"*"replace -l"*) echo "" ;;
+                *"exec"*"rev-parse --is-shallow-repository"*) echo "true" ;;
+                *"exec"*"rev-list --max-parents=0"*) echo "aaa111rootcommit" ;;
+                *"exec"*"cat-file -p"*) printf "tree abc123\nparent def456\nauthor Test\n" ;;
+                *"exec"*"replace --graft"*) return 0 ;;
+                *"exec"*"merge-base"*) echo "mergebasesha1" ;;
+                *"exec"*"rev-parse"*"origin/main"*) echo "upstreamsha999" ;;
+                *"exec"*"ls-tree"*) echo "blob0000 file1" ;;
+                *"exec"*"branch --set-upstream"*) return 0 ;;
+                *"exec"*"remote add"*) return 0 ;;
+                *) return 0 ;;
+            esac
+        }
+        export -f docker
+        bash "'"${REPO_ROOT}"'/scripts/host/migrate_daaf.sh"
+    '
+    assert_success
+    assert_output --partial "shallow clone"
+    refute_output --partial "graft already in place"
+    assert_output --partial "Connecting local history to upstream"
+    assert_output --partial "Migration complete"
+}
+
+@test "migrate: set-upstream failure prints an honest note and does not abort" {
+    # Finding 2: a failed `branch --set-upstream-to` must NOT print the
+    # "Tracking set" success line. Here the set-upstream arm returns exit 1, so
+    # the honest NOTE branch fires and the migration still completes (tracking is
+    # best-effort, non-fatal). Era-1 path (origin matches the official repo).
+    setup_migrate_integrated
+    run bash -c '
+        cd "'"${TEST_DIR}"'"
+        curl() {
+            local outfile=""
+            local args=("$@")
+            for ((i=0; i<${#args[@]}; i++)); do
+                if [ "${args[$i]}" = "-o" ]; then
+                    outfile="${args[$((i+1))]}"
+                    break
+                fi
+            done
+            if [ -n "${outfile}" ]; then
+                mkdir -p "$(dirname "${outfile}")"
+                echo "#!/usr/bin/env bash" > "${outfile}"
+                echo "exit 0" >> "${outfile}"
+            fi
+            return 0
+        }
+        export -f curl
+        docker() {
+            local all_args="$*"
+            case "$all_args" in
+                "info") return 0 ;;
+                *"volume inspect"*) return 0 ;;
+                *"ps -a"*"--filter"*"volume="*"--format"*) echo "daaf-test-1" ;;
+                *"inspect --format"*"State.Status"*) echo "running" ;;
+                *"exec"*"true"*) return 0 ;;
+                *"exec"*"test -f"*"CLAUDE.md"*) return 0 ;;
+                *"exec"*"remote get-url"*"origin"*) echo "https://github.com/DAAF-Contribution-Community/daaf.git" ;;
+                *"exec"*"fetch"*) return 0 ;;
+                *"exec"*"branch --set-upstream"*) return 1 ;;
+                *"exec"*"remote get-url"*"upstream"*) echo "" ; return 1 ;;
+                *) return 0 ;;
+            esac
+        }
+        export -f docker
+        bash "'"${REPO_ROOT}"'/scripts/host/migrate_daaf.sh"
+    '
+    assert_success
+    assert_output --partial "Could not set upstream tracking"
+    refute_output --partial "Tracking set: main -> origin/main"
     assert_output --partial "Migration complete"
 }
 

@@ -368,6 +368,23 @@ Describe "migrate_daaf.ps1 behavioral tests" {
             $Content | Should -Match 'trap \{'
             $Content | Should -Match 'Mutex\.ReleaseMutex'
         }
+
+        It "saves and restores DAAF_NESTED around each nested delegate (no unconditional clobber)" {
+            # Regression guard for the DAAF_NESTED clobber bug: each nested-script
+            # launch (backup during migration, and the post-migration update offer)
+            # must capture the parent's DAAF_NESTED before setting it to "1" and
+            # restore it in finally, so a value inherited from a parent process
+            # survives instead of being unconditionally removed.
+            $setCount     = ([regex]::Matches($Content, '\$env:DAAF_NESTED = "1"')).Count
+            $saveCount    = ([regex]::Matches($Content, '\$savedNested = \$env:DAAF_NESTED')).Count
+            $restoreCount = ([regex]::Matches($Content, 'if \(\$null -ne \$savedNested\) \{ \$env:DAAF_NESTED = \$savedNested \} else \{ Remove-Item Env:\\DAAF_NESTED')).Count
+            $removeCount  = ([regex]::Matches($Content, 'Remove-Item Env:\\DAAF_NESTED')).Count
+            $setCount     | Should -BeGreaterOrEqual 2
+            $saveCount    | Should -Be $setCount
+            $restoreCount | Should -Be $setCount
+            # Every Remove-Item Env:\DAAF_NESTED must live inside a conditional restore.
+            $removeCount  | Should -Be $restoreCount
+        }
     }
 }
 
@@ -513,6 +530,9 @@ $NonInteractive = $true
         $outputStr = $output | Out-String
         $LASTEXITCODE | Should -BeIn @(0, $null)
         $outputStr | Should -BeLike "*clone-based installation*"
+        # Positive-path lock: the set-upstream arm returns exit 0 in this mock, so
+        # the success line must print (complements the failure-path -Not -BeLike test).
+        $outputStr | Should -BeLike "*Tracking set: main -> origin/main*"
         $outputStr | Should -BeLike "*Migration complete*"
     }
 
@@ -569,7 +589,11 @@ $NonInteractive = $true
         $outputStr | Should -BeLike "*Migration complete*"
     }
 
-    It "already migrated (idempotency) skips graft step" {
+    It "already migrated (idempotency) skips graft via replace-ref leg" {
+        # Idempotency via LEG 1 (replace-ref): `git replace -l` returns a ref and
+        # cat-file returns NO parent, so ONLY the replace leg can produce the skip
+        # -- proving the replace-first detector catches re-runs (not the old
+        # parent-count check, which the prior graft would have corrupted).
         $env:DAAF_NESTED = "1"
         $wrapperScript = Join-Path $script:TestDir "test_wrapper.ps1"
         Set-Content -Path $wrapperScript -Value @'
@@ -587,10 +611,11 @@ function docker {
         "*exec*test -f*CLAUDE.md*" { return }
         "*exec*git -C /daaf remote get-url*" { $global:LASTEXITCODE = 1; return }
         "*exec*git -C /daaf fetch*" { return }
+        "*exec*git -C /daaf replace -l*" { Write-Output "refs/replace/aaa111root"; return }
+        "*exec*git -C /daaf rev-parse --is-shallow-repository*" { Write-Output "false"; return }
         "*exec*git -C /daaf rev-list --max-parents=0*" { Write-Output "aaa111root" }
         "*exec*git -C /daaf cat-file*" {
             Write-Output "tree abc123"
-            Write-Output "parent def456"
             Write-Output "author Test"
         }
         "*exec*git -C /daaf branch --set-upstream*" { return }
@@ -619,6 +644,127 @@ $NonInteractive = $true
         $outputStr = $output | Out-String
         $LASTEXITCODE | Should -BeIn @(0, $null)
         $outputStr | Should -BeLike "*graft already in place*"
+        $outputStr | Should -BeLike "*replace ref present*"
+    }
+
+    It "shallow clone forces the graft path (not falsely skipped)" {
+        # Regression for Finding 3: on a shallow clone the boundary commit shows a
+        # phantom parent that the OLD detector read as "already grafted" and skipped
+        # (the bug). LEG 2's shallow guard forces the match/graft path. Mock: no
+        # replace ref, shallow=true, cat-file has a phantom parent, and an
+        # origin/main tree matching the local tree so the graft lands and verifies.
+        $env:DAAF_NESTED = "1"
+        $wrapperScript = Join-Path $script:TestDir "test_wrapper.ps1"
+        Set-Content -Path $wrapperScript -Value @'
+$ErrorActionPreference = "Stop"
+[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+function docker {
+    $argStr = $args -join ' '
+    $global:LASTEXITCODE = 0
+    switch -Wildcard ($argStr) {
+        "*info*" { return }
+        "*volume inspect*" { return }
+        "*ps -a*--filter*volume=*--format*" { Write-Output "daaf-test-1" }
+        "*inspect*--format*Status*" { Write-Output "running" }
+        "*exec*true*" { return }
+        "*exec*test -f*CLAUDE.md*" { return }
+        "*exec*git -C /daaf remote get-url*" { $global:LASTEXITCODE = 1; return }
+        "*exec*git -C /daaf fetch*" { return }
+        "*exec*git -C /daaf replace -l*" { return }
+        "*exec*git -C /daaf rev-parse --is-shallow-repository*" { Write-Output "true"; return }
+        "*exec*git -C /daaf rev-list --max-parents=0*" { Write-Output "aaa111root" }
+        "*exec*git -C /daaf cat-file*" {
+            Write-Output "tree abc123"
+            Write-Output "parent def456"
+            Write-Output "author Test"
+        }
+        "*exec*git -C /daaf replace --graft*" { return }
+        "*exec*git -C /daaf merge-base*" { Write-Output "mergebasesha1"; return }
+        "*exec*git -C /daaf rev-parse origin/main*" { Write-Output "upstreamsha999"; return }
+        "*exec*sh -c*ls-tree*" { Write-Output "blob0000 file1"; return }
+        "*exec*git -C /daaf branch --set-upstream*" { return }
+        "*exec*git -C /daaf remote add*" { return }
+        "*exec*git*" { return }
+        "*exec*" { return }
+        "*start*" { return }
+        default { return }
+    }
+}
+function Invoke-WebRequest {
+    param([switch]$UseBasicParsing, [string]$Uri, [string]$OutFile)
+    $null = $UseBasicParsing, $Uri
+    if ($OutFile) {
+        $parentDir = Split-Path $OutFile -Parent
+        if ($parentDir -and -not (Test-Path $parentDir)) {
+            New-Item -ItemType Directory -Path $parentDir -Force | Out-Null
+        }
+        Set-Content -Path $OutFile -Value "exit 0"
+    }
+}
+$NonInteractive = $true
+'@
+        Add-Content -Path $wrapperScript -Value ". '$RepoRoot/scripts/host/migrate_daaf.ps1'"
+        $output = & pwsh -NoProfile -File $wrapperScript *>&1
+        $outputStr = $output | Out-String
+        $LASTEXITCODE | Should -BeIn @(0, $null)
+        $outputStr | Should -BeLike "*shallow clone*"
+        $outputStr | Should -Not -BeLike "*graft already in place*"
+        $outputStr | Should -BeLike "*Connecting local history to upstream*"
+        $outputStr | Should -BeLike "*Migration complete*"
+    }
+
+    It "set-upstream failure prints an honest note and does not abort" {
+        # Finding 2: a failed `branch --set-upstream-to` must NOT print the
+        # "Tracking set" success line. The set-upstream arm returns exit 1, so the
+        # honest NOTE branch fires and the migration still completes (tracking is
+        # best-effort, non-fatal). Era-1 path (origin matches the official repo).
+        $env:DAAF_NESTED = "1"
+        $wrapperScript = Join-Path $script:TestDir "test_wrapper.ps1"
+        Set-Content -Path $wrapperScript -Value @'
+$ErrorActionPreference = "Stop"
+[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+function docker {
+    $argStr = $args -join ' '
+    $global:LASTEXITCODE = 0
+    switch -Wildcard ($argStr) {
+        "*info*" { return }
+        "*volume inspect*" { return }
+        "*ps -a*--filter*volume=*--format*" { Write-Output "daaf-test-1" }
+        "*inspect*--format*Status*" { Write-Output "running" }
+        "*exec*true*" { return }
+        "*exec*test -f*CLAUDE.md*" { return }
+        "*exec*git -C /daaf remote get-url*upstream*" { $global:LASTEXITCODE = 1; return }
+        "*exec*git -C /daaf remote get-url*origin*" {
+            Write-Output "https://github.com/DAAF-Contribution-Community/daaf.git"
+        }
+        "*exec*git -C /daaf fetch*" { return }
+        "*exec*git -C /daaf branch --set-upstream*" { $global:LASTEXITCODE = 1; return }
+        "*exec*git*" { return }
+        "*exec*" { return }
+        "*start*" { return }
+        default { return }
+    }
+}
+function Invoke-WebRequest {
+    param([switch]$UseBasicParsing, [string]$Uri, [string]$OutFile)
+    $null = $UseBasicParsing, $Uri
+    if ($OutFile) {
+        $parentDir = Split-Path $OutFile -Parent
+        if ($parentDir -and -not (Test-Path $parentDir)) {
+            New-Item -ItemType Directory -Path $parentDir -Force | Out-Null
+        }
+        Set-Content -Path $OutFile -Value "exit 0"
+    }
+}
+$NonInteractive = $true
+'@
+        Add-Content -Path $wrapperScript -Value ". '$RepoRoot/scripts/host/migrate_daaf.ps1'"
+        $output = & pwsh -NoProfile -File $wrapperScript *>&1
+        $outputStr = $output | Out-String
+        $LASTEXITCODE | Should -BeIn @(0, $null)
+        $outputStr | Should -BeLike "*Could not set upstream tracking*"
+        $outputStr | Should -Not -BeLike "*Tracking set: main -> origin/main*"
+        $outputStr | Should -BeLike "*Migration complete*"
     }
 }
 

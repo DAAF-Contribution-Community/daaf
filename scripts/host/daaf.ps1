@@ -440,6 +440,11 @@ function Invoke-DaafDelegateInteractive {
         [string[]]$ScriptArgs = @(),
         [string]$FailureMessage
     )
+    # Save any parent-inherited DAAF_NESTED so the finally restores it rather
+    # than unconditionally removing it -- an unconditional Remove-Item would
+    # clobber a value inherited when the panel itself runs nested, re-enabling
+    # child pause prompts for the rest of the panel session.
+    $savedNested = $env:DAAF_NESTED
     $env:DAAF_NESTED = "1"
 
     # Resolve the current host executable (works for both Windows PowerShell
@@ -498,7 +503,7 @@ function Invoke-DaafDelegateInteractive {
                 Write-Verbose "Silenced: $_"
             }
         }
-        Remove-Item Env:\DAAF_NESTED -ErrorAction SilentlyContinue
+        if ($null -ne $savedNested) { $env:DAAF_NESTED = $savedNested } else { Remove-Item Env:\DAAF_NESTED -ErrorAction SilentlyContinue }
     }
 
     if ($ec -and $ec -ne 0) {
@@ -835,6 +840,11 @@ function Invoke-DaafQuartoViewer { Invoke-DaafDelegate "view_quarto.ps1" }
 function Invoke-DaafDelegate {
     param([string]$ScriptName)
     Write-Host ""
+    # Save any parent-inherited DAAF_NESTED so the finally restores it rather
+    # than unconditionally removing it -- an unconditional Remove-Item would
+    # clobber a value inherited when the panel itself runs nested, re-enabling
+    # child pause prompts for the rest of the panel session.
+    $savedNested = $env:DAAF_NESTED
     $env:DAAF_NESTED = "1"
 
     $hostExe = (Get-Process -Id $PID).Path
@@ -873,7 +883,7 @@ function Invoke-DaafDelegate {
                 Write-Verbose "Silenced: $_"
             }
         }
-        Remove-Item Env:\DAAF_NESTED -ErrorAction SilentlyContinue
+        if ($null -ne $savedNested) { $env:DAAF_NESTED = $savedNested } else { Remove-Item Env:\DAAF_NESTED -ErrorAction SilentlyContinue }
     }
 
     if (-not $ec -or $ec -eq 0) {

@@ -849,6 +849,23 @@ Describe "update_daaf.ps1 behavioral tests" {
         It "mutex uses Global scope for cross-process visibility" {
             $Content | Should -Match 'Global\\DAAFUpdate'
         }
+
+        It "saves and restores DAAF_NESTED around each nested delegate (no unconditional clobber)" {
+            # Regression guard for the DAAF_NESTED clobber bug: each nested-script
+            # launch (the post-update rebuild, and the optional pre-update backup)
+            # must capture the parent's DAAF_NESTED before setting it to "1" and
+            # restore it in finally, so a value inherited from a parent process
+            # survives instead of being unconditionally removed.
+            $setCount     = ([regex]::Matches($Content, '\$env:DAAF_NESTED = "1"')).Count
+            $saveCount    = ([regex]::Matches($Content, '\$savedNested = \$env:DAAF_NESTED')).Count
+            $restoreCount = ([regex]::Matches($Content, 'if \(\$null -ne \$savedNested\) \{ \$env:DAAF_NESTED = \$savedNested \} else \{ Remove-Item Env:\\DAAF_NESTED')).Count
+            $removeCount  = ([regex]::Matches($Content, 'Remove-Item Env:\\DAAF_NESTED')).Count
+            $setCount     | Should -BeGreaterOrEqual 2
+            $saveCount    | Should -Be $setCount
+            $restoreCount | Should -Be $setCount
+            # Every Remove-Item Env:\DAAF_NESTED must live inside a conditional restore.
+            $removeCount  | Should -Be $restoreCount
+        }
     }
 }
 

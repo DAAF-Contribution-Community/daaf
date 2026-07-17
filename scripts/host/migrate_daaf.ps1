@@ -520,10 +520,17 @@ if ($env:DAAF_DRY_RUN -eq "1") {
 } else {
     $OriginalDir = (Get-Location).Path
     Set-Location $HostDir
-    $env:DAAF_NESTED = "1"
-    & .\backup_daaf.ps1
-    $backupExit = $LASTEXITCODE
-    Remove-Item Env:\DAAF_NESTED -ErrorAction SilentlyContinue
+    # Save any parent-inherited DAAF_NESTED and restore it afterward so a nested
+    # migration keeps suppressing pauses for its remainder; a bare Remove-Item
+    # would clobber the parent's value.
+    $savedNested = $env:DAAF_NESTED
+    try {
+        $env:DAAF_NESTED = "1"
+        & .\backup_daaf.ps1
+        $backupExit = $LASTEXITCODE
+    } finally {
+        if ($null -ne $savedNested) { $env:DAAF_NESTED = $savedNested } else { Remove-Item Env:\DAAF_NESTED -ErrorAction SilentlyContinue }
+    }
     Set-Location $OriginalDir
     if ($backupExit -ne 0) {
         Write-Host ""
@@ -725,8 +732,17 @@ if ($DetectedEra -eq "1") {
     }
     Write-Host "Fetch complete."
 
-    # Ensure tracking is set up
-    $null = Invoke-ContainerGit branch --set-upstream-to=origin/main main
+    # Ensure tracking is set up. Best-effort: a missing local 'main' branch is
+    # non-fatal. Run under Invoke-ContainerGitVerbose (matching the checked-git
+    # idiom used for fetch/graft in this file) and branch on $LASTEXITCODE so the
+    # success line prints ONLY when the upstream was actually set -- the former
+    # unconditional message lied whenever the underlying set-upstream failed.
+    $null = Invoke-ContainerGitVerbose branch --set-upstream-to=origin/main main
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "Tracking set: main -> origin/main"
+    } else {
+        Write-Host "NOTE: Could not set upstream tracking (no local 'main' branch on this install)."
+    }
 
     # --- For fork users: add upstream remote for official updates ---
     if ($IsFork) {
@@ -846,17 +862,52 @@ if ($DetectedEra -eq "1") {
     }
 
     # --- Check if graft is already in place (idempotent) ---
-    $CatFileOutput = Invoke-ContainerGitVerbose cat-file -p $InitialCommit
-    $InitialParentCount = 0
-    if (-not [string]::IsNullOrWhiteSpace($CatFileOutput)) {
-        # Wrap in @() so .Count is safe under Set-StrictMode when Where-Object
-        # matches no lines (an unwrapped no-match pipeline yields $null, and
-        # $null.Count throws a non-existent-property error under strict mode).
-        $InitialParentCount = @($CatFileOutput -split "`n" | Where-Object { $_ -match '^parent ' }).Count
+    # Three-leg probe (replace-first, shallow-guarded). The naive
+    # `rev-list --max-parents=0 | cat-file | grep -c '^parent '` detector is
+    # unreliable: after a prior graft, rev-list walks THROUGH the replace ref to
+    # upstream's genuine parentless root (parent count 0 -> false "no graft yet" ->
+    # redundant re-graft); on a shallow clone, rev-list returns the shallow
+    # boundary commit whose object still lists parents (false "graft in place" ->
+    # graft skipped). The migrate twins are the only creators of git replace refs
+    # in a DAAF volume, so a replace ref's existence is a sound "already grafted"
+    # marker that sidesteps both failure modes.
+    #
+    # Leg 1 (replace): capture `git replace -l` and test the captured value (the
+    # helper returns "" on error, so an errored probe falls toward the graft path).
+    $ExistingReplaceRefs = Invoke-ContainerGitVerbose replace -l
+    # Leg 2 (shallow): a shallow clone's boundary-commit parents are untrustworthy.
+    $IsShallow = Invoke-ContainerGitVerbose rev-parse --is-shallow-repository
+
+    $GraftInPlace = $false
+    $GraftSkipReason = ""
+    if (-not [string]::IsNullOrWhiteSpace($ExistingReplaceRefs)) {
+        # Leg 1: a replace ref exists -> a prior migrate already grafted.
+        $GraftInPlace = $true
+        $GraftSkipReason = "replace ref present"
+    } elseif ($IsShallow -eq "true") {
+        # Leg 2: do not trust boundary-commit parents on a shallow clone; fall
+        # through to the match/graft path (attempting a graft is idempotent-safe).
+        Write-Host "NOTE: Repository is a shallow clone -- boundary-commit parent counts"
+        Write-Host "      are unreliable, so proceeding to the match/graft path."
+        Write-Host ""
+    } else {
+        # Leg 3 (fallback): full, un-replaced repo -- parent-count on the true root.
+        $CatFileOutput = Invoke-ContainerGitVerbose cat-file -p $InitialCommit
+        $InitialParentCount = 0
+        if (-not [string]::IsNullOrWhiteSpace($CatFileOutput)) {
+            # Wrap in @() so .Count is safe under Set-StrictMode when Where-Object
+            # matches no lines (an unwrapped no-match pipeline yields $null, and
+            # $null.Count throws a non-existent-property error under strict mode).
+            $InitialParentCount = @($CatFileOutput -split "`n" | Where-Object { $_ -match '^parent ' }).Count
+        }
+        if ($InitialParentCount -gt 0) {
+            $GraftInPlace = $true
+            $GraftSkipReason = "root commit has a parent"
+        }
     }
 
-    if ($InitialParentCount -gt 0) {
-        Write-Host "History graft already in place (root commit has a parent)."
+    if ($GraftInPlace) {
+        Write-Host "History graft already in place ($GraftSkipReason)."
         Write-Host "Skipping graft step (previous migration completed successfully)."
         Write-Host ""
     } else {
@@ -1153,9 +1204,17 @@ echo "BEST:$BEST_SHA:$BEST_OVERLAP:$LOCAL_COUNT"
     }
 
     # --- Set upstream tracking ---
+    # Best-effort: a missing local 'main' branch is non-fatal. Run under
+    # Invoke-ContainerGitVerbose and branch on $LASTEXITCODE so the success line
+    # prints ONLY when the upstream was actually set -- the former unconditional
+    # message lied whenever the underlying set-upstream silently failed.
     Write-Host "Setting upstream tracking branch..."
-    $null = Invoke-ContainerGit branch --set-upstream-to=origin/main main
-    Write-Host "Tracking set: main -> origin/main"
+    $null = Invoke-ContainerGitVerbose branch --set-upstream-to=origin/main main
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "Tracking set: main -> origin/main"
+    } else {
+        Write-Host "NOTE: Could not set upstream tracking (no local 'main' branch on this install)."
+    }
     Write-Host ""
 
     Write-Host "Migration complete. Your local history is now connected to the"
@@ -1187,10 +1246,16 @@ if ($UpdateChoice -eq "y") {
     Write-Host ""
     $OriginalDirUpdate = (Get-Location).Path
     Set-Location $HostDir
-    $env:DAAF_NESTED = "1"
-    & .\update_daaf.ps1
-    if ($LASTEXITCODE -eq 0) { $UpdateRan = $true }
-    Remove-Item Env:\DAAF_NESTED -ErrorAction SilentlyContinue
+    # Save/restore any parent-inherited DAAF_NESTED (see the backup step above):
+    # a bare Remove-Item would clobber a value inherited from a parent process.
+    $savedNested = $env:DAAF_NESTED
+    try {
+        $env:DAAF_NESTED = "1"
+        & .\update_daaf.ps1
+        if ($LASTEXITCODE -eq 0) { $UpdateRan = $true }
+    } finally {
+        if ($null -ne $savedNested) { $env:DAAF_NESTED = $savedNested } else { Remove-Item Env:\DAAF_NESTED -ErrorAction SilentlyContinue }
+    }
     Set-Location $OriginalDirUpdate
 }
 

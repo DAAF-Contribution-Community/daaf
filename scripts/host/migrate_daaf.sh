@@ -546,8 +546,16 @@ if [ "${DETECTED_ERA}" = "1" ]; then
         exit 1
     fi
 
-    # Ensure tracking is set up
-    container_git branch --set-upstream-to=origin/main main 2>/dev/null || true
+    # Ensure tracking is set up. Best-effort: a missing local 'main' branch is
+    # non-fatal. Run under container_git_verbose (matching the checked-git idiom
+    # used for fetch/graft in this file) so a real failure is both surfaced to the
+    # user AND reported honestly, instead of swallowed by `2>/dev/null || true`
+    # while an unconditional success line lies about it.
+    if container_git_verbose branch --set-upstream-to=origin/main main; then
+        echo "Tracking set: main -> origin/main"
+    else
+        echo "NOTE: Could not set upstream tracking (no local 'main' branch on this install)."
+    fi
 
     # --- For fork users: add upstream remote for official updates ---
     if [ "${IS_FORK}" = true ]; then
@@ -660,11 +668,48 @@ else
     fi
 
     # --- Check if graft is already in place (idempotent) ---
-    INITIAL_PARENT_COUNT=$(container_git_verbose cat-file -p "${INITIAL_COMMIT}" | grep -c '^parent ' || true)
-    INITIAL_PARENT_COUNT="${INITIAL_PARENT_COUNT:-0}"
+    # Three-leg probe (replace-first, shallow-guarded). The naive
+    # `rev-list --max-parents=0 | cat-file | grep -c '^parent '` detector is
+    # unreliable: after a prior graft, rev-list walks THROUGH the replace ref to
+    # upstream's genuine parentless root (parent count 0 -> false "no graft yet" ->
+    # redundant re-graft); on a shallow clone, rev-list returns the shallow
+    # boundary commit whose object still lists parents (false "graft in place" ->
+    # graft skipped). The migrate twins are the only creators of git replace refs
+    # in a DAAF volume, so a replace ref's existence is a sound "already grafted"
+    # marker that sidesteps both failure modes.
+    #
+    # Leg 1 (replace): capture `git replace -l` and test the captured value. Do
+    # NOT pipe a live `git ... | grep -q` -- grep -q exits on first match, the
+    # upstream git dies of SIGPIPE, and `set -o pipefail` inverts the result.
+    EXISTING_REPLACE_REFS=$(container_git_verbose replace -l || true)
+    # Leg 2 (shallow): a shallow clone's boundary-commit parents are untrustworthy.
+    IS_SHALLOW=$(container_git_verbose rev-parse --is-shallow-repository || true)
 
-    if [ "${INITIAL_PARENT_COUNT}" -gt 0 ]; then
-        echo "History graft already in place (root commit has a parent)."
+    GRAFT_IN_PLACE=false
+    GRAFT_SKIP_REASON=""
+    if [ -n "${EXISTING_REPLACE_REFS}" ]; then
+        # Leg 1: a replace ref exists -> a prior migrate already grafted.
+        GRAFT_IN_PLACE=true
+        GRAFT_SKIP_REASON="replace ref present"
+    elif [ "${IS_SHALLOW}" = "true" ]; then
+        # Leg 2: do not trust boundary-commit parents on a shallow clone; fall
+        # through to the match/graft path (attempting a graft is idempotent-safe).
+        echo "NOTE: Repository is a shallow clone -- boundary-commit parent counts"
+        echo "      are unreliable, so proceeding to the match/graft path."
+        echo ""
+    else
+        # Leg 3 (fallback): full, un-replaced repo -- the parent-count check on the
+        # true root commit is correct here.
+        INITIAL_PARENT_COUNT=$(container_git_verbose cat-file -p "${INITIAL_COMMIT}" | grep -c '^parent ' || true)
+        INITIAL_PARENT_COUNT="${INITIAL_PARENT_COUNT:-0}"
+        if [ "${INITIAL_PARENT_COUNT}" -gt 0 ]; then
+            GRAFT_IN_PLACE=true
+            GRAFT_SKIP_REASON="root commit has a parent"
+        fi
+    fi
+
+    if [ "${GRAFT_IN_PLACE}" = true ]; then
+        echo "History graft already in place (${GRAFT_SKIP_REASON})."
         echo "Skipping graft step (previous migration completed successfully)."
         echo ""
     else
@@ -930,9 +975,16 @@ else
     fi
 
     # --- Set upstream tracking ---
+    # Best-effort: a missing local 'main' branch is non-fatal. Run under
+    # container_git_verbose and branch on the result so the success line prints
+    # ONLY when the upstream was actually set -- the former unconditional message
+    # lied whenever the underlying set-upstream silently failed.
     echo "Setting upstream tracking branch..."
-    container_git branch --set-upstream-to=origin/main main 2>/dev/null || true
-    echo "Tracking set: main -> origin/main"
+    if container_git_verbose branch --set-upstream-to=origin/main main; then
+        echo "Tracking set: main -> origin/main"
+    else
+        echo "NOTE: Could not set upstream tracking (no local 'main' branch on this install)."
+    fi
     echo ""
 
     echo "Migration complete. Your local history is now connected to the"

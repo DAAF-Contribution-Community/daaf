@@ -437,3 +437,4 @@ Use this checklist when writing or reviewing any Bash script:
 | 12 | Progress steps use `[N/M]` format | Visual scan |
 | 13 | Host scripts (`scripts/host/*.sh`) avoid Bash-4.x-only constructs and BSD-incompatible flags | See "Host-Script Portability" above; enforced by `check-daaf-conventions.sh` + `bats-bash32` CI job |
 | 14 | In-container commands are part of the Dockerfile's installed set | No probing with un-installed binaries (e.g. `ss`); validate, don't suppress |
+| 15 | Host scripts (`scripts/host/*.sh`) never pipe a live producer into `grep -q` (SIGPIPE/pipefail inversion) | Sanctioned idiom is capture-then-grep the value first; enforced by `check-daaf-conventions.sh` section 9 |
