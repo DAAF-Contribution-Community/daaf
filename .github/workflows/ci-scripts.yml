@@ -28,6 +28,10 @@ on:
       - '.github/workflows/ci-scripts.yml'
       - '.github/linters/**'
       - 'tests/lint/**'
+      - 'scripts/**.py'
+      - 'scripts/**.R'
+      - 'tests/bash/**.py'
+      - 'tests/fixtures/**'
   pull_request:
     paths:
       - '**.sh'
@@ -37,6 +41,10 @@ on:
       - 'tests/lint/**'
       - '.github/workflows/ci-scripts.yml'
       - '.github/linters/**'
+      - 'scripts/**.py'
+      - 'scripts/**.R'
+      - 'tests/bash/**.py'
+      - 'tests/fixtures/**'
 
 permissions:
   contents: read
@@ -200,6 +208,8 @@ jobs:
             bats \
             jq \
             r-base \
+            r-cran-knitr \
+            r-cran-rmarkdown \
             r-cran-yaml
 
       - name: Install Python RV test dependencies
@@ -211,7 +221,7 @@ jobs:
       - name: Verify RV test dependencies
         run: |
           python -c 'import polars, pyarrow; print("polars", polars.__version__); print("pyarrow", pyarrow.__version__)'
-          Rscript -e 'stopifnot(requireNamespace("yaml", quietly = TRUE)); cat("R ", getRversion(), "\n", sep = ""); cat("yaml ", as.character(packageVersion("yaml")), "\n", sep = "")'
+          Rscript -e 'stopifnot(requireNamespace("yaml", quietly = TRUE), requireNamespace("knitr", quietly = TRUE), requireNamespace("rmarkdown", quietly = TRUE)); cat("R ", getRversion(), "\n", sep = ""); cat("yaml ", as.character(packageVersion("yaml")), "\n", sep = ""); cat("knitr ", as.character(packageVersion("knitr")), "\n", sep = ""); cat("rmarkdown ", as.character(packageVersion("rmarkdown")), "\n", sep = "")'
           quarto --version
           bats --version
 
