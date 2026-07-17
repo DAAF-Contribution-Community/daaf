@@ -741,7 +741,15 @@ if ($DetectedEra -eq "1") {
     if ($LASTEXITCODE -eq 0) {
         Write-Host "Tracking set: main -> origin/main"
     } else {
-        Write-Host "NOTE: Could not set upstream tracking (no local 'main' branch on this install)."
+        # Diagnose WHICH precondition failed so the note tells the truth
+        # (field run 4, 2026-07-17: tag-pinned/single-branch installs lack the
+        # origin/main remote-tracking ref, but this note blamed the local branch).
+        $null = Invoke-ContainerGit rev-parse --verify --quiet refs/remotes/origin/main
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "NOTE: Could not set upstream tracking (no local 'main' branch on this install)."
+        } else {
+            Write-Host "NOTE: Could not set upstream tracking (no 'origin/main' remote-tracking ref on this install -- e.g. a single-branch or tag-pinned clone)."
+        }
     }
 
     # --- For fork users: add upstream remote for official updates ---
@@ -1213,7 +1221,15 @@ echo "BEST:$BEST_SHA:$BEST_OVERLAP:$LOCAL_COUNT"
     if ($LASTEXITCODE -eq 0) {
         Write-Host "Tracking set: main -> origin/main"
     } else {
-        Write-Host "NOTE: Could not set upstream tracking (no local 'main' branch on this install)."
+        # Diagnose WHICH precondition failed so the note tells the truth
+        # (field run 4, 2026-07-17: tag-pinned/single-branch installs lack the
+        # origin/main remote-tracking ref, but this note blamed the local branch).
+        $null = Invoke-ContainerGit rev-parse --verify --quiet refs/remotes/origin/main
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "NOTE: Could not set upstream tracking (no local 'main' branch on this install)."
+        } else {
+            Write-Host "NOTE: Could not set upstream tracking (no 'origin/main' remote-tracking ref on this install -- e.g. a single-branch or tag-pinned clone)."
+        }
     }
     Write-Host ""
 

@@ -1078,3 +1078,19 @@ $NonInteractive = $true
         $content | Should -Match 'Mutex\.ReleaseMutex'
     }
 }
+
+# Field-run 4 regression pin (2026-07-17): honest tracking NOTE
+Describe "migrate_daaf.ps1 set-upstream NOTE diagnosis" {
+    BeforeAll {
+        . "$PSScriptRoot/TestHelper.ps1"
+    }
+
+    It "diagnoses the actual failed precondition at both set-upstream sites" {
+        # The former NOTE always blamed a missing local 'main' branch; on
+        # tag-pinned or single-branch installs the actual missing piece is the
+        # origin/main remote-tracking ref. Both sites must probe and say so.
+        $content = Get-Content "$RepoRoot/scripts/host/migrate_daaf.ps1" -Raw
+        ([regex]::Matches($content, [regex]::Escape("no 'origin/main' remote-tracking ref"))).Count | Should -Be 2
+        ([regex]::Matches($content, [regex]::Escape('rev-parse --verify --quiet refs/remotes/origin/main'))).Count | Should -Be 2
+    }
+}

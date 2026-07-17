@@ -554,7 +554,14 @@ if [ "${DETECTED_ERA}" = "1" ]; then
     if container_git_verbose branch --set-upstream-to=origin/main main; then
         echo "Tracking set: main -> origin/main"
     else
-        echo "NOTE: Could not set upstream tracking (no local 'main' branch on this install)."
+        # Diagnose WHICH precondition failed so the note tells the truth
+        # (field run 4, 2026-07-17: tag-pinned/single-branch installs lack the
+        # origin/main remote-tracking ref, but this note blamed the local branch).
+        if container_exec git -C /daaf rev-parse --verify --quiet refs/remotes/origin/main >/dev/null 2>&1; then
+            echo "NOTE: Could not set upstream tracking (no local 'main' branch on this install)."
+        else
+            echo "NOTE: Could not set upstream tracking (no 'origin/main' remote-tracking ref on this install -- e.g. a single-branch or tag-pinned clone)."
+        fi
     fi
 
     # --- For fork users: add upstream remote for official updates ---
@@ -983,7 +990,14 @@ else
     if container_git_verbose branch --set-upstream-to=origin/main main; then
         echo "Tracking set: main -> origin/main"
     else
-        echo "NOTE: Could not set upstream tracking (no local 'main' branch on this install)."
+        # Diagnose WHICH precondition failed so the note tells the truth
+        # (field run 4, 2026-07-17: tag-pinned/single-branch installs lack the
+        # origin/main remote-tracking ref, but this note blamed the local branch).
+        if container_exec git -C /daaf rev-parse --verify --quiet refs/remotes/origin/main >/dev/null 2>&1; then
+            echo "NOTE: Could not set upstream tracking (no local 'main' branch on this install)."
+        else
+            echo "NOTE: Could not set upstream tracking (no 'origin/main' remote-tracking ref on this install -- e.g. a single-branch or tag-pinned clone)."
+        fi
     fi
     echo ""
 

@@ -1154,3 +1154,18 @@ SH
     assert_output --partial "Multiple containers"
     assert_output --partial "Migration complete"
 }
+
+# --- Field-run 4 regression pin (2026-07-17): honest tracking NOTE ---
+
+@test "migrate: set-upstream failure NOTE diagnoses the actual failed precondition" {
+    # The former NOTE always blamed a missing local 'main' branch; on tag-pinned
+    # or single-branch installs the actual missing piece is the origin/main
+    # remote-tracking ref. Both sites (Era 1 and Era 2/3) must probe which
+    # precondition failed and say so.
+    run grep -cF "no 'origin/main' remote-tracking ref" "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    assert_success
+    [ "${output}" -eq 2 ]
+    run grep -cF "rev-parse --verify --quiet refs/remotes/origin/main" "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    assert_success
+    [ "${output}" -eq 2 ]
+}
