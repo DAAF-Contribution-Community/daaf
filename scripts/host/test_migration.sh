@@ -59,11 +59,15 @@
 # harness bugs.
 #
 # Usage:
-#   bash test_migration.sh                            # v2.0.1, Era 2
+#   bash test_migration.sh                            # v2.0.1, Era 2 (interactive)
 #   DAAF_TEST_VERSION=v1.0.0 bash test_migration.sh   # Era 1
 #   DAAF_TEST_VERSION=v2.1.0 bash test_migration.sh   # Era 3 (tag)
 #   DAAF_TEST_VERSION=daaf_dev bash test_migration.sh # Era 3 (branch)
+#   DAAF_TEST_VERSION=fresh bash test_migration.sh    # FRESH-INSTALL track (no migration)
 #   SKIP_MULTI_INSTANCE=1 bash test_migration.sh      # skip the slower phase 8
+#   bash test_migration.sh --auto                     # non-interactive single vector
+#   bash test_migration.sh --all                      # matrix: fresh + v1.0.0 + v2.0.1 + v2.1.0
+#   bash test_migration.sh --skip-multi-instance      # CLI form of SKIP_MULTI_INSTANCE=1
 #
 # Environment variables:
 #   DAAF_TEST_VERSION      Tag/branch to install (default: v2.0.1 -- the
@@ -95,6 +99,139 @@
 #     and is fetched from GitHub at that tag (clone, ZIP, or install.sh
 #     download depending on era), independent of the local repo.
 #
+# ----------------------------------------------------------------------------
+# TWO TRACKS
+# ----------------------------------------------------------------------------
+#   MIGRATION TRACK (default): install an OLD version the era-authentic way,
+#     plant fixtures, run migrate_daaf.sh, then (in --auto) drive update_daaf.sh,
+#     and verify the end state. This is everything below Phase 2.
+#   FRESH-INSTALL TRACK (DAAF_TEST_VERSION=fresh): no old version, no migration.
+#     Runs the LOCAL install.sh from a clean slate, verifies the install landed
+#     (container up, branch, host scripts present+executable, environment_settings
+#     seeded, functional smoke), and asserts a second install is refused by the
+#     existing-install guard. Exits after its own compact results block.
+#
+# ----------------------------------------------------------------------------
+# INTERACTIVE vs AUTO
+# ----------------------------------------------------------------------------
+#   INTERACTIVE (default): migrate/update prompts are answered by the tester at
+#     the TTY, exactly as an end user would. Phase 7 checks pass whichever way
+#     the update offer is answered; newest-endpoint checks (Phase 7b) run only
+#     if the captured migrate output shows an update actually ran.
+#   AUTO (--auto, or DAAF_TEST_AUTO=1, implied by --all): forces the child
+#     scripts non-interactive by exporting CI=1 (the IS_INTERACTIVE seam shared
+#     by install.sh/migrate_daaf.sh: CI set => IS_INTERACTIVE=false =>
+#     prompt_choice auto-selects the first valid choice: backup=y, strategy=1,
+#     rebuild=y). Because migrate_daaf.sh SKIPS its update offer when
+#     non-interactive, --auto drives update_daaf.sh itself from the host dir
+#     after migration, enabling the Phase 7b newest-endpoint checks + class E.
+#
+# ----------------------------------------------------------------------------
+# EXPECTED RUNTIME
+# ----------------------------------------------------------------------------
+#   A single migration vector with a cold Docker cache is ~15-30 min (old-era
+#   builds are authentic and slow). The full --all matrix (fresh + 3 migration
+#   vectors), each building at least once, is ~45-90+ min. Budget accordingly;
+#   nothing here is fast, by design (the point is a real end-to-end pathway).
+#
+# ----------------------------------------------------------------------------
+# FIXTURE MANIFEST (classes A-E)
+# ----------------------------------------------------------------------------
+#   Every fixture below is planted BEFORE migration and verified AFTER. Classes
+#   B/C/D/E are capability-probed or mode-gated: when the probe/precondition is
+#   not met (an old era lacks the target section, or update did not run) the
+#   corresponding check is a SKIP, never a FAIL.
+#
+#   Class A  Always-on. New-file markers + a research project, committed and
+#            uncommitted. Upstream owns none of these paths, so update merges
+#            can never conflict on them. (Phases 4/5, original coverage.)
+#   Class B  Appends to EXISTING framework files (merge/stash coverage):
+#            B(i)  COMMITTED   Dockerfile "USER ADDITIONS" block append.
+#                              Probe: grep 'USER ADDITIONS' /daaf/Dockerfile.
+#                              Marker: # test-migration-marker-B: dockerfile-user-block
+#            B(ii) UNCOMMITTED CLAUDE.md append (dirty tracked -> stash/pop path).
+#                              Probe: grep 'Primary execution language' CLAUDE.md.
+#                              Marker: <!-- test-migration-marker-Bii -->
+#   Class C  COMMITTED CLAUDE.md prose append (merge coverage on a tracked file).
+#            Probe: grep '## Identity' /daaf/CLAUDE.md.
+#            Marker: test-migration-marker-C
+#   Class D  HOST-side environment_settings.txt byte-identity across migration
+#            (and update). cksum captured pre-migration, re-checked in Phase 7.
+#            Applicable only when the era's install seeded the file.
+#   Class E  Host-script DRIFT-HEAL (auto-mode only). A marker line is appended
+#            to <host>/view_logs.sh before update; a healthy update re-syncs the
+#            script (marker gone) and backs up the drifted copy as
+#            view_logs.sh.pre-update. Verified in Phase 7b.
+#
+#   NOTE on B/C appends to tracked framework files: these deliberately exercise
+#   the updater's merge/stash paths that class-A new-file markers cannot. Appends
+#   land at END-OF-FILE, which 3-way-merges cleanly unless upstream also rewrote
+#   the file's final lines; if that ever happens the update aborts on a conflict
+#   and the class B/C checks FAIL loudly -- which is the correct signal, not a
+#   harness bug.
+#
+# ----------------------------------------------------------------------------
+# FLAGS / ENV REFERENCE
+# ----------------------------------------------------------------------------
+#   CLI flags (parsed by tm_parse_args):
+#     --all                  Run the whole matrix (implies --auto). Aggregates
+#                            child TEST_MIGRATION_SUMMARY lines into a scoreboard.
+#     --auto                 Non-interactive single vector (exports CI=1 to the
+#                            child scripts; drives update itself).
+#     --skip-multi-instance  Skip Phase 8 (CLI equivalent of SKIP_MULTI_INSTANCE=1).
+#   Environment variables:
+#     DAAF_TEST_VERSION          Tag/branch to install, or "fresh" (default v2.0.1).
+#     DAAF_TEST_ERA              Force era pathway 1|2|3 (default: auto by version).
+#     DAAF_MIGRATION_BRANCH      Branch whose migrate/install/host scripts are tested.
+#     DAAF_TEST_AUTO=1           Env equivalent of --auto.
+#     DAAF_TEST_MATRIX=1         Env equivalent of --all.
+#     DAAF_TEST_MATRIX_VERSIONS  Override the matrix vector list (space-separated).
+#     DAAF_TEST_MATRIX_FULL_MULTI=1  Let matrix children run Phase 8 (default: they
+#                                skip it for speed; the fresh vector never runs it).
+#     SKIP_MULTI_INSTANCE=1      Skip Phase 8.
+#     DAAF_TEST_MODE=1           Source-only: define functions (incl. tm_*) and
+#                                return before any execution (used by the bats suite).
+#
+# ----------------------------------------------------------------------------
+# MACHINE-READABLE SUMMARY
+# ----------------------------------------------------------------------------
+#   Every single-vector run emits exactly ONE line, as its final stdout line
+#   (from the EXIT trap), in this grammar:
+#     TEST_MIGRATION_SUMMARY vector=<v> status=<PASS|FAIL|INFRA> pass=<n> fail=<n> skip=<n>
+#   status semantics (tm_classify_status): INFRA = migration/work never reached
+#   (setup broke); FAIL = the work ran but >=1 check failed; PASS = the work ran
+#   and every non-skipped check passed. The --all matrix parses this line per
+#   child to build its scoreboard and its own nonzero exit on any non-PASS.
+#
+# ----------------------------------------------------------------------------
+# .sh / .ps1 DIVERGENCES (kept in sync with test_migration.ps1)
+# ----------------------------------------------------------------------------
+#   Four platform divergences, each forced by a real Windows/PowerShell constraint:
+#   1. Non-interactive seam: the .sh rides CI=1 (IS_INTERACTIVE=false); the .ps1
+#      reads no CI var and instead detects [Console]::IsInputRedirected, so its
+#      auto mode REDIRECTS the child's stdin from an empty file (same net effect:
+#      prompts auto-select the first valid choice). The .sh child scripts pass
+#      DAAF_NESTED per-invocation and do not clobber it, so no stray exit-pause is
+#      expected on this side.
+#   2. Existing-install refusal: install.sh's refusal path exits nonzero;
+#      install.ps1's ends in `Wait-ForUser; return`, so a refused re-install exits
+#      0. The fresh track therefore asserts the refusal STRING in captured output
+#      on the .ps1 side, never a nonzero exit code.
+#   3. Interactive child-output capture: the .sh tees child output even
+#      interactively (so it can detect an update from migrate's own offer); an
+#      interactive .ps1 cannot capture console-inherited child output, so Phase 7b
+#      (newest-endpoint) coverage requires auto mode there.
+#   4. Host-script executable bit + set: the .sh asserts `-x` on downloaded host
+#      scripts; Windows has no executable bit, so the .ps1 uses a Test-Path
+#      presence check only. The host-script SET also differs -- the .sh expects
+#      daaf.sh + daaf_lib.sh (the macOS/Linux Control Panel), the .ps1 the .ps1
+#      variants and never daaf.sh/daaf_lib.sh (commit 4fa8c43) -- reflected in the
+#      fresh track and Check 9's list.
+#   (The B(i)/B(ii) three-way + Class C observe-only fixture semantics are now
+#   shared by both twins -- no longer a divergence.)
+#   install.sh existence is guarded before the fresh track and before the
+#   multi-instance bring-up in both twins (shared behavior, not a divergence).
+#
 # ============================================================================
 
 set -euo pipefail
@@ -115,6 +252,229 @@ info()    { echo "${CYAN}INFO:${RESET} $*" >&2; }
 success() { echo "${GREEN}SUCCESS:${RESET} $*" >&2; }
 warn()    { echo "${YELLOW}WARNING:${RESET} $*" >&2; }
 error()   { echo "${RED}ERROR:${RESET} $*" >&2; }
+
+# ============================================================================
+# Pure helper functions (tm_*)  --  no docker, no network, unit-testable
+# ============================================================================
+# These carry no side effects beyond stdout and their own return code, so the
+# bats suite (tests/bash/test_migration.bats) can `DAAF_TEST_MODE=1 source` this
+# file and exercise them directly. Keep them Bash 3.2 clean (no associative
+# arrays, no ${x^^}, no mapfile).
+
+tm_detect_era() {
+    # Map a version string to its authentic install-era pathway.
+    #   v1.0.0           -> 1 (clone)
+    #   v2.0.0 / v2.0.1  -> 2 (ZIP)
+    #   everything else  -> 3 (install.sh / branch)
+    # A DAAF_TEST_ERA override belongs to the CALLER, not here.
+    case "$1" in
+        v1.0.0)        echo "1" ;;
+        v2.0.0|v2.0.1) echo "2" ;;
+        *)             echo "3" ;;
+    esac
+}
+
+tm_version_ge_floor() {
+    # Compare a vX.Y.Z tag against the Era-3 floor (v2.1.0 = 2001000):
+    #   return 0  tag >= v2.1.0
+    #   return 1  tag <  v2.1.0
+    #   return 2  not a vX.Y.Z tag (a branch name) -- caller decides
+    # 10# prefixes stop a zero-padded component being mis-read as octal; the
+    # single-integer encoding keeps "v2.10.0" > "v2.2.0" (a lexical compare fails).
+    if [[ "$1" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+        local encoded
+        encoded=$(( (10#${BASH_REMATCH[1]}) * 1000000 + (10#${BASH_REMATCH[2]}) * 1000 + (10#${BASH_REMATCH[3]}) ))
+        if [ "${encoded}" -ge 2001000 ]; then
+            return 0
+        fi
+        return 1
+    fi
+    return 2
+}
+
+tm_matrix_vectors() {
+    # The default matrix: the fresh-install track plus one vector per era.
+    echo "${DAAF_TEST_MATRIX_VERSIONS:-fresh v1.0.0 v2.0.1 v2.1.0}"
+}
+
+tm_emit_summary() {
+    # tm_emit_summary <vector> <status> <pass> <fail> <skip>
+    # The single machine-readable line the matrix driver (and any CI wrapper)
+    # parses. Field order is fixed; see tm_parse_summary_field.
+    printf 'TEST_MIGRATION_SUMMARY vector=%s status=%s pass=%s fail=%s skip=%s\n' \
+        "$1" "$2" "$3" "$4" "$5"
+}
+
+tm_parse_summary_field() {
+    # tm_parse_summary_field <summary-line> <field-name> -> echoes the value.
+    # Splits on spaces so a value can never span a field boundary.
+    echo "$1" | tr ' ' '\n' | sed -n "s/^${2}=//p" | head -1
+}
+
+tm_classify_status() {
+    # tm_classify_status <migration_reached:true|false> <fail_count>
+    #   INFRA  the meaningful work never ran (setup broke before migration/install)
+    #   FAIL   the work ran but >=1 check failed
+    #   PASS   the work ran and every non-skipped check passed
+    if [ "$1" != "true" ]; then
+        echo "INFRA"
+        return 0
+    fi
+    if [ "${2:-0}" -gt 0 ]; then
+        echo "FAIL"
+        return 0
+    fi
+    echo "PASS"
+}
+
+tm_matrix_verdict() {
+    # tm_matrix_verdict <status> <rc> -> return 0 (vector passed) / 1 (vector failed)
+    # Reconcile the parsed summary status against the child's ACTUAL exit code: a
+    # vector passes only when the child reported PASS *and* exited zero. A nonzero
+    # child rc fails the vector even when status=PASS (a summary line can report
+    # PASS while a later teardown/exit path returns nonzero). Any non-PASS status
+    # (FAIL, INFRA, or an UNKNOWN(rc=N) placeholder) also fails. rc defaults to 0.
+    if [ "$1" = "PASS" ] && [ "${2:-0}" -eq 0 ]; then
+        return 0
+    fi
+    return 1
+}
+
+tm_parse_args() {
+    # Iterate argv and set the RUN_ALL / AUTO_MODE / SKIP_MULTI_CLI globals.
+    # --all implies --auto (a matrix cannot pause for prompts). Unknown tokens
+    # are ignored so an env-driven child invocation (which passes no args) is a
+    # no-op here.
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --all)                 RUN_ALL=1; AUTO_MODE=1 ;;
+            --auto)                AUTO_MODE=1 ;;
+            --skip-multi-instance) SKIP_MULTI_CLI=1 ;;
+            *)                     : ;;
+        esac
+        shift
+    done
+}
+
+# --- Source-only guard (D8) ---
+# When sourced with DAAF_TEST_MODE=1, return here: the bats suite gets the tm_*
+# functions above without running any of the harness body below. Placed AFTER
+# all pure-function definitions and BEFORE arg parsing / execution, mirroring the
+# guard in migrate_daaf.sh / install.sh / update_daaf.sh / rebuild_daaf.sh.
+if [ "${DAAF_TEST_MODE:-}" = "1" ]; then
+    return 0 2>/dev/null || exit 0
+fi
+
+# --- Argument / mode parsing ---
+RUN_ALL=0
+AUTO_MODE=0
+SKIP_MULTI_CLI=0
+tm_parse_args "$@"
+
+# Env fallbacks: the non-CLI entry points. The matrix driver re-invokes children
+# with DAAF_TEST_AUTO=1 (not --auto), and CI wrappers may prefer env toggles.
+if [ "${DAAF_TEST_MATRIX:-}" = "1" ]; then RUN_ALL=1; fi
+if [ "${DAAF_TEST_AUTO:-}" = "1" ]; then AUTO_MODE=1; fi
+if [ "${SKIP_MULTI_INSTANCE:-}" = "1" ]; then SKIP_MULTI_CLI=1; fi
+# A matrix run is always non-interactive (mirror --all's implication for the
+# DAAF_TEST_MATRIX=1 env path).
+if [ "${RUN_ALL}" = "1" ]; then AUTO_MODE=1; fi
+# Fold the unified skip flag back onto SKIP_MULTI_INSTANCE so the existing Phase 8
+# gate + banner honor a --skip-multi-instance CLI flag without further edits.
+if [ "${SKIP_MULTI_CLI}" = "1" ]; then
+    SKIP_MULTI_INSTANCE=1
+fi
+
+# --- Matrix driver (--all / DAAF_TEST_MATRIX=1) ---
+# Runs the whole vector list as CHILD processes of this same script (one clean
+# process per vector -- no cross-vector state), tees each child's combined output
+# to a per-vector log under a mktemp-d root, parses the child's final
+# TEST_MIGRATION_SUMMARY line, and builds a scoreboard. Exits nonzero if any
+# child was not PASS. This branch EXITs before the single-vector setup below, so
+# no single-vector EXIT trap or summary is installed for the driver itself.
+if [ "${RUN_ALL}" = "1" ]; then
+    _self_dir="$(cd "$(dirname "$0")" && pwd)"
+    SELF_PATH="${_self_dir}/$(basename "$0")"
+    MATRIX_DIR="$(mktemp -d)"
+    MATRIX_STAMP="$(date +%Y%m%d-%H%M%S)"
+    MATRIX_LOGDIR="${MATRIX_DIR}/matrix-${MATRIX_STAMP}"
+    mkdir -p "${MATRIX_LOGDIR}"
+
+    echo ""
+    echo "${BOLD}==========================================${RESET}"
+    echo "${BOLD}  DAAF Migration Test -- MATRIX (--all)${RESET}"
+    echo "${BOLD}==========================================${RESET}"
+    echo ""
+    echo "  Vectors:  $(tm_matrix_vectors)"
+    echo "  Logs:     ${MATRIX_LOGDIR}"
+    echo ""
+
+    # Children skip Phase 8 by default (each build+teardown is expensive); opt in
+    # with DAAF_TEST_MATRIX_FULL_MULTI=1. The fresh vector never runs Phase 8.
+    child_skip=1
+    if [ "${DAAF_TEST_MATRIX_FULL_MULTI:-}" = "1" ]; then
+        child_skip=0
+    fi
+
+    MATRIX_FAIL=0
+    SCOREBOARD=""
+    for vec in $(tm_matrix_vectors); do
+        this_skip="${child_skip}"
+        if [ "${vec}" = "fresh" ]; then
+            this_skip=1
+        fi
+        logf="${MATRIX_LOGDIR}/${vec}.log"
+        echo "${BOLD}--- vector: ${vec} ---${RESET}"
+        set +e
+        # DAAF_TEST_MATRIX is cleared for children: on the env entry path
+        # (DAAF_TEST_MATRIX=1 bash test_migration.sh) the exported value would
+        # otherwise be inherited and turn every child into another matrix
+        # driver (infinite recursion). The --all flag path never exports it.
+        env DAAF_TEST_MATRIX= \
+            DAAF_TEST_VERSION="${vec}" \
+            DAAF_TEST_AUTO=1 \
+            SKIP_MULTI_INSTANCE="${this_skip}" \
+            bash "${SELF_PATH}" 2>&1 | tee "${logf}"
+        child_rc="${PIPESTATUS[0]}"
+        set -e
+        summary_line=$(grep '^TEST_MIGRATION_SUMMARY ' "${logf}" | tail -1 || true)
+        vstatus=$(tm_parse_summary_field "${summary_line}" status)
+        vpass=$(tm_parse_summary_field "${summary_line}" pass)
+        vfail=$(tm_parse_summary_field "${summary_line}" fail)
+        vskip=$(tm_parse_summary_field "${summary_line}" skip)
+        # Reconcile the parsed status with the child's actual exit code (see
+        # tm_matrix_verdict): a missing summary line falls back to UNKNOWN(rc=N);
+        # a PASS status riding a nonzero child rc is annotated PASS(rc=N)! on the
+        # scoreboard and counted as a failure by the verdict below.
+        if [ -z "${vstatus}" ]; then
+            vstatus="UNKNOWN(rc=${child_rc})"
+            vlabel="${vstatus}"
+        elif [ "${vstatus}" = "PASS" ] && [ "${child_rc}" -ne 0 ]; then
+            vlabel="PASS(rc=${child_rc})!"
+        else
+            vlabel="${vstatus}"
+        fi
+        SCOREBOARD="${SCOREBOARD}\n  ${vec}: ${vlabel} (pass=${vpass:-?} fail=${vfail:-?} skip=${vskip:-?})"
+        if ! tm_matrix_verdict "${vstatus}" "${child_rc}"; then
+            MATRIX_FAIL=1
+        fi
+        echo ""
+    done
+
+    echo "${BOLD}==========================================${RESET}"
+    echo "${BOLD}  Matrix Scoreboard${RESET}"
+    echo "${BOLD}==========================================${RESET}"
+    printf '%b\n' "${SCOREBOARD}"
+    echo ""
+    echo "  Per-vector logs: ${MATRIX_LOGDIR}"
+    echo ""
+    if [ "${MATRIX_FAIL}" -ne 0 ]; then
+        error "One or more matrix vectors did not PASS."
+        exit 1
+    fi
+    success "All matrix vectors passed."
+    exit 0
+fi
 
 # --- Configuration ---
 # Default install-from version: v2.0.1 -- the richest migration path (ZIP era:
@@ -233,21 +593,39 @@ fi
 
 # Working directory for the test install
 TEST_DIR="$(mktemp -d)"
+
+# --- Test-result + summary state ---
+# Initialized BEFORE the EXIT trap so the summary emitter inside cleanup() never
+# dereferences an unset global if the script exits during early setup.
+TESTS_PASSED=0
+TESTS_FAILED=0
+TESTS_SKIPPED=0
+FAILURES=""
+SKIPS=""
+VECTOR_NAME="${TEST_VERSION}"     # the vector this process reports as
+MIGRATION_REACHED=false           # flipped true once the meaningful work begins
+SUMMARY_EMITTED=false             # guards single emission of the summary line
+
 cleanup() {
     info "Test working directory preserved at: ${TEST_DIR}"
     info "(Delete manually when done inspecting: rm -rf ${TEST_DIR})"
-    # Pause before exit so the user can review output
-    if [ -z "${DAAF_NESTED:-}" ] && [ -z "${CI:-}" ] && [ -c /dev/tty ] && [ -t 1 ]; then
+    # Pause before exit so the user can review output. Suppressed in --auto/matrix
+    # mode (AUTO_MODE=1) in addition to the existing DAAF_NESTED / CI / non-tty cases.
+    if [ "${AUTO_MODE:-0}" != "1" ] && [ -z "${DAAF_NESTED:-}" ] && [ -z "${CI:-}" ] && [ -c /dev/tty ] && [ -t 1 ]; then
         echo ""
         read -r -p "Press Enter to continue: " < /dev/tty
     fi
+    # Machine-readable summary: emitted exactly ONCE, as the final stdout line,
+    # so the matrix driver (and any CI wrapper) can parse this vector's outcome
+    # regardless of where execution stopped. The SUMMARY_EMITTED guard prevents a
+    # double line if cleanup somehow runs twice.
+    if [ "${SUMMARY_EMITTED}" != "true" ]; then
+        SUMMARY_EMITTED=true
+        _final_status=$(tm_classify_status "${MIGRATION_REACHED}" "${TESTS_FAILED}")
+        tm_emit_summary "${VECTOR_NAME}" "${_final_status}" "${TESTS_PASSED}" "${TESTS_FAILED}" "${TESTS_SKIPPED}"
+    fi
 }
 trap cleanup EXIT
-
-# Track test results
-TESTS_PASSED=0
-TESTS_FAILED=0
-FAILURES=""
 
 check() {
     local description="$1"
@@ -260,6 +638,21 @@ check() {
         FAILURES="${FAILURES}\n  FAIL: ${description}"
         echo "  ${RED}FAIL${RESET}: ${description}"
     fi
+}
+
+skip_note() {
+    # Record an intentional skip: a check that does not apply to this vector/mode,
+    # or whose fixture could not be planted (capability probe missed). A skip is
+    # NOT a failure and does not affect PASS/FAIL classification.
+    local description="$1"
+    TESTS_SKIPPED=$((TESTS_SKIPPED + 1))
+    SKIPS="${SKIPS}\n  SKIP: ${description}"
+    echo "  ${YELLOW}SKIP${RESET}: ${description}"
+}
+
+observe_note() {
+    # Informational line (neither pass/fail/skip) -- context for the reader.
+    echo "  ${CYAN}NOTE${RESET}: $*"
 }
 
 echo ""
@@ -278,6 +671,7 @@ echo "  Version:   ${TEST_VERSION}"
 echo "  Era:       ${TEST_ERA} (${ERA_LABEL})"
 echo "  Migration: from local repo (branch: ${MIGRATION_BRANCH})"
 echo "  Work dir:  ${TEST_DIR}"
+echo "  Mode:      $([ "${AUTO_MODE}" = "1" ] && echo "auto (non-interactive)" || echo "interactive")"
 echo "  Multi:     $([ "${SKIP_MULTI_INSTANCE:-}" = "1" ] && echo "skipped (SKIP_MULTI_INSTANCE=1)" || echo "enabled (phase 8)")"
 echo ""
 
@@ -342,6 +736,156 @@ docker rmi "${SECOND_IMAGE_NAME}" 2>/dev/null || true
 
 success "Clean slate achieved."
 echo ""
+
+# =====================================================================
+# FRESH-INSTALL TRACK (DAAF_TEST_VERSION=fresh) -- no migration
+# =====================================================================
+# Exercises the LOCAL install.sh end to end from the clean slate above, then
+# asserts the install landed and that a second install is refused. Exits after
+# its own compact results block (the migration phases below do not apply).
+if [ "${TEST_VERSION}" = "fresh" ]; then
+    echo "[2/2] ${BOLD}Fresh-install track (local install.sh)${RESET}"
+    echo ""
+
+    # D7 guard: install.sh must exist in the local repo (mirror of the .ps1 Test-Path).
+    if [ ! -f "${LOCAL_REPO_ROOT}/scripts/host/install.sh" ]; then
+        error "Cannot find install.sh in the local repo -- fresh-install track needs it."
+        error "Expected at: ${LOCAL_REPO_ROOT}/scripts/host/install.sh"
+        exit 1
+    fi
+
+    FRESH_DIR="${TEST_DIR}/fresh"
+    mkdir -p "${FRESH_DIR}"
+    cd "${FRESH_DIR}" || { error "Cannot enter fresh install dir: ${FRESH_DIR}"; exit 1; }
+
+    # 'Reached the meaningful work' -- classify PASS/FAIL, not INFRA. (There is no
+    # migration in this track; MIGRATION_REACHED doubles as a work-started flag.)
+    MIGRATION_REACHED=true
+
+    info "Running local install.sh (branch ${MIGRATION_BRANCH})..."
+    echo ""
+    FRESH_INSTALL_EXIT=0
+    if (
+        export DAAF_BRANCH="${MIGRATION_BRANCH}"
+        export DAAF_NESTED=1
+        if [ "${AUTO_MODE}" = "1" ]; then export CI=1; fi
+        bash "${LOCAL_REPO_ROOT}/scripts/host/install.sh"
+    ); then
+        FRESH_INSTALL_EXIT=0
+    else
+        FRESH_INSTALL_EXIT=$?
+    fi
+    echo ""
+
+    if [ "${FRESH_INSTALL_EXIT}" -eq 0 ]; then
+        check "Fresh install completed (exit 0)" "0"
+    else
+        error "Fresh install.sh did NOT complete successfully (exit ${FRESH_INSTALL_EXIT})."
+        check "Fresh install completed (exit ${FRESH_INSTALL_EXIT})" "1"
+    fi
+
+    # Discover the freshly-created container and wait for exec readiness.
+    CONTAINER_NAME=$(docker ps -a --filter "volume=${VOLUME_NAME}" --format '{{.Names}}' | head -1)
+    if [ -n "${CONTAINER_NAME}" ]; then
+        CONTAINER_STATE=$(docker inspect --format '{{.State.Status}}' "${CONTAINER_NAME}" 2>/dev/null || echo "unknown")
+        if [ "${CONTAINER_STATE}" != "running" ]; then
+            docker start "${CONTAINER_NAME}" >/dev/null 2>&1 || true
+        fi
+        RETRIES=0
+        while [ "${RETRIES}" -lt 30 ]; do
+            if container_exec true >/dev/null 2>&1; then
+                break
+            fi
+            RETRIES=$((RETRIES + 1))
+            sleep 2
+        done
+    fi
+
+    if [ -n "${CONTAINER_NAME}" ] && container_exec true >/dev/null 2>&1; then
+        check "Fresh container is exec-ready (${CONTAINER_NAME})" "0"
+    else
+        check "Fresh container is exec-ready" "1"
+    fi
+
+    # Branch check: install.sh clones the branch and leaves it checked out.
+    FRESH_BRANCH=$(container_git branch --show-current 2>/dev/null || echo "")
+    if [ "${FRESH_BRANCH}" = "${MIGRATION_BRANCH}" ]; then
+        check "Fresh install checked out branch ${MIGRATION_BRANCH}" "0"
+    else
+        check "Fresh install checked out branch ${MIGRATION_BRANCH} (got: '${FRESH_BRANCH}')" "1"
+    fi
+
+    # Host scripts present + executable in the fresh daaf-docker dir.
+    FRESH_HOST_DIR="${FRESH_DIR}/daaf-docker"
+    for SCRIPT in daaf.sh daaf_lib.sh backup_daaf.sh restore_from_backup.sh rebuild_daaf.sh update_daaf.sh run_daaf.sh view_logs.sh view_notebooks.sh view_quarto.sh run_vscode.sh; do
+        if [ -f "${FRESH_HOST_DIR}/${SCRIPT}" ] && [ -x "${FRESH_HOST_DIR}/${SCRIPT}" ]; then
+            check "Fresh host script present + executable: ${SCRIPT}" "0"
+        else
+            check "Fresh host script present + executable: ${SCRIPT}" "1"
+        fi
+    done
+
+    # environment_settings.txt seeded by install.sh.
+    if [ -f "${FRESH_HOST_DIR}/environment_settings.txt" ]; then
+        check "Fresh install seeded environment_settings.txt" "0"
+    else
+        check "Fresh install seeded environment_settings.txt" "1"
+    fi
+
+    # Functional smoke: git describe sane + hooks present.
+    FRESH_GIT_DESC=$(container_git describe --tags --always 2>/dev/null || echo "")
+    if [ -n "${FRESH_GIT_DESC}" ]; then
+        check "Fresh install git describe returns a sane ref (${FRESH_GIT_DESC})" "0"
+    else
+        check "Fresh install git describe returns a sane ref" "1"
+    fi
+    if container_exec test -d /daaf/.claude/hooks; then
+        check "Fresh install framework hooks present (.claude/hooks)" "0"
+    else
+        check "Fresh install framework hooks present (.claude/hooks)" "1"
+    fi
+
+    # Second install must be REFUSED by the existing-install guard (D3). Run it
+    # again WITHOUT DAAF_FORCE_REINSTALL; expect a nonzero exit + the refusal text.
+    info "Verifying a second install is refused by the existing-install guard..."
+    SECOND_INSTALL_OUT="${FRESH_DIR}/second_install.out"
+    SECOND_INSTALL_EXIT=0
+    if (
+        export DAAF_BRANCH="${MIGRATION_BRANCH}"
+        export DAAF_NESTED=1
+        if [ "${AUTO_MODE}" = "1" ]; then export CI=1; fi
+        bash "${LOCAL_REPO_ROOT}/scripts/host/install.sh"
+    ) >"${SECOND_INSTALL_OUT}" 2>&1; then
+        SECOND_INSTALL_EXIT=0
+    else
+        SECOND_INSTALL_EXIT=$?
+    fi
+    if [ "${SECOND_INSTALL_EXIT}" -ne 0 ] && grep -q "existing DAAF installation was detected" "${SECOND_INSTALL_OUT}"; then
+        check "Second fresh install refused (existing-install guard fired)" "0"
+    else
+        check "Second fresh install refused (existing-install guard fired) (exit ${SECOND_INSTALL_EXIT})" "1"
+    fi
+
+    # --- Fresh-track results ---
+    echo ""
+    echo "${BOLD}==========================================${RESET}"
+    echo "${BOLD}  Fresh-Install Track Results${RESET}"
+    echo "${BOLD}==========================================${RESET}"
+    echo ""
+    echo "  Passed:   ${GREEN}${TESTS_PASSED}${RESET}"
+    echo "  Failed:   ${TESTS_FAILED}"
+    echo "  Skipped:  ${TESTS_SKIPPED}"
+    echo ""
+    if [ "${TESTS_FAILED}" -gt 0 ]; then
+        echo "${RED}  Failures:${RESET}"
+        printf '%b\n' "${FAILURES}"
+        echo ""
+        error "Fresh-install track: some checks failed."
+        exit 1
+    fi
+    success "Fresh-install track: all checks passed!"
+    exit 0
+fi
 
 # =====================================================================
 # PHASE 2: Install Old Version (era-authentic pathway)
@@ -687,6 +1231,45 @@ for MUST_HAVE in \
     fi
 done
 info "Committed changes at: ${COMMITTED_SHA:0:12}"
+
+# --- Class B(i) + Class C: COMMITTED appends to EXISTING framework files ---
+# These exercise the updater's 3-way MERGE path on tracked files (class-A markers
+# only ever test new-file preservation). Each is capability-probed: an old era
+# that lacks the target section is recorded as a skip-at-plant (observe_note),
+# not planted, so a legitimately-absent target never becomes a spurious FAIL. The
+# appends land at EOF, which merges cleanly unless upstream also rewrote the
+# file's final lines -- if that happens the update aborts and the class B/C
+# preservation checks FAIL loudly, which is the correct signal.
+PLANTED_B1=false
+if container_exec grep -q 'USER ADDITIONS' /daaf/Dockerfile; then
+    container_exec bash -c 'printf "\n# test-migration-marker-B: dockerfile-user-block\n" >> /daaf/Dockerfile'
+    PLANTED_B1=true
+    observe_note "Class B(i) planted: committed Dockerfile user-block append."
+else
+    observe_note "Class B(i) not planted: Dockerfile has no USER ADDITIONS block at ${TEST_VERSION}."
+fi
+PLANTED_C=false
+if container_exec grep -q '## Identity' /daaf/CLAUDE.md; then
+    container_exec bash -c 'printf "\n<!-- test-migration-marker-C: committed CLAUDE.md prose line -->\n" >> /daaf/CLAUDE.md'
+    PLANTED_C=true
+    observe_note "Class C planted: committed CLAUDE.md prose append."
+else
+    observe_note "Class C not planted: CLAUDE.md has no '## Identity' section at ${TEST_VERSION}."
+fi
+if [ "${PLANTED_B1}" = "true" ] || [ "${PLANTED_C}" = "true" ]; then
+    container_git add -A
+    container_git commit -m "Test: class B(i)/C framework-file appends"
+    B1C_FILES=$(container_git show --name-only --format= HEAD)
+    if [ "${PLANTED_B1}" = "true" ] && ! echo "${B1C_FILES}" | grep -qF "Dockerfile"; then
+        error "Class B(i) fixture missing from its commit -- aborting before migration."
+        exit 1
+    fi
+    if [ "${PLANTED_C}" = "true" ] && ! echo "${B1C_FILES}" | grep -qF "CLAUDE.md"; then
+        error "Class C fixture missing from its commit -- aborting before migration."
+        exit 1
+    fi
+fi
+
 success "Committed user work created."
 echo ""
 
@@ -718,6 +1301,20 @@ container_exec bash -c 'echo "test-migration-marker: uncommitted" > /daaf/agent_
 # upstream never writes, so the pop can never conflict.
 container_exec bash -c 'echo uncommitted-stash-check >> /daaf/research/2026-01-15_Test_Analysis/README.md'
 
+# --- Class B(ii): UNCOMMITTED append to a tracked framework file (CLAUDE.md) ---
+# A dirty tracked change on a framework file -- exercises the updater's stash/pop
+# path on a file upstream also owns (stronger than the research/ dirty-file above,
+# which upstream never touches). Capability-probed; skipped-at-plant if the target
+# line is absent in this era.
+PLANTED_B2=false
+if container_exec grep -q 'Primary execution language' /daaf/CLAUDE.md; then
+    container_exec bash -c 'printf "\n<!-- test-migration-marker-Bii -->\n" >> /daaf/CLAUDE.md'
+    PLANTED_B2=true
+    observe_note "Class B(ii) planted: uncommitted CLAUDE.md append (stash/pop path)."
+else
+    observe_note "Class B(ii) not planted: CLAUDE.md lacks 'Primary execution language' at ${TEST_VERSION}."
+fi
+
 # Verify the uncommitted fixtures actually exist before migration runs
 for MUST_EXIST in \
     "/daaf/research/2026-02-10_WIP_Analysis/notes.md" \
@@ -732,6 +1329,10 @@ if ! container_exec grep -q uncommitted-stash-check /daaf/research/2026-01-15_Te
     error "Dirty-file fixture (README.md append) was not created -- aborting before migration."
     exit 1
 fi
+if [ "${PLANTED_B2}" = "true" ] && ! container_exec grep -q 'test-migration-marker-Bii' /daaf/CLAUDE.md; then
+    error "Class B(ii) uncommitted fixture (CLAUDE.md append) was not created -- aborting before migration."
+    exit 1
+fi
 
 success "Uncommitted user work created."
 echo ""
@@ -741,6 +1342,10 @@ echo ""
 # =====================================================================
 echo "[6/7] ${BOLD}Run migration script${RESET}"
 echo ""
+
+# We have reached the meaningful work -- outcome now classifies PASS/FAIL, not
+# INFRA. (Setup failures before this point classify INFRA via tm_classify_status.)
+MIGRATION_REACHED=true
 
 info "Copying migration script from local repo..."
 
@@ -776,19 +1381,42 @@ else
     CLAUDE_VOLUME_EXISTED_PRE_MIGRATION=false
 fi
 
+# --- Class D baseline: host environment_settings.txt must survive migration (and
+#     any driven update) byte-for-byte. cksum reads from stdin so the output is
+#     just the checksum+size, with no filename to differ. Bash 3.2 portable.
+CLASS_D_APPLICABLE=false
+CLASS_D_PRE=""
+if [ -f "${HOST_DIR}/environment_settings.txt" ]; then
+    CLASS_D_APPLICABLE=true
+    CLASS_D_PRE=$(cksum < "${HOST_DIR}/environment_settings.txt")
+    observe_note "Class D baseline captured (environment_settings.txt cksum: ${CLASS_D_PRE})."
+else
+    observe_note "Class D not applicable: no environment_settings.txt in ${HOST_DIR} (era predates it)."
+fi
+
 # Run migration with the branch env var. Do NOT pipe input in: migrate_daaf.sh
 # reads interactive prompts from /dev/tty (not stdin), so a piped "n" was a
 # no-op that only obscured intent. Non-interactive detection inside the migration
 # script auto-skips the optional update prompt on its own.
 #
-# Capture the exit status. `set -e` is active, so guard the invocation with an
-# `if` (a bare call would abort the whole harness on a nonzero exit before we
-# could report it). MIGRATION_EXIT feeds the truthful outcome + Phase 7 banner.
+# Capture the exit status AND the combined output (via tee to migrate.out, which
+# the interactive-mode update detection greps). `set -e` is temporarily lifted
+# around the pipe so a nonzero migrate exit is reported rather than aborting the
+# harness; PIPESTATUS[0] is migrate's own exit (tee always exits 0). In --auto we
+# export CI=1 so migrate runs non-interactive (IS_INTERACTIVE=false); note migrate
+# then SKIPS its update offer, so --auto drives update itself below.
 MIGRATION_EXIT=0
-if DAAF_BRANCH="${MIGRATION_BRANCH}" DAAF_NESTED=1 bash migrate_daaf.sh; then
-    MIGRATION_EXIT=0
+MIGRATE_OUT="${TEST_DIR}/migrate.out"
+if [ "${AUTO_MODE}" = "1" ]; then
+    set +e
+    CI=1 DAAF_BRANCH="${MIGRATION_BRANCH}" DAAF_NESTED=1 bash migrate_daaf.sh 2>&1 | tee "${MIGRATE_OUT}"
+    MIGRATION_EXIT="${PIPESTATUS[0]}"
+    set -e
 else
-    MIGRATION_EXIT=$?
+    set +e
+    DAAF_BRANCH="${MIGRATION_BRANCH}" DAAF_NESTED=1 bash migrate_daaf.sh 2>&1 | tee "${MIGRATE_OUT}"
+    MIGRATION_EXIT="${PIPESTATUS[0]}"
+    set -e
 fi
 
 echo ""
@@ -803,6 +1431,83 @@ else
     error "Migration script did NOT complete successfully (exit code ${MIGRATION_EXIT})."
     error "Verification below still runs to show the blast radius, but migration itself FAILED."
     check "Migration script completed successfully (exit ${MIGRATION_EXIT})" "1"
+fi
+echo ""
+
+# =====================================================================
+# UPDATE DRIVING (class E + Phase 7b prerequisite)
+# =====================================================================
+# migrate_daaf.sh SKIPS its update offer when non-interactive (verified in
+# migrate_daaf.sh: "Non-interactive mode detected -- skipping update"), so in
+# --auto the harness drives update_daaf.sh itself from the host dir. In
+# interactive mode the tester already answered migrate's own update offer, so we
+# only DETECT whether it ran from the captured migrate output.
+UPDATE_RAN=false
+UPDATE_OUT="${TEST_DIR}/update.out"
+CLASS_E_PLANTED=false
+if [ "${AUTO_MODE}" = "1" ]; then
+    if [ -f "${HOST_DIR}/update_daaf.sh" ]; then
+        # Class E: plant a drift marker on a host script; a healthy update re-syncs
+        # it from the branch (marker gone) and backs up the drifted copy as
+        # <script>.pre-update. Verified in Phase 7b.
+        if [ -f "${HOST_DIR}/view_logs.sh" ]; then
+            printf '\n# test-migration-marker-E: drifted host script\n' >> "${HOST_DIR}/view_logs.sh"
+            CLASS_E_PLANTED=true
+            observe_note "Class E planted: drift marker on ${HOST_DIR}/view_logs.sh."
+        fi
+        info "Driving update_daaf.sh (non-interactive) from ${HOST_DIR}..."
+        echo ""
+        set +e
+        CI=1 DAAF_NESTED=1 bash "${HOST_DIR}/update_daaf.sh" 2>&1 | tee "${UPDATE_OUT}"
+        UPDATE_EXIT="${PIPESTATUS[0]}"
+        set -e
+        UPDATE_RAN=true
+        echo ""
+        if [ "${UPDATE_EXIT}" -eq 0 ]; then
+            check "Update script completed (exit 0)" "0"
+        else
+            check "Update script completed (exit ${UPDATE_EXIT})" "1"
+        fi
+        # Self-update two-run: if the updater reports it updated ITSELF, a real user
+        # re-runs it once more. For the v2.1.0 vector migrate may have pre-seeded the
+        # newest update_daaf.sh, so the banner may legitimately NOT appear -- record a
+        # skip in that case rather than a FAIL (a known consequence of routing v2.1.0
+        # through migrate, which downloads the newest host scripts before update runs).
+        if grep -q 'updater itself was updated' "${UPDATE_OUT}"; then
+            info "Self-update detected -- running update once more (as a real user would)..."
+            echo ""
+            set +e
+            CI=1 DAAF_NESTED=1 bash "${HOST_DIR}/update_daaf.sh" 2>&1 | tee -a "${UPDATE_OUT}"
+            UPDATE_EXIT2="${PIPESTATUS[0]}"
+            set -e
+            echo ""
+            if [ "${UPDATE_EXIT2}" -eq 0 ]; then
+                check "Self-update two-run reproduced (second update exit 0)" "0"
+            else
+                check "Self-update two-run reproduced (second update exit ${UPDATE_EXIT2})" "1"
+            fi
+        else
+            skip_note "Self-update two-run: no 'updater itself was updated' banner (migrate pre-seeded the newest update_daaf.sh for ${TEST_VERSION})."
+        fi
+    else
+        skip_note "Auto-mode update driving: no update_daaf.sh in ${HOST_DIR} (migration did not download it)."
+    fi
+else
+    # Interactive mode: detect whether the tester accepted migrate's update offer.
+    # Match the updater's OWN startup banner (the literal "DAAF Updater" echo in
+    # update_daaf.sh -- string-anchored on purpose; line numbers drift),
+    # which prints only after its source-only guard + lock -- i.e. only when the
+    # updater actually executes. The prior pattern ('update_daaf|Running update|
+    # updater') also matched migrate's unconditional banner line "...the new update
+    # infrastructure (update_daaf.sh)." (migrate_daaf.sh:211), so a DECLINED update
+    # was misread as UPDATE_RAN=true and forced Phase 7b hard checks against a
+    # never-updated container.
+    if grep -qF 'DAAF Updater' "${MIGRATE_OUT}"; then
+        UPDATE_RAN=true
+        observe_note "Interactive mode: migrate output indicates an update ran (newest-endpoint checks enabled)."
+    else
+        observe_note "Interactive mode: no update evidence in migrate output (update likely declined; Phase 7b will skip)."
+    fi
 fi
 echo ""
 
@@ -847,9 +1552,12 @@ fi
 #     origin/main.
 #   - Era 3 BRANCH installs (e.g. daaf_dev): no local main ever exists; the
 #     clone's branch keeps its own tracking (origin/<branch>). migrate's
-#     set-upstream to main is a silent no-op there -- and it prints "Tracking
-#     set: main -> origin/main" regardless (documented production wart, see
-#     SESSION_NOTES.md in the harness workspace).
+#     set-upstream to main is a silent no-op there. (Historical wart: migrate
+#     once printed "Tracking set: main -> origin/main" unconditionally, even on
+#     that no-op; fixed as of commit 4cd280d (2026-07-17), which prints the
+#     message only on set-upstream success and an honest NOTE otherwise. This
+#     harness has always asserted the REAL git tracking state below, never the
+#     printed string, so its behavior is unchanged either way.)
 EXPECTED_TRACKING="origin/main"
 if [ "${TEST_ERA}" = "3" ] && ! [[ "${TEST_VERSION}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     EXPECTED_TRACKING="origin/${TEST_VERSION}"
@@ -966,6 +1674,98 @@ else
 fi
 
 echo ""
+echo "${BOLD}  Extended Fixture Checks (classes B/C/D):${RESET}"
+
+# Outcome semantics for the B(i)/B(ii) appends to tracked framework files (a
+# three-way outcome, backported from the .ps1 twin so both twins agree): marker
+# present with NO git conflict markers = PASS; conflict markers in the file =
+# CONFLICTED (a skip_note with a prominent note, since a conflict on a heavily-
+# rewritten upstream file is an expected, non-defect outcome); marker absent with
+# no conflict markers = FAIL. Class C is observe-only (never pass/fail). The
+# conflict probe greps for 7-char git markers (<<<<<<< / >>>>>>>) INSIDE the
+# container via container_exec -- a direct exit-code test, no host-side pipe, so
+# pipefail cannot turn a found/not-found result into a spurious failure.
+# '=======' is excluded because it occurs in ordinary Markdown.
+
+# Class B(i): committed Dockerfile user-block append survived migration (merge path).
+if [ "${PLANTED_B1}" = "true" ]; then
+    if container_exec grep -q 'test-migration-marker-B: dockerfile-user-block' /daaf/Dockerfile; then
+        b1_present=true
+    else
+        b1_present=false
+    fi
+    if container_exec grep -qE '<<<<<<<|>>>>>>>' /daaf/Dockerfile; then
+        b1_conflict=true
+    else
+        b1_conflict=false
+    fi
+    if [ "${b1_conflict}" = "true" ]; then
+        skip_note "Class B(i): CONFLICTED -- git conflict markers in /daaf/Dockerfile around the committed append (expected when upstream rewrote the file's tail; not a migration defect)."
+    elif [ "${b1_present}" = "true" ]; then
+        check "Class B(i): committed Dockerfile append preserved" "0"
+    else
+        check "Class B(i): committed Dockerfile append preserved" "1"
+    fi
+else
+    skip_note "Class B(i): not planted (no USER ADDITIONS block at ${TEST_VERSION})."
+fi
+
+# Class C: committed CLAUDE.md prose append -- OBSERVE-ONLY (never pass/fail).
+# On daaf_dev CLAUDE.md is heavily rewritten relative to the old eras, so a
+# committed append near '## Identity' legitimately MAY hit a merge conflict on
+# update. Recording the outcome as an observe note avoids a spurious FAIL on an
+# expected conflict (matches the .ps1 twin; never touches TESTS_PASSED/FAILED).
+if [ "${PLANTED_C}" = "true" ]; then
+    if container_exec grep -q 'test-migration-marker-C' /daaf/CLAUDE.md; then
+        observe_note "Class C: committed CLAUDE.md append is present after migration (merge preserved it)."
+    else
+        observe_note "Class C: committed CLAUDE.md append is NOT present after migration (likely a merge conflict/rewrite on this heavily-edited file -- observe-only, not a FAIL)."
+    fi
+else
+    skip_note "Class C: not planted (no '## Identity' section at ${TEST_VERSION})."
+fi
+
+# Class B(ii): uncommitted CLAUDE.md append survived (updater stash/pop path).
+# Same three-way outcome as B(i).
+if [ "${PLANTED_B2}" = "true" ]; then
+    if container_exec grep -q 'test-migration-marker-Bii' /daaf/CLAUDE.md; then
+        b2_present=true
+    else
+        b2_present=false
+    fi
+    if container_exec grep -qE '<<<<<<<|>>>>>>>' /daaf/CLAUDE.md; then
+        b2_conflict=true
+    else
+        b2_conflict=false
+    fi
+    if [ "${b2_conflict}" = "true" ]; then
+        skip_note "Class B(ii): CONFLICTED -- git conflict markers in /daaf/CLAUDE.md around the uncommitted append (expected when upstream rewrote the file's tail; not a migration defect)."
+    elif [ "${b2_present}" = "true" ]; then
+        check "Class B(ii): uncommitted CLAUDE.md append preserved (stash/pop)" "0"
+    else
+        check "Class B(ii): uncommitted CLAUDE.md append preserved (stash/pop)" "1"
+    fi
+else
+    skip_note "Class B(ii): not planted (no 'Primary execution language' line at ${TEST_VERSION})."
+fi
+
+# Class D: host environment_settings.txt byte-identical across migration (+update).
+if [ "${CLASS_D_APPLICABLE}" = "true" ]; then
+    if [ -f "${HOST_DIR}/environment_settings.txt" ]; then
+        CLASS_D_POST=$(cksum < "${HOST_DIR}/environment_settings.txt")
+        if [ "${CLASS_D_POST}" = "${CLASS_D_PRE}" ]; then
+            check "Class D: environment_settings.txt byte-identical across migration" "0"
+        else
+            check "Class D: environment_settings.txt byte-identical (pre='${CLASS_D_PRE}' post='${CLASS_D_POST}')" "1"
+        fi
+    else
+        check "Class D: environment_settings.txt still present after migration" "1"
+    fi
+else
+    skip_note "Class D: no environment_settings.txt baseline (era predates it)."
+fi
+
+echo ""
 echo "${BOLD}  Host Script Checks:${RESET}"
 
 # Check 9: Host scripts were downloaded.
@@ -1058,6 +1858,88 @@ else
 fi
 
 # =====================================================================
+# PHASE 7b: Newest-Endpoint Verification (post-update)
+# =====================================================================
+# Gated on an actual update run (auto-mode drove it, or interactive accepted it).
+# When no update ran there is no "newest endpoint" to assert, so every check here
+# is a documented SKIP rather than a FAIL.
+echo ""
+echo "[7b] ${BOLD}Newest-endpoint checks (post-update)${RESET}"
+echo ""
+if [ "${UPDATE_RAN}" = "true" ]; then
+    # Re-discover the container (an update rebuild may have replaced it).
+    CONTAINER_NAME=$(docker ps -a --filter "volume=${VOLUME_NAME}" --format '{{.Names}}' | head -1)
+    if [ -n "${CONTAINER_NAME}" ]; then
+        CONTAINER_STATE=$(docker inspect --format '{{.State.Status}}' "${CONTAINER_NAME}" 2>/dev/null || echo "unknown")
+        if [ "${CONTAINER_STATE}" != "running" ]; then
+            docker start "${CONTAINER_NAME}" >/dev/null 2>&1 || true
+            sleep 3
+        fi
+    fi
+
+    # Rebuild evidence: update's check_build_changes invokes rebuild_daaf.sh when
+    # the Dockerfile/compose changed across the update; rebuild prints these.
+    if [ -f "${UPDATE_OUT}" ] && grep -qE 'Rebuilding Docker image|Rebuild complete' "${UPDATE_OUT}"; then
+        check "Update triggered a Docker rebuild (build strings in update output)" "0"
+    else
+        skip_note "No rebuild strings in update output (Dockerfile/compose unchanged across this update -- rebuild legitimately not triggered)."
+    fi
+
+    # Noble base image: the HEAD Dockerfile is FROM ubuntu:24.04 (noble).
+    OS_RELEASE=$(container_exec cat /etc/os-release 2>/dev/null || echo "")
+    if echo "${OS_RELEASE}" | grep -q 'VERSION_CODENAME=noble'; then
+        check "Container base image is Ubuntu noble (24.04) after update" "0"
+    else
+        check "Container base image is Ubuntu noble (24.04) after update" "1"
+    fi
+
+    # Functional smoke: container exec-ready + git sanity + hooks present.
+    if container_exec true >/dev/null 2>&1; then
+        check "Container exec-ready after update" "0"
+    else
+        check "Container exec-ready after update" "1"
+    fi
+    GIT_DESC=$(container_git describe --tags --always 2>/dev/null || echo "")
+    if [ -n "${GIT_DESC}" ]; then
+        check "git describe returns a sane ref after update (${GIT_DESC})" "0"
+    else
+        check "git describe returns a sane ref after update" "1"
+    fi
+    # Upstream tracking survives update (reuse the era-conditional expectation set
+    # by Check 2 above).
+    TRACKING_POST=$(container_git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || echo "")
+    if [ "${TRACKING_POST}" = "${EXPECTED_TRACKING}" ]; then
+        check "Upstream tracking still ${EXPECTED_TRACKING} after update" "0"
+    else
+        check "Upstream tracking still ${EXPECTED_TRACKING} after update (got: '${TRACKING_POST}')" "1"
+    fi
+    if container_exec test -d /daaf/.claude/hooks; then
+        check "Framework hooks directory present after update (.claude/hooks)" "0"
+    else
+        check "Framework hooks directory present after update (.claude/hooks)" "1"
+    fi
+
+    # Class E drift-heal: the drifted host script was re-synced (marker gone) and
+    # the drifted copy backed up as view_logs.sh.pre-update.
+    if [ "${CLASS_E_PLANTED}" = "true" ]; then
+        if grep -q 'test-migration-marker-E' "${HOST_DIR}/view_logs.sh" 2>/dev/null; then
+            check "Class E: drifted host script re-synced by update (marker cleared)" "1"
+        else
+            check "Class E: drifted host script re-synced by update (marker cleared)" "0"
+        fi
+        if [ -f "${HOST_DIR}/view_logs.sh.pre-update" ]; then
+            check "Class E: drifted host script backed up (view_logs.sh.pre-update)" "0"
+        else
+            check "Class E: drifted host script backed up (view_logs.sh.pre-update)" "1"
+        fi
+    else
+        skip_note "Class E: drift marker not planted (auto-mode only; no view_logs.sh at update time)."
+    fi
+else
+    skip_note "Newest-endpoint checks skipped: no update ran (interactive decline, or update_daaf.sh absent)."
+fi
+
+# =====================================================================
 # PHASE 8: Multi-Instance Coexistence (DAAF_PROJECT_NAME end-to-end)
 # =====================================================================
 # WHY a POST-migration phase rather than a migrated multi-instance install:
@@ -1076,6 +1958,15 @@ if [ "${SKIP_MULTI_INSTANCE:-}" != "1" ]; then
     echo "  Second project: ${SECOND_PROJECT_NAME}"
     echo "  Ports:          marimo=${SECOND_PORT_MARIMO} log=${SECOND_PORT_LOGVIEWER} vscode=${SECOND_PORT_VSCODE}"
     echo ""
+
+    # D7 guard: the multi-instance bring-up runs the LOCAL install.sh. If it is
+    # absent, skip the whole phase rather than error out after a passing migration
+    # (mirror of the .ps1 Test-Path guard before its Phase-8 bring-up). The inner
+    # 8a-8d block is left at its original indentation to keep this a surgical wrap.
+    if [ ! -f "${LOCAL_REPO_ROOT}/scripts/host/install.sh" ]; then
+        warn "install.sh not found in the local repo -- skipping multi-instance bring-up (D7 guard)."
+        skip_note "Multi-instance phase skipped: install.sh absent from local repo."
+    else
 
     # --- 8a. Create the second install directory + environment_settings.txt ---
     info "Creating second install directory and environment_settings.txt..."
@@ -1204,6 +2095,7 @@ if [ "${SKIP_MULTI_INSTANCE:-}" != "1" ]; then
     success "Second instance torn down."
     cd "${HOST_DIR}" || true
     echo ""
+    fi  # end D7 install.sh-present guard
 else
     echo ""
     info "Phase 8 (multi-instance) skipped via SKIP_MULTI_INSTANCE=1."
@@ -1222,8 +2114,17 @@ echo "  Version:  ${TEST_VERSION}"
 echo "  Era:      ${TEST_ERA}"
 echo "  Passed:   ${GREEN}${TESTS_PASSED}${RESET}"
 echo "  Failed:   $([ "${TESTS_FAILED}" -gt 0 ] && echo "${RED}" || echo "")${TESTS_FAILED}${RESET}"
+echo "  Skipped:  ${YELLOW}${TESTS_SKIPPED}${RESET}"
 echo ""
 
+if [ "${TESTS_SKIPPED}" -gt 0 ]; then
+    echo "${YELLOW}  Skips (not failures):${RESET}"
+    printf '%b\n' "${SKIPS}"
+    echo ""
+fi
+
+# The machine-readable TEST_MIGRATION_SUMMARY line is emitted by the EXIT trap
+# (cleanup), so it is always the final stdout line regardless of exit path.
 if [ "${TESTS_FAILED}" -gt 0 ]; then
     echo "${RED}  Failures:${RESET}"
     printf '%b\n' "${FAILURES}"

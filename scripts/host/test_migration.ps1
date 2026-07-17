@@ -44,14 +44,22 @@
 #     values (e.g. daaf_dev) need no normalization and get none.
 #
 # EXPECT INTERACTIVE PROMPTS: migrate/update ask about running the update,
-# backup, and rebuild -- you drive those choices, exactly as an end user would,
-# and the Phase 7 checks are designed to pass whichever way you answer.
-# KNOWN WART: you will also see up to 2-3 stray "Press Enter to continue/close"
-# pauses from the child scripts. migrate_daaf.ps1/update_daaf.ps1 clobber the
-# harness's DAAF_NESTED suppression (they set-then-Remove-Item instead of
-# save/restore -- documented production finding, deliberately NOT patched from
-# this dev harness; see research/2026-07-06_FrameworkDev_MigrationTestHarness/
-# SESSION_NOTES.md). Just press Enter when they appear.
+# backup, and rebuild -- in interactive mode you drive those choices, exactly as
+# an end user would, and the Phase 7 checks are designed to pass whichever way you
+# answer. In auto mode (-Auto / -All) the child scripts run non-interactive (their
+# stdin is redirected from an empty file, the .ps1 non-interactive seam) and every
+# prompt auto-selects its first valid choice, so no tester input is needed.
+# HISTORICAL WART (now FIXED): earlier revisions of migrate_daaf.ps1 /
+# update_daaf.ps1 / daaf.ps1 clobbered the harness's DAAF_NESTED suppression (they
+# set-then-Remove-Item instead of save/restore), which surfaced up to 2-3 stray
+# "Press Enter to continue/close" pauses from the child scripts. That is FIXED as
+# of commit 4cd280d (2026-07-17): all 6 clobber sites now save and restore
+# DAAF_NESTED, so stray pauses are no longer expected on current main /
+# daaf_dev_R2. Auto mode is additionally immune by construction -- the child's
+# stdin is an empty redirect, so even a stray Read-Host reads EOF and returns
+# immediately (no hang possible even if the wart ever regressed). See
+# research/2026-07-06_FrameworkDev_MigrationTestHarness/SESSION_NOTES.md for the
+# original finding.
 #
 # BUILD COST: Era 1/2 runs build the OLD Dockerfiles -- authentic and slow
 # (10+ min cold). v1.0.0 pins no base-image digest (floating tag) and does not
@@ -62,11 +70,14 @@
 # harness bugs.
 #
 # Usage:
-#   .\test_migration.ps1                                       # v2.0.1, Era 2
+#   .\test_migration.ps1                                       # v2.0.1, Era 2 (interactive)
 #   $env:DAAF_TEST_VERSION = "v1.0.0"; .\test_migration.ps1    # Era 1
 #   $env:DAAF_TEST_VERSION = "v2.1.0"; .\test_migration.ps1    # Era 3 (tag)
 #   $env:DAAF_TEST_VERSION = "daaf_dev"; .\test_migration.ps1  # Era 3 (branch)
-#   .\test_migration.ps1 -SkipMultiInstance                    # skip phase 8
+#   $env:DAAF_TEST_VERSION = "fresh"; .\test_migration.ps1     # FRESH-INSTALL track (no migration)
+#   .\test_migration.ps1 -Auto                                 # non-interactive single vector
+#   .\test_migration.ps1 -All                                  # matrix: fresh + v1.0.0 + v2.0.1 + v2.1.0
+#   .\test_migration.ps1 -SkipMultiInstance                    # skip phase 8 (or SKIP_MULTI_INSTANCE=1)
 #
 # Environment variables:
 #   DAAF_TEST_VERSION      Tag/branch to install (default: v2.0.1 -- the
@@ -101,19 +112,372 @@
 #     and is fetched from GitHub at that tag (clone, ZIP, or install.ps1
 #     download depending on era), independent of the local repo.
 #
+# ----------------------------------------------------------------------------
+# TWO TRACKS
+# ----------------------------------------------------------------------------
+#   MIGRATION TRACK (default): install an OLD version the era-authentic way,
+#     plant fixtures, run migrate_daaf.ps1, then (in -Auto) drive update_daaf.ps1,
+#     and verify the end state. This is everything below Phase 2.
+#   FRESH-INSTALL TRACK (DAAF_TEST_VERSION=fresh): no old version, no migration.
+#     Runs the LOCAL install.ps1 from a clean slate, verifies the install landed
+#     (container up, branch, host scripts present, environment_settings seeded,
+#     functional smoke), and asserts a second install is refused by the
+#     existing-install guard. Exits after its own compact results block.
+#
+# ----------------------------------------------------------------------------
+# INTERACTIVE vs AUTO
+# ----------------------------------------------------------------------------
+#   INTERACTIVE (default): migrate/update prompts are answered by the tester at
+#     the console, exactly as an end user would. Phase 7 checks pass whichever way
+#     the update offer is answered; newest-endpoint checks (Phase 7b) run ONLY in
+#     auto mode -- an interactive .ps1 cannot capture console-inherited child
+#     output to detect that an update ran (see DIVERGENCES).
+#   AUTO (-Auto, or DAAF_TEST_AUTO=1, implied by -All): forces the child scripts
+#     non-interactive by REDIRECTING their stdin from an empty file -- the .ps1
+#     non-interactive seam ([Console]::IsInputRedirected => auto-select the first
+#     valid choice: backup=y, strategy=1, rebuild=y). Because migrate_daaf.ps1
+#     SKIPS its update offer when non-interactive, -Auto drives update_daaf.ps1
+#     itself from the host dir after migration, enabling the Phase 7b
+#     newest-endpoint checks + class E, and captures child output to a file so the
+#     update-detection / rebuild-evidence greps can read it.
+#
+# ----------------------------------------------------------------------------
+# EXPECTED RUNTIME
+# ----------------------------------------------------------------------------
+#   A single migration vector with a cold Docker cache is ~15-30 min (old-era
+#   builds are authentic and slow). The full -All matrix (fresh + 3 migration
+#   vectors), each building at least once, is ~45-90+ min. Budget accordingly;
+#   nothing here is fast, by design (the point is a real end-to-end pathway).
+#
+# ----------------------------------------------------------------------------
+# FIXTURE MANIFEST (classes A-E)
+# ----------------------------------------------------------------------------
+#   Every fixture below is planted BEFORE migration and verified AFTER. Classes
+#   B/C/D/E are capability-probed or mode-gated: when the probe/precondition is
+#   not met (an old era lacks the target section, or update did not run) the
+#   corresponding check is a SKIP, never a FAIL.
+#
+#   Class A  Always-on. New-file markers + a research project, committed and
+#            uncommitted. Upstream owns none of these paths, so update merges
+#            can never conflict on them. (Phases 4/5, original coverage.)
+#   Class B  Appends to EXISTING framework files (merge/stash coverage):
+#            B(i)  COMMITTED   Dockerfile "USER ADDITIONS" block append.
+#                              Probe: grep 'USER ADDITIONS' /daaf/Dockerfile.
+#                              Marker: # test-migration-marker-B: dockerfile-user-block
+#            B(ii) UNCOMMITTED CLAUDE.md append (dirty tracked -> stash/pop path).
+#                              Probe: grep 'Primary execution language' CLAUDE.md.
+#                              Marker: <!-- test-migration-marker-Bii -->
+#   Class C  COMMITTED CLAUDE.md prose append (merge coverage on a tracked file).
+#            Probe: grep '## Identity' /daaf/CLAUDE.md.
+#            Marker: test-migration-marker-C
+#            NOTE: on daaf_dev CLAUDE.md is heavily rewritten relative to the old
+#            eras, so a committed append near it legitimately MAY hit a merge
+#            conflict on update. The .ps1 records Class C's Phase-7 outcome as an
+#            OBSERVE note (never pass/fail) to avoid a spurious FAIL on an expected
+#            conflict -- a documented divergence from the .sh (see DIVERGENCES).
+#   Class D  HOST-side environment_settings.txt byte-identity across migration
+#            (and update). Get-FileHash captured pre-migration, re-checked in
+#            Phase 7. Applicable only when the era's install seeded the file.
+#   Class E  Host-script DRIFT-HEAL (auto-mode only). A marker line is appended
+#            to <host>\view_logs.ps1 before update; a healthy update re-syncs the
+#            script (marker gone) and backs up the drifted copy as
+#            view_logs.ps1.pre-update. Verified in Phase 7b.
+#
+#   NOTE on B/C appends to tracked framework files: these deliberately exercise
+#   the updater's merge/stash paths that class-A new-file markers cannot. Appends
+#   land at END-OF-FILE, which 3-way-merges cleanly unless upstream also rewrote
+#   the file's final lines; if that happens the class B checks report CONFLICTED
+#   (an Add-Skip with a prominent note) rather than a bare FAIL, and Class C is
+#   observe-only as noted above.
+#
+# ----------------------------------------------------------------------------
+# FLAGS / ENV REFERENCE
+# ----------------------------------------------------------------------------
+#   CLI parameters (param() block below; tm_parse_args mirrors them for Pester):
+#     -All                  Run the whole matrix (implies -Auto). Aggregates child
+#                           TEST_MIGRATION_SUMMARY lines into a scoreboard.
+#     -Auto                 Non-interactive single vector (redirects child stdin;
+#                           drives update itself).
+#     -SkipMultiInstance    Skip Phase 8 (CLI equivalent of SKIP_MULTI_INSTANCE=1).
+#   Environment variables:
+#     DAAF_TEST_VERSION          Tag/branch to install, or "fresh" (default v2.0.1).
+#     DAAF_TEST_ERA              Force era pathway 1|2|3 (default: auto by version).
+#     DAAF_MIGRATION_BRANCH      Branch whose migrate/install/host scripts are tested.
+#     DAAF_TEST_AUTO=1           Env equivalent of -Auto.
+#     DAAF_TEST_MATRIX=1         Env equivalent of -All.
+#     DAAF_TEST_MATRIX_VERSIONS  Override the matrix vector list (space-separated).
+#     DAAF_TEST_MATRIX_FULL_MULTI=1  Let matrix children run Phase 8 (default: they
+#                                skip it for speed; the fresh vector never runs it).
+#     SKIP_MULTI_INSTANCE=1      Skip Phase 8.
+#     DAAF_TEST_MODE=1           Source-only: define functions (incl. tm_*) and
+#                                return before any execution (used by the Pester suite).
+#
+# ----------------------------------------------------------------------------
+# MACHINE-READABLE SUMMARY
+# ----------------------------------------------------------------------------
+#   Every single-vector run emits exactly ONE line, as its final stdout line
+#   (from Emit-SummaryOnce, via Complete-Run or the script-scope trap), in this
+#   grammar:
+#     TEST_MIGRATION_SUMMARY vector=<v> status=<PASS|FAIL|INFRA> pass=<n> fail=<n> skip=<n>
+#   status semantics (tm_classify_status): INFRA = migration/work never reached
+#   (setup broke); FAIL = the work ran but >=1 check failed; PASS = the work ran
+#   and every non-skipped check passed. The -All matrix parses this line per child
+#   to build its scoreboard and its own nonzero exit on any non-PASS.
+#
+# ----------------------------------------------------------------------------
+# .ps1 / .sh DIVERGENCES (kept in sync with test_migration.sh)
+# ----------------------------------------------------------------------------
+#   Four platform divergences, each forced by a real Windows/PowerShell constraint:
+#   1. Non-interactive seam: the .sh rides CI=1 (IS_INTERACTIVE=false); the .ps1
+#      child scripts read no CI var and instead detect [Console]::IsInputRedirected,
+#      so auto mode REDIRECTS the child's stdin from an empty file (same net effect:
+#      prompts auto-select the first valid choice).
+#   2. Existing-install refusal: install.sh's refusal path exits nonzero;
+#      install.ps1's ends in `Wait-ForUser; return`, so a refused re-install exits
+#      0. The fresh track therefore asserts the refusal STRING in captured output
+#      ONLY, never a nonzero exit code.
+#   3. Interactive child-output capture: the .sh tees child output even
+#      interactively (so it can detect an update from migrate's own offer); an
+#      interactive .ps1 cannot capture console-inherited child output, so Phase 7b
+#      (newest-endpoint) coverage requires -Auto. Interactive runs set
+#      UpdateRan=false and observe-note this.
+#   4. Host-script executable bit: the .sh asserts `-x` on downloaded host scripts;
+#      Windows has no executable bit, so the .ps1 uses a Test-Path presence check
+#      only. (The host-script SET also differs: daaf.sh/daaf_lib.sh vs
+#      daaf.ps1/daaf_lib.ps1, commit 4fa8c43 -- reflected in the fresh track and
+#      Check 9.)
+#   The B(i)/B(ii) three-way outcome (PASS / CONFLICTED-skip / FAIL) and the
+#   Class C observe-only treatment are now SHARED by both twins (the .sh backported
+#   them), so fixture semantics are no longer a divergence.
+#
 # ============================================================================
 
 [CmdletBinding()]
 param(
+    [switch]$All,
+    [switch]$Auto,
     [switch]$SkipMultiInstance
 )
 
 #Requires -Version 5.1
 $ErrorActionPreference = "Stop"
-Set-StrictMode -Version 3.0
 
 # Ensure TLS 1.2 for GitHub downloads (required on PowerShell 5.1)
 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+
+# ============================================================================
+# Pure helper functions (tm_*)  --  no docker, no network, unit-testable
+# ============================================================================
+# These carry no side effects beyond output and their return value, so the Pester
+# suite (tests/powershell/test_migration.Tests.ps1) can dot-source this file under
+# the DAAF_TEST_MODE guard below and exercise them directly. Kept underscore-named
+# (tm_*) for 1:1 traceability with the .sh twin; the underscore also sidesteps the
+# unapproved-verb warning a Verb-Noun name would trigger.
+
+function tm_detect_era([string]$Version) {
+    # Map a version string to its authentic install-era pathway.
+    #   v1.0.0           -> 1 (clone)
+    #   v2.0.0 / v2.0.1  -> 2 (ZIP)
+    #   everything else  -> 3 (install.ps1 / branch)
+    # A DAAF_TEST_ERA override belongs to the CALLER, not here.
+    if ($Version -eq "v1.0.0") { return "1" }
+    if ($Version -eq "v2.0.0" -or $Version -eq "v2.0.1") { return "2" }
+    return "3"
+}
+
+function tm_version_ge_floor([string]$Version) {
+    # Compare a vX.Y.Z tag against the Era-3 floor (v2.1.0), returning an int VALUE
+    # (not $LASTEXITCODE): 0 if tag >= v2.1.0; 1 if tag < floor; 2 if not a vX.Y.Z
+    # tag (a branch name -- the caller decides). [version] numeric parse keeps
+    # "v2.10.0" >= floor where a lexical compare would wrongly reject it.
+    if ($Version -match '^v(\d+)\.(\d+)\.(\d+)$') {
+        $parsed = [version]::new([int]$Matches[1], [int]$Matches[2], [int]$Matches[3])
+        if ($parsed -ge [version]::new(2, 1, 0)) { return 0 }
+        return 1
+    }
+    return 2
+}
+
+function tm_matrix_vectors() {
+    # The default matrix: the fresh-install track plus one vector per era.
+    # DAAF_TEST_MATRIX_VERSIONS overrides (space-separated).
+    if ($env:DAAF_TEST_MATRIX_VERSIONS) {
+        return @($env:DAAF_TEST_MATRIX_VERSIONS -split '\s+' | Where-Object { $_ -ne '' })
+    }
+    return @('fresh', 'v1.0.0', 'v2.0.1', 'v2.1.0')
+}
+
+function tm_emit_summary($Vector, $Status, $Pass, $Fail, $Skip) {
+    # Return the single machine-readable line the matrix driver (and any CI
+    # wrapper) parses. Byte-identical grammar to the .sh twin; the caller writes it.
+    return "TEST_MIGRATION_SUMMARY vector=$Vector status=$Status pass=$Pass fail=$Fail skip=$Skip"
+}
+
+function tm_parse_summary_field($Line, $Field) {
+    # Split a summary line on whitespace and return the value after '<Field>='.
+    if ($null -eq $Line) { return "" }
+    foreach ($tok in ($Line -split '\s+')) {
+        if ($tok -like "$Field=*") { return $tok.Substring($Field.Length + 1) }
+    }
+    return ""
+}
+
+function tm_classify_status([string]$Reached, [int]$FailCount) {
+    #   INFRA  the meaningful work never ran (setup broke before migration/install)
+    #   FAIL   the work ran but >=1 check failed
+    #   PASS   the work ran and every non-skipped check passed
+    if ($Reached -ne "true") { return "INFRA" }
+    if ($FailCount -gt 0) { return "FAIL" }
+    return "PASS"
+}
+
+function tm_matrix_verdict([string]$Status, [int]$Rc) {
+    # tm_matrix_verdict <status> <rc> -> return 0 (vector passed) / 1 (vector failed).
+    # Reconcile the parsed summary status against the child's ACTUAL exit code: a
+    # vector passes only when the child reported PASS *and* exited zero. A nonzero
+    # child rc fails the vector even when status=PASS (a summary line can report
+    # PASS while a later teardown/exit path returns nonzero); any non-PASS status
+    # (FAIL, INFRA, or an UNKNOWN(rc=N) placeholder) also fails. Mirrors the .sh
+    # twin's tm_matrix_verdict; returns an int VALUE, not $LASTEXITCODE.
+    if ($Status -eq "PASS" -and $Rc -eq 0) { return 0 }
+    return 1
+}
+
+function tm_parse_args([string[]]$ArgList) {
+    # Mirror the .sh tm_parse_args: fold argv into a decision object. --all/-All
+    # implies --auto (a matrix cannot pause for prompts); unknown tokens ignored.
+    # An explicit [string[]] signature (no $args) keeps it Pester-testable; the
+    # main body binds the same flags via param() and does not call this.
+    $runAll = $false; $autoMode = $false; $skipMulti = $false
+    foreach ($a in $ArgList) {
+        switch -Regex ($a) {
+            '^(--all|-All)$'                               { $runAll = $true; $autoMode = $true }
+            '^(--auto|-Auto)$'                             { $autoMode = $true }
+            '^(--skip-multi-instance|-SkipMultiInstance)$' { $skipMulti = $true }
+            default { }
+        }
+    }
+    if ($runAll) { $autoMode = $true }
+    return [pscustomobject]@{ RunAll = $runAll; AutoMode = $autoMode; SkipMultiCli = $skipMulti }
+}
+
+# --- Source-only guard (D8) ---
+# When dot-sourced with DAAF_TEST_MODE=1, return here: the Pester suite gets the
+# tm_* functions above without running any of the harness body below. Placed AFTER
+# all pure-function definitions and BEFORE Set-StrictMode / execution, mirroring the
+# guard in migrate_daaf.ps1. StrictMode is dynamically scoped, so keeping it below
+# the guard prevents it leaking into Pester's dot-sourced session.
+if ($env:DAAF_TEST_MODE -eq "1") { return }
+
+Set-StrictMode -Version 3.0
+
+# --- Argument / mode resolution ---
+# param() above binds -All/-Auto/-SkipMultiInstance; fold in the env entry points
+# (the matrix driver re-invokes children with DAAF_TEST_AUTO=1, and CI wrappers may
+# prefer env toggles). -All (and DAAF_TEST_MATRIX=1) force auto mode -- a matrix
+# cannot pause for prompts. SKIP_MULTI_INSTANCE=1 folds onto the -SkipMultiInstance
+# switch so the existing Phase-8 gate honors one flag.
+$script:RunAll = [bool]$All
+$script:AutoMode = [bool]$Auto
+if ($env:DAAF_TEST_MATRIX -eq "1") { $script:RunAll = $true }
+if ($env:DAAF_TEST_AUTO -eq "1") { $script:AutoMode = $true }
+if ($env:SKIP_MULTI_INSTANCE -eq "1") { $SkipMultiInstance = $true }
+if ($script:RunAll) { $script:AutoMode = $true }
+
+# --- Matrix driver (-All / DAAF_TEST_MATRIX=1) ---
+# Runs the whole vector list as CHILD processes of this same script (one clean
+# process per vector -- no cross-vector state), tees each child's combined output
+# to a per-vector log, parses the child's final TEST_MIGRATION_SUMMARY line, and
+# builds a scoreboard. Exits nonzero if any child was not PASS. This branch EXITs
+# before the single-vector setup below, so no single-vector summary is emitted for
+# the driver itself (it uses plain `exit`, never Complete-Run).
+if ($script:RunAll) {
+    $hostExe = (Get-Process -Id $PID).Path
+    $selfPath = $PSCommandPath
+    $matrixStamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+    $matrixDir = New-Item -ItemType Directory -Path (Join-Path ([System.IO.Path]::GetTempPath()) "daaf-matrix-$matrixStamp") -Force
+
+    Write-Host ""
+    Write-Host "==========================================" -ForegroundColor White
+    Write-Host "  DAAF Migration Test -- MATRIX (-All)" -ForegroundColor White
+    Write-Host "==========================================" -ForegroundColor White
+    Write-Host ""
+    Write-Host "  Vectors:  $((tm_matrix_vectors) -join ' ')"
+    Write-Host "  Logs:     $($matrixDir.FullName)"
+    Write-Host ""
+
+    # Children skip Phase 8 by default (each build+teardown is expensive); opt in
+    # with DAAF_TEST_MATRIX_FULL_MULTI=1. The fresh vector never runs Phase 8.
+    $childSkip = if ($env:DAAF_TEST_MATRIX_FULL_MULTI -eq "1") { "0" } else { "1" }
+
+    # Save + clear DAAF_TEST_MATRIX for the child environment: on the env entry path
+    # (DAAF_TEST_MATRIX=1) the exported value would otherwise be inherited and turn
+    # every child into another matrix driver (infinite recursion). The .sh twin
+    # carries the identical guard on its env-entry path (`env DAAF_TEST_MATRIX= ...`).
+    $savedMatrix = $env:DAAF_TEST_MATRIX
+    $savedTestVersion = $env:DAAF_TEST_VERSION
+    $savedTestAuto = $env:DAAF_TEST_AUTO
+    $savedSkipMulti = $env:SKIP_MULTI_INSTANCE
+
+    $matrixFail = 0
+    $scoreboard = @()
+    try {
+        foreach ($vec in (tm_matrix_vectors)) {
+            $thisSkip = if ($vec -eq 'fresh') { "1" } else { $childSkip }
+            $logf = Join-Path $matrixDir.FullName "$vec.log"
+            Write-Host "--- vector: $vec ---" -ForegroundColor White
+            Remove-Item Env:\DAAF_TEST_MATRIX -ErrorAction SilentlyContinue
+            $env:DAAF_TEST_VERSION = $vec
+            $env:DAAF_TEST_AUTO = "1"
+            $env:SKIP_MULTI_INSTANCE = $thisSkip
+            & $hostExe -NoProfile -ExecutionPolicy Bypass -File $selfPath 2>&1 | Tee-Object -FilePath $logf
+            $childRc = $LASTEXITCODE
+            $summaryLine = (Select-String -Path $logf -Pattern '^TEST_MIGRATION_SUMMARY ' | Select-Object -Last 1).Line
+            $vstatus = tm_parse_summary_field $summaryLine 'status'
+            $vpass = tm_parse_summary_field $summaryLine 'pass'
+            $vfail = tm_parse_summary_field $summaryLine 'fail'
+            $vskip = tm_parse_summary_field $summaryLine 'skip'
+            # Reconcile the parsed status with the child's actual exit code (see
+            # tm_matrix_verdict): a missing summary line falls back to
+            # UNKNOWN(rc=N); a PASS status riding a nonzero child rc is annotated
+            # PASS(rc=N)! on the scoreboard and counted as a failure by the verdict.
+            if ([string]::IsNullOrEmpty($vstatus)) {
+                $vstatus = "UNKNOWN(rc=$childRc)"
+                $vlabel = $vstatus
+            } elseif ($vstatus -eq "PASS" -and $childRc -ne 0) {
+                $vlabel = "PASS(rc=$childRc)!"
+            } else {
+                $vlabel = $vstatus
+            }
+            $pShow = if ($vpass) { $vpass } else { '?' }
+            $fShow = if ($vfail) { $vfail } else { '?' }
+            $sShow = if ($vskip) { $vskip } else { '?' }
+            $scoreboard += "  ${vec}: $vlabel (pass=$pShow fail=$fShow skip=$sShow)"
+            if ((tm_matrix_verdict $vstatus $childRc) -ne 0) { $matrixFail = 1 }
+            Write-Host ""
+        }
+    } finally {
+        # Restore the caller's env (clear only when it was genuinely unset).
+        if ($null -ne $savedMatrix) { $env:DAAF_TEST_MATRIX = $savedMatrix } else { Remove-Item Env:\DAAF_TEST_MATRIX -ErrorAction SilentlyContinue }
+        if ($null -ne $savedTestVersion) { $env:DAAF_TEST_VERSION = $savedTestVersion } else { Remove-Item Env:\DAAF_TEST_VERSION -ErrorAction SilentlyContinue }
+        if ($null -ne $savedTestAuto) { $env:DAAF_TEST_AUTO = $savedTestAuto } else { Remove-Item Env:\DAAF_TEST_AUTO -ErrorAction SilentlyContinue }
+        if ($null -ne $savedSkipMulti) { $env:SKIP_MULTI_INSTANCE = $savedSkipMulti } else { Remove-Item Env:\SKIP_MULTI_INSTANCE -ErrorAction SilentlyContinue }
+    }
+
+    Write-Host "==========================================" -ForegroundColor White
+    Write-Host "  Matrix Scoreboard" -ForegroundColor White
+    Write-Host "==========================================" -ForegroundColor White
+    foreach ($row in $scoreboard) { Write-Host $row }
+    Write-Host ""
+    Write-Host "  Per-vector logs: $($matrixDir.FullName)"
+    Write-Host ""
+    if ($matrixFail -ne 0) {
+        Write-Host "ERROR: One or more matrix vectors did not PASS." -ForegroundColor Red
+        exit 1
+    }
+    Write-Host "SUCCESS: All matrix vectors passed." -ForegroundColor Green
+    exit 0
+}
 
 # --- Configuration ---
 # Default install-from version: v2.0.1 -- the richest migration path (ZIP era:
@@ -125,10 +489,9 @@ $TestVersion = if ($env:DAAF_TEST_VERSION) { $env:DAAF_TEST_VERSION } else { "v2
 # daaf_dev). Overridable per-run via DAAF_MIGRATION_BRANCH without editing here.
 $MigrationBranch = if ($env:DAAF_MIGRATION_BRANCH) { $env:DAAF_MIGRATION_BRANCH } else { "daaf_dev" }
 $Repo = "DAAF-Contribution-Community/daaf"
-
-# The -SkipMultiInstance switch OR the SKIP_MULTI_INSTANCE=1 env toggle skips
-# phase 8. Fold the env toggle into the switch so downstream logic checks one flag.
-if ($env:SKIP_MULTI_INSTANCE -eq "1") { $SkipMultiInstance = $true }
+# (The -SkipMultiInstance switch and the SKIP_MULTI_INSTANCE=1 env toggle are
+# folded together in the mode-resolution block above, so downstream logic checks
+# one flag.)
 
 # --- Era detection ---
 # Era 1 = v1.0.0            clone-based: full .git, origin remote, branch main
@@ -228,10 +591,73 @@ $LocalInstallPath = Join-Path $LocalRepoRoot "scripts\host\install.ps1"
 $TestDir = Join-Path ([System.IO.Path]::GetTempPath()) "daaf-migration-test-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
 $null = New-Item -ItemType Directory -Path $TestDir -Force
 
-# Track test results
+# Track test results + machine-readable summary state. Initialized up front so the
+# summary emitter (Emit-SummaryOnce) and the script-scope trap never dereference an
+# unset $script: var under Set-StrictMode 3.0, even on an early-exit path.
 $script:TestsPassed = 0
 $script:TestsFailed = 0
+$script:TestsSkipped = 0
 $script:Failures = @()
+$script:Skips = @()
+$script:VectorName = $TestVersion       # the vector this process reports as
+$script:MigrationReached = $false       # flipped true once the meaningful work begins
+$script:SummaryEmitted = $false         # guards single emission of the summary line
+# Fixture / update state read across phases. Initialized up front so StrictMode 3.0
+# never dereferences an unset $script: var on an early-exit or skipped-plant path.
+$script:PlantedB1 = $false              # Class B(i) committed Dockerfile append planted?
+$script:PlantedC = $false               # Class C committed CLAUDE.md append planted?
+$script:PlantedB2 = $false              # Class B(ii) uncommitted CLAUDE.md append planted?
+$script:UpdateRan = $false              # did a driven update_daaf.ps1 run (auto mode)?
+$script:ClassEPlanted = $false          # Class E host-script drift marker planted?
+$script:UpdateOut = ""                  # capture file for the driven update (auto mode)
+
+function Emit-SummaryOnce {
+    # Emit the machine-readable summary exactly ONCE, as the final stdout line, so
+    # the matrix driver (and any CI wrapper) can parse this vector's outcome no
+    # matter where execution stopped. In interactive mode (not auto/matrix, not
+    # nested, real console) pause first so the tester can review output -- the
+    # matrix parse is pattern-anchored, so any trailing error text is inert.
+    if ($script:SummaryEmitted) { return }
+    $script:SummaryEmitted = $true
+    $interactive = $false
+    try { $interactive = [Environment]::UserInteractive -and (-not [Console]::IsInputRedirected) } catch { $interactive = $false }
+    if (-not $script:AutoMode -and -not $env:DAAF_NESTED -and $interactive) {
+        Write-Host ""
+        $null = Read-Host "Press Enter to continue"
+    }
+    $reached = if ($script:MigrationReached) { "true" } else { "false" }
+    $status = tm_classify_status $reached $script:TestsFailed
+    Write-Host (tm_emit_summary $script:VectorName $status $script:TestsPassed $script:TestsFailed $script:TestsSkipped)
+}
+
+function Complete-Run([int]$Code) {
+    # Single-vector exit path: emit the summary, then exit with the given code.
+    # (The matrix-driver branch above exits with plain `exit` and emits no summary.)
+    Emit-SummaryOnce
+    exit $Code
+}
+
+# Script-scope safety net: any terminating error (a Write-Error under EAP=Stop, or
+# a StrictMode violation) still emits the summary before the script dies, so an
+# aborted vector stays INFRA/FAIL-classifiable rather than a silent, unparseable
+# gap. Verified: the trap body runs to completion before `break` propagates.
+trap { Emit-SummaryOnce; break }
+
+function Add-Skip {
+    # Record an intentional skip: a check that does not apply to this vector/mode,
+    # or whose fixture could not be planted. A skip is NOT a failure and does not
+    # affect PASS/FAIL classification.
+    param([Parameter(Mandatory)][string]$Description)
+    $script:TestsSkipped++
+    $script:Skips += "  SKIP: $Description"
+    Write-Host "  SKIP: $Description" -ForegroundColor Yellow
+}
+
+function Write-ObserveNote {
+    # Informational line (neither pass/fail/skip) -- context for the reader.
+    param([Parameter(Mandatory)][string]$Message)
+    Write-Host "  NOTE: $Message" -ForegroundColor Cyan
+}
 
 function Test-Check {
     [CmdletBinding()]
@@ -301,6 +727,66 @@ function Invoke-HardenedScript {
     if ($null -eq $proc.ExitCode) {
         # Should be unreachable with the handle cached; if it ever happens,
         # fail loudly and truthfully rather than $null-comparing quietly.
+        Write-Host "WARNING: Child exit code unavailable for '$Path' - treating as failure." -ForegroundColor Yellow
+        return 1
+    }
+    return $proc.ExitCode
+}
+
+# Auto-mode sibling of Invoke-HardenedScript: spawn a HARNESS-OWNED .ps1 with its
+# STDIN redirected from an EMPTY file, which is THE non-interactive seam for the
+# .ps1 child scripts. migrate_daaf.ps1/install.ps1/update_daaf.ps1 detect
+# non-interactive mode via [Console]::IsInputRedirected (NOT a CI env var like the
+# .sh twin), so a redirected empty stdin makes Read-UserChoice auto-select the
+# first valid choice AND makes any stray Read-Host read EOF and return at once
+# (immune to the DAAF_NESTED-clobber stray-pause wart). Combined stdout+stderr are
+# captured to $CaptureFile (echoed to the host and returned to the caller) so the
+# update-detection / rebuild-evidence greps can read the child's output -- the one
+# capability interactive mode cannot provide (console-inherited child output is not
+# captured). Start-Process cannot redirect stdout and stderr to the SAME file
+# (throws), so they use separate files and are merged after.
+function Invoke-HardenedScriptAuto {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [ValidateNotNullOrEmpty()]
+        [string]$Path,
+        [Parameter(Mandatory)]
+        [ValidateNotNullOrEmpty()]
+        [string]$CaptureFile,
+        [string[]]$ScriptArgs = @()
+    )
+    try { Unblock-File -LiteralPath $Path -ErrorAction Stop } catch { Write-Verbose "Unblock-File no-op: $_" }
+
+    # Working files live next to $CaptureFile (inside the harness test dir), never
+    # in the ambient CWD. An empty stdin file = immediate EOF for the child.
+    $stdinFile = "$CaptureFile.stdin"
+    $errFile = "$CaptureFile.err"
+    $null = New-Item -ItemType File -Path $stdinFile -Force
+
+    $hostExe = (Get-Process -Id $PID).Path
+    $argList = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $Path)
+    foreach ($a in $ScriptArgs) {
+        if ($a -match '\s') { $argList += ('"' + ($a -replace '"', '\"') + '"') }
+        else { $argList += $a }
+    }
+    $proc = Start-Process -FilePath $hostExe -ArgumentList $argList -NoNewWindow -PassThru `
+        -RedirectStandardInput $stdinFile -RedirectStandardOutput $CaptureFile -RedirectStandardError $errFile
+    # Touch $proc.Handle BEFORE waiting (same PS 5.1 gotcha as Invoke-HardenedScript:
+    # without a cached handle $proc.ExitCode is $null after WaitForExit()).
+    $null = $proc.Handle
+    $proc.WaitForExit()
+
+    # Merge stderr into the capture file, then echo the whole capture to the host so
+    # the run stays followable and the caller can grep a single $CaptureFile.
+    if (Test-Path $errFile) {
+        Get-Content -LiteralPath $errFile | Add-Content -LiteralPath $CaptureFile
+        Remove-Item -LiteralPath $errFile -ErrorAction SilentlyContinue
+    }
+    Remove-Item -LiteralPath $stdinFile -ErrorAction SilentlyContinue
+    if (Test-Path $CaptureFile) { Get-Content -LiteralPath $CaptureFile | ForEach-Object { Write-Host $_ } }
+
+    if ($null -eq $proc.ExitCode) {
         Write-Host "WARNING: Child exit code unavailable for '$Path' - treating as failure." -ForegroundColor Yellow
         return 1
     }
@@ -406,6 +892,7 @@ Write-Host "  Version:   $TestVersion"
 Write-Host "  Era:       $TestEra ($EraLabel)"
 Write-Host "  Migration: from local repo (branch: $MigrationBranch)"
 Write-Host "  Work dir:  $TestDir"
+Write-Host "  Mode:      $(if ($script:AutoMode) { 'auto (non-interactive)' } else { 'interactive' })"
 Write-Host "  Multi:     $MultiLabel"
 Write-Host ""
 
@@ -452,6 +939,164 @@ $ErrorActionPreference = $savedEAP
 
 Write-Host "SUCCESS: Clean slate achieved." -ForegroundColor Green
 Write-Host ""
+
+# =====================================================================
+# FRESH-INSTALL TRACK (DAAF_TEST_VERSION=fresh) -- no migration
+# =====================================================================
+# Exercises the LOCAL install.ps1 end to end from the clean slate above, then
+# asserts the install landed and that a second install is refused. Exits after its
+# own compact results block (the migration phases below do not apply). Divergences
+# from the .sh twin are documented inline: the non-interactive seam (redirect-stdin,
+# not CI=1), the refusal exit code (refused re-install exits 0, so assert the string
+# only), the host-script set (.ps1 variants), and no executable-bit check on Windows.
+if ($TestVersion -eq "fresh") {
+    Write-Host "[2/2] Fresh-install track (local install.ps1)" -ForegroundColor White
+    Write-Host ""
+
+    # D7 guard: install.ps1 must exist in the local repo (mirror of the .sh -f test).
+    if (-not (Test-Path $LocalInstallPath)) {
+        Write-Error "Cannot find install.ps1 in the local repo -- fresh-install track needs it. Expected at: $LocalInstallPath"
+        Complete-Run 1
+    }
+
+    $FreshDir = Join-Path $TestDir "fresh"
+    $null = New-Item -ItemType Directory -Path $FreshDir -Force
+    Set-Location $FreshDir
+
+    # 'Reached the meaningful work' -- classify PASS/FAIL, not INFRA. (There is no
+    # migration in this track; MigrationReached doubles as a work-started flag.)
+    $script:MigrationReached = $true
+
+    # Copy install.ps1 into the harness-owned fresh dir and run the COPY, so
+    # Unblock-File only ever strips MOTW from a harness-written file, never the
+    # user's repo original. install.ps1 derives its install dir from the CWD
+    # (.\daaf-docker), so running the copy from $FreshDir is location-correct.
+    $FreshInstallCopy = Join-Path $FreshDir "install.ps1"
+    Copy-Item $LocalInstallPath $FreshInstallCopy -Force
+
+    Write-Host "INFO: Running local install.ps1 (branch $MigrationBranch)..." -ForegroundColor Cyan
+    Write-Host ""
+    $env:DAAF_BRANCH = $MigrationBranch
+    $env:DAAF_NESTED = "1"
+    $FreshInstallExit = 1
+    try {
+        if ($script:AutoMode) {
+            $FreshInstallExit = Invoke-HardenedScriptAuto -Path $FreshInstallCopy -CaptureFile (Join-Path $FreshDir "install.out")
+        } else {
+            $FreshInstallExit = Invoke-HardenedScript -Path $FreshInstallCopy
+        }
+    } catch {
+        Write-Host "ERROR: Could not run install.ps1: $_" -ForegroundColor Red
+        $FreshInstallExit = 1
+    }
+    Remove-Item Env:\DAAF_BRANCH -ErrorAction SilentlyContinue
+    Remove-Item Env:\DAAF_NESTED -ErrorAction SilentlyContinue
+    Write-Host ""
+
+    if ($FreshInstallExit -eq 0) {
+        Test-Check "Fresh install completed (exit 0)" $true
+    } else {
+        Write-Host "FAIL: Fresh install.ps1 did NOT complete successfully (exit $FreshInstallExit)." -ForegroundColor Red
+        Test-Check "Fresh install completed (exit $FreshInstallExit)" $false
+    }
+
+    # Discover the freshly-created container and wait for exec readiness.
+    $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+    $script:ContainerName = (docker ps -a --filter "volume=$VolumeName" --format '{{.Names}}' | Select-Object -First 1 | Out-String).Trim() -replace "`r",""
+    $ErrorActionPreference = $savedEAP
+    if (-not [string]::IsNullOrWhiteSpace($script:ContainerName)) {
+        $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+        $FreshState = (docker inspect --format '{{.State.Status}}' $script:ContainerName 2>$null | Out-String).Trim() -replace "`r",""
+        $ErrorActionPreference = $savedEAP
+        if ($FreshState -ne "running") {
+            $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+            docker start $script:ContainerName 2>&1 | Out-Null
+            $ErrorActionPreference = $savedEAP
+        }
+        $retries = 0
+        while ($retries -lt 30) {
+            Invoke-ContainerExec true 2>&1 | Out-Null
+            if ($LASTEXITCODE -eq 0) { break }
+            $retries++
+            Start-Sleep -Seconds 2
+        }
+    }
+
+    $freshExecReady = $false
+    if (-not [string]::IsNullOrWhiteSpace($script:ContainerName)) {
+        Invoke-ContainerExec true 2>&1 | Out-Null
+        $freshExecReady = ($LASTEXITCODE -eq 0)
+    }
+    Test-Check "Fresh container is exec-ready ($($script:ContainerName))" $freshExecReady
+
+    # Branch check: install.ps1 clones the branch and leaves it checked out.
+    $FreshBranch = Invoke-ContainerGit branch --show-current
+    if ($FreshBranch -eq $MigrationBranch) {
+        Test-Check "Fresh install checked out branch $MigrationBranch" $true
+    } else {
+        Test-Check "Fresh install checked out branch $MigrationBranch (got: '$FreshBranch')" $false
+    }
+
+    # Host scripts present in the fresh daaf-docker dir. DIVERGENCE from the .sh
+    # twin: Windows has no executable bit, so this is a Test-Path presence check
+    # ONLY (the .sh additionally asserts -x). The list is the .ps1 host-script set
+    # (daaf.sh/daaf_lib.sh are never shipped to Windows -- commit 4fa8c43).
+    $FreshHostDir = Join-Path $FreshDir "daaf-docker"
+    foreach ($Script in @("daaf.ps1", "daaf_lib.ps1", "backup_daaf.ps1", "restore_from_backup.ps1", "rebuild_daaf.ps1", "update_daaf.ps1", "run_daaf.ps1", "view_logs.ps1", "view_notebooks.ps1", "view_quarto.ps1", "run_vscode.ps1")) {
+        Test-Check "Fresh host script present: $Script" (Test-Path (Join-Path $FreshHostDir $Script))
+    }
+
+    # environment_settings.txt seeded by install.ps1.
+    Test-Check "Fresh install seeded environment_settings.txt" (Test-Path (Join-Path $FreshHostDir "environment_settings.txt"))
+
+    # Functional smoke: git describe sane + hooks present.
+    $FreshGitDesc = Invoke-ContainerGit describe --tags --always
+    Test-Check "Fresh install git describe returns a sane ref ($FreshGitDesc)" (-not [string]::IsNullOrWhiteSpace($FreshGitDesc))
+    Invoke-ContainerExec test -d /daaf/.claude/hooks
+    Test-Check "Fresh install framework hooks present (.claude/hooks)" ($LASTEXITCODE -eq 0)
+
+    # Second install must be REFUSED by the existing-install guard. DIVERGENCE from
+    # the .sh twin: install.ps1's refusal path ends in `Wait-ForUser; return`, so a
+    # refused re-install exits 0 (NOT nonzero). Assert the refusal STRING in the
+    # captured output ONLY -- do NOT gate on a nonzero exit code. Always capture via
+    # the auto path so the string is greppable even in an interactive fresh run.
+    Write-Host "INFO: Verifying a second install is refused by the existing-install guard..." -ForegroundColor Cyan
+    $SecondInstallOut = Join-Path $FreshDir "second_install.out"
+    $env:DAAF_BRANCH = $MigrationBranch
+    $env:DAAF_NESTED = "1"
+    try {
+        $null = Invoke-HardenedScriptAuto -Path $FreshInstallCopy -CaptureFile $SecondInstallOut
+    } catch {
+        Write-Host "WARNING: Second install run threw: $_" -ForegroundColor Yellow
+    }
+    Remove-Item Env:\DAAF_BRANCH -ErrorAction SilentlyContinue
+    Remove-Item Env:\DAAF_NESTED -ErrorAction SilentlyContinue
+    $secondRefused = $false
+    if (Test-Path $SecondInstallOut) {
+        $secondRefused = [bool](Select-String -Path $SecondInstallOut -Pattern 'existing DAAF installation was detected' -Quiet)
+    }
+    Test-Check "Second fresh install refused (existing-install guard string present)" $secondRefused
+
+    # --- Fresh-track results ---
+    Write-Host ""
+    Write-Host "==========================================" -ForegroundColor White
+    Write-Host "  Fresh-Install Track Results" -ForegroundColor White
+    Write-Host "==========================================" -ForegroundColor White
+    Write-Host ""
+    Write-Host "  Passed:   $($script:TestsPassed)" -ForegroundColor Green
+    Write-Host "  Failed:   $($script:TestsFailed)"
+    Write-Host "  Skipped:  $($script:TestsSkipped)"
+    Write-Host ""
+    if ($script:TestsFailed -gt 0) {
+        Write-Host "  Failures:" -ForegroundColor Red
+        foreach ($f in $script:Failures) { Write-Host $f -ForegroundColor Red }
+        Write-Host ""
+        Write-Host "ERROR: Fresh-install track: some checks failed." -ForegroundColor Red
+        Complete-Run 1
+    }
+    Write-Host "SUCCESS: Fresh-install track: all checks passed!" -ForegroundColor Green
+    Complete-Run 0
+}
 
 # =====================================================================
 # PHASE 2: Install Old Version (era-authentic pathway)
@@ -797,6 +1442,46 @@ foreach ($MustHave in @(
     }
 }
 Write-Host "INFO: Committed changes at: $($CommittedSha.Substring(0, [Math]::Min(12, $CommittedSha.Length)))" -ForegroundColor Cyan
+
+# --- Class B(i) + Class C: COMMITTED appends to EXISTING framework files ---
+# These exercise the updater's 3-way MERGE path on tracked files (class-A markers
+# only ever test new-file preservation). Each is capability-probed: an old era that
+# lacks the target section is recorded as a skip-at-plant (observe note), not
+# planted, so a legitimately-absent target never becomes a spurious FAIL. The
+# appends land at EOF, which merges cleanly unless upstream also rewrote the file's
+# final lines. FIXTURE RULE (PS 5.1): the bash -c payload is a PowerShell
+# single-quoted string with NO embedded double quotes; inner single quotes are
+# doubled ('') so bash receives a single-quoted printf whose \n are its own.
+Invoke-ContainerExec grep -q 'USER ADDITIONS' /daaf/Dockerfile
+if ($LASTEXITCODE -eq 0) {
+    Invoke-ContainerExec bash -c 'printf ''\n# test-migration-marker-B: dockerfile-user-block\n'' >> /daaf/Dockerfile'
+    $script:PlantedB1 = $true
+    Write-ObserveNote "Class B(i) planted: committed Dockerfile user-block append."
+} else {
+    Write-ObserveNote "Class B(i) not planted: Dockerfile has no USER ADDITIONS block at $TestVersion."
+}
+Invoke-ContainerExec grep -q '## Identity' /daaf/CLAUDE.md
+if ($LASTEXITCODE -eq 0) {
+    Invoke-ContainerExec bash -c 'printf ''\n<!-- test-migration-marker-C: committed CLAUDE.md prose line -->\n'' >> /daaf/CLAUDE.md'
+    $script:PlantedC = $true
+    Write-ObserveNote "Class C planted: committed CLAUDE.md prose append."
+} else {
+    Write-ObserveNote "Class C not planted: CLAUDE.md has no '## Identity' section at $TestVersion."
+}
+if ($script:PlantedB1 -or $script:PlantedC) {
+    $null = Invoke-ContainerGit add -A
+    $null = Invoke-ContainerGit commit -m "Test: class B(i)/C framework-file appends"
+    $B1CFiles = Invoke-ContainerGit show --name-only --format= HEAD
+    if ($script:PlantedB1 -and ($B1CFiles -notmatch 'Dockerfile')) {
+        Write-Error "Class B(i) fixture missing from its commit - aborting before migration."
+        exit 1
+    }
+    if ($script:PlantedC -and ($B1CFiles -notmatch 'CLAUDE\.md')) {
+        Write-Error "Class C fixture missing from its commit - aborting before migration."
+        exit 1
+    }
+}
+
 Write-Host "SUCCESS: Committed user work created." -ForegroundColor Green
 Write-Host ""
 
@@ -829,6 +1514,20 @@ Write-ContainerFile -Path "/daaf/agent_reference/test_migration_marker_uncommitt
 # no double quotes (PS 5.1 argv rule) -- a bare word needs no quoting at all.
 Invoke-ContainerExec bash -c 'echo uncommitted-stash-check >> /daaf/research/2026-01-15_Test_Analysis/README.md'
 
+# --- Class B(ii): UNCOMMITTED append to a tracked framework file (CLAUDE.md) ---
+# A dirty tracked change on a framework file -- exercises the updater's stash/pop
+# path on a file upstream also owns (stronger than the research/ dirty-file above,
+# which upstream never touches). Capability-probed; skipped-at-plant if the target
+# line is absent in this era. Same single-quoted-printf argv rule as Phase 4.
+Invoke-ContainerExec grep -q 'Primary execution language' /daaf/CLAUDE.md
+if ($LASTEXITCODE -eq 0) {
+    Invoke-ContainerExec bash -c 'printf ''\n<!-- test-migration-marker-Bii -->\n'' >> /daaf/CLAUDE.md'
+    $script:PlantedB2 = $true
+    Write-ObserveNote "Class B(ii) planted: uncommitted CLAUDE.md append (stash/pop path)."
+} else {
+    Write-ObserveNote "Class B(ii) not planted: CLAUDE.md lacks 'Primary execution language' at $TestVersion."
+}
+
 # Verify the uncommitted fixtures actually exist before migration runs
 foreach ($MustExist in @(
     "/daaf/research/2026-02-10_WIP_Analysis/notes.md",
@@ -845,6 +1544,13 @@ Invoke-ContainerExec grep -q uncommitted-stash-check /daaf/research/2026-01-15_T
 if ($LASTEXITCODE -ne 0) {
     Write-Error "Dirty-file fixture (README.md append) was not created - aborting before migration."
     exit 1
+}
+if ($script:PlantedB2) {
+    Invoke-ContainerExec grep -q 'test-migration-marker-Bii' /daaf/CLAUDE.md
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "Class B(ii) uncommitted fixture (CLAUDE.md append) was not created - aborting before migration."
+        exit 1
+    }
 }
 
 Write-Host "SUCCESS: Uncommitted user work created." -ForegroundColor Green
@@ -876,6 +1582,10 @@ Write-Host ""
 
 Set-Location $HostDir
 
+# We have reached the meaningful work -- outcome now classifies PASS/FAIL, not
+# INFRA. (Setup failures before this point classify INFRA via tm_classify_status.)
+$script:MigrationReached = $true
+
 # Snapshot whether the Claude state volume exists RIGHT NOW, immediately before
 # migration runs. The backup-content assertion (Check 11) needs to know whether
 # the source volume existed AT BACKUP TIME, and backup happens inside migration.
@@ -885,6 +1595,20 @@ Set-Location $HostDir
 # can legitimately create the volume, and a post-migration inspect would then
 # wrongly flip an absent-at-backup-time skip into a FAIL.
 $ClaudeVolumeExistedPreMigration = Test-DockerVolume $ClaudeVolumeName
+
+# --- Class D baseline: the host environment_settings.txt must survive migration
+#     (and any driven update) byte-for-byte. Get-FileHash gives a stable content
+#     hash independent of path/metadata (the .ps1 analogue of the .sh `cksum <`).
+$script:ClassDApplicable = $false
+$script:ClassDPre = ""
+$ClassDPath = Join-Path $HostDir "environment_settings.txt"
+if (Test-Path $ClassDPath) {
+    $script:ClassDApplicable = $true
+    $script:ClassDPre = (Get-FileHash -LiteralPath $ClassDPath -Algorithm SHA256).Hash
+    Write-ObserveNote "Class D baseline captured (environment_settings.txt SHA256: $($script:ClassDPre.Substring(0, 12))...)."
+} else {
+    Write-ObserveNote "Class D not applicable: no environment_settings.txt in $HostDir (era predates it)."
+}
 
 # Run migration non-interactively via the hardened child-process path. The copy
 # at $HostDir\migrate_daaf.ps1 is harness-owned (copied above), so Unblock-File +
@@ -897,10 +1621,18 @@ $env:DAAF_NESTED = "1"
 
 # Capture the child exit code. Wrap in try/catch too: a spawn failure (e.g. the
 # host exe cannot be resolved) throws rather than returning a code, and that is
-# itself a migration failure that must be recorded truthfully.
+# itself a migration failure that must be recorded truthfully. In auto mode the
+# migrate child runs via the redirect-stdin capture path (its output is teed to
+# migrate.out, which the interactive-vs-auto update detection below greps); in
+# interactive mode the tester drives migrate's prompts at the console.
+$script:MigrateOut = Join-Path $TestDir "migrate.out"
 $migrationExit = 1
 try {
-    $migrationExit = Invoke-HardenedScript -Path (Join-Path $HostDir "migrate_daaf.ps1")
+    if ($script:AutoMode) {
+        $migrationExit = Invoke-HardenedScriptAuto -Path (Join-Path $HostDir "migrate_daaf.ps1") -CaptureFile $script:MigrateOut
+    } else {
+        $migrationExit = Invoke-HardenedScript -Path (Join-Path $HostDir "migrate_daaf.ps1")
+    }
 } catch {
     Write-Host "ERROR: Could not run the migration script: $_" -ForegroundColor Red
     $migrationExit = 1
@@ -922,6 +1654,98 @@ if ($migrationExit -eq 0) {
     Write-Host "FAIL: Migration script did NOT complete successfully (exit code $migrationExit)." -ForegroundColor Red
     Write-Host "      Verification below still runs to show the blast radius, but migration itself FAILED." -ForegroundColor Red
     Test-Check "Migration script completed successfully (exit $migrationExit)" $false
+}
+Write-Host ""
+
+# =====================================================================
+# UPDATE DRIVING (class E + Phase 7b prerequisite)
+# =====================================================================
+# migrate_daaf.ps1 SKIPS its update offer when non-interactive (it detects the
+# redirected stdin and prints "Non-interactive mode detected - skipping update"),
+# so in auto mode the harness drives update_daaf.ps1 itself from the host dir. In
+# interactive mode the tester already answered migrate's own update offer at the
+# console -- but an interactive .ps1 CANNOT capture the console-inherited child
+# output to detect whether update ran (unlike the .sh, which tees even
+# interactively; DIVERGENCE 3), so UpdateRan stays false and Phase 7b coverage
+# requires -Auto.
+$script:UpdateOut = Join-Path $TestDir "update.out"
+if ($script:AutoMode) {
+    if (Test-Path (Join-Path $HostDir "update_daaf.ps1")) {
+        # Class E: plant a drift marker on a host script; a healthy update re-syncs
+        # it from the branch (marker gone) and backs up the drifted copy as
+        # view_logs.ps1.pre-update. Verified in Phase 7b. This is a HOST-side file
+        # edit (not a container op), so the docker-exec quoting rules do not apply.
+        $ClassEView = Join-Path $HostDir "view_logs.ps1"
+        if (Test-Path $ClassEView) {
+            Add-Content -LiteralPath $ClassEView -Value "`n# test-migration-marker-E: drifted host script"
+            $script:ClassEPlanted = $true
+            Write-ObserveNote "Class E planted: drift marker on $ClassEView."
+        }
+        Write-Host "INFO: Driving update_daaf.ps1 (non-interactive) from $HostDir..." -ForegroundColor Cyan
+        Write-Host ""
+        $env:DAAF_NESTED = "1"
+        $UpdateExit = 1
+        try {
+            $UpdateExit = Invoke-HardenedScriptAuto -Path (Join-Path $HostDir "update_daaf.ps1") -CaptureFile $script:UpdateOut
+        } catch {
+            Write-Host "ERROR: Could not run update_daaf.ps1: $_" -ForegroundColor Red
+            $UpdateExit = 1
+        }
+        Remove-Item Env:\DAAF_NESTED -ErrorAction SilentlyContinue
+        $script:UpdateRan = $true
+        Write-Host ""
+        if ($UpdateExit -eq 0) {
+            Test-Check "Update script completed (exit 0)" $true
+        } else {
+            Test-Check "Update script completed (exit $UpdateExit)" $false
+        }
+
+        # Self-update two-run: if the updater reports it updated ITSELF, a real user
+        # re-runs it once more. For the v2.1.0 vector migrate may have pre-seeded the
+        # newest update_daaf.ps1, so the banner may legitimately NOT appear -- record
+        # a skip in that case rather than a FAIL (a known consequence of routing
+        # v2.1.0 through migrate, which downloads the newest host scripts first).
+        $selfUpdated = $false
+        if (Test-Path $script:UpdateOut) {
+            $selfUpdated = [bool](Select-String -Path $script:UpdateOut -Pattern 'updater itself was updated' -Quiet)
+        }
+        if ($selfUpdated) {
+            Write-Host "INFO: Self-update detected - running update once more (as a real user would)..." -ForegroundColor Cyan
+            Write-Host ""
+            $env:DAAF_NESTED = "1"
+            $SecondUpdateOut = "$($script:UpdateOut).2"
+            $UpdateExit2 = 1
+            try {
+                $UpdateExit2 = Invoke-HardenedScriptAuto -Path (Join-Path $HostDir "update_daaf.ps1") -CaptureFile $SecondUpdateOut
+            } catch {
+                Write-Host "ERROR: Could not run update_daaf.ps1 (second run): $_" -ForegroundColor Red
+                $UpdateExit2 = 1
+            }
+            Remove-Item Env:\DAAF_NESTED -ErrorAction SilentlyContinue
+            # Append the second run's capture to the primary update.out (the .sh uses
+            # `tee -a`) so the Phase 7b greps see the union of both runs.
+            if (Test-Path $SecondUpdateOut) {
+                Get-Content -LiteralPath $SecondUpdateOut | Add-Content -LiteralPath $script:UpdateOut
+            }
+            Write-Host ""
+            if ($UpdateExit2 -eq 0) {
+                Test-Check "Self-update two-run reproduced (second update exit 0)" $true
+            } else {
+                Test-Check "Self-update two-run reproduced (second update exit $UpdateExit2)" $false
+            }
+        } else {
+            Add-Skip "Self-update two-run: no 'updater itself was updated' banner (migrate pre-seeded the newest update_daaf.ps1 for $TestVersion)."
+        }
+    } else {
+        Add-Skip "Auto-mode update driving: no update_daaf.ps1 in $HostDir (migration did not download it)."
+    }
+} else {
+    # Interactive mode: an interactive .ps1 cannot capture console-inherited child
+    # output, so we cannot detect whether the tester accepted migrate's update
+    # offer. UpdateRan stays false and Phase 7b documents its skip. Run with -Auto
+    # for Phase 7b (newest-endpoint) coverage.
+    $script:UpdateRan = $false
+    Write-ObserveNote "Interactive mode: cannot capture console-inherited child output to detect an update; Phase 7b will skip. Run with -Auto for newest-endpoint coverage."
 }
 Write-Host ""
 
@@ -972,9 +1796,12 @@ if (-not [string]::IsNullOrWhiteSpace($OriginUrl) -and $OriginUrl -match $Repo) 
 #     origin/main.
 #   - Era 3 BRANCH installs (e.g. daaf_dev): no local main ever exists; the
 #     clone's branch keeps its own tracking (origin/<branch>). migrate's
-#     set-upstream to main is a silent no-op there -- and it prints "Tracking
-#     set: main -> origin/main" regardless (documented production wart, see
-#     SESSION_NOTES.md in the harness workspace).
+#     set-upstream to main is a silent no-op there. (Historical wart: migrate
+#     once printed "Tracking set: main -> origin/main" unconditionally, even on
+#     that no-op; fixed as of commit 4cd280d (2026-07-17), which prints the
+#     message only on set-upstream success and an honest NOTE otherwise. This
+#     harness has always asserted the REAL git tracking state below, never the
+#     printed string, so its behavior is unchanged either way.)
 $ExpectedTracking = "origin/main"
 if ($TestEra -eq "3" -and $TestVersion -notmatch '^v\d+\.\d+\.\d+$') {
     $ExpectedTracking = "origin/$TestVersion"
@@ -1062,6 +1889,87 @@ $ShortSha = $CommittedSha.Substring(0, [Math]::Min(7, $CommittedSha.Length))
 Test-Check "Committed changes still in git history" ($GitLog -match $ShortSha)
 
 Write-Host ""
+Write-Host "  Extended Fixture Checks (classes B/C/D):" -ForegroundColor White
+
+# Outcome semantics for the B(i)/B(ii) appends to tracked framework files (a
+# three-way outcome, slightly richer than the .sh present/absent binary --
+# DIVERGENCE): marker present with NO git conflict markers = PASS; conflict markers
+# in the file = CONFLICTED (an Add-Skip with a prominent note, since a conflict on a
+# heavily-rewritten upstream file is an expected, non-defect outcome); marker absent
+# with no conflict markers = FAIL. The conflict probe greps for 7-char git markers
+# (<<<<<<< / >>>>>>>); '=======' is excluded because it occurs in ordinary Markdown.
+# All grep argv are PowerShell single-quoted literals with no embedded double quotes.
+
+# Class B(i): committed Dockerfile user-block append survived migration (merge path).
+if ($script:PlantedB1) {
+    Invoke-ContainerExec grep -q 'test-migration-marker-B: dockerfile-user-block' /daaf/Dockerfile
+    $b1Present = ($LASTEXITCODE -eq 0)
+    Invoke-ContainerExec grep -qE '<<<<<<<|>>>>>>>' /daaf/Dockerfile
+    $b1Conflict = ($LASTEXITCODE -eq 0)
+    if ($b1Conflict) {
+        Add-Skip "Class B(i): CONFLICTED -- git conflict markers in /daaf/Dockerfile around the committed append (expected when upstream rewrote the file's tail; not a migration defect)."
+    } elseif ($b1Present) {
+        Test-Check "Class B(i): committed Dockerfile append preserved" $true
+    } else {
+        Test-Check "Class B(i): committed Dockerfile append preserved" $false
+    }
+} else {
+    Add-Skip "Class B(i): not planted (no USER ADDITIONS block at $TestVersion)."
+}
+
+# Class C: committed CLAUDE.md prose append -- OBSERVE-ONLY (never pass/fail).
+# DIVERGENCE from the .sh (which pass/fails this): on daaf_dev CLAUDE.md is heavily
+# rewritten relative to the old eras, so a committed append near '## Identity'
+# legitimately MAY hit a merge conflict on update. Recording the outcome as an
+# observe note avoids a spurious FAIL on an expected conflict.
+if ($script:PlantedC) {
+    Invoke-ContainerExec grep -q 'test-migration-marker-C' /daaf/CLAUDE.md
+    if ($LASTEXITCODE -eq 0) {
+        Write-ObserveNote "Class C: committed CLAUDE.md append is present after migration (merge preserved it)."
+    } else {
+        Write-ObserveNote "Class C: committed CLAUDE.md append is NOT present after migration (likely a merge conflict/rewrite on this heavily-edited file -- observe-only, not a FAIL)."
+    }
+} else {
+    Add-Skip "Class C: not planted (no '## Identity' section at $TestVersion)."
+}
+
+# Class B(ii): uncommitted CLAUDE.md append survived (updater stash/pop path).
+# Same three-way outcome as B(i).
+if ($script:PlantedB2) {
+    Invoke-ContainerExec grep -q 'test-migration-marker-Bii' /daaf/CLAUDE.md
+    $b2Present = ($LASTEXITCODE -eq 0)
+    Invoke-ContainerExec grep -qE '<<<<<<<|>>>>>>>' /daaf/CLAUDE.md
+    $b2Conflict = ($LASTEXITCODE -eq 0)
+    if ($b2Conflict) {
+        Add-Skip "Class B(ii): CONFLICTED -- git conflict markers in /daaf/CLAUDE.md around the uncommitted append (expected when upstream rewrote the file's tail; not a migration defect)."
+    } elseif ($b2Present) {
+        Test-Check "Class B(ii): uncommitted CLAUDE.md append preserved (stash/pop)" $true
+    } else {
+        Test-Check "Class B(ii): uncommitted CLAUDE.md append preserved (stash/pop)" $false
+    }
+} else {
+    Add-Skip "Class B(ii): not planted (no 'Primary execution language' line at $TestVersion)."
+}
+
+# Class D: host environment_settings.txt byte-identical across migration (+update).
+# Get-FileHash is the .ps1 analogue of the .sh `cksum <`. Gated on the pre-migration
+# baseline captured in Phase 6 ($script:ClassDApplicable / $script:ClassDPre).
+if ($script:ClassDApplicable) {
+    if (Test-Path $ClassDPath) {
+        $ClassDPost = (Get-FileHash -LiteralPath $ClassDPath -Algorithm SHA256).Hash
+        if ($ClassDPost -eq $script:ClassDPre) {
+            Test-Check "Class D: environment_settings.txt byte-identical across migration" $true
+        } else {
+            Test-Check "Class D: environment_settings.txt byte-identical (pre='$($script:ClassDPre.Substring(0,12))...' post='$($ClassDPost.Substring(0,12))...')" $false
+        }
+    } else {
+        Test-Check "Class D: environment_settings.txt still present after migration" $false
+    }
+} else {
+    Add-Skip "Class D: no environment_settings.txt baseline (era predates it)."
+}
+
+Write-Host ""
 Write-Host "  Host Script Checks:" -ForegroundColor White
 
 # Check 9: Host scripts were downloaded.
@@ -1138,6 +2046,86 @@ if ($null -ne $BackupDir) {
 } else {
     Test-Check "Backup directory created during migration" $false
     Write-Host "  WARNING: Skipping backup-content checks: no backup directory to inspect." -ForegroundColor Yellow
+}
+
+# =====================================================================
+# PHASE 7b: Newest-Endpoint Verification (post-update)
+# =====================================================================
+# Gated on an actual update run (auto-mode drove it). When no update ran there is
+# no "newest endpoint" to assert, so the whole phase is a single documented SKIP
+# rather than a set of FAILs. (An interactive .ps1 run cannot capture child output
+# to confirm an update, so UpdateRan is false there -- run -Auto for this coverage;
+# the single-skip mirrors the .sh's one skip_note for the whole phase.)
+Write-Host ""
+Write-Host "[7b] Newest-endpoint checks (post-update)" -ForegroundColor White
+Write-Host ""
+if ($script:UpdateRan) {
+    # Re-discover the container (an update rebuild may have replaced it).
+    $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+    $script:ContainerName = (docker ps -a --filter "volume=$VolumeName" --format '{{.Names}}' | Select-Object -First 1 | Out-String).Trim() -replace "`r",""
+    $ErrorActionPreference = $savedEAP
+    if (-not [string]::IsNullOrWhiteSpace($script:ContainerName)) {
+        $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+        $ContainerState = (docker inspect --format '{{.State.Status}}' $script:ContainerName 2>$null | Out-String).Trim() -replace "`r",""
+        $ErrorActionPreference = $savedEAP
+        if ($ContainerState -ne "running") {
+            $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+            docker start $script:ContainerName 2>&1 | Out-Null
+            $ErrorActionPreference = $savedEAP
+            Start-Sleep -Seconds 3
+        }
+    }
+
+    # Rebuild evidence: update's build-change check invokes rebuild_daaf.ps1 when the
+    # Dockerfile/compose changed across the update; rebuild prints these strings.
+    # Absent => the build was unchanged, a legitimate skip (not a FAIL).
+    $rebuildSeen = $false
+    if (Test-Path $script:UpdateOut) {
+        $rebuildSeen = [bool](Select-String -Path $script:UpdateOut -Pattern 'Rebuilding Docker image|Rebuild complete' -Quiet)
+    }
+    if ($rebuildSeen) {
+        Test-Check "Update triggered a Docker rebuild (build strings in update output)" $true
+    } else {
+        Add-Skip "No rebuild strings in update output (Dockerfile/compose unchanged across this update -- rebuild legitimately not triggered)."
+    }
+
+    # Noble base image: the HEAD Dockerfile is FROM ubuntu:24.04 (noble). Capture as
+    # one string (Out-String) so -match returns a scalar bool for Test-Check.
+    $OsRelease = (Invoke-ContainerExec cat /etc/os-release | Out-String)
+    Test-Check "Container base image is Ubuntu noble (24.04) after update" ($OsRelease -match 'VERSION_CODENAME=noble')
+
+    # Functional smoke: container exec-ready + git sanity + hooks present.
+    Invoke-ContainerExec true 2>&1 | Out-Null
+    Test-Check "Container exec-ready after update" ($LASTEXITCODE -eq 0)
+    $GitDescPost = Invoke-ContainerGit describe --tags --always
+    Test-Check "git describe returns a sane ref after update ($GitDescPost)" (-not [string]::IsNullOrWhiteSpace($GitDescPost))
+
+    # Upstream tracking survives update (reuse the era-conditional expectation set by
+    # Check 2 above).
+    $TrackingPost = Invoke-ContainerGit rev-parse --abbrev-ref --symbolic-full-name '@{u}'
+    if ($TrackingPost -eq $ExpectedTracking) {
+        Test-Check "Upstream tracking still $ExpectedTracking after update" $true
+    } else {
+        Test-Check "Upstream tracking still $ExpectedTracking after update (got: '$TrackingPost')" $false
+    }
+    Invoke-ContainerExec test -d /daaf/.claude/hooks
+    Test-Check "Framework hooks directory present after update (.claude/hooks)" ($LASTEXITCODE -eq 0)
+
+    # Class E drift-heal: the drifted host script was re-synced (marker gone) and the
+    # drifted copy backed up as view_logs.ps1.pre-update.
+    if ($script:ClassEPlanted) {
+        $ClassEViewPost = Join-Path $HostDir "view_logs.ps1"
+        $markerGone = $true
+        if (Test-Path $ClassEViewPost) {
+            $markerGone = -not [bool](Select-String -Path $ClassEViewPost -Pattern 'test-migration-marker-E' -Quiet)
+        }
+        Test-Check "Class E: drifted host script re-synced by update (marker cleared)" $markerGone
+        Test-Check "Class E: drifted host script backed up (view_logs.ps1.pre-update)" (Test-Path (Join-Path $HostDir "view_logs.ps1.pre-update"))
+    } else {
+        Add-Skip "Class E: drift marker not planted (auto-mode only; no view_logs.ps1 at update time)."
+    }
+} else {
+    Add-Skip "Newest-endpoint checks skipped: no update ran (interactive mode, or update_daaf.ps1 absent)."
 }
 
 # =====================================================================
@@ -1335,8 +2323,17 @@ if ($script:TestsFailed -gt 0) {
 } else {
     Write-Host "  Failed:   $($script:TestsFailed)"
 }
+Write-Host "  Skipped:  $($script:TestsSkipped)" -ForegroundColor Yellow
 Write-Host ""
 
+if ($script:TestsSkipped -gt 0) {
+    Write-Host "  Skips (not failures):" -ForegroundColor Yellow
+    foreach ($s in $script:Skips) { Write-Host $s -ForegroundColor Yellow }
+    Write-Host ""
+}
+
+# The machine-readable TEST_MIGRATION_SUMMARY line is emitted by Complete-Run /
+# Emit-SummaryOnce, so it is always the final stdout line regardless of exit path.
 if ($script:TestsFailed -gt 0) {
     Write-Host "  Failures:" -ForegroundColor Red
     foreach ($f in $script:Failures) {
@@ -1347,21 +2344,21 @@ if ($script:TestsFailed -gt 0) {
     Write-Host "  Container:  $($script:ContainerName)"
     Write-Host "  Host dir:   $HostDir"
     Write-Host "  Test dir:   $TestDir"
-    exit 1
+    Write-Host ""
+    Write-Host "Test working directory preserved at: $TestDir"
+    Write-Host "(Delete manually when done inspecting)"
+    Complete-Run 1
 } else {
     Write-Host "SUCCESS: All checks passed!" -ForegroundColor Green
     Write-Host ""
     Write-Host "  The DAAF Docker resources are still running for manual inspection."
     Write-Host "  To clean up:  `$env:DAAF_NUKE_CONFIRM = '1'; & '$LocalRepoRoot\scripts\host\nuke_daaf.ps1'"
     Write-Host ""
+    Write-Host "Test working directory preserved at: $TestDir"
+    Write-Host "(Delete manually when done inspecting)"
+    Complete-Run 0
 }
 
-Write-Host "Test working directory preserved at: $TestDir"
-Write-Host "(Delete manually when done inspecting)"
-Write-Host ""
-
-# Pause before exit so the user can review output
-if (-not $env:DAAF_NESTED) {
-    Write-Host ""
-    Read-Host "Press Enter to close this window"
-}
+# NOTE: the standalone end-of-run "Press Enter to close" pause is intentionally
+# gone -- Emit-SummaryOnce performs the interactive pause (auto/nested-aware) just
+# before emitting the summary, so the summary line is always the final stdout line.
