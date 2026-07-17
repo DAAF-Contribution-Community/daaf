@@ -71,6 +71,7 @@ if [ "${DAAF_DRY_RUN:-}" = "1" ]; then
             *"inspect --format"*"State.Status"*) echo "running" ;;
             *"exec"*"true"*) return 0 ;;
             *"exec"*"test -f"*) return 0 ;;
+            *"exec"*"config"*"safe.directory"*) return 0 ;;
             *"exec"*"remote get-url"*"origin"*) echo "https://github.com/DAAF-Contribution-Community/daaf.git" ;;
             *"exec"*"fetch"*) return 0 ;;
             *"exec"*"branch --set-upstream"*) return 0 ;;
@@ -487,6 +488,67 @@ if ! container_exec test -f /daaf/CLAUDE.md; then
 fi
 
 echo "DAAF installation verified in container."
+echo ""
+
+# =====================================================================
+# 4b. GIT safe.directory EXEMPTION (before any in-container git op)
+# =====================================================================
+# Field evidence (round-5 v1.0.0 matrix field run, Mac + Windows, 2026-07-17):
+# the Era-1 (v1.0.0) volume payload at /daaf is root-owned (uid 0), but the
+# v1.0.0 image runs git as its non-root 'appuser'. Modern git (>= 2.35.2)
+# refuses to operate on a repository owned by a different uid than the process
+# running git, emitting:
+#     fatal: detected dubious ownership in repository at '/daaf'
+# Without an exemption EVERY in-container git operation below (era detection,
+# fetch, graft, tracking) returns empty -- container_git swallows stderr, so the
+# failure was previously silent and a real v1.0.0 user could not migrate at all.
+#
+# SCOPE DECISION (flagged): a SINGLE, early, well-guarded config-add here --
+# before the first in-container git operation (the era-detection probe below) --
+# rather than an Era-1-only fix. Justification from this file: the exec user, the
+# ${CONTAINER_NAME} container, and the /daaf path are identical across all era
+# branches (every downstream git site runs as the same container user via
+# docker exec, whether container_git, container_git_verbose, or
+# container_exec sh -c 'cd /daaf && git ...'), so one global exemption for that
+# user covers Era 1, Era 2, and Era 3 uniformly. It is harmless where unnecessary
+# (Era-2/3 payloads already owned by the exec user): git would have permitted
+# those repos anyway, so an extra allowed directory is a no-op and cannot regress
+# the currently-passing v2.x vectors. The get-all guard keeps it idempotent
+# across re-runs (migrate advertises itself as safe to re-run) -- no duplicate
+# safe.directory line is appended on a second run.
+echo "-------------------------------------------"
+echo "  Git safe.directory exemption"
+echo "-------------------------------------------"
+echo ""
+echo "Allowing git to operate on /daaf inside the container..."
+
+# Capture-then-test (conventions lint 9: never pipe a LIVE command into grep -q;
+# echo of an already-captured value is the sanctioned form). git config exits 1
+# when the key is unset, so tolerate that with || true.
+SAFE_DIR_EXISTING=$(container_exec git config --global --get-all safe.directory 2>/dev/null | tr -d '\r' || true)
+if echo "${SAFE_DIR_EXISTING}" | grep -qx '/daaf'; then
+    echo "  Already configured (safe.directory already lists /daaf)."
+else
+    # container_exec (unlike container_git) lets stderr through, so a genuine
+    # config-add failure is visible rather than swallowed.
+    if container_exec git config --global --add safe.directory /daaf; then
+        echo "  Configured: safe.directory -> /daaf"
+    else
+        echo ""
+        echo "ERROR: Could not configure the git safe.directory exemption for /daaf"
+        echo "inside the container."
+        echo ""
+        echo "Modern git refuses to operate on a repository owned by a different user"
+        echo "than the one running git, unless /daaf is listed as a safe.directory."
+        echo "Every git step below would otherwise fail silently, so the migration"
+        echo "cannot proceed until this is resolved."
+        echo ""
+        echo "This usually means the container's git user has no writable home"
+        echo "directory. Try restarting Docker Desktop, then re-run:  bash migrate_daaf.sh"
+        exit 1
+    fi
+fi
+
 echo ""
 
 # =====================================================================

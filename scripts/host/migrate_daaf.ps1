@@ -105,6 +105,7 @@ if ($env:DAAF_DRY_RUN -eq "1") {
             }
             "*exec*true*" { return }
             "*exec*test -f*" { return }
+            "*exec*config*safe.directory*" { return }
             "*exec*git -C /daaf remote get-url origin*" {
                 Write-Output "https://github.com/DAAF-Contribution-Community/daaf.git"
             }
@@ -672,6 +673,70 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host "DAAF installation verified in container."
+Write-Host ""
+
+# =====================================================================
+# 4b. GIT safe.directory EXEMPTION (before any in-container git op)
+# =====================================================================
+# Field evidence (round-5 v1.0.0 matrix field run, Mac + Windows, 2026-07-17):
+# the Era-1 (v1.0.0) volume payload at /daaf is root-owned (uid 0), but the
+# v1.0.0 image runs git as its non-root 'appuser'. Modern git (>= 2.35.2)
+# refuses to operate on a repository owned by a different uid than the process
+# running git, emitting:
+#     fatal: detected dubious ownership in repository at '/daaf'
+# Without an exemption EVERY in-container git operation below (era detection,
+# fetch, graft, tracking) returns empty -- Invoke-ContainerGit suppresses stderr,
+# so the failure was previously silent and a real v1.0.0 user could not migrate.
+#
+# SCOPE DECISION (flagged): a SINGLE, early, well-guarded config-add here --
+# before the first in-container git operation (the era-detection probe below) --
+# rather than an Era-1-only fix. Justification from this file: the exec user, the
+# $ContainerName container, and the /daaf path are identical across all era
+# branches (every downstream git site runs as the same container user via
+# docker exec, whether Invoke-ContainerGit, Invoke-ContainerGitVerbose, or
+# Invoke-ContainerShell "cd /daaf && git ..."), so one global exemption for that
+# user covers Era 1, Era 2, and Era 3 uniformly. It is harmless where unnecessary
+# (Era-2/3 payloads already owned by the exec user): git would have permitted
+# those repos anyway, so an extra allowed directory is a no-op and cannot regress
+# the currently-passing v2.x vectors. The get-all guard keeps it idempotent
+# across re-runs (migrate advertises itself as safe to re-run) -- no duplicate
+# safe.directory line is appended on a second run.
+# Byte-parity with the migrate_daaf.sh safe.directory block.
+Write-Host "-------------------------------------------"
+Write-Host "  Git safe.directory exemption"
+Write-Host "-------------------------------------------"
+Write-Host ""
+Write-Host "Allowing git to operate on /daaf inside the container..."
+
+# Capture the current global safe.directory entries; git config exits 1 when the
+# key is unset, which is fine -- an empty capture just routes to the add branch.
+# @() guards .Count/-contains under Set-StrictMode when the capture is empty.
+$SafeDirExisting = @(Invoke-ContainerExec git config --global --get-all safe.directory 2>$null | ForEach-Object { ($_ -replace "`r", "").Trim() })
+if ($SafeDirExisting -contains "/daaf") {
+    Write-Host "  Already configured (safe.directory already lists /daaf)."
+} else {
+    # Invoke-ContainerExec lets stderr through and leaves $LASTEXITCODE as the
+    # docker exec exit code, so a genuine config-add failure is visible and
+    # checkable rather than swallowed.
+    Invoke-ContainerExec git config --global --add safe.directory /daaf
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "  Configured: safe.directory -> /daaf"
+    } else {
+        Write-Host ""
+        Write-Host "ERROR: Could not configure the git safe.directory exemption for /daaf" -ForegroundColor Red
+        Write-Host "inside the container."
+        Write-Host ""
+        Write-Host "Modern git refuses to operate on a repository owned by a different user"
+        Write-Host "than the one running git, unless /daaf is listed as a safe.directory."
+        Write-Host "Every git step below would otherwise fail silently, so the migration"
+        Write-Host "cannot proceed until this is resolved."
+        Write-Host ""
+        Write-Host "This usually means the container's git user has no writable home"
+        Write-Host "directory. Try restarting Docker Desktop, then re-run:  .\migrate_daaf.ps1"
+        Wait-ForUser -ExitCode 1; return
+    }
+}
+
 Write-Host ""
 
 # =====================================================================

@@ -1169,3 +1169,87 @@ SH
     assert_success
     [ "${output}" -eq 2 ]
 }
+
+# ============================================================================
+# Field-Run Triage Round 5 (2026-07-17): git safe.directory exemption
+# ============================================================================
+# A root-owned v1.0.0 (Era-1) volume payload + the image's non-root appuser +
+# modern git (>= 2.35.2) => "fatal: detected dubious ownership in repository at
+# '/daaf'" on every in-container git op, so migrate could not proceed at all.
+# migrate now issues an idempotent `git config --global --add safe.directory
+# /daaf` for the exec user BEFORE the first in-container git operation (the
+# era-detection probe). These pin that the exemption is issued, targets /daaf,
+# and precedes era detection.
+
+@test "migrate: safe.directory exemption is added before the first container git op" {
+    setup_migrate_integrated
+    local calllog="${TEST_DIR}/docker_exec_calls.log"
+    run bash -c '
+        cd "'"${TEST_DIR}"'"
+        # Export so the migrate subprocess (set -u) and the exported docker
+        # function both see it.
+        export CALLLOG="'"${calllog}"'"
+        curl() {
+            local outfile=""
+            local args=("$@")
+            for ((i=0; i<${#args[@]}; i++)); do
+                if [ "${args[$i]}" = "-o" ]; then
+                    outfile="${args[$((i+1))]}"
+                    break
+                fi
+            done
+            if [ -n "${outfile}" ]; then
+                mkdir -p "$(dirname "${outfile}")"
+                echo "#!/usr/bin/env bash" > "${outfile}"
+                echo "exit 0" >> "${outfile}"
+            fi
+            return 0
+        }
+        export -f curl
+        docker() {
+            local all_args="$*"
+            # Record every docker exec invocation in call order for ordering checks.
+            case "$all_args" in
+                *"exec"*) echo "${all_args}" >> "${CALLLOG}" ;;
+            esac
+            case "$all_args" in
+                "info") return 0 ;;
+                *"volume inspect"*) return 0 ;;
+                *"ps -a"*"--filter"*"volume="*"--format"*) echo "daaf-test-1" ;;
+                *"inspect --format"*"State.Status"*) echo "running" ;;
+                *"exec"*"true"*) return 0 ;;
+                *"exec"*"test -f"*"CLAUDE.md"*) return 0 ;;
+                *"exec"*"config"*"safe.directory"*) return 0 ;;
+                *"exec"*"remote get-url"*"origin"*) echo "https://github.com/DAAF-Contribution-Community/daaf.git" ;;
+                *"exec"*"fetch"*) return 0 ;;
+                *"exec"*"branch --set-upstream"*) return 0 ;;
+                *"exec"*"remote get-url"*"upstream"*) echo "" ; return 1 ;;
+                *) return 0 ;;
+            esac
+        }
+        export -f docker
+        bash "'"${REPO_ROOT}"'/scripts/host/migrate_daaf.sh"
+    '
+    assert_success
+    assert_output --partial "Configured: safe.directory -> /daaf"
+    # The safe.directory add must be recorded, target /daaf, and precede the
+    # first era-detection git op (remote get-url origin). Revert the fix -> the
+    # add line is absent -> config_line is empty -> this assertion fails.
+    local config_line firstgit_line
+    config_line=$(grep -n -- '--add safe.directory /daaf' "${calllog}" | head -1 | cut -d: -f1)
+    firstgit_line=$(grep -n 'remote get-url origin' "${calllog}" | head -1 | cut -d: -f1)
+    [ -n "${config_line}" ]
+    [ -n "${firstgit_line}" ]
+    [ "${config_line}" -lt "${firstgit_line}" ]
+}
+
+@test "migrate: safe.directory exemption command and field-evidence rationale are present" {
+    # Source-level pin (revert-the-fix-and-it-fails): the exemption command and
+    # the field-evidence comment (git's dubious-ownership fatal) must both exist.
+    run grep -cF 'git config --global --add safe.directory /daaf' "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    assert_success
+    [ "${output}" -ge 1 ]
+    run grep -cF 'detected dubious ownership' "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    assert_success
+    [ "${output}" -ge 1 ]
+}

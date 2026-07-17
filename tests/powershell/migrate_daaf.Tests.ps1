@@ -536,6 +536,71 @@ $NonInteractive = $true
         $outputStr | Should -BeLike "*Migration complete*"
     }
 
+    It "safe.directory exemption is added before the first container git op" {
+        # Round-5 field fix: a root-owned Era-1 payload + non-root appuser + modern
+        # git => "dubious ownership" fatal on every in-container git op. migrate now
+        # issues `git config --global --add safe.directory /daaf` BEFORE the first
+        # in-container git operation (era detection). The mock logs each docker exec
+        # in call order; the config-add must be recorded and precede the era probe.
+        $env:DAAF_NESTED = "1"
+        $callLog = Join-Path $script:TestDir "docker_exec_calls.log"
+        $wrapperScript = Join-Path $script:TestDir "test_wrapper.ps1"
+        Set-Content -Path $wrapperScript -Value @'
+$ErrorActionPreference = "Stop"
+[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+function docker {
+    $argStr = $args -join ' '
+    $global:LASTEXITCODE = 0
+    if ($argStr -like '*exec*') { Add-Content -Path $CallLog -Value $argStr }
+    switch -Wildcard ($argStr) {
+        "*info*" { return }
+        "*volume inspect*" { return }
+        "*ps -a*--filter*volume=*--format*" { Write-Output "daaf-test-1" }
+        "*inspect*--format*Status*" { Write-Output "running" }
+        "*exec*true*" { return }
+        "*exec*test -f*CLAUDE.md*" { return }
+        "*exec*config*safe.directory*" { return }
+        "*exec*git -C /daaf remote get-url*upstream*" { $global:LASTEXITCODE = 1; return }
+        "*exec*git -C /daaf remote get-url*origin*" {
+            Write-Output "https://github.com/DAAF-Contribution-Community/daaf.git"
+        }
+        "*exec*git -C /daaf fetch*" { return }
+        "*exec*git -C /daaf branch --set-upstream*" { return }
+        "*exec*git*" { return }
+        "*exec*" { return }
+        "*start*" { return }
+        default { return }
+    }
+}
+function Invoke-WebRequest {
+    param([switch]$UseBasicParsing, [string]$Uri, [string]$OutFile)
+    $null = $UseBasicParsing, $Uri
+    if ($OutFile) {
+        $parentDir = Split-Path $OutFile -Parent
+        if ($parentDir -and -not (Test-Path $parentDir)) {
+            New-Item -ItemType Directory -Path $parentDir -Force | Out-Null
+        }
+        Set-Content -Path $OutFile -Value "exit 0"
+    }
+}
+$NonInteractive = $true
+'@
+        Add-Content -Path $wrapperScript -Value "`$CallLog = '$callLog'"
+        Add-Content -Path $wrapperScript -Value ". '$RepoRoot/scripts/host/migrate_daaf.ps1'"
+        $output = & pwsh -NoProfile -File $wrapperScript *>&1
+        $outputStr = $output | Out-String
+        $LASTEXITCODE | Should -BeIn @(0, $null)
+        $outputStr | Should -BeLike "*Configured: safe.directory -> /daaf*"
+        # Ordering: the config-add must precede the first era-detection git op.
+        # Revert the fix -> no add line recorded -> $addIdx is null -> this fails.
+        $logLines = @(Get-Content $callLog)
+        $addIdx = ($logLines | Select-String -SimpleMatch '--add safe.directory /daaf' | Select-Object -First 1).LineNumber
+        $eraIdx = ($logLines | Select-String -Pattern 'remote get-url.*origin' | Select-Object -First 1).LineNumber
+        $addIdx | Should -Not -BeNullOrEmpty
+        $eraIdx | Should -Not -BeNullOrEmpty
+        $addIdx | Should -BeLessThan $eraIdx
+    }
+
     It "Era 2 path (ZIP-based) detects and reports correctly" {
         $env:DAAF_NESTED = "1"
         $wrapperScript = Join-Path $script:TestDir "test_wrapper.ps1"
@@ -1092,5 +1157,33 @@ Describe "migrate_daaf.ps1 set-upstream NOTE diagnosis" {
         $content = Get-Content "$RepoRoot/scripts/host/migrate_daaf.ps1" -Raw
         ([regex]::Matches($content, [regex]::Escape("no 'origin/main' remote-tracking ref"))).Count | Should -Be 2
         ([regex]::Matches($content, [regex]::Escape('rev-parse --verify --quiet refs/remotes/origin/main'))).Count | Should -Be 2
+    }
+}
+
+# Field-Run Triage Round 5 (2026-07-17): git safe.directory exemption
+Describe "migrate_daaf.ps1 safe.directory exemption" {
+    BeforeAll {
+        . "$PSScriptRoot/TestHelper.ps1"
+        $script:Content = Get-Content "$RepoRoot/scripts/host/migrate_daaf.ps1" -Raw
+    }
+
+    It "issues an idempotent safe.directory config-add for /daaf" {
+        # A root-owned Era-1 payload + non-root appuser + modern git => dubious
+        # ownership fatal; the exemption is the documented remedy.
+        $Content | Should -Match ([regex]::Escape('git config --global --add safe.directory /daaf'))
+    }
+
+    It "cites the dubious-ownership field evidence in a comment" {
+        $Content | Should -Match 'detected dubious ownership'
+    }
+
+    It "adds the exemption before the era-detection git probe" {
+        # Source-order pin: the config-add must appear before the first
+        # `Invoke-ContainerGit remote get-url origin` (era detection).
+        $addPos = $Content.IndexOf('--add safe.directory /daaf')
+        $eraPos = $Content.IndexOf('Invoke-ContainerGit remote get-url origin')
+        $addPos | Should -BeGreaterThan -1
+        $eraPos | Should -BeGreaterThan -1
+        $addPos | Should -BeLessThan $eraPos
     }
 }
