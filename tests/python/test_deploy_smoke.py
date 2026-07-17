@@ -164,6 +164,32 @@ class BatteryEvidenceTests(unittest.TestCase):
         self.assertEqual(r.verdict, Verdict.PASS)
         self.assertTrue(target.exists())
 
+    def test_missing_cwd_is_fail_not_skip(self):
+        # A nonexistent working directory is a BROKEN HARNESS (e.g. a misdetected
+        # BASE_DIR), not a missing tool. It must FAIL loudly, never SKIP:
+        # SKIP-on-missing-cwd is fail-open and would silently skip the entire Tier D
+        # battery, with false negatives accruing false authority. Regression: on CI
+        # runners /daaf does not exist, so the old cwd=BASE_DIR default of "/daaf"
+        # raised FileNotFoundError inside subprocess.run and was misclassified as
+        # SKIP ("tool unavailable") — the exact 4-test CI failure this test guards.
+        missing = self.ev / f"nonexistent_{uuid.uuid4().hex[:8]}"
+        self.assertFalse(missing.exists())
+        r = smoke_probes._run_battery_cmd(
+            "TDX.missingcwd", "missing cwd", ["python3", "-c", "print('ran')"],
+            timeout=30, cwd=str(missing), evidence_dir=self.ev)
+        # New semantics: FAIL, explicitly NOT SKIP.
+        self.assertEqual(r.verdict, Verdict.FAIL)
+        self.assertNotEqual(r.verdict, Verdict.SKIP)
+        # The detail/evidence must identify the WORKING DIRECTORY as the problem
+        # (not a missing tool) and name the offending path.
+        haystack = (r.detail + " " + " ".join(
+            (e.note or "") + " " + (e.output or "") for e in r.evidence)).lower()
+        self.assertIn("working directory", haystack)
+        self.assertIn(str(missing).lower(), haystack)
+        # The command itself would PASS with a valid cwd (see the test above), so
+        # the FAIL is due to the cwd alone; no tool-unavailable SKIP text leaked in.
+        self.assertNotIn("unavailable", r.detail.lower())
+
 
 class T22FreshnessTests(unittest.TestCase):
     """The pure T2.2 evaluator: fresh banner + '# Exit code: 0' + this run's
@@ -331,6 +357,38 @@ class LintScopingTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 1, proc.stdout + proc.stderr)
         self.assertIn("scripts/host/bad.ps1", proc.stdout)
         self.assertIn("ErrorActionPreference", proc.stdout)
+
+
+class ProjectSlugTests(unittest.TestCase):
+    """smoke_probes._project_slug encodes a working-directory path the way Claude
+    Code names ~/.claude/projects/<slug>, derived from BASE_DIR rather than the
+    old hardcoded '-daaf'."""
+
+    def test_daaf_root_yields_observed_in_container_slug(self):
+        # Ground truth: `ls ~/.claude/projects/` in-container shows exactly '-daaf'
+        # for the working directory /daaf. This invariant preserves live behavior.
+        self.assertEqual(smoke_probes._project_slug("/daaf"), "-daaf")
+
+    def test_ci_checkout_path_encodes_each_separator(self):
+        # A GitHub Actions checkout path under the same transformation.
+        self.assertEqual(
+            smoke_probes._project_slug("/home/runner/work/daaf/daaf"),
+            "-home-runner-work-daaf-daaf",
+        )
+
+    def test_module_constant_matches_helper_applied_to_base_dir(self):
+        # The cached module constant used by the transcript helpers is exactly the
+        # helper applied to BASE_DIR (no drift between the two).
+        self.assertEqual(
+            smoke_probes._PROJECT_SLUG,
+            smoke_probes._project_slug(smoke_probes.BASE_DIR),
+        )
+        # On a live in-container deployment (BASE_DIR == /daaf), also pin the
+        # observed slug directly: the equality above is near-tautological (the
+        # module computes the constant from the helper), so this locks the live
+        # invariant against a future re-hardcoded or divergent constant.
+        if smoke_probes.BASE_DIR == "/daaf":
+            self.assertEqual(smoke_probes._PROJECT_SLUG, "-daaf")
 
 
 if __name__ == "__main__":

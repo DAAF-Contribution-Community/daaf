@@ -225,7 +225,7 @@ jobs:
       - name: Verify RV test dependencies
         run: |
           python -c 'import polars, pyarrow; print("polars", polars.__version__); print("pyarrow", pyarrow.__version__)'
-          Rscript -e 'stopifnot(requireNamespace("yaml", quietly = TRUE), requireNamespace("knitr", quietly = TRUE), requireNamespace("rmarkdown", quietly = TRUE)); cat("R ", getRversion(), "\n", sep = ""); cat("yaml ", as.character(packageVersion("yaml")), "\n", sep = ""); cat("knitr ", as.character(packageVersion("knitr")), "\n", sep = ""); cat("rmarkdown ", as.character(packageVersion("rmarkdown")), "\n", sep = "")'
+          Rscript -e 'stopifnot(requireNamespace("yaml", quietly = TRUE), requireNamespace("knitr", quietly = TRUE), requireNamespace("rmarkdown", quietly = TRUE)); cat("R ", as.character(getRversion()), "\n", sep = ""); cat("yaml ", as.character(packageVersion("yaml")), "\n", sep = ""); cat("knitr ", as.character(packageVersion("knitr")), "\n", sep = ""); cat("rmarkdown ", as.character(packageVersion("rmarkdown")), "\n", sep = "")'
           quarto --version
           bats --version
 

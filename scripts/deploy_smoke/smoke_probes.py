@@ -57,9 +57,44 @@ from benchmarks.harness.executor import (
 )
 
 
-BASE_DIR = "/daaf"
+# Derive the repo root from this module's own location rather than hardcoding
+# "/daaf": this file lives at {repo}/scripts/deploy_smoke/smoke_probes.py, so
+# parents[2] is the repo root. In-container this resolves to "/daaf" exactly
+# (preserving live-deployment behavior), while on a CI checkout it resolves to the
+# runner's checkout path (e.g. /home/runner/work/daaf/daaf). Kept a str — it is
+# interpolated into f-strings, wrapped in Path(...), and passed as cwd= throughout.
+BASE_DIR = str(Path(__file__).resolve().parents[2])
 SHIM_HEALTH_URL = "http://127.0.0.1:4141/health"
 _GLM52_STATIC_ID = re.compile(r"z-ai/glm-5\.2(?:-[0-9]{8})?")
+
+
+def _project_slug(base_dir: str) -> str:
+    """Encode a working-directory path the way Claude Code names its
+    ~/.claude/projects/<slug> transcript directory, derived from BASE_DIR rather
+    than hardcoding "-daaf" (which is only correct when the deployment root is
+    /daaf).
+
+    Ground truth (in-container, 2026-07-17): `ls ~/.claude/projects/` shows a
+    single entry `-daaf` for the working directory `/daaf`. Claude Code forms
+    that slug by replacing path separators (and other non-alphanumeric
+    punctuation) with `-`, so `/daaf` -> `-daaf`; under the same rule a CI
+    checkout like `/home/runner/work/daaf/daaf` -> `-home-runner-work-daaf-daaf`.
+
+    ASSUMES: every character outside [A-Za-z0-9] maps to a single `-`. This
+    reproduces the in-container mapping (`/daaf` -> `-daaf`) and was verified
+    equivalent to Claude Code's documented projects-dir encoding (separators and
+    all non-ASCII-alphanumeric characters become `-`, uppercase preserved, no
+    collapsing of consecutive separators; claude-code issue #19972, checked
+    2026-07-17) across adversarial cases including `.`, `_`, spaces, consecutive
+    separators, and non-ASCII — so exotic-punctuation handling is settled, not
+    open. Invariant: _project_slug('/daaf') == '-daaf' (live-deployment behavior
+    preserved)."""
+    return re.sub(r"[^A-Za-z0-9]", "-", base_dir)
+
+
+# Live projects-dir slug for this deployment root (see _project_slug). Computed
+# once from BASE_DIR so find_transcript / find_subagent_transcripts agree.
+_PROJECT_SLUG = _project_slug(BASE_DIR)
 
 
 def _is_wide_context_model(model_id: str) -> bool:
@@ -237,7 +272,7 @@ def find_transcript(session_id: str):
     Archived (clean exit) is checked first, then the live projects file (survives
     timeouts / no archive-hook fire)."""
     sessions_dir = Path(BASE_DIR) / ".claude" / "logs" / "sessions"
-    projects_dir = Path.home() / ".claude" / "projects" / "-daaf"
+    projects_dir = Path.home() / ".claude" / "projects" / _PROJECT_SLUG
     if sessions_dir.exists():
         short = session_id[:8]
         for p in sessions_dir.glob(f"*_{short}_orchestrator.jsonl"):
@@ -252,9 +287,10 @@ def find_subagent_transcripts(session_id: str):
     """Return subagent transcript paths for a session, if any.
 
     Subagent transcripts live beside the main transcript under
-    <projects>/-daaf/<session_id>/subagents/agent-<id>.jsonl (per subagent-bar.sh's
-    sidecar contract) — best-effort, fail-open to an empty list."""
-    projects_dir = Path.home() / ".claude" / "projects" / "-daaf"
+    <projects>/<slug>/<session_id>/subagents/agent-<id>.jsonl (per subagent-bar.sh's
+    sidecar contract, where <slug> is the BASE_DIR-derived _PROJECT_SLUG, e.g.
+    "-daaf" for /daaf) — best-effort, fail-open to an empty list."""
+    projects_dir = Path.home() / ".claude" / "projects" / _PROJECT_SLUG
     sub_dir = projects_dir / session_id / "subagents"
     if sub_dir.exists():
         return sorted(sub_dir.glob("agent-*.jsonl"))
@@ -1220,6 +1256,22 @@ def _run_battery_cmd(probe_id: str, name: str, cmd: list, timeout: int,
     ambiguous representation."""
     r = ProbeResult(probe_id=probe_id, name=name, tier="D")
     cmd_str = shlex.join(cmd)
+    # A missing WORKING DIRECTORY is a broken harness, not a missing tool. Without
+    # this pre-check, subprocess.run(cwd=<nonexistent>) raises FileNotFoundError,
+    # which the `except FileNotFoundError` handler below would swallow as SKIP
+    # ("tool unavailable"). That is fail-open in an evidence harness: a misdetected
+    # BASE_DIR (or an evidence dir that failed to materialize) would silently SKIP
+    # the entire Tier D battery, and false negatives accrue false authority. Fail
+    # loudly instead, and keep the FileNotFoundError handler for a genuinely missing
+    # executable — the overwhelmingly common way it fires past this guard. (Strictly,
+    # this is a check-then-run/TOCTOU pre-check: if cwd is removed in the narrow window
+    # between the is_dir() check and subprocess.run, FileNotFoundError still lands in
+    # the SKIP branch below. That race is accepted for contributor tooling.)
+    if cwd is not None and not Path(cwd).is_dir():
+        r.verdict = Verdict.FAIL
+        r.detail = f"{name} could not run: working directory does not exist: {cwd}"
+        r.add_evidence(cmd_str, note=f"working directory missing/unavailable: {cwd}")
+        return r
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, cwd=cwd, env=env)
         combined = scrub_secret_values((proc.stdout + proc.stderr).strip())

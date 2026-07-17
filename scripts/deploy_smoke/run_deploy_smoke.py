@@ -60,7 +60,11 @@ from route_detection import (  # noqa: E402
 import smoke_probes  # noqa: E402
 
 
-BASE_DIR = "/daaf"
+# Single source of truth: reuse smoke_probes' BASE_DIR (derived from that module's
+# own location, not hardcoded "/daaf") so this CLI and the probes it drives agree
+# on the deployment root on every checkout (in-container /daaf, CI runner path,
+# etc.). smoke_probes does not import this module, so there is no import cycle.
+BASE_DIR = smoke_probes.BASE_DIR
 REPORTS_ROOT = _THIS_DIR / "reports"
 PROFILES_PATH = _THIS_DIR / "profiles.yaml"
 
