@@ -216,7 +216,7 @@
 # MACHINE-READABLE SUMMARY
 # ----------------------------------------------------------------------------
 #   Every single-vector run emits exactly ONE line, as its final stdout line
-#   (from Emit-SummaryOnce, via Complete-Run or the script-scope trap), in this
+#   (from Write-SummaryOnce, via Complete-Run or the script-scope trap), in this
 #   grammar:
 #     TEST_MIGRATION_SUMMARY vector=<v> status=<PASS|FAIL|INFRA> pass=<n> fail=<n> skip=<n>
 #   status semantics (tm_classify_status): INFRA = migration/work never reached
@@ -592,7 +592,7 @@ $TestDir = Join-Path ([System.IO.Path]::GetTempPath()) "daaf-migration-test-$(Ge
 $null = New-Item -ItemType Directory -Path $TestDir -Force
 
 # Track test results + machine-readable summary state. Initialized up front so the
-# summary emitter (Emit-SummaryOnce) and the script-scope trap never dereference an
+# summary emitter (Write-SummaryOnce) and the script-scope trap never dereference an
 # unset $script: var under Set-StrictMode 3.0, even on an early-exit path.
 $script:TestsPassed = 0
 $script:TestsFailed = 0
@@ -611,7 +611,7 @@ $script:UpdateRan = $false              # did a driven update_daaf.ps1 run (auto
 $script:ClassEPlanted = $false          # Class E host-script drift marker planted?
 $script:UpdateOut = ""                  # capture file for the driven update (auto mode)
 
-function Emit-SummaryOnce {
+function Write-SummaryOnce {
     # Emit the machine-readable summary exactly ONCE, as the final stdout line, so
     # the matrix driver (and any CI wrapper) can parse this vector's outcome no
     # matter where execution stopped. In interactive mode (not auto/matrix, not
@@ -633,7 +633,7 @@ function Emit-SummaryOnce {
 function Complete-Run([int]$Code) {
     # Single-vector exit path: emit the summary, then exit with the given code.
     # (The matrix-driver branch above exits with plain `exit` and emits no summary.)
-    Emit-SummaryOnce
+    Write-SummaryOnce
     exit $Code
 }
 
@@ -641,7 +641,7 @@ function Complete-Run([int]$Code) {
 # a StrictMode violation) still emits the summary before the script dies, so an
 # aborted vector stays INFRA/FAIL-classifiable rather than a silent, unparseable
 # gap. Verified: the trap body runs to completion before `break` propagates.
-trap { Emit-SummaryOnce; break }
+trap { Write-SummaryOnce; break }
 
 function Add-Skip {
     # Record an intentional skip: a check that does not apply to this vector/mode,
@@ -2333,7 +2333,7 @@ if ($script:TestsSkipped -gt 0) {
 }
 
 # The machine-readable TEST_MIGRATION_SUMMARY line is emitted by Complete-Run /
-# Emit-SummaryOnce, so it is always the final stdout line regardless of exit path.
+# Write-SummaryOnce, so it is always the final stdout line regardless of exit path.
 if ($script:TestsFailed -gt 0) {
     Write-Host "  Failures:" -ForegroundColor Red
     foreach ($f in $script:Failures) {
@@ -2360,5 +2360,5 @@ if ($script:TestsFailed -gt 0) {
 }
 
 # NOTE: the standalone end-of-run "Press Enter to close" pause is intentionally
-# gone -- Emit-SummaryOnce performs the interactive pause (auto/nested-aware) just
+# gone -- Write-SummaryOnce performs the interactive pause (auto/nested-aware) just
 # before emitting the summary, so the summary line is always the final stdout line.

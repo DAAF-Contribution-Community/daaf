@@ -61,7 +61,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # ShellCheck is pre-installed on ubuntu-latest runners.
       # We invoke it directly to scan all .sh files across multiple
@@ -79,7 +79,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # pwsh is pre-installed on ubuntu-latest runners.
       # We install PSScriptAnalyzer and run it with the repo's config file.
@@ -99,7 +99,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # Verify every tracked .sh file has Git executable mode (100755).
       # Scripts without the executable bit will fail in Docker and on Linux.
@@ -172,7 +172,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # Windows PowerShell 5.1 (not pwsh) is the default shell on Windows.
       # This catches compatibility issues between PS 7 and PS 5.1.
@@ -192,10 +192,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
@@ -246,7 +246,7 @@ jobs:
         os: [ubuntu-latest, windows-latest]
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # Pester 5.x is pre-installed on GitHub-hosted runners.
       - name: Run Pester tests
@@ -262,7 +262,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Run DAAF convention checks
         run: bash tests/lint/check-daaf-conventions.sh
@@ -275,7 +275,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Run deploy-smoke unit tests
         run: python3 -m unittest discover -s tests/python -p 'test_deploy_smoke.py' -v
@@ -307,7 +307,7 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # Bash smoke tests (Linux/macOS only — Git Bash on Windows is unreliable
       # for complex scripts with function overrides and subshells).
@@ -756,7 +756,7 @@ jobs:
       image: bash:3.2
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # The bash:3.2 image is minimal (Alpine). Confirm the interpreter version
       # so the log makes the environment unambiguous.

@@ -299,10 +299,11 @@
 # direct-OpenAI shim lane (Option F in [4]) but UNTESTED on "openai/"-prefixed
 # OpenRouter slugs -- so on Option C prefer the explicit
 # CLAUDE_CODE_MAX_CONTEXT_TOKENS above. On the ChatGPT-subscription lane ([4.3]),
-# the [1m] hint cannot raise the Codex backend's measured ~370k ceiling: set
-# CLAUDE_CODE_MAX_CONTEXT_TOKENS=370000 per section [4.3]. DAAF keeps automatic
-# compaction disabled and instead uses the aligned physical-window declaration
-# for utilization, statusline rendering, severity, and stop/restart guidance.
+# the [1m] hint cannot raise the Codex backend's measured ~370k ceiling: set the
+# override CLAUDE_CODE_MAX_CONTEXT_TOKENS=370000 per section [4.3]. DAAF keeps
+# automatic compaction disabled and instead uses the aligned physical-window
+# declaration for utilization, statusline rendering, severity, and stop/restart
+# guidance.
 #
 # ----------------------------------------------------------------------------
 # Optional Claude Code output budget (restart required)

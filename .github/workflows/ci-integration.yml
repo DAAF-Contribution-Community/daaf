@@ -83,7 +83,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # --- Install ---
       # install.sh creates daaf-docker/ in the current working directory,
@@ -376,7 +376,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # --- Simulate Era 1 installation (git clone + docker compose up) ---
       # Era 1 users cloned the repo on their host, then ran docker compose up.
@@ -512,7 +512,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # --- Simulate Era 2 installation (ZIP extraction + docker compose up) ---
       # Era 2 users downloaded a ZIP from a specific release tag, extracted it,
@@ -714,7 +714,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # --- Install DAAF (baseline for all failure tests) ---
       - name: Install DAAF via install.sh
@@ -922,7 +922,7 @@ jobs:
                           # only if the Noble build is measured slower. See note 3.
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # --- Build + start the container (single build; reused by exec below) ---
       # install.sh builds the image and clones the repo into the /daaf volume,

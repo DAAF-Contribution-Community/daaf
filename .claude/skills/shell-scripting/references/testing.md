@@ -437,7 +437,7 @@ jobs:
   shellcheck:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: ludeeus/action-shellcheck@2.0.0
         with:
           severity: warning
@@ -446,7 +446,7 @@ jobs:
   psscriptanalyzer:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: devblackops/github-action-psscriptanalyzer@v2
         with:
           path: ./scripts
@@ -458,7 +458,7 @@ jobs:
   bats-tests:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           submodules: true
       - uses: bats-core/bats-action@4.0.0
@@ -482,7 +482,7 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       # Non-interactive lifecycle scripts — run each individually
       - if: matrix.os != 'windows-latest'
         run: |
@@ -508,7 +508,7 @@ jobs:
     container:
       image: bash:3.2
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       # Step 1: syntax check
       - run: |
           for f in scripts/host/*.sh; do bash -n "$f" || exit 1; done
@@ -530,7 +530,7 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - shell: pwsh
         run: |
           Invoke-Pester -Path ./tests/powershell/ -CI -Output Detailed
