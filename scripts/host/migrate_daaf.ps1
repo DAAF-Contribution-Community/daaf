@@ -740,6 +740,56 @@ if ($SafeDirExisting -contains "/daaf") {
 Write-Host ""
 
 # =====================================================================
+# 4c. VOLUME OWNERSHIP REPAIR (daaf-init parity, before any git write)
+# =====================================================================
+# Field evidence (round-6 v1.0.0 matrix field run, Mac + Windows, 2026-07-17):
+# the documented v1.0.0 install copied the repo into the volume with
+# `busybox cp -a`, which preserves the bind mount's presented owner -- root
+# (uid 0) on Docker Desktop -- and the v1.0.0 compose has NO ownership repair
+# (the daaf-init chown service only appeared in v2.0.0, whose compose comment
+# names this exact defect: "Docker named volumes may have files owned by root
+# or the host UID ... which blocks appuser from reading/writing"). The v1.0.0
+# container runs as non-root appuser (uid 1000) with cap_drop ALL, so on
+# Era-1 installs every in-container WRITE below fails with EPERM: git fetch
+# (objects, FETCH_HEAD), set-upstream (.git/config), and the driven update's
+# merge. The section-4b safe.directory exemption above cures git's
+# dubious-ownership REFUSAL (a read-side symptom) but not writability -- both
+# symptoms flow from the same ownership defect.
+#
+# Fix: run the exact repair the modern compose applies on every startup
+# (daaf-init: chown -R 1000:1000), via the same busybox image the documented
+# era installs already used. Idempotent and harmless where ownership is
+# already correct: Era-2/3 payloads were repaired by their own compose's
+# daaf-init at startup, so this is a no-op there and cannot regress the
+# passing v2.x paths. uid/gid 1000 is hardcoded exactly as production's
+# daaf-init hardcodes it (every era Dockerfile creates appuser as 1000:1000).
+#
+# Failure policy: warn-and-continue. On Era 2/3 a failed chown is irrelevant
+# (ownership already correct); on Era 1 the git steps below then fail loudly
+# WITH this diagnosis already printed -- strictly better than the prior
+# silent EPERM behavior.
+# Byte-parity with the migrate_daaf.sh section-4c block.
+Write-Host "-------------------------------------------"
+Write-Host "  Volume ownership repair"
+Write-Host "-------------------------------------------"
+Write-Host ""
+Write-Host "Repairing /daaf ownership for the container user (uid 1000)..."
+docker run --rm -v "${VolumeName}:/daaf" busybox chown -R 1000:1000 /daaf
+if ($LASTEXITCODE -eq 0) {
+    Write-Host "  Ownership repaired: $VolumeName -> 1000:1000 (daaf-init parity)"
+} else {
+    Write-Host ""
+    Write-Host "WARNING: Could not repair ownership of the DAAF volume ($VolumeName)." -ForegroundColor Yellow
+    Write-Host "On a v1.0.0-era installation the volume payload is typically owned by"
+    Write-Host "root, which blocks the container's non-root user from writing -- the"
+    Write-Host "git steps below may fail. Newer installations already have correct"
+    Write-Host "ownership (their compose repairs it on every startup), so this warning"
+    Write-Host "is harmless there. Continuing..."
+}
+
+Write-Host ""
+
+# =====================================================================
 # 5. DETECT ERA
 # =====================================================================
 Write-Host "-------------------------------------------"

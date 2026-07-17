@@ -1253,3 +1253,90 @@ SH
     assert_success
     [ "${output}" -ge 1 ]
 }
+
+# ============================================================================
+# Field-Run Triage Round 6 (2026-07-17): volume ownership repair (section 4c)
+# ============================================================================
+# The documented v1.0.0 install (busybox cp -a into the volume) leaves the
+# payload root-owned, and the v1.0.0 compose has no daaf-init repair service
+# (that arrived in v2.0.0). The section-4b safe.directory exemption cures git's
+# dubious-ownership refusal but not writability: Era-1 fetch/set-upstream/merge
+# all EPERM as the non-root uid-1000 container user. migrate now runs the
+# daaf-init-parity repair (busybox chown -R 1000:1000) BEFORE era detection --
+# idempotent and a no-op on Era-2/3 payloads already repaired by their compose.
+
+@test "migrate: volume ownership repair runs before the first era-detection git op" {
+    setup_migrate_integrated
+    local calllog="${TEST_DIR}/docker_all_calls.log"
+    run bash -c '
+        cd "'"${TEST_DIR}"'"
+        export CALLLOG="'"${calllog}"'"
+        curl() {
+            local outfile=""
+            local args=("$@")
+            for ((i=0; i<${#args[@]}; i++)); do
+                if [ "${args[$i]}" = "-o" ]; then
+                    outfile="${args[$((i+1))]}"
+                    break
+                fi
+            done
+            if [ -n "${outfile}" ]; then
+                mkdir -p "$(dirname "${outfile}")"
+                echo "#!/usr/bin/env bash" > "${outfile}"
+                echo "exit 0" >> "${outfile}"
+            fi
+            return 0
+        }
+        export -f curl
+        docker() {
+            local all_args="$*"
+            # Record exec calls AND the ownership-repair docker run, in call
+            # order, for the ordering assertion below.
+            case "$all_args" in
+                *"exec"*) echo "${all_args}" >> "${CALLLOG}" ;;
+                *"run"*"busybox chown"*) echo "${all_args}" >> "${CALLLOG}" ;;
+            esac
+            case "$all_args" in
+                "info") return 0 ;;
+                *"volume inspect"*) return 0 ;;
+                *"ps -a"*"--filter"*"volume="*"--format"*) echo "daaf-test-1" ;;
+                *"inspect --format"*"State.Status"*) echo "running" ;;
+                *"exec"*"true"*) return 0 ;;
+                *"exec"*"test -f"*"CLAUDE.md"*) return 0 ;;
+                *"exec"*"config"*"safe.directory"*) return 0 ;;
+                *"exec"*"remote get-url"*"origin"*) echo "https://github.com/DAAF-Contribution-Community/daaf.git" ;;
+                *"exec"*"fetch"*) return 0 ;;
+                *"exec"*"branch --set-upstream"*) return 0 ;;
+                *"exec"*"remote get-url"*"upstream"*) echo "" ; return 1 ;;
+                *) return 0 ;;
+            esac
+        }
+        export -f docker
+        bash "'"${REPO_ROOT}"'/scripts/host/migrate_daaf.sh"
+    '
+    assert_success
+    assert_output --partial "Ownership repaired:"
+    # The chown must be recorded and precede the first era-detection git op.
+    # Revert the fix -> no chown line -> chown_line empty -> assertion fails.
+    local chown_line firstgit_line
+    chown_line=$(grep -n 'busybox chown' "${calllog}" | head -1 | cut -d: -f1)
+    firstgit_line=$(grep -n 'remote get-url origin' "${calllog}" | head -1 | cut -d: -f1)
+    [ -n "${chown_line}" ]
+    [ -n "${firstgit_line}" ]
+    [ "${chown_line}" -lt "${firstgit_line}" ]
+}
+
+@test "migrate: ownership repair command, daaf-init parity rationale, and warn-and-continue policy are present" {
+    # Source-level pins (revert-the-fix-and-it-fails).
+    run grep -cF 'busybox chown -R 1000:1000 /daaf' "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    assert_success
+    [ "${output}" -ge 1 ]
+    run grep -cF 'daaf-init' "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    assert_success
+    [ "${output}" -ge 1 ]
+    # Failure is a warning, not an abort: Era-2/3 must never be blocked by a
+    # failed (unnecessary) chown.
+    run grep -cF 'WARNING: Could not repair ownership of the DAAF volume' "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    assert_success
+    [ "${output}" -ge 1 ]
+}

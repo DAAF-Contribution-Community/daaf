@@ -1187,3 +1187,37 @@ Describe "migrate_daaf.ps1 safe.directory exemption" {
         $addPos | Should -BeLessThan $eraPos
     }
 }
+
+# Field-Run Triage Round 6 (2026-07-17): volume ownership repair (section 4c).
+# The documented v1.0.0 install (busybox cp -a into the volume) leaves the
+# payload root-owned, and the v1.0.0 compose has no daaf-init repair service
+# (that arrived in v2.0.0). The section-4b safe.directory exemption cures git's
+# dubious-ownership refusal but not writability: Era-1 fetch/set-upstream/merge
+# all EPERM as the non-root uid-1000 container user. migrate now runs the
+# daaf-init-parity repair (busybox chown -R 1000:1000) BEFORE era detection --
+# idempotent and a no-op on Era-2/3 payloads already repaired by their compose.
+Describe "migrate_daaf.ps1 volume ownership repair (section 4c)" {
+    BeforeAll {
+        . "$PSScriptRoot/TestHelper.ps1"
+        $script:Content = Get-Content "$RepoRoot/scripts/host/migrate_daaf.ps1" -Raw
+    }
+
+    It "issues the daaf-init-parity ownership repair on the DAAF volume" {
+        $Content | Should -Match ([regex]::Escape('busybox chown -R 1000:1000 /daaf'))
+        $Content | Should -Match 'daaf-init'
+    }
+
+    It "repairs ownership before the era-detection git probe" {
+        # Source-order pin: the chown must appear before the first
+        # `Invoke-ContainerGit remote get-url origin` (era detection).
+        $chownPos = $Content.IndexOf('busybox chown -R 1000:1000 /daaf')
+        $eraPos = $Content.IndexOf('Invoke-ContainerGit remote get-url origin')
+        $chownPos | Should -BeGreaterThan -1
+        $eraPos | Should -BeGreaterThan -1
+        $chownPos | Should -BeLessThan $eraPos
+    }
+
+    It "warns and continues on repair failure (Era-2/3 must never be blocked by an unnecessary chown)" {
+        $Content | Should -Match ([regex]::Escape('WARNING: Could not repair ownership of the DAAF volume'))
+    }
+}
