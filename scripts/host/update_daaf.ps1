@@ -619,12 +619,15 @@ function Sync-HostScript {
     # plain-text files (environment_settings_example.txt, README.txt). All *.sh
     # files are dropped -- Windows uses the .ps1 Control Panel, not daaf.sh.
     # Bootstrap-only scripts (install.ps1, migrate_daaf.ps1) are intentionally
-    # excluded -- fetched via irm on demand, not needed post-install.
+    # excluded -- fetched via irm on demand, not needed post-install. The
+    # dev-only test harness (test_migration.ps1) is likewise excluded -- it is a
+    # contributor tool tracked in git for CI, never needed in the user's
+    # daaf-docker folder. Without this exclusion it would match *.ps1 and sync.
     $syncList = @()
     foreach ($line in ($allHostFiles -split "`n")) {
         $repoPath = $line.Trim()
         if (-not $repoPath) { continue }
-        if ($repoPath -eq "scripts/host/install.ps1" -or $repoPath -eq "scripts/host/migrate_daaf.ps1") { continue }
+        if ($repoPath -eq "scripts/host/install.ps1" -or $repoPath -eq "scripts/host/migrate_daaf.ps1" -or $repoPath -eq "scripts/host/test_migration.ps1") { continue }
         if ($repoPath -like "*.ps1" -or
             $repoPath -eq "scripts/host/environment_settings_example.txt" -or
             $repoPath -eq "scripts/host/README.txt") {

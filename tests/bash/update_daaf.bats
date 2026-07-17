@@ -284,6 +284,9 @@ teardown() {
 @test "update: sync_host_scripts ignores changed files outside the platform filter" {
     # A .ps1 file changed upstream must NOT be copied on a Unix host, and
     # install.sh / migrate_daaf.sh (bootstrap-only) are excluded even if changed.
+    # test_migration.sh (dev-only harness) is excluded too -- and because it
+    # matches the *.sh case it would be synced WITHOUT the explicit exclusion,
+    # so this assertion pins the exclusion, not merely the platform filter.
     run bash -c '
         DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
         trap - ERR
@@ -294,8 +297,8 @@ teardown() {
         docker() {
             case "$*" in
                 *rev-parse*HEAD*) echo "new5678" ;;
-                *ls-files*) printf "scripts/host/daaf.sh\nscripts/host/run_daaf.sh\nscripts/host/run_daaf.ps1\nscripts/host/install.sh\nscripts/host/migrate_daaf.sh\n" ;;
-                *diff*--name-only*) printf "scripts/host/run_daaf.ps1\nscripts/host/install.sh\nscripts/host/migrate_daaf.sh\n" ;;
+                *ls-files*) printf "scripts/host/daaf.sh\nscripts/host/run_daaf.sh\nscripts/host/run_daaf.ps1\nscripts/host/install.sh\nscripts/host/migrate_daaf.sh\nscripts/host/test_migration.sh\n" ;;
+                *diff*--name-only*) printf "scripts/host/run_daaf.ps1\nscripts/host/install.sh\nscripts/host/migrate_daaf.sh\nscripts/host/test_migration.sh\n" ;;
                 cp*) return 0 ;;
                 *) return 0 ;;
             esac
@@ -307,6 +310,7 @@ teardown() {
     refute_output --partial "run_daaf.ps1"
     refute_output --partial "Updated: install.sh"
     refute_output --partial "Updated: migrate_daaf.sh"
+    refute_output --partial "Updated: test_migration.sh"
 }
 
 @test "update: sync_host_scripts syncs README.txt on Unix (shared plain-text file)" {

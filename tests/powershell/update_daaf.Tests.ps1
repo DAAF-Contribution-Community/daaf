@@ -277,22 +277,26 @@ Describe "update_daaf.ps1 behavioral tests" {
 
         It "ignores changed files outside the platform filter" {
             # .sh files (including daaf.sh -- Unix-only now) and bootstrap-only
-            # scripts must not be copied on Windows.
+            # scripts must not be copied on Windows. test_migration.ps1 (dev-only
+            # harness) is excluded too -- and because it matches *.ps1 it would be
+            # synced WITHOUT the explicit exclusion, so this pins the exclusion,
+            # not merely the platform filter.
             New-Item -ItemType File -Path "./run_daaf.ps1" | Out-Null
             New-Item -ItemType File -Path "./daaf.ps1" | Out-Null
             Mock docker {
                 $allArgs = $args -join " "
                 if ($allArgs -match "rev-parse HEAD") { return "new-sha-999" }
-                if ($allArgs -match "ls-files") { return "scripts/host/daaf.ps1`nscripts/host/run_daaf.ps1`nscripts/host/daaf.sh`nscripts/host/run_daaf.sh`nscripts/host/install.ps1" }
-                if ($allArgs -match "diff --name-only") { return "scripts/host/daaf.sh`nscripts/host/run_daaf.sh`nscripts/host/install.ps1" }
+                if ($allArgs -match "ls-files") { return "scripts/host/daaf.ps1`nscripts/host/run_daaf.ps1`nscripts/host/daaf.sh`nscripts/host/run_daaf.sh`nscripts/host/install.ps1`nscripts/host/test_migration.ps1" }
+                if ($allArgs -match "diff --name-only") { return "scripts/host/daaf.sh`nscripts/host/run_daaf.sh`nscripts/host/install.ps1`nscripts/host/test_migration.ps1" }
                 $global:LASTEXITCODE = 0
                 return ""
             }
 
             $output = Sync-HostScript "old-sha-111" 6>&1
-            ($output | Where-Object { $_ -match "Updated: daaf.sh" })     | Should -BeNullOrEmpty
-            ($output | Where-Object { $_ -match "run_daaf.sh" })          | Should -BeNullOrEmpty
-            ($output | Where-Object { $_ -match "Updated: install.ps1" }) | Should -BeNullOrEmpty
+            ($output | Where-Object { $_ -match "Updated: daaf.sh" })           | Should -BeNullOrEmpty
+            ($output | Where-Object { $_ -match "run_daaf.sh" })                | Should -BeNullOrEmpty
+            ($output | Where-Object { $_ -match "Updated: install.ps1" })       | Should -BeNullOrEmpty
+            ($output | Where-Object { $_ -match "Updated: test_migration.ps1" }) | Should -BeNullOrEmpty
         }
 
         It "prints self-update notice when update_daaf.ps1 changed" {

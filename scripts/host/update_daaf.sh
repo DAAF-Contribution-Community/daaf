@@ -519,7 +519,10 @@ sync_host_scripts() {
     # Bootstrap-only scripts (install.sh, migrate_daaf.sh) are intentionally
     # excluded -- they are fetched via curl on demand and are not needed in the
     # daaf-docker folder post-install. This preserves the pre-existing exclusion
-    # intent from the old hardcoded list.
+    # intent from the old hardcoded list. The dev-only test harness
+    # (test_migration.sh) is likewise excluded -- it is a contributor tool
+    # tracked in git for CI, never needed in the user's daaf-docker folder.
+    # Without this exclusion it would match the *.sh case and be synced to hosts.
     #
     # ASSUMES: no negative subscripts, no mapfile, no declare -A -- Bash 3.2
     #   compatible for macOS hosts.
@@ -531,7 +534,7 @@ sync_host_scripts() {
     while IFS= read -r repo_path; do
         [ -z "${repo_path}" ] && continue
         case "${repo_path}" in
-            scripts/host/install.sh|scripts/host/migrate_daaf.sh) continue ;;
+            scripts/host/install.sh|scripts/host/migrate_daaf.sh|scripts/host/test_migration.sh) continue ;;
             *.sh|scripts/host/environment_settings_example.txt|scripts/host/README.txt) sync_list="${sync_list}${repo_path}
 " ;;
             *) continue ;;
