@@ -35,8 +35,10 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 
 | Field | Value |
 |-------|-------|
-| **DAAF Version** | [Short git commit hash — from `git rev-parse --short HEAD` at project setup] |
-| **Model ID** | [Claude model identifier — e.g., "claude-opus-4-6"] |
+| **DAAF Version (at setup)** | [Short git commit hash — from `git rev-parse --short HEAD` at project setup. Recorded once at setup; NOT refreshed to current HEAD on later sessions. A session resuming against a newer DAAF checkout should read this as the setup-time commit, not current HEAD] |
+| **Session Model ID** | [Model identifier driving the orchestrator/main session at session start — record the runtime value, not this example (e.g., "claude-opus-4-8[1m]")] |
+| **Subagent Model Tiers** | [Distinct specialist model IDs by tier, from agent frontmatter defaults (`model: opus` / `model: sonnet`) plus any per-dispatch overrides the orchestrator applied. Record resolved IDs where known, or the tier alias + session date otherwise — e.g., "opus tier: claude-opus-4-8[1m]; sonnet tier: claude-sonnet-4-5". See `.claude/skills/daaf-orchestrator/SKILL.md` > "Model Selection for Subagent Dispatch" and AI_DISCLOSURE_REFERENCE.md > Multi-Model Sessions.] |
+| **Execution Language** | [Python or R — from CLAUDE.md User Preferences] |
 | **Session Date(s)** | [Date(s) of analysis sessions — e.g., "2026-02-11"] |
 | **Session Transcript(s)** | `logs/` — collected at project completion via `collect_session_logs.sh` |
 
@@ -138,6 +140,10 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 | 1 | Fetch CCD schools | `scripts/stage5_fetch/01_fetch-ccd.py` | [PENDING/PASSED/FAILED] | [NOT_RUN/PENDING/PASSED/WARNING/REVISED] | `scripts/cr/stage5_01_cr1.py` | [1 of 5] | [0-2] | [N] | [N] | |
 | 2 | Clean CCD schools | `scripts/stage6_clean/01_clean-ccd.py` | [PENDING/PASSED/FAILED] | [NOT_RUN/PENDING/PASSED/WARNING/REVISED] | `scripts/cr/stage6_01_cr1.py` | [1 of 5] | [0-2] | [N] | [N] | |
 | 3 | Join CCD + MEPS | `scripts/stage7_transform/01_join-data.py` | [PENDING/PASSED/FAILED] | [NOT_RUN/PENDING/PASSED/WARNING/REVISED] | `scripts/cr/stage7_01_cr1.py` | [1 of 5] | [0-2] | [N] | [N] | |
+| 4 | Regression: poverty | `scripts/stage8_analysis/01_regression-poverty.py` | [PENDING/PASSED/FAILED] | [NOT_RUN/PENDING/PASSED/WARNING/REVISED] | `scripts/cr/stage8_01_cra1.py` | [1 of 5] | [0-2] | [N] | [N] | QA4a (statistical validity) |
+| 5 | Enrollment trends plot | `scripts/stage8_analysis/02_enrollment-trends.py` | [PENDING/PASSED/FAILED] | [NOT_RUN/PENDING/PASSED/WARNING/REVISED] | `scripts/cr/stage8_02_crb1.py` | [1 of 5] | [0-2] | [N] | [N] | QA4b (visualization quality) |
+
+> **Note:** Script extensions are `.py` for Python projects and `.R` for R projects. QA scripts use the same extension as the execution language. Stages 5-7 use the standard QA suffix `_cr{N}` (e.g., `stage5_01_cr1`), but **Stage 8 uses the split-QA suffix**: `_cra{N}` for QA4a (analysis/statistical review) and `_crb{N}` for QA4b (visualization review) — e.g., `stage8_01_cra1` and `stage8_02_crb1`, per `agent_reference/QA_CHECKPOINTS.md`.
 
 **QA Status Values:**
 - **NOT_RUN** — code-reviewer has not been invoked for this script (blocks next script invocation)
@@ -302,8 +308,13 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 
 | Library | Citation | Rationale | Stage | Script |
 |---------|----------|-----------|-------|--------|
-| DAAF | Kim, B.H. (2026). *DAAF: Data Analyst Augmentation Framework* (Version 2.1.0) [Computer software]. https://github.com/DAAF-Contribution-Community/daaf | Analysis framework | — | — |
-| marimo | marimo team. marimo: Reactive Python notebook [Computer software]. https://marimo.io/ | Analysis notebook format | — | — |
+| DAAF | Kim, B.H. (2026). *DAAF: Data Analyst Augmentation Framework* (Version 3.0.0) [Computer software]. https://github.com/DAAF-Contribution-Community/daaf | Analysis framework | — | — |
+| marimo | marimo team. marimo: Reactive Python notebook [Computer software]. https://marimo.io/ | Analysis notebook format (Python projects) | — | — |
+
+> **Language-conditional pre-population:** For Python projects, pre-populate the marimo row above. For R projects, replace the marimo row with R, Quarto, and tidyverse:
+> - R Core Team (2025). R: A Language and Environment for Statistical Computing. https://www.R-project.org/
+> - Allaire, J.J. et al. Quarto: An Open-Source Scientific and Technical Publishing System. https://quarto.org/
+> - Wickham, H. et al. (2019). "Welcome to the Tidyverse." JOSS, 4(43), 1686.
 
 ### Reporting Standards
 
@@ -489,7 +500,7 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 
 > Resume the [Project Title] analysis. Plan: `[exact plan path]`. Plan Tasks: `[exact Plan_Tasks path]`. State: `[exact STATE.md path]`. Currently at Stage [N] ([Stage Name]) — next step is [task description].
 
-**Orchestrator:** Update this prompt whenever hitting HIGH/CRITICAL utilization gates (≥ 60%/200k or ≥ 75%/250k tokens), before planned session breaks, or when the user decides to stop. Use concrete values — no brackets or placeholders in the actual prompt.
+**Orchestrator:** Update this prompt whenever hitting the HIGH or CRITICAL utilization gates (see CLAUDE.md § Context Quality Curve for the model-family thresholds), before planned session breaks, or when the user decides to stop. Use concrete values — no brackets or placeholders in the actual prompt.
 
 ### Resumption Instructions (Agent Reference)
 
@@ -544,6 +555,7 @@ Update STATE.md after:
 - Runtime risks discovered (append to Runtime Risks)
 - Stage 10 QA aggregation (finalize QA Findings Summary)
 - Stage 12 final review (populate Final Review Log)
+- A plan revision is accepted (Stage 4.5 revision loop, or Revision and Extension mode new-version creation) — rebuild the Transformation Progress table from the revised Plan_Tasks.md Task Index, update Current Position (Plan/Plan_Tasks paths, Current Stage) and Next Actions, then validate parity (row count == `total_tasks`; every script path present in both the table and the revised Task Index; no superseded plan-version filename remains). This is a blocking condition inside Gate G4.5; see `full-pipeline-mode.md` § STATE.md Update Gates
 
 ### Minimal Update Pattern
 

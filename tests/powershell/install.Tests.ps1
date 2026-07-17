@@ -23,6 +23,19 @@ Describe "install.ps1" {
             $Content | Should -Match '\$ErrorActionPreference\s*=\s*[''"]Stop[''"]'
         }
 
+        It "enables Set-StrictMode -Version 3.0" {
+            $Content | Should -Match 'Set-StrictMode\s+-Version\s+3\.0'
+        }
+
+        It "places Set-StrictMode after the test-mode guard" {
+            # Strict mode is dynamically scoped: placing it before the guard would
+            # leak into Pester's dot-sourced test session. It must come after.
+            $guardIdx = $Content.IndexOf('$env:DAAF_TEST_MODE -eq "1"')
+            $strictIdx = $Content.IndexOf('Set-StrictMode -Version 3.0')
+            $guardIdx | Should -BeGreaterThan -1
+            $strictIdx | Should -BeGreaterThan $guardIdx
+        }
+
         It "defines Wait-ForUser function" {
             $Content | Should -Match 'function Wait-ForUser'
         }
@@ -64,6 +77,8 @@ Describe "install.ps1" {
             $Content | Should -Match 'rebuild_daaf\.ps1'
             $Content | Should -Match 'update_daaf\.ps1'
             $Content | Should -Match 'view_logs\.ps1'
+            $Content | Should -Match 'view_notebooks\.ps1'
+            $Content | Should -Match 'view_quarto\.ps1'
         }
 
         It "verifies CLAUDE.md exists in container" {
@@ -138,7 +153,13 @@ Describe "install.ps1 behavioral tests" {
         }
 
         It "checks for existing Docker volume" {
-            $Content | Should -Match 'docker volume inspect daaf_daaf-data'
+            # Detection is project-name-aware (DAAF_PROJECT_NAME), not hardcoded
+            $Content | Should -Match 'docker volume inspect \$DataVolumeName'
+        }
+
+        It "derives the volume name from the project name with daaf default" {
+            $Content | Should -Match '\$DataVolumeName = "\$\{InstallProjectName\}_daaf-data"'
+            $Content | Should -Match '\$InstallProjectName = "daaf"'
         }
 
         It "DAAF_FORCE_REINSTALL bypasses existing check" {
@@ -161,6 +182,51 @@ Describe "install.ps1 behavioral tests" {
             $Content | Should -Match 'Start-Sleep -Seconds 2'
         }
     }
+
+    # -----------------------------------------------------------------
+    # Settings seeding (environment_settings.txt from process-env DAAF_*)
+    # -----------------------------------------------------------------
+    # Parity twin of the bash install.bats seeder tests. The Pester suite verifies
+    # the seeder by source-analysis (its harness has no docker function-mock), plus
+    # a dry-run behavioral zero-write assertion in the dry-run Describe below.
+    Context "Settings seeding" {
+        It "defines the Set-DaafSettingsKey upsert helper inline" {
+            $Content | Should -Match 'function Set-DaafSettingsKey'
+        }
+
+        It "seeds environment_settings.txt from the example template" {
+            $Content | Should -Match '\$SeedSrc = Join-Path \$InstallDir "environment_settings_example\.txt"'
+            $Content | Should -Match '\$SeedDst = Join-Path \$InstallDir "environment_settings\.txt"'
+        }
+
+        It "never overwrites an existing environment_settings.txt" {
+            $Content | Should -Match 'left untouched'
+        }
+
+        It "skips DAAF_BRANCH when it resolves to a version tag (symbolic-ref probe)" {
+            $Content | Should -Match 'symbolic-ref -q HEAD'
+            $Content | Should -Match '\$SeedBranchSkipTag'
+            $Content | Should -Match 'is a version tag'
+        }
+
+        It "runs a health probe first so an exec failure is 'could not verify', not a false tag claim" {
+            # A cheap `git rev-parse HEAD` health probe must precede the symbolic-ref
+            # branch/tag classification, gating it behind $probeOk, so a stopped
+            # container / transient exec error reports UNVERIFIED rather than "tag".
+            $Content | Should -Match 'rev-parse HEAD'
+            $Content | Should -Match '\$probeOk'
+            $Content | Should -Match '\$SeedBranchUnverified'
+            $Content | Should -Match 'could not verify whether'
+        }
+
+        It "degrades to a manual-fallback note when seeding fails (install still completes)" {
+            $Content | Should -Match 'did not fully complete'
+        }
+
+        It "is DAAF_DRY_RUN gated (prints intent, writes nothing)" {
+            $Content | Should -Match '\[DRY-RUN\] Would seed'
+        }
+    }
 }
 
 # ============================================================================
@@ -172,11 +238,22 @@ Describe "install.ps1 dry-run mode" {
         . "$PSScriptRoot/TestHelper.ps1"
         $script:OrigDryRun = $env:DAAF_DRY_RUN
         $script:OrigNested = $env:DAAF_NESTED
+        # Run inside a throwaway temp dir. install.ps1 creates a daaf-docker/
+        # tree under the current directory ($InstallDir = <CWD>/daaf-docker).
+        # Isolating the CWD keeps those artifacts out of the repo root and makes
+        # cleanup independent of the ambient working directory. Push in BeforeAll,
+        # Pop crash-proof in AfterAll.
+        $script:TestDir = New-Item -ItemType Directory -Path (Join-Path ([System.IO.Path]::GetTempPath()) "daaf-install-dry-$(Get-Random)")
+        Push-Location $script:TestDir
     }
 
     AfterAll {
         $env:DAAF_DRY_RUN = $script:OrigDryRun
         $env:DAAF_NESTED = $script:OrigNested
+        # Pop unconditionally so a mid-block failure cannot leave CWD at the repo
+        # root for the next Describe block.
+        if ((Get-Location).Path -eq $script:TestDir.FullName) { Pop-Location }
+        Remove-Item -Recurse -Force $script:TestDir -ErrorAction SilentlyContinue
     }
 
     It "completes successfully with DAAF_DRY_RUN=1" {
@@ -184,9 +261,6 @@ Describe "install.ps1 dry-run mode" {
         $env:DAAF_NESTED = "1"
         $null = & "$RepoRoot/scripts/host/install.ps1" *>&1
         $LASTEXITCODE | Should -BeIn @(0, $null)
-        # Clean up the daaf-docker directory created by install.ps1
-        $installDir = Join-Path (Get-Location).Path "daaf-docker"
-        if (Test-Path $installDir) { Remove-Item -Recurse -Force $installDir -ErrorAction SilentlyContinue }
     }
 
     It "completes full installation flow" {
@@ -194,9 +268,42 @@ Describe "install.ps1 dry-run mode" {
         $env:DAAF_NESTED = "1"
         $output = & "$RepoRoot/scripts/host/install.ps1" *>&1
         ($output | Out-String) | Should -BeLike "*Installation complete*"
-        # Clean up the daaf-docker directory created by install.ps1
-        $installDir = Join-Path (Get-Location).Path "daaf-docker"
-        if (Test-Path $installDir) { Remove-Item -Recurse -Force $installDir -ErrorAction SilentlyContinue }
+    }
+
+    # --- Regression: non-writing dry-run (2026-07-14 root-stub incident) ---
+    # Root cause: the dry-run Invoke-WebRequest mock wrote an empty file for every
+    # -OutFile target under $InstallDir (=<CWD>/daaf-docker), leaking zero-byte
+    # stubs on disk. A dry-run install must now create NOTHING -- no daaf-docker/
+    # directory, no stub files. See:
+    # research/2026-07-15_FrameworkDev_CwdLeakRootStubs/SESSION_NOTES.md
+    It "dry-run creates no daaf-docker directory or files" {
+        $env:DAAF_DRY_RUN = "1"
+        $env:DAAF_NESTED = "1"
+        $before = (Get-ChildItem -Force $script:TestDir | Select-Object -ExpandProperty Name | Sort-Object) -join "`n"
+        $null = & "$RepoRoot/scripts/host/install.ps1" *>&1
+        # The daaf-docker/ install target must not have been created.
+        (Test-Path (Join-Path $script:TestDir "daaf-docker")) | Should -Be $false
+        $after = (Get-ChildItem -Force $script:TestDir | Select-Object -ExpandProperty Name | Sort-Object) -join "`n"
+        $after | Should -Be $before
+    }
+
+    It "creates the diagnostic builder under DAAF_DIAG_BUILD=1 (dry-run mock: inspect miss -> create)" {
+        $env:DAAF_DRY_RUN = "1"
+        $env:DAAF_NESTED = "1"
+        $env:DAAF_DIAG_BUILD = "1"
+        $output = & "$RepoRoot/scripts/host/install.ps1" *>&1
+        $env:DAAF_DIAG_BUILD = $null
+        ($output | Out-String) | Should -BeLike "*Created diagnostic buildx builder*"
+    }
+
+    It "dry-run does not create environment_settings.txt (seeder zero-write)" {
+        $env:DAAF_DRY_RUN = "1"
+        $env:DAAF_NESTED = "1"
+        $env:DAAF_PROJECT_NAME = "myproj"
+        $output = & "$RepoRoot/scripts/host/install.ps1" *>&1
+        $env:DAAF_PROJECT_NAME = $null
+        ($output | Out-String) | Should -BeLike "*Would seed*"
+        (Test-Path (Join-Path $script:TestDir "daaf-docker/environment_settings.txt")) | Should -Be $false
     }
 }
 
@@ -279,6 +386,71 @@ Describe "install.ps1 error paths" {
 
         It "suggests update_daaf.ps1 as alternative" {
             $Content | Should -Match 'update_daaf\.ps1'
+        }
+    }
+
+    Context "Diagnostic builder (DAAF_DIAG_BUILD)" {
+        It "gates the diagnostic builder behind DAAF_DIAG_BUILD=1" {
+            $Content | Should -Match 'DAAF_DIAG_BUILD -eq "1"'
+        }
+
+        It "creates a docker-container buildx builder with raised size AND speed step-log limits" {
+            $Content | Should -Match 'buildx create --name daaf-diag-builder'
+            $Content | Should -Match 'BUILDKIT_STEP_LOG_MAX_SIZE=16777216'
+            $Content | Should -Match 'BUILDKIT_STEP_LOG_MAX_SPEED=10485760'
+        }
+
+        It "selects the builder via BUILDX_BUILDER and clears it after the build" {
+            $Content | Should -Match '\$env:BUILDX_BUILDER = "daaf-diag-builder"'
+            $Content | Should -Match '\$env:BUILDX_BUILDER = \$null'
+        }
+
+        It "falls open to the default builder when the builder cannot be created" {
+            $Content | Should -Match 'could not be'
+            $Content | Should -Match 'Falling back to the default builder'
+        }
+
+        It "prints an arm64 first-build heads-up notice" {
+            $Content | Should -Match 'arm64 detected'
+        }
+
+        It "uses version-robust wording in the clipped-log hint" {
+            $Content | Should -Match 'the exact limit varies by Docker version'
+        }
+
+        It "extends the build-failure hint to mention DAAF_DIAG_BUILD" {
+            $Content | Should -Match 'DAAF_DIAG_BUILD=1'
+        }
+    }
+
+    Context "Diagnostic builder: fail-open behavior (dry-run: create fails)" {
+        BeforeAll {
+            $script:OrigDryRun2 = $env:DAAF_DRY_RUN
+            $script:OrigNested2 = $env:DAAF_NESTED
+            $script:OrigDiag2 = $env:DAAF_DIAG_BUILD
+            $script:TestDir2 = New-Item -ItemType Directory -Path (Join-Path ([System.IO.Path]::GetTempPath()) "daaf-install-failopen-$(Get-Random)")
+            Push-Location $script:TestDir2
+        }
+        AfterAll {
+            $env:DAAF_DRY_RUN = $script:OrigDryRun2
+            $env:DAAF_NESTED = $script:OrigNested2
+            $env:DAAF_DIAG_BUILD = $script:OrigDiag2
+            if ((Get-Location).Path -eq $script:TestDir2.FullName) { Pop-Location }
+            Remove-Item -Recurse -Force $script:TestDir2 -ErrorAction SilentlyContinue
+        }
+
+        It "completes the install on the default builder when buildx create fails" {
+            # The script's dry-run docker mock honors DAAF_DIAG_BUILD_TEST_CREATE_FAIL
+            # to simulate a `buildx create` failure, exercising the fail-open path
+            # end-to-end (parity with the bash fail-open test).
+            $env:DAAF_DRY_RUN = "1"
+            $env:DAAF_NESTED = "1"
+            $env:DAAF_DIAG_BUILD = "1"
+            $env:DAAF_DIAG_BUILD_TEST_CREATE_FAIL = "1"
+            $output = & "$RepoRoot/scripts/host/install.ps1" *>&1
+            $env:DAAF_DIAG_BUILD_TEST_CREATE_FAIL = $null
+            ($output | Out-String) | Should -BeLike "*could not be*"
+            ($output | Out-String) | Should -Not -BeLike "*Created diagnostic buildx builder*"
         }
     }
 }

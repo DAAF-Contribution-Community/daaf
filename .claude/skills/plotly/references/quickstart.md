@@ -2,16 +2,13 @@
 
 ## Installation
 
-```bash
-# Basic install
-pip install plotly
-
-# With image export support (not installed in DAAF — use plotnine for static figures)
-# pip install plotly kaleido
-
-# Using conda
-conda install -c conda-forge plotly
-```
+No installation needed in DAAF: `plotly` (6.5.2) is pre-installed in the
+container. Image export via `kaleido` is NOT installed — use plotnine for static
+figures, or export interactive HTML. Runtime installs are blocked in DAAF
+(`pip install`/`uv add` are refused both at the command line and inside executed
+scripts — see CLAUDE.md § Runtime Package Installation). If an extra is genuinely
+required, escalate to the user to add it to the Dockerfile (user additions block
+near the end) and rebuild.
 
 ## Core Imports
 

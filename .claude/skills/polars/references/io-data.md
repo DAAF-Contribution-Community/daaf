@@ -1,5 +1,16 @@
 # Data I/O
 
+> **Package availability:** Several readers below name optional backend packages
+> via `# Requires: pip install X` comments. These are package-identity references,
+> not instructions to run. In the DAAF container only **openpyxl** (Excel reads)
+> is pre-installed; the other named backends — **xlsx2csv, connectorx, fsspec,
+> s3fs, gcsfs, adlfs, and deltalake** — are **not** present, and runtime installs
+> are blocked (`pip install`/`uv add` are refused both at the command line and
+> inside executed scripts — see CLAUDE.md § Runtime Package Installation). Parquet,
+> CSV, JSON/NDJSON, IPC/Arrow, and Avro all work with the base install. To use an
+> absent backend (databases via connectorx/ADBC, cloud storage, or Delta Lake),
+> escalate to add it to the Dockerfile user-additions block and rebuild.
+
 ## CSV Files
 
 ### Read CSV (Eager)

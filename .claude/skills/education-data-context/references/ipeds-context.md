@@ -112,6 +112,17 @@ ipeds_grad_rate = completers_150pct / first_time_full_time_cohort
 # - Part-time student outcomes (from Scorecard if available)
 ```
 
+```r
+# IPEDS grad rate alone is incomplete
+ipeds_grad_rate <- completers_150pct / first_time_full_time_cohort
+
+# Consider also examining:
+# - Transfer-out rate
+# - 200% graduation rate
+# - Pell recipient graduation rate (for equity)
+# - Part-time student outcomes (from Scorecard if available)
+```
+
 ## Enrollment Data
 
 ### Fall Enrollment vs. 12-Month Enrollment
@@ -242,6 +253,16 @@ merged = ipeds_data.join(scorecard_data, on="unitid", how="left")
 # Check for nulls after merge
 ```
 
+```r
+# IPEDS to Scorecard: both use UNITID
+ipeds_data <- arrow::read_parquet("data/raw/colleges_ipeds_directory.parquet") |> filter(year == 2020)
+scorecard_data <- arrow::read_parquet("data/raw/colleges_scorecard_earnings.parquet") |> filter(year == 2014)
+merged <- ipeds_data |> left_join(scorecard_data, by = "unitid")
+
+# Note: Not all institutions in both sources
+# Check for NAs after merge
+```
+
 ## Cohort Timing
 
 Understanding when data refers to:
@@ -313,6 +334,24 @@ def ipeds_quality_check(df, institution_type="4-year"):
             checks.append(f"Enrollment inconsistencies: {inconsistent.height}")
     
     return checks
+```
+
+```r
+# Check for plausible graduation rates
+if ("graduation_rate_150" %in% names(df)) {
+  implausible <- df |> filter(graduation_rate_150 > 100 | graduation_rate_150 < 0)
+  if (nrow(implausible) > 0) {
+    cat(sprintf("Implausible grad rates: %d\n", nrow(implausible)))
+  }
+}
+
+# Check enrollment consistency
+if (all(c("enrollment_ft", "enrollment_pt", "enrollment_total") %in% names(df))) {
+  inconsistent <- df |> filter(enrollment_ft + enrollment_pt != enrollment_total)
+  if (nrow(inconsistent) > 0) {
+    cat(sprintf("Enrollment inconsistencies: %d\n", nrow(inconsistent)))
+  }
+}
 ```
 
 ## Related Data Sources

@@ -110,6 +110,14 @@ total_exp_men = sum(all_mens_sports_expenses)
 non_football_exp_men = total_exp_men - football_expenses
 ```
 
+```r
+# All sports
+total_exp_men <- sum(all_mens_sports_expenses)
+
+# Excluding football
+non_football_exp_men <- total_exp_men - football_expenses
+```
+
 ## Sport-Level Analysis Examples
 
 ### Per-Participant Investment
@@ -125,6 +133,15 @@ basketball_women_per_athlete = basketball_women_exp / basketball_women_partic
 basketball_ratio = basketball_women_per_athlete / basketball_men_per_athlete
 ```
 
+```r
+# Basketball comparison
+basketball_men_per_athlete <- basketball_men_exp / basketball_men_partic
+basketball_women_per_athlete <- basketball_women_exp / basketball_women_partic
+
+# Investment ratio
+basketball_ratio <- basketball_women_per_athlete / basketball_men_per_athlete
+```
+
 ### Coaching Resources
 
 ```python
@@ -138,12 +155,29 @@ coaches_per_athlete_women = (
 ) / sport_partic_women
 ```
 
+```r
+# Coaches per athlete by sport
+coaches_per_athlete_men <- (
+    sport_hdcoach_men + sport_asstcoach_men
+) / sport_partic_men
+
+coaches_per_athlete_women <- (
+    sport_hdcoach_women + sport_asstcoach_women
+) / sport_partic_women
+```
+
 ### Recruiting Investment
 
 ```python
 # Recruiting per slot
 recruiting_per_athlete_men = sport_recruiting_men / sport_partic_men
 recruiting_per_athlete_women = sport_recruiting_women / sport_partic_women
+```
+
+```r
+# Recruiting per slot
+recruiting_per_athlete_men <- sport_recruiting_men / sport_partic_men
+recruiting_per_athlete_women <- sport_recruiting_women / sport_partic_women
 ```
 
 ## Sport Categories for Analysis
@@ -228,6 +262,23 @@ for sport in institution_sports:
         'revenue': sport.revenue,
         'coaches': sport.total_coaches
     })
+```
+
+```r
+library(dplyr)
+library(purrr)
+
+# Example: Aggregating sport-level data
+sports_data <- institution_sports |>
+  map(\(sport) tibble(
+    sport_name = sport$name,
+    gender = sport$gender,
+    participation = sport$participation,
+    expenses = sport$total_expenses,
+    revenue = sport$revenue,
+    coaches = sport$total_coaches
+  )) |>
+  bind_rows()
 ```
 
 ### Comparison Framework

@@ -21,7 +21,7 @@
 | Summary Statistics | Analysis dataset metadata + Stage 7 EDA logs | Notebook data cells |
 | Limitations | Plan.md § Risk Register (planning risks) + STATE.md Runtime Risks + STATE.md Blockers | LEARNINGS.md + source caveats |
 | References | STATE.md > Citations Accumulated | Plan.md § Data Citations + CITATION_REFERENCE.md (verification) |
-| AI Use Disclosure | STATE.md (session metadata) + QA summary + `agent_reference/AI_DISCLOSURE_REFERENCE.md` | CLAUDE.md (model info), DAAF commit hash from orchestrator |
+| AI Use Disclosure | STATE.md (session metadata: session model + subagent model tiers) + QA summary + `agent_reference/AI_DISCLOSURE_REFERENCE.md` | DAAF commit hash from orchestrator |
 | Technical Notes | Project file paths | — |
 | Appendix | Additional figures + extended methodology from Plan.md | — |
 
@@ -167,13 +167,13 @@ This analysis has the following limitations that should be considered when inter
 
 ### Software & Tools
 
-> Kim, B.H. (2026). *DAAF: Data Analyst Augmentation Framework* (Version 2.1.0) [Computer software]. https://github.com/DAAF-Contribution-Community/daaf
+> Kim, B.H. (2026). *DAAF: Data Analyst Augmentation Framework* (Version 3.0.0) [Computer software]. https://github.com/DAAF-Contribution-Community/daaf
 > *Cited because: Analysis framework*
 
 > [Additional software citations from STATE.md > Citations Accumulated > Software & Tools]
 > *Cited because: [rationale from STATE.md]*
 
-> [AUTO — report-writer: The DAAF and marimo citations are always included (pre-populated in STATE.md). Additional software citations come from STATE.md. Update the DAAF version number if CITATION.cff specifies a different version.]
+> [AUTO — report-writer: The DAAF citation is always included. For Python projects, the marimo citation is always included. For R projects, include R, Quarto, and key R package citations instead. Additional software citations come from STATE.md. Update the DAAF version number and year if `CITATION.cff` at the repository root specifies different values.]
 
 ### Reporting Standards
 
@@ -201,8 +201,9 @@ This analysis has the following limitations that should be considered when inter
 
 | Item | Value | Source |
 |------|-------|--------|
-| Model | `[AUTO]` [e.g., Claude Opus 4.6 (claude-opus-4-6)] | Session metadata |
-| Provider | `[AUTO]` Anthropic | — |
+| Model (session) | `[AUTO]` [Session model name and ID in use at session start, from STATE.md Session Metadata — e.g., Claude Opus 4.8 (claude-opus-4-8[1m])] | STATE.md Session Metadata |
+| Specialist models | `[AUTO]` [Distinct subagent-tier model IDs actually dispatched, from STATE.md Subagent Model Tiers — e.g., "opus tier: claude-opus-4-8[1m]; sonnet tier: claude-sonnet-4-5". Record resolved IDs where known, or the tier alias + session date otherwise. See AI_DISCLOSURE_REFERENCE.md > Multi-Model Sessions.] | STATE.md Session Metadata |
+| Provider | `[AUTO]` Anthropic [or the remapped provider(s) if alias env-var overrides were used] | — |
 | Access method | `[AUTO]` Claude Code CLI (local execution via API) | — |
 | Date of use | `[AUTO]` [Session date(s)] | STATE.md |
 | Parameters | `[AUTO]` Default API parameters; no user-configured overrides | — |
@@ -243,15 +244,21 @@ This analysis has the following limitations that should be considered when inter
 
 ### Reproducibility
 
-- **Notebook:** `YYYY-MM-DD_[Title].py`
+- **Notebook:** `YYYY-MM-DD_[Title].py` (Marimo) or `YYYY-MM-DD_[Title].qmd` (Quarto)
 - **Processed data:** `data/processed/YYYY-MM-DD_*.parquet`
 - **Raw data:** `data/raw/YYYY-MM-DD_*.parquet`
 - **Session logs:** `logs/*.{jsonl,md}` (complete interaction transcripts)
 
 ### Analysis Environment
 
+**Python execution:**
 - Python 3.12
 - Key packages: polars, plotnine, marimo
+
+**R execution:**
+- R 4.5.3
+- Key packages: tidyverse, ggplot2, arrow, quarto
+- Quarto 1.7.29
 
 ---
 

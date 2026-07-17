@@ -195,6 +195,13 @@ valid = df.filter(
 # Filter for 6-year earnings specifically
 six_yr_valid = valid.filter(pl.col("years_after_entry") == 6)
 ```
+```r
+# Filter for valid earnings (handle -3 suppression code)
+valid <- df |> filter(!is.na(earnings_med), earnings_med != -3)
+
+# Filter for 6-year earnings specifically
+six_yr_valid <- valid |> filter(years_after_entry == 6)
+```
 
 ## Data Access
 
@@ -247,6 +254,35 @@ inst = fetch_from_mirrors("scorecard/colleges_scorecard_inst_characteristics",
 valid = valid.join(
     inst.select("unitid", "inst_name", "pred_degree_awarded_ipeds"),
     on="unitid", how="left"
+)
+```
+```r
+# Fetch earnings data.
+# fetch_from_mirrors() is a Python helper; in R, build the URL from the mirror
+# root in mirrors.yaml and read directly.
+# Mirror failover: see `education-data-query/references/fetch-patterns.md` (R pattern).
+config <- yaml::read_yaml("mirrors.yaml")
+mirror <- config$mirrors[[1]]
+url <- paste0(mirror$root_url, "/", "scorecard/colleges_scorecard_earnings", ".", mirror$format)
+# NOTE: illustrative only — mirror parquet files are Polars-written and may
+# declare string_view columns, so a plain read can fail under R arrow
+# ("cannot handle Array of type <utf8_view>"). Real fetch scripts must use the
+# view-safe parquet read from `education-data-query/references/fetch-patterns.md`.
+earnings <- arrow::read_parquet(url)
+
+# Filter by time horizon (LONG format — filter, don't use wide column names)
+six_yr <- earnings |> filter(years_after_entry == 6)
+
+# Filter for valid earnings (exclude -3 suppression code)
+valid <- six_yr |> filter(!is.na(earnings_med), earnings_med != -3)
+
+# Institution names/control are NOT in the earnings dataset.
+# Join to inst_characteristics or IPEDS directory (filter years locally):
+url <- paste0(mirror$root_url, "/", "scorecard/colleges_scorecard_inst_characteristics", ".", mirror$format)
+inst <- arrow::read_parquet(url) |> filter(year == 2020)
+valid <- valid |> left_join(
+  inst |> select(unitid, inst_name, pred_degree_awarded_ipeds),
+  by = "unitid"
 )
 ```
 

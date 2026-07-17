@@ -105,6 +105,22 @@ def interpret_earnings(earnings_6yr, earnings_10yr, pct_employed):
     return notes
 ```
 
+```r
+# Earnings analysis caveats
+# Context for earnings interpretation:
+# - These are Title IV recipients only
+# - Only employed individuals included
+# - Self-employment excluded
+
+if (!is.null(pct_employed) && pct_employed < 0.7) {
+  cat("WARNING: <70% employed; earnings may not be representative\n")
+}
+
+if (!is.null(earnings_10yr) && earnings_10yr < 30000) {
+  cat("NOTE: Low earnings may reflect part-time work or career fields\n")
+}
+```
+
 ### Earnings Suppression
 
 Earnings are suppressed when:
@@ -255,6 +271,18 @@ def analyze_field_earnings(df, cip_level="2digit"):
     return df.filter(pl.col("earnings_median").is_not_null())
 ```
 
+```r
+# Field-level analysis - check suppression
+suppressed_pct <- sum(is.na(df$earnings_median)) / nrow(df)
+
+if (suppressed_pct > 0.3) {
+  cat(sprintf("WARNING: %.0f%% of fields suppressed\n", suppressed_pct * 100))
+  cat("Results may not be representative\n")
+}
+
+df <- df |> filter(!is.na(earnings_median))
+```
+
 ## Institutional Identifiers
 
 ### UNITID
@@ -267,6 +295,14 @@ scorecard = fetch("college-university/scorecard/earnings/2014")
 ipeds = fetch("college-university/ipeds/directory/2020")
 
 merged = scorecard.join(ipeds, on="unitid", how="left")
+```
+
+```r
+# Link Scorecard to IPEDS
+scorecard <- arrow::read_parquet("data/raw/colleges_scorecard_earnings.parquet") |> filter(year == 2014)
+ipeds <- arrow::read_parquet("data/raw/colleges_ipeds_directory.parquet") |> filter(year == 2020)
+
+merged <- scorecard |> left_join(ipeds, by = "unitid")
 ```
 
 ### OPEID

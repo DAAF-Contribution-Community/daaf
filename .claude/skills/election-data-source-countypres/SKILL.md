@@ -153,6 +153,11 @@ For complete mode values see `./references/coded-values.md`.
 > ```python
 > df = df.with_columns(pl.col("county_fips").cast(pl.Utf8).str.zfill(5).alias("county_fips_str"))
 > ```
+> ```r
+> library(dplyr)
+> library(stringr)  # str_pad()
+> df <- df |> mutate(county_fips_str = str_pad(county_fips, width = 5, pad = "0"))
+> ```
 
 ### Missing Data Codes
 
@@ -189,6 +194,13 @@ For complete mode values see `./references/coded-values.md`.
 >
 > # WRONG — misses 2016 or 2020/2024 depending on which name you use
 > trump = df.filter(pl.col("candidate") == "DONALD TRUMP")
+> ```
+> ```r
+> # CORRECT — stable across years
+> dem <- df |> filter(party == "DEMOCRAT")
+>
+> # WRONG — misses 2016 or 2020/2024 depending on which name you use
+> trump <- df |> filter(candidate == "DONALD TRUMP")
 > ```
 
 ## Data Access
@@ -239,6 +251,26 @@ ca_2020 = df.filter(
     (pl.col("mode") == "TOTAL")
 )
 ```
+```r
+# Fetch from Harvard Dataverse API
+library(httr2)
+library(readr)
+library(dplyr)
+
+api_key <- Sys.getenv("HARVARD_DATAVERSE_API_KEY")
+# Get file ID from dataset metadata first, then download
+# File: countypres_2000-2024.tab (TSV format)
+file_url <- paste0("https://dataverse.harvard.edu/api/access/datafile/{file_id}")
+resp <- request(file_url) |>
+  req_url_query(key = api_key, format = "original") |>
+  req_perform()
+tmp <- tempfile(fileext = ".tsv")
+writeBin(resp_body_raw(resp), tmp)
+df <- read_tsv(tmp)
+
+# Filter to California, 2020, TOTAL mode only
+ca_2020 <- df |> filter(state_po == "CA", year == 2020, mode == "TOTAL")
+```
 
 ### Filtering
 
@@ -265,6 +297,27 @@ clean = df.filter(~((pl.col("state_po") == "AK") & (pl.col("year") == 2004)))
 
 # 5. Exclude rows with null county_fips (for join operations)
 joinable = df.filter(pl.col("county_fips").is_not_null())
+```
+```r
+# Common filter patterns for county presidential data
+
+# 1. Cross-year analysis: WARNING — naive filter drops ~1,000 counties in 2020+!
+#    Use 3-pattern mode reconstruction instead. See ./references/mode-reconstruction.md
+longitudinal <- df |> filter(mode == "TOTAL")  # UNSAFE for 2020+ multi-state!
+
+# 2. Remove non-candidate rows (UNDERVOTES, OVERVOTES, etc.)
+candidates_only <- df |> filter(
+  !candidate %in% c("TOTAL VOTES CAST", "UNDERVOTES", "OVERVOTES", "SPOILED")
+)
+
+# 3. Major party analysis — RECOMMENDED: use party column, not candidate name
+two_party <- df |> filter(party %in% c("DEMOCRAT", "REPUBLICAN"))
+
+# 4. Exclude Alaska 2004 anomaly
+clean <- df |> filter(!(state_po == "AK" & year == 2004))
+
+# 5. Exclude rows with null county_fips (for join operations)
+joinable <- df |> filter(!is.na(county_fips))
 ```
 
 ## Common Pitfalls

@@ -1,6 +1,6 @@
 # Sample Project: Reproducibility Verification of the College Graduation Rate & Selectivity Analysis
 
-This is a **sample Reproducibility Verification project** included with DAAF to show what it looks like when DAAF independently re-executes and verifies a completed analysis. It was conducted using DAAF's [Reproducibility Verification mode](../../user_reference/02_understanding_daaf.md#reproducibility-verification-trust-but-verify), which takes a finished Full Pipeline project, decompiles its notebook into individual scripts, re-runs every one of them, compares outputs against the originals, and cross-references the Report's quantitative claims against the reproduced data.
+This is a **sample Reproducibility Verification project** included with DAAF to show what it looks like when DAAF independently re-executes and verifies a completed analysis. It was conducted using DAAF's [Reproducibility Verification mode](../../user_reference/02_understanding_daaf.md#reproducibility-verification-mode), which takes a finished Full Pipeline project, decompiles its notebook into individual scripts, re-runs every one of them, compares outputs against the originals, and cross-references the Report's quantitative claims against the reproduced data.
 
 The analysis being reproduced here is the [College Graduation Rate & Selectivity Analysis](../2026-03-29_College_Graduation_Rate_Selectivity_Analysis/) -- see that project's [README](../2026-03-29_College_Graduation_Rate_Selectivity_Analysis/README.md) for a full walkthrough of the original.
 

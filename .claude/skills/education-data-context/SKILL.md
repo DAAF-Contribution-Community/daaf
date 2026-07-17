@@ -20,7 +20,7 @@ This skill provides critical context for interpreting data from the Urban Instit
 - **Definitions change over time**: Variable definitions, categories, and coding schemes evolve
 - **State comparisons require caution**: State-level data often cannot be directly compared
 - **Citation is required**: The ODC Attribution License mandates proper citation
-- **Skill provenance matters**: Each `*-data-source-*` skill includes `provenance.skill_last_updated` in its frontmatter. If this date is more than a few months old, treat the skill's claims about coded values, suppression patterns, and data quality with caution — data sources evolve and skill documentation may have drifted. Consider re-running data-ingest to re-verify.
+- **Skill provenance matters**: Each `*-data-source-*` skill includes a `skill-last-updated` key in its frontmatter `metadata:` block. If this date is more than a few months old, treat the skill's claims about coded values, suppression patterns, and data quality with caution — data sources evolve and skill documentation may have drifted. Consider re-running data-ingest to re-verify.
 
 ## Data Provenance: The Education Data Portal
 
@@ -196,6 +196,16 @@ k_12 = df.filter(pl.col("grade").is_between(0, 12))
 total = df.filter(pl.col("grade") == 99)
 ```
 
+```r
+# WRONG - filters out Pre-K students!
+df <- df |> filter(grade >= 0)
+
+# RIGHT - Pre-K students have grade = -1
+pre_k <- df |> filter(grade == -1)
+k_12 <- df |> filter(between(grade, 0, 12))
+total <- df |> filter(grade == 99)
+```
+
 #### Variable Names Are Lowercase
 
 Portal variable names are lowercase, not the uppercase names from original NCES documentation:
@@ -246,6 +256,14 @@ df["enrollment"].mean()
 
 # RIGHT - exclude coded missing values
 df.filter(pl.col("enrollment") >= 0)["enrollment"].mean()
+```
+
+```r
+# WRONG - includes coded values in mean
+mean(df$enrollment)
+
+# RIGHT - exclude coded missing values
+df |> filter(enrollment >= 0) |> pull(enrollment) |> mean()
 ```
 
 ### Year Definitions
@@ -303,6 +321,17 @@ df.group_by("fips").agg([
     pl.col("variable").filter(pl.col("variable") == -3).count().alias("suppressed"),
     pl.col("variable").count().alias("total")
 ])
+```
+
+```r
+# Check missingness and suppression by state
+df |>
+  group_by(fips) |>
+  summarise(
+    missing = sum(variable == -1),
+    suppressed = sum(variable == -3),
+    total = n()
+  )
 ```
 
 ## Citation Requirements

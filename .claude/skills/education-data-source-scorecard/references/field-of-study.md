@@ -147,6 +147,17 @@ with_data = df.filter(
 )
 print(f"Programs with valid earnings data: {with_data.height}")
 ```
+```r
+# Count suppressed/missing records
+suppressed <- df |> filter(is.na(earn_mdn_hi_2yr) | earn_mdn_hi_2yr == -3)
+
+suppression_rate <- nrow(suppressed) / nrow(df)
+cat(sprintf("Suppression/missing rate: %.1f%%\n", suppression_rate * 100))
+
+# Programs with valid data (positive values only)
+with_data <- df |> filter(!is.na(earn_mdn_hi_2yr), earn_mdn_hi_2yr > 0)
+cat(sprintf("Programs with valid earnings data: %d\n", nrow(with_data)))
+```
 
 ## Common CIP Codes
 
@@ -218,6 +229,17 @@ field_summary = (
         pl.col("num_awards").sum().alias("total_completers")
     ])
 )
+```
+```r
+# Aggregate 2-digit CIP earnings across public 4-years
+# Portal uses integer codes: control=1 is public
+field_summary <- df |>
+  filter(control == 1, credlev == 3, earn_mdn_hi_2yr > 0) |>
+  group_by(cipcode) |>
+  summarise(
+    median_earnings = median(earn_mdn_hi_2yr),
+    total_completers = sum(num_awards)
+  )
 ```
 
 ## Gainful Employment Metrics
@@ -295,6 +317,14 @@ combined = field_df.join(
     institution_df.select(["unitid", "inst_name", "control", "state_abbr"]),
     on="unitid",
     how="left"
+)
+```
+```r
+# Merge field data with institution data
+# Note: Portal column names are lowercase
+combined <- field_df |> left_join(
+  institution_df |> select(unitid, inst_name, control, state_abbr),
+  by = "unitid"
 )
 ```
 

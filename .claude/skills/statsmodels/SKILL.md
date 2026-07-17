@@ -1,7 +1,7 @@
 ---
 name: statsmodels
 description: >-
-  Statistical modeling: OLS/WLS/GLS, GLM (logit, probit, Poisson), time series (ARIMA, VAR), mixed effects, diagnostics. Formula API. Use for regressions without fixed effects, GLMs, or time series. For FE/DiD use pyfixest; panel/IV use linearmodels.
+  Statistical modeling: OLS/WLS/GLS, GLM (logit, probit, Poisson), time series (ARIMA, VAR), mixed effects, diagnostics. Formula API. Use for regressions without fixed effects, GLMs, or time series. For FE/DiD use pyfixest; panel/IV use linearmodels. R equivalent: r-stats (use when execution language is R).
 metadata:
   audience: research-coders
   domain: python-library
@@ -45,6 +45,8 @@ statsmodels is the general-purpose **statistical modeling** library for Python:
 3. **Time series analysis?** Read `quickstart.md` then `time-series.md`
 4. **Checking model assumptions?** Read `diagnostics.md`
 5. **Coming from R?** Read `quickstart.md` (formula API mirrors R syntax)
+
+**The reference-file routing in this skill applies to advisory and brainstorming turns as much as implementation.** Recommending an approach, reviewing a plan, or answering a question that touches a routed topic calls for reading the routed reference file just as much as writing code does — the reference files carry curated caveats and environment-specific constraints that this overview and general knowledge lack.
 
 ## Related Skills
 

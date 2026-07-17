@@ -70,6 +70,30 @@ for fips in [5135, 5123]:
             .alias("totalvotes")
         )
 ```
+```r
+# 1. Reassign FIPS: 5135 -> 5123 where county_name is St. Francis
+df <- df |> mutate(
+  county_fips = if_else(
+    county_fips == 5135 & year == 2024 & county_name == "ST FRANCIS",
+    5123L, county_fips
+  )
+)
+
+# 2. Recalculate totalvotes for both counties (sum of candidatevotes)
+# Sharp: 7,437 total; St. Francis: 5,979 total (combined original: 13,416)
+for (fips_code in c(5135, 5123)) {
+  correct_total <- df |>
+    filter(county_fips == fips_code, year == 2024) |>
+    summarise(total = sum(candidatevotes, na.rm = TRUE)) |>
+    pull(total)
+  df <- df |> mutate(
+    totalvotes = if_else(
+      county_fips == fips_code & year == 2024,
+      as.integer(correct_total), totalvotes
+    )
+  )
+}
+```
 
 **County name normalization:** 2020 uses "ST. FRANCIS" (with period), 2024 uses
 "ST FRANCIS" (without period). Normalize if joining across years.

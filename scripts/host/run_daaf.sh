@@ -24,6 +24,39 @@ fi
 
 COMMAND="${1:-claude}"
 
+# --- Multi-instance settings (shared pattern) ---
+# Bridge environment_settings.txt's four DAAF_* multi-instance keys into the
+# environment so `docker compose` interpolation resolves the project name and
+# published host ports. This inline block is the canonical shared pattern (kept
+# in sync with load_daaf_settings in daaf_lib.sh); standalone scripts that do NOT
+# source daaf_lib.sh inline it so a second install's settings take effect.
+# Parse only these whitelisted keys (never `source` -- the file holds API keys with
+# arbitrary characters). Shell env wins over the file value; absent file = no-op;
+# CR is stripped for CRLF tolerance. Bash 3.2 safe.
+_daaf_load_settings() {
+    local settings_file="./environment_settings.txt"
+    [ -f "${settings_file}" ] || return 0
+    local key val line
+    while IFS= read -r line || [ -n "${line}" ]; do
+        line="$(printf '%s' "${line}" | tr -d '\r')"
+        case "${line}" in ''|'#'*) continue ;; esac
+        case "${line}" in
+            DAAF_PROJECT_NAME=*|DAAF_PORT_MARIMO=*|DAAF_PORT_LOGVIEWER=*|DAAF_PORT_VSCODE=*|DAAF_DEV=*|DAAF_BRANCH=*)
+                key="${line%%=*}"; val="${line#*=}"
+                case "${val}" in
+                    \"*\") val="${val#\"}"; val="${val%\"}" ;;
+                    \'*\') val="${val#\'}"; val="${val%\'}" ;;
+                esac
+                if [ -z "${!key:-}" ]; then
+                    export "${key}=${val}"
+                fi
+                ;;
+            *) continue ;;
+        esac
+    done < "${settings_file}"
+}
+_daaf_load_settings
+
 # --- Dry-Run Support ---
 # When DAAF_DRY_RUN=1, simulate external commands (Docker, curl) for CI
 # cross-platform smoke testing without a Docker daemon.
@@ -73,9 +106,11 @@ if ! docker info &> /dev/null; then
 fi
 
 # --- Start container if not running ---
-RUNNING=$(docker compose ps --status running --format '{{.Name}}' 2>/dev/null | grep -c "daaf-docker" || true)
+# `docker compose ps -q daaf-docker` prints the running container's ID (empty
+# when stopped), derived from the compose project rather than a hardcoded name.
+RUNNING_CID=$(docker compose ps -q daaf-docker 2>/dev/null || true)
 
-if [ "${RUNNING}" -eq 0 ]; then
+if [ -z "${RUNNING_CID}" ]; then
     echo "Starting DAAF container..."
     if ! docker compose up -d; then
         echo "ERROR: Failed to start the container. Check Docker Desktop for errors."

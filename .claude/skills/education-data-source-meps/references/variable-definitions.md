@@ -146,10 +146,27 @@ valid_data = df.filter(pl.col("meps_poverty_pct").is_not_null())
 null_count = df["meps_poverty_pct"].null_count()
 ```
 
+```r
+library(dplyr)
+
+# Filter to non-null values
+valid_data <- df |> filter(!is.na(meps_poverty_pct))
+
+# Count missing
+null_count <- sum(is.na(df$meps_poverty_pct))
+```
+
 **Do NOT use negative value filtering for MEPS:**
 ```python
 # WRONG - MEPS doesn't use coded values
 df.filter(pl.col("meps_poverty_pct") >= 0)  # Unnecessary and misleading
+```
+
+```r
+library(dplyr)
+
+# WRONG - MEPS doesn't use coded values
+df |> filter(meps_poverty_pct >= 0)  # Unnecessary and misleading
 ```
 
 ## Derived Variables
@@ -177,6 +194,26 @@ df = df.with_columns(
 )
 ```
 
+```r
+library(dplyr)
+
+# Policy-relevant thresholds
+df <- df |> mutate(
+  high_poverty = meps_poverty_pct >= 30.0,
+  low_poverty = meps_poverty_pct < 10.0
+)
+
+# Title I style categories
+df <- df |> mutate(
+  poverty_level = case_when(
+    meps_poverty_pct >= 40.0 ~ "Very High",
+    meps_poverty_pct >= 25.0 ~ "High",
+    meps_poverty_pct >= 10.0 ~ "Moderate",
+    .default = "Low"
+  )
+)
+```
+
 ### School-Level Poverty Count
 
 Estimate the number of students in poverty (requires joining with CCD enrollment data first):
@@ -185,6 +222,15 @@ Estimate the number of students in poverty (requires joining with CCD enrollment
 # After joining MEPS with CCD enrollment on ncessch + year:
 df = df.with_columns(
     (pl.col("meps_poverty_pct") / 100.0 * pl.col("enrollment")).round(0).alias("poverty_count")
+)
+```
+
+```r
+library(dplyr)
+
+# After joining MEPS with CCD enrollment on ncessch + year:
+df <- df |> mutate(
+  poverty_count = round(meps_poverty_pct / 100.0 * enrollment, 0)
 )
 ```
 
@@ -202,6 +248,20 @@ district_meps = (
         / pl.col("enrollment").sum()
     ).rename({"meps_poverty_pct": "meps_weighted_avg"})
 )
+```
+
+```r
+library(dplyr)
+
+# Enrollment-weighted district average
+district_meps <- df |>
+  filter(!is.na(meps_poverty_pct), !is.na(enrollment)) |>
+  group_by(leaid) |>
+  summarise(
+    meps_weighted_avg = sum(meps_poverty_pct * enrollment, na.rm = TRUE) /
+      sum(enrollment, na.rm = TRUE),
+    .groups = "drop"
+  )
 ```
 
 ## Variable Relationships
@@ -248,6 +308,25 @@ meps_schema = {
 }
 ```
 
+```r
+library(arrow)
+
+# Arrow schema - matches actual Portal parquet files
+meps_schema <- schema(
+  year = int64(),
+  fips = int64(),
+  gleaid = int64(),
+  ncessch = int64(),           # Integer, not string!
+  meps_poverty_pct = float64(),
+  meps_poverty_se = float64(),
+  meps_mod_poverty_pct = float64(),
+  meps_poverty_ptl = int64(),
+  meps_mod_poverty_ptl = int64(),
+  ncessch_num = int64(),
+  leaid = int64()              # Integer, not string!
+)
+```
+
 ### SQL table definition
 
 ```sql
@@ -281,6 +360,16 @@ df = df.with_columns([
 ])
 ```
 
+```r
+library(dplyr)
+
+# Convert integer IDs to zero-padded strings
+df <- df |> mutate(
+  ncessch_str = stringr::str_pad(as.character(ncessch), width = 12, pad = "0"),
+  leaid_str = stringr::str_pad(as.character(leaid), width = 7, pad = "0")
+)
+```
+
 ## Quick Reference Card
 
 | Portal Variable | What it tells you |
@@ -301,5 +390,13 @@ import polars as pl
 
 # "What's the poverty rate at this school?"
 result = df.filter(pl.col("ncessch") == 60000100001).select("meps_poverty_pct")
+# Returns value like 25.0 (meaning 25% estimated in poverty)
+```
+
+```r
+library(dplyr)
+
+# "What's the poverty rate at this school?"
+result <- df |> filter(ncessch == 60000100001) |> select(meps_poverty_pct)
 # Returns value like 25.0 (meaning 25% estimated in poverty)
 ```

@@ -2,8 +2,21 @@
 
 A practitioner's guide to causal reasoning in empirical research. This reference covers
 when and why to use causal methods, the assumptions behind each design, and how to
-evaluate the credibility of causal claims. For implementation syntax, load the
-appropriate library skill (e.g., `pyfixest`, `statsmodels`).
+evaluate the credibility of causal claims. Whenever a specific library enters the
+discussion — in advice or in code — load the appropriate library skill (e.g.,
+`pyfixest`, `statsmodels`): it carries the syntax plus environment constraints and
+curated caveats that general knowledge lacks.
+
+> **Package availability:** Where this guide names an estimation package with a
+> `pip install X` reference (e.g., pysyncon, synthdid, scpi-pkg, CausalPy, csdid),
+> that is a package-identity pointer, not an instruction to run. None of these are
+> pre-installed in the DAAF container, and runtime installs are blocked
+> (`pip install`/`uv add` are refused both at the command line and inside executed
+> scripts — see CLAUDE.md § Runtime Package Installation). Before planning an
+> analysis around one, verify availability with `pip show <pkg>` and, if it is
+> absent, escalate to the user to add it to the Dockerfile (user additions block
+> near the end) and rebuild before use. For the deeper synthetic-control catalog
+> see `./causal-synth.md`, which carries the same caveat.
 
 ## Contents
 
@@ -243,25 +256,35 @@ threats. This is the central decision reference for Stage 8 analysis work.
 | **Randomized Controlled Trial** | You can randomize treatment | Random assignment, SUTVA, no attrition | ATE | Attrition, non-compliance, external validity | pyfixest, statsmodels |
 | **Stratified RCT** | RCT with balance on key characteristics | Random assignment within strata | ATE (with precision gains) | Same as RCT plus stratification errors | pyfixest |
 | **Regression with controls** | Selection on observables is plausible | Conditional independence (CIA) | ATE (if CIA holds) | Unobserved confounders, bad controls | pyfixest, statsmodels |
-| **Matching / IPW** | Selection on observables, want nonparametric robustness | CIA + common support (overlap) | ATT (matching) or ATE (IPW) | Overlap violations, unobserved confounders | scikit-learn + manual* |
+| **Matching / IPW** | Selection on observables, want nonparametric robustness | CIA + common support (overlap) | ATT (matching) or ATE (IPW) | Overlap violations, unobserved confounders | sklearn + statsmodels (see causal-matching.md) |
 | **Fixed effects / panel** | Repeated observations, time-invariant confounders | Strict exogeneity (no feedback from Y to future X) | ATE (within-unit) | Time-varying confounders, Nickell bias | pyfixest (`feols`) |
 | **Instrumental Variables** | Endogenous treatment, valid instrument exists | Relevance, independence, exclusion restriction, monotonicity | LATE (compliers only) | Weak instruments, exclusion restriction violations | pyfixest (IV formula) |
-| **Regression Discontinuity** | Treatment assigned by score crossing a cutoff | Continuity at cutoff, no manipulation | LATE (at the cutoff) | Sorting/manipulation, bandwidth sensitivity | statsmodels + manual* |
+| **Regression Discontinuity** | Treatment assigned by score crossing a cutoff | Continuity at cutoff, no manipulation | LATE (at the cutoff) | Sorting/manipulation, bandwidth sensitivity | rdrobust (installed) |
 | **Difference-in-Differences** | Policy change affects some units but not others | Parallel trends, no anticipation | ATT | Parallel trends violations, anticipation | pyfixest (did2s, lpdid) |
-| **Synthetic Control** | Few treated units, long pre-treatment period | Weighted controls can match pre-treatment trajectory | ATT for treated unit(s) | No good match, interpolation bias | requires installation* |
+| **Synthetic Control** | Few treated units, long pre-treatment period | Weighted controls can match pre-treatment trajectory | ATT for treated unit(s) | No good match, interpolation bias | scipy manual or pip install (see causal-synth.md) |
 
-**Implementation status note:** The DAAF environment includes `pyfixest` and `statsmodels`
-as installed causal inference packages. Entries marked with * require either manual
-implementation using available packages or installation of specialized packages:
+*(The package column shows Python implementations; in R, map to `fixest` for FE/IV/DiD,
+`plm` for panel RE/IV-GMM, and base `stats` for regression with controls, per the
+Language Routing table in SKILL.md and the R library skills' own references.)*
+
+**Implementation status note:** For Python, the DAAF environment includes `pyfixest`
+and `statsmodels` as installed causal inference packages; R ships unconditionally in
+the same environment with `fixest` and `plm` installed (load the `fixest`, `plm`, or
+`r-stats` skill), covering the same FE/IV/DiD/panel ground. Entries marked with *
+require either manual implementation using available packages or installation of
+specialized packages:
 - **pyfixest** covers: OLS/FE regression, IV (via `~` and `|` formula syntax), panel
   models (`feols` with fixed effects), DiD (`did2s`, `lpdid`, `event_study`), event
   studies, and multiple testing corrections (`rwolf`, `bonferroni`)
 - **statsmodels** covers: OLS, GLM, WLS, GLS, and basic time series
 - **Matching/IPW**: Propensity scores can be estimated with `scikit-learn`
   (LogisticRegression); matching and weighting require manual implementation
-- **RD**: Local linear regression can be implemented with `statsmodels`; for
-  robust bias-corrected inference, `rdrobust` must be installed (`pip install rdrobust`)
-- **Synthetic control**: Requires installing `CausalPy` or `synthdid`
+- **RD**: `rdrobust` v1.3.0 is installed (note: `rdplot()` has a bug in this
+  version; v2.0.0 fixes it). See `./causal-rd.md` for full implementation
+  guidance including bandwidth selection, diagnostics, and visualization workarounds
+- **Synthetic control**: No SC package is installed; a manual scipy implementation
+  is available as a fallback — see `./causal-synth.md` for manual and package-based
+  approaches (pysyncon, synthdid, scpi-pkg, CausalPy all require `pip install`)
 - **Callaway-Sant'Anna estimator**: Requires installing `csdid`; for staggered DiD
   within the installed environment, use pyfixest's `did2s` or `lpdid`
 
@@ -335,6 +358,10 @@ research area but the simplest solution is often finding a stronger instrument.
 
 ### Regression Discontinuity: Design Essentials
 
+**For implementation guidance** (rdrobust API, bandwidth selection, diagnostics,
+visualization, gotchas)**:** see `./causal-rd.md`. This section covers the methodology
+and identification assumptions.
+
 RD designs exploit known policy cutoffs where treatment is assigned based on a
 running variable (score) crossing a threshold. Following Cattaneo, Idrobo, and
 Titiunik (2020):
@@ -377,6 +404,12 @@ Titiunik (2020):
 
 ### Matching and Inverse Probability Weighting
 
+**For implementation (code patterns, propensity score estimation, matching
+algorithms, IPW weights, doubly robust/AIPW estimation, balance diagnostics,
+and inference):** see `./causal-matching.md`. This section covers the methodology
+and assumptions; the implementation reference covers how to build it with
+scikit-learn, statsmodels, scipy, and polars.
+
 Matching and IPW are selection-on-observables strategies: they assume that
 conditional on observed covariates X, treatment assignment is independent of
 potential outcomes (the conditional independence assumption, CIA).
@@ -416,7 +449,77 @@ potential outcomes (the conditional independence assumption, CIA).
 confounders. If important variables are unmeasured, the CIA fails. Always
 complement matching with sensitivity analysis (Rosenbaum bounds, Oster 2019).
 
+### Causal Mediation: Mechanism Decomposition
+
+**For implementation (statsmodels Mediation class, manual bootstrap, moderated
+mediation, multiple mediators, sensitivity analysis, and gotchas):** see
+`./causal-mediation.md`. This section covers when mediation is appropriate and
+the key identification assumption.
+
+Causal mediation analysis decomposes a total effect of treatment T on outcome Y
+into a **natural indirect effect** (NIE, also called ACME -- the effect operating
+through a mediator M) and a **natural direct effect** (NDE -- the effect through
+all other channels). The exact decomposition TE = NDE + NIE holds under the
+potential outcomes framework (Imai, Keele, and Tingley 2010; Pearl 2001).
+
+**When mediation is the right question:** Mediation is not an identification
+strategy -- it does not establish that T causes Y. Rather, it decomposes an
+already-identified causal effect into pathways. The research question must be
+about *mechanisms* ("through what channel does T affect Y?"), not about *existence*
+of a causal effect.
+
+**The key identification challenge -- sequential ignorability:**
+The critical assumption (SI-2) requires that there are no unobserved confounders
+of the mediator-outcome relationship, conditional on treatment and covariates.
+This assumption is **untestable** and **not guaranteed by randomizing treatment**
+-- even in an RCT, treatment randomization does not randomize the mediator.
+Sensitivity analysis for violations of SI-2 is mandatory, not optional.
+
+**Distinction from simple "controlling for M":** Adding a mediator to a regression
+(Y ~ T + M) does not estimate a well-defined causal mediation effect. The modern
+framework (Imai et al. 2010) defines the natural direct and indirect effects as
+counterfactual quantities and provides estimation methods (simulation, bootstrap)
+that handle nonlinear models correctly.
+
+### Sample Selection Bias: Heckman Correction
+
+**For implementation (manual two-step Probit + OLS with inverse Mills ratio, FIML
+via scipy.optimize, bootstrap inference, exclusion restriction diagnostics, and
+gotchas):** see `./causal-selection.md`. This section covers when Heckman selection
+models are appropriate.
+
+Sample selection bias arises when the outcome variable is observed only for a
+non-random subset of the population (Heckman 1979). The classic example is
+estimating wage equations when wages are observed only for people who choose to
+work -- the working population differs systematically from the non-working
+population in ways that correlate with wages.
+
+**When to use Heckman models:**
+- The outcome is missing non-randomly (observed only for a selected subset)
+- Selection into the observed sample is correlated with the outcome
+- You have an **exclusion restriction**: a variable that predicts selection but
+  does not directly affect the outcome (analogous to an instrument in IV)
+
+**When NOT to use Heckman models:**
+- Selection is on observables only -- matching/IPW is simpler and avoids the
+  strong bivariate normality assumption
+- No exclusion restriction is available -- identification relies on functional
+  form assumptions that are fragile in practice
+- The goal is estimating a treatment effect rather than correcting for sample
+  selection -- use IV, DiD, or RD instead
+
+**Critical implementation note:** `statsmodels` does **not** have a Heckman module.
+The `sm.heckman.Heckman()` API shown in many online tutorials does not exist
+(GitHub issue #1921, opened 2014, remains unmerged). Implementation requires
+manual Probit + OLS with the inverse Mills ratio, or a hand-coded FIML
+log-likelihood via `scipy.optimize`. See `./causal-selection.md` for complete
+implementation patterns.
+
 ### Synthetic Control: Core Principles
+
+For **implementation guidance** (code patterns, package APIs, manual scipy
+implementation, inference procedures, and gotchas), see `./causal-synth.md`.
+This section covers methodology only.
 
 Synthetic control methods (Abadie, Diamond, and Hainmueller 2010) are designed for
 settings with a small number of treated units (often just one) and many pre-treatment
@@ -456,7 +559,9 @@ result increases rapidly. This is the multiple comparisons problem.
 
 **Correction methods:**
 - **Bonferroni**: Divide the significance threshold by the number of tests.
-  Conservative but simple. Available in pyfixest: `bonferroni()`.
+  Conservative but simple. Available in pyfixest: `bonferroni()` (Python); in R,
+  use base `stats::p.adjust(p, method = "bonferroni")` — R's `fixest` does not
+  export a Bonferroni routine.
 - **Holm (step-down Bonferroni)**: Less conservative than Bonferroni while still
   controlling the family-wise error rate. Order p-values and apply increasingly
   relaxed thresholds.
@@ -465,7 +570,10 @@ result increases rapidly. This is the multiple comparisons problem.
   tolerating some false positives.
 - **Romano-Wolf**: Accounts for dependence among test statistics using resampling.
   The gold standard for multiple testing in applied economics. Available in
-  pyfixest: `rwolf()`.
+  pyfixest: `rwolf()`. This is a Python-side asymmetry in the DAAF environment:
+  R's `fixest` has no Romano-Wolf routine and the `wildrwolf` package is not
+  installed — in R, fall back to `stats::p.adjust` methods (holm, BH) or request
+  installation of `wildrwolf`.
 
 **When corrections are appropriate:**
 - Multiple outcomes tested for the same treatment effect
@@ -478,6 +586,10 @@ result increases rapidly. This is the multiple comparisons problem.
 - Exploratory analyses clearly labeled as hypothesis-generating
 
 ### Machine Learning for Causal Inference
+
+**For implementation guidance** (manual DML with installed packages, S/T-learner
+code, EconML and DoubleML API patterns, causal forests, CATE diagnostics, and
+gotchas)**:** see `./causal-ml.md`. This section covers methodology only.
 
 A growing literature integrates machine learning with causal inference frameworks.
 These methods use ML's flexibility for nuisance parameter estimation while
@@ -509,7 +621,9 @@ valid experimental or quasi-experimental design as the foundation.
 
 **Python ecosystem:** `EconML` (Microsoft), `DoWhy` (Microsoft), `DoubleML`, and
 `CausalML` (Uber) are the main packages. None are installed by default in the
-DAAF environment; install as needed for specific projects.
+DAAF environment; install as needed for specific projects. Manual DML and
+S/T-learner implementations using installed packages (scikit-learn, statsmodels,
+pyfixest) are documented in `./causal-ml.md`.
 
 ## Modern Difference-in-Differences: A Practitioner's Guide
 

@@ -122,6 +122,16 @@ For valid cross-state comparisons, use NAEP data (not available in the Portal mi
 # This comparison IS meaningful because NAEP uses the same test nationwide
 ```
 
+```r
+# NAEP data is available from nationsreportcard.gov
+# or the NAEP Data Explorer — it is NOT in the Education Data Portal.
+#
+# Example: Valid cross-state comparison (conceptual — NAEP data is external)
+# naep_scores <- read.csv("naep_grade4_reading_2022.csv")
+# state_rankings <- naep_scores |> arrange(desc(avg_scale_score))
+# This comparison IS meaningful because NAEP uses the same test nationwide
+```
+
 ## Proficiency Levels
 
 ### Standard Achievement Levels
@@ -218,6 +228,14 @@ df.select([
 ])
 ```
 
+```r
+# Correct approach
+df |> select(read_test_pct_prof_midpt, math_test_pct_prof_midpt)
+
+# Avoid
+df |> select(read_test_pct_prof_low, read_test_pct_prof_high)
+```
+
 ### Midpoint Caveats
 
 | Caveat | Implication |
@@ -265,6 +283,19 @@ def detect_assessment_changes(df, state_fips, variable):
     return suspicious
 ```
 
+```r
+library(dplyr)
+
+# Flag potential assessment system changes
+state_data <- df |>
+  filter(fips == state_fips) |>
+  arrange(year) |>
+  mutate(yoy_change = .data[[variable]] - lag(.data[[variable]]))
+
+# Large changes (>10 points) suggest assessment change
+suspicious <- state_data |> filter(abs(yoy_change) > 10)
+```
+
 ### Handling Time Series Breaks
 
 | Approach | When to Use |
@@ -310,6 +341,22 @@ def analyze_state_trend(df, state_fips, start_year, end_year):
     return trend
 ```
 
+```r
+library(dplyr)
+
+# Valid: Within-state trend analysis
+state_data <- df |>
+  filter(fips == state_fips, year >= start_year, year <= end_year)
+
+# Check for assessment changes in period
+# (You would implement detection logic here)
+
+trend <- state_data |>
+  group_by(year) |>
+  summarise(read_test_pct_prof_midpt = mean(read_test_pct_prof_midpt, na.rm = TRUE)) |>
+  arrange(year)
+```
+
 ### Example: Within-State School Comparison
 
 ```python
@@ -329,6 +376,19 @@ def compare_schools_within_state(df, state_fips, year):
     )
     
     return state_schools.sort("read_test_pct_prof_midpt", descending=True)
+```
+
+```r
+library(dplyr)
+
+# Valid: Compare schools within same state
+# NOTE: name the year variable distinctly from the `year` column and unquote it
+# with !! — `filter(year == year)` compares the column to itself (always TRUE).
+target_year <- 2018
+state_schools <- df |>
+  filter(fips == state_fips, year == !!target_year) |>
+  select(ncessch, school_name, read_test_pct_prof_midpt, math_test_pct_prof_midpt) |>
+  arrange(desc(read_test_pct_prof_midpt))
 ```
 
 ### Invalid Analysis Example
@@ -351,6 +411,22 @@ def invalid_state_ranking(df, year):
     # WARNING: This comparison is invalid
     # States have different tests and standards
     return state_ranking  # DO NOT USE
+```
+
+```r
+# INVALID: Cross-state comparison
+# DO NOT DO THIS
+
+# This ranking is MEANINGLESS
+state_ranking <- df |>
+  filter(year == year) |>
+  group_by(fips) |>
+  summarise(read_test_pct_prof_midpt = mean(read_test_pct_prof_midpt, na.rm = TRUE)) |>
+  arrange(desc(read_test_pct_prof_midpt))
+
+# WARNING: This comparison is invalid
+# States have different tests and standards
+# DO NOT USE
 ```
 
 ## Participation Rates

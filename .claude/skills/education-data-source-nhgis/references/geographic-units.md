@@ -195,6 +195,23 @@ tract = gisjoin[8:14]
 geoid = f"{state}{county}{tract}"
 ```
 
+```r
+# GEOID to GISJOIN (tract example)
+geoid <- "06037264000"
+state <- substr(geoid, 1, 2)
+county <- substr(geoid, 3, 5)
+tract <- substr(geoid, 6, 11)
+gisjoin <- paste0("G", state, "0", county, "0", tract, "0")
+# Result: G0600370264000
+
+# GISJOIN to GEOID
+gisjoin <- "G0600370264000"
+state <- substr(gisjoin, 2, 3)
+county <- substr(gisjoin, 5, 7)
+tract <- substr(gisjoin, 9, 14)
+geoid <- paste0(state, county, tract)
+```
+
 ## Nesting Relationships
 
 | Unit | Nests Within | Cross-Cuts |

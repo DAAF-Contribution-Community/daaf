@@ -47,6 +47,7 @@ These actions are **mandatory** for every analysis task.
 | Record all methodology decisions with rationale | Reproducibility |
 | Version all files (never overwrite) | Audit trail |
 | Include limitations section in every report | Transparency |
+| Keep temporary/intermediate files in `{PROJECT_DIR}/scripts/scratch/` (never `/tmp`) | Provenance — scratch stays inside the backup and audit boundary |
 
 ---
 
@@ -104,6 +105,9 @@ These actions are **prohibited** under all circumstances.
 | Store PII or sensitive data unencrypted | Privacy violation |
 | Share data outside the research folder | Data governance |
 | Expose raw data in public outputs | Privacy risk |
+| Write working files to `/tmp` (redirects, `cp`/`mv`/`tee`/`mkdir`/`touch`, downloads, `sed -i`, extraction, `git clone`) | Provenance loss — `/tmp` is outside the backup and audit boundary; blocked by the `bash-safety.sh` hook and `settings.json` deny rules. Correct approach: use `{PROJECT_DIR}/scripts/scratch/`. Reading DAAF's `/tmp` coordination caches is fine — only writes are blocked |
+| Modify the safety system via shell writes (`cp`/`mv`/`tee`/redirect/`sed -i`/`chmod` into `.claude/hooks/`, `.claude/logs/`, `benchmarks/harness/hooks/`, or `.claude/settings*.json`) | Bypasses the `Edit`/`Write` deny rules and risks deregistering hooks (settings.json is the root of trust); blocked by the `bash-safety.sh` §7 anti-tampering guard. Hook/log/settings changes are **user-only** — the user applies them directly (or via a `!`-typed command). Reads and git index ops (`git add`, `git update-index --chmod=+x`) stay open |
+| Install or remove packages at runtime — **Python:** `pip`/`pip3`/`pipx`, `python -m pip`, `uv`/`uvx`, `easy_install`, `conda`; **R:** `R CMD INSTALL`, R-eval/in-script `install.packages()` (plus the `remotes`/`devtools`/`pak`/`renv`/`BiocManager` install verbs) | Unreproducible drift — the container is defined by the Dockerfile and a rebuild silently reverts runtime installs. Command-line forms are blocked by the `bash-safety.sh` §8 package guard and `settings.json` deny rules; install calls written *inside* a `.py`/`.R` script are blocked by `run_with_capture.sh`'s pre-execution content scan (exit 3, no log appended). Correct approach: add the package to the Dockerfile and rebuild (`bash rebuild_daaf.sh` from `daaf-docker`) — preferably in the user additions block near the end of the Dockerfile, which rebuilds fast via layer caching (place it earlier only when functionally required). `pip list`/`show`/`freeze` and R `installed.packages()` reads stay open |
 
 ### Analysis Integrity
 
@@ -126,12 +130,15 @@ These actions are **prohibited** under all circumstances.
 | Generate outputs that contradict the Plan | Inconsistent deliverables |
 | Skip mode classification | Wrong deliverables |
 | Create Plan before completing discovery | Incomplete context |
+| Dispatch a subagent from within a subagent (nested dispatch) | Breaks orchestration integrity — all dispatch authority belongs to the orchestrator |
+
+**Dispatch-authority invariant:** Subagents never dispatch other subagents. All dispatch authority belongs to the orchestrator; a subagent that needs more work done returns that work to the orchestrator for redelegation (the early-return protocol in CLAUDE.md § Context & Session Health), rather than spawning nested subagents. This invariant is enforced on two layers: every named agent carries an explicit `tools:` list that omits `Agent`/`Task` (so it structurally cannot nest), and the `block-nested-dispatch.sh` PreToolUse hook denies any Task/Agent dispatch that originates inside a subagent — closing the gap for the generic built-in types (`general-purpose`, `Plan`) that inherit `Agent`/`Task` with no DAAF-authored `tools:` list to restrict them.
 
 ### Code Practices
 
 | Prohibition | Consequence |
 |-------------|-------------|
-| Use bare `except:` without specific exception | Hidden errors |
+| Use bare `except:` without specific exception (Python) | Hidden errors |
 | Print to stdout in production notebooks | Pollution |
 | Hard-code file paths with user-specific directories | Non-portable |
 | Leave debugging code in final notebooks | Unprofessional |
@@ -140,11 +147,11 @@ These actions are **prohibited** under all circumstances.
 
 | Prohibition | Consequence |
 |-------------|-------------|
-| Execute Python interactively before writing to a script file | No audit trail, not reproducible |
+| Execute Python or R interactively before writing to a script file | No audit trail, not reproducible |
 | Use `mcp__ide__executeCode` for analysis code (except quick exploration) | Hidden execution, no version control |
 | Save scripts without embedded execution logs | Missing proof of what happened |
 | Modify scripts after appending execution log (create new version instead) | Destroys audit trail |
-| Create Marimo cells with code that wasn't first executed as a script | Unvalidated code in notebook |
+| Create new Stage 9 analysis code that was not first executed as a script (the format-specific, non-transforming data inspection/display chunk is the only exception) | Unvalidated analytical logic in notebook |
 
 **See:** Closely read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the mandatory file-first execution protocol covering complete code file writing, output capture, and file versioning rules.
 
@@ -180,9 +187,45 @@ Mode-specific boundaries for these engagement modes are defined in their respect
 
 ---
 
+### Synthetic Data Path (Privacy-Preserving Onboarding)
+
+These boundaries apply whenever the Data Onboarding **sensitivity gate** has routed an engagement to the privacy-preserving synthetic-data workflow (raw data must never enter the container). They supplement the general Data Security boundaries above. See the `synthetic-data-workflow` skill for the full doctrine.
+
+**Always Do:**
+- Keep the real data out of the container. Once the synthetic path is chosen, the only artifact that crosses the boundary is the user's disclosure-controlled **profile report** (and, for T4, locally-generated synthetic rows).
+- Label every synthetic artifact with its provenance. Skills built this way carry `metadata.data-provenance: synthetic-*` and a Synthetic Data Notice; reports and outputs carry the scaffold-not-substitute caveat and the "finalize against the real data" requirement.
+- Treat the disclosure-safety review of the outbound profiling script (QAS-A) as a **BLOCKER** gate, never a WARNING — a leak is irreversible once the report is shared.
+
+**Never Do:**
+- Request or accept raw sensitive data — raw extracts, unsuppressed cross-tabs, example values, or the fitted synthesis model — once the synthetic path is chosen. If a request would require any of these, stop and re-scope to a tier that does not.
+- Attempt to reconstruct, infer, or reverse suppressed values, small cells binned to `__OTHER__`, or identifier contents from the profile report.
+- Present synthetic-data results as findings, or ship a synthetic-derived skill or output without provenance labeling.
+
+**If raw microdata is pasted into the conversation:** STOP. Do not analyze, transform, or persist it. Note that raw sensitive data was exposed inline, and redirect the user to the sensitivity gate / synthetic-data protocol (per the general "If You Catch Yourself Violating a Boundary" procedure below).
+
+---
+
 ### Reproducibility Verification Mode
 
-**See** `reproducibility-verification-mode.md` § Boundaries for Always Do / Never Do / Ask First rules specific to reproduction workflows.
+**Always Do:**
+- Accept exactly one user-selected original Report and one supported DAAF Stage 9 Marimo or Quarto archive; stop on ambiguous candidates or mixed notebook formats.
+- Use a new reproduction destination and a new decompiler extraction root. Never reuse, merge, or overwrite either automatically.
+- Run `normalize_project_dir.py`, then run `audit_reproduction_paths.py` with one repeatable validated `--exclude <canonical-relative-script-path>` per exact pre-RV-2 script exclusion. Require global exit 0 / MATCH, computed only from in-scope files, plus each dispatched script's deterministic `file_assessments` entry as `IN_SCOPE` + `MATCH`. Keep excluded files and `excluded_issues` explicit but never count them as matches. Audit executable source before the unique canonical `# EXECUTION LOG` boundary: exact original-root residue afterward is informational `ORIGINAL_ROOT_LOG_RESIDUE`, while ambiguous boundaries fail closed. State the bounded assurance; dynamic paths are not proven safe.
+- In frozen-input mode, hash copied raw files, exclude Stage 5 by explicit pre-RV-2 scope design, begin downstream, and verify raw hashes remain unchanged. Do not imply acquisition or mirrors were tested.
+- Use `compare_execution_logs.py` only for shared printed metrics aligned by identity/stable context rather than position: exit 0 CONSISTENT only, 1 DIVERGED, 2 invalid invocation or input read/parse failure, and 3 INCOMPLETE/INCONCLUSIVE = NOT DIRECTLY VERIFIED, never success. Use `compare_reproduction_artifacts.py` for supported Parquet/exact-byte evidence and preserve JSON under exit 0 MATCH, 1 DIVERGED, 2 invalid/unsupported, and 3 NOT DIRECTLY VERIFIED. Its defaults bound each Parquet input to 536870912 bytes and 1000000 rows before full materialization and tolerant matching to 1000000 candidate pairs; exact-key/cardinality divergence is established before the pair limit, and duplicate assessment follows actual verification. Correct exit-2 invocations or use the separate evidence path; review figures visually and use defined inspectable representations for tables/models or mark NOT DIRECTLY VERIFIED.
+- Create `_repro_a`/`_repro_b` from clean, log-free source and verify no inherited log before fixes and execution.
+- Grade environment evidence by language: Python runtime, Marimo, and imported package versions; R runtime, Quarto, repository/snapshot metadata, and `installed.packages()` versions. Put any diagnostic scripts in project `scripts/repro_checks/`, execute them through `run_with_capture.sh`, and retain their logs; never infer exact R versions from unversioned install lists or snapshot dates.
+- Use only FULLY REPRODUCED / PARTIALLY REPRODUCED / NOT REPRODUCED overall, and MATCH / DIVERGED / NOT DIRECTLY VERIFIED for RV-3 rows. Any in-scope evidence gap caps the verdict at PARTIALLY REPRODUCED.
+
+**Never Do:**
+- Treat missing evidence, any comparator exit 2 or 3, or an unsupported comparison as a match; claim exact-byte identity proves semantic equivalence; or use the log helper as an artifact comparator. For the log helper, exit 2 is invalid invocation/input read/parse failure and exit 3 is INCOMPLETE/INCONCLUSIVE; for the artifact helper, exit 2 is invalid/unsupported and exit 3 is NOT DIRECTLY VERIFIED. Correct or reroute exit 2; every exit 3 remains NOT DIRECTLY VERIFIED evidence.
+- Execute Stage 5 in frozen mode, relabel a design exclusion as reproduced/failed, or convert an ad hoc skip into a retroactive exclusion.
+- Write or recommend runtime package-install calls while inventorying environments.
+
+**Ask First:**
+- Before excluding any script, claim, figure, artifact, finding, or required dimension. Only exact user-approved exclusions recorded before RV-2 leave verdict denominators.
+
+**See** `reproducibility-verification-mode.md` § Boundaries for the full workflow contract.
 
 ---
 
@@ -202,7 +245,7 @@ User Support is DAAF's lightest mode — a read-only, conversational interaction
 - Confirm with the user before escalating to another mode
 
 **Never Do:**
-- Execute code (no scripts, no Python, no data operations)
+- Execute code (no scripts, no Python/R, no data operations)
 - Create a project workspace, STATE.md, LEARNINGS.md, or any project artifacts
 - Dispatch subagents (orchestrator handles all questions directly)
 - Load domain-specific data skills (User Support is framework-oriented, not data-oriented)
@@ -338,7 +381,7 @@ assert post_rows >= pre_rows * 0.1, f"Filter removed {100 - (post_rows/pre_rows)
 | **Import Errors** | Wrong import path, circular import, missing `__init__.py` |
 | **Data Access Connection Issues** | Data access timeout, mirror service unavailable, mirror file path changed |
 | **File Path Errors** | Parquet file not found, wrong directory structure, missing data folder |
-| **Environment Issues** | Missing mirror configuration (mirrors.yaml), wrong Python version |
+| **Environment Issues** | Missing mirror configuration (mirrors.yaml), wrong Python/R version |
 | **Data Format Issues** | Data file has unexpected encoding, parquet schema mismatch, date format parsing failure |
 
 **Process:**
@@ -440,7 +483,7 @@ Awaiting your guidance before proceeding.
 **Process:**
 1. Receive QA BLOCKER from code-reviewer
 2. Check if methodology issue → If yes, escalate (Rule 4)
-3. Create versioned revision file (`_a.py`, `_b.py`, etc.)
+3. Create versioned revision file (`_a.py`/`_a.R`, `_b.py`/`_b.R`, etc.)
 4. Apply fix as suggested by code-reviewer
 5. Execute and capture output
 6. Return for re-QA
@@ -454,7 +497,7 @@ Awaiting your guidance before proceeding.
 code-reviewer found: Script uses LEFT join but Plan specifies INNER join for 1:1 cardinality validation.
 
 ## Action (Rule 5)
-Create revision: 01_join-data_a.py
+Create revision: 01_join-data_a.py (or _a.R for R scripts)
 Fix: Change join type from "left" to "inner"
 Execute and capture
 Return for re-QA
@@ -587,17 +630,34 @@ Is this an improvement or optimization not required for correctness?
 
 ## Git Commit Protocol
 
-**Philosophy:** Commit outcomes, not process. Git log should read as a changelog of shipped work.
+**Default policy: DAAF does not commit research artifacts.** The DAAF user base is
+typically not git-native, and users must never be interrupted by git permission
+prompts they did not ask for. By default, neither the orchestrator nor any
+subagent runs `git add` or `git commit` for research work. **The working tree is
+the audit trail:** every script version (failed and successful), data file, and
+output is preserved on disk, which is what makes the analysis reviewable and
+reproducible. Read-only git commands (`git status`, `git diff`, `git log`) remain
+available to any agent.
 
-### Commit Timing
+**Git commit management is an opt-in User Preference** (`CLAUDE.md` § User
+Preferences > "Git commit management"). It is `disabled` by default.
 
-| Event | Commit? | Notes |
-|-------|---------|-------|
-| Task completion (CP passed) | Yes | Atomic commit per task |
-| Wave completion | Optional | Metadata update commit |
-| Stage completion | Yes | Summary commit if multiple tasks |
-| Plan update | Yes | Document changes |
-| Bug fix during execution | Yes | Separate fix commit |
+**Who may commit (only when the preference is enabled):**
+- **The orchestrator only.** Commits are *proposed* by the orchestrator at natural
+  milestones (plan approval, phase/stage completion, delivery) and executed *only
+  after the user approves in-session*. Committing is never autonomous.
+- **Subagents never commit — under either setting.** A subagent's role is to report
+  a *suggested* commit message in its output (see each agent's Output Format),
+  never to run `git`.
+
+**Suggested commit messages (always).** Regardless of the preference, agents may
+include a suggested commit message in their return output for the user/orchestrator
+to use if desired. The philosophy for those messages: *describe outcomes, not
+process — a git log built from them should read as a changelog of shipped work.*
+
+**The remainder of this section — message format, types, examples, and safety
+rules — applies only when git commit management is enabled and a commit has been
+user-approved.**
 
 ### Commit Message Format
 
@@ -716,7 +776,7 @@ These conditions trigger an immediate STOP with escalation to user.
 | Row count drops >90% after transformation | Stage 7 | STOP, verify transformation logic |
 | **QA BLOCKER after 2 revisions** | 5-QA to 8-QA | STOP, escalate to user |
 | **QA methodology violation** | 5-QA to 8-QA | STOP, escalate immediately |
-| Notebook execution error after 2 fix attempts | Stage 9 | STOP, report error details |
+| `marimo run` or `quarto render` fails after 2 fix attempts | Stage 9 | STOP, report error details; Quarto rendering validates document assembly and enabled previews, not archived Stage 5-8 re-execution |
 | Data unavailable in data skills | Stage 2-3 | STOP, escalate immediately |
 | LOW confidence finding unresolved | Any | Cannot proceed |
 

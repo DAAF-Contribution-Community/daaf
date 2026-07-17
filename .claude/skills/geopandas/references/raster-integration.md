@@ -124,11 +124,15 @@ with rasterio.open("temperature.tif") as src:
 
 For multidimensional rasters (multiple bands, time series, or named dimensions), xarray with the rioxarray extension provides a higher-level interface.
 
-### Installation
+### Availability
 
-```bash
-pip install xarray rioxarray netcdf4
-```
+`xarray` and `rioxarray` are pre-installed in DAAF and ready to import. `netcdf4`
+(the NetCDF file backend) is **not** pre-installed; runtime installs are blocked
+(`pip install`/`uv add` are refused both at the command line and inside executed
+scripts — see CLAUDE.md § Runtime Package Installation). Reading GeoTIFFs via the
+`rasterio` engine (below) needs no extra backend — only reach for `netcdf4` when
+reading `.nc` files, and if so, escalate to the user to add it to the Dockerfile
+(user additions block near the end) and rebuild before use.
 
 ### Reading Rasters
 

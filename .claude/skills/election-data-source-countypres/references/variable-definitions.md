@@ -100,6 +100,16 @@ Complete encoding tables and formal definitions for all 12 columns.
       .agg(pl.col("totalvotes").sum())
   )
   ```
+  ```r
+  # WRONG: sums totalvotes once per candidate row (~3-4x inflation)
+  state_totals <- df |> group_by(state_po, year) |> summarise(totalvotes = sum(totalvotes))
+
+  # CORRECT: deduplicate first, then sum
+  state_totals <- df |>
+    distinct(county_fips, year, .keep_all = TRUE) |>
+    group_by(state_po, year) |>
+    summarise(totalvotes = sum(totalvotes))
+  ```
 
 ### version
 - **Type:** Int64

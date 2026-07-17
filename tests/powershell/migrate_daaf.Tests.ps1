@@ -19,8 +19,25 @@ Describe "migrate_daaf.ps1" {
             $script:Content = Get-Content "$RepoRoot/scripts/host/migrate_daaf.ps1" -Raw
         }
 
+        It "declares #Requires -Version 5.1" {
+            $Content | Should -Match '#Requires\s+-Version\s+5\.1'
+        }
+
         It "sets ErrorActionPreference to Stop" {
             $Content | Should -Match '\$ErrorActionPreference\s*=\s*[''"]Stop[''"]'
+        }
+
+        It "enables Set-StrictMode -Version 3.0" {
+            $Content | Should -Match 'Set-StrictMode\s+-Version\s+3\.0'
+        }
+
+        It "places Set-StrictMode after the test-mode guard" {
+            # Strict mode is dynamically scoped: placing it before the guard would
+            # leak into Pester's dot-sourced test session. It must come after.
+            $guardIdx = $Content.IndexOf('$env:DAAF_TEST_MODE -eq "1"')
+            $strictIdx = $Content.IndexOf('Set-StrictMode -Version 3.0')
+            $guardIdx | Should -BeGreaterThan -1
+            $strictIdx | Should -BeGreaterThan $guardIdx
         }
 
         It "defines Wait-ForUser function" {
@@ -351,6 +368,23 @@ Describe "migrate_daaf.ps1 behavioral tests" {
             $Content | Should -Match 'trap \{'
             $Content | Should -Match 'Mutex\.ReleaseMutex'
         }
+
+        It "saves and restores DAAF_NESTED around each nested delegate (no unconditional clobber)" {
+            # Regression guard for the DAAF_NESTED clobber bug: each nested-script
+            # launch (backup during migration, and the post-migration update offer)
+            # must capture the parent's DAAF_NESTED before setting it to "1" and
+            # restore it in finally, so a value inherited from a parent process
+            # survives instead of being unconditionally removed.
+            $setCount     = ([regex]::Matches($Content, '\$env:DAAF_NESTED = "1"')).Count
+            $saveCount    = ([regex]::Matches($Content, '\$savedNested = \$env:DAAF_NESTED')).Count
+            $restoreCount = ([regex]::Matches($Content, 'if \(\$null -ne \$savedNested\) \{ \$env:DAAF_NESTED = \$savedNested \} else \{ Remove-Item Env:\\DAAF_NESTED')).Count
+            $removeCount  = ([regex]::Matches($Content, 'Remove-Item Env:\\DAAF_NESTED')).Count
+            $setCount     | Should -BeGreaterOrEqual 2
+            $saveCount    | Should -Be $setCount
+            $restoreCount | Should -Be $setCount
+            # Every Remove-Item Env:\DAAF_NESTED must live inside a conditional restore.
+            $removeCount  | Should -Be $restoreCount
+        }
     }
 }
 
@@ -363,11 +397,24 @@ Describe "migrate_daaf.ps1 dry-run mode" {
         . "$PSScriptRoot/TestHelper.ps1"
         $script:OrigDryRun = $env:DAAF_DRY_RUN
         $script:OrigNested = $env:DAAF_NESTED
+        # Run inside a throwaway temp dir. migrate_daaf.ps1 treats the current
+        # directory as an existing install when it finds a docker-compose.yml
+        # there, and writes stub scripts + a docker-compose.yml.pre-migrate into
+        # it. Without this isolation the repo root (which has a docker-compose.yml)
+        # would be clobbered. Push in BeforeAll and Pop in a crash-proof AfterAll.
+        $script:TestDir = New-Item -ItemType Directory -Path (Join-Path ([System.IO.Path]::GetTempPath()) "daaf-migrate-dry-$(Get-Random)")
+        Push-Location $script:TestDir
+        New-FakeComposeFile
+        Set-Content -Path (Join-Path $script:TestDir "backup_daaf.ps1") -Value "exit 0"
     }
 
     AfterAll {
         $env:DAAF_DRY_RUN = $script:OrigDryRun
         $env:DAAF_NESTED = $script:OrigNested
+        # Pop unconditionally so a mid-block failure cannot leave CWD at the repo
+        # root for the next Describe block.
+        if ((Get-Location).Path -eq $script:TestDir.FullName) { Pop-Location }
+        Remove-Item -Recurse -Force $script:TestDir -ErrorAction SilentlyContinue
     }
 
     It "completes successfully with DAAF_DRY_RUN=1" {
@@ -390,6 +437,25 @@ Describe "migrate_daaf.ps1 dry-run mode" {
         $output = & "$RepoRoot/scripts/host/migrate_daaf.ps1" *>&1
         # Dry-run simulates Era 1 (clone-based) -- verify detection output
         ($output | Out-String) | Should -BeLike "*clone-based installation*"
+    }
+
+    # --- Regression: non-writing dry-run (2026-07-14 root-stub incident) ---
+    # Root cause: the dry-run Invoke-WebRequest mock wrote an "exit 0" stub for
+    # every -OutFile target, and $HostDir resolves to the CWD when it holds a
+    # docker-compose.yml -- leaking stub scripts + a docker-compose.yml.pre-migrate
+    # into the caller's directory. The dry-run must now create NOTHING on disk.
+    # See: research/2026-07-15_FrameworkDev_CwdLeakRootStubs/SESSION_NOTES.md
+    It "dry-run from a compose-seeded dir creates no new files" {
+        $env:DAAF_DRY_RUN = "1"
+        $env:DAAF_NESTED = "1"
+        # TestDir already contains docker-compose.yml (New-FakeComposeFile) and a
+        # stub backup_daaf.ps1 (both seeded in BeforeAll). Snapshot before/after.
+        $before = (Get-ChildItem -Force $script:TestDir | Select-Object -ExpandProperty Name | Sort-Object) -join "`n"
+        $null = & "$RepoRoot/scripts/host/migrate_daaf.ps1" *>&1
+        $after = (Get-ChildItem -Force $script:TestDir | Select-Object -ExpandProperty Name | Sort-Object) -join "`n"
+        $after | Should -Be $before
+        # Explicit spot-check for the specific incident artifact.
+        (Test-Path (Join-Path $script:TestDir "docker-compose.yml.pre-migrate")) | Should -Be $false
     }
 }
 
@@ -464,7 +530,75 @@ $NonInteractive = $true
         $outputStr = $output | Out-String
         $LASTEXITCODE | Should -BeIn @(0, $null)
         $outputStr | Should -BeLike "*clone-based installation*"
+        # Positive-path lock: the set-upstream arm returns exit 0 in this mock, so
+        # the success line must print (complements the failure-path -Not -BeLike test).
+        $outputStr | Should -BeLike "*Tracking set: main -> origin/main*"
         $outputStr | Should -BeLike "*Migration complete*"
+    }
+
+    It "safe.directory exemption is added before the first container git op" {
+        # Round-5 field fix: a root-owned Era-1 payload + non-root appuser + modern
+        # git => "dubious ownership" fatal on every in-container git op. migrate now
+        # issues `git config --global --add safe.directory /daaf` BEFORE the first
+        # in-container git operation (era detection). The mock logs each docker exec
+        # in call order; the config-add must be recorded and precede the era probe.
+        $env:DAAF_NESTED = "1"
+        $callLog = Join-Path $script:TestDir "docker_exec_calls.log"
+        $wrapperScript = Join-Path $script:TestDir "test_wrapper.ps1"
+        Set-Content -Path $wrapperScript -Value @'
+$ErrorActionPreference = "Stop"
+[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+function docker {
+    $argStr = $args -join ' '
+    $global:LASTEXITCODE = 0
+    if ($argStr -like '*exec*') { Add-Content -Path $CallLog -Value $argStr }
+    switch -Wildcard ($argStr) {
+        "*info*" { return }
+        "*volume inspect*" { return }
+        "*ps -a*--filter*volume=*--format*" { Write-Output "daaf-test-1" }
+        "*inspect*--format*Status*" { Write-Output "running" }
+        "*exec*true*" { return }
+        "*exec*test -f*CLAUDE.md*" { return }
+        "*exec*config*safe.directory*" { return }
+        "*exec*git -C /daaf remote get-url*upstream*" { $global:LASTEXITCODE = 1; return }
+        "*exec*git -C /daaf remote get-url*origin*" {
+            Write-Output "https://github.com/DAAF-Contribution-Community/daaf.git"
+        }
+        "*exec*git -C /daaf fetch*" { return }
+        "*exec*git -C /daaf branch --set-upstream*" { return }
+        "*exec*git*" { return }
+        "*exec*" { return }
+        "*start*" { return }
+        default { return }
+    }
+}
+function Invoke-WebRequest {
+    param([switch]$UseBasicParsing, [string]$Uri, [string]$OutFile)
+    $null = $UseBasicParsing, $Uri
+    if ($OutFile) {
+        $parentDir = Split-Path $OutFile -Parent
+        if ($parentDir -and -not (Test-Path $parentDir)) {
+            New-Item -ItemType Directory -Path $parentDir -Force | Out-Null
+        }
+        Set-Content -Path $OutFile -Value "exit 0"
+    }
+}
+$NonInteractive = $true
+'@
+        Add-Content -Path $wrapperScript -Value "`$CallLog = '$callLog'"
+        Add-Content -Path $wrapperScript -Value ". '$RepoRoot/scripts/host/migrate_daaf.ps1'"
+        $output = & pwsh -NoProfile -File $wrapperScript *>&1
+        $outputStr = $output | Out-String
+        $LASTEXITCODE | Should -BeIn @(0, $null)
+        $outputStr | Should -BeLike "*Configured: safe.directory -> /daaf*"
+        # Ordering: the config-add must precede the first era-detection git op.
+        # Revert the fix -> no add line recorded -> $addIdx is null -> this fails.
+        $logLines = @(Get-Content $callLog)
+        $addIdx = ($logLines | Select-String -SimpleMatch '--add safe.directory /daaf' | Select-Object -First 1).LineNumber
+        $eraIdx = ($logLines | Select-String -Pattern 'remote get-url.*origin' | Select-Object -First 1).LineNumber
+        $addIdx | Should -Not -BeNullOrEmpty
+        $eraIdx | Should -Not -BeNullOrEmpty
+        $addIdx | Should -BeLessThan $eraIdx
     }
 
     It "Era 2 path (ZIP-based) detects and reports correctly" {
@@ -520,7 +654,11 @@ $NonInteractive = $true
         $outputStr | Should -BeLike "*Migration complete*"
     }
 
-    It "already migrated (idempotency) skips graft step" {
+    It "already migrated (idempotency) skips graft via replace-ref leg" {
+        # Idempotency via LEG 1 (replace-ref): `git replace -l` returns a ref and
+        # cat-file returns NO parent, so ONLY the replace leg can produce the skip
+        # -- proving the replace-first detector catches re-runs (not the old
+        # parent-count check, which the prior graft would have corrupted).
         $env:DAAF_NESTED = "1"
         $wrapperScript = Join-Path $script:TestDir "test_wrapper.ps1"
         Set-Content -Path $wrapperScript -Value @'
@@ -538,10 +676,11 @@ function docker {
         "*exec*test -f*CLAUDE.md*" { return }
         "*exec*git -C /daaf remote get-url*" { $global:LASTEXITCODE = 1; return }
         "*exec*git -C /daaf fetch*" { return }
+        "*exec*git -C /daaf replace -l*" { Write-Output "refs/replace/aaa111root"; return }
+        "*exec*git -C /daaf rev-parse --is-shallow-repository*" { Write-Output "false"; return }
         "*exec*git -C /daaf rev-list --max-parents=0*" { Write-Output "aaa111root" }
         "*exec*git -C /daaf cat-file*" {
             Write-Output "tree abc123"
-            Write-Output "parent def456"
             Write-Output "author Test"
         }
         "*exec*git -C /daaf branch --set-upstream*" { return }
@@ -570,6 +709,127 @@ $NonInteractive = $true
         $outputStr = $output | Out-String
         $LASTEXITCODE | Should -BeIn @(0, $null)
         $outputStr | Should -BeLike "*graft already in place*"
+        $outputStr | Should -BeLike "*replace ref present*"
+    }
+
+    It "shallow clone forces the graft path (not falsely skipped)" {
+        # Regression for Finding 3: on a shallow clone the boundary commit shows a
+        # phantom parent that the OLD detector read as "already grafted" and skipped
+        # (the bug). LEG 2's shallow guard forces the match/graft path. Mock: no
+        # replace ref, shallow=true, cat-file has a phantom parent, and an
+        # origin/main tree matching the local tree so the graft lands and verifies.
+        $env:DAAF_NESTED = "1"
+        $wrapperScript = Join-Path $script:TestDir "test_wrapper.ps1"
+        Set-Content -Path $wrapperScript -Value @'
+$ErrorActionPreference = "Stop"
+[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+function docker {
+    $argStr = $args -join ' '
+    $global:LASTEXITCODE = 0
+    switch -Wildcard ($argStr) {
+        "*info*" { return }
+        "*volume inspect*" { return }
+        "*ps -a*--filter*volume=*--format*" { Write-Output "daaf-test-1" }
+        "*inspect*--format*Status*" { Write-Output "running" }
+        "*exec*true*" { return }
+        "*exec*test -f*CLAUDE.md*" { return }
+        "*exec*git -C /daaf remote get-url*" { $global:LASTEXITCODE = 1; return }
+        "*exec*git -C /daaf fetch*" { return }
+        "*exec*git -C /daaf replace -l*" { return }
+        "*exec*git -C /daaf rev-parse --is-shallow-repository*" { Write-Output "true"; return }
+        "*exec*git -C /daaf rev-list --max-parents=0*" { Write-Output "aaa111root" }
+        "*exec*git -C /daaf cat-file*" {
+            Write-Output "tree abc123"
+            Write-Output "parent def456"
+            Write-Output "author Test"
+        }
+        "*exec*git -C /daaf replace --graft*" { return }
+        "*exec*git -C /daaf merge-base*" { Write-Output "mergebasesha1"; return }
+        "*exec*git -C /daaf rev-parse origin/main*" { Write-Output "upstreamsha999"; return }
+        "*exec*sh -c*ls-tree*" { Write-Output "blob0000 file1"; return }
+        "*exec*git -C /daaf branch --set-upstream*" { return }
+        "*exec*git -C /daaf remote add*" { return }
+        "*exec*git*" { return }
+        "*exec*" { return }
+        "*start*" { return }
+        default { return }
+    }
+}
+function Invoke-WebRequest {
+    param([switch]$UseBasicParsing, [string]$Uri, [string]$OutFile)
+    $null = $UseBasicParsing, $Uri
+    if ($OutFile) {
+        $parentDir = Split-Path $OutFile -Parent
+        if ($parentDir -and -not (Test-Path $parentDir)) {
+            New-Item -ItemType Directory -Path $parentDir -Force | Out-Null
+        }
+        Set-Content -Path $OutFile -Value "exit 0"
+    }
+}
+$NonInteractive = $true
+'@
+        Add-Content -Path $wrapperScript -Value ". '$RepoRoot/scripts/host/migrate_daaf.ps1'"
+        $output = & pwsh -NoProfile -File $wrapperScript *>&1
+        $outputStr = $output | Out-String
+        $LASTEXITCODE | Should -BeIn @(0, $null)
+        $outputStr | Should -BeLike "*shallow clone*"
+        $outputStr | Should -Not -BeLike "*graft already in place*"
+        $outputStr | Should -BeLike "*Connecting local history to upstream*"
+        $outputStr | Should -BeLike "*Migration complete*"
+    }
+
+    It "set-upstream failure prints an honest note and does not abort" {
+        # Finding 2: a failed `branch --set-upstream-to` must NOT print the
+        # "Tracking set" success line. The set-upstream arm returns exit 1, so the
+        # honest NOTE branch fires and the migration still completes (tracking is
+        # best-effort, non-fatal). Era-1 path (origin matches the official repo).
+        $env:DAAF_NESTED = "1"
+        $wrapperScript = Join-Path $script:TestDir "test_wrapper.ps1"
+        Set-Content -Path $wrapperScript -Value @'
+$ErrorActionPreference = "Stop"
+[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+function docker {
+    $argStr = $args -join ' '
+    $global:LASTEXITCODE = 0
+    switch -Wildcard ($argStr) {
+        "*info*" { return }
+        "*volume inspect*" { return }
+        "*ps -a*--filter*volume=*--format*" { Write-Output "daaf-test-1" }
+        "*inspect*--format*Status*" { Write-Output "running" }
+        "*exec*true*" { return }
+        "*exec*test -f*CLAUDE.md*" { return }
+        "*exec*git -C /daaf remote get-url*upstream*" { $global:LASTEXITCODE = 1; return }
+        "*exec*git -C /daaf remote get-url*origin*" {
+            Write-Output "https://github.com/DAAF-Contribution-Community/daaf.git"
+        }
+        "*exec*git -C /daaf fetch*" { return }
+        "*exec*git -C /daaf branch --set-upstream*" { $global:LASTEXITCODE = 1; return }
+        "*exec*git*" { return }
+        "*exec*" { return }
+        "*start*" { return }
+        default { return }
+    }
+}
+function Invoke-WebRequest {
+    param([switch]$UseBasicParsing, [string]$Uri, [string]$OutFile)
+    $null = $UseBasicParsing, $Uri
+    if ($OutFile) {
+        $parentDir = Split-Path $OutFile -Parent
+        if ($parentDir -and -not (Test-Path $parentDir)) {
+            New-Item -ItemType Directory -Path $parentDir -Force | Out-Null
+        }
+        Set-Content -Path $OutFile -Value "exit 0"
+    }
+}
+$NonInteractive = $true
+'@
+        Add-Content -Path $wrapperScript -Value ". '$RepoRoot/scripts/host/migrate_daaf.ps1'"
+        $output = & pwsh -NoProfile -File $wrapperScript *>&1
+        $outputStr = $output | Out-String
+        $LASTEXITCODE | Should -BeIn @(0, $null)
+        $outputStr | Should -BeLike "*Could not set upstream tracking*"
+        $outputStr | Should -Not -BeLike "*Tracking set: main -> origin/main*"
+        $outputStr | Should -BeLike "*Migration complete*"
     }
 }
 
@@ -881,5 +1141,111 @@ $NonInteractive = $true
         $content = Get-Content "$RepoRoot/scripts/host/migrate_daaf.ps1" -Raw
         $content | Should -Match 'trap \{'
         $content | Should -Match 'Mutex\.ReleaseMutex'
+    }
+}
+
+# Field-run 4 regression pin (2026-07-17): honest tracking NOTE
+Describe "migrate_daaf.ps1 set-upstream NOTE diagnosis" {
+    BeforeAll {
+        . "$PSScriptRoot/TestHelper.ps1"
+    }
+
+    It "diagnoses the actual failed precondition at both set-upstream sites" {
+        # The former NOTE always blamed a missing local 'main' branch; on
+        # tag-pinned or single-branch installs the actual missing piece is the
+        # origin/main remote-tracking ref. Both sites must probe and say so.
+        $content = Get-Content "$RepoRoot/scripts/host/migrate_daaf.ps1" -Raw
+        ([regex]::Matches($content, [regex]::Escape("no 'origin/main' remote-tracking ref"))).Count | Should -Be 2
+        ([regex]::Matches($content, [regex]::Escape('rev-parse --verify --quiet refs/remotes/origin/main'))).Count | Should -Be 2
+    }
+}
+
+# Field-Run Triage Round 5 (2026-07-17): git safe.directory exemption
+Describe "migrate_daaf.ps1 safe.directory exemption" {
+    BeforeAll {
+        . "$PSScriptRoot/TestHelper.ps1"
+        $script:Content = Get-Content "$RepoRoot/scripts/host/migrate_daaf.ps1" -Raw
+    }
+
+    It "issues an idempotent safe.directory config-add for /daaf" {
+        # A root-owned Era-1 payload + non-root appuser + modern git => dubious
+        # ownership fatal; the exemption is the documented remedy.
+        $Content | Should -Match ([regex]::Escape('git config --global --add safe.directory /daaf'))
+    }
+
+    It "cites the dubious-ownership field evidence in a comment" {
+        $Content | Should -Match 'detected dubious ownership'
+    }
+
+    It "adds the exemption before the era-detection git probe" {
+        # Source-order pin: the config-add must appear before the first
+        # `Invoke-ContainerGit remote get-url origin` (era detection).
+        $addPos = $Content.IndexOf('--add safe.directory /daaf')
+        $eraPos = $Content.IndexOf('Invoke-ContainerGit remote get-url origin')
+        $addPos | Should -BeGreaterThan -1
+        $eraPos | Should -BeGreaterThan -1
+        $addPos | Should -BeLessThan $eraPos
+    }
+}
+
+# Field-Run Triage Round 6 (2026-07-17): volume ownership repair (section 4c).
+# The documented v1.0.0 install (busybox cp -a into the volume) leaves the
+# payload root-owned, and the v1.0.0 compose has no daaf-init repair service
+# (that arrived in v2.0.0). The section-4b safe.directory exemption cures git's
+# dubious-ownership refusal but not writability: Era-1 fetch/set-upstream/merge
+# all EPERM as the non-root uid-1000 container user. migrate now runs the
+# daaf-init-parity repair (busybox chown -R 1000:1000) BEFORE era detection --
+# idempotent and a no-op on Era-2/3 payloads already repaired by their compose.
+Describe "migrate_daaf.ps1 volume ownership repair (section 4c)" {
+    BeforeAll {
+        . "$PSScriptRoot/TestHelper.ps1"
+        $script:Content = Get-Content "$RepoRoot/scripts/host/migrate_daaf.ps1" -Raw
+    }
+
+    It "issues the daaf-init-parity ownership repair on the DAAF volume" {
+        $Content | Should -Match ([regex]::Escape('busybox chown -R 1000:1000 /daaf'))
+        $Content | Should -Match 'daaf-init'
+    }
+
+    It "repairs ownership before the era-detection git probe" {
+        # Source-order pin: the chown must appear before the first
+        # `Invoke-ContainerGit remote get-url origin` (era detection).
+        $chownPos = $Content.IndexOf('busybox chown -R 1000:1000 /daaf')
+        $eraPos = $Content.IndexOf('Invoke-ContainerGit remote get-url origin')
+        $chownPos | Should -BeGreaterThan -1
+        $eraPos | Should -BeGreaterThan -1
+        $chownPos | Should -BeLessThan $eraPos
+    }
+
+    It "warns and continues on repair failure (Era-2/3 must never be blocked by an unnecessary chown)" {
+        $Content | Should -Match ([regex]::Escape('WARNING: Could not repair ownership of the DAAF volume'))
+    }
+}
+
+# Field-Run Triage Round 6b (2026-07-17): git identity era parity (section 4d).
+# The v1.0.0 image provisions no git identity (later eras set repo-local
+# daaf@local via entrypoint; the modern Dockerfile bakes it globally), and git
+# refuses commit-creating ops without one -- the migrated-but-not-yet-rebuilt
+# v1.0.0 container's update stash/merge would fail. migrate now sets the
+# era-parity identity, guarded so a real user's identity is never overwritten.
+Describe "migrate_daaf.ps1 git identity repair (section 4d)" {
+    BeforeAll {
+        . "$PSScriptRoot/TestHelper.ps1"
+        $script:Content = Get-Content "$RepoRoot/scripts/host/migrate_daaf.ps1" -Raw
+    }
+
+    It "sets the era-parity identity, guarded on an empty user.email, before era detection" {
+        $Content | Should -Match ([regex]::Escape('Invoke-ContainerExec git -C /daaf config user.email daaf@local'))
+        $Content | Should -Match ([regex]::Escape('$GitEmailExisting = Invoke-ContainerGit config user.email'))
+        $idPos = $Content.IndexOf('config user.email daaf@local')
+        $eraPos = $Content.IndexOf('Invoke-ContainerGit remote get-url origin')
+        $idPos | Should -BeGreaterThan -1
+        $eraPos | Should -BeGreaterThan -1
+        $idPos | Should -BeLessThan $eraPos
+    }
+
+    It "warns and continues on identity-set failure, citing the refusal evidence" {
+        $Content | Should -Match ([regex]::Escape('WARNING: Could not configure a git identity'))
+        $Content | Should -Match ([regex]::Escape('Please tell me who you are'))
     }
 }

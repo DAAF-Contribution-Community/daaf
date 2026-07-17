@@ -606,6 +606,21 @@ body {
   cursor: pointer;
 }
 .activity-target:hover { text-decoration: underline; }
+.ephemeral-path {
+  color: #94a3b8;
+  font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 0.75rem;
+  text-decoration: line-through;
+  cursor: default;
+}
+.ephemeral-marker {
+  color: #b45309;
+  font-family: inherit;
+  font-size: 0.68rem;
+  font-style: italic;
+  text-decoration: none;
+  margin-left: 2px;
+}
 .activity-extra-targets {
   display: inline;
   font-size: 0.72rem;
@@ -942,6 +957,22 @@ function agentColorClass(agentType) {
 function fileUrl(path) {
   if (!path) return '#';
   return '/' + path.replace(/^\//, '');
+}
+
+// Single render point for file-path links. Paths under /tmp are outside DAAF's
+// backup/audit boundary and are purged before viewing time, so a normal file link
+// would render as live-looking but dead. Render those inert: a non-clickable span
+// with the .ephemeral-path class and an explicit marker instead of an <a>.
+// The optional leading slash in the regex is intentional: fileUrl() is itself
+// leading-slash-agnostic, so a /tmp path logged without its slash gets the same
+// treatment (DAAF convention forbids a repo-root tmp/ dir, so no collision).
+function pathLink(path, label, titleText) {
+  var safeLabel = escapeHtml(label);
+  if (path && /^\/?tmp\//.test(path)) {
+    return '<span class="ephemeral-path" title="ephemeral /tmp — not archived">' + safeLabel + ' <span class="ephemeral-marker">[ephemeral /tmp — not archived]</span></span>';
+  }
+  var titleAttr = titleText ? ' title="' + escapeHtml(titleText) + '"' : '';
+  return '<a href="' + escapeHtml(fileUrl(path)) + '" class="activity-target" data-preview-path="' + escapeHtml(path) + '"' + titleAttr + '>' + safeLabel + '</a>';
 }
 
 // =====================================================================
@@ -1349,7 +1380,7 @@ function renderBlockDetail(panel, block, session) {
   html += '<strong>Duration:</strong> ' + formatDuration(block.durationSec);
   if (block.file) {
     var lineRef = block.lineStart && block.lineEnd ? ':' + block.lineStart + '-' + block.lineEnd : '';
-    html += ' &nbsp;|&nbsp; <strong>Source:</strong> <a href="' + escapeHtml(fileUrl(block.file)) + '" class="activity-target" data-preview-path="' + escapeHtml(block.file) + '" title="' + escapeHtml(block.file) + '">' + escapeHtml(block.file + lineRef) + '</a>';
+    html += ' &nbsp;|&nbsp; <strong>Source:</strong> ' + pathLink(block.file, block.file + lineRef, block.file);
   }
   html += '</div>';
 
@@ -1414,7 +1445,7 @@ function renderSubagentDetail(panel, sa, session) {
   if (sa.toolUseCount != null) html += ' &nbsp;|&nbsp; <strong>Tool calls:</strong> ' + sa.toolUseCount;
   if (sa.startTime) html += ' &nbsp;|&nbsp; <span class="detail-timestamp">' + formatDateTimestamp(sa.startTime) + '</span>';
   html += '<br>';
-  if (sa.file) html += '<strong>Log file:</strong> <a href="' + escapeHtml(fileUrl(sa.file)) + '" class="activity-target" data-preview-path="' + escapeHtml(sa.file) + '">' + escapeHtml(sa.file) + '</a>';
+  if (sa.file) html += '<strong>Log file:</strong> ' + pathLink(sa.file, sa.file, null);
   if (sa.parentBlockId) {
     html += ' &nbsp;|&nbsp; <strong>Parent block:</strong> <span class="view-full-link" data-action="go-block" data-block-id="' + escapeHtml(sa.parentBlockId) + '">' + escapeHtml(sa.parentBlockId) + '</span>';
   }
@@ -1431,7 +1462,7 @@ function renderSubagentDetail(panel, sa, session) {
     var protocolPath = '.claude/agents/' + sa.agentType + '.md';
     html += '<div class="detail-section-title">Agent Protocol</div>';
     html += '<div style="padding:4px 0;font-size:0.8rem">';
-    html += '<a href="' + escapeHtml(fileUrl(protocolPath)) + '" class="activity-target" data-preview-path="' + escapeHtml(protocolPath) + '" title="' + escapeHtml(protocolPath) + '">' + escapeHtml(protocolPath) + '</a>';
+    html += pathLink(protocolPath, protocolPath, protocolPath);
     html += '</div>';
   }
 
@@ -1443,7 +1474,7 @@ function renderSubagentDetail(panel, sa, session) {
       var skillPath = '.claude/skills/' + skillName + '/SKILL.md';
       html += '<div style="padding:2px 0">';
       html += '<span class="activity-dot type-skill" style="display:inline-block;vertical-align:middle;margin-right:6px"></span>';
-      html += '<a href="' + escapeHtml(fileUrl(skillPath)) + '" class="activity-target" data-preview-path="' + escapeHtml(skillPath) + '" title="' + escapeHtml(skillPath) + '">' + escapeHtml(skillName) + '</a>';
+      html += pathLink(skillPath, skillName, skillPath);
       html += '</div>';
     });
     html += '</div>';
@@ -1535,14 +1566,14 @@ function renderSingleActivity(act, defaultFile) {
 
   // Primary target file link (skip for search tools — results shown in box below)
   if (act.target && !isSearch) {
-    descHtml += ' <a href="' + escapeHtml(fileUrl(act.target)) + '" class="activity-target" data-preview-path="' + escapeHtml(act.target) + '" title="Preview: ' + escapeHtml(act.target) + '">' + escapeHtml(act.target.split('/').pop()) + '</a>';
+    descHtml += ' ' + pathLink(act.target, act.target.split('/').pop(), 'Preview: ' + act.target);
   }
 
   // Extra targets (e.g., multiple files in Bash commands)
   if (act.extraTargets && act.extraTargets.length > 0) {
     descHtml += ' <span class="activity-extra-targets">';
     act.extraTargets.forEach(function(t) {
-      descHtml += ' <a href="' + escapeHtml(fileUrl(t)) + '" class="activity-target" data-preview-path="' + escapeHtml(t) + '" title="Preview: ' + escapeHtml(t) + '">' + escapeHtml(t.split('/').pop()) + '</a>';
+      descHtml += ' ' + pathLink(t, t.split('/').pop(), 'Preview: ' + t);
     });
     descHtml += '</span>';
   }

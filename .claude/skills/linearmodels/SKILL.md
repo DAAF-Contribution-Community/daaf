@@ -1,7 +1,7 @@
 ---
 name: linearmodels
 description: >-
-  Panel data, IV/GMM, system regression. PanelOLS (FE/RE), BetweenOLS, Fama-MacBeth, IV2SLS/LIML/GMM, SUR, 3SLS, Driscoll-Kraay SEs. Use for RE/between, system estimation, or GMM. Complements pyfixest (FE + DiD) and statsmodels (GLM + time series).
+  Panel data, IV/GMM, system regression. PanelOLS (FE/RE), BetweenOLS, Fama-MacBeth, IV2SLS/LIML/GMM, SUR, 3SLS, Driscoll-Kraay SEs. Use for RE/between, system estimation, or GMM. Complements pyfixest (FE + DiD) and statsmodels (GLM + time series). R equivalent: plm (use when execution language is R).
 metadata:
   audience: research-coders
   domain: python-library
@@ -47,6 +47,8 @@ linearmodels extends statsmodels with specialized model classes for structured d
 4. **Asset pricing?** Read `quickstart.md` then `asset-pricing.md`
 5. **Choosing SEs?** Read `covariance-inference.md`
 6. **Coming from pyfixest?** Read `quickstart.md` then `gotchas.md`
+
+**The reference-file routing in this skill applies to advisory and brainstorming turns as much as implementation.** Recommending an approach, reviewing a plan, or answering a question that touches a routed topic calls for reading the routed reference file just as much as writing code does — the reference files carry curated caveats and environment-specific constraints that this overview and general knowledge lack.
 
 ## Related Skills
 

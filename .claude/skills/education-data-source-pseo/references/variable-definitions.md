@@ -136,6 +136,24 @@ df_clean = df.with_columns(
     .alias("p50_earnings_clean")
 )
 ```
+```r
+library(arrow)
+library(dplyr)
+
+# Load PSEO data
+df <- read_parquet("colleges_pseo_2020.parquet")
+
+# Filter out missing earnings data
+valid_earnings <- df |> filter(p50_earnings > 0)
+
+# Check for suppressed values
+suppressed <- df |> filter(p50_earnings == -3)
+
+# Convert coded missing to NA
+df_clean <- df |> mutate(
+  p50_earnings_clean = if_else(p50_earnings < 0, NA_real_, as.double(p50_earnings))
+)
+```
 
 ## Degree Level Codes (Portal Integer Encoding)
 

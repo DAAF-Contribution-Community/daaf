@@ -8,6 +8,7 @@ After mode confirmation, briefly orient the user. Key points:
 
 - 3 phases: Setup, Profiling (4 parts of scripted analysis), Skill Creation
 - 2 checkpoints where you review: after setup (to confirm scope) and after profiling (to confirm interpretations before they become part of the skill)
+- 1 optional offer between the profiling review and skill creation: I can research the source online first to enrich the skill (skippable in one word)
 - You receive: a standalone data source skill ready for use in future analyses, plus a research project folder with all profiling evidence
 - You need to provide: data file(s), source name, file format, and optionally any documentation, priority columns, and known exclusions
 - Key characteristic: thorough automated profiling, but you review all interpretations before they are encoded into the skill
@@ -40,6 +41,9 @@ Data Onboarding is designed for **tabular datasets** — files with rows and col
 │      ├─ Collect: domain context, documentation links, priority columns      │
 │      ├─ Collect: known exclusions (populations/periods/geographies NOT in   │
 │      │   the data — feeds analytical-context.md Population Coverage)        │
+│      ├─ SENSITIVITY GATE: is the data sensitive/proprietary/regulated?      │
+│      │   unsure or unprotected -> SYNTHETIC PATH (data never enters DAAF)     │
+│      │   see WORKFLOW_PHASE_DO_SYNTHETIC.md; else continue below              │
 │      ├─ Determine access method:                                            │
 │      │   ├─ LOCAL FILE — user provides file path(s) on disk                │
 │      │   │   └─ Continue DI-1 (file structure classification below)        │
@@ -77,7 +81,9 @@ Data Onboarding is designed for **tabular datasets** — files with rows and col
 │      ├─ DI-0a: WRITE PHASE — Invoke data-ingest (profiling_part = "DI-0") │
 │      │   ├─ Agent researches API (WebFetch docs, WebSearch if needed)      │
 │      │   ├─ Identifies endpoints, response format, pagination, rate limits │
-│      │   ├─ Writes acquisition script: scripts/stage5_fetch/00_api-fetch.py│
+│      │   ├─ Writes acquisition script:                                    │
+│      │   │   scripts/stage5_fetch/00_api-fetch.py (Python)                │
+│      │   │   scripts/stage5_fetch/00_api-fetch.R  (R)                     │
 │      │   └─ Returns: script path, API findings, confidence assessment     │
 │      │   (Agent does NOT execute the script — returns after writing)       │
 │      ├─ Orchestrator presents script to user for review and approval      │
@@ -148,10 +154,24 @@ Data Onboarding is designed for **tabular datasets** — files with rows and col
             │  skill authoring proceeds         │
             └──────────────────────────────────┘
                           ↓
+            ┌──────────────────────────────────┐
+            │  Pre-Authoring Research Offer    │
+            │  OPTIONAL — offer targeted online │
+            │  research about the source before │
+            │  the skill is written; skippable, │
+            │  never a gate. If accepted, a     │
+            │  search-agent runs and completes  │
+            │  before DI-7; findings feed the   │
+            │  skill's analytical context.      │
+            └──────────────────────────────────┘
+                          ↓
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │ PHASE DO-3: SKILL AUTHORING & DELIVERY                                      │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │  Stage DI-7: Skill Authoring                                       │
+│      ├─ [Optional] Pre-Authoring Research Offer resolved (see PSU          │
+│      │   Templates § Pre-Authoring Research Offer); if accepted, notes      │
+│      │   persisted and passed to DI-7 as input                              │
 │      ├─ Synthesize profiling results + user-confirmed interpretations       │
 │      ├─ Create SKILL.md using DATA_SOURCE_SKILL_TEMPLATE.md                 │
 │      ├─ Create reference files in .claude/skills/{skill-name}/references/   │
@@ -202,7 +222,29 @@ All data source skills follow this pattern. The `{domain}` groups related source
 3. **Always check** for conflicts against existing skills in `.claude/skills/` before confirming.
 4. **Record** the confirmed skill name in STATE.md's Data Source Info section.
 
+### Sensitivity Gate (DI-1 — Before Access-Method Determination)
+
+**This is a mandatory DI-1 step, asked before determining the access method.** Before any data is brought into the container, establish whether the dataset is sensitive and whether the user has adequate protections. The framing below is user-directed — adapt the wording, keep the substance. It draws on the existing privacy guidance in `{BASE_DIR}/README.md` (§ data-privacy note), `user_reference/03_best_practices.md` (§ data privacy), and `user_reference/07_faq_technical.md` (§ Data Privacy FAQ) — reference those for depth rather than restating them. The gate fires identically regardless of how the user reached Data Onboarding — including when they were routed here from an Ad Hoc Collaboration or User Support escalation (e.g., a help conversation that surfaced sensitive data): the entry path does not change whether, or how, this gate is applied.
+
+Present, in plain language:
+
+> Before we proceed: does this dataset contain proprietary, private, or regulated information (for example student records, health data, personnel data, trade secrets)? If so, please make sure your current account setup has sufficient data privacy and security protections before we continue — analytical output (sample rows, summary statistics) transits Anthropic's servers as part of how Claude Code works, and the protections that apply depend on your license and access method (Enterprise agreements, AWS Bedrock, and Google Vertex AI each offer different guarantees; see the Data Privacy FAQ). If you've confirmed your setup is appropriate, we can proceed normally. If you aren't sure, or you don't have those protections, we can run this process using the synthetic data protocol instead: your real data never enters DAAF — you'll run a profiling script on your own machine, review exactly what it captured before sharing anything, and I'll build a realistic synthetic stand-in from that profile for developing all the analysis code.
+
+**Three outcomes:**
+
+| Outcome | Condition | Routing |
+|---------|-----------|---------|
+| **1 — Not sensitive** | Data is not proprietary/private/regulated | Normal path — proceed to Access Method Determination below |
+| **2 — Sensitive, protections confirmed** | Sensitive, but the user confirms an appropriate license/access method (Enterprise, Bedrock, Vertex) | Normal path — proceed to Access Method Determination; **record the user's protection confirmation in STATE.md** (Data Source Info / Key Decisions Made) |
+| **3 — Sensitive, unsure or unprotected** | Sensitive, and the user is unsure of, or lacks, adequate protections | **Synthetic path** — the raw data never enters DAAF. Do NOT proceed to normal access-method determination. Load `{SKILL_REFS}/WORKFLOW_PHASE_DO_SYNTHETIC.md` and follow Stages DS-1 through DS-5, then rejoin DI-7. |
+
+**"Not sure" is a respected, first-class choice — treat it exactly like outcome 3.** A user who cannot confirm their protections should never be nudged toward the normal path; the synthetic path exists precisely so that uncertainty carries no privacy cost. If sensitivity was later re-decided (e.g., the user confirms protections after all), that is a re-decision at this gate, not an ad hoc reversal mid-workflow.
+
+Record the sensitivity-gate outcome in STATE.md (Data Source Info; and the Synthetic Path Tracking section if outcome 3).
+
 ### Access Method Determination
+
+Reached only for sensitivity-gate outcomes 1 and 2 (see above). Outcome 3 takes the synthetic path and skips in-container access entirely — the raw data is never staged.
 
 At DI-1, determine how the user's data will be accessed:
 
@@ -324,7 +366,7 @@ When the user needs to set up an API key and it's not currently available in the
 **Security notes to convey to user:**
 - The `environment_settings.txt` file lives on the host machine (in `daaf-docker/`), is gitignored, and is never visible to Claude inside the container
 - DAAF's safety guardrails prevent Claude from reading or writing environment settings files by design
-- The acquisition script references `os.environ["KEY_NAME"]`, never hardcodes the key value
+- The acquisition script references `os.environ["KEY_NAME"]` (Python) or `Sys.getenv("KEY_NAME")` (R), never hardcodes the key value
 - The script is archived in the project for reproducibility, but the key value is never in it
 
 **OAuth / complex authentication:** If the API requires OAuth 2.0 (token refresh, browser-based authorization code flow) or other multi-step authentication, DI-0 cannot handle this automatically. In this case, advise the user to:
@@ -367,6 +409,7 @@ user's requested dataset to the project's data/raw/ directory.
 - **API Documentation URL:** {url or "None — user description below"}
 - **User Description of API:** {what the user told us about the API}
 - **API Key Env Var:** {env var name, e.g., "HARVARD_DATAVERSE_API_KEY"}
+- **Execution Language:** {Python / R}
 - **Target Endpoint(s):** {what data to download}
 - **Query Parameters:** {filters, date range, format preferences}
 - **Data Persistence Preference:** {Local storage / Live query}
@@ -378,11 +421,14 @@ user's requested dataset to the project's data/raw/ directory.
 1. Load the `data-scientist` skill for methodology guidance
 2. Research the API via WebFetch (read API docs) and WebSearch if needed
 3. Identify: available endpoints, response format, pagination method, rate limits, auth method
-4. Write acquisition script to: `{project_script_dir}/stage5_fetch/00_api-fetch.py`
-   - Script MUST check `os.environ["{env_var_name}"]` with clear error if missing
-   - Script MUST use `requests` library for API calls
+4. Write acquisition script to: `{project_script_dir}/stage5_fetch/00_api-fetch.py` (Python) or `00_api-fetch.R` (R)
+   - Python: Script MUST check `os.environ["{env_var_name}"]` with clear error if missing
+   - R: Script MUST check `Sys.getenv("{env_var_name}")` with `stopifnot(nchar(...) > 0)` guard
+   - Python: Script MUST use `requests` library for API calls
+   - R: Script MUST use `httr2` library for API calls
    - Script MUST handle pagination if the API paginates results
    - Script MUST save result as parquet to `{project_dir}/data/raw/{date}_{source}.parquet`
+     (Python: via polars; R: via arrow::write_parquet)
    - Script MUST print: rows fetched, columns, file size, file path
    - Script MUST include IAT comments (INTENT, REASONING, ASSUMES)
    - Follow file-first execution protocol (read SCRIPT_EXECUTION_REFERENCE.md)
@@ -394,7 +440,7 @@ Return findings in this structure (max 3500 words):
 
 ### DI-0 Summary
 **Status:** [SCRIPT_READY | BLOCKED]
-**Script Path:** [absolute path to 00_api-fetch.py]
+**Script Path:** [absolute path to 00_api-fetch.py / 00_api-fetch.R]
 **Expected Output Path:** [where the parquet will be saved]
 
 ### API Findings
@@ -406,7 +452,7 @@ Return findings in this structure (max 3500 words):
 - **API Complexity Assessment:** [Simple / Complex — with reasoning]
 
 ### Acquisition Script
-**Path:** [absolute path to 00_api-fetch.py]
+**Path:** [absolute path to 00_api-fetch.py / 00_api-fetch.R]
 
 ### Confidence Assessment
 **DI-0 Confidence:** [HIGH | MEDIUM | LOW]
@@ -446,11 +492,15 @@ Return findings in this structure (max 3500 words):
 
 **Gate enforcement:** Gates GDI-1 through GDI-7 are mandatory checkpoints. If a gate's STOP condition is triggered, halt execution, present the issue to the user, and await guidance before proceeding. Update STATE.md with the gate failure and resolution.
 
+**Synthetic path (sensitivity-gate outcome 3):** When DI-1 routes to the synthetic path, gates GDI-2 through GDI-6 are replaced by the synthetic-path gates **GDS-0 through GDS-5** (tier selection, disclosure-safety of the outbound script, user local run, report intake, interpretation, synthetic generation), defined in full in `{SKILL_REFS}/WORKFLOW_PHASE_DO_SYNTHETIC.md` § Gate Definitions (Synthetic Path). GDI-1 (intake), GDI-7 (skill authoring), and GDI-8 (delivery) still apply after rejoin.
+
 ---
 
 ## Per-Part Execution Cycle (MANDATORY)
 
 For EACH profiling part (DI-3 through DI-6), follow this complete cycle. **Do NOT skip any step.** This is the Data Onboarding equivalent of the Full Pipeline's Stage 5-8 Composite Execution Pattern.
+
+> **Wave barrier discipline (async dispatch).** Subagents dispatched via the Agent tool run in the background by default; their completion arrives as async task notifications rather than a synchronous return. The "WAIT for … return before proceeding" steps below therefore mean a hard barrier: do not evaluate QA severity, update STATE.md conclusions, advance to the next part, or present PSU-DI2 until the dispatched subagent has actually returned. Where a step dispatches more than one subagent, wait for ALL of them before acting, and synthesize once over the complete set — a failed or early-returning subagent still counts as a completion to be handled during that whole-set synthesis, not as a mid-wave trigger. See the master statement in `SKILL.md` § Subagent Coordination > "Wave Barrier Discipline (Async Dispatch)."
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -563,7 +613,7 @@ For EACH profiling part (DI-3 through DI-6), follow this complete cycle. **Do NO
 | Gate passes (GDI-3/4/5/6) | Current Position → Status; Next Actions |
 | Gate STOP triggered | Blockers → Execution Blockers; Current Position → Status=Blocked |
 | Key decision made | Key Decisions Made table |
-| Context utilization ≥ ELEVATED (≥ 40% or ≥ 150k tokens) | Session Continuity → Context Snapshot |
+| Context utilization reaches ELEVATED (see CLAUDE.md § Context Quality Curve for threshold-profile rules) | Session Continuity → Context Snapshot |
 | PSU-DI2 user response received | Interpretation Tracking table (all rows populated with user decisions) |
 | Skill authoring completes (DI-7) | Skill Authoring Status table; Discovery Status (confirmed) |
 | Session break / finalization | Session Continuity → all fields; Session History |
@@ -572,14 +622,22 @@ For EACH profiling part (DI-3 through DI-6), follow this complete cycle. **Do NO
 
 ### Context Management
 
-Context utilization thresholds from `CLAUDE.md` > "Context & Session Health" > "Context Quality Curve" apply to Data Onboarding mode. The Per-Part Execution Cycle is the atomic unit for gating decisions.
+Context utilization thresholds from `CLAUDE.md` > "Context & Session Health" > "Context Quality Curve" apply to Data Onboarding mode. The Per-Part Execution Cycle is the atomic unit for gating decisions. Trigger points are **threshold-profile-conditional** (percentage OR absolute tokens, whichever fires first); each agent is measured against the profile selected from its own exact model ID. Profile selection is version-specific and independent of physical context-window mapping. Exact GPT 5.6 Sol has a separate validated profile that shares the standard 40%/60%/75% percentage boundaries (also used by the conservative default) while retaining higher validated absolute gates (300k/400k/500k). For that profile, the terminal model slug must be exactly `gpt-5.6-sol` or `gpt-5.6-sol[1m]`; the identifier may be bare or may contain one or more provider path prefixes ending in `/`. Malformed left-boundary strings such as `xgpt-5.6-sol`, `foo-gpt-5.6-sol`, and `vendor/notgpt-5.6-sol` remain conservative, as do right-side suffix or trailing variants. GPT is not part of the Claude Fable/Mythos model family. Terra, Luna, Pro, mini, chat, date snapshots, future variants, and trailing modifiers remain conservative unless separately validated and registered, even when the wider GPT 5.6 family maps to a 1,050,000-token physical window. That 1,050,000 figure is itself route-conditional: it holds on the API-key and OpenRouter routes, while the ChatGPT-subscription (Codex) shim lane is backend-capped at approximately 370,000 tokens (measured for Sol, 2026-07-16), which DAAF's hooks lane-gate automatically. At that cap, exact Sol's 40%/60%/75% percentage boundaries are 148k, 222k, and 277.5k tokens, respectively, and therefore fire before its 300k/400k/500k absolute gates; the same exact-Sol quality profile applies on both lanes even though their physical windows differ.
 
-| Utilization | Status | Data Onboarding Action |
-|-------------|--------|--------------------|
-| **< 40% and < 150k tokens** | NOMINAL | Continue normally through profiling parts |
-| **≥ 40% or ≥ 150k tokens** | ELEVATED | Complete current part cycle; assess whether remaining parts are feasible in this session; update STATE.md Context Snapshot |
-| **≥ 60% or ≥ 200k tokens** | HIGH | Complete current part cycle at full quality; update STATE.md with restart prompt; report to user; do not start next part |
-| **≥ 75% or ≥ 250k tokens** | CRITICAL | **Overrides atomic-unit requirement** — save STATE.md immediately (Current Position, Next Actions, Context Snapshot) and cease work; do not attempt to finish the current part cycle |
+| Threshold Profile | Membership | ELEVATED at | HIGH at | CRITICAL at |
+|-------------------|------------|-------------|---------|-------------|
+| **Claude Fable/Mythos validated extended-horizon** | Registered Claude Fable/Mythos models | ≥ 30% or ≥ 300k tokens | ≥ 40% or ≥ 400k tokens | ≥ 50% or ≥ 500k tokens |
+| **Exact GPT 5.6 Sol validated** | Exact terminal model slugs, bare or provider-prefixed: `gpt-5.6-sol` or `gpt-5.6-sol[1m]` | ≥ 40% or ≥ 300k tokens | ≥ 60% or ≥ 400k tokens | ≥ 75% or ≥ 500k tokens |
+| **Conservative-default** | Opus, Sonnet, unknown model IDs, every other GPT variant, GLM models, and all other alternative-provider models unless individually validated and registered | ≥ 40% or ≥ 150k tokens | ≥ 60% or ≥ 200k tokens | ≥ 75% or ≥ 250k tokens |
+
+The status levels and their Data Onboarding actions are identical across profiles (NOMINAL is any utilization below the ELEVATED trigger):
+
+| Status | Data Onboarding Action |
+|--------|--------------------|
+| **NOMINAL** (below ELEVATED) | Continue normally through profiling parts |
+| **ELEVATED** | Complete current part cycle; assess whether remaining parts are feasible in this session; update STATE.md Context Snapshot |
+| **HIGH** | Complete current part cycle at full quality; update STATE.md with restart prompt; report to user; do not start next part |
+| **CRITICAL** | **Overrides atomic-unit requirement** — save STATE.md immediately (Current Position, Next Actions, Context Snapshot) and cease work; do not attempt to finish the current part cycle |
 
 **Post-PSU-DI2 is a natural restart boundary.** If utilization is ELEVATED or higher after Part D completes, present PSU-DI2 findings, collect user decisions, populate Interpretation Tracking in STATE.md, then recommend restarting for DI-7 (skill authoring) in a fresh session.
 
@@ -593,6 +651,8 @@ After the user responds to PSU-DI2 (confirming/rejecting/modifying interpretatio
 4. **Next Actions:** Set to "Invoke skill authoring subagent"
 
 This is a **mandatory gate** — DI-7 cannot be invoked until Interpretation Tracking has Final Interpretation values for all rows.
+
+After this update procedure completes, present the **Pre-Authoring Research Offer** (see PSU Templates below) before dispatching DI-7. The offer is optional and skippable; it does not gate DI-7, but if accepted, the research runs to completion first (see `WORKFLOW_PHASE_DO_AUTHORING.md` § Pre-Authoring Research (Optional)).
 
 ---
 
@@ -743,6 +803,50 @@ Please review each interpretation above. For each row, indicate:
 **Are these interpretations accurate? Please confirm, reject, or modify each one.**
 ```
 
+### Pre-Authoring Research Offer
+
+Present **after** the user has responded to PSU-DI2 and the Post-PSU-DI2 Update Procedure is complete, and **before** dispatching Stage DI-7 skill authoring. This is an **optional, skippable offer — never a gate**. Profiling has already produced the full picture (structure, column semantics, temporal scope, quality anomalies), so the orchestrator can propose *targeted* research rather than a generic web crawl.
+
+**Why offer this:** The reference-file sections that make a data source skill genuinely useful for analysis — study/survey design, population coverage, valid vs. invalid analyses, and limitations — are exactly the ones profiling alone cannot populate. Profiling observes *what the data looks like*; it cannot tell you *why the collection methodology produces a temporal break in 2015* or *whether a coded value reflects a known suppression convention*. External grounding from official documentation, methodology literature, and practitioner guidance beats ungrounded LLM inference here (the same concern raised in `CLAUDE.md` § "Skill information awareness" — information an agent supplies beyond curated knowledge is inference and should be verified).
+
+**Seed the focus-areas recommendation from profiling findings.** Before presenting the offer, review the confirmed interpretations and the Quality Issues surfaced at PSU-DI2 (anomalies, temporal breaks, ambiguous coded values, suppression patterns) and turn the most salient one or two into a concrete, source-specific recommendation. A generic "research the source" offer is far less useful than "profiling found a temporal break in 2015 — I'd focus the research on whether that corresponds to a known methodology change."
+
+All user-facing text uses plain language — no internal terms (subagent, dispatch, DI-7). Present the offer like this:
+
+```
+**Before I write the skill — want me to research this source online first?**
+
+Profiling told us what the data *looks like*. But the parts of the skill that make
+it genuinely useful for analysis — how the data was collected, who's included and
+excluded, what analyses are valid vs. misleading, and known limitations — often
+depend on context that only the source's documentation and the research literature
+can provide. I can research that now and fold it into the skill before writing it,
+so those sections are grounded in real sources rather than my best guess.
+
+This is entirely optional — just say **"skip"** and I'll go straight to writing the
+skill. If you'd like the research, here's how I'd approach it (adjust anything):
+
+| Decision | Default | Options |
+|----------|---------|---------|
+| **Research scope** | Focused — official source documentation plus known caveats and analytical guidance | Skip / Focused / Deep (broader survey including methodology literature and practitioner guides) |
+| **Source mix** | Mixed — official documentation + academic + practitioner sources | Steer toward any subset (e.g., "official docs only" or "add academic") |
+| **Focus areas** | {profiling-seeded recommendation — e.g., "the 2015 temporal break and the -3 suppression code found during profiling"} | Anything you want me to prioritize or add |
+
+If you accept, the research runs and finishes *before* I start writing the skill, and
+I'll incorporate what it finds — especially into the analytical context and
+limitations sections. If sources conflict with what profiling actually observed,
+profiling wins and I'll note the discrepancy.
+
+**Skip and write the skill now, or adjust the research plan above?**
+```
+
+**Interaction rules:**
+- **One word skips it.** If the user says "skip" (or equivalent), proceed directly to DI-7 with no research step. Do not re-prompt.
+- **Defaults stand unless adjusted.** If the user accepts without changing the table, use the stated defaults (Focused scope, Mixed source mix, the seeded focus areas).
+- **Per-session only.** This is solicited fresh each onboarding — do not record a durable preference in CLAUDE.md or ask to remember the choice for future sessions.
+- **If accepted:** dispatch the pre-authoring research per `WORKFLOW_PHASE_DO_AUTHORING.md` § Pre-Authoring Research (Optional). The research runs to completion and its findings are persisted to `output/preliminary_notes/` **before** the DI-7 skill-authoring subagent is dispatched, and the notes file is passed to DI-7 as an additional input.
+- **STATE.md:** record the user's choice (skipped / scope / source mix / focus areas) in Key Decisions Made, and if accepted, add the research notes file to Files Created This Session.
+
 ---
 
 ## Context Completeness Checklists
@@ -761,7 +865,8 @@ Before dispatching a profiling subagent (Stages DI-3 through DI-6), verify:
 - [ ] Documentation excerpts inlined (if provided and relevant to current part)
 - [ ] Execution command uses {BASE_DIR}/scripts/run_with_capture.sh
 - [ ] IAT documentation standards referenced
-- [ ] If user has R/Stata background: include translation skill directive in prompt ("User has [R/Stata] background. Load [r-python-translation/stata-python-translation] skill. Add inline [R/Stata]-equivalent comments for non-trivial data operations.")
+- [ ] If execution language is R: profiling scripts use `.R` extension; data I/O via `arrow` + `dplyr`/`tidyverse`; validation via `stopifnot()` + `cat()`
+- [ ] If cross-language annotations enabled: include appropriate translation directive per orchestrator SKILL.md § User Language Preference Propagation (4-way table: `r-python-translation`, `stata-python-translation`, `python-r-translation`, or `stata-r-translation`)
 
 ### QA Invocation Checklist
 
@@ -816,7 +921,7 @@ research/YYYY-MM-DD_{Source_Name}_Onboarding/
 1. **Stage DI-2:** Create the research project folder under `research/`
 2. **Create `data/raw/`** and **`output/preliminary_notes/`** subdirectories inside the research project
 3. **Copy** user-provided data files into `data/raw/`
-4. **Initialize STATE.md** from `{BASE_DIR}/agent_reference/STATE_TEMPLATE_ONBOARDING.md` — this template has onboarding-specific sections (DI-1 through DI-8 stages, Profiling Progress table, Interpretation Tracking, Skill Authoring Status) that differ from the Full Pipeline template. Populate the Data Source Info and User Request sections with intake information.
+4. **Initialize STATE.md** from `{BASE_DIR}/agent_reference/STATE_TEMPLATE_ONBOARDING.md` — this template has onboarding-specific sections (DI-1 through DI-8 stages, Profiling Progress table, Interpretation Tracking, Synthetic Path Tracking (synthetic path), Skill Authoring Status) that differ from the Full Pipeline template. Populate the Data Source Info and User Request sections with intake information.
 5. **Instruct user** if files need manual placement (e.g., files too large to copy, or user prefers to place them directly)
 
 ---
@@ -884,7 +989,8 @@ The orchestrator loads these files progressively — only when the corresponding
 | Phase | Reference File | When to Load |
 |-------|---------------|--------------|
 | DO-2 (Profiling) | `WORKFLOW_PHASE_DO_PROFILING.md` | Before dispatching the first profiling subagent (Stage DI-3) |
-| DO-3 (Skill Authoring) | `WORKFLOW_PHASE_DO_AUTHORING.md` | After PSU-DI2 user confirmation, before Stage DI-7 |
+| DO-2 (Synthetic path) | `WORKFLOW_PHASE_DO_SYNTHETIC.md` | When the DI-1 sensitivity gate returns outcome 3, before Stage DS-1 (replaces the standard profiling phase; raw data never enters the container) |
+| DO-3 (Skill Authoring) | `WORKFLOW_PHASE_DO_AUTHORING.md` | After PSU-DI2 user confirmation, before the Pre-Authoring Research Offer / Stage DI-7 (this file also contains the optional pre-authoring research dispatch) |
 
 **Do NOT load both files at mode start.** Load each file just-in-time for its phase to conserve orchestrator context.
 
@@ -896,7 +1002,7 @@ These boundaries supplement the universal safety boundaries in `CLAUDE.md`. This
 
 **Always Do:**
 1. Verify file accessibility and non-emptiness before starting profiling
-2. Place raw data files inside the research project's `data/raw/` folder and record provenance in STATE.md's Data Source Info section
+2. Place raw data files inside the research project's `data/raw/` folder and record provenance in STATE.md's Data Source Info section (**exception — synthetic path:** no raw data is ever staged; the profile report lives in `data/profile_report/` and synthetic parquet in `data/synthetic/` — see the synthetic-path Boundaries in `{SKILL_REFS}/WORKFLOW_PHASE_DO_SYNTHETIC.md`)
 3. Run all mandatory scripts (01-04, 07, 09, 10) regardless of file characteristics
 4. Apply conditional script rules strictly based on Part A findings and intake info
 5. Present all interpretations to the user at PSU-DI2 and wait for confirmation
@@ -917,6 +1023,7 @@ These boundaries supplement the universal safety boundaries in `CLAUDE.md`. This
 3. Skip QA review for any profiling part
 4. Create analysis scripts or run statistical models (profiling only, not analysis)
 5. Proceed past PSU-DI2 without explicit user confirmation of interpretations
+6. **(Synthetic path)** Request or accept the raw sensitive file, write synthetic data to `data/raw/`, or present synthetic-data results as findings — the full synthetic-path boundaries (including redirecting a user who tries to paste raw microdata) are in `{SKILL_REFS}/WORKFLOW_PHASE_DO_SYNTHETIC.md` § Boundaries
 
 ---
 

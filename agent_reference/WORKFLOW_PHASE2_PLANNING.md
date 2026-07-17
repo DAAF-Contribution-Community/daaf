@@ -108,6 +108,8 @@ Incomplete transformation sequences lead to incomplete validation and unreliable
 **Subagent:** general-purpose
 **Skills:** `data-scientist`
 
+> **Async dispatch note.** This phase dispatches single agents sequentially (data-planner, then plan-checker), not parallel waves. Under async dispatch, the data-planner returns via a completion notification rather than a synchronous tool return. Do not advance to Stage 4.5 (plan-checker), evaluate Gate G4, or present PSU2 until that return has arrived and been fully processed — including confirming that Plan.md, Plan_Tasks.md, STATE.md, and LEARNINGS.md exist on disk.
+
 ```python
 Agent({
     description: "Stage 4: Plan Creation",
@@ -256,7 +258,7 @@ Stage 4.5 catches these issues **before** expensive data acquisition begins.
 | **Feasibility** | Data sources exist, endpoints valid, years available |
 | **Testability** | Research Outcomes are measurable investigation objectives, validation criteria specific |
 | **Clarity** | Tasks unambiguous, file paths explicit |
-| **Scope** | Boundaries defined, escalation conditions clear |
+| **Scope** | Boundaries defined, escalation conditions clear; task-count bands and the 21+ user-decision protocol are canonical in `agent_reference/SCOPE_POLICY.md` |
 
 ### Invocation Template: plan-checker
 
@@ -328,12 +330,24 @@ Run plan-checker
 ├─ PASSED_WITH_WARNINGS → Document warnings, present PSU2, await user confirmation, then proceed to Stage 5
 └─ ISSUES_FOUND → Return to data-planner for revision
                 ↓
-            data-planner revises Plan
+            data-planner revises Plan (returns REVISION_COMPLETE + Task Index change summary)
                 ↓
             Re-run plan-checker (max 2 iterations)
                 ↓
-            If still ISSUES_FOUND after 2 attempts → STOP and escalate to user
+            ├─ PASSED / PASSED_WITH_WARNINGS →
+            │       Resync STATE.md to the revised Plan_Tasks.md (BLOCKING, within Gate G4.5):
+            │       rebuild Transformation Progress from the revised Task Index;
+            │       update Plan/Plan_Tasks paths, Current Stage, Next Actions;
+            │       validate (Transformation Progress rows == total_tasks;
+            │       every script path in both the table and the Task Index;
+            │       no superseded plan-version filename remains).
+            │       If any check fails → STOP, fix STATE.md, re-validate.
+            │           ↓
+            │       Present PSU2, await user confirmation, then proceed to Stage 5
+            └─ If still ISSUES_FOUND after 2 attempts → STOP and escalate to user
 ```
+
+**STATE.md synchronization after revision (blocking).** STATE.md's Transformation Progress table, Current Position paths, and Next Actions are first populated at Stage 4 from the *original* Plan_Tasks.md. A Stage 4.5 revision can change the task count, task names, script paths, or wave structure, which leaves those STATE.md sections stale — a session restart in that window would resume against a dead plan. Before proceeding to Stage 5 after any accepted revision, the orchestrator MUST rebuild them from the revised Plan_Tasks.md Task Index and validate parity (row count against `total_tasks`, script-path correspondence in both directions, and no lingering reference to the superseded plan-version filename). The orchestrator owns this synchronization; subagents never write STATE.md. It is a blocking condition inside Gate G4.5 — not a new gate. See `full-pipeline-mode.md` § "Gate G4.5 Enforcement" and the STATE.md Update Gates table row "Plan revised (accepted revision)" for the field-level specification.
 
 ### Gate Criteria (G4.5)
 

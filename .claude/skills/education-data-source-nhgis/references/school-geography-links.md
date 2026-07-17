@@ -59,6 +59,26 @@ schools_with_tracts = gpd.sjoin(
 )
 ```
 
+```r
+library(sf)
+library(arrow)
+
+# Load school points (from CCD via Portal mirror)
+schools <- read_parquet("data/raw/ccd_schools.parquet")
+schools_sf <- st_as_sf(schools, coords = c("longitude", "latitude"), crs = 4326)
+
+# Load tract boundaries (from NHGIS direct download)
+tracts <- st_read("nhgis_tracts_2020.shp")
+
+# Spatial join
+schools_with_tracts <- st_join(
+  schools_sf,
+  tracts[, "GISJOIN"],
+  join = st_within,
+  left = TRUE
+)
+```
+
 ### Considerations
 
 - **Coordinate quality**: CCD coordinates are generally accurate but verify edge cases
@@ -106,6 +126,20 @@ district_tracts = edge.filter(pl.col("LEAID") == "0622710")
 
 # Get unique tracts in district
 tracts_in_district = district_tracts.select("TRACT").unique()
+```
+
+```r
+library(dplyr)
+library(readr)
+
+# Load EDGE relationship file (from NCES download, not Portal)
+edge <- read_csv("EDGE_GEOCODE_PUBLICSCH_2223.csv")
+
+# Filter to specific district
+district_tracts <- edge |> filter(LEAID == "0622710")
+
+# Get unique tracts in district
+tracts_in_district <- district_tracts |> distinct(TRACT)
 ```
 
 ### Limitations
@@ -166,6 +200,28 @@ school_data = df.filter(
     (pl.col("ncessch") == 10000201704) & (pl.col("year") == 2023)
 )
 print(school_data.select(["ncessch", "tract", "block_group", "census_region"]))
+```
+
+```r
+library(arrow)
+library(dplyr)
+
+# fetch_from_mirrors() is a Python helper; in R, build the URL from the mirror root.
+# Mirror failover: see `education-data-query/references/fetch-patterns.md` (R pattern)
+mirror <- yaml::read_yaml("mirrors.yaml")$mirrors[[1]]
+
+# Load from Portal mirror
+# NOTE: illustrative only — mirror parquet files are Polars-written and may
+# declare string_view columns, so a plain read can fail under R arrow
+# ("cannot handle Array of type <utf8_view>"). Real fetch scripts must use the
+# view-safe parquet read from `education-data-query/references/fetch-patterns.md`.
+df <- read_parquet(paste0(mirror$root_url, "/", "nhgis/schools_nhgis_geog_2020", ".", mirror$format))
+
+# Filter to specific school and year
+school_data <- df |>
+  filter(ncessch == 10000201704, year == 2023) |>
+  select(ncessch, tract, block_group, census_region)
+cat(format(school_data), "\n")
 ```
 
 ### Note on Integer Encodings
@@ -265,6 +321,24 @@ result = response.json()
 tract = result["result"]["addressMatches"][0]["geographies"]["Census Tracts"][0]["GEOID"]
 ```
 
+```r
+library(httr2)
+
+address <- "1600 Pennsylvania Avenue NW, Washington, DC 20500"
+resp <- request("https://geocoding.geo.census.gov/geocoder/geographies/onelineaddress") |>
+  req_url_query(
+    address = address,
+    benchmark = "Public_AR_Current",
+    vintage = "Census2020_Current",
+    format = "json"
+  ) |>
+  req_perform()
+result <- resp_body_json(resp)
+
+# Extract tract
+tract <- result$result$addressMatches[[1]]$geographies$`Census Tracts`[[1]]$GEOID
+```
+
 ### Batch Geocoding
 
 For many addresses, use Census Batch Geocoder:
@@ -295,6 +369,18 @@ weighted_income = (
         / pl.col("households").sum()
     ).item()
 )
+```
+
+```r
+library(dplyr)
+
+# Example: Total population in district
+district_population <- tracts_in_district |> summarise(total = sum(total_pop)) |> pull(total)
+
+# Example: Weighted average median income
+weighted_income <- tracts_in_district |>
+  summarise(wtd_income = sum(median_income * households) / sum(households)) |>
+  pull(wtd_income)
 ```
 
 ### Method B: Block-Level Aggregation

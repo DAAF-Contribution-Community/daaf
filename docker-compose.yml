@@ -1,27 +1,76 @@
-name: daaf
+name: ${DAAF_PROJECT_NAME:-daaf}   # Override in environment_settings.txt to run a second instance
 
 services:
   daaf-init:
     image: busybox
     volumes:
       - daaf-data:/daaf
-    command: sh -c 'chown -R 1000:1000 /daaf'
+      - daaf-claude-config:/claude-config   # Repair ownership of the Claude state volume too
+    command: sh -c 'mkdir -p /claude-config/codex-daaf && chown -R 1000:1000 /daaf /claude-config'
     # Runs as root to fix volume ownership for appuser (UID 1000).
     # Docker named volumes may have files owned by root or the host UID
     # (e.g., UID 501 on macOS), which blocks appuser from reading/writing.
-    # This init container repairs ownership on every startup.
+    # This init container repairs ownership on every startup. A single chown
+    # covers both mounts (data volume + Claude Code state volume).
+    # The mkdir pre-creates the Codex CLI state dir (CODEX_HOME, see the
+    # daaf-docker environment block) BEFORE the chown so it is owned by appuser:
+    # the Codex CLI hard-errors ("CODEX_HOME ... does not exist") rather than
+    # creating it, and a Dockerfile mkdir cannot help because this named volume
+    # shadows the image at the mount point at runtime. The directory is harmless
+    # unless a user explicitly logs in with Codex and enables the ChatGPT lane.
 
   daaf-docker:
-    build: .
+    build:
+      context: .
+      args:
+        # Opt-in dev-tooling build path (framework developers only). Defaults to
+        # 0 for the standard image: Codex is included, while contributor/test
+        # tooling remains excluded. Compose interpolation reads DAAF_DEV from the
+        # HOST shell environment / project .env file, not from
+        # env_file above -- the install/rebuild scripts bridge the key from
+        # environment_settings.txt into the shell env before invoking the build.
+        # See the DAAF_DEV block in the Dockerfile for what this installs.
+        DAAF_DEV: "${DAAF_DEV:-0}"
     env_file:                      # Requires Docker Compose v2.17+ (Docker Desktop 4.15+)
       - path: environment_settings.txt
         required: false         # Container starts normally if environment_settings.txt doesn't exist
     ports:
-      - "127.0.0.1:2718:2718"   # Marimo notebook server (localhost only)
-      - "127.0.0.1:2719:2719"   # Session log viewer (localhost only)
-      - "127.0.0.1:2720:2720"   # code-server / VS Code in browser (localhost only)
+      # Published HOST ports are overridable for multi-instance (a second install
+      # must not collide on the same host port). The CONTAINER ports stay fixed at
+      # 2718/2719/2720; only the left-hand host port varies. Defaults preserve the
+      # original single-instance mapping exactly.
+      - "127.0.0.1:${DAAF_PORT_MARIMO:-2718}:2718"      # Marimo notebook server (localhost only)
+      - "127.0.0.1:${DAAF_PORT_LOGVIEWER:-2719}:2719"   # Session log viewer (localhost only)
+      - "127.0.0.1:${DAAF_PORT_VSCODE:-2720}:2720"      # code-server / VS Code in browser (localhost only)
     volumes:
       - daaf-data:/daaf        # Named volume instead of bind mount
+      # Dedicated volume for ALL Claude Code state: authentication/credentials,
+      # session history and transcripts (/resume), installed plugins, and
+      # ~/.claude.json. Persists across `docker compose up/down`, container
+      # recreation, and image rebuilds. Only `docker compose down -v` or an
+      # explicit `docker volume rm` deletes it.
+      - daaf-claude-config:/home/appuser/.claude
+    environment:
+      # Relocate ~/.claude.json and credentials into the persisted .claude
+      # directory (above) so they survive rebuilds too. Set in compose (not the
+      # Dockerfile) so it can be adjusted without rebuilding the image.
+      # NOTE: CLAUDE_CONFIG_DIR is community-observed behavior, not yet in the
+      # official Claude Code docs (see anthropics/claude-code issue #3833) --
+      # re-verify if a Claude Code upgrade changes where state files land.
+      - CLAUDE_CONFIG_DIR=/home/appuser/.claude
+      # Point the Codex CLI's state home into a subfolder of the persisted
+      # .claude volume. Codex stores its OAuth tokens (auth.json) under
+      # CODEX_HOME, so nesting it here means a `codex login` survives rebuilds
+      # AND is captured by backup_daaf.sh (which backs up the daaf-claude-config
+      # volume) -- reusing the same credential-holding volume Claude Code already
+      # uses, so no new volume is needed. The daaf-init container's
+      # `chown -R 1000:1000 /claude-config` (this same volume) fixes ownership of
+      # the codex-daaf subfolder on every boot, so no explicit mkdir/chown here.
+      # Codex ships in every image, but this state path is inert until the user
+      # explicitly runs `codex login`; installing Codex does not activate the
+      # optional ChatGPT provider lane. Set in compose (not the Dockerfile) so it
+      # is adjustable without a rebuild, matching CLAUDE_CONFIG_DIR.
+      - CODEX_HOME=/home/appuser/.claude/codex-daaf
     working_dir: /daaf
     stdin_open: true  # Required for interactive Claude Code sessions
     tty: true
@@ -35,3 +84,4 @@ services:
 
 volumes:
   daaf-data:                    # Docker manages this storage
+  daaf-claude-config:           # Docker manages this storage (Claude Code state)

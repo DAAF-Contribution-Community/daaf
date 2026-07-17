@@ -210,3 +210,40 @@ teardown() {
     run bash "${REPO_ROOT}/scripts/host/view_notebooks.sh"
     assert_output --partial "DAAF container is running"
 }
+
+# =========================================================================
+# Browser auto-open (open_url integration)
+# =========================================================================
+
+@test "view_notebooks.sh sources daaf_lib.sh when present" {
+    run grep -c "source.*daaf_lib.sh" "${REPO_ROOT}/scripts/host/view_notebooks.sh"
+    assert_success
+    [ "${output}" -ge 1 ]
+}
+
+@test "view_notebooks.sh calls open_url with the host notebook port (default 2718)" {
+    # The URL uses the overridable host port var (defaults to 2718). Assert the
+    # parameterized form plus the default resolution.
+    run grep 'open_url.*DAAF_PORT_MARIMO' "${REPO_ROOT}/scripts/host/view_notebooks.sh"
+    assert_success
+    assert_output --partial 'http://localhost:${DAAF_PORT_MARIMO}'
+    run grep 'DAAF_PORT_MARIMO:-2718' "${REPO_ROOT}/scripts/host/view_notebooks.sh"
+    assert_success
+}
+
+@test "view_notebooks.sh guards open_url behind command -v check" {
+    # Verify the script uses a guard pattern so open_url is only called
+    # when the function is actually available (backwards compatible when
+    # daaf_lib.sh is absent).
+    run grep "command -v open_url" "${REPO_ROOT}/scripts/host/view_notebooks.sh"
+    assert_success
+    assert_output --partial "open_url"
+}
+
+@test "view_notebooks.sh dry-run completes with library sourcing" {
+    # With daaf_lib.sh present, open_url is a no-op in dry-run mode.
+    # Confirms the full script (including library sourcing) works end-to-end.
+    run env DAAF_DRY_RUN=1 DAAF_NESTED=1 bash "${REPO_ROOT}/scripts/host/view_notebooks.sh"
+    assert_success
+    assert_output --partial "Notebook Browser"
+}

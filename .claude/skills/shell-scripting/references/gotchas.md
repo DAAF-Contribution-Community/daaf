@@ -533,6 +533,38 @@ In Bash, `/` is always the separator. No cross-platform concern within Bash itse
 
 ---
 
+### Octal `printf` Escapes Are Eaten by the Host Shell Before `sh` Sees Them
+
+**The problem:** When a host driver (bash or PowerShell) builds a program string that will be handed to `sh` and that program uses an octal `printf` escape like `\357` (a UTF-8 byte) or `\011` (a tab), the **host shell consumes one layer of backslash escaping first**. A naive single backslash reaches `sh` with the backslash already eaten, so `sh`'s `printf` never sees the octal escape — it emits the literal digits instead of the byte. This bit DAAF twice on 2026-07-14.
+
+The rule: `sh -c` itself performs quote removal on the program text it executes, so an **unquoted** `printf` argument loses one backslash at the final `sh` layer — on top of whatever the host embedding context consumed. Two ways to arrive correct: the resolved program string carries a **doubled** backslash (`printf \\357`, which `sh` collapses to `\357`), or the octal is **quoted at the `sh` level** (`printf '\357'`, which quote removal leaves intact).
+
+| Host embedding context | Source you write | Resolved program handed to `sh -c` | Correct? |
+|------------------------|------------------|------------------------------------|----------|
+| PowerShell single-quoted here-string (`@'…'@`) — the DAAF production pattern | `printf \\357` | `printf \\357` — `sh` collapses `\\`→`\`, printf sees the octal | Correct — emits the byte |
+| PowerShell (any string form) with a lone backslash | `printf \357` | `printf \357` — `sh` quote removal eats the lone `\`, printf sees `357` | Wrong — emits digits (the 2026-07-14 field bug) |
+| Bash **single-quoted** string | `'printf \\357'` | `printf \\357` — `sh` collapses `\\`→`\` | Correct — emits the byte |
+| Bash **single-quoted** string | `'printf \357'` | `printf \357` — `sh` quote removal eats the lone `\` | Wrong — emits digits |
+| Bash **double-quoted** string | `"printf \\357"` | `printf \357` — bash eats one, then `sh` eats the survivor | Wrong — avoid double-quoted embedding for these programs |
+| Any context, octal quoted at the `sh` level | resolved string contains `printf '\357'` | printf receives `\357` intact (the `sh`-level quotes protect it) | Correct — no doubling needed |
+
+The same applies to `\011` (tab) and every other octal escape: in the DAAF production patterns (bash single-quoted program strings and PowerShell single-quoted here-strings, both literal) write the doubled form `\\011`, or quote the escape at the `sh` level.
+
+**Why it happens:** every layer that *parses* the string can consume backslashes — and the final `sh -c` is itself such a layer: its quote removal strips a lone backslash from any unquoted argument before `printf` ever runs. Bash single quotes and PS single-quoted here-strings pass source text through literally (zero host consumption); bash/PS double-quoted contexts and native-argument passing may each consume one more. The number of backslashes you must write is a function of **how many parsing layers sit between your source and `printf` itself — counting the final `sh`**.
+
+**Fix — test the resolved string, don't reason about layers:** counting backslash layers by hand is error-prone (the two 2026-07-14 failures were both miscounts). Empirically resolve the program string as the host will produce it, then feed *that exact string* to a real `sh` and check the bytes:
+
+```bash
+# Capture what the host actually produces, then test it against real sh
+resolved='printf \357'          # <- the post-host-parsing program string
+printf '%s' "$resolved" | od -c # inspect: is it one backslash or zero?
+sh -c "$resolved" | od -An -tx1 # does sh emit the byte (ef) or the digits (33 35 37)?
+```
+
+If `sh -c "$resolved"` emits `ef` (the byte) you have the right number of backslashes; if it emits `33 35 37` (ASCII `357`) the backslash was eaten upstream and you need one more layer. Always validate the **resolved** program string against real `sh` rather than trusting a hand count.
+
+---
+
 ## Quick Lookup
 
 | Gotcha | Language | Severity | ShellCheck/Analyzer |
@@ -556,3 +588,4 @@ In Bash, `/` is always the separator. No cross-platform concern within Bash itse
 | Alias removal on Linux | Cross-platform | Medium | PSAvoidUsingCmdletAliases |
 | Exit code truncation | Cross-platform | Low | — |
 | Path separator differences | Cross-platform | Medium | — |
+| Octal `printf` escapes eaten before `sh` | Cross-platform | High | — |

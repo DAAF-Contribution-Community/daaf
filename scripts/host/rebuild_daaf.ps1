@@ -23,6 +23,7 @@
 # Supports DAAF_DRY_RUN=1 for CI cross-platform smoke testing (see tests/).
 # ============================================================================
 
+#Requires -Version 5.1
 $ErrorActionPreference = "Stop"
 
 function Wait-AndExit {
@@ -34,6 +35,43 @@ function Wait-AndExit {
     exit $Code
 }
 
+# --- Multi-instance / build-flag settings (shared pattern) ---
+# Bridge environment_settings.txt's whitelisted DAAF_* keys into the
+# process environment so `docker compose` interpolation resolves the project name
+# and published host ports, and so the DAAF_DEV build flag reaches
+# `docker compose build` as `--build-arg DAAF_DEV=${DAAF_DEV:-0}`. The build
+# flag matters specifically for THIS script because it runs the build (below); a
+# developer who set DAAF_DEV=1 expects the rebuild to pick up the dev toolchain.
+# Canonical shared pattern (kept in sync with Import-DaafSettingsFile in
+# daaf_lib.ps1); standalone scripts that do NOT dot-source daaf_lib.ps1 inline it.
+# Parse only these whitelisted keys (never dot-source -- the file holds API keys);
+# process env wins; absent file = no-op; CR stripped; PS 5.1 safe.
+function Import-DaafSettingsInline {
+    param([string]$SettingsFile = "./environment_settings.txt")
+    if (-not (Test-Path -LiteralPath $SettingsFile)) { return }
+    $known = @('DAAF_PROJECT_NAME', 'DAAF_PORT_MARIMO', 'DAAF_PORT_LOGVIEWER', 'DAAF_PORT_VSCODE', 'DAAF_DEV', 'DAAF_BRANCH')
+    # -Encoding UTF8: PS 5.1's bare Get-Content misreads BOM-less UTF-8 as ANSI
+    # (cp1252); the settings writer is BOM-less UTF-8, so reads are pinned to match.
+    foreach ($rawLine in (Get-Content -LiteralPath $SettingsFile -Encoding UTF8)) {
+        $line = $rawLine -replace "`r", ""
+        $trimmed = $line.Trim()
+        if ($trimmed -eq "" -or $trimmed.StartsWith("#")) { continue }
+        $eq = $line.IndexOf("=")
+        if ($eq -lt 1) { continue }
+        $key = $line.Substring(0, $eq).Trim()
+        if ($known -notcontains $key) { continue }
+        $val = $line.Substring($eq + 1)
+        if (($val.StartsWith('"') -and $val.EndsWith('"')) -or ($val.StartsWith("'") -and $val.EndsWith("'"))) {
+            if ($val.Length -ge 2) { $val = $val.Substring(1, $val.Length - 2) }
+        }
+        $current = [Environment]::GetEnvironmentVariable($key, "Process")
+        if ([string]::IsNullOrEmpty($current)) {
+            Set-Item -Path ("Env:" + $key) -Value $val
+        }
+    }
+}
+Import-DaafSettingsInline
+
 # --- Dry-Run Support ---
 # When DAAF_DRY_RUN=1, simulate external commands (Docker) for CI
 # cross-platform smoke testing without a Docker daemon.
@@ -43,6 +81,18 @@ if ($env:DAAF_DRY_RUN -eq "1") {
         $global:LASTEXITCODE = 0
         switch -Wildcard ($argStr) {
             "*info*" { return }
+            "*compose ps -aq daaf-docker*" { Write-Output "abc123" }
+            "*buildx inspect*" {
+                # Simulate builder-not-found so the create arm is exercised
+                $global:LASTEXITCODE = 1
+                return
+            }
+            "*buildx create*" {
+                # Test hook: DAAF_DIAG_BUILD_TEST_CREATE_FAIL=1 simulates a
+                # create failure so the fail-open path can be exercised in tests.
+                if ($env:DAAF_DIAG_BUILD_TEST_CREATE_FAIL -eq "1") { $global:LASTEXITCODE = 1 }
+                return
+            }
             "*inspect*" { return }
             "*cp *" { return }
             "*compose build*" { return }
@@ -64,7 +114,11 @@ if ($env:DAAF_TEST_MODE -eq "1") {
     return
 }
 
-$ContainerName = "daaf-daaf-docker-1"
+# Enable strict mode AFTER the test-mode guard. Set-StrictMode is dynamically
+# scoped, so placing it here keeps Pester's dot-sourcing (which returns above)
+# from leaking strict mode into the whole test session, while real executions
+# run fully protected from this point on.
+Set-StrictMode -Version 3.0
 
 Write-Host ""
 Write-Host "=========================================="
@@ -94,11 +148,15 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # --- Check container exists (running or stopped) ---
+# Derive the container ID from the compose project rather than a hardcoded name.
+# `-aq` includes STOPPED containers: rebuild must be able to copy build files out
+# of a container that is not currently running (the documented use case), so the
+# running-only `-q` form would be wrong here.
 $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-$null = docker inspect $ContainerName 2>&1
+$ContainerId = (docker compose ps -aq daaf-docker 2>$null | Out-String).Trim()
 $ErrorActionPreference = $savedEAP
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "ERROR: Container '$ContainerName' not found." -ForegroundColor Red
+if ([string]::IsNullOrWhiteSpace($ContainerId)) {
+    Write-Host "ERROR: No daaf-docker container found (running or stopped)." -ForegroundColor Red
     Write-Host "Have you run the DAAF installer? The container must exist (running or stopped)"
     Write-Host "for this script to copy the updated files from it."
     Wait-AndExit 1
@@ -119,7 +177,7 @@ if (Test-Path "docker-compose.yml") {
 }
 
 $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-docker cp "${ContainerName}:/daaf/Dockerfile" ./Dockerfile
+docker cp "${ContainerId}:/daaf/Dockerfile" ./Dockerfile
 $ErrorActionPreference = $savedEAP
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Failed to copy Dockerfile from container." -ForegroundColor Red
@@ -129,7 +187,7 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "      Copied Dockerfile"
 
 $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-docker cp "${ContainerName}:/daaf/docker-compose.yml" ./docker-compose.yml
+docker cp "${ContainerId}:/daaf/docker-compose.yml" ./docker-compose.yml
 $ErrorActionPreference = $savedEAP
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Failed to copy docker-compose.yml from container." -ForegroundColor Red
@@ -173,6 +231,56 @@ if ((-not $DockerfileChanged) -and (-not $ComposefileChanged)) {
     Write-Host "      Rebuilding anyway to make sure the image is up to date."
 }
 
+# --- Apple Silicon / arm64 build-time notice ---
+# On the Ubuntu noble base, arm64 gets P3M pre-built R binaries (same as x86_64),
+# so Apple Silicon no longer compiles R packages from source. A rebuild that
+# touches an early layer still re-runs the sizable package installs, but there is
+# no arm64-specific source-compile penalty. A brief heads-up keeps the quiet
+# install phase from looking like a hang.
+$DaafArch = $env:PROCESSOR_ARCHITECTURE
+if ($DaafArch -eq "ARM64") {
+    Write-Host ""
+    Write-Host "NOTE: arm64 detected. If this rebuild re-runs the package layers it takes"
+    Write-Host "      a while with some quiet stretches -- this is normal, not a hang."
+    Write-Host "      arm64 now installs pre-built R binaries (no source compilation)."
+    Write-Host ""
+}
+
+# --- Optional diagnostic builder (DAAF_DIAG_BUILD=1) ---
+# BuildKit clips each step's log output (by size AND by rate), and Docker
+# Desktop's DEFAULT builder does not let those limits be raised. The only
+# mechanism is a custom docker-container builder with larger
+# BUILDKIT_STEP_LOG_MAX_SIZE / _MAX_SPEED, selected via the BUILDX_BUILDER env
+# var. That builder has real costs (separate build cache; the built image must be
+# loaded back into the Docker image store), so it is opt-in only. Fail-open: any
+# failure creating/inspecting it falls back to the default builder.
+$UseDiagBuilder = $false
+if ($env:DAAF_DIAG_BUILD -eq "1") {
+    $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+    docker buildx inspect daaf-diag-builder 2>&1 | Out-Null
+    $ErrorActionPreference = $savedEAP
+    if ($LASTEXITCODE -eq 0) {
+        $UseDiagBuilder = $true
+        Write-Host "NOTE: Reusing existing diagnostic buildx builder 'daaf-diag-builder' (raised step-log limits)."
+    } else {
+        $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+        docker buildx create --name daaf-diag-builder --driver docker-container --driver-opt env.BUILDKIT_STEP_LOG_MAX_SIZE=16777216 --driver-opt env.BUILDKIT_STEP_LOG_MAX_SPEED=10485760 2>&1 | Out-Null
+        $ErrorActionPreference = $savedEAP
+        if ($LASTEXITCODE -eq 0) {
+            $UseDiagBuilder = $true
+            Write-Host "NOTE: Created diagnostic buildx builder 'daaf-diag-builder' (raised step-log limits)."
+        } else {
+            Write-Host "NOTE: DAAF_DIAG_BUILD=1 set, but the diagnostic buildx builder could not be"
+            Write-Host "      created. Falling back to the default builder (build logs may be clipped)."
+        }
+    }
+    if ($UseDiagBuilder) {
+        Write-Host "      This build uses a separate build cache (slower first run); the image is"
+        Write-Host "      loaded back into Docker when the build completes."
+        Write-Host ""
+    }
+}
+
 # --- Rebuild ---
 Write-Host ""
 Write-Host "[2/3] Rebuilding Docker image (this may take a few minutes if packages changed)..."
@@ -181,15 +289,24 @@ Write-Host ""
 # applied to the build step (where it is universally supported) without relying
 # on `docker compose up --progress`, which is rejected as "unknown flag" on
 # Docker Compose versions prior to ~v2.27.
+# BUILDX_BUILDER is set only when the diagnostic builder was selected above, then
+# cleared right after the build so it does not leak into later docker calls.
+if ($UseDiagBuilder) { $env:BUILDX_BUILDER = "daaf-diag-builder" }
 $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
 docker compose build --progress plain
 $ErrorActionPreference = $savedEAP
+if ($UseDiagBuilder) { $env:BUILDX_BUILDER = $null }
 if ($LASTEXITCODE -ne 0) {
     Write-Host ""
     Write-Host "ERROR: Rebuild failed. Check the output above for details." -ForegroundColor Red
     if (Test-Path "Dockerfile.pre-rebuild") {
         Write-Host "Your previous Dockerfile was saved as Dockerfile.pre-rebuild"
     }
+    Write-Host "If the output above contains a line like '[output clipped, log limit 2MiB reached]'"
+    Write-Host "(the exact limit varies by Docker version), re-run with DAAF_DIAG_BUILD=1 for"
+    Write-Host "unclipped build logs:"
+    Write-Host '  $env:DAAF_DIAG_BUILD = "1"'
+    Write-Host "  .\rebuild_daaf.ps1"
     Wait-AndExit 1
 }
 $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"

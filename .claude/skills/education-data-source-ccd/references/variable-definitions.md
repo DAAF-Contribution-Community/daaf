@@ -144,6 +144,22 @@ df_clean = df.with_columns(
 )
 ```
 
+```r
+# R equivalent
+library(dplyr)
+
+# Identify problematic values
+problematic_codes <- c(-1, -2, -3, -9)
+
+# Filter to valid data
+df_valid <- df |> filter(!variable %in% problematic_codes)
+
+# Or convert to NA
+df_clean <- df |> mutate(
+  variable = if_else(variable %in% problematic_codes, NA_real_, variable)
+)
+```
+
 ### Suppression Rules
 
 Data is typically suppressed when:
@@ -191,6 +207,18 @@ total = df.filter(pl.col("grade") == 99)["enrollment"]
 grade_sum = df.filter(pl.col("grade").is_between(1, 12))["enrollment"].sum()
 ```
 
+```r
+# R equivalent
+library(dplyr)
+
+# RECOMMENDED: Use total enrollment
+total <- df |> filter(grade == 99) |> pull(enrollment)
+
+# NOT RECOMMENDED: Summing grades
+# May undercount due to ungraded students
+grade_sum <- df |> filter(grade >= 1, grade <= 12) |> summarise(s = sum(enrollment)) |> pull(s)
+```
+
 ### Grade Span
 
 Schools report lowest (GSLO) and highest (GSHI) grades offered:
@@ -198,6 +226,26 @@ Schools report lowest (GSLO) and highest (GSHI) grades offered:
 - Middle: Typically 6-8 or 7-8
 - High: Typically 9-12
 - Combined: Various spans
+
+> **SEMANTIC TRAP — `highest_grade_offered == -1` means MISSING, not Pre-K (field-confirmed).**
+> The grade-span *directory* variables `lowest_grade_offered` (GSLO) and
+> `highest_grade_offered` (GSHI) follow the **standard directory missing convention**, where
+> `-1` = missing/not reported (see § Missing Data Codes). This is the **opposite** of the
+> `grade` *enrollment* variable, where `-1` = Pre-K. In a native pipeline run, a field agent
+> initially misread `highest_grade_offered == -1` as a grade level ≥ 9 and nearly admitted
+> non-high-schools into a high-school universe filter. When building a grade-span filter
+> (e.g., "high schools" as `highest_grade_offered >= 9`), first exclude the `-1` missing rows
+> — otherwise `-1 < 9` silently drops schools with unknown span while a naive `>=` test could
+> also mis-handle them. Do **not** reuse the enrollment-`grade` Pre-K interpretation here.
+>
+> ```python
+> # RIGHT - drop missing span before applying the high-school rule
+> hs = df.filter(pl.col("highest_grade_offered") != -1).filter(pl.col("highest_grade_offered") >= 9)
+> ```
+> ```r
+> # RIGHT - drop missing span before applying the high-school rule
+> hs <- df |> filter(highest_grade_offered != -1, highest_grade_offered >= 9)
+> ```
 
 ---
 

@@ -1,7 +1,7 @@
 ---
 name: scikit-learn
 description: >-
-  Machine learning: clustering, PCA/t-SNE/UMAP, classification, prediction regression (Ridge/Lasso/ensemble), cross-validation, Pipelines. For unsupervised analysis, classification, or prediction. For econometric regression use pyfixest/statsmodels.
+  Machine learning: clustering, PCA/t-SNE/UMAP, classification, prediction regression (Ridge/Lasso/ensemble), cross-validation, Pipelines. For unsupervised analysis, classification, or prediction. For econometric regression use pyfixest/statsmodels. R equivalent: tidymodels (use when execution language is R).
 metadata:
   audience: research-coders
   domain: python-library
@@ -64,6 +64,8 @@ Each topic in `./references/` contains focused documentation:
 5. **Having issues?** Check `gotchas.md` first
 6. **Interpretation task?** Read `interpretation.md`, then check `supervised-ml.md` in data-scientist skill for methodology
 7. **Fairness assessment?** Read `fairness.md`, then check `supervised-ml.md` in data-scientist skill for conceptual framework
+
+**The reference-file routing in this skill applies to advisory and brainstorming turns as much as implementation.** Recommending an approach, reviewing a plan, or answering a question that touches a routed topic calls for reading the routed reference file just as much as writing code does — the reference files carry curated caveats and environment-specific constraints that this overview and general knowledge lack.
 
 ## Related Skills
 

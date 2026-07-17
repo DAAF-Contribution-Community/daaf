@@ -5,7 +5,7 @@ R and Python (with polars) as they affect quantitative social science data analy
 It is the foundational reference that other translation files build upon.
 
 > **Versions referenced:**
-> Python: Python 3.12, polars 1.38.1
+> Python: Python 3.12, polars 1.39.3
 > R: R 4.5.3
 > See SKILL.md § Library Versions for the complete version table.
 

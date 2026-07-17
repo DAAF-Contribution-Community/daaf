@@ -234,6 +234,13 @@ Codebooks are `.xls` files co-located with data in all mirrors. Use `get_codeboo
 url = get_codebook_url("csafety/codebook_colleges_csafety_hate_crimes")
 ```
 
+```r
+# get_codebook_url() is a Python helper; in R, build the URL from the mirror root.
+# Mirror failover: see `education-data-query/references/fetch-patterns.md` (R pattern)
+mirror <- yaml::read_yaml("mirrors.yaml")$mirrors[[1]]
+url <- paste0(mirror$root_url, "/", "csafety/codebook_colleges_csafety_hate_crimes", ".xls")
+```
+
 ### Fetching Data
 
 Use the `fetch_from_mirrors()` pattern from `fetch-patterns.md`:
@@ -258,6 +265,38 @@ institution = df.filter(pl.col("unitid") == 100654)
 
 # Filter by state FIPS code (6 = California)
 california = df.filter(pl.col("fips") == 6)
+```
+
+```r
+# R equivalent
+library(arrow)
+library(dplyr)
+
+# fetch_from_mirrors() is a Python helper; in R, build the URL from the mirror
+# root — the canonical path is NOT a local file. Mirror failover: see
+# `education-data-query/references/fetch-patterns.md` (R pattern)
+mirror <- yaml::read_yaml("mirrors.yaml")$mirrors[[1]]
+# NOTE: illustrative only — mirror parquet files are Polars-written and may
+# declare string_view columns, so a plain read can fail under R arrow
+# ("cannot handle Array of type <utf8_view>"). Real fetch scripts must use the
+# view-safe parquet read from `education-data-query/references/fetch-patterns.md`.
+df <- read_parquet(paste0(mirror$root_url, "/",
+                          "csafety/colleges_csafety_hate_crimes", ".", mirror$format))
+
+# Filter by year
+df_2021 <- df |> filter(year == 2021)
+
+# Filter by bias category (1 = Race)
+race_crimes <- df |> filter(bias == 1)
+
+# Filter by crime type (14 = Intimidation)
+intimidation <- df |> filter(crime_type == 14)
+
+# Filter by institution
+institution <- df |> filter(unitid == 100654)
+
+# Filter by state FIPS code (6 = California)
+california <- df |> filter(fips == 6)
 ```
 
 ### Direct from Department of Education (Non-Mirror Data)

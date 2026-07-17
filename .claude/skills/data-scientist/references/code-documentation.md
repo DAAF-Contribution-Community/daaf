@@ -17,7 +17,7 @@ Writing thorough comments and documentation for data science code.
 
 **Code tells you HOW. Comments tell you WHY, WHAT FOR, and WHAT'S ASSUMED.**
 
-In research workflows, the standard is the **Inline Audit Trail (IAT)** — see `agent_reference/INLINE_AUDIT_TRAIL.md` for the full specification.
+In research workflows, the standard is the **Inline Audit Trail (IAT)** -- see `agent_reference/INLINE_AUDIT_TRAIL.md` for the full specification.
 
 Good comments explain:
 - Why this approach was chosen over alternatives
@@ -67,6 +67,7 @@ Data science code should be MORE documented than typical code because:
 
 ### For Data Operations
 
+**Python:**
 ```python
 # ================================================================
 # GOAL: Filter to customers with valid purchase history
@@ -91,8 +92,33 @@ print(f"Retained {retention_rate:.1f}% of customers")
 # If this is far from 60%, investigate before proceeding
 ```
 
+**R:**
+```r
+# ================================================================
+# GOAL: Filter to customers with valid purchase history
+# 
+# APPROACH: Require at least one purchase in the last 365 days.
+# We chose 365 days (vs. 90 or 180) because seasonal customers
+# (e.g., holiday-only shoppers) are still valuable for this analysis.
+#
+# ASSUMPTIONS:
+# - 'last_purchase_date' is populated for all customers with purchases
+# - Customers with NA last_purchase_date have never purchased
+#
+# EXPECTED: ~60% of customers retained (based on historical pattern)
+# ================================================================
+active_customers <- customers |>
+  filter(last_purchase_date >= cutoff_date)
+
+# Verify expectation
+retention_rate <- nrow(active_customers) / nrow(customers) * 100
+cat(sprintf("Retained %.1f%% of customers\n", retention_rate))
+# If this is far from 60%, investigate before proceeding
+```
+
 ### For Statistical Operations
 
+**Python:**
 ```python
 # ================================================================
 # GOAL: Handle outliers in transaction amounts
@@ -119,8 +145,35 @@ df = df.with_columns(
 )
 ```
 
+**R:**
+```r
+# ================================================================
+# GOAL: Handle outliers in transaction amounts
+#
+# METHOD: Winsorization at 1st and 99th percentiles
+#
+# WHY WINSORIZE vs. REMOVE:
+# - Removing outliers loses data and may bias toward "normal" transactions
+# - Winsorizing preserves row count while reducing outlier influence
+# - 1st/99th percentiles chosen to affect only extreme values (~2% of data)
+#
+# WHY NOT LOG TRANSFORM:
+# - Need to preserve original scale for business interpretation
+# - Log transform would complicate downstream aggregations
+#
+# ASSUMPTION: Outliers are measurement/entry errors, not real events
+# (Verified: extreme values correspond to known data quality issues)
+# ================================================================
+p01 <- quantile(df$amount, 0.01, na.rm = TRUE)
+p99 <- quantile(df$amount, 0.99, na.rm = TRUE)
+
+df <- df |>
+  mutate(amount_winsorized = pmin(pmax(amount, p01), p99))
+```
+
 ### For Joins and Merges
 
+**Python:**
 ```python
 # ================================================================
 # GOAL: Enrich orders with customer demographic data
@@ -152,6 +205,38 @@ match_rate = enriched_orders["age_group"].drop_nulls().len() / len(enriched_orde
 print(f"Customer match rate: {match_rate:.1f}%")
 ```
 
+**R:**
+```r
+# ================================================================
+# GOAL: Enrich orders with customer demographic data
+#
+# JOIN TYPE: Left join
+# - Keep all orders even if customer demographics missing
+# - Missing demographics will be analyzed separately
+#
+# JOIN KEY: customer_id
+# - Verified unique in customers table (1:1 relationship)
+# - Some orders may have customer_id not in customers table (new customers)
+#
+# EXPECTED RESULT:
+# - Same row count as orders (left join preserves all left rows)
+# - Additional columns from customers added
+# - Some NA values in customer columns where no match
+# ================================================================
+enriched_orders <- orders |>
+  left_join(
+    customers |> select(customer_id, age_group, region, tenure_months),
+    by = "customer_id"
+  )
+
+# Verify: row count unchanged
+stopifnot("Unexpected row count change after join" = nrow(enriched_orders) == nrow(orders))
+
+# Document match rate
+match_rate <- sum(!is.na(enriched_orders$age_group)) / nrow(enriched_orders) * 100
+cat(sprintf("Customer match rate: %.1f%%\n", match_rate))
+```
+
 ## Docstring Patterns
 
 > **Note for research scripts:** Formal docstrings are valuable for reusable utility functions
@@ -160,6 +245,7 @@ print(f"Customer match rate: {match_rate:.1f}%")
 
 ### Function Docstrings (for reusable utilities)
 
+**Python:**
 ```python
 def calculate_customer_lifetime_value(
     transactions: pl.DataFrame,
@@ -208,10 +294,38 @@ def calculate_customer_lifetime_value(
     """
 ```
 
+**R (roxygen2-style documentation for reusable functions):**
+```r
+#' Calculate customer lifetime value (CLV) using historical transaction data.
+#'
+#' Uses a simple historical CLV model: total past spend per customer.
+#' For predictive CLV, consider BG/NBD or Pareto/NBD models.
+#'
+#' @param transactions Data frame with transaction-level data.
+#' @param customer_id_col Name of customer identifier column.
+#' @param amount_col Name of transaction amount column (consistent currency).
+#' @param date_col Name of transaction date column.
+#' @return Data frame with columns: customer_id, total_spend,
+#'   transaction_count, first_purchase, last_purchase, tenure_days.
+#' @details
+#' Assumptions:
+#' - Transactions are deduplicated (no duplicate transaction records)
+#' - Amounts are in consistent currency (no currency conversion needed)
+#' - Negative amounts represent refunds/returns
+#' @examples
+#' clv <- calculate_customer_lifetime_value(transactions)
+#' head(clv)
+
+# Note: In DAAF research scripts, prefer inline sequential code over
+# function definitions. Roxygen2 documentation is shown here as
+# reference for the rare cases where reusable functions are needed.
+```
+
 ### Data Validation (Inline Approach)
 
 For research scripts, validate data inline rather than building validator classes:
 
+**Python:**
 ```python
 # Validate directly where you use the data
 assert df["id"].null_count() == 0, "IDs must not be null"
@@ -219,6 +333,16 @@ assert df.select("id", "year").n_unique() == len(df), "id+year must be unique"
 valid_states = set(range(1, 57))  # FIPS codes
 invalid = set(df["fips"].unique().to_list()) - valid_states
 assert not invalid, f"Invalid FIPS codes: {invalid}"
+```
+
+**R:**
+```r
+# Validate directly where you use the data
+stopifnot("IDs must not be null" = !any(is.na(df$id)))
+stopifnot("id+year must be unique" = nrow(distinct(df, id, year)) == nrow(df))
+valid_states <- 1:56  # FIPS codes
+invalid <- setdiff(unique(df$fips), valid_states)
+stopifnot("Invalid FIPS codes found" = length(invalid) == 0)
 ```
 
 ## Marimo Cell Documentation
@@ -272,6 +396,8 @@ mo.md(f"""
 """)
 ```
 
+> **R equivalent:** When execution language is R, DAAF uses Quarto (.qmd) notebooks instead of Marimo. The same documentation principles apply -- use markdown cells for narrative context and code chunk comments for technical detail. See the `quarto` skill for Quarto-specific conventions.
+
 ### When to Use Markdown Cells
 
 Use `mo.md()` cells for:
@@ -316,6 +442,7 @@ mo.md(f"""
 
 Instead of writing separate test files, validate transformations inline within the script that performs them:
 
+**Python:**
 ```python
 # Before aggregation
 pre_total = transactions["amount"].sum()
@@ -333,11 +460,31 @@ print(f"Total spend preserved: {pre_total:,.2f} → {post_total:,.2f}")
 assert abs(pre_total - post_total) < 1e-10, "STOP: Total spend changed during aggregation"
 ```
 
+**R:**
+```r
+# Before aggregation
+pre_total <- sum(transactions$amount, na.rm = TRUE)
+
+# Aggregate
+customer_summary <- transactions |>
+  group_by(customer_id) |>
+  summarise(total_spend = sum(amount, na.rm = TRUE), .groups = "drop")
+
+# Validate immediately
+post_total <- sum(customer_summary$total_spend, na.rm = TRUE)
+cat(sprintf("Total spend preserved: %s -> %s\n",
+            format(pre_total, big.mark = ",", nsmall = 2),
+            format(post_total, big.mark = ",", nsmall = 2)))
+stopifnot("STOP: Total spend changed during aggregation" = abs(pre_total - post_total) < 1e-10)
+```
+
 ## Documentation Examples
 
 ### Good vs. Bad Examples
 
 **Bad: Stating the obvious**
+
+**Python:**
 ```python
 # Loop through customers
 for customer in customers:
@@ -347,7 +494,20 @@ for customer in customers:
     customer_transactions = transactions.filter(pl.col("customer_id") == customer_id)
 ```
 
+**R:**
+```r
+# Loop through customers
+for (i in seq_len(nrow(customers))) {
+  # Get customer id
+  customer_id <- customers$id[i]
+  # Filter transactions for this customer
+  customer_transactions <- transactions |> filter(customer_id == !!customer_id)
+}
+```
+
 **Good: Explaining the why**
+
+**Python:**
 ```python
 # Process customers individually rather than in a single groupby because:
 # 1. Memory constraints: full aggregation exceeds available RAM
@@ -358,12 +518,33 @@ for customer in customers:
     customer_transactions = transactions.filter(pl.col("customer_id") == customer_id)
 ```
 
+**R:**
+```r
+# Process customers individually rather than in a single group_by because:
+# 1. Memory constraints: full aggregation exceeds available RAM
+# 2. Partial results: we want to checkpoint progress every 1000 customers
+# 3. Custom logic: per-customer CLV model requires sequential processing
+for (i in seq_len(nrow(customers))) {
+  customer_id <- customers$id[i]
+  customer_transactions <- transactions |> filter(customer_id == !!customer_id)
+}
+```
+
 **Bad: No context**
+
+**Python:**
 ```python
 df = df.filter(pl.col("amount") > 0)
 ```
 
+**R:**
+```r
+df <- df |> filter(amount > 0)
+```
+
 **Good: Business context**
+
+**Python:**
 ```python
 # Remove zero and negative amounts
 # - Zero amounts are placeholder records created by legacy system (confirmed with IT)
@@ -373,8 +554,19 @@ df = df.filter(pl.col("amount") > 0)
 print(f"Removed {original_count - len(df)} non-positive amount records")
 ```
 
+**R:**
+```r
+# Remove zero and negative amounts
+# - Zero amounts are placeholder records created by legacy system (confirmed with IT)
+# - Negative amounts are handled separately in refund analysis
+# - This filter removes ~2% of records (validated against expectation)
+df <- df |> filter(amount > 0)
+cat(sprintf("Removed %d non-positive amount records\n", original_count - nrow(df)))
+```
+
 ### Full Analysis Block Example
 
+**Python:**
 ```python
 # ============================================================================
 # ANALYSIS: Customer Segmentation by Purchase Frequency
@@ -436,6 +628,72 @@ customer_frequency = customer_frequency.with_columns(
 # Validate segment distribution
 segment_distribution = customer_frequency["frequency_tier"].value_counts()
 print("Segment distribution:")
+print(segment_distribution)
+# Expected: each tier ~25% of customers
+```
+
+**R:**
+```r
+# ============================================================================
+# ANALYSIS: Customer Segmentation by Purchase Frequency
+# ============================================================================
+# 
+# OBJECTIVE: Segment customers into frequency tiers for targeted marketing
+#
+# METHODOLOGY:
+# - Calculate purchase frequency (orders per month) for each customer
+# - Segment into quartiles: Low, Medium, High, Very High frequency
+# - Quartiles chosen over fixed thresholds because:
+#   - Adapts to changes in overall customer behavior
+#   - Ensures balanced segment sizes for marketing capacity
+#   - Standard approach aligns with previous analyses
+#
+# ASSUMPTIONS:
+# - Only counting orders with status='complete' (not cancelled/pending)
+# - Using 12-month lookback window to smooth seasonality
+# - New customers (<3 months tenure) excluded (not enough history)
+#
+# EXPECTED OUTPUT:
+# - Customer-level data frame with frequency tier assignment
+# - Approximately 25% of customers in each tier
+# ============================================================================
+
+# Calculate monthly order frequency
+customer_frequency <- orders |>
+  filter(
+    status == "complete",               # Only completed orders
+    order_date >= twelve_months_ago      # 12-month window
+  ) |>
+  group_by(customer_id) |>
+  summarise(
+    order_count = n(),
+    active_days = as.numeric(difftime(max(order_date), min(order_date), units = "days")),
+    .groups = "drop"
+  ) |>
+  mutate(
+    # Orders per 30-day month
+    monthly_frequency = order_count / (active_days / 30)
+  ) |>
+  filter(active_days >= 90)  # Minimum 3 months history
+
+# Assign quartile-based segments
+q25 <- quantile(customer_frequency$monthly_frequency, 0.25, na.rm = TRUE)
+q50 <- quantile(customer_frequency$monthly_frequency, 0.50, na.rm = TRUE)
+q75 <- quantile(customer_frequency$monthly_frequency, 0.75, na.rm = TRUE)
+
+customer_frequency <- customer_frequency |>
+  mutate(
+    frequency_tier = case_when(
+      monthly_frequency <= q25 ~ "Low",
+      monthly_frequency <= q50 ~ "Medium",
+      monthly_frequency <= q75 ~ "High",
+      TRUE                     ~ "Very High"
+    )
+  )
+
+# Validate segment distribution
+segment_distribution <- customer_frequency |> count(frequency_tier, sort = TRUE)
+cat("Segment distribution:\n")
 print(segment_distribution)
 # Expected: each tier ~25% of customers
 ```

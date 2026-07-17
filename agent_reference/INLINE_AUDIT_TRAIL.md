@@ -1,6 +1,6 @@
 # Inline Audit Trail (IAT) Protocol
 
-The Inline Audit Trail is the mandatory documentation standard for all Python scripts produced in the research workflow. Every script must be self-explanatory to a human reader **without running the code**.
+The Inline Audit Trail is the mandatory documentation standard for all scripts (Python and R) produced in the research workflow. Every script must be self-explanatory to a human reader **without running the code**.
 
 ---
 
@@ -15,6 +15,8 @@ Research scripts are **write-once, execute-once, archive** artifacts. Unlike app
 
 **The IAT philosophy:**
 > Code tells you HOW. Comments tell you WHY, WHAT FOR, and WHAT'S ASSUMED.
+
+**Language applicability:** The IAT applies identically to Python (`.py`) and R (`.R`) scripts. Both languages use `#` for comments, so all comment types, prefixes (`# INTENT:`, `# REASONING:`, `# ASSUMES:`), and section separators (`# --- Config ---`) work the same way. Examples below use Python syntax; R equivalents follow the same comment patterns with R code.
 
 **Default posture:** Be verbose ALWAYS for research scripts (Stages 5-8). Silence is not golden — it's a documentation gap.
 
@@ -44,6 +46,7 @@ A block comment that introduces each major section of a script. Provides orienta
 # --- Config ---
 # Configuration constants for this script. Paths are relative to the project
 # root. Constants are derived from the Plan's query specification.
+# (R scripts: library() calls go here as well.)
 
 # --- Load ---
 # Load input data from the prior stage's output. Verify shape and schema
@@ -147,11 +150,11 @@ The IAT is about useful documentation, not noise. Do NOT comment:
 
 | Skip Commenting | Example | Why |
 |-----------------|---------|-----|
-| Obvious imports | `import polars as pl` | Universal knowledge |
-| Simple variable assignment to a literal | `DATE_PREFIX = "2026-01-24"` | Self-evident |
+| Obvious imports | `import polars as pl` / `library(tidyverse)` | Universal knowledge |
+| Simple variable assignment to a literal | `DATE_PREFIX = "2026-01-24"` / `DATE_PREFIX <- "2026-01-24"` | Self-evident |
 | Standard boilerplate | `#!/usr/bin/env python3` | Convention |
-| Print separators | `print("=" * 60)` | Visual formatting |
-| Obvious operations | `df.shape[0]` | Self-explanatory |
+| Print separators | `print("=" * 60)` / `cat(strrep("=", 60))` | Visual formatting |
+| Obvious operations | `df.shape[0]` / `nrow(df)` | Self-explanatory |
 | The `EXECUTION LOG` section | Auto-appended output | Not authored code |
 
 **Rule of thumb:** If removing the comment would leave a reader confused about *why* something is done, the comment is needed. If removing it would only leave them unsure of *what* the code literally does (and the code is clear), skip it.
@@ -412,7 +415,7 @@ For agents to scan before writing code:
 
 ## Enforcement
 
-- **research-executor:** Must follow IAT when writing scripts (see `.claude/agents/research-executor.md`)
-- **code-reviewer:** Checks IAT compliance in Phase 1 review (WARNING severity)
+- **research-executor:** Must follow IAT when writing scripts in both Python and R (see `.claude/agents/research-executor.md`)
+- **code-reviewer:** Checks IAT compliance in Phase 1 review (WARNING severity) for both languages
 - **Stage 10:** Aggregates documentation quality findings from all QA reviews
 - **data-scientist skill:** Principle 4 references IAT as the enforced standard

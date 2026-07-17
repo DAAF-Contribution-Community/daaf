@@ -62,26 +62,34 @@ The primary triggering mechanism. This is what agents see when deciding whether 
 
 | Rule | Limit |
 |------|-------|
-| Length | **≤250 characters** (hard limit — truncated in system prompt beyond this) |
-| YAML max | 1024 characters (YAML parser limit, but irrelevant given the 250-char display limit) |
+| Length | **≤1,024 characters** (validation limit — Agent Skills spec; description must be non-empty) |
+| Display cap | Combined `description` + `when_to_use` is truncated at **1,536 characters** in the skill listing; a startup warning fires when truncation occurs |
 | No angle brackets | Cannot contain `<` or `>` |
 | Non-empty | Must have content after trimming whitespace |
 
-> **Why 250 chars?** Claude Code truncates frontmatter descriptions at ~250 characters in the system prompt. This is the ONLY text agents see when deciding whether to load a skill — everything beyond 250 chars is silently dropped. The full description is preserved in the skill body (see "Full Description in Body" below).
+> **Why description length matters.** The description is the ONLY text agents see when deciding whether to load a skill, so it should be complete and information-rich — a compressed teaser that undertriggers is worse than a longer description that triggers correctly. Three constraints govern length:
+>
+> 1. **Validation limit (1,024 chars):** The `description` field alone must stay within 1,024 characters or skill validation fails.
+> 2. **Display cap (1,536 chars combined):** The skill listing truncates the combined `description` + `when_to_use` text at 1,536 characters (raised from 250 in Claude Code v2.1.105) and warns at startup when truncation occurs.
+> 3. **Aggregate listing budget (~1% of context):** The skill listing as a whole shares a budget of roughly 1% of the model's context window across ALL skills. DAAF has 40+ skills competing for this shared resource — when the listing overflows, descriptions for the least-invoked skills are dropped first (diagnosable with `/doctor`). This is why economy still matters even though the per-skill caps are generous: a bloated description doesn't just cost its own skill, it can crowd out others. Because the budget scales with the context window, the same skill inventory is more likely to overflow on smaller-window models — economy matters even more there.
+>
+> These numbers describe Claude Code behavior as of v2.1.105 / June 2026 and are configurable (`maxSkillDescriptionChars` setting; `skillListingBudgetFraction` setting or `SLASH_COMMAND_TOOL_CHAR_BUDGET` env var for the aggregate budget). If observed behavior differs, verify against current Claude Code docs before assuming this reference is correct.
 
-**Must Include (within 250 chars):**
+**Must Include:**
 
 1. **What the skill does** - Functionality overview (identity + scope)
 2. **When to use it** - Key triggering conditions
 3. **Disambiguation** - What NOT to use this for, especially when similar skills exist (e.g., "For FE use pyfixest; for GLM use statsmodels")
 4. **Third-person voice** - Write as "Processes files" not "I help you process files"
 
-**Budget priorities** (what to keep when space is tight):
-1. Core identity (what it is) — always keep
-2. Key disambiguation (prevents wrong-skill loading) — always keep
-3. Most common triggers — keep the top 2-3
-4. Scope limitations — include if space permits
-5. Detailed coverage list — move to body description
+**Content priorities** (what earns its characters, in order — longer is allowed, but every sentence should improve triggering accuracy or prevent misuse):
+1. Core identity (what it is) — always include
+2. Key disambiguation (prevents wrong-skill loading) — always include
+3. Most common triggers — the top 2-3, plus critical caveats that change how the skill is used
+4. Scope limitations — include when they prevent wrong-skill loading
+5. Exhaustive coverage/feature lists — move to body description; these consume shared listing budget without improving triggering
+
+As a calibration anchor: most well-calibrated DAAF descriptions land in the 300-700 character range (the polars example later in this file is ~418 chars). Treat that band as a starting point, not a rule — go longer when triggering accuracy genuinely demands it.
 
 **Good Examples:**
 
@@ -135,7 +143,7 @@ description: Advanced statistical analysis for CSV datasets. Use for regression 
 
 ### Full Description in Body
 
-Since frontmatter is limited to 250 chars, the **full description** must be preserved as a plain paragraph immediately after the `# Title` heading in the SKILL.md body. This ensures agents have complete context once the skill is loaded.
+DAAF convention: write an **expanded body description** as a plain paragraph immediately after the `# Title` heading in the SKILL.md body. It elaborates beyond the frontmatter rather than duplicating it, guaranteeing agents have complete context once the skill is loaded — robust to any listing truncation, aggregate-budget drops, or configuration differences, and a natural home for detail that doesn't earn its place in the shared listing budget.
 
 **Pattern:**
 
@@ -143,7 +151,8 @@ Since frontmatter is limited to 250 chars, the **full description** must be pres
 ---
 name: my-skill
 description: >-
-  Condensed description ≤250 chars. What it does, when to use, disambiguation.
+  Complete, information-rich description. What it does, key triggers and use
+  cases, disambiguation from similar skills.
 metadata:
   audience: research-coders
   domain: python-library
@@ -151,7 +160,7 @@ metadata:
 
 # My Skill
 
-Full, detailed description that was too long for frontmatter. Covers all
+Expanded description elaborating on the frontmatter. Covers all
 capabilities, specific triggers, scope limitations, disambiguation guidance,
 and any other context that helps agents use this skill correctly. This text
 is only visible after the skill is loaded — it does NOT influence triggering
@@ -163,7 +172,7 @@ with the skill.
 
 **Rules:**
 - The body description is a plain paragraph (no heading, no blockquote) directly after `# Title`
-- It should contain everything the frontmatter description couldn't fit — expanded scope, additional triggers, detailed disambiguation
+- It should expand and elaborate beyond the frontmatter — detailed scope, additional triggers, fine-grained disambiguation, anything moved out of the listing for budget economy
 - It should NOT duplicate the frontmatter description verbatim — expand and elaborate instead
 - Existing DAAF skills follow this pattern as of 2026-03-29
 
@@ -178,6 +187,16 @@ Consider using **gerund form** (verb + -ing) for skill names, as this clearly de
 Acceptable alternatives include noun phrases (`pdf-processing`) or action-oriented names (`process-pdfs`). Avoid vague names like `helper`, `utils`, or `tools`.
 
 ## Optional Fields
+
+### `when_to_use`
+
+An optional field for triggering guidance, separate from the `description`. In the skill listing, its text is appended to the `description` — the combined text is what counts toward the 1,536-char display cap.
+
+```yaml
+when_to_use: Use when working with .pdf files, rotating pages, or extracting text.
+```
+
+DAAF does not require this field: existing DAAF skills fold triggering guidance directly into the `description` ("what it does" + "when to use it" in one field), which displays identically. Treat `when_to_use` as an escape hatch when a description is approaching its 1,024-char validation limit and triggering guidance needs more room — not as a default convention.
 
 ### `metadata`
 
@@ -204,6 +223,8 @@ DAAF uses a controlled vocabulary for `audience` and `domain` to enable consiste
 | `research-coders` | Anyone writing or reviewing code | Python libraries, education-data-query |
 | `research-writers` | Anyone writing or reviewing narrative | science-communication |
 
+> **Canonical value note:** `research-coders` is the canonical `audience` value for skills targeting code-writing or code-reviewing agents. Some older skill text uses the legacy phrasing "code-producing agents" — normalization to `research-coders` is in progress. Always use `research-coders` in new skills.
+
 #### `domain` — What functional category does this skill belong to?
 
 | Value | Covers | Example Skills |
@@ -211,7 +232,9 @@ DAAF uses a controlled vocabulary for `audience` and `domain` to enable consiste
 | `data-source` | Reference guides for specific datasets | education-data-source-ccd, election-data-source-countypres |
 | `data-access` | Fetching/discovering data | education-data-query, education-data-explorer |
 | `data-documentation` | Provenance, caveats, interpretation | education-data-context |
-| `python-library` | Library syntax/API reference | polars, plotly, statsmodels |
+| `python-library` | Python library syntax/API reference | polars, plotly, statsmodels |
+| `r-library` | R library syntax/API reference | tidyverse, fixest, gt |
+| `cross-language` | Cross-language translation/annotation guidance | python-r-translation, stata-r-translation |
 | `research-methodology` | Analytical approach, rigor, mindset | data-scientist |
 | `research-orchestration` | Workflow/pipeline management | daaf-orchestrator |
 | `research-communication` | Translating findings for audiences | science-communication |
@@ -221,13 +244,13 @@ DAAF uses a controlled vocabulary for `audience` and `domain` to enable consiste
 
 | Key | Purpose | Example Values | When to Include |
 |-----|---------|----------------|-----------------|
-| `library-version` | Library version tracked by the skill | `"1.x"`, `"0.40.0"` | Python library skills only |
+| `library-version` | Library version tracked by the skill | `"1.x"`, `"0.40.0"` | Python and R library skills only |
 | `skill-authored` | ISO-8601 creation date | `"2026-02-09"` | Data source skills (required) |
-| `skill-last-updated` | ISO-8601 last-verified date | `"2026-02-09"` | Data source skills (required); Python library skills (recommended) |
+| `skill-last-updated` | ISO-8601 last-verified date | `"2026-02-09"` | Data source skills (required); Python and R library skills (recommended) |
 
 > **Provenance in metadata:** Data source skills MUST include `skill-authored` and `skill-last-updated` as metadata keys. These track when the skill was created and when it was last verified against actual data. On updates, change only `skill-last-updated`; `skill-authored` remains fixed. If `skill-last-updated` is more than a few months old, treat skill claims with caution — re-run data onboarding to re-verify.
 
-> **Library skill staleness:** Python library skills SHOULD include `skill-last-updated` to signal when the `library-version` claim was last verified. Library APIs evolve — if the tracked version is outdated, the skill's syntax examples and API patterns may have drifted.
+> **Library skill staleness:** Library skills (Python and R) SHOULD include `skill-last-updated` to signal when the `library-version` claim was last verified. Library APIs evolve — if the tracked version is outdated, the skill's syntax examples and API patterns may have drifted.
 
 > **Metadata routing semantics:** The `audience` and `domain` fields are used for skill inventory management, human auditing, and maintenance — not for programmatic agent routing. Agent skill selection is driven by description text matching and explicit skill name references in orchestrator dispatch tables and agent frontmatter. These fields help maintainers answer questions like "show me all skills relevant to code-writing agents" or "list all data source skills" without affecting runtime behavior.
 
@@ -236,7 +259,8 @@ DAAF uses a controlled vocabulary for `audience` and `domain` to enable consiste
 | Field | Required | Type | Max Length | Notes |
 |-------|----------|------|------------|-------|
 | `name` | Yes | String | 64 chars | Lowercase hyphen-case |
-| `description` | Yes | String | 250 chars (effective) | No `<` or `>`; truncated at 250 chars in system prompt |
+| `description` | Yes | String | 1,024 chars (validation limit) | No `<` or `>`; combined with `when_to_use`, display truncates at 1,536 chars in the skill listing |
+| `when_to_use` | No | String | Counts toward 1,536-char combined display cap | Appended to `description` in the skill listing; not a DAAF default convention |
 | `metadata` | No | Dict | - | String values only |
 
 ## Unknown Fields
@@ -246,7 +270,10 @@ Unknown frontmatter fields are ignored but may cause validation errors in strict
 **Allowed fields only:**
 - `name`
 - `description`
+- `when_to_use`
 - `metadata`
+
+> **Legacy non-spec fields in R skills:** Some R library skills carry a top-level `autoload` field and a `metadata.tags` list from their initial port (e.g., `tidyverse`, `fixest`, `gt`). These are non-spec fields: nothing in the framework consumes them (probe quoted in the R_Support project's sessionD_05 notes, item E8). They are tolerated in existing skills but must NOT be copied into new skills.
 
 ## Complete Example
 
@@ -272,7 +299,7 @@ from pandas, reading Parquet files, or optimizing data pipeline performance.
 [Rest of skill body...]
 ```
 
-Note how the frontmatter description (418 chars) leads with DAAF-specific identity ("default DataFrame library — not pandas"), then covers capabilities and use triggers. The body paragraph preserves additional detail (database I/O, NumPy interop) that didn't fit even in the expanded description. Descriptions can be up to 1,536 characters; use the extra space strategically for framework context, critical caveats, and disambiguation — not for exhaustive feature lists.
+Note how the frontmatter description (418 chars) leads with DAAF-specific identity ("default DataFrame library — not pandas"), then covers capabilities and use triggers. The body paragraph preserves additional detail (database I/O, NumPy interop) that the description deliberately leaves out. Descriptions can run up to the 1,024-char validation limit (with the combined listing entry displaying up to 1,536 chars); use the space strategically for framework context, critical caveats, and disambiguation — not for exhaustive feature lists, which consume the shared listing budget without improving triggering.
 
 ## Description Writing Tips
 
@@ -300,7 +327,7 @@ description: Fast DataFrame library for Python data science. Use for any Polars 
 
 ### Front-Load Important Words
 
-The description may be truncated in UI. Put key information first.
+Put key information first. The skill listing caps the combined `description` + `when_to_use` text at 1,536 characters, and readers — agents scanning the listing and humans auditing it — weight the opening words most heavily. Identity and triggers belong up front.
 
 ```yaml
 # Key info first (good)

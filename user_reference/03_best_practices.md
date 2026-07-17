@@ -17,6 +17,7 @@ Practical wisdom for getting the most out of DAAF while maintaining research qua
 - [**Using Git Version Control**](#using-git-version-control)
 - [**Using the Browser-Based Code Editor**](#using-the-browser-based-code-editor)
 - [**Safety with Claude Code**](#safety-with-claude-code)
+- [**Tips for Data Onboarding**](#tips-for-data-onboarding)
 - [**Recommended Next Steps**](#recommended-next-steps)
 
 ---
@@ -27,7 +28,7 @@ This is the single most impactful thing you can do to improve the quality of wha
 
 ### What Makes a Good Request
 
-Building off of what we discussed in [**02. Understanding and Working with DAAF**](02_understanding_daaf.md) re: context management principles: A good request ultimately helps steer the LLM in the right directions and enhances its likelihood of doing what you really want it to do. As many in the AI space are advocating, you really need to ask yourself: What kind of instruction would **you** need to do the task you're asking well? What kind of specifics, details, and process guidance would be helpful for you, or a colleague you're delegating to? Time spent crafting your prompt with more detail and specifics pay off almost infinitely for quality down the road.
+Building off of what we discussed in [**02. Understanding and Working with DAAF**](02_understanding_daaf.md) re: context management principles: A good request ultimately helps steer the LLM in the right directions and enhances its likelihood of doing what you really want it to do. As many in the AI space are advocating, you really need to ask yourself: What kind of instruction would **you** need to do the task you're asking well? What kind of specifics, details, and process guidance would be helpful for you, or a colleague you're delegating to? Time spent crafting your prompt with more detail and specifics compounds into meaningfully better quality throughout the entire analysis.
 
 When it comes to DAAF, there are a few dimensions of specificity you can provide to help it scope and navigate the work properly:
 
@@ -35,19 +36,11 @@ When it comes to DAAF, there are a few dimensions of specificity you can provide
 - **Time period**: Which years? Something specific like "2018-2022" is ideal, knowing that it may need to adjust based on specific data availability and trade-offs. "The past few years" works but is vague and encourages DAAF to make assumptions you might not agree with. Explicit is better.
 - **Data granularity**: Are you interested in individual schools, school districts, or colleges/universities? This determines which datasets DAAF reaches for, and what feels most important
 - **Analysis focus**: What relationship, trend, or comparison are you trying to understand? "The relationship between poverty and enrollment" is much more actionable than "general socioeconomics."
+- **Methodologies**: What types of analytical methodologies do you think will be most relevant and useful for this analysis? Geospatial? Supervised machine learning? Basic descriptive analyses? Being clear about this will help direct DAAF to the right resources internally for better consultation results.
 - **Priorities**: What matters most to you about this analysis? If it has to make trade-offs, what should go first? Every analysis involves complicated decision-making, so giving it more insight here can help it align with what you'd want it to do.
 - **Desired insights**: What are you really trying to say, or learn, or do with the data analysis? Giving it a sense of your goals will also help it make better decisions.
 
 You do *not* need to know the exact dataset names, variable codes, or statistical methods. If you know them, great, but if not, that's fine -- that is genuinely part of what DAAF is designed to handle rigorously on our behalf. What you *do* need to provide is a clear enough picture that DAAF can make intelligent decisions about those things as it works -- decisions you'll then review and approve before anything gets executed.
-
-With that in mind, there are actually some appreciable trade-offs in being too vague or too prescriptive:
-
-**Being too vague** triggers a round of clarifying questions. This is not a catastrophe -- DAAF is designed to ask before it assumes -- but it adds an extra back-and-forth that slows you down.
-
-**Being too prescriptive** can actually constrain useful exploration. If you say "Use CCD enrollment counts and MEPS poverty estimates for schools in Texas from 2019-2022, join on NCES school ID, and run an OLS regression with XYZ as the covariates," you may miss that DAAF would have recommended SAIPE district-level poverty estimates instead, or flagged that 2020 CCD data has significant COVID-related reporting gaps. If you know enough about your data context to be this confident, go for it, but you may benefit from engaging with DAAF on scoping and ideation.
-
-**The sweet spot** gives DAAF clear scope with room for expertise. You specify *what you want to learn* and *roughly where to look*, and let DAAF present its thoughts on *how* that you can further shape and revise. Then you review its proposal in the Plan document and push back before any data is touched.
-
 ---
 
 ## Reviewing the Plan Before Execution
@@ -105,7 +98,7 @@ These are signs that the Plan may need revision before you approve it:
 | Red Flag | What It Might Mean | What to Do |
 |----------|-------------------|------------|
 | Research Outcomes are vague, subjective, or confirmatory | Final verification will not be rigorous | Ask for more specific, measurable outcomes |
-| No risks identified | Plan may be overconfident | Ask about suppression rates, data gaps, and join complexity |
+| No risks identified | Plan may be overconfident | Ask about suppression rates (where data values are hidden to protect individual privacy -- common in education data), data gaps, and join complexity |
 | Placeholder file paths (`[TBD]`, `[filename]`) | Plan may not be fully specified | Ask DAAF to complete the paths before proceeding |
 | Very large scope (50 states, 20 years, 5+ data sources) | Analysis may run very long and incur high API costs | Consider narrowing scope first |
 | Missing join cardinality | Joins may produce unexpected row multiplication or loss | Ask DAAF to specify 1:1, 1:many, or many:1 for each join |
@@ -236,7 +229,7 @@ I recommend this review order:
 
 You do *not* need to read everything in detail every time. The report is the synthesis; the notebook is the evidence; the scripts are the primary source. Go as deep as you need to based on how much you trust the results and how high-stakes the analysis is.
 
-**Tip:** Before diving into individual artifacts, consider browsing the session visually using the **DAAF Log Explorer**. Run `bash view_logs.sh` (or `.\view_logs.ps1` on Windows) from your `daaf-docker` folder to see an interactive timeline of every orchestrator action, subagent dispatch, and tool call. This gives you a high-level map of the entire session, making it easier to identify which stages or scripts deserve closer inspection.
+**Tip:** Before diving into individual artifacts, consider browsing the session visually using the **DAAF Log Explorer**. Open it from the **DAAF Control Panel** (`bash daaf.sh` / `.\daaf.ps1` from your `daaf-docker` folder → **3) View Session Logs**), or run `bash view_logs.sh` (`.\view_logs.ps1` on Windows) directly, to see an interactive timeline of every orchestrator action, subagent dispatch, and tool call. This gives you a high-level map of the entire session, making it easier to identify which stages or scripts deserve closer inspection.
 
 ### Reading the Report
 
@@ -250,9 +243,13 @@ The report follows a standard structure (Executive Summary, Key Findings, Data &
 
 **References:** The report includes a References section with up to four subsections: data sources, methodological references (e.g., the specific DiD estimator or survey weighting approach used), software & tools, and reporting standards. DAAF does its best to track these automatically as each script executes, but citations can be wrong, incomplete, or missing -- verify that the right methods and tools are credited, that the citations themselves are accurate, and that nothing important was overlooked or unnecessarily included.
 
+### Reading DAAF's Claims: Observed Facts vs. Inference
+
+One habit worth building as you read any DAAF output is to notice how it grades its own claims by evidence. When DAAF reports that something *ran* -- a fetch returned so many rows, a validation passed -- the actual command and its output are on record, quoted in the script's execution log for you to check; statements without that kind of record are inferences, and DAAF is instructed to phrase them so they read that way rather than as established fact. Pay especially close attention when DAAF says something is *impossible* or *unavailable* -- that a source doesn't offer a variable, or that an operation can't be done -- because a wrong "no" fails silently and can quietly harden into accepted fact, so those negative claims deserve the same "show me the check" scrutiny you'd give any surprising result. And when DAAF tells you how much it did -- files changed, outcomes addressed -- that accounting should trace back to actual tool output, not to memory. Reading with this lens tells you which parts of a report you can take at face value and which warrant a second look.
+
 ### Reading the Notebook
 
-The marimo notebook is a walkthrough tool -- it assembles the actual scripts that were executed (verbatim, not rewritten) alongside their execution logs. When you open it in your browser, you will see:
+The marimo notebook is a walkthrough tool -- it assembles the actual scripts that were executed (verbatim, not rewritten) alongside their execution logs. (For R projects the notebook is a Quarto `.qmd` instead -- see [02 § The Research Notebook](02_understanding_daaf.md#the-research-notebook-marimo-or-quarto) -- and the same review guidance applies.) When you open it in your browser, you will see:
 
 - **Section headers** identifying which stage and script is being displayed
 - **Code cells** containing the literal code from the script files
@@ -284,6 +281,8 @@ If a script failed, you will also find versioned revisions:
 - `01_fetch-ccd_a.py` -- First revision (with its own log)
 - `01_fetch-ccd_b.py` -- Second revision, if the first fix did not work
 
+(R projects follow the same pattern with `.R` files: `01_fetch-ccd.R`, `01_fetch-ccd_a.R`, and so on.)
+
 The notebook only includes the final successful version, but all versions are preserved in the `scripts/` directory for audit trail purposes. If you want to understand *why* a script needed revision, read the original's execution log and the QA review that flagged the issue (stored in `scripts/cr/`).
 
 ### Reading QA Review Scripts
@@ -292,6 +291,8 @@ The `scripts/cr/` directory contains the code-reviewer's inspection scripts for 
 
 - `stage5_01_cr1.py` -- First QA review of Stage 5, script 01
 - `stage7_02_cr2.py` -- Second QA iteration for Stage 7, script 02
+
+Analysis-stage (Stage 8) reviews split into two tracks and use lettered suffixes to tell them apart: `_cra{N}` names a statistical/analysis review and `_crb{N}` names a visualization review. So `stage8_01_cra1.py` is the first analysis review of Stage 8 script 01, and `stage8_01_crb1.py` is the first visualization review of that same script. If you encounter these `cra`/`crb` files, they are expected -- Stage 8 simply gets reviewed from both angles.
 
 These scripts contain the adversarial checks that the code-reviewer ran, along with their results. If a QA review returned WARNING or BLOCKER, the findings will be in these files. You generally do not need to read these unless you are investigating a specific concern -- but they are there for full transparency.
 
@@ -439,7 +440,7 @@ These are genuinely good applications for DAAF in its current state:
 These are possible but carry significant caveats:
 
 - **Policy-informing analysis.** If your analysis will inform real policy decisions, DAAF's output should be treated as a *starting point* that requires thorough independent verification by a qualified researcher. Every finding should be checked against known benchmarks, and the methodology should be reviewed by someone with deep domain expertise.
-- **Publication-adjacent work.** DAAF can accelerate the data preparation and exploratory analysis phases of a study destined for publication, but the analytical decisions, robustness checks, and interpretation must be held to the standard of your target venue -- which typically means significant additional human work beyond what DAAF produces.
+- **Publication-adjacent work.** DAAF can accelerate and broaden the data preparation and exploratory analysis phases of a study destined for publication, but the analytical decisions, robustness checks, and interpretation must be held to the standard of your target venue -- which typically means significant additional human work beyond what DAAF produces.
 - **Cross-dataset analyses involving complex joins.** DAAF handles joins reasonably well for well-documented datasets, but joins between datasets with different geographic units, different year definitions, or ambiguous key relationships require careful human scrutiny.
 
 ### Never Appropriate
@@ -448,12 +449,13 @@ These should not be done with DAAF (or any LLM-based system) regardless of the g
 
 - **High-stakes decisions based solely on AI outputs.** Never use DAAF's results as the sole basis for decisions that significantly affect people -- resource allocation, program elimination, individual assessments, legal proceedings. Always have qualified humans independently verify any findings that will drive consequential decisions.
 - **Analysis presented as AI-generated without disclosure.** If you use DAAF to produce analysis, you should disclose the role of AI assistance in your work. Transparency is non-negotiable in my view. DAAF is designed to make this easy by documenting exactly what it did, but the responsibility to disclose is yours.
+- **Generating results to confirm a predetermined conclusion** -- DAAF is designed to follow the data. Using it to manufacture support for a conclusion you've already reached undermines the entire framework.
 
 ---
 
 ## Using Git Version Control
 
-When you start using DAAF, you'll find that it produces a LOT of files, and it does a LOT of things at once. One best practice I'd strongly encourage is to get comfortable with using Git for version control. This is part of why I treat it as a prerequisite for using DAAF in the installation process (spoilers: there were other ways to do it!): This type of work with LLMs just benefits so immensely from having a full audit log of file edits and changes at all times, with the ability to roll back changes and identify issues quickly.
+When you start using DAAF, you'll find that it produces a LOT of files, and it does a LOT of things at once. One best practice I'd strongly encourage is to get comfortable with using Git for version control. The good news is it's ready for you already -- Git ships right inside the DAAF container, so there's nothing extra to install (spoilers: that's one less thing to set up!). This type of work with LLMs just benefits so immensely from having a full audit log of file edits and changes at all times, with the ability to roll back changes and identify issues quickly.
 
 I would strongly recommend making a private "fork" of the DAAF repository for you to work in and back up all of your research files to (though DAAF by default will NOT back up your parquet data files to avoid accidentally sharing data up to the cloud). Teaching Git is a bit beyond the scope of this project, but you absolutely can and should ask Claude to tell you more about:
 
@@ -470,7 +472,7 @@ There are also a ton of guides online and on YouTube, etc. Take some time to get
 Here are a few concrete commands that are especially handy when working with DAAF:
 
 - **`git diff HEAD~1`** -- See exactly what changed in the last session. This is great for reviewing what DAAF produced overnight or after a long run. It shows every file that was added, modified, or deleted, with the specific changes highlighted.
-- **`git log --oneline -10`** -- See the 10 most recent commits in a compact format. Since DAAF's sessions are typically committed at the end, this gives you a quick history of recent sessions and what they produced.
+- **`git log --oneline -10`** -- See the 10 most recent commits in a compact format. DAAF does not create commits on its own by default, but if you commit your work manually -- or enable the optional "Git commit management" preference, which has DAAF suggest commits at natural milestones and ask before making them -- this gives you a quick history of recent sessions and what they produced.
 - **`git stash` / `git stash pop`** -- Temporarily set aside all uncommitted changes and restore them later. This is useful if you want to experiment with something (like testing a different analysis approach) without committing to it. Run `git stash` to save your current changes, do your experiment, and then run `git stash pop` to bring your original changes back.
 
 You can run these commands in the Claude Code terminal inside the container, or in any terminal connected to the DAAF repository.
@@ -494,11 +496,11 @@ bash run_vscode.sh              # macOS / Linux
 
 Then open **http://localhost:2720** in your browser. The password is displayed in the terminal output (default: `daaf`). The script handles starting the container if it isn't already running.
 
-The browser editor comes pre-loaded with extensions for Python syntax highlighting, Markdown preview, Git history visualization, and CSV viewing -- everything you need to comfortably browse and review DAAF's output. A few key features worth knowing:
+The browser editor comes pre-loaded with extensions for Python and R syntax highlighting, Markdown preview, Git history visualization, CSV viewing, and folder compression for easy downloads -- everything you need to comfortably browse and review DAAF's output. A few key features worth knowing:
 
 - **Markdown preview:** Right-click any `.md` file and select **"Open Preview"**, or press `Shift+Ctrl+V`, to see the rendered report with proper formatting. This is by far the easiest way to read DAAF's reports and plans.
-- **File management:** Drag and drop files from your computer into the file explorer sidebar to import them into the Docker volume (e.g., a dataset you want to profile). Create, rename, move, and delete files directly.
-- **Git integration:** The Source Control panel (left sidebar) shows uncommitted changes, lets you view diffs, and browse commit history -- invaluable for reviewing what DAAF produced during a session.
+- **File management:** Drag and drop files — or whole folders — from your computer into the file explorer sidebar to import them into the Docker volume (e.g., a dataset you want to profile). Create, rename, move, and delete files directly. To get files back out, right-click a file and choose **Download**; for a whole folder, right-click it, choose **Compress → zip**, then download the resulting `.zip` (see the quickstart's *Getting files OUT of the container* section for the full walkthrough).
+- **Git integration:** The Source Control panel (left sidebar) shows uncommitted changes and lets you view diffs -- the most direct way to review exactly what DAAF produced during a session -- and, if you've enabled the optional "Git commit management" preference, browse commit history too.
 - **Search across files:** `Ctrl+Shift+F` (or `Cmd+Shift+F` on Mac) searches across all files in the project -- great for finding specific variables, scripts, or content.
 
 ### Alternative: Desktop VSCode with Dev Containers
@@ -511,18 +513,34 @@ There are also similar alternatives that are designed to be a bit more teched-up
 
 ## Safety with Claude Code
 
+Before we get into specifics: DAAF ships with a layer of guardrails -- built into its permission rules and safety hooks -- that block outright destructive commands, protect your credentials, and keep every change Claude makes visible and auditable. You can't easily wreck your own work or your system by accident, and the rest of this section explains what that protection covers and where your own judgment still matters.
+
 It's worth saying explicitly: Claude Code is **extremely powerful and capable**, which is super cool and useful when it's doing what we want. But that same quality of it having expanded capabilities and tools is an absolute **nightmare** when it is operating erratically or being manipulated by bad actors.
 
 I set up this whole project to use Docker in part to protect users directly and enforce some paternalistic standards for new users (with me also packaging in a lot of guardrails into the Hooks and permissions files for Claude as well). That being said, there's a lot that I don't know enough about to fully protect all users. At the end of the day, this is a wild west frontier, and things can go wrong in extremely unexpected ways as it continues to develop.
 
 Right now, my main recommendation is to not allow Claude Code to run and cook fully unattended. Check back on it periodically, even if only just to spot-check what it's output looks like and what it's reporting back on in the chat. Letting it go completely unsupervised for long periods of time is kind of asking for trouble, even if I've never seen anything go awry yet in my dozens of hours of testing.
 
-Secondly, one of the most common attack surfaces for Claude Code is what's known as a "prompt injection." As you can imagine from our earlier conversations about context management (see [**02. Understanding and Working with DAAF: Context Windows and Prompt Engineering 101**](02_understanding_daaf.md#core-concept-context-windows-and-prompt-engineering-101) for more info): having someone unexpectedly insert a lot of context into your context window can cause Claude to act erratically. With DAAF, there are really only two or three main ways that can happen:
+Secondly, one of the most common attack surfaces for Claude Code is what's known as a "prompt injection." As you can imagine from our earlier conversations about context management (see [**02. Understanding and Working with DAAF: Context Windows and Context Rot**](02_understanding_daaf.md#context-windows-and-context-rot) for more info): having someone unexpectedly insert a lot of context into your context window can cause Claude to act erratically. With DAAF, there are really only two or three main ways that can happen:
 1. You load in data documentation or data files that are unvetted and contain malicious instructions/code that Claude may not be prepared to resist. This can cause it to do strange activities or other arbitrary commands depending on how sophisticated the attack is.
 2. Similarly, you ask it to conduct deep research online, and the websites it searches through end up having malicious prompt-injection instructions.
 3. Lastly, someone hijacks the DAAF project and sneaks in hidden, malicious code/instructions into the fabric of the project documentation.
 
-The first two are your responsibility: Be thorough and thoughtful about what you have Claude read/do/search on your behalf. The last one is my responsibility: I will do everything I can to make sure all edits and changes from here are thoroughly vetted, reviewed, and sanitized for the benefit of all users. 
+The first two are your responsibility: Be thorough and thoughtful about what you have Claude read/do/search on your behalf. The last one is my responsibility: I will do everything I can to make sure all edits and changes from here are thoroughly vetted, reviewed, and sanitized for the benefit of all users.
+
+DAAF's permission rules and safety hooks are designed to block manipulation at the system level -- and the structured workflow and validation checkpoints help catch outputs that don't match the data, even if something slips past the initial guardrails.
+
+**A note on data privacy:** All computation happens locally on your machine, and DAAF prevents Claude from bulk-uploading your data files. However, analytical output (sample rows, summary statistics, diagnostic results) does transit through Anthropic's servers as part of the conversation -- that's how Claude Code works. If you're working with private, proprietary, or regulated data (FERPA, HIPAA, etc.), the implications depend on your specific Anthropic license and access method (Enterprise agreements, AWS Bedrock, and Google Vertex AI each offer different data governance guarantees). It's your responsibility to understand these nuances before using DAAF with non-public data. See the [Data Privacy FAQ](07_faq_technical.md#q-is-my-data-sent-to-anthropic-what-about-privacy) for the full picture.
+
+If your data truly can't leave your environment, you're not out of options: DAAF includes a built-in **synthetic-data protocol** for exactly this case. You profile your sensitive data locally with a disclosure-controlled script, share only a summary report, and DAAF builds a realistically-shaped synthetic stand-in you can develop all your analysis code against -- then you run that finished code against the real data yourself, where it lives. The real data never enters the container. See [Can I use DAAF with data that can't leave my secure environment?](07_faq_technical.md#q-can-i-use-daaf-with-data-that-cant-leave-my-secure-environment) for how it works.
+
+### If You Write or Paste Your Own Code
+
+DAAF's safety layer is tuned around how its own agents work, so a few conventions are worth knowing if you drop in your own scripts or paste code for Claude to run:
+
+- **Keep temporary files inside the project.** Write scratch and intermediate files to `scripts/scratch/` in your project folder, never to `/tmp` -- only the project tree is inside DAAF's backup boundary and audit trail, so anything written to `/tmp` is invisible to backups and can vanish silently.
+- **Run one shell command at a time.** DAAF's guardrails evaluate each command on its own, so chaining several together with `&&`, `;`, or `||` is blocked -- split the steps into separate commands instead.
+- **Add new packages through the Dockerfile, not at runtime.** A `pip install` or `install.packages()` run mid-session disappears on the next rebuild and quietly breaks reproducibility, so the durable path is to add the package to the Dockerfile and rebuild. See [Why can't Claude just `pip install` a package it needs?](07_faq_technical.md#q-why-cant-claude-just-pip-install-a-package-it-needs) for the full reasoning.
 
 ---
 
@@ -541,11 +559,13 @@ Data Onboarding mode profiles raw data files and creates reusable data source sk
 - **Don't worry about getting everything perfect.** The skill is a living artifact — you can refine it later using Framework Development mode as you discover more about the data through actual use.
 - **Flag priority columns** if you know which ones matter most for your research. DAAF will give them extra attention during profiling.
 
+For a detailed step-by-step guide to adding your own data, see [**04. Extending DAAF**](04_extending_daaf.md).
+
 ---
 
 ## Recommended Next Steps
 
-- [**04. Extending DAAF**](04_extending_daaf.md) — How to add new data source skills, analytical tools and methodologies, creating your own additional specialized agents, and customizing the Python environment
+- [**04. Extending DAAF**](04_extending_daaf.md) — How to add new data source skills, analytical tools and methodologies, creating your own additional specialized agents, and customizing the Python and R environment
 - [**06. FAQ: Philosophy**](06_faq_philosophy.md) — Grapples with the broader implications of this work, AI automation in general, model advancement pace, approaching the "exponential", environmental ethics, what this means for the next generation of researchers, and more
 - [**07. FAQ: Technical Support**](07_faq_technical.md) — Covers frequently asked questions about Docker, issues with Claude Code, usage limits, authentication errors, and other common errors
 - [**Back to main**](https://github.com/DAAF-Contribution-Community/daaf/tree/main)

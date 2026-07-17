@@ -1,6 +1,6 @@
 # Supervised Machine Learning for Social Science Research
 
-Methodological guidance for supervised machine learning in applied social science research — when to use prediction methods vs. inference methods, how model complexity decisions are governed by the bias-variance tradeoff, how cross-validation must adapt to social science data structures, and how to interpret ML outputs without claiming causation. This reference covers the *why* and *when* of supervised ML. For implementation syntax, load the `scikit-learn` skill.
+Methodological guidance for supervised machine learning in applied social science research — when to use prediction methods vs. inference methods, how model complexity decisions are governed by the bias-variance tradeoff, how cross-validation must adapt to social science data structures, and how to interpret ML outputs without claiming causation. This reference covers the *why* and *when* of supervised ML. Whenever ML tooling enters the discussion — in advice or in code — load the `scikit-learn` skill (Python) or the `tidymodels` skill (R): they carry the syntax plus environment constraints and curated caveats that general knowledge lacks.
 
 **When to read this file:** Stage 8 analysis tasks involving classification, prediction, risk scoring, early warning systems, ML-based variable selection, or any task where the goal is predicting outcomes rather than estimating causal parameters.
 
@@ -10,7 +10,7 @@ Methodological guidance for supervised machine learning in applied social scienc
 - For unsupervised/exploratory analysis (clustering, dimension reduction), see `./exploratory-unsupervised.md`
 - For descriptive analysis and association measurement, see `./descriptive-analysis.md`
 - For chart selection when presenting ML results, see `./visualization-design.md`
-- **Scope boundary:** This file covers supervised ML methodology only. Implementation syntax (scikit-learn API, SHAP API, fairlearn API) belongs in the `scikit-learn` skill's reference files.
+- **Scope boundary:** This file covers supervised ML methodology only. Tool-level content (scikit-learn API, SHAP API, fairlearn API — Python; recipes/parsnip/workflows/tune — R) lives in the `scikit-learn` and `tidymodels` skills' reference files — load the skill routed for the execution language whenever those tools enter the discussion, in advice as much as in code.
 
 ## Acknowledgments
 
@@ -73,7 +73,7 @@ These cultures are not competing — they answer different questions. The error 
 
 Following Shmueli's (2010) influential framework, the distinction between explanatory and predictive modeling is not merely about technique — it manifests at every stage of the research process:
 
-| Stage | Explanatory (use pyfixest/statsmodels) | Predictive (use scikit-learn) |
+| Stage | Explanatory (use pyfixest/statsmodels; R: fixest/r-stats) | Predictive (use scikit-learn; R: tidymodels) |
 |-------|----------------------------------------|-------------------------------|
 | **Goal** | Estimate a parameter (beta) accurately | Minimize prediction error on new data |
 | **Variable selection** | Theory-driven (omitting a relevant variable causes bias) | Performance-driven (include features if they improve prediction) |
@@ -97,14 +97,14 @@ This is the strongest justification for ML in policy research. The researcher do
 
 ### When Each Approach Is Appropriate
 
-| Research Question | Approach | Tools |
+| Research Question | Approach | Tools (Python; R) |
 |-------------------|----------|-------|
-| "Does X cause Y?" | Causal inference | pyfixest, statsmodels |
-| "What is the association between X and Y, controlling for Z?" | Statistical modeling | pyfixest, statsmodels |
-| "Which students are most likely to drop out?" | Prediction | scikit-learn |
-| "Where should we allocate intervention resources?" | Prediction policy problem | scikit-learn |
-| "What variables predict Y?" (exploratory) | Prediction + interpretation | scikit-learn + SHAP |
-| "Are there natural groupings in the data?" | Unsupervised | scikit-learn |
+| "Does X cause Y?" | Causal inference | pyfixest, statsmodels; fixest, r-stats |
+| "What is the association between X and Y, controlling for Z?" | Statistical modeling | pyfixest, statsmodels; fixest, r-stats |
+| "Which students are most likely to drop out?" | Prediction | scikit-learn; tidymodels |
+| "Where should we allocate intervention resources?" | Prediction policy problem | scikit-learn; tidymodels |
+| "What variables predict Y?" (exploratory) | Prediction + interpretation | scikit-learn + SHAP; tidymodels |
+| "Are there natural groupings in the data?" | Unsupervised | scikit-learn; tidymodels |
 
 > **Cross-reference:** For causal inference methodology, see `causal-inference.md`. For inference-focused regression (coefficient estimation, standard errors, assumption checking), see `statistical-modeling.md`. For unsupervised/exploratory analysis, see `exploratory-unsupervised.md`.
 
@@ -185,7 +185,7 @@ Violating this discipline — tuning on the test set, selecting the model that p
 - Always use cross-validation inside the training set — NEVER tune on the test set.
 - Report the hyperparameter search process: the grid or distributions searched, the best parameters found, and the CV scores across candidates.
 
-For implementation syntax of all CV strategies and hyperparameter search, see the `scikit-learn` skill, specifically `evaluation-supervised.md`.
+For the tool-level details of all CV strategies and hyperparameter search — whether you're advising or writing code — load the `scikit-learn` skill, specifically `evaluation-supervised.md` (Python), or the `tidymodels` skill, specifically `resampling.md` and `tuning.md` (R).
 
 ### Missing Data in ML Pipelines
 
@@ -199,7 +199,7 @@ Social science data is riddled with missing values — administrative records ha
 
 **Never impute the outcome variable.** Observations with missing outcomes should be excluded from the modeling sample. Imputing outcomes introduces fabricated signal that corrupts both training and evaluation.
 
-> **Cross-reference:** For missing data characterization methodology (MCAR, MAR, MNAR testing and interpretation), see `descriptive-analysis.md`. For Pipeline and imputer implementation syntax, see the `scikit-learn` skill.
+> **Cross-reference:** For missing data characterization methodology (MCAR, MAR, MNAR testing and interpretation), see `descriptive-analysis.md`. For the tool-level details of Pipeline and imputers — whether you're advising or writing code — load the `scikit-learn` skill (Python) or the `tidymodels` skill, specifically `recipes.md` and `workflows.md` (R — recipes are the leak-free preprocessing analog of sklearn Pipelines).
 
 ## Model Selection for Supervised Tasks
 
@@ -227,7 +227,7 @@ Following Rudin's (2019) influential argument in *Nature Machine Intelligence*, 
 - **Post-hoc explanations of black boxes** (SHAP, LIME, permutation importance) are approximations of the model's behavior, not faithful representations of its reasoning. They can disagree with each other and can be misleading when the model itself captures spurious patterns.
 - **Always compare:** When using a complex model, report its performance alongside the best interpretable model and quantify the gap explicitly. If a logistic regression achieves AUC = 0.82 and a gradient boosting model achieves AUC = 0.84, the 0.02 gain must be weighed against the loss of transparency.
 
-> **Cross-reference:** For implementation syntax of all algorithms listed above, see the `scikit-learn` skill, specifically `classification.md` and `regression-ml.md`.
+> **Cross-reference:** For the tool-level details of all algorithms listed above — whether you're advising or writing code — load the `scikit-learn` skill, specifically `classification.md` and `regression-ml.md` (Python), or the `tidymodels` skill, specifically `models.md` and `engines.md` (R).
 
 ### Sample Size Considerations
 
@@ -299,7 +299,7 @@ Calibration measures whether a model's predicted probabilities match observed fr
 
 **Key insight:** Tree-based models (random forests, gradient boosting) are often poorly calibrated out of the box despite strong discriminative performance. Random forests tend to push probabilities toward 0.5; gradient boosting tends toward extreme probabilities. Always check calibration when using ensemble methods for probability-sensitive decisions.
 
-> **Cross-reference:** For CalibratedClassifierCV implementation syntax and the sklearn.calibration module, see the `scikit-learn` skill.
+> **Cross-reference:** For the tool-level details of CalibratedClassifierCV and the sklearn.calibration module — whether you're advising or writing code — load the `scikit-learn` skill (Python). Calibration tooling is a Python-side asymmetry in this environment: the tidymodels calibration package (`probably`) is not installed, so R workflows should assess calibration manually (reliability diagrams, Brier score are straightforward to compute) — see the `tidymodels` skill for the modeling side.
 
 ## ML Regression Methodology
 
@@ -307,7 +307,7 @@ Calibration measures whether a model's predicted probabilities match observed fr
 
 The distinction between ML regression and econometric regression is not about the algorithm — it is about the goal. Logistic regression appears in both contexts. The question is: "Am I trying to estimate a parameter, or predict an outcome?"
 
-| Signal | Use scikit-learn (prediction) | Use pyfixest/statsmodels (inference) |
+| Signal | Use scikit-learn (prediction; R: tidymodels) | Use pyfixest/statsmodels (inference; R: fixest/r-stats) |
 |--------|-------------------------------|--------------------------------------|
 | **Goal** | Minimize prediction error on new data | Estimate a coefficient with valid uncertainty |
 | **Coefficients** | Not directly interpretable as effects | Primary output of interest |
@@ -347,11 +347,11 @@ Ensemble methods combine multiple base models to achieve better predictive perfo
 | **Random Forest** | Robust default; hard to misconfigure; good first ensemble choice | n_estimators, max_depth, max_features |
 | **HistGradientBoosting** (scikit-learn) | Maximum performance with moderate tuning; handles NaN natively; supports categorical features | learning_rate, max_depth, max_iter |
 | **LightGBM** | Large datasets; native SHAP TreeExplainer support; available in DAAF Dockerfile | learning_rate, num_leaves, n_estimators |
-| **XGBoost** | Custom loss functions; GPU training | Optional install: `uv pip install --system --no-deps xgboost` |
+| **XGBoost** | Custom loss functions; GPU training | Not pre-installed; runtime installs blocked — escalate to add to the Dockerfile (see CLAUDE.md § Runtime Package Installation) |
 
 For most applied social science work, start with Random Forest (simple, robust), then try HistGradientBoosting or LightGBM if more performance is needed. The performance difference between gradient boosting implementations (scikit-learn, LightGBM, XGBoost) is usually small; choose based on practical considerations (SHAP compatibility, native categorical support, installation constraints).
 
-> **Cross-reference:** For implementation syntax of all ensemble methods, see the `scikit-learn` skill, specifically `classification.md` and `regression-ml.md`.
+> **Cross-reference:** For the tool-level details of all ensemble methods — whether you're advising or writing code — load the `scikit-learn` skill, specifically `classification.md` and `regression-ml.md` (Python), or the `tidymodels` skill, specifically `models.md` and `engines.md` (R — ranger and xgboost engines).
 
 ## Interpreting ML Models: The Causation Trap
 
@@ -396,7 +396,7 @@ Rudin (2019) argues that post-hoc explanations (SHAP, LIME) are approximations o
 - When SHAP is used, always include the caveat that SHAP explains the model's behavior, not causal relationships in the data
 - Never present SHAP values or feature importances as evidence for policy recommendations without independent causal evidence
 
-> **Cross-reference:** For SHAP implementation syntax, see the `scikit-learn` skill, specifically `interpretation.md`. For econometric approaches to understanding variable contributions (Gelbach decomposition, Oster sensitivity analysis), see `statistical-modeling.md`.
+> **Cross-reference:** For the tool-level details of SHAP — whether you're advising or writing code — load the `scikit-learn` skill, specifically `interpretation.md` (Python), or the `tidymodels` skill, specifically `interpretation.md` (R). For econometric approaches to understanding variable contributions (Gelbach decomposition, Oster sensitivity analysis), see `statistical-modeling.md`.
 
 ## Fairness, Bias, and Equity
 
@@ -451,7 +451,7 @@ These are not abstract legal concerns. A dropout early warning system that flags
 6. **Consider mitigation** if disparities are found — threshold adjustment by group, constrained optimization, or alternative model formulations. Note that mitigation may reduce overall predictive performance; document this tradeoff.
 7. **Report fairness assessment results alongside predictive performance** — fairness metrics are not optional supplementary material; they are core results
 
-> **Cross-reference:** For fairlearn implementation syntax (MetricFrame, ThresholdOptimizer, ExponentiatedGradient), see the `scikit-learn` skill, specifically `fairness.md`.
+> **Cross-reference:** For the tool-level details of fairlearn (MetricFrame, ThresholdOptimizer, ExponentiatedGradient) — whether you're advising or writing code — load the `scikit-learn` skill, specifically `fairness.md` (Python), or the `tidymodels` skill, specifically `fairness.md` (R).
 
 ## When Deep Learning Methods Are Appropriate
 

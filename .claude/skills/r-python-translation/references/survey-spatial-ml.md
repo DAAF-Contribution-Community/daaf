@@ -11,7 +11,7 @@ For full Python-side API details, load the dedicated skill: `svy`, `geopandas`, 
 `scikit-learn`.
 
 > **Versions referenced:**
-> Python: svy 0.13.0, geopandas 1.1.3, scikit-learn 1.8.0
+> Python: svy 0.19.0 (svy-rs 0.10.0, svy-io 0.1.1), geopandas 1.1.3, scikit-learn 1.8.0
 > R: survey 4.5, sf 1.1-0, terra 1.9-11, tidymodels 1.4.1, caret 7.0-1
 > See SKILL.md § Library Versions for the complete version table.
 
@@ -20,7 +20,7 @@ For full Python-side API details, load the dedicated skill: `svy`, `geopandas`, 
 ## Part A: Complex Surveys (R `survey` to Python `svy`)
 
 R's `survey` package (Thomas Lumley) is the gold standard for design-based inference from
-complex samples. Python's `svy` (v0.13.0) provides a comparable core, with some model
+complex samples. Python's `svy` (v0.19.0) provides a comparable core, with some model
 family gaps that require an rpy2 bridge back to R.
 
 ### A1. Design Specification
@@ -57,7 +57,7 @@ Key differences:
 | Variable reference | Formula: `~varname` | String: `"varname"` |
 | Design + data binding | Single `svydesign()` call | Two-step: `Design()` then `Sample()` |
 | Multiple strata | `~interaction(var1, var2)` | Tuple: `stratum=("var1", "var2")` |
-| FPC specification | `fpc = ~pop_size` | `fpc="pop_size"` |
+| FPC specification | `fpc = ~pop_size` | `pop_size="pop_size"` (svy 0.19.0 has no `fpc=`; FPC is now functional) |
 | Data type | R data.frame | Polars DataFrame |
 | Nest flag | `nest = TRUE` | Handled implicitly |
 
@@ -73,6 +73,11 @@ Key differences:
 | `svyquantile(~x, design, quantiles=0.5)` | `sample.estimation.median("x")` | Median; for other quantiles see below |
 | `svytable(~x + y, design)` | `sample.estimation.prop("x", by="y")` | Cross-tabulation (weighted counts) |
 | `svyvar(~x, design)` | Not a standalone method | Compute from SE: `var = SE^2 * n` |
+
+> **Result shape (svy 0.19.0):** each estimation call returns an `Estimate`;
+> `.to_polars()` yields columns `est/se/lci/uci/cv`. Passing a list
+> (`mean(["v1", "v2"])`) returns a `list[Estimate]` — one per variable, not a
+> single stacked frame — so iterate the list.
 
 **Quantile estimation at arbitrary points:**
 
@@ -114,11 +119,18 @@ sample.estimation.mean("income", by="gender")
 | `svyglm(y ~ x1 + x2, design, family=gaussian())` | `sample.glm.fit(y="y", x=["x1", "x2"], family="gaussian")` | Linear regression |
 | `svyglm(y ~ x1 + x2, design, family=binomial())` | `sample.glm.fit(y="y", x=["x1", "x2"], family="binomial")` | Logistic regression |
 | `svyglm(y ~ x1 + x2, design, family=poisson())` | `sample.glm.fit(y="y", x=["x1", "x2"], family="poisson")` | Poisson regression |
+| `svyglm(y ~ x1 + x2, design, family=Gamma())` | `sample.glm.fit(y="y", x=["x1", "x2"], family="gamma")` | Gamma regression (added in svy 0.19.0; `link=` identity/logit/log/inverse/inverse_squared) |
 | `svyglm(y ~ factor(x), design, ...)` | `sample.glm.fit(y="y", x=[svy.Cat("x")], ...)` | Categorical predictor |
 | `svyolr(y ~ x1 + x2, design)` | NOT AVAILABLE | Ordinal logistic -- use rpy2 bridge |
 | `svycoxph(Surv(t, d) ~ x, design)` | NOT AVAILABLE | Cox proportional hazards -- use rpy2 bridge |
 | `svyglm(..., family=quasibinomial())` | NOT AVAILABLE | Quasi-families -- use rpy2 bridge |
 | `svyglm(..., family=negative.binomial())` | NOT AVAILABLE | Negative binomial -- use rpy2 bridge |
+
+> **`svy.Cat()` is required in svy 0.19.0, not optional:** string/categorical
+> predictors must be wrapped as `svy.Cat("var")`. A raw string column passed to
+> `glm.fit()` raises a strict-cast `ValueError` (no auto-detection). `glm.fit()`
+> returns a `GLM`; call `.to_polars()` for the coefficient table
+> (`term/estimate/std_err/conf_low/conf_high/statistic/p_value/df`).
 
 **Formula interface difference:**
 
@@ -170,14 +182,28 @@ des_rep <- svrepdesign(
 ```
 
 ```python
-# Python — BRR replicate weights
-design = svy.Design(
-    wgt="finalwgt",
-    rep_weights="brr_wt1-brr_wt64",
-    rep_type="brr"
+# Python — BRR replicate weights (svy 0.19.0)
+# Pre-computed replicate weights are described by a svy.RepWeights object and
+# passed to Design via rep_wgts=. There is no rep_weights=/rep_type= parameter on
+# Design — the observed 0.19.0 signature is Design(row_index, stratum, wgt, prob,
+# hit, mos, psu, ssu, pop_size, wr, rep_wgts).
+rep_wgts = svy.RepWeights(
+    prefix="brr_wt",       # matches brr_wt1, brr_wt2, ... brr_wt64
+    n_reps=64,             # number of replicate weight columns
+    method="BRR",          # replication method (specifier convention unverified — see caveat)
 )
+design = svy.Design(wgt="finalwgt", rep_wgts=rep_wgts)
 sample = svy.Sample(data=df, design=design)
 ```
+
+> **[not smoke-tested at 0.19.0]** The smoke test exercised replicate *creation*
+> from a Taylor design, not construction of a `svy.RepWeights` object from
+> pre-existing columns. Before relying on this path, introspect
+> `inspect.signature(svy.RepWeights)`: the observed metadata renders the method as
+> an enum-like member (e.g. `Bootstrap`), and earlier docs described a
+> `svy.EstimationMethod` enum (`TAYLOR`, `BRR`, `BOOTSTRAP`, `JACKKNIFE`, `SDR`) and
+> a `fay_coef` argument for Fay-BRR. Verify the enum-vs-string convention and the
+> Fay parameter name against the installed build rather than assuming.
 
 **Converting Taylor design to replicate weights:**
 
@@ -187,20 +213,25 @@ des_boot <- as.svrepdesign(des, type = "bootstrap", replicates = 500)
 ```
 
 ```python
-# Python — svy handles this via the Design specification
-# Specify rep_type and replications when creating the design
-# [VERIFY API] — check svy docs for exact conversion syntax
+# Python — convert via the weighting namespace on an existing Taylor-design Sample
+# (smoke-tested at 0.19.0: returns a NEW Sample with columns weight1..weightN
+# and .rep_wgts metadata; rstate= makes replicates reproducible)
+sample_boot = sample.weighting.create_bs_wgts(n_reps=500, rstate=42)
+# Jackknife: sample.weighting.create_jk_wgts(paired=False)
+# BRR/SDR:   create_brr_wgts / create_sdr_wgts (present; signatures not smoke-tested)
 ```
 
-**Available replication methods:**
+**Available replication methods** (the `svy.RepWeights(method=)` specifier column
+below is illustrative — the exact form (enum member vs. string, and its casing) is
+**unverified at 0.19.0**; introspect before relying):
 
-| Method | R `type =` | Python `rep_type =` | Notes |
+| Method | R `type =` | Python `svy.RepWeights(method=)` | Notes |
 |--------|-----------|---------------------|-------|
-| Bootstrap | `"bootstrap"` | `"bootstrap"` | Canty-Davison |
-| BRR | `"BRR"` | `"brr"` | Balanced Repeated Replication |
-| Fay's BRR | `"Fay"` | `"fay"` | Perturbed half-samples; set `fay.rho`/`fay_coefficient` |
-| Jackknife (unstratified) | `"JK1"` | `"jk1"` | Delete-one jackknife |
-| Jackknife (stratified) | `"JKn"` | `"jkn"` | Delete-one-PSU; most common |
+| Bootstrap | `"bootstrap"` | `Bootstrap` | Canty-Davison |
+| BRR | `"BRR"` | `BRR` | Balanced Repeated Replication |
+| Fay's BRR | `"Fay"` | `Fay` (Fay param name unverified) | Perturbed half-samples; set `fay.rho` in R |
+| Jackknife (unstratified) | `"JK1"` | `JK1` | Delete-one jackknife |
+| Jackknife (stratified) | `"JKn"` | `JKn` | Delete-one-PSU; most common |
 | Subbootstrap | `"subbootstrap"` | Not confirmed | Rao-Wu (n-1) bootstrap |
 
 ### A5. Coverage Gaps and the rpy2 Bridge
@@ -212,16 +243,17 @@ R's `survey` package covers a substantially wider range of models than Python's 
 | Gaussian GLM | Yes | Yes | None |
 | Binomial (logistic) | Yes | Yes | None |
 | Poisson | Yes | Yes | None |
+| Gamma GLM | Yes | Yes | None -- added in svy 0.19.0 |
 | Ordinal logistic (`svyolr`) | Yes | No | High -- common in social science |
 | Cox survival (`svycoxph`) | Yes | No | Medium -- specialized use |
 | Negative binomial | Yes | No | Medium |
 | Quasi-families | Yes | No | Low -- rarely needed |
 | Two-phase designs (`twophase`) | Yes | No | Low -- specialized |
-| Post-stratification / raking calibration | Yes | Yes | None |
-| GREG calibration | Yes | Check svy docs | Possibly partial |
+| Post-stratification / raking calibration | Yes | `sample.weighting.poststratify/rake` present | Names confirmed; signatures not smoke-tested |
+| GREG calibration | Yes | `sample.weighting.calibrate/rake/poststratify` present | Names confirmed; signatures not smoke-tested |
 
-**When to use the rpy2 bridge:** If the model family is not `"gaussian"`, `"binomial"`, or
-`"poisson"`, fall back to R's `survey` package via rpy2. The pattern:
+**When to use the rpy2 bridge:** If the model family is not `"gaussian"`, `"binomial"`,
+`"poisson"`, or `"gamma"`, fall back to R's `survey` package via rpy2. The pattern:
 
 ```python
 import rpy2.robjects as ro

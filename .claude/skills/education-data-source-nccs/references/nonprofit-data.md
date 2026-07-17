@@ -90,6 +90,26 @@ nccs = fetch_from_mirrors(DATASET_PATH)
 # 161 columns, 1993-2016, ~30K institution-year rows
 ```
 
+```r
+library(arrow)
+library(dplyr)
+
+# Download NCCS 990 data from Portal mirror
+# fetch_from_mirrors() is a Python helper; in R, build the URL from the mirror root.
+# Mirror failover: see `education-data-query/references/fetch-patterns.md` (R pattern)
+DATASET_PATH <- "nccs/colleges_nccs_all"
+mirror <- yaml::read_yaml("mirrors.yaml")$mirrors[[1]]
+# NOTE: illustrative only — mirror parquet files are Polars-written and may
+# declare string_view columns, so a plain read can fail under R arrow
+# ("cannot handle Array of type <utf8_view>"). Real fetch scripts must use the
+# view-safe parquet read from `education-data-query/references/fetch-patterns.md`.
+nccs <- read_parquet(paste0(mirror$root_url, "/", DATASET_PATH, ".", mirror$format))
+
+# Data is pre-filtered to higher education institutions matched to IPEDS
+# Variables are lowercase (e.g., fips, unitid, contributions_total)
+# 161 columns, 1993-2016, ~30K institution-year rows
+```
+
 **Direct download from NCCS (for BMF, Core, Efile — outside Portal):**
 
 ```python
@@ -101,6 +121,18 @@ bmf = pl.read_csv(url)
 
 # Filter to higher education by NTEE code (NOT available in Portal data)
 higher_ed = bmf.filter(pl.col("NTEECC").str.starts_with("B4"))
+```
+
+```r
+library(dplyr)
+library(stringr)
+
+# BMF universe file (large — ~1.3 GB)
+url <- "https://nccsdata.s3.amazonaws.com/harmonized/bmf/unified/BMF_UNIFIED_V1.1.csv"
+bmf <- read.csv(url)
+
+# Filter to higher education by NTEE code (NOT available in Portal data)
+higher_ed <- bmf |> filter(str_starts(NTEECC, "B4"))
 ```
 
 > **Note:** The Portal mirror dataset contains NCCS Form 990 data matched to IPEDS institutions (~2,600 institutions). It does NOT include NTEE codes, BMF attributes, or the full nonprofit universe. For the full NCCS universe, NTEE-based filtering, or non-education nonprofits, download directly from NCCS.
@@ -194,6 +226,25 @@ nccs = fetch_from_mirrors(DATASET_PATH)
 # e.g., contributions_total, prog_serv_rev, revenue_total
 ```
 
+```r
+library(arrow)
+library(dplyr)
+
+# NCCS data for higher education institutions
+# fetch_from_mirrors() is a Python helper; in R, build the URL from the mirror root.
+# Mirror failover: see `education-data-query/references/fetch-patterns.md` (R pattern)
+DATASET_PATH <- "nccs/colleges_nccs_all"
+mirror <- yaml::read_yaml("mirrors.yaml")$mirrors[[1]]
+# NOTE: illustrative only — mirror parquet files are Polars-written and may
+# declare string_view columns, so a plain read can fail under R arrow
+# ("cannot handle Array of type <utf8_view>"). Real fetch scripts must use the
+# view-safe parquet read from `education-data-query/references/fetch-patterns.md`.
+nccs <- read_parquet(paste0(mirror$root_url, "/", DATASET_PATH, ".", mirror$format))
+
+# Variables use Portal naming (lowercase, descriptive)
+# e.g., contributions_total, prog_serv_rev, revenue_total
+```
+
 **Direct from NCCS (for full Core series — outside Portal):**
 
 ```python
@@ -205,6 +256,15 @@ import polars as pl
 # Individual year download
 url = "https://nccsdata.s3.amazonaws.com/harmonized/core/CHARITIES_PC_2021.csv"
 core_pc = pl.read_csv(url)
+```
+
+```r
+# NCCS provides a data catalog for browsing
+# https://urbaninstitute.github.io/nccs/catalogs/catalog-core.html
+
+# Individual year download
+url <- "https://nccsdata.s3.amazonaws.com/harmonized/core/CHARITIES_PC_2021.csv"
+core_pc <- read.csv(url)
 ```
 
 ---
@@ -353,6 +413,26 @@ import polars as pl
 # NCCS Form 990 data for colleges/universities
 DATASET_PATH = "nccs/colleges_nccs_all"
 nccs = fetch_from_mirrors(DATASET_PATH)
+
+# Data is pre-matched to IPEDS UNITID
+# Covers 1993-2016 (24 years)
+# ~30K institution-year observations, 161 columns
+```
+
+```r
+library(arrow)
+library(dplyr)
+
+# NCCS Form 990 data for colleges/universities
+# fetch_from_mirrors() is a Python helper; in R, build the URL from the mirror root.
+# Mirror failover: see `education-data-query/references/fetch-patterns.md` (R pattern)
+DATASET_PATH <- "nccs/colleges_nccs_all"
+mirror <- yaml::read_yaml("mirrors.yaml")$mirrors[[1]]
+# NOTE: illustrative only — mirror parquet files are Polars-written and may
+# declare string_view columns, so a plain read can fail under R arrow
+# ("cannot handle Array of type <utf8_view>"). Real fetch scripts must use the
+# view-safe parquet read from `education-data-query/references/fetch-patterns.md`.
+nccs <- read_parquet(paste0(mirror$root_url, "/", DATASET_PATH, ".", mirror$format))
 
 # Data is pre-matched to IPEDS UNITID
 # Covers 1993-2016 (24 years)

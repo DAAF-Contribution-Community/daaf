@@ -21,12 +21,28 @@
 # The orchestrator-loaded flag file is set by flag-orchestrator-loaded.sh
 # (PostToolUse on Skill).
 #
+# Flag location — persistent home volume, NOT /tmp (changed 2026-07-15):
+#   "The skill was loaded" is a property of the session TRANSCRIPT. Transcripts
+#   live in ~/.claude (the claude-config Docker volume) and survive container
+#   rebuilds, and resumed sessions reuse their original session_id (Claude Code
+#   CLI reference: --fork-session exists precisely because plain --resume/
+#   --continue reuses the ID). When the flag lived in /tmp it died with every
+#   container rebuild, so the first prompt of every resumed session re-fired
+#   the reminder and re-loaded ~10-15k tokens of skill content into a context
+#   that already contained it. The flag now lives in ~/.claude/daaf-state/,
+#   matching the transcript's lifetime.
+#
+#   General placement principle: match a cache's storage to the lifetime of
+#   the fact it caches. Session-runtime facts (active model, context window,
+#   reporter throttle timestamps) stay in /tmp — rebuild-wipe is free cache
+#   invalidation for them. Transcript-lifetime facts belong in ~/.claude.
+#
 # Exit codes:
 #   0 = always (never block user messages)
 
 INPUT=$(cat)
 SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // "default"' 2>/dev/null) || SESSION_ID="default"
-FLAG="/tmp/claude-daaf-orchestrator-${SESSION_ID}"
+FLAG="${HOME}/.claude/daaf-state/orchestrator-loaded-${SESSION_ID}"
 
 if [[ ! -f "$FLAG" ]]; then
     # Always remind to load the orchestrator

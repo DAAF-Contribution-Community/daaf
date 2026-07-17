@@ -23,6 +23,29 @@ df_colleges = fetch_from_mirrors("nhgis/colleges_nhgis_geog_2020")
 # The census year determines which boundary vintage is used for geographic assignment
 ```
 
+```r
+library(arrow)
+
+# fetch_from_mirrors() is a Python helper; in R, build URLs from the mirror root.
+# Mirror failover: see `education-data-query/references/fetch-patterns.md` (R pattern);
+# canonical paths: datasets-reference.md.
+mirror <- yaml::read_yaml("mirrors.yaml")$mirrors[[1]]
+
+# School-to-census geography (2020 Census boundaries)
+# NOTE: illustrative only — mirror parquet files are Polars-written and may
+# declare string_view columns, so a plain read can fail under R arrow
+# ("cannot handle Array of type <utf8_view>"). Real fetch scripts must use the
+# view-safe parquet read from `education-data-query/references/fetch-patterns.md`.
+df <- read_parquet(paste0(mirror$root_url, "/", "nhgis/schools_nhgis_geog_2020", ".", mirror$format))
+
+# College-to-census geography (2020 Census boundaries)
+df_colleges <- read_parquet(paste0(mirror$root_url, "/", "nhgis/colleges_nhgis_geog_2020", ".", mirror$format))
+
+# Available census years: 1990, 2000, 2010, 2020
+# All files contain ALL data years (schools: 1986-2023, colleges: 1980-2023)
+# The census year determines which boundary vintage is used for geographic assignment
+```
+
 **Available data**: Institution coordinates linked to census tract, block group, block, region, division, CBSA, and place. See `variable-catalog.md` for Portal integer encodings.
 
 Codebooks are `.xls` files co-located with data in all mirrors. Use `get_codebook_url()` from `fetch-patterns.md` to construct download URLs. Codebook paths are listed in `datasets-reference.md`.
@@ -153,12 +176,48 @@ response = requests.post(
 extract_id = response.json()["number"]
 ```
 
+```r
+library(httr2)
+
+api_key <- "YOUR_API_KEY"
+
+# Define extract
+extract_def <- list(
+  datasets = list(
+    `2016_2020_ACS5a` = list(
+      data_tables = list("B01001"),
+      geog_levels = list("tract")
+    )
+  ),
+  data_format = "csv_no_header",
+  description = "Population by age, tract level"
+)
+
+# Submit extract
+resp <- request("https://api.ipums.org/extracts/?collection=nhgis&version=v1") |>
+  req_headers(Authorization = api_key) |>
+  req_body_json(extract_def) |>
+  req_perform()
+
+extract_id <- resp_body_json(resp)$number
+```
+
 ### Checking Extract Status
 
 ```python
 status_url = f"https://api.ipums.org/extracts/{extract_id}?collection=nhgis&version=v1"
 response = requests.get(status_url, headers=headers)
 status = response.json()["status"]
+# "queued", "started", "completed", "failed"
+```
+
+```r
+status_url <- paste0(
+  "https://api.ipums.org/extracts/", extract_id,
+  "?collection=nhgis&version=v1"
+)
+response <- GET(status_url, add_headers(Authorization = api_key))
+status <- content(response)$status
 # "queued", "started", "completed", "failed"
 ```
 
@@ -172,13 +231,26 @@ if status == "completed":
         # Save to file
 ```
 
+```r
+if (status == "completed") {
+  download_links <- content(response)$download_links
+  for (link in download_links) {
+    download.file(link$url, destfile = basename(link$url),
+                  headers = c(Authorization = api_key))
+  }
+}
+```
+
 ## Method 3: ipumspy (Python)
 
-### Installation
+### Availability
 
-```bash
-pip install ipumspy
-```
+`ipumspy` is **not** pre-installed in DAAF, and runtime installs are blocked
+(`pip install` is refused at the command line and inside executed scripts — see
+CLAUDE.md § Runtime Package Installation). This access method is therefore
+unavailable until `ipumspy` is added to the Dockerfile (user additions block near
+the end) and the container is rebuilt. The direct-API methods shown above need no
+extra package and work today.
 
 ### Configuration
 
@@ -264,11 +336,14 @@ df = pl.read_csv(files["data"][0])
 
 ## Method 4: ipumsr (R)
 
-### Installation
+### Availability
 
-```r
-install.packages("ipumsr")
-```
+`ipumsr` is **not** pre-installed in DAAF, and runtime installs are blocked
+(`install.packages()` is refused at the command line and inside executed scripts —
+see CLAUDE.md § Runtime Package Installation). This access method is therefore
+unavailable until `ipumsr` is added to the Dockerfile (user additions block near
+the end) and the container is rebuilt. The direct-API methods shown above need no
+extra package and work today.
 
 ### Configuration
 
@@ -372,6 +447,18 @@ extract = NhgisExtract(
 )
 ```
 
+```r
+# Include shapefiles in extract (ipumsr)
+extract <- define_extract_nhgis(
+  description = "Data with shapefiles",
+  datasets = ds_spec("2016_2020_ACS5a",
+    data_tables = "B01001",
+    geog_levels = "tract"
+  ),
+  shapefiles = "2020_tract"
+)
+```
+
 ### Direct TIGER/Line (Alternative)
 
 For current boundaries only:
@@ -437,6 +524,16 @@ else:
     pass
 ```
 
+```r
+# Check if extract exists before resubmitting (ipumsr)
+existing <- get_extract_info(submitted)
+if (existing$status == "completed") {
+  # Download existing
+} else {
+  # Submit new
+}
+```
+
 ### Batch Processing
 
 ```python
@@ -453,6 +550,26 @@ for state in ["California", "Texas", "New York"]:
 # Wait for all
 for ext in extracts:
     client.wait_for_extract(ext)
+```
+
+```r
+# Submit multiple extracts (ipumsr)
+states <- c("California", "Texas", "New York")
+extracts <- lapply(states, function(st) {
+  ext <- define_extract_nhgis(
+    description = paste("Data for", st),
+    datasets = ds_spec(
+      "2016_2020_ACS5a",
+      data_tables = "B01001",
+      geog_levels = "tract"
+    ),
+    geographic_extents = st
+  )
+  submit_extract(ext)
+})
+
+# Wait for all
+completed <- lapply(extracts, wait_for_extract)
 ```
 
 ## Troubleshooting

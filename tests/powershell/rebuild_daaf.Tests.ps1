@@ -23,6 +23,19 @@ Describe "rebuild_daaf.ps1" {
             $Content | Should -Match '\$ErrorActionPreference\s*=\s*[''"]Stop[''"]'
         }
 
+        It "enables Set-StrictMode -Version 3.0" {
+            $Content | Should -Match 'Set-StrictMode\s+-Version\s+3\.0'
+        }
+
+        It "places Set-StrictMode after the test-mode guard" {
+            # Strict mode is dynamically scoped: placing it before the guard would
+            # leak into Pester's dot-sourced test session. It must come after.
+            $guardIdx = $Content.IndexOf('$env:DAAF_TEST_MODE -eq "1"')
+            $strictIdx = $Content.IndexOf('Set-StrictMode -Version 3.0')
+            $guardIdx | Should -BeGreaterThan -1
+            $strictIdx | Should -BeGreaterThan $guardIdx
+        }
+
         It "defines Wait-AndExit function" {
             $Content | Should -Match 'function Wait-AndExit'
         }
@@ -43,8 +56,8 @@ Describe "rebuild_daaf.ps1" {
             $Content | Should -Match 'docker info'
         }
 
-        It "checks container exists with docker inspect" {
-            $Content | Should -Match 'docker inspect'
+        It "checks container exists (running or stopped) with docker compose ps -aq" {
+            $Content | Should -Match 'docker compose ps -aq daaf-docker'
         }
 
         It "uses numbered progress steps [1/3] [2/3] [3/3]" {
@@ -117,6 +130,15 @@ Describe "rebuild_daaf.ps1 dry-run mode" {
         $output = & "$RepoRoot/scripts/host/rebuild_daaf.ps1" *>&1
         ($output | Out-String) | Should -BeLike "*Rebuild complete*"
     }
+
+    It "creates the diagnostic builder under DAAF_DIAG_BUILD=1 (dry-run mock: inspect miss -> create)" {
+        $env:DAAF_DRY_RUN = "1"
+        $env:DAAF_NESTED = "1"
+        $env:DAAF_DIAG_BUILD = "1"
+        $output = & "$RepoRoot/scripts/host/rebuild_daaf.ps1" *>&1
+        $env:DAAF_DIAG_BUILD = $null
+        ($output | Out-String) | Should -BeLike "*Created diagnostic buildx builder*"
+    }
 }
 
 # ============================================================================
@@ -130,8 +152,8 @@ Describe "rebuild_daaf.ps1 error paths" {
     }
 
     Context "Container not found" {
-        It "outputs error when container inspect fails" {
-            $Content | Should -Match "Container.*not found"
+        It "outputs error when no container exists (running or stopped)" {
+            $Content | Should -Match "No daaf-docker container found \(running or stopped\)"
         }
 
         It "suggests running the installer first" {
@@ -210,6 +232,75 @@ Describe "rebuild_daaf.ps1 error paths" {
     Context "Hash comparison: compose file changed" {
         It "reports UPDATED when docker-compose.yml hash differs" {
             $Content | Should -Match 'docker-compose\.yml: UPDATED'
+        }
+    }
+
+    Context "Diagnostic builder (DAAF_DIAG_BUILD)" {
+        It "gates the diagnostic builder behind DAAF_DIAG_BUILD=1" {
+            $Content | Should -Match 'DAAF_DIAG_BUILD -eq "1"'
+        }
+
+        It "creates a docker-container buildx builder with raised size AND speed step-log limits" {
+            $Content | Should -Match 'buildx create --name daaf-diag-builder'
+            $Content | Should -Match 'BUILDKIT_STEP_LOG_MAX_SIZE=16777216'
+            $Content | Should -Match 'BUILDKIT_STEP_LOG_MAX_SPEED=10485760'
+        }
+
+        It "selects the builder via BUILDX_BUILDER and clears it after the build" {
+            $Content | Should -Match '\$env:BUILDX_BUILDER = "daaf-diag-builder"'
+            $Content | Should -Match '\$env:BUILDX_BUILDER = \$null'
+        }
+
+        It "falls open to the default builder when the builder cannot be created" {
+            # Parity with the bash fail-open test: when both inspect and create
+            # fail, UseDiagBuilder stays $false so the build runs on the default
+            # builder (BUILDX_BUILDER is only set when UseDiagBuilder is $true).
+            $Content | Should -Match 'could not be'
+            $Content | Should -Match 'Falling back to the default builder'
+        }
+
+        It "prints an arm64 first-build heads-up notice" {
+            $Content | Should -Match 'arm64 detected'
+        }
+
+        It "uses version-robust wording in the clipped-log hint" {
+            $Content | Should -Match 'the exact limit varies by Docker version'
+        }
+
+        It "extends the build-failure hint to mention DAAF_DIAG_BUILD" {
+            $Content | Should -Match 'DAAF_DIAG_BUILD'
+        }
+    }
+
+    Context "Diagnostic builder: fail-open behavior (dry-run: create fails)" {
+        BeforeAll {
+            $script:OrigDryRun2 = $env:DAAF_DRY_RUN
+            $script:OrigNested2 = $env:DAAF_NESTED
+            $script:OrigDiag2 = $env:DAAF_DIAG_BUILD
+            $script:TestDir2 = New-Item -ItemType Directory -Path (Join-Path ([System.IO.Path]::GetTempPath()) "daaf-rebuild-failopen-$(Get-Random)")
+            Push-Location $script:TestDir2
+            New-FakeComposeFile -Directory $script:TestDir2.FullName
+        }
+        AfterAll {
+            $env:DAAF_DRY_RUN = $script:OrigDryRun2
+            $env:DAAF_NESTED = $script:OrigNested2
+            $env:DAAF_DIAG_BUILD = $script:OrigDiag2
+            if ((Get-Location).Path -eq $script:TestDir2.FullName) { Pop-Location }
+            Remove-Item -Recurse -Force $script:TestDir2 -ErrorAction SilentlyContinue
+        }
+
+        It "runs the build and does not create the builder when DAAF_DIAG_BUILD_TEST_CREATE_FAIL=1" {
+            # The script's dry-run docker mock honors DAAF_DIAG_BUILD_TEST_CREATE_FAIL
+            # to simulate a `buildx create` failure, exercising the fail-open path
+            # end-to-end (parity with the bash fail-open test).
+            $env:DAAF_DRY_RUN = "1"
+            $env:DAAF_NESTED = "1"
+            $env:DAAF_DIAG_BUILD = "1"
+            $env:DAAF_DIAG_BUILD_TEST_CREATE_FAIL = "1"
+            $output = & "$RepoRoot/scripts/host/rebuild_daaf.ps1" *>&1
+            $env:DAAF_DIAG_BUILD_TEST_CREATE_FAIL = $null
+            ($output | Out-String) | Should -BeLike "*could not be*"
+            ($output | Out-String) | Should -Not -BeLike "*Created diagnostic buildx builder*"
         }
     }
 }

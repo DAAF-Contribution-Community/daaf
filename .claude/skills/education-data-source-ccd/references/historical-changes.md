@@ -166,6 +166,34 @@ def collapse_to_5_categories(race_code: int) -> int:
 # Note the break in your time series documentation
 ```
 
+```r
+# R equivalent
+library(dplyr)
+
+# Portal uses integer race codes (not NCES string codes)
+# Current Portal codes: 1=White, 2=Black, 3=Hispanic, 4=Asian,
+#                       5=AIAN, 6=NHPI, 7=Two+, 99=Total
+
+# For time series spanning 2010
+# Option 1: Collapse new categories to match old 5-category system
+df <- df |> mutate(
+  race_collapsed = recode_values(
+    race,
+    5 ~ 5L,   # American Indian/Alaska Native stays same
+    4 ~ 4L,   # Asian stays Asian
+    6 ~ 4L,   # Pacific Islander -> Asian (combined pre-2010)
+    2 ~ 2L,   # Black stays Black
+    3 ~ 3L,   # Hispanic stays Hispanic
+    1 ~ 1L,   # White stays White
+    7 ~ -1L,  # Two or more -> cannot map (treat as missing)
+    default = -1L  # recode_values supersedes case_match (soft-deprecated dplyr 1.2.0)
+  )
+)
+
+# Option 2: Analyze pre-2010 and post-2010 separately
+# Note the break in your time series documentation
+```
+
 ---
 
 ## LEA Type Codes (2007)
@@ -321,6 +349,43 @@ NCESSCH, GRADE, SEX, RACE, STUDENT_COUNT
 
 ---
 
+## Unknown Race/Sex Categories in Enrollment (2016+)
+
+### The Change
+
+Starting in **2016**, CCD enrollment files include **Unknown** disaggregation rows —
+`race = 9` (Unknown) and `sex = 9` (Unknown) — that **do not exist in 2015 and earlier**
+files. These rows carry real (often small) enrollment counts for students whose race or sex
+was not reported.
+
+### Impact (field-confirmed)
+
+In a native pipeline run, an apparent jump in enrollment row counts at 2016 was traced to
+these newly-present `race = 9`/`sex = 9` rows rather than to any real enrollment change. If
+not handled consistently, they distort year-over-year comparisons two ways:
+
+- **Totals:** if you build a total by summing category rows (instead of using `grade = 99` /
+  the total-code rows), pre-2016 sums exclude Unknown students while 2016+ sums include them,
+  creating a spurious discontinuity.
+- **Shares:** race/sex composition denominators shift when the Unknown category appears, so a
+  group's share can move purely because the denominator gained an Unknown bucket.
+
+### Handling
+
+- Keep the composition **base year-consistent**: decide once whether Unknown (`9`) is included
+  in the denominator, and apply that rule across all years.
+- Prefer the explicit total code (`race = 99` / `sex = 99`, `grade = 99`) over summing
+  category rows, so totals are consistent across the 2016 boundary regardless of the Unknown
+  category's presence.
+- When reporting a year-over-year trend that straddles 2016, note the Unknown-category
+  introduction as a comparability caveat.
+
+> This is a row-*presence* change, not a code redefinition: `race = 9` and `sex = 9` have
+> always meant "Unknown" (see `variable-definitions.md`); what changed in 2016 is that these
+> rows started appearing in the enrollment files.
+
+---
+
 ## Membership Reporting Guidance (2017-18)
 
 ### The Change
@@ -406,6 +471,26 @@ def prepare_longitudinal_data(df, variable, start_year, end_year):
         print("NOTE: CEP implementation affects FRPL interpretation post-2014")
     
     return df
+```
+
+```r
+# R equivalent
+# Check for locale code issues
+if (variable == "locale" && start_year < 2006 && end_year >= 2006) {
+  cat("WARNING: Locale code methodology changed in 2006\n")
+  cat("Consider separate pre/post-2006 analysis\n")
+}
+
+# Check for race/ethnicity issues
+if (variable %in% c("race", "enrollment_by_race") && start_year < 2010 && end_year >= 2010) {
+  cat("WARNING: Race/ethnicity categories changed in 2010\n")
+  cat("Two or More Races (TR) and HP categories not available pre-2010\n")
+}
+
+# Check for FRPL issues
+if (variable %in% c("frpl", "free_lunch", "reduced_lunch") && end_year >= 2014) {
+  cat("NOTE: CEP implementation affects FRPL interpretation post-2014\n")
+}
 ```
 
 ---

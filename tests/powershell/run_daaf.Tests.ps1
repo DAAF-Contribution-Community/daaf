@@ -19,8 +19,24 @@ Describe "run_daaf.ps1" {
             $script:Content = Get-Content "$RepoRoot/scripts/host/run_daaf.ps1" -Raw
         }
 
+        It "declares #Requires -Version 5.1" {
+            $Content | Should -Match '#Requires\s+-Version\s+5\.1'
+        }
+
         It "sets ErrorActionPreference to Stop" {
             $Content | Should -Match '\$ErrorActionPreference\s*=\s*[''"]Stop[''"]'
+        }
+
+        It "enables Set-StrictMode -Version 3.0 AFTER the DAAF_TEST_MODE guard" {
+            # Strict mode is dynamically scoped -- it must be placed after the
+            # DAAF_TEST_MODE dot-source guard so Pester's dot-sourcing (which returns
+            # at the guard) never leaks strict mode into the whole test session, while
+            # real executions run fully protected. Assert BOTH presence and ordering.
+            $Content | Should -Match 'Set-StrictMode -Version 3\.0'
+            $guardIdx  = $Content.IndexOf('$env:DAAF_TEST_MODE -eq "1"')
+            $strictIdx = $Content.IndexOf('Set-StrictMode -Version 3.0')
+            $guardIdx  | Should -BeGreaterThan -1
+            $strictIdx | Should -BeGreaterThan $guardIdx
         }
 
         It "defines Wait-AndExit function" {

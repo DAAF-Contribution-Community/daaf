@@ -1,0 +1,2 @@
+# Keep the reports/ directory in Git; generated report subdirectories are ignored
+# (see scripts/deploy_smoke/.gitignore).

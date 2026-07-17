@@ -40,6 +40,11 @@ Data does not apply to this record:
 # grad_rate_midpt = -1 (not applicable)
 ```
 
+```r
+# Example: Elementary school has no graduation rate
+# grad_rate_midpt = -1 (not applicable)
+```
+
 #### `-2` (Not Reported)
 
 State did not submit this data:
@@ -48,6 +53,11 @@ State did not submit this data:
 - Indicator not collected that year
 
 ```python
+# Example: State didn't report participation rates
+# read_test_pct_part = -2 (not reported)
+```
+
+```r
 # Example: State didn't report participation rates
 # read_test_pct_part = -2 (not reported)
 ```
@@ -64,6 +74,11 @@ Data suppressed to protect student privacy:
 # math_test_pct_prof_midpt = -3 (suppressed)
 ```
 
+```r
+# Example: Small subgroup, exact value would reveal individuals
+# math_test_pct_prof_midpt = -3 (suppressed)
+```
+
 #### `-9` (Rounds to Zero)
 
 Actual value rounds to 0% but isn't truly zero:
@@ -71,6 +86,11 @@ Actual value rounds to 0% but isn't truly zero:
 - Distinguishes from true 0%
 
 ```python
+# Example: 0.4% proficient rounds to 0
+# read_test_pct_prof_midpt = -9 (rounds to zero)
+```
+
+```r
 # Example: 0.4% proficient rounds to 0
 # read_test_pct_prof_midpt = -9 (rounds to zero)
 ```
@@ -89,6 +109,16 @@ clean_df = df.filter(
 clean_df = df.filter(
     ~pl.col("read_test_pct_prof_midpt").is_in([-1, -2, -3, -9])
 )
+```
+
+```r
+library(dplyr)
+
+# Remove all missing/suppressed values
+clean_df <- df |> filter(read_test_pct_prof_midpt >= 0)
+
+# Or explicitly check for each code
+clean_df <- df |> filter(!read_test_pct_prof_midpt %in% c(-1, -2, -3, -9))
 ```
 
 ## Range and Midpoint Variables
@@ -143,6 +173,14 @@ EDFacts uses standard range bands:
    avg_low = df["read_test_pct_prof_low"].mean()
    ```
 
+   ```r
+   # Correct
+   avg_prof <- mean(df$read_test_pct_prof_midpt, na.rm = TRUE)
+   
+   # Not useful alone
+   avg_low <- mean(df$read_test_pct_prof_low, na.rm = TRUE)
+   ```
+
 2. **Document uncertainty from ranges**
    ```python
    # Calculate uncertainty
@@ -151,6 +189,12 @@ EDFacts uses standard range bands:
        .alias("range_width")
    )
    avg_uncertainty = df["range_width"].mean()
+   ```
+
+   ```r
+   # Calculate uncertainty
+   df <- df |> mutate(range_width = read_test_pct_prof_high - read_test_pct_prof_low)
+   avg_uncertainty <- mean(df$range_width, na.rm = TRUE)
    ```
 
 3. **Report range width in findings**
@@ -191,6 +235,18 @@ weighted_avg = (
         pl.col("read_test_num_valid").sum()
     )
 )
+```
+
+```r
+library(dplyr)
+
+# Weight average by number of test-takers
+weighted_avg <- df |>
+  filter(read_test_num_valid > 0) |>
+  summarise(
+    weighted_avg = sum(read_test_pct_prof_midpt * read_test_num_valid) /
+      sum(read_test_num_valid)
+  )
 ```
 
 ## Graduation Rate Variables
@@ -241,6 +297,14 @@ low_participation = df.filter(
     (pl.col("read_test_pct_part") < 95) |
     (pl.col("math_test_pct_part") < 95)
 )
+```
+
+```r
+library(dplyr)
+
+# Identify schools below participation threshold
+low_participation <- df |>
+  filter(read_test_pct_part < 95 | math_test_pct_part < 95)
 ```
 
 ## Subgroup Codes
@@ -323,6 +387,29 @@ race_comparison = (df
 )
 ```
 
+```r
+library(dplyr)
+
+# Get data for students with disabilities (IDEA)
+# Portal uses integer 1, NOT string "CWD"
+cwd_data <- df |> filter(disability == 1)
+
+# Get total row (all students)
+all_students <- df |> filter(race == 99)
+
+# Get Black students only
+black_students <- df |> filter(race == 2)
+
+# Get LEP students
+lep_data <- df |> filter(lep == 1)
+
+# Compare race groups
+race_comparison <- df |>
+  filter(race %in% c(1, 2, 3, 99)) |>
+  group_by(race) |>
+  summarise(avg_prof = mean(read_test_pct_prof_midpt, na.rm = TRUE))
+```
+
 ## Geographic Identifiers
 
 > **Portal Data Types:** All identifiers are **Int64** in the Portal parquet files. The NCES source format (zero-padded strings) is described below for reference, but you will encounter integer values when working with the data.
@@ -364,6 +451,71 @@ race_comparison = (df
 # NCES source:        ncessch = "060000100001" (12-char string)
 ```
 
+```r
+# NCESSCH logical format: SSLLLLLNNNNN (12 digits)
+# SS = State FIPS (2 digits)
+# LLLLL = LEA ID (5 digits)
+# NNNNN = School ID within LEA (5 digits)
+#
+# In Portal data, this is stored as integer (no leading zeros):
+# California example: ncessch = 60000100001 (integer)
+# NCES source:        ncessch = "060000100001" (12-char string)
+```
+
+### CSV Fallback: Force-String + Pad-and-Assert (2019 truncated-ID trap)
+
+> **Field-confirmed, HIGH impact.** When the parquet mirror is unavailable and a fetch
+> falls back to the CSV source, EDFacts `ncessch`/`leaid` need more than a force-string
+> read. In a native R-mode pipeline run, the **2019 grad-rate CSVs delivered 11-character
+> `ncessch`** for single-digit-FIPS states (FIPS 1, 2, 4, 5, 6, 8, 9), versus 12-character
+> in 2015-2018 — the source file had *already* lost the leading zero. Forcing string on
+> read did not restore it (there was nothing to restore). Only pad-to-width plus a width
+> assertion recovers and verifies these IDs. In that run the fix repaired 43,223 short
+> IDs, all localized to 2019, and prevented a split join key for terminal-year ACGR.
+
+Canonical widths: `ncessch` → 12, `leaid` → 7. Two defenses, applied in order, on every CSV-fallback read:
+
+1. **Force-string on read** (preserves zeros the file still has).
+2. **Pad-and-assert after read** (recovers zeros the file already dropped, and fails loudly on any unexpected width).
+
+```python
+import polars as pl
+
+# INTENT: enforce canonical EDFacts ID widths after a CSV fallback read.
+# REASONING: force-string keeps what the file holds, but 2019 grad-rate CSVs ship
+#   11-char ncessch for single-digit-FIPS states; only pad-to-width recovers them.
+# ASSUMES: defense 1 (schema_overrides={"ncessch": pl.Utf8, "leaid": pl.Utf8}) applied;
+#   a value wider than the target width is a genuine anomaly, not a pad candidate.
+df = df.with_columns(
+    pl.col("ncessch").cast(pl.Utf8).str.zfill(12),
+    pl.col("leaid").cast(pl.Utf8).str.zfill(7),
+)
+assert (df["ncessch"].str.len_chars() == 12).all(), "ncessch width != 12 after pad"
+assert (df["leaid"].str.len_chars() == 7).all(), "leaid width != 7 after pad"
+```
+
+```r
+library(stringr)
+
+# INTENT: enforce canonical EDFacts ID widths after a CSV fallback read.
+# REASONING: col_character() keeps what the file holds, but 2019 grad-rate CSVs ship
+#   11-char ncessch for single-digit-FIPS states; only str_pad recovers them.
+# ASSUMES: defense 1 (col_types = cols(ncessch = col_character(), leaid =
+#   col_character())) applied; do the pad+assert immediately after each read,
+#   BEFORE any bind_rows/join, so a split key never enters a downstream frame.
+df <- df |>
+  mutate(
+    ncessch = str_pad(ncessch, 12, pad = "0"),
+    leaid   = str_pad(leaid, 7, pad = "0")
+  )
+stopifnot(all(nchar(df$ncessch) == 12), all(nchar(df$leaid) == 7))
+```
+
+> The parquet mirror stores these as Int64 (no leading zeros) but round-trips them
+> losslessly, so parquet reads are unaffected — this recipe is specifically for the
+> CSV fallback. See `education-data-query` → `fetch-patterns.md` § Format Handling
+> ("Zero-padded ID columns") for the cross-source version of this pattern.
+
 ## Handling Special Values
 
 ### Complete Data Cleaning Function
@@ -402,6 +554,17 @@ def clean_edfacts_data(df, value_cols):
     return df
 ```
 
+```r
+library(dplyr)
+
+# Clean EDFacts data by replacing special values with NA
+# value_cols: character vector of columns to clean
+missing_codes <- c(-1, -2, -3, -9)
+
+df <- df |>
+  mutate(across(all_of(value_cols), ~ if_else(.x %in% missing_codes, NA_real_, .x)))
+```
+
 ### Documenting Suppression
 
 ```python
@@ -423,6 +586,26 @@ def suppression_report(df, value_col):
     suppression_counts["pct_suppressed"] = suppression_counts["suppressed"] / total * 100
     
     return suppression_counts
+```
+
+```r
+# Generate suppression report for a variable
+# value_col: column name as a string (df$value_col would look up a column
+# literally named "value_col" and silently return 0 counts — use df[[value_col]])
+value_col <- "read_test_pct_prof_midpt"
+total <- nrow(df)
+valid <- sum(df[[value_col]] >= 0, na.rm = TRUE)
+missing_na <- sum(df[[value_col]] == -1, na.rm = TRUE)
+not_reported <- sum(df[[value_col]] == -2, na.rm = TRUE)
+suppressed <- sum(df[[value_col]] == -3, na.rm = TRUE)
+rounds_to_zero <- sum(df[[value_col]] == -9, na.rm = TRUE)
+
+cat("Total records:", total, "\n")
+cat("Valid:", valid, sprintf("(%.1f%%)", valid / total * 100), "\n")
+cat("Missing/NA (-1):", missing_na, "\n")
+cat("Not reported (-2):", not_reported, "\n")
+cat("Suppressed (-3):", suppressed, sprintf("(%.1f%%)", suppressed / total * 100), "\n")
+cat("Rounds to zero (-9):", rounds_to_zero, "\n")
 ```
 
 ### Working with Ranges
@@ -450,6 +633,23 @@ def add_range_metrics(df, var_prefix):
     ])
 ```
 
+```r
+library(dplyr)
+
+# Add range-related metrics to dataframe
+# Example for read_test_pct_prof prefix
+df <- df |>
+  mutate(
+    range_width = read_test_pct_prof_high - read_test_pct_prof_low,
+    is_exact = (read_test_pct_prof_high == read_test_pct_prof_low),
+    relative_uncertainty = if_else(
+      read_test_pct_prof_midpt > 0,
+      (read_test_pct_prof_high - read_test_pct_prof_low) / read_test_pct_prof_midpt * 100,
+      NA_real_
+    )
+  )
+```
+
 ## EDFacts Data in the Portal
 
 ### Fetching EDFacts Data
@@ -475,6 +675,34 @@ grad_df = fetch_yearly_from_mirrors(
     path_template="edfacts/schools_edfacts_grad_rates_{year}",
     years=[2018, 2019],
 )
+```
+
+```r
+library(arrow)
+library(dplyr)
+
+# fetch_yearly_from_mirrors() is a Python helper; in R, build the URL from the
+# mirror root. Mirror failover: see
+# `education-data-query/references/fetch-patterns.md` (R pattern)
+mirror <- yaml::read_yaml("mirrors.yaml")$mirrors[[1]]
+
+# NOTE: the plain read_parquet() calls below are illustrative only. EDFacts
+# mirror files are Polars-written with string_view columns — a plain read fails
+# under R arrow with "cannot handle Array of type <utf8_view>". Real fetch
+# scripts must use the view-safe parquet read from
+# `education-data-query/references/fetch-patterns.md`.
+
+# School-level assessments (yearly dataset)
+df <- read_parquet(paste0(mirror$root_url, "/",
+                          "edfacts/schools_edfacts_assessments_2018", ".", mirror$format))
+
+# Filter to California, grade 4
+ca_grade4 <- df |>
+  filter(fips == 6, grade_edfacts == 4)
+
+# School-level graduation rates (yearly dataset)
+grad_df <- read_parquet(paste0(mirror$root_url, "/",
+                               "edfacts/schools_edfacts_grad_rates_2019", ".", mirror$format))
 ```
 
 ### Codebook Authority

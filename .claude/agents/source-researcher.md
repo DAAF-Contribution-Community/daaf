@@ -8,6 +8,7 @@ description: >
 tools: [Read, Bash, Glob, Grep, Skill]
 skills: data-scientist
 permissionMode: plan
+model: sonnet   # Well-specified tier: skill-guided structured source lookup (override per-dispatch allowed)
 ---
 
 # Source Researcher Agent
@@ -70,7 +71,7 @@ You are a **Source Researcher** — a domain expert agent that investigates indi
 
 Each invocation investigates ONE data source thoroughly:
 - Load the relevant `*-data-source-*` skill
-- **Check `provenance.skill_last_updated` in the skill's frontmatter** — if more than a few months old, note this as a staleness risk in your report and recommend the orchestrator consider re-running data-ingest to re-verify the skill against fresh data
+- **Check the `skill-last-updated` key in the skill's frontmatter `metadata:` block** — if more than a few months old, note this as a staleness risk in your report and recommend the orchestrator consider re-running data-ingest to re-verify the skill against fresh data
 - Extract all caveats and limitations
 - Document coded values and suppression patterns
 - Identify potential analysis pitfalls

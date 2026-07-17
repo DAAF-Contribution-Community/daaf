@@ -1,7 +1,7 @@
 ---
 name: pyfixest
 description: >-
-  Fast high-dimensional fixed effects: OLS, Poisson, IV with multi-way FE; DiD (TWFE, did2s, Sun-Abraham); clustered SEs; etable/coefplot/iplot. Use for FE regressions or DiD. For panel RE/between use linearmodels; for GLM without FE use statsmodels.
+  Fast high-dimensional fixed effects: OLS, Poisson, IV with multi-way FE; DiD (TWFE, did2s, Sun-Abraham); clustered SEs; etable/coefplot/iplot. Use for FE regressions or DiD. For panel RE/between use linearmodels; for GLM without FE use statsmodels. R equivalent: fixest (use when execution language is R).
 metadata:
   audience: research-coders
   domain: python-library
@@ -56,6 +56,8 @@ Each topic in `./references/` contains focused documentation:
 3. **Need IV?** Read `quickstart.md`, then `instrumental-variables.md`
 4. **Making tables?** Check `tables-and-plots.md`
 5. **Coming from R fixest?** Read `quickstart.md` then `gotchas.md`
+
+**The reference-file routing in this skill applies to advisory and brainstorming turns as much as implementation.** Recommending an approach, reviewing a plan, or answering a question that touches a routed topic calls for reading the routed reference file just as much as writing code does — the reference files carry curated caveats and environment-specific constraints that this overview and general knowledge lack.
 
 ## Related Skills
 

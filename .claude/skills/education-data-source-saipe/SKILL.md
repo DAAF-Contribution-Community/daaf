@@ -194,6 +194,16 @@ Codebooks are `.xls` files co-located with data in all mirrors. Use `get_codeboo
 url = get_codebook_url("saipe/codebook_districts_saipe")
 ```
 
+```r
+# R equivalent.
+# get_codebook_url() is a Python helper; in R, construct the codebook URL from
+# the mirror root in mirrors.yaml (codebooks are .xls files co-located with data).
+# Mirror failover: see `education-data-query/references/fetch-patterns.md` (R pattern).
+config <- yaml::read_yaml("mirrors.yaml")
+mirror <- config$mirrors[[1]]
+url <- paste0(mirror$root_url, "/", "saipe/codebook_districts_saipe", ".xls")
+```
+
 > **Truth Hierarchy:** When interpreting variable values, apply this priority:
 > 1. **Actual data file** (what you observe in the parquet/CSV) — this IS the truth
 > 2. **Live codebook** (.xls in mirror) — authoritative documentation, may lag
@@ -219,6 +229,21 @@ df_high = df.filter(
     pl.col("est_population_5_17_poverty_pct").is_not_null()
     & (pl.col("est_population_5_17_poverty_pct") >= 20)
 )
+```
+
+```r
+# R equivalent
+library(dplyr)
+
+# Filter to a specific state and year
+df_state <- df |> filter(fips == 6, year == 2022)
+
+# Exclude null poverty estimates
+df_valid <- df |> filter(!is.na(est_population_5_17_poverty))
+
+# High-poverty districts (above 20%)
+df_high <- df |> filter(!is.na(est_population_5_17_poverty_pct),
+                         est_population_5_17_poverty_pct >= 20)
 ```
 
 ## Common Pitfalls

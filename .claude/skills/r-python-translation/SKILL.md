@@ -4,7 +4,7 @@ description: >-
   R-to-Python translation for data analysis. Maps R packages (tidyverse, ggplot2, fixest, survey, sf, plm) to Python equivalents (polars, plotnine, pyfixest, svy, geopandas). Use when user has R background or requests R-equivalent code comments.
 metadata:
   audience: research-coders
-  domain: research-methodology
+  domain: cross-language
   skill-last-updated: "2026-03-28"
 ---
 
@@ -144,7 +144,9 @@ Which R package?
 │   └─ ./references/regression-modeling.md
 ├─ stats (lm, glm) → statsmodels
 │   └─ ./references/regression-modeling.md
-├─ plm / lme4 / estimatr → linearmodels
+├─ plm / estimatr → linearmodels
+│   └─ ./references/regression-modeling.md
+├─ lme4 (lmer) → statsmodels MixedLM
 │   └─ ./references/regression-modeling.md
 ├─ survey → svy
 │   └─ ./references/survey-spatial-ml.md
@@ -169,10 +171,11 @@ Which R package?
 | plotnine | ggplot2 | High | Same grammar of graphics; Python string quoting for aes |
 | plotly | plotly (R) | High | `px.scatter()` vs `plot_ly()`; similar output |
 | statsmodels | base R stats + lmtest + sandwich | Medium | Three formula dialects; manual vcov specification |
-| linearmodels | plm + lme4 + estimatr | Medium | Requires pandas MultiIndex for panel structure |
+| linearmodels | plm + estimatr | Medium | Requires pandas MultiIndex for panel structure |
+| statsmodels MixedLM | lme4 | Medium | Separate `groups=`/`re_formula=` arguments vs `(1 \| group)` in formula |
 | scikit-learn | tidymodels / caret | Medium | Imperative fit/predict vs declarative recipe pipeline |
 | geopandas | sf + terra | Medium | shapely geometries vs sfc; different CRS handling |
-| svy | survey (Lumley) | Medium | Limited GLM family coverage (gaussian/binomial/Poisson only) |
+| svy | survey (Lumley) | Medium | Limited GLM family coverage (gaussian/binomial/Poisson/gamma) |
 | marimo | Quarto / RMarkdown | Medium | Reactive cells vs knit-based linear execution |
 
 **Fidelity key:** High = near-direct translation, same mental model. Medium = same capability, different API patterns. Low = fundamentally different paradigm requiring conceptual remapping.
@@ -186,22 +189,24 @@ files note the change.
 
 | Python Package | DAAF Version | R Equivalent | R Version (CRAN) |
 |---|---|---|---|
-| polars | 1.38.1 | dplyr + tidyr + data.table | dplyr 1.2.0, tidyr 1.3.2, data.table 1.18.2 |
+| polars | 1.39.3 | dplyr + tidyr + data.table | dplyr 1.2.0, tidyr 1.3.2, data.table 1.18.2 |
 | pyfixest | 0.40.0 | fixest | 0.14.0 |
 | plotnine | 0.15.3 | ggplot2 | 4.0.2 |
 | plotly | 6.5.2 | plotly (R) | 4.12.0 |
 | statsmodels | 0.14.6 | base R stats + lmtest + sandwich | lmtest 0.9-40, sandwich 3.1-1 |
-| linearmodels | unpinned | plm + lme4 + estimatr | plm 2.6-7, lme4 2.0-1 |
+| linearmodels | 7.0 | plm + estimatr | plm 2.6-7, estimatr 1.0.6 |
+| statsmodels (MixedLM) | 0.14.6 | lme4 | 2.0-1 |
 | scikit-learn | 1.8.0 | tidymodels / caret | tidymodels 1.4.1, caret 7.0-1 |
 | geopandas | 1.1.3 | sf + terra | sf 1.1-0, terra 1.9-11 |
-| svy | 0.13.0 | survey | survey 4.5 |
-| marginaleffects | unpinned | marginaleffects (R) | 0.32.0 |
-| rdrobust | unpinned | rdrobust (R) | 3.0.0 |
-| marimo | 0.19.11 | Quarto / RMarkdown | Quarto 1.6.x |
+| svy | 0.19.0 | survey | survey 4.5 |
+| marginaleffects | 0.5.0 | marginaleffects (R) | 0.32.0 |
+| rdrobust | 1.3.0 | rdrobust (R) | 3.0.0 |
+| marimo | 0.19.11 | Quarto / RMarkdown | Quarto 1.7.29 |
 
-**Unpinned packages:** linearmodels, marginaleffects, and rdrobust install the latest
-version at Docker build time. Translations for these packages reference their documented
-API as of March 2026.
+**Pinning note:** linearmodels, marginaleffects, and rdrobust are version-pinned in
+DAAF's Dockerfile (`linearmodels==7.0`, `marginaleffects==0.5.0`, `rdrobust==1.3.0`)
+and pre-installed alongside the rest of the Python stack. Translations reference their
+documented APIs as of March 2026.
 
 **R version note:** R package versions are from CRAN as of March 2026 (R 4.5.3). Check
 `packageVersion("pkg")` in your R installation to verify your local version matches.
@@ -275,13 +280,14 @@ fit = pf.feols("y ~ x1 + x2 | state + year", data=pdf, vcov={"CRV1": "state"})
 | `pyfixest` | Python-side fixed effects regression — detailed API for the fixest equivalent |
 | `plotnine` | Python-side static visualization — detailed API for the ggplot2 equivalent |
 | `plotly` | Python-side interactive visualization — detailed API for plotly R equivalent |
-| `statsmodels` | Python-side general modeling — covers base R stats, lmtest, sandwich equivalents |
-| `linearmodels` | Python-side panel/IV models — covers plm, lme4, estimatr equivalents |
+| `statsmodels` | Python-side general modeling — covers base R stats, lmtest, sandwich, and lme4 (MixedLM) equivalents |
+| `linearmodels` | Python-side panel/IV models — covers plm and estimatr equivalents (no mixed-effects estimator) |
 | `scikit-learn` | Python-side ML — covers tidymodels/caret equivalents |
 | `geopandas` | Python-side spatial data — covers sf/terra equivalents |
 | `svy` | Python-side survey analysis — covers survey (Lumley) equivalents |
 | `marimo` | Python-side notebooks — covers Quarto/RMarkdown workflow equivalents |
 | `stata-python-translation` | Parallel skill for Stata-background users — shares the same Python target stack |
+| `python-r-translation` | Reverse direction — maps Python concepts to R equivalents for Python-background users working in R |
 
 **Note:** Individual tool skills contain library-specific usage guidance (syntax, gotchas, performance). This skill provides the R-to-Python conceptual bridge — use both together when an R-background user is working with a specific library.
 

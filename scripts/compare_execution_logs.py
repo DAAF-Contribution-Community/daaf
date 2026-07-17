@@ -1,18 +1,40 @@
 #!/usr/bin/env python3
 """
-Compare execution logs from two script files (original vs reproduced).
+Compare metrics present in two appended execution logs (original vs reproduced).
 
-Extracts structured metrics from the execution logs appended by run_with_capture.sh
-and produces a comparison report highlighting matches, mismatches, and any divergences.
+Extracts only structured metrics that the scripts printed into execution logs appended
+by run_with_capture.sh, then reports log-level matches, mismatches, and divergences.
+Recognized evidence includes exit codes, emitted row/column counts, checkpoints,
+selected statistics, assertions, warnings, and errors. Row, column, and statistic
+metrics are aligned by normalized metric identity and stable log context; values are
+never used to decide which metrics correspond. Duplicate row, column, or statistic
+identities require stable context, while duplicate dedicated exit-code identities or
+checkpoint IDs always make the evidence inconclusive.
 
-This is a standalone CLI utility used during RV-2 (Reproducibility Verification).
-It does NOT depend on polars/pandas — standard library only.
+This utility does not inspect artifact files and is not a Parquet schema/content,
+persisted model/table, or figure comparator. A CONSISTENT result applies only to the
+metrics found in both logs.
+
+Supported log dialects: Python/polars (``shape: (N, M)``, ``len(df)``,
+``AssertionError``) and R/tidyverse (``# A tibble: N x M`` with a Unicode or ASCII
+multiplication sign and optional comma thousands separators, and ``stopifnot()``
+failures printed as ``Error: ... is not TRUE`` / ``... are not all TRUE``). Both
+dialects map onto the same row-count, column-count, and assertion metrics.
+
+Exit statuses:
+    0  CONSISTENT log evidence
+    1  DIVERGED log evidence
+    2  Invalid invocation or an input read/parse failure
+    3  INCOMPLETE (missing log) or INCONCLUSIVE evidence
+
+This is an optional standalone CLI helper used during RV-2 (Reproducibility
+Verification). It does NOT depend on polars/pandas — standard library only.
 
 Usage:
     python compare_execution_logs.py <original_script> <reproduced_script>
 
-Both arguments are paths to Python scripts with execution logs appended
-(the '# EXECUTION LOG' format produced by run_with_capture.sh).
+Both arguments may be `.py` or `.R` script paths with execution logs appended in
+the '# EXECUTION LOG' format produced by run_with_capture.sh.
 """
 
 import argparse
@@ -33,24 +55,15 @@ def extract_execution_log(script_path):
     prefixes ('# ') stripped to recover the original output text.
     Returns (log_lines, found) where found indicates whether a log was present.
     """
-    text = Path(script_path).read_text()
+    text = Path(script_path).read_text(encoding="utf-8")
 
-    # Find the execution log marker
-    markers = [
-        '# =============================================================================\n# EXECUTION LOG',
-        '# EXECUTION LOG',
-    ]
-
-    log_section = None
-    for marker in markers:
-        if marker in text:
-            log_section = text.split(marker, 1)[1]
-            break
-
-    if log_section is None:
+    # Require a dedicated marker line. Mentions of '# EXECUTION LOG' inside
+    # source strings or prose are not appended logs.
+    marker = re.search(r'^# EXECUTION LOG\s*$', text, re.MULTILINE)
+    if marker is None:
         return [], False
 
-    raw_lines = log_section.split('\n')
+    raw_lines = text[marker.end():].split('\n')
     clean_lines = []
     for line in raw_lines:
         if line.startswith('# '):
@@ -67,69 +80,109 @@ def extract_execution_log(script_path):
 # Metric extractors
 # ---------------------------------------------------------------------------
 
-def extract_exit_code(lines):
-    """Look for 'Exit code: N' and return the integer, or None."""
+def normalize_metric_text(text):
+    """Normalize a metric label/context without using its numeric value."""
+    normalized = text.casefold().replace('²', '2')
+    normalized = re.sub(r'[_-]+', ' ', normalized)
+    normalized = re.sub(r'\s+', ' ', normalized)
+    return normalized.strip(' :|[]()')
+
+
+def normalize_stat_name(name):
+    """Collapse spelling variants of a statistic into one metric identity."""
+    normalized = normalize_metric_text(name).replace('.', '')
+    aliases = {
+        'r2': 'r squared',
+        'r squared': 'r squared',
+        'adj r squared': 'adjusted r squared',
+        'p value': 'p value',
+    }
+    return aliases.get(normalized, normalized)
+
+
+def metric_context(line, value_spans):
+    """Return stable line context with recognized metric values removed."""
+    context = line
+    for start, end in sorted(value_spans, reverse=True):
+        context = context[:start] + '<value>' + context[end:]
+    return normalize_metric_text(context)
+
+
+def extract_exit_codes(lines):
+    """Return every dedicated ``Exit code: N`` identity in the log."""
+    results = []
     for line in lines:
-        m = re.search(r'Exit code:\s*(\d+)', line, re.IGNORECASE)
-        if m:
-            return int(m.group(1))
-    return None
+        match = re.fullmatch(r'\s*Exit code:\s*(\d+)\s*', line, re.IGNORECASE)
+        if match:
+            results.append(int(match.group(1)))
+    return results
 
 
 def extract_row_counts(lines):
-    """Extract row-count-like numbers from log lines.
-
-    Returns list of (label, value) tuples.
-    """
+    """Extract row counts as (identity, context, display, value) tuples."""
     results = []
     patterns = [
-        # shape: (N, M)
-        (r'shape:\s*\((\d[\d,]*)\s*,\s*\d', 'shape rows'),
+        # shape: (N, M); both values are removed from stable context.
+        (r'shape:\s*\((\d[\d,]*)\s*,\s*(\d[\d,]*)\)', 'shape rows', 1),
+        # R tidyverse tibble header "# A tibble: N x M" (Unicode × or ASCII
+        # x, optional comma thousands separators); group 1 is the row count.
+        (r'A tibble:\s*(\d[\d,]*)\s*(?:×|x)\s*(\d[\d,]*)', 'tibble rows', 1),
         # Row count: N  /  rows: N  /  Rows: N
-        (r'(?:Row count|rows?|Rows?|row_count):\s*(\d[\d,]*)', 'row count'),
+        (r'(?:Row count|rows?|row_count):\s*(\d[\d,]*)', 'row count', 1),
         # len(df) = N
-        (r'len\(df\)\s*=\s*(\d[\d,]*)', 'len(df)'),
+        (r'len\(df\)\s*=\s*(\d[\d,]*)', 'len(df)', 1),
         # N rows
-        (r'(\d[\d,]*)\s+rows?\b', 'N rows'),
+        (r'(?<![=\d])(\d[\d,]*)\s+rows?\b', 'N rows', 1),
     ]
-    seen = set()
-    for line in lines:
-        for pattern, label in patterns:
-            for m in re.finditer(pattern, line, re.IGNORECASE):
-                val_str = m.group(1).replace(',', '')
-                val = int(val_str)
-                # Use label + context for dedup
-                context = line.strip()[:60]
-                key = (label, val, context)
-                if key not in seen:
-                    seen.add(key)
-                    results.append((context, val))
+    seen_spans = set()
+    for line_number, line in enumerate(lines):
+        for pattern, identity, value_group in patterns:
+            for match in re.finditer(pattern, line, re.IGNORECASE):
+                value_span = match.span(value_group)
+                span_key = (line_number, value_span[0], value_span[1])
+                if span_key in seen_spans:
+                    continue
+                seen_spans.add(span_key)
+                value = int(match.group(value_group).replace(',', ''))
+                context_spans = [
+                    match.span(group)
+                    for group in range(1, (match.lastindex or 0) + 1)
+                ]
+                context = metric_context(line, context_spans)
+                results.append((normalize_metric_text(identity), context,
+                                line.strip()[:80], value))
     return results
 
 
 def extract_column_counts(lines):
-    """Extract column-count-like numbers from log lines.
-
-    Returns list of (label, value) tuples.
-    """
+    """Extract column counts as (identity, context, display, value) tuples."""
     results = []
     patterns = [
-        # shape: (N, M)
-        (r'shape:\s*\(\d[\d,]*\s*,\s*(\d[\d,]*)\)', 'shape cols'),
+        # shape: (N, M); both values are removed from stable context.
+        (r'shape:\s*\((\d[\d,]*)\s*,\s*(\d[\d,]*)\)', 'shape columns', 2),
+        # R tidyverse tibble header "# A tibble: N x M"; group 2 is the column count.
+        (r'A tibble:\s*(\d[\d,]*)\s*(?:×|x)\s*(\d[\d,]*)', 'tibble columns', 2),
         # columns: N  /  col count: N
-        (r'(?:columns?|col count|column_count|n_cols):\s*(\d[\d,]*)', 'col count'),
+        (r'(?:columns?|col count|column_count|n_cols):\s*(\d[\d,]*)',
+         'column count', 1),
     ]
-    seen = set()
-    for line in lines:
-        for pattern, label in patterns:
-            for m in re.finditer(pattern, line, re.IGNORECASE):
-                val_str = m.group(1).replace(',', '')
-                val = int(val_str)
-                context = line.strip()[:60]
-                key = (label, val, context)
-                if key not in seen:
-                    seen.add(key)
-                    results.append((context, val))
+    seen_spans = set()
+    for line_number, line in enumerate(lines):
+        for pattern, identity, value_group in patterns:
+            for match in re.finditer(pattern, line, re.IGNORECASE):
+                value_span = match.span(value_group)
+                span_key = (line_number, value_span[0], value_span[1])
+                if span_key in seen_spans:
+                    continue
+                seen_spans.add(span_key)
+                value = int(match.group(value_group).replace(',', ''))
+                context_spans = [
+                    match.span(group)
+                    for group in range(1, (match.lastindex or 0) + 1)
+                ]
+                context = metric_context(line, context_spans)
+                results.append((normalize_metric_text(identity), context,
+                                line.strip()[:80], value))
     return results
 
 
@@ -146,20 +199,20 @@ def extract_checkpoints(lines):
         if m:
             # Normalize "PASSED WITH WARNINGS" to PASSED (the WITH WARNINGS
             # part is after the captured group and doesn't change the status)
-            results.append((m.group(1).upper(), m.group(2).upper()))
+            status = 'PASSED' if m.group(2).upper().startswith('PASS') else 'FAILED'
+            results.append((m.group(1).upper(), status))
             continue
         # Lines starting with # CP or containing PASS/FAIL with a label
         m = re.search(r'((?:QA|Checkpoint|Check)\s*\S+)\s*[:.]\s*(PASS(?:ED)?|FAIL(?:ED)?)', line, re.IGNORECASE)
         if m:
-            results.append((m.group(1).strip(), m.group(2).upper()))
+            checkpoint_id = re.sub(r'\s+', ' ', m.group(1).strip()).upper()
+            status = 'PASSED' if m.group(2).upper().startswith('PASS') else 'FAILED'
+            results.append((checkpoint_id, status))
     return results
 
 
 def extract_key_statistics(lines):
-    """Extract numeric statistics from common patterns.
-
-    Returns list of (stat_name, float_value) tuples.
-    """
+    """Extract statistics as (identity, context, display, value) tuples."""
     results = []
     stat_labels = [
         'mean', 'median', 'std', 'min', 'max', 'count', 'sum',
@@ -168,21 +221,27 @@ def extract_key_statistics(lines):
         'rmse', 'mae', 'mse', 'variance', 'skewness', 'kurtosis',
         'coefficient', 'intercept', 'slope',
     ]
-    # Build a pattern that matches "label: number" or "label = number"
-    label_pattern = '|'.join(re.escape(l) for l in stat_labels)
+    # Prefer longer labels so "r2" cannot consume part of a longer spelling.
+    label_pattern = '|'.join(
+        re.escape(label) for label in sorted(stat_labels, key=len, reverse=True)
+    )
     pattern = re.compile(
-        r'(?:^|[\s(])(' + label_pattern + r')\s*[:=]\s*([+-]?\d+\.?\d*(?:[eE][+-]?\d+)?)',
-        re.IGNORECASE
+        r'(?:^|[\s(])(' + label_pattern
+        + r')\s*[:=]\s*([+-]?\d+\.?\d*(?:[eE][+-]?\d+)?)',
+        re.IGNORECASE,
     )
 
     for line in lines:
-        for m in pattern.finditer(line):
-            name = m.group(1).lower().strip()
+        matches = list(pattern.finditer(line))
+        value_spans = [match.span(2) for match in matches]
+        context = metric_context(line, value_spans)
+        for match in matches:
             try:
-                val = float(m.group(2))
-                results.append((name, val))
+                value = float(match.group(2))
             except ValueError:
-                pass
+                continue
+            identity = normalize_stat_name(match.group(1))
+            results.append((identity, context, identity, value))
 
     return results
 
@@ -201,8 +260,13 @@ def extract_assertions(lines):
     failed = 0
 
     for line in lines:
-        # Count AssertionError occurrences (Python's actual exception name)
+        # Count assertion failures. Python raises AssertionError; R's
+        # stopifnot() prints "Error: <expr> is not TRUE" (scalar) or
+        # "... are not all TRUE" (vector) to stderr, captured in the log.
         if re.search(r'\bAssertionError\b', line):
+            failed += 1
+        elif (re.search(r'\bError\b.*\bis not TRUE\b', line)
+              or re.search(r'\bError\b.*\bare not all TRUE\b', line)):
             failed += 1
 
         # Explicit pass messages: "N assertions passed", "assertions passed"
@@ -263,34 +327,87 @@ def floats_match(a, b, rel_tol=1e-6):
 
 
 def compare_value_lists(orig_list, repro_list, is_float=False, rel_tol=1e-6):
-    """Compare two lists of (label, value) tuples by positional alignment.
+    """Align metric tuples by identity and context, never by numeric value.
 
-    Returns list of (label, orig_val, repro_val, match_bool) tuples and
-    counts of (total, matched, mismatched).
+    Inputs contain (identity, context, display, value) tuples. A unique identity
+    maps directly even if its line moves. Repeated identities map only when each
+    occurrence has distinct stable context on both sides; otherwise the identity
+    is returned as ambiguous instead of being positionally paired.
     """
     results = []
-    max_len = max(len(orig_list), len(repro_list))
+    ambiguities = []
+    orig_by_identity = {}
+    repro_by_identity = {}
 
-    for idx in range(max_len):
-        if idx < len(orig_list) and idx < len(repro_list):
-            o_label, o_val = orig_list[idx]
-            r_label, r_val = repro_list[idx]
-            if is_float:
-                match = floats_match(o_val, r_val, rel_tol)
+    for metric in orig_list:
+        orig_by_identity.setdefault(metric[0], []).append(metric)
+    for metric in repro_list:
+        repro_by_identity.setdefault(metric[0], []).append(metric)
+
+    identities = list(dict.fromkeys(
+        [metric[0] for metric in orig_list] + [metric[0] for metric in repro_list]
+    ))
+
+    def values_match(original, reproduced):
+        if is_float:
+            return floats_match(original, reproduced, rel_tol)
+        return original == reproduced
+
+    for identity in identities:
+        original_metrics = orig_by_identity.get(identity, [])
+        reproduced_metrics = repro_by_identity.get(identity, [])
+
+        if len(original_metrics) <= 1 and len(reproduced_metrics) <= 1:
+            original = original_metrics[0] if original_metrics else None
+            reproduced = reproduced_metrics[0] if reproduced_metrics else None
+            if (original is not None and reproduced is not None
+                    and original[1] == reproduced[1]):
+                matched = values_match(original[3], reproduced[3])
+                results.append((identity, 0, original[2], original[3],
+                                reproduced[3], matched, 'identity + context'))
             else:
-                match = (o_val == r_val)
-            # Use the original label for display
-            results.append((o_label, o_val, r_val, match))
-        elif idx < len(orig_list):
-            o_label, o_val = orig_list[idx]
-            results.append((o_label, o_val, '(missing)', False))
-        else:
-            r_label, r_val = repro_list[idx]
-            results.append((r_label, '(missing)', r_val, False))
+                if original is not None:
+                    occurrence = 1 if reproduced is not None else 0
+                    results.append((identity, occurrence, original[2], original[3],
+                                    '(missing)', False, 'identity + context'))
+                if reproduced is not None:
+                    occurrence = 2 if original is not None else 0
+                    results.append((identity, occurrence, reproduced[2],
+                                    '(missing)', reproduced[3], False,
+                                    'identity + context'))
+            continue
 
-    matched = sum(1 for _, _, _, m in results if m)
+        original_contexts = [metric[1] for metric in original_metrics]
+        reproduced_contexts = [metric[1] for metric in reproduced_metrics]
+        if (len(set(original_contexts)) != len(original_contexts)
+                or len(set(reproduced_contexts)) != len(reproduced_contexts)):
+            ambiguities.append(
+                f'{identity}: duplicate identity lacks distinct stable context '
+                f'(original occurrences={len(original_metrics)}, '
+                f'reproduced occurrences={len(reproduced_metrics)})'
+            )
+            continue
+
+        original_by_context = {metric[1]: metric for metric in original_metrics}
+        reproduced_by_context = {metric[1]: metric for metric in reproduced_metrics}
+        contexts = list(dict.fromkeys(original_contexts + reproduced_contexts))
+        for occurrence, context in enumerate(contexts, start=1):
+            original = original_by_context.get(context)
+            reproduced = reproduced_by_context.get(context)
+            display = original[2] if original else reproduced[2]
+            original_value = original[3] if original else '(missing)'
+            reproduced_value = reproduced[3] if reproduced else '(missing)'
+            matched = (
+                original is not None
+                and reproduced is not None
+                and values_match(original_value, reproduced_value)
+            )
+            results.append((identity, occurrence, display, original_value,
+                            reproduced_value, matched, 'identity + context'))
+
+    matched = sum(1 for result in results if result[5])
     mismatched = len(results) - matched
-    return results, len(results), matched, mismatched
+    return results, len(results), matched, mismatched, ambiguities
 
 
 # ---------------------------------------------------------------------------
@@ -299,15 +416,18 @@ def compare_value_lists(orig_list, repro_list, is_float=False, rel_tol=1e-6):
 
 def format_report(orig_path, repro_path, orig_lines, repro_lines,
                   orig_found, repro_found):
-    """Build the full comparison report string."""
+    """Build the comparison report and return (report, base_verdict)."""
     output = []
     total_metrics = 0
     total_matches = 0
     total_mismatches = 0
+    total_ambiguities = 0
+    blocking_identity_ambiguities = 0
 
     output.append('=== Execution Log Comparison ===')
     output.append(f'Original:   {orig_path}')
     output.append(f'Reproduced: {repro_path}')
+    output.append('Scope: appended execution-log metrics only; output artifacts were not compared.')
     output.append('')
 
     if not orig_found:
@@ -320,25 +440,56 @@ def format_report(orig_path, repro_path, orig_lines, repro_lines,
         output.append('Metrics compared: 0')
         output.append('Matches: 0')
         output.append('Mismatches: 0')
+        output.append('Ambiguities: 0')
         output.append('Overall: INCOMPLETE (missing execution log)')
-        return '\n'.join(output)
+        return '\n'.join(output), 'INCOMPLETE'
 
     # --- Exit Codes ---
-    orig_exit = extract_exit_code(orig_lines)
-    repro_exit = extract_exit_code(repro_lines)
+    orig_exits = extract_exit_codes(orig_lines)
+    repro_exits = extract_exit_codes(repro_lines)
     output.append('--- Exit Codes ---')
-    output.append(f'Original:   {orig_exit if orig_exit is not None else "(not found)"}')
-    output.append(f'Reproduced: {repro_exit if repro_exit is not None else "(not found)"}')
-    if orig_exit is not None and repro_exit is not None:
-        match = orig_exit == repro_exit
-        output.append(f'Match: {"YES" if match else "NO"}')
-        total_metrics += 1
-        if match:
-            total_matches += 1
-        else:
-            total_mismatches += 1
+    if len(orig_exits) > 1 or len(repro_exits) > 1:
+        orig_occurrence_word = (
+            'occurrence' if len(orig_exits) == 1 else 'occurrences'
+        )
+        repro_occurrence_word = (
+            'occurrence' if len(repro_exits) == 1 else 'occurrences'
+        )
+        orig_display = (
+            f'{orig_exits} ({len(orig_exits)} {orig_occurrence_word})'
+            if orig_exits else '(not found)'
+        )
+        repro_display = (
+            f'{repro_exits} ({len(repro_exits)} {repro_occurrence_word})'
+            if repro_exits else '(not found)'
+        )
+        output.append(f'Original:   {orig_display}')
+        output.append(f'Reproduced: {repro_display}')
+        output.append(
+            'AMBIGUOUS: duplicate dedicated exit-code identity; '
+            'no occurrence was selected.'
+        )
+        total_ambiguities += 1
+        blocking_identity_ambiguities += 1
     else:
-        output.append('Match: N/A (exit code not found in one or both logs)')
+        orig_exit = orig_exits[0] if orig_exits else None
+        repro_exit = repro_exits[0] if repro_exits else None
+        output.append(
+            f'Original:   {orig_exit if orig_exit is not None else "(not found)"}'
+        )
+        output.append(
+            f'Reproduced: {repro_exit if repro_exit is not None else "(not found)"}'
+        )
+        if orig_exit is not None and repro_exit is not None:
+            match = orig_exit == repro_exit
+            output.append(f'Match: {"YES" if match else "NO"}')
+            total_metrics += 1
+            if match:
+                total_matches += 1
+            else:
+                total_mismatches += 1
+        else:
+            output.append('Match: N/A (exit code not found in one or both logs)')
     output.append('')
 
     # --- Row Counts ---
@@ -346,14 +497,19 @@ def format_report(orig_path, repro_path, orig_lines, repro_lines,
     repro_rows = extract_row_counts(repro_lines)
     output.append('--- Row Counts ---')
     if orig_rows or repro_rows:
-        results, n, m, mm = compare_value_lists(orig_rows, repro_rows)
-        for label, o_val, r_val, matched in results:
+        results, n, m, mm, ambiguities = compare_value_lists(orig_rows, repro_rows)
+        for identity, occurrence, label, o_val, r_val, matched, alignment in results:
             status = 'YES' if matched else 'NO'
-            output.append(f'  {label}')
+            suffix = f' [occurrence {occurrence}]' if occurrence else ''
+            output.append(f'  {label}{suffix}')
+            output.append(f'    Identity: {identity}; aligned by {alignment}')
             output.append(f'    Original: {o_val}  Reproduced: {r_val}  Match: {status}')
+        for ambiguity in ambiguities:
+            output.append(f'  AMBIGUOUS: {ambiguity}')
         total_metrics += n
         total_matches += m
         total_mismatches += mm
+        total_ambiguities += len(ambiguities)
     else:
         output.append('  (no row counts found)')
     output.append('')
@@ -363,14 +519,19 @@ def format_report(orig_path, repro_path, orig_lines, repro_lines,
     repro_cols = extract_column_counts(repro_lines)
     output.append('--- Column Counts ---')
     if orig_cols or repro_cols:
-        results, n, m, mm = compare_value_lists(orig_cols, repro_cols)
-        for label, o_val, r_val, matched in results:
+        results, n, m, mm, ambiguities = compare_value_lists(orig_cols, repro_cols)
+        for identity, occurrence, label, o_val, r_val, matched, alignment in results:
             status = 'YES' if matched else 'NO'
-            output.append(f'  {label}')
+            suffix = f' [occurrence {occurrence}]' if occurrence else ''
+            output.append(f'  {label}{suffix}')
+            output.append(f'    Identity: {identity}; aligned by {alignment}')
             output.append(f'    Original: {o_val}  Reproduced: {r_val}  Match: {status}')
+        for ambiguity in ambiguities:
+            output.append(f'  AMBIGUOUS: {ambiguity}')
         total_metrics += n
         total_matches += m
         total_mismatches += mm
+        total_ambiguities += len(ambiguities)
     else:
         output.append('  (no column counts found)')
     output.append('')
@@ -380,18 +541,56 @@ def format_report(orig_path, repro_path, orig_lines, repro_lines,
     repro_cps = extract_checkpoints(repro_lines)
     output.append('--- Checkpoints ---')
     if orig_cps or repro_cps:
-        # Match by checkpoint ID
-        orig_cp_dict = {cp_id: result for cp_id, result in orig_cps}
-        repro_cp_dict = {cp_id: result for cp_id, result in repro_cps}
+        orig_cp_groups = {}
+        repro_cp_groups = {}
+        for checkpoint_id, result in orig_cps:
+            orig_cp_groups.setdefault(checkpoint_id, []).append(result)
+        for checkpoint_id, result in repro_cps:
+            repro_cp_groups.setdefault(checkpoint_id, []).append(result)
         all_ids = list(dict.fromkeys(
             [cp_id for cp_id, _ in orig_cps] + [cp_id for cp_id, _ in repro_cps]
         ))
         for cp_id in all_ids:
-            o_result = orig_cp_dict.get(cp_id, '(not found)')
-            r_result = repro_cp_dict.get(cp_id, '(not found)')
-            matched = o_result == r_result
+            original_results = orig_cp_groups.get(cp_id, [])
+            reproduced_results = repro_cp_groups.get(cp_id, [])
+            if len(original_results) > 1 or len(reproduced_results) > 1:
+                original_occurrence_word = (
+                    'occurrence' if len(original_results) == 1 else 'occurrences'
+                )
+                reproduced_occurrence_word = (
+                    'occurrence' if len(reproduced_results) == 1 else 'occurrences'
+                )
+                original_display = (
+                    f'[{", ".join(original_results)}] '
+                    f'({len(original_results)} {original_occurrence_word})'
+                    if original_results else '(not found)'
+                )
+                reproduced_display = (
+                    f'[{", ".join(reproduced_results)}] '
+                    f'({len(reproduced_results)} {reproduced_occurrence_word})'
+                    if reproduced_results else '(not found)'
+                )
+                output.append(
+                    f'  {cp_id}: AMBIGUOUS duplicate checkpoint ID; '
+                    f'Original={original_display}; Reproduced={reproduced_display}; '
+                    'no occurrence was selected.'
+                )
+                total_ambiguities += 1
+                blocking_identity_ambiguities += 1
+                continue
+
+            original_result = (
+                original_results[0] if original_results else '(not found)'
+            )
+            reproduced_result = (
+                reproduced_results[0] if reproduced_results else '(not found)'
+            )
+            matched = original_result == reproduced_result
             status = 'YES' if matched else 'NO'
-            output.append(f'  {cp_id}: Original={o_result}  Reproduced={r_result}  Match: {status}')
+            output.append(
+                f'  {cp_id}: Original={original_result}  '
+                f'Reproduced={reproduced_result}  Match: {status}'
+            )
             total_metrics += 1
             if matched:
                 total_matches += 1
@@ -406,15 +605,24 @@ def format_report(orig_path, repro_path, orig_lines, repro_lines,
     repro_stats = extract_key_statistics(repro_lines)
     output.append('--- Key Statistics ---')
     if orig_stats or repro_stats:
-        results, n, m, mm = compare_value_lists(orig_stats, repro_stats,
-                                                 is_float=True, rel_tol=1e-6)
-        for label, o_val, r_val, matched in results:
+        results, n, m, mm, ambiguities = compare_value_lists(
+            orig_stats, repro_stats, is_float=True, rel_tol=1e-6,
+        )
+        for identity, occurrence, label, o_val, r_val, matched, alignment in results:
             status = 'YES' if matched else 'NO'
-            output.append(f'  {label}: Original={o_val}  Reproduced={r_val}  Within tolerance: {status}')
-        output.append(f'  Tolerance: 1e-6 relative')
+            suffix = f' [occurrence {occurrence}]' if occurrence else ''
+            output.append(
+                f'  {label}{suffix}: Original={o_val}  Reproduced={r_val}  '
+                f'Within tolerance: {status}'
+            )
+            output.append(f'    Aligned by: {alignment}; identity={identity}')
+        for ambiguity in ambiguities:
+            output.append(f'  AMBIGUOUS: {ambiguity}')
+        output.append('  Tolerance: 1e-6 relative')
         total_metrics += n
         total_matches += m
         total_mismatches += mm
+        total_ambiguities += len(ambiguities)
     else:
         output.append('  (no key statistics found)')
     output.append('')
@@ -471,15 +679,25 @@ def format_report(orig_path, repro_path, orig_lines, repro_lines,
     output.append(f'Metrics compared: {total_metrics}')
     output.append(f'Matches: {total_matches}')
     output.append(f'Mismatches: {total_mismatches}')
-    if total_metrics == 0:
-        verdict = 'INCONCLUSIVE (no comparable metrics found)'
-    elif total_mismatches == 0:
-        verdict = 'CONSISTENT'
-    else:
+    output.append(f'Ambiguities: {total_ambiguities}')
+    if blocking_identity_ambiguities > 0:
+        verdict = 'INCONCLUSIVE'
+        verdict_detail = 'INCONCLUSIVE (ambiguous duplicate exit/checkpoint identities)'
+    elif total_mismatches > 0:
         verdict = 'DIVERGED'
-    output.append(f'Overall: {verdict}')
+        verdict_detail = verdict
+    elif total_ambiguities > 0:
+        verdict = 'INCONCLUSIVE'
+        verdict_detail = 'INCONCLUSIVE (ambiguous duplicate metric identities)'
+    elif total_metrics == 0:
+        verdict = 'INCONCLUSIVE'
+        verdict_detail = 'INCONCLUSIVE (no comparable metrics found)'
+    else:
+        verdict = 'CONSISTENT'
+        verdict_detail = verdict
+    output.append(f'Overall: {verdict_detail}')
 
-    return '\n'.join(output)
+    return '\n'.join(output), verdict
 
 
 # ---------------------------------------------------------------------------
@@ -488,36 +706,68 @@ def format_report(orig_path, repro_path, orig_lines, repro_lines,
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Compare execution logs from two script files (original vs reproduced).'
+        description=(
+            'Compare normalized metrics printed into appended execution logs from '
+            'two .py or .R scripts. This compares log evidence only; it does not '
+            'compare output artifacts.'
+        ),
+        epilog=(
+            'Exit statuses:\n'
+            '  0=CONSISTENT; 1=DIVERGED;\n'
+            '  2=invalid invocation or input read/parse failure;\n'
+            '  3=INCOMPLETE or INCONCLUSIVE evidence.\n'
+            'A status of 0 describes execution-log metrics only, never artifact '
+            'equivalence.'
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument('original', help='Path to original script with execution log')
-    parser.add_argument('reproduced', help='Path to reproduced script with execution log')
+    parser.add_argument(
+        'original', help='Path to original .py or .R script with execution log',
+    )
+    parser.add_argument(
+        'reproduced', help='Path to reproduced .py or .R script with execution log',
+    )
     args = parser.parse_args()
 
     orig_path = Path(args.original)
     repro_path = Path(args.reproduced)
 
-    if not orig_path.exists():
-        print(f'Error: Original script not found: {orig_path}', file=sys.stderr)
-        sys.exit(1)
-    if not repro_path.exists():
-        print(f'Error: Reproduced script not found: {repro_path}', file=sys.stderr)
-        sys.exit(1)
+    if not orig_path.is_file():
+        print(f'Error: Original script is not a readable file: {orig_path}',
+              file=sys.stderr)
+        sys.exit(2)
+    if not repro_path.is_file():
+        print(f'Error: Reproduced script is not a readable file: {repro_path}',
+              file=sys.stderr)
+        sys.exit(2)
 
-    orig_lines, orig_found = extract_execution_log(orig_path)
-    repro_lines, repro_found = extract_execution_log(repro_path)
+    try:
+        orig_lines, orig_found = extract_execution_log(orig_path)
+    except (OSError, UnicodeError) as error:
+        print(f'Error: Could not read/parse original script {orig_path}: {error}',
+              file=sys.stderr)
+        sys.exit(2)
+    try:
+        repro_lines, repro_found = extract_execution_log(repro_path)
+    except (OSError, UnicodeError) as error:
+        print(f'Error: Could not read/parse reproduced script {repro_path}: {error}',
+              file=sys.stderr)
+        sys.exit(2)
 
-    report = format_report(
+    report, verdict = format_report(
         str(orig_path), str(repro_path),
         orig_lines, repro_lines,
         orig_found, repro_found,
     )
     print(report)
 
-    # Exit with code 1 if there are mismatches, 0 if consistent/inconclusive
-    # This lets callers use the exit code to detect divergence
-    if 'DIVERGED' in report.split('\n')[-1]:
-        sys.exit(1)
+    exit_statuses = {
+        'CONSISTENT': 0,
+        'DIVERGED': 1,
+        'INCOMPLETE': 3,
+        'INCONCLUSIVE': 3,
+    }
+    sys.exit(exit_statuses[verdict])
 
 
 if __name__ == '__main__':

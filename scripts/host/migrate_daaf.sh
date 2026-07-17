@@ -71,6 +71,7 @@ if [ "${DAAF_DRY_RUN:-}" = "1" ]; then
             *"inspect --format"*"State.Status"*) echo "running" ;;
             *"exec"*"true"*) return 0 ;;
             *"exec"*"test -f"*) return 0 ;;
+            *"exec"*"config"*"safe.directory"*) return 0 ;;
             *"exec"*"remote get-url"*"origin"*) echo "https://github.com/DAAF-Contribution-Community/daaf.git" ;;
             *"exec"*"fetch"*) return 0 ;;
             *"exec"*"branch --set-upstream"*) return 0 ;;
@@ -81,20 +82,13 @@ if [ "${DAAF_DRY_RUN:-}" = "1" ]; then
         esac
     }
     curl() {
-        # Parse -o flag to create empty target files so chmod +x succeeds
-        local outfile=""
-        local args=("$@")
-        local i
-        for (( i=0; i<${#args[@]}; i++ )); do
-            if [ "${args[$i]}" = "-o" ] && [ $((i+1)) -lt ${#args[@]} ]; then
-                outfile="${args[$((i+1))]}"
-                break
-            fi
-        done
-        if [ -n "${outfile}" ]; then
-            mkdir -p "$(dirname "${outfile}")"
-            touch "${outfile}"
-        fi
+        # Dry-run is fully non-writing: print the [DRY-RUN] line and succeed
+        # WITHOUT creating any files or directories. The former mock touched an
+        # empty stub for each -o target; combined with HOST_DIR resolving to
+        # $(pwd) when the CWD holds a docker-compose.yml, that leaked zero-byte
+        # stubs into the caller's directory (the 2026-07-14 root-stub incident).
+        # All downstream dry-run write sites (chmod, compose-update, nested
+        # backup) are gated below so the full flow still walks end-to-end.
         echo "[DRY-RUN] curl $*" >&2
         return 0
     }
@@ -263,7 +257,11 @@ if [ -f "docker-compose.yml" ]; then
 else
     HOST_DIR="$(pwd)/daaf-docker"
     echo "Will create host directory: ${HOST_DIR}"
-    mkdir -p "${HOST_DIR}"
+    if [ "${DAAF_DRY_RUN:-}" = "1" ]; then
+        echo "[DRY-RUN] Would create host directory: ${HOST_DIR}"
+    else
+        mkdir -p "${HOST_DIR}"
+    fi
 fi
 
 echo ""
@@ -280,7 +278,7 @@ echo "Downloading utility scripts from GitHub..."
 
 DOWNLOAD_FAILED=false
 
-for FILE in backup_daaf.sh restore_from_backup.sh rebuild_daaf.sh update_daaf.sh run_daaf.sh view_logs.sh view_notebooks.sh run_vscode.sh environment_settings_example.txt; do
+for FILE in daaf.sh daaf_lib.sh backup_daaf.sh restore_from_backup.sh rebuild_daaf.sh update_daaf.sh run_daaf.sh view_logs.sh view_notebooks.sh view_quarto.sh run_vscode.sh environment_settings_example.txt README.txt; do
     if curl -fsSL "${RAW_BASE}/scripts/host/${FILE}" -o "${HOST_DIR}/${FILE}"; then
         echo "  Downloaded: ${FILE}"
     else
@@ -318,23 +316,37 @@ if [ ! -f "${HOST_DIR}/docker-compose.yml" ]; then
         exit 1
     fi
 else
-    # Even if docker-compose.yml exists, update it so it has name: daaf
-    # (v1.0.0 installations may lack this)
-    if ! grep -q '^name: daaf' "${HOST_DIR}/docker-compose.yml"; then
+    # Even if docker-compose.yml exists, update it if it lacks a project-name
+    # declaration (v1.0.0 installations shipped without one). The predicate is
+    # "does the compose file already set a top-level `name:` key" -- matching
+    # any `^name: ` line. Both the legacy literal `name: daaf` and the current
+    # parameterized `name: ${DAAF_PROJECT_NAME:-daaf}` therefore count as
+    # up-to-date. The former `^name: daaf` anchor did NOT match the parameterized
+    # form, so a real migrate against a current install re-downloaded the compose
+    # file and wrote a docker-compose.yml.pre-migrate backup on every run.
+    if ! grep -q '^name: ' "${HOST_DIR}/docker-compose.yml"; then
         echo ""
         echo "  Updating docker-compose.yml to current version..."
-        cp "${HOST_DIR}/docker-compose.yml" "${HOST_DIR}/docker-compose.yml.pre-migrate"
-        if curl -fsSL "${RAW_BASE}/docker-compose.yml" -o "${HOST_DIR}/docker-compose.yml"; then
-            echo "  Updated: docker-compose.yml (old version saved as docker-compose.yml.pre-migrate)"
+        if [ "${DAAF_DRY_RUN:-}" = "1" ]; then
+            echo "  [DRY-RUN] Would update docker-compose.yml (backing up to docker-compose.yml.pre-migrate)"
         else
-            echo "  WARNING: Could not download updated docker-compose.yml. Restoring original."
-            mv "${HOST_DIR}/docker-compose.yml.pre-migrate" "${HOST_DIR}/docker-compose.yml"
+            cp "${HOST_DIR}/docker-compose.yml" "${HOST_DIR}/docker-compose.yml.pre-migrate"
+            if curl -fsSL "${RAW_BASE}/docker-compose.yml" -o "${HOST_DIR}/docker-compose.yml"; then
+                echo "  Updated: docker-compose.yml (old version saved as docker-compose.yml.pre-migrate)"
+            else
+                echo "  WARNING: Could not download updated docker-compose.yml. Restoring original."
+                mv "${HOST_DIR}/docker-compose.yml.pre-migrate" "${HOST_DIR}/docker-compose.yml"
+            fi
         fi
     fi
 fi
 
 # Make all .sh files executable
-chmod +x "${HOST_DIR}"/*.sh 2>/dev/null || true
+if [ "${DAAF_DRY_RUN:-}" = "1" ]; then
+    echo "[DRY-RUN] Would make host scripts executable (chmod +x ${HOST_DIR}/*.sh)"
+else
+    chmod +x "${HOST_DIR}"/*.sh 2>/dev/null || true
+fi
 
 echo ""
 echo "All scripts downloaded to: ${HOST_DIR}/"
@@ -351,11 +363,20 @@ echo "Before making any changes, a full backup of your DAAF volume will"
 echo "be created. This protects your research data and local history."
 echo ""
 
-ORIGINAL_DIR="$(pwd)"
-cd "${HOST_DIR}"
-DAAF_NESTED=1 bash backup_daaf.sh
-cd "${ORIGINAL_DIR}"
-BACKUP_COMPLETED=true
+if [ "${DAAF_DRY_RUN:-}" = "1" ]; then
+    # Dry-run creates nothing, so there is no downloaded backup_daaf.sh to run
+    # (the curl mock no longer writes stubs). Print the step and skip the nested
+    # call; keep BACKUP_COMPLETED=true so the rest of the dry-run flow matches
+    # the real path's post-backup state.
+    echo "[DRY-RUN] Would run backup_daaf.sh in ${HOST_DIR} to back up the Docker volume"
+    BACKUP_COMPLETED=true
+else
+    ORIGINAL_DIR="$(pwd)"
+    cd "${HOST_DIR}"
+    DAAF_NESTED=1 bash backup_daaf.sh
+    cd "${ORIGINAL_DIR}"
+    BACKUP_COMPLETED=true
+fi
 
 echo ""
 
@@ -470,6 +491,162 @@ echo "DAAF installation verified in container."
 echo ""
 
 # =====================================================================
+# 4b. GIT safe.directory EXEMPTION (before any in-container git op)
+# =====================================================================
+# Field evidence (round-5 v1.0.0 matrix field run, Mac + Windows, 2026-07-17):
+# the Era-1 (v1.0.0) volume payload at /daaf is root-owned (uid 0), but the
+# v1.0.0 image runs git as its non-root 'appuser'. Modern git (>= 2.35.2)
+# refuses to operate on a repository owned by a different uid than the process
+# running git, emitting:
+#     fatal: detected dubious ownership in repository at '/daaf'
+# Without an exemption EVERY in-container git operation below (era detection,
+# fetch, graft, tracking) returns empty -- container_git swallows stderr, so the
+# failure was previously silent and a real v1.0.0 user could not migrate at all.
+#
+# SCOPE DECISION (flagged): a SINGLE, early, well-guarded config-add here --
+# before the first in-container git operation (the era-detection probe below) --
+# rather than an Era-1-only fix. Justification from this file: the exec user, the
+# ${CONTAINER_NAME} container, and the /daaf path are identical across all era
+# branches (every downstream git site runs as the same container user via
+# docker exec, whether container_git, container_git_verbose, or
+# container_exec sh -c 'cd /daaf && git ...'), so one global exemption for that
+# user covers Era 1, Era 2, and Era 3 uniformly. It is harmless where unnecessary
+# (Era-2/3 payloads already owned by the exec user): git would have permitted
+# those repos anyway, so an extra allowed directory is a no-op and cannot regress
+# the currently-passing v2.x vectors. The get-all guard keeps it idempotent
+# across re-runs (migrate advertises itself as safe to re-run) -- no duplicate
+# safe.directory line is appended on a second run.
+echo "-------------------------------------------"
+echo "  Git safe.directory exemption"
+echo "-------------------------------------------"
+echo ""
+echo "Allowing git to operate on /daaf inside the container..."
+
+# Capture-then-test (conventions lint 9: never pipe a LIVE command into grep -q;
+# echo of an already-captured value is the sanctioned form). git config exits 1
+# when the key is unset, so tolerate that with || true.
+SAFE_DIR_EXISTING=$(container_exec git config --global --get-all safe.directory 2>/dev/null | tr -d '\r' || true)
+if echo "${SAFE_DIR_EXISTING}" | grep -qx '/daaf'; then
+    echo "  Already configured (safe.directory already lists /daaf)."
+else
+    # container_exec (unlike container_git) lets stderr through, so a genuine
+    # config-add failure is visible rather than swallowed.
+    if container_exec git config --global --add safe.directory /daaf; then
+        echo "  Configured: safe.directory -> /daaf"
+    else
+        echo ""
+        echo "ERROR: Could not configure the git safe.directory exemption for /daaf"
+        echo "inside the container."
+        echo ""
+        echo "Modern git refuses to operate on a repository owned by a different user"
+        echo "than the one running git, unless /daaf is listed as a safe.directory."
+        echo "Every git step below would otherwise fail silently, so the migration"
+        echo "cannot proceed until this is resolved."
+        echo ""
+        echo "This usually means the container's git user has no writable home"
+        echo "directory. Try restarting Docker Desktop, then re-run:  bash migrate_daaf.sh"
+        exit 1
+    fi
+fi
+
+echo ""
+
+# =====================================================================
+# 4c. VOLUME OWNERSHIP REPAIR (daaf-init parity, before any git write)
+# =====================================================================
+# Field evidence (round-6 v1.0.0 matrix field run, Mac + Windows, 2026-07-17):
+# the documented v1.0.0 install copied the repo into the volume with
+# `busybox cp -a`, which preserves the bind mount's presented owner -- root
+# (uid 0) on Docker Desktop -- and the v1.0.0 compose has NO ownership repair
+# (the daaf-init chown service only appeared in v2.0.0, whose compose comment
+# names this exact defect: "Docker named volumes may have files owned by root
+# or the host UID ... which blocks appuser from reading/writing"). The v1.0.0
+# container runs as non-root appuser (uid 1000) with cap_drop ALL, so on
+# Era-1 installs every in-container WRITE below fails with EPERM: git fetch
+# (objects, FETCH_HEAD), set-upstream (.git/config), and the driven update's
+# merge. The section-4b safe.directory exemption above cures git's
+# dubious-ownership REFUSAL (a read-side symptom) but not writability -- both
+# symptoms flow from the same ownership defect.
+#
+# Fix: run the exact repair the modern compose applies on every startup
+# (daaf-init: chown -R 1000:1000), via the same busybox image the documented
+# era installs already used. Idempotent and harmless where ownership is
+# already correct: Era-2/3 payloads were repaired by their own compose's
+# daaf-init at startup, so this is a no-op there and cannot regress the
+# passing v2.x paths. uid/gid 1000 is hardcoded exactly as production's
+# daaf-init hardcodes it (every era Dockerfile creates appuser as 1000:1000).
+#
+# Failure policy: warn-and-continue. On Era 2/3 a failed chown is irrelevant
+# (ownership already correct); on Era 1 the git steps below then fail loudly
+# WITH this diagnosis already printed -- strictly better than the prior
+# silent EPERM behavior.
+echo "-------------------------------------------"
+echo "  Volume ownership repair"
+echo "-------------------------------------------"
+echo ""
+echo "Repairing /daaf ownership for the container user (uid 1000)..."
+if docker run --rm -v "${VOLUME_NAME}:/daaf" busybox chown -R 1000:1000 /daaf; then
+    echo "  Ownership repaired: ${VOLUME_NAME} -> 1000:1000 (daaf-init parity)"
+else
+    echo ""
+    echo "WARNING: Could not repair ownership of the DAAF volume (${VOLUME_NAME})."
+    echo "On a v1.0.0-era installation the volume payload is typically owned by"
+    echo "root, which blocks the container's non-root user from writing -- the"
+    echo "git steps below may fail. Newer installations already have correct"
+    echo "ownership (their compose repairs it on every startup), so this warning"
+    echo "is harmless there. Continuing..."
+fi
+
+echo ""
+
+# =====================================================================
+# 4d. GIT IDENTITY (era parity, before any commit-creating git op)
+# =====================================================================
+# Round-6b field evidence (v1.0.0 single-vector runs, Mac + Windows,
+# 2026-07-17): the v1.0.0 image provisions NO git identity (no entrypoint;
+# its Dockerfile installs git bare), while every later era provisions the
+# same one -- the v2.0.x/v2.1.0 entrypoint sets it repo-local on startup
+# (git -C /daaf config user.email "daaf@local" / user.name "DAAF Container",
+# quoted from the v2.0.1 entrypoint) and the modern Dockerfile bakes it
+# globally. Without an identity, git REFUSES commit-creating operations
+# ("Please tell me who you are" / "unable to auto-detect email address"),
+# so on a migrated-but-not-yet-rebuilt v1.0.0 container the offered
+# update's stash/merge machinery would fail. Guarded: identity is set ONLY
+# when user.email resolves empty (repo-local and global alike) -- a real
+# user's own identity is NEVER overwritten. The set is repo-local (inside
+# the volume) so it survives the container rebuild, exactly like the
+# entrypoint-provisioned identity it mirrors.
+#
+# Failure policy: warn-and-continue, mirroring section 4c -- unnecessary
+# wherever an identity already exists, and a genuine failure then surfaces
+# loudly at the update step WITH this diagnosis already printed.
+echo "-------------------------------------------"
+echo "  Git identity (era parity)"
+echo "-------------------------------------------"
+echo ""
+echo "Checking for a git identity in /daaf..."
+# Capture-then-test (lint 9); git config exits 1 when unset -- tolerate.
+GIT_EMAIL_EXISTING=$(container_exec git -C /daaf config user.email 2>/dev/null | tr -d '\r' || true)
+if [ -n "${GIT_EMAIL_EXISTING}" ]; then
+    echo "  Already configured (user.email: ${GIT_EMAIL_EXISTING})."
+else
+    if container_exec git -C /daaf config user.email "daaf@local" \
+       && container_exec git -C /daaf config user.name "DAAF Container"; then
+        echo "  Configured: repo-local git identity (daaf@local / DAAF Container)"
+    else
+        echo ""
+        echo "WARNING: Could not configure a git identity in /daaf. The v1.0.0 era"
+        echo "never provisioned one, and git refuses to create commits (including"
+        echo "the update's stash/merge) without it. If a later step fails with"
+        echo "'Please tell me who you are', configure one and re-run:"
+        echo "  docker exec <container> git -C /daaf config user.email daaf@local"
+        echo "Continuing..."
+    fi
+fi
+
+echo ""
+
+# =====================================================================
 # 5. DETECT ERA
 # =====================================================================
 echo "-------------------------------------------"
@@ -526,8 +703,23 @@ if [ "${DETECTED_ERA}" = "1" ]; then
         exit 1
     fi
 
-    # Ensure tracking is set up
-    container_git branch --set-upstream-to=origin/main main 2>/dev/null || true
+    # Ensure tracking is set up. Best-effort: a missing local 'main' branch is
+    # non-fatal. Run under container_git_verbose (matching the checked-git idiom
+    # used for fetch/graft in this file) so a real failure is both surfaced to the
+    # user AND reported honestly, instead of swallowed by `2>/dev/null || true`
+    # while an unconditional success line lies about it.
+    if container_git_verbose branch --set-upstream-to=origin/main main; then
+        echo "Tracking set: main -> origin/main"
+    else
+        # Diagnose WHICH precondition failed so the note tells the truth
+        # (field run 4, 2026-07-17: tag-pinned/single-branch installs lack the
+        # origin/main remote-tracking ref, but this note blamed the local branch).
+        if container_exec git -C /daaf rev-parse --verify --quiet refs/remotes/origin/main >/dev/null 2>&1; then
+            echo "NOTE: Could not set upstream tracking (no local 'main' branch on this install)."
+        else
+            echo "NOTE: Could not set upstream tracking (no 'origin/main' remote-tracking ref on this install -- e.g. a single-branch or tag-pinned clone)."
+        fi
+    fi
 
     # --- For fork users: add upstream remote for official updates ---
     if [ "${IS_FORK}" = true ]; then
@@ -640,11 +832,48 @@ else
     fi
 
     # --- Check if graft is already in place (idempotent) ---
-    INITIAL_PARENT_COUNT=$(container_git_verbose cat-file -p "${INITIAL_COMMIT}" | grep -c '^parent ' || true)
-    INITIAL_PARENT_COUNT="${INITIAL_PARENT_COUNT:-0}"
+    # Three-leg probe (replace-first, shallow-guarded). The naive
+    # `rev-list --max-parents=0 | cat-file | grep -c '^parent '` detector is
+    # unreliable: after a prior graft, rev-list walks THROUGH the replace ref to
+    # upstream's genuine parentless root (parent count 0 -> false "no graft yet" ->
+    # redundant re-graft); on a shallow clone, rev-list returns the shallow
+    # boundary commit whose object still lists parents (false "graft in place" ->
+    # graft skipped). The migrate twins are the only creators of git replace refs
+    # in a DAAF volume, so a replace ref's existence is a sound "already grafted"
+    # marker that sidesteps both failure modes.
+    #
+    # Leg 1 (replace): capture `git replace -l` and test the captured value. Do
+    # NOT pipe a live `git ... | grep -q` -- grep -q exits on first match, the
+    # upstream git dies of SIGPIPE, and `set -o pipefail` inverts the result.
+    EXISTING_REPLACE_REFS=$(container_git_verbose replace -l || true)
+    # Leg 2 (shallow): a shallow clone's boundary-commit parents are untrustworthy.
+    IS_SHALLOW=$(container_git_verbose rev-parse --is-shallow-repository || true)
 
-    if [ "${INITIAL_PARENT_COUNT}" -gt 0 ]; then
-        echo "History graft already in place (root commit has a parent)."
+    GRAFT_IN_PLACE=false
+    GRAFT_SKIP_REASON=""
+    if [ -n "${EXISTING_REPLACE_REFS}" ]; then
+        # Leg 1: a replace ref exists -> a prior migrate already grafted.
+        GRAFT_IN_PLACE=true
+        GRAFT_SKIP_REASON="replace ref present"
+    elif [ "${IS_SHALLOW}" = "true" ]; then
+        # Leg 2: do not trust boundary-commit parents on a shallow clone; fall
+        # through to the match/graft path (attempting a graft is idempotent-safe).
+        echo "NOTE: Repository is a shallow clone -- boundary-commit parent counts"
+        echo "      are unreliable, so proceeding to the match/graft path."
+        echo ""
+    else
+        # Leg 3 (fallback): full, un-replaced repo -- the parent-count check on the
+        # true root commit is correct here.
+        INITIAL_PARENT_COUNT=$(container_git_verbose cat-file -p "${INITIAL_COMMIT}" | grep -c '^parent ' || true)
+        INITIAL_PARENT_COUNT="${INITIAL_PARENT_COUNT:-0}"
+        if [ "${INITIAL_PARENT_COUNT}" -gt 0 ]; then
+            GRAFT_IN_PLACE=true
+            GRAFT_SKIP_REASON="root commit has a parent"
+        fi
+    fi
+
+    if [ "${GRAFT_IN_PLACE}" = true ]; then
+        echo "History graft already in place (${GRAFT_SKIP_REASON})."
         echo "Skipping graft step (previous migration completed successfully)."
         echo ""
     else
@@ -910,9 +1139,23 @@ else
     fi
 
     # --- Set upstream tracking ---
+    # Best-effort: a missing local 'main' branch is non-fatal. Run under
+    # container_git_verbose and branch on the result so the success line prints
+    # ONLY when the upstream was actually set -- the former unconditional message
+    # lied whenever the underlying set-upstream silently failed.
     echo "Setting upstream tracking branch..."
-    container_git branch --set-upstream-to=origin/main main 2>/dev/null || true
-    echo "Tracking set: main -> origin/main"
+    if container_git_verbose branch --set-upstream-to=origin/main main; then
+        echo "Tracking set: main -> origin/main"
+    else
+        # Diagnose WHICH precondition failed so the note tells the truth
+        # (field run 4, 2026-07-17: tag-pinned/single-branch installs lack the
+        # origin/main remote-tracking ref, but this note blamed the local branch).
+        if container_exec git -C /daaf rev-parse --verify --quiet refs/remotes/origin/main >/dev/null 2>&1; then
+            echo "NOTE: Could not set upstream tracking (no local 'main' branch on this install)."
+        else
+            echo "NOTE: Could not set upstream tracking (no 'origin/main' remote-tracking ref on this install -- e.g. a single-branch or tag-pinned clone)."
+        fi
+    fi
     echo ""
 
     echo "Migration complete. Your local history is now connected to the"
@@ -995,11 +1238,13 @@ echo "  cd ${HOST_DIR}"
 echo "  bash update_daaf.sh"
 echo ""
 echo "Other available scripts:"
-echo "  bash run_daaf.sh               Launch Claude Code"
+echo "  bash daaf.sh                    DAAF Control Panel (recommended)"
+echo "  bash run_daaf.sh               Launch Claude Code directly"
 echo "  bash backup_daaf.sh            Back up the Docker volume"
 echo "  bash restore_from_backup.sh    Restore from a backup"
 echo "  bash rebuild_daaf.sh           Rebuild the Docker image"
 echo "  bash view_logs.sh              Browse session logs"
 echo "  bash view_notebooks.sh         Browse and edit marimo notebooks"
+echo "  bash view_quarto.sh            Render and view Quarto notebooks in your browser"
 echo "  bash run_vscode.sh             Open VS Code in your browser (code-server)"
 echo ""

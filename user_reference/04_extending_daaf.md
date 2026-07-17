@@ -15,8 +15,8 @@ This guide focuses on the primary extension path: bringing new datasets, data do
 - [**Step-by-Step: Authoring Other Types of New Skills**](#step-by-step-authoring-other-types-of-new-skills)
 - [**Adding a New Agent**](#adding-a-new-agent)
 - [**Testing Your New Extension End-to-End**](#testing-your-new-extension-end-to-end)
-- [**Submitting Your Extension for Inclusion**](#submitting-your-extension-for-inclusion)
-- [**Customizing Your Python Environment**](#customizing-your-python-environment)
+- [**Submitting Your Extension for Inclusion (Optional)**](#submitting-your-extension-for-inclusion-optional)
+- [**Customizing Your Python and R Environment**](#customizing-your-python-and-r-environment)
 - [**Recommended Next Steps**](#recommended-next-steps)
 
 ---
@@ -38,10 +38,10 @@ This separation is what makes DAAF extensible without being fragile. When you wa
 | Extension Type | What You're Adding | Tool to Use | Result |
 |----------------|-------------------|-------------|--------|
 | **Data source** | Knowledge about a specific dataset | Data Onboarding Mode | A new `data-source-skill` |
-| **Methodology** | Knowledge about a statistical or analytical method | `skill-authoring` skill | A new `methodology-skill` |
-| **Domain expertise** | Knowledge about a content area or field | `skill-authoring` skill | A new `context-skill` |
+| **Methodology** | Knowledge about a statistical or analytical method | Framework Development Mode | A new `methodology-skill` |
+| **Domain expertise** | Knowledge about a content area or field | Framework Development Mode | A new `context-skill` |
 
-The most common extension path by far -- and the one I'll spend the most time on in this guide -- is adding new data sources. DAAF has a dedicated engagement mode for this purpose: **Data Onboarding Mode**, which orchestrates a thorough profiling protocol and generates the skill documentation for you. You still need to review its output (this is *always* true with DAAF), but it should dramatically reduce the manual effort involved.
+The most common extension path by far -- and the one I'll spend the most time on in this guide -- is adding new data sources. DAAF has a dedicated engagement mode for this purpose: **Data Onboarding Mode**, which orchestrates a thorough profiling protocol and generates the skill documentation for you. You still need to review its output (this is *always* true with DAAF), but it produces a more systematic and thorough profile than is practical to create by hand -- including cross-checks that are valuable but tedious to do manually.
 
 For methodology and domain expertise skills, the process is lighter-weight -- you ask DAAF to use the `skill-authoring` skill, point it at documentation or literature to research, and it drafts a skill for you to review and refine. I'll cover that process too, but it's more straightforward than data onboarding.
 
@@ -53,7 +53,7 @@ Data Onboarding Mode is DAAF's built-in workflow for turning a raw dataset (or o
 
 You'll need:
 
-1. **A data file or API access** — either a data file in a supported format (parquet, CSV, Excel, or TSV) or access to an API that serves the data (see "Onboarding Data from an API" below). Public data sources are strongly preferred. If you're working with proprietary or sensitive data, please be *extremely* careful to abide by your organization's AI policy and data protection standards -- Claude will be examining the actual contents of the data.
+1. **A data file or API access** — either a data file in a supported format (parquet, CSV, Excel, or TSV) or access to an API that serves the data (see "Onboarding Data from an API" below). Public data sources are strongly preferred. If you're working with proprietary or sensitive data, please be *extremely* careful to abide by your organization's AI policy and data protection standards -- Claude will be examining the actual contents of the data. And if the data genuinely can't leave your secure environment, you don't have to give up on onboarding it: DAAF has a dedicated privacy-preserving path -- the **synthetic-data protocol** -- where the raw data never enters the container at all. You profile it locally, and DAAF builds a synthetic stand-in from a summary report alone. See [Can I use DAAF with data that can't leave my secure environment?](07_faq_technical.md#q-can-i-use-daaf-with-data-that-cant-leave-my-secure-environment) for how it works.
 2. **Any available documentation** -- codebooks, data dictionaries, README files, or documentation website URLs. These aren't strictly required, but they dramatically improve the quality of the resulting skill because the agent can cross-reference what the documentation *says* against what the data *actually shows*.
 3. **A sense of how the data will be used** -- what research questions it might inform, what domain it belongs to, and which columns are most important for your purposes.
 
@@ -133,7 +133,7 @@ enrollment counts, and state identifiers.
 
 DAAF will classify this as a Data Onboarding request, set up a research project folder, and execute a systematic profiling protocol (up to 11 scripts, depending on your data's characteristics). The profiling runs across 4 sub-phases:
 
-**Phase 1 -- Structural Discovery:** Basic shape of the data (rows, columns, memory footprint, column types) and initial column-level profiling. This gives the agent a bird's-eye view of what it's working with, including null rates, unique value counts, and basic distributions.
+**Phase 1 -- Structural Discovery:** Basic shape of the data (rows, columns, memory footprint, column types) and initial column-level profiling. This gives the agent a bird's-eye view of what it's working with, including null rates, unique value counts, and basic distributions. It also identifies row-unique columns and columns suitable for linking to other datasets.
 
 **Phase 2 -- Statistical Deep Dive:** Detailed statistics for every column -- full distribution analysis for numeric columns, category enumeration for categorical columns, temporal pattern analysis, and outlier detection. If your data has date/year columns or geographic identifiers, this phase also analyzes temporal coverage gaps and entity coverage against known universes.
 
@@ -165,14 +165,15 @@ Once you've provided your feedback, the agent uses your corrections to finalize 
 
 ### Methodology Skills (via Skill-Authoring)
 
-For adding knowledge about a statistical method, Python library, or analytical technique, you'll use the `skill-authoring` skill directly. This is more free-form than data onboarding, and the content depends heavily on what you're documenting. You may find it helpful to refer DAAF to other standard skills this one will be most like. Python library? Try referencing the `plotnine` or `polars` skills. Wanting to do something more methodological in nature? Try pointing it to the `data-scientist` skill. And so on. My hope is that as the community continues to extend DAAF in a few directions, we'll have plenty of exemplars to point to.
+For adding knowledge about a statistical method, library, or analytical technique, you'll use the `skill-authoring` skill directly. This is more free-form than data onboarding, and the content depends heavily on what you're documenting. You may find it helpful to refer DAAF to other standard skills this one will be most like. Python library? Try referencing the `plotnine` or `polars` skills. R library? Try referencing the `ggplot2` or `tidyverse` skills. Wanting to do something more methodological in nature? Try pointing it to the `data-scientist` skill. And so on. My hope is that as the community continues to extend DAAF in a few directions, we'll have plenty of exemplars to point to.
 
 Ask DAAF something like:
 
 ```
 I'd like to create a new methodology skill for pyfixest
-(fixed-effects regression in Python). Please use the
-skill-authoring skill to guide the process, and research
+(fixed-effects regression in Python). Please use Framework
+Development Mode and the skill-authoring skill to guide the
+process, and research
 the pyfixest documentation online to build a comprehensive
 reference. You might refer to the `polars` skill as a model
 for some of what it could look like. Please run some initial
@@ -182,7 +183,7 @@ approval.
 
 DAAF will use the `skill-authoring` skill to guide the process. The skill-authoring skill provides detailed guidance on:
 
-- **Frontmatter requirements:** The YAML header that every skill needs, including naming conventions (lowercase-hyphenated, 1-64 chars) and description best practices
+- **Frontmatter requirements:** The YAML header that every skill needs, including naming conventions (lowercase-hyphenated, 1-64 chars) and description best practices (up to 1,024 characters)
 - **Body structure patterns:** Different organizing patterns depending on whether the skill is workflow-based (sequential steps), task-based (tool collection), reference-based (standards/specs), or capabilities-based (features)
 - **Progressive disclosure:** How to keep the main SKILL.md under 500 lines by splitting detailed content into `references/` files
 - **Decision trees:** How to write effective navigation trees that help agents find what they need quickly
@@ -198,8 +199,9 @@ Same process as methodology skills, but the content focuses on domain knowledge 
 I'd like to create a context skill for understanding Community
 Eligibility Provision (CEP) and its impact on free/reduced-price
 lunch data. This is critical context for anyone analyzing school
-poverty measures after 2014. Please use the skill-authoring skill
-and launch a few web searching subagents to research this topic
+poverty measures after 2014. Please use Framework Development Mode
+and the skill-authoring skill, and launch a few web searching
+subagents to research this topic
 in depth before coming up with a plan for my approval.
 ```
 
@@ -225,9 +227,9 @@ Ask DAAF to use the `agent-authoring` skill:
 I need to create a new agent for [describe the behavioral role]. I'd
 like this to be an agent focused on [x, y, z], and likely should be 
 involved in doing [a, b, c] at [specific part of the research process].
-Please use the agent-authoring skill to guide me through the process,
-and let me know what more detail would be useful to make sure this is
-successful.
+Please use Framework Development Mode and the agent-authoring skill to
+guide me through the process, and let me know what more detail would be
+useful to make sure this is successful.
 ```
 
 The workflow has five phases:
@@ -329,7 +331,8 @@ Check that DAAF references your skill's guidance -- the correct function calls, 
 
 ---
 
-## Submitting Your Extension for Inclusion
+## Submitting Your Extension for Inclusion (Optional)
+Everything above works entirely locally -- extensions don't require sharing, and you never have to submit anything to use your own custom skills, agents, or data sources. That said, if you think your extension would help others:
 
 If you've created a useful skill or agent and want to share it with the broader DAAF community -- please do! The whole point of this being open-source is that the framework gets better as more people contribute their domain expertise. A skill you create for, say, health survey data or labor market statistics could save someone else weeks of profiling work.
 
@@ -358,11 +361,11 @@ To share learnings with the broader community, [open an issue](https://github.co
 
 ---
 
-## Customizing Your Python Environment
+## Customizing Your Python and R Environment
 
-DAAF ships with a comprehensive Python data science stack (50+ packages covering statistics, econometrics, geospatial analysis, machine learning, visualization, and more). But research is unpredictable -- you may need a package we didn't anticipate. This section covers how to add Python packages, system-level libraries, and other software to your DAAF environment.
+DAAF ships with a comprehensive Python data science stack (50+ packages covering statistics, econometrics, geospatial analysis, machine learning, visualization, and more), plus a full R environment with 11 library skills covering data manipulation, visualization, econometrics, spatial analysis, machine learning, and more. But research is unpredictable -- you may need a package we didn't anticipate. This section covers how to add Python packages, R packages, system-level libraries, and other software to your DAAF environment. The Python instructions come first, followed by [R Packages](#r-packages) at the end of this section.
 
-### The Recommended Path: Modify the Dockerfile
+### The Recommended Path: Modify the Dockerfile (Python)
 
 The best way to add packages is to ask DAAF to edit the `Dockerfile` and then rebuild the container. This is a multi-step process and involves one step that's easy to miss, so the rest of this section walks through the whole thing carefully.
 
@@ -385,6 +388,8 @@ The two files start out identical, but they can drift apart as soon as either si
 
 **The fix is simple but easy to forget:** after DAAF edits the in-container Dockerfile (or docker-compose.yml), you need to copy that updated file back to the host build directory *before* running the container rebuild. The step-by-step process below walks through this carefully, and you should follow it exactly the first time.
 
+> **One structural note before you edit:** DAAF's image defines a custom `ENTRYPOINT` (`daaf-entrypoint.sh`, written inline by a heredoc block near the end of the Dockerfile — there is no separate source file). It runs optional startup tasks -- such as auto-launching the OpenAI provider shim when `DAAF_PROVIDER_SHIM` is configured (see the [installation guide's Option F](01_installation_and_quickstart.md#option-f-openai-api-directly-daaf-provider-shim)) -- and then hands control to the normal `CMD ["bash"]`. Adding packages or changing `CMD` is safe, but adding a second `ENTRYPOINT` line would silently replace this wrapper and disable those startup behaviors. The heredoc's comment block explains exactly what it does.
+
 #### Step-by-Step Process
 
 **1. Ask DAAF to edit the Dockerfile.** Inside your DAAF session, ask Claude to add your package. For example:
@@ -394,9 +399,31 @@ I'd like to add networkx==3.4.2 to the Dockerfile so I can use
 it for graph analysis. Please add it to the appropriate block.
 ```
 
-DAAF will recognize this as a Framework Development task and pause for your approval before modifying the Dockerfile (modifying the Dockerfile is one of DAAF's "ask first" boundaries -- it never edits this file silently). You'll see exactly which block DAAF wants to add the package to and the version pin it's proposing. You can approve the change, adjust it, or ask DAAF to verify version compatibility against the existing pinned packages first -- a `uv pip compile` dry-run is a good safety check before committing to a rebuild, especially for packages with many transitive dependencies.
+DAAF will recognize this as a Framework Development task and pause for your approval before modifying the Dockerfile (modifying the Dockerfile is one of DAAF's "ask first" boundaries -- it never edits this file silently). You'll see exactly where DAAF wants to add the package and the version pin it's proposing. You can approve the change, adjust it, or ask DAAF to verify version compatibility against the existing pinned packages first -- a `uv pip compile` dry-run is a good safety check before committing to a rebuild, especially for packages with many transitive dependencies.
 
-The Dockerfile organizes Python packages into several `RUN uv pip install --system` blocks with comment headers describing each category (core data science, econometrics, geospatial, visualization, ML). DAAF will pick the most appropriate block. Here's what the resulting block might look like for the `networkx` example:
+**Where the package goes — and why it matters for rebuild speed.** DAAF's default is to add your package to the **user additions block** near the *end* of the Dockerfile — a clearly marked section (the banner reads `USER ADDITIONS — add your own packages and tools here`) that exists specifically for your own software. The reason is Docker **layer caching**: Docker rebuilds each layer only when that layer (or something above it) changes, and it reuses everything else from cache. The user additions block sits below every expensive framework layer -- the system libraries, the large R package stack, the Python install blocks, the editor extensions -- so adding a package there invalidates essentially nothing downstream — the rebuild takes only as long as installing your package itself, typically seconds to a couple of minutes. If instead you append your package to one of the mid-file categorized blocks (see below), every expensive layer *underneath* that block has to re-run, which can turn a quick rebuild into a many-minute one.
+
+Here's what a `networkx` addition looks like in the user additions block — you (or DAAF) uncomment the `uv pip install --system` example and add your package:
+
+```dockerfile
+# ============================================
+# USER ADDITIONS — add your own packages and tools here
+# ============================================
+# ... (explanatory comments) ...
+USER root
+RUN uv pip install --system \
+    networkx==3.4.2
+USER appuser
+```
+
+The `USER root` / `USER appuser` pair is important: the block ships with those lines commented out (so an unused block is zero-cost), and you uncomment `USER root` to run a system-wide install, then `USER appuser` to restore the non-root runtime user DAAF's security posture depends on. DAAF handles this framing for you.
+
+**When mid-file placement is the right call instead.** The user additions block is a convenience default, not an absolute rule -- functionality always wins. A few cases genuinely belong in the mid-file categorized blocks (or the apt-get blocks up top):
+
+- A **system library that a framework package needs at build time** must be installed *before* that package's install block -- see [Adding System-Level Dependencies](#adding-system-level-dependencies) below.
+- An **R package you want covered by the framework's install-verification presence gate** belongs with the framework R blocks (the gate only checks packages listed there) -- see [R Packages](#r-packages) below.
+
+For these cases DAAF will propose the correct mid-file location and explain why. The Dockerfile organizes Python packages into several `RUN uv pip install --system` blocks with comment headers describing each category (core data science, econometrics, geospatial, visualization, ML); a mid-file addition to the core block would look like:
 
 ```dockerfile
 # Install core data science packages
@@ -430,11 +457,11 @@ bash rebuild_daaf.sh         # macOS / Linux
 .\rebuild_daaf.ps1           # Windows
 ```
 
-The rebuild script handles the tricky part automatically: it copies the updated Dockerfile and docker-compose.yml from inside the container back to your host build directory (where `docker compose` reads them), then rebuilds the Docker image. Docker uses **layer caching**, so only the changed layers are rebuilt -- you'll see the new package being downloaded and installed in the build output.
+The rebuild script handles the tricky part automatically: it copies the updated Dockerfile and docker-compose.yml from inside the container back to your host build directory (where `docker compose` reads them), then rebuilds the Docker image. Docker uses **layer caching**, so only the changed layers (and anything below them) are rebuilt. This is exactly why the **user additions block** near the end of the Dockerfile is the recommended default location: because nothing downstream depends on it, a package added there is the *only* thing rebuilt, and you'll see just the new package being downloaded and installed -- the build takes only as long as that install, typically seconds to a couple of minutes. A package added to a mid-file block, by contrast, forces every expensive layer below it to rebuild too.
 
 **Why is this step needed?** The Dockerfile lives in two places -- inside the Docker volume (where DAAF just edited it) and in your `daaf-docker/` folder on your computer (where `docker compose` reads it for builds). The rebuild script bridges this gap so the two copies stay in sync.
 
-**3. Re-enter the container and verify.** After the rebuild completes, re-enter the container and confirm the package is available:
+**3. Re-enter the container and verify.** After the rebuild completes, re-enter the container and confirm the package is available. You can open a container shell from the **DAAF Control Panel** (`bash daaf.sh` / `.\daaf.ps1` → **6) Open Terminal in Container**), or run the command directly:
 
 ```bash
 bash run_daaf.sh bash        # macOS / Linux
@@ -451,11 +478,11 @@ If you'd rather run the individual commands instead of using the rebuild script:
 
 ```bash
 cd daaf-docker
-docker cp daaf-daaf-docker-1:/daaf/Dockerfile ./Dockerfile
+docker compose cp daaf-docker:/daaf/Dockerfile ./Dockerfile
 docker compose up -d --build
 ```
 
-The copy step must come **before** the rebuild. You can also copy via Docker Desktop's GUI: Containers → expand `daaf` → click `daaf-daaf-docker-1` → Files tab → navigate to `/daaf/Dockerfile` → right-click → Save, and overwrite the host copy.
+The copy step must come **before** the rebuild. Using `docker compose cp` (rather than `docker cp` with a literal container name) means the command works no matter what your compose project is named -- including a second instance with a custom `DAAF_PROJECT_NAME`. You can also copy via Docker Desktop's GUI: Containers → expand your DAAF project → click the `daaf-docker` container → Files tab → navigate to `/daaf/Dockerfile` → right-click → Save, and overwrite the host copy.
 </details>
 
 ### Adding System-Level Dependencies
@@ -483,13 +510,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 **2. Add the Python package** to the appropriate `RUN uv pip install --system` block (as described above).
 
+**A note on rebuild time for system libraries.** Unlike a standalone package that can live in the fast-rebuilding user additions block, a system library that a framework package needs *at build time* has to be installed near the **top** of the Dockerfile, before the package that links against it. Editing an early apt-get block invalidates every layer below it, so this kind of change will legitimately trigger a longer rebuild of the downstream Python and R layers -- that's expected, not a mistake. (By contrast, a *standalone* system tool that nothing else in the build depends on -- say, a CLI utility you just want available in the container -- can go in the user additions block via its own apt-get example and rebuild fast, exactly like a standalone package.)
+
 Both changes go in the same Dockerfile, so a single rebuild covers them both. After DAAF finishes both edits, follow Steps 2-3 from "Step-by-Step Process" above: exit the container, then run `bash rebuild_daaf.sh` (or `.\rebuild_daaf.ps1` on Windows) from your `daaf-docker` folder. The rebuild script copies the updated Dockerfile and docker-compose.yml from the container to the host and rebuilds the image in one step.
 
 If you're unsure whether a Python package needs a system library, try adding just the Python package first -- the build will fail with a clear error message if a system dependency is missing, and you can ask DAAF to add the missing library then (and run `rebuild_daaf` again after the second edit).
 
 ### Runtime Installation for Quick Testing
 
-Sometimes you just want to try a package quickly during a session without going through the rebuild process. You can do that:
+Sometimes you just want to try a package quickly during a session without going through the rebuild process.
+
+> **This is a *you*-only action — DAAF cannot do it for you.** DAAF's agents are blocked from runtime package installs by the bash-safety hook and settings.json deny rules (`pip`/`pip3`/`pipx install`, `python -m pip install`, `uv pip install`, `uvx`, `conda install`, and friends), so asking DAAF to "install networkx real quick" will be refused. Runtime installs are yours to run: type the command as a `!`-prefixed command in the Claude Code prompt, or run it from a host terminal into the container — `!` commands and host-shell commands are **not** subject to the hooks. And whichever way you install it, it's a throwaway: the durable path is always the `Dockerfile`. See [`07_faq_technical.md` — Why can't Claude just `pip install` a package it needs?](07_faq_technical.md#q-why-cant-claude-just-pip-install-a-package-it-needs) for the reasoning.
+
+To install one yourself for a quick test, run (via `!`-prefix or host terminal):
 
 ```bash
 uv pip install --user networkx
@@ -500,13 +533,19 @@ This installs the package into your user directory inside the container, which w
 **Important caveat:** Runtime-installed packages are **ephemeral**. They are stored in the container's filesystem, not in the Docker volume where your research data lives. This means they will be **lost** when the container is rebuilt or restarted (e.g., after running `docker compose up -d --build` or `docker compose down` followed by `docker compose up -d`). Think of runtime installs as a test drive -- once you've confirmed the package works for your needs, add it to the Dockerfile to make it permanent.
 
 The recommended workflow is:
-1. Install at runtime to test: `uv pip install --user <package>`
+1. Install at runtime to test — **you** run `uv pip install --user <package>` via `!`-prefix or a host terminal (DAAF is blocked from running it)
 2. Verify it works for your use case
-3. Add it to the Dockerfile and rebuild to make it permanent
+3. Ask DAAF to add it to the Dockerfile, then rebuild to make it permanent
+
+### Building with the developer test toolchain (DAAF_DEV)
+
+If you are **developing the framework itself** (not just running research) and want to run DAAF's own shell/PowerShell test suites inside the container, there is an opt-in build flag: `DAAF_DEV`. Setting `DAAF_DEV=1` in your `daaf-docker` folder's `environment_settings.txt` and rebuilding (`rebuild_daaf.sh` / `.ps1`) installs `shellcheck`, `bats`, PowerShell 7, Pester, PSScriptAnalyzer, and the GitHub CLI (`gh` — authenticate by adding a `GH_TOKEN` key to `environment_settings.txt`; see the commented entry in `environment_settings_example.txt`) into the image so `bats tests/bash/` and `pwsh -NoProfile -Command "Invoke-Pester -Path ./tests/powershell/"` reproduce the project's CI locally. It is a **build-time** flag (it changes what is installed), so it rides the same rebuild boundary described above — the install/rebuild scripts bridge it from `environment_settings.txt` into the shell environment and Compose forwards it as `--build-arg DAAF_DEV=${DAAF_DEV:-0}`. When it is unset or `0` (the default for all normal installs) the image is identical to a standard build. See `user_reference/01_installation_and_quickstart.md` ("Building with the developer test toolchain") for the full walkthrough.
+
+The `DAAF_DEV=1` image is also what lets a contributor run the **deployment smoke suite** (`scripts/deploy_smoke/run_deploy_smoke.py`) — a route-aware, in-situ check that a live install functions end-to-end in its configured provider route (routing, hooks, subagent dispatch, statuslines, shim health). It is a contributor tool, documented in the `daaf-deploy-smoke-testing` skill and in `CONTRIBUTING.md`.
 
 ### Understanding the `uv` Package Manager
 
-You may have noticed that DAAF uses `uv` rather than plain `pip` for package installation. `uv` is a fast, Rust-based Python package manager that's fully compatible with pip but significantly faster -- often 10-50x faster for large installs. The Dockerfile uses `uv pip install --system` (which installs packages system-wide during the build, when running as root). At runtime, since you're running as a non-root user, use `uv pip install --user` instead.
+You may have noticed that DAAF uses `uv` rather than plain `pip` for package installation. `uv` is a fast, Rust-based Python package manager that's fully compatible with pip but significantly faster -- often 10-50x faster for large installs. The Dockerfile uses `uv pip install --system` (which installs packages system-wide during the build, when running as root). For a one-off runtime install — which only *you* can run, via `!`-prefix or a host terminal, since DAAF's agents are blocked from runtime installs (see the callout above) — use `uv pip install --user` instead, because you're running as a non-root user.
 
 Both `uv` and regular `pip` work at runtime -- `pip install --user <package>` is equally valid. The main advantage of `uv` is speed, which matters more during Dockerfile rebuilds than during one-off runtime installs.
 
@@ -529,9 +568,9 @@ Ask DAAF to add `networkx==3.4.2` (or your preferred version) to the core data s
 
 Ask DAAF to edit the version pin in the Dockerfile. For example, to change Polars from `1.38.1` to `1.39.0`, find `polars==1.38.1` and change it to `polars==1.39.0`. Then follow the same Steps 2-3 from "Step-by-Step Process" above (exit and run `rebuild_daaf`) -- the container-host boundary applies to version-pin edits exactly the same way it applies to new package additions. Be cautious with version changes -- other packages may depend on the currently pinned version, so test your analysis after upgrading. Ask DAAF/Claude Code to run a `uv pip compile` dry-run to test compatibility between all the package versions before committing to the rebuild.
 
-**"I need an R package or want to use R"**
+**"I need an R package that isn't included"**
 
-DAAF is a Python-based environment and does not include R. However, DAAF includes translation skills (`r-python-translation` and `stata-python-translation`) that can help you find Python equivalents for R or Stata operations you're familiar with. If you tell DAAF "I usually do this in R with dplyr," it can show you how to accomplish the same thing in Python with Polars.
+DAAF includes R as a first-class execution language with 12 library skills (tidyverse, ggplot2, fixest, r-stats, quarto, plotly-r, sf-terra, plm, tidymodels, survey-r, gt, and igraph-r). See the **R Packages** subsection below for how to add additional R packages. If you're coming from a Python background and want to understand R equivalents, DAAF includes a `python-r-translation` skill; from Stata, there's a `stata-r-translation` skill. If you prefer to work in Python, the `r-python-translation` and `stata-python-translation` skills can help you find Python equivalents for R or Stata operations you're familiar with.
 
 **"I need a package that requires compilation and it's failing"**
 
@@ -540,6 +579,62 @@ Some packages need a C/C++ compiler or specific development headers. Ask DAAF to
 **"Can I use `apt-get` or `sudo` inside the running container?"**
 
 No. The container runs as a non-root user (`appuser`) with all Linux capabilities dropped (`cap_drop: ALL`) and privilege escalation explicitly blocked. This is a deliberate security hardening measure -- it prevents both you and Claude from accidentally (or intentionally) making system-level changes at runtime that could compromise the container's integrity. All system-level software must be installed through the Dockerfile and built into the image.
+
+### R Packages
+
+> R is a standard, always-available part of DAAF, and adding R packages follows the same Dockerfile-modification path as adding Python packages.
+
+DAAF installs **R 4.5.3** with a curated set of 60+ pinned packages covering the most common needs for social science research: data manipulation (tidyverse), visualization (ggplot2, plotly), econometrics (fixest, plm), spatial analysis (sf, terra), machine learning (tidymodels), complex survey analysis (survey), and more. It also includes the **Quarto CLI 1.7.29** for producing reproducible R research notebooks (the R equivalent of marimo for Python).
+
+If you need an R package that isn't pre-installed, the process mirrors the Python approach: you can install it temporarily for quick testing, or add it to the Dockerfile for persistence.
+
+#### Runtime Installation for Quick Testing
+
+Inside the container, you can install an R package for the current session:
+
+```r
+install.packages("broom.mixed")
+```
+
+Like Python runtime installs, this is **ephemeral** -- the package will be lost when the container is rebuilt or restarted. Use it for testing, then add the package to the Dockerfile to make it permanent.
+
+> **This is a *you*-only action, just like the Python case above.** DAAF's agents are blocked from runtime R installs too: the `bash-safety.sh` hook refuses command-line forms (`R CMD INSTALL`, `Rscript -e 'install.packages(...)'`, and the `remotes`/`devtools`/`pak`/`renv`/`BiocManager` verbs), and `run_with_capture.sh` scans each script before executing it and refuses to run one that contains an `install.packages()` (or similar) call. So asking DAAF to "just install broom.mixed real quick" will be refused — run it yourself via a `!`-prefixed command in the prompt or a host terminal (both bypass the hooks), and remember it's a throwaway. The durable path is always the Dockerfile.
+
+#### The Recommended Path: Modify the Dockerfile
+
+To permanently add an R package, ask DAAF to add an `Rscript -e 'install.packages("pkg")'` line to the Dockerfile. For example:
+
+```
+I'd like to add the broom.mixed package to the Dockerfile so I
+can use it for tidying mixed effects model output.
+```
+
+DAAF will add a line like this:
+
+```dockerfile
+RUN Rscript -e 'install.packages("broom.mixed")'
+```
+
+**Where the R line goes.** Just like Python packages, the recommended default is the **user additions block** near the end of the Dockerfile -- an added `RUN Rscript -e 'install.packages(...)'` line there rebuilds fast thanks to layer caching, whereas appending to the mid-file R install blocks re-runs the (large, ~2.2 GB) R stack and everything below it. The R packages install from the same P3M date-pinned snapshot wherever the line sits, so reproducibility is unaffected by the choice.
+
+**One R-specific nuance — the presence gate.** The framework's R install blocks are followed by a *presence gate* that verifies every package it lists actually installed (a safety net against a package silently failing to install). That gate only checks the packages named in the framework blocks. So if you want your added R package covered by that verification, add it to the appropriate framework R block *and* to the presence-gate list, rather than to the user additions block. For a package you're comfortable verifying yourself (e.g. by loading it once), the fast-rebuilding user additions block is the simpler choice. DAAF will explain this tradeoff when it proposes the edit.
+
+Then follow the same exit-and-rebuild process described in the Python section above: exit Claude Code, exit the container, and run `bash rebuild_daaf.sh` (or `.\rebuild_daaf.ps1` on Windows) from your `daaf-docker` folder.
+
+#### How DAAF Ensures R Package Reproducibility
+
+DAAF pins R package versions using **Posit Package Manager (P3M)**, a date-specific CRAN snapshot. The Dockerfile configures R to install packages from a snapshot frozen on a specific date, which means that every `install.packages()` call -- whether at build time or runtime -- pulls the exact same package versions regardless of when you run it. This is the R equivalent of pinning Python packages with `==` version specifiers: it ensures that your R environment is reproducible across builds and across machines.
+
+You don't need to specify version numbers when installing R packages -- the P3M snapshot handles that automatically. If you need a newer version of a package than what's available in the current snapshot, you can temporarily override the repository URL in your `install.packages()` call, but this trades reproducibility for currency and should be done deliberately.
+
+**Note on renv:** The R ecosystem's standard project-level dependency manager, `renv`, is available in the container but is not required. DAAF's Dockerfile-based approach (P3M snapshot + explicit `install.packages()` calls) handles reproducibility at the container level, which is sufficient for most DAAF workflows. If you have an existing project that uses `renv`, you can use it inside the container without conflict.
+
+#### Checking What R Packages Are Already Installed
+
+- **Ask DAAF directly:** "What R packages are installed?" -- DAAF can check for you
+- **Run `Rscript -e 'installed.packages()[, "Package"]'`** inside the container to see all installed packages
+- **Read the Dockerfile** to see exactly what's installed
+- **Check the smoke tests** in `scripts/smoke_tests/` -- each R library skill has a corresponding smoke test (`smoke_tidyverse.R`, `smoke_ggplot2.R`, etc.) that exercises core functionality, and a Python import-smoke (`smoke_imports.py`) verifies every pinned Python analysis package imports (the per-skill R smokes came first because the newly added R packages needed install verification; the Python import-smoke rounds out the suite). Run the whole set with `bash scripts/smoke_tests/run_all_smoke_tests.sh`
 
 ---
 

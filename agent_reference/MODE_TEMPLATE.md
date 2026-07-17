@@ -76,7 +76,15 @@ Show user checkpoints explicitly.]
 [Dispatch logic: when the orchestrator responds directly vs. dispatches.
 Which agents are used, what subagent types, what context to provide.
 Include a Standard Agent Prompt Structure template if the mode has
-a dedicated agent (like framework-engineer for Framework Development).]
+a dedicated agent (like framework-engineer for Framework Development).
+
+If the mode dispatches more than one subagent in a turn, add a wave
+barrier discipline note: mid-wave completion notifications are status-only
+— do not synthesize, advance the workflow, or present user checkpoints
+until EVERY dispatched agent has returned. See `SKILL.md` § Subagent
+Coordination > "Wave Barrier Discipline (Async Dispatch)" for the
+canonical statement, and any existing mode reference for the standard
+blockquote form.]
 
 ---
 

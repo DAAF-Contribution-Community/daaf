@@ -111,13 +111,39 @@ mock_docker() {
     export MOCK_DOCKER_EXEC_EXIT=0
     export MOCK_DOCKER_EXEC_OUTPUT=""
     export MOCK_DOCKER_CP_EXIT=0
+    export MOCK_DOCKER_CREATE_EXIT=0
+    export MOCK_DOCKER_CREATE_OUTPUT=""
     export MOCK_DOCKER_VOLUME_EXIT=0
     export MOCK_DOCKER_PS_OUTPUT=""
     export MOCK_DOCKER_RUN_EXIT=0
     export MOCK_DOCKER_RUN_OUTPUT=""
+    # `docker run -d ... busybox sh -c <STAGE_PROGRAM>` launches the symlink-strip
+    # staging container (backup_daaf.{sh,ps1}). It returns a CID on stdout; `docker
+    # wait <cid>` then prints the staging program's exit status. Defaults: staging
+    # starts (emits a stable fake CID) and waits to a 0 (success) status. Override
+    # MOCK_DOCKER_WAIT_OUTPUT per-test to model a nonzero staging exit.
+    export MOCK_DOCKER_RUND_OUTPUT="stagecid0000"
+    export MOCK_DOCKER_RUND_EXIT=0
+    export MOCK_DOCKER_WAIT_OUTPUT="0"
+    export MOCK_DOCKER_WAIT_EXIT=0
     export MOCK_DOCKER_INSPECT_EXIT=0
     export MOCK_DOCKER_INSPECT_OUTPUT=""
     export MOCK_DOCKER_START_EXIT=0
+    # `docker buildx inspect <name>` probes an existing builder; `buildx create`
+    # makes one. Both are used only by the opt-in DAAF_DIAG_BUILD path in
+    # install.sh / rebuild_daaf.sh. Default: inspect FAILS (builder absent) so the
+    # create arm is exercised, and create SUCCEEDS. Override per-test when a
+    # different builder state must be modeled.
+    export MOCK_DOCKER_BUILDX_INSPECT_EXIT=1
+    export MOCK_DOCKER_BUILDX_CREATE_EXIT=0
+    # `docker compose ps -q`/`-aq daaf-docker` returns a container ID (empty when
+    # the container is not running / does not exist). By default this MIRRORS
+    # MOCK_DOCKER_PS_OUTPUT so existing tests that model running/stopped purely via
+    # MOCK_DOCKER_PS_OUTPUT ("" = stopped, "daaf-docker" = running) keep working
+    # unchanged under the new `ps -q` running-check. Set MOCK_DOCKER_PSQ_OUTPUT
+    # explicitly only when a test must distinguish the ID form from the --format
+    # form (e.g., "stopped but exists" for rebuild's `-aq`).
+    export MOCK_DOCKER_PSQ_OUTPUT="__MIRROR_PS__"
 
     docker() {
         DOCKER_CALLS+=("$*")
@@ -129,7 +155,21 @@ mock_docker() {
                 shift
                 case "$1" in
                     ps)
-                        echo "${MOCK_DOCKER_PS_OUTPUT:-}"
+                        # Distinguish the ID-emitting `ps -q`/`ps -aq` form (used
+                        # by the running-check and cp-target derivation) from the
+                        # `ps --status running --format` form.
+                        case "$*" in
+                            *-q*|*-aq*)
+                                if [ "${MOCK_DOCKER_PSQ_OUTPUT:-__MIRROR_PS__}" = "__MIRROR_PS__" ]; then
+                                    echo "${MOCK_DOCKER_PS_OUTPUT:-}"
+                                else
+                                    echo "${MOCK_DOCKER_PSQ_OUTPUT:-}"
+                                fi
+                                ;;
+                            *)
+                                echo "${MOCK_DOCKER_PS_OUTPUT:-}"
+                                ;;
+                        esac
                         return "${MOCK_DOCKER_COMPOSE_EXIT:-0}"
                         ;;
                     exec)
@@ -144,6 +184,26 @@ mock_docker() {
                         ;;
                 esac
                 ;;
+            buildx)
+                shift
+                case "$1" in
+                    inspect) return "${MOCK_DOCKER_BUILDX_INSPECT_EXIT:-1}" ;;
+                    create)  return "${MOCK_DOCKER_BUILDX_CREATE_EXIT:-0}" ;;
+                    *)       return "${MOCK_DOCKER_EXIT:-0}" ;;
+                esac
+                ;;
+            create)
+                # `docker create ... busybox` returns a container ID on stdout.
+                # Emit a stable fake CID so a script capturing it (e.g. the backup
+                # copy path: CID=$(docker create ...)) binds a non-empty value.
+                # Previously `create` fell through to the default arm, which
+                # returns 0 but prints nothing -- silently giving an empty CID and
+                # masking copy-path bugs in any test reaching it via the shared
+                # mock. Override with a custom docker() in a test only when the
+                # create/cp/rm dispatch must be modeled per-arm.
+                echo "${MOCK_DOCKER_CREATE_OUTPUT:-mockcid0000}"
+                return "${MOCK_DOCKER_CREATE_EXIT:-0}"
+                ;;
             cp)
                 return "${MOCK_DOCKER_CP_EXIT:-0}"
                 ;;
@@ -151,8 +211,20 @@ mock_docker() {
                 return "${MOCK_DOCKER_VOLUME_EXIT:-0}"
                 ;;
             run)
+                # Distinguish the detached staging launch (`run -d ...`) from the
+                # ephemeral `run --rm ...` scan/replay calls: the former returns a CID
+                # for `docker wait` to block on; the latter emits scan/verify output.
+                if [ "${2:-}" = "-d" ]; then
+                    echo "${MOCK_DOCKER_RUND_OUTPUT:-stagecid0000}"
+                    return "${MOCK_DOCKER_RUND_EXIT:-0}"
+                fi
                 echo "${MOCK_DOCKER_RUN_OUTPUT:-}"
                 return "${MOCK_DOCKER_RUN_EXIT:-0}"
+                ;;
+            wait)
+                # `docker wait <cid>` prints the staging container's exit status.
+                echo "${MOCK_DOCKER_WAIT_OUTPUT:-0}"
+                return "${MOCK_DOCKER_WAIT_EXIT:-0}"
                 ;;
             inspect)
                 echo "${MOCK_DOCKER_INSPECT_OUTPUT:-}"
@@ -207,8 +279,12 @@ services:
     image: daaf:latest
     volumes:
       - daaf-data:/daaf
+      - daaf-claude-config:/home/appuser/.claude
+    environment:
+      - CLAUDE_CONFIG_DIR=/home/appuser/.claude
 volumes:
   daaf-data:
+  daaf-claude-config:
 YAML
 }
 
@@ -234,4 +310,29 @@ mock_curl() {
         return "${MOCK_CURL_EXIT:-0}"
     }
     export -f curl
+}
+
+# ============================================================================
+# Mocks for daaf_lib.sh functions
+# ============================================================================
+
+mock_open_url() {
+    OPENED_URLS=()
+    open_url() {
+        OPENED_URLS+=("$1")
+        return 0
+    }
+    export -f open_url
+}
+
+mock_port_check() {
+    export DAAF_MOCK_PORTS="${1:-}"
+    check_port() {
+        local port="$1"
+        if echo "${DAAF_MOCK_PORTS}" | grep -q "${port}:yes"; then
+            return 0
+        fi
+        return 1
+    }
+    export -f check_port
 }

@@ -53,9 +53,51 @@ if [ "${IS_INTERACTIVE}" = "true" ] && [ -z "${DAAF_NESTED:-}" ]; then
 fi
 
 UPSTREAM_REPO="DAAF-Contribution-Community/daaf"
-CONTAINER_NAME="daaf-daaf-docker-1"
+# CONTAINER_ID is derived from the compose project after the container is started
+# (see the preflight block below), not hardcoded -- so it tracks DAAF_PROJECT_NAME
+# and is correct for a second instance. It is consumed by `docker cp` in
+# _sync_copy_one and by user-facing manual-recovery hints.
+CONTAINER_ID=""
 TIMESTAMP=$(date +%Y-%m-%d-%H%M%S)
 BACKUP_BRANCH="backup/pre-update-${TIMESTAMP}"
+
+# --- Multi-instance settings (shared pattern) ---
+# Bridge environment_settings.txt's four DAAF_* multi-instance keys into the
+# environment so `docker compose` interpolation resolves the project name and
+# published host ports. Canonical shared pattern (kept in sync with
+# load_daaf_settings in daaf_lib.sh). Parse only these whitelisted keys (never `source`
+# -- the file holds API keys); shell env wins; absent file = no-op; CR stripped;
+# Bash 3.2 safe.
+_daaf_load_settings() {
+    local settings_file="./environment_settings.txt"
+    [ -f "${settings_file}" ] || return 0
+    local key val line
+    while IFS= read -r line || [ -n "${line}" ]; do
+        line="$(printf '%s' "${line}" | tr -d '\r')"
+        case "${line}" in ''|'#'*) continue ;; esac
+        case "${line}" in
+            DAAF_PROJECT_NAME=*|DAAF_PORT_MARIMO=*|DAAF_PORT_LOGVIEWER=*|DAAF_PORT_VSCODE=*|DAAF_DEV=*|DAAF_BRANCH=*)
+                key="${line%%=*}"; val="${line#*=}"
+                case "${val}" in
+                    \"*\") val="${val#\"}"; val="${val%\"}" ;;
+                    \'*\') val="${val#\'}"; val="${val%\'}" ;;
+                esac
+                if [ -z "${!key:-}" ]; then
+                    export "${key}=${val}"
+                fi
+                ;;
+            *) continue ;;
+        esac
+    done < "${settings_file}"
+}
+# Capture whether DAAF_BRANCH came from the process environment BEFORE the
+# settings bridge runs. _daaf_load_settings only adopts the file's value when the
+# env var is unset (the `if [ -z "${!key:-}" ]` guard above), so after the call:
+# DAAF_BRANCH set + FROM_ENV=0 => file-origin; FROM_ENV=1 => env-origin. This
+# distinction drives tag handling and branch persistence in the resolver below.
+DAAF_BRANCH_FROM_ENV=0
+if [ -n "${DAAF_BRANCH:-}" ]; then DAAF_BRANCH_FROM_ENV=1; fi
+_daaf_load_settings
 
 # --- Dry-Run Support ---
 # When DAAF_DRY_RUN=1, simulate external commands (Docker, curl) for CI
@@ -64,7 +106,9 @@ if [ "${DAAF_DRY_RUN:-}" = "1" ]; then
     docker() {
         case "$*" in
             "info") return 0 ;;
+            *"compose ps -q daaf-docker"*) echo "abc123" ;;
             *"compose ps"*"--format"*) echo "daaf-docker" ;;
+            "cp"*) return 0 ;;
             *"compose exec"*"true"*) return 0 ;;
             *"compose exec"*"test -f"*) return 0 ;;
             *"fetch"*) return 0 ;;
@@ -293,6 +337,12 @@ handle_conflict() {
             echo "  exit"
         fi
         echo ""
+        echo "Then re-run the updater from your host terminal:"
+        echo "  bash update_daaf.sh"
+        echo "It picks up where it left off -- restoring any set-aside changes and"
+        echo "finishing the remaining steps (host-script sync and rebuild check)"
+        echo "automatically."
+        echo ""
         echo "To undo the update instead (run from your host terminal):"
         echo "  docker compose exec daaf-docker git -C /daaf ${abort_cmd}"
         echo "  docker compose exec daaf-docker git -C /daaf reset --hard ${BACKUP_BRANCH}"
@@ -304,9 +354,17 @@ handle_stash_conflict() {
     echo ""
     echo "The framework update was applied successfully!"
     echo ""
-    echo "However, some of your uncommitted edits overlap with files that"
-    echo "changed in the update. Your edits are NOT lost -- they are saved"
-    echo "in a temporary holding area."
+    echo "However, re-applying your uncommitted changes hit conflicts: some of"
+    echo "your local edits (commonly to Dockerfile or docker-compose.yml)"
+    echo "overlap with changes in this update, so Git could not merge them"
+    echo "automatically."
+    echo ""
+    echo "Nothing is lost. Your changes are preserved safely in a git stash --"
+    echo "the update did not discard them."
+    echo ""
+    echo "The easiest fix: start a DAAF session (launch Claude Code in the"
+    echo "container) and ask for help with \"update conflicts\". DAAF's User"
+    echo "Support mode has a guided walkthrough that resolves these step by step."
     echo ""
     # Claude Code requires an interactive terminal. When non-interactive,
     # skip straight to manual resolution instructions.
@@ -369,12 +427,19 @@ handle_stash_conflict() {
         fi
     else
         echo ""
-        echo "To resolve, enter the container:"
+        echo "Recommended: start a DAAF session and ask for help with \"update"
+        echo "conflicts\" -- User Support mode has a guided conflict walkthrough:"
+        echo "  bash run_daaf.sh"
+        echo ""
+        echo "Or resolve manually -- enter the container:"
         echo "  bash run_daaf.sh bash"
         echo "  (edit the conflicting files to remove the <<<<<<< markers)"
         echo "  git add ."
         echo "  git stash drop"
         echo "  exit"
+        echo ""
+        echo "Either way, your changes are safe in the git stash until you"
+        echo "resolve them -- nothing has been lost."
         echo ""
         echo "Or to discard your uncommitted edits and keep the update"
         echo "(WARNING -- this cannot be undone):"
@@ -390,51 +455,387 @@ handle_stash_conflict() {
     fi
 }
 
+# Copy one host script out of the container. Sets SYNC_COPY_FAILED=true and
+# prints a manual-recovery hint on failure (no silent skips). Marks the file's
+# basename as copied in the "already copied" tracker so tier B does not repeat
+# a tier A copy. Returns 0 on success, 1 on failure.
+#
+# INTENT: single shared copy routine so the existence-heal (tier A) and
+#   changed-file (tier B) passes format success/failure output identically.
+# ASSUMES: CONTAINER_ID points at the running container; docker cp is
+#   ID/name-sensitive (docker compose exec is not, but cp is). The manual-recovery
+#   hint prints the project-resolved `docker cp <project>-daaf-docker-1:...` form
+#   so it works from a fresh shell where DAAF_PROJECT_NAME may not be exported.
+_sync_copy_one() {
+    local repo_path="$1"
+    local script
+    script=$(basename "${repo_path}")
+    # Tier B can overwrite a host copy that DIFFERS from what it delivers
+    # (e.g. a locally drifted file that also changed in the update range --
+    # and on old-era migrations EVERY host script is "changed in range", so
+    # this path, not tier C, performs the drift heal). Preserve the tier C
+    # recoverability contract here too: stage the incoming copy as a sibling
+    # file (same directory keeps `docker cp`'s file-mode semantics and makes
+    # the final rename same-filesystem), and when an existing host copy
+    # differs, save it to the rolling "<name>.pre-update" BEFORE overwriting.
+    # If the backup cannot be created, do NOT overwrite -- never destroy the
+    # only copy -- same rule as the tier C drift heal. (Field finding
+    # 2026-07-17: the v2.0.1 vector's class E drift fixture was healed via
+    # tier B and clobbered with no backup.)
+    if [ -f "./${script}" ]; then
+        # The staged-existence leg mirrors the ps1 twin's Test-Path guard: an
+        # abnormal "docker cp exits 0 but produced no file" would otherwise
+        # fall through to cmp (missing staged reads as drift), create a
+        # spurious .pre-update, and fail at the rename.
+        if ! docker cp "${CONTAINER_ID}:/daaf/${repo_path}" "./${script}.sync-staged" 2>/dev/null \
+            || [ ! -f "./${script}.sync-staged" ]; then
+            rm -f "./${script}.sync-staged" 2>/dev/null || true
+            echo "  Warning: could not copy ${script}. You can copy it manually:"
+            echo "    docker cp ${DAAF_PROJECT_NAME:-daaf}-daaf-docker-1:/daaf/${repo_path} ./${script}"
+            SYNC_COPY_FAILED=true
+            return 1
+        fi
+        local backed_up=false
+        if ! cmp -s "./${script}" "./${script}.sync-staged"; then
+            if cp -f "./${script}" "./${script}.pre-update" 2>/dev/null; then
+                backed_up=true
+            else
+                rm -f "./${script}.sync-staged" 2>/dev/null || true
+                echo "  Warning: could not back up ${script} before overwriting -- left unchanged."
+                echo "    To adopt the repository version manually, run:"
+                echo "    docker cp ${DAAF_PROJECT_NAME:-daaf}-daaf-docker-1:/daaf/${repo_path} ./${script}"
+                SYNC_COPY_FAILED=true
+                return 1
+            fi
+        fi
+        if ! mv -f "./${script}.sync-staged" "./${script}" 2>/dev/null; then
+            rm -f "./${script}.sync-staged" 2>/dev/null || true
+            echo "  Warning: could not copy ${script}. You can copy it manually:"
+            echo "    docker cp ${DAAF_PROJECT_NAME:-daaf}-daaf-docker-1:/daaf/${repo_path} ./${script}"
+            SYNC_COPY_FAILED=true
+            return 1
+        fi
+        # Text files (.txt) do not need the executable bit; scripts do.
+        case "${script}" in
+            *.sh) chmod +x "./${script}" 2>/dev/null || true ;;
+        esac
+        if [ "${backed_up}" = true ]; then
+            echo "  Updated: ${script} (your previous copy was saved as ${script}.pre-update)"
+        else
+            echo "  Updated: ${script}"
+        fi
+        SYNC_COPIED="${SYNC_COPIED} ${script}"
+        return 0
+    fi
+    if docker cp "${CONTAINER_ID}:/daaf/${repo_path}" "./${script}" 2>/dev/null; then
+        # Text files (.txt) do not need the executable bit; scripts do.
+        case "${script}" in
+            *.sh) chmod +x "./${script}" 2>/dev/null || true ;;
+        esac
+        echo "  Updated: ${script}"
+        SYNC_COPIED="${SYNC_COPIED} ${script}"
+        return 0
+    else
+        echo "  Warning: could not copy ${script}. You can copy it manually:"
+        echo "    docker cp ${DAAF_PROJECT_NAME:-daaf}-daaf-docker-1:/daaf/${repo_path} ./${script}"
+        SYNC_COPY_FAILED=true
+        return 1
+    fi
+}
+
+# Sync host-side utility scripts out of the container to the daaf-docker folder.
+#
+# The old design diffed a HARDCODED pathspec inside the running (old) script.
+# Files added upstream that the old script did not know about were silently
+# skipped forever -- a chicken-and-egg defect (a v2.1.0 updater could never
+# deliver daaf.sh/daaf_lib.sh even though they were in the update). This
+# rewrite derives the file list from the POST-UPDATE repo state and adds an
+# existence-heal pass so past misses self-correct on the next run.
+#
+# INTENT: guarantee every host-appropriate script that exists in the new HEAD
+#   reaches the host, regardless of what the running (old) script knew.
+# REASONING: the authoritative list lives in the freshly-pulled repo
+#   (git ls-files at new HEAD), not in this script's source.
+#
+# old_head may be empty (called from the "already up to date" path). When
+# empty or equal to new_head, only the existence-heal pass runs (cheap).
 sync_host_scripts() {
-    local old_head="$1"
+    local old_head="${1:-}"
 
     local new_head
     new_head=$(docker compose exec -T daaf-docker \
         git -C /daaf rev-parse HEAD </dev/null 2>/dev/null | tr -d '\r')
 
-    if [ "${old_head}" = "${new_head}" ]; then
+    # Derive the authoritative host-script list from the post-update repo state.
+    # git ls-files runs in-container at new HEAD -- Linux userland, so GNU git
+    # features are fine here (this is NOT host-executed code).
+    local all_host_files
+    all_host_files=$(docker compose exec -T daaf-docker \
+        git -C /daaf ls-files 'scripts/host/*' </dev/null 2>/dev/null | tr -d '\r' || true)
+
+    if [ -z "${all_host_files}" ]; then
         return
     fi
 
-    local changed_scripts
-    # Only sync platform-appropriate scripts (.sh on Unix) and shared files.
-    # Excludes install.sh (not needed post-install) and all .ps1 files.
-    changed_scripts=$(docker compose exec -T daaf-docker \
-        git -C /daaf diff --name-only "${old_head}..${new_head}" -- \
-        scripts/host/run_daaf.sh \
-        scripts/host/backup_daaf.sh \
-        scripts/host/restore_from_backup.sh \
-        scripts/host/rebuild_daaf.sh \
-        scripts/host/update_daaf.sh \
-        scripts/host/view_logs.sh \
-        scripts/host/view_notebooks.sh \
-        scripts/host/run_vscode.sh \
-        scripts/host/environment_settings_example.txt \
-        </dev/null 2>/dev/null | tr -d '\r' || true)
+    # Platform filter (macOS/Linux hosts): keep *.sh files and shared plain-text
+    # files (environment_settings_example.txt, README.txt); drop all *.ps1 (Windows-only).
+    # Bootstrap-only scripts (install.sh, migrate_daaf.sh) are intentionally
+    # excluded -- they are fetched via curl on demand and are not needed in the
+    # daaf-docker folder post-install. This preserves the pre-existing exclusion
+    # intent from the old hardcoded list. The dev-only test harness
+    # (test_migration.sh) is likewise excluded -- it is a contributor tool
+    # tracked in git for CI, never needed in the user's daaf-docker folder.
+    # Without this exclusion it would match the *.sh case and be synced to hosts.
+    #
+    # ASSUMES: no negative subscripts, no mapfile, no declare -A -- Bash 3.2
+    #   compatible for macOS hosts.
+    # sync_list is a newline-delimited set of full repo paths, with a leading
+    # and trailing newline so membership tests can anchor on "\n<path>\n"
+    # (prevents a short path from matching as a substring of a longer one).
+    local sync_list="
+"
+    while IFS= read -r repo_path; do
+        [ -z "${repo_path}" ] && continue
+        case "${repo_path}" in
+            scripts/host/install.sh|scripts/host/migrate_daaf.sh|scripts/host/test_migration.sh) continue ;;
+            *.sh|scripts/host/environment_settings_example.txt|scripts/host/README.txt) sync_list="${sync_list}${repo_path}
+" ;;
+            *) continue ;;
+        esac
+    done <<< "${all_host_files}"
 
-    if [ -z "${changed_scripts}" ]; then
+    # Only the seed newline means no files passed the filter.
+    if [ "${sync_list}" = "
+" ]; then
         return
     fi
 
-    echo "Syncing updated utility scripts..."
+    # Compute the set of files that changed in old_head..new_head (tier B).
+    # Only when we have a real commit range; skip the diff on the up-to-date
+    # path (old_head empty or unchanged) -- the existence-heal pass still runs.
+    local changed_scripts=""
+    if [ -n "${old_head}" ] && [ "${old_head}" != "${new_head}" ]; then
+        changed_scripts=$(docker compose exec -T daaf-docker \
+            git -C /daaf diff --name-only "${old_head}..${new_head}" -- scripts/host \
+            </dev/null 2>/dev/null | tr -d '\r' || true)
+    fi
+
+    # Trackers (space-delimited strings -- Bash 3.2 compatible, no arrays needed).
+    SYNC_COPIED=""
+    SYNC_COPY_FAILED=false
+    local self_updated=false
+    local printed_header=false
+
+    # --- Tier A: existence-heal ---------------------------------------------
+    # Any host-appropriate file MISSING on the host is copied unconditionally.
+    # This is what heals past misses (e.g., daaf.sh arriving for a v2.1.0 user
+    # even though it will never change again).
     while IFS= read -r repo_path; do
         [ -z "${repo_path}" ] && continue
         local script
         script=$(basename "${repo_path}")
-        if docker cp "${CONTAINER_NAME}:/daaf/${repo_path}" "./${script}" 2>/dev/null; then
-            chmod +x "./${script}" 2>/dev/null || true
-            echo "  Updated: ${script}"
-        else
-            echo "  Warning: could not copy ${script}. You can copy it manually:"
-            echo "    docker cp ${CONTAINER_NAME}:/daaf/${repo_path} ./${script}"
+        if [ ! -f "./${script}" ]; then
+            if [ "${printed_header}" = false ]; then
+                echo "Syncing utility scripts..."
+                printed_header=true
+            fi
+            _sync_copy_one "${repo_path}" || true
         fi
-    done <<< "${changed_scripts}"
-    echo ""
+    done <<< "${sync_list}"
+
+    # --- Tier B: changed files ----------------------------------------------
+    # Any listed file that changed in this update range is copied (unless tier A
+    # already copied it). Preserves the only-touch-changed-files courtesy for
+    # existing host copies the user may have customized.
+    if [ -n "${changed_scripts}" ]; then
+        while IFS= read -r repo_path; do
+            [ -z "${repo_path}" ] && continue
+            # Only sync files that pass the platform filter (i.e., are in
+            # sync_list). Anchor on surrounding newlines for an exact line match.
+            case "${sync_list}" in
+                *"
+${repo_path}
+"*) ;;
+                *) continue ;;
+            esac
+            local script
+            script=$(basename "${repo_path}")
+            # Skip if tier A already copied this file (space-delimited membership).
+            case " ${SYNC_COPIED} " in
+                *" ${script} "*) continue ;;
+            esac
+            if [ "${printed_header}" = false ]; then
+                echo "Syncing updated utility scripts..."
+                printed_header=true
+            fi
+            if _sync_copy_one "${repo_path}"; then
+                if [ "${script}" = "update_daaf.sh" ]; then
+                    self_updated=true
+                fi
+            fi
+        done <<< "${changed_scripts}"
+    fi
+
+    if [ "${printed_header}" = true ]; then
+        echo ""
+    fi
+
+    # --- Tier C: drift heal (overwrite with rolling backup) -----------------
+    # A file that EXISTS on host but differs from the repo copy and was NOT
+    # copied this run (not missing, not changed in-range) would otherwise be
+    # left silently stale -- the last silent failure mode after interrupted
+    # syncs, upstream changes the diff missed, or manual copies. We OVERWRITE
+    # with the repo version, first saving the existing host copy to
+    # "<name>.pre-update" (rolling: any previous .pre-update is overwritten, so
+    # backups never accumulate).
+    #
+    # DESIGN DECISION (2026-07-09): the files this updater syncs -- host utility
+    # scripts (*.sh) and the example template (environment_settings_example.txt,
+    # README.txt) -- have NO supported local-edit use-case. All user-serviceable
+    # configuration lives exclusively in environment_settings.txt, which this
+    # updater never syncs or touches. Therefore drift here means STALENESS, not
+    # a deliberate customization worth preserving, and silently keeping a stale
+    # copy is the worst outcome. Overwrite + rolling backup is the deliberate
+    # design: the host always ends up with the current repo version, and the
+    # user's prior bytes are recoverable from the .pre-update file if ever needed.
+    # This supersedes the earlier warn-never-overwrite behavior.
+    #
+    # INTENT: bring stale-but-present host files up to date, preserving one
+    #   recoverable backup per file.
+    # REASONING: one bulk `docker compose cp` of scripts/host into a temp dir,
+    #   then local `cmp -s` per file, avoids N per-file docker execs. `cmp -s`
+    #   is POSIX/BSD-safe (available on macOS's BSD userland).
+    # ASSUMES: files already copied this run (SYNC_COPIED) are fresh by
+    #   construction and are excluded. Failure to stage or compare degrades to
+    #   a single notice -- drift healing is best-effort and never aborts.
+    #   The .pre-update backup files are never themselves sync candidates: the
+    #   sync_list is derived purely from repo paths (git ls-files scripts/host/*),
+    #   and .pre-update files exist only on the host, so they can never appear in
+    #   that list or match a repo basename.
+    local drift_dir=""
+    local drift_found=false
+    local drift_degraded=false
+    drift_dir=$(mktemp -d 2>/dev/null || true)
+    if [ -z "${drift_dir}" ] || [ ! -d "${drift_dir}" ]; then
+        # Could not create a scratch dir -- skip drift checking silently-ish.
+        drift_degraded=true
+    else
+        # Bulk-copy the repo's scripts/host tree out of the container once.
+        # `docker compose cp` is project-aware HERE because this script parsed
+        # and exported DAAF_PROJECT_NAME. Printed user-facing hints instead use
+        # the explicit `docker cp <project>-daaf-docker-1:` form, because a
+        # fresh user shell lacks that env and compose would resolve the default
+        # project. On failure, degrade.
+        if ! docker compose cp daaf-docker:/daaf/scripts/host "${drift_dir}/repo_host" \
+            >/dev/null 2>&1; then
+            drift_degraded=true
+        fi
+    fi
+
+    if [ "${drift_degraded}" = true ]; then
+        echo "Note: could not check host scripts for drift this run (skipped safely)."
+        echo ""
+    else
+        while IFS= read -r repo_path; do
+            [ -z "${repo_path}" ] && continue
+            local script
+            script=$(basename "${repo_path}")
+            # Only files that exist on host are drift candidates (missing files
+            # were handled by tier A).
+            [ -f "./${script}" ] || continue
+            # Exclude files copied this run (tier A or tier B) -- fresh by
+            # construction (space-delimited membership, Bash 3.2 safe).
+            case " ${SYNC_COPIED} " in
+                *" ${script} "*) continue ;;
+            esac
+            # Never overwrite the RUNNING updater from the drift loop: bash reads
+            # scripts lazily, so replacing this file mid-execution can execute
+            # corrupted content. Tier B's self-update path (with its explicit
+            # re-run notice) is the sanctioned way the updater refreshes itself.
+            [ "${script}" = "update_daaf.sh" ] && continue
+            local repo_copy="${drift_dir}/repo_host/${script}"
+            # If the repo copy is missing from the staged tree, we cannot compare
+            # -- skip this file rather than guessing.
+            [ -f "${repo_copy}" ] || continue
+            if ! cmp -s "./${script}" "${repo_copy}"; then
+                # Drift detected. Back up the existing host copy to a rolling
+                # "<name>.pre-update" (overwrite any prior backup), THEN overwrite
+                # the host copy with the repo version. If the backup step fails we
+                # do NOT overwrite -- never destroy the only copy -- and fall back
+                # to the old warning for that file.
+                if cp -f "./${script}" "./${script}.pre-update" 2>/dev/null; then
+                    if cp -f "${repo_copy}" "./${script}" 2>/dev/null; then
+                        # Text files (.txt) do not need the executable bit; scripts do.
+                        case "${script}" in
+                            *.sh) chmod +x "./${script}" 2>/dev/null || true ;;
+                        esac
+                        echo "  Updated: ${script} (your previous copy was saved as ${script}.pre-update)"
+                        drift_found=true
+                    else
+                        # Backup succeeded but overwrite failed -- the host copy is
+                        # untouched and the backup is a redundant duplicate. Warn.
+                        echo "  WARNING: ${script} is stale but could not be updated"
+                        echo "    (write failed). Your file is unchanged. To adopt the"
+                        echo "    repository version manually, run:"
+                        echo "      docker cp ${DAAF_PROJECT_NAME:-daaf}-daaf-docker-1:/daaf/${repo_path} ./${script}"
+                    fi
+                else
+                    # Could not create the backup -- do NOT overwrite (never
+                    # destroy the only copy). Fall back to the old warning.
+                    echo "  WARNING: ${script} is stale but could not be updated"
+                    echo "    (backup step failed). Your file was left unchanged to"
+                    echo "    avoid losing it. To adopt the repository version, run:"
+                    echo "      docker cp ${DAAF_PROJECT_NAME:-daaf}-daaf-docker-1:/daaf/${repo_path} ./${script}"
+                fi
+            fi
+        done <<< "${sync_list}"
+    fi
+
+    # Clean up the staging dir (best-effort; never fatal).
+    if [ -n "${drift_dir}" ] && [ -d "${drift_dir}" ]; then
+        rm -rf "${drift_dir}" 2>/dev/null || true
+    fi
+
+    # Closing summary if any stale files were updated -- mirrors the
+    # SYNC_COPY_FAILED summary so the message is not missed if it scrolled past.
+    if [ "${drift_found}" = true ]; then
+        echo ""
+        echo "One or more host files were stale and have been updated to the"
+        echo "repository version -- see the messages above. Your previous copies"
+        echo "were saved as <name>.pre-update files in this folder; you can delete"
+        echo "them once you have confirmed everything works, or restore one by"
+        echo "renaming it back if something regresses."
+        echo ""
+    fi
+
+    # --- Sync failure summary ------------------------------------------------
+    # SYNC_COPY_FAILED is set true by _sync_copy_one on any copy error. Print a
+    # closing summary so the user knows to act even if the warning scrolled by.
+    if [ "${SYNC_COPY_FAILED}" = true ]; then
+        echo "Warning: some host scripts could not be synced -- see the messages above for manual copy commands."
+        echo ""
+    fi
+
+    # --- Self-update notice --------------------------------------------------
+    # If the updater itself was refreshed as a CHANGED file, its new logic is on
+    # disk but was not executed this run. Prompt a re-run so the new updater's
+    # existence-heal pass can deliver anything the old logic could not. This is
+    # the explicit mechanism for the v2.1.0 -> daaf_dev two-run recovery (no
+    # auto re-exec -- that would collide with the mkdir lock and EXIT traps).
+    if [ "${self_updated}" = true ]; then
+        echo "-------------------------------------------"
+        echo "  The updater itself was updated"
+        echo "-------------------------------------------"
+        echo ""
+        echo "update_daaf.sh was refreshed in this update. The new version is"
+        echo "now on disk but this run used the previous version. Re-run it once"
+        echo "more so the latest updater can finish syncing your host tools:"
+        echo "  bash update_daaf.sh"
+        echo ""
+        echo "(It is safe to re-run -- if everything is already current it will"
+        echo " simply report 'Already up to date!')"
+        echo ""
+    fi
 }
 
 check_build_changes() {
@@ -478,7 +879,7 @@ check_build_changes() {
         else
             echo "rebuild_daaf.sh is not in your daaf-docker folder."
             echo "You can retrieve it from the container and run it:"
-            echo "  docker cp ${CONTAINER_NAME}:/daaf/scripts/host/rebuild_daaf.sh ./rebuild_daaf.sh"
+            echo "  docker cp ${DAAF_PROJECT_NAME:-daaf}-daaf-docker-1:/daaf/scripts/host/rebuild_daaf.sh ./rebuild_daaf.sh"
             echo "  chmod +x ./rebuild_daaf.sh"
             echo "  bash rebuild_daaf.sh"
         fi
@@ -514,6 +915,264 @@ finish_update() {
     echo "  To launch DAAF:"
     echo "    bash run_daaf.sh"
     echo ""
+    # Persist an env-origin update branch so future runs track it without
+    # re-exporting DAAF_BRANCH. Extracted into persist_branch_choice so the no-op
+    # success paths ("Already up to date"), which exit before finish_update runs,
+    # can persist the same way -- otherwise a re-run of `DAAF_BRANCH=x update`
+    # while already current would never save the choice.
+    persist_branch_choice
+
+    # Single marker-cleanup chokepoint: every successful completion clears the
+    # interrupted-update resume marker so a subsequent run does not mistake this
+    # (now-finished) update for one still needing resume finalization.
+    clear_resume_marker
+}
+
+# --- Settings-File Key Upsert (inlined from daaf_lib.sh) ---
+# Insert/update a single KEY=value line in environment_settings.txt when
+# persisting an env-origin DAAF_BRANCH after a successful update. This is an
+# INLINE COPY of daaf_lib.sh upsert_settings_key (byte-equivalent to the copy in
+# install.sh): update_daaf is a standalone recovery tool that must run even if
+# daaf_lib is broken and, like install.sh, does not source it (mirroring the
+# inline settings *reader* above). Semantics, placement rules, atomicity,
+# encoding, DRY-RUN gating and Bash 3.2 safety are identical to the library
+# version -- see daaf_lib.sh for the full annotation. Defined before the
+# DAAF_TEST_MODE guard so it is available to finish_update under test dot-source.
+upsert_settings_key() {
+    local file key value mode backup_suffix
+    file="${1:?upsert_settings_key requires a file path}"
+    key="${2:?upsert_settings_key requires a key}"
+    value="${3-}"
+    mode="${4:-if-absent}"
+    backup_suffix="${5:-}"
+
+    if [ ! -f "${file}" ]; then
+        echo "upsert_settings_key: ERROR: file not found: ${file}" >&2
+        return 1
+    fi
+
+    local -a lines=()
+    local _l
+    while IFS= read -r _l || [ -n "${_l}" ]; do
+        _l="${_l%$'\r'}"
+        lines+=("${_l}")
+    done < "${file}"
+
+    local active_idx=-1 comment_idx=-1 i line stripped
+    for (( i=0; i<${#lines[@]}; i++ )); do
+        line="${lines[$i]}"
+        if [ "${active_idx}" -lt 0 ]; then
+            case "${line}" in
+                "${key}="*) active_idx=$i ;;
+            esac
+        fi
+        if [ "${comment_idx}" -lt 0 ]; then
+            case "${line}" in
+                '#'*)
+                    stripped="${line#\#}"
+                    stripped="${stripped#"${stripped%%[![:space:]]*}"}"
+                    case "${stripped}" in
+                        "${key}="*) comment_idx=$i ;;
+                    esac
+                    ;;
+            esac
+        fi
+    done
+
+    local new_line="${key}=${value}"
+    local action=""
+    local -a out=()
+
+    if [ "${active_idx}" -ge 0 ]; then
+        if [ "${mode}" != "replace" ]; then
+            echo "upsert_settings_key: ${key} skipped (exists)"
+            return 0
+        fi
+        if [ "${lines[$active_idx]}" = "${new_line}" ]; then
+            echo "upsert_settings_key: ${key} unchanged (value already present)"
+            return 0
+        fi
+        for (( i=0; i<${#lines[@]}; i++ )); do
+            if [ "${i}" -eq "${active_idx}" ]; then
+                out+=("${new_line}")
+            else
+                out+=("${lines[$i]}")
+            fi
+        done
+        action="replaced"
+    elif [ "${comment_idx}" -ge 0 ]; then
+        for (( i=0; i<${#lines[@]}; i++ )); do
+            out+=("${lines[$i]}")
+            if [ "${i}" -eq "${comment_idx}" ]; then
+                out+=("${new_line}")
+            fi
+        done
+        action="inserted below commented example"
+    else
+        for (( i=0; i<${#lines[@]}; i++ )); do
+            out+=("${lines[$i]}")
+        done
+        if [ "${#out[@]}" -gt 0 ] && [ -n "${out[$(( ${#out[@]} - 1 ))]}" ]; then
+            out+=("")
+        fi
+        out+=("# Added by DAAF on $(date +%Y-%m-%d)")
+        out+=("${new_line}")
+        action="appended (new)"
+    fi
+
+    if [ "${DAAF_DRY_RUN:-}" = "1" ]; then
+        echo "[DRY-RUN] upsert_settings_key would write ${file}: ${action}"
+        echo "[DRY-RUN]   line: ${new_line}"
+        return 0
+    fi
+
+    if [ -n "${backup_suffix}" ] && [ ! -f "${file}${backup_suffix}" ]; then
+        if ! cp -p "${file}" "${file}${backup_suffix}"; then
+            echo "upsert_settings_key: ERROR: backup failed: ${file}${backup_suffix}" >&2
+            return 1
+        fi
+    fi
+
+    local payload="" ln
+    for ln in "${out[@]}"; do
+        payload="${payload}${ln}"$'\n'
+    done
+
+    local dir tmp
+    dir="$(dirname "${file}")"
+    tmp="${dir}/.daaf_upsert.$$.${RANDOM}"
+    if ! cp -p "${file}" "${tmp}"; then
+        echo "upsert_settings_key: ERROR: could not create temp file in ${dir}" >&2
+        rm -f "${tmp}"
+        return 1
+    fi
+    if ! printf '%s' "${payload}" > "${tmp}"; then
+        echo "upsert_settings_key: ERROR: write failed: ${tmp}" >&2
+        rm -f "${tmp}"
+        return 1
+    fi
+    if ! mv -f "${tmp}" "${file}"; then
+        echo "upsert_settings_key: ERROR: rename failed: ${tmp} -> ${file}" >&2
+        rm -f "${tmp}"
+        return 1
+    fi
+
+    echo "upsert_settings_key: ${key} ${action}"
+    return 0
+}
+
+# --- Persist an env-origin update branch (shared by every success path) ---
+# Writes PERSIST_BRANCH back to environment_settings.txt so future runs track it
+# without re-exporting DAAF_BRANCH. Called from finish_update AND from the no-op
+# "already up to date" success exits, which return before finish_update runs (the
+# most common re-run case: `DAAF_BRANCH=x update` while already current). Every
+# property of the original inline block is preserved: fires only when
+# PERSIST_BRANCH is non-empty (env-origin *branch* only, never a tag or a file-
+# origin value, so "never persist a tag" holds by construction), replace mode,
+# .pre-update backup, skip-with-note when the settings file is absent.
+# upsert_settings_key is itself DAAF_DRY_RUN gated (writes nothing in dry run);
+# `|| true` keeps a persistence hiccup from failing a completed update. Guarded
+# with ${PERSIST_BRANCH:-} because this runs under set -u and is dot-sourced under
+# DAAF_TEST_MODE. Defined before the DAAF_TEST_MODE guard so it is available to
+# finish_update (and the no-op exits) under test dot-source.
+persist_branch_choice() {
+    if [ -n "${PERSIST_BRANCH:-}" ]; then
+        if [ -f "./environment_settings.txt" ]; then
+            upsert_settings_key "./environment_settings.txt" "DAAF_BRANCH" "${PERSIST_BRANCH}" "replace" ".pre-update" || true
+            if [ "${DAAF_DRY_RUN:-}" != "1" ]; then
+                echo "Saved DAAF_BRANCH=${PERSIST_BRANCH} to environment_settings.txt for future updates."
+            fi
+        else
+            echo "NOTE: DAAF_BRANCH=${PERSIST_BRANCH} was used for this update but not saved"
+            echo "      (no environment_settings.txt). Copy environment_settings_example.txt to"
+            echo "      persist it for future runs."
+        fi
+    fi
+}
+
+# --- Interrupted-update resume marker helpers ---
+# A genuine merge/rebase conflict cannot be auto-resolved non-interactively, so
+# the updater exits 1 mid-merge and asks the user to resolve, commit, and re-run.
+# The re-run lands on an "already up to date" early exit (HEAD now == remote),
+# which historically did tier-A-only sync and skipped rebuild detection, tier-B
+# host-script sync, and the stash pop -- stranding the user on a stale image with
+# the "DAAF update backup" stash still set aside. These helpers persist the
+# pre-update HEAD across the interruption so the re-run can finish the journey.
+#
+# Marker path is inside the repo's own .git dir: invisible to `git status`,
+# survives the merge, and is wiped by a reclone. Written via docker exec (the
+# repo lives in the container). Defined before the DAAF_TEST_MODE guard so they
+# are unit-testable and callable from finish_update under test dot-source.
+
+# Persist OLD_HEAD + TIMESTAMP so a post-conflict re-run can resume. No-op under
+# dry run (nothing real to write, and the dry-run docker mock would misread the
+# exec). `|| true` so a write hiccup never trips the ERR trap.
+write_resume_marker() {
+    [ "${DAAF_DRY_RUN:-}" = "1" ] && return 0
+    # Host builds the marker bytes, an in-container `cat` writes them. The sh arg
+    # carries no embedded double quotes (the PS twin cannot -- PS 5.1 mangles them
+    # in native argv -- so both twins share this stdin mechanism for parity).
+    printf 'OLD_HEAD=%s\nTIMESTAMP=%s\n' "${OLD_HEAD}" "${TIMESTAMP}" \
+        | docker compose exec -T daaf-docker \
+        sh -c 'cat > /daaf/.git/daaf-update-resume' >/dev/null 2>&1 || true
+}
+
+# Delete the resume marker. Called from finish_update (the single success
+# chokepoint) and when a corrupt marker is discovered at startup. No-op under dry
+# run; `|| true` keeps it off the ERR trap.
+clear_resume_marker() {
+    [ "${DAAF_DRY_RUN:-}" = "1" ] && return 0
+    docker compose exec -T daaf-docker \
+        rm -f /daaf/.git/daaf-update-resume </dev/null >/dev/null 2>&1 || true
+}
+
+# Find the stash entry a prior interrupted run set aside. Echoes the stash@{N}
+# ref of the FIRST stash whose message contains "DAAF update backup", or nothing
+# if none exists (user already popped it, or there were no dirty files).
+# Capture-then-parse -- never `| grep -q` a live producer (conventions lint rule 9).
+# Bash 3.2 safe: no mapfile, no arrays.
+_find_update_backup_stash() {
+    local stash_list line ref
+    stash_list=$(docker compose exec -T daaf-docker \
+        git -C /daaf stash list </dev/null 2>/dev/null | tr -d '\r' || true)
+    while IFS= read -r line; do
+        case "${line}" in
+            *"DAAF update backup"*)
+                # A stash list line looks like: stash@{0}: On main: DAAF update...
+                # so everything before the first ':' is the ref.
+                ref="${line%%:*}"
+                if [ -n "${ref}" ]; then
+                    echo "${ref}"
+                    return 0
+                fi
+                ;;
+        esac
+    done <<< "${stash_list}"
+    return 0
+}
+
+# Finish an interrupted update that has now landed on an "already up to date"
+# early exit (the resolved-and-committed merge left HEAD == remote). Restore the
+# set-aside stash (if still present) exactly like the normal pop sites, then run
+# finish_update against the recorded pre-update OLD_HEAD so tier A+B host-script
+# sync AND rebuild detection execute against the true pre-update baseline.
+resume_finalize() {
+    local stash_ref
+    stash_ref=$(_find_update_backup_stash)
+    if [ -n "${stash_ref}" ]; then
+        echo "Restoring your set-aside changes..."
+        if ! docker compose exec -T daaf-docker \
+            git -C /daaf stash pop "${stash_ref}" </dev/null; then
+            if handle_stash_conflict; then
+                finish_update "${OLD_HEAD}"
+            else
+                finish_update "${OLD_HEAD}" \
+                    "Note: Uncommitted changes still need attention (see above)."
+            fi
+            return 0
+        fi
+    fi
+    finish_update "${OLD_HEAD}"
 }
 
 # --- Test Mode Guard ---
@@ -579,10 +1238,11 @@ if ! docker info &> /dev/null; then
 fi
 
 # --- Preflight: Start container if needed ---
-RUNNING=$(docker compose ps --status running --format '{{.Name}}' 2>/dev/null \
-    | grep -c "daaf-docker" || true)
+# `docker compose ps -q daaf-docker` prints the running container's ID (empty
+# when stopped), derived from the compose project rather than a hardcoded name.
+RUNNING_CID=$(docker compose ps -q daaf-docker 2>/dev/null || true)
 
-if [ "${RUNNING}" -eq 0 ]; then
+if [ -z "${RUNNING_CID}" ]; then
     echo "Starting DAAF container..."
     if ! docker compose up -d; then
         echo "ERROR: Failed to start the DAAF container."
@@ -625,6 +1285,11 @@ if [ "${RUNNING}" -eq 0 ]; then
     echo ""
 fi
 
+# Derive the container ID now that the container is guaranteed running. Used by
+# `docker cp` in _sync_copy_one and by manual-recovery hints. `-q` (running only)
+# is correct here because the preflight above ensures the container is up.
+CONTAINER_ID=$(docker compose ps -q daaf-docker 2>/dev/null || true)
+
 # --- Preflight: DAAF installed ---
 if ! docker compose exec -T daaf-docker test -f /daaf/CLAUDE.md </dev/null 2>/dev/null; then
     echo "ERROR: DAAF does not appear to be installed in the container."
@@ -663,6 +1328,98 @@ docker compose exec -T daaf-docker \
 
 OLD_HEAD=$(docker compose exec -T daaf-docker \
     git -C /daaf rev-parse HEAD </dev/null 2>/dev/null | tr -d '\r')
+
+# =====================================================================
+# Resume detection (interrupted-update recovery)
+# =====================================================================
+# Runs after the pre-update HEAD is captured but before any branch-state
+# decision. Two cases to handle when a prior run stopped on a genuine conflict:
+#   1. A merge/rebase is STILL in progress -> the user has not finished
+#      resolving. Guide them and exit 1, keeping the marker.
+#   2. A resume marker exists and records a valid pre-update HEAD -> resume:
+#      adopt the recorded OLD_HEAD so rebuild detection and tier-B host-script
+#      sync run against the TRUE pre-update baseline (this run's HEAD is already
+#      the post-merge HEAD, so check_build_changes keyed on it would see nothing).
+# Skipped entirely under dry run: there is no real repo to probe, and the
+# built-in dry-run docker mock would misread the MERGE_HEAD probe as HEAD.
+RESUMING=false
+if [ "${DAAF_DRY_RUN:-}" != "1" ]; then
+    # Capture the in-progress probes, then test -- never `| grep -q` a live
+    # producer (conventions lint rule 9). Use the canonical git filesystem markers:
+    # .git/MERGE_HEAD exists only during an unresolved merge; rebase state lives
+    # in .git/rebase-merge or .git/rebase-apply. (Filesystem probes, not
+    # `rev-parse MERGE_HEAD`, so the probe strings carry no "rev-parse HEAD"
+    # token that generic test mocks would false-match.)
+    MERGE_IN_PROGRESS=$(docker compose exec -T daaf-docker \
+        sh -c 'if [ -f /daaf/.git/MERGE_HEAD ]; then echo yes; fi' \
+        </dev/null 2>/dev/null | tr -d '\r' || true)
+    REBASE_IN_PROGRESS=$(docker compose exec -T daaf-docker \
+        sh -c 'if [ -d /daaf/.git/rebase-merge ] || [ -d /daaf/.git/rebase-apply ]; then echo yes; fi' \
+        </dev/null 2>/dev/null | tr -d '\r' || true)
+    RESUME_MARKER=$(docker compose exec -T daaf-docker \
+        sh -c 'cat /daaf/.git/daaf-update-resume 2>/dev/null' \
+        </dev/null 2>/dev/null | tr -d '\r' || true)
+
+    if [ -n "${MERGE_IN_PROGRESS}" ] || [ -n "${REBASE_IN_PROGRESS}" ]; then
+        echo ""
+        echo "-------------------------------------------"
+        echo "  An update is still in progress"
+        echo "-------------------------------------------"
+        echo ""
+        echo "A previous update stopped partway through resolving a conflict. Please"
+        echo "finish that before running the updater again."
+        echo ""
+        echo "To finish resolving (inside the container):"
+        echo "  bash run_daaf.sh bash"
+        echo "  (edit the conflicting files to remove the <<<<<<< markers)"
+        echo "  git add ."
+        if [ -n "${MERGE_IN_PROGRESS}" ]; then
+            echo "  git commit"
+        else
+            echo "  git rebase --continue"
+        fi
+        echo "  exit"
+        echo ""
+        echo "Then re-run:  bash update_daaf.sh"
+        echo ""
+        echo "Or to abort the update entirely (your research files are not affected):"
+        if [ -n "${MERGE_IN_PROGRESS}" ]; then
+            echo "  docker compose exec daaf-docker git -C /daaf merge --abort"
+        else
+            echo "  docker compose exec daaf-docker git -C /daaf rebase --abort"
+        fi
+        echo "  docker compose exec daaf-docker git -C /daaf reset --hard ${BACKUP_BRANCH}"
+        echo ""
+        exit 1
+    fi
+
+    if [ -n "${RESUME_MARKER}" ]; then
+        # Parse OLD_HEAD from the marker (Bash 3.2 safe: no mapfile/arrays).
+        MARKER_OLD_HEAD=""
+        while IFS= read -r _rline; do
+            case "${_rline}" in
+                OLD_HEAD=*) MARKER_OLD_HEAD="${_rline#OLD_HEAD=}" ;;
+            esac
+        done <<< "${RESUME_MARKER}"
+
+        if [ -n "${MARKER_OLD_HEAD}" ] && docker compose exec -T daaf-docker \
+            git -C /daaf rev-parse --verify --quiet "${MARKER_OLD_HEAD}^{commit}" \
+            </dev/null >/dev/null 2>&1; then
+            RESUMING=true
+            OLD_HEAD="${MARKER_OLD_HEAD}"
+            echo ""
+            echo "Resuming interrupted update..."
+            echo ""
+        else
+            # Corrupt/invalid marker -> warn, delete, continue normally (fail-open).
+            echo ""
+            echo "NOTE: Found a leftover update marker with no valid restart point."
+            echo "      Ignoring it and continuing normally."
+            echo ""
+            clear_resume_marker
+        fi
+    fi
+fi
 
 # =====================================================================
 # Check git remote
@@ -770,34 +1527,68 @@ fi
 # Resolve remote branch
 # =====================================================================
 REMOTE_BRANCH="${DAAF_BRANCH:-}"
+# PERSIST_BRANCH is set only when DAAF_BRANCH names a real branch AND came from
+# the process environment (not the settings file). On a successful update it is
+# written back to environment_settings.txt (in finish_update) so future runs
+# track it without re-exporting. It is never set for a tag or for a file-origin
+# value, so tags are never persisted.
+PERSIST_BRANCH=""
 
 if [ -n "${REMOTE_BRANCH}" ]; then
-    # User specified a branch -- verify it exists on the remote
-    if ! docker compose exec -T daaf-docker \
+    # Classify the DAAF_BRANCH value against the remote: branch, tag, or unknown.
+    if docker compose exec -T daaf-docker \
         git -C /daaf rev-parse --verify "${UPSTREAM_REMOTE}/${REMOTE_BRANCH}" \
         </dev/null >/dev/null 2>&1; then
-
-        # Check if the value is a version tag rather than a branch.
-        # Tags live in refs/tags/, not refs/remotes/origin/, so the branch
-        # check above correctly fails for them.
-        if docker compose exec -T daaf-docker \
-            git -C /daaf rev-parse --verify "refs/tags/${REMOTE_BRANCH}" \
-            </dev/null >/dev/null 2>&1; then
+        echo "Using branch: ${REMOTE_BRANCH} (from DAAF_BRANCH)"
+        # Persist only an env-origin branch: a file-origin value is already in the
+        # file, and a tag is handled below and never persisted.
+        if [ "${DAAF_BRANCH_FROM_ENV}" = "1" ]; then
+            PERSIST_BRANCH="${REMOTE_BRANCH}"
+        fi
+    elif docker compose exec -T daaf-docker \
+        git -C /daaf rev-parse --verify "refs/tags/${REMOTE_BRANCH}" \
+        </dev/null >/dev/null 2>&1; then
+        # The value is a version tag, not a branch. Tags live in refs/tags/, not
+        # refs/remotes/origin/, so the branch check above correctly failed.
+        if [ "${DAAF_BRANCH_FROM_ENV}" = "1" ]; then
+            # Env-origin tag: refuse informatively. The updater tracks a *branch*
+            # to pull ongoing changes; a tag is a fixed snapshot the branch-
+            # comparison machinery cannot advance (it silently no-ops as "already
+            # up to date"). A tag is never persisted, so ongoing updates would
+            # track the auto-detected default branch. Point the user at the one
+            # supported way to move onto a release: re-install pinned to the tag.
             echo ""
             echo "'${REMOTE_BRANCH}' is a version tag, not a branch."
+            echo "(You set it via DAAF_BRANCH in your environment.)"
             echo ""
-            echo "The updater needs a branch to pull changes from. Tags are fixed"
-            echo "snapshots and cannot receive updates."
+            echo "The updater can only track a branch for ongoing updates. A tag is a"
+            echo "fixed snapshot, so it cannot be followed for updates -- and a tag is"
+            echo "never saved as your update branch."
             echo ""
-            echo "To update to the latest release on the main branch:"
-            echo "  bash update_daaf.sh"
-            echo "  (without setting DAAF_BRANCH)"
+            echo "To move this installation onto the '${REMOTE_BRANCH}' release, re-run the"
+            echo "installer pinned to that tag (the supported path for this container-based"
+            echo "layout):"
+            echo "  DAAF_BRANCH=${REMOTE_BRANCH} bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/${UPSTREAM_REPO}/main/scripts/host/install.sh)\""
             echo ""
-            echo "To update from a specific branch:"
-            echo "  DAAF_BRANCH=dev bash update_daaf.sh"
+            echo "To keep receiving ongoing updates instead, unset DAAF_BRANCH (or set it"
+            echo "to a branch). Updates then track the default branch (auto-detected"
+            echo "main/master)."
+            echo ""
+            echo "No changes were made. Your research files are not affected."
             exit 1
+        else
+            # File-origin tag: a persisted tag would otherwise lock every future
+            # update out. Warn, name the file and key, and fall back to the
+            # auto-detected default branch for THIS run (do not hard-exit).
+            echo ""
+            echo "NOTE: DAAF_BRANCH in environment_settings.txt is set to '${REMOTE_BRANCH}',"
+            echo "      which is a version tag, not a branch. Tags can't be tracked for"
+            echo "      updates. Edit environment_settings.txt and set DAAF_BRANCH to a"
+            echo "      branch (or remove it) to silence this. Continuing this run with the"
+            echo "      auto-detected default branch."
+            REMOTE_BRANCH=""
         fi
-
+    else
         echo ""
         echo "The branch '${REMOTE_BRANCH}' (from DAAF_BRANCH) was not found on"
         echo "${UPSTREAM_REMOTE}."
@@ -806,9 +1597,11 @@ if [ -n "${REMOTE_BRANCH}" ]; then
         echo "again, or omit DAAF_BRANCH to use the default branch."
         exit 1
     fi
-    echo "Using branch: ${REMOTE_BRANCH} (from DAAF_BRANCH)"
-else
-    # Auto-detect: try main, then master
+fi
+
+if [ -z "${REMOTE_BRANCH}" ]; then
+    # Auto-detect: try main, then master. Reached when DAAF_BRANCH was unset, or
+    # when a file-origin tag was cleared just above.
     if docker compose exec -T daaf-docker \
         git -C /daaf rev-parse --verify "${UPSTREAM_REMOTE}/main" \
         </dev/null >/dev/null 2>&1; then
@@ -904,6 +1697,24 @@ if [ "${CURRENT_BRANCH}" = "${REMOTE_BRANCH}" ] \
     echo ""
     echo "Already up to date! Nothing to do."
     echo ""
+    # A resume run lands here once the user resolved and committed a conflict
+    # from the interrupted run (HEAD now == remote). Do NOT take the tier-A-only
+    # exit -- restore the set-aside stash and run tier A+B sync + rebuild
+    # detection against the recorded pre-update OLD_HEAD, which the interrupted
+    # run never got to. finish_update clears the resume marker.
+    if [ "${RESUMING}" = true ]; then
+        resume_finalize
+        exit 0
+    fi
+    # Even when there is nothing to pull, run the existence-heal sync so host
+    # scripts a prior update missed (e.g., a file added in a release the user
+    # updated across) are delivered now. Called with no old_head so only the
+    # cheap tier-A (missing-file) pass runs -- no diff, no changed-file copies.
+    sync_host_scripts
+    # Persist an env-origin branch even on this no-op success: this exits before
+    # finish_update, and re-running with DAAF_BRANCH set while already current is
+    # the most common case where the choice would otherwise never be saved.
+    persist_branch_choice
     exit 0
 fi
 
@@ -930,6 +1741,22 @@ if [ "${CURRENT_BRANCH}" != "${REMOTE_BRANCH}" ] && [ "${BEHIND}" = "0" ]; then
     echo "Already up to date! Your branch '${CURRENT_BRANCH}' has all the latest"
     echo "changes from ${UPSTREAM_REMOTE}/${REMOTE_BRANCH}. Nothing to do."
     echo ""
+    # Resume run: the resolved-and-committed merge on '${CURRENT_BRANCH}' now
+    # contains all of ${UPSTREAM_REMOTE}/${REMOTE_BRANCH} (BEHIND=0), so we land
+    # here. Finish the interrupted journey instead of the tier-A-only exit --
+    # restore the stash and run tier A+B sync + rebuild detection against the
+    # recorded pre-update OLD_HEAD. finish_update clears the resume marker.
+    if [ "${RESUMING}" = true ]; then
+        resume_finalize
+        exit 0
+    fi
+    # Existence-heal sync (tier A only) so host scripts a prior update missed
+    # are delivered even when there is nothing new to pull. See the note on the
+    # default-branch up-to-date path above.
+    sync_host_scripts
+    # Persist an env-origin branch on this no-op success too (exits before
+    # finish_update) -- see the default-branch up-to-date path above.
+    persist_branch_choice
     exit 0
 fi
 
@@ -1042,11 +1869,16 @@ if [ "${CURRENT_BRANCH}" != "${REMOTE_BRANCH}" ]; then
     if ! docker compose exec -T daaf-docker \
         git -C /daaf merge "${REMOTE_BRANCH}" </dev/null; then
         if ! handle_conflict "merge" "merge --abort"; then
+            # Persist a resume marker so a post-resolution re-run finishes the
+            # remaining steps (stash restore + host-script sync + rebuild check).
+            write_resume_marker
             if [ "${STASHED}" = true ]; then
                 echo ""
-                echo "Your uncommitted changes are safely saved and will be"
-                echo "restored after conflicts are resolved."
-                echo "  docker compose exec daaf-docker git -C /daaf stash pop"
+                echo "Your uncommitted changes are safely set aside. After you resolve"
+                echo "the conflicts and commit, re-run the updater and it will restore"
+                echo "them and finish the remaining steps automatically:"
+                echo "  bash update_daaf.sh"
+                echo "(Or restore manually: docker compose exec daaf-docker git -C /daaf stash pop)"
             fi
             exit 1
         fi
@@ -1074,6 +1906,31 @@ fi
 # On default branch -- local commits
 # =====================================================================
 if [ "${AHEAD}" -gt 0 ]; then
+    # A resume run can land here on the DEFAULT branch: the user resolved and
+    # committed a conflict from the interrupted run, so HEAD is now a merge
+    # commit and the up-to-date hash check above no longer matches -- BEHIND=0
+    # but AHEAD>0 (the local merge/customization commits). Finish the interrupted
+    # journey instead of re-showing the merge/rebase/abort menu, which would be
+    # spurious here and would strand the set-aside "DAAF update backup" stash
+    # (the tree is now clean, so STASHED would be false and the stash never
+    # popped). resume_finalize pops the stash if present and runs tier A+B sync +
+    # rebuild detection against the recorded pre-update OLD_HEAD; finish_update
+    # clears the resume marker. See the two "already up to date" resume routes.
+    if [ "${RESUMING}" = true ]; then
+        echo ""
+        echo "Detected an interrupted update -- finishing it now."
+        resume_finalize
+        # Rare corner: new upstream commits arrived between the conflict and this
+        # re-run. Always finish the interrupted update first, never mix it with a
+        # fresh pull -- so tell the user to re-run for the new commits.
+        if [ "${BEHIND}" -gt 0 ]; then
+            echo ""
+            echo "The interrupted update was completed first. New updates are now"
+            echo "available -- run the updater again to get them:"
+            echo "  bash update_daaf.sh"
+        fi
+        exit 0
+    fi
     echo ""
     echo "You have ${AHEAD} local commit(s) on ${REMOTE_BRANCH} that aren't in"
     echo "the official DAAF release."
@@ -1133,11 +1990,16 @@ if [ "${AHEAD}" -gt 0 ]; then
             git -C /daaf merge "${UPSTREAM_REMOTE}/${REMOTE_BRANCH}" \
             -m "Merge DAAF upstream updates" </dev/null; then
             if ! handle_conflict "merge" "merge --abort"; then
+                # Persist a resume marker so a post-resolution re-run finishes
+                # the remaining steps (stash restore + sync + rebuild check).
+                write_resume_marker
                 if [ "${STASHED}" = true ]; then
                     echo ""
-                    echo "Your uncommitted changes are safely saved and will be"
-                    echo "restored after conflicts are resolved."
-                    echo "  docker compose exec daaf-docker git -C /daaf stash pop"
+                    echo "Your uncommitted changes are safely set aside. After you resolve"
+                    echo "the conflicts and commit, re-run the updater and it will restore"
+                    echo "them and finish the remaining steps automatically:"
+                    echo "  bash update_daaf.sh"
+                    echo "(Or restore manually: docker compose exec daaf-docker git -C /daaf stash pop)"
                 fi
                 exit 1
             fi
@@ -1178,11 +2040,16 @@ if [ "${AHEAD}" -gt 0 ]; then
         if ! docker compose exec -T daaf-docker \
             git -C /daaf rebase "${UPSTREAM_REMOTE}/${REMOTE_BRANCH}" </dev/null; then
             if ! handle_conflict "rebase" "rebase --abort"; then
+                # Persist a resume marker so a post-resolution re-run finishes
+                # the remaining steps (stash restore + sync + rebuild check).
+                write_resume_marker
                 if [ "${STASHED}" = true ]; then
                     echo ""
-                    echo "Your uncommitted changes are safely saved and will be"
-                    echo "restored after conflicts are resolved."
-                    echo "  docker compose exec daaf-docker git -C /daaf stash pop"
+                    echo "Your uncommitted changes are safely set aside. After you resolve"
+                    echo "the conflicts and commit, re-run the updater and it will restore"
+                    echo "them and finish the remaining steps automatically:"
+                    echo "  bash update_daaf.sh"
+                    echo "(Or restore manually: docker compose exec daaf-docker git -C /daaf stash pop)"
                 fi
                 exit 1
             fi

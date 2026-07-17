@@ -21,11 +21,14 @@ methodology content — syntax and library guidance only.
 
 ## Installation
 
-```bash
-pip install statsmodels
-```
+No installation needed in DAAF: `statsmodels` (0.14.6) is pre-installed in the
+container. Runtime installs are blocked in DAAF (`pip install`/`uv add` are
+refused both at the command line and inside executed scripts — see CLAUDE.md
+§ Runtime Package Installation). If a package beyond the pinned install is needed,
+escalate to the user to add it to the Dockerfile (user additions block near the
+end) and rebuild.
 
-Key dependencies (installed automatically):
+Key dependencies (also pre-installed):
 
 | Package | Role |
 |---------|------|

@@ -1,343 +1,790 @@
 #!/usr/bin/env python3
 """
-Decompile a DAAF marimo notebook into individual script files.
+Decompile a canonical DAAF Stage 9 marimo archive into Python scripts.
 
-This is the inverse of _build_notebook.py. It parses a DAAF marimo notebook
-(which uses the Four-Cell Pattern per script) and extracts each script back
-into a standalone .py file with its execution log appended — exactly as it
-existed before notebook assembly.
+The accepted notebook is the archive-shaped marimo application emitted by the
+DAAF notebook-assembler agent. Each script bundle must contain an immediately
+adjacent header cell, commented source archive cell, and matching execution-log
+accordion cell. The complete notebook and extraction plan are validated before
+the requested output root is created.
 
-After extraction, runs a cross-cell variable reference validation pass using
-Python's ast module. Scripts that reference variables not defined within them
-(likely cross-cell dependencies from the marimo notebook) are flagged with
-warnings in both stdout and a "Dangling Reference Warnings" section in the
-output MANIFEST.md. This helps Reproducibility Verification (RV-2) anticipate
-scripts that may need modification before re-execution.
+A bounded set of legacy DAAF details remains supported: ``####`` step headings,
+``**Final Script:**`` metadata, SOURCE values without the canonical ``scripts/``
+prefix, wrapped ``mo.accordion`` calls, and pre-commented execution logs.
+Arbitrary marimo applications are not accepted merely because they import
+marimo.
 
 Usage:
-    python decompile_notebook.py <notebook_path> <output_dir>
+    python scripts/decompile_notebook.py <notebook_path> <output_dir>
 
-Example:
-    python scripts/decompile_notebook.py \
-        research/2026-02-15_.../2026-02-15_...Analysis.py \
-        research/2026-03-24_.../original_files/scripts
+Output policy:
+    The output root must not already exist. This utility never merges with or
+    overwrites an existing extraction tree.
 
-Output:
-    Creates one .py file per script found in the notebook, organized into
-    stage subdirectories matching the original layout:
-        output_dir/stage5_fetch/01_fetch-directory_a.py
-        output_dir/stage6_clean/01_clean-directory.py
-        ...
-
-Each extracted file contains the un-commented code followed by the execution
-log re-formatted as comments — a faithful reconstruction of the original
-executed script file.
+Framework-utility exception: this standalone CLI is not a research execution
+artifact and is directly runnable from /daaf/scripts/.
 """
 
 import ast
+import io
 import re
 import sys
-from pathlib import Path
+import tokenize
+from pathlib import Path, PurePosixPath
+
+
+ALLOWED_STAGES = {
+    "stage5_fetch",
+    "stage6_clean",
+    "stage7_transform",
+    "stage8_analysis",
+}
+CELL_DECORATOR_RE = re.compile(r"^@app\.cell[ \t]*$")
+CELL_DECORATOR_HINT_RE = re.compile(r"^@app\.cell\b")
+SOURCE_MARKER_RE = re.compile(r"^# SOURCE:[ \t]*(.*)$")
+SOURCE_HINT_RE = re.compile(r"^#\s*SOURCE\b", re.IGNORECASE)
+SAFE_FILENAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*\.py$")
+HEADER_SEPARATOR_RE = re.compile(r"^    # ={10,}[ \t]*$")
+LOG_DECORATION_RE = re.compile(r"^[=\-_*]+$")
+PLACEHOLDER_LOG_FORMS = {
+    "no execution log found",
+    "todo",
+    "tbd",
+    "placeholder",
+    "generic placeholder",
+    "execution log placeholder",
+    "placeholder execution log",
+    "execution log todo",
+    "todo execution log",
+    "execution log tbd",
+    "tbd execution log",
+    "verbatim copy from script",
+    "verbatim copy from the script",
+}
+PLACEHOLDER_INSTRUCTION_WORDS = {
+    "a",
+    "actual",
+    "add",
+    "an",
+    "and",
+    "below",
+    "complete",
+    "copy",
+    "execution",
+    "from",
+    "full",
+    "generic",
+    "here",
+    "is",
+    "later",
+    "log",
+    "paste",
+    "placeholder",
+    "please",
+    "real",
+    "script",
+    "text",
+    "the",
+    "this",
+    "tbd",
+    "todo",
+    "verbatim",
+}
+
+
+class DecompileError(Exception):
+    """Raised for a rejected notebook or unsafe extraction plan."""
+
+
+def fail(message):
+    """Raise a user-facing fail-closed validation error."""
+    raise DecompileError(message)
 
 
 def split_cells(notebook_text):
-    """Split notebook text into individual cell bodies.
+    """Split a marimo source file at exact canonical ``@app.cell`` lines."""
+    lines = notebook_text.splitlines()
+    decorator_indices = [
+        index for index, line in enumerate(lines) if CELL_DECORATOR_RE.fullmatch(line)
+    ]
+    malformed_decorators = [
+        index + 1
+        for index, line in enumerate(lines)
+        if CELL_DECORATOR_HINT_RE.match(line)
+        and not CELL_DECORATOR_RE.fullmatch(line)
+    ]
+    if malformed_decorators:
+        fail(
+            "malformed or unsupported @app.cell decorator at notebook line "
+            f"{malformed_decorators[0]}"
+        )
+    if not decorator_indices:
+        fail("no canonical @app.cell boundaries found")
 
-    Each cell starts with @app.cell followed by a def line.
-    Returns list of (cell_body, raw_text) tuples.
-    """
-    # Split on @app.cell boundaries
-    parts = re.split(r'\n@app\.cell\n', notebook_text)
-    # First part is the file header (imports, marimo boilerplate) — skip it
     cells = []
-    for part in parts[1:]:
-        cells.append(part)
-    return cells
+    for position, decorator_index in enumerate(decorator_indices):
+        next_index = (
+            decorator_indices[position + 1]
+            if position + 1 < len(decorator_indices)
+            else len(lines)
+        )
+        cells.append(
+            {
+                "text": "\n".join(lines[decorator_index + 1 : next_index]),
+                "line": decorator_index + 2,
+            }
+        )
+    return "\n".join(lines[: decorator_indices[0]]), cells
 
 
-def classify_cell(cell_text):
-    """Classify a cell as one of: source_code, execution_log, data_inspect,
-    markdown_header, stage_marker, or unknown.
+def validate_notebook_identity(notebook_text, preamble):
+    """Require the bounded DAAF notebook-assembler marimo identity."""
+    try:
+        tree = ast.parse(notebook_text)
+    except SyntaxError as error:
+        fail(
+            "notebook is not valid Python syntax "
+            f"at line {error.lineno}: {error.msg}"
+        )
 
-    Returns (cell_type, extracted_content_dict).
-    """
-    if '# SOURCE:' in cell_text:
-        return 'source_code', extract_source_code(cell_text)
+    imports_marimo = any(
+        isinstance(node, ast.Import)
+        and any(alias.name == "marimo" for alias in node.names)
+        for node in tree.body
+    )
+    has_app_assignment = any(
+        isinstance(node, (ast.Assign, ast.AnnAssign))
+        and isinstance(
+            node.value,
+            ast.Call,
+        )
+        and isinstance(node.value.func, ast.Attribute)
+        and isinstance(node.value.func.value, ast.Name)
+        and node.value.func.value.id == "marimo"
+        and node.value.func.attr == "App"
+        and (
+            (
+                isinstance(node, ast.Assign)
+                and any(
+                    isinstance(target, ast.Name) and target.id == "app"
+                    for target in node.targets
+                )
+            )
+            or (
+                isinstance(node, ast.AnnAssign)
+                and isinstance(node.target, ast.Name)
+                and node.target.id == "app"
+            )
+        )
+        for node in tree.body
+    )
+    if not imports_marimo or not has_app_assignment:
+        fail("notebook lacks the canonical marimo import and app assignment")
 
-    if 'mo.accordion({"Execution Log' in cell_text or "mo.accordion({'Execution Log" in cell_text:
-        return 'execution_log', extract_execution_log(cell_text)
-
-    if 'mo.ui.table(' in cell_text:
-        return 'data_inspect', {}
-
-    if 'mo.image(' in cell_text:
-        return 'data_inspect', {}
-
-    if 'mo.md(' in cell_text:
-        # Could be a header or stage marker
-        if '#### ' in cell_text:
-            return 'markdown_header', extract_header_metadata(cell_text)
-        return 'stage_marker', {}
-
-    return 'unknown', {}
-
-
-def extract_source_code(cell_text):
-    """Extract the script source path and un-commented code from a Cell 2."""
-    lines = cell_text.split('\n')
-
-    source_path = None
-    code_lines = []
-    in_code = False
-    header_lines_remaining = 0
-
-    for line in lines:
-        # Strip the 4-space cell-body indentation
-        stripped = line[4:] if line.startswith('    ') else line
-
-        # Find SOURCE path
-        if stripped.startswith('# SOURCE:'):
-            source_path = stripped.replace('# SOURCE:', '').strip()
-            # Next 5 lines are the header block (===, ARCHIVED, preserved at, ===, empty #)
-            header_lines_remaining = 5
-            continue
-
-        # Skip header block
-        if header_lines_remaining > 0:
-            header_lines_remaining -= 1
-            continue
-
-        # Stop at the pass statement
-        if stripped.strip() == 'pass  # Cell must have executable statement':
-            break
-
-        # Skip the def line and initial content before SOURCE
-        if stripped.startswith('def _'):
-            continue
-
-        # Un-comment the code
-        if stripped.startswith('# '):
-            code_lines.append(stripped[2:])
-        elif stripped == '#':
-            code_lines.append('')
-        elif stripped.strip() == '':
-            # Could be trailing whitespace between header and code; skip
-            continue
-
-    return {
-        'source_path': source_path,
-        'code': '\n'.join(code_lines),
-    }
+    canonical_signature = "Generated by notebook-assembler agent."
+    legacy_signature = (
+        "This notebook DISPLAYS the executed scripts from the scripts/ directory."
+    )
+    legacy_safety_statement = "It does NOT contain new analysis code."
+    if canonical_signature not in preamble and not (
+        legacy_signature in preamble and legacy_safety_statement in preamble
+    ):
+        fail(
+            "notebook lacks the DAAF notebook-assembler archive identity; "
+            "arbitrary marimo applications are not accepted"
+        )
 
 
-def extract_execution_log(cell_text):
-    """Extract execution log text from a Cell 3 accordion."""
-    # The log is inside triple backticks within the accordion
-    # Pattern: mo.accordion({"Execution Log (script_name)": mo.md("""```\n...\n```""")})
+def source_marker_tokens(cell):
+    """Return wrapper-level SOURCE comment tokens without inspecting strings."""
+    try:
+        tokens = tokenize.generate_tokens(io.StringIO(cell["text"]).readline)
+        comments = [
+            token
+            for token in tokens
+            if token.type == tokenize.COMMENT
+            and token.start[1] == 4
+            and SOURCE_HINT_RE.match(token.string)
+        ]
+    except (IndentationError, tokenize.TokenError) as error:
+        fail(
+            "malformed Python cell while inspecting SOURCE markers near "
+            f"notebook line {cell['line']}: {error}"
+        )
+    return comments
 
-    # Extract script name from accordion key
-    name_match = re.search(r'Execution Log \(([^)]+)\)', cell_text)
-    script_name = name_match.group(1) if name_match else 'unknown'
 
-    # Extract content between the triple backticks
-    # The log starts after ```\n and ends before \n```
-    backtick_match = re.search(r'```\n(.*?)\n```', cell_text, re.DOTALL)
-    if backtick_match:
-        log_text = backtick_match.group(1)
+def normalize_source_path(raw_source_path, notebook_line):
+    """Validate and normalize a canonical or bounded-legacy SOURCE path."""
+    if not raw_source_path:
+        fail(f"empty SOURCE path at notebook line {notebook_line}")
+    if any(ord(character) < 32 or ord(character) == 127 for character in raw_source_path):
+        fail(f"SOURCE path contains a control character at notebook line {notebook_line}")
+    if "\\" in raw_source_path:
+        fail(f"SOURCE path must use forward slashes: {raw_source_path}")
+    if raw_source_path.startswith("/") or re.match(r"^[A-Za-z]:/", raw_source_path):
+        fail(f"SOURCE path must be relative, not absolute: {raw_source_path}")
+
+    raw_components = raw_source_path.split("/")
+    if any(component in {".", ".."} for component in raw_components):
+        fail(
+            "SOURCE path contains a forbidden '.' or '..' component: "
+            f"{raw_source_path}"
+        )
+
+    if raw_components and raw_components[0] == "scripts":
+        components = raw_components[1:]
+        path_form = "canonical"
     else:
-        log_text = ''
+        components = raw_components
+        path_form = "legacy"
+
+    if len(components) != 2 or any(not component for component in components):
+        fail(
+            "SOURCE path must contain exactly one canonical stage directory "
+            f"and one filename: {raw_source_path}"
+        )
+    stage, filename = components
+    if stage not in ALLOWED_STAGES:
+        fail(f"SOURCE path has a noncanonical stage directory: {raw_source_path}")
+    if not SAFE_FILENAME_RE.fullmatch(filename):
+        fail(
+            "SOURCE filename is unsafe or does not end in .py: "
+            f"{raw_source_path}"
+        )
+
+    normalized = PurePosixPath(stage, filename).as_posix()
+    return normalized, path_form
+
+
+def extract_source_code(cell):
+    """Validate one archive cell and recover its source path and code."""
+    marker_tokens = source_marker_tokens(cell)
+    if not marker_tokens:
+        return None
+
+    lines = cell["text"].splitlines()
+    nonblank_indices = [index for index, line in enumerate(lines) if line.strip()]
+    if len(nonblank_indices) < 2 or lines[nonblank_indices[0]] != "def _():":
+        fail(
+            "SOURCE marker is not inside a canonical def _() archive cell near "
+            f"notebook line {cell['line']}"
+        )
+    marker_index = nonblank_indices[1]
+    first_marker_tokens = [
+        marker for marker in marker_tokens if marker.start[0] - 1 == marker_index
+    ]
+    if len(first_marker_tokens) != 1:
+        fail(
+            "SOURCE marker must be the first body item in a canonical def _() "
+            f"archive cell near notebook line {cell['line']}"
+        )
+
+    marker_token = first_marker_tokens[0]
+    marker_match = SOURCE_MARKER_RE.fullmatch(marker_token.string)
+    if marker_match is None:
+        fail(
+            "malformed SOURCE marker at notebook line "
+            f"{cell['line'] + marker_token.start[0] - 1}"
+        )
+    raw_source_path = marker_match.group(1).strip()
+    marker_line = cell["line"] + marker_token.start[0] - 1
+    source_path, path_form = normalize_source_path(raw_source_path, marker_line)
+
+    header_marker_tokens = [
+        marker
+        for marker in marker_tokens
+        if marker_index < marker.start[0] - 1 <= marker_index + 5
+    ]
+    if header_marker_tokens:
+        diagnostic = (
+            "duplicate SOURCE markers"
+            if any(
+                SOURCE_MARKER_RE.fullmatch(marker.string)
+                for marker in header_marker_tokens
+            )
+            else "malformed SOURCE marker"
+        )
+        fail(
+            f"{diagnostic} in archive header opened near notebook line "
+            f"{cell['line']}"
+        )
+
+    prefix_nonblank = [line for line in lines[:marker_index] if line.strip()]
+    if prefix_nonblank != ["def _():"]:
+        fail(
+            "SOURCE marker must be the first body item in a canonical def _() "
+            f"archive cell near notebook line {cell['line']}"
+        )
+
+    if marker_index + 5 >= len(lines):
+        fail(f"incomplete archive header after SOURCE marker for {source_path}")
+    header = lines[marker_index + 1 : marker_index + 6]
+    if not HEADER_SEPARATOR_RE.fullmatch(header[0]):
+        fail(f"malformed archive separator after SOURCE marker for {source_path}")
+    if header[1] != "    # ARCHIVED SCRIPT CODE (commented out to prevent execution conflicts)":
+        fail(f"malformed ARCHIVED SCRIPT CODE header for {source_path}")
+    expected_preserved = (
+        "    # Full executable script preserved at: " + raw_source_path
+    )
+    if header[2] != expected_preserved:
+        fail(
+            "archive preserved-path header does not match its SOURCE marker for "
+            f"{source_path}"
+        )
+    if not HEADER_SEPARATOR_RE.fullmatch(header[3]) or header[4] != "    #":
+        fail(f"malformed archive header terminator for {source_path}")
+
+    pass_indices = [
+        index
+        for index, line in enumerate(lines)
+        if line == "    pass  # Cell must have executable statement"
+    ]
+    if len(pass_indices) != 1:
+        fail(
+            "archive cell must contain exactly one canonical pass statement for "
+            f"{source_path}"
+        )
+    pass_index = pass_indices[0]
+    code_start = marker_index + 6
+    if pass_index < code_start:
+        fail(f"archive pass statement precedes code for {source_path}")
+
+    code_lines = []
+    for line_index, line in enumerate(lines[code_start:pass_index], start=code_start):
+        if line.startswith("    # "):
+            code_lines.append(line[6:])
+        elif line == "    #":
+            code_lines.append("")
+        else:
+            fail(
+                "archive code line is not safely comment-prefixed for "
+                f"{source_path} at notebook line {cell['line'] + line_index}"
+            )
+    if not any(line.strip() for line in code_lines):
+        fail(f"archive source code is empty for {source_path}")
+
+    saw_return = False
+    for trailing_index, line in enumerate(lines[pass_index + 1 :], start=pass_index + 1):
+        if not line.strip() or (line.startswith("#") and not line.startswith("    ")):
+            continue
+        if line == "    return" and not saw_return:
+            saw_return = True
+            continue
+        fail(
+            "ambiguous executable content follows the archive pass statement for "
+            f"{source_path} at notebook line {cell['line'] + trailing_index}"
+        )
 
     return {
-        'script_name': script_name,
-        'log_text': log_text,
+        "source_path": source_path,
+        "raw_source_path": raw_source_path,
+        "path_form": path_form,
+        "code": "\n".join(code_lines).rstrip(),
+        "line": marker_line,
     }
 
 
-def extract_header_metadata(cell_text):
-    """Extract metadata from a Cell 1 markdown header."""
-    metadata = {}
+def extract_header_metadata(cell):
+    """Extract canonical or documented legacy metadata from one literal md cell."""
+    tree = ast.parse(cell["text"])
+    functions = [node for node in tree.body if isinstance(node, ast.FunctionDef)]
+    if len(functions) != 1:
+        return None
 
-    # Extract step and label: #### 1.1: Fetch IPEDS Directory
-    step_match = re.search(r'#### ([\d.]+): (.+)', cell_text)
-    if step_match:
-        metadata['step'] = step_match.group(1)
-        metadata['label'] = step_match.group(2)
+    markdown_calls = [
+        statement.value
+        for statement in functions[0].body
+        if isinstance(statement, ast.Expr)
+        and isinstance(statement.value, ast.Call)
+        and is_named_attribute(statement.value.func, "mo", "md")
+    ]
+    if len(markdown_calls) != 1:
+        return None
+    markdown_call = markdown_calls[0]
+    if (
+        len(markdown_call.args) != 1
+        or markdown_call.keywords
+        or not isinstance(markdown_call.args[0], ast.Constant)
+        or not isinstance(markdown_call.args[0].value, str)
+    ):
+        return None
 
-    # Extract final script path
-    script_match = re.search(r'\*\*Final Script:\*\* `scripts/(.+?)`', cell_text)
-    if script_match:
-        metadata['script_path'] = script_match.group(1)
+    markdown_text = markdown_call.args[0].value
+    step_match = re.search(r"#{3,4} ([\d.]+): ([^\n\r]+)", markdown_text)
+    script_match = re.search(
+        r"\*\*(?:Final )?Script:\*\* `scripts/(.+?)`",
+        markdown_text,
+    )
+    if not step_match or not script_match:
+        return None
 
-    # Extract output path
-    output_match = re.search(r'\*\*Output:\*\* `(.+?)`', cell_text)
-    if output_match:
-        metadata['output_path'] = output_match.group(1)
+    output_match = re.search(r"\*\*Output:\*\* `(.+?)`", markdown_text)
+    status_match = re.search(r"\*\*Status:\*\* ([^\n\r]+)", markdown_text)
+    return {
+        "step": step_match.group(1),
+        "label": step_match.group(2).strip(),
+        "script_path": script_match.group(1),
+        "output_path": output_match.group(1) if output_match else "—",
+        "status": status_match.group(1).strip() if status_match else "—",
+        "heading_form": "legacy" if step_match.group(0).startswith("####") else "canonical",
+        "script_label_form": (
+            "legacy" if "**Final Script:**" in markdown_text else "canonical"
+        ),
+    }
 
-    # Extract status
-    status_match = re.search(r'\*\*Status:\*\* (.+)', cell_text)
-    if status_match:
-        metadata['status'] = status_match.group(1)
 
-    return metadata
+def is_named_attribute(node, owner, attribute):
+    """Return whether an AST node is exactly ``owner.attribute``."""
+    return (
+        isinstance(node, ast.Attribute)
+        and isinstance(node.value, ast.Name)
+        and node.value.id == owner
+        and node.attr == attribute
+    )
+
+
+def has_accordion_syntax(cell):
+    """Detect an accordion call lexically for targeted malformed diagnostics."""
+    return re.search(r"\bmo\.accordion\s*\(", cell["text"]) is not None
+
+
+def is_placeholder_execution_log(log_text):
+    """Recognize only whole-payload assembler placeholder signals."""
+    normalized_lines = []
+    for line in log_text.splitlines():
+        normalized_line = re.sub(r"^\s*#\s?", "", line).strip()
+        if normalized_line and not LOG_DECORATION_RE.fullmatch(normalized_line):
+            normalized_lines.append(normalized_line)
+
+    normalized = " ".join(normalized_lines).casefold()
+    normalized = re.sub(r"[^\w]+", " ", normalized, flags=re.UNICODE).strip()
+    if not normalized:
+        return False
+
+    candidate_forms = [normalized]
+    execution_log_prefix = "execution log "
+    if normalized.startswith(execution_log_prefix):
+        candidate_forms.append(normalized[len(execution_log_prefix) :].strip())
+
+    for candidate in candidate_forms:
+        if candidate in PLACEHOLDER_LOG_FORMS:
+            return True
+
+        words = candidate.split()
+        word_set = set(words)
+        is_log_instruction = (
+            bool(word_set.intersection({"paste", "copy", "add"}))
+            and {"execution", "log"}.issubset(word_set)
+            and word_set.issubset(PLACEHOLDER_INSTRUCTION_WORDS)
+        )
+        if is_log_instruction:
+            return True
+
+        is_generic_placeholder = (
+            "placeholder" in word_set
+            and word_set.issubset(PLACEHOLDER_INSTRUCTION_WORDS)
+        )
+        if is_generic_placeholder:
+            return True
+
+        if (
+            {"verbatim", "copy", "from", "script"}.issubset(word_set)
+            and word_set.issubset(PLACEHOLDER_INSTRUCTION_WORDS)
+        ):
+            return True
+
+    return False
+
+
+def extract_execution_log(cell):
+    """Validate a canonical (possibly wrapped) execution-log accordion cell."""
+    if not has_accordion_syntax(cell):
+        return None
+
+    try:
+        tree = ast.parse(cell["text"])
+    except SyntaxError as error:
+        fail(
+            "malformed execution-log cell near notebook line "
+            f"{cell['line']}: {error.msg}"
+        )
+
+    functions = [node for node in tree.body if isinstance(node, ast.FunctionDef)]
+    if len(functions) != 1:
+        fail(
+            "execution-log cell must contain exactly one function wrapper near "
+            f"notebook line {cell['line']}"
+        )
+    function = functions[0]
+    accordion_expressions = [
+        statement
+        for statement in function.body
+        if isinstance(statement, ast.Expr)
+        and isinstance(statement.value, ast.Call)
+        and is_named_attribute(statement.value.func, "mo", "accordion")
+    ]
+    if len(accordion_expressions) != 1:
+        fail(
+            "execution-log cell must contain exactly one mo.accordion call near "
+            f"notebook line {cell['line']}"
+        )
+    allowed_statements = tuple(accordion_expressions) + tuple(
+        statement
+        for statement in function.body
+        if isinstance(statement, ast.Return) and statement.value is None
+    )
+    if len(allowed_statements) != len(function.body):
+        fail(
+            "execution-log cell contains ambiguous executable content near "
+            f"notebook line {cell['line']}"
+        )
+
+    accordion_call = accordion_expressions[0].value
+    if len(accordion_call.args) != 1 or accordion_call.keywords:
+        fail(
+            "mo.accordion execution log must have exactly one positional mapping "
+            f"argument near notebook line {cell['line']}"
+        )
+    mapping = accordion_call.args[0]
+    if not isinstance(mapping, ast.Dict) or len(mapping.keys) != 1:
+        fail(
+            "execution-log accordion must contain exactly one mapping entry near "
+            f"notebook line {cell['line']}"
+        )
+
+    key = mapping.keys[0]
+    value = mapping.values[0]
+    if not isinstance(key, ast.Constant) or not isinstance(key.value, str):
+        fail(f"execution-log accordion key must be a string near notebook line {cell['line']}")
+    name_match = re.fullmatch(r"Execution Log \(([^)]+)\)", key.value)
+    if name_match is None:
+        fail(
+            "execution-log accordion key must match 'Execution Log (filename.py)' "
+            f"near notebook line {cell['line']}"
+        )
+
+    if (
+        not isinstance(value, ast.Call)
+        or not is_named_attribute(value.func, "mo", "md")
+        or len(value.args) != 1
+        or value.keywords
+        or not isinstance(value.args[0], ast.Constant)
+        or not isinstance(value.args[0].value, str)
+    ):
+        fail(
+            "execution-log accordion value must be one literal mo.md string near "
+            f"notebook line {cell['line']}"
+        )
+    fenced_text = value.args[0].value
+    fence_match = re.fullmatch(r"```\n(.*)\n```", fenced_text, re.DOTALL)
+    if fence_match is None:
+        fail(
+            "execution-log markdown must contain exactly one complete plain fenced "
+            f"body near notebook line {cell['line']}"
+        )
+    log_text = fence_match.group(1)
+    if not log_text.strip():
+        fail(f"execution log is empty near notebook line {cell['line']}")
+    if is_placeholder_execution_log(log_text):
+        fail(
+            "execution log is a placeholder rather than archived execution "
+            f"evidence near notebook line {cell['line']}"
+        )
+
+    return {
+        "script_name": name_match.group(1),
+        "log_text": log_text,
+        "line": cell["line"] + accordion_expressions[0].lineno - 1,
+    }
+
+
+def classify_cells(cells):
+    """Validate marker syntax and classify every relevant marimo cell."""
+    classified = []
+    for cell in cells:
+        source = extract_source_code(cell)
+        if source is not None:
+            classified.append(("source_code", source))
+            continue
+
+        if has_accordion_syntax(cell):
+            log = extract_execution_log(cell)
+            classified.append(("execution_log", log))
+            continue
+
+        header = extract_header_metadata(cell)
+        if header is not None:
+            classified.append(("markdown_header", header))
+            continue
+
+        classified.append(("other", {}))
+    return classified
+
+
+def build_archive_plan(classified):
+    """Require unambiguous adjacent header/source/log bundles."""
+    scripts = []
+    seen_source_paths = set()
+    associated_log_indices = set()
+
+    for index, (cell_type, content) in enumerate(classified):
+        if cell_type != "source_code":
+            continue
+
+        source_path = content["source_path"]
+        if source_path in seen_source_paths:
+            fail(f"duplicate SOURCE path: {source_path}")
+        seen_source_paths.add(source_path)
+
+        if index == 0 or classified[index - 1][0] != "markdown_header":
+            fail(
+                f"archive source {source_path} is missing its immediately preceding "
+                "script header cell"
+            )
+        header = classified[index - 1][1]
+        header_source, _ = normalize_source_path(
+            header["script_path"],
+            content["line"],
+        )
+        if header_source != source_path:
+            fail(
+                "script header/source mismatch: header names "
+                f"{header_source}, SOURCE names {source_path}"
+            )
+
+        if index + 1 >= len(classified) or classified[index + 1][0] != "execution_log":
+            fail(
+                f"archive source {source_path} must be followed immediately by its "
+                "execution-log accordion cell"
+            )
+        log = classified[index + 1][1]
+        expected_name = PurePosixPath(source_path).name
+        if log["script_name"] != expected_name:
+            fail(
+                "execution-log/source mismatch for "
+                f"{source_path}: accordion names {log['script_name']}"
+            )
+        associated_log_indices.add(index + 1)
+
+        scripts.append(
+            {
+                **content,
+                "log_text": log["log_text"],
+                "header_metadata": header,
+                "log_line": log["line"],
+            }
+        )
+
+    for index, (cell_type, _) in enumerate(classified):
+        if cell_type == "execution_log" and index not in associated_log_indices:
+            if index > 0 and classified[index - 1][0] == "execution_log":
+                fail("duplicate execution-log accordion after an archive bundle")
+            fail("execution-log accordion is not immediately associated with a SOURCE archive cell")
+
+    if not scripts:
+        fail(
+            "no valid script bundles found; a canonical DAAF Stage 9 marimo "
+            "archive requires at least one source/log bundle"
+        )
+    return scripts
 
 
 def reconstruct_script(code, log_text):
-    """Reconstruct an original script file from code and execution log.
-
-    Returns the script content as it would have looked after run_with_capture.sh
-    appended the execution log. Handles both pre-commented and uncommented log
-    text from notebook accordions (the notebook-assembler may or may not strip
-    comment prefixes when storing logs in accordion cells).
-    """
-    log_lines = log_text.split('\n')
-
-    # Detect whether the log text is already comment-prefixed (pre-commented)
-    # by checking if early lines look like commented execution log markers.
-    # The known assembler (_build_notebook.py) strips comment prefixes, so
-    # accordion text is normally plain. But we handle both cases defensively.
-    is_precommented = False
-    for line in log_lines[:10]:
-        stripped = line.strip()
-        if stripped in ('# EXECUTION LOG', '# ====', '# ====='):
-            is_precommented = True
-            break
-        if stripped.startswith('# ===') and '=' * 10 in stripped:
-            is_precommented = True
-            break
+    """Rebuild an executed script with a single comment-prefixed log section."""
+    log_lines = log_text.split("\n")
+    is_precommented = any(
+        line.strip() in {"# EXECUTION LOG", "# ====", "# ====="}
+        or (line.strip().startswith("# ===") and "=" * 10 in line.strip())
+        for line in log_lines[:10]
+    )
 
     if is_precommented:
-        # Strip existing comment prefixes to normalize, then re-add them.
-        # This prevents double-commenting (# # EXECUTION LOG).
         cleaned_lines = []
         for line in log_lines:
-            if line.startswith('# '):
+            if line.startswith("# "):
                 cleaned_lines.append(line[2:])
-            elif line == '#':
-                cleaned_lines.append('')
+            elif line == "#":
+                cleaned_lines.append("")
             else:
                 cleaned_lines.append(line)
     else:
-        # Log text is plain (not pre-commented). Preserve it exactly —
-        # any '# ' at line starts is genuine content (e.g., Python comments
-        # captured in stderr), not a comment prefix to strip.
         cleaned_lines = log_lines
 
-    # Re-comment cleanly (single level of '# ' prefix)
-    commented_log_lines = []
-    for line in cleaned_lines:
-        if line:
-            commented_log_lines.append('# ' + line)
-        else:
-            commented_log_lines.append('#')
-
-    commented_log = '\n'.join(commented_log_lines)
-
-    # Combine code + execution log
-    script = code.rstrip()
-    script += '\n\n\n'
-
-    # Ensure the EXECUTION LOG header is present. run_with_capture.sh checks
-    # for "^# EXECUTION LOG" before allowing re-execution, and the RV-2
-    # stripping step looks for this marker to remove the log before re-running.
-    if '# EXECUTION LOG' not in commented_log:
-        script += '# =============================================================================\n'
-        script += '# EXECUTION LOG\n'
-        script += '# =============================================================================\n'
-
-    script += commented_log
-    script += '\n'
-
-    return script
+    commented_log = "\n".join(
+        "# " + line if line else "#" for line in cleaned_lines
+    )
+    script = code.rstrip() + "\n\n\n"
+    if "# EXECUTION LOG" not in commented_log:
+        script += (
+            "# =============================================================================\n"
+            "# EXECUTION LOG\n"
+            "# =============================================================================\n"
+        )
+    return script + commented_log + "\n"
 
 
 def validate_references(code):
-    """Check for names referenced but never defined in a script's code.
-
-    Uses Python's ast module to find all Name nodes that are loaded (read)
-    vs stored (assigned/defined). Returns a list of names that are referenced
-    but never defined within the script. Filters out common builtins, stdlib
-    modules, and standard DAAF imports to reduce false positives.
-
-    Returns list of (name, line_number) tuples for dangling references.
-    """
-    # Common names that are always available (builtins, common imports, etc.)
-    # We intentionally keep this conservative — better to have a few false
-    # positives than miss real dangling references.
-    KNOWN_SAFE = {
-        # Python builtins
-        'print', 'len', 'range', 'str', 'int', 'float', 'bool', 'list',
-        'dict', 'set', 'tuple', 'type', 'isinstance', 'enumerate', 'zip',
-        'map', 'filter', 'sorted', 'reversed', 'min', 'max', 'sum', 'abs',
-        'round', 'any', 'all', 'open', 'None', 'True', 'False',
-        'ValueError', 'TypeError', 'KeyError', 'IndexError', 'FileNotFoundError',
-        'RuntimeError', 'Exception', 'AssertionError', 'StopIteration',
-        'NotImplementedError', 'ZeroDivisionError', 'OSError', 'IOError',
-        'super', 'property', 'staticmethod', 'classmethod', 'object',
-        'hasattr', 'getattr', 'setattr', 'delattr', 'callable', 'id',
-        'hash', 'repr', 'format', 'input', 'vars', 'dir', 'help',
-        'hex', 'oct', 'bin', 'ord', 'chr', 'ascii', 'iter', 'next',
-        'slice', 'memoryview', 'bytearray', 'bytes', 'frozenset',
-        'complex', 'divmod', 'pow', 'eval', 'exec', 'compile',
-        'breakpoint', 'exit', 'quit',
-        '__name__', '__file__', '__doc__', '__all__',
-        # Common stdlib modules used at top-level
-        'os', 'sys', 'math', 'json', 'csv', 'datetime', 'time',
-        'warnings', 'logging', 'pathlib', 'collections', 'functools',
-        'itertools', 'io', 'copy', 'glob', 'shutil', 'tempfile',
-        'textwrap', 're', 'hashlib', 'urllib', 'subprocess',
-        # Common DAAF / data science imports
-        'pl', 'pd', 'np', 'plt', 'sns', 'sm', 'scipy', 'sklearn',
-        'Path', 'polars', 'pandas', 'numpy', 'matplotlib', 'seaborn',
-        'plotnine', 'statsmodels', 'yaml', 'toml',
-        'ggplot', 'aes', 'geom_point', 'geom_line', 'geom_bar',
-        'geom_boxplot', 'geom_col', 'geom_hline', 'geom_vline',
-        'geom_text', 'geom_label', 'geom_tile', 'geom_jitter',
-        'geom_smooth', 'geom_abline', 'geom_ribbon', 'geom_area',
-        'geom_histogram', 'geom_density', 'geom_segment', 'geom_rect',
-        'facet_wrap', 'facet_grid',
-        'labs', 'theme', 'theme_minimal', 'theme_bw', 'theme_classic',
-        'theme_void', 'theme_gray', 'theme_light', 'theme_dark',
-        'scale_fill_manual', 'scale_color_manual', 'scale_fill_brewer',
-        'scale_color_brewer', 'scale_fill_gradient', 'scale_fill_gradient2',
-        'scale_color_gradient', 'scale_color_gradient2',
-        'scale_x_continuous', 'scale_y_continuous',
-        'scale_x_discrete', 'scale_y_discrete',
-        'scale_x_log10', 'scale_y_log10',
-        'scale_fill_viridis_c', 'scale_fill_cmap',
-        'coord_flip', 'coord_cartesian',
-        'element_text', 'element_blank', 'element_rect', 'element_line',
-        'ggsave', 'position_jitter', 'position_dodge',
-        'guide_legend', 'guides', 'after_stat',
-        'stat_summary', 'annotate',
-        # matplotlib direct usage
-        'figure', 'Figure', 'FigureCanvasSVG', 'FigureCanvasAgg',
-        'subplots_adjust',
+    """Statically flag names read but never defined; never evaluate code."""
+    known_safe = {
+        "print", "len", "range", "str", "int", "float", "bool", "list",
+        "dict", "set", "tuple", "type", "isinstance", "enumerate", "zip",
+        "map", "filter", "sorted", "reversed", "min", "max", "sum", "abs",
+        "round", "any", "all", "open", "None", "True", "False",
+        "ValueError", "TypeError", "KeyError", "IndexError", "FileNotFoundError",
+        "RuntimeError", "Exception", "AssertionError", "StopIteration",
+        "NotImplementedError", "ZeroDivisionError", "OSError", "IOError",
+        "super", "property", "staticmethod", "classmethod", "object",
+        "hasattr", "getattr", "setattr", "delattr", "callable", "id",
+        "hash", "repr", "format", "input", "vars", "dir", "help",
+        "hex", "oct", "bin", "ord", "chr", "ascii", "iter", "next",
+        "slice", "memoryview", "bytearray", "bytes", "frozenset", "complex",
+        "divmod", "pow", "breakpoint", "exit", "quit", "__name__",
+        "__file__", "__doc__", "__all__", "os", "sys", "math", "json",
+        "csv", "datetime", "time", "warnings", "logging", "pathlib",
+        "collections", "functools", "itertools", "io", "copy", "glob",
+        "shutil", "tempfile", "textwrap", "re", "hashlib", "urllib",
+        "subprocess", "pl", "pd", "np", "plt", "sns", "sm", "scipy",
+        "sklearn", "Path", "polars", "pandas", "numpy", "matplotlib",
+        "seaborn", "plotnine", "statsmodels", "yaml", "toml", "ggplot",
+        "aes", "geom_point", "geom_line", "geom_bar", "geom_boxplot",
+        "geom_col", "geom_hline", "geom_vline", "geom_text", "geom_label",
+        "geom_tile", "geom_jitter", "geom_smooth", "geom_abline",
+        "geom_ribbon", "geom_area", "geom_histogram", "geom_density",
+        "geom_segment", "geom_rect", "facet_wrap", "facet_grid", "labs",
+        "theme", "theme_minimal", "theme_bw", "theme_classic", "theme_void",
+        "theme_gray", "theme_light", "theme_dark", "scale_fill_manual",
+        "scale_color_manual", "scale_fill_brewer", "scale_color_brewer",
+        "scale_fill_gradient", "scale_fill_gradient2", "scale_color_gradient",
+        "scale_color_gradient2", "scale_x_continuous", "scale_y_continuous",
+        "scale_x_discrete", "scale_y_discrete", "scale_x_log10",
+        "scale_y_log10", "scale_fill_viridis_c", "scale_fill_cmap",
+        "coord_flip", "coord_cartesian", "element_text", "element_blank",
+        "element_rect", "element_line", "ggsave", "position_jitter",
+        "position_dodge", "guide_legend", "guides", "after_stat",
+        "stat_summary", "annotate", "figure", "Figure", "FigureCanvasSVG",
+        "FigureCanvasAgg", "subplots_adjust",
     }
 
     try:
         tree = ast.parse(code)
     except SyntaxError:
-        return []  # Can't parse — skip validation
+        return []
 
-    # Collect all names that are defined (assigned, imported, used as targets)
     defined = set()
-    # Collect all names that are referenced (loaded)
-    referenced = []  # (name, lineno)
-
+    referenced = []
     for node in ast.walk(tree):
-        # Definitions: assignments, imports, for-loop targets, with-as, etc.
         if isinstance(node, ast.Import):
             for alias in node.names:
-                defined.add(alias.asname or alias.name.split('.')[0])
+                defined.add(alias.asname or alias.name.split(".")[0])
         elif isinstance(node, ast.ImportFrom):
             for alias in node.names:
-                if alias.name == '*':
-                    continue  # Can't track star imports
-                defined.add(alias.asname or alias.name)
+                if alias.name != "*":
+                    defined.add(alias.asname or alias.name)
         elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             defined.add(node.name)
-            for arg in node.args.args + node.args.posonlyargs + node.args.kwonlyargs:
-                defined.add(arg.arg)
+            for argument in node.args.args + node.args.posonlyargs + node.args.kwonlyargs:
+                defined.add(argument.arg)
             if node.args.vararg:
                 defined.add(node.args.vararg.arg)
             if node.args.kwarg:
@@ -346,211 +793,255 @@ def validate_references(code):
             defined.add(node.name)
         elif isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
             defined.add(node.id)
-        elif isinstance(node, ast.For):
-            if isinstance(node.target, ast.Name):
-                defined.add(node.target.id)
-            elif isinstance(node.target, ast.Tuple):
-                for elt in node.target.elts:
-                    if isinstance(elt, ast.Name):
-                        defined.add(elt.id)
-        elif isinstance(node, ast.ExceptHandler):
-            if node.name:
-                defined.add(node.name)
+        elif isinstance(node, ast.ExceptHandler) and node.name:
+            defined.add(node.name)
         elif isinstance(node, ast.Lambda):
-            for arg in node.args.args + node.args.posonlyargs + node.args.kwonlyargs:
-                defined.add(arg.arg)
+            for argument in node.args.args + node.args.posonlyargs + node.args.kwonlyargs:
+                defined.add(argument.arg)
             if node.args.vararg:
                 defined.add(node.args.vararg.arg)
             if node.args.kwarg:
                 defined.add(node.args.kwarg.arg)
-        elif isinstance(node, ast.withitem):
-            if node.optional_vars and isinstance(node.optional_vars, ast.Name):
-                defined.add(node.optional_vars.id)
-        elif isinstance(node, ast.comprehension):
-            if isinstance(node.target, ast.Name):
-                defined.add(node.target.id)
-            elif isinstance(node.target, ast.Tuple):
-                for elt in node.target.elts:
-                    if isinstance(elt, ast.Name):
-                        defined.add(elt.id)
-
-        # References: names that are loaded (read)
-        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
+        elif isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
             referenced.append((node.id, node.lineno))
 
-    # Find dangling references (referenced but not defined, and not known-safe)
     dangling = []
     seen = set()
-    for name, lineno in referenced:
-        if name not in defined and name not in KNOWN_SAFE and name not in seen:
-            dangling.append((name, lineno))
+    for name, line_number in referenced:
+        if name not in defined and name not in known_safe and name not in seen:
+            dangling.append((name, line_number))
             seen.add(name)
-
     return dangling
 
 
-def decompile(notebook_path, output_dir):
-    """Main decompilation: parse notebook, extract scripts, write files."""
-    notebook_path = Path(notebook_path)
-    output_dir = Path(output_dir)
+def escape_manifest_cell(value):
+    """Keep notebook metadata from breaking the manifest table."""
+    return str(value).replace("|", "\\|").replace("\n", " ").replace("\r", " ")
 
-    if not notebook_path.exists():
-        print(f"Error: Notebook not found: {notebook_path}")
-        sys.exit(1)
+
+def build_extraction_plan(scripts, output_dir):
+    """Resolve and bounds-check every output before filesystem mutation."""
+    requested_root = Path(output_dir).expanduser()
+    if not str(requested_root):
+        fail("output directory must not be empty")
+    if requested_root.exists() or requested_root.is_symlink():
+        fail(
+            "output directory already exists; refusing to merge with or overwrite "
+            f"existing content: {requested_root}"
+        )
+
+    resolved_root = requested_root.resolve(strict=False)
+    extraction_plan = []
+    manifest_rows = []
+    for script in scripts:
+        candidate = requested_root / PurePosixPath(script["source_path"])
+        resolved_candidate = candidate.resolve(strict=False)
+        try:
+            relative_candidate = resolved_candidate.relative_to(resolved_root)
+        except ValueError:
+            fail(
+                "resolved output candidate escapes the extraction root: "
+                f"{script['source_path']} -> {resolved_candidate} "
+                f"(root: {resolved_root})"
+            )
+        if relative_candidate == Path("."):
+            fail(f"resolved script output is not beneath the extraction root: {candidate}")
+
+        dangling = validate_references(script["code"])
+        script["dangling_refs"] = dangling
+        code_lines = len(script["code"].splitlines())
+        extraction_plan.append(
+            {
+                "source_path": script["source_path"],
+                "output_path": candidate,
+                "resolved_output_path": resolved_candidate,
+                "content": reconstruct_script(script["code"], script["log_text"]),
+            }
+        )
+        manifest_rows.append(
+            {
+                "source_path": script["source_path"],
+                "stage": PurePosixPath(script["source_path"]).parent.as_posix(),
+                "original_output": script["header_metadata"]["output_path"],
+                "code_lines": code_lines,
+                "has_log": True,
+                "path_form": script["path_form"],
+                "heading_form": script["header_metadata"]["heading_form"],
+                "script_label_form": script["header_metadata"]["script_label_form"],
+            }
+        )
+
+    manifest_path = requested_root / "MANIFEST.md"
+    resolved_manifest = manifest_path.resolve(strict=False)
+    try:
+        manifest_relative = resolved_manifest.relative_to(resolved_root)
+    except ValueError:
+        fail(
+            "resolved MANIFEST.md candidate escapes the extraction root: "
+            f"{resolved_manifest} (root: {resolved_root})"
+        )
+    if manifest_relative == Path("."):
+        fail("resolved MANIFEST.md candidate is not beneath the extraction root")
+
+    return requested_root, extraction_plan, manifest_rows, manifest_path
+
+
+def build_manifest(notebook_path, scripts, manifest_rows):
+    """Preserve the existing manifest table and append validation metadata."""
+    manifest_lines = [
+        "# Decompiled Script Manifest",
+        "",
+        f"**Source Notebook:** `{notebook_path.name}`",
+        f"**Decompiled:** {len(scripts)} scripts",
+        "",
+        "| # | Script | Stage | Original Output | Code Lines | Has Log |",
+        "|---|--------|-------|-----------------|-----------|---------|",
+    ]
+    for index, row in enumerate(manifest_rows, 1):
+        manifest_lines.append(
+            f"| {index} | `{row['source_path']}` | {row['stage']} | "
+            f"`{escape_manifest_cell(row['original_output'])}` | "
+            f"{row['code_lines']} | Yes |"
+        )
+
+    scripts_with_warnings = [
+        (script["source_path"], script["dangling_refs"])
+        for script in scripts
+        if script["dangling_refs"]
+    ]
+    if scripts_with_warnings:
+        manifest_lines.extend(
+            [
+                "",
+                "## Dangling Reference Warnings",
+                "",
+                "The following scripts reference variables that are not defined within the script.",
+                "These may be cross-cell dependencies from the marimo notebook that were lost during decompilation.",
+                "Scripts with dangling references may fail during re-execution and require modification.",
+                "",
+                "| Script | Undefined Names | Lines |",
+                "|--------|----------------|-------|",
+            ]
+        )
+        for source_path, dangling in scripts_with_warnings:
+            names = ", ".join(f"`{name}`" for name, _ in dangling)
+            lines = ", ".join(str(line_number) for _, line_number in dangling)
+            manifest_lines.append(f"| `{source_path}` | {names} | {lines} |")
+
+    canonical_count = sum(
+        row["path_form"] == "canonical"
+        and row["heading_form"] == "canonical"
+        and row["script_label_form"] == "canonical"
+        for row in manifest_rows
+    )
+    legacy_count = len(manifest_rows) - canonical_count
+    manifest_lines.extend(
+        [
+            "",
+            "## Archive Validation",
+            "",
+            "- **Contract:** DAAF Stage 9 marimo script archive",
+            f"- **Validated source/log associations:** {len(scripts)}",
+            f"- **Canonical bundles:** {canonical_count}",
+            f"- **Bundles using bounded legacy metadata/path forms:** {legacy_count}",
+            "- **Output policy:** New output root only; no merge or overwrite",
+        ]
+    )
+    return "\n".join(manifest_lines) + "\n", scripts_with_warnings
+
+
+def decompile(notebook_path, output_dir):
+    """Validate a complete archive, then write its scripts and manifest."""
+    notebook_path = Path(notebook_path)
+    if not notebook_path.is_file():
+        fail(f"notebook not found or is not a regular file: {notebook_path}")
 
     print(f"Decompiling: {notebook_path}")
     print(f"Output dir:  {output_dir}")
     print()
 
-    notebook_text = notebook_path.read_text()
-    cells = split_cells(notebook_text)
+    try:
+        notebook_bytes = notebook_path.read_bytes()
+    except OSError as error:
+        fail(f"could not read notebook: {error}")
+    if b"\x00" in notebook_bytes:
+        fail("notebook contains a NUL byte")
+    try:
+        notebook_text = notebook_bytes.decode("utf-8")
+    except UnicodeDecodeError as error:
+        fail(f"notebook is not valid UTF-8: {error}")
+    if not notebook_text.strip():
+        fail("notebook is empty")
+
+    preamble, cells = split_cells(notebook_text)
+    validate_notebook_identity(notebook_text, preamble)
     print(f"Found {len(cells)} cells")
 
-    # Group cells into script bundles (Cell 1 header, Cell 2 code, Cell 3 log)
-    # Strategy: iterate cells, match source_code cells with their adjacent log cells
-    scripts_extracted = []
+    classified = classify_cells(cells)
+    scripts = build_archive_plan(classified)
+    print(f"Validated {len(scripts)} source/log bundle(s)")
 
-    # Build classified list
-    classified = []
-    for cell in cells:
-        cell_type, content = classify_cell(cell)
-        classified.append((cell_type, content))
+    requested_root, extraction_plan, manifest_rows, manifest_path = (
+        build_extraction_plan(scripts, output_dir)
+    )
+    manifest_content, scripts_with_warnings = build_manifest(
+        notebook_path,
+        scripts,
+        manifest_rows,
+    )
 
-    # Pair source_code cells with their preceding markdown_header and
-    # following execution_log cells to capture full metadata per script.
-    i = 0
-    pending_header = {}
-    while i < len(classified):
-        cell_type, content = classified[i]
-
-        # Track the most recent markdown_header — it precedes the source_code cell
-        if cell_type == 'markdown_header':
-            pending_header = content
-
-        if cell_type == 'source_code' and content.get('source_path'):
-            source_path = content['source_path']
-            code = content['code']
-
-            # Look ahead for the matching execution log
-            log_text = ''
-            for j in range(i + 1, min(i + 3, len(classified))):
-                if classified[j][0] == 'execution_log':
-                    log_text = classified[j][1].get('log_text', '')
-                    break
-
-            scripts_extracted.append({
-                'source_path': source_path,
-                'code': code,
-                'log_text': log_text,
-                'header_metadata': pending_header,
-            })
-            pending_header = {}
-
-        i += 1
-
-    print(f"Extracted {len(scripts_extracted)} scripts")
     print()
-
-    # Write each script to the output directory
-    output_dir.mkdir(parents=True, exist_ok=True)
-    manifest = []
-
-    for script_info in scripts_extracted:
-        source_path = script_info['source_path']
-        code = script_info['code']
-        log_text = script_info['log_text']
-
-        # Reconstruct the original script file
-        script_content = reconstruct_script(code, log_text)
-
-        # Create subdirectory structure matching original layout
-        # source_path is like "stage5_fetch/01_fetch-directory_a.py"
-        output_path = output_dir / source_path
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-
-        output_path.write_text(script_content)
-        # Extract stage directory and original output from header metadata
-        stage_dir = str(Path(source_path).parent) if '/' in source_path else '—'
-        header_meta = script_info.get('header_metadata', {})
-        original_output = header_meta.get('output_path', '—')
-
-        manifest.append({
-            'source_path': source_path,
-            'output_path': str(output_path),
-            'stage': stage_dir,
-            'original_output': original_output,
-            'code_lines': len(code.split('\n')),
-            'has_log': bool(log_text.strip()),
-        })
-        print(f"  -> {source_path} ({len(code.split(chr(10)))} code lines, log: {'yes' if log_text.strip() else 'no'})")
-
-    # --- Validate cross-cell references ---
-    print()
-    scripts_with_warnings = []
-    for script_info in scripts_extracted:
-        code = script_info['code']
-        source_path = script_info['source_path']
-        dangling = validate_references(code)
-        if dangling:
-            scripts_with_warnings.append((source_path, dangling))
-            names_str = ', '.join(f'{n} (line {ln})' for n, ln in dangling)
-            print(f"  WARNING: {source_path} — dangling references: {names_str}")
-        script_info['dangling_refs'] = dangling
-
     if scripts_with_warnings:
-        print(f"\n  {len(scripts_with_warnings)} script(s) have dangling references (variables used but never defined).")
+        for source_path, dangling in scripts_with_warnings:
+            names = ", ".join(
+                f"{name} (line {line_number})" for name, line_number in dangling
+            )
+            print(f"  WARNING: {source_path} — dangling references: {names}")
+        print(
+            f"\n  {len(scripts_with_warnings)} script(s) have dangling references "
+            "(variables used but never defined)."
+        )
         print("  These may be cross-cell dependencies lost during decompilation.")
         print("  Review these scripts before re-execution in Reproducibility Verification.")
     else:
         print("  Reference validation: all scripts are self-contained (no dangling references detected).")
 
-    # Write manifest
-    manifest_path = output_dir / 'MANIFEST.md'
-    manifest_lines = [
-        '# Decompiled Script Manifest',
-        '',
-        f'**Source Notebook:** `{notebook_path.name}`',
-        f'**Decompiled:** {len(scripts_extracted)} scripts',
-        '',
-        '| # | Script | Stage | Original Output | Code Lines | Has Log |',
-        '|---|--------|-------|-----------------|-----------|---------|',
-    ]
-    for idx, m in enumerate(manifest, 1):
-        manifest_lines.append(
-            f"| {idx} | `{m['source_path']}` | {m['stage']} | `{m['original_output']}` | {m['code_lines']} | {'Yes' if m['has_log'] else 'No'} |"
+    try:
+        requested_root.mkdir(parents=True, exist_ok=False)
+        for planned, row in zip(extraction_plan, manifest_rows):
+            planned["output_path"].parent.mkdir(parents=True, exist_ok=True)
+            planned["output_path"].write_text(planned["content"], encoding="utf-8")
+            print(
+                f"  -> {planned['source_path']} ({row['code_lines']} code lines, log: yes)"
+            )
+        manifest_path.write_text(manifest_content, encoding="utf-8")
+    except OSError as error:
+        fail(
+            "validated extraction could not be written completely: "
+            f"{error}. Inspect and remove the newly created output root before retrying: "
+            f"{requested_root}"
         )
 
-    # Add dangling reference warnings to manifest
-    if scripts_with_warnings:
-        manifest_lines.append('')
-        manifest_lines.append('## Dangling Reference Warnings')
-        manifest_lines.append('')
-        manifest_lines.append('The following scripts reference variables that are not defined within the script.')
-        manifest_lines.append('These may be cross-cell dependencies from the marimo notebook that were lost during decompilation.')
-        manifest_lines.append('Scripts with dangling references may fail during re-execution and require modification.')
-        manifest_lines.append('')
-        manifest_lines.append('| Script | Undefined Names | Lines |')
-        manifest_lines.append('|--------|----------------|-------|')
-        for source_path, dangling in scripts_with_warnings:
-            names = ', '.join(f'`{n}`' for n, _ in dangling)
-            lines = ', '.join(str(ln) for _, ln in dangling)
-            manifest_lines.append(f'| `{source_path}` | {names} | {lines} |')
-
-    manifest_path.write_text('\n'.join(manifest_lines) + '\n')
     print(f"\nManifest written to: {manifest_path}")
+    print(f"\nDone. {len(scripts)} scripts extracted to {requested_root}")
+    return scripts
 
-    print(f"\nDone. {len(scripts_extracted)} scripts extracted to {output_dir}")
-    return scripts_extracted
+
+def main(arguments):
+    """Standalone command-line entry point."""
+    if len(arguments) != 2:
+        print(
+            "Usage: python decompile_notebook.py <notebook_path> <output_dir>",
+            file=sys.stderr,
+        )
+        return 1
+    try:
+        decompile(arguments[0], arguments[1])
+    except DecompileError as error:
+        print(f"Error: {error}", file=sys.stderr)
+        return 1
+    return 0
 
 
-if __name__ == '__main__':
-    if len(sys.argv) != 3:
-        print("Usage: python decompile_notebook.py <notebook_path> <output_dir>")
-        print()
-        print("Example:")
-        print("  python scripts/decompile_notebook.py \\")
-        print("    research/2026-02-15_.../2026-02-15_...Analysis.py \\")
-        print("    research/2026-03-24_.../original_files/scripts")
-        sys.exit(1)
-
-    decompile(sys.argv[1], sys.argv[2])
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

@@ -33,8 +33,9 @@ Copy this template to `STATE.md` in the project folder when starting a Data Onbo
 
 | Field | Value |
 |-------|-------|
-| **DAAF Version** | [Short git commit hash — from `git rev-parse --short HEAD` at project setup] |
-| **Model ID** | [Claude model identifier — e.g., "claude-opus-4-6"] |
+| **DAAF Version (at setup)** | [Short git commit hash — from `git rev-parse --short HEAD` at project setup. Recorded once at setup; NOT refreshed to current HEAD on later sessions. A session resuming against a newer DAAF checkout should read this as the setup-time commit, not current HEAD] |
+| **Session Model ID** | [Model identifier driving the orchestrator/main session at session start — record the runtime value, not this example (e.g., "claude-opus-4-8[1m]")] |
+| **Subagent Model Tiers** | [Distinct specialist model IDs by tier, from agent frontmatter defaults (`model: opus` / `model: sonnet`) plus any per-dispatch overrides the orchestrator applied. Record resolved IDs where known, or the tier alias + session date otherwise — e.g., "opus tier: claude-opus-4-8[1m]; sonnet tier: claude-sonnet-4-5". See `.claude/skills/daaf-orchestrator/SKILL.md` > "Model Selection for Subagent Dispatch" and AI_DISCLOSURE_REFERENCE.md > Multi-Model Sessions.] |
 | **Session Date(s)** | [Date(s) of profiling sessions — e.g., "2026-03-23"] |
 | **Session Transcript(s)** | `logs/` — collected at project completion via `collect_session_logs.sh` |
 
@@ -138,6 +139,37 @@ States
 
 ---
 
+## Synthetic Path Tracking
+
+*Include this section ONLY when the sensitivity gate (DI-1 intake fork) routed this onboarding to the privacy-preserving synthetic-data workflow (raw data must never enter the container). Omit entirely for conventional in-container onboarding. Stage sequence: DS-1 Script Preparation → DS-2 User Local Run → DS-3 Report Intake & Validation → DS-4 Interpretation → DS-5 Synthetic Generation & Validation → rejoin DI-7/DI-8. See the `synthetic-data-workflow` skill.*
+
+| Field | Value |
+|-------|-------|
+| **Sensitivity Gate Outcome** | [Synthetic path chosen — reason: sensitive/PII/proprietary/enclave/"can't leave environment" / Conventional (this section omitted)] |
+| **Disclosure Tier** | [T1 Schema / T2 Marginals (default) / T3 Relationships / T4 Local high-fidelity synthesis] |
+| **Suppression Threshold** | [default 5 / user-set value — small cells below this are suppressed] |
+| **Relationship Spec (T3 only)** | [correlation matrices / named outcome~predictor summaries / cross-tabs requested — or "N/A (< T3)"] |
+| **Profiling Script Version Handed Off** | [asset configured for the user, e.g., `profile_data_template.R` → handed-off filename + tier config; or PENDING] |
+| **Wait-State Status** | [DS-1 in prep / Awaiting user local run (DS-2) / Report received (DS-3) / Past intake] |
+| **Report Path** | [path to returned JSON profile report once imported, e.g., `data/profile_report/[filename].json`; or PENDING] |
+| **Generation Seed** | [seed recorded for reproducibility once DS-5 runs; or PENDING] |
+| **T4 Local-Synthesis Variant?** | [No / Yes — user ran `synthesize_local_template.*` locally; only synthetic rows crossed the boundary] |
+| **Synthetic Data Directory** | `data/synthetic/` (generated parquet; populated at DS-5) |
+
+### Synthetic QA Status (QAS-A/B/C)
+
+*The synthetic-path QA model replaces the standard recompute-against-source QA (impossible here — the real data never enters the container) with three independent checks. See `synthetic-data-workflow` > `references/validation-checks.md`.*
+
+| Check | What It Verifies | Stage | Status |
+|-------|------------------|-------|--------|
+| **QAS-A** | Disclosure-safety review of the OUTBOUND profiling script (does it emit anything the chosen tier forbids?) — highest-stakes; a leak is irreversible once the report is shared | DS-1 (before user runs it) | [PENDING/PASSED/BLOCKER] |
+| **QAS-B** | Internal-consistency validation of the RETURNED report (monotone percentiles, suppression-consistent counts, symmetric/PSD-tolerant correlation matrices, missingness in [0,1], embedded checks pass) | DS-3 | [PENDING/PASSED/ISSUES] |
+| **QAS-C** | Synthetic-vs-profile validation of GENERATED data (marginals & correlations within tolerance, suppressed categories absent, row count matched, identifier columns structurally shaped but value-free) | DS-5 | [PENDING/PASSED/ISSUES] |
+
+> **QAS-A is a BLOCKER gate, never a WARNING** — do not hand the profiling script to the user until disclosure-safety review passes.
+
+---
+
 ## User Request
 
 ### Original Request
@@ -170,6 +202,8 @@ States
 | 09 | C | quality-anomaly | `scripts/profile_relational/09_quality-anomaly.py` | No | [PENDING/DONE/SKIPPED] | [—/PASSED/FAILED] | | | [0-2] | |
 | 10 | D | semantic-interpretation | `scripts/profile_interpretation/10_semantic-interpretation.py` | No | [PENDING/DONE/SKIPPED] | [—/PASSED/FAILED] | [NOT_RUN/PASSED/WARNING/REVISED] | `scripts/cr/profile_interpretation_cr1.py` | [0-2] | |
 | 11 | D | reconcile-docs | `scripts/profile_interpretation/11_reconcile-docs.py` | Yes: docs provided | [PENDING/DONE/SKIPPED] | [—/PASSED/FAILED] | | | [0-2] | |
+
+> **Note:** Script extensions are `.py` for Python projects and `.R` for R projects. QA scripts use the same extension as the execution language.
 
 **Status Values:**
 - **PENDING** — Script not yet executed
@@ -249,6 +283,7 @@ States
 | Decision | Choice | Rationale | Stage |
 |----------|--------|-----------|-------|
 | [Topic] | [What was decided] | [Why] | [DI-N] |
+| Pre-Authoring Research offer | [Skipped / Accepted — Focused / Accepted — Deep] | [brief rationale / focus areas] | Post-PSU-DI2 |
 
 ---
 

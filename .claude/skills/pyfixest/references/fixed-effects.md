@@ -201,6 +201,13 @@ The `demeaner_backend` parameter controls the FE demeaning algorithm:
 | `"scipy"` | Included by default | Fallback if numba fails |
 | `"rust-cg"` | Rust extension | Conjugate gradient solver |
 
+> **DAAF note:** The `jax` backend is **not available** in the DAAF container —
+> jax is not pre-installed and runtime installs (`pip install pyfixest[jax]`) are
+> blocked (see CLAUDE.md § Runtime Package Installation). Use the default `numba`
+> backend (or the `scipy` fallback), both included in the base install; to enable
+> the jax GPU backend, escalate to add it to the Dockerfile user-additions block
+> and rebuild.
+
 ```python
 # Use JAX backend for GPU acceleration
 fit = pf.feols("Y ~ X1 | f1 + f2", data=df, demeaner_backend="jax")

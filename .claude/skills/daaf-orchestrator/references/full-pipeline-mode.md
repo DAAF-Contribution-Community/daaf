@@ -14,7 +14,7 @@ This reference is loaded after the orchestrator classifies a request as Full Pip
 >
 > **`.claude/agents/README.md`** provides agent behavioral specs and input/output contracts — consult when understanding an agent's capabilities, not for constructing invocation prompts.
 
-> **Parallel Dispatch Limit:** The orchestrator MUST NOT dispatch more than **5 subagents concurrently** — this applies to wave-based task dispatch, Stage 3 source-researcher dispatch, and any other parallel invocation. If more than 5 independent tasks need to run, sub-batch into groups of ≤5 and wait for each sub-batch to complete before dispatching the next. Parallel dispatch is achieved by making multiple Agent tool calls in a **single response message** (foreground parallel). **NEVER use `run_in_background`** — background agents cannot prompt for permissions and will silently fail.
+> **Parallel Dispatch Limit:** The orchestrator MUST NOT dispatch more than **5 subagents concurrently** — this applies to wave-based task dispatch, Stage 3 source-researcher dispatch, and any other parallel invocation. If more than 5 independent tasks need to run, sub-batch into groups of ≤5 and wait for each sub-batch to complete before dispatching the next. Parallel dispatch is achieved by making multiple Agent tool calls in a **single response message**. Because subagents run in the background by default, completion arrives via async task notifications that may land one at a time — the orchestrator must still wait for ALL dispatched subagents in a batch to return before acting on their results, treating mid-wave notifications as status-only (no gate decisions, plan changes, or synthesis until the whole wave is in). See "Wave Barrier Discipline" below and the master statement in `SKILL.md` § Subagent Coordination.
 
 ---
 
@@ -39,9 +39,9 @@ After mode confirmation (Gate G1) and before beginning Phase 1 work, present the
 This analysis will create:
 - [ ] Research Plan documents (Plan.md + Plan_Tasks.md) summarizing all key goals, considerations, decisions, risks, interpretations, work stage summaries, and final work review notes
 - [ ] STATE.md session state file (for progress tracking and session recovery)
-- [ ] Comprehensive analytic scripts covering data fetch, clean, join, transformation, analysis, and QA for all of the above
+- [ ] Comprehensive analytic scripts (.py for Python, .R for R) covering data fetch, clean, join, transformation, analysis, and QA for all of the above
 - [ ] Validated datasets (raw + processed)
-- [ ] Marimo notebook "walkthrough" of successfully completed analysis scripts and their execution runtime logs for inspection
+- [ ] Marimo notebook (Python) or Quarto notebook (R) "walkthrough" of successfully completed analysis scripts and their execution runtime logs for inspection
 - [ ] Illustrative key data visualizations
 - [ ] Summary stakeholder report synthesizing key findings and interpreting key data visualizations
 - [ ] LEARNINGS.md lessons learned
@@ -115,9 +115,9 @@ Before sending your pre-flight response, verify:
 | **4.5** | 2 | Plan Validation | `plan-checker` agent | Plan |
 | 5 | 3 | Data Retrieval | Domain query skill (e.g., `education-data-query`) | general-purpose |
 | 6 | 3 | Context Application | Domain context skill (e.g., `education-data-context`) | general-purpose |
-| 7 | 4 | EDA & Transformation | `data-scientist`, `polars` | general-purpose |
-| 8 | 4 | Analysis & Visualization | `data-scientist`, `polars`, modeling library (`statsmodels`/`pyfixest`/`linearmodels`/`svy` per Plan), `plotnine`/`plotly`, `geopandas` (if spatial) | general-purpose |
-| 9 | 4 | Notebook Assembly | `marimo` | general-purpose |
+| 7 | 4 | EDA & Transformation | `data-scientist`, `polars` (Python) or `tidyverse` (R) | general-purpose |
+| 8 | 4 | Analysis & Visualization | `data-scientist`, `polars`/`tidyverse`, modeling library (Python: `statsmodels`/`pyfixest`/`linearmodels`/`svy`/`scikit-learn`/`igraph`; R: `r-stats`/`fixest`/`plm`/`survey-r`/`tidymodels`/`igraph-r` per Plan), `plotnine`/`plotly` (Python) or `ggplot2`/`plotly-r` (R), `geopandas` (Python) or `sf-terra` (R) if spatial, `igraph` (Python) or `igraph-r` (R) if network | general-purpose |
+| 9 | 4 | Notebook Assembly | `marimo` (Python) or `quarto` (R) | general-purpose |
 | 10 | 4 | QA Aggregation | — (orchestrator) | — |
 | 11 | 5 | Report Generation | `report-writer` agent | general-purpose |
 | 12 | 5 | Final Review | `data-verifier` agent (adversarial verification with cross-artifact coherence) | Plan |
@@ -241,7 +241,7 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**.
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │ PHASE 4: ANALYSIS & NOTEBOOK DEVELOPMENT                                    │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│  Stage 7: EDA & Transformation ←── data-scientist + polars skills           │
+│  Stage 7: EDA & Transformation ←── data-scientist + polars/tidyverse skills │
 │      ├─ Initial data profiling (auto-execute)                               │
 │      ├─ Report key findings to user (adaptive)                              │
 │      ├─ Transformations with validation (CP3 per transformation)            │
@@ -250,19 +250,23 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**.
 │                          ↓                                                  │
 │  Stage 8: Analysis & Visualization ←── modeling + viz skills                │
 │      ├─ 8.1: Run statistical analyses (save to output/analysis/)            │
-│      │   ├─ Load modeling skill per Plan: statsmodels/pyfixest/linearmodels/svy │
+│      │   ├─ Load modeling skill per Plan (see Modeling library selection)   │
 │      │   └─ [Per-script QA loop (QA4a) — see Composite Execution Pattern]   │
 │      ├─ 8.2: Generate exploratory and final plots (save to output/figures/) │
-│      │   ├─ Load viz skill: plotnine/plotly, or geopandas for maps          │
+│      │   ├─ Load viz skill: plotnine/plotly (Python) or ggplot2/plotly-r (R),│
+│      │   │   or geopandas (Python) / sf-terra (R) for maps                  │
 │      │   └─ [Per-script QA loop (QA4b) — see Composite Execution Pattern]   │
 │      └─ Gate G8: Analyses + viz complete, QA4a AND QA4b PASSED/WARNING      │
 │                          ↓                                                  │
 │  Stage 9: Script Compilation ←── notebook-assembler agent                   │
-│      ├─ LITERALLY COPY script file contents into marimo cells               │
-│      ├─ VERBATIM execution logs in accordions (not summaries)               │
-│      ├─ NO new code except pl.read_parquet() + mo.ui.table()                │
+│      ├─ LITERALLY COPY scripts into canonical three-cell                    │
+│      │   header/source/log archive bundles (Python), with optional display, │
+│      │   or canonical Quarto archive sections (R)                           │
+│      ├─ VERBATIM execution logs in format-specific collapsed containers     │
+│      ├─ NO new analysis; only optional format-specific output inspection    │
+│      ├─ Quarto render validates assembly/previews, not archived re-execution│
 │      ├─ NO dashboards, NO widgets, NO filters, NO aggregations              │
-│      └─ Gate G9: Notebook runs, all scripts represented, no prohibited items│
+│      └─ Gate G9: `marimo run` or `quarto render` passes; scripts represented │
 │                          ↓                                                  │
 │  Stage 10: QA Aggregation                                                   │
 │      ├─ **Aggregate QA findings from Stages 5-8 (WARNINGs reviewed)**       │
@@ -311,7 +315,7 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**.
 
 ## Stage 5-8 Per-Script Execution & QA Loop
 
-**Every stage from 5 through 8 is executed as MULTIPLE subagent calls with interleaved QA, NOT as a single invocation per stage.** Each script in Plan.md's Transformation Sequence table is executed by research-executor, then **immediately and separately** reviewed by code-reviewer, before the next script begins. This applies equally to Stage 5 (fetch scripts), Stage 6 (clean scripts), Stage 7 (transformation scripts), and Stage 8 (analysis and visualization scripts). Any Stage writing net new code must adhere to this. QA scripts are saved to `scripts/cr/stage{N}_{step}_cr{1..5}.py`. The **Stage 5-8 Composite Execution Pattern** below defines the authoritative execution flow — it is the MANDATORY atomic unit for all Stage 5-8 work. See `.claude/agents/code-reviewer.md` for the complete QA protocol and `agent_reference/QA_CHECKPOINTS.md` for checkpoint definitions.
+**Every stage from 5 through 8 is executed as MULTIPLE subagent calls with interleaved QA, NOT as a single invocation per stage.** Each script in Plan.md's Transformation Sequence table is executed by research-executor, then **immediately and separately** reviewed by code-reviewer, before the next script begins. This applies equally to Stage 5 (fetch scripts), Stage 6 (clean scripts), Stage 7 (transformation scripts), and Stage 8 (analysis and visualization scripts). Any Stage writing net new code must adhere to this. QA scripts are saved to `scripts/cr/stage{N}_{step}_cr{1..5}.py` for Stages 5-7; **Stage 8 uses the split-QA suffix** `scripts/cr/stage8_{step}_cra{1..5}.py` (QA4a, statistical validity) and `scripts/cr/stage8_{step}_crb{1..5}.py` (QA4b, visualization quality), per `agent_reference/QA_CHECKPOINTS.md`. The **Stage 5-8 Composite Execution Pattern** below defines the authoritative execution flow — it is the MANDATORY atomic unit for all Stage 5-8 work. See `.claude/agents/code-reviewer.md` for the complete QA protocol and `agent_reference/QA_CHECKPOINTS.md` for checkpoint definitions.
 
 **Why this matters:**
 - The core principle "Every transformation has a validation" requires separate execution cycles
@@ -358,9 +362,9 @@ For EACH task in Stages 5-8, follow this complete loop. **Do NOT skip any step.*
 │      └─ BLOCKER → Go to STEP 4                                              │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │  STEP 4: REVISION FLOW (if BLOCKER)                                         │
-│      ├─ Invoke research-executor to create revised script (_a.py)           │
+│      ├─ Invoke research-executor to create revised script (_a.py/_a.R)      │
 │      ├─ Re-invoke code-reviewer on revised script                           │
-│      ├─ If still BLOCKER → Create _b.py revision, re-invoke code-reviewer   │
+│      ├─ If still BLOCKER → Create _b.py/_b.R revision, re-invoke reviewer   │
 │      └─ If still BLOCKER after 2 revisions → STOP and escalate to user      │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │  STEP 5: UPDATE STATE.md                                                    │
@@ -482,19 +486,20 @@ These operations may be executed without preview:
 | **5-QA** | `data-scientist` | general-purpose | `code-reviewer` agent (after each Stage 5 script) |
 | 6 | `data-scientist`, domain context skill | general-purpose | Subagent invokes skill |
 | **6-QA** | `data-scientist` | general-purpose | `code-reviewer` agent (after each Stage 6 script) |
-| 7 | `data-scientist`, `polars`, `geopandas` (if spatial data) | general-purpose | Subagent invokes skills |
+| 7 | `data-scientist`, `polars` (Python) or `tidyverse` (R), `geopandas`/`sf-terra` (if spatial data) | general-purpose | Subagent invokes skills |
 | **7-QA** | `data-scientist` | general-purpose | `code-reviewer` agent (after each Stage 7 script) |
-| 8.1 | `data-scientist`, `polars`, modeling library per Plan (`statsmodels` / `pyfixest` / `linearmodels` / `svy` / `scikit-learn` / `geopandas`), `geopandas` (if spatial) | general-purpose | Subagent invokes skills |
-| 8.2 | `data-scientist`, `plotnine` or `plotly`, `geopandas` (if map visualization) | general-purpose | Subagent invokes skills |
+| 8.1 | `data-scientist`, `polars`/`tidyverse`, modeling library per Plan (Python: `statsmodels` / `pyfixest` / `linearmodels` / `svy` / `scikit-learn` / `geopandas` / `igraph`; R: `r-stats` / `fixest` / `plm` / `survey-r` / `tidymodels` / `sf-terra` / `igraph-r`), `great-tables` (Python) or `gt` (R) (if formatted tables needed) | general-purpose | Subagent invokes skills |
+| 8.2 | `data-scientist`, `plotnine` or `plotly` (Python) or `ggplot2` or `plotly-r` (R), `geopandas` (Python) or `sf-terra` (R) if map visualization, `igraph` (Python) or `igraph-r` (R) if network visualization, `great-tables` (Python) or `gt` (R) (if formatted summary tables needed) | general-purpose | Subagent invokes skills |
 | **8-QA** | `data-scientist` | general-purpose | `code-reviewer` agent (after each Stage 8 script) |
-| 9 | `marimo` | general-purpose | `notebook-assembler` agent (COMPILES scripts — NO new code, NO dashboards) |
+| 9 | `marimo` (Python) or `quarto` (R) | general-purpose | `notebook-assembler` agent (COMPILES scripts — NO new code, NO dashboards) |
 | 10 | — | — | Orchestrator aggregates QA findings (no subagent) |
 | 11 | `data-scientist`, `science-communication` (if non-technical audience) | general-purpose | `report-writer` agent |
 | 12 | `data-scientist` | Plan | `data-verifier` agent |
 
 **Notes:**
 - Stages 5 and 6 use `general-purpose` subagent type because they require file write capability (saving parquet files to `data/raw/` and `data/processed/`).
-- **Stage 4 responsibility split:** The `data-planner` agent creates Plan.md and Plan_Tasks.md. The **orchestrator** is responsible for creating STATE.md (from `agent_reference/STATE_TEMPLATE.md`) and the LEARNINGS.md skeleton (from `agent_reference/WORKFLOW_PHASE5_SYNTHESIS.md`) after the data-planner returns. Gate G4 requires all four files. **When creating STATE.md, populate the Session Metadata section:** run `git rev-parse --short HEAD` to capture the DAAF version, and record the model ID (e.g., "claude-opus-4-6") and session start date. These feed into the AI Use Disclosure section of the final report.
+- **Stage 4 responsibility split:** The `data-planner` agent creates Plan.md and Plan_Tasks.md. The **orchestrator** is responsible for creating STATE.md (from `agent_reference/STATE_TEMPLATE.md`) and the LEARNINGS.md skeleton (from `agent_reference/WORKFLOW_PHASE5_SYNTHESIS.md`) after the data-planner returns. Gate G4 requires all four files. **When creating STATE.md, populate the Session Metadata section:** run `git rev-parse --short HEAD` to capture the DAAF version, and record the Session Model ID, the Subagent Model Tiers in effect, and the session start date — see the authoritative creation checklist under **Creation Trigger** in the STATE.md section below. These feed into the AI Use Disclosure section of the final report.
+- **Stage 9 R/Quarto authority:** `.claude/skills/quarto/references/daaf-notebook.md` is the canonical DAAF assembly contract. It governs DAAF archive-shaped Quarto notebooks and their Reproducibility Verification anchors, not arbitrary Quarto documents. `quarto render` validates assembly and explicitly enabled previews; it does not re-run archived Stage 5-8 analysis scripts.
 - **Stage 10** has no dedicated agent — the orchestrator performs QA aggregation directly by reviewing accumulated code-reviewer findings from Stages 5-8.
 
 **Stage 10 Protocol:** Read STATE.md's Transformation Progress table as the sole input. For each script: (1) Check QA status (PASS / PASS_WITH_WARNINGS / N/A), (2) Aggregate WARNING items into a summary, (3) Verify no unresolved BLOCKERs exist, (4) Compose QA Aggregation Summary for PSU4. Do NOT re-read individual QA scripts — STATE.md already tracks all QA outcomes.
@@ -504,18 +509,31 @@ These operations may be executed without preview:
 
 **Note:** Stages 2, 3, 5, and 6 use domain-specific skills resolved by the orchestrator based on the active domain configuration in Plan.md.
 
-**Skill loading mechanism:** All named agents preload `data-scientist` via frontmatter (full content injected at startup). The orchestrator's Agent prompts should only include `Call the skill tool` instructions for **additional** skills (domain skills, `polars`, `plotnine`, `plotly`, `statsmodels`, `pyfixest`, `linearmodels`, `svy`, `scikit-learn`, `geopandas`, `science-communication`). Stage 2 uses `search-agent` and Stage 3 uses `source-researcher` — both are named agents that preload `data-scientist` via frontmatter, but still require explicit skill tool calls for domain-specific skills (explorer, source).
+**Skill loading mechanism:** All named agents preload `data-scientist` via frontmatter (full content injected at startup). The orchestrator's Agent prompts should only include `Call the skill tool` instructions for **additional** skills (domain skills, Python: `polars`, `plotnine`, `plotly`, `statsmodels`, `pyfixest`, `linearmodels`, `svy`, `scikit-learn`, `geopandas`, `igraph`, `great-tables`; R: `tidyverse`, `ggplot2`, `plotly-r`, `r-stats`, `fixest`, `plm`, `survey-r`, `tidymodels`, `sf-terra`, `igraph-r`, `gt`; either: `science-communication`). Route by execution language preference in CLAUDE.md User Preferences. Stage 2 uses `search-agent` and Stage 3 uses `source-researcher` — both are named agents that preload `data-scientist` via frontmatter, but still require explicit skill tool calls for domain-specific skills (explorer, source).
 
-**R/Stata-background user preference:** When the user has indicated an R / RStudio or Stata background (detected during intake or mode confirmation), add this directive to all Stage 5-8 agent prompts: `"User has [R/Stata] background. Load [r-python-translation/stata-python-translation] skill. Add inline [R/Stata]-equivalent comments for non-trivial data operations."` This propagates to research-executor (code annotation), code-reviewer (annotation verification), debugger (R/Stata-framed error explanations), and data-ingest (profiling script annotation during Data Onboarding). The translation skills are loaded on demand via the Skill tool — they are NOT preloaded in any agent's frontmatter.
+**Cross-language annotation preference:** When the user's primary analysis language background differs from the execution language and cross-language code annotations are enabled in CLAUDE.md User Preferences, add the appropriate translation directive to all Stage 5-8 agent prompts. Select the directive based on execution language and background (see orchestrator SKILL.md § User Language Preference Propagation for the full 4-way table): Python execution with R/Stata background loads `r-python-translation`/`stata-python-translation`; R execution with Python/Stata background loads `python-r-translation`/`stata-r-translation`. This propagates to research-executor (code annotation), code-reviewer (annotation verification), debugger (framed error explanations), and data-ingest (profiling script annotation during Data Onboarding). The translation skills are loaded on demand via the Skill tool — they are NOT preloaded in any agent's frontmatter.
 
-**Modeling library selection for Stage 8.1:** The Plan_Tasks.md `<skill>` element specifies which modeling library to load. The orchestrator passes this to the research-executor. The `data-scientist` skill's routing tree provides the canonical decision logic:
+**Modeling library selection for Stage 8.1:** The Plan_Tasks.md `<skill>` element specifies which modeling library to load. The orchestrator passes this to the research-executor. The `data-scientist` skill's routing tree provides the canonical decision logic, routed by execution language (per CLAUDE.md User Preferences):
+
+**Python:**
 - Standard regression (OLS, GLM, logit/probit) → `statsmodels`
+- Time series modeling (ARIMA/SARIMAX, VAR, forecasting, stationarity tests) → `statsmodels`
 - Fixed effects, IV with FE, or DiD → `pyfixest`
 - Random effects, between estimation, Fama-MacBeth, IV-GMM, SUR/3SLS → `linearmodels`
 - Survey-weighted analysis (complex survey design) → `svy`
 - Spatial analysis → `geopandas`
 - Supervised ML (classification, prediction, risk scoring) → `scikit-learn`
 - Unsupervised analysis (clustering, PCA, dimensionality reduction) → `scikit-learn`
+- Network / graph analysis (centrality, community detection, bipartite) → `igraph`
+
+**R:**
+- Standard regression (OLS, GLM, logit/probit) → `r-stats`
+- Fixed effects, IV with FE, or DiD → `fixest`
+- Random effects, between estimation, Fama-MacBeth → `plm`
+- Survey-weighted analysis (complex survey design) → `survey-r`
+- Spatial analysis → `sf-terra`
+- Supervised/Unsupervised ML (classification, prediction, clustering) → `tidymodels`
+- Network / graph analysis (centrality, community detection, bipartite) → `igraph-r`
 
 **Methodology verification:** When the Plan specifies statistical methods or modeling approaches, verify that the chosen library supports the intended technique with its current API. Library skills encode syntax at a point in time — if a method call produces unexpected errors during execution, use WebSearch to check the library's latest documentation before assuming the code is wrong. This is especially important for rapidly-evolving libraries.
 
@@ -608,8 +626,9 @@ See the "Task Types" section below for the complete taxonomy, behavioral descrip
 - [ ] Significance thresholds or interpretation guidelines provided
 - [ ] Research Outcome contribution stated
 - [ ] Risk Register items included
-- [ ] Modeling library skill specified (`statsmodels` / `pyfixest` / `linearmodels` / `svy` / `scikit-learn` / `geopandas` per Plan methodology; see "Modeling library selection" above)
-- [ ] If spatial analysis: `geopandas` skill specified
+- [ ] Modeling library skill specified (Python: `statsmodels` / `pyfixest` / `linearmodels` / `svy` / `scikit-learn` / `geopandas` / `igraph`; R: `r-stats` / `fixest` / `plm` / `survey-r` / `tidymodels` / `sf-terra` / `igraph-r` per Plan methodology and execution language; see "Modeling library selection" above)
+- [ ] If spatial analysis: `geopandas` (Python) or `sf-terra` (R) skill specified
+- [ ] If network analysis: `igraph` (Python) or `igraph-r` (R) skill specified
 - [ ] Script follows IAT documentation standards
 
 **Stage 8.2 (Visualization) Checklist:**
@@ -623,7 +642,7 @@ See the "Task Types" section below for the complete taxonomy, behavioral descrip
 - [ ] Accessibility considerations noted (colorblind-safe palette, etc.)
 - [ ] Research Outcome contribution stated
 - [ ] Risk Register items included
-- [ ] Visualization skill specified (`plotnine` for static, `plotly` for interactive, `geopandas` for maps/choropleths)
+- [ ] Visualization skill specified (Python: `plotnine` for static, `plotly` for interactive, `geopandas` for maps, `igraph` for network diagrams; R: `ggplot2` for static, `plotly-r` for interactive, `sf-terra` for maps, `igraph-r`/ggraph for network diagrams)
 - [ ] Script follows IAT documentation standards
 
 **Revision Request Checklist (when re-invoking research-executor after QA BLOCKER):**
@@ -846,11 +865,13 @@ Wave 3: [join-data]                 ← Depends on Wave 2
 ```
 
 **Execution Rules:**
-- Same-wave tasks dispatch simultaneously by making multiple Agent tool calls in a **single response message** (foreground parallel). **NEVER use `run_in_background`** — background agents cannot prompt for permissions and will silently fail.
+- Same-wave tasks dispatch simultaneously by making multiple Agent tool calls in a **single response message**. Background execution is permitted (Claude Code v2.1.186+ dispatches subagents in the background by default and surfaces their permission prompts in the main session; the earlier foreground-only rule is retired). Wait for every task in the wave to return before proceeding.
 - If any parallel dispatch stage contains more than 5 tasks (e.g., Stage 3 source-researcher dispatch, any ad-hoc parallel exploration, and code-reviewer invocations), sub-batch into groups of ≤5 and wait for each sub-batch to complete before dispatching the next. NEVER dispatch more than 5 subagents concurrently.
 - Each subagent gets fresh 200K-token context (no degradation)
 - Later waves wait for ALL prior waves to complete
 - Dependencies in `depends_on` must be satisfied
+
+**Wave Barrier Discipline (async dispatch).** Background-by-default dispatch means a wave's completion notifications may arrive one at a time. Treat every mid-wave notification as **status-only**: do not make gate decisions, revise the plan, finalize STATE.md conclusions, present a PSU/checkpoint, or begin QA aggregation or synthesis until EVERY task in the wave has returned. Synthesize once, over the complete wave — never incrementally per return, so a later return can genuinely change the decision rather than being anchored out by the first. An early return under context pressure, or a failed/BLOCKED task, still counts as that task's completion — handle its redelegation as part of whole-wave synthesis, not as an immediate mid-wave reaction. Narrating progress to the user ("two of three fetches are back") is fine; acting on partial results is not. This is the pipeline application of the master statement in `SKILL.md` § Subagent Coordination > "Wave Barrier Discipline (Async Dispatch)."
 
 See `agent_reference/PLAN_TEMPLATE.md` for wave-based task table format.
 
@@ -892,7 +913,7 @@ Each stage has explicit input/output contracts and gate criteria:
 | 6 | Stage 5 (raw data) | PSU3 to user, then Stage 7 | G6: CP2 PASSED per script, code-reviewer separately invoked per script immediately after completion, all QA2 ∈ {PASSED, WARNING}, suppression <50%, data saved to data/processed/, user confirmed PSU3 |
 | 7 | Stage 6 (clean data) | Stage 8, 9 | G7: All transformations validated (CP3) per script, code-reviewer separately invoked per script immediately after completion, all QA3 ∈ {PASSED, WARNING}, analysis dataset saved to `data/processed/[date]_analysis.parquet` (at Stage 7.3) |
 | 8 | Stage 7 (analysis data) | Stage 9, 11 | G8: Statistical results saved to output/analysis/, visualizations saved to output/figures/, code-reviewer separately invoked per 8.1 script (QA4a) and per 8.2 script (QA4b) immediately after each completes, all QA4a and QA4b ∈ {PASSED, WARNING} |
-| 9 | Stages 7, 8 | Stage 10 | G9: Notebook runs without errors, all scripts represented with code + execution logs |
+| 9 | Stages 7, 8 | Stage 10 | G9: Python `marimo run` succeeds, or R `quarto render` validates assembly and enabled previews; all scripts represented with code + execution logs; Quarto render does not re-run archived Stage 5-8 analysis scripts |
 | 10 | Stage 9 (notebook) | PSU4 to user, then Stage 11 | G10: QA findings aggregated, all BLOCKERs resolved, all WARNINGs documented, user confirmed PSU4 |
 | 11 | Stages 9, 10, Plan.md + Plan_Tasks.md, STATE.md, LEARNINGS.md | Stage 12 | G11: report-writer returned COMPLETE or COMPLETE_WITH_GAPS, all REPORT_TEMPLATE.md sections populated, figure references verified |
 | 12 | All prior stages | Delivery | G12: Final Review PASSED, all commitments fulfilled, LEARNINGS.md consolidated with System Update Action Plan, cross-artifact coherence verified |
@@ -1032,6 +1053,10 @@ See daaf-orchestrator SKILL.md "Subagent Type Selection" for capabilities by typ
 
 All code execution in Stages 5-8 MUST follow the file-first pattern (write → execute via wrapper → version on failure). See `CLAUDE.md` > "Execution Philosophy" and `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the complete file-first protocol.
 
+### Model Selection
+
+Every dispatch uses the target agent's `model:` frontmatter default (DAAF's two-tier `opus`/`sonnet` routing). The orchestrator MAY override the tier per dispatch via the Agent tool's `model` parameter — escalate to `opus` for complex methodology, retries of BLOCKED/failed work, or high-stakes outputs; downgrade to `sonnet` for small mechanical tasks. Never exceed the session-model ceiling (enforced by `enforce-model-ceiling.sh`). See daaf-orchestrator SKILL.md > "Model Selection for Subagent Dispatch" for the routing table and full guidance — that section is the single source of truth; it is not restated here.
+
 ### Template
 
 ```python
@@ -1043,7 +1068,13 @@ All relative paths in referenced files resolve from BASE_DIR.
 ## SKILL LOADING
 [Only include skill tool calls for skills NOT preloaded via agent frontmatter.
 Named agents already have `data-scientist` injected at startup — do not re-load it.
-Call the skill tool only for additional skills like polars, plotnine, plotly, statsmodels, pyfixest, linearmodels, svy, geopandas, scikit-learn, science-communication, or domain skills.]
+Call the skill tool only for additional skills — route by execution language
+(per CLAUDE.md User Preferences):
+  Python: polars, plotnine, plotly, statsmodels, pyfixest, linearmodels, svy,
+          geopandas, scikit-learn, igraph, great-tables
+  R: tidyverse, ggplot2, plotly-r, r-stats, fixest, plm, survey-r, tidymodels,
+     sf-terra, igraph-r, gt
+  Either: science-communication, domain skills]
 
 ## CONTEXT FROM PLAN
 [Paste relevant Plan.md methodology sections and Plan_Tasks.md task blocks - Context Completeness Checklist always takes priority over brevity]
@@ -1077,8 +1108,8 @@ Wave: [N] (if applicable)
 </task>
 
 ## FILE-FIRST RULE (Stages 5-8)
-Write Python code to a script file FIRST. Do NOT execute interactively.
-Execute ONLY via single Bash call: `bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/.../script.py` — do NOT run `python script.py` directly, chain commands with `&&`/`;`, or prefix with `cd`.
+Write code to a script file FIRST (.py for Python, .R for R). Do NOT execute interactively.
+Execute ONLY via single Bash call: `bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/.../script.py` (or `script.R` for R) — do NOT run `python script.py` or `Rscript script.R` directly, chain commands with `&&`/`;`, or prefix with `cd`.
 Follow the IAT documentation standard (`{BASE_DIR}/agent_reference/INLINE_AUDIT_TRAIL.md`).
 Closely read `{BASE_DIR}/agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the mandatory file-first execution protocol covering complete code file writing, output capture, and file versioning rules.
 
@@ -1308,7 +1339,7 @@ Agent({
 All relative paths in referenced files resolve from BASE_DIR.
 
 **SCRIPT TO REVIEW:**
-Path: scripts/stage{N}_{type}/{step}_{task-name}.py
+Path: scripts/stage{N}_{type}/{step}_{task-name}.py (or .R for R)
 
 **PLAN LOCATIONS:**
 Plan.md: {plan_path}
@@ -1356,6 +1387,7 @@ Addressed when: {verification_condition}
 1. Review the executed script for correctness and methodology alignment
 2. Review the execution log for outcome verification
 3. Create iterative QA scripts at: scripts/cr/stage{N}_{step}_cr1.py (+ cr2..cr5 as warranted)
+   [For Stage 8, use the split-QA suffix instead: scripts/cr/stage8_{step}_cra1.py for QA4a (statistical validity) / scripts/cr/stage8_{step}_crb1.py for QA4b (visualization quality)]
 4. Execute QA scripts and synthesize findings across iterations
 5. Return QA report with severity classification
 
@@ -1387,8 +1419,8 @@ All relative paths in referenced files resolve from BASE_DIR.
 
 **REVISION REQUEST**
 
-**Original Script:** scripts/stage{N}_{type}/{step}_{task-name}.py
-**Current Final Version:** scripts/stage{N}_{type}/{step}_{task-name}_{suffix}.py
+**Original Script:** scripts/stage{N}_{type}/{step}_{task-name}.py (or .R)
+**Current Final Version:** scripts/stage{N}_{type}/{step}_{task-name}_{suffix}.py (or .R)
 
 **METHODOLOGY CONTEXT (from Plan.md):**
 {relevant methodology decisions, coded values, research outcomes for this task}
@@ -1403,7 +1435,7 @@ All relative paths in referenced files resolve from BASE_DIR.
 - **Suggested Fix:** {suggested_fix_from_code_reviewer}
 
 **Instructions:**
-1. Create new versioned script: {step}_{task-name}_{next_suffix}.py
+1. Create new versioned script: {step}_{task-name}_{next_suffix}.py (or .R)
 2. Apply fix for the BLOCKER issue while maintaining alignment with Plan.md methodology
 3. Execute with full validation per the task's <verify> block
 4. Append execution log
@@ -1733,7 +1765,7 @@ Forcing functions are mandatory design interventions that **prevent** poor pract
 | G6 | 6 → 7 | CP2 PASSED per script, suppression <50%, data saved to data/processed/, code-reviewer separately invoked per script immediately after completion, every QA2 ∈ {PASSED, WARNING}, **User confirmed PSU3** | Cannot proceed to transformation without user PSU3 confirmation |
 | G7 | 7 → 8 | All transformations CP3 PASSED per script, code-reviewer separately invoked per script immediately after completion, every QA3 ∈ {PASSED, WARNING} | Cannot proceed to analysis and visualization |
 | G8 | 8 → 9 | Analyses and visualizations complete, code-reviewer separately invoked per 8.1 script (QA4a) and per 8.2 script (QA4b) immediately after each completes, every QA4a and QA4b ∈ {PASSED, WARNING} | Cannot assemble notebook |
-| G9 | 9 → 10 | Notebook runs without errors, all scripts represented with code + execution logs | Cannot run QA aggregation |
+| G9 | 9 → 10 | Python: `marimo run` succeeds. R: `quarto render` validates assembly and explicitly enabled previews without re-running archived Stage 5-8 scripts. All scripts are represented with code + execution logs | Cannot run QA aggregation |
 | G10 | 10 → 11 | QA findings aggregated, all BLOCKERs resolved, all WARNINGs documented, **User confirmed PSU4** | Cannot generate report without user PSU4 confirmation |
 | G11 | 11 → 12 | Report complete with all sections and figure references | Cannot run final review |
 | G12 | 12 → Delivery | Final Review verification PASSED, all commitments fulfilled, LEARNINGS.md consolidated with System Update Action Plan, cross-artifact coherence verified | Cannot deliver |
@@ -1741,6 +1773,8 @@ Forcing functions are mandatory design interventions that **prevent** poor pract
 **Gate G4 Enforcement:** Plan-checker (Stage 4.5) CANNOT be invoked without all four files: Plan.md, Plan_Tasks.md, STATE.md (`agent_reference/STATE_TEMPLATE.md`), and LEARNINGS.md (`agent_reference/WORKFLOW_PHASE5_SYNTHESIS.md`). If any are missing, create before proceeding. After plan-checker returns, the orchestrator MUST present PSU2 to the user and wait for confirmation before proceeding to Stage 5.
 
 **Gate G4.5 Enforcement:** plan-checker MUST be invoked and return PASSED or PASSED_WITH_WARNINGS. If ISSUES_FOUND, revise Plan documents (max 2 attempts) then escalate. Update STATE.md "Plan Validation" section with the result before proceeding. See Stage 4.5 in `agent_reference/WORKFLOW_PHASE2_PLANNING.md` for the invocation pattern.
+
+**Plan-revision STATE.md synchronization (blocking, within G4.5):** After ANY accepted plan revision (data-planner returns REVISION_COMPLETE and plan-checker subsequently passes), and BEFORE proceeding to Stage 5, the orchestrator MUST resynchronize STATE.md to the revised Plan_Tasks.md — STATE.md's Transformation Progress table, Current Position paths, and Next Actions were first populated at Stage 4 from the *original* Plan_Tasks.md and go stale when a revision changes task count, task names, script paths, or wave structure. The orchestrator MUST: (1) read the revised Plan_Tasks.md frontmatter (`total_tasks`, `total_waves`, `version`) and full Task Index; (2) rebuild the Transformation Progress table from the revised Task Index (carry a completed row over ONLY when the task still exists with an identical script path — otherwise re-derive its status honestly); (3) update the Plan.md / Plan_Tasks.md paths, Current Stage, and Next Actions; (4) validate mechanically — Transformation Progress row count == `total_tasks`, every script path appears in both the table and the revised Task Index (and vice versa), and no STATE.md content references a superseded plan-version filename. If any check fails, STOP — fix STATE.md and re-validate before any further dispatch. This is a blocking condition inside Gate G4.5, not a new gate. See the STATE.md Update Gates table row "Plan revised (accepted revision)" for field-level detail.
 
 **CRITICAL:** Gate G4.5 requires POSITIVE confirmation that plan-checker was invoked and returned PASSED or PASSED_WITH_WARNINGS. If plan-checker was never invoked, the gate condition is NOT satisfied. Update STATE.md "Plan Validation" section with the result before proceeding to Stage 5. Additionally, after plan-checker returns PASSED or PASSED_WITH_WARNINGS, the orchestrator MUST present PSU2 (Phase Status Update) to the user including the plan-checker result, a Plan.md summary, and the exact filepath to Plan.md for the user's deeper inspection. Stage 5 CANNOT begin until the user confirms PSU2.
 
@@ -1773,7 +1807,7 @@ Agents use domain-specific status vocabularies. The orchestrator translates thes
 | | ISSUES_FOUND (severity: BLOCKER) | QA = BLOCKER |
 | **data-planner** | COMPLETE | Proceed to Stage 4.5 |
 | | CONTINUATION | Read partial Plan.md on disk, invoke fresh data-planner in continuation mode |
-| | REVISION_COMPLETE | Re-invoke plan-checker |
+| | REVISION_COMPLETE | Re-invoke plan-checker; after it passes, resynchronize STATE.md to the revised Plan_Tasks.md (rebuild Transformation Progress + Current Position + Next Actions + plan paths) and run the parity validation before Stage 5 (see Gate G4.5 Enforcement) |
 | | BLOCKED | Escalate to user |
 | **plan-checker** | PASSED | G4.5 = SATISFIED |
 | | PASSED_WITH_WARNINGS | G4.5 = SATISFIED (log warnings) |
@@ -1810,6 +1844,7 @@ Agents use domain-specific status vocabularies. The orchestrator translates thes
 | Event | Required STATE.md Field Updates |
 |-------|--------------------------------|
 | Stage N starts | Current Stage → N |
+| Plan revised (accepted revision — data-planner REVISION_COMPLETE and plan-checker passed; also applies to Revision and Extension mode new-version creation) | Rebuild Transformation Progress table from the revised Plan_Tasks.md Task Index (carry a completed row over ONLY when the task still exists with an identical script path; otherwise re-derive status honestly) + Current Position (Plan.md / Plan_Tasks.md paths, Current Stage) + Next Actions. Then validate: row count == Plan_Tasks `total_tasks`; every script path present in both the table and the Task Index; no reference to a superseded plan-version filename. Blocking within Gate G4.5 — STOP and fix if any check fails |
 | Checkpoint passes | Checkpoint Status table |
 | QA completes | QA Status section |
 | Blocker encountered | Blockers section + Next Actions |
@@ -1818,7 +1853,7 @@ Agents use domain-specific status vocabularies. The orchestrator translates thes
 | QA finding recorded | QA Findings Summary (incremental — append per code-reviewer return) |
 | Analysis result addresses hypothesis | Hypothesis Assessment Progress table |
 | Final review completed | Final Review Log |
-| Context Utilization ≥ ELEVATED (≥ 40% or ≥ 150k tokens) | Context Snapshot section |
+| Context Utilization reaches ELEVATED (see CLAUDE.md § Context Quality Curve for model-family thresholds) | Context Snapshot section |
 | Phase boundary reached | Phase Status Update section + User confirmation status |
 | Phase completes | Session History (if multi-session) |
 
@@ -1834,7 +1869,7 @@ These conditions trigger an immediate STOP with escalation to user. See `agent_r
 | Row count drops >90% after transformation | Stage 7 | STOP, verify transformation logic |
 | **QA BLOCKER after 2 revisions** | 5-QA to 8-QA | STOP, escalate to user |
 | **QA methodology violation** | 5-QA to 8-QA | STOP, escalate immediately |
-| Notebook execution error after 2 fix attempts | Stage 9 | STOP, report error details |
+| Python `marimo run` error or R `quarto render` assembly/enabled-preview error after 2 fix attempts | Stage 9 | STOP, report format-specific error details; do not treat Quarto render as archived analysis re-execution |
 | Data unavailable in configured data source | Stage 2-3 | STOP, escalate immediately |
 
 **STOP/Escalation Format:** See `agent_reference/ERROR_RECOVERY.md` "Escalation Template" for the detailed format. At minimum, include: what happened, what was tried, options with pros/cons, and a recommendation.
@@ -1863,8 +1898,8 @@ These supplement the universal boundaries in `CLAUDE.md` (Boundaries & Safety) a
 - Validate data at every checkpoint (CP1-CP4)
 - Create Plan.md + Plan_Tasks.md before data acquisition
 - Complete Final Review (Final Review) before delivery
-- Generate all three deliverables (Plan.md + Plan_Tasks.md, Notebook, Report)
-- Follow the Inline Audit Trail (IAT) protocol for all Python scripts (`agent_reference/INLINE_AUDIT_TRAIL.md`)
+- Generate all three deliverables (Plan.md + Plan_Tasks.md, Marimo/Quarto Notebook, Report)
+- Follow the Inline Audit Trail (IAT) protocol for all scripts (`agent_reference/INLINE_AUDIT_TRAIL.md`)
 - Include validation assertions in notebooks
 - Update STATE.md with all runtime decisions, deviations, and findings
 - Surface online verification as an option at Phase 1 (Discovery) when skill-sourced data source details may have changed, at Phase 2 (Planning) when methodology choices draw on general knowledge beyond loaded skills, and at checkpoints when presenting findings that rest on skill-derived assumptions
@@ -1929,8 +1964,9 @@ The orchestrator receives actual context utilization via the `context-reporter` 
 - **Gate:** Stage 5 CANNOT begin until STATE.md exists alongside Plan.md + Plan_Tasks.md (see Gate G4) and Plan-Checker Status is PASSED or PASSED_WITH_WARNINGS (see Gate G4.5).
 - **Required Sections:** STATE.md must include skeleton sections for Runtime Risks, QA Findings Summary, and Final Review Log at creation time.
 - **Session Metadata (required at creation):** Populate the Session Metadata section immediately when creating STATE.md:
-  - **DAAF Version:** Run `git rev-parse --short HEAD` in the DAAF repository root and record the result
-  - **Model ID:** Record the current model identifier (e.g., "claude-opus-4-6")
+  - **DAAF Version (at setup):** Run `git rev-parse --short HEAD` in the DAAF repository root and record the result. This is captured once at project setup and is NOT refreshed to current HEAD on later sessions — a session resuming against a newer DAAF checkout should read this as the setup-time commit, not current HEAD
+  - **Session Model ID:** Record the model identifier actually in use for the session (e.g., "claude-opus-4-8[1m]")
+  - **Subagent Model Tiers:** Record the specialist model tiers/IDs in use — agent frontmatter defaults (`model: opus` / `model: sonnet`) plus any per-dispatch overrides applied; resolved IDs where known, tier alias + session date otherwise (see STATE_TEMPLATE.md)
   - **Session Date(s):** Record today's date; update if the project spans multiple sessions
   - **Session Transcript(s):** Leave as the default value — project-local logs are collected at completion
 

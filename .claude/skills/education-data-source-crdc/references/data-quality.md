@@ -144,6 +144,32 @@ def analyze_suppression(df, variables, grouping='state'):
     return suppression_report
 ```
 
+```r
+library(dplyr)
+
+# Analyze suppression rates for variables.
+suppression_report <- list()
+
+for (var in variables) {
+    total <- nrow(df)
+    suppressed <- df |> filter(.data[[var]] == -3) |> nrow()
+
+    suppression_rate <- suppressed / total * 100
+
+    suppression_report[[var]] <- list(
+        total_records = total,
+        suppressed = suppressed,
+        suppression_rate = suppression_rate
+    )
+
+    if (suppression_rate > 20) {
+        cat(sprintf("WARNING: %s has %.1f%% suppression\n", var, suppression_rate))
+    }
+}
+
+suppression_report
+```
+
 ### Impact on Analysis
 
 | Analysis Type | Impact of Suppression |
@@ -270,6 +296,30 @@ def interpret_zero_counts(df, variable):
     }
     
     return interpretation
+```
+
+```r
+library(dplyr)
+
+# Interpret zero counts with appropriate skepticism.
+#
+# Zero could mean:
+# - No incidents occurred
+# - Incidents occurred but weren't documented
+# - Definition interpretation excludes incidents
+# - Data system doesn't capture this variable
+zero_count <- df |> filter(.data[[variable]] == 0) |> nrow()
+total <- nrow(df)
+zero_pct <- zero_count / total * 100
+
+interpretation <- list(
+    zero_schools = zero_count,
+    zero_percentage = zero_pct,
+    confidence = ifelse(zero_pct > 50, "LOW", "MODERATE"),
+    note = "High zero rate may indicate underreporting"
+)
+
+interpretation
 ```
 
 ---
@@ -452,6 +502,60 @@ def crdc_quality_checks(df, year):
         checks['note'] = 'COVID-19 impacted year - interpret with caution'
 
     return checks
+```
+
+```r
+library(dplyr)
+
+# Run standard quality checks on CRDC data.
+#
+# Note: Portal uses integer codes for race/sex disaggregation.
+# Total rows have race=99, sex=99.
+checks <- list()
+
+# 1. Check for implausible values (negative counts other than coded missing)
+checks$unexpected_negative <- df |>
+    filter(enrollment_crdc < -3) |>
+    nrow()
+
+# 2. Get total rows only (race=99 means all races combined)
+totals <- df |> filter(race == 99)
+
+# 3. Check discipline > enrollment for totals
+checks$discipline_exceeds_enrollment <- totals |>
+    filter(students_susp_out_sch_single > enrollment_crdc) |>
+    nrow()
+
+# 4. Check suppression rates by race (use integer codes)
+# race=2 is Black, race=3 is Hispanic, race=1 is White
+race_codes <- list(c(2, "black"), c(3, "hispanic"), c(1, "white"))
+for (rc in race_codes) {
+    race_code <- as.integer(rc[1])
+    race_name <- rc[2]
+    race_df <- df |> filter(race == race_code)
+    if (nrow(race_df) > 0) {
+        suppressed <- race_df |>
+            filter(students_susp_out_sch_single == -3) |>
+            nrow()
+        checks[[paste0("oss_", race_name, "_suppression_rate")]] <-
+            suppressed / nrow(race_df) * 100
+    }
+}
+
+# 5. Check zero inflation (using totals)
+if (nrow(totals) > 0) {
+    checks$zero_discipline_schools <- totals |>
+        filter(students_susp_out_sch_single == 0) |>
+        nrow() / nrow(totals) * 100
+}
+
+# 6. Year-specific checks
+if (year == 2020 || year == 2021) {
+    checks$covid_year_warning <- TRUE
+    checks$note <- "COVID-19 impacted year - interpret with caution"
+}
+
+checks
 ```
 
 ### Red Flags to Watch For

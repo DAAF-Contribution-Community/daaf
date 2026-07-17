@@ -184,9 +184,9 @@ The `marginaleffects` Python package provides post-estimation interpretation for
 
 ### Installation
 
-```bash
-pip install marginaleffects
-```
+`marginaleffects` (0.5.0) is **pre-installed** in the DAAF container — no action
+needed; just `from marginaleffects import ...`. Runtime installs are blocked in
+any case (see CLAUDE.md § Runtime Package Installation).
 
 ### Average Marginal Effects
 

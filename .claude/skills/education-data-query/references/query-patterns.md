@@ -16,7 +16,7 @@ https://educationdata.urban.org/api/v1/{level}/{source}/{topic}/{year}/[disaggre
 
 Basic school information (name, address, type, status).
 
-```python
+```
 # All schools (paginated)
 "https://educationdata.urban.org/api/v1/schools/ccd/directory/2020/"
 
@@ -67,7 +67,7 @@ Basic school information (name, address, type, status).
 
 School enrollment data. **Requires grade disaggregator in path.**
 
-```python
+```
 # Total enrollment (grade-99 = all grades)
 "https://educationdata.urban.org/api/v1/schools/ccd/enrollment/2020/grade-99/"
 
@@ -124,7 +124,7 @@ Patterns that **FAIL** (return HTTP 500):
 
 Similar to enrollment but different counting methodology.
 
-```python
+```
 # Total membership
 "https://educationdata.urban.org/api/v1/schools/ccd/membership/2020/grade-99/"
 
@@ -138,7 +138,7 @@ Civil Rights Data Collection - discipline, courses, staffing.
 
 ### Enrollment
 
-```python
+```
 # CRDC enrollment
 "https://educationdata.urban.org/api/v1/schools/crdc/enrollment/2017/"
 
@@ -156,7 +156,7 @@ Civil Rights Data Collection - discipline, courses, staffing.
 
 **CRITICAL: CRDC discipline endpoints require disaggregation levels in the URL path.**
 
-```python
+```
 # Discipline (requires disaggregation - use disability/sex or disability/race/sex)
 "https://educationdata.urban.org/api/v1/schools/crdc/discipline/2020/disability/sex/"
 
@@ -176,7 +176,7 @@ Civil Rights Data Collection - discipline, courses, staffing.
 
 **CRITICAL: AP enrollment requires disaggregation in URL path.**
 
-```python
+```
 # AP/IB enrollment (requires race/sex disaggregation)
 "https://educationdata.urban.org/api/v1/schools/crdc/ap-ib-enrollment/2020/race/sex/"
 
@@ -196,7 +196,7 @@ Civil Rights Data Collection - discipline, courses, staffing.
 
 Assessment and achievement data.
 
-```python
+```
 # Assessment participation
 "https://educationdata.urban.org/api/v1/schools/edfacts/assessments/2019/grade-3/"
 
@@ -217,7 +217,7 @@ Assessment and achievement data.
 
 ### Directory
 
-```python
+```
 # All districts
 "https://educationdata.urban.org/api/v1/school-districts/ccd/directory/2020/"
 
@@ -233,7 +233,7 @@ Assessment and achievement data.
 
 ### Enrollment
 
-```python
+```
 # Total district enrollment
 "https://educationdata.urban.org/api/v1/school-districts/ccd/enrollment/2020/grade-99/"
 
@@ -254,7 +254,7 @@ Assessment and achievement data.
 
 District financial data (revenues, expenditures).
 
-```python
+```
 # All district finance data
 "https://educationdata.urban.org/api/v1/school-districts/ccd/finance/2019/"
 
@@ -269,7 +269,7 @@ District financial data (revenues, expenditures).
 
 Small Area Income and Poverty Estimates.
 
-```python
+```
 # Poverty estimates for all districts
 "https://educationdata.urban.org/api/v1/school-districts/saipe/2020/"
 
@@ -282,7 +282,7 @@ Small Area Income and Poverty Estimates.
 
 ## School Districts (EDFacts)
 
-```python
+```
 # District assessments
 "https://educationdata.urban.org/api/v1/school-districts/edfacts/assessments/2019/"
 
@@ -296,7 +296,7 @@ Integrated Postsecondary Education Data System.
 
 ### Directory
 
-```python
+```
 # All institutions
 "https://educationdata.urban.org/api/v1/college-university/ipeds/directory/2020/"
 
@@ -347,7 +347,7 @@ Integrated Postsecondary Education Data System.
 
 **Requires level_of_study in path.**
 
-```python
+```
 # All enrollment
 "https://educationdata.urban.org/api/v1/college-university/ipeds/enrollment-full-time-equivalent/2020/"
 
@@ -369,7 +369,7 @@ Integrated Postsecondary Education Data System.
 
 ### Graduation Rates
 
-```python
+```
 # Overall graduation rates
 "https://educationdata.urban.org/api/v1/college-university/ipeds/grad-rates/2020/"
 
@@ -385,7 +385,7 @@ Integrated Postsecondary Education Data System.
 
 ### Admissions
 
-```python
+```
 # Admissions and test scores
 "https://educationdata.urban.org/api/v1/college-university/ipeds/admissions-enrollment/2020/"
 
@@ -395,7 +395,7 @@ Integrated Postsecondary Education Data System.
 
 ### Costs and Financial Aid
 
-```python
+```
 # Academic year tuition and fees
 "https://educationdata.urban.org/api/v1/college-university/ipeds/academic-year-tuition/2020/"
 
@@ -411,7 +411,7 @@ Integrated Postsecondary Education Data System.
 
 ### Institutional Characteristics
 
-```python
+```
 # Student services
 "https://educationdata.urban.org/api/v1/college-university/ipeds/student-services/2020/"
 
@@ -427,7 +427,7 @@ Integrated Postsecondary Education Data System.
 
 ### Finance
 
-```python
+```
 # Institutional finance
 "https://educationdata.urban.org/api/v1/college-university/ipeds/finance/2020/"
 
@@ -439,7 +439,7 @@ Integrated Postsecondary Education Data System.
 
 College Scorecard data.
 
-```python
+```
 # Scorecard data
 "https://educationdata.urban.org/api/v1/college-university/scorecard/earnings/2020/"
 
@@ -454,7 +454,7 @@ College Scorecard data.
 
 Federal Student Aid data.
 
-```python
+```
 # Title IV program volume
 "https://educationdata.urban.org/api/v1/college-university/fsa/program-volume/2020/"
 ```
@@ -463,7 +463,7 @@ Federal Student Aid data.
 
 ### Complex School Queries
 
-```python
+```
 # Large urban charter high schools in California
 "https://educationdata.urban.org/api/v1/schools/ccd/directory/2020/?fips=6&charter=1&school_level=3&urban_centric_locale=11,12"
 
@@ -476,7 +476,7 @@ Federal Student Aid data.
 
 ### Complex College Queries
 
-```python
+```
 # HBCUs with high graduation rates (need to filter after fetch)
 "https://educationdata.urban.org/api/v1/college-university/ipeds/directory/2020/?hbcu=1"
 
@@ -489,7 +489,7 @@ Federal Student Aid data.
 
 ### Time Series Queries
 
-```python
+```
 # California schools across multiple years
 "https://educationdata.urban.org/api/v1/schools/ccd/directory/?year=2015,2016,2017,2018,2019,2020&fips=6"
 

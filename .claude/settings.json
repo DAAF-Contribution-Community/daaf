@@ -3,6 +3,10 @@
     "type": "command",
     "command": "$CLAUDE_PROJECT_DIR/.claude/scripts/context-bar.sh"
   },
+  "subagentStatusLine": {
+    "type": "command",
+    "command": "$CLAUDE_PROJECT_DIR/.claude/scripts/subagent-bar.sh"
+  },
   "permissions": {
     "allow": [
       "Bash(marimo run *)",
@@ -55,6 +59,18 @@
       "Bash(docker exec *)",
       "Bash(mount *)",
       "Bash(chroot *)",
+      "Bash(pip install*)",
+      "Bash(pip3 install*)",
+      "Bash(pipx install*)",
+      "Bash(python -m pip install*)",
+      "Bash(python3 -m pip install*)",
+      "Bash(uv pip install*)",
+      "Bash(uv add*)",
+      "Bash(uvx *)",
+      "Bash(conda install*)",
+      "Bash(conda create*)",
+      "Bash(easy_install*)",
+      "Bash(R CMD INSTALL*)",
       "Bash(git push --force *)",
       "Bash(git push -f *)",
       "Bash(git reset --hard *)",
@@ -73,17 +89,19 @@
       "Write(.env.*)",
       "Edit(.env)",
       "Edit(.env.*)",
-      "Read(environment_settings*)",
-      "Write(environment_settings*)",
-      "Edit(environment_settings*)",
+      "Read(environment_settings.txt)",
+      "Write(environment_settings.txt)",
+      "Edit(environment_settings.txt)",
       "Edit(.claude/hooks/*)",
       "Write(.claude/hooks/*)",
       "Edit(.claude/logs/*)",
-      "Write(.claude/logs/*)"
+      "Write(.claude/logs/*)",
+      "Write(//tmp/**)",
+      "Edit(//tmp/**)"
     ]
   },
   "env": {
-    "ANTHROPIC_MODEL": "claude-opus-4-6[1m]",
+    "ANTHROPIC_MODEL": "claude-opus-4-8[1m]",
     "CLAUDE_CODE_EFFORT_LEVEL": "high",
     "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1",
     "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1",
@@ -92,6 +110,9 @@
     "ENABLE_PROMPT_CACHING_1H": "1"
   },
   "outputStyle": "Explanatory",
+  "disableWorkflows": true,
+  "verbose": true,
+  "autoCompactEnabled": false,
   "showThinkingSummaries": true,
   "hooks": {
     "UserPromptSubmit": [
@@ -127,17 +148,27 @@
         "hooks": [
           {
             "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/block-nested-dispatch.sh",
+            "timeout": 5
+          },
+          {
+            "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/enforce-explore-model.sh",
             "timeout": 5
           },
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/enforce-foreground-agents.sh",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/deny-claude-code-guide.sh",
             "timeout": 5
           },
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/deny-claude-code-guide.sh",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/enforce-model-ceiling.sh",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/block-remote-isolation.sh",
             "timeout": 5
           }
         ]
@@ -147,17 +178,27 @@
         "hooks": [
           {
             "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/block-nested-dispatch.sh",
+            "timeout": 5
+          },
+          {
+            "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/enforce-explore-model.sh",
             "timeout": 5
           },
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/enforce-foreground-agents.sh",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/deny-claude-code-guide.sh",
             "timeout": 5
           },
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/deny-claude-code-guide.sh",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/enforce-model-ceiling.sh",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/block-remote-isolation.sh",
             "timeout": 5
           }
         ]
@@ -168,6 +209,16 @@
           {
             "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/bash-safety.sh",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/benchmarks/harness/hooks/block-git-writes.sh",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/enforce-single-command.sh",
             "timeout": 5
           }
         ]

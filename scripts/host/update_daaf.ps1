@@ -28,6 +28,7 @@
 # Supports DAAF_DRY_RUN=1 for CI cross-platform smoke testing (see tests/).
 # ============================================================================
 
+#Requires -Version 5.1
 $ErrorActionPreference = "Stop"
 
 function Wait-AndExit {
@@ -61,6 +62,7 @@ if ($env:DAAF_DRY_RUN -eq "1") {
         $global:LASTEXITCODE = 0
         switch -Wildcard ($argStr) {
             "*info*" { return }
+            "*compose ps -q daaf-docker*" { Write-Output "abc123" }
             "*compose ps*--format*" { Write-Output "daaf-docker" }
             "*compose up*" { return }
             "*compose exec*test -f*/daaf/.git/shallow*" {
@@ -105,10 +107,65 @@ if ($env:DAAF_DRY_RUN -eq "1") {
 }
 
 $UpstreamRepo = "DAAF-Contribution-Community/daaf"
-$ContainerName = "daaf-daaf-docker-1"
+# $ContainerId is derived from the compose project after the container is started
+# (see the preflight block below), not hardcoded -- so it tracks DAAF_PROJECT_NAME
+# and is correct for a second instance. Consumed by `docker cp` in the sync helper
+# and by user-facing manual-recovery hints.
+$ContainerId = ""
 $Timestamp = Get-Date -Format "yyyy-MM-dd-HHmmss"
 $BackupBranch = "backup/pre-update-$Timestamp"
 $Mutex = $null  # Initialized before trap; set to actual mutex after helper functions
+# Initialized before the scope-wide trap (defined below) references $Stashed to
+# print stash-recovery guidance. Without this, a failure firing the trap before
+# the stash step (far below) would read an uninitialized variable under
+# Set-StrictMode, masking the real error with a strict-mode violation.
+$Stashed = $false
+
+# Pre-initialize for the same reason as $Stashed above: Complete-Update is
+# defined before the test-mode guard (so it is callable under Pester) and reads
+# $PersistBranch, which Set-StrictMode would flag as uninitialized if a test
+# invokes the function without the main body having run. The real update branch
+# is assigned during branch resolution below (env-origin branch only; never a
+# tag), so it is written back to environment_settings.txt on a successful update.
+$PersistBranch = ""
+
+# --- Multi-instance settings (shared pattern) ---
+# Bridge environment_settings.txt's four DAAF_* multi-instance keys into the
+# process environment so `docker compose` interpolation resolves the project name
+# and published host ports. Canonical shared pattern (kept in sync with
+# Import-DaafSettingsFile in daaf_lib.ps1); standalone scripts that do NOT dot-source
+# daaf_lib.ps1 inline it. Parse only these whitelisted keys (never dot-source -- the file
+# holds API keys); process env wins; absent file = no-op; CR stripped; PS 5.1 safe.
+function Import-DaafSettingsInline {
+    param([string]$SettingsFile = "./environment_settings.txt")
+    if (-not (Test-Path -LiteralPath $SettingsFile)) { return }
+    $known = @('DAAF_PROJECT_NAME', 'DAAF_PORT_MARIMO', 'DAAF_PORT_LOGVIEWER', 'DAAF_PORT_VSCODE', 'DAAF_DEV', 'DAAF_BRANCH')
+    # -Encoding UTF8: PS 5.1's bare Get-Content misreads BOM-less UTF-8 as ANSI
+    # (cp1252); the settings writer is BOM-less UTF-8, so reads are pinned to match.
+    foreach ($rawLine in (Get-Content -LiteralPath $SettingsFile -Encoding UTF8)) {
+        $line = $rawLine -replace "`r", ""
+        $trimmed = $line.Trim()
+        if ($trimmed -eq "" -or $trimmed.StartsWith("#")) { continue }
+        $eq = $line.IndexOf("=")
+        if ($eq -lt 1) { continue }
+        $key = $line.Substring(0, $eq).Trim()
+        if ($known -notcontains $key) { continue }
+        $val = $line.Substring($eq + 1)
+        if (($val.StartsWith('"') -and $val.EndsWith('"')) -or ($val.StartsWith("'") -and $val.EndsWith("'"))) {
+            if ($val.Length -ge 2) { $val = $val.Substring(1, $val.Length - 2) }
+        }
+        $current = [Environment]::GetEnvironmentVariable($key, "Process")
+        if ([string]::IsNullOrEmpty($current)) {
+            Set-Item -Path ("Env:" + $key) -Value $val
+        }
+    }
+}
+# Capture whether DAAF_BRANCH came from the process environment BEFORE the
+# settings bridge runs (Import-DaafSettingsInline only adopts the file value when
+# the env var is empty). After the call: DAAF_BRANCH set + FromEnv=$false =>
+# file-origin; $true => env-origin. Drives tag handling and branch persistence.
+$DaafBranchFromEnv = -not [string]::IsNullOrEmpty($env:DAAF_BRANCH)
+Import-DaafSettingsInline
 
 # --- Trap handler for unexpected failures ---
 trap {
@@ -403,6 +460,12 @@ function Resolve-Conflict {
             Write-Host "  exit"
         }
         Write-Host ""
+        Write-Host "Then re-run the updater from PowerShell:"
+        Write-Host "  .\update_daaf.ps1"
+        Write-Host "It picks up where it left off - restoring any set-aside changes and"
+        Write-Host "finishing the remaining steps (host-script sync and rebuild check)"
+        Write-Host "automatically."
+        Write-Host ""
         Write-Host "To undo the update instead (run from PowerShell, not the container):"
         Write-Host "  docker compose exec daaf-docker git -C /daaf $AbortCmd"
         Write-Host "  docker compose exec daaf-docker git -C /daaf reset --hard $BackupBranch"
@@ -415,9 +478,17 @@ function Resolve-StashConflict {
     Write-Host ""
     Write-Host "The framework update was applied successfully!"
     Write-Host ""
-    Write-Host "However, some of your uncommitted edits overlap with files that"
-    Write-Host "changed in the update. Your edits are NOT lost - they are saved"
-    Write-Host "in a temporary holding area."
+    Write-Host "However, re-applying your uncommitted changes hit conflicts: some of"
+    Write-Host "your local edits (commonly to Dockerfile or docker-compose.yml)"
+    Write-Host "overlap with changes in this update, so Git could not merge them"
+    Write-Host "automatically."
+    Write-Host ""
+    Write-Host "Nothing is lost. Your changes are preserved safely in a git stash -"
+    Write-Host "the update did not discard them."
+    Write-Host ""
+    Write-Host "The easiest fix: start a DAAF session (launch Claude Code in the"
+    Write-Host "container) and ask for help with `"update conflicts`". DAAF's User"
+    Write-Host "Support mode has a guided walkthrough that resolves these step by step."
     Write-Host ""
     # Claude Code requires an interactive terminal. When non-interactive,
     # skip straight to manual resolution instructions.
@@ -481,12 +552,19 @@ function Resolve-StashConflict {
         }
     } else {
         Write-Host ""
-        Write-Host "To resolve, enter the container:"
+        Write-Host "Recommended: start a DAAF session and ask for help with `"update"
+        Write-Host "conflicts`" - User Support mode has a guided conflict walkthrough:"
+        Write-Host "  .\run_daaf.ps1"
+        Write-Host ""
+        Write-Host "Or resolve manually - enter the container:"
         Write-Host "  .\run_daaf.ps1 bash"
         Write-Host "  (edit the conflicting files to remove the <<<<<<< markers)"
         Write-Host "  git add ."
         Write-Host "  git stash drop"
         Write-Host "  exit"
+        Write-Host ""
+        Write-Host "Either way, your changes are safe in the git stash until you"
+        Write-Host "resolve them - nothing has been lost."
         Write-Host ""
         Write-Host "Or to discard your uncommitted edits and keep the update"
         Write-Host "(WARNING - this cannot be undone):"
@@ -503,43 +581,344 @@ function Resolve-StashConflict {
     }
 }
 
+# Copy one host script out of the container. Returns $true on success, $false
+# on failure (printing a manual-recovery hint -- no silent skips).
+#
+# Tier B can overwrite a host copy that DIFFERS from what it delivers (e.g. a
+# locally drifted file that also changed in the update range -- and on old-era
+# migrations EVERY host script is "changed in range", so this path, not the
+# tier C drift heal, performs the heal). Preserve the tier C recoverability
+# contract here too: stage the incoming copy as a sibling file, and when an
+# existing host copy differs, save it to the rolling "<name>.pre-update"
+# BEFORE overwriting. If the backup cannot be created, do NOT overwrite --
+# never destroy the only copy -- same rule as the tier C drift heal. (Field
+# finding 2026-07-17: the v2.0.1 vector's class E drift fixture was healed via
+# tier B and clobbered with no backup. Mirrors _sync_copy_one in update_daaf.sh.)
+function Copy-HostScript {
+    param([string]$RepoPath)
+    $scriptName = Split-Path $RepoPath -Leaf
+    $daafProj = if ($env:DAAF_PROJECT_NAME) { $env:DAAF_PROJECT_NAME } else { 'daaf' }
+    if (Test-Path "./$scriptName") {
+        $staged = "./$scriptName.sync-staged"
+        # $null = : docker cp's output stream must not leak into this function's
+        # return value -- a leaked string makes the returned boolean an ARRAY,
+        # and any 2-element array is truthy at the `if (Copy-HostScript ...)`
+        # call sites regardless of the boolean inside (probe-verified 2026-07-17).
+        $savedEAP = $ErrorActionPreference
+        try { $ErrorActionPreference = "SilentlyContinue"; $null = docker cp "${ContainerId}:/daaf/$RepoPath" $staged 2>$null } finally { $ErrorActionPreference = $savedEAP }
+        if ($LASTEXITCODE -ne 0 -or -not (Test-Path $staged)) {
+            Remove-Item -Path $staged -Force -ErrorAction SilentlyContinue
+            Write-Host "  Warning: could not copy $scriptName. You can copy it manually:" -ForegroundColor Yellow
+            Write-Host "    docker cp ${daafProj}-daaf-docker-1:/daaf/$RepoPath ./$scriptName" -ForegroundColor Yellow
+            return $false
+        }
+        $backedUp = $false
+        $differs = $true
+        try {
+            $hashExisting = (Get-FileHash -Path "./$scriptName" -Algorithm SHA256 -ErrorAction Stop).Hash
+            $hashStaged = (Get-FileHash -Path $staged -Algorithm SHA256 -ErrorAction Stop).Hash
+            $differs = ($hashExisting -ne $hashStaged)
+        } catch { $differs = $true }
+        if ($differs) {
+            try {
+                Copy-Item -Path "./$scriptName" -Destination "./$scriptName.pre-update" -Force -ErrorAction Stop
+                $backedUp = $true
+            } catch {
+                Remove-Item -Path $staged -Force -ErrorAction SilentlyContinue
+                Write-Host "  Warning: could not back up $scriptName before overwriting -- left unchanged." -ForegroundColor Yellow
+                Write-Host "    To adopt the repository version manually, run:" -ForegroundColor Yellow
+                Write-Host "    docker cp ${daafProj}-daaf-docker-1:/daaf/$RepoPath ./$scriptName" -ForegroundColor Yellow
+                return $false
+            }
+        }
+        try {
+            Move-Item -Path $staged -Destination "./$scriptName" -Force -ErrorAction Stop
+        } catch {
+            Remove-Item -Path $staged -Force -ErrorAction SilentlyContinue
+            Write-Host "  Warning: could not copy $scriptName. You can copy it manually:" -ForegroundColor Yellow
+            Write-Host "    docker cp ${daafProj}-daaf-docker-1:/daaf/$RepoPath ./$scriptName" -ForegroundColor Yellow
+            return $false
+        }
+        if ($backedUp) {
+            Write-Host "  Updated: $scriptName (your previous copy was saved as $scriptName.pre-update)"
+        } else {
+            Write-Host "  Updated: $scriptName"
+        }
+        return $true
+    }
+    $savedEAP = $ErrorActionPreference
+    try { $ErrorActionPreference = "SilentlyContinue"; $null = docker cp "${ContainerId}:/daaf/$RepoPath" "./$scriptName" 2>$null } finally { $ErrorActionPreference = $savedEAP }
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "  Updated: $scriptName"
+        return $true
+    } else {
+        Write-Host "  Warning: could not copy $scriptName. You can copy it manually:" -ForegroundColor Yellow
+        Write-Host "    docker cp ${daafProj}-daaf-docker-1:/daaf/$RepoPath ./$scriptName" -ForegroundColor Yellow
+        return $false
+    }
+}
+
+# Sync host-side utility scripts out of the container to the daaf-docker folder.
+#
+# The old design diffed a HARDCODED pathspec inside the running (old) script, so
+# files added upstream that the old script did not know about were silently
+# skipped forever (chicken-and-egg). This rewrite derives the file list from the
+# POST-UPDATE repo state (git ls-files at new HEAD) and adds an existence-heal
+# pass so past misses self-correct on the next run. Mirrors the Bash design in
+# update_daaf.sh sync_host_scripts.
+#
+# $OldHead may be empty (called from the "already up to date" path). When empty
+# or equal to $newHead, only the existence-heal pass runs.
 function Sync-HostScript {
-    param([string]$OldHead)
+    param([string]$OldHead = "")
 
     $newHead = Invoke-ComposeGit rev-parse HEAD
 
-    if ($OldHead -eq $newHead) { return }
+    # Authoritative host-script list from the post-update repo state. ls-files
+    # runs in-container (Linux git) so its features are fine here.
+    $allHostFiles = Invoke-ComposeGit ls-files 'scripts/host/*'
+    if ([string]::IsNullOrWhiteSpace($allHostFiles)) { return }
 
-    # Only sync platform-appropriate scripts (.ps1 on Windows) and shared files.
-    # Excludes install.ps1 (not needed post-install) and all .sh files.
-    $changedScripts = Invoke-ComposeGit diff --name-only "$OldHead..$newHead" -- `
-        scripts/host/run_daaf.ps1 `
-        scripts/host/backup_daaf.ps1 `
-        scripts/host/restore_from_backup.ps1 `
-        scripts/host/rebuild_daaf.ps1 `
-        scripts/host/update_daaf.ps1 `
-        scripts/host/view_logs.ps1 `
-        scripts/host/view_notebooks.ps1 `
-        scripts/host/run_vscode.ps1 `
-        scripts/host/environment_settings_example.txt
-
-    if ([string]::IsNullOrWhiteSpace($changedScripts)) { return }
-
-    Write-Host "Syncing updated utility scripts..."
-    $changedScripts -split "`n" | ForEach-Object {
-        $repoPath = $_.Trim()
-        if (-not $repoPath) { return }
-        $scriptName = Split-Path $repoPath -Leaf
-        $savedEAP = $ErrorActionPreference
-        try { $ErrorActionPreference = "SilentlyContinue"; docker cp "${ContainerName}:/daaf/$repoPath" "./$scriptName" 2>$null } finally { $ErrorActionPreference = $savedEAP }
-        if ($LASTEXITCODE -eq 0) {
-            Write-Host "  Updated: $scriptName"
-        } else {
-            Write-Host "  Warning: could not copy $scriptName. You can copy it manually:" -ForegroundColor Yellow
-            Write-Host "    docker cp ${ContainerName}:/daaf/$repoPath ./$scriptName" -ForegroundColor Yellow
+    # Platform filter (Windows hosts): keep *.ps1 files (which now includes the
+    # native Control Panel pair daaf.ps1 / daaf_lib.ps1) and the shared
+    # plain-text files (environment_settings_example.txt, README.txt). All *.sh
+    # files are dropped -- Windows uses the .ps1 Control Panel, not daaf.sh.
+    # Bootstrap-only scripts (install.ps1, migrate_daaf.ps1) are intentionally
+    # excluded -- fetched via irm on demand, not needed post-install. The
+    # dev-only test harness (test_migration.ps1) is likewise excluded -- it is a
+    # contributor tool tracked in git for CI, never needed in the user's
+    # daaf-docker folder. Without this exclusion it would match *.ps1 and sync.
+    $syncList = @()
+    foreach ($line in ($allHostFiles -split "`n")) {
+        $repoPath = $line.Trim()
+        if (-not $repoPath) { continue }
+        if ($repoPath -eq "scripts/host/install.ps1" -or $repoPath -eq "scripts/host/migrate_daaf.ps1" -or $repoPath -eq "scripts/host/test_migration.ps1") { continue }
+        if ($repoPath -like "*.ps1" -or
+            $repoPath -eq "scripts/host/environment_settings_example.txt" -or
+            $repoPath -eq "scripts/host/README.txt") {
+            $syncList += $repoPath
         }
     }
-    Write-Host ""
+    if ($syncList.Count -eq 0) { return }
+
+    # Files changed in the update range (tier B). Only when we have a real range.
+    $changedList = @()
+    if ($OldHead -and ($OldHead -ne $newHead)) {
+        $changedRaw = Invoke-ComposeGit diff --name-only "$OldHead..$newHead" -- scripts/host
+        foreach ($line in ($changedRaw -split "`n")) {
+            $p = $line.Trim()
+            if ($p) { $changedList += $p }
+        }
+    }
+
+    $copied = @()
+    $selfUpdated = $false
+    $printedHeader = $false
+    $syncCopyFailed = $false
+
+    # --- Tier A: existence-heal ---
+    # Any host-appropriate file MISSING on the host is copied unconditionally.
+    foreach ($repoPath in $syncList) {
+        $scriptName = Split-Path $repoPath -Leaf
+        if (-not (Test-Path "./$scriptName")) {
+            if (-not $printedHeader) { Write-Host "Syncing utility scripts..."; $printedHeader = $true }
+            if (Copy-HostScript $repoPath) {
+                $copied += $scriptName
+            } else {
+                $syncCopyFailed = $true
+            }
+        }
+    }
+
+    # --- Tier B: changed files ---
+    # Any listed file changed in this range is copied (unless tier A already did).
+    foreach ($repoPath in $changedList) {
+        if ($syncList -notcontains $repoPath) { continue }
+        $scriptName = Split-Path $repoPath -Leaf
+        if ($copied -contains $scriptName) { continue }
+        if (-not $printedHeader) { Write-Host "Syncing updated utility scripts..."; $printedHeader = $true }
+        if (Copy-HostScript $repoPath) {
+            if ($scriptName -eq "update_daaf.ps1") { $selfUpdated = $true }
+            $copied += $scriptName
+        } else {
+            $syncCopyFailed = $true
+        }
+    }
+
+    if ($printedHeader) { Write-Host "" }
+
+    # --- Tier C: drift heal (overwrite with rolling backup) ---
+    # A file that EXISTS on host but differs from the repo copy and was NOT
+    # copied this run (not missing, not changed in-range) would otherwise be
+    # left silently stale -- the last silent failure mode after interrupted
+    # syncs, upstream changes the diff missed, or manual copies. We OVERWRITE
+    # with the repo version, first saving the existing host copy to
+    # "<name>.pre-update" (rolling: any previous .pre-update is overwritten, so
+    # backups never accumulate). Mirrors the Bash tier-C design in
+    # update_daaf.sh sync_host_scripts.
+    #
+    # DESIGN DECISION (2026-07-09): the files this updater syncs -- host utility
+    # scripts (*.ps1) and the example template (environment_settings_example.txt,
+    # README.txt) -- have NO supported local-edit use-case. All user-serviceable
+    # configuration lives exclusively in environment_settings.txt, which this
+    # updater never syncs or touches. Therefore drift here means STALENESS, not
+    # a deliberate customization worth preserving, and silently keeping a stale
+    # copy is the worst outcome. Overwrite + rolling backup is the deliberate
+    # design: the host always ends up with the current repo version, and the
+    # user's prior bytes are recoverable from the .pre-update file if ever needed.
+    # This supersedes the earlier warn-never-overwrite behavior.
+    #
+    # One bulk `docker compose cp` of scripts/host into a temp dir, then a
+    # per-file Get-FileHash compare (Get-FileHash exists in PS 5.1). Files copied
+    # this run ($copied) are fresh by construction and excluded. Failure to stage
+    # or compare degrades to a single notice -- best-effort, never aborts.
+    # The .pre-update backup files are never themselves sync candidates: the
+    # $syncList is derived purely from repo paths (git ls-files scripts/host/*),
+    # and .pre-update files exist only on the host, so they can never appear in
+    # that list or match a repo basename.
+    $driftFound = $false
+    $driftDegraded = $false
+    $driftDir = $null
+    try {
+        $driftDir = Join-Path ([System.IO.Path]::GetTempPath()) ("daaf-drift-" + [System.Guid]::NewGuid().ToString("N"))
+        New-Item -ItemType Directory -Path $driftDir -Force -ErrorAction Stop | Out-Null
+    } catch {
+        $driftDegraded = $true
+    }
+
+    if (-not $driftDegraded) {
+        # Bulk-copy the repo's scripts/host tree out of the container once.
+        # docker compose cp is project-aware (tracks DAAF_PROJECT_NAME).
+        $repoHost = Join-Path $driftDir "repo_host"
+        $savedEAP = $ErrorActionPreference
+        try {
+            $ErrorActionPreference = "SilentlyContinue"
+            docker compose cp daaf-docker:/daaf/scripts/host "$repoHost" 2>$null | Out-Null
+        } finally { $ErrorActionPreference = $savedEAP }
+        if ($LASTEXITCODE -ne 0 -or -not (Test-Path $repoHost)) {
+            $driftDegraded = $true
+        }
+    }
+
+    if ($driftDegraded) {
+        Write-Host "Note: could not check host scripts for drift this run (skipped safely)."
+        Write-Host ""
+    } else {
+        foreach ($repoPath in $syncList) {
+            $scriptName = Split-Path $repoPath -Leaf
+            # Only files that exist on host are drift candidates (missing files
+            # were handled by tier A).
+            if (-not (Test-Path "./$scriptName")) { continue }
+            # Exclude files copied this run (tier A or tier B) -- fresh already.
+            if ($copied -contains $scriptName) { continue }
+            # Never overwrite the RUNNING updater from the drift loop: replacing
+            # this file mid-execution risks executing corrupted content. Tier B's
+            # self-update path (with its explicit re-run notice) is the sanctioned
+            # way the updater refreshes itself.
+            if ($scriptName -eq 'update_daaf.ps1') { continue }
+            $repoCopy = Join-Path (Join-Path $driftDir "repo_host") $scriptName
+            # If the repo copy is missing from the staged tree, we cannot
+            # compare -- skip rather than guessing.
+            if (-not (Test-Path $repoCopy)) { continue }
+            $differs = $false
+            try {
+                $hostHash = (Get-FileHash -Path "./$scriptName" -Algorithm SHA256 -ErrorAction Stop).Hash
+                $repoHash = (Get-FileHash -Path $repoCopy -Algorithm SHA256 -ErrorAction Stop).Hash
+                if ($hostHash -ne $repoHash) { $differs = $true }
+            } catch {
+                # A compare failure for one file is non-fatal -- skip it.
+                continue
+            }
+            if ($differs) {
+                # Drift detected. Back up the existing host copy to a rolling
+                # "<name>.pre-update" (overwrite any prior backup), THEN overwrite
+                # the host copy with the repo version. If the backup step fails we
+                # do NOT overwrite -- never destroy the only copy -- and fall back
+                # to the old warning for that file.
+                $backupOk = $false
+                try {
+                    Copy-Item -Path "./$scriptName" -Destination "./$scriptName.pre-update" -Force -ErrorAction Stop
+                    $backupOk = $true
+                } catch {
+                    $backupOk = $false
+                }
+                if ($backupOk) {
+                    $overwriteOk = $false
+                    try {
+                        Copy-Item -Path $repoCopy -Destination "./$scriptName" -Force -ErrorAction Stop
+                        $overwriteOk = $true
+                    } catch {
+                        $overwriteOk = $false
+                    }
+                    if ($overwriteOk) {
+                        Write-Host "  Updated: $scriptName (your previous copy was saved as $scriptName.pre-update)"
+                        $driftFound = $true
+                    } else {
+                        # Backup succeeded but overwrite failed -- the host copy is
+                        # untouched and the backup is a redundant duplicate. Warn.
+                        Write-Host "  WARNING: $scriptName is stale but could not be updated" -ForegroundColor Yellow
+                        Write-Host "    (write failed). Your file is unchanged. To adopt the" -ForegroundColor Yellow
+                        Write-Host "    repository version manually, run:" -ForegroundColor Yellow
+                        $daafProj = if ($env:DAAF_PROJECT_NAME) { $env:DAAF_PROJECT_NAME } else { 'daaf' }
+                        Write-Host "      docker cp ${daafProj}-daaf-docker-1:/daaf/$repoPath ./$scriptName" -ForegroundColor Yellow
+                    }
+                } else {
+                    # Could not create the backup -- do NOT overwrite (never
+                    # destroy the only copy). Fall back to the old warning.
+                    Write-Host "  WARNING: $scriptName is stale but could not be updated" -ForegroundColor Yellow
+                    Write-Host "    (backup step failed). Your file was left unchanged to" -ForegroundColor Yellow
+                    Write-Host "    avoid losing it. To adopt the repository version, run:" -ForegroundColor Yellow
+                    $daafProj = if ($env:DAAF_PROJECT_NAME) { $env:DAAF_PROJECT_NAME } else { 'daaf' }
+                    Write-Host "      docker cp ${daafProj}-daaf-docker-1:/daaf/$repoPath ./$scriptName" -ForegroundColor Yellow
+                }
+            }
+        }
+    }
+
+    # Clean up the staging dir (best-effort; never fatal).
+    if ($driftDir -and (Test-Path $driftDir)) {
+        Remove-Item -Path $driftDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    # Closing summary if any stale files were updated -- mirrors the sync-failure
+    # summary so the message is not missed if it scrolled past.
+    if ($driftFound) {
+        Write-Host ""
+        Write-Host "One or more host files were stale and have been updated to the"
+        Write-Host "repository version -- see the messages above. Your previous copies"
+        Write-Host "were saved as <name>.pre-update files in this folder; you can delete"
+        Write-Host "them once you have confirmed everything works, or restore one by"
+        Write-Host "renaming it back if something regresses."
+        Write-Host ""
+    }
+
+    # --- Sync failure summary ---
+    # $syncCopyFailed is set on any copy error. Print a closing summary so the
+    # user knows to act even if the per-file warning scrolled by.
+    if ($syncCopyFailed) {
+        Write-Host "Warning: some host scripts could not be synced -- see the messages above for manual copy commands."
+        Write-Host ""
+    }
+
+    # --- Self-update notice ---
+    # If the updater itself was refreshed as a CHANGED file, its new logic is on
+    # disk but was not executed this run. Prompt a re-run so the new updater's
+    # existence-heal pass can deliver anything the old logic could not (no auto
+    # re-exec -- that would collide with the mutex and trap handling).
+    if ($selfUpdated) {
+        Write-Host "-------------------------------------------"
+        Write-Host "  The updater itself was updated"
+        Write-Host "-------------------------------------------"
+        Write-Host ""
+        Write-Host "update_daaf.ps1 was refreshed in this update. The new version is"
+        Write-Host "now on disk but this run used the previous version. Re-run it once"
+        Write-Host "more so the latest updater can finish syncing your host tools:"
+        Write-Host "  .\update_daaf.ps1"
+        Write-Host ""
+        Write-Host "(It is safe to re-run - if everything is already current it will"
+        Write-Host " simply report 'Already up to date!')"
+        Write-Host ""
+    }
 }
 
 function Test-BuildChange {
@@ -573,13 +952,21 @@ function Test-BuildChange {
     if ($choice -eq "y") {
         Write-Host ""
         if (Test-Path "rebuild_daaf.ps1") {
-            $env:DAAF_NESTED = "1"
-            & .\rebuild_daaf.ps1
-            Remove-Item Env:\DAAF_NESTED -ErrorAction SilentlyContinue
+            # Save/restore any parent-inherited DAAF_NESTED so a nested update
+            # keeps suppressing pauses for its remainder; a bare Remove-Item
+            # would clobber the parent's value.
+            $savedNested = $env:DAAF_NESTED
+            try {
+                $env:DAAF_NESTED = "1"
+                & .\rebuild_daaf.ps1
+            } finally {
+                if ($null -ne $savedNested) { $env:DAAF_NESTED = $savedNested } else { Remove-Item Env:\DAAF_NESTED -ErrorAction SilentlyContinue }
+            }
         } else {
             Write-Host "rebuild_daaf.ps1 is not in your daaf-docker folder."
             Write-Host "You can retrieve it from the container and run it:"
-            Write-Host "  docker cp ${ContainerName}:/daaf/scripts/host/rebuild_daaf.ps1 .\rebuild_daaf.ps1"
+            $daafProj = if ($env:DAAF_PROJECT_NAME) { $env:DAAF_PROJECT_NAME } else { 'daaf' }
+            Write-Host "  docker cp ${daafProj}-daaf-docker-1:/daaf/scripts/host/rebuild_daaf.ps1 .\rebuild_daaf.ps1"
             Write-Host "  .\rebuild_daaf.ps1"
         }
     } else {
@@ -616,6 +1003,244 @@ function Complete-Update {
     Write-Host "  To launch DAAF:"
     Write-Host "    .\run_daaf.ps1"
     Write-Host ""
+    # Persist an env-origin update branch so future runs track it without
+    # re-exporting $env:DAAF_BRANCH. Extracted into Save-BranchChoice so the
+    # no-op success paths ("Already up to date"), which return before
+    # Complete-Update runs, can persist the same way -- otherwise re-running with
+    # $env:DAAF_BRANCH set while already current would never save the choice.
+    Save-BranchChoice
+
+    # Single marker-cleanup chokepoint: every successful completion clears the
+    # interrupted-update resume marker so a subsequent run does not mistake this
+    # (now-finished) update for one still needing resume finalization.
+    Clear-ResumeMarker
+}
+
+# --- Settings-File Key Upsert (inlined from daaf_lib.ps1) ---
+# INLINE COPY of daaf_lib.ps1 Set-DaafSettingsKey (byte-equivalent to the copy in
+# install.ps1), used to persist an env-origin DAAF_BRANCH after a successful
+# update. update_daaf is a standalone recovery tool that must run even if
+# daaf_lib is broken and, like install.ps1, does not dot-source it (mirroring the
+# inline settings *reader* above). Semantics, placement rules, atomicity, paired
+# encoding (BOM-less UTF-8 write + `-Encoding UTF8` read), DRY-RUN gating and
+# strict-mode cleanliness are identical to the library version -- see daaf_lib.ps1
+# for the full annotation, including why read/write encodings stay pinned together.
+# Defined before
+# the DAAF_TEST_MODE guard so it is available to Complete-Update under test
+# dot-sourcing.
+function Set-DaafSettingsKey {
+    [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Low')]
+    param(
+        [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string]$File,
+        [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string]$Key,
+        [Parameter(Mandatory)][AllowEmptyString()][string]$Value,
+        [ValidateSet('if-absent', 'replace')][string]$Mode = 'if-absent',
+        [string]$BackupSuffix = ''
+    )
+
+    if (-not (Test-Path -LiteralPath $File)) {
+        Write-Error "Set-DaafSettingsKey: file not found: $File"
+        return
+    }
+    $File = (Resolve-Path -LiteralPath $File).Path
+
+    # -Encoding UTF8 is REQUIRED and paired with the BOM-less UTF-8 write below: a
+    # bare read on PS 5.1 would decode this function's own BOM-less UTF-8 output as
+    # ANSI and mojibake it (see daaf_lib.ps1 for the full note).
+    $lines = @(Get-Content -LiteralPath $File -Encoding UTF8 | ForEach-Object { $_ -replace "`r", "" })
+
+    $activeIdx = -1
+    $commentIdx = -1
+    $keyPattern = '^' + [regex]::Escape($Key) + '='
+    $commentPattern = '^\s*#\s*' + [regex]::Escape($Key) + '='
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        if ($activeIdx -lt 0 -and $lines[$i] -match $keyPattern) { $activeIdx = $i }
+        if ($commentIdx -lt 0 -and $lines[$i] -match $commentPattern) { $commentIdx = $i }
+    }
+
+    $newLine = "$Key=$Value"
+    $action = ''
+    $out = New-Object System.Collections.Generic.List[string]
+
+    if ($activeIdx -ge 0) {
+        if ($Mode -ne 'replace') {
+            Write-Host "Set-DaafSettingsKey: $Key skipped (exists)"
+            return
+        }
+        if ($lines[$activeIdx] -eq $newLine) {
+            Write-Host "Set-DaafSettingsKey: $Key unchanged (value already present)"
+            return
+        }
+        for ($i = 0; $i -lt $lines.Count; $i++) {
+            if ($i -eq $activeIdx) { $out.Add($newLine) } else { $out.Add($lines[$i]) }
+        }
+        $action = 'replaced'
+    }
+    elseif ($commentIdx -ge 0) {
+        for ($i = 0; $i -lt $lines.Count; $i++) {
+            $out.Add($lines[$i])
+            if ($i -eq $commentIdx) { $out.Add($newLine) }
+        }
+        $action = 'inserted below commented example'
+    }
+    else {
+        for ($i = 0; $i -lt $lines.Count; $i++) { $out.Add($lines[$i]) }
+        if ($out.Count -gt 0 -and -not [string]::IsNullOrEmpty($out[$out.Count - 1])) {
+            $out.Add('')
+        }
+        $out.Add('# Added by DAAF on ' + (Get-Date -Format 'yyyy-MM-dd'))
+        $out.Add($newLine)
+        $action = 'appended (new)'
+    }
+
+    if ($env:DAAF_DRY_RUN -eq '1') {
+        Write-Host "[DRY-RUN] Set-DaafSettingsKey would write ${File}: $action"
+        Write-Host "[DRY-RUN]   line: $newLine"
+        return
+    }
+
+    if (-not $PSCmdlet.ShouldProcess($File, "Update settings key $Key ($action)")) {
+        return
+    }
+
+    if (-not [string]::IsNullOrEmpty($BackupSuffix)) {
+        $backupPath = $File + $BackupSuffix
+        if (-not (Test-Path -LiteralPath $backupPath)) {
+            Copy-Item -LiteralPath $File -Destination $backupPath -Confirm:$false
+        }
+    }
+
+    $payload = ($out -join "`n") + "`n"
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+
+    $dir = Split-Path -Parent $File
+    if ([string]::IsNullOrEmpty($dir)) { $dir = '.' }
+    $tmp = Join-Path $dir ('.daaf_upsert.' + [System.IO.Path]::GetRandomFileName())
+    try {
+        [System.IO.File]::WriteAllText($tmp, $payload, $utf8NoBom)
+        Move-Item -LiteralPath $tmp -Destination $File -Force -Confirm:$false
+    }
+    catch {
+        if (Test-Path -LiteralPath $tmp) { Remove-Item -LiteralPath $tmp -Force -Confirm:$false }
+        Write-Error "Set-DaafSettingsKey: write failed for ${File}: $_"
+        return
+    }
+
+    Write-Host "Set-DaafSettingsKey: $Key $action"
+}
+
+# --- Persist an env-origin update branch (shared by every success path) ---
+# Writes $PersistBranch back to environment_settings.txt so future runs track it
+# without re-exporting $env:DAAF_BRANCH. Called from Complete-Update AND from the
+# no-op "already up to date" success exits, which return before Complete-Update
+# runs (the most common re-run case: DAAF_BRANCH set while already current). Every
+# property of the original inline block is preserved: fires only when
+# $PersistBranch is non-empty (env-origin *branch* only, never a tag or a file-
+# origin value, so "never persist a tag" holds by construction), replace mode,
+# .pre-update backup, skip-with-note when the settings file is absent.
+# Set-DaafSettingsKey is itself DAAF_DRY_RUN gated (writes nothing in dry run);
+# the try/catch keeps a persistence hiccup from failing a completed update.
+# Defined before the DAAF_TEST_MODE guard so it is available to Complete-Update
+# (and the no-op exits) under test dot-sourcing. Named with the approved verb
+# "Save" (the Bash sibling is persist_branch_choice) to keep PSScriptAnalyzer's
+# approved-verb rule clean, consistent with every other function in this file.
+function Save-BranchChoice {
+    [CmdletBinding()]
+    param()
+    if (-not [string]::IsNullOrEmpty($PersistBranch)) {
+        if (Test-Path -LiteralPath "./environment_settings.txt") {
+            try {
+                Set-DaafSettingsKey -File "./environment_settings.txt" -Key "DAAF_BRANCH" -Value $PersistBranch -Mode replace -BackupSuffix ".pre-update" | Out-Null
+                if ($env:DAAF_DRY_RUN -ne "1") {
+                    Write-Host "Saved DAAF_BRANCH=$PersistBranch to environment_settings.txt for future updates."
+                }
+            }
+            catch {
+                Write-Verbose "Silenced settings-persistence error: $_"
+            }
+        }
+        else {
+            Write-Host "NOTE: DAAF_BRANCH=$PersistBranch was used for this update but not saved"
+            Write-Host "      (no environment_settings.txt). Copy environment_settings_example.txt to"
+            Write-Host "      persist it for future runs."
+        }
+    }
+}
+
+# --- Interrupted-update resume marker helpers ---
+# (see the update_daaf.sh twin for the full rationale). A genuine merge/rebase
+# conflict cannot be auto-resolved non-interactively, so the updater exits 1
+# mid-merge and asks the user to resolve, commit, and re-run. The re-run lands on
+# an "already up to date" early exit (HEAD now == remote), which historically did
+# tier-A-only sync and skipped rebuild detection, tier-B host-script sync, and the
+# stash pop -- stranding the user on a stale image with the "DAAF update backup"
+# stash still set aside. These helpers persist the pre-update HEAD across the
+# interruption so the re-run can finish the journey. Marker lives in the repo's
+# own .git dir (container path: invisible to git status, survives the merge, wiped
+# by a reclone). Defined before the test-mode guard so they are Pester-testable and
+# callable from Complete-Update under dot-source.
+
+function Write-ResumeMarker {
+    if ($env:DAAF_DRY_RUN -eq "1") { return }
+    # Host builds the marker bytes; an in-container `cat` writes them. The sh arg
+    # carries no embedded double quotes (PS 5.1 mangles those in native argv), so
+    # the content is fed on stdin. The read side strips CR, so pipeline newline
+    # handling does not affect parsing. Byte-identical line format to the Bash twin.
+    $marker = "OLD_HEAD=$OldHead`nTIMESTAMP=$Timestamp`n"
+    $savedEAP = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "SilentlyContinue"
+        $marker | docker compose exec -T daaf-docker sh -c 'cat > /daaf/.git/daaf-update-resume' 2>&1 | Out-Null
+    } finally { $ErrorActionPreference = $savedEAP }
+}
+
+function Clear-ResumeMarker {
+    if ($env:DAAF_DRY_RUN -eq "1") { return }
+    $savedEAP = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "SilentlyContinue"
+        $null = docker compose exec -T daaf-docker rm -f /daaf/.git/daaf-update-resume 2>&1
+    } finally { $ErrorActionPreference = $savedEAP }
+}
+
+# Echo the stash@{N} ref of the FIRST stash whose message contains "DAAF update
+# backup", or "" if none exists (user already popped, or there were no dirty
+# files). Capture-then-parse. PS 5.1-safe.
+function Find-UpdateBackupStash {
+    $stashList = Invoke-ComposeGit stash list
+    if ([string]::IsNullOrWhiteSpace($stashList)) { return "" }
+    foreach ($line in ($stashList -split "`n")) {
+        if ($line -match "DAAF update backup") {
+            # A stash list line looks like: stash@{0}: On main: DAAF update...
+            # so everything before the first ':' is the ref.
+            $ref = ($line -split ":")[0].Trim()
+            if ($ref) { return $ref }
+        }
+    }
+    return ""
+}
+
+# Finish an interrupted update that has now landed on an "already up to date"
+# early exit (the resolved-and-committed merge left HEAD == remote). Restore the
+# set-aside stash (if still present) exactly like the normal pop sites, then
+# Complete-Update against the recorded pre-update $OldHead so tier A+B host-script
+# sync AND rebuild detection run against the true pre-update baseline.
+function Resume-Update {
+    $stashRef = Find-UpdateBackupStash
+    if ($stashRef) {
+        Write-Host "Restoring your set-aside changes..."
+        Invoke-ComposeGitNull stash pop $stashRef
+        if ($LASTEXITCODE -ne 0) {
+            Resolve-StashConflict
+            if ($script:StashConflictResolved) {
+                Complete-Update $OldHead
+            } else {
+                Complete-Update $OldHead "Note: Uncommitted changes still need attention (see above)."
+            }
+            return
+        }
+    }
+    Complete-Update $OldHead
 }
 
 # --- Test Mode Guard ---
@@ -624,6 +1249,12 @@ function Complete-Update {
 if ($env:DAAF_TEST_MODE -eq "1") {
     return
 }
+
+# Enable strict mode AFTER the test-mode guard. Set-StrictMode is dynamically
+# scoped, so placing it here keeps Pester's dot-sourcing (which returns above)
+# from leaking strict mode into the whole test session, while real executions
+# run fully protected from this point on.
+Set-StrictMode -Version 3.0
 
 # =====================================================================
 # Concurrent-run lock (named mutex)
@@ -684,9 +1315,11 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # --- Preflight: Start container if needed ---
+# `docker compose ps -q daaf-docker` prints the running container's ID (empty
+# when stopped), derived from the compose project rather than a hardcoded name.
 $savedEAP = $ErrorActionPreference
-try { $ErrorActionPreference = "SilentlyContinue"; $runningCheck = docker compose ps --status running --format '{{.Name}}' 2>$null } finally { $ErrorActionPreference = $savedEAP }
-$running = ($runningCheck | Out-String) -match "daaf-docker"
+try { $ErrorActionPreference = "SilentlyContinue"; $runningCid = docker compose ps -q daaf-docker 2>$null } finally { $ErrorActionPreference = $savedEAP }
+$running = -not [string]::IsNullOrWhiteSpace(($runningCid | Out-String))
 
 if (-not $running) {
     Write-Host "Starting DAAF container..."
@@ -738,6 +1371,12 @@ if (-not $running) {
     Write-Host ""
 }
 
+# Derive the container ID now that the container is guaranteed running. Used by
+# `docker cp` in the sync helper and by manual-recovery hints. `-q` (running only)
+# is correct here because the preflight above ensures the container is up.
+$savedEAP = $ErrorActionPreference
+try { $ErrorActionPreference = "SilentlyContinue"; $ContainerId = (docker compose ps -q daaf-docker 2>$null | Out-String).Trim() } finally { $ErrorActionPreference = $savedEAP }
+
 # --- Preflight: DAAF installed ---
 $null = Invoke-ComposeExec test -f /daaf/CLAUDE.md 2>&1
 if ($LASTEXITCODE -ne 0) {
@@ -761,9 +1400,16 @@ if (Test-Path "backup_daaf.ps1") {
     $choice = Read-UserChoice "  Run backup now? [y/n]" @("y", "n")
     if ($choice -eq "y") {
         Write-Host ""
-        $env:DAAF_NESTED = "1"
-        & .\backup_daaf.ps1
-        Remove-Item Env:\DAAF_NESTED -ErrorAction SilentlyContinue
+        # Save/restore any parent-inherited DAAF_NESTED (see the rebuild step
+        # above): a bare Remove-Item would clobber a value inherited from a
+        # parent process.
+        $savedNested = $env:DAAF_NESTED
+        try {
+            $env:DAAF_NESTED = "1"
+            & .\backup_daaf.ps1
+        } finally {
+            if ($null -ne $savedNested) { $env:DAAF_NESTED = $savedNested } else { Remove-Item Env:\DAAF_NESTED -ErrorAction SilentlyContinue }
+        }
         Write-Host ""
     }
 } else {
@@ -777,6 +1423,96 @@ if (Test-Path "backup_daaf.ps1") {
 Invoke-ComposeGitNull branch $BackupBranch
 
 $OldHead = Invoke-ComposeGit rev-parse HEAD
+
+# =====================================================================
+# Resume detection (interrupted-update recovery)
+# =====================================================================
+# Runs after the pre-update HEAD is captured but before any branch-state
+# decision. Mirrors the update_daaf.sh twin. Two cases when a prior run stopped
+# on a genuine conflict:
+#   1. A merge/rebase is STILL in progress -> guide the user and exit 1, keeping
+#      the marker.
+#   2. A resume marker records a valid pre-update HEAD -> resume: adopt the
+#      recorded $OldHead so rebuild detection and tier-B host-script sync run
+#      against the TRUE pre-update baseline (this run's HEAD is already the
+#      post-merge HEAD). Skipped under dry run (no real repo to probe).
+$Resuming = $false
+if ($env:DAAF_DRY_RUN -ne "1") {
+    # Capture the in-progress probes, then test. Use the canonical git filesystem
+    # markers: .git/MERGE_HEAD exists only during an unresolved merge; rebase state
+    # lives in .git/rebase-merge or .git/rebase-apply. Filesystem probes (not
+    # `rev-parse MERGE_HEAD`) so no "rev-parse HEAD" token false-matches test
+    # mocks. The sh -c probes carry no embedded double quotes (PS 5.1-safe argv).
+    $savedEAP = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "SilentlyContinue"
+        $mergeInProgress = (docker compose exec -T daaf-docker sh -c 'if [ -f /daaf/.git/MERGE_HEAD ]; then echo yes; fi' 2>$null | Out-String).Trim()
+        $rebaseInProgress = (docker compose exec -T daaf-docker sh -c 'if [ -d /daaf/.git/rebase-merge ] || [ -d /daaf/.git/rebase-apply ]; then echo yes; fi' 2>$null | Out-String).Trim()
+        $markerRaw = (docker compose exec -T daaf-docker sh -c 'cat /daaf/.git/daaf-update-resume 2>/dev/null' 2>$null | Out-String).Trim()
+    } finally { $ErrorActionPreference = $savedEAP }
+
+    if ((-not [string]::IsNullOrWhiteSpace($mergeInProgress)) -or (-not [string]::IsNullOrWhiteSpace($rebaseInProgress))) {
+        Write-Host ""
+        Write-Host "-------------------------------------------"
+        Write-Host "  An update is still in progress"
+        Write-Host "-------------------------------------------"
+        Write-Host ""
+        Write-Host "A previous update stopped partway through resolving a conflict. Please"
+        Write-Host "finish that before running the updater again."
+        Write-Host ""
+        Write-Host "To finish resolving (inside the container):"
+        Write-Host "  .\run_daaf.ps1 bash"
+        Write-Host "  (edit the conflicting files to remove the <<<<<<< markers)"
+        Write-Host "  git add ."
+        if (-not [string]::IsNullOrWhiteSpace($mergeInProgress)) {
+            Write-Host "  git commit"
+        } else {
+            Write-Host "  git rebase --continue"
+        }
+        Write-Host "  exit"
+        Write-Host ""
+        Write-Host "Then re-run:  .\update_daaf.ps1"
+        Write-Host ""
+        Write-Host "Or to abort the update entirely (your research files are not affected):"
+        if (-not [string]::IsNullOrWhiteSpace($mergeInProgress)) {
+            Write-Host "  docker compose exec daaf-docker git -C /daaf merge --abort"
+        } else {
+            Write-Host "  docker compose exec daaf-docker git -C /daaf rebase --abort"
+        }
+        Write-Host "  docker compose exec daaf-docker git -C /daaf reset --hard $BackupBranch"
+        Write-Host ""
+        Wait-AndExit 1
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($markerRaw)) {
+        # Parse OLD_HEAD from the marker.
+        $markerOldHead = ""
+        foreach ($rline in ($markerRaw -split "`n")) {
+            if ($rline -match "^OLD_HEAD=") {
+                $markerOldHead = ($rline -replace "^OLD_HEAD=", "").Trim()
+            }
+        }
+        $valid = $false
+        if ($markerOldHead) {
+            $null = Invoke-ComposeGit rev-parse --verify --quiet "$markerOldHead^{commit}"
+            if ($LASTEXITCODE -eq 0) { $valid = $true }
+        }
+        if ($valid) {
+            $Resuming = $true
+            $OldHead = $markerOldHead
+            Write-Host ""
+            Write-Host "Resuming interrupted update..."
+            Write-Host ""
+        } else {
+            # Corrupt/invalid marker -> warn, delete, continue normally (fail-open).
+            Write-Host ""
+            Write-Host "NOTE: Found a leftover update marker with no valid restart point."
+            Write-Host "      Ignoring it and continuing normally."
+            Write-Host ""
+            Clear-ResumeMarker
+        }
+    }
+}
 
 # =====================================================================
 # Check git remote
@@ -887,43 +1623,76 @@ if ($LASTEXITCODE -eq 0) {
 # Resolve remote branch
 # =====================================================================
 $RemoteBranch = if ($env:DAAF_BRANCH) { $env:DAAF_BRANCH } else { "" }
+# $PersistBranch (pre-initialized near the top with $Stashed) is set only for an
+# env-origin *branch* (never a tag, never a file-origin value); on a successful
+# update it is written back to environment_settings.txt so future runs track it.
 
 if ($RemoteBranch) {
-    # User specified a branch - verify it exists on the remote
+    # Classify the DAAF_BRANCH value against the remote: branch, tag, or unknown.
     $null = Invoke-ComposeGit rev-parse --verify "$UpstreamRemote/$RemoteBranch"
-    if ($LASTEXITCODE -ne 0) {
-
-        # Check if the value is a version tag rather than a branch.
-        # Tags live in refs/tags/, not refs/remotes/origin/, so the branch
-        # check above correctly fails for them.
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "Using branch: $RemoteBranch (from DAAF_BRANCH)"
+        # Persist only an env-origin branch: a file-origin value is already in
+        # the file, and a tag is handled below and never persisted.
+        if ($DaafBranchFromEnv) { $PersistBranch = $RemoteBranch }
+    } else {
+        # Not a branch. Check whether the value is a version tag. Tags live in
+        # refs/tags/, not refs/remotes/origin/, so the branch check above failed.
         $null = Invoke-ComposeGit rev-parse --verify "refs/tags/$RemoteBranch"
         if ($LASTEXITCODE -eq 0) {
+            if ($DaafBranchFromEnv) {
+                # Env-origin tag: refuse informatively. The updater tracks a
+                # *branch* to pull ongoing changes; a tag is a fixed snapshot the
+                # branch-comparison machinery cannot advance (it silently no-ops
+                # as "already up to date"). A tag is never persisted, so ongoing
+                # updates would track the auto-detected default branch. Point the
+                # user at the supported way onto a release: re-install at the tag.
+                Write-Host ""
+                Write-Host "'$RemoteBranch' is a version tag, not a branch." -ForegroundColor Yellow
+                Write-Host "(You set it via `$env:DAAF_BRANCH in your environment.)"
+                Write-Host ""
+                Write-Host "The updater can only track a branch for ongoing updates. A tag is a"
+                Write-Host "fixed snapshot, so it cannot be followed for updates - and a tag is"
+                Write-Host "never saved as your update branch."
+                Write-Host ""
+                Write-Host "To move this installation onto the '$RemoteBranch' release, re-run the"
+                Write-Host "installer pinned to that tag (the supported path for this container-based"
+                Write-Host "layout):"
+                Write-Host "  `$env:DAAF_BRANCH = '$RemoteBranch'; irm https://raw.githubusercontent.com/$UpstreamRepo/main/scripts/host/install.ps1 | iex"
+                Write-Host ""
+                Write-Host "To keep receiving ongoing updates instead, clear `$env:DAAF_BRANCH (or"
+                Write-Host "set it to a branch). Updates then track the default branch (auto-"
+                Write-Host "detected main/master)."
+                Write-Host ""
+                Write-Host "No changes were made. Your research files are not affected."
+                Wait-AndExit 1
+            } else {
+                # File-origin tag: a persisted tag would otherwise lock every
+                # future update out. Warn, name the file and key, and fall back to
+                # the auto-detected default branch for THIS run (no hard exit).
+                Write-Host ""
+                Write-Host "NOTE: DAAF_BRANCH in environment_settings.txt is set to '$RemoteBranch'," -ForegroundColor Yellow
+                Write-Host "      which is a version tag, not a branch. Tags can't be tracked for"
+                Write-Host "      updates. Edit environment_settings.txt and set DAAF_BRANCH to a"
+                Write-Host "      branch (or remove it) to silence this. Continuing this run with the"
+                Write-Host "      auto-detected default branch."
+                $RemoteBranch = ""
+            }
+        } else {
             Write-Host ""
-            Write-Host "'$RemoteBranch' is a version tag, not a branch." -ForegroundColor Yellow
+            Write-Host "The branch '$RemoteBranch' (from DAAF_BRANCH) was not found on" -ForegroundColor Red
+            Write-Host "$UpstreamRemote."
             Write-Host ""
-            Write-Host "The updater needs a branch to pull changes from. Tags are fixed"
-            Write-Host "snapshots and cannot receive updates."
-            Write-Host ""
-            Write-Host "To update to the latest release on the main branch:"
-            Write-Host "  .\update_daaf.ps1"
-            Write-Host "  (without setting `$env:DAAF_BRANCH)"
-            Write-Host ""
-            Write-Host "To update from a specific branch:"
-            Write-Host "  `$env:DAAF_BRANCH = 'dev'; .\update_daaf.ps1"
+            Write-Host "Your installation is unchanged. Double-check the branch name and try"
+            Write-Host "again, or omit DAAF_BRANCH to use the default branch."
             Wait-AndExit 1
         }
-
-        Write-Host ""
-        Write-Host "The branch '$RemoteBranch' (from DAAF_BRANCH) was not found on" -ForegroundColor Red
-        Write-Host "$UpstreamRemote."
-        Write-Host ""
-        Write-Host "Your installation is unchanged. Double-check the branch name and try"
-        Write-Host "again, or omit DAAF_BRANCH to use the default branch."
-        Wait-AndExit 1
     }
-    Write-Host "Using branch: $RemoteBranch (from DAAF_BRANCH)"
-} else {
-    # Auto-detect: try main, then master
+}
+
+if (-not $RemoteBranch) {
+    # Auto-detect: try main, then master. Reached when DAAF_BRANCH was unset, or
+    # when a file-origin tag was cleared just above.
     $null = Invoke-ComposeGit rev-parse --verify "$UpstreamRemote/main"
     if ($LASTEXITCODE -eq 0) {
         $RemoteBranch = "main"
@@ -1013,6 +1782,21 @@ if (($CurrentBranch -eq $RemoteBranch) -and ($Local -eq $Remote) -and `
     Write-Host ""
     Write-Host "Already up to date! Nothing to do."
     Write-Host ""
+    # A resume run lands here once the user resolved and committed a conflict from
+    # the interrupted run (HEAD now == remote). Do NOT take the tier-A-only exit --
+    # restore the set-aside stash and run tier A+B sync + rebuild detection against
+    # the recorded pre-update $OldHead. Complete-Update clears the resume marker.
+    if ($Resuming) {
+        Resume-Update
+        Wait-AndExit 0
+    }
+    # Even with nothing to pull, run the existence-heal sync so host scripts a
+    # prior update missed are delivered now. No OldHead -> only tier A runs.
+    Sync-HostScript
+    # Persist an env-origin branch on this no-op success too (returns before
+    # Complete-Update); re-running with DAAF_BRANCH set while already current is
+    # the most common case where the choice would otherwise never be saved.
+    Save-BranchChoice
     Wait-AndExit 0
 }
 
@@ -1038,6 +1822,20 @@ if (($CurrentBranch -ne $RemoteBranch) -and ($Behind -eq "0")) {
     Write-Host "Already up to date! Your branch '$CurrentBranch' has all the latest"
     Write-Host "changes from $UpstreamRemote/$RemoteBranch. Nothing to do."
     Write-Host ""
+    # Resume run: the resolved-and-committed merge on '$CurrentBranch' now contains
+    # all of $UpstreamRemote/$RemoteBranch (BEHIND=0), so we land here. Finish the
+    # interrupted journey instead of the tier-A-only exit -- restore the stash and
+    # run tier A+B sync + rebuild detection against the recorded pre-update
+    # $OldHead. Complete-Update clears the resume marker.
+    if ($Resuming) {
+        Resume-Update
+        Wait-AndExit 0
+    }
+    # Existence-heal sync (tier A only) even when there is nothing new to pull.
+    Sync-HostScript
+    # Persist an env-origin branch on this no-op success too (returns before
+    # Complete-Update) -- see the default-branch up-to-date path above.
+    Save-BranchChoice
     Wait-AndExit 0
 }
 
@@ -1153,11 +1951,16 @@ if ($CurrentBranch -ne $RemoteBranch) {
         # stdout through a pipe, breaking Docker's TTY detection.
         Resolve-Conflict "merge" "merge --abort"
         if (-not $script:ConflictResolved) {
+            # Persist a resume marker so a post-resolution re-run finishes the
+            # remaining steps (stash restore + host-script sync + rebuild check).
+            Write-ResumeMarker
             if ($Stashed) {
                 Write-Host ""
-                Write-Host "Your uncommitted changes are safely saved and will be"
-                Write-Host "restored after conflicts are resolved."
-                Write-Host "  docker compose exec daaf-docker git -C /daaf stash pop"
+                Write-Host "Your uncommitted changes are safely set aside. After you resolve"
+                Write-Host "the conflicts and commit, re-run the updater and it will restore"
+                Write-Host "them and finish the remaining steps automatically:"
+                Write-Host "  .\update_daaf.ps1"
+                Write-Host "(Or restore manually: docker compose exec daaf-docker git -C /daaf stash pop)"
             }
             Wait-AndExit 1
         }
@@ -1185,6 +1988,31 @@ if ($CurrentBranch -ne $RemoteBranch) {
 # On default branch - local commits
 # =====================================================================
 if ([int]$Ahead -gt 0) {
+    # A resume run can land here on the DEFAULT branch: the user resolved and
+    # committed a conflict from the interrupted run, so HEAD is now a merge
+    # commit and the up-to-date hash check above no longer matches -- Behind=0
+    # but Ahead>0 (the local merge/customization commits). Finish the interrupted
+    # journey instead of re-showing the merge/rebase/abort menu, which would be
+    # spurious here and would strand the set-aside "DAAF update backup" stash
+    # (the tree is now clean, so $Stashed would be false and the stash never
+    # popped). Resume-Update pops the stash if present and runs tier A+B sync +
+    # rebuild detection against the recorded pre-update $OldHead; Complete-Update
+    # clears the resume marker. See the two "already up to date" resume routes.
+    if ($Resuming) {
+        Write-Host ""
+        Write-Host "Detected an interrupted update -- finishing it now."
+        Resume-Update
+        # Rare corner: new upstream commits arrived between the conflict and this
+        # re-run. Always finish the interrupted update first, never mix it with a
+        # fresh pull -- so tell the user to re-run for the new commits.
+        if ([int]$Behind -gt 0) {
+            Write-Host ""
+            Write-Host "The interrupted update was completed first. New updates are now"
+            Write-Host "available -- run the updater again to get them:"
+            Write-Host "  .\update_daaf.ps1"
+        }
+        Wait-AndExit 0
+    }
     Write-Host ""
     Write-Host "You have $Ahead local commit(s) on $RemoteBranch that aren't in"
     Write-Host "the official DAAF release."
@@ -1246,11 +2074,16 @@ if ([int]$Ahead -gt 0) {
             # stdout through a pipe, breaking Docker's TTY detection.
             Resolve-Conflict "merge" "merge --abort"
             if (-not $script:ConflictResolved) {
+                # Persist a resume marker so a post-resolution re-run finishes
+                # the remaining steps (stash restore + sync + rebuild check).
+                Write-ResumeMarker
                 if ($Stashed) {
                     Write-Host ""
-                    Write-Host "Your uncommitted changes are safely saved and will be"
-                    Write-Host "restored after conflicts are resolved."
-                    Write-Host "  docker compose exec daaf-docker git -C /daaf stash pop"
+                    Write-Host "Your uncommitted changes are safely set aside. After you resolve"
+                    Write-Host "the conflicts and commit, re-run the updater and it will restore"
+                    Write-Host "them and finish the remaining steps automatically:"
+                    Write-Host "  .\update_daaf.ps1"
+                    Write-Host "(Or restore manually: docker compose exec daaf-docker git -C /daaf stash pop)"
                 }
                 Wait-AndExit 1
             }
@@ -1320,11 +2153,16 @@ if ([int]$Ahead -gt 0) {
             # Call as statement -- see merge path comment above
             Resolve-Conflict "rebase" "rebase --abort"
             if (-not $script:ConflictResolved) {
+                # Persist a resume marker so a post-resolution re-run finishes
+                # the remaining steps (stash restore + sync + rebuild check).
+                Write-ResumeMarker
                 if ($Stashed) {
                     Write-Host ""
-                    Write-Host "Your uncommitted changes are safely saved and will be"
-                    Write-Host "restored after conflicts are resolved."
-                    Write-Host "  docker compose exec daaf-docker git -C /daaf stash pop"
+                    Write-Host "Your uncommitted changes are safely set aside. After you resolve"
+                    Write-Host "the conflicts and commit, re-run the updater and it will restore"
+                    Write-Host "them and finish the remaining steps automatically:"
+                    Write-Host "  .\update_daaf.ps1"
+                    Write-Host "(Or restore manually: docker compose exec daaf-docker git -C /daaf stash pop)"
                 }
                 Wait-AndExit 1
             }

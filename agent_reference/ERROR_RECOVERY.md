@@ -389,6 +389,44 @@ def fetch_from_mirrors(mirrors: list[dict], dataset_path: str) -> pl.DataFrame:
     )
 ```
 
+**R equivalent pattern:**
+
+```r
+# --- Data Access with Mirror Fallback ---
+# INTENT: Download data from configured mirrors with fallback
+library(arrow)
+
+fetch_result <- NULL
+errors <- character(0)
+
+for (i in seq_along(mirrors)) {
+  mirror <- mirrors[[i]]
+  url <- sprintf(mirror$url_template, path = dataset_path)
+  tryCatch({
+    if (identical(mirror$read_strategy, "eager_parquet")) {
+      # NOTE: plain read shown for template brevity — mirror parquet may be
+      # Polars-written with string_view columns that fail a plain read under R
+      # arrow ("cannot handle Array of type <utf8_view>"). Real recovery scripts
+      # use the view-safe parquet read from the domain query skill's
+      # fetch-patterns.md (e.g., education-data-query).
+      fetch_result <- arrow::read_parquet(url)
+    } else {
+      fetch_result <- readr::read_csv(url, show_col_types = FALSE)
+    }
+    cat(sprintf("Mirror: %s - %s rows fetched\n", mirror$name, format(nrow(fetch_result), big.mark = ",")))
+    break
+  }, error = function(e) {
+    errors <<- c(errors, sprintf("%s: %s", mirror$name, conditionMessage(e)))
+    cat(sprintf("Mirror %s failed: %s\n", mirror$name, conditionMessage(e)))
+  })
+}
+
+if (is.null(fetch_result)) {
+  stop(sprintf("All mirrors failed for %s:\n%s\nSTOP: Escalate to user",
+               dataset_path, paste(errors, collapse = "\n")))
+}
+```
+
 **If retry fails:** ESCALATE
 
 ```markdown
@@ -476,13 +514,24 @@ Awaiting guidance.
 
 ### Code Execution Errors
 
-**Definition:** Python code fails to execute.
+**Definition:** Python or R code fails to execute.
 
-**Examples:**
+**Python Examples:**
 - SyntaxError
 - TypeError
 - KeyError
 - MemoryError
+
+**R Examples:**
+- `Error in ...: could not find function` — Missing `library()` call
+- `Error in ...: object 'x' not found` — Variable doesn't exist or misspelled
+- `subscript out of bounds` — Index exceeds vector/list length
+- `non-conformable arguments` — Matrix/vector dimension mismatch
+- `cannot allocate vector of size` — Out of memory
+- `replacement has N rows, data has M` — Recycling/length mismatch in assignment
+- `object of type 'closure' is not subsettable` — Trying to subset a function name
+- `there is no package called 'X'` — Package not installed (check Dockerfile)
+- `Error in parse(text = ...)` — Syntax error (unmatched brackets, pipes, assignments)
 
 **Recovery:** Fix and retry (max 2 attempts) using **script versioning**
 
@@ -492,7 +541,7 @@ Closely read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the mandatory f
 
 When a script fails, DO NOT modify the original. Instead:
 1. Original script (`01_task.py`) keeps its failed output appended (audit trail)
-2. Create versioned copy (`01_task_a.py`) with fixes
+2. Create a clean versioned copy with `scripts/create_script_revision.sh` (`01_task_a.py`), then apply fixes — the utility strips the appended execution log so the copy runs (a plain `cp` would carry the marker and be refused)
 3. Execute with automatic output capture wrapper to the new version
 4. If still failing, create `01_task_b.py`, etc.
 5. Marimo notebook uses only the final successful version
@@ -501,7 +550,7 @@ When a script fails, DO NOT modify the original. Instead:
 ```
 1. Read the full error traceback in the script's appended output
 2. Identify the root cause
-3. Create new versioned copy (e.g., 01_task_a.py)
+3. Create a clean versioned copy: bash {BASE_DIR}/scripts/create_script_revision.sh {PROJECT_DIR}/scripts/.../01_task.py {PROJECT_DIR}/scripts/.../01_task_a.py
 4. Apply fix in the new copy
 5. Execute (single Bash call): `bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/.../01_task_a.py`
 ```
@@ -538,6 +587,81 @@ When a script fails, DO NOT modify the original. Instead:
 Awaiting guidance.
 ```
 
+#### R Error Types and Recovery
+
+| Error Pattern | Likely Cause | Recovery |
+|--------------|-------------|----------|
+| `could not find function "x"` | Missing `library()` call | Add the required `library()` to Config section |
+| `object 'x' not found` | Variable doesn't exist | Check spelling, verify data loaded correctly |
+| `subscript out of bounds` | Index exceeds vector/list length | Check dimensions before indexing |
+| `non-conformable arguments` | Matrix/vector dimension mismatch | Verify shapes match for the operation |
+| `cannot allocate vector of size` | Out of memory | Filter data earlier, use data.table, or increase memory |
+| `replacement has N rows, data has M` | Recycling/length mismatch | Ensure assignment vectors match target length |
+| `object of type 'closure' is not subsettable` | Trying to subset a function | Check for name collision with function names (e.g., `data`, `df`, `c`) |
+| `there is no package called 'X'` | Package not installed | Check Dockerfile, verify with `packageVersion("X")` |
+| `Error in parse(text = ...)` | Syntax error in R code | Check for unmatched brackets, pipes, assignments |
+| `unused argument` | Wrong function signature | Check function documentation; argument may have been renamed |
+| `argument is of length zero` | NULL passed to condition or subset | Add `is.null()` / `length() > 0` guards |
+| `missing value where TRUE/FALSE needed` | NA in `if()` condition | Use `isTRUE()` or add `!is.na()` check |
+
+**R Script Versioning:** R script versioning follows the same pattern as Python: `01_task.R` -> `01_task_a.R` -> `01_task_b.R`. The execution log is appended by `run_with_capture.sh` identically to Python scripts.
+
+#### R Diagnostic Script Template
+
+```r
+# --- Diagnostic Script ---
+# INTENT: Diagnose [error description]
+library(dplyr)
+library(arrow)
+
+# --- Config ---
+input_path <- "[input_path]"
+
+# --- Load ---
+df <- arrow::read_parquet(input_path)
+
+# --- Structural Diagnosis ---
+cat("=== STRUCTURAL DIAGNOSIS ===\n")
+cat("Rows:", nrow(df), "\n")
+cat("Cols:", ncol(df), "\n")
+cat("\nColumn names:\n")
+print(names(df))
+cat("\nColumn types:\n")
+print(data.frame(column = names(df), type = sapply(df, function(x) class(x)[1])))
+
+# --- NA Summary ---
+cat("\n=== NA SUMMARY ===\n")
+na_counts <- colSums(is.na(df))
+na_pct <- round(na_counts / nrow(df) * 100, 1)
+na_summary <- data.frame(column = names(na_counts), na_count = na_counts, na_pct = na_pct)
+na_summary <- na_summary[na_summary$na_count > 0, ]
+if (nrow(na_summary) > 0) {
+  print(na_summary)
+} else {
+  cat("No NA values found\n")
+}
+
+# --- Specific Checks ---
+cat("\n=== SPECIFIC CHECKS ===\n")
+# [Targeted checks based on the error]
+# Example: check for coded values
+for (col in names(df)[sapply(df, is.numeric)]) {
+  for (code in c(-1, -2, -3, -9, -99, -999)) {
+    count <- sum(df[[col]] == code, na.rm = TRUE)
+    if (count > 0) {
+      cat(sprintf("  %s: %d occurrences of coded value %d\n", col, count, code))
+    }
+  }
+}
+
+# --- Sample Rows ---
+cat("\n=== SAMPLE DATA ===\n")
+cat("First 5 rows:\n")
+print(head(df, 5))
+
+cat("\n=== DIAGNOSIS COMPLETE ===\n")
+```
+
 ---
 
 ### QA BLOCKER Recovery (NEW)
@@ -572,7 +696,7 @@ code-reviewer returns BLOCKER
     │   └─ NO → Continue to revision
     │
     ├─ Revision Attempt 1
-    │   ├─ Create new versioned script (_a.py or next suffix)
+    │   ├─ Create new versioned script (_a.py/_a.R or next suffix)
     │   ├─ Apply fix suggested by code-reviewer
     │   ├─ Execute with full validation
     │   └─ Return for re-QA
@@ -582,7 +706,7 @@ code-reviewer returns BLOCKER
     │   └─ Still BLOCKER → Revision Attempt 2
     │
     ├─ Revision Attempt 2
-    │   ├─ Create next versioned script (_b.py)
+    │   ├─ Create next versioned script (_b.py/_b.R)
     │   ├─ Try different approach
     │   ├─ Execute with full validation
     │   └─ Return for re-QA
@@ -674,6 +798,29 @@ Validation Failure
 
 ---
 
+## PreToolUse Safety-Hook Blocks
+
+**Definition:** A `PreToolUse` safety hook denied a Bash command before it ran. A `bash-safety` block surfaces as **exit code 2** with a `BLOCKED by ...` message on stderr; `enforce-single-command` and `enforce-file-first` block the same way.
+
+**A hook block is a deliberate guardrail, not a transient error.** It is not an access timeout or a flaky failure — the hook evaluated the command and refused it by design. Retrying the identical command will fail identically and consumes budget for nothing. The recovery is always to change *what* you are doing, per the block category below, not to re-issue the same command.
+
+CLAUDE.md's § Boundaries & Safety and its Defense-in-Depth Architecture table are the authoritative source for exactly which commands each hook blocks and why; the paths below are the recovery action, not a restatement of the rules.
+
+| Block category | Why it fired | Recovery |
+|----------------|-------------|----------|
+| **Anti-tampering (`bash-safety.sh` §7)** | A shell *write* targeting `.claude/hooks/`, `.claude/logs/`, `.claude/settings*.json`, or `benchmarks/harness/hooks/` — these are user-only. | Do not retry as an agent. Draft the change to a project scratch/staged location (`scripts/scratch/` or a project-local staged path) and ask the **user** to apply it via a `!`-prefixed session command or a host terminal. Hooks do not vet user-typed `!` commands. (Reads and git index ops on these paths remain open; the Edit/Write tools on `settings.json` are also unaffected — only shell writes are blocked.) |
+| **Package install (`bash-safety.sh` §8)** | A runtime command-line install — **Python** (`pip`/`uv`/`conda`-type) or **R** (`R CMD INSTALL`, `Rscript -e 'install.packages(...)'`, `remotes`/`devtools`/`pak`/`renv`/`BiocManager` verbs) — these drift from the Dockerfile and vanish on the next rebuild. | Add the dependency to the Dockerfile and rebuild (`bash rebuild_daaf.sh` from the `daaf-docker/` folder) — by default in the user additions block near the end of the Dockerfile, which rebuilds fast via layer caching (place it earlier only when functionally required, e.g. a build-time system dependency). For a one-off exploratory need, the user can run the install themselves via `!`-prefix (ephemeral — gone on rebuild). |
+| **In-script package install (`run_with_capture.sh` content scan, exit 3)** | The wrapper's pre-execution scan found an install call written *inside* the `.py`/`.R` script body (e.g. `install.packages(...)`, `os.system("pip install ...")`) — the path shell-level hooks cannot see. The script was **not** executed and **no** execution log was appended. | Remove the install call from the script and re-run the **same file** — because no execution log was appended, immutable versioning has not engaged, so the file stays editable in place (no `_a`/`_b` version needed). If the package is genuinely missing, escalate: add it to the Dockerfile and rebuild (as in the §8 row above). |
+| **/tmp provenance (`bash-safety.sh` §6)** | A shell *write* to `/tmp`, which is outside the backup and audit boundary. | Write inside the project instead — `{PROJECT_DIR}/scripts/scratch/`. (Reading DAAF's own `/tmp` coordination caches stays allowed; only writes are blocked.) |
+| **`enforce-single-command`** | The command chained multiple statements (`&&`, `;`, `||`, or newlines). | Split into separate Bash calls, one command each. |
+| **`enforce-file-first`** (coding agents) | Direct `python`/`python3`/`Rscript` (or bare `R` batch) execution, bypassing the audit trail. | Write the script to `scripts/` and run it via `run_with_capture.sh` (see `SCRIPT_EXECUTION_REFERENCE.md`). |
+
+**Staged-draft → user-install pattern (anti-tampering):** Because hook, log, and settings changes cannot be applied by an agent's shell, the working pattern is: (1) draft the full change in a project scratch/staged file, (2) if it is a `bash-safety.sh` change, test the draft against the regression battery *before* install — `bash scripts/test_safety_hooks.sh <draft-path>` (see the `shell-scripting` skill's `testing.md`), then (3) hand the user the exact command to install it from a host terminal or a `!`-prefixed session command. The agent never writes the protected path directly.
+
+**Do not count a hook block against a retry budget as if it were a code-execution error** — it is not fixable by a second attempt at the same command. If the correct recovery path above is itself blocked or unavailable, escalate to the user rather than looping.
+
+---
+
 ## Stage-Specific Recovery
 
 ### Stage 2 (Data Exploration) Failures
@@ -718,11 +865,87 @@ Validation Failure
 
 ### Stage 9 (Notebook Assembly) Failures
 
+**Marimo (Python):**
+
 | Issue | Recovery |
 |-------|----------|
-| Cell execution error | Fix and retry |
-| Reactivity issues | Review variable dependencies |
-| UI element errors | Simplify or remove interactivity |
+| Archive/header/log bundle error | Restore the canonical adjacent header → commented source → non-placeholder execution-log sequence; never substitute `No execution log found` |
+| Reactivity or validation error | Review only notebook scaffolding, bounded Parquet preview, and existing-figure display dependencies; archived script code remains comment-prefixed |
+| New widget/analysis code detected | Remove it; Stage 9 permits only bounded preview of existing Parquet data or display of an already-created figure |
+
+**Quarto (R):**
+
+Archive chunks remain disabled by global and per-chunk `eval: false`; they do
+not execute or provide cross-chunk state. Only optional data-preview chunks and
+dedicated existing-figure display chunks that explicitly set `#| eval: true`
+execute during rendering.
+
+| Issue | Recovery |
+|-------|----------|
+| Missing/empty/placeholder execution log | Block canonical assembly and correct the source script evidence; never archive `No execution log found` as a valid callout |
+| Enabled preview/display chunk execution error | Fix only the explicitly enabled chunk: use the exact `arrow::read_parquet()` + `dplyr::glimpse()` + `head()` preview, or a dedicated figure-display chunk containing only `knitr::include_graphics("existing/path.png")` with `#| echo: false`; preserve archive chunks unchanged and disabled |
+| Render failure | Check YAML frontmatter, Markdown/chunk syntax, callouts, and existing resource paths; verify the knitr engine is available |
+| Package loading error in an enabled data preview | Verify `arrow` and `dplyr` are available through the Dockerfile-defined environment; do not add runtime package installs or `library()` calls to archive chunks |
+| Object not found in an enabled data preview | Do not rely on cross-chunk state. Ensure that preview chunk loads its own existing parquet into `df`; for a figure, use a path-only Markdown image or dedicated `include_graphics()` display |
+
+### R-Specific Recovery Patterns
+
+Common R error recovery strategies when working with tidyverse/arrow pipelines:
+
+**Package/Library Errors:**
+```r
+# --- Diagnostic: Package availability ---
+cat("=== PACKAGE DIAGNOSIS ===\n")
+required_pkgs <- c("dplyr", "tidyr", "arrow", "ggplot2", "readr")
+for (pkg in required_pkgs) {
+  if (requireNamespace(pkg, quietly = TRUE)) {
+    cat(sprintf("[PASS] %s %s\n", pkg, packageVersion(pkg)))
+  } else {
+    cat(sprintf("[FAIL] %s not installed\n", pkg))
+  }
+}
+```
+
+**Column Name Conflicts (common after joins):**
+```r
+# --- Diagnostic: Duplicate column names after join ---
+cat("=== COLUMN CONFLICT DIAGNOSIS ===\n")
+col_names <- names(df)
+dup_cols <- col_names[duplicated(col_names)]
+if (length(dup_cols) > 0) {
+  cat(sprintf("[ISSUE] Duplicate columns: %s\n", paste(dup_cols, collapse = ", ")))
+  cat("FIX: Use suffix argument in join or rename before join\n")
+} else {
+  cat("[PASS] No duplicate column names\n")
+}
+```
+
+**Type Coercion Issues:**
+```r
+# --- Diagnostic: Unexpected types after read_parquet ---
+cat("=== TYPE DIAGNOSIS ===\n")
+type_issues <- character(0)
+for (col in names(df)) {
+  col_class <- class(df[[col]])[1]
+  # Check for unexpected list columns (common with nested parquet)
+  if (col_class == "list") {
+    type_issues <- c(type_issues, sprintf("%s: list-column (may need unnest)", col))
+  }
+  # Check for character columns that should be numeric
+  if (col_class == "character") {
+    non_na <- df[[col]][!is.na(df[[col]])]
+    if (length(non_na) > 0 && all(grepl("^-?[0-9.]+$", non_na))) {
+      type_issues <- c(type_issues, sprintf("%s: character but looks numeric", col))
+    }
+  }
+}
+if (length(type_issues) > 0) {
+  cat("Issues found:\n")
+  for (issue in type_issues) cat(sprintf("  - %s\n", issue))
+} else {
+  cat("[PASS] No type issues detected\n")
+}
+```
 
 ### Stage 10 (QA Aggregation) Failures
 
@@ -799,21 +1022,26 @@ For QA BLOCKER revision requests during re-execution, use the standard Revision 
 
 ### Reproducibility Verification Mode Error Recovery
 
-RV mode has a lightweight error recovery pattern. The per-script atomic cycle handles most failures inline — the code-reviewer creates versioned modifications (`_repro_a.py`, `_repro_b.py`) when scripts fail.
+RV mode has a lightweight, language-paired error recovery pattern. The per-script atomic cycle handles most failures inline — the code-reviewer creates Python versions (`_repro_a.py`, `_repro_b.py`) or R versions (`_repro_a.R`, `_repro_b.R`) to match the reproduced script's language.
 
 | Stage | Common Errors | Recovery Action |
 |-------|--------------|-----------------|
-| RV-1 (Intake) | Notebook not found, decompiler fails, Report missing | Verify paths; check notebook is valid marimo format; re-run decompiler with verbose output |
-| RV-2 (Re-execution) | Script fails to execute, execution log not stripped properly | Create `_repro_a.py` with minimal fixes; verify `# EXECUTION LOG` marker removed; dispatch debugger if modification also fails (max 3 debugger dispatches per session) |
+| RV-1 (Intake) | Missing/ambiguous Report or notebook; generic Marimo/Quarto input; existing reproduction/extraction root; decompiler failure | Require one user-selected Report and one canonical DAAF Stage 9 archive. Stop on multiple candidates or both formats. Use new destination/root only; decompilers never merge/overwrite. |
+| RV-1 (Containment) | Path audit global exit 1 DIVERGED or exit 2 NOT DIRECTLY VERIFIED; dispatched script lacks in-scope MATCH assessment | Supply each exact pre-RV-2 script exclusion through repeatable validated `--exclude`, then block RV-2 until the overall result—computed only from in-scope files—is exit 0 MATCH and every dispatched script's deterministic `file_assessments` entry is `IN_SCOPE` + `MATCH`. Keep excluded files and `excluded_issues` explicit; they never become matches. Audit source only before the unique `# EXECUTION LOG` boundary: `ORIGINAL_ROOT_LOG_RESIDUE` afterward is informational, but ambiguous boundaries fail closed. State bounded assurance; dynamic paths remain outside proof. |
+| RV-1 (Environment) | Original versions unpinned or R inventory incomplete | Record UNKNOWN / NOT DIRECTLY VERIFIED. Capture language-aware installed evidence via read-only commands or a diagnostic under project `scripts/repro_checks/`, executed through `run_with_capture.sh` with its appended log retained; never install packages at runtime. |
+| RV-2 (Frozen inputs) | Stage 5 would run, raw hash inventory changes, or frozen evidence absent | Do not execute Stage 5. If evidence is absent, reconfirm mode. If hashes differ, fail and investigate; acquisition/mirrors remain out of scope. |
+| RV-2 (Re-execution) | Python/R script fails or inherited log remains | Create `_repro_a` then `_repro_b` from clean log-free source. If `scripts/create_script_revision.sh` or a stripped failed copy is used, independently verify the inherited log marker is absent before fixes and re-execution. Apply minimal fixes, never rerun the just-failed appended file unchanged, and dispatch debugger after both revisions fail. |
+| RV-2 (Log comparison) | Log helper exit 1 DIVERGED, exit 2 invalid/read failure, or exit 3 INCOMPLETE/INCONCLUSIVE | Aligning is by metric identity and stable context, never position. Exit 0 alone is CONSISTENT; exit 1 is divergent log evidence; correct exit-2 invocation/input failures; record exit 3 as NOT DIRECTLY VERIFIED, never success. Keep the result explicitly log-only. |
+| RV-2 (Artifact comparison) | Artifact helper exit 2 invalid/unsupported, exit 3 NOT DIRECTLY VERIFIED, unsupported artifact, missing side, or bound exceedance | For exit 2, correct the invocation or route the artifact to its separate evidence path; for exit 3 or unavailable direct evidence, record NOT DIRECTLY VERIFIED. Defaults cap each Parquet input at 536870912 bytes and 1000000 rows before full materialization and tolerant matching at 1000000 candidate pairs. Exact-key/cardinality divergence is decided before the pair limit; duplicate assessment follows actual verification. Never infer a match. Use the artifact helper for supported Parquet/exact evidence, Read for figures, and defined representations for tables/models. |
 | RV-2 (Re-execution) | Data re-fetch returns different data | Log as Data change deviation; if schema differs, STOP and present to user (escalation trigger) |
-| RV-3 (Verification) | Claim cannot be traced to any script | Document as unverifiable; note in Report Verification |
-| RV-4 (Synthesis) | Reproduction Report incomplete | Return to orchestrator; orchestrator fills gaps before re-dispatching |
+| RV-3 (Verification) | Claim/figure/finding/artifact/dimension lacks direct evidence | Record `NOT DIRECTLY VERIFIED` with reason; use only MATCH/DIVERGED/NOT DIRECTLY VERIFIED and derive coverage counts. |
+| RV-4 (Synthesis) | In-scope evidence gap or incomplete report | Any gap caps verdict at PARTIALLY REPRODUCED; return incomplete report before synthesis. Keep exact pre-RV-2 exclusions separate. |
 
 **RV-Specific Error Budget:**
 
 | Error Type | Per-Script Limit | Session Limit | After Max |
 |------------|-----------------|---------------|-----------|
-| Script modification versions | 2 (`_repro_a.py`, `_repro_b.py`) | — | Mark FAILED, continue to next script |
+| Script modification versions | 2 (`_repro_a.py`, `_repro_b.py` or `_repro_a.R`, `_repro_b.R`) | — | Mark FAILED, continue to next script |
 | Debugger dispatches | 1 per script | 3 per session | Mark FAILED, continue |
 | Data source schema change | — | — | STOP, present to user immediately |
 

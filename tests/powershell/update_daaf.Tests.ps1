@@ -19,8 +19,25 @@ Describe "update_daaf.ps1" {
             $script:Content = Get-Content "$RepoRoot/scripts/host/update_daaf.ps1" -Raw
         }
 
+        It "declares #Requires -Version 5.1" {
+            $Content | Should -Match '#Requires\s+-Version\s+5\.1'
+        }
+
         It "sets ErrorActionPreference to Stop" {
             $Content | Should -Match '\$ErrorActionPreference\s*=\s*[''"]Stop[''"]'
+        }
+
+        It "enables Set-StrictMode -Version 3.0" {
+            $Content | Should -Match 'Set-StrictMode\s+-Version\s+3\.0'
+        }
+
+        It "places Set-StrictMode after the test-mode guard" {
+            # Strict mode is dynamically scoped: placing it before the guard would
+            # leak into Pester's dot-sourced test session. It must come after.
+            $guardIdx = $Content.IndexOf('$env:DAAF_TEST_MODE -eq "1"')
+            $strictIdx = $Content.IndexOf('Set-StrictMode -Version 3.0')
+            $guardIdx | Should -BeGreaterThan -1
+            $strictIdx | Should -BeGreaterThan $guardIdx
         }
 
         It "defines Wait-AndExit function" {
@@ -177,60 +194,487 @@ Describe "update_daaf.ps1 behavioral tests" {
     # -----------------------------------------------------------------
     # Sync-HostScript
     # -----------------------------------------------------------------
+    # The sync mechanism was redesigned: instead of a hardcoded pathspec diffed
+    # by the (old) running script, it derives the file list from the POST-UPDATE
+    # repo state (git ls-files at new HEAD), copies host-appropriate files
+    # MISSING on the host unconditionally (tier A / existence-heal), and copies
+    # files CHANGED in old_head..new_head (tier B). Mocks respond to `ls-files`
+    # in addition to `rev-parse HEAD`, `diff --name-only`, and `cp`.
+    #
+    # These tests Push-Location into a temp dir so Test-Path host-existence
+    # checks are deterministic.
     Context "Sync-HostScript" {
-        It "skips when HEAD unchanged" {
-            # Both calls to Invoke-ComposeGit return the same SHA
-            Mock docker { return "abc123" }
+        BeforeEach {
+            $script:SyncTestDir = New-Item -ItemType Directory -Path (Join-Path ([System.IO.Path]::GetTempPath()) "daaf-sync-$(Get-Random)")
+            Push-Location $script:SyncTestDir
+        }
+        AfterEach {
+            Pop-Location
+            Remove-Item -Recurse -Force $script:SyncTestDir -ErrorAction SilentlyContinue
+        }
 
-            # Capture information stream output (Write-Host goes to stream 6)
+        It "skips when the repo lists no host files" {
+            # ls-files returns nothing -> function returns early, no output.
+            Mock docker {
+                $allArgs = $args -join " "
+                if ($allArgs -match "rev-parse HEAD") { return "abc123" }
+                if ($allArgs -match "ls-files") { return "" }
+                $global:LASTEXITCODE = 0
+                return ""
+            }
+
             $output = Sync-HostScript "abc123" 6>&1
-            # Should produce no "Syncing" output since HEAD is unchanged
             $syncMsg = $output | Where-Object { $_ -match "Syncing" }
             $syncMsg | Should -BeNullOrEmpty
         }
 
-        It "detects changed files via git diff" {
-            $callCount = 0
+        It "existence-heals a file missing on the host" {
+            # daaf.ps1 absent from the temp dir; even with OldHead == newHead,
+            # tier A must copy it.
             Mock docker {
-                $callCount++
-                # First docker call: Invoke-ComposeGit rev-parse HEAD -> new SHA
-                # Second docker call: Invoke-ComposeGit diff -> changed file list
-                # Third docker call: docker cp
                 $allArgs = $args -join " "
-                if ($allArgs -match "rev-parse HEAD") {
-                    return "new-sha-999"
-                }
-                if ($allArgs -match "diff --name-only") {
-                    return "scripts/host/run_daaf.ps1"
-                }
-                # docker cp call
+                if ($allArgs -match "rev-parse HEAD") { return "samehash" }
+                if ($allArgs -match "ls-files") { return "scripts/host/daaf.ps1`nscripts/host/run_daaf.ps1" }
+                $global:LASTEXITCODE = 0
+                return ""
+            }
+
+            $output = Sync-HostScript "samehash" 6>&1
+            ($output | Where-Object { $_ -match "Updated: daaf.ps1" })     | Should -Not -BeNullOrEmpty
+            ($output | Where-Object { $_ -match "Updated: run_daaf.ps1" }) | Should -Not -BeNullOrEmpty
+        }
+
+        It "skips existence-heal for files already present on the host" {
+            New-Item -ItemType File -Path "./run_daaf.ps1" | Out-Null
+            Mock docker {
+                $allArgs = $args -join " "
+                if ($allArgs -match "rev-parse HEAD") { return "samehash" }
+                if ($allArgs -match "ls-files") { return "scripts/host/daaf.ps1`nscripts/host/run_daaf.ps1" }
+                $global:LASTEXITCODE = 0
+                return ""
+            }
+
+            $output = Sync-HostScript "samehash" 6>&1
+            ($output | Where-Object { $_ -match "Updated: daaf.ps1" })     | Should -Not -BeNullOrEmpty
+            ($output | Where-Object { $_ -match "Updated: run_daaf.ps1" }) | Should -BeNullOrEmpty
+        }
+
+        It "tier B copies files changed in the update range" {
+            New-Item -ItemType File -Path "./run_daaf.ps1" | Out-Null
+            New-Item -ItemType File -Path "./daaf.ps1" | Out-Null
+            # The cp mock MATERIALIZES the destination ($args[2]): tier B stages
+            # the incoming copy as a sibling file before comparing/backing-up/
+            # renaming, so a mock that only returns leaves the staged file
+            # missing and the rename fails.
+            Mock docker {
+                $allArgs = $args -join " "
+                if ($allArgs -match "rev-parse HEAD") { return "new-sha-999" }
+                if ($allArgs -match "ls-files") { return "scripts/host/daaf.ps1`nscripts/host/run_daaf.ps1" }
+                if ($allArgs -match "diff --name-only") { return "scripts/host/run_daaf.ps1" }
+                if ($allArgs -match "^cp ") { Set-Content -Path $args[2] -Value "repo version"; $global:LASTEXITCODE = 0; return "" }
                 $global:LASTEXITCODE = 0
                 return ""
             }
 
             $output = Sync-HostScript "old-sha-111" 6>&1
-            $syncMsg = $output | Where-Object { $_ -match "Syncing" }
-            $syncMsg | Should -Not -BeNullOrEmpty
+            ($output | Where-Object { $_ -match "Updated: run_daaf.ps1" }) | Should -Not -BeNullOrEmpty
         }
 
-        It "handles partial copy failure gracefully" {
+        It "tier B backs up an existing differing host copy before overwrite" {
+            # Field finding 2026-07-17 (v2.0.1 vector, class E): a host copy
+            # that differs from what tier B delivers must be saved to the
+            # rolling <name>.pre-update BEFORE overwrite -- the tier C
+            # recoverability contract applies to every overwrite path.
+            Set-Content -Path "./run_daaf.ps1" -Value "drifted local content"
             Mock docker {
                 $allArgs = $args -join " "
-                if ($allArgs -match "rev-parse HEAD") {
-                    return "new-sha-888"
-                }
-                if ($allArgs -match "diff --name-only") {
-                    return "scripts/host/run_daaf.ps1"
-                }
+                if ($allArgs -match "rev-parse HEAD") { return "new-sha-999" }
+                if ($allArgs -match "ls-files") { return "scripts/host/run_daaf.ps1" }
+                if ($allArgs -match "diff --name-only") { return "scripts/host/run_daaf.ps1" }
+                if ($allArgs -match "^cp ") { Set-Content -Path $args[2] -Value "repo version"; $global:LASTEXITCODE = 0; return "" }
+                $global:LASTEXITCODE = 0
+                return ""
+            }
+
+            $output = Sync-HostScript "old-sha-111" 6>&1
+            ($output | Where-Object { $_ -match "saved as run_daaf.ps1.pre-update" }) | Should -Not -BeNullOrEmpty
+            Test-Path "./run_daaf.ps1.pre-update" | Should -BeTrue
+            (Get-Content "./run_daaf.ps1.pre-update" -Raw) | Should -Match "drifted local content"
+            (Get-Content "./run_daaf.ps1" -Raw) | Should -Match "repo version"
+        }
+
+        It "tier B leaves no backup when the host copy already matches" {
+            # A spurious rolling backup here would clobber a meaningful one
+            # from an earlier heal.
+            Set-Content -Path "./run_daaf.ps1" -Value "repo version"
+            Mock docker {
+                $allArgs = $args -join " "
+                if ($allArgs -match "rev-parse HEAD") { return "new-sha-999" }
+                if ($allArgs -match "ls-files") { return "scripts/host/run_daaf.ps1" }
+                if ($allArgs -match "diff --name-only") { return "scripts/host/run_daaf.ps1" }
+                if ($allArgs -match "^cp ") { Set-Content -Path $args[2] -Value "repo version"; $global:LASTEXITCODE = 0; return "" }
+                $global:LASTEXITCODE = 0
+                return ""
+            }
+
+            $output = Sync-HostScript "old-sha-111" 6>&1
+            ($output | Where-Object { $_ -match "Updated: run_daaf.ps1" }) | Should -Not -BeNullOrEmpty
+            ($output | Where-Object { $_ -match "saved as" }) | Should -BeNullOrEmpty
+            Test-Path "./run_daaf.ps1.pre-update" | Should -BeFalse
+        }
+
+        It "ignores changed files outside the platform filter" {
+            # .sh files (including daaf.sh -- Unix-only now) and bootstrap-only
+            # scripts must not be copied on Windows. test_migration.ps1 (dev-only
+            # harness) is excluded too -- and because it matches *.ps1 it would be
+            # synced WITHOUT the explicit exclusion, so this pins the exclusion,
+            # not merely the platform filter.
+            New-Item -ItemType File -Path "./run_daaf.ps1" | Out-Null
+            New-Item -ItemType File -Path "./daaf.ps1" | Out-Null
+            Mock docker {
+                $allArgs = $args -join " "
+                if ($allArgs -match "rev-parse HEAD") { return "new-sha-999" }
+                if ($allArgs -match "ls-files") { return "scripts/host/daaf.ps1`nscripts/host/run_daaf.ps1`nscripts/host/daaf.sh`nscripts/host/run_daaf.sh`nscripts/host/install.ps1`nscripts/host/test_migration.ps1" }
+                if ($allArgs -match "diff --name-only") { return "scripts/host/daaf.sh`nscripts/host/run_daaf.sh`nscripts/host/install.ps1`nscripts/host/test_migration.ps1" }
+                $global:LASTEXITCODE = 0
+                return ""
+            }
+
+            $output = Sync-HostScript "old-sha-111" 6>&1
+            ($output | Where-Object { $_ -match "Updated: daaf.sh" })           | Should -BeNullOrEmpty
+            ($output | Where-Object { $_ -match "run_daaf.sh" })                | Should -BeNullOrEmpty
+            ($output | Where-Object { $_ -match "Updated: install.ps1" })       | Should -BeNullOrEmpty
+            ($output | Where-Object { $_ -match "Updated: test_migration.ps1" }) | Should -BeNullOrEmpty
+        }
+
+        It "prints self-update notice when update_daaf.ps1 changed" {
+            New-Item -ItemType File -Path "./update_daaf.ps1" | Out-Null
+            # The cp mock MATERIALIZES the destination: the staged-copy redesign
+            # verifies the staged file exists, and the $null = wrapper on docker
+            # cp means a bare mock return no longer leaks a truthy array into
+            # the Copy-HostScript boolean (which is what let the old
+            # non-materializing mock pass by accident).
+            Mock docker {
+                $allArgs = $args -join " "
+                if ($allArgs -match "rev-parse HEAD") { return "new-sha-999" }
+                if ($allArgs -match "ls-files") { return "scripts/host/update_daaf.ps1" }
+                if ($allArgs -match "diff --name-only") { return "scripts/host/update_daaf.ps1" }
+                if ($allArgs -match "^cp ") { Set-Content -Path $args[2] -Value "repo version"; $global:LASTEXITCODE = 0; return "" }
+                $global:LASTEXITCODE = 0
+                return ""
+            }
+
+            $output = Sync-HostScript "old-sha-111" 6>&1
+            ($output | Where-Object { $_ -match "The updater itself was updated" }) | Should -Not -BeNullOrEmpty
+        }
+
+        It "does not print self-update notice for other changes" {
+            New-Item -ItemType File -Path "./run_daaf.ps1" | Out-Null
+            Mock docker {
+                $allArgs = $args -join " "
+                if ($allArgs -match "rev-parse HEAD") { return "new-sha-999" }
+                if ($allArgs -match "ls-files") { return "scripts/host/run_daaf.ps1" }
+                if ($allArgs -match "diff --name-only") { return "scripts/host/run_daaf.ps1" }
+                if ($allArgs -match "^cp ") { Set-Content -Path $args[2] -Value "repo version"; $global:LASTEXITCODE = 0; return "" }
+                $global:LASTEXITCODE = 0
+                return ""
+            }
+
+            $output = Sync-HostScript "old-sha-111" 6>&1
+            ($output | Where-Object { $_ -match "The updater itself was updated" }) | Should -BeNullOrEmpty
+        }
+
+        It "reports copy failures by name with a recovery hint" {
+            # Clear DAAF_PROJECT_NAME so the hint resolves deterministically to the
+            # fallback 'daaf', independent of the host/container environment (this
+            # container exports DAAF_PROJECT_NAME).
+            Remove-Item Env:DAAF_PROJECT_NAME -ErrorAction SilentlyContinue
+            Mock docker {
+                $allArgs = $args -join " "
+                if ($allArgs -match "rev-parse HEAD") { return "samehash" }
+                if ($allArgs -match "ls-files") { return "scripts/host/daaf.ps1" }
                 # docker cp fails
                 $global:LASTEXITCODE = 1
                 return ""
             }
 
-            # Should not throw -- it shows a warning instead
-            $output = Sync-HostScript "old-sha-222" 6>&1
-            $warnMsg = $output | Where-Object { $_ -match "Warning" }
-            $warnMsg | Should -Not -BeNullOrEmpty
+            $output = Sync-HostScript "samehash" 6>&1
+            ($output | Where-Object { $_ -match "Warning: could not copy daaf.ps1" }) | Should -Not -BeNullOrEmpty
+            # Manual-recovery hint now uses the project-resolved `docker cp
+            # <project>-daaf-docker-1:` form (c5f69b6). DAAF_PROJECT_NAME is cleared
+            # above, so the fallback 'daaf' is used.
+            ($output | Where-Object { $_ -match "docker cp daaf-daaf-docker-1:/daaf/scripts/host/daaf.ps1 ./daaf.ps1" }) | Should -Not -BeNullOrEmpty
+        }
+
+        It "existence-heals with an empty OldHead (up-to-date path)" {
+            Mock docker {
+                $allArgs = $args -join " "
+                if ($allArgs -match "rev-parse HEAD") { return "samehash" }
+                if ($allArgs -match "ls-files") { return "scripts/host/daaf.ps1" }
+                $global:LASTEXITCODE = 0
+                return ""
+            }
+
+            $output = Sync-HostScript 6>&1
+            ($output | Where-Object { $_ -match "Updated: daaf.ps1" }) | Should -Not -BeNullOrEmpty
+        }
+
+        # --- Tier C: drift heal (overwrite with rolling backup) ---
+        # Mirrors the Bash tier-C drift tests. The docker mock implements the bulk
+        # `compose cp scripts/host <tmp>/repo_host` stage by creating the repo_host
+        # tree with known contents so a real Get-FileHash compare can run. On drift
+        # (f0506f6), the host file is HEALED: back up to <name>.pre-update, then
+        # overwrite with the repo copy. If the backup fails, the host file is left
+        # untouched (old-style warning). The drift loop also skips the running updater.
+
+        It "heals a drifted host file with a .pre-update backup" {
+            Set-Content -Path "./run_daaf.ps1" -Value "host-customized" -NoNewline
+            Mock docker {
+                $allArgs = $args -join " "
+                if ($allArgs -match "rev-parse HEAD") { return "samehash" }
+                if ($allArgs -match "ls-files") { return "scripts/host/run_daaf.ps1" }
+                if ($allArgs -match "compose cp") {
+                    # Last arg is the destination repo_host dir. Populate it with
+                    # the pristine repo copy (differs from the host copy above).
+                    $dest = $args[$args.Count - 1]
+                    New-Item -ItemType Directory -Path $dest -Force | Out-Null
+                    Set-Content -Path (Join-Path $dest "run_daaf.ps1") -Value "pristine-repo" -NoNewline
+                    $global:LASTEXITCODE = 0
+                    return ""
+                }
+                $global:LASTEXITCODE = 0
+                return ""
+            }
+
+            $output = Sync-HostScript "samehash" 6>&1
+            # (c) per-file "Updated:" line naming the .pre-update backup + closing summary.
+            ($output | Where-Object { $_ -match "Updated: run_daaf.ps1 \(your previous copy was saved as run_daaf.ps1.pre-update\)" }) | Should -Not -BeNullOrEmpty
+            ($output | Where-Object { $_ -match "One or more host files were stale and have been updated" }) | Should -Not -BeNullOrEmpty
+            ($output | Where-Object { $_ -match "restore one by" }) | Should -Not -BeNullOrEmpty
+            # (a) host file now holds the repo version.
+            (Get-Content -Path "./run_daaf.ps1" -Raw) | Should -Match "pristine-repo"
+            # (b) the .pre-update backup holds the OLD host content.
+            (Get-Content -Path "./run_daaf.ps1.pre-update" -Raw) | Should -Match "host-customized"
+        }
+
+        It "does not warn when the host file matches the repo copy" {
+            Set-Content -Path "./run_daaf.ps1" -Value "identical" -NoNewline
+            Mock docker {
+                $allArgs = $args -join " "
+                if ($allArgs -match "rev-parse HEAD") { return "samehash" }
+                if ($allArgs -match "ls-files") { return "scripts/host/run_daaf.ps1" }
+                if ($allArgs -match "compose cp") {
+                    $dest = $args[$args.Count - 1]
+                    New-Item -ItemType Directory -Path $dest -Force | Out-Null
+                    Set-Content -Path (Join-Path $dest "run_daaf.ps1") -Value "identical" -NoNewline
+                    $global:LASTEXITCODE = 0
+                    return ""
+                }
+                $global:LASTEXITCODE = 0
+                return ""
+            }
+
+            $output = Sync-HostScript "samehash" 6>&1
+            ($output | Where-Object { $_ -match "differs from the repository version" }) | Should -BeNullOrEmpty
+        }
+
+        It "overwrites the drifted host file with the repo version" {
+            Set-Content -Path "./run_daaf.ps1" -Value "host-customized" -NoNewline
+            Mock docker {
+                $allArgs = $args -join " "
+                if ($allArgs -match "rev-parse HEAD") { return "samehash" }
+                if ($allArgs -match "ls-files") { return "scripts/host/run_daaf.ps1" }
+                if ($allArgs -match "compose cp") {
+                    $dest = $args[$args.Count - 1]
+                    New-Item -ItemType Directory -Path $dest -Force | Out-Null
+                    Set-Content -Path (Join-Path $dest "run_daaf.ps1") -Value "pristine-repo" -NoNewline
+                    $global:LASTEXITCODE = 0
+                    return ""
+                }
+                $global:LASTEXITCODE = 0
+                return ""
+            }
+
+            Sync-HostScript "samehash" 6>&1 | Out-Null
+            # Host file is now the repo copy; the old content is preserved in the backup.
+            (Get-Content -Path "./run_daaf.ps1" -Raw) | Should -Match "pristine-repo"
+            (Get-Content -Path "./run_daaf.ps1" -Raw) | Should -Not -Match "host-customized"
+            (Get-Content -Path "./run_daaf.ps1.pre-update" -Raw) | Should -Match "host-customized"
+        }
+
+        It "does not overwrite when the .pre-update backup fails" {
+            # Backup-failure safety valve (f0506f6): if the rolling .pre-update
+            # backup cannot be written, the host file is NEVER overwritten and the
+            # old-style warning with the project-resolved manual hint is printed.
+            #
+            # Force the backup step to fail with a Copy-Item mock that throws
+            # whenever the destination is the ".pre-update" backup path, and calls
+            # through for every other invocation (e.g. the repo overwrite, which
+            # must never be reached here). This targets exactly the backup
+            # `Copy-Item -Path ./run_daaf.ps1 -Destination ./run_daaf.ps1.pre-update`.
+            Remove-Item Env:DAAF_PROJECT_NAME -ErrorAction SilentlyContinue
+            Set-Content -Path "./run_daaf.ps1" -Value "host-customized" -NoNewline
+            Mock Copy-Item {
+                if ($Destination -match "\.pre-update$") {
+                    throw "simulated backup failure"
+                }
+                & (Get-Command Copy-Item -CommandType Cmdlet) @PSBoundParameters
+            }
+            Mock docker {
+                $allArgs = $args -join " "
+                if ($allArgs -match "rev-parse HEAD") { return "samehash" }
+                if ($allArgs -match "ls-files") { return "scripts/host/run_daaf.ps1" }
+                if ($allArgs -match "compose cp") {
+                    $dest = $args[$args.Count - 1]
+                    New-Item -ItemType Directory -Path $dest -Force | Out-Null
+                    Set-Content -Path (Join-Path $dest "run_daaf.ps1") -Value "pristine-repo" -NoNewline
+                    $global:LASTEXITCODE = 0
+                    return ""
+                }
+                $global:LASTEXITCODE = 0
+                return ""
+            }
+
+            $output = Sync-HostScript "samehash" 6>&1
+            # Host file must be UNCHANGED (backup failed -> never overwrite).
+            (Get-Content -Path "./run_daaf.ps1" -Raw) | Should -Match "host-customized"
+            (Get-Content -Path "./run_daaf.ps1" -Raw) | Should -Not -Match "pristine-repo"
+            (Test-Path "./run_daaf.ps1.pre-update") | Should -BeFalse
+            # Old-style warning + project-resolved manual hint (fallback 'daaf').
+            ($output | Where-Object { $_ -match "WARNING: run_daaf.ps1 is stale but could not be updated" }) | Should -Not -BeNullOrEmpty
+            ($output | Where-Object { $_ -match "backup step failed" }) | Should -Not -BeNullOrEmpty
+            ($output | Where-Object { $_ -match "docker cp daaf-daaf-docker-1:/daaf/scripts/host/run_daaf.ps1 ./run_daaf.ps1" }) | Should -Not -BeNullOrEmpty
+            # No heal summary since nothing was actually updated.
+            ($output | Where-Object { $_ -match "One or more host files were stale and have been updated" }) | Should -BeNullOrEmpty
+        }
+
+        It "does not overwrite when the repo-to-host write fails after a successful backup" {
+            # Third contract branch (f0506f6): the .pre-update backup SUCCEEDS but
+            # the subsequent repo->host overwrite FAILS. The host file is left
+            # unchanged, the (now-redundant) backup remains, and the "(write
+            # failed)" warning with the project-resolved manual hint is printed.
+            # Distinct, separately worded branch from the "backup step failed" path.
+            #
+            # Force ONLY the overwrite to fail with a Copy-Item mock: the backup
+            # copy (destination "*.pre-update") calls through and succeeds; the
+            # overwrite copy (destination "./run_daaf.ps1", NOT .pre-update) throws.
+            Remove-Item Env:DAAF_PROJECT_NAME -ErrorAction SilentlyContinue
+            Set-Content -Path "./run_daaf.ps1" -Value "host-customized" -NoNewline
+            Mock Copy-Item {
+                if ($Destination -match "\.pre-update$") {
+                    # Backup call-through: perform the real copy via .NET rather than
+                    # calling Copy-Item (Pester intercepts Copy-Item by name even when
+                    # module-qualified -> infinite recursion / call-depth overflow).
+                    $src = (Resolve-Path $Path).Path
+                    $dst = Join-Path (Get-Location).Path (Split-Path $Destination -Leaf)
+                    [System.IO.File]::Copy($src, $dst, $true)
+                } else {
+                    throw "simulated overwrite failure"
+                }
+            }
+            Mock docker {
+                $allArgs = $args -join " "
+                if ($allArgs -match "rev-parse HEAD") { return "samehash" }
+                if ($allArgs -match "ls-files") { return "scripts/host/run_daaf.ps1" }
+                if ($allArgs -match "compose cp") {
+                    $dest = $args[$args.Count - 1]
+                    New-Item -ItemType Directory -Path $dest -Force | Out-Null
+                    Set-Content -Path (Join-Path $dest "run_daaf.ps1") -Value "pristine-repo" -NoNewline
+                    $global:LASTEXITCODE = 0
+                    return ""
+                }
+                $global:LASTEXITCODE = 0
+                return ""
+            }
+
+            $output = Sync-HostScript "samehash" 6>&1
+            # Host file UNCHANGED (overwrite failed -> never leaves a partial copy).
+            (Get-Content -Path "./run_daaf.ps1" -Raw) | Should -Match "host-customized"
+            (Get-Content -Path "./run_daaf.ps1" -Raw) | Should -Not -Match "pristine-repo"
+            # Backup SUCCEEDED, so the .pre-update file exists with the old content.
+            (Test-Path "./run_daaf.ps1.pre-update") | Should -BeTrue
+            (Get-Content -Path "./run_daaf.ps1.pre-update" -Raw) | Should -Match "host-customized"
+            # "(write failed)"-branch warning + project-resolved manual hint (fallback 'daaf').
+            ($output | Where-Object { $_ -match "WARNING: run_daaf.ps1 is stale but could not be updated" }) | Should -Not -BeNullOrEmpty
+            ($output | Where-Object { $_ -match "write failed" }) | Should -Not -BeNullOrEmpty
+            ($output | Where-Object { $_ -match "docker cp daaf-daaf-docker-1:/daaf/scripts/host/run_daaf.ps1 ./run_daaf.ps1" }) | Should -Not -BeNullOrEmpty
+            # No heal summary, and NOT the "backup step failed" wording (other branch).
+            ($output | Where-Object { $_ -match "One or more host files were stale and have been updated" }) | Should -BeNullOrEmpty
+            ($output | Where-Object { $_ -match "backup step failed" }) | Should -BeNullOrEmpty
+        }
+
+        It "skips the running updater script itself in the drift loop" {
+            # The drift loop must never overwrite update_daaf.ps1 from tier C, even
+            # when it exists on host and drifts from the repo copy (self-overwrite
+            # mid-execution risks corrupted content; Tier B is the sanctioned refresh).
+            Set-Content -Path "./update_daaf.ps1" -Value "host-updater" -NoNewline
+            Set-Content -Path "./run_daaf.ps1" -Value "identical" -NoNewline
+            Mock docker {
+                $allArgs = $args -join " "
+                if ($allArgs -match "rev-parse HEAD") { return "samehash" }
+                if ($allArgs -match "ls-files") { return "scripts/host/update_daaf.ps1`nscripts/host/run_daaf.ps1" }
+                if ($allArgs -match "compose cp") {
+                    $dest = $args[$args.Count - 1]
+                    New-Item -ItemType Directory -Path $dest -Force | Out-Null
+                    Set-Content -Path (Join-Path $dest "update_daaf.ps1") -Value "repo-updater" -NoNewline
+                    Set-Content -Path (Join-Path $dest "run_daaf.ps1") -Value "identical" -NoNewline
+                    $global:LASTEXITCODE = 0
+                    return ""
+                }
+                $global:LASTEXITCODE = 0
+                return ""
+            }
+
+            $output = Sync-HostScript "samehash" 6>&1
+            # The running updater must be byte-for-byte unchanged (never healed).
+            (Get-Content -Path "./update_daaf.ps1" -Raw) | Should -Match "host-updater"
+            (Test-Path "./update_daaf.ps1.pre-update") | Should -BeFalse
+            ($output | Where-Object { $_ -match "Updated: update_daaf.ps1" }) | Should -BeNullOrEmpty
+        }
+
+        It "does not drift-check a freshly-copied (tier A) file" {
+            # daaf.ps1 is MISSING -> tier A copies it -> excluded from tier C even
+            # though the staged repo copy differs. run_daaf.ps1 present + identical.
+            Set-Content -Path "./run_daaf.ps1" -Value "identical" -NoNewline
+            Mock docker {
+                $allArgs = $args -join " "
+                if ($allArgs -match "rev-parse HEAD") { return "samehash" }
+                if ($allArgs -match "ls-files") { return "scripts/host/daaf.ps1`nscripts/host/run_daaf.ps1" }
+                if ($allArgs -match "compose cp") {
+                    $dest = $args[$args.Count - 1]
+                    New-Item -ItemType Directory -Path $dest -Force | Out-Null
+                    Set-Content -Path (Join-Path $dest "daaf.ps1") -Value "repo-daaf" -NoNewline
+                    Set-Content -Path (Join-Path $dest "run_daaf.ps1") -Value "identical" -NoNewline
+                    $global:LASTEXITCODE = 0
+                    return ""
+                }
+                $global:LASTEXITCODE = 0
+                return ""
+            }
+
+            $output = Sync-HostScript "samehash" 6>&1
+            ($output | Where-Object { $_ -match "Updated: daaf.ps1" }) | Should -Not -BeNullOrEmpty
+            ($output | Where-Object { $_ -match "WARNING: daaf.ps1 differs" }) | Should -BeNullOrEmpty
+        }
+
+        It "degrades gracefully when drift staging (compose cp) fails" {
+            Set-Content -Path "./run_daaf.ps1" -Value "host-customized" -NoNewline
+            Mock docker {
+                $allArgs = $args -join " "
+                if ($allArgs -match "rev-parse HEAD") { return "samehash" }
+                if ($allArgs -match "ls-files") { return "scripts/host/run_daaf.ps1" }
+                if ($allArgs -match "compose cp") {
+                    # Bulk stage fails -> drift check skipped with a notice.
+                    $global:LASTEXITCODE = 1
+                    return ""
+                }
+                $global:LASTEXITCODE = 0
+                return ""
+            }
+
+            $output = Sync-HostScript "samehash" 6>&1
+            ($output | Where-Object { $_ -match "could not check host scripts for drift" }) | Should -Not -BeNullOrEmpty
+            ($output | Where-Object { $_ -match "differs from the repository version" }) | Should -BeNullOrEmpty
         }
     }
 
@@ -326,6 +770,54 @@ Describe "update_daaf.ps1 behavioral tests" {
     }
 
     # -----------------------------------------------------------------
+    # Save-BranchChoice (branch persistence, extracted for the no-op paths)
+    # -----------------------------------------------------------------
+    # W3 / HSM5: the extracted Save-BranchChoice call path (shared by
+    # Complete-Update AND the no-op success exits) must write NOTHING under
+    # DAAF_DRY_RUN. Called directly here; both $PWD (Push-Location) and the .NET
+    # CurrentDirectory are pointed at the temp dir so the relative settings path
+    # resolves deterministically without launching a child process.
+    Context "Save-BranchChoice" {
+        BeforeEach {
+            # The updater was dot-sourced in Pester's parent scope; reset the
+            # production variable in that same scope before every test.
+            Set-Variable -Name PersistBranch -Value "" -Scope 1
+            $script:PbcDir = New-Item -ItemType Directory -Path (Join-Path ([System.IO.Path]::GetTempPath()) "daaf-pbc-$(Get-Random)")
+            Push-Location $script:PbcDir
+            Remove-Item Env:DAAF_DRY_RUN -ErrorAction SilentlyContinue
+        }
+        AfterEach {
+            Set-Variable -Name PersistBranch -Value "" -Scope 1
+            Pop-Location
+            Remove-Item -Recurse -Force $script:PbcDir -ErrorAction SilentlyContinue
+            Remove-Item Env:DAAF_DRY_RUN -ErrorAction SilentlyContinue
+        }
+
+        It "writes nothing under DAAF_DRY_RUN (HSM5, shared no-op call path)" {
+            $settings = Join-Path $script:PbcDir "environment_settings.txt"
+            Set-Content -Path $settings -Value "DAAF_PROJECT_NAME=daaf"
+            $before = Get-Content -Raw $settings
+            $savedCwd = [Environment]::CurrentDirectory
+            [Environment]::CurrentDirectory = $script:PbcDir
+            $env:DAAF_DRY_RUN = "1"
+            Set-Variable -Name PersistBranch -Value "dev" -Scope 1
+            try {
+                $output = Save-BranchChoice 6>&1
+            }
+            finally {
+                $env:DAAF_DRY_RUN = $null
+                [Environment]::CurrentDirectory = $savedCwd
+            }
+            # -Match (regex, escaped brackets); -BeLike would read [DRY-RUN] as a
+            # wildcard character class.
+            ($output | Out-String) | Should -Match '\[DRY-RUN\] Set-DaafSettingsKey would write'
+            ($output | Out-String) | Should -Not -Match 'Saved DAAF_BRANCH='
+            (Get-Content -Raw $settings) | Should -Be $before
+            (Test-Path (Join-Path $script:PbcDir "environment_settings.txt.pre-update")) | Should -Be $false
+        }
+    }
+
+    # -----------------------------------------------------------------
     # Resolve-Conflict
     # -----------------------------------------------------------------
     Context "Resolve-Conflict" {
@@ -416,6 +908,23 @@ Describe "update_daaf.ps1 behavioral tests" {
         It "mutex uses Global scope for cross-process visibility" {
             $Content | Should -Match 'Global\\DAAFUpdate'
         }
+
+        It "saves and restores DAAF_NESTED around each nested delegate (no unconditional clobber)" {
+            # Regression guard for the DAAF_NESTED clobber bug: each nested-script
+            # launch (the post-update rebuild, and the optional pre-update backup)
+            # must capture the parent's DAAF_NESTED before setting it to "1" and
+            # restore it in finally, so a value inherited from a parent process
+            # survives instead of being unconditionally removed.
+            $setCount     = ([regex]::Matches($Content, '\$env:DAAF_NESTED = "1"')).Count
+            $saveCount    = ([regex]::Matches($Content, '\$savedNested = \$env:DAAF_NESTED')).Count
+            $restoreCount = ([regex]::Matches($Content, 'if \(\$null -ne \$savedNested\) \{ \$env:DAAF_NESTED = \$savedNested \} else \{ Remove-Item Env:\\DAAF_NESTED')).Count
+            $removeCount  = ([regex]::Matches($Content, 'Remove-Item Env:\\DAAF_NESTED')).Count
+            $setCount     | Should -BeGreaterOrEqual 2
+            $saveCount    | Should -Be $setCount
+            $restoreCount | Should -Be $setCount
+            # Every Remove-Item Env:\DAAF_NESTED must live inside a conditional restore.
+            $removeCount  | Should -Be $restoreCount
+        }
     }
 }
 
@@ -472,6 +981,12 @@ Describe "update_daaf.ps1 integrated state-machine tests" {
         $script:TestDir = New-Item -ItemType Directory -Path (Join-Path ([System.IO.Path]::GetTempPath()) "daaf-update-int-$(Get-Random)")
         Push-Location $script:TestDir
         New-FakeComposeFile
+        # Clear any ambient DAAF_BRANCH (a dev container may export the current
+        # working branch, e.g. daaf_dev_r2) so state-machine tests that model the
+        # default-branch flow are not silently steered onto another branch. Parity
+        # with the bash setup()'s `unset DAAF_BRANCH`. Tests that need it set it
+        # explicitly; AfterEach clears it again.
+        Remove-Item Env:DAAF_BRANCH -ErrorAction SilentlyContinue
     }
 
     AfterEach {
@@ -720,7 +1235,12 @@ function docker {
         Remove-Item Env:DAAF_BRANCH -ErrorAction SilentlyContinue
     }
 
-    It "DAAF_BRANCH is a tag gives tag-specific error" {
+    # An env-origin DAAF_BRANCH tag gives an informative REFUSAL (exit 1): the
+    # updater names the tag, points at the supported re-install path, and states
+    # which branch ongoing updates track. It never persists a tag. (Repurposed
+    # from the former "tag-specific error" test after the env-tag design decision;
+    # the file-origin tag path below is the softer warn-and-continue arm.)
+    It "env-origin DAAF_BRANCH tag is refused with re-install guidance" {
         $env:DAAF_NESTED = "1"
         $env:DAAF_BRANCH = "v2.1.0"
         $wrapperScript = Join-Path $script:TestDir "test_wrapper_tag.ps1"
@@ -754,8 +1274,161 @@ function docker {
         $output = & pwsh -NoProfile -File $wrapperScript *>&1
         $outputStr = $output | Out-String
         $LASTEXITCODE | Should -Be 1
+        $outputStr | Should -BeLike "*v2.1.0*"
         $outputStr | Should -BeLike "*version tag*"
         $outputStr | Should -BeLike "*not a branch*"
+        # Names the supported re-install path (pinned to the tag)...
+        $outputStr | Should -BeLike "*install.ps1 | iex*"
+        # ...states which branch ongoing updates track...
+        $outputStr | Should -BeLike "*default branch*"
+        # ...and never saves a tag as the update branch.
+        $outputStr | Should -BeLike "*never saved as your update branch*"
+        Remove-Item Env:DAAF_BRANCH -ErrorAction SilentlyContinue
+    }
+
+    # A file-origin DAAF_BRANCH tag (in environment_settings.txt, NOT the env)
+    # must NOT lock the user out: warn, name the file, and fall back to the
+    # auto-detected default branch for this run (exit 0, the update proceeds).
+    It "file-origin DAAF_BRANCH tag warns and auto-detects (no hard exit)" {
+        $env:DAAF_NESTED = "1"
+        Remove-Item Env:DAAF_BRANCH -ErrorAction SilentlyContinue
+        Set-Content -Path (Join-Path $script:TestDir "environment_settings.txt") -Value "DAAF_BRANCH=v2.1.0"
+        $wrapperScript = Join-Path $script:TestDir "test_wrapper_filetag.ps1"
+        Set-Content -Path $wrapperScript -Value @'
+$ErrorActionPreference = "Stop"
+function docker {
+    $argStr = $args -join ' '
+    $global:LASTEXITCODE = 0
+    switch -Wildcard ($argStr) {
+        "*info*" { return }
+        "*compose ps*--format*" { Write-Output "daaf-docker" }
+        "*compose exec*true*" { return }
+        "*compose exec*test -f*/daaf/.git/shallow*" { $global:LASTEXITCODE = 1; return }
+        "*compose exec*test -f*" { return }
+        "*compose exec*git -C /daaf remote get-url origin*" {
+            Write-Output "https://github.com/DAAF-Contribution-Community/daaf.git"
+        }
+        "*compose exec*git -C /daaf fetch*" { return }
+        "*compose exec*git -C /daaf rev-parse --verify*backup/*" { $global:LASTEXITCODE = 1; return }
+        "*compose exec*git -C /daaf rev-parse --verify*origin/v2.1.0*" { $global:LASTEXITCODE = 1; return }
+        "*compose exec*git -C /daaf rev-parse --verify*refs/tags/v2.1.0*" { $global:LASTEXITCODE = 0; return }
+        "*compose exec*git -C /daaf rev-parse --verify*origin/main*" { $global:LASTEXITCODE = 0; return }
+        "*compose exec*git -C /daaf branch --show-current*" { Write-Output "main" }
+        "*compose exec*git -C /daaf rev-parse*origin/main*" { Write-Output "samehash" }
+        "*compose exec*git -C /daaf rev-parse*HEAD*" { Write-Output "samehash" }
+        "*compose exec*git -C /daaf diff --name-only*HEAD*" { return }
+        "*compose exec*git -C /daaf rev-list --count*" { Write-Output "0" }
+        "*compose exec*git -C /daaf symbolic-ref*" { Write-Output "main" }
+        "*compose exec*git*" { return }
+        "*compose exec*" { return }
+        default { return }
+    }
+}
+'@
+        Add-Content -Path $wrapperScript -Value ". '$RepoRoot/scripts/host/update_daaf.ps1'"
+        $output = & pwsh -NoProfile -File $wrapperScript *>&1
+        $outputStr = $output | Out-String
+        $LASTEXITCODE | Should -Be 0
+        $outputStr | Should -BeLike "*environment_settings.txt*"
+        $outputStr | Should -BeLike "*version tag*"
+        $outputStr | Should -BeLike "*auto-detected default branch*"
+        $outputStr | Should -BeLike "*Already up to date*"
+        $outputStr | Should -Not -BeLike "*never saved as your update branch*"
+    }
+
+    # An env-origin DAAF_BRANCH that IS a real branch is persisted back to
+    # environment_settings.txt (replace mode, .pre-update backup) after a
+    # successful update, so future runs track it without re-exporting.
+    It "env-origin DAAF_BRANCH branch is persisted after a successful update" {
+        $env:DAAF_NESTED = "1"
+        $env:DAAF_BRANCH = "dev"
+        Set-Content -Path (Join-Path $script:TestDir "environment_settings.txt") -Value "DAAF_PROJECT_NAME=daaf"
+        $wrapperScript = Join-Path $script:TestDir "test_wrapper_persist.ps1"
+        Set-Content -Path $wrapperScript -Value @'
+$ErrorActionPreference = "Stop"
+function docker {
+    $argStr = $args -join ' '
+    $global:LASTEXITCODE = 0
+    switch -Wildcard ($argStr) {
+        "*info*" { return }
+        "*compose ps*--format*" { Write-Output "daaf-docker" }
+        "*compose exec*true*" { return }
+        "*compose exec*test -f*/daaf/.git/shallow*" { $global:LASTEXITCODE = 1; return }
+        "*compose exec*test -f*" { return }
+        "*compose exec*git -C /daaf remote get-url origin*" {
+            Write-Output "https://github.com/DAAF-Contribution-Community/daaf.git"
+        }
+        "*compose exec*git -C /daaf fetch*" { return }
+        "*compose exec*git -C /daaf rev-parse --verify*backup/*" { $global:LASTEXITCODE = 1; return }
+        "*compose exec*git -C /daaf rev-parse --verify*origin/dev*" { $global:LASTEXITCODE = 0; return }
+        "*compose exec*git -C /daaf branch --show-current*" { Write-Output "dev" }
+        "*compose exec*git -C /daaf rev-parse*origin/dev*" { Write-Output "def456remote" }
+        "*compose exec*git -C /daaf rev-parse*HEAD*" { Write-Output "abc123local" }
+        "*compose exec*git -C /daaf diff --name-only*HEAD*" { return }
+        "*compose exec*git -C /daaf rev-list --count*origin/dev..HEAD*" { Write-Output "0" }
+        "*compose exec*git -C /daaf rev-list --count*HEAD..origin/dev*" { Write-Output "3" }
+        "*compose exec*git -C /daaf pull*" { Write-Output "Updating abc123..def456" }
+        "*compose exec*git -C /daaf symbolic-ref*" { Write-Output "dev" }
+        "*compose exec*git*" { return }
+        "*compose exec*" { return }
+        default { return }
+    }
+}
+'@
+        Add-Content -Path $wrapperScript -Value ". '$RepoRoot/scripts/host/update_daaf.ps1'"
+        $output = & pwsh -NoProfile -File $wrapperScript *>&1
+        $outputStr = $output | Out-String
+        $LASTEXITCODE | Should -Be 0
+        $outputStr | Should -BeLike "*Update complete!*"
+        $outputStr | Should -BeLike "*Saved DAAF_BRANCH=dev*"
+        (Get-Content -Raw (Join-Path $script:TestDir "environment_settings.txt")) | Should -BeLike "*DAAF_BRANCH=dev*"
+        (Test-Path (Join-Path $script:TestDir "environment_settings.txt.pre-update")) | Should -Be $true
+        Remove-Item Env:DAAF_BRANCH -ErrorAction SilentlyContinue
+    }
+
+    # W3: the env-origin branch must persist even on a NO-OP success ("Already up
+    # to date"), which returns before Complete-Update. Most common re-run case:
+    # DAAF_BRANCH=dev while already current. Save-BranchChoice runs on the no-op path.
+    It "env-origin branch persists on the already-up-to-date no-op path" {
+        $env:DAAF_NESTED = "1"
+        $env:DAAF_BRANCH = "dev"
+        Set-Content -Path (Join-Path $script:TestDir "environment_settings.txt") -Value "DAAF_PROJECT_NAME=daaf"
+        $wrapperScript = Join-Path $script:TestDir "test_wrapper_noop_persist.ps1"
+        Set-Content -Path $wrapperScript -Value @'
+$ErrorActionPreference = "Stop"
+function docker {
+    $argStr = $args -join ' '
+    $global:LASTEXITCODE = 0
+    switch -Wildcard ($argStr) {
+        "*info*" { return }
+        "*compose ps*--format*" { Write-Output "daaf-docker" }
+        "*compose exec*true*" { return }
+        "*compose exec*test -f*/daaf/.git/shallow*" { $global:LASTEXITCODE = 1; return }
+        "*compose exec*test -f*" { return }
+        "*compose exec*git -C /daaf remote get-url origin*" {
+            Write-Output "https://github.com/DAAF-Contribution-Community/daaf.git"
+        }
+        "*compose exec*git -C /daaf fetch*" { return }
+        "*compose exec*git -C /daaf rev-parse --verify*backup/*" { $global:LASTEXITCODE = 1; return }
+        "*compose exec*git -C /daaf rev-parse --verify*origin/dev*" { $global:LASTEXITCODE = 0; return }
+        "*compose exec*git -C /daaf branch --show-current*" { Write-Output "dev" }
+        "*compose exec*git -C /daaf rev-parse*origin/dev*" { Write-Output "abc123same" }
+        "*compose exec*git -C /daaf rev-parse*HEAD*" { Write-Output "abc123same" }
+        "*compose exec*git -C /daaf diff --name-only*HEAD*" { return }
+        "*compose exec*git*" { return }
+        "*compose exec*" { return }
+        default { return }
+    }
+}
+'@
+        Add-Content -Path $wrapperScript -Value ". '$RepoRoot/scripts/host/update_daaf.ps1'"
+        $output = & pwsh -NoProfile -File $wrapperScript *>&1
+        $outputStr = $output | Out-String
+        $LASTEXITCODE | Should -Be 0
+        $outputStr | Should -BeLike "*Already up to date*"
+        $outputStr | Should -BeLike "*Saved DAAF_BRANCH=dev*"
+        (Get-Content -Raw (Join-Path $script:TestDir "environment_settings.txt")) | Should -BeLike "*DAAF_BRANCH=dev*"
+        (Test-Path (Join-Path $script:TestDir "environment_settings.txt.pre-update")) | Should -Be $true
         Remove-Item Env:DAAF_BRANCH -ErrorAction SilentlyContinue
     }
 
@@ -834,5 +1507,360 @@ Describe "update_daaf.ps1 concurrency guard" {
 
     It "handles AbandonedMutexException from crashed previous instance" {
         $Content | Should -Match 'AbandonedMutexException'
+    }
+}
+
+# ============================================================================
+# Interrupted-update resume (round-5 field finding 1)
+# ============================================================================
+# A genuine merge conflict makes the non-interactive updater exit 1 mid-merge.
+# The user resolves, commits, and re-runs; the re-run must finish the journey
+# (rebuild detection + tier-B host-script sync + stash restore) via a persisted
+# resume marker rather than landing on the tier-A-only "already up to date" exit.
+
+Describe "update_daaf.ps1 resume marker helpers" {
+    BeforeAll {
+        . "$PSScriptRoot/TestHelper.ps1"
+        $env:DAAF_TEST_MODE = "1"
+        . "$RepoRoot/scripts/host/update_daaf.ps1"
+        function docker {}
+    }
+    AfterAll {
+        Remove-Item Env:DAAF_TEST_MODE -ErrorAction SilentlyContinue
+    }
+
+    Context "Write-ResumeMarker" {
+        It "writes the marker to the repo .git dir" {
+            $script:MarkerArgs = $null
+            Mock docker { $script:MarkerArgs = ($args -join ' ') }
+            Set-Variable -Name OldHead -Value "oldsha" -Scope 1
+            Set-Variable -Name Timestamp -Value "t" -Scope 1
+            Write-ResumeMarker
+            $script:MarkerArgs | Should -BeLike "*cat > /daaf/.git/daaf-update-resume*"
+        }
+
+        It "is a no-op under DAAF_DRY_RUN" {
+            $env:DAAF_DRY_RUN = "1"
+            Mock docker { }
+            try { Write-ResumeMarker } finally { Remove-Item Env:DAAF_DRY_RUN -ErrorAction SilentlyContinue }
+            Should -Invoke docker -Times 0
+        }
+    }
+
+    Context "Complete-Update marker cleanup" {
+        It "clears the resume marker on success (single chokepoint)" {
+            $script:RmCalled = $false
+            Mock docker {
+                $a = $args -join ' '
+                if ($a -match 'rm -f /daaf/.git/daaf-update-resume') { $script:RmCalled = $true }
+                return "same"
+            }
+            Complete-Update "same" 6>&1 | Out-Null
+            $script:RmCalled | Should -BeTrue
+        }
+    }
+
+    Context "Find-UpdateBackupStash" {
+        It "returns only the DAAF update backup stash ref" {
+            Mock docker { return "stash@{0}: On main: WIP unrelated`nstash@{1}: On main: DAAF update backup 2026-01-01" }
+            Find-UpdateBackupStash | Should -Be "stash@{1}"
+        }
+
+        It "returns empty when no backup stash exists" {
+            Mock docker { return "stash@{0}: On main: WIP unrelated" }
+            Find-UpdateBackupStash | Should -BeNullOrEmpty
+        }
+    }
+
+    Context "Resume-Update" {
+        It "pops the backup stash then completes against the recorded OldHead" {
+            $script:PopArgs = $null
+            Mock docker {
+                $a = $args -join ' '
+                if ($a -match 'stash list') { return "stash@{0}: On main: DAAF update backup 2026" }
+                if ($a -match 'stash pop')  { $script:PopArgs = $a; $global:LASTEXITCODE = 0; return }
+                $global:LASTEXITCODE = 0
+                return "recordedsha"
+            }
+            Set-Variable -Name OldHead -Value "recordedsha" -Scope 1
+            $output = Resume-Update 6>&1
+            $script:PopArgs | Should -BeLike "*stash pop stash@{0}*"
+            ($output | Where-Object { $_ -match "Restoring your set-aside changes" }) | Should -Not -BeNullOrEmpty
+            ($output | Where-Object { $_ -match "Update complete" }) | Should -Not -BeNullOrEmpty
+        }
+
+        It "skips the stash pop silently when no backup stash exists" {
+            $script:PopCalled = $false
+            Mock docker {
+                $a = $args -join ' '
+                if ($a -match 'stash list') { return "" }
+                if ($a -match 'stash pop')  { $script:PopCalled = $true }
+                $global:LASTEXITCODE = 0
+                return "sha"
+            }
+            Set-Variable -Name OldHead -Value "sha" -Scope 1
+            $output = Resume-Update 6>&1
+            $script:PopCalled | Should -BeFalse
+            ($output | Where-Object { $_ -match "Restoring your set-aside changes" }) | Should -BeNullOrEmpty
+            ($output | Where-Object { $_ -match "Update complete" }) | Should -Not -BeNullOrEmpty
+        }
+    }
+}
+
+Describe "update_daaf.ps1 resume state-machine tests" {
+    BeforeAll {
+        . "$PSScriptRoot/TestHelper.ps1"
+    }
+    BeforeEach {
+        $script:TestDir = New-Item -ItemType Directory -Path (Join-Path ([System.IO.Path]::GetTempPath()) "daaf-resume-$(Get-Random)")
+        Push-Location $script:TestDir
+        New-FakeComposeFile
+        Remove-Item Env:DAAF_BRANCH -ErrorAction SilentlyContinue
+    }
+    AfterEach {
+        Pop-Location
+        Remove-Item -Recurse -Force $script:TestDir -ErrorAction SilentlyContinue
+        Remove-Item Env:DAAF_NESTED -ErrorAction SilentlyContinue
+        Remove-Item Env:DAAF_BRANCH -ErrorAction SilentlyContinue
+    }
+
+    It "a still-in-progress merge guides the user and exits 1" {
+        $env:DAAF_NESTED = "1"
+        $wrapperScript = Join-Path $script:TestDir "test_wrapper_midmerge.ps1"
+        Set-Content -Path $wrapperScript -Value @'
+$ErrorActionPreference = "Stop"
+function docker {
+    $argStr = $args -join ' '
+    $global:LASTEXITCODE = 0
+    switch -Wildcard ($argStr) {
+        "*info*" { return }
+        "*compose ps*--format*" { Write-Output "daaf-docker" }
+        "*compose exec*true*" { return }
+        "*compose exec*test -f*/daaf/CLAUDE.md*" { return }
+        "*MERGE_HEAD*" { Write-Output "yes"; return }
+        "*rebase-merge*" { return }
+        "*daaf-update-resume*" { return }
+        "*compose exec*git -C /daaf branch*" { return }
+        "*compose exec*git -C /daaf rev-parse*HEAD*" { Write-Output "abc123" }
+        "*compose exec*git*" { return }
+        "*compose exec*" { return }
+        default { return }
+    }
+}
+'@
+        Add-Content -Path $wrapperScript -Value ". '$RepoRoot/scripts/host/update_daaf.ps1'"
+        $output = & pwsh -NoProfile -File $wrapperScript *>&1
+        $outputStr = $output | Out-String
+        $LASTEXITCODE | Should -Be 1
+        $outputStr | Should -BeLike "*An update is still in progress*"
+        $outputStr | Should -BeLike "*git commit*"
+        $outputStr | Should -Not -BeLike "*Update complete*"
+    }
+
+    It "a valid resume marker finishes the update off the up-to-date exit" {
+        $env:DAAF_NESTED = "1"
+        $wrapperScript = Join-Path $script:TestDir "test_wrapper_resume.ps1"
+        Set-Content -Path $wrapperScript -Value @'
+$ErrorActionPreference = "Stop"
+function docker {
+    $argStr = $args -join ' '
+    $global:LASTEXITCODE = 0
+    switch -Wildcard ($argStr) {
+        "*info*" { return }
+        "*compose ps*--format*" { Write-Output "daaf-docker" }
+        "*compose exec*true*" { return }
+        "*compose exec*test -f*/daaf/CLAUDE.md*" { return }
+        "*compose exec*test -f*/daaf/.git/shallow*" { $global:LASTEXITCODE = 1; return }
+        "*MERGE_HEAD*" { return }
+        "*rebase-merge*" { return }
+        "*daaf-update-resume*" { Write-Output "OLD_HEAD=oldrecorded`nTIMESTAMP=t"; return }
+        "*rev-parse --verify*commit*" { $global:LASTEXITCODE = 0; return }
+        "*remote get-url*origin*" { Write-Output "https://github.com/DAAF-Contribution-Community/daaf.git" }
+        "*fetch*" { return }
+        "*rev-parse --verify*backup/*" { $global:LASTEXITCODE = 1; return }
+        "*rev-parse --verify*origin/main*" { $global:LASTEXITCODE = 0; return }
+        "*branch --show-current*" { Write-Output "main" }
+        "*rev-parse*origin/main*" { Write-Output "newsha" }
+        "*rev-parse*HEAD*" { Write-Output "newsha" }
+        "*diff --name-only*HEAD*" { return }
+        "*stash list*" { Write-Output "stash@{0}: On main: DAAF update backup 2026" }
+        "*stash pop*" { return }
+        "*ls-files*" { return }
+        "*diff --name-only*" { Write-Output "Dockerfile" }
+        "*compose exec*git*" { return }
+        "*compose exec*" { return }
+        default { return }
+    }
+}
+'@
+        Add-Content -Path $wrapperScript -Value ". '$RepoRoot/scripts/host/update_daaf.ps1'"
+        $output = & pwsh -NoProfile -File $wrapperScript *>&1
+        $outputStr = $output | Out-String
+        $LASTEXITCODE | Should -Be 0
+        $outputStr | Should -BeLike "*Resuming interrupted update*"
+        $outputStr | Should -BeLike "*Restoring your set-aside changes*"
+        # Rebuild detection ran against the RECORDED pre-update head, not same-run HEAD.
+        $outputStr | Should -BeLike "*Build files were updated*"
+        $outputStr | Should -BeLike "*Update complete*"
+    }
+
+    It "an invalid resume marker is ignored and the run continues normally" {
+        $env:DAAF_NESTED = "1"
+        $wrapperScript = Join-Path $script:TestDir "test_wrapper_badmarker.ps1"
+        Set-Content -Path $wrapperScript -Value @'
+$ErrorActionPreference = "Stop"
+function docker {
+    $argStr = $args -join ' '
+    $global:LASTEXITCODE = 0
+    switch -Wildcard ($argStr) {
+        "*info*" { return }
+        "*compose ps*--format*" { Write-Output "daaf-docker" }
+        "*compose exec*true*" { return }
+        "*compose exec*test -f*/daaf/CLAUDE.md*" { return }
+        "*compose exec*test -f*/daaf/.git/shallow*" { $global:LASTEXITCODE = 1; return }
+        "*MERGE_HEAD*" { return }
+        "*rebase-merge*" { return }
+        "*daaf-update-resume*" { Write-Output "OLD_HEAD=bogusref`nTIMESTAMP=t"; return }
+        "*rev-parse --verify*commit*" { $global:LASTEXITCODE = 1; return }
+        "*remote get-url*origin*" { Write-Output "https://github.com/DAAF-Contribution-Community/daaf.git" }
+        "*fetch*" { return }
+        "*rev-parse --verify*backup/*" { $global:LASTEXITCODE = 1; return }
+        "*rev-parse --verify*origin/main*" { $global:LASTEXITCODE = 0; return }
+        "*branch --show-current*" { Write-Output "main" }
+        "*rev-parse*origin/main*" { Write-Output "samesha" }
+        "*rev-parse*HEAD*" { Write-Output "samesha" }
+        "*diff --name-only*HEAD*" { return }
+        "*ls-files*" { return }
+        "*compose exec*git*" { return }
+        "*compose exec*" { return }
+        default { return }
+    }
+}
+'@
+        Add-Content -Path $wrapperScript -Value ". '$RepoRoot/scripts/host/update_daaf.ps1'"
+        $output = & pwsh -NoProfile -File $wrapperScript *>&1
+        $outputStr = $output | Out-String
+        $LASTEXITCODE | Should -Be 0
+        $outputStr | Should -BeLike "*leftover update marker with no valid restart point*"
+        $outputStr | Should -BeLike "*Already up to date*"
+        $outputStr | Should -Not -BeLike "*Resuming interrupted update*"
+        $outputStr | Should -Not -BeLike "*Update complete*"
+    }
+
+    # The blind spot the review caught: on the re-run the user committed the
+    # resolved merge, so HEAD is a merge commit (-ne remote -> up-to-date check
+    # fails), Behind=0 but Ahead>0 carries the local merge/customization commits.
+    # Execution enters the default-branch Ahead>0 block, which historically never
+    # checked $Resuming and re-showed the merge/rebase/abort menu -- stranding the
+    # set-aside stash (tree is now clean, $Stashed=$false). The fix routes
+    # $Resuming into Resume-Update before the menu. Pins: (a) finalizer runs,
+    # (b) the menu never prints, (c) exit 0.
+    It "resume finishes off the default-branch Ahead>0 block (menu suppressed)" {
+        $env:DAAF_NESTED = "1"
+        $wrapperScript = Join-Path $script:TestDir "test_wrapper_resume_ahead.ps1"
+        Set-Content -Path $wrapperScript -Value @'
+$ErrorActionPreference = "Stop"
+function docker {
+    $argStr = $args -join ' '
+    $global:LASTEXITCODE = 0
+    switch -Wildcard ($argStr) {
+        "*info*" { return }
+        "*compose ps*--format*" { Write-Output "daaf-docker" }
+        "*compose exec*true*" { return }
+        "*compose exec*test -f*/daaf/CLAUDE.md*" { return }
+        "*compose exec*test -f*/daaf/.git/shallow*" { $global:LASTEXITCODE = 1; return }
+        "*MERGE_HEAD*" { return }
+        "*rebase-merge*" { return }
+        "*daaf-update-resume*" { Write-Output "OLD_HEAD=oldrecorded`nTIMESTAMP=t"; return }
+        "*rev-parse --verify*commit*" { $global:LASTEXITCODE = 0; return }
+        "*remote get-url*origin*" { Write-Output "https://github.com/DAAF-Contribution-Community/daaf.git" }
+        "*fetch*" { return }
+        "*rev-parse --verify*backup/*" { $global:LASTEXITCODE = 1; return }
+        "*rev-parse --verify*origin/main*" { $global:LASTEXITCODE = 0; return }
+        "*branch --show-current*" { Write-Output "main" }
+        "*rev-parse*origin/main*" { Write-Output "remotesha" }
+        "*rev-parse*HEAD*" { Write-Output "mergesha" }
+        "*rev-list --count*origin/main..HEAD*" { Write-Output "1" }
+        "*rev-list --count*HEAD..origin/main*" { Write-Output "0" }
+        "*diff --name-only*HEAD*" { return }
+        "*stash list*" { Write-Output "stash@{0}: On main: DAAF update backup 2026" }
+        "*stash pop*" { return }
+        "*ls-files*" { return }
+        "*diff --name-only*" { return }
+        "*compose exec*git*" { return }
+        "*compose exec*" { return }
+        default { return }
+    }
+}
+'@
+        Add-Content -Path $wrapperScript -Value ". '$RepoRoot/scripts/host/update_daaf.ps1'"
+        $output = & pwsh -NoProfile -File $wrapperScript *>&1
+        $outputStr = $output | Out-String
+        $LASTEXITCODE | Should -Be 0
+        # (a) Routed into the resume finalizer.
+        $outputStr | Should -BeLike "*Detected an interrupted update -- finishing it now.*"
+        $outputStr | Should -BeLike "*Restoring your set-aside changes*"
+        $outputStr | Should -BeLike "*Update complete*"
+        # (b) The merge/rebase/abort menu never printed.
+        $outputStr | Should -Not -BeLike "*1) MERGE (recommended)*"
+        $outputStr | Should -Not -BeLike "*local commit(s) on*"
+        # (c) No fresh-pull re-run note when Behind=0.
+        $outputStr | Should -Not -BeLike "*run the updater again to get them*"
+    }
+
+    # Rare corner: new upstream commits landed between the conflict and the re-run.
+    # The fix always finishes the interrupted update first (never mixes it with a
+    # fresh pull), then prints a note telling the user to re-run for the new commits.
+    It "resume off the Ahead>0 block prints a re-run note when Behind>0" {
+        $env:DAAF_NESTED = "1"
+        $wrapperScript = Join-Path $script:TestDir "test_wrapper_resume_ahead_behind.ps1"
+        Set-Content -Path $wrapperScript -Value @'
+$ErrorActionPreference = "Stop"
+function docker {
+    $argStr = $args -join ' '
+    $global:LASTEXITCODE = 0
+    switch -Wildcard ($argStr) {
+        "*info*" { return }
+        "*compose ps*--format*" { Write-Output "daaf-docker" }
+        "*compose exec*true*" { return }
+        "*compose exec*test -f*/daaf/CLAUDE.md*" { return }
+        "*compose exec*test -f*/daaf/.git/shallow*" { $global:LASTEXITCODE = 1; return }
+        "*MERGE_HEAD*" { return }
+        "*rebase-merge*" { return }
+        "*daaf-update-resume*" { Write-Output "OLD_HEAD=oldrecorded`nTIMESTAMP=t"; return }
+        "*rev-parse --verify*commit*" { $global:LASTEXITCODE = 0; return }
+        "*remote get-url*origin*" { Write-Output "https://github.com/DAAF-Contribution-Community/daaf.git" }
+        "*fetch*" { return }
+        "*rev-parse --verify*backup/*" { $global:LASTEXITCODE = 1; return }
+        "*rev-parse --verify*origin/main*" { $global:LASTEXITCODE = 0; return }
+        "*branch --show-current*" { Write-Output "main" }
+        "*rev-parse*origin/main*" { Write-Output "remotesha" }
+        "*rev-parse*HEAD*" { Write-Output "mergesha" }
+        "*rev-list --count*origin/main..HEAD*" { Write-Output "1" }
+        "*rev-list --count*HEAD..origin/main*" { Write-Output "2" }
+        "*diff --name-only*HEAD*" { return }
+        "*stash list*" { Write-Output "stash@{0}: On main: DAAF update backup 2026" }
+        "*stash pop*" { return }
+        "*ls-files*" { return }
+        "*diff --name-only*" { return }
+        "*compose exec*git*" { return }
+        "*compose exec*" { return }
+        default { return }
+    }
+}
+'@
+        Add-Content -Path $wrapperScript -Value ". '$RepoRoot/scripts/host/update_daaf.ps1'"
+        $output = & pwsh -NoProfile -File $wrapperScript *>&1
+        $outputStr = $output | Out-String
+        $LASTEXITCODE | Should -Be 0
+        $outputStr | Should -BeLike "*Detected an interrupted update -- finishing it now.*"
+        $outputStr | Should -BeLike "*Update complete*"
+        # The fresh-pull re-run note fires because Behind>0.
+        $outputStr | Should -BeLike "*The interrupted update was completed first.*"
+        $outputStr | Should -BeLike "*run the updater again to get them*"
+        $outputStr | Should -BeLike "*.\update_daaf.ps1*"
+        # Still no menu -- the interrupted update is finished first, never mixed.
+        $outputStr | Should -Not -BeLike "*1) MERGE (recommended)*"
+        $outputStr | Should -Not -BeLike "*local commit(s) on*"
     }
 }

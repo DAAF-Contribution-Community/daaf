@@ -58,6 +58,22 @@ mirrors:
     coverage_notes: >
       Complete coverage of all data sources in flat {source}/{filename}.parquet structure.
       Parquet format: columnar, compressed (3-10x smaller than CSV), schema embedded.
+      Provenance: files are Polars-written. Some declare string columns as Arrow
+      'string_view' in the parquet-native schema (confirmed: saipe/districts_saipe,
+      edfacts/schools_edfacts_grad_rates_2015..2019). Python (Polars/pyarrow) reads
+      these fine, but the R arrow binding fails at Table->data.frame with
+      'cannot handle Array of type <utf8_view>'. R readers MUST use the view-safe
+      parquet read pattern (read as Arrow Table, cast view types to materialized,
+      then convert; a no-op on plain-string files). See fetch-patterns.md. Do NOT
+      use open_dataset()|>collect() as a workaround — it hits the same error.
+      R large-file timeout: arrow::read_parquet(url) and readr::read_csv(url) both
+      transfer via R's download.file(), which caps the whole transfer at
+      getOption("timeout") (default 60s), so large files here (e.g.
+      ccd/schools_ccd_directory.parquet, ~224MB) truncate at ~60s and silently fall
+      through to the next mirror in priority order. The timeout: 300 above is not consulted by the R
+      readers — raise it in-script with options(timeout = max(600, getOption("timeout")))
+      before the mirror loop (or use curl::multi_download for very large files).
+      See fetch-patterns.md. Python (Polars/pyarrow) is unaffected.
     metadata:
       url_template: "{root_url}/{path}.{format}"
       formats: [xls]

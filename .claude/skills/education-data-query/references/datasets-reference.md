@@ -25,6 +25,22 @@ DATASET_PATH = "saipe/districts_saipe"
 df = fetch_from_mirrors(DATASET_PATH, years=[2020, 2021, 2022])
 ```
 
+```r
+# Example: SAIPE district poverty
+# See fetch-patterns.md for the full R mirror resolution pattern.
+# NOTE: this abbreviated snippet uses a plain arrow::read_parquet() for brevity, but
+# saipe/districts_saipe is a Polars-written file with string_view columns — a plain
+# read fails under R arrow with "cannot handle Array of type <utf8_view>". In real
+# fetch scripts use the VIEW-SAFE read pattern from fetch-patterns.md (eager_parquet
+# branch), not this one-liner.
+dataset_path <- "saipe/districts_saipe"
+config <- yaml::read_yaml(mirrors_yaml_path)
+mirror <- config$mirrors[[1]]
+url <- paste0(mirror$root_url, "/", dataset_path, ".", mirror$format)
+df <- arrow::read_parquet(url) |>   # illustrative only — see view-safe note above
+  filter(year %in% c(2020, 2021, 2022))
+```
+
 No per-mirror path dicts needed — one path works for all mirrors.
 
 ---
@@ -107,6 +123,8 @@ No per-mirror path dicts needed — one path works for all mirrors.
 > **CRDC naming note:** CRDC codebook filenames frequently use hyphens where data paths use underscores or concatenated names. Additionally, some codebook names differ structurally from their data counterparts (e.g., data `harass_bully_students` vs codebook `harrassment-bullying-students`; data `restraint_seclusion_students` vs codebook `restraint-seclusion-students`). Note the mirror's codebook files spell "harassment" as "harrassment" (double r) — this is intentional and must be preserved. Always use the exact paths shown above.
 
 > **CRDC ID columns:** All CRDC datasets have `crdc_id`, `ncessch`, and `leaid` as String columns (zero-padded IDs). When reading from CSV, these **must** be forced to String via `schema_overrides` — Polars infers them as Int64, silently destroying leading zeros for ~19% of rows (FIPS 01-09 states: AL, AK, AZ, AR, CA, CO, CT). Parquet preserves types automatically. See `education-data-source-crdc` skill for full details.
+>
+> **Zero-padded IDs are not CRDC-only.** The same CSV-fallback trap applies to EDFacts and SAIPE `ncessch`/`leaid`, and force-string alone is not always enough: 2019 EDFacts source files ship *already-truncated* IDs, so the canonical recipe is force-string **plus** pad-and-assert (`ncessch`→12, `leaid`→7) after read. See the "Zero-padded ID columns" bullets in `fetch-patterns.md` § Format Handling for the bilingual pattern and per-source specifics.
 
 ### MEPS
 

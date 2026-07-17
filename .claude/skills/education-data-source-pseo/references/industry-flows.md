@@ -96,6 +96,30 @@ prof_services = df.filter(
     & (pl.col("employed_grads_count_f") > 0)
 )
 ```
+```r
+# Fetch PSEO data.
+# fetch_from_mirrors() is a Python helper; in R, build the URL from the mirror
+# root in mirrors.yaml and read directly.
+# Mirror failover: see `education-data-query/references/fetch-patterns.md` (R pattern).
+config <- yaml::read_yaml("mirrors.yaml")
+mirror <- config$mirrors[[1]]
+url <- paste0(mirror$root_url, "/", "pseo/colleges_pseo_2020", ".", mirror$format)
+# NOTE: illustrative only — mirror parquet files are Polars-written and may
+# declare string_view columns, so a plain read can fail under R arrow
+# ("cannot handle Array of type <utf8_view>"). Real fetch scripts must use the
+# view-safe parquet read from `education-data-query/references/fetch-patterns.md`.
+df <- arrow::read_parquet(url)
+
+# Employment in Professional Services sector ("54"), 1 year post-graduation
+prof_services <- df |> filter(
+  industry == "54",
+  unitid == 228778,          # UT Austin
+  degree_level == 5,          # Bachelor's
+  cipcode == 11,              # Computer Science
+  years_after_grad == 1,
+  employed_grads_count_f > 0
+)
+```
 
 ### Multiple Industries
 
@@ -114,6 +138,22 @@ all_industries = df.filter(
     & (pl.col("years_after_grad") == 1)
     & (pl.col("employed_grads_count_f") > 0)
 ).select("industry", "employed_grads_count_f")
+```
+```r
+# Filter to specific NAICS sectors
+tech_sectors <- df |> filter(
+  industry %in% c("51", "54", "52"),
+  years_after_grad == 1,
+  employed_grads_count_f > 0
+)
+
+# Get distribution across all industries for a program
+all_industries <- df |> filter(
+  unitid == 228778,
+  cipcode == 11,
+  years_after_grad == 1,
+  employed_grads_count_f > 0
+) |> select(industry, employed_grads_count_f)
 ```
 
 ## Analysis Patterns
@@ -148,6 +188,13 @@ Compare Y1 vs Y5 vs Y10 industry distribution:
 for year in [1, 5, 10]:
     industry_dist = get_employment_by_naics(institution, cip, year)
     print(f"Year {year}: {industry_dist}")
+```
+```r
+# Pseudo-code: How industry distribution changes over time
+for (yr in c(1, 5, 10)) {
+  industry_dist <- get_employment_by_naics(institution, cip, yr)
+  cat(sprintf("Year %d: %s\n", yr, industry_dist))
+}
 ```
 
 **Example finding**: Engineering graduates may start in manufacturing (31-33) but shift toward management (55) or professional services (54) by Year 10.

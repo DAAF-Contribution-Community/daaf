@@ -263,6 +263,20 @@ url = get_codebook_url("edfacts/codebook_schools_edfacts_graduation")
 url = get_codebook_url("edfacts/codebook_districts_edfacts_graduation")
 ```
 
+```r
+# get_codebook_url() is a Python helper; in R, build the URL from the mirror root.
+# Mirror failover: see `education-data-query/references/fetch-patterns.md` (R pattern)
+mirror <- yaml::read_yaml("mirrors.yaml")$mirrors[[1]]
+
+# Assessment codebooks:
+url <- paste0(mirror$root_url, "/", "edfacts/codebook_schools_edfacts_assessments", ".xls")
+url <- paste0(mirror$root_url, "/", "edfacts/codebook_districts_edfacts_assessments", ".xls")
+
+# Graduation rate codebooks:
+url <- paste0(mirror$root_url, "/", "edfacts/codebook_schools_edfacts_graduation", ".xls")
+url <- paste0(mirror$root_url, "/", "edfacts/codebook_districts_edfacts_graduation", ".xls")
+```
+
 > **Codebook naming note:** Graduation rate codebooks use `_graduation` (not `_grad_rates`), while the data files use `_grad_rates`. This follows the same pattern as other Portal sources where codebook names differ from data file names. See `datasets-reference.md` for the authoritative path mapping.
 
 ### Dataset Column Differences
@@ -293,6 +307,21 @@ df_econ = df.filter(pl.col("econ_disadvantaged") == 1)  # Economically disadvant
 
 # Race filtering: integer codes
 df_black = df.filter(pl.col("race") == 2)  # Black students
+```
+
+```r
+library(dplyr)
+
+# Grade filtering: grade_edfacts uses integer codes
+df <- df |> filter(grade_edfacts == 4)   # Grade 4
+df <- df |> filter(grade_edfacts == 99)  # All grades combined
+
+# Subgroup filtering: special population columns use 1/99 pattern
+df_total <- df |> filter(sex == 99)                # All students (total)
+df_econ <- df |> filter(econ_disadvantaged == 1)   # Economically disadvantaged only
+
+# Race filtering: integer codes
+df_black <- df |> filter(race == 2)  # Black students
 ```
 
 ## Common Pitfalls
@@ -345,6 +374,17 @@ trend = state_df.group_by("year").agg(
 # Valid: Same state, same test system
 ```
 
+```r
+library(dplyr)
+
+# Within-state trend analysis
+state_df <- df |> filter(fips == 6)  # California only
+trend <- state_df |>
+  group_by(year) |>
+  summarise(read_test_pct_prof_midpt = mean(read_test_pct_prof_midpt, na.rm = TRUE))
+# Valid: Same state, same test system
+```
+
 **INVALID Analysis:**
 
 ```python
@@ -353,6 +393,18 @@ trend = state_df.group_by("year").agg(
 state_comparison = df.group_by("fips").agg(
     pl.col("read_test_pct_prof_midpt").mean()
 ).sort("read_test_pct_prof_midpt", descending=True)
+# INVALID: Different tests, different standards
+```
+
+```r
+library(dplyr)
+
+# DO NOT DO THIS - Cross-state comparison
+# This comparison is MEANINGLESS
+state_comparison <- df |>
+  group_by(fips) |>
+  summarise(read_test_pct_prof_midpt = mean(read_test_pct_prof_midpt, na.rm = TRUE)) |>
+  arrange(desc(read_test_pct_prof_midpt))
 # INVALID: Different tests, different standards
 ```
 

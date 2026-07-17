@@ -17,7 +17,7 @@ as variables. There is no `estimates store` / `estimates restore` — every
 `pf.feols()` or `smf.ols().fit()` already returns a persistent object.
 
 > **Versions referenced:**
-> Python: pyfixest 0.40.0, statsmodels 0.14.6, linearmodels (unpinned), marginaleffects (unpinned)
+> Python: pyfixest 0.40.0, statsmodels 0.14.6, linearmodels 7.0, marginaleffects 0.5.0
 > Stata: Stata 18 (SE/MP)
 > See SKILL.md for the complete version table.
 

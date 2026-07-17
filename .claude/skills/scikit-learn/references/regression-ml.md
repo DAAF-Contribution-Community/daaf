@@ -246,7 +246,7 @@ model = lgb.LGBMRegressor(
 )
 model.fit(X_train, y_train)
 
-# XGBoost (optional install: uv pip install --system --no-deps xgboost)
+# XGBoost (not pre-installed; runtime installs blocked — see CLAUDE.md § Runtime Package Installation)
 import xgboost as xgb
 model = xgb.XGBRegressor(
     n_estimators=100,

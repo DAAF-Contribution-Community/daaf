@@ -210,3 +210,40 @@ teardown() {
     run bash "${REPO_ROOT}/scripts/host/run_vscode.sh"
     assert_output --partial "DAAF container is running"
 }
+
+# =========================================================================
+# Browser auto-open (open_url integration)
+# =========================================================================
+
+@test "run_vscode.sh sources daaf_lib.sh when present" {
+    run grep -c "source.*daaf_lib.sh" "${REPO_ROOT}/scripts/host/run_vscode.sh"
+    assert_success
+    [ "${output}" -ge 1 ]
+}
+
+@test "run_vscode.sh calls open_url with the host VS Code port (default 2720)" {
+    # The URL uses the overridable host port var (defaults to 2720). Assert the
+    # parameterized form plus the default resolution.
+    run grep 'open_url.*DAAF_PORT_VSCODE' "${REPO_ROOT}/scripts/host/run_vscode.sh"
+    assert_success
+    assert_output --partial 'http://localhost:${DAAF_PORT_VSCODE}'
+    run grep 'DAAF_PORT_VSCODE:-2720' "${REPO_ROOT}/scripts/host/run_vscode.sh"
+    assert_success
+}
+
+@test "run_vscode.sh guards open_url behind command -v check" {
+    # Verify the script uses a guard pattern so open_url is only called
+    # when the function is actually available (backwards compatible when
+    # daaf_lib.sh is absent).
+    run grep "command -v open_url" "${REPO_ROOT}/scripts/host/run_vscode.sh"
+    assert_success
+    assert_output --partial "open_url"
+}
+
+@test "run_vscode.sh dry-run completes with library sourcing" {
+    # With daaf_lib.sh present, open_url is a no-op in dry-run mode.
+    # Confirms the full script (including library sourcing) works end-to-end.
+    run env DAAF_DRY_RUN=1 DAAF_NESTED=1 bash "${REPO_ROOT}/scripts/host/run_vscode.sh"
+    assert_success
+    assert_output --partial "Code Browser"
+}

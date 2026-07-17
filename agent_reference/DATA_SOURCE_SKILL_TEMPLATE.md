@@ -33,6 +33,12 @@ Every data source SKILL.md MUST contain these sections in this exact order:
 12. ## Topic Index
 ```
 
+Conditional top-of-skill section (synthetic-derived skills ONLY):
+- `## Synthetic Data Notice` — MANDATORY when `metadata.data-provenance` is any `synthetic-*`
+  value; MUST NOT appear for real sources. Placed immediately after the Value Encodings
+  Warnings blockquote (position 4), before the "What is [Source]?" section, so it is among
+  the first things any agent reads. See the annotated Section 4.6 below.
+
 Optional sections (insert between 10 and 11 if needed):
 - `## Limitations` — only if content doesn't fit naturally in Common Pitfalls
 - `## Common Use Cases` — if the source has distinct research applications worth enumerating
@@ -57,12 +63,13 @@ Everything below this line is the template. Annotations appear in `<!-- HTML com
 name: *-data-source-[acronym]
 description: >-
   [ACRONYM] — [what it is] ([coverage], [year range]). [Key content areas].
-  Use for [triggers]. [Critical constraint or disambiguation]. (≤250 chars)
+  Use for [triggers]. [Critical constraint or disambiguation].
 metadata:
   audience: any-agent
   domain: data-source
   skill-authored: "YYYY-MM-DD"      # Date this skill was first created
   skill-last-updated: "YYYY-MM-DD"  # Date this skill was last updated or re-verified
+  data-provenance: real             # OPTIONAL — omit (or set "real") for conventionally-onboarded sources; see rules below
 ---
 ```
 
@@ -75,19 +82,29 @@ metadata:
     - Examples: education-data-source-ccd, election-data-source-countypres
     - When a source has multiple tables, append a table identifier
       (e.g., education-data-source-ccd-schools)
-  - description: **≤250 chars** (HARD LIMIT — truncated in system prompt beyond this)
+  - description: ≤1,024 chars (validation limit). Write a complete, information-rich
+    description — this is the only text agents see when deciding whether to load the
+    skill. Longer is allowed but not always better: 40+ DAAF skills share an aggregate
+    skill-listing budget (~1% of the context window), and when it overflows, descriptions
+    for the least-invoked skills are dropped first. Spend characters on triggering
+    accuracy and critical caveats, not exhaustive content inventories.
+    (Display: the listing truncates the combined description + when_to_use at 1,536
+    chars — raised from 250 in Claude Code v2.1.105; configurable via
+    maxSkillDescriptionChars, so verify if truncation behavior seems off.)
   - description: no angle brackets (< >)
-  - description: MUST include both "what it does" AND "when to use it" within 250 chars
+  - description: MUST include both "what it does" AND "when to use it"
   - description: MUST include approximate year coverage for the source (e.g., "2009-2022")
   - description: Front-load the source identity (acronym + what it is), NOT skill-document
     framing — write "CCD — federal universe of all U.S. public K-12 schools..."
     not "Deep reference for the Common Core of Data (CCD)..."
   - description: Include Portal-specific data scope when it differs from the full source
-    (e.g., "Portal: 7 columns only") — abbreviate to fit 250-char budget
-  - description: Include key disambiguation (what NOT to use this for) if space permits
-  - FULL DESCRIPTION: The complete description (with all detail that couldn't fit in
-    250 chars) goes as a plain paragraph after the # Title heading in the body.
-    This is visible once the skill is loaded but does NOT influence triggering.
+    (e.g., "Portal: 7 columns only")
+  - description: Include key disambiguation (what NOT to use this for)
+  - FULL DESCRIPTION: Write an expanded body description as a plain paragraph after
+    the # Title heading — it elaborates beyond the frontmatter (expanded scope,
+    additional triggers, detailed disambiguation) rather than duplicating it, and is
+    the natural home for detail that doesn't earn its place in the shared listing
+    budget. It is visible once the skill is loaded but does NOT influence triggering.
   - domain: ALWAYS use "data-source" for all data source skills
   - audience: ALWAYS use "any-agent" for data source skills
   - PROVENANCE (REQUIRED for all data source skills — stored as metadata keys):
@@ -96,6 +113,23 @@ metadata:
     - On updates: change skill-last-updated only; skill-authored remains fixed
     - STALENESS: If skill-last-updated is more than a few months old, treat skill
       claims with caution — data sources evolve and skill documentation may have drifted
+  - DATA-PROVENANCE (OPTIONAL for conventionally-onboarded sources; MANDATORY for
+    synthetic-derived skills — those built via the `synthetic-data-workflow` skill from a
+    disclosure-controlled profile rather than from the real data in-container):
+    - Purpose: declares whether the skill describes real data profiled in-container or a
+      synthetic stand-in generated from a profile report, so any agent loading the skill
+      knows the data is a code-development scaffold, not an analytic substitute.
+    - Permitted values (exactly one):
+      - `real` — the default; source was profiled in-container from the real file/API
+        (Data Onboarding DI-2 onward). Absent key is treated as `real`.
+      - `synthetic-profile-t1` — synthetic data generated from a Tier 1 (Schema) profile
+      - `synthetic-profile-t2` — synthetic data generated from a Tier 2 (Marginals) profile
+      - `synthetic-profile-t3` — synthetic data generated from a Tier 3 (Relationships) profile
+      - `synthetic-local-t4` — synthetic rows produced locally by a Tier 4 high-fidelity
+        synthesizer inside the user's environment (real data never crossed the boundary)
+    - Any `synthetic-*` value REQUIRES the "Synthetic Data Notice" section (below).
+    - See the `synthetic-data-workflow` skill for the tier ladder and the workflow that
+      produces these skills.
 -->
 
 ---
@@ -118,8 +152,8 @@ metadata:
 ### Section 3: Full Description + Summary
 
 ```markdown
-[Full description paragraph — the complete, detailed description that was condensed
-to ≤250 chars for frontmatter. Includes all capabilities, specific triggers, scope
+[Full description paragraph — the complete, detailed description, expanded from
+the frontmatter description. Includes all capabilities, specific triggers, scope
 limitations, and disambiguation. This is what agents see once the skill is loaded.]
 
 [Optional: One additional sentence describing the source's unique value proposition
@@ -128,13 +162,13 @@ above doesn't already convey this.]
 ```
 
 <!-- RULES:
-  - FIRST PARAGRAPH (required): The full description preserved from frontmatter condensation.
-    Contains everything that couldn't fit in 250 chars: expanded scope, additional triggers,
-    detailed disambiguation, year coverage details, key caveats.
+  - FIRST PARAGRAPH (required): The full description, expanded beyond the frontmatter.
+    Contains detail deliberately left out of the shared listing budget: expanded scope,
+    additional triggers, detailed disambiguation, year coverage details, key caveats.
     Written as a plain paragraph (no heading, no blockquote) immediately after # Title.
   - SECOND PARAGRAPH (optional): Additional unique value proposition if needed.
   - Do NOT simply duplicate the frontmatter description — expand and elaborate.
-  - Total: aim for 2-4 sentences across both paragraphs.
+  - Total: aim for 2-5 sentences (~400-1,000 chars) across both paragraphs.
 -->
 
 ---
@@ -182,6 +216,55 @@ When in doubt, re-run data-ingest to re-verify against fresh data.
 
 ---
 
+### Section 4.6 (Conditional): Synthetic Data Notice
+
+> **Include this section ONLY for synthetic-derived skills** — those whose
+> `metadata.data-provenance` is a `synthetic-*` value. Real sources MUST NOT include it.
+> Place it immediately after the Value Encodings Warnings blockquote (Section 4) and before
+> the "What is [Source]?" section. The purpose is to make the synthetic origin unmissable and
+> to bind every downstream analysis to the finalize-against-real-data requirement.
+
+```markdown
+## Synthetic Data Notice
+
+> **This skill describes SYNTHETIC data — a code-development scaffold, not an analytic substitute.**
+>
+> The data this skill references was generated from a **disclosure-controlled profile at Tier [N]
+> ([Schema / Marginals / Relationships / Local high-fidelity synthesis])** of the real source, which
+> never entered the DAAF container. It is *structurally* representative of the real data but
+> *statistically* an approximation: use it to develop, debug, and dry-run analysis code — never to
+> produce findings.
+>
+> **All analysis findings MUST be finalized by re-running the vetted analysis code against the real
+> data, inside the environment where the real data lives.** Numbers computed on this synthetic data
+> are provisional scaffolding only.
+>
+> **Reproducibility:**
+> - Generation seed: `[seed]`
+> - Profiling report: `[path to profile report, e.g., data/profile_report/...]`
+> - Generation script(s): `[path(s), e.g., scripts/stage5_fetch/... and data/synthetic/...]`
+>
+> **What the Tier [N] profile preserved:** [e.g., univariate distributions (percentile-based) and
+> selected pairwise correlations].
+> **What it did NOT preserve:** [e.g., conditional/joint relationships, true missingness mechanisms,
+> tail behavior, real categorical co-occurrence]. Do not rely on any structure listed here as
+> preserved-not.
+```
+
+<!-- RULES:
+  - MANDATORY iff metadata.data-provenance is `synthetic-profile-t1/t2/t3` or `synthetic-local-t4`;
+    OMIT entirely for real sources
+  - MUST state: the tier and what it means; the scaffold-not-substitute doctrine; the explicit
+    finalize-against-real-data instruction; the generation seed and script/report paths for
+    reproducibility; and a preserved / NOT-preserved split so no reader over-trusts the synthetic
+    joint structure
+  - Keep it a blockquote so it renders as a prominent callout, mirroring the Value Encodings warning
+  - The tier, seed, paths, and preserved/not-preserved content come from the synthetic-data-workflow
+    run that produced the skill (see that skill's validation-checks.md and generation-patterns-*.md)
+-->
+
+---
+
 ### Section 5: What is [Source]?
 
 ```markdown
@@ -194,6 +277,9 @@ When in doubt, re-run data-ingest to re-verify against fresh data.
 - **[Attribute 3]**: [Value] (e.g., "Frequency: Annual collection")
 - **[Attribute 4]**: [Value] (e.g., "Available years: 1986-present")
 - **[Attribute 5]**: [Value] (e.g., "Primary identifier: NCESSCH (12-digit school ID)")
+- **Data Provenance**: [Real — profiled in-container / Synthetic — generated from a
+  Tier [N] disclosure-controlled profile; see Synthetic Data Notice] (INCLUDE this bullet
+  only for synthetic-derived skills; omit entirely for real/conventionally-onboarded sources)
 ```
 
 <!-- RULES:
@@ -202,6 +288,10 @@ When in doubt, re-run data-ingest to re-verify against fresh data.
     frequency, available years, and primary identifier
   - NOT paragraphs, NOT numbered lists, NOT subsections
   - Keep to 5-8 bullets max
+  - DATA PROVENANCE BULLET: add only when metadata.data-provenance is a `synthetic-*`
+    value — it gives an at-a-glance signal that the source is synthetic and points to the
+    Synthetic Data Notice. Omit the bullet for real sources (the absent bullet and the
+    absent/`real` metadata key both mean "real data").
 -->
 
 ---
@@ -328,6 +418,7 @@ When in doubt, re-run data-ingest to re-verify against fresh data.
 
 ### Example Fetch
 
+**Python:**
 ```python
 # Uses fetch_from_mirrors() from fetch-patterns.md — tries each mirror
 # in priority order per mirrors.yaml and applies filters locally.
@@ -340,10 +431,34 @@ df = fetch_from_mirrors(
 )
 ```
 
+**R:**
+```r
+# Uses arrow::read_parquet() for mirror-hosted parquet files.
+# Mirror URL constructed from mirrors.yaml configuration.
+library(arrow)
+library(dplyr)
+
+# NOTE: illustrative only — mirror parquet files are typically Polars-written and
+# may declare string_view columns, so a plain read can fail under R arrow
+# ("cannot handle Array of type <utf8_view>"). Real fetch scripts must use the
+# view-safe parquet read from the domain query skill's fetch-patterns.md (e.g.,
+# education-data-query for the education domain). Carry this NOTE into the skill
+# you author — keep the error signature and the term "view-safe parquet read".
+df <- read_parquet("[mirror_url]/[source]/[dataset_path].parquet") |>
+  filter(fips == 6, year %in% c([year]))
+```
+
 ### Filtering
 
+**Python:**
 ```python
 # [Source-specific filtering examples]
+# Show 2-3 common filter patterns relevant to this source
+```
+
+**R:**
+```r
+# [Source-specific filtering examples using dplyr::filter()]
 # Show 2-3 common filter patterns relevant to this source
 ```
 ```
@@ -420,6 +535,7 @@ Use this skeleton instead of (or in addition to) the mirror-based skeleton above
 
 ### Example Fetch
 
+**Python:**
 ```python
 import os, io, requests
 import polars as pl
@@ -440,17 +556,50 @@ print(f"Shape: {df.shape}")
 assert df.shape[0] > 0, "STOP: Empty response from API"
 ```
 
+**R:**
+```r
+library(httr2)
+library(arrow)
+
+# --- Config ---
+API_KEY <- Sys.getenv("[ENV_VAR_NAME]")
+ENDPOINT <- "[base_url/endpoint]"
+
+# --- Fetch ---
+# INTENT: Download [dataset] via [API name]
+# ASSUMES: API key is set in environment
+resp <- request(ENDPOINT) |>
+  req_url_query(key = API_KEY) |>
+  req_perform()
+df <- resp_body_string(resp) |>
+  read.delim(text = _, sep = "\t") |>
+  as_tibble()
+
+# --- Validate ---
+cat(sprintf("Shape: %d rows x %d cols\n", nrow(df), ncol(df)))
+stopifnot("STOP: Empty response from API" = nrow(df) > 0)
+```
+
 ### Data Persistence
 
 **Local storage (download once, then use local file):**
+
+Python:
 ```python
 # Save to project data/raw/ after fetching
 df.write_parquet(f"{DATA_DIR}/raw/{DATE}_{source}_{dataset}.parquet")
 # Subsequent scripts load from local parquet — no API access needed
 ```
 
+R:
+```r
+# Save to project data/raw/ after fetching
+write_parquet(df, file.path(DATA_DIR, "raw", paste0(DATE, "_", source, "_", dataset, ".parquet")))
+# Subsequent scripts load from local parquet — no API access needed
+```
+
 **Live query (fetch from API each time):**
-```python
+```
 # Include the full API call pattern above in each Stage 5 script
 # Data is always current but requires API access and a valid key
 # Consider saving a local backup for offline use
@@ -458,9 +607,16 @@ df.write_parquet(f"{DATA_DIR}/raw/{DATE}_{source}_{dataset}.parquet")
 
 ### Filtering
 
+**Python:**
 ```python
 # [Source-specific filtering examples after download]
 # All filtering is done locally with Polars after the API response is received
+```
+
+**R:**
+```r
+# [Source-specific filtering examples after download]
+# All filtering is done locally with dplyr after the API response is received
 ```
 ```
 
@@ -540,6 +696,7 @@ Use this section when the data source comprises multiple related files at differ
 
 ### Join Patterns
 
+**Python:**
 ```python
 # Join schools to districts
 schools_with_district = schools.join(
@@ -552,6 +709,18 @@ schools_with_district = schools.join(
 # WARNING: Check for leaid values in schools that have no district match
 unmatched = schools_with_district.filter(pl.col("col_district").is_null()).shape[0]
 print(f"Join coverage: {len(schools_with_district) - unmatched} / {len(schools_with_district)}")
+```
+
+**R:**
+```r
+# Join schools to districts
+schools_with_district <- schools |>
+  left_join(districts, by = "leaid", suffix = c("", "_district"))
+# ASSUMES: leaid is present in both files
+# WARNING: Check for leaid values in schools that have no district match
+unmatched <- sum(is.na(schools_with_district$col_district))
+cat(sprintf("Join coverage: %d / %d\n",
+    nrow(schools_with_district) - unmatched, nrow(schools_with_district)))
 ```
 
 ### Cross-Level Caveats
@@ -634,8 +803,8 @@ print(f"Join coverage: {len(schools_with_district) - unmatched} / {len(schools_w
 | Metric | Target | Hard Limit |
 |--------|--------|------------|
 | Total SKILL.md lines | 250-400 | 500 |
-| Frontmatter description | 200-250 chars | **250 chars** (hard limit — truncated in system prompt) |
-| Body full description | 2-4 sentences | ~500 chars |
+| Frontmatter description | 300-700 chars | **1,024 chars** (validation limit; the listing displays description + when_to_use combined up to 1,536 chars) |
+| Body full description | 2-5 sentences (~400-1,000 chars) | No hard limit — should be at least as informative as the frontmatter description, adding detail omitted from the listing for budget economy |
 | Decision trees | 2-4 trees | 6 trees |
 | Quick Reference subsections | 3-6 | 10 |
 | Common Pitfalls rows | 3-8 | 12 |
@@ -723,13 +892,15 @@ that are purely factual data dumps — these are less useful than the raw data i
 Use this checklist when reviewing a skill for template compliance:
 
 - [ ] Frontmatter: `domain: data-source` (all data source skills use this functional category)
-- [ ] Frontmatter: description ≤250 chars and includes "what" AND "when to use" AND year coverage
+- [ ] Frontmatter: description is complete and information-rich (≤1,024 chars, budget-aware) and includes "what" AND "when to use" AND year coverage
 - [ ] Frontmatter: description front-loads source identity (not "Deep reference for...")
 - [ ] Body: full description paragraph after `# Title` heading (expanded from frontmatter)
 - [ ] Frontmatter: `skill-authored` and `skill-last-updated` present as metadata keys with ISO-8601 dates
 - [ ] Title: `# [ACRONYM] Data Source Reference` format
-- [ ] Summary: 1-2 sentences after title
+- [ ] Summary: optional value-proposition sentence after the description paragraph (Section 3 allows 2-5 sentences total across both paragraphs)
 - [ ] Value Encodings Warnings: blockquote in position 4 with comparison table
+- [ ] If synthetic-derived: `metadata.data-provenance` is a `synthetic-*` value AND the Synthetic Data Notice section (4.6) is present with tier, seed, script/report paths, and preserved/NOT-preserved split
+- [ ] If real source: no `data-provenance` key (or `real`) AND no Synthetic Data Notice section
 - [ ] "What is" section: bullet list with bold keys
 - [ ] Reference File Structure: 3-column table present
 - [ ] Decision Trees: at least 2 trees in code blocks

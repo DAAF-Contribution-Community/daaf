@@ -24,7 +24,7 @@ Stage 1: Classify as Revision and Extension Mode → Confirm with user
 Locate Existing Project
     ├─ Search research/ for the referenced analysis folder
     ├─ Read the COMPLETE existing Plan.md and Plan_Tasks.md
-    ├─ Read the existing notebook to understand current state
+    ├─ Read the existing notebook (marimo `.py` or Quarto `.qmd`) to understand current state
     └─ Read STATE.md and extract original execution context (see below)
     ↓
 Classify Revision Type → Confirm with user
@@ -32,6 +32,7 @@ Classify Revision Type → Confirm with user
 Create New Version
     ├─ Create new versions of BOTH Plan.md AND Plan_Tasks.md (e.g., 2026-01-24a → 2026-01-24b)
     ├─ Document revision request and type in new Plan.md + updated task specs in new Plan_Tasks.md
+    ├─ Resync STATE.md to the revised Plan_Tasks.md BEFORE any re-execution (see Session Management § STATE.md)
     └─ Execute required stages (load full-pipeline-mode.md if needed)
     ↓
 Final Review
@@ -96,7 +97,7 @@ Version suffixes follow the convention defined in `CLAUDE.md` > "Version Control
 - New versions of BOTH Plan.md AND Plan_Tasks.md document the revision rationale and what changed
 - Version suffix applies consistently to both files (e.g., both get `_a` suffix)
 
-**Skill element update:** When a Methodology Change revision changes the statistical approach (e.g., OLS to fixed effects, or adding spatial analysis), update the `<skill>` element in the relevant Plan_Tasks.md task blocks to reflect the new modeling library. Consult the `data-scientist` skill's routing tree or full-pipeline-mode.md's "Modeling library selection" section for the canonical routing.
+**Skill element update:** When a Methodology Change revision changes the statistical approach (e.g., OLS to fixed effects, or adding spatial analysis), update the `<skill>` element in the relevant Plan_Tasks.md task blocks to reflect the new modeling library. Consult the `data-scientist` skill's routing tree or full-pipeline-mode.md's "Modeling library selection" section for the canonical routing. The routing is language-dependent: Python uses `statsmodels`/`pyfixest`/`linearmodels`/`svy`/`scikit-learn`/`geopandas`; R uses `r-stats`/`fixest`/`plm`/`survey-r`/`tidymodels`/`sf-terra`.
 
 ## Re-run Guidance
 
@@ -116,6 +117,8 @@ Version suffixes follow the convention defined in `CLAUDE.md` > "Version Control
 The canonical re-run decision trees live in `agent_reference/ERROR_RECOVERY.md`. The table above is a quick reference for revision-specific scenarios.
 
 For stages that need re-execution, load `{SKILL_REFS}/full-pipeline-mode.md` and follow the relevant stage's Composite Execution Pattern. All QA requirements from the full pipeline apply to re-executed stages.
+
+**Wave barrier discipline (async dispatch).** Because re-execution reuses the full pipeline's wave-based dispatch, the same barrier applies: subagents run in the background by default and return via completion notifications that may arrive one at a time. When re-executing stages that dispatch multiple subagents in a wave, treat mid-wave notifications as status-only — do not run gates, update STATE.md conclusions, assemble the Revision Status Update, or present interim findings to the user until EVERY member of the wave has returned, and synthesize once over the complete wave (a failed or early-returning agent still counts as a completion). See the full statement in `full-pipeline-mode.md` § "Wave-Based Parallel Execution" and the master statement in `SKILL.md` § Subagent Coordination.
 
 **Gate applicability:** Stage gates from `full-pipeline-mode.md` apply to all re-executed stages. Gates for stages that are NOT being re-executed are considered already satisfied from the prior version. PSUs are NOT required (replaced by Revision Status Update), but gates within re-executed stages are mandatory.
 
@@ -138,6 +141,8 @@ When re-executing pipeline stages for a revision, load these files based on the 
 ### Revision and Extension Session Management
 
 **STATE.md:** Update the existing project's STATE.md with the revision context. Do not create a new STATE.md. Add a "Revision" section noting the revision type, affected stages, and re-entry point.
+
+**Pre-execution STATE.md synchronization (mandatory, before any re-execution dispatch).** Immediately after the revised Plan.md + Plan_Tasks.md versions are written at "Create New Version" — and BEFORE dispatching any re-execution subagent — resynchronize STATE.md to the revised Plan_Tasks.md: rebuild the Transformation Progress table from the revised Task Index (reset rows for affected/regenerated tasks to pending; carry over completed rows for unaffected tasks ONLY when the task still exists with an identical script path), and update the Plan.md / Plan_Tasks.md paths, Current Stage, and Next Actions. Then validate: Transformation Progress row count == the revised Plan_Tasks.md `total_tasks`; every script path appears in both the table and the revised Task Index; no STATE.md content references a superseded plan-version filename. If any check fails, STOP — fix STATE.md and re-validate before dispatching. This mirrors the Gate G4.5 plan-revision synchronization in `full-pipeline-mode.md`. It is distinct from and complements the *post-execution* status update at Worked Example Step 8, which records executed script versions' QA status after re-execution completes. The orchestrator owns this synchronization; subagents never write STATE.md.
 
 **LEARNINGS.md:** Append revision-specific learnings to the existing LEARNINGS.md. Revision sessions often produce the richest learnings about data quality and methodology edge cases.
 
@@ -189,9 +194,9 @@ Example addition to subagent prompt:
 All deliverables are new-version copies; originals remain untouched:
 - Plan.md (revised, documenting change rationale)
 - Plan_Tasks.md (revised, with updated task specs)
-- Re-executed scripts (new versions in `scripts/`)
+- Re-executed scripts (new versions in `scripts/`, `.py` for Python or `.R` for R)
 - Updated data files (regenerated, not copied)
-- Notebook (reassembled with final script versions)
+- Notebook (reassembled with final script versions — marimo `.py` for Python, Quarto `.qmd` for R)
 - Report (regenerated to reflect changes)
 - Session logs collected into `logs/` (run `collect_session_logs.sh` before report generation)
 
@@ -219,7 +224,7 @@ Revision and Extension mode reuses the standard invocation templates from the re
 
 No revision-specific invocation templates are needed — the standard templates plus REVISION CONTEXT block provide complete dispatch guidance.
 
-**R/Stata-background preference:** If the original analysis was conducted for an R/Stata-background user (check STATE.md or SESSION_NOTES.md for this preference), propagate the same directive to all re-execution agent prompts: `"User has [R/Stata] background. Load [r-python-translation/stata-python-translation] skill. Add inline [R/Stata]-equivalent comments for non-trivial data operations."` This ensures revised scripts maintain the same translation annotation pattern as the originals.
+**Cross-language annotation preference:** If the original analysis used cross-language annotations (check STATE.md or SESSION_NOTES.md), propagate the same translation directive to all re-execution agent prompts. Select the directive based on execution language and background per orchestrator SKILL.md § User Language Preference Propagation (4-way table: `r-python-translation`, `stata-python-translation`, `python-r-translation`, or `stata-r-translation`). This ensures revised scripts maintain the same translation annotation pattern as the originals.
 
 ## Worked Example: Bug Fix Revision
 
@@ -245,14 +250,14 @@ No revision-specific invocation templates are needed — the standard templates 
 ## REVISION CONTEXT
 **Revision Type:** Bug Fix
 **What Changed:** Join key corrected from school_id to ncessch
-**Prior Version:** research/.../scripts/stage7_transform/01_join-data.py
+**Prior Version:** research/.../scripts/stage7_transform/01_join-data.py (or .R)
 **Reusing:** data/raw/*.parquet, data/processed/*_clean.parquet (Stage 5-6 outputs)
 **Regenerating:** All Stage 7+ outputs
 ```
 
 **Step 7: QA loop.** Code-reviewer validates each re-executed script. Gates G7-G12 must pass.
 
-**Step 8: Update STATE.md.** Add entry to Revision History table. Update Transformation Progress with new script paths and QA status.
+**Step 8: Update STATE.md (post-execution status update).** Add entry to Revision History table. Update Transformation Progress with the executed script versions' QA status and row counts. This is the *post-execution* status update — it complements, and does NOT replace, the *pre-execution* STATE.md synchronization performed at "Create New Version" (see Revision and Extension Session Management § STATE.md), which rebuilt Transformation Progress from the revised Task Index before any re-execution began.
 
 **Step 9: Present Revision Status Update** to user with summary of changes made and verification results.
 
@@ -262,7 +267,7 @@ These boundaries supplement the universal boundaries in `CLAUDE.md` and `agent_r
 
 **Always Do:**
 - Search for and locate existing project first
-- Read complete Plan.md, Plan_Tasks.md, and notebook before proposing changes
+- Read complete Plan.md, Plan_Tasks.md, and notebook (marimo `.py` or Quarto `.qmd`) before proposing changes
 - Read STATE.md before planning any revision — original execution context is critical for informed revision decisions
 - Create fresh copies of both Plan.md and Plan_Tasks.md to record new changes
 - Classify revision type and confirm with user

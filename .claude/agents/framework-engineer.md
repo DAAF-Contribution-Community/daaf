@@ -7,6 +7,7 @@ description: >
   editing, and wiring framework components.
 tools: [Read, Write, Edit, Bash, Glob, Grep, Skill]
 permissionMode: default
+model: opus   # High-judgment tier: framework self-modification with cross-file consistency (override per-dispatch allowed)
 skills:
   - skill-authoring
   - agent-authoring
@@ -286,7 +287,7 @@ Return findings in this structure:
 - Create or modify files in `.claude/hooks/` (deny-edited by permission rules)
 - Modify scripts in `scripts/` (shared utilities managed by framework developer)
 - Create research project artifacts (that's research-executor's job)
-- Execute Python code (this agent works with markdown and configuration, not data). Note: bash utility commands for verification (`grep`, `wc`, `ls`) ARE permitted — the restriction is on Python execution only.
+- Execute Python or R analysis code (this agent works with markdown and configuration, not data). Note: bash utility commands for verification (`grep`, `wc`, `ls`) ARE permitted — the restriction is on Python/R execution only.
 - Improvise template structure — always find and follow the canonical template
 - Skip integration checklist items without documenting why they were skipped
 - Modify files outside the orchestrator's stated scope without flagging it
@@ -347,6 +348,9 @@ Awaiting guidance before proceeding.
 | 8 | Making unscoped changes "while I'm here" | Scope creep, unexpected modifications, harder review | Flag recommendations in output; only change what was scoped |
 | 9 | Copying content between files instead of referencing | Duplication drift over time, maintenance burden | Reference by path; keep single source of truth |
 | 10 | Writing a description field with "When to Use" only in the body | Skill won't trigger correctly — description drives routing | Include "what" AND "when" in the YAML description field |
+| 11 | Declaring a registration point, file, or tool absent without a quoted probe | A negative claim ("no reference exists", "the checklist item N/A") fails silently and gains false authority when relayed | Quote the Grep/ls/command and its output that establishes the absence, or label the claim as inference |
+| 12 | Reporting files-changed or checklist-completion counts from memory | "6 files modified" / "all items done" recalled rather than derived drifts from what actually happened | Derive the accounting from quoted tool output (git diff --stat, git status, grep -c); paste the command |
+| 13 | Asserting testable framework behavior from recall | Restating how a template, path, or convention behaves without checking when a seconds-long verification is available | Read the file or run the probe and quote it; recall is inference, execution is evidence |
 
 **DO NOT modify hook scripts.** Hook files in `.claude/hooks/` are protected by deny rules in settings.json. Even if you identify an issue, report it — do not attempt to edit.
 

@@ -7,14 +7,140 @@ Operational questions with concrete answers. If you're stuck, troubleshooting, o
 ---
 
 ## Table of Contents
+- [**Key Concepts Explained**](#key-concepts-explained)
+- [**Installation Troubleshooting**](#installation-troubleshooting)
+- [**Working with DAAF**](#working-with-daaf)
 - [**Setup and Settings**](#setup-and-settings)
 - [**Packages and Environment**](#packages-and-environment)
+- [**R and Language Support**](#r-and-language-support)
 - [**Session Logs and Diagnostics**](#session-logs-and-diagnostics)
 - [**Technology Choices**](#technology-choices)
 - [**Performance and Configuration**](#performance-and-configuration)
 - [**Data Access Issues**](#data-access-issues)
 - [**Common Error Messages**](#common-error-messages)
 - [**Recommended Next Steps**](#recommended-next-steps)
+- [**Community Resources**](#community-resources)
+
+---
+
+## Key Concepts Explained
+
+If you're new to some of the technical vocabulary, here's a quick reference:
+
+| Term | What it means |
+|------|---------------|
+| **Terminal** | A text-based interface for typing commands to your computer (also called Command Prompt on Windows or shell on Linux/Mac) |
+| **Docker / Docker Desktop** | Software that creates isolated, reproducible environments (containers) on your computer |
+| **Container** | A lightweight, isolated environment that runs programs without affecting the rest of your system |
+| **Volume** | A persistent storage area attached to a Docker container -- your files live here and survive container restarts |
+| **API Key** | A secret code that authenticates you with an external service (like Anthropic's Claude API) |
+| **Environment Variable** | A named value your system stores in memory that programs can read (used for configuration and API keys) |
+| **Port** | A numbered channel that allows programs to communicate over a network (DAAF uses ports 2718-2720) |
+| **Claude Code** | Anthropic's command-line interface for Claude that DAAF runs inside -- it's the "brain" that powers all analysis |
+
+---
+
+## Installation Troubleshooting
+
+### "docker: command not found" or "docker is not recognized"
+
+Docker Desktop isn't installed or isn't in your system PATH. Download it from [docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop/), install it, and make sure it's running (you should see the Docker whale icon in your system tray/menu bar). You may need to restart your terminal after installation.
+
+### Malformed authentication URL when trying to log in to Claude Code
+
+If you're trying to copy the URL authentication link, be careful to check it for erroneous line-breaks in the URL. Paste this into a simple notepad editor and remove any extra line-breaks, then try pasting the revised URL into your browser.
+
+### "unable to get image" or build fails immediately
+
+Make sure Docker Desktop is **running** (not just installed). Open Docker Desktop and wait for it to fully start before running the installer. If you're on a corporate network, check whether a VPN or firewall is blocking Docker Hub access.
+
+### "service is not running" when trying to start DAAF
+
+Start it from the **DAAF Control Panel** — run `bash daaf.sh` (or `.\daaf.ps1` on Windows) from your `daaf-docker` folder and choose **1) Start Claude Code**, which brings the container up for you. If you'd rather do it by hand, run `docker compose up -d` from your `daaf-docker` folder first, then try `bash run_daaf.sh` again. If that still doesn't work, open Docker Desktop and check if the container shows as "running."
+
+### Port conflicts (2718, 2719, or 2720 already in use)
+
+Another application is using one of DAAF's ports. Either close the conflicting application, or move DAAF's host ports by setting the port variables in your `daaf-docker` folder's `environment_settings.txt` — `DAAF_PORT_MARIMO` (notebooks, default 2718), `DAAF_PORT_LOGVIEWER` (session logs, default 2719), and `DAAF_PORT_VSCODE` (browser code editor, default 2720). For example, to move the notebook port, add `DAAF_PORT_MARIMO=3718`, then recreate the container so the change takes effect (`docker compose down`, then `bash run_daaf.sh` / `.\run_daaf.ps1`). This is the supported way to change DAAF's ports — don't hand-edit `docker-compose.yml`, since updates and rebuilds regenerate it and would discard a manual port change.
+
+### Permission denied errors inside the container (macOS)
+
+This usually happens when Docker Desktop's file sharing permissions haven't been configured. Open Docker Desktop → Settings → Resources → File Sharing, and ensure the relevant directories are shared.
+
+### Claude Code asks me to log in again
+
+This should be uncommon. Claude Code's login, session history, and plugins live in a dedicated Docker volume (`daaf-claude-config`), so they persist across container restarts, `docker compose down`, and even image rebuilds -- a routine restart or update should not sign you out. If you *do* get prompted after a normal restart, just run `/login` once for an Anthropic Max/Pro subscription (or paste your API key); it will persist from then on. Note that `docker compose down -v` (with the `-v` flag) or manually deleting the volume erases this state, so avoid `-v` unless you mean to wipe everything. If you'd rather never log in interactively, set your credentials in the `environment_settings.txt` file in the `daaf-docker/` folder -- it is read on every container start.
+
+### OpenRouter: "model not found" or authentication errors
+
+Check three things: (1) `ANTHROPIC_BASE_URL` must be exactly `https://openrouter.ai/api` with no `/v1` suffix, (2) your OpenRouter API key (starts with `sk-or-`) must be in `ANTHROPIC_AUTH_TOKEN`, with `ANTHROPIC_API_KEY` set to an *empty* value (`ANTHROPIC_API_KEY=`) — present but empty, not removed: putting the key in `ANTHROPIC_API_KEY` interferes with Bearer authentication, and removing the variable entirely makes Claude Code fall back to Anthropic's servers, and (3) the model you're requesting must be available on OpenRouter. Verify at [openrouter.ai/activity](https://openrouter.ai/activity).
+
+### Container seems really slow to build the first time
+
+The first build downloads and installs 50+ Python packages including geospatial libraries (GDAL, GEOS, PROJ), plus the R stack, and can take several minutes depending on your internet speed and hardware. This is normal and only happens once -- subsequent starts are fast because the image is cached. See "If a build is slow or fails" in [01_installation_and_quickstart.md](01_installation_and_quickstart.md) for details (including the `DAAF_DIAG_BUILD` option for diagnosing genuine build failures).
+
+### I can't find my research files on my computer
+
+DAAF stores files inside a Docker volume, not directly on your filesystem. The simplest way in is the **DAAF Control Panel** (`bash daaf.sh` / `.\daaf.ps1` from your `daaf-docker` folder): choose **2) Browse Files (VS Code)** to open the browser file manager, or **7) Create Backup** to copy everything onto your computer. Three ways in detail:
+- **Browser file manager:** Control Panel option **2**, or run `bash run_vscode.sh` (or `.\run_vscode.ps1` on Windows) directly, then open `localhost:2720` in your browser
+- **Backup:** Control Panel option **7**, or run `bash backup_daaf.sh` (or `.\backup_daaf.ps1`) directly, to copy everything to a folder on your computer
+- **Single file:** `docker compose cp daaf-docker:/daaf/research/your-project/file.md ./`
+
+### How do I update DAAF to the latest version?
+
+The easiest way is the **DAAF Control Panel**: from your `daaf-docker` folder, run `bash daaf.sh` (macOS/Linux) or `.\daaf.ps1` (Windows) and choose **9) Check for Updates**. It checks for available updates, shows you what's new, and handles the update safely -- including detecting and helping resolve any local edits you've made. If you'd rather run it directly, the same thing happens with `bash update_daaf.sh` (or `.\update_daaf.ps1` on Windows).
+
+### How do I back up my research files?
+
+The easiest way is the **DAAF Control Panel**: from your `daaf-docker` folder, run `bash daaf.sh` (macOS/Linux) or `.\daaf.ps1` (Windows) and choose **7) Create Backup**. (To run it directly instead, use `bash backup_daaf.sh` or `.\backup_daaf.ps1`.) This copies your entire research directory to a timestamped folder on your computer. The backup folder also contains a few hidden items you can safely ignore — a `.daaf-claude-config/` subfolder holding your Claude Code login and session history, a small `.daaf-permissions` manifest that lets the restore put file permissions back correctly, and (only when your data contains symbolic links) a `.daaf-symlinks` manifest that lets the restore recreate them — which is what lets backups complete cleanly on Windows, where the copy would otherwise stop at the first symbolic link (see the quickstart's *Backing Up Your Work* section for details). You can also use the browser file manager (`bash run_vscode.sh`) to browse and download individual files.
+
+### How do I download a whole folder from the container?
+
+Downloading a single file from the browser editor is easy — right-click it in the explorer sidebar and choose **Download**, in any browser. A whole folder takes one extra step, because browsers don't have a built-in "download this folder" button the way they do for single files.
+
+The reliable, works-everywhere method is to zip the folder first: right-click the folder, choose **Compress → zip**, then right-click the new `.zip` file that appears next to the folder and choose **Download**. You end up with one archive on your computer that you can unzip normally. When compressing, use the **zip**, **tar**, or **tgz** options only — the **bz2** and **7z** choices will fail, because the tools they rely on aren't installed in the container. The **Compress** menu is provided by a built-in extension, so there's nothing to install. (If you don't see a **Compress** option, your container image predates the extension — update DAAF (see above) and rebuild once with `bash rebuild_daaf.sh` or `.\rebuild_daaf.ps1` from your `daaf-docker` folder to pick it up.)
+
+If you use **Chrome or Edge**, there's also a shortcut: right-click a folder and choose **Download** directly. Your browser asks where to save, then copies the files into that location individually (you get the files, not a single zip). This shortcut only works in Chrome and Edge — in Firefox or Safari, use the Compress → zip → Download method above. For a full backup of all your work, the `backup_daaf.sh` / `.ps1` script (see above) is still the simplest option.
+
+---
+
+## Working with DAAF
+
+### What are engagement modes and how do I choose one?
+
+DAAF has nine engagement modes, each designed for a different type of task. You don't need to memorize them -- just describe what you want to do and DAAF will suggest the right mode. But here's a quick overview:
+
+- **Full Pipeline** — Complete research analysis from question to report ("Analyze how X relates to Y")
+- **Data Onboarding** — Profile and register a new dataset ("I have this CSV I want to use")
+- **Data Discovery** — Explore what data exists ("Is it possible to study X?")
+- **Data Lookup** — Quick factual answers ("What are the coded values for variable X?")
+- **Ad Hoc Collaboration** — Flexible working session ("Help me debug this" / "Think through this with me")
+- **Revision and Extension** — Modify existing work ("Update the analysis to include 2024 data")
+- **Reproducibility Verification** — Verify an analysis reproduces ("Re-run this and check the results match")
+- **Framework Development** — Modify DAAF itself ("Create a new skill for survey methods")
+- **User Support** — Questions about DAAF ("How does the validation system work?")
+
+DAAF always confirms the mode with you before proceeding, so you can adjust if it picks wrong.
+
+### What are the /config and /model commands I keep seeing referenced?
+
+These are Claude Code slash commands you can type anytime during a session:
+
+- `/config` — Opens the Claude Code settings menu. Key settings to check:
+  - **Auto-compact:** Set to `false` (DAAF manages its own context)
+  - **Verbose output:** Set to `true` (lets you see what agents are thinking)
+- `/model` — Switch the active model (use arrow keys to select)
+- `/clear` — Clear conversation history and start fresh (used when resuming from STATE.md)
+- `/exit` — Exit Claude Code (first step in ending a session)
+- `/status` — Check connection status and current model
+
+### DAAF seems to be doing something I didn't ask for
+
+You're always in control. If DAAF is heading in a direction you didn't intend:
+- **Press ESC** to interrupt the current operation
+- **Say "stop"** or "that's not what I meant" -- DAAF will pause and ask for clarification
+- **Type `/clear`** to start completely fresh if things have gone off the rails
+
+Remember: DAAF always presents a mode confirmation and research plan for your approval before doing substantial work. If something is happening you didn't approve, it's likely a continuation of a previously-approved step.
 
 ---
 
@@ -40,35 +166,51 @@ I strongly recommend the **Max subscription** ($100/mo or $200/mo). DAAF is extr
 | **Rate limiting** | Minimal | May hit rate limits during very heavy sessions |
 | **Best for** | Light/occasional use, or organizational API budgets | Regular DAAF usage (recommended) |
 
-**Third option: OpenRouter.** Pay-per-token access to Claude via [OpenRouter](https://openrouter.ai/) with no monthly commitment (5.5% fee on credit purchases). Good for testing DAAF before committing to a subscription. See [**01. Installation -- Configure authentication via environment_settings.txt**](01_installation_and_quickstart.md#configure-authentication-via-environment_settingstxt) for setup.
+**Third option: OpenRouter.** Pay-per-token access via [OpenRouter](https://openrouter.ai/) with no monthly commitment (5.5% fee on credit purchases). OpenRouter provides access to Anthropic's Claude models and also to high-performing open-weight models like GLM 5.2, which [benchmarks competitively with the Opus line](https://daaf.openaugments.org/bench/) at roughly 33% of the cost. Good for testing DAAF or for cost-conscious sustained use. See [**01. Installation -- Configure authentication via environment_settings.txt**](01_installation_and_quickstart.md#configure-authentication-via-environment_settingstxt) for setup.
 
-For the full comparison of all authentication options, see [**01. Installation -- Anthropic Account & Authentication**](01_installation_and_quickstart.md#1-anthropic-account--authentication).
+For the full comparison of all authentication options, see [**01. Installation -- AI Provider Account & Authentication**](01_installation_and_quickstart.md#1-ai-provider-account--authentication).
 
 One thing to note: the Max plan does have usage limits per time window. If you're running several DAAF analyses in parallel (which you absolutely can do!), you may occasionally hit a rate limit and need to wait a bit. The API key doesn't have that issue, but your wallet will feel it instead.
 
 ### Q: Which Claude model should I use?
 
-**Use Opus 4.5 or Opus 4.6.** All development and testing was done on these models, and I genuinely don't think the others are up to the task.
+DAAF ships with **Opus 4.8** as its default, and staying on the default is a strong choice — but it's far from the only good one. [Empirical benchmarking across 20 models](https://daaf.openaugments.org/bench/) (DAAFBench) has produced clear, data-backed guidance. The table below reflects the models benchmarked to date (which won't always be the very newest releases — the linked results page is updated continuously as newer generations are run):
 
-The DAAF workflow is complex -- it involves multi-agent orchestration, following detailed multi-step protocols, making judgment calls about data quality, writing careful code, and then critically reviewing that same code from a different perspective. Sonnet and Haiku are capable models for many things, but they consistently produce erratic, inconsistent results with DAAF's workflow complexity. The instructions are simply too nuanced and layered for models that optimize for speed over depth.
+| Recommendation | Model | Why |
+|---------------|-------|-----|
+| **Deepest reasoning** | **Opus 4.8** | Strong orchestration performance with the deepest analytical reasoning of the benchmarked set. Best for complex methodology and nuanced judgment calls. |
+| **Best value** | **Sonnet 4.6** or **Sonnet 5** | Ranked #2 and #3 overall on orchestration benchmarks — outperforms every Opus model on protocol conformance at ~50% of the cost. An excellent choice for most DAAF work. |
+| **Best without Anthropic subscription** | **GLM 5.2** (via OpenRouter) | Ranked #4 overall, roughly on par with the Opus line on orchestration at ~33% of the cost. Makes DAAF accessible without any Anthropic subscription. |
+| **Budget-friendly** | **DeepSeek V4 Flash** (via OpenRouter) | Solid mid-tier performance at ~3% of flagship cost. Worth exploring for less complex tasks. |
+| **Not recommended** | **Haiku 4.5** | Adequate on basic tasks but struggles with DAAF's multi-step protocols and skill routing. |
 
-Opus 4.6 also supports configurable "thinking levels" (you can toggle this in the `/model` selector by tapping the left/right arrow keys). I've done all my testing with the **"High"** thinking setting, and I strongly recommend the same. This is a case where quality matters far more than speed -- you want Claude to think carefully about your data, not rush through it.
+**Important context:** These benchmarks test *orchestration behavioral conformance* — can the model follow DAAF's protocols, dispatch agents correctly, and load the right skills? They do not directly measure analytical reasoning depth or code quality. Opus may still have an edge on the hardest analytical work, but the gap between the top models is much smaller than previously assumed. See the [full DAAFBench results](https://daaf.openaugments.org/bench/) for detailed per-phase breakdowns.
 
-That said, higher thinking levels do consume more of your usage allocation, so there's a legitimate tradeoff to explore. If you experiment with different thinking levels, I'd genuinely love to hear about your results -- please share back so we can update this guidance.
+Current Claude models also support configurable "thinking levels" (toggle in the `/model` selector with left/right arrow keys). I recommend the **"High"** setting — quality matters more than speed for research work. Higher thinking levels do consume more of your usage allocation, so there's a legitimate tradeoff to explore. The DAAFBench results are a useful starting point for understanding where different models sit on the quality-cost frontier.
 
 ### Q: How do I change the Claude model during a session?
 
 Type `/model` in the Claude Code chat window. You'll see a list of available models -- use the arrow keys to select one and press Enter. The change takes effect immediately for all subsequent interactions in that session.
 
-You can also adjust the thinking level for Opus 4.6 by pressing the left and right arrow keys while Opus 4.6 is highlighted in the model selector.
+You can also adjust the thinking level by pressing the left and right arrow keys while a model is highlighted in the model selector.
+
+### Q: Why does DAAF disable "background tasks" but specialists still run in the background?
+
+These are two different Claude Code features that happen to share a name.
+
+`CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` (set in DAAF's `settings.json`) disables background *shell commands* — the option to run terminal commands in the background, automatic backgrounding of long-running commands, and the Ctrl+B shortcut. DAAF keeps this disabled deliberately: every analysis script must run to completion in the foreground so its full output is captured into the script's embedded audit log. A backgrounded script would decouple execution from capture and break the audit trail.
+
+Separately, Claude Code runs *subagents* (the specialists DAAF dispatches for research, coding, and review work) in the background and notifies the session when each finishes. The official documentation says this setting disables background execution for subagent dispatches too, but on DAAF's pinned Claude Code version the observed behavior is that specialist dispatches still run in the background with the setting active. Either behavior is fine for DAAF: its workflows wait for all dispatched specialists to report back before making decisions, and the audit-trail concern applies to analysis scripts (which the setting reliably keeps in the foreground), not to specialist scheduling. If a future version update makes specialists run in the foreground instead, nothing in DAAF's workflows breaks — turns just complete sequentially.
+
+(Related trivia: `DISABLE_AUTOUPDATER` in the same settings block is technically redundant — `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` subsumes it — but it's kept as an explicit standalone pin so the version-pinned container can never auto-update, even if the umbrella setting is temporarily lifted for diagnostics.)
 
 ### Q: Can I use DAAF with a different AI provider (OpenAI, Google, etc.)?
 
 Yes -- partially. There are two different things this question might mean, so let me address both.
 
-**Using different models through OpenRouter (supported):** [OpenRouter](https://openrouter.ai/) is a model gateway that lets you route Claude Code through a single API key with pay-per-token billing. It's already configured as an authentication option in DAAF's `environment_settings_example.txt` template (Option C). Through OpenRouter, you can access Anthropic's Claude models without a Max subscription -- and OpenRouter technically allows routing to non-Anthropic models as well. See [**01. Installation & Quick Start -- Configure authentication via environment_settings.txt**](01_installation_and_quickstart.md#configure-authentication-via-environment_settingstxt) for setup instructions (remember to run `/logout` first if you previously authenticated with Anthropic directly).
+**Using different models through OpenRouter (supported):** [OpenRouter](https://openrouter.ai/) is a model gateway that lets you route Claude Code through a single API key with pay-per-token billing. It's already configured as an authentication option in DAAF's `environment_settings_example.txt` template (Option C). Through OpenRouter, you can access Anthropic's Claude models without a Max subscription — and also access non-Anthropic models that perform well with DAAF. This route is supported and functional — its one-key setup is stated consistently across DAAF's install guide and FAQ — and we're still gathering wider community experience with it across different environments, so reports are always welcome. See [**01. Installation & Quick Start -- Configure authentication via environment_settings.txt**](01_installation_and_quickstart.md#configure-authentication-via-environment_settingstxt) for setup instructions (remember to run `/logout` first if you previously authenticated with Anthropic directly).
 
-**The practical reality for non-Anthropic models:** Claude Code is optimized for Anthropic models, and DAAF's complex multi-agent workflow (detailed protocols, nuanced judgment calls, multi-step tool chains) requires Opus-class reasoning to function reliably. OpenRouter's own documentation notes that Claude Code "is optimized for Anthropic models and may not work correctly with other providers." Some non-Claude models (e.g., GPT-4o) can handle basic operations, but they struggle with the tool-calling patterns and edit formatting that DAAF depends on heavily. Extended thinking -- which DAAF uses extensively -- works through OpenRouter when using Anthropic models, but does not work with non-Anthropic models at all. **Bottom line:** Use Anthropic's Opus models through OpenRouter for reliable DAAF results. Non-Anthropic models may technically load but will produce erratic, inconsistent output for DAAF's workflows.
+**Non-Anthropic models — what works:** [DAAFBench](https://daaf.openaugments.org/bench/) has tested multiple non-Anthropic models across 2,799 runs. The standout is **GLM 5.2**, which ranks #4 overall and performs roughly on par with the Opus line on orchestration benchmarks at ~33% of the cost. **DeepSeek V4 Flash** performs appreciably worse but at substantially lower price points (~3% of costs for Opus). Note that extended thinking (which DAAF uses extensively with Anthropic models) does not work with non-Anthropic models through OpenRouter — these models rely on their native reasoning capabilities instead. See the [full benchmark results](https://daaf.openaugments.org/bench/) for per-model breakdowns.
 
 **Porting DAAF to a different CLI tool entirely:** This is also possible but requires more effort. DAAF is built on Claude Code, which is Anthropic's CLI agent tool. The vast majority of what DAAF actually *is* -- the agent protocols, skill documents, workflow definitions, validation checkpoints -- is just structured text in Markdown files. None of that is Anthropic-specific. What *is* specific to Claude Code are the hooks system (the safety guardrails that block dangerous commands, scan outputs for secrets, etc.) and some of the tool invocation patterns.
 
@@ -83,21 +225,205 @@ What would need adaptation:
 - The `.claude/settings.json` permission configuration
 - Any Claude Code-specific invocation patterns (the `Task` tool, subagent types)
 
-I would honestly be thrilled if someone forked DAAF and adapted it for another provider. The more researchers who have access to rigorous AI-assisted analysis tooling, the better. I'd also love to see someone test this with open-source models, as that's such an enormous value-add for anyone working with sufficiently protected data in secure environments -- **please** reach out if you've got the capacity to explore that!!
+I would honestly be thrilled if someone forked DAAF and adapted it for another provider. The more researchers who have access to rigorous AI-assisted analysis tooling, the better. We've made significant progress testing open-source models via [DAAFBench](https://daaf.openaugments.org/bench/) — GLM 5.2 is already viable — but there's much more to explore, especially around analytical depth and domain-specific tasks. If you're running DAAF with non-default models, **please** share your experiences so we can continue refining this guidance!
+
+### Q: Can I run DAAF on OpenAI GPT models?
+
+Yes, and it's been validated live (2026-07-09). There are two ways in, both documented step-by-step in [**01. Installation & Quick Start**](01_installation_and_quickstart.md#gpt-openai-models-via-openrouter-option-c-extended):
+
+- **Via OpenRouter (config-only, no rebuild):** point the existing "Option C" OpenRouter setup at GPT slugs like `openai/gpt-5.6-sol` (strong tier) and `openai/gpt-5.6-terra` (fast tier). GPT runs the full agentic stack — multi-tool loops, subagent dispatch, two-tier routing — with just environment variables.
+- **Via the DAAF provider shim (direct OpenAI API):** set `DAAF_PROVIDER_SHIM=openai` and `OPENAI_API_KEY`, then point Claude Code at the local shim (`http://127.0.0.1:4141`). This one requires an image rebuild because the shim auto-starts from the container entrypoint.
+
+GPT support is a capability DAAF has engineered carefully and tested — the specifics and honest caveats are in the limitation entries below. Anthropic does not officially support routing Claude Code to non-Claude models, and OpenRouter's Anthropic-compatible endpoint is officially scoped to Claude models — GPT works through it in practice, but that is territory a vendor could change.
+
+If your session still starts on a Claude model after configuring, see [My GPT session starts on a Claude model](#q-my-gpt-session-starts-on-a-claude-model-instead-of-my-gpt-model).
+
+### Q: My GPT session starts on a Claude model instead of my GPT model
+
+This is expected, not a bug: DAAF ships with Claude as the default model, so a GPT session opens on Claude until you switch it. You have two ways to fix it:
+
+- **Per session (simplest):** just run `/model` after launch and pick your GPT model. If you forget, the very first message fails with a loud authentication/model error, so there's no silent wrong-model risk.
+- **Standing default:** edit the `"ANTHROPIC_MODEL"` line in `/daaf/.claude/settings.json` to your GPT slug — bare with the window hint for the Option F shim lane (`"gpt-5.6-sol[1m]"`), prefixed for the Option C OpenRouter lane (`"openai/gpt-5.6-sol"`). This is a deliberate manual edit to a tracked framework file; expect to re-apply it after DAAF updates that touch settings.json.
+
+**Under the hood.** Sessions open on the model named by `ANTHROPIC_MODEL` in the `env` block of DAAF's project `.claude/settings.json`, which ships as `claude-opus-4-8[1m]` — a deliberate Claude-first default, since most DAAF users run Claude. Importantly, that settings.json value **overrides** the container environment (verified empirically 2026-07-12: a process-environment `ANTHROPIC_MODEL` lost to the settings.json value on the wire), so setting `ANTHROPIC_MODEL` in `environment_settings.txt` does **not** work — don't use that route.
+
+### Q: On a GPT session, is the context bar accurate?
+
+Not exactly — treat it as a close estimate. OpenRouter's Anthropic-compatible endpoint (and the provider shim) do not implement precise token counting, so Claude Code falls back to *estimating* context usage on GPT sessions. The context bar and the ELEVATED/HIGH/CRITICAL utilization warnings still work and are a good guide, but the percentages are approximations rather than exact counts.
+
+**Under the hood (safe to skip).** DAAF's quality thresholds depend on the exact model identifier, not on whether the provider is GPT in general. Claude Fable/Mythos models retain the validated extended-horizon thresholds of 30%/300k, 40%/400k, and 50%/500k. For GPT 5.6 Sol, the terminal model slug must be exactly `gpt-5.6-sol` or `gpt-5.6-sol[1m]`; the identifier may be bare or may contain one or more provider path prefixes ending in `/`. These exact terminal GPT 5.6 Sol model slugs use the standard percentage gates while retaining Sol's higher validated absolute gates: 40% or 300k for ELEVATED, 60% or 400k for HIGH, and 75% or 500k for CRITICAL, whichever trigger fires first. Malformed left-boundary strings such as `xgpt-5.6-sol`, `foo-gpt-5.6-sol`, and `vendor/notgpt-5.6-sol` remain conservative, as do Terra, Luna, Pro, mini, chat, date snapshots, future GPT variants, and right-side suffix or trailing variants. Those use the conservative-default thresholds of 40%/150k, 60%/200k, and 75%/250k unless separately validated and registered. Threshold-profile selection is independent of physical context-window mapping: another GPT 5.6 variant can still map to a 1,050,000-token window while using conservative quality thresholds. GPT is not part of the Claude Fable/Mythos model family; exact Sol now shares the standard percentages but retains the higher validated Sol absolute gates. Separately, on the ChatGPT-subscription shim lane the physical window itself is backend-capped at ~370k; there, exact Sol's percentage boundaries are 148k, 222k, and 277.5k tokens, before the retained 300k, 400k, and 500k absolute gates (see the next entry).
+
+### Q: The statusline shows the wrong context window on a GPT session (e.g. 200k when my model has more)
+
+Nothing is broken here — the bar is just showing a wrong guess, and it's a one-line fix. Claude Code assumes a 200k context window for any model it doesn't recognize, which is wrong for the 400k `gpt-5.2` / `gpt-5.4-mini` and the 1,050,000-token `gpt-5.4` / `gpt-5.5` / `gpt-5.6` family (Sol/Terra/Luna) on API/OpenRouter routes. Fix it by setting `CLAUDE_CODE_MAX_CONTEXT_TOKENS` in `environment_settings.txt` to the route's real physical accounting window (for example, `1050000` for `gpt-5.6-sol` over OpenRouter or the OpenAI API), then recreate the container and restart the Claude Code session.
+
+The **ChatGPT-subscription (Codex) shim lane** is different: its backend enforces a much lower effective *input* ceiling, measured at ~370,000 tokens for `gpt-5.6-sol` (2026-07-16), independent of the model's true 1M window on the API route. On that lane set `CLAUDE_CODE_MAX_CONTEXT_TOKENS=370000`. This aligns Claude Code and DAAF's accounting with the backend ceiling. DAAF's statusline, context reporter, and subagent statusline all apply `min(resolved_window, 370000)` as a final constraint for the matched GPT 5.4/5.5/5.6 flagship family when both exact lane signals are present, so stale caches, incoming `[1m]` windows, and higher explicit declarations cannot preserve an unsafe denominator. DAAF uses the result for utilization, statusline rendering, severity, and behavioral stop/restart guidance. It keeps automatic compaction disabled and does not implement a transport-level request blocker; the backend remains the ultimate hard ceiling.
+
+### Q: How do I opt in to a 64K Claude Code output budget?
+
+Claude Code's default `CLAUDE_CODE_MAX_OUTPUT_TOKENS` is `32000`; the maximum it supports is `64000`. On DAAF's pinned Claude Code 2.1.202, use the plain decimal form. Add this line to the **host** `environment_settings.txt` in your `daaf-docker/` folder before starting Claude Code/the container, then recreate the container through the normal host launcher flow:
+
+```bash
+CLAUDE_CODE_MAX_OUTPUT_TOKENS=64000
+```
+
+Treat this as an opt-in escape hatch for demonstrated output truncation, not a universally better default. Thinking tokens count toward the same output budget. Raising the maximum reserves more of the context window for a possible response, leaving less room for conversation history and tool results and potentially causing DAAF's context-pressure stop/restart guidance to fire earlier. The active provider or model may impose a lower output limit, so the setting cannot override provider-side ceilings. DAAF's default remains `32000`, and specialists should still return bounded, focused final reports even when 64K is enabled. The commented example in `environment_settings_example.txt` is intentionally disabled so DAAF never changes your host configuration automatically.
+
+### Q: My GPT session says "Context limit reached" / "Prompt is too long" at low utilization
+
+If a GPT session complains it's out of room while the context bar says it's nearly empty, the window size is being misread — the session isn't actually full, and the fix is one setting. This is a *client-side* budget error — Claude Code decided the request is too big before it ever reached the model — and on a GPT session at genuinely low utilization the cause is that Claude Code assumes a small (~200K) window for a model slug it doesn't recognize, so it thinks the window is nearly full when it is not. The fix is to declare the real window:
+
+- **For the OpenAI-API lane, append `[1m]` to your GPT slugs and declare the full route window** in `environment_settings.txt` (e.g. `ANTHROPIC_DEFAULT_OPUS_MODEL=gpt-5.6-sol[1m]` plus `CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000`). Claude Code reads `[1m]` as a 1M-window hint and strips the suffix before sending — the shim and OpenAI backend still see the bare `gpt-5.6-sol` — while the explicit positive declaration aligns Claude Code and DAAF's accounting. `CLAUDE_CODE_AUTO_COMPACT_WINDOW` is not an equivalent alternative in DAAF; automatic compaction remains disabled. (`[1m]` also composes with a `#<effort>` reasoning-effort suffix — e.g. `gpt-5.6-sol[1m]#medium` — if you want to set both at once; see [How do I control GPT reasoning effort?](#q-how-do-i-control-gpt-reasoning-effort-option-f). For the ChatGPT-subscription/Codex lane, use the separate `370000` declaration described below.)
+- **The provider shim isn't inflating the count.** The shim (Option F) calibrates its token-count estimates against the backend's own reported counts and biases slightly low, so it won't push the perceived request size over the window — declaring the real window above is what resolves the error. You can confirm the shim is healthy with `curl -s http://127.0.0.1:4141/health`.
+
+Restart the container after editing `environment_settings.txt`.
+
+### Q: The provider shim doesn't seem to be responding (Option F)
+
+The shim auto-starts from the container entrypoint and is kept alive by a supervisor, so it should already be running. To diagnose:
+
+```bash
+bash /daaf/scripts/provider_shim/start_shim.sh --status   # is it running?
+curl -s http://127.0.0.1:4141/health                       # health check
+```
+
+Its log is at `/daaf/scripts/provider_shim/logs/shim.log` — check there first. The manager script also accepts `--start`, `--stop`, and `--auto`. Remember that Option F requires the image to have been **rebuilt** after you set `DAAF_PROVIDER_SHIM=openai` (the auto-launch is baked into the entrypoint), so if nothing is running, confirm you rebuilt. If the shim *is* running but every request fails instantly with a 429, see the next entry.
+
+### Q: How do I diagnose a provider-shim server error mid-response?
+
+**You almost certainly don't need this entry.** It's a deep-dive for the rare case where a GPT request fails partway through a response and you want to file a precise bug report or trace exactly what the shim did. If that's not you, it's completely safe to skip — the shim keeps its own logs and the earlier troubleshooting entries cover the common failures. If you *do* want to trace a specific failed request, here's how.
+
+The provider shim gives each `POST /v1/messages` request an internal 32-character hexadecimal correlation ID. The shim returns it as the `x-daaf-request-id` response header on both JSON and SSE responses and writes the same value as `req_id=<32-hex-id>` on correlated records in `/daaf/scripts/provider_shim/logs/shim.log`. If the failing client or its network diagnostics expose response headers, copy that header value immediately. If they do not, use the failure timestamp to find the nearest `event=terminal` record and copy its `req_id`; treat a timestamp match as a lead to verify against the full lifecycle, not proof that it is the same request.
+
+Use a safe placeholder rather than pasting prompts, credentials, or response content into a command. Replace the example ID with the 32-hex value you captured:
+
+```bash
+REQUEST_ID=0123456789abcdef0123456789abcdef
+grep -F "req_id=${REQUEST_ID} " /daaf/scripts/provider_shim/logs/shim.log
+grep -E "req_id=${REQUEST_ID} .*event=(backend_error|disconnect|terminal|cleanup)" /daaf/scripts/provider_shim/logs/shim.log
+```
+
+The first grep reconstructs the complete correlated lifecycle. Stable event names are `request_start`, `request_parsed`, `upstream_attempt`, `upstream_retry`, `upstream_headers`, `upstream_first_event`, `downstream_first_content`, `backend_error`, `disconnect`, `terminal`, and `cleanup`. Some milestones are conditional and attempts/retries may repeat, but the shim emits `event=terminal` exactly once and `event=cleanup` exactly once for each `/v1/messages` request. Read the focused records in causal order:
+
+1. **Inspect `event=backend_error`.** `backend_type`, `backend_code`, `anthropic_type`, and `failure_phase` identify the structured or transport failure the shim recorded. Error mapping follows an explicit precedence: a real non-2xx backend HTTP status maps first and takes precedence; otherwise backend `code` is checked before backend `type`. At either structured field, `context_length_exceeded` maps to Anthropic `invalid_request_error`, `server_error` maps to `api_error`, and an unknown value remains `api_error`. Free-form backend response bodies/messages are not retained or reflected because provider prose can contain request-derived material; the user-facing message is bounded, classification-derived text selected from status/type/code families or a fixed unknown fallback. Do not infer that every failure is backend-originated merely because the user saw an `api_error`: local translation, send, disconnect, and cleanup failures have distinct evidence.
+2. **Inspect `event=disconnect`, if present.** This event is narrow evidence that the shim observed an ASGI `http.disconnect`; `observed_phase` records where it was observed. It does not prove what the user received or displayed, that the observation caused an upstream operation to be cancelled, or even that an upstream operation existed. Generic ASGI task cancellation is not itself evidence of client disconnect and does not create this event. If a backend-declared error appears earlier, a later disconnect is a subsequent observed condition, not evidence that the disconnect caused the backend error. If no backend failure was known first, the terminal outcome can instead be `disconnect`.
+3. **Inspect the one `event=terminal` summary.** Check `outcome`, `attempts`, `retries`, `failure_phase`, `terminal_frame_send`, `body_close_send`, `disconnect`, and `disconnect_phase`. The send states are `not_attempted`, `attempted`, `send_completed`, `skipped_disconnect`, or `write_failed`. Critically, `send_completed` means only that the awaited ASGI send returned; it does **not** establish client receipt, acknowledgment, or guaranteed delivery. A `write_failed` state is direct evidence of a downstream send failure; other conclusions about what the client displayed remain inference.
+4. **Inspect the one `event=cleanup` record.** `status=completed` records clean shim-owned resource cleanup; `status=failed` plus the bounded `error` type records a cleanup failure. Cleanup evidence does not overwrite an earlier success, backend error, or disconnect outcome.
+
+Additional safe fields can help locate the failing phase without revealing request content: `phase`, monotonic `elapsed_ms`/`dur_ms`, attempts/retries, the allowlisted upstream request-ID fields `upstream_req_id_header` and `upstream_req_id`, normalized `http_version`, disconnect state, terminal semantic-frame state, body-close state, and cleanup status. The local `req_id` remains authoritative for joining shim records; an upstream request ID is separate metadata and never replaces it.
+
+The lifecycle and diagnostic logs intentionally omit prompts, message bodies, translated payloads, tool schemas and inputs, raw SSE content, free-form backend response bodies/messages, credentials, and arbitrary headers. Do not add those values to bug-report grep commands. Retry policy, timeouts, backoff, connection pooling, and heartbeat behavior are independent of this logging, so a new correlated failure should be diagnosed from the recorded sequence before proposing transport-policy changes.
+
+### Q: My GPT session fails instantly with 429 errors on every request (Option F)
+
+An immediate, deterministic 429 on *every* request — including the very first one after a restart — is almost never a real rate limit. Check the shim log (`/daaf/scripts/provider_shim/logs/shim.log`): backend error records include the HTTP status, exact structured type/code when supplied, mapped Anthropic type, and allowlisted rate-limit headers. They deliberately omit free-form backend prose. What to look for:
+
+- **`"code": "insufficient_quota"`** — the key's platform.openai.com project has no credits, or hit its monthly spend cap. This is by far the most common cause: ChatGPT Plus/Pro does **not** include API credits, new API accounts get no free credits, and adding a payment card without completing the separate credit *purchase* step leaves the account unfunded. Retrying can never fix this — buy credits at platform.openai.com → Settings → Billing.
+- **A rate-limit error with a `retry-after` header** — a genuine per-minute request/token limit for your usage tier. This clears on its own; current Tier 1 token-per-minute limits are generous (500K TPM for gpt-5/gpt-5-mini as of late 2025 — OpenAI has not published per-tier tables for the gpt-5.6 variants), but heavily parallel agentic sessions can still burst past request-per-minute caps. Sustained work may warrant a higher usage tier (tiers advance with cumulative spend).
+- **401 `invalid_api_key`** — the key itself is wrong: check for truncation or stray whitespace in `environment_settings.txt`, and remember the container only picks up environment changes after `docker compose down` + `run_daaf.sh` (the shim reads its key at startup).
+
+### Q: Can I use my ChatGPT subscription instead of an OpenAI API key? (Option F)
+
+Yes — through a supported route we've built carefully; because it's a newer route, it especially benefits from wider community testing. In plain terms: instead of paying per token for OpenAI API access, you reuse the ChatGPT subscription you already have. The same provider shim (Option F) has an alternate backend mode, `SHIM_BACKEND_MODE=chatgpt`, that routes Claude Code through your **ChatGPT subscription's Codex backend** using your `codex` OAuth login instead of a pay-per-token `api.openai.com` API key.
+
+**One thing to know up front.** This lane works through a backend interface that OpenAI doesn't officially offer for third-party tools like DAAF — OpenAI scopes subscription usage to its own official apps — so OpenAI could change that backend and disrupt the lane, and **you are responsible for compliance with OpenAI's terms of service.** We've engineered the lane to be smooth and reliable, and it's exercised by DAAF's own benchmark runs; but because it's the newest route, please treat it as the one most likely to have rough edges and report anything you hit. If you'd rather stay on an interface OpenAI officially offers, the API-key lane (`SHIM_BACKEND_MODE` unset → `openai`) is the alternative, covered by the [instant-429 entry above](#q-my-gpt-session-fails-instantly-with-429-errors-on-every-request-option-f).
+
+**Setup, in brief** (full step-by-step in the [installation guide](01_installation_and_quickstart.md#option-f-alternate-lane-chatgpt-subscription-codex-backend)):
+
+- The pinned **Codex CLI ships in every DAAF image**; confirm with `codex --version` inside the container (expect `0.144.1`). Its presence does not change the default provider or activate this lane. `DAAF_DEV=1` is only for contributor/testing tools and is not required merely to obtain Codex or log in.
+- **Enable device-code login in your ChatGPT security settings first.** This toggle is **off by default** and is the most common thing to miss — the login fails immediately without it.
+- Log in with `codex login --device-auth` inside the container — that exact flag (`codex auth` does not exist, and bare `codex login` uses a browser loopback that cannot complete headless). It prints a URL + one-time code you approve on any device (laptop/phone); no in-container browser or port forwarding. `CODEX_HOME` is preset by Compose to the persisted, backed-up `codex-daaf` store, so the login survives rebuilds — you do it once.
+- Explicitly set both `DAAF_PROVIDER_SHIM=openai` and `SHIM_BACKEND_MODE=chatgpt` in `environment_settings.txt` (alongside the usual Option F `ANTHROPIC_BASE_URL`/model lines), then restart the container. In this mode `OPENAI_API_KEY` is ignored — the OAuth token is the credential. Confirm the lane is live in the shim log (`/daaf/scripts/provider_shim/logs/shim.log`): it shows `backend_mode=chatgpt` and healthy `200`s.
+
+The shim reads the OAuth token from `auth.json` and **refreshes it automatically** (the token lasts ~10 days and is never logged); if a refresh fails permanently, the shim log tells you to re-run `codex login --device-auth`.
+
+**Context ceiling on this lane.** The Codex subscription backend enforces a much lower effective *input* ceiling than the model's true 1M window — measured at ~370,000 tokens for `gpt-5.6-sol` (2026-07-16: accepted at 369,941, rejected at 372,905). This is a backend-enforced limit on the Codex route, not a client setting: no `[1m]` hint or local declaration can raise it. Set `CLAUDE_CODE_MAX_CONTEXT_TOKENS=370000` on this lane (not the API-key lane's `1050000`) to align Claude Code and DAAF's physical-window accounting with the measured backend ceiling. DAAF uses this denominator for utilization, statusline rendering, severity, and behavioral stop/restart guidance. It keeps automatic compaction disabled and does not implement a transport-level request blocker; the backend remains the ultimate hard ceiling. The matched runtime consumers defensively cap stale or higher resolved values at 370,000 while preserving lower positive declarations. A breach surfaces as a clean `invalid_request_error` (`context_length_exceeded`) rather than a retryable-looking 502. Re-measure with `scripts/provider_shim/probe_context_ceiling.py` if OpenAI changes the backend.
+
+**Parallel use.** Running more than one container is the clean way to parallelize: each container does its own `codex login` (an independent token grant — no collision), and they share only your ChatGPT usage pool, so running them in parallel just draws that pool down faster. For several codex tools inside a *single* container, give each its own login under a separate `CODEX_HOME` to avoid a rare token-rotation race.
+
+**Under the hood (safe to skip).** Request translation, tools, and the content-block lifecycle are shared across both lanes; only authentication and endpoint differ. On this lane the shim always requests upstream SSE — including for inbound non-stream calls, whose terminal response is accumulated into JSON — and malformed/missing terminals or invalid block ordering fail explicitly. Tool-call events missing optional identity fields (which the undocumented Codex backend may omit) degrade gracefully with grep-stable `wire-divergence:` warnings in the shim log instead of failing the turn, and an invalid usage token counter is dropped rather than discarding a completed response. One response-formatting rule is ChatGPT-only: reliably identified reasoning-summary part boundaries are preserved as blank lines (`\n\n`), while OpenAI/API-key mode retains exact concatenation and its real upstream non-stream JSON path.
+
+See the full walkthrough in [**01. Installation & Quick Start — Option F, alternate lane: ChatGPT subscription**](01_installation_and_quickstart.md#option-f-alternate-lane-chatgpt-subscription-codex-backend).
+
+### Q: A scripted `claude -p` call on a GPT model returned an empty result
+
+Occasionally a GPT turn ends with a reasoning-only block and no visible text, which can surface as an empty `result` field in scripted (non-interactive) `claude -p` usage. This is a GPT quirk, not a DAAF fault, and is only relevant to automated/batch tooling — interactive sessions are unaffected. If you hit it in a script, re-issue the call or add a follow-up turn that requests the answer explicitly.
+
+### Q: How do I control GPT reasoning effort? (Option F)
+
+**Short answer: you probably don't need to touch this.** By default GPT already runs at the highest reasoning effort (`high`), matching how DAAF runs Claude — so for most people, leaving everything unset is exactly right. Reach for the controls below only if you want to dial effort *down* (for speed or cost) or pin it explicitly. One gotcha to know first: the reasoning-effort selector in the Claude Code `/model` menu does **not** work for GPT — use the environment-variable methods below instead.
+
+Here's how it works under the hood. On the direct-OpenAI shim lane, every request to OpenAI carries a `reasoning.effort` value, and the shim resolves it from a **four-tier precedence chain** — the first tier present wins:
+
+1. **Per-request signal from Claude Code** — when Claude Code specifies an effort for a turn, that takes precedence over the tiers below. **Important caveat:** the `/model` reasoning-effort selector in the Claude Code UI does **not** work for GPT slugs. Claude Code gates that selector by model-ID pattern and, for an unrecognized (GPT) slug, pins the per-request signal to `high` on *every* request regardless of what you select — so the selector is inert. To keep it from masking your real preference, the shim treats an inbound `high` as that pin (i.e. as unset) and falls through to the tiers below; any *other* inbound value (`low`, `medium`, etc.) is still honored. The practical consequence: **steer GPT effort with tier 2 or tier 3 below, not the `/model` selector.**
+2. **A `#<effort>` suffix on the model slug** — append it in `environment_settings.txt`, e.g. `ANTHROPIC_DEFAULT_SONNET_MODEL=gpt-5.6-terra[1m]#medium`. This works *alongside* the `[1m]` window hint (Claude Code consumes `[1m]` locally and passes `#medium` through), and the shim strips the suffix before the request reaches OpenAI — the backend only ever sees the bare `gpt-5.6-terra`.
+3. **The `SHIM_REASONING_EFFORT` env var** — a single default for the whole shim, applied when there is no usable per-request signal and no slug suffix.
+4. **The built-in default, `high`** — used when none of the above is set, for posture parity with DAAF's Claude sessions.
+
+Valid values are `none`, `low`, `medium`, `high`, `xhigh`, and `max` (`max` is gpt-5.6-only; `none` disables reasoning). An unrecognized value at any tier is ignored with a log warning and the next tier applies. You can confirm what the shim resolved by checking the shim log (`/daaf/scripts/provider_shim/logs/shim.log`): each request line ends with `effort=<value>:<source>`, where source is one of `inbound`, `slug`, `env`, or `default`. (Because of that demotion, an inbound `high` with no slug/env override logs `effort=high:default`, not `effort=high:inbound`.) Most users need to set nothing — leaving everything unset gives `high` everywhere. Both the env var and slug suffixes are read at shim startup / request time; changes to `environment_settings.txt` require the usual container recreate. See also the Option F [reasoning-effort paragraph](01_installation_and_quickstart.md#option-f-openai-api-directly-daaf-provider-shim) in the installation guide. If GPT replies also feel *shorter* or *terser* than you expect, that is a separate knob — see [GPT responses feel terse compared to Claude](#q-gpt-responses-feel-terse-compared-to-claude-option-f) below.
+
+### Q: GPT responses feel terse compared to Claude (Option F)
+
+Two things are in play, and only one of them is tunable.
+
+**Model personality (not fully fixable).** DAAF's prompts, agent protocols, and skill documents are written and tuned for Claude, whose default register is comparatively warm and explanatory. A GPT model running the same prompts brings its own default style, which tends to read as more clipped or matter-of-fact. No shim setting fully closes that gap — some of the difference is just the model, and the DAAF prompts can't override a model's underlying voice.
+
+**Response verbosity (tunable).** On the direct-OpenAI shim lane, the shim sends OpenAI's `text.verbosity` control on every request, and it defaults to **`high`** — chosen for parity with DAAF's warm, educational posture (the same rationale as the reasoning-effort default). `high` adds warmth and volume to responses; `low` makes them terse. So by default you are already getting the most expansive setting.
+
+If responses still feel too brief, verbosity is already maxed and the remaining gap is model personality (above). If instead you find GPT responses too *long* or padded, dial verbosity down: set `SHIM_TEXT_VERBOSITY=low` (or `medium`) in `environment_settings.txt`. Valid values are `low`, `medium`, and `high`; the value is read once at shim startup, so a change requires the usual container recreate. You can confirm what the shim resolved via the `/health` endpoint's `text_verbosity` field, and the shim startup log line records it as `text_verbosity=<value>`. This is independent of reasoning effort — [that control](#q-how-do-i-control-gpt-reasoning-effort-option-f) governs how hard the model *thinks*, while verbosity governs how much it *writes*.
 
 ### Q: Is my data sent to Anthropic? What about privacy?
 
-Your data does pass through Anthropic's API when Claude Code processes it -- that's how the AI works. However, a few important things to know:
+The answers are yes and no depending on exactly what we're talking about when we say, "data." Here's the complex picture:
 
-1. **Nothing leaves your computer via the DAAF workflow itself.** DAAF's hooks and safety rails are designed to prevent Claude from uploading, exfiltrating, or sharing your data files themselves. You can verify this by reading the hook scripts in `.claude/hooks/`.
+1. **All data analysis and computation happens directly on your machine,** inside the Docker container. DAAF's hooks and safety rails prevent Claude from bulk-uploading or exfiltrating your data files themselves. You can verify this by reading the hook scripts in `.claude/hooks/`.
 
-2. **Anthropic's data policies apply.** How Anthropic handles API data is governed by their privacy policy and terms of service. As of this writing, Anthropic states that API inputs and outputs are not used to train models, but you should verify their current policies yourself. This is a main reason why I focused on public datasets for DAAF out-of-the-box.
+2. **The analytical output and diagnostics in scripts do transit through Anthropic's servers.** In the process of conducting analysis, DAAF runs diagnostics (like examining sample rows), statistical tests, data visualizations, and report summaries. Because of the way Claude Code works, these analytical outputs are explicitly included in the chats with Claude Code (so it can see what's happening when it runs the code) and inevitably sent to Anthropic as part of the conversation. There is no mechanism by which Claude Code sends entire datasets outside of your machine -- it's really just exposure in these small "chunks" of analytical output.
 
-3. **The container provides additional isolation.** Because DAAF runs inside Docker with dropped capabilities and no privilege escalation, the blast radius of any unexpected behavior is contained (i.e., files it can accidentally upload to the internet, or send via email, or etc. etc.).
+3. **Whether this exposure is a concern depends on your specific setup.** How Anthropic handles API data is governed by their privacy policy and terms of service. As of this writing, Anthropic states that API inputs and outputs are not used to train models, but you should verify their [current policies](https://www.anthropic.com/policies) yourself. Certain Enterprise agreements with Anthropic have stronger, more FERPA/HIPAA-compliant data handling guarantees, and specific model access protocols (like via AWS Bedrock or Google Vertex AI) offer additional data governance controls that keep data within your organization's cloud infrastructure. DAAF ships configuration templates for the Bedrock and Vertex routes (in `environment_settings_example.txt`), but its maintainers haven't been able to validate those two routes end-to-end ourselves — so if your organization already runs on one of them, treat DAAF's support as a starting template you'll need to stand up and test in your own environment, and we'd welcome your reports. The specifics depend entirely on your license and agreement type. This is a main reason why I focused on public datasets for DAAF out-of-the-box.
 
-4. **DAAF enforces credential safety.** The framework actively prevents reading, writing, or committing files that look like credentials (`.env`, `*.pem`, `*.key`, `environment_settings*`, etc.). It won't prevent everything, but it'll give you a good set of starting guardrails to help protect yourself.
+4. **The container provides additional isolation.** Because DAAF runs inside Docker with dropped capabilities and no privilege escalation, the blast radius of any unexpected behavior is contained (i.e., files it can accidentally upload to the internet, or send via email, or etc. etc.).
 
-**Bottom line:** If you're working with sensitive, proprietary, or regulated data, talk to your IT team and legal counsel before using DAAF or any AI tool with that data. DAAF provides strong *local* safety guarantees, but the data still transits through Anthropic's infrastructure for inference. Do not mess around here -- do your homework and be a good steward of your data.
+5. **DAAF enforces credential safety.** The framework actively prevents reading, writing, or committing files that look like credentials (`.env`, `*.pem`, `*.key`, `environment_settings*`, etc.). It won't prevent everything, but it'll give you a good set of starting guardrails to help protect yourself.
+
+6. **OpenRouter adds an additional hop.** If you use OpenRouter instead of a direct Anthropic connection, your analytical output transits through OpenRouter's servers *in addition to* the underlying model provider. Review [OpenRouter's privacy policy](https://openrouter.ai/privacy) alongside Anthropic's if you choose this route.
+
+**Bottom line:** If you're working with private, proprietary, or otherwise protected non-public data, you need to fully understand the nuances of your specific Anthropic license, agreement type, and access method before using DAAF with that data. Talk to your IT team and legal counsel. Do not mess around here -- do your homework and be a good steward of your data.
+
+---
+
+### Q: Can I use DAAF with data that can't leave my secure environment?
+
+Yes -- and this is exactly the scenario I built DAAF's **synthetic-data protocol** for. It's the built-in, zero-trust default for data that is sensitive, proprietary, PII-bearing, HIPAA/FERPA-governed, or locked in a secure enclave. The core idea is simple: **your real data never enters the DAAF container at all.** Here's the flow:
+
+1. **You profile the data locally.** DAAF hands you a small, self-contained profiling script (it has no DAAF or container dependencies) that you run yourself, wherever the sensitive data actually lives -- your laptop, your enclave, your locked-down VM. You pick a **disclosure tier** (below) that controls exactly how much the script is allowed to measure.
+2. **You review everything before sharing.** The script produces a human-readable summary alongside the machine-readable report. You read that summary and confirm you're comfortable with every number in it *before* anything leaves your environment. Nothing crosses the boundary until you say so.
+3. **DAAF builds a synthetic stand-in.** You bring only that summary report into the container. From the report alone -- never the real data -- DAAF generates a *synthetic* dataset that's shaped like your real one (right columns, right types, plausible distributions) and authors a reusable data source skill for it.
+4. **You develop all your analysis code against the synthetic data.** Write it, debug it, dry-run it -- the synthetic data behaves enough like the real thing to build a complete, working pipeline.
+5. **You finalize results against the real data.** When the code is finished and vetted, you run it yourself against the real data, in its own secure environment, to get the actual numbers. The synthetic data is a **code-development scaffold, not an analytic substitute** -- it's for building the pipeline, never for producing findings.
+
+**The four disclosure tiers** (you pick the lowest one that still lets you build your code):
+
+- **T1 -- Schema:** Only column names, data types, and the row count cross the boundary. No values, no statistics.
+- **T2 -- Marginals (the default):** Per-column summaries -- category levels (with small groups suppressed for privacy), numeric percentiles, missingness rates -- but never raw minimums/maximums or example values.
+- **T3 -- Relationships:** Everything in T2 plus how columns relate to each other (correlations, cross-tabs with small cells suppressed), so the synthetic data can reproduce those relationships too.
+- **T4 -- Local high-fidelity synthesis:** For the highest fidelity, *you* run a synthesizer locally that learns from the real data inside your environment, and only the resulting synthetic rows cross the boundary -- the real data and the fitted model both stay put.
+
+**One important caveat about what this protects.** The disclosure tiers are careful engineering — they meaningfully limit *how much* leaves your machine, and lower tiers leave very little — but they are **not a formal privacy guarantee.** They control what the profiling script is allowed to measure; they cannot make a judgment call about whether a given summary is safe for *your* data under *your* rules. That judgment stays with you. This is exactly why step 2 above matters: you read the human-readable summary the script produces and confirm you're comfortable with every number in it before anything crosses the boundary. Treat the tiers as a strong, disclosure-minimizing default, and treat your own review of the profile report as the real safeguard.
+
+**What if you have enterprise-grade protections?** If your organization already has stronger guarantees in place -- an Anthropic Enterprise agreement, AWS Bedrock or Google Vertex AI governance, or an institutional secure enclave with an approved model access path -- then you may be able to point DAAF at those environments and work with the data directly, no synthetic stand-in required. DAAF provides configuration templates for the AWS Bedrock and Google Vertex AI routes (in `environment_settings_example.txt`), but its maintainers haven't validated those routes end-to-end ourselves — so treat them as a starting point you'll need to stand up and test in your own environment. I'd flag, too, that this is a more involved setup: in my experience it typically needs bespoke support from your IT department, because network access, credential management, and compliance sign-off are all organization-specific. So my recommendation is to treat the synthetic protocol as your starting point -- it's the zero-trust default that works *without* any of that -- unless and until your organization has stood up one of those governed access paths.
+
+---
+
+### Q: Can Claude change its own safety hooks or settings? How do I edit them myself?
+
+No — and that's by design. The hook scripts (`.claude/hooks/`), their logs (`.claude/logs/`), the benchmark harness hooks, and `.claude/settings.json`/`settings.local.json` are the framework's root of trust, so DAAF blocks Claude from modifying them through the shell (`cp`, `mv`, `tee`, output redirection, `sed -i`, `chmod`, etc.). If Claude could overwrite `settings.json` with a shell command, it could deregister every safety hook — so those writes are refused. Claude can still *read* these files (helpful when you ask it to explain a guardrail) and run git index commands like `git add` on them.
+
+To change a hook or a setting yourself, edit the file from **outside** the agent's blocked path: use the browser-based code editor (or any host editor pointed at the Docker volume), or type the change as a `!`-prefixed command in the Claude Code prompt — `!` commands run directly in your shell and are **not** subject to the hooks, so they're your escape hatch for maintaining the safety system. Supported settings edits Claude makes through its `Edit`/`Write` tools still work (those changes are diff-visible for you to review); only opaque shell overwrites are blocked.
+
+### Q: Why can't Claude just `pip install` a package it needs?
+
+Because the container's environment is defined entirely by its Dockerfile, and anything installed at runtime disappears the next time the image is rebuilt — which makes analyses hard to reproduce. To keep the environment reproducible, DAAF blocks runtime package installs in **both** languages — Python (`pip`/`pip3`/`pipx install`, `python -m pip install`, `uv`/`uvx`, `conda install`, etc.) and R (`R CMD INSTALL`, `Rscript -e 'install.packages(...)'`, and the `remotes`/`devtools`/`pak`/`renv`/`BiocManager` verbs) — and it blocks them whether typed at the command line or written inside a script (`run_with_capture.sh` scans the script body before executing it); read-only inspection like `pip list`, `pip show`, and R's `installed.packages()` still works. If you genuinely need a new package, add it to the Dockerfile and rebuild: exit the container, then run `bash rebuild_daaf.sh` (`.\rebuild_daaf.ps1` on Windows) from your `daaf-docker` folder. See [Keeping DAAF Updated](01_installation_and_quickstart.md#keeping-daaf-updated) for the rebuild procedure.
 
 ---
 
@@ -123,19 +449,21 @@ With localhost binding, the ports are only reachable from your own machine, not 
 
 After changing, rebuild the container — see [Keeping DAAF Updated](01_installation_and_quickstart.md#keeping-daaf-updated) for the procedure.
 
+**Heads-up about updates:** unlike port *numbers* (which have a supported home in `environment_settings.txt` via `DAAF_PORT_*`), the bind address has no settings-file key today — this is a manual edit to a framework-managed file. DAAF updates preserve local edits where they can (your change is stashed and re-applied), but an update that touches the same lines can conflict with or supersede it. After any update or rebuild, re-check the `ports:` section and re-apply this change if it has been reset to the localhost default.
+
 ---
 
 ### Q: Is there a free way to use DAAF?
 
 Not in a practical sense for full-pipeline analyses, unfortunately. The free and Pro tiers of Claude simply don't provide enough usage for the volume of work DAAF demands. You might be able to do some lightweight Data Discovery Mode queries (asking what data is available, looking up variable definitions), but a full analysis pipeline will exhaust a lower-tier plan very quickly.
 
-**More flexible billing via OpenRouter:** While not free, [OpenRouter](https://openrouter.ai/) offers pay-per-token access to Claude's Opus models with no monthly subscription commitment. You only pay for what you use (with a 5.5% fee on credit purchases), which can be more accessible than a $100-200/mo Max subscription if you're doing occasional analyses rather than heavy daily use. See the [Installation Guide](01_installation_and_quickstart.md#configure-authentication-via-environment_settingstxt) for setup instructions.
+**More flexible and affordable billing via OpenRouter:** [OpenRouter](https://openrouter.ai/) offers pay-per-token access with no monthly subscription commitment (5.5% fee on credit purchases). Critically, OpenRouter also provides access to high-performing open-weight models at a fraction of Anthropic's pricing. **GLM 5.2** [benchmarks competitively with the Opus line](https://daaf.openaugments.org/bench/) at roughly 33% of the cost, and **DeepSeek V4 Flash** offers passable mid-tier performance at roughly 3% of flagship cost. This makes DAAF substantially more accessible than it was even a few months ago — a full pipeline analysis that might cost $50+ with Opus via API could cost under $15 with GLM 5.2 through OpenRouter, or less than $1 with DeepSeek V4 Flash. See the [Installation Guide](01_installation_and_quickstart.md#configure-authentication-via-environment_settingstxt) for setup instructions.
 
-This is genuinely the biggest barrier to entry for DAAF, and I wish it were different. I hope that as model costs continue to decrease and open-source models become more capable, a more accessible option will emerge. If you have the capacity to test DAAF with open-source models or alternative providers, please reach out -- that's high on the list of things I'd love community help with.
+Cost remains a meaningful barrier to entry for DAAF, but it's shrinking. As open-weight models continue to improve and inference costs continue to fall, accessibility will only get better. If you're running DAAF with non-default models, please share your experiences — community feedback on the quality-cost frontier directly informs the guidance here and in the [DAAFBench results](https://daaf.openaugments.org/bench/).
 
 ### Q: How much disk space does DAAF use?
 
-The Docker image is roughly **3-5 GB** after building. It includes a Debian Bookworm base image, Python 3.12, 57 pinned Python packages (data science, geospatial, econometrics, visualization, ML), geospatial system libraries (GDAL/GEOS/PROJ), and Claude Code. Docker also keeps build cache layers, so total Docker disk usage may be somewhat higher.
+The Docker image is roughly **8.6 GB** after building (the exact size varies with your Docker version and platform). It includes an Ubuntu 24.04 (Noble) base image, Python 3.12, 46 pinned Python packages (data science, geospatial, econometrics, visualization, ML), geospatial system libraries (GDAL/GEOS/PROJ), Claude Code, R, 60+ pinned R packages (tidyverse, fixest, survey, sf, and more), and the Quarto CLI. The R runtime, packages, and Quarto account for roughly **2 GB** of that total (approximately 8.6 GB with R versus 6.4 GB without). Docker also keeps build cache layers, so total Docker disk usage may be somewhat higher.
 
 Beyond the image, your Docker volume will grow as you create research projects. Each project accumulates scripts, parquet data files, session logs, and notebooks. A typical full-pipeline project might add 50-500 MB depending on how many datasets you fetch and how large they are.
 
@@ -166,27 +494,90 @@ For self-guided reading, the full user documentation suite is in `user_reference
 
 ## Packages and Environment
 
-### Q: How do I install additional Python packages?
+### Q: How do I install additional Python or R packages?
 
-The recommended approach is to ask DAAF to add the package to the `Dockerfile` and rebuild the container. For detailed step-by-step instructions, common scenarios, and examples, see [**04. Extending DAAF -- Customizing Your Python Environment**](04_extending_daaf.md#the-recommended-path-modify-the-dockerfile).
+**Python:** The recommended approach is to ask DAAF to add the package to the `Dockerfile` and rebuild the container. By default DAAF adds it to the **user additions block** near the end of the Dockerfile, which rebuilds fast because Docker's layer caching spares every expensive layer above it (see [Why does my rebuild take so long?](#q-why-does-my-rebuild-take-so-long--how-do-i-keep-rebuilds-fast) below). For detailed step-by-step instructions, common scenarios, and examples, see [**04. Extending DAAF -- Customizing Your Python and R Environment**](04_extending_daaf.md#the-recommended-path-modify-the-dockerfile-python).
+
+**R:** For quick, session-only use, *you* can run `install.packages("pkgname")` yourself inside the container -- the package will be available for the rest of that session but will not survive a container restart. Note this is a **you-only** action: DAAF's agents are blocked from runtime R installs (the `bash-safety.sh` hook refuses command-line forms like `R CMD INSTALL` and `Rscript -e 'install.packages(...)'`, and `run_with_capture.sh` scans each script and refuses to execute one containing an `install.packages()` call), so run it yourself via a `!`-prefixed command in the prompt or a host terminal (both bypass the hooks). For permanent installation, add the package to the `Dockerfile` and rebuild the container. As with Python, the fast-rebuilding user additions block is the default location; the exception is a package you want covered by the R presence gate, which belongs in the framework R blocks. DAAF uses Posit Package Manager (P3M) with date-pinned snapshots for R package reproducibility, so permanent additions go through the Dockerfile just like Python packages. See [**04. Extending DAAF**](04_extending_daaf.md) for more details.
 
 ### Q: Can I use `apt-get` or `sudo` inside the container?
 
 No. The DAAF container runs as a non-root user (`appuser`) with all Linux capabilities dropped and privilege escalation blocked. This is a deliberate security hardening measure -- `apt-get`, `sudo`, and other system-level commands are completely unavailable at runtime.
 
-If you need system-level packages (for example, a C library that a Python package depends on), you'll want to ask DAAF to add them to the `apt-get install` block in the `Dockerfile`. See [**04. Extending DAAF -- Customizing Your Python Environment**](04_extending_daaf.md#adding-system-level-dependencies) for the full step-by-step process.
+If you need system-level packages (for example, a C library that a Python package depends on), you'll want to ask DAAF to add them to the `apt-get install` block in the `Dockerfile`. See [**04. Extending DAAF -- Customizing Your Python and R Environment**](04_extending_daaf.md#adding-system-level-dependencies) for the full step-by-step process.
 
 ### Q: Will packages I install at runtime persist across restarts?
 
-No. Packages installed at runtime (via `uv pip install --user` or `pip install --user`) are stored in the container's filesystem, which is **separate** from the Docker volume where your research data lives. Your research files, scripts, and outputs persist across restarts because they're in the named volume (`daaf_daaf-data`). But runtime-installed packages live in the container image layer, so they disappear whenever the container is rebuilt or recreated (e.g., after `docker compose down` + `docker compose up -d`, or after `docker compose up -d --build`).
+No. First, a note on *who* can run a runtime install: **DAAF's agents are blocked from runtime package installs** by the bash-safety hook and settings.json deny rules (`pip`/`pip3`/`pipx install`, `python -m pip install`, `uv`/`uvx`, `conda install`, and friends) — see [Why can't Claude just `pip install` a package it needs?](#q-why-cant-claude-just-pip-install-a-package-it-needs) above. *You* can still run a runtime install yourself: type it as a `!`-prefixed command in the Claude Code prompt, or run it from a host terminal into the container — `!` commands and host-shell commands are **not** subject to the hooks.
 
-To make a package permanently part of your container, add it to the `Dockerfile` and rebuild. See [**04. Extending DAAF -- Customizing Your Python Environment**](04_extending_daaf.md#the-recommended-path-modify-the-dockerfile) for the full process.
+But even when you install one yourself, it is **ephemeral**. Runtime-installed packages (via `uv pip install --user` or `pip install --user`) are stored in the container's filesystem, which is **separate** from the Docker volume where your research data lives. Your research files, scripts, and outputs persist across restarts because they're in the named volume (`daaf_daaf-data`). But runtime-installed packages live in the container image layer, so they disappear whenever the container is rebuilt or recreated (e.g., after `docker compose down` + `docker compose up -d`, or after `docker compose up -d --build`).
+
+The durable path — the only one that survives a rebuild and keeps your analysis reproducible — is to add the package to the `Dockerfile` and rebuild. See [**04. Extending DAAF -- Customizing Your Python and R Environment**](04_extending_daaf.md#the-recommended-path-modify-the-dockerfile-python) for the full process.
 
 ### Q: What package manager does DAAF use?
 
 DAAF uses **[uv](https://docs.astral.sh/uv/)**, a fast Rust-based Python package manager by Astral (the makers of Ruff). It's fully compatible with pip -- it reads the same package index (PyPI) and supports the same package specifiers -- but it's significantly faster, often 10-50x for large installs.
 
-In the `Dockerfile`, packages are installed with `uv pip install --system` (system-wide, during the root build phase). At runtime inside the container, use `uv pip install --user <package>` (user-local, since you're not root). Regular `pip install --user <package>` also works if you prefer -- both tools install from the same source.
+In the `Dockerfile`, packages are installed with `uv pip install --system` (system-wide, during the root build phase) — this is where packages *should* go, since Dockerfile installs are the reproducible, rebuild-durable path.
+
+Runtime installs are a different story. DAAF's agents are **blocked** from runtime installs by the safety hook and deny rules (see [Why can't Claude just `pip install` a package it needs?](#q-why-cant-claude-just-pip-install-a-package-it-needs)), so you cannot ask DAAF to run `uv pip install` for you. If *you* want an ad-hoc, throwaway install for quick testing, run it yourself via a `!`-prefixed command in the prompt or from a host terminal — `uv pip install --user <package>` or `pip install --user <package>` both work (user-local, since you're not root, and both read the same PyPI source). Just remember such installs are **ephemeral** and vanish on the next rebuild; anything you want to keep belongs in the `Dockerfile`.
+
+### Q: Why does my rebuild take so long? / How do I keep rebuilds fast?
+
+It depends entirely on *where* in the Dockerfile your change lands, because of how Docker **layer caching** works. Docker builds the image as a stack of layers, top to bottom. When you rebuild, it reuses every cached layer up to the first one that changed, then re-runs that layer and **everything below it**. So a change high in the file (say, a system library in an early `apt-get` block) forces the expensive layers underneath -- the ~2.2 GB R package stack, the Python install blocks, the editor extensions -- to rebuild too, which can take many minutes. A change at the very bottom rebuilds almost nothing.
+
+That's exactly why DAAF's Dockerfile has a **user additions block** near the end, and why it's the recommended default place for your own packages and tools. Because nothing downstream depends on it, a package added there is the only thing rebuilt -- the rebuild takes only as long as installing that package, typically seconds to a couple of minutes depending on its size. (Note that a change to an *earlier* layer -- including a framework update that touches the package blocks -- still re-runs everything below it, your additions included; that first rebuild after an update will be slow regardless.)
+
+**To keep rebuilds fast:** let DAAF add your standalone packages and tools to the user additions block (its default), and reserve edits to the early/mid-file blocks for the cases that genuinely require them -- a system library a framework package needs at *build time*, or an R package you want covered by the presence gate. Those cases will legitimately re-run everything below them; that's expected, not a mistake. The [Extending DAAF guide](04_extending_daaf.md#the-recommended-path-modify-the-dockerfile-python) walks through both paths in detail.
+
+---
+
+## R and Language Support
+
+### Q: How do I switch between R and Python?
+
+Just tell DAAF. Say something like "I want to use R" or "set execution language to R" at the start of your session, and DAAF will configure itself to write R scripts, use tidyverse for data manipulation, validate with `stopifnot()` and `cat()`, and assemble Quarto notebooks instead of Marimo. This sets a preference in the project configuration that persists across sessions until you change it back.
+
+To switch back, say "set execution language to Python" or "I want to use Python." The framework adjusts everything accordingly -- script templates, validation patterns, notebook format, and library choices.
+
+### Q: Can I mix R and Python in one pipeline?
+
+No. Each DAAF pipeline runs in a single language -- all scripts, validation, and notebooks within a given project use either Python or R, not both. This is by design: mixing languages within a pipeline would break the audit trail, complicate the code review process, and make reproducibility much harder to verify.
+
+That said, parquet files are completely language-agnostic. Data saved by a Python pipeline can be read by an R pipeline and vice versa (R reads them with `arrow::read_parquet()`). So you can absolutely analyze the same dataset in both languages across different projects -- you just can't mix them within a single project's pipeline.
+
+### Q: How do I add an R package?
+
+For quick, session-only use, *you* can run `install.packages("pkgname")` yourself inside the container. The package will be available for the rest of that session but will disappear when the container is rebuilt or recreated. This is a **you-only** action -- DAAF's agents are blocked from runtime R installs by the `bash-safety.sh` hook (command-line forms) and by `run_with_capture.sh`'s pre-execution scan (an `install.packages()` call written inside a script), so asking DAAF to install it will be refused. Run it yourself via a `!`-prefixed command in the prompt or a host terminal (both bypass the hooks), and remember it's a throwaway.
+
+For permanent installation, add the package to the `Dockerfile`'s R package install block and rebuild the container. DAAF uses Posit Package Manager (P3M) with date-pinned snapshots for reproducibility, so all R packages are installed from a consistent, versioned repository. See [**04. Extending DAAF**](04_extending_daaf.md) for the full step-by-step process.
+
+### Q: What R packages come pre-installed?
+
+DAAF ships with 60+ pinned R packages covering the core data science stack: tidyverse (dplyr, tidyr, readr, purrr, stringr, forcats, lubridate), ggplot2, arrow (for parquet I/O), fixest (high-dimensional fixed effects), plm (panel data), survey (complex survey analysis), sf and terra (spatial data), tidymodels (machine learning), plotly, data.table, sandwich, lmtest, modelsummary, marginaleffects, and more. DAAF also includes 11 R library skills that provide curated guidance for using these packages effectively within the framework.
+
+### Q: Are there any known differences between Python and R support?
+
+R is a core execution lane in DAAF, engineered for parity with Python. The same file-first execution protocol, the same validation standards, the same adversarial QA review, and the same notebook assembly apply to both languages, and that parity is backed by explicit parity contracts and an automated test suite that checks the two lanes stay in step. Python remains the default execution language — you opt into R in a single sentence (see [How do I switch between R and Python?](#q-how-do-i-switch-between-r-and-python) above) — but choosing R is not choosing a lesser experience.
+
+Parity is the goal we build toward rather than a finished fact, so in the interest of transparency here are the differences worth knowing about today. If you run into one that isn't listed here, we'd genuinely welcome a bug report — more community testing is exactly how the remaining gaps get found and closed.
+
+**One intentional behavior change worth knowing about (new in v3.0.0).** After you rebuild to the latest image, base R's `sort()` and `order()` will order text a little differently when it mixes upper- and lowercase or accented characters: they now follow standard dictionary-style ordering (technically, ICU collation) rather than raw byte order. This is the *correct*, expected behavior, and it arrives as part of a fix that finally lets R handle Unicode text properly. It affects only base-R sorting — `dplyr::arrange()` and the shell `sort` command are unaffected — and it only takes effect once you rebuild the image.
+
+**A few methods have deeper support in one language than the other.** Throughout this list, "unsupported" means DAAF doesn't yet ship curated guidance for the method, not that the method is impossible:
+
+- **ML interpretation and fairness tooling is deeper on the Python side** (SHAP, fairlearn, LightGBM guidance). R ships iml and fairmodels with tidymodels interpretation/fairness references, but Python's coverage is more mature.
+- **A couple of clustering methods — DBSCAN and HDBSCAN — are currently Python-only.** The more common clustering approaches (k-means, hierarchical) are fully supported in both languages.
+- **Statistical network models (the ERGM family) don't yet have a documented route in either language.**
+- **Causal-inference reference material is written Python-first.** R users are pointed to the equivalent R tools (fixest, plm, base R stats) — the underlying methods work fine in R, but the worked guidance currently leads with Python.
+- **Point-pattern spatial analysis is Python-only** (the spatstat package isn't installed). Standard vector/raster spatial work is fully supported in R via sf and terra.
+- **Table and interactive-figure export differ.** Exporting gt tables to PNG needs a headless browser that isn't in the image, so save R tables as HTML instead; R's interactive plotly widgets load their JavaScript from the internet rather than bundling it, so they need a connection to view; and PDFs render via Typst rather than LaTeX (in both languages).
+
+**A few methods sit outside DAAF's curated coverage in *both* languages** — Bayesian modeling, survival / time-to-event analysis, and deep learning. These aren't R-specific gaps; if your work needs them, they're worth flagging no matter which language you're using, so R users don't mistake them for something Python could do and R couldn't.
+
+**Adding an R package goes through an image rebuild rather than `install.packages()` at runtime.** This guardrail exists so your results stay reproducible — a package added on the fly would vanish on the next rebuild and quietly break a later re-run. Add it to the Dockerfile and rebuild instead; see [How do I add an R package?](#q-how-do-i-add-an-r-package) above and [Extending DAAF](04_extending_daaf.md).
+
+None of these limit what DAAF can accomplish in the core pipeline (fetch, clean, transform, analyze, visualize, report) — they are edge-of-stack details, documented here so you're never surprised by one mid-project.
 
 ---
 
@@ -220,7 +611,7 @@ Session logs are invaluable when something goes wrong. The Markdown logs show yo
 
 DAAF includes an interactive **DAAF Log Explorer** that renders your session transcripts as a visual timeline in your web browser. It shows the orchestrator's actions as a horizontal timeline bar, with subagent dispatches waterfalling downward. Click any block to see exactly what files were read, written, or executed -- with plain-language descriptions and clickable file references.
 
-The quickest way to access this is from your host machine (no container shell needed):
+The quickest way to open it is the **DAAF Control Panel** — run `bash daaf.sh` (or `.\daaf.ps1` on Windows) from your `daaf-docker` folder and choose **3) View Session Logs**. To run the viewer directly instead (from your host machine, no container shell needed):
 
 ```bash
 cd daaf-docker
@@ -252,7 +643,7 @@ No. Session logs are gitignored and stay entirely on your local machine (specifi
 
 They serve very different purposes:
 
-**Session logs** are a complete, raw transcript of everything that happened in a Claude Code session. They're automatically generated, stored in `.claude/logs/`, and are primarily useful for debugging after the fact. Think of these as a security camera recording -- comprehensive but not curated. You can browse them visually using the DAAF Log Explorer (`bash view_logs.sh` from your `daaf-docker` folder) rather than reading the raw files.
+**Session logs** are a complete, raw transcript of everything that happened in a Claude Code session. They're automatically generated, stored in `.claude/logs/`, and are primarily useful for debugging after the fact. Think of these as a security camera recording -- comprehensive but not curated. You can browse them visually using the DAAF Log Explorer (the DAAF Control Panel's **3) View Session Logs**, or `bash view_logs.sh` from your `daaf-docker` folder) rather than reading the raw files.
 
 **STATE.md** is a structured progress tracker that DAAF creates during full-pipeline analyses. It lives inside your project folder (`research/[project]/STATE.md`) and tracks what stage the analysis is at, which checkpoints have passed, what decisions were made, and what needs to happen next. It also accumulates the QA Findings Summary (aggregated quality review results across all stages), the Final Review Log (from the data-verifier's end-of-pipeline check), and any Runtime Risks encountered during execution. Its primary purpose is enabling **session recovery** -- if your session runs out of context (the model's working memory fills up), you can start a fresh session and STATE.md tells the new session exactly where to pick up. Think of this as a bookmark with detailed notes.
 
@@ -272,7 +663,7 @@ A few reasons, and they're all about making AI-generated code more reliable.
 
 **Type strictness.** Polars is stricter about types than Pandas, which means type-related bugs surface immediately rather than silently propagating through a pipeline.
 
-That said, Pandas is still installed in the container and available if needed. Polars syntax is also very similar to R's tidyverse (intentionally so), which may feel familiar if you're coming from that ecosystem. I'd welcome new skills for the ecosystem to leverage Pandas and R just as robustly in the future!
+That said, Pandas is still installed in the container and available if needed. If you're an R user, DAAF also supports R as a first-class execution language -- R pipelines use tidyverse (dplyr, tidyr, and friends) as their DataFrame library, with the same file-first execution protocol, parquet-based data pipeline, and inline validation standards. Polars syntax is intentionally similar to tidyverse, so the two ecosystems feel quite natural alongside each other. See the [R and Language Support](#r-and-language-support) FAQ section above for more on switching between languages.
 
 ### Q: Why Marimo instead of Jupyter?
 
@@ -284,15 +675,17 @@ This one's pretty straightforward: Jupyter notebooks and AI code editors are a t
 
 **AI editability.** Because marimo notebooks are plain Python, Claude can read and write them the same way it handles any other `.py` file. Editing a Jupyter `.ipynb` file requires manipulating JSON structure, cell metadata, kernel info, and output encodings -- it's fragile and error-prone for AI tools. Marimo is dramatically simpler and more reliable for this use case. Far, far, far easier.
 
+**What about R projects?** R pipelines use **Quarto** (`.qmd` files) instead of Marimo. Quarto is R's native literate programming system -- it combines Markdown narrative with R code chunks and renders to HTML, PDF, or other formats. Just as Marimo is the natural choice for Python (plain `.py` files, reactive execution, Git-friendly), Quarto is the natural choice for R (Markdown-based, knitr engine, first-class R support). The same principles apply: scripts are the primary artifact, and DAAF assembles the Quarto document from completed scripts at the end for presentation. In that Stage 9 audit document, archived script chunks are deliberately `eval: false`; only small, explicitly enabled preview chunks execute during rendering, so rendering does not rerun the analytical pipeline.
+
 ### Q: Why Docker instead of a virtual environment?
 
 A virtual environment (venv, conda, etc.) handles one thing well: Python package isolation. Docker handles that *plus* a whole lot more that matters for this project.
 
 **Security isolation.** DAAF lets an AI agent write and execute arbitrary code on your behalf. That's inherently risky. Docker runs the entire environment as a non-root user with all Linux capabilities dropped and privilege escalation explicitly blocked. Even if Claude Code somehow tried to `rm -rf /` or `sudo` something malicious, the operating system kernel would stop it cold. A virtualenv gives you none of that -- Claude would run with your full user permissions.
 
-**Complete reproducibility.** Docker pins *everything*: the OS (Debian Bookworm), Python version (3.12), system packages, Python libraries, and Claude Code itself. When I say DAAF works, I mean it works in that exact environment. Virtualenvs only manage Python packages, not system-level dependencies, OS differences, or tool versions.
+**Complete reproducibility.** Docker pins *everything*: the OS (Ubuntu 24.04), Python version (3.12), system packages, Python libraries, and Claude Code itself. When I say DAAF works, I mean it works in that exact environment. Virtualenvs only manage Python packages, not system-level dependencies, OS differences, or tool versions.
 
-**Clean recovery.** If something goes wrong -- a corrupted package, a broken state, whatever -- you can tear down the container and rebuild from scratch in minutes. Your data persists in the Docker volume, completely unaffected. Try doing that with a corrupted virtualenv.
+**Clean recovery.** If something goes wrong -- a corrupted package, a broken state, whatever -- you can tear down the container and rebuild from scratch in minutes. Your research data persists in its Docker volume, and Claude Code's own login and session history persist in a second dedicated volume (`daaf-claude-config`), so both are completely unaffected by a rebuild. (Only an explicit `docker compose down -v` or `docker volume rm` deletes those volumes.) Try doing that with a corrupted virtualenv.
 
 **Cross-platform consistency.** Docker runs the same way on Mac, Windows, and Linux. No more "it works on my machine" problems.
 
@@ -314,11 +707,11 @@ This is one of DAAF's most distinctive design choices, and it's worth understand
 
 In most data science workflows, the notebook *is* the work product -- you write code in cells, run them interactively, and the notebook captures both the code and its output. DAAF flips this: **scripts are the primary artifact**, and the notebook is assembled *from* those scripts at the end.
 
-**Reproducibility.** Each script is a self-contained, executable Python file that can be run independently from the command line. You don't need a notebook server, you don't need to run cells in a specific order, and there's no hidden state. Run the script, get the output. Every time.
+**Reproducibility.** Each script is a self-contained, executable Python or R file that can be run independently from the command line. You don't need a notebook server, you don't need to run cells in a specific order, and there's no hidden state. Run the script, get the output. Every time.
 
 **Audit trail.** Each script includes its own execution log appended as a comment block at the bottom -- the exact output from when it was run, including timestamps, row counts, and validation results. This means the evidence of what happened is embedded directly in the artifact, not in a separate log file you might lose track of.
 
-**Version control.** When a script needs revision (say, the code-reviewer finds a bug), the original script is preserved and a new version is created (`_a.py`, `_b.py`). The full history of attempts and fixes is visible in the file system. The marimo notebook only includes the final successful version, but the intermediate attempts remain available for audit.
+**Version control.** When a script needs revision (say, the code-reviewer finds a bug), the original script is preserved and a new version is created (`_a.py`/`_a.R`, `_b.py`/`_b.R`). The full history of attempts and fixes is visible in the file system. The notebook (marimo for Python, Quarto for R) only includes the final successful version, but the intermediate attempts remain available for audit.
 
 **Separation of execution from presentation.** The notebook's job in DAAF is to *present* the completed work in an interactive, explorable format -- not to *do* the work. This separation means the notebook can't accidentally introduce bugs or hidden state, because it's literally just displaying what the scripts already produced.
 
@@ -355,9 +748,9 @@ So a typical full run can easily exceed **2-3 hours of Claude's active processin
 
 ### Q: Can I allocate more resources to the Docker container?
 
-Yes, but it's probably not necessary. DAAF's Docker container is running Claude Code (which talks to Anthropic's servers for the AI part) and Python scripts (which run locally for data processing). The AI inference isn't happening on your machine -- it happens on Anthropic's infrastructure. The local compute is just for running Python data operations.
+Yes, but it's probably not necessary. DAAF's Docker container is running Claude Code (which talks to Anthropic's servers for the AI part) and Python/R scripts (which run locally for data processing). The AI inference isn't happening on your machine -- it happens on Anthropic's infrastructure. The local compute is just for running Python or R data operations.
 
-That said, if you're working with very large datasets and the Python scripts themselves are running slowly, you can adjust Docker Desktop's resource allocation:
+That said, if you're working with very large datasets and the Python or R scripts themselves are running slowly, you can adjust Docker Desktop's resource allocation:
 
 1. Open **Docker Desktop**
 2. Go to **Settings** (gear icon)
@@ -457,7 +850,7 @@ When more than 50% of your data is suppressed, any statistical analysis on the r
 
 ### Q: The notebook won't render in my browser
 
-The easiest way to view notebooks is with the convenience script — run `bash view_notebooks.sh` (or `.\view_notebooks.ps1` on Windows) from your `daaf-docker` folder. This handles container startup, port binding, and flag configuration automatically, and includes built-in port conflict detection.
+The easiest way to view notebooks is the **DAAF Control Panel**: run `bash daaf.sh` (or `.\daaf.ps1` on Windows) from your `daaf-docker` folder and choose **4) View Marimo Notebooks (Python)**. (The same convenience script runs directly as `bash view_notebooks.sh` / `.\view_notebooks.ps1`.) This handles container startup, port binding, and flag configuration automatically, and includes built-in port conflict detection.
 
 If you're using the manual `marimo run` command and can't see anything at `http://localhost:2718`, check these things in order:
 
@@ -476,18 +869,71 @@ If you're using the manual `marimo run` command and can't see anything at `http:
 
 6. **Check for errors in the terminal.** If marimo itself hit an error (e.g., a missing dependency or a syntax error in the notebook), the error will appear in the terminal where you ran the `marimo run` command.
 
+### Q: How do I view a Quarto notebook (R projects)?
+
+Quarto notebooks (`.qmd`) render to a static HTML file rather than being served live like marimo. The easiest way to view one is the **DAAF Control Panel** — run `bash daaf.sh` (or `.\daaf.ps1` on Windows) from your `daaf-docker` folder and choose **5) View Quarto Notebooks (R)**. That runs the same convenience script directly (`bash view_quarto.sh` / `.\view_quarto.ps1`). With no argument, the script recursively discovers every `.qmd` anywhere below `research/`, sorts the paths, and displays a numbered picker. Select a number to render, or cancel cleanly with `0`, blank input, `q`/`Q`, or end-of-file:
+
+```bash
+cd daaf-docker
+bash view_quarto.sh                            # macOS / Linux: recursive picker
+.\view_quarto.ps1                              # Windows: recursive picker
+```
+
+You can bypass the picker with a direct `.qmd` path, or pass a project folder when exactly one notebook exists anywhere below it. If a project contains multiple recursive matches, the viewer prints the sorted matches and refuses to guess:
+
+```bash
+bash view_quarto.sh 2026-01-24_Your_Project
+bash view_quarto.sh research/2026-01-24_Your_Project/output/analysis/notebook.qmd
+.\view_quarto.ps1 research/2026-01-24_Your_Project/output/analysis/notebook.qmd
+```
+
+The script renders the selected notebook to a single self-contained HTML file inside the container, copies it out to a `quarto_html/` folder next to your `docker-compose.yml`, and opens it in your browser -- handling container startup automatically. For a Full Pipeline Stage 9 notebook, this render validates the document and explicitly enabled previews; archived Stage 5-8 script chunks remain disabled, so render success is not a full analysis reproduction. Output uses the notebook's flat basename, so rendering two notebooks named `report.qmd` targets the same `quarto_html/report.html` and the later render overwrites the earlier one. Set `QUARTO_HTML_DIR` to a different host directory when both must be retained.
+
+If you'd rather do it by hand, render from inside the container and copy the result out yourself:
+
+```bash
+quarto render research/YYYY-MM-DD_Your_Project/notebook.qmd
+```
+
+```bash
+# From your host terminal (not inside the container)
+docker cp daaf-docker:/daaf/research/YYYY-MM-DD_Your_Project/notebook.html ./notebook.html
+```
+
+You can also read the `.qmd` source directly in the browser-based VS Code editor -- it's plain Markdown with R code chunks. See [Installation Guide — Viewing Quarto Documents](01_installation_and_quickstart.md#viewing-quarto-documents) for the full walkthrough.
+
+### Q: What are the status bar at the bottom of my screen and the agent panel showing me?
+
+Two at-a-glance displays that Claude Code renders for you, both customized by DAAF.
+
+**The status bar** runs along the bottom of your session. Reading across, it shows the active model (with its reasoning-effort level), the current working directory, the Git branch you're on, a context-usage meter for the session, and -- if you're on a Claude subscription -- your rate-limit windows (how much of your rolling 5-hour and 7-day usage allowance you've used up). That rate-limit readout is specific to Claude subscription plans for now; on API-key or other-provider sessions those segments simply don't appear.
+
+**The agent panel** shows up whenever DAAF has dispatched specialists to work in the background. It gives you one row per running specialist, and each row reports that specialist's type (what kind of agent it is), its model, its current status, its token count, and its own context meter -- so you can watch several agents make progress at once.
+
+The one thing worth glancing at during a long session is the context meter: it tells you how full Claude's working memory is getting. You don't have to police it yourself, though -- DAAF watches the same number and will pause at a safe stopping point (and hand you a restart prompt) before it ever runs high enough to hurt quality. The next entry explains exactly what happens when it does fill up.
+
 ### Q: "Context utilization CRITICAL" and the session seems to stop
 
 This isn't an error -- it's DAAF being responsible about Claude's working memory.
 
-Claude has a finite context window. As a session progresses and Claude processes more information, that window fills up. Even with large context windows (up to 1M tokens), quality can degrade well before the window is full, so DAAF enforces both percentage-based and absolute token thresholds — whichever fires first:
+Claude has a finite context window. As a session progresses and Claude processes more information, that window fills up. Even with large context windows (up to 1M tokens), quality can degrade well before the window is full, so DAAF enforces both percentage-based and absolute token thresholds — whichever fires first.
 
-| Utilization | Status | What happens |
-|-------------|--------|-------------|
-| < 40% and < 150k tokens | NOMINAL | Normal operations |
-| ≥ 40% or ≥ 150k tokens | ELEVATED | Works normally but starts delegating more to subagents |
-| ≥ 60% or ≥ 200k tokens | HIGH | Finishes current work, prepares for session restart |
-| ≥ 75% or ≥ 250k tokens | CRITICAL | Stops new work, asks you to restart the session |
+The exact trigger points depend on the model's **context-quality threshold profile**. DAAF detects the exact model identifier automatically — nothing to configure. Claude Fable/Mythos models retain the validated extended-horizon profile. Exact terminal GPT 5.6 Sol model slugs, bare or provider-prefixed, use the standard percentage gates while retaining Sol's higher validated absolute gates. Opus, Sonnet, unknown model IDs, every other GPT variant, GLM models, and all other alternative-provider models use the conservative-default profile unless individually validated and registered.
+
+For GPT 5.6 Sol, the terminal model slug must be exactly `gpt-5.6-sol` or `gpt-5.6-sol[1m]`; the identifier may be bare or may contain one or more provider path prefixes ending in `/`. Malformed left-boundary strings such as `xgpt-5.6-sol`, `foo-gpt-5.6-sol`, and `vendor/notgpt-5.6-sol` remain conservative, as do right-side suffix or trailing variants. Threshold-profile selection is version-specific and independent of physical context-window mapping. Terra, Luna, Pro, mini, chat, date snapshots, future variants, and trailing modifiers remain conservative unless separately validated, even when a wider GPT 5.6 variant maps to a 1,050,000-token physical window. That 1,050,000-token physical window is itself route-conditional: it holds on the OpenAI-API-key and OpenRouter routes, while the ChatGPT-subscription (Codex) shim lane is backend-capped near ~370,000 tokens (measured for Sol, 2026-07-16), which DAAF's hooks and statuslines lane-gate automatically. On that 370k physical window, exact Sol's standard percentage boundaries are 148k, 222k, and 277.5k tokens, before its retained 300k, 400k, and 500k absolute gates. Physical-window mapping and quality-threshold profile selection remain separate. GPT is not part of Claude's Fable/Mythos family: exact Sol now shares standard percentages but retains the higher validated Sol absolute gates. The four status levels and what DAAF does at each are the same for every model; only the trigger points differ:
+
+| Threshold Profile | Membership | ELEVATED at | HIGH at | CRITICAL at |
+|-------------------|------------|-------------|---------|-------------|
+| **Validated extended-horizon** | Claude Fable/Mythos models | ≥ 30% or ≥ 300k tokens | ≥ 40% or ≥ 400k tokens | ≥ 50% or ≥ 500k tokens |
+| **Exact GPT 5.6 Sol** | Exact terminal model slugs, bare or provider-prefixed: `gpt-5.6-sol` or `gpt-5.6-sol[1m]` | ≥ 40% or ≥ 300k tokens | ≥ 60% or ≥ 400k tokens | ≥ 75% or ≥ 500k tokens |
+| **Conservative-default** | Opus, Sonnet, unknown model IDs, every other GPT variant, GLM models, and all other alternative-provider models unless individually validated and registered | ≥ 40% or ≥ 150k tokens | ≥ 60% or ≥ 200k tokens | ≥ 75% or ≥ 250k tokens |
+
+| Status | What Happens |
+|--------|--------------|
+| NOMINAL | Normal operations |
+| ELEVATED | Works normally but starts delegating more to subagents |
+| HIGH | Finishes current work and prepares for a session restart |
+| CRITICAL | Stops new work and asks you to restart the session |
 
 When you see CRITICAL, it means Claude's context window is nearly full and continuing would degrade the quality of its work. This is by design -- DAAF would rather stop and restart cleanly than continue with increasingly unreliable output.
 
@@ -527,6 +973,21 @@ DAAF has extensive curated knowledge about its supported data sources, stored in
 
 For more detail, see [Best Practices — Monitoring DAAF's Internal Reference Loading](03_best_practices.md#monitoring-daafs-internal-reference-loading).
 
+### Q: How can I tell whether a problem comes from DAAF or from Claude Code itself?
+
+Claude Code ships a built-in diagnostic for exactly this question: **safe mode**. Launch it with:
+
+```bash
+claude --safe-mode
+```
+
+(or set `CLAUDE_CODE_SAFE_MODE=1` in the environment). Safe mode starts Claude Code with **all customizations disabled** — no CLAUDE.md instructions, no skills, no hooks, no MCP servers. (The one exception: settings deployed by an organization's admin policy stay active — not applicable to a standard DAAF install.) That gives you a clean baseline:
+
+- If the problem **persists** in safe mode, it's a Claude Code or environment issue — check the [Claude Code documentation](https://code.claude.com/docs) or run `/doctor`
+- If the problem **disappears** in safe mode, one of DAAF's customizations is involved — a good next step is filing an issue with the details
+
+> **⚠️ Warning:** in safe mode, DAAF effectively does not exist. None of its safety guardrails, audit logging, or workflow protocols are active — the model runs with Claude Code's defaults only. Use safe mode strictly for quick diagnosis, never for real analysis work. Exit and restart normally when you're done.
+
 ---
 
 ## Recommended Next Steps
@@ -534,3 +995,14 @@ For more detail, see [Best Practices — Monitoring DAAF's Internal Reference Lo
 - [**00. README**](https://github.com/DAAF-Contribution-Community/daaf/tree/main?tab=readme-ov-file#summary-what-is-daaf) — Project overview, quick start, design philosophy, capabilities, and acknowledgments
 - [**01. Installation & Quick Start**](01_installation_and_quickstart.md) — Get started! Installation prerequisites, step-by-step setup, day-to-day usage, and troubleshooting
 - [**Back to main**](https://github.com/DAAF-Contribution-Community/daaf/tree/main)
+
+---
+
+## Community Resources
+
+- **GitHub Issues:** [Report bugs or request features](https://github.com/DAAF-Contribution-Community/daaf/issues)
+- **GitHub Discussions:** [Ask questions and share findings](https://github.com/DAAF-Contribution-Community/daaf/discussions)
+- **Email:** support@openaugments.org
+- **Discord:** [Join the DAAF community](https://discord.gg/daaf) (link TBD)
+- **YouTube:** [@brhkim](https://youtube.com/@brhkim) — Video tutorials and walkthroughs
+- **Substack:** [DAAF Field Guide](https://daafguide.substack.com) — Deep dives on AI-assisted research

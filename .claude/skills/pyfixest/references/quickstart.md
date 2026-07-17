@@ -11,23 +11,14 @@
 
 ## Installation
 
-### Basic Install
-
-```bash
-pip install pyfixest
-# or
-uv add pyfixest
-```
-
-### Optional Dependencies
-
-```bash
-pip install pyfixest[plots]        # lets-plot for visualization
-pip install pyfixest[gt]           # great_tables for etable output
-pip install pyfixest[jax]          # JAX backend for GPU demeaning
-pip install wildboottest           # Wild cluster bootstrap
-pip install marginaleffects        # Post-estimation interpretation
-```
+No installation needed in DAAF: `pyfixest` (0.40.0) is pre-installed in the
+container, along with `wildboottest`, `marginaleffects`, and `great-tables` (used
+by `etable` output). Runtime installs are blocked in DAAF (`pip install`/`uv add`
+are refused both at the command line and inside executed scripts — see CLAUDE.md
+§ Runtime Package Installation). If an extra that is not pre-installed (e.g.,
+`pyfixest[jax]` for the JAX backend, or `lets-plot`) is genuinely required,
+escalate to the user to add it to the Dockerfile (user additions block near the
+end) and rebuild.
 
 ### Verify Installation
 

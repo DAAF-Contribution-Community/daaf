@@ -422,6 +422,34 @@ df = df.with_columns(
 )
 ```
 
+```r
+library(arrow)
+library(dplyr)
+
+# Load NCCS data via unified mirror system
+# fetch_from_mirrors() is a Python helper; in R, build the URL from the mirror root.
+# Mirror failover: see `education-data-query/references/fetch-patterns.md` (R pattern)
+DATASET_PATH <- "nccs/colleges_nccs_all"
+mirror <- yaml::read_yaml("mirrors.yaml")$mirrors[[1]]
+# NOTE: illustrative only — mirror parquet files are Polars-written and may
+# declare string_view columns, so a plain read can fail under R arrow
+# ("cannot handle Array of type <utf8_view>"). Real fetch scripts must use the
+# view-safe parquet read from `education-data-query/references/fetch-patterns.md`.
+df <- read_parquet(paste0(mirror$root_url, "/", DATASET_PATH, ".", mirror$format))
+
+# Filter out null and rare negative codes
+df_clean <- df |>
+  filter(!is.na(invest_inc_total), invest_inc_total >= 0)
+
+# Or replace negative codes with null (precautionary)
+df <- df |>
+  mutate(invest_inc_total_clean = ifelse(invest_inc_total < 0, NA, invest_inc_total))
+
+# Distinguish zero from missing
+df <- df |>
+  mutate(has_inv_income = !is.na(invest_inc_total) & invest_inc_total > 0)
+```
+
 **Using direct NCCS data (Polars):**
 
 ```python
@@ -434,6 +462,12 @@ df = df.with_columns(
     .otherwise(pl.col("INVINC"))
     .alias("INVINC")
 )
+```
+
+```r
+# Replace negative codes with null
+df <- df |>
+  mutate(INVINC = ifelse(INVINC < 0, NA, INVINC))
 ```
 
 ---
@@ -467,6 +501,15 @@ df = df.with_columns(
 balance_errors = df.filter(pl.col("balance_check") > 100)  # Allow small rounding
 ```
 
+```r
+library(dplyr)
+
+# Assets should equal Liabilities + Net Assets
+df <- df |>
+  mutate(balance_check = abs(total_assets_eoy - total_liab_eoy - net_assets_eoy))
+balance_errors <- df |> filter(balance_check > 100)
+```
+
 **Revenue reconciliation**:
 ```python
 # Total revenue should approximate sum of components
@@ -480,6 +523,16 @@ df = df.with_columns(
 # Note: revenue_total includes other categories not shown here; some gap is expected
 ```
 
+```r
+# Total revenue should approximate sum of components
+df <- df |>
+  mutate(
+    rev_sum = contributions_total + prog_serv_rev + invest_inc_total,
+    rev_check = abs(revenue_total - rev_sum)
+  )
+# Note: revenue_total includes other categories not shown here; some gap is expected
+```
+
 **Year-over-year reasonableness**:
 ```python
 # Flag large year-over-year changes (sorted by ein and year)
@@ -489,6 +542,16 @@ df = df.with_columns(
     .alias("rev_change")
 )
 unusual = df.filter(pl.col("rev_change").abs() > 1.0)  # >100% change
+```
+
+```r
+# Flag large year-over-year changes (sorted by ein and year)
+df <- df |>
+  arrange(ein, year) |>
+  group_by(ein) |>
+  mutate(rev_change = revenue_total / lag(revenue_total) - 1) |>
+  ungroup()
+unusual <- df |> filter(abs(rev_change) > 1.0)  # >100% change
 ```
 
 **Using direct NCCS data (UPPERCASE variable names):** Replace Portal names with NCCS names (e.g., `TOTASS`, `TOTLIAB`, `NETASS`, `TOTREV`, `CONT`, etc.).

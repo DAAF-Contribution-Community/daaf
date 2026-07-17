@@ -35,6 +35,8 @@ Guidance for translating rigorous data science work into clear, compelling commu
 3. **Reviewing a draft?** Go straight to `communication-review.md`
 4. **Concerned about equity or accessibility?** Read `accessibility-equity.md`
 
+**The reference-file routing in this skill applies to advisory and brainstorming turns as much as implementation.** Recommending an approach, reviewing a plan, or answering a question that touches a routed topic calls for reading the routed reference file just as much as drafting the deliverable does — the reference files carry curated caveats and audience-tested frameworks that this overview and general knowledge lack.
+
 ## Quick Decision Trees
 
 ### "Who am I writing for?"

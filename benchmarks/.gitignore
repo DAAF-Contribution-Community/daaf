@@ -1,0 +1,23 @@
+# Benchmark run artifacts — ephemeral, large, regenerable
+_sandbox/
+results/
+results_archive/
+
+# Research project directories created by subagents during benchmark runs
+research/
+
+# Subagent-created scripts in test fixture directories
+# (debuggers write diagnostic scripts, code-reviewers write QA scripts)
+datasets/test_fixtures/debugger/01_diag-*
+datasets/test_fixtures/debugger/02_diag-*
+datasets/test_fixtures/debugger/*_FIXED*
+datasets/test_fixtures/debugger/scripts/
+datasets/test_fixtures/code_reviewer/adhoc_*
+
+# Generated viewer (contains embedded result data)
+viewer_*.html
+# Generated viewer bundles (v3.0.0 multi-file artifacts:
+# index.html + data/tx_{result_set}.json transcript shards)
+daafbench_*/
+# ...but the viewer HTML/CSS/JS template is source, not generated output
+!scripts/viewer_template.html

@@ -415,6 +415,18 @@ result = tracts_in_district.select(
 district_child_poverty_rate = result["poverty_sum"][0] / result["total_sum"][0]
 ```
 
+```r
+library(dplyr)
+
+# Example: Child poverty rate for school district
+result <- tracts_in_district |>
+  summarise(
+    poverty_sum = sum(children_in_poverty, na.rm = TRUE),
+    total_sum = sum(children_total, na.rm = TRUE)
+  )
+district_child_poverty_rate <- result$poverty_sum / result$total_sum
+```
+
 ## Finding Variables in NHGIS
 
 ### Data Finder Workflow

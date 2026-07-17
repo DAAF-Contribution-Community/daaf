@@ -194,6 +194,32 @@ df = fetch_yearly_from_mirrors(
 # Or fetch a single year
 df = fetch_from_mirrors("pseo/colleges_pseo_2020")
 ```
+```r
+library(arrow)
+library(dplyr)
+
+# fetch_yearly_from_mirrors()/fetch_from_mirrors() are Python helpers; in R,
+# build URLs from the mirror root in mirrors.yaml and read directly.
+# Mirror failover: see `education-data-query/references/fetch-patterns.md` (R pattern).
+config <- yaml::read_yaml("mirrors.yaml")
+mirror <- config$mirrors[[1]]
+
+# PSEO is a yearly dataset -- fetch individual years and bind
+frames <- list()
+# NOTE: illustrative only — mirror parquet files are Polars-written and may
+# declare string_view columns, so a plain read can fail under R arrow
+# ("cannot handle Array of type <utf8_view>"). Real fetch scripts must use the
+# view-safe parquet read from `education-data-query/references/fetch-patterns.md`.
+for (y in c(2018, 2019, 2020)) {
+  url <- paste0(mirror$root_url, "/", "pseo/colleges_pseo_", y, ".", mirror$format)
+  frames[[length(frames) + 1]] <- arrow::read_parquet(url)
+}
+df <- bind_rows(frames)
+
+# Or fetch a single year
+url <- paste0(mirror$root_url, "/", "pseo/colleges_pseo_2020", ".", mirror$format)
+df <- arrow::read_parquet(url)
+```
 
 ### Filtering
 
@@ -212,6 +238,22 @@ df.filter(pl.col("p50_earnings") > 0)
 
 # Filter by industry (String column, not integer)
 df.filter(pl.col("industry") == "54")  # Professional Services
+```
+```r
+# Filter by institution
+df |> filter(unitid == 100751)  # University of Alabama
+
+# Filter by field of study
+df |> filter(cipcode == 11)  # Computer Science
+
+# Filter by cohort (note: full year range format)
+df |> filter(pseo_cohort == "2019-2021")
+
+# Earnings rows only (exclude missing/suppressed)
+df |> filter(p50_earnings > 0)
+
+# Filter by industry (String column, not integer)
+df |> filter(industry == "54")  # Professional Services
 ```
 
 ### Additional Access Methods (Census Bureau Source)

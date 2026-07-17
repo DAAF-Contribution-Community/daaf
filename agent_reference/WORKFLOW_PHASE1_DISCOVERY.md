@@ -2,6 +2,8 @@
 
 Stages 1, 2, 3, 3.5. Cross-phase orchestration guidance (invocation templates, QA protocols, context requirements) is in `full-pipeline-mode.md` (loaded only for Full Pipeline mode; not needed for standalone Data Discovery mode).
 
+> **Wave barrier discipline (async dispatch).** This phase contains the pipeline's heaviest parallel-dispatch surface: Stage 3 fans out one source-researcher per data source (up to 5 concurrent), and Stage 2 may run alongside. Subagents dispatched via the Agent tool run in the background by default and return via completion notifications that may arrive one at a time. Treat mid-wave notifications as **status-only**: do not make gate decisions (G2, G3), revise the discovery scope, persist STATE.md conclusions, present a PSU checkpoint, or begin Stage 3.5 synthesis until EVERY member of the dispatched wave has returned. Synthesis (Stage 3.5) happens once, over the complete set of source-researcher returns — never incrementally per return. Interim narration to the user ("two of three source deep-dives have reported back") is fine; acting on partial results is not. An early return under context pressure, or a failed/skipped source-researcher, still counts as that member's completion — handle redelegation as part of whole-wave synthesis, not as an immediate mid-wave reaction.
+
 ---
 
 ## Stage 1: Initial Intake

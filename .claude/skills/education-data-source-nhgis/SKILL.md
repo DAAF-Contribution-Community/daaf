@@ -270,6 +270,22 @@ south = df.filter(pl.col("census_region") == 3)
 recent = df.filter(pl.col("year") == 2023)
 ```
 
+```r
+library(dplyr)
+
+# Filter to a specific school
+school_census <- df |> filter(ncessch == 10000201704)
+
+# Filter to metropolitan areas only (cbsa_type only in 2000+ census files)
+metro <- df |> filter(cbsa_type == 1)
+
+# Filter to a specific census region (South)
+south <- df |> filter(census_region == 3)
+
+# Filter to a specific year
+recent <- df |> filter(year == 2023)
+```
+
 > **Note**: The Portal provides pre-processed school/college-to-census-geography links. For custom census analysis (tract-level demographics, time series, boundary files), use NHGIS directly via methods in `./references/data-access.md` (requires free IPUMS registration).
 
 ## Common Pitfalls

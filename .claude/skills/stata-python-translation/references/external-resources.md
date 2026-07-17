@@ -130,8 +130,12 @@ documentation.
   specification via `svy.Design(stratum=..., psu=..., wgt=...)`, directly
   paralleling Stata's `svyset`. Supports Taylor linearization, BRR, jackknife,
   and bootstrap variance estimation. Estimation: means, totals, proportions,
-  ratios, medians, and regression models. Validated to be numerically equivalent
-  to R's survey package.
+  ratios, medians, and regression models. Point estimates match independent
+  closed-form weighted computations to floating tolerance. GLM inference
+  (coefficients, SEs, p-values, residual df) is cross-validated against R's survey
+  package to <1e-6 relative at svy 0.19.0 (quasibinomial/quasipoisson families);
+  marginal effects agree with R to ~0.1%/0.9% but `margins()` omits categorical-level
+  contrasts (compute those from the coefficient table or in R).
 - **Relevance to DAAF:** High -- primary complex survey analysis library. Direct
   mapping to Stata's `svyset` and `svy:` prefix commands makes it the natural
   translation path for Stata users working with NHANES, DHS, BRFSS, ACS, and

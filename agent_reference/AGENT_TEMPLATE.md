@@ -18,10 +18,14 @@ description: >
   [Third person. What it does AND when to use it.]
   Example: "Reviews executed scripts for correctness, methodology alignment,
   and data integrity. Invoked after each Stage 5-8 script execution."
-tools: [Read, Write, Edit, Bash, Glob, Grep, Skill]   # Explicit allowlist. Omit for all.
+tools: [Read, Write, Edit, Bash, Glob, Grep, Skill]   # REQUIRED explicit allowlist (checklist item A1c).
+# NEVER omit this field: omission inherits ALL tools — including Agent/Task, which
+# lets the agent spawn nested subagents. NEVER include Agent or Task in the list:
+# all dispatch authority belongs to the orchestrator (see BOUNDARIES.md § Process
+# Violations; enforced in depth by block-nested-dispatch.sh).
 permissionMode: default                          # Or: plan (read-only agents)
+model: sonnet            # DAAF two-tier routing: opus | sonnet (see "Model Field" below)
 # ── Optional fields ──
-# model: inherit          # sonnet | opus | haiku | inherit
 # maxTurns: 50
 # skills: skill-a          # Skill to preload at startup (full content injected)
 # skills:                  # Multiple skills use YAML block list:
@@ -37,6 +41,21 @@ permissionMode: default                          # Or: plan (read-only agents)
 #           timeout: 5
 ---
 ```
+
+#### Model Field
+
+The `model:` field is **expected on every DAAF agent** — it sets the model tier the orchestrator dispatches the agent on by default.
+
+**Valid values:** `sonnet`, `opus`, `haiku`, `fable`, a full model ID (e.g. `claude-opus-4-8`), or `inherit`. Omitting the field is equivalent to `inherit` (tracks the main session model).
+
+**DAAF policy — two tiers only:** assign `opus` or `sonnet`. Haiku is excluded: "turn count beats token price" — the cheapest models take 2-3× the turns on multi-step research work, costing more overall and degrading reliability, so `sonnet` is the floor. Choose the tier by the agent's core workload:
+
+- **`opus`** — high-judgment, adversarial, synthesis, or primary data-production roles (pipeline execution — fetching/cleaning/transforming from a plan, dataset profiling, plan design, plan/data verification, code review, hypothesis-driven debugging, cross-file framework consistency, stakeholder report synthesis).
+- **`sonnet`** — well-specified, skill-guided, or mechanical roles (structured source lookup, multi-source consolidation, verbatim notebook assembly, systematic reference tracing, broad read-only exploration).
+
+**`inherit` is reserved** for the rare agent that must deliberately track the session model rather than pin a tier.
+
+The frontmatter tier is a *default floor*, not a cap: the orchestrator may override any dispatch via the Agent tool's per-dispatch `model` parameter (which outranks frontmatter), and a session-model ceiling is enforced by the `enforce-model-ceiling.sh` hook. For the full per-agent routing table, escalation/downgrade rules, and the ceiling rule, see `.claude/skills/daaf-orchestrator/SKILL.md` > "Model Selection for Subagent Dispatch".
 
 ### Section 1: Title and Purpose (REQUIRED)
 
@@ -233,6 +252,7 @@ If nothing novel, emit "None" — this is the expected common case.
 - **Heading levels:** Output sections use `##` headings (Summary, Confidence Assessment, etc.) since the returned output is a standalone message. Add a `#` title heading at the top.
 - Confidence model is STANDARDIZED across all agents (H/M/L with rationale)
 - Learning Signal categories are STANDARDIZED (Access/Data/Method/Perf/Process)
+- Output must distinguish observed facts from inference per the **Claim Evidence Standards** (`.claude/skills/agent-authoring/references/cross-agent-standards.md` § 11): quote probes for negative claims, derive counts from tool output, prefer repro over recall
 - Agent-specific content goes in the middle sections
 - Output should be parseable by the orchestrator without ambiguity
 

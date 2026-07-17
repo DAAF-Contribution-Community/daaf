@@ -7,6 +7,7 @@ description: >
 tools: [Read, Bash, Glob, Grep, Skill]
 skills: data-scientist
 permissionMode: plan
+model: sonnet   # Well-specified tier: systematic reference tracing (override per-dispatch allowed)
 ---
 
 # Integration Checker Agent
@@ -44,7 +45,7 @@ A script can pass code-reviewer QA but still have broken integration (e.g., note
 | Input | Source | Required | How Used |
 |-------|--------|----------|----------|
 | Plan.md | Stage 4 output | Yes | Expected data flow, file manifest, transformation sequence |
-| Notebook.py | Stage 9 output | Yes | Trace data loads, figure saves, function calls, imports |
+| Notebook (`.py` or `.qmd`) | Stage 9 output | Yes | Trace data loads, figure saves, function calls, imports |
 | Report.md | Stage 11 output | Yes | Trace figure references, data claims, source citations |
 | Project folder | All stages | Yes | Complete artifact tree for existence and orphan checks |
 | STATE.md | Orchestrator | No | QA script coverage confirmation |
@@ -103,7 +104,7 @@ For each stage, track what it provides and consumes:
 | Stage 6 | `data/processed/*.parquet` | `data/raw/*.parquet` |
 | Stage 7 | `data/processed/*_analysis.parquet` | `data/processed/*.parquet` |
 | Stage 8 | `output/figures/*.png`, `output/analysis/*.parquet` | analysis data |
-| Stage 9 | `notebook.py` | All processed data, figures |
+| Stage 9 | `notebook.py` or `notebook.qmd` | All processed data, figures |
 | Stage 11 | `Report.md` | Figures, notebook findings |
 
 Verify each "Imports" is satisfied by a prior stage's "Exports."
@@ -126,7 +127,7 @@ For every file reference, verify at three levels:
 |-------|-------|---------------|
 | **Existence** | File exists at path | `Glob` or `ls` command |
 | **Non-empty** | File has content | Size > 0 bytes |
-| **Accessible** | File can be consumed | For parquet: read schema with Polars (no error). For images: file size >1KB. For markdown: file contains non-whitespace text. |
+| **Accessible** | File can be consumed | For parquet: read schema with Polars (Python) or `arrow::open_dataset()`/`arrow::read_parquet()` schema read (R) — no error. For images: file size >1KB. For markdown: file contains non-whitespace text. |
 
 The "Accessible" threshold exists because a zero-byte parquet or a corrupt image will pass existence checks but break the deliverable at presentation time.
 
@@ -171,9 +172,9 @@ Read Plan.md's File Manifest and Transformation Sequence to construct the expect
 
 Check all file paths resolve across all artifacts:
 
-**Notebook-to-Data:** Extract all `pl.read_parquet()`, `pl.read_csv()`, `pd.read_*()` statements. Verify each target file exists and is accessible.
+**Notebook-to-Data:** Extract all `pl.read_parquet()`, `pl.read_csv()`, `pd.read_*()` statements — and, for R/Quarto notebooks, all `arrow::read_parquet()` and `readr::read_*()` statements. Verify each target file exists and is accessible.
 
-**Report-to-Figures:** Extract all `![...](...)` and `[Figure N](path)` references. Verify each target file exists and has size >1KB.
+**Report-to-Figures:** Extract all `![...](...)` and `[Figure N](path)` references — and, for Quarto notebooks, `knitr::include_graphics(` calls. Verify each target file exists and has size >1KB.
 
 **Script-to-QA-Script:** For each execution script in `scripts/stage{5,6,7,8}_*/`, verify a corresponding QA script exists in `scripts/cr/` (at minimum `cr1`).
 
@@ -424,7 +425,7 @@ If nothing novel, emit "None" — this is the expected common case.
 
 ### Never Do
 - Delete or modify any files (this agent is read-only verification)
-- Create or assemble the Marimo notebook (notebook-assembler does this)
+- Create or assemble the Marimo notebook or Quarto notebook (notebook-assembler does this)
 - Modify notebook code or attempt to improve notebook structure
 - Execute analysis code to test connections (use structural/static checks)
 - Skip orphan detection
@@ -484,7 +485,7 @@ Awaiting guidance before proceeding.
 | 6 | Checking notebook without checking scripts | Notebook should compile from executed scripts; notebook-only checks miss script-level breaks | Verify script-to-QA-script mapping and script-to-notebook tracing |
 | 7 | Ignoring QA script coverage | Missing QA scripts indicate incomplete validation pipeline | Verify every Stage 5-8 execution script has at least a cr1 counterpart |
 
-**DO NOT create or assemble the Marimo notebook.** Your role is VERIFICATION of existing connections. The notebook-assembler agent (Stage 9) creates the notebook; you verify it is properly wired to data and figures. Do not modify notebook code or attempt to improve the notebook structure.
+**DO NOT create or assemble the Marimo notebook or Quarto notebook.** Your role is VERIFICATION of existing connections. The notebook-assembler agent (Stage 9) creates the notebook; you verify it is properly wired to data and figures. Do not modify notebook code or attempt to improve the notebook structure.
 
 **DO NOT skip notebook artifact verification.** The notebook is a primary deliverable. Verify that all notebook-to-data references resolve, all figures exist, and all imports reference real files. A well-connected notebook makes delivery credible.
 

@@ -4,6 +4,8 @@ Stages 5, 6. Cross-phase orchestration guidance (invocation templates, QA protoc
 
 **Execution Model:** All scripts follow the file-first execution pattern. See `SCRIPT_EXECUTION_REFERENCE.md` for the complete protocol.
 
+> **Async dispatch note.** This phase runs strictly one script at a time (each fetch or clean, then its mandatory code-reviewer QA, before the next). Under async dispatch, each research-executor and code-reviewer returns via a completion notification rather than a synchronous tool return. Do not start the next script, evaluate a stage gate (G5, G6), or present PSU3 until the current dispatch's return has arrived and been fully processed. If more than one dispatch is ever in flight at once, treat every mid-flight notification as status-only and wait for all of them before acting.
+
 ---
 
 ## Stage 5: Data Retrieval
@@ -68,6 +70,7 @@ All relative paths in referenced files resolve from BASE_DIR.
 
 Call the skill tool with name '{domain_query_skill}'.  # e.g., 'education-data-query'
 If user has R/Stata background, also include: "User has [R/Stata] background. Load [r-python-translation/stata-python-translation] skill. Add inline [R/Stata]-equivalent comments for non-trivial data operations."
+When execution language is R and user has Python/Stata background, instead include: "User has [Python/Stata] background. Load [python-r-translation/stata-r-translation] skill. Add inline [Python/Stata]-equivalent comments for non-trivial data operations."
 
 **QUERY SPECIFICATION:**
 - Dataset Path: {dataset_path}  (from datasets-reference.md, flat format e.g. "ccd/schools_ccd_directory")
@@ -95,7 +98,7 @@ Use the mirror-based fetch pattern from the education-data-query skill:
 1. Try each mirror in priority order (per mirrors.yaml)
 2. Build URLs from each mirror's url_template + dataset path parameters
 3. Read using mirror's read_strategy; fall through on 404/timeout
-4. Apply year/state/other filters locally with Polars
+4. Apply year/state/other filters locally with Polars (Python) or dplyr/arrow (R)
 5. Log which mirror was used and the fetch result
 
 **THOROUGHNESS DIRECTIVE:**
@@ -129,11 +132,20 @@ with stage-specific values for Stage 5.
 
 ### Validation (CP1)
 
+**Python:**
 ```python
 # Required checks
 assert len(df) > 0, "STOP: Empty dataset"
 assert all(col in df.columns for col in required_cols), "STOP: Missing columns"
 assert df['year'].is_in(expected_years).all(), "WARNING: Unexpected years"
+```
+
+**R:**
+```r
+# Required checks
+stopifnot("STOP: Empty dataset" = nrow(df) > 0)
+stopifnot("STOP: Missing columns" = all(required_cols %in% names(df)))
+stopifnot("WARNING: Unexpected years" = all(df$year %in% expected_years))
 ```
 
 ### Output Format
@@ -156,7 +168,7 @@ assert df['year'].is_in(expected_years).all(), "WARNING: Unexpected years"
 - Parquet: `data/raw/YYYY-MM-DD_[source]_[description].parquet`
 
 ### Scripts Saved (one per fetch task):
-- Path: `scripts/stage5_fetch/{step}_{task-name}.py`
+- Path: `scripts/stage5_fetch/{step}_{task-name}.py` (Python) or `{step}_{task-name}.R` (R)
 - Includes: Pagination handling, CP1 validation, output paths
 - Note: Each fetch task produces a separate script; QA is invoked immediately after each
 ```
@@ -171,7 +183,7 @@ assert df['year'].is_in(expected_years).all(), "WARNING: Unexpected years"
 - [ ] STATE.md updated with Data Freshness Check findings
 - [ ] **QA review completed for EACH Stage 5 script** (code-reviewer separately invoked immediately after each individual script, not batched)
 - [ ] **All QA1 statuses:** PASSED/WARNING (any BLOCKER resolved via revision before next script)
-- [ ] **QA scripts saved to `scripts/cr/stage5_{step}_cr1.py`** (+ cr2..cr5 if warranted)
+- [ ] **QA scripts saved to `scripts/cr/stage5_{step}_cr1.py`** (`.R` for R projects) (+ cr2..cr5 if warranted)
 - [ ] **STATE.md updated:** Current Stage: 5, CP1 status, raw data paths recorded
 
 ---
@@ -245,6 +257,7 @@ All relative paths in referenced files resolve from BASE_DIR.
 
 Call the skill tool with name '{domain_context_skill}'.  # e.g., 'education-data-context'
 If user has R/Stata background, also include: "User has [R/Stata] background. Load [r-python-translation/stata-python-translation] skill. Add inline [R/Stata]-equivalent comments for non-trivial data operations."
+When execution language is R and user has Python/Stata background, instead include: "User has [Python/Stata] background. Load [python-r-translation/stata-r-translation] skill. Add inline [Python/Stata]-equivalent comments for non-trivial data operations."
 
 **DATA SOURCE:** {source_name}
 
@@ -304,11 +317,20 @@ with stage-specific values for Stage 6.
 
 ### Validation (CP2)
 
+**Python:**
 ```python
 # Required checks
 suppression_rate = (raw_df['key_var'] == SUPPRESSION_CODE).sum() / len(raw_df)  # SUPPRESSION_CODE from Plan Domain Configuration
 assert suppression_rate < 0.5, f"STOP: Suppression {suppression_rate:.1%} > 50%"
 assert len(clean_df) > len(raw_df) * 0.1, "STOP: >90% data loss"
+```
+
+**R:**
+```r
+# Required checks
+suppression_rate <- sum(raw_df$key_var == SUPPRESSION_CODE) / nrow(raw_df)  # SUPPRESSION_CODE from Plan Domain Configuration
+stopifnot("STOP: Suppression > 50%" = suppression_rate < 0.5)
+stopifnot("STOP: >90% data loss" = nrow(clean_df) > nrow(raw_df) * 0.1)
 ```
 
 ### Output Format
@@ -335,7 +357,7 @@ assert len(clean_df) > len(raw_df) * 0.1, "STOP: >90% data loss"
 - Parquet: `data/processed/YYYY-MM-DD_[description].parquet`
 
 ### Scripts Saved (one per clean task):
-- Path: `scripts/stage6_clean/{step}_{task-name}.py`
+- Path: `scripts/stage6_clean/{step}_{task-name}.py` (Python) or `{step}_{task-name}.R` (R)
 - Includes: Coded value filtering, suppression calculation, CP2 validation
 - Note: Each clean task produces a separate script; QA is invoked immediately after each
 ```
@@ -349,7 +371,7 @@ assert len(clean_df) > len(raw_df) * 0.1, "STOP: >90% data loss"
 - [ ] **All scripts saved to `scripts/stage6_clean/`** (one per clean task) with standard header
 - [ ] **QA review completed for EACH Stage 6 script** (code-reviewer separately invoked immediately after each individual script, not batched)
 - [ ] **All QA2 statuses:** PASSED/WARNING (any BLOCKER resolved via revision before next script)
-- [ ] **QA scripts saved to `scripts/cr/stage6_{step}_cr1.py`** (+ cr2..cr5 if warranted)
+- [ ] **QA scripts saved to `scripts/cr/stage6_{step}_cr1.py`** (`.R` for R projects) (+ cr2..cr5 if warranted)
 - [ ] **STATE.md updated:** Current Stage: 6, CP2 status, suppression rate, processed data paths
 - [ ] **PSU3 presented to user with data quality summary**
 - [ ] **User confirmed PSU3**

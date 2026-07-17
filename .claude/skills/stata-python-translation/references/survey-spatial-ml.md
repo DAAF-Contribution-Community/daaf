@@ -10,7 +10,7 @@ For full Python-side API details, load the dedicated skill: `svy`, `geopandas`, 
 `scikit-learn`.
 
 > **Versions referenced:**
-> Python: svy 0.13.0, geopandas 1.1.3, scikit-learn 1.8.0, PySAL (latest)
+> Python: svy 0.19.0 (svy-rs 0.10.0, svy-io 0.1.1), geopandas 1.1.3, scikit-learn 1.8.0, PySAL (latest)
 > Stata: Stata 18 (svy, spatial, lasso commands)
 > See SKILL.md Section: Library Versions for the complete version table.
 
@@ -20,7 +20,7 @@ For full Python-side API details, load the dedicated skill: `svy`, `geopandas`, 
 
 Stata's `svy:` prefix is the most widely used tool for design-based inference from
 complex survey samples. Stata's survey capabilities are mature, well-documented,
-and integrated into most estimation commands. Python's `svy` package (v0.13.0)
+and integrated into most estimation commands. Python's `svy` package (v0.19.0)
 provides a comparable core with a different API style.
 
 ### A1. Design Specification
@@ -50,7 +50,7 @@ sample = svy.Sample(data=df, design=design)
 | Persistence | One `svyset` applies to all `svy:` commands | Must pass `sample` to each call |
 | Weight syntax | Bracket syntax: `[pw=weight]` | Keyword: `wgt="weight"` |
 | Multiple strata | `strata(var1 var2)` or interaction | Tuple: `stratum=("var1", "var2")` |
-| FPC specification | `fpc(pop_size)` | `fpc="pop_size"` |
+| FPC specification | `fpc(pop_size)` | `pop_size="pop_size"` (svy 0.19.0 has no `fpc=`; FPC is now functional) |
 | Data type | Stata dataset | Polars DataFrame |
 | Multi-stage | `svyset psu, strata(s1) || ssu, strata(s2)` | Check svy docs for multi-stage specification |
 
@@ -65,6 +65,12 @@ sample = svy.Sample(data=df, design=design)
 | `svy: tabulate var1 var2` | `sample.estimation.prop("var1", by="var2")` | Cross-tabulation |
 | `svy, over(gender): mean income` | `sample.estimation.mean("income", by="gender")` | Domain estimation |
 | `svy: mean income, over(age_group)` | `sample.estimation.mean("income", by="age_group")` | Same as above |
+
+> **Result shape (svy 0.19.0):** each estimation call returns an `Estimate`;
+> `.to_polars()` on it yields columns `est/se/lci/uci/cv`. Passing a list
+> (`mean(["v1", "v2"])`) returns a `list[Estimate]` — one per variable, not a
+> single stacked frame — so iterate the list rather than reading a `variable`
+> column.
 
 **Domain estimation (the critical anti-pattern):**
 
@@ -99,6 +105,12 @@ from observations outside the subpopulation.
 | `svy: poisson y x1 x2` | `sample.glm.fit(y="y", x=["x1", "x2"], family="poisson")` | Poisson |
 | `svy: regress y i.cat x1` | `sample.glm.fit(y="y", x=[svy.Cat("cat"), "x1"], family="gaussian")` | Categorical predictor |
 | `svy: regress y c.x1##i.cat` | Pre-compute interaction columns; pass to svy | No formula parsing |
+
+> **`svy.Cat()` is required in svy 0.19.0, not optional:** string/categorical
+> predictors must be wrapped as `svy.Cat("var")`. A raw string column passed to
+> `glm.fit()` raises a strict-cast `ValueError` — there is no automatic
+> categorical detection. `glm.fit()` returns a `GLM`; call `.to_polars()` for
+> the coefficient table (`term/estimate/std_err/conf_low/conf_high/statistic/p_value/df`).
 
 **Formula interface difference:**
 
@@ -146,24 +158,39 @@ svyset [pw=finalwgt], vce(brr) brrweight(brr_wt1-brr_wt64) fay(0.5)
 ```
 
 ```python
-design = svy.Design(
-    wgt="finalwgt",
-    rep_weights="brr_wt1-brr_wt64",
-    rep_type="brr",
-    fay_coefficient=0.5,
+# svy 0.19.0: pre-computed replicate weights are described by a svy.RepWeights
+# object and passed to Design via rep_wgts=. There is no rep_weights=/rep_type=/
+# fay_coefficient= parameter on Design — the observed 0.19.0 signature is
+# Design(row_index, stratum, wgt, prob, hit, mos, psu, ssu, pop_size, wr, rep_wgts).
+rep_wgts = svy.RepWeights(
+    prefix="brr_wt",       # matches brr_wt1, brr_wt2, ... brr_wt64
+    n_reps=64,             # number of replicate weight columns
+    method="Fay",          # Fay-adjusted BRR (specifier convention unverified — see caveat)
 )
+design = svy.Design(wgt="finalwgt", rep_wgts=rep_wgts)
 sample = svy.Sample(data=df, design=design)
 ```
 
-**Available replication methods:**
+> **[not smoke-tested at 0.19.0]** The smoke test exercised replicate *creation*
+> from a Taylor design, not construction of a `svy.RepWeights` object from
+> pre-existing columns. Before relying on this path, introspect
+> `inspect.signature(svy.RepWeights)`: the observed metadata renders the method as
+> an enum-like member (e.g. `Bootstrap`), and earlier docs described a
+> `svy.EstimationMethod` enum (`TAYLOR`, `BRR`, `BOOTSTRAP`, `JACKKNIFE`, `SDR`) and
+> a `fay_coef` argument for Fay-BRR. Verify the enum-vs-string convention and the
+> Fay parameter name against the installed build rather than assuming.
 
-| Method | Stata `vce()` | Python `rep_type=` | Notes |
+**Available replication methods** (the `svy.RepWeights(method=)` specifier column
+below is illustrative — the exact form (enum member vs. string, and its casing) is
+**unverified at 0.19.0**; introspect before relying):
+
+| Method | Stata `vce()` | Python `svy.RepWeights(method=)` | Notes |
 |--------|-------------|---------------------|-------|
-| Bootstrap | `vce(bootstrap)` | `"bootstrap"` | Canty-Davison |
-| BRR | `vce(brr)` | `"brr"` | Balanced Repeated Replication |
-| Fay's BRR | `vce(brr) fay(rho)` | `"fay"` + `fay_coefficient` | Perturbed half-samples |
-| Jackknife (unstratified) | `vce(jackknife)` | `"jk1"` | Delete-one |
-| Jackknife (stratified) | `vce(jackknife)` | `"jkn"` | Delete-one-PSU |
+| Bootstrap | `vce(bootstrap)` | `Bootstrap` | Canty-Davison |
+| BRR | `vce(brr)` | `BRR` | Balanced Repeated Replication |
+| Fay's BRR | `vce(brr) fay(rho)` | `Fay` + Fay coefficient (param name unverified) | Perturbed half-samples |
+| Jackknife (unstratified) | `vce(jackknife)` | `JK1` | Delete-one |
+| Jackknife (stratified) | `vce(jackknife)` | `JKn` | Delete-one-PSU |
 
 ### A5. Coverage Gaps
 
@@ -175,13 +202,14 @@ Python's `svy` package currently supports:
 | Gaussian GLM | Yes | Yes | None |
 | Binomial (logistic) | Yes | Yes | None |
 | Poisson | Yes | Yes | None |
+| Gamma GLM | Yes | Yes | None -- added in svy 0.19.0 (`link=` identity/logit/log/inverse/inverse_squared) |
 | Ordinal logistic (`svy: ologit`) | Yes | No | High -- common in social science |
 | Cox survival (`svy: stcox`) | Yes | No | Medium -- specialized |
 | Negative binomial (`svy: nbreg`) | Yes | No | Medium |
 | Multinomial logit (`svy: mlogit`) | Yes | No | Medium |
 | Quantile regression (`svy: qreg`) | Yes | No | Medium |
 | Post-stratification / raking | Yes | Yes | None |
-| GREG calibration | Yes | Check svy docs | Possibly partial |
+| GREG calibration | Yes | `sample.weighting.calibrate/rake/poststratify` present | Names confirmed; signatures not smoke-tested |
 | Two-phase designs (`twophase`) | Yes | No | Low -- specialized |
 
 **When the model family is not available in Python's svy:** Fall back to R's

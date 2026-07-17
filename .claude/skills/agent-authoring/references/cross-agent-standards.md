@@ -179,6 +179,7 @@ description: >
   Third person. What it does AND when to use it.
 tools: [Read, Write, Edit, Bash, Glob, Grep]   # Explicit allowlist (omit for all)
 permissionMode: default          # Or: plan (read-only agents)
+model: sonnet                    # DAAF two-tier routing: opus | sonnet
 ---
 ```
 
@@ -186,6 +187,11 @@ permissionMode: default          # Or: plan (read-only agents)
 - Third person ("Reviews executed scripts..." not "Review executed scripts...")
 - Includes WHAT the agent does AND WHEN to use it
 - No angle brackets in description text
+
+**Model rules:**
+- Present on every DAAF agent; assign `opus` (high-judgment/adversarial/synthesis) or `sonnet` (well-specified/mechanical/skill-guided). Haiku is excluded by policy.
+- The tier is a default floor — the orchestrator may override per dispatch, bounded by the session-model ceiling.
+- See `agent_reference/AGENT_TEMPLATE.md` > "Model Field" and `.claude/skills/daaf-orchestrator/SKILL.md` > "Model Selection for Subagent Dispatch".
 
 ---
 
@@ -196,6 +202,19 @@ permissionMode: default          # Or: plan (read-only agents)
 | Agent file length | 400-700 lines | Never exceed 1000 |
 | Inline code blocks | Minimize where possible | Extract to `agent_reference/` only if shared across multiple agents; single-agent code stays in agent file |
 | Examples per pattern | 1 representative | Link additional examples |
+
+---
+
+### 11. Claim Evidence Standards
+
+Every agent's output must let the reader distinguish **observed facts from inference** (this mirrors CLAUDE.md § Execution Philosophy > "Evidence-graded reporting" — the agent-level expression of that universal principle):
+
+- **Observed vs. inferred:** An observed fact means a command was run and the command plus its relevant output are quoted; everything else is inference and should read as such.
+- **Probes for negative claims:** Negative claims (a tool/field/capability is unavailable, an operation is impossible, something does not exist) carry the higher evidence bar — quote the probe that establishes them, or label the claim as inference. False negatives fail silently and accrue false authority when repeated.
+- **Derived counts:** Completion and coverage counts (files changed, items checked, occurrences) are derived from quoted tool output (`git diff --stat`, `grep -c`, `ls`), never from memory.
+- **Repro over recall:** When a behavioral claim is testable in seconds, run the minimal repro and quote it rather than recalling it. For read-only/non-executing agents, the "repro" is the static probe (Grep/Read) that grounds the claim.
+
+Agents adapt the phrasing to their role (a static verifier's probe is a Grep/Read; a coding agent's is an executed script), but the four expectations are constant.
 
 ---
 

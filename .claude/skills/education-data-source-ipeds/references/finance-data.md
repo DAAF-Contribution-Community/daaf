@@ -295,6 +295,25 @@ e_and_g_fasb = (
 )
 ```
 
+```r
+# Total education and general expenses
+# Must sum functional categories consistently
+
+# GASB
+e_and_g_gasb <- instruction + research + public_service +
+  academic_support + student_services +
+  institutional_support +
+  operation_maintenance +
+  scholarships_fellowships
+
+# FASB (similar but verify category names)
+e_and_g_fasb <- instruction + research + public_service +
+  academic_support + student_services +
+  institutional_support +
+  operation_maintenance +
+  net_grant_aid
+```
+
 ### Metrics That Cross Sectors
 
 | Metric | Cross-Sector? | Notes |
@@ -348,6 +367,12 @@ instruction_per_fte = instruction_expenses / total_fte
 total_exp_per_fte = total_expenses / total_fte
 ```
 
+```r
+# Most common metric
+instruction_per_fte <- instruction_expenses / total_fte
+total_exp_per_fte <- total_expenses / total_fte
+```
+
 ### Revenue Composition
 
 ```python
@@ -356,11 +381,22 @@ tuition_share = tuition_revenue / total_revenue * 100
 state_share = state_appropriations / total_revenue * 100
 ```
 
+```r
+# What share comes from each source
+tuition_share <- tuition_revenue / total_revenue * 100
+state_share <- state_appropriations / total_revenue * 100
+```
+
 ### Net Tuition Revenue
 
 ```python
 # Tuition after discounts
 net_tuition = gross_tuition - tuition_discounts_allowances
+```
+
+```r
+# Tuition after discounts
+net_tuition <- gross_tuition - tuition_discounts_allowances
 ```
 
 ### Education and General Spending
@@ -374,6 +410,15 @@ e_and_g = (instruction + research + public_service +
            scholarships_fellowships)
 ```
 
+```r
+# Core education spending (excludes auxiliary, hospital)
+e_and_g <- instruction + research + public_service +
+  academic_support + student_services +
+  institutional_support +
+  operation_maintenance +
+  scholarships_fellowships
+```
+
 ### Instruction Share
 
 ```python
@@ -381,11 +426,21 @@ e_and_g = (instruction + research + public_service +
 instruction_share = instruction / total_core_expenses * 100
 ```
 
+```r
+# Share of spending on instruction
+instruction_share <- instruction / total_core_expenses * 100
+```
+
 ## Variable Reference
 
 > Verify these variable names against the live codebook. Use `get_codebook_url()` from `fetch-patterns.md`:
 > ```python
 > url = get_codebook_url("ipeds/codebook_colleges_ipeds_finance")
+> ```
+>
+> ```r
+> # get_codebook_url() is a Python helper; in R, construct the URL directly
+> # or use the codebook path from datasets-reference.md
 > ```
 
 > **CRITICAL: Portal vs NCES Variable Names.** The Portal `finance` dataset uses descriptive variable names (e.g., `rev_appropriations_state`, `exp_instruc_total`), NOT the NCES form-field codes (`f1a01`, `f2a01`). The NCES codes are shown below for cross-reference with source documentation only.

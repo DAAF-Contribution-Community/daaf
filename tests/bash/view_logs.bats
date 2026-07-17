@@ -269,3 +269,21 @@ teardown() {
     run bash "${REPO_ROOT}/scripts/host/view_logs.sh"
     assert_output --partial "Starting DAAF container"
 }
+
+# =========================================================================
+# Browser auto-open (open_url integration)
+# =========================================================================
+
+@test "view_logs.sh sources daaf_lib.sh when present" {
+    run grep -c "source.*daaf_lib.sh" "${REPO_ROOT}/scripts/host/view_logs.sh"
+    assert_success
+    [ "${output}" -ge 1 ]
+}
+
+@test "view_logs.sh does not call open_url (blocking exec)" {
+    # view_logs.sh intentionally does NOT call open_url because the
+    # docker compose exec blocks while the server runs. Verify absence.
+    run grep -c "open_url" "${REPO_ROOT}/scripts/host/view_logs.sh"
+    # grep -c returns 0 matches — which means grep exits with status 1
+    assert_failure
+}

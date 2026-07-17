@@ -364,29 +364,6 @@ teardown() {
     echo "${ORIGIN_URL}" | grep -qi "DAAF-Contribution-Community/daaf"
 }
 
-@test "migrate: idempotency marker detected via root commit parent check" {
-    DAAF_TEST_MODE=1 source "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
-    trap - ERR
-    set +eu
-
-    # The script checks if the initial commit already has a parent (line 567-568):
-    #   INITIAL_PARENT_COUNT=$(container_git_verbose cat-file -p "$INITIAL_COMMIT" | grep -c '^parent ')
-    # If > 0, graft is already in place → skip graft step.
-
-    # Simulate a commit that already has a parent (graft already applied)
-    FAKE_CAT_FILE_OUTPUT="tree abc123
-parent def456
-author Test <test@test> 1700000000 +0000
-committer Test <test@test> 1700000000 +0000
-
-Initial commit"
-
-    INITIAL_PARENT_COUNT=$(echo "${FAKE_CAT_FILE_OUTPUT}" | grep -c '^parent ' || echo "0")
-
-    # Parent count > 0 means graft is in place → idempotency check passes
-    [ "${INITIAL_PARENT_COUNT}" -gt 0 ]
-}
-
 @test "migrate: corrupted volume (no .git) detected by container_exec test" {
     DAAF_TEST_MODE=1 source "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
     trap - ERR
@@ -530,6 +507,21 @@ Initial commit"
 # Dry-run mode
 # ============================================================================
 
+@test "migrate: download list includes daaf.sh and daaf_lib.sh" {
+    run grep -c 'daaf.sh' "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    assert_success
+    [ "${output}" -ge 1 ]
+
+    run grep -c 'daaf_lib.sh' "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    assert_success
+    [ "${output}" -ge 1 ]
+}
+
+@test "migrate: success message mentions daaf.sh as recommended entry point" {
+    run grep 'DAAF Control Panel' "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    assert_success
+}
+
 @test "migrate_daaf.sh: dry-run completes successfully" {
     run env DAAF_DRY_RUN=1 DAAF_NESTED=1 bash "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
     assert_success
@@ -545,6 +537,86 @@ Initial commit"
     run env DAAF_DRY_RUN=1 DAAF_NESTED=1 bash "${REPO_ROOT}/scripts/host/migrate_daaf.sh" 2>&1
     assert_success
     assert_output --partial "Migration complete"
+}
+
+# --- Regression: non-writing dry-run (2026-07-14 root-stub incident) ---
+# Root cause: the dry-run curl mock touched a zero-byte stub for every -o
+# target, and HOST_DIR resolves to $(pwd) when the CWD holds a
+# docker-compose.yml. Running the dry-run from a compose-seeded directory
+# therefore leaked ~13 zero-byte stubs (named after the host scripts) plus a
+# docker-compose.yml.pre-migrate at the caller's root. These tests pin that the
+# dry-run creates NOTHING on disk. See:
+# research/2026-07-15_FrameworkDev_CwdLeakRootStubs/SESSION_NOTES.md
+
+@test "migrate_daaf.sh: dry-run from a compose-seeded dir creates no new files" {
+    # Seed TEST_DIR with a docker-compose.yml so HOST_DIR resolves to it (the
+    # exact condition that triggered the incident at the repo root).
+    create_fake_compose_file "${TEST_DIR}"
+    cd "${TEST_DIR}"
+    # Capture the directory contents before the dry-run.
+    local before_listing
+    before_listing="$(ls -A "${TEST_DIR}" | sort)"
+    run env DAAF_DRY_RUN=1 DAAF_NESTED=1 bash "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    assert_success
+    # The directory contents must be identical afterward -- no zero-byte stubs,
+    # no docker-compose.yml.pre-migrate, no new files or directories.
+    local after_listing
+    after_listing="$(ls -A "${TEST_DIR}" | sort)"
+    [ "${before_listing}" = "${after_listing}" ]
+    # Explicit spot-checks for the specific incident artifacts.
+    [ ! -e "${TEST_DIR}/docker-compose.yml.pre-migrate" ]
+    [ ! -e "${TEST_DIR}/backup_daaf.sh" ]
+    [ ! -e "${TEST_DIR}/daaf.sh" ]
+}
+
+@test "migrate_daaf.sh: dry-run without a compose file creates no daaf-docker dir" {
+    # No docker-compose.yml in CWD: HOST_DIR would be $(pwd)/daaf-docker. The
+    # dry-run must announce but NOT create it (nothing on disk).
+    cd "${TEST_DIR}"
+    run env DAAF_DRY_RUN=1 DAAF_NESTED=1 bash "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    assert_success
+    [ ! -e "${TEST_DIR}/daaf-docker" ]
+}
+
+# --- Compose version-check predicate (^name: matches parameterized form) ---
+# The up-to-date check must treat BOTH `name: daaf` and the current
+# parameterized `name: ${DAAF_PROJECT_NAME:-daaf}` as already-current, so a
+# migrate against a current install does NOT re-download and does NOT print the
+# "Updating docker-compose.yml" line. A compose file with no `name:` key DOES
+# trigger the update branch. In dry-run the branch prints a [DRY-RUN] line
+# instead of writing, which these tests assert on.
+
+@test "migrate_daaf.sh: parameterized compose name does not trigger update branch" {
+    # Seed a compose file with the current parameterized name line.
+    cat > "${TEST_DIR}/docker-compose.yml" <<'YAML'
+name: ${DAAF_PROJECT_NAME:-daaf}
+services:
+  daaf-docker:
+    image: daaf:latest
+YAML
+    cd "${TEST_DIR}"
+    run env DAAF_DRY_RUN=1 DAAF_NESTED=1 bash "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    assert_success
+    # The update branch must NOT fire for an already-current compose file.
+    refute_output --partial "Updating docker-compose.yml to current version"
+    [ ! -e "${TEST_DIR}/docker-compose.yml.pre-migrate" ]
+}
+
+@test "migrate_daaf.sh: compose without a name key triggers the update branch" {
+    # Seed a legacy (v1.0.0-style) compose file with no top-level name: key.
+    cat > "${TEST_DIR}/docker-compose.yml" <<'YAML'
+services:
+  daaf-docker:
+    image: daaf:latest
+YAML
+    cd "${TEST_DIR}"
+    run env DAAF_DRY_RUN=1 DAAF_NESTED=1 bash "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    assert_success
+    # The update branch fires, and in dry-run prints the [DRY-RUN] gate line
+    # instead of writing a .pre-migrate backup.
+    assert_output --partial "Updating docker-compose.yml to current version"
+    assert_output --partial "[DRY-RUN] Would update docker-compose.yml"
+    [ ! -e "${TEST_DIR}/docker-compose.yml.pre-migrate" ]
 }
 
 # ============================================================================
@@ -609,6 +681,9 @@ SH
     '
     assert_success
     assert_output --partial "clone-based installation"
+    # Positive-path lock: the set-upstream arm returns 0 in this mock, so the
+    # success line must print (complements the failure-path refute_output test).
+    assert_output --partial "Tracking set: main -> origin/main"
     assert_output --partial "Migration complete"
 }
 
@@ -660,7 +735,11 @@ SH
     assert_output --partial "Migration complete"
 }
 
-@test "migrate: already migrated (idempotency) skips graft" {
+@test "migrate: already migrated (idempotency) skips graft via replace-ref leg" {
+    # Idempotency via LEG 1 (replace-ref): a non-empty `git replace -l` marks the
+    # graft as already done. cat-file returns NO parent here, so the ONLY thing
+    # that can produce the skip is the replace leg -- proving the replace-first
+    # detector (not the old parent-count check) is what catches re-runs.
     setup_migrate_integrated
     run bash -c '
         cd "'"${TEST_DIR}"'"
@@ -692,8 +771,10 @@ SH
                 *"exec"*"test -f"*"CLAUDE.md"*) return 0 ;;
                 *"exec"*"remote get-url"*"origin"*) echo "" ; return 1 ;;
                 *"exec"*"fetch"*) return 0 ;;
+                *"exec"*"replace -l"*) echo "refs/replace/aaa111rootcommit" ;;
+                *"exec"*"rev-parse --is-shallow-repository"*) echo "false" ;;
                 *"exec"*"rev-list --max-parents=0"*) echo "aaa111rootcommit" ;;
-                *"exec"*"cat-file -p"*) printf "tree abc123\nparent def456\nauthor Test\n" ;;
+                *"exec"*"cat-file -p"*) printf "tree abc123\nauthor Test\n" ;;
                 *"exec"*"branch --set-upstream"*) return 0 ;;
                 *"exec"*"remote add"*) return 0 ;;
                 *) return 0 ;;
@@ -704,6 +785,117 @@ SH
     '
     assert_success
     assert_output --partial "graft already in place"
+    assert_output --partial "replace ref present"
+    assert_output --partial "Migration complete"
+}
+
+@test "migrate: shallow clone forces the graft path (not falsely skipped)" {
+    # Regression for Finding 3: on a shallow clone the boundary commit shows a
+    # phantom parent, which the OLD detector read as "graft already in place" and
+    # skipped (the bug). The new LEG 2 shallow guard forces the match/graft path
+    # despite the phantom parent. Mock: no replace ref, shallow=true, cat-file has
+    # a (phantom) parent, and an origin/main tree that matches so the graft lands.
+    setup_migrate_integrated
+    run bash -c '
+        cd "'"${TEST_DIR}"'"
+        curl() {
+            local outfile=""
+            local args=("$@")
+            for ((i=0; i<${#args[@]}; i++)); do
+                if [ "${args[$i]}" = "-o" ]; then
+                    outfile="${args[$((i+1))]}"
+                    break
+                fi
+            done
+            if [ -n "${outfile}" ]; then
+                mkdir -p "$(dirname "${outfile}")"
+                echo "#!/usr/bin/env bash" > "${outfile}"
+                echo "exit 0" >> "${outfile}"
+            fi
+            return 0
+        }
+        export -f curl
+        docker() {
+            local all_args="$*"
+            case "$all_args" in
+                "info") return 0 ;;
+                *"volume inspect"*) return 0 ;;
+                *"ps -a"*"--filter"*"volume="*"--format"*) echo "daaf-test-1" ;;
+                *"inspect --format"*"State.Status"*) echo "running" ;;
+                *"exec"*"true"*) return 0 ;;
+                *"exec"*"test -f"*"CLAUDE.md"*) return 0 ;;
+                *"exec"*"remote get-url"*"origin"*) echo "" ; return 1 ;;
+                *"exec"*"fetch"*) return 0 ;;
+                *"exec"*"replace -l"*) echo "" ;;
+                *"exec"*"rev-parse --is-shallow-repository"*) echo "true" ;;
+                *"exec"*"rev-list --max-parents=0"*) echo "aaa111rootcommit" ;;
+                *"exec"*"cat-file -p"*) printf "tree abc123\nparent def456\nauthor Test\n" ;;
+                *"exec"*"replace --graft"*) return 0 ;;
+                *"exec"*"merge-base"*) echo "mergebasesha1" ;;
+                *"exec"*"rev-parse"*"origin/main"*) echo "upstreamsha999" ;;
+                *"exec"*"ls-tree"*) echo "blob0000 file1" ;;
+                *"exec"*"branch --set-upstream"*) return 0 ;;
+                *"exec"*"remote add"*) return 0 ;;
+                *) return 0 ;;
+            esac
+        }
+        export -f docker
+        bash "'"${REPO_ROOT}"'/scripts/host/migrate_daaf.sh"
+    '
+    assert_success
+    assert_output --partial "shallow clone"
+    refute_output --partial "graft already in place"
+    assert_output --partial "Connecting local history to upstream"
+    assert_output --partial "Migration complete"
+}
+
+@test "migrate: set-upstream failure prints an honest note and does not abort" {
+    # Finding 2: a failed `branch --set-upstream-to` must NOT print the
+    # "Tracking set" success line. Here the set-upstream arm returns exit 1, so
+    # the honest NOTE branch fires and the migration still completes (tracking is
+    # best-effort, non-fatal). Era-1 path (origin matches the official repo).
+    setup_migrate_integrated
+    run bash -c '
+        cd "'"${TEST_DIR}"'"
+        curl() {
+            local outfile=""
+            local args=("$@")
+            for ((i=0; i<${#args[@]}; i++)); do
+                if [ "${args[$i]}" = "-o" ]; then
+                    outfile="${args[$((i+1))]}"
+                    break
+                fi
+            done
+            if [ -n "${outfile}" ]; then
+                mkdir -p "$(dirname "${outfile}")"
+                echo "#!/usr/bin/env bash" > "${outfile}"
+                echo "exit 0" >> "${outfile}"
+            fi
+            return 0
+        }
+        export -f curl
+        docker() {
+            local all_args="$*"
+            case "$all_args" in
+                "info") return 0 ;;
+                *"volume inspect"*) return 0 ;;
+                *"ps -a"*"--filter"*"volume="*"--format"*) echo "daaf-test-1" ;;
+                *"inspect --format"*"State.Status"*) echo "running" ;;
+                *"exec"*"true"*) return 0 ;;
+                *"exec"*"test -f"*"CLAUDE.md"*) return 0 ;;
+                *"exec"*"remote get-url"*"origin"*) echo "https://github.com/DAAF-Contribution-Community/daaf.git" ;;
+                *"exec"*"fetch"*) return 0 ;;
+                *"exec"*"branch --set-upstream"*) return 1 ;;
+                *"exec"*"remote get-url"*"upstream"*) echo "" ; return 1 ;;
+                *) return 0 ;;
+            esac
+        }
+        export -f docker
+        bash "'"${REPO_ROOT}"'/scripts/host/migrate_daaf.sh"
+    '
+    assert_success
+    assert_output --partial "Could not set upstream tracking"
+    refute_output --partial "Tracking set: main -> origin/main"
     assert_output --partial "Migration complete"
 }
 
@@ -961,4 +1153,219 @@ SH
     assert_success
     assert_output --partial "Multiple containers"
     assert_output --partial "Migration complete"
+}
+
+# --- Field-run 4 regression pin (2026-07-17): honest tracking NOTE ---
+
+@test "migrate: set-upstream failure NOTE diagnoses the actual failed precondition" {
+    # The former NOTE always blamed a missing local 'main' branch; on tag-pinned
+    # or single-branch installs the actual missing piece is the origin/main
+    # remote-tracking ref. Both sites (Era 1 and Era 2/3) must probe which
+    # precondition failed and say so.
+    run grep -cF "no 'origin/main' remote-tracking ref" "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    assert_success
+    [ "${output}" -eq 2 ]
+    run grep -cF "rev-parse --verify --quiet refs/remotes/origin/main" "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    assert_success
+    [ "${output}" -eq 2 ]
+}
+
+# ============================================================================
+# Field-Run Triage Round 5 (2026-07-17): git safe.directory exemption
+# ============================================================================
+# A root-owned v1.0.0 (Era-1) volume payload + the image's non-root appuser +
+# modern git (>= 2.35.2) => "fatal: detected dubious ownership in repository at
+# '/daaf'" on every in-container git op, so migrate could not proceed at all.
+# migrate now issues an idempotent `git config --global --add safe.directory
+# /daaf` for the exec user BEFORE the first in-container git operation (the
+# era-detection probe). These pin that the exemption is issued, targets /daaf,
+# and precedes era detection.
+
+@test "migrate: safe.directory exemption is added before the first container git op" {
+    setup_migrate_integrated
+    local calllog="${TEST_DIR}/docker_exec_calls.log"
+    run bash -c '
+        cd "'"${TEST_DIR}"'"
+        # Export so the migrate subprocess (set -u) and the exported docker
+        # function both see it.
+        export CALLLOG="'"${calllog}"'"
+        curl() {
+            local outfile=""
+            local args=("$@")
+            for ((i=0; i<${#args[@]}; i++)); do
+                if [ "${args[$i]}" = "-o" ]; then
+                    outfile="${args[$((i+1))]}"
+                    break
+                fi
+            done
+            if [ -n "${outfile}" ]; then
+                mkdir -p "$(dirname "${outfile}")"
+                echo "#!/usr/bin/env bash" > "${outfile}"
+                echo "exit 0" >> "${outfile}"
+            fi
+            return 0
+        }
+        export -f curl
+        docker() {
+            local all_args="$*"
+            # Record every docker exec invocation in call order for ordering checks.
+            case "$all_args" in
+                *"exec"*) echo "${all_args}" >> "${CALLLOG}" ;;
+            esac
+            case "$all_args" in
+                "info") return 0 ;;
+                *"volume inspect"*) return 0 ;;
+                *"ps -a"*"--filter"*"volume="*"--format"*) echo "daaf-test-1" ;;
+                *"inspect --format"*"State.Status"*) echo "running" ;;
+                *"exec"*"true"*) return 0 ;;
+                *"exec"*"test -f"*"CLAUDE.md"*) return 0 ;;
+                *"exec"*"config"*"safe.directory"*) return 0 ;;
+                *"exec"*"remote get-url"*"origin"*) echo "https://github.com/DAAF-Contribution-Community/daaf.git" ;;
+                *"exec"*"fetch"*) return 0 ;;
+                *"exec"*"branch --set-upstream"*) return 0 ;;
+                *"exec"*"remote get-url"*"upstream"*) echo "" ; return 1 ;;
+                *) return 0 ;;
+            esac
+        }
+        export -f docker
+        bash "'"${REPO_ROOT}"'/scripts/host/migrate_daaf.sh"
+    '
+    assert_success
+    assert_output --partial "Configured: safe.directory -> /daaf"
+    # The safe.directory add must be recorded, target /daaf, and precede the
+    # first era-detection git op (remote get-url origin). Revert the fix -> the
+    # add line is absent -> config_line is empty -> this assertion fails.
+    local config_line firstgit_line
+    config_line=$(grep -n -- '--add safe.directory /daaf' "${calllog}" | head -1 | cut -d: -f1)
+    firstgit_line=$(grep -n 'remote get-url origin' "${calllog}" | head -1 | cut -d: -f1)
+    [ -n "${config_line}" ]
+    [ -n "${firstgit_line}" ]
+    [ "${config_line}" -lt "${firstgit_line}" ]
+}
+
+@test "migrate: safe.directory exemption command and field-evidence rationale are present" {
+    # Source-level pin (revert-the-fix-and-it-fails): the exemption command and
+    # the field-evidence comment (git's dubious-ownership fatal) must both exist.
+    run grep -cF 'git config --global --add safe.directory /daaf' "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    assert_success
+    [ "${output}" -ge 1 ]
+    run grep -cF 'detected dubious ownership' "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    assert_success
+    [ "${output}" -ge 1 ]
+}
+
+# ============================================================================
+# Field-Run Triage Round 6 (2026-07-17): volume ownership repair (section 4c)
+# ============================================================================
+# The documented v1.0.0 install (busybox cp -a into the volume) leaves the
+# payload root-owned, and the v1.0.0 compose has no daaf-init repair service
+# (that arrived in v2.0.0). The section-4b safe.directory exemption cures git's
+# dubious-ownership refusal but not writability: Era-1 fetch/set-upstream/merge
+# all EPERM as the non-root uid-1000 container user. migrate now runs the
+# daaf-init-parity repair (busybox chown -R 1000:1000) BEFORE era detection --
+# idempotent and a no-op on Era-2/3 payloads already repaired by their compose.
+
+@test "migrate: volume ownership repair runs before the first era-detection git op" {
+    setup_migrate_integrated
+    local calllog="${TEST_DIR}/docker_all_calls.log"
+    run bash -c '
+        cd "'"${TEST_DIR}"'"
+        export CALLLOG="'"${calllog}"'"
+        curl() {
+            local outfile=""
+            local args=("$@")
+            for ((i=0; i<${#args[@]}; i++)); do
+                if [ "${args[$i]}" = "-o" ]; then
+                    outfile="${args[$((i+1))]}"
+                    break
+                fi
+            done
+            if [ -n "${outfile}" ]; then
+                mkdir -p "$(dirname "${outfile}")"
+                echo "#!/usr/bin/env bash" > "${outfile}"
+                echo "exit 0" >> "${outfile}"
+            fi
+            return 0
+        }
+        export -f curl
+        docker() {
+            local all_args="$*"
+            # Record exec calls AND the ownership-repair docker run, in call
+            # order, for the ordering assertion below.
+            case "$all_args" in
+                *"exec"*) echo "${all_args}" >> "${CALLLOG}" ;;
+                *"run"*"busybox chown"*) echo "${all_args}" >> "${CALLLOG}" ;;
+            esac
+            case "$all_args" in
+                "info") return 0 ;;
+                *"volume inspect"*) return 0 ;;
+                *"ps -a"*"--filter"*"volume="*"--format"*) echo "daaf-test-1" ;;
+                *"inspect --format"*"State.Status"*) echo "running" ;;
+                *"exec"*"true"*) return 0 ;;
+                *"exec"*"test -f"*"CLAUDE.md"*) return 0 ;;
+                *"exec"*"config"*"safe.directory"*) return 0 ;;
+                *"exec"*"remote get-url"*"origin"*) echo "https://github.com/DAAF-Contribution-Community/daaf.git" ;;
+                *"exec"*"fetch"*) return 0 ;;
+                *"exec"*"branch --set-upstream"*) return 0 ;;
+                *"exec"*"remote get-url"*"upstream"*) echo "" ; return 1 ;;
+                *) return 0 ;;
+            esac
+        }
+        export -f docker
+        bash "'"${REPO_ROOT}"'/scripts/host/migrate_daaf.sh"
+    '
+    assert_success
+    assert_output --partial "Ownership repaired:"
+    # The chown must be recorded and precede the first era-detection git op.
+    # Revert the fix -> no chown line -> chown_line empty -> assertion fails.
+    local chown_line firstgit_line
+    chown_line=$(grep -n 'busybox chown' "${calllog}" | head -1 | cut -d: -f1)
+    firstgit_line=$(grep -n 'remote get-url origin' "${calllog}" | head -1 | cut -d: -f1)
+    [ -n "${chown_line}" ]
+    [ -n "${firstgit_line}" ]
+    [ "${chown_line}" -lt "${firstgit_line}" ]
+}
+
+@test "migrate: ownership repair command, daaf-init parity rationale, and warn-and-continue policy are present" {
+    # Source-level pins (revert-the-fix-and-it-fails).
+    run grep -cF 'busybox chown -R 1000:1000 /daaf' "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    assert_success
+    [ "${output}" -ge 1 ]
+    run grep -cF 'daaf-init' "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    assert_success
+    [ "${output}" -ge 1 ]
+    # Failure is a warning, not an abort: Era-2/3 must never be blocked by a
+    # failed (unnecessary) chown.
+    run grep -cF 'WARNING: Could not repair ownership of the DAAF volume' "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    assert_success
+    [ "${output}" -ge 1 ]
+}
+
+@test "migrate: git identity era-parity repair (4d) is guarded and precedes era detection" {
+    local sh="${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    # Sets the exact repo-local identity every v2.0.0+ era provisions
+    # (daaf@local / DAAF Container), ONLY when user.email resolves empty.
+    # container_exec-anchored so the rationale comment (which quotes the same
+    # command) does not double-count.
+    run grep -cF 'container_exec git -C /daaf config user.email "daaf@local"' "${sh}"
+    assert_success
+    [ "${output}" -eq 1 ]
+    run grep -cF 'GIT_EMAIL_EXISTING=$(container_exec git -C /daaf config user.email' "${sh}"
+    assert_success
+    [ "${output}" -eq 1 ]
+    local id_ln era_ln
+    id_ln=$(grep -n 'container_exec git -C /daaf config user.email "daaf@local"' "${sh}" | head -1 | cut -d: -f1)
+    era_ln=$(grep -n '5. DETECT ERA' "${sh}" | head -1 | cut -d: -f1)
+    [ -n "${id_ln}" ]
+    [ -n "${era_ln}" ]
+    [ "${id_ln}" -lt "${era_ln}" ]
+}
+
+@test "migrate: identity repair warns-and-continues and cites the refusal evidence" {
+    run grep -cF 'WARNING: Could not configure a git identity' "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    assert_success
+    [ "${output}" -ge 1 ]
+    run grep -cF 'Please tell me who you are' "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    assert_success
+    [ "${output}" -ge 1 ]
 }

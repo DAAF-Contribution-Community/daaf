@@ -46,6 +46,8 @@ What are you doing?
 
 ### Phase 1: Design (before writing)
 
+Before locking in answers to the design questions below, consider whether a scoped online survey of analogous agent architectures and role designs — how other frameworks decompose specialist responsibilities, structure agent protocols, and draw boundaries between overlapping roles — would sharpen those answers. External grounding beats ungrounded inference: seeing how the problem has already been solved tends to produce a crisper role definition and a cleaner Core Distinction than reasoning from first principles alone. When the authoring is user-initiated, offer this survey to the user rather than deciding unilaterally. In Framework Development mode this is formalized as the **Pre-Authoring Research Offer** (`.claude/skills/daaf-orchestrator/references/framework-development-mode.md` § Pre-Authoring Research Offer), where the orchestrator dispatches a web-capable search-agent before authoring; outside that mode, apply the same instinct proportionately.
+
 Before beginning, you MUST have a clear, coherent, and compelling answer to each of the following questions:
 
 1. **Define the role** in one sentence — what does this agent do and why does it exist?
@@ -54,8 +56,10 @@ Before beginning, you MUST have a clear, coherent, and compelling answer to each
 4. **Determine subagent type:**
    - `general-purpose` — needs file writes, code execution, or tool access beyond reading
    - `Plan` — read-only validation, discovery, or verification
+   - **Enumerate the `tools:` list explicitly, and never include `Agent` or `Task`.** Omitting the `tools:` field inherits ALL tools (including `Agent`), which would let the agent dispatch nested subagents. DAAF's dispatch-authority invariant is that all dispatch authority belongs to the orchestrator (see `agent_reference/BOUNDARIES.md` § Process Violations); a subagent returns work to the orchestrator for redelegation rather than nesting. The `block-nested-dispatch.sh` hook is the second enforcement layer, but the explicit `tools:` list is the first — always spell it out.
 5. **Determine skill dependencies** — will this agent need to invoke any skills?
 6. **Determine hook requirements** — will this agent need per-agent hooks? (see "Per-Agent Hooks" below)
+7. **Determine model tier** — which model tier should this agent default to? `opus` for high-judgment, adversarial, or synthesis roles; `sonnet` for well-specified, mechanical, or skill-guided roles. Haiku is excluded by DAAF policy. See `.claude/skills/daaf-orchestrator/SKILL.md` > "Model Selection for Subagent Dispatch" for the routing rationale and the current per-agent tier table.
 
 If any of these answers are vague, in doubt, or incomplete, the quality and reliability of the ensuing agent file will suffer. If the agent authoring process has been initiated by the user, make sure to ask these questions directly, and ask follow-up questions to enhance the quality of their responses as you go. Before proceeding to Phase 2, make sure the user agrees with your enhanced answers explicitly.
 
@@ -79,13 +83,15 @@ If any of these answers are vague, in doubt, or incomplete, the quality and reli
    - [ ] Total length 400-700 lines (flag if approaching 800+)
    - [ ] Large inline code blocks minimized (extract to `agent_reference/` only if shared across agents)
    - [ ] Per-agent hooks registered in frontmatter if agent executes Python (see "Per-Agent Hooks" below)
+   - [ ] `model:` field present with a justified tier (`opus` or `sonnet` per DAAF policy; see design question 7)
+   - [ ] Explicit `tools:` list present and does NOT include `Agent` or `Task` (dispatch-authority invariant — omitting the field inherits ALL tools including `Agent`; see design question 4 and FRAMEWORK_INTEGRATION_CHECKLIST.md item A1c)
 
 ### Phase 3: Integrate (wire into the ecosystem)
 
 1. Read `agent_reference/FRAMEWORK_INTEGRATION_CHECKLIST.md` § 2 for the canonical checklist of registration points
-2. Execute all [M] (mandatory) items — A1-A5, A14
+2. Execute all [M] (mandatory) items — A1, A1b, A1c, A2-A5, A14
 3. Review and execute applicable [C] (conditional) items — A6-A13, A15-A16
-4. Run cross-cutting consistency checks (§ 6) — count words, cross-references, naming
+4. Run cross-cutting consistency checks (§ 8) — count words, cross-references, naming
 5. For supplementary walkthrough detail, also consult `references/integration-checklist.md`
 
 ### Phase 4: Validate (confirm completeness)
@@ -149,15 +155,15 @@ for all contexts.
 
 **Current per-agent hook: `enforce-file-first.sh`**
 
-Any agent that writes and executes Python scripts via `run_with_capture.sh` MUST
-register this hook. It blocks direct `python`/`python3` invocations, enforcing the
-file-first execution protocol at the hook layer.
+Any agent that writes and executes Python or R scripts via `run_with_capture.sh`
+MUST register this hook. It blocks direct `python`/`python3` and `Rscript`
+invocations, enforcing the file-first execution protocol at the hook layer.
 
-Agents that need it: those with `Bash` in `tools` that execute Python scripts
-(currently: research-executor, code-reviewer, debugger, data-ingest).
+Agents that need it: those with `Bash` in `tools` that execute Python or R
+scripts (currently: research-executor, code-reviewer, debugger, data-ingest).
 
 Agents that do NOT need it: read-only agents (`permissionMode: plan`), agents that
-don't execute Python (report-writer, notebook-assembler), and the orchestrator.
+don't execute Python or R (report-writer, notebook-assembler), and the orchestrator.
 
 **Frontmatter syntax:**
 
@@ -216,6 +222,7 @@ the content a second time and waste context tokens.
 |-------|-------------|
 | `data-scientist` | research-executor, code-reviewer, debugger, data-ingest, data-planner, plan-checker, data-verifier, source-researcher, research-synthesizer, integration-checker, report-writer, notebook-assembler |
 | `marimo` | notebook-assembler |
+| `quarto` | notebook-assembler |
 
 ## Naming Convention
 

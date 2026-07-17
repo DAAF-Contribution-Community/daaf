@@ -12,7 +12,7 @@ but the grammar requires (a) naming the DataFrame, (b) wrapping column reference
 in `pl.col()`, and (c) reassigning the result (`df = df.operation(...)`).
 
 > **Versions referenced:**
-> Python: polars 1.38.1, pyreadstat 1.2.x
+> Python: polars 1.39.3, pyreadstat 1.2.x
 > See SKILL.md for the complete version table.
 
 > **Sources:** Sullivan, "Stata to Python Equivalents" (danielmsullivan.com, accessed
@@ -739,12 +739,17 @@ Polars rank methods: `"average"` (default), `"min"`, `"max"`, `"dense"`, `"ordin
 
 | Stata | polars | Notes |
 |-------|--------|-------|
-| `merge 1:1 key using file2` | `df1.join(df2, on="key", how="inner")` | |
-| `merge m:1 key using file2` | `df1.join(df2, on="key", how="left")` | Many-to-one: left join |
-| `merge 1:m key using file2` | `df1.join(df2, on="key", how="left")` | One-to-many: left join |
+| `merge 1:1 key using file2` | `df1.join(df2, on="key", how="full", coalesce=True)` | Bare merge keeps unmatched rows from BOTH sides (full-join semantics) |
+| `merge m:1 key using file2` | `df1.join(df2, on="key", how="left")` | Common `keep(1 3)` usage; bare merge is full-join |
+| `merge 1:m key using file2` | `df1.join(df2, on="key", how="left")` | Common `keep(1 3)` usage; bare merge is full-join |
 | `merge m:m key using file2` | Avoid | Stata's m:m is rarely correct |
 | `merge ..., keep(3)` | `df1.join(df2, on="key", how="inner")` | `_merge==3` = matched |
 | `merge ..., keep(1 3)` | `df1.join(df2, on="key", how="left")` | Master + matched |
+
+> **Bare-merge semantics:** A Stata `merge` without `keep()` retains ALL rows —
+> matched, master-only, and using-only — flagged via `_merge`. The exact polars
+> equivalent is `how="full"`; use the `keep()` rows above for precise mappings
+> when the do-file filters on `_merge`.
 
 ```stata
 * Stata
@@ -763,7 +768,7 @@ df = df.join(state_names, on="state_fips", how="left")
 
 ```stata
 * Stata
-merge 1:1 state_id year using "panel_data.dta"
+merge 1:1 state_id year using "panel_data.dta", keep(3) nogen
 ```
 
 ```python

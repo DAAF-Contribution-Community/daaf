@@ -1,12 +1,131 @@
 # Data Onboarding: Skill Authoring & Delivery (Stages DI-7 and DI-8)
 
-Loaded by the orchestrator when profiling is complete and the user has confirmed interpretations at PSU-DI2. Contains the skill authoring invocation template, CPP-SKILL validation, reference file guidance, and delivery format. The main mode reference file (`data-onboarding-mode.md`) contains the workflow overview, gate definitions, execution cycle, and PSU templates.
+Loaded by the orchestrator when profiling is complete and the user has confirmed interpretations at PSU-DI2. Contains the optional pre-authoring research dispatch, the skill authoring invocation template, CPP-SKILL validation, reference file guidance, and delivery format. The main mode reference file (`data-onboarding-mode.md`) contains the workflow overview, gate definitions, execution cycle, and PSU templates.
+
+> **Synthetic path rejoin.** When the session arrived via the synthetic (privacy-preserving) path — DI-1 sensitivity gate → Stages DS-1–DS-5 — these stages still apply, but the DI-7 authoring invocation MUST include the synthetic-provenance overrides defined in `WORKFLOW_PHASE_DO_SYNTHETIC.md` § "Rejoin DI-7 / DI-8: Skill Authoring with Synthetic Provenance" (`data-provenance` frontmatter value, the mandatory "Synthetic Data Notice" section, bundling of the customized profiling + generation scripts, and the scaffold-not-substitute doctrine). Read that section alongside this file before dispatching DI-7 on the synthetic path.
+
+---
+
+## Pre-Authoring Research (Optional)
+
+Runs **only if the user accepts the Pre-Authoring Research Offer** presented after PSU-DI2 (the offer text and interaction rules live in `data-onboarding-mode.md` § PSU Templates > Pre-Authoring Research Offer). If the user skipped, ignore this section and proceed directly to the Skill Authoring Invocation Template below.
+
+**Why this exists.** Profiling establishes *what the data looks like*; it cannot establish the collection methodology, population coverage rationale, valid/invalid analytical patterns, or documented limitations that make a data source skill genuinely useful. Those live in the source's official documentation and the research/practitioner literature. Grounding the skill in real sources beats ungrounded inference (see `CLAUDE.md` § "Skill information awareness"). The research runs to completion and its findings are persisted **before** the DI-7 skill-authoring subagent is dispatched, so DI-7 can consume them as an input.
+
+**Executor.** Dispatch a `search-agent` (read-only, web-capable via WebSearch/WebFetch, DAAF-aware). Keeping the research in its own dispatch keeps it separate, auditable, and complete before authoring begins. Do NOT fold the research into the DI-7 authoring subagent — the separation is what makes the research trail reviewable and lets profiling (observed) be reconciled against literature (reported) as an explicit input.
+
+> **Async dispatch note.** The pre-authoring research is a single `search-agent` dispatch, not a wave. Under async dispatch it returns via a completion notification; do not persist its notes, dispatch DI-7, or advance until that return has arrived and been written to disk. See `SKILL.md` § Subagent Coordination > "Wave Barrier Discipline (Async Dispatch)."
+
+**Model tier.** Mechanical documentation lookup stays `sonnet` (search-agent's default). If the accepted scope is **Deep** — interpretive synthesis across methodology literature and practitioner guides rather than straight documentation retrieval — add an explicit `model: opus` override on the dispatch, per the orchestrator SKILL.md Model Selection doctrine ("a search-agent dispatch is review-role or interpretive-synthesis work … rather than mechanical lookup"). Focused/documentation-only research stays `sonnet`.
+
+### Pre-Authoring Research Invocation Template
+
+**Purpose:** Ground the skill's analytical context in external sources  |  **Runs:** after PSU-DI2, before DI-7 (only if user accepted)  |  **Subagent:** search-agent  |  **Skills:** `data-scientist`
+
+```python
+Agent({
+    description: "Pre-authoring research for {source_name}",
+    prompt: """You have access to a skill tool. First, call the skill tool with name 'data-scientist'.
+
+**BASE_DIR:** {BASE_DIR}
+All relative paths resolve from BASE_DIR.
+
+**TASK:**
+Research the data source **{source_name}** online to gather the methodological and
+analytical context that data profiling cannot produce. This research will be folded
+into a data source skill about to be authored. Ground every claim in a real source —
+this is exactly the context that must NOT be invented.
+
+**WHAT PROFILING ALREADY ESTABLISHED (do not re-derive):**
+{2-4 sentence summary of confirmed structure, columns, temporal scope, and the key
+quality anomalies from PSU-DI2 — so the agent researches context, not the schema}
+
+**RESEARCH SCOPE:** {Focused | Deep, per user's accepted decision}
+- Focused: official source documentation + known caveats and analytical guidance
+- Deep: the above plus methodology literature and practitioner guides
+
+**SOURCE MIX:** {Mixed | user-specified subset — e.g., "official docs only", "official + academic"}
+- Prioritize the mix the user selected. Default Mixed = official documentation +
+  academic literature + practitioner guides.
+
+**FOCUS AREAS (seeded from profiling; user may have adjusted):**
+{profiling-seeded focus list — e.g., "whether the 2015 temporal break corresponds to a
+known methodology change; the meaning of the -3 suppression code; documented population
+exclusions"}
+
+**WHAT TO GATHER (map to the skill sections these feed):**
+- Study/survey design: who collects this data, under what mandate/methodology, and why
+- Population coverage: who is included AND excluded, and the generalizability implications
+- Valid vs. invalid analyses: what this source supports vs. what misuses it, with reasoning
+- Known limitations, caveats, suppression/rounding conventions, and methodology breaks
+- Resolution of the seeded focus-area questions above
+
+**EVIDENCE REQUIREMENTS:**
+- Every substantive claim MUST carry its source URL inline. A claim without a URL is
+  not usable — omit it or clearly mark it as unverified inference.
+- Prefer primary/official documentation over secondary summaries; note when a claim
+  rests only on a practitioner blog vs. official docs.
+- If you cannot find grounding for a seeded focus area, say so explicitly rather than
+  filling the gap with inference.
+
+**OUTPUT FORMAT (1500-word hard cap):**
+
+### Source Research: {source_name}
+**Scope executed:** [Focused | Deep] | **Source mix:** [what you actually consulted]
+
+### Study/Survey Design
+[Findings with inline source URLs]
+
+### Population Coverage (Included / Excluded)
+[Findings with inline source URLs]
+
+### Valid vs. Invalid Analyses
+| Pattern | Valid/Invalid | Reasoning | Source URL |
+|---------|---------------|-----------|-----------|
+
+### Limitations, Caveats & Conventions
+[Suppression, rounding, methodology breaks, comparability boundaries — with URLs]
+
+### Seeded Focus Areas — Resolution
+| Focus Area (from profiling) | What the sources say | Source URL | Confidence |
+|-----------------------------|----------------------|-----------|------------|
+
+### Sources Consulted
+| Source | Type (official/academic/practitioner) | URL |
+|--------|---------------------------------------|-----|
+
+### Confidence & Gaps
+**Overall Confidence:** [HIGH | MEDIUM | LOW]
+- [Focus areas left unresolved or resting on weak sources]
+
+### Learning Signal
+**Learning Signal:** [Category] — [One-line insight] | "None"
+
+After completing the skill's Required Actions, return findings using the format above.""",
+    subagent_type: "search-agent"
+    # For Deep scope only, add:  model: "opus"
+})
+```
+
+### Persistence
+
+When the search-agent returns, persist the full, unmodified return losslessly to disk **before** dispatching DI-7 (per orchestrator SKILL.md § Subagent Return Processing):
+
+| Agent Return | Write To |
+|-------------|----------|
+| search-agent (pre-authoring research) | `{project_dir}/output/preliminary_notes/{date}_preDI7_research_{source}.md` |
+
+Prepend the standard provenance header (per orchestrator SKILL.md § Subagent Return Processing — the two-line HTML-comment block naming the agent type, stage identifier `preDI7-research`, and generation timestamp). Confirm the file exists on disk before proceeding — this is a gate condition, exactly as for profiling preliminary notes. Record the file in STATE.md Files Created This Session.
+
+**Claim adjudication.** Pre-authoring research is web-sourced (reported), not observed. Where a research finding conflicts with a profiling observation, profiling (observed) outranks the literature (reported). Carry any URL-less or weakly-sourced claim forward marked as unverified, per the orchestrator's claim-adjudication rule.
 
 ---
 
 ## Skill Authoring Invocation Template
 
 Invoked at Stage DI-7 after PSU-DI2 user confirmation of preliminary interpretations.
+
+> **Async dispatch note.** DI-7 dispatches a single skill-authoring subagent (not a parallel wave). Under async dispatch, it returns via a completion notification rather than a synchronous tool return. Do not advance to DI-8 review, evaluate CPP-SKILL results, or present the skill to the user until that return has arrived and been fully processed. The DI-8 review iteration loop is likewise sequential — each re-invocation's return must be received before re-running CPP-SKILL validation or presenting the revised skill.
 
 **Purpose:** Author the data source skill  |  **Stage:** DI-7  |  **Subagent:** general-purpose  |  **Skills:** `data-scientist`, `skill-authoring`
 
@@ -45,6 +164,24 @@ Read these preliminary notes FIRST for structured summaries and recommendations 
 each profiling phase. These complement the execution logs in scripts/ — the preliminary
 notes provide the narrative, confidence assessments, and recommendations; the execution
 logs provide the granular data-level detail.
+
+**PRE-AUTHORING RESEARCH NOTES (OPTIONAL — present only if the user accepted the
+research offer):**
+- {project_dir}/output/preliminary_notes/{date}_preDI7_research_{source}.md
+This file contains externally-sourced context (study/survey design, population coverage,
+valid/invalid analyses, limitations) gathered from official documentation and the
+research/practitioner literature — the context profiling cannot produce. Use it to
+enrich analytical-context.md and the limitations/pitfalls content especially. Two rules
+when incorporating it:
+1. **Carry source URLs.** Externally-sourced claims you put into the skill should retain
+   their source URL (in the reference file, near the claim) so the analyst can trace them.
+   A research claim with no URL is unverified inference — do not present it as fact.
+2. **Profiling outranks literature on conflicts.** Where a research finding conflicts with
+   what profiling actually observed in the data, the profiling observation wins; note the
+   discrepancy in the skill (e.g., "documentation states X, but profiling of this extract
+   found Y"). Observed beats reported.
+If this file is absent, the user skipped pre-authoring research — proceed using profiling
+findings and any user-supplied documentation as before.
 
 **PROFILING SCRIPTS:** All executed scripts with execution logs are in `{project_dir}/scripts/`.
 The preliminary notes above provide a consolidated narrative layer; consult the execution
@@ -87,7 +224,7 @@ Part 1 — Skill Authoring:
 5. **Cross-Dataset Discovery:** Glob for all `.claude/skills/*-data-source-*/SKILL.md` files.
    Read their frontmatter descriptions to identify complementary data sources that share join
    keys (e.g., county FIPS, unitid, state codes). For sources with shared keys, create a worked
-   Polars join example in the Related Data Sources section or in analytical-context.md's
+   join example (Polars for Python, dplyr for R) in the Related Data Sources section or in analytical-context.md's
    Alternative/Complementary Sources section. Include actual column names, join type, and a
    validation check.
 6. Author SKILL.md per canonical 12-section data source template
@@ -174,7 +311,7 @@ Density targets for reference files:
   * **Alternative/Complementary Sources:** What other datasets address this source's gaps?
     Include specific variable names and access guidance, not just source names. Use the
     cross-dataset discovery results (step 5) to identify DAAF skills that complement this
-    source. Include worked Polars join examples for sources with shared join keys.
+    source. Include worked join examples (Polars for Python, dplyr for R) for sources with shared join keys.
   Target: 200+ lines.
 - Additional topic-specific files: Create when ANY of these apply:
   (a) The source has a major known limitation requiring >50 lines of explanation

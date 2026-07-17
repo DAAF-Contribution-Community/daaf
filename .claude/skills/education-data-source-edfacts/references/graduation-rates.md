@@ -136,6 +136,16 @@ cohort_rates = {
 # Most late graduates finish in year 5
 ```
 
+```r
+# Understanding the graduation rate progression
+cohort_rates <- list(
+  "4-year ACGR" = 85.0,
+  "5-year ACGR" = 88.5,  # +3.5 pp
+  "6-year ACGR" = 89.2   # +0.7 pp additional
+)
+# Most late graduates finish in year 5
+```
+
 ### Using Extended Rates
 
 | Use Case | Which Rate |
@@ -291,6 +301,16 @@ def cohort_entry_year(reporting_year):
 # Example: 2022 graduation data = Fall 2018 9th grade cohort
 ```
 
+```r
+# Confusing: Which year is which?
+# year=2022 in EDFacts refers to the reporting year
+# The cohort entered 9th grade 4 years earlier
+
+cohort_entry_year <- reporting_year - 4
+
+# Example: 2022 graduation data = Fall 2018 9th grade cohort
+```
+
 ### Pitfall 2: Treating GED Completers as Graduates
 
 ```python
@@ -299,6 +319,14 @@ total_completers = diploma_grads + ged_completers  # INCORRECT
 
 # CORRECT: ACGR uses only diploma graduates
 acgr_numerator = diploma_grads  # Regular diploma only
+```
+
+```r
+# WRONG: Including GED in graduation count
+total_completers <- diploma_grads + ged_completers  # INCORRECT
+
+# CORRECT: ACGR uses only diploma graduates
+acgr_numerator <- diploma_grads  # Regular diploma only
 ```
 
 ### Pitfall 3: Ignoring Extended Rates
@@ -315,6 +343,18 @@ swd_rates = {
     "5-year": 72.0,  # Many complete in year 5
     "6-year": 74.5
 }
+```
+
+```r
+# Limited view
+swd_4year <- 65.0  # Students with disabilities, 4-year
+
+# Better view
+swd_rates <- list(
+  "4-year" = 65.0,
+  "5-year" = 72.0,  # Many complete in year 5
+  "6-year" = 74.5
+)
 ```
 
 ### Pitfall 4: Comparing Pre- and Post-ACGR Data
@@ -364,6 +404,30 @@ ca_grads.select([
     "school_name",
     "grad_rate_midpt"  # Use midpoint
 ])
+```
+
+```r
+library(arrow)
+library(dplyr)
+
+# fetch_yearly_from_mirrors() is a Python helper; in R, build per-year URLs
+# from the mirror root. Mirror failover: see
+# `education-data-query/references/fetch-patterns.md` (R pattern)
+mirror <- yaml::read_yaml("mirrors.yaml")$mirrors[[1]]
+years <- c(2018, 2019)
+paths <- sprintf("edfacts/schools_edfacts_grad_rates_%d", years)
+urls <- paste0(mirror$root_url, "/", paths, ".", mirror$format)
+# NOTE: illustrative only — schools_edfacts_grad_rates_* are Polars-written with
+# string_view columns, so this plain arrow::read_parquet() fails under R arrow
+# ("cannot handle Array of type <utf8_view>"). Real fetch scripts must use the
+# view-safe parquet read from `education-data-query/references/fetch-patterns.md`.
+grad_data <- bind_rows(lapply(urls, arrow::read_parquet))
+
+# Filter to California
+ca_grads <- grad_data |> filter(fips == 6)
+
+# Use midpoint for analysis
+ca_grads |> select(ncessch, school_name, grad_rate_midpt)
 ```
 
 ## Analysis Best Practices
@@ -424,6 +488,39 @@ def comprehensive_grad_analysis(df, state_fips, year):
     for label, subgroup_df in [("Econ Dis", econ_dis), ("CWD", cwd), ("EL", el)]:
         sub_rate = subgroup_df["grad_rate_midpt"].mean()
         print(f"{label}: {sub_rate:.1f} (gap: {sub_rate - all_rate:.1f})")
+```
+
+```r
+library(dplyr)
+
+# Analyze graduation rates with appropriate context
+# NOTE: name the year variable distinctly from the `year` column and unquote it
+# with !! — `filter(year == year)` compares the column to itself (always TRUE).
+target_year <- 2019
+state_data <- df |>
+  filter(fips == state_fips, year == !!target_year, grad_rate_midpt >= 0)
+
+# Overall rate: race=99 (total), all other filter cols=99 (total)
+overall <- state_data |>
+  filter(race == 99, lep == 99, disability == 99, econ_disadvantaged == 99)
+
+# Subgroup data
+econ_dis <- state_data |> filter(econ_disadvantaged == 1)
+cwd <- state_data |> filter(disability == 1)
+el <- state_data |> filter(lep == 1)
+
+all_rate <- mean(overall$grad_rate_midpt, na.rm = TRUE)
+
+# Note: gaps are calculated per-subgroup filter column
+cat(sprintf("Overall rate: %.1f\n", all_rate))
+for (info in list(
+  list("Econ Dis", econ_dis),
+  list("CWD", cwd),
+  list("EL", el)
+)) {
+  sub_rate <- mean(info[[2]]$grad_rate_midpt, na.rm = TRUE)
+  cat(sprintf("%s: %.1f (gap: %.1f)\n", info[[1]], sub_rate, sub_rate - all_rate))
+}
 ```
 
 ## Federal Guidance

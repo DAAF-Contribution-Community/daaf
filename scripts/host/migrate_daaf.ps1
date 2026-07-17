@@ -28,6 +28,7 @@
 # Supports DAAF_DRY_RUN=1 for CI cross-platform smoke testing (see tests/).
 # ============================================================================
 
+#Requires -Version 5.1
 $ErrorActionPreference = "Stop"
 
 # Ensure TLS 1.2 for GitHub downloads (required on PowerShell 5.1)
@@ -62,6 +63,11 @@ $BackupCompleted = $false
 $IsFork = $false
 $DetectedEra = ""
 $UpdateChoice = "n"
+# Initialize $Mutex before the scope-wide trap (defined below) can reference it.
+# The trap reads $Mutex to release the lock on failure; under Set-StrictMode it
+# would be an uninitialized-variable error if a failure fired the trap before the
+# mutex is created further down.
+$Mutex = $null
 
 # --- Detect non-interactive mode (curl-pipe equivalent) ---
 $NonInteractive = $false
@@ -88,13 +94,18 @@ if ($env:DAAF_DRY_RUN -eq "1") {
             "*info*" { return }
             "*volume inspect*" { return }
             "*ps -a*--filter*volume=*--format*" {
-                Write-Output "daaf-daaf-docker-1"
+                # Mock output for the volume-based container discovery below. A
+                # generic dry-run name (not the real default container name) keeps
+                # the production name from lingering as a stray literal; migrate's
+                # real code derives the name from `docker ps -a --filter volume=`.
+                Write-Output "daaf-migrate-dry-run-1"
             }
             "*inspect*--format*Status*" {
                 Write-Output "running"
             }
             "*exec*true*" { return }
             "*exec*test -f*" { return }
+            "*exec*config*safe.directory*" { return }
             "*exec*git -C /daaf remote get-url origin*" {
                 Write-Output "https://github.com/DAAF-Contribution-Community/daaf.git"
             }
@@ -121,16 +132,15 @@ if ($env:DAAF_DRY_RUN -eq "1") {
             [string]$Uri,
             [string]$OutFile
         )
-        # Acknowledge parameters accepted for interface compatibility
-        $null = $UseBasicParsing, $Uri
-        if ($OutFile) {
-            $parentDir = Split-Path $OutFile -Parent
-            if ($parentDir -and -not (Test-Path $parentDir)) {
-                New-Item -ItemType Directory -Path $parentDir -Force | Out-Null
-            }
-            # Write a minimal stub that exits cleanly (for nested script calls)
-            Set-Content -Path $OutFile -Value "exit 0"
-        }
+        # Dry-run is fully non-writing: acknowledge the parameters and succeed
+        # WITHOUT creating any files or directories. The former mock wrote an
+        # "exit 0" stub for each -OutFile target; combined with $HostDir
+        # resolving to the current directory when it holds a docker-compose.yml,
+        # that leaked stub scripts + a docker-compose.yml.pre-migrate into the
+        # caller's directory (the 2026-07-14 root-stub incident). All downstream
+        # dry-run write sites (New-Item, compose backup, nested backup) are gated
+        # below so the full flow still walks end-to-end.
+        $null = $UseBasicParsing, $Uri, $OutFile
     }
 
     # Force non-interactive to skip the update prompt at the end
@@ -306,6 +316,12 @@ if ($env:DAAF_TEST_MODE -eq "1") {
     return
 }
 
+# Enable strict mode AFTER the test-mode guard. Set-StrictMode is dynamically
+# scoped, so placing it here keeps Pester's dot-sourcing (which returns above)
+# from leaking strict mode into the whole test session, while real executions
+# run fully protected from this point on.
+Set-StrictMode -Version 3.0
+
 # =====================================================================
 # Concurrent-run lock
 # =====================================================================
@@ -390,7 +406,11 @@ if (Test-Path "docker-compose.yml") {
 } else {
     $HostDir = Join-Path (Get-Location).Path "daaf-docker"
     Write-Host "Will create host directory: $HostDir"
-    New-Item -ItemType Directory -Path $HostDir -Force | Out-Null
+    if ($env:DAAF_DRY_RUN -eq "1") {
+        Write-Host "[DRY-RUN] Would create host directory: $HostDir"
+    } else {
+        New-Item -ItemType Directory -Path $HostDir -Force | Out-Null
+    }
 }
 
 Write-Host ""
@@ -407,7 +427,7 @@ Write-Host "Downloading utility scripts from GitHub..."
 
 $DownloadFailed = $false
 
-foreach ($File in @("backup_daaf.ps1", "restore_from_backup.ps1", "rebuild_daaf.ps1", "update_daaf.ps1", "run_daaf.ps1", "view_logs.ps1", "view_notebooks.ps1", "run_vscode.ps1", "environment_settings_example.txt")) {
+foreach ($File in @("daaf.ps1", "daaf_lib.ps1", "backup_daaf.ps1", "restore_from_backup.ps1", "rebuild_daaf.ps1", "update_daaf.ps1", "run_daaf.ps1", "view_logs.ps1", "view_notebooks.ps1", "view_quarto.ps1", "run_vscode.ps1", "environment_settings_example.txt", "README.txt")) {
     try {
         Invoke-WebRequest -UseBasicParsing -Uri "$RawBase/scripts/host/$File" -OutFile "$HostDir\$File"
         Write-Host "  Downloaded: $File"
@@ -448,19 +468,30 @@ if (-not (Test-Path "$HostDir\docker-compose.yml")) {
         Wait-ForUser -ExitCode 1; return
     }
 } else {
-    # Even if docker-compose.yml exists, update it so it has name: daaf
-    # (v1.0.0 installations may lack this)
+    # Even if docker-compose.yml exists, update it if it lacks a project-name
+    # declaration (v1.0.0 installations shipped without one). The predicate is
+    # "does the compose file already set a top-level `name:` key" -- matching
+    # any `^name: ` line. Both the legacy literal `name: daaf` and the current
+    # parameterized `name: ${DAAF_PROJECT_NAME:-daaf}` therefore count as
+    # up-to-date. The former `^name: daaf` anchor did NOT match the parameterized
+    # form, so a real migrate against a current install re-downloaded the compose
+    # file and wrote a docker-compose.yml.pre-migrate backup on every run. Kept
+    # byte-for-byte equivalent to the migrate_daaf.sh predicate (`^name: `).
     $composeContent = Get-Content "$HostDir\docker-compose.yml" -Raw
-    if ($composeContent -notmatch '(?m)^name: daaf') {
+    if ($composeContent -notmatch '(?m)^name: ') {
         Write-Host ""
         Write-Host "  Updating docker-compose.yml to current version..."
-        Copy-Item "$HostDir\docker-compose.yml" "$HostDir\docker-compose.yml.pre-migrate" -Force
-        try {
-            Invoke-WebRequest -UseBasicParsing -Uri "$RawBase/docker-compose.yml" -OutFile "$HostDir\docker-compose.yml"
-            Write-Host "  Updated: docker-compose.yml (old version saved as docker-compose.yml.pre-migrate)"
-        } catch {
-            Write-Host "  WARNING: Could not download updated docker-compose.yml. Restoring original." -ForegroundColor Yellow
-            Move-Item "$HostDir\docker-compose.yml.pre-migrate" "$HostDir\docker-compose.yml" -Force
+        if ($env:DAAF_DRY_RUN -eq "1") {
+            Write-Host "  [DRY-RUN] Would update docker-compose.yml (backing up to docker-compose.yml.pre-migrate)"
+        } else {
+            Copy-Item "$HostDir\docker-compose.yml" "$HostDir\docker-compose.yml.pre-migrate" -Force
+            try {
+                Invoke-WebRequest -UseBasicParsing -Uri "$RawBase/docker-compose.yml" -OutFile "$HostDir\docker-compose.yml"
+                Write-Host "  Updated: docker-compose.yml (old version saved as docker-compose.yml.pre-migrate)"
+            } catch {
+                Write-Host "  WARNING: Could not download updated docker-compose.yml. Restoring original." -ForegroundColor Yellow
+                Move-Item "$HostDir\docker-compose.yml.pre-migrate" "$HostDir\docker-compose.yml" -Force
+            }
         }
     }
 }
@@ -480,21 +511,37 @@ Write-Host "Before making any changes, a full backup of your DAAF volume will"
 Write-Host "be created. This protects your research data and local history."
 Write-Host ""
 
-$OriginalDir = (Get-Location).Path
-Set-Location $HostDir
-$env:DAAF_NESTED = "1"
-& .\backup_daaf.ps1
-$backupExit = $LASTEXITCODE
-Remove-Item Env:\DAAF_NESTED -ErrorAction SilentlyContinue
-Set-Location $OriginalDir
-if ($backupExit -ne 0) {
-    Write-Host ""
-    Write-Host "ERROR: Backup failed (exit code $backupExit)."
-    Write-Host "The migration will not proceed without a successful backup."
-    Write-Host "Please resolve the backup issue and re-run: .\migrate_daaf.ps1"
-    Wait-ForUser -ExitCode 1; return
+if ($env:DAAF_DRY_RUN -eq "1") {
+    # Dry-run creates nothing, so there is no downloaded backup_daaf.ps1 to run
+    # (the Invoke-WebRequest mock no longer writes stubs). Print the step and
+    # skip the nested call; keep $BackupCompleted = $true so the rest of the
+    # dry-run flow matches the real path's post-backup state.
+    Write-Host "[DRY-RUN] Would run backup_daaf.ps1 in $HostDir to back up the Docker volume"
+    $BackupCompleted = $true
+} else {
+    $OriginalDir = (Get-Location).Path
+    Set-Location $HostDir
+    # Save any parent-inherited DAAF_NESTED and restore it afterward so a nested
+    # migration keeps suppressing pauses for its remainder; a bare Remove-Item
+    # would clobber the parent's value.
+    $savedNested = $env:DAAF_NESTED
+    try {
+        $env:DAAF_NESTED = "1"
+        & .\backup_daaf.ps1
+        $backupExit = $LASTEXITCODE
+    } finally {
+        if ($null -ne $savedNested) { $env:DAAF_NESTED = $savedNested } else { Remove-Item Env:\DAAF_NESTED -ErrorAction SilentlyContinue }
+    }
+    Set-Location $OriginalDir
+    if ($backupExit -ne 0) {
+        Write-Host ""
+        Write-Host "ERROR: Backup failed (exit code $backupExit)."
+        Write-Host "The migration will not proceed without a successful backup."
+        Write-Host "Please resolve the backup issue and re-run: .\migrate_daaf.ps1"
+        Wait-ForUser -ExitCode 1; return
+    }
+    $BackupCompleted = $true
 }
-$BackupCompleted = $true
 
 Write-Host ""
 
@@ -629,6 +676,169 @@ Write-Host "DAAF installation verified in container."
 Write-Host ""
 
 # =====================================================================
+# 4b. GIT safe.directory EXEMPTION (before any in-container git op)
+# =====================================================================
+# Field evidence (round-5 v1.0.0 matrix field run, Mac + Windows, 2026-07-17):
+# the Era-1 (v1.0.0) volume payload at /daaf is root-owned (uid 0), but the
+# v1.0.0 image runs git as its non-root 'appuser'. Modern git (>= 2.35.2)
+# refuses to operate on a repository owned by a different uid than the process
+# running git, emitting:
+#     fatal: detected dubious ownership in repository at '/daaf'
+# Without an exemption EVERY in-container git operation below (era detection,
+# fetch, graft, tracking) returns empty -- Invoke-ContainerGit suppresses stderr,
+# so the failure was previously silent and a real v1.0.0 user could not migrate.
+#
+# SCOPE DECISION (flagged): a SINGLE, early, well-guarded config-add here --
+# before the first in-container git operation (the era-detection probe below) --
+# rather than an Era-1-only fix. Justification from this file: the exec user, the
+# $ContainerName container, and the /daaf path are identical across all era
+# branches (every downstream git site runs as the same container user via
+# docker exec, whether Invoke-ContainerGit, Invoke-ContainerGitVerbose, or
+# Invoke-ContainerShell "cd /daaf && git ..."), so one global exemption for that
+# user covers Era 1, Era 2, and Era 3 uniformly. It is harmless where unnecessary
+# (Era-2/3 payloads already owned by the exec user): git would have permitted
+# those repos anyway, so an extra allowed directory is a no-op and cannot regress
+# the currently-passing v2.x vectors. The get-all guard keeps it idempotent
+# across re-runs (migrate advertises itself as safe to re-run) -- no duplicate
+# safe.directory line is appended on a second run.
+# Byte-parity with the migrate_daaf.sh safe.directory block.
+Write-Host "-------------------------------------------"
+Write-Host "  Git safe.directory exemption"
+Write-Host "-------------------------------------------"
+Write-Host ""
+Write-Host "Allowing git to operate on /daaf inside the container..."
+
+# Capture the current global safe.directory entries; git config exits 1 when the
+# key is unset, which is fine -- an empty capture just routes to the add branch.
+# @() guards .Count/-contains under Set-StrictMode when the capture is empty.
+$SafeDirExisting = @(Invoke-ContainerExec git config --global --get-all safe.directory 2>$null | ForEach-Object { ($_ -replace "`r", "").Trim() })
+if ($SafeDirExisting -contains "/daaf") {
+    Write-Host "  Already configured (safe.directory already lists /daaf)."
+} else {
+    # Invoke-ContainerExec lets stderr through and leaves $LASTEXITCODE as the
+    # docker exec exit code, so a genuine config-add failure is visible and
+    # checkable rather than swallowed.
+    Invoke-ContainerExec git config --global --add safe.directory /daaf
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "  Configured: safe.directory -> /daaf"
+    } else {
+        Write-Host ""
+        Write-Host "ERROR: Could not configure the git safe.directory exemption for /daaf" -ForegroundColor Red
+        Write-Host "inside the container."
+        Write-Host ""
+        Write-Host "Modern git refuses to operate on a repository owned by a different user"
+        Write-Host "than the one running git, unless /daaf is listed as a safe.directory."
+        Write-Host "Every git step below would otherwise fail silently, so the migration"
+        Write-Host "cannot proceed until this is resolved."
+        Write-Host ""
+        Write-Host "This usually means the container's git user has no writable home"
+        Write-Host "directory. Try restarting Docker Desktop, then re-run:  .\migrate_daaf.ps1"
+        Wait-ForUser -ExitCode 1; return
+    }
+}
+
+Write-Host ""
+
+# =====================================================================
+# 4c. VOLUME OWNERSHIP REPAIR (daaf-init parity, before any git write)
+# =====================================================================
+# Field evidence (round-6 v1.0.0 matrix field run, Mac + Windows, 2026-07-17):
+# the documented v1.0.0 install copied the repo into the volume with
+# `busybox cp -a`, which preserves the bind mount's presented owner -- root
+# (uid 0) on Docker Desktop -- and the v1.0.0 compose has NO ownership repair
+# (the daaf-init chown service only appeared in v2.0.0, whose compose comment
+# names this exact defect: "Docker named volumes may have files owned by root
+# or the host UID ... which blocks appuser from reading/writing"). The v1.0.0
+# container runs as non-root appuser (uid 1000) with cap_drop ALL, so on
+# Era-1 installs every in-container WRITE below fails with EPERM: git fetch
+# (objects, FETCH_HEAD), set-upstream (.git/config), and the driven update's
+# merge. The section-4b safe.directory exemption above cures git's
+# dubious-ownership REFUSAL (a read-side symptom) but not writability -- both
+# symptoms flow from the same ownership defect.
+#
+# Fix: run the exact repair the modern compose applies on every startup
+# (daaf-init: chown -R 1000:1000), via the same busybox image the documented
+# era installs already used. Idempotent and harmless where ownership is
+# already correct: Era-2/3 payloads were repaired by their own compose's
+# daaf-init at startup, so this is a no-op there and cannot regress the
+# passing v2.x paths. uid/gid 1000 is hardcoded exactly as production's
+# daaf-init hardcodes it (every era Dockerfile creates appuser as 1000:1000).
+#
+# Failure policy: warn-and-continue. On Era 2/3 a failed chown is irrelevant
+# (ownership already correct); on Era 1 the git steps below then fail loudly
+# WITH this diagnosis already printed -- strictly better than the prior
+# silent EPERM behavior.
+# Byte-parity with the migrate_daaf.sh section-4c block.
+Write-Host "-------------------------------------------"
+Write-Host "  Volume ownership repair"
+Write-Host "-------------------------------------------"
+Write-Host ""
+Write-Host "Repairing /daaf ownership for the container user (uid 1000)..."
+docker run --rm -v "${VolumeName}:/daaf" busybox chown -R 1000:1000 /daaf
+if ($LASTEXITCODE -eq 0) {
+    Write-Host "  Ownership repaired: $VolumeName -> 1000:1000 (daaf-init parity)"
+} else {
+    Write-Host ""
+    Write-Host "WARNING: Could not repair ownership of the DAAF volume ($VolumeName)." -ForegroundColor Yellow
+    Write-Host "On a v1.0.0-era installation the volume payload is typically owned by"
+    Write-Host "root, which blocks the container's non-root user from writing -- the"
+    Write-Host "git steps below may fail. Newer installations already have correct"
+    Write-Host "ownership (their compose repairs it on every startup), so this warning"
+    Write-Host "is harmless there. Continuing..."
+}
+
+Write-Host ""
+
+# =====================================================================
+# 4d. GIT IDENTITY (era parity, before any commit-creating git op)
+# =====================================================================
+# Round-6b field evidence (v1.0.0 single-vector runs, Mac + Windows,
+# 2026-07-17): the v1.0.0 image provisions NO git identity (no entrypoint;
+# its Dockerfile installs git bare), while every later era provisions the
+# same one -- the v2.0.x/v2.1.0 entrypoint sets it repo-local on startup
+# (git -C /daaf config user.email "daaf@local" / user.name "DAAF Container",
+# quoted from the v2.0.1 entrypoint) and the modern Dockerfile bakes it
+# globally. Without an identity, git REFUSES commit-creating operations
+# ("Please tell me who you are" / "unable to auto-detect email address"),
+# so on a migrated-but-not-yet-rebuilt v1.0.0 container the offered
+# update's stash/merge machinery would fail. Guarded: identity is set ONLY
+# when user.email resolves empty (repo-local and global alike) -- a real
+# user's own identity is NEVER overwritten. The set is repo-local (inside
+# the volume) so it survives the container rebuild, exactly like the
+# entrypoint-provisioned identity it mirrors.
+#
+# Failure policy: warn-and-continue, mirroring section 4c -- unnecessary
+# wherever an identity already exists, and a genuine failure then surfaces
+# loudly at the update step WITH this diagnosis already printed.
+# Byte-parity with the migrate_daaf.sh section-4d block.
+Write-Host "-------------------------------------------"
+Write-Host "  Git identity (era parity)"
+Write-Host "-------------------------------------------"
+Write-Host ""
+Write-Host "Checking for a git identity in /daaf..."
+$GitEmailExisting = Invoke-ContainerGit config user.email
+if (-not [string]::IsNullOrWhiteSpace($GitEmailExisting)) {
+    Write-Host "  Already configured (user.email: $GitEmailExisting)."
+} else {
+    Invoke-ContainerExec git -C /daaf config user.email daaf@local
+    $rcIdEmail = $LASTEXITCODE
+    Invoke-ContainerExec git -C /daaf config user.name "DAAF Container"
+    if ($rcIdEmail -eq 0 -and $LASTEXITCODE -eq 0) {
+        Write-Host "  Configured: repo-local git identity (daaf@local / DAAF Container)"
+    } else {
+        Write-Host ""
+        Write-Host "WARNING: Could not configure a git identity in /daaf. The v1.0.0 era" -ForegroundColor Yellow
+        Write-Host "never provisioned one, and git refuses to create commits (including"
+        Write-Host "the update's stash/merge) without it. If a later step fails with"
+        Write-Host "'Please tell me who you are', configure one and re-run:"
+        Write-Host "  docker exec <container> git -C /daaf config user.email daaf@local"
+        Write-Host "Continuing..."
+    }
+}
+
+Write-Host ""
+
+# =====================================================================
 # 5. DETECT ERA
 # =====================================================================
 Write-Host "-------------------------------------------"
@@ -686,8 +896,25 @@ if ($DetectedEra -eq "1") {
     }
     Write-Host "Fetch complete."
 
-    # Ensure tracking is set up
-    $null = Invoke-ContainerGit branch --set-upstream-to=origin/main main
+    # Ensure tracking is set up. Best-effort: a missing local 'main' branch is
+    # non-fatal. Run under Invoke-ContainerGitVerbose (matching the checked-git
+    # idiom used for fetch/graft in this file) and branch on $LASTEXITCODE so the
+    # success line prints ONLY when the upstream was actually set -- the former
+    # unconditional message lied whenever the underlying set-upstream failed.
+    $null = Invoke-ContainerGitVerbose branch --set-upstream-to=origin/main main
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "Tracking set: main -> origin/main"
+    } else {
+        # Diagnose WHICH precondition failed so the note tells the truth
+        # (field run 4, 2026-07-17: tag-pinned/single-branch installs lack the
+        # origin/main remote-tracking ref, but this note blamed the local branch).
+        $null = Invoke-ContainerGit rev-parse --verify --quiet refs/remotes/origin/main
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "NOTE: Could not set upstream tracking (no local 'main' branch on this install)."
+        } else {
+            Write-Host "NOTE: Could not set upstream tracking (no 'origin/main' remote-tracking ref on this install -- e.g. a single-branch or tag-pinned clone)."
+        }
+    }
 
     # --- For fork users: add upstream remote for official updates ---
     if ($IsFork) {
@@ -807,14 +1034,52 @@ if ($DetectedEra -eq "1") {
     }
 
     # --- Check if graft is already in place (idempotent) ---
-    $CatFileOutput = Invoke-ContainerGitVerbose cat-file -p $InitialCommit
-    $InitialParentCount = 0
-    if (-not [string]::IsNullOrWhiteSpace($CatFileOutput)) {
-        $InitialParentCount = ($CatFileOutput -split "`n" | Where-Object { $_ -match '^parent ' }).Count
+    # Three-leg probe (replace-first, shallow-guarded). The naive
+    # `rev-list --max-parents=0 | cat-file | grep -c '^parent '` detector is
+    # unreliable: after a prior graft, rev-list walks THROUGH the replace ref to
+    # upstream's genuine parentless root (parent count 0 -> false "no graft yet" ->
+    # redundant re-graft); on a shallow clone, rev-list returns the shallow
+    # boundary commit whose object still lists parents (false "graft in place" ->
+    # graft skipped). The migrate twins are the only creators of git replace refs
+    # in a DAAF volume, so a replace ref's existence is a sound "already grafted"
+    # marker that sidesteps both failure modes.
+    #
+    # Leg 1 (replace): capture `git replace -l` and test the captured value (the
+    # helper returns "" on error, so an errored probe falls toward the graft path).
+    $ExistingReplaceRefs = Invoke-ContainerGitVerbose replace -l
+    # Leg 2 (shallow): a shallow clone's boundary-commit parents are untrustworthy.
+    $IsShallow = Invoke-ContainerGitVerbose rev-parse --is-shallow-repository
+
+    $GraftInPlace = $false
+    $GraftSkipReason = ""
+    if (-not [string]::IsNullOrWhiteSpace($ExistingReplaceRefs)) {
+        # Leg 1: a replace ref exists -> a prior migrate already grafted.
+        $GraftInPlace = $true
+        $GraftSkipReason = "replace ref present"
+    } elseif ($IsShallow -eq "true") {
+        # Leg 2: do not trust boundary-commit parents on a shallow clone; fall
+        # through to the match/graft path (attempting a graft is idempotent-safe).
+        Write-Host "NOTE: Repository is a shallow clone -- boundary-commit parent counts"
+        Write-Host "      are unreliable, so proceeding to the match/graft path."
+        Write-Host ""
+    } else {
+        # Leg 3 (fallback): full, un-replaced repo -- parent-count on the true root.
+        $CatFileOutput = Invoke-ContainerGitVerbose cat-file -p $InitialCommit
+        $InitialParentCount = 0
+        if (-not [string]::IsNullOrWhiteSpace($CatFileOutput)) {
+            # Wrap in @() so .Count is safe under Set-StrictMode when Where-Object
+            # matches no lines (an unwrapped no-match pipeline yields $null, and
+            # $null.Count throws a non-existent-property error under strict mode).
+            $InitialParentCount = @($CatFileOutput -split "`n" | Where-Object { $_ -match '^parent ' }).Count
+        }
+        if ($InitialParentCount -gt 0) {
+            $GraftInPlace = $true
+            $GraftSkipReason = "root commit has a parent"
+        }
     }
 
-    if ($InitialParentCount -gt 0) {
-        Write-Host "History graft already in place (root commit has a parent)."
+    if ($GraftInPlace) {
+        Write-Host "History graft already in place ($GraftSkipReason)."
         Write-Host "Skipping graft step (previous migration completed successfully)."
         Write-Host ""
     } else {
@@ -1111,9 +1376,25 @@ echo "BEST:$BEST_SHA:$BEST_OVERLAP:$LOCAL_COUNT"
     }
 
     # --- Set upstream tracking ---
+    # Best-effort: a missing local 'main' branch is non-fatal. Run under
+    # Invoke-ContainerGitVerbose and branch on $LASTEXITCODE so the success line
+    # prints ONLY when the upstream was actually set -- the former unconditional
+    # message lied whenever the underlying set-upstream silently failed.
     Write-Host "Setting upstream tracking branch..."
-    $null = Invoke-ContainerGit branch --set-upstream-to=origin/main main
-    Write-Host "Tracking set: main -> origin/main"
+    $null = Invoke-ContainerGitVerbose branch --set-upstream-to=origin/main main
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "Tracking set: main -> origin/main"
+    } else {
+        # Diagnose WHICH precondition failed so the note tells the truth
+        # (field run 4, 2026-07-17: tag-pinned/single-branch installs lack the
+        # origin/main remote-tracking ref, but this note blamed the local branch).
+        $null = Invoke-ContainerGit rev-parse --verify --quiet refs/remotes/origin/main
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "NOTE: Could not set upstream tracking (no local 'main' branch on this install)."
+        } else {
+            Write-Host "NOTE: Could not set upstream tracking (no 'origin/main' remote-tracking ref on this install -- e.g. a single-branch or tag-pinned clone)."
+        }
+    }
     Write-Host ""
 
     Write-Host "Migration complete. Your local history is now connected to the"
@@ -1145,10 +1426,16 @@ if ($UpdateChoice -eq "y") {
     Write-Host ""
     $OriginalDirUpdate = (Get-Location).Path
     Set-Location $HostDir
-    $env:DAAF_NESTED = "1"
-    & .\update_daaf.ps1
-    if ($LASTEXITCODE -eq 0) { $UpdateRan = $true }
-    Remove-Item Env:\DAAF_NESTED -ErrorAction SilentlyContinue
+    # Save/restore any parent-inherited DAAF_NESTED (see the backup step above):
+    # a bare Remove-Item would clobber a value inherited from a parent process.
+    $savedNested = $env:DAAF_NESTED
+    try {
+        $env:DAAF_NESTED = "1"
+        & .\update_daaf.ps1
+        if ($LASTEXITCODE -eq 0) { $UpdateRan = $true }
+    } finally {
+        if ($null -ne $savedNested) { $env:DAAF_NESTED = $savedNested } else { Remove-Item Env:\DAAF_NESTED -ErrorAction SilentlyContinue }
+    }
     Set-Location $OriginalDirUpdate
 }
 
@@ -1195,13 +1482,15 @@ Write-Host "  cd $HostDir"
 Write-Host "  .\update_daaf.ps1"
 Write-Host ""
 Write-Host "Other available scripts:"
-Write-Host "  .\run_daaf.ps1                Launch Claude Code"
-Write-Host "  .\backup_daaf.ps1             Back up the Docker volume"
-Write-Host "  .\restore_from_backup.ps1     Restore from a backup"
-Write-Host "  .\rebuild_daaf.ps1            Rebuild the Docker image"
-Write-Host "  .\view_logs.ps1               Browse session logs"
-Write-Host "  .\view_notebooks.ps1          Browse and edit marimo notebooks"
-Write-Host "  .\run_vscode.ps1              Open VS Code in your browser (code-server)"
+Write-Host "  .\daaf.ps1                     DAAF Control Panel (recommended)"
+Write-Host "  .\run_daaf.ps1                 Launch Claude Code directly"
+Write-Host "  .\backup_daaf.ps1              Back up the Docker volume"
+Write-Host "  .\restore_from_backup.ps1      Restore from a backup"
+Write-Host "  .\rebuild_daaf.ps1             Rebuild the Docker image"
+Write-Host "  .\view_logs.ps1                Browse session logs"
+Write-Host "  .\view_notebooks.ps1           Browse and edit marimo notebooks"
+Write-Host "  .\view_quarto.ps1              Render and view Quarto notebooks in your browser"
+Write-Host "  .\run_vscode.ps1               Open VS Code in your browser (code-server)"
 Write-Host ""
 
 if ($Mutex) { try { $Mutex.ReleaseMutex() } catch { <# Mutex already released or not owned -- safe to ignore #> Write-Verbose "Silenced: $_" } }

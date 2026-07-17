@@ -18,6 +18,7 @@
 # Supports DAAF_DRY_RUN=1 for CI cross-platform smoke testing (see tests/).
 # ============================================================================
 
+#Requires -Version 5.1
 $ErrorActionPreference = "Stop"
 
 function Wait-AndExit {
@@ -29,6 +30,39 @@ function Wait-AndExit {
     exit $Code
 }
 
+# --- Multi-instance settings (shared pattern) ---
+# Bridge environment_settings.txt's four DAAF_* multi-instance keys into the
+# process environment so `docker compose` interpolation resolves the project name
+# and published host ports. Canonical shared pattern (kept in sync with
+# Import-DaafSettingsFile in daaf_lib.ps1); standalone scripts that do NOT dot-source
+# daaf_lib.ps1 inline it. Parse only these whitelisted keys (never dot-source -- the file
+# holds API keys); process env wins; absent file = no-op; CR stripped; PS 5.1 safe.
+function Import-DaafSettingsInline {
+    param([string]$SettingsFile = "./environment_settings.txt")
+    if (-not (Test-Path -LiteralPath $SettingsFile)) { return }
+    $known = @('DAAF_PROJECT_NAME', 'DAAF_PORT_MARIMO', 'DAAF_PORT_LOGVIEWER', 'DAAF_PORT_VSCODE', 'DAAF_DEV', 'DAAF_BRANCH')
+    # -Encoding UTF8: PS 5.1's bare Get-Content misreads BOM-less UTF-8 as ANSI
+    # (cp1252); the settings writer is BOM-less UTF-8, so reads are pinned to match.
+    foreach ($rawLine in (Get-Content -LiteralPath $SettingsFile -Encoding UTF8)) {
+        $line = $rawLine -replace "`r", ""
+        $trimmed = $line.Trim()
+        if ($trimmed -eq "" -or $trimmed.StartsWith("#")) { continue }
+        $eq = $line.IndexOf("=")
+        if ($eq -lt 1) { continue }
+        $key = $line.Substring(0, $eq).Trim()
+        if ($known -notcontains $key) { continue }
+        $val = $line.Substring($eq + 1)
+        if (($val.StartsWith('"') -and $val.EndsWith('"')) -or ($val.StartsWith("'") -and $val.EndsWith("'"))) {
+            if ($val.Length -ge 2) { $val = $val.Substring(1, $val.Length - 2) }
+        }
+        $current = [Environment]::GetEnvironmentVariable($key, "Process")
+        if ([string]::IsNullOrEmpty($current)) {
+            Set-Item -Path ("Env:" + $key) -Value $val
+        }
+    }
+}
+Import-DaafSettingsInline
+
 # --- Dry-Run Support ---
 # When DAAF_DRY_RUN=1, simulate external commands (Docker) for CI
 # cross-platform smoke testing without a Docker daemon.
@@ -38,7 +72,7 @@ if ($env:DAAF_DRY_RUN -eq "1") {
         $global:LASTEXITCODE = 0
         switch -Wildcard ($argStr) {
             "*info*" { return }
-            "*compose ps*--format*" { Write-Output "daaf-docker" }
+            "*compose ps -q daaf-docker*" { Write-Output "abc123" }
             "*compose up*" { return }
             "*compose exec*" { return }
             default {
@@ -55,6 +89,12 @@ if ($env:DAAF_DRY_RUN -eq "1") {
 if ($env:DAAF_TEST_MODE -eq "1") {
     return
 }
+
+# Enable strict mode AFTER the test-mode guard. Set-StrictMode is dynamically
+# scoped, so placing it here keeps Pester's dot-sourcing (which returns above)
+# from leaking strict mode into the whole test session, while real executions
+# run fully protected from this point on.
+Set-StrictMode -Version 3.0
 
 # --- Parse arguments ---
 $SkipMenu = $false
@@ -107,10 +147,12 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # --- Start container if not running ---
+# `docker compose ps -q daaf-docker` prints the running container's ID (empty
+# when stopped), derived from the compose project rather than a hardcoded name.
 $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-$RunningOutput = docker compose ps --status running --format '{{.Name}}' 2>&1
+$CidOutput = docker compose ps -q daaf-docker 2>&1
 $ErrorActionPreference = $savedEAP
-$Running = ($RunningOutput | Select-String "daaf-docker").Count
+$Running = if ([string]::IsNullOrWhiteSpace(($CidOutput | Out-String))) { 0 } else { 1 }
 
 if ($Running -eq 0) {
     Write-Host "Starting DAAF container..."

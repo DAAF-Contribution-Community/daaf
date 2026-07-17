@@ -20,10 +20,22 @@ DAAF's Python stack covers the most common causal designs:
 This reference documents both what translates cleanly and where real gaps remain.
 
 > **Versions referenced:**
-> Python: pyfixest 0.40.0, rdrobust (unpinned), marginaleffects (unpinned),
-> scpi (unpinned), binsreg (unpinned)
+> Python: pyfixest 0.40.0, rdrobust 1.3.0, marginaleffects 0.5.0 (all
+> pre-installed).
 > Stata: Stata 18 (SE/MP)
 > See SKILL.md for the complete version table.
+
+> **Package availability:** The `pip install X` lines throughout this reference are
+> package-identity references, not instructions to run. Apart from the three
+> pre-installed packages above (pyfixest, rdrobust, marginaleffects), the packages
+> named here — including scpi, binsreg, csdid, rddensity, rdmulti, rdpower,
+> pymatchit-causal, psmpy, pysmatch, SyntheticControlMethods, synthdid, and
+> CausalPy — are **not** pre-installed in the DAAF container, and runtime installs
+> are blocked (`pip install`/`uv add` are refused both at the command line and
+> inside executed scripts — see CLAUDE.md § Runtime Package Installation). Before
+> planning an analysis around any of them, verify availability with
+> `pip show <pkg>` and, if it is absent, escalate to the user to add it to the
+> Dockerfile (user additions block near the end) and rebuild before use.
 
 > **Sources:** Cunningham, *Causal Inference: The Mixtape* (Yale, 2021);
 > Huntington-Klein, *The Effect* (CRC Press, 2021);
@@ -349,7 +361,7 @@ rdbwselect Y X, c(cutoff)
 
 **Python:**
 ```python
-# pip install rdrobust
+# rdrobust is pre-installed in DAAF (pinned 1.3.0)
 from rdrobust import rdrobust, rdplot, rdbwselect
 
 # Point estimate with robust bias-corrected CI
@@ -398,7 +410,7 @@ arrays for covariates.
 
 | Tool | Stata Command | Python Package | Install |
 |------|---------------|----------------|---------|
-| Local polynomial RD | `rdrobust` | `rdrobust` | `pip install rdrobust` |
+| Local polynomial RD | `rdrobust` | `rdrobust` | Pre-installed (1.3.0) |
 | RD plots | `rdplot` | `rdrobust.rdplot()` | Included |
 | Bandwidth selection | `rdbwselect` | `rdrobust.rdbwselect()` | Included |
 | Manipulation testing | `rddensity` | `rddensity` | `pip install rddensity` |
@@ -682,6 +694,9 @@ sts graph
 **Python:**
 ```python
 # pip install lifelines
+# DAAF note: lifelines is NOT installable here — its latest release (0.30.3)
+# requires pandas<3.0, incompatible with the pinned pandas 3.0.0 (see Dockerfile).
+# Use R's pre-installed survival::coxph() for survival analysis instead.
 from lifelines import CoxPHFitter
 
 cph = CoxPHFitter()
@@ -692,8 +707,10 @@ cph.plot()
 ```
 
 `lifelines` is mature and well-maintained. It covers Cox PH, Kaplan-Meier,
-Nelson-Aalen, and parametric survival models. This is an area of good Python
-coverage.
+Nelson-Aalen, and parametric survival models. However, in DAAF it cannot be
+installed: its latest release (0.30.3) requires `pandas<3.0`, which conflicts
+with the pinned pandas 3.0.0. The working route for survival analysis is R's
+pre-installed `survival` package.
 
 ### Bayesian Causal Impact (Time Series Intervention)
 
@@ -786,7 +803,7 @@ correction, Sargan/Hansen tests for over-identification).
 | **AIPW** | `teffects aipw` | `econml.dr.DRLearner` | Medium | Different implementation |
 | **Synthetic control** | `synth` | `scpi` | High | Same authors |
 | **Binscatter** | `binsreg` / `binscatter` | `binsreg` | Very High | Same authors |
-| **Survival/Cox** | `stcox` | `lifelines.CoxPHFitter()` | High | Good coverage |
+| **Survival/Cox** | `stcox` | `lifelines.CoxPHFitter()` | High | Not installable in DAAF (needs pandas<3.0); use R `survival` |
 | **Dynamic panel GMM** | `xtabond2` | **No equivalent** | N/A | **Gap** |
 | **Marginal effects** | `margins` | `marginaleffects` | High | Same author (R version); Python is alpha |
 

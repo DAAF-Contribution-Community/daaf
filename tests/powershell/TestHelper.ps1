@@ -20,7 +20,7 @@ $script:RepoRoot = (Resolve-Path "$PSScriptRoot/../..").Path
 #
 #   BeforeAll {
 #       . "$PSScriptRoot/TestHelper.ps1"
-#       $script:TestDir = New-Item -ItemType Directory -Path (Join-Path $env:TEMP "daaf-test-$(Get-Random)")
+#       $script:TestDir = New-Item -ItemType Directory -Path (Join-Path ([System.IO.Path]::GetTempPath()) "daaf-test-$(Get-Random)")
 #       Push-Location $script:TestDir
 #   }
 #
@@ -28,6 +28,11 @@ $script:RepoRoot = (Resolve-Path "$PSScriptRoot/../..").Path
 #       Pop-Location
 #       Remove-Item -Recurse -Force $script:TestDir -ErrorAction SilentlyContinue
 #   }
+#
+# CWD-leak safety: New-FakeComposeFile writes to $script:TestDir by default (NOT
+# the ambient CWD), so a crash between Push-Location and Pop-Location can no
+# longer clobber files at the repo root. Prefer passing -Directory $script:TestDir
+# explicitly at call sites for full independence from CWD state.
 
 # ============================================================================
 # Docker Mock Patterns
@@ -78,8 +83,19 @@ function Test-ScriptSyntax {
 function New-FakeComposeFile {
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '')]
     param(
-        [string]$Directory = (Get-Location).Path
+        # Explicit target directory. Defaults to the caller's $script:TestDir (the
+        # per-test temp dir set in BeforeAll) rather than the ambient CWD. Writing
+        # to (Get-Location).Path was the root cause of the repo-root leak: a test
+        # that crashed between Push-Location and Pop-Location left CWD at the repo
+        # root, so the next call clobbered /daaf/docker-compose.yml. Never default
+        # to the ambient CWD -- require a real temp target, and fail loudly if the
+        # caller has no $script:TestDir to fall back to.
+        [string]$Directory = $script:TestDir
     )
+
+    if ([string]::IsNullOrEmpty($Directory)) {
+        throw "New-FakeComposeFile: no target directory. Pass -Directory or set \$script:TestDir in BeforeAll (never writes to the ambient CWD)."
+    }
 
     $content = @"
 name: daaf
@@ -88,8 +104,12 @@ services:
     image: daaf:latest
     volumes:
       - daaf-data:/daaf
+      - daaf-claude-config:/home/appuser/.claude
+    environment:
+      - CLAUDE_CONFIG_DIR=/home/appuser/.claude
 volumes:
   daaf-data:
+  daaf-claude-config:
 "@
     Set-Content -Path (Join-Path $Directory "docker-compose.yml") -Value $content
 }

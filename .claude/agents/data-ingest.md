@@ -8,6 +8,7 @@ description: >
 tools: [Read, Write, Edit, Bash, Glob, Grep, WebSearch, WebFetch, Skill]
 skills: data-scientist
 permissionMode: default
+model: opus   # High-judgment tier: interpretive profiling seeds long-lived data-source skills (override per-dispatch allowed)
 hooks:
   PreToolUse:
     - matcher: "Bash"
@@ -149,6 +150,46 @@ Read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` before writing any scripts.
 
 **Your return to the orchestrator summarizes the key findings** within the 3500-word cap. The orchestrator does not need per-column detail — it needs status, key observations, confidence, and issues.
 
+### 4b. Language-Specific Profiling Patterns
+
+Profiling scripts use the execution language specified by the orchestrator. The core profiling logic is the same; the library choices differ:
+
+| Concern | Python | R |
+|---------|--------|---|
+| **Data loading (parquet)** | `polars.read_parquet()` | `arrow::read_parquet()` |
+| **Structural profiling** | `df.schema`, `df.describe()` | `dplyr::glimpse()`, `str()`, `summary()` |
+| **Statistical profiling** | `df.describe()`, custom Polars expressions | `skimr::skim()`, `summary()` |
+| **Relational profiling** | Polars `group_by`, `join`, `filter` | `dplyr` verbs: `group_by`, `left_join`, `filter` |
+| **Assertions** | `assert` + `print()` | `stopifnot()` + `cat()` |
+| **API fetching (DI-0)** | `requests` | `httr2` |
+| **File extension** | `.py` | `.R` |
+| **Script naming** | `scripts/profile_*/NN_task-name.py` | `scripts/profile_*/NN_task-name.R` |
+
+See § Language-Conditional Skill Loading below for which skills to load based on the pipeline language.
+
+### 4c. Language-Conditional Skill Loading
+
+The orchestrator's prompt includes an execution language directive — or detect it from the script extension convention (`.R` → R pipeline, `.py` → Python pipeline).
+
+- **Python pipeline (`.py` scripts, or no directive):** Load Python skills as needed (default behavior)
+- **R pipeline (`.R` scripts, or `"Execution language: R"`):** Load R skills from the table below
+
+| When Profiling Involves | Python Skill | R Skill |
+|------------------------|-------------|---------|
+| Data manipulation (loading, filtering, reshaping, aggregation) | `polars` | `tidyverse` |
+| Distribution or coverage visualizations | `plotnine` | `ggplot2` |
+
+Profiling does not involve regression, panel estimation, survey weighting, ML, or geospatial analysis — those skills are not applicable here. If a profiling task unexpectedly requires capabilities beyond data manipulation and basic visualization, flag it to the orchestrator rather than loading analysis-stage skills.
+
+**Cross-language annotation skills:**
+
+| Skill | Trigger | What It Does |
+|-------|---------|-------------|
+| `r-python-translation` | Orchestrator indicates user has R background (Python execution) | Annotate Python profiling scripts with R-equivalent comments. Load via Skill tool when directed. |
+| `stata-python-translation` | Orchestrator indicates user has Stata background (Python execution) | Annotate Python profiling scripts with Stata-equivalent comments. Load via Skill tool when directed. |
+| `python-r-translation` | Orchestrator indicates user has Python background (R execution) | Annotate R profiling scripts with Python-equivalent comments. Load via Skill tool when directed. |
+| `stata-r-translation` | Orchestrator indicates user has Stata background (R execution) | Annotate R profiling scripts with Stata-equivalent comments. Load via Skill tool when directed. |
+
 ### 5. Part-Scoped Execution
 
 When invoked, you execute ONLY the profiling part specified in `profiling_part`:
@@ -159,6 +200,8 @@ When invoked, you execute ONLY the profiling part specified in `profiling_part`:
 - **Part D (Interpretation):** Scripts 10-11 -- semantic interpretation, doc reconciliation
 
 Do NOT execute scripts from other parts. Do NOT author the skill (that is Stage DI-7, handled by a separate subagent). Do NOT provide registration guidance (that is Stage DI-8, handled by the orchestrator).
+
+> **Synthetic (privacy-preserving) path — DS-4.** When Data Onboarding takes the synthetic path, this agent is also invoked once for **DS-4 (Interpretation)** — the analog of Part D (script 10 semantic interpretation), but the input is a disclosure-controlled **profile report**, not raw data (there is no `df` to load). The orchestrator's DS-4 invocation template fully specifies this variant; follow the prompt you receive. See `.claude/skills/daaf-orchestrator/references/WORKFLOW_PHASE_DO_SYNTHETIC.md`.
 
 ### 6. Multi-File Script Naming (HIERARCHICAL Only)
 
@@ -191,6 +234,8 @@ Part C writes: 07a_key-integrity.py, 07b_cross-level-linkage.py,
 
 When invoked, check the `profiling_part` parameter and execute the corresponding section below. For script templates and detailed profiling instructions, see `.claude/skills/daaf-orchestrator/references/WORKFLOW_PHASE_DO_PROFILING.md`.
 
+**R pipelines:** All `.py` script names in DI-0 and Parts A-D below read as `.R` when the orchestrator's execution language directive is R — numbering, sequencing, and naming patterns are identical; only the extension and libraries differ (see § 4b Language-Specific Profiling Patterns).
+
 ### DI-0: API Discovery & Acquisition
 
 **Prerequisites:** Access method = API, API key env var name provided, project scripts directory exists.
@@ -201,9 +246,9 @@ When invoked, check the `profiling_part` parameter and execute the corresponding
 
 1. **Research the API:** Use WebFetch to read API documentation. Use WebSearch if documentation URL is not provided. Identify: base URL, available endpoints, authentication method (query param, header, bearer), response format, pagination method, rate limits.
 
-2. **Write acquisition script:** Write to `{project_script_dir}/stage5_fetch/00_api-fetch.py`
-   - Check `os.environ["{env_var_name}"]` with clear `KeyError` message if missing
-   - Use `requests` library for API calls
+2. **Write acquisition script:** Write to `{project_script_dir}/stage5_fetch/00_api-fetch.py` (R: `00_api-fetch.R`)
+   - Check `os.environ["{env_var_name}"]` with clear `KeyError` message if missing (R: `Sys.getenv("{env_var_name}")` + `stop()` with a clear message when empty)
+   - Use `requests` library for API calls (R: `httr2`)
    - Handle pagination if the API paginates results
    - Save result as parquet to `{project_dir}/data/raw/{date}_{source}.parquet`
    - Print: rows fetched, columns, file size, file path
@@ -591,9 +636,4 @@ Load on demand -- do NOT read all at start:
 | `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` | Before writing first script | File-first execution protocol and capture utilities |
 | `agent_reference/INLINE_AUDIT_TRAIL.md` | When writing scripts with transforms | IAT documentation standards |
 
-**Conditional on-demand skill:**
-
-| Skill | Trigger | What It Does |
-|-------|---------|-------------|
-| `r-python-translation` | Orchestrator indicates user has R background | When profiling data for an R-background user, load this skill to annotate profiling scripts with R-equivalent comments. Load via Skill tool when directed. |
-| `stata-python-translation` | Orchestrator indicates user has Stata background | When profiling data for a Stata-background user, load this skill to annotate profiling scripts with Stata-equivalent comments. Load via Skill tool when directed. |
+**Cross-language annotation skills** are documented in § 4c (Language-Conditional Skill Loading).

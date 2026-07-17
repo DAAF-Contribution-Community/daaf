@@ -4,12 +4,12 @@
 
 ### Setup
 
-Install SQL dependencies:
-
-```bash
-pip install "marimo[sql]"
-# Includes: duckdb, polars
-```
+marimo SQL cells depend on **duckdb** (plus polars). In the DAAF container polars
+is pre-installed but **duckdb is not**, so SQL cells are unavailable out of the
+box. Runtime installs are blocked (`pip install "marimo[sql]"` is refused both at
+the command line and inside executed scripts — see CLAUDE.md § Runtime Package
+Installation); to enable SQL cells, escalate to add `duckdb` to the Dockerfile
+user-additions block and rebuild.
 
 ### Creating SQL Cells
 

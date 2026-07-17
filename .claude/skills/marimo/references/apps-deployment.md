@@ -86,7 +86,7 @@ params = mo.query_params()
 Set params:
 
 ```python
-mo.query_params.set({"page": 2})
+mo.query_params().set({"page": 2})  # call the accessor first; .set lives on the returned QueryParams object
 ```
 
 ## Export

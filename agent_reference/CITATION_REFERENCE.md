@@ -24,7 +24,7 @@ Cite when the library's **analytical functionality** drives a result. Do NOT cit
 
 | Library | Canonical Citation | Cite When | Do NOT Cite When |
 |---------|-------------------|-----------|------------------|
-| DAAF | Kim, B.H. (2026). *DAAF: Data Analyst Augmentation Framework* (Version 2.1.0) [Computer software]. https://github.com/DAAF-Contribution-Community/daaf | Always (pre-populated in STATE.md) | — |
+| DAAF | Kim, B.H. (2026). *DAAF: Data Analyst Augmentation Framework* (Version 3.0.0) [Computer software]. https://github.com/DAAF-Contribution-Community/daaf | Always (pre-populated in STATE.md) | — |
 | pyfixest | Berge, L., Butts, K., & McDermott, G. (2026). pyfixest: Fast high-dimensional fixed effects estimation [Computer software]. Based on fixest (R). | Used for regression estimation or DiD | Only imported but not used for estimation |
 | statsmodels | Seabold, S. & Perktold, J. (2010). "Statsmodels: Econometric and Statistical Modeling with Python." *Proceedings of the 9th Python in Science Conference*. | Used for GLM, time series, or statistical testing | Only used for post-estimation diagnostics supporting another library's estimation |
 | linearmodels | Sheppard, K. linearmodels: Econometric models for panel, IV, and system regression [Computer software]. https://bashtage.github.io/linearmodels/ | Used for panel, IV/GMM, or system estimation | — |
@@ -35,7 +35,23 @@ Cite when the library's **analytical functionality** drives a result. Do NOT cit
 | polars | Vink, R. et al. Polars: Blazingly fast DataFrames [Computer software]. https://pola.rs/ | Core data processing engine for the analysis | Only used for trivial file I/O |
 | plotnine | Kibirige, H. et al. plotnine: Grammar of graphics for Python [Computer software]. https://plotnine.org/ | Primary visualization library producing report figures | Only used for a quick exploratory plot |
 | plotly | Plotly Technologies Inc. Plotly: Interactive graphing library [Computer software]. https://plotly.com/ | Primary visualization library producing report figures | Only used for a quick exploratory plot |
-| marimo | marimo team. marimo: Reactive Python notebook [Computer software]. https://marimo.io/ | Always (analysis notebook is a marimo notebook) | — |
+| marimo | marimo team. marimo: Reactive Python notebook [Computer software]. https://marimo.io/ | Always when execution language is Python (notebook is marimo) | — |
+| R | R Core Team (2025). R: A Language and Environment for Statistical Computing [Computer software]. R Foundation for Statistical Computing, Vienna, Austria. https://www.R-project.org/ | Always when execution language is R | — |
+| Quarto | Allaire, J.J. et al. Quarto: An Open-Source Scientific and Technical Publishing System [Computer software]. https://quarto.org/ | Always when execution language is R (notebook is Quarto) | — |
+| tidyverse | Wickham, H. et al. (2019). "Welcome to the Tidyverse." *Journal of Open Source Software*, 4(43), 1686. | Core data wrangling in R projects | Only used for trivial file I/O |
+| ggplot2 | Wickham, H. (2016). *ggplot2: Elegant Graphics for Data Analysis.* Springer-Verlag New York. https://ggplot2.tidyverse.org/ | Primary visualization library in R projects | Only used for a quick exploratory plot |
+| fixest | Berge, L. (2018). "Efficient Estimation of Maximum Likelihood Models with Multiple Fixed-Effects: the R Package fixest." CREA Discussion Papers. https://lrberge.github.io/fixest/ | Used for fixed-effects regression or DiD in R | Only imported but not used for estimation |
+| arrow (R) | Richardson, N. et al. arrow: Integration to Apache Arrow [Computer software]. https://arrow.apache.org/docs/r/ | Parquet I/O in R projects | — |
+| survey | Lumley, T. (2004). "Analysis of Complex Survey Samples." *Journal of Statistical Software*, 9(8), 1-19. | Used for survey-weighted estimation in R | — |
+| sf | Pebesma, E. (2018). "Simple Features for R: Standardized Support for Spatial Vector Data." *The R Journal*, 10(1), 439-446. | Used for spatial operations in R | Only used to read a shapefile |
+| terra | Hijmans, R.J. terra: Spatial Data Analysis [Computer software]. https://rspatial.github.io/terra/ | Used for raster/spatial analysis in R | — |
+| gt | Iannone, R. et al. gt: Easily Create Presentation-Ready Display Tables [Computer software]. https://gt.rstudio.com/ | Used for formatted table output in R | — |
+| plm | Croissant, Y. & Millo, G. (2008). "Panel Data Econometrics in R: The plm Package." *Journal of Statistical Software*, 27(2), 1-43. | Used for panel data models in R | — |
+| modelsummary | Arel-Bundock, V. (2022). "modelsummary: Data and Model Summaries in R." *Journal of Statistical Software*, 103(1), 1-23. | Used for regression table output in R | — |
+| igraph (Python) | Csárdi, G. & Nepusz, T. (2006). "The igraph software package for complex network research." *InterJournal, Complex Systems*, 1695. https://igraph.org/ (python-igraph's CITATION.cff names the 2006 paper as preferred; adding Antonov, M. et al. (2023). "igraph enables fast and robust network analysis across programming languages." *arXiv:2311.10260*. https://doi.org/10.48550/arXiv.2311.10260 as a supplemental reference is recommended for cross-language or reproducibility-focused work. License: GPL-2.0-or-later.) | Used for network construction, centrality, community detection, or bipartite analysis in Python | Only imported but not used for analysis |
+| igraph (R) | Cite ALL THREE per the package's CITATION file: Csárdi, G. & Nepusz, T. (2006). "The igraph software package for complex network research." *InterJournal, Complex Systems*, 1695; Antonov, M., Csárdi, G., Horvát, S., Müller, K., Nepusz, T., Noom, D., Salmon, M., Traag, V., Foucault Welles, B., & Zanini, F. (2023). "igraph enables fast and robust network analysis across programming languages." *arXiv:2311.10260*. https://doi.org/10.48550/arXiv.2311.10260; Csárdi, G., Nepusz, T., Traag, V., Horvát, S., Zanini, F., Noom, D., Müller, K., Schoch, D., & Salmon, M. (2026). *igraph: Network Analysis and Visualization in R.* R package version 2.2.3. https://doi.org/10.5281/zenodo.7682609. License: GPL-2 or later. | Used for network construction, centrality, community detection, or bipartite analysis in R | Only imported but not used for analysis |
+| tidygraph | Pedersen, T.L. (2024). *tidygraph: A Tidy API for Graph Manipulation.* R package version 1.3.1. https://CRAN.R-project.org/package=tidygraph. License: MIT. | Used for tidy-API graph manipulation (tbl_graph) in R network analysis | Only imported but not used for graph manipulation |
+| ggraph | Pedersen, T.L. (2025). *ggraph: An Implementation of Grammar of Graphics for Graphs and Networks.* R package version 2.2.2. https://CRAN.R-project.org/package=ggraph. License: MIT. | Used to produce network figures (grammar-of-graphics) in R | Only used for a quick exploratory network plot |
 
 ### Methodological References
 
@@ -57,7 +73,13 @@ Cite the **primary** citation per method — the one paper you would cite in a j
 | IV (weak instruments) | Staiger, D. & Stock, J.H. (1997). "Instrumental Variables Regression with Weak Instruments." *Econometrica*, 65(3), 557-586. | IV estimation with first-stage F-test |
 | RD design | Cattaneo, M.D., Idrobo, N., & Titiunik, R. (2020). *A Practical Introduction to Regression Discontinuity Designs.* Cambridge University Press. | RD is primary identification strategy |
 | Synthetic control | Abadie, A., Diamond, A., & Hainmueller, J. (2010). "Synthetic Control Methods for Comparative Case Studies." *Journal of the American Statistical Association*, 105(490), 493-505. | Synthetic control method used |
+| Synthetic difference-in-differences | Arkhangelsky, D., Athey, S., Hirshberg, D.A., Imbens, G.W., & Wager, S. (2021). "Synthetic Difference-in-Differences." *American Economic Review*, 111(12), 4088-4118. | SDID estimator used (distinct from classical SC or standard DiD) |
 | Propensity score | Rosenbaum, P.R. & Rubin, D.B. (1983). "The Central Role of the Propensity Score in Observational Studies for Causal Effects." *Biometrika*, 70(1), 41-55. | Propensity score matching or weighting used |
+| Heckman selection correction | Heckman, J.J. (1979). "Sample Selection Bias as a Specification Error." *Econometrica*, 47(1), 153-162. | Heckman two-step or FIML selection correction used |
+| Causal mediation (ACME/NDE/NIE) | Imai, K., Keele, L., & Tingley, D. (2010). "A General Approach to Causal Mediation Analysis." *Psychological Methods*, 15(4), 309-334. | Causal mediation analysis (ACME/ADE decomposition) performed |
+| AIPW / doubly robust estimation | Robins, J.M., Rotnitzky, A., & Zhao, L.P. (1994). "Estimation of Regression Coefficients When Some Regressors Are Not Always Observed." *Journal of the American Statistical Association*, 89(427), 846-866. | Augmented IPW or doubly robust estimator used |
+| Double/debiased ML (DML) | Chernozhukov, V., Chetverikov, D., Demirer, M., Duflo, E., Hansen, C., Newey, W., & Robins, J. (2018). "Double/Debiased Machine Learning for Treatment and Structural Parameters." *Econometrics Journal*, 21(1), C1-C68. | DML estimator used for ATE estimation with ML nuisance models |
+| Meta-learners (CATE) | Künzel, S.R., Sekhon, J.S., Bickel, P.J., & Yu, B. (2019). "Metalearners for Estimating Heterogeneous Treatment Effects Using Machine Learning." *PNAS*, 116(10), 4156-4165. | S/T/X/R/DR-learner used for heterogeneous treatment effect estimation |
 
 #### Survey Analysis
 
@@ -79,6 +101,12 @@ Cite the **primary** citation per method — the one paper you would cite in a j
 | Method | Primary Citation | Cite When |
 |--------|-----------------|-----------|
 | Spatial autocorrelation | Anselin, L. (1995). "Local Indicators of Spatial Association--LISA." *Geographical Analysis*, 27(2), 93-115. | Moran's I or LISA computed |
+
+#### Network Analysis
+
+| Method | Primary Citation | Cite When |
+|--------|-----------------|-----------|
+| Leiden community detection | Traag, V.A., Waltman, L., & van Eck, N.J. (2019). "From Louvain to Leiden: guaranteeing well-connected communities." *Scientific Reports*, 9, 5233. | Leiden algorithm used for community detection (also the reference motivating Leiden over Louvain) |
 
 #### Decomposition
 
@@ -106,6 +134,6 @@ Cite the **primary** citation per method — the one paper you would cite in a j
 
 1. **After each Stage 6 script:** Orchestrator extracts data source citation from research-executor output and appends to STATE.md > Citations Accumulated > Data Sources.
 2. **After each Stage 7-8 script:** Orchestrator extracts method and software citations from research-executor output and appends to STATE.md > Citations Accumulated > Methodological References and/or Software & Tools. Deduplicate by checking if the citation already exists in STATE.md.
-3. **At project setup:** Orchestrator pre-populates the DAAF, marimo, and GUIDE-LLM citations in STATE.md (these are always present).
+3. **At project setup:** Orchestrator pre-populates the DAAF and GUIDE-LLM citations in STATE.md (always present). For Python projects, also pre-populates marimo. For R projects, also pre-populates R, Quarto, and tidyverse.
 4. **At Stage 11:** Report-writer reads STATE.md > Citations Accumulated as the primary source for the report's References section. Consults this file for verification if needed.
 5. **At Stage 12:** Data-verifier checks that all accumulated citations appear in the report and that no uncited methods or tools are present.

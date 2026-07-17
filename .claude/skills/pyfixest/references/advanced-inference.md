@@ -57,7 +57,7 @@ Wild cluster bootstrap perturbs cluster-level residuals using random weights:
 fit.plot_ritest()  # If using ritest; for wildboottest, inspect the returned object
 ```
 
-**Package dependency:** Wild cluster bootstrap requires the `wildboottest` package (`pip install wildboottest`), a Python port of the R `fwildclusterboot` package.
+**Package dependency:** Wild cluster bootstrap uses the `wildboottest` package (0.3.2, **pre-installed** in DAAF — no install needed; runtime installs are blocked, see CLAUDE.md § Runtime Package Installation), a Python port of the R `fwildclusterboot` package.
 
 ## Randomization Inference
 

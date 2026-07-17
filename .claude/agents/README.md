@@ -6,6 +6,23 @@ All agents in this directory MUST follow the canonical template at `agent_refere
 
 ---
 
+## Language Support
+
+All code-producing agents support both Python and R. The execution language is determined by the user's `Primary execution language` preference in CLAUDE.md and propagated by the orchestrator to each agent's prompt; the separate `Primary analysis language background` preference drives cross-language annotation direction, not which language the pipeline runs in. Agents detect the pipeline language from script file extensions (`.py` vs `.R`) and load the appropriate library skills on demand.
+
+Read-only agents (search-agent, plan-checker, data-verifier, integration-checker) and planning/synthesis agents (source-researcher, research-synthesizer, report-writer, framework-engineer) are language-agnostic — they reason about artifacts rather than authoring executable pipeline scripts, so they are not listed below. data-planner does not author scripts either, but its Plan_Tasks `<skill>` elements are language-load-bearing (research-executor loads exactly the library skills the task names), so it appears in the table.
+
+| Agent | Python Support | R Support |
+|-------|---------------|-----------|
+| research-executor | Default. polars, plotnine, statsmodels, pyfixest | R execution via `run_with_capture.sh`. tidyverse, ggplot2, fixest, r-stats |
+| data-planner | Routes Python skills into `<skill>` elements (polars, plotnine, statsmodels, pyfixest, ...) | Routes R skills under an R execution directive (tidyverse, ggplot2, r-stats, fixest, ...) |
+| code-reviewer | Reviews `.py` scripts; QA scripts in Polars | Reviews `.R` scripts; QA scripts in dplyr/arrow |
+| debugger | Diagnoses Python errors; writes `.py` diagnostics | Diagnoses R errors; writes `.R` diagnostics |
+| data-ingest | Profiles with Python (polars, arrow) | Profiles with R (dplyr, arrow, skimr) |
+| notebook-assembler | Assembles Marimo `.py` notebooks | Assembles Quarto `.qmd` notebooks |
+
+---
+
 ## Agent vs Skill Distinction
 
 | Aspect | Skill | Agent |
@@ -34,22 +51,24 @@ All agents in this directory MUST follow the canonical template at `agent_refere
 
 ## Agent Index
 
-| Agent | Purpose | Subagent Type | Stage(s) | Key Inputs | Key Outputs |
-|-------|---------|---------------|----------|------------|-------------|
-| **research-executor** | Execute data tasks with atomic precision, rigorous validation, and full audit-trail capture | `research-executor` | 5, 6, 7, 8, Ad Hoc | Task spec XML, Plan.md (or orchestrator context in Ad Hoc), skill knowledge, dependency outputs | Script + execution log + data files (parquet) |
-| **code-reviewer** | Iterative QA review verifying code correctness, methodology alignment, and output data quality | `code-reviewer` | 5-QA, 6-QA, 7-QA, 8-QA, RV-2, Ad Hoc | Executed script + log, Plan.md (or orchestrator context in Ad Hoc), output data files, stage/step/wave context | QA scripts (cr1-cr5) + severity report (PASSED/WARNING/BLOCKER) |
-| **data-planner** | Synthesize discovery findings into research plans with executable task sequences and wave-based parallelization | `data-planner` | 4, Ad Hoc | User request, clarifications, Stage 2-3 findings (or user-provided context in Ad Hoc), project folder path | Plan.md + Plan_Tasks.md (Full Pipeline) or Advisory Outline (Ad Hoc) |
-| **plan-checker** | Verify research plans will achieve analysis goals via goal-backward analysis across six dimensions | `plan-checker` | 4.5 | Plan.md + Plan_Tasks.md content (inlined), original user request, clarifications | Validation report: PASSED / PASSED_WITH_WARNINGS / ISSUES_FOUND |
-| **data-verifier** | Adversarial goal-backward verification of completed analyses with cross-artifact coherence | `data-verifier` | 12, RV-3 | Plan.md, Notebook, Report, project folder, STATE.md, LEARNINGS.md, QA summary | Verification report: PASSED / ISSUES_FOUND with four-layer evidence; STATE.md Final Review Log |
-| **source-researcher** | Deep-dive into a single data source for caveats, coded values, suppression patterns, and pitfalls | `source-researcher` | 3 | Source name, variables of interest, research question, years, geographic scope | Five-section source report (Summary, Variables, Caveats, Patterns, Pitfalls) |
-| **research-synthesizer** | Consolidate parallel Stage 2-3 findings into actionable planning guidance with conflict resolution | `research-synthesizer` | 3.5 | Stage 2 findings, all Stage 3 findings, research question, year range, geographic scope | Integrated synthesis with conflicts, resolutions, and planning recommendations |
-| **debugger** | Diagnose data quality issues and analysis failures using scientific hypothesis-testing methodology | `debugger` | Any (on error) | Error message/symptom, failed script path, Plan.md, Plan_Tasks.md (optional), last successful operation | Root cause report with hypothesis log and verified fix |
-| **notebook-assembler** | Compile scripts into Marimo notebook via VERBATIM copy (NO dashboards, NO widgets, NO new code) | `notebook-assembler` | 9 | Completed scripts (stages 5-8), Plan.md, data files, figure files, project path | Marimo `.py` notebook with script walkthroughs and data inspection cells |
-| **integration-checker** | Validate component wiring: data flows, file references, and orphan detection | `integration-checker` | 9, 11, 12 | Plan.md, Notebook, Report, project folder, script-to-output mappings | Integration check report: CONNECTED / ISSUES FOUND with flow diagrams |
-| **data-ingest** | Profile new datasets and produce comprehensive findings for skill authoring; also handles API acquisition (DI-0) | `data-ingest` | Data Onboarding Mode (Stages DI-0, DI-3 to DI-6) | Data file path(s) + format, target skill name, intended use, domain context, optional docs, API details (if DI-0) | Part-specific profiling findings for orchestrator; DI-0: acquisition script + API findings |
-| **framework-engineer** | Author, modify, and integrate DAAF framework artifacts with template compliance and cross-file consistency | `framework-engineer` | Framework Development Mode | Work type + scope + scoping findings + affected file paths | Framework artifacts (.md files) + integration checklist report |
-| **report-writer** | Synthesize pipeline artifacts into stakeholder report following REPORT_TEMPLATE.md | `report-writer` | 11, RV-4 | Plan.md, Notebook, STATE.md, LEARNINGS.md, QA summary, figures, citations, dataset metadata | Report.md (stakeholder prose) |
-| **search-agent** | Broad-purpose read-only exploration across codebases, documentation, and web sources | `search-agent` | Any (replaces generic Plan dispatches) | Search prompt, BASE_DIR, optional scope constraints | Flexible findings report with source citations and confidence assessment |
+DAAF uses a two-tier model routing convention: `opus` for high-judgment and primary data-production roles where adversarial reasoning, analytical execution quality, cross-file synthesis, or stakeholder calibration is required; `sonnet` for well-specified support roles where the task structure is clear and skill guidance is comprehensive. `haiku` is excluded by policy. These are static defaults encoded in each agent's frontmatter `model:` field — the orchestrator may override any default per-dispatch via the Agent tool's `model` parameter. For the full routing rationale and override guidance, see the "Model Selection for Subagent Dispatch" section of the orchestrator SKILL.md.
+
+| Agent | Purpose | Subagent Type | Stage(s) | Model | Key Inputs | Key Outputs |
+|-------|---------|---------------|----------|-------|------------|-------------|
+| **research-executor** | Execute data tasks with atomic precision, rigorous validation, and full audit-trail capture | `research-executor` | 5, 6, 7, 8, DS-1/DS-3/DS-5 (synthetic path), Ad Hoc | `opus` | Task spec XML, Plan.md (or orchestrator context in Ad Hoc), skill knowledge, dependency outputs | Script + execution log + data files (parquet) |
+| **code-reviewer** | Iterative QA review verifying code correctness, methodology alignment, and output data quality | `code-reviewer` | 5-QA, 6-QA, 7-QA, 8-QA, QAS-A/B/C (synthetic path), RV-2, Ad Hoc | `opus` | Executed script + log, Plan.md (or orchestrator context in Ad Hoc), output files; RV-2: original/reproduction paths, declared artifacts, path-audit MATCH, data strategy/scope exclusions, preliminary notes, and frozen-hash context | QA scripts + severity report; RV-2: per-script status with separate log metrics and direct-artifact evidence, helper JSON/dimensions, deviations, and evidence gaps |
+| **data-planner** | Synthesize discovery findings into research plans with executable task sequences and wave-based parallelization | `data-planner` | 4, Ad Hoc | `opus` | User request, clarifications, Stage 2-3 findings (or user-provided context in Ad Hoc), project folder path | Plan.md + Plan_Tasks.md (Full Pipeline) or Advisory Outline (Ad Hoc) |
+| **plan-checker** | Verify research plans will achieve analysis goals via goal-backward analysis across six dimensions | `plan-checker` | 4.5 | `opus` | Plan.md + Plan_Tasks.md content (inlined), original user request, clarifications | Validation report: PASSED / PASSED_WITH_WARNINGS / ISSUES_FOUND |
+| **data-verifier** | Adversarial goal-backward verification of completed analyses with cross-artifact coherence | `data-verifier` | 12, RV-3 | `opus` | Standard: Plan/Notebook/Report/STATE/QA; RV-3: original Report and copied artifact root, reproduced scripts/artifact root, Reproduction Report, and preliminary notes when present | Standard verification report; RV-3: per-claim/figure/finding MATCH/DIVERGED/NOT DIRECTLY VERIFIED rows with both evidence sources, plus derived coverage counts for claims, figures, findings, artifacts, and dimensions |
+| **source-researcher** | Deep-dive into a single data source for caveats, coded values, suppression patterns, and pitfalls | `source-researcher` | 3 | `sonnet` | Source name, variables of interest, research question, years, geographic scope | Five-section source report (Summary, Variables, Caveats, Patterns, Pitfalls) |
+| **research-synthesizer** | Consolidate parallel Stage 2-3 findings into actionable planning guidance with conflict resolution | `research-synthesizer` | 3.5 | `sonnet` | Stage 2 findings, all Stage 3 findings, research question, year range, geographic scope | Integrated synthesis with conflicts, resolutions, and planning recommendations |
+| **debugger** | Diagnose data quality issues and analysis failures using scientific hypothesis-testing methodology | `debugger` | Any (on error) | `opus` | Error message/symptom, failed script path, Plan.md, Plan_Tasks.md (optional), last successful operation | Root cause report with hypothesis log and verified fix |
+| **notebook-assembler** | Compile scripts into notebook via VERBATIM copy — Marimo (Python) or Quarto (R) — NO dashboards, NO widgets, NO new code | `notebook-assembler` | 9 | `sonnet` | Completed scripts (stages 5-8), Plan.md, data files, figure files, project path | Marimo `.py` (Python) or Quarto `.qmd` (R) notebook with script walkthroughs and data inspection cells |
+| **integration-checker** | Validate component wiring: data flows, file references, and orphan detection | `integration-checker` | 9, 11, 12 | `sonnet` | Plan.md, Notebook, Report, project folder, script-to-output mappings | Integration check report: CONNECTED / ISSUES FOUND with flow diagrams |
+| **data-ingest** | Profile new datasets and produce comprehensive findings for skill authoring; also handles API acquisition (DI-0) | `data-ingest` | Data Onboarding Mode (Stages DI-0, DI-3 to DI-6, DS-4 synthetic path) | `opus` | Data file path(s) + format, target skill name, intended use, domain context, optional docs, API details (if DI-0) | Part-specific profiling findings for orchestrator; DI-0: acquisition script + API findings |
+| **framework-engineer** | Author, modify, and integrate DAAF framework artifacts with template compliance and cross-file consistency | `framework-engineer` | Framework Development Mode | `opus` | Work type + scope + scoping findings + affected file paths | Framework artifacts (.md files) + integration checklist report |
+| **report-writer** | Synthesize pipeline artifacts into stakeholder report following REPORT_TEMPLATE.md | `report-writer` | 11, RV-4 | `opus` | Standard pipeline artifacts; RV-4: complete Reproduction Report plus persisted full-fidelity RV-3 findings | Report.md; RV-4 synthesis with derived gap/exclusion counts and canonical FULLY REPRODUCED / PARTIALLY REPRODUCED / NOT REPRODUCED verdict |
+| **search-agent** | Broad-purpose read-only exploration across codebases, documentation, and web sources | `search-agent` | Any (replaces generic Plan dispatches) | `sonnet` | Search prompt, BASE_DIR, optional scope constraints | Flexible findings report with source citations and confidence assessment |
 
 ### Commonly Confused Pairs
 
@@ -227,7 +246,7 @@ Shows which agents produce output consumed by other agents:
 | **debugger** | research-executor | Root cause diagnosis + verified fix + prevention recommendation | After diagnosis |
 | **debugger** | Orchestrator | Escalation (when UNRESOLVED or methodology issue) | Undiagnosed issues |
 | **research-executor** (Stage 8) | notebook-assembler | Scripts + data files + analysis results + figures | After Stage 8 completes |
-| **notebook-assembler** | integration-checker | Marimo notebook (VERBATIM script copies, NO new code) | After Stage 9 compilation |
+| **notebook-assembler** | integration-checker | Marimo `.py` or Quarto `.qmd` notebook (VERBATIM script copies, NO new code) | After Stage 9 compilation |
 | **integration-checker** | data-verifier | Wiring status (CONNECTED / ISSUES FOUND) | Stages 9, 11, 12 |
 | **data-verifier** | Orchestrator | Verification report (PASSED / ISSUES_FOUND with four-layer evidence) | Before delivery |
 | **report-writer** | integration-checker | Report.md (stakeholder report following REPORT_TEMPLATE.md) | After Stage 11 completes |
@@ -235,9 +254,9 @@ Shows which agents produce output consumed by other agents:
 | **report-writer** | Orchestrator | Status report (COMPLETE / COMPLETE_WITH_GAPS / BLOCKED) | After report generation |
 | **Orchestrator** | data-ingest | Part assignment (DI-0/A/B/C/D), prior part findings, conditional script decisions, API details (DI-0), multi-file paths + schema map (HIERARCHICAL) | Stages DI-0, DI-3 to DI-6 |
 | **data-ingest** | Orchestrator | Part-specific profiling findings, confidence assessment, issues; DI-0: acquisition script path + API findings | Stages DI-0, DI-3 to DI-6 |
-| **code-reviewer** (RV-2) | Orchestrator | Per-script reproduction status + comparison metrics + deviations | RV-2 (per script) |
-| **data-verifier** (RV-3) | Orchestrator | Report verification findings (claims, figures, findings checked) | RV-3 |
-| **report-writer** (RV-4) | Orchestrator | Completed Reproduction Report with synthesis | RV-4 |
+| **code-reviewer** (RV-2) | Orchestrator | Per-script status; separate shared-log and direct-artifact evidence; helper JSON/per-dimension results; deviations, NOT DIRECTLY VERIFIED gaps, and frozen-hash integrity when applicable | RV-2 (per in-scope script) |
+| **data-verifier** (RV-3) | Orchestrator | Per-claim/figure/finding MATCH/DIVERGED/NOT DIRECTLY VERIFIED rows with original and reproduced evidence sources, plus derived counts across all evidence-unit classes | RV-3 |
+| **report-writer** (RV-4) | Orchestrator | Reproduction Report synthesis sourced from full-fidelity RV-3 findings, with gaps/exclusions counted and one canonical FULLY REPRODUCED / PARTIALLY REPRODUCED / NOT REPRODUCED verdict | RV-4 |
 | **debugger** (RV-2) | Orchestrator | Root cause analysis + minimal fix for reproduction failure | RV-2 (on error) |
 | **Orchestrator** | framework-engineer | Work type, scope, scoping findings, affected file paths | Framework Development Mode |
 | **framework-engineer** | Orchestrator | Framework Engineering Report (status, artifacts, checklist, confidence) | Framework Development Mode |
@@ -311,7 +330,7 @@ Closely read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the mandatory f
 - Independent assessment before Plan anchoring
 - Stub detection and silent failure audit
 
-**Reproducibility Verification (RV-3):** In RV mode, data-verifier performs adversarial cross-checking of the original Report's claims against reproduced outputs. It RETURNS findings to the orchestrator (read-only) — it does not write the Reproduction Report directly. See `reproducibility-verification-mode.md` for the invocation template.
+**Reproducibility Verification (RV-3):** In RV mode, data-verifier compares persisted original and reproduced claims, tables, supported Parquet artifacts, and side-by-side figures using MATCH / DIVERGED / NOT DIRECTLY VERIFIED; logs alone are insufficient. It returns per-claim/figure/finding evidence sources and derived coverage counts, keeps exact pre-RV-2 scope exclusions separate, and RETURNS findings to the orchestrator (read-only) rather than writing the Reproduction Report.
 
 **Invocation template:** See the appropriate WORKFLOW_PHASE*.md or mode reference file for stage-specific invocation templates.
 
@@ -333,7 +352,7 @@ Closely read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the mandatory f
 
 ### debugger
 
-**Use when:** Something fails and root cause is unclear, or code-reviewer identifies complex issues requiring root-cause analysis.
+**Use when:** Something fails and root cause is unclear, or code-reviewer identifies complex issues requiring root-cause analysis. Diagnoses both Python and R pipeline errors.
 
 **Key behaviors:**
 - Scientific hypothesis testing (max 5 cycles)
@@ -341,6 +360,7 @@ Closely read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the mandatory f
 - Systematic evidence collection
 - Falsifiable hypothesis formation
 - Documented elimination process
+- Writes diagnostic scripts matching the pipeline language (`.py` or `.R`)
 
 **Escalation rules:**
 - 2 diagnostic cycles maximum before escalating to user
@@ -388,9 +408,9 @@ Closely read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the mandatory f
 
 ### notebook-assembler
 
-**Use when:** Stage 8 is complete and it's time to compile scripts into a marimo notebook (Stage 9).
+**Use when:** Stage 8 is complete and it's time to compile scripts into a notebook (Stage 9).
 
-**Purpose:** LITERALLY COPY script file contents into marimo cells. The notebook is a script viewer, NOT a dashboard.
+**Purpose:** LITERALLY COPY script file contents into notebook cells. Assembles Marimo (Python) or Quarto (R) notebooks. The notebook is a script viewer, NOT a dashboard.
 
 **CRITICAL CONSTRAINT:** This agent COPIES files. It does NOT generate new code, dashboards, filters, or interactive widgets. If you see dropdowns, sliders, or new aggregations in the output, the agent FAILED.
 
@@ -404,29 +424,28 @@ Closely read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the mandatory f
 - An analysis tool
 - An interactive explorer
 
-**Key behaviors:**
+**Language detection:** Inspects script file extensions in `scripts/stage{5,6,7,8}_*/`. If `.py` → assembles Marimo. If `.R` → assembles Quarto.
+
+**Key behaviors (Marimo — Python pipelines):**
 - READ script files from `scripts/`
 - COPY code VERBATIM into code cells (commented out with `# ` prefix)
-- COPY execution logs VERBATIM into accordion cells
-- ADD ONLY `pl.read_parquet() + mo.ui.table()` cells
-- Applies the Four-Cell Pattern per script (header, commented code, log accordion, data load)
+- REQUIRE non-placeholder execution logs and COPY them VERBATIM into adjacent accordion cells
+- OPTIONALLY ADD only a bounded existing-Parquet preview or `mo.image()` display of an already-created figure
+- Applies a canonical three-cell archive bundle per script (header, commented code, log accordion), followed by an optional display cell
+
+**Key behaviors (Quarto — R pipelines):**
+- READ script files from `scripts/`
+- COPY code VERBATIM into ```` ```{r} ```` chunks with `#| eval: false`
+- REQUIRE non-placeholder execution logs and COPY them VERBATIM into immediately following callouts
+- OPTIONALLY ADD only a bounded Parquet preview or display of an already-created figure (Markdown preferred; dedicated `knitr::include_graphics()` allowed)
+- Applies heading + chunk + callout + optional display pattern per script
 
 **PROHIBITIONS (agent FAILED if output contains):**
-- `mo.ui.dropdown()` -- NO dropdowns
-- `mo.ui.slider()` -- NO sliders
-- `mo.ui.multiselect()` -- NO multiselects
-- `.group_by()` outside script code -- NO new aggregations
-- `.pivot()` outside script code -- NO new pivots
-- `.filter()` in data cells -- NO filtering
-- `.with_columns()` in data cells -- NO transforms
+- New analysis code (aggregations, pivots, filters, transforms) not from original scripts
+- Interactive widgets (Marimo: `mo.ui.dropdown()`, `mo.ui.slider()`, etc.)
+- New visualizations not from original scripts
 
-**What notebook-assembler produces:**
-- Marimo notebook with navigation (markdown only)
-- VERBATIM script code in code cells (commented out)
-- VERBATIM execution logs in accordion cells
-- Simple data load + display cells (THE ONLY NEW CODE)
-
-**Verification:** If output contains `mo.ui.dropdown`, `mo.ui.slider`, `group_by` outside scripts, or `filter` in data cells -> REJECT and re-run
+**Verification:** If output contains interactive widgets, new aggregations outside scripts, or new analysis code -> REJECT and re-run
 
 **Invocation template:** See the appropriate WORKFLOW_PHASE*.md or mode reference file for stage-specific invocation templates.
 
@@ -443,7 +462,7 @@ Closely read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the mandatory f
 - Cross-checks all Research Outcomes from Plan against Key Findings
 - Verifies all figure file paths resolve before embedding references
 
-**Reproducibility Verification (RV-4):** In RV mode, report-writer synthesizes the Reproduction Report by writing the Executive Summary, Methodological Concerns Synthesis, and overall assessment. See `reproducibility-verification-mode.md` for the invocation template.
+**Reproducibility Verification (RV-4):** In RV mode, report-writer reads the complete Reproduction Report and persisted full-fidelity RV-3 findings, derives all completion/evidence-gap counts, reports exact scope-design exclusions separately, and assigns only FULLY REPRODUCED / PARTIALLY REPRODUCED / NOT REPRODUCED. Any in-scope evidence gap caps the verdict at PARTIALLY REPRODUCED.
 
 **Invocation template:** See the appropriate WORKFLOW_PHASE*.md or mode reference file for stage-specific invocation templates.
 
@@ -515,7 +534,7 @@ code-reviewer returns BLOCKER
                 +- YES -> ESCALATE to user
 ```
 
-**Reproducibility Verification (RV-2):** In RV mode, the code-reviewer both re-executes scripts and evaluates output comparison — combining mechanical reproduction with skeptical assessment. The invocation template in `reproducibility-verification-mode.md` provides all RV-specific context.
+**Reproducibility Verification (RV-2):** In RV mode, the code-reviewer re-executes each in-scope script and compares shared log metrics with direct original-versus-reproduced artifact evidence; logs alone never establish artifact equality. It requires prior path-audit MATCH, executes Stage 5 in re-fetch mode, excludes rather than executes Stage 5 under the pre-approved frozen-input design, verifies frozen raw hashes afterward, preserves artifact-helper JSON for supported Parquet/exact evidence, and creates failure revisions from clean log-free sources.
 
 **Ad Hoc Collaboration:** In Ad Hoc mode, code-reviewer can review user-provided scripts that may lack execution logs or Plan.md context. Methodology alignment is evaluated against the user's stated intent rather than a formal Plan. See `ad-hoc-collaboration-mode.md`.
 
@@ -525,7 +544,7 @@ code-reviewer returns BLOCKER
 
 ### data-ingest
 
-**Use when:** The orchestrator is running Data Onboarding Mode and needs to dispatch a profiling part (A/B/C/D) for a new data file. Each part is a separate subagent invocation managed by the orchestrator.
+**Use when:** The orchestrator is running Data Onboarding Mode and needs to dispatch a profiling part (A/B/C/D) for a new data file. Each part is a separate subagent invocation managed by the orchestrator. Profiles data with Python or R scripts depending on the user's execution language preference.
 
 **Purpose:** Profile new datasets across four orchestrator-managed parts:
 - **Part A:** Structural Discovery (schema, types, shapes, nulls)
@@ -538,6 +557,7 @@ code-reviewer returns BLOCKER
 - Receives part assignment and prior part findings from orchestrator
 - Data file is source of truth; documentation claims are verified against data
 - Returns part-specific profiling findings with confidence assessment
+- Writes profiling scripts in the pipeline language (Python with polars, or R with dplyr/arrow)
 - Skill authoring is NOT performed by this agent (handled at Stage DI-7 by a separate subagent)
 
 **Invocation template:** See the appropriate WORKFLOW_PHASE*.md or mode reference file for stage-specific invocation templates.
@@ -600,6 +620,7 @@ description: >
   [Third person. What it does AND when to use it.]
 tools: [Read, Write, Edit, Bash, Glob, Grep, Skill]   # Explicit allowlist. Omit for all.
 permissionMode: default                          # Or: plan (read-only agents)
+model: sonnet                                    # Or: opus (high-judgment roles). See Agent Index prose above.
 ---
 ```
 

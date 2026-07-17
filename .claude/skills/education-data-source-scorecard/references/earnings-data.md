@@ -224,6 +224,10 @@ valid = df.filter(
     (pl.col("earnings_med") > 0)
 )
 ```
+```r
+# CORRECT: Filter both -3 and NA for earnings
+valid <- df |> filter(!is.na(earnings_med), earnings_med != -3, earnings_med > 0)
+```
 
 ### High Suppression Rates Affect
 

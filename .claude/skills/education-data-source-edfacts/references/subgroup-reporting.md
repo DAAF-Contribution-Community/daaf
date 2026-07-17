@@ -164,6 +164,19 @@ def flag_cep_schools(df):
     )
 ```
 
+```r
+library(dplyr)
+
+# Caution: ECODIS definition varies
+# Flag schools likely using CEP (Community Eligibility Provision)
+df <- df |>
+  mutate(frpl_status = case_when(
+    econ_disadvantaged_pct >= 99 ~ "likely_cep",
+    econ_disadvantaged_pct >= 75 ~ "possible_cep",
+    TRUE ~ "traditional"
+  ))
+```
+
 ### Homeless Students (HOM)
 
 Students identified under McKinney-Vento Act:
@@ -257,6 +270,18 @@ def estimate_n_size_effect(df, subgroup_col, count_col):
     return results
 ```
 
+```r
+library(dplyr)
+
+# N-size affects what you can analyze
+n_sizes <- c(10, 15, 20, 25, 30)
+results <- lapply(n_sizes, function(n) {
+  pct_reportable <- sum(df[[count_col]] >= n, na.rm = TRUE) / nrow(df) * 100
+  data.frame(n_size = n, pct_reportable = pct_reportable)
+})
+results <- do.call(rbind, results)
+```
+
 ## Suppression Rules
 
 ### Primary Suppression
@@ -318,6 +343,24 @@ def analyze_subgroup_suppression(df, subgroup_col, value_col):
     return analysis
 ```
 
+```r
+library(dplyr)
+
+# Analyze suppression rates by subgroup
+analysis <- df |>
+  group_by(.data[[subgroup_col]]) |>
+  summarise(
+    total_records = n(),
+    suppressed = sum(.data[[value_col]] == -3, na.rm = TRUE),
+    valid = sum(.data[[value_col]] >= 0, na.rm = TRUE)
+  ) |>
+  mutate(
+    pct_suppressed = suppressed / total_records * 100,
+    pct_valid = valid / total_records * 100
+  ) |>
+  arrange(desc(pct_suppressed))
+```
+
 ## Subgroup Analysis Considerations
 
 ### Selection Bias from Suppression
@@ -358,6 +401,20 @@ def aggregate_for_subgroups(df, geo_level, subgroup_col, value_cols):
     return aggregated
 ```
 
+```r
+library(dplyr)
+
+# Aggregate to higher geographic level for complete subgroup data
+# District aggregation reduces suppression
+count_cols <- value_cols[grepl("count|num", value_cols)]
+aggregated <- df |>
+  group_by(.data[[geo_level]], .data[[subgroup_col]]) |>
+  summarise(across(all_of(count_cols), sum, na.rm = TRUE), .groups = "drop")
+
+# Recalculate percentages
+# ... add percentage calculation logic
+```
+
 ## Gap Analysis
 
 > **Note on code examples below:** These gap analysis examples use a generic `"subgroup"` column for illustration. EDFacts data does NOT have a single "subgroup" column -- it uses separate filter columns (`race`, `lep`, `disability`, `econ_disadvantaged`, etc.) with integer codes. Adapt the filtering logic to the appropriate column and integer value for your analysis. See the comprehensive graduation analysis example in `./graduation-rates.md` for a concrete pattern.
@@ -392,6 +449,30 @@ def calculate_gaps(df, reference_group, comparison_groups, value_col):
         })
     
     return gaps
+```
+
+```r
+library(dplyr)
+
+# Calculate achievement gaps between subgroups
+ref_value <- df |>
+  filter(subgroup == reference_group) |>
+  summarise(avg = mean(.data[[value_col]], na.rm = TRUE)) |>
+  pull(avg)
+
+gaps <- lapply(comparison_groups, function(group) {
+  comp_value <- df |>
+    filter(subgroup == group) |>
+    summarise(avg = mean(.data[[value_col]], na.rm = TRUE)) |>
+    pull(avg)
+  data.frame(
+    subgroup = group,
+    value = comp_value,
+    gap_from_reference = comp_value - ref_value,
+    reference_group = reference_group
+  )
+})
+gaps <- do.call(rbind, gaps)
 ```
 
 ### Standard Gap Calculations
@@ -434,6 +515,20 @@ def gap_trend(df, group1, group2, value_col):
     )
     
     return yearly_gaps
+```
+
+```r
+library(dplyr)
+library(tidyr)
+
+# Calculate how gap has changed over time
+yearly_gaps <- df |>
+  group_by(year, subgroup) |>
+  summarise(avg_value = mean(.data[[value_col]], na.rm = TRUE), .groups = "drop") |>
+  pivot_wider(names_from = subgroup, values_from = avg_value) |>
+  mutate(gap = .data[[group1]] - .data[[group2]]) |>
+  select(year, gap) |>
+  arrange(year)
 ```
 
 ## Intersectional Subgroups
@@ -521,6 +616,30 @@ def comprehensive_subgroup_report(df, year, state_fips, value_col):
     )
     
     return report
+```
+
+```r
+library(dplyr)
+
+# Generate comprehensive subgroup analysis with quality metrics
+# NOTE: name the year variable distinctly from the `year` column and unquote it
+# with !! — `filter(year == year)` compares the column to itself (always TRUE).
+target_year <- 2018
+data <- df |> filter(year == !!target_year, fips == state_fips)
+
+report <- data |>
+  group_by(subgroup) |>
+  summarise(
+    avg_outcome = mean(.data[[value_col]], na.rm = TRUE),
+    n_schools = n(),
+    n_suppressed = sum(.data[[value_col]] == -3, na.rm = TRUE),
+    n_valid = sum(.data[[value_col]] >= 0, na.rm = TRUE)
+  ) |>
+  mutate(
+    pct_suppressed = n_suppressed / n_schools * 100,
+    pct_valid = n_valid / n_schools * 100
+  ) |>
+  arrange(desc(avg_outcome))
 ```
 
 ## Subgroup Quick Reference (Portal Integer Encoding)

@@ -73,6 +73,17 @@ df = df.with_columns(
 )
 ```
 
+```r
+library(dplyr)
+
+# Filter out missing/not applicable
+valid_data <- df |> filter(variable > 0)
+
+# Or explicitly handle each code
+df <- df |>
+  mutate(variable_clean = if_else(variable < 0, NA_real_, variable))
+```
+
 ### Privacy Suppression (-3)
 
 Small cell counts are suppressed to protect privacy:
@@ -84,6 +95,12 @@ Small cell counts are suppressed to protect privacy:
 # Check for suppression
 suppressed = df.filter(pl.col("variable") == -3)
 print(f"Suppressed cells: {suppressed.height}")
+```
+
+```r
+# Check for suppression
+suppressed <- df |> filter(variable == -3)
+cat("Suppressed cells:", nrow(suppressed), "\n")
 ```
 
 ### Not Applicable (-2)
@@ -119,6 +136,13 @@ IPEDS provides imputation flags in detailed data files:
 imputed = df.filter(pl.col("variable_flag") == "I")
 imputation_rate = imputed.height / df.height * 100
 print(f"Imputation rate: {imputation_rate:.1f}%")
+```
+
+```r
+# Check imputation rate
+imputed <- df |> filter(variable_flag == "I")
+imputation_rate <- nrow(imputed) / nrow(df) * 100
+cat(sprintf("Imputation rate: %.1f%%\n", imputation_rate))
 ```
 
 ### Best Practices
@@ -270,6 +294,19 @@ peers = df.filter(
 )
 ```
 
+```r
+library(dplyr)
+
+# Define peer group
+peers <- df |>
+  filter(
+    inst_control == 1,           # Public
+    institution_level == 4,      # 4-year (Portal code is 4, not 1)
+    carnegie_basic %in% peer_carnegies,
+    enrollment_size >= 5000, enrollment_size <= 15000
+  )
+```
+
 ## Historical Data Issues
 
 ### Survey Changes Over Time
@@ -301,6 +338,18 @@ if year < 2008:
     asian_combined = asian  # Includes Pacific Islander
 else:
     asian_combined = asian + nhpi  # Separate in new data
+```
+
+```r
+# Combining old and new race data
+# Two+ races: only available 2008-09+
+# Pre-2008: Asian includes Pacific Islander
+
+asian_combined <- if (year < 2008) {
+  asian  # Includes Pacific Islander
+} else {
+  asian + nhpi  # Separate in new data
+}
 ```
 
 ### Finance Form Changes
@@ -350,6 +399,35 @@ def validate_ipeds_data(df, key_vars):
     return issues
 ```
 
+```r
+library(dplyr)
+
+# Basic IPEDS data validation
+# 1. Check for duplicate UNITIDs
+dups <- df |> count(unitid) |> filter(n > 1)
+if (nrow(dups) > 0) cat("Duplicate UNITIDs:", nrow(dups), "\n")
+
+# 2. Check for missing critical fields
+key_vars <- c("unitid", "year", "enrollment")
+for (v in key_vars) {
+  n_missing <- sum(is.na(df[[v]]))
+  if (n_missing > 0) cat("Missing", v, ":", n_missing, "rows\n")
+}
+
+# 3. Check for implausible values
+# Portal stores grad rates as 0-1 proportions (not 0-100)
+if ("completion_rate_150pct" %in% names(df)) {
+  bad_grad <- df |> filter(completion_rate_150pct > 1.0 | completion_rate_150pct < 0)
+  if (nrow(bad_grad) > 0) cat("Invalid grad rates:", nrow(bad_grad), "\n")
+}
+
+# 4. Check enrollment reasonableness
+if ("enrollment" %in% names(df)) {
+  huge <- df |> filter(enrollment > 200000)
+  if (nrow(huge) > 0) cat("Unusually large enrollments:", nrow(huge), "\n")
+}
+```
+
 ### Consistency Checks
 
 ```python
@@ -378,6 +456,28 @@ def check_consistency(df):
     return issues
 ```
 
+```r
+library(dplyr)
+
+# Check internal consistency
+# Full-time + part-time should equal total
+if (all(c("ft_enrl", "pt_enrl", "total_enrl") %in% names(df))) {
+  inconsistent <- df |>
+    filter(ft_enrl + pt_enrl != total_enrl, total_enrl > 0)
+  if (nrow(inconsistent) > 0) cat("FT+PT != Total:", nrow(inconsistent), "\n")
+}
+
+# Race categories should sum to total
+race_cols <- c("white", "black", "hispanic", "asian", "nhpi",
+               "aian", "two_more", "unknown", "nonres")
+if (all(c(race_cols, "total") %in% names(df))) {
+  inconsistent <- df |>
+    mutate(race_sum = rowSums(across(all_of(race_cols)))) |>
+    filter(race_sum != total)
+  if (nrow(inconsistent) > 0) cat("Race sum != Total:", nrow(inconsistent), "\n")
+}
+```
+
 ### Year-Over-Year Checks
 
 ```python
@@ -393,6 +493,21 @@ def check_yoy_changes(df, max_change=0.5):
     
     suspicious = df.filter(pl.col("yoy_change").abs() > max_change)
     return suspicious
+```
+
+```r
+library(dplyr)
+
+# Flag large year-over-year changes
+max_change <- 0.5
+
+df <- df |>
+  arrange(unitid, year) |>
+  group_by(unitid) |>
+  mutate(yoy_change = enrollment / lag(enrollment) - 1) |>
+  ungroup()
+
+suspicious <- df |> filter(abs(yoy_change) > max_change)
 ```
 
 ## Data Quality Flags
@@ -432,6 +547,23 @@ analysis_data = df.filter(
 print(f"Original: {df.height}")
 print(f"Analysis sample: {analysis_data.height}")
 print(f"Excluded: {df.height - analysis_data.height}")
+```
+
+```r
+library(dplyr)
+
+# Quality-filtered analysis using Portal variable names
+analysis_data <- df |>
+  filter(
+    currently_active_ipeds == 1,   # Active institutions
+    is.na(year_deleted),           # Not closed
+    enrollment > 100               # Minimum size (if applicable)
+  )
+
+# Document filtering
+cat("Original:", nrow(df), "\n")
+cat("Analysis sample:", nrow(analysis_data), "\n")
+cat("Excluded:", nrow(df) - nrow(analysis_data), "\n")
 ```
 
 ## Recommended Workflow

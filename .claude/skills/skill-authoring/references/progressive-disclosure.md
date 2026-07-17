@@ -78,6 +78,8 @@ Loading all skill content at once would quickly exhaust the budget.
 | Scripts | 0 tokens | Executed, not read |
 | Assets | 0 tokens | Used, not read |
 
+> Level 1 metadata also competes for an aggregate skill-listing budget (~1% of the model's context window) — see `./frontmatter.md` for the full description length model and its limits.
+
 ## When to Split Content
 
 Split SKILL.md into reference files when:

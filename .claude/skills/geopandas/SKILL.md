@@ -1,7 +1,7 @@
 ---
 name: geopandas
 description: >-
-  Spatial data: GeoDataFrames, spatial joins, CRS/projections, choropleth/interactive maps, spatial autocorrelation, PySAL. Use for geographic data, spatial files (Shapefile, GeoPackage, GeoParquet), or spatial stats. For charts without GIS use plotly.
+  Spatial data: GeoDataFrames, spatial joins, CRS/projections, choropleth/interactive maps, spatial autocorrelation, PySAL. Use for geographic data, spatial files (Shapefile, GeoPackage, GeoParquet), or spatial stats. For charts without GIS use plotly. R equivalent: sf-terra (use when execution language is R).
 metadata:
   audience: research-coders
   domain: python-library
@@ -54,6 +54,8 @@ GeoPandas extends pandas with spatial data types and operations:
 2. **Making maps?** Read `visualization.md` (relies on `crs-projections.md` for projection choices)
 3. **Spatial statistics?** Read `pysal-spatial-stats.md` (for methodology context, also load `data-scientist` skill's `geospatial-analysis.md`)
 4. **Having issues?** Check `gotchas.md` first
+
+**The reference-file routing in this skill applies to advisory and brainstorming turns as much as implementation.** Recommending an approach, reviewing a plan, or answering a question that touches a routed topic calls for reading the routed reference file just as much as writing code does — the reference files carry curated caveats and environment-specific constraints that this overview and general knowledge lack.
 
 ## Related Skills
 

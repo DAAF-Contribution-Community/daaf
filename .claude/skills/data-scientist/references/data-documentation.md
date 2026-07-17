@@ -127,6 +127,7 @@ When you receive data with no documentation, follow this process.
 
 ### Step 1: Generate Basic Profile
 
+**Python:**
 ```python
 import polars as pl
 
@@ -152,10 +153,29 @@ profile = generate_basic_profile(df)
 print(profile)
 ```
 
+**R:**
+```r
+library(dplyr)
+library(tibble)
+
+# Generate documentation from data inspection
+profile <- tibble(
+  column = names(df),
+  dtype = sapply(df, \(x) paste(class(x), collapse = "/")),
+  null_count = sapply(df, \(x) sum(is.na(x))),
+  null_pct = round(sapply(df, \(x) sum(is.na(x))) / nrow(df) * 100, 1),
+  unique_count = sapply(df, n_distinct),
+  sample_values = sapply(df, \(x) paste(head(unique(na.omit(x)), 5), collapse = ", "))
+)
+
+print(profile)
+```
+
 ### Step 2: Identify Granularity
 
 **Critical question: What does each row represent?**
 
+**Python:**
 ```python
 # Test candidate keys for uniqueness
 def find_granularity(df: pl.DataFrame):
@@ -186,8 +206,40 @@ def find_granularity(df: pl.DataFrame):
 print("Candidate unique keys:", find_granularity(df))
 ```
 
+**R:**
+```r
+# Test candidate keys for uniqueness -- identify what uniquely identifies each row
+candidates <- list()
+
+# Test single columns
+for (col in names(df)) {
+  if (n_distinct(df[[col]]) == nrow(df)) {
+    candidates <- c(candidates, list(col))
+  }
+}
+
+# Test date + entity patterns
+date_cols <- names(df)[grepl("date|time", names(df), ignore.case = TRUE)]
+id_cols <- names(df)[grepl("id", names(df), ignore.case = TRUE)]
+
+for (date_col in date_cols) {
+  for (id_col in id_cols) {
+    unique_count <- df |> distinct(across(all_of(c(date_col, id_col)))) |> nrow()
+    if (unique_count == nrow(df)) {
+      candidates <- c(candidates, list(c(date_col, id_col)))
+    }
+  }
+}
+
+cat("Candidate unique keys:\n")
+for (key in candidates) {
+  cat("  [", paste(key, collapse = ", "), "]\n")
+}
+```
+
 ### Step 3: Infer Column Meanings
 
+**Python:**
 ```python
 def infer_column_purpose(df: pl.DataFrame, col: str):
     """Infer what a column might represent."""
@@ -229,10 +281,39 @@ def infer_column_purpose(df: pl.DataFrame, col: str):
     }
 ```
 
+**R:**
+```r
+# Infer what each column might represent
+for (col in names(df)) {
+  inferences <- c()
+  n_unique <- n_distinct(df[[col]])
+  pct_unique <- n_unique / nrow(df) * 100
+  sample_vals <- head(unique(na.omit(df[[col]])), 5)
+
+  # Name-based inference
+  name_lower <- tolower(col)
+  if (grepl("id", name_lower)) inferences <- c(inferences, "Likely identifier/key")
+  if (grepl("date|time", name_lower)) inferences <- c(inferences, "Likely temporal")
+  if (grepl("amt|amount|price", name_lower)) inferences <- c(inferences, "Likely monetary value")
+  if (grepl("count|num|qty", name_lower)) inferences <- c(inferences, "Likely count/quantity")
+  if (grepl("flag|is_|has_", name_lower)) inferences <- c(inferences, "Likely boolean indicator")
+
+  # Cardinality-based inference
+  if (pct_unique > 95) inferences <- c(inferences, "High cardinality (ID? Free text?)")
+  else if (pct_unique < 1) inferences <- c(inferences, "Low cardinality (categorical)")
+  else if (n_unique == 2) inferences <- c(inferences, "Binary (boolean?)")
+
+  cat(sprintf("\n%s (%s): %.1f%% unique\n", col, class(df[[col]]), pct_unique))
+  cat("  Sample:", paste(sample_vals, collapse = ", "), "\n")
+  if (length(inferences) > 0) cat("  Inferences:", paste(inferences, collapse = "; "), "\n")
+}
+```
+
 ### Step 4: Document As You Learn
 
 As you discover what columns mean, CREATE documentation:
 
+**Python:**
 ```python
 # Build documentation dictionary as you learn
 data_dictionary = {
@@ -250,6 +331,18 @@ data_dictionary = {
     },
     # Add more as you discover...
 }
+```
+
+**R:**
+```r
+# Build documentation as a tibble as you learn
+data_dictionary <- tribble(
+  ~column,        ~description,                  ~type,     ~nullable, ~notes,
+  "customer_id",  "Unique customer identifier",  "integer", FALSE,     "Assigned at account creation, never reused",
+  "order_date",   "Date order was placed",        "Date",    FALSE,     "In UTC timezone",
+  # Add more as you discover...
+)
+print(data_dictionary)
 ```
 
 ## Creating Documentation
@@ -285,6 +378,7 @@ At minimum, document:
 
 ### Documentation Template
 
+**Python:**
 ```python
 def create_documentation_template(df: pl.DataFrame, dataset_name: str):
     """Generate a documentation template from DataFrame."""
@@ -323,6 +417,33 @@ def create_documentation_template(df: pl.DataFrame, dataset_name: str):
 
 # Use
 print(create_documentation_template(df, "Customer Orders"))
+```
+
+**R:**
+```r
+# Generate a documentation template from data frame
+dataset_name <- "Customer Orders"
+
+cat(sprintf("# Data Dictionary: %s\n\n", dataset_name))
+cat("## Overview\n")
+cat("- **Source**: [TODO: Document source]\n")
+cat("- **Granularity**: [TODO: What does each row represent?]\n")
+cat("- **Date range**: [TODO: Time period covered]\n")
+cat(sprintf("- **Row count**: %s\n", format(nrow(df), big.mark = ",")))
+cat(sprintf("- **Column count**: %d\n\n", ncol(df)))
+cat("## Columns\n\n")
+cat("| Column | Type | Nullable | Unique | Description |\n")
+cat("|--------|------|----------|--------|-------------|\n")
+
+for (col in names(df)) {
+  dtype <- class(df[[col]])
+  nullable <- if (any(is.na(df[[col]]))) "Yes" else "No"
+  unique_pct <- round(n_distinct(df[[col]]) / nrow(df) * 100, 1)
+  cat(sprintf("| %s | %s | %s | %.1f%% | [TODO] |\n", col, dtype, nullable, unique_pct))
+}
+
+cat("\n## Known Issues\n- [TODO: Document known issues]\n\n")
+cat("## Change Log\n- [DATE]: Documentation created\n")
 ```
 
 ## Red Flags to Surface

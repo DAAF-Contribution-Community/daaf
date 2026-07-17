@@ -16,6 +16,7 @@ Patterns and techniques for validating data transformations. NEVER assume a tran
 
 **Every transformation should follow this pattern:**
 
+**Python:**
 ```python
 import polars as pl
 
@@ -67,6 +68,61 @@ print(f"\nSample before:\n{pre_sample.filter(pl.col('id').is_in(sample_ids))}")
 print(f"\nSample after (if present):\n{result.filter(pl.col('id').is_in(sample_ids))}")
 ```
 
+**R:**
+```r
+library(dplyr)
+library(arrow)
+
+# ============================================================
+# STEP 1: Document pre-transformation state
+# ============================================================
+pre_shape <- dim(df)
+pre_columns <- names(df)
+set.seed(42)
+pre_sample <- df |> slice_sample(n = 10)
+
+# Record relevant aggregates for validation
+pre_row_count <- nrow(df)
+pre_null_counts <- sapply(df, \(x) sum(is.na(x)))
+
+# For aggregations, record sums of additive metrics
+pre_total <- if ("amount" %in% names(df)) sum(df$amount, na.rm = TRUE) else NULL
+
+# ============================================================
+# STEP 2: Perform transformation (with comments)
+# ============================================================
+# GOAL: [State what you're trying to accomplish]
+# EXPECTED: [State expected changes - row count, columns, etc.]
+# INVARIANTS: [State what should NOT change]
+
+result <- df |> filter(status == "active")
+
+# ============================================================
+# STEP 3: Validate post-transformation state
+# ============================================================
+post_shape <- dim(result)
+post_columns <- names(result)
+
+# Basic shape validation
+cat(sprintf("Shape change: %s -> %s\n",
+            paste(pre_shape, collapse = " x "), paste(post_shape, collapse = " x ")))
+cat(sprintf("Row change: %d -> %d (%+d)\n", pre_row_count, nrow(result), nrow(result) - pre_row_count))
+cat(sprintf("Column change: %d -> %d\n", length(pre_columns), length(post_columns)))
+
+# Verify columns preserved/changed as expected
+added_cols <- setdiff(post_columns, pre_columns)
+removed_cols <- setdiff(pre_columns, post_columns)
+if (length(added_cols) > 0) cat("Columns added:", paste(added_cols, collapse = ", "), "\n")
+if (length(removed_cols) > 0) cat("Columns removed:", paste(removed_cols, collapse = ", "), "\n")
+
+# Sample comparison
+sample_ids <- pre_sample$id[1:5]
+cat("\nSample before:\n")
+print(pre_sample |> filter(id %in% sample_ids))
+cat("\nSample after (if present):\n")
+print(result |> filter(id %in% sample_ids))
+```
+
 ## Row Count Validation
 
 Different operations have different expected row count behaviors:
@@ -86,6 +142,7 @@ Different operations have different expected row count behaviors:
 
 ### Validation Pattern
 
+**Python:**
 ```python
 # Validate row count change
 change = post_count - pre_count
@@ -95,12 +152,26 @@ if expected_change == "decrease" and change > 0:
     print("WARNING: Expected decrease but rows increased!")
 ```
 
+**R:**
+```r
+# Validate row count change
+change <- post_count - pre_count
+pct_change <- if (pre_count > 0) change / pre_count * 100 else 0
+cat(sprintf("Row count: %s -> %s (%+d, %+.1f%%)\n",
+            format(pre_count, big.mark = ","), format(post_count, big.mark = ","),
+            change, pct_change))
+if (expected_change == "decrease" && change > 0) {
+  cat("WARNING: Expected decrease but rows increased!\n")
+}
+```
+
 ## Join Validation
 
 Joins are a common source of subtle bugs. Always validate.
 
 ### Pre-Join Checks
 
+**Python:**
 ```python
 # Pre-join checks
 for key in join_keys:
@@ -121,8 +192,37 @@ overlap = len(left_keys_set & right_keys_set)
 print(f"Key overlap: {overlap:,} ({overlap/len(left_keys_set):.1%} of left, {overlap/len(right_keys_set):.1%} of right)")
 ```
 
+**R:**
+```r
+# Pre-join checks
+for (key in join_keys) {
+  left_type <- class(left_df[[key]])
+  right_type <- class(right_df[[key]])
+  if (!identical(left_type, right_type)) {
+    cat(sprintf("WARNING: Type mismatch for '%s': %s vs %s\n", key, left_type, right_type))
+  }
+
+  left_unique <- n_distinct(left_df[[key]])
+  right_unique <- n_distinct(right_df[[key]])
+  left_nulls <- sum(is.na(left_df[[key]]))
+  right_nulls <- sum(is.na(right_df[[key]]))
+  cat(sprintf("Key '%s': left=%s unique (%d nulls), right=%s unique (%d nulls)\n",
+              key, format(left_unique, big.mark = ","), left_nulls,
+              format(right_unique, big.mark = ","), right_nulls))
+}
+
+left_keys_set <- unique(left_df[[join_keys[1]]])
+right_keys_set <- unique(right_df[[join_keys[1]]])
+overlap <- length(intersect(left_keys_set, right_keys_set))
+cat(sprintf("Key overlap: %s (%.1f%% of left, %.1f%% of right)\n",
+            format(overlap, big.mark = ","),
+            overlap / length(left_keys_set) * 100,
+            overlap / length(right_keys_set) * 100))
+```
+
 ### Post-Join Validation
 
+**Python:**
 ```python
 # Post-join validation
 left_count = len(left_df)
@@ -147,8 +247,40 @@ result_nulls = result_df.null_count()
 print(f"Result null counts:\n{result_nulls}")
 ```
 
+**R:**
+```r
+# Post-join validation
+left_count <- nrow(left_df)
+right_count <- nrow(right_df)
+result_count <- nrow(result_df)
+cat(sprintf("Post-join shape: %d x %d\n", result_count, ncol(result_df)))
+cat(sprintf("Left: %s, Right: %s, Result: %s\n",
+            format(left_count, big.mark = ","), format(right_count, big.mark = ","),
+            format(result_count, big.mark = ",")))
+
+if (result_count > max(left_count, right_count)) {
+  cat("WARNING: Result has more rows than either input -- possible many-to-many duplication!\n")
+}
+
+# For left joins, verify all left keys are present
+if (join_type == "left") {
+  left_keys_set <- unique(left_df[[join_keys[1]]])
+  result_keys_set <- unique(result_df[[join_keys[1]]])
+  missing <- setdiff(left_keys_set, result_keys_set)
+  if (length(missing) > 0) {
+    cat(sprintf("WARNING: %d left keys missing from result!\n", length(missing)))
+  }
+}
+
+# Check for new nulls introduced by the join
+result_nulls <- sapply(result_df, \(x) sum(is.na(x)))
+cat("Result null counts:\n")
+print(result_nulls[result_nulls > 0])
+```
+
 ### Using Join Indicators
 
+**Python:**
 ```python
 # Join with match indicator (Polars doesn't have pandas-style indicator)
 right_with_marker = right_df.with_columns(pl.lit(True).alias("_right_matched"))
@@ -160,12 +292,26 @@ unmatched = result.filter(~pl.col("_right_matched")).height
 print(f"Matched: {matched:,}, Unmatched: {unmatched:,}")
 ```
 
+**R:**
+```r
+# Join with match indicator
+right_with_marker <- right_df |> mutate(.right_matched = TRUE)
+result <- left_df |> left_join(right_with_marker, by = on)
+result <- result |> mutate(.right_matched = coalesce(.right_matched, FALSE))
+
+matched <- sum(result$.right_matched)
+unmatched <- sum(!result$.right_matched)
+cat(sprintf("Matched: %s, Unmatched: %s\n",
+            format(matched, big.mark = ","), format(unmatched, big.mark = ",")))
+```
+
 ## Aggregation Validation
 
 ### Sum Conservation
 
 For additive metrics, the total should be preserved (or explainably different).
 
+**Python:**
 ```python
 # Validate aggregation preserves sum
 pre_sum = pre_df[sum_column].sum()
@@ -175,8 +321,22 @@ print(f"Sum of '{sum_column}': {pre_sum:,.2f} → {post_sum:,.2f} (diff: {diff:,
 assert diff < 1e-6, f"STOP: Sum changed during aggregation by {diff}"
 ```
 
+**R:**
+```r
+# Validate aggregation preserves sum
+pre_sum <- sum(pre_df[[sum_column]], na.rm = TRUE)
+post_sum <- sum(post_df[[sum_column]], na.rm = TRUE)
+diff_val <- abs(pre_sum - post_sum)
+cat(sprintf("Sum of '%s': %s -> %s (diff: %s)\n",
+            sum_column, format(pre_sum, big.mark = ",", nsmall = 2),
+            format(post_sum, big.mark = ",", nsmall = 2),
+            format(diff_val, big.mark = ",", nsmall = 2)))
+stopifnot("STOP: Sum changed during aggregation" = diff_val < 1e-6)
+```
+
 ### Group Count Validation
 
+**Python:**
 ```python
 # Validate group counts
 expected_groups = pre_df.select(group_columns).n_unique()
@@ -185,8 +345,19 @@ print(f"Group count: expected {expected_groups:,} unique combinations, got {actu
 assert expected_groups == actual_groups, f"STOP: Group count mismatch ({expected_groups} vs {actual_groups})"
 ```
 
+**R:**
+```r
+# Validate group counts
+expected_groups <- pre_df |> distinct(across(all_of(group_columns))) |> nrow()
+actual_groups <- nrow(post_df)
+cat(sprintf("Group count: expected %s unique combinations, got %s rows\n",
+            format(expected_groups, big.mark = ","), format(actual_groups, big.mark = ",")))
+stopifnot("STOP: Group count mismatch" = expected_groups == actual_groups)
+```
+
 ### Row Accounting
 
+**Python:**
 ```python
 # Validate row accounting — all rows accounted for in aggregation
 pre_count = len(pre_df)
@@ -196,12 +367,24 @@ print(f"Row accounting: {pre_count:,} original rows, {total_accounted:,} account
 assert pre_count == total_accounted, f"STOP: {pre_count - total_accounted} rows unaccounted for!"
 ```
 
+**R:**
+```r
+# Validate row accounting -- all rows accounted for in aggregation
+pre_count <- nrow(pre_df)
+group_sizes <- pre_df |> group_by(across(all_of(group_columns))) |> summarise(n = n(), .groups = "drop")
+total_accounted <- sum(group_sizes$n)
+cat(sprintf("Row accounting: %s original rows, %s accounted for in groups\n",
+            format(pre_count, big.mark = ","), format(total_accounted, big.mark = ",")))
+stopifnot("STOP: Rows unaccounted for" = pre_count == total_accounted)
+```
+
 ## Sample-Based Verification
 
 Manual spot-checking catches errors that automated checks miss.
 
 ### Selecting Representative Samples
 
+**Python:**
 ```python
 # Select a diverse verification sample
 random_sample = df.sample(5, seed=42)
@@ -213,8 +396,26 @@ print(f"Verification sample: {len(sample)} rows")
 print(sample)
 ```
 
+**R:**
+```r
+# Select a diverse verification sample
+set.seed(42)
+random_sample <- df |> slice_sample(n = 5)
+edge_sample <- bind_rows(df |> slice_head(n = 2), df |> slice_tail(n = 2))
+null_cols <- names(df)[sapply(df, \(x) any(is.na(x)))]
+null_sample <- if (length(null_cols) > 0) {
+  df |> filter(is.na(.data[[null_cols[1]]])) |> slice_head(n = 2)
+} else {
+  tibble()
+}
+sample_df <- bind_rows(random_sample, edge_sample, null_sample) |> distinct() |> slice_head(n = 10)
+cat(sprintf("Verification sample: %d rows\n", nrow(sample_df)))
+print(sample_df)
+```
+
 ### Manual Verification Template
 
+**Python:**
 ```python
 # Template for manual verification
 print("=== Manual Verification ===")
@@ -236,10 +437,33 @@ print(result.filter(pl.col("id").is_in(sample_ids)))
 print("\nManual check: Do the transformations look correct? (Y/N)")
 ```
 
+**R:**
+```r
+# Template for manual verification
+cat("=== Manual Verification ===\n")
+cat("For each sample row, verify:\n")
+cat("1. Input values are as expected\n")
+cat("2. Transformation logic was applied correctly\n")
+cat("3. Output values are correct\n\n")
+
+set.seed(42)
+sample_df <- pre_df |> slice_sample(n = 5)
+sample_ids <- sample_df$id
+
+cat("BEFORE transformation:\n")
+print(pre_df |> filter(id %in% sample_ids))
+
+cat("\nAFTER transformation:\n")
+print(result |> filter(id %in% sample_ids))
+
+cat("\nManual check: Do the transformations look correct? (Y/N)\n")
+```
+
 ### Schema Validation (Keep It Simple)
 
 For one-and-done scripts, validate schemas inline:
 
+**Python:**
 ```python
 # Check required columns exist
 required = ["id", "amount", "category"]
@@ -250,10 +474,28 @@ assert not missing, f"Missing columns: {missing}"
 assert df["id"].dtype == pl.Int64, f"Expected Int64, got {df['id'].dtype}"
 ```
 
+**R:**
+```r
+# Check required columns exist
+required <- c("id", "amount", "category")
+missing <- setdiff(required, names(df))
+stopifnot("Missing columns" = length(missing) == 0)
+
+# Check types
+stopifnot("Expected integer for id" = is.integer(df$id))
+```
+
+> **Tool note (Pandera):** the Python `pandera` library offers declarative DataFrame
+> schema validation, but it is **not installed** in the DAAF environment, and no
+> equivalent R schema-validation package is installed either. The supported route in
+> both languages is the inline pattern shown above (`assert` in Python,
+> `stopifnot()` in R) — consistent with DAAF's sequential-script code style.
+
 ## Common Errors and Detection
 
 ### Silent Type Coercion
 
+**Python:**
 ```python
 # Problem: Type conversion can silently create nulls or lose precision
 pre_null_count = df["column"].null_count().item()
@@ -268,8 +510,25 @@ if new_nulls > 0:
     print(f"WARNING: Type coercion created {new_nulls} new null values!")
 ```
 
+**R:**
+```r
+# Problem: Type conversion can silently create NAs or lose precision
+pre_na_count <- sum(is.na(df$column))
+
+# This might silently introduce NAs (e.g., as.integer("abc") -> NA)
+df <- df |> mutate(column = as.integer(column))
+
+post_na_count <- sum(is.na(df$column))
+new_nas <- post_na_count - pre_na_count
+
+if (new_nas > 0) {
+  cat(sprintf("WARNING: Type coercion created %d new NA values!\n", new_nas))
+}
+```
+
 ### Filter Returning Empty
 
+**Python:**
 ```python
 # Problem: Filter conditions might match nothing
 result = df.filter(pl.col("status") == "active")
@@ -280,8 +539,21 @@ if len(result) == 0:
     print(f"Unique values in 'status': {df['status'].unique().to_list()}")
 ```
 
+**R:**
+```r
+# Problem: Filter conditions might match nothing
+result <- df |> filter(status == "active")
+
+if (nrow(result) == 0) {
+  cat("WARNING: Filter returned no rows!\n")
+  cat("Check if filter condition is correct.\n")
+  cat("Unique values in 'status':", paste(unique(df$status), collapse = ", "), "\n")
+}
+```
+
 ### Join Key Type Mismatch
 
+**Python:**
 ```python
 # Check join key types match (type mismatches cause silent join failures)
 for key in join_keys:
@@ -291,8 +563,22 @@ for key in join_keys:
         print(f"WARNING: Type mismatch for '{key}': {left_type} vs {right_type} — join may fail silently!")
 ```
 
+**R:**
+```r
+# Check join key types match (type mismatches cause silent join failures)
+for (key in join_keys) {
+  left_type <- class(left_df[[key]])
+  right_type <- class(right_df[[key]])
+  if (!identical(left_type, right_type)) {
+    cat(sprintf("WARNING: Type mismatch for '%s': %s vs %s -- join may fail silently!\n",
+                key, left_type, right_type))
+  }
+}
+```
+
 ### Off-by-One in Group Operations
 
+**Python:**
 ```python
 # Problem: Groupby excludes null keys by default in some operations
 null_key_rows = df.filter(pl.col("group_key").is_null())
@@ -301,8 +587,19 @@ if len(null_key_rows) > 0:
     print("These may be excluded from groupby operations!")
 ```
 
+**R:**
+```r
+# Problem: group_by drops NA keys by default in some operations
+null_key_rows <- df |> filter(is.na(group_key))
+if (nrow(null_key_rows) > 0) {
+  cat(sprintf("WARNING: %d rows have NA group keys\n", nrow(null_key_rows)))
+  cat("These may be excluded from group_by operations!\n")
+}
+```
+
 ### Accidental Column Overwrite
 
+**Python:**
 ```python
 # Problem: with_columns can silently overwrite existing columns
 existing_cols = set(df.columns)
@@ -312,6 +609,19 @@ overlap = existing_cols & set(new_col_names)
 if overlap:
     print(f"WARNING: These columns will be overwritten: {overlap}")
     print("Is this intentional?")
+```
+
+**R:**
+```r
+# Problem: mutate can silently overwrite existing columns
+existing_cols <- names(df)
+new_col_names <- c("calculated_value", "status")  # Columns we're adding
+
+overlap <- intersect(existing_cols, new_col_names)
+if (length(overlap) > 0) {
+  cat("WARNING: These columns will be overwritten:", paste(overlap, collapse = ", "), "\n")
+  cat("Is this intentional?\n")
+}
 ```
 
 ## Validation Checklist

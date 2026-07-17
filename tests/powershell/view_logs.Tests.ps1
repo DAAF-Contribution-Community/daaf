@@ -19,8 +19,25 @@ Describe "view_logs.ps1" {
             $script:Content = Get-Content "$RepoRoot/scripts/host/view_logs.ps1" -Raw
         }
 
+        It "declares #Requires -Version 5.1" {
+            $Content | Should -Match '#Requires\s+-Version\s+5\.1'
+        }
+
         It "sets ErrorActionPreference to Stop" {
             $Content | Should -Match '\$ErrorActionPreference\s*=\s*[''"]Stop[''"]'
+        }
+
+        It "enables Set-StrictMode -Version 3.0" {
+            $Content | Should -Match 'Set-StrictMode\s+-Version\s+3\.0'
+        }
+
+        It "places Set-StrictMode after the test-mode guard" {
+            # Strict mode is dynamically scoped: placing it before the guard would
+            # leak into Pester's dot-sourced test session. It must come after.
+            $guardIdx = $Content.IndexOf('$env:DAAF_TEST_MODE -eq "1"')
+            $strictIdx = $Content.IndexOf('Set-StrictMode -Version 3.0')
+            $guardIdx | Should -BeGreaterThan -1
+            $strictIdx | Should -BeGreaterThan $guardIdx
         }
 
         It "defines Wait-AndExit function" {

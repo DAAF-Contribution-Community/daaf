@@ -97,6 +97,37 @@ all_divisions = df.filter(
     & (pl.col("employed_grads_count_f") > 0)
 ).select("census_division", "employed_grads_count_f")
 ```
+```r
+# Fetch PSEO data.
+# fetch_from_mirrors() is a Python helper; in R, build the URL from the mirror
+# root in mirrors.yaml and read directly.
+# Mirror failover: see `education-data-query/references/fetch-patterns.md` (R pattern).
+config <- yaml::read_yaml("mirrors.yaml")
+mirror <- config$mirrors[[1]]
+url <- paste0(mirror$root_url, "/", "pseo/colleges_pseo_2020", ".", mirror$format)
+# NOTE: illustrative only — mirror parquet files are Polars-written and may
+# declare string_view columns, so a plain read can fail under R arrow
+# ("cannot handle Array of type <utf8_view>"). Real fetch scripts must use the
+# view-safe parquet read from `education-data-query/references/fetch-patterns.md`.
+df <- arrow::read_parquet(url)
+
+# Employment in Pacific Division (9), 1 year post-graduation
+pacific <- df |> filter(
+  census_division == 9,
+  unitid == 228778,          # UT Austin
+  degree_level == 5,          # Bachelor's
+  years_after_grad == 1,
+  employed_grads_count_f > 0
+)
+
+# Get all divisions for an institution
+all_divisions <- df |> filter(
+  unitid == 228778,
+  years_after_grad == 1,
+  census_division != 99,      # Exclude aggregate
+  employed_grads_count_f > 0
+) |> select(census_division, employed_grads_count_f)
+```
 
 ## In-State Employment
 
@@ -113,6 +144,10 @@ In Portal data, in-state employment is in the `employed_instate_grads_count` col
 ### Calculating Retention Rate
 
 ```python
+# In-state retention = employed_instate_grads_count / employed_grads_count_f
+# Filter to census_division == 99 (aggregate) for total employed count
+```
+```r
 # In-state retention = employed_instate_grads_count / employed_grads_count_f
 # Filter to census_division == 99 (aggregate) for total employed count
 ```
@@ -143,6 +178,15 @@ for cip_code in programs:
     total_emp = get_y1_grads_emp(institution, cip_code)
     instate_emp = get_y1_grads_emp_instate(institution, cip_code)
     retention_by_program[cip_code] = instate_emp / total_emp
+```
+```r
+# Pseudo-code for brain drain analysis
+retention_by_program <- list()
+for (cip_code in programs) {
+  total_emp <- get_y1_grads_emp(institution, cip_code)
+  instate_emp <- get_y1_grads_emp_instate(institution, cip_code)
+  retention_by_program[[as.character(cip_code)]] <- instate_emp / total_emp
+}
 ```
 
 ### Migration Flow Analysis

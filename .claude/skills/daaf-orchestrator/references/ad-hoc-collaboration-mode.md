@@ -94,7 +94,25 @@ mkdir -p {PROJECT_DIR}/output/figures
 
 **Rationale:** In this mode, the orchestrator frequently responds directly to the user -- advising on methodology, discussing approaches, explaining concepts -- and needs the `data-scientist` skill's methodology knowledge to provide rigorous advice without dispatching a subagent for every question.
 
-Additional domain skills (e.g., `education-data-source-ccd`, `polars`, `plotnine`, `statsmodels`, `pyfixest`, `linearmodels`, `geopandas`, `scikit-learn`) are loaded by subagents when dispatched, following the standard pattern. However, if the user asks a question about a specific tool or package and the orchestrator can answer it directly by loading the relevant skill, this is permitted.
+Additional domain skills are loaded by subagents when dispatched, following the standard pattern. The available library skills depend on execution language:
+
+| Python Skill | R Skill | Domain |
+|-------------|---------|--------|
+| `polars` | `tidyverse` | Data manipulation |
+| `plotnine` | `ggplot2` | Static visualization |
+| `plotly` | `plotly-r` | Interactive visualization |
+| `statsmodels` | `r-stats` | Standard regression / GLM |
+| `pyfixest` | `fixest` | Fixed effects / DiD |
+| `linearmodels` | `plm` | Panel data / IV-GMM |
+| `svy` | `survey-r` | Complex survey analysis |
+| `scikit-learn` | `tidymodels` | Machine learning |
+| `geopandas` | `sf-terra` | Spatial analysis |
+| `great-tables` | `gt` | Table formatting |
+| `marimo` | `quarto` | Notebook format |
+
+Domain-specific data source skills (e.g., `education-data-source-ccd`) are language-agnostic.
+
+When the user asks about a specific tool or package and the orchestrator answers directly, loading the relevant skill first is the expected precondition for that answer — library skills encode environment-specific constraints and curated caveats that general knowledge lacks, so answering without the skill risks recommending approaches this environment cannot run or that the skill explicitly warns against. If a skill fails to load, answer from base knowledge and flag reduced confidence due to the missing skill.
 
 ---
 
@@ -129,10 +147,10 @@ The orchestrator identifies what the user needs and responds accordingly. This i
 The orchestrator responds directly (without dispatching a subagent) when:
 
 - The user asks about methodology, statistical approaches, or research design
-- The user asks about a package or tool that the orchestrator can answer from a loaded skill (e.g., `polars`, `plotnine`, `marimo`, `statsmodels`, `pyfixest`, `linearmodels`, `geopandas`, `scikit-learn`, `science-communication`)
+- The user asks about a package or tool that the orchestrator can answer by first loading the relevant skill via the Skill tool, then answering from it (e.g., Python: `polars`, `plotnine`, `marimo`, `statsmodels`, `pyfixest`, `linearmodels`, `geopandas`, `scikit-learn`; R: `tidyverse`, `ggplot2`, `quarto`, `r-stats`, `fixest`, `plm`, `sf-terra`, `tidymodels`; either: `science-communication`)
 - The user asks a conceptual question about data or analysis
 - The user wants to brainstorm or think through an approach
-- The question can be answered adequately from the orchestrator's loaded skills and general knowledge
+- The question can be answered adequately from the orchestrator's loaded skills — general knowledge may supplement a loaded skill, but where a relevant skill exists it should be loaded rather than answered from memory, and anything inferred beyond skill content must be flagged as inference (per the loaded-vs-inferred distinction above)
 
 ### When to Dispatch to an Agent
 
@@ -148,7 +166,7 @@ The orchestrator dispatches to a specialized agent when:
 
 | User Need | `subagent_type` | Notes |
 |-----------|----------------|-------|
-| Write or run analysis code | `research-executor` | Orchestrator frames the user's request as a `<task>` block. When the task involves statistical modeling, use the `data-scientist` skill's routing tree (Related Skills > Statistical modeling section) to select the library: `statsmodels` for standard regression/GLM/diagnostics, `pyfixest` for fixed effects/DiD/IV, `linearmodels` for random effects/IV-GMM/SUR, `geopandas` for spatial regression. Include the selected library in the task block. |
+| Write or run analysis code | `research-executor` | Orchestrator frames the user's request as a `<task>` block. When the task involves statistical modeling, use the `data-scientist` skill's routing tree (Related Skills > Statistical modeling section) to select the library by execution language. Python: `statsmodels` for standard regression/GLM/diagnostics/time series, `pyfixest` for fixed effects/DiD/IV, `linearmodels` for random effects/IV-GMM/SUR, `svy` for complex survey analysis, `geopandas` for spatial regression, `scikit-learn` for clustering/prediction ML. R: `r-stats` for standard regression/GLM, `fixest` for FE/DiD/IV, `plm` for RE/panel, `survey-r` for complex survey, `sf-terra` for spatial, `tidymodels` for ML. Include the selected library in the task block. |
 | Debug a script or diagnose an error | `debugger` | User provides script path + error description |
 | Review code for correctness and methodology | `code-reviewer` | User provides script; orchestrator provides methodology context |
 | Deep investigation of a data source | `source-researcher` | Standard multi-mode agent; already works in Data Lookup and Data Discovery |
@@ -157,13 +175,15 @@ The orchestrator dispatches to a specialized agent when:
 | Critique or review a plan | `plan-checker` | Orchestrator must format the user's plan into a structured document in the prompt; plan-checker requires structured input |
 | Quick data fetch or query | `research-executor` | With appropriate domain query skill |
 
-**When uncertain:** Err toward responding directly first. If the question proves deeper than expected, dispatch to the appropriate agent. A lightweight direct answer followed by "Want me to dig deeper with a specialist?" is better than over-dispatching.
+**When uncertain:** Err toward responding directly first — where "responding directly" includes loading the routed skill before answering, not skipping it. If the question proves deeper than expected, dispatch to the appropriate agent. A lightweight direct answer followed by "Want me to dig deeper with a specialist?" is better than over-dispatching.
 
 **R/Stata-background user detection:** If the user mentions an R / RStudio or Stata background, requests R/Stata-equivalent comments, or asks to understand Python code from an R or Stata perspective, the orchestrator should:
-- For **conceptual questions** (the orchestrator answers directly): Load the appropriate translation skill (`r-python-translation` or `stata-python-translation`) via the Skill tool and use it to bridge R/Stata and Python concepts in the response.
-- For **code-producing tasks** (dispatched to agents): Add the directive `"User has [R/Stata] background. Load [r-python-translation/stata-python-translation] skill. Add inline [R/Stata]-equivalent comments for non-trivial data operations."` to the agent prompt. This applies to research-executor, code-reviewer, debugger, and data-ingest dispatches.
+- For **conceptual questions** (the orchestrator answers directly): Load the appropriate translation skill via the Skill tool to bridge concepts. Select based on execution language and background: Python execution with R/Stata background → `r-python-translation`/`stata-python-translation`; R execution with Python/Stata background → `python-r-translation`/`stata-r-translation`.
+- For **code-producing tasks** (dispatched to agents): Add the appropriate translation directive to the agent prompt (see orchestrator SKILL.md § User Language Preference Propagation for the full 4-way table). This applies to research-executor, code-reviewer, debugger, and data-ingest dispatches.
 
 **Requests outside DAAF's capabilities:** If the user asks for something DAAF genuinely cannot/should not do (e.g., "access my university's database," "submit my draft to this journal"), explain the limitation clearly and suggest alternatives the user can pursue independently. Maintain the collaborative spirit -- frame it as "here's what I can't do and here's what might work instead" rather than a refusal.
+
+**Sensitive or restricted data (synthetic-data protocol):** If, during ad hoc work, the user reveals that their data is sensitive, proprietary, PII-bearing, HIPAA/FERPA-governed, held in a secure enclave, or otherwise "can't be uploaded" / "can't leave my environment," do **not** ask them to paste or import the raw data. Instead, mention DAAF's privacy-preserving **synthetic-data protocol**: the user profiles their data locally with a disclosure-controlled script, shares only a summary profile report, and DAAF builds a synthetic stand-in to develop analysis code against (findings are then finalized against the real data where it lives). This runs through Data Onboarding's **sensitivity gate** — offer to escalate (see Escalation Triggers). For the doctrine and tier ladder, load the `synthetic-data-workflow` skill. If raw sensitive microdata has already been pasted into the conversation, stop, note it, and redirect to the sensitivity gate rather than continuing to work with it inline.
 
 **Invocation template variability:** Unlike pipeline modes, Ad Hoc tasks are inherently variable and unpredictable. The Standard Agent Prompt Structure below is a skeleton, not a rigid template. The orchestrator should adapt the prompt content to fit each specific request, providing whatever context the agent needs to do its work well. When in doubt, err toward providing more context rather than less.
 
@@ -255,7 +275,7 @@ Create `SESSION_NOTES.md` in the workspace root when the **first substantive mil
 - A task plan or advisory outline is produced
 - A key decision is made (e.g., "we'll use CCD instead of IPEDS for this")
 - A deliverable is completed (script executed, code review returned, debugging resolved)
-- Context utilization reaches ELEVATED (≥ 40% or ≥ 150k tokens)
+- Context utilization reaches ELEVATED (see CLAUDE.md § Context Quality Curve for model-family thresholds)
 
 If the session remains purely conversational with no milestones, SESSION_NOTES.md is not needed.
 
@@ -301,7 +321,7 @@ Update after each of these events (not every turn -- only at milestones):
 | Key analytical decision made | Key Decisions |
 | Deliverable completed (script executed, review done) | Accomplishments |
 | User changes topic substantially | In Progress (update current focus) |
-| Context reaches ELEVATED (≥ 40% or ≥ 150k tokens) | All sections (full checkpoint) |
+| Context reaches ELEVATED (see CLAUDE.md § Context Quality Curve for model-family thresholds) | All sections (full checkpoint) |
 | User signals session is ending | All sections (final summary) |
 | Before any escalation to another mode | All sections + note the escalation |
 
@@ -321,7 +341,8 @@ When a user resumes an ad hoc session ("let's pick up where we left off on X"), 
 ## Dispatch and Context Management
 
 - **Dispatch generously to subagents.** Each subagent gets a fresh context window. For tasks that involve code execution, deep research, or formal review, dispatching preserves orchestrator context for the ongoing conversation.
-- **Limit orchestrator skill loading.** The orchestrator loads `data-scientist` at session start. Additional skills should generally be loaded by subagents. If the orchestrator has loaded more than 2-3 skills directly, prefer dispatching to subagents for subsequent tasks to avoid context pressure.
+- **Limit orchestrator skill loading.** The orchestrator loads `data-scientist` at session start. Additional skills should generally be loaded by subagents. If the orchestrator has loaded more than 2-3 skills directly, prefer dispatching to subagents for subsequent tasks to avoid context pressure. This budget does not waive the load-before-advising norm: once the budget is exhausted, dispatch a subagent (which loads the routed skill in its own fresh context) rather than answering tool-specific questions from memory.
+- **Wave barrier discipline (async dispatch).** Subagents run in the background by default and return via completion notifications that may arrive one at a time. When a single turn dispatches more than one agent — e.g., the parallel `source-researcher` + `research-synthesizer` pattern in the Dispatch Table — treat those mid-wave completion notifications as status-only: do not relay results to the user, synthesize, or take the next action until EVERY dispatched agent has returned. Synthesize once over the complete set (a failed or early-returning agent still counts as a completion). Narrating "one of two is back" is fine; acting on it is not. See the master statement in `SKILL.md` § Subagent Coordination > "Wave Barrier Discipline (Async Dispatch)."
 
 ---
 
@@ -364,7 +385,7 @@ These boundaries supplement the universal safety boundaries in `CLAUDE.md`. See 
 - Running queries that might return >100K records
 - Scope expansion that would effectively constitute a Full Pipeline analysis
 - Modifying user's original files in place (vs. copying to workspace)
-- Installing packages or making environment changes
+- Installing packages or making environment changes (runtime installs are blocked; the path is a Dockerfile edit — recommend the user additions block near the end for a fast rebuild — see `agent_reference/BOUNDARIES.md`)
 
 ### Never Do
 
@@ -373,7 +394,7 @@ These boundaries supplement the universal safety boundaries in `CLAUDE.md`. See 
 - Limit the conversation to a single topic
 - Create STATE.md unless escalating to a pipeline mode
 - Refuse a task because it doesn't fit a predefined category
-- Execute Python interactively (file-first execution still applies for all code)
+- Execute Python or R interactively (file-first execution still applies for all code)
 - Overwrite or modify user-provided files outside the workspace without explicit permission
 
 ---
@@ -385,6 +406,7 @@ These boundaries supplement the universal safety boundaries in `CLAUDE.md`. See 
 | User requests formal deliverables (Plan + Notebook + Report) | Full Pipeline | Propose escalation; workspace artifacts carry forward |
 | User wants systematic data exploration across multiple sources | Data Discovery | Propose escalation; ad hoc findings inform discovery |
 | User has raw data file that needs profiling and a new skill | Data Onboarding | Propose escalation |
+| User reveals their data is sensitive/PII/proprietary or can't leave their environment | Data Onboarding | Propose escalation to the **sensitivity gate** — DAAF's synthetic-data protocol keeps the real data out of the container (profile locally → share only a disclosure-controlled report → DAAF builds a synthetic stand-in; finalize findings against the real data). See the `synthetic-data-workflow` skill. |
 | Session has naturally produced a research plan | Full Pipeline | Suggest: "This is shaping up to be a full analysis -- want me to formalize it?" |
 | Debugging reveals an existing analysis needs revision | Revision and Extension | Propose escalation to modify the original project |
 | User wants to verify an existing analysis reproduces | Reproducibility Verification | Propose escalation |

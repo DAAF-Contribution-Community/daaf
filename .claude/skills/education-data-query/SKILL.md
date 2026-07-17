@@ -21,7 +21,7 @@ Download datasets from the Education Data Portal via configured mirror sources (
 - Discover available files via each mirror's discovery endpoint
 
 > **Skill Provenance Note:** Each `*-data-source-*` skill includes
-> `provenance.skill_last_updated` in its frontmatter. Before fetching data,
+> a `skill-last-updated` key in its frontmatter `metadata:` block. Before fetching data,
 > check this date — if it is more than a few months old, the source skill's
 > documentation about column definitions, coded values, and quality patterns
 > may have drifted from the current data. Consider re-running data-ingest to
@@ -73,6 +73,20 @@ from fetch_patterns import discover_mirror_files
 files = discover_mirror_files(MIRRORS[0])
 if files is not None:
     print(f"Available files: {len(files)}")
+```
+
+```r
+# Generic discovery — works with any mirror that supports it
+# See fetch-patterns.md for the full inline R discovery pattern
+# Check primary mirror
+mirror <- mirrors[[1]]
+discovery <- mirror$discovery
+if (!is.null(discovery) && discovery$method == "http_json") {
+  resp <- httr2::request(discovery$url) |> httr2::req_timeout(30) |> httr2::req_perform()
+  raw <- httr2::resp_body_json(resp)
+  entries <- if (!is.null(raw$results)) raw$results else raw
+  cat(sprintf("Available files: %d\n", length(entries)))
+}
 ```
 
 This eliminates guessing — if the file exists in a mirror, use it; if not, fall through to the next.
@@ -127,6 +141,20 @@ df = df.filter(
 )
 ```
 
+```r
+# By state
+df <- df |> filter(fips == 6)  # California
+
+# By year
+df <- df |> filter(year %in% c(2020, 2021, 2022))
+
+# By school type
+df <- df |> filter(charter == 1)
+
+# Multiple filters
+df <- df |> filter(fips == 6, charter == 1, school_level == 3)
+```
+
 ## Dataset Path Structure
 
 All mirrors use the same canonical path. Each mirror appends its own format extension (`.parquet`, `.csv`) via its `url_template` in mirrors.yaml:
@@ -156,6 +184,39 @@ Format-specific read behavior is driven by each mirror's `read_strategy` field (
 df = pl.read_parquet(url)  # Polars reads HTTP URLs natively
 ```
 
+```r
+# R only — raise the download timeout BEFORE reading. arrow::read_parquet(url)
+# transfers via download.file(), which caps the whole transfer at getOption("timeout")
+# (default 60s); large mirror files (e.g. ccd/schools_ccd_directory, ~224MB) truncate
+# at ~60s and silently fall through to the next mirror (the CSV fallback, in the
+# default configuration). Python is unaffected.
+options(timeout = max(600, getOption("timeout")))
+# View-safe parquet read: arrow reads HTTP URLs natively, but mirror files are
+# Polars-written and some declare string columns as `string_view` — the R arrow
+# binding cannot convert those to R vectors directly (fails at Table->data.frame
+# with "cannot handle Array of type <utf8_view>"). Read as an Arrow Table first,
+# cast any view types to their materialized equivalents, THEN convert. This cast
+# is a no-op on files without view types, so it is safe to use for every read.
+tbl <- arrow::read_parquet(url, as_data_frame = FALSE)   # C++ read tolerates view types
+sch <- tbl$schema
+fields <- lapply(seq_len(length(sch$names)), function(i) {
+  fld <- sch$field(i - 1L)                                # $field() is 0-indexed (C++ convention)
+  ts  <- fld$type$ToString()
+  # Check large_string_view before string_view: the former's ToString() contains
+  # the substring "string_view", so an unordered check would misclassify it.
+  new_type <- if (grepl("large_string_view", ts, fixed = TRUE)) arrow::large_utf8()
+    else if (grepl("string_view", ts, fixed = TRUE)) arrow::utf8()
+    else if (grepl("binary_view", ts, fixed = TRUE)) arrow::binary()
+    else fld$type
+  arrow::field(fld$name, new_type)
+})
+df <- as.data.frame(tbl$cast(arrow::schema(fields)))     # cast view->materialized, then convert
+# Do NOT reach for arrow::open_dataset(url) |> dplyr::collect() as a workaround —
+# it hits the same utf8_view conversion error. Non-view columns (including integer
+# IDs) pass through untouched, so there is no leading-zero or coercion risk.
+# See ./references/fetch-patterns.md for the full loop-integrated version.
+```
+
 ### `lazy_csv`
 ```python
 # Always use lazy loading for large files
@@ -165,6 +226,17 @@ df = (
     .filter(pl.col("fips") == STATE_FIPS)
     .collect()
 )
+```
+
+```r
+# R only — raise the download timeout BEFORE reading. readr::read_csv(url)
+# transfers via download.file() exactly like the parquet read (60s default cap),
+# and CSV mirror files reach 500MB+.
+options(timeout = max(600, getOption("timeout")))
+# Read CSV then filter (R reads eagerly; arrow handles large files efficiently)
+df <- readr::read_csv(url, show_col_types = FALSE) |>
+  filter(year %in% YEARS) |>
+  filter(fips == STATE_FIPS)
 ```
 
 See `./references/fetch-patterns.md` for complete code patterns.
@@ -197,6 +269,15 @@ df = df.filter(pl.col("grade") >= 0)
 # RIGHT - Pre-K students have grade = -1
 pre_k = df.filter(pl.col("grade") == -1)
 total = df.filter(pl.col("grade") == 99)
+```
+
+```r
+# WRONG - filters out Pre-K students!
+df <- df |> filter(grade >= 0)
+
+# RIGHT - Pre-K students have grade = -1
+pre_k <- df |> filter(grade == -1)
+total <- df |> filter(grade == 99)
 ```
 
 ### Variable Names Are Lowercase
@@ -239,11 +320,11 @@ See `./references/filters-reference.md` for complete list.
 | Source | Skill | Key Fetch Considerations |
 |--------|-------|--------------------------|
 | CCD | `education-data-source-ccd` | Use grade-99 for totals; FRPL affected by CEP |
-| CRDC | `education-data-source-crdc` | Biennial only; 2015+ for complete coverage; CSV requires `schema_overrides` for ID cols (see CRDC skill) |
-| EDFacts | `education-data-source-edfacts` | Use `_midpt` vars; states not comparable |
+| CRDC | `education-data-source-crdc` | Biennial only; 2015+ for complete coverage; CSV requires force-string + pad-and-assert on ID cols (ncessch→12, leaid→7, crdc_id) — see fetch-patterns.md "Zero-padded ID columns" |
+| EDFacts | `education-data-source-edfacts` | Use `_midpt` vars; states not comparable; CSV fallback needs force-string + `str_pad`/`zfill` + width-assert on ncessch/leaid (2019 ships already-truncated IDs) |
 | IPEDS | `education-data-source-ipeds` | GRS limited to first-time full-time |
 | Scorecard | `education-data-source-scorecard` | High suppression; Title IV recipients only |
-| SAIPE | `education-data-source-saipe` | Model estimates; population not enrollment |
+| SAIPE | `education-data-source-saipe` | Model estimates; population not enrollment; `leaid` is Int64 (pad→7 + assert before joins); `_poverty_pct` is a 0-1 proportion, not 0-100% |
 | FSA | `education-data-source-fsa` | Federal aid only; 1-3 year lag |
 | MEPS | `education-data-source-meps` | Better than FRPL for cross-state |
 | PSEO | `education-data-source-pseo` | Experimental; check state coverage |

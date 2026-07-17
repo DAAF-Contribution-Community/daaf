@@ -404,6 +404,29 @@ def check_variable_availability(variable, years):
     }
 ```
 
+```r
+# Check which years a variable is available.
+availability <- list(
+  chronic_absenteeism = c(2015, 2017, 2020, 2021),
+  computer_science = c(2017, 2020, 2021),
+  suspension_instances = c(2020, 2021),
+  teacher_absenteeism = c(2017, 2020, 2021),
+  oss_total = c(2011, 2013, 2015, 2017, 2020, 2021),
+  restraint_physical = c(2011, 2013, 2015, 2017, 2020, 2021)
+)
+
+variable <- "chronic_absenteeism"
+years <- c(2013, 2015, 2017)
+
+# Unknown variables default to no available years
+# (equivalent of Python's availability.get(variable, []))
+var_years <- availability[[variable]]
+if (is.null(var_years)) var_years <- integer(0)
+
+available_years <- years[years %in% var_years]
+missing_years <- years[!(years %in% var_years)]
+```
+
 ### Comparing Across Years
 
 **Safe Comparisons**:

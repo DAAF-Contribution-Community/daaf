@@ -251,6 +251,14 @@ df.filter(
 )
 ```
 
+```r
+# R equivalent
+library(dplyr)
+
+# Race-based intimidation crimes
+df |> filter(bias == 1, crime_type == 14)
+```
+
 ## Historical Changes
 
 ### 2008 Changes

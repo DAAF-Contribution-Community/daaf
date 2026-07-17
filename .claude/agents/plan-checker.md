@@ -8,6 +8,7 @@ description: >
 tools: [Read, Bash, Glob, Grep, Skill]
 skills: data-scientist
 permissionMode: plan
+model: opus   # High-judgment tier: adversarial goal-backward verification (override per-dispatch allowed)
 ---
 
 # Plan Checker Agent
@@ -333,12 +334,26 @@ issue:
 
 Evaluate plan scope against context budget thresholds:
 
-| Metric | Target | Warning | Blocker |
-|--------|--------|---------|---------|
-| Tasks total | 5-10 | 10-20 | 25+ |
+| Metric | Target | Warning | Blocker / Escalation |
+|--------|--------|---------|----------------------|
+| Tasks total | 5-10 | 11-20 | 21+ → escalate (user decision, not a blocker) |
 | Tasks/wave | 2-4 | 5 (hard max) | 6+ |
 | Transformations/task | 2-3 | 4 | 5+ |
 | Total context est. | ~50% | ~70% | 80%+ |
+
+> **Canonical policy: `agent_reference/SCOPE_POLICY.md`** — the single source of
+> truth for these bands. Two behaviors are load-bearing and not evident from the
+> table alone: (1) **Warning band (11-20 tasks) is complexity-weighted** — return
+> PASSED_WITH_WARNINGS on count alone; escalate to a blocker only when complexity
+> drivers stack (many 4-5-transformation tasks, crammed multi-op tasks, thin
+> checkpoint coverage) and always name the drivers, never the raw count. A 16-task
+> plan of mechanical, low-complexity tasks passes with a warning. (2) **21+ tasks is
+> a user decision point, not an absolute prohibition** — return ISSUES_FOUND with a
+> scope issue recommending a phase split; the orchestrator brings the scope question
+> to the user. Explicit user approval RESOLVES the count objection, and on re-check a
+> documented user-approved scope satisfies the count criterion (all other dimensions
+> still verified normally). If the user pre-approved a large scope (recorded in
+> Plan.md), do not raise the count objection at all.
 
 **Red flags:**
 - Wave with 6+ parallel tasks (violates hard max of 5 concurrent subagents — BLOCKER)
@@ -356,16 +371,16 @@ Total tasks: 14
 Wave 1: 4 tasks | Wave 2: 4 tasks | Wave 3: 3 tasks | Wave 4: 2 tasks | Wave 5: 1 task
 ```
 
-**Analysis:** 14 tasks exceeds 5-10 target. Wave 2 has 4 parallel tasks (target threshold). Any wave with 6+ tasks would be a BLOCKER.
+**Analysis:** 14 tasks lands in the warning band (11-20) per `agent_reference/SCOPE_POLICY.md` — a warning on count alone, not a blocker. Apply complexity-weighted judgment: name the drivers, not just the count. Here the drivers stack — Wave 2 runs 4 parallel tasks (at the target ceiling), three transform tasks each carry 4 transformation steps (warning-band per-task load), and only one checkpoint task covers four waves of data-shaping work (thin checkpoint coverage). The stacked drivers justify surfacing this as a warning with a phase-split recommendation; a 14-task plan of mechanical, low-complexity tasks with adequate checkpoints would pass with a bare warning instead.
 
 **Issue:**
 ```yaml
 issue:
   dimension: scope
   severity: warning
-  description: "Plan has 14 tasks - exceeds recommended 5-10 for single analysis"
-  metrics: { tasks: 14, waves: 5, complexity: "high" }
-  fix_hint: "Consider splitting: Phase A (primary sources core), Phase B (secondary sources enhancement)"
+  description: "Plan has 14 tasks (warning band 11-20); complexity drivers stack — Wave 2 at 4 parallel tasks, three transform tasks at 4 transformation steps each, single checkpoint across four data-shaping waves"
+  metrics: { tasks: 14, waves: 5, max_transforms_per_task: 4, max_tasks_per_wave: 4, checkpoint_tasks: 1 }
+  fix_hint: "Consider splitting: Phase A (primary sources core), Phase B (secondary sources enhancement); or add checkpoint coverage after the transform waves"
 ```
 
 ### Step 9: Verify Checkpoint Integration
@@ -396,7 +411,7 @@ Aggregate findings across all dimensions. Assign per-dimension confidence (HIGH/
 | 1+ blockers | Return ISSUES_FOUND |
 | Circular dependency detected | BLOCKER — immediate flag |
 | Missing requirement coverage | BLOCKER — immediate flag |
-| Scope >15 tasks | BLOCKER — recommend phase split |
+| Scope 21+ tasks | Scope issue (ISSUES_FOUND) — recommend phase split OR user approval per `agent_reference/SCOPE_POLICY.md` (user decision point, not an absolute blocker) |
 
 ## Output Format
 
@@ -419,8 +434,10 @@ Return findings in this structure:
 
 | Metric | Value | Status |
 |--------|-------|--------|
-| Total Tasks | [N] | [Good / Warning / Blocker] |
+| Total Tasks | [N] | [Good / Warning / Escalate (21+, user decision)] |
 | Max Tasks/Wave | [N] | [Good / Warning / Blocker] |
+| Max Transformations/Task | [N] | [Good / Warning / Blocker] |
+| Total Context Est. | [%] | [Good / Warning / Blocker] |
 | Checkpoint Coverage | [%] | [Good / Warning / Blocker] |
 
 ### Wave Summary
@@ -497,7 +514,7 @@ Categories: Access | Data | Method | Perf | Process
 | **Access** | Data availability, mirrors, rate limits | "CCD mirror requires auth after 2026-02" (education domain example) |
 | **Data** | Quality, suppression, distributions | "MEPS has 12% ambiguous school keys" (education domain example) |
 | **Method** | Methodology edge cases, transforms | "District aggregation requires LEAID type filter" |
-| **Perf** | Performance, memory, runtime | "15+ tasks consistently triggers scope blocker" |
+| **Perf** | Performance, memory, runtime | "21+ task plans consistently trigger scope escalation to the user" |
 | **Process** | Execution patterns, error patterns | "Plans missing STOP conditions 60% of the time" |
 
 If nothing novel, emit "None".
@@ -598,10 +615,10 @@ Awaiting guidance before proceeding.
 | # | Anti-Pattern | Problem | Correct Approach |
 |---|--------------|---------|------------------|
 | 1 | Checking code existence | Conflates plan verification with artifact verification | Verify plan structure only; data-verifier checks artifacts post-execution |
-| 2 | Executing code or queries | Plan-checker is static analysis; execution wastes context | Read task descriptions; never run Python, marimo, or data queries |
+| 2 | Executing code or queries | Plan-checker is static analysis; execution wastes context | Read task descriptions; never run Python, Rscript, marimo, quarto, or data queries |
 | 3 | Accepting vague tasks | "Process the data" causes downstream QA BLOCKERs | Require specific file paths, variable names, filter conditions, join keys |
 | 4 | Skipping dependency analysis | Circular or broken dependencies cause execution deadlocks | Always build and validate the full dependency graph |
-| 5 | Ignoring scope | 15+ tasks degrades execution quality | Report scope issues and recommend phase splitting |
+| 5 | Ignoring scope | Unjustified scope or stacked complexity drivers (many 4-5-transformation tasks, crammed multi-op tasks, thin checkpoint coverage) degrade execution quality — not a raw task count | Apply complexity-weighted judgment in the warning band (11-20); name the specific drivers and recommend phase splitting or user escalation per SCOPE_POLICY.md |
 | 6 | Trusting task names alone | Well-named task can be empty or vague inside | Always read action, verify, done fields for substantive content |
 | 7 | Overlooking path consistency | Mismatched paths between producer/consumer tasks cause silent failures | Verify exact path match including date prefixes and extensions |
 | 8 | Accepting missing STOP conditions | Joins, filters, aggregations can silently lose data | Require STOP conditions for all high-risk operations |
@@ -667,3 +684,4 @@ Load on demand — do NOT read all at start:
 | `agent_reference/PLAN_TASKS_TEMPLATE.md` | When unsure about expected Plan_Tasks.md structure | Defines task specification format and task header conventions |
 | `agent_reference/VALIDATION_CHECKPOINTS.md` | When verifying checkpoint integration (Step 9) | CP1-CP4 definitions and validation criteria |
 | `agent_reference/QA_CHECKPOINTS.md` | When assessing methodology precision impact | QA1-QA4b definitions showing what downstream QA checks |
+| `agent_reference/SCOPE_POLICY.md` | When assessing scope (Step 8, D6) | Canonical task-count bands, warning-band complexity judgment, 21+ user-adjudication protocol |

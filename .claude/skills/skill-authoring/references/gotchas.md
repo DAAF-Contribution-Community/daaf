@@ -134,6 +134,7 @@ description: Use the command to do X.
 **Allowed fields only:**
 - `name`
 - `description`
+- `when_to_use`
 - `metadata`
 
 **Invalid fields (examples):**
@@ -222,18 +223,18 @@ description: Processes PDF legal documents for contract review. Do NOT use for g
 
 ### Overly Verbose Descriptions
 
-**Problem:** Long descriptions waste metadata budget.
+**Problem:** Rambling, low-information-density prose. The issue is not length per se — a complete 300-700 char description is good, and descriptions may run up to the 1,024-char validation limit. The issue is padding: filler phrasing that consumes the aggregate skill-listing budget (shared across 40+ DAAF skills) without improving triggering accuracy.
 
 ```yaml
-# Bad: 200+ words
+# Bad: padded — many words, few triggers, no disambiguation
 description: This skill is a comprehensive solution for managing and processing various types of document files including but not limited to PDF, Word, and Excel formats. It provides functionality for...
 ```
 
-**Fix:** Be concise, focus on triggers:
+**Fix:** Spend characters where they earn triggering accuracy — identity, key triggers, disambiguation, critical caveats:
 
 ```yaml
-# Good: ~30 words
-description: Process document files (PDF, Word, Excel). Use when converting formats, extracting text, or manipulating document content.
+# Good: information-dense — every clause earns its place
+description: Process document files (PDF, Word, Excel) — converting formats, extracting text and tables, merging/splitting, and manipulating document content. Use when working with .pdf, .docx, or .xlsx files, or when asked to pull structured data out of documents. For plain-text or Markdown editing, use standard file tools instead; for scanned documents requiring OCR, use the ocr skill.
 ```
 
 ### Duplicated Content
@@ -334,6 +335,25 @@ Skills are for AI execution, not human documentation.
 - CHANGELOG.md
 - CONTRIBUTING.md
 - LICENSE
+
+### Library Skill Version Drift
+
+**Problem (library/tool skills):** The skill pins a version that was never published to the package index, or documents an API that differs from the build actually installed in the container. Both look authoritative but mislead — `pip install pkg==X.Y` fails because the GitHub release tag has no corresponding published package, or a documented function signature does not exist in the installed build because upstream docs describe a newer API than what is installed.
+
+**Fix — verify against the package index and the installed build before authoring:**
+
+- **Confirm installability before pinning.** A GitHub release tag can exist with no published package. Probe the index (PyPI / CRAN) rather than trusting the tag. (Note: CRAN's index exposes only each package's *current* version — `available.packages()` cannot confirm an older version, which lives in the CRAN archive.)
+  ```bash
+  pip index versions <pkg>                          # available published versions (read-only)
+  # R: "<pkg>" %in% rownames(available.packages())  # package present on CRAN?
+  #    available.packages()["<pkg>", "Version"]     # its current CRAN version, to compare
+  ```
+- **Introspect the installed build before writing against upstream docs.** The container's installed build is the ground truth the skill must describe. Confirm the version and the actual signatures you document:
+  ```bash
+  pip show <pkg>                          # installed version (read-only)
+  python -c "import importlib.metadata as m; print(m.version('<pkg>'))"
+  # R: packageVersion("<pkg>"); args(<fn>)
+  ```
 
 ## Pre-Submission Checklist
 

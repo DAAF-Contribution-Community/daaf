@@ -19,10 +19,10 @@ Coding quality standards and best practices for all `.sh` (Bash) and `.ps1` (Pow
 
 | File | Purpose | When to Read |
 |------|---------|--------------|
-| `bash-standards.md` | Preambles, quoting, variables, ShellCheck, signal handling | Writing or reviewing any `.sh` file |
+| `bash-standards.md` | Preambles, quoting, variables, ShellCheck, signal handling, host-script Bash 3.2 portability | Writing or reviewing any `.sh` file; anything under `scripts/host/` |
 | `powershell-standards.md` | Preambles, dual error system, defensive coding, PSScriptAnalyzer | Writing or reviewing any `.ps1` file |
 | `error-handling.md` | Fail-closed philosophy, output conventions, exit codes, Docker errors, dependency validation | Designing error paths for any script |
-| `testing.md` | BATS, Pester, CI workflows, Docker mocking, test taxonomy | Setting up or running script tests |
+| `testing.md` | BATS, Pester, CI workflows, Docker mocking, test taxonomy, DAAF safety-hook regression batteries | Setting up or running script tests; writing or modifying a `bash-safety.sh` / `enforce-single-command.sh` hook |
 | `gotchas.md` | Bash traps, PowerShell surprises, cross-platform pitfalls | Debugging unexpected script behavior |
 
 ### Reading Order
@@ -42,7 +42,8 @@ What kind of script?
 ├─ Bash (.sh)
 │   ├─ Preamble and structure → ./references/bash-standards.md
 │   ├─ Error handling design → ./references/error-handling.md
-│   └─ Signal handling / cleanup → ./references/bash-standards.md
+│   ├─ Signal handling / cleanup → ./references/bash-standards.md
+│   └─ Scratch probe that makes symlinks (self-cleaning) → ./references/bash-standards.md
 ├─ PowerShell (.ps1)
 │   ├─ Preamble and structure → ./references/powershell-standards.md
 │   ├─ Native command error handling → ./references/powershell-standards.md
@@ -68,6 +69,9 @@ Reviewing a script?
 │   ├─ PSScriptAnalyzer clean? → ./references/powershell-standards.md
 │   └─ Error paths robust? → ./references/error-handling.md
 └─ Either language
+    ├─ Run parser/linter/tests in-container? → ./references/testing.md
+    │   (DAAF_DEV toolchain: pwsh, Pester, PSSA, shellcheck, bats --
+    │    PROBE for tools before declaring validation unavailable)
     ├─ Exit code conventions? → ./references/error-handling.md
     └─ Known gotchas present? → ./references/gotchas.md
 ```
@@ -144,7 +148,7 @@ Existing patterns in DAAF scripts that this skill codifies:
 | # | Requirement | Quick Check |
 |---|-------------|-------------|
 | 1 | `$ErrorActionPreference = 'Stop'` | First line |
-| 2 | `Set-StrictMode -Version 3.0` | Second line |
+| 2 | `Set-StrictMode -Version 3.0` | Second line (DAAF exception: scripts with a `DAAF_TEST_MODE` dot-source guard place it immediately *after* the guard; dot-sourced libraries like `daaf_lib.ps1` carry no directive -- see `powershell-standards.md` > "Strict Mode Placement in DAAF Host Scripts") |
 | 3 | `$LASTEXITCODE` checked after every native command | After docker, git, etc. |
 | 4 | `[CmdletBinding()]` on functions | Function declarations |
 | 5 | `$null = expr` not `\| Out-Null` | Performance |
@@ -174,7 +178,12 @@ Existing patterns in DAAF scripts that this skill codifies:
 | Bash variable handling | `./references/bash-standards.md` |
 | ShellCheck integration | `./references/bash-standards.md` |
 | Bash signal handling and cleanup | `./references/bash-standards.md` |
+| Probe / test-harness hygiene (self-cleaning symlinks, workspace invariant checker) | `./references/bash-standards.md` |
 | Bash never-do list | `./references/bash-standards.md` |
+| Host-script Bash 3.2 portability (macOS `/bin/bash`) | `./references/bash-standards.md` |
+| Banned Bash-4.x-only constructs for host scripts | `./references/bash-standards.md` |
+| BSD vs GNU userland pitfalls (`sed -i`, `date -d`, `stat`, `readlink -f`) | `./references/bash-standards.md` |
+| In-container command availability (Dockerfile-installed set) | `./references/bash-standards.md` |
 | PowerShell preamble | `./references/powershell-standards.md` |
 | PowerShell ASCII-only encoding | `./references/powershell-standards.md` |
 | PowerShell dual error system | `./references/powershell-standards.md` |
@@ -192,6 +201,8 @@ Existing patterns in DAAF scripts that this skill codifies:
 | CI workflow setup | `./references/testing.md` |
 | Docker mocking strategies | `./references/testing.md` |
 | Test taxonomy (lint/unit/smoke/integration) | `./references/testing.md` |
+| In-container validation toolchain (DAAF_DEV: pwsh, Pester, PSScriptAnalyzer, shellcheck, bats) | `./references/testing.md` |
+| Safety-hook regression batteries (`test_safety_hooks.sh`, `test_enforce_single_command.sh`) | `./references/testing.md` |
 | What to test and what to skip | `./references/testing.md` |
 | Bash exit code masking | `./references/gotchas.md` |
 | Bash set -e edge cases | `./references/gotchas.md` |
@@ -204,3 +215,5 @@ Existing patterns in DAAF scripts that this skill codifies:
 | Cross-platform alias differences | `./references/gotchas.md` |
 | Cross-platform exit code truncation | `./references/gotchas.md` |
 | Cross-platform path separators | `./references/gotchas.md` |
+| Cross-language octal `printf` escaping (`\\357`/`\\011` to `sh`) | `./references/gotchas.md` |
+| Detached-container (`docker run -d`) diagnostics routing | `./references/error-handling.md` |

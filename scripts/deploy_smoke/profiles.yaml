@@ -1,0 +1,65 @@
+# Multi-profile env overlays for the DAAF deployment smoke suite (OpenRouter route).
+#
+# WHAT THIS IS
+#   Named sets of environment-variable overrides applied to the PROBE SUBPROCESS
+#   ENV ONLY (never the daemon), reusing the DAAFBench env_overrides mechanism.
+#   `--profiles a,b,c` runs Tiers 1-2 once per profile; Tiers 0 and D run once.
+#
+# WHEN IT APPLIES
+#   Profiles are designed for the OpenRouter route, where swapping the per-run
+#   model overlay is the whole point. Mechanically an overlay always applies to
+#   the probe SUBPROCESS ENV, on whatever route is active; the runner does not
+#   forbid --profiles on other routes. It WARNs specifically on shim routes
+#   (openai-api, chatgpt-subscription) because there the shim DAEMON state
+#   (SHIM_SANITIZE_TOOLS, backend_mode) is fixed at daemon startup and CANNOT be
+#   changed per run — an overlay reaches the CLI session, not the already-running
+#   shim. For shim routes, verify daemon state read-only via Tier 0's shim
+#   /health probe instead. (No warning fires on anthropic-subscription, where an
+#   overlay simply overrides the CLI session env with no daemon in the path.)
+#
+# HOW TO USE
+#   These three entries are working EXAMPLES — adapt the model slugs to models you
+#   actually have access to on your OpenRouter account. Model slugs below are the
+#   current GPT/GLM entries from benchmarks/config/models.yaml (2026-07). Run e.g.:
+#     python3 scripts/deploy_smoke/run_deploy_smoke.py --route openrouter \
+#         --profiles openrouter-claude,openrouter-gpt,openrouter-glm
+#
+# NOTE ON THE TIER-ALIAS REMAP
+#   For NON-Claude models, setting ANTHROPIC_DEFAULT_OPUS_MODEL and
+#   ANTHROPIC_DEFAULT_SONNET_MODEL to the model under test keeps subagent
+#   dispatches model-pure and makes enforce-model-ceiling.sh STAND DOWN (it cannot
+#   rank custom slugs). CLAUDE_CODE_MAX_CONTEXT_TOKENS declares the real window so
+#   the statusline/hook stack does not silently assume ~200k. For Claude models on
+#   OpenRouter, leave the overlay empty to exercise the installation defaults.
+
+profiles:
+
+  # Claude models over OpenRouter — empty overlay = installation defaults.
+  # Exercises the as-configured session model and the ceiling hook's active
+  # ranking path (Claude-family session).
+  openrouter-claude:
+    description: "Claude family via OpenRouter — installation defaults (no overrides)."
+    env: {}
+
+  # OpenAI GPT over OpenRouter (cheapest flagship GPT slug from models.yaml).
+  # Remaps both tier aliases to the GPT slug for model purity; declares the 1.05M
+  # window so context reporting is accurate.
+  openrouter-gpt:
+    description: "OpenAI GPT via OpenRouter (gpt-5.6-luna) with tier-alias remap."
+    env:
+      ANTHROPIC_MODEL: "openai/gpt-5.6-luna"
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "openai/gpt-5.6-luna"
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "openai/gpt-5.6-luna"
+      CLAUDE_CODE_MAX_CONTEXT_TOKENS: "1050000"
+
+  # Open-source GLM over OpenRouter (GLM 5.2 slug from models.yaml).
+  openrouter-glm:
+    description: "Open-source GLM via OpenRouter (glm-5.2) with tier-alias remap."
+    env:
+      ANTHROPIC_MODEL: "z-ai/glm-5.2"
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "z-ai/glm-5.2"
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "z-ai/glm-5.2"
+      # Exact current OpenRouter catalogue value for z-ai/glm-5.2 (2026-07-15).
+      # This declares the model's physical context capacity; it does not relax
+      # DAAF's conservative context-quality thresholds for GLM sessions.
+      CLAUDE_CODE_MAX_CONTEXT_TOKENS: "1048576"

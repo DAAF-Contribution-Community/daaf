@@ -12,6 +12,7 @@
 #   2. migrate-era1         - Migration of clone-based installations (origin remote present)
 #   3. migrate-era2         - Migration of ZIP-based installations (no remote, requires graft)
 #   4. failure-resilience   - Graceful failure handling and edge cases
+#   5: Smoke Suite          - run R + Python skill smokes inside the built image
 #
 # Not tested here:
 #   - view_logs.sh/ps1: Invokes `docker compose logs --follow`, which is a
@@ -82,7 +83,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # --- Install ---
       # install.sh creates daaf-docker/ in the current working directory,
@@ -117,6 +118,31 @@ jobs:
       - name: Run test command via run_daaf.sh
         working-directory: daaf-docker
         run: bash run_daaf.sh echo "DAAF is working"
+
+      # --- Seed pathological symlinks into the data volume (round-trip fixtures) ---
+      # These exercise the backup STAGE_PROGRAM strip+manifest and the restore
+      # SYMLINK_REPLAY across a REAL backup->restore cycle. Names/targets chosen to
+      # stress every branch: a space in the name, a unicode name, a broken target,
+      # an absolute target, and a relative target. NONE contain a tab or newline
+      # (those are the gate-trip cases, tested separately in Group C).
+      - name: Seed symlink fixtures for round-trip test
+        working-directory: daaf-docker
+        run: |
+          docker compose exec -T daaf-docker bash -c '
+            set -e
+            d=/daaf/research/_ci_symlink_fixtures
+            mkdir -p "$d/realdir"
+            echo content > "$d/realfile"
+            ln -sf realfile           "$d/rel link"          # space in NAME, relative target
+            ln -sf realfile           "$d/uniçode-límk"      # unicode name
+            ln -sf /nonexistent/target "$d/broken"           # broken (dangling) target
+            ln -sf /daaf/CLAUDE.md    "$d/abs_link"          # absolute target
+            ln -sf ../realfile        "$d/realdir/updir"     # relative w/ traversal
+            # Record the canonical (name -> target) set for post-restore comparison.
+            find "$d" -type l | sort > /daaf/research/_ci_link_names.txt
+            find "$d" -type l -exec readlink {} \; | sort > /daaf/research/_ci_link_targets.txt
+            echo "Seeded symlinks:"; cat /daaf/research/_ci_link_names.txt
+          '
 
       # --- Backup ---
       - name: Create backup via backup_daaf.sh
@@ -154,6 +180,32 @@ jobs:
       - name: Verify CLAUDE.md present after restore
         working-directory: daaf-docker
         run: docker compose exec -T daaf-docker test -f /daaf/CLAUDE.md
+
+      # --- Verify the symlink fixtures round-tripped via the manifest ---
+      # After restore, every seeded link must exist again as a symlink with the
+      # SAME name and SAME target it had before backup. The backup stripped them
+      # into .daaf-symlinks and the restore replayed them; this proves the whole
+      # STAGE_PROGRAM -> manifest -> SYMLINK_REPLAY chain end to end.
+      - name: Verify symlinks reproduced by backup/restore round-trip
+        working-directory: daaf-docker
+        run: |
+          docker compose exec -T daaf-docker bash -c '
+            set -e
+            d=/daaf/research/_ci_symlink_fixtures
+            # Every recorded path must still BE a symlink (-L) after restore.
+            while IFS= read -r p; do
+              [ -L "$p" ] || { echo "MISSING or not-a-symlink after restore: $p"; exit 1; }
+            done < /daaf/research/_ci_link_names.txt
+            # Names and targets must match the pre-backup snapshot exactly.
+            find "$d" -type l | sort > /tmp/after_names.txt
+            find "$d" -type l -exec readlink {} \; | sort > /tmp/after_targets.txt
+            diff /daaf/research/_ci_link_names.txt   /tmp/after_names.txt
+            diff /daaf/research/_ci_link_targets.txt /tmp/after_targets.txt
+            # The manifest itself must NOT survive into the restored tree (it is
+            # metadata, stripped by replay).
+            test ! -e "$d/.daaf-symlinks"
+            echo "Symlink round-trip OK: all fixtures reproduced with matching targets."
+          '
 
       # --- Update (no-op on fresh install) ---
       - name: Run update_daaf.sh (no-op on fresh install)
@@ -252,6 +304,49 @@ jobs:
       - name: Verify already up to date
         run: grep -qi "Already up to date" /tmp/update_noop.txt
 
+      # --- Negative case: a tab-named symlink must trip the staging gate ---
+      # The backup STAGE_PROGRAM gate rejects symlink names/targets containing a
+      # TAB or NEWLINE (they break the TAB-separated .daaf-symlinks manifest). The
+      # backup MUST fail (nonzero) AND the driver MUST surface the offender in its
+      # captured output -- the exact contract the 2026-07-14 field failure broke
+      # (PS 5.1 dropped the container stderr, so the offender never reached the
+      # user). We assert BOTH: nonzero exit, and the offender text present.
+      - name: Seed a tab-named symlink (gate-trip fixture)
+        working-directory: daaf-docker
+        run: |
+          docker compose exec -T daaf-docker bash -c '
+            set -e
+            d=/daaf/research/_ci_gate_trip
+            mkdir -p "$d"
+            echo content > "$d/realfile"
+            # Create a symlink whose NAME contains a literal tab.
+            ln -sf realfile "$(printf "%s/bad\tname" "$d")"
+          '
+      - name: Backup must FAIL and name the tab offender
+        working-directory: daaf-docker
+        run: |
+          set +e
+          bash backup_daaf.sh > /tmp/gate_trip.log 2>&1
+          rc=$?
+          set -e
+          echo "backup exit code: $rc"; echo "----- captured -----"; cat /tmp/gate_trip.log
+          if [ "$rc" -eq 0 ]; then
+            echo "ERROR: backup succeeded but a tab-named symlink should have tripped the gate"; exit 1
+          fi
+          # The offender list must have reached the driver output (STAGE_ERR_TAB
+          # marker and/or the offending path). This is the field-failure guard.
+          grep -qi 'STAGE_ERR_TAB\|embed a tab' /tmp/gate_trip.log \
+            || { echo "ERROR: gate tripped but the offender text never reached the captured output"; exit 1; }
+          echo "Gate-trip negative case OK: backup failed and named the offender."
+      - name: Remove gate-trip fixture (so cleanup + any later steps are clean)
+        if: always()
+        working-directory: daaf-docker
+        run: |
+          docker compose exec -T daaf-docker sh -c '
+            find /daaf/research/_ci_gate_trip -type l -delete 2>/dev/null || true
+            rm -rf /daaf/research/_ci_gate_trip 2>/dev/null || true
+          ' || true
+
       # --- Cleanup ---
       # Use conditional directory check because install.sh may not have created
       # daaf-docker/ if it failed early.
@@ -281,7 +376,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # --- Simulate Era 1 installation (git clone + docker compose up) ---
       # Era 1 users cloned the repo on their host, then ran docker compose up.
@@ -417,7 +512,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # --- Simulate Era 2 installation (ZIP extraction + docker compose up) ---
       # Era 2 users downloaded a ZIP from a specific release tag, extracted it,
@@ -619,7 +714,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # --- Install DAAF (baseline for all failure tests) ---
       - name: Install DAAF via install.sh
@@ -803,6 +898,91 @@ jobs:
 
       - name: Clean up stale lock if present
         run: rmdir /tmp/daaf-update.lock.d 2>/dev/null || true
+
+      # --- Cleanup ---
+      - name: Docker cleanup
+        if: always()
+        run: |
+          if [ -d daaf-docker ]; then
+            cd daaf-docker
+            docker compose down -v --rmi local --remove-orphans
+          fi
+
+  # ---------------------------------------------------------------------------
+  # Job 5: Smoke Suite — run R + Python skill smokes inside the built image
+  # ---------------------------------------------------------------------------
+  smoke-suite:
+    name: Smoke Suite (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
+    timeout-minutes: 30   # build dominates; smoke run is ~2-4 min. Bump to 45
+                          # only if the Noble build is measured slower. See note 3.
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      # --- Build + start the container (single build; reused by exec below) ---
+      # install.sh builds the image and clones the repo into the /daaf volume,
+      # exactly as a user's first install does. This is the ONLY build in the job.
+      - name: Install DAAF via install.sh
+        run: bash scripts/host/install.sh
+
+      - name: Verify container is running
+        working-directory: daaf-docker
+        run: |
+          for i in 1 2 3 4 5; do
+            docker compose ps | grep -q "Up" && exit 0
+            echo "Waiting for container to be ready (attempt $i/5)..."
+            sleep 3
+          done
+          echo "ERROR: Container did not reach running state"
+          docker compose ps
+          exit 1
+
+      - name: Verify CLAUDE.md present in container (repo populated)
+        working-directory: daaf-docker
+        run: docker compose exec -T daaf-docker test -f /daaf/CLAUDE.md
+
+      # --- Prepare log-stripped copies so R smokes run LIVE (see note 2) ---
+      # Strip each smoke_*.R's appended EXECUTION LOG block into a throwaway
+      # copy under scripts/scratch/smoke_live/ (inside the project, audit
+      # boundary -- never /tmp). The runner globs smoke_*.R in its own dir, so
+      # we copy the runner alongside the stripped scripts and run it there.
+      - name: Stage log-stripped smoke copies
+        working-directory: daaf-docker
+        run: |
+          docker compose exec -T daaf-docker bash -c '
+            set -eu
+            SRC=/daaf/scripts/smoke_tests
+            DST=/daaf/scripts/scratch/smoke_live
+            rm -rf "$DST"
+            mkdir -p "$DST"
+            # Copy runner + all smoke scripts, then strip logs from the copies.
+            cp "$SRC"/smoke_*.R "$SRC"/smoke_*.py "$DST/"
+            for f in "$DST"/smoke_*.R "$DST"/smoke_*.py; do
+              # Delete from the first EXECUTION LOG banner to EOF if present.
+              if grep -q "^# EXECUTION LOG" "$f"; then
+                line=$(grep -n "^# EXECUTION LOG" "$f" | head -1 | cut -d: -f1)
+                # Cut the banner line above it too (the ==== rule) for cleanliness.
+                start=$((line - 1))
+                head -n $((start - 1)) "$f" > "$f.stripped"
+                mv "$f.stripped" "$f"
+              fi
+            done
+            echo "Staged $(ls "$DST"/smoke_*.R "$DST"/smoke_*.py | wc -l) log-stripped smokes"
+          '
+
+      # --- Run the full suite live inside the container ---
+      # The runner tallies PASS/FAIL/SKIP and exits nonzero if any smoke FAILS.
+      # With logs stripped, R smokes run live rather than SKIP.
+      - name: Run smoke suite (live) inside container
+        working-directory: daaf-docker
+        run: |
+          docker compose exec -T -e SMOKE_DIR=/daaf/scripts/scratch/smoke_live daaf-docker \
+            bash /daaf/scripts/smoke_tests/run_all_smoke_tests.sh
 
       # --- Cleanup ---
       - name: Docker cleanup

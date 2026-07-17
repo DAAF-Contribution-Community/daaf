@@ -166,6 +166,17 @@ rev_per_fte = total_revenue / total_fte
 ratio = fall_enrollment / instructional_faculty
 ```
 
+```r
+# Expenditure per FTE
+exp_per_fte <- total_expenditures / total_fte
+
+# Revenue per FTE
+rev_per_fte <- total_revenue / total_fte
+
+# Faculty to student ratio (uses fall enrollment)
+ratio <- fall_enrollment / instructional_faculty
+```
+
 ## Enrollment Categories
 
 ### By Attendance Status
@@ -233,6 +244,14 @@ pct_de_any = (exclusively_de + some_de) / total_enrollment * 100
 
 # Percent exclusively online
 pct_exclusively_online = exclusively_de / total_enrollment * 100
+```
+
+```r
+# Percent of students in distance education
+pct_de_any <- (exclusively_de + some_de) / total_enrollment * 100
+
+# Percent exclusively online
+pct_exclusively_online <- exclusively_de / total_enrollment * 100
 ```
 
 ## Retention Rates
@@ -356,6 +375,11 @@ The `enrollment-fte` dataset provides FTE and headcount data. Consult the codebo
 url = get_codebook_url("ipeds/codebook_colleges_ipeds_enrollment-fte")
 ```
 
+```r
+# get_codebook_url() is a Python helper; in R, construct the URL directly
+# or use the codebook path from datasets-reference.md
+```
+
 > **Note:** The variable names below are from NCES documentation and may differ in the Portal. Always verify against the actual data or codebook.
 
 | NCES Name | Description |
@@ -373,6 +397,11 @@ The `fall-retention` dataset provides retention rates. Consult the codebook:
 
 ```python
 url = get_codebook_url("ipeds/codebook_colleges_ipeds_fall-retention")
+```
+
+```r
+# get_codebook_url() is a Python helper; in R, construct the URL directly
+# or use the codebook path from datasets-reference.md
 ```
 
 > **Note:** Variable names below are from NCES documentation and may differ in the Portal.

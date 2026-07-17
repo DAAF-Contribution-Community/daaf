@@ -271,6 +271,48 @@ fi
 - Capture stderr during readiness loops for diagnostics on timeout
 - On timeout, dump container logs to help the user diagnose
 
+### Detached-Container Diagnostics (`docker run -d`)
+
+When a host driver launches a short-lived helper container in **detached** mode (`docker run -d …`, e.g. a backup-staging gate) and then reads its output back via `docker logs`, two conventions are mandatory. Both were established by a concrete 2026-07-14 field failure: a staging gate printed its diagnostics to **stderr** inside a detached busybox container, and on real Windows PowerShell 5.1 the host's `docker logs … 2>&1 | Out-String` capture came back **empty** — the user saw an error with no details at all.
+
+**1. Container programs write user-facing output to STDOUT, not stderr.** The detached container's stderr does not reliably survive the host's `docker logs … 2>&1` merge across PowerShell 5.1's native `2>&1` handling. Anything the host needs to show the user — diagnostics, failure reasons, computed values — must go to the container's **stdout**:
+
+```bash
+# Inside the detached container's program:
+# GOOD: user-facing diagnostics on stdout survive `docker logs` capture on PS 5.1
+echo "STAGING: computed size = ${size} bytes"
+echo "STAGING ERROR: source path not found: ${src}"
+
+# BAD: stderr may be silently dropped by the host's `docker logs ... 2>&1 | Out-String`
+echo "STAGING ERROR: source path not found: ${src}" >&2
+```
+
+> This is the deliberate inverse of the normal "diagnostics → stderr" rule (see § User-Facing Output Conventions). That rule is for scripts whose stderr the caller can actually see. A **detached** container's stderr is captured second-hand through `docker logs` and is not reliable across hosts, so its user-facing output belongs on stdout.
+
+**2. Fetch `docker logs` BEFORE removing the container, and always emit a labeled fallback.** On any failure path, the driver must capture the container's logs *before* `docker rm -f` (removal destroys them), and if the captured log is empty it must print an explicit labeled line rather than silently showing nothing:
+
+```bash
+# Host driver — failure path ordering
+cid="$(docker run -d … staging-image)"
+
+if ! docker wait "$cid" | grep -q '^0$'; then
+    # 1. Fetch logs FIRST — they vanish once the container is removed
+    logs="$(docker logs "$cid" 2>&1)"
+    # 2. THEN remove the container
+    docker rm -f "$cid" >/dev/null 2>&1 || true
+    # 3. ALWAYS surface either the log or an explicit fallback — never silence
+    if [ -n "$logs" ]; then
+        error "Staging container failed. Container output:"
+        printf '%s\n' "$logs" >&2
+    else
+        error "Staging container failed (no details could be retrieved from the staging container)."
+    fi
+    exit 12
+fi
+```
+
+**Why the fallback line matters:** an empty-log failure with no fallback is indistinguishable from success-with-no-output to the user — they see an error code and nothing else. The explicit "(no details could be retrieved…)" line tells them the failure is real *and* that the diagnostics were lost, which is itself actionable (it points at the stdout/stderr routing above).
+
 ---
 
 ## Dependency Validation

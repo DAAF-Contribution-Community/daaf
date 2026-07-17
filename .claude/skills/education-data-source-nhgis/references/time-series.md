@@ -176,6 +176,28 @@ tracts_2010 = merged.group_by("GJOIN2010").agg(
 )
 ```
 
+```r
+library(dplyr)
+library(readr)
+
+# Load crosswalk: 2000 blocks to 2010 tracts (direct NHGIS download, not Portal data)
+crosswalk <- read_csv("nhgis_blk2000_tr2010.csv")
+
+# Load 2000 block data
+blocks_2000 <- read_csv("nhgis_2000_blocks.csv")
+
+# Join crosswalk to block data
+# (inner_join matches the Python twin: Polars .join() defaults to how="inner";
+# left_join would propagate NA into the sum() aggregation for unmatched blocks)
+merged <- crosswalk |> inner_join(blocks_2000, by = c("GJOIN2000" = "GISJOIN"))
+
+# Apply weights to allocate population
+merged <- merged |> mutate(pop_allocated = total_pop * wt_pop)
+
+# Aggregate to 2010 tracts
+tracts_2010 <- merged |> group_by(GJOIN2010) |> summarise(pop_allocated = sum(pop_allocated))
+```
+
 ### Start from Lowest Level
 
 **Critical**: Always use the smallest available source units:

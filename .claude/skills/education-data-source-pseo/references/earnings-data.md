@@ -59,6 +59,13 @@ year1 = df.filter(pl.col("years_after_grad") == 1)
 # Get median earnings
 median_earnings = year1.select("p50_earnings")
 ```
+```r
+# Filter to Year 1 earnings
+year1 <- df |> filter(years_after_grad == 1)
+
+# Get median earnings
+median_earnings <- year1 |> select(p50_earnings)
+```
 
 ### Status/Suppression
 
@@ -224,6 +231,31 @@ ut_cs = df.filter(
 
 # View earnings by years after graduation
 print(ut_cs.select("years_after_grad", "p25_earnings", "p50_earnings", "p75_earnings", "employed_grads_count_e"))
+```
+```r
+# Fetch PSEO data for 2020.
+# fetch_from_mirrors() is a Python helper; in R, build the URL from the mirror
+# root in mirrors.yaml and read directly.
+# Mirror failover: see `education-data-query/references/fetch-patterns.md` (R pattern).
+config <- yaml::read_yaml("mirrors.yaml")
+mirror <- config$mirrors[[1]]
+url <- paste0(mirror$root_url, "/", "pseo/colleges_pseo_2020", ".", mirror$format)
+# NOTE: illustrative only — mirror parquet files are Polars-written and may
+# declare string_view columns, so a plain read can fail under R arrow
+# ("cannot handle Array of type <utf8_view>"). Real fetch scripts must use the
+# view-safe parquet read from `education-data-query/references/fetch-patterns.md`.
+df <- arrow::read_parquet(url)
+
+# Filter to UT Austin CS Bachelor's
+ut_cs <- df |> filter(
+  unitid == 228778,          # UT Austin
+  degree_level == 5,          # Bachelor's
+  cipcode == 11,              # Computer Science
+  p50_earnings > 0            # Valid earnings only
+)
+
+# View earnings by years after graduation
+ut_cs |> select(years_after_grad, p25_earnings, p50_earnings, p75_earnings, employed_grads_count_e)
 ```
 
 **Example result** (hypothetical):

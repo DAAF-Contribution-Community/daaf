@@ -55,15 +55,47 @@ When a user asks for more information, expand naturally on these points:
 
 For more depth, consult `{BASE_DIR}/user_reference/02_understanding_daaf.md` and summarize relevant sections. Point the user to the file path if they want to read it directly. After orienting, proceed to mode classification.
 
-### Language Background Detection
+### Language Preference Detection
 
-DAAF works in Python, but many users come from R or Stata backgrounds. Watch for
-signals during any conversation:
+DAAF supports two independent language preferences — watch for both:
 
-- **Explicit signals:** "I usually use R", "coming from Stata", "I'm an R user",
-  references to R/Stata packages (dplyr, ggplot2, fixest, eststo, reghdfe, etc.)
-- **Implicit signals:** Using R/Stata syntax in pseudocode, asking "how would I
-  do X" where X is clearly an R/Stata idiom
+1. **Execution language** — which language to write pipeline code in (Python or R)
+2. **Language background** — the user's native analysis language, for cross-language
+   annotations when the execution language differs from their background
+
+These are distinct concepts. Execution language governs which language the pipeline
+actually runs in (which libraries, which notebook format); language background only
+drives whether translation *annotations* are added on top of the chosen execution
+language.
+
+#### Execution Language Signals
+
+Watch for signals that the user wants to work in R:
+
+- **Explicit:** "I want to use R", "write this in R", "R pipeline", "set
+  execution language to R", "switch to R"
+- **Implicit:** Asking for R-specific outputs (e.g., "make a Quarto notebook"),
+  requesting R packages by name as primary tools (not just for reference)
+
+**When detected**, check `CLAUDE.md` § User Preferences > "Primary execution
+language". If set to Python (the default), propose updating:
+
+> "It sounds like you'd prefer to work in R. I can set R as the execution language
+> — all pipeline scripts will be written in R, using tidyverse, ggplot2, fixest,
+> and the rest of the R ecosystem, with Quarto notebooks instead of Marimo. Want me
+> to save that preference?"
+
+If the user confirms, update `CLAUDE.md` § User Preferences:
+- Set "Primary execution language" to R
+
+#### Language Background Signals
+
+Separately, watch for signals about the user's *background* language (relevant for
+cross-language annotations when execution language differs from background):
+
+- **Explicit:** "I usually use R", "coming from Stata", "I'm an R user"
+- **Implicit:** Using R/Stata syntax in pseudocode, referencing R/Stata packages
+  (dplyr, ggplot2, fixest, eststo, reghdfe, etc.) as their familiar tools
 
 **When detected**, check `CLAUDE.md` § User Preferences. If still set to defaults
 (language background: Python, annotations: disabled), propose updating:
@@ -76,16 +108,27 @@ If the user confirms, update `CLAUDE.md` § User Preferences:
 - Set "Primary analysis language background" to R (or Stata)
 - Set "Cross-language code annotations" to enabled
 
-This is a one-time setup. Once set, the orchestrator reads these preferences from
-`CLAUDE.md` at session start and propagates the appropriate translation directive
-to all code-producing agents (research-executor, code-reviewer, debugger,
-data-ingest) via their prompt strings. The `r-python-translation` skill (or
-`stata-python-translation`) is loaded on demand by those agents when the directive
-is present.
+#### Disambiguating "I use R"
 
-**If preferences are already set** (returning user with R/Stata background): read
-the preference from `CLAUDE.md` and silently propagate the directive — no need to
-re-ask.
+When a user says "I use R" without further context, it could mean either execution
+language or background (or both). Ask:
+
+> "Would you like me to write all analysis code in R (execution language), add
+> R-equivalent annotations to Python code (background preference), or both?"
+
+#### Preference Persistence
+
+Both preferences are one-time setup. Once set, the orchestrator reads them from
+`CLAUDE.md` at session start and propagates the appropriate directives to all
+code-producing agents (research-executor, code-reviewer, debugger, data-ingest) via
+their prompt strings (see "User Language Preference Propagation" under Universal
+Prompt Requirements for the exact directive strings). The translation skills
+(`r-python-translation`, `stata-python-translation`, `python-r-translation`,
+`stata-r-translation`) are loaded on demand by those agents when an annotation
+directive is present.
+
+**If preferences are already set** (returning user): read from `CLAUDE.md` and
+silently propagate — no need to re-ask.
 
 ---
 
@@ -146,7 +189,7 @@ Keywords are heuristics, not deterministic. When multiple modes seem applicable,
 
 | Mode | Trigger Keywords | Primary Output | Reference File |
 |------|------------------|----------------|----------------|
-| **Data Onboarding** | "ingest", "onboard", "profile", "new dataset", "add data source" | SKILL.md + Research Project with profiling scripts | `data-onboarding-mode.md` |
+| **Data Onboarding** | "ingest", "onboard", "profile", "new dataset", "add data source", "sensitive data", "PII", "can't share the data" | SKILL.md + Research Project with profiling scripts | `data-onboarding-mode.md` |
 | **Data Lookup** | "what are the values", "how is X defined", "lookup" | Direct answer | `data-lookup-mode.md` |
 | **Data Discovery** | "what data", "is it possible", "feasibility", "explore" | Findings summary | `data-discovery-mode.md` |
 | **Ad Hoc Collaboration** | "help me with", "review this", "debug this", "how do I", "advise on", "think through" | Conversation + optional workspace artifacts | `ad-hoc-collaboration-mode.md` |
@@ -193,33 +236,33 @@ Before sending your confirmation response, verify:
 Use the appropriate boilerplate below as a starting point. Fill in the bracketed fields, expand naturally based on context, and **always end with a confirmation question.**
 
 **Data Onboarding:**
-> [Classification reasoning]. I'll profile your data thoroughly across up to 4 automated phases with 2 checkpoints — you review the findings and interpretations before I create the Skill so the dataset is immediately available for all future work. I can work with local files, API endpoints, or multiple related files at different levels of aggregation. I'll also create a project folder with all the reproducible profiling scripts. **Shall I proceed?**
+> [Classification reasoning]. I'll read the data onboarding mode workflow reference, then profile your data thoroughly across up to 4 automated phases with 2 checkpoints — you review the findings and interpretations before I create the Skill so the dataset is immediately available for all future work. I can work with local files, API endpoints, or multiple related files at different levels of aggregation. I'll also create a project folder with all the reproducible profiling scripts. **Shall I proceed?**
 
 **Data Lookup:**
-> [Classification reasoning]. [What you'll look up and where]. **Sound good?**
+> [Classification reasoning]. I'll read the data lookup mode workflow reference, then [what you'll look up and where]. **Sound good?**
 
 Even for simple lookups, always confirm — the user may want broader context than the question implies.
 
 **Data Discovery:**
-> [Classification reasoning]. Read-only exploration — no code, no downloads. [What you'll look into]. **Shall I proceed?**
+> [Classification reasoning]. I'll read the data discovery mode workflow reference, then do a read-only exploration — no code, no downloads. [What you'll look into]. **Shall I proceed?**
 
 **Ad Hoc Collaboration:**
-> [Classification reasoning]. I'll work with you as a thought partner — we can review code, debug scripts, explore data sources, brainstorm approaches, write analysis code, or tackle whatever you need. If we produce anything, I'll save it to a workspace called `[proposed topic label]`. You drive the conversation — change topics freely. **Sound good, or would you rather approach this differently?**
+> [Classification reasoning]. I'll read the ad hoc collaboration mode workflow reference, then work with you as a thought partner — we can review code, debug scripts, explore data sources, brainstorm approaches, write analysis code, or tackle whatever you need. If we produce anything, I'll save it to a workspace called `[proposed topic label]`. You drive the conversation — change topics freely. **Sound good, or would you rather approach this differently?**
 
 **Full Pipeline:**
-> [Classification reasoning]. This is DAAF's most comprehensive mode — a full research pipeline with 5 phases and 4 checkpoints where you review data sources, approve the methodology, check data quality, and confirm results before the final report. Once confirmed, I'll present a pre-flight checklist with the full deliverables list and estimated scope for your review. **Shall I proceed?**
+> [Classification reasoning]. This is DAAF's most comprehensive mode — a full research pipeline with 5 phases and 4 checkpoints where you review data sources, approve the methodology, check data quality, and confirm results before the final report. Once confirmed, I'll read the full pipeline mode workflow reference, then present a pre-flight checklist with the full deliverables list and estimated scope for your review. **Shall I proceed?**
 
 **Revision and Extension:**
-> [Classification reasoning]. [What will change]. New version — original untouched. I'll classify the change type, re-run only the affected steps (with the same quality checks as the original), and present a summary when complete. **Shall I proceed?**
+> [Classification reasoning]. [What will change]. New version — original untouched. I'll read the revision and extension mode workflow reference, then classify the change type, re-run only the affected steps (with the same quality checks as the original), and present a summary when complete. **Shall I proceed?**
 
 **Reproducibility Verification:**
-> [Classification reasoning]. I'll decompile the marimo notebook into individual scripts, re-execute each one, and compare outputs against the originals. Then I'll cross-reference the Report's claims against the reproduced data. You'll get a Reproduction Report documenting what matched, what diverged, and any methodological concerns. Two decisions to confirm: (1) should I re-fetch data from mirrors or use frozen data from the folder (default: re-fetch from mirrors), and (2) how deep should the methodological review/critique be beyond checking for mechanical reproducibility (default: light, obvious concerns only)? I'll confirm both again after setup once the scope is concrete. **Shall I proceed with these defaults?**
+> [Classification reasoning]. I'll read the reproducibility verification workflow and identify the original Report and delivered notebook (Marimo or Quarto)s. I'll manage a copied folder and organize the workspace, then compare direct log, artifact, figure, and claim evidence. You'll get a Reproduction Report with FULLY REPRODUCED / PARTIALLY REPRODUCED / NOT REPRODUCED logs for every main claim surfaced. Two decisions: Would you like to (1) re-fetch data using the existing fetch scripts (default) or use frozen raw data (Stage 5 is explicitly excluded, raw hashes are verified, and acquisition/mirrors are out of scope), and (2) light or full methodological review (default: light)? I'll confirm both again after inventory, along with any exact exclusions before re-execution. **Shall I proceed with these defaults?**
 
 **Framework Development:**
-> [Classification reasoning]. I'll start by thoroughly scoping the current state of the framework components you want to modify — what exists, how it connects, and what will be affected. You'll review and confirm the scope before I make any changes. Then I'll author or modify the artifacts following DAAF's canonical templates, execute the integration checklist to wire everything consistently, and run a multi-angle review pass at the end. Two checkpoints: (1) after scoping to confirm approach, and (2) after the review pass to approve final state. [Scope summary]. **Shall I proceed?**
+> [Classification reasoning]. I'll read the framework development mode workflow reference, then start by thoroughly scoping the current state of the framework components you want to modify — what exists, how it connects, and what will be affected. You'll review and confirm the scope before I make any changes. Then I'll author or modify the artifacts following DAAF's canonical templates, execute the integration checklist to wire everything consistently, and run a multi-angle review pass at the end. Two checkpoints: (1) after scoping to confirm approach, and (2) after the review pass to approve final state. [Scope summary]. **Shall I proceed?**
 
 **User Support:**
-> [Classification reasoning]. I'll load the core DAAF documentation so I can answer your questions thoroughly — how it works, what it can do, troubleshooting, best practices, anything about the system or the tools it runs on (Docker, Git, Claude Code). I can also look up official documentation online if needed. No formal outputs, just a conversation. If at any point you want to actually do something (run an analysis, look up data, etc.), I'll switch to the right mode. **Sound good?**
+> [Classification reasoning]. I'll read the user support mode workflow reference and load the core DAAF documentation so I can answer your questions thoroughly — how it works, what it can do, troubleshooting, best practices, anything about the system or the tools it runs on (Docker, Git, Claude Code). I can also look up official documentation online if needed. No formal outputs, just a conversation. If at any point you want to actually do something (run an analysis, look up data, etc.), I'll switch to the right mode. **Sound good?**
 
 ### Mode Escalation Paths
 
@@ -240,7 +283,7 @@ Even for simple lookups, always confirm — the user may want broader context th
 | Reproducibility Verification | Full Pipeline | Original analysis is fundamentally broken |
 | Ad Hoc Collaboration | Full Pipeline | User wants a complete analysis with formal deliverables |
 | Ad Hoc Collaboration | Data Discovery | User wants systematic data exploration |
-| Ad Hoc Collaboration | Data Onboarding | User has raw data that needs profiling and a new skill |
+| Ad Hoc Collaboration | Data Onboarding | User has data that needs profiling and a new skill — including sensitive/proprietary/PII data, which routes to the synthetic (privacy-preserving) path at the DI-1 sensitivity gate |
 | Ad Hoc Collaboration | Revision and Extension | Debugging reveals an existing analysis needs revision |
 | Data Discovery | Ad Hoc Collaboration | User wants to discuss findings and iterate on approach |
 | Full Pipeline (early) | Ad Hoc Collaboration | User realizes they just want to talk through the approach, not run the full pipeline |
@@ -332,7 +375,8 @@ During any mode, watch for signals that the user needs additional guidance and r
 |----------------|---------|--------------|
 | `{SKILL_REFS}/data-onboarding-mode.md` | Data Onboarding workflow, gates, execution cycle, PSU templates, intake decisions, boundaries | After confirming Data Onboarding mode |
 | `{SKILL_REFS}/WORKFLOW_PHASE_DO_PROFILING.md` | Part A-D details, CPP/QAP checks, profiling invocation templates, multi-file protocols, verification checklists | Before dispatching first profiling subagent (Stage DI-3) |
-| `{SKILL_REFS}/WORKFLOW_PHASE_DO_AUTHORING.md` | Skill authoring invocation template, CPP-SKILL validation, DI-8 iteration loop, skill maturity framing | After PSU-DI2 confirmation, before Stage DI-7 |
+| `{SKILL_REFS}/WORKFLOW_PHASE_DO_SYNTHETIC.md` | Synthetic (privacy-preserving) onboarding path: DS-1–DS-5 stages, tier-selection PSU, inverted three-part QA (disclosure-safety / report-consistency / synthetic-vs-profile), seeded generation, rejoin with synthetic provenance | Before entering the synthetic path at the DI-1 sensitivity gate (Data Onboarding, sensitive-data outcome) |
+| `{SKILL_REFS}/WORKFLOW_PHASE_DO_AUTHORING.md` | Optional pre-authoring research dispatch, skill authoring invocation template, CPP-SKILL validation, DI-8 iteration loop, skill maturity framing | After PSU-DI2 confirmation, before the Pre-Authoring Research Offer / Stage DI-7 |
 | `{SKILL_REFS}/data-lookup-mode.md` | Single skill invocation, response format | After confirming Data Lookup mode |
 | `{SKILL_REFS}/data-discovery-mode.md` | Data Discovery workflow, exploration patterns, escalation | After confirming Data Discovery mode |
 | `{SKILL_REFS}/ad-hoc-collaboration-mode.md` | Ad hoc dispatch loop, workspace setup, agent invocation patterns, output handling | After confirming Ad Hoc Collaboration mode |
@@ -352,6 +396,7 @@ Mode Confirmed
     │   └─ Read: {SKILL_REFS}/data-onboarding-mode.md
     │          ├─ Stage DI-2 (project setup): Read {BASE_DIR}/agent_reference/STATE_TEMPLATE_ONBOARDING.md
     │          ├─ Profiling (Stages DI-3–6): Read {SKILL_REFS}/WORKFLOW_PHASE_DO_PROFILING.md
+    │          ├─ Synthetic path (DI-1 sensitivity gate → sensitive data, Stages DS-1–5): Read {SKILL_REFS}/WORKFLOW_PHASE_DO_SYNTHETIC.md
     │          ├─ Skill Authoring (Stages DI-7–8): Read {SKILL_REFS}/WORKFLOW_PHASE_DO_AUTHORING.md
     │          └─ Error handling: Read {BASE_DIR}/agent_reference/ERROR_RECOVERY.md
     │
@@ -429,7 +474,7 @@ Skills provide **domain knowledge** ("What do I need to know?"). Agents define *
 
 ### Skill Loading Mechanics
 
-Skills are loaded **by subagents**, not by the orchestrator:
+Skills are loaded **by subagents**, not by the orchestrator (exceptions: Ad Hoc Collaboration and Framework Development modes, where the orchestrator loads designated skills directly — see the Documentation Loading Decision Tree above and those mode reference files):
 
 1. **Orchestrator creates Agent call** with agent protocol and skill name in the prompt
 2. **Subagent receives prompt** and reads its agent protocol file
@@ -468,6 +513,34 @@ The goal is to make the user aware that verification is always an option, and
 especially valuable when the agent is operating beyond what skills explicitly
 encode.
 
+### Built-in Claude Code Skills (Not Part of DAAF)
+
+The Claude Code harness bundles its own skills and slash commands (e.g.,
+`code-review`, `verify`, `run`, `deep-research`, `loop`, `schedule`, `init`,
+`security-review`), which appear in the available-skills listing alongside
+DAAF's curated skills. These are **not DAAF components**: they don't follow
+DAAF's templates, don't know DAAF's conventions, and can conflict with DAAF
+protocols — e.g., the bundled `code-review` skill reviews git diffs
+generically, while DAAF's quality review is performed by the `code-reviewer`
+agent following `QA_CHECKPOINTS.md`.
+
+Disambiguation rules:
+
+- For pipeline and framework work, DAAF's skills and agents always take
+  precedence — never substitute a built-in skill for a DAAF protocol step
+- Invoke a built-in skill only when the user explicitly requests it (e.g.,
+  types its slash command) or when the task is clearly outside DAAF's scope
+  and no DAAF component covers it
+- When a natural-language request (no slash command typed) matches both
+  (e.g., "review this code"), DAAF mode classification wins — that request
+  routes to the appropriate DAAF mode and agent, not the bundled skill. An
+  explicitly typed slash command is never overridden by this rule (see the
+  previous bullet). Mention the built-in alternative only when it genuinely
+  serves the user better
+- Bundled-skill visibility can be tuned via the `disableBundledSkills` and
+  `skillOverrides` settings; DAAF currently leaves bundled skills enabled
+  (evaluation deferred — see the 2026-07-02 upgrade review addendum)
+
 ### Universal Prompt Requirements
 
 Every subagent prompt MUST include:
@@ -481,11 +554,23 @@ All relative paths in referenced files resolve from BASE_DIR.
 All file paths in Agent prompts MUST be absolute. See `full-pipeline-mode.md` > "Standard Agent Prompt Structure" for the universal prompt template and the appropriate `WORKFLOW_PHASE*.md` file for stage-specific invocation templates.
 
 **User Language Preference Propagation:**
-When `CLAUDE.md` § User Preferences indicates a non-Python language background
-with annotations enabled, include the translation directive in every prompt to
+
+*Execution language directive* — When `CLAUDE.md` § User Preferences indicates
+"Primary execution language: R", include this directive in every prompt to
 code-producing agents (research-executor, code-reviewer, debugger, data-ingest):
-`"User has [R/Stata] background. Load [r-python-translation/stata-python-translation] skill. Add inline [R/Stata]-equivalent comments for non-trivial data operations."`
-This is a standing directive — propagate it silently to all applicable agent
+`"Execution language: R. Write .R scripts (not .py). Load R library skills per the data-scientist routing table (tidyverse not polars, ggplot2 not plotnine, fixest not pyfixest, etc.). Use run_with_capture.sh (auto-detects .R extension). Stage 9 notebook format: Quarto .qmd (not Marimo .py)."`
+
+*Annotation directive* — When `CLAUDE.md` § User Preferences indicates a
+non-default language background with annotations enabled, include the translation
+directive in every prompt to code-producing agents. The correct translation skill
+depends on the execution language (which language the code is written in) and the
+background (the language to annotate toward):
+- Execution=Python, Background=R: `"User has R background. Load r-python-translation skill. Add inline R-equivalent comments for non-trivial data operations."`
+- Execution=Python, Background=Stata: `"User has Stata background. Load stata-python-translation skill. Add inline Stata-equivalent comments for non-trivial data operations."`
+- Execution=R, Background=Python: `"User has Python background. Load python-r-translation skill. Add inline Python-equivalent comments for non-trivial data operations."`
+- Execution=R, Background=Stata: `"User has Stata background. Load stata-r-translation skill. Add inline Stata-equivalent comments for non-trivial data operations."`
+
+Both directives are standing — propagate silently to all applicable agent
 dispatches without re-confirming with the user each time.
 
 ### Subagent Type Selection
@@ -520,7 +605,39 @@ See `.claude/agents/README.md` for the complete agent index with key inputs and 
 | `Plan` | Read-only operations when `search-agent` is not suitable | Can read files and make data access calls; CANNOT write files. Prefer `search-agent` for most read-only tasks. |
 | `general-purpose` | Code generation, analysis execution, file creation | Full capabilities including file writes and code execution |
 
-**When to use generic types:** Only for ad-hoc tasks that do not map to any named agent (e.g., Stage DI-7 skill authoring using a `general-purpose` subagent). For all standard pipeline stages, use the corresponding named agent. For read-only exploration tasks, prefer `search-agent` over generic `Plan` — it inherits the main Opus model, has web access (WebSearch, WebFetch), and understands DAAF conventions. **NEVER use `Explore` subagents.** `Explore` agents are blocked by project hooks (they run on Haiku, which lacks reasoning depth) and will be rejected, wasting time and context on failed launches.
+**When to use generic types:** Only for ad-hoc tasks that do not map to any named agent (e.g., Stage DI-7 skill authoring using a `general-purpose` subagent). For all standard pipeline stages, use the corresponding named agent. For read-only exploration tasks, prefer `search-agent` over generic `Plan` — it defaults to the `sonnet` tier (with per-dispatch override available; see Model Selection below), has web access (WebSearch, WebFetch), and understands DAAF conventions. **NEVER use `Explore` subagents.** `Explore` agents are blocked by project hooks (they run on Haiku, which lacks reasoning depth) and will be rejected, wasting time and context on failed launches.
+
+**Nested dispatch is policy-blocked.** Only the orchestrator dispatches subagents — subagents never launch nested subagents, because all dispatch authority belongs to the orchestrator. A subagent that runs short on context or scope returns remaining work via the early-return protocol so the orchestrator can redelegate it, rather than spawning its own subagents. This is enforced by the `block-nested-dispatch.sh` PreToolUse hook, which denies any Task/Agent dispatch originating inside a subagent (the named agents also omit `Agent`/`Task` from their `tools:` lists; the hook additionally covers the generic built-in types).
+
+### Model Selection for Subagent Dispatch
+
+DAAF routes subagents across two model tiers, following a **least-capable-sufficient** baseline: use the least powerful model that can reliably handle each role, to conserve cost and latency. Haiku is excluded by policy — "turn count beats token price": the cheapest models routinely take 2-3× the turns on multi-step research work, costing more overall and degrading reliability, so `sonnet` is the floor, never Haiku. `opus` is reserved for high-judgment, adversarial, synthesis, and primary data-production roles.
+
+**Per-agent default tiers** (set in each agent's `model:` frontmatter):
+
+| Tier | Agents | Why |
+|------|--------|-----|
+| `opus` | research-executor, data-planner, plan-checker, code-reviewer, data-verifier, debugger, framework-engineer, report-writer, data-ingest | High-judgment and primary data-production work: pipeline execution and dataset profiling (whose analytical quality compounds through every downstream stage), plan architecture, adversarial verification, hypothesis-driven diagnosis, cross-file consistency, stakeholder synthesis |
+| `sonnet` | source-researcher, research-synthesizer, notebook-assembler, integration-checker, search-agent | Well-specified, skill-guided, or mechanical work: structured lookup, multi-source consolidation, verbatim notebook assembly, systematic reference tracing, broad read-only exploration |
+
+**Always-explicit dispatch.** Frontmatter defaults are the *floor*, not a cap. The Agent tool accepts a per-dispatch `model` parameter that outranks frontmatter (per Claude Code's resolution order), so the orchestrator may override any dispatch when the task warrants it. Prefer to state the model explicitly on dispatches you are escalating or downgrading.
+
+**Escalate Sonnet → Opus when:**
+- The task involves complex methodology (causal-inference design, intricate multi-source joins, survey-weighted estimation).
+- A prior dispatch returned BLOCKED or failed and is being re-dispatched (give the retry more capability).
+- The work product feeds a high-stakes decision or a downstream verification gate.
+- The artifact under review cannot be executed and static review is the terminal quality gate — when there is no runtime check downstream, the reviewer's judgment *is* the gate and warrants the more capable model.
+- A search-agent dispatch is review-role or interpretive-synthesis work (adversarial reading of code or documents, generalizing conventions across sources) rather than mechanical lookup — the latter (structured lookup, reference-tracing) stays Sonnet.
+
+**Downgrade Opus → Sonnet when:**
+- Reviewing a small, mechanical script (risk-scaled review — a trivial diff does not need Opus).
+- The judgment work is trivially bounded.
+
+**Never downgrade the last line of defense.** Final verification (data-verifier at Stage 12) and plan verification (plan-checker at Stage 4.5) stay on Opus — do not cheap out on the terminal quality gates.
+
+**Ceiling rule.** Never dispatch a subagent on a *higher* tier than the current session model. A user who chose a cheaper session model did so deliberately (cost control); silently upgrading subagents defeats that choice. The orchestrator cannot reliably determine its own session model from context, so the `enforce-model-ceiling.sh` PreToolUse hook enforces this deterministically: if a dispatch would exceed the session tier, the hook denies it and its message names the session model. **Trust and follow the hook** — re-dispatch at the tier it states. (The hook is a fail-open cost guard, not a safety boundary: if it cannot detect the session model it allows the dispatch.)
+
+**Alternative providers.** Users on OpenRouter or other providers keep two-tier routing working by remapping the aliases via `ANTHROPIC_DEFAULT_OPUS_MODEL` / `ANTHROPIC_DEFAULT_SONNET_MODEL` (their models, same two-tier semantics) or by flattening to one model with `CLAUDE_CODE_SUBAGENT_MODEL`. These are set host-side in `environment_settings.txt`. When either is configured, the ceiling hook stands down (it cannot rank custom models). OpenAI GPT models are supported this way too — either through OpenRouter or through DAAF's provider shim — and the alias remaps behave identically (e.g. `ANTHROPIC_DEFAULT_OPUS_MODEL=openai/gpt-5.6-sol`, `ANTHROPIC_DEFAULT_SONNET_MODEL=openai/gpt-5.6-terra`), with the ceiling hook standing down the same way.
 
 ### Orchestrator Context Budget
 
@@ -575,6 +692,18 @@ When a subagent returns findings:
 ```
 
 If a write fails, retry once. If the retry also fails, stop and report the issue to the user — do not proceed with degraded findings.
+
+**Claim adjudication (applies across extraction and relay, steps 3-5):** For load-bearing claims in a return — especially negative capability claims ("X is unavailable/impossible/unsupported") and completion counts — verify the stated evidence is present (a quoted probe or command output). If it is absent, treat the claim as unverified inference: verify it directly, re-dispatch with an explicit evidence requirement, or carry it forward explicitly labeled as unverified. When relaying an unverified subagent claim to the user, mark its provenance (e.g., "the specialist reports, though I have not verified...") rather than passing it on with orchestrator authority attached.
+
+### Wave Barrier Discipline (Async Dispatch)
+
+Subagents dispatched via the Agent tool run in the background by default and return via completion notifications that may arrive one at a time. Under the older synchronous harness this barrier was enforced structurally — a dispatch blocked until its return arrived, so the orchestrator *could not* act on partial wave results. That enforcement is gone; the orchestrator now *can* act mid-wave, which is exactly the failure mode this norm prevents. Treat mid-wave notifications as **status-only**: do not make gate decisions, revise plans, finalize STATE.md conclusions, present user checkpoints, or begin synthesis until EVERY member of the dispatched wave has returned.
+
+- **Synthesize once, over the complete wave — never incrementally per return.** Holding all wave results together before deciding is what lets you genuinely reincorporate a later return rather than anchoring on the first one.
+- **Interim narration is fine; acting on partial results is not.** Telling the user "two of three specialists have reported back" is good communication; making the next gate decision before the third returns is not.
+- **An early return (context pressure) or a failed/skipped agent still counts as that member's completion.** Handle redelegation as part of whole-wave synthesis, not as an immediate mid-wave reaction — a failed member does not license acting on the wave before the rest arrive.
+
+This norm restates a formerly-structural guarantee as an explicit discipline. It applies to every mode that dispatches subagents in waves; the mode reference files may state it more briefly and point back here.
 
 ### Context Recovery
 

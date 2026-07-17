@@ -1,23 +1,27 @@
 # svy Estimation Reference
 
-svy v0.13.0 — syntax and library guidance only.
+svy v0.19.0 — syntax and library guidance only. Signatures and result schemas below were
+verified against the installed library (`/daaf/scripts/smoke_tests/smoke_svy_a.py`).
+Constructs not exercised by the smoke test are flagged **[unverified at 0.19.0]**.
 
 ---
 
 ## Contents
 
 1. [Prerequisites: Design and Sample Setup](#prerequisites-design-and-sample-setup)
-2. [Population Means](#population-means)
-3. [Population Totals](#population-totals)
-4. [Proportions](#proportions)
-5. [Ratios](#ratios)
-6. [Medians and Quantiles](#medians-and-quantiles)
-7. [Domain / Subpopulation Estimation](#domain--subpopulation-estimation)
-8. [Cross-Tabulations](#cross-tabulations)
-9. [Hypothesis Testing (Survey-Weighted t-Tests)](#hypothesis-testing-survey-weighted-t-tests)
-10. [Design Effects (DEFF)](#design-effects-deff)
-11. [Working with Polars DataFrames](#working-with-polars-dataframes)
-12. [Common Patterns and Pitfalls](#common-patterns-and-pitfalls)
+2. [The Result Object and Its Schema](#the-result-object-and-its-schema)
+3. [Population Means](#population-means)
+4. [Batched Multi-Variable Estimation](#batched-multi-variable-estimation)
+5. [Population Totals](#population-totals)
+6. [Proportions](#proportions)
+7. [Ratios](#ratios)
+8. [Medians and Quantiles](#medians-and-quantiles)
+9. [Domain / Subpopulation Estimation](#domain--subpopulation-estimation)
+10. [Filtering with where=](#filtering-with-where)
+11. [Cross-Tabulations and Hypothesis Tests](#cross-tabulations-and-hypothesis-tests)
+12. [Design Effects (DEFF)](#design-effects-deff)
+13. [Working with Polars DataFrames](#working-with-polars-dataframes)
+14. [Common Patterns and Pitfalls](#common-patterns-and-pitfalls)
 
 ---
 
@@ -30,10 +34,36 @@ import svy
 
 # --- Taylor linearization design (most common) ---
 design = svy.Design(stratum="sdmvstra", psu="sdmvpsu", wgt="wtmec2yr")
-sample = svy.Sample(data=data, design=design)
+sample = svy.Sample(data, design=design)
 ```
 
-For replicate weight designs, see `design-weights.md`. Once the `Sample` is created, estimation methods are identical regardless of the variance estimation method — the design object determines how SEs are computed.
+For replicate weight designs, see `design-weights.md`. Once the `Sample` is created, estimation methods are identical regardless of the variance estimation method — the design object determines how SEs are computed. To force replication variance on a sample carrying replicate weights, pass `method="replication"` (e.g., `sample.estimation.mean("income", method="replication")`).
+
+---
+
+## The Result Object and Its Schema
+
+Every scalar estimation call returns an **`Estimate`** object. Call `.to_polars()` to get a Polars DataFrame. The observed column schema is:
+
+```
+['est', 'se', 'lci', 'uci', 'cv']
+```
+
+| Column | Meaning |
+|--------|---------|
+| `est` | Point estimate |
+| `se` | Design-based standard error |
+| `lci` / `uci` | Lower / upper confidence-interval bound (95% by default; set `alpha=`) |
+| `cv` | Coefficient of variation (`se / est`) |
+
+```python
+res = sample.estimation.mean("income")
+df = res.to_polars()
+point = df.item(0, "est")     # extract the estimate
+se    = df.item(0, "se")
+```
+
+When a call groups (`by=`) or estimates a categorical proportion, the grouping/category column is **prepended** to this schema (e.g., `['stratum', 'est', 'se', 'lci', 'uci', 'cv']`), with one row per group/level. There is no `estimate`/`stderr` column — code that looks for those names (0.13.0-era) will not find the estimate.
 
 ---
 
@@ -42,47 +72,73 @@ For replicate weight designs, see `design-weights.md`. Once the `Sample` is crea
 ### Basic Mean
 
 ```python
-# Population mean of BMI with design-based SE
+# Population mean with design-based SE
 result = sample.estimation.mean("bmxbmi")
-print(result)
+print(result.to_polars())    # ['est','se','lci','uci','cv']
 ```
 
-The result includes: point estimate, standard error (SE), 95% confidence interval, and design effect (DEFF).
-
-### Multiple Variables
+### Full `mean()` Signature (observed)
 
 ```python
-# Call mean() once per variable — no multi-variable shorthand
-result_income = sample.estimation.mean("income")
-result_age = sample.estimation.mean("age")
+sample.estimation.mean(
+    y, *,
+    by=None,               # domain grouping column(s)
+    where=None,            # polars expression filter (see "Filtering with where=")
+    method=None,           # "replication" to force replicate variance
+    deff=False,            # request the design effect
+    fay_coef=None,         # Fay coefficient for BRR replication
+    as_factor=False,       # treat y as a factor
+    variance_center=None,  # "rep_mean" or "estimate" for replicate centering
+    alpha=0.05,            # 1 - confidence level (0.05 -> 95% CI)
+    drop_nulls=True,       # drop rows null in y (default)
+)
 ```
+
+`total`, `prop`, `ratio`, and `median` are used with the same core parameters (`by=`, `where=`, `alpha=`, `drop_nulls=`) — these four were confirmed in use (`by=`/`where=` were smoke-tested on these methods), but each method's full signature was not individually introspected, so verify additional parameters against the installed build. `prop` additionally takes `ci_method=` (below).
 
 ### Handling Missing Data
 
 ```python
-# Drop nulls (default behavior)
 result = sample.estimation.mean("bmxbmi", drop_nulls=True)
 ```
 
-svy uses Polars null handling. Rows with null values in the analysis variable are excluded from the estimate by default. The effective sample size after dropping nulls is reported.
+svy uses Polars null handling. Rows with null values in the analysis variable are excluded from the estimate by default. **Critical:** Dropping nulls changes the effective domain of estimation. If missingness is non-random (which it usually is in surveys), acknowledge this limitation in your analysis. Document it with an `# ASSUMES:` comment in research scripts.
 
-**Critical:** Dropping nulls changes the effective domain of estimation. If missingness is non-random (which it usually is in surveys), acknowledge this limitation in your analysis. Document it with an `# ASSUMES:` comment in research scripts.
+---
+
+## Batched Multi-Variable Estimation
+
+**New in 0.19.0:** `mean`, `total`, `prop`, `ratio`, and `median` accept a **list** of variables and estimate all of them in one call. The return is a **`list[Estimate]`** — one element per requested variable, **not** a single stacked frame. Iterate the list.
+
+```python
+# Batched means -> list of 2 Estimate objects (one per variable)
+results = sample.estimation.mean(["income", "age"])
+assert isinstance(results, list) and len(results) == 2
+for var, est in zip(["income", "age"], results):
+    row = est.to_polars()
+    print(f"{var}: {row.item(0, 'est'):.2f} (se {row.item(0, 'se'):.2f})")
+
+# Batched ratios: several numerators over one denominator -> list, one per numerator
+ratios = sample.estimation.ratio(["income", "visit_count"], "age")   # list len 2
+
+# Batched proportions -> list, one Estimate per variable
+props = sample.estimation.prop(["employed", "gender"])                # list len 2
+```
+
+> Do **not** expect a `variable` column identifying which frame is which — the correspondence is positional (element `i` is the `i`-th variable you passed). A single-variable call (`mean("income")`) still returns a single `Estimate`, not a length-1 list.
 
 ---
 
 ## Population Totals
 
-### Basic Total
-
 ```python
-# Estimated population total
 result = sample.estimation.total("income")
-print(result)
+print(result.to_polars())    # ['est','se','lci','uci','cv']
 ```
 
 Totals estimate the sum of a variable across the entire target population, not just the sample. The SE reflects the uncertainty of this population-level estimate.
 
-### When to Use Totals vs. Means
+### When to Use Totals vs. Means vs. Proportions
 
 - **Totals** for aggregate quantities: total enrollment, total expenditure, total population count
 - **Means** for per-unit averages: mean income, mean BMI, mean test score
@@ -95,21 +151,21 @@ Totals estimate the sum of a variable across the entire target population, not j
 ### Basic Proportion
 
 ```python
-# Proportion of a binary or categorical variable
 result = sample.estimation.prop("employed")
-print(result)
+print(result.to_polars())
 ```
 
-The variable should contain categorical or binary values. svy computes the proportion in each category with design-based SEs.
+For a categorical variable, svy returns one row per level (the level column is prepended to the `est/se/lci/uci/cv` schema), each with its design-based SE and CI.
 
-### Multi-Category Proportions
+### Confidence-Interval Method
+
+`prop()` takes a `ci_method=` argument controlling the interval construction (observed default `"logit"`):
 
 ```python
-# Proportions across all categories of a variable
-result = sample.estimation.prop("education_level")
+sample.estimation.prop("employed", ci_method="wilson")
 ```
 
-This returns the estimated population proportion for each level of the variable (e.g., "High School": 0.28, "College": 0.35, "Graduate": 0.12, etc.) with SEs and CIs for each.
+Observed options: `"logit"` (default), `"wilson"`, `"beta"`, `"korn-graubard"`. Use `"korn-graubard"` or `"beta"` for exact intervals on small domains or proportions near 0/1, where the logit interval degrades.
 
 ---
 
@@ -118,12 +174,12 @@ This returns the estimated population proportion for each level of the variable 
 ### Basic Ratio
 
 ```python
-# Ratio estimation: y is numerator, x is denominator
+# y is numerator, x is denominator
 result = sample.estimation.ratio(y="total_expenditure", x="household_size")
-print(result)
+print(result.to_polars())
 ```
 
-Ratio estimation is used when the quantity of interest is a ratio of two survey variables (e.g., per-capita expenditure = total expenditure / household size). The SE accounts for the covariance between numerator and denominator.
+Ratio estimation is used when the quantity of interest is a ratio of two survey variables (e.g., per-capita expenditure). The SE accounts for the covariance between numerator and denominator.
 
 ### Ratio vs. Mean of a Derived Variable
 
@@ -142,15 +198,12 @@ sample.estimation.ratio(y="expenditure", x="hh_size")  # <-- correct SEs
 
 ## Medians and Quantiles
 
-### Median
-
 ```python
-# Population median with design-based SE
 result = sample.estimation.median("income")
-print(result)
+print(result.to_polars())    # ['est','se','lci','uci','cv']
 ```
 
-Median estimation for survey data uses weighted quantile computation with linearization-based or replicate-weight-based variance estimation. SEs for medians are typically larger than for means.
+Median estimation for survey data uses weighted quantile computation with linearization-based or replicate-weight-based variance estimation. SEs for medians are typically larger than for means, and medians are a case where replicate weights are often preferred over Taylor.
 
 ---
 
@@ -158,18 +211,14 @@ Median estimation for survey data uses weighted quantile computation with linear
 
 ### The `by` Parameter
 
-Domain estimation computes statistics for subgroups of the population while preserving the full survey design structure.
+Domain estimation computes statistics for subgroups of the population while preserving the full survey design structure. The result has one row per group, with the group column prepended to the standard schema.
 
 ```python
-# Mean BMI by gender
 result = sample.estimation.mean("bmxbmi", by="riagendr")
-print(result)
+print(result.to_polars())    # ['riagendr','est','se','lci','uci','cv'], one row per group
 ```
 
-```python
-# Mean income by education level
-result = sample.estimation.mean("income", by="education")
-```
+> **Domain estimation is cross-validated against R (2026-07-15).** Domain means and SEs match R `svyby(..., svymean)` to machine precision (≤7e-16 rel), and domain confidence intervals use the **t multiplier on the full design df** — matching R's t-based CIs exactly. (Note: R's `confint.svyby` *defaults* to a normal z multiplier; svy's t-based choice is the more defensible one, not a discrepancy. Evidence: `/daaf/scripts/scratch/xval_svy_r_05_compare.py`.)
 
 ```python
 # Proportions by region
@@ -183,7 +232,7 @@ result = sample.estimation.prop("employed", by="region")
 ```python
 # WRONG: filtering before estimation
 # females_only = data.filter(pl.col("gender") == "Female")
-# female_sample = svy.Sample(data=females_only, design=design)
+# female_sample = svy.Sample(females_only, design=design)
 # female_sample.estimation.mean("income")  # <-- WRONG SEs
 
 # CORRECT: use domain estimation
@@ -195,59 +244,91 @@ Pre-filtering discards PSUs and strata from the design, which can:
 2. Create singleton PSU problems (strata with only one PSU after filtering)
 3. Change the degrees of freedom for inference
 
-The `by` parameter handles domain estimation correctly by keeping the full design structure and computing conditional estimates.
-
 ### Multiple Grouping Variables
 
 ```python
-# Multiple grouping variables passed as a tuple
 result = sample.estimation.mean("income", by=("gender", "education"))
 ```
 
 ---
 
-## Cross-Tabulations
+## Filtering with where=
 
-### Survey-Weighted Contingency Tables
-
-```python
-# Cross-tabulation via prop() with by=
-result = sample.estimation.prop("employment_status", by="education_level")
-```
-
-This produces a survey-weighted cross-tabulation showing the estimated population proportion in each cell, with design-based SEs. Equivalent to R's `svytable()` or `svyby(~var, ~by_var, design, svymean)`.
-
-For a full contingency table with chi-square test, use the `categorical.tabulate()` method:
+The `where=` parameter restricts an estimate to a subpopulation **without** breaking the design (the correct way to estimate on a subset). It requires a **polars expression** — a string predicate raises `TypeError: Unsupported expression type: 'str'`.
 
 ```python
-# Formal cross-tabulation with test statistics
-table = sample.categorical.tabulate(rowvar="employment_status", colvar="education_level")
+import polars as pl
+
+# CORRECT: polars expression
+sample.estimation.mean("income", where=pl.col("gender") == "Male")
+
+# WRONG: string predicate -> TypeError
+# sample.estimation.mean("income", where="gender == 'Male'")
 ```
+
+`where=` and `by=` may reference the **same** column (fixed in 0.19.0, issue #9) — e.g., estimate stratum-domain means restricted to the first three strata:
+
+```python
+sample.estimation.mean("income", by="stratum", where=pl.col("stratum") <= 3)
+# -> 3 domain rows (strata 1-3)
+```
+
+`where=` is the design-safe equivalent of subsetting: prefer it over building a filtered `Sample`.
 
 ---
 
-## Hypothesis Testing (Survey-Weighted t-Tests)
+## Cross-Tabulations and Hypothesis Tests
 
-### Comparing Domain Means
+**`tabulate()` verified against R at 0.19.0 (2026-07-15).** `sample.categorical` is a `Categorical` object exposing exactly three public methods — `tabulate()`, `ranktest()`, and `ttest()`. There is **no** `chisq`/`crosstab`/`table` method (those names raise `AttributeError`). Of the three, `tabulate()` is cross-validated to machine precision against R; `ranktest()`/`ttest()` are signature-introspected but **not** yet cross-validated — spot-check those against R (`svyranktest`, `svyttest`) before publishing.
+
+### Design-Based Cross-Tabulation with `tabulate()` (verified)
+
+Observed signature: `tabulate(rowvar, colvar=None, *, units='proportion'|'percent'|'count', count_total=None, alpha=0.05, drop_nulls=False, use_labels=None) -> Table`.
 
 ```python
-# Domain means via the by= parameter
-result = sample.estimation.mean("income", by="gender")
-
-# Formal two-group t-test via the categorical accessor
-ttest_result = sample.categorical.ttest(y="income", group="gender")
-print(ttest_result)
+tab = sample.categorical.tabulate(
+    "employment_status",           # rowvar (positional)
+    "education_level",             # colvar (positional; omit for a one-way table)
+    units="proportion",            # "proportion" | "percent" | "count"
+    alpha=0.05,
+)
+cells = tab.to_polars()
+# schema: ['employment_status','education_level','est','se','lci','uci','table_type','alpha']
 ```
 
-For formal hypothesis testing of differences between domains, svy computes design-adjusted t-statistics that account for the complex sampling structure via `sample.categorical.ttest()`. The `group` parameter specifies the binary grouping variable. The degrees of freedom are based on the number of PSUs minus the number of strata (not the sample size), which can substantially affect p-values for small numbers of clusters.
+Cell proportions and SEs match R `svymean`/`svytable` to machine precision (≤5e-16 rel). The design-based independence test lives on **`Table.stats`**, populated **only for two-way** tables (`.stats is None` for a one-way table):
 
-### Key Difference from Unweighted Tests
+```python
+tab.stats
+# TableStats(chisq=ChiSquare(df=1, value=11.327947, p_value=0.0026900),
+#            f=FDist(df_num=1.0, df_den=20.0, value=9.006655, p_value=0.0070583))
+```
 
-Standard t-tests assume simple random sampling with known, equal variance. Survey-weighted tests:
-- Use the survey weights in the point estimate
-- Use the design-based variance (accounting for stratification and clustering)
-- Use design-based degrees of freedom (typically much smaller than n - 1)
-- Produce wider confidence intervals when there is substantial clustering
+- `chisq` = Rao-Scott–adjusted Pearson X² (matches R `svychisq(..., statistic="Chisq")`).
+- `f` = Rao-Scott **F**, which is `svychisq`'s **default** statistic (matches R `svychisq(..., statistic="F")`), with denominator df = # PSUs − # strata.
+
+Both statistics and their p-values are verified equal to R to machine precision (≤3e-15 rel). Evidence: `/daaf/scripts/scratch/xval_svy_r_03_py_svy.py`, `xval_svy_r_04_r_survey.R`, `xval_svy_r_05_compare.py`. *Scope: verified on one synthetic 2×2 design (24 PSUs); multi-level categorical predictors were not cross-validated.*
+
+### Cell Estimates via `prop()` with `by=`
+
+An alternative that yields only cell proportions and SEs (no formal test) uses `prop()` with `by=`:
+
+```python
+# Estimated population proportion of employment_status within each education level
+result = sample.estimation.prop("employment_status", by="education_level")
+```
+
+This is equivalent to R's `svyby(~var, ~by_var, design, svymean)`. Use `tabulate()` when you need the design-based independence test (Rao-Scott χ²/F); use `prop(..., by=)` when you only need cell estimates and SEs.
+
+### `ranktest()` and `ttest()` (introspected, not yet cross-validated)
+
+```python
+# Signatures introspected on the installed build; NOT cross-validated against R — spot-check first
+sample.categorical.ranktest(y, group=..., method="kruskal-wallis")  # "kruskal-wallis"|"vander-waerden"|"median"
+sample.categorical.ttest(y, mean_h0=0, group=None, y_pair=None, by=None, where=None)
+```
+
+Survey-weighted tests differ from unweighted tests: they use the survey weights in the point estimate, the design-based variance (stratification + clustering), and design-based degrees of freedom (roughly # PSUs − # strata, typically far smaller than n − 1), producing wider intervals under clustering. Cross-validate `ranktest`/`ttest` against R (`svyranktest`, `svyttest`) before publishing results that lean on them.
 
 ---
 
@@ -264,11 +345,9 @@ DEFF = Var_complex / Var_SRS
 - **DEFF < 1.0**: The complex design decreases variance (common with stratified designs)
 - **Typical range**: 1.5 to 5.0 for clustered household surveys
 
-DEFF values are included in svy estimation output. Report them alongside estimates — they communicate how much the survey design affects precision.
+Request the design effect by passing `deff=True` to an estimation call (e.g., `sample.estimation.mean("bmxbmi", deff=True)`). The `Sample` object also exposes a `deff_w` attribute for the weighting design effect.
 
 ### Effective Sample Size
-
-The effective sample size is:
 
 ```
 n_eff = n / DEFF
@@ -280,7 +359,7 @@ A survey of 10,000 respondents with DEFF = 4.0 has the statistical precision of 
 
 ## Working with Polars DataFrames
 
-svy uses Polars DataFrames natively. Data loaded via `svy.io` methods returns Polars DataFrames. If you have data in other formats:
+svy uses Polars DataFrames natively. Data loaded via `svy.io` readers returns Polars DataFrames. If you have data in other formats:
 
 ### From Parquet (Common in DAAF Pipelines)
 
@@ -288,12 +367,9 @@ svy uses Polars DataFrames natively. Data loaded via `svy.io` methods returns Po
 import polars as pl
 import svy
 
-# Load data as Polars DataFrame
 data = pl.read_parquet("data/raw/nhanes_demo.parquet")
-
-# Proceed with design specification
 design = svy.Design(stratum="sdmvstra", psu="sdmvpsu", wgt="wtmec2yr")
-sample = svy.Sample(data=data, design=design)
+sample = svy.Sample(data, design=design)
 ```
 
 ### From Pandas
@@ -301,58 +377,23 @@ sample = svy.Sample(data=data, design=design)
 ```python
 import pandas as pd
 import polars as pl
-import svy
 
-# Convert pandas to Polars
-pd_data = pd.read_csv("survey_data.csv")
-data = pl.from_pandas(pd_data)
-
-# Proceed with svy
-design = svy.Design(stratum="stratum", psu="psu", wgt="weight")
-sample = svy.Sample(data=data, design=design)
+data = pl.from_pandas(pd.read_csv("survey_data.csv"))
 ```
 
 ### Data Wrangling Within svy
 
-svy includes a wrangling module for common survey data preparation tasks. These operate on the Sample object directly, preserving the design linkage.
+> **[unverified at 0.19.0]** The `wrangling` accessor (`clean_names`, `recode`, `categorize`, `mutate`, etc.) and the `svy.core.expr.col` helper documented for 0.13.0 were not exercised or confirmed present in the 0.19.0 verification pass. For any non-trivial data preparation, do the work in **Polars directly** (a fully supported path) before constructing the `Sample`, rather than relying on the wrangling accessor:
 
 ```python
-from svy import CaseStyle, LetterCase
-
-# Clean column names
-sample = sample.wrangling.clean_names(
-    case_style=CaseStyle.SNAKE,
-    letter_case=LetterCase.LOWER
+import polars as pl
+data = data.with_columns(
+    (pl.col("age") ** 2).alias("age_sq"),
 )
-
-# Recode categorical variables
-sample = sample.wrangling.recode(
-    "education",
-    {"High School": ["HS", "high_school"],
-     "College": ["BA", "BS", "college"]}
-)
-
-# Bin continuous variables into categories
-sample = sample.wrangling.categorize(
-    "age",
-    bins=[0, 18, 35, 65, 100],
-    labels=["0-17", "18-34", "35-64", "65+"]
-)
-
-# Cap extreme values (winsorize)
-sample = sample.wrangling.bottom_and_top_code(
-    {"income": (0, 200000)}
-)
-
-# Create derived variables
-from svy.core.expr import col
-sample = sample.wrangling.mutate({
-    "income_thousands": col("income") / 1000,
-    "age_squared": col("age") ** 2
-})
+sample = svy.Sample(data, design=design)
 ```
 
-**Note:** For complex data preparation (joins, reshaping, filtering), use the polars skill directly, then pass the prepared Polars DataFrame to `svy.Sample`. The wrangling module is for convenience on simple transformations.
+If you do want the wrangling accessor, confirm it first: `[m for m in dir(sample) if "wrangl" in m.lower()]`.
 
 ---
 
@@ -375,21 +416,22 @@ data = pl.read_parquet(DATA_PATH)
 # REASONING: sdmvstra = pseudo-strata, sdmvpsu = pseudo-PSU, wtmec2yr = 2-year MEC exam weight
 # ASSUMES: Analysis population is the MEC-examined subsample
 design = svy.Design(stratum="sdmvstra", psu="sdmvpsu", wgt="wtmec2yr")
-sample = svy.Sample(data=data, design=design)
+sample = svy.Sample(data, design=design)
 
 # --- Estimate ---
-mean_bmi = sample.estimation.mean("bmxbmi")
-print(mean_bmi)
+mean_bmi = sample.estimation.mean("bmxbmi").to_polars()
+print(mean_bmi)                                   # ['est','se','lci','uci','cv']
 
-mean_bmi_by_gender = sample.estimation.mean("bmxbmi", by="riagendr")
-print(mean_bmi_by_gender)
+mean_bmi_by_gender = sample.estimation.mean("bmxbmi", by="riagendr").to_polars()
+print(mean_bmi_by_gender)                          # one row per gender
 
-prop_obese = sample.estimation.prop("obese_flag")
+prop_obese = sample.estimation.prop("obese_flag").to_polars()
 print(prop_obese)
 
 # --- Validate ---
 print(f"Sample size: {data.shape[0]}")
 assert data.shape[0] > 0, "No data loaded"
+assert mean_bmi.item(0, "se") > 0, "SE must be positive/finite"
 ```
 
 ### Pitfall: Using Unweighted Statistics
@@ -399,6 +441,14 @@ Never use `pl.col("var").mean()` or pandas `.mean()` on survey data. Unweighted 
 ### Pitfall: Ignoring Weight Variable Selection
 
 Surveys often provide multiple weight variables for different analysis populations (e.g., NHANES has `wtint2yr` for interview data and `wtmec2yr` for examination data). Using the wrong weight produces biased estimates. Always consult the survey documentation to select the appropriate weight.
+
+### Pitfall: Expecting a Stacked Frame from Batched Calls
+
+A batched call (`mean(["a", "b"])`) returns a `list[Estimate]`, not one frame. Iterate the list; the correspondence to your input variables is positional.
+
+### Pitfall: Passing a String to where=
+
+`where=` requires a polars expression (`pl.col(...)`). A string predicate raises `TypeError`. This is the design-safe way to subset — do not build a filtered `Sample` for domain estimates.
 
 ### Pitfall: Treating Survey SEs as Cluster-Robust SEs
 

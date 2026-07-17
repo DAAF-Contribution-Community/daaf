@@ -79,6 +79,16 @@ df.filter(pl.col("race") == 2)  # Correct
 # df.filter(pl.col("race") == "BL")  # Will return 0 rows!
 ```
 
+```r
+library(dplyr)
+
+# Filter to Black students (use integer code, NOT string)
+df |> filter(race == 2)  # Correct
+
+# WRONG - string codes don't exist in Portal data
+# df |> filter(race == "BL")  # Will return 0 rows!
+```
+
 ---
 
 ## Sex Categories
@@ -113,6 +123,16 @@ df.filter(pl.col("sex") == 2)  # Correct
 
 # WRONG - string codes don't exist in Portal data
 # df.filter(pl.col("sex") == "F")  # Will return 0 rows!
+```
+
+```r
+library(dplyr)
+
+# Filter to female students
+df |> filter(sex == 2)  # Correct
+
+# WRONG - string codes don't exist in Portal data
+# df |> filter(sex == "F")  # Will return 0 rows!
 ```
 
 ---
@@ -197,6 +217,13 @@ These are string codes from OCR source documentation (not used in Portal data; t
 ```python
 # Filter to LEP students only (excludes totals)
 df.filter(pl.col("lep") == 1)  # Correct
+```
+
+```r
+library(dplyr)
+
+# Filter to LEP students only (excludes totals)
+df |> filter(lep == 1)  # Correct
 ```
 
 ---
@@ -393,6 +420,24 @@ def exclude_totals_and_missing(df, categorical_cols):
     return df
 ```
 
+```r
+library(dplyr)
+
+# Flag suppressed values separately (do this BEFORE recoding codes to NA)
+df <- df |> mutate(oss_suppressed = students_susp_out_sch_single == -3)
+
+# Handle CRDC special codes appropriately: convert coded values (< 0) to NA
+value_columns <- c("students_susp_out_sch_single", "enrollment_crdc")
+df <- df |> mutate(
+  across(all_of(value_columns), \(x) if_else(x < 0, NA, x))
+)
+
+# Filter out total rows (99) and missing/suppressed values (< 0)
+# to get individual subgroup rows only
+categorical_cols <- c("race", "sex")
+df <- df |> filter(if_all(all_of(categorical_cols), \(x) x > 0 & x < 99))
+```
+
 ### Suppression Rules
 
 Small cells are suppressed to protect student privacy:
@@ -460,6 +505,18 @@ black_male_oss = df.filter(
     (pl.col("race") == 2) &    # Black
     (pl.col("sex") == 1)        # Male
 ).select("students_susp_out_sch_single")
+```
+
+```r
+library(dplyr)
+
+# Cross-tab: Black male students
+black_male_oss <- df |>
+  filter(
+    race == 2,  # Black
+    sex == 1    # Male
+  ) |>
+  select(students_susp_out_sch_single)
 ```
 
 > **Note on OCR raw files:** Original OCR data uses compound variable names like `oss_bl_male` or `oss_bl_idea`. The Portal flattens these into a row-based structure with integer-coded categorical columns (`race`, `sex`, `disability`).

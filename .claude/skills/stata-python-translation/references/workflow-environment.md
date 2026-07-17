@@ -12,7 +12,7 @@ working within DAAF, framed as "here is what you are used to, here is the
 equivalent, and here is why it is different."
 
 > **Versions referenced:**
-> Python: marimo 0.19.11, Python 3.12, polars 1.38.1
+> Python: marimo 0.19.11, Python 3.12, polars 1.39.3
 > Stata: Stata 18
 > See SKILL.md Section: Library Versions for the complete version table.
 

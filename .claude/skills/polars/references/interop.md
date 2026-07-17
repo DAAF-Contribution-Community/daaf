@@ -235,7 +235,9 @@ df.to_pandas().to_sql("table_name", engine, if_exists="replace")
 ### ConnectorX (Recommended for Speed)
 
 ```python
-# Requires: pip install connectorx
+# connectorx is NOT pre-installed in DAAF and runtime installs are blocked
+# (see CLAUDE.md § Runtime Package Installation) — to use it, escalate to add
+# it to the Dockerfile user-additions block and rebuild.
 
 # Direct connection string
 df = pl.read_database_uri(
@@ -250,8 +252,9 @@ df = pl.read_database_uri(
 ### ADBC (Arrow Database Connectivity)
 
 ```python
-# Modern, high-performance option
-# pip install adbc-driver-postgresql
+# Modern, high-performance option. adbc-driver-postgresql is NOT pre-installed
+# in DAAF and runtime installs are blocked (see CLAUDE.md § Runtime Package
+# Installation) — escalate to add it to the Dockerfile and rebuild.
 
 import adbc_driver_postgresql.dbapi as pg_dbapi
 

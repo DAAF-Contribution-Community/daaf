@@ -151,6 +151,31 @@ black_oss_rate = discipline_rate_by_group(
 )
 ```
 
+```r
+library(dplyr)
+
+# Calculate discipline rate per 100 (or 1000) students.
+# Example: OSS rate for Black students (race=2 in Portal encoding)
+discipline_var <- "students_susp_out_sch_single"
+enrollment_var <- "enrollment_crdc"
+per <- 100  # rate multiplier (100 or 1000)
+
+# Subgroup of interest: Black students
+df_group <- df |> filter(race == 2)
+
+# Filter out coded missing values (-1/-2/-3)
+df_valid <- df_group |> filter(.data[[discipline_var]] >= 0)
+
+total_disciplined <- sum(df_valid[[discipline_var]], na.rm = TRUE)
+total_enrolled <- sum(df_valid[[enrollment_var]], na.rm = TRUE)
+
+black_oss_rate <- if (total_enrolled > 0) {
+  total_disciplined / total_enrolled * per
+} else {
+  NA_real_
+}
+```
+
 ### Important Caveats
 
 1. **Definition of "suspension" varies** - Length thresholds differ by district
@@ -370,6 +395,41 @@ def course_access_analysis(df):
     )
 
     return school_df
+```
+
+```r
+library(dplyr)
+library(tidyr)
+
+# Example: AP course access disparity
+# Analyze whether schools serving more minority students
+# are less likely to offer advanced courses.
+# Uses Portal integer codes: race=2 (Black), race=3 (Hispanic)
+
+# Get enrollment totals by race for each school
+# Note: race=99 is total enrollment in Portal data
+totals <- df |> filter(race == 99) |> select(ncessch, enrollment_crdc)
+black <- df |> filter(race == 2) |> select(ncessch, enrollment_black = enrollment_crdc)
+hispanic <- df |> filter(race == 3) |> select(ncessch, enrollment_hispanic = enrollment_crdc)
+
+school_df <- totals |>
+  left_join(black, by = "ncessch") |>
+  left_join(hispanic, by = "ncessch")
+
+school_df <- school_df |> mutate(
+  pct_minority = (replace_na(enrollment_black, 0) + replace_na(enrollment_hispanic, 0)) /
+    enrollment_crdc
+)
+
+# Group by minority percentage quartile
+school_df <- school_df |> mutate(
+  minority_quartile = case_when(
+    pct_minority <= 0.25 ~ "0-25%",
+    pct_minority <= 0.50 ~ "25-50%",
+    pct_minority <= 0.75 ~ "50-75%",
+    .default = "75-100%"
+  )
+)
 ```
 
 ---

@@ -1,7 +1,7 @@
 ---
 name: plotly
 description: >-
-  Plotly interactive visualization. Express and Graph Objects: scatter, line, bar, heatmap, 3D, geographic charts; subplots; styling; export. Use when interactivity (hover/zoom) is needed. For static figures use plotnine; for GIS use geopandas.
+  Plotly interactive visualization. Express and Graph Objects: scatter, line, bar, heatmap, 3D, geographic charts; subplots; styling; export. Use when interactivity (hover/zoom) is needed. For static figures use plotnine; for GIS use geopandas. R equivalent: plotly-r (use when execution language is R).
 metadata:
   audience: research-coders
   domain: python-library
@@ -35,6 +35,8 @@ Plotly is an interactive visualization library for Python:
 | `styling.md` | Templates, colors, layout | Customizing appearance |
 | `export.md` | HTML, images, JSON | Saving and sharing |
 | `gotchas.md` | Common errors, best practices | Debugging |
+
+**The reference-file routing in this skill applies to advisory and brainstorming turns as much as implementation.** Recommending an approach, reviewing a plan, or answering a question that touches a routed topic calls for reading the routed reference file just as much as writing code does — the reference files carry curated caveats and environment-specific constraints that this overview and general knowledge lack.
 
 ## Quick Decision Trees
 

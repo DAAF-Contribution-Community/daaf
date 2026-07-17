@@ -2,6 +2,8 @@
 
 Stages 11, 12. Cross-phase orchestration guidance (invocation templates, QA protocols, context requirements) is in `full-pipeline-mode.md`.
 
+> **Async dispatch note.** This phase dispatches single agents sequentially (report-writer for Stage 11, then data-verifier for Stage 12), not parallel waves. Under async dispatch, each returns via a completion notification rather than a synchronous tool return. Do not begin Stage 12 verification, evaluate a stage gate, or present the final deliverable to the user until the current dispatch's return has arrived and been fully processed.
+
 ---
 
 ## Stage 11: Report Generation
@@ -14,7 +16,7 @@ Stages 11, 12. Cross-phase orchestration guidance (invocation templates, QA prot
 | Input | Source | Purpose |
 |-------|--------|---------|
 | Plan.md | Stage 4 | Research question, methodology, research outcomes, risk register (frozen after Stage 4.5) |
-| Marimo notebook (.py) | Stage 9 | Complete technical record: all scripts + execution logs |
+| Notebook — Marimo (.py) or Quarto (.qmd) | Stage 9 | Complete technical record: all scripts + execution logs |
 | STATE.md | Maintained throughout | Checkpoint statuses, key decisions, blockers, runtime risks, QA findings summary, final review log |
 | LEARNINGS.md | Maintained throughout | Data quality insights, methodology lessons |
 | Stage 10 QA summary | Stage 10 | Aggregated QA findings (WARNINGs, resolved BLOCKERs) |
@@ -80,7 +82,8 @@ Agent({
 
     **AI DISCLOSURE METADATA (from STATE.md Session Metadata):**
     - DAAF Version: {daaf_commit_hash}
-    - Model ID: {model_id}
+    - Session Model ID: {session_model_id}
+    - Subagent Model Tiers: {subagent_model_tiers}
     - Session Date(s): {session_dates}
 
     **Target Audience:** {target_audience} (from Plan.md; if non-technical, include instruction to load science-communication skill)
@@ -122,7 +125,7 @@ Before invoking report-writer, verify:
 - [ ] Report filename specified (following naming convention)
 - [ ] Project path specified (absolute)
 - [ ] DAAF commit hash provided (from STATE.md Session Metadata)
-- [ ] Model ID provided (from STATE.md Session Metadata)
+- [ ] Session model ID and subagent model tiers provided (from STATE.md Session Metadata) — so report-writer can populate the Report's session + specialist model rows
 - [ ] Session logs collected into `logs/` (collect_session_logs.sh run)
 - [ ] Target audience specified (from Plan.md; if non-technical, include `science-communication` skill loading instruction)
 
@@ -237,7 +240,7 @@ These files must exist in the project folder:
 |----------|------|---------|--------------|
 | Plan document | `[project]/YYYY-MM-DD_[Title]_Plan.md` | [ ] | [ ] |
 | Plan tasks | `[project]/YYYY-MM-DD_[Title]_Plan_Tasks.md` | [ ] | [ ] |
-| Marimo notebook | `[project]/YYYY-MM-DD_[Title].py` | [ ] | [ ] |
+| Notebook (Marimo `.py` or Quarto `.qmd`) | `[project]/YYYY-MM-DD_[Title].py` (Python) or `.qmd` (R) | [ ] | [ ] |
 | Stakeholder report | `[project]/YYYY-MM-DD_[Title]_Report.md` | [ ] | [ ] |
 | Lessons learned | `[project]/LEARNINGS.md` | [ ] | [ ] |
 | Raw data (parquet) | `[project]/data/raw/*.parquet` | [ ] | [ ] |
@@ -348,7 +351,7 @@ Execute verification in this order:
    └─ Check checkpoint statuses in STATE.md
 
 5. EXECUTION CHECK
-   └─ Load notebook: marimo run [notebook].py --host 0.0.0.0 --port 2718 --headless
+   └─ Load notebook: `marimo run [notebook].py --host 0.0.0.0 --port 2718 --headless` (Python) or `quarto render [notebook].qmd` (R)
 ```
 
 ---
@@ -386,7 +389,7 @@ In addition to goal-backward verification, complete these traditional checks:
 | | Coded values handled | [ ] |
 | | Suppression documented | [ ] |
 | **Documentation** | Plan complete | [ ] |
-| | Notebook documented | [ ] |
+| | Notebook documented (Marimo or Quarto) | [ ] |
 | | Report complete | [ ] |
 | | Citations included | [ ] |
 | | LEARNINGS.md created | [ ] |
@@ -466,7 +469,7 @@ After passing Final Review, deliver to user:
 
 **Deliverables:**
 - Plan: `research/[folder]/[Plan file]`
-- Notebook: `research/[folder]/[Notebook file]`
+- Notebook: `research/[folder]/[Notebook file]` (Marimo `.py` for Python, Quarto `.qmd` for R)
 - Report: `research/[folder]/[Report file]`
 - Data: `research/[folder]/data/`
 - Figures: `research/[folder]/output/figures/`

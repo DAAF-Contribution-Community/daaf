@@ -25,7 +25,7 @@ Discover available education data from the Urban Institute Education Data Portal
 - **Coverage varies by source**: Some sources are fully mirrored; others are partially mirrored with only a subset of variables or datasets available. See individual `education-data-source-*` skills for source-specific coverage details
 
 > **Skill Provenance Note:** Each `*-data-source-*` skill includes
-> `provenance.skill_last_updated` in its frontmatter. When exploring data
+> a `skill-last-updated` key in its frontmatter `metadata:` block. When exploring data
 > sources during Stage 2, note the provenance dates of any skills you
 > reference — if more than a few months old, flag this in your findings
 > so the orchestrator can consider re-verifying with data-ingest.
@@ -331,6 +331,14 @@ response = requests.get(
 )
 data = response.json()
 print("Actual columns:", list(data['results'][0].keys()))
+```
+```r
+# Test query to verify actual column names
+library(httr2)
+resp <- request("https://educationdata.urban.org/api/v1/college-university/ipeds/directory/2023/") |>
+  req_perform()
+data <- resp_body_json(resp)
+cat("Actual columns:", paste(names(data$results[[1]]), collapse = ", "), "\n")
 ```
 
 **Known discrepancies:**

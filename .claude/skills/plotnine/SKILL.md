@@ -1,7 +1,7 @@
 ---
 name: plotnine
 description: >-
-  plotnine static visualization (ggplot2 syntax for Python). Geoms, aesthetics, scales, coordinates, facets, themes. Use for static publication-quality figures with grammar-of-graphics syntax. For interactive charts use plotly; for maps use geopandas.
+  plotnine static visualization (ggplot2 syntax for Python). Geoms, aesthetics, scales, coordinates, facets, themes. Use for static publication-quality figures with grammar-of-graphics syntax. For interactive charts use plotly; for maps use geopandas. R equivalent: ggplot2 (use when execution language is R).
 metadata:
   audience: research-coders
   domain: python-library
@@ -35,6 +35,8 @@ plotnine is a data visualization library based on the **grammar of graphics**:
 | `scales-coords.md` | Scales, coordinates, positions | Axis/color control |
 | `facets-themes.md` | Multi-panel plots and styling | Layout and themes |
 | `gotchas.md` | Common errors and best practices | Debugging |
+
+**The reference-file routing in this skill applies to advisory and brainstorming turns as much as implementation.** Recommending an approach, reviewing a plan, or answering a question that touches a routed topic calls for reading the routed reference file just as much as writing code does — the reference files carry curated caveats and environment-specific constraints that this overview and general knowledge lack.
 
 ## Quick Decision Trees
 

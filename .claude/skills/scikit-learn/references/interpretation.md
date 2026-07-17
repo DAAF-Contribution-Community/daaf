@@ -253,7 +253,7 @@ These caveats apply to ALL interpretation methods above. For full methodology tr
 
 ## XGBoost and LightGBM Integration
 
-TreeExplainer is optimized for native tree model formats. LightGBM is available in the Dockerfile; XGBoost is an optional install.
+TreeExplainer is optimized for native tree model formats. LightGBM is available in the Dockerfile; XGBoost is not pre-installed (runtime installs are blocked — see the note below).
 
 ### LightGBM (Available in Dockerfile)
 
@@ -270,10 +270,12 @@ explainer = shap.TreeExplainer(model)
 shap_values = explainer(X_test)
 ```
 
-### XGBoost (Optional Install)
+### XGBoost (Not Pre-Installed)
 
 ```python
-# Install: uv pip install --system --no-deps xgboost
+# XGBoost is not pre-installed and runtime installs are blocked (see CLAUDE.md
+# § Runtime Package Installation); use LightGBM above, or escalate to the user to
+# add xgboost to the Dockerfile (user additions block) and rebuild before use.
 import xgboost as xgb
 import shap
 
