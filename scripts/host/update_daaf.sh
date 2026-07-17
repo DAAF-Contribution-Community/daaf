@@ -337,6 +337,12 @@ handle_conflict() {
             echo "  exit"
         fi
         echo ""
+        echo "Then re-run the updater from your host terminal:"
+        echo "  bash update_daaf.sh"
+        echo "It picks up where it left off -- restoring any set-aside changes and"
+        echo "finishing the remaining steps (host-script sync and rebuild check)"
+        echo "automatically."
+        echo ""
         echo "To undo the update instead (run from your host terminal):"
         echo "  docker compose exec daaf-docker git -C /daaf ${abort_cmd}"
         echo "  docker compose exec daaf-docker git -C /daaf reset --hard ${BACKUP_BRANCH}"
@@ -915,6 +921,11 @@ finish_update() {
     # can persist the same way -- otherwise a re-run of `DAAF_BRANCH=x update`
     # while already current would never save the choice.
     persist_branch_choice
+
+    # Single marker-cleanup chokepoint: every successful completion clears the
+    # interrupted-update resume marker so a subsequent run does not mistake this
+    # (now-finished) update for one still needing resume finalization.
+    clear_resume_marker
 }
 
 # --- Settings-File Key Upsert (inlined from daaf_lib.sh) ---
@@ -1079,6 +1090,91 @@ persist_branch_choice() {
     fi
 }
 
+# --- Interrupted-update resume marker helpers ---
+# A genuine merge/rebase conflict cannot be auto-resolved non-interactively, so
+# the updater exits 1 mid-merge and asks the user to resolve, commit, and re-run.
+# The re-run lands on an "already up to date" early exit (HEAD now == remote),
+# which historically did tier-A-only sync and skipped rebuild detection, tier-B
+# host-script sync, and the stash pop -- stranding the user on a stale image with
+# the "DAAF update backup" stash still set aside. These helpers persist the
+# pre-update HEAD across the interruption so the re-run can finish the journey.
+#
+# Marker path is inside the repo's own .git dir: invisible to `git status`,
+# survives the merge, and is wiped by a reclone. Written via docker exec (the
+# repo lives in the container). Defined before the DAAF_TEST_MODE guard so they
+# are unit-testable and callable from finish_update under test dot-source.
+
+# Persist OLD_HEAD + TIMESTAMP so a post-conflict re-run can resume. No-op under
+# dry run (nothing real to write, and the dry-run docker mock would misread the
+# exec). `|| true` so a write hiccup never trips the ERR trap.
+write_resume_marker() {
+    [ "${DAAF_DRY_RUN:-}" = "1" ] && return 0
+    # Host builds the marker bytes, an in-container `cat` writes them. The sh arg
+    # carries no embedded double quotes (the PS twin cannot -- PS 5.1 mangles them
+    # in native argv -- so both twins share this stdin mechanism for parity).
+    printf 'OLD_HEAD=%s\nTIMESTAMP=%s\n' "${OLD_HEAD}" "${TIMESTAMP}" \
+        | docker compose exec -T daaf-docker \
+        sh -c 'cat > /daaf/.git/daaf-update-resume' >/dev/null 2>&1 || true
+}
+
+# Delete the resume marker. Called from finish_update (the single success
+# chokepoint) and when a corrupt marker is discovered at startup. No-op under dry
+# run; `|| true` keeps it off the ERR trap.
+clear_resume_marker() {
+    [ "${DAAF_DRY_RUN:-}" = "1" ] && return 0
+    docker compose exec -T daaf-docker \
+        rm -f /daaf/.git/daaf-update-resume </dev/null >/dev/null 2>&1 || true
+}
+
+# Find the stash entry a prior interrupted run set aside. Echoes the stash@{N}
+# ref of the FIRST stash whose message contains "DAAF update backup", or nothing
+# if none exists (user already popped it, or there were no dirty files).
+# Capture-then-parse -- never `| grep -q` a live producer (conventions lint rule 9).
+# Bash 3.2 safe: no mapfile, no arrays.
+_find_update_backup_stash() {
+    local stash_list line ref
+    stash_list=$(docker compose exec -T daaf-docker \
+        git -C /daaf stash list </dev/null 2>/dev/null | tr -d '\r' || true)
+    while IFS= read -r line; do
+        case "${line}" in
+            *"DAAF update backup"*)
+                # A stash list line looks like: stash@{0}: On main: DAAF update...
+                # so everything before the first ':' is the ref.
+                ref="${line%%:*}"
+                if [ -n "${ref}" ]; then
+                    echo "${ref}"
+                    return 0
+                fi
+                ;;
+        esac
+    done <<< "${stash_list}"
+    return 0
+}
+
+# Finish an interrupted update that has now landed on an "already up to date"
+# early exit (the resolved-and-committed merge left HEAD == remote). Restore the
+# set-aside stash (if still present) exactly like the normal pop sites, then run
+# finish_update against the recorded pre-update OLD_HEAD so tier A+B host-script
+# sync AND rebuild detection execute against the true pre-update baseline.
+resume_finalize() {
+    local stash_ref
+    stash_ref=$(_find_update_backup_stash)
+    if [ -n "${stash_ref}" ]; then
+        echo "Restoring your set-aside changes..."
+        if ! docker compose exec -T daaf-docker \
+            git -C /daaf stash pop "${stash_ref}" </dev/null; then
+            if handle_stash_conflict; then
+                finish_update "${OLD_HEAD}"
+            else
+                finish_update "${OLD_HEAD}" \
+                    "Note: Uncommitted changes still need attention (see above)."
+            fi
+            return 0
+        fi
+    fi
+    finish_update "${OLD_HEAD}"
+}
+
 # --- Test Mode Guard ---
 # When sourced for testing, define functions but skip execution.
 # Usage: DAAF_TEST_MODE=1 source scripts/host/update_daaf.sh
@@ -1232,6 +1328,98 @@ docker compose exec -T daaf-docker \
 
 OLD_HEAD=$(docker compose exec -T daaf-docker \
     git -C /daaf rev-parse HEAD </dev/null 2>/dev/null | tr -d '\r')
+
+# =====================================================================
+# Resume detection (interrupted-update recovery)
+# =====================================================================
+# Runs after the pre-update HEAD is captured but before any branch-state
+# decision. Two cases to handle when a prior run stopped on a genuine conflict:
+#   1. A merge/rebase is STILL in progress -> the user has not finished
+#      resolving. Guide them and exit 1, keeping the marker.
+#   2. A resume marker exists and records a valid pre-update HEAD -> resume:
+#      adopt the recorded OLD_HEAD so rebuild detection and tier-B host-script
+#      sync run against the TRUE pre-update baseline (this run's HEAD is already
+#      the post-merge HEAD, so check_build_changes keyed on it would see nothing).
+# Skipped entirely under dry run: there is no real repo to probe, and the
+# built-in dry-run docker mock would misread the MERGE_HEAD probe as HEAD.
+RESUMING=false
+if [ "${DAAF_DRY_RUN:-}" != "1" ]; then
+    # Capture the in-progress probes, then test -- never `| grep -q` a live
+    # producer (conventions lint rule 9). Use the canonical git filesystem markers:
+    # .git/MERGE_HEAD exists only during an unresolved merge; rebase state lives
+    # in .git/rebase-merge or .git/rebase-apply. (Filesystem probes, not
+    # `rev-parse MERGE_HEAD`, so the probe strings carry no "rev-parse HEAD"
+    # token that generic test mocks would false-match.)
+    MERGE_IN_PROGRESS=$(docker compose exec -T daaf-docker \
+        sh -c 'if [ -f /daaf/.git/MERGE_HEAD ]; then echo yes; fi' \
+        </dev/null 2>/dev/null | tr -d '\r' || true)
+    REBASE_IN_PROGRESS=$(docker compose exec -T daaf-docker \
+        sh -c 'if [ -d /daaf/.git/rebase-merge ] || [ -d /daaf/.git/rebase-apply ]; then echo yes; fi' \
+        </dev/null 2>/dev/null | tr -d '\r' || true)
+    RESUME_MARKER=$(docker compose exec -T daaf-docker \
+        sh -c 'cat /daaf/.git/daaf-update-resume 2>/dev/null' \
+        </dev/null 2>/dev/null | tr -d '\r' || true)
+
+    if [ -n "${MERGE_IN_PROGRESS}" ] || [ -n "${REBASE_IN_PROGRESS}" ]; then
+        echo ""
+        echo "-------------------------------------------"
+        echo "  An update is still in progress"
+        echo "-------------------------------------------"
+        echo ""
+        echo "A previous update stopped partway through resolving a conflict. Please"
+        echo "finish that before running the updater again."
+        echo ""
+        echo "To finish resolving (inside the container):"
+        echo "  bash run_daaf.sh bash"
+        echo "  (edit the conflicting files to remove the <<<<<<< markers)"
+        echo "  git add ."
+        if [ -n "${MERGE_IN_PROGRESS}" ]; then
+            echo "  git commit"
+        else
+            echo "  git rebase --continue"
+        fi
+        echo "  exit"
+        echo ""
+        echo "Then re-run:  bash update_daaf.sh"
+        echo ""
+        echo "Or to abort the update entirely (your research files are not affected):"
+        if [ -n "${MERGE_IN_PROGRESS}" ]; then
+            echo "  docker compose exec daaf-docker git -C /daaf merge --abort"
+        else
+            echo "  docker compose exec daaf-docker git -C /daaf rebase --abort"
+        fi
+        echo "  docker compose exec daaf-docker git -C /daaf reset --hard ${BACKUP_BRANCH}"
+        echo ""
+        exit 1
+    fi
+
+    if [ -n "${RESUME_MARKER}" ]; then
+        # Parse OLD_HEAD from the marker (Bash 3.2 safe: no mapfile/arrays).
+        MARKER_OLD_HEAD=""
+        while IFS= read -r _rline; do
+            case "${_rline}" in
+                OLD_HEAD=*) MARKER_OLD_HEAD="${_rline#OLD_HEAD=}" ;;
+            esac
+        done <<< "${RESUME_MARKER}"
+
+        if [ -n "${MARKER_OLD_HEAD}" ] && docker compose exec -T daaf-docker \
+            git -C /daaf rev-parse --verify --quiet "${MARKER_OLD_HEAD}^{commit}" \
+            </dev/null >/dev/null 2>&1; then
+            RESUMING=true
+            OLD_HEAD="${MARKER_OLD_HEAD}"
+            echo ""
+            echo "Resuming interrupted update..."
+            echo ""
+        else
+            # Corrupt/invalid marker -> warn, delete, continue normally (fail-open).
+            echo ""
+            echo "NOTE: Found a leftover update marker with no valid restart point."
+            echo "      Ignoring it and continuing normally."
+            echo ""
+            clear_resume_marker
+        fi
+    fi
+fi
 
 # =====================================================================
 # Check git remote
@@ -1509,6 +1697,15 @@ if [ "${CURRENT_BRANCH}" = "${REMOTE_BRANCH}" ] \
     echo ""
     echo "Already up to date! Nothing to do."
     echo ""
+    # A resume run lands here once the user resolved and committed a conflict
+    # from the interrupted run (HEAD now == remote). Do NOT take the tier-A-only
+    # exit -- restore the set-aside stash and run tier A+B sync + rebuild
+    # detection against the recorded pre-update OLD_HEAD, which the interrupted
+    # run never got to. finish_update clears the resume marker.
+    if [ "${RESUMING}" = true ]; then
+        resume_finalize
+        exit 0
+    fi
     # Even when there is nothing to pull, run the existence-heal sync so host
     # scripts a prior update missed (e.g., a file added in a release the user
     # updated across) are delivered now. Called with no old_head so only the
@@ -1544,6 +1741,15 @@ if [ "${CURRENT_BRANCH}" != "${REMOTE_BRANCH}" ] && [ "${BEHIND}" = "0" ]; then
     echo "Already up to date! Your branch '${CURRENT_BRANCH}' has all the latest"
     echo "changes from ${UPSTREAM_REMOTE}/${REMOTE_BRANCH}. Nothing to do."
     echo ""
+    # Resume run: the resolved-and-committed merge on '${CURRENT_BRANCH}' now
+    # contains all of ${UPSTREAM_REMOTE}/${REMOTE_BRANCH} (BEHIND=0), so we land
+    # here. Finish the interrupted journey instead of the tier-A-only exit --
+    # restore the stash and run tier A+B sync + rebuild detection against the
+    # recorded pre-update OLD_HEAD. finish_update clears the resume marker.
+    if [ "${RESUMING}" = true ]; then
+        resume_finalize
+        exit 0
+    fi
     # Existence-heal sync (tier A only) so host scripts a prior update missed
     # are delivered even when there is nothing new to pull. See the note on the
     # default-branch up-to-date path above.
@@ -1663,11 +1869,16 @@ if [ "${CURRENT_BRANCH}" != "${REMOTE_BRANCH}" ]; then
     if ! docker compose exec -T daaf-docker \
         git -C /daaf merge "${REMOTE_BRANCH}" </dev/null; then
         if ! handle_conflict "merge" "merge --abort"; then
+            # Persist a resume marker so a post-resolution re-run finishes the
+            # remaining steps (stash restore + host-script sync + rebuild check).
+            write_resume_marker
             if [ "${STASHED}" = true ]; then
                 echo ""
-                echo "Your uncommitted changes are safely saved and will be"
-                echo "restored after conflicts are resolved."
-                echo "  docker compose exec daaf-docker git -C /daaf stash pop"
+                echo "Your uncommitted changes are safely set aside. After you resolve"
+                echo "the conflicts and commit, re-run the updater and it will restore"
+                echo "them and finish the remaining steps automatically:"
+                echo "  bash update_daaf.sh"
+                echo "(Or restore manually: docker compose exec daaf-docker git -C /daaf stash pop)"
             fi
             exit 1
         fi
@@ -1695,6 +1906,31 @@ fi
 # On default branch -- local commits
 # =====================================================================
 if [ "${AHEAD}" -gt 0 ]; then
+    # A resume run can land here on the DEFAULT branch: the user resolved and
+    # committed a conflict from the interrupted run, so HEAD is now a merge
+    # commit and the up-to-date hash check above no longer matches -- BEHIND=0
+    # but AHEAD>0 (the local merge/customization commits). Finish the interrupted
+    # journey instead of re-showing the merge/rebase/abort menu, which would be
+    # spurious here and would strand the set-aside "DAAF update backup" stash
+    # (the tree is now clean, so STASHED would be false and the stash never
+    # popped). resume_finalize pops the stash if present and runs tier A+B sync +
+    # rebuild detection against the recorded pre-update OLD_HEAD; finish_update
+    # clears the resume marker. See the two "already up to date" resume routes.
+    if [ "${RESUMING}" = true ]; then
+        echo ""
+        echo "Detected an interrupted update -- finishing it now."
+        resume_finalize
+        # Rare corner: new upstream commits arrived between the conflict and this
+        # re-run. Always finish the interrupted update first, never mix it with a
+        # fresh pull -- so tell the user to re-run for the new commits.
+        if [ "${BEHIND}" -gt 0 ]; then
+            echo ""
+            echo "The interrupted update was completed first. New updates are now"
+            echo "available -- run the updater again to get them:"
+            echo "  bash update_daaf.sh"
+        fi
+        exit 0
+    fi
     echo ""
     echo "You have ${AHEAD} local commit(s) on ${REMOTE_BRANCH} that aren't in"
     echo "the official DAAF release."
@@ -1754,11 +1990,16 @@ if [ "${AHEAD}" -gt 0 ]; then
             git -C /daaf merge "${UPSTREAM_REMOTE}/${REMOTE_BRANCH}" \
             -m "Merge DAAF upstream updates" </dev/null; then
             if ! handle_conflict "merge" "merge --abort"; then
+                # Persist a resume marker so a post-resolution re-run finishes
+                # the remaining steps (stash restore + sync + rebuild check).
+                write_resume_marker
                 if [ "${STASHED}" = true ]; then
                     echo ""
-                    echo "Your uncommitted changes are safely saved and will be"
-                    echo "restored after conflicts are resolved."
-                    echo "  docker compose exec daaf-docker git -C /daaf stash pop"
+                    echo "Your uncommitted changes are safely set aside. After you resolve"
+                    echo "the conflicts and commit, re-run the updater and it will restore"
+                    echo "them and finish the remaining steps automatically:"
+                    echo "  bash update_daaf.sh"
+                    echo "(Or restore manually: docker compose exec daaf-docker git -C /daaf stash pop)"
                 fi
                 exit 1
             fi
@@ -1799,11 +2040,16 @@ if [ "${AHEAD}" -gt 0 ]; then
         if ! docker compose exec -T daaf-docker \
             git -C /daaf rebase "${UPSTREAM_REMOTE}/${REMOTE_BRANCH}" </dev/null; then
             if ! handle_conflict "rebase" "rebase --abort"; then
+                # Persist a resume marker so a post-resolution re-run finishes
+                # the remaining steps (stash restore + sync + rebuild check).
+                write_resume_marker
                 if [ "${STASHED}" = true ]; then
                     echo ""
-                    echo "Your uncommitted changes are safely saved and will be"
-                    echo "restored after conflicts are resolved."
-                    echo "  docker compose exec daaf-docker git -C /daaf stash pop"
+                    echo "Your uncommitted changes are safely set aside. After you resolve"
+                    echo "the conflicts and commit, re-run the updater and it will restore"
+                    echo "them and finish the remaining steps automatically:"
+                    echo "  bash update_daaf.sh"
+                    echo "(Or restore manually: docker compose exec daaf-docker git -C /daaf stash pop)"
                 fi
                 exit 1
             fi

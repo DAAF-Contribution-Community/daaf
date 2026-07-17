@@ -1509,3 +1509,358 @@ Describe "update_daaf.ps1 concurrency guard" {
         $Content | Should -Match 'AbandonedMutexException'
     }
 }
+
+# ============================================================================
+# Interrupted-update resume (round-5 field finding 1)
+# ============================================================================
+# A genuine merge conflict makes the non-interactive updater exit 1 mid-merge.
+# The user resolves, commits, and re-runs; the re-run must finish the journey
+# (rebuild detection + tier-B host-script sync + stash restore) via a persisted
+# resume marker rather than landing on the tier-A-only "already up to date" exit.
+
+Describe "update_daaf.ps1 resume marker helpers" {
+    BeforeAll {
+        . "$PSScriptRoot/TestHelper.ps1"
+        $env:DAAF_TEST_MODE = "1"
+        . "$RepoRoot/scripts/host/update_daaf.ps1"
+        function docker {}
+    }
+    AfterAll {
+        Remove-Item Env:DAAF_TEST_MODE -ErrorAction SilentlyContinue
+    }
+
+    Context "Write-ResumeMarker" {
+        It "writes the marker to the repo .git dir" {
+            $script:MarkerArgs = $null
+            Mock docker { $script:MarkerArgs = ($args -join ' ') }
+            Set-Variable -Name OldHead -Value "oldsha" -Scope 1
+            Set-Variable -Name Timestamp -Value "t" -Scope 1
+            Write-ResumeMarker
+            $script:MarkerArgs | Should -BeLike "*cat > /daaf/.git/daaf-update-resume*"
+        }
+
+        It "is a no-op under DAAF_DRY_RUN" {
+            $env:DAAF_DRY_RUN = "1"
+            Mock docker { }
+            try { Write-ResumeMarker } finally { Remove-Item Env:DAAF_DRY_RUN -ErrorAction SilentlyContinue }
+            Should -Invoke docker -Times 0
+        }
+    }
+
+    Context "Complete-Update marker cleanup" {
+        It "clears the resume marker on success (single chokepoint)" {
+            $script:RmCalled = $false
+            Mock docker {
+                $a = $args -join ' '
+                if ($a -match 'rm -f /daaf/.git/daaf-update-resume') { $script:RmCalled = $true }
+                return "same"
+            }
+            Complete-Update "same" 6>&1 | Out-Null
+            $script:RmCalled | Should -BeTrue
+        }
+    }
+
+    Context "Find-UpdateBackupStash" {
+        It "returns only the DAAF update backup stash ref" {
+            Mock docker { return "stash@{0}: On main: WIP unrelated`nstash@{1}: On main: DAAF update backup 2026-01-01" }
+            Find-UpdateBackupStash | Should -Be "stash@{1}"
+        }
+
+        It "returns empty when no backup stash exists" {
+            Mock docker { return "stash@{0}: On main: WIP unrelated" }
+            Find-UpdateBackupStash | Should -BeNullOrEmpty
+        }
+    }
+
+    Context "Resume-Update" {
+        It "pops the backup stash then completes against the recorded OldHead" {
+            $script:PopArgs = $null
+            Mock docker {
+                $a = $args -join ' '
+                if ($a -match 'stash list') { return "stash@{0}: On main: DAAF update backup 2026" }
+                if ($a -match 'stash pop')  { $script:PopArgs = $a; $global:LASTEXITCODE = 0; return }
+                $global:LASTEXITCODE = 0
+                return "recordedsha"
+            }
+            Set-Variable -Name OldHead -Value "recordedsha" -Scope 1
+            $output = Resume-Update 6>&1
+            $script:PopArgs | Should -BeLike "*stash pop stash@{0}*"
+            ($output | Where-Object { $_ -match "Restoring your set-aside changes" }) | Should -Not -BeNullOrEmpty
+            ($output | Where-Object { $_ -match "Update complete" }) | Should -Not -BeNullOrEmpty
+        }
+
+        It "skips the stash pop silently when no backup stash exists" {
+            $script:PopCalled = $false
+            Mock docker {
+                $a = $args -join ' '
+                if ($a -match 'stash list') { return "" }
+                if ($a -match 'stash pop')  { $script:PopCalled = $true }
+                $global:LASTEXITCODE = 0
+                return "sha"
+            }
+            Set-Variable -Name OldHead -Value "sha" -Scope 1
+            $output = Resume-Update 6>&1
+            $script:PopCalled | Should -BeFalse
+            ($output | Where-Object { $_ -match "Restoring your set-aside changes" }) | Should -BeNullOrEmpty
+            ($output | Where-Object { $_ -match "Update complete" }) | Should -Not -BeNullOrEmpty
+        }
+    }
+}
+
+Describe "update_daaf.ps1 resume state-machine tests" {
+    BeforeAll {
+        . "$PSScriptRoot/TestHelper.ps1"
+    }
+    BeforeEach {
+        $script:TestDir = New-Item -ItemType Directory -Path (Join-Path ([System.IO.Path]::GetTempPath()) "daaf-resume-$(Get-Random)")
+        Push-Location $script:TestDir
+        New-FakeComposeFile
+        Remove-Item Env:DAAF_BRANCH -ErrorAction SilentlyContinue
+    }
+    AfterEach {
+        Pop-Location
+        Remove-Item -Recurse -Force $script:TestDir -ErrorAction SilentlyContinue
+        Remove-Item Env:DAAF_NESTED -ErrorAction SilentlyContinue
+        Remove-Item Env:DAAF_BRANCH -ErrorAction SilentlyContinue
+    }
+
+    It "a still-in-progress merge guides the user and exits 1" {
+        $env:DAAF_NESTED = "1"
+        $wrapperScript = Join-Path $script:TestDir "test_wrapper_midmerge.ps1"
+        Set-Content -Path $wrapperScript -Value @'
+$ErrorActionPreference = "Stop"
+function docker {
+    $argStr = $args -join ' '
+    $global:LASTEXITCODE = 0
+    switch -Wildcard ($argStr) {
+        "*info*" { return }
+        "*compose ps*--format*" { Write-Output "daaf-docker" }
+        "*compose exec*true*" { return }
+        "*compose exec*test -f*/daaf/CLAUDE.md*" { return }
+        "*MERGE_HEAD*" { Write-Output "yes"; return }
+        "*rebase-merge*" { return }
+        "*daaf-update-resume*" { return }
+        "*compose exec*git -C /daaf branch*" { return }
+        "*compose exec*git -C /daaf rev-parse*HEAD*" { Write-Output "abc123" }
+        "*compose exec*git*" { return }
+        "*compose exec*" { return }
+        default { return }
+    }
+}
+'@
+        Add-Content -Path $wrapperScript -Value ". '$RepoRoot/scripts/host/update_daaf.ps1'"
+        $output = & pwsh -NoProfile -File $wrapperScript *>&1
+        $outputStr = $output | Out-String
+        $LASTEXITCODE | Should -Be 1
+        $outputStr | Should -BeLike "*An update is still in progress*"
+        $outputStr | Should -BeLike "*git commit*"
+        $outputStr | Should -Not -BeLike "*Update complete*"
+    }
+
+    It "a valid resume marker finishes the update off the up-to-date exit" {
+        $env:DAAF_NESTED = "1"
+        $wrapperScript = Join-Path $script:TestDir "test_wrapper_resume.ps1"
+        Set-Content -Path $wrapperScript -Value @'
+$ErrorActionPreference = "Stop"
+function docker {
+    $argStr = $args -join ' '
+    $global:LASTEXITCODE = 0
+    switch -Wildcard ($argStr) {
+        "*info*" { return }
+        "*compose ps*--format*" { Write-Output "daaf-docker" }
+        "*compose exec*true*" { return }
+        "*compose exec*test -f*/daaf/CLAUDE.md*" { return }
+        "*compose exec*test -f*/daaf/.git/shallow*" { $global:LASTEXITCODE = 1; return }
+        "*MERGE_HEAD*" { return }
+        "*rebase-merge*" { return }
+        "*daaf-update-resume*" { Write-Output "OLD_HEAD=oldrecorded`nTIMESTAMP=t"; return }
+        "*rev-parse --verify*commit*" { $global:LASTEXITCODE = 0; return }
+        "*remote get-url*origin*" { Write-Output "https://github.com/DAAF-Contribution-Community/daaf.git" }
+        "*fetch*" { return }
+        "*rev-parse --verify*backup/*" { $global:LASTEXITCODE = 1; return }
+        "*rev-parse --verify*origin/main*" { $global:LASTEXITCODE = 0; return }
+        "*branch --show-current*" { Write-Output "main" }
+        "*rev-parse*origin/main*" { Write-Output "newsha" }
+        "*rev-parse*HEAD*" { Write-Output "newsha" }
+        "*diff --name-only*HEAD*" { return }
+        "*stash list*" { Write-Output "stash@{0}: On main: DAAF update backup 2026" }
+        "*stash pop*" { return }
+        "*ls-files*" { return }
+        "*diff --name-only*" { Write-Output "Dockerfile" }
+        "*compose exec*git*" { return }
+        "*compose exec*" { return }
+        default { return }
+    }
+}
+'@
+        Add-Content -Path $wrapperScript -Value ". '$RepoRoot/scripts/host/update_daaf.ps1'"
+        $output = & pwsh -NoProfile -File $wrapperScript *>&1
+        $outputStr = $output | Out-String
+        $LASTEXITCODE | Should -Be 0
+        $outputStr | Should -BeLike "*Resuming interrupted update*"
+        $outputStr | Should -BeLike "*Restoring your set-aside changes*"
+        # Rebuild detection ran against the RECORDED pre-update head, not same-run HEAD.
+        $outputStr | Should -BeLike "*Build files were updated*"
+        $outputStr | Should -BeLike "*Update complete*"
+    }
+
+    It "an invalid resume marker is ignored and the run continues normally" {
+        $env:DAAF_NESTED = "1"
+        $wrapperScript = Join-Path $script:TestDir "test_wrapper_badmarker.ps1"
+        Set-Content -Path $wrapperScript -Value @'
+$ErrorActionPreference = "Stop"
+function docker {
+    $argStr = $args -join ' '
+    $global:LASTEXITCODE = 0
+    switch -Wildcard ($argStr) {
+        "*info*" { return }
+        "*compose ps*--format*" { Write-Output "daaf-docker" }
+        "*compose exec*true*" { return }
+        "*compose exec*test -f*/daaf/CLAUDE.md*" { return }
+        "*compose exec*test -f*/daaf/.git/shallow*" { $global:LASTEXITCODE = 1; return }
+        "*MERGE_HEAD*" { return }
+        "*rebase-merge*" { return }
+        "*daaf-update-resume*" { Write-Output "OLD_HEAD=bogusref`nTIMESTAMP=t"; return }
+        "*rev-parse --verify*commit*" { $global:LASTEXITCODE = 1; return }
+        "*remote get-url*origin*" { Write-Output "https://github.com/DAAF-Contribution-Community/daaf.git" }
+        "*fetch*" { return }
+        "*rev-parse --verify*backup/*" { $global:LASTEXITCODE = 1; return }
+        "*rev-parse --verify*origin/main*" { $global:LASTEXITCODE = 0; return }
+        "*branch --show-current*" { Write-Output "main" }
+        "*rev-parse*origin/main*" { Write-Output "samesha" }
+        "*rev-parse*HEAD*" { Write-Output "samesha" }
+        "*diff --name-only*HEAD*" { return }
+        "*ls-files*" { return }
+        "*compose exec*git*" { return }
+        "*compose exec*" { return }
+        default { return }
+    }
+}
+'@
+        Add-Content -Path $wrapperScript -Value ". '$RepoRoot/scripts/host/update_daaf.ps1'"
+        $output = & pwsh -NoProfile -File $wrapperScript *>&1
+        $outputStr = $output | Out-String
+        $LASTEXITCODE | Should -Be 0
+        $outputStr | Should -BeLike "*leftover update marker with no valid restart point*"
+        $outputStr | Should -BeLike "*Already up to date*"
+        $outputStr | Should -Not -BeLike "*Resuming interrupted update*"
+        $outputStr | Should -Not -BeLike "*Update complete*"
+    }
+
+    # The blind spot the review caught: on the re-run the user committed the
+    # resolved merge, so HEAD is a merge commit (-ne remote -> up-to-date check
+    # fails), Behind=0 but Ahead>0 carries the local merge/customization commits.
+    # Execution enters the default-branch Ahead>0 block, which historically never
+    # checked $Resuming and re-showed the merge/rebase/abort menu -- stranding the
+    # set-aside stash (tree is now clean, $Stashed=$false). The fix routes
+    # $Resuming into Resume-Update before the menu. Pins: (a) finalizer runs,
+    # (b) the menu never prints, (c) exit 0.
+    It "resume finishes off the default-branch Ahead>0 block (menu suppressed)" {
+        $env:DAAF_NESTED = "1"
+        $wrapperScript = Join-Path $script:TestDir "test_wrapper_resume_ahead.ps1"
+        Set-Content -Path $wrapperScript -Value @'
+$ErrorActionPreference = "Stop"
+function docker {
+    $argStr = $args -join ' '
+    $global:LASTEXITCODE = 0
+    switch -Wildcard ($argStr) {
+        "*info*" { return }
+        "*compose ps*--format*" { Write-Output "daaf-docker" }
+        "*compose exec*true*" { return }
+        "*compose exec*test -f*/daaf/CLAUDE.md*" { return }
+        "*compose exec*test -f*/daaf/.git/shallow*" { $global:LASTEXITCODE = 1; return }
+        "*MERGE_HEAD*" { return }
+        "*rebase-merge*" { return }
+        "*daaf-update-resume*" { Write-Output "OLD_HEAD=oldrecorded`nTIMESTAMP=t"; return }
+        "*rev-parse --verify*commit*" { $global:LASTEXITCODE = 0; return }
+        "*remote get-url*origin*" { Write-Output "https://github.com/DAAF-Contribution-Community/daaf.git" }
+        "*fetch*" { return }
+        "*rev-parse --verify*backup/*" { $global:LASTEXITCODE = 1; return }
+        "*rev-parse --verify*origin/main*" { $global:LASTEXITCODE = 0; return }
+        "*branch --show-current*" { Write-Output "main" }
+        "*rev-parse*origin/main*" { Write-Output "remotesha" }
+        "*rev-parse*HEAD*" { Write-Output "mergesha" }
+        "*rev-list --count*origin/main..HEAD*" { Write-Output "1" }
+        "*rev-list --count*HEAD..origin/main*" { Write-Output "0" }
+        "*diff --name-only*HEAD*" { return }
+        "*stash list*" { Write-Output "stash@{0}: On main: DAAF update backup 2026" }
+        "*stash pop*" { return }
+        "*ls-files*" { return }
+        "*diff --name-only*" { return }
+        "*compose exec*git*" { return }
+        "*compose exec*" { return }
+        default { return }
+    }
+}
+'@
+        Add-Content -Path $wrapperScript -Value ". '$RepoRoot/scripts/host/update_daaf.ps1'"
+        $output = & pwsh -NoProfile -File $wrapperScript *>&1
+        $outputStr = $output | Out-String
+        $LASTEXITCODE | Should -Be 0
+        # (a) Routed into the resume finalizer.
+        $outputStr | Should -BeLike "*Detected an interrupted update -- finishing it now.*"
+        $outputStr | Should -BeLike "*Restoring your set-aside changes*"
+        $outputStr | Should -BeLike "*Update complete*"
+        # (b) The merge/rebase/abort menu never printed.
+        $outputStr | Should -Not -BeLike "*1) MERGE (recommended)*"
+        $outputStr | Should -Not -BeLike "*local commit(s) on*"
+        # (c) No fresh-pull re-run note when Behind=0.
+        $outputStr | Should -Not -BeLike "*run the updater again to get them*"
+    }
+
+    # Rare corner: new upstream commits landed between the conflict and the re-run.
+    # The fix always finishes the interrupted update first (never mixes it with a
+    # fresh pull), then prints a note telling the user to re-run for the new commits.
+    It "resume off the Ahead>0 block prints a re-run note when Behind>0" {
+        $env:DAAF_NESTED = "1"
+        $wrapperScript = Join-Path $script:TestDir "test_wrapper_resume_ahead_behind.ps1"
+        Set-Content -Path $wrapperScript -Value @'
+$ErrorActionPreference = "Stop"
+function docker {
+    $argStr = $args -join ' '
+    $global:LASTEXITCODE = 0
+    switch -Wildcard ($argStr) {
+        "*info*" { return }
+        "*compose ps*--format*" { Write-Output "daaf-docker" }
+        "*compose exec*true*" { return }
+        "*compose exec*test -f*/daaf/CLAUDE.md*" { return }
+        "*compose exec*test -f*/daaf/.git/shallow*" { $global:LASTEXITCODE = 1; return }
+        "*MERGE_HEAD*" { return }
+        "*rebase-merge*" { return }
+        "*daaf-update-resume*" { Write-Output "OLD_HEAD=oldrecorded`nTIMESTAMP=t"; return }
+        "*rev-parse --verify*commit*" { $global:LASTEXITCODE = 0; return }
+        "*remote get-url*origin*" { Write-Output "https://github.com/DAAF-Contribution-Community/daaf.git" }
+        "*fetch*" { return }
+        "*rev-parse --verify*backup/*" { $global:LASTEXITCODE = 1; return }
+        "*rev-parse --verify*origin/main*" { $global:LASTEXITCODE = 0; return }
+        "*branch --show-current*" { Write-Output "main" }
+        "*rev-parse*origin/main*" { Write-Output "remotesha" }
+        "*rev-parse*HEAD*" { Write-Output "mergesha" }
+        "*rev-list --count*origin/main..HEAD*" { Write-Output "1" }
+        "*rev-list --count*HEAD..origin/main*" { Write-Output "2" }
+        "*diff --name-only*HEAD*" { return }
+        "*stash list*" { Write-Output "stash@{0}: On main: DAAF update backup 2026" }
+        "*stash pop*" { return }
+        "*ls-files*" { return }
+        "*diff --name-only*" { return }
+        "*compose exec*git*" { return }
+        "*compose exec*" { return }
+        default { return }
+    }
+}
+'@
+        Add-Content -Path $wrapperScript -Value ". '$RepoRoot/scripts/host/update_daaf.ps1'"
+        $output = & pwsh -NoProfile -File $wrapperScript *>&1
+        $outputStr = $output | Out-String
+        $LASTEXITCODE | Should -Be 0
+        $outputStr | Should -BeLike "*Detected an interrupted update -- finishing it now.*"
+        $outputStr | Should -BeLike "*Update complete*"
+        # The fresh-pull re-run note fires because Behind>0.
+        $outputStr | Should -BeLike "*The interrupted update was completed first.*"
+        $outputStr | Should -BeLike "*run the updater again to get them*"
+        $outputStr | Should -BeLike "*.\update_daaf.ps1*"
+        # Still no menu -- the interrupted update is finished first, never mixed.
+        $outputStr | Should -Not -BeLike "*1) MERGE (recommended)*"
+        $outputStr | Should -Not -BeLike "*local commit(s) on*"
+    }
+}

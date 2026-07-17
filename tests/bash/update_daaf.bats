@@ -1745,3 +1745,401 @@ setup_state_machine() {
     assert_output --partial "was not found"
     refute_output --partial "version tag"
 }
+
+# ============================================================================
+# Interrupted-update resume (round-5 field finding 1)
+# ============================================================================
+# A genuine merge conflict makes the non-interactive updater exit 1 mid-merge.
+# The user resolves, commits, and re-runs; the re-run must finish the journey
+# (rebuild detection + tier-B host-script sync + stash restore) via a persisted
+# resume marker rather than landing on the tier-A-only "already up to date" exit.
+
+# --- write_resume_marker ---
+
+@test "update: write_resume_marker writes the marker to the repo .git dir" {
+    run bash -c '
+        DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+        trap - ERR
+        set +eu
+        OLD_HEAD="oldsha123"; TIMESTAMP="2026-01-01-000000"
+        docker() {
+            case "$*" in
+                *"cat > /daaf/.git/daaf-update-resume"*) command touch "'"${TEST_DIR}"'/marker_write_attempted" ; return 0 ;;
+                *) return 0 ;;
+            esac
+        }
+        write_resume_marker
+    '
+    assert_success
+    [ -f "${TEST_DIR}/marker_write_attempted" ]
+}
+
+@test "update: write_resume_marker is a no-op under DAAF_DRY_RUN" {
+    run bash -c '
+        DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+        trap - ERR
+        set +eu
+        export DAAF_DRY_RUN=1
+        OLD_HEAD="oldsha123"; TIMESTAMP="t"
+        docker() {
+            case "$*" in
+                *"daaf-update-resume"*) command touch "'"${TEST_DIR}"'/marker_write_attempted" ; return 0 ;;
+                *) return 0 ;;
+            esac
+        }
+        write_resume_marker
+    '
+    assert_success
+    [ ! -f "${TEST_DIR}/marker_write_attempted" ]
+}
+
+# --- finish_update clears the marker (single chokepoint) ---
+
+@test "update: finish_update clears the resume marker on success" {
+    run bash -c '
+        DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+        trap - ERR
+        set +eu
+        BACKUP_BRANCH="backup/test"
+        sync_host_scripts() { :; }
+        check_build_changes() { :; }
+        persist_branch_choice() { :; }
+        docker() {
+            case "$*" in
+                *"rm -f /daaf/.git/daaf-update-resume"*) command touch "'"${TEST_DIR}"'/marker_cleared" ; return 0 ;;
+                *) return 0 ;;
+            esac
+        }
+        finish_update "oldsha"
+    '
+    assert_success
+    assert_output --partial "Update complete!"
+    [ -f "${TEST_DIR}/marker_cleared" ]
+}
+
+# --- _find_update_backup_stash targets ONLY the "DAAF update backup" stash ---
+
+@test "update: _find_update_backup_stash returns only the DAAF update backup ref" {
+    run bash -c '
+        DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+        trap - ERR
+        set +eu
+        docker() {
+            case "$*" in
+                *"stash list"*) printf "stash@{0}: On main: WIP unrelated edit\nstash@{1}: On main: DAAF update backup 2026-01-01\n" ;;
+                *) return 0 ;;
+            esac
+        }
+        _find_update_backup_stash
+    '
+    assert_success
+    assert_output "stash@{1}"
+}
+
+@test "update: _find_update_backup_stash returns nothing when no backup stash exists" {
+    run bash -c '
+        DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+        trap - ERR
+        set +eu
+        docker() {
+            case "$*" in
+                *"stash list"*) printf "stash@{0}: On main: WIP unrelated edit\n" ;;
+                *) return 0 ;;
+            esac
+        }
+        _find_update_backup_stash
+    '
+    assert_success
+    assert_output ""
+}
+
+# --- resume_finalize pops the backup stash, then finishes the update ---
+
+@test "update: resume_finalize pops the backup stash then finishes against recorded OLD_HEAD" {
+    run bash -c '
+        DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+        trap - ERR
+        set +eu
+        BACKUP_BRANCH="backup/test"
+        OLD_HEAD="recordedsha"
+        sync_host_scripts() { echo "SYNC:$1"; }
+        check_build_changes() { echo "CHECK:$1"; }
+        persist_branch_choice() { :; }
+        docker() {
+            case "$*" in
+                *"stash list"*) printf "stash@{0}: On main: DAAF update backup 2026\n" ;;
+                *"stash pop stash@{0}"*) echo "POPPED"; return 0 ;;
+                *) return 0 ;;
+            esac
+        }
+        resume_finalize
+    '
+    assert_success
+    assert_output --partial "Restoring your set-aside changes..."
+    assert_output --partial "POPPED"
+    assert_output --partial "SYNC:recordedsha"
+    assert_output --partial "CHECK:recordedsha"
+    assert_output --partial "Update complete!"
+}
+
+@test "update: resume_finalize skips stash pop silently when no backup stash exists" {
+    run bash -c '
+        DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+        trap - ERR
+        set +eu
+        BACKUP_BRANCH="backup/test"
+        OLD_HEAD="recordedsha"
+        sync_host_scripts() { :; }
+        check_build_changes() { :; }
+        persist_branch_choice() { :; }
+        docker() {
+            case "$*" in
+                *"stash list"*) echo "" ;;
+                *"stash pop"*) command touch "'"${TEST_DIR}"'/unexpected_pop" ; return 0 ;;
+                *) return 0 ;;
+            esac
+        }
+        resume_finalize
+    '
+    assert_success
+    refute_output --partial "Restoring your set-aside changes..."
+    assert_output --partial "Update complete!"
+    [ ! -f "${TEST_DIR}/unexpected_pop" ]
+}
+
+# --- Full-script: mid-merge guard exits 1 ---
+
+@test "update: a still-in-progress merge guides the user and exits 1" {
+    setup_state_machine
+    run bash -c '
+        docker() {
+            local all_args="$*"
+            case "$all_args" in
+                "info") return 0 ;;
+                *"compose ps"*"--format"*) echo "daaf-docker" ;;
+                *"compose exec"*"true"*) return 0 ;;
+                *"compose exec"*"test -f"*"/daaf/CLAUDE.md"*) return 0 ;;
+                *"MERGE_HEAD"*) echo "yes" ;;
+                *"rebase-merge"*) echo "" ;;
+                *"daaf-update-resume"*) echo "" ;;
+                *"compose exec"*"branch"*) return 0 ;;
+                *"compose exec"*"rev-parse"*"HEAD"*) echo "abc123" ;;
+                *) return 0 ;;
+            esac
+        }
+        export -f docker
+        bash "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+    '
+    assert_failure
+    assert_output --partial "An update is still in progress"
+    assert_output --partial "git commit"
+    # It must NOT proceed to fetch/branch resolution.
+    refute_output --partial "Update complete!"
+}
+
+# --- Full-script: resume routes the up-to-date early exit into finish_update ---
+# The crux of the fix: on the re-run HEAD already equals the remote (the user
+# committed the resolved merge), so we hit "already up to date". Because a valid
+# marker records the PRE-update OLD_HEAD, rebuild detection runs against THAT
+# baseline (diff shows Dockerfile) instead of the same-run HEAD (which would be
+# equal and skip). Reverting the RESUMING routing sends this down the tier-A-only
+# exit and neither the stash pop nor "Build files were updated" appears.
+
+@test "update: valid resume marker finishes the update off the up-to-date exit" {
+    setup_state_machine
+    run bash -c '
+        docker() {
+            local all_args="$*"
+            case "$all_args" in
+                "info") return 0 ;;
+                *"compose ps"*"--format"*) echo "daaf-docker" ;;
+                *"compose exec"*"true"*) return 0 ;;
+                *"compose exec"*"test -f"*"/daaf/CLAUDE.md"*) return 0 ;;
+                *"compose exec"*"test -f"*"/daaf/.git/shallow"*) return 1 ;;
+                *"MERGE_HEAD"*) echo "" ;;
+                *"rebase-merge"*) echo "" ;;
+                *"daaf-update-resume"*) printf "OLD_HEAD=oldrecorded\nTIMESTAMP=t\n" ;;
+                *"^{commit}"*) return 0 ;;
+                *"remote get-url"*"origin"*) echo "https://github.com/DAAF-Contribution-Community/daaf.git" ;;
+                *"fetch"*) return 0 ;;
+                *"rev-parse --verify"*"backup/"*) return 1 ;;
+                *"rev-parse --verify"*"origin/main"*) return 0 ;;
+                *"branch --show-current"*) echo "main" ;;
+                *"rev-parse"*"origin/main"*) echo "newsha" ;;
+                *"rev-parse"*"HEAD"*) echo "newsha" ;;
+                *"diff --name-only"*"HEAD"*) echo "" ;;
+                *"stash list"*) printf "stash@{0}: On main: DAAF update backup 2026\n" ;;
+                *"stash pop"*) return 0 ;;
+                *"ls-files"*) echo "" ;;
+                *"diff --name-only"*) echo "Dockerfile" ;;
+                *"compose exec"*"branch"*) return 0 ;;
+                "cp"*) return 0 ;;
+                *) return 0 ;;
+            esac
+        }
+        export -f docker
+        bash "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+    '
+    assert_success
+    assert_output --partial "Resuming interrupted update..."
+    assert_output --partial "Restoring your set-aside changes..."
+    # Rebuild detection ran against the RECORDED pre-update head, not the same-run HEAD.
+    assert_output --partial "Build files were updated"
+    assert_output --partial "Update complete!"
+}
+
+# --- Full-script: invalid marker fails open (delete + continue normally) ---
+
+@test "update: an invalid resume marker is ignored and the run continues normally" {
+    setup_state_machine
+    run bash -c '
+        docker() {
+            local all_args="$*"
+            case "$all_args" in
+                "info") return 0 ;;
+                *"compose ps"*"--format"*) echo "daaf-docker" ;;
+                *"compose exec"*"true"*) return 0 ;;
+                *"compose exec"*"test -f"*"/daaf/CLAUDE.md"*) return 0 ;;
+                *"compose exec"*"test -f"*"/daaf/.git/shallow"*) return 1 ;;
+                *"MERGE_HEAD"*) echo "" ;;
+                *"rebase-merge"*) echo "" ;;
+                *"daaf-update-resume"*) printf "OLD_HEAD=bogusref\nTIMESTAMP=t\n" ;;
+                *"^{commit}"*) return 1 ;;
+                *"remote get-url"*"origin"*) echo "https://github.com/DAAF-Contribution-Community/daaf.git" ;;
+                *"fetch"*) return 0 ;;
+                *"rev-parse --verify"*"backup/"*) return 1 ;;
+                *"rev-parse --verify"*"origin/main"*) return 0 ;;
+                *"branch --show-current"*) echo "main" ;;
+                *"rev-parse"*"origin/main"*) echo "samesha" ;;
+                *"rev-parse"*"HEAD"*) echo "samesha" ;;
+                *"diff --name-only"*"HEAD"*) echo "" ;;
+                *"ls-files"*) echo "" ;;
+                *"compose exec"*"branch"*) return 0 ;;
+                "cp"*) return 0 ;;
+                *) return 0 ;;
+            esac
+        }
+        export -f docker
+        bash "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+    '
+    assert_success
+    assert_output --partial "leftover update marker with no valid restart point"
+    assert_output --partial "Already up to date"
+    refute_output --partial "Resuming interrupted update..."
+    # Fail-open means the normal tier-A no-op exit, NOT resume finalization.
+    refute_output --partial "Update complete!"
+}
+
+# --- Full-script: resume routes the DEFAULT-branch AHEAD>0 block into finish ---
+# The blind spot the review caught: on the re-run the user committed the resolved
+# merge, so HEAD is a merge commit (!= remote -> up-to-date check fails), BEHIND=0
+# but AHEAD>0 carries the local merge/customization commits. Execution enters the
+# default-branch AHEAD>0 block, which historically never checked RESUMING and
+# re-showed the merge/rebase/abort menu -- stranding the set-aside stash (tree is
+# now clean, STASHED=false). The fix routes RESUMING=true into resume_finalize
+# before the menu. This pins: (a) the finalizer runs (stash pop + Update complete),
+# (b) the menu never prints, (c) exit 0.
+
+@test "update: resume finishes off the default-branch AHEAD>0 block (menu suppressed)" {
+    setup_state_machine
+    run bash -c '
+        docker() {
+            local all_args="$*"
+            case "$all_args" in
+                "info") return 0 ;;
+                *"compose ps"*"--format"*) echo "daaf-docker" ;;
+                *"compose exec"*"true"*) return 0 ;;
+                *"compose exec"*"test -f"*"/daaf/CLAUDE.md"*) return 0 ;;
+                *"compose exec"*"test -f"*"/daaf/.git/shallow"*) return 1 ;;
+                *"MERGE_HEAD"*) echo "" ;;
+                *"rebase-merge"*) echo "" ;;
+                *"daaf-update-resume"*) printf "OLD_HEAD=oldrecorded\nTIMESTAMP=t\n" ;;
+                *"^{commit}"*) return 0 ;;
+                *"remote get-url"*"origin"*) echo "https://github.com/DAAF-Contribution-Community/daaf.git" ;;
+                *"fetch"*) return 0 ;;
+                *"rev-parse --verify"*"backup/"*) return 1 ;;
+                *"rev-parse --verify"*"origin/main"*) return 0 ;;
+                *"branch --show-current"*) echo "main" ;;
+                *"rev-parse"*"origin/main"*) echo "remotesha" ;;
+                *"rev-parse"*"HEAD"*) echo "mergesha" ;;
+                *"diff --name-only"*"HEAD"*) echo "" ;;
+                *"rev-list --count"*"origin/main..HEAD"*) echo "1" ;;
+                *"rev-list --count"*"HEAD..origin/main"*) echo "0" ;;
+                *"stash list"*) printf "stash@{0}: On main: DAAF update backup 2026\n" ;;
+                *"stash pop"*) return 0 ;;
+                *"ls-files"*) echo "" ;;
+                *"diff --name-only"*) echo "" ;;
+                *"compose exec"*"branch"*) return 0 ;;
+                "cp"*) return 0 ;;
+                *) return 0 ;;
+            esac
+        }
+        export -f docker
+        bash "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+    '
+    assert_success
+    # (a) Routed into the resume finalizer.
+    assert_output --partial "Detected an interrupted update -- finishing it now."
+    assert_output --partial "Restoring your set-aside changes..."
+    assert_output --partial "Update complete!"
+    # (b) The merge/rebase/abort menu never printed.
+    refute_output --partial "1) MERGE (recommended)"
+    refute_output --partial "Choose [1/2/3]"
+    refute_output --partial "that aren'\''t in"
+    # (c) No fresh-pull re-run note when BEHIND=0.
+    refute_output --partial "run the updater again to get them"
+}
+
+# --- Full-script: AHEAD>0 resume corner where new upstream arrived (BEHIND>0) ---
+# Rare: new upstream commits landed between the conflict and the re-run. The fix
+# always finishes the interrupted update first (never mixes it with a fresh pull),
+# then prints a note telling the user to re-run for the new commits.
+
+@test "update: resume off the AHEAD>0 block prints a re-run note when BEHIND>0" {
+    setup_state_machine
+    run bash -c '
+        docker() {
+            local all_args="$*"
+            case "$all_args" in
+                "info") return 0 ;;
+                *"compose ps"*"--format"*) echo "daaf-docker" ;;
+                *"compose exec"*"true"*) return 0 ;;
+                *"compose exec"*"test -f"*"/daaf/CLAUDE.md"*) return 0 ;;
+                *"compose exec"*"test -f"*"/daaf/.git/shallow"*) return 1 ;;
+                *"MERGE_HEAD"*) echo "" ;;
+                *"rebase-merge"*) echo "" ;;
+                *"daaf-update-resume"*) printf "OLD_HEAD=oldrecorded\nTIMESTAMP=t\n" ;;
+                *"^{commit}"*) return 0 ;;
+                *"remote get-url"*"origin"*) echo "https://github.com/DAAF-Contribution-Community/daaf.git" ;;
+                *"fetch"*) return 0 ;;
+                *"rev-parse --verify"*"backup/"*) return 1 ;;
+                *"rev-parse --verify"*"origin/main"*) return 0 ;;
+                *"branch --show-current"*) echo "main" ;;
+                *"rev-parse"*"origin/main"*) echo "remotesha" ;;
+                *"rev-parse"*"HEAD"*) echo "mergesha" ;;
+                *"diff --name-only"*"HEAD"*) echo "" ;;
+                *"rev-list --count"*"origin/main..HEAD"*) echo "1" ;;
+                *"rev-list --count"*"HEAD..origin/main"*) echo "2" ;;
+                *"stash list"*) printf "stash@{0}: On main: DAAF update backup 2026\n" ;;
+                *"stash pop"*) return 0 ;;
+                *"ls-files"*) echo "" ;;
+                *"diff --name-only"*) echo "" ;;
+                *"compose exec"*"branch"*) return 0 ;;
+                "cp"*) return 0 ;;
+                *) return 0 ;;
+            esac
+        }
+        export -f docker
+        bash "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+    '
+    assert_success
+    assert_output --partial "Detected an interrupted update -- finishing it now."
+    assert_output --partial "Update complete!"
+    # The fresh-pull re-run note fires because BEHIND>0.
+    assert_output --partial "The interrupted update was completed first."
+    assert_output --partial "run the updater again to get them"
+    assert_output --partial "bash update_daaf.sh"
+    # Still no menu -- the interrupted update is finished first, never mixed.
+    refute_output --partial "1) MERGE (recommended)"
+    refute_output --partial "Choose [1/2/3]"
+}

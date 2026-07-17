@@ -460,6 +460,12 @@ function Resolve-Conflict {
             Write-Host "  exit"
         }
         Write-Host ""
+        Write-Host "Then re-run the updater from PowerShell:"
+        Write-Host "  .\update_daaf.ps1"
+        Write-Host "It picks up where it left off - restoring any set-aside changes and"
+        Write-Host "finishing the remaining steps (host-script sync and rebuild check)"
+        Write-Host "automatically."
+        Write-Host ""
         Write-Host "To undo the update instead (run from PowerShell, not the container):"
         Write-Host "  docker compose exec daaf-docker git -C /daaf $AbortCmd"
         Write-Host "  docker compose exec daaf-docker git -C /daaf reset --hard $BackupBranch"
@@ -1003,6 +1009,11 @@ function Complete-Update {
     # Complete-Update runs, can persist the same way -- otherwise re-running with
     # $env:DAAF_BRANCH set while already current would never save the choice.
     Save-BranchChoice
+
+    # Single marker-cleanup chokepoint: every successful completion clears the
+    # interrupted-update resume marker so a subsequent run does not mistake this
+    # (now-finished) update for one still needing resume finalization.
+    Clear-ResumeMarker
 }
 
 # --- Settings-File Key Upsert (inlined from daaf_lib.ps1) ---
@@ -1154,6 +1165,82 @@ function Save-BranchChoice {
             Write-Host "      persist it for future runs."
         }
     }
+}
+
+# --- Interrupted-update resume marker helpers ---
+# (see the update_daaf.sh twin for the full rationale). A genuine merge/rebase
+# conflict cannot be auto-resolved non-interactively, so the updater exits 1
+# mid-merge and asks the user to resolve, commit, and re-run. The re-run lands on
+# an "already up to date" early exit (HEAD now == remote), which historically did
+# tier-A-only sync and skipped rebuild detection, tier-B host-script sync, and the
+# stash pop -- stranding the user on a stale image with the "DAAF update backup"
+# stash still set aside. These helpers persist the pre-update HEAD across the
+# interruption so the re-run can finish the journey. Marker lives in the repo's
+# own .git dir (container path: invisible to git status, survives the merge, wiped
+# by a reclone). Defined before the test-mode guard so they are Pester-testable and
+# callable from Complete-Update under dot-source.
+
+function Write-ResumeMarker {
+    if ($env:DAAF_DRY_RUN -eq "1") { return }
+    # Host builds the marker bytes; an in-container `cat` writes them. The sh arg
+    # carries no embedded double quotes (PS 5.1 mangles those in native argv), so
+    # the content is fed on stdin. The read side strips CR, so pipeline newline
+    # handling does not affect parsing. Byte-identical line format to the Bash twin.
+    $marker = "OLD_HEAD=$OldHead`nTIMESTAMP=$Timestamp`n"
+    $savedEAP = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "SilentlyContinue"
+        $marker | docker compose exec -T daaf-docker sh -c 'cat > /daaf/.git/daaf-update-resume' 2>&1 | Out-Null
+    } finally { $ErrorActionPreference = $savedEAP }
+}
+
+function Clear-ResumeMarker {
+    if ($env:DAAF_DRY_RUN -eq "1") { return }
+    $savedEAP = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "SilentlyContinue"
+        $null = docker compose exec -T daaf-docker rm -f /daaf/.git/daaf-update-resume 2>&1
+    } finally { $ErrorActionPreference = $savedEAP }
+}
+
+# Echo the stash@{N} ref of the FIRST stash whose message contains "DAAF update
+# backup", or "" if none exists (user already popped, or there were no dirty
+# files). Capture-then-parse. PS 5.1-safe.
+function Find-UpdateBackupStash {
+    $stashList = Invoke-ComposeGit stash list
+    if ([string]::IsNullOrWhiteSpace($stashList)) { return "" }
+    foreach ($line in ($stashList -split "`n")) {
+        if ($line -match "DAAF update backup") {
+            # A stash list line looks like: stash@{0}: On main: DAAF update...
+            # so everything before the first ':' is the ref.
+            $ref = ($line -split ":")[0].Trim()
+            if ($ref) { return $ref }
+        }
+    }
+    return ""
+}
+
+# Finish an interrupted update that has now landed on an "already up to date"
+# early exit (the resolved-and-committed merge left HEAD == remote). Restore the
+# set-aside stash (if still present) exactly like the normal pop sites, then
+# Complete-Update against the recorded pre-update $OldHead so tier A+B host-script
+# sync AND rebuild detection run against the true pre-update baseline.
+function Resume-Update {
+    $stashRef = Find-UpdateBackupStash
+    if ($stashRef) {
+        Write-Host "Restoring your set-aside changes..."
+        Invoke-ComposeGitNull stash pop $stashRef
+        if ($LASTEXITCODE -ne 0) {
+            Resolve-StashConflict
+            if ($script:StashConflictResolved) {
+                Complete-Update $OldHead
+            } else {
+                Complete-Update $OldHead "Note: Uncommitted changes still need attention (see above)."
+            }
+            return
+        }
+    }
+    Complete-Update $OldHead
 }
 
 # --- Test Mode Guard ---
@@ -1336,6 +1423,96 @@ if (Test-Path "backup_daaf.ps1") {
 Invoke-ComposeGitNull branch $BackupBranch
 
 $OldHead = Invoke-ComposeGit rev-parse HEAD
+
+# =====================================================================
+# Resume detection (interrupted-update recovery)
+# =====================================================================
+# Runs after the pre-update HEAD is captured but before any branch-state
+# decision. Mirrors the update_daaf.sh twin. Two cases when a prior run stopped
+# on a genuine conflict:
+#   1. A merge/rebase is STILL in progress -> guide the user and exit 1, keeping
+#      the marker.
+#   2. A resume marker records a valid pre-update HEAD -> resume: adopt the
+#      recorded $OldHead so rebuild detection and tier-B host-script sync run
+#      against the TRUE pre-update baseline (this run's HEAD is already the
+#      post-merge HEAD). Skipped under dry run (no real repo to probe).
+$Resuming = $false
+if ($env:DAAF_DRY_RUN -ne "1") {
+    # Capture the in-progress probes, then test. Use the canonical git filesystem
+    # markers: .git/MERGE_HEAD exists only during an unresolved merge; rebase state
+    # lives in .git/rebase-merge or .git/rebase-apply. Filesystem probes (not
+    # `rev-parse MERGE_HEAD`) so no "rev-parse HEAD" token false-matches test
+    # mocks. The sh -c probes carry no embedded double quotes (PS 5.1-safe argv).
+    $savedEAP = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "SilentlyContinue"
+        $mergeInProgress = (docker compose exec -T daaf-docker sh -c 'if [ -f /daaf/.git/MERGE_HEAD ]; then echo yes; fi' 2>$null | Out-String).Trim()
+        $rebaseInProgress = (docker compose exec -T daaf-docker sh -c 'if [ -d /daaf/.git/rebase-merge ] || [ -d /daaf/.git/rebase-apply ]; then echo yes; fi' 2>$null | Out-String).Trim()
+        $markerRaw = (docker compose exec -T daaf-docker sh -c 'cat /daaf/.git/daaf-update-resume 2>/dev/null' 2>$null | Out-String).Trim()
+    } finally { $ErrorActionPreference = $savedEAP }
+
+    if ((-not [string]::IsNullOrWhiteSpace($mergeInProgress)) -or (-not [string]::IsNullOrWhiteSpace($rebaseInProgress))) {
+        Write-Host ""
+        Write-Host "-------------------------------------------"
+        Write-Host "  An update is still in progress"
+        Write-Host "-------------------------------------------"
+        Write-Host ""
+        Write-Host "A previous update stopped partway through resolving a conflict. Please"
+        Write-Host "finish that before running the updater again."
+        Write-Host ""
+        Write-Host "To finish resolving (inside the container):"
+        Write-Host "  .\run_daaf.ps1 bash"
+        Write-Host "  (edit the conflicting files to remove the <<<<<<< markers)"
+        Write-Host "  git add ."
+        if (-not [string]::IsNullOrWhiteSpace($mergeInProgress)) {
+            Write-Host "  git commit"
+        } else {
+            Write-Host "  git rebase --continue"
+        }
+        Write-Host "  exit"
+        Write-Host ""
+        Write-Host "Then re-run:  .\update_daaf.ps1"
+        Write-Host ""
+        Write-Host "Or to abort the update entirely (your research files are not affected):"
+        if (-not [string]::IsNullOrWhiteSpace($mergeInProgress)) {
+            Write-Host "  docker compose exec daaf-docker git -C /daaf merge --abort"
+        } else {
+            Write-Host "  docker compose exec daaf-docker git -C /daaf rebase --abort"
+        }
+        Write-Host "  docker compose exec daaf-docker git -C /daaf reset --hard $BackupBranch"
+        Write-Host ""
+        Wait-AndExit 1
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($markerRaw)) {
+        # Parse OLD_HEAD from the marker.
+        $markerOldHead = ""
+        foreach ($rline in ($markerRaw -split "`n")) {
+            if ($rline -match "^OLD_HEAD=") {
+                $markerOldHead = ($rline -replace "^OLD_HEAD=", "").Trim()
+            }
+        }
+        $valid = $false
+        if ($markerOldHead) {
+            $null = Invoke-ComposeGit rev-parse --verify --quiet "$markerOldHead^{commit}"
+            if ($LASTEXITCODE -eq 0) { $valid = $true }
+        }
+        if ($valid) {
+            $Resuming = $true
+            $OldHead = $markerOldHead
+            Write-Host ""
+            Write-Host "Resuming interrupted update..."
+            Write-Host ""
+        } else {
+            # Corrupt/invalid marker -> warn, delete, continue normally (fail-open).
+            Write-Host ""
+            Write-Host "NOTE: Found a leftover update marker with no valid restart point."
+            Write-Host "      Ignoring it and continuing normally."
+            Write-Host ""
+            Clear-ResumeMarker
+        }
+    }
+}
 
 # =====================================================================
 # Check git remote
@@ -1605,6 +1782,14 @@ if (($CurrentBranch -eq $RemoteBranch) -and ($Local -eq $Remote) -and `
     Write-Host ""
     Write-Host "Already up to date! Nothing to do."
     Write-Host ""
+    # A resume run lands here once the user resolved and committed a conflict from
+    # the interrupted run (HEAD now == remote). Do NOT take the tier-A-only exit --
+    # restore the set-aside stash and run tier A+B sync + rebuild detection against
+    # the recorded pre-update $OldHead. Complete-Update clears the resume marker.
+    if ($Resuming) {
+        Resume-Update
+        Wait-AndExit 0
+    }
     # Even with nothing to pull, run the existence-heal sync so host scripts a
     # prior update missed are delivered now. No OldHead -> only tier A runs.
     Sync-HostScript
@@ -1637,6 +1822,15 @@ if (($CurrentBranch -ne $RemoteBranch) -and ($Behind -eq "0")) {
     Write-Host "Already up to date! Your branch '$CurrentBranch' has all the latest"
     Write-Host "changes from $UpstreamRemote/$RemoteBranch. Nothing to do."
     Write-Host ""
+    # Resume run: the resolved-and-committed merge on '$CurrentBranch' now contains
+    # all of $UpstreamRemote/$RemoteBranch (BEHIND=0), so we land here. Finish the
+    # interrupted journey instead of the tier-A-only exit -- restore the stash and
+    # run tier A+B sync + rebuild detection against the recorded pre-update
+    # $OldHead. Complete-Update clears the resume marker.
+    if ($Resuming) {
+        Resume-Update
+        Wait-AndExit 0
+    }
     # Existence-heal sync (tier A only) even when there is nothing new to pull.
     Sync-HostScript
     # Persist an env-origin branch on this no-op success too (returns before
@@ -1757,11 +1951,16 @@ if ($CurrentBranch -ne $RemoteBranch) {
         # stdout through a pipe, breaking Docker's TTY detection.
         Resolve-Conflict "merge" "merge --abort"
         if (-not $script:ConflictResolved) {
+            # Persist a resume marker so a post-resolution re-run finishes the
+            # remaining steps (stash restore + host-script sync + rebuild check).
+            Write-ResumeMarker
             if ($Stashed) {
                 Write-Host ""
-                Write-Host "Your uncommitted changes are safely saved and will be"
-                Write-Host "restored after conflicts are resolved."
-                Write-Host "  docker compose exec daaf-docker git -C /daaf stash pop"
+                Write-Host "Your uncommitted changes are safely set aside. After you resolve"
+                Write-Host "the conflicts and commit, re-run the updater and it will restore"
+                Write-Host "them and finish the remaining steps automatically:"
+                Write-Host "  .\update_daaf.ps1"
+                Write-Host "(Or restore manually: docker compose exec daaf-docker git -C /daaf stash pop)"
             }
             Wait-AndExit 1
         }
@@ -1789,6 +1988,31 @@ if ($CurrentBranch -ne $RemoteBranch) {
 # On default branch - local commits
 # =====================================================================
 if ([int]$Ahead -gt 0) {
+    # A resume run can land here on the DEFAULT branch: the user resolved and
+    # committed a conflict from the interrupted run, so HEAD is now a merge
+    # commit and the up-to-date hash check above no longer matches -- Behind=0
+    # but Ahead>0 (the local merge/customization commits). Finish the interrupted
+    # journey instead of re-showing the merge/rebase/abort menu, which would be
+    # spurious here and would strand the set-aside "DAAF update backup" stash
+    # (the tree is now clean, so $Stashed would be false and the stash never
+    # popped). Resume-Update pops the stash if present and runs tier A+B sync +
+    # rebuild detection against the recorded pre-update $OldHead; Complete-Update
+    # clears the resume marker. See the two "already up to date" resume routes.
+    if ($Resuming) {
+        Write-Host ""
+        Write-Host "Detected an interrupted update -- finishing it now."
+        Resume-Update
+        # Rare corner: new upstream commits arrived between the conflict and this
+        # re-run. Always finish the interrupted update first, never mix it with a
+        # fresh pull -- so tell the user to re-run for the new commits.
+        if ([int]$Behind -gt 0) {
+            Write-Host ""
+            Write-Host "The interrupted update was completed first. New updates are now"
+            Write-Host "available -- run the updater again to get them:"
+            Write-Host "  .\update_daaf.ps1"
+        }
+        Wait-AndExit 0
+    }
     Write-Host ""
     Write-Host "You have $Ahead local commit(s) on $RemoteBranch that aren't in"
     Write-Host "the official DAAF release."
@@ -1850,11 +2074,16 @@ if ([int]$Ahead -gt 0) {
             # stdout through a pipe, breaking Docker's TTY detection.
             Resolve-Conflict "merge" "merge --abort"
             if (-not $script:ConflictResolved) {
+                # Persist a resume marker so a post-resolution re-run finishes
+                # the remaining steps (stash restore + sync + rebuild check).
+                Write-ResumeMarker
                 if ($Stashed) {
                     Write-Host ""
-                    Write-Host "Your uncommitted changes are safely saved and will be"
-                    Write-Host "restored after conflicts are resolved."
-                    Write-Host "  docker compose exec daaf-docker git -C /daaf stash pop"
+                    Write-Host "Your uncommitted changes are safely set aside. After you resolve"
+                    Write-Host "the conflicts and commit, re-run the updater and it will restore"
+                    Write-Host "them and finish the remaining steps automatically:"
+                    Write-Host "  .\update_daaf.ps1"
+                    Write-Host "(Or restore manually: docker compose exec daaf-docker git -C /daaf stash pop)"
                 }
                 Wait-AndExit 1
             }
@@ -1924,11 +2153,16 @@ if ([int]$Ahead -gt 0) {
             # Call as statement -- see merge path comment above
             Resolve-Conflict "rebase" "rebase --abort"
             if (-not $script:ConflictResolved) {
+                # Persist a resume marker so a post-resolution re-run finishes
+                # the remaining steps (stash restore + sync + rebuild check).
+                Write-ResumeMarker
                 if ($Stashed) {
                     Write-Host ""
-                    Write-Host "Your uncommitted changes are safely saved and will be"
-                    Write-Host "restored after conflicts are resolved."
-                    Write-Host "  docker compose exec daaf-docker git -C /daaf stash pop"
+                    Write-Host "Your uncommitted changes are safely set aside. After you resolve"
+                    Write-Host "the conflicts and commit, re-run the updater and it will restore"
+                    Write-Host "them and finish the remaining steps automatically:"
+                    Write-Host "  .\update_daaf.ps1"
+                    Write-Host "(Or restore manually: docker compose exec daaf-docker git -C /daaf stash pop)"
                 }
                 Wait-AndExit 1
             }
