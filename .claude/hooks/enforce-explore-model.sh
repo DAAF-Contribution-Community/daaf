@@ -15,7 +15,7 @@ if [ "$SUBAGENT_TYPE" = "Explore" ]; then
     "hookSpecificOutput": {
       "hookEventName": "PreToolUse",
       "permissionDecision": "deny",
-      "permissionDecisionReason": "Explore subagents are blocked in this project. Explore runs on Haiku, which lacks sufficient reasoning depth. Use subagent_type search-agent instead — it is a DAAF-native read-only agent that inherits the main orchestrator model, has web access (WebSearch, WebFetch), and understands DAAF conventions."
+      "permissionDecisionReason": "Explore subagents are blocked in this project. Explore runs on Haiku, which lacks sufficient reasoning depth. Use subagent_type search-agent instead — it is a DAAF-native read-only agent that defaults to the Sonnet tier (model can be overridden per dispatch), has web access (WebSearch, WebFetch), and understands DAAF conventions."
     }
   }'
 fi

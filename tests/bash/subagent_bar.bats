@@ -157,6 +157,19 @@ _append_subbar_model() {
     assert_output --partial "30%"
 }
 
+@test "fable[1m] row: 300k on 1M window renders ELEVATED amber (bracketed fable variant keeps extended-horizon tier)" {
+    # The exact string claude-fable-5[1m] must resolve to the fable family. Under a
+    # sonnet session the per-row window mapping maps it to 1M; 300k/1M = 30% ->
+    # extended-horizon ELEVATED. A conservative family at 300k (>=250k) would be
+    # CRITICAL red, so ELEVATED amber confirms the bracketed variant is fable.
+    _seed_window 1000000
+    _seed_session_model "claude-sonnet-4-6"   # session differs, forces per-row window mapping
+    _seed_task_model "t1" "claude-fable-5[1m]"
+    run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 300000)
+    assert_success
+    assert_output --partial "$COLOR_ELEVATED"
+}
+
 # =========================================================================
 # GPT 5.6 Sol exact tier: 1.05M window, standard percentages + retained absolutes
 # =========================================================================

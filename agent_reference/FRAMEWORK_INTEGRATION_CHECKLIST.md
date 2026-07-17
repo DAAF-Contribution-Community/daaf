@@ -84,6 +84,7 @@ After completing each item, note the status: Done, Skipped (with reason), or N/A
 | AM3 | If changing the agent's scope, update README.md When to Use + Coordination Matrix | [C] | `.claude/agents/README.md` | Affected sections |
 | AM4 | If changing inputs/outputs, update consumer/producer entries | [C] | `.claude/agents/README.md` | Agent Coordination Matrix |
 | AM5 | If changing the name, update all references (SKILL.md, WORKFLOW_PHASE, etc.) | [M] | Multiple files | Grep for old name |
+| AM6 | If the agent's stage coverage changes, sweep ALL stage-mapping tables and update each — agent stage columns are a recurring, easy-to-miss registration surface | [C] | `.claude/agents/README.md`, `agent_reference/WORKFLOW_PHASE*.md`, `.claude/skills/daaf-orchestrator/references/*-mode.md` | Agent Index "Stage(s)" column + Coordination Matrix, workflow-phase stage tables, and mode-reference stage/agent tables |
 
 ---
 
@@ -102,7 +103,7 @@ After completing each item, note the status: Done, Skipped (with reason), or N/A
 | M6 | Add row to Mode Summary Table | [M] | `.claude/skills/daaf-orchestrator/SKILL.md` | Mode Summary Table |
 | M7 | Add confirmation template | [M] | `.claude/skills/daaf-orchestrator/SKILL.md` | Confirmation Templates by Mode |
 | M8 | Add escalation paths (from AND to new mode) | [M] | `.claude/skills/daaf-orchestrator/SKILL.md` | Mode Escalation Paths table |
-| M9 | Add row to Reference File Index | [M] | `.claude/skills/daaf-orchestrator/SKILL.md` | What to Load Next > Reference File Index |
+| M9 | Add row to Reference File Index | [M] | `.claude/skills/daaf-orchestrator/SKILL.md` | What to Load Next > Reference File Index. **Note:** `{mode-name}-mode.md` files register *here* (the orchestrator SKILL.md Reference File Index), NOT in CLAUDE.md's Reference Files table — that table lists `agent_reference/` docs (plus `.claude/agents/README.md`), not mode files |
 | M10 | Add branch to Documentation Loading Decision Tree | [M] | `.claude/skills/daaf-orchestrator/SKILL.md` | Documentation Loading Decision Tree code block |
 | M11 | Add mode-specific boundaries | [M] | `agent_reference/BOUNDARIES.md` | Mode-Specific Boundaries section |
 | M12 | Update README.md mode count and table | [M] | `README.md` | Engagement Modes section |
@@ -220,6 +221,7 @@ After completing each item, note the status: Done, Skipped (with reason), or N/A
 | HS9 | Create a `.bats` (and Pester `.Tests.ps1`) unit test | [C] | `tests/bash/{name}.bats`, `tests/powershell/{name}.Tests.ps1` | Required if the script has non-trivial logic beyond a thin launcher |
 | HS10 | Add to the migration fetch list if it is a bootstrap tool users may lack | [C] | `scripts/host/migrate_daaf.sh` / `.ps1` | Only for one-time migration tooling; most scripts are covered by install + updater self-sync |
 | HS11 | Document user-facing scripts in the quickstart Quick Reference table | [C] | `user_reference/01_installation_and_quickstart.md` | Quick Reference table + relevant workflow section, if the script is meant to be run directly by users |
+| HS12 | If the script (or an accompanying config change) introduces persistent state that must survive container rebuilds, verify a named volume (or bind mount) is registered in `docker-compose.yml` AND the mount point is documented | [C] | `docker-compose.yml` | `volumes:` section + the doc surface describing the mount. State written to an unmounted container path is silently lost on rebuild; a compose-volume addition without a checklist row was nearly missed (precedent: the `~/.claude/daaf-state/` claude-config volume; see the § 5 cache-placement principle note) |
 
 > **Why the install lists are hand-maintained but the updater is not:** Fresh installs download host scripts before any repo exists on the host, so `install.sh`/`install.ps1` must name each file explicitly (there is nothing to derive a list from yet). The updater, by contrast, runs *after* pulling the new repo state into the container, so it can and does enumerate the current `scripts/host/` contents itself — making a hardcoded updater list both redundant and a recurring source of "new file silently never delivered" bugs. Register new host scripts in the two install lists; leave the updater alone.
 
@@ -285,3 +287,4 @@ After completing any component checklist above, run these universal verification
 | CC5 | Naming conventions are followed | Skill dirs match frontmatter names; agent files are lowercase-hyphenated; mode refs end in `-mode.md` |
 | CC6 | No orphaned components | Every new file is referenced by at least one other file |
 | CC7 | No stale references | If anything was renamed or removed, old names don't appear elsewhere |
+| CC8 | Code examples and prompt templates swept | Extends CC7: the stale-reference sweep must also grep for the old pattern *inside* fenced code blocks, invocation templates, and prompt templates, not just prose. Examples silently teach stale conventions if missed |

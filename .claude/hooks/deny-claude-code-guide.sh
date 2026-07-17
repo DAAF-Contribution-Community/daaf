@@ -16,7 +16,7 @@ if [ "$SUBAGENT_TYPE" = "claude-code-guide" ]; then
     "hookSpecificOutput": {
       "hookEventName": "PreToolUse",
       "permissionDecision": "deny",
-      "permissionDecisionReason": "claude-code-guide is NOT permitted in this project. It runs on the Haiku model, which lacks the reasoning depth and nuance required for accurate Claude Code guidance. Instead, spawn a search-agent (subagent_type: search-agent) and instruct it to use WebFetch to browse the official Claude Code documentation at https://code.claude.com/docs/en/overview, navigating to and thoroughly reading the relevant pages for the question at hand. The search-agent inherits the main orchestrator model and has full access to WebSearch and WebFetch for retrieving documentation pages."
+      "permissionDecisionReason": "claude-code-guide is NOT permitted in this project. It runs on the Haiku model, which lacks the reasoning depth and nuance required for accurate Claude Code guidance. Instead, spawn a search-agent (subagent_type: search-agent) and instruct it to use WebFetch to browse the official Claude Code documentation at https://code.claude.com/docs/en/overview, navigating to and thoroughly reading the relevant pages for the question at hand. The search-agent defaults to the Sonnet tier (model can be overridden per dispatch) and has full access to WebSearch and WebFetch for retrieving documentation pages."
     }
   }'
 fi

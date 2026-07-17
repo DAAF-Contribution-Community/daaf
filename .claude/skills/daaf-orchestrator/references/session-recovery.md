@@ -120,6 +120,15 @@ From STATE.md's **Current Position** and **Next Actions**, confirmed by Plan.md'
 
 Determine what's complete and what remains.
 
+### Step 5b: Model-Tier Awareness on Resume
+
+The resumed session may run on a **different model than the pre-restart session**. This changes two things the recovery must account for before re-dispatching work:
+
+- **Context Quality Curve threshold profile.** The profile (Claude Fable/Mythos validated extended-horizon, exact GPT 5.6 Sol validated, or conservative-default) is selected from the *current* session model's ID per CLAUDE.md § Context & Session Health — so utilization gating may cross ELEVATED/HIGH/CRITICAL at different points than the prior session did.
+- **Subagent dispatch ceiling.** The `enforce-model-ceiling` hook denies any dispatch on a model tier *above* the current session model. A STATE.md restart prompt or dispatch plan written under a higher-tier session may name subagent models the current session cannot dispatch — a denied dispatch should be **re-planned at the current session's tier, not retried unchanged**.
+
+Re-tier any dispatch plans carried forward in STATE.md restart prompts to the current session's model before executing them.
+
 ### Step 6: Present Recovery Summary
 
 ```markdown

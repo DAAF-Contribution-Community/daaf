@@ -182,6 +182,18 @@ _seed_window() { printf '%s' "$1" > "/tmp/claude-ctx-window-${FAKE_SESSION}"; }
     assert_output --partial "[ELEVATED]"
 }
 
+@test "fable[1m]: 300k on 1M window is ELEVATED (bracketed fable variant keeps extended-horizon tier)" {
+    # The exact string claude-fable-5[1m] must resolve to the fable family, not
+    # conservative. At 300k/1M that is 30% -> extended-horizon ELEVATED; a
+    # conservative family would treat 300k (>=250k absolute leg) as CRITICAL, so
+    # ELEVATED confirms the bracketed variant is matched as fable.
+    _seed_window 1000000
+    _write_main_transcript "${TEST_DIR}/t.jsonl" "claude-fable-5[1m]" 300000
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
+    assert_success
+    assert_output --partial "[ELEVATED]"
+}
+
 # =========================================================================
 # GPT 5.6 Sol exact tier: 1.05M window, standard percentages + retained absolutes
 # =========================================================================

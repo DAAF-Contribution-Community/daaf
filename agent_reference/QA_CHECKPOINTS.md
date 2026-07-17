@@ -1459,4 +1459,4 @@ scripts/cr/
 
 **DO NOT write QA scripts that only re-run the original script's checks.** QA value comes from orthogonal validation — checking from a different angle. If your QA script duplicates the original's checks with no additions, you've added audit trail but not safety.
 
-**DO NOT issue PASSED without articulating WHY.** "All checks passed" is not a QA finding — it's an absence of findings. A proper PASSED includes reasoning: what you looked for, what alternative failure modes you considered, and why you're confident the code is correct.
+**DO NOT issue PASSED without articulating WHY.** "All checks passed" is not a QA finding — it's an absence of findings. A proper PASSED includes reasoning: what you looked for, what alternative failure modes you considered, and why you're confident the code is correct. (Script-author-facing counterpart: `VALIDATION_CHECKPOINTS.md` § Validation Integrity Anti-Patterns, "Hard-Coded PASS Verdicts" — derive, never assert.)

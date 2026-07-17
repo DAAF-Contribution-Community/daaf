@@ -336,6 +336,25 @@ Skills are for AI execution, not human documentation.
 - CONTRIBUTING.md
 - LICENSE
 
+### Library Skill Version Drift
+
+**Problem (library/tool skills):** The skill pins a version that was never published to the package index, or documents an API that differs from the build actually installed in the container. Both look authoritative but mislead — `pip install pkg==X.Y` fails because the GitHub release tag has no corresponding published package, or a documented function signature does not exist in the installed build because upstream docs describe a newer API than what is installed.
+
+**Fix — verify against the package index and the installed build before authoring:**
+
+- **Confirm installability before pinning.** A GitHub release tag can exist with no published package. Probe the index (PyPI / CRAN) rather than trusting the tag. (Note: CRAN's index exposes only each package's *current* version — `available.packages()` cannot confirm an older version, which lives in the CRAN archive.)
+  ```bash
+  pip index versions <pkg>                          # available published versions (read-only)
+  # R: "<pkg>" %in% rownames(available.packages())  # package present on CRAN?
+  #    available.packages()["<pkg>", "Version"]     # its current CRAN version, to compare
+  ```
+- **Introspect the installed build before writing against upstream docs.** The container's installed build is the ground truth the skill must describe. Confirm the version and the actual signatures you document:
+  ```bash
+  pip show <pkg>                          # installed version (read-only)
+  python -c "import importlib.metadata as m; print(m.version('<pkg>'))"
+  # R: packageVersion("<pkg>"); args(<fn>)
+  ```
+
 ## Pre-Submission Checklist
 
 ### Frontmatter

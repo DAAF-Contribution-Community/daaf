@@ -277,4 +277,5 @@ The codebook path comes from the `codebook` column in `datasets-reference.md`. M
 | Validation errors | `./references/gotchas.md` |
 | Anti-patterns | `./references/gotchas.md` |
 | Undertriggering / overtriggering | `./references/gotchas.md` |
+| Library/tool skill version verification | `./references/gotchas.md` |
 | Pre-submission checklist | `./references/gotchas.md` |

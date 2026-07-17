@@ -1938,6 +1938,38 @@ fetch_from_mirrors(dataset_paths=DATASET_PATHS, years=YEARS)
 
 ---
 
+### Validation Integrity Anti-Patterns
+
+These patterns indicate a checkpoint that reports a verdict without actually testing anything.
+
+#### Hard-Coded PASS Verdicts (BLOCKER)
+
+**Doctrine — derive, never assert.** Every PASS/FAIL must be *computed* from observed values (an `assert`/comparison in Python, `stopifnot()`/comparison in R), never asserted by construction. A validation that prints `[PASS]` (or sets a pass flag) unconditionally cannot ever fail — and a checkpoint that cannot fail is not a checkpoint. It is a stub of a checkpoint: it puts a green mark in the audit trail while verifying nothing. (QA-reviewer-facing counterpart: `QA_CHECKPOINTS.md` § Anti-Patterns, "DO NOT issue PASSED without articulating WHY.")
+
+```python
+# RED FLAG - PASS asserted by construction; this line runs no matter what the data says:
+print("[PASS] Row count check")   # No comparison — prints PASS unconditionally
+passed = True                      # Flag set without deriving it from anything
+
+# CORRECT - verdict derived from a runtime comparison of observed vs. expected:
+actual = df.height
+assert actual == expected_rows, f"[FAIL] Row count: expected {expected_rows}, got {actual}"
+print(f"[PASS] Row count check: {actual} == {expected_rows}")
+```
+
+```r
+# RED FLAG - PASS asserted by construction; cannot fail regardless of the data:
+cat("[PASS] Row count check\n")   # No comparison — prints PASS unconditionally
+passed <- TRUE                     # Flag set without deriving it from anything
+
+# CORRECT - verdict derived from a runtime comparison of observed vs. expected:
+actual <- nrow(df)
+stopifnot(actual == expected_rows)
+cat(sprintf("[PASS] Row count check: %d == %d\n", actual, expected_rows))
+```
+
+---
+
 ### Python Stub Detection (Inline)
 
 Use this sequential inline code within a Final Review script to detect stubs across project files:
