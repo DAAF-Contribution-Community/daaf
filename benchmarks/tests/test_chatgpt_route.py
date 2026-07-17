@@ -67,6 +67,13 @@ CHATGPT_SUBSCRIPTION_KEYS = {
     "gpt-56-sol-chatgpt",
 }
 
+# OpenRouter keys added after the PREEXISTING snapshot (kimi-k3 added
+# 2026-07-17 for the G1R Kimi K3 battery). Kept separate so the preexisting
+# identity assertion documents exactly what predates the G1R additions.
+G1R_OPENROUTER_ADDITIONS = {
+    "kimi-k3",
+}
+
 
 def coherent_env(**overrides):
     env = {
@@ -123,7 +130,8 @@ class ModelRegistryTests(unittest.TestCase):
     def test_preexisting_model_keys_are_identical(self):
         models = self.load_all()
         self.assertEqual(
-            PREEXISTING_MODEL_KEYS, set(models) - CHATGPT_SUBSCRIPTION_KEYS
+            PREEXISTING_MODEL_KEYS,
+            set(models) - CHATGPT_SUBSCRIPTION_KEYS - G1R_OPENROUTER_ADDITIONS,
         )
 
     def test_explicit_key_selects_chatgpt_luna(self):
@@ -150,9 +158,30 @@ class ModelRegistryTests(unittest.TestCase):
     def test_provider_filter_adds_chatgpt_without_changing_existing_counts(self):
         models = self.load_all()
         self.assertEqual(8, len(filter_models(models, provider="anthropic")))
-        self.assertEqual(17, len(filter_models(models, provider="openrouter")))
+        # 17 preexisting + kimi-k3 (added 2026-07-17 for the G1R K3 battery).
+        self.assertEqual(18, len(filter_models(models, provider="openrouter")))
         # Luna + Terra + Sol on the ChatGPT-subscription lane (2026-07-17).
         self.assertEqual(3, len(filter_models(models, provider="chatgpt-subscription")))
+
+    def test_kimi_k3_entry_is_openrouter_with_full_purity_pinning(self):
+        models = self.load_all()
+        selected = filter_models(models, ["kimi-k3"])
+        self.assertEqual(1, len(selected))
+        entry = selected[0]
+        self.assertEqual("moonshotai/kimi-k3", entry.id)
+        self.assertEqual("openrouter", entry.provider)
+        self.assertEqual(3.00, entry.pricing.input)
+        self.assertEqual(15.00, entry.pricing.output)
+        # No cache discount listed on the OpenRouter route (2026-07-17).
+        self.assertIsNone(entry.pricing.cached_input)
+        # All three purity selectors pinned to the bare K3 slug so dispatched
+        # children stay model-pure under the G1R validity gate.
+        for selector in (
+            "ANTHROPIC_DEFAULT_OPUS_MODEL",
+            "ANTHROPIC_DEFAULT_SONNET_MODEL",
+            "CLAUDE_CODE_SUBAGENT_MODEL",
+        ):
+            self.assertEqual("moonshotai/kimi-k3", entry.env_overrides[selector])
 
     def test_terra_and_sol_chatgpt_entries_mirror_luna(self):
         models = self.load_all()

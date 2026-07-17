@@ -136,6 +136,30 @@ models:
       input: 0.75
       output: 3.50
 
+  # Added 2026-07-17 (G1R Kimi K3 battery), mirroring the kimi-k26 field set
+  # plus full purity-env pinning (all three selectors) so dispatched children
+  # stay on the K3 slug for the G1R purity validity gate.
+  # Identity/pricing/context verified online 2026-07-17 from
+  # https://openrouter.ai/moonshotai/kimi-k3 (accessed 2026-07-17): slug
+  # moonshotai/kimi-k3 — single listing, no thinking/turbo variants (K3 is
+  # itself the thinking model; reasoning effort fixed at "max"); $3.00/M input,
+  # $15.00/M output; no cache discount listed on OpenRouter (Moonshot's own API
+  # lists $0.30/M cached input — not applicable to this route); context window
+  # 1,048,576 tokens; released 2026-07-16. Single upstream provider (Moonshot
+  # INT4 endpoint) as of access date, so no ":provider" pin suffix exists —
+  # bare slug is correct. K3 accepts no sampling params (temperature/top_p/seed).
+  - id: "moonshotai/kimi-k3"
+    name: "Kimi K3"
+    provider: openrouter
+    cost_tier: "medium"
+    pricing:
+      input: 3.00
+      output: 15.00
+    env_overrides:
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "moonshotai/kimi-k3"
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "moonshotai/kimi-k3"
+      CLAUDE_CODE_SUBAGENT_MODEL: "moonshotai/kimi-k3"
+
   - id: "qwen/qwen3.6-27b:venice/fp8"
     name: "Qwen 3.6 27B"
     provider: openrouter
