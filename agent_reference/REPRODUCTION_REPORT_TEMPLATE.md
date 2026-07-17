@@ -321,7 +321,7 @@ Copy this template to `Reproduction_Report.md` in the reproduction project folde
 
 ### Environment Compatibility Assessment
 
-> **Populated during RV-1 with language-aware observed evidence.** Python comparison covers the runtime, marimo, and installed versions of packages imported by scripts. R comparison covers the R runtime, Quarto, repository/snapshot metadata, and `installed.packages()` versions for imported packages. Unversioned original `install.packages()` lines and snapshot dates do not prove exact package versions; mark original values UNKNOWN / NOT DIRECTLY VERIFIED rather than synthesizing a complete table from Python-style pins. Diagnostic scripts are verification instrumentation: store them under project `scripts/repro_checks/`, execute them through `run_with_capture.sh`, and retain their appended logs.
+> **Populated during RV-1 with language-aware observed evidence.** Python comparison covers the runtime, marimo, and installed versions of packages imported by scripts. R comparison covers the R runtime, Quarto, repository/snapshot metadata, and `installed.packages()` versions for imported packages. Unversioned original `install.packages()` lines and snapshot dates do not prove exact package versions; mark original values UNKNOWN / NOT DIRECTLY VERIFIED rather than synthesizing a complete table from Python-style pins. Diagnostic scripts are verification instrumentation: store them under project `scripts/repro_checks/`, execute them through `run_with_capture.sh`, retain their appended logs, and never install packages at runtime.
 
 **Original DAAF Version:** [commit hash from Report's AI Disclosure, e.g., `abc1234`]
 **Original DAAF Release:** [semver if identifiable, e.g., `v2.1.0`, or `—` if not mapped to a release]
