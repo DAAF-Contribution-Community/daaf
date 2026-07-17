@@ -3,10 +3,11 @@
 # Tests for context-reporter.sh -- context utilization injection hook
 # ============================================================================
 # Focus: the model-conditional Context Quality Curve threshold tiers in
-# calculate(). Fable/Mythos and exact GPT 5.6 Sol ids get the extended-horizon
-# tier (ELEVATED 30%/300k, HIGH 40%/400k, CRITICAL 50%/500k); every other model
-# -- including opus-4-8[1m] and non-exact Sol variants -- gets the conservative
-# tier (ELEVATED 40%/150k, HIGH 60%/200k, CRITICAL 75%/250k).
+# calculate(). Fable/Mythos use ELEVATED 30%/300k, HIGH 40%/400k, and
+# CRITICAL 50%/500k. Exact GPT 5.6 Sol ids use ELEVATED 40%/300k, HIGH
+# 60%/400k, and CRITICAL 75%/500k. Every other model -- including
+# opus-4-8[1m] and non-exact Sol variants -- uses ELEVATED 40%/150k, HIGH
+# 60%/200k, and CRITICAL 75%/250k.
 #
 # Also covers the main/subagent measurement split (a subagent is measured with
 # ITS OWN model's family, not the session's) and fail-open behavior.
@@ -21,6 +22,7 @@ load 'test_helper'
 
 # Path to the script under test (override to test a proposed copy).
 CONTEXT_REPORTER_SH="${CONTEXT_REPORTER_SH:-${REPO_ROOT}/.claude/hooks/context-reporter.sh}"
+CONTEXT_BAR_SH="${CONTEXT_BAR_SH:-${REPO_ROOT}/.claude/scripts/context-bar.sh}"
 
 # Fixed fake session id so tests never touch a real session's /tmp caches.
 FAKE_SESSION="bats-ctxrep-session"
@@ -33,7 +35,9 @@ _ctx_caches() {
         "/tmp/claude-model-${FAKE_SESSION}" \
         "/tmp/claude-ctx-ts-${FAKE_SESSION}" \
         "/tmp/claude-ctx-ts-${FAKE_SESSION}-${FAKE_AGENT}" \
-        "/tmp/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
+        "/tmp/claude-model-${FAKE_SESSION}.transcript-signature" \
+        "/tmp/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}" \
+        "/tmp/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}.transcript-signature"
 }
 
 _clean_ctx_caches() {
@@ -41,6 +45,10 @@ _clean_ctx_caches() {
     while read -r f; do
         [ -n "$f" ] && rm -f "$f"
     done < <(_ctx_caches)
+    rm -f /tmp/claude-model-"${FAKE_SESSION}".tmp.*
+    rm -f /tmp/claude-model-"${FAKE_SESSION}".transcript-signature.tmp.*
+    rm -f /tmp/claude-subagent-model-"${FAKE_SESSION}"-*.tmp.*
+    rm -f /tmp/claude-subagent-model-"${FAKE_SESSION}"-*.transcript-signature.tmp.*
 }
 
 setup() {
@@ -49,7 +57,7 @@ setup() {
     unset CLAUDE_CODE_MAX_CONTEXT_TOKENS
     unset DAAF_PROVIDER_SHIM
     unset SHIM_BACKEND_MODE
-    export FAKE_SESSION FAKE_AGENT CONTEXT_REPORTER_SH
+    export FAKE_SESSION FAKE_AGENT CONTEXT_REPORTER_SH CONTEXT_BAR_SH
 }
 
 teardown() {
@@ -88,6 +96,16 @@ _write_subagent_transcript() {
     } > "$path"
 }
 
+_append_model_usage() {
+    # Args: path, model id, total tokens, isSidechain JSON boolean.
+    local path="$1" model="$2" total="$3" sidechain="$4"
+    local a=$((total / 2))
+    local b=$((total / 4))
+    local c=$((total - a - b))
+    printf '{"type":"assistant","isSidechain":%s,"message":{"role":"assistant","model":"%s","usage":{"input_tokens":%d,"cache_read_input_tokens":%d,"cache_creation_input_tokens":%d,"output_tokens":10}}}\n' \
+        "$sidechain" "$model" "$a" "$b" "$c" >> "$path"
+}
+
 # Emit a PreToolUse payload (main session) referencing a transcript path.
 _payload_main() {
     printf '{"hook_event_name":"PreToolUse","session_id":"%s","transcript_path":"%s"}' \
@@ -100,6 +118,13 @@ _payload_main() {
 _payload_subagent() {
     printf '{"hook_event_name":"PreToolUse","session_id":"%s","transcript_path":"%s","agent_id":"%s"}' \
         "$FAKE_SESSION" "$1" "$FAKE_AGENT"
+}
+
+# Emit the production-shaped statusline payload that writes the shared cache.
+# Args: $1 model id, $2 transcript path, $3 incoming context window.
+_payload_statusline() {
+    printf '{"model":{"id":"%s","display_name":"%s"},"cwd":"%s","transcript_path":"%s","session_id":"%s","context_window":{"context_window_size":%s}}' \
+        "$1" "$1" "$TEST_DIR" "$2" "$FAKE_SESSION" "$3"
 }
 
 _seed_window() { printf '%s' "$1" > "/tmp/claude-ctx-window-${FAKE_SESSION}"; }
@@ -158,7 +183,7 @@ _seed_window() { printf '%s' "$1" > "/tmp/claude-ctx-window-${FAKE_SESSION}"; }
 }
 
 # =========================================================================
-# GPT 5.6 Sol exact tier: 1.05M window, extended-horizon thresholds
+# GPT 5.6 Sol exact tier: 1.05M window, standard percentages + retained absolutes
 # =========================================================================
 
 @test "GPT 5.6 Sol: 299k on 1050k window is NOMINAL" {
@@ -197,6 +222,48 @@ _seed_window() { printf '%s' "$1" > "/tmp/claude-ctx-window-${FAKE_SESSION}"; }
     assert_output --partial "500k / 1050k"
 }
 
+@test "exact Sol ChatGPT boundaries use 40/60/75% on the final 370k denominator" {
+    local boundary tokens expected_severity expected_pct
+    _seed_window 1050000
+    for boundary in \
+        "147999 NOMINAL 39" \
+        "148000 ELEVATED 40" \
+        "221999 ELEVATED 59" \
+        "222000 HIGH 60" \
+        "277499 HIGH 74" \
+        "277500 CRITICAL 75"; do
+        read -r tokens expected_severity expected_pct <<< "$boundary"
+        rm -f "/tmp/claude-ctx-ts-${FAKE_SESSION}"
+        _write_main_transcript "${TEST_DIR}/t.jsonl" "gpt-5.6-sol" "$tokens"
+        run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+            bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
+        assert_success
+        assert_output --partial "[${expected_severity}]"
+        assert_output --partial "/ 370k tokens (${expected_pct}%)"
+    done
+}
+
+@test "provider-prefixed exact Sol[1m] retains 300k/400k/500k boundaries on 1050k" {
+    local boundary tokens expected_severity expected_pct
+    _seed_window 1050000
+    for boundary in \
+        "299999 NOMINAL 28" \
+        "300000 ELEVATED 28" \
+        "399999 ELEVATED 38" \
+        "400000 HIGH 38" \
+        "499999 HIGH 47" \
+        "500000 CRITICAL 47"; do
+        read -r tokens expected_severity expected_pct <<< "$boundary"
+        rm -f "/tmp/claude-ctx-ts-${FAKE_SESSION}"
+        _write_main_transcript "${TEST_DIR}/t.jsonl" \
+            "openrouter/openai/gpt-5.6-sol[1m]" "$tokens"
+        run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
+        assert_success
+        assert_output --partial "[${expected_severity}]"
+        assert_output --partial "/ 1050k tokens (${expected_pct}%)"
+    done
+}
+
 @test "GPT 5.6 non-Sol and near-miss variants stay conservative" {
     local model
     for model in \
@@ -222,7 +289,7 @@ _seed_window() { printf '%s' "$1" > "/tmp/claude-ctx-window-${FAKE_SESSION}"; }
     done
 }
 
-@test "mixed: GPT 5.6 Sol subagent under sonnet session gets 1050k and extended-horizon tier" {
+@test "mixed: GPT 5.6 Sol subagent under sonnet session gets 1050k and retained absolute gates" {
     printf 'claude-sonnet-4-6' > "/tmp/claude-model-${FAKE_SESSION}"
     printf 'openai/gpt-5.6-sol' > "/tmp/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
     _seed_window 200000
@@ -456,23 +523,60 @@ _seed_window() { printf '%s' "$1" > "/tmp/claude-ctx-window-${FAKE_SESSION}"; }
 }
 
 # =========================================================================
-# ChatGPT-subscription lane: gpt-5.4/5.5/5.6 subagent window drops to 370k
+# ChatGPT-subscription lane: final gpt-5.4/5.5/5.6 accounting cap is 370k
 # -------------------------------------------------------------------------
-# Canonical lane gate: DAAF_PROVIDER_SHIM=openai AND SHIM_BACKEND_MODE=chatgpt.
-# The per-subagent window correction only fires when the subagent model differs
-# from the session model, so these seed a sonnet session with a gpt-5.6-sol
-# subagent. The window is proven via the "used / MAX" denominator: on the lane
-# a gpt-5.6-sol subagent maps to 370k, vs 1,050,000 off it.
-#
-# PRE-APPLICATION EXPECTATION: only the lane-ACTIVE case below (370k denominator)
-# distinguishes the patched hook from the live one — it FAILS against the
-# unpatched /daaf/.claude/hooks/context-reporter.sh (which still emits "/ 1050k")
-# and PASSES when CONTEXT_REPORTER_SH points at the patched copy. The lane-INERT
-# cases (vars unset, one var only, override wins, Claude model) assert behavior
-# that already holds on the unpatched hook, so they pass against both.
+# The final min(resolved, 370000) constraint must cover the main cache path,
+# same-model and different-model subagents, and unsafe explicit overrides. Exact
+# lane signals are required. API/OpenRouter behavior and non-GPT models remain
+# unchanged. Physical-window accounting stays separate from Sol's quality tier.
 # =========================================================================
 
-@test "chatgpt lane (both vars set): gpt-5.6-sol subagent maps to 370k (81%)" {
+@test "chatgpt lane: exact Sol main session at 290k is CRITICAL against final 370k cap" {
+    _seed_window 1050000
+    _write_main_transcript "${TEST_DIR}/t.jsonl" "gpt-5.6-sol[1m]" 290000
+
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
+    assert_success
+    assert_output --partial "[CRITICAL]"
+    assert_output --partial "290k / 370k"
+    assert_output --partial "(78%)"
+}
+
+@test "API route: exact Sol main session at 290k remains NOMINAL on 1.05M" {
+    _seed_window 1050000
+    _write_main_transcript "${TEST_DIR}/t.jsonl" "gpt-5.6-sol[1m]" 290000
+
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=openai \
+        bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
+    assert_success
+    assert_output --partial "[NOMINAL]"
+    assert_output --partial "290k / 1050k"
+    assert_output --partial "(27%)"
+}
+
+@test "statusline writer-to-reporter path caches 370k and reports Sol 290k CRITICAL" {
+    _write_main_transcript "${TEST_DIR}/t.jsonl" "gpt-5.6-sol[1m]" 290000
+
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000 \
+        bash "$CONTEXT_BAR_SH" < <(_payload_statusline "gpt-5.6-sol[1m]" "${TEST_DIR}/t.jsonl" 1050000)
+    assert_success
+    run cat "/tmp/claude-ctx-window-${FAKE_SESSION}"
+    assert_success
+    assert_output "370000"
+
+    # Ensure no warm rate gate can suppress the reporter half of this path.
+    rm -f "/tmp/claude-ctx-ts-${FAKE_SESSION}"
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000 \
+        bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
+    assert_success
+    assert_output --partial "[CRITICAL]"
+    assert_output --partial "290k / 370k"
+}
+
+@test "chatgpt lane: different-model gpt-5.6-sol subagent maps to 370k (81%)" {
     printf 'claude-sonnet-4-6' > "/tmp/claude-model-${FAKE_SESSION}"
     printf 'openai/gpt-5.6-sol' > "/tmp/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
     _seed_window 200000
@@ -486,6 +590,38 @@ _seed_window() { printf '%s' "$1" > "/tmp/claude-ctx-window-${FAKE_SESSION}"; }
     assert_output --partial "300k / 370k"
     refute_output --partial "300k / 1050k"
     assert_output --partial "(81%)"
+}
+
+@test "chatgpt lane: same-model exact Sol subagent caps a stale 1.05M session cache" {
+    printf 'gpt-5.6-sol[1m]' > "/tmp/claude-model-${FAKE_SESSION}"
+    printf 'gpt-5.6-sol[1m]' > "/tmp/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
+    _seed_window 1050000
+    parent="${TEST_DIR}/main.jsonl"
+    printf '{"type":"user","isSidechain":false,"message":{"content":"x"}}\n' > "$parent"
+    _write_subagent_transcript "${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl" "gpt-5.6-sol[1m]" 290000
+
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
+    assert_success
+    assert_output --partial "[CRITICAL]"
+    assert_output --partial "290k / 370k"
+    assert_output --partial "(78%)"
+}
+
+@test "chatgpt lane: explicit 1.05M cannot raise a different-model Sol subagent above 370k" {
+    printf 'claude-sonnet-4-6' > "/tmp/claude-model-${FAKE_SESSION}"
+    printf 'openai/gpt-5.6-sol' > "/tmp/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
+    _seed_window 200000
+    parent="${TEST_DIR}/main.jsonl"
+    printf '{"type":"user","isSidechain":false,"message":{"content":"x"}}\n' > "$parent"
+    _write_subagent_transcript "${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl" "openai/gpt-5.6-sol" 290000
+
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000 \
+        bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
+    assert_success
+    assert_output --partial "[CRITICAL]"
+    assert_output --partial "290k / 370k"
 }
 
 @test "lane vars unset: gpt-5.6-sol subagent keeps the 1.05M API-lane window (28%)" {
@@ -518,8 +654,19 @@ _seed_window() { printf '%s' "$1" > "/tmp/claude-ctx-window-${FAKE_SESSION}"; }
     refute_output --partial "300k / 370k"
 }
 
-@test "explicit CLAUDE_CODE_MAX_CONTEXT_TOKENS still wins on the chatgpt lane" {
-    # Override forces the window to 250k regardless of the lane gate: 200k -> 80%.
+@test "malformed lane signal values do not activate the reporter cap" {
+    _seed_window 1050000
+    _write_main_transcript "${TEST_DIR}/t.jsonl" "gpt-5.6-sol[1m]" 290000
+
+    run env DAAF_PROVIDER_SHIM=OpenAI SHIM_BACKEND_MODE=chatgpt \
+        bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
+    assert_success
+    assert_output --partial "[NOMINAL]"
+    assert_output --partial "290k / 1050k"
+}
+
+@test "chatgpt lane preserves a lower positive explicit context window" {
+    # A 250k override remains below the 370k final ceiling: 200k -> 80%.
     printf 'claude-sonnet-4-6' > "/tmp/claude-model-${FAKE_SESSION}"
     printf 'openai/gpt-5.6-sol' > "/tmp/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
     _seed_window 200000
@@ -551,6 +698,251 @@ _seed_window() { printf '%s' "$1" > "/tmp/claude-ctx-window-${FAKE_SESSION}"; }
     assert_success
     assert_output --partial "250k / 1000k"
     assert_output --partial "(25%)"
+}
+
+# =========================================================================
+# Transcript-aware main/subagent model-cache freshness
+# =========================================================================
+
+@test "main cache refreshes Claude -> Sol -> Terra -> Claude before cap and tier selection" {
+    local transcript="${TEST_DIR}/main-switch.jsonl"
+    local model_cache="/tmp/claude-model-${FAKE_SESSION}"
+    local signature_cache="${model_cache}.transcript-signature"
+    _seed_window 1000000
+    _write_main_transcript "$transcript" "claude-fable-5" 100000
+
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "$transcript")
+    assert_success
+    assert_output --partial "100k / 1000k"
+    run cat "$model_cache"
+    assert_output "claude-fable-5"
+    run test -s "$signature_cache"
+    assert_success
+
+    rm -f "/tmp/claude-ctx-ts-${FAKE_SESSION}"
+    _append_model_usage "$transcript" "gpt-5.6-sol" 111000 false
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        bash "$CONTEXT_REPORTER_SH" < <(_payload_main "$transcript")
+    assert_success
+    assert_output --partial "[NOMINAL]"
+    assert_output --partial "111k / 370k"
+    assert_output --partial "(30%)"
+    run cat "$model_cache"
+    assert_output "gpt-5.6-sol"
+
+    rm -f "/tmp/claude-ctx-ts-${FAKE_SESSION}"
+    _append_model_usage "$transcript" "gpt-5.6-terra" 111000 false
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        bash "$CONTEXT_REPORTER_SH" < <(_payload_main "$transcript")
+    assert_success
+    assert_output --partial "[NOMINAL]"
+    assert_output --partial "111k / 370k"
+    run cat "$model_cache"
+    assert_output "gpt-5.6-terra"
+
+    rm -f "/tmp/claude-ctx-ts-${FAKE_SESSION}"
+    _append_model_usage "$transcript" "claude-sonnet-4-6" 90000 false
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        bash "$CONTEXT_REPORTER_SH" < <(_payload_main "$transcript")
+    assert_success
+    assert_output --partial "[NOMINAL]"
+    assert_output --partial "90k / 1000k"
+    refute_output --partial "/ 370k"
+    run cat "$model_cache"
+    assert_output "claude-sonnet-4-6"
+}
+
+@test "subagent cache ignores synthetic entries, refreshes on later real models, and changes physical/tier decisions" {
+    local parent="${TEST_DIR}/main.jsonl"
+    local transcript="${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl"
+    local model_cache="/tmp/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
+    printf '{"type":"assistant","isSidechain":false,"message":{"model":"claude-sonnet-4-6"}}\n' > "$parent"
+    _seed_window 200000
+    _write_subagent_transcript "$transcript" "claude-sonnet-4-6" 90000
+
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
+    assert_success
+    assert_output --partial "90k / 200k"
+    run cat "$model_cache"
+    assert_output "claude-sonnet-4-6"
+
+    rm -f "/tmp/claude-ctx-ts-${FAKE_SESSION}-${FAKE_AGENT}"
+    _append_model_usage "$transcript" "<synthetic>" 100000 true
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
+    assert_success
+    assert_output --partial "100k / 200k"
+    run cat "$model_cache"
+    assert_output "claude-sonnet-4-6"
+
+    rm -f "/tmp/claude-ctx-ts-${FAKE_SESSION}-${FAKE_AGENT}"
+    _append_model_usage "$transcript" "gpt-5.6-sol" 111000 true
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
+    assert_success
+    assert_output --partial "[NOMINAL]"
+    assert_output --partial "111k / 370k"
+    run cat "$model_cache"
+    assert_output "gpt-5.6-sol"
+
+    rm -f "/tmp/claude-ctx-ts-${FAKE_SESSION}-${FAKE_AGENT}"
+    _append_model_usage "$transcript" "gpt-5.6-terra" 111000 true
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
+    assert_success
+    assert_output --partial "[NOMINAL]"
+    assert_output --partial "111k / 370k"
+    run cat "$model_cache"
+    assert_output "gpt-5.6-terra"
+
+    rm -f "/tmp/claude-ctx-ts-${FAKE_SESSION}-${FAKE_AGENT}"
+    _append_model_usage "$transcript" "claude-fable-5" 100000 true
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
+    assert_success
+    assert_output --partial "100k / 1000k"
+    refute_output --partial "/ 370k"
+    run cat "$model_cache"
+    assert_output "claude-fable-5"
+}
+
+@test "unchanged transcript signature reuses a nonempty compatible bare cache" {
+    local transcript="${TEST_DIR}/unchanged.jsonl"
+    local model_cache="/tmp/claude-model-${FAKE_SESSION}"
+    _seed_window 1050000
+    _write_main_transcript "$transcript" "claude-sonnet-4-6" 90000
+
+    # First invocation establishes the sidecar from the script's own signature
+    # implementation. Replacing only the compatibility cache then makes reuse
+    # observable: an unchanged transcript must not be rescanned back to Sonnet.
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "$transcript")
+    assert_success
+    run test -s "${model_cache}.transcript-signature"
+    assert_success
+    printf 'gpt-5.6-sol' > "$model_cache"
+    cached_signature=$(cat "${model_cache}.transcript-signature")
+    current_signature=$(stat -c '%s:%y' -- "$transcript")
+    [[ "$cached_signature" == "$current_signature" ]]
+    cached_model=$(cat "$model_cache")
+    [[ "$cached_model" == "gpt-5.6-sol" ]]
+    rm -f "/tmp/claude-ctx-ts-${FAKE_SESSION}"
+
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        bash "$CONTEXT_REPORTER_SH" < <(_payload_main "$transcript")
+    assert_success
+    assert_output --partial "90k / 370k"
+    run cat "$model_cache"
+    assert_output "gpt-5.6-sol"
+}
+
+# =========================================================================
+# Canonical positive-decimal override contract
+# =========================================================================
+
+@test "canonical reporter override 370000 and a lower value are accepted" {
+    _seed_window 1050000
+    _write_main_transcript "${TEST_DIR}/t.jsonl" "gpt-5.6-sol" 111000
+
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=openai \
+        CLAUDE_CODE_MAX_CONTEXT_TOKENS=370000 \
+        bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
+    assert_success
+    assert_output --partial "111k / 370k"
+
+    rm -f "/tmp/claude-ctx-ts-${FAKE_SESSION}"
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        CLAUDE_CODE_MAX_CONTEXT_TOKENS=250000 \
+        bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
+    assert_success
+    assert_output --partial "111k / 250k"
+}
+
+@test "invalid decimal overrides are ignored without arithmetic diagnostics and the reporter cap still applies" {
+    local value
+    _seed_window 1050000
+    _write_main_transcript "${TEST_DIR}/t.jsonl" "gpt-5.6-sol" 111000
+    for value in \
+        0370000 \
+        080000 \
+        0 \
+        +370000 \
+        ' 370000' \
+        '370000 ' \
+        9223372036854775808 \
+        99999999999999999999999999999999999999; do
+        rm -f "/tmp/claude-ctx-ts-${FAKE_SESSION}"
+        run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+            CLAUDE_CODE_MAX_CONTEXT_TOKENS="$value" \
+            bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
+        assert_success
+        assert_output --partial "111k / 370k"
+        refute_output --partial "value too great"
+        refute_output --partial "syntax error"
+    done
+}
+
+# =========================================================================
+# Anchored terminal-slug GPT physical-family classification
+# =========================================================================
+
+@test "reporter accepts supported terminal GPT flagship slugs for subagent physical mapping and final cap" {
+    local model
+    local parent="${TEST_DIR}/main.jsonl"
+    local transcript="${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl"
+    printf '{"type":"assistant","message":{"model":"claude-sonnet-4-6"}}\n' > "$parent"
+    _seed_window 200000
+    for model in gpt-5.4 gpt-5.5 gpt-5.6 gpt-5.6-sol gpt-5.6-terra gpt-5.6-luna 'gpt-5.6-sol[1m]' openrouter/openai/gpt-5.6-sol; do
+        _clean_ctx_caches
+        _seed_window 200000
+        _write_subagent_transcript "$transcript" "$model" 111000
+        run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+            bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
+        assert_success
+        assert_output --partial "111k / 370k"
+    done
+}
+
+@test "reporter preserves anchored GPT 5.2, mini, and chat subagent mappings" {
+    local parent="${TEST_DIR}/main.jsonl"
+    local transcript="${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl"
+    printf '{"type":"assistant","message":{"model":"claude-fable-5"}}\n' > "$parent"
+
+    _seed_window 1000000
+    _write_subagent_transcript "$transcript" "gpt-5.2" 100000
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
+    assert_success
+    assert_output --partial "100k / 400k"
+
+    _clean_ctx_caches
+    _seed_window 1000000
+    _write_subagent_transcript "$transcript" "openai/gpt-5.6-sol-mini" 100000
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
+    assert_success
+    assert_output --partial "100k / 400k"
+
+    _clean_ctx_caches
+    _seed_window 1000000
+    _write_subagent_transcript "$transcript" "openai/gpt-5.6-sol-chat" 64000
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
+    assert_success
+    assert_output --partial "64k / 128k"
+}
+
+@test "reporter rejects malformed left boundaries and gpt-5.60 from flagship mapping and cap" {
+    local model
+    local parent="${TEST_DIR}/main.jsonl"
+    local transcript="${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl"
+    printf '{"type":"assistant","message":{"model":"claude-sonnet-4-6"}}\n' > "$parent"
+    for model in vendor/notgpt-5.6-sol xgpt-5.6-sol foo-gpt-5.6-sol gpt-5.60 gpt-5.60-sol; do
+        _clean_ctx_caches
+        _seed_window 200000
+        _write_subagent_transcript "$transcript" "$model" 90000
+        run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+            bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
+        assert_success
+        assert_output --partial "90k / 200k"
+        refute_output --partial "/ 370k"
+        refute_output --partial "/ 1050k"
+    done
 }
 
 # =========================================================================

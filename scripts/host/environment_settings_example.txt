@@ -277,8 +277,9 @@
 # supported per-model context-window override.
 #
 # GPT window sizes: the gpt-5.6 family (sol / terra / luna) and gpt-5.5 / 5.4
-# are 1050000; gpt-5.2 is 400000. An alternative to this key is to set
-# CLAUDE_CODE_AUTO_COMPACT_WINDOW to 1000000.
+# are 1050000 on API/OpenRouter routes; gpt-5.2 is 400000. DAAF keeps Claude
+# Code automatic compaction disabled, so CLAUDE_CODE_AUTO_COMPACT_WINDOW is NOT
+# an alternative declaration or protection mechanism.
 #
 # GPT-5.6 FAMILY & TIER-ANALOG NAMING: Sol (strong / Opus-analog), Terra
 # (mid / Sonnet-analog), Luna (economy / Haiku-analog) -- all with 1,050,000-token
@@ -286,8 +287,9 @@
 # numbers are ESTIMATES on GPT sessions (OpenRouter doesn't serve Claude Code's
 # token-counting endpoint). GPT models use DAAF's conservative context-quality
 # thresholds by default; exact gpt-5.6-sol and gpt-5.6-sol[1m] (including provider-
-# prefixed forms) are the validated extended-threshold exception: 30%/300k,
-# 40%/400k, and 50%/500k. Non-Sol and near-match variants remain conservative.
+# prefixed forms) keep Sol's higher validated absolute gates while using the standard
+# percentages: 40%/300k, 60%/400k, and 75%/500k. Non-Sol and near-match variants
+# remain conservative. Physical-window mapping and quality thresholds are separate.
 # See the installation guide's "GPT (OpenAI) models via OpenRouter" section for
 # current model guidance.
 #
@@ -296,10 +298,11 @@
 # sending (so the shim / backend see the bare slug). It is VERIFIED for the
 # direct-OpenAI shim lane (Option F in [4]) but UNTESTED on "openai/"-prefixed
 # OpenRouter slugs -- so on Option C prefer the explicit
-# CLAUDE_CODE_MAX_CONTEXT_TOKENS above (or CLAUDE_CODE_AUTO_COMPACT_WINDOW).
-# Do NOT use [1m] on the ChatGPT-subscription lane ([4.3]): it advertises
-# capacity the Codex backend rejects (~370k measured ceiling) and suppresses the
-# local compaction that would keep you under it -- set 370000 per section [4.3].
+# CLAUDE_CODE_MAX_CONTEXT_TOKENS above. On the ChatGPT-subscription lane ([4.3]),
+# the [1m] hint cannot raise the Codex backend's measured ~370k ceiling: set
+# CLAUDE_CODE_MAX_CONTEXT_TOKENS=370000 per section [4.3]. DAAF keeps automatic
+# compaction disabled and instead uses the aligned physical-window declaration
+# for utilization, statusline rendering, severity, and stop/restart guidance.
 #
 # ----------------------------------------------------------------------------
 # Optional Claude Code output budget (restart required)
@@ -308,9 +311,10 @@
 # 64000. On Claude Code 2.1.202, use the plain decimal value 64000 (not "64K").
 # Thinking tokens count toward this output budget. Raising it reserves more of the
 # context window for a possible response, leaving less room for conversation
-# history and tool results and potentially causing earlier compaction; the active
-# provider/model can also impose a lower limit. DAAF therefore keeps 32000 as the
-# default and recommends bounded specialist final returns even when you opt in.
+# history and tool results and potentially causing earlier DAAF stop/restart
+# guidance; the active provider/model can also impose a lower limit. DAAF
+# therefore keeps 32000 as the default and recommends bounded specialist final
+# returns even when you opt in.
 # Set this in the HOST daaf-docker/environment_settings.txt before starting Claude
 # Code/the container; the established host injection flow supplies it at startup.
 # --- Optional: remove the leading '#' to opt in to Claude Code's maximum: ---
@@ -444,12 +448,14 @@
 #
 # CONTEXT WINDOW (chatgpt lane): the Codex subscription backend enforces a much
 # lower effective INPUT ceiling than the model's true 1M window -- measured ~370000
-# for gpt-5.6-sol (2026-07-16: accept 369,941, reject 372,905). The client-side
-# [1m] hint cannot raise it (it only suppresses local compaction, making backend
-# rejections MORE likely), so declare 370000 here to make Claude Code's own
-# auto-compaction fire before the backend ceiling. Big-window GPT slugs on this
-# lane are assumed capped the same way until individually measured; re-measure
-# with scripts/provider_shim/probe_context_ceiling.py.
+# for gpt-5.6-sol (2026-07-16: accept 369,941, reject 372,905). The backend is the
+# ultimate hard ceiling; neither [1m] nor any client setting can raise it. Declare
+# 370000 here to align Claude Code and DAAF's physical-window accounting with that
+# ceiling. DAAF uses the aligned denominator for utilization, statusline rendering,
+# severity, and behavioral stop/restart guidance. DAAF keeps automatic compaction
+# disabled and does not implement a transport-level request blocker. Big-window GPT
+# slugs on this lane are assumed capped the same way until individually measured;
+# re-measure with scripts/provider_shim/probe_context_ceiling.py.
 # --- To activate, remove the leading '#': ---
 #CLAUDE_CODE_MAX_CONTEXT_TOKENS=370000
 #

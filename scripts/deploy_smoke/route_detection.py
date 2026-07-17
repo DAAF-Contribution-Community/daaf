@@ -61,6 +61,19 @@ ALL_ROUTES = (ROUTE_ANTHROPIC, ROUTE_OPENROUTER, ROUTE_OPENAI_API, ROUTE_CHATGPT
 # cannot change daemon-level state (SHIM_SANITIZE_TOOLS, backend_mode).
 SHIM_ROUTES = frozenset({ROUTE_OPENAI_API, ROUTE_CHATGPT})
 
+# Every selector that can make Claude Code itself or a dispatched subagent run a
+# mapped GPT model. T0.4 inspects all four rather than treating ANTHROPIC_MODEL as
+# a proxy for the effective model surface.
+MODEL_SELECTOR_VARS = (
+    "ANTHROPIC_MODEL",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL",
+    "CLAUDE_CODE_SUBAGENT_MODEL",
+)
+
+_MAX_SIGNED_64 = 9223372036854775807
+_CANONICAL_POSITIVE_DECIMAL_RE = re.compile(r"^[1-9][0-9]*$")
+
 
 # --- Shared result types --------------------------------------------------
 
@@ -130,6 +143,9 @@ class RouteInfo:
     remap_active: bool = False      # tier-alias remap or subagent-model pin set
     session_model: str = ""         # ANTHROPIC_MODEL as configured
     route_match: bool = True        # False when asserted_route != detected_route
+    shim_control: str = ""         # raw DAAF_PROVIDER_SHIM value (no normalization)
+    backend_mode_control: str = "" # raw SHIM_BACKEND_MODE value (no normalization)
+    lane_control_issues: tuple = () # exact-value mismatches surfaced by T0.1
 
     def to_dict(self) -> dict:
         return {
@@ -139,6 +155,9 @@ class RouteInfo:
             "remap_active": self.remap_active,
             "session_model": self.session_model,
             "route_match": self.route_match,
+            "shim_control": self.shim_control,
+            "backend_mode_control": self.backend_mode_control,
+            "lane_control_issues": list(self.lane_control_issues),
         }
 
 
@@ -248,6 +267,90 @@ def _key_state(env, name: str) -> str:
 
 # --- Route + family detection ---------------------------------------------
 
+def _is_canonical_positive_decimal(value) -> bool:
+    """Mirror the hardened Bash consumers' arithmetic-input contract.
+
+    Only canonical positive base-10 text within signed 64-bit range is accepted.
+    No normalization is performed: whitespace, signs, leading zeroes, decimal or
+    exponent notation, empty values, and overflow all remain invalid.
+    """
+    if value is None:
+        return False
+    text = value if isinstance(value, str) else str(value)
+    if not _CANONICAL_POSITIVE_DECIMAL_RE.fullmatch(text):
+        return False
+    max_text = str(_MAX_SIGNED_64)
+    return len(text) < len(max_text) or (
+        len(text) == len(max_text) and text <= max_text
+    )
+
+
+def _gpt_physical_window(model_id: str):
+    """Return the runtime static-map window for a supported GPT identifier.
+
+    Physical-family matching is deliberately separate from exact-Sol quality-tier
+    matching. It operates on the terminal provider-stripped slug, requires a
+    supported version at the left boundary, and accepts only end-of-slug, '-' or
+    '[' as the version boundary. The ordering mirrors the Bash consumers so mini
+    and chat variants keep their established smaller mappings.
+    """
+    slug = (model_id or "").rsplit("/", 1)[-1]
+    if re.match(r"^gpt-5\.(?:4|5|6)(?:$|[-\[])", slug):
+        if "-mini" in slug:
+            return 400000
+        if "-chat" in slug:
+            return 128000
+        return 1050000
+    if re.match(r"^gpt-5(?:$|[-\[])|^gpt-5\.2(?:$|[-\[])", slug):
+        if "-chat" in slug:
+            return 128000
+        return 400000
+    return None
+
+
+def _has_supported_1m_hint(model_id: str) -> bool:
+    """Recognize the direct-shim [1m] hint, including a following effort suffix."""
+    slug = (model_id or "").rsplit("/", 1)[-1]
+    return bool(re.search(r"\[1m\](?:#[^/]*)?$", slug))
+
+
+def _lane_control_issues(env) -> tuple:
+    """Explain exact-value lane-control near misses without normalizing them."""
+    shim = env.get("DAAF_PROVIDER_SHIM", "")
+    backend = env.get("SHIM_BACKEND_MODE", "")
+    problems = []
+
+    if shim != "openai":
+        if shim.strip().lower() == "openai":
+            problems.append(
+                f"DAAF_PROVIDER_SHIM={shim!r} is a near miss; runtime requires exact "
+                "DAAF_PROVIDER_SHIM='openai' (case- and whitespace-sensitive)."
+            )
+        elif shim:
+            problems.append(
+                f"DAAF_PROVIDER_SHIM={shim!r} is not the exact supported shim value "
+                "'openai'; partial or alternate values do not activate a shim lane."
+            )
+    if backend != "chatgpt":
+        if backend.strip().lower() == "chatgpt":
+            problems.append(
+                f"SHIM_BACKEND_MODE={backend!r} is a near miss; runtime requires exact "
+                "SHIM_BACKEND_MODE='chatgpt' (case- and whitespace-sensitive)."
+            )
+        elif backend not in ("", "openai"):
+            problems.append(
+                f"SHIM_BACKEND_MODE={backend!r} is not an exact supported lane value; "
+                "use 'chatgpt' for the subscription lane or leave it unset/use 'openai' "
+                "for the direct API lane."
+            )
+    if backend == "chatgpt" and shim != "openai":
+        problems.append(
+            "SHIM_BACKEND_MODE='chatgpt' is set without the other exact lane signal: "
+            "DAAF_PROVIDER_SHIM must equal 'openai'."
+        )
+    return tuple(problems)
+
+
 def detect_route(env) -> str:
     """Detect the active install route from the live environment.
 
@@ -255,8 +358,11 @@ def detect_route(env) -> str:
     the OpenRouter base-URL test because a shim route sets ANTHROPIC_BASE_URL to
     the localhost shim, not to openrouter.ai.
     """
-    shim = (env.get("DAAF_PROVIDER_SHIM") or "").strip().lower()
-    backend_mode = (env.get("SHIM_BACKEND_MODE") or "").strip().lower()
+    # The two shim controls intentionally receive NO trimming or case folding.
+    # Runtime activates the subscription cap only for this exact conjunction, so
+    # diagnostics must not normalize a near miss into a false success.
+    shim = env.get("DAAF_PROVIDER_SHIM", "")
+    backend_mode = env.get("SHIM_BACKEND_MODE", "")
     base_url = (env.get("ANTHROPIC_BASE_URL") or "").strip().lower()
 
     if shim == "openai":
@@ -312,6 +418,9 @@ def build_route_info(env, asserted_route: str = "") -> RouteInfo:
         model_family=family,
         remap_active=remap,
         session_model=env.get("ANTHROPIC_MODEL", ""),
+        shim_control=env.get("DAAF_PROVIDER_SHIM", ""),
+        backend_mode_control=env.get("SHIM_BACKEND_MODE", ""),
+        lane_control_issues=_lane_control_issues(env),
     )
     if asserted_route:
         info.route_match = (asserted_route == detected)
@@ -352,9 +461,24 @@ def probe_route_detection(route_info: RouteInfo) -> ProbeResult:
     r.add_evidence(
         "detect_route(os.environ)",
         output=f"detected={route_info.detected_route}",
-        note="derived from DAAF_PROVIDER_SHIM / SHIM_BACKEND_MODE / ANTHROPIC_BASE_URL",
+        note="derived from exact DAAF_PROVIDER_SHIM / SHIM_BACKEND_MODE controls, then ANTHROPIC_BASE_URL",
     )
-    if route_info.asserted_route and not route_info.route_match:
+    r.add_evidence(
+        "env: DAAF_PROVIDER_SHIM / SHIM_BACKEND_MODE",
+        output=(f"DAAF_PROVIDER_SHIM={route_info.shim_control!r}; "
+                f"SHIM_BACKEND_MODE={route_info.backend_mode_control!r}"),
+        note="raw values shown without trimming or case normalization",
+    )
+    if route_info.lane_control_issues:
+        r.verdict = Verdict.FAIL
+        r.detail = "Exact lane-control mismatch: " + " ".join(route_info.lane_control_issues)
+        if route_info.asserted_route and not route_info.route_match:
+            r.detail += (
+                f" --route asserted '{route_info.asserted_route}', while exact-value "
+                f"detection yields '{route_info.detected_route}'."
+            )
+            r.add_evidence("", note=f"asserted={route_info.asserted_route}")
+    elif route_info.asserted_route and not route_info.route_match:
         r.verdict = Verdict.FAIL
         r.detail = (
             f"Route mismatch: --route asserted '{route_info.asserted_route}' but the "
@@ -364,9 +488,19 @@ def probe_route_detection(route_info: RouteInfo) -> ProbeResult:
         r.add_evidence("", note=f"asserted={route_info.asserted_route}")
     else:
         r.verdict = Verdict.PASS
-        r.detail = f"Active route: {route_info.detected_route}" + (
-            f" (matches asserted --route)." if route_info.asserted_route else "."
-        )
+        if (route_info.detected_route == ROUTE_OPENAI_API
+                and route_info.shim_control == "openai"
+                and route_info.backend_mode_control != "chatgpt"):
+            backend_display = route_info.backend_mode_control or "<unset>"
+            r.detail = (
+                "Active route: openai-api. The exact ChatGPT-subscription lane is "
+                "not selected because SHIM_BACKEND_MODE is "
+                f"{backend_display!r}, not exact 'chatgpt'."
+            )
+        else:
+            r.detail = f"Active route: {route_info.detected_route}" + (
+                f" (matches asserted --route)." if route_info.asserted_route else "."
+            )
     return r
 
 
@@ -447,8 +581,8 @@ def probe_env_coherence(route_info: RouteInfo, env) -> ProbeResult:
         if route == ROUTE_CHATGPT:
             note_var("SHIM_BACKEND_MODE")
             note_var("CODEX_HOME")
-            if (env.get("SHIM_BACKEND_MODE") or "").strip().lower() != "chatgpt":
-                problems.append("SHIM_BACKEND_MODE must be 'chatgpt' for the ChatGPT-subscription route.")
+            if env.get("SHIM_BACKEND_MODE") != "chatgpt":
+                problems.append("SHIM_BACKEND_MODE must equal exact value 'chatgpt' for the ChatGPT-subscription route.")
             if not env.get("CODEX_HOME"):
                 problems.append("CODEX_HOME must be set (holds auth.json) for the ChatGPT route.")
         else:  # openai-api
@@ -467,26 +601,39 @@ def probe_env_coherence(route_info: RouteInfo, env) -> ProbeResult:
 
 
 def probe_context_window_coherence(route_info: RouteInfo, env) -> ProbeResult:
-    """Tier 0: for model slugs Claude Code does not recognize (GPT slugs; any
-    non-[1m] flagship), the real context window must be declared via a [1m]
-    suffix or CLAUDE_CODE_MAX_CONTEXT_TOKENS — otherwise the statusline/hook
-    stack silently assumes ~200k, a known silent failure."""
+    """Tier 0: validate the declaration used by Claude Code and DAAF accounting.
+
+    Every effective model selector is inspected. On the exact ChatGPT-subscription
+    lane, any selector mapped to the runtime's anchored GPT 5.4/5.5/5.6 flagship
+    physical family makes the 370000 ceiling relevant. Numeric declarations use
+    the same canonical positive signed-64-bit contract as the Bash consumers.
+    """
     r = ProbeResult(probe_id="T0.4", name="Context-window declaration", tier="0")
-    model = env.get("ANTHROPIC_MODEL", "")
+    selectors = [(name, env.get(name, "")) for name in MODEL_SELECTOR_VARS]
     max_ctx = env.get("CLAUDE_CODE_MAX_CONTEXT_TOKENS")
     auto_compact = env.get("CLAUDE_CODE_AUTO_COMPACT_WINDOW")
-    r.add_evidence("env: ANTHROPIC_MODEL", output=model or "<unset>")
-    r.add_evidence("env: CLAUDE_CODE_MAX_CONTEXT_TOKENS", output=max_ctx or "<unset>")
+
+    for name, value in selectors:
+        mapped = _gpt_physical_window(value)
+        r.add_evidence(
+            f"env: {name}",
+            output=value or "<unset>",
+            note=(f"runtime GPT physical mapping={mapped}" if mapped is not None
+                  else "no supported GPT physical-family mapping"),
+        )
+    r.add_evidence(
+        "env: CLAUDE_CODE_MAX_CONTEXT_TOKENS",
+        output=str(max_ctx) if max_ctx is not None else "<unset>",
+        note="must match ^[1-9][0-9]*$ and be <= 9223372036854775807",
+    )
+    r.add_evidence(
+        "env: CLAUDE_CODE_AUTO_COMPACT_WINDOW",
+        output=str(auto_compact) if auto_compact is not None else "<unset>",
+    )
 
     # Any non-Claude family reached over a route Claude Code does not natively
-    # recognize needs an explicit window declaration. context-bar.sh has static
-    # fallbacks for GPT plus exact z-ai/glm-5.2 and terminal date snapshots, but
-    # T0.4 still requires explicit declarations for non-Claude routes because
-    # dynamic/headless resolution is not guaranteed in every smoke-test context.
-    # It is NOT enough to check family=="gpt": shim routes always need a
-    # declaration, and on OpenRouter ANY non-Claude family (gpt, glm, unknown)
-    # needs one. Native Claude [1m] slugs and Anthropic-recognized models resolve
-    # natively.
+    # recognize needs an explicit window declaration. Static runtime fallbacks do
+    # not guarantee Claude Code's own dynamic/headless budgeting in every context.
     needs_declaration = (
         route_info.detected_route in SHIM_ROUTES
         or route_info.model_family == "gpt"
@@ -494,22 +641,111 @@ def probe_context_window_coherence(route_info: RouteInfo, env) -> ProbeResult:
             and route_info.model_family != "claude")
     )
 
-    has_1m = model.strip().endswith("[1m]")
-    has_max = bool(max_ctx and str(max_ctx).strip().isdigit())
-    has_auto = bool(auto_compact and str(auto_compact).strip().isdigit())
+    max_is_present = max_ctx is not None
+    has_max = _is_canonical_positive_decimal(max_ctx)
+    auto_compact_active = _is_canonical_positive_decimal(auto_compact)
+    gpt_selectors = [
+        (name, value, _gpt_physical_window(value))
+        for name, value in selectors
+        if value and _gpt_physical_window(value) is not None
+    ]
+    flagship_selectors = [
+        (name, value) for name, value, window in gpt_selectors
+        if window == 1050000
+    ]
+    exact_chatgpt_flagship = (
+        route_info.detected_route == ROUTE_CHATGPT
+        and bool(flagship_selectors)
+    )
+    relevant_text = ", ".join(
+        f"{name}={value!r}" for name, value in flagship_selectors
+    )
 
-    if not needs_declaration:
+    # [1m] is a supported Claude Code hint on the direct OpenAI-API shim route.
+    # It is not generalized to OpenRouter, whose supported example uses the bare
+    # provider-prefixed slug plus an explicit 1050000 declaration. A single global
+    # declaration remains the safest contract when selectors differ.
+    direct_api_1m_complete = (
+        route_info.detected_route == ROUTE_OPENAI_API
+        and bool(gpt_selectors)
+        and all(_has_supported_1m_hint(value) for _, value, _ in gpt_selectors)
+    )
+    native_claude_1m = (
+        route_info.model_family == "claude"
+        and any(_has_supported_1m_hint(value) for _, value in selectors if value)
+    )
+
+    if exact_chatgpt_flagship and auto_compact_active:
+        r.verdict = Verdict.FAIL
+        r.detail = (
+            "CLAUDE_CODE_AUTO_COMPACT_WINDOW is set on the exact "
+            "ChatGPT-subscription lane for mapped GPT flagship selector(s): "
+            f"{relevant_text}. DAAF keeps automatic compaction disabled; remove "
+            "this setting and declare CLAUDE_CODE_MAX_CONTEXT_TOKENS=370000 "
+            "(or a lower verified canonical positive value)."
+        )
+    elif max_is_present and not has_max:
+        r.verdict = Verdict.FAIL
+        r.detail = (
+            f"Invalid CLAUDE_CODE_MAX_CONTEXT_TOKENS={max_ctx!r}. Runtime accepts "
+            "only canonical positive decimal text matching ^[1-9][0-9]*$ and no "
+            "greater than 9223372036854775807; signs, whitespace, leading zeroes, "
+            "decimals, exponent notation, empty values, and overflow are ignored."
+        )
+        if exact_chatgpt_flagship:
+            r.detail += f" The exact-lane ceiling is relevant because of: {relevant_text}."
+    elif exact_chatgpt_flagship and not has_max:
+        r.verdict = Verdict.FAIL
+        r.detail = (
+            "ChatGPT-subscription/Codex mapped GPT flagship selector(s) require "
+            "a canonical CLAUDE_CODE_MAX_CONTEXT_TOKENS declaration no greater "
+            f"than 370000. Relevant selector(s): {relevant_text}. A [1m] suffix "
+            "and CLAUDE_CODE_AUTO_COMPACT_WINDOW do not satisfy this lane policy."
+        )
+    elif exact_chatgpt_flagship and int(max_ctx) > 370000:
+        r.verdict = Verdict.FAIL
+        r.detail = (
+            f"Unsafe ChatGPT-subscription context declaration: {max_ctx} exceeds "
+            "the measured 370000-token Codex backend ceiling. The declaration is "
+            f"relevant because of: {relevant_text}. Set "
+            "CLAUDE_CODE_MAX_CONTEXT_TOKENS=370000, recreate the container, and "
+            "restart the Claude Code session."
+        )
+    elif exact_chatgpt_flagship:
+        r.verdict = Verdict.PASS
+        r.detail = (
+            f"ChatGPT-subscription declaration {max_ctx} is canonical and aligned "
+            "with the measured 370000-token backend ceiling; lower positive values "
+            f"are preserved. Relevant selector(s): {relevant_text}."
+        )
+    elif not needs_declaration:
         r.verdict = Verdict.INFO
         r.detail = "Model window resolves natively for this family; explicit declaration not required."
-    elif has_1m or has_max or has_auto:
+    elif has_max:
         r.verdict = Verdict.PASS
-        r.detail = "Context window explicitly declared ([1m] suffix or CLAUDE_CODE_MAX_CONTEXT_TOKENS/AUTO_COMPACT_WINDOW)."
+        r.detail = (
+            f"Context window explicitly declared with canonical "
+            f"CLAUDE_CODE_MAX_CONTEXT_TOKENS={max_ctx}."
+        )
+    elif direct_api_1m_complete:
+        variables = ", ".join(name for name, _, _ in gpt_selectors)
+        r.verdict = Verdict.PASS
+        r.detail = (
+            "Direct OpenAI-API shim GPT selector(s) use the supported [1m] hint "
+            f"({variables}); the shim/backend receive bare model slugs."
+        )
+    elif native_claude_1m:
+        r.verdict = Verdict.PASS
+        r.detail = "Native Claude model uses its recognized [1m] context hint."
     else:
         r.verdict = Verdict.FAIL
         r.detail = (
             f"Non-Claude/shim model ({route_info.model_family} family, "
-            f"{route_info.detected_route} route) configured without a [1m] slug suffix "
-            "or CLAUDE_CODE_MAX_CONTEXT_TOKENS — Claude Code will silently assume ~200k, "
-            "under-reporting the real window (known silent failure)."
+            f"{route_info.detected_route} route) lacks a route-supported context "
+            "declaration. Use a canonical positive CLAUDE_CODE_MAX_CONTEXT_TOKENS; "
+            "for OpenRouter keep provider-prefixed bare GPT slugs and declare the "
+            "route window explicitly. The [1m] suffix is supported for the direct "
+            "OpenAI-API shim, not generalized across routes. "
+            "CLAUDE_CODE_AUTO_COMPACT_WINDOW is not an accepted substitute."
         )
     return r

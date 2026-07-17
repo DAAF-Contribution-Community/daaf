@@ -41,8 +41,9 @@ teardown() {
 }
 
 _payload() {
-    printf '{"model":{"id":"%s","display_name":"%s"},"cwd":"%s","transcript_path":"","session_id":"%s","context_window":{"context_window_size":200000}}' \
-        "$1" "$1" "$TEST_DIR" "$FAKE_SESSION"
+    local incoming_window="${2:-200000}"
+    printf '{"model":{"id":"%s","display_name":"%s"},"cwd":"%s","transcript_path":"","session_id":"%s","context_window":{"context_window_size":%s}}' \
+        "$1" "$1" "$TEST_DIR" "$FAKE_SESSION" "$incoming_window"
 }
 
 @test "context-bar.sh parses without errors" {
@@ -124,18 +125,17 @@ _payload() {
 }
 
 # =========================================================================
-# ChatGPT-subscription lane: gpt-5.4/5.5/5.6 big-window ceiling drops to 370k
+# ChatGPT-subscription lane: final gpt-5.4/5.5/5.6 accounting cap is 370k
 # -------------------------------------------------------------------------
 # Canonical lane gate: DAAF_PROVIDER_SHIM=openai AND SHIM_BACKEND_MODE=chatgpt.
-# On that lane the Codex backend's measured ceiling for gpt-5.6-sol is ~370k
-# (probe 2026-07-16: accepted 369,941, rejected 372,905), vs 1,050,000 on the
-# OpenAI API lane. The gate requires BOTH env vars; either alone (or neither)
-# keeps the 1.05M mapping. CLAUDE_CODE_MAX_CONTEXT_TOKENS still wins over both.
+# The final min(resolved, 370000) constraint runs after payload, static-map,
+# dynamic, and explicit-override resolution. Both exact lane values are required;
+# malformed or partial signals keep the API/OpenRouter behavior fail-open.
 # =========================================================================
 
-@test "chatgpt lane (both vars set): gpt-5.6-sol maps to the 370k ceiling" {
+@test "chatgpt lane: incoming 1,050,000 payload is finally capped and cached at 370,000" {
     run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
-        bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol[1m]")
+        bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol[1m]" 1050000)
     assert_success
     assert_output --partial "of 370k tokens"
     refute_output --partial "of 1050k tokens"
@@ -144,32 +144,22 @@ _payload() {
     assert_output "370000"
 }
 
-@test "lane vars unset: gpt-5.6-sol keeps the 1,050,000 API-lane window" {
-    run bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol[1m]")
+@test "chatgpt lane: explicit 1,050,000 override cannot raise the final 370,000 cap" {
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000 \
+        bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol[1m]" 1050000)
     assert_success
-    assert_output --partial "of 1050k tokens"
-    refute_output --partial "of 370k tokens"
+    assert_output --partial "of 370k tokens"
+    refute_output --partial "of 1050k tokens"
     run cat "$CTX_CACHE"
     assert_success
-    assert_output "1050000"
+    assert_output "370000"
 }
 
-@test "SHIM_BACKEND_MODE=chatgpt alone (no DAAF_PROVIDER_SHIM) keeps 1,050,000" {
-    # Gate requires BOTH vars; the backend-mode var alone must not trip it.
-    run env SHIM_BACKEND_MODE=chatgpt \
-        bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol[1m]")
-    assert_success
-    assert_output --partial "of 1050k tokens"
-    refute_output --partial "of 370k tokens"
-    run cat "$CTX_CACHE"
-    assert_success
-    assert_output "1050000"
-}
-
-@test "explicit CLAUDE_CODE_MAX_CONTEXT_TOKENS still wins on the chatgpt lane" {
+@test "chatgpt lane: lower positive explicit override remains lower than the cap" {
     run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
         CLAUDE_CODE_MAX_CONTEXT_TOKENS=333333 \
-        bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol[1m]")
+        bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol[1m]" 1050000)
     assert_success
     assert_output --partial "of 333k tokens"
     refute_output --partial "of 370k tokens"
@@ -178,16 +168,166 @@ _payload() {
     assert_output "333333"
 }
 
-@test "chatgpt lane does not perturb a non-GPT (Claude) model window" {
-    # The lane gate only rewrites the gpt-5.4/5.5/5.6 big-window arm. A Claude
-    # id matches no arm in the static map, so max_context stays the payload's
-    # 200000 regardless of the lane env.
-    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
-        bash "$CONTEXT_BAR_SH" < <(_payload "claude-fable-5")
+@test "API shim lane keeps the wider 1,050,000 flagship window" {
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=openai \
+        bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol[1m]" 1050000)
     assert_success
-    assert_output --partial "of 200k tokens"
+    assert_output --partial "of 1050k tokens"
     refute_output --partial "of 370k tokens"
     run cat "$CTX_CACHE"
     assert_success
-    assert_output "200000"
+    assert_output "1050000"
+}
+
+@test "OpenRouter route keeps the wider 1,050,000 flagship window" {
+    run env ANTHROPIC_BASE_URL="https://openrouter.ai/api" \
+        MOCK_OPENROUTER_CONTEXT=1048576 PATH="${MOCK_BIN}:${PATH}" \
+        bash "$CONTEXT_BAR_SH" < <(_payload "openai/gpt-5.6-sol" 1050000)
+    assert_success
+    assert_output --partial "of 1050k tokens"
+    refute_output --partial "of 370k tokens"
+    run cat "$CTX_CACHE"
+    assert_success
+    assert_output "1050000"
+}
+
+@test "each missing lane signal leaves the 1,050,000 flagship window unchanged" {
+    run env SHIM_BACKEND_MODE=chatgpt \
+        bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol[1m]" 1050000)
+    assert_success
+    assert_output --partial "of 1050k tokens"
+
+    run env DAAF_PROVIDER_SHIM=openai \
+        bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol[1m]" 1050000)
+    assert_success
+    assert_output --partial "of 1050k tokens"
+}
+
+@test "malformed and noncanonical lane values do not activate the subscription cap" {
+    run env DAAF_PROVIDER_SHIM=OpenAI SHIM_BACKEND_MODE=chatgpt \
+        bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol[1m]" 1050000)
+    assert_success
+    assert_output --partial "of 1050k tokens"
+
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=' chatgpt ' \
+        bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol[1m]" 1050000)
+    assert_success
+    assert_output --partial "of 1050k tokens"
+}
+
+@test "chatgpt lane does not perturb a non-GPT (Claude) model window" {
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000 \
+        bash "$CONTEXT_BAR_SH" < <(_payload "claude-fable-5" 1000000)
+    assert_success
+    assert_output --partial "of 1050k tokens"
+    refute_output --partial "of 370k tokens"
+    run cat "$CTX_CACHE"
+    assert_success
+    assert_output "1050000"
+}
+
+# =========================================================================
+# Canonical positive-decimal override contract
+# =========================================================================
+
+@test "canonical override 370000 is accepted on the API lane" {
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=openai \
+        CLAUDE_CODE_MAX_CONTEXT_TOKENS=370000 \
+        bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol" 1050000)
+    assert_success
+    assert_output --partial "of 370k tokens"
+    run cat "$CTX_CACHE"
+    assert_success
+    assert_output "370000"
+}
+
+@test "invalid decimal overrides are ignored without arithmetic diagnostics and the exact-lane cap still applies" {
+    local value
+    for value in \
+        0370000 \
+        080000 \
+        0 \
+        +370000 \
+        ' 370000' \
+        '370000 ' \
+        9223372036854775808 \
+        99999999999999999999999999999999999999; do
+        run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+            CLAUDE_CODE_MAX_CONTEXT_TOKENS="$value" \
+            bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol" 1050000)
+        assert_success
+        assert_output --partial "of 370k tokens"
+        refute_output --partial "value too great"
+        refute_output --partial "syntax error"
+        run cat "$CTX_CACHE"
+        assert_success
+        assert_output "370000"
+    done
+}
+
+# =========================================================================
+# Anchored terminal-slug GPT physical-family classification
+# =========================================================================
+
+@test "supported bare and provider-prefixed GPT flagship slugs map to 1.05M" {
+    local model
+    for model in \
+        gpt-5.4 \
+        gpt-5.5 \
+        gpt-5.6 \
+        gpt-5.6-sol \
+        gpt-5.6-terra \
+        gpt-5.6-luna \
+        'gpt-5.6-sol[1m]' \
+        openrouter/openai/gpt-5.6-sol; do
+        run bash "$CONTEXT_BAR_SH" < <(_payload "$model")
+        assert_success
+        assert_output --partial "of 1050k tokens"
+    done
+}
+
+@test "anchored GPT 5.2, mini, and chat variants retain their smaller physical mappings" {
+    run bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.2")
+    assert_success
+    assert_output --partial "of 400k tokens"
+
+    run bash "$CONTEXT_BAR_SH" < <(_payload "openai/gpt-5.6-sol-mini")
+    assert_success
+    assert_output --partial "of 400k tokens"
+
+    run bash "$CONTEXT_BAR_SH" < <(_payload "openai/gpt-5.6-sol-chat")
+    assert_success
+    assert_output --partial "of 128k tokens"
+}
+
+@test "malformed left boundaries and unsupported GPT version prefixes stay on the ordinary 200k default" {
+    local model
+    for model in \
+        vendor/notgpt-5.6-sol \
+        xgpt-5.6-sol \
+        foo-gpt-5.6-sol \
+        gpt-5.60 \
+        gpt-5.60-sol; do
+        run bash "$CONTEXT_BAR_SH" < <(_payload "$model")
+        assert_success
+        assert_output --partial "of 200k tokens"
+        refute_output --partial "of 1050k tokens"
+    done
+}
+
+@test "chatgpt final-cap predicate accepts anchored provider slugs and rejects adversarial near misses" {
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        bash "$CONTEXT_BAR_SH" < <(_payload "openrouter/openai/gpt-5.6-terra[1m]" 1050000)
+    assert_success
+    assert_output --partial "of 370k tokens"
+
+    local model
+    for model in vendor/notgpt-5.6-sol xgpt-5.6-sol foo-gpt-5.6-sol gpt-5.60 gpt-5.60-sol; do
+        run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+            bash "$CONTEXT_BAR_SH" < <(_payload "$model" 1050000)
+        assert_success
+        assert_output --partial "of 1050k tokens"
+        refute_output --partial "of 370k tokens"
+    done
 }

@@ -25,6 +25,20 @@ case "$COLOR" in
     *)        C_ACCENT="$C_GRAY" ;;  # gray: all same color
 esac
 
+# Accept only canonical positive decimal integers that Bash can represent
+# safely. Lexical and length/string bounds run before any arithmetic, so values
+# such as 080000 or 9223372036854775808 can never reach an arithmetic context.
+is_canonical_positive_decimal() {
+    local value="${1:-}"
+    local max_value="9223372036854775807"
+    [[ "$value" =~ ^[1-9][0-9]*$ ]] || return 1
+    [[ ${#value} -lt ${#max_value} ]] && return 0
+    [[ ${#value} -gt ${#max_value} ]] && return 1
+    # Equal-length canonical decimals are intentionally compared lexicographically before arithmetic.
+    # shellcheck disable=SC2071
+    [[ "$value" == "$max_value" || "$value" < "$max_value" ]]
+}
+
 input=$(cat)
 
 # Single consolidated jq pass over the payload: extract every field used below
@@ -69,7 +83,7 @@ IFS=$'\x1f' read -r model cwd transcript_path max_context session_id model_id \
 # Guard against an unparseable payload leaving max_context empty (which would
 # cause a divide-by-zero in the pct arithmetic below). Valid payloads always
 # yield an integer here, so this only fires on malformed/empty stdin.
-if ! [[ "$max_context" =~ ^[0-9]+$ ]] || [[ "$max_context" -le 0 ]]; then
+if ! is_canonical_positive_decimal "$max_context"; then
     max_context=200000
 fi
 
@@ -133,7 +147,7 @@ if [[ "${ANTHROPIC_BASE_URL:-}" == *openrouter.ai* ]]; then
                     "$or_cache" 2>/dev/null)
             fi
         fi
-        if [[ "$or_context" =~ ^[0-9]+$ ]] && [[ "$or_context" -gt 0 ]]; then
+        if is_canonical_positive_decimal "$or_context"; then
             max_context="$or_context"
             or_context_resolved=1
         fi
@@ -145,7 +159,7 @@ fi
 # provider-shim sessions or may fail transiently. Apply this map only when
 # dynamic OpenRouter resolution did NOT succeed and max_context remains the
 # untrusted 200k default. An authoritative dynamic value of exactly 200000 stays
-# authoritative; the explicit user override below still has final precedence.
+# authoritative; the explicit user override below still has ordinary precedence.
 #
 # GLM matching is deliberately narrow: exact z-ai/glm-5.2 plus Claude Code's
 # terminal -YYYYMMDD snapshot form. Do not broaden it to *glm-5.2*, which would
@@ -157,36 +171,66 @@ fi
 # gpt-5.6 Sol/Terra/Luna family is 1,050,000), so they must precede the broad
 # flagship and *gpt-5* fallbacks. Verified against OpenRouter on 2026-07-09.
 if [[ -n "$model_id" && "$or_context_resolved" -eq 0 && "$max_context" -eq 200000 ]]; then
-    # Lane-gated big-window ceiling for the gpt-5.4/5.5/5.6 flagship family. On
-    # the ChatGPT-subscription shim lane the Codex backend enforces a measured
-    # context ceiling far below the OpenAI API lane's 1.05M. Canonical lane gate
-    # (the same two-var idiom used by route_provenance.py and the
-    # daaf-deploy-smoke-testing skill): DAAF_PROVIDER_SHIM=openai AND
-    # SHIM_BACKEND_MODE=chatgpt — both plain container env vars, no network probe.
-    # Probe 2026-07-16 (gpt-5.6-sol): accepted real input_tokens=369,941,
-    # rejected 372,905 -> bracket 369,941–372,905; 370000 is assumed lane-wide
-    # for the whole big-window family (the measurement is Sol-specific;
-    # conservative to apply it to the 5.4/5.5/5.6 arm on this lane). Unset vars
-    # resolve to the non-shim default via ${VAR:-} guards (fail-open); the API
-    # and every other lane keep 1,050,000.
-    gpt_big_window=1050000
-    if [[ "${DAAF_PROVIDER_SHIM:-}" == "openai" && "${SHIM_BACKEND_MODE:-}" == "chatgpt" ]]; then
-        gpt_big_window=370000
-    fi
+    # Physical-family classification operates on the terminal provider-stripped
+    # slug only. Supported flagship versions must begin the slug and be followed
+    # by end-of-slug, '-' or '['; this rejects notgpt-5.6 and gpt-5.60 while
+    # retaining provider prefixes and established hyphen/[1m] variants.
+    physical_slug="${model_id##*/}"
     case "$model_id" in
         z-ai/glm-5.2|z-ai/glm-5.2-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9])
-                                max_context=1048576 ;;
-        *gpt-5*-mini*)          max_context=400000 ;;
-        *gpt-5*-chat*)          max_context=128000 ;;
-        *gpt-5.4*|*gpt-5.5*|*gpt-5.6*) max_context=$gpt_big_window ;;
-        *gpt-5*)                max_context=400000 ;;
+            max_context=1048576 ;;
+        *)
+            case "$physical_slug" in
+                gpt-5.4|gpt-5.4[-\[]*|gpt-5.5|gpt-5.5[-\[]*|gpt-5.6|gpt-5.6[-\[]*)
+                    case "$physical_slug" in
+                        *-mini*) max_context=400000 ;;
+                        *-chat*) max_context=128000 ;;
+                        *) max_context=1050000 ;;
+                    esac
+                    ;;
+                gpt-5|gpt-5[-\[]*|gpt-5.2|gpt-5.2[-\[]*)
+                    case "$physical_slug" in
+                        *-chat*) max_context=128000 ;;
+                        *) max_context=400000 ;;
+                    esac
+                    ;;
+            esac
+            ;;
     esac
 fi
 
-# CLAUDE_CODE_MAX_CONTEXT_TOKENS is the user's explicit override and wins over
-# every inference above (JSON default, OpenRouter lookup, GPT static map).
-if [[ "${CLAUDE_CODE_MAX_CONTEXT_TOKENS:-}" =~ ^[0-9]+$ ]] && [[ "$CLAUDE_CODE_MAX_CONTEXT_TOKENS" -gt 0 ]]; then
+# CLAUDE_CODE_MAX_CONTEXT_TOKENS is the user's explicit ordinary override over
+# JSON defaults, OpenRouter lookup, and the static map. A backend-specific final
+# physical-accounting constraint is applied after this step.
+if is_canonical_positive_decimal "${CLAUDE_CODE_MAX_CONTEXT_TOKENS:-}"; then
     max_context="$CLAUDE_CODE_MAX_CONTEXT_TOKENS"
+fi
+
+# ChatGPT-subscription/Codex final physical-window accounting constraint.
+# Canonical activation requires BOTH exact lane signals and a model in the same
+# gpt-5.4/5.5/5.6 flagship arm used by the static map above (mini/chat variants
+# are excluded by the arm's ordering). Probe 2026-07-16 (gpt-5.6-sol) accepted
+# 369,941 real input tokens and rejected 372,905; 370000 is therefore the
+# lane-wide accounting ceiling for this mapped flagship family. Apply min() only
+# after every ordinary resolution source, including an incoming [1m] payload and
+# CLAUDE_CODE_MAX_CONTEXT_TOKENS, so neither can raise the matched lane above the
+# backend ceiling while an explicitly lower positive value remains lower.
+#
+# This controls DAAF's denominator, statusline, and downstream severity guidance.
+# It is NOT compaction and is NOT a transport-level request blocker; the backend
+# remains the ultimate hard ceiling. Exact equality keeps malformed/noncanonical
+# lane values fail-open, while API/OpenRouter routes retain their wider windows.
+gpt_flagship=0
+physical_slug="${model_id##*/}"
+case "$physical_slug" in
+    gpt-5*-mini*|gpt-5*-chat*) ;;
+    gpt-5.4|gpt-5.4[-\[]*|gpt-5.5|gpt-5.5[-\[]*|gpt-5.6|gpt-5.6[-\[]*)
+        gpt_flagship=1 ;;
+esac
+if [[ "${DAAF_PROVIDER_SHIM:-}" == "openai" && \
+      "${SHIM_BACKEND_MODE:-}" == "chatgpt" && \
+      "$gpt_flagship" -eq 1 && "$max_context" -gt 370000 ]]; then
+    max_context=370000
 fi
 
 max_k=$((max_context / 1000))

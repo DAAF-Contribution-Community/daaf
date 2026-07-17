@@ -3,10 +3,11 @@
 # Tests for subagent-bar.sh -- Claude Code subagentStatusLine renderer
 # ============================================================================
 # Focus: the model-conditional Context Quality Curve threshold tiers that drive
-# each row's severity COLOR. Fable/Mythos and exact GPT 5.6 Sol rows use the
-# extended-horizon tier (ELEVATED 30%/300k, HIGH 40%/400k, CRITICAL 50%/500k);
-# every other model -- including opus-4-8[1m] and non-exact Sol variants -- uses
-# the conservative tier (40%/150k, 60%/200k, 75%/250k).
+# each row's severity COLOR. Fable/Mythos use ELEVATED 30%/300k, HIGH
+# 40%/400k, and CRITICAL 50%/500k. Exact GPT 5.6 Sol rows use ELEVATED
+# 40%/300k, HIGH 60%/400k, and CRITICAL 75%/500k. Every other model --
+# including opus-4-8[1m] and non-exact Sol variants -- uses ELEVATED 40%/150k,
+# HIGH 60%/200k, and CRITICAL 75%/250k.
 #
 # ASSERTION TARGET: the severity is encoded as an ANSI 256-color code embedded
 # in each row's JSON `content`. The codes are unique per severity:
@@ -39,7 +40,7 @@ COLOR_CRITICAL="38;5;167m"
 # exact path from their task id.
 _clean_subbar_caches() {
     rm -f "/tmp/claude-ctx-window-${FAKE_SESSION}"
-    rm -f "/tmp/claude-model-${FAKE_SESSION}"
+    rm -f /tmp/claude-model-"${FAKE_SESSION}"*
     rm -f /tmp/claude-subagent-model-"${FAKE_SESSION}"-*
 }
 
@@ -71,6 +72,23 @@ _seed_task_model() {
 _payload_one_task() {
     printf '{"session_id":"%s","transcript_path":"%s/main.jsonl","tasks":[{"id":"%s","type":"local_agent","status":"running","tokenCount":%d}]}' \
         "$FAKE_SESSION" "$TEST_DIR" "$1" "$2"
+}
+
+_write_subbar_main_model() {
+    printf '{"type":"assistant","isSidechain":false,"message":{"model":"%s"}}\n' "$1" > "${TEST_DIR}/main.jsonl"
+}
+
+_write_subbar_task_model() {
+    local id="$1" model="$2"
+    mkdir -p "${TEST_DIR}/${FAKE_SESSION}/subagents"
+    printf '{"type":"assistant","isSidechain":true,"message":{"model":"%s"}}\n' \
+        "$model" > "${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${id}.jsonl"
+}
+
+_append_subbar_model() {
+    local path="$1" model="$2" sidechain="$3"
+    printf '{"type":"assistant","isSidechain":%s,"message":{"model":"%s"}}\n' \
+        "$sidechain" "$model" >> "$path"
 }
 
 # =========================================================================
@@ -140,7 +158,7 @@ _payload_one_task() {
 }
 
 # =========================================================================
-# GPT 5.6 Sol exact tier: 1.05M window, extended-horizon thresholds
+# GPT 5.6 Sol exact tier: 1.05M window, standard percentages + retained absolutes
 # =========================================================================
 
 @test "GPT 5.6 Sol row: different-model correction maps 299k to 1050k and NOMINAL" {
@@ -183,7 +201,7 @@ _payload_one_task() {
     assert_output --partial "47%"
 }
 
-@test "GPT 5.6 Sol row: same-model reuse keeps cached 1050k window and extended tier" {
+@test "GPT 5.6 Sol row: same-model reuse keeps cached 1050k window and retained absolute gates" {
     _seed_window 1050000
     _seed_session_model "gpt-5.6-sol[1m]"
     _seed_task_model "t1" "gpt-5.6-sol[1m]"
@@ -191,6 +209,59 @@ _payload_one_task() {
     assert_success
     assert_output --partial "$COLOR_ELEVATED"
     assert_output --partial "28%"
+}
+
+@test "exact Sol ChatGPT row boundaries use 40/60/75% on the final 370k denominator" {
+    local boundary tokens expected_severity expected_pct expected_color
+    _seed_window 1050000
+    _seed_session_model "claude-sonnet-4-6"
+    _seed_task_model "t1" "gpt-5.6-sol"
+    for boundary in \
+        "147999 NOMINAL 39" \
+        "148000 ELEVATED 40" \
+        "221999 ELEVATED 59" \
+        "222000 HIGH 60" \
+        "277499 HIGH 74" \
+        "277500 CRITICAL 75"; do
+        read -r tokens expected_severity expected_pct <<< "$boundary"
+        case "$expected_severity" in
+            NOMINAL) expected_color="$COLOR_NOMINAL" ;;
+            ELEVATED) expected_color="$COLOR_ELEVATED" ;;
+            HIGH) expected_color="$COLOR_HIGH" ;;
+            CRITICAL) expected_color="$COLOR_CRITICAL" ;;
+        esac
+        run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+            bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" "$tokens")
+        assert_success
+        assert_output --partial "$expected_color"
+        assert_output --partial "${expected_pct}%"
+    done
+}
+
+@test "provider-prefixed exact Sol[1m] row retains 300k/400k/500k boundaries on 1050k" {
+    local boundary tokens expected_severity expected_pct expected_color
+    _seed_window 200000
+    _seed_session_model "claude-sonnet-4-6"
+    _seed_task_model "t1" "openrouter/openai/gpt-5.6-sol[1m]"
+    for boundary in \
+        "299999 NOMINAL 28" \
+        "300000 ELEVATED 28" \
+        "399999 ELEVATED 38" \
+        "400000 HIGH 38" \
+        "499999 HIGH 47" \
+        "500000 CRITICAL 47"; do
+        read -r tokens expected_severity expected_pct <<< "$boundary"
+        case "$expected_severity" in
+            NOMINAL) expected_color="$COLOR_NOMINAL" ;;
+            ELEVATED) expected_color="$COLOR_ELEVATED" ;;
+            HIGH) expected_color="$COLOR_HIGH" ;;
+            CRITICAL) expected_color="$COLOR_CRITICAL" ;;
+        esac
+        run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" "$tokens")
+        assert_success
+        assert_output --partial "$expected_color"
+        assert_output --partial "${expected_pct}%"
+    done
 }
 
 @test "GPT 5.6 non-Sol and near-miss rows stay conservative" {
@@ -356,35 +427,46 @@ _payload_one_task() {
 }
 
 # =========================================================================
-# ChatGPT-subscription lane: gpt-5.4/5.5/5.6 row window drops to 370k
+# ChatGPT-subscription lane: final gpt-5.4/5.5/5.6 row cap is 370k
 # -------------------------------------------------------------------------
-# Canonical lane gate: DAAF_PROVIDER_SHIM=openai AND SHIM_BACKEND_MODE=chatgpt.
-# The per-row window mapping only fires when the task model differs from the
-# session model, so these seed a sonnet session with a gpt-5.6-sol task. The
-# window is proven via the rendered percentage: 111k tokens is 30% of the
-# lane-gated 370k but only 10% of the 1.05M API-lane window. The gate requires
-# BOTH vars; CLAUDE_CODE_MAX_CONTEXT_TOKENS still wins over both.
+# The final min(resolved, 370000) constraint must cover same-model cache reuse,
+# different-model mapping, and unsafe explicit overrides. Both exact lane values
+# are required; API/OpenRouter routes and non-GPT rows retain ordinary behavior.
 # =========================================================================
 
-@test "chatgpt lane (both vars set): gpt-5.6-sol row uses the 370k window (30%)" {
+@test "chatgpt lane: exact Sol at 290k is CRITICAL red on the final 370k row window" {
     _seed_window 200000
     _seed_session_model "claude-sonnet-4-6"
     _seed_task_model "t1" "gpt-5.6-sol"
     run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
-        bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 111000)
+        bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 290000)
     assert_success
-    assert_output --partial "30%"
-    refute_output --partial "10%"
+    assert_output --partial "$COLOR_CRITICAL"
+    assert_output --partial "78%"
+    refute_output --partial "27%"
 }
 
-@test "lane vars unset: gpt-5.6-sol row keeps the 1.05M API-lane window (10%)" {
+@test "API route: exact Sol at 290k remains NOMINAL green on the 1.05M row window" {
     _seed_window 200000
     _seed_session_model "claude-sonnet-4-6"
     _seed_task_model "t1" "gpt-5.6-sol"
-    run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 111000)
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=openai \
+        bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 290000)
     assert_success
-    assert_output --partial "10%"
-    refute_output --partial "30%"
+    assert_output --partial "$COLOR_NOMINAL"
+    assert_output --partial "27%"
+    refute_output --partial "78%"
+}
+
+@test "chatgpt lane: same-model Sol row caps a stale 1.05M session cache" {
+    _seed_window 1050000
+    _seed_session_model "gpt-5.6-sol[1m]"
+    _seed_task_model "t1" "gpt-5.6-sol[1m]"
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 290000)
+    assert_success
+    assert_output --partial "$COLOR_CRITICAL"
+    assert_output --partial "78%"
 }
 
 @test "SHIM_BACKEND_MODE=chatgpt alone (no DAAF_PROVIDER_SHIM) keeps 1.05M (10%)" {
@@ -398,8 +480,8 @@ _payload_one_task() {
     refute_output --partial "30%"
 }
 
-@test "explicit CLAUDE_CODE_MAX_CONTEXT_TOKENS still wins on the chatgpt lane" {
-    # Override forces the row window to 200k: 100k -> 50%, not the lane's 27%.
+@test "chatgpt lane preserves a lower positive explicit row window" {
+    # A 200k override remains lower than the 370k final cap: 100k -> 50%.
     _seed_window 200000
     _seed_session_model "claude-sonnet-4-6"
     _seed_task_model "t1" "gpt-5.6-sol"
@@ -408,6 +490,19 @@ _payload_one_task() {
         bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 100000)
     assert_success
     assert_output --partial "50%"
+    refute_output --partial "27%"
+}
+
+@test "chatgpt lane caps an explicit 1.05M row override at 370k" {
+    _seed_window 200000
+    _seed_session_model "claude-sonnet-4-6"
+    _seed_task_model "t1" "gpt-5.6-sol"
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000 \
+        bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 290000)
+    assert_success
+    assert_output --partial "$COLOR_CRITICAL"
+    assert_output --partial "78%"
     refute_output --partial "27%"
 }
 
@@ -421,6 +516,201 @@ _payload_one_task() {
         bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 150000)
     assert_success
     assert_output --partial "15%"
+}
+
+# =========================================================================
+# Transcript-aware main/subagent model-cache freshness
+# =========================================================================
+
+@test "subagent cache refreshes Claude -> Sol -> Terra -> Claude and ignores an intervening synthetic model" {
+    local id="switch"
+    local transcript="${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${id}.jsonl"
+    local model_cache="/tmp/claude-subagent-model-${FAKE_SESSION}-${id}"
+    local signature_cache="${model_cache}.transcript-signature"
+    _seed_window 1000000
+    _write_subbar_main_model "claude-fable-5"
+    _write_subbar_task_model "$id" "claude-sonnet-4-6"
+
+    run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "$id" 90000)
+    assert_success
+    assert_output --partial "45%"
+    run cat "$model_cache"
+    assert_output "claude-sonnet-4-6"
+    run test -s "$signature_cache"
+    assert_success
+
+    _append_subbar_model "$transcript" "<synthetic>" true
+    run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "$id" 90000)
+    assert_success
+    assert_output --partial "45%"
+    run cat "$model_cache"
+    assert_output "claude-sonnet-4-6"
+
+    _append_subbar_model "$transcript" "gpt-5.6-sol" true
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "$id" 111000)
+    assert_success
+    assert_output --partial "$COLOR_NOMINAL"
+    assert_output --partial "30%"
+    run cat "$model_cache"
+    assert_output "gpt-5.6-sol"
+
+    _append_subbar_model "$transcript" "gpt-5.6-terra" true
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "$id" 111000)
+    assert_success
+    assert_output --partial "$COLOR_NOMINAL"
+    assert_output --partial "30%"
+    run cat "$model_cache"
+    assert_output "gpt-5.6-terra"
+
+    _append_subbar_model "$transcript" "claude-sonnet-4-6" true
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "$id" 90000)
+    assert_success
+    assert_output --partial "$COLOR_ELEVATED"
+    assert_output --partial "45%"
+    refute_output --partial "24%"
+    run cat "$model_cache"
+    assert_output "claude-sonnet-4-6"
+}
+
+@test "main-session cache refreshes against the main transcript signature" {
+    local id="main-switch"
+    local main_cache="/tmp/claude-model-${FAKE_SESSION}"
+    _seed_window 1000000
+    _write_subbar_main_model "claude-fable-5"
+    _write_subbar_task_model "$id" "claude-fable-5"
+
+    run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "$id" 100000)
+    assert_success
+    run cat "$main_cache"
+    assert_output "claude-fable-5"
+
+    _append_subbar_model "${TEST_DIR}/main.jsonl" "claude-sonnet-4-6" false
+    run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "$id" 100000)
+    assert_success
+    run cat "$main_cache"
+    assert_output "claude-sonnet-4-6"
+    run test -s "${main_cache}.transcript-signature"
+    assert_success
+}
+
+@test "unchanged transcript signature reuses the compatible nonempty subagent bare cache" {
+    local id="unchanged"
+    local transcript="${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${id}.jsonl"
+    local model_cache="/tmp/claude-subagent-model-${FAKE_SESSION}-${id}"
+    _seed_window 200000
+    _write_subbar_main_model "claude-sonnet-4-6"
+    _write_subbar_task_model "$id" "claude-sonnet-4-6"
+    printf 'gpt-5.6-sol' > "$model_cache"
+    stat -c '%s:%y' -- "$transcript" > "${model_cache}.transcript-signature"
+
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "$id" 111000)
+    assert_success
+    assert_output --partial "30%"
+    run cat "$model_cache"
+    assert_output "gpt-5.6-sol"
+}
+
+# =========================================================================
+# Canonical positive-decimal override contract
+# =========================================================================
+
+@test "canonical row overrides 370000 and a lower value are accepted" {
+    _seed_window 200000
+    _seed_session_model "claude-sonnet-4-6"
+    _seed_task_model "t1" "gpt-5.6-sol"
+
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=openai \
+        CLAUDE_CODE_MAX_CONTEXT_TOKENS=370000 \
+        bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 111000)
+    assert_success
+    assert_output --partial "30%"
+
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        CLAUDE_CODE_MAX_CONTEXT_TOKENS=250000 \
+        bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 100000)
+    assert_success
+    assert_output --partial "40%"
+}
+
+@test "invalid decimal row overrides are ignored without arithmetic diagnostics and the exact-lane cap still applies" {
+    local value
+    _seed_window 200000
+    _seed_session_model "claude-sonnet-4-6"
+    _seed_task_model "t1" "gpt-5.6-sol"
+    for value in \
+        0370000 \
+        080000 \
+        0 \
+        +370000 \
+        ' 370000' \
+        '370000 ' \
+        9223372036854775808 \
+        99999999999999999999999999999999999999; do
+        run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+            CLAUDE_CODE_MAX_CONTEXT_TOKENS="$value" \
+            bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 111000)
+        assert_success
+        assert_output --partial "30%"
+        refute_output --partial "value too great"
+        refute_output --partial "syntax error"
+    done
+}
+
+# =========================================================================
+# Anchored terminal-slug GPT physical-family classification
+# =========================================================================
+
+@test "supported terminal GPT flagship slugs use the 1.05M different-model mapping" {
+    local model
+    for model in gpt-5.4 gpt-5.5 gpt-5.6 gpt-5.6-sol gpt-5.6-terra gpt-5.6-luna 'gpt-5.6-sol[1m]' openrouter/openai/gpt-5.6-sol; do
+        _clean_subbar_caches
+        _seed_window 200000
+        _seed_session_model "claude-sonnet-4-6"
+        _seed_task_model "t1" "$model"
+        run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 111000)
+        assert_success
+        assert_output --partial "10%"
+    done
+}
+
+@test "anchored GPT 5.2, mini, and chat rows retain their smaller mappings" {
+    _seed_window 1000000
+    _seed_session_model "claude-fable-5"
+
+    _seed_task_model "t1" "gpt-5.2"
+    run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 100000)
+    assert_success
+    assert_output --partial "25%"
+
+    _seed_task_model "t2" "openai/gpt-5.6-sol-mini"
+    run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t2" 100000)
+    assert_success
+    assert_output --partial "25%"
+
+    _seed_task_model "t3" "openai/gpt-5.6-sol-chat"
+    run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t3" 64000)
+    assert_success
+    assert_output --partial "50%"
+}
+
+@test "malformed left boundaries and gpt-5.60 stay on the generic 200k row window" {
+    local model
+    for model in vendor/notgpt-5.6-sol xgpt-5.6-sol foo-gpt-5.6-sol gpt-5.60 gpt-5.60-sol; do
+        _clean_subbar_caches
+        _seed_window 1000000
+        _seed_session_model "claude-fable-5"
+        _seed_task_model "t1" "$model"
+        run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+            bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 90000)
+        assert_success
+        assert_output --partial "45%"
+        refute_output --partial "24%"
+        refute_output --partial "8%"
+    done
 }
 
 # =========================================================================

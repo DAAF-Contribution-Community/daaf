@@ -34,12 +34,13 @@
 #   in the sidecar $(dirname transcript_path)/<session_id>/subagents/
 #   agent-<id>.meta.json (key: agentType) and is looked up per row, fail-open.
 #   The subagent's MODEL is also not in the payload; it is read from the last
-#   assistant entry of agent-<id>.jsonl (same technique as context-reporter.sh
-#   cache_model()), cached once per subagent in
-#   /tmp/claude-subagent-model-<session>-<id> (shared with
-#   context-reporter.sh), and drives the per-row window denominator (see the
-#   loop; CLAUDE_CODE_MAX_CONTEXT_TOKENS, when set to an integer, overrides
-#   the per-model mapping there).
+#   real assistant entry of agent-<id>.jsonl, cached in the compatibility path
+#   /tmp/claude-subagent-model-<session>-<id> with a transcript-signature
+#   sidecar (shared with context-reporter.sh), and drives the per-row window
+#   denominator (see the loop; CLAUDE_CODE_MAX_CONTEXT_TOKENS, when set to a
+#   positive integer,
+#   ordinarily overrides the per-model mapping there, after which the matched
+#   ChatGPT-subscription/Codex flagship route is finally capped at 370k).
 #
 # OUTPUT CONTRACT (stdout — binary-verified Zod schema {id, content}):
 #   One compact JSON line per task: {"id": "<task id>", "content": "<row body>"}
@@ -67,12 +68,13 @@ C_GRAY='\033[38;5;245m'
 C_BAR_EMPTY='\033[38;5;238m'
 # Severity palette aligned to the Context Quality Curve. The exact numeric
 # thresholds are quality-tier conditional (see the per-row severity block near
-# the bottom of the loop): Fable/Mythos patterns and exact terminal GPT 5.6 Sol
-# slugs use the extended-horizon tier (ELEVATED >= 30% OR >= 300k, HIGH >= 40%
-# OR >= 400k, CRITICAL >= 50% OR >= 500k). Every other model — including Opus,
-# Sonnet, other GPT variants, GLM, and unknown ids — uses the conservative tier
-# (ELEVATED >= 40% OR >= 150k, HIGH >= 60% OR >= 200k, CRITICAL >= 75% OR >=
-# 250k). Each severity keeps one color regardless of tier:
+# the bottom of the loop): Fable/Mythos patterns use ELEVATED >= 30% OR >= 300k,
+# HIGH >= 40% OR >= 400k, and CRITICAL >= 50% OR >= 500k. Exact terminal GPT
+# 5.6 Sol slugs use standard 40%/60%/75% percentage gates while retaining the
+# larger 300k/400k/500k absolute gates. Every other model — including Opus,
+# Sonnet, other GPT variants, GLM, and unknown ids — uses ELEVATED >= 40% OR >=
+# 150k, HIGH >= 60% OR >= 200k, and CRITICAL >= 75% OR >= 250k. Each severity
+# keeps one color regardless of tier:
 #   NOMINAL  green
 #   ELEVATED amber
 #   HIGH     orange  (bold to distinguish from amber)
@@ -81,6 +83,74 @@ C_NOMINAL='\033[38;5;71m'    # green
 C_ELEVATED='\033[38;5;179m'  # amber
 C_HIGH='\033[1;38;5;173m'    # orange, bold
 C_CRITICAL='\033[38;5;167m'  # red
+
+# Accept only canonical positive decimal integers that Bash can represent
+# safely. Lexical and length/string bounds run before any arithmetic, so values
+# such as 080000 or 9223372036854775808 can never reach an arithmetic context.
+is_canonical_positive_decimal() {
+    local value="${1:-}"
+    local max_value="9223372036854775807"
+    [[ "$value" =~ ^[1-9][0-9]*$ ]] || return 1
+    [[ ${#value} -lt ${#max_value} ]] && return 0
+    [[ ${#value} -gt ${#max_value} ]] && return 1
+    # Equal-length canonical decimals are intentionally compared lexicographically before arithmetic.
+    # shellcheck disable=SC2071
+    [[ "$value" == "$max_value" || "$value" < "$max_value" ]]
+}
+
+# Return a signature that changes when a transcript is appended or rewritten.
+# GNU stat supplies byte size plus nanosecond-resolution mtime in one probe.
+transcript_signature() {
+    local transcript="${1:-}"
+    [[ -n "$transcript" && -f "$transcript" ]] || return 1
+    stat -c '%s:%y' -- "$transcript" 2>/dev/null
+}
+
+# Resolve the latest real model from a transcript while retaining the bare cache
+# path consumed by older DAAF components. The neighboring
+# .transcript-signature sidecar is the commit marker: unchanged signatures reuse
+# the nonempty cache without parsing; changed signatures refresh from the last
+# nonempty, non-synthetic model. Both files are replaced through same-directory
+# temporary siblings, with the signature moved last so interrupted writes force
+# a safe refresh on the next invocation.
+resolve_model_cache() {
+    local transcript="${1:-}"
+    local cache="${2:-}"
+    local signature_cache="${cache}.transcript-signature"
+    local signature="" cached_signature="" cached_model="" model=""
+    local model_tmp="${cache}.tmp.$$" signature_tmp="${signature_cache}.tmp.$$"
+
+    [[ -n "$cache" ]] || return 0
+    [[ -s "$cache" ]] && cached_model=$(cat "$cache" 2>/dev/null)
+    signature=$(transcript_signature "$transcript") || signature=""
+    [[ -s "$signature_cache" ]] && cached_signature=$(cat "$signature_cache" 2>/dev/null)
+
+    if [[ -n "$cached_model" && -n "$signature" && "$cached_signature" == "$signature" ]]; then
+        printf '%s' "$cached_model"
+        return 0
+    fi
+
+    if [[ -n "$transcript" && -f "$transcript" ]]; then
+        model=$(tail -n 50 "$transcript" 2>/dev/null | jq -rs '
+            [.[] | (.message.model // empty)
+             | select(. != "" and . != "<synthetic>")] | last // empty
+        ' 2>/dev/null) || model=""
+    fi
+    [[ -z "$model" ]] && model="$cached_model"
+
+    if [[ -n "$model" && -n "$signature" ]]; then
+        if printf '%s' "$model" > "$model_tmp" 2>/dev/null &&
+           printf '%s' "$signature" > "$signature_tmp" 2>/dev/null &&
+           mv "$model_tmp" "$cache" 2>/dev/null &&
+           mv "$signature_tmp" "$signature_cache" 2>/dev/null; then
+            :
+        else
+            rm -f "$model_tmp" "$signature_tmp" 2>/dev/null
+        fi
+    fi
+
+    [[ -n "$model" ]] && printf '%s' "$model"
+}
 
 # --- Read input ---
 input=$(cat 2>/dev/null) || exit 0
@@ -115,15 +185,16 @@ if [[ -z "$max_context" ]]; then
     fi
 fi
 # Guard: must be a positive integer, else fall back to 200k.
-if ! [[ "$max_context" =~ ^[0-9]+$ ]] || [[ "$max_context" -le 0 ]]; then
+if ! is_canonical_positive_decimal "$max_context"; then
     max_context=200000
 fi
 
-# Session model (cached by context-reporter.sh) — used to decide whether a
-# subagent shares the session's window or needs the per-model mapping below.
+# Session model — used to decide whether a subagent shares the session's window
+# or needs the per-model mapping below. Resolve it against the main transcript's
+# current signature so a real model switch cannot leave the comparison stale.
 session_model=""
 if [[ -n "$session_id" ]]; then
-    session_model=$(cat "/tmp/claude-model-${session_id}" 2>/dev/null)
+    session_model=$(resolve_model_cache "$transcript_path" "/tmp/claude-model-${session_id}")
 fi
 
 # --- Extract tasks (single jq pass, one \x1f-joined record per line) ---
@@ -181,22 +252,16 @@ while IFS=$'\x1f' read -r id type name status tokens label; do
     # Per-row context window: a subagent on a different model than the session
     # gets a different window than the session's (e.g. a sonnet subagent
     # dispatched from a 1M fable session is provisioned 200k — its bar must
-    # not be computed against 1M). Model read from the last assistant entry of
-    # the subagent transcript (same source as context-reporter.sh cache_model())
-    # and cached in /tmp/claude-subagent-model-<session>-<id> — a model never
-    # changes mid-task, so the tail|jq runs once per subagent, not once per
-    # ~300ms panel refresh. context-reporter.sh shares this cache (either
-    # script may write it first; cache is written only on a successful read).
+    # not be computed against 1M). The transcript-signature sidecar makes the
+    # shared bare cache append/rewrite-aware while avoiding rescans during the
+    # ~300ms panel refresh cycle when the transcript has not changed.
     task_model=""
     model_cache=""
+    task_transcript=""
     [[ -n "$session_id" ]] && model_cache="/tmp/claude-subagent-model-${session_id}-${id}"
-    if [[ -n "$model_cache" && -f "$model_cache" ]]; then
-        task_model=$(cat "$model_cache" 2>/dev/null)
-    elif [[ -n "$subagents_dir" && -f "${subagents_dir}/agent-${id}.jsonl" ]]; then
-        task_model=$(tail -n 50 "${subagents_dir}/agent-${id}.jsonl" 2>/dev/null | \
-            jq -rs '[.[] | .message.model // empty] | last // empty' 2>/dev/null)
-        [[ -n "$task_model" && -n "$model_cache" ]] && \
-            echo "$task_model" > "$model_cache" 2>/dev/null
+    [[ -n "$subagents_dir" ]] && task_transcript="${subagents_dir}/agent-${id}.jsonl"
+    if [[ -n "$model_cache" ]]; then
+        task_model=$(resolve_model_cache "$task_transcript" "$model_cache")
     fi
     # Default: the session window (covers same-model subagents and alternative
     # providers, where the mapping below does not apply).
@@ -208,53 +273,79 @@ while IFS=$'\x1f' read -r id type name status tokens label; do
         # native 1M Claude models
         # and generic [1m]-suffixed Claude ids map to 1,000,000; all other models
         # map to 200,000. This broad physical-window map is separate from the
-        # quality-tier selector below, where only exact terminal GPT 5.6 Sol slugs
-        # receive the extended-horizon exception. Re-verify this map after Claude
+        # quality-tier selector below, where exact terminal GPT 5.6 Sol slugs
+        # retain larger absolute gates. Re-verify this map after Claude
         # Code/provider updates.
-        # Lane-gated big-window ceiling for the gpt-5.4/5.5/5.6 flagship family.
-        # On the ChatGPT-subscription shim lane the Codex backend enforces a
-        # measured ceiling far below the OpenAI API lane's 1.05M. Canonical lane
-        # gate (the same two-var idiom used by route_provenance.py and the
-        # daaf-deploy-smoke-testing skill): DAAF_PROVIDER_SHIM=openai AND
-        # SHIM_BACKEND_MODE=chatgpt — both plain container env vars, no network
-        # probe. Probe 2026-07-16 (gpt-5.6-sol): accepted real
-        # input_tokens=369,941, rejected 372,905 -> bracket 369,941–372,905;
-        # 370000 is assumed lane-wide for the whole big-window family (the
-        # measurement is Sol-specific; conservative to apply it to the 5.4/5.5/5.6
-        # arm on this lane). Unset vars resolve to the non-shim default via
-        # ${VAR:-} guards (fail-open); the API and every other lane keep 1,050,000.
-        gpt_big_window=1050000
-        if [[ "${DAAF_PROVIDER_SHIM:-}" == "openai" && "${SHIM_BACKEND_MODE:-}" == "chatgpt" ]]; then
-            gpt_big_window=370000
-        fi
+        # Physical GPT classification uses only the terminal provider-stripped
+        # slug. Supported flagship versions must start that slug and be followed
+        # by end-of-slug, '-' or '['; mini/chat retain precedence.
+        physical_slug="${task_model##*/}"
         case "$task_model" in
-            # GPT (OpenAI) windows FIRST, ordered most-specific first: mini/chat
-            # variants are smaller than the gpt-5.4/5.5/5.6 flagships, so they must
-            # precede the broad matches. The flagships legitimately carry a
-            # [1m]-suffixed context-length variant, so GPT ids must be matched
-            # BEFORE the generic *\[1m\]* Claude branch below — otherwise
-            # gpt-5.6-terra[1m] would resolve 1,000,000 instead of its real
-            # 1,050,000. Verified vs OpenRouter /api/v1/models 2026-07-09. Keep
-            # aligned with context-bar.sh + context-reporter.sh.
-            *gpt-5*-mini*) row_window=400000 ;;
-            *gpt-5*-chat*) row_window=128000 ;;
-            *gpt-5.4*|*gpt-5.5*|*gpt-5.6*) row_window=$gpt_big_window ;;
-            *gpt-5*) row_window=400000 ;;
             # Exact GLM-5.2 plus terminal date snapshots only. Keep this narrow:
             # glm-5.2-air and future variants have no verified static window.
             # Window size only — GLM remains in the conservative threshold family.
             z-ai/glm-5.2|z-ai/glm-5.2-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9])
                 row_window=1048576 ;;
-            *fable-5*|*mythos-5*|*opus-4-7*|*opus-4-8*|*\[1m\]*) row_window=1000000 ;;
-            *) row_window=200000 ;;
+            *)
+                case "$physical_slug" in
+                    gpt-5.4|gpt-5.4[-\[]*|gpt-5.5|gpt-5.5[-\[]*|gpt-5.6|gpt-5.6[-\[]*)
+                        case "$physical_slug" in
+                            *-mini*) row_window=400000 ;;
+                            *-chat*) row_window=128000 ;;
+                            *) row_window=1050000 ;;
+                        esac
+                        ;;
+                    gpt-5|gpt-5[-\[]*|gpt-5.2|gpt-5.2[-\[]*)
+                        case "$physical_slug" in
+                            *-chat*) row_window=128000 ;;
+                            *) row_window=400000 ;;
+                        esac
+                        ;;
+                    *)
+                        case "$task_model" in
+                            *fable-5*|*mythos-5*|*opus-4-7*|*opus-4-8*|*\[1m\]*)
+                                row_window=1000000 ;;
+                            *) row_window=200000 ;;
+                        esac
+                        ;;
+                esac
+                ;;
         esac
-        # CLAUDE_CODE_MAX_CONTEXT_TOKENS overrides provisioning when set.
-        if [[ "${CLAUDE_CODE_MAX_CONTEXT_TOKENS:-}" =~ ^[0-9]+$ ]]; then
-            row_window="$CLAUDE_CODE_MAX_CONTEXT_TOKENS"
-        fi
     fi
-    # Guard: must be a positive integer, else fall back to 200k.
-    if ! [[ "$row_window" =~ ^[0-9]+$ ]] || [[ "$row_window" -le 0 ]]; then
+
+    # CLAUDE_CODE_MAX_CONTEXT_TOKENS is the ordinary user override. Apply it to
+    # same-model and different-model rows before the backend-specific final cap.
+    if is_canonical_positive_decimal "${CLAUDE_CODE_MAX_CONTEXT_TOKENS:-}"; then
+        row_window="$CLAUDE_CODE_MAX_CONTEXT_TOKENS"
+    fi
+
+    # ChatGPT-subscription/Codex final physical-window accounting constraint.
+    # Canonical activation requires BOTH exact lane signals and a task model in
+    # the existing gpt-5.4/5.5/5.6 flagship arm; mini/chat variants are excluded
+    # by ordering. Probe 2026-07-16 (gpt-5.6-sol) accepted 369,941 real input
+    # tokens and rejected 372,905, so 370000 is the lane-wide accounting ceiling
+    # for this arm. Apply min(resolved, 370000) after cache/model/override
+    # resolution so stale same-model caches and unsafe explicit declarations are
+    # capped while lower positive values survive. This is utilization/statusline
+    # accounting, NOT compaction and NOT a transport-level request blocker; the
+    # backend remains the ultimate hard ceiling.
+    gpt_flagship=0
+    physical_slug="${task_model##*/}"
+    case "$physical_slug" in
+        gpt-5*-mini*|gpt-5*-chat*) ;;
+        gpt-5.4|gpt-5.4[-\[]*|gpt-5.5|gpt-5.5[-\[]*|gpt-5.6|gpt-5.6[-\[]*)
+            gpt_flagship=1 ;;
+    esac
+    if [[ "${DAAF_PROVIDER_SHIM:-}" == "openai" && \
+          "${SHIM_BACKEND_MODE:-}" == "chatgpt" && \
+          "$gpt_flagship" -eq 1 ]] && \
+       is_canonical_positive_decimal "$row_window" && \
+       [[ "$row_window" -gt 370000 ]]; then
+        row_window=370000
+    fi
+
+    # Guard: must be a canonical positive decimal, else fall back to 200k.
+    if ! is_canonical_positive_decimal "$row_window"; then
         row_window=200000
     fi
 
@@ -263,19 +354,24 @@ while IFS=$'\x1f' read -r id type name status tokens label; do
     used_k=$((tokens / 1000))
 
     # Threshold tier (percentage AND absolute k-token gates per severity), keyed
-    # on the measured agent's model. Fable/Mythos and exact GPT 5.6 Sol ids get
-    # the validated extended-horizon tier; everything else — INCLUDING
-    # opus-4-8[1m], whose 1M window does NOT relax its Opus-class quality horizon
-    # — gets the conservative tier. GPT Sol matching accepts the bare slug or a
-    # provider path only when its final segment is exactly gpt-5.6-sol or
-    # gpt-5.6-sol[1m]; left- or right-boundary near misses and unknown/empty
-    # models fall through to the conservative default (fail-conservative).
-    # Deliberately different from the physical-window case block above — the
-    # broad GPT 5.6 physical map does not imply the exact Sol quality-tier rule.
-    # See CLAUDE.md § Context Quality Curve for the authoritative threshold table.
+    # on the measured agent's model. Fable/Mythos keep the validated 30/40/50%
+    # extended-horizon gates plus 300/400/500k absolute gates. Exact GPT 5.6 Sol
+    # ids use standard 40/60/75% gates while retaining 300/400/500k absolutes.
+    # Everything else — INCLUDING opus-4-8[1m], whose 1M window does NOT relax
+    # its Opus-class quality horizon — gets 40/60/75% plus 150/200/250k. GPT Sol
+    # matching accepts the bare slug or a provider path only when its final
+    # segment is exactly gpt-5.6-sol or gpt-5.6-sol[1m]; left- or right-boundary
+    # near misses and unknown/empty models fall through to the conservative
+    # default (fail-conservative). Deliberately different from the physical-
+    # window case block above — the broad GPT 5.6 physical map does not imply the
+    # exact Sol quality-tier rule. See CLAUDE.md § Context Quality Curve for the
+    # authoritative threshold table.
     case "$task_model" in
-        *fable-5*|*mythos-5*|gpt-5.6-sol|*/gpt-5.6-sol|gpt-5.6-sol\[1m\]|*/gpt-5.6-sol\[1m\])
+        *fable-5*|*mythos-5*)
             elev_pct=30; high_pct=40; crit_pct=50
+            elev_k=300;  high_k=400;  crit_k=500 ;;
+        gpt-5.6-sol|*/gpt-5.6-sol|gpt-5.6-sol\[1m\]|*/gpt-5.6-sol\[1m\])
+            elev_pct=40; high_pct=60; crit_pct=75
             elev_k=300;  high_k=400;  crit_k=500 ;;
         *)
             elev_pct=40; high_pct=60; crit_pct=75

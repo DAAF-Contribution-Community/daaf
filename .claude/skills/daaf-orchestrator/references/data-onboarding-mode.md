@@ -613,7 +613,7 @@ For EACH profiling part (DI-3 through DI-6), follow this complete cycle. **Do NO
 | Gate passes (GDI-3/4/5/6) | Current Position → Status; Next Actions |
 | Gate STOP triggered | Blockers → Execution Blockers; Current Position → Status=Blocked |
 | Key decision made | Key Decisions Made table |
-| Context utilization reaches ELEVATED (see CLAUDE.md § Context Quality Curve for threshold-tier rules) | Session Continuity → Context Snapshot |
+| Context utilization reaches ELEVATED (see CLAUDE.md § Context Quality Curve for threshold-profile rules) | Session Continuity → Context Snapshot |
 | PSU-DI2 user response received | Interpretation Tracking table (all rows populated with user decisions) |
 | Skill authoring completes (DI-7) | Skill Authoring Status table; Discovery Status (confirmed) |
 | Session break / finalization | Session Continuity → all fields; Session History |
@@ -622,14 +622,15 @@ For EACH profiling part (DI-3 through DI-6), follow this complete cycle. **Do NO
 
 ### Context Management
 
-Context utilization thresholds from `CLAUDE.md` > "Context & Session Health" > "Context Quality Curve" apply to Data Onboarding mode. The Per-Part Execution Cycle is the atomic unit for gating decisions. Trigger points are **threshold-tier-conditional** (percentage OR absolute tokens, whichever fires first); each agent is measured against the tier selected from its own exact model ID. Tier selection is version-specific and independent of physical context-window mapping. For GPT 5.6 Sol, the terminal model slug must be exactly `gpt-5.6-sol` or `gpt-5.6-sol[1m]`; the identifier may be bare or may contain one or more provider path prefixes ending in `/`. Malformed left-boundary strings such as `xgpt-5.6-sol`, `foo-gpt-5.6-sol`, and `vendor/notgpt-5.6-sol` remain conservative, as do right-side suffix or trailing variants. GPT is not part of the Claude Fable/Mythos model family. Terra, Luna, Pro, mini, chat, date snapshots, future variants, and trailing modifiers remain conservative unless separately validated and registered, even when the wider GPT 5.6 family maps to a 1,050,000-token physical window. That 1,050,000 figure is itself route-conditional: it holds on the API-key and OpenRouter routes, while the ChatGPT-subscription (Codex) shim lane is backend-capped near ~370,000 tokens (measured for Sol, 2026-07-16), which DAAF's hooks lane-gate automatically — Sol stays extended-horizon on both lanes.
+Context utilization thresholds from `CLAUDE.md` > "Context & Session Health" > "Context Quality Curve" apply to Data Onboarding mode. The Per-Part Execution Cycle is the atomic unit for gating decisions. Trigger points are **threshold-profile-conditional** (percentage OR absolute tokens, whichever fires first); each agent is measured against the profile selected from its own exact model ID. Profile selection is version-specific and independent of physical context-window mapping. Exact GPT 5.6 Sol has a separate validated profile that shares the standard 40%/60%/75% percentage boundaries (also used by the conservative default) while retaining higher validated absolute gates (300k/400k/500k). For that profile, the terminal model slug must be exactly `gpt-5.6-sol` or `gpt-5.6-sol[1m]`; the identifier may be bare or may contain one or more provider path prefixes ending in `/`. Malformed left-boundary strings such as `xgpt-5.6-sol`, `foo-gpt-5.6-sol`, and `vendor/notgpt-5.6-sol` remain conservative, as do right-side suffix or trailing variants. GPT is not part of the Claude Fable/Mythos model family. Terra, Luna, Pro, mini, chat, date snapshots, future variants, and trailing modifiers remain conservative unless separately validated and registered, even when the wider GPT 5.6 family maps to a 1,050,000-token physical window. That 1,050,000 figure is itself route-conditional: it holds on the API-key and OpenRouter routes, while the ChatGPT-subscription (Codex) shim lane is backend-capped at approximately 370,000 tokens (measured for Sol, 2026-07-16), which DAAF's hooks lane-gate automatically. At that cap, exact Sol's 40%/60%/75% percentage boundaries are 148k, 222k, and 277.5k tokens, respectively, and therefore fire before its 300k/400k/500k absolute gates; the same exact-Sol quality profile applies on both lanes even though their physical windows differ.
 
-| Threshold Tier | Membership | ELEVATED at | HIGH at | CRITICAL at |
-|----------------|------------|-------------|---------|-------------|
-| **Validated extended-horizon** | Claude Fable/Mythos models; exact terminal GPT 5.6 Sol model slugs, bare or provider-prefixed: `gpt-5.6-sol` or `gpt-5.6-sol[1m]` | ≥ 30% or ≥ 300k tokens | ≥ 40% or ≥ 400k tokens | ≥ 50% or ≥ 500k tokens |
+| Threshold Profile | Membership | ELEVATED at | HIGH at | CRITICAL at |
+|-------------------|------------|-------------|---------|-------------|
+| **Claude Fable/Mythos validated extended-horizon** | Registered Claude Fable/Mythos models | ≥ 30% or ≥ 300k tokens | ≥ 40% or ≥ 400k tokens | ≥ 50% or ≥ 500k tokens |
+| **Exact GPT 5.6 Sol validated** | Exact terminal model slugs, bare or provider-prefixed: `gpt-5.6-sol` or `gpt-5.6-sol[1m]` | ≥ 40% or ≥ 300k tokens | ≥ 60% or ≥ 400k tokens | ≥ 75% or ≥ 500k tokens |
 | **Conservative-default** | Opus, Sonnet, unknown model IDs, every other GPT variant, GLM models, and all other alternative-provider models unless individually validated and registered | ≥ 40% or ≥ 150k tokens | ≥ 60% or ≥ 200k tokens | ≥ 75% or ≥ 250k tokens |
 
-The status levels and their Data Onboarding actions are identical across tiers (NOMINAL is any utilization below the ELEVATED trigger):
+The status levels and their Data Onboarding actions are identical across profiles (NOMINAL is any utilization below the ELEVATED trigger):
 
 | Status | Data Onboarding Action |
 |--------|--------------------|
