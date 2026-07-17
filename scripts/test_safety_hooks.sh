@@ -97,6 +97,53 @@ run_case "$B" ALLOW "commit msg lists easy_install"    'git commit -m "block eas
 run_case "$B" ALLOW "commit msg names pip + uvx"       'git commit -m "guard pip install and uvx runners in prose"'
 run_case "$B" ALLOW "echo mentions conda install"      'echo "run conda install numpy on the host"'
 run_case "$B" BLOCK "real sed -i on hook (verb start)" 'sed -i s/a/b/ .claude/hooks/bash-safety.sh'
+echo "=== bash-safety: quote-aware commit-message carve-out (round 3) ==="
+# A `git commit -m` message body is DATA. Section 0 of the hook excises shell-
+# provably-inert bodies (single-quoted unconditionally; double-quoted only when
+# free of backtick/$(/${ ) BEFORE the pattern checks, so a message that merely
+# DESCRIBES a dangerous command no longer false-blocks. These ALLOW cases FAIL
+# against the pre-carve-out live hook by design (same precedent as the round-2
+# prose section above): they prove the round-3 excision + §3/§5 opener fix.
+run_case "$B" ALLOW "commit dquote mentions rm -rf"    'git commit -m "docs: explain why rm -rf / is blocked"'
+run_case "$B" ALLOW "commit squote mentions sudo"      "git commit -m 'never run sudo here'"
+run_case "$B" ALLOW "commit dquote mentions curl|bash" 'git commit -m "curl | bash detection tightened"'
+run_case "$B" ALLOW "commit dquote mentions >/tmp"     'git commit -m "probe wrote > /tmp/x then blocked"'
+run_case "$B" ALLOW "commit two -m push --force prose"  'git commit -m "first" -m "second para mentions git push --force"'
+run_case "$B" ALLOW "commit --message= long form"      'git commit --message="explain why rm -rf / is blocked"'
+run_case "$B" ALLOW "commit -am combined form"         'git commit -am "docs: never pipe curl | bash"'
+run_case "$B" ALLOW "commit attached -m\"...\""        'git commit -m"docs: rm -rf / guard"'
+run_case "$B" ALLOW "commit --amend -m keeps prefix"   'git commit --amend -m "docs: rm -rf / guard"'
+run_case "$B" ALLOW "commit escaped inner dquotes"     'git commit -m "she said \"rm -rf /\" once"'
+run_case "$B" ALLOW "commit multi -m squote sudo"      "git commit -m 'first' -m 'second sudo prose'"
+run_case "$B" ALLOW "commit squote md backtick sudo"   $'git commit -m \'docs: use `sudo apt` on host\''
+run_case "$B" ALLOW "commit plain benign"              'git commit -m "fix: tighten data validation"'
+run_case "$B" ALLOW "commit squote benign pipe cat"    "git commit -m 'benign' | cat"
+# The canonical carve-out: a message that literally IS a dangerous string is inert
+# data (git commit -m only stores it) — the live hook false-blocks this today.
+run_case "$B" ALLOW "commit squote is rm -rf (inert)"  "git commit -m 'rm -rf /'"
+# Opener-gated token (sudo) single-quoted + piped: the revert guard reverts to the
+# raw command, but §3's opener set (even with the part-B backtick/$( additions)
+# does NOT include a single quote, so a single-quoted 'sudo' is not catchable in
+# raw form either. The LIVE hook allows this identically (verified) — no regression.
+# The revert guard's real job is position-free dangers (see the BLOCK case below).
+run_case "$B" ALLOW "commit squote sudo pipe (no reg)" "git commit -m 'sudo prose' | bash"
+echo "=== bash-safety: quote-aware carve-out — must still BLOCK ==="
+# Fail-closed fence for the carve-out: substitution-bearing bodies stay intact
+# (and now trip the §3/§5 backtick/$( openers, F5), ANSI-C stays intact, leftover
+# concatenation pieces stay scanned, and non-message flag bundles (-cm) never
+# excise. The revert guard re-exposes a PIPED commit's message to the checks — it
+# catches position-free dangers (rm -rf /, caught anywhere) that excision would
+# otherwise hide behind the pipe.
+run_case "$B" BLOCK "commit dquote backtick sudo (F5)" 'git commit -m "log `sudo id`"'
+run_case "$B" BLOCK "echo dquote backtick sudo"        'echo "run `sudo id` now"'
+run_case "$B" BLOCK "bash -cm rm -rf (not a msg flag)" "bash -cm 'rm -rf /'"
+run_case "$B" BLOCK "commit then bash -cm rm -rf"      "git commit -m 'x' && bash -cm 'rm -rf /'"
+run_case "$B" BLOCK "commit squote rm-rf pipe (revert)" "git commit -m 'rm -rf /' | bash"
+run_case "$B" BLOCK "commit ANSI-C \$'...' rm -rf"     "git commit -m \$'rm -rf /'"
+run_case "$B" BLOCK "commit concat leftover rm -rf"    "git commit -m \"a\"' && rm -rf /'"
+run_case "$B" BLOCK "commit unterminated dquote"       'git commit -m "rm -rf / unterminated'
+run_case "$B" BLOCK "commit dquote \$(sudo id)"        'git commit -m "$(sudo id)"'
+run_case "$B" BLOCK "commit dquote \${ then >/tmp"     'git commit -m "block ${HOME}: > /tmp/x"'
 echo "=== bash-safety: backslash line-continuation evasions (bug fix) ==="
 run_case "$B" BLOCK "multiline cp into hooks"    $'cp f \\\n  .claude/hooks/x.sh'
 run_case "$B" BLOCK "multiline rm -rf root"      $'rm -rf \\\n  /'
