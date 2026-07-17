@@ -1340,3 +1340,32 @@ SH
     assert_success
     [ "${output}" -ge 1 ]
 }
+
+@test "migrate: git identity era-parity repair (4d) is guarded and precedes era detection" {
+    local sh="${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    # Sets the exact repo-local identity every v2.0.0+ era provisions
+    # (daaf@local / DAAF Container), ONLY when user.email resolves empty.
+    # container_exec-anchored so the rationale comment (which quotes the same
+    # command) does not double-count.
+    run grep -cF 'container_exec git -C /daaf config user.email "daaf@local"' "${sh}"
+    assert_success
+    [ "${output}" -eq 1 ]
+    run grep -cF 'GIT_EMAIL_EXISTING=$(container_exec git -C /daaf config user.email' "${sh}"
+    assert_success
+    [ "${output}" -eq 1 ]
+    local id_ln era_ln
+    id_ln=$(grep -n 'container_exec git -C /daaf config user.email "daaf@local"' "${sh}" | head -1 | cut -d: -f1)
+    era_ln=$(grep -n '5. DETECT ERA' "${sh}" | head -1 | cut -d: -f1)
+    [ -n "${id_ln}" ]
+    [ -n "${era_ln}" ]
+    [ "${id_ln}" -lt "${era_ln}" ]
+}
+
+@test "migrate: identity repair warns-and-continues and cites the refusal evidence" {
+    run grep -cF 'WARNING: Could not configure a git identity' "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    assert_success
+    [ "${output}" -ge 1 ]
+    run grep -cF 'Please tell me who you are' "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    assert_success
+    [ "${output}" -ge 1 ]
+}

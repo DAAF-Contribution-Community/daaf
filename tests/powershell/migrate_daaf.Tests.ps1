@@ -1221,3 +1221,31 @@ Describe "migrate_daaf.ps1 volume ownership repair (section 4c)" {
         $Content | Should -Match ([regex]::Escape('WARNING: Could not repair ownership of the DAAF volume'))
     }
 }
+
+# Field-Run Triage Round 6b (2026-07-17): git identity era parity (section 4d).
+# The v1.0.0 image provisions no git identity (later eras set repo-local
+# daaf@local via entrypoint; the modern Dockerfile bakes it globally), and git
+# refuses commit-creating ops without one -- the migrated-but-not-yet-rebuilt
+# v1.0.0 container's update stash/merge would fail. migrate now sets the
+# era-parity identity, guarded so a real user's identity is never overwritten.
+Describe "migrate_daaf.ps1 git identity repair (section 4d)" {
+    BeforeAll {
+        . "$PSScriptRoot/TestHelper.ps1"
+        $script:Content = Get-Content "$RepoRoot/scripts/host/migrate_daaf.ps1" -Raw
+    }
+
+    It "sets the era-parity identity, guarded on an empty user.email, before era detection" {
+        $Content | Should -Match ([regex]::Escape('Invoke-ContainerExec git -C /daaf config user.email daaf@local'))
+        $Content | Should -Match ([regex]::Escape('$GitEmailExisting = Invoke-ContainerGit config user.email'))
+        $idPos = $Content.IndexOf('config user.email daaf@local')
+        $eraPos = $Content.IndexOf('Invoke-ContainerGit remote get-url origin')
+        $idPos | Should -BeGreaterThan -1
+        $eraPos | Should -BeGreaterThan -1
+        $idPos | Should -BeLessThan $eraPos
+    }
+
+    It "warns and continues on identity-set failure, citing the refusal evidence" {
+        $Content | Should -Match ([regex]::Escape('WARNING: Could not configure a git identity'))
+        $Content | Should -Match ([regex]::Escape('Please tell me who you are'))
+    }
+}

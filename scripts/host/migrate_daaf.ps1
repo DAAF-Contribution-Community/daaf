@@ -790,6 +790,55 @@ if ($LASTEXITCODE -eq 0) {
 Write-Host ""
 
 # =====================================================================
+# 4d. GIT IDENTITY (era parity, before any commit-creating git op)
+# =====================================================================
+# Round-6b field evidence (v1.0.0 single-vector runs, Mac + Windows,
+# 2026-07-17): the v1.0.0 image provisions NO git identity (no entrypoint;
+# its Dockerfile installs git bare), while every later era provisions the
+# same one -- the v2.0.x/v2.1.0 entrypoint sets it repo-local on startup
+# (git -C /daaf config user.email "daaf@local" / user.name "DAAF Container",
+# quoted from the v2.0.1 entrypoint) and the modern Dockerfile bakes it
+# globally. Without an identity, git REFUSES commit-creating operations
+# ("Please tell me who you are" / "unable to auto-detect email address"),
+# so on a migrated-but-not-yet-rebuilt v1.0.0 container the offered
+# update's stash/merge machinery would fail. Guarded: identity is set ONLY
+# when user.email resolves empty (repo-local and global alike) -- a real
+# user's own identity is NEVER overwritten. The set is repo-local (inside
+# the volume) so it survives the container rebuild, exactly like the
+# entrypoint-provisioned identity it mirrors.
+#
+# Failure policy: warn-and-continue, mirroring section 4c -- unnecessary
+# wherever an identity already exists, and a genuine failure then surfaces
+# loudly at the update step WITH this diagnosis already printed.
+# Byte-parity with the migrate_daaf.sh section-4d block.
+Write-Host "-------------------------------------------"
+Write-Host "  Git identity (era parity)"
+Write-Host "-------------------------------------------"
+Write-Host ""
+Write-Host "Checking for a git identity in /daaf..."
+$GitEmailExisting = Invoke-ContainerGit config user.email
+if (-not [string]::IsNullOrWhiteSpace($GitEmailExisting)) {
+    Write-Host "  Already configured (user.email: $GitEmailExisting)."
+} else {
+    Invoke-ContainerExec git -C /daaf config user.email daaf@local
+    $rcIdEmail = $LASTEXITCODE
+    Invoke-ContainerExec git -C /daaf config user.name "DAAF Container"
+    if ($rcIdEmail -eq 0 -and $LASTEXITCODE -eq 0) {
+        Write-Host "  Configured: repo-local git identity (daaf@local / DAAF Container)"
+    } else {
+        Write-Host ""
+        Write-Host "WARNING: Could not configure a git identity in /daaf. The v1.0.0 era" -ForegroundColor Yellow
+        Write-Host "never provisioned one, and git refuses to create commits (including"
+        Write-Host "the update's stash/merge) without it. If a later step fails with"
+        Write-Host "'Please tell me who you are', configure one and re-run:"
+        Write-Host "  docker exec <container> git -C /daaf config user.email daaf@local"
+        Write-Host "Continuing..."
+    }
+}
+
+Write-Host ""
+
+# =====================================================================
 # 5. DETECT ERA
 # =====================================================================
 Write-Host "-------------------------------------------"
