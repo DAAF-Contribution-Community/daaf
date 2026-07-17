@@ -25,20 +25,36 @@ and still score poorly here if it skips confirmation gates or dispatches
 free-form prompts. Conversely, a weaker model that faithfully follows protocol
 scores well.
 
-**Model matrix:** 25 models — 8 Anthropic (Haiku 4.5, Sonnet 4.6, Sonnet 5, Opus
-4.5/4.6/4.7/4.8, Fable 5) via the container's Claude Code subscription, and 17
-OpenRouter models (GLM 5.1/5.2, Kimi K2.6, Kimi K2.7 Code, Qwen 3.6 27B,
-Gemma 4 31B/26B, DeepSeek V4 Pro/Flash, Gemini 3.1 Pro, Nemotron 3 Ultra,
-Gemini 3.1 Flash Lite, and — added 2026-07-09 for the GPT smoke battery —
-GPT-5.6 Sol/Terra/Luna, GPT-5.5, and GPT-5.4 Mini) via an Anthropic-compatible
-endpoint. The matrix is defined in `config/models.yaml`. GPT entries carry
-per-model `env_overrides` remapping both tier aliases to the model under test
-so subagent dispatches stay model-pure (see the comment block in models.yaml).
-The GPT-5.6 -pro slugs and GPT-5.5 Pro were tested and REMOVED (2026-07-10):
-the -pro variants hit hard "Prompt is too long" API errors at realistic DAAF
-context sizes through this endpoint (~4x inflated token accounting against a
-~200k ceiling; smoke evidence in the models.yaml REMOVED block), and GPT-5.5
-Pro's premium pricing ($30/$180 per M) made its battery not worth running.
+**Model matrix:** 26 registry entries across three explicit providers. The
+matrix is defined in `config/models.yaml`; provider labels describe the measured
+route, not interchangeable billing aliases.
+
+| Provider | Entries | Route and accounting basis |
+|----------|--------:|----------------------------|
+| `anthropic` | 8 | Claude Code subscription route for Haiku 4.5, Sonnet 4.6/5, Opus 4.5/4.6/4.7/4.8, and Fable 5 |
+| `openrouter` | 17 | OpenRouter's Anthropic-compatible endpoint; includes GLM, Kimi, Qwen, Gemma, DeepSeek, Gemini, Nemotron, and GPT entries |
+| `chatgpt-subscription` | 1 | Local provider shim to the deployed ChatGPT/Codex subscription backend; included-capacity billing and separate API-equivalent accounting |
+
+The two Luna entries are deliberately distinct. OpenRouter uses registry key
+`gpt-56-luna` and wire ID `openai/gpt-5.6-luna`; the ChatGPT-subscription route
+uses registry key `gpt-56-luna-chatgpt` and OpenAI's official bare wire ID
+`gpt-5.6-luna`. The latter pins `ANTHROPIC_DEFAULT_OPUS_MODEL`,
+`ANTHROPIC_DEFAULT_SONNET_MODEL`, and `CLAUDE_CODE_SUBAGENT_MODEL` to Luna and
+sets the 1,050,000-token context limit separately from the wire ID. That figure
+is the model's true window, not this lane's effective ceiling: the ChatGPT/Codex
+subscription backend is capped far lower — measured ~370,000 for `gpt-5.6-sol`
+(2026-07-16), and big-window GPT slugs on the subscription lane are assumed
+capped the same way until individually measured (Luna's own ceiling is
+unmeasured). Never retry the OpenRouter-prefixed slug automatically if the
+deployed-path probe rejects the bare slug.
+
+The GPT-5.6 -pro slugs and GPT-5.5 Pro were tested and REMOVED from the
+OpenRouter matrix (2026-07-10): the -pro variants hit hard "Prompt is too long"
+errors at realistic DAAF context sizes through that endpoint (~4x inflated token
+accounting against a ~200k ceiling; evidence in the models.yaml REMOVED block),
+and GPT-5.5 Pro's premium API pricing made its battery not worth running. No
+live ChatGPT-subscription Luna probe or behavioral run is claimed in this
+document; the commands below are an authorized-style staged procedure.
 
 **Scope:** The original design specified six test categories; four are
 implemented as the phases above. The remaining designed-but-unbuilt
@@ -63,6 +79,16 @@ expectations are derived from the agent type (e.g., did a coding agent write a
 script and execute it via `run_with_capture.sh`), with no per-case configuration.
 Results appear as `subagent_criteria` alongside the dispatch criteria and are
 shown as "Phase 3b" in the viewer.
+
+**Phase 3 child-model purity.** Phase 3 archives one of three states:
+`verified` when every model ID observed on readable child-transcript assistant
+records exactly matches the requested wire ID; `failed` when any observed child
+ID differs; and `unverifiable` when no child transcript or no child model field
+is available. The comparison deliberately performs no alias normalization and
+retains raw IDs. This is Claude-CLI child-transcript evidence, not
+backend-confirmed identity. The ChatGPT Luna registry entry pins all child-model
+selectors, but pinning plus `verified` establishes only the observable CLI
+boundary; neither proves what alias resolution a private backend may perform.
 
 **Phase 4 disallows the Agent tool** (`RunConfig.disallowed_tools = ["Agent"]`),
 so subagent dispatch is impossible and all scoring is main-transcript-only —
@@ -168,21 +194,44 @@ Directory map (paths relative to `benchmarks/`):
 
 | Directory | Contents |
 |-----------|----------|
-| `harness/` | Core machinery: `executor.py` (CLI invocation), `checkpoint_manager.py` (golden cloning + sandbox lifecycle), `cost_estimator.py` (estimation + cost recomputation), `models.py` (dataclasses: TestCase, RunConfig, RunResult, etc.), `model_loader.py` (models.yaml loading + provider env wiring), `collector.py`, `hooks/` (benchmark-scoped hook scripts, e.g., `block-git-writes.sh` — see § 9) |
+| `harness/` | Core machinery: `executor.py` (CLI invocation), `checkpoint_manager.py` (golden cloning + sandbox lifecycle), `cost_estimator.py` (legacy and subscription accounting), `artifacts.py` (schema-v2 serialization and preflight helpers), `models.py` (dataclasses), `model_loader.py` (registry/provider env wiring), `route_provenance.py` (fail-closed ChatGPT route contract), `collector.py`, and benchmark-scoped `hooks/` (see § 9) |
 | `scorers/deterministic/` | `checkpoint_adherence.py`, `dispatch_compliance.py`, `subagent_behavior.py`, `skill_routing.py` (Phase 1 is scored inline by `scripts/run_mode_classification.py` — see § 6) |
 | `datasets/` | `{phase}/cases.jsonl` plus `test_fixtures/` (buggy scripts and data for debugger/code-reviewer cases) |
 | `golden/` | Golden checkpoint JSONLs (see § 5) |
 | `config/` | `models.yaml` — model matrix with pricing |
-| `scripts/` | Phase runners, `generate_goldens.py`, `generate_results_viewer_v2.py`, `viewer_template.html`, `refresh_golden_checkpoint.py`, `reconcile_openrouter_costs.py`, `clean_sandbox.sh` |
+| `scripts/` | Phase runners, `probe_model_route.py`, `generate_goldens.py`, viewer generation sources, `refresh_golden_checkpoint.py`, `reconcile_openrouter_costs.py`, and `clean_sandbox.sh` |
 | `results/` | Timestamped, self-contained result sets |
 | `_sandbox/` | Per-run scratch directories (transient, gitignored) |
 
-> **Related tool — the deployment smoke suite.** `scripts/deploy_smoke/` reuses this
-> harness's output-parsing and subprocess-env machinery (it imports `_parse_json_output`,
-> `_extract_tool_failures`, and the graceful-kill ladder from `harness/executor.py`) but
-> serves a different purpose: verifying that a *live install* functions end-to-end in its
-> configured provider route, not scoring model behavior. See the `daaf-deploy-smoke-testing`
-> skill.
+> **DAAFBench is not deployment smoke testing.** DAAFBench scores model
+> behavioral adherence to framework protocols under controlled cases and preserves
+> run evidence. `scripts/deploy_smoke/` instead verifies that a live DAAF install
+> functions end-to-end in its configured provider route; it does not produce a
+> behavioral-adherence score. The smoke suite reuses selected executor parsing,
+> environment, and shutdown machinery, but its tiered probes and reports have a
+> different purpose. Use the `daaf-deploy-smoke-testing` skill for deployment health.
+> The route probe documented below belongs to DAAFBench: it is a bounded selection
+> gate before behavioral cases, not a replacement for the smoke suite.
+
+### ChatGPT-subscription deployed-path condition
+
+`chatgpt-subscription` measures the normal deployed DAAF path: Claude Code calls
+the local provider shim, `/health` reports `backend_mode=chatgpt`, and tool
+sanitization remains enabled. This is a system/deployment condition, not an
+isolated or raw-model condition. A result must retain that sanitizer state as
+provenance; comparisons against sanitizer-off experiments require a separately
+labeled condition.
+
+The route contract fails closed before `claude -p`. It requires coherent ambient
+`DAAF_PROVIDER_SHIM=openai`, `SHIM_BACKEND_MODE=chatgpt`, and local endpoint
+settings, then validates a live, zero-model-cost `/health` response immediately
+before a batch and again before each run. Required health facts include the
+ChatGPT backend mode and production Codex backend, `sanitize_tools=true`,
+readable auth storage, an `ok` status, and a nonempty shim version. Only an
+explicit allowlist is archived: local endpoint origin, backend/mode, shim
+version, sanitizer condition, auth-store readability, reasoning/verbosity when
+available, and capture time. Credentials, raw health extras, and full
+environment variables are excluded.
 
 ## 4. Quick Start
 
@@ -191,6 +240,10 @@ OAuth — nothing to configure. OpenRouter models require `OPENROUTER_BASE_URL`
 and `OPENROUTER_AUTH_TOKEN`, set on the host via `environment_settings.txt` in
 the `daaf-docker/` folder (injected at container startup). If these are missing,
 `model_loader.py` skips all OpenRouter models with a warning rather than failing.
+The ChatGPT-subscription entry uses the already deployed local provider shim and
+never reads credential files. Registry loading and `--help` perform no health or
+model call; the explicit preflight is where route coherence and secret-safe
+`/health` provenance are checked.
 
 **Run a phase** (from `/daaf`):
 
@@ -207,12 +260,13 @@ All four runners share an identical CLI:
 |------|---------|---------|
 | `--reps N` | 3 | Repetitions per case × model |
 | `--models a,b` | all | Comma-separated model keys (lowercased names from models.yaml, spaces → hyphens, dots removed: `fable-5`, `sonnet-46`, `deepseek-v4-flash`). Keys come from this registry transformation, not bare model names — `sonnet`/`haiku` are not valid keys |
-| `--provider X` | all | `anthropic`, `openrouter`, or `all` |
+| `--provider X` | all | `anthropic`, `openrouter`, `chatgpt-subscription`, or `all` |
 | `--test-id a,b` | all | Specific case IDs (e.g., `mc-01,mc-05`) |
 | `--sequential` | off | Run one at a time instead of parallel |
 | `--delay S` | 2 | Seconds between parallel launches (ThreadPoolExecutor stagger). Parallel-mode only — the sequential loop has no sleep, so this flag is a no-op with `--sequential` |
 | `--timeout S` | phase-based | Per-run timeout in seconds. Defaults baked into each runner (2026-07-10): 120 (Phase 1), 180 (Phase 2), 300 (Phases 3 & 4). Pass explicitly to override; the old cost-tier fallback only fires if a caller passes `timeout_override=None` programmatically |
-| `--yes` / `-y` | off | Skip the cost confirmation prompt |
+| `--yes` / `-y` | off | Skip the runner's cost confirmation prompt |
+| `--preflight-only` | off | Select models/cases and validate applicable provider routes, then exit before estimates, checkpoints, sandboxes, model execution, or result artifacts |
 
 `run_dispatch_compliance.py` additionally accepts `--no-fixture-restore`,
 which skips the pre-batch fixture restore (§ 9).
@@ -228,6 +282,76 @@ python3 benchmarks/scripts/run_dispatch_compliance.py \
 ```
 
 See § 9 before launching Anthropic Phase 3 runs — they must be sequential.
+
+### Zero-model-cost preflight
+
+All four phase runners implement the same `--preflight-only` gate. The runner
+parses arguments, loads and filters the registry and selected cases, then runs
+the shared provider preflight. On success it exits before cost estimation,
+checkpoint cloning, fixture restoration/staging, sandbox creation, executor
+calls, or result-directory creation. It therefore consumes zero model or
+subscription capacity and creates no benchmark result. On a route mismatch it
+exits nonzero and still creates no result. The health request itself is a local
+shim control-plane call; it is not a model request.
+
+```bash
+python3 benchmarks/scripts/run_mode_classification.py --provider chatgpt-subscription --models gpt-56-luna-chatgpt --test-id mc-01 --reps 1 --sequential --preflight-only
+python3 benchmarks/scripts/run_post_confirmation.py --provider chatgpt-subscription --models gpt-56-luna-chatgpt --test-id pc-01 --reps 1 --sequential --preflight-only
+python3 benchmarks/scripts/run_dispatch_compliance.py --provider chatgpt-subscription --models gpt-56-luna-chatgpt --test-id dc-01 --reps 1 --sequential --preflight-only
+python3 benchmarks/scripts/run_skill_routing.py --provider chatgpt-subscription --models gpt-56-luna-chatgpt --test-id sr-01 --reps 1 --sequential --preflight-only
+```
+
+Do not confuse these commands with the model-selection probe. Preflight verifies
+the declared local route and daemon health without asking the backend to accept
+a model slug.
+
+### Bounded model-route probe
+
+The standalone probe opens one fresh session, permits at most one turn, requests
+no tool work, disallows the standard built-in tools through the existing
+executor, and requires `response_text.strip() == expected_text`. It accepts one
+singular `--model` key only, defaults to the ChatGPT Luna entry, rejects
+non-subscription providers, and never falls back to `openai/gpt-5.6-luna`.
+Unless `--yes` is supplied, it warns and asks before consuming
+ChatGPT-subscription capacity.
+
+```bash
+python3 benchmarks/scripts/probe_model_route.py --model gpt-56-luna-chatgpt --expect-text LUNA_PROBE_OK --yes
+```
+
+Preflight or confirmation failure creates no probe artifact. Once execution has
+begun, success, mismatch, execution error, missing response, and timeout all
+produce a schema-v2 `probe.json` beneath the gitignored
+`results/probes/{timestamp}_{collision-suffix}/` path before the command exits.
+The artifact stores the exact prompt and expected text, response comparison,
+session and nullable transcript reference, secret-safe route/sanitizer
+provenance, separated model-identity evidence, observed usage completeness,
+actual billing treatment, API-equivalent exact/scenario fields, and the evidence
+caveat.
+
+A pass proves only that the deployed shim-plus-sanitizer path accepted the
+requested bare slug and returned the exact expected response. It does **not**
+prove that the private ChatGPT backend performed no internal alias resolution,
+and it does not establish backend-confirmed model identity when that field is
+null. It also does not prove agentic/tool compatibility; no tool work is
+requested by this probe.
+
+### Recommended staged ChatGPT Luna procedure
+
+After implementation review and a successful zero-cost preflight, execute the
+following gates **sequentially**, stopping on the criteria in § 9. This is a
+recommended authorized-style procedure, not a record that these live calls have
+already run:
+
+1. Route probe: `probe_model_route.py --model gpt-56-luna-chatgpt --expect-text LUNA_PROBE_OK --yes`
+2. Phase 1: `run_mode_classification.py --provider chatgpt-subscription --models gpt-56-luna-chatgpt --test-id mc-01 --reps 1 --sequential --yes`
+3. Phase 2: `run_post_confirmation.py --provider chatgpt-subscription --models gpt-56-luna-chatgpt --test-id pc-01 --reps 1 --sequential --yes`
+4. Phase 3: `run_dispatch_compliance.py --provider chatgpt-subscription --models gpt-56-luna-chatgpt --test-id dc-01 --reps 1 --sequential --yes`
+5. Phase 4: `run_skill_routing.py --provider chatgpt-subscription --models gpt-56-luna-chatgpt --test-id sr-01 --reps 1 --sequential --yes`
+
+Pause after the four representative behavioral cases. Do not infer a
+three-repetition reliability rate from these one-run gates, and do not start a
+reliability sample without a separate decision.
 
 ## 5. Golden Checkpoints
 
@@ -405,36 +529,71 @@ remains unimplemented (see § 12 Design Backlog).
 
 ## 7. Cost Tracking
 
-**Pricing source.** `config/models.yaml` defines per-million-token rates
-(`input`, `output`, optional `cached_input`) per model. Post-run cost is always
-recomputed from these rates via `cost_estimator.compute_cost()` — the CLI's
-`total_cost_usd` uses Anthropic-internal pricing, which is wrong for OpenRouter
+### API-metered and historical providers
+
+`config/models.yaml` defines per-million-token rates (`input`, `output`, optional
+`cached_input`) for Anthropic/OpenRouter entries. Post-run cost is recomputed
+from these rates via `cost_estimator.compute_cost()` because the CLI's
+`total_cost_usd` uses Anthropic-internal pricing and is wrong for OpenRouter
 models.
 
-**Token semantics.** Token counts come from the CLI result message's
-`modelUsage` block, which aggregates across the main session and all subagent
-sessions (the plain `usage` block excludes subagents and is used only as a
-fallback). `input_tokens` is the UNCACHED count; `cache_read_tokens` is
-additive — total billed input = input + cached. Models without a
-`cached_input` rate are billed cached tokens at the `input` rate.
-`cache_creation_tokens` are billed at 1.25× the `input` rate (Anthropic's
-cache-write convention).
+For these legacy routes, token counts prefer the CLI result's `modelUsage` block,
+which aggregates the main session and subagents; plain `usage` is a
+main-session-only fallback. `input_tokens` is uncached and
+`cache_read_tokens` is additive. `cache_creation_tokens` are billed at 1.25×
+ordinary input under the existing Anthropic/OpenRouter convention.
 
-**Pre-run estimation.** `cost_estimator.py` holds per-case calibration token
-profiles that drive the pre-launch estimate and confirmation prompt. **Phase
-1–3 profiles are stale** and underestimate costs for subagent-dispatching
-cases — treat as lower bounds (§ 12). Phase 4 profiles are **split by
-provider** (`PHASE4_TOKENS_OPENROUTER` / `PHASE4_TOKENS_ANTHROPIC`, selected
-via `model.provider`; unknown providers fall back to OpenRouter, which
-estimates high). The split is necessary because Anthropic runs are nearly all
-cache reads while OpenRouter runs re-send uncached context every turn.
+Pre-run estimates use per-case calibration profiles. **Phase 1–3 profiles are
+stale** and underestimate subagent cases; treat them as lower bounds (§ 12).
+Phase 4 profiles are provider-split because Anthropic runs are dominated by
+cache reads while OpenRouter resends uncached context. OpenRouter rates were
+reconciled against billing exports; historical archives are not recomputed when
+rates change.
 
-**Pricing reconciliation.** `models.yaml` rates were validated against
-OpenRouter billing exports via `scripts/reconcile_openrouter_costs.py`
-(machine-readable summaries in `derived/`). Rates for four models were
-corrected after reconciliation: DeepSeek V4 Pro (×3.3), Gemma 4 26B (×2.12),
-DeepSeek V4 Flash (×1.34), Gemma 4 31B (×1.26). Result sets predating these
-corrections understate those models' `computed_cost_usd` by the same factors.
+### ChatGPT-subscription dual ledger
+
+A ChatGPT-subscription run consumes an included/shared capacity pool, not a
+separately invoiced API call. Its actual ledger therefore records
+`charge_status="not_separately_billed"` and
+`actual_marginal_charge_usd=null`. Null means the marginal USD charge is not
+observed; it must not be rendered as `$0`, "free," or a fixed per-message cost.
+The monthly subscription is not amortized across runs by default.
+
+A separate `api_equivalent` ledger answers a counterfactual question: what the
+observed token mix would cost at OpenAI's standard GPT-5.6 Luna API list prices.
+The schedule is labeled **accessed 2026-07-15** because the source publishes no
+page-level effective date:
+
+| Request tier | Ordinary input | Cached input | Cache write | Output |
+|--------------|---------------:|-------------:|------------:|-------:|
+| At or below 272,000 request input tokens | $1.00/M | $0.10/M | $1.25/M | $6.00/M |
+| Above 272,000 request input tokens | $2.00/M | $0.20/M | $2.50/M | $9.00/M |
+
+The `>272,000` threshold applies the long-context prices to the entire request.
+`output_tokens` already includes hidden reasoning tokens, so reasoning is never
+added again. Cache reads and cache writes are mutually exclusive subsets of
+total input for exact accounting. An exact value is emitted only when cache
+categories, their inclusion semantics, and request context tier are all
+observable and coherent.
+
+The deployed shim currently exposes total input/output but not reliable cache
+breakdowns or per-request context tier. In that common partial-telemetry state,
+`api_equivalent.cost_usd` remains null while short- and long-context
+all-ordinary-input **scenario** values are retained with assumptions and
+`not_invoiced=true`. A scenario does not assert that unobserved cache activity
+was zero and is not an invoice. Subscription capacity/credit fields likewise
+remain null unless authoritative before/after observations exist.
+
+Published Luna allowances are planning ranges, not guarantees: Plus and
+Business list approximately 50–280 local messages per shared five-hour window,
+Pro 5× lists 250–1,400, and Pro 20× lists 1,000–5,600. Local messages and cloud
+tasks share capacity, weekly limits can also apply, and consumption varies with
+context, reasoning, tools, retrieval, caching, and task complexity. The
+published credit schedule has no universal USD-per-credit conversion. Record
+throttling or observed allowance movement separately; never infer a constant
+cost per message.
+
+Sources: [OpenAI GPT-5.6 Luna model and API pricing](https://developers.openai.com/api/docs/models/gpt-5.6-luna), [OpenAI reasoning-token semantics](https://developers.openai.com/api/docs/guides/reasoning), [OpenAI prompt-cache semantics](https://developers.openai.com/api/docs/guides/prompt-caching), and [OpenAI Codex plans, limits, and credits](https://learn.chatgpt.com/docs/pricing), all pricing/limit facts accessed 2026-07-15.
 
 ## 8. Results & Viewer
 
@@ -452,6 +611,18 @@ results/{YYYYMMDD_HHMMSS}/
     ├── transcript.jsonl   # full session transcript
     └── subagents/         # subagent transcripts (Phase 3)
 ```
+
+**Artifact schema and archive policy.** New phase-run and route-probe artifacts
+use additive `schema_version: 2` fields for route provenance, separated model
+identity, nullable observed usage, actual billing, API-equivalent accounting,
+and subscription capacity. Existing flat schema-v1 fields remain where their
+semantics are valid; subscription `computed_cost_usd` is null rather than a
+fabricated zero. Historical result sets are immutable: do not migrate,
+recompute, or rewrite old archives. Readers must feature-detect schema v2 and
+continue treating schema-v1 records as legacy, with absent new fields interpreted
+as unavailable rather than zero. Viewer support for these fields is a separate
+integration task; this policy does not claim that every current display surface
+already renders them.
 
 **Viewer generation.** `scripts/generate_results_viewer_v2.py` produces the
 viewer. The official artifact is a **multi-file bundle directory**
@@ -556,6 +727,29 @@ viewer grade taxonomy (perfect/partial/failed/ungraded) is orthogonal to the
 excluded counts disclosed.
 
 ## 9. Operational Notes
+
+### Stop/go criteria for staged ChatGPT Luna execution
+
+Proceed from one gate to the next only when the current artifact is complete and
+scorable. Stop before model execution if ambient route settings drift, `/health`
+is unreachable or violates the fail-closed contract, the backend/mode changes,
+sanitization is not enabled, auth storage is unavailable, or the requested
+registry key/provider/wire ID no longer match the approved condition.
+
+After the route probe, stop if the bare slug is rejected, the exact response
+comparison fails, execution times out/errors, no scorable response or session
+identifier exists, the expected transcript/modelUsage evidence is absent, or
+CLI-observed identity indicates Sol, Terra, an OpenRouter-prefixed ID, or any
+other mismatch. Do not try an alternative slug automatically. A null
+backend-confirmed identity is an evidence limitation, not a success claim.
+
+During behavioral staging, a valid criterion failure is benchmark data and does
+not by itself invalidate the route. Stop later gates for route drift,
+unscorable/missing required transcripts, provider/timeout errors, Phase 3
+`failed` or `unverifiable` child-model purity, subscription throttling, or a
+capacity/cap concern. Phase 3 purity must be interpreted at its documented CLI
+transcript boundary; even `verified` is not proof against private backend alias
+resolution. Preserve every execution-started failure artifact for audit.
 
 **Anthropic Phase 3 must run sequentially.** Parallel Phase 3 execution against
 the Anthropic API hits HTTP 429 rate limits even with 10s stagger (34/36 runs

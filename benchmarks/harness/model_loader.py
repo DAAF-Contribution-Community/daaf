@@ -12,6 +12,10 @@ from pathlib import Path
 import yaml
 
 from benchmarks.harness.models import ModelConfig
+from benchmarks.harness.route_provenance import (
+    CHATGPT_PROVIDER,
+    build_chatgpt_child_env,
+)
 
 
 # --- Provider environment wiring ---
@@ -32,6 +36,10 @@ PROVIDER_ENV_SPEC = {
         # environment, inject it so -p mode uses subscription auth explicitly.
         "CLAUDE_CODE_OAUTH_TOKEN": "CLAUDE_CODE_OAUTH_TOKEN",
     },
+    # Resolved by build_chatgpt_child_env() rather than source-variable lookup.
+    # This is a local, non-secret child-process overlay; live route validation
+    # remains explicit and never runs while loading the registry or --help.
+    CHATGPT_PROVIDER: {},
 }
 
 
@@ -41,6 +49,9 @@ def _resolve_provider_env(provider: str) -> dict[str, str]:
     Returns the resolved dict. Entries whose source env var is missing are
     silently omitted (the caller decides whether to warn/skip).
     """
+    if provider == CHATGPT_PROVIDER:
+        return build_chatgpt_child_env(os.environ), []
+
     spec = PROVIDER_ENV_SPEC.get(provider, {})
     resolved = {}
     missing = []
@@ -93,11 +104,18 @@ def load_models(path: Path) -> dict[str, ModelConfig]:
                     skipped_providers.add(provider)
                 continue
 
-            # Merge: provider env is the base, YAML env_overrides layer on top
-            merged = {**resolved, **config.env_overrides}
+            # Merge: model-specific overrides normally win. The local ChatGPT
+            # route variables are a fail-closed exception: endpoint and
+            # placeholder auth are fixed by the provider contract, while YAML
+            # still supplies model-purity selectors.
+            if provider == CHATGPT_PROVIDER:
+                merged = {**config.env_overrides, **resolved}
+            else:
+                merged = {**resolved, **config.env_overrides}
             config.env_overrides = merged
 
-        key = config.name.lower().replace(" ", "-").replace(".", "")
+        derived_key = config.name.lower().replace(" ", "-").replace(".", "")
+        key = config.key or derived_key
         models[key] = config
 
     return models
@@ -113,7 +131,8 @@ def filter_models(
     Args:
         all_models: Full dict from load_models().
         model_keys: If set, comma-split list of keys to include.
-        provider: If set, one of 'anthropic', 'openrouter', or 'all'.
+        provider: If set, one of 'anthropic', 'openrouter',
+                  'chatgpt-subscription', or 'all'.
                   Defaults to 'all' if None.
 
     Returns list of matching ModelConfig objects.
@@ -158,6 +177,6 @@ def add_model_args(parser) -> None:
     )
     parser.add_argument(
         "--provider", type=str, default="all",
-        choices=["anthropic", "openrouter", "all"],
+        choices=["anthropic", "openrouter", CHATGPT_PROVIDER, "all"],
         help="Filter models by provider (default: all)",
     )

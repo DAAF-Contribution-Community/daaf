@@ -4,7 +4,7 @@ Defines the core dataclasses used throughout the benchmark pipeline:
 TestCase, RunConfig, RunResult, ScoredResult, and ModelConfig.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Optional
 import json
 from pathlib import Path
@@ -84,7 +84,13 @@ class PricingConfig:
 
 @dataclass
 class ModelConfig:
-    """Configuration for a model to benchmark."""
+    """Configuration for a model to benchmark.
+
+    ``key`` is optional so historical entries retain their name-derived
+    selectable keys. ``context_window_tokens`` is route metadata and is applied
+    to the child process by the executor; it is deliberately not encoded in the
+    wire model identifier.
+    """
 
     id: str
     name: str
@@ -94,6 +100,13 @@ class ModelConfig:
     pricing: Optional[PricingConfig] = None
     reasoning_cost_multiplier: float = 1.0
     env_overrides: dict[str, str] = field(default_factory=dict)
+    # New fields are appended after the historical positional constructor
+    # surface so existing ModelConfig(id, name, cost_tier, ...) calls keep their
+    # meaning.
+    key: Optional[str] = None
+    context_window_tokens: Optional[int] = None
+    actual_billing_treatment: Optional[str] = None
+    api_equivalent_pricing: dict = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, data: dict) -> "ModelConfig":
@@ -128,6 +141,92 @@ class RunConfig:
 
 
 @dataclass
+class RouteProvenance:
+    """Allowlisted, secret-safe snapshot of a benchmark provider route."""
+
+    route_type: Optional[str] = None
+    provider: Optional[str] = None
+    endpoint_origin: Optional[str] = None
+    backend_mode: Optional[str] = None
+    backend: Optional[str] = None
+    shim_version: Optional[str] = None
+    sanitizer_enabled: Optional[bool] = None
+    sanitizer_condition: Optional[str] = None
+    auth_store_readable: Optional[bool] = None
+    reasoning_effort: Optional[str] = None
+    text_verbosity: Optional[str] = None
+    captured_at: Optional[str] = None
+
+
+@dataclass
+class ModelIdentityEvidence:
+    """Model identity evidence, separated by what each observer can establish."""
+
+    benchmark_key: Optional[str] = None
+    requested_model_id: Optional[str] = None
+    claude_cli_model_usage_ids: list[str] = field(default_factory=list)
+    backend_confirmed_model_id: Optional[str] = None
+
+
+@dataclass
+class UsageObserved:
+    """Nullable token observations plus their source and field semantics."""
+
+    input_tokens: Optional[int] = None
+    input_semantics: Optional[str] = None
+    input_includes_cache_tokens: Optional[bool] = None
+    output_tokens: Optional[int] = None
+    output_includes_reasoning: Optional[bool] = None
+    cache_read_tokens: Optional[int] = None
+    cache_write_tokens: Optional[int] = None
+    reasoning_tokens: Optional[int] = None
+    max_request_input_tokens: Optional[int] = None
+    pricing_context_tier: Optional[str] = None
+    cli_model_usage: dict[str, dict[str, Optional[int]]] = field(default_factory=dict)
+    source: Optional[str] = None
+    completeness: str = "unavailable"
+    incompleteness_reasons: list[str] = field(default_factory=list)
+
+
+@dataclass
+class ActualBilling:
+    """Observed billing treatment; a null amount is distinct from a zero charge."""
+
+    access_type: Optional[str] = None
+    charge_status: str = "unknown"
+    actual_marginal_charge_usd: Optional[float] = None
+
+
+@dataclass
+class ApiEquivalentAccounting:
+    """Counterfactual API-list-price accounting, never an invoice."""
+
+    cost_usd: Optional[float] = None
+    calculation_status: str = "unavailable"
+    short_context_uncached_scenario_usd: Optional[float] = None
+    long_context_uncached_scenario_usd: Optional[float] = None
+    scenario_assumptions: list[str] = field(default_factory=list)
+    incompleteness_reasons: list[str] = field(default_factory=list)
+    price_source_url: Optional[str] = None
+    price_schedule_accessed_at: Optional[str] = None
+    currency: str = "USD"
+    context_threshold_input_tokens: Optional[int] = None
+    context_tier: Optional[str] = None
+    not_invoiced: Optional[bool] = None
+
+
+@dataclass
+class SubscriptionCapacity:
+    """Optional provider allowance observations and calculated credit proxy."""
+
+    before: Optional[float] = None
+    after: Optional[float] = None
+    delta_observed: Optional[float] = None
+    credits_calculated: Optional[float] = None
+    credit_usd_value: Optional[float] = None
+
+
+@dataclass
 class RunResult:
     """Raw result from executing a single benchmark run."""
 
@@ -137,12 +236,12 @@ class RunResult:
     run_index: int
     session_id: str = ""
     total_turns: int = 0
-    total_cost_usd: float = 0.0
+    total_cost_usd: Optional[float] = 0.0
     duration_seconds: float = 0.0
-    input_tokens: int = 0
-    output_tokens: int = 0
-    cache_read_tokens: int = 0
-    cache_creation_tokens: int = 0
+    input_tokens: Optional[int] = None
+    output_tokens: Optional[int] = None
+    cache_read_tokens: Optional[int] = None
+    cache_creation_tokens: Optional[int] = None
     response_text: str = ""
     raw_json: dict = field(default_factory=dict)
     audit_entries: list[dict] = field(default_factory=list)
@@ -151,6 +250,17 @@ class RunResult:
     tool_failures: list[dict] = field(default_factory=list)
     error: Optional[str] = None
     exit_code: int = 0
+    # New telemetry is appended after the historical positional constructor
+    # surface, preserving existing callers that instantiate RunResult positionally.
+    wall_clock_seconds: Optional[float] = None
+    start_time_utc: Optional[str] = None
+    end_time_utc: Optional[str] = None
+    route_provenance: Optional[RouteProvenance] = None
+    model_identity: ModelIdentityEvidence = field(default_factory=ModelIdentityEvidence)
+    usage_observed: UsageObserved = field(default_factory=UsageObserved)
+    actual_billing: ActualBilling = field(default_factory=ActualBilling)
+    api_equivalent: ApiEquivalentAccounting = field(default_factory=ApiEquivalentAccounting)
+    subscription_capacity: SubscriptionCapacity = field(default_factory=SubscriptionCapacity)
 
     def to_dict(self) -> dict:
         return {
@@ -162,10 +272,21 @@ class RunResult:
             "total_turns": self.total_turns,
             "total_cost_usd": self.total_cost_usd,
             "duration_seconds": self.duration_seconds,
+            "wall_clock_seconds": self.wall_clock_seconds,
             "input_tokens": self.input_tokens,
             "output_tokens": self.output_tokens,
             "cache_read_tokens": self.cache_read_tokens,
             "cache_creation_tokens": self.cache_creation_tokens,
+            "start_time_utc": self.start_time_utc,
+            "end_time_utc": self.end_time_utc,
+            "route_provenance": (
+                asdict(self.route_provenance) if self.route_provenance else None
+            ),
+            "model_identity": asdict(self.model_identity),
+            "usage_observed": asdict(self.usage_observed),
+            "actual_billing": asdict(self.actual_billing),
+            "api_equivalent": asdict(self.api_equivalent),
+            "subscription_capacity": asdict(self.subscription_capacity),
             "response_text": self.response_text[:500],
             "audit_entry_count": len(self.audit_entries),
             "transcript_path": self.transcript_path,

@@ -23,7 +23,31 @@ Phase 4 is post-fix and recalibrated per provider from the fresh-golden
 baseline matrix (2026-06-10) — see the PHASE4_TOKENS_* block comment.
 """
 
-from benchmarks.harness.models import ModelConfig, RunResult
+from benchmarks.harness.models import (
+    ActualBilling,
+    ApiEquivalentAccounting,
+    ModelConfig,
+    RunResult,
+    SubscriptionCapacity,
+)
+
+
+CHATGPT_SUBSCRIPTION_PROVIDER = "chatgpt-subscription"
+LUNA_API_PRICE_SOURCE_URL = "https://developers.openai.com/api/docs/models/gpt-5.6-luna"
+LUNA_API_PRICE_ACCESSED_AT = "2026-07-15"
+LUNA_LONG_CONTEXT_THRESHOLD = 272_000
+LUNA_SHORT_CONTEXT_RATES = {
+    "input": 1.00,
+    "cached_input": 0.10,
+    "cache_write": 1.25,
+    "output": 6.00,
+}
+LUNA_LONG_CONTEXT_RATES = {
+    "input": 2.00,
+    "cached_input": 0.20,
+    "cache_write": 2.50,
+    "output": 9.00,
+}
 
 # --- Calibration: average (input_tokens, output_tokens, cache_read_tokens) per case ---
 # input_tokens = uncached input, cache_read_tokens = cached input (additive)
@@ -163,9 +187,166 @@ def compute_cost(model: ModelConfig, result: RunResult) -> float:
     if model.pricing is None:
         return result.total_cost_usd
     return model.pricing.estimate_cost(
-        result.input_tokens, result.output_tokens, result.cache_read_tokens,
-        result.cache_creation_tokens,
+        result.input_tokens or 0, result.output_tokens or 0,
+        result.cache_read_tokens or 0, result.cache_creation_tokens or 0,
     )
+
+
+def _api_equivalent_cost(
+    input_tokens: int,
+    output_tokens: int,
+    cache_read_tokens: int,
+    cache_write_tokens: int,
+    rates: dict[str, float],
+) -> float:
+    """Price mutually exclusive input categories and output exactly once."""
+    ordinary_input = input_tokens - cache_read_tokens - cache_write_tokens
+    return (
+        ordinary_input * rates["input"]
+        + cache_read_tokens * rates["cached_input"]
+        + cache_write_tokens * rates["cache_write"]
+        + output_tokens * rates["output"]
+    ) / 1_000_000
+
+
+def compute_accounting(model: ModelConfig, result: RunResult) -> dict:
+    """Build null-aware billing and API-equivalent ledgers for one run.
+
+    Legacy Anthropic/OpenRouter dollar computation stays in ``compute_cost``.
+    This separate path exists for ChatGPT subscription runs, whose included
+    capacity is not an observed zero-dollar API invoice. Output tokens already
+    include reasoning; ``reasoning_tokens`` is diagnostic and is never added.
+    """
+    if model.provider != CHATGPT_SUBSCRIPTION_PROVIDER:
+        return {
+            "actual_billing": ActualBilling(),
+            "api_equivalent": ApiEquivalentAccounting(
+                calculation_status="not_applicable_legacy_provider",
+                not_invoiced=False,
+            ),
+            "subscription_capacity": SubscriptionCapacity(),
+        }
+
+    actual = ActualBilling(
+        access_type="chatgpt_subscription",
+        charge_status=model.actual_billing_treatment or "not_separately_billed",
+        actual_marginal_charge_usd=None,
+    )
+    usage = result.usage_observed
+    reasons = []
+
+    required = {
+        "input_tokens": usage.input_tokens,
+        "output_tokens": usage.output_tokens,
+        "cache_read_tokens": usage.cache_read_tokens,
+        "cache_write_tokens": usage.cache_write_tokens,
+    }
+    for field_name, value in required.items():
+        if value is None:
+            reasons.append(f"{field_name}_unavailable")
+        elif not isinstance(value, int) or isinstance(value, bool) or value < 0:
+            reasons.append(f"{field_name}_invalid")
+
+    if usage.input_includes_cache_tokens is not True:
+        reasons.append("input_token_cache_inclusion_semantics_unavailable")
+    if usage.output_includes_reasoning is not True:
+        reasons.append("output_reasoning_inclusion_semantics_unavailable")
+    if (
+        usage.reasoning_tokens is not None
+        and usage.output_tokens is not None
+        and usage.reasoning_tokens > usage.output_tokens
+    ):
+        reasons.append("reasoning_tokens_exceed_total_output")
+
+    if usage.input_tokens is not None and usage.cache_read_tokens is not None \
+            and usage.cache_write_tokens is not None:
+        if usage.cache_read_tokens + usage.cache_write_tokens > usage.input_tokens:
+            reasons.append("cache_categories_exceed_total_input")
+
+    context_tier = usage.pricing_context_tier
+    if context_tier not in {None, "short", "long"}:
+        reasons.append("pricing_context_tier_invalid")
+        context_tier = None
+    if context_tier is None and usage.max_request_input_tokens is not None:
+        if usage.max_request_input_tokens < 0:
+            reasons.append("max_request_input_tokens_invalid")
+        elif usage.max_request_input_tokens <= LUNA_LONG_CONTEXT_THRESHOLD:
+            context_tier = "short"
+        else:
+            reasons.append("mixed_request_context_tiers_unavailable")
+    elif context_tier is None:
+        reasons.append("request_context_tier_unavailable")
+
+    if usage.max_request_input_tokens is not None and usage.input_tokens is not None:
+        if usage.max_request_input_tokens > usage.input_tokens:
+            reasons.append("max_request_input_tokens_exceed_total_input")
+    if context_tier == "long" and usage.max_request_input_tokens is not None:
+        if usage.max_request_input_tokens <= LUNA_LONG_CONTEXT_THRESHOLD:
+            reasons.append("long_context_tier_conflicts_with_request_size")
+    if context_tier == "short" and usage.max_request_input_tokens is not None:
+        if usage.max_request_input_tokens > LUNA_LONG_CONTEXT_THRESHOLD:
+            reasons.append("short_context_tier_conflicts_with_request_size")
+
+    scenario_assumptions = []
+    short_scenario = None
+    long_scenario = None
+    if usage.input_tokens is not None and usage.output_tokens is not None \
+            and usage.input_tokens >= 0 and usage.output_tokens >= 0:
+        # These deliberately price all observed input as ordinary uncached input.
+        # They are scenarios, not point estimates, whenever cache categories or
+        # request-tier telemetry are unavailable.
+        short_scenario = (
+            usage.input_tokens * LUNA_SHORT_CONTEXT_RATES["input"]
+            + usage.output_tokens * LUNA_SHORT_CONTEXT_RATES["output"]
+        ) / 1_000_000
+        long_scenario = (
+            usage.input_tokens * LUNA_LONG_CONTEXT_RATES["input"]
+            + usage.output_tokens * LUNA_LONG_CONTEXT_RATES["output"]
+        ) / 1_000_000
+        scenario_assumptions.append(
+            "hypothetical all-ordinary-input scenario only; it does not assert "
+            "that unobserved cache reads/writes were zero"
+        )
+        scenario_assumptions.append(
+            "output_tokens already includes reasoning_tokens; reasoning is not added"
+        )
+
+    exact_cost = None
+    status = "unavailable_incomplete_telemetry"
+    if not reasons and context_tier in {"short", "long"}:
+        rates = (
+            LUNA_SHORT_CONTEXT_RATES
+            if context_tier == "short"
+            else LUNA_LONG_CONTEXT_RATES
+        )
+        exact_cost = _api_equivalent_cost(
+            usage.input_tokens,
+            usage.output_tokens,
+            usage.cache_read_tokens,
+            usage.cache_write_tokens,
+            rates,
+        )
+        status = "exact_from_observed_token_categories"
+
+    api_equivalent = ApiEquivalentAccounting(
+        cost_usd=exact_cost,
+        calculation_status=status,
+        short_context_uncached_scenario_usd=short_scenario,
+        long_context_uncached_scenario_usd=long_scenario,
+        scenario_assumptions=scenario_assumptions,
+        incompleteness_reasons=reasons,
+        price_source_url=LUNA_API_PRICE_SOURCE_URL,
+        price_schedule_accessed_at=LUNA_API_PRICE_ACCESSED_AT,
+        currency="USD",
+        context_threshold_input_tokens=LUNA_LONG_CONTEXT_THRESHOLD,
+        context_tier=context_tier or "unknown",
+        not_invoiced=True,
+    )
+    return {
+        "actual_billing": actual,
+        "api_equivalent": api_equivalent,
+        "subscription_capacity": SubscriptionCapacity(),
+    }
 
 
 def _estimate_case_cost(model: ModelConfig, tokens: tuple[int, int, int]) -> float:

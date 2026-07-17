@@ -33,7 +33,19 @@ sys.path.insert(0, "/daaf")
 from benchmarks.harness.models import TestCase, ModelConfig, RunConfig
 from benchmarks.harness.executor import execute_run
 from benchmarks.harness.model_loader import load_models, filter_models, add_model_args
-from benchmarks.harness.cost_estimator import estimate_batch_cost, format_estimate, compute_cost
+from benchmarks.harness.cost_estimator import estimate_batch_cost, format_estimate
+from benchmarks.harness.artifacts import (
+    add_preflight_arg,
+    attach_schema_version,
+    build_error_artifact,
+    build_run_artifact,
+    console_billing_label,
+    cost_summary,
+    format_coverage,
+    model_manifest_entry,
+    nullable_mean,
+    run_preflight,
+)
 from benchmarks.scorers.deterministic.checkpoint_adherence import (
     extract_new_tool_calls,
     find_benchmark_transcript,
@@ -406,63 +418,39 @@ def run_one(test_case: TestCase, model: ModelConfig, rep: int, sandbox_suffix: s
             "transcript_path": None,
         }
 
-    actual_cost = compute_cost(model, result)
-
-    return {
-        "case_id": test_case.id,
-        "expected_mode": test_case.expected.get("mode", ""),
-        "model": model.name,
-        "model_id": model.id,
-        "provider": model.provider,
-        "effort_level": model.effort_level or "default",
-        "rep": rep,
-        "session_id": result.session_id,
-        "turns": result.total_turns,
-        "computed_cost_usd": actual_cost,
-        "reasoning_cost_multiplier": model.reasoning_cost_multiplier,
-        "input_tokens": result.input_tokens,
-        "output_tokens": result.output_tokens,
-        "cache_read_tokens": result.cache_read_tokens,
-        "cache_creation_tokens": result.cache_creation_tokens,
-        "duration_s": round(elapsed, 1),
-        "error": result.error,
-        "timed_out": bool(result.error and "Timed out" in result.error),
-        "criteria": scored["criteria"],
-        "transcript_path": scored.get("transcript_path"),
-        "tool_failures": result.tool_failures,
-    }
+    return build_run_artifact(
+        model,
+        result,
+        phase_fields={
+            "case_id": test_case.id,
+            "expected_mode": test_case.expected.get("mode", ""),
+            "rep": rep,
+            "criteria": scored["criteria"],
+            "transcript_path": scored.get("transcript_path"),
+        },
+        duration_s=elapsed,
+    )
 
 
 def _error_result(test_case: TestCase, model: ModelConfig, rep: int, error_msg: str):
     """Build a safe result dict for a run that failed before returning data."""
-    return {
-        "case_id": test_case.id,
-        "expected_mode": test_case.expected.get("mode", ""),
-        "model": model.name,
-        "model_id": model.id,
-        "provider": model.provider,
-        "effort_level": model.effort_level or "default",
-        "rep": rep,
-        "session_id": "",
-        "turns": 0,
-        "computed_cost_usd": 0.0,
-        "reasoning_cost_multiplier": model.reasoning_cost_multiplier,
-        "input_tokens": 0,
-        "output_tokens": 0,
-        "cache_read_tokens": 0,
-        "cache_creation_tokens": 0,
-        "duration_s": 0.0,
-        "error": error_msg,
-        "timed_out": False,
-        "criteria": {
-            "orchestrator_skill_loaded": {"name": "orchestrator_skill_loaded", "passed": False, "detail": f"Exception: {error_msg}"},
-            "mode_correct": {"name": "mode_correct", "passed": False, "detail": f"Exception: {error_msg}"},
-            "confirmation_gate_present": {"name": "confirmation_gate_present", "passed": False, "detail": f"Exception: {error_msg}"},
-            "no_premature_execution": {"name": "no_premature_execution", "passed": False, "detail": f"Exception: {error_msg}"},
-        },
-        "transcript_path": None,
-        "tool_failures": [],
+    criteria = {
+        "orchestrator_skill_loaded": {"name": "orchestrator_skill_loaded", "passed": False, "detail": f"Exception: {error_msg}"},
+        "mode_correct": {"name": "mode_correct", "passed": False, "detail": f"Exception: {error_msg}"},
+        "confirmation_gate_present": {"name": "confirmation_gate_present", "passed": False, "detail": f"Exception: {error_msg}"},
+        "no_premature_execution": {"name": "no_premature_execution", "passed": False, "detail": f"Exception: {error_msg}"},
     }
+    return build_error_artifact(
+        model,
+        test_case.id,
+        rep,
+        error_msg,
+        phase_fields={
+            "expected_mode": test_case.expected.get("mode", ""),
+            "criteria": criteria,
+            "transcript_path": None,
+        },
+    )
 
 
 # --- Archival ---
@@ -496,7 +484,7 @@ def archive_results(all_results: list[dict], models: list[ModelConfig],
     git_sha = get_git_sha()
 
     # --- Write manifest.json ---
-    manifest = {
+    manifest = attach_schema_version({
         "benchmark": "mode_classification",
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "daaf_git_sha": git_sha,
@@ -508,15 +496,7 @@ def archive_results(all_results: list[dict], models: list[ModelConfig],
             "test_ids": args.test_id.split(",") if args.test_id else "all",
             "model_keys": args.models.split(",") if args.models else "all",
         },
-        "models": [
-            {
-                "name": m.name,
-                "id": m.id,
-                "provider": m.provider,
-                "effort_level": m.effort_level or "default",
-            }
-            for m in models
-        ],
+        "models": [model_manifest_entry(m) for m in models],
         "cases": [
             {
                 "id": tc.id,
@@ -525,7 +505,7 @@ def archive_results(all_results: list[dict], models: list[ModelConfig],
             }
             for tc in test_cases
         ],
-    }
+    })
     with open(output_dir / "manifest.json", "w") as f:
         json.dump(manifest, f, indent=2)
 
@@ -535,27 +515,11 @@ def archive_results(all_results: list[dict], models: list[ModelConfig],
         run_dir = runs_dir / run_name
         run_dir.mkdir(parents=True, exist_ok=True)
 
-        # Write result.json for this run
+        # Write result.json for this run. The transcript is copied separately;
+        # every other flat and schema-v2 field is preserved additively.
         result_data = {
-            "case_id": r["case_id"],
-            "expected_mode": r["expected_mode"],
-            "model": r["model"],
-            "model_id": r["model_id"],
-            "provider": r.get("provider", "anthropic"),
-            "effort_level": r["effort_level"],
-            "rep": r["rep"],
-            "session_id": r["session_id"],
-            "turns": r["turns"],
-            "computed_cost_usd": r["computed_cost_usd"],
-            "input_tokens": r.get("input_tokens", 0),
-            "output_tokens": r.get("output_tokens", 0),
-            "cache_read_tokens": r.get("cache_read_tokens", 0),
-            "cache_creation_tokens": r.get("cache_creation_tokens", 0),
-            "duration_s": r["duration_s"],
-            "error": r["error"],
-            "timed_out": r.get("timed_out", False),
-            "criteria": r["criteria"],
-            "tool_failures": r.get("tool_failures", []),
+            key: value for key, value in r.items()
+            if key != "transcript_path"
         }
         with open(run_dir / "result.json", "w") as f:
             json.dump(result_data, f, indent=2)
@@ -566,7 +530,8 @@ def archive_results(all_results: list[dict], models: list[ModelConfig],
             shutil.copy2(transcript_src, run_dir / "transcript.jsonl")
 
     # --- Write summary.json ---
-    total_cost = sum(r["computed_cost_usd"] for r in all_results)
+    batch_cost = cost_summary(all_results)
+    total_cost = batch_cost["total_cost_usd"]
     errored = sum(1 for r in all_results if r.get("error"))
 
     criterion_names = [
@@ -591,8 +556,12 @@ def archive_results(all_results: list[dict], models: list[ModelConfig],
             if all(r["criteria"].get(c, {}).get("passed", False) for c in criterion_names)
         )
         rates["all_criteria"] = {"passed": all_pass, "total": len(rows), "rate": all_pass / len(rows)}
-        avg_cost = sum(r["computed_cost_usd"] for r in rows) / len(rows)
-        model_summaries[model.name] = {"criteria": rates, "avg_cost_usd": avg_cost}
+        model_cost = cost_summary(rows)
+        model_summaries[model.name] = {
+            "criteria": rates,
+            "avg_cost_usd": model_cost["avg_cost_usd"],
+            "accounting_coverage": model_cost["accounting_coverage"],
+        }
 
     # Per-case pass rates
     case_summaries = {}
@@ -615,9 +584,10 @@ def archive_results(all_results: list[dict], models: list[ModelConfig],
             name = tf.get("tool_name", "unknown")
             tool_failure_by_name[name] = tool_failure_by_name.get(name, 0) + 1
 
-    summary = {
+    summary = attach_schema_version({
         "total_runs": len(all_results),
         "total_cost_usd": total_cost,
+        "accounting_coverage": batch_cost["accounting_coverage"],
         "wall_time_s": round(wall_time, 1),
         "errored_runs": errored,
         "tool_failures": {
@@ -627,7 +597,7 @@ def archive_results(all_results: list[dict], models: list[ModelConfig],
         },
         "by_model": model_summaries,
         "by_case": case_summaries,
-    }
+    })
     with open(output_dir / "summary.json", "w") as f:
         json.dump(summary, f, indent=2)
 
@@ -647,7 +617,10 @@ def print_run_result(r: dict):
     print(f"\n--- {r['case_id']} | {r['model']} rep {r['rep']} ---")
     print(f"  Mode: {r['expected_mode']}")
     print(f"  orchestrator_skill={c1} | mode_correct={c2} | confirm_gate={c3} | no_premature={c4}")
-    print(f"  Turns: {r['turns']} | Cost: ${r['computed_cost_usd']:.3f} | Duration: {r['duration_s']}s")
+    print(
+        f"  Turns: {r['turns']} | Billing: {console_billing_label(r)} "
+        f"| Duration: {r['duration_s']}s"
+    )
 
     if r.get("error"):
         print(f"  ERROR: {r['error']}")
@@ -696,7 +669,12 @@ def print_summary(all_results: list[dict], models: list[ModelConfig],
             1 for r in rows
             if all(r["criteria"].get(c, {}).get("passed", False) for c in criterion_names)
         )
-        avg_cost = sum(r["computed_cost_usd"] for r in rows) / n
+        avg_cost = nullable_mean(r["computed_cost_usd"] for r in rows)
+        avg_label = (
+            f"${avg_cost:.3f}"
+            if avg_cost is not None
+            else "included"
+        )
         print(
             f"{model.name:<20} | "
             f"{counts[0]}/{n:<9} | "
@@ -704,7 +682,7 @@ def print_summary(all_results: list[dict], models: list[ModelConfig],
             f"{counts[2]}/{n:<9} | "
             f"{counts[3]}/{n:<11} | "
             f"{all_pass}/{n:<6} | "
-            f"${avg_cost:.3f}"
+            f"{avg_label}"
         )
 
     # Summary by case (if multiple cases)
@@ -735,12 +713,18 @@ def print_summary(all_results: list[dict], models: list[ModelConfig],
                 f"{counts[3]}/{n:<11}"
             )
 
-    total_cost = sum(r["computed_cost_usd"] for r in all_results)
+    batch_cost = cost_summary(all_results)
+    total_cost = batch_cost["total_cost_usd"]
+    total_label = f"${total_cost:.2f}" if total_cost is not None else "cost unavailable"
     errored = sum(1 for r in all_results if r.get("error"))
     error_note = f" ({errored} errored/timed-out)" if errored else ""
     total_tool_failures = sum(len(r.get("tool_failures", [])) for r in all_results)
     tf_note = f" | {total_tool_failures} tool failures" if total_tool_failures else ""
-    print(f"\nTotal: {len(all_results)} runs{error_note} | ${total_cost:.2f} | {wall_time:.0f}s wall time{tf_note}")
+    coverage = format_coverage(batch_cost["accounting_coverage"])
+    print(
+        f"\nTotal: {len(all_results)} runs{error_note} | {total_label} "
+        f"| accounting: {coverage} | {wall_time:.0f}s wall time{tf_note}"
+    )
 
 
 # --- Main ---
@@ -761,6 +745,7 @@ def main():
                              "standardized 2026-07-10, replacing cost-tier defaults)")
     parser.add_argument("--yes", "-y", action="store_true",
                         help="Skip cost confirmation prompt")
+    add_preflight_arg(parser)
     args = parser.parse_args()
 
     # Load and filter models
@@ -783,6 +768,12 @@ def main():
             sys.exit(1)
     else:
         test_cases = all_cases
+
+    # Batch route validation is the first action after model/case selection.
+    # The preflight-only branch returns before estimates, run-list/sandbox
+    # construction, executor calls, and result-directory creation.
+    if run_preflight(models, preflight_only=args.preflight_only):
+        return
 
     # Mode classification uses cold starts — no golden checkpoints.
     # Each run is a fresh `claude -p` session so we test the full bootstrap +

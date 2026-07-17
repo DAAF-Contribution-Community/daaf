@@ -463,26 +463,222 @@ def normalize_criteria(criteria_raw):
 # Result set loading
 # ---------------------------------------------------------------------------
 
+# ``results/probes`` is a separately shaped artifact container owned by the
+# bounded route-probe CLI. It deliberately has probe.json files rather than the
+# manifest.json/summary.json/runs contract of a phase result set. Keep reserved
+# containers explicit until a dedicated probe collection is designed.
+RESERVED_RESULT_CONTAINERS = frozenset({"probes"})
+
+PROVENANCE_FIELDS = (
+    "route_type", "provider", "endpoint_origin", "backend_mode", "backend",
+    "shim_version", "sanitizer_enabled", "sanitizer_condition",
+    "auth_store_readable", "reasoning_effort", "text_verbosity", "captured_at",
+)
+MODEL_IDENTITY_FIELDS = (
+    "benchmark_key", "requested_model_id", "claude_cli_model_usage_ids",
+    "backend_confirmed_model_id",
+)
+USAGE_FIELDS = (
+    "input_tokens", "input_semantics", "input_includes_cache_tokens",
+    "output_tokens", "output_includes_reasoning", "cache_read_tokens",
+    "cache_write_tokens", "reasoning_tokens", "max_request_input_tokens",
+    "pricing_context_tier", "source", "completeness",
+    "incompleteness_reasons",
+)
+ACTUAL_BILLING_FIELDS = (
+    "access_type", "charge_status", "actual_marginal_charge_usd",
+)
+API_EQUIVALENT_FIELDS = (
+    "cost_usd", "calculation_status", "short_context_uncached_scenario_usd",
+    "long_context_uncached_scenario_usd", "scenario_assumptions",
+    "incompleteness_reasons", "price_source_url",
+    "price_schedule_accessed_at", "currency",
+    "context_threshold_input_tokens", "context_tier", "not_invoiced",
+)
+SUBSCRIPTION_CAPACITY_FIELDS = (
+    "before", "after", "delta_observed", "credits_calculated",
+    "credit_usd_value",
+)
+CHILD_PURITY_FIELDS = (
+    "requested_child_model_id", "observed_child_model_ids_raw",
+    "comparison_child_model_ids", "normalization_applied", "comparison_rule",
+    "purity_status", "evidence_source", "evidence_boundary",
+    "child_transcript_count", "readable_child_transcript_count",
+    "incompleteness_reason",
+)
+
+
+def _read_json_object(path, label):
+    """Read one JSON object, reporting malformed/non-object artifacts clearly."""
+    try:
+        with open(path, "r", encoding="utf-8") as source:
+            payload = json.load(source)
+    except (json.JSONDecodeError, OSError) as exc:
+        print(f"WARNING: Could not read {label} at {path}: {exc}", file=sys.stderr)
+        return None
+    if not isinstance(payload, dict):
+        print(f"WARNING: {label} at {path} is not a JSON object, skipping",
+              file=sys.stderr)
+        return None
+    return payload
+
+
+def _schema_value(payload):
+    """Return a positive integer schema version or None for absent/invalid data."""
+    if not isinstance(payload, dict) or "schema_version" not in payload:
+        return None
+    value = payload.get("schema_version")
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        return None
+    return value
+
+
+def detect_schema_version(manifest=None, summary=None, run=None):
+    """Detect schema with manifest > summary > run precedence; absence means v1."""
+    for payload in (manifest, summary, run):
+        version = _schema_value(payload)
+        if version is not None:
+            return version
+    return 1
+
+
+def _schema_version_source(manifest=None, summary=None, run=None):
+    """Name the source selected by ``detect_schema_version``."""
+    for source, payload in (("manifest", manifest), ("summary", summary), ("run", run)):
+        if _schema_value(payload) is not None:
+            return source
+    return "default_absent_version"
+
+
+def _first_run_payload(result_set_dir):
+    """Return the first readable run object for schema fallback detection."""
+    runs_dir = os.path.join(result_set_dir, "runs")
+    if not os.path.isdir(runs_dir):
+        return None
+    for run_dirname in sorted(os.listdir(runs_dir)):
+        result_path = os.path.join(runs_dir, run_dirname, "result.json")
+        if not os.path.isfile(result_path):
+            continue
+        payload = _read_json_object(result_path, "result.json")
+        if payload is not None:
+            return payload
+    return None
+
+
+def _optional_rounded_number(value, digits):
+    """Round an observed number while preserving explicit zero and missing null."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return round(value, digits)
+
+
+def _string_list(value):
+    """Keep only strings from a known list-valued schema field."""
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, str)]
+
+
+def _safe_known_mapping(raw, fields):
+    """Copy a fixed scalar/list field set; unknown/raw extras never cross."""
+    if not isinstance(raw, dict):
+        return None
+    safe = {field: raw.get(field) for field in fields}
+    for field in (
+        "claude_cli_model_usage_ids", "incompleteness_reasons",
+        "scenario_assumptions", "observed_child_model_ids_raw",
+        "comparison_child_model_ids",
+    ):
+        if field in safe and safe[field] is not None:
+            safe[field] = _string_list(safe[field])
+    return safe
+
+
+def _safe_manifest_models(manifest):
+    """Return only known, non-secret model registry metadata from a manifest."""
+    if not isinstance(manifest, dict) or not isinstance(manifest.get("models"), list):
+        return []
+    safe_models = []
+    for entry in manifest["models"]:
+        if not isinstance(entry, dict):
+            continue
+        billing = entry.get("billing") if isinstance(entry.get("billing"), dict) else {}
+        safe_models.append({
+            "key": entry.get("key"),
+            "id": entry.get("id"),
+            "name": entry.get("name"),
+            "display_name": entry.get("display_name"),
+            "provider": entry.get("provider"),
+            "effort_level": entry.get("effort_level"),
+            "context_window_tokens": entry.get("context_window_tokens"),
+            "actual_billing_treatment": billing.get("actual_billing_treatment"),
+        })
+    return safe_models
+
+
+def _safe_count_mapping(raw, known_keys):
+    """Copy fixed summary count keys without admitting arbitrary nested extras."""
+    if not isinstance(raw, dict):
+        return None
+    return {key: raw.get(key) for key in known_keys}
+
+
+def _safe_model_accounting(by_model):
+    """Project nullable per-model accounting summaries through a fixed schema."""
+    safe = {}
+    if not isinstance(by_model, dict):
+        return safe
+    for model, model_data in by_model.items():
+        if not isinstance(model, str) or not isinstance(model_data, dict):
+            continue
+        safe[model] = {
+            "avg_cost_usd": _optional_rounded_number(
+                model_data.get("avg_cost_usd"), 12
+            ),
+            "accounting_coverage": _safe_count_mapping(
+                model_data.get("accounting_coverage"),
+                ("exact", "scenario_only", "unavailable", "legacy_numeric"),
+            ),
+            "purity_coverage": _safe_count_mapping(
+                model_data.get("purity_coverage"),
+                ("verified", "failed", "unverifiable"),
+            ),
+        }
+    return safe
+
+
+def _cost_compatibility(providers):
+    """Classify whether legacy billing-grade cost surfaces are compatible."""
+    provider_set = {provider for provider in providers if isinstance(provider, str) and provider}
+    if "chatgpt-subscription" in provider_set:
+        return False, "subscription_access_api_equivalent_is_counterfactual_not_invoiced"
+    return True, None
+
+
 def load_result_sets(results_dir, filter_timestamps=None, exclude_timestamps=None):
-    """Discover and load all result set directories."""
+    """Discover normal phase result sets, excluding separately shaped containers."""
     result_sets = []
 
     if not os.path.isdir(results_dir):
         print(f"ERROR: Results directory not found: {results_dir}", file=sys.stderr)
         return result_sets
 
-    # Discover result set directories
-    all_timestamps = sorted([
+    discovered_dirs = sorted([
         d for d in os.listdir(results_dir)
-        if os.path.isdir(os.path.join(results_dir, d))
-        and not d.startswith(".")
+        if os.path.isdir(os.path.join(results_dir, d)) and not d.startswith(".")
     ])
+    reserved_present = [d for d in discovered_dirs if d in RESERVED_RESULT_CONTAINERS]
+    for dirname in reserved_present:
+        print(f"NOTE: Ignoring reserved non-phase results container: {dirname}",
+              file=sys.stderr)
+    all_timestamps = [d for d in discovered_dirs if d not in RESERVED_RESULT_CONTAINERS]
 
     if filter_timestamps:
         timestamps = [t for t in all_timestamps if t in filter_timestamps]
-        missing = set(filter_timestamps) - set(timestamps)
+        missing = sorted(set(filter_timestamps) - set(timestamps))
         if missing:
-            print(f"WARNING: Result sets not found: {missing}", file=sys.stderr)
+            print(f"WARNING: Result sets not found or not phase result sets: {missing}",
+                  file=sys.stderr)
     else:
         timestamps = all_timestamps
 
@@ -491,9 +687,9 @@ def load_result_sets(results_dir, filter_timestamps=None, exclude_timestamps=Non
     # sets without enumerating every other set via --results.
     if exclude_timestamps:
         exclude_set = set(exclude_timestamps)
-        not_on_disk = exclude_set - set(all_timestamps)
+        not_on_disk = sorted(exclude_set - set(all_timestamps))
         if not_on_disk:
-            print(f"WARNING: --exclude-results sets not found: {sorted(not_on_disk)}",
+            print(f"WARNING: --exclude-results sets not found: {not_on_disk}",
                   file=sys.stderr)
         excluded_here = [t for t in timestamps if t in exclude_set]
         if excluded_here:
@@ -503,49 +699,40 @@ def load_result_sets(results_dir, filter_timestamps=None, exclude_timestamps=Non
     for ts in timestamps:
         ts_dir = os.path.join(results_dir, ts)
         summary_path = os.path.join(ts_dir, "summary.json")
-
         if not os.path.isfile(summary_path):
             print(f"WARNING: No summary.json in {ts_dir}, skipping", file=sys.stderr)
             continue
-
-        with open(summary_path, "r") as f:
-            summary = json.load(f)
+        summary = _read_json_object(summary_path, "summary.json")
+        if summary is None:
+            continue
 
         phase_id, phase_label = detect_phase(summary)
 
         # Load manifest.json (run provenance: git SHA + run configuration).
-        # Handled gracefully: a missing or unreadable manifest yields None
-        # fields rather than a failure, since older/partial result sets may
-        # lack one.
+        # Older/partial result sets may lack it; run/summary loading remains valid.
+        manifest = None
         daaf_git_sha = None
         manifest_config = None
         manifest_path = os.path.join(ts_dir, "manifest.json")
         if os.path.isfile(manifest_path):
-            try:
-                with open(manifest_path, "r") as f:
-                    manifest = json.load(f)
+            manifest = _read_json_object(manifest_path, "manifest.json")
+            if manifest is not None:
                 sha = manifest.get("daaf_git_sha")
-                # Short SHA (12 chars) is unambiguous at this repo's scale
-                daaf_git_sha = sha[:12] if sha else None
+                daaf_git_sha = sha[:12] if isinstance(sha, str) and sha else None
                 cfg = manifest.get("config", {})
-                manifest_config = {
-                    "reps": cfg.get("reps"),
-                    "parallel": cfg.get("parallel"),
-                    "launch_delay_s": cfg.get("launch_delay_s"),
-                    "timeout_override": cfg.get("timeout_override"),
-                    "test_ids": cfg.get("test_ids"),
-                    "model_keys": cfg.get("model_keys"),
-                }
-            except (json.JSONDecodeError, OSError) as exc:
-                print(f"WARNING: Could not read manifest in {ts_dir}: {exc}",
-                      file=sys.stderr)
+                if isinstance(cfg, dict):
+                    manifest_config = {
+                        "reps": cfg.get("reps"),
+                        "parallel": cfg.get("parallel"),
+                        "launch_delay_s": cfg.get("launch_delay_s"),
+                        "timeout_override": cfg.get("timeout_override"),
+                        "test_ids": cfg.get("test_ids"),
+                        "model_keys": cfg.get("model_keys"),
+                    }
         else:
             print(f"WARNING: No manifest.json in {ts_dir}", file=sys.stderr)
 
         # Count run directories actually on disk (those with a result.json).
-        # summary.json run counts are known to disagree with on-disk run dirs
-        # in some sets; run-level data is ground truth, summary totals are
-        # kept only for provenance/discrepancy disclosure.
         disk_run_count = 0
         runs_dir = os.path.join(ts_dir, "runs")
         if os.path.isdir(runs_dir):
@@ -553,33 +740,70 @@ def load_result_sets(results_dir, filter_timestamps=None, exclude_timestamps=Non
                 if os.path.isfile(os.path.join(runs_dir, run_dirname, "result.json")):
                     disk_run_count += 1
 
-        # Extract model names from summary
-        models = sorted(summary.get("by_model", {}).keys())
+        first_run = _first_run_payload(ts_dir)
+        schema_version = detect_schema_version(manifest, summary, first_run)
+        schema_source = _schema_version_source(manifest, summary, first_run)
+        manifest_models = _safe_manifest_models(manifest)
+        providers = sorted({
+            entry["provider"] for entry in manifest_models
+            if isinstance(entry.get("provider"), str) and entry["provider"]
+        })
+        billing_eligible, billing_reason = _cost_compatibility(providers)
 
-        # Extract criterion names (excluding 'all_criteria' meta-criterion)
+        by_model = summary.get("by_model", {})
+        if not isinstance(by_model, dict):
+            by_model = {}
+        models = sorted(by_model.keys())
+
         criterion_names = set()
-        for model_data in summary.get("by_model", {}).values():
-            for cname in model_data.get("criteria", {}).keys():
+        for model_data in by_model.values():
+            if not isinstance(model_data, dict):
+                continue
+            criteria = model_data.get("criteria", {})
+            if not isinstance(criteria, dict):
+                continue
+            for cname in criteria:
                 if cname != "all_criteria":
                     criterion_names.add(cname)
         criterion_names = sorted(criterion_names)
 
-        # Extract subagent criterion names if present
         subagent_criterion_names = []
-        if "subagent_behavior" in summary:
-            subagent_criterion_names = summary["subagent_behavior"].get(
-                "criterion_names", []
-            )
+        subagent_behavior = summary.get("subagent_behavior")
+        if isinstance(subagent_behavior, dict):
+            names = subagent_behavior.get("criterion_names", [])
+            if isinstance(names, list):
+                subagent_criterion_names = [name for name in names if isinstance(name, str)]
 
         result_set = {
             "timestamp": ts,
             "phase": phase_id,
             "phase_label": phase_label,
+            "schema_version": schema_version,
+            "schema_version_source": schema_source,
+            "schema_classification": (
+                "schema_v2" if schema_version >= 2 else "legacy_schema_v1"
+            ),
+            "legacy_schema": schema_version < 2,
             "total_runs": summary.get("total_runs", 0),
             "errored_runs": summary.get("errored_runs", 0),
-            "total_cost_usd": round(summary.get("total_cost_usd", 0), 3),
-            "wall_time_s": round(summary.get("wall_time_s", 0), 1),
+            "total_cost_usd": _optional_rounded_number(
+                summary.get("total_cost_usd"), 3
+            ),
+            "wall_time_s": _optional_rounded_number(summary.get("wall_time_s"), 1),
+            "accounting_coverage": _safe_count_mapping(
+                summary.get("accounting_coverage"),
+                ("exact", "scenario_only", "unavailable", "legacy_numeric"),
+            ),
+            "purity_coverage": _safe_count_mapping(
+                summary.get("purity_coverage"),
+                ("verified", "failed", "unverifiable"),
+            ),
             "models": models,
+            "model_metadata": manifest_models,
+            "model_accounting": _safe_model_accounting(by_model),
+            "providers": providers,
+            "billing_grade_cost_eligible": billing_eligible,
+            "billing_grade_cost_exclusion_reason": billing_reason,
             "criterion_names": criterion_names,
             "subagent_criterion_names": subagent_criterion_names,
             # Provenance (manifest + on-disk ground truth)
@@ -727,8 +951,9 @@ def load_runs(results_dir, result_sets, cases):
             if not os.path.isfile(result_path):
                 continue
 
-            with open(result_path, "r") as f:
-                result = json.load(f)
+            result = _read_json_object(result_path, "result.json")
+            if result is None:
+                continue
 
             case_id = result.get("case_id", "")
             case = cases.get(case_id)
@@ -753,25 +978,64 @@ def load_runs(results_dir, result_sets, cases):
                     else:
                         sc_entry["tier"] = "soft"
 
+            provider = result.get("provider")
+            if not isinstance(provider, str) or not provider:
+                provider = next((
+                    entry.get("provider") for entry in rs.get("model_metadata", [])
+                    if entry.get("name") == result.get("model")
+                    or entry.get("id") == result.get("model_id")
+                ), None)
+            schema_version = rs.get("schema_version", 1)
+            billing_eligible, billing_reason = _cost_compatibility([provider])
+
+            usage_observed = _safe_known_mapping(
+                result.get("usage_observed"), USAGE_FIELDS
+            )
+            # cli_model_usage is intentionally not passed through. It is a
+            # variable-key executor structure; the fixed nullable category totals
+            # above and allowlisted model-identity IDs are the viewer contract.
+            model_identity = _safe_known_mapping(
+                result.get("model_identity"), MODEL_IDENTITY_FIELDS
+            )
+            provenance = _safe_known_mapping(
+                result.get("provenance"), PROVENANCE_FIELDS
+            )
+            actual_billing = _safe_known_mapping(
+                result.get("actual_billing"), ACTUAL_BILLING_FIELDS
+            )
+            api_equivalent = _safe_known_mapping(
+                result.get("api_equivalent"), API_EQUIVALENT_FIELDS
+            )
+            subscription_capacity = _safe_known_mapping(
+                result.get("subscription_capacity"), SUBSCRIPTION_CAPACITY_FIELDS
+            )
+            child_model_purity = _safe_known_mapping(
+                result.get("child_model_purity"), CHILD_PURITY_FIELDS
+            )
+
             run = {
                 "result_set": ts,
+                "schema_version": schema_version,
+                "schema_classification": (
+                    "schema_v2" if schema_version >= 2 else "legacy_schema_v1"
+                ),
+                "legacy_schema": schema_version < 2,
                 "case_id": case_id,
                 "model": result.get("model", ""),
-                "model_id": result.get("model_id", ""),
-                "provider": result.get("provider", ""),
+                "model_id": result.get("model_id"),
+                "provider": provider,
+                "route_type": provenance.get("route_type") if provenance else None,
                 "rep": result.get("rep", 0),
                 "session_id": result.get("session_id", ""),
                 "turns": result.get("turns", 0),
-                # Per-run computed cost and token counts are deliberately NOT
-                # embedded: OpenRouter token accounting does not align with the
-                # harness's usage logging (the Anthropic-compatible endpoint
-                # reports Anthropic-tokenizer counts, not each model's own
-                # billing meter), so token-derived dollar figures were
-                # unreliable and all spend tracking was removed from the
-                # viewer. Cost surfaces use published list rates only (plus,
-                # for the battery estimate, billing-grade token mixes —
-                # never the per-run counts omitted here).
-                "duration_s": result.get("duration_s", 0),
+                # Legacy computed cost stays available only as archived evidence.
+                # It is never populated from API-equivalent exact/scenario values.
+                "computed_cost_usd": _optional_rounded_number(
+                    result.get("computed_cost_usd"), 12
+                ),
+                "billing_grade_cost_eligible": billing_eligible,
+                "billing_grade_cost_exclusion_reason": billing_reason,
+                "duration_s": _optional_rounded_number(result.get("duration_s"), 3),
                 "error": result.get("error", None),
                 # Explicit flag from the harness — never string-match `error`
                 # to detect timeouts. Timed-out runs are usually still graded.
@@ -787,6 +1051,13 @@ def load_runs(results_dir, result_sets, cases):
                 "grade": compute_grade(criteria),
                 "criteria": criteria,
                 "subagent_criteria": subagent_criteria,
+                "provenance": provenance,
+                "model_identity": model_identity,
+                "usage_observed": usage_observed,
+                "actual_billing": actual_billing,
+                "api_equivalent": api_equivalent,
+                "subscription_capacity": subscription_capacity,
+                "child_model_purity": child_model_purity,
                 # Carried through in full, including each entry's `content`
                 # string — surfaced in the run detail view
                 "tool_failures": result.get("tool_failures", []),
@@ -795,22 +1066,53 @@ def load_runs(results_dir, result_sets, cases):
             runs.append(run)
 
             # Battery-cost token aggregation (Anthropic provider only; see
-            # docstring). Timed-out runs are excluded (v3.1.2): they zero
-            # their token fields and depressed the mean asymmetrically vs
-            # OpenRouter (whose billing-snapshot denominator naturally
-            # excludes timeouts). Both providers now average over non-
-            # timed-out runs only; timeout rates are separately disclosed.
+            # docstring). Timed-out runs are excluded (v3.1.2). Schema-v1 keeps
+            # its historical flat-field zero fallback byte-for-byte in effect so
+            # published battery calculations do not change. For schema-v2,
+            # missing categories make the run ineligible for this billing-grade
+            # token mix; explicit source zero remains valid evidence.
             if run["provider"] == "anthropic" and not run["timed_out"]:
-                agg = anth_token_totals.setdefault(run["model"], {
-                    "n": 0, "input": 0, "output": 0,
-                    "cache_read": 0, "cache_creation": 0,
-                })
-                agg["n"] += 1
-                agg["input"] += result.get("input_tokens", 0) or 0
-                agg["output"] += result.get("output_tokens", 0) or 0
-                agg["cache_read"] += result.get("cache_read_tokens", 0) or 0
-                agg["cache_creation"] += (
-                    result.get("cache_creation_tokens", 0) or 0)
+                if run["legacy_schema"]:
+                    token_values = {
+                        "input": result.get("input_tokens", 0) or 0,
+                        "output": result.get("output_tokens", 0) or 0,
+                        "cache_read": result.get("cache_read_tokens", 0) or 0,
+                        "cache_creation": result.get("cache_creation_tokens", 0) or 0,
+                    }
+                else:
+                    token_values = {
+                        "input": result.get("input_tokens"),
+                        "output": result.get("output_tokens"),
+                        "cache_read": result.get("cache_read_tokens"),
+                        "cache_creation": result.get("cache_creation_tokens"),
+                    }
+                if all(
+                    isinstance(value, (int, float)) and not isinstance(value, bool)
+                    for value in token_values.values()
+                ):
+                    agg = anth_token_totals.setdefault(run["model"], {
+                        "n": 0, "input": 0, "output": 0,
+                        "cache_read": 0, "cache_creation": 0,
+                    })
+                    agg["n"] += 1
+                    for field, value in token_values.items():
+                        agg[field] += value
+
+    # Manifest metadata is preferred, but run data can feature-detect providers
+    # in older/partial sets. This mutates only the in-memory viewer projection.
+    runs_by_set = {}
+    for run in runs:
+        runs_by_set.setdefault(run["result_set"], []).append(run)
+    for rs in result_sets:
+        providers = set(rs.get("providers", []))
+        providers.update(
+            run["provider"] for run in runs_by_set.get(rs["timestamp"], [])
+            if isinstance(run.get("provider"), str) and run["provider"]
+        )
+        rs["providers"] = sorted(providers)
+        eligible, reason = _cost_compatibility(providers)
+        rs["billing_grade_cost_eligible"] = eligible
+        rs["billing_grade_cost_exclusion_reason"] = reason
 
     return runs, anth_token_totals
 
@@ -1084,15 +1386,28 @@ def load_model_pricing(base_dir):
     pricing = {}
     for entry in config.get("models", []):
         name = entry.get("name")
-        if not name:
+        if not name or entry.get("provider", "anthropic") == "chatgpt-subscription":
             continue
         p = entry.get("pricing", {})
-        if not p:
+        if not isinstance(p, dict):
+            continue
+        input_rate = p.get("input")
+        output_rate = p.get("output")
+        cached_rate = p.get("cached_input")
+        if any(
+            isinstance(value, bool) or not isinstance(value, (int, float))
+            for value in (input_rate, output_rate)
+        ):
             continue
         pricing[name] = {
-            "input_per_million": round(p.get("input", 0), 4),
-            "output_per_million": round(p.get("output", 0), 4),
-            "cached_input_per_million": round(p.get("cached_input", 0), 4),
+            "input_per_million": round(input_rate, 4),
+            "output_per_million": round(output_rate, 4),
+            "cached_input_per_million": (
+                round(cached_rate, 4)
+                if isinstance(cached_rate, (int, float))
+                and not isinstance(cached_rate, bool)
+                else None
+            ),
         }
     return pricing
 
@@ -1210,7 +1525,8 @@ def build_data_bundle(result_sets, cases, runs, transcripts, subagent_transcript
     )
     bundle = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "generator_version": "3.1.2",
+        "generator_version": "3.2.0",
+        "embedded_schema_contract_version": 2,
         "result_sets": sorted_result_sets,
         "cases": cases,
         "runs": runs,
@@ -1638,9 +1954,34 @@ def build_precomputed(result_sets, cases, runs, generation_params,
     # retired in v3.1.0: benchmark cost is dominated by input tokens, so a
     # 3:1 in/out blend misled.
     pricing = model_pricing or {}
-    cost = {"models": [], "frontiers": {}}
+    cost = {"models": [], "frontiers": {}, "omitted_models": []}
     price_by_model = {}
     for model in models:
+        model_runs = [run for run in runs if run["model"] == model]
+        providers = sorted({
+            run["provider"] for run in model_runs
+            if isinstance(run.get("provider"), str) and run["provider"]
+        })
+        incompatible = [
+            run for run in model_runs
+            if run.get("billing_grade_cost_eligible") is False
+        ]
+        if incompatible:
+            reasons = sorted({
+                run.get("billing_grade_cost_exclusion_reason")
+                for run in incompatible
+                if run.get("billing_grade_cost_exclusion_reason")
+            })
+            cost["omitted_models"].append({
+                "model": model,
+                "providers": providers,
+                "reason": (
+                    reasons[0] if len(reasons) == 1
+                    else "mixed_incompatible_billing_treatments"
+                ),
+                "behavioral_scores_retained": True,
+            })
+            continue
         p = pricing.get(model)
         if not p:
             continue
@@ -1703,12 +2044,25 @@ def build_precomputed(result_sets, cases, runs, generation_params,
                 corpus_runs_by_model.get(r["model"], 0) + 1
         for model, rec in reconciliation.get("openrouter_models", {}).items():
             pm = price_by_model.get(model)
-            n_cov = rec.get("n_covered_runs") or 0
-            bt = rec.get("billed_tokens") or {}
-            if pm is None or n_cov == 0:
+            n_cov = rec.get("n_covered_runs")
+            bt = rec.get("billed_tokens")
+            if (
+                pm is None
+                or isinstance(n_cov, bool)
+                or not isinstance(n_cov, (int, float))
+                or n_cov <= 0
+                or not isinstance(bt, dict)
+            ):
                 continue
-            input_side = bt.get("prompt", 0) / n_cov
-            output_side = bt.get("completion", 0) / n_cov
+            prompt_tokens = bt.get("prompt")
+            completion_tokens = bt.get("completion")
+            if any(
+                isinstance(value, bool) or not isinstance(value, (int, float))
+                for value in (prompt_tokens, completion_tokens)
+            ):
+                continue
+            input_side = prompt_tokens / n_cov
+            output_side = completion_tokens / n_cov
             per_run = (input_side * pm["input"]
                        + output_side * pm["output"]) / 1e6
             # Staleness guard: the snapshot's run universe vs the corpus
@@ -1837,6 +2191,18 @@ def build_precomputed(result_sets, cases, runs, generation_params,
             "timestamp": rs["timestamp"],
             "phase": rs["phase"],
             "phase_label": rs["phase_label"],
+            "schema_version": rs.get("schema_version", 1),
+            "schema_classification": rs.get(
+                "schema_classification", "legacy_schema_v1"
+            ),
+            "providers": rs.get("providers", []),
+            "billing_grade_cost_eligible": rs.get(
+                "billing_grade_cost_eligible", True
+            ),
+            "billing_grade_cost_exclusion_reason": rs.get(
+                "billing_grade_cost_exclusion_reason"
+            ),
+            "purity_coverage": rs.get("purity_coverage"),
             "daaf_git_sha": rs.get("daaf_git_sha"),
             "config": rs.get("config"),
             "disk_run_count": rs.get("disk_run_count", 0),
@@ -2029,7 +2395,13 @@ def print_summary(data_bundle, transcripts, subagent_transcripts):
         print(f"    Timestamp:  {rs['timestamp']}")
         print(f"    Runs:       {rs['total_runs']} ({rs['errored_runs']} errored{err_pct})")
         print(f"    Models:     {', '.join(rs['models'])}")
-        print(f"    Cost:       ${rs['total_cost_usd']:.2f}")
+        set_cost = rs.get("total_cost_usd")
+        set_cost_label = (
+            f"${set_cost:.2f}"
+            if isinstance(set_cost, (int, float)) and not isinstance(set_cost, bool)
+            else "unavailable"
+        )
+        print(f"    Cost:       {set_cost_label}")
         print(f"    Criteria:   {len(rs['criterion_names'])} dispatch + "
               f"{len(rs.get('subagent_criterion_names', []))} subagent")
         print()
@@ -2038,7 +2410,12 @@ def print_summary(data_bundle, transcripts, subagent_transcripts):
     total_transcripts = len(transcripts)
     total_subagent = sum(len(v) for v in subagent_transcripts.values())
     total_cases = len(data_bundle["cases"])
-    total_cost = sum(rs["total_cost_usd"] for rs in data_bundle["result_sets"])
+    observed_set_costs = [
+        rs["total_cost_usd"] for rs in data_bundle["result_sets"]
+        if isinstance(rs.get("total_cost_usd"), (int, float))
+        and not isinstance(rs.get("total_cost_usd"), bool)
+    ]
+    total_cost = sum(observed_set_costs) if observed_set_costs else None
 
     print(f"  Totals:")
     print(f"    Result sets:           {len(data_bundle['result_sets'])}")
@@ -2046,7 +2423,8 @@ def print_summary(data_bundle, transcripts, subagent_transcripts):
     print(f"    Cases loaded:          {total_cases}")
     print(f"    Transcripts condensed: {total_transcripts}")
     print(f"    Subagent transcripts:  {total_subagent}")
-    print(f"    Total cost:            ${total_cost:.2f}")
+    total_cost_label = f"${total_cost:.2f}" if total_cost is not None else "unavailable"
+    print(f"    Total cost:            {total_cost_label}")
     print()
 
 

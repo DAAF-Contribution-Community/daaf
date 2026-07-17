@@ -10,10 +10,17 @@ import os
 import subprocess
 import time
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 
 from benchmarks.harness.models import RunConfig, RunResult
+from benchmarks.harness.route_provenance import (
+    CHATGPT_PROVIDER,
+    build_chatgpt_child_env,
+    revalidate_route,
+)
 from benchmarks.harness.checkpoint_manager import prepare_sandbox, cleanup_sandbox
+from benchmarks.harness.cost_estimator import compute_accounting
 
 
 # Timeout per cost tier (seconds)
@@ -29,6 +36,17 @@ TIMEOUT_BY_TIER = {
 # tool_use records — see README § 11 item 9). SIGTERM first gives the CLI a
 # chance to flush before the hard kill lands.
 KILL_GRACE_SECONDS = 15
+
+
+def _finalize_result(result: RunResult, model, start_time: float) -> None:
+    """Stamp caller timing and attach the provider-appropriate accounting ledgers."""
+    result.end_time_utc = datetime.now(timezone.utc).isoformat()
+    result.wall_clock_seconds = time.time() - start_time
+    if model.provider == CHATGPT_PROVIDER:
+        accounting = compute_accounting(model, result)
+        result.actual_billing = accounting["actual_billing"]
+        result.api_equivalent = accounting["api_equivalent"]
+        result.subscription_capacity = accounting["subscription_capacity"]
 
 
 def execute_run(config: RunConfig) -> RunResult:
@@ -91,6 +109,8 @@ def execute_run(config: RunConfig) -> RunResult:
     if model.effort_level:
         env["CLAUDE_CODE_EFFORT_LEVEL"] = model.effort_level
     env.update(model.env_overrides)
+    if model.context_window_tokens is not None:
+        env["CLAUDE_CODE_MAX_CONTEXT_TOKENS"] = str(model.context_window_tokens)
 
     # Since 2026-07-10 the phase runners set per-phase --timeout defaults
     # (120/180/300/300), so timeout_override is always truthy on the default
@@ -104,11 +124,31 @@ def execute_run(config: RunConfig) -> RunResult:
         model_name=model.name,
         run_index=config.run_index,
     )
+    result.model_identity.benchmark_key = (
+        model.key or model.name.lower().replace(" ", "-").replace(".", "")
+    )
+    result.model_identity.requested_model_id = model.id
+    if model.provider == CHATGPT_PROVIDER:
+        result.total_cost_usd = None
+        result.actual_billing.access_type = "chatgpt_subscription"
+        result.actual_billing.charge_status = (
+            model.actual_billing_treatment or "not_separately_billed"
+        )
+        result.actual_billing.actual_marginal_charge_usd = None
 
     start_time = time.time()
+    result.start_time_utc = datetime.now(timezone.utc).isoformat()
 
     proc = None
     try:
+        # Per-run route validation is intentionally the final operation before
+        # launch. Resolve the local child overlay again so a long-lived process
+        # cannot retain a stale registry-time port, then check ambient
+        # deployment coherence and live daemon state. Any mismatch raises
+        # before subprocess.Popen can execute claude -p.
+        if model.provider == CHATGPT_PROVIDER:
+            env.update(build_chatgpt_child_env(os.environ))
+        result.route_provenance = revalidate_route(model, environ=os.environ)
         proc = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
@@ -145,12 +185,14 @@ def execute_run(config: RunConfig) -> RunResult:
             # pre-assigned via --session-id for cold starts.
             if not result.session_id:
                 result.session_id = checkpoint_session_id or cold_start_session_id or ""
+            _finalize_result(result, model, start_time)
             return result
 
         result.exit_code = proc.returncode
 
         if proc.returncode != 0 and not stdout.strip():
             result.error = f"CLI exited with code {proc.returncode}: {stderr[:500]}"
+            _finalize_result(result, model, start_time)
             return result
 
         _parse_json_output(stdout, result)
@@ -177,6 +219,7 @@ def execute_run(config: RunConfig) -> RunResult:
     # for calling cleanup_sandbox() AFTER scoring and archiving the
     # transcript. This ensures timed-out runs still produce scorable data.
 
+    _finalize_result(result, model, start_time)
     return result
 
 
@@ -237,7 +280,8 @@ def _parse_json_output(stdout_raw: str, result: RunResult) -> None:
         if result_msg:
             result.session_id = result_msg.get("session_id", "")
             result.response_text = result_msg.get("result", "")
-            result.total_cost_usd = result_msg.get("total_cost_usd", 0.0)
+            if result.actual_billing.access_type != "chatgpt_subscription":
+                result.total_cost_usd = result_msg.get("total_cost_usd", 0.0)
             result.total_turns = result_msg.get("num_turns", 0)
             duration_ms = result_msg.get("duration_ms", 0)
             if duration_ms:
@@ -261,39 +305,168 @@ def _parse_json_output(stdout_raw: str, result: RunResult) -> None:
         result.raw_json = output
         result.session_id = output.get("session_id", "")
         result.response_text = output.get("result", "")
-        result.total_cost_usd = output.get("total_cost_usd", 0.0)
+        if result.actual_billing.access_type != "chatgpt_subscription":
+            result.total_cost_usd = output.get("total_cost_usd", 0.0)
         result.total_turns = output.get("num_turns", 0)
         _extract_token_usage(output, result)
 
 
+def _first_optional_int(data: dict, *keys: str):
+    """Return the first recognized non-boolean integer, preserving missing as None."""
+    for key in keys:
+        value = data.get(key)
+        if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+            return value
+    return None
+
+
+def _sum_optional(values: list) -> int | None:
+    observed = [value for value in values if value is not None]
+    return sum(observed) if observed else None
+
+
 def _extract_token_usage(msg: dict, result: "RunResult") -> None:
-    """Extract token usage from a CLI result message.
+    """Extract safely observable CLI usage without overstating its semantics.
 
-    The CLI returns usage in two places:
-      - msg["usage"]: main session only (excludes subagent token consumption)
-      - msg["modelUsage"]: per-model breakdown that aggregates across main
-        session AND all subagent sessions
-
-    We prefer "modelUsage" because it captures the true total cost including
-    subagents dispatched via the Agent tool. Falls back to "usage" when
-    modelUsage is absent (e.g., older CLI versions).
+    ``modelUsage`` aggregates the main session and subagents and is preferred to
+    the main-session-only ``usage`` fallback. Model keys are CLI-observed
+    identity evidence, not backend confirmation. Missing token categories stay
+    null; they are never silently converted to zero.
     """
     model_usage = msg.get("modelUsage")
     if isinstance(model_usage, dict):
-        for model_key, mu in model_usage.items():
-            if isinstance(mu, dict):
-                result.input_tokens += mu.get("inputTokens", 0)
-                result.output_tokens += mu.get("outputTokens", 0)
-                result.cache_read_tokens += mu.get("cacheReadInputTokens", 0)
-                result.cache_creation_tokens += mu.get("cacheCreationInputTokens", 0)
+        recognized = {}
+        input_values = []
+        output_values = []
+        cache_read_values = []
+        cache_write_values = []
+        reasoning_values = []
+
+        for model_key, raw_usage in model_usage.items():
+            if not isinstance(model_key, str) or not isinstance(raw_usage, dict):
+                continue
+            values = {
+                "input_tokens": _first_optional_int(
+                    raw_usage, "inputTokens", "input_tokens"
+                ),
+                "output_tokens": _first_optional_int(
+                    raw_usage, "outputTokens", "output_tokens"
+                ),
+                "cache_read_tokens": _first_optional_int(
+                    raw_usage, "cacheReadInputTokens", "cache_read_input_tokens",
+                    "cachedInputTokens", "cached_input_tokens",
+                ),
+                "cache_write_tokens": _first_optional_int(
+                    raw_usage, "cacheCreationInputTokens",
+                    "cache_creation_input_tokens", "cacheWriteInputTokens",
+                    "cache_write_tokens",
+                ),
+                "reasoning_tokens": _first_optional_int(
+                    raw_usage, "reasoningTokens", "reasoning_tokens"
+                ),
+            }
+            recognized[model_key] = values
+            input_values.append(values["input_tokens"])
+            output_values.append(values["output_tokens"])
+            cache_read_values.append(values["cache_read_tokens"])
+            cache_write_values.append(values["cache_write_tokens"])
+            reasoning_values.append(values["reasoning_tokens"])
+
+        result.model_identity.claude_cli_model_usage_ids = list(recognized)
+        observed = result.usage_observed
+        observed.cli_model_usage = recognized
+        observed.input_tokens = _sum_optional(input_values)
+        observed.output_tokens = _sum_optional(output_values)
+        observed.reasoning_tokens = _sum_optional(reasoning_values)
+        observed.source = "claude_cli.modelUsage"
+        result.input_tokens = observed.input_tokens
+        result.output_tokens = observed.output_tokens
+
+        if result.actual_billing.access_type == "chatgpt_subscription":
+            # The deployed shim currently forwards total input/output but does
+            # not expose reliable cache or reasoning breakdowns. Preserve any
+            # CLI fields above as observations while keeping accounting fields
+            # unavailable instead of treating synthesized zeros as evidence.
+            observed.input_semantics = "shim_reported_total_input_cache_breakdown_unavailable"
+            observed.input_includes_cache_tokens = True
+            observed.output_includes_reasoning = True
+            observed.cache_read_tokens = None
+            observed.cache_write_tokens = None
+            observed.reasoning_tokens = None
+            observed.completeness = (
+                "partial"
+                if observed.input_tokens is not None or observed.output_tokens is not None
+                else "unavailable"
+            )
+            observed.incompleteness_reasons = [
+                "cache_read_tokens_not_reliably_exposed_by_deployed_shim",
+                "cache_write_tokens_not_reliably_exposed_by_deployed_shim",
+                "reasoning_tokens_not_exposed_by_deployed_shim",
+                "per_request_context_tier_not_exposed_by_claude_cli",
+            ]
+            result.cache_read_tokens = None
+            result.cache_creation_tokens = None
+        else:
+            observed.input_semantics = "claude_cli_uncached_input_additive_cache_fields"
+            observed.output_includes_reasoning = None
+            observed.cache_read_tokens = _sum_optional(cache_read_values)
+            observed.cache_write_tokens = _sum_optional(cache_write_values)
+            required = (
+                observed.input_tokens,
+                observed.output_tokens,
+                observed.cache_read_tokens,
+                observed.cache_write_tokens,
+            )
+            observed.completeness = "complete" if all(v is not None for v in required) else "partial"
+            observed.incompleteness_reasons = [
+                name for name, value in {
+                    "input_tokens": observed.input_tokens,
+                    "output_tokens": observed.output_tokens,
+                    "cache_read_tokens": observed.cache_read_tokens,
+                    "cache_write_tokens": observed.cache_write_tokens,
+                }.items() if value is None
+            ]
+            result.cache_read_tokens = observed.cache_read_tokens
+            result.cache_creation_tokens = observed.cache_write_tokens
         return
 
     usage = msg.get("usage")
     if isinstance(usage, dict):
-        result.input_tokens = usage.get("input_tokens", 0)
-        result.output_tokens = usage.get("output_tokens", 0)
-        result.cache_read_tokens = usage.get("cache_read_input_tokens", 0)
-        result.cache_creation_tokens = usage.get("cache_creation_input_tokens", 0)
+        observed = result.usage_observed
+        observed.input_tokens = _first_optional_int(usage, "input_tokens", "inputTokens")
+        observed.output_tokens = _first_optional_int(usage, "output_tokens", "outputTokens")
+        observed.source = "claude_cli.usage"
+        result.input_tokens = observed.input_tokens
+        result.output_tokens = observed.output_tokens
+
+        if result.actual_billing.access_type == "chatgpt_subscription":
+            observed.input_semantics = "shim_reported_total_input_cache_breakdown_unavailable"
+            observed.input_includes_cache_tokens = True
+            observed.output_includes_reasoning = True
+            observed.completeness = (
+                "partial"
+                if observed.input_tokens is not None or observed.output_tokens is not None
+                else "unavailable"
+            )
+            observed.incompleteness_reasons = [
+                "modelUsage_unavailable_main_session_only",
+                "cache_read_tokens_not_reliably_exposed_by_deployed_shim",
+                "cache_write_tokens_not_reliably_exposed_by_deployed_shim",
+                "reasoning_tokens_not_exposed_by_deployed_shim",
+                "per_request_context_tier_not_exposed_by_claude_cli",
+            ]
+        else:
+            observed.input_semantics = "claude_cli_uncached_input_additive_cache_fields"
+            observed.cache_read_tokens = _first_optional_int(
+                usage, "cache_read_input_tokens", "cacheReadInputTokens"
+            )
+            observed.cache_write_tokens = _first_optional_int(
+                usage, "cache_creation_input_tokens", "cacheCreationInputTokens"
+            )
+            result.cache_read_tokens = observed.cache_read_tokens
+            result.cache_creation_tokens = observed.cache_write_tokens
+            observed.completeness = "partial"
+            observed.incompleteness_reasons = ["modelUsage_unavailable_main_session_only"]
 
 
 def _extract_tool_content(content) -> str:

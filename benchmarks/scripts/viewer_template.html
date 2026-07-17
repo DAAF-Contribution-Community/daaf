@@ -828,6 +828,54 @@ body.nav-rendered #phases,body.nav-rendered #cases{
 .run-detail-panel .empty-state{ color:var(--text-3); text-align:center; padding:60px 20px; font-size:13px; }
 .show-all-row{ padding:10px 12px; text-align:center; }
 
+/* Schema-v2 run evidence: compact cards within the existing audit panel.
+   Every status pairs an icon with text; colors only reinforce the label.
+   All values use the existing surface/text/status tokens in both themes. */
+.run-evidence{
+  display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));
+  gap:10px; margin:14px 0 4px;
+}
+.run-evidence-card{
+  min-width:0; background:var(--surface-0); border:1px solid var(--border-1);
+  border-radius:10px; padding:10px 12px; overflow-wrap:anywhere;
+}
+.run-evidence-card h4{
+  font-family:var(--font-display); font-size:12px; font-weight:600;
+  color:var(--text-1); margin:0 0 8px;
+}
+.run-evidence-card dl{ margin:0; }
+.run-evidence-card .evidence-row{
+  display:grid; grid-template-columns:minmax(96px,.8fr) minmax(0,1.2fr);
+  gap:6px 10px; padding:4px 0; border-bottom:1px solid var(--border-1);
+  font-size:11px; line-height:1.45;
+}
+.run-evidence-card .evidence-row:last-child{ border-bottom:0; }
+.run-evidence-card dt{ color:var(--text-3); }
+.run-evidence-card dd{ min-width:0; margin:0; color:var(--text-2); overflow-wrap:anywhere; }
+.run-evidence-card code,.run-evidence-card a{ overflow-wrap:anywhere; word-break:break-word; }
+.run-evidence-card code{ color:var(--accent-light); }
+.run-evidence-card a{ color:var(--accent-teal); }
+.run-evidence-note{
+  color:var(--text-3); font-size:11px; line-height:1.5; margin:7px 0 0;
+}
+.run-evidence-list{ margin:4px 0 0 16px; color:var(--text-2); font-size:11px; }
+.run-evidence-list li{ margin-bottom:2px; overflow-wrap:anywhere; }
+.run-ledgers{ display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr)); gap:10px; margin-top:10px; }
+.run-ledger-actual{ border-left:3px solid var(--text-2); }
+.run-ledger-api{ border-left:3px solid var(--accent); }
+.status-label{ display:inline-flex; align-items:center; gap:5px; font-weight:600; }
+.status-pass{ color:var(--c-pass); }
+.status-fail{ color:var(--c-fail-light); }
+.status-partial{ color:var(--c-partial); }
+.status-neutral{ color:var(--text-2); }
+.cost-omission-note{
+  max-width:980px; margin:8px 0 12px; padding:9px 12px;
+  background:var(--surface-1); border:1px solid var(--border-1);
+  border-left:3px solid var(--c-partial); border-radius:10px;
+  color:var(--text-2); font-size:12px; line-height:1.55;
+}
+.cost-omission-note code{ color:var(--accent-light); overflow-wrap:anywhere; }
+
 /* Transcript */
 .transcript{ margin-top:16px; }
 .tx-msg{ padding:6px 10px; margin-bottom:4px; border-radius:4px; font-size:12px; }
@@ -1893,6 +1941,66 @@ function fmtMult(v){
   return (v>=1 ? v.toFixed(1) : v.toFixed(2))+"\u00d7";
 }
 
+/* Null-aware schema-v2 evidence helpers. Numeric zero is observed data, so
+   every formatter checks null/undefined explicitly rather than truthiness. */
+function isObserved(v){ return v!==null && v!==undefined; }
+function evidenceMissing(label){ return '<span class="text-muted">'+esc(label)+'</span>'; }
+function humanCode(v){
+  if(!isObserved(v)||v==="") return "";
+  return String(v).replace(/_/g," ");
+}
+function codeEvidence(v,missing){
+  if(!isObserved(v)||v==="") return evidenceMissing(missing||"Unavailable");
+  return '<code>'+esc(String(v))+'</code>';
+}
+function textEvidence(v,missing){
+  if(!isObserved(v)||v==="") return evidenceMissing(missing||"Unavailable");
+  return esc(String(v));
+}
+function tokenEvidence(v,missing){
+  if(!isObserved(v)) return evidenceMissing(missing||"Not observed");
+  if(typeof v==="number"&&!isNaN(v)) return fmt(v)+' token'+(v===1?'':'s');
+  return esc(String(v));
+}
+function countEvidence(v,missing){
+  if(!isObserved(v)) return evidenceMissing(missing||"Not reported");
+  if(typeof v==="number"&&!isNaN(v)) return fmt(v);
+  return esc(String(v));
+}
+function usdEvidence(v,missing){
+  if(!isObserved(v)||typeof v!=="number"||isNaN(v)){
+    return evidenceMissing(missing||"Unavailable");
+  }
+  var abs=Math.abs(v),digits=(abs===0||abs>=1)?2:(abs>=0.01?4:6);
+  return '$'+v.toFixed(digits)+' USD';
+}
+function listEvidence(values,missing){
+  if(!values||Object.prototype.toString.call(values)!=="[object Array]"||values.length===0){
+    return evidenceMissing(missing||"Not observed");
+  }
+  return values.map(function(v){ return '<code>'+esc(String(v))+'</code>'; }).join(', ');
+}
+function evidenceRow(label,value){
+  return '<div class="evidence-row"><dt>'+esc(label)+'</dt><dd>'+value+'</dd></div>';
+}
+function statusEvidence(kind,icon,label){
+  return '<span class="status-label status-'+kind+'"><span aria-hidden="true">'+icon+'</span><span>'+esc(label)+'</span></span>';
+}
+function stringListHtml(values,emptyLabel){
+  if(!values||Object.prototype.toString.call(values)!=="[object Array]"||values.length===0){
+    return '<p class="run-evidence-note">'+esc(emptyLabel||"None reported")+'</p>';
+  }
+  var h='<ul class="run-evidence-list">';
+  values.forEach(function(v){ h+='<li>'+codeEvidence(v,"Unavailable")+'</li>'; });
+  return h+'</ul>';
+}
+function safeEvidenceLink(url){
+  if(!isObserved(url)||url==="") return evidenceMissing("Not reported");
+  var value=String(url);
+  if(!/^https?:\/\//i.test(value)) return codeEvidence(value,"Not reported");
+  return '<a href="'+esc(value)+'" target="_blank" rel="noopener">'+esc(value)+'</a>';
+}
+
 /* Price formulations (PRECOMPUTED.cost.models). "battery" (v2.8.0) is
    THE headline cost figure page-wide (v3.1.0) and the scatter's default
    and first-listed basis (COST_FORMS[0] is also the fallback when
@@ -2813,6 +2921,7 @@ function renderLeaderboard(container){
      by default so the fine print does not crowd the table, regular-size
      --text-2 body when opened. Content unchanged. */
   html+='<div class="lb-finding">'+finding+'</div>';
+  html+=costOmissionNoteHtml();
   html+='<details class="foot-details"><summary>Details</summary><div>';
   html+='<p class="lb-foot">'+lbTierRuleText(tierRule,tiers,metricLabel)+'</p>';
   html+='<p class="lb-foot">Relative Test Cost is the estimated relative cost to run the full benchmark battery once '+
@@ -2904,6 +3013,27 @@ function costPerfData(form,basis,metric){
   return {pts:pts,frontier:frontier,isBat:isBat,prices:prices,pv:pv};
 }
 
+/* Billing-grade omission disclosure. PRECOMPUTED.cost.omitted_models is
+   intentionally explanatory metadata only: omitted models never become chart
+   points, frontier members, battery multipliers, or published-price rows. */
+function costOmissionNoteHtml(){
+  var omitted=((PRECOMPUTED.cost||{}).omitted_models)||[];
+  if(omitted.length===0) return '';
+  var items=omitted.map(function(entry){
+    var providers=(entry.providers||[]).length?' ('+esc(entry.providers.join(', '))+')':'';
+    var retained=entry.behavioral_scores_retained
+      ?' remains in behavioral score views'
+      :' has no behavioral-score retention flag';
+    var reason=entry.reason==='subscription_access_api_equivalent_is_counterfactual_not_invoiced'
+      ?'subscription access has API-equivalent counterfactual accounting that is not invoiced'
+      :humanCode(entry.reason)||'its billing treatment is incompatible';
+    return '<b>'+esc(entry.model)+'</b>'+providers+retained+
+      ', but is omitted from billing-grade cost charts, frontiers, relative battery estimates, and list-price tables because '+esc(reason)+'.';
+  });
+  return '<aside class="cost-omission-note" role="note"><span aria-hidden="true">ⓘ</span> '+
+    '<strong>Billing-grade cost view exclusions.</strong> '+items.join(' ')+'</aside>';
+}
+
 /* Battery-multiplier canonical definition + disclosures (condensed from
    the removed Costs Detail section, 2026-06-12 user fine-tuning round —
    the full prose record lives in README § 8). Renders UNCONDITIONALLY in
@@ -2985,7 +3115,7 @@ function renderCostPerf(container){
     if(d.pv[m]==null) omitted++;
   });
   if(pts.length===0){
-    container.innerHTML='<div class="empty-msg">No models with both a '+esc(yShort)+' and published pricing in this corpus.</div>';
+    container.innerHTML=costOmissionNoteHtml()+'<div class="empty-msg">No models with both a '+esc(yShort)+' and billing-grade published pricing in this corpus.</div>';
     return;
   }
 
@@ -3083,7 +3213,7 @@ function renderCostPerf(container){
   /* Layout: controls + legend immediately adjacent to the chart; the
      computed finding, the footnote Details expander, and the relocated
      list-price collapsible BELOW it */
-  container.innerHTML=toggle+legend+
+  container.innerHTML=toggle+legend+costOmissionNoteHtml()+
     '<div class="card"><div class="chart-container">'+
     svgCostFrontier(pts,frontier,
       formDef.axis||(formDef.label+' price (USD per 1M tokens, log scale)'),yShort,
@@ -3695,7 +3825,7 @@ function renderRunExplorer(container){
       html+='<span class="model-label">'+esc(r.model)+'</span>';
       html+='<span class="text-xs text-muted">rep'+r.rep+'</span>';
       /* Timeouts have no meaningful duration — "0s" would misread as instant */
-      html+='<span class="text-xs text-muted">'+(r.timed_out?'&mdash;':(r.duration_s||0).toFixed(0)+'s')+'</span>';
+      html+='<span class="text-xs text-muted">'+(r.timed_out?'&mdash;':(isObserved(r.duration_s)?r.duration_s.toFixed(0)+'s':'Unavailable'))+'</span>';
       html+='</div>';
     }
     if(runs.length>shown){
@@ -3802,6 +3932,175 @@ function transcriptPlaceholder(r){
     '<div class="text-muted text-xs">Loading transcript\u2026</div></div>';
 }
 
+function renderSchemaV2RunEvidence(r){
+  if(!(r.schema_version>=2)) return '';
+
+  var p=r.provenance||{};
+  var mi=r.model_identity||{};
+  var u=r.usage_observed||{};
+  var ab=r.actual_billing||{};
+  var ae=r.api_equivalent||{};
+  var cap=r.subscription_capacity||{};
+  var purity=r.child_model_purity||{};
+  var html='<div class="section-title" style="margin-top:16px">Route, identity, telemetry &amp; accounting</div>';
+  html+='<div class="run-evidence">';
+
+  /* Route and deployment condition. Boolean states carry icon + text so
+     readable/sanitized status never depends on color alone. */
+  html+='<section class="run-evidence-card" aria-labelledby="route-evidence-heading"><h4 id="route-evidence-heading">Route and deployment condition</h4><dl>';
+  html+=evidenceRow('Provider',codeEvidence(r.provider||p.provider,'Unavailable'));
+  html+=evidenceRow('Route type',codeEvidence(r.route_type||p.route_type,'Unavailable'));
+  html+=evidenceRow('Backend mode',codeEvidence(p.backend_mode,'Unavailable'));
+  html+=evidenceRow('Endpoint origin',codeEvidence(p.endpoint_origin,'Unavailable'));
+  html+=evidenceRow('Backend endpoint',codeEvidence(p.backend,'Unavailable'));
+  html+=evidenceRow('Shim version',codeEvidence(p.shim_version,'Not reported'));
+  var sanitizer=isObserved(p.sanitizer_enabled)
+    ?(p.sanitizer_enabled?statusEvidence('pass','✓','Enabled'):statusEvidence('fail','✕','Disabled'))
+    :statusEvidence('neutral','—','Not reported');
+  html+=evidenceRow('Tool sanitizer',sanitizer);
+  html+=evidenceRow('Sanitizer condition',codeEvidence(p.sanitizer_condition,'Not reported'));
+  html+=evidenceRow('Reasoning effort',textEvidence(p.reasoning_effort,'Not reported'));
+  html+=evidenceRow('Text verbosity',textEvidence(p.text_verbosity,'Not reported'));
+  var auth=isObserved(p.auth_store_readable)
+    ?(p.auth_store_readable?statusEvidence('pass','✓','Readable'):statusEvidence('fail','✕','Not readable'))
+    :statusEvidence('neutral','—','Not reported');
+  html+=evidenceRow('Auth store',auth);
+  html+='</dl></section>';
+
+  /* Identity evidence keeps requested, CLI-observed, and backend-confirmed
+     evidence separate. Missing backend confirmation is unavailable evidence,
+     not an inferred mismatch. */
+  html+='<section class="run-evidence-card" aria-labelledby="identity-evidence-heading"><h4 id="identity-evidence-heading">Model identity evidence</h4><dl>';
+  html+=evidenceRow('Requested model ID',codeEvidence(mi.requested_model_id||r.model_id,'Unavailable'));
+  html+=evidenceRow('Benchmark key',codeEvidence(mi.benchmark_key,'Unavailable'));
+  html+=evidenceRow('Claude CLI observed IDs',listEvidence(mi.claude_cli_model_usage_ids,'Not observed'));
+  html+=evidenceRow('Backend-confirmed ID',codeEvidence(mi.backend_confirmed_model_id,'Unavailable'));
+  html+='</dl>';
+  if(!isObserved(mi.backend_confirmed_model_id)||mi.backend_confirmed_model_id===''){
+    html+='<p class="run-evidence-note"><strong>Evidence limit:</strong> backend confirmation is unavailable; that is not evidence of an identity mismatch.</p>';
+  }
+  if((r.route_type||p.route_type)==='chatgpt_subscription_shim'||String(p.backend||'').indexOf('/backend-api/codex')>=0){
+    html+='<p class="run-evidence-note"><strong>Private-backend alias caveat:</strong> a successful requested ID may be resolved by an undocumented backend alias. This viewer cannot independently observe that private mapping.</p>';
+  }
+  html+='</section>';
+
+  /* Usage and completeness. Missing categories say Not observed, while an
+     explicit source value of zero is formatted as 0 tokens. */
+  html+='<section class="run-evidence-card" aria-labelledby="usage-evidence-heading"><h4 id="usage-evidence-heading">Usage and telemetry completeness</h4><dl>';
+  html+=evidenceRow('Input',tokenEvidence(u.input_tokens,'Not observed'));
+  html+=evidenceRow('Output',tokenEvidence(u.output_tokens,'Not observed'));
+  html+=evidenceRow('Cache read',tokenEvidence(u.cache_read_tokens,'Not observed'));
+  html+=evidenceRow('Cache write',tokenEvidence(u.cache_write_tokens,'Not observed'));
+  html+=evidenceRow('Reasoning',tokenEvidence(u.reasoning_tokens,'Not observed'));
+  html+=evidenceRow('Max-request input',tokenEvidence(u.max_request_input_tokens,'Not observed'));
+  html+=evidenceRow('Source',codeEvidence(u.source,'Not reported'));
+  var completeLabel=humanCode(u.completeness);
+  var completeKind=u.completeness==='complete'?'pass':(u.completeness==='partial'?'partial':'neutral');
+  html+=evidenceRow('Completeness',completeLabel?statusEvidence(completeKind,u.completeness==='complete'?'✓':(u.completeness==='partial'?'!':'—'),completeLabel):statusEvidence('neutral','—','Not reported'));
+  html+=evidenceRow('Input semantics',textEvidence(humanCode(u.input_semantics),'Not reported'));
+  html+=evidenceRow('Pricing context tier',textEvidence(humanCode(u.pricing_context_tier),'Not observed'));
+  html+='</dl>';
+  if(u.output_includes_reasoning===true){
+    html+='<p class="run-evidence-note"><strong>Non-additive reasoning:</strong> output tokens already include reasoning tokens; reasoning must not be added again.</p>';
+  } else if(u.output_includes_reasoning===false){
+    html+='<p class="run-evidence-note">Output is explicitly not marked as including reasoning.</p>';
+  } else {
+    html+='<p class="run-evidence-note">Whether output includes reasoning was not reported.</p>';
+  }
+  html+='<p class="run-evidence-note"><strong>Incompleteness reasons</strong></p>'+stringListHtml(u.incompleteness_reasons,'No incompleteness reasons reported.')+'</section>';
+  html+='</div>';
+
+  /* Actual billing and API-equivalent accounting are intentionally separate
+     ledgers. API-equivalent values never enter the actual charge field or any
+     existing cost chart. */
+  html+='<div class="run-ledgers">';
+  html+='<section class="run-evidence-card run-ledger-actual" aria-labelledby="actual-ledger-heading"><h4 id="actual-ledger-heading">Actual billing</h4><dl>';
+  html+=evidenceRow('Access type',textEvidence(humanCode(ab.access_type),'Unavailable'));
+  html+=evidenceRow('Charge status',textEvidence(humanCode(ab.charge_status),'Unavailable'));
+  html+=evidenceRow('Marginal charge',usdEvidence(ab.actual_marginal_charge_usd,'Unavailable — no marginal USD charge was reported'));
+  html+=evidenceRow('Archived computed cost',usdEvidence(r.computed_cost_usd,'Unavailable'));
+  html+='</dl><p class="run-evidence-note">A missing marginal charge remains unavailable; no zero-valued or access-price inference is made.</p></section>';
+
+  html+='<section class="run-evidence-card run-ledger-api" aria-labelledby="api-ledger-heading"><h4 id="api-ledger-heading">API-equivalent accounting</h4><dl>';
+  if(isObserved(ae.cost_usd)){
+    html+=evidenceRow('Exact equivalent',usdEvidence(ae.cost_usd,'Unavailable'));
+  } else {
+    html+=evidenceRow('Exact equivalent',evidenceMissing('Unavailable'));
+    html+=evidenceRow('Short-context scenario',usdEvidence(ae.short_context_uncached_scenario_usd,'Unavailable'));
+    html+=evidenceRow('Long-context scenario',usdEvidence(ae.long_context_uncached_scenario_usd,'Unavailable'));
+  }
+  html+=evidenceRow('Calculation status',textEvidence(humanCode(ae.calculation_status),'Unavailable'));
+  var invoiceStatus=ae.not_invoiced===true
+    ?statusEvidence('neutral','⊘','Not invoiced')
+    :(ae.not_invoiced===false?statusEvidence('partial','!','Not marked as not invoiced'):statusEvidence('neutral','—','Not reported'));
+  html+=evidenceRow('not_invoiced',invoiceStatus);
+  html+=evidenceRow('Context threshold',tokenEvidence(ae.context_threshold_input_tokens,'Not reported'));
+  html+=evidenceRow('Context tier',textEvidence(humanCode(ae.context_tier),'Unavailable'));
+  html+=evidenceRow('Price basis date',textEvidence(ae.price_schedule_accessed_at,'Not reported'));
+  html+=evidenceRow('Price basis URL',safeEvidenceLink(ae.price_source_url));
+  html+='</dl><p class="run-evidence-note"><strong>Scenario assumptions</strong></p>'+stringListHtml(ae.scenario_assumptions,'No assumptions reported.');
+  html+='<p class="run-evidence-note"><strong>Incomplete reasons</strong></p>'+stringListHtml(ae.incompleteness_reasons,'No incompleteness reasons reported.');
+  html+='<p class="run-evidence-note">API-equivalent figures are counterfactual accounting scenarios, not actual subscription charges, and are excluded from billing-grade cost charts.</p></section>';
+  html+='</div>';
+
+  /* Capacity fields render only when a source value was observed/calculated.
+     An explicit zero is shown; null fields are omitted and summarized as
+     unavailable rather than silently converted to zero. */
+  var capFields=[
+    ['Before',cap.before],['After',cap.after],['Observed delta',cap.delta_observed],
+    ['Calculated credits',cap.credits_calculated],['Credit USD value',cap.credit_usd_value]
+  ];
+  var capAny=capFields.some(function(pair){ return isObserved(pair[1]); });
+  html+='<section class="run-evidence-card" aria-labelledby="capacity-evidence-heading" style="margin-top:10px"><h4 id="capacity-evidence-heading">Subscription capacity</h4>';
+  if(capAny){
+    html+='<dl>';
+    capFields.forEach(function(pair){
+      if(!isObserved(pair[1])) return;
+      html+=evidenceRow(pair[0],pair[0]==='Credit USD value'?usdEvidence(pair[1],'Unavailable'):countEvidence(pair[1],'Unavailable'));
+    });
+    html+='</dl>';
+  } else {
+    html+='<p class="run-evidence-note">Subscription capacity values are unavailable; null fields are not zero.</p>';
+  }
+  if(isObserved(cap.credits_calculated)&&!isObserved(cap.credit_usd_value)){
+    html+='<p class="run-evidence-note">Calculated credits do not imply a USD value; credit USD value is unavailable.</p>';
+  }
+  html+='</section>';
+
+  /* Phase-3 purity is a separate evidence card. States always carry icon +
+     text. Exact comparison and the CLI-only evidence boundary are explicit. */
+  if(r.child_model_purity){
+    var purityStatus=purity.purity_status||'unverifiable';
+    var purityMeta={
+      verified:{kind:'pass',icon:'✓',label:'Verified'},
+      failed:{kind:'fail',icon:'✕',label:'Failed'},
+      unverifiable:{kind:'neutral',icon:'?',label:'Unverifiable'}
+    }[purityStatus]||{kind:'neutral',icon:'?',label:humanCode(purityStatus)||'Unverifiable'};
+    html+='<section class="run-evidence-card" aria-labelledby="purity-evidence-heading" style="margin-top:10px"><h4 id="purity-evidence-heading">Phase-3 child-model purity</h4><dl>';
+    html+=evidenceRow('Purity status',statusEvidence(purityMeta.kind,purityMeta.icon,purityMeta.label));
+    html+=evidenceRow('Requested child ID',codeEvidence(purity.requested_child_model_id,'Unavailable'));
+    html+=evidenceRow('Raw observed IDs',listEvidence(purity.observed_child_model_ids_raw,'Not observed'));
+    html+=evidenceRow('Comparison IDs',listEvidence(purity.comparison_child_model_ids,'Not observed'));
+    var norm=isObserved(purity.normalization_applied)
+      ?(purity.normalization_applied?statusEvidence('partial','!','Applied'):statusEvidence('pass','✓','Not applied — exact comparison'))
+      :statusEvidence('neutral','—','Not reported');
+    html+=evidenceRow('Alias normalization',norm);
+    html+=evidenceRow('Comparison rule',codeEvidence(purity.comparison_rule,'Not reported'));
+    html+=evidenceRow('Evidence source',codeEvidence(purity.evidence_source,'Not reported'));
+    html+=evidenceRow('Child transcripts',countEvidence(purity.child_transcript_count,'Not reported'));
+    html+=evidenceRow('Readable transcripts',countEvidence(purity.readable_child_transcript_count,'Not reported'));
+    html+=evidenceRow('Incomplete reason',textEvidence(humanCode(purity.incompleteness_reason),'None reported'));
+    html+='</dl><p class="run-evidence-note"><strong>Evidence boundary:</strong> CLI child-transcript observed, not backend-confirmed.</p>';
+    if(isObserved(purity.evidence_boundary)&&purity.evidence_boundary!=='') html+='<p class="run-evidence-note">Archived boundary: '+esc(String(purity.evidence_boundary))+'</p>';
+    html+='</section>';
+  }
+
+  if(r.billing_grade_cost_eligible===false){
+    html+='<aside class="cost-omission-note" role="note"><span aria-hidden="true">ⓘ</span> <strong>Billing-grade cost exclusion.</strong> This model remains in behavioral score views but is omitted from billing-grade cost surfaces because its API-equivalent accounting is counterfactual and not invoiced.</aside>';
+  }
+  return html;
+}
+
 function renderRunDetail(r){
   var st=runStatus(r);
   var html='';
@@ -3819,11 +4118,12 @@ function renderRunDetail(r){
   if(r.subcategory) html+='<span class="badge" title="Case subcategory">'+esc(r.subcategory)+'</span>';
   if(r.expected_mode) html+='<span class="badge" title="Expected engagement mode for this Phase 1 case">expects: '+esc(r.expected_mode)+'</span>';
   html+='</div>';
-  /* Per-run cost and token counts are deliberately not shown (or embedded):
-     the harness's token logging does not align with OpenRouter billing, so
-     token-derived per-run figures were unreliable and were removed. */
-  html+='<div class="text-xs text-muted mb-2">Session: '+esc(r.session_id||"N/A")+' | Duration: '+(r.duration_s||0).toFixed(1)+'s</div>';
-  html+='<div class="text-xs text-muted mb-4">Turns: '+r.turns+
+  /* Legacy schema-v1 per-run token-derived cost remains absent from this
+     header because the historical harness counts are not provider-billing
+     compatible. Schema-v2's allowlisted telemetry and distinct actual/API-
+     equivalent ledgers render below without feeding the legacy cost display. */
+  html+='<div class="text-xs text-muted mb-2">Session: '+esc(r.session_id||"Unavailable")+' | Duration: '+(isObserved(r.duration_s)?r.duration_s.toFixed(1)+'s':'Unavailable')+'</div>';
+  html+='<div class="text-xs text-muted mb-4">Turns: '+(isObserved(r.turns)?fmt(r.turns):'Unavailable')+
     (r.tool_call_count!=null?' | Tool calls: '+fmt(r.tool_call_count):'')+'</div>';
   /* Non-timeout errors only — the timeout badge above already carries
      the error string for timed-out runs (currently every on-disk error
@@ -3831,6 +4131,10 @@ function renderRunDetail(r){
   if(r.error && !r.timed_out){
     html+='<div class="card" style="border-color:var(--c-fail);margin-bottom:12px"><strong style="color:var(--c-fail)">Error:</strong> '+esc(r.error)+'</div>';
   }
+
+  /* Schema-v2 route, identity, telemetry, accounting, capacity, and purity
+     evidence. The helper returns an empty string for schema-v1 runs. */
+  html+=renderSchemaV2RunEvidence(r);
 
   /* Criteria checklist */
   html+='<div class="section-title">Criteria</div>';
@@ -3992,29 +4296,72 @@ function renderProvenance(container){
   var prov=PRECOMPUTED.provenance||[];
   var anyDisc=false;
 
+  function resultSetByTimestamp(ts){
+    for(var i=0;i<DATA.result_sets.length;i++){
+      if(DATA.result_sets[i].timestamp===ts) return DATA.result_sets[i];
+    }
+    return null;
+  }
+  function resultSetRoutes(ts){
+    var seen={};
+    DATA.runs.forEach(function(run){
+      if(run.result_set===ts&&isObserved(run.route_type)&&run.route_type!=='') seen[run.route_type]=true;
+    });
+    return Object.keys(seen).sort();
+  }
+  function coverageHtml(coverage,keys){
+    if(!coverage) return evidenceMissing('Not reported');
+    return keys.map(function(key){
+      return esc(humanCode(key))+': '+countEvidence(coverage[key],'Unavailable');
+    }).join('<br>');
+  }
+
   var html='<div class="card"><table class="data-table"><thead><tr>'+
-    '<th>Result Set</th><th>Phase</th><th>DAAF Git SHA</th><th>Config</th>'+
-    '<th>Runs (disk / summary)</th></tr></thead><tbody>';
+    '<th scope="col">Result Set</th><th scope="col">Phase</th><th scope="col">Schema</th>'+
+    '<th scope="col">Observed provider / route</th><th scope="col">Accounting / purity coverage</th>'+
+    '<th scope="col">Cost surface</th><th scope="col">DAAF Git SHA</th><th scope="col">Config</th>'+
+    '<th scope="col">Runs (disk / summary)</th></tr></thead><tbody>';
   prov.forEach(function(p){
+    var rs=resultSetByTimestamp(p.timestamp)||{};
     var cfg=p.config||null;
-    var cfgStr="—";
+    var cfgStr='Unavailable';
     if(cfg){
       var bits=[];
-      if(cfg.reps!=null) bits.push("reps="+cfg.reps);
-      if(cfg.parallel!=null) bits.push(cfg.parallel?"parallel":"sequential");
-      if(cfg.launch_delay_s!=null) bits.push("delay="+cfg.launch_delay_s+"s");
-      bits.push("timeout="+(cfg.timeout_override!=null?cfg.timeout_override+"s":"tier default"));
-      cfgStr=bits.join(", ");
+      if(cfg.reps!=null) bits.push('reps='+cfg.reps);
+      if(cfg.parallel!=null) bits.push(cfg.parallel?'parallel':'sequential');
+      if(cfg.launch_delay_s!=null) bits.push('delay='+cfg.launch_delay_s+'s');
+      bits.push('timeout='+(cfg.timeout_override!=null?cfg.timeout_override+'s':'tier default'));
+      cfgStr=bits.join(', ');
     }
     var disc=!!p.run_count_discrepancy;
     if(disc) anyDisc=true;
+    var providers=p.providers||rs.providers||[];
+    var routes=resultSetRoutes(p.timestamp);
+    var schemaVersion=isObserved(p.schema_version)?p.schema_version:(isObserved(rs.schema_version)?rs.schema_version:1);
+    var classification=p.schema_classification||rs.schema_classification||(schemaVersion>=2?'schema_v2':'legacy_schema_v1');
+    var schemaSource=rs.schema_version_source||'Not reported';
+    var eligible=p.billing_grade_cost_eligible!==false;
+    var costStatus=eligible
+      ?statusEvidence('pass','✓','Billing-grade cost eligible')
+      :statusEvidence('partial','⊘','Excluded from billing-grade cost views');
+    var costReason=p.billing_grade_cost_exclusion_reason||rs.billing_grade_cost_exclusion_reason;
+    var totalCost=isObserved(rs.total_cost_usd)?usdEvidence(rs.total_cost_usd,'Unavailable'):evidenceMissing('Unavailable');
+
     html+='<tr'+(disc?' class="prov-discrepancy"':'')+'>';
     html+='<td><code>'+esc(p.timestamp)+'</code></td>';
     html+='<td>'+esc(p.phase_label||p.phase)+'</td>';
-    html+='<td><code>'+esc(p.daaf_git_sha||"—")+'</code></td>';
+    html+='<td class="text-xs"><b>v'+esc(String(schemaVersion))+'</b><br>'+esc(humanCode(classification))+'<br><span class="text-muted">source: '+esc(humanCode(schemaSource))+'</span></td>';
+    html+='<td class="text-xs"><b>Provider:</b> '+(providers.length?providers.map(function(v){return '<code>'+esc(v)+'</code>';}).join(', '):evidenceMissing('Not observed'))+
+      '<br><b>Route:</b> '+(routes.length?routes.map(function(v){return '<code>'+esc(v)+'</code>';}).join(', '):evidenceMissing('Not observed'))+'</td>';
+    html+='<td class="text-xs"><b>Accounting</b><br>'+coverageHtml(rs.accounting_coverage,['exact','scenario_only','unavailable','legacy_numeric'])+
+      '<br><b>Purity</b><br>'+coverageHtml(p.purity_coverage||rs.purity_coverage,['verified','failed','unverifiable'])+'</td>';
+    html+='<td class="text-xs">'+costStatus+'<br><b>Archived total:</b> '+totalCost+
+      (!eligible?'<br>Behavioral scores retained; billing-grade cost surfaces omit this condition.':'')+
+      (costReason?'<br><code>'+esc(costReason)+'</code>':'')+'</td>';
+    html+='<td><code>'+esc(p.daaf_git_sha||'Unavailable')+'</code></td>';
     html+='<td class="text-xs">'+esc(cfgStr)+'</td>';
-    html+='<td>'+fmt(p.disk_run_count||0)+' / '+fmt(p.summary_total_runs||0)+
-      (disc?' <span class="badge" style="background:rgba(251,191,36,.2);color:var(--c-partial)">mismatch</span>':'')+'</td>';
+    html+='<td>'+countEvidence(p.disk_run_count,'Unavailable')+' / '+countEvidence(p.summary_total_runs,'Unavailable')+
+      (disc?' <span class="badge badge-partial">! mismatch</span>':'')+'</td>';
     html+='</tr>';
   });
   html+='</tbody></table></div>';
@@ -4025,7 +4372,7 @@ function renderProvenance(container){
   }
 
   container.innerHTML=html;
-  el("prov-generator-version").textContent=DATA.generator_version||"?";
+  el('prov-generator-version').textContent=DATA.generator_version||'?';
 }
 
 /* =================================================================
