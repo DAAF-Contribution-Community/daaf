@@ -284,6 +284,84 @@ report_value() {
     [[ "${output}" == *'median: Original=12.5  Reproduced=13.0  Within tolerance: NO'* ]]
 }
 
+@test "consistent R tidyverse tibble and assertion logs report consistency" {
+    local original_script="${TEST_WORKSPACE}/tibble-original.R"
+    local reproduced_script="${TEST_WORKSPACE}/tibble-reproduced.R"
+
+    write_r_fixture "${original_script}" \
+        'stopifnot(nrow(df) == 1234)' \
+        '# EXECUTION LOG' \
+        '# Exit code: 0' \
+        '# # A tibble: 1,234 × 12' \
+        '# CP1 VALIDATION: PASSED' \
+        '# 3 assertions passed'
+    write_r_fixture "${reproduced_script}" \
+        'stopifnot(nrow(df) == 1234)' \
+        '# EXECUTION LOG' \
+        '# Exit code: 0' \
+        '# # A tibble: 1,234 × 12' \
+        '# CP1 VALIDATION: PASSED' \
+        '# 3 assertions passed'
+
+    run python3 "${UTILITY}" "${original_script}" "${reproduced_script}"
+
+    [ "${status}" -eq 0 ]
+    [ "$(report_value 'Overall: ')" = 'CONSISTENT' ]
+    [[ "${output}" == *'Original: 1234  Reproduced: 1234  Match: YES'* ]]
+    [[ "${output}" == *'Original: 12  Reproduced: 12  Match: YES'* ]]
+    [[ "${output}" == *'Identity: tibble rows; aligned by identity + context'* ]]
+    [[ "${output}" == *'Identity: tibble columns; aligned by identity + context'* ]]
+}
+
+@test "divergent R tibble row count and stopifnot failure exit 1" {
+    local original_script="${TEST_WORKSPACE}/tibble-diverge-original.R"
+    local reproduced_script="${TEST_WORKSPACE}/tibble-diverge-reproduced.R"
+
+    write_r_fixture "${original_script}" \
+        '# EXECUTION LOG' \
+        '# Exit code: 0' \
+        '# # A tibble: 1,234 × 12'
+    write_r_fixture "${reproduced_script}" \
+        '# EXECUTION LOG' \
+        '# Exit code: 1' \
+        '# # A tibble: 1,200 × 12' \
+        '# Error: nrow(df) == 1234 is not TRUE'
+
+    run python3 "${UTILITY}" "${original_script}" "${reproduced_script}"
+
+    [ "${status}" -eq 1 ]
+    [ "$(report_value 'Overall: ')" = 'DIVERGED' ]
+    [[ "${output}" == *'Original: 1234  Reproduced: 1200  Match: NO'* ]]
+    [[ "${output}" == *'Reproduced: 0 passed, 1 failed'* ]]
+}
+
+@test "consistent .py-named logs exercise the shared extractor and exit 0" {
+    local original_script="${TEST_WORKSPACE}/matching-original.py"
+    local reproduced_script="${TEST_WORKSPACE}/matching-reproduced.py"
+
+    write_r_fixture "${original_script}" \
+        'print("fixture only")' \
+        '# EXECUTION LOG' \
+        '# Exit code: 0' \
+        '# shape: (500, 8)' \
+        '# mean: 3.14' \
+        '# 2 assertions passed'
+    write_r_fixture "${reproduced_script}" \
+        'print("fixture only")' \
+        '# EXECUTION LOG' \
+        '# Exit code: 0' \
+        '# shape: (500, 8)' \
+        '# mean: 3.14' \
+        '# 2 assertions passed'
+
+    run python3 "${UTILITY}" "${original_script}" "${reproduced_script}"
+
+    [ "${status}" -eq 0 ]
+    [ "$(report_value 'Overall: ')" = 'CONSISTENT' ]
+    [[ "${output}" == *'Original: 500  Reproduced: 500  Match: YES'* ]]
+    [[ "${output}" == *'Original: 8  Reproduced: 8  Match: YES'* ]]
+}
+
 @test "one missing execution log exits 3 as incomplete" {
     local original_script="${TEST_WORKSPACE}/missing-log-original.R"
     local reproduced_script="${TEST_WORKSPACE}/present-log-reproduced.R"

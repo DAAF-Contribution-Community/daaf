@@ -259,3 +259,28 @@ PY
     [[ "${output}" == *'"overall": "NOT DIRECTLY VERIFIED"'* ]]
     [[ "${output}" == *'"code": "INVALID_ROOT_ARGUMENT"'* ]]
 }
+
+@test "identical original and expected roots are rejected as invalid invocation" {
+    cat > "${SCRIPTS_ROOT}/01_valid.py" <<PY
+PROJECT_DIR = "${EXPECTED_ROOT}"
+PY
+
+    run python3 "${UTILITY}" "${SCRIPTS_ROOT}" "${EXPECTED_ROOT}" "${EXPECTED_ROOT}"
+
+    [ "${status}" -eq 2 ]
+    [[ "${output}" == *'"overall": "NOT DIRECTLY VERIFIED"'* ]]
+    [[ "${output}" == *'"code": "INVALID_ROOT_ARGUMENT"'* ]]
+    [[ "${output}" == *'must differ'* ]]
+}
+
+@test "non-directory scripts root is rejected as unavailable" {
+    local not_a_dir="${TEST_WORKSPACE}/scripts-root-file"
+    printf '%s\n' 'not a directory' > "${not_a_dir}"
+
+    run python3 "${UTILITY}" "${not_a_dir}" "${ORIGINAL_ROOT}" "${EXPECTED_ROOT}"
+
+    [ "${status}" -eq 2 ]
+    [[ "${output}" == *'"overall": "NOT DIRECTLY VERIFIED"'* ]]
+    [[ "${output}" == *'"code": "SCRIPTS_ROOT_UNAVAILABLE"'* ]]
+    [[ "${output}" == *'not an available directory'* ]]
+}

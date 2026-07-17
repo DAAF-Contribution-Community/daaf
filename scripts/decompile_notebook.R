@@ -566,27 +566,55 @@ if (!is.character(frontmatter$title) || length(frontmatter$title) != 1L ||
     !nzchar(trimws(frontmatter$title))) {
   fail("canonical YAML frontmatter requires nonempty scalar title metadata")
 }
+# Cosmetic presentation frontmatter (format.html.*) is advisory: a deviation
+# here does not affect archive extractability, so it is recorded as a non-fatal
+# warning rather than aborting a semantically valid archive rendered from an
+# updated notebook-assembler template. Only the load-bearing execute block
+# (validated below) and the title gate above remain fatal. This keeps the
+# decompiler decoupled from the assembler's visual template without weakening
+# any extraction-validation gate.
+cosmetic_warnings <- character(0)
 if (!is.list(frontmatter$format) || !is.list(frontmatter$format$html)) {
-  fail("canonical YAML frontmatter requires a nested format.html mapping")
+  cosmetic_warnings <- c(
+    cosmetic_warnings,
+    "format.html mapping absent; cosmetic presentation settings not verified"
+  )
+  html_settings <- list()
+} else {
+  html_settings <- frontmatter$format$html
 }
-html_settings <- frontmatter$format$html
 if (!identical(html_settings$toc, TRUE)) {
-  fail("canonical YAML setting format.html.toc must be true")
+  cosmetic_warnings <- c(
+    cosmetic_warnings,
+    "format.html.toc is not true (cosmetic; canonical template uses true)"
+  )
 }
 if (!is.numeric(html_settings[["toc-depth"]]) ||
     length(html_settings[["toc-depth"]]) != 1L ||
     is.na(html_settings[["toc-depth"]]) ||
     html_settings[["toc-depth"]] != 2) {
-  fail("canonical YAML setting format.html.toc-depth must be 2")
+  cosmetic_warnings <- c(
+    cosmetic_warnings,
+    "format.html.toc-depth is not 2 (cosmetic; canonical template uses 2)"
+  )
 }
 if (!identical(html_settings[["code-fold"]], "show")) {
-  fail("canonical YAML setting format.html.code-fold must be 'show'")
+  cosmetic_warnings <- c(
+    cosmetic_warnings,
+    "format.html.code-fold is not 'show' (cosmetic; canonical template uses 'show')"
+  )
 }
 if (!identical(html_settings[["embed-resources"]], TRUE)) {
-  fail("canonical YAML setting format.html.embed-resources must be true")
+  cosmetic_warnings <- c(
+    cosmetic_warnings,
+    "format.html.embed-resources is not true (cosmetic; canonical template uses true)"
+  )
 }
 if (!identical(html_settings$theme, "cosmo")) {
-  fail("canonical YAML setting format.html.theme must be 'cosmo'")
+  cosmetic_warnings <- c(
+    cosmetic_warnings,
+    "format.html.theme is not 'cosmo' (cosmetic; canonical template uses 'cosmo')"
+  )
 }
 if (!is.list(frontmatter$execute)) {
   fail("canonical YAML frontmatter requires an execute mapping")
@@ -599,6 +627,18 @@ if (!identical(frontmatter$execute$eval, FALSE)) {
 }
 if (!identical(frontmatter$execute$warning, FALSE)) {
   fail("canonical YAML setting execute.warning must be false")
+}
+
+# Surface cosmetic deviations as clearly labeled non-fatal warnings. These do
+# not affect extraction and are also recorded in MANIFEST.md below.
+if (length(cosmetic_warnings) > 0L) {
+  cat(
+    "Cosmetic YAML warnings (non-fatal; archive semantics unaffected):\n",
+    file = stderr()
+  )
+  for (cosmetic_warning in cosmetic_warnings) {
+    cat(sprintf("  WARNING: %s\n", cosmetic_warning), file = stderr())
+  }
 }
 
 # --- Parse and validate the complete archive ---
@@ -770,6 +810,7 @@ while (index <= length(content_lines)) {
       log_start_index,
       notebook_line_offset
     )
+    log_form <- "canonical"
   } else if (grepl(
         "^[[:space:]]*<details>[[:space:]]*$",
         content_lines[log_start_index]
@@ -779,6 +820,7 @@ while (index <= length(content_lines)) {
       log_start_index,
       notebook_line_offset
     )
+    log_form <- "legacy"
   } else {
     fail(sprintf(
       "archive chunk for %s must be followed immediately by an Execution Log container; found delayed or mismatched content at notebook line %d",
@@ -811,7 +853,8 @@ while (index <= length(content_lines)) {
     source_path = source_path,
     code = paste(code_lines, collapse = "\n"),
     log_text = log_result$log_text,
-    original_output = pending_output
+    original_output = pending_output,
+    log_form = log_form
   )
   pending_output <- NA_character_
   index <- log_result$next_index
@@ -1019,6 +1062,50 @@ if (!codetools_ok) {
         warning$source_path,
         paste(sprintf("`%s`", warning$dangling), collapse = ", ")
       )
+    )
+  }
+}
+canonical_log_count <- sum(vapply(
+  scripts_extracted,
+  function(script) identical(script$log_form, "canonical"),
+  logical(1)
+))
+legacy_log_count <- length(scripts_extracted) - canonical_log_count
+manifest_lines <- c(
+  manifest_lines,
+  "",
+  "## Archive Validation",
+  "",
+  "- **Contract:** DAAF Stage 9 Quarto script archive",
+  sprintf(
+    "- **Validated source/log associations:** %d",
+    length(scripts_extracted)
+  ),
+  sprintf(
+    "- **Bundles with canonical callout execution logs:** %d",
+    canonical_log_count
+  ),
+  sprintf(
+    "- **Bundles using bounded legacy <details> execution logs:** %d",
+    legacy_log_count
+  ),
+  "- **Output policy:** New output root only; no merge or overwrite"
+)
+if (length(cosmetic_warnings) > 0L) {
+  manifest_lines <- c(
+    manifest_lines,
+    "",
+    "## Cosmetic YAML Warnings",
+    "",
+    "These cosmetic presentation settings deviate from the canonical",
+    "notebook-assembler template. They do not affect archive extraction and did",
+    "not block decompilation; they are recorded here for provenance.",
+    ""
+  )
+  for (cosmetic_warning in cosmetic_warnings) {
+    manifest_lines <- c(
+      manifest_lines,
+      sprintf("- %s", cosmetic_warning)
     )
   }
 }

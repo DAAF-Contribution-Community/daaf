@@ -141,6 +141,9 @@ assert_rejected_without_outputs() {
     grep -F '# ROUNDTRIP STATUS: PASSED' "${extracted_script}"
     ! grep -F 'This unmarked chunk is notebook scaffolding' "${extracted_script}"
     grep -F '**Decompiled:** 1 scripts' "${extracted_root}/MANIFEST.md"
+    grep -F '## Archive Validation' "${extracted_root}/MANIFEST.md"
+    grep -F '**Contract:** DAAF Stage 9 Quarto script archive' "${extracted_root}/MANIFEST.md"
+    grep -F '**Bundles with canonical callout execution logs:** 1' "${extracted_root}/MANIFEST.md"
 
     run python3 "${REPO_ROOT}/scripts/normalize_project_dir.py" \
         "${extracted_root}" "${project_dir}"
@@ -196,6 +199,8 @@ PY
     local archived_code
 
     command -v quarto >/dev/null 2>&1 || skip "Quarto is not installed"
+    Rscript -e 'if (!requireNamespace("knitr", quietly = TRUE) || !requireNamespace("rmarkdown", quietly = TRUE)) quit(status = 1)' >/dev/null 2>&1 \
+        || skip "knitr and rmarkdown are required to render a knitr .qmd"
 
     cp "${FIXTURE}" "${archive_path}"
     printf -v archived_code \
@@ -556,11 +561,11 @@ QMD
         "${notebook_path}" "${output_root}" "malformed canonical YAML frontmatter"
 }
 
-@test "missing or incorrect required canonical YAML metadata is rejected" {
+@test "missing or incorrect load-bearing canonical YAML metadata is rejected" {
     local missing_title_notebook="${TEST_DIR}/missing-title.qmd"
     local missing_title_output="${TEST_DIR}/missing-title-output"
-    local wrong_theme_notebook="${TEST_DIR}/wrong-theme.qmd"
-    local wrong_theme_output="${TEST_DIR}/wrong-theme-output"
+    local wrong_echo_notebook="${TEST_DIR}/wrong-echo.qmd"
+    local wrong_echo_output="${TEST_DIR}/wrong-echo-output"
 
     write_canonical_archive \
         "${missing_title_notebook}" "stage5_fetch/01_safe.R"
@@ -573,12 +578,51 @@ QMD
         "${missing_title_output}" \
         "requires nonempty scalar title metadata"
 
-    write_canonical_archive "${wrong_theme_notebook}" "stage5_fetch/01_safe.R"
-    replace_once "${wrong_theme_notebook}" 'theme: cosmo' 'theme: minty'
+    # The execute block is load-bearing archive semantics and remains fatal,
+    # unlike the cosmetic format.html.* keys which are now non-fatal warnings.
+    write_canonical_archive "${wrong_echo_notebook}" "stage5_fetch/01_safe.R"
+    replace_once "${wrong_echo_notebook}" 'echo: true' 'echo: false'
     assert_rejected_without_outputs \
-        "${wrong_theme_notebook}" \
-        "${wrong_theme_output}" \
-        "format.html.theme must be 'cosmo'"
+        "${wrong_echo_notebook}" \
+        "${wrong_echo_output}" \
+        "execute.echo must be true"
+}
+
+@test "cosmetically deviant but semantically valid archive decompiles with a warning" {
+    local notebook_path="${TEST_DIR}/cosmetic-deviation.qmd"
+    local output_root="${TEST_DIR}/cosmetic-deviation-output"
+    local extracted_script="${output_root}/stage5_fetch/01_safe.R"
+
+    write_canonical_archive "${notebook_path}" "stage5_fetch/01_safe.R"
+    replace_once "${notebook_path}" 'theme: cosmo' 'theme: flatly'
+    replace_once "${notebook_path}" 'toc-depth: 2' 'toc-depth: 3'
+
+    run Rscript "${DECOMPILER}" "${notebook_path}" "${output_root}"
+
+    assert_success
+    [ -f "${extracted_script}" ]
+    [ -f "${output_root}/MANIFEST.md" ]
+    assert_output --partial "Cosmetic YAML warnings"
+    assert_output --partial "format.html.theme is not 'cosmo'"
+    grep -F '## Cosmetic YAML Warnings' "${output_root}/MANIFEST.md"
+    grep -F "format.html.theme is not 'cosmo'" "${output_root}/MANIFEST.md"
+    grep -F "format.html.toc-depth is not 2" "${output_root}/MANIFEST.md"
+    grep -F '## Archive Validation' "${output_root}/MANIFEST.md"
+}
+
+@test "noncanonical stage and non-R extensions are rejected" {
+    local notebook_path="${TEST_DIR}/invalid-stage.qmd"
+    local output_root="${TEST_DIR}/invalid-stage-output"
+
+    write_canonical_archive "${notebook_path}" "stage4_plan/01_safe.R"
+    assert_rejected_without_outputs \
+        "${notebook_path}" "${output_root}" "noncanonical stage directory"
+
+    notebook_path="${TEST_DIR}/invalid-extension.qmd"
+    output_root="${TEST_DIR}/invalid-extension-output"
+    write_canonical_archive "${notebook_path}" "stage5_fetch/01_safe.py"
+    assert_rejected_without_outputs \
+        "${notebook_path}" "${output_root}" "does not end in uppercase .R"
 }
 
 @test "archive chunks missing either required option are rejected" {

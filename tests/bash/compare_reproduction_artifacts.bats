@@ -51,6 +51,37 @@ teardown() {
     [[ "${output}" == *'"assessment": "DIVERGED"'* ]]
 }
 
+@test "explicit --mode parquet compares supported Parquet content as a match" {
+    run python3 "${UTILITY}" \
+        "${FIXTURES}/base.parquet" "${FIXTURES}/base_copy.parquet" --mode parquet
+
+    [ "${status}" -eq 0 ]
+    [[ "${output}" == *'"mode": "parquet"'* ]]
+    [[ "${output}" == *'"overall": "MATCH"'* ]]
+    [[ "${output}" == *'"dimension": "schema_columns_and_dtypes"'* ]]
+    local report_json="${output}"
+    run jq -e '
+        .mode == "parquet" and .overall == "MATCH" and
+        ([.dimensions[] | select(.dimension == "mode_selection")][0] |
+            .evidence.requested == "parquet" and .evidence.selected == "parquet")
+    ' <<< "${report_json}"
+    [ "${status}" -eq 0 ]
+}
+
+@test "auto mode with mismatched artifact suffixes is an invalid invocation" {
+    printf '%s\n' 'plain text artifact' > "${FIXTURES}/mismatch.txt"
+
+    run python3 "${UTILITY}" "${FIXTURES}/base.parquet" "${FIXTURES}/mismatch.txt"
+
+    [ "${status}" -eq 2 ]
+    [[ "${output}" == *'"overall": "NOT DIRECTLY VERIFIED"'* ]]
+    [[ "${output}" == *'"dimension": "mode_selection"'* ]]
+    [[ "${output}" == *"Auto mode requires two .parquet files or matching file suffixes"* ]]
+    local report_json="${output}"
+    run jq -e '.exit_code == 2 and .mode == "auto"' <<< "${report_json}"
+    [ "${status}" -eq 0 ]
+}
+
 @test "missing and unreadable artifacts return NOT DIRECTLY VERIFIED" {
     printf '%s\n' 'present' > "${FIXTURES}/present.bin"
 

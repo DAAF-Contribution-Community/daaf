@@ -15,6 +15,12 @@ This utility does not inspect artifact files and is not a Parquet schema/content
 persisted model/table, or figure comparator. A CONSISTENT result applies only to the
 metrics found in both logs.
 
+Supported log dialects: Python/polars (``shape: (N, M)``, ``len(df)``,
+``AssertionError``) and R/tidyverse (``# A tibble: N x M`` with a Unicode or ASCII
+multiplication sign and optional comma thousands separators, and ``stopifnot()``
+failures printed as ``Error: ... is not TRUE`` / ``... are not all TRUE``). Both
+dialects map onto the same row-count, column-count, and assertion metrics.
+
 Exit statuses:
     0  CONSISTENT log evidence
     1  DIVERGED log evidence
@@ -49,7 +55,7 @@ def extract_execution_log(script_path):
     prefixes ('# ') stripped to recover the original output text.
     Returns (log_lines, found) where found indicates whether a log was present.
     """
-    text = Path(script_path).read_text()
+    text = Path(script_path).read_text(encoding="utf-8")
 
     # Require a dedicated marker line. Mentions of '# EXECUTION LOG' inside
     # source strings or prose are not appended logs.
@@ -118,6 +124,9 @@ def extract_row_counts(lines):
     patterns = [
         # shape: (N, M); both values are removed from stable context.
         (r'shape:\s*\((\d[\d,]*)\s*,\s*(\d[\d,]*)\)', 'shape rows', 1),
+        # R tidyverse tibble header "# A tibble: N x M" (Unicode × or ASCII
+        # x, optional comma thousands separators); group 1 is the row count.
+        (r'A tibble:\s*(\d[\d,]*)\s*(?:×|x)\s*(\d[\d,]*)', 'tibble rows', 1),
         # Row count: N  /  rows: N  /  Rows: N
         (r'(?:Row count|rows?|row_count):\s*(\d[\d,]*)', 'row count', 1),
         # len(df) = N
@@ -151,6 +160,8 @@ def extract_column_counts(lines):
     patterns = [
         # shape: (N, M); both values are removed from stable context.
         (r'shape:\s*\((\d[\d,]*)\s*,\s*(\d[\d,]*)\)', 'shape columns', 2),
+        # R tidyverse tibble header "# A tibble: N x M"; group 2 is the column count.
+        (r'A tibble:\s*(\d[\d,]*)\s*(?:×|x)\s*(\d[\d,]*)', 'tibble columns', 2),
         # columns: N  /  col count: N
         (r'(?:columns?|col count|column_count|n_cols):\s*(\d[\d,]*)',
          'column count', 1),
@@ -249,8 +260,13 @@ def extract_assertions(lines):
     failed = 0
 
     for line in lines:
-        # Count AssertionError occurrences (Python's actual exception name)
+        # Count assertion failures. Python raises AssertionError; R's
+        # stopifnot() prints "Error: <expr> is not TRUE" (scalar) or
+        # "... are not all TRUE" (vector) to stderr, captured in the log.
         if re.search(r'\bAssertionError\b', line):
+            failed += 1
+        elif (re.search(r'\bError\b.*\bis not TRUE\b', line)
+              or re.search(r'\bError\b.*\bare not all TRUE\b', line)):
             failed += 1
 
         # Explicit pass messages: "N assertions passed", "assertions passed"
