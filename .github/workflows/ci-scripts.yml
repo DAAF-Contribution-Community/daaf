@@ -11,6 +11,7 @@
 #   5. bats-tests          - BATS unit/smoke tests for .sh scripts (ubuntu)
 #   6. pester-tests        - Pester tests for .ps1 scripts (ubuntu + windows)
 #   7. daaf-conventions    - Custom DAAF-specific lint checks (ubuntu)
+#   7b. deployment-smoke   - Harness self-tests (provider-free, stdlib only)
 #   8. smoke-tests         - Cross-platform dry-run smoke tests (ubuntu + macos + windows)
 #   9. bats-bash32         - Host-script BATS suite under real Bash 3.2 (ubuntu container)
 #
@@ -30,6 +31,7 @@ on:
       - 'tests/lint/**'
       - 'scripts/**.py'
       - 'scripts/**.R'
+      - 'tests/python/**'
       - 'tests/bash/**.py'
       - 'tests/fixtures/**'
   pull_request:
@@ -43,6 +45,7 @@ on:
       - '.github/linters/**'
       - 'scripts/**.py'
       - 'scripts/**.R'
+      - 'tests/python/**'
       - 'tests/bash/**.py'
       - 'tests/fixtures/**'
 
@@ -262,6 +265,20 @@ jobs:
 
       - name: Run DAAF convention checks
         run: bash tests/lint/check-daaf-conventions.sh
+
+  # ---------------------------------------------------------------------------
+  # Job 7b: Deployment-smoke harness self-tests (provider-free, stdlib only)
+  # ---------------------------------------------------------------------------
+  deploy-smoke-unit:
+    name: Deploy-Smoke Harness Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run deploy-smoke unit tests
+        run: python3 -m unittest discover -s tests/python -p 'test_deploy_smoke.py' -v
+
 
   # ---------------------------------------------------------------------------
   # Job 8: Cross-platform dry-run smoke tests (no Docker needed)
