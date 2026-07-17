@@ -161,7 +161,7 @@ This ensures execution output is captured and appended to the script file
 as an immutable audit trail. See SCRIPT_EXECUTION_REFERENCE.md for details.
 
 Exception: Framework utility scripts in /daaf/scripts/ may be run directly
-(e.g., python /daaf/scripts/compare_execution_logs.py ...).
+(e.g., python3 /daaf/scripts/compare_execution_logs.py ...).
 
 If you need to write a quick check, write it as a script file first,
 then execute it through the capture wrapper.
