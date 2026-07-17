@@ -22,7 +22,7 @@ This is the complete first-time installation and setup guide for DAAF. This docu
 ---
 
 
-**Installing DAAF is extremely easy and straightforward.** No prior experience with terminal, Docker, or Claude Code required. That being said, I put a LOT of explanations and detail together here so you have a strong sense and intuition for what's going on under the hood -- which I think is extremely valuable so you have a better handle on why things operate the way they do, or how to manage things in case anything goes wrong. Besides the reading, this whole process really shouldn't take you more than 10 minutes start-to-finish!
+**Installing DAAF is extremely easy and straightforward.** No prior experience with terminal, Docker, or Claude Code required. That being said, I put a LOT of explanations and detail together here so you have a strong sense and intuition for what's going on under the hood -- which I think is extremely valuable so you have a better handle on why things operate the way they do, or how to manage things in case anything goes wrong. Besides the reading, this whole process really shouldn't take you more than 10 minutes start-to-finish! This guide is complete, but you may also find our dedicated [Getting Started website guide](https://daaf.openaugments.org/get-started.html) more visually clear and helpful if you prefer diagrams, images, etc. on our DAAF homepage
 
 **Prefer to watch first?** If you'd rather see the whole thing before diving in, the Getting Started video walks through the entire installation start-to-finish and then tours the everyday essentials — the browser-based file editor, the session log viewer, and keeping your install updated — in about 30 minutes. Click the thumbnail to watch:
 
@@ -545,7 +545,7 @@ The update script handles everything for you:
 - **Checks for local edits** — if you've customized any framework files (CLAUDE.md, a skill, a template, etc.), it shows you exactly what you changed and presents options instead of overwriting anything
 - **Handles local commits** — if you've committed your own changes, it offers to merge or rebase them with the update
 - **Pulls safely** — if there are no local changes, it pulls the latest updates automatically
-- **Offers Claude Code for conflicts** — if a merge conflict occurs, you can launch Claude Code directly to help resolve it interactively
+- **Offers Claude Code for conflicts** — if a merge conflict occurs, you can launch Claude Code directly to help resolve it interactively. And you don't have to start over afterward: once the conflict is resolved and committed, just re-run the updater — it picks up where it left off, restoring any set-aside changes and finishing the remaining steps (script syncing and the rebuild check) automatically
 - **Syncs utility scripts** — automatically copies updated host-side scripts (the Control Panel, run, backup, rebuild, update, and the rest) out of the container to your `daaf-docker` folder. It figures out the full list from the newly updated repository itself, so newly added host scripts are picked up automatically without you having to do anything. If a host file has drifted from the repository version (a stale copy from an interrupted sync, for example), the updater replaces it and saves your previous copy as `<name>.pre-update` in the same folder — delete it once everything works, or rename it back to restore.
 - **Auto-rebuilds if needed** — if the Dockerfile or docker-compose.yml changed, it offers to run `rebuild_daaf` automatically
 
