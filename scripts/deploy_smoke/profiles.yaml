@@ -6,12 +6,16 @@
 #   `--profiles a,b,c` runs Tiers 1-2 once per profile; Tiers 0 and D run once.
 #
 # WHEN IT APPLIES
-#   Profiles are an OpenRouter-route feature. On shim routes (openai-api,
-#   chatgpt-subscription) the shim DAEMON state (SHIM_SANITIZE_TOOLS, backend_mode)
-#   is fixed at daemon startup and CANNOT be changed per run — env overlays reach
-#   the CLI session, not the already-running shim. The runner WARNs if --profiles
-#   is used on a shim route. For shim routes, verify daemon state read-only via
-#   Tier 0's shim /health probe instead.
+#   Profiles are designed for the OpenRouter route, where swapping the per-run
+#   model overlay is the whole point. Mechanically an overlay always applies to
+#   the probe SUBPROCESS ENV, on whatever route is active; the runner does not
+#   forbid --profiles on other routes. It WARNs specifically on shim routes
+#   (openai-api, chatgpt-subscription) because there the shim DAEMON state
+#   (SHIM_SANITIZE_TOOLS, backend_mode) is fixed at daemon startup and CANNOT be
+#   changed per run — an overlay reaches the CLI session, not the already-running
+#   shim. For shim routes, verify daemon state read-only via Tier 0's shim
+#   /health probe instead. (No warning fires on anthropic-subscription, where an
+#   overlay simply overrides the CLI session env with no daemon in the path.)
 #
 # HOW TO USE
 #   These three entries are working EXAMPLES — adapt the model slugs to models you

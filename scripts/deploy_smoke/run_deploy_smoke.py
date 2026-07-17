@@ -17,8 +17,10 @@ from the live environment, and runs route-appropriate probes across tiers:
 Reports land under scripts/deploy_smoke/reports/{YYYYMMDD_HHMMSS}_{route}/ with a
 human report.md (per-probe verdict + quoted evidence), a machine report.json
 (git SHA, route, family, redacted env fingerprint, per-probe results), and an
-evidence/ dir (shim health, /tmp cache snapshots). Overall exit is nonzero on any
-FAIL, matching the run_all_smoke_tests.sh contract.
+evidence/ dir (shim_health.json, env_fingerprint.json, plus tier_d/ full failure
+logs and Pester testResults.xml; /tmp cache reads are embedded in per-probe
+evidence, not separate files). Overall exit is nonzero on any FAIL, matching the
+run_all_smoke_tests.sh contract.
 
 Framework tooling: standalone-CLI-tool exception to the no-functions rule — this
 uses normal engineering style with functions, matching benchmarks/harness/.
@@ -105,13 +107,27 @@ def load_profiles(names: list) -> list:
 
 
 def parse_tiers(spec: str) -> list:
-    """Parse --tiers like '0,1,2' or '0,1,2,D' into an ordered unique list."""
+    """Parse --tiers like '0,1,2' or '0,1,2,D' into an ordered unique list.
+
+    Invalid tokens are a HARD ERROR (ValueError naming the offending token and
+    the valid set), never silently dropped: a typo like '--tiers D,X' must not
+    quietly run only Tier D and let the operator believe X also ran. Empty tokens
+    (from stray commas or an empty spec) are ignored; a spec with no valid tier
+    yields an empty list, which the caller reports separately."""
     valid = {"0", "1", "2", "D"}
     tiers = []
-    for t in spec.split(","):
-        t = t.strip().upper() if t.strip().upper() == "D" else t.strip()
-        if t and t in valid and t not in tiers:
-            tiers.append(t)
+    for raw in spec.split(","):
+        t = raw.strip()
+        if not t:
+            continue
+        norm = t.upper() if t.upper() == "D" else t
+        if norm not in valid:
+            raise ValueError(
+                f"invalid tier token '{t}' in --tiers; valid tokens are "
+                f"{', '.join(sorted(valid))}"
+            )
+        if norm not in tiers:
+            tiers.append(norm)
     return tiers
 
 
@@ -251,7 +267,11 @@ def main() -> int:
     args = parser.parse_args()
 
     env = os.environ
-    tiers = parse_tiers(args.tiers)
+    try:
+        tiers = parse_tiers(args.tiers)
+    except ValueError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 2
     if not tiers:
         print("ERROR: no valid tiers in --tiers.", file=sys.stderr)
         return 2
@@ -274,6 +294,17 @@ def main() -> int:
     if not confirm_launch(route_info, tiers, profiles, args.yes):
         print("Aborted by user (no confirmation).", file=sys.stderr)
         return 1
+
+    # Resolve and create the report directory BEFORE executing tiers so Tier D
+    # can route its evidence (full failure logs, Pester's NUnit testResults.xml)
+    # into report/evidence/tier_d/ instead of the repository root. write_reports
+    # is idempotent with these pre-created directories.
+    if args.report_dir:
+        report_dir = Path(args.report_dir)
+    else:
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        report_dir = REPORTS_ROOT / f"{stamp}_{route_info.detected_route}"
+    tier_d_evidence_dir = report_dir / "evidence" / "tier_d"
 
     results = []
     shim_health_snapshot = None
@@ -328,15 +359,10 @@ def main() -> int:
 
     # Tier D — run once (not profile-scoped; deterministic, provider-agnostic).
     if "D" in tiers:
-        results.extend(smoke_probes.run_tier_d(args.include_r_smoke, td_timeout))
+        results.extend(smoke_probes.run_tier_d(args.include_r_smoke, td_timeout,
+                                               evidence_dir=tier_d_evidence_dir))
 
     # --- Reports ---
-    if args.report_dir:
-        report_dir = Path(args.report_dir)
-    else:
-        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        report_dir = REPORTS_ROOT / f"{stamp}_{route_info.detected_route}"
-
     overall_fail = write_reports(report_dir, route_info, fingerprint, results, tiers, profiles, shim_health_snapshot)
 
     counts = verdict_counts(results)

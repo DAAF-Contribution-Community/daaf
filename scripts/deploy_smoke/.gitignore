@@ -3,5 +3,12 @@
 reports/*
 !reports/.gitkeep
 
-# Probe sandboxes (wiped at run start; fixtures + agent-written probe scripts).
+# Probe sandboxes: each run_tier2() mints a UUID-owned run_<uuid>/ directory
+# under _sandbox/, writes only its own T2.1/T2.2 fixtures there, and removes
+# exactly that directory in a guaranteed cleanup path (never a recursive wipe of
+# _sandbox/ itself). A run_<uuid>/ left behind by a hard process kill is inert
+# crash residue — its UUID is never re-minted, so it can never satisfy a future
+# run. Two historical 2026-07-15 root fixtures (t21_marker.txt, t22_probe.py)
+# predate this per-run design and are non-authoritative. All of _sandbox/ stays
+# ignored.
 _sandbox/

@@ -26,6 +26,8 @@ benchmarks/harness/ — NOT the sequential no-functions research-script style.
 import json
 import os
 import re
+import shlex
+import shutil
 import socket
 import subprocess
 import time
@@ -82,6 +84,36 @@ def _is_wide_context_model(model_id: str) -> bool:
 # reads this flag. Renaming to a shared DAAF_SMOKETEST_RUN gate is future cleanup
 # tracked in the design notes; the overload is safe today.
 PROBE_GATE_ENV = {"DAAF_BENCHMARK_RUN": "1"}
+
+
+# Env vars a fully-configured LIVE install legitimately exports but that
+# CONTAMINATE the deterministic Tier D batteries by steering default-window /
+# default-branch fixtures onto the live session's values:
+#   * CLAUDE_CODE_MAX_CONTEXT_TOKENS — the context-reporter/statusline bats
+#     fixtures assume the payload window; a live 1050000 override flips default
+#     tests.
+#   * DAAF_BRANCH — the updater Pester fixtures model the default-branch flow; a
+#     live daaf_dev_r2 export silently steers them onto another branch.
+# Tier D removes ONLY these two as defense-in-depth ATOP each battery's own
+# fixture isolation (bats setup() `unset`, Pester BeforeEach `Remove-Item`). It
+# is NOT `env -i`: PATH, HOME, route credentials, and the developer toolchain
+# are all preserved so the batteries can still find their interpreters.
+TIER_D_CONTAMINANTS = ("CLAUDE_CODE_MAX_CONTEXT_TOKENS", "DAAF_BRANCH")
+
+
+def tier_d_sanitized_env():
+    """Return (env, removed): a copy of os.environ with only the known Tier D
+    contaminants removed, plus the list of names actually removed.
+
+    Pure with respect to os.environ — it copies first and never mutates the
+    process environment."""
+    env = os.environ.copy()
+    removed = []
+    for name in TIER_D_CONTAMINANTS:
+        if name in env:
+            env.pop(name, None)
+            removed.append(name)
+    return env, removed
 
 
 # --- Trimmed executor -----------------------------------------------------
@@ -801,6 +833,42 @@ def _sandbox_dir() -> Path:
     return Path(BASE_DIR) / "scripts" / "deploy_smoke" / "_sandbox"
 
 
+# The exit-code record run_with_capture.sh appends after its execution-log
+# banner: a full line "# Exit code: N". Anchored so "0" cannot match inside a
+# larger number (e.g. 100).
+_EXEC_EXIT0_RE = re.compile(r"^#\s*Exit code:\s*0\s*$", re.MULTILINE)
+
+
+def _evaluate_t22(script_created: bool, body, nonce: str):
+    """Pure evaluator for T2.2 — did the coding agent actually WRITE and
+    SUCCESSFULLY EXECUTE its probe script via run_with_capture?
+
+    Given whether this run's script exists, its full text (source plus any
+    appended execution log), and this run's unique nonce, PASS requires ALL of:
+      * the script exists;
+      * run_with_capture's "# EXECUTION LOG" banner is present (proof it ran);
+      * the captured "# Exit code: 0" record appears AFTER the banner (success);
+      * this run's nonce appears AFTER the banner — proving it came from CAPTURED
+        OUTPUT, not merely the source print line (the token is in the source by
+        construction, so a source-only match is not proof of execution).
+    Anything short of all four is FAIL — never PASS-with-note. A stale banner
+    from a prior run carries a different nonce; a script written but never run
+    has no banner; a nonzero recorded exit fails the success check.
+
+    Returns (verdict, facts) where facts holds the load-bearing booleans."""
+    facts = {"script_created": bool(script_created), "banner": False,
+             "exit_success": False, "nonce_after_banner": False}
+    if script_created and body:
+        idx = body.find("# EXECUTION LOG")
+        if idx != -1:
+            facts["banner"] = True
+            after = body[idx:]
+            facts["exit_success"] = _EXEC_EXIT0_RE.search(after) is not None
+            facts["nonce_after_banner"] = bool(nonce) and nonce in after
+    verdict = Verdict.PASS if all(facts.values()) else Verdict.FAIL
+    return verdict, facts
+
+
 def _tool_uses_in_transcript(transcript: Path):
     """Yield (tool_name, block) for every tool_use across a transcript (main +
     any subagent transcripts are handled by the caller)."""
@@ -820,7 +888,30 @@ def run_tier2(profile_name: str, extra_env: dict, timeout: int) -> list:
     results = []
     sandbox = _sandbox_dir()
     sandbox.mkdir(parents=True, exist_ok=True)
+    # Per-run, UUID-owned run directory: T2.1/T2.2 fixtures live ONLY here, so a
+    # fresh run can never be satisfied by a prior run's residue. A run dir left
+    # by a hard process kill carries a stale UUID that no future run mints, so it
+    # is inert. Cleanup in the finally below removes ONLY this exact directory.
+    run_id = uuid.uuid4().hex
+    run_dir = sandbox / f"run_{run_id}"
+    run_dir.mkdir(parents=False, exist_ok=False)
+    try:
+        return _run_tier2_body(profile_name, extra_env, timeout, run_dir, results)
+    finally:
+        # Guaranteed cleanup of ONLY this run's owned directory — never
+        # recursively clear _sandbox/ or touch a sibling. The guard re-checks
+        # that the target is exactly sandbox/run_<run_id> before removal.
+        try:
+            if (run_dir.name == f"run_{run_id}" and run_dir.parent == sandbox
+                    and run_dir.is_dir() and not run_dir.is_symlink()):
+                shutil.rmtree(run_dir, ignore_errors=True)
+        except OSError:
+            pass
 
+
+def _run_tier2_body(profile_name: str, extra_env: dict, timeout: int, sandbox: Path, results: list) -> list:
+    """The six Tier 2 probes, operating inside the caller's per-run UUID sandbox.
+    `sandbox` here is the run-owned directory (not the shared _sandbox/ root)."""
     # T2.1 — dispatch/search: dispatch search-agent to read a marker fixture and echo its token.
     marker_token = f"SMOKE-MARKER-{uuid.uuid4().hex[:8]}"
     fixture = sandbox / "t21_marker.txt"
@@ -864,50 +955,43 @@ def run_tier2(profile_name: str, extra_env: dict, timeout: int) -> list:
         r21.detail = "No subagent dispatch and/or marker token not returned."
     results.append(r21)
 
-    # T2.2 — coding agent: research-executor writes + runs a tiny script via run_with_capture.
+    # T2.2 — coding agent: research-executor writes + runs a tiny script via
+    # run_with_capture. A run-specific nonce ties the CAPTURED OUTPUT to THIS run:
+    # the token is present in the source by construction, so PASS additionally
+    # requires the nonce to appear after the execution-log banner.
+    exec_nonce = f"daaf-exec-{uuid.uuid4().hex[:12]}"
+    probe_script = sandbox / "t22_probe.py"
     p22 = (
         "You are a deployment smoke test. Dispatch a 'research-executor' subagent via the "
         f"Agent tool. Instruct it to write a tiny Python script to "
-        f"{sandbox}/t22_probe.py that prints 'daaf-exec-ok', then execute it with "
-        f"bash {BASE_DIR}/scripts/run_with_capture.sh {sandbox}/t22_probe.py. "
+        f"{probe_script} whose only action is to print exactly '{exec_nonce}', then "
+        f"execute it with bash {BASE_DIR}/scripts/run_with_capture.sh {probe_script}. "
         "Report whether the run succeeded."
     )
     res22, meta22 = execute_smoke_run(prompt=p22, max_turns=12, timeout=timeout, extra_env=extra_env)
     r22 = ProbeResult(probe_id="T2.2", name="Coding agent write + execute", tier="2", profile=profile_name)
-    probe_script = sandbox / "t22_probe.py"
     script_created = probe_script.exists()
-    log_appended = False
-    exec_output_seen = False
+    body = None
     if script_created:
         try:
             body = probe_script.read_text()
-            # The appended "# EXECUTION LOG" banner (written by run_with_capture.sh)
-            # is the proof the script actually RAN. A bare "daaf-exec-ok" match is
-            # NOT proof: the agent writes print('daaf-exec-ok') per the prompt, so
-            # the token is present in the script SOURCE even if it was never
-            # executed. Require the banner; then, to prove the token came from
-            # CAPTURED OUTPUT and not the source line, require it to appear AFTER
-            # the banner.
-            banner_idx = body.find("# EXECUTION LOG")
-            log_appended = banner_idx != -1
-            exec_output_seen = log_appended and ("daaf-exec-ok" in body[banner_idx:])
         except OSError:
-            pass
+            body = None
+    verdict22, facts22 = _evaluate_t22(script_created, body, exec_nonce)
     r22.add_evidence(f"claude -p (session {meta22['session_id'][:8]})", output=(res22.response_text or "")[:200])
     r22.add_evidence(f"test -f {probe_script}", output=str(script_created))
-    r22.add_evidence("check for '# EXECUTION LOG' banner + token after banner",
-                     output=f"banner_appended={log_appended} token_in_captured_output={exec_output_seen}")
-    if script_created and log_appended:
-        r22.verdict = Verdict.PASS
-        r22.detail = (
-            "research-executor wrote a script and executed it via run_with_capture "
-            "(# EXECUTION LOG banner appended"
-            + ("; 'daaf-exec-ok' present in captured output)." if exec_output_seen
-               else ", though the token was not found in captured output).")
-        )
+    r22.add_evidence("evaluate freshness: banner + '# Exit code: 0' + run nonce after banner",
+                     output=(f"banner={facts22['banner']} exit_success={facts22['exit_success']} "
+                             f"nonce_after_banner={facts22['nonce_after_banner']}"))
+    r22.verdict = verdict22
+    if verdict22 == Verdict.PASS:
+        r22.detail = ("research-executor wrote the script and executed it via run_with_capture: "
+                      "'# EXECUTION LOG' banner present, '# Exit code: 0' recorded, and this run's "
+                      "nonce appears in the captured output after the banner.")
     else:
-        r22.verdict = Verdict.FAIL
-        r22.detail = "Script not created or no '# EXECUTION LOG' banner appended (not executed via run_with_capture)."
+        r22.detail = ("T2.2 freshness/success check failed — required ALL of: script created, "
+                      "execution-log banner, recorded '# Exit code: 0', and this run's nonce in "
+                      f"captured output after the banner. Observed: {facts22}.")
     results.append(r22)
 
     # T2.3 — web access: search-agent performs one minimal WebSearch.
@@ -1089,43 +1173,170 @@ def run_tier2(profile_name: str, extra_env: dict, timeout: int) -> list:
 
 # --- Tier D: deterministic battery (opt-in, zero API cost) -----------------
 
-def _run_battery_cmd(probe_id: str, name: str, cmd: list, timeout: int, cwd: str = BASE_DIR) -> ProbeResult:
-    r = ProbeResult(probe_id=probe_id, name=name, tier="D")
+def _bounded_excerpt(text: str, head: int = 20, tail: int = 20) -> str:
+    """Head-and-tail excerpt with an explicit omission count, so both the early
+    failure names and the final summary of a long battery log stay visible in the
+    concise report while the middle is elided."""
+    lines = text.splitlines()
+    if len(lines) <= head + tail:
+        return "\n".join(lines)
+    omitted = len(lines) - head - tail
+    return "\n".join(lines[:head] + [f"...[{omitted} lines omitted; full log in evidence/tier_d]..."] + lines[-tail:])
+
+
+def _persist_tier_d_artifact(evidence_dir, probe_id: str, cmd_str: str,
+                             scrubbed_output: str, status: str):
+    """Write the COMPLETE scrubbed output for a failed/timed-out Tier D probe to
+    evidence_dir/<probe_id>.log and return its path (str), or None on any I/O
+    problem or when no evidence dir was provided. Best-effort; never raises."""
+    if not evidence_dir:
+        return None
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, cwd=cwd)
-        tail = (proc.stdout + proc.stderr).strip().splitlines()[-8:]
-        r.add_evidence(" ".join(cmd), output="\n".join(tail))
+        d = Path(evidence_dir)
+        d.mkdir(parents=True, exist_ok=True)
+        path = d / f"{probe_id}.log"
+        header = (
+            f"# probe: {probe_id}\n"
+            f"# command: {cmd_str}\n"
+            f"# status: {status}\n"
+            f"# NOTE: secret env values scrubbed via scrub_secret_values()\n\n"
+        )
+        path.write_text(header + (scrubbed_output or "<no captured output>") + "\n")
+        return str(path)
+    except OSError:
+        return None
+
+
+def _run_battery_cmd(probe_id: str, name: str, cmd: list, timeout: int,
+                     cwd: str = BASE_DIR, env: dict = None, evidence_dir=None) -> ProbeResult:
+    """Run one deterministic battery command and translate its result into a
+    ProbeResult with a two-level evidence policy:
+      * PASS — retain only the concise final eight lines.
+      * FAIL/timeout — quote a bounded head-and-tail excerpt (early failure names
+        AND final summary both visible) and persist the COMPLETE scrubbed output
+        under evidence_dir/<probe_id>.log, referenced from the probe evidence.
+    All captured output is scrubbed with scrub_secret_values before it is quoted
+    or persisted; the command is rendered with shlex.join for an auditable, un-
+    ambiguous representation."""
+    r = ProbeResult(probe_id=probe_id, name=name, tier="D")
+    cmd_str = shlex.join(cmd)
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, cwd=cwd, env=env)
+        combined = scrub_secret_values((proc.stdout + proc.stderr).strip())
         if proc.returncode == 0:
+            tail = combined.splitlines()[-8:]
+            r.add_evidence(cmd_str, output="\n".join(tail))
             r.verdict = Verdict.PASS
             r.detail = f"{name} passed."
         else:
+            r.add_evidence(cmd_str, output=_bounded_excerpt(combined))
+            artifact = _persist_tier_d_artifact(evidence_dir, probe_id, cmd_str, combined,
+                                                f"exit {proc.returncode}")
+            if artifact:
+                r.add_evidence("", note=f"complete scrubbed output: {artifact}")
             r.verdict = Verdict.FAIL
             r.detail = f"{name} exited {proc.returncode}."
     except FileNotFoundError as e:
         r.verdict = Verdict.SKIP
         r.detail = f"{name} tool unavailable: {e}"
-        r.add_evidence(" ".join(cmd), note=str(e))
-    except subprocess.TimeoutExpired:
+        r.add_evidence(cmd_str, note=str(e))
+    except subprocess.TimeoutExpired as e:
+        # subprocess.run populates .output/.stderr on timeout when capturing, so
+        # preserve whatever was emitted before the kill rather than discarding it.
+        partial = ""
+        for stream in (e.output, e.stderr):
+            if not stream:
+                continue
+            partial += stream if isinstance(stream, str) else stream.decode("utf-8", "replace")
+        partial = scrub_secret_values(partial.strip())
+        r.add_evidence(cmd_str, output=(_bounded_excerpt(partial) if partial
+                                        else "<no output captured before timeout>"))
+        artifact = _persist_tier_d_artifact(evidence_dir, probe_id, cmd_str, partial,
+                                            f"timeout after {timeout}s")
+        if artifact:
+            r.add_evidence("", note=f"complete scrubbed output (partial, pre-timeout): {artifact}")
         r.verdict = Verdict.FAIL
         r.detail = f"{name} timed out after {timeout}s."
     return r
 
 
-def run_tier_d(include_skill_smoke: bool, timeout: int) -> list:
-    """The deterministic battery: bats, Pester, lint, safety-hook tests,
-    single-command tests, and (opt-in) the R/Python skill smoke suite via the
-    CI log-stripped staging pattern. Zero API cost."""
+def _run_tier_d_unit_tests(timeout: int, env: dict, evidence_dir) -> ProbeResult:
+    """TD.0 — run this suite's own provider-free unittest module BEFORE the
+    broader batteries, so an official Tier D run first validates its own harness
+    (env sanitization, evidence capture, Tier 2 cleanup, T2.2 freshness)."""
+    return _run_battery_cmd(
+        "TD.0", "deploy-smoke harness unit tests",
+        ["python3", "-m", "unittest", "discover", "-s", f"{BASE_DIR}/tests/python",
+         "-p", "test_deploy_smoke.py", "-v"],
+        timeout, env=env, evidence_dir=evidence_dir)
+
+
+def run_tier_d(include_skill_smoke: bool, timeout: int, evidence_dir) -> list:
+    """The deterministic battery: the harness self-test (TD.0), bats, Pester,
+    lint, safety-hook tests, single-command tests, and (opt-in) the R/Python
+    skill smoke suite via the CI log-stripped staging pattern. Zero API cost.
+
+    All batteries run under a Tier-D-sanitized subprocess env (the two known
+    live-config contaminants removed; PATH/HOME/credentials/toolchain intact),
+    and every failure/timeout persists its complete scrubbed output under
+    evidence_dir. Pester runs with its working directory set to evidence_dir so
+    its NUnit testResults.xml lands in the report instead of the repo root."""
     results = []
-    results.append(_run_battery_cmd("TD.1", "bats tests/bash", ["bats", f"{BASE_DIR}/tests/bash/"], timeout))
-    results.append(_run_battery_cmd(
+    env, removed = tier_d_sanitized_env()
+    # evidence_dir is required: without it, Pester's testResults.xml would fall
+    # back to the repository root and the missing-XML contract check would be
+    # silently skipped (artifact-ownership regression).
+    tier_d_evidence = Path(evidence_dir)
+    tier_d_evidence.mkdir(parents=True, exist_ok=True)
+
+    # TD.0 — harness self-test first.
+    td0 = _run_tier_d_unit_tests(timeout, env, tier_d_evidence)
+    # Non-secret sanitization note (defense-in-depth record), attached to TD.0
+    # since the sanitized env governs the whole tier.
+    td0.add_evidence(
+        "",
+        note=(f"Tier D subprocess env sanitized: removed {list(removed)} "
+              f"(defense-in-depth atop bats/Pester fixture isolation); "
+              f"PATH/HOME/credentials/toolchain preserved."
+              if removed else
+              "Tier D subprocess env sanitized: no known contaminants "
+              "(CLAUDE_CODE_MAX_CONTEXT_TOKENS, DAAF_BRANCH) were present."),
+        is_inference=False)
+    results.append(td0)
+
+    results.append(_run_battery_cmd("TD.1", "bats tests/bash", ["bats", f"{BASE_DIR}/tests/bash/"],
+                                    timeout, env=env, evidence_dir=tier_d_evidence))
+
+    # TD.2 — Pester. Run WITH the working directory set to the Tier D evidence dir
+    # so Invoke-Pester -CI writes its NUnit testResults.xml there rather than at
+    # the repository root (/daaf/testResults.xml).
+    td2_cwd = str(tier_d_evidence)
+    td2 = _run_battery_cmd(
         "TD.2", "Pester tests/powershell",
-        ["pwsh", "-NoProfile", "-Command", f"Invoke-Pester -Path {BASE_DIR}/tests/powershell -CI"], timeout))
-    results.append(_run_battery_cmd("TD.3", "daaf-conventions lint", ["bash", f"{BASE_DIR}/tests/lint/check-daaf-conventions.sh"], timeout))
-    results.append(_run_battery_cmd("TD.4", "safety-hook tests", ["bash", f"{BASE_DIR}/scripts/test_safety_hooks.sh"], timeout))
-    results.append(_run_battery_cmd("TD.5", "single-command hook tests", ["bash", f"{BASE_DIR}/scripts/test_enforce_single_command.sh"], timeout))
+        ["pwsh", "-NoProfile", "-Command", f"Invoke-Pester -Path {BASE_DIR}/tests/powershell -CI"],
+        timeout, cwd=td2_cwd, env=env, evidence_dir=tier_d_evidence)
+    # A zero Pester exit with a MISSING report-local XML is a TD.2 failure: the
+    # artifact-ownership contract requires the XML to land in the report evidence.
+    if td2.verdict == Verdict.PASS:
+        xml_path = tier_d_evidence / "testResults.xml"
+        if xml_path.exists():
+            td2.add_evidence(f"test -f {xml_path}", output=str(xml_path))
+        else:
+            td2.verdict = Verdict.FAIL
+            td2.detail = ("Pester exited 0 but its NUnit testResults.xml is missing from the report "
+                          "evidence dir — artifact-routing failure (TD.2).")
+            td2.add_evidence(f"test -f {xml_path}", output="missing")
+    results.append(td2)
+
+    results.append(_run_battery_cmd("TD.3", "daaf-conventions lint", ["bash", f"{BASE_DIR}/tests/lint/check-daaf-conventions.sh"],
+                                    timeout, env=env, evidence_dir=tier_d_evidence))
+    results.append(_run_battery_cmd("TD.4", "safety-hook tests", ["bash", f"{BASE_DIR}/scripts/test_safety_hooks.sh"],
+                                    timeout, env=env, evidence_dir=tier_d_evidence))
+    results.append(_run_battery_cmd("TD.5", "single-command hook tests", ["bash", f"{BASE_DIR}/scripts/test_enforce_single_command.sh"],
+                                    timeout, env=env, evidence_dir=tier_d_evidence))
 
     if include_skill_smoke:
-        results.append(_run_skill_smoke(timeout))
+        results.append(_run_skill_smoke(timeout, env=env, evidence_dir=tier_d_evidence))
     else:
         skip = ProbeResult(probe_id="TD.6", name="R/Python skill smoke suite", tier="D")
         skip.verdict = Verdict.SKIP
@@ -1134,13 +1345,19 @@ def run_tier_d(include_skill_smoke: bool, timeout: int) -> list:
     return results
 
 
-def _run_skill_smoke(timeout: int) -> ProbeResult:
+def _run_skill_smoke(timeout: int, env: dict = None, evidence_dir=None) -> ProbeResult:
     """Stage log-stripped copies of the R/Python skill smokes into
     scripts/scratch/smoke_live/ (NEVER /tmp) and run the existing runner against
-    them via SMOKE_DIR — replicating ci-integration.yml Job 5's approach."""
+    them via SMOKE_DIR — replicating ci-integration.yml Job 5's approach.
+
+    Runs under the Tier-D-sanitized env (defense-in-depth) and applies the same
+    failure-artifact policy as the other batteries: scrubbed output, a bounded
+    head-and-tail excerpt on failure, and complete output persisted under
+    evidence_dir."""
     r = ProbeResult(probe_id="TD.6", name="R/Python skill smoke suite", tier="D")
     src = Path(BASE_DIR) / "scripts" / "smoke_tests"
     dst = Path(BASE_DIR) / "scripts" / "scratch" / "smoke_live"
+    cmd_str = f"SMOKE_DIR={dst} bash {src / 'run_all_smoke_tests.sh'}"
     try:
         if dst.exists():
             for f in dst.glob("*"):
@@ -1160,21 +1377,39 @@ def _run_skill_smoke(timeout: int) -> ProbeResult:
             staged = "\n".join(lines[:cut]) if cut is not None else text
             (dst / smoke.name).write_text(staged)
 
-        env = os.environ.copy()
-        env["SMOKE_DIR"] = str(dst)
+        run_env = dict(env) if env is not None else os.environ.copy()
+        run_env["SMOKE_DIR"] = str(dst)
         proc = subprocess.run(
             ["bash", str(src / "run_all_smoke_tests.sh")],
-            capture_output=True, text=True, timeout=timeout, cwd=BASE_DIR, env=env,
+            capture_output=True, text=True, timeout=timeout, cwd=BASE_DIR, env=run_env,
         )
-        tail = (proc.stdout + proc.stderr).strip().splitlines()[-12:]
-        r.add_evidence(f"SMOKE_DIR={dst} bash run_all_smoke_tests.sh", output="\n".join(tail))
+        combined = scrub_secret_values((proc.stdout + proc.stderr).strip())
         if proc.returncode == 0:
+            tail = combined.splitlines()[-12:]
+            r.add_evidence(cmd_str, output="\n".join(tail))
             r.verdict = Verdict.PASS
             r.detail = "R/Python skill smoke suite passed (log-stripped live run)."
         else:
+            r.add_evidence(cmd_str, output=_bounded_excerpt(combined))
+            artifact = _persist_tier_d_artifact(evidence_dir, "TD.6", cmd_str, combined,
+                                                f"exit {proc.returncode}")
+            if artifact:
+                r.add_evidence("", note=f"complete scrubbed output: {artifact}")
             r.verdict = Verdict.FAIL
             r.detail = f"Skill smoke suite reported failures (exit {proc.returncode})."
-    except subprocess.TimeoutExpired:
+    except subprocess.TimeoutExpired as e:
+        partial = ""
+        for stream in (e.output, e.stderr):
+            if not stream:
+                continue
+            partial += stream if isinstance(stream, str) else stream.decode("utf-8", "replace")
+        partial = scrub_secret_values(partial.strip())
+        r.add_evidence(cmd_str, output=(_bounded_excerpt(partial) if partial
+                                        else "<no output captured before timeout>"))
+        artifact = _persist_tier_d_artifact(evidence_dir, "TD.6", cmd_str, partial,
+                                            f"timeout after {timeout}s")
+        if artifact:
+            r.add_evidence("", note=f"complete scrubbed output (partial, pre-timeout): {artifact}")
         r.verdict = Verdict.FAIL
         r.detail = f"Skill smoke suite timed out after {timeout}s."
     except OSError as e:

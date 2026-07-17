@@ -5,6 +5,7 @@
 # Checks DAAF-specific patterns that standard linters do not cover:
 #   1. Bash preamble: shebang + set -euo pipefail (or set -eu / trap ERR)
 #   2. PowerShell preamble: $ErrorActionPreference in first 15 code lines
+#      (host-facing operational scripts/host/*.ps1 only)
 #   3. DAAF_NESTED consistency: host lifecycle scripts reference DAAF_NESTED
 #   4. Numbered progress: host lifecycle scripts use [N/M] indicators (warn only)
 #   5. Bash 3.2 portability: host scripts avoid Bash-4.x-only constructs
@@ -128,22 +129,27 @@ echo ""
 # =====================================================================
 # 2. PowerShell preamble check
 # =====================================================================
-echo "--- PowerShell preamble checks ---"
+echo "--- PowerShell preamble checks (host scripts) ---"
 
-while IFS= read -r -d '' ps1file; do
-    case "${ps1file}" in
-        */.git/*|*/node_modules/*|*/libs/*) continue ;;
-    esac
-
+# SCOPE: host-facing operational PowerShell scripts only (scripts/host/*.ps1) --
+# the lifecycle scripts a user runs on their own machine, whose error-handling
+# contract this rule actually governs. A maxdepth-1 glob over scripts/host,
+# matching how sections 3-6 already scope their host checks. This deliberately
+# does NOT recurse the whole repository: ignored research/, .claude/worktrees/,
+# and scripts/scratch/ PowerShell residue are archival/transient copies that must
+# not gate the lint, and library/test PowerShell (*.Tests.ps1, TestHelper.ps1)
+# lives outside scripts/host. The glob walks the LIVE filesystem, so newly
+# authored UNTRACKED host scripts are still checked; switching to `git ls-files`
+# would hide them. Sourced function libraries (*_lib.ps1) remain exempt: a
+# dot-sourced library must not force $ErrorActionPreference on its caller -- its
+# functions save/restore EAP locally -- mirroring the *_lib.sh Bash exemption.
+for ps1file in "${REPO_ROOT}"/scripts/host/*.ps1; do
+    [ -f "${ps1file}" ] || continue
     relpath="${ps1file#"${REPO_ROOT}/"}"
     filename=$(basename "${ps1file}")
 
-    # Skip test files (*.Tests.ps1), helpers (TestHelper.ps1), and sourced
-    # function libraries (*_lib.ps1). A dot-sourced library must not force
-    # $ErrorActionPreference on its caller -- its functions save/restore EAP
-    # locally instead -- mirroring the *_lib.sh exemption in the Bash checks.
     case "${filename}" in
-        *.Tests.ps1|TestHelper.ps1|*_lib.ps1) continue ;;
+        *_lib.ps1) continue ;;
     esac
 
     # Check for $ErrorActionPreference in first 15 non-comment, non-blank code lines.
@@ -153,7 +159,7 @@ while IFS= read -r -d '' ps1file; do
     if ! echo "${code_lines}" | grep -q 'ErrorActionPreference'; then
         fail "${relpath}: missing '\$ErrorActionPreference' in first 15 code lines"
     fi
-done < <(find "${REPO_ROOT}" -name '*.ps1' -type f -not -path '*/.git/*' -print0)
+done
 
 echo ""
 
