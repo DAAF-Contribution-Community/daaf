@@ -577,17 +577,76 @@ function Resolve-StashConflict {
 
 # Copy one host script out of the container. Returns $true on success, $false
 # on failure (printing a manual-recovery hint -- no silent skips).
+#
+# Tier B can overwrite a host copy that DIFFERS from what it delivers (e.g. a
+# locally drifted file that also changed in the update range -- and on old-era
+# migrations EVERY host script is "changed in range", so this path, not the
+# tier C drift heal, performs the heal). Preserve the tier C recoverability
+# contract here too: stage the incoming copy as a sibling file, and when an
+# existing host copy differs, save it to the rolling "<name>.pre-update"
+# BEFORE overwriting. If the backup cannot be created, do NOT overwrite --
+# never destroy the only copy -- same rule as the tier C drift heal. (Field
+# finding 2026-07-17: the v2.0.1 vector's class E drift fixture was healed via
+# tier B and clobbered with no backup. Mirrors _sync_copy_one in update_daaf.sh.)
 function Copy-HostScript {
     param([string]$RepoPath)
     $scriptName = Split-Path $RepoPath -Leaf
+    $daafProj = if ($env:DAAF_PROJECT_NAME) { $env:DAAF_PROJECT_NAME } else { 'daaf' }
+    if (Test-Path "./$scriptName") {
+        $staged = "./$scriptName.sync-staged"
+        # $null = : docker cp's output stream must not leak into this function's
+        # return value -- a leaked string makes the returned boolean an ARRAY,
+        # and any 2-element array is truthy at the `if (Copy-HostScript ...)`
+        # call sites regardless of the boolean inside (probe-verified 2026-07-17).
+        $savedEAP = $ErrorActionPreference
+        try { $ErrorActionPreference = "SilentlyContinue"; $null = docker cp "${ContainerId}:/daaf/$RepoPath" $staged 2>$null } finally { $ErrorActionPreference = $savedEAP }
+        if ($LASTEXITCODE -ne 0 -or -not (Test-Path $staged)) {
+            Remove-Item -Path $staged -Force -ErrorAction SilentlyContinue
+            Write-Host "  Warning: could not copy $scriptName. You can copy it manually:" -ForegroundColor Yellow
+            Write-Host "    docker cp ${daafProj}-daaf-docker-1:/daaf/$RepoPath ./$scriptName" -ForegroundColor Yellow
+            return $false
+        }
+        $backedUp = $false
+        $differs = $true
+        try {
+            $hashExisting = (Get-FileHash -Path "./$scriptName" -Algorithm SHA256 -ErrorAction Stop).Hash
+            $hashStaged = (Get-FileHash -Path $staged -Algorithm SHA256 -ErrorAction Stop).Hash
+            $differs = ($hashExisting -ne $hashStaged)
+        } catch { $differs = $true }
+        if ($differs) {
+            try {
+                Copy-Item -Path "./$scriptName" -Destination "./$scriptName.pre-update" -Force -ErrorAction Stop
+                $backedUp = $true
+            } catch {
+                Remove-Item -Path $staged -Force -ErrorAction SilentlyContinue
+                Write-Host "  Warning: could not back up $scriptName before overwriting -- left unchanged." -ForegroundColor Yellow
+                Write-Host "    To adopt the repository version manually, run:" -ForegroundColor Yellow
+                Write-Host "    docker cp ${daafProj}-daaf-docker-1:/daaf/$RepoPath ./$scriptName" -ForegroundColor Yellow
+                return $false
+            }
+        }
+        try {
+            Move-Item -Path $staged -Destination "./$scriptName" -Force -ErrorAction Stop
+        } catch {
+            Remove-Item -Path $staged -Force -ErrorAction SilentlyContinue
+            Write-Host "  Warning: could not copy $scriptName. You can copy it manually:" -ForegroundColor Yellow
+            Write-Host "    docker cp ${daafProj}-daaf-docker-1:/daaf/$RepoPath ./$scriptName" -ForegroundColor Yellow
+            return $false
+        }
+        if ($backedUp) {
+            Write-Host "  Updated: $scriptName (your previous copy was saved as $scriptName.pre-update)"
+        } else {
+            Write-Host "  Updated: $scriptName"
+        }
+        return $true
+    }
     $savedEAP = $ErrorActionPreference
-    try { $ErrorActionPreference = "SilentlyContinue"; docker cp "${ContainerId}:/daaf/$RepoPath" "./$scriptName" 2>$null } finally { $ErrorActionPreference = $savedEAP }
+    try { $ErrorActionPreference = "SilentlyContinue"; $null = docker cp "${ContainerId}:/daaf/$RepoPath" "./$scriptName" 2>$null } finally { $ErrorActionPreference = $savedEAP }
     if ($LASTEXITCODE -eq 0) {
         Write-Host "  Updated: $scriptName"
         return $true
     } else {
         Write-Host "  Warning: could not copy $scriptName. You can copy it manually:" -ForegroundColor Yellow
-        $daafProj = if ($env:DAAF_PROJECT_NAME) { $env:DAAF_PROJECT_NAME } else { 'daaf' }
         Write-Host "    docker cp ${daafProj}-daaf-docker-1:/daaf/$RepoPath ./$scriptName" -ForegroundColor Yellow
         return $false
     }

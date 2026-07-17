@@ -262,17 +262,65 @@ Describe "update_daaf.ps1 behavioral tests" {
         It "tier B copies files changed in the update range" {
             New-Item -ItemType File -Path "./run_daaf.ps1" | Out-Null
             New-Item -ItemType File -Path "./daaf.ps1" | Out-Null
+            # The cp mock MATERIALIZES the destination ($args[2]): tier B stages
+            # the incoming copy as a sibling file before comparing/backing-up/
+            # renaming, so a mock that only returns leaves the staged file
+            # missing and the rename fails.
             Mock docker {
                 $allArgs = $args -join " "
                 if ($allArgs -match "rev-parse HEAD") { return "new-sha-999" }
                 if ($allArgs -match "ls-files") { return "scripts/host/daaf.ps1`nscripts/host/run_daaf.ps1" }
                 if ($allArgs -match "diff --name-only") { return "scripts/host/run_daaf.ps1" }
+                if ($allArgs -match "^cp ") { Set-Content -Path $args[2] -Value "repo version"; $global:LASTEXITCODE = 0; return "" }
                 $global:LASTEXITCODE = 0
                 return ""
             }
 
             $output = Sync-HostScript "old-sha-111" 6>&1
             ($output | Where-Object { $_ -match "Updated: run_daaf.ps1" }) | Should -Not -BeNullOrEmpty
+        }
+
+        It "tier B backs up an existing differing host copy before overwrite" {
+            # Field finding 2026-07-17 (v2.0.1 vector, class E): a host copy
+            # that differs from what tier B delivers must be saved to the
+            # rolling <name>.pre-update BEFORE overwrite -- the tier C
+            # recoverability contract applies to every overwrite path.
+            Set-Content -Path "./run_daaf.ps1" -Value "drifted local content"
+            Mock docker {
+                $allArgs = $args -join " "
+                if ($allArgs -match "rev-parse HEAD") { return "new-sha-999" }
+                if ($allArgs -match "ls-files") { return "scripts/host/run_daaf.ps1" }
+                if ($allArgs -match "diff --name-only") { return "scripts/host/run_daaf.ps1" }
+                if ($allArgs -match "^cp ") { Set-Content -Path $args[2] -Value "repo version"; $global:LASTEXITCODE = 0; return "" }
+                $global:LASTEXITCODE = 0
+                return ""
+            }
+
+            $output = Sync-HostScript "old-sha-111" 6>&1
+            ($output | Where-Object { $_ -match "saved as run_daaf.ps1.pre-update" }) | Should -Not -BeNullOrEmpty
+            Test-Path "./run_daaf.ps1.pre-update" | Should -BeTrue
+            (Get-Content "./run_daaf.ps1.pre-update" -Raw) | Should -Match "drifted local content"
+            (Get-Content "./run_daaf.ps1" -Raw) | Should -Match "repo version"
+        }
+
+        It "tier B leaves no backup when the host copy already matches" {
+            # A spurious rolling backup here would clobber a meaningful one
+            # from an earlier heal.
+            Set-Content -Path "./run_daaf.ps1" -Value "repo version"
+            Mock docker {
+                $allArgs = $args -join " "
+                if ($allArgs -match "rev-parse HEAD") { return "new-sha-999" }
+                if ($allArgs -match "ls-files") { return "scripts/host/run_daaf.ps1" }
+                if ($allArgs -match "diff --name-only") { return "scripts/host/run_daaf.ps1" }
+                if ($allArgs -match "^cp ") { Set-Content -Path $args[2] -Value "repo version"; $global:LASTEXITCODE = 0; return "" }
+                $global:LASTEXITCODE = 0
+                return ""
+            }
+
+            $output = Sync-HostScript "old-sha-111" 6>&1
+            ($output | Where-Object { $_ -match "Updated: run_daaf.ps1" }) | Should -Not -BeNullOrEmpty
+            ($output | Where-Object { $_ -match "saved as" }) | Should -BeNullOrEmpty
+            Test-Path "./run_daaf.ps1.pre-update" | Should -BeFalse
         }
 
         It "ignores changed files outside the platform filter" {
@@ -301,11 +349,17 @@ Describe "update_daaf.ps1 behavioral tests" {
 
         It "prints self-update notice when update_daaf.ps1 changed" {
             New-Item -ItemType File -Path "./update_daaf.ps1" | Out-Null
+            # The cp mock MATERIALIZES the destination: the staged-copy redesign
+            # verifies the staged file exists, and the $null = wrapper on docker
+            # cp means a bare mock return no longer leaks a truthy array into
+            # the Copy-HostScript boolean (which is what let the old
+            # non-materializing mock pass by accident).
             Mock docker {
                 $allArgs = $args -join " "
                 if ($allArgs -match "rev-parse HEAD") { return "new-sha-999" }
                 if ($allArgs -match "ls-files") { return "scripts/host/update_daaf.ps1" }
                 if ($allArgs -match "diff --name-only") { return "scripts/host/update_daaf.ps1" }
+                if ($allArgs -match "^cp ") { Set-Content -Path $args[2] -Value "repo version"; $global:LASTEXITCODE = 0; return "" }
                 $global:LASTEXITCODE = 0
                 return ""
             }
@@ -321,6 +375,7 @@ Describe "update_daaf.ps1 behavioral tests" {
                 if ($allArgs -match "rev-parse HEAD") { return "new-sha-999" }
                 if ($allArgs -match "ls-files") { return "scripts/host/run_daaf.ps1" }
                 if ($allArgs -match "diff --name-only") { return "scripts/host/run_daaf.ps1" }
+                if ($allArgs -match "^cp ") { Set-Content -Path $args[2] -Value "repo version"; $global:LASTEXITCODE = 0; return "" }
                 $global:LASTEXITCODE = 0
                 return ""
             }

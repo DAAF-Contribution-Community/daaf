@@ -263,12 +263,16 @@ teardown() {
 
         touch ./run_daaf.sh ./backup_daaf.sh ./daaf.sh
 
+        # The cp mock MATERIALIZES the destination ($3): tier B stages the
+        # incoming copy as a sibling file before comparing/backing-up/renaming,
+        # so a mock that only returns 0 leaves the staged file missing and the
+        # rename fails.
         docker() {
             case "$*" in
                 *rev-parse*HEAD*) echo "new5678" ;;
                 *ls-files*) printf "scripts/host/daaf.sh\nscripts/host/run_daaf.sh\nscripts/host/backup_daaf.sh\n" ;;
                 *diff*--name-only*) printf "scripts/host/run_daaf.sh\nscripts/host/backup_daaf.sh\n" ;;
-                cp*) return 0 ;;
+                cp*) printf "repo version\n" > "$3" ;;
                 *) return 0 ;;
             esac
         }
@@ -279,6 +283,70 @@ teardown() {
     assert_output --partial "Syncing updated utility scripts..."
     assert_output --partial "Updated: run_daaf.sh"
     assert_output --partial "Updated: backup_daaf.sh"
+}
+
+@test "update: tier B backs up an existing differing host copy before overwrite" {
+    # Field finding 2026-07-17 (v2.0.1 vector, class E): a host copy that
+    # differs from what tier B delivers must be saved to the rolling
+    # <name>.pre-update BEFORE overwrite -- the tier C recoverability contract
+    # applies to every overwrite path. (On old-era migrations every host
+    # script is "changed in range", so tier B -- not tier C -- performs the
+    # drift heal.)
+    run bash -c '
+        DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+        trap - ERR
+        set +eu
+
+        printf "drifted local content\n" > ./run_daaf.sh
+
+        docker() {
+            case "$*" in
+                *rev-parse*HEAD*) echo "new5678" ;;
+                *ls-files*) printf "scripts/host/run_daaf.sh\n" ;;
+                *diff*--name-only*) printf "scripts/host/run_daaf.sh\n" ;;
+                cp*) printf "repo version\n" > "$3" ;;
+                *) return 0 ;;
+            esac
+        }
+
+        sync_host_scripts "old1234"
+        echo "host-after: $(cat ./run_daaf.sh)"
+        if [ -f ./run_daaf.sh.pre-update ]; then echo "backup: $(cat ./run_daaf.sh.pre-update)"; fi
+    '
+    assert_success
+    assert_output --partial "Updated: run_daaf.sh (your previous copy was saved as run_daaf.sh.pre-update)"
+    assert_output --partial "host-after: repo version"
+    assert_output --partial "backup: drifted local content"
+}
+
+@test "update: tier B leaves no backup when the host copy already matches" {
+    # An identical host copy is refreshed in place with NO .pre-update: a
+    # spurious rolling backup here would clobber a meaningful one from an
+    # earlier heal.
+    run bash -c '
+        DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+        trap - ERR
+        set +eu
+
+        printf "repo version\n" > ./run_daaf.sh
+
+        docker() {
+            case "$*" in
+                *rev-parse*HEAD*) echo "new5678" ;;
+                *ls-files*) printf "scripts/host/run_daaf.sh\n" ;;
+                *diff*--name-only*) printf "scripts/host/run_daaf.sh\n" ;;
+                cp*) printf "repo version\n" > "$3" ;;
+                *) return 0 ;;
+            esac
+        }
+
+        sync_host_scripts "old1234"
+        if [ -f ./run_daaf.sh.pre-update ]; then echo "backup-exists"; else echo "no-backup"; fi
+    '
+    assert_success
+    assert_output --partial "Updated: run_daaf.sh"
+    refute_output --partial "saved as run_daaf.sh.pre-update"
+    assert_output --partial "no-backup"
 }
 
 @test "update: sync_host_scripts ignores changed files outside the platform filter" {
@@ -351,7 +419,7 @@ teardown() {
                 *rev-parse*HEAD*) echo "new5678" ;;
                 *ls-files*) printf "scripts/host/update_daaf.sh\n" ;;
                 *diff*--name-only*) printf "scripts/host/update_daaf.sh\n" ;;
-                cp*) return 0 ;;
+                cp*) printf "repo version\n" > "$3" ;;
                 *) return 0 ;;
             esac
         }

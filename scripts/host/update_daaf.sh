@@ -464,6 +464,63 @@ _sync_copy_one() {
     local repo_path="$1"
     local script
     script=$(basename "${repo_path}")
+    # Tier B can overwrite a host copy that DIFFERS from what it delivers
+    # (e.g. a locally drifted file that also changed in the update range --
+    # and on old-era migrations EVERY host script is "changed in range", so
+    # this path, not tier C, performs the drift heal). Preserve the tier C
+    # recoverability contract here too: stage the incoming copy as a sibling
+    # file (same directory keeps `docker cp`'s file-mode semantics and makes
+    # the final rename same-filesystem), and when an existing host copy
+    # differs, save it to the rolling "<name>.pre-update" BEFORE overwriting.
+    # If the backup cannot be created, do NOT overwrite -- never destroy the
+    # only copy -- same rule as the tier C drift heal. (Field finding
+    # 2026-07-17: the v2.0.1 vector's class E drift fixture was healed via
+    # tier B and clobbered with no backup.)
+    if [ -f "./${script}" ]; then
+        # The staged-existence leg mirrors the ps1 twin's Test-Path guard: an
+        # abnormal "docker cp exits 0 but produced no file" would otherwise
+        # fall through to cmp (missing staged reads as drift), create a
+        # spurious .pre-update, and fail at the rename.
+        if ! docker cp "${CONTAINER_ID}:/daaf/${repo_path}" "./${script}.sync-staged" 2>/dev/null \
+            || [ ! -f "./${script}.sync-staged" ]; then
+            rm -f "./${script}.sync-staged" 2>/dev/null || true
+            echo "  Warning: could not copy ${script}. You can copy it manually:"
+            echo "    docker cp ${DAAF_PROJECT_NAME:-daaf}-daaf-docker-1:/daaf/${repo_path} ./${script}"
+            SYNC_COPY_FAILED=true
+            return 1
+        fi
+        local backed_up=false
+        if ! cmp -s "./${script}" "./${script}.sync-staged"; then
+            if cp -f "./${script}" "./${script}.pre-update" 2>/dev/null; then
+                backed_up=true
+            else
+                rm -f "./${script}.sync-staged" 2>/dev/null || true
+                echo "  Warning: could not back up ${script} before overwriting -- left unchanged."
+                echo "    To adopt the repository version manually, run:"
+                echo "    docker cp ${DAAF_PROJECT_NAME:-daaf}-daaf-docker-1:/daaf/${repo_path} ./${script}"
+                SYNC_COPY_FAILED=true
+                return 1
+            fi
+        fi
+        if ! mv -f "./${script}.sync-staged" "./${script}" 2>/dev/null; then
+            rm -f "./${script}.sync-staged" 2>/dev/null || true
+            echo "  Warning: could not copy ${script}. You can copy it manually:"
+            echo "    docker cp ${DAAF_PROJECT_NAME:-daaf}-daaf-docker-1:/daaf/${repo_path} ./${script}"
+            SYNC_COPY_FAILED=true
+            return 1
+        fi
+        # Text files (.txt) do not need the executable bit; scripts do.
+        case "${script}" in
+            *.sh) chmod +x "./${script}" 2>/dev/null || true ;;
+        esac
+        if [ "${backed_up}" = true ]; then
+            echo "  Updated: ${script} (your previous copy was saved as ${script}.pre-update)"
+        else
+            echo "  Updated: ${script}"
+        fi
+        SYNC_COPIED="${SYNC_COPIED} ${script}"
+        return 0
+    fi
     if docker cp "${CONTAINER_ID}:/daaf/${repo_path}" "./${script}" 2>/dev/null; then
         # Text files (.txt) do not need the executable bit; scripts do.
         case "${script}" in
