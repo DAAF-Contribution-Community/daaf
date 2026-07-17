@@ -9,7 +9,9 @@ ledgers, nullable monetary summaries, and the zero-execution preflight gate.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import subprocess
 import sys
 from dataclasses import asdict
 from numbers import Real
@@ -34,6 +36,22 @@ ACCOUNTING_CATEGORIES = (
     "legacy_numeric",
 )
 PURITY_STATUSES = ("verified", "failed", "unverifiable")
+
+# --- B2: child-model purity as an infrastructure validity gate ---
+# Non-scoring. A purity-failed run is marked invalid and excluded from score
+# rollups (never deleted); an unverifiable run stays valid but is disclosed via
+# purity_coverage. Valid runs score exactly as before.
+VALIDITY_STATUSES = ("valid", "invalid")
+VALIDITY_INVALID_REASON = "child_model_purity_failed"
+
+# --- B3: manifest provenance stamping (shared across all four runners) ---
+# G1R condition identifiers. golden_generation_id records which golden
+# generation a result set replayed; condition_id names the pinned G1R condition.
+GOLDEN_GENERATION_ID = "G1"
+CONDITION_ID = "G1R-python-2026-07"
+# SHA-256 of the empty byte string. `git diff HEAD` on a clean worktree emits no
+# bytes, so worktree_diff_sha256 equals this constant when the tree is clean.
+EMPTY_DIFF_SHA256 = hashlib.sha256(b"").hexdigest()
 PURITY_EVIDENCE_SOURCE = "child_transcript_assistant_message.model"
 PURITY_EVIDENCE_BOUNDARY = (
     "Claude CLI child-transcript-observed model identity; not backend-confirmed"
@@ -402,6 +420,146 @@ def purity_coverage(records: Iterable[Mapping]) -> dict[str, int]:
             status = "unverifiable"
         counts[status] += 1
     return counts
+
+
+def run_validity(record: Mapping) -> dict:
+    """Derive an infrastructure validity verdict from child-model purity (B2).
+
+    This is a validity gate, not a scored criterion. It reads the run's already
+    computed ``child_model_purity`` evidence and returns an explicit verdict:
+
+    - ``failed`` purity  -> ``invalid``: the run is excluded from score rollups
+      (but never deleted — the record and its criteria are retained for audit).
+    - ``unverifiable`` / ``verified`` / absent -> ``valid``: scored exactly as
+      before. Unverifiable counts are disclosed separately via purity_coverage.
+
+    No ``CriterionResult`` is added or changed; behavioral scores of valid runs
+    are identical to the pre-gate behavior.
+    """
+    purity = record.get("child_model_purity") or {}
+    if purity.get("purity_status") == "failed":
+        return {"status": "invalid", "reason": VALIDITY_INVALID_REASON}
+    return {"status": "valid", "reason": None}
+
+
+def validity_coverage(records: Iterable[Mapping]) -> dict[str, int]:
+    """Count valid vs. invalid runs for summary disclosure (B2).
+
+    A missing ``validity`` field is treated as ``valid`` — only an explicit
+    invalid marking (purity-failed) excludes a run from score rollups.
+    """
+    counts = {status: 0 for status in VALIDITY_STATUSES}
+    for record in records:
+        status = (record.get("validity") or {}).get("status", "valid")
+        if status not in counts:
+            status = "valid"
+        counts[status] += 1
+    return counts
+
+
+def is_scorable(record: Mapping) -> bool:
+    """Return True unless the run was gated invalid by the B2 purity gate."""
+    return (record.get("validity") or {}).get("status", "valid") != "invalid"
+
+
+def _git_output_bytes(args: Iterable[str], base_dir: str) -> Optional[bytes]:
+    """Run a read-only git command, returning stdout bytes or None on failure."""
+    try:
+        proc = subprocess.run(
+            ["git", *args],
+            capture_output=True,
+            timeout=30,
+            cwd=base_dir,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        return None
+    if proc.returncode != 0:
+        return None
+    return proc.stdout
+
+
+def git_worktree_state(base_dir: str = "/daaf") -> tuple[Optional[bool], Optional[str]]:
+    """Return ``(git_dirty, worktree_diff_sha256)`` for the DAAF worktree (B3).
+
+    ``git_dirty`` is True when ``git status --porcelain`` is non-empty.
+    ``worktree_diff_sha256`` is the SHA-256 of the raw ``git diff HEAD`` bytes;
+    a clean worktree emits no bytes, so the hash equals ``EMPTY_DIFF_SHA256``.
+    On any git failure both fall back to ``None`` so provenance never fabricates
+    a false "clean" signal.
+    """
+    status = _git_output_bytes(["status", "--porcelain"], base_dir)
+    diff = _git_output_bytes(["diff", "HEAD"], base_dir)
+    if status is None or diff is None:
+        return None, None
+    dirty = bool(status.strip())
+    diff_sha = hashlib.sha256(diff).hexdigest()
+    return dirty, diff_sha
+
+
+def golden_checksums(
+    golden_checkpoints: Iterable[Optional[str]],
+    base_dir: str = "/daaf",
+) -> dict[str, Optional[str]]:
+    """Map each repo-relative golden path to the SHA-256 of its bytes (B3).
+
+    Falsy paths (e.g. checkpoint-free mode classification) are skipped, yielding
+    an empty map. An unreadable golden maps to None rather than being omitted.
+    """
+    checksums: dict[str, Optional[str]] = {}
+    for rel in sorted({c for c in golden_checkpoints if c}):
+        path = Path(base_dir) / rel
+        try:
+            checksums[rel] = hashlib.sha256(path.read_bytes()).hexdigest()
+        except OSError:
+            checksums[rel] = None
+    return checksums
+
+
+def claude_code_version() -> Optional[str]:
+    """Return the ``claude --version`` string, or None on any failure (B3)."""
+    try:
+        proc = subprocess.run(
+            ["claude", "--version"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        return None
+    if proc.returncode != 0:
+        return None
+    return proc.stdout.strip() or None
+
+
+def manifest_provenance(
+    golden_checkpoints: Iterable[Optional[str]] = (),
+    run_records: Iterable[Mapping] = (),
+    base_dir: str = "/daaf",
+) -> dict:
+    """Build the shared additive manifest provenance block for all runners (B3).
+
+    Returns dirty-tree state, worktree diff hash, golden generation id and
+    per-golden checksums, the pinned G1R condition id, the Claude Code version,
+    and manifest-level route provenance reused from the first run record that
+    already captured one (never a divergent second /health call — the per-run
+    ``provenance`` was produced by ``route_provenance`` at execution time).
+    """
+    dirty, diff_sha = git_worktree_state(base_dir)
+    route_provenance = None
+    for record in run_records:
+        candidate = record.get("provenance")
+        if candidate:
+            route_provenance = candidate
+            break
+    return {
+        "git_dirty": dirty,
+        "worktree_diff_sha256": diff_sha,
+        "golden_generation_id": GOLDEN_GENERATION_ID,
+        "golden_checksums": golden_checksums(golden_checkpoints, base_dir),
+        "condition_id": CONDITION_ID,
+        "claude_code_version": claude_code_version(),
+        "route_provenance": route_provenance,
+    }
 
 
 def add_preflight_arg(parser: argparse.ArgumentParser) -> None:

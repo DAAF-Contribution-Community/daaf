@@ -48,10 +48,14 @@ from benchmarks.harness.artifacts import (
     console_billing_label,
     cost_summary,
     format_coverage,
+    is_scorable,
+    manifest_provenance,
     model_manifest_entry,
     nullable_mean,
     purity_coverage,
     run_preflight,
+    run_validity,
+    validity_coverage,
 )
 from benchmarks.scorers.deterministic.checkpoint_adherence import (
     extract_new_tool_calls,
@@ -190,6 +194,32 @@ def score_run(
 
 FIXTURE_PREFIX = "/daaf/benchmarks/datasets/test_fixtures/"
 
+# All per-run sandboxes live under this root. prepare_run_sandbox() refuses to
+# wipe anything outside it, so the destructive rmtree can never reach a real
+# project directory under /daaf/research/ or the repo root (B1 safety).
+SANDBOX_ROOT = "/daaf/benchmarks/_sandbox"
+
+
+def prepare_run_sandbox(sandbox_dir: str) -> Path:
+    """Wipe and recreate a per-run sandbox so no prior-run artifacts survive (B1).
+
+    Repetition safety: each run starts from an empty sandbox, so a repeated run
+    of the same case cannot see files a prior run wrote. The wipe is hard-guarded
+    to SANDBOX_ROOT — a sandbox_dir resolving outside it raises ValueError rather
+    than risking a legitimate /daaf/research/ project directory.
+    """
+    sandbox_path = Path(sandbox_dir)
+    resolved = str(sandbox_path.resolve())
+    if resolved != SANDBOX_ROOT and not resolved.startswith(SANDBOX_ROOT + "/"):
+        raise ValueError(
+            f"Refusing to wipe non-sandbox path: {sandbox_path} "
+            f"(must be under {SANDBOX_ROOT})"
+        )
+    if sandbox_path.exists():
+        shutil.rmtree(sandbox_path)
+    sandbox_path.mkdir(parents=True, exist_ok=True)
+    return sandbox_path
+
 
 def _fixture_status_entries() -> list[str] | None:
     """Return `git status --porcelain` entries for test_fixtures/, or None on
@@ -327,20 +357,31 @@ def check_fixture_contamination() -> None:
 
 
 def prepare_fixtures(test_case: TestCase, sandbox_dir: str) -> TestCase:
-    """Copy referenced test fixtures into the sandbox and rewrite the prompt.
+    """Copy any referenced fixtures into the sandbox and add workspace containment.
 
-    Scans the prompt for paths under test_fixtures/, copies each file to
-    {sandbox_dir}/fixtures/{subdir}/{filename}, and returns a modified
-    TestCase with updated paths. Originals are never touched by subagents.
+    Two responsibilities, now both applied to EVERY case (B1):
+
+    1. Fixture copying (conditional): when the prompt references paths under
+       test_fixtures/, each is copied to {sandbox_dir}/fixtures/{subdir}/{file}
+       and the prompt is rewritten so originals are never touched by subagents.
+    2. Workspace containment (unconditional): every case — fixture-bearing or not
+       — gets a {sandbox_dir}/workspace/ (seeded with run_with_capture.sh) and a
+       prompt instruction directing all model/subagent writes into the per-run
+       sandbox. Previously non-fixture cases (dc-01..dc-06) received no
+       containment instruction, so a dispatched subagent could write a real
+       /daaf/research/ project (the 2026-07-16 dc-01 MonteCarlo leak). Applying
+       the same instruction fixture cases already carried closes that vector for
+       all cases, uniformly across models.
+
+    The instruction is appended to the CASE prompt (harness input), not to the
+    model's Agent-dispatch prompt (which the scorer reads), so no scored
+    criterion, requirement list, or expected field is affected.
     """
     import re
     import copy
 
     pattern = re.escape(FIXTURE_PREFIX) + r"[^\s\"')]+"
     matches = re.findall(pattern, test_case.prompt)
-
-    if not matches:
-        return test_case
 
     fixtures_dir = Path(sandbox_dir) / "fixtures"
     modified_prompt = test_case.prompt
@@ -383,7 +424,7 @@ def prepare_fixtures(test_case: TestCase, sandbox_dir: str) -> TestCase:
 def run_one(test_case: TestCase, model: ModelConfig, rep: int,
             sandbox_suffix: str, timeout_override=None):
     """Execute a single benchmark run with checkpoint scoring."""
-    sandbox_dir = f"/daaf/benchmarks/_sandbox/run_{sandbox_suffix}"
+    sandbox_dir = f"{SANDBOX_ROOT}/run_{sandbox_suffix}"
 
     # Wipe and recreate the sandbox BEFORE staging fixtures, and tell
     # execute_run() -> prepare_sandbox() not to wipe it again
@@ -391,10 +432,9 @@ def run_one(test_case: TestCase, model: ModelConfig, rep: int,
     # prepare_sandbox()'s rmtree deleted them — at model launch the rewritten
     # prompt pointed at nonexistent sandbox paths, so models hunted the files
     # by name and contaminated the originals under datasets/test_fixtures/.
-    sandbox_path = Path(sandbox_dir)
-    if sandbox_path.exists():
-        shutil.rmtree(sandbox_path)
-    sandbox_path.mkdir(parents=True, exist_ok=True)
+    # The wipe is hard-guarded to SANDBOX_ROOT (B1 repetition safety); a fresh
+    # sandbox per run means a repeated run never sees a prior run's artifacts.
+    prepare_run_sandbox(sandbox_dir)
 
     sandboxed_case = prepare_fixtures(test_case, sandbox_dir)
 
@@ -438,7 +478,7 @@ def run_one(test_case: TestCase, model: ModelConfig, rep: int,
     if result.session_id:
         transcript_src = scored.get("transcript_path")
         if transcript_src and Path(transcript_src).exists():
-            archive_dir = Path(f"/daaf/benchmarks/_sandbox/transcripts/{result.session_id}")
+            archive_dir = Path(f"{SANDBOX_ROOT}/transcripts/{result.session_id}")
             archive_dir.mkdir(parents=True, exist_ok=True)
             shutil.copy2(transcript_src, archive_dir / "transcript.jsonl")
             archived_transcript = str(archive_dir / "transcript.jsonl")
@@ -463,6 +503,11 @@ def run_one(test_case: TestCase, model: ModelConfig, rep: int,
                 "subagent_transcript_missing", False
             ),
             "child_model_purity": scored["child_model_purity"],
+            # B2: purity gate verdict. failed purity -> invalid (excluded from
+            # score rollups, never deleted); verified/unverifiable -> valid.
+            "validity": run_validity(
+                {"child_model_purity": scored["child_model_purity"]}
+            ),
             "transcript_path": archived_transcript or scored.get("transcript_path"),
             "tool_call_count": scored.get("tool_call_count", 0),
         },
@@ -491,6 +536,10 @@ def _error_result(test_case: TestCase, model: ModelConfig, rep: int, error_msg: 
             "subagent_criteria": [],
             "subagent_transcript_missing": True,
             "child_model_purity": child_model_purity([], model.id),
+            # An unverifiable-purity error run stays valid (scored) per B2.
+            "validity": run_validity(
+                {"child_model_purity": child_model_purity([], model.id)}
+            ),
             "transcript_path": None,
             "tool_call_count": 0,
         },
@@ -532,6 +581,10 @@ def archive_results(all_results: list[dict], models: list[ModelConfig],
         "benchmark": "dispatch_compliance",
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "daaf_git_sha": git_sha,
+        **manifest_provenance(
+            golden_checkpoints=[tc.golden_checkpoint for tc in test_cases],
+            run_records=all_results,
+        ),
         "config": {
             "reps": args.reps,
             "parallel": not args.sequential,
@@ -571,7 +624,7 @@ def archive_results(all_results: list[dict], models: list[ModelConfig],
 
         # Copy subagent transcripts if available
         if r.get("session_id"):
-            sandbox_subagents = Path(f"/daaf/benchmarks/_sandbox/transcripts/{r['session_id']}/subagents")
+            sandbox_subagents = Path(f"{SANDBOX_ROOT}/transcripts/{r['session_id']}/subagents")
             if sandbox_subagents.exists():
                 shutil.copytree(sandbox_subagents, run_dir / "subagents", dirs_exist_ok=True)
 
@@ -595,66 +648,82 @@ def archive_results(all_results: list[dict], models: list[ModelConfig],
     total_cost = batch_cost["total_cost_usd"]
     errored = sum(1 for r in all_results if r.get("error"))
 
-    # Per-model pass rates
+    # Per-model pass rates. B2: purity-failed (invalid) runs are excluded from
+    # score rollups but retained everywhere else — purity_coverage and
+    # validity_coverage below are computed over ALL rows for full disclosure.
     model_summaries = {}
     for model in models:
         rows = [r for r in all_results if r["model"] == model.name]
         if not rows:
             continue
+        scored_rows = [r for r in rows if is_scorable(r)]
         rates = {}
         for crit_name in all_criterion_names:
             passed = sum(
-                1 for r in rows
+                1 for r in scored_rows
                 if any(c["name"] == crit_name and c["passed"] for c in r.get("criteria", []))
             )
             total = sum(
-                1 for r in rows
+                1 for r in scored_rows
                 if any(c["name"] == crit_name for c in r.get("criteria", []))
             )
             if total > 0:
                 rates[crit_name] = {"passed": passed, "total": total, "rate": passed / total}
-        # All criteria pass rate
+        # All criteria pass rate (valid runs only)
         all_pass = sum(
-            1 for r in rows
+            1 for r in scored_rows
             if all(c["passed"] for c in r.get("criteria", []))
             and len(r.get("criteria", [])) > 0
         )
-        rates["all_criteria"] = {"passed": all_pass, "total": len(rows), "rate": all_pass / len(rows)}
+        scored_n = len(scored_rows)
+        rates["all_criteria"] = {
+            "passed": all_pass,
+            "total": scored_n,
+            "rate": all_pass / scored_n if scored_n else 0.0,
+        }
         model_cost = cost_summary(rows)
         model_summaries[model.name] = {
             "criteria": rates,
             "avg_cost_usd": model_cost["avg_cost_usd"],
             "accounting_coverage": model_cost["accounting_coverage"],
             "purity_coverage": purity_coverage(rows),
+            "validity_coverage": validity_coverage(rows),
         }
 
-    # Per-case pass rates
+    # Per-case pass rates (B2: invalid runs excluded from score rollups)
     case_summaries = {}
     for tc in test_cases:
         rows = [r for r in all_results if r["case_id"] == tc.id]
         if not rows:
             continue
+        scored_rows = [r for r in rows if is_scorable(r)]
         rates = {}
         for crit_name in all_criterion_names:
             passed = sum(
-                1 for r in rows
+                1 for r in scored_rows
                 if any(c["name"] == crit_name and c["passed"] for c in r.get("criteria", []))
             )
             total = sum(
-                1 for r in rows
+                1 for r in scored_rows
                 if any(c["name"] == crit_name for c in r.get("criteria", []))
             )
             if total > 0:
                 rates[crit_name] = {"passed": passed, "total": total, "rate": passed / total}
         all_pass = sum(
-            1 for r in rows
+            1 for r in scored_rows
             if all(c["passed"] for c in r.get("criteria", []))
             and len(r.get("criteria", [])) > 0
         )
-        rates["all_criteria"] = {"passed": all_pass, "total": len(rows), "rate": all_pass / len(rows)}
+        scored_n = len(scored_rows)
+        rates["all_criteria"] = {
+            "passed": all_pass,
+            "total": scored_n,
+            "rate": all_pass / scored_n if scored_n else 0.0,
+        }
         case_summaries[tc.id] = {
             "subcategory": tc.subcategory,
             "criteria": rates,
+            "validity_coverage": validity_coverage(rows),
         }
 
     # --- Subagent behavior summary ---
@@ -701,6 +770,7 @@ def archive_results(all_results: list[dict], models: list[ModelConfig],
         "total_cost_usd": total_cost,
         "accounting_coverage": batch_cost["accounting_coverage"],
         "purity_coverage": purity_coverage(all_results),
+        "validity_coverage": validity_coverage(all_results),
         "wall_time_s": round(wall_time, 1),
         "errored_runs": errored,
         "tool_failures": {
@@ -814,15 +884,20 @@ def print_summary(all_results: list[dict], models: list[ModelConfig],
         rows = [r for r in all_results if r["model"] == model.name]
         if not rows:
             continue
-        n = len(rows)
+        # B2: mirror archive_results — invalid (purity-failed) runs are excluded
+        # from console score rollups so the console agrees with summary.json.
+        # The cost ledger still spans ALL rows for full disclosure.
+        scored_rows = [r for r in rows if is_scorable(r)]
+        n = len(scored_rows)
+        invalid_n = len(rows) - n
         line = f"{model.name:<20}"
         for crit_name in all_criterion_names:
             passed = sum(
-                1 for r in rows
+                1 for r in scored_rows
                 if any(c["name"] == crit_name and c["passed"] for c in r.get("criteria", []))
             )
             applicable = sum(
-                1 for r in rows
+                1 for r in scored_rows
                 if any(c["name"] == crit_name for c in r.get("criteria", []))
             )
             if applicable > 0:
@@ -830,13 +905,15 @@ def print_summary(all_results: list[dict], models: list[ModelConfig],
             else:
                 line += f" | {'n/a':<14}"
         all_pass = sum(
-            1 for r in rows
+            1 for r in scored_rows
             if all(c["passed"] for c in r.get("criteria", []))
             and len(r.get("criteria", [])) > 0
         )
         avg_cost = nullable_mean(r["computed_cost_usd"] for r in rows)
         avg_label = f"${avg_cost:.3f}" if avg_cost is not None else "included"
         line += f" | {all_pass}/{n:<6} | {avg_label}"
+        if invalid_n:
+            line += f"  [excluded {invalid_n} invalid]"
         print(line)
 
     # --- Summary by case (mode) ---
@@ -856,15 +933,18 @@ def print_summary(all_results: list[dict], models: list[ModelConfig],
             rows = [r for r in all_results if r["case_id"] == tc.id]
             if not rows:
                 continue
-            n = len(rows)
+            # B2: same invalid-run exclusion as the per-model table above.
+            scored_rows = [r for r in rows if is_scorable(r)]
+            n = len(scored_rows)
+            invalid_n = len(rows) - n
             line = f"{tc.id:<8} | {tc.subcategory:<30}"
             for crit_name in all_criterion_names:
                 passed = sum(
-                    1 for r in rows
+                    1 for r in scored_rows
                     if any(c["name"] == crit_name and c["passed"] for c in r.get("criteria", []))
                 )
                 applicable = sum(
-                    1 for r in rows
+                    1 for r in scored_rows
                     if any(c["name"] == crit_name for c in r.get("criteria", []))
                 )
                 if applicable > 0:
@@ -872,11 +952,13 @@ def print_summary(all_results: list[dict], models: list[ModelConfig],
                 else:
                     line += f" | {'n/a':<14}"
             all_pass = sum(
-                1 for r in rows
+                1 for r in scored_rows
                 if all(c["passed"] for c in r.get("criteria", []))
                 and len(r.get("criteria", [])) > 0
             )
             line += f" | {all_pass}/{n:<6}"
+            if invalid_n:
+                line += f"  [excluded {invalid_n} invalid]"
             print(line)
 
     # --- Subagent behavior summary ---

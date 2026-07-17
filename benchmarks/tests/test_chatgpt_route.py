@@ -58,6 +58,15 @@ PREEXISTING_MODEL_KEYS = {
     "gpt-54-mini",
 }
 
+# ChatGPT-subscription registry keys (Luna since 2026-07-15; Terra + Sol added
+# 2026-07-17 for the G1R battery). Kept separate from PREEXISTING_MODEL_KEYS so
+# the openrouter/anthropic identity assertion stays independent of this lane.
+CHATGPT_SUBSCRIPTION_KEYS = {
+    "gpt-56-luna-chatgpt",
+    "gpt-56-terra-chatgpt",
+    "gpt-56-sol-chatgpt",
+}
+
 
 def coherent_env(**overrides):
     env = {
@@ -113,7 +122,9 @@ class ModelRegistryTests(unittest.TestCase):
 
     def test_preexisting_model_keys_are_identical(self):
         models = self.load_all()
-        self.assertEqual(PREEXISTING_MODEL_KEYS, set(models) - {"gpt-56-luna-chatgpt"})
+        self.assertEqual(
+            PREEXISTING_MODEL_KEYS, set(models) - CHATGPT_SUBSCRIPTION_KEYS
+        )
 
     def test_explicit_key_selects_chatgpt_luna(self):
         models = self.load_all()
@@ -140,7 +151,55 @@ class ModelRegistryTests(unittest.TestCase):
         models = self.load_all()
         self.assertEqual(8, len(filter_models(models, provider="anthropic")))
         self.assertEqual(17, len(filter_models(models, provider="openrouter")))
-        self.assertEqual(1, len(filter_models(models, provider="chatgpt-subscription")))
+        # Luna + Terra + Sol on the ChatGPT-subscription lane (2026-07-17).
+        self.assertEqual(3, len(filter_models(models, provider="chatgpt-subscription")))
+
+    def test_terra_and_sol_chatgpt_entries_mirror_luna(self):
+        models = self.load_all()
+        expected = {
+            "gpt-56-terra-chatgpt": "gpt-5.6-terra",
+            "gpt-56-sol-chatgpt": "gpt-5.6-sol",
+        }
+        for key, wire_id in expected.items():
+            selected = filter_models(models, [key])
+            self.assertEqual(1, len(selected), key)
+            entry = selected[0]
+            self.assertEqual(wire_id, entry.id)
+            self.assertEqual("chatgpt-subscription", entry.provider)
+            self.assertEqual(370_000, entry.context_window_tokens)
+            self.assertEqual("high", entry.effort_level)
+            self.assertEqual("not_separately_billed", entry.actual_billing_treatment)
+            prices = entry.api_equivalent_pricing
+            self.assertEqual(LUNA_LONG_CONTEXT_THRESHOLD, prices["threshold_input_tokens"])
+            self.assertEqual(LUNA_SHORT_CONTEXT_RATES, prices["short_context"])
+            self.assertEqual(LUNA_LONG_CONTEXT_RATES, prices["long_context"])
+            # Purity selectors all pinned to the bare wire ID.
+            for selector in (
+                "ANTHROPIC_DEFAULT_OPUS_MODEL",
+                "ANTHROPIC_DEFAULT_SONNET_MODEL",
+                "CLAUDE_CODE_SUBAGENT_MODEL",
+            ):
+                self.assertEqual(wire_id, entry.env_overrides[selector])
+            # Fail-closed local route overlay is applied identically to Luna.
+            self.assertEqual(
+                "http://127.0.0.1:4141", entry.env_overrides["ANTHROPIC_BASE_URL"]
+            )
+            self.assertEqual(
+                "daaf-shim-local", entry.env_overrides["ANTHROPIC_AUTH_TOKEN"]
+            )
+
+    def test_terra_and_sol_pass_batch_route_preflight(self):
+        models = self.load_all()
+        selected = filter_models(
+            models, ["gpt-56-terra-chatgpt", "gpt-56-sol-chatgpt"]
+        )
+        opener = Mock(return_value=FakeResponse(healthy_payload()))
+        snapshots = preflight_models(selected, environ=coherent_env(), opener=opener)
+        self.assertEqual(
+            {"gpt-56-terra-chatgpt", "gpt-56-sol-chatgpt"}, set(snapshots)
+        )
+        # One shared /health round-trip covers all selected subscription models.
+        self.assertEqual(1, opener.call_count)
 
     def test_loading_registry_does_not_call_network(self):
         with patch("benchmarks.harness.route_provenance.urlopen") as network:

@@ -43,6 +43,7 @@ from benchmarks.harness.artifacts import (
     console_billing_label,
     cost_summary,
     format_coverage,
+    manifest_provenance,
     model_manifest_entry,
     nullable_mean,
     run_preflight,
@@ -236,6 +237,10 @@ def archive_results(all_results: list[dict], models: list[ModelConfig],
         "benchmark": "post_confirmation",
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "daaf_git_sha": git_sha,
+        **manifest_provenance(
+            golden_checkpoints=[tc.golden_checkpoint for tc in test_cases],
+            run_records=all_results,
+        ),
         "config": {
             "reps": args.reps,
             "parallel": not args.sequential,
