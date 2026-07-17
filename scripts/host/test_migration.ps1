@@ -462,6 +462,9 @@ $script:UpdateRan = $false              # did a driven update_daaf.ps1 run (auto
 $script:ClassEPlanted = $false          # Class E host-script drift marker planted?
 $script:UpdateOut = ""                  # capture file for the driven update (auto mode)
 $script:HarnessAddedSafeDir = $false    # did the harness add the /daaf safe.directory exemption (Phase 3)?
+$script:HarnessRepairedOwnership = $false  # did the harness chown the Era-1 payload to 1000:1000 (ownership window)?
+$script:OrigOwnerUid = ""               # volume payload owner uid captured at ownership-window OPEN
+$script:OrigOwnerGid = ""               # volume payload owner gid captured at ownership-window OPEN
 
 function Write-SummaryOnce {
     # Emit the machine-readable summary exactly ONCE, as the final stdout line, so
@@ -1559,6 +1562,47 @@ if ($TestEra -eq "1") {
 
 Write-Host ""
 
+# --- Harness volume ownership repair window (OPEN) ---
+# Round-6 field evidence (Mac + Windows): the documented Era-1 install leaves
+# the volume payload owned by root (busybox cp -a preserves the bind mount's
+# presented owner; the v1.0.0 compose has no daaf-init repair service -- that
+# arrived in v2.0.0), while the container runs as non-root uid 1000. Phase 4-5
+# fixture planting therefore cannot write /daaf on the v1.0.0 vector. The
+# harness repairs ownership HERE -- after the phase-3 verify, which stays on
+# the untouched broken state -- so fixtures plant through the same code paths
+# as every other era, then RESTORES the captured original owner immediately
+# before migrate runs, handing migrate the field-faithful broken state
+# (root-owned payload INCLUDING user work) so migrate's own section-4c
+# ownership repair is exercised end-to-end. Era-1 only: v2.x payloads are
+# repaired by their own compose's daaf-init on startup and are never touched.
+# Mirrors the safe.directory window pattern above (OPEN/CLOSE, fatal on
+# window-management failure -> INFRA). Owner capture uses a scoped
+# EAP=Continue (PS 5.1: redirecting a native command's stderr under EAP=Stop
+# turns routine stderr into a terminating error) and stringifies the output.
+if ($TestEra -eq "1") {
+    $savedEAP = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    $script:OrigOwnerUid = ((docker run --rm -v "${VolumeName}:/daaf" busybox stat -c '%u' /daaf 2>$null) | ForEach-Object { "$_" } | Out-String).Trim() -replace "`r", ""
+    $script:OrigOwnerGid = ((docker run --rm -v "${VolumeName}:/daaf" busybox stat -c '%g' /daaf 2>$null) | ForEach-Object { "$_" } | Out-String).Trim() -replace "`r", ""
+    $ErrorActionPreference = $savedEAP
+    if ([string]::IsNullOrWhiteSpace($script:OrigOwnerUid) -or [string]::IsNullOrWhiteSpace($script:OrigOwnerGid)) {
+        Write-Error "Could not read the volume payload's owner (busybox stat) -- cannot manage the ownership repair window."
+        exit 1
+    }
+    if ($script:OrigOwnerUid -eq "1000") {
+        Write-ObserveNote "Volume ownership repair window: payload already owned by uid 1000 (container user) on this host, so the harness neither repairs nor later restores ownership."
+    } else {
+        $rc = Invoke-NativeLogged { docker run --rm -v "${VolumeName}:/daaf" busybox chown -R 1000:1000 /daaf }
+        if ($rc -eq 0) {
+            $script:HarnessRepairedOwnership = $true
+            Write-ObserveNote "Volume ownership repair window OPENED (harness chowned the payload from $($script:OrigOwnerUid):$($script:OrigOwnerGid) to 1000:1000) so Era-1 fixture planting in phases 4-5 can write /daaf; the original owner is restored before migrate runs so migrate's own section-4c ownership repair is still exercised end-to-end on the v1.0.0 vector."
+        } else {
+            Write-Error "Could not repair the volume payload ownership (busybox chown) -- Era-1 fixture planting cannot write /daaf, so the vector cannot proceed."
+            exit 1
+        }
+    }
+}
+
 # =====================================================================
 # PHASE 4: Simulate User Work (Committed)
 # =====================================================================
@@ -1818,6 +1862,25 @@ if (Test-Path $ClassDPath) {
 if ($script:HarnessAddedSafeDir) {
     Invoke-ContainerExec git config --global --unset-all safe.directory '^/daaf$'
     Write-ObserveNote "Git safe.directory exemption window CLOSED (harness removed its /daaf entry) immediately before invoking migrate, so migrate's own section-4b safe.directory fix runs on the v1.0.0 vector instead of being masked by harness instrumentation."
+}
+
+# --- Harness volume ownership repair window (CLOSE) ---
+# Restore the owner captured at OPEN, immediately BEFORE migrate is invoked --
+# but ONLY if the harness repaired it (if the payload was already uid 1000,
+# leave it). Everything under /daaf -- including the fixtures planted in
+# phases 4-5 -- reverts to the install's original owner, handing migrate the
+# exact broken state a real stranded v1.0.0 user presents (root-owned payload
+# with user work), so migrate's own section-4c ownership repair is exercised
+# end-to-end. Restore failure is fatal: proceeding would test migrate against
+# a silently pre-repaired volume and could go green without exercising the fix.
+if ($script:HarnessRepairedOwnership) {
+    $rc = Invoke-NativeLogged { docker run --rm -v "${VolumeName}:/daaf" busybox chown -R "$($script:OrigOwnerUid):$($script:OrigOwnerGid)" /daaf }
+    if ($rc -eq 0) {
+        Write-ObserveNote "Volume ownership repair window CLOSED (harness restored the payload owner to $($script:OrigOwnerUid):$($script:OrigOwnerGid)) immediately before invoking migrate, so migrate's own section-4c ownership repair runs on the v1.0.0 vector instead of being masked by harness instrumentation."
+    } else {
+        Write-Error "Could not restore the volume payload owner (busybox chown) -- migrate would run against a harness-repaired volume, masking its own section-4c ownership repair. Cannot proceed."
+        exit 1
+    }
 }
 
 # Run migration non-interactively via the hardened child-process path. The copy
@@ -2164,6 +2227,16 @@ Test-Check "Uncommitted framework changes preserved" ($LASTEXITCODE -eq 0)
 # declined, migration alone must not have touched it either way.
 Invoke-ContainerExec grep -q uncommitted-stash-check /daaf/research/2026-01-15_Test_Analysis/README.md
 Test-Check "Dirty tracked change preserved (updater stash/pop path)" ($LASTEXITCODE -eq 0)
+
+# Check 7c: Post-migration volume writability (round-6 regression tripwire).
+# The v1.0.0 era's documented install left the payload root-owned (no
+# daaf-init repair service until v2.0.0), blocking the container user from
+# writing /daaf at all. After migration the volume must be writable by the
+# container user on EVERY vector: migrate's section-4c repair (Era 1) and the
+# modern compose's daaf-init (all eras, every startup) both guarantee it.
+# The bash -c payload contains no double quotes (PS 5.1 argv rule).
+Invoke-ContainerExec bash -c 'touch /daaf/.daaf-write-probe && rm -f /daaf/.daaf-write-probe'
+Test-Check "Post-migration container user can write /daaf (ownership repaired)" ($LASTEXITCODE -eq 0)
 
 # Check 8: Committed SHA still in history
 $GitLog = Invoke-ContainerGit log --oneline

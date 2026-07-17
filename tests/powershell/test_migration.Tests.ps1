@@ -303,3 +303,49 @@ Describe "test_migration.ps1 field-run 5 finding 3b/3c pins" {
         $script:HarnessText | Should -Match ([regex]::Escape("ls -ldn /daaf /daaf/.git 2>&1 | ForEach-Object { `"`$_`" }"))
     }
 }
+
+# ============================================================================
+# Field-Run Triage Round 6 (2026-07-17): volume ownership repair window
+# ============================================================================
+# The documented Era-1 install leaves the volume payload root-owned (busybox
+# cp -a preserves the bind mount's presented owner; no daaf-init repair service
+# until v2.0.0), so phase 4-5 fixture plants cannot write /daaf as the
+# container's uid-1000 user. The harness repairs ownership after the phase-3
+# verify (OPEN), restores the captured original owner before migrate (CLOSE) so
+# migrate's own section-4c repair is exercised end-to-end, and a universal
+# phase-7 check asserts post-migration writability. Notes byte-identical to .sh.
+Describe "test_migration.ps1 field-run 6 ownership-window pins" {
+    BeforeAll {
+        . "$PSScriptRoot/TestHelper.ps1"
+        $script:HarnessText = Get-Content -Raw "$RepoRoot/scripts/host/test_migration.ps1"
+    }
+
+    It "opens the ownership window after the phase-3 verify and before phase-4 fixture plants" {
+        $idxVerify = $script:HarnessText.IndexOf('Era 1 state verified')
+        $idxOpen = $script:HarnessText.IndexOf('Volume ownership repair window OPENED')
+        $idxPhase4 = $script:HarnessText.IndexOf('Simulate committed user work')
+        $idxVerify | Should -BeGreaterThan 0
+        $idxOpen | Should -BeGreaterThan $idxVerify
+        $idxOpen | Should -BeLessThan $idxPhase4
+    }
+
+    It "restores the captured original owner (never hardcoded) before migrate, gated on the harness having repaired it" {
+        $script:HarnessText | Should -Match ([regex]::Escape('if ($script:HarnessRepairedOwnership) {'))
+        $script:HarnessText | Should -Match ([regex]::Escape('chown -R "$($script:OrigOwnerUid):$($script:OrigOwnerGid)" /daaf'))
+        $idxClose = $script:HarnessText.IndexOf('Volume ownership repair window CLOSED')
+        $idxMigrate = $script:HarnessText.IndexOf('Invoke-HardenedScriptAuto -Path (Join-Path $HostDir "migrate_daaf.ps1")')
+        $idxClose | Should -BeGreaterThan 0
+        $idxClose | Should -BeLessThan $idxMigrate
+    }
+
+    It "gates the window on Era 1, captures the owner under scoped EAP=Continue, with byte-identical notes" {
+        $script:HarnessText | Should -Match ([regex]::Escape("busybox stat -c '%u' /daaf"))
+        $script:HarnessText | Should -Match ([regex]::Escape('Volume ownership repair window OPENED (harness chowned the payload from'))
+        $script:HarnessText | Should -Match ([regex]::Escape('Volume ownership repair window CLOSED (harness restored the payload owner to'))
+    }
+
+    It "asserts post-migration writability on every vector with the twin-identical check string" {
+        $script:HarnessText | Should -Match ([regex]::Escape('Post-migration container user can write /daaf (ownership repaired)'))
+        $script:HarnessText | Should -Match ([regex]::Escape('touch /daaf/.daaf-write-probe && rm -f /daaf/.daaf-write-probe'))
+    }
+}

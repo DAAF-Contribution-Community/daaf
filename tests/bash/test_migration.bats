@@ -426,3 +426,68 @@ teardown() {
     assert_success
     [ "${output}" -eq 1 ]
 }
+
+# --- Field-run 6 pins (volume ownership repair window + writability check) ---
+# The documented Era-1 install leaves the volume payload root-owned (busybox
+# cp -a; no daaf-init service until v2.0.0), so phase 4-5 fixture plants cannot
+# write /daaf as the container's uid-1000 user. The harness repairs ownership
+# after the phase-3 verify (OPEN), restores the captured original owner before
+# migrate (CLOSE) so migrate's own section-4c repair is exercised end-to-end,
+# and a universal phase-7 check asserts post-migration writability.
+
+@test "pin: ownership window opens after phase-3 verify and before phase-4 fixture plants" {
+    local sh="${REPO_ROOT}/scripts/host/test_migration.sh"
+    local verify_ln open_ln phase4_ln
+    verify_ln=$(grep -n 'Era 1 state verified' "${sh}" | head -1 | cut -d: -f1)
+    open_ln=$(grep -n 'Volume ownership repair window OPENED' "${sh}" | head -1 | cut -d: -f1)
+    phase4_ln=$(grep -n 'Simulate committed user work' "${sh}" | head -1 | cut -d: -f1)
+    [ -n "${verify_ln}" ]
+    [ -n "${open_ln}" ]
+    [ -n "${phase4_ln}" ]
+    [ "${open_ln}" -gt "${verify_ln}" ]
+    [ "${open_ln}" -lt "${phase4_ln}" ]
+}
+
+@test "pin: ownership window restores the captured original owner before migrate is invoked" {
+    local sh="${REPO_ROOT}/scripts/host/test_migration.sh"
+    local close_ln migrate_ln
+    # The close is gated on HARNESS_REPAIRED_OWNERSHIP and restores the owner
+    # captured at OPEN (never a hardcoded 0:0), so a host whose payload was
+    # already uid 1000 is left untouched.
+    run grep -cF 'if [ "${HARNESS_REPAIRED_OWNERSHIP}" = "true" ]; then' "${sh}"
+    assert_success
+    [ "${output}" -eq 1 ]
+    run grep -cF 'chown -R "${ORIG_OWNER_UID}:${ORIG_OWNER_GID}" /daaf' "${sh}"
+    assert_success
+    [ "${output}" -eq 1 ]
+    close_ln=$(grep -n 'Volume ownership repair window CLOSED' "${sh}" | head -1 | cut -d: -f1)
+    migrate_ln=$(grep -n 'bash migrate_daaf.sh 2>&1 | tee' "${sh}" | head -1 | cut -d: -f1)
+    [ -n "${close_ln}" ]
+    [ -n "${migrate_ln}" ]
+    [ "${close_ln}" -lt "${migrate_ln}" ]
+}
+
+@test "pin: ownership window notes are byte-identical to the .ps1 twin and Era-1 gated" {
+    local sh="${REPO_ROOT}/scripts/host/test_migration.sh"
+    run grep -cF 'Volume ownership repair window OPENED (harness chowned the payload from' "${sh}"
+    assert_success
+    [ "${output}" -eq 1 ]
+    run grep -cF 'Volume ownership repair window CLOSED (harness restored the payload owner to' "${sh}"
+    assert_success
+    [ "${output}" -eq 1 ]
+    # Era-1 gating: the stat capture only runs inside the TEST_ERA=1 branch.
+    run grep -cF "busybox stat -c '%u' /daaf" "${sh}"
+    assert_success
+    [ "${output}" -eq 1 ]
+}
+
+@test "pin: post-migration writability check present in both outcome arms on every vector" {
+    local sh="${REPO_ROOT}/scripts/host/test_migration.sh"
+    # One pass arm + one fail arm, same description string as the .ps1 twin.
+    run grep -cF 'Post-migration container user can write /daaf (ownership repaired)' "${sh}"
+    assert_success
+    [ "${output}" -eq 2 ]
+    run grep -cF 'touch /daaf/.daaf-write-probe && rm -f /daaf/.daaf-write-probe' "${sh}"
+    assert_success
+    [ "${output}" -eq 1 ]
+}

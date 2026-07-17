@@ -1275,6 +1275,44 @@ fi
 
 echo ""
 
+# --- Harness volume ownership repair window (OPEN) ---
+# Round-6 field evidence (Mac + Windows): the documented Era-1 install leaves
+# the volume payload owned by root (busybox cp -a preserves the bind mount's
+# presented owner; the v1.0.0 compose has no daaf-init repair service -- that
+# arrived in v2.0.0), while the container runs as non-root uid 1000. Phase 4-5
+# fixture planting therefore cannot write /daaf on the v1.0.0 vector. The
+# harness repairs ownership HERE -- after the phase-3 verify, which stays on
+# the untouched broken state -- so fixtures plant through the same code paths
+# as every other era, then RESTORES the captured original owner immediately
+# before migrate runs, handing migrate the field-faithful broken state
+# (root-owned payload INCLUDING user work) so migrate's own section-4c
+# ownership repair is exercised end-to-end. Era-1 only: v2.x payloads are
+# repaired by their own compose's daaf-init on startup and are never touched.
+# Mirrors the safe.directory window pattern above (OPEN/CLOSE, fatal on
+# window-management failure -> INFRA).
+HARNESS_REPAIRED_OWNERSHIP=false
+ORIG_OWNER_UID=""
+ORIG_OWNER_GID=""
+if [ "${TEST_ERA}" = "1" ]; then
+    ORIG_OWNER_UID=$(docker run --rm -v "${VOLUME_NAME}:/daaf" busybox stat -c '%u' /daaf 2>/dev/null | tr -d '\r' || true)
+    ORIG_OWNER_GID=$(docker run --rm -v "${VOLUME_NAME}:/daaf" busybox stat -c '%g' /daaf 2>/dev/null | tr -d '\r' || true)
+    if [ -z "${ORIG_OWNER_UID}" ] || [ -z "${ORIG_OWNER_GID}" ]; then
+        error "Could not read the volume payload's owner (busybox stat) -- cannot manage the ownership repair window."
+        exit 1
+    fi
+    if [ "${ORIG_OWNER_UID}" = "1000" ]; then
+        observe_note "Volume ownership repair window: payload already owned by uid 1000 (container user) on this host, so the harness neither repairs nor later restores ownership."
+    else
+        if docker run --rm -v "${VOLUME_NAME}:/daaf" busybox chown -R 1000:1000 /daaf; then
+            HARNESS_REPAIRED_OWNERSHIP=true
+            observe_note "Volume ownership repair window OPENED (harness chowned the payload from ${ORIG_OWNER_UID}:${ORIG_OWNER_GID} to 1000:1000) so Era-1 fixture planting in phases 4-5 can write /daaf; the original owner is restored before migrate runs so migrate's own section-4c ownership repair is still exercised end-to-end on the v1.0.0 vector."
+        else
+            error "Could not repair the volume payload ownership (busybox chown) -- Era-1 fixture planting cannot write /daaf, so the vector cannot proceed."
+            exit 1
+        fi
+    fi
+fi
+
 # =====================================================================
 # PHASE 4: Simulate User Work (Committed)
 # =====================================================================
@@ -1517,6 +1555,24 @@ fi
 if [ "${HARNESS_ADDED_SAFE_DIR}" = "true" ]; then
     container_exec git config --global --unset-all safe.directory '^/daaf$' 2>/dev/null || true
     observe_note "Git safe.directory exemption window CLOSED (harness removed its /daaf entry) immediately before invoking migrate, so migrate's own section-4b safe.directory fix runs on the v1.0.0 vector instead of being masked by harness instrumentation."
+fi
+
+# --- Harness volume ownership repair window (CLOSE) ---
+# Restore the owner captured at OPEN, immediately BEFORE migrate is invoked --
+# but ONLY if the harness repaired it (if the payload was already uid 1000,
+# leave it). Everything under /daaf -- including the fixtures planted in
+# phases 4-5 -- reverts to the install's original owner, handing migrate the
+# exact broken state a real stranded v1.0.0 user presents (root-owned payload
+# with user work), so migrate's own section-4c ownership repair is exercised
+# end-to-end. Restore failure is fatal: proceeding would test migrate against
+# a silently pre-repaired volume and could go green without exercising the fix.
+if [ "${HARNESS_REPAIRED_OWNERSHIP}" = "true" ]; then
+    if docker run --rm -v "${VOLUME_NAME}:/daaf" busybox chown -R "${ORIG_OWNER_UID}:${ORIG_OWNER_GID}" /daaf; then
+        observe_note "Volume ownership repair window CLOSED (harness restored the payload owner to ${ORIG_OWNER_UID}:${ORIG_OWNER_GID}) immediately before invoking migrate, so migrate's own section-4c ownership repair runs on the v1.0.0 vector instead of being masked by harness instrumentation."
+    else
+        error "Could not restore the volume payload owner (busybox chown) -- migrate would run against a harness-repaired volume, masking its own section-4c ownership repair. Cannot proceed."
+        exit 1
+    fi
 fi
 
 # Run migration with the branch env var. Do NOT pipe input in: migrate_daaf.sh
@@ -1839,6 +1895,18 @@ if container_exec grep -q uncommitted-stash-check /daaf/research/2026-01-15_Test
     check "Dirty tracked change preserved (updater stash/pop path)" "0"
 else
     check "Dirty tracked change preserved (updater stash/pop path)" "1"
+fi
+
+# Check 7c: Post-migration volume writability (round-6 regression tripwire).
+# The v1.0.0 era's documented install left the payload root-owned (no
+# daaf-init repair service until v2.0.0), blocking the container user from
+# writing /daaf at all. After migration the volume must be writable by the
+# container user on EVERY vector: migrate's section-4c repair (Era 1) and the
+# modern compose's daaf-init (all eras, every startup) both guarantee it.
+if container_exec bash -c 'touch /daaf/.daaf-write-probe && rm -f /daaf/.daaf-write-probe'; then
+    check "Post-migration container user can write /daaf (ownership repaired)" "0"
+else
+    check "Post-migration container user can write /daaf (ownership repaired)" "1"
 fi
 
 # Check 8: Committed SHA still in history.
