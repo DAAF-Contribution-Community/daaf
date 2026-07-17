@@ -58,11 +58,31 @@
 #     content at all, so Claude Code always receives a well-formed message.
 #   * Structured single-line-per-request logging to stderr (never credentials or
 #     bodies). The manager script (start_shim.sh) redirects stderr to the log.
-#   * Backend-error diagnostics on every non-2xx: allowlisted headers + a
-#     scrubbed/trimmed body slice (v1.1.1/v1.1.2, unchanged).
+#   * Backend-error diagnostics on every non-2xx: status, exact structured
+#     type/code, mapped Anthropic type, and allowlisted headers — never body prose.
 #   * GET /health endpoint for the manager's idempotency/status checks.
 #
 # Changelog:
+#   v1.2.11 (2026-07-17): Correlated request-lifecycle observability and
+#     structured backend-error normalization. Every /v1/messages request now owns
+#     an internally generated 32-hex correlation ID in a ContextVar before body
+#     reading; the same ID is returned as x-daaf-request-id and annotates shim/httpx
+#     stderr records with a stable phase. Grep-stable lifecycle events cover parse,
+#     upstream attempts/retries/headers/first event, first downstream content,
+#     backend failure, disconnect, one terminal record, and one cleanup record with
+#     monotonic integer timings. Attempt accounting is updated before every actual
+#     Responses call, including raising/exhausted paths. Allowlisted upstream request
+#     IDs and normalized HTTP versions are recorded without replacing the local ID.
+#     Terminal semantic-frame and final-body-close sends are tracked independently as
+#     not_attempted/attempted/send_completed/skipped_disconnect/write_failed; an
+#     awaited send returning means only send_completed, never client receipt. A shared
+#     structured normalizer now maps context_length_exceeded to invalid_request_error,
+#     server_error to api_error, preserves real non-2xx status mapping, and emits only
+#     a scrubbed bounded message rather than serialized backend objects. First causal
+#     outcome wins, body-read disconnects are recognized, and cleanup failures remain
+#     visible without overwriting success/error. Retry policy, timeout/backoff values,
+#     pooling, heartbeat behavior, translation, cache, and tool sanitization are
+#     unchanged. SHIM_VERSION -> 1.2.11.
 #   v1.2.10 (2026-07-16): ChatGPT-lane error-contract fidelity + claude-slug
 #     fast-fail, from the first full live v1.2.8/v1.2.9 session (shim.log 14:15+).
 #     LIVE EVIDENCE: (1) the Codex subscription lane ACCEPTED a real 337,034-token
@@ -128,9 +148,11 @@
 #       final empty-body send raised _ClientDisconnected before the log line
 #       (0 req lines since v1.2.7 activation vs 6,701 before), misreporting
 #       completed requests as "client disconnected" and losing per-request
-#       usage/duration/stop accounting. The req line is now logged once
-#       message_stop is delivered, and a disconnect on the trailing empty-body
-#       frame is treated as normal completion. Disconnects BEFORE message_stop
+#       usage/duration/stop accounting. The req line is now logged once the
+#       awaited ASGI send for message_stop returns, and a disconnect on the
+#       trailing empty-body frame is treated as normal completion. That send
+#       completion is shim-level evidence, not proof of client receipt.
+#       Disconnects BEFORE message_stop
 #       keep the existing abort semantics. SHIM_VERSION -> 1.2.9.
 #   v1.2.8 (2026-07-16): Live-wire tolerance for the v1.2.7 strict validators.
 #     After v1.2.7 activated, EVERY real Codex tool-call turn died with a raised
@@ -595,13 +617,15 @@ import time
 import random
 import asyncio
 import logging
+import urllib.parse
 from collections import OrderedDict
+from contextvars import ContextVar
 
 import httpx
 import uvicorn
 
 # --- Config ---
-SHIM_VERSION = "1.2.10"
+SHIM_VERSION = "1.2.11"
 
 SHIM_PORT = int(os.environ.get("SHIM_PORT", "4141"))
 
@@ -765,17 +789,346 @@ BACKOFF_BASE = 0.5   # seconds; doubles each attempt
 BACKOFF_CAP = 8.0    # seconds; ceiling before jitter
 RETRY_AFTER_CAP = 30.0  # seconds; never honor an absurd Retry-After
 
-# v1.1.1: backend-error diagnostics. The status code alone cannot tell an
-# operator whether a 429 is insufficient_quota (unfunded project) or
-# rate_limit_exceeded (tier TPM/RPM), nor surface retry-after guidance — that
-# information lives in the JSON error body and the x-ratelimit-* headers. On
-# every backend non-2xx we log a bounded slice of both.
-ERR_BODY_MAXLEN = 500  # chars; truncate the logged error body to keep lines bounded
+# Backend-error diagnostics distinguish status plus exact structured type/code
+# (for example insufficient_quota versus rate_limit_exceeded) and retain only
+# allowlisted retry/rate-limit headers. Free-form response prose is never logged.
+ERR_BODY_MAXLEN = 500  # chars; bound locally generated diagnostic text
 # v1.2.7: cap one decoded Responses SSE data event before JSON parsing. A complete
 # terminal Responses object can legitimately contain a 64K-token answer plus tool
 # payloads, so 16 MiB is deliberately generous while still preventing an unbounded
 # upstream line from exhausting shim memory. The raw SSE transcript is never stored.
 MAX_RESPONSES_SSE_EVENT_BYTES = 16 * 1024 * 1024
+
+# v1.2.11 request-local lifecycle accounting. The mutable record is intentionally
+# stored as one ContextVar value: child tasks inherit the same record, while
+# concurrent requests receive distinct records established at the ASGI boundary.
+_SEND_STATES = frozenset({
+    "not_attempted", "attempted", "send_completed", "skipped_disconnect",
+    "write_failed",
+})
+_UPSTREAM_REQUEST_ID_HEADERS = (
+    "x-request-id", "request-id", "x-openai-request-id", "openai-request-id",
+)
+_UPSTREAM_REQUEST_ID_MAXLEN = 200
+_CLIENT_ERROR_MESSAGE_MAXLEN = 200
+_MACHINE_FIELD_VALUE_MAXLEN = 1000
+
+
+class _RequestLifecycleState:
+    def __init__(self):
+        self.req_id = uuid.uuid4().hex
+        self.started_at = time.monotonic()
+        self.phase = "request_read"
+        self.model = "-"
+        self.stream = None
+        self.message_count = 0
+        self.tool_count = 0
+        self.stop_reason = "-"
+        self.input_tokens = None
+        self.output_tokens = None
+        self.usage_source = "-"
+        self.tools_called = 0
+        self.effort_value = "-"
+        self.effort_source = "-"
+        self.reasoning_cache_misses = 0
+        self.attempts = 0
+        self.retries = 0
+        self.upstream_request_id = "-"
+        self.upstream_request_id_header = "-"
+        self.upstream_http_version = "unknown"
+        self.upstream_first_event_at = None
+        self.downstream_first_content_at = None
+        self.failure_phase = "-"
+        self.backend_type = "-"
+        self.backend_code = "-"
+        self.anthropic_error_type = "-"
+        self.backend_error_logged = False
+        self.outcome = None
+        self.disconnect_observed = False
+        self.disconnect_phase = "-"
+        self.disconnect_logged = False
+        self.terminal_frame_send = "not_attempted"
+        self.body_close_send = "not_attempted"
+        self.terminal_logged = False
+        self.cleanup_status = "not_started"
+        self.cleanup_error = "-"
+        self.cleanup_failures = 0
+        self.owned_stream_contexts = []
+        self.disconnect_watcher = None
+        self.cleanup_logged = False
+
+
+_REQUEST_STATE = ContextVar("shim_request_state", default=None)
+
+
+def _request_state():
+    return _REQUEST_STATE.get()
+
+
+def _elapsed_ms(state=None):
+    state = state or _request_state()
+    if state is None:
+        return 0
+    return max(0, int((time.monotonic() - state.started_at) * 1000))
+
+
+def _set_phase(phase):
+    state = _request_state()
+    if state is not None:
+        state.phase = phase
+
+
+def _machine_field_value(value):
+    # INTENT: serialize one lifecycle value as exactly one whitespace-delimited
+    #   key=value token, regardless of whether the source is backend-controlled.
+    # REASONING: UTF-8 URL percent encoding is deterministic and reversible with
+    #   urllib.parse.unquote for valid Unicode. The explicit backslashreplace policy
+    #   keeps serialization total for lone surrogate code units accepted from JSON,
+    #   preserving them as printable forensic \\uXXXX escapes. The deliberately narrow
+    #   safe alphabet preserves plain identifiers, integers, booleans, HTTP versions,
+    #   and effort source pairs while encoding every grammar delimiter: whitespace,
+    #   "=", "%", quotes, controls, backslash, and non-ASCII bytes. Sensitive text is
+    #   sanitized first so encoding can never obscure credential material rather than
+    #   removing it.
+    # ASSUMES: lifecycle keys and event names are source constants. Only values pass
+    #   here; callers must not construct untrusted field names.
+    sanitized = _sanitize_sensitive_text(
+        str(value), max_len=_MACHINE_FIELD_VALUE_MAXLEN
+    )
+    return urllib.parse.quote(
+        sanitized,
+        safe="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~/:",
+        errors="backslashreplace",
+    )
+
+
+def _lifecycle_event(name, **fields):
+    state = _request_state()
+    if state is None:
+        return
+    parts = ["event=%s" % name, "elapsed_ms=%d" % _elapsed_ms(state)]
+    for key, value in fields.items():
+        parts.append("%s=%s" % (key, _machine_field_value(value)))
+    log.info(" ".join(parts))
+
+
+def _scrub_metadata(value, max_len=_UPSTREAM_REQUEST_ID_MAXLEN):
+    if not isinstance(value, str):
+        return "-"
+    safe = _sanitize_sensitive_text(value, max_len=max_len)
+    return safe or "-"
+
+
+def _normalize_http_version(value):
+    normalized = str(value or "").upper()
+    return normalized if normalized in {"HTTP/1.0", "HTTP/1.1", "HTTP/2"} else "unknown"
+
+
+def _record_upstream_headers(response):
+    state = _request_state()
+    if state is None or response is None:
+        return
+    state.phase = "upstream_headers"
+    state.upstream_http_version = _normalize_http_version(response.http_version)
+    for name in _UPSTREAM_REQUEST_ID_HEADERS:
+        value = response.headers.get(name)
+        if value is not None:
+            state.upstream_request_id_header = name
+            state.upstream_request_id = _scrub_metadata(value)
+            break
+    _lifecycle_event(
+        "upstream_headers", status=response.status_code,
+        http_version=state.upstream_http_version,
+        upstream_req_id_header=state.upstream_request_id_header,
+        upstream_req_id=state.upstream_request_id,
+    )
+
+
+def _record_upstream_first_event():
+    state = _request_state()
+    if state is None or state.upstream_first_event_at is not None:
+        return
+    state.phase = "upstream_stream"
+    state.upstream_first_event_at = time.monotonic()
+    _lifecycle_event("upstream_first_event")
+
+
+def _record_downstream_first_content():
+    state = _request_state()
+    if state is None or state.downstream_first_content_at is not None:
+        return
+    state.phase = "downstream_stream"
+    state.downstream_first_content_at = time.monotonic()
+    _lifecycle_event("downstream_first_content")
+
+
+def _record_attempt(transport):
+    state = _request_state()
+    if state is None:
+        return
+    state.phase = "upstream_request"
+    state.attempts += 1
+    _lifecycle_event("upstream_attempt", attempt=state.attempts, transport=transport)
+
+
+def _record_retry(reason):
+    state = _request_state()
+    if state is None:
+        return
+    state.phase = "upstream_retry"
+    state.retries += 1
+    _lifecycle_event("upstream_retry", retry=state.retries, reason=reason)
+
+
+def _record_disconnect(phase):
+    state = _request_state()
+    if state is None:
+        return
+    state.disconnect_observed = True
+    if state.disconnect_phase == "-":
+        state.disconnect_phase = phase
+    if state.outcome is None:
+        state.outcome = "disconnect"
+    if not state.disconnect_logged:
+        state.disconnect_logged = True
+        state.phase = "disconnect"
+        _lifecycle_event(
+            "disconnect", observed_phase=state.disconnect_phase,
+            detail="ASGI http.disconnect observed",
+        )
+
+
+def _record_backend_error(error_type="api_error", backend_type="-", backend_code="-",
+                          phase=None):
+    state = _request_state()
+    if state is None:
+        return
+    if state.outcome is None or state.outcome == "disconnect":
+        state.outcome = "error"
+    if state.failure_phase == "-":
+        state.failure_phase = phase or state.phase
+    if not state.backend_error_logged:
+        state.backend_type = _scrub_metadata(backend_type)
+        state.backend_code = _scrub_metadata(backend_code)
+        state.anthropic_error_type = error_type
+        state.phase = "backend_error"
+        state.backend_error_logged = True
+        _lifecycle_event(
+            "backend_error", backend_type=state.backend_type,
+            backend_code=state.backend_code, anthropic_type=error_type,
+            failure_phase=state.failure_phase,
+        )
+
+
+def _mark_success():
+    state = _request_state()
+    if state is not None and (
+        state.outcome is None
+        or (
+            state.outcome == "disconnect"
+            and state.terminal_frame_send == "send_completed"
+        )
+    ):
+        # A disconnect observed in the same event-loop turn as a completed terminal
+        # send is post-terminal evidence. The semantic response already completed;
+        # only a cancellation that prevents terminal completion remains disconnect.
+        state.outcome = "success"
+
+
+def _mark_error(phase=None, error_type=None):
+    state = _request_state()
+    if state is None:
+        return
+    if state.outcome is None or state.outcome == "disconnect":
+        state.outcome = "error"
+    if state.failure_phase == "-":
+        state.failure_phase = phase or state.phase
+    if error_type is not None:
+        state.anthropic_error_type = error_type
+
+
+def _log_terminal_once():
+    state = _request_state()
+    if state is None or state.terminal_logged:
+        return
+    state.terminal_logged = True
+    if state.outcome is None:
+        state.outcome = "disconnect" if state.disconnect_observed else "error"
+    if state.disconnect_observed:
+        if state.terminal_frame_send == "not_attempted":
+            state.terminal_frame_send = "skipped_disconnect"
+        if state.body_close_send == "not_attempted":
+            state.body_close_send = "skipped_disconnect"
+    state.phase = "terminal"
+    _lifecycle_event(
+        "terminal", outcome=state.outcome, model=state.model,
+        stream=("y" if state.stream else "n") if state.stream is not None else "-",
+        msgs=state.message_count, tools=state.tool_count,
+        stop=state.stop_reason, input_tokens=state.input_tokens,
+        output_tokens=state.output_tokens, usage=state.usage_source,
+        tools_called=state.tools_called, effort="%s:%s" % (
+            state.effort_value, state.effort_source),
+        reasoning_cache_miss=state.reasoning_cache_misses,
+        attempts=state.attempts, retries=state.retries,
+        failure_phase=state.failure_phase,
+        terminal_frame_send=state.terminal_frame_send,
+        body_close_send=state.body_close_send,
+        disconnect=state.disconnect_observed,
+        disconnect_phase=state.disconnect_phase,
+        dur_ms=_elapsed_ms(state),
+    )
+
+
+def _record_cleanup_result(success, error_type=None):
+    """Merge one owned-resource settlement into monotonic request cleanup state."""
+
+    state = _request_state()
+    if state is None:
+        return
+    if success:
+        if state.cleanup_status == "not_started":
+            state.cleanup_status = "completed"
+        return
+    state.cleanup_failures += 1
+    if state.cleanup_status != "failed":
+        state.cleanup_status = "failed"
+        state.cleanup_error = _scrub_metadata(error_type, 100)
+
+
+def _register_owned_stream_context(stream_cm):
+    state = _request_state()
+    if state is not None:
+        state.owned_stream_contexts.append(stream_cm)
+
+
+def _release_owned_stream_context(stream_cm):
+    state = _request_state()
+    if state is None:
+        return
+    try:
+        state.owned_stream_contexts.remove(stream_cm)
+    except ValueError:
+        pass
+
+
+def _log_cleanup_once():
+    state = _request_state()
+    if state is None or state.cleanup_logged:
+        return
+    state.cleanup_logged = True
+    state.phase = "cleanup"
+    _lifecycle_event(
+        "cleanup", status=state.cleanup_status, error=state.cleanup_error,
+        failures=state.cleanup_failures, dur_ms=_elapsed_ms(state),
+    )
+
+
+class _RequestLogFilter(logging.Filter):
+    def filter(self, record):
+        state = _request_state()
+        record.req_id = state.req_id if state is not None else "-"
+        record.phase = state.phase if state is not None else "process"
+        return True
 
 
 class _ProtocolError(Exception):
@@ -830,13 +1183,16 @@ async def _settle_owned_task(task, cancel=False):
         return "exception", error, owner_cancellation
 
 
-async def _await_or_disconnect(operation, disconnect_event, discard_result=None):
+async def _await_or_disconnect(operation, disconnect_event, discard_result=None,
+                               prefer_completed=False):
     # INTENT: race one awaitable operation against this response's disconnect
     # event while leaving no child task, exception, or cancellation warning behind.
     # REASONING: passive flag checks cannot interrupt a blocked connect/read/sleep.
-    # Giving disconnect priority when both children finish in the same loop turn
-    # prevents any post-disconnect downstream write; a completed operation result is
-    # retained on _ClientDisconnected so resource-owning callers can close it.
+    # Upstream operations give disconnect priority when both children finish in the
+    # same loop turn, preventing post-disconnect work; downstream ASGI sends may opt
+    # to prefer a completed ASGI send so post-terminal disconnect evidence cannot
+    # relabel its send state as skipped. A discarded successful upstream result
+    # is retained on _ClientDisconnected so resource-owning callers can close it.
     # On outer cancellation, only a caller-supplied discard_result callback may close
     # a successful result: stream responses belong to their local context manager, so
     # a generic duck-typed aclose here would violate exactly-once context ownership.
@@ -865,6 +1221,14 @@ async def _await_or_disconnect(operation, disconnect_event, discard_result=None)
         raise
 
     if disconnect_task in done and disconnect_event.is_set():
+        # A downstream ASGI send that returned in the same loop turn is a completed
+        # ASGI send, not a pure cancellation. The send caller opts into this tie-break
+        # so a simultaneous http.disconnect cannot relabel that completed ASGI send as
+        # skipped. Upstream connect/read/sleep callers
+        # retain disconnect priority and therefore preserve prompt cancellation.
+        if prefer_completed and operation_task in done:
+            disconnect_task.result()
+            return operation_task.result()
         # Retrieve the disconnect wait result and cancel/await the operation. If
         # the operation completed in the same turn, retrieve its result/exception;
         # retain a successful result so the caller can close acquired resources.
@@ -922,32 +1286,75 @@ DIAG_HEADER_ALLOWLIST = (
     "x-ratelimit-remaining-tokens",
     "x-ratelimit-reset-tokens",
 )
-# Defense in depth: even though the allowlist excludes Authorization, a backend
-# could conceivably echo a secret inside its JSON error body. Compiled once at
-# import.
-#
-# v1.1.2: broaden beyond OpenAI `sk-` keys. Match the common secret prefixes
-# {sk, rk, org, proj, sess} followed by either separator, case-insensitively.
-# ASSUMES: the >=8 trailing-char floor plus the leading \b and mandatory
-#   separator keep this from over-matching normal prose. The floor captures
-#   every real credential (OpenAI keys are 40+ chars) while excluding short
-#   hyphenated tokens common in prose.
+# Defense in depth: even though credentials and Authorization are architecturally
+# excluded from logs, upstream-controlled metadata and error text receive one shared
+# sensitive-text pass before any truncation or lifecycle-field encoding.
 import re
-_SK_KEY_RE = re.compile(r"(?i)\b(sk|rk|org|proj|sess)[-_][A-Za-z0-9_-]{8,}")
+_SK_KEY_RE = re.compile(r"(?i)\b(?:sk|rk|org|proj|sess)[-_][A-Za-z0-9_-]{8,}")
+_AUTH_SCHEME_RE = re.compile(
+    r"(?i)\b((?:authorization\s*:\s*)?(?:bearer|basic))"
+    r"\s+([A-Za-z0-9._~+/=-]+)"
+)
+_JWT_RE = re.compile(
+    r"(?<![A-Za-z0-9_-])"
+    r"[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}"
+    r"(?![A-Za-z0-9_-])"
+)
+_SENSITIVE_ASSIGNMENT_RE = re.compile(
+    r"(?i)(?<![A-Za-z0-9_])"
+    r"(?P<key_quote>[\"']?)"
+    r"(?P<key>api_key|access_token|refresh_token|id_token|token|secret|password)"
+    r"(?P=key_quote)(?P<separator>\s*[:=]\s*)(?!\[REDACTED\])"
+    r"(?:\\\"[^\"\\\r\n]*\\\"|\"[^\"\r\n]*\"|'[^'\r\n]*'|"
+    r"[^\s,;\}\]\)&\\\"']+)"
+)
 
-# v1.2.2 hardening: control-character scrubber for the bare model string. The
-# model is logged verbatim as `model=%s` (grep-stable), so C0/DEL control bytes in
-# an inbound model could forge log lines (log injection). Strip \x00-\x1f and \x7f.
-# Compiled once at import. See _split_effort_suffix for the injection vector.
+# Controls are collapsed, not deleted, so hostile CR/LF cannot concatenate words
+# into a new credential-shaped value or forge a physical log line.
 _SCRUB_CTRL_RE = re.compile(r"[\x00-\x1f\x7f]")
 
 
+def _sanitize_sensitive_text(value, max_len=None):
+    # INTENT: provide one defense-in-depth sanitizer for every bounded log/client
+    #   text surface that may contain backend- or upstream-controlled bytes.
+    # REASONING: normalize controls/whitespace first, then redact specific credential
+    #   shapes from most structured to least structured: authorization schemes,
+    #   OpenAI-style prefixes, JWTs, and named assignments. Assignment values support
+    #   matching or absent key quotes plus quoted/unquoted values without consuming
+    #   surrounding comma/semicolon/bracket/ampersand text. Every regex is a single
+    #   bounded-character-class scan with no nested repetition or ambiguous alternation,
+    #   avoiding catastrophic backtracking on adversarial input. Truncation, when
+    #   requested, happens only after all redaction passes.
+    # ASSUMES: this is defense in depth rather than perfect secret detection; opaque
+    #   credentials without a recognized scheme, prefix, JWT shape, or assignment key
+    #   remain governed by the architectural rule that payloads/credentials are never
+    #   intentionally logged.
+    if not isinstance(value, str):
+        value = str(value)
+    safe = " ".join(_SCRUB_CTRL_RE.sub(" ", value).split())
+    safe = _AUTH_SCHEME_RE.sub(lambda match: "%s [REDACTED]" % match.group(1), safe)
+    safe = _SK_KEY_RE.sub("[REDACTED]", safe)
+    safe = _JWT_RE.sub("[REDACTED]", safe)
+
+    def _redact_assignment(match):
+        return "%s%s%s%s[REDACTED]" % (
+            match.group("key_quote"),
+            match.group("key"),
+            match.group("key_quote"),
+            match.group("separator"),
+        )
+
+    safe = _SENSITIVE_ASSIGNMENT_RE.sub(_redact_assignment, safe)
+    if max_len is not None:
+        safe = safe[:max_len]
+    return safe
+
+
 def _scrub_log_token(value):
-    # v1.2.8: control-char scrub for upstream-controlled identifiers (call_id /
-    # item_id) logged verbatim in wire-divergence WARNINGs — same log-injection
-    # class as the model-slug scrub above (a newline-bearing id would forge a
-    # log line). Non-strings pass through for %s to render (e.g. None).
-    return _SCRUB_CTRL_RE.sub("", value) if isinstance(value, str) else value
+    # v1.2.11: upstream-controlled identifiers in human diagnostic records receive
+    # the same control normalization and credential redaction as lifecycle metadata.
+    # Non-strings pass through for existing %s rendering semantics.
+    return _sanitize_sensitive_text(value) if isinstance(value, str) else value
 
 # v1.2.0: reasoning-item cache (module-level, bounded LRU).
 # INTENT: the Responses API pairs a `reasoning` output item with the
@@ -1016,9 +1423,13 @@ def _populate_reasoning_cache(output_items):
 # body logging anywhere.
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(message)s",
+    format="%(asctime)s %(levelname)s req_id=%(req_id)s phase=%(phase)s %(message)s",
     stream=sys.stderr,
 )
+# Attach to the existing stderr handler rather than adding a file or second stream.
+# Root-owned httpx records and shim records therefore share request correlation.
+for _stderr_handler in logging.getLogger().handlers:
+    _stderr_handler.addFilter(_RequestLogFilter())
 log = logging.getLogger("shim")
 
 # v1.2.5: emit the deferred SHIM_BACKEND_MODE warning now that `log` exists (the
@@ -2201,27 +2612,25 @@ def _sse(event, data):
 # --- v1.1.1: backend-error diagnostics helpers (UNCHANGED) ---
 
 def _scrub_and_trim_body(text):
-    # Produce a single-line, bounded, credential-safe rendering of a backend
-    # error body for logging.
-    # INTENT: give the operator the *diagnostic content* of the error (e.g.
-    #   OpenAI's {"error":{"code":"insufficient_quota",...}}) without ever
-    #   leaking key material or blowing up the log with a huge/multiline body.
-    # REASONING: scrub BEFORE truncation so a key that straddles the truncation
-    #   boundary can't survive as a half-token; collapse whitespace so each log
-    #   entry stays exactly one line (the shim's logging contract).
-    # ASSUMES: `text` is already a decoded str (callers decode bytes first).
+    # Produce a single-line, bounded rendering of locally generated protocol and
+    # transport diagnostic text. Raw backend bodies/messages must never reach here.
+    # INTENT: keep internal failure descriptions bounded and resistant to control
+    #   characters or credential-shaped values before logging/client presentation.
+    # REASONING: the architectural backend-prose boundary is structural extraction,
+    #   not regex redaction; this helper is defense in depth for local constants and
+    #   exception descriptions after that boundary.
+    # ASSUMES: callers do not pass free-form backend response prose.
     if not text:
         return ""
-    scrubbed = _SK_KEY_RE.sub("<REDACTED>", text)
-    collapsed = " ".join(scrubbed.split())
-    if len(collapsed) > ERR_BODY_MAXLEN:
-        collapsed = collapsed[:ERR_BODY_MAXLEN] + "...[truncated]"
-    return collapsed
+    scrubbed = _sanitize_sensitive_text(text)
+    if len(scrubbed) > ERR_BODY_MAXLEN:
+        scrubbed = scrubbed[:ERR_BODY_MAXLEN] + "...[truncated]"
+    return scrubbed
 
 
 def _diag_headers(headers):
     # Extract the allowlisted diagnostic headers into a compact "k=v k=v" string.
-    # INTENT: surface rate-limit / retry-after guidance next to the error body.
+    # INTENT: surface safe rate-limit / retry-after metadata without body prose.
     # REASONING: allowlist-only lookup means credential headers (Authorization)
     #   are structurally unreachable here — we never iterate all headers.
     # ASSUMES: `headers` is an httpx.Headers (case-insensitive .get()).
@@ -2229,7 +2638,7 @@ def _diag_headers(headers):
     for name in DIAG_HEADER_ALLOWLIST:
         val = headers.get(name)
         if val is not None:
-            parts.append(f"{name}={val}")
+            parts.append(f"{name}={_sanitize_sensitive_text(val)}")
     return " ".join(parts) if parts else "(none)"
 
 
@@ -2266,6 +2675,7 @@ async def _post_with_retry(url, headers, payload, disconnect_event):
         if disconnect_event.is_set():
             raise _ClientDisconnected()
         try:
+            _record_attempt("json")
             r = await _await_or_disconnect(
                 _client.post(url, headers=headers, json=payload),
                 disconnect_event,
@@ -2284,22 +2694,26 @@ async def _post_with_retry(url, headers, payload, disconnect_event):
             last_exc = e
             if attempt < MAX_RETRIES:
                 delay = _retry_delay(attempt, None)
+                _record_retry("transport")
                 log.warning("backend transport error (attempt %d/%d), retrying in %.2fs: %s",
                             attempt + 1, MAX_RETRIES + 1, delay, type(e).__name__)
                 await _await_or_disconnect(asyncio.sleep(delay), disconnect_event)
                 continue
+            _record_backend_error("api_error", backend_type=type(e).__name__,
+                                  phase="upstream_request")
             raise
+        _record_upstream_headers(r)
         if r.status_code in RETRY_STATUSES and attempt < MAX_RETRIES:
             delay = _retry_delay(attempt, r.headers.get("retry-after"))
-            # _client.post buffers the response body, so this diagnostic access is
-            # nonblocking; only the following retry delay requires an active race.
-            try:
-                err_body = _scrub_and_trim_body(r.text)
-            except Exception:
-                err_body = "(body unavailable)"
-            log.warning("backend %d (attempt %d/%d), retrying in %.2fs | headers: %s | body: %s",
-                        r.status_code, attempt + 1, MAX_RETRIES + 1, delay,
-                        _diag_headers(r.headers), err_body)
+            _record_retry("status_%d" % r.status_code)
+            # Retry diagnostics retain status, attempt, delay, and allowlisted headers
+            # only. Backend body prose is neither needed for retry policy nor safe to
+            # persist because it can reflect request-derived content.
+            log.warning(
+                "backend %d (attempt %d/%d), retrying in %.2fs | headers: %s",
+                r.status_code, attempt + 1, MAX_RETRIES + 1, delay,
+                _diag_headers(r.headers),
+            )
             await r.aclose()
             await _await_or_disconnect(asyncio.sleep(delay), disconnect_event)
             continue
@@ -2311,12 +2725,61 @@ async def _post_with_retry(url, headers, payload, disconnect_event):
 
 
 async def _close_stream_context(stream_cm):
-    """Best-effort close of one entered or partially entered stream context."""
+    """Close one stream context and expose a safe completion/failure result."""
 
     try:
         await stream_cm.__aexit__(None, None, None)
-    except Exception:
-        pass
+        return True, None
+    except Exception as error:
+        return False, type(error).__name__
+
+
+async def _settle_stream_context(stream_cm):
+    """Settle one owned stream exactly once and retain its cleanup evidence."""
+
+    close_task = asyncio.create_task(_close_stream_context(stream_cm))
+    kind, outcome, owner_cancellation = await _settle_owned_task(close_task)
+    if kind == "result":
+        cleanup_ok, cleanup_error = outcome
+    elif kind == "exception":
+        cleanup_ok, cleanup_error = False, type(outcome).__name__
+    else:
+        cleanup_ok, cleanup_error = False, "CancelledError"
+    _record_cleanup_result(cleanup_ok, cleanup_error)
+    _release_owned_stream_context(stream_cm)
+    if owner_cancellation is not None:
+        raise owner_cancellation
+    return cleanup_ok, cleanup_error
+
+
+async def _settle_request_resources(state):
+    """Settle every resource registered to one request before lifecycle logging."""
+
+    owner_cancellation = None
+    for stream_cm in list(state.owned_stream_contexts):
+        try:
+            await _settle_stream_context(stream_cm)
+        except asyncio.CancelledError as cancellation:
+            owner_cancellation = cancellation
+
+    watcher = state.disconnect_watcher
+    state.disconnect_watcher = None
+    if watcher is not None:
+        kind, outcome, watcher_cancellation = await _settle_owned_task(
+            watcher, cancel=True)
+        if kind == "exception":
+            _record_cleanup_result(False, type(outcome).__name__)
+        else:
+            # A watcher cancelled by its owner and a watcher that observed disconnect
+            # are both fully settled; neither is a cleanup failure.
+            _record_cleanup_result(True)
+        if watcher_cancellation is not None:
+            owner_cancellation = watcher_cancellation
+
+    if state.cleanup_status == "not_started":
+        _record_cleanup_result(True)
+    if owner_cancellation is not None:
+        raise owner_cancellation
 
 
 async def _open_backend_stream(url, headers, payload, disconnect_event):
@@ -2335,6 +2798,7 @@ async def _open_backend_stream(url, headers, payload, disconnect_event):
             raise _ClientDisconnected()
         stream_cm = _client.stream("POST", url, headers=headers, json=payload)
         try:
+            _record_attempt("sse")
             resp = await _await_or_disconnect(
                 stream_cm.__aenter__(),
                 disconnect_event,
@@ -2342,21 +2806,28 @@ async def _open_backend_stream(url, headers, payload, disconnect_event):
         except _ClientDisconnected:
             # Cancellation can race a just-completed __aenter__. Exiting the context
             # handles both partial and complete acquisition without a second owner.
-            await _close_stream_context(stream_cm)
+            await _settle_stream_context(stream_cm)
             raise
         except asyncio.CancelledError as cancellation:
             # Outer ASGI/process cancellation can arrive after __aenter__ completed but
             # before _await_or_disconnect returned its response. The opener still owns
             # stream_cm in that window, so it must close the discarded context exactly
             # once before preserving cancellation. A caller owns only a returned tuple.
-            close_task = asyncio.create_task(_close_stream_context(stream_cm))
-            await _settle_owned_task(close_task)
+            try:
+                await _settle_stream_context(stream_cm)
+            except asyncio.CancelledError:
+                pass
             raise cancellation
         except httpx.HTTPError as e:
-            await _close_stream_context(stream_cm)
+            await _settle_stream_context(stream_cm)
             if attempt >= MAX_RETRIES:
+                _record_backend_error(
+                    "api_error", backend_type=type(e).__name__,
+                    phase="upstream_request",
+                )
                 raise
             delay = _retry_delay(attempt, None)
+            _record_retry("transport")
             log.warning("backend stream transport error (attempt %d/%d), retrying in %.2fs: %s",
                         attempt + 1, MAX_RETRIES + 1, delay, type(e).__name__)
             attempt += 1
@@ -2364,18 +2835,25 @@ async def _open_backend_stream(url, headers, payload, disconnect_event):
             await _await_or_disconnect(asyncio.sleep(delay), disconnect_event)
             continue
 
+        _record_upstream_headers(resp)
         if (SHIM_BACKEND_MODE == "chatgpt" and resp.status_code == 401
                 and not did_401_refresh):
+            _record_retry("auth_401")
             log.warning("chatgpt backend stream 401; attempting one token refresh + reconnect")
-            await _close_stream_context(stream_cm)
+            await _settle_stream_context(stream_cm)
             rejected = _bearer_of(headers)
-            headers = await _await_or_disconnect(
-                _build_backend_headers(
-                    force_token_refresh=True,
-                    rejected_token=rejected,
-                ),
-                disconnect_event,
-            )
+            _set_phase("backend_authentication")
+            try:
+                headers = await _await_or_disconnect(
+                    _build_backend_headers(
+                        force_token_refresh=True,
+                        rejected_token=rejected,
+                    ),
+                    disconnect_event,
+                )
+            except RuntimeError:
+                _mark_error(phase="backend_authentication")
+                raise
             did_401_refresh = True
             # Token refresh is authentication recovery, not a transient replay;
             # preserve the retry budget and reconnect before semantic content.
@@ -2383,31 +2861,38 @@ async def _open_backend_stream(url, headers, payload, disconnect_event):
 
         if resp.status_code in RETRY_STATUSES and attempt < MAX_RETRIES:
             delay = _retry_delay(attempt, resp.headers.get("retry-after"))
+            _record_retry("status_%d" % resp.status_code)
             try:
-                raw_error = await _await_or_disconnect(
+                # Drain for connection-pool behavior, but never decode or retain the
+                # free-form backend body: it can reflect request-derived content.
+                await _await_or_disconnect(
                     resp.aread(),
                     disconnect_event,
                 )
-                err_body = _scrub_and_trim_body(
-                    raw_error.decode("utf-8", "replace"))
             except _ClientDisconnected:
-                await _close_stream_context(stream_cm)
+                await _settle_stream_context(stream_cm)
                 raise
             except Exception:
-                err_body = "(body unavailable)"
-            await _close_stream_context(stream_cm)
+                pass
+            await _settle_stream_context(stream_cm)
             attempt += 1
             retry_count = attempt
-            # Keep this existing non-secret diagnostic immediately adjacent to the
-            # raced delay. The real-subprocess regression uses the complete log line
-            # plus a bounded scheduler turn as evidence that the target phase is the
-            # retry sleep, not header acquisition or response-body consumption.
-            log.warning("backend stream %d (attempt %d/%d), retrying in %.2fs | headers: %s | body: %s",
-                        resp.status_code, attempt, MAX_RETRIES + 1, delay,
-                        _diag_headers(resp.headers), err_body)
+            # Keep the structural diagnostic adjacent to the raced delay. The
+            # real-subprocess regression uses the line plus a bounded scheduler turn
+            # as evidence that the target phase is retry sleep, not header acquisition.
+            log.warning(
+                "backend stream %d (attempt %d/%d), retrying in %.2fs | headers: %s",
+                resp.status_code, attempt, MAX_RETRIES + 1, delay,
+                _diag_headers(resp.headers),
+            )
             await _await_or_disconnect(asyncio.sleep(delay), disconnect_event)
             continue
 
+        # Transfer ownership to the request lifecycle before this tuple is visible to
+        # caller code. The outer ASGI finalizer can therefore settle the context even if
+        # cancellation or a downstream response-start failure lands before a branch-local
+        # try/finally begins.
+        _register_owned_stream_context(stream_cm)
         return resp, stream_cm, headers, retry_count, did_401_refresh
 
     raise httpx.HTTPError("stream retry loop exhausted")
@@ -2515,6 +3000,7 @@ async def _read_body(receive):
     while more:
         event = await receive()
         if event.get("type") == "http.disconnect":
+            _record_disconnect("body_read")
             break
         chunks += event.get("body", b"")
         more = event.get("more_body", False)
@@ -2524,14 +3010,46 @@ async def _read_body(receive):
 async def _send_json(send, status, obj, extra_headers=None):
     payload = json.dumps(obj).encode("utf-8")
     headers = [(b"content-type", b"application/json")]
+    state = _request_state()
+    if state is not None:
+        headers.append((b"x-daaf-request-id", state.req_id.encode("ascii")))
+        if status >= 400:
+            error_obj = obj.get("error") if isinstance(obj, dict) else None
+            error_type = error_obj.get("type") if isinstance(error_obj, dict) else None
+            # Fix the logical error cause before entering the downstream send phase.
+            # A response-start OSError can then use downstream_response_start only
+            # when no request/backend/auth cause was already first-causal.
+            _mark_error(error_type=error_type)
     if extra_headers:
         headers.extend(extra_headers)
+    _set_phase("downstream_response_start")
     await send({
         "type": "http.response.start",
         "status": status,
         "headers": headers,
     })
-    await send({"type": "http.response.body", "body": payload})
+    if state is not None:
+        state.terminal_frame_send = "attempted"
+        state.body_close_send = "attempted"
+    _record_downstream_first_content()
+    try:
+        await send({"type": "http.response.body", "body": payload})
+    except _ClientDisconnected:
+        if state is not None:
+            state.terminal_frame_send = "skipped_disconnect"
+            state.body_close_send = "skipped_disconnect"
+        _record_disconnect("json_body_send")
+        raise
+    except Exception:
+        if state is not None:
+            state.terminal_frame_send = "write_failed"
+            state.body_close_send = "write_failed"
+        raise
+    if state is not None:
+        state.terminal_frame_send = "send_completed"
+        state.body_close_send = "send_completed"
+        if status < 400:
+            _mark_success()
 
 
 # v1.2.10: canonical backend-HTTP-status -> Anthropic top-level error `type` map.
@@ -2565,6 +3083,81 @@ def _anthropic_error_type_for_status(status):
     # v1.2.10: exact-status lookup; unknown statuses and other 5xx fall back to the
     # generic api_error (which reads as retryable — correct for genuine 5xx).
     return _ANTHROPIC_ERROR_TYPE_BY_STATUS.get(status, "api_error")
+
+
+_BACKEND_ERROR_MESSAGE_BY_STATUS = {
+    400: "backend rejected the request",
+    401: "backend authentication failed",
+    403: "backend permission denied",
+    404: "backend resource not found",
+    429: "backend rate limit exceeded",
+    529: "backend overloaded",
+}
+
+
+def _backend_error_fields(payload):
+    # INTENT: retain only the structured error type/code needed for classification
+    #   and lifecycle metadata; free-form backend message/body prose is never returned.
+    # REASONING: backend error messages can reflect prompts, system text, tool schemas,
+    #   tool inputs, or opaque request material. Regex scrubbing cannot establish that
+    #   arbitrary prose is safe, so the durable boundary is structural extraction only.
+    # ASSUMES: exact type/code strings remain approved bounded metadata and are scrubbed
+    #   by lifecycle/log serializers before persistence.
+    root = payload if isinstance(payload, dict) else {}
+    nested = root.get("error") if isinstance(root.get("error"), dict) else root
+    if nested is root and isinstance(root.get("incomplete_details"), dict):
+        nested = root["incomplete_details"]
+    backend_type = nested.get("type") if isinstance(nested.get("type"), str) else "-"
+    backend_code = nested.get("code") if isinstance(nested.get("code"), str) else "-"
+    message = nested.get("message")
+    if isinstance(message, dict):
+        if backend_type == "-" and isinstance(message.get("type"), str):
+            backend_type = message["type"]
+        if backend_code == "-" and isinstance(message.get("code"), str):
+            backend_code = message["code"]
+    return backend_type, backend_code
+
+
+def _classify_backend_error(status, backend_code, backend_type):
+    # INTENT: map status > code > type to an Anthropic type and a fixed client message.
+    # REASONING: fixed classification-derived text preserves useful failure families
+    #   without reflecting any free-form backend response prose to clients or logs.
+    # ASSUMES: callers without a real non-2xx status pass None; unknown structured
+    #   values keep the historical api_error mapping and use one fixed fallback.
+    if status is not None and status >= 400:
+        anthropic_type = _anthropic_error_type_for_status(status)
+        if status in _BACKEND_ERROR_MESSAGE_BY_STATUS:
+            client_message = _BACKEND_ERROR_MESSAGE_BY_STATUS[status]
+        elif status >= 500:
+            client_message = "backend server error"
+        else:
+            client_message = "backend request failed"
+        return anthropic_type, client_message
+
+    code_norm = backend_code.strip().lower() if backend_code != "-" else ""
+    type_norm = backend_type.strip().lower() if backend_type != "-" else ""
+    if code_norm == "context_length_exceeded":
+        return "invalid_request_error", "backend context length exceeded"
+    if code_norm == "server_error":
+        return "api_error", "backend server error"
+    if type_norm == "context_length_exceeded":
+        return "invalid_request_error", "backend context length exceeded"
+    if type_norm == "server_error":
+        return "api_error", "backend server error"
+    return "api_error", "backend request failed"
+
+
+def _normalize_backend_error(payload, status=None, phase=None):
+    # Extract and persist only approved structural metadata. The client message is
+    # selected from local constants and never from payload.message or raw body text.
+    backend_type, backend_code = _backend_error_fields(payload)
+    anthropic_type, client_message = _classify_backend_error(
+        status, backend_code, backend_type)
+    _record_backend_error(
+        anthropic_type, backend_type=backend_type, backend_code=backend_code,
+        phase=phase,
+    )
+    return anthropic_type, client_message, backend_type, backend_code
 
 
 def _bearer_of(headers):
@@ -2663,6 +3256,7 @@ async def _iter_bounded_sse_data(resp, disconnect_event):
             payload, event_size, event_open = _consume_sse_line(
                 raw_line, data_lines, event_size, event_open)
             if payload is not None:
+                _record_upstream_first_event()
                 yield payload
     if line_buffer or event_open or data_lines:
         raise ValueError("upstream SSE ended before a blank-line event boundary")
@@ -2697,12 +3291,20 @@ async def _accumulate_terminal_response(resp, disconnect_event):
                 details = (response_obj.get("error")
                            or response_obj.get("incomplete_details")
                            or response_obj)
-                message = _scrub_and_trim_body(json.dumps(details))[:200]
-                return None, message or "backend response failed"
+                _error_type, message, _backend_type, _backend_code = \
+                    _normalize_backend_error(
+                        details,
+                        phase="upstream_stream",
+                    )
+                return None, message
             if etype == "error":
                 details = ev.get("error") or ev
-                message = _scrub_and_trim_body(json.dumps(details))[:200]
-                return None, message or "backend stream failed"
+                _error_type, message, _backend_type, _backend_code = \
+                    _normalize_backend_error(
+                        details,
+                        phase="upstream_stream",
+                    )
+                return None, message
     except _ProtocolError as error:
         return None, _scrub_and_trim_body(str(error))[:200] or "backend protocol error"
     except ValueError as error:
@@ -2723,9 +3325,11 @@ async def _handle_messages(body, receive, send):
             event = await receive()
             if event.get("type") == "http.disconnect":
                 disconnect_event.set()
+                _record_disconnect("disconnect_watcher")
                 return
 
     # Decode Anthropic request. Malformed JSON -> 400.
+    _set_phase("request_parse")
     try:
         req = json.loads(body.decode("utf-8"))
     except (ValueError, UnicodeDecodeError) as e:
@@ -2733,6 +3337,63 @@ async def _handle_messages(body, receive, send):
         await _send_json(send, 400, {"type": "error", "error": {"type": "invalid_request_error", "message": "invalid JSON"}})
         return
 
+    # Validate only the structural boundary the existing translator depends on.
+    # The response is deliberately static: malformed request content must not be
+    # reflected into either client-visible errors or diagnostic logs.
+    _set_phase("request_validation")
+    invalid_structure = not isinstance(req, dict)
+    if not invalid_structure:
+        messages = req.get("messages", [])
+        invalid_structure = not isinstance(messages, list)
+        if not invalid_structure:
+            invalid_structure = any(not isinstance(message, dict) for message in messages)
+        if not invalid_structure:
+            invalid_structure = any(
+                "content" in message
+                and not isinstance(message.get("content"), (str, list))
+                for message in messages
+            )
+        if not invalid_structure:
+            invalid_structure = any(
+                isinstance(message.get("content"), list)
+                and any(
+                    isinstance(block, dict)
+                    and block.get("type") == "text"
+                    and not isinstance(block.get("text", ""), str)
+                    for block in message["content"]
+                )
+                for message in messages
+            )
+        if not invalid_structure and "tools" in req:
+            tools = req.get("tools")
+            invalid_structure = (
+                not isinstance(tools, list)
+                or any(not isinstance(tool, dict) for tool in tools)
+            )
+        if not invalid_structure and "model" in req:
+            invalid_structure = not isinstance(req.get("model"), str)
+        if not invalid_structure and req.get("system") is not None:
+            system = req.get("system")
+            invalid_structure = not isinstance(system, (str, list))
+            if not invalid_structure and isinstance(system, list):
+                invalid_structure = any(
+                    isinstance(block, dict)
+                    and block.get("type", "text") == "text"
+                    and not isinstance(block.get("text", ""), str)
+                    for block in system
+                )
+        if not invalid_structure and "max_tokens" in req:
+            max_tokens = req.get("max_tokens")
+            invalid_structure = type(max_tokens) is not int or max_tokens <= 0
+    if invalid_structure:
+        log.error("bad request structure")
+        await _send_json(send, 400, {"type": "error", "error": {
+            "type": "invalid_request_error",
+            "message": "invalid request structure",
+        }})
+        return
+
+    _set_phase("request_translation")
     stream = bool(req.get("stream", False))
     # v1.2.2: strip any "#<effort>" suffix from the inbound model up front, so the
     # BARE model is used everywhere it is consumed — the outbound backend payload,
@@ -2743,6 +3404,20 @@ async def _handle_messages(body, receive, send):
         _anthropic_to_responses_request(req, model, slug_effort_raw)
     n_msgs = len(responses_payload["input"])
     n_tools = len(responses_payload.get("tools", []))
+    state = _request_state()
+    if state is not None:
+        state.phase = "request_parsed"
+        state.model = model
+        state.stream = stream
+        state.message_count = n_msgs
+        state.tool_count = n_tools
+        state.effort_value = effort_value
+        state.effort_source = effort_source
+        state.reasoning_cache_misses = missing_reasoning
+    _lifecycle_event(
+        "request_parsed", model=model, stream="y" if stream else "n",
+        msgs=n_msgs, tools=n_tools,
+    )
 
     # v1.2.10: fast-fail a Claude-family model slug on the ChatGPT (Codex) lane
     # BEFORE any backend round-trip.
@@ -2801,31 +3476,52 @@ async def _handle_messages(body, receive, send):
     # makes an initial token refresh cancellable too, rather than waiting to begin
     # disconnect observation only after credentials are ready.
     watcher = asyncio.create_task(_watch_disconnect())
+    state = _request_state()
+    if state is not None:
+        state.disconnect_watcher = watcher
     downstream_send = send
 
     async def _send_connected(message):
         # Every write after watcher startup is gated by the same active signal.
         # This prevents terminal/error bytes from racing past a known disconnect.
+        state = _request_state()
+        is_body_close = (
+            message.get("type") == "http.response.body"
+            and not message.get("more_body", False)
+        )
+        if is_body_close and state is not None:
+            state.body_close_send = "attempted"
         if disconnect_event.is_set():
+            if is_body_close and state is not None:
+                state.body_close_send = "skipped_disconnect"
+            _record_disconnect("downstream_send")
             raise _ClientDisconnected()
-        await _await_or_disconnect(downstream_send(message), disconnect_event)
-
-    async def _stop_disconnect_watcher():
-        watcher.cancel()
         try:
-            await watcher
-        except (asyncio.CancelledError, Exception):
-            pass
+            await _await_or_disconnect(
+                downstream_send(message), disconnect_event,
+                prefer_completed=True,
+            )
+        except _ClientDisconnected:
+            if is_body_close and state is not None:
+                state.body_close_send = "skipped_disconnect"
+            _record_disconnect("downstream_send")
+            raise
+        except Exception:
+            if is_body_close and state is not None:
+                state.body_close_send = "write_failed"
+            raise
+        if is_body_close and state is not None:
+            state.body_close_send = "send_completed"
 
     send = _send_connected
     try:
+        _set_phase("backend_authentication")
         headers = await _await_or_disconnect(
             _build_backend_headers(),
             disconnect_event,
         )
     except _ClientDisconnected:
-        log.info("client disconnected during backend authentication")
-        await _stop_disconnect_watcher()
+        _record_disconnect("backend_authentication")
         return
     except RuntimeError as e:
         # chatgpt-mode auth store missing/unreadable, or a permanent refresh
@@ -2836,8 +3532,7 @@ async def _handle_messages(body, receive, send):
             await _send_json(send, 401, {"type": "error", "error": {
                 "type": "authentication_error", "message": str(e)}})
         except _ClientDisconnected:
-            log.info("client disconnected during backend authentication failure")
-        await _stop_disconnect_watcher()
+            _record_disconnect("backend_authentication_failure")
         return
     url = f"{SHIM_BACKEND_BASE_URL}/responses"
 
@@ -2892,14 +3587,31 @@ async def _handle_messages(body, receive, send):
                                 disconnect_event,
                             )
                         ).decode("utf-8", "replace")
-                        failure_message = (_scrub_and_trim_body(raw_err)[:200]
-                                           or "backend rejected the request")
+                        try:
+                            structured_error = json.loads(raw_err)
+                        except ValueError:
+                            structured_error = {}
+                        _error_type, failure_message, backend_type, backend_code = \
+                            _normalize_backend_error(
+                                structured_error, status=status,
+                                phase="upstream_headers",
+                            )
                     except _ClientDisconnected:
                         raise
                     except Exception:
-                        failure_message = "backend rejected the request"
-                    log.error("backend ChatGPT non-stream adapter error status=%d retries=%d | headers: %s | body: %s",
-                              status, retries, _diag_headers(resp.headers), failure_message)
+                        failure_message = _classify_backend_error(
+                            status, "-", "-")[1]
+                        backend_type = "-"
+                        backend_code = "-"
+                    log.error(
+                        "backend ChatGPT non-stream adapter error status=%d "
+                        "retries=%d backend_type=%s backend_code=%s "
+                        "anthropic_type=%s | headers: %s",
+                        status, retries, _scrub_metadata(backend_type),
+                        _scrub_metadata(backend_code),
+                        _anthropic_error_type_for_status(status),
+                        _diag_headers(resp.headers),
+                    )
                     if refreshed_401 and status == 401:
                         if not disconnect_event.is_set():
                             await _send_json(send, 401, {"type": "error", "error": {
@@ -2932,13 +3644,24 @@ async def _handle_messages(body, receive, send):
                 # Closing here promptly cancels reads after terminal/failure and also
                 # covers downstream disconnects and converter exceptions.
                 if stream_cm is not None:
-                    await _close_stream_context(stream_cm)
+                    await _settle_stream_context(stream_cm)
+                    stream_cm = None
 
             if disconnect_event.is_set():
                 return
             if anth is None:
-                safe_message = (_scrub_and_trim_body(failure_message or "")[:200]
-                                or "backend stream failed")
+                safe_message = (
+                    _scrub_and_trim_body(failure_message or "")[
+                        :_CLIENT_ERROR_MESSAGE_MAXLEN
+                    ] or "backend stream failed"
+                )
+                state = _request_state()
+                if state is not None and not state.backend_error_logged:
+                    _record_backend_error(
+                        _anthropic_error_type_for_status(backend_status)
+                        if backend_status is not None else "api_error",
+                        phase="upstream_stream",
+                    )
                 # v1.2.10: if the failure was a backend HTTP rejection, pass the real
                 # status through (mapped to the matching Anthropic error type) so a
                 # deterministic 400 (e.g. context_length_exceeded) is not retried by
@@ -2949,18 +3672,23 @@ async def _handle_messages(body, receive, send):
                         "type": _anthropic_error_type_for_status(backend_status),
                         "message": safe_message}})
                 else:
+                    state = _request_state()
+                    normalized_type = (
+                        state.anthropic_error_type
+                        if state is not None and state.anthropic_error_type != "-"
+                        else "api_error"
+                    )
                     await _send_json(send, 502, {"type": "error", "error": {
-                        "type": "api_error", "message": safe_message}})
+                        "type": normalized_type, "message": safe_message}})
                 return
             usage = anth["usage"]
             _calibrate_count_ratio(usage["input_tokens"], len(body))
-            dur = time.time() - t0
-            miss_suffix = f" reasoning_cache_miss={missing_reasoning}" if missing_reasoning > 0 else ""
-            log.info("req method=POST path=/v1/messages model=%s stream=n upstream=sse msgs=%d tools=%d "
-                     "dur=%.2fs stop=%s in=%s out=%s retries=%d effort=%s:%s%s",
-                     model, n_msgs, n_tools, dur, anth["stop_reason"],
-                     usage["input_tokens"], usage["output_tokens"], retries,
-                     effort_value, effort_source, miss_suffix)
+            state = _request_state()
+            if state is not None:
+                state.stop_reason = anth["stop_reason"]
+                state.input_tokens = usage["input_tokens"]
+                state.output_tokens = usage["output_tokens"]
+                state.usage_source = "backend"
             await _send_json(send, 200, anth)
             return
 
@@ -2981,8 +3709,10 @@ async def _handle_messages(body, receive, send):
             if SHIM_BACKEND_MODE == "chatgpt" and r.status_code == 401:
                 await r.aclose()
                 log.warning("chatgpt backend 401; attempting one token refresh + retry")
+                _record_retry("auth_401")
                 _rejected = _bearer_of(headers)
                 try:
+                    _set_phase("backend_authentication")
                     headers = await _build_backend_headers(
                         force_token_refresh=True, rejected_token=_rejected)
                 except RuntimeError as e:
@@ -3003,19 +3733,27 @@ async def _handle_messages(body, receive, send):
                         "type": "authentication_error", "message": _RELOGIN_MSG}})
                     return
             if r.status_code >= 400:
-                # v1.1.1/1.1.2: log a scrubbed, truncated backend body + allowlisted
-                # diagnostic headers so the operator can distinguish failure classes.
+                # Retain only structural classification metadata plus allowlisted
+                # headers. Free-form backend body/message prose is parsed in memory for
+                # exact type/code fields, then discarded without logging or reflection.
                 try:
-                    err_body = _scrub_and_trim_body(r.text)
-                except Exception:
-                    err_body = "(body unavailable)"
-                log.error("backend error status=%d retries=%d | headers: %s | body: %s",
-                          r.status_code, retries, _diag_headers(r.headers), err_body)
-                try:
-                    client_msg = r.text[:500]
-                except Exception:
-                    client_msg = "backend error (body unavailable)"
-                await _send_json(send, r.status_code, {"type": "error", "error": {"type": "api_error", "message": client_msg}})
+                    structured_error = json.loads(r.text)
+                except (Exception, ValueError):
+                    structured_error = {}
+                error_type, client_msg, backend_type, backend_code = \
+                    _normalize_backend_error(
+                        structured_error, status=r.status_code,
+                        phase="upstream_headers",
+                    )
+                log.error(
+                    "backend error status=%d retries=%d backend_type=%s "
+                    "backend_code=%s anthropic_type=%s | headers: %s",
+                    r.status_code, retries, _scrub_metadata(backend_type),
+                    _scrub_metadata(backend_code), error_type,
+                    _diag_headers(r.headers),
+                )
+                await _send_json(send, r.status_code, {"type": "error", "error": {
+                    "type": error_type, "message": client_msg}})
                 return
             try:
                 anth = _responses_to_anthropic(r.json(), model)
@@ -3023,27 +3761,23 @@ async def _handle_messages(body, receive, send):
                     KeyError, ValueError) as error:
                 log.error("messages non-stream conversion error: %s",
                           type(error).__name__)
+                _record_backend_error(
+                    "api_error", backend_type=type(error).__name__,
+                    phase="response_conversion",
+                )
                 await _send_json(send, 502, {"type": "error", "error": {
                     "type": "api_error",
                     "message": "backend response conversion failed"}})
                 return
             usage = anth["usage"]
-            # v1.2.1: feed the count_tokens calibrator. Pair the backend's
-            # reported input_tokens with the inbound Anthropic body size (len(body)
-            # — the raw bytes Claude Code POSTed for THIS request) so the EMA
-            # learns this session's true tokens-per-byte ratio.
+            # v1.2.1: feed the count_tokens calibrator from successful usage.
             _calibrate_count_ratio(usage["input_tokens"], len(body))
-            dur = time.time() - t0
-            # HARDENING (structured log line): one line, no bodies, no creds.
-            # v1.2.2: effort=<value>:<source> surfaces the resolved reasoning effort
-            # and which precedence tier won (inbound|slug|env|default). `model` is
-            # the suffix-stripped slug.
-            miss_suffix = f" reasoning_cache_miss={missing_reasoning}" if missing_reasoning > 0 else ""
-            log.info("req method=POST path=/v1/messages model=%s stream=n msgs=%d tools=%d "
-                     "dur=%.2fs stop=%s in=%s out=%s retries=%d effort=%s:%s%s",
-                     model, n_msgs, n_tools, dur, anth["stop_reason"],
-                     usage["input_tokens"], usage["output_tokens"], retries,
-                     effort_value, effort_source, miss_suffix)
+            state = _request_state()
+            if state is not None:
+                state.stop_reason = anth["stop_reason"]
+                state.input_tokens = usage["input_tokens"]
+                state.output_tokens = usage["output_tokens"]
+                state.usage_source = "backend"
             await _send_json(send, 200, anth)
             return
 
@@ -3094,7 +3828,8 @@ async def _handle_messages(body, receive, send):
         # complete message). Instead we surface the failure to the client following
         # Anthropic streaming error semantics — an `error` SSE event — and stop.
         stream_failed = False
-        failure_message = "backend stream failed"   # bounded, scrubbed at set time
+        failure_message = "backend stream failed"   # fixed local/classification text only
+        failure_error_type = "api_error"
         saw_terminal_response = False
         failure_finalized = False
         input_tokens = None
@@ -3104,7 +3839,24 @@ async def _handle_messages(body, receive, send):
         retries = 0
 
         async def emit(ev, data):
-            await send({"type": "http.response.body", "body": _sse(ev, data), "more_body": True})
+            state = _request_state()
+            is_terminal = ev in ("message_stop", "error")
+            if is_terminal and state is not None:
+                state.terminal_frame_send = "attempted"
+            _record_downstream_first_content()
+            try:
+                await send({"type": "http.response.body", "body": _sse(ev, data), "more_body": True})
+            except _ClientDisconnected:
+                if is_terminal and state is not None:
+                    state.terminal_frame_send = "skipped_disconnect"
+                _record_disconnect("terminal_frame_send" if is_terminal else "content_send")
+                raise
+            except Exception:
+                if is_terminal and state is not None:
+                    state.terminal_frame_send = "write_failed"
+                raise
+            if is_terminal and state is not None:
+                state.terminal_frame_send = "send_completed"
 
         def _reasoning_part_key(ev):
             # v1.2.6 chatgpt-only semantic identity extraction.
@@ -3242,6 +3994,7 @@ async def _handle_messages(body, receive, send):
             # (mid-stream protocol/framing/transport failures with no backend status)
             # keeps the default api_error, preserving the v1.2.8 finalizer semantics.
             nonlocal text_block_open, thinking_block_open, failure_finalized
+            _record_backend_error(error_type, phase="upstream_stream")
             if failure_finalized or disconnect_event.is_set():
                 return False
             failure_finalized = True
@@ -3286,16 +4039,31 @@ async def _handle_messages(body, receive, send):
             precontent_failure_message = str(e)
         except httpx.HTTPError as e:
             if disconnect_event.is_set():
-                log.info("client disconnected before stream start; aborting")
+                _record_disconnect("before_stream_start")
                 return
             log.error("backend stream connect error: %s", type(e).__name__)
             precontent_failure_message = "backend transport error"
 
+        # INTENT: fix a known backend HTTP rejection as the first causal error before
+        #   attempting the downstream SSE response start.
+        # REASONING: _mark_error records only outcome/phase/type and emits no lifecycle
+        #   event, so a later successful header send can still parse the body and let
+        #   _normalize_backend_error record enriched backend type/code metadata once.
+        # ASSUMES: _open_backend_stream has exhausted any eligible status retries before
+        #   returning this final non-2xx response to the streaming branch.
+        if resp is not None and resp.status_code >= 400:
+            _mark_error(
+                phase="upstream_headers",
+                error_type=_anthropic_error_type_for_status(resp.status_code),
+            )
 
         # HARDENING: send the SSE response-start exactly once, before any emit().
         # Both the error-stream branch and the success branch emit a well-formed
         # Anthropic SSE stream with HTTP 200 (Claude Code reads stop_reason/error
         # from the events, not the HTTP status), so the headers are identical.
+        # The live phase owns a header-write failure while _mark_error preserves an
+        # earlier backend/auth failure_phase when one is already first-causal.
+        _set_phase("downstream_response_start")
         await send({
             "type": "http.response.start",
             "status": 200,
@@ -3303,6 +4071,7 @@ async def _handle_messages(body, receive, send):
                 (b"content-type", b"text/event-stream"),
                 (b"cache-control", b"no-cache"),
                 (b"connection", b"keep-alive"),
+                (b"x-daaf-request-id", _request_state().req_id.encode("ascii")),
             ],
         })
 
@@ -3310,6 +4079,7 @@ async def _handle_messages(body, receive, send):
             if resp is None or resp.status_code >= 400:
                 status = resp.status_code if resp is not None else 502
                 if resp is not None:
+                    raw_err = ""
                     try:
                         raw_err = (
                             await _await_or_disconnect(
@@ -3317,21 +4087,35 @@ async def _handle_messages(body, receive, send):
                                 disconnect_event,
                             )
                         ).decode("utf-8", "replace")
-                        diag_body = _scrub_and_trim_body(raw_err)
                     except _ClientDisconnected:
                         raise
                     except Exception:
-                        diag_body = "(body unavailable)"
+                        pass
                     diag_headers = _diag_headers(resp.headers)
-                    client_failure = diag_body[:200] or "backend rejected the request"
+                    try:
+                        structured_error = json.loads(raw_err)
+                    except ValueError:
+                        structured_error = {}
+                    error_type, client_failure, backend_type, backend_code = \
+                        _normalize_backend_error(
+                            structured_error, status=status,
+                            phase="upstream_headers",
+                        )
                     if did_401_refresh and status == 401:
                         client_failure = _RELOGIN_MSG
                 else:
-                    diag_body = "(no response)"
                     diag_headers = "(none)"
                     client_failure = precontent_failure_message or "backend transport error"
-                log.error("backend stream error status=%d retries=%d | headers: %s | body: %s",
-                          status, retries, diag_headers, diag_body)
+                    error_type = "api_error"
+                    backend_type = "-"
+                    backend_code = "-"
+                    _record_backend_error(error_type, phase="upstream_request")
+                log.error(
+                    "backend stream error status=%d retries=%d backend_type=%s "
+                    "backend_code=%s anthropic_type=%s | headers: %s",
+                    status, retries, _scrub_metadata(backend_type),
+                    _scrub_metadata(backend_code), error_type, diag_headers,
+                )
                 # Once the downstream SSE response has started, every backend status
                 # or connect failure uses the same failure grammar as post-content
                 # failures: one message_start followed by one terminal event:error.
@@ -3348,8 +4132,7 @@ async def _handle_messages(body, receive, send):
                 # map's api_error default, unchanged. The did_401_refresh 401 case
                 # keeps its _RELOGIN_MSG message and now also carries the
                 # authentication_error type.
-                await _finalize_stream_failure(
-                    client_failure, _anthropic_error_type_for_status(status))
+                await _finalize_stream_failure(client_failure, error_type)
                 return
 
             # message_start (usage filled with 0s; refined at message_delta).
@@ -3365,7 +4148,7 @@ async def _handle_messages(body, receive, send):
                 # HARDENING (client-disconnect mid-stream): stop pulling from the
                 # backend the moment the client goes away.
                 if disconnect_event.is_set():
-                    log.info("client disconnected mid-stream; aborting backend")
+                    _record_disconnect("mid_stream")
                     return
                 if data_bytes.strip() == b"[DONE]":
                     if not saw_terminal_response:
@@ -3720,9 +4503,9 @@ async def _handle_messages(body, receive, send):
                     #   finish normally — the previously-mapped "failed"->"end_turn"
                     #   stop_reason silently corrupted the session by presenting
                     #   partial content as complete. Surface the failure instead.
-                    # REASONING: log ERROR with the existing diagnostics helper (the
-                    #   scrubbed/trimmed error payload), then break so the post-loop
-                    #   handler emits an Anthropic `error` SSE event and terminates —
+                    # REASONING: log only normalized type/code metadata, then break so
+                    #   the post-loop handler emits a classification-derived Anthropic
+                    #   `error` SSE event and terminates —
                     #   no message_delta/message_stop pretending success.
                     r_obj = ev.get("response")
                     if not isinstance(r_obj, dict):
@@ -3730,10 +4513,17 @@ async def _handle_messages(body, receive, send):
                             "backend response.failed event was malformed"
                         )
                     err_payload = r_obj.get("error") or r_obj.get("incomplete_details") or r_obj
-                    log.error("backend stream response.failed: %s",
-                              _scrub_and_trim_body(json.dumps(err_payload)))
+                    failure_error_type, failure_message, backend_type, backend_code = \
+                        _normalize_backend_error(
+                            err_payload,
+                            phase="upstream_stream",
+                        )
+                    log.error(
+                        "backend stream response.failed backend_type=%s backend_code=%s anthropic_type=%s",
+                        _scrub_metadata(backend_type), _scrub_metadata(backend_code),
+                        failure_error_type,
+                    )
                     stream_failed = True
-                    failure_message = _scrub_and_trim_body(json.dumps(err_payload))[:200] or "response.failed"
                     break
 
                 if etype == "error":
@@ -3741,10 +4531,17 @@ async def _handle_messages(body, receive, send):
                     # response.failed: log and surface as an Anthropic `error` event,
                     # never a clean message_stop.
                     err = ev.get("error") or ev
-                    log.error("backend stream in-band error: %s",
-                              _scrub_and_trim_body(json.dumps(err))[:200])
+                    failure_error_type, failure_message, backend_type, backend_code = \
+                        _normalize_backend_error(
+                            err,
+                            phase="upstream_stream",
+                        )
+                    log.error(
+                        "backend stream in-band error backend_type=%s backend_code=%s anthropic_type=%s",
+                        _scrub_metadata(backend_type), _scrub_metadata(backend_code),
+                        failure_error_type,
+                    )
                     stream_failed = True
-                    failure_message = _scrub_and_trim_body(json.dumps(err))[:200] or "in-band stream error"
                     break
                 # Any other event type is ignored gracefully.
 
@@ -3756,13 +4553,13 @@ async def _handle_messages(body, receive, send):
                 failure_message = "backend stream ended without a terminal response"
 
             if stream_failed:
-                finalized = await _finalize_stream_failure(failure_message)
+                finalized = await _finalize_stream_failure(
+                    failure_message, failure_error_type)
                 if finalized:
-                    dur = time.time() - t0
-                    log.info("req method=POST path=/v1/messages model=%s stream=y msgs=%d tools=%d "
-                             "dur=%.2fs stop=FAILED tools_called=%d retries=%d effort=%s:%s",
-                             model, n_msgs, n_tools, dur, len(tool_state), retries,
-                             effort_value, effort_source)
+                    state = _request_state()
+                    if state is not None:
+                        state.stop_reason = "FAILED"
+                        state.tools_called = len(tool_state)
                 return
 
             # Populate the cache exactly once. Prefer the validated terminal output
@@ -3814,34 +4611,25 @@ async def _handle_messages(body, receive, send):
                 _calibrate_count_ratio(input_tokens, len(body))
 
             stop_reason = _stop_reason_from_status(final_status, saw_tool_use)
+            state = _request_state()
+            if state is not None:
+                state.stop_reason = stop_reason
+                state.input_tokens = input_tokens
+                state.output_tokens = output_tokens
+                state.usage_source = "estimated" if usage_estimated else "backend"
+                state.tools_called = len(tool_state)
 
             await emit("message_delta", {"type": "message_delta",
                 "delta": {"stop_reason": stop_reason, "stop_sequence": None},
                 "usage": {"input_tokens": input_tokens, "output_tokens": output_tokens}})
             await emit("message_stop", {"type": "message_stop"})
-            # v1.2.9: log the req accounting line as soon as message_stop is
-            # DELIVERED, before the final empty-body frame. Claude Code closes
-            # the connection promptly after message_stop, so that trailing frame
-            # routinely loses a race with http.disconnect; under v1.2.7/v1.2.8
-            # the disconnect-gated send raised first, skipping this line on
-            # essentially every live request (0 req lines post-v1.2.7 vs 6,701
-            # before) and misreporting completed requests as disconnects.
-            dur = time.time() - t0
-            miss_suffix = f" reasoning_cache_miss={missing_reasoning}" if missing_reasoning > 0 else ""
-            log.info("req method=POST path=/v1/messages model=%s stream=y msgs=%d tools=%d "
-                     "dur=%.2fs stop=%s in=%s out=%s tools_called=%d retries=%d usage=%s effort=%s:%s%s",
-                     model, n_msgs, n_tools, dur, stop_reason, input_tokens,
-                     output_tokens, len(tool_state), retries,
-                     "estimated" if usage_estimated else "backend",
-                     effort_value, effort_source, miss_suffix)
+            # A returned ASGI send marks only send_completed. It does not prove
+            # client acknowledgment or receipt. Success is fixed at this semantic
+            # terminal; a later body-close disconnect cannot overwrite it.
+            _mark_success()
             try:
                 await send({"type": "http.response.body", "body": b"", "more_body": False})
             except _ClientDisconnected:
-                # A disconnect AFTER message_stop delivery is a completed
-                # request, not an abort — the client already holds the terminal
-                # event. Swallow the control signal so the outer handler does
-                # not log a spurious "client disconnected". Disconnects BEFORE
-                # message_stop keep the existing abort semantics.
                 pass
 
         except (_ProtocolError, httpx.HTTPError, TypeError,
@@ -3879,14 +4667,13 @@ async def _handle_messages(body, receive, send):
             # HARDENING: always tear down the backend stream. On client disconnect
             # this aborts the upstream request rather than leaking it.
             if stream_cm is not None:
-                await _close_stream_context(stream_cm)
+                await _settle_stream_context(stream_cm)
+                stream_cm = None
     except _ClientDisconnected:
-        # Expected response-local control flow: no downstream error/success bytes,
-        # no ERROR log, and the branch-level finally owns any active stream context.
-        log.info("client disconnected; upstream operation cancelled")
+        # Expected response-local control flow: no downstream error/success bytes.
+        # The request-level finalizer owns any active stream context and watcher.
+        _record_disconnect("upstream_operation")
         return
-    finally:
-        await _stop_disconnect_watcher()
 
 
 def _count_tokens_bare_model(body):
@@ -3985,9 +4772,40 @@ async def app(scope, receive, send):
     if path == "/health" and method == "GET":
         await _handle_health(send)
     elif path == "/v1/messages" and method == "POST":
-        body = await _read_body(receive)
-        # Pass `receive` through so the handler can watch for client disconnect.
-        await _handle_messages(body, receive, send)
+        # Establish correlation before the first body read so body-read disconnects
+        # and every nested task/log record belong to this request lifecycle.
+        state = _RequestLifecycleState()
+        token = _REQUEST_STATE.set(state)
+        _lifecycle_event("request_start", method="POST", path="/v1/messages")
+        try:
+            body = await _read_body(receive)
+            if not state.disconnect_observed:
+                # Pass `receive` through so the handler can watch for disconnect.
+                await _handle_messages(body, receive, send)
+        except _ClientDisconnected:
+            _record_disconnect(state.phase)
+        except asyncio.CancelledError:
+            # Task cancellation alone is not evidence that ASGI delivered an
+            # http.disconnect event. Preserve cancellation without inventing a
+            # disconnect lifecycle record; the centralized finalizer still emits
+            # exactly one terminal and cleanup record.
+            raise
+        except Exception:
+            _mark_error(phase=state.phase)
+            raise
+        finally:
+            cleanup_cancellation = None
+            try:
+                await _settle_request_resources(state)
+            except asyncio.CancelledError as cancellation:
+                cleanup_cancellation = cancellation
+            except Exception as error:
+                _record_cleanup_result(False, type(error).__name__)
+            _log_terminal_once()
+            _log_cleanup_once()
+            _REQUEST_STATE.reset(token)
+            if cleanup_cancellation is not None:
+                raise cleanup_cancellation
     elif path == "/v1/messages/count_tokens" and method == "POST":
         body = await _read_body(receive)
         await _handle_count_tokens(body, send)

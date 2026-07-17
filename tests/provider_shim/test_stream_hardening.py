@@ -6,6 +6,7 @@ import json
 import threading
 import time
 import unittest
+import urllib.parse
 
 from ._loopback_harness import (
     FAKE_REFRESH_TOKEN,
@@ -20,12 +21,16 @@ from ._loopback_harness import (
     TypedSSEFrame,
     abrupt_eof_scenario,
     backend_status_scenario,
+    assert_lifecycle_log_contract,
+    controlled_asgi_probe,
     delayed_body_disconnect_scenario,
     delayed_header_disconnect_scenario,
     events_scenario,
     failure_lifecycle_report,
     full_response_scenario,
+    group_lifecycle_logs,
     incomplete_response_scenario,
+    lifecycle_for_response,
     lifecycle_report,
     malformed_sse_scenario,
     missing_terminal_response_scenario,
@@ -37,7 +42,9 @@ from ._loopback_harness import (
     reasoning_while_text_open_scenario,
     reasoning_while_tool_open_scenario,
     retry_sleep_disconnect_scenario,
+    sequenced_attempt_scenario,
     sequential_two_tools_scenario,
+    structured_error_scenario,
     terminal_contract_scenario,
     terminal_failure_scenario,
 )
@@ -45,6 +52,14 @@ from ._loopback_harness import (
 
 class ProviderShimStreamHardeningTests(unittest.TestCase):
     maxDiff = 12000
+
+    def _event_line(self, lines: list[object], event: str) -> object:
+        matches = [line for line in lines if line.event == event]
+        self.assertEqual(len(matches), 1, (event, [line.raw for line in lines]))
+        return matches[0]
+
+    def _terminal_fields(self, lines: list[object]) -> dict[str, str]:
+        return self._event_line(lines, "terminal").fields
 
     def _assert_terminal_error(
         self,
@@ -1374,9 +1389,24 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                     1.25,
                     "RETRY_SLEEP_DISCONNECT_GATE_EXCEEDED_PROMPT_BOUND",
                 )
-                _cancel_line, cancellation_seen_at = shim.wait_for_stderr_line(
-                    "client disconnected; upstream operation cancelled",
+                disconnect_line, cancellation_seen_at = shim.wait_for_stderr_line(
+                    "phase=disconnect event=disconnect",
                     timeout=1.25,
+                )
+                parsed_disconnects = [
+                    line
+                    for lines in group_lifecycle_logs(disconnect_line).values()
+                    for line in lines
+                ]
+                self.assertEqual(len(parsed_disconnects), 1, disconnect_line)
+                disconnect = parsed_disconnects[0]
+                self.assertEqual(
+                    disconnect.fields.get("observed_phase"),
+                    "disconnect_watcher",
+                )
+                self.assertEqual(
+                    urllib.parse.unquote(disconnect.fields.get("detail", "")),
+                    "ASGI http.disconnect observed",
                 )
                 self.assertLess(
                     cancellation_seen_at - disconnect_started,
@@ -1399,6 +1429,1686 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 )
                 backend.assert_request_counts(responses=1, oauth=0)
         self.assertEqual(provider_scratch_residue(), before)
+
+    def test_v1211_request_id_headers_and_lifecycle_correlation(self) -> None:
+        scenario = full_response_scenario()
+        inbound_id = "f" * 32
+        with MockResponsesServer(scenario) as backend:
+            with RealShim(backend, "openai") as shim:
+                json_result = shim.post_messages(
+                    stream=False,
+                    headers={"x-daaf-request-id": inbound_id},
+                )
+                sse_result = shim.post_messages(
+                    stream=True,
+                    headers={"x-daaf-request-id": inbound_id},
+                )
+                self.assertEqual(json_result.status, 200, json_result.text)
+                self.assertEqual(sse_result.status, 200, sse_result.text)
+                json_lines = lifecycle_for_response(shim, json_result)
+                sse_lines = lifecycle_for_response(shim, sse_result)
+                ids = {
+                    json_result.headers.get("x-daaf-request-id"),
+                    sse_result.headers.get("x-daaf-request-id"),
+                }
+                self.assertEqual(len(ids), 2)
+                self.assertNotIn(inbound_id, ids)
+                for result, lines in (
+                    (json_result, json_lines),
+                    (sse_result, sse_lines),
+                ):
+                    req_id = result.headers["x-daaf-request-id"]
+                    self.assertRegex(req_id, r"^[0-9a-f]{32}$")
+                    self.assertEqual({line.req_id for line in lines}, {req_id})
+                    terminal = self._terminal_fields(lines)
+                    self.assertEqual(
+                        terminal["outcome"],
+                        "success",
+                        (result.headers, [line.raw for line in lines]),
+                    )
+                    self.assertEqual(terminal["attempts"], "1")
+                    self.assertEqual(terminal["retries"], "0")
+                    self.assertEqual(terminal["terminal_frame_send"], "send_completed")
+                    self.assertEqual(terminal["body_close_send"], "send_completed")
+                    events = [line.event for line in lines]
+                    self.assertIn("request_parsed", events)
+                    self.assertIn("upstream_headers", events)
+                    self.assertIn("downstream_first_content", events)
+                    httpx_records = [
+                        line
+                        for line in shim.captured_stderr().splitlines()
+                        if "HTTP Request: POST " in line
+                        and f"req_id={req_id} phase=upstream_request" in line
+                    ]
+                    self.assertEqual(len(httpx_records), 1, httpx_records)
+                startup_records = [
+                    line
+                    for line in shim.captured_stderr().splitlines()
+                    if "req_id=- phase=process shim v1.2.11 starting" in line
+                ]
+                self.assertEqual(len(startup_records), 1, startup_records)
+                self.assertIn(
+                    "upstream_first_event",
+                    [line.event for line in sse_lines],
+                )
+                shim.assert_offline_contract()
+                backend.assert_request_counts(responses=2, oauth=0)
+
+    def test_v1211_concurrent_requests_keep_request_local_state(self) -> None:
+        scenario = full_response_scenario()
+        with MockResponsesServer(scenario) as backend:
+            first_entered, release_first = backend.gate_response_request(1)
+            second_entered, release_second = backend.gate_response_request(2)
+            with RealShim(backend, "openai") as shim:
+                results: dict[str, object] = {}
+                failures: list[BaseException] = []
+
+                def call(label: str) -> None:
+                    try:
+                        results[label] = shim.post_messages(
+                            stream=False,
+                            model=f"gpt-fixture-{label}",
+                            headers={"x-daaf-request-id": label * 32},
+                        )
+                    except BaseException as error:
+                        failures.append(error)
+
+                first = threading.Thread(target=call, args=("a",), daemon=True)
+                second = threading.Thread(target=call, args=("b",), daemon=True)
+                first.start()
+                self.assertTrue(first_entered.wait(3.0))
+                second.start()
+                self.assertTrue(second_entered.wait(3.0))
+                release_second.set()
+                second.join(timeout=5.0)
+                self.assertFalse(second.is_alive())
+                release_first.set()
+                first.join(timeout=5.0)
+                self.assertFalse(first.is_alive())
+                self.assertEqual(failures, [])
+                self.assertEqual(set(results), {"a", "b"})
+                observed_ids = set()
+                for label, result in results.items():
+                    self.assertEqual(result.status, 200, result.text)
+                    lines = lifecycle_for_response(shim, result)
+                    observed_ids.add(result.headers["x-daaf-request-id"])
+                    terminal = self._terminal_fields(lines)
+                    self.assertEqual(terminal["model"], f"gpt-fixture-{label}")
+                    self.assertEqual(terminal["attempts"], "1")
+                    self.assertEqual(terminal["retries"], "0")
+                self.assertEqual(len(observed_ids), 2)
+                self.assertNotIn("a" * 32, observed_ids)
+                self.assertNotIn("b" * 32, observed_ids)
+                groups = group_lifecycle_logs(shim.captured_stderr())
+                self.assertTrue(observed_ids.issubset(groups))
+                for req_id in observed_ids:
+                    self.assertEqual({line.req_id for line in groups[req_id]}, {req_id})
+                    assert_lifecycle_log_contract(groups[req_id])
+                shim.assert_offline_contract()
+                backend.assert_request_counts(responses=2, oauth=0)
+
+    def test_v1211_attempt_and_retry_accounting_matrix(self) -> None:
+        cases = (
+            ("buffered-success", "openai", False, [200], 1, 0, "success"),
+            ("stream-success", "openai", True, [200], 1, 0, "success"),
+            ("buffered-status-retry", "openai", False, [503, 200], 2, 1, "success"),
+            ("stream-status-retry", "chatgpt", True, [503, 200], 2, 1, "success"),
+            ("stream-status-exhausted", "chatgpt", True, [503], 4, 3, "error"),
+            ("stream-transport-retry", "chatgpt", True, ["transport", 200], 2, 1, "success"),
+            ("stream-transport-exhausted", "chatgpt", True, ["transport"], 4, 3, "error"),
+        )
+        for name, mode, stream, statuses, attempts, retries, outcome in cases:
+            with self.subTest(case=name):
+                headers = [{"Retry-After": "0"} for _status in statuses]
+                scenario = sequenced_attempt_scenario(
+                    name,
+                    statuses,
+                    headers=headers,
+                )
+                with MockResponsesServer(scenario) as backend:
+                    with RealShim(backend, mode) as shim:
+                        result = shim.post_messages(stream=stream)
+                        self.assertEqual(
+                            result.status,
+                            200,
+                            f"{name}: {result.status} {result.text}",
+                        )
+                        if stream:
+                            frames = parse_typed_sse(result.body)
+                            if outcome == "success":
+                                lifecycle_report(frames)
+                            else:
+                                failure_lifecycle_report(frames)
+                        lines = lifecycle_for_response(shim, result, timeout=15.0)
+                        terminal = self._terminal_fields(lines)
+                        self.assertEqual(terminal["attempts"], str(attempts), name)
+                        self.assertEqual(terminal["retries"], str(retries), name)
+                        self.assertEqual(terminal["outcome"], outcome, name)
+                        self.assertEqual(
+                            [line.event for line in lines].count("upstream_attempt"),
+                            attempts,
+                            name,
+                        )
+                        self.assertEqual(
+                            [line.event for line in lines].count("upstream_retry"),
+                            retries,
+                            name,
+                        )
+                        shim.assert_offline_contract()
+                        backend.assert_request_counts(responses=attempts, oauth=0)
+
+        for name, statuses, expected_status, attempts, retries, outcome in (
+            ("buffered-transport-retry", ["transport", 200], 200, 2, 1, "success"),
+            ("buffered-transport-exhausted", ["transport"], 502, 4, 3, "error"),
+        ):
+            with self.subTest(case=name):
+                scenario = sequenced_attempt_scenario(name, statuses)
+                with MockResponsesServer(scenario) as backend:
+                    with RealShim(backend, "openai") as shim:
+                        result = shim.post_messages(stream=False)
+                        self.assertEqual(result.status, expected_status, result.text)
+                        lines = lifecycle_for_response(shim, result, timeout=15.0)
+                        terminal = self._terminal_fields(lines)
+                        self.assertEqual(terminal["attempts"], str(attempts))
+                        self.assertEqual(terminal["retries"], str(retries))
+                        self.assertEqual(terminal["outcome"], outcome)
+                        backend.assert_request_counts(responses=attempts, oauth=0)
+
+    def test_v1211_upstream_metadata_allowlist_precedence_and_length_cap(self) -> None:
+        secret = "sk-FAKE_METADATA_SECRET_123456789"
+        scenario = full_response_scenario()
+        scenario.stream_headers = {
+            "x-request-id": "chosen-" + secret,
+            "request-id": "lower-precedence",
+            "x-openai-request-id": "lower-precedence-openai",
+            "openai-request-id": "lowest-precedence",
+            "x-arbitrary-sentinel": "ARBITRARY_HEADER_MUST_NOT_LOG",
+            "authorization": "Bearer CREDENTIAL_MUST_NOT_LOG",
+        }
+        with MockResponsesServer(scenario) as backend:
+            with RealShim(backend, "openai") as shim:
+                result = shim.post_messages(stream=True)
+                self.assertEqual(result.status, 200, result.text)
+                lines = lifecycle_for_response(shim, result)
+                upstream = self._event_line(lines, "upstream_headers")
+                self.assertEqual(upstream.fields["upstream_req_id_header"], "x-request-id")
+                self.assertEqual(
+                    urllib.parse.unquote(upstream.fields["upstream_req_id"]),
+                    "chosen-[REDACTED]",
+                )
+                logs = shim.captured_stderr()
+                self.assertNotIn(secret, logs)
+                self.assertNotIn("ARBITRARY_HEADER_MUST_NOT_LOG", logs)
+                self.assertNotIn("CREDENTIAL_MUST_NOT_LOG", logs)
+
+        scenario = full_response_scenario()
+        scenario.stream_headers = {"x-request-id": "z" * 260}
+        with MockResponsesServer(scenario) as backend:
+            with RealShim(backend, "openai") as shim:
+                result = shim.post_messages(stream=True)
+                lines = lifecycle_for_response(shim, result)
+                upstream = self._event_line(lines, "upstream_headers")
+                self.assertEqual(upstream.fields["upstream_req_id"], "z" * 200)
+                self.assertNotIn("z" * 201, upstream.raw)
+
+        report = controlled_asgi_probe(
+            response_headers={
+                "x-request-id": "  alpha\t beta\r\n gamma " + secret,
+                "x-nonallowlisted": "NONALLOWLISTED_CONTROL_SENTINEL",
+            }
+        )
+        upstream = self._event_line(report.lifecycle, "upstream_headers")
+        self.assertEqual(upstream.fields["upstream_req_id_header"], "x-request-id")
+        self.assertEqual(
+            urllib.parse.unquote(upstream.fields["upstream_req_id"]),
+            "alpha beta gamma [REDACTED]",
+        )
+        self.assertIn(
+            "upstream_req_id=alpha%20beta%20gamma%20%5BREDACTED%5D",
+            upstream.raw,
+        )
+        self.assertNotIn(secret, report.logs)
+        self.assertNotIn("NONALLOWLISTED_CONTROL_SENTINEL", report.logs)
+        for line in report.logs.splitlines():
+            self.assertNotRegex(line, r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+
+    def test_v1211_machine_field_encoding_blocks_lifecycle_injection(self) -> None:
+        # SECURITY REGRESSION: every value below reaches production lifecycle
+        # serialization through a distinct untrusted surface. A whitespace parser
+        # must never reinterpret an injected key=value fragment as a real field.
+        model = (
+            "gpt-fixture abc event=cleanup status=completed\t=%\"'\r\n雪"
+        )
+        upstream_request_id = (
+            "abc outcome=success attempts=0\t=%\"'\r\n雪"
+        )
+        backend_type = (
+            "abc req_id=00000000000000000000000000000000\t=%\"'\r\n雪"
+        )
+        backend_code = (
+            "abc status=completed event=cleanup\t=%\"'\r\n雪"
+        )
+        cleanup_error = (
+            "abc event=terminal status=completed\t=%\"'\r\n雪"
+        )
+        scenario = structured_error_scenario(
+            "machine-field-injection",
+            "error",
+            {
+                "type": backend_type,
+                "code": backend_code,
+                "message": "safe mapped backend failure",
+            },
+        )
+        report = controlled_asgi_probe(
+            scenario=scenario,
+            stream=True,
+            cleanup_failure=True,
+            cleanup_failure_text=cleanup_error,
+            response_headers={"x-request-id": upstream_request_id},
+            raw_request_body=json.dumps(
+                {
+                    "model": model,
+                    "max_tokens": 256,
+                    "stream": True,
+                    "messages": [{"role": "user", "content": "ASGI fixture"}],
+                },
+                ensure_ascii=False,
+                separators=(",", ":"),
+            ).encode("utf-8"),
+        )
+        self.assertIsNone(report.raised)
+        self.assertFalse(report.cancelled)
+        assert_lifecycle_log_contract(report.lifecycle)
+        events = [line.event for line in report.lifecycle]
+        self.assertEqual(events.count("terminal"), 1)
+        self.assertEqual(events.count("cleanup"), 1)
+        self.assertEqual(events[-2:], ["terminal", "cleanup"])
+
+        request_parsed = self._event_line(report.lifecycle, "request_parsed")
+        upstream = self._event_line(report.lifecycle, "upstream_headers")
+        backend_error = self._event_line(report.lifecycle, "backend_error")
+        terminal = self._terminal_fields(report.lifecycle)
+        cleanup = self._event_line(report.lifecycle, "cleanup").fields
+        canonical_req_id = report.lifecycle[0].req_id
+        self.assertRegex(canonical_req_id, r"^[0-9a-f]{32}$")
+        self.assertNotEqual(canonical_req_id, "0" * 32)
+        self.assertEqual({line.req_id for line in report.lifecycle}, {canonical_req_id})
+        self.assertEqual(terminal["outcome"], "error")
+        self.assertEqual(terminal["attempts"], "1")
+        self.assertEqual(cleanup["status"], "failed")
+        self.assertEqual(cleanup["failures"], "1")
+
+        # urllib.parse.unquote is the independent standard-library oracle for the
+        # documented percent-encoded machine-field grammar. Production helpers are
+        # intentionally not imported or duplicated in this test.
+        decoded = {
+            "model": urllib.parse.unquote(request_parsed.fields["model"]),
+            "upstream_req_id": urllib.parse.unquote(upstream.fields["upstream_req_id"]),
+            "backend_type": urllib.parse.unquote(backend_error.fields["backend_type"]),
+            "backend_code": urllib.parse.unquote(backend_error.fields["backend_code"]),
+            "cleanup_error": urllib.parse.unquote(cleanup["error"]),
+        }
+        self.assertEqual(
+            decoded["model"],
+            "gpt-fixture abc event=cleanup status=completed=%\"'雪",
+        )
+        self.assertEqual(
+            decoded["upstream_req_id"],
+            "abc outcome=success attempts=0 =%\"' 雪",
+        )
+        self.assertEqual(
+            decoded["backend_type"],
+            "abc req_id=00000000000000000000000000000000 =%\"' 雪",
+        )
+        self.assertEqual(
+            decoded["backend_code"],
+            "abc status=completed event=cleanup =%\"' 雪",
+        )
+        self.assertEqual(
+            decoded["cleanup_error"],
+            "abc event=terminal status=completed =%\"' 雪",
+        )
+        for line in report.lifecycle:
+            self.assertEqual(len(line.raw.splitlines()), 1, line.raw)
+
+    def test_v1211_machine_field_encoding_is_total_for_unpaired_surrogates(self) -> None:
+        # JSON accepts escaped lone surrogate code units even though strict UTF-8 does
+        # not. Lifecycle serialization must preserve a printable forensic escape and
+        # must never let observability abort request finalization.
+        model_report = controlled_asgi_probe(
+            raw_request_body=(
+                b'{"model":"gpt-fixture-\\ud800","max_tokens":256,'
+                b'"stream":true,"messages":[{"role":"user",'
+                b'"content":"ASGI fixture"}]}'
+            )
+        )
+        self.assertIsNone(model_report.raised)
+        self.assertFalse(model_report.cancelled)
+        model_parsed = self._event_line(
+            model_report.lifecycle,
+            "request_parsed",
+        )
+        self.assertEqual(
+            urllib.parse.unquote(model_parsed.fields["model"]),
+            "gpt-fixture-" + "\\ud800",
+        )
+
+        backend_report = controlled_asgi_probe(
+            scenario=structured_error_scenario(
+                "backend-lone-surrogate",
+                "error",
+                {
+                    "type": "backend-type-\udfff",
+                    "code": "backend-code-\udc00",
+                    "message": "controlled backend failure",
+                },
+            )
+        )
+        self.assertIsNone(backend_report.raised)
+        self.assertFalse(backend_report.cancelled)
+        backend_error = self._event_line(
+            backend_report.lifecycle,
+            "backend_error",
+        )
+        self.assertEqual(
+            urllib.parse.unquote(backend_error.fields["backend_type"]),
+            "backend-type-" + "\\udfff",
+        )
+        self.assertEqual(
+            urllib.parse.unquote(backend_error.fields["backend_code"]),
+            "backend-code-" + "\\udc00",
+        )
+
+        # Cleanup error metadata comes from type(error).__name__; Python rejects lone
+        # surrogates in a dynamic type name before production can observe one. Both
+        # externally reachable surrogate cases must still finalize cleanup exactly once.
+        for report in (model_report, backend_report):
+            events = [line.event for line in report.lifecycle]
+            self.assertEqual(events.count("terminal"), 1)
+            self.assertEqual(events.count("cleanup"), 1)
+            for line in report.lifecycle:
+                self.assertEqual(len(line.raw.splitlines()), 1, line.raw)
+
+    def test_v1211_sensitive_text_sanitizer_covers_credential_families(self) -> None:
+        # Fabricated-only credential corpus. Each family is independently driven
+        # through retained upstream request metadata, backend type/code, and the
+        # diagnostic HTTP body slice. Free-form backend message prose is supplied
+        # separately to prove that the client receives only the fixed classification.
+        credentials = (
+            ("openai-prefix", "sk-FAKE_SANITIZER_PREFIX_1234567890", "sk-FAKE_SANITIZER_PREFIX_1234567890"),
+            ("bearer-header", "Authorization: Bearer FABRICATED_BEARER_HEADER_123456", "FABRICATED_BEARER_HEADER_123456"),
+            ("bearer-standalone", "Bearer FABRICATED_BEARER_STANDALONE_123456", "FABRICATED_BEARER_STANDALONE_123456"),
+            ("basic-header", "Authorization: Basic RkFLRV9CQVNJQ19DUkVERU5USUFM", "RkFLRV9CQVNJQ19DUkVERU5USUFM"),
+            ("jwt", "eyJhbGciOiJub25lIn0.eyJzdWIiOiJGQUtFIn0.ZmFrZS1zaWduYXR1cmU", "eyJhbGciOiJub25lIn0.eyJzdWIiOiJGQUtFIn0.ZmFrZS1zaWduYXR1cmU"),
+            ("api-key", 'api_key="FABRICATED_API_KEY_123456"', "FABRICATED_API_KEY_123456"),
+            ("access-token", "access_token: FABRICATED_ACCESS_TOKEN_123456", "FABRICATED_ACCESS_TOKEN_123456"),
+            ("refresh-token", "refresh_token='FABRICATED_REFRESH_TOKEN_123456'", "FABRICATED_REFRESH_TOKEN_123456"),
+            ("id-token", 'id_token: "FABRICATED_ID_TOKEN_123456"', "FABRICATED_ID_TOKEN_123456"),
+            ("token", "token=FABRICATED_GENERIC_TOKEN_123456", "FABRICATED_GENERIC_TOKEN_123456"),
+            ("secret", "secret: FABRICATED_SECRET_123456", "FABRICATED_SECRET_123456"),
+            ("password", "password='FABRICATED_PASSWORD_123456'", "FABRICATED_PASSWORD_123456"),
+        )
+        for name, credential_form, secret_value in credentials:
+            with self.subTest(family=name):
+                carrier = f"SAFE_BEFORE {credential_form} SAFE_AFTER"
+                scenario = structured_error_scenario(
+                    f"credential-{name}",
+                    "error",
+                    {
+                        "type": carrier,
+                        "code": carrier,
+                        "message": carrier,
+                    },
+                )
+                scenario.stream_error_body = json.dumps(
+                    {
+                        "error": {
+                            "type": carrier,
+                            "code": carrier,
+                            "message": carrier,
+                        }
+                    },
+                    separators=(",", ":"),
+                ).encode("utf-8")
+                report = controlled_asgi_probe(
+                    scenario=scenario,
+                    stream=True,
+                    response_status=400,
+                    response_headers={"x-request-id": carrier},
+                )
+                self.assertIsNone(report.raised)
+                self.assertFalse(report.cancelled)
+                failure = failure_lifecycle_report(
+                    parse_typed_sse(
+                        b"".join(
+                            message.get("body", b"")
+                            for message in report.messages
+                            if message.get("type") == "http.response.body"
+                        )
+                    ),
+                    expected_error_type="invalid_request_error",
+                )
+                upstream = self._event_line(report.lifecycle, "upstream_headers")
+                backend_error = self._event_line(report.lifecycle, "backend_error")
+                decoded_fields = (
+                    urllib.parse.unquote(upstream.fields["upstream_req_id"]),
+                    urllib.parse.unquote(backend_error.fields["backend_type"]),
+                    urllib.parse.unquote(backend_error.fields["backend_code"]),
+                )
+                for observed in decoded_fields:
+                    self.assertIn("SAFE_BEFORE", observed, (name, observed))
+                    self.assertIn("[REDACTED]", observed, (name, observed))
+                    self.assertIn("SAFE_AFTER", observed, (name, observed))
+                    self.assertNotIn(secret_value, observed, (name, observed))
+                client_message = failure.error["message"]
+                self.assertEqual(client_message, "backend rejected the request")
+                self.assertNotIn("SAFE_BEFORE", client_message, name)
+                self.assertNotIn("SAFE_AFTER", client_message, name)
+                self.assertNotIn(secret_value, client_message, name)
+                self.assertNotIn(secret_value, report.logs, name)
+                diagnostic = next(
+                    line
+                    for line in report.logs.splitlines()
+                    if "backend stream error status=400" in line
+                )
+                self.assertIn("SAFE_BEFORE", diagnostic, name)
+                self.assertIn("[REDACTED]", diagnostic, name)
+                self.assertIn("SAFE_AFTER", diagnostic, name)
+                self.assertNotIn(secret_value, diagnostic, name)
+                self.assertEqual(
+                    [line.event for line in report.lifecycle].count("terminal"),
+                    1,
+                )
+                self.assertEqual(
+                    [line.event for line in report.lifecycle].count("cleanup"),
+                    1,
+                )
+
+    def test_v1211_http_version_normalization(self) -> None:
+        for wire_value, expected in (
+            ("HTTP/1.0", "HTTP/1.0"),
+            ("HTTP/1.1", "HTTP/1.1"),
+            ("HTTP/2", "HTTP/2"),
+            ("HTTP/3", "unknown"),
+        ):
+            with self.subTest(http_version=wire_value):
+                report = controlled_asgi_probe(http_version=wire_value)
+                self.assertIsNone(report.raised)
+                upstream = self._event_line(report.lifecycle, "upstream_headers")
+                self.assertEqual(upstream.fields["http_version"], expected)
+
+    def test_v1211_structured_backend_error_normalization_and_safe_logs(self) -> None:
+        fake_secret = "sk-FAKE_STRUCTURED_SECRET_123456789"
+        prompt_sentinel = "PROMPT_BODY_SENTINEL_MUST_NOT_LOG"
+        tool_schema_sentinel = "TOOL_SCHEMA_SENTINEL_MUST_NOT_LOG"
+        tool_input_sentinel = "TOOL_INPUT_SENTINEL_MUST_NOT_LOG"
+        raw_sse_sentinel = "RAW_SSE_SENTINEL_MUST_NOT_LOG"
+        clean_message = "Context window exceeded\nplease shorten input " + fake_secret
+        payload = {
+            "type": "server_error",
+            "code": "context_length_exceeded",
+            "message": clean_message,
+            "raw_detail": raw_sse_sentinel,
+        }
+        scenario = structured_error_scenario(
+            "direct-context-code-precedence",
+            "error",
+            payload,
+        )
+        scenario.stream_events[-1]["arbitrary_payload"] = raw_sse_sentinel
+        tools = [
+            {
+                "name": "Read",
+                "description": tool_schema_sentinel,
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "payload": {
+                            "type": "string",
+                            "description": tool_schema_sentinel,
+                        }
+                    },
+                },
+            }
+        ]
+        messages = [
+            {
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "tool_use",
+                        "id": "call_log_sentinel",
+                        "name": "Read",
+                        "input": {"payload": tool_input_sentinel},
+                    }
+                ],
+            },
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": "call_log_sentinel",
+                        "content": prompt_sentinel,
+                    }
+                ],
+            },
+        ]
+        with MockResponsesServer(scenario) as backend:
+            with RealShim(backend, "chatgpt") as shim:
+                result = shim.post_messages(
+                    stream=True,
+                    model="gpt-fixture\r\nFORGED_LOG_LINE",
+                    tools=tools,
+                    messages=messages,
+                    headers={"x-arbitrary-request": "ARBITRARY_REQUEST_HEADER"},
+                )
+                self.assertEqual(result.status, 200, result.text)
+                failure = failure_lifecycle_report(
+                    parse_typed_sse(result.body),
+                    expected_error_type="invalid_request_error",
+                )
+                self.assertEqual(
+                    failure.error["message"],
+                    "backend context length exceeded",
+                )
+                self.assertLessEqual(len(failure.error["message"]), 200)
+                self.assertNotIn("raw_detail", failure.error["message"])
+                lines = lifecycle_for_response(shim, result)
+                backend_error = self._event_line(lines, "backend_error")
+                self.assertEqual(backend_error.fields["backend_type"], "server_error")
+                self.assertEqual(
+                    backend_error.fields["backend_code"],
+                    "context_length_exceeded",
+                )
+                self.assertEqual(
+                    backend_error.fields["anthropic_type"],
+                    "invalid_request_error",
+                )
+                terminal = self._terminal_fields(lines)
+                self.assertEqual(terminal["outcome"], "error")
+                logs = shim.captured_stderr()
+                for forbidden in (
+                    fake_secret,
+                    prompt_sentinel,
+                    tool_schema_sentinel,
+                    tool_input_sentinel,
+                    raw_sse_sentinel,
+                    "ARBITRARY_REQUEST_HEADER",
+                ):
+                    self.assertNotIn(forbidden, logs)
+                self.assertNotIn("\r", logs)
+                self.assertNotIn("\nFORGED_LOG_LINE", logs)
+                for log_line in logs.splitlines():
+                    self.assertNotRegex(
+                        log_line,
+                        r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]",
+                    )
+
+        code_precedence = structured_error_scenario(
+            "response-failed-code-precedence",
+            "response.failed",
+            {
+                "type": "context_length_exceeded",
+                "code": "server_error",
+                "message": {"message": "Nested bounded message"},
+                "full_object_sentinel": "DO_NOT_SERIALIZE_FULL_BACKEND_OBJECT",
+            },
+            prefix="text",
+        )
+        with MockResponsesServer(code_precedence) as backend:
+            with RealShim(backend, "chatgpt") as shim:
+                result = shim.post_messages(stream=True)
+                failure = failure_lifecycle_report(parse_typed_sse(result.body))
+                self.assertEqual(failure.error["type"], "api_error")
+                self.assertEqual(failure.error["message"], "backend server error")
+                self.assertNotIn("full_object_sentinel", failure.error["message"])
+                lines = lifecycle_for_response(shim, result)
+                backend_error = self._event_line(lines, "backend_error")
+                self.assertEqual(
+                    backend_error.fields["backend_type"],
+                    "context_length_exceeded",
+                )
+                self.assertEqual(backend_error.fields["backend_code"], "server_error")
+                self.assertEqual(backend_error.fields["anthropic_type"], "api_error")
+
+        with MockResponsesServer(scenario) as backend:
+            with RealShim(backend, "chatgpt") as shim:
+                result = shim.post_messages(stream=False)
+                self.assertEqual(result.status, 502, result.text)
+                error = result.json()["error"]
+                self.assertEqual(error["type"], "invalid_request_error")
+                self.assertEqual(
+                    error["message"],
+                    "backend context length exceeded",
+                )
+                lines = lifecycle_for_response(shim, result)
+                self.assertEqual(self._terminal_fields(lines)["outcome"], "error")
+
+        fallback = structured_error_scenario(
+            "stable-fallback",
+            "error",
+            {"type": "unknown_backend_shape", "opaque": {"large": [1, 2, 3]}},
+        )
+        with MockResponsesServer(fallback) as backend:
+            with RealShim(backend, "chatgpt") as shim:
+                result = shim.post_messages(stream=True)
+                failure = failure_lifecycle_report(parse_typed_sse(result.body))
+                self.assertEqual(failure.error["message"], "backend request failed")
+                self.assertNotIn("opaque", failure.error["message"])
+                lifecycle_for_response(shim, result)
+
+        bounded = structured_error_scenario(
+            "bounded-message",
+            "error",
+            {"type": "server_error", "message": "M" * 260},
+        )
+        with MockResponsesServer(bounded) as backend:
+            with RealShim(backend, "chatgpt") as shim:
+                result = shim.post_messages(stream=True)
+                failure = failure_lifecycle_report(parse_typed_sse(result.body))
+                self.assertEqual(failure.error["message"], "backend server error")
+                self.assertLessEqual(len(failure.error["message"]), 200)
+                lifecycle_for_response(shim, result)
+
+    def test_v1211_reflected_backend_prose_never_reaches_logs_or_client_errors(self) -> None:
+        # INTENT: prove arbitrary, non-credential-shaped backend prose cannot reflect
+        # prompt, system, tool-schema, tool-input, or opaque request material across
+        # the three distinct backend-error normalization paths.
+        # REASONING: every sentinel is both sent to the loopback backend and copied into
+        # its fabricated error message. Absence from the complete stderr capture and the
+        # complete downstream body therefore tests non-reflection, not regex redaction.
+        # ASSUMES: all values are fabricated and the RealShim fixture's closed-proxy
+        # contract keeps every request loopback-only and offline.
+        prompt_sentinel = "FABRICATED_PROMPT_PROSE_Q7V4M9"
+        system_sentinel = "FABRICATED_SYSTEM_PROSE_N2K8W5"
+        tool_schema_sentinel = "FABRICATED_TOOL_SCHEMA_PROSE_R6H3C1"
+        tool_input_sentinel = "FABRICATED_TOOL_INPUT_PROSE_B9T5J2"
+        opaque_sentinel = "FABRICATED_OPAQUE_BLOB_X4P7L8"
+        sentinels = (
+            prompt_sentinel,
+            system_sentinel,
+            tool_schema_sentinel,
+            tool_input_sentinel,
+            opaque_sentinel,
+        )
+        reflected_message = "backend reflected request prose: " + " | ".join(sentinels)
+        error_payload = {
+            "type": "server_error",
+            "code": "context_length_exceeded",
+            "message": reflected_message,
+        }
+
+        http_error = structured_error_scenario(
+            "reflected-http-400",
+            "error",
+            error_payload,
+        )
+        http_error.stream_status = 400
+        http_error.stream_error_body = json.dumps(
+            {"error": error_payload},
+            separators=(",", ":"),
+        ).encode("utf-8")
+        inband_error = structured_error_scenario(
+            "reflected-response-failed",
+            "response.failed",
+            error_payload,
+        )
+        accumulated_error = structured_error_scenario(
+            "reflected-chatgpt-nonstream",
+            "error",
+            error_payload,
+        )
+        cases = (
+            ("http-400", http_error, True, 200, "400"),
+            ("inband-response-failed", inband_error, True, 200, "200"),
+            ("chatgpt-inbound-nonstream", accumulated_error, False, 502, "200"),
+        )
+
+        for name, scenario, inbound_stream, client_status, upstream_status in cases:
+            with self.subTest(path=name):
+                request_body = {
+                    "model": "gpt-fixture",
+                    "max_tokens": 256,
+                    "stream": inbound_stream,
+                    "system": system_sentinel,
+                    "tools": [
+                        {
+                            "name": "ReflectFixture",
+                            "description": tool_schema_sentinel,
+                            "input_schema": {
+                                "type": "object",
+                                "properties": {
+                                    "payload": {
+                                        "type": "string",
+                                        "description": tool_schema_sentinel,
+                                    }
+                                },
+                            },
+                        }
+                    ],
+                    "messages": [
+                        {
+                            "role": "assistant",
+                            "content": [
+                                {
+                                    "type": "tool_use",
+                                    "id": "call_reflected_prose",
+                                    "name": "ReflectFixture",
+                                    "input": {"payload": tool_input_sentinel},
+                                }
+                            ],
+                        },
+                        {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "tool_result",
+                                    "tool_use_id": "call_reflected_prose",
+                                    "content": f"{prompt_sentinel} {opaque_sentinel}",
+                                }
+                            ],
+                        },
+                    ],
+                }
+                with MockResponsesServer(scenario) as backend:
+                    with RealShim(backend, "chatgpt") as shim:
+                        result = shim.post_raw_messages(
+                            json.dumps(
+                                request_body,
+                                separators=(",", ":"),
+                            ).encode("utf-8")
+                        )
+                        self.assertEqual(result.status, client_status, (name, result.text))
+                        if inbound_stream:
+                            client_error = failure_lifecycle_report(
+                                parse_typed_sse(result.body),
+                                expected_error_type="invalid_request_error",
+                            ).error
+                        else:
+                            response = result.json()
+                            self.assertEqual(response.get("type"), "error", name)
+                            client_error = response.get("error") or {}
+                        self.assertEqual(
+                            client_error.get("type"),
+                            "invalid_request_error",
+                            name,
+                        )
+                        self.assertIsInstance(client_error.get("message"), str, name)
+
+                        lines = lifecycle_for_response(shim, result)
+                        assert_lifecycle_log_contract(lines)
+                        events = [line.event for line in lines]
+                        upstream = self._event_line(lines, "upstream_headers")
+                        backend_error = self._event_line(lines, "backend_error")
+                        terminal = self._terminal_fields(lines)
+                        self.assertEqual(upstream.fields["status"], upstream_status, name)
+                        self.assertEqual(
+                            backend_error.fields["backend_type"],
+                            "server_error",
+                            name,
+                        )
+                        self.assertEqual(
+                            backend_error.fields["backend_code"],
+                            "context_length_exceeded",
+                            name,
+                        )
+                        self.assertEqual(
+                            backend_error.fields["anthropic_type"],
+                            "invalid_request_error",
+                            name,
+                        )
+                        self.assertEqual(terminal["outcome"], "error", name)
+                        self.assertEqual(terminal["attempts"], "1", name)
+                        self.assertEqual(terminal["retries"], "0", name)
+                        self.assertEqual(events.count("terminal"), 1, name)
+                        self.assertEqual(events.count("cleanup"), 1, name)
+                        self.assertEqual(events[-2:], ["terminal", "cleanup"], name)
+
+                        logs = shim.captured_stderr()
+                        for sentinel in sentinels:
+                            self.assertNotIn(sentinel, logs, (name, "stderr"))
+                            self.assertNotIn(sentinel, result.text, (name, "client"))
+                        backend_request = json.dumps(
+                            backend.responses_requests[0].body,
+                            separators=(",", ":"),
+                        )
+                        for sentinel in sentinels:
+                            self.assertIn(sentinel, backend_request, (name, "request"))
+                        self.assertIs(
+                            backend.responses_requests[0].body.get("stream"),
+                            True,
+                            name,
+                        )
+                        shim.assert_offline_contract()
+                        backend.assert_request_counts(responses=1, oauth=0)
+
+    def test_v1211_same_turn_terminal_send_disconnect_prefers_completed_send(self) -> None:
+        report = controlled_asgi_probe(send_action="same_turn_terminal_disconnect")
+        self.assertIsNone(report.raised)
+        self.assertFalse(report.cancelled)
+        # Harness instrumentation delegates to production asyncio.wait unchanged and
+        # records its actual FIRST_COMPLETED return. Two done children and zero pending
+        # children prove operation_task and disconnect_task were in the same observed
+        # scheduler turn; the test does not reproduce the winner-selection condition.
+        self.assertEqual(report.terminal_tie_wait_done_counts, [2])
+        self.assertEqual(report.terminal_tie_wait_pending_counts, [0])
+        self.assertEqual(report.terminal_tie_wait_used_first_completed, [True])
+        self.assertTrue(report.terminal_tie_children_done)
+
+        events = [line.event for line in report.lifecycle]
+        terminal = self._terminal_fields(report.lifecycle)
+        cleanup = self._event_line(report.lifecycle, "cleanup").fields
+        self.assertEqual(events.count("disconnect"), 1)
+        self.assertEqual(events.count("terminal"), 1)
+        self.assertEqual(events.count("cleanup"), 1)
+        self.assertEqual(terminal["outcome"], "success")
+        self.assertEqual(terminal["terminal_frame_send"], "send_completed")
+        self.assertEqual(terminal["body_close_send"], "skipped_disconnect")
+        self.assertEqual(terminal["disconnect"], "True")
+        self.assertEqual(terminal["disconnect_phase"], "disconnect_watcher")
+        self.assertEqual(cleanup["status"], "completed")
+        self.assertEqual(report.upstream_calls, 1)
+        self.assertEqual(report.stream_close_calls, 1)
+        self.assertEqual(report.pending_task_count, 0)
+        terminal_messages = [
+            message
+            for message in report.messages
+            if message.get("type") == "http.response.body"
+            and b"event: message_stop" in message.get("body", b"")
+        ]
+        self.assertEqual(len(terminal_messages), 1)
+
+    def test_v1211_response_start_owns_stream_and_watcher_before_send(self) -> None:
+        cases = (
+            ("write-failure", "fail_response_start", False, "error", 0),
+            ("observed-disconnect", "disconnect_response_start", False, "disconnect", 1),
+            ("outer-cancellation", "cancel_response_start", False, "error", 0),
+            ("write-failure-close-failure", "fail_response_start", True, "error", 0),
+            ("disconnect-close-failure", "disconnect_response_start", True, "disconnect", 1),
+            ("cancellation-close-failure", "cancel_response_start", True, "error", 0),
+        )
+        for name, send_action, close_failure, outcome, disconnects in cases:
+            with self.subTest(case=name):
+                report = controlled_asgi_probe(
+                    send_action=send_action,
+                    cleanup_failure=close_failure,
+                )
+                events = [line.event for line in report.lifecycle]
+                terminal = self._terminal_fields(report.lifecycle)
+                cleanup = self._event_line(report.lifecycle, "cleanup").fields
+                self.assertEqual(report.stream_close_calls, 1, name)
+                self.assertEqual(report.stream_close_attempts, [1], name)
+                self.assertEqual(report.close_after_cleanup, [False], name)
+                self.assertEqual(report.watcher_settle_after_cleanup, [False], name)
+                self.assertEqual(report.pending_task_count, 0, name)
+                self.assertEqual(events.count("disconnect"), disconnects, name)
+                self.assertEqual(events.count("terminal"), 1, name)
+                self.assertEqual(events.count("cleanup"), 1, name)
+                self.assertEqual(events[-2:], ["terminal", "cleanup"], name)
+                self.assertEqual(terminal["outcome"], outcome, name)
+                self.assertEqual(
+                    cleanup["status"],
+                    "failed" if close_failure else "completed",
+                    name,
+                )
+                self.assertEqual(
+                    cleanup["error"], "OSError" if close_failure else "-", name
+                )
+                self.assertEqual(
+                    cleanup["failures"], "1" if close_failure else "0", name
+                )
+                self.assertEqual(report.cancelled, send_action == "cancel_response_start")
+
+    def test_v1211_response_start_write_failure_has_owned_downstream_phase(self) -> None:
+        # INTENT: exercise production app() ownership when the ASGI server rejects the
+        # first downstream header write after successful upstream response headers.
+        # REASONING: stream and JSON responses have distinct send sites, so the smallest
+        # two-case matrix prevents either path from inheriting the stale upstream phase.
+        # ASSUMES: injected OSError remains caller-visible while app() alone owns stream
+        # closure, watcher settlement, and exactly-once lifecycle finalization.
+        cases = (
+            ("stream", True, 1),
+            ("json", False, 0),
+        )
+        for name, stream, expected_stream_closes in cases:
+            with self.subTest(path=name):
+                report = controlled_asgi_probe(
+                    stream=stream,
+                    send_action="fail_response_start",
+                )
+                events = [line.event for line in report.lifecycle]
+                terminal = self._terminal_fields(report.lifecycle)
+                cleanup = self._event_line(report.lifecycle, "cleanup").fields
+                self.assertEqual(report.raised, "OSError", name)
+                self.assertFalse(report.cancelled, name)
+                self.assertEqual(report.upstream_calls, 1, name)
+                self.assertEqual(
+                    report.stream_close_calls,
+                    expected_stream_closes,
+                    name,
+                )
+                self.assertEqual(
+                    report.stream_close_attempts,
+                    [1] if stream else [],
+                    name,
+                )
+                self.assertEqual(report.pending_task_count, 0, name)
+                self.assertEqual(report.watcher_settle_after_cleanup, [False], name)
+                self.assertEqual(events.count("upstream_headers"), 1, name)
+                self.assertLess(
+                    events.index("upstream_headers"),
+                    events.index("terminal"),
+                    name,
+                )
+                self.assertEqual(events.count("disconnect"), 0, name)
+                self.assertEqual(events.count("terminal"), 1, name)
+                self.assertEqual(events.count("cleanup"), 1, name)
+                self.assertEqual(events[-2:], ["terminal", "cleanup"], name)
+                self.assertEqual(terminal["outcome"], "error", name)
+                self.assertEqual(
+                    terminal["failure_phase"],
+                    "downstream_response_start",
+                    name,
+                )
+                self.assertEqual(cleanup["status"], "completed", name)
+                self.assertEqual(cleanup["error"], "-", name)
+                self.assertEqual(cleanup["failures"], "0", name)
+
+    def test_v1211_json_response_start_failure_preserves_prior_backend_cause(self) -> None:
+        # INTENT: preserve the first causal backend-rejection phase when a later JSON
+        # response-start write also fails.
+        # REASONING: downstream_response_start owns header-write failures only when no
+        # earlier causal error has already fixed failure_phase.
+        scenario = structured_error_scenario(
+            "json-backend-error-before-response-start-failure",
+            "error",
+            {
+                "type": "server_error",
+                "code": "context_length_exceeded",
+                "message": "fabricated backend rejection",
+            },
+        )
+        report = controlled_asgi_probe(
+            scenario=scenario,
+            stream=False,
+            response_status=400,
+            send_action="fail_response_start",
+        )
+        events = [line.event for line in report.lifecycle]
+        terminal = self._terminal_fields(report.lifecycle)
+        self.assertEqual(report.raised, "OSError")
+        self.assertFalse(report.cancelled)
+        self.assertEqual(report.upstream_calls, 1)
+        self.assertEqual(report.stream_close_calls, 0)
+        self.assertEqual(report.pending_task_count, 0)
+        self.assertEqual(events.count("upstream_headers"), 1)
+        self.assertEqual(events.count("backend_error"), 1)
+        self.assertLess(events.index("upstream_headers"), events.index("backend_error"))
+        self.assertLess(events.index("backend_error"), events.index("terminal"))
+        self.assertEqual(events.count("disconnect"), 0)
+        self.assertEqual(events.count("terminal"), 1)
+        self.assertEqual(events.count("cleanup"), 1)
+        self.assertEqual(events[-2:], ["terminal", "cleanup"])
+        self.assertEqual(terminal["outcome"], "error")
+        self.assertEqual(terminal["failure_phase"], "upstream_headers")
+
+    def test_v1211_stream_response_start_failure_preserves_prior_backend_cause(self) -> None:
+        # INTENT: drive production app() through a real non-2xx streamed backend
+        # response whose downstream SSE response-start write then fails.
+        # REASONING: upstream headers already prove a backend HTTP rejection before the
+        # shim attempts downstream headers, so that first causal phase must survive the
+        # later OSError. A successful-send companion pins the existing deferred body
+        # parse, ensuring the repair does not sacrifice structured type/code enrichment.
+        # ASSUMES: the controlled harness injects only the upstream response and ASGI
+        # send failure; status recognition, lifecycle ordering, normalization, and
+        # centralized finalization all execute through production code.
+        scenario = backend_status_scenario(
+            "stream-backend-error-before-response-start-failure",
+            400,
+        )
+        scenario.stream_error_body = json.dumps(
+            {
+                "error": {
+                    "type": "server_error",
+                    "code": "context_length_exceeded",
+                    "message": "fabricated backend rejection",
+                }
+            },
+            separators=(",", ":"),
+        ).encode("utf-8")
+
+        failed_start = controlled_asgi_probe(
+            scenario=scenario,
+            stream=True,
+            response_status=400,
+            send_action="fail_response_start",
+        )
+        failed_events = [line.event for line in failed_start.lifecycle]
+        failed_terminal = self._terminal_fields(failed_start.lifecycle)
+        failed_cleanup = self._event_line(failed_start.lifecycle, "cleanup").fields
+        self.assertEqual(failed_start.raised, "OSError")
+        self.assertFalse(failed_start.cancelled)
+        self.assertEqual(failed_start.upstream_calls, 1)
+        self.assertEqual(failed_start.stream_close_calls, 1)
+        self.assertEqual(failed_start.stream_close_attempts, [1])
+        self.assertEqual(failed_start.pending_task_count, 0)
+        self.assertEqual(failed_events.count("upstream_headers"), 1)
+        self.assertEqual(failed_events.count("disconnect"), 0)
+        self.assertEqual(failed_events.count("terminal"), 1)
+        self.assertEqual(failed_events.count("cleanup"), 1)
+        self.assertEqual(failed_events[-2:], ["terminal", "cleanup"])
+        self.assertEqual(failed_terminal["outcome"], "error")
+        self.assertEqual(failed_terminal["attempts"], "1")
+        self.assertEqual(failed_terminal["retries"], "0")
+        self.assertEqual(failed_terminal["failure_phase"], "upstream_headers")
+        self.assertEqual(failed_cleanup["status"], "completed")
+        self.assertEqual(failed_cleanup["failures"], "0")
+
+        enriched = controlled_asgi_probe(
+            scenario=scenario,
+            stream=True,
+            response_status=400,
+        )
+        enriched_events = [line.event for line in enriched.lifecycle]
+        enriched_backend = self._event_line(
+            enriched.lifecycle,
+            "backend_error",
+        ).fields
+        enriched_terminal = self._terminal_fields(enriched.lifecycle)
+        self.assertIsNone(enriched.raised)
+        self.assertFalse(enriched.cancelled)
+        self.assertEqual(enriched.upstream_calls, 1)
+        self.assertEqual(enriched.stream_close_calls, 1)
+        self.assertEqual(enriched.pending_task_count, 0)
+        self.assertEqual(enriched_events.count("backend_error"), 1)
+        self.assertLess(
+            enriched_events.index("upstream_headers"),
+            enriched_events.index("backend_error"),
+        )
+        self.assertEqual(enriched_backend["backend_type"], "server_error")
+        self.assertEqual(
+            enriched_backend["backend_code"],
+            "context_length_exceeded",
+        )
+        self.assertEqual(
+            enriched_backend["anthropic_type"],
+            "invalid_request_error",
+        )
+        self.assertEqual(enriched_backend["failure_phase"], "upstream_headers")
+        self.assertEqual(enriched_terminal["outcome"], "error")
+        self.assertEqual(enriched_terminal["failure_phase"], "upstream_headers")
+        self.assertEqual(enriched_events.count("terminal"), 1)
+        self.assertEqual(enriched_events.count("cleanup"), 1)
+        self.assertEqual(enriched_events[-2:], ["terminal", "cleanup"])
+
+    def test_v1211_auth_error_send_failure_still_settles_watcher(self) -> None:
+        report = controlled_asgi_probe(
+            stream=False,
+            auth_store_unavailable=True,
+            send_action="fail_response_start",
+        )
+        events = [line.event for line in report.lifecycle]
+        terminal = self._terminal_fields(report.lifecycle)
+        cleanup = self._event_line(report.lifecycle, "cleanup").fields
+        self.assertEqual(report.raised, "OSError")
+        self.assertFalse(report.cancelled)
+        self.assertEqual(report.upstream_calls, 0)
+        self.assertEqual(report.stream_close_calls, 0)
+        self.assertEqual(report.pending_task_count, 0)
+        self.assertEqual(report.watcher_settle_after_cleanup, [False])
+        self.assertEqual(events.count("terminal"), 1)
+        self.assertEqual(events.count("cleanup"), 1)
+        self.assertEqual(events[-2:], ["terminal", "cleanup"])
+        self.assertEqual(terminal["outcome"], "error")
+        self.assertEqual(terminal["failure_phase"], "backend_authentication")
+        self.assertEqual(cleanup["status"], "completed")
+        self.assertEqual(cleanup["error"], "-")
+        self.assertEqual(cleanup["failures"], "0")
+
+    def test_v1211_attempt_local_cleanup_failure_is_monotonic(self) -> None:
+        cases = (
+            (
+                "eligible-status-retry",
+                {"attempt_outcomes": [503, 200], "close_fail_attempts": {1}},
+                2,
+                [1, 2],
+                "success",
+                0,
+            ),
+            (
+                "transport-retry",
+                {"attempt_outcomes": ["transport", 200], "close_fail_attempts": {1}},
+                2,
+                [1, 2],
+                "success",
+                0,
+            ),
+            (
+                "lazy-401-refresh",
+                {
+                    "attempt_outcomes": [401, 200],
+                    "close_fail_attempts": {1},
+                    "lazy_401_refresh": True,
+                },
+                2,
+                [1, 2],
+                "success",
+                0,
+            ),
+            (
+                "disconnect-during-enter",
+                {
+                    "disconnect_during_enter": True,
+                    "close_fail_attempts": {1},
+                },
+                1,
+                [1],
+                "disconnect",
+                1,
+            ),
+        )
+        for name, kwargs, close_calls, close_attempts, outcome, disconnects in cases:
+            with self.subTest(case=name):
+                report = controlled_asgi_probe(**kwargs)
+                events = [line.event for line in report.lifecycle]
+                terminal = self._terminal_fields(report.lifecycle)
+                cleanup = self._event_line(report.lifecycle, "cleanup").fields
+                self.assertEqual(report.stream_close_calls, close_calls, name)
+                self.assertEqual(report.stream_close_attempts, close_attempts, name)
+                self.assertTrue(all(not value for value in report.close_after_cleanup), name)
+                self.assertEqual(report.pending_task_count, 0, name)
+                self.assertEqual(events.count("disconnect"), disconnects, name)
+                self.assertEqual(events.count("terminal"), 1, name)
+                self.assertEqual(events.count("cleanup"), 1, name)
+                self.assertEqual(events[-2:], ["terminal", "cleanup"], name)
+                self.assertEqual(terminal["outcome"], outcome, name)
+                self.assertEqual(cleanup["status"], "failed", name)
+                self.assertEqual(cleanup["error"], "OSError", name)
+                self.assertEqual(cleanup["failures"], "1", name)
+                self.assertEqual(report.watcher_settle_after_cleanup, [False], name)
+
+    def test_v1211_malformed_json_shapes_return_correlated_400_without_upstream(self) -> None:
+        cases = (
+            ("root-array", b"[]"),
+            ("root-null", b"null"),
+            ("messages-null", b'{"messages":null}'),
+            ("messages-item-null", b'{"messages":[null]}'),
+        )
+        for name, raw_body in cases:
+            with self.subTest(case=name):
+                report = controlled_asgi_probe(raw_request_body=raw_body)
+                self.assertIsNone(report.raised, name)
+                self.assertFalse(report.cancelled, name)
+                self.assertEqual(report.upstream_calls, 0, name)
+                starts = [
+                    message
+                    for message in report.messages
+                    if message.get("type") == "http.response.start"
+                ]
+                self.assertEqual(len(starts), 1, name)
+                self.assertEqual(starts[0].get("status"), 400, name)
+                response_headers = dict(starts[0].get("headers", []))
+                request_id = response_headers[b"x-daaf-request-id"].decode("ascii")
+                self.assertEqual({line.req_id for line in report.lifecycle}, {request_id}, name)
+                body = b"".join(
+                    message.get("body", b"")
+                    for message in report.messages
+                    if message.get("type") == "http.response.body"
+                )
+                response = json.loads(body.decode("utf-8"))
+                self.assertEqual(response.get("type"), "error", name)
+                self.assertEqual(
+                    (response.get("error") or {}).get("type"),
+                    "invalid_request_error",
+                    name,
+                )
+                events = [line.event for line in report.lifecycle]
+                self.assertEqual(events.count("terminal"), 1, name)
+                self.assertEqual(events.count("cleanup"), 1, name)
+                self.assertNotIn("upstream_attempt", events, name)
+                terminal = self._terminal_fields(report.lifecycle)
+                self.assertEqual(terminal["attempts"], "0", name)
+                self.assertEqual(terminal["retries"], "0", name)
+                self.assertEqual(terminal["failure_phase"], "request_validation", name)
+                self.assertEqual(terminal["terminal_frame_send"], "send_completed", name)
+                self.assertEqual(terminal["body_close_send"], "send_completed", name)
+
+    def test_v1211_max_tokens_rejects_nonpositive_noninteger_and_nonfinite_values(self) -> None:
+        # INTENT: pin the Anthropic max_tokens boundary to finite positive JSON integers
+        # before request translation or any backend attempt can occur.
+        # REASONING: raw bytes preserve the overflowing 1e309 literal independently of
+        # Python serializer policy; the remaining values cover explicit null, bool-as-int,
+        # fractional, negative, and zero edges through the same production app() path.
+        # ASSUMES: malformed request values receive one static, non-reflective JSON 400
+        # correlated to the same request lifecycle and never enter retry accounting.
+        invalid_cases = (
+            ("explicit-null", b"null"),
+            ("boolean", b"true"),
+            ("fractional", b"16.5"),
+            ("negative", b"-1"),
+            ("zero", b"0"),
+            ("overflowing-literal", b"1e309"),
+        )
+        for name, literal in invalid_cases:
+            with self.subTest(case=name):
+                raw_body = (
+                    b'{"model":"gpt-fixture","max_tokens":'
+                    + literal
+                    + b',"stream":false,"messages":[]}'
+                )
+                report = controlled_asgi_probe(raw_request_body=raw_body)
+                self.assertIsNone(report.raised, name)
+                self.assertFalse(report.cancelled, name)
+                self.assertEqual(report.upstream_calls, 0, name)
+                self.assertEqual(report.stream_close_calls, 0, name)
+                self.assertEqual(report.pending_task_count, 0, name)
+
+                starts = [
+                    message
+                    for message in report.messages
+                    if message.get("type") == "http.response.start"
+                ]
+                self.assertEqual(len(starts), 1, name)
+                self.assertEqual(starts[0].get("status"), 400, name)
+                response_headers = dict(starts[0].get("headers", []))
+                request_id = response_headers[b"x-daaf-request-id"].decode("ascii")
+                self.assertEqual(
+                    {line.req_id for line in report.lifecycle},
+                    {request_id},
+                    name,
+                )
+                body = b"".join(
+                    message.get("body", b"")
+                    for message in report.messages
+                    if message.get("type") == "http.response.body"
+                )
+                self.assertEqual(
+                    json.loads(body.decode("utf-8")),
+                    {
+                        "type": "error",
+                        "error": {
+                            "type": "invalid_request_error",
+                            "message": "invalid request structure",
+                        },
+                    },
+                    name,
+                )
+
+                events = [line.event for line in report.lifecycle]
+                terminal = self._terminal_fields(report.lifecycle)
+                cleanup = self._event_line(report.lifecycle, "cleanup").fields
+                self.assertNotIn("upstream_attempt", events, name)
+                self.assertEqual(events.count("terminal"), 1, name)
+                self.assertEqual(events.count("cleanup"), 1, name)
+                self.assertEqual(events[-2:], ["terminal", "cleanup"], name)
+                self.assertEqual(terminal["outcome"], "error", name)
+                self.assertEqual(terminal["attempts"], "0", name)
+                self.assertEqual(terminal["retries"], "0", name)
+                self.assertEqual(terminal["failure_phase"], "request_validation", name)
+                self.assertEqual(terminal["terminal_frame_send"], "send_completed", name)
+                self.assertEqual(terminal["body_close_send"], "send_completed", name)
+                self.assertEqual(cleanup["status"], "completed", name)
+                self.assertEqual(cleanup["failures"], "0", name)
+
+        # Omission remains a distinct compatibility case: unlike explicit JSON null,
+        # an absent max_tokens key is accepted and no outbound ceiling is synthesized.
+        omitted = controlled_asgi_probe(
+            stream=False,
+            raw_request_body=(
+                b'{"model":"gpt-fixture","stream":false,"messages":[]}'
+            ),
+        )
+        omitted_events = [line.event for line in omitted.lifecycle]
+        omitted_terminal = self._terminal_fields(omitted.lifecycle)
+        omitted_starts = [
+            message
+            for message in omitted.messages
+            if message.get("type") == "http.response.start"
+        ]
+        self.assertIsNone(omitted.raised)
+        self.assertFalse(omitted.cancelled)
+        self.assertEqual(omitted.upstream_calls, 1)
+        self.assertEqual(omitted.stream_close_calls, 0)
+        self.assertEqual(omitted.pending_task_count, 0)
+        self.assertEqual(len(omitted_starts), 1)
+        self.assertEqual(omitted_starts[0].get("status"), 200)
+        omitted_headers = dict(omitted_starts[0].get("headers", []))
+        omitted_request_id = omitted_headers[b"x-daaf-request-id"].decode("ascii")
+        self.assertEqual(
+            {line.req_id for line in omitted.lifecycle},
+            {omitted_request_id},
+        )
+        self.assertEqual(omitted_events.count("upstream_attempt"), 1)
+        self.assertEqual(omitted_events.count("terminal"), 1)
+        self.assertEqual(omitted_events.count("cleanup"), 1)
+        self.assertEqual(omitted_events[-2:], ["terminal", "cleanup"])
+        self.assertEqual(omitted_terminal["outcome"], "success")
+        self.assertEqual(omitted_terminal["attempts"], "1")
+        self.assertEqual(omitted_terminal["retries"], "0")
+        self.assertEqual(omitted_terminal["failure_phase"], "-")
+
+        # A positive integer below the provider's outbound minimum remains compatible:
+        # production accepts it and preserves the established clamp to 16.
+        scenario = full_response_scenario()
+        with MockResponsesServer(scenario) as backend:
+            with RealShim(backend, "openai") as shim:
+                result = shim.post_raw_messages(
+                    b'{"model":"gpt-fixture","max_tokens":1,'
+                    b'"stream":false,"messages":[]}'
+                )
+                self.assertEqual(result.status, 200, result.text)
+                lines = lifecycle_for_response(shim, result)
+                terminal = self._terminal_fields(lines)
+                self.assertEqual(terminal["outcome"], "success")
+                self.assertEqual(terminal["attempts"], "1")
+                self.assertEqual(terminal["retries"], "0")
+                self.assertEqual(
+                    backend.responses_requests[0].body.get("max_output_tokens"),
+                    16,
+                )
+                shim.assert_offline_contract()
+                backend.assert_request_counts(responses=1, oauth=0)
+
+    def test_v1211_failure_phase_identifies_parse_translation_and_auth_boundaries(self) -> None:
+        invalid_json = controlled_asgi_probe(raw_request_body=b"{invalid-json")
+        self.assertIsNone(invalid_json.raised)
+        self.assertEqual(
+            self._terminal_fields(invalid_json.lifecycle)["failure_phase"],
+            "request_parse",
+        )
+        self.assertEqual(invalid_json.upstream_calls, 0)
+
+        translation = controlled_asgi_probe(translation_failure=True)
+        self.assertEqual(translation.raised, "TypeError")
+        self.assertEqual(
+            self._terminal_fields(translation.lifecycle)["failure_phase"],
+            "request_translation",
+        )
+        self.assertEqual(translation.upstream_calls, 0)
+
+        authentication = controlled_asgi_probe(
+            stream=False,
+            auth_store_unavailable=True,
+        )
+        self.assertIsNone(authentication.raised)
+        self.assertEqual(
+            self._terminal_fields(authentication.lifecycle)["failure_phase"],
+            "backend_authentication",
+        )
+        self.assertEqual(authentication.upstream_calls, 0)
+
+        lazy_authentication = controlled_asgi_probe(
+            attempt_outcomes=[401],
+            lazy_401_refresh_failure=True,
+        )
+        self.assertIsNone(lazy_authentication.raised)
+        lazy_terminal = self._terminal_fields(lazy_authentication.lifecycle)
+        self.assertEqual(lazy_terminal["failure_phase"], "backend_authentication")
+        self.assertEqual(lazy_terminal["attempts"], "1")
+        self.assertEqual(lazy_terminal["retries"], "1")
+        self.assertEqual(lazy_authentication.upstream_calls, 1)
+
+    def test_v1211_disconnect_records_only_observed_asgi_evidence(self) -> None:
+        body_read = controlled_asgi_probe(body_read_disconnect=True)
+        body_disconnect = self._event_line(body_read.lifecycle, "disconnect").fields
+        self.assertEqual(body_disconnect["observed_phase"], "body_read")
+        self.assertEqual(
+            urllib.parse.unquote(body_disconnect["detail"]),
+            "ASGI http.disconnect observed",
+        )
+        body_terminal = self._terminal_fields(body_read.lifecycle)
+        self.assertEqual(body_terminal["attempts"], "0")
+        self.assertEqual(body_terminal["retries"], "0")
+        self.assertEqual(body_read.upstream_calls, 0)
+        self.assertNotIn("upstream operation cancelled", body_read.logs)
+
+        post_terminal = controlled_asgi_probe(send_action="disconnect_body_close")
+        post_disconnect = self._event_line(post_terminal.lifecycle, "disconnect").fields
+        self.assertEqual(
+            urllib.parse.unquote(post_disconnect["detail"]),
+            "ASGI http.disconnect observed",
+        )
+        post_terminal_fields = self._terminal_fields(post_terminal.lifecycle)
+        self.assertEqual(post_terminal_fields["outcome"], "success")
+        self.assertEqual(post_terminal_fields["terminal_frame_send"], "send_completed")
+        self.assertEqual(post_terminal_fields["body_close_send"], "skipped_disconnect")
+        self.assertNotIn("upstream operation cancelled", post_terminal.logs)
+
+        outer_cancel = controlled_asgi_probe(send_action="cancel_response_start")
+        outer_events = [line.event for line in outer_cancel.lifecycle]
+        self.assertTrue(outer_cancel.cancelled)
+        self.assertEqual(outer_events.count("disconnect"), 0)
+        self.assertEqual(outer_events.count("terminal"), 1)
+        self.assertEqual(outer_events.count("cleanup"), 1)
+        self.assertEqual(self._terminal_fields(outer_cancel.lifecycle)["outcome"], "error")
+
+    def test_v1211_terminal_send_outcome_matrix_and_first_causal_outcome(self) -> None:
+        backend_failure = structured_error_scenario(
+            "backend-error-disconnect",
+            "error",
+            {"type": "server_error", "message": "backend failed first"},
+        )
+        cases = (
+            ("success", {}, "success", "send_completed", "send_completed", 0),
+            (
+                "terminal-write-failed",
+                {"send_action": "fail_terminal"},
+                "error",
+                "write_failed",
+                "not_attempted",
+                0,
+            ),
+            (
+                "body-close-write-failed",
+                {"send_action": "fail_body_close"},
+                "success",
+                "send_completed",
+                "write_failed",
+                0,
+            ),
+            (
+                "response-start-cancelled",
+                {"send_action": "cancel_response_start"},
+                "error",
+                "not_attempted",
+                "not_attempted",
+                0,
+            ),
+            (
+                "terminal-attempt-cancelled",
+                {"send_action": "cancel_terminal"},
+                "error",
+                "attempted",
+                "not_attempted",
+                0,
+            ),
+            (
+                "body-close-attempt-cancelled",
+                {"send_action": "cancel_body_close"},
+                "success",
+                "send_completed",
+                "attempted",
+                0,
+            ),
+            (
+                "pure-client-disconnect",
+                {"pure_disconnect": True},
+                "disconnect",
+                "skipped_disconnect",
+                "skipped_disconnect",
+                1,
+            ),
+            (
+                "body-read-disconnect",
+                {"body_read_disconnect": True},
+                "disconnect",
+                "skipped_disconnect",
+                "skipped_disconnect",
+                1,
+            ),
+            (
+                "post-message-stop-disconnect",
+                {"send_action": "disconnect_body_close"},
+                "success",
+                "send_completed",
+                "skipped_disconnect",
+                1,
+            ),
+            (
+                "backend-error-then-disconnect",
+                {
+                    "scenario": backend_failure,
+                    "send_action": "disconnect_terminal",
+                },
+                "error",
+                "skipped_disconnect",
+                "skipped_disconnect",
+                1,
+            ),
+            (
+                "parse-error",
+                {"raw_request_body": b"{invalid-json"},
+                "error",
+                "send_completed",
+                "send_completed",
+                0,
+            ),
+            (
+                "invalid-request-shape",
+                {"invalid_request_shape": True},
+                "error",
+                "send_completed",
+                "send_completed",
+                0,
+            ),
+            (
+                "cleanup-failure-after-success",
+                {"cleanup_failure": True},
+                "success",
+                "send_completed",
+                "send_completed",
+                0,
+            ),
+            (
+                "cleanup-failure-after-error",
+                {"scenario": backend_failure, "cleanup_failure": True},
+                "error",
+                "send_completed",
+                "send_completed",
+                0,
+            ),
+        )
+        terminal_states = set()
+        body_states = set()
+        allowed_states = {
+            "not_attempted",
+            "attempted",
+            "send_completed",
+            "skipped_disconnect",
+            "write_failed",
+        }
+        for name, kwargs, outcome, terminal_state, body_state, disconnects in cases:
+            with self.subTest(case=name):
+                report = controlled_asgi_probe(**kwargs)
+                terminal = self._terminal_fields(report.lifecycle)
+                cleanup = self._event_line(report.lifecycle, "cleanup").fields
+                events = [line.event for line in report.lifecycle]
+                self.assertEqual(events.count("terminal"), 1, name)
+                self.assertEqual(events.count("cleanup"), 1, name)
+                self.assertEqual(events.count("disconnect"), disconnects, name)
+                if disconnects:
+                    disconnect = self._event_line(report.lifecycle, "disconnect")
+                    self.assertEqual(
+                        urllib.parse.unquote(disconnect.fields["detail"]),
+                        "ASGI http.disconnect observed",
+                        name,
+                    )
+                    self.assertNotIn("upstream operation cancelled", report.logs, name)
+                self.assertEqual(terminal["outcome"], outcome, name)
+                self.assertEqual(
+                    terminal["terminal_frame_send"],
+                    terminal_state,
+                    name,
+                )
+                self.assertEqual(terminal["body_close_send"], body_state, name)
+                terminal_states.add(terminal["terminal_frame_send"])
+                body_states.add(terminal["body_close_send"])
+                if name in {
+                    "cleanup-failure-after-success",
+                    "cleanup-failure-after-error",
+                }:
+                    self.assertEqual(cleanup["status"], "failed")
+                    self.assertEqual(cleanup["error"], "OSError")
+                else:
+                    self.assertIn(cleanup["status"], {"completed", "not_started"})
+                if name == "backend-error-then-disconnect":
+                    self.assertIn("backend_error", events)
+                    self.assertLess(
+                        events.index("backend_error"),
+                        events.index("disconnect"),
+                    )
+                if name == "invalid-request-shape":
+                    self.assertIsNone(report.raised)
+                    self.assertEqual(terminal["failure_phase"], "request_validation")
+        self.assertEqual(terminal_states, allowed_states)
+        self.assertEqual(body_states, allowed_states)
+
+    def test_v1211_prestart_and_poststart_failures_have_single_accounting(self) -> None:
+        scenario = full_response_scenario()
+        with MockResponsesServer(scenario) as backend:
+            with RealShim(backend, "chatgpt") as shim:
+                result = shim.post_messages(stream=True, model="claude-fable-5")
+                self.assertEqual(result.status, 400, result.text)
+                lines = lifecycle_for_response(shim, result)
+                terminal = self._terminal_fields(lines)
+                self.assertEqual(terminal["outcome"], "error")
+                self.assertEqual(terminal["attempts"], "0")
+                self.assertEqual(terminal["terminal_frame_send"], "send_completed")
+                self.assertEqual(terminal["body_close_send"], "send_completed")
+                self.assertNotIn("upstream_attempt", [line.event for line in lines])
+                backend.assert_request_counts(responses=0, oauth=0)
+
+        scenario = abrupt_eof_scenario("text")
+        with MockResponsesServer(scenario) as backend:
+            with RealShim(backend, "chatgpt") as shim:
+                result = shim.post_messages(stream=True)
+                self.assertEqual(result.status, 200, result.text)
+                failure_lifecycle_report(parse_typed_sse(result.body))
+                lines = lifecycle_for_response(shim, result)
+                terminal = self._terminal_fields(lines)
+                self.assertEqual(terminal["outcome"], "error")
+                self.assertEqual(terminal["attempts"], "1")
+                self.assertEqual(terminal["retries"], "0")
+                self.assertEqual(terminal["terminal_frame_send"], "send_completed")
+                self.assertEqual(terminal["body_close_send"], "send_completed")
+                self.assertIn("backend_error", [line.event for line in lines])
+                backend.assert_request_counts(responses=1, oauth=0)
+
+    def test_v1211_auth_error_has_one_terminal_and_cleanup(self) -> None:
+        scenario = full_response_scenario()
+        with MockResponsesServer(scenario) as backend:
+            with RealShim(backend, "chatgpt") as shim:
+                shim.remove_auth_store()
+                result = shim.post_messages(stream=False)
+                self.assertEqual(result.status, 401, result.text)
+                self.assertEqual(result.json()["error"]["type"], "authentication_error")
+                lines = lifecycle_for_response(shim, result)
+                terminal = self._terminal_fields(lines)
+                self.assertEqual(terminal["outcome"], "error")
+                self.assertEqual(terminal["attempts"], "0")
+                self.assertEqual(terminal["retries"], "0")
+                self.assertEqual(terminal["failure_phase"], "backend_authentication")
+                self.assertEqual(
+                    [line.event for line in lines].count("terminal"),
+                    1,
+                )
+                self.assertEqual(
+                    [line.event for line in lines].count("cleanup"),
+                    1,
+                )
+                backend.assert_request_counts(responses=0, oauth=0)
 
 
 if __name__ == "__main__":

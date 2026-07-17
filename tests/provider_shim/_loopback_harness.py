@@ -8,9 +8,14 @@ Anthropic-compatible HTTP endpoint.
 
 from __future__ import annotations
 
+import asyncio
 import base64
+import importlib.util
+import io
 import json
+import logging
 import os
+import re
 import shutil
 import select
 import socket
@@ -27,6 +32,7 @@ from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable, Iterable, Optional
+from unittest import mock
 
 
 DAAF_ROOT = Path("/daaf")
@@ -99,6 +105,8 @@ class Scenario:
     stream_status: int = 200
     stream_headers: dict[str, str] = field(default_factory=dict)
     stream_error_body: bytes = b'{"error":{"message":"fixture backend rejection"}}'
+    attempt_statuses: Optional[list[int | str]] = None
+    attempt_headers: Optional[list[dict[str, str]]] = None
     disconnect_phase: Optional[str] = None
     disconnect_delay: float = 1.8
 
@@ -126,6 +134,38 @@ class FailureLifecycleReport:
     stops: list[int] = field(default_factory=list)
     error: dict[str, Any] = field(default_factory=dict)
     open_at_end: set[int] = field(default_factory=set)
+
+
+@dataclass(frozen=True)
+class LifecycleLogLine:
+    """One parsed request-scoped production log line."""
+
+    raw: str
+    req_id: str
+    phase: str
+    event: Optional[str]
+    fields: dict[str, str]
+
+
+@dataclass
+class ASGIProbeReport:
+    """Bounded observations from one production-app controlled-ASGI execution."""
+
+    messages: list[dict[str, Any]]
+    logs: str
+    lifecycle: list[LifecycleLogLine]
+    raised: Optional[str]
+    cancelled: bool
+    upstream_calls: int
+    stream_close_calls: int
+    stream_close_attempts: list[int]
+    close_after_cleanup: list[bool]
+    watcher_settle_after_cleanup: list[bool]
+    terminal_tie_wait_done_counts: list[int]
+    terminal_tie_wait_pending_counts: list[int]
+    terminal_tie_wait_used_first_completed: list[bool]
+    terminal_tie_children_done: bool
+    pending_task_count: int
 
 
 class _EventBuilder:
@@ -647,6 +687,21 @@ def backend_status_scenario(
     )
 
 
+def sequenced_attempt_scenario(
+    name: str,
+    statuses: list[int | str],
+    *,
+    headers: Optional[list[dict[str, str]]] = None,
+) -> Scenario:
+    """Use per-attempt status/transport outcomes before the normal success body."""
+
+    scenario = full_response_scenario()
+    scenario.name = name
+    scenario.attempt_statuses = list(statuses)
+    scenario.attempt_headers = [dict(value) for value in (headers or [])]
+    return scenario
+
+
 def delayed_header_disconnect_scenario(delay: float = 1.8) -> Scenario:
     """Normal SSE response whose HTTP headers are withheld for disconnect testing."""
 
@@ -858,6 +913,57 @@ def terminal_failure_scenario(prefix: str, terminal: str) -> Scenario:
     )
 
 
+def structured_error_scenario(
+    name: str,
+    event_type: str,
+    error_payload: dict[str, Any],
+    *,
+    prefix: Optional[str] = None,
+) -> Scenario:
+    """Build a captured-shape direct error or response.failed SSE fixture.
+
+    The frame envelopes match the direct `error` and `response.failed` shapes
+    already exercised by terminal_failure_scenario; only the nested structured
+    fields vary so normalization is driven through production code.
+    """
+
+    if prefix is None:
+        builder = _EventBuilder()
+        builder.add(
+            "response.created",
+            response={"id": f"resp_{name}", "status": "in_progress"},
+        )
+        output: list[dict[str, Any]] = []
+    else:
+        builder, output = _prefix_events(prefix)
+    if event_type == "error":
+        builder.add("error", error=dict(error_payload))
+    elif event_type == "response.failed":
+        builder.add(
+            "response.failed",
+            response={
+                "id": f"resp_{name}",
+                "status": "failed",
+                "output": output,
+                "usage": dict(USAGE),
+                "error": dict(error_payload),
+            },
+        )
+    else:
+        raise ValueError(f"unsupported structured error event: {event_type}")
+    return Scenario(
+        name=name,
+        stream_events=builder.events,
+        nonstream_response={
+            "id": f"resp_{name}_nonstream",
+            "status": "failed",
+            "output": output,
+            "usage": dict(USAGE),
+            "error": dict(error_payload),
+        },
+    )
+
+
 def abrupt_eof_scenario(prefix: str) -> Scenario:
     """Valid content prefix followed by a genuine framing-level abrupt EOF."""
 
@@ -1032,6 +1138,8 @@ class MockResponsesServer(AbstractContextManager["MockResponsesServer"]):
         self.delayed_send_succeeded = threading.Event()
         self.delayed_send_completed = threading.Event()
         self.release_delayed_send = threading.Event()
+        self._response_request_entered: dict[int, threading.Event] = {}
+        self._response_request_release: dict[int, threading.Event] = {}
         self._lock = threading.Lock()
         self._server: Optional[ThreadingHTTPServer] = None
         self._thread: Optional[threading.Thread] = None
@@ -1190,10 +1298,22 @@ class MockResponsesServer(AbstractContextManager["MockResponsesServer"]):
                     with owner._lock:
                         owner.responses_requests.append(record)
                         owner.response_timestamps.append(time.monotonic())
-                        if len(owner.responses_requests) == 1:
+                        request_number = len(owner.responses_requests)
+                        if request_number == 1:
                             owner.first_response_request.set()
-                        elif len(owner.responses_requests) == 2:
+                        elif request_number == 2:
                             owner.second_response_request.set()
+                        entered_gate = owner._response_request_entered.get(request_number)
+                        release_gate = owner._response_request_release.get(request_number)
+                    if entered_gate is not None:
+                        entered_gate.set()
+                    if release_gate is not None and not release_gate.wait(10.0):
+                        self._send_bytes(
+                            504,
+                            "application/json",
+                            b'{"error":{"message":"fixture response gate timed out"}}',
+                        )
+                        return
                     if owner.scenario.reject_nonstream and body.get("stream") is not True:
                         payload = json.dumps(
                             NONSTREAM_REJECTION_BODY,
@@ -1208,12 +1328,40 @@ class MockResponsesServer(AbstractContextManager["MockResponsesServer"]):
                         if owner.scenario.disconnect_phase == "body":
                             self._send_delayed_body()
                             return
-                        if owner.scenario.stream_status >= 400:
+                        attempt_index = request_number - 1
+                        attempt_action: int | str = owner.scenario.stream_status
+                        if owner.scenario.attempt_statuses:
+                            attempt_action = owner.scenario.attempt_statuses[
+                                min(attempt_index, len(owner.scenario.attempt_statuses) - 1)
+                            ]
+                        attempt_headers = dict(owner.scenario.stream_headers)
+                        if owner.scenario.attempt_headers:
+                            attempt_headers.update(
+                                owner.scenario.attempt_headers[
+                                    min(attempt_index, len(owner.scenario.attempt_headers) - 1)
+                                ]
+                            )
+                        if attempt_action == "transport":
+                            # Deterministic loopback transport exception: close before
+                            # any HTTP response bytes. httpx observes a protocol/transport
+                            # failure on the real production request path.
+                            self.close_connection = True
+                            try:
+                                self.connection.shutdown(socket.SHUT_RDWR)
+                            except OSError:
+                                pass
+                            self.connection.close()
+                            return
+                        if not isinstance(attempt_action, int):
+                            raise ValueError(
+                                f"unsupported fixture attempt action: {attempt_action!r}"
+                            )
+                        if attempt_action >= 400:
                             self._send_bytes(
-                                owner.scenario.stream_status,
+                                attempt_action,
                                 "application/json",
                                 owner.scenario.stream_error_body,
-                                owner.scenario.stream_headers,
+                                attempt_headers,
                             )
                             return
                         if owner.scenario.raw_stream_frames is not None:
@@ -1233,13 +1381,56 @@ class MockResponsesServer(AbstractContextManager["MockResponsesServer"]):
                         if owner.scenario.abrupt_eof:
                             self._send_abrupt_sse(frames)
                         else:
-                            self._send_bytes(200, "text/event-stream", b"".join(frames))
+                            self._send_bytes(
+                                200,
+                                "text/event-stream",
+                                b"".join(frames),
+                                attempt_headers,
+                            )
                     else:
+                        attempt_index = request_number - 1
+                        attempt_action = owner.scenario.stream_status
+                        if owner.scenario.attempt_statuses:
+                            attempt_action = owner.scenario.attempt_statuses[
+                                min(attempt_index, len(owner.scenario.attempt_statuses) - 1)
+                            ]
+                        attempt_headers = dict(owner.scenario.stream_headers)
+                        if owner.scenario.attempt_headers:
+                            attempt_headers.update(
+                                owner.scenario.attempt_headers[
+                                    min(attempt_index, len(owner.scenario.attempt_headers) - 1)
+                                ]
+                            )
+                        if attempt_action == "transport":
+                            self.close_connection = True
+                            try:
+                                self.connection.shutdown(socket.SHUT_RDWR)
+                            except OSError:
+                                pass
+                            self.connection.close()
+                            return
+                        if not isinstance(attempt_action, int):
+                            raise ValueError(
+                                f"unsupported fixture attempt action: {attempt_action!r}"
+                            )
+                        if attempt_action >= 400:
+                            self._send_bytes(
+                                attempt_action,
+                                "application/json",
+                                owner.scenario.stream_error_body,
+                                attempt_headers,
+                            )
+                            return
                         payload = json.dumps(
                             owner.scenario.nonstream_response,
                             separators=(",", ":"),
                         ).encode("utf-8")
-                        self._send_bytes(200, "application/json", payload)
+                        self._send_bytes(
+                            200,
+                            "application/json",
+                            payload,
+                            attempt_headers,
+                        )
                     return
                 if self.path.endswith("/oauth/token"):
                     with owner._lock:
@@ -1285,6 +1476,8 @@ class MockResponsesServer(AbstractContextManager["MockResponsesServer"]):
     def __exit__(self, exc_type: Any, exc: Any, traceback: Any) -> None:
         self.release_delayed_send.set()
         self.oauth_response_release.set()
+        for release in self._response_request_release.values():
+            release.set()
         if self._server is not None:
             self._server.shutdown()
             self._server.server_close()
@@ -1302,6 +1495,21 @@ class MockResponsesServer(AbstractContextManager["MockResponsesServer"]):
     @property
     def oauth_url(self) -> str:
         return f"{self.base_url}/oauth/token"
+
+    def gate_response_request(
+        self,
+        request_number: int,
+    ) -> tuple[threading.Event, threading.Event]:
+        """Gate one numbered backend request for deterministic concurrency tests."""
+
+        if request_number < 1:
+            raise ValueError("request_number must be positive")
+        entered = threading.Event()
+        release = threading.Event()
+        with self._lock:
+            self._response_request_entered[request_number] = entered
+            self._response_request_release[request_number] = release
+        return entered, release
 
     def assert_request_counts(self, responses: int, oauth: int = 0) -> None:
         actual = (len(self.responses_requests), len(self.oauth_requests))
@@ -1415,6 +1623,163 @@ class PortRaceSelector:
         port = self.first_port if not self.selected else _reserve_dynamic_port()
         self.selected.append(port)
         return port
+
+
+_LOG_FIELD_RE = re.compile(r"(?<!\S)([a-z_]+)=([^\s]+)")
+_LIFECYCLE_PREFIX_RE = re.compile(
+    r"(?<!\S)req_id=([0-9a-f]{32}) phase=([^\s]+) "
+    r"event=([a-z_]+)(?=\s|$)"
+)
+_REQUEST_ID_RE = re.compile(r"^[0-9a-f]{32}$")
+_LIFECYCLE_ORDER = {
+    name: position
+    for position, name in enumerate(
+        (
+            "request_start",
+            "request_parsed",
+            "upstream_attempt",
+            "upstream_retry",
+            "upstream_headers",
+            "upstream_first_event",
+            "downstream_first_content",
+            "backend_error",
+            "disconnect",
+            "terminal",
+            "cleanup",
+        )
+    )
+}
+
+
+def parse_lifecycle_logs(log_text: str) -> list[LifecycleLogLine]:
+    """Parse the canonical lifecycle prefix and reject ambiguous duplicate fields."""
+
+    parsed: list[LifecycleLogLine] = []
+    for raw in log_text.splitlines():
+        prefix = _LIFECYCLE_PREFIX_RE.search(raw)
+        if prefix is None:
+            continue
+        field_pairs = _LOG_FIELD_RE.findall(raw)
+        field_names: set[str] = set()
+        duplicate_names: set[str] = set()
+        for key, _value in field_pairs:
+            if key in field_names:
+                duplicate_names.add(key)
+            field_names.add(key)
+        duplicates = sorted(duplicate_names)
+        if duplicates:
+            raise AssertionError(
+                f"ambiguous duplicate lifecycle fields {duplicates!r}: {raw!r}"
+            )
+        fields = dict(field_pairs)
+        req_id, phase, event = prefix.groups()
+        if (
+            fields.get("req_id") != req_id
+            or fields.get("phase") != phase
+            or fields.get("event") != event
+        ):
+            raise AssertionError(f"lifecycle prefix disagrees with parsed fields: {raw!r}")
+        parsed.append(
+            LifecycleLogLine(
+                raw=raw,
+                req_id=req_id,
+                phase=phase,
+                event=event,
+                fields=fields,
+            )
+        )
+    return parsed
+
+
+def group_lifecycle_logs(
+    log_text: str,
+) -> dict[str, list[LifecycleLogLine]]:
+    groups: dict[str, list[LifecycleLogLine]] = {}
+    for line in parse_lifecycle_logs(log_text):
+        groups.setdefault(line.req_id, []).append(line)
+    return groups
+
+
+def assert_lifecycle_log_contract(lines: Iterable[LifecycleLogLine]) -> None:
+    """Validate stable names, causal ordering, timings, and terminal cardinality."""
+
+    ordered = list(lines)
+    if not ordered:
+        raise AssertionError("request lifecycle log group is empty")
+    req_ids = {line.req_id for line in ordered}
+    if len(req_ids) != 1 or not _REQUEST_ID_RE.fullmatch(next(iter(req_ids))):
+        raise AssertionError(f"request lifecycle IDs are invalid: {req_ids!r}")
+    events = [line.event for line in ordered]
+    unknown = [event for event in events if event not in _LIFECYCLE_ORDER]
+    if unknown:
+        raise AssertionError(f"unstable lifecycle event names: {unknown!r}")
+    if events.count("request_start") != 1:
+        raise AssertionError(f"expected one request_start: {events!r}")
+    if events.count("terminal") != 1:
+        raise AssertionError(f"expected one terminal: {events!r}")
+    if events.count("cleanup") != 1:
+        raise AssertionError(f"expected one cleanup: {events!r}")
+    if events[-2:] != ["terminal", "cleanup"]:
+        raise AssertionError(f"terminal/cleanup are not final and ordered: {events!r}")
+    elapsed: list[int] = []
+    for line in ordered:
+        raw_elapsed = line.fields.get("elapsed_ms")
+        if raw_elapsed is None or not raw_elapsed.isdigit():
+            raise AssertionError(f"non-integer elapsed_ms: {line.raw!r}")
+        elapsed.append(int(raw_elapsed))
+        if line.event in {"terminal", "cleanup"}:
+            raw_duration = line.fields.get("dur_ms")
+            if raw_duration is None or not raw_duration.isdigit():
+                raise AssertionError(f"non-integer dur_ms: {line.raw!r}")
+    if elapsed != sorted(elapsed):
+        raise AssertionError(f"elapsed_ms regressed: {elapsed!r}")
+    if events[0] != "request_start":
+        raise AssertionError(f"request_start is not first: {events!r}")
+    if "request_parsed" in events and events.index("request_parsed") == 0:
+        raise AssertionError(f"request_parsed precedes request_start: {events!r}")
+    attempts_seen = 0
+    retries_seen = 0
+    for event in events:
+        if event == "upstream_attempt":
+            attempts_seen += 1
+        elif event == "upstream_retry":
+            retries_seen += 1
+            if attempts_seen <= retries_seen - 1:
+                raise AssertionError(
+                    f"upstream_retry has no causal attempt: {events!r}"
+                )
+        elif event in {"upstream_headers", "upstream_first_event"}:
+            if attempts_seen == 0:
+                raise AssertionError(
+                    f"{event} precedes every upstream attempt: {events!r}"
+                )
+        elif event == "downstream_first_content":
+            if events.index("request_start") >= events.index(event):
+                raise AssertionError(
+                    f"downstream content precedes request start: {events!r}"
+                )
+    if events.count("disconnect") > 1:
+        raise AssertionError(f"disconnect was logged more than once: {events!r}")
+
+
+def lifecycle_for_response(
+    shim: "RealShim",
+    result: HTTPResult,
+    *,
+    timeout: float = 5.0,
+) -> list[LifecycleLogLine]:
+    """Resolve one response header to its completed production lifecycle."""
+
+    req_id = result.headers.get("x-daaf-request-id", "")
+    if not _REQUEST_ID_RE.fullmatch(req_id):
+        raise AssertionError(f"response request ID is not 32 lowercase hex: {req_id!r}")
+    shim.wait_for_stderr_line(
+        f"req_id={req_id} phase=cleanup event=cleanup",
+        timeout=timeout,
+    )
+    lines = group_lifecycle_logs(shim.captured_stderr()).get(req_id, [])
+    assert_lifecycle_log_contract(lines)
+    return lines
 
 
 class RealShim(AbstractContextManager["RealShim"]):
@@ -1726,23 +2091,49 @@ class RealShim(AbstractContextManager["RealShim"]):
         stream: bool,
         model: str = "gpt-fixture",
         tools: Optional[list[dict[str, Any]]] = None,
+        messages: Optional[list[dict[str, Any]]] = None,
+        headers: Optional[dict[str, str]] = None,
     ) -> HTTPResult:
         body: dict[str, Any] = {
             "model": model,
             "max_tokens": 256,
             "stream": stream,
-            "messages": [{"role": "user", "content": "Exercise the fixture."}],
+            "messages": (
+                list(messages)
+                if messages is not None
+                else [{"role": "user", "content": "Exercise the fixture."}]
+            ),
         }
         if tools is not None:
             body["tools"] = tools
-        payload = json.dumps(body, separators=(",", ":")).encode("utf-8")
+        return self.post_raw_messages(
+            json.dumps(body, separators=(",", ":")).encode("utf-8"),
+            headers=headers,
+        )
+
+    def post_raw_messages(
+        self,
+        payload: bytes,
+        *,
+        headers: Optional[dict[str, str]] = None,
+        timeout: float = 30.0,
+    ) -> HTTPResult:
+        request_headers = {"Content-Type": "application/json"}
+        request_headers.update(headers or {})
         request = urllib.request.Request(
             f"{self.base_url}/v1/messages",
             data=payload,
-            headers={"Content-Type": "application/json"},
+            headers=request_headers,
             method="POST",
         )
-        return _direct_request(request, timeout=30.0)
+        return _direct_request(request, timeout=timeout)
+
+    def remove_auth_store(self) -> None:
+        """Remove only the fabricated isolated auth store for an auth-error probe."""
+
+        if self.auth_path is None:
+            raise RuntimeError("shim auth store is not initialized")
+        self.auth_path.unlink()
 
     def get_health(self, timeout: float = 2.0) -> HTTPResult:
         request = urllib.request.Request(f"{self.base_url}/health", method="GET")
@@ -1947,6 +2338,370 @@ def outer_cancel_after_stream_enter_report() -> dict[str, Any]:
             "downstream_terminal_events": list(downstream_terminal_events),
             "pending_task_count": len(pending),
         }
+
+    return asyncio.run(exercise())
+
+
+def controlled_asgi_probe(
+    *,
+    scenario: Optional[Scenario] = None,
+    stream: bool = True,
+    send_action: Optional[str] = None,
+    cleanup_failure: bool = False,
+    cleanup_failure_text: Optional[str] = None,
+    close_fail_attempts: Optional[set[int]] = None,
+    attempt_outcomes: Optional[list[int | str]] = None,
+    auth_store_unavailable: bool = False,
+    lazy_401_refresh: bool = False,
+    lazy_401_refresh_failure: bool = False,
+    translation_failure: bool = False,
+    body_read_disconnect: bool = False,
+    pure_disconnect: bool = False,
+    disconnect_during_enter: bool = False,
+    invalid_request_shape: bool = False,
+    raw_request_body: Optional[bytes] = None,
+    response_status: int = 200,
+    response_headers: Optional[dict[str, str]] = None,
+    http_version: str = "HTTP/1.1",
+) -> ASGIProbeReport:
+    """Drive the production app with controlled receive/send and upstream seams.
+
+    Only ASGI transport and the httpx client are injected. Request parsing,
+    translation, retry, lifecycle, error normalization, terminal accounting, and
+    cleanup all execute in the production module.
+    """
+
+    async def exercise() -> ASGIProbeReport:
+        module_name = f"provider_shim_asgi_probe_{uuid.uuid4().hex}"
+        controlled_env = {
+            "SHIM_BACKEND_MODE": (
+                "chatgpt"
+                if auth_store_unavailable or lazy_401_refresh or lazy_401_refresh_failure
+                else "openai"
+            ),
+            "SHIM_BACKEND_BASE_URL": "http://127.0.0.1:1/v1",
+            "SHIM_BACKEND_API_KEY": FAKE_OPENAI_KEY,
+            "OPENAI_API_KEY": FAKE_OPENAI_KEY,
+        }
+        if auth_store_unavailable:
+            controlled_env["CODEX_HOME"] = str(
+                SCRATCH_ROOT / f"provider-shim-missing-auth-{uuid.uuid4().hex}"
+            )
+        with mock.patch.dict(os.environ, controlled_env, clear=False):
+            spec = importlib.util.spec_from_file_location(module_name, PRODUCTION_SHIM)
+            if spec is None or spec.loader is None:
+                raise RuntimeError("could not load production shim for ASGI probe")
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+
+        if lazy_401_refresh or lazy_401_refresh_failure:
+            async def controlled_backend_headers(*args, **kwargs):
+                if lazy_401_refresh_failure and kwargs.get("force_token_refresh"):
+                    raise RuntimeError("controlled lazy authentication failure")
+                return {
+                    "Authorization": "Bearer FABRICATED_TEST_ONLY",
+                    "Content-Type": "application/json",
+                    "Accept": "text/event-stream",
+                }
+
+            module._build_backend_headers = controlled_backend_headers
+
+        if translation_failure:
+            def controlled_translation_failure(*args, **kwargs):
+                raise TypeError("controlled request translation failure")
+
+            module._anthropic_to_responses_request = controlled_translation_failure
+
+        active_scenario = scenario or full_response_scenario()
+        stream_payload = b"".join(
+            (
+                f"event: {event.get('type', 'message')}\n"
+                f"data: {json.dumps(event, separators=(',', ':'))}\n\n"
+            ).encode("utf-8")
+            for event in active_scenario.stream_events
+        )
+        if active_scenario.append_done:
+            stream_payload += b"data: [DONE]\n\n"
+        # Preserve controlled response values byte-for-byte through httpx's fixture
+        # seam; string headers are ASCII-encoded before production can inspect them.
+        headers = [
+            (name.encode("ascii"), value.encode("utf-8"))
+            for name, value in (response_headers or {}).items()
+        ]
+        upstream_calls = 0
+        stream_close_calls = 0
+        stream_close_attempts: list[int] = []
+        close_after_cleanup: list[bool] = []
+        watcher_settle_after_cleanup: list[bool] = []
+        upstream_hold = asyncio.Event()
+        selected_outcomes = list(attempt_outcomes or [response_status])
+        selected_close_failures = set(close_fail_attempts or set())
+
+        def response_for_attempt(attempt_number: int):
+            outcome = selected_outcomes[min(attempt_number - 1, len(selected_outcomes) - 1)]
+            if outcome == "transport":
+                raise module.httpx.ConnectError("injected stream transport failure")
+            status = int(outcome)
+            content = (
+                stream_payload
+                if status < 400 and stream
+                else (
+                    json.dumps(
+                        active_scenario.nonstream_response,
+                        separators=(",", ":"),
+                    ).encode("utf-8")
+                    if status < 400
+                    else bytes(active_scenario.stream_error_body)
+                )
+            )
+            return module.httpx.Response(
+                status,
+                headers=headers,
+                content=content,
+                request=module.httpx.Request(
+                    "POST", "http://127.0.0.1:1/v1/responses"
+                ),
+                extensions={"http_version": http_version.encode("ascii", "replace")},
+            )
+
+        class ProbeStreamContext:
+            def __init__(self, attempt_number: int):
+                self.attempt_number = attempt_number
+
+            async def __aenter__(self):
+                if disconnect_during_enter:
+                    receive_queue.put_nowait({"type": "http.disconnect"})
+                    await upstream_hold.wait()
+                elif pure_disconnect:
+                    await upstream_hold.wait()
+                return response_for_attempt(self.attempt_number)
+
+            async def __aexit__(self, exc_type, exc, traceback):
+                nonlocal stream_close_calls
+                stream_close_calls += 1
+                stream_close_attempts.append(self.attempt_number)
+                state = module._request_state()
+                close_after_cleanup.append(bool(state and state.cleanup_logged))
+                if cleanup_failure or self.attempt_number in selected_close_failures:
+                    if cleanup_failure_text is None:
+                        raise OSError("injected stream cleanup failure")
+
+                    class InjectedCleanupError(OSError):
+                        pass
+
+                    InjectedCleanupError.__name__ = cleanup_failure_text
+                    raise InjectedCleanupError("controlled cleanup failure")
+
+        class ProbeClient:
+            def stream(self, *args, **kwargs):
+                nonlocal upstream_calls
+                upstream_calls += 1
+                return ProbeStreamContext(upstream_calls)
+
+            async def post(self, *args, **kwargs):
+                nonlocal upstream_calls
+                upstream_calls += 1
+                return response_for_attempt(upstream_calls)
+
+        original_client = module._client
+        module._client = ProbeClient()
+        original_settle_owned_task = module._settle_owned_task
+
+        async def observed_settle_owned_task(task, cancel=False):
+            result = await original_settle_owned_task(task, cancel=cancel)
+            if task.get_coro().__qualname__.endswith("_watch_disconnect"):
+                state = module._request_state()
+                watcher_settle_after_cleanup.append(bool(state and state.cleanup_logged))
+            return result
+
+        module._settle_owned_task = observed_settle_owned_task
+        log_buffer = io.StringIO()
+        log_handler = logging.StreamHandler(log_buffer)
+        log_handler.setFormatter(
+            logging.Formatter(
+                "%(asctime)s %(levelname)s req_id=%(req_id)s "
+                "phase=%(phase)s %(message)s"
+            )
+        )
+        log_handler.addFilter(module._RequestLogFilter())
+        original_handlers = list(module.log.handlers)
+        original_propagate = module.log.propagate
+        module.log.handlers = [log_handler]
+        module.log.propagate = False
+        module.log.setLevel(logging.INFO)
+
+        request_object: Any = (
+            []
+            if invalid_request_shape
+            else {
+                "model": "gpt-fixture",
+                "max_tokens": 256,
+                "stream": stream,
+                "messages": [{"role": "user", "content": "ASGI fixture"}],
+            }
+        )
+        request_body = (
+            bytes(raw_request_body)
+            if raw_request_body is not None
+            else json.dumps(
+                request_object,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        )
+        receive_queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+        if body_read_disconnect:
+            receive_queue.put_nowait({"type": "http.disconnect"})
+        else:
+            receive_queue.put_nowait(
+                {
+                    "type": "http.request",
+                    "body": request_body,
+                    "more_body": False,
+                }
+            )
+            if pure_disconnect:
+                receive_queue.put_nowait({"type": "http.disconnect"})
+
+        async def receive() -> dict[str, Any]:
+            return await receive_queue.get()
+
+        messages: list[dict[str, Any]] = []
+        send_gate = asyncio.Event()
+        never_release = asyncio.Event()
+        terminal_tie_armed = False
+        terminal_tie_wait_done_counts: list[int] = []
+        terminal_tie_wait_pending_counts: list[int] = []
+        terminal_tie_wait_used_first_completed: list[bool] = []
+        terminal_tie_children_done = False
+
+        async def send(message: dict[str, Any]) -> None:
+            nonlocal terminal_tie_armed
+            response_start = message.get("type") == "http.response.start"
+            body = message.get("body", b"")
+            terminal = (
+                message.get("type") == "http.response.body"
+                and message.get("more_body", False)
+                and (b"event: message_stop" in body or b"event: error" in body)
+            )
+            body_close = (
+                message.get("type") == "http.response.body"
+                and not message.get("more_body", False)
+            )
+            if send_action == "fail_response_start" and response_start:
+                raise OSError("injected response-start send failure")
+            if send_action == "disconnect_response_start" and response_start:
+                receive_queue.put_nowait({"type": "http.disconnect"})
+                await asyncio.sleep(0)
+                raise module._ClientDisconnected()
+            if send_action == "cancel_response_start" and response_start:
+                send_gate.set()
+                await never_release.wait()
+            if send_action == "fail_terminal" and terminal:
+                raise OSError("injected terminal send failure")
+            if send_action == "fail_body_close" and body_close:
+                raise OSError("injected body-close send failure")
+            if send_action == "disconnect_terminal" and terminal:
+                receive_queue.put_nowait({"type": "http.disconnect"})
+                await asyncio.sleep(0)
+                raise module._ClientDisconnected()
+            if send_action == "disconnect_body_close" and body_close:
+                receive_queue.put_nowait({"type": "http.disconnect"})
+                await asyncio.sleep(0)
+                raise module._ClientDisconnected()
+            if send_action == "same_turn_terminal_disconnect" and terminal:
+                # Complete the production downstream-send coroutine and make the real
+                # disconnect watcher runnable without yielding here. FIFO callback
+                # ordering then lets the watcher set its Event and the waiter's child
+                # finish before asyncio.wait resumes its FIRST_COMPLETED observation.
+                terminal_tie_armed = True
+                receive_queue.put_nowait({"type": "http.disconnect"})
+            if send_action == "cancel_terminal" and terminal:
+                send_gate.set()
+                await never_release.wait()
+            if send_action == "cancel_body_close" and body_close:
+                send_gate.set()
+                await never_release.wait()
+            messages.append(dict(message))
+
+        original_asyncio_wait = asyncio.wait
+
+        async def observed_asyncio_wait(fs, *, timeout=None, return_when=asyncio.ALL_COMPLETED):
+            nonlocal terminal_tie_armed, terminal_tie_children_done
+            children = tuple(fs)
+            result = await original_asyncio_wait(
+                children,
+                timeout=timeout,
+                return_when=return_when,
+            )
+            if terminal_tie_armed:
+                # Observe, but do not choose or alter, the production wait result. The
+                # assertion surface below proves the real FIRST_COMPLETED call returned
+                # with both its operation and disconnect children already complete.
+                done, pending = result
+                terminal_tie_wait_done_counts.append(len(done))
+                terminal_tie_wait_pending_counts.append(len(pending))
+                terminal_tie_wait_used_first_completed.append(
+                    return_when is asyncio.FIRST_COMPLETED
+                )
+                terminal_tie_children_done = all(child.done() for child in children)
+                terminal_tie_armed = False
+            return result
+
+        raised: Optional[str] = None
+        cancelled = False
+        scope = {"type": "http", "method": "POST", "path": "/v1/messages"}
+        if send_action == "same_turn_terminal_disconnect":
+            asyncio.wait = observed_asyncio_wait
+        task = asyncio.create_task(module.app(scope, receive, send))
+        try:
+            if send_action in {
+                "cancel_response_start", "cancel_terminal", "cancel_body_close",
+            }:
+                await asyncio.wait_for(send_gate.wait(), timeout=3.0)
+                task.cancel("controlled ASGI send cancellation")
+            await asyncio.wait_for(task, timeout=5.0)
+        except asyncio.CancelledError:
+            cancelled = True
+        except Exception as error:
+            raised = type(error).__name__
+        finally:
+            if send_action == "same_turn_terminal_disconnect":
+                asyncio.wait = original_asyncio_wait
+            upstream_hold.set()
+            module._settle_owned_task = original_settle_owned_task
+            module.log.handlers = original_handlers
+            module.log.propagate = original_propagate
+            await original_client.aclose()
+
+        await asyncio.sleep(0)
+        pending_task_count = len(
+            [
+                child
+                for child in asyncio.all_tasks()
+                if child is not asyncio.current_task() and not child.done()
+            ]
+        )
+        logs = log_buffer.getvalue()
+        lifecycle = parse_lifecycle_logs(logs)
+        if lifecycle:
+            assert_lifecycle_log_contract(lifecycle)
+        return ASGIProbeReport(
+            messages=messages,
+            logs=logs,
+            lifecycle=lifecycle,
+            raised=raised,
+            cancelled=cancelled,
+            upstream_calls=upstream_calls,
+            stream_close_calls=stream_close_calls,
+            stream_close_attempts=stream_close_attempts,
+            close_after_cleanup=close_after_cleanup,
+            watcher_settle_after_cleanup=watcher_settle_after_cleanup,
+            terminal_tie_wait_done_counts=terminal_tie_wait_done_counts,
+            terminal_tie_wait_pending_counts=terminal_tie_wait_pending_counts,
+            terminal_tie_wait_used_first_completed=terminal_tie_wait_used_first_completed,
+            terminal_tie_children_done=terminal_tie_children_done,
+            pending_task_count=pending_task_count,
+        )
 
     return asyncio.run(exercise())
 
