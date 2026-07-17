@@ -274,7 +274,7 @@ Context management is NEVER about reducing the quality or completeness of work. 
 
 ### Provenance Boundary
 
-- You MUST NEVER write working files to `/tmp` (redirects, `cp`/`mv`/`tee`/`mkdir`/`touch`, downloads, `sed -i`, archive extraction, or `git clone` targeting `/tmp`). `/tmp` is outside the Docker-volume backup boundary and the audit trail, and the session log viewer renders `/tmp` paths as broken references — files written there are lost silently. Temporary and intermediate files belong inside the project (see § Project Conventions > Scratch Files).
+- You MUST NEVER write working files to `/tmp` (redirects, `cp`/`mv`/`tee`/`mkdir`/`touch`, downloads, `sed -i`, archive extraction, or `git clone` targeting `/tmp`). `/tmp` is outside the Docker-volume backup boundary and the audit trail, and the session log viewer marks `/tmp` paths as ephemeral, unarchived references — files written there are lost silently. Temporary and intermediate files belong inside the project (see § Project Conventions > Scratch Files).
 - **Exception — reads are fine:** DAAF's own hooks and statuslines legitimately cache coordination state in `/tmp` (e.g. `/tmp/claude-ctx-window-*`, `/tmp/claude-model-*`). *Reading* those caches via Bash is permitted; only *writes* to `/tmp` are blocked. Reading a `/tmp` cache and redirecting the output into the project is the sanctioned rescue pattern.
 
 ### Safety-System Integrity
