@@ -219,7 +219,7 @@ When referencing the GUIDE-LLM framework in publications, use:
 
 When citing DAAF in publications, use:
 
-> Kim, B. H. (2026). *DAAF: The Data Analyst Augmentation Framework* (Version 2.1.0) [Computer software]. https://github.com/DAAF-Contribution-Community/daaf
+> Kim, B. H. (2026). *DAAF: The Data Analyst Augmentation Framework* (Version 3.0.0) [Computer software]. https://github.com/DAAF-Contribution-Community/daaf
 
 **BibTeX:**
 
@@ -229,12 +229,12 @@ When citing DAAF in publications, use:
   title = {{DAAF}: The Data Analyst Augmentation Framework},
   year = {2026},
   url = {https://github.com/DAAF-Contribution-Community/daaf},
-  version = {2.1.0},
+  version = {3.0.0},
   license = {LGPL-3.0-or-later}
 }
 ```
 
-**Version note:** If the version in `CITATION.cff` at the DAAF repository root differs from the version shown above, use the version from `CITATION.cff`.
+**Version note:** If the version in `CITATION.cff` at the DAAF repository root differs from the version shown above, use the version (and the year of its `date-released:` field) from `CITATION.cff`.
 
 ---
 

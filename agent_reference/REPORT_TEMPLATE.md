@@ -167,13 +167,13 @@ This analysis has the following limitations that should be considered when inter
 
 ### Software & Tools
 
-> Kim, B.H. (2026). *DAAF: Data Analyst Augmentation Framework* (Version 2.1.0) [Computer software]. https://github.com/DAAF-Contribution-Community/daaf
+> Kim, B.H. (2026). *DAAF: Data Analyst Augmentation Framework* (Version 3.0.0) [Computer software]. https://github.com/DAAF-Contribution-Community/daaf
 > *Cited because: Analysis framework*
 
 > [Additional software citations from STATE.md > Citations Accumulated > Software & Tools]
 > *Cited because: [rationale from STATE.md]*
 
-> [AUTO — report-writer: The DAAF citation is always included. For Python projects, the marimo citation is always included. For R projects, include R, Quarto, and key R package citations instead. Additional software citations come from STATE.md. Update the DAAF version number if CITATION.cff specifies a different version.]
+> [AUTO — report-writer: The DAAF citation is always included. For Python projects, the marimo citation is always included. For R projects, include R, Quarto, and key R package citations instead. Additional software citations come from STATE.md. Update the DAAF version number and year if `CITATION.cff` at the repository root specifies different values.]
 
 ### Reporting Standards
 

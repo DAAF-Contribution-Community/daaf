@@ -17,6 +17,7 @@ Practical wisdom for getting the most out of DAAF while maintaining research qua
 - [**Using Git Version Control**](#using-git-version-control)
 - [**Using the Browser-Based Code Editor**](#using-the-browser-based-code-editor)
 - [**Safety with Claude Code**](#safety-with-claude-code)
+- [**Tips for Data Onboarding**](#tips-for-data-onboarding)
 - [**Recommended Next Steps**](#recommended-next-steps)
 
 ---
@@ -228,7 +229,7 @@ I recommend this review order:
 
 You do *not* need to read everything in detail every time. The report is the synthesis; the notebook is the evidence; the scripts are the primary source. Go as deep as you need to based on how much you trust the results and how high-stakes the analysis is.
 
-**Tip:** Before diving into individual artifacts, consider browsing the session visually using the **DAAF Log Explorer**. Run `bash view_logs.sh` (or `.\view_logs.ps1` on Windows) from your `daaf-docker` folder to see an interactive timeline of every orchestrator action, subagent dispatch, and tool call. This gives you a high-level map of the entire session, making it easier to identify which stages or scripts deserve closer inspection.
+**Tip:** Before diving into individual artifacts, consider browsing the session visually using the **DAAF Log Explorer**. Open it from the **DAAF Control Panel** (`bash daaf.sh` / `.\daaf.ps1` from your `daaf-docker` folder → **3) View Session Logs**), or run `bash view_logs.sh` (`.\view_logs.ps1` on Windows) directly, to see an interactive timeline of every orchestrator action, subagent dispatch, and tool call. This gives you a high-level map of the entire session, making it easier to identify which stages or scripts deserve closer inspection.
 
 ### Reading the Report
 
@@ -241,6 +242,10 @@ The report follows a standard structure (Executive Summary, Key Findings, Data &
 **Figure references:** The report should reference specific figures by filename. Verify that the referenced figures exist and actually show what the report says they show. This is a simple but effective check.
 
 **References:** The report includes a References section with up to four subsections: data sources, methodological references (e.g., the specific DiD estimator or survey weighting approach used), software & tools, and reporting standards. DAAF does its best to track these automatically as each script executes, but citations can be wrong, incomplete, or missing -- verify that the right methods and tools are credited, that the citations themselves are accurate, and that nothing important was overlooked or unnecessarily included.
+
+### Reading DAAF's Claims: Observed Facts vs. Inference
+
+One habit worth building as you read any DAAF output is to notice how it grades its own claims by evidence. When DAAF reports that something *ran* -- a fetch returned so many rows, a validation passed -- the actual command and its output are on record, quoted in the script's execution log for you to check; statements without that kind of record are inferences, and DAAF is instructed to phrase them so they read that way rather than as established fact. Pay especially close attention when DAAF says something is *impossible* or *unavailable* -- that a source doesn't offer a variable, or that an operation can't be done -- because a wrong "no" fails silently and can quietly harden into accepted fact, so those negative claims deserve the same "show me the check" scrutiny you'd give any surprising result. And when DAAF tells you how much it did -- files changed, outcomes addressed -- that accounting should trace back to actual tool output, not to memory. Reading with this lens tells you which parts of a report you can take at face value and which warrant a second look.
 
 ### Reading the Notebook
 
@@ -450,7 +455,7 @@ These should not be done with DAAF (or any LLM-based system) regardless of the g
 
 ## Using Git Version Control
 
-When you start using DAAF, you'll find that it produces a LOT of files, and it does a LOT of things at once. One best practice I'd strongly encourage is to get comfortable with using Git for version control. This is part of why I treat it as a prerequisite for using DAAF in the installation process (spoilers: there were other ways to do it!): This type of work with LLMs just benefits so immensely from having a full audit log of file edits and changes at all times, with the ability to roll back changes and identify issues quickly.
+When you start using DAAF, you'll find that it produces a LOT of files, and it does a LOT of things at once. One best practice I'd strongly encourage is to get comfortable with using Git for version control. The good news is it's ready for you already -- Git ships right inside the DAAF container, so there's nothing extra to install (spoilers: that's one less thing to set up!). This type of work with LLMs just benefits so immensely from having a full audit log of file edits and changes at all times, with the ability to roll back changes and identify issues quickly.
 
 I would strongly recommend making a private "fork" of the DAAF repository for you to work in and back up all of your research files to (though DAAF by default will NOT back up your parquet data files to avoid accidentally sharing data up to the cloud). Teaching Git is a bit beyond the scope of this project, but you absolutely can and should ask Claude to tell you more about:
 
@@ -508,6 +513,8 @@ There are also similar alternatives that are designed to be a bit more teched-up
 
 ## Safety with Claude Code
 
+Before we get into specifics: DAAF ships with a layer of guardrails -- built into its permission rules and safety hooks -- that block outright destructive commands, protect your credentials, and keep every change Claude makes visible and auditable. You can't easily wreck your own work or your system by accident, and the rest of this section explains what that protection covers and where your own judgment still matters.
+
 It's worth saying explicitly: Claude Code is **extremely powerful and capable**, which is super cool and useful when it's doing what we want. But that same quality of it having expanded capabilities and tools is an absolute **nightmare** when it is operating erratically or being manipulated by bad actors.
 
 I set up this whole project to use Docker in part to protect users directly and enforce some paternalistic standards for new users (with me also packaging in a lot of guardrails into the Hooks and permissions files for Claude as well). That being said, there's a lot that I don't know enough about to fully protect all users. At the end of the day, this is a wild west frontier, and things can go wrong in extremely unexpected ways as it continues to develop.
@@ -525,7 +532,15 @@ DAAF's permission rules and safety hooks are designed to block manipulation at t
 
 **A note on data privacy:** All computation happens locally on your machine, and DAAF prevents Claude from bulk-uploading your data files. However, analytical output (sample rows, summary statistics, diagnostic results) does transit through Anthropic's servers as part of the conversation -- that's how Claude Code works. If you're working with private, proprietary, or regulated data (FERPA, HIPAA, etc.), the implications depend on your specific Anthropic license and access method (Enterprise agreements, AWS Bedrock, and Google Vertex AI each offer different data governance guarantees). It's your responsibility to understand these nuances before using DAAF with non-public data. See the [Data Privacy FAQ](07_faq_technical.md#q-is-my-data-sent-to-anthropic-what-about-privacy) for the full picture.
 
-If your data truly can't leave your environment, you're not out of options: DAAF now includes a built-in **synthetic-data protocol** for exactly this case. You profile your sensitive data locally with a disclosure-controlled script, share only a summary report, and DAAF builds a realistically-shaped synthetic stand-in you can develop all your analysis code against -- then you run that finished code against the real data yourself, where it lives. The real data never enters the container. See [Can I use DAAF with data that can't leave my secure environment?](07_faq_technical.md#q-can-i-use-daaf-with-data-that-cant-leave-my-secure-environment) for how it works.
+If your data truly can't leave your environment, you're not out of options: DAAF includes a built-in **synthetic-data protocol** for exactly this case. You profile your sensitive data locally with a disclosure-controlled script, share only a summary report, and DAAF builds a realistically-shaped synthetic stand-in you can develop all your analysis code against -- then you run that finished code against the real data yourself, where it lives. The real data never enters the container. See [Can I use DAAF with data that can't leave my secure environment?](07_faq_technical.md#q-can-i-use-daaf-with-data-that-cant-leave-my-secure-environment) for how it works.
+
+### If You Write or Paste Your Own Code
+
+DAAF's safety layer is tuned around how its own agents work, so a few conventions are worth knowing if you drop in your own scripts or paste code for Claude to run:
+
+- **Keep temporary files inside the project.** Write scratch and intermediate files to `scripts/scratch/` in your project folder, never to `/tmp` -- only the project tree is inside DAAF's backup boundary and audit trail, so anything written to `/tmp` is invisible to backups and can vanish silently.
+- **Run one shell command at a time.** DAAF's guardrails evaluate each command on its own, so chaining several together with `&&`, `;`, or `||` is blocked -- split the steps into separate commands instead.
+- **Add new packages through the Dockerfile, not at runtime.** A `pip install` or `install.packages()` run mid-session disappears on the next rebuild and quietly breaks reproducibility, so the durable path is to add the package to the Dockerfile and rebuild. See [Why can't Claude just `pip install` a package it needs?](07_faq_technical.md#q-why-cant-claude-just-pip-install-a-package-it-needs) for the full reasoning.
 
 ---
 

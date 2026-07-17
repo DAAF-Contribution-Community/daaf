@@ -14,9 +14,14 @@ This guide covers all forms of contribution to DAAF, from filing an issue to mod
 - [**Developer Certificate of Origin**](#developer-certificate-of-origin)
 - [**Ways to Contribute**](#ways-to-contribute)
 - [**What Makes a Good Contribution**](#what-makes-a-good-contribution)
+- [**Support Status and Evidence Discipline**](#support-status-and-evidence-discipline)
 - [**Filing Effective Issues**](#filing-effective-issues)
 - [**Testing Your Changes**](#testing-your-changes)
+- [**Change Surfaces and Pull Request Evidence**](#change-surfaces-and-pull-request-evidence)
+- [**Upgrading Custom Components to v3.0.0**](#upgrading-custom-components-to-v300)
+- [**What DAAFBench Scores Mean**](#what-daafbench-scores-mean)
 - [**Using Session Logs for Debugging and Issue Reports**](#using-session-logs-for-debugging-and-issue-reports)
+- [**Repository Hygiene and Generated Artifacts**](#repository-hygiene-and-generated-artifacts)
 - [**License**](#license)
 - [**Recommended Next Steps**](#recommended-next-steps)
 
@@ -293,6 +298,41 @@ Not every contribution needs to be huge, but every contribution should meet a ba
 
 ---
 
+## Support Status and Evidence Discipline
+
+DAAF runs against several model-provider routes, and not all of them carry the same level of maintainer validation. When you write documentation, a PR description, or a changelog entry that describes what "works," reach for the vocabulary below rather than a flat "supported / not supported." Being precise here is a courtesy to the next researcher, who is making real decisions -- which route to install, whether to trust a result -- based on your words.
+
+### Support-Status Vocabulary
+
+Use these terms consistently. Each describes *how much validation a route or capability has actually received* -- not how good it is, and not whether it is technically possible.
+
+| Term | What it means |
+|------|---------------|
+| **Supported (maintainer-validated)** | The maintainer runs and validates this route end-to-end. It is the recommended, best-trodden path. Example: the Anthropic subscription/API route. |
+| **Supported -- community-testing** | A real, functional, carefully engineered route that the maintainer keeps working, but which benefits from wider real-world validation than one person can provide. We've done what we can to make it a smooth, productive experience; broader testing is genuinely welcome. Examples: the OpenRouter route and the ChatGPT-subscription (Codex) shim lane. |
+| **Template-documented** | Configuration is provided and documented, but the maintainer has not validated an end-to-end research run on it. You are following a recipe, not a tested path. Examples: AWS Bedrock and Google Vertex AI access. |
+| **Not a documented route** | No configuration or support is provided. It may be technically possible, but you are on your own. |
+
+A few current placements are worth calling out, because they are the ones people ask about:
+
+- The **ChatGPT-subscription (Codex) lane** is *Supported -- community-testing*. It is a real, exercised route (DAAFBench runs against it with fail-closed route provenance), but its backend enforces a measured context ceiling of roughly 370,000 tokens -- far below the ~1,050,000 of the API lane -- so it is not a drop-in equal of the Anthropic route. Describe it with that ceiling, never as an unqualified "supported."
+- The **OpenRouter route** is *Supported -- community-testing*. Its credential contract is settled (the key goes in `ANTHROPIC_AUTH_TOKEN`, with `ANTHROPIC_API_KEY` present-but-empty), and it works; live validation at each release is an ongoing, shared effort.
+- **R** is a core execution language *engineered for parity* with Python -- parity contracts and an automated parity test suite back that goal -- with a few honestly documented method-level gaps remaining (for example DBSCAN/HDBSCAN clustering, and several causal-inference references are Python-oriented today). Treat parity gaps as bugs worth reporting. Here, "supported" for a capability should mean "there is a documented skill route for it," not "it is theoretically possible."
+
+If you are unsure where something sits, say so plainly and ask in your issue or PR -- an honest "I tested this only on OpenRouter with GPT-5.6" is far more useful than a confident "works everywhere."
+
+### Evidence Discipline for Docs and PRs
+
+DAAF holds its own agents to an evidence-graded reporting standard, and we ask contributors to write the same way. The core rule is simple:
+
+**Separate what you *ran* from what *exists*.** Never write an unqualified "all tests pass." Instead, report the command you actually executed and its result *separately* from the mere presence of test files. "I ran `bats tests/bash/context_reporter.bats` and it reported all cases passing" is evidence of execution. "The bats suite covers this" describes what exists, which is a weaker, different claim. Both are fine to state -- just don't let the second masquerade as the first.
+
+This matters most for **negative claims**. "The shim doesn't expose token counts" or "this route doesn't work on Windows" carries a higher burden than a positive result, because a false negative fails silently and, once repeated, starts to sound authoritative. If you claim something doesn't work, show the probe that established it -- the command you ran and what you saw -- or label it explicitly as your inference rather than a tested fact.
+
+Why we care: DAAF's whole reason for existing is to make LLM-assisted work *worth reviewing*. A PR that says "tests pass" without saying which tests ran, on which route, forces the maintainer to redo the verification from scratch. A PR that quotes its commands and their output can be reviewed on its evidence. The second kind gets merged faster, and it is genuinely kinder to the person on the other end of the review.
+
+---
+
 ## Filing Effective Issues
 
 A well-written issue saves everyone time -- including yours, because it means I can actually reproduce and fix the problem instead of going back and forth asking for details. Here's what makes issues actionable.
@@ -420,6 +460,72 @@ The deterministic Tier D battery begins with a harness self-test (`TD.0`) that r
 
 ---
 
+## Change Surfaces and Pull Request Evidence
+
+The section above tells you *how* to test each kind of change. This one helps you figure out *which* registration points and tests apply in the first place, and what your pull request should show once you've done the work.
+
+### The Change-Surface Matrix
+
+DAAF's components are wired together at many small registration points -- an agent isn't "added" until it appears in the agent index, the coordination matrix, the root README count, and more. The maintainer's canonical, item-by-item checklist for every component type lives in [`agent_reference/FRAMEWORK_INTEGRATION_CHECKLIST.md`](agent_reference/FRAMEWORK_INTEGRATION_CHECKLIST.md). The table below is a compact router into it: find your change type, see roughly which registration points and tests are in play, then open the checklist for the exact items. (This is a map, not the territory -- the checklist governs when the two disagree.)
+
+| If you are changing... | Registration points (see the checklist) | Tests to run |
+|------------------------|------------------------------------------|--------------|
+| A **data source or methodology skill** | § 1 (S1-S10 new / SM1-SM6 modify) | The skill sequence under [Testing Your Changes](#testing-your-changes): Data Discovery, Fetch, and Context tests |
+| An **agent** protocol | § 2 (A1-A16 / AM1-AM5) -- incl. the agent index, coordination matrix, and root-README count | Dependency-chain trace, run the affected stage, gate-satisfaction check, ideally a full pipeline |
+| An **engagement mode** | § 3 (M1-M21 / MM1-MM6) -- the largest surface: orchestrator SKILL.md, BOUNDARIES, user docs, disclosure reference | A full pipeline that exercises the mode, including its confirmation gate |
+| A **reference file** in `agent_reference/` | § 4 (R1-R6 / RM1-RM4) -- CLAUDE.md table plus every "When to Read" trigger | Link and cross-reference checks; render the Markdown |
+| A **hook** (`.claude/hooks/`) | § 5 (H1-H5) -- note hooks are human-deployed (deny-protected) | The safety regression batteries `bash scripts/test_safety_hooks.sh` and `bash scripts/test_enforce_single_command.sh`, plus both allow and block scenarios |
+| A **host-facing script** (`scripts/host/`) | § 6 (HS1-HS11) -- install lists, updater filter, CI smoke lists, `.sh`/`.ps1` parity | `bats tests/bash/`, Pester, `shellcheck`, `PSScriptAnalyzer`, and `bash tests/lint/check-daaf-conventions.sh` (all run in CI) |
+| The **provider shim** (`scripts/provider_shim/`) | § 7 (P1-P11 / PM1-PM6) -- `/health` schema, `SHIM_*` env-var lockstep, lane-gate triplication, `SHIM_VERSION` bump | The shim and benchmark suites, plus a deploy-smoke run: Tier 0 `/health` preflight and a Tier 1 live round-trip; confirm the new `SHIM_VERSION` via `GET /health` |
+| A **deployment / provider configuration** (API key, model remap, base URL) | Route/env coherence | deploy-smoke Tier 0 (free preflight), adding Tier 1/2 as needed (Tier 2 ≈ $0.60-3.00) |
+| **Documentation only** | -- | Read it aloud, check links and cross-references, render the Markdown |
+| **Any of the above** | § 8 cross-cutting (CC1-CC7) | Sweep for stale count words, broken cross-references, and naming drift |
+
+Two zero-cost batteries are worth knowing regardless of what you touched: the deployment smoke suite's **Tier D** deterministic battery (bats, Pester, lint, and safety-hook tests) and the conventions linter both run without any provider cost, and both run in CI on every push that touches a script.
+
+### What a Reviewable Pull Request Shows
+
+A PR the maintainer can review on its merits -- rather than re-verify from scratch -- shows three things:
+
+1. **The commands you ran and their output, for the surface you changed.** Not "tests pass," but the specific battery you ran and what it reported (see [Support Status and Evidence Discipline](#support-status-and-evidence-discipline) above). If you changed a host script, show the `bats`/`shellcheck` output; if you changed the shim, show the `/health` version and the deploy-smoke result.
+2. **Which route and platform you tested on.** DAAF spans several provider routes (Anthropic, OpenRouter, the OpenAI/ChatGPT shim) and both Windows and macOS/Linux hosts, and behavior genuinely differs across them. "Tested on the OpenRouter route with GLM 5.2 on a macOS host" tells the maintainer exactly how far your evidence reaches -- and, just as usefully, where it doesn't.
+3. **Your reasoning.** Per [What Makes a Good Contribution](#what-makes-a-good-contribution), explain *why* -- the problem you hit, the alternatives you weighed, why this approach. The evidence-discipline rules apply to the PR description itself: qualify negative claims, and don't describe a test surface as exercised unless you actually exercised it.
+
+None of this needs to be heavy. A few honest lines about what you ran, where, and what you saw does the job.
+
+---
+
+## Upgrading Custom Components to v3.0.0
+
+If you built your own agents, skills, or automation against DAAF v2.1.x, several v3.0.0 changes may affect them. Most are safety and reproducibility guardrails that now apply framework-wide. Walk your custom components against this list; each item's full reasoning lives in [`CLAUDE.md`](CLAUDE.md) or the [integration checklist](agent_reference/FRAMEWORK_INTEGRATION_CHECKLIST.md).
+
+- **Agents no longer run `git commit` for research artifacts.** Committing is now gated behind an opt-in "Git commit management" user preference (default off) and, when enabled, is executed only by the orchestrator with in-session user approval. If your agent committed on its own, remove that.
+- **Runtime package installs are blocked -- for both Python and R.** `pip`/`uv`/`conda` and the R install paths (`R CMD INSTALL`, `install.packages()`, and friends) are refused, whether typed at the command line or written inside a script. Add packages to the Dockerfile and rebuild instead.
+- **Coding agents can no longer run `python`/`Rscript` directly.** Execution is file-first: write the script, then run it through `scripts/run_with_capture.sh`, which captures the audit trail. Direct interpreter invocation is hook-blocked for coding agents.
+- **Script fixes go into new versioned copies.** Once a script has its execution log appended it is immutable; create revisions with `scripts/create_script_revision.sh` (`_a`, `_b`, …) rather than editing in place.
+- **`/tmp` writes are blocked.** Scratch and intermediate files belong inside the project (`{PROJECT_DIR}/scripts/scratch/`), which is inside the backup and audit boundary. Reading DAAF's own `/tmp` coordination caches is still fine.
+- **Command chaining is blocked.** One command per Bash call -- no `&&`, `;`, or `||`. Split compound commands into separate calls.
+- **Agents need an explicit `tools:` list that never includes `Agent` or `Task`.** Omitting the field inherits every tool, including dispatch. Nested dispatch (a subagent spawning subagents) is also hook-blocked; a subagent returns remaining work to the orchestrator for redelegation.
+- **The `isolation` parameter on dispatches is stripped.** Remote/worktree isolation isn't available in the container, so it's removed from Agent/Task calls automatically.
+- **Subagent dispatches above the session model tier are blocked.** A cost-control hook denies dispatching a subagent on a model tier above the session model (and blocks Claude-tier requests on non-Claude sessions).
+
+If one of these breaks a custom component, that's expected -- the guardrail is doing its job. The fix is almost always to adopt the framework pattern (file-first execution, Dockerfile packages, orchestrator-mediated dispatch) rather than to work around it.
+
+---
+
+## What DAAFBench Scores Mean
+
+DAAF ships a benchmark suite, DAAFBench (under [`benchmarks/`](benchmarks/README.md)), and it is easy to misread what its scores say. In short: **DAAFBench measures protocol *adherence*, not research quality.** It asks whether a model acting as the orchestrator follows DAAF's rules -- classifying requests into the right mode, presenting confirmation gates, dispatching the right subagent with a properly structured prompt, loading the prescribed skills and references. It does **not** score answer quality, analytical capability, code correctness, or scientific validity. A brilliant analyst model that skips confirmation gates scores poorly; a more modest model that follows protocol faithfully scores well.
+
+Two more boundaries are worth keeping straight when you cite a score:
+
+- **Deterministic scoring and live-route runs differ in scope.** Current scoring is deterministic transcript parsing, and it is not isolated from execution -- that is a known, documented limitation, not a hidden caveat.
+- **Route provenance is recorded fail-closed, so scores are route-honest.** A ChatGPT-subscription run that can't prove its declared route is rejected rather than silently mislabeled, and subscription capacity is accounted separately rather than reported as a zero-cost API invoice.
+
+For the full framing -- including the "what it does NOT test" list and the known limitations -- see [`benchmarks/README.md`](benchmarks/README.md). Published results are shared at [daaf.openaugments.org/bench](https://daaf.openaugments.org/bench/). Please don't present a DAAFBench score as a measure of how good a model is at research; that isn't what it measures, and the README is emphatic about it for good reason.
+
+---
+
 ## Using Session Logs for Debugging and Issue Reports
 
 Session logs are automatically archived transcripts of every Claude Code session, stored in `.claude/logs/sessions/` as both human-readable Markdown and machine-readable JSONL files. They capture every tool call, subagent dispatch, and file operation -- making them invaluable for debugging and issue reports.
@@ -448,6 +554,30 @@ When including session log excerpts in issue reports:
 ````
 
 Issue templates are available when you [create a new issue](https://github.com/DAAF-Contribution-Community/daaf/issues/new/choose) to help guide you through this.
+
+---
+
+## Repository Hygiene and Generated Artifacts
+
+A little hygiene keeps the repository clean and -- more importantly -- keeps sensitive material out of places it shouldn't be. Two ignore files do related but distinct jobs, and it's worth understanding both before you commit.
+
+### `.gitignore` vs. `.claudeignore`
+
+These are not the same file with two names -- they protect against two different things:
+
+- **`.gitignore`** controls what **Git tracks and commits**. It keeps data files (`*.parquet`, `*.csv`, `*.xls*`), credential files (`.env`, `environment_settings*.txt`), session logs, and runtime artifacts out of version control so they never reach the public repository.
+- **`.claudeignore`** controls what the **in-container assistant can see and index**. It hides credential and secret material (`.env*`, `*.pem`, `*.key`, `**/credentials*`, `**/secrets/`) from DAAF itself, so the model can't read or accidentally surface it.
+
+The reason both exist: keeping a secret out of Git protects the *public repository*, while keeping it out of the assistant's view protects it *during a session*. A given file can need one, the other, or both. **If you introduce a new kind of sensitive file** -- a new credential pattern, a private data export, an API-key-bearing config -- it is your responsibility to make sure it's covered by whichever of these two applies, and by both when the material is both secret and shouldn't be committed. When in doubt, cover it in both.
+
+### What Belongs in a Pull Request
+
+- **Transient test artifacts don't.** Files like a root-level `testResults.xml` (Pester's NUnit output) are ephemeral run products -- the harness now writes them report-local under `evidence/`, and a stray copy at the repository root should not be committed. Neither should coverage reports, `__pycache__/`, or local log files; `.gitignore` already excludes most of these, but a quick `git status` before you commit catches the stragglers.
+- **Retained research outputs do.** The sample research projects under `research/` are intentionally kept, outputs and all (see below). Don't strip their generated artifacts to "clean up" -- they're deliberately preserved.
+
+### Why the Sample Research Projects Stay Public
+
+DAAF keeps complete sample research projects in the repository -- linked from the README's Demos & Sample Projects, and including a full analysis together with a reproducibility verification of it. We keep them public, with their real outputs and their real imperfections intact, on purpose. They aren't polished marketing demos; they're honest records of what actually working with DAAF looks like -- the false starts, the STOP conditions, the places where the human researcher had to step in. If we scrubbed them into idealized showcases, they'd be less useful and less true. Seeing a real session, warts and all, is the best way for a new user to calibrate what to expect. Please preserve that candor if you ever touch them.
 
 ---
 

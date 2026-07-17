@@ -308,7 +308,7 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 
 | Library | Citation | Rationale | Stage | Script |
 |---------|----------|-----------|-------|--------|
-| DAAF | Kim, B.H. (2026). *DAAF: Data Analyst Augmentation Framework* (Version 2.1.0) [Computer software]. https://github.com/DAAF-Contribution-Community/daaf | Analysis framework | — | — |
+| DAAF | Kim, B.H. (2026). *DAAF: Data Analyst Augmentation Framework* (Version 3.0.0) [Computer software]. https://github.com/DAAF-Contribution-Community/daaf | Analysis framework | — | — |
 | marimo | marimo team. marimo: Reactive Python notebook [Computer software]. https://marimo.io/ | Analysis notebook format (Python projects) | — | — |
 
 > **Language-conditional pre-population:** For Python projects, pre-populate the marimo row above. For R projects, replace the marimo row with R, Quarto, and tidyverse:

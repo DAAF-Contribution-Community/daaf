@@ -461,7 +461,7 @@ The rebuild script handles the tricky part automatically: it copies the updated 
 
 **Why is this step needed?** The Dockerfile lives in two places -- inside the Docker volume (where DAAF just edited it) and in your `daaf-docker/` folder on your computer (where `docker compose` reads it for builds). The rebuild script bridges this gap so the two copies stay in sync.
 
-**3. Re-enter the container and verify.** After the rebuild completes, re-enter the container and confirm the package is available:
+**3. Re-enter the container and verify.** After the rebuild completes, re-enter the container and confirm the package is available. You can open a container shell from the **DAAF Control Panel** (`bash daaf.sh` / `.\daaf.ps1` → **6) Open Terminal in Container**), or run the command directly:
 
 ```bash
 bash run_daaf.sh bash        # macOS / Linux
