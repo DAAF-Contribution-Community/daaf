@@ -380,6 +380,7 @@ If you're modifying hooks (`.claude/hooks/`), Docker configuration, or other inf
 bats tests/bash/
 shellcheck -x scripts/host/*.sh
 bash tests/lint/check-daaf-conventions.sh
+python3 -m unittest discover -s tests/python -p 'test_deploy_smoke.py'
 pwsh -NoProfile -Command "Invoke-Pester -Path ./tests/powershell/"
 pwsh -NoProfile -Command "Get-ChildItem ./scripts/host/*.ps1 | ForEach-Object { Invoke-ScriptAnalyzer -Path \$_.FullName -Settings ./.github/linters/PSScriptAnalyzerSettings.psd1 }"
 ```
@@ -398,7 +399,7 @@ Start with the free, no-API preflight, then add live tiers as needed:
 # Free preflight — route/env coherence, hook registration, statuslines, shim health:
 python3 scripts/deploy_smoke/run_deploy_smoke.py --tiers 0 --yes
 
-# Add a live round-trip (~cents) and the functional battery (~$0.50–2.50, model-dependent):
+# Add a live round-trip (~cents) and the six-probe functional battery (~$0.60–3.00, model-dependent):
 python3 scripts/deploy_smoke/run_deploy_smoke.py --tiers 0,1,2
 
 # Assert the route you expect — a detection mismatch is a FAIL (catches a mis-set env):
@@ -408,11 +409,14 @@ python3 scripts/deploy_smoke/run_deploy_smoke.py --route openrouter --tiers 0
 python3 scripts/deploy_smoke/run_deploy_smoke.py --route openrouter \
     --profiles openrouter-claude,openrouter-gpt,openrouter-glm --yes
 
-# Zero-cost deterministic battery (bats, Pester, lint, safety-hook tests):
+# Zero-cost deterministic battery (harness self-test, bats, Pester, lint, safety-hook tests):
 python3 scripts/deploy_smoke/run_deploy_smoke.py --tiers D --yes
+
+# Run just the harness's own provider-free regression tests directly (no route, no cost):
+python3 -m unittest discover -s tests/python -p 'test_deploy_smoke.py'
 ```
 
-Each run writes an evidence-quoted `report.md` (plus a machine-readable `report.json`) under `scripts/deploy_smoke/reports/{timestamp}_{route}/`, and exits nonzero on any FAIL. Some `WARN`/`INFO` signals are expected mechanics of a headless probe rather than defects — the `daaf-deploy-smoke-testing` skill (and its `references/interpreting-results.md`) explains the per-probe meaning, route-conditional expectations, and how to route a real failure to its documented fix.
+The deterministic Tier D battery begins with a harness self-test (`TD.0`) that runs the provider-free `unittest` module above before the broader batteries, so an official Tier D run first validates its own harness. All Tier D subprocesses run under a sanitized env (the two live-config contaminants `CLAUDE_CODE_MAX_CONTEXT_TOKENS` and `DAAF_BRANCH` are stripped; `PATH`/`HOME`/credentials preserved). Each run writes an evidence-quoted `report.md` (plus a machine-readable `report.json`) under `scripts/deploy_smoke/reports/{timestamp}_{route}/`, and exits nonzero on any FAIL. When a Tier D battery FAILs or times out, its complete scrubbed output is persisted to `evidence/tier_d/{probe_id}.log`, and Pester's NUnit `testResults.xml` is written report-local under `evidence/tier_d/` rather than at the repository root. Some `WARN`/`INFO` signals are expected mechanics of a headless probe rather than defects — the `daaf-deploy-smoke-testing` skill (and its `references/interpreting-results.md`) explains the per-probe meaning, route-conditional expectations, and how to route a real failure to its documented fix.
 
 ---
 

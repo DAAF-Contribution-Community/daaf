@@ -39,9 +39,9 @@ The deployment suite *reuses* Tier D to run the library smokes and *reuses* DAAF
 | **0** | free | Route detection + `--route` assertion, `DAAF_DEV=1`, env coherence for the detected route, model-family + ceiling-hook posture, context-window declaration (lane-aware: `DAAF_PROVIDER_SHIM`+`SHIM_BACKEND_MODE` select the ~370k chatgpt-subscription ceiling), CLI liveness, all hooks registered, both statuslines render, shim `/health` (shim routes), chatgpt `auth.json` readable, workspace invariants, R UTF-8 locale (image `LANG`/`LC_ALL=C.UTF-8`) | no |
 | **1** | ~cents | One live `claude -p` round-trip + the plumbing around it: response returned, transcript located, audit-log hook fired, context-reporter injection, `/tmp` coordination caches, statusline against the real session, token/cost parsing | 1 call |
 | **2** | ~$0.60–3.00 / profile | Six-probe functional battery: subagent dispatch + search, coding agent writes + runs via `run_with_capture`, web access (WebSearch), skill loading, isolation-strip hook (SKIP-tolerant), nested-dispatch deny hook | 6 calls |
-| **D** | free | Deterministic battery: `bats tests/bash`, Pester, `check-daaf-conventions.sh` lint, safety-hook tests, single-command hook tests, and (opt-in) the R/Python library smoke suite | no |
+| **D** | free | Deterministic battery: a harness self-test first (TD.0 — the suite's own provider-free `unittest` module), then `bats tests/bash`, Pester, `check-daaf-conventions.sh` lint, safety-hook tests, single-command hook tests, and (opt-in) the R/Python library smoke suite. Every Tier D subprocess runs under a sanitized env — the two live-config contaminants `CLAUDE_CODE_MAX_CONTEXT_TOKENS` and `DAAF_BRANCH` are stripped (defense-in-depth atop each battery's own fixture isolation); PATH/HOME/credentials/toolchain are preserved | no |
 
-Tier 2 cost scales with the configured model. Tiers 0 and D run once; Tiers 1 and 2 run once *per profile*.
+Tier 2 cost scales with the configured model. Tiers 0 and D run once; Tiers 1 and 2 run once *per profile*. Each Tier 2 run operates inside its own per-run, UUID-owned sandbox (`scripts/deploy_smoke/_sandbox/run_<uuid>/`) that it self-cleans on exit, so no fixture from a prior run can satisfy a later one; correspondingly, the T2.2 coding probe PASSes only on freshly captured execution evidence, not on source text or a stale log (see `references/interpreting-results.md`).
 
 ## When to Run
 
@@ -101,7 +101,8 @@ Each run writes `scripts/deploy_smoke/reports/{YYYYMMDD_HHMMSS}_{route}/`:
 
 - **`report.md`** — human audit: per-probe verdict with quoted evidence, grouped by tier, plus a redacted env fingerprint.
 - **`report.json`** — machine-readable: git SHA, route, model family, redacted env fingerprint, per-probe results.
-- **`evidence/`** — snapshots (shim `/health`, env fingerprint, `/tmp` cache reads).
+- **`evidence/`** — discrete audit-snapshot files: `shim_health.json` (shim routes only) and `env_fingerprint.json`. The `/tmp` coordination-cache reads a Tier 1 probe performs are embedded inline in that probe's `report.md`/`report.json` evidence — they are *not* written as separate files under `evidence/`.
+- **`evidence/tier_d/`** — Tier D failure artifacts (present when Tier D runs): the COMPLETE scrubbed output of any FAILed or timed-out battery is persisted at `evidence/tier_d/{probe_id}.log`, and Pester's NUnit `testResults.xml` is written here (report-local) rather than at the repository root. On a PASS the report keeps only a concise final excerpt; the full log is persisted only on FAIL/timeout.
 
 Verdicts are `PASS | FAIL | WARN | SKIP | INFO`. Only **FAIL** flips the overall result and the exit code (nonzero), matching the `run_all_smoke_tests.sh` contract. A route-appropriate SKIP (e.g. shim `/health` on a non-shim route) or a tolerant WARN never breaks the run.
 
