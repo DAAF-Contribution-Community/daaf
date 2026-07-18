@@ -94,8 +94,12 @@
       "Edit(environment_settings.txt)",
       "Edit(.claude/hooks/*)",
       "Write(.claude/hooks/*)",
-      "Edit(.claude/logs/*)",
-      "Write(.claude/logs/*)",
+      "Edit(/.claude/logs/**)",
+      "Write(/.claude/logs/**)",
+      "Edit(//home/appuser/.claude/**/*.jsonl)",
+      "Write(//home/appuser/.claude/**/*.jsonl)",
+      "Edit(/research/*/logs/**)",
+      "Write(/research/*/logs/**)",
       "Write(//tmp/**)",
       "Edit(//tmp/**)"
     ]
