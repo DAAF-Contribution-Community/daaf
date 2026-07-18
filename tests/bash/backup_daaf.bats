@@ -965,3 +965,137 @@ teardown() {
     assert_failure
     assert_output --partial "ERROR"
 }
+
+# =========================================================================
+# --- Helper-container reap on staging launch failure ---
+# =========================================================================
+# `docker run -d` can fail AFTER creating the container (Created/Exited) while
+# still printing its CID to stdout, which the command substitution captures. The
+# launch guards must reap that captured CID (docker rm -f <cid>) so a launch
+# failure does not leak a helper container. These mocks log every docker call to a
+# file so the reap can be asserted after `run` (the DOCKER_CALLS array does not
+# survive bats's `run` subshell). Each test would FAIL against the pre-fix code
+# (main branch: no reap before exit 1; Claude branch: `|| CLAUDE_STAGE_CID=""`
+# blanked the CID before any cleanup).
+
+@test "backup: main staging launch failure reaps the captured helper container" {
+    export DAAF_NESTED=1
+
+    # The data-volume `docker run -d` prints a CID but exits nonzero. The error
+    # branch must run `docker rm -f stagecid0000` before `exit 1`.
+    docker() {
+        printf '%s\n' "$*" >> "${TEST_DIR}/docker_calls.log"
+        case "$1" in
+            info)   return 0 ;;
+            volume) return 0 ;;
+            run)
+                if [ "${2:-}" = "-d" ]; then echo "stagecid0000"; return 1; fi
+                printf '5\n512\t/source\n500K\t/source\n500\n'
+                return 0
+                ;;
+            wait) echo "0"; return 0 ;;
+            cp)   return 0 ;;
+            logs) echo ""; return 0 ;;
+            rm)   return 0 ;;
+            *)    return 0 ;;
+        esac
+    }
+    export -f docker
+
+    run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_failure
+    assert_output --partial "Could not start the staging container"
+    # The captured CID must have been reaped in the error branch.
+    run grep -F 'rm -f stagecid0000' "${TEST_DIR}/docker_calls.log"
+    assert_success
+}
+
+@test "backup: Claude staging launch failure preserves and reaps the captured CID (WARNING, not fatal)" {
+    export DAAF_NESTED=1
+
+    # Data-volume backup succeeds; the Claude-volume `docker run -d` prints a CID but
+    # exits nonzero. The fix keeps the captured CID (not `|| CLAUDE_STAGE_CID=""`) so
+    # the end-of-block `docker rm -f claudestagecid` reaps it. Claude failure stays a
+    # WARNING; the script still completes (the data backup is valid). Logical KB 0
+    # skips the size check. The `run -d` arm distinguishes the two volumes by the
+    # "claude-config" substring in the volume mount argument.
+    docker() {
+        printf '%s\n' "$*" >> "${TEST_DIR}/docker_calls.log"
+        case "$1" in
+            info)   return 0 ;;
+            volume) return 0 ;;
+            run)
+                if [ "${2:-}" = "-d" ]; then
+                    if printf '%s' "$*" | grep -q 'claude-config'; then
+                        echo "claudestagecid"; return 1
+                    fi
+                    echo "stagecid0000"; return 0
+                fi
+                printf '2\n512\t/source\n500K\t/source\n0\n'
+                return 0
+                ;;
+            wait) echo "0"; return 0 ;;
+            cp)
+                local dest_dir=""
+                for arg in "$@"; do dest_dir="${arg}"; done
+                dest_dir="${dest_dir%/}"
+                if [ -n "${dest_dir}" ]; then
+                    mkdir -p "${dest_dir}"
+                    touch "${dest_dir}/file1" "${dest_dir}/file2"
+                fi
+                return 0
+                ;;
+            logs) echo ""; return 0 ;;
+            rm)   return 0 ;;
+            *)    return 0 ;;
+        esac
+    }
+    export -f docker
+
+    run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_success
+    assert_output --partial "Failed to back up the Claude Code state volume"
+    # The captured Claude CID must be reaped -- proving it was NOT blanked before cleanup.
+    run grep -F 'rm -f claudestagecid' "${TEST_DIR}/docker_calls.log"
+    assert_success
+}
+
+@test "backup: file-count tolerance floors to 1 for a small backup (clamp parity with PS)" {
+    export DAAF_NESTED=1
+
+    # For <100 files, TOTAL_FILES/100 truncates to 0; the clamp raises it to 1 so a
+    # 1-file difference is tolerated (parity with the PS [math]::Max(1, ...) floor).
+    # Scan reports 2 files; the data copy lands 3 files (diff = 1). With the clamp the
+    # difference is within tolerance -> NO file-count-mismatch WARNING. Without the
+    # clamp (tolerance 0) a diff of 1 would warn. Logical KB 0 skips the size check,
+    # isolating the count signal.
+    docker() {
+        case "$1" in
+            info)   return 0 ;;
+            volume) return 0 ;;
+            run)
+                if [ "${2:-}" = "-d" ]; then echo "stagecid0000"; return 0; fi
+                printf '2\n512\t/source\n500K\t/source\n0\n'
+                return 0
+                ;;
+            wait) echo "0"; return 0 ;;
+            cp)
+                local dest_dir=""
+                for arg in "$@"; do dest_dir="${arg}"; done
+                dest_dir="${dest_dir%/}"
+                if [ -n "${dest_dir}" ]; then
+                    mkdir -p "${dest_dir}"
+                    touch "${dest_dir}/file1" "${dest_dir}/file2" "${dest_dir}/file3"
+                fi
+                return 0
+                ;;
+            rm) return 0 ;;
+            *)  return 0 ;;
+        esac
+    }
+    export -f docker
+
+    run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_success
+    refute_output --partial "file-count mismatch"
+}

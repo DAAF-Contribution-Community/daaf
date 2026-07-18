@@ -107,6 +107,16 @@ Describe "view_quarto.ps1" {
         It "reports container already running" {
             $Content | Should -Match 'DAAF container is running'
         }
+
+        It "extracts the settings key column-0 strict (no .Trim(), rejects padded keys like bash)" {
+            # Import-DaafSettingsInline must extract the key WITHOUT .Trim() so a
+            # whitespace-padded "  DAAF_PROJECT_NAME=..." line falls through as
+            # unrecognized -- matching the bash loaders' column-0 `case` glob. The
+            # pre-fix `.Substring(0, $eq).Trim()` accepted padded keys, diverging from
+            # bash across the PS loader copies.
+            $Content | Should -Match '\$key = \$line\.Substring\(0, \$eq\)'
+            $Content | Should -Not -Match '\$key = \$line\.Substring\(0, \$eq\)\.Trim\(\)'
+        }
     }
 }
 

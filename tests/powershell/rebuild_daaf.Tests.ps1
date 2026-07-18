@@ -93,6 +93,16 @@ Describe "rebuild_daaf.ps1" {
         It "waits for container readiness after rebuild" {
             $Content | Should -Match 'Waiting for container to be ready'
         }
+
+        It "extracts the settings key column-0 strict (no .Trim(), rejects padded keys like bash)" {
+            # Import-DaafSettingsInline must extract the key WITHOUT .Trim() so a
+            # whitespace-padded "  DAAF_PROJECT_NAME=..." line falls through as
+            # unrecognized -- matching the bash loaders' column-0 `case` glob. The
+            # pre-fix `.Substring(0, $eq).Trim()` accepted padded keys, diverging from
+            # bash across all ten PS loader copies.
+            $Content | Should -Match '\$key = \$line\.Substring\(0, \$eq\)'
+            $Content | Should -Not -Match '\$key = \$line\.Substring\(0, \$eq\)\.Trim\(\)'
+        }
     }
 }
 
@@ -246,9 +256,19 @@ Describe "rebuild_daaf.ps1 error paths" {
             $Content | Should -Match 'BUILDKIT_STEP_LOG_MAX_SPEED=10485760'
         }
 
-        It "selects the builder via BUILDX_BUILDER and clears it after the build" {
+        It "selects the builder via BUILDX_BUILDER and RESTORES the prior value after the build (non-destructive)" {
+            # Regression: the pre-fix code cleared the var unconditionally with
+            # `if ($UseDiagBuilder) { $env:BUILDX_BUILDER = $null }`, which REMOVES the
+            # variable and clobbers a user's own pre-exported BUILDX_BUILDER. The fix
+            # saves the prior value first and restores it (removing only when the user had
+            # none). Assert the save + conditional restore, and that the destructive
+            # single-line unconditional clear is gone. (`$env:BUILDX_BUILDER = $null` still
+            # appears in the else-branch and in the hazard comment, so we negative-match
+            # the specific one-line `if ($UseDiagBuilder) { ... = $null }` form instead.)
             $Content | Should -Match '\$env:BUILDX_BUILDER = "daaf-diag-builder"'
-            $Content | Should -Match '\$env:BUILDX_BUILDER = \$null'
+            $Content | Should -Match '\$priorBuildxBuilder = \$env:BUILDX_BUILDER'
+            $Content | Should -Match 'if \(\$null -ne \$priorBuildxBuilder\) \{ \$env:BUILDX_BUILDER = \$priorBuildxBuilder \}'
+            $Content | Should -Not -Match 'if \(\$UseDiagBuilder\) \{ \$env:BUILDX_BUILDER = \$null \}'
         }
 
         It "falls open to the default builder when the builder cannot be created" {

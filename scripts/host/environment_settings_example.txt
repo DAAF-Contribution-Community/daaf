@@ -486,7 +486,9 @@
 # ----------------------------------------------------------------------------
 # Network / backend overrides (SHIM_BACKEND_API_KEY defaults to OPENAI_API_KEY):
 # --- To activate, remove the leading '#' on the lines you need: ---
+# DEFAULT: 4141 is the default port; the line below shows it, so uncommenting it changes nothing.
 #SHIM_PORT=4141
+# DEFAULT: https://api.openai.com/v1 is the default backend; the line below shows it, so uncommenting it changes nothing.
 #SHIM_BACKEND_BASE_URL=https://api.openai.com/v1
 #SHIM_BACKEND_API_KEY=
 #

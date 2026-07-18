@@ -285,3 +285,88 @@ dquote_count() { tr -cd '"' | wc -c | tr -d '[:space:]'; }
     run diff "${TEST_DIR}/ref_r_sh.txt" "${TEST_DIR}/drift_r_ps1.txt"
     assert_failure
 }
+
+# ===========================================================================
+# 5. HOST-SIDE LAUNCH-FAILURE REAP: both twins reap a captured staging CID
+# ===========================================================================
+# A `docker run -d` can fail AFTER creating the container (Created/Exited) while
+# still printing its CID. Both twins must reap that captured CID on a launch
+# failure rather than leaking a helper container. This is a host-side control-flow
+# parity concern the container-program diffs above do not cover -- the historical
+# gap where the .ps1 already reaped but the .sh did not.
+
+@test "twin-parity: both backup twins reap the captured MAIN staging CID on a launch failure" {
+    # .sh main launch: the `if ! STAGE_CID="$(docker run -d ...)"` error branch reaps
+    # the captured CID before `exit 1` (also used by the traps -- presence suffices).
+    run grep -F 'docker rm -f "${STAGE_CID:-}"' "${REPO_ROOT}/${BACKUP_SH}"
+    assert_success
+    # .ps1 main launch: the stage-start guard reaps $StageCid when the launch failed.
+    run grep -F 'docker rm -f $StageCid' "${REPO_ROOT}/${BACKUP_PS1}"
+    assert_success
+}
+
+@test "twin-parity: both backup twins preserve + reap the CLAUDE staging CID (no blanking)" {
+    # .sh: the launch OUTCOME is captured in a separate flag so the CID stays intact
+    # for the end-of-block reap. The old `|| CLAUDE_STAGE_CID=""` blanked the CID
+    # before any cleanup could run and MUST be gone.
+    run grep -F 'CLAUDE_STAGE_START_OK=1' "${REPO_ROOT}/${BACKUP_SH}"
+    assert_success
+    run grep -F 'docker rm -f "${CLAUDE_STAGE_CID}"' "${REPO_ROOT}/${BACKUP_SH}"
+    assert_success
+    # The fixed launch uses an `if CLAUDE_STAGE_CID="$(docker run -d ...)"` guard. The
+    # buggy version was a `CLAUDE_STAGE_CID="$(...)" || CLAUDE_STAGE_CID=""` one-liner
+    # with NO leading `if ` -- so this positive assertion discriminates fix from bug.
+    # (A negative grep for the old `|| CLAUDE_STAGE_CID=""` idiom would false-match the
+    # explanatory comment that documents the historical pattern.)
+    run grep -F 'if CLAUDE_STAGE_CID="$(docker run -d' "${REPO_ROOT}/${BACKUP_SH}"
+    assert_success
+    # .ps1: the finally block reaps $ClaudeStageCid on every exit path.
+    run grep -F 'docker rm -f $ClaudeStageCid' "${REPO_ROOT}/${BACKUP_PS1}"
+    assert_success
+}
+
+# ===========================================================================
+# 6. RESTORE-PAIR LAUNCH-FAILURE REAP: both twins reap a captured create CID
+# ===========================================================================
+# Same host-side control-flow parity concern as section 5, applied to the restore
+# pair's `docker create` helper-container guards. `docker create` is single-phase
+# so a fail-with-CID is near-theoretical, but the .ps1 twin already reaps the CID in
+# a try/finally at BOTH volumes, so the .sh must match: reap the captured CID on a
+# create failure rather than leaking a helper container. These are source-anchor
+# pins (fix-specific, comment-safe positive anchors), complementing the behavioral
+# reap tests in restore_from_backup.bats.
+
+@test "twin-parity: both restore twins reap the captured MAIN helper CID on a create failure" {
+    # .sh main guard: the `${CID:-}` reap form must appear EXACTLY twice -- once in
+    # the INT/TERM trap and once in the `if ! CID="$(docker create ...)"` error branch
+    # (the fix). Pre-fix the trap alone gave a single occurrence, so a bare presence
+    # grep would not discriminate; the count of 2 is fix-specific. (The cp-failure and
+    # post-copy cleanups use the unguarded `${CID}` form, so they are not counted.)
+    local n
+    n="$(grep -cF 'docker rm -f "${CID:-}"' "${REPO_ROOT}/${RESTORE_SH}")"
+    [ "${n}" -eq 2 ] || { echo "FAIL: restore_from_backup.sh has ${n} \${CID:-} reap sites, expected 2 (INT/TERM trap + create-failure error branch). A missing error-branch reap leaks the helper container."; return 1; }
+    # .ps1 main guard: the try/finally reaps $Cid on every exit path (incl. a create
+    # that failed after emitting a CID).
+    run grep -F 'docker rm -f $Cid' "${REPO_ROOT}/${RESTORE_PS1}"
+    assert_success
+}
+
+@test "twin-parity: both restore twins preserve + reap the CLAUDE helper CID (no blanking)" {
+    # .sh: the create OUTCOME is captured in a separate flag so the CID stays intact
+    # for the end-of-block reap. The old `|| CLAUDE_CID=""` blanked the CID before any
+    # cleanup could run and MUST be gone.
+    run grep -F 'CLAUDE_CREATE_OK=1' "${REPO_ROOT}/${RESTORE_SH}"
+    assert_success
+    run grep -F 'docker rm -f "${CLAUDE_CID}"' "${REPO_ROOT}/${RESTORE_SH}"
+    assert_success
+    # The fixed guard uses an `if CLAUDE_CID="$(docker create ...)"` form. The buggy
+    # version was a `CLAUDE_CID="$(...)" || CLAUDE_CID=""` one-liner with NO leading
+    # `if ` -- so this positive assertion discriminates fix from bug. (A negative grep
+    # for the old `|| CLAUDE_CID=""` idiom would false-match the explanatory comment
+    # that documents the historical pattern.)
+    run grep -F 'if CLAUDE_CID="$(docker create' "${REPO_ROOT}/${RESTORE_SH}"
+    assert_success
+    # .ps1: the finally block reaps $ClaudeCid on every exit path.
+    run grep -F 'docker rm -f $ClaudeCid' "${REPO_ROOT}/${RESTORE_PS1}"
+    assert_success
+}

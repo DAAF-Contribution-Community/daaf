@@ -305,6 +305,12 @@ if ! STAGE_CID="$(docker run -d -v "${VOLUME_NAME}:/source:ro" busybox sh -c "${
     echo "" >&2
     echo "ERROR: Could not start the staging container for a symlink-safe backup." >&2
     echo "       No backup files were written. Check Docker Desktop for errors and re-run." >&2
+    # Best-effort reap: `docker run -d` can fail AFTER creating the container
+    # (Created/Exited state) while still printing its CID to stdout, which the
+    # command substitution above captured -- remove it so a launch failure does not
+    # leak a helper container (mirrors backup_daaf.ps1's stage-start cleanup). The
+    # `${STAGE_CID:-}` guard makes this a harmless no-op if no CID was captured.
+    docker rm -f "${STAGE_CID:-}" > /dev/null 2>&1 || true
     exit 1
 fi
 trap 'docker rm -f "${STAGE_CID:-}" > /dev/null 2>&1 || true' INT TERM
@@ -504,16 +510,32 @@ if docker volume inspect "${CLAUDE_VOLUME_NAME}" &> /dev/null; then
     # replays it against the claude volume.
     # Guard the launch so a `docker run -d` failure does NOT abort the whole backup
     # under `set -e` -- the Claude backup is best-effort (failure must be a WARNING,
-    # never fatal; the data backup above already succeeded). `|| CLAUDE_STAGE_CID=""`
-    # swallows the exit status and leaves an empty CID, so the `docker wait` below
-    # yields status 1 and the `if` falls into the existing WARNING path (mirrors the
-    # `|| CLAUDE_CID=""` idiom in restore_from_backup.sh's Claude restore block).
-    CLAUDE_STAGE_CID="$(docker run -d -v "${CLAUDE_VOLUME_NAME}:/source:ro" busybox sh -c "${STAGE_PROGRAM}")" || CLAUDE_STAGE_CID=""
+    # never fatal; the data backup above already succeeded). Capture the launch
+    # outcome in a SEPARATE flag rather than blanking the CID: `docker run -d` can
+    # fail AFTER creating the container (Created/Exited) while still printing its CID,
+    # and the old `|| CLAUDE_STAGE_CID=""` discarded that CID before any cleanup could
+    # reap it -- leaking the helper container. Keep the captured CID intact so the
+    # trap below and the `docker rm -f` at the end of this block can remove it
+    # (mirrors backup_daaf.ps1's $claudeStageStartOk flag + finally-reap pattern).
+    # Assigning inside the `if` condition keeps `set -e` from aborting on a launch
+    # failure while still capturing whatever the substitution produced.
+    if CLAUDE_STAGE_CID="$(docker run -d -v "${CLAUDE_VOLUME_NAME}:/source:ro" busybox sh -c "${STAGE_PROGRAM}")"; then
+        CLAUDE_STAGE_START_OK=1
+    else
+        CLAUDE_STAGE_START_OK=0
+    fi
     # Re-register an interrupt trap around this block: the data-copy trap was
     # cleared above, so without this a Ctrl-C during the Claude staging/cp window
     # would leak the helper container. Best-effort removal; guarded under set -u.
     trap 'docker rm -f "${CLAUDE_STAGE_CID:-}" > /dev/null 2>&1 || true' INT TERM
-    CLAUDE_STAGE_STATUS="$(docker wait "${CLAUDE_STAGE_CID}" 2>/dev/null || echo 1)"
+    # Only wait on a container that actually launched; a launch failure is treated as
+    # a nonzero staging status so control flows into the WARNING path below (with the
+    # CID preserved so the reap at the end of this block can remove it).
+    if [ "${CLAUDE_STAGE_START_OK}" -eq 1 ]; then
+        CLAUDE_STAGE_STATUS="$(docker wait "${CLAUDE_STAGE_CID}" 2>/dev/null || echo 1)"
+    else
+        CLAUDE_STAGE_STATUS=1
+    fi
     # On a staging-gate trip the offender list went to the DETACHED container's log.
     # Capture it now, before the `docker rm -f` below removes the container, so the
     # WARNING branch can relay it. Kept asymmetric with the data volume: this stays a

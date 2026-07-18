@@ -471,6 +471,23 @@ teardown() {
     [ ! -f /tmp/daaf_should_not_exist ]
 }
 
+@test "load_daaf_settings rejects a whitespace-padded key (column-0 strict, parity with PS)" {
+    # A leading-space "  DAAF_PROJECT_NAME=..." line is not flush at column 0, so the
+    # column-0 `case` glob rejects it. This is the conformance anchor the PowerShell
+    # loaders were fixed to match (PS now extracts the key WITHOUT .Trim()), so a padded
+    # key resolves to nothing on BOTH platforms rather than silently working on one.
+    printf '  DAAF_PROJECT_NAME=padded\n' > "${TEST_DIR}/environment_settings.txt"
+    run bash -c '
+        unset _DAAF_LIB_LOADED
+        source "'"${REPO_ROOT}"'/scripts/host/daaf_lib.sh"
+        unset DAAF_PROJECT_NAME
+        load_daaf_settings "./environment_settings.txt"
+        echo "NAME=${DAAF_PROJECT_NAME:-UNSET}"
+    '
+    assert_success
+    assert_output --partial "NAME=UNSET"
+}
+
 # =========================================================================
 # docker-compose.yml multi-instance interpolation defaults
 # =========================================================================

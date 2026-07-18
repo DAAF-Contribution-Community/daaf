@@ -83,7 +83,11 @@ function Import-DaafSettingsInline {
         if ($trimmed -eq "" -or $trimmed.StartsWith("#")) { continue }
         $eq = $line.IndexOf("=")
         if ($eq -lt 1) { continue }
-        $key = $line.Substring(0, $eq).Trim()
+        # Extract the key WITHOUT trimming: a leading or trailing space means the
+        # line is not flush at column 0, so it must fall through as unrecognized --
+        # matching the bash loaders' column-0 `case` glob so a padded key like
+        # "  DAAF_PROJECT_NAME=..." is rejected identically on both platforms.
+        $key = $line.Substring(0, $eq)
         if ($known -notcontains $key) { continue }
         $val = $line.Substring($eq + 1)
         if (($val.StartsWith('"') -and $val.EndsWith('"')) -or ($val.StartsWith("'") -and $val.EndsWith("'"))) {
@@ -221,9 +225,9 @@ Write-Host ""
 # staging-failure error below points the user at the Docker Desktop disk image.
 $BackupDrive = (Get-Item -Path ".").PSDrive.Name
 $DriveInfo = New-Object System.IO.DriveInfo($BackupDrive)
-$AvailableKB = [long]($DriveInfo.AvailableFreeSpace / 1024)
+$AvailableKB = [long][math]::Floor($DriveInfo.AvailableFreeSpace / 1024)
 # Add 10% buffer to account for filesystem overhead
-$RequiredKB = [long]($VolumeSizeKB * 110 / 100)
+$RequiredKB = [long][math]::Floor($VolumeSizeKB * 110 / 100)
 if ($AvailableKB -lt $RequiredKB) {
     $RequiredMB = [math]::Floor($RequiredKB / 1024)
     $AvailableMB = [math]::Floor($AvailableKB / 1024)
@@ -343,8 +347,18 @@ if (-not $stageStartOk) {
 $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
 $StageStatusRaw = (docker wait $StageCid 2>&1 | Select-Object -Last 1)
 $ErrorActionPreference = $savedEAP
+# Gate on TryParse's BOOLEAN return. [int]::TryParse writes 0 into the [ref] on a
+# parse FAILURE (not just a parse of "0"), so the old `$null = TryParse(...)` form
+# silently overwrote the fail-closed default with 0 whenever `docker wait` emitted a
+# non-numeric last line (e.g. a daemon error merged via 2>&1) -- flipping this fatal
+# gate from "abort" to "proceed to copy a partial staged tree." Parse into a temp var
+# and adopt it ONLY on success; otherwise stay fail-closed at 1 (mirrors the correct
+# idiom at restore_from_backup.ps1:279).
 $StageStatus = 1
-if ($null -ne $StageStatusRaw) { $null = [int]::TryParse("$StageStatusRaw".Trim(), [ref]$StageStatus) }
+$StageStatusParsed = 0
+if ($null -ne $StageStatusRaw -and [int]::TryParse("$StageStatusRaw".Trim(), [ref]$StageStatusParsed)) {
+    $StageStatus = $StageStatusParsed
+}
 if ($StageStatus -ne 0) {
     # The staging container is DETACHED (`docker run -d`), so the gate's STDOUT --
     # including the offender list it prints on an exit-3 -- went to the container
@@ -490,7 +504,7 @@ if ($CopyExitCode -ne 0 -and $FileCount -lt $TotalFiles) {
 # 1% tolerance. The count and size checks are the authoritative completeness signals,
 # not $CopyExitCode.
 if ($TotalFiles -gt 0 -and $FileCount -gt 0) {
-    $CountTolerance = [math]::Max(1, [long]($TotalFiles / 100))
+    $CountTolerance = [math]::Max(1, [long][math]::Floor($TotalFiles / 100))
     $CountDiff = [math]::Abs($TotalFiles - $FileCount)
     if ($CountDiff -gt $CountTolerance) {
         Write-Host ""
@@ -507,10 +521,10 @@ $SourceSizeKB = $VolumeLogicalKB
 # Exclude the ".daaf-symlinks" manifest from the backup byte sum: it exists in the
 # backup but not the volume, and the source side (VolumeLogicalKB) never counted it
 # -- so counting it here would skew the comparison.
-$BackupSizeKB = [long]((Get-ChildItem -Path $BackupName -Recurse -Force -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne $SymlinksManifest } | Measure-Object -Property Length -Sum).Sum / 1024)
+$BackupSizeKB = [long][math]::Floor((Get-ChildItem -Path $BackupName -Recurse -Force -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne $SymlinksManifest } | Measure-Object -Property Length -Sum).Sum / 1024)
 if ($SourceSizeKB -gt 0 -and $BackupSizeKB -gt 0) {
     # Allow 1% tolerance for filesystem metadata differences
-    $ToleranceKB = [math]::Max(1, [long]($SourceSizeKB / 100))
+    $ToleranceKB = [math]::Max(1, [long][math]::Floor($SourceSizeKB / 100))
     $DiffKB = [math]::Abs($SourceSizeKB - $BackupSizeKB)
     if ($DiffKB -gt $ToleranceKB) {
         Write-Host ""
@@ -557,8 +571,15 @@ if ($claudeVolumeExists) {
             $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
             $ClaudeStageStatusRaw = (docker wait $ClaudeStageCid 2>&1 | Select-Object -Last 1)
             $ErrorActionPreference = $savedEAP
+            # Gate on TryParse's BOOLEAN return (see the data-volume staging block
+            # above): a parse failure writes 0 into the [ref], which would flip this
+            # gate from "skip the copy" to "copy a partial staged tree." Parse into a
+            # temp var; stay fail-closed at 1 on failure.
             $ClaudeStageStatus = 1
-            if ($null -ne $ClaudeStageStatusRaw) { $null = [int]::TryParse("$ClaudeStageStatusRaw".Trim(), [ref]$ClaudeStageStatus) }
+            $ClaudeStageStatusParsed = 0
+            if ($null -ne $ClaudeStageStatusRaw -and [int]::TryParse("$ClaudeStageStatusRaw".Trim(), [ref]$ClaudeStageStatusParsed)) {
+                $ClaudeStageStatus = $ClaudeStageStatusParsed
+            }
             if ($ClaudeStageStatus -eq 0) {
                 $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
                 $null = docker cp "${ClaudeStageCid}:/staging/." "${ClaudeDestPath}" 2>&1

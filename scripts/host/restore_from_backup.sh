@@ -396,6 +396,16 @@ trap 'docker rm -f "${CID:-}" > /dev/null 2>&1 || true' INT TERM
 # was already cleared in Step 1, so the user would be left with an empty volume
 # and no explanation. Capture into CID first, then check the status.
 if ! CID="$(docker create -v "${VOLUME_NAME}:/dest" busybox)"; then
+    # Best-effort reap: `docker create` can in principle fail AFTER creating the
+    # container while still printing its CID to stdout, which the command
+    # substitution above captured -- remove it so a launch failure does not leak a
+    # helper container (mirrors backup_daaf.sh's stage-start reap and
+    # backup_daaf.ps1's stage-start cleanup). `docker create` is single-phase, so a
+    # fail-with-CID is near-theoretical here, but this keeps parity with the twin and
+    # with the `docker cp` failure branch just below. The `${CID:-}` guard makes this
+    # a harmless no-op if no CID was captured. Reap first, then drop the trap (matches
+    # the cp-branch order).
+    docker rm -f "${CID:-}" > /dev/null 2>&1 || true
     trap - INT TERM
     echo "" >&2
     echo "ERROR: Could not create the helper container for the volume copy." >&2
@@ -628,10 +638,21 @@ if [ "${HAS_CLAUDE_BACKUP}" -eq 1 ]; then
         trap 'docker rm -f "${CLAUDE_CID:-}" > /dev/null 2>&1 || true' INT TERM
         # Guard the create under `set -e`: a failure here is non-fatal (the data
         # volume restore already succeeded), so it must fall into the WARNING path
-        # below, not abort the whole script. `|| CLAUDE_CID=""` keeps the exit
-        # status from tripping `set -e` while leaving CLAUDE_CID empty on failure.
-        CLAUDE_CID="$(docker create -v "${CLAUDE_VOLUME_NAME}:/dest" busybox)" || CLAUDE_CID=""
-        if [ -n "${CLAUDE_CID}" ] \
+        # below, not abort the whole script. Capture the launch outcome in a SEPARATE
+        # flag rather than blanking the CID: `docker create` can in principle fail
+        # after emitting a CID, and the old `|| CLAUDE_CID=""` discarded that CID
+        # before the trap above or the `docker rm -f` at the end of this block could
+        # reap it -- leaking the helper container. Keep the captured CID intact so both
+        # reap sites can remove it (mirrors backup_daaf.sh's CLAUDE_STAGE_START_OK flag
+        # and backup_daaf.ps1's $claudeStageStartOk + finally-reap pattern). Assigning
+        # inside the `if` condition keeps `set -e` from aborting on a launch failure
+        # while still capturing whatever the substitution produced.
+        if CLAUDE_CID="$(docker create -v "${CLAUDE_VOLUME_NAME}:/dest" busybox)"; then
+            CLAUDE_CREATE_OK=1
+        else
+            CLAUDE_CREATE_OK=0
+        fi
+        if [ "${CLAUDE_CREATE_OK}" -eq 1 ] \
             && docker cp "${CLAUDE_BACKUP_PATH}/." "${CLAUDE_CID}:/dest/" \
             && docker run --rm -v "${CLAUDE_VOLUME_NAME}:/dest" busybox chown -R 1000:1000 /dest; then
             # Replay the Claude volume's own symlink manifest (staged out by backup),
