@@ -108,6 +108,19 @@ Describe "migrate_daaf.ps1" {
             $Content | Should -Match 'backup_daaf\.ps1'
         }
 
+        It "captures the backup exit code from LASTEXITCODE" {
+            $Content | Should -Match '\$backupExit\s*=\s*\$LASTEXITCODE'
+        }
+
+        It "aborts the migration on a nonzero backup exit code" {
+            $Content | Should -Match 'if \(\$backupExit -ne 0\)'
+            $Content | Should -Match 'Backup failed \(exit code \$backupExit\)'
+        }
+
+        It "explains that the migration will not proceed without a successful backup" {
+            $Content | Should -Match 'The migration will not proceed without a successful backup'
+        }
+
         It "handles fork detection" {
             $Content | Should -Match 'IsFork'
         }

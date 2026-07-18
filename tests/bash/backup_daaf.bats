@@ -772,19 +772,22 @@ teardown() {
     assert_output --partial "ERROR"
 }
 
-@test "backup: copy partially succeeds with non-zero exit but files copied shows warning" {
+@test "backup: copy reports non-zero exit but full file count shows Note not error" {
     export DAAF_NESTED=1
 
-    # Custom docker mock: staging succeeds; the `docker cp` copy returns non-zero
-    # but still creates files.
+    # Regression anchor for the Note path: a nonzero `docker cp` exit is NOT fatal
+    # when the full expected file count still landed (no shortfall). The scan reports
+    # 3 files and the mock copies exactly 3 -- so the corroborated short-copy fatal
+    # branch (nonzero exit AND count short) does NOT fire; execution falls through to
+    # the informational Note and completes successfully.
     docker() {
         case "$1" in
             info)   return 0 ;;
             volume) return 0 ;;
             run)
                 if [ "${2:-}" = "-d" ]; then echo "stagecid0000"; return 0; fi
-                # Scan output
-                printf '5\n512\t/source\n500K\t/source\n500\n'
+                # Scan output -- 3 files, matching the 3 the copy creates below.
+                printf '3\n512\t/source\n500K\t/source\n500\n'
                 return 0
                 ;;
             wait) echo "0"; return 0 ;;
@@ -796,7 +799,7 @@ teardown() {
                     mkdir -p "${dest_dir}"
                     touch "${dest_dir}/file1" "${dest_dir}/file2" "${dest_dir}/file3"
                 fi
-                # Non-zero exit (partial failure)
+                # Non-zero exit, but the full count still landed
                 return 1
                 ;;
             rm) return 0 ;;
@@ -806,9 +809,137 @@ teardown() {
     export -f docker
 
     run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
-    # Should succeed (files were copied) but note the warnings
+    # Should succeed (full count copied) but note the warnings -- NOT the fatal error.
     assert_output --partial "warnings"
     assert_output --partial "files were transferred"
+    refute_output --partial "must not be relied on"
+}
+
+@test "backup: non-zero copy exit with short file count is a fatal error" {
+    export DAAF_NESTED=1
+
+    # Corroborated short copy: the `docker cp` copy returns non-zero AND fewer files
+    # land (2) than the scan counted (5). The two signals agree the backup is
+    # truncated, so the script must abort fatally, naming the partial folder and
+    # telling the user to delete it -- not pass it off as usable.
+    docker() {
+        case "$1" in
+            info)   return 0 ;;
+            volume) return 0 ;;
+            run)
+                if [ "${2:-}" = "-d" ]; then echo "stagecid0000"; return 0; fi
+                # Scan reports 5 files; the copy below lands only 2.
+                printf '5\n512\t/source\n500K\t/source\n500\n'
+                return 0
+                ;;
+            wait) echo "0"; return 0 ;;
+            cp)
+                local dest_dir=""
+                for arg in "$@"; do dest_dir="${arg}"; done
+                dest_dir="${dest_dir%/}"
+                if [ -n "${dest_dir}" ]; then
+                    mkdir -p "${dest_dir}"
+                    touch "${dest_dir}/file1" "${dest_dir}/file2"
+                fi
+                # Non-zero exit with a short count -> fatal
+                return 1
+                ;;
+            rm) return 0 ;;
+            *)  return 0 ;;
+        esac
+    }
+    export -f docker
+
+    run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_failure
+    assert_output --partial "ERROR"
+    assert_output --partial "only 2 of 5 expected files were copied"
+    assert_output --partial "must not be relied on"
+    # Names the partial backup folder so the user can delete it.
+    assert_output --partial "Location:"
+    assert_output --partial "_daaf_backup"
+}
+
+@test "backup: zero-exit short file count warns (not fatal) and banner notes warnings" {
+    export DAAF_NESTED=1
+
+    # A clean ZERO copy exit that still lands too few files must NOT be fatal (the
+    # fatal branch requires a corroborating nonzero exit). It is a WARNING: the scan
+    # reports 100 files, the copy lands 2, the exit is 0. The file-count-mismatch
+    # WARNING fires and the completion banner reads WITH WARNINGS, but the script
+    # still exits 0 and never prints the fatal short-copy error. Logical KB is 0 so
+    # the size check is skipped, isolating the file-count signal.
+    docker() {
+        case "$1" in
+            info)   return 0 ;;
+            volume) return 0 ;;
+            run)
+                if [ "${2:-}" = "-d" ]; then echo "stagecid0000"; return 0; fi
+                # 100 files, logical KB 0 (skips size verification)
+                printf '100\n512\t/source\n500K\t/source\n0\n'
+                return 0
+                ;;
+            wait) echo "0"; return 0 ;;
+            cp)
+                local dest_dir=""
+                for arg in "$@"; do dest_dir="${arg}"; done
+                dest_dir="${dest_dir%/}"
+                if [ -n "${dest_dir}" ]; then
+                    mkdir -p "${dest_dir}"
+                    touch "${dest_dir}/file1" "${dest_dir}/file2"
+                fi
+                return 0
+                ;;
+            rm) return 0 ;;
+            *)  return 0 ;;
+        esac
+    }
+    export -f docker
+
+    run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_success
+    assert_output --partial "file-count mismatch"
+    assert_output --partial "Backup completed WITH WARNINGS -- verify before relying on it"
+    refute_output --partial "must not be relied on"
+}
+
+@test "backup: completion banner reads plain 'Backup complete!' on a clean run" {
+    export DAAF_NESTED=1
+
+    # A fully clean run -- full file count, no size drift (logical KB 0 skips the
+    # size check), Claude state and permission manifest both succeed -- must print
+    # the plain "Backup complete!" banner and NOT the WITH-WARNINGS variant.
+    docker() {
+        case "$1" in
+            info)   return 0 ;;
+            volume) return 0 ;;
+            run)
+                if [ "${2:-}" = "-d" ]; then echo "stagecid0000"; return 0; fi
+                # 2 files, logical KB 0 (skips size verification)
+                printf '2\n512\t/source\n500K\t/source\n0\n'
+                return 0
+                ;;
+            wait) echo "0"; return 0 ;;
+            cp)
+                local dest_dir=""
+                for arg in "$@"; do dest_dir="${arg}"; done
+                dest_dir="${dest_dir%/}"
+                if [ -n "${dest_dir}" ]; then
+                    mkdir -p "${dest_dir}"
+                    touch "${dest_dir}/file1" "${dest_dir}/file2"
+                fi
+                return 0
+                ;;
+            rm) return 0 ;;
+            *)  return 0 ;;
+        esac
+    }
+    export -f docker
+
+    run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_success
+    assert_output --partial "Backup complete!"
+    refute_output --partial "WITH WARNINGS"
 }
 
 @test "backup: volume scan outputs unexpected format triggers error" {

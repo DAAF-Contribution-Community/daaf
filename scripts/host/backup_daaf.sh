@@ -376,6 +376,14 @@ wait "${COPY_PID}" || COPY_EXIT=$?
 docker rm -f "${STAGE_CID}" > /dev/null 2>&1 || true
 trap - INT TERM
 
+# Latch for the completion banner: any of the non-fatal WARNING paths below
+# (file-count mismatch, size mismatch, Claude-state copy failure, permission-manifest
+# failure) sets this so the final banner can say the backup completed WITH WARNINGS
+# rather than claiming an unqualified success. The exit status stays 0 on those paths
+# -- the banner wording is the signal, not the exit code (the corroborated short-copy
+# case below is the one that is fatal, and it exits before the banner).
+HAD_WARNINGS=0
+
 # --- Verify ---
 # The staged tree the copy streamed = volume regular files + 1 symlink manifest
 # - symlinks. Symlinks were never counted by the `find -type f` volume scan
@@ -407,16 +415,35 @@ if [ "${FILE_COUNT}" -eq 0 ]; then
     exit 1
 fi
 
-if [ "${COPY_EXIT}" -ne 0 ]; then
+# --- Corroborated short-copy check (fatal) ---
+# A nonzero docker cp exit AND a copied count short of the volume scan are two
+# independent signals that agree the backup is truncated -- the nonzero exit
+# corroborates the shortfall, so no tolerance is applied here (unlike the 1% count
+# and size tolerances below, which absorb benign filesystem/metadata drift on an
+# otherwise-clean copy). A truncated backup that passed as usable could cost a user
+# their data on restore, so fail hard: name the partial folder, tell them to delete
+# it, and exit before the completion banner. (A nonzero exit with a FULL count falls
+# through to the Note below -- warnings without an actual shortfall.)
+if [ "${COPY_EXIT}" -ne 0 ] && [ "${FILE_COUNT}" -lt "${TOTAL_FILES}" ]; then
+    echo ""
+    echo "ERROR: Backup failed (exit code ${COPY_EXIT}); only ${FILE_COUNT} of ${TOTAL_FILES} expected files were copied."
+    echo "       This backup is incomplete and must not be relied on. Delete this"
+    echo "       partial backup folder and re-run once the copy issue is resolved."
+    echo "Location: $(pwd)/${BACKUP_NAME}/"
+    exit 1
+elif [ "${COPY_EXIT}" -ne 0 ]; then
     echo "Note: File copy reported warnings (exit code ${COPY_EXIT}); ${FILE_COUNT} of ${TOTAL_FILES} expected files were transferred."
 fi
 
 # --- File-count verification ---
 # Do NOT trust docker cp's exit code as the sole failure signal: the Windows
-# symlink-abort truncation surfaced with a ZERO exit on the user's run. Compare the
-# copied data-file count (manifest excluded) against the source scan count and warn
-# loudly on a shortfall beyond a 1% tolerance -- the count and size checks are the
-# authoritative completeness signals, not COPY_EXIT.
+# symlink-abort truncation surfaced with a ZERO exit on the user's run. A nonzero
+# exit that ALSO comes up short on the count is already fatal (the corroborated
+# short-copy branch above). This block catches the harder case -- a clean ZERO exit
+# that still copied too few files -- comparing the copied data-file count (manifest
+# excluded) against the source scan count and warning loudly on a shortfall beyond a
+# 1% tolerance. The count and size checks are the authoritative completeness signals,
+# not COPY_EXIT.
 if [ "${TOTAL_FILES}" -gt 0 ] && [ "${FILE_COUNT}" -gt 0 ]; then
     COUNT_TOLERANCE=$(( TOTAL_FILES / 100 ))
     if [ "${COUNT_TOLERANCE}" -lt 1 ]; then COUNT_TOLERANCE=1; fi
@@ -427,6 +454,7 @@ if [ "${TOTAL_FILES}" -gt 0 ] && [ "${FILE_COUNT}" -gt 0 ]; then
         echo "WARNING: Backup file-count mismatch." >&2
         echo "         Source: ${TOTAL_FILES} files, Backup: ${FILE_COUNT} files (difference: ${COUNT_DIFF})" >&2
         echo "         The backup may be incomplete. Consider re-running." >&2
+        HAD_WARNINGS=1
     fi
 fi
 
@@ -450,6 +478,7 @@ if [ "${SOURCE_SIZE_KB}" -gt 0 ] && [ "${BACKUP_SIZE_KB}" -gt 0 ]; then
         echo "WARNING: Backup size mismatch." >&2
         echo "         Source: ${SOURCE_SIZE_KB} KB, Backup: ${BACKUP_SIZE_KB} KB (difference: ${DIFF_KB} KB)" >&2
         echo "         The backup may be incomplete. Consider re-running." >&2
+        HAD_WARNINGS=1
     fi
 fi
 
@@ -510,6 +539,7 @@ if docker volume inspect "${CLAUDE_VOLUME_NAME}" &> /dev/null; then
             echo "         (no details could be retrieved from the staging container)" >&2
         fi
         echo "         The data volume backup above is still valid." >&2
+        HAD_WARNINGS=1
     fi
     docker rm -f "${CLAUDE_STAGE_CID}" > /dev/null 2>&1 || true
     trap - INT TERM
@@ -567,16 +597,22 @@ if EXEC_PATHS=$(docker run --rm -v "${VOLUME_NAME}:/source:ro" busybox sh -c 'fi
         echo "WARNING: Could not record the executable-permission manifest." >&2
         echo "         The backup is still valid; on restore, file permissions may need" >&2
         echo "         manual repair if this backup is restored on a Windows host." >&2
+        HAD_WARNINGS=1
     fi
 else
     echo "WARNING: Could not record the executable-permission manifest." >&2
     echo "         The backup is still valid; on restore, file permissions may need" >&2
     echo "         manual repair if this backup is restored on a Windows host." >&2
+    HAD_WARNINGS=1
 fi
 
 echo ""
 echo "=========================================="
-echo "  Backup complete!"
+if [ "${HAD_WARNINGS}" -eq 1 ]; then
+    echo "  Backup completed WITH WARNINGS -- verify before relying on it"
+else
+    echo "  Backup complete!"
+fi
 echo "=========================================="
 echo ""
 echo "Location: $(pwd)/${BACKUP_NAME}/"

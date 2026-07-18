@@ -422,6 +422,14 @@ try {
 $CopyProcess.WaitForExit()
 $CopyExitCode = if ($null -ne $CopyProcess.ExitCode) { $CopyProcess.ExitCode } else { 0 }
 
+# Latch for the completion banner: any of the non-fatal WARNING paths below
+# (file-count mismatch, size mismatch, Claude-state copy failure, permission-manifest
+# failure) sets this so the final banner can say the backup completed WITH WARNINGS
+# rather than claiming an unqualified success. The exit status stays 0 on those paths
+# -- the banner wording is the signal, not the exit code (the corroborated short-copy
+# case below is the one that is fatal, and it exits before the banner).
+$HadWarnings = $false
+
 # --- Verify ---
 # The staged tree the copy streamed = volume regular files + 1 symlink manifest
 # - symlinks. Symlinks were never counted by the source scan (TotalFiles), and the
@@ -452,16 +460,35 @@ if ($FileCount -eq 0) {
     Wait-AndExit 1
 }
 
-if ($CopyExitCode -ne 0) {
+# --- Corroborated short-copy check (fatal) ---
+# A nonzero docker cp exit AND a copied count short of the volume scan are two
+# independent signals that agree the backup is truncated -- the nonzero exit
+# corroborates the shortfall, so no tolerance is applied here (unlike the 1% count
+# and size tolerances below, which absorb benign filesystem/metadata drift on an
+# otherwise-clean copy). A truncated backup that passed as usable could cost a user
+# their data on restore, so fail hard: name the partial folder, tell them to delete
+# it, and exit before the completion banner. (A nonzero exit with a FULL count falls
+# through to the Note below -- warnings without an actual shortfall.)
+if ($CopyExitCode -ne 0 -and $FileCount -lt $TotalFiles) {
+    Write-Host ""
+    Write-Host "ERROR: Backup failed (exit code $CopyExitCode); only $FileCount of $TotalFiles expected files were copied." -ForegroundColor Red
+    Write-Host "       This backup is incomplete and must not be relied on. Delete this"
+    Write-Host "       partial backup folder and re-run once the copy issue is resolved."
+    Write-Host "Location: $HostPath\"
+    Wait-AndExit 1
+} elseif ($CopyExitCode -ne 0) {
     Write-Host "Note: File copy reported warnings (exit code $CopyExitCode); $FileCount of $TotalFiles expected files were transferred." -ForegroundColor Yellow
 }
 
 # --- File-count verification ---
 # Do NOT trust docker cp's exit code as the sole failure signal: the Windows
-# symlink-abort truncation surfaced with a ZERO exit on the user's run. Compare the
-# copied data-file count (manifest excluded) against the source scan count and warn
-# loudly on a shortfall beyond a 1% tolerance -- the count and size checks are the
-# authoritative completeness signals, not $CopyExitCode.
+# symlink-abort truncation surfaced with a ZERO exit on the user's run. A nonzero
+# exit that ALSO comes up short on the count is already fatal (the corroborated
+# short-copy branch above). This block catches the harder case -- a clean ZERO exit
+# that still copied too few files -- comparing the copied data-file count (manifest
+# excluded) against the source scan count and warning loudly on a shortfall beyond a
+# 1% tolerance. The count and size checks are the authoritative completeness signals,
+# not $CopyExitCode.
 if ($TotalFiles -gt 0 -and $FileCount -gt 0) {
     $CountTolerance = [math]::Max(1, [long]($TotalFiles / 100))
     $CountDiff = [math]::Abs($TotalFiles - $FileCount)
@@ -470,6 +497,7 @@ if ($TotalFiles -gt 0 -and $FileCount -gt 0) {
         Write-Host "WARNING: Backup file-count mismatch." -ForegroundColor Yellow
         Write-Host "         Source: $TotalFiles files, Backup: $FileCount files (difference: $CountDiff)"
         Write-Host "         The backup may be incomplete. Consider re-running."
+        $HadWarnings = $true
     }
 }
 
@@ -489,6 +517,7 @@ if ($SourceSizeKB -gt 0 -and $BackupSizeKB -gt 0) {
         Write-Host "WARNING: Backup size mismatch." -ForegroundColor Yellow
         Write-Host "         Source: ${SourceSizeKB} KB, Backup: ${BackupSizeKB} KB (difference: ${DiffKB} KB)"
         Write-Host "         The backup may be incomplete. Consider re-running."
+        $HadWarnings = $true
     }
 }
 
@@ -575,6 +604,7 @@ if ($claudeVolumeExists) {
             Write-Host "         (no details could be retrieved from the staging container)"
         }
         Write-Host "         The data volume backup above is still valid."
+        $HadWarnings = $true
     }
 } else {
     Write-Host ""
@@ -639,16 +669,22 @@ if ($manifestScanOk) {
         Write-Host "WARNING: Could not record the executable-permission manifest." -ForegroundColor Yellow
         Write-Host "         The backup is still valid; on restore, file permissions may need"
         Write-Host "         manual repair if this backup is restored on a Windows host."
+        $HadWarnings = $true
     }
 } else {
     Write-Host "WARNING: Could not record the executable-permission manifest." -ForegroundColor Yellow
     Write-Host "         The backup is still valid; on restore, file permissions may need"
     Write-Host "         manual repair if this backup is restored on a Windows host."
+    $HadWarnings = $true
 }
 
 Write-Host ""
 Write-Host "=========================================="
-Write-Host "  Backup complete!"
+if ($HadWarnings) {
+    Write-Host "  Backup completed WITH WARNINGS -- verify before relying on it"
+} else {
+    Write-Host "  Backup complete!"
+}
 Write-Host "=========================================="
 Write-Host ""
 Write-Host "Location: $HostPath\"

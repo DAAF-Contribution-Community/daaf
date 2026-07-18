@@ -1404,11 +1404,28 @@ if (Test-Path "backup_daaf.ps1") {
         # above): a bare Remove-Item would clobber a value inherited from a
         # parent process.
         $savedNested = $env:DAAF_NESTED
+        # Defensive pre-init: if the try below unwinds before $backupExit is
+        # assigned, the nonzero default makes the gate fail closed (abort) rather
+        # than compare against $null.
+        $backupExit = 1
         try {
             $env:DAAF_NESTED = "1"
             & .\backup_daaf.ps1
+            $backupExit = $LASTEXITCODE
         } finally {
             if ($null -ne $savedNested) { $env:DAAF_NESTED = $savedNested } else { Remove-Item Env:\DAAF_NESTED -ErrorAction SilentlyContinue }
+        }
+        # A user who opted into a backup and had it fail must not have the update
+        # proceed on a missing restore point (a DECLINED backup -- the else path below
+        # -- still lets the update continue). The .sh twin runs under `set -e`, so it
+        # guards the call with `|| BACKUP_EXIT=$?`; here we read $LASTEXITCODE, which
+        # PS 5.1 does not gate. Mirrors migrate_daaf.ps1's gated abort.
+        if ($backupExit -ne 0) {
+            Write-Host ""
+            Write-Host "ERROR: Backup failed (exit code $backupExit)."
+            Write-Host "The update will not proceed without a successful backup."
+            Write-Host "Please resolve the backup issue and re-run: .\update_daaf.ps1"
+            Wait-AndExit 1
         }
         Write-Host ""
     }

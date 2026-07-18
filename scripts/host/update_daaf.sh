@@ -1312,7 +1312,22 @@ if [ -f "backup_daaf.sh" ]; then
     CHOICE=$(prompt_choice "  Run backup now? [y/n]: " "y n")
     if [ "${CHOICE}" = "y" ]; then
         echo ""
-        DAAF_NESTED=1 bash backup_daaf.sh
+        # Capture the backup exit explicitly. Under this script's `set -euo pipefail`
+        # an unguarded failed backup would abort the update abruptly with no
+        # explanation; `|| BACKUP_EXIT=$?` defuses set -e so we can abort gracefully
+        # with a clear message instead (mirrors migrate_daaf.ps1's gated abort). A
+        # user who opted into a backup and had it fail must not have the update
+        # proceed on a missing restore point; a DECLINED backup (the else path below)
+        # still lets the update continue.
+        BACKUP_EXIT=0
+        DAAF_NESTED=1 bash backup_daaf.sh || BACKUP_EXIT=$?
+        if [ "${BACKUP_EXIT}" -ne 0 ]; then
+            echo ""
+            echo "ERROR: Backup failed (exit code ${BACKUP_EXIT})."
+            echo "The update will not proceed without a successful backup."
+            echo "Please resolve the backup issue and re-run: bash update_daaf.sh"
+            exit 1
+        fi
         echo ""
     fi
 else

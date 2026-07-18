@@ -457,6 +457,33 @@ Describe "backup_daaf.ps1 error paths" {
         }
     }
 
+    Context "Corroborated short copy is fatal" {
+        It "fails when a non-zero copy exit AND a short file count agree" {
+            # Two corroborating signals (nonzero exit + count below the scan) mean a
+            # genuinely truncated backup, so the script aborts fatally.
+            $Content | Should -Match '\$CopyExitCode -ne 0 -and \$FileCount -lt \$TotalFiles'
+            $Content | Should -Match 'only \$FileCount of \$TotalFiles expected files were copied'
+        }
+        It "tells the user to delete the partial backup folder and re-run" {
+            $Content | Should -Match 'This backup is incomplete and must not be relied on'
+            $Content | Should -Match 'partial backup folder and re-run'
+        }
+    }
+
+    Context "Warnings-aware completion banner" {
+        It "prints the plain banner when no warnings were latched" {
+            $Content | Should -Match 'Backup complete!'
+        }
+        It "prints the WITH WARNINGS banner when the latch is set" {
+            $Content | Should -Match 'Backup completed WITH WARNINGS -- verify before relying on it'
+        }
+        It "latches HadWarnings at the non-fatal WARNING sites" {
+            # Initialized false, and set true in each non-fatal WARNING path.
+            $Content | Should -Match '\$HadWarnings = \$false'
+            $Content | Should -Match '\$HadWarnings = \$true'
+        }
+    }
+
     Context "Volume scan unexpected format" {
         It "handles scan failure with error" {
             # When docker run for scan fails (LASTEXITCODE != 0), script exits with error

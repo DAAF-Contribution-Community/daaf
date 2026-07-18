@@ -373,8 +373,21 @@ if [ "${DAAF_DRY_RUN:-}" = "1" ]; then
 else
     ORIGINAL_DIR="$(pwd)"
     cd "${HOST_DIR}"
-    DAAF_NESTED=1 bash backup_daaf.sh
+    # Capture the backup exit explicitly. Under this script's `set -euo pipefail` an
+    # unguarded failed backup would abort the migration abruptly with no explanation;
+    # `|| BACKUP_EXIT=$?` defuses set -e so we can abort gracefully with a clear
+    # message instead. This backup is mandatory (not prompted), so any failure stops
+    # the migration -- mirroring migrate_daaf.ps1's existing gated abort.
+    BACKUP_EXIT=0
+    DAAF_NESTED=1 bash backup_daaf.sh || BACKUP_EXIT=$?
     cd "${ORIGINAL_DIR}"
+    if [ "${BACKUP_EXIT}" -ne 0 ]; then
+        echo ""
+        echo "ERROR: Backup failed (exit code ${BACKUP_EXIT})."
+        echo "The migration will not proceed without a successful backup."
+        echo "Please resolve the backup issue and re-run: bash migrate_daaf.sh"
+        exit 1
+    fi
     BACKUP_COMPLETED=true
 fi
 

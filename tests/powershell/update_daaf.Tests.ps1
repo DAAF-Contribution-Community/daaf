@@ -108,6 +108,17 @@ Describe "update_daaf.ps1" {
             $Content | Should -Match 'Backup recommendation'
         }
 
+        It "captures the opt-in backup exit code" {
+            # The pre-update backup is prompted/optional; its exit must be captured
+            # so a failure can abort gracefully instead of proceeding silently.
+            $Content | Should -Match '\$backupExit = \$LASTEXITCODE'
+        }
+
+        It "aborts the update when the opted-in backup fails" {
+            $Content | Should -Match 'Backup failed \(exit code \$backupExit\)'
+            $Content | Should -Match 'The update will not proceed without a successful backup'
+        }
+
         It "creates a git backup branch" {
             $Content | Should -Match 'backup/pre-update'
         }
