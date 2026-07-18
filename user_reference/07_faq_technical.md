@@ -125,9 +125,9 @@ DAAF always confirms the mode with you before proceeding, so you can adjust if i
 
 These are Claude Code slash commands you can type anytime during a session:
 
-- `/config` — Opens the Claude Code settings menu. Key settings to check:
-  - **Auto-compact:** Set to `false` (DAAF manages its own context)
-  - **Verbose output:** Set to `true` (lets you see what agents are thinking)
+- `/config` — Opens the Claude Code settings menu. DAAF pre-configures the key settings for you (no action needed — you can verify them here if you like):
+  - **Auto-compact:** Off by default (DAAF manages its own context)
+  - **Verbose output:** On by default (lets you see what agents are thinking)
 - `/model` — Switch the active model (use arrow keys to select)
 - `/clear` — Clear conversation history and start fresh (used when resuming from STATE.md)
 - `/exit` — Exit Claude Code (first step in ending a session)
@@ -966,7 +966,7 @@ This is one of the most common -- and most important -- symptoms to recognize. I
 DAAF has extensive curated knowledge about its supported data sources, stored in skill files. When these skills load correctly, agents have access to exact variable names, precise endpoint paths, correct coded values, and known caveats. When a skill *doesn't* load -- which can happen due to the non-deterministic nature of LLMs -- the agent falls back on its general training data and fills in the gaps with plausible-sounding but potentially incorrect details.
 
 **What to do:**
-1. Make sure **Verbose output** is set to **True** in `/config`. This is your primary tool for monitoring how agents are deciding to load or not to load certain reference files.
+1. Use **Verbose output** (on by default in DAAF — you can confirm it in `/config`) to monitor how agents are deciding to load or not to load certain reference files. This is your primary tool for spotting a skipped skill or reference.
 2. Ask DAAF to verify: "Can you double-check that variable name against the actual skill documentation?" or "Did the agent load the CCD data source skill before writing that script?"
 3. If the issue persists, try restarting the session with `/clear` -- a fresh context often resolves loading issues. For Full Pipeline mode, DAAF's session recovery system will pick up where you left off.
 4. Report persistent loading failures by [opening an issue](https://github.com/DAAF-Contribution-Community/daaf/issues) -- patterns of failure help us improve DAAF's loading reliability.

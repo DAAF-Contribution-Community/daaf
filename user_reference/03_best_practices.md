@@ -347,7 +347,7 @@ There's one oversight responsibility that's easy to overlook because it's about 
 
 LLMs are non-deterministic, and DAAF's reference loading is orchestrated by an LLM. This means that occasionally -- not often, but not never -- an agent will proceed without loading a skill it was instructed to load, or the orchestrator will skip a reference file it was supposed to read. When this happens, the agent falls back on its general training, which produces output that looks correct but is built on plausible inference rather than curated knowledge.
 
-**Verbose output is your primary monitoring tool.** When you set Verbose output to True in `/config` (which you should -- it's a [required configuration setting](01_installation_and_quickstart.md#configure-claude-code-required)), you can see the internal thought process informing the file reads that DAAF's agents make. Here's what to watch for:
+**Verbose output is your primary monitoring tool.** DAAF ships with Verbose output turned on by default (you can confirm it anytime in `/config`), so you can see the internal thought process informing the file reads that DAAF's agents make. Here's what to watch for:
 
 **Signs that something may not have loaded:**
 - An agent explicitly mentions wanting to load something but then never doing it
