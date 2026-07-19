@@ -65,6 +65,8 @@ from benchmarks.harness.executor import (
 # interpolated into f-strings, wrapped in Path(...), and passed as cwd= throughout.
 BASE_DIR = str(Path(__file__).resolve().parents[2])
 SHIM_HEALTH_URL = "http://127.0.0.1:4141/health"
+EXPECTED_SHIM_SERVICE = "daaf-anthropic-openai-shim"
+_SAFE_SHIM_VERSION_RE = re.compile(r"[A-Za-z0-9._+-]{1,64}")
 _GLM52_STATIC_ID = re.compile(r"z-ai/glm-5\.2(?:-[0-9]{8})?")
 
 
@@ -486,8 +488,8 @@ def probe_statuslines(base_dir: str = BASE_DIR) -> ProbeResult:
 
 
 def probe_shim_health(route_info: RouteInfo) -> ProbeResult:
-    """GET the shim /health endpoint (shim routes only) and verify backend_mode
-    matches the detected route; report sanitize_tools, codex_home_present, version."""
+    """GET the shim /health endpoint (shim routes only) and fail closed on its
+    provenance schema before reporting bounded configuration evidence."""
     r = ProbeResult(probe_id="T0.8", name="Provider shim /health", tier="0")
     if route_info.detected_route not in SHIM_ROUTES:
         r.verdict = Verdict.SKIP
@@ -499,35 +501,67 @@ def probe_shim_health(route_info: RouteInfo) -> ProbeResult:
         with urlopen(SHIM_HEALTH_URL, timeout=10) as resp:
             body = resp.read().decode("utf-8", "replace")
         health = json.loads(body)
-        # Scrub any secret env value that the /health JSON might echo verbatim
-        # before it enters evidence (defense-in-depth; the placeholder keeps the
-        # blob parseable for the evidence/ snapshot).
-        r.add_evidence(f"GET {SHIM_HEALTH_URL}",
-                       output=scrub_secret_values(json.dumps(health, indent=2)[:1500]))
-    except (URLError, socket.timeout, json.JSONDecodeError, OSError) as e:
+        if not isinstance(health, dict):
+            raise ValueError("shim /health JSON must be an object")
+    except (URLError, socket.timeout, json.JSONDecodeError, OSError, ValueError) as e:
         r.verdict = Verdict.FAIL
-        r.detail = f"shim /health unreachable/invalid: {type(e).__name__}: {e}"
-        r.add_evidence(f"GET {SHIM_HEALTH_URL}", note=str(e))
+        r.detail = f"shim /health unreachable/invalid: {type(e).__name__}: {str(e)[:200]}"
+        r.add_evidence(f"GET {SHIM_HEALTH_URL}", note=str(e)[:200])
         return r
+
+    version = health.get("version")
+    version_is_safe = (
+        isinstance(version, str)
+        and _SAFE_SHIM_VERSION_RE.fullmatch(version) is not None
+    )
+    version_marker = version if version_is_safe else "<invalid>"
+
+    codex_home_present = health.get("codex_home_present")
+    codex_home_marker = (
+        codex_home_present if isinstance(codex_home_present, bool) else "<invalid>"
+    )
+
+    # Preserve the response shape for audit evidence, but never reflect an unsafe
+    # version or non-boolean auth-presence value. The local markers are bounded and
+    # contain no endpoint-controlled text; secret-value scrubbing remains a second
+    # defense before the snapshot enters the report.
+    health_evidence = dict(health)
+    if not version_is_safe:
+        health_evidence["version"] = version_marker
+    if "codex_home_present" in health and not isinstance(codex_home_present, bool):
+        health_evidence["codex_home_present"] = codex_home_marker
+    r.add_evidence(
+        f"GET {SHIM_HEALTH_URL}",
+        output=scrub_secret_values(json.dumps(health_evidence, indent=2)[:1500]),
+    )
 
     expected_mode = "chatgpt" if route_info.detected_route == ROUTE_CHATGPT else "openai"
     actual_mode = health.get("backend_mode")
     problems = []
+    if health.get("service") != EXPECTED_SHIM_SERVICE:
+        problems.append(f"service must equal '{EXPECTED_SHIM_SERVICE}'")
+    if health.get("status") != "ok":
+        problems.append("status must equal 'ok'")
     if actual_mode != expected_mode:
         problems.append(f"backend_mode='{actual_mode}' but route expects '{expected_mode}'")
-    if route_info.detected_route == ROUTE_CHATGPT and not health.get("codex_home_present"):
-        problems.append("codex_home_present=false (auth.json missing/unreadable) for chatgpt route")
+    if not version_is_safe:
+        problems.append("version must match [A-Za-z0-9._+-]{1,64}")
+    if route_info.detected_route == ROUTE_CHATGPT and codex_home_present is not True:
+        problems.append(
+            "codex_home_present must be boolean true "
+            "(auth.json missing/unreadable) for chatgpt route"
+        )
 
     r.add_evidence("", note=(
         f"backend_mode={actual_mode} sanitize_tools={health.get('sanitize_tools')} "
-        f"codex_home_present={health.get('codex_home_present')} version={health.get('version')}"
+        f"codex_home_present={codex_home_marker} version={version_marker}"
     ))
     if problems:
         r.verdict = Verdict.FAIL
         r.detail = "; ".join(problems)
     else:
         r.verdict = Verdict.PASS
-        r.detail = f"shim healthy: backend_mode={actual_mode}, version={health.get('version')}."
+        r.detail = f"shim healthy: backend_mode={actual_mode}, version={version_marker}."
     return r
 
 

@@ -189,9 +189,9 @@ sys.exit(0)
 # EXECUTION LOG
 # =============================================================================
 #
-# Executed: 2026-07-18 23:56:14
-# Command: python3 /daaf/scripts/smoke_tests/smoke_imports.py
-# Duration: 18s
+# Executed: 2026-07-19 00:42:48
+# Command: python3 /daaf/scripts/smoke_tests/smoke_imports_a.py
+# Duration: 11s
 # Exit code: 0
 #
 # --- STDOUT ---

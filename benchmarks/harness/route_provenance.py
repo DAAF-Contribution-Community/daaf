@@ -24,6 +24,7 @@ from benchmarks.harness.models import ModelConfig, RouteProvenance
 DEFAULT_SHIM_PORT = 4141
 CHATGPT_PROVIDER = "chatgpt-subscription"
 EXPECTED_CODEX_BACKEND = "https://chatgpt.com/backend-api/codex"
+EXPECTED_SHIM_SERVICE = "daaf-anthropic-openai-shim"
 LOCAL_AUTH_PLACEHOLDER = "daaf-shim-local"
 # Deliberately explicit rather than derived from the dataclass: adding an
 # internal field must not silently widen the serialization boundary.
@@ -158,6 +159,8 @@ def _read_health_response(response) -> dict:
 
 def _validate_health_payload(health: Mapping[str, object], endpoint: str) -> RouteProvenance:
     problems = []
+    if health.get("service") != EXPECTED_SHIM_SERVICE:
+        problems.append(f"service must equal '{EXPECTED_SHIM_SERVICE}'")
     if health.get("status") != "ok":
         problems.append("status must equal 'ok'")
     if health.get("backend_mode") != "chatgpt":

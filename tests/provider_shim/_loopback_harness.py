@@ -101,10 +101,14 @@ class Scenario:
     reject_nonstream: bool = False
     append_done: bool = True
     raw_stream_frames: Optional[list[bytes]] = None
+    preserve_raw_stream_chunks: bool = False
     abrupt_eof: bool = False
     stream_status: int = 200
     stream_headers: dict[str, str] = field(default_factory=dict)
     stream_error_body: bytes = b'{"error":{"message":"fixture backend rejection"}}'
+    # Optional per-request JSON response sequence for stateful real-process tests.
+    # The final entry repeats when the request count exceeds the sequence length.
+    nonstream_responses: Optional[list[dict[str, Any]]] = None
     attempt_statuses: Optional[list[int | str]] = None
     attempt_headers: Optional[list[dict[str, str]]] = None
     disconnect_phase: Optional[str] = None
@@ -653,8 +657,18 @@ def terminal_contract_scenario(
     )
 
 
-def raw_sse_scenario(name: str, frames: list[bytes]) -> Scenario:
-    """Build an exact byte-framing fixture for upstream SSE parser contracts."""
+def raw_sse_scenario(
+    name: str,
+    frames: list[bytes],
+    *,
+    preserve_chunks: bool = False,
+) -> Scenario:
+    """Build an exact byte-framing fixture for upstream SSE parser contracts.
+
+    ``preserve_chunks`` emits each supplied frame as its own HTTP transfer chunk so
+    tests can deterministically vary upstream segmentation without joining another
+    full copy of a large logical event in the harness.
+    """
 
     return Scenario(
         name=name,
@@ -662,6 +676,7 @@ def raw_sse_scenario(name: str, frames: list[bytes]) -> Scenario:
         nonstream_response=_nonstream_response(f"resp_{name}_nonstream", []),
         append_done=False,
         raw_stream_frames=list(frames),
+        preserve_raw_stream_chunks=preserve_chunks,
     )
 
 
@@ -1188,6 +1203,32 @@ class MockResponsesServer(AbstractContextManager["MockResponsesServer"]):
                     self.wfile.flush()
                 self.close_connection = True
 
+            def _send_chunked_sse(
+                self,
+                frames: list[bytes],
+                extra_headers: Optional[dict[str, str]] = None,
+            ) -> None:
+                # Preserve each non-empty fixture frame as one HTTP transfer chunk.
+                # This is a transport-segmentation control, not SSE framing: callers
+                # may split anywhere, including inside the literal "data: " prefix.
+                self.send_response(200)
+                self.send_header("Content-Type", "text/event-stream")
+                self.send_header("Transfer-Encoding", "chunked")
+                self.send_header("Connection", "close")
+                for name, value in (extra_headers or {}).items():
+                    self.send_header(name, value)
+                self.end_headers()
+                for frame in frames:
+                    if not frame:
+                        raise ValueError("preserved stream chunks must be non-empty")
+                    self.wfile.write(f"{len(frame):X}\r\n".encode("ascii"))
+                    self.wfile.write(frame)
+                    self.wfile.write(b"\r\n")
+                    self.wfile.flush()
+                self.wfile.write(b"0\r\n\r\n")
+                self.wfile.flush()
+                self.close_connection = True
+
             def _stream_bytes(self, events: list[dict[str, Any]], append_done: bool) -> bytes:
                 frames = []
                 for event in events:
@@ -1380,6 +1421,8 @@ class MockResponsesServer(AbstractContextManager["MockResponsesServer"]):
                                 frames.append(b"data: [DONE]\n\n")
                         if owner.scenario.abrupt_eof:
                             self._send_abrupt_sse(frames)
+                        elif owner.scenario.preserve_raw_stream_chunks:
+                            self._send_chunked_sse(frames, attempt_headers)
                         else:
                             self._send_bytes(
                                 200,
@@ -1421,8 +1464,16 @@ class MockResponsesServer(AbstractContextManager["MockResponsesServer"]):
                                 attempt_headers,
                             )
                             return
+                        response_object = owner.scenario.nonstream_response
+                        if owner.scenario.nonstream_responses:
+                            response_object = owner.scenario.nonstream_responses[
+                                min(
+                                    request_number - 1,
+                                    len(owner.scenario.nonstream_responses) - 1,
+                                )
+                            ]
                         payload = json.dumps(
-                            owner.scenario.nonstream_response,
+                            response_object,
                             separators=(",", ":"),
                         ).encode("utf-8")
                         self._send_bytes(
@@ -1638,6 +1689,7 @@ _LIFECYCLE_ORDER = {
             "request_start",
             "request_parsed",
             "upstream_attempt",
+            "transport_failure",
             "upstream_retry",
             "upstream_headers",
             "upstream_first_event",
@@ -1791,6 +1843,12 @@ class RealShim(AbstractContextManager["RealShim"]):
         "LC_ALL": "C.UTF-8",
         "TZ": "UTC",
     }
+    _TEST_ENV_OVERRIDE_NAMES = frozenset({
+        "SHIM_REASONING_EFFORT",
+        "SHIM_SANITIZE_TOOLS",
+        "SHIM_STRIP_MODEL_PREFIX",
+        "SHIM_TEXT_VERBOSITY",
+    })
     _CONTROLLED_CHILD_ENV_NAMES = frozenset({
         "SHIM_PORT",
         "SHIM_BACKEND_MODE",
@@ -1817,12 +1875,27 @@ class RealShim(AbstractContextManager["RealShim"]):
         mode: str,
         *,
         port_selector: Optional[Callable[[], int]] = None,
+        env_overrides: Optional[dict[str, str]] = None,
     ) -> None:
         if mode not in {"openai", "chatgpt"}:
             raise ValueError(f"unsupported shim mode: {mode}")
+        overrides = dict(env_overrides or {})
+        rejected = set(overrides) - self._TEST_ENV_OVERRIDE_NAMES
+        if rejected:
+            raise ValueError(
+                f"test environment override is not allowlisted: {sorted(rejected)!r}"
+            )
+        non_strings = sorted(
+            name for name, value in overrides.items() if not isinstance(value, str)
+        )
+        if non_strings:
+            raise TypeError(
+                f"test environment override values must be strings: {non_strings!r}"
+            )
         self.backend = backend
         self.mode = mode
         self._port_selector = port_selector or _reserve_dynamic_port
+        self._env_overrides = overrides
         self.port = 0
         self.base_url = ""
         self.backend_base_url = ""
@@ -1903,6 +1976,9 @@ class RealShim(AbstractContextManager["RealShim"]):
                     "PYTHONUNBUFFERED": "1",
                 }
             )
+            # Apply only the narrow, constructor-validated behavior knobs. Backend,
+            # credential, proxy, port, and auth-store defaults remain fixed by the rig.
+            env.update(self._env_overrides)
 
             # The reserve/release/start sequence has an unavoidable test-only bind
             # race. Retry at most twice, and only when uvicorn's captured startup
@@ -2093,6 +2169,7 @@ class RealShim(AbstractContextManager["RealShim"]):
         tools: Optional[list[dict[str, Any]]] = None,
         messages: Optional[list[dict[str, Any]]] = None,
         headers: Optional[dict[str, str]] = None,
+        timeout: float = 30.0,
     ) -> HTTPResult:
         body: dict[str, Any] = {
             "model": model,
@@ -2109,6 +2186,7 @@ class RealShim(AbstractContextManager["RealShim"]):
         return self.post_raw_messages(
             json.dumps(body, separators=(",", ":")).encode("utf-8"),
             headers=headers,
+            timeout=timeout,
         )
 
     def post_raw_messages(
@@ -2124,6 +2202,21 @@ class RealShim(AbstractContextManager["RealShim"]):
             f"{self.base_url}/v1/messages",
             data=payload,
             headers=request_headers,
+            method="POST",
+        )
+        return _direct_request(request, timeout=timeout)
+
+    def post_count_tokens(
+        self,
+        body: dict[str, Any],
+        *,
+        timeout: float = 2.0,
+    ) -> HTTPResult:
+        payload = json.dumps(body, separators=(",", ":")).encode("utf-8")
+        request = urllib.request.Request(
+            f"{self.base_url}/v1/messages/count_tokens",
+            data=payload,
+            headers={"Content-Type": "application/json"},
             method="POST",
         )
         return _direct_request(request, timeout=timeout)
@@ -2157,7 +2250,11 @@ class RealShim(AbstractContextManager["RealShim"]):
             raise AssertionError("isolated credential directory is outside scripts/scratch")
         if self.child_env.get("OPENAI_API_KEY") != FAKE_OPENAI_KEY:
             raise AssertionError("child OpenAI key is not the fabricated test key")
-        allowed_names = set(self._CONTROLLED_BASE_ENV) | set(self._CONTROLLED_CHILD_ENV_NAMES)
+        allowed_names = (
+            set(self._CONTROLLED_BASE_ENV)
+            | set(self._CONTROLLED_CHILD_ENV_NAMES)
+            | set(self._TEST_ENV_OVERRIDE_NAMES)
+        )
         unexpected_names = set(self.child_env) - allowed_names
         if unexpected_names:
             raise AssertionError(
@@ -2437,10 +2534,37 @@ def controlled_asgi_probe(
         selected_outcomes = list(attempt_outcomes or [response_status])
         selected_close_failures = set(close_fail_attempts or set())
 
+        class MidbodyReadTimeoutStream(module.httpx.AsyncByteStream):
+            async def __aiter__(self):
+                yield (
+                    b'event: response.created\n'
+                    b'data: {"type":"response.created","response":'
+                    b'{"id":"resp_midbody","status":"in_progress"}}\n\n'
+                )
+                raise module.httpx.ReadTimeout("injected mid-body read timeout")
+
         def response_for_attempt(attempt_number: int):
             outcome = selected_outcomes[min(attempt_number - 1, len(selected_outcomes) - 1)]
-            if outcome == "transport":
-                raise module.httpx.ConnectError("injected stream transport failure")
+            injected_transport_errors = {
+                "transport": module.httpx.ConnectError,
+                "connect_timeout": module.httpx.ConnectTimeout,
+                "read_timeout": module.httpx.ReadTimeout,
+                "write_timeout": module.httpx.WriteTimeout,
+                "pool_timeout": module.httpx.PoolTimeout,
+            }
+            if outcome in injected_transport_errors:
+                error_class = injected_transport_errors[outcome]
+                raise error_class("injected transport failure")
+            if outcome == "midbody_read_timeout":
+                return module.httpx.Response(
+                    200,
+                    headers=headers,
+                    stream=MidbodyReadTimeoutStream(),
+                    request=module.httpx.Request(
+                        "POST", "http://127.0.0.1:1/v1/responses"
+                    ),
+                    extensions={"http_version": http_version.encode("ascii", "replace")},
+                )
             status = int(outcome)
             content = (
                 stream_payload

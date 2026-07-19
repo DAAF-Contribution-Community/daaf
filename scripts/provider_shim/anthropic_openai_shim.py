@@ -63,6 +63,29 @@
 #   * GET /health endpoint for the manager's idempotency/status checks.
 #
 # Changelog:
+#   v1.2.13 (2026-07-19): System-role message admission (live-outage fix). Current
+#     Claude Code appends a role:"system" message inside `messages`; the v1.2.12
+#     request-validation role check (user/assistant only) and the translator's
+#     matching raise rejected every real conversation turn with the static 400
+#     "invalid request structure" while small side requests (no system-role
+#     message) still passed. Validation now admits "system" and the translator
+#     folds system-role messages to user-role input — the exact pre-v1.2.12
+#     mapping proven against the live Codex backend. Captured-payload repro and
+#     bisection: scripts/scratch/replay_captured_request.py. All other v1.2.12
+#     hardening, translation, and lifecycle behavior unchanged.
+#     SHIM_VERSION -> 1.2.13.
+#   v1.2.12 (2026-07-18): Content-blind image fidelity and bounded translator
+#     diagnostics. User and tool-result image blocks now map to Responses
+#     input_image parts for the shared OpenAI/ChatGPT payload shape, with strict
+#     local validation and explicit 400s for unsupported sources, assistant images,
+#     and unknown history blocks. Transport lifecycle records now attribute bounded
+#     exception classes/phases, sent and returned request IDs, and retry sources.
+#     The live Codex arguments.done missing-name divergence is process-aggregated
+#     (first occurrence plus periodic summaries) instead of warning per event.
+#     /health now carries an exact service identity so the lifecycle manager can
+#     reject an unrelated HTTP 200 before declaring readiness. Retry counts,
+#     backoff policy, response translation, reasoning continuity, and cancellation/
+#     cleanup ownership are unchanged. SHIM_VERSION -> 1.2.12.
 #   v1.2.11 (2026-07-17): Correlated request-lifecycle observability and
 #     structured backend-error normalization. Every /v1/messages request now owns
 #     an internally generated 32-hex correlation ID in a ContextVar before body
@@ -519,10 +542,9 @@
 #                               (default; still overridable via SHIM_BACKEND_BASE_URL).
 #                               Auth = Bearer of the OAuth access_token read from
 #                               $CODEX_HOME/auth.json (NOT an API key); the outbound
-#                               request emits ONLY the 3-header floor (authorization,
-#                               content-type: application/json, accept:
-#                               text/event-stream) — the backend gates on nothing
-#                               else (notes/08). REQUIRES CODEX_HOME set and a
+#                               request emits the validated auth/content/accept floor
+#                               plus the privacy-safe X-Client-Request-Id used for
+#                               transport correlation. REQUIRES CODEX_HOME set and a
 #                               readable auth.json; if either is missing the shim
 #                               fails fast with the re-login message rather than
 #                               inventing a default path. Request translation, tools,
@@ -617,6 +639,7 @@ import time
 import random
 import asyncio
 import logging
+import threading
 import urllib.parse
 from collections import OrderedDict
 from contextvars import ContextVar
@@ -625,7 +648,8 @@ import httpx
 import uvicorn
 
 # --- Config ---
-SHIM_VERSION = "1.2.11"
+SHIM_VERSION = "1.2.13"
+SHIM_SERVICE_ID = "daaf-anthropic-openai-shim"
 
 SHIM_PORT = int(os.environ.get("SHIM_PORT", "4141"))
 
@@ -812,6 +836,10 @@ _UPSTREAM_REQUEST_ID_HEADERS = (
 _UPSTREAM_REQUEST_ID_MAXLEN = 200
 _CLIENT_ERROR_MESSAGE_MAXLEN = 200
 _MACHINE_FIELD_VALUE_MAXLEN = 1000
+_WIRE_DIVERGENCE_SUMMARY_INTERVAL = 100
+_WIRE_DIVERGENCE_COUNTS = {}
+_WIRE_DIVERGENCE_LAST_EMITTED = {}
+_WIRE_DIVERGENCE_LOCK = threading.Lock()
 
 
 class _RequestLifecycleState:
@@ -833,6 +861,10 @@ class _RequestLifecycleState:
         self.reasoning_cache_misses = 0
         self.attempts = 0
         self.retries = 0
+        self.last_retry_reason = "-"
+        self.last_retry_source = "-"
+        self.client_request_id = self.req_id
+        self.transport_exception = "-"
         self.upstream_request_id = "-"
         self.upstream_request_id_header = "-"
         self.upstream_http_version = "unknown"
@@ -971,13 +1003,33 @@ def _record_attempt(transport):
     _lifecycle_event("upstream_attempt", attempt=state.attempts, transport=transport)
 
 
-def _record_retry(reason):
+def _record_retry(reason, source="shim_policy"):
     state = _request_state()
     if state is None:
         return
     state.phase = "upstream_retry"
     state.retries += 1
-    _lifecycle_event("upstream_retry", retry=state.retries, reason=reason)
+    state.last_retry_reason = _scrub_metadata(reason, 100)
+    state.last_retry_source = _scrub_metadata(source, 100)
+    _lifecycle_event(
+        "upstream_retry", retry=state.retries, reason=state.last_retry_reason,
+        source=state.last_retry_source,
+    )
+
+
+def _record_transport_failure(error, phase, retryable):
+    state = _request_state()
+    if state is None:
+        return
+    exception_class = _scrub_metadata(type(error).__name__, 100)
+    state.transport_exception = exception_class
+    if not retryable and state.failure_phase == "-":
+        state.failure_phase = phase
+    _lifecycle_event(
+        "transport_failure", exception_class=exception_class,
+        failure_phase=phase, attempt=state.attempts,
+        retryable="y" if retryable else "n",
+    )
 
 
 def _record_disconnect(phase):
@@ -1070,6 +1122,11 @@ def _log_terminal_once():
             state.effort_value, state.effort_source),
         reasoning_cache_miss=state.reasoning_cache_misses,
         attempts=state.attempts, retries=state.retries,
+        retry_reason=state.last_retry_reason,
+        retry_source=state.last_retry_source,
+        transport_exception=state.transport_exception,
+        client_req_id=state.client_request_id,
+        upstream_req_id=state.upstream_request_id,
         failure_phase=state.failure_phase,
         terminal_frame_send=state.terminal_frame_send,
         body_close_send=state.body_close_send,
@@ -1133,6 +1190,10 @@ class _RequestLogFilter(logging.Filter):
 
 class _ProtocolError(Exception):
     """Controlled upstream Responses protocol/schema violation."""
+
+
+class _InvalidRequestError(Exception):
+    """Sanitized local Anthropic request rejection before any backend call."""
 
 
 class _ClientDisconnected(Exception):
@@ -1355,6 +1416,33 @@ def _scrub_log_token(value):
     # the same control normalization and credential redaction as lifecycle metadata.
     # Non-strings pass through for existing %s rendering semantics.
     return _sanitize_sensitive_text(value) if isinstance(value, str) else value
+
+
+def _record_wire_divergence(kind):
+    # Process-level aggregation is protected even when validators run from multiple
+    # server tasks or test threads. Emit one discovery warning, then one bounded
+    # summary per fixed interval; no event IDs or payload values enter the record.
+    # The summary reports records suppressed strictly BETWEEN emitted records: the
+    # first summary at observation 100 therefore covers observations 2..99 (98),
+    # while later summaries cover 101..199, 201..299, and so on (99 each). Keep the
+    # warning writes inside the same lock so concurrent observations cannot reorder
+    # an emitted summary ahead of the discovery record it follows.
+    with _WIRE_DIVERGENCE_LOCK:
+        count = _WIRE_DIVERGENCE_COUNTS.get(kind, 0) + 1
+        _WIRE_DIVERGENCE_COUNTS[kind] = count
+        if count == 1:
+            log.warning("wire-divergence: %s observed=1", kind)
+            _WIRE_DIVERGENCE_LAST_EMITTED[kind] = count
+        elif count % _WIRE_DIVERGENCE_SUMMARY_INTERVAL == 0:
+            previous_emitted = _WIRE_DIVERGENCE_LAST_EMITTED.get(kind, 0)
+            suppressed = count - previous_emitted - 1
+            log.warning(
+                "wire-divergence-summary kind=%s observed=%d suppressed=%d",
+                kind, count, suppressed,
+            )
+            _WIRE_DIVERGENCE_LAST_EMITTED[kind] = count
+    return count
+
 
 # v1.2.0: reasoning-item cache (module-level, bounded LRU).
 # INTENT: the Responses API pairs a `reasoning` output item with the
@@ -1971,133 +2059,274 @@ def _system_to_text(system):
     return "\n".join(p for p in parts if p)
 
 
-def _flatten_tool_result_content(tr_content):
-    # tool_result content may be a string OR an array of blocks. Flatten to text.
-    # INTENT: the Responses `function_call_output.output` field is a plain string,
-    #   so we reduce the Anthropic tool_result content to text (same flattening
-    #   the chat lane used, preserved verbatim for behavioral continuity).
-    if isinstance(tr_content, list):
-        flat = []
-        for sub in tr_content:
-            if isinstance(sub, dict) and sub.get("type") == "text":
-                flat.append(sub.get("text", ""))
-            elif isinstance(sub, str):
-                flat.append(sub)
-        return "\n".join(flat)
+_IMAGE_MEDIA_TYPES = frozenset({
+    "image/jpeg", "image/png", "image/gif", "image/webp",
+})
+_BASE64_IMAGE_RE = re.compile(
+    r"(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?\Z"
+)
+_CONTENT_LABEL_RE = re.compile(r"[^A-Za-z0-9_.-]+")
+
+
+def _content_label(value):
+    # Content errors may identify only structural coordinates and type labels. Keep
+    # arbitrary request text, URLs, file IDs, and image bytes structurally unreachable.
+    if not isinstance(value, str) or not value:
+        return "unknown"
+    return _CONTENT_LABEL_RE.sub("_", value)[:40] or "unknown"
+
+
+def _content_error(message_index, block_index, role, block_type, reason):
+    return _InvalidRequestError(
+        "message %d block %s role %s type %s: %s" % (
+            message_index, block_index, _content_label(role),
+            _content_label(block_type), reason,
+        )
+    )
+
+
+def _image_to_responses_part(block, message_index, block_index, role):
+    # INTENT: translate visual bytes without inspecting, decoding, or logging them.
+    # REASONING: MIME prefixes come only from an exact allowlist; strict RFC-4648
+    #   syntax is checked with a bounded-character regex so validation never creates
+    #   a second decoded image copy. GIF is accepted syntactically; this stdlib-only
+    #   shim does not claim animated-GIF detection, so the later live lane smoke is
+    #   the release gate for each provider endpoint.
+    if role != "user":
+        raise _content_error(
+            message_index, block_index, role, "image",
+            "assistant/history images are unsupported",
+        )
+    source = block.get("source")
+    if not isinstance(source, dict):
+        raise _content_error(
+            message_index, block_index, role, "image", "invalid image source",
+        )
+    source_type = source.get("type")
+    if source_type == "base64":
+        media_type = source.get("media_type")
+        data = source.get("data")
+        if media_type not in _IMAGE_MEDIA_TYPES:
+            raise _content_error(
+                message_index, block_index, role, "image",
+                "unsupported image media type",
+            )
+        if (
+            not isinstance(data, str)
+            or not data
+            or len(data) % 4 != 0
+            or _BASE64_IMAGE_RE.fullmatch(data) is None
+        ):
+            raise _content_error(
+                message_index, block_index, role, "image", "invalid base64 image data",
+            )
+        return {
+            "type": "input_image",
+            "image_url": "data:%s;base64,%s" % (media_type, data),
+            "detail": "auto",
+        }
+    if source_type == "url":
+        url = source.get("url")
+        valid = isinstance(url, str) and bool(url) and not any(
+            char.isspace() or ord(char) < 0x20 or ord(char) == 0x7f
+            for char in url
+        ) and "\\" not in url
+        if valid:
+            try:
+                parsed = urllib.parse.urlsplit(url)
+                valid = (
+                    parsed.scheme.lower() in {"http", "https"}
+                    and bool(parsed.netloc)
+                    and bool(parsed.hostname)
+                    and parsed.username is None
+                    and parsed.password is None
+                )
+                if valid:
+                    parsed.port  # force invalid-port validation
+            except (TypeError, ValueError):
+                valid = False
+        if not valid:
+            raise _content_error(
+                message_index, block_index, role, "image", "invalid image URL",
+            )
+        return {"type": "input_image", "image_url": url, "detail": "auto"}
+    if source_type == "file":
+        raise _content_error(
+            message_index, block_index, role, "image",
+            "provider-scoped file image sources are unsupported",
+        )
+    raise _content_error(
+        message_index, block_index, role, "image", "unsupported image source type",
+    )
+
+
+def _tool_result_output(tr_content, message_index, block_index, role):
+    # Preserve the historical string output for text-only results. The Responses
+    # function-call output item-list form is used only when an image is present.
+    # Other container/scalar types are malformed Anthropic history, not values to
+    # serialize opportunistically into a backend function-call output.
     if isinstance(tr_content, str):
         return tr_content
-    return json.dumps(tr_content)
+    if not isinstance(tr_content, list):
+        raise _content_error(
+            message_index, block_index, role, "tool_result",
+            "content must be a string or list (got %s)" % _content_label(
+                type(tr_content).__name__
+            ),
+        )
+    parts = []
+    flat_text = []
+    saw_image = False
+    for sub_index, sub in enumerate(tr_content):
+        nested_index = "%d.%d" % (block_index, sub_index)
+        if isinstance(sub, str):
+            text = sub
+            parts.append({"type": "input_text", "text": text})
+            flat_text.append(text)
+            continue
+        if not isinstance(sub, dict):
+            raise _content_error(
+                message_index, nested_index, role, "non_object",
+                "unsupported tool-result content block",
+            )
+        sub_type = sub.get("type")
+        if sub_type == "text":
+            text = sub.get("text", "")
+            if not isinstance(text, str):
+                raise _content_error(
+                    message_index, nested_index, role, "text", "invalid text block",
+                )
+            parts.append({"type": "input_text", "text": text})
+            flat_text.append(text)
+        elif sub_type == "image":
+            saw_image = True
+            parts.append(_image_to_responses_part(
+                sub, message_index, nested_index, role,
+            ))
+        else:
+            raise _content_error(
+                message_index, nested_index, role, sub_type,
+                "unsupported tool-result content block",
+            )
+    return parts if saw_image else "\n".join(flat_text)
 
 
 def _messages_to_input(messages):
-    # Translate Anthropic messages[] into a Responses `input[]` array, threading
-    # cached reasoning items in before the function_calls they justify.
-    #
-    # INTENT: produce the ordered list of Responses input items:
-    #   * user text          -> {"role":"user","content":[{"type":"input_text",...}]}
-    #   * assistant text      -> {"type":"message","role":"assistant",
-    #                             "content":[{"type":"output_text",...}]}
-    #   * assistant tool_use  -> [cached reasoning item?] then
-    #                             {"type":"function_call","call_id","name","arguments"}
-    #   * user tool_result    -> {"type":"function_call_output","call_id","output"}
-    # REASONING: assistant history content parts MUST be `output_text`, NOT
-    #   `input_text` — the Responses API rejects input_text on resent assistant
-    #   messages (spec file 04 §1 "Important deprecation"). Reasoning items are
-    #   injected from the cache (see _REASONING_CACHE) immediately before their
-    #   paired function_call so gpt-5.x's required-reasoning-item invariant holds
-    #   on stateless replay.
-    # ASSUMES: image/thinking/other unknown blocks are ignored gracefully (chat-
-    #   lane behavior preserved). Thinking blocks that Claude Code resends from
-    #   OUR own thinking emission are DROPPED here — the reasoning cache, not
-    #   resent thinking text, is the continuity mechanism.
+    # Translate in source order. User text/images remain adjacent content parts;
+    # assistant tool replay keeps reasoning-cache injection immediately before calls.
     input_items = []
-    injected_reasoning_ids = set()  # dedupe: a reasoning item shared by parallel
-                                    # calls is injected ONCE per request build.
-    missing_reasoning = 0           # count cache misses for the request log line.
+    injected_reasoning_ids = set()
+    missing_reasoning = 0
 
-    for m in messages:
-        role = m.get("role", "user")
-        content = m.get("content", "")
-
-        # Plain string content -> a single message item for this role.
+    for message_index, message in enumerate(messages):
+        role = message.get("role")
+        # v1.2.13: fold role:"system" messages to user-role input. Live Claude
+        # Code appends a system-role message to `messages`; pre-v1.2.12 code
+        # mapped every non-assistant role to user and that behavior is proven
+        # against the live Codex backend, so system reuses it verbatim rather
+        # than inventing untested native system/developer-role translation.
+        # ORDERING DEPENDENCY: the request-validation gauntlet checks RAW roles
+        # and pre-rejects system-role messages carrying tool_use/tool_result;
+        # this fold runs after it, so the post-fold tool checks below never see
+        # them. Callers must not invoke this translator without that gauntlet.
+        if role == "system":
+            role = "user"
+        if role not in ("user", "assistant"):
+            raise _InvalidRequestError(
+                "message %d role invalid: expected user or assistant" % message_index
+            )
+        content = message.get("content", "")
         if isinstance(content, str):
-            if role == "assistant":
-                input_items.append({
-                    "type": "message", "role": "assistant",
-                    "content": [{"type": "output_text", "text": content}],
-                })
-            else:
-                input_items.append({
-                    "role": "user",
-                    "content": [{"type": "input_text", "text": content}],
-                })
+            input_items.append({
+                **({"type": "message"} if role == "assistant" else {}),
+                "role": "assistant" if role == "assistant" else "user",
+                "content": [{
+                    "type": "output_text" if role == "assistant" else "input_text",
+                    "text": content,
+                }],
+            })
             continue
 
-        text_parts = []
-        for block in content:
+        pending_parts = []
+
+        def flush_message_parts():
+            if not pending_parts:
+                return
+            input_items.append({
+                **({"type": "message"} if role == "assistant" else {}),
+                "role": "assistant" if role == "assistant" else "user",
+                "content": list(pending_parts),
+            })
+            pending_parts.clear()
+
+        for block_index, block in enumerate(content):
             if not isinstance(block, dict):
-                continue
-            btype = block.get("type")
-
-            if btype == "text":
-                text_parts.append(block.get("text", ""))
-
-        # Emit the message item (text) for this turn FIRST, so text precedes the
-        # function_call items within an assistant turn (mirrors output order).
-        if text_parts:
-            joined = "\n".join(text_parts)
-            if role == "assistant":
-                input_items.append({
-                    "type": "message", "role": "assistant",
-                    "content": [{"type": "output_text", "text": joined}],
+                raise _content_error(
+                    message_index, block_index, role, "non_object",
+                    "unsupported content block",
+                )
+            block_type = block.get("type")
+            if block_type == "text":
+                text = block.get("text", "")
+                if not isinstance(text, str):
+                    raise _content_error(
+                        message_index, block_index, role, "text", "invalid text block",
+                    )
+                pending_parts.append({
+                    "type": "output_text" if role == "assistant" else "input_text",
+                    "text": text,
                 })
-            else:
-                input_items.append({
-                    "role": "user",
-                    "content": [{"type": "input_text", "text": joined}],
-                })
-
-        # Second pass over blocks for tool_use / tool_result (order-preserving).
-        for block in content:
-            if not isinstance(block, dict):
+            elif block_type == "image":
+                pending_parts.append(_image_to_responses_part(
+                    block, message_index, block_index, role,
+                ))
+            elif block_type in {"thinking", "redacted_thinking"}:
+                # Known Claude continuity blocks are intentionally consumed rather
+                # than forwarded. Encrypted Responses reasoning cache entries, not
+                # replayed Anthropic thinking prose/signatures, preserve continuity.
                 continue
-            btype = block.get("type")
-
-            if btype == "tool_use":
+            elif block_type == "tool_use":
+                if role != "assistant":
+                    raise _content_error(
+                        message_index, block_index, role, "tool_use",
+                        "tool_use is permitted only in assistant messages",
+                    )
+                flush_message_parts()
                 call_id = block.get("id", "")
-                # REASONING-CACHE INJECTION: if we have a cached reasoning item
-                # for this call_id, insert it immediately BEFORE the function_call
-                # (unless an equivalent reasoning item — same id — was already
-                # injected for this request build; parallel calls share one).
                 cached = _REASONING_CACHE.get(call_id)
                 if cached is not None:
-                    rs_id = cached.get("id")
-                    if rs_id not in injected_reasoning_ids:
+                    reasoning_id = cached.get("id")
+                    if reasoning_id not in injected_reasoning_ids:
                         input_items.append(cached)
-                        injected_reasoning_ids.add(rs_id)
+                        injected_reasoning_ids.add(reasoning_id)
                 else:
-                    # Cache miss (e.g. shim restarted mid-session, or unknown
-                    # call_id). Omit the reasoning item and proceed — do NOT fail
-                    # the request. Live testing will establish whether the API
-                    # hard-rejects; the documented risk is the community-reported
-                    # "function_call was provided without its required 'reasoning'
-                    # item" error.
                     missing_reasoning += 1
                 input_items.append({
                     "type": "function_call",
                     "call_id": call_id,
                     "name": block.get("name", ""),
-                    # arguments is a JSON *string*, not an object.
                     "arguments": json.dumps(block.get("input", {})),
                 })
-
-            elif btype == "tool_result":
+            elif block_type == "tool_result":
+                if role != "user":
+                    raise _content_error(
+                        message_index, block_index, role, "tool_result",
+                        "tool_result is permitted only in user messages",
+                    )
+                flush_message_parts()
                 input_items.append({
                     "type": "function_call_output",
                     "call_id": block.get("tool_use_id", ""),
-                    "output": _flatten_tool_result_content(block.get("content", "")),
+                    "output": _tool_result_output(
+                        block.get("content", ""), message_index, block_index, role,
+                    ),
                 })
-            # Unknown block types (image, thinking) are ignored gracefully.
+            else:
+                raise _content_error(
+                    message_index, block_index, role, block_type,
+                    "unsupported content block",
+                )
+        flush_message_parts()
 
     return input_items, missing_reasoning
 
@@ -2425,8 +2654,7 @@ def _validate_stream_event_fields(event):
         if "name" in event:
             _require_protocol_string(event.get("name"), "function name")
         else:
-            log.warning("wire-divergence: arguments.done missing name (item %s)",
-                        _scrub_log_token(event.get("item_id")))
+            _record_wire_divergence("arguments.done_missing_name")
         if "arguments" in event:
             _require_protocol_string(
                 event.get("arguments"), "function arguments", allow_empty=True
@@ -2642,7 +2870,22 @@ def _diag_headers(headers):
     return " ".join(parts) if parts else "(none)"
 
 
-# --- HARDENING: retry helper (UNCHANGED) ---
+# --- HARDENING: retry helper ---
+
+
+def _transport_failure_phase(error, post_stream_start=False):
+    if post_stream_start:
+        return "post_stream_start_body_read"
+    if isinstance(error, (httpx.ConnectTimeout, httpx.ConnectError)):
+        return "connect"
+    if isinstance(error, httpx.PoolTimeout):
+        return "connection_pool_wait"
+    if isinstance(error, (httpx.WriteTimeout, httpx.WriteError)):
+        return "request_body_write"
+    if isinstance(error, (httpx.ReadTimeout, httpx.ReadError)):
+        return "header_wait_or_body_read"
+    return "connect_or_header_wait"
+
 
 async def _discard_httpx_response(response):
     """Close a successful buffered POST result discarded by outer cancellation."""
@@ -2692,6 +2935,9 @@ async def _post_with_retry(url, headers, payload, disconnect_event):
             raise
         except httpx.HTTPError as e:
             last_exc = e
+            _record_transport_failure(
+                e, _transport_failure_phase(e), attempt < MAX_RETRIES,
+            )
             if attempt < MAX_RETRIES:
                 delay = _retry_delay(attempt, None)
                 _record_retry("transport")
@@ -2820,6 +3066,9 @@ async def _open_backend_stream(url, headers, payload, disconnect_event):
             raise cancellation
         except httpx.HTTPError as e:
             await _settle_stream_context(stream_cm)
+            _record_transport_failure(
+                e, _transport_failure_phase(e), attempt < MAX_RETRIES,
+            )
             if attempt >= MAX_RETRIES:
                 _record_backend_error(
                     "api_error", backend_type=type(e).__name__,
@@ -3174,16 +3423,17 @@ def _bearer_of(headers):
 
 async def _build_backend_headers(force_token_refresh=False, rejected_token=None):
     # v1.2.5: assemble the backend request headers for the active lane.
-    # INTENT: openai mode -> {Authorization: Bearer <env key>, Content-Type}. chatgpt
-    #   mode -> the 3-header floor {authorization: Bearer <access_token>,
-    #   content-type: application/json, accept: text/event-stream} the Codex backend
-    #   gates on (notes/08); NO api-key/openai-specific headers.
+    # INTENT: both lanes add the local X-Client-Request-Id for safe correlation.
+    #   OpenAI mode otherwise sends Authorization + Content-Type; ChatGPT mode sends
+    #   its validated authorization/content-type/accept floor and no API-key header.
     # REASONING: keeping this in one helper means the lazy-401 retry path can rebuild
     #   the headers (with force_token_refresh=True + the rejected token for the
     #   guarded-reload identity check) identically to the first attempt.
     # CREDENTIAL SAFETY: returns a dict CONTAINING the Bearer; callers must never log
     #   it. In chatgpt mode a token-layer failure raises RuntimeError(_RELOGIN_MSG)
     #   (no secret content) for the caller to surface as a clean client error.
+    state = _request_state()
+    client_request_id = state.client_request_id if state is not None else uuid.uuid4().hex
     if SHIM_BACKEND_MODE == "chatgpt":
         access_token = await _get_access_token(
             force_refresh=force_token_refresh, rejected_token=rejected_token)
@@ -3191,12 +3441,32 @@ async def _build_backend_headers(force_token_refresh=False, rejected_token=None)
             "authorization": f"Bearer {access_token}",
             "content-type": "application/json",
             "accept": "text/event-stream",
+            "X-Client-Request-Id": client_request_id,
         }
-    # openai mode (unchanged behavior).
     return {
         "Authorization": f"Bearer {SHIM_BACKEND_API_KEY}",
         "Content-Type": "application/json",
+        "X-Client-Request-Id": client_request_id,
     }
+
+
+def _pending_sse_data_bytes(line_buffer):
+    # Return the logical payload bytes currently buffered for a data field, or None
+    # when the partial line is not a data field. SSE framing ("data:", one optional
+    # space, and a possible trailing CR awaiting LF) is deliberately excluded.
+    # This makes the event cap independent of where upstream transport chunks split,
+    # including splits inside the field prefix and immediately before CRLF.
+    logical_end = len(line_buffer)
+    if logical_end and line_buffer[-1] == 0x0D:
+        logical_end -= 1
+    if logical_end == 4 and line_buffer[:logical_end] == b"data":
+        return 0
+    if logical_end < 5 or line_buffer[:5] != b"data:":
+        return None
+    value_start = 5
+    if logical_end > value_start and line_buffer[value_start] == 0x20:
+        value_start += 1
+    return logical_end - value_start
 
 
 def _consume_sse_line(raw_line, data_lines, event_size, event_open):
@@ -3248,8 +3518,21 @@ async def _iter_bounded_sse_data(resp, disconnect_event):
         while True:
             newline_at = line_buffer.find(b"\n")
             if newline_at < 0:
-                if len(line_buffer) > MAX_RESPONSES_SSE_EVENT_BYTES:
-                    raise ValueError("upstream SSE line exceeded size limit")
+                pending_data_bytes = _pending_sse_data_bytes(line_buffer)
+                if pending_data_bytes is None:
+                    # Non-data fields still receive a raw-line bound. Data fields use
+                    # the logical event bound below so their fixed SSE framing does not
+                    # make an exactly-at-limit payload fail under one chunking pattern.
+                    if len(line_buffer) > MAX_RESPONSES_SSE_EVENT_BYTES:
+                        raise ValueError("upstream SSE line exceeded size limit")
+                else:
+                    joined_size = (
+                        event_size
+                        + (1 if data_lines else 0)
+                        + pending_data_bytes
+                    )
+                    if joined_size > MAX_RESPONSES_SSE_EVENT_BYTES:
+                        raise ValueError("upstream SSE event exceeded size limit")
                 break
             raw_line = bytes(line_buffer[:newline_at])
             del line_buffer[:newline_at + 1]
@@ -3305,6 +3588,11 @@ async def _accumulate_terminal_response(resp, disconnect_event):
                         phase="upstream_stream",
                     )
                 return None, message
+    except httpx.HTTPError as error:
+        _record_transport_failure(
+            error, _transport_failure_phase(error, post_stream_start=True), False,
+        )
+        raise
     except _ProtocolError as error:
         return None, _scrub_and_trim_body(str(error))[:200] or "backend protocol error"
     except ValueError as error:
@@ -3348,9 +3636,39 @@ async def _handle_messages(body, receive, send):
         if not invalid_structure:
             invalid_structure = any(not isinstance(message, dict) for message in messages)
         if not invalid_structure:
+            # v1.2.13: "system" is admitted alongside user/assistant. Live Claude
+            # Code sends a trailing role:"system" message inside `messages`; the
+            # v1.2.12 two-role check rejected every real conversation turn with
+            # the static 400 (captured-payload repro: scripts/scratch/
+            # replay_captured_request.py). Translation folds system to user-role
+            # input, the pre-v1.2.12 behavior proven against the live backend.
+            invalid_structure = any(
+                message.get("role") not in ("user", "assistant", "system")
+                for message in messages
+            )
+        if not invalid_structure:
             invalid_structure = any(
                 "content" in message
                 and not isinstance(message.get("content"), (str, list))
+                for message in messages
+            )
+        if not invalid_structure:
+            invalid_structure = any(
+                isinstance(message.get("content"), list)
+                and any(
+                    isinstance(block, dict)
+                    and (
+                        (block.get("type") == "tool_use"
+                         and message.get("role") != "assistant")
+                        or (block.get("type") == "tool_result"
+                            and message.get("role") != "user")
+                        or (
+                            block.get("type") == "tool_result"
+                            and not isinstance(block.get("content", ""), (str, list))
+                        )
+                    )
+                    for block in message["content"]
+                )
                 for message in messages
             )
         if not invalid_structure:
@@ -3400,8 +3718,17 @@ async def _handle_messages(body, receive, send):
     # every log line below, and the response echoed to Claude Code. `model` from
     # here on is suffix-free; `slug_effort_raw` is the parsed tier-2 token (or None).
     model, slug_effort_raw = _split_effort_suffix(req.get("model", ""))
-    responses_payload, missing_reasoning, effort_value, effort_source = \
-        _anthropic_to_responses_request(req, model, slug_effort_raw)
+    try:
+        responses_payload, missing_reasoning, effort_value, effort_source = \
+            _anthropic_to_responses_request(req, model, slug_effort_raw)
+    except _InvalidRequestError as error:
+        # The exception text is constructed exclusively from structural indexes,
+        # bounded type labels, and local constants. Never log or reflect block data.
+        _mark_error(phase="request_translation", error_type="invalid_request_error")
+        await _send_json(send, 400, {"type": "error", "error": {
+            "type": "invalid_request_error", "message": str(error),
+        }})
+        return
     n_msgs = len(responses_payload["input"])
     n_tools = len(responses_payload.get("tools", []))
     state = _request_state()
@@ -3461,9 +3788,9 @@ async def _handle_messages(body, receive, send):
             return
 
     # v1.2.5: build the backend auth headers by lane.
-    # INTENT: in openai mode, Bearer the env API key (unchanged). In chatgpt mode,
-    #   Bearer the OAuth access_token from auth.json and emit ONLY the 3-header floor
-    #   the Codex backend gates on (notes/08). Request translation, tools, and SSE
+    # INTENT: in openai mode, Bearer the env API key. In chatgpt mode, Bearer the
+    #   OAuth access_token from auth.json and emit its validated header floor. Both
+    #   lanes add the local X-Client-Request-Id for content-blind correlation. Tools and SSE
     #   block lifecycle stay shared. v1.2.7 makes chatgpt transport always-streaming
     #   (inbound non-stream callers are internally accumulated), while v1.2.6's one
     #   route-specific response-formatting rule preserves reliable reasoning-summary
@@ -4642,6 +4969,9 @@ async def _handle_messages(body, receive, send):
             elif isinstance(e, ValueError):
                 failure_kind = "backend SSE framing error"
             elif isinstance(e, httpx.HTTPError):
+                _record_transport_failure(
+                    e, _transport_failure_phase(e, post_stream_start=True), False,
+                )
                 failure_kind = "backend transport error"
             else:
                 failure_kind = "backend stream translation error"
@@ -4728,6 +5058,7 @@ async def _handle_models(send):
 async def _handle_health(send):
     # HARDENING: health endpoint for the manager's idempotency + --status checks.
     await _send_json(send, 200, {
+        "service": SHIM_SERVICE_ID,
         "status": "ok",
         "backend": SHIM_BACKEND_BASE_URL,
         "backend_mode": SHIM_BACKEND_MODE,

@@ -789,6 +789,18 @@ ARG CLAUDE_CODE_VERSION=2.1.202
 RUN curl -fsSL https://claude.ai/install.sh | bash -s ${CLAUDE_CODE_VERSION}
 ENV PATH="/home/appuser/.local/bin:${PATH}"
 
+# Provider-shim direct runtime dependencies. These were already installed
+# transitively (httpx via svy; uvicorn via marimo), but the persistent shim imports
+# them directly, so its contract must not depend on unrelated packages retaining
+# those dependencies. Keep this framework-owned pin layer late: neither package is
+# needed to build the Python/R stacks above, and placing it here preserves Docker's
+# expensive-layer cache when only the shim runtime pins change.
+USER root
+RUN uv pip install --system \
+    httpx==0.28.1 \
+    uvicorn==0.51.0
+USER appuser
+
 # ============================================
 # USER ADDITIONS — add your own packages and tools here
 # ============================================

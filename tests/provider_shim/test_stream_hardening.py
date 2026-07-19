@@ -739,6 +739,133 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
             expected_kinds=[],
         )
 
+    def test_sse_event_size_limit_is_transport_segmentation_invariant(self) -> None:
+        limit = 16 * 1024 * 1024
+        template = {
+            "type": "response.completed",
+            "response": {
+                "id": "resp_size_boundary",
+                "status": "completed",
+                "output": [],
+                "usage": dict(USAGE),
+                "padding": "",
+            },
+        }
+        empty_payload = json.dumps(template, separators=(",", ":"))
+        marker = '"padding":""'
+        self.assertIn(marker, empty_payload)
+        prefix, suffix = empty_payload.split(marker)
+        payload_overhead = len((prefix + '"padding":""' + suffix).encode("utf-8"))
+
+        for label, target_size, should_succeed in (
+            ("below", limit - 1, True),
+            ("at", limit, True),
+            ("above", limit + 1, False),
+        ):
+            padding_size = target_size - payload_overhead
+            self.assertGreaterEqual(padding_size, 0)
+            payload = (
+                prefix + '"padding":"' + ("X" * padding_size) + '"' + suffix
+            ).encode("utf-8")
+            self.assertEqual(len(payload), target_size)
+            segmentations = (
+                (
+                    "joined-by-harness",
+                    [b"data: ", payload, b"\n\n"],
+                    False,
+                ),
+                (
+                    "prefix-and-terminator-fragmented",
+                    [b"d", b"a", b"t", b"a", b":", b" ", payload, b"\n", b"\n"],
+                    True,
+                ),
+            )
+            for segmentation, chunks, preserve_chunks in segmentations:
+                with self.subTest(boundary=label, segmentation=segmentation):
+                    scenario = raw_sse_scenario(
+                        f"event-size-{label}-{segmentation}",
+                        chunks,
+                        preserve_chunks=preserve_chunks,
+                    )
+                    with MockResponsesServer(scenario) as backend:
+                        with RealShim(backend, "chatgpt") as shim:
+                            result = shim.post_messages(stream=True, timeout=60.0)
+                            self.assertEqual(result.status, 200)
+                            frames = parse_typed_sse(result.body)
+                            if should_succeed:
+                                lifecycle_report(frames)
+                            else:
+                                failure_lifecycle_report(frames)
+                            backend.assert_request_counts(responses=1, oauth=0)
+
+    def test_sse_event_size_counts_repeated_data_field_newline_join(self) -> None:
+        limit = 16 * 1024 * 1024
+        template = {
+            "type": "response.completed",
+            "response": {
+                "id": "resp_multidata_size_boundary",
+                "status": "completed",
+                "output": [],
+                "usage": dict(USAGE),
+                "padding": "",
+            },
+        }
+        empty_payload = json.dumps(template, separators=(",", ":"))
+        marker = '"padding":""'
+        prefix, suffix = empty_payload.split(marker)
+        payload_overhead = len((prefix + '"padding":""' + suffix).encode("utf-8"))
+
+        for label, logical_size, should_succeed in (
+            ("at", limit, True),
+            ("above", limit + 1, False),
+        ):
+            # Repeated SSE data fields insert one logical newline. Size the JSON bytes
+            # one byte below the target, then split after a comma where JSON permits
+            # that newline as insignificant whitespace.
+            padding_size = logical_size - 1 - payload_overhead
+            payload = (
+                prefix + '"padding":"' + ("Y" * padding_size) + '"' + suffix
+            ).encode("utf-8")
+            split_at = payload.find(b',"response"') + 1
+            self.assertGreater(split_at, 0)
+            self.assertEqual(len(payload) + 1, logical_size)
+            scenario = raw_sse_scenario(
+                f"multidata-event-size-{label}",
+                [
+                    b"data: ",
+                    payload[:split_at],
+                    b"\n",
+                    b"data: ",
+                    payload[split_at:],
+                    b"\n",
+                    b"\n",
+                ],
+                preserve_chunks=True,
+            )
+            with self.subTest(boundary=label):
+                with MockResponsesServer(scenario) as backend:
+                    with RealShim(backend, "chatgpt") as shim:
+                        result = shim.post_messages(stream=True, timeout=60.0)
+                        self.assertEqual(result.status, 200)
+                        frames = parse_typed_sse(result.body)
+                        if should_succeed:
+                            lifecycle_report(frames)
+                        else:
+                            failure_lifecycle_report(frames)
+                        backend.assert_request_counts(responses=1, oauth=0)
+
+    def test_sse_oversized_partial_line_eof_fails_without_dispatch(self) -> None:
+        limit = 16 * 1024 * 1024
+        scenario = raw_sse_scenario(
+            "oversized-partial-line-eof",
+            [b"data: " + (b"Z" * (limit + 1))],
+        )
+        self._assert_stream_failure(
+            scenario=scenario,
+            marker="SSE_OVERSIZED_PARTIAL_LINE_EOF",
+            expected_kinds=[],
+        )
+
     def test_sse_crlf_blank_line_framing_succeeds(self) -> None:
         terminal = {
             "type": "response.completed",
@@ -1484,7 +1611,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 startup_records = [
                     line
                     for line in shim.captured_stderr().splitlines()
-                    if "req_id=- phase=process shim v1.2.11 starting" in line
+                    if "req_id=- phase=process shim v1.2.13 starting" in line
                 ]
                 self.assertEqual(len(startup_records), 1, startup_records)
                 self.assertIn(

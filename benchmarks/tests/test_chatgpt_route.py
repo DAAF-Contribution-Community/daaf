@@ -88,6 +88,7 @@ def coherent_env(**overrides):
 
 def healthy_payload(**overrides):
     payload = {
+        "service": "daaf-anthropic-openai-shim",
         "status": "ok",
         "backend": "https://chatgpt.com/backend-api/codex",
         "backend_mode": "chatgpt",
@@ -264,6 +265,7 @@ class RouteContractTests(unittest.TestCase):
 
     def test_health_contract_failures(self):
         bad_payloads = [
+            healthy_payload(service="unrelated-service"),
             healthy_payload(status="degraded"),
             healthy_payload(backend_mode="openai"),
             healthy_payload(sanitize_tools=False),

@@ -13,6 +13,7 @@ Run directly:
   python3 -m unittest discover -s /daaf/tests/python -p 'test_deploy_smoke.py'
 """
 
+import json
 import os
 import subprocess
 import sys
@@ -46,6 +47,173 @@ def _scratch_dir(prefix):
     d = _SCRATCH / f"{prefix}_{uuid.uuid4().hex[:10]}"
     d.mkdir(parents=True, exist_ok=False)
     return d
+
+
+class _HealthResponse:
+    def __init__(self, payload):
+        self.payload = payload
+
+    def read(self):
+        if isinstance(self.payload, bytes):
+            return self.payload
+        return json.dumps(self.payload).encode("utf-8")
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, traceback):
+        return False
+
+
+class ShimHealthProbeTests(unittest.TestCase):
+    def _payload(self, **overrides):
+        payload = {
+            "service": "daaf-anthropic-openai-shim",
+            "status": "ok",
+            "backend_mode": "openai",
+            "version": "1.2.12",
+            "sanitize_tools": True,
+            "codex_home_present": True,
+        }
+        payload.update(overrides)
+        return payload
+
+    def _probe(self, route_name, payload):
+        route = route_detection.RouteInfo(route_name)
+        with mock.patch.object(
+            smoke_probes, "urlopen", return_value=_HealthResponse(payload)
+        ):
+            return smoke_probes.probe_shim_health(route)
+
+    def _reported_text(self, result):
+        parts = [result.detail]
+        for evidence in result.evidence:
+            parts.extend((evidence.output or "", evidence.note or ""))
+        return "\n".join(parts)
+
+    def test_exact_service_status_route_mode_and_safe_version_pass(self):
+        result = self._probe(
+            route_detection.ROUTE_OPENAI_API,
+            self._payload(version="1.2.12+build_7-x"),
+        )
+        self.assertEqual(result.verdict, Verdict.PASS, result.detail)
+        self.assertIn("version=1.2.12+build_7-x", result.detail)
+
+    def test_missing_version_fails_with_bounded_marker(self):
+        payload = self._payload()
+        payload.pop("version")
+        result = self._probe(route_detection.ROUTE_OPENAI_API, payload)
+        reported = self._reported_text(result)
+        self.assertEqual(result.verdict, Verdict.FAIL)
+        self.assertIn("version must match", result.detail)
+        self.assertIn("version=<invalid>", reported)
+
+    def test_empty_version_fails_with_bounded_marker(self):
+        result = self._probe(
+            route_detection.ROUTE_OPENAI_API,
+            self._payload(version=""),
+        )
+        reported = self._reported_text(result)
+        self.assertEqual(result.verdict, Verdict.FAIL)
+        self.assertIn("version must match", result.detail)
+        self.assertIn("version=<invalid>", reported)
+
+    def test_unsafe_version_fails_without_reflecting_endpoint_text(self):
+        unsafe_version = "release/unsafe\nprivate-version-marker"
+        result = self._probe(
+            route_detection.ROUTE_OPENAI_API,
+            self._payload(version=unsafe_version),
+        )
+        reported = self._reported_text(result)
+        self.assertEqual(result.verdict, Verdict.FAIL)
+        self.assertIn("version must match", result.detail)
+        self.assertIn("version=<invalid>", reported)
+        self.assertNotIn(unsafe_version, reported)
+        self.assertNotIn("private-version-marker", reported)
+
+    def test_overlong_version_fails_without_reflecting_endpoint_text(self):
+        overlong_version = "A" * 65
+        result = self._probe(
+            route_detection.ROUTE_OPENAI_API,
+            self._payload(version=overlong_version),
+        )
+        reported = self._reported_text(result)
+        self.assertEqual(result.verdict, Verdict.FAIL)
+        self.assertIn("version must match", result.detail)
+        self.assertIn("version=<invalid>", reported)
+        self.assertNotIn(overlong_version, reported)
+
+    def test_nonstring_versions_fail_with_bounded_marker(self):
+        for version in (None, 12, True, ["1.2.12"]):
+            with self.subTest(version=version):
+                result = self._probe(
+                    route_detection.ROUTE_OPENAI_API,
+                    self._payload(version=version),
+                )
+                reported = self._reported_text(result)
+                self.assertEqual(result.verdict, Verdict.FAIL)
+                self.assertIn("version must match", result.detail)
+                self.assertIn("version=<invalid>", reported)
+
+    def test_chatgpt_boolean_true_auth_presence_passes(self):
+        result = self._probe(
+            route_detection.ROUTE_CHATGPT,
+            self._payload(backend_mode="chatgpt", codex_home_present=True),
+        )
+        self.assertEqual(result.verdict, Verdict.PASS, result.detail)
+
+    def test_chatgpt_boolean_false_auth_presence_fails(self):
+        result = self._probe(
+            route_detection.ROUTE_CHATGPT,
+            self._payload(backend_mode="chatgpt", codex_home_present=False),
+        )
+        self.assertEqual(result.verdict, Verdict.FAIL)
+        self.assertIn("codex_home_present must be boolean true", result.detail)
+
+    def test_chatgpt_missing_auth_presence_fails(self):
+        payload = self._payload(backend_mode="chatgpt")
+        payload.pop("codex_home_present")
+        result = self._probe(route_detection.ROUTE_CHATGPT, payload)
+        self.assertEqual(result.verdict, Verdict.FAIL)
+        self.assertIn("codex_home_present must be boolean true", result.detail)
+
+    def test_chatgpt_string_auth_presence_fails_with_bounded_marker(self):
+        result = self._probe(
+            route_detection.ROUTE_CHATGPT,
+            self._payload(backend_mode="chatgpt", codex_home_present="true"),
+        )
+        reported = self._reported_text(result)
+        self.assertEqual(result.verdict, Verdict.FAIL)
+        self.assertIn("codex_home_present must be boolean true", result.detail)
+        self.assertIn("codex_home_present=<invalid>", reported)
+
+    def test_chatgpt_truthy_nonboolean_auth_presence_fails(self):
+        result = self._probe(
+            route_detection.ROUTE_CHATGPT,
+            self._payload(backend_mode="chatgpt", codex_home_present=1),
+        )
+        reported = self._reported_text(result)
+        self.assertEqual(result.verdict, Verdict.FAIL)
+        self.assertIn("codex_home_present must be boolean true", result.detail)
+        self.assertIn("codex_home_present=<invalid>", reported)
+
+    def test_unrelated_service_degraded_status_and_wrong_mode_fail(self):
+        cases = (
+            self._payload(service="unrelated-service"),
+            self._payload(status="degraded"),
+            self._payload(backend_mode="chatgpt"),
+        )
+        for payload in cases:
+            with self.subTest(payload=payload):
+                result = self._probe(route_detection.ROUTE_OPENAI_API, payload)
+                self.assertEqual(result.verdict, Verdict.FAIL)
+
+    def test_nonobject_and_malformed_health_json_fail_cleanly(self):
+        for payload in (["not", "an", "object"], b"{not-json"):
+            with self.subTest(payload=payload):
+                result = self._probe(route_detection.ROUTE_OPENAI_API, payload)
+                self.assertEqual(result.verdict, Verdict.FAIL)
+                self.assertIn("invalid", result.detail)
 
 
 class TierDEnvSanitizationTests(unittest.TestCase):

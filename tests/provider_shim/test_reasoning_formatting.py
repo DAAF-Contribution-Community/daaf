@@ -71,8 +71,12 @@ class ProviderShimReasoningFormattingTests(unittest.TestCase):
                     backend.responses_requests[0].path,
                     "/v1/responses",
                 )
+                self.assertEqual(
+                    shim.health.get("service"), "daaf-anthropic-openai-shim"
+                )
+                self.assertEqual(shim.health.get("status"), "ok")
                 self.assertEqual(shim.health.get("backend_mode"), "openai")
-                self.assertEqual(shim.health.get("version"), "1.2.11")
+                self.assertEqual(shim.health.get("version"), "1.2.13")
 
     def test_openai_nonstreaming_legacy_bytes_unchanged(self) -> None:
         scenario = central_multipart_scenario()
