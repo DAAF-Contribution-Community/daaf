@@ -245,7 +245,14 @@ The report follows a standard structure (Executive Summary, Key Findings, Data &
 
 ### Reading DAAF's Claims: Observed Facts vs. Inference
 
-One habit worth building as you read any DAAF output is to notice how it grades its own claims by evidence. When DAAF reports that something *ran* -- a fetch returned so many rows, a validation passed -- the actual command and its output are on record, quoted in the script's execution log for you to check; statements without that kind of record are inferences, and DAAF is instructed to phrase them so they read that way rather than as established fact. Pay especially close attention when DAAF says something is *impossible* or *unavailable* -- that a source doesn't offer a variable, or that an operation can't be done -- because a wrong "no" fails silently and can quietly harden into accepted fact, so those negative claims deserve the same "show me the check" scrutiny you'd give any surprising result. And when DAAF tells you how much it did -- files changed, outcomes addressed -- that accounting should trace back to actual tool output, not to memory. Reading with this lens tells you which parts of a report you can take at face value and which warrant a second look.
+One habit worth building as you read any DAAF output is to notice how it grades its own claims by evidence. A quick lens to read with:
+
+- **Ran-and-quoted means observed fact.** When DAAF reports that something *ran* -- a fetch returned so many rows, a validation passed -- the actual command and its output are on record in the script's execution log for you to check.
+- **Everything else is inference.** Statements without that kind of record are inferences, and DAAF is instructed to phrase them so they read that way rather than as established fact.
+- **Watch negative claims most closely.** When DAAF says something is *impossible* or *unavailable* -- that a source doesn't offer a variable, or that an operation can't be done -- give it extra scrutiny. A wrong "no" fails silently and can quietly harden into accepted fact, so those claims deserve the same "show me the check" treatment you'd give any surprising result.
+- **Completion counts should trace to output.** When DAAF tells you how much it did -- files changed, outcomes addressed -- that accounting should trace back to actual tool output, not to memory.
+
+Reading with this lens tells you which parts of a report you can take at face value and which warrant a second look.
 
 ### Reading the Notebook
 
