@@ -22,6 +22,7 @@ import unittest
 import uuid
 from pathlib import Path
 from unittest import mock
+from urllib.error import URLError
 
 # --- Import path guard: mirror run_deploy_smoke.py so route_detection /
 # smoke_probes / run_deploy_smoke and the benchmarks harness all import
@@ -214,6 +215,150 @@ class ShimHealthProbeTests(unittest.TestCase):
                 result = self._probe(route_detection.ROUTE_OPENAI_API, payload)
                 self.assertEqual(result.verdict, Verdict.FAIL)
                 self.assertIn("invalid", result.detail)
+
+
+class AuthJsonProbeTests(unittest.TestCase):
+    """T0.9 (probe_auth_json): the shim /health `auth` block is authoritative for
+    chatgpt-route auth validity (v1.3.0 / A1-R6b). FAIL on
+    expired|absent|unreadable, WARN on expiring, PASS on valid, route-appropriate
+    SKIP off shim routes."""
+
+    def setUp(self):
+        # Supplementary filesystem evidence target (presence/readability only,
+        # never blocking on its own) — a real scratch dir keeps os.access() honest
+        # without requiring an actual auth.json to exist.
+        self.codex_home = _scratch_dir("codex_home")
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.codex_home, ignore_errors=True)
+
+    def _route(self, route_name):
+        return route_detection.RouteInfo(route_name)
+
+    def _env(self):
+        return {"CODEX_HOME": str(self.codex_home)}
+
+    def _health(self, **auth_overrides):
+        auth = {"state": "valid", "days_left": 30}
+        auth.update(auth_overrides)
+        return {"auth": auth}
+
+    def _probe(self, route_name, env, payload):
+        route = self._route(route_name)
+        with mock.patch.object(
+            smoke_probes, "urlopen", return_value=_HealthResponse(payload)
+        ):
+            return smoke_probes.probe_auth_json(route, env)
+
+    def test_non_chatgpt_route_skips_without_hitting_health(self):
+        # SKIP fires on route alone; env/health are never consulted.
+        result = smoke_probes.probe_auth_json(
+            self._route(route_detection.ROUTE_OPENAI_API), {}
+        )
+        self.assertEqual(result.verdict, Verdict.SKIP)
+        self.assertIn("Not the chatgpt-subscription route", result.detail)
+
+    def test_missing_codex_home_fails_before_any_health_call(self):
+        result = smoke_probes.probe_auth_json(
+            self._route(route_detection.ROUTE_CHATGPT), {}
+        )
+        self.assertEqual(result.verdict, Verdict.FAIL)
+        self.assertIn("CODEX_HOME", result.detail)
+
+    def test_valid_state_passes(self):
+        result = self._probe(
+            route_detection.ROUTE_CHATGPT, self._env(),
+            self._health(state="valid", days_left=45),
+        )
+        self.assertEqual(result.verdict, Verdict.PASS, result.detail)
+        self.assertIn("days_left=45", result.detail)
+
+    def test_expiring_state_warns(self):
+        result = self._probe(
+            route_detection.ROUTE_CHATGPT, self._env(),
+            self._health(state="expiring", days_left=2),
+        )
+        self.assertEqual(result.verdict, Verdict.WARN)
+        self.assertIn("expires soon", result.detail)
+        self.assertIn("days_left=2", result.detail)
+
+    def test_expired_state_fails(self):
+        result = self._probe(
+            route_detection.ROUTE_CHATGPT, self._env(),
+            self._health(state="expired", days_left=None),
+        )
+        self.assertEqual(result.verdict, Verdict.FAIL)
+        self.assertIn("auth is dead", result.detail)
+        self.assertIn("state=expired", result.detail)
+
+    def test_absent_state_fails(self):
+        result = self._probe(
+            route_detection.ROUTE_CHATGPT, self._env(),
+            self._health(state="absent", days_left=None),
+        )
+        self.assertEqual(result.verdict, Verdict.FAIL)
+        self.assertIn("auth is dead", result.detail)
+        self.assertIn("state=absent", result.detail)
+
+    def test_unreadable_state_fails(self):
+        result = self._probe(
+            route_detection.ROUTE_CHATGPT, self._env(),
+            self._health(state="unreadable", days_left=None),
+        )
+        self.assertEqual(result.verdict, Verdict.FAIL)
+        self.assertIn("auth is dead", result.detail)
+        self.assertIn("state=unreadable", result.detail)
+
+    def test_missing_auth_block_fails_cleanly(self):
+        # Pre-v1.3.0 shim / broken build: no "auth" key at all in /health.
+        result = self._probe(
+            route_detection.ROUTE_CHATGPT, self._env(),
+            {"service": "daaf-anthropic-openai-shim", "status": "ok"},
+        )
+        self.assertEqual(result.verdict, Verdict.FAIL)
+        self.assertIn("no auth block", result.detail)
+
+    def test_auth_block_wrong_type_fails_cleanly(self):
+        # Malformed shape: "auth" present but not an object.
+        result = self._probe(
+            route_detection.ROUTE_CHATGPT, self._env(),
+            {"auth": "not-an-object"},
+        )
+        self.assertEqual(result.verdict, Verdict.FAIL)
+        self.assertIn("no auth block", result.detail)
+
+    def test_unrecognized_state_value_fails_without_crashing(self):
+        # Garbage state string outside the known vocabulary must not crash the
+        # probe and must be bounded (never reflected verbatim) in the detail.
+        garbage_state = "totally-bogus-state"
+        result = self._probe(
+            route_detection.ROUTE_CHATGPT, self._env(),
+            self._health(state=garbage_state, days_left=None),
+        )
+        self.assertEqual(result.verdict, Verdict.FAIL)
+        self.assertIn("unexpected auth state", result.detail)
+        self.assertIn("state=<invalid>", result.detail)
+        self.assertNotIn(garbage_state, result.detail)
+
+    def test_health_reported_na_state_on_chatgpt_route_fails(self):
+        # "n/a" is a KNOWN state string, but is unexpected specifically on the
+        # chatgpt route (it's the non-shim-route marker) — must still FAIL, not
+        # crash, and the known-but-wrong-here value is reflected verbatim.
+        result = self._probe(
+            route_detection.ROUTE_CHATGPT, self._env(),
+            self._health(state="n/a", days_left=None),
+        )
+        self.assertEqual(result.verdict, Verdict.FAIL)
+        self.assertIn("unexpected auth state", result.detail)
+        self.assertIn("state=n/a", result.detail)
+
+    def test_health_endpoint_unreachable_fails(self):
+        route = self._route(route_detection.ROUTE_CHATGPT)
+        with mock.patch.object(smoke_probes, "urlopen", side_effect=URLError("refused")):
+            result = smoke_probes.probe_auth_json(route, self._env())
+        self.assertEqual(result.verdict, Verdict.FAIL)
+        self.assertIn("cannot assess auth", result.detail)
 
 
 class TierDEnvSanitizationTests(unittest.TestCase):
