@@ -477,12 +477,15 @@
 # --- To activate, remove the leading '#': ---
 #CODEX_HOME=/home/appuser/.claude/codex-daaf
 #
-# The two OAuth override vars below are TEST / STAGING overrides only -- the
-# production defaults are correct (auth.openai.com/oauth/token and the codex
-# first-party client_id). Leave them unset for normal use.
+# CODEX DELEGATION (shim v1.3.0+, chatgpt lane): the shim delegates token refresh
+# to the codex CLI (the single writer of auth.json). The two knobs below tune that
+# delegated call; the defaults are correct for the standard image.
+# SHIM_CODEX_BIN: path to the codex binary the shim invokes for the delegated auth
+#   refresh (default "codex" -- resolved on PATH).
+# SHIM_CODEX_TIMEOUT_S: seconds to wait for that invocation (default 30).
 # --- To activate, remove the leading '#' on the lines you need: ---
-#SHIM_OAUTH_TOKEN_URL=
-#SHIM_OAUTH_CLIENT_ID=
+#SHIM_CODEX_BIN=
+#SHIM_CODEX_TIMEOUT_S=
 #
 # Troubleshooting (inside the container):
 #     codex --version                                          (confirm the standard-image Codex CLI is present)

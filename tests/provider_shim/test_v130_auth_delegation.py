@@ -369,6 +369,20 @@ class AuthHealthBlockTest(unittest.TestCase):
             block = self._block()
         self.assertEqual(block["state"], "unreadable")
 
+    def test_state_unreadable_overflow_exp(self) -> None:
+        # A garbage-but-numeric exp (corrupt/partial-write auth.json, or a non-codex
+        # writer) can overflow platform time_t inside time.gmtime/strftime. The block
+        # must classify "unreadable" rather than raise -- the /health probe must never
+        # 500. (_jwt_exp returns int(10**19); time.gmtime(10**19) raises OverflowError.)
+        auth = {"tokens": {"access_token": _make_fake_jwt(10 ** 19)}}
+        self.auth_path.write_text(json.dumps(auth), encoding="utf-8")
+        self.auth_path.chmod(0o600)
+        with mock.patch.dict(os.environ, self._chatgpt_env(), clear=False):
+            block = self._block()  # must not raise
+        self.assertEqual(block["state"], "unreadable")
+        self.assertEqual(block["recovery"], RECOVERY_COMMAND)
+        self.assertIsNone(block["expires_at"])
+
     def test_openai_lane_reports_na(self) -> None:
         # The API-key lane does not use the codex OAuth store -> "n/a", no token surface.
         env = {

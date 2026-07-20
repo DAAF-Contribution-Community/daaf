@@ -103,6 +103,13 @@
 #         expiring, PASS on valid (SKIP on non-shim routes).
 #       * A1-R7: SHIM_CODEX_BIN/SHIM_CODEX_TIMEOUT_S documented in the Config block and
 #         start_shim.sh help/env passthrough.
+#     Review fix-it (post-A1 three-angle review; version unchanged): guard
+#       _auth_health_block() against a pathological JWT exp overflowing platform time_t
+#       (classify "unreadable" rather than raising, upholding the never-raises
+#       contract); bound the post-kill codex reap with a 5s wait_for so an unkillable
+#       child cannot stall the request path; and swept the deleted SHIM_OAUTH_* seams
+#       out of the host settings template and the user docs (install guide + technical
+#       FAQ), which still framed the now-delegated refresh as a shim-side rotation race.
 #     The two historical v1.2.5 comments describing the now-deleted Python OAuth path
 #     carry inline "[superseded in v1.3.0 ...]" markers so version history stays
 #     accurate without asserting present-tense behavior that no longer exists.
@@ -2102,8 +2109,12 @@ async def _run_codex_login_status():
         except ProcessLookupError:
             pass
         # Reap the killed child so it does not linger as a zombie or leak its pipes.
+        # Bound the reap: an unkillable child (e.g. stuck in uninterruptible sleep)
+        # must not stall the request path — log a coarse event and keep going.
         try:
-            await proc.communicate()
+            await asyncio.wait_for(proc.communicate(), timeout=5)
+        except asyncio.TimeoutError:
+            log.warning("event=codex_login_status_reap_timeout timeout_s=5")
         except Exception:
             pass
         return
@@ -5959,18 +5970,27 @@ def _auth_health_block():
         return {"state": "unreadable", "expires_at": None, "days_left": None,
                 "recovery": _AUTH_RECOVERY_CMD}
     now = time.time()
-    remaining = exp - now
-    if remaining <= 0:
-        state = "expired"
-    elif remaining <= _AUTH_EXPIRING_WINDOW_S:
-        state = "expiring"
-    else:
-        state = "valid"
-    block = {
-        "state": state,
-        "expires_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(exp)),
-        "days_left": round(remaining / 86400, 1),
-    }
+    try:
+        remaining = exp - now
+        if remaining <= 0:
+            state = "expired"
+        elif remaining <= _AUTH_EXPIRING_WINDOW_S:
+            state = "expiring"
+        else:
+            state = "valid"
+        block = {
+            "state": state,
+            "expires_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(exp)),
+            "days_left": round(remaining / 86400, 1),
+        }
+    except (OverflowError, OSError, ValueError):
+        # A pathological numeric exp (corrupt/partial-write auth.json, or a non-codex
+        # writer yielding a garbage-but-numeric exp) can overflow the platform time_t
+        # inside time.gmtime/strftime. The file reached us and parsed, but the auth
+        # data is unusable -> classify "unreadable" (an actionable state, recovery
+        # command included), preserving this function's "never raises" contract.
+        return {"state": "unreadable", "expires_at": None, "days_left": None,
+                "recovery": _AUTH_RECOVERY_CMD}
     if state != "valid":
         block["recovery"] = _AUTH_RECOVERY_CMD
     return block
