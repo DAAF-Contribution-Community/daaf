@@ -50,6 +50,7 @@ is_canonical_nonneg_decimal() {
     [[ "$value" =~ ^(0|[1-9][0-9]*)$ ]] || return 1
     [[ ${#value} -lt ${#max_value} ]] && return 0
     [[ ${#value} -gt ${#max_value} ]] && return 1
+    # Equal-length canonical decimals are intentionally compared lexicographically before arithmetic.
     # shellcheck disable=SC2071
     [[ "$value" == "$max_value" || "$value" < "$max_value" ]]
 }
@@ -585,6 +586,10 @@ if [[ -z "$rl_seg" && \
            is_canonical_positive_decimal "$q_p_win" && \
            is_canonical_nonneg_decimal "$q_p_reset"; then
             now_epoch=$(date +%s 2>/dev/null) || now_epoch=""
+            # Both operands are already bounded to int64-representable canonical decimals
+            # (is_canonical_nonneg_decimal above), but if their sum were ever to overflow
+            # bash's 64-bit arithmetic, it wraps negative -- which safely fails the
+            # `-gt now_epoch` staleness check below rather than corrupting the display.
             primary_reset_epoch=$((q_captured + q_p_reset))
             # Staleness: an expired primary window means the cached percent is stale, so
             # drop the ENTIRE segment (no display beats a wrong display).

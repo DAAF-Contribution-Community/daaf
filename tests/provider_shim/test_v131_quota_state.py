@@ -23,6 +23,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import stat
 import tempfile
 import time
 import unittest
@@ -142,6 +143,10 @@ class ProviderShimV131QuotaStateTests(unittest.TestCase):
         self.assertEqual(payload["secondary_used_pct"], "-")
         self.assertEqual(payload["secondary_window_min"], "-")
         self.assertEqual(payload["secondary_reset_s"], "-")
+
+        # Locks the telemetry-hygiene contract (0600) against a future refactor
+        # to the write call that silently loses the mkstemp-inherited mode.
+        self.assertEqual(stat.S_IMODE(os.stat(self.state_path).st_mode), 0o600)
 
         # No temp sibling is left behind after a successful atomic publish.
         self.assertEqual(self._tmp_siblings(), [])

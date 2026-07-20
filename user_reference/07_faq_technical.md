@@ -926,7 +926,7 @@ You can also read the `.qmd` source directly in the browser-based VS Code editor
 
 Two at-a-glance displays that Claude Code renders for you, both customized by DAAF.
 
-**The status bar** runs along the bottom of your session. Reading across, it shows the active model (with its reasoning-effort level), the current working directory, the Git branch you're on, a context-usage meter for the session, and -- if you're on a Claude subscription -- your rate-limit windows (how much of your rolling 5-hour and 7-day usage allowance you've used up). That rate-limit readout is specific to Claude subscription plans for now; on API-key or other-provider sessions those segments simply don't appear.
+**The status bar** runs along the bottom of your session. Reading across, it shows the active model (with its reasoning-effort level), the current working directory, the Git branch you're on, a context-usage meter for the session, and -- if you're on a Claude subscription -- your rate-limit windows (how much of your rolling 5-hour and 7-day usage allowance you've used up). That readout also appears on ChatGPT-subscription (provider-shim) sessions, where it shows your Codex plan windows instead (e.g. the 7-day window with its used-percent and reset countdown, sourced from the shim's cached quota snapshot). On API-key and other provider sessions, that segment simply doesn't appear.
 
 **The agent panel** shows up whenever DAAF has dispatched specialists to work in the background. It gives you one row per running specialist, and each row reports that specialist's type (what kind of agent it is), its model, its current status, its token count, and its own context meter -- so you can watch several agents make progress at once.
 

@@ -39,8 +39,10 @@ MOCK_CURL
 
 # Write a quota_state.json fixture. Args: captured_at, primary_used_pct,
 # primary_window_min, primary_reset_s, secondary_used_pct, secondary_window_min,
-# secondary_reset_s. The four non-numeric snapshot fields are fixed constants the
-# reader ignores. Mirrors the shim's _write_quota_state output shape.
+# secondary_reset_s. The five snapshot fields the reader never consults are fixed
+# constants here (plan_type, active_limit, credits_has, credits_balance,
+# credits_unlimited -- credits_balance is numeric-looking but still reader-ignored).
+# Mirrors the shim's _write_quota_state output shape.
 _write_quota_state() {
     printf '{"captured_at":%s,"plan_type":"pro","active_limit":"premium","primary_used_pct":"%s","primary_window_min":"%s","primary_reset_s":"%s","secondary_used_pct":"%s","secondary_window_min":"%s","secondary_reset_s":"%s","credits_has":"False","credits_balance":"0","credits_unlimited":"False"}' \
         "$1" "$2" "$3" "$4" "$5" "$6" "$7" > "$QUOTA_STATE_FILE"
@@ -605,4 +607,25 @@ JSON
         bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol")
     assert_success
     assert_output --partial "7d:0%"
+}
+
+@test "codex Plan-usage segment is dropped when primary_used_pct carries a hostile control-char escape" {
+    local now
+    now="$(date +%s)"
+    # Valid JSON (a properly-escaped unicode sequence, not a raw control byte)
+    # whose parsed value embeds an ESC/ANSI sequence in primary_used_pct.
+    # Bypasses _write_quota_state (which only accepts plain values) to write
+    # the JSON literal directly; the double backslash below makes printf emit
+    # a literal backslash-u-0-0-1-b sequence in the file, mirroring how the
+    # earlier newline/NUL bats fixtures embed JSON unicode escapes rather
+    # than raw bytes.
+    printf '{"captured_at":%s,"plan_type":"pro","active_limit":"premium","primary_used_pct":"73\\u001b[31m","primary_window_min":"10080","primary_reset_s":"402168","secondary_used_pct":"0","secondary_window_min":"0","secondary_reset_s":"0","credits_has":"False","credits_balance":"0","credits_unlimited":"False"}' \
+        "$now" > "$QUOTA_STATE_FILE"
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        DAAF_QUOTA_STATE_FILE="$QUOTA_STATE_FILE" \
+        bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol")
+    assert_success
+    refute_output --partial "Plan usage:"
+    # Rest of the bar is intact (chatgpt lane caps gpt-5.6-sol at 370k).
+    assert_output --partial "of 370k tokens"
 }
