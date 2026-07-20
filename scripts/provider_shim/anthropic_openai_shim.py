@@ -664,21 +664,23 @@
 #   CODEX_HOME              (chatgpt mode only) directory holding auth.json (the
 #                           codex OAuth token store, mode 0600). Compose sets it to
 #                           /home/appuser/.claude/codex-daaf. In chatgpt mode the
-#                           shim reads $CODEX_HOME/auth.json for the access_token
-#                           and refreshes it in place when near expiry or on a 401.
-#                           Never logged as a path-of-secrets; /health reports only
-#                           a codex_home_present boolean (True iff auth.json is
+#                           shim READS $CODEX_HOME/auth.json for the access_token;
+#                           when the token is near expiry or a backend 401 rejects
+#                           it, the shim DELEGATES the refresh to the codex CLI
+#                           (`codex login status`, CODEX_HOME passed through) and
+#                           re-reads the result — codex is the single writer, the
+#                           shim never writes auth.json. Never logged as a
+#                           path-of-secrets; /health reports only a
+#                           codex_home_present boolean (True iff auth.json is
 #                           readable).
-#   SHIM_OAUTH_TOKEN_URL    (chatgpt mode only) TEST/STAGING OVERRIDE for the OAuth
-#                           token endpoint. Default (production) is the hardcoded
-#                           https://auth.openai.com/oauth/token. Set only to point
-#                           the refresh POST at a mock/staging token endpoint (the
-#                           mock rig uses this); leave unset in production.
-#   SHIM_OAUTH_CLIENT_ID    (chatgpt mode only) TEST/STAGING OVERRIDE for the OAuth
-#                           client_id sent on refresh. Default (production) is the
-#                           hardcoded codex first-party client_id. Set only for a
-#                           mock/staging token endpoint that expects a different
-#                           client_id; leave unset in production.
+#   SHIM_CODEX_BIN          (chatgpt mode only) codex binary invoked for delegated
+#                           token refresh. Default "codex" (on PATH in the DAAF
+#                           image). Overridable for portability and for test
+#                           injection of a fake-codex stub.
+#   SHIM_CODEX_TIMEOUT_S    (chatgpt mode only) wall-clock bound (float seconds) on
+#                           the `codex login status` subprocess. Default 30; an
+#                           unparseable value falls back to 30. On timeout the child
+#                           is killed and the auth.json re-read decides success.
 #   SHIM_STRIP_MODEL_PREFIX default "" (e.g. "openai/" to strip for api.openai.com)
 #   SHIM_SANITIZE_TOOLS     default ON ("0"/"false"/"no" to disable). Strips
 #                           known GPT "fill-every-optional" tool-call quirks
@@ -1898,51 +1900,56 @@ SHIM_TEXT_VERBOSITY = _resolve_startup_verbosity()
 _client = httpx.AsyncClient(timeout=httpx.Timeout(600.0, connect=30.0))
 
 
-# --- v1.2.5: ChatGPT-subscription OAuth token layer (chatgpt mode ONLY) ---
+# --- v1.3.0: ChatGPT-subscription auth layer — delegated to the codex CLI ---
 # INTENT: in chatgpt mode the Bearer is the OAuth access_token from
 #   $CODEX_HOME/auth.json, not an api.openai.com API key. The access_token TTL is
-#   ~10 days (notes/09 A), so within any DAAF session the shim refreshes ~never:
-#   this layer is READ-MOSTLY. It reads the access_token, sends it as Bearer, and
-#   refreshes ONLY when the JWT `exp` is within a 30-min safety margin OR on a
-#   backend 401 (lazy). Refresh rotates the refresh_token (notes/10) and MUST
-#   persist atomically; a guarded reload-before-refresh (notes/09 B2, codex
-#   manager.rs:2388) skips the refresh when another writer already produced a
-#   newer on-disk token. All own-refreshes are serialized by an asyncio.Lock.
-# CREDENTIAL SAFETY: no token value is ever logged. Writing token values INTO
-#   auth.json (0600) is the intended credential-store operation, not a leak.
-#   Presence is checked with `if not tok:` guards, never by printing.
+#   ~10 days (notes/09 A), so within any DAAF session refreshes are rare: this layer
+#   is READ-MOSTLY. It reads the access_token, sends it as Bearer, and — when the
+#   token is near expiry (proactive) or a backend 401 rejects it (reactive) —
+#   DELEGATES the refresh to the codex CLI. The codex CLI is the SINGLE WRITER of
+#   auth.json; the shim NEVER writes it. The shim invokes `codex login status`, then
+#   re-reads auth.json and judges validity from the JWT `exp` claim. Delegating the
+#   write structurally eliminates the refresh-token-rotation race a Python-side
+#   refresh had with any other codex-based tool sharing the same CODEX_HOME (the
+#   live-confirmed 2026-07-20 auth-lockout cause).
+# CREDENTIAL SAFETY: no token value is ever logged. The shim only READS auth.json;
+#   codex owns every write. Presence is checked with `if not tok:` guards, never by
+#   printing. The codex subprocess's stdout/stderr are captured (to keep them off the
+#   shim's own streams) but NEVER logged — codex may echo account detail. Only its
+#   exit code and a coarse event label are logged.
 
-# OAuth refresh endpoint + client_id (first-party, notes/09 B). Both are the codex
-# constants; env-overridable purely for testing (the mock rig points them at a
-# local mock token endpoint). Real production leaves them unset -> these defaults.
-_OAUTH_TOKEN_URL = os.environ.get(
-    "SHIM_OAUTH_TOKEN_URL", "https://auth.openai.com/oauth/token"
-)
-_OAUTH_CLIENT_ID = os.environ.get(
-    "SHIM_OAUTH_CLIENT_ID", "app_EMoamEEZ73f0CkXaXp7hrann"
-)
-# Refresh when the access_token is within this many seconds of its `exp` (notes/09
-# F: 30-min safety margin — deliberately wider than codex's 5-min window because a
-# DAAF session is long and a mid-turn expiry is worse than a slightly-early refresh).
-_TOKEN_REFRESH_MARGIN_S = 30 * 60
-# Actionable message surfaced on a permanent refresh failure or a missing/unreadable
-# auth store. No secret content — just the recovery instruction (notes/09 B/F).
-_RELOGIN_MSG = ("ChatGPT OAuth token refresh failed permanently; run "
-                "'codex login --device-auth' inside the container to re-authenticate")
+# The codex binary used for delegated refresh. Default `codex` (on PATH in the DAAF
+# image); overridable for test injection (a fake-codex stub) and portability.
+SHIM_CODEX_BIN = os.environ.get("SHIM_CODEX_BIN", "").strip() or "codex"
+# Wall-clock bound on the `codex login status` subprocess. Float-tolerant: an
+# unparseable value falls back to the 30s default (mirrors the SHIM_PING_INTERVAL_S
+# convention). A hung codex must not stall a chatgpt-lane request indefinitely; on
+# timeout the child is killed and the re-read decides success/failure.
+try:
+    SHIM_CODEX_TIMEOUT_S = float(os.environ.get("SHIM_CODEX_TIMEOUT_S", "30"))
+except (ValueError, TypeError):
+    SHIM_CODEX_TIMEOUT_S = 30.0
+# Refresh when the access_token is within this many seconds of its `exp`. Mirrors
+# codex's own CHATGPT_ACCESS_TOKEN_REFRESH_WINDOW_MINUTES (5 min, notes/05) so that
+# when the shim decides to refresh, codex — keying refresh on the same window —
+# actually performs it rather than treating `login status` as a no-op.
+_TOKEN_REFRESH_MARGIN_S = 5 * 60
+# Actionable message surfaced on ANY auth failure (a failed delegated refresh, a
+# post-retry 401, a missing/unreadable auth store, or codex reporting "Not logged
+# in"). No secret content — just the recovery instruction. It MUST literally contain
+# `codex login --device-auth` (A1-R5); every auth-failure surface reuses this string.
+_RELOGIN_MSG = ("ChatGPT OAuth token is invalid or expired and the codex CLI could "
+                "not refresh it; run 'codex login --device-auth' inside the container "
+                "to re-authenticate")
 
-# In-process serialization of our OWN refreshes (the shim is async; concurrent
-# requests must not each fire a refresh). Per-process only — cross-process
-# coordination is the guarded reload-before-refresh below (notes/09 B2).
+# In-process single-flight serialization of delegated refreshes (the shim is async;
+# concurrent requests that all observe a stale/rejected token must not each spawn a
+# codex subprocess — the first refresh wins and the rest adopt its result).
+# Cross-process coordination is now codex's own domain as the single writer.
 _token_refresh_lock = asyncio.Lock()
 # The access_token currently held in memory. Seeded lazily from disk on first use.
 # Value is a secret string; never logged.
 _token_state = {"access_token": None, "exp": None}
-# Explicit ownership for the rotating-token commit. The task exists only while the
-# holder of _token_refresh_lock supervises one refresh exchange through persistence.
-# A bounded failure is retained for the process lifetime to prevent accidental reuse
-# of a possibly consumed refresh token. Neither field ever contains token values.
-_refresh_commit_task = None
-_refresh_commit_failure = None
 
 
 def _b64url_decode(seg):
@@ -2009,233 +2016,130 @@ def _read_auth_json():
     return data
 
 
-def _codex_last_refresh_now():
-    # INTENT: produce a `last_refresh` timestamp string matching codex's EXACT
-    #   format so an external codex reload treats our write as well-formed.
-    # REASONING: codex writes RFC3339 UTC with 9-digit (nanosecond) fractional
-    #   seconds + trailing "Z" (chrono's DateTime<Utc>::to_rfc3339() default,
-    #   notes/10). Python's datetime sources only microseconds (6 digits), so we
-    #   format to microseconds and zero-pad the fractional field to 9 digits.
-    # ASSUMES: nanosecond-precision beyond microseconds is not required for
-    #   correctness — codex only parses the field; the padding matches its STRING
-    #   shape (notes/10 wrote 2026-07-15T00:46:57.074803000Z this exact way).
-    from datetime import datetime, timezone
-    now = datetime.now(timezone.utc)
-    # e.g. 2026-07-15T00:46:57.074803 -> pad microseconds (6) to nanoseconds (9).
-    return now.strftime("%Y-%m-%dT%H:%M:%S.") + ("%06d000" % now.microsecond) + "Z"
-
-
-def _atomic_write_auth_json(new_data):
-    # INTENT: persist the updated auth.json ATOMICALLY, mode 0600, in the SAME
-    #   directory as the real file (same-fs rename requirement for os.replace).
-    # REASONING: temp file in the same dir -> chmod 0600 on the temp -> os.replace()
-    #   (atomic same-fs rename). This fixes the torn-write hazard codex itself has
-    #   (notes/09 B2) — a reader never sees a partial file. Live-validated write
-    #   path (notes/10). The temp is uniquely named to avoid colliding with a
-    #   concurrent writer's temp.
-    # CREDENTIAL SAFETY: writing token values into the 0600 store is the INTENDED
-    #   operation, not a leak. Nothing is logged here.
-    import tempfile
-    d = os.path.dirname(_CODEX_AUTH_PATH)
-    fd, tmp = tempfile.mkstemp(prefix=".auth.json.tmp.", dir=d)
+async def _run_codex_login_status():
+    # INTENT: invoke `{SHIM_CODEX_BIN} login status` so the codex CLI — the SINGLE
+    #   writer of auth.json — performs any needed token refresh in its own store.
+    # REASONING: async create_subprocess_exec keeps the event loop unblocked; the
+    #   subprocess inherits the shim's environ (CODEX_HOME already exported) so codex
+    #   targets the same per-install store the shim reads. Bounded by
+    #   SHIM_CODEX_TIMEOUT_S. This call's exit code and output are DIAGNOSTIC ONLY —
+    #   the authoritative refresh outcome is the auth.json re-read the caller performs
+    #   afterward, NEVER parsed from this subprocess's stdout/stderr (A1-R3). A spawn
+    #   failure (missing binary) or a timeout is non-fatal here; the re-read decides.
+    # CREDENTIAL SAFETY: stdout/stderr are captured (to keep them off the shim's own
+    #   streams) but NEVER logged — codex may echo account detail. Only the exit code
+    #   and a coarse event label are logged.
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(new_data, f)
-        os.chmod(tmp, 0o600)
-        os.replace(tmp, _CODEX_AUTH_PATH)  # atomic same-fs rename
-    except Exception:
-        # Best-effort cleanup of the temp on any failure so we never leave a
-        # partial credential file behind.
+        proc = await asyncio.create_subprocess_exec(
+            SHIM_CODEX_BIN, "login", "status",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env=os.environ.copy(),
+        )
+    except (OSError, ValueError) as e:
+        # Missing binary (FileNotFoundError), permission error, bad argv, etc. Log the
+        # exception TYPE only; the caller's re-read surfaces the actionable error.
+        log.warning("event=codex_spawn_failed err=%s", type(e).__name__)
+        return
+    try:
+        await asyncio.wait_for(proc.communicate(), timeout=SHIM_CODEX_TIMEOUT_S)
+    except asyncio.TimeoutError:
+        log.warning("event=codex_login_status_timeout timeout_s=%s",
+                    SHIM_CODEX_TIMEOUT_S)
         try:
-            os.unlink(tmp)
-        except OSError:
+            proc.kill()
+        except ProcessLookupError:
             pass
-        raise
+        # Reap the killed child so it does not linger as a zombie or leak its pipes.
+        try:
+            await proc.communicate()
+        except Exception:
+            pass
+        return
+    log.info("event=codex_login_status rc=%s", proc.returncode)
 
 
-async def _refresh_tokens(current):
-    # INTENT: exchange the current refresh_token for a fresh token set, persist the
-    #   rotated tokens atomically, and update in-memory state. Returns the new
-    #   access_token.
-    # REASONING: POST _OAUTH_TOKEN_URL with client_id + grant_type=refresh_token +
-    #   the current refresh_token. On HTTP 200 the response carries a ROTATED
-    #   refresh_token (notes/10) plus new access_token/id_token; we MUST persist the
-    #   rotation or a later reuse of the consumed refresh_token triggers a permanent
-    #   refresh_token_reused lockout (notes/09 B). Deserialize LENIENTLY — the live
-    #   response also carries undocumented fields (earliest_refresh_at, oai_is) that
-    #   we tolerate/ignore (notes/10). We do NOT honor earliest_refresh_at for
-    #   scheduling; the shim keys refresh decisions on the live JWT `exp` claim.
-    # FAST-FAIL: a non-200, or a 200 missing access_token, is a permanent failure
-    #   for this session — raise RuntimeError(_RELOGIN_MSG). We do NOT spin.
-    # CREDENTIAL SAFETY: the refresh_token/access_token/id_token are handled
-    #   in-memory and written into auth.json only; never logged. The request body
-    #   contains the refresh_token — httpx does not log bodies, and we never print it.
-    tokens = current.get("tokens") or {}
-    refresh_token = tokens.get("refresh_token")
-    if not refresh_token:
-        raise RuntimeError("auth.json has no refresh_token; " + _RELOGIN_MSG)
-    payload = {
-        "client_id": _OAUTH_CLIENT_ID,
-        "grant_type": "refresh_token",
-        "refresh_token": refresh_token,
-    }
-    try:
-        # TIMEOUT: this single OAuth POST gets a DEDICATED short timeout, NOT the
-        #   shared _client's 600s read window.
-        # REASONING: _refresh_tokens runs inside _token_refresh_lock; a hung
-        #   auth.openai.com would otherwise hold that lock for up to 600s and stall
-        #   every concurrent chatgpt-lane request behind it. The OAuth token
-        #   endpoint is a fast, small JSON exchange — 10s connect / 30s read is
-        #   generous for it while capping the worst-case lock hold. On timeout httpx
-        #   raises httpx.HTTPError (TimeoutException is a subclass), which the
-        #   existing except-clause converts to a clean RuntimeError(_RELOGIN_MSG),
-        #   releasing the lock via the `async with` in _get_access_token.
-        r = await _client.post(_OAUTH_TOKEN_URL, json=payload,
-                               headers={"Content-Type": "application/json"},
-                               timeout=httpx.Timeout(30.0, connect=10.0))
-    except httpx.HTTPError as e:
-        # A transport error is not necessarily permanent, but we do not retry-spin
-        # a refresh (rare path); surface it as a clean failure for this attempt.
-        raise RuntimeError("token refresh transport error (%s); %s"
-                           % (type(e).__name__, _RELOGIN_MSG))
-    if r.status_code != 200:
-        # Permanent: refresh_token_reused, invalid_grant, etc. Do NOT log the body
-        # (may echo token fragments); log only the status.
-        log.error("token refresh failed status=%d (permanent); %s",
-                  r.status_code, _RELOGIN_MSG)
+async def delegated_refresh(rejected_token=None):
+    # INTENT: the single delegated-refresh primitive. Serialize (single-flight),
+    #   invoke the codex CLI to refresh, then re-read auth.json and judge validity by
+    #   the JWT `exp` — returning a currently-valid access_token or raising
+    #   RuntimeError(_RELOGIN_MSG). Success/failure is determined ONLY by the re-read
+    #   result, never by the subprocess's exit code or output (A1-R3).
+    # REASONING: the asyncio.Lock makes concurrent callers single-flight — the first
+    #   waiter refreshes; the rest, after acquiring the lock, adopt the now-fresh
+    #   in-memory token WITHOUT re-invoking codex (the short-circuit below).
+    # rejected_token: on the reactive (401) path this is the token the backend just
+    #   rejected. A token that merely LOOKS exp-valid but EQUALS rejected_token must
+    #   NOT short-circuit the codex invocation — the server has already rejected it,
+    #   so its exp margin cannot vouch for it. On the proactive path it is None.
+    # CREDENTIAL SAFETY: token values live in memory / auth.json only; never logged.
+    async with _token_refresh_lock:
+        now = time.time()
+        # Single-flight short-circuit: a concurrent waiter may have already refreshed
+        # to a comfortably-valid token. Adopt it without re-invoking codex — unless it
+        # is the very token we were told the backend rejected.
+        cached = _token_state["access_token"]
+        cached_exp = _token_state["exp"]
+        if (cached and cached_exp is not None
+                and cached_exp - now > _TOKEN_REFRESH_MARGIN_S
+                and (rejected_token is None or cached != rejected_token)):
+            return cached
+
+        # Delegate the refresh to codex (the single writer). Diagnostic only.
+        await _run_codex_login_status()
+
+        # Authoritative outcome: re-read auth.json and judge validity from the JWT
+        # exp. A missing/unreadable/malformed store raises RuntimeError(_RELOGIN_MSG).
+        current = _read_auth_json()
+        disk_access = (current.get("tokens") or {}).get("access_token")
+        disk_exp = _jwt_exp(disk_access)
+        if disk_access and disk_exp is not None and disk_exp - now > _TOKEN_REFRESH_MARGIN_S:
+            _token_state["access_token"] = disk_access
+            _token_state["exp"] = disk_exp
+            log.info("chatgpt token refreshed via codex (new exp=%s)", disk_exp)
+            return disk_access
+        # Still invalid/absent after delegation -> actionable failure (A1-R5).
         raise RuntimeError(_RELOGIN_MSG)
-    try:
-        resp = r.json()
-    except ValueError:
-        raise RuntimeError("token refresh returned non-JSON; " + _RELOGIN_MSG)
-    new_access = resp.get("access_token")
-    new_refresh = resp.get("refresh_token")   # ROTATED — differs from the input
-    new_id = resp.get("id_token")
-    if not new_access:
-        raise RuntimeError("token refresh response missing access_token; " + _RELOGIN_MSG)
-
-    # Build the new auth.json preserving the fields codex owns, updating only the
-    # rotated tokens + last_refresh. Lenient: unknown response fields are ignored.
-    new_data = dict(current)  # shallow copy preserves OPENAI_API_KEY/auth_mode/etc.
-    new_tokens = dict(tokens)  # preserves tokens.account_id (not returned by refresh)
-    new_tokens["access_token"] = new_access
-    if new_refresh:
-        new_tokens["refresh_token"] = new_refresh
-    if new_id:
-        new_tokens["id_token"] = new_id
-    new_data["tokens"] = new_tokens
-    new_data["last_refresh"] = _codex_last_refresh_now()
-    _atomic_write_auth_json(new_data)
-
-    _token_state["access_token"] = new_access
-    _token_state["exp"] = _jwt_exp(new_access)
-    # SAFETY: log ONLY the fact of a refresh and the new expiry (a unix ts / ISO is
-    # NOT a secret); never the token itself.
-    log.info("chatgpt token refreshed (new exp=%s)", _token_state["exp"])
-    return new_access
-
-
-async def _await_refresh_commit(current):
-    # INTENT: supervise one rotating-token refresh from POST launch through atomic
-    # persistence and in-memory update, regardless of request disconnect/cancellation.
-    # REASONING: the OAuth server may consume the old refresh token before the response
-    # arrives. Cancelling at that point could strand auth.json permanently stale. The
-    # token-lock holder therefore creates one explicit task and awaits it to settlement
-    # with _settle_owned_task; request cancellation is remembered and propagated only
-    # after response validation, rotated-token extraction, atomic replace, and state
-    # update finish. A failed exchange is retained as a bounded process-lifetime
-    # failure so no waiter can retry a refresh token that might already be consumed.
-    # CREDENTIAL SAFETY: supervision stores only the task and a generic exception;
-    # token values remain solely inside _refresh_tokens/auth.json and are never logged.
-    global _refresh_commit_task, _refresh_commit_failure
-
-    if _refresh_commit_failure is not None:
-        raise RuntimeError(_RELOGIN_MSG)
-    if _refresh_commit_task is not None:
-        # _get_access_token owns _token_refresh_lock across this call, so a second live
-        # task would mean lock ownership was violated rather than useful deduplication.
-        raise RuntimeError("token refresh commit ownership conflict; " + _RELOGIN_MSG)
-
-    refresh_task = asyncio.create_task(_refresh_tokens(current))
-    _refresh_commit_task = refresh_task
-    kind, outcome, owner_cancellation = await _settle_owned_task(refresh_task)
-    _refresh_commit_task = None
-
-    if kind == "exception":
-        _refresh_commit_failure = outcome
-    elif kind == "cancelled":
-        _refresh_commit_failure = RuntimeError(_RELOGIN_MSG)
-
-    # Cancellation remains cancellation even when the commit itself failed. The task
-    # outcome has already been retrieved and the bounded failure remains for waiters.
-    if owner_cancellation is not None:
-        raise owner_cancellation
-    if kind == "result":
-        return outcome
-    if kind == "exception":
-        raise outcome
-    raise asyncio.CancelledError
 
 
 async def _get_access_token(force_refresh=False, rejected_token=None):
     # INTENT: return a currently-valid access_token for the chatgpt-lane Bearer.
-    #   Refresh (guarded reload -> POST -> rotate -> atomic persist) only when the
-    #   token is within _TOKEN_REFRESH_MARGIN_S of exp, OR when force_refresh is set
-    #   (the lazy-401 path forces one refresh regardless of exp).
-    # REASONING (read-mostly): the common path reads auth.json (or the cached
-    #   in-memory token), checks exp, and returns the Bearer with NO network call —
-    #   the ~10-day TTL means this is the path ~always taken. Only near-expiry or a
-    #   401 triggers the refresh branch, which is serialized by _token_refresh_lock.
-    # GUARDED RELOAD-BEFORE-REFRESH (notes/09 B2, codex manager.rs:2388): inside the
-    #   lock we re-read auth.json; if another writer (codex CLI/plugin) already
-    #   rotated the on-disk token, adopt it and SKIP our own refresh — this avoids
-    #   consuming (and rotating away) a refresh_token another process just replaced.
-    #   The comparison differs by path (see below): the proactive path keys on exp
-    #   margin; the lazy-401 path keys on TOKEN IDENTITY vs. the rejected token,
-    #   because a 401'd token can still be far from its nominal exp (it was rejected
-    #   server-side, so exp margin cannot decide whether a refresh is needed).
+    #   The common path is a pure READ (no subprocess): the ~10-day TTL means the
+    #   token is almost always comfortably valid. A refresh — DELEGATED to the codex
+    #   CLI — happens only proactively (token within _TOKEN_REFRESH_MARGIN_S of exp)
+    #   or reactively (force_refresh, the lazy-401 path).
+    # REASONING: the proactive path checks the cached token, then the authoritative
+    #   on-disk token; only if that is missing or near-expiry does it delegate. The
+    #   reactive path always delegates (passing the rejected token) because a 401'd
+    #   token can still be far from its nominal exp — exp margin cannot decide.
     # CREDENTIAL SAFETY: token values live in memory / auth.json only; never logged.
     now = time.time()
 
-    # Fast path (no lock): a cached in-memory token that is comfortably valid and no
-    # forced refresh -> return it directly.
+    # Fast path (no lock, no subprocess): a cached in-memory token that is comfortably
+    # valid and no forced refresh -> return it directly.
     if not force_refresh:
         cached = _token_state["access_token"]
         cached_exp = _token_state["exp"]
         if cached and cached_exp is not None and cached_exp - now > _TOKEN_REFRESH_MARGIN_S:
             return cached
 
-    async with _token_refresh_lock:
-        # Re-read from disk under the lock (this IS the guarded reload). This picks
-        # up any external writer's refresh and is the authoritative current state.
-        current = _read_auth_json()
-        disk_access = (current.get("tokens") or {}).get("access_token")
-        disk_exp = _jwt_exp(disk_access)
+    if force_refresh:
+        # Reactive (lazy-401): delegate unconditionally, passing the rejected token so
+        # the single-flight short-circuit cannot hand back the just-rejected token.
+        return await delegated_refresh(rejected_token=rejected_token)
 
-        # Adopt the on-disk token into memory (it is at least as fresh as ours).
-        if disk_access:
-            _token_state["access_token"] = disk_access
-            _token_state["exp"] = disk_exp
-
-        if force_refresh:
-            # Lazy-401 path. Guarded reload by TOKEN IDENTITY (not exp margin): if the
-            # on-disk token DIFFERS from the token the backend just rejected, another
-            # writer already rotated it — adopt it and skip our refresh, retrying with
-            # the fresh on-disk token first. If the on-disk token is the SAME one that
-            # got 401'd (the common single-writer case), we MUST refresh — its exp
-            # margin is irrelevant because the server has already rejected it.
-            if (disk_access and rejected_token is not None
-                    and disk_access != rejected_token):
-                log.info("chatgpt 401 refresh skipped: on-disk token rotated by another writer (guarded reload)")
-                return disk_access
-            return await _await_refresh_commit(current)
-
-        # Proactive path: refresh only if the (authoritative on-disk) token is
-        # missing or within the safety margin of exp.
-        if disk_access and disk_exp is not None and disk_exp - now > _TOKEN_REFRESH_MARGIN_S:
-            # Guarded reload already adopted a fresh on-disk token — no refresh.
-            return disk_access
-        return await _await_refresh_commit(current)
+    # Proactive: re-read the authoritative on-disk token (cheap). If it is present and
+    # comfortably valid, adopt and return it with no subprocess. Otherwise delegate.
+    # A missing/unreadable store raises RuntimeError(_RELOGIN_MSG) (A1-R5).
+    current = _read_auth_json()
+    disk_access = (current.get("tokens") or {}).get("access_token")
+    disk_exp = _jwt_exp(disk_access)
+    if disk_access:
+        _token_state["access_token"] = disk_access
+        _token_state["exp"] = disk_exp
+    if disk_access and disk_exp is not None and disk_exp - now > _TOKEN_REFRESH_MARGIN_S:
+        return disk_access
+    return await delegated_refresh()
 
 
 # --- Helpers: request translation (Anthropic -> OpenAI Responses) ---

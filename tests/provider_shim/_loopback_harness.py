@@ -37,6 +37,9 @@ from unittest import mock
 
 DAAF_ROOT = Path("/daaf")
 PRODUCTION_SHIM = DAAF_ROOT / "scripts/provider_shim/anthropic_openai_shim.py"
+# v1.3.0: the fake-codex stub the shim's delegated refresh spawns instead of the
+# real codex CLI. Injected via SHIM_CODEX_BIN. Behavior is driven by FAKE_CODEX_MODE.
+FAKE_CODEX_BIN = DAAF_ROOT / "tests/provider_shim/fake_codex.py"
 SCRATCH_ROOT = DAAF_ROOT / "scripts/scratch"
 SCRATCH_PREFIX = "provider-shim-unittest-"
 FAKE_OPENAI_KEY = "sk-FAKE_PROVIDER_SHIM_UNITTEST_OPENAI_000000000000"
@@ -2101,8 +2104,11 @@ class RealShim(AbstractContextManager["RealShim"]):
         "SHIM_BACKEND_API_KEY",
         "OPENAI_API_KEY",
         "CODEX_HOME",
-        "SHIM_OAUTH_TOKEN_URL",
-        "SHIM_OAUTH_CLIENT_ID",
+        # v1.3.0: delegated-refresh binary (replaces the deleted SHIM_OAUTH_* seams).
+        # SHIM_CODEX_TIMEOUT_S is intentionally not set by RealShim (the shim's 30s
+        # default suffices for subprocess fixtures); the in-process auth-delegation
+        # tests exercise it via their own env patch.
+        "SHIM_CODEX_BIN",
         "HTTP_PROXY",
         "HTTPS_PROXY",
         "ALL_PROXY",
@@ -2208,8 +2214,10 @@ class RealShim(AbstractContextManager["RealShim"]):
                     "SHIM_BACKEND_API_KEY": FAKE_OPENAI_KEY,
                     "OPENAI_API_KEY": FAKE_OPENAI_KEY,
                     "CODEX_HOME": str(self.scratch_dir),
-                    "SHIM_OAUTH_TOKEN_URL": self.oauth_url,
-                    "SHIM_OAUTH_CLIENT_ID": "app_FAKE_PROVIDER_SHIM_UNITTEST",
+                    # Point delegated refresh at the fake-codex stub. Existing chatgpt
+                    # fixtures seed a far-future token, so the stub is not actually
+                    # invoked; it defaults to a benign no-op if it ever is.
+                    "SHIM_CODEX_BIN": str(FAKE_CODEX_BIN),
                     "HTTP_PROXY": self.proxy_url,
                     "HTTPS_PROXY": self.proxy_url,
                     "ALL_PROXY": self.proxy_url,

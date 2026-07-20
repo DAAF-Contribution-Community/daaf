@@ -1471,78 +1471,14 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 backend.assert_request_counts(responses=1, oauth=0)
         self.assertEqual(provider_scratch_residue(), before)
 
-    def test_disconnect_during_rotating_oauth_refresh_persists_new_token(self) -> None:
-        before = provider_scratch_residue()
-        scenario = full_response_scenario()
-        with MockResponsesServer(scenario) as backend:
-            backend.delay_oauth_response = True
-            with RealShim(backend, "chatgpt") as shim:
-                shim.expire_auth_access_token()
-                client_errors: list[BaseException] = []
-
-                def disconnecting_client() -> None:
-                    try:
-                        raw_disconnect_messages(
-                            shim,
-                            close_after_event=backend.oauth_request_received,
-                            timeout=4.0,
-                        )
-                    except BaseException as error:
-                        client_errors.append(error)
-
-                client = threading.Thread(
-                    target=disconnecting_client,
-                    name="provider-shim-oauth-disconnect-client",
-                    daemon=True,
-                )
-                client.start()
-                self.assertTrue(
-                    backend.oauth_request_received.wait(4.0),
-                    "ROTATING_OAUTH_REQUEST_NOT_RECEIVED",
-                )
-                client.join(timeout=2.0)
-                self.assertFalse(client.is_alive(), "ROTATING_OAUTH_CLIENT_DID_NOT_DISCONNECT")
-                self.assertEqual(client_errors, [])
-                backend.oauth_response_release.set()
-                self.assertTrue(
-                    backend.oauth_response_sent.wait(2.0),
-                    "ROTATING_OAUTH_RESPONSE_NOT_SENT_AFTER_DISCONNECT",
-                )
-
-                persisted = False
-                persisted_deadline = time.monotonic() + 3.0
-                while time.monotonic() < persisted_deadline:
-                    auth = json.loads(shim.auth_path.read_text(encoding="utf-8"))
-                    tokens = auth.get("tokens") or {}
-                    if (
-                        tokens.get("access_token") == backend.rotated_access_token
-                        and tokens.get("refresh_token") == FAKE_REFRESH_TOKEN + "_ROTATED"
-                    ):
-                        persisted = True
-                        break
-                    time.sleep(0.02)
-                self.assertTrue(persisted, "ROTATING_OAUTH_TOKEN_PAIR_NOT_PERSISTED")
-                self.assertEqual(len(backend.oauth_requests), 1)
-                self.assertTrue(
-                    backend.oauth_requests[0].body.get("refresh_token")
-                    == FAKE_REFRESH_TOKEN,
-                    "ROTATING_OAUTH_SERVER_DID_NOT_CONSUME_ORIGINAL_REFRESH_TOKEN",
-                )
-
-                result = shim.post_messages(stream=True)
-                self.assertEqual(result.status, 200, result.text)
-                lifecycle_report(parse_typed_sse(result.body))
-                self.assertEqual(len(backend.responses_requests), 1)
-                self.assertTrue(
-                    backend.responses_requests[0].headers.get("authorization")
-                    == "Bearer " + backend.rotated_access_token,
-                    "NEXT_REQUEST_DID_NOT_USE_ROTATED_ACCESS_TOKEN",
-                )
-                backend.assert_request_counts(responses=1, oauth=1)
-                health = shim.get_health()
-                self.assertEqual(health.status, 200, health.text)
-                shim.assert_offline_contract()
-        self.assertEqual(provider_scratch_residue(), before)
+    # v1.3.0 (A1): test_disconnect_during_rotating_oauth_refresh_persists_new_token
+    # was DELETED here. It pinned the deleted Python OAuth-refresh path — the shim
+    # POSTing to /oauth/token, atomically persisting the ROTATED refresh/access token
+    # pair into auth.json, and reusing it on the next request. Under the delegation
+    # design (A1-R2) the shim never writes auth.json and never performs an OAuth POST;
+    # codex is the single writer. The disconnect-mid-refresh persistence hazard this
+    # test guarded is structurally gone (no shim-side write to strand). Delegated
+    # refresh is covered in test_v130_auth_delegation.py.
 
     def test_outer_task_cancel_after_stream_enter_closes_context(self) -> None:
         report = outer_cancel_after_stream_enter_report()
