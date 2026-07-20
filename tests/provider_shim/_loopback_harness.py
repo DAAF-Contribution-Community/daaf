@@ -113,6 +113,10 @@ class Scenario:
     attempt_headers: Optional[list[dict[str, str]]] = None
     disconnect_phase: Optional[str] = None
     disconnect_delay: float = 1.8
+    # v1.2.14 (R6): when > 0, the streaming success path pauses this many seconds
+    # just before the terminal event (WITHOUT disconnecting the client) to create a
+    # silent upstream gap the downstream heartbeat must bridge with ping frames.
+    heartbeat_gap_s: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -299,7 +303,18 @@ def _append_tool_item(
     output_index: int,
     call_id: str = "call_fixture_1",
     item_id: str = "fc_fixture_1",
+    *,
+    arg_delta_fields: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
+    # ``arg_delta_fields`` injects extra top-level fields onto every
+    # function_call_arguments.delta event (keyword-only, default None so every
+    # existing caller's fixture is byte-identical). It exists for the v1.2.14 R1
+    # `obfuscation` tolerance fixture: the live Codex wire carries an
+    # `obfuscation` field on arguments.delta that the shim must accept silently
+    # (no unknown_events increment, no stream failure) while still translating
+    # the tool call. Modeling it as a superset parameter keeps the ~dozens of
+    # existing _append_tool_item callers undisturbed.
+    extra = dict(arg_delta_fields or {})
     arguments = '{"file_path":"/daaf/README.md"}'
     builder.add(
         "response.output_item.added",
@@ -317,12 +332,14 @@ def _append_tool_item(
         item_id=item_id,
         output_index=output_index,
         delta='{"file_path":"/daaf/',
+        **extra,
     )
     builder.add(
         "response.function_call_arguments.delta",
         item_id=item_id,
         output_index=output_index,
         delta='README.md"}',
+        **extra,
     )
     # LIVE-WIRE SHAPE (2026-07-16 shim.log evidence): the Codex backend omits
     # `name` on arguments.done — the shim resolves it from output_item.added.
@@ -607,6 +624,30 @@ def full_response_scenario(*, reject_nonstream: bool = False) -> Scenario:
     )
 
 
+def heartbeat_text_scenario(name: str = "heartbeat", *, gap_s: float = 0.6) -> Scenario:
+    """A single text turn whose upstream terminal is delayed by a silent gap.
+
+    v1.2.14 (R6): the shim emits message_start and the text block promptly, then the
+    upstream falls silent for ``gap_s`` before the terminal arrives (no disconnect).
+    The downstream heartbeat must bridge that gap with Anthropic ``ping`` frames and
+    the turn must still complete as a clean success.
+    """
+
+    builder = _EventBuilder()
+    builder.add(
+        "response.created", response={"id": "resp_heartbeat", "status": "in_progress"}
+    )
+    output = [_append_text_item(builder, 0, text="Held-open answer.")]
+    _finish_response(builder, "resp_heartbeat", output)
+    scenario = Scenario(
+        name=name,
+        stream_events=builder.events,
+        nonstream_response=_nonstream_response("resp_heartbeat_nonstream", output),
+    )
+    scenario.heartbeat_gap_s = gap_s
+    return scenario
+
+
 def events_scenario(
     name: str,
     events: list[dict[str, Any]],
@@ -781,6 +822,157 @@ def sequential_two_tools_scenario() -> Scenario:
         name="sequential-two-tools",
         stream_events=builder.events,
         nonstream_response=_nonstream_response("resp_two_tools_nonstream", output),
+    )
+
+
+def interleaved_two_tools_scenario() -> Scenario:
+    """Two function calls whose wire events INTERLEAVE (v1.2.14 R3).
+
+    The second tool is ``output_item.added`` while the first is still open, and the
+    two tools' ``function_call_arguments.delta`` events alternate. The tolerant R3
+    scheduler defers the second tool, buffers its args, and drains it after the first
+    tool closes — so the downstream Anthropic stream is two NON-OVERLAPPING
+    ``tool_use`` blocks in ADDED order, each with its own input reconstructed
+    correctly (strict emit, tolerant accept). This is the additive companion to
+    ``sequential_two_tools_scenario`` (which never interleaves on the wire).
+    """
+
+    builder = _EventBuilder()
+    builder.add(
+        "response.created",
+        response={"id": "resp_interleaved", "status": "in_progress"},
+    )
+    a_args = '{"file_path":"/daaf/A.md"}'
+    b_args = '{"file_path":"/daaf/B.md"}'
+    # Both tools are ADDED before either finishes: the second opens on the wire while
+    # the first is still open (the shape pre-R3 rejected as a protocol failure).
+    builder.add(
+        "response.output_item.added",
+        output_index=0,
+        item={"type": "function_call", "id": "fc_interleaved_1",
+              "call_id": "call_interleaved_1", "name": "Read", "status": "in_progress"},
+    )
+    builder.add(
+        "response.output_item.added",
+        output_index=1,
+        item={"type": "function_call", "id": "fc_interleaved_2",
+              "call_id": "call_interleaved_2", "name": "Read", "status": "in_progress"},
+    )
+    # Interleaved argument deltas across the two open items.
+    builder.add("response.function_call_arguments.delta",
+                item_id="fc_interleaved_1", output_index=0, delta='{"file_path":"/daaf/A')
+    builder.add("response.function_call_arguments.delta",
+                item_id="fc_interleaved_2", output_index=1, delta='{"file_path":"/daaf/B')
+    builder.add("response.function_call_arguments.delta",
+                item_id="fc_interleaved_1", output_index=0, delta='.md"}')
+    builder.add("response.function_call_arguments.delta",
+                item_id="fc_interleaved_2", output_index=1, delta='.md"}')
+    # Live-wire shape: no `name` on arguments.done (resolved from output_item.added).
+    builder.add("response.function_call_arguments.done",
+                item_id="fc_interleaved_1", output_index=0, arguments=a_args)
+    builder.add("response.function_call_arguments.done",
+                item_id="fc_interleaved_2", output_index=1, arguments=b_args)
+    item_a = {"type": "function_call", "id": "fc_interleaved_1",
+              "call_id": "call_interleaved_1", "name": "Read",
+              "arguments": a_args, "status": "completed"}
+    item_b = {"type": "function_call", "id": "fc_interleaved_2",
+              "call_id": "call_interleaved_2", "name": "Read",
+              "arguments": b_args, "status": "completed"}
+    builder.add("response.output_item.done", output_index=0, item=item_a)
+    builder.add("response.output_item.done", output_index=1, item=item_b)
+    output = [item_a, item_b]
+    _finish_response(builder, "resp_interleaved", output)
+    return Scenario(
+        name="interleaved-two-tools",
+        stream_events=builder.events,
+        nonstream_response=_nonstream_response("resp_interleaved_ns", output),
+    )
+
+
+def unknown_wire_scenario(
+    name: str = "unknown-wire",
+    *,
+    unknown_event_type: Optional[str] = "response.audio.delta",
+    unknown_item_type: Optional[str] = "web_search_call",
+) -> Scenario:
+    """A clean success turn that also carries unmodeled wire shapes (v1.2.14 R1).
+
+    The turn still reduces to a well-formed Anthropic success stream (one text
+    block, message_start..message_stop) so downstream completion is unaffected;
+    the unknown SSE event type and the unmodeled ``output_item.added`` item type
+    are only counted for observability (``unknown_events``/``unknown_items`` on
+    the terminal record). Both injections are optional so a caller can isolate a
+    single dimension. ``response.audio.delta`` and ``web_search_call`` are real
+    Responses-family shapes the shim does not model, chosen so the fixture reads
+    as plausible forward-compat wire rather than a synthetic token.
+    """
+
+    builder = _EventBuilder()
+    builder.add(
+        "response.created",
+        response={"id": f"resp_{name}", "status": "in_progress"},
+    )
+    if unknown_event_type is not None:
+        # A non-load-bearing unknown event: it parses as JSON, reaches the
+        # reducer catch-all, is counted, and emits nothing downstream.
+        builder.add(
+            unknown_event_type,
+            item_id="unknown_evt_item",
+            output_index=0,
+            delta="opaque-non-text-payload",
+        )
+    output = [_append_text_item(builder, 0, text="Clean answer despite unknown wire.")]
+    if unknown_item_type is not None:
+        # An output_item.added whose item.type is outside _KNOWN_ITEM_TYPES: it
+        # carries an id (so replay bookkeeping is exercised), is counted as an
+        # unknown item, and opens no Anthropic block. No matching
+        # output_item.done is emitted — the unmodeled item is not in the terminal
+        # output[], so the success reducer uses only the known text block.
+        builder.add(
+            "response.output_item.added",
+            output_index=1,
+            item={
+                "type": unknown_item_type,
+                "id": "item_unknown_1",
+                "status": "in_progress",
+            },
+        )
+    _finish_response(builder, f"resp_{name}", output)
+    return Scenario(
+        name=name,
+        stream_events=builder.events,
+        nonstream_response=_nonstream_response(f"resp_{name}_ns", output),
+    )
+
+
+def obfuscation_tool_scenario(name: str = "obfuscation-tolerance") -> Scenario:
+    """A tool turn whose arguments.delta events carry the live ``obfuscation`` field.
+
+    ``obfuscation`` is a known-but-unmodeled field (v1.2.14 R1): the shim tolerates
+    it silently — no ``unknown_events`` increment, no stream failure — while the
+    tool call still translates to a clean Anthropic ``tool_use`` block. The value
+    string mimics the live Codex obfuscation blob (opaque, bounded).
+    """
+
+    builder = _EventBuilder()
+    builder.add(
+        "response.created",
+        response={"id": f"resp_{name}", "status": "in_progress"},
+    )
+    output = [
+        _append_tool_item(
+            builder,
+            0,
+            call_id="call_obfuscation_1",
+            item_id="fc_obfuscation_1",
+            arg_delta_fields={"obfuscation": "AB12cd34EF56gh78"},
+        ),
+    ]
+    _finish_response(builder, f"resp_{name}", output)
+    return Scenario(
+        name=name,
+        stream_events=builder.events,
+        nonstream_response=_nonstream_response(f"resp_{name}_ns", output),
     )
 
 
@@ -1229,6 +1421,48 @@ class MockResponsesServer(AbstractContextManager["MockResponsesServer"]):
                 self.wfile.flush()
                 self.close_connection = True
 
+            def _send_chunked_sse_with_gap(
+                self,
+                events: list[dict[str, Any]],
+                append_done: bool,
+                gap_s: float,
+                extra_headers: Optional[dict[str, str]] = None,
+            ) -> None:
+                # v1.2.14 (R6): stream the content frames, then pause `gap_s` seconds
+                # just before the terminal (response.completed/incomplete) event —
+                # WITHOUT disconnecting — so the upstream is silent while the shim's
+                # downstream heartbeat must keep the connection warm with pings. Each
+                # SSE event is one HTTP transfer chunk; the terminal is sent after the
+                # gap and the stream is then closed cleanly.
+                self.send_response(200)
+                self.send_header("Content-Type", "text/event-stream")
+                self.send_header("Transfer-Encoding", "chunked")
+                self.send_header("Connection", "close")
+                for name, value in (extra_headers or {}).items():
+                    self.send_header(name, value)
+                self.end_headers()
+
+                def _write_frame(frame: bytes) -> None:
+                    self.wfile.write(f"{len(frame):X}\r\n".encode("ascii"))
+                    self.wfile.write(frame)
+                    self.wfile.write(b"\r\n")
+                    self.wfile.flush()
+
+                for event in events:
+                    if event.get("type") in ("response.completed", "response.incomplete"):
+                        time.sleep(gap_s)
+                    _write_frame(
+                        (
+                            f"event: {event.get('type', 'message')}\n"
+                            f"data: {json.dumps(event, separators=(',', ':'))}\n\n"
+                        ).encode("utf-8")
+                    )
+                if append_done:
+                    _write_frame(b"data: [DONE]\n\n")
+                self.wfile.write(b"0\r\n\r\n")
+                self.wfile.flush()
+                self.close_connection = True
+
             def _stream_bytes(self, events: list[dict[str, Any]], append_done: bool) -> bytes:
                 frames = []
                 for event in events:
@@ -1419,7 +1653,14 @@ class MockResponsesServer(AbstractContextManager["MockResponsesServer"]):
                                 )
                             if owner.scenario.append_done:
                                 frames.append(b"data: [DONE]\n\n")
-                        if owner.scenario.abrupt_eof:
+                        if owner.scenario.heartbeat_gap_s > 0:
+                            self._send_chunked_sse_with_gap(
+                                owner.scenario.stream_events,
+                                owner.scenario.append_done,
+                                owner.scenario.heartbeat_gap_s,
+                                attempt_headers,
+                            )
+                        elif owner.scenario.abrupt_eof:
                             self._send_abrupt_sse(frames)
                         elif owner.scenario.preserve_raw_stream_chunks:
                             self._send_chunked_sse(frames, attempt_headers)
@@ -1692,9 +1933,11 @@ _LIFECYCLE_ORDER = {
             "transport_failure",
             "upstream_retry",
             "upstream_headers",
+            "quota_snapshot",
             "upstream_first_event",
             "downstream_first_content",
             "backend_error",
+            "request_shape",
             "disconnect",
             "terminal",
             "cleanup",
@@ -1848,6 +2091,8 @@ class RealShim(AbstractContextManager["RealShim"]):
         "SHIM_SANITIZE_TOOLS",
         "SHIM_STRIP_MODEL_PREFIX",
         "SHIM_TEXT_VERBOSITY",
+        # v1.2.14 (R6): downstream heartbeat interval knob for the heartbeat tests.
+        "SHIM_PING_INTERVAL_S",
     })
     _CONTROLLED_CHILD_ENV_NAMES = frozenset({
         "SHIM_PORT",

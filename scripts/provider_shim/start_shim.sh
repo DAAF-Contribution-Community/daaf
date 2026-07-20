@@ -15,7 +15,9 @@
 #   --restart  Under one lifecycle lock: stop any identity-verified generation,
 #              wait for exit, launch one replacement, and require strict readiness.
 #   --stop     Stop the shim and its supervisor.
-#   --status   Print running/stopped + strictly validated health JSON.
+#   --status   Print running/stopped + strictly validated health JSON. A stop
+#              caused by the supervisor giving up after a restart storm is
+#              reported distinctly (with timestamp) via the supervisor.state file.
 #   --help     Print public action usage.
 #
 # Config (env, all optional — defaults mirror the shim's own):
@@ -48,6 +50,11 @@
 #
 # Keepalive: the supervisor restarts the shim after an unexpected exit. A guard
 # stops after 10 crashes in 60 seconds so a broken configuration cannot spin.
+# On every lifecycle transition the supervisor records its phase
+# (running|gave_up_storm|stopped) in logs/supervisor.state next to the PID file,
+# so a storm give-up stays visible to --status instead of looking like a clean
+# stop. The state file carries the PID file's safety conventions (symlink
+# refusal, mode 0600, atomic write, cleanup on stop).
 #
 # Logging: shim stderr and supervisor records share logs/shim.log. Supervisor
 # records are emitted once to stderr; the supervisor's single outer redirect is
@@ -74,6 +81,7 @@ readonly LOG_DIR="${SCRIPT_DIR}/logs"
 readonly LOG_FILE="${LOG_DIR}/shim.log"
 readonly PID_FILE="${LOG_DIR}/shim.pid"
 readonly SUP_PID_FILE="${LOG_DIR}/supervisor.pid"
+readonly SUP_STATE_FILE="${LOG_DIR}/supervisor.state"
 readonly PGID_FILE="${LOG_DIR}/pgid"
 readonly STOP_FILE="${LOG_DIR}/stop.requested"
 readonly LOCK_DIR="${LOG_DIR}/lifecycle.lock"
@@ -141,7 +149,7 @@ ensure_log_dir() {
 
 state_targets_are_safe() {
     local target generation
-    for target in "$LOG_FILE" "$PID_FILE" "$SUP_PID_FILE" "$PGID_FILE" "$STOP_FILE"; do
+    for target in "$LOG_FILE" "$PID_FILE" "$SUP_PID_FILE" "$SUP_STATE_FILE" "$PGID_FILE" "$STOP_FILE"; do
         if ! path_is_safe_file_target "$target"; then
             printf 'ERROR: refusing unsafe shim state target: %s\n' "$target" >&2
             printf '  Fix: remove the symlink/non-regular object and retry.\n' >&2
@@ -200,6 +208,57 @@ acquire_log_write_lock() {
 release_log_write_lock() {
     rm -f "$LOG_WRITE_OWNER_FILE" 2>/dev/null || true
     rmdir "$LOG_WRITE_LOCK_DIR" 2>/dev/null || true
+}
+
+# --- Supervisor state file (lifecycle status honesty) -----------------------
+write_supervisor_state() {
+    # Record the supervisor's lifecycle phase (running|gave_up_storm|stopped) so
+    # --status can distinguish a storm give-up from a clean stop or a never-started
+    # daemon. Written by the supervisor directly — like the PID files it also
+    # writes, and unlike the log records, it is not serialized under the
+    # log-write lock; the lifecycle lock already serializes the manager actions
+    # that would race with it. It carries the same safety conventions as the PID
+    # file: symlink/non-regular refusal before any write, mode 0600, and an atomic
+    # rename so --status never observes a half-written record.
+    #
+    # Shared-workspace note: in shared-workspace deployments two containers may
+    # share /daaf, including this state directory, so supervisor.state — exactly
+    # like the PID file today — is install-shared, not per-container; docs advise
+    # running one active pipeline at a time.
+    local phase="$1" record tmp
+    case "$phase" in
+        running|gave_up_storm|stopped) ;;
+        *) return 1 ;;
+    esac
+    path_is_safe_file_target "$SUP_STATE_FILE" || return 1
+    tmp="${SUP_STATE_FILE}.tmp.${BASHPID:-$$}"
+    path_is_safe_file_target "$tmp" || return 1
+    record="$(printf '%s %s' "$phase" "$(date -u '+%Y-%m-%d %H:%M:%S')")"
+    printf '%s\n' "$record" > "$tmp" || { rm -f "$tmp" 2>/dev/null || true; return 1; }
+    chmod 0600 "$tmp" 2>/dev/null || true
+    # Atomic replace: SUP_STATE_FILE was preflighted as a non-symlink, so mv
+    # cannot be redirected through a planted link.
+    mv "$tmp" "$SUP_STATE_FILE" || { rm -f "$tmp" 2>/dev/null || true; return 1; }
+    return 0
+}
+
+read_supervisor_state() {
+    # Emit "phase<TAB>timestamp" for a valid, non-symlink state file, or fail
+    # quietly. Only the three known phase tokens are honored; anything else (a
+    # truncated or garbage file) is treated as absent so --status falls back to
+    # plain "stopped" rather than trusting an unrecognized record.
+    local line phase rest
+    path_is_safe_file_target "$SUP_STATE_FILE" || return 1
+    [ -f "$SUP_STATE_FILE" ] || return 1
+    line="$(awk 'NR == 1 { print; exit }' "$SUP_STATE_FILE" 2>/dev/null)" || return 1
+    phase="${line%% *}"
+    rest="${line#* }"
+    case "$phase" in
+        running|gave_up_storm|stopped) ;;
+        *) return 1 ;;
+    esac
+    [ "$rest" != "$line" ] || rest=""
+    printf '%s\t%s' "$phase" "$rest"
 }
 
 append_log_record() {
@@ -546,7 +605,7 @@ run_supervisor() {
     printf '%s\n' "$$" > "$SUP_PID_FILE" || exit 1
     chmod 0600 "$SUP_PID_FILE" || exit 1
 
-    local pgid child_pid logger_pid log_pipe window_start crashes rc now
+    local pgid child_pid logger_pid log_pipe window_start crashes rc now gave_up_storm
     pgid="$(ps -o pgid= -p "$$" 2>/dev/null | tr -d ' ')"
     if [ "$pgid" = "$$" ]; then
         printf '%s\n' "$pgid" > "$PGID_FILE" || exit 1
@@ -561,6 +620,7 @@ run_supervisor() {
     rm -f "$STOP_FILE" 2>/dev/null || true
     child_pid=""
     logger_pid=""
+    gave_up_storm=0
     log_pipe="${LOG_DIR}/shim.stream.$$"
     if [ -e "$log_pipe" ] || [ -L "$log_pipe" ]; then
         printf 'ERROR: refusing existing shim log-stream target: %s\n' "$log_pipe" >&2
@@ -578,6 +638,11 @@ run_supervisor() {
             wait "$logger_pid" 2>/dev/null || true
         fi
         rm -f "$log_pipe" "$PID_FILE" "$SUP_PID_FILE" "$PGID_FILE" 2>/dev/null || true
+        # A storm give-up already recorded gave_up_storm and must persist so
+        # --status can report it distinctly; every other exit is a clean stop.
+        if [ "$gave_up_storm" -eq 0 ]; then
+            write_supervisor_state stopped || true
+        fi
         log_line "supervisor exiting" || true
     }
     stop_supervisor_signal() {
@@ -589,6 +654,7 @@ run_supervisor() {
 
     window_start="$(date +%s)"
     crashes=0
+    write_supervisor_state running || true
     log_line "starting shim on port ${SHIM_PORT} backend_mode=${EXPECTED_BACKEND_MODE} version=${EXPECTED_SHIM_VERSION} (keepalive on)"
 
     while true; do
@@ -623,6 +689,10 @@ run_supervisor() {
         crashes=$((crashes + 1))
         log_line "shim exited rc=${rc} (crash ${crashes}/${storm_limit} in ${storm_window}s window)"
         if [ "$crashes" -ge "$storm_limit" ]; then
+            # Record the give-up transition and mark it so cleanup_supervisor
+            # preserves (rather than overwrites) this terminal state for --status.
+            gave_up_storm=1
+            write_supervisor_state gave_up_storm || true
             log_line "RESTART_STORM crashes=${crashes} window_s=${storm_window} action=give_up log=${LOG_FILE}"
             exit 1
         fi
@@ -698,7 +768,7 @@ stop_processes_locked() {
         return 2
     fi
 
-    rm -f "$PID_FILE" "$SUP_PID_FILE" "$PGID_FILE" "$STOP_FILE" 2>/dev/null || return 2
+    rm -f "$PID_FILE" "$SUP_PID_FILE" "$SUP_STATE_FILE" "$PGID_FILE" "$STOP_FILE" 2>/dev/null || return 2
     if [ "$stopped" -eq 1 ]; then
         return 0
     fi
@@ -763,7 +833,7 @@ do_start_locked() {
         return 1
     fi
 
-    rm -f "$PID_FILE" "$SUP_PID_FILE" "$PGID_FILE" "$STOP_FILE" 2>/dev/null || true
+    rm -f "$PID_FILE" "$SUP_PID_FILE" "$SUP_STATE_FILE" "$PGID_FILE" "$STOP_FILE" 2>/dev/null || true
     rotate_log_if_needed || return 1
 
     if command -v setsid >/dev/null 2>&1 && [ "${DAAF_SHIM_TEST_NO_SETSID:-0}" != "1" ]; then
@@ -1045,12 +1115,47 @@ do_status() {
         emit_readiness_failure
         return 1
     fi
+    # A supervisor that exhausted its restart-storm budget exits and removes its
+    # PID files, leaving a state otherwise indistinguishable from "never started".
+    # The persisted supervisor.state record makes that terminal condition visible.
+    local state_line state_phase state_ts
+    state_line="$(read_supervisor_state)" || state_line=""
+    if [ -n "$state_line" ]; then
+        state_phase="${state_line%%$'\t'*}"
+        state_ts="${state_line#*$'\t'}"
+        if [ "$state_phase" = "gave_up_storm" ]; then
+            printf 'STATUS: stopped (supervisor gave up after restart storm at %s)\n' \
+                "${state_ts:-unknown}"
+            return 0
+        fi
+    fi
     printf 'STATUS: stopped\n'
     return 0
 }
 
 do_auto() {
-    if [ "${DAAF_PROVIDER_SHIM:-}" != "openai" ]; then
+    local requested="${DAAF_PROVIDER_SHIM:-}" observed
+    # Empty/unset stays a silent no-op: the shim is opt-in and must not announce
+    # itself on every boot where it was never requested.
+    if [ -z "$requested" ]; then
+        exit 0
+    fi
+    # An unrecognized non-empty value is almost always a config footgun (e.g. a
+    # user who set the switch to a lane label like "chatgpt"). Make it visible
+    # instead of silently not starting, but still exit 0 so a misconfiguration
+    # never blocks container startup. ensure_log_dir runs first so the MANAGER
+    # record is never lost to the early return the old code took before it.
+    if [ "$requested" != "openai" ]; then
+        # Sanitize the observed value to a bounded single-line token before it
+        # reaches the grep-stable log format or the terminal: it is user-supplied
+        # and could otherwise inject a newline/space and forge a second record.
+        observed="$(printf '%s' "$requested" | tr -c 'A-Za-z0-9._-' '_' | cut -c1-64)"
+        if ensure_log_dir; then
+            manager_log_line "SHIM_AUTO_SKIPPED status=skipped reason=unrecognized_provider_shim observed=${observed} accepted=openai continuing_boot=y" || \
+                printf 'SHIM_AUTO_SKIPPED status=skipped reason=unrecognized_provider_shim observed=%s accepted=openai continuing_boot=y\n' "$observed" >&2
+        fi
+        printf 'WARNING: DAAF_PROVIDER_SHIM=%s is not a recognized shim auto-start value; the only accepted value is "openai". Leaving the shim stopped and continuing boot.\n' \
+            "$observed" >&2
         exit 0
     fi
     ensure_log_dir || {

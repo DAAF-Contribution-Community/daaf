@@ -742,3 +742,111 @@ start_external_fixture() {
     wait_for_dead "$new_pp"
     [ "$(grep -c 'process-group isolation unavailable' "$LOG_FILE")" -eq 2 ]
 }
+
+# --- D3: lifecycle status honesty (supervisor.state) ------------------------
+
+@test "status reports a restart-storm give-up distinctly from a clean stop" {
+    # Drive the supervisor directly (as at boot via --auto), so no foreground
+    # manager is watching to run its post-failure cleanup. This is the scenario
+    # the give-up marker exists for: a detached supervisor that exhausts its
+    # storm budget long after launch, with nobody to observe the failure live.
+    export FAKE_SHIM_BEHAVIOR=crash
+    export FAKE_SHIM_CRASH_CODE=42
+    export DAAF_SHIM_TEST_STORM_LIMIT=3
+    export DAAF_SHIM_TEST_RESTART_DELAY=0.05
+    mkdir -p "$LOG_DIR"
+    setsid "$MANAGER" __supervise >> "$LOG_FILE" 2>&1 &
+    DIRECT_SUPERVISOR_PID=$!
+    export DIRECT_SUPERVISOR_PID
+    wait_for_log_text "RESTART_STORM"
+    wait_for_log_text "supervisor exiting"
+    wait_for_dead "$DIRECT_SUPERVISOR_PID"
+    DIRECT_SUPERVISOR_PID=""
+
+    # The give-up record persists after the supervisor exits and removes its pids.
+    run cat "${LOG_DIR}/supervisor.state"
+    assert_output --partial "gave_up_storm"
+    [ ! -s "${LOG_DIR}/supervisor.pid" ]
+
+    run "$MANAGER" --status
+    assert_success
+    assert_output --partial "STATUS: stopped (supervisor gave up after restart storm at "
+}
+
+@test "supervisor.state records running across start and restart and is cleaned on stop" {
+    run "$MANAGER" --start
+    assert_manager_success
+    wait_for_file "${LOG_DIR}/supervisor.state"
+    run cat "${LOG_DIR}/supervisor.state"
+    assert_output --partial "running"
+    [ "$(stat -c '%a' "${LOG_DIR}/supervisor.state")" = "600" ]
+
+    run "$MANAGER" --restart
+    assert_manager_success
+    wait_for_ready
+    [ -f "${LOG_DIR}/supervisor.state" ]
+    run cat "${LOG_DIR}/supervisor.state"
+    assert_output --partial "running"
+
+    run "$MANAGER" --stop
+    assert_success
+    [ ! -e "${LOG_DIR}/supervisor.state" ]
+
+    # A clean stop is indistinguishable from never-started: plain "stopped".
+    run "$MANAGER" --status
+    assert_success
+    assert_output "STATUS: stopped"
+}
+
+@test "unsafe symlink supervisor.state target is rejected by lifecycle preflight" {
+    mkdir -p "$LOG_DIR"
+    local referent="${SHIM_TEST_ROOT}/state-referent"
+    printf 'state-referent-unchanged\n' > "$referent"
+    ln -s "$referent" "${LOG_DIR}/supervisor.state"
+    run "$MANAGER" __rotate_logs
+    assert_failure
+    assert_output --partial "refusing unsafe shim state target"
+    grep -Fx 'state-referent-unchanged' "$referent"
+    [ -L "${LOG_DIR}/supervisor.state" ]
+}
+
+# --- D4: --auto config footgun ----------------------------------------------
+
+@test "auto warns and stays boot-safe on an unrecognized DAAF_PROVIDER_SHIM value" {
+    export DAAF_PROVIDER_SHIM=chatgpt
+    run "$MANAGER" --auto
+    assert_success
+    assert_output --partial "WARNING: DAAF_PROVIDER_SHIM=chatgpt is not a recognized"
+    assert_output --partial 'accepted value is "openai"'
+    assert_output --partial "SHIM_AUTO_SKIPPED status=skipped reason=unrecognized_provider_shim observed=chatgpt accepted=openai"
+    [ "$(grep -c 'MANAGER SHIM_AUTO_SKIPPED status=skipped' "$LOG_FILE")" -eq 1 ]
+    [ "$(count_exact_arg_processes "${SHIM_TEST_ROOT}/anthropic_openai_shim.py")" -eq 0 ]
+    [ ! -e "${LOG_DIR}/supervisor.pid" ]
+}
+
+@test "auto sanitizes an injecting DAAF_PROVIDER_SHIM value into a single log token" {
+    export DAAF_PROVIDER_SHIM='chatgpt bogus'
+    run "$MANAGER" --auto
+    assert_success
+    # The space is neutralized so the value cannot forge a second log field.
+    assert_output --partial "observed=chatgpt_bogus accepted=openai"
+    [ "$(grep -c 'MANAGER SHIM_AUTO_SKIPPED status=skipped' "$LOG_FILE")" -eq 1 ]
+}
+
+@test "auto is a silent no-op when DAAF_PROVIDER_SHIM is unset" {
+    unset DAAF_PROVIDER_SHIM
+    run "$MANAGER" --auto
+    assert_success
+    assert_output ""
+    [ ! -e "$LOG_FILE" ]
+    [ "$(count_exact_arg_processes "${SHIM_TEST_ROOT}/anthropic_openai_shim.py")" -eq 0 ]
+}
+
+@test "auto is a silent no-op when DAAF_PROVIDER_SHIM is empty" {
+    export DAAF_PROVIDER_SHIM=""
+    run "$MANAGER" --auto
+    assert_success
+    assert_output ""
+    [ ! -e "$LOG_FILE" ]
+    [ "$(count_exact_arg_processes "${SHIM_TEST_ROOT}/anthropic_openai_shim.py")" -eq 0 ]
+}

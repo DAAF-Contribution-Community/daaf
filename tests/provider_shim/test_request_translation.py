@@ -520,6 +520,93 @@ class ProviderShimRequestTranslationTests(unittest.TestCase):
                             )
                             self.assertEqual(len(backend.responses_requests), 0)
 
+    def test_trailing_thinking_history_replay_is_accepted_and_consumed(self) -> None:
+        # F2 / Quality-review adjudication 2 (the R3 trailing shape): an assistant
+        # HISTORY turn whose content is [text, tool_use, thinking] — thinking NOT first —
+        # followed by a tool_result user turn. Two invariants:
+        #   (1) the shim ACCEPTS it (no 400): the validation gauntlet checks only role
+        #       placement of tool_use/tool_result and text-block typing, so a trailing
+        #       thinking block passes.
+        #   (2) the translator CONSUMES the thinking block position-independently
+        #       (shim L2646-2650) — neither its prose nor its signature appears in the
+        #       outbound Responses `input`. Continuity rides the encrypted reasoning
+        #       cache, never replayed Anthropic thinking text (Claude Code replays
+        #       history to the SHIM, the terminating API, so the documented thinking-
+        #       first replay invariant never engages).
+        thinking_sentinel = "TRAILING_THINKING_PROSE_SENTINEL_5J"
+        signature_sentinel = "TRAILING_THINKING_SIGNATURE_SENTINEL_6K"
+        messages = [
+            {"role": "user", "content": "kick off the tool"},
+            {
+                "role": "assistant",
+                "content": [
+                    {"type": "text", "text": "Let me read the file."},
+                    {
+                        "type": "tool_use",
+                        "id": "call_trailing_think",
+                        "name": "Read",
+                        "input": {"file_path": "/daaf/README.md"},
+                    },
+                    {
+                        "type": "thinking",
+                        "thinking": thinking_sentinel,
+                        "signature": signature_sentinel,
+                    },
+                ],
+            },
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": "call_trailing_think",
+                        "content": "file contents",
+                    }
+                ],
+            },
+        ]
+        for mode in ("openai", "chatgpt"):
+            with self.subTest(mode=mode):
+                scenario = full_response_scenario()
+                with MockResponsesServer(scenario) as backend:
+                    with RealShim(backend, mode) as shim:
+                        result = shim.post_messages(stream=False, messages=messages)
+                        self.assertEqual(result.status, 200, result.text)
+                        request_input = backend.responses_requests[0].body["input"]
+                        serialized = json.dumps(request_input)
+                        # (2a) trailing thinking prose + signature are consumed, never
+                        # forwarded to the backend.
+                        self.assertNotIn(thinking_sentinel, serialized)
+                        self.assertNotIn(signature_sentinel, serialized)
+                        # (2b) no reasoning item is synthesized from replayed thinking
+                        # (nothing was cached for this call_id in a fresh process).
+                        self.assertFalse(
+                            any(
+                                isinstance(item, dict)
+                                and item.get("type") == "reasoning"
+                                for item in request_input
+                            )
+                        )
+                        # The surrounding turn still translated: the assistant text and
+                        # the function_call / function_call_output round-trip survive.
+                        self.assertTrue(
+                            any(
+                                isinstance(item, dict)
+                                and item.get("type") == "function_call"
+                                for item in request_input
+                            )
+                        )
+                        self.assertTrue(
+                            any(
+                                isinstance(item, dict)
+                                and item.get("type") == "function_call_output"
+                                for item in request_input
+                            )
+                        )
+                        logs = shim.captured_stderr()
+                        self.assertNotIn(thinking_sentinel, logs)
+                        self.assertNotIn(signature_sentinel, logs)
+
     def test_request_ids_and_transport_timeout_families_are_bounded(self) -> None:
         scenario = full_response_scenario()
         scenario.stream_headers = {"x-request-id": "provider-request-17"}

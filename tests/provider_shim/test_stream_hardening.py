@@ -21,6 +21,7 @@ from ._loopback_harness import (
     TypedSSEFrame,
     abrupt_eof_scenario,
     backend_status_scenario,
+    block_starts,
     assert_lifecycle_log_contract,
     controlled_asgi_probe,
     delayed_body_disconnect_scenario,
@@ -47,6 +48,8 @@ from ._loopback_harness import (
     structured_error_scenario,
     terminal_contract_scenario,
     terminal_failure_scenario,
+    text_delta_values,
+    thinking_delta_values,
 )
 
 
@@ -241,19 +244,53 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                     marker=f"INBAND_ERROR_{prefix.upper()}",
                 )
 
-    def test_reasoning_while_text_open_fails_cleanly(self) -> None:
-        self._assert_terminal_error(
-            scenario=reasoning_while_text_open_scenario(),
-            expected_kind="text",
-            marker="REASONING_WHILE_TEXT_OPEN_TERMINAL_ERROR",
-        )
+    def test_reasoning_while_text_open_defers_to_trailing_thinking(self) -> None:
+        # v1.2.14 (R3, adjudicated flip): out-of-order reasoning that arrives while a
+        # text block is open is TOLERATED — buffered and emitted as a TRAILING thinking
+        # block after the text block closes (ratified downstream shape), not failed as
+        # the pre-R3 strict contract required.
+        scenario = reasoning_while_text_open_scenario()
+        with MockResponsesServer(scenario) as backend:
+            with RealShim(backend, "chatgpt") as shim:
+                result = shim.post_messages(stream=True)
+                self.assertEqual(result.status, 200, result.text)
+                frames = parse_typed_sse(result.body)
+                report = lifecycle_report(frames)
+                self.assertEqual(
+                    [kind for _index, kind in report.starts],
+                    ["text", "thinking"],
+                    "text block, then a trailing thinking block",
+                )
+                self.assertEqual(report.open_at_end, set())
+                self.assertEqual(text_delta_values(frames), ["Partial text."])
+                self.assertEqual(
+                    thinking_delta_values(frames), ["Out-of-order thinking."]
+                )
+                shim.assert_offline_contract()
+                backend.assert_request_counts(responses=1, oauth=0)
 
-    def test_reasoning_while_tool_open_fails_cleanly(self) -> None:
-        self._assert_terminal_error(
-            scenario=reasoning_while_tool_open_scenario(),
-            expected_kind="tool_use",
-            marker="REASONING_WHILE_TOOL_OPEN_TERMINAL_ERROR",
-        )
+    def test_reasoning_while_tool_open_defers_to_trailing_thinking(self) -> None:
+        # v1.2.14 (R3, adjudicated flip): out-of-order reasoning while a tool block is
+        # open is tolerated — the tool block closes first, then the buffered reasoning
+        # is emitted as a TRAILING thinking block (ratified shape).
+        scenario = reasoning_while_tool_open_scenario()
+        with MockResponsesServer(scenario) as backend:
+            with RealShim(backend, "chatgpt") as shim:
+                result = shim.post_messages(stream=True, tools=[READ_TOOL])
+                self.assertEqual(result.status, 200, result.text)
+                frames = parse_typed_sse(result.body)
+                report = lifecycle_report(frames)
+                self.assertEqual(
+                    [kind for _index, kind in report.starts],
+                    ["tool_use", "thinking"],
+                    "tool_use block, then a trailing thinking block",
+                )
+                self.assertEqual(report.open_at_end, set())
+                self.assertEqual(
+                    thinking_delta_values(frames), ["Out-of-order thinking."]
+                )
+                shim.assert_offline_contract()
+                backend.assert_request_counts(responses=1, oauth=0)
 
     def test_missing_terminal_response_fails_cleanly(self) -> None:
         self._assert_terminal_error(
@@ -708,7 +745,12 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
             marker="MALFORMED_TOOL_OUTPUT_DONE_NONSTREAM",
         )
 
-    def test_sse_complete_data_line_without_blank_boundary_fails(self) -> None:
+    def test_sse_complete_data_line_without_blank_boundary_flushes(self) -> None:
+        # v1.2.14 (R5): a fully-formed terminal event whose trailing blank-line
+        # boundary a proxy trimmed is now flushed at EOF and finalizes SUCCESS. Before
+        # R5 this raised a framing failure (B7 — a completed response reported as an
+        # error). The payload is complete and parses cleanly, so downstream strict
+        # validation still applies; only the missing blank line is tolerated.
         terminal = {
             "type": "response.completed",
             "response": {
@@ -722,11 +764,17 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
             "unterminated-complete-data-line",
             [f"data: {json.dumps(terminal, separators=(',', ':'))}\n".encode()],
         )
-        self._assert_stream_failure(
-            scenario=scenario,
-            marker="SSE_COMPLETE_LINE_WITHOUT_BLANK_BOUNDARY",
-            expected_kinds=[],
-        )
+        with MockResponsesServer(scenario) as backend:
+            with RealShim(backend, "chatgpt") as shim:
+                result = shim.post_messages(stream=True)
+                self.assertEqual(
+                    result.status,
+                    200,
+                    f"SSE_COMPLETE_LINE_WITHOUT_BLANK_BOUNDARY {result.text}",
+                )
+                lifecycle_report(parse_typed_sse(result.body))
+                shim.assert_offline_contract()
+                backend.assert_request_counts(responses=1, oauth=0)
 
     def test_sse_partial_line_at_eof_fails(self) -> None:
         scenario = raw_sse_scenario(
@@ -1199,7 +1247,10 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
         ]
         self.assertEqual(len(tool_starts), 1)
 
-    def test_text_while_tool_open_is_protocol_failure(self) -> None:
+    def test_text_while_tool_open_defers_to_trailing_text(self) -> None:
+        # v1.2.14 (R3, adjudicated flip): text emitted while a tool block is open is
+        # TOLERATED — buffered and emitted as a TRAILING text block after the tool
+        # closes (ratified shape), not failed as the pre-R3 strict contract required.
         base = full_response_scenario()
         events = json.loads(json.dumps(base.stream_events))
         index = next(
@@ -1216,13 +1267,31 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 "delta": "overlapping text",
             },
         )
-        self._assert_stream_failure(
-            scenario=events_scenario("text-while-tool-open", events),
-            marker="TEXT_WHILE_TOOL_OPEN",
-            expected_kinds=["thinking", "text", "tool_use"],
-        )
+        scenario = events_scenario("text-while-tool-open", events)
+        with MockResponsesServer(scenario) as backend:
+            with RealShim(backend, "chatgpt") as shim:
+                result = shim.post_messages(stream=True, tools=[READ_TOOL])
+                self.assertEqual(result.status, 200, result.text)
+                frames = parse_typed_sse(result.body)
+                report = lifecycle_report(frames)
+                self.assertEqual(
+                    [kind for _index, kind in report.starts],
+                    ["thinking", "text", "tool_use", "text"],
+                    "leading thinking+text, the tool, then a trailing text block",
+                )
+                self.assertEqual(report.open_at_end, set())
+                # Leading streamed text, then the deferred out-of-order text trailing.
+                self.assertEqual(
+                    text_delta_values(frames),
+                    ["Aggregated answer.", "overlapping text"],
+                )
+                shim.assert_offline_contract()
+                backend.assert_request_counts(responses=1, oauth=0)
 
-    def test_second_tool_while_first_open_is_protocol_failure(self) -> None:
+    def test_second_tool_while_first_open_defers_to_sequential_blocks(self) -> None:
+        # v1.2.14 (R3, adjudicated flip): a second tool added while the first is open
+        # is TOLERATED — DEFERRED and drained after the first closes, yielding two
+        # NON-OVERLAPPING tool_use blocks in added order (ratified shape), not failed.
         base = full_response_scenario()
         events = json.loads(json.dumps(base.stream_events))
         index = next(
@@ -1244,11 +1313,32 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 },
             },
         )
-        self._assert_stream_failure(
-            scenario=events_scenario("second-tool-while-first-open", events),
-            marker="SECOND_TOOL_WHILE_FIRST_OPEN",
-            expected_kinds=["thinking", "text", "tool_use"],
-        )
+        scenario = events_scenario("second-tool-while-first-open", events)
+        with MockResponsesServer(scenario) as backend:
+            with RealShim(backend, "chatgpt") as shim:
+                result = shim.post_messages(stream=True, tools=[READ_TOOL])
+                self.assertEqual(result.status, 200, result.text)
+                frames = parse_typed_sse(result.body)
+                report = lifecycle_report(frames)
+                self.assertEqual(
+                    [kind for _index, kind in report.starts],
+                    ["thinking", "text", "tool_use", "tool_use"],
+                    "leading thinking+text, then two non-overlapping tool blocks",
+                )
+                self.assertEqual(report.open_at_end, set())
+                # Both tool_use blocks carry the correct call ids in added order; the
+                # deferred second tool supplied no arguments, so its input stays empty.
+                tool_starts = [
+                    start
+                    for start in block_starts(frames)
+                    if (start.get("content_block") or {}).get("type") == "tool_use"
+                ]
+                self.assertEqual(
+                    [start["content_block"]["id"] for start in tool_starts],
+                    ["call_full_fixture", "call_overlap_second"],
+                )
+                shim.assert_offline_contract()
+                backend.assert_request_counts(responses=1, oauth=0)
 
     def test_normal_sequential_two_tools_remains_supported(self) -> None:
         scenario = sequential_two_tools_scenario()
@@ -1611,7 +1701,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 startup_records = [
                     line
                     for line in shim.captured_stderr().splitlines()
-                    if "req_id=- phase=process shim v1.2.13 starting" in line
+                    if "req_id=- phase=process shim v1.2.14 starting" in line
                 ]
                 self.assertEqual(len(startup_records), 1, startup_records)
                 self.assertIn(
