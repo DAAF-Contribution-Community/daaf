@@ -388,6 +388,8 @@ The two files start out identical, but they can drift apart as soon as either si
 
 **The fix is simple but easy to forget:** after DAAF edits the in-container Dockerfile (or docker-compose.yml), you need to copy that updated file back to the host build directory *before* running the container rebuild. The step-by-step process below walks through this carefully, and you should follow it exactly the first time.
 
+**A second host/container boundary to know about:** *bind mounts* — linking a folder on your computer directly into the container — are the other place where the host and container filesystems meet. If you want DAAF to read a large local dataset in place rather than copying it into the Docker volume, see [Linking Host Folders into the Container (Bind Mounts)](01_installation_and_quickstart.md#linking-host-folders-into-the-container-bind-mounts) in the installation guide.
+
 > **One structural note before you edit:** DAAF's image defines a custom `ENTRYPOINT` (`daaf-entrypoint.sh`, written inline by a heredoc block near the end of the Dockerfile — there is no separate source file). It runs optional startup tasks -- such as auto-launching the OpenAI provider shim when `DAAF_PROVIDER_SHIM` is configured (see the [installation guide's Option F](01_installation_and_quickstart.md#option-f-openai-api-directly-daaf-provider-shim)) -- and then hands control to the normal `CMD ["bash"]`. Adding packages or changing `CMD` is safe, but adding a second `ENTRYPOINT` line would silently replace this wrapper and disable those startup behaviors. The heredoc's comment block explains exactly what it does.
 
 #### Step-by-Step Process

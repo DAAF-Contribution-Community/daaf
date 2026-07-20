@@ -50,6 +50,18 @@ services:
       # recreation, and image rebuilds. Only `docker compose down -v` or an
       # explicit `docker volume rm` deletes it.
       - daaf-claude-config:/home/appuser/.claude
+      # OPTIONAL host-folder bind mount (commented out by default). Uncomment the
+      # four lines below and set `source` to an ABSOLUTE path on your host to
+      # expose a host folder to the container at /host_data. Read-only
+      # (`read_only: true`) is strongly recommended so the container cannot alter
+      # your host files. IMPORTANT: a bind mount is OUTSIDE the DAAF backup/audit
+      # boundary -- files under /host_data are NOT captured by backup_daaf.sh and
+      # are not part of the reproducibility trail. See the Installation Guide,
+      # section "Linking Host Folders into the Container (Bind Mounts)".
+      # - type: bind
+      #   source: /absolute/path/on/host
+      #   target: /host_data
+      #   read_only: true
     environment:
       # Relocate ~/.claude.json and credentials into the persisted .claude
       # directory (above) so they survive rebuilds too. Set in compose (not the
@@ -84,4 +96,14 @@ services:
 
 volumes:
   daaf-data:                    # Docker manages this storage
+    # OPTIONAL shared-workspace mode (commented out by default). Uncomment BOTH
+    # lines below to point this install at an EXISTING data volume shared with
+    # another install, instead of letting Docker manage a per-project volume. Set
+    # `name:` to the full volume name and set the matching DAAF_DATA_VOLUME_NAME in
+    # environment_settings.txt so the host tools (backup_daaf.sh / restore) resolve
+    # the same volume. The named volume must ALREADY EXIST -- Docker will not
+    # create an `external: true` volume. See the Installation Guide, section
+    # "Sharing One Research Workspace Across Two Installs (Advanced)".
+    # external: true
+    # name: daaf_daaf-data
   daaf-claude-config:           # Docker manages this storage (Claude Code state)

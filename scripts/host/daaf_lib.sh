@@ -12,7 +12,10 @@
 # Functions provided:
 #   load_daaf_settings -- export the whitelisted DAAF_* vars (four multi-instance
 #                         keys + the DAAF_DEV build flag + the DAAF_BRANCH updater
-#                         ref) from environment_settings.txt
+#                         ref + the DAAF_DATA_VOLUME_NAME data-volume override) from
+#                         environment_settings.txt
+#   resolve_data_volume_name -- echo the resolved data-volume name, honoring the
+#                         optional DAAF_DATA_VOLUME_NAME full-name override
 #   upsert_settings_key -- insert/update a single KEY=value line in a settings
 #                         file (write counterpart to load_daaf_settings)
 #   setup_colors    -- populate color variables (respects NO_COLOR + non-TTY)
@@ -30,16 +33,20 @@ fi
 _DAAF_LIB_LOADED=1
 
 # --- Multi-Instance / Build-Flag Settings Loader ---
-# Bridge environment_settings.txt -> host shell environment for the six
+# Bridge environment_settings.txt -> host shell environment for the seven
 # whitelisted DAAF_* variables: the four multi-instance keys
 # (DAAF_PROJECT_NAME, DAAF_PORT_MARIMO, DAAF_PORT_LOGVIEWER, DAAF_PORT_VSCODE)
 # plus DAAF_DEV, the opt-in BUILD flag consumed as
 # `--build-arg DAAF_DEV=${DAAF_DEV:-0}` in docker-compose.yml, plus DAAF_BRANCH,
 # the updater's target ref (read env-only today; whitelisting it here lets a
-# value persisted in environment_settings.txt reach update_daaf.sh). The build
-# flag and branch ref ride the same bridge for the same reason: env_file feeds
-# the container env only, while compose interpolation (and build args) resolve
-# from the host shell env.
+# value persisted in environment_settings.txt reach update_daaf.sh), plus
+# DAAF_DATA_VOLUME_NAME, the optional full-name override for the research-workspace
+# data volume (consumed by resolve_data_volume_name below and by the backup /
+# restore tools; whitelisting it lets a value persisted in the settings file reach
+# those tools and compose interpolation of the external `daaf-data` volume). The
+# build flag, branch ref, and data-volume override ride the same bridge for the
+# same reason: env_file feeds the container env only, while compose interpolation
+# (and build args) resolve from the host shell env.
 #
 # WHY THIS EXISTS: environment_settings.txt is wired into docker-compose.yml as a
 # service-level `env_file`, which feeds the CONTAINER environment only. Docker
@@ -54,7 +61,7 @@ _DAAF_LIB_LOADED=1
 # PARSING SAFETY: we deliberately do NOT `source`/`.` the file. It holds API keys
 # with arbitrary characters (quotes, $, backticks, spaces) that would be
 # interpreted by the shell -- a correctness and safety hazard. We extract only the
-# six known DAAF_* keys via a line-oriented grep/sed/case scan, stripping CR for
+# seven known DAAF_* keys via a line-oriented grep/sed/case scan, stripping CR for
 # CRLF tolerance (matches how the rest of the codebase handles container output).
 #
 # PRECEDENCE: an already-set shell environment variable WINS over the file value.
@@ -80,9 +87,9 @@ load_daaf_settings() {
         case "${line}" in
             ''|'#'*) continue ;;
         esac
-        # Only lines of the form KEY=VALUE for our six known keys.
+        # Only lines of the form KEY=VALUE for our seven known keys.
         case "${line}" in
-            DAAF_PROJECT_NAME=*|DAAF_PORT_MARIMO=*|DAAF_PORT_LOGVIEWER=*|DAAF_PORT_VSCODE=*|DAAF_DEV=*|DAAF_BRANCH=*)
+            DAAF_PROJECT_NAME=*|DAAF_PORT_MARIMO=*|DAAF_PORT_LOGVIEWER=*|DAAF_PORT_VSCODE=*|DAAF_DEV=*|DAAF_BRANCH=*|DAAF_DATA_VOLUME_NAME=*)
                 key="${line%%=*}"
                 val="${line#*=}"
                 # Strip one layer of surrounding quotes if present (tolerant of
@@ -102,6 +109,34 @@ load_daaf_settings() {
     done < "${settings_file}"
 
     return 0
+}
+
+# --- Data Volume Name Resolver ---
+# Echo the Docker volume name that holds the DAAF research workspace (/daaf),
+# honoring the optional DAAF_DATA_VOLUME_NAME full-name override.
+#
+# PRECEDENCE (printed to stdout, captured by callers via `$(resolve_data_volume_name)`):
+#   1. DAAF_DATA_VOLUME_NAME, when set non-empty -> used VERBATIM as the full
+#      volume name (no project prefix is added). This is the escape hatch for
+#      pointing two installs at ONE shared workspace volume; it must match the
+#      `name:` under the external `daaf-data` block in docker-compose.yml.
+#   2. Otherwise "${DAAF_PROJECT_NAME:-daaf}_daaf-data" -- the Compose-prefixed
+#      default. So an UNSET DAAF_DATA_VOLUME_NAME is byte-for-byte identical to the
+#      historical hardcoded derivation, and a second instance with
+#      DAAF_PROJECT_NAME=daaf2 still owns "daaf2_daaf-data".
+# A set-but-EMPTY DAAF_DATA_VOLUME_NAME falls through to the derived default (the
+# `:-` test treats empty and unset alike), matching how load_daaf_settings adopts
+# a whitelisted key only when it is non-empty.
+#
+# The claude-config volume is deliberately NOT resolved here: per-install auth
+# isolation is by design, so it keeps its project-prefixed default everywhere and
+# has no analogous override.
+#
+# Callers that need a value persisted in environment_settings.txt to win should
+# `load_daaf_settings` first (which bridges DAAF_DATA_VOLUME_NAME into the shell
+# env), then call this. Bash 3.2 safe: pure parameter expansion, no arrays.
+resolve_data_volume_name() {
+    printf '%s\n' "${DAAF_DATA_VOLUME_NAME:-${DAAF_PROJECT_NAME:-daaf}_daaf-data}"
 }
 
 # --- Color Setup ---

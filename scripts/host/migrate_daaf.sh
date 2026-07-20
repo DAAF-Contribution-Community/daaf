@@ -54,6 +54,12 @@ fi
 REPO="DAAF-Contribution-Community/daaf"
 BRANCH="${DAAF_BRANCH:-main}"
 RAW_BASE="https://raw.githubusercontent.com/${REPO}/${BRANCH}"
+# Migration deliberately targets the DEFAULT data volume "daaf_daaf-data" and does
+# NOT honor DAAF_PROJECT_NAME or the DAAF_DATA_VOLUME_NAME override. This tool is a
+# one-time bootstrap for LEGACY installs that predate custom project names and the
+# data-volume override -- those installs always used the single hardcoded default
+# name, so deriving or overriding it here would only risk missing the volume the
+# migration is meant to find.
 VOLUME_NAME="daaf_daaf-data"
 CONTAINER_NAME=""
 BACKUP_COMPLETED=false

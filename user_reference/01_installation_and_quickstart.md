@@ -371,9 +371,64 @@ You can also use the Docker Desktop GUI to explore the DAAF docker volume by nav
 - **Getting a large research folder out wholesale:** rather than zipping folder by folder, take a full **backup** — from the DAAF Control Panel choose **option 7, "Create Backup"** — which copies *everything* (all your research data) out to your host machine in one step. See [**Backing Up Your Work**](#backing-up-your-work) below.
 - **Bringing files in:** drag and drop them from your computer straight onto the editor's file explorer sidebar — this works for single files and whole folders (see *Getting files INTO the container* above).
 
+### Linking Host Folders into the Container (Bind Mounts)
+
+The drag-and-drop upload described above is the right tool for most files. But if you have a **large local dataset** — tens of gigabytes of parquet, a folder of survey extracts, a directory you refresh regularly from elsewhere — copying it through the browser editor is slow and duplicates the data into the Docker volume. For those cases you can **bind-mount** a folder on your computer straight into the container, so DAAF reads your files in place. Reach for this when the data is bulky or lives naturally on your host; stick with the [drag-and-drop upload](#viewing-and-editing-files) for the occasional single file or small dataset.
+
+DAAF ships this capability **off by default** as a commented-out block in `docker-compose.yml` that you opt into. The recommended pattern is a **read-only** mount of one host folder onto `/host_data` inside the container.
+
+**Set it up (edit in the container, then rebuild):**
+
+1. **Open the container's copy of `docker-compose.yml`.** Edit it *inside* the container — either ask Claude to edit `/daaf/docker-compose.yml`, or open it in the [browser-based code editor](#viewing-and-editing-files). This matters: `rebuild_daaf.sh` copies the container's compose file *out* to your host and rebuilds from it, so a host-side edit is silently overwritten on the next rebuild. Editing the container copy is the only change that survives.
+2. **Uncomment the bind-mount block** in the `daaf-docker` service's `volumes:` section and set `source:` to the folder on your computer you want to expose. Leave `read_only: true` in place:
+   ```yaml
+   # In the daaf-docker service, under volumes:
+   - type: bind
+     source: /Users/yourname/datasets   # <-- your host folder (Windows: C:\Users\yourname\datasets)
+     target: /host_data
+     read_only: true
+   ```
+3. **Rebuild so the host picks up the change:**
+
+   **macOS / Linux (Terminal):**
+   ```bash
+   cd daaf-docker
+   bash rebuild_daaf.sh
+   ```
+
+   **Windows (PowerShell):**
+   ```powershell
+   cd daaf-docker
+   .\rebuild_daaf.ps1
+   ```
+
+Your files now appear at `/host_data` inside the container, and DAAF can read them directly.
+
+**Why the long (`type: bind`) syntax?** DAAF uses the verbose form on purpose: if you mistype `source:`, Docker **fails loudly** with a clear error. The short one-line form (`./typo:/host_data`) instead **silently creates an empty directory** at the bad path — so a typo would leave DAAF staring at an empty `/host_data` with no hint why.
+
+**Permissions: will your files be readable?** The container runs as a non-root user, `appuser` (UID/GID **1000**), and — unlike the two managed Docker volumes — a bind mount is **not** ownership-corrected by DAAF's `daaf-init` step. Whether `appuser` can read your files therefore depends on your platform:
+
+| Your platform | Read-only mount | What's happening |
+|---------------|-----------------|------------------|
+| **macOS (Docker Desktop)** | Generally just works | Docker Desktop translates/fakes ownership, so your files appear owned by the container user regardless of your Mac UID (behavior is version-dependent; rare file-sharing bugs exist) |
+| **Windows — `/mnt/c/...` (WSL2)** or a path shared in Docker Desktop | Just works | Windows permissions are translated through the Docker Desktop file-sharing layer |
+| **Native Linux** | Works **if** UID 1000 can read the files | Real UID/GID pass-through — no translation layer. Only the numbers matter, not usernames |
+| **Windows — WSL filesystem path** (`/home/<you>` inside a distro) | Works **if** UID 1000 can read the files | Native Linux rules apply inside the distro — the same case as native Linux |
+
+On the two "if" rows, diagnose with `ls -ln` (the `-n` shows **numeric** owner IDs): if your files aren't owned by `1000` and aren't world-readable, `appuser` can't read them. The simplest fix for a read-only data folder is to make it group- or world-readable on the host.
+
+**Advanced: write-enabled mounts.** Keep `read_only: true` unless you have a specific reason to let the container write back to your host folder — a read-only mount is safer and keeps DAAF from ever modifying your source data. If you *do* need writes (drop `read_only: true`), permissions get stricter:
+
+- **Native Linux / WSL-filesystem paths:** the container writes files as UID 1000, so align ownership — either `chown` the host folder to UID 1000, or add yourself to a shared group and make the folder group-writable. **Don't reach for `chmod 777`** — it works, but it exposes the folder to every user on the machine; group alignment is the right tool.
+- **macOS and Windows `/mnt/c` paths:** writes "just work" through the Docker Desktop translation layer, with files landing under your host user on the other side.
+
+> **Reproducibility trade-off — a deliberate decision to make.** Bind-mounted files live **outside** DAAF's archive and hash boundary: they are not captured by `backup_daaf.sh` and not part of the project's audit trail. That means reproducing the analysis later depends on *you* guaranteeing the same files are present at the same mount point — DAAF can't freeze them for you. The recommended mitigation is to have your **fetch scripts copy** the inputs you actually use from `/host_data` into the project's own `data/raw/` directory (with the normal raw-data naming conventions). The bind mount then serves as a fast on-ramp, while the archived working copy inside the project keeps the audit trail complete.
+
+> **Boundary.** `/host_data` is *not* covered by `backup_daaf.sh`, so never treat it as a place to store DAAF outputs — write results into your project as usual. And never point a bind mount at the container's own system paths (`/daaf`, `/daaf/.claude`, and the like): mounting over DAAF's own files would shadow them and break the install.
+
 ### Backing Up Your Work
 
-Since your research files live inside the Docker volume, it'll be extremely important to regularly back up your work separately from the Docker volume. The easiest way is from the **DAAF Control Panel** — run `bash daaf.sh` (`.\daaf.ps1` on Windows) in your `daaf-docker` folder and choose **option 7, "Create Backup."** If you'd rather call the backup script directly, that works too:
+Since your research files live inside the Docker volume, it'll be extremely important to regularly back up your work separately from the Docker volume. The easiest way is from the **DAAF Control Panel** — run `bash daaf.sh` (`.\daaf.ps1` on Windows) in your `daaf-docker` folder and choose **option 7, "Create Backup."** (If you've set up a [shared research workspace](#sharing-one-research-workspace-across-two-installs-advanced) across two installs, note the caveat in that section: run backups from **one** install only.) If you'd rather call the backup script directly, that works too:
 
 **macOS / Linux (Terminal):**
 
@@ -736,7 +791,7 @@ If the installer detects a previous attempt that didn't complete successfully (e
 
 ### Running multiple DAAF instances
 
-Most people run a single DAAF installation and never need this section. But if you want **two (or more) independent DAAF installs on the same machine** — for example, one folder for work and another for personal projects, each with its own Docker volume and research history — you can, with a small amount of configuration.
+Most people run a single DAAF installation and never need this section. But if you want **two (or more) independent DAAF installs on the same machine** — for example, one folder for work and another for personal projects, each with its own Docker volume and research history — you can, with a small amount of configuration. (If instead you want two installs to **share** one research workspace — say, to work the same projects from both a Claude and a ChatGPT install — see [Sharing One Research Workspace Across Two Installs](#sharing-one-research-workspace-across-two-installs-advanced) below; that pattern is the deliberate exception to the per-instance volumes described here.)
 
 Two things must be unique per install so they don't collide:
 
@@ -780,6 +835,72 @@ The DAAF launcher and control-panel scripts (`run_daaf`, `daaf`, the `view_*` br
 > **If you run bare `docker compose` commands directly** (outside the provided scripts) in a multi-instance folder, you must also create a `.env` file in that `daaf-docker` folder containing the same `DAAF_PROJECT_NAME` / `DAAF_PORT_*` lines. Docker Compose reads `.env` (and your shell environment) when resolving the `${...}` placeholders in `docker-compose.yml`, but it does **not** read `environment_settings.txt` for that purpose — that file only feeds the container's own environment. The DAAF scripts bridge this gap for you; bare `docker compose` does not.
 
 > **Changing these on an existing install** requires the same `docker compose down` + relaunch: the project name and published ports are baked in at container-creation time, so a running container will not adopt new values until it is recreated. Your data volume moves with the project name — renaming `DAAF_PROJECT_NAME` on an existing install points it at a *different* (empty) volume, so choose the name once, up front.
+
+### Sharing One Research Workspace Across Two Installs (Advanced)
+
+The section above sets up **independent** instances — each with its own research volume and history. This one does the opposite: it points **two** DAAF installs at a **single, shared research workspace**, so both can work the same `research/` folder, projects, and audit trail.
+
+The motivating scenario is running **two different AI providers against one body of work** — for example, one install authenticated to your **Claude (Anthropic) subscription** and a second install on your **ChatGPT subscription** via the [provider shim](#option-f-alternate-lane-chatgpt-subscription-codex-backend). Each install keeps its **own** configuration and authentication volume (`<project>_daaf-claude-config`), so their logins never collide — only the *research data* volume is shared.
+
+DAAF supports this with a setting, **`DAAF_DATA_VOLUME_NAME`**, plus a second commented opt-in block in `docker-compose.yml`. `DAAF_DATA_VOLUME_NAME` overrides the full Docker volume name for the shared research data (leave it unset and each install gets its own default `<project>_daaf-data`, exactly as in the section above). Its value must match the `name:` in the compose file's external-volume block. The steps below convert two installs to share one volume.
+
+**Step 1 — Install the first instance normally.** Follow the standard [installation](#installing-daaf), let it run, and confirm your research data is where you expect. Its data volume is `<project1>_daaf-data` (where `<project1>` is its `DAAF_PROJECT_NAME`, default `daaf` — so the default volume is `daaf_daaf-data`).
+
+**Step 2 — Convert the first install to an external (shared) volume.** Edit the **container's** copy of `docker-compose.yml` (via Claude or the [browser editor](#viewing-and-editing-files) — remember `rebuild_daaf.sh` copies the container's copy out over the host one, so the container-side edit is the one that survives). Uncomment the external-volume block under the top-level `daaf-data:` key and set `name:` to the volume's **existing** full name:
+
+   ```yaml
+   volumes:
+     daaf-data:
+       external: true
+       name: daaf_daaf-data      # <-- your existing <project1>_daaf-data volume
+   ```
+
+   Then set the matching line in the **host** `environment_settings.txt`:
+
+   ```
+   DAAF_DATA_VOLUME_NAME=daaf_daaf-data
+   ```
+
+   Rebuild (`bash rebuild_daaf.sh` / `.\rebuild_daaf.ps1`). Nothing about this install's behavior changes — it still uses the same data — but the volume is now declared `external`, which has one important consequence: **`docker compose down -v` will no longer delete it.** Compose never removes external volumes, so your shared research data is now immune to an accidental `-v` wipe. (Deliberate deletion still works via `docker volume rm` — see the caveats.)
+
+**Step 3 — Install the second instance, pre-seeded to the shared volume.** Install into a **different folder**, giving it a distinct project name, distinct ports, **its own provider/auth settings** (e.g. the [ChatGPT-subscription shim lane](#option-f-alternate-lane-chatgpt-subscription-codex-backend)), and `DAAF_DATA_VOLUME_NAME` **exported at install time** so it lands in the new install's `environment_settings.txt` from the start (the value stays inert until Step 4 activates the shared volume):
+
+   **macOS / Linux (Terminal):**
+
+   ```bash
+   export DAAF_PROJECT_NAME=daaf-gpt
+   export DAAF_PORT_MARIMO=2818
+   export DAAF_PORT_LOGVIEWER=2819
+   export DAAF_PORT_VSCODE=2820
+   export DAAF_DATA_VOLUME_NAME=daaf_daaf-data     # same shared volume as install #1
+   curl -fsSL https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scripts/host/install.sh | bash
+   ```
+
+   **Windows (PowerShell):**
+
+   ```powershell
+   $env:DAAF_PROJECT_NAME = "daaf-gpt"
+   $env:DAAF_PORT_MARIMO = "2818"
+   $env:DAAF_PORT_LOGVIEWER = "2819"
+   $env:DAAF_PORT_VSCODE = "2820"
+   $env:DAAF_DATA_VOLUME_NAME = "daaf_daaf-data"
+   irm https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scripts/host/install.ps1 | iex
+   ```
+
+**Step 4 — Convert the second install identically.** The installer still had to create the container from a compose file referencing this instance's *own* `<project2>_daaf-data`, so a transitional volume (`daaf-gpt_daaf-data` in the example) now exists and holds only the fresh repo clone. Convert this install exactly as in Step 2 — uncomment the external block in its container compose, set `name: daaf_daaf-data`, confirm `DAAF_DATA_VOLUME_NAME=daaf_daaf-data` is in its `environment_settings.txt`, and rebuild. Once it comes up on the shared volume, delete the now-orphaned transitional volume:
+
+   ```bash
+   docker volume ls | grep daaf-gpt_daaf-data      # confirm it exists and is unused
+   docker volume rm daaf-gpt_daaf-data             # remove the orphaned transitional volume
+   ```
+
+**Step 5 — Steady state.** Both installs now mount the **same** `daaf_daaf-data` volume, which means they share **one** `/daaf` — including a single canonical `docker-compose.yml` and the whole framework tree. Because there is only one copy of those files, a rebuild of *either* install reads and writes the *same* compose file, so the two installs stay consistent by construction; you never maintain two diverging compose files. Each install still keeps its own separate `*_daaf-claude-config` volume, so its provider login and session history remain its own.
+
+> **Caveats — read before you rely on this.**
+> - **One active pipeline per research project at a time.** Docker provides *no* write coordination between two containers on one volume. Running two analysis pipelines against the same project simultaneously can corrupt files. Coordinate yourself: let one install work a given project at a time. (Working *different* projects in the shared workspace concurrently is fine.)
+> - **Back up from one install only.** Both installs see the same data, so a single `backup_daaf.sh` run from *either* one captures everything — running backups from both just duplicates work and can race.
+> - **Deleting the shared volume is deliberate.** Because it's external, `docker compose down -v` won't touch it. To actually delete it you must bring **both** installs down (no container may reference it) and run `docker volume rm daaf_daaf-data` explicitly.
+> - **The second install's initial clone is discarded.** The transitional `<project2>_daaf-data` volume created at Step 3 held only a fresh repo clone; converting to the shared volume in Step 4 abandons it (you delete it), and install #2 adopts install #1's existing `/daaf`. That's expected.
 
 ### Building with the developer test toolchain (DAAF_DEV)
 
@@ -1080,9 +1201,39 @@ A healthy ChatGPT lane logs `backend_mode=chatgpt` at startup and then healthy `
 | `codex: command not found` | The image predates the universal Codex installation or was built from a stale Dockerfile. Update DAAF and rebuild (`rebuild_daaf.sh` / `rebuild_daaf.ps1`) so the current Dockerfile is used; `DAAF_DEV=1` is not required. |
 | Shim log tells you to re-login | The OAuth token refresh failed permanently — run `codex login --device-auth` again inside the container. |
 
-**Running more than one container.** Each DAAF container does its **own** `codex login`, which creates an **independent refresh-token grant** — there is no credential collision between containers. They share only your ChatGPT **usage pool** (the 5-hour and weekly caps), so running two in parallel simply draws that pool down faster. This is the clean way to run parallel DAAF instances. (The subtler case is running several codex-based tools — the `codex` CLI, `codex-plugin-cc`, the shim — inside a *single* container off the *same* login: that can rarely trigger a refresh-token-rotation race. To isolate them, give each its own `codex login` under a separate `CODEX_HOME`; `CODEX_HOME` and the `SHIM_OAUTH_TOKEN_URL` / `SHIM_OAUTH_CLIENT_ID` override variables in `environment_settings_example.txt` are the hooks for that. None of this is needed for a normal single-tool setup.)
+**Running more than one container.** Each DAAF container does its **own** `codex login`, which creates an **independent refresh-token grant** — there is no credential collision between containers. They share only your ChatGPT **usage pool** (the 5-hour and weekly caps), so running two in parallel simply draws that pool down faster. This is the clean way to run parallel DAAF instances. (The subtler case is running several codex-based tools — the `codex` CLI, the [Codex plugin](#using-the-codex-plugin-for-claude-code), the shim — inside a *single* container off the *same* login: that can rarely trigger a refresh-token-rotation race. To isolate them, give each its own `codex login` under a separate `CODEX_HOME`; `CODEX_HOME` and the `SHIM_OAUTH_TOKEN_URL` / `SHIM_OAUTH_CLIENT_ID` override variables in `environment_settings_example.txt` are the hooks for that. None of this is needed for a normal single-tool setup.)
 
 See the [technical FAQ entry on the ChatGPT subscription lane](07_faq_technical.md#q-can-i-use-my-chatgpt-subscription-instead-of-an-openai-api-key-option-f).
+
+#### Using the Codex Plugin for Claude Code
+
+Separate from the provider-shim lanes above, OpenAI ships an official plugin — **`codex-plugin-cc`** — that lets a Claude Code session **delegate a task to Codex** for a second opinion: a code review, an adversarial review, a rescue attempt. It adds slash commands like `/codex:review` and `/codex:adversarial-review`. Think of it as a way to get an *independent* model's eyes on a piece of work, complementary to DAAF's own review agents — not a provider route for running DAAF itself.
+
+**What's already in the image.** The plugin shells out to the local `codex` CLI, and DAAF bakes that in (a pinned static binary — the same one the ChatGPT lane uses). Node.js is present and version-sufficient too, guaranteed by the Dockerfile as of this change. `npm` is absent (Ubuntu packages it separately from `nodejs`), but that shouldn't matter here: `npm` is only needed by `/codex:setup`'s "install Codex for you" branch, and Codex is already installed — so that branch never runs. (If any plugin step ever *does* complain about a missing `npm`, that absence is the likely cause — the codex CLI itself needs no npm.)
+
+**Install and authenticate (inside a Claude Code session):**
+
+```
+/plugin marketplace add openai/codex-plugin-cc
+/plugin install codex@openai-codex
+/reload-plugins
+/codex:setup
+```
+
+Then authenticate Codex with the same headless device-code flow the ChatGPT lane uses:
+
+```bash
+codex login --device-auth
+```
+
+As with the shim's ChatGPT lane, this requires **device-code login enabled in your ChatGPT security settings** (off by default — enable it first, or the login fails immediately).
+
+**Which setups are safe.** There are two race-free ways to use the plugin:
+
+1. **Two containers (the natural pairing with the ChatGPT lane).** Run the plugin in a container on the **Anthropic route** (Claude subscription/API), and keep the ChatGPT-subscription **shim lane** in a *separate* container. Because each container has its own config volume, each has its own Codex login — the plugin and the shim never touch the same token. This pairs naturally with the [shared-workspace setup above](#sharing-one-research-workspace-across-two-installs-advanced).
+2. **One Anthropic-route container plus the plugin.** If the container is *not* running the ChatGPT shim lane, nothing else is consuming the Codex login, so the plugin is the sole consumer and there is no contention.
+
+> **Do not add the Codex plugin to a container that is already using the ChatGPT-subscription shim lane.** In that lane the shim is *itself* a consumer of your Codex login, continuously reading and refreshing the OAuth token in `auth.json`. Adding a second consumer of the same login — the plugin, or for that matter running the `codex` CLI by hand — means two processes can rotate the refresh token at nearly the same moment, and a lost rotation **permanently invalidates the login** (a `refresh_token_reused` lockout that forces a fresh `codex login`). If you genuinely must run both in one container, give each tool its own **separate `CODEX_HOME`** with its own **separate `codex login --device-auth`**, so they never share a token file. Either way, remember that all logins on one ChatGPT account draw from the **same usage pool** (the 5-hour and weekly caps), so adding a second Codex consumer spends that pool faster.
 
 #### Known limitations of GPT sessions (both lanes)
 

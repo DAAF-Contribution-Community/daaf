@@ -66,6 +66,18 @@ Another application is using one of DAAF's ports. Either close the conflicting a
 
 This usually happens when Docker Desktop's file sharing permissions haven't been configured. Open Docker Desktop → Settings → Resources → File Sharing, and ensure the relevant directories are shared.
 
+### Bind-mounted host folder problems (empty, unreadable, or lost after rebuild)
+
+If you've linked a host folder into the container as a [bind mount](01_installation_and_quickstart.md#linking-host-folders-into-the-container-bind-mounts) and something isn't right, it's almost always one of these three:
+
+| Symptom | Cause and fix |
+|---------|---------------|
+| `/host_data` is **empty** inside the container | The `source:` path is mistyped, or (on Docker Desktop) the folder isn't shared. Check the path, and on macOS/Windows confirm the folder sits under a directory shared in Docker Desktop → Settings → Resources → File Sharing. |
+| **Permission denied** reading the files | UID mismatch on native Linux or a WSL-filesystem path — the container user is UID 1000 and `daaf-init` does **not** fix bind-mount ownership. Run `ls -ln` on the host folder; if it isn't owned by `1000` or world-readable, make it group- or world-readable. |
+| Your compose edit is **lost after a rebuild** | You edited the *host* copy of `docker-compose.yml`. `rebuild_daaf.sh` copies the container's copy out over the host one, so edit `/daaf/docker-compose.yml` *inside* the container (via Claude or the browser editor), then rebuild. |
+
+See [Linking Host Folders into the Container (Bind Mounts)](01_installation_and_quickstart.md#linking-host-folders-into-the-container-bind-mounts) for the full setup.
+
 ### Claude Code asks me to log in again
 
 This should be uncommon. Claude Code's login, session history, and plugins live in a dedicated Docker volume (`daaf-claude-config`), so they persist across container restarts, `docker compose down`, and even image rebuilds -- a routine restart or update should not sign you out. If you *do* get prompted after a normal restart, just run `/login` once for an Anthropic Max/Pro subscription (or paste your API key); it will persist from then on. Note that `docker compose down -v` (with the `-v` flag) or manually deleting the volume erases this state, so avoid `-v` unless you mean to wipe everything. If you'd rather never log in interactively, set your credentials in the `environment_settings.txt` file in the `daaf-docker/` folder -- it is read on every container start.
@@ -348,6 +360,12 @@ The shim reads the OAuth token from `auth.json` and **refreshes it automatically
 **Optional reading — under the hood.** Both lanes handle tools and message content the same way; only the login method and endpoint differ. If the backend ever sends something malformed or out of order, the shim fails loudly rather than quietly passing along corrupted output. A few small formatting and logging details differ between the two lanes, but nothing you need to configure or worry about.
 
 See the full walkthrough in [**01. Installation & Quick Start — Option F, alternate lane: ChatGPT subscription**](01_installation_and_quickstart.md#option-f-alternate-lane-chatgpt-subscription-codex-backend).
+
+### Q: Can I run Claude and ChatGPT DAAF installs at the same time, on the same research workspace?
+
+Yes. You can run **two DAAF installs in parallel** — one on your Claude (Anthropic) subscription and one on your ChatGPT subscription via the provider shim — and point them at a **single shared research workspace** so both work the same projects and audit trail. Each install keeps its own separate configuration/authentication volume, so the two logins never collide; only the research-data volume is shared. The full step-by-step is in [**01. Installation — Sharing One Research Workspace Across Two Installs**](01_installation_and_quickstart.md#sharing-one-research-workspace-across-two-installs-advanced).
+
+**One concurrency caveat:** Docker gives you no write coordination between the two containers, so don't run analysis pipelines against the *same research project* from both installs at once — let one install work a given project at a time. (Working different projects in the shared workspace concurrently is fine.)
 
 ### Q: A scripted `claude -p` call on a GPT model returned an empty result
 

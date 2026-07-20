@@ -2356,6 +2356,39 @@ if [ "${SKIP_MULTI_INSTANCE:-}" != "1" ]; then
         check "Default instance data volume still present (${VOLUME_NAME})" "1"
     fi
 
+    # --- 8c-override. DAAF_DATA_VOLUME_NAME resolver sub-scenario ---
+    # The checks above prove DAAF_PROJECT_NAME reprojects the DERIVED data-volume
+    # name for a second instance. This sub-scenario exercises the ORTHOGONAL escape
+    # hatch on the same machinery: an explicit DAAF_DATA_VOLUME_NAME must be honored
+    # VERBATIM (no project prefix) by resolve_data_volume_name in daaf_lib.sh -- the
+    # single resolver every host tool (backup/restore, compose interpolation) calls
+    # to name the data volume, which is what lets two installs point at ONE shared
+    # workspace volume. It is docker-free (the resolver is pure parameter expansion),
+    # so we assert it directly in the same check() style as the volume checks above
+    # rather than standing up a third instance. The override is exported ONLY inside
+    # the command-substitution subshell (mirroring the 8b bring-up's scoped export),
+    # so the harness env is never mutated and later phases are unaffected -- the
+    # paired "parent env unchanged" check below evidences that non-leak.
+    DVN_OVERRIDE="daaf_shared_workspace_daaf-data"
+    DVN_PARENT_BEFORE="${DAAF_DATA_VOLUME_NAME:-}"
+    DVN_RESOLVED="$(
+        export DAAF_DATA_VOLUME_NAME="${DVN_OVERRIDE}"
+        source "${LOCAL_REPO_ROOT}/scripts/host/daaf_lib.sh"
+        resolve_data_volume_name
+    )" || DVN_RESOLVED="<resolver-invocation-failed>"
+    if [ "${DVN_RESOLVED}" = "${DVN_OVERRIDE}" ]; then
+        check "Host resolver honors DAAF_DATA_VOLUME_NAME verbatim (${DVN_OVERRIDE})" "0"
+    else
+        check "Host resolver honors DAAF_DATA_VOLUME_NAME verbatim (got: '${DVN_RESOLVED}')" "1"
+    fi
+    # The override was scoped to the subshell above, so the harness's own
+    # DAAF_DATA_VOLUME_NAME is unchanged -- proving the export did not leak forward.
+    if [ "${DAAF_DATA_VOLUME_NAME:-}" = "${DVN_PARENT_BEFORE}" ]; then
+        check "DAAF_DATA_VOLUME_NAME override stayed scoped to the sub-scenario (parent env unchanged)" "0"
+    else
+        check "DAAF_DATA_VOLUME_NAME override stayed scoped to the sub-scenario (leaked: '${DAAF_DATA_VOLUME_NAME:-}')" "1"
+    fi
+
     echo ""
 
     # --- 8d. Tear the second instance down completely ---

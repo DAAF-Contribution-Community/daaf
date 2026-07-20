@@ -131,6 +131,17 @@
 #DAAF_PORT_LOGVIEWER=3719
 #DAAF_PORT_VSCODE=3720
 #
+# Data-volume override (advanced; shared workspace across installs). Normally the
+# research workspace lives in a Docker volume named "<project>_daaf-data" (the
+# default install uses "daaf_daaf-data"). Set DAAF_DATA_VOLUME_NAME to a full,
+# verbatim volume name to point THIS install at a specific data volume -- the
+# escape hatch for sharing ONE research workspace across two installs. When set it
+# must match the "name:" under the external "daaf-data" block you uncomment in
+# docker-compose.yml. Leave unset for normal installs (the project-prefixed
+# default derivation is used, byte-for-byte identical to the historical behavior).
+# --- To activate, remove the leading '#': ---
+#DAAF_DATA_VOLUME_NAME=daaf_daaf-data
+#
 # The developer build flag DAAF_DEV also belongs to this install-time family, but
 # it is documented alongside the other developer options in section [6].
 #

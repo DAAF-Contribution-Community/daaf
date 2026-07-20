@@ -11,7 +11,10 @@
 # helpers the Bash Control Panel relies on, adapted to PowerShell idiom:
 #   Import-DaafSettingsFile -- export the whitelisted DAAF_* vars (four multi-instance
 #                              keys + the DAAF_DEV build flag + the DAAF_BRANCH
-#                              updater ref) from environment_settings.txt
+#                              updater ref + the DAAF_DATA_VOLUME_NAME data-volume
+#                              override) from environment_settings.txt
+#   Resolve-DaafDataVolumeName -- echo the resolved data-volume name, honoring the
+#                              optional DAAF_DATA_VOLUME_NAME full-name override
 #   Set-DaafSettingsKey -- insert/update a single KEY=value line in a settings
 #                              file (write counterpart to Import-DaafSettingsFile)
 #   Read-DaafLine       -- read one input line, working under redirected stdin (CI)
@@ -67,13 +70,16 @@ if (Get-Command Read-DaafLine -ErrorAction SilentlyContinue) { return }
 
 # --- Multi-Instance / Build-Flag Settings Loader ---
 # PowerShell counterpart to daaf_lib.sh load_daaf_settings. Bridges
-# environment_settings.txt -> process environment for the six whitelisted
+# environment_settings.txt -> process environment for the seven whitelisted
 # DAAF_* variables: the four multi-instance keys so `docker compose`
 # interpolation in docker-compose.yml (${DAAF_PROJECT_NAME:-daaf},
 # ${DAAF_PORT_*:-27xx}) resolves them, plus DAAF_DEV, the opt-in
 # BUILD flag consumed as `--build-arg DAAF_DEV=${DAAF_DEV:-0}`, plus DAAF_BRANCH,
 # the updater's target ref (read env-only today; whitelisting it here lets a
-# value persisted in environment_settings.txt reach update_daaf.ps1).
+# value persisted in environment_settings.txt reach update_daaf.ps1), plus
+# DAAF_DATA_VOLUME_NAME, the optional full-name override for the research-workspace
+# data volume (consumed by Resolve-DaafDataVolumeName below and by the backup /
+# restore tools).
 #
 # WHY: environment_settings.txt is a compose `env_file` (feeds the CONTAINER
 # env only). Compose *interpolation* (and build args) read the host/process
@@ -82,7 +88,7 @@ if (Get-Command Read-DaafLine -ErrorAction SilentlyContinue) { return }
 # ports / build flag to take effect.
 #
 # PARSING SAFETY: we never dot-source the file (it holds API keys with arbitrary
-# characters). We extract only the six known DAAF_* keys via a line scan and a
+# characters). We extract only the seven known DAAF_* keys via a line scan and a
 # regex on KEY=VALUE. CR is stripped for CRLF tolerance.
 #
 # PRECEDENCE: an already-set process env var WINS over the file value (matches
@@ -97,7 +103,7 @@ function Import-DaafSettingsFile {
         return
     }
 
-    $known = @('DAAF_PROJECT_NAME', 'DAAF_PORT_MARIMO', 'DAAF_PORT_LOGVIEWER', 'DAAF_PORT_VSCODE', 'DAAF_DEV', 'DAAF_BRANCH')
+    $known = @('DAAF_PROJECT_NAME', 'DAAF_PORT_MARIMO', 'DAAF_PORT_LOGVIEWER', 'DAAF_PORT_VSCODE', 'DAAF_DEV', 'DAAF_BRANCH', 'DAAF_DATA_VOLUME_NAME')
 
     # -Encoding UTF8 pins BOM-less UTF-8 decoding: a bare Get-Content on Windows
     # PowerShell 5.1 misreads BOM-less UTF-8 as legacy ANSI (cp1252), corrupting
@@ -130,6 +136,44 @@ function Import-DaafSettingsFile {
             Set-Item -Path ("Env:" + $key) -Value $val
         }
     }
+}
+
+# --- Data Volume Name Resolver ---
+# PowerShell counterpart to daaf_lib.sh resolve_data_volume_name. Return the
+# Docker volume name that holds the DAAF research workspace (/daaf), honoring the
+# optional DAAF_DATA_VOLUME_NAME full-name override.
+#
+# PRECEDENCE (returned to the caller):
+#   1. DAAF_DATA_VOLUME_NAME, when set non-empty -> used VERBATIM as the full
+#      volume name (no project prefix is added). This is the escape hatch for
+#      pointing two installs at ONE shared workspace volume; it must match the
+#      `name:` under the external `daaf-data` block in docker-compose.yml.
+#   2. Otherwise "<project>_daaf-data", where <project> is DAAF_PROJECT_NAME or
+#      the "daaf" default -- the Compose-prefixed default. So an UNSET
+#      DAAF_DATA_VOLUME_NAME is byte-for-byte identical to the historical
+#      hardcoded derivation, and a second instance with DAAF_PROJECT_NAME=daaf2
+#      still owns "daaf2_daaf-data".
+# A set-but-EMPTY DAAF_DATA_VOLUME_NAME falls through to the derived default: an
+# empty string is falsy in PowerShell, so the `if ($env:DAAF_DATA_VOLUME_NAME)`
+# guard treats empty and unset alike, matching the bash `:-` semantics and the
+# way Import-DaafSettingsFile adopts a whitelisted key only when it is non-empty.
+#
+# The claude-config volume is deliberately NOT resolved here: per-install auth
+# isolation is by design, so it keeps its project-prefixed default everywhere and
+# has no analogous override.
+#
+# Callers that need a value persisted in environment_settings.txt to win should
+# Import-DaafSettingsFile first (which bridges DAAF_DATA_VOLUME_NAME into the
+# process env), then call this. Strict-clean: only $env: reads and string ops.
+function Resolve-DaafDataVolumeName {
+    [CmdletBinding()]
+    param()
+    if ($env:DAAF_DATA_VOLUME_NAME) {
+        return $env:DAAF_DATA_VOLUME_NAME
+    }
+    $projectName = "daaf"
+    if ($env:DAAF_PROJECT_NAME) { $projectName = $env:DAAF_PROJECT_NAME }
+    return "${projectName}_daaf-data"
 }
 
 # --- Line Input ---

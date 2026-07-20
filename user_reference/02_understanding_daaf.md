@@ -930,6 +930,8 @@ You don't need to know what's in most of these directories -- the two that matte
 
 **Key insight for new users:** Everything you need to review, share, or reproduce is inside the project folder. You can copy the entire folder to a colleague and they'd have everything needed to understand and verify the analysis. That's the whole point of reproducibility.
 
+**Where does this all physically live?** The whole repository sits inside a Docker-managed storage volume on your machine — not in a regular folder you can browse directly. That's why the viewing tools below exist, and it's also why backups matter. If you want to go deeper — how the volumes work, how to link a folder from your computer into the container for data access, or how to share one research workspace between two DAAF installs — the [Installation Guide's file-management section](01_installation_and_quickstart.md#how-to-manage-daaf-project-files-and-output) covers all of it.
+
 ### Browsing and Viewing Your Work
 
 DAAF includes convenience scripts for viewing your files, notebooks, and session logs outside of the terminal. The simplest way to reach all of them is the **DAAF Control Panel** — run `bash daaf.sh` (macOS/Linux) or `.\daaf.ps1` (Windows) from your `daaf-docker` folder and pick the matching menu option (**2)** Browse Files, **4)** View Marimo Notebooks, **5)** View Quarto Notebooks, **3)** View Session Logs). Each convenience script below also runs directly from your `daaf-docker` folder on the host (i.e., outside the container):

@@ -43,7 +43,7 @@ _daaf_load_settings() {
         line="$(printf '%s' "${line}" | tr -d '\r')"
         case "${line}" in ''|'#'*) continue ;; esac
         case "${line}" in
-            DAAF_PROJECT_NAME=*|DAAF_PORT_MARIMO=*|DAAF_PORT_LOGVIEWER=*|DAAF_PORT_VSCODE=*|DAAF_DEV=*|DAAF_BRANCH=*)
+            DAAF_PROJECT_NAME=*|DAAF_PORT_MARIMO=*|DAAF_PORT_LOGVIEWER=*|DAAF_PORT_VSCODE=*|DAAF_DEV=*|DAAF_BRANCH=*|DAAF_DATA_VOLUME_NAME=*)
                 key="${line%%=*}"; val="${line#*=}"
                 case "${val}" in
                     \"*\") val="${val#\"}"; val="${val%\"}" ;;
@@ -62,7 +62,11 @@ _daaf_load_settings
 # --- Configuration ---
 # Project-prefixed volume name "<project>_daaf-data". Default unset =>
 # "daaf_daaf-data" (byte-for-byte identical to the previous hardcoded value).
-VOLUME_NAME="${DAAF_PROJECT_NAME:-daaf}_daaf-data"
+# DAAF_DATA_VOLUME_NAME, when set, overrides the whole derivation with a verbatim
+# full volume name (the shared-workspace escape hatch); unset => the derived
+# default. Matches resolve_data_volume_name in daaf_lib.sh (inlined here because
+# this standalone script does not source the library).
+VOLUME_NAME="${DAAF_DATA_VOLUME_NAME:-${DAAF_PROJECT_NAME:-daaf}_daaf-data}"
 # Second volume: Claude Code state. Restored only when the selected backup
 # contains the dedicated subfolder (newer backups); older backups predating the
 # volume are restored data-only with a warning.

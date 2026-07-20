@@ -45,7 +45,7 @@ else
             line="$(printf '%s' "${line}" | tr -d '\r')"
             case "${line}" in ''|'#'*) continue ;; esac
             case "${line}" in
-                DAAF_PROJECT_NAME=*|DAAF_PORT_MARIMO=*|DAAF_PORT_LOGVIEWER=*|DAAF_PORT_VSCODE=*|DAAF_DEV=*|DAAF_BRANCH=*)
+                DAAF_PROJECT_NAME=*|DAAF_PORT_MARIMO=*|DAAF_PORT_LOGVIEWER=*|DAAF_PORT_VSCODE=*|DAAF_DEV=*|DAAF_BRANCH=*|DAAF_DATA_VOLUME_NAME=*)
                     key="${line%%=*}"; val="${line#*=}"
                     case "${val}" in
                         \"*\") val="${val#\"}"; val="${val%\"}" ;;

@@ -49,7 +49,7 @@ function Wait-AndExit {
 function Import-DaafSettingsInline {
     param([string]$SettingsFile = "./environment_settings.txt")
     if (-not (Test-Path -LiteralPath $SettingsFile)) { return }
-    $known = @('DAAF_PROJECT_NAME', 'DAAF_PORT_MARIMO', 'DAAF_PORT_LOGVIEWER', 'DAAF_PORT_VSCODE', 'DAAF_DEV', 'DAAF_BRANCH')
+    $known = @('DAAF_PROJECT_NAME', 'DAAF_PORT_MARIMO', 'DAAF_PORT_LOGVIEWER', 'DAAF_PORT_VSCODE', 'DAAF_DEV', 'DAAF_BRANCH', 'DAAF_DATA_VOLUME_NAME')
     # -Encoding UTF8: PS 5.1's bare Get-Content misreads BOM-less UTF-8 as ANSI
     # (cp1252); the settings writer is BOM-less UTF-8, so reads are pinned to match.
     foreach ($rawLine in (Get-Content -LiteralPath $SettingsFile -Encoding UTF8)) {

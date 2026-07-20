@@ -686,6 +686,22 @@ teardown() {
     assert_output --partial "DAAF_PORT_MARIMO=9990"
 }
 
+@test "install.sh: seeds DAAF_DATA_VOLUME_NAME from the process environment when set" {
+    # The data-volume override rides the same seeding array as the multi-instance
+    # keys, so a value exported for the install persists into the settings file.
+    export DAAF_NESTED=1
+    export DAAF_PROJECT_NAME="myproj"
+    export DAAF_DATA_VOLUME_NAME="shared_workspace_vol"
+    MOCK_DOCKER_EXEC_EXIT=0
+    cd "${TEST_DIR}"
+    run bash "${REPO_ROOT}/scripts/host/install.sh"
+    assert_success
+    assert_output --partial "seeded these values"
+    [ -f "${TEST_DIR}/daaf-docker/environment_settings.txt" ]
+    run cat "${TEST_DIR}/daaf-docker/environment_settings.txt"
+    assert_output --partial "DAAF_DATA_VOLUME_NAME=shared_workspace_vol"
+}
+
 @test "install.sh: preserves an existing environment_settings.txt (never overwrites)" {
     export DAAF_NESTED=1
     export DAAF_PROJECT_NAME="ignored"

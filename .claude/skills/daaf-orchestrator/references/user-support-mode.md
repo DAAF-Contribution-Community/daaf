@@ -128,6 +128,8 @@ Users frequently have questions about the tools DAAF runs on, not just DAAF itse
 | Question About | Where to Look (local) | Authoritative External Docs |
 |----------------|----------------------|----------------------------|
 | Docker setup, container management, resource allocation, security | `user_reference/01_installation_and_quickstart.md`, `user_reference/07_faq_technical.md` | https://docs.docker.com/reference/ |
+| Bind mounts / sharing host folders into the container | `user_reference/01_installation_and_quickstart.md`, `user_reference/07_faq_technical.md` | https://docs.docker.com/engine/storage/bind-mounts/ |
+| Running Claude and ChatGPT installs in parallel / sharing one research workspace | `user_reference/01_installation_and_quickstart.md`, `user_reference/07_faq_technical.md` | https://docs.docker.com/reference/compose-file/volumes/ |
 | Git usage, version control, diffs, commits | `user_reference/01_installation_and_quickstart.md`, `user_reference/03_best_practices.md` | https://git-scm.com/docs |
 | Claude Code features, configuration, model selection, IDE integration | `user_reference/07_faq_technical.md`, `user_reference/01_installation_and_quickstart.md` | https://code.claude.com/docs/en/overview |
 | Running without Docker, alternative AI providers | `user_reference/07_faq_technical.md` | — |

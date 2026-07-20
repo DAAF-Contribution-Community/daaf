@@ -707,6 +707,23 @@ RUN mkdir -p /home/appuser/.local/share/code-server/User \
                                 /home/appuser/.config
 
 # ============================================
+# Node.js runtime for codex-plugin-cc
+# ============================================
+# codex-plugin-cc (the Codex plugin for Claude Code) needs a Node.js runtime in
+# the container. Node already arrives transitively via libnode-dev (the R gt/V8
+# stack), but that presence is incidental -- install `nodejs` explicitly so a
+# future R-stack change cannot silently drop it (no exact version pin, per DAAF
+# convention: the distro's packaged Node tracks the base image release). The
+# build-time floor assertion FAILS the build loudly if the packaged Node is
+# older than 18.18 (the minimum codex-plugin-cc supports), rather than letting
+# a too-old runtime surface as an obscure plugin failure later.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        nodejs \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* \
+    && node -e 'const v=process.versions.node, [maj,min]=v.split(".").map(Number); if (maj<18 || (maj===18 && min<18)) { console.error("ERROR: Node "+v+" is older than the 18.18 floor required by codex-plugin-cc"); process.exit(1); } console.log("Node "+v+" satisfies the codex-plugin-cc >= 18.18 floor");'
+
+# ============================================
 # Set up working directory
 # ============================================
 WORKDIR /daaf

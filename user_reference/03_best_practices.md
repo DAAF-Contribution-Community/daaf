@@ -510,6 +510,8 @@ The browser editor comes pre-loaded with extensions for Python and R syntax high
 - **Git integration:** The Source Control panel (left sidebar) shows uncommitted changes and lets you view diffs -- the most direct way to review exactly what DAAF produced during a session -- and, if you've enabled the optional "Git commit management" preference, browse commit history too.
 - **Search across files:** `Ctrl+Shift+F` (or `Cmd+Shift+F` on Mac) searches across all files in the project -- great for finding specific variables, scripts, or content.
 
+> **Working with a bulk local dataset?** Uploading tens of gigabytes through the browser is slow. For large or frequently-refreshed local data, bind-mount the folder into the container read-only instead — see [Linking Host Folders into the Container (Bind Mounts)](01_installation_and_quickstart.md#linking-host-folders-into-the-container-bind-mounts) in the installation guide.
+
 ### Alternative: Desktop VSCode with Dev Containers
 
 If you already have [VSCode](https://code.visualstudio.com) installed on your computer and prefer a native desktop experience, you can connect it directly to the DAAF container. Install the [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) and use the "Attach to Running Container" command to open the DAAF container's filesystem directly in VSCode. This gives you a full file browser, integrated terminal, and your own preferred extensions and settings.

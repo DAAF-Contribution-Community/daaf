@@ -28,6 +28,8 @@ Two decisions must be confirmed at **mode confirmation** AND reconfirmed **after
 At mode confirmation: present defaults, ask user to confirm or adjust.
 After RV-1: present the script inventory, original-artifact inventory, and evidence gaps, then ask the user to reconfirm both decisions with the scope now concrete. If the user chose frozen data but `original_files/data/raw/` has no copied raw files, stop and require a new choice before RV-2; do not silently fall back to re-fetching or to processed data.
 
+> **Bind-mounted inputs depend on externally-guaranteed files.** If the original analysis read inputs from a user-configured host bind mount (`/host_data`) rather than from data archived inside the project, those files live outside DAAF's hash/backup boundary — verification then depends on the user supplying the *same* mount contents. Confirm the frozen `data/raw/` copy (or an equivalent user-provided snapshot) is present before treating such a reproduction as complete; DAAF cannot hash-verify data it never archived.
+
 ---
 
 ## Reproducibility Verification Workflow
