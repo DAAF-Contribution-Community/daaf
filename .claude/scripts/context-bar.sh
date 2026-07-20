@@ -39,6 +39,21 @@ is_canonical_positive_decimal() {
     [[ "$value" == "$max_value" || "$value" < "$max_value" ]]
 }
 
+# As above, but ALSO accepts a canonical zero. The codex quota fields
+# used_percent and *-reset-after-seconds are legitimately 0 (e.g. an unused
+# window or an all-zero secondary), which is_canonical_positive_decimal rejects.
+# Same length/lexical bounds run before any arithmetic so oversized or
+# non-canonical values can never reach an arithmetic context.
+is_canonical_nonneg_decimal() {
+    local value="${1:-}"
+    local max_value="9223372036854775807"
+    [[ "$value" =~ ^(0|[1-9][0-9]*)$ ]] || return 1
+    [[ ${#value} -lt ${#max_value} ]] && return 0
+    [[ ${#value} -gt ${#max_value} ]] && return 1
+    # shellcheck disable=SC2071
+    [[ "$value" == "$max_value" || "$value" < "$max_value" ]]
+}
+
 input=$(cat)
 
 # One jq pass validates and normalizes every field before joining it with an
@@ -466,6 +481,16 @@ fmt_reset() {
         printf '(%dh%dm)' $((remain / 3600)) $(((remain % 3600) / 60))
     fi
 }
+window_label_for() {
+    # $1 = window length in whole minutes (a validated positive integer). Echoes a
+    # compact window label: divisible by 1440 -> "<N>d" (10080 -> 7d), else divisible
+    # by 60 -> "<N>h" (300 -> 5h), else "<N>m". Pure arithmetic on a pre-validated int.
+    local min="$1"
+    if   [[ $((min % 1440)) -eq 0 ]]; then printf '%dd' $((min / 1440))
+    elif [[ $((min % 60)) -eq 0 ]];   then printf '%dh' $((min / 60))
+    else                                   printf '%dm' "$min"
+    fi
+}
 if [[ -n "$rl_5h" || -n "$rl_7d" ]]; then
     rl_body=""
     if [[ -n "$rl_5h" ]]; then
@@ -486,6 +511,107 @@ if [[ -n "$rl_5h" || -n "$rl_7d" ]]; then
         [[ -n "$cd7" ]] && rl_body+="${C_GRAY}${cd7}${C_RESET}"
     fi
     [[ -n "$rl_body" ]] && rl_seg=" ${C_GRAY}|${C_RESET} ${C_GRAY}Plan usage:${C_RESET} ${rl_body}"
+fi
+
+# --- Codex (ChatGPT-subscription) Plan-usage fallback ---
+# On shim-lane sessions the native Anthropic rate-limit payload fields are absent;
+# instead the provider shim caches its latest ChatGPT-subscription quota snapshot to
+# scripts/provider_shim/logs/quota_state.json (see anthropic_openai_shim.py
+# _write_quota_state — install-shared under the shared-/daaf assumption). Render that
+# file as the SAME unchanged "Plan usage:" segment, reusing rl_color_for/fmt_reset.
+# Gate (belt-and-braces): the exact shim lane AND no native rate limits in the payload
+# (if the payload somehow carries native limits, they win and this read is skipped).
+# Everything here is pure string/arithmetic + one local file read; any parse or
+# validation failure yields no segment and leaves the rest of the statusline untouched.
+if [[ -z "$rl_seg" && \
+      "${DAAF_PROVIDER_SHIM:-}" == "openai" && \
+      "${SHIM_BACKEND_MODE:-}" == "chatgpt" && \
+      -z "$rl_5h" && -z "$rl_7d" ]]; then
+    # State-file path: default derived from this script's own location
+    # (.claude/scripts -> repo root -> scripts/provider_shim/logs/quota_state.json).
+    # DAAF_QUOTA_STATE_FILE is a deterministic-test seam mirroring
+    # DAAF_CONTEXT_BAR_CACHE_DIR: Bats points it at project scratch so tests never
+    # depend on a live shim's log directory.
+    quota_state_file="${DAAF_QUOTA_STATE_FILE:-}"
+    if [[ -z "$quota_state_file" ]]; then
+        cb_scripts_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P 2>/dev/null)" || cb_scripts_dir=""
+        if [[ -n "$cb_scripts_dir" ]]; then
+            quota_state_file="${cb_scripts_dir%/.claude/scripts}/scripts/provider_shim/logs/quota_state.json"
+        fi
+    fi
+
+    if [[ -n "$quota_state_file" && -f "$quota_state_file" ]] && command -v jq >/dev/null 2>&1; then
+        # One jq pass: require a top-level object, emit captured_at plus the six
+        # numeric primary/secondary fields as an ASCII-unit-separated record. String
+        # fields carrying any control character (including the \x1f delimiter) become
+        # empty so untrusted content cannot shift the fixed-order read; every emitted
+        # field is validated numerically in Bash below before any use.
+        q_captured=""
+        q_p_pct=""
+        q_p_win=""
+        q_p_reset=""
+        q_s_pct=""
+        q_s_win=""
+        q_s_reset=""
+        codex_parsed=0
+        if IFS=$'\x1f' read -r q_captured q_p_pct q_p_win q_p_reset q_s_pct q_s_win q_s_reset \
+            < <(jq -er '
+                def num_string:
+                    if type == "string" then (if test("[[:cntrl:]]") then "" else . end)
+                    elif type == "number" then tostring
+                    else "" end;
+                if type != "object" then error("quota_state must be an object")
+                else
+                    [ (if (.captured_at? | type) == "number" and
+                            (.captured_at | floor) == .captured_at
+                       then (.captured_at | tostring) else "" end),
+                      (.primary_used_pct? | num_string),
+                      (.primary_window_min? | num_string),
+                      (.primary_reset_s? | num_string),
+                      (.secondary_used_pct? | num_string),
+                      (.secondary_window_min? | num_string),
+                      (.secondary_reset_s? | num_string) ]
+                    | join("\u001f")
+                end
+            ' "$quota_state_file" 2>/dev/null); then
+            codex_parsed=1
+        fi
+
+        # Primary window is mandatory: captured_at + used-percent (0 allowed) + a
+        # positive window length + reset-after (0 allowed) must all validate.
+        if [[ "$codex_parsed" -eq 1 ]] && \
+           is_canonical_nonneg_decimal "$q_captured" && \
+           is_canonical_nonneg_decimal "$q_p_pct" && \
+           is_canonical_positive_decimal "$q_p_win" && \
+           is_canonical_nonneg_decimal "$q_p_reset"; then
+            now_epoch=$(date +%s 2>/dev/null) || now_epoch=""
+            primary_reset_epoch=$((q_captured + q_p_reset))
+            # Staleness: an expired primary window means the cached percent is stale, so
+            # drop the ENTIRE segment (no display beats a wrong display).
+            if [[ "$now_epoch" =~ ^[0-9]+$ && "$primary_reset_epoch" -gt "$now_epoch" ]]; then
+                cbody=""
+                pwl=$(window_label_for "$q_p_win")
+                pcolor=$(rl_color_for "$q_p_pct")
+                pcd=$(fmt_reset "$primary_reset_epoch")
+                cbody+="${pcolor}${pwl}:${q_p_pct}%${C_RESET}"
+                [[ -n "$pcd" ]] && cbody+="${C_GRAY}${pcd}${C_RESET}"
+                # Secondary renders only when its window is > 0 and its percent
+                # validates; live data shows an all-zero secondary, which is omitted.
+                if is_canonical_positive_decimal "$q_s_win" && \
+                   is_canonical_nonneg_decimal "$q_s_pct"; then
+                    swl=$(window_label_for "$q_s_win")
+                    scolor=$(rl_color_for "$q_s_pct")
+                    cbody+=" ${scolor}${swl}:${q_s_pct}%${C_RESET}"
+                    if is_canonical_nonneg_decimal "$q_s_reset"; then
+                        secondary_reset_epoch=$((q_captured + q_s_reset))
+                        scd=$(fmt_reset "$secondary_reset_epoch")
+                        [[ -n "$scd" ]] && cbody+="${C_GRAY}${scd}${C_RESET}"
+                    fi
+                fi
+                rl_seg=" ${C_GRAY}|${C_RESET} ${C_GRAY}Plan usage:${C_RESET} ${cbody}"
+            fi
+        fi
+    fi
 fi
 
 # Build output: Model (effort) | Dir | Branch | Context [| Plan usage]

@@ -21,6 +21,7 @@ setup() {
     CTX_CACHE="${DAAF_CONTEXT_BAR_CACHE_DIR}/claude-ctx-window-${FAKE_SESSION}"
     MODEL_CACHE="${DAAF_CONTEXT_BAR_CACHE_DIR}/claude-model-${FAKE_SESSION}"
     OR_CACHE="${DAAF_CONTEXT_BAR_CACHE_DIR}/claude-or-models-${FAKE_SESSION}"
+    QUOTA_STATE_FILE="${SCRATCH_DIR}/quota_state.json"
     mkdir -p "$MOCK_BIN" "$DAAF_CONTEXT_BAR_CACHE_DIR"
     cat > "${MOCK_BIN}/curl" <<'MOCK_CURL'
 #!/usr/bin/env bash
@@ -33,7 +34,16 @@ MOCK_CURL
     unset DAAF_PROVIDER_SHIM
     unset SHIM_BACKEND_MODE
     export CONTEXT_BAR_SH FAKE_SESSION SCRATCH_DIR MOCK_BIN
-    export DAAF_CONTEXT_BAR_CACHE_DIR CTX_CACHE MODEL_CACHE OR_CACHE
+    export DAAF_CONTEXT_BAR_CACHE_DIR CTX_CACHE MODEL_CACHE OR_CACHE QUOTA_STATE_FILE
+}
+
+# Write a quota_state.json fixture. Args: captured_at, primary_used_pct,
+# primary_window_min, primary_reset_s, secondary_used_pct, secondary_window_min,
+# secondary_reset_s. The four non-numeric snapshot fields are fixed constants the
+# reader ignores. Mirrors the shim's _write_quota_state output shape.
+_write_quota_state() {
+    printf '{"captured_at":%s,"plan_type":"pro","active_limit":"premium","primary_used_pct":"%s","primary_window_min":"%s","primary_reset_s":"%s","secondary_used_pct":"%s","secondary_window_min":"%s","secondary_reset_s":"%s","credits_has":"False","credits_balance":"0","credits_unlimited":"False"}' \
+        "$1" "$2" "$3" "$4" "$5" "$6" "$7" > "$QUOTA_STATE_FILE"
 }
 
 teardown() {
@@ -500,4 +510,99 @@ JSON
         assert_output --partial "of 1050k tokens"
         refute_output --partial "of 370k tokens"
     done
+}
+
+# =========================================================================
+# Codex (ChatGPT-subscription) Plan-usage segment (v1.3.1)
+# -------------------------------------------------------------------------
+# On shim-lane sessions (DAAF_PROVIDER_SHIM=openai AND SHIM_BACKEND_MODE=chatgpt)
+# with no native rate limits in the payload, context-bar.sh reads the shim's
+# quota_state.json (DAAF_QUOTA_STATE_FILE test seam) and renders "Plan usage:".
+# The reader computes the absolute reset instant as captured_at + primary_reset_s.
+# =========================================================================
+
+@test "codex Plan-usage renders 7d label pct and countdown from a fresh state file" {
+    local now
+    now="$(date +%s)"
+    # primary_reset_s ~4.65 days -> a future reset -> a "(4d..h)" countdown.
+    _write_quota_state "$now" 73 10080 402168 0 0 0
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        DAAF_QUOTA_STATE_FILE="$QUOTA_STATE_FILE" \
+        bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol")
+    assert_success
+    assert_output --partial "Plan usage:"
+    assert_output --partial "7d:73%"
+    assert_output --partial "(4d"
+}
+
+@test "codex Plan-usage omits an all-zero secondary window" {
+    local now
+    now="$(date +%s)"
+    _write_quota_state "$now" 73 10080 402168 0 0 0
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        DAAF_QUOTA_STATE_FILE="$QUOTA_STATE_FILE" \
+        bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol")
+    assert_success
+    assert_output --partial "7d:73%"
+    refute_output --partial "5h:"
+}
+
+@test "codex Plan-usage renders a positive secondary window when present" {
+    local now
+    now="$(date +%s)"
+    # secondary: 300 min -> "5h", 5%, reset 600s in the future.
+    _write_quota_state "$now" 73 10080 402168 5 300 600
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        DAAF_QUOTA_STATE_FILE="$QUOTA_STATE_FILE" \
+        bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol")
+    assert_success
+    assert_output --partial "7d:73%"
+    assert_output --partial "5h:5%"
+}
+
+@test "codex Plan-usage drops the whole segment when the primary window is stale" {
+    local past
+    past="$(( $(date +%s) - 100000 ))"
+    # captured_at + 50s is well in the past -> stale -> segment dropped entirely.
+    _write_quota_state "$past" 73 10080 50 0 0 0
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        DAAF_QUOTA_STATE_FILE="$QUOTA_STATE_FILE" \
+        bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol")
+    assert_success
+    refute_output --partial "Plan usage:"
+    # Rest of the bar is intact (chatgpt lane caps gpt-5.6-sol at 370k).
+    assert_output --partial "of 370k tokens"
+}
+
+@test "codex Plan-usage is absent on malformed state JSON and the bar stays intact" {
+    printf '{"captured_at":' > "$QUOTA_STATE_FILE"
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        DAAF_QUOTA_STATE_FILE="$QUOTA_STATE_FILE" \
+        bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol")
+    assert_success
+    refute_output --partial "Plan usage:"
+    assert_output --partial "of 370k tokens"
+}
+
+@test "codex Plan-usage is gated off on a native session even with a state file present" {
+    local now
+    now="$(date +%s)"
+    _write_quota_state "$now" 73 10080 402168 0 0 0
+    # No shim lane env (setup unsets DAAF_PROVIDER_SHIM/SHIM_BACKEND_MODE).
+    run env DAAF_QUOTA_STATE_FILE="$QUOTA_STATE_FILE" \
+        bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol")
+    assert_success
+    refute_output --partial "Plan usage:"
+    assert_output --partial "of 1050k tokens"
+}
+
+@test "codex Plan-usage renders a zero primary percent" {
+    local now
+    now="$(date +%s)"
+    _write_quota_state "$now" 0 10080 402168 0 0 0
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        DAAF_QUOTA_STATE_FILE="$QUOTA_STATE_FILE" \
+        bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol")
+    assert_success
+    assert_output --partial "7d:0%"
 }

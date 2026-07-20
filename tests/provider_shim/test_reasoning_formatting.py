@@ -76,7 +76,7 @@ class ProviderShimReasoningFormattingTests(unittest.TestCase):
                 )
                 self.assertEqual(shim.health.get("status"), "ok")
                 self.assertEqual(shim.health.get("backend_mode"), "openai")
-                self.assertEqual(shim.health.get("version"), "1.3.0")
+                self.assertEqual(shim.health.get("version"), "1.3.1")
 
     def test_openai_nonstreaming_legacy_bytes_unchanged(self) -> None:
         scenario = central_multipart_scenario()

@@ -63,6 +63,19 @@
 #   * GET /health endpoint for the manager's idempotency/status checks.
 #
 # Changelog:
+#   v1.3.1 (2026-07-20): Statusline Plan-usage telemetry (additive, no behavior change).
+#     On every chatgpt-lane 2xx (same guard as the D1 quota_snapshot line), the shim now
+#     also caches the latest quota snapshot to <log dir>/quota_state.json — an atomic,
+#     0600, absolutely-fail-open write next to shim.log. The file is a single JSON object
+#     {captured_at:<int epoch>, <the 11 x-codex-* snapshot fields, raw header strings or
+#     "-">}; the READER (context-bar.sh) computes the absolute reset instant as
+#     captured_at + primary_reset_s. context-bar.sh renders it as the "Plan usage:"
+#     segment on shim-lane sessions (window labels derived from window-minutes; stale-
+#     window drop rule; zero secondary omitted). INSTALL-SHARED: under the shared-/daaf
+#     multi-install assumption this state file lives on the shared mount and is read by
+#     any install's statusline (auth under $HOME stays per-install). Pure additive
+#     telemetry: no new env vars, no off-switch; a write failure is swallowed and never
+#     touches the response path. SHIM_VERSION -> 1.3.1.
 #   v1.3.0 (2026-07-20): ChatGPT-lane auth refresh DELEGATED to the codex CLI
 #     (Tier 3 A1; minor bump — behavior + config-surface change). The shim is now a
 #     pure READER of $CODEX_HOME/auth.json; codex is the SINGLE WRITER. This deletes
@@ -794,6 +807,7 @@ import time
 import random
 import asyncio
 import logging
+import tempfile
 import threading
 import urllib.parse
 from collections import OrderedDict
@@ -803,7 +817,7 @@ import httpx
 import uvicorn
 
 # --- Config ---
-SHIM_VERSION = "1.3.0"
+SHIM_VERSION = "1.3.1"
 SHIM_SERVICE_ID = "daaf-anthropic-openai-shim"
 
 SHIM_PORT = int(os.environ.get("SHIM_PORT", "4141"))
@@ -1251,6 +1265,56 @@ def _normalize_http_version(value):
     return normalized if normalized in {"HTTP/1.0", "HTTP/1.1", "HTTP/2"} else "unknown"
 
 
+# v1.3.1: quota-state cache for the statusline Plan-usage segment. The file lives in
+# the shim's own logs/ directory — the SAME directory start_shim.sh writes shim.log to
+# (SCRIPT_DIR/logs); it is derived here from __file__ because the shim itself logs only
+# to stderr and holds no log-directory constant of its own. Under the shared-/daaf
+# multi-install assumption this file is INSTALL-SHARED across containers on the mount:
+# any install's context-bar.sh reads it to render "Plan usage:" (auth under $HOME stays
+# per-install). The shim records only captured_at (write-time epoch); the reader does the
+# clock math (absolute reset = captured_at + primary_reset_s).
+_QUOTA_STATE_DIR = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "logs"
+)
+_QUOTA_STATE_PATH = os.path.join(_QUOTA_STATE_DIR, "quota_state.json")
+
+
+def _write_quota_state(snapshot):
+    # Absolutely fail-open telemetry: a quota-state write must NEVER affect, delay, or
+    # raise on the response path. Every failure mode (unwritable dir, replace error,
+    # serialization surprise) is swallowed, leaving at most one debug line and no stale
+    # temp sibling. Pure additive — there is deliberately no env var and no off-switch.
+    tmp_path = None
+    try:
+        payload = {"captured_at": int(time.time())}
+        # snapshot carries the 11 raw header-string values (or "-" when the header was
+        # absent), exactly as emitted on the quota_snapshot line.
+        payload.update(snapshot)
+        data = json.dumps(payload).encode("utf-8")
+        # Atomic publish via a uniquely-named sibling temp file + os.replace(): a reader
+        # sees either the old file or the fully-written new one, never a partial write.
+        # mkstemp creates the temp with mode 0600 already (matching the shim.log
+        # permission discipline) and a unique name, so concurrent installs sharing this
+        # directory cannot clobber each other's in-flight temp file.
+        fd, tmp_path = tempfile.mkstemp(
+            prefix="quota_state.", suffix=".tmp", dir=_QUOTA_STATE_DIR
+        )
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(data)
+        os.replace(tmp_path, _QUOTA_STATE_PATH)
+        tmp_path = None
+    except Exception:
+        try:
+            log.debug("quota_state write skipped (fail-open)")
+        except Exception:
+            pass
+        if tmp_path is not None:
+            try:
+                os.unlink(tmp_path)
+            except Exception:
+                pass
+
+
 def _record_upstream_headers(response):
     state = _request_state()
     if state is None or response is None:
@@ -1279,6 +1343,10 @@ def _record_upstream_headers(response):
             value = response.headers.get(header_name)
             snapshot[field] = value if value is not None else "-"
         _lifecycle_event("quota_snapshot", **snapshot)
+        # v1.3.1: also cache the snapshot to an install-shared JSON state file so the
+        # statusline (context-bar.sh) can render a "Plan usage:" segment on shim-lane
+        # sessions. Fail-open; never affects the response path.
+        _write_quota_state(snapshot)
 
 
 def _record_upstream_first_event():
