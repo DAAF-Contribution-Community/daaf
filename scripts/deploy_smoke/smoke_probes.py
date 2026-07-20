@@ -566,12 +566,17 @@ def probe_shim_health(route_info: RouteInfo) -> ProbeResult:
 
 
 def probe_auth_json(route_info: RouteInfo, env) -> ProbeResult:
-    """chatgpt route only: confirm $CODEX_HOME/auth.json exists and is readable
-    (presence/readability only — never read or emit its contents)."""
-    r = ProbeResult(probe_id="T0.9", name="ChatGPT auth.json readable", tier="0")
+    """chatgpt route only: assert the shim /health auth block reports usable
+    subscription auth. v1.3.0 (A1-R6b) extends this from a bare "auth.json readable"
+    filesystem check to the authoritative /health auth state (derived by the shim from
+    auth.json presence + the access_token's JWT exp — never token material):
+    FAIL on expired|absent|unreadable, WARN on expiring, PASS on valid. The filesystem
+    readability check is retained as supplementary evidence (presence/readability only —
+    contents never read). Non-chatgpt routes SKIP (auth validity N/A there)."""
+    r = ProbeResult(probe_id="T0.9", name="ChatGPT auth validity (/health)", tier="0")
     if route_info.detected_route != ROUTE_CHATGPT:
         r.verdict = Verdict.SKIP
-        r.detail = f"Not the chatgpt-subscription route ({route_info.detected_route}); auth.json N/A."
+        r.detail = f"Not the chatgpt-subscription route ({route_info.detected_route}); auth validity N/A."
         return r
     codex_home = env.get("CODEX_HOME")
     if not codex_home:
@@ -579,15 +584,65 @@ def probe_auth_json(route_info: RouteInfo, env) -> ProbeResult:
         r.detail = "CODEX_HOME unset — cannot locate auth.json for the chatgpt route."
         r.add_evidence("env: CODEX_HOME", output="<unset>")
         return r
+
+    # Supplementary filesystem evidence (presence/readability only; contents never read).
     auth_path = Path(codex_home) / "auth.json"
-    readable = auth_path.exists() and os.access(auth_path, os.R_OK)
-    r.add_evidence(f"os.access({auth_path}, R_OK)", output=str(readable), note="presence/readability only; contents never read")
-    if readable:
-        r.verdict = Verdict.PASS
-        r.detail = "auth.json present and readable (contents not inspected)."
-    else:
+    fs_readable = auth_path.exists() and os.access(auth_path, os.R_OK)
+    r.add_evidence(
+        f"os.access({auth_path}, R_OK)", output=str(fs_readable),
+        note="supplementary; presence/readability only, contents never read",
+    )
+
+    # Authoritative: the /health auth block (JWT-exp-derived validity state).
+    try:
+        with urlopen(SHIM_HEALTH_URL, timeout=10) as resp:
+            body = resp.read().decode("utf-8", "replace")
+        health = json.loads(body)
+        if not isinstance(health, dict):
+            raise ValueError("shim /health JSON must be an object")
+    except (URLError, socket.timeout, json.JSONDecodeError, OSError, ValueError) as e:
         r.verdict = Verdict.FAIL
-        r.detail = f"auth.json missing or unreadable at {auth_path} — run 'codex login --device-auth'."
+        r.detail = f"shim /health unreachable/invalid, cannot assess auth: {type(e).__name__}: {str(e)[:200]}"
+        r.add_evidence(f"GET {SHIM_HEALTH_URL}", note=str(e)[:200])
+        return r
+
+    auth = health.get("auth")
+    if not isinstance(auth, dict):
+        r.verdict = Verdict.FAIL
+        r.detail = "shim /health carries no auth block — a pre-v1.3.0 shim or a broken build."
+        r.add_evidence("GET /health .auth", output="<absent>")
+        return r
+
+    _KNOWN_STATES = {"valid", "expiring", "expired", "absent", "unreadable", "n/a"}
+    state = auth.get("state")
+    state_marker = state if state in _KNOWN_STATES else "<invalid>"
+    days_left = auth.get("days_left")
+    days_marker = days_left if isinstance(days_left, (int, float)) else "<n/a>"
+    r.add_evidence(
+        "GET /health .auth",
+        output=scrub_secret_values(json.dumps(auth)[:500]),
+        note=f"state={state_marker} days_left={days_marker}",
+    )
+
+    if state == "valid":
+        r.verdict = Verdict.PASS
+        r.detail = f"ChatGPT subscription auth valid (days_left={days_marker})."
+    elif state == "expiring":
+        r.verdict = Verdict.WARN
+        r.detail = (
+            f"ChatGPT subscription auth expires soon (days_left={days_marker}) — "
+            "run 'codex login --device-auth' before it lapses."
+        )
+    elif state in ("expired", "absent", "unreadable"):
+        r.verdict = Verdict.FAIL
+        r.detail = (
+            f"ChatGPT subscription auth is dead (state={state_marker}) — "
+            "run 'codex login --device-auth' to re-authenticate."
+        )
+    else:
+        # "n/a" on a chatgpt route, or an unrecognized state — both unexpected here.
+        r.verdict = Verdict.FAIL
+        r.detail = f"unexpected auth state on the chatgpt route: state={state_marker}."
     return r
 
 

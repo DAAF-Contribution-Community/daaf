@@ -263,5 +263,133 @@ class AuthDelegationTest(unittest.TestCase):
             self.assertIn(RECOVERY_COMMAND, module._RELOGIN_MSG)
 
 
+class AuthHealthBlockTest(unittest.TestCase):
+    """A1-R4: the read-only `auth` block surfaced by /health.
+
+    Exercises `_auth_health_block()` directly in-process across all five chatgpt-lane
+    states (valid | expiring | expired | absent | unreadable) plus the openai-lane
+    "n/a". The function is a pure reader of auth.json presence + the JWT exp; it never
+    returns token material, never writes, and never raises. Driving it in-process
+    (rather than through a RealShim subprocess) gives deterministic control of the
+    crafted exp and the store's readability. The far-future "valid" case is additionally
+    asserted end-to-end through /health by test_historical_regressions.
+    """
+
+    def setUp(self) -> None:
+        SCRATCH_ROOT.mkdir(parents=True, exist_ok=True)
+        self.codex_home = SCRATCH_ROOT / f"provider-shim-healthtest-{uuid.uuid4().hex}"
+        self.codex_home.mkdir(mode=0o700)
+        self.auth_path = self.codex_home / "auth.json"
+
+    def tearDown(self) -> None:
+        if self.auth_path.exists():
+            try:
+                self.auth_path.chmod(0o600)
+            except OSError:
+                pass
+        if self.codex_home.exists():
+            shutil.rmtree(self.codex_home, ignore_errors=True)
+
+    def _seed_auth(self, exp_offset_s: int) -> None:
+        auth = {
+            "OPENAI_API_KEY": FAKE_OPENAI_KEY,
+            "auth_mode": "chatgpt",
+            "tokens": {
+                "access_token": _make_fake_jwt(int(time.time()) + exp_offset_s),
+                "account_id": "acct_healthtest",
+            },
+        }
+        self.auth_path.write_text(json.dumps(auth), encoding="utf-8")
+        self.auth_path.chmod(0o600)
+
+    def _chatgpt_env(self):
+        return {
+            "SHIM_BACKEND_MODE": "chatgpt",
+            "SHIM_BACKEND_BASE_URL": "http://127.0.0.1:1",
+            "OPENAI_API_KEY": FAKE_OPENAI_KEY,
+            "CODEX_HOME": str(self.codex_home),
+            "SHIM_CODEX_BIN": str(FAKE_CODEX_BIN),
+        }
+
+    def _block(self):
+        module = _load_fresh_shim()
+        return module._auth_health_block()
+
+    def test_state_valid_far_future_token(self) -> None:
+        self._seed_auth(exp_offset_s=365 * 86400)
+        with mock.patch.dict(os.environ, self._chatgpt_env(), clear=False):
+            block = self._block()
+        self.assertEqual(block["state"], "valid")
+        self.assertNotIn("recovery", block)  # recovery only for actionable states
+        self.assertIsInstance(block["expires_at"], str)
+        self.assertGreater(block["days_left"], 300)
+
+    def test_state_expiring_within_48h_window(self) -> None:
+        self._seed_auth(exp_offset_s=24 * 3600)  # inside the 48h expiring horizon
+        with mock.patch.dict(os.environ, self._chatgpt_env(), clear=False):
+            block = self._block()
+        self.assertEqual(block["state"], "expiring")
+        self.assertEqual(block["recovery"], RECOVERY_COMMAND)
+        self.assertLessEqual(block["days_left"], 2)
+        self.assertGreater(block["days_left"], 0)
+
+    def test_state_expired_past_token(self) -> None:
+        self._seed_auth(exp_offset_s=-3600)
+        with mock.patch.dict(os.environ, self._chatgpt_env(), clear=False):
+            block = self._block()
+        self.assertEqual(block["state"], "expired")
+        self.assertEqual(block["recovery"], RECOVERY_COMMAND)
+        self.assertLessEqual(block["days_left"], 0)
+
+    def test_state_absent_no_auth_file(self) -> None:
+        # No auth.json written; CODEX_HOME exists but the store is missing.
+        with mock.patch.dict(os.environ, self._chatgpt_env(), clear=False):
+            block = self._block()
+        self.assertEqual(block["state"], "absent")
+        self.assertEqual(block["recovery"], RECOVERY_COMMAND)
+        self.assertIsNone(block["expires_at"])
+        self.assertIsNone(block["days_left"])
+
+    def test_state_unreadable_malformed_json(self) -> None:
+        # File present + readable, but its content yields no decodable access_token exp.
+        self.auth_path.write_text("this is not json{", encoding="utf-8")
+        self.auth_path.chmod(0o600)
+        with mock.patch.dict(os.environ, self._chatgpt_env(), clear=False):
+            block = self._block()
+        self.assertEqual(block["state"], "unreadable")
+        self.assertEqual(block["recovery"], RECOVERY_COMMAND)
+        self.assertIsNone(block["expires_at"])
+
+    def test_state_unreadable_non_jwt_token(self) -> None:
+        # Valid JSON, but the access_token is opaque (not a decodable JWT) -> unreadable.
+        auth = {"tokens": {"access_token": "opaque-not-a-jwt"}}
+        self.auth_path.write_text(json.dumps(auth), encoding="utf-8")
+        self.auth_path.chmod(0o600)
+        with mock.patch.dict(os.environ, self._chatgpt_env(), clear=False):
+            block = self._block()
+        self.assertEqual(block["state"], "unreadable")
+
+    def test_openai_lane_reports_na(self) -> None:
+        # The API-key lane does not use the codex OAuth store -> "n/a", no token surface.
+        env = {
+            "SHIM_BACKEND_MODE": "openai",
+            "SHIM_BACKEND_BASE_URL": "http://127.0.0.1:1",
+            "OPENAI_API_KEY": FAKE_OPENAI_KEY,
+        }
+        with mock.patch.dict(os.environ, env, clear=False):
+            block = self._block()
+        self.assertEqual(block, {"state": "n/a"})
+
+    def test_block_never_contains_token_material(self) -> None:
+        # Credential-safety invariant: no state exposes the access_token value.
+        self._seed_auth(exp_offset_s=365 * 86400)
+        token = json.loads(self.auth_path.read_text(encoding="utf-8"))["tokens"][
+            "access_token"
+        ]
+        with mock.patch.dict(os.environ, self._chatgpt_env(), clear=False):
+            block = self._block()
+        self.assertNotIn(token, json.dumps(block))
+
+
 if __name__ == "__main__":
     unittest.main()

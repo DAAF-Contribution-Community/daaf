@@ -64,6 +64,16 @@ class Handler(BaseHTTPRequestHandler):
                 "reasoning_effort": None,
                 "text_verbosity": "high",
             }
+            # v1.3.0 (A1-R4): optional auth block, driven by FAKE_HEALTH_AUTH_STATE.
+            auth_state = os.environ.get("FAKE_HEALTH_AUTH_STATE")
+            if auth_state:
+                auth = {"state": auth_state}
+                days = os.environ.get("FAKE_HEALTH_AUTH_DAYS")
+                if days:
+                    auth["days_left"] = json.loads(days)
+                if auth_state not in ("valid", "n/a"):
+                    auth["recovery"] = "codex login --device-auth"
+                payload["auth"] = auth
             raw = json.dumps(payload)
         body = raw.encode("utf-8")
         self.send_response(int(os.environ.get("FAKE_HEALTH_HTTP_STATUS", "200")))
@@ -97,6 +107,7 @@ PY
     unset FAKE_SHIM_BEHAVIOR FAKE_SHIM_CRASH_CODE FAKE_SHIM_START_DELAY FAKE_HEALTH_RAW
     unset FAKE_HEALTH_SERVICE FAKE_HEALTH_STATUS FAKE_HEALTH_VERSION
     unset FAKE_HEALTH_BACKEND_MODE FAKE_HEALTH_HTTP_STATUS DAAF_SHIM_TEST_NO_SETSID
+    unset FAKE_HEALTH_AUTH_STATE FAKE_HEALTH_AUTH_DAYS
     unset DAAF_SHIM_TEST_STOP_FAILURE DAAF_SHIM_TEST_RESULT_APPEND_FAILURE
     unset DAAF_SHIM_TEST_SIGNAL_RESULT_IN_PROGRESS SHIM_BACKEND_MODE
 }
@@ -334,6 +345,75 @@ start_external_fixture() {
     assert_output --partial '"service": "daaf-anthropic-openai-shim"'
     assert_output --partial '"version": "1.2.12"'
     assert_output --partial '"backend_mode": "chatgpt"'
+}
+
+@test "readiness renders an expiring auth warning naming the recovery command" {
+    export SHIM_BACKEND_MODE=chatgpt
+    export FAKE_HEALTH_BACKEND_MODE=chatgpt
+    export FAKE_HEALTH_AUTH_STATE=expiring
+    export FAKE_HEALTH_AUTH_DAYS=1.5
+    run "$MANAGER" --start
+    assert_manager_success
+    assert_output --partial "strictly ready"
+    assert_output --partial "ChatGPT subscription auth expires in 1.5 days"
+    assert_output --partial "codex login --device-auth"
+    # The same line is surfaced by --status.
+    run "$MANAGER" --status
+    assert_success
+    assert_output --partial "expires in 1.5 days"
+    assert_output --partial "codex login --device-auth"
+}
+
+@test "readiness renders a dead auth warning for expired absent and unreadable" {
+    export SHIM_BACKEND_MODE=chatgpt
+    export FAKE_HEALTH_BACKEND_MODE=chatgpt
+    export FAKE_HEALTH_AUTH_STATE=expired
+    run "$MANAGER" --start
+    assert_manager_success
+    assert_output --partial "ChatGPT subscription auth is dead (expired)"
+    assert_output --partial "codex login --device-auth"
+}
+
+@test "a valid auth state prints an informational line without a warning" {
+    export SHIM_BACKEND_MODE=chatgpt
+    export FAKE_HEALTH_BACKEND_MODE=chatgpt
+    export FAKE_HEALTH_AUTH_STATE=valid
+    export FAKE_HEALTH_AUTH_DAYS=280
+    run "$MANAGER" --start
+    assert_manager_success
+    run "$MANAGER" --status
+    assert_success
+    assert_output --partial "ChatGPT subscription auth is valid (expires in 280 days)"
+    refute_output --partial "codex login --device-auth"
+    refute_output --partial "is dead"
+}
+
+@test "the openai lane emits no auth line" {
+    export SHIM_BACKEND_MODE=openai
+    export FAKE_HEALTH_AUTH_STATE=n/a
+    run "$MANAGER" --start
+    assert_manager_success
+    run "$MANAGER" --status
+    assert_success
+    refute_output --partial "ChatGPT subscription auth"
+    refute_output --partial "codex login --device-auth"
+}
+
+@test "auth line sanitizes an injecting days value into a bounded token" {
+    export SHIM_BACKEND_MODE=chatgpt
+    # A /health body whose auth.days_left carries an embedded newline + shell
+    # metacharacters (a forged-line / injection attempt). print_auth_line strips it
+    # to the bounded [0-9.-] token before output (the D4 injection convention), so no
+    # forged line and no metacharacters reach the terminal. The `\n` is a JSON string
+    # escape that jq -r decodes to a real newline in the shell value.
+    export FAKE_HEALTH_RAW='{"service":"daaf-anthropic-openai-shim","status":"ok","version":"1.2.12","backend_mode":"chatgpt","backend":"x","codex_home_present":true,"sanitize_tools":true,"reasoning_effort":null,"text_verbosity":"high","auth":{"state":"expiring","days_left":"2\nFORGED: fake auth line rm -rf slash"}}'
+    # Drive the readiness path (not --status, which additionally dumps the raw HEALTH
+    # JSON): the only auth output here is print_auth_line's own sanitized line.
+    run "$MANAGER" --start
+    assert_manager_success
+    assert_output --partial "expires in 2"
+    refute_output --partial "FORGED"
+    refute_output --partial "rm -rf"
 }
 
 @test "non-200 health response is reachable unexpected and blocks manager launch" {

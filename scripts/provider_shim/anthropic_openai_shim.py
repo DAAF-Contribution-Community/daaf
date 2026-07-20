@@ -63,6 +63,50 @@
 #   * GET /health endpoint for the manager's idempotency/status checks.
 #
 # Changelog:
+#   v1.3.0 (2026-07-20): ChatGPT-lane auth refresh DELEGATED to the codex CLI
+#     (Tier 3 A1; minor bump — behavior + config-surface change). The shim is now a
+#     pure READER of $CODEX_HOME/auth.json; codex is the SINGLE WRITER. This deletes
+#     the shim's Python OAuth reimplementation and structurally eliminates the
+#     refresh-rotation race that caused the 2026-07-20 auth lockout.
+#     A1-i (delegation core, committed separately):
+#       * DELETED the Python refresh path: the OAuth token POST to
+#         auth.openai.com/oauth/token, rotated-refresh-token atomic persistence, the
+#         manager.rs-mirror reload-before-refresh guard, and the SHIM_OAUTH_TOKEN_URL/
+#         SHIM_OAUTH_CLIENT_ID env seams (their only consumer was the deleted path).
+#         No legacy fallback flag — a retained Python path would preserve the race.
+#       * ADDED delegated_refresh(): a single-flight (asyncio.Lock) primitive that
+#         spawns `{SHIM_CODEX_BIN} login status` (CODEX_HOME passthrough, bounded by
+#         SHIM_CODEX_TIMEOUT_S) then RE-READS auth.json and judges success SOLELY by
+#         the re-read result — the subprocess exit code/output are diagnostic-only.
+#         Proactive trigger: token within a 5-min exp margin (was 30 min) mirroring
+#         codex's CHATGPT_ACCESS_TOKEN_REFRESH_WINDOW_MINUTES so codex actually
+#         refreshes when asked. Reactive trigger: backend 401 -> one delegated_refresh
+#         + single retry (existing retry-guard shape preserved).
+#       * NEW config: SHIM_CODEX_BIN (default "codex") and SHIM_CODEX_TIMEOUT_S
+#         (float, default 30, unparseable->30). CODEX_HOME passthrough unchanged.
+#       * Every auth-failure surface (failed delegation, post-retry 401, absent/
+#         unreadable store, codex "Not logged in"/missing/timeout) raises the actionable
+#         _RELOGIN_MSG that literally contains `codex login --device-auth` (A1-R5).
+#     A1-ii (auth surfaces, this dispatch):
+#       * A1-R4: /health gains a read-only `auth` block {state, expires_at, days_left,
+#         recovery?} on the chatgpt lane ("n/a" on the openai lane). state is
+#         valid|expiring|expired|absent|unreadable, derived from auth.json presence +
+#         JWT exp decode only — NEVER token material. `recovery` (the literal re-login
+#         command) is present only for the four actionable states. "expiring" = exp
+#         within _AUTH_EXPIRING_WINDOW_S (48h) — a USER heads-up horizon, deliberately
+#         wider than the internal 5-min refresh margin.
+#       * A1-R6a: start_shim.sh readiness + --status query /health and print an auth
+#         line; expiring -> prominent "expires in N days" warning naming
+#         `codex login --device-auth`; expired/absent/unreadable -> the "is dead" phrasing.
+#       * A1-R6b: deploy-smoke T0.9 extends from "auth.json readable" to asserting the
+#         /health auth block on shim routes: FAIL on expired|absent|unreadable, WARN on
+#         expiring, PASS on valid (SKIP on non-shim routes).
+#       * A1-R7: SHIM_CODEX_BIN/SHIM_CODEX_TIMEOUT_S documented in the Config block and
+#         start_shim.sh help/env passthrough.
+#     The two historical v1.2.5 comments describing the now-deleted Python OAuth path
+#     carry inline "[superseded in v1.3.0 ...]" markers so version history stays
+#     accurate without asserting present-tense behavior that no longer exists.
+#     SHIM_VERSION -> 1.3.0.
 #   v1.2.14 (2026-07-20): Robustness (R1-R6) + diagnostics (D1-D5) hardening pass,
 #     driven by the v1.2.8/v1.2.13 self-inflicted-outage retrospective. Doctrine:
 #     "strict emit, tolerant accept" — every change moves an unexpected upstream
@@ -415,7 +459,12 @@
 #       strict:false->true) and returns STANDARD Responses SSE. So chatgpt mode emits
 #       ONLY the 3-header floor: authorization (Bearer <access_token>),
 #       content-type: application/json, accept: text/event-stream.
-#     TOKEN LAYER (the only genuinely new component; notes/09 + notes/10, live-
+#     TOKEN LAYER [SUPERSEDED in v1.3.0 — the Python OAuth refresh described in
+#       present tense below (the auth.openai.com token POST, rotated-refresh-token
+#       persistence, and the manager.rs-mirror reload guard) was DELETED in v1.3.0;
+#       auth refresh is now delegated to the codex CLI (see the v1.3.0 entry). The
+#       paragraph is preserved verbatim as v1.2.5 history — read it in the past tense]
+#       (the only genuinely new component; notes/09 + notes/10, live-
 #       verified): the access_token TTL is ~10 days, so within any DAAF session the
 #       shim refreshes ~never — it is read-mostly. It decodes the access_token JWT
 #       PAYLOAD ONLY (never the signature) for the `exp` claim and refreshes only
@@ -449,9 +498,11 @@
 #       hung auth.openai.com cannot hold _token_refresh_lock (and block concurrent
 #       chatgpt-lane requests) for up to 600s; httpx timeout -> the existing clean
 #       RuntimeError(_RELOGIN_MSG). (b) The two OAuth test/staging override env vars
-#       (SHIM_OAUTH_TOKEN_URL, SHIM_OAUTH_CLIENT_ID) are now documented in the Config
-#       block here and in start_shim.sh (production leaves them unset -> hardcoded
-#       codex defaults). (c) codex_home_present is now HONEST — it reflects actual
+#       (SHIM_OAUTH_TOKEN_URL, SHIM_OAUTH_CLIENT_ID) were documented in the Config
+#       block and in start_shim.sh (production leaves them unset -> hardcoded
+#       codex defaults). [SUPERSEDED in v1.3.0 — both env seams were REMOVED with the
+#       Python refresh path; they no longer exist in the Config block or start_shim.sh.]
+#       (c) codex_home_present is now HONEST — it reflects actual
 #       auth.json readability (os.access R_OK), not merely CODEX_HOME being set,
 #       matching the "resolvable auth.json" docstring; applied to BOTH /health and
 #       the startup log field so they agree. Still a presence-only boolean (no
@@ -745,7 +796,7 @@ import httpx
 import uvicorn
 
 # --- Config ---
-SHIM_VERSION = "1.2.14"
+SHIM_VERSION = "1.3.0"
 SHIM_SERVICE_ID = "daaf-anthropic-openai-shim"
 
 SHIM_PORT = int(os.environ.get("SHIM_PORT", "4141"))
@@ -5864,6 +5915,67 @@ async def _handle_models(send):
     ]})
 
 
+# A1-R4 (v1.3.0): read-only auth-validity snapshot for /health. Derived ENTIRELY from
+# auth.json presence + the access_token's JWT `exp` claim (payload decoded, never
+# verified, never the signature). It NEVER returns token material — only a coarse
+# state, the decoded expiry, a day count, and (for actionable states) the literal
+# recovery command. This is a REPORTING mirror of the auth store: it never writes,
+# never refreshes, and never touches the delegation path (delegated_refresh's domain).
+# The "expiring" horizon is deliberately WIDER than the internal 5-min refresh margin
+# (_TOKEN_REFRESH_MARGIN_S): that margin governs when the shim asks codex to refresh;
+# this window is a USER heads-up ("subscription auth expires in N days") surfaced by
+# start_shim.sh readiness and deploy-smoke, so it warns 48h ahead — enough lead time to
+# run `codex login --device-auth` before work is blocked.
+_AUTH_EXPIRING_WINDOW_S = 48 * 3600
+_AUTH_RECOVERY_CMD = "codex login --device-auth"
+
+
+def _auth_health_block():
+    # INTENT: return the /health "auth" block: {state, expires_at, days_left, recovery?}.
+    #   state is valid|expiring|expired|absent|unreadable on the chatgpt lane, and "n/a"
+    #   on the openai (API-key) lane, which does not use the codex OAuth store.
+    # REASONING: absent = no readable auth.json (CODEX_HOME unset, or the file missing/
+    #   unreadable); unreadable = the file reads but yields no decodable access_token exp
+    #   (malformed JSON, missing tokens/access_token, or a non-JWT/undecodable token);
+    #   otherwise the exp decides expired (exp <= now) / expiring (within
+    #   _AUTH_EXPIRING_WINDOW_S) / valid. `recovery` (the literal re-login command) is
+    #   present ONLY for the four actionable states, never for valid or n/a.
+    # CREDENTIAL SAFETY: never returns token material — only the coarse state, the
+    #   decoded expiry timestamp, a day count, and a static command string. Never raises
+    #   (a /health probe must not 500); every failure path degrades to absent/unreadable.
+    if SHIM_BACKEND_MODE != "chatgpt":
+        return {"state": "n/a"}
+    if not _CODEX_AUTH_PATH or not os.access(_CODEX_AUTH_PATH, os.R_OK):
+        return {"state": "absent", "expires_at": None, "days_left": None,
+                "recovery": _AUTH_RECOVERY_CMD}
+    try:
+        with open(_CODEX_AUTH_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        access = (data.get("tokens") or {}).get("access_token") if isinstance(data, dict) else None
+    except (OSError, ValueError):
+        access = None
+    exp = _jwt_exp(access) if access else None
+    if exp is None:
+        return {"state": "unreadable", "expires_at": None, "days_left": None,
+                "recovery": _AUTH_RECOVERY_CMD}
+    now = time.time()
+    remaining = exp - now
+    if remaining <= 0:
+        state = "expired"
+    elif remaining <= _AUTH_EXPIRING_WINDOW_S:
+        state = "expiring"
+    else:
+        state = "valid"
+    block = {
+        "state": state,
+        "expires_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(exp)),
+        "days_left": round(remaining / 86400, 1),
+    }
+    if state != "valid":
+        block["recovery"] = _AUTH_RECOVERY_CMD
+    return block
+
+
 async def _handle_health(send):
     # HARDENING: health endpoint for the manager's idempotency + --status checks.
     await _send_json(send, 200, {
@@ -5888,6 +6000,10 @@ async def _handle_health(send):
         "sanitize_tools": SHIM_SANITIZE_TOOLS,
         "reasoning_effort": SHIM_REASONING_EFFORT,
         "text_verbosity": SHIM_TEXT_VERBOSITY,
+        # A1-R4 (v1.3.0): read-only auth-validity snapshot (chatgpt lane; "n/a" on the
+        # openai lane). Derived from auth.json presence + JWT exp only — never token
+        # material. start_shim.sh readiness/--status and deploy-smoke T0.9 consume it.
+        "auth": _auth_health_block(),
     })
 
 

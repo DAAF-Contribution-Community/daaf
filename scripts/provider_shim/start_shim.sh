@@ -36,11 +36,15 @@
 #                           ignored in chatgpt mode)
 #   CODEX_HOME              (chatgpt mode) directory holding auth.json, the codex
 #                           OAuth token store (mode 0600). Compose sets it to
-#                           /home/appuser/.claude/codex-daaf.
-#   SHIM_OAUTH_TOKEN_URL    (chatgpt mode) TEST/STAGING OVERRIDE only. Production
-#                           default is the hardcoded auth.openai.com/oauth/token.
-#   SHIM_OAUTH_CLIENT_ID    (chatgpt mode) TEST/STAGING OVERRIDE only. Production
-#                           default is the hardcoded codex first-party client_id.
+#                           /home/appuser/.claude/codex-daaf. As of v1.3.0 the shim
+#                           only READS this store; codex is the single writer and
+#                           performs any token refresh (see SHIM_CODEX_BIN).
+#   SHIM_CODEX_BIN          (chatgpt mode) codex binary the shim spawns to delegate
+#                           token refresh (`codex login status`). Default "codex"
+#                           (on PATH in the DAAF image). v1.3.0.
+#   SHIM_CODEX_TIMEOUT_S    (chatgpt mode) wall-clock bound (float seconds) on the
+#                           delegated `codex login status` subprocess. Default 30;
+#                           an unparseable value falls back to 30. v1.3.0.
 #   SHIM_STRIP_MODEL_PREFIX default ""
 #   SHIM_SANITIZE_TOOLS     default "1" (enabled); set to 0 and restart for
 #                           DAAFBench runs of shim-routed models
@@ -456,6 +460,42 @@ emit_readiness_failure() {
         "$EXPECTED_BACKEND_MODE" "$SHIM_PORT" >&2
 }
 
+# A1-R6a (v1.3.0): surface the /health auth block's validity as a human-readable line
+# so an expiring/dead ChatGPT subscription is visible BEFORE work starts (and via
+# --status). Reads the auth block already captured in HEALTH_JSON by probe_health — no
+# extra request. Prints nothing when the block is absent or "n/a" (the openai API-key
+# lane does not use the codex OAuth store). Both fields are sanitized to bounded,
+# single-line tokens (the D4 injection convention, mirroring do_auto's `observed`)
+# before reaching the terminal: they originate from our own /health but are DERIVED
+# from the on-disk token store, so they are treated as untrusted for output.
+print_auth_line() {
+    command -v jq >/dev/null 2>&1 || return 0
+    [ -n "$HEALTH_JSON" ] || return 0
+    local state days
+    state="$(printf '%s' "$HEALTH_JSON" | jq -r '.auth.state // empty' 2>/dev/null \
+        | tr -cd 'a-z/' | cut -c1-16)"
+    [ -n "$state" ] && [ "$state" != "n/a" ] || return 0
+    days="$(printf '%s' "$HEALTH_JSON" | jq -r '.auth.days_left // empty' 2>/dev/null \
+        | tr -cd '0-9.-' | cut -c1-16)"
+    case "$state" in
+        valid)
+            printf 'AUTH: ChatGPT subscription auth is valid (expires in %s days).\n' \
+                "${days:-?}" >&2
+            ;;
+        expiring)
+            printf 'WARNING: ChatGPT subscription auth expires in %s days. Run `codex login --device-auth` inside the container to re-authenticate before it lapses.\n' \
+                "${days:-?}" >&2
+            ;;
+        expired|absent|unreadable)
+            printf 'WARNING: ChatGPT subscription auth is dead (%s) — run `codex login --device-auth` inside the container to re-authenticate.\n' \
+                "$state" >&2
+            ;;
+        *)
+            printf 'AUTH: ChatGPT subscription auth state: %s.\n' "$state" >&2
+            ;;
+    esac
+}
+
 # --- Process identity helpers ----------------------------------------------
 is_decimal_pid() {
     case "${1:-}" in
@@ -816,6 +856,7 @@ do_start_locked() {
     if is_healthy; then
         START_FAILURE_KIND="none"
         printf 'Shim already running and strictly ready on port %s.\n' "$SHIM_PORT" >&2
+        print_auth_line
         return 0
     fi
     if supervisor_running; then
@@ -851,6 +892,7 @@ do_start_locked() {
             START_FAILURE_KIND="none"
             ACTIVE_LAUNCH_PID=""
             printf 'Shim started and strictly ready on port %s.\n' "$SHIM_PORT" >&2
+            print_auth_line
             return 0
         fi
         # The detached process needs a scheduling turn to create supervisor.pid.
@@ -1103,6 +1145,7 @@ do_status() {
     if is_healthy; then
         printf 'STATUS: running and strictly ready (port %s)\n' "$SHIM_PORT"
         printf 'HEALTH: %s\n' "$HEALTH_JSON"
+        print_auth_line
         return 0
     fi
     if supervisor_running; then

@@ -28,6 +28,8 @@ _HEALTH_KEYS = {
     "sanitize_tools",
     "reasoning_effort",
     "text_verbosity",
+    # v1.3.0 (A1-R4): read-only auth-validity snapshot block.
+    "auth",
 }
 
 
@@ -348,12 +350,25 @@ class ProviderShimHistoricalRegressionTests(unittest.TestCase):
                         self.assertEqual(set(health), _HEALTH_KEYS)
                         self.assertEqual(health["service"], "daaf-anthropic-openai-shim")
                         self.assertEqual(health["status"], "ok")
-                        self.assertEqual(health["version"], "1.2.14")
+                        self.assertEqual(health["version"], "1.3.0")
                         self.assertEqual(health["backend_mode"], mode)
                         self.assertEqual(health["sanitize_tools"], sanitize)
                         self.assertEqual(health["reasoning_effort"], effort)
                         self.assertEqual(health["text_verbosity"], verbosity)
                         self.assertIs(health["codex_home_present"], True)
+                        # v1.3.0 (A1-R4): the auth block. The openai lane does not use
+                        # the codex OAuth store -> "n/a" (no token material). The chatgpt
+                        # lane seeds a far-future fabricated token -> "valid", with an
+                        # expiry/day-count and NO recovery command (recovery is present
+                        # only for the four actionable states).
+                        auth = health["auth"]
+                        if mode == "openai":
+                            self.assertEqual(auth, {"state": "n/a"})
+                        else:
+                            self.assertEqual(auth["state"], "valid")
+                            self.assertNotIn("recovery", auth)
+                            self.assertIsInstance(auth["expires_at"], str)
+                            self.assertGreater(auth["days_left"], 1)
                         expected_backend = (
                             f"{backend.base_url}/v1"
                             if mode == "openai"
