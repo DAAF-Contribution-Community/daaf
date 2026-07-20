@@ -41,44 +41,116 @@ is_canonical_positive_decimal() {
 
 input=$(cat)
 
-# Single consolidated jq pass over the payload: extract every field used below
-# as one tab-separated record, then read into shell variables. This replaces
-# what were ~5 separate `jq` invocations on "$input" (one process fork each).
-# Field order and defaults are preserved byte-for-byte from the prior per-field
-# calls so downstream logic (OpenRouter override, transcript parsing, the
-# /tmp/claude-ctx-window write) behaves identically:
-#   model            = .model.display_name // .model.id // "?"
-#   cwd              = .cwd // ""
-#   transcript_path  = .transcript_path // ""
-#   max_context      = .context_window.context_window_size // 200000
-#   session_id       = .session_id // "default"
-#   model_id         = .model.id // ""           (used by the OpenRouter block)
-# New optional segments (all default to empty when absent, e.g. API-key sessions):
-#   effort_level     = .effort.level
-#   rl_5h            = .rate_limits.five_hour.used_percentage
-#   rl_5h_reset      = .rate_limits.five_hour.resets_at
-#   rl_7d            = .rate_limits.seven_day.used_percentage
-#   rl_7d_reset      = .rate_limits.seven_day.resets_at
-# Fields are joined with the ASCII unit separator \x1f, NOT @tsv: tab is IFS
-# *whitespace* in bash, so consecutive tabs collapse and any EMPTY field (e.g.
-# transcript_path at session start, or the absent effort/rate-limit fields)
-# would silently shift every later field left. A non-whitespace IFS preserves
-# empty fields. See subagent-bar.sh FIELD-JOINING NOTE for the discovery story.
-IFS=$'\x1f' read -r model cwd transcript_path max_context session_id model_id \
-    effort_level rl_5h rl_5h_reset rl_7d rl_7d_reset < <(echo "$input" | jq -r '
-    [ (.model.display_name // .model.id // "?"),
-      (.cwd // ""),
-      (.transcript_path // ""),
-      (.context_window.context_window_size // 200000 | tostring),
-      (.session_id // "default"),
-      (.model.id // ""),
-      (.effort.level // ""),
-      (.rate_limits.five_hour.used_percentage // ""),
-      (.rate_limits.five_hour.resets_at // ""),
-      (.rate_limits.seven_day.used_percentage // ""),
-      (.rate_limits.seven_day.resets_at // "") ]
-    | map(tostring) | join("\u001f")
-')
+# One jq pass validates and normalizes every field before joining it with an
+# ASCII unit separator. Identity/path strings containing C0/DEL controls become
+# empty; display-only strings have those controls removed; numeric fields accept
+# only their expected JSON scalar type. The session ID is validated against the
+# complete path-safe grammar inside jq, before Bash can normalize a newline or
+# drop a NUL. Therefore every emitted field is delimiter/control-free and the
+# fixed-order read cannot be shifted by untrusted JSON content.
+model="?"
+cwd=""
+transcript_path=""
+max_context="200000"
+session_id=""
+model_id=""
+effort_level=""
+rl_5h=""
+rl_5h_reset=""
+rl_7d=""
+rl_7d_reset=""
+payload_parsed=0
+if command -v jq >/dev/null 2>&1; then
+    if IFS=$'\x1f' read -r model cwd transcript_path max_context session_id model_id \
+    effort_level rl_5h rl_5h_reset rl_7d rl_7d_reset < <(printf '%s' "$input" | jq -er '
+        def has_control:
+            test("[[:cntrl:]]");
+        def display_string($fallback):
+            if type == "string" then gsub("[[:cntrl:]]"; "")
+            else $fallback
+            end;
+        def control_free_string:
+            if type == "string" then
+                if has_control then "" else . end
+            else ""
+            end;
+        def reset_scalar:
+            if type == "number" then tostring
+            elif type == "string" then
+                if has_control then "" else . end
+            else ""
+            end;
+        def valid_session_id:
+            if type == "string" then
+                (has_control | not) and
+                test("^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+            else false
+            end;
+
+        if type != "object" then error("statusline payload must be an object")
+        else
+            [ ((.model.display_name? // .model.id? // "?") | display_string("?")),
+              ((.cwd? // "") | control_free_string),
+              ((.transcript_path? // "") | control_free_string),
+              (if (.context_window.context_window_size? | type) == "number" then
+                   if .context_window.context_window_size > 0 and
+                          (.context_window.context_window_size | floor) == .context_window.context_window_size
+                   then (.context_window.context_window_size | tostring)
+                   else "200000"
+                   end
+               else "200000"
+               end),
+              (if (.session_id? | valid_session_id)
+               then .session_id
+               else ""
+               end),
+              ((.model.id? // "") | control_free_string),
+              ((.effort.level? // "") | display_string("")),
+              (if (.rate_limits.five_hour.used_percentage? | type) == "number"
+               then (.rate_limits.five_hour.used_percentage | tostring)
+               else ""
+               end),
+              ((.rate_limits.five_hour.resets_at? // "") | reset_scalar),
+              (if (.rate_limits.seven_day.used_percentage? | type) == "number"
+               then (.rate_limits.seven_day.used_percentage | tostring)
+               else ""
+               end),
+              ((.rate_limits.seven_day.resets_at? // "") | reset_scalar) ]
+            | join("\u001f")
+        end
+    ' 2>/dev/null); then
+        payload_parsed=1
+    fi
+fi
+
+# Production caches live in /tmp. The override is a deterministic-test seam so
+# Bats can exercise writes inside project scratch without touching live session
+# state. Cache eligibility requires a successfully parsed payload plus a
+# nonempty session ID in the established UUID-safe character set and bounded
+# length. All other cases keep statusline rendering fail-open while skipping
+# every session-scoped cache read and write below.
+context_cache_dir="${DAAF_CONTEXT_BAR_CACHE_DIR:-/tmp}"
+session_id_safe=0
+if [[ "$payload_parsed" -eq 1 && \
+      "$session_id" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ && \
+      ${#session_id} -le 128 ]]; then
+    session_id_safe=1
+fi
+
+# Seed the authoritative main-session model cache from the statusline's
+# .model.id. Replace through a same-directory sibling so reminder/reporting
+# hooks never observe a partial write. An empty authoritative ID intentionally
+# replaces any stale value with an empty file, causing GPT-specific consumers to
+# treat identity as unresolved rather than guess.
+if [[ "$session_id_safe" -eq 1 ]]; then
+    model_cache="${context_cache_dir}/claude-model-${session_id}"
+    model_tmp="${model_cache}.tmp.$$"
+    if printf '%s' "$model_id" > "$model_tmp" 2>/dev/null; then
+        mv "$model_tmp" "$model_cache" 2>/dev/null || rm -f "$model_tmp" 2>/dev/null
+    else
+        rm -f "$model_tmp" 2>/dev/null
+    fi
+fi
 
 # Guard against an unparseable payload leaving max_context empty (which would
 # cause a divide-by-zero in the pct arithmetic below). Valid payloads always
@@ -110,11 +182,9 @@ fi
 # authoritative catalogue result and must not be mistaken for the generic
 # fallback by the static map below.
 or_context_resolved=0
-# Production uses /tmp so hooks and statuslines share one session cache. The
-# override is a deterministic-test seam only: Bats points it at project scratch
-# so fake OpenRouter catalogues never write fixture data outside the repository.
-context_cache_dir="${DAAF_CONTEXT_BAR_CACHE_DIR:-/tmp}"
-if [[ "${ANTHROPIC_BASE_URL:-}" == *openrouter.ai* ]]; then
+# context_cache_dir and the session-ID path guard are initialized immediately
+# after payload extraction. Malformed session IDs skip this cache-backed branch.
+if [[ "$session_id_safe" -eq 1 && "${ANTHROPIC_BASE_URL:-}" == *openrouter.ai* ]]; then
     # model_id already extracted in the consolidated jq pass above
     # (byte-identical to the old `.model.id // empty`).
     or_cache="${context_cache_dir}/claude-or-models-${session_id}"
@@ -235,8 +305,12 @@ fi
 
 max_k=$((max_context / 1000))
 
-# Share context window size with hooks (which don't receive it in their input payload)
-echo "$max_context" > "${context_cache_dir}/claude-ctx-window-${session_id}" 2>/dev/null
+# Share context window size with hooks (which don't receive it in their input
+# payload). Unsafe session IDs skip the path construction and retain fail-open
+# statusline output without creating an attacker-controlled cache path.
+if [[ "$session_id_safe" -eq 1 ]]; then
+    printf '%s\n' "$max_context" > "${context_cache_dir}/claude-ctx-window-${session_id}" 2>/dev/null
+fi
 
 # Calculate context bar from transcript
 if [[ -n "$transcript_path" && -f "$transcript_path" ]]; then

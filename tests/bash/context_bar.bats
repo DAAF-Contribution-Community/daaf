@@ -19,6 +19,7 @@ setup() {
     MOCK_BIN="${SCRATCH_DIR}/bin"
     DAAF_CONTEXT_BAR_CACHE_DIR="${SCRATCH_DIR}/cache"
     CTX_CACHE="${DAAF_CONTEXT_BAR_CACHE_DIR}/claude-ctx-window-${FAKE_SESSION}"
+    MODEL_CACHE="${DAAF_CONTEXT_BAR_CACHE_DIR}/claude-model-${FAKE_SESSION}"
     OR_CACHE="${DAAF_CONTEXT_BAR_CACHE_DIR}/claude-or-models-${FAKE_SESSION}"
     mkdir -p "$MOCK_BIN" "$DAAF_CONTEXT_BAR_CACHE_DIR"
     cat > "${MOCK_BIN}/curl" <<'MOCK_CURL'
@@ -32,7 +33,7 @@ MOCK_CURL
     unset DAAF_PROVIDER_SHIM
     unset SHIM_BACKEND_MODE
     export CONTEXT_BAR_SH FAKE_SESSION SCRATCH_DIR MOCK_BIN
-    export DAAF_CONTEXT_BAR_CACHE_DIR CTX_CACHE OR_CACHE
+    export DAAF_CONTEXT_BAR_CACHE_DIR CTX_CACHE MODEL_CACHE OR_CACHE
 }
 
 teardown() {
@@ -49,6 +50,175 @@ _payload() {
 @test "context-bar.sh parses without errors" {
     run bash -n "$CONTEXT_BAR_SH"
     assert_success
+}
+
+@test "authoritative statusline model id is cached atomically for the session" {
+    run bash "$CONTEXT_BAR_SH" < <(_payload "openrouter/openai/gpt-5.6-terra[1m]")
+    assert_success
+
+    run cat "$MODEL_CACHE"
+    assert_success
+    assert_output "openrouter/openai/gpt-5.6-terra[1m]"
+
+    run find "$DAAF_CONTEXT_BAR_CACHE_DIR" -maxdepth 1 -name 'claude-model-*.tmp.*' -print
+    assert_success
+    assert_output ""
+}
+
+@test "empty authoritative model id replaces a stale model cache with unresolved identity" {
+    printf '%s' 'gpt-5.6-sol' > "$MODEL_CACHE"
+    run bash "$CONTEXT_BAR_SH" <<JSON
+{"model":{"display_name":"Unknown"},"cwd":"$TEST_DIR","transcript_path":"","session_id":"$FAKE_SESSION","context_window":{"context_window_size":200000}}
+JSON
+    assert_success
+
+    run test -f "$MODEL_CACHE"
+    assert_success
+    run test ! -s "$MODEL_CACHE"
+    assert_success
+}
+
+@test "unsafe session ids skip all session-scoped cache writes while statusline stays fail-open" {
+    local unsafe_session
+    for unsafe_session in \
+        '../escape' \
+        'nested/session' \
+        'session with spaces' \
+        '-leading-dash' \
+        "$(printf 'a%.0s' {1..129})"; do
+        run bash "$CONTEXT_BAR_SH" <<JSON
+{"model":{"id":"gpt-5.6-sol","display_name":"gpt-5.6-sol"},"cwd":"$TEST_DIR","transcript_path":"","session_id":"$unsafe_session","context_window":{"context_window_size":200000}}
+JSON
+        assert_success
+        assert_output --partial "gpt-5.6-sol"
+    done
+
+    run find "$DAAF_CONTEXT_BAR_CACHE_DIR" -mindepth 1 -maxdepth 1 -print
+    assert_success
+    assert_output ""
+}
+
+@test "newline NUL and unit-separator session identities cannot alias or poison caches" {
+    printf '%s' 'seed-safe-model' > "${DAAF_CONTEXT_BAR_CACHE_DIR}/claude-model-safe"
+    printf '%s' '111111' > "${DAAF_CONTEXT_BAR_CACHE_DIR}/claude-ctx-window-safe"
+    printf '%s' 'seed-victim-model' > "${DAAF_CONTEXT_BAR_CACHE_DIR}/claude-model-victim"
+    printf '%s' '222222' > "${DAAF_CONTEXT_BAR_CACHE_DIR}/claude-ctx-window-victim"
+
+    local payload
+    for payload in \
+        '{"model":{"id":"claude-fable-5","display_name":"Fable 5"},"session_id":"safe\nid","context_window":{"context_window_size":1000000}}' \
+        '{"model":{"id":"claude-fable-5","display_name":"Fable 5"},"session_id":"safe\n","context_window":{"context_window_size":1000000}}'; do
+        run bash "$CONTEXT_BAR_SH" <<< "$payload"
+        assert_success
+        assert_output --partial "Fable 5"
+        refute_output --partial "of 1050k tokens"
+    done
+
+    printf -v payload '{"model":{"id":"claude-fable-5","display_name":"Fable 5"},"session_id":"victim\\u%04x","context_window":{"context_window_size":1000000}}' 0
+    run bash "$CONTEXT_BAR_SH" <<< "$payload"
+    assert_success
+    assert_output --partial "Fable 5"
+    refute_output --partial "of 1050k tokens"
+
+    printf -v payload '{"model":{"id":"claude-fable-5","display_name":"Fable 5"},"session_id":"victim\\u%04xgpt-5.6-sol","context_window":{"context_window_size":1000000}}' 31
+    run bash "$CONTEXT_BAR_SH" <<< "$payload"
+    assert_success
+    assert_output --partial "Fable 5"
+    refute_output --partial "of 1050k tokens"
+
+    run cat "${DAAF_CONTEXT_BAR_CACHE_DIR}/claude-model-safe"
+    assert_success
+    assert_output "seed-safe-model"
+    run cat "${DAAF_CONTEXT_BAR_CACHE_DIR}/claude-ctx-window-safe"
+    assert_success
+    assert_output "111111"
+    run cat "${DAAF_CONTEXT_BAR_CACHE_DIR}/claude-model-victim"
+    assert_success
+    assert_output "seed-victim-model"
+    run cat "${DAAF_CONTEXT_BAR_CACHE_DIR}/claude-ctx-window-victim"
+    assert_success
+    assert_output "222222"
+}
+
+@test "controls in earlier display and path fields cannot shift later identity or rate fields" {
+    local payload
+    printf -v payload '{"model":{"id":"gpt-5.6-sol","display_name":"GPT\\u%04xDisplay\\u%04xName"},"cwd":"bad\\u%04xpath","transcript_path":"bad\\u%04xtranscript","session_id":"%s","context_window":{"context_window_size":1050000},"effort":{"level":"high\\u%04xshift"},"rate_limits":{"five_hour":{"used_percentage":"42\\u%04xgpt","resets_at":"bad\\u%04xreset"},"seven_day":{"used_percentage":13,"resets_at":0}}}' 10 31 10 31 "$FAKE_SESSION" 10 31 10
+    run bash "$CONTEXT_BAR_SH" <<< "$payload"
+    assert_success
+    assert_output --partial "GPTDisplayName"
+    assert_output --partial "of 1050k tokens"
+    assert_output --partial "Plan usage:"
+    assert_output --partial "7d:13%"
+    refute_output --partial "5h:"
+
+    run cat "$MODEL_CACHE"
+    assert_success
+    assert_output "gpt-5.6-sol"
+    run cat "$CTX_CACHE"
+    assert_success
+    assert_output "1050000"
+}
+
+@test "control-bearing model identity is unresolved and cannot poison a stale cache" {
+    local payload
+    printf '%s' 'gpt-5.6-sol' > "$MODEL_CACHE"
+    printf -v payload '{"model":{"id":"claude-fable-5\\u%04xgpt-5.6-sol","display_name":"Fable 5"},"cwd":"%s","transcript_path":"","session_id":"%s","context_window":{"context_window_size":200000}}' 31 "$TEST_DIR" "$FAKE_SESSION"
+    run bash "$CONTEXT_BAR_SH" <<< "$payload"
+    assert_success
+    assert_output --partial "Fable 5"
+    assert_output --partial "of 200k tokens"
+    refute_output --partial "of 1050k tokens"
+
+    run test ! -s "$MODEL_CACHE"
+    assert_success
+}
+
+@test "missing null empty and non-string session ids never use a shared default cache" {
+    local payload
+    for payload in \
+        '{"model":{"id":"gpt-5.6-sol","display_name":"gpt-5.6-sol"},"context_window":{"context_window_size":200000}}' \
+        '{"model":{"id":"gpt-5.6-sol","display_name":"gpt-5.6-sol"},"session_id":null,"context_window":{"context_window_size":200000}}' \
+        '{"model":{"id":"gpt-5.6-sol","display_name":"gpt-5.6-sol"},"session_id":"","context_window":{"context_window_size":200000}}' \
+        '{"model":{"id":"gpt-5.6-sol","display_name":"gpt-5.6-sol"},"session_id":42,"context_window":{"context_window_size":200000}}' \
+        '{"model":{"id":"gpt-5.6-sol","display_name":"gpt-5.6-sol"},"session_id":true,"context_window":{"context_window_size":200000}}' \
+        '{"model":{"id":"gpt-5.6-sol","display_name":"gpt-5.6-sol"},"session_id":{"value":"object-id"},"context_window":{"context_window_size":200000}}' \
+        '{"model":{"id":"gpt-5.6-sol","display_name":"gpt-5.6-sol"},"session_id":["array-id"],"context_window":{"context_window_size":200000}}'; do
+        run bash "$CONTEXT_BAR_SH" <<< "$payload"
+        assert_success
+        assert_output --partial "gpt-5.6-sol"
+    done
+
+    run find "$DAAF_CONTEXT_BAR_CACHE_DIR" -mindepth 1 -maxdepth 1 -print
+    assert_success
+    assert_output ""
+}
+
+@test "malformed statusline input exits successfully without writing session caches" {
+    run bash "$CONTEXT_BAR_SH" <<< 'not-json {{{'
+    assert_success
+
+    run find "$DAAF_CONTEXT_BAR_CACHE_DIR" -mindepth 1 -maxdepth 1 -print
+    assert_success
+    assert_output ""
+}
+
+@test "missing jq leaves statusline fail-open and creates no session or default cache" {
+    local bindir="${SCRATCH_DIR}/nojq-bin"
+    mkdir -p "$bindir"
+    ln -s "$(command -v bash)" "${bindir}/bash"
+    ln -s "$(command -v cat)" "${bindir}/cat"
+    ln -s "$(command -v basename)" "${bindir}/basename"
+
+    run env -i \
+        PATH="$bindir" \
+        DAAF_CONTEXT_BAR_CACHE_DIR="$DAAF_CONTEXT_BAR_CACHE_DIR" \
+        bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol")
+    assert_success
+    assert_output --partial "of 200k tokens"
+
+    run find "$DAAF_CONTEXT_BAR_CACHE_DIR" -mindepth 1 -maxdepth 1 -print
+    assert_success
+    assert_output ""
 }
 
 @test "gpt-5.6-sol[1m] displays 1050k and caches the 1050000 physical window" {
