@@ -873,3 +873,28 @@ MOCK_BAD_CURL
     assert_output --partial "5h:100%"
     refute_output --partial "5h:150%"
 }
+
+# =========================================================================
+# Hardening follow-up: C1 controls in the git branch name (Convention 1)
+# -------------------------------------------------------------------------
+# git refnames only forbid bytes < 0x20 and DEL, so a hostile repo can name a
+# branch with a UTF-8-encoded C1 control (U+009B = 8-bit CSI on xterm-class
+# terminals). Byte-wise tr [:cntrl:] passed it through to the display stream;
+# the Unicode-aware jq strip removes it while keeping the printable remainder.
+# =========================================================================
+
+@test "UTF-8-encoded C1 in a git branch name is stripped from the display stream" {
+    local repo="${SCRATCH_DIR}/c1-branch-repo"
+    mkdir -p "$repo"
+    git -C "$repo" -c init.defaultBranch=main init -q
+    git -C "$repo" -c user.email=b@b -c user.name=b commit -q --allow-empty -m x
+    git -C "$repo" checkout -q -b "$(printf 'br\302\233inj')"
+    local payload
+    printf -v payload '{"model":{"id":"claude-fable-5","display_name":"Fable 5"},"cwd":"%s","transcript_path":"","session_id":"%s","context_window":{"context_window_size":200000}}' \
+        "$repo" "$FAKE_SESSION"
+    run bash "$CONTEXT_BAR_SH" <<< "$payload"
+    assert_success
+    # C1 removed: the two halves of the branch name join; no raw c2 9b bytes.
+    assert_output --partial "🔀brinj"
+    refute_output --partial "$(printf '\302\233')"
+}

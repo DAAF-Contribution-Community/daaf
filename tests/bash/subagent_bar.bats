@@ -947,3 +947,27 @@ _payload_desc() {
     [ ! -s "$errfile" ]
     assert_output --partial '"id":"t1"'
 }
+
+# =========================================================================
+# HARDENING follow-up — Convention 1: UTF-8-encoded C1 via the model cache
+# -------------------------------------------------------------------------
+# The bare model cache is read with cat, so it can carry a VALID-UTF-8 C1
+# control (U+009B = 8-bit CSI on xterm-class terminals) that the old byte-wise
+# bash range strip (C0+DEL only) passed through into the row and the emitted
+# JSON. The Unicode-aware jq [[:cntrl:]] strip (Unicode Cc) removes it.
+# =========================================================================
+
+@test "C1: UTF-8-encoded C1 from a hostile model cache is stripped before display" {
+    _seed_window 200000
+    _seed_session_model "claude-sonnet-4-6"
+    # [155]|implode -> U+009B, emitted by jq -rn as raw UTF-8 bytes c2 9b.
+    jq -rn '"evil"+([155]|implode)+"0;pwn-model"' \
+        > "/tmp/claude-subagent-model-${FAKE_SESSION}-c1u"
+    run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "c1u" 50000)
+    assert_success
+    # Neither the raw UTF-8 C1 bytes nor a JSON-escaped  may survive.
+    refute_output --partial "$(printf '\302\233')"
+    refute_output --partial 'u009b'
+    # Harmless text remainder joins, sans the control.
+    assert_output --partial 'evil0;pwn-model'
+}

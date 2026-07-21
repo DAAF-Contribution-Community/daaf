@@ -187,13 +187,17 @@ fi
 dir=$(basename "$cwd" 2>/dev/null || echo "?")
 
 # Get git branch only (skip expensive status/sync checks). The branch name does
-# not pass through the jq control-strip stage, so strip C0/C1/DEL controls here
-# before it reaches the printf '%s' render (belt-and-suspenders: the render no
-# longer interprets escapes, and git ref names should not contain controls, but a
-# crafted ref must not be able to emit raw ESC/OSC bytes to the display stream).
+# not pass through the jq control-strip stage, so strip controls here before it
+# reaches the printf '%s' render. jq -Rs (not tr) makes the strip Unicode-aware:
+# gsub([[:cntrl:]]) removes C0, DEL, AND C1 (U+0080-U+009F) — git refnames only
+# forbid bytes < 0x20 and DEL, so a hostile repo can name a branch with a
+# UTF-8-encoded C1 control (e.g. U+009B, 8-bit CSI on xterm-class terminals),
+# which byte-wise `tr -d '[:cntrl:]'` passed through. jq's UTF-8 decoding also
+# replaces raw stray bytes with inert U+FFFD. If jq is unavailable the branch
+# segment is simply omitted (fail-open; the bar is already degraded without jq).
 branch=""
 if [[ -n "$cwd" && -d "$cwd" ]]; then
-    branch=$(git -C "$cwd" branch --show-current 2>/dev/null | tr -d '[:cntrl:]')
+    branch=$(git -C "$cwd" branch --show-current 2>/dev/null | jq -Rsr 'gsub("[[:cntrl:]]"; "")' 2>/dev/null) || branch=""
 fi
 
 # Context window size: from JSON above, but override for OpenRouter models where

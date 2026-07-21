@@ -335,8 +335,16 @@ while IFS=$'\x1f' read -r id type name status tokens label; do
     # Control-strip the resolved model id before it is used for display
     # (agent_disp) or slug classification (Convention 1). The bare cache file is
     # read with `cat`, so a corrupt/hostile cache is the one path that can carry
-    # raw C0/DEL bytes past jq; a legitimate model id never contains them.
-    task_model="${task_model//[$'\x01'-$'\x1f\x7f']/}"
+    # raw control bytes past the payload clean; a legitimate model id never
+    # contains them. jq -Rs makes the strip Unicode-aware: gsub([[:cntrl:]])
+    # removes C0, DEL, AND C1 (U+0080-U+009F — Oniguruma's [[:cntrl:]] is the
+    # Unicode Cc category, unlike byte-wise bash/tr ranges, which pass
+    # UTF-8-encoded C1 through), and jq's UTF-8 decoding replaces raw stray
+    # bytes (a lone 8-bit C1) with inert U+FFFD. Slurp (-s) keeps an embedded
+    # newline inside the one string so it is stripped rather than re-emitted as
+    # a second line. Fail-open: on any jq failure the model reads as unresolved
+    # (empty) and the row still renders.
+    task_model=$(printf '%s' "$task_model" | jq -Rsr 'gsub("[[:cntrl:]]"; "")' 2>/dev/null) || task_model=""
     # Default: the session window (covers same-model subagents and alternative
     # providers, where the mapping below does not apply).
     row_window="$max_context"
