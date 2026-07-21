@@ -58,7 +58,7 @@ class ProviderShimRetryAndTailTests(unittest.TestCase):
                 self.assertEqual(result.status, 429, result.text)
                 self.assertEqual(
                     result.json()["error"]["type"], "invalid_request_error")
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
                 terminal = self._terminal(shim, result)
                 self.assertEqual(terminal["retries"], "0")
                 self.assertEqual(terminal["retry_delay_source"], "-")
@@ -76,7 +76,7 @@ class ProviderShimRetryAndTailTests(unittest.TestCase):
             with RealShim(backend, "openai") as shim:
                 result = shim.post_messages(stream=False)
                 self.assertEqual(result.status, 200, result.text)
-                backend.assert_request_counts(responses=2, oauth=0)
+                backend.assert_request_counts(responses=2)
                 terminal = self._terminal(shim, result)
                 self.assertEqual(terminal["retries"], "1")
                 self.assertEqual(terminal["retry_delay_source"], "parsed")
@@ -91,7 +91,7 @@ class ProviderShimRetryAndTailTests(unittest.TestCase):
             with RealShim(backend, "openai") as shim:
                 result = shim.post_messages(stream=False)
                 self.assertEqual(result.status, 200, result.text)
-                backend.assert_request_counts(responses=2, oauth=0)
+                backend.assert_request_counts(responses=2)
                 terminal = self._terminal(shim, result)
                 self.assertEqual(terminal["retries"], "1")
                 self.assertEqual(terminal["retry_delay_source"], "header")
@@ -109,7 +109,7 @@ class ProviderShimRetryAndTailTests(unittest.TestCase):
                 self.assertEqual(result.status, 429, result.text)
                 self.assertEqual(
                     result.json()["error"]["type"], "rate_limit_error")
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
                 self.assertLess(elapsed, 30.0, "must not sleep the 120s advertised delay")
                 terminal = self._terminal(shim, result)
                 self.assertEqual(terminal["retries"], "0")
@@ -131,7 +131,7 @@ class ProviderShimRetryAndTailTests(unittest.TestCase):
                 self.assertEqual(result.status, 200, result.text)
                 lifecycle_report(parse_typed_sse(result.body))
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=2, oauth=0)
+                backend.assert_request_counts(responses=2)
                 terminal = self._terminal(shim, result)
                 self.assertEqual(terminal["retries"], "1")
                 self.assertEqual(terminal["retry_delay_source"], "header")
@@ -165,7 +165,7 @@ class ProviderShimRetryAndTailTests(unittest.TestCase):
                 shim.assert_offline_contract()
                 terminal_fields = self._terminal(shim, result)
                 self.assertGreaterEqual(int(terminal_fields["unknown_events"]), 1)
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
 
 
 if __name__ == "__main__":

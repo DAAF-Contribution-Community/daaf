@@ -356,7 +356,7 @@ class ProviderShimRequestTranslationTests(unittest.TestCase):
                                     result.json().get("error", {}).get("type"),
                                     "invalid_request_error",
                                 )
-                        backend.assert_request_counts(responses=0, oauth=0)
+                        backend.assert_request_counts(responses=0)
                         privacy_surfaces = "\n".join(response_texts) + shim.captured_stderr()
                         for sentinel in sentinels:
                             self.assertNotIn(sentinel, privacy_surfaces)
@@ -403,7 +403,7 @@ class ProviderShimRequestTranslationTests(unittest.TestCase):
                                 "output": "valid string result",
                             },
                         )
-                        backend.assert_request_counts(responses=1, oauth=0)
+                        backend.assert_request_counts(responses=1)
 
     def test_text_only_tool_result_retains_string_compatibility(self) -> None:
         scenario = full_response_scenario()
@@ -709,7 +709,7 @@ class ProviderShimRequestTranslationTests(unittest.TestCase):
                         self.assertNotIn("suppressed=", line)
                     else:
                         self.assertIn(f"suppressed={suppressed}", line)
-                backend.assert_request_counts(responses=2, oauth=0)
+                backend.assert_request_counts(responses=2)
 
 
 if __name__ == "__main__":

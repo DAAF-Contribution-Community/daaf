@@ -161,7 +161,7 @@ class ProviderShimHistoricalRegressionTests(unittest.TestCase):
                 logs = shim.captured_stderr()
                 self.assertEqual(logs.count("count_tokens calibration rejected"), 1)
                 self.assertEqual(logs.count("count_tokens calibrated ratio="), 1)
-                backend.assert_request_counts(responses=8, oauth=0)
+                backend.assert_request_counts(responses=8)
 
     def test_effort_suffix_and_precedence_matrix(self) -> None:
         scenario = full_response_scenario()
@@ -238,7 +238,7 @@ class ProviderShimHistoricalRegressionTests(unittest.TestCase):
                     outgoing = backend.responses_requests[-1].body
                     self.assertEqual(outgoing["model"], bare_model)
                     self.assertEqual(outgoing["reasoning"]["effort"], effort)
-                backend.assert_request_counts(responses=len(default_cases), oauth=0)
+                backend.assert_request_counts(responses=len(default_cases))
 
         with MockResponsesServer(scenario) as backend:
             with RealShim(
@@ -529,7 +529,7 @@ class ProviderShimHistoricalRegressionTests(unittest.TestCase):
                 self.assertEqual(
                     unrelated_terminal.fields["reasoning_cache_miss"], "1"
                 )
-                backend.assert_request_counts(responses=3, oauth=0)
+                backend.assert_request_counts(responses=3)
 
     def test_tool_argument_sanitization_matrix_and_disabled_passthrough(self) -> None:
         originals = [

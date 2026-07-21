@@ -187,7 +187,7 @@ class ProviderShimV1214TolerantReducerTests(unittest.TestCase):
                     _SERIALIZED_TWO_TOOL_PROJECTION,
                 )
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
 
     # --- 2. interleaved two-tool success ---
 
@@ -219,7 +219,7 @@ class ProviderShimV1214TolerantReducerTests(unittest.TestCase):
                     {0: {"file_path": "/daaf/A.md"}, 1: {"file_path": "/daaf/B.md"}},
                 )
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
 
     # --- 3. completed output null / [] after a tool turn ---
 
@@ -268,7 +268,7 @@ class ProviderShimV1214TolerantReducerTests(unittest.TestCase):
                             label,
                         )
                         shim.assert_offline_contract()
-                        backend.assert_request_counts(responses=1, oauth=0)
+                        backend.assert_request_counts(responses=1)
 
     # --- 4. content_part-omitted text turn (R3.4 pin) ---
 
@@ -306,7 +306,7 @@ class ProviderShimV1214TolerantReducerTests(unittest.TestCase):
                 )
                 self.assertEqual(text_delta_values(frames), [text])
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
 
     # --- 4b. fully-realistic no-reasoning text turn (F1 completeness pin) ---
 
@@ -365,7 +365,7 @@ class ProviderShimV1214TolerantReducerTests(unittest.TestCase):
                 self.assertEqual(terminal_fields["outcome"], "success")
                 self.assertEqual(int(terminal_fields["unknown_events"]), 0)
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
 
     # --- 5. malformed-JSON tolerance is type-gated ---
 
@@ -435,7 +435,7 @@ class ProviderShimV1214TolerantReducerTests(unittest.TestCase):
                 self.assertEqual(terminal_fields["outcome"], "success")
                 self.assertGreaterEqual(int(terminal_fields["unknown_events"]), 1)
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
 
     def test_malformed_load_bearing_frame_still_fails(self) -> None:
         # Contrast: a malformed `output_text.delta` frame carries a load-bearing type,
@@ -462,7 +462,7 @@ class ProviderShimV1214TolerantReducerTests(unittest.TestCase):
                 self.assertEqual(failure.error.get("type"), "api_error")
                 self.assertEqual(failure.open_at_end, set())
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
 
     # --- 6. reasoning-summary deltas between two completed tools ---
 
@@ -503,7 +503,7 @@ class ProviderShimV1214TolerantReducerTests(unittest.TestCase):
                 self.assertEqual(report.open_at_end, set())
                 self.assertEqual(thinking_delta_values(frames), ["Between the tools."])
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
 
 
 if __name__ == "__main__":

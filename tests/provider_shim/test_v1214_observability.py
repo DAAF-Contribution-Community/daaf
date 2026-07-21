@@ -76,7 +76,7 @@ class ProviderShimV1214ObservabilityTests(unittest.TestCase):
                 )
                 lines = lifecycle_for_response(shim, result)
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
                 return failure, self._terminal_fields(lines)
 
     def _http_failure(
@@ -96,7 +96,7 @@ class ProviderShimV1214ObservabilityTests(unittest.TestCase):
                 )
                 lines = lifecycle_for_response(shim, result)
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=expected_requests, oauth=0)
+                backend.assert_request_counts(responses=expected_requests)
                 return failure, self._terminal_fields(lines)
 
     # --- Group 1: R1 unknown-wire counting ---
@@ -124,7 +124,7 @@ class ProviderShimV1214ObservabilityTests(unittest.TestCase):
                 self.assertEqual(terminal["unknown_events"], "1")
                 self.assertEqual(terminal["unknown_items"], "1")
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
 
     def test_clean_stream_reports_zero_unknown_counts(self) -> None:
         # A fully modeled reasoning+text+tool turn must report unknown_events=0 and
@@ -140,7 +140,7 @@ class ProviderShimV1214ObservabilityTests(unittest.TestCase):
                 self.assertEqual(terminal["unknown_events"], "0")
                 self.assertEqual(terminal["unknown_items"], "0")
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
 
     def test_unknown_event_only_and_item_only_isolated(self) -> None:
         # Isolate each dimension so a future regression cannot cross-contaminate the
@@ -186,7 +186,7 @@ class ProviderShimV1214ObservabilityTests(unittest.TestCase):
                 self.assertEqual(terminal["unknown_items"], "0")
                 self.assertEqual(terminal["tools_called"], "1")
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
 
     # --- Group 3: R2 code/status classification + envelope shapes ---
 
@@ -421,7 +421,7 @@ class ProviderShimV1214ObservabilityTests(unittest.TestCase):
                 for sentinel in (tool_desc_sentinel, tool_input_sentinel, prompt_sentinel):
                     self.assertIn(sentinel, backend_request, sentinel)
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
 
 
 if __name__ == "__main__":

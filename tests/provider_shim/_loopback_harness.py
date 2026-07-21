@@ -1399,19 +1399,14 @@ def _wait_for_peer_close(
 
 
 class MockResponsesServer(AbstractContextManager["MockResponsesServer"]):
-    """Threaded loopback Responses/OAuth server on an OS-assigned port."""
+    """Threaded loopback Responses server on an OS-assigned port."""
 
     def __init__(self, scenario: Scenario) -> None:
         self.scenario = scenario
         self.responses_requests: list[BackendRequest] = []
         self.response_timestamps: list[float] = []
-        self.oauth_requests: list[BackendRequest] = []
         self.first_response_request = threading.Event()
         self.second_response_request = threading.Event()
-        self.oauth_request_received = threading.Event()
-        self.oauth_response_release = threading.Event()
-        self.oauth_response_sent = threading.Event()
-        self.delay_oauth_response = False
         self.rotated_access_token = _make_fake_jwt(int(time.time()) + 365 * 86400)
         self.body_prefix_flushed = threading.Event()
         self.peer_closed_before_delayed_send = threading.Event()
@@ -1798,32 +1793,6 @@ class MockResponsesServer(AbstractContextManager["MockResponsesServer"]):
                             attempt_headers,
                         )
                     return
-                if self.path.endswith("/oauth/token"):
-                    with owner._lock:
-                        owner.oauth_requests.append(record)
-                    owner.oauth_request_received.set()
-                    if owner.delay_oauth_response:
-                        if not owner.oauth_response_release.wait(10.0):
-                            self._send_bytes(
-                                504,
-                                "application/json",
-                                b'{"error":"fixture oauth release timed out"}',
-                            )
-                            return
-                    refreshed = {
-                        "access_token": owner.rotated_access_token,
-                        "refresh_token": FAKE_REFRESH_TOKEN + "_ROTATED",
-                        "id_token": FAKE_ID_TOKEN + "_ROTATED",
-                        "expires_in": 365 * 86400,
-                        "token_type": "Bearer",
-                    }
-                    self._send_bytes(
-                        200,
-                        "application/json",
-                        json.dumps(refreshed, separators=(",", ":")).encode("utf-8"),
-                    )
-                    owner.oauth_response_sent.set()
-                    return
                 self._send_bytes(404, "application/json", b'{"error":"not found"}')
 
         self._server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
@@ -1841,7 +1810,6 @@ class MockResponsesServer(AbstractContextManager["MockResponsesServer"]):
 
     def __exit__(self, exc_type: Any, exc: Any, traceback: Any) -> None:
         self.release_delayed_send.set()
-        self.oauth_response_release.set()
         for release in self._response_request_release.values():
             release.set()
         if self._server is not None:
@@ -1858,10 +1826,6 @@ class MockResponsesServer(AbstractContextManager["MockResponsesServer"]):
     def responses_url(self) -> str:
         return f"{self.base_url}/responses"
 
-    @property
-    def oauth_url(self) -> str:
-        return f"{self.base_url}/oauth/token"
-
     def gate_response_request(
         self,
         request_number: int,
@@ -1877,12 +1841,11 @@ class MockResponsesServer(AbstractContextManager["MockResponsesServer"]):
             self._response_request_release[request_number] = release
         return entered, release
 
-    def assert_request_counts(self, responses: int, oauth: int = 0) -> None:
-        actual = (len(self.responses_requests), len(self.oauth_requests))
-        expected = (responses, oauth)
-        if actual != expected:
+    def assert_request_counts(self, responses: int) -> None:
+        actual = len(self.responses_requests)
+        if actual != responses:
             raise AssertionError(
-                f"mock request counts differ: actual={actual!r} expected={expected!r}"
+                f"mock request counts differ: actual={actual!r} expected={responses!r}"
             )
 
 
@@ -2237,7 +2200,6 @@ class RealShim(AbstractContextManager["RealShim"]):
         self.port = 0
         self.base_url = ""
         self.backend_base_url = ""
-        self.oauth_url = ""
         self.proxy_url = ""
         self.scratch_dir: Optional[Path] = None
         self.auth_path: Optional[Path] = None
@@ -2290,8 +2252,7 @@ class RealShim(AbstractContextManager["RealShim"]):
                 if self.mode == "openai"
                 else self.backend.base_url
             )
-            self.oauth_url = self.backend.oauth_url
-            for url in (self.backend_base_url, self.oauth_url, self.proxy_url):
+            for url in (self.backend_base_url, self.proxy_url):
                 _assert_loopback_url(url)
 
             env.update(
@@ -2599,7 +2560,7 @@ class RealShim(AbstractContextManager["RealShim"]):
     def assert_offline_contract(self) -> None:
         if self.scratch_dir is None or self.auth_path is None:
             raise AssertionError("shim context was not initialized")
-        for url in (self.base_url, self.backend_base_url, self.oauth_url, self.proxy_url):
+        for url in (self.base_url, self.backend_base_url, self.proxy_url):
             _assert_loopback_url(url)
         if Path(self.child_env["CODEX_HOME"]) != self.scratch_dir:
             raise AssertionError("child CODEX_HOME did not point to isolated scratch")

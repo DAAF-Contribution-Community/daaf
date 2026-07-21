@@ -47,7 +47,7 @@ class ProviderShimReasoningFormattingTests(unittest.TestCase):
                 frames = parse_typed_sse(result.body)
                 lifecycle_report(frames)
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
                 return "".join(thinking_delta_values(frames))
 
     def test_openai_streaming_legacy_bytes_unchanged(self) -> None:
@@ -59,7 +59,7 @@ class ProviderShimReasoningFormattingTests(unittest.TestCase):
                 frames = parse_typed_sse(result.body)
                 lifecycle = lifecycle_report(frames)
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
 
                 self.assertEqual(thinking_delta_values(frames), CENTRAL_SOURCE_DELTAS)
                 self.assertEqual("".join(thinking_delta_values(frames)), CENTRAL_LEGACY_TEXT)
@@ -86,7 +86,7 @@ class ProviderShimReasoningFormattingTests(unittest.TestCase):
                 self.assertEqual(result.status, 200, result.text)
                 message = result.json()
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
 
                 self.assertEqual(extract_nonstream_thinking(message), CENTRAL_LEGACY_TEXT)
                 thinking_blocks = [
@@ -108,7 +108,7 @@ class ProviderShimReasoningFormattingTests(unittest.TestCase):
                 frames = parse_typed_sse(result.body)
                 lifecycle = lifecycle_report(frames)
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
 
                 values = thinking_delta_values(frames)
                 self.assertEqual(
@@ -146,7 +146,7 @@ class ProviderShimReasoningFormattingTests(unittest.TestCase):
                 self.assertEqual(result.status, 200, result.text)
                 message = result.json()
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
 
                 self.assertEqual(extract_nonstream_thinking(message), CENTRAL_DESIRED_TEXT)
                 self.assertEqual(message.get("stop_reason"), "end_turn")
@@ -168,7 +168,7 @@ class ProviderShimReasoningFormattingTests(unittest.TestCase):
                 self.assertEqual(result.status, 200, result.text)
                 frames = parse_typed_sse(result.body)
                 lifecycle_report(frames)
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
                 text = "".join(thinking_delta_values(frames))
                 self.assertEqual(text, "A\n\nB")
                 self.assertFalse(text.startswith("\n\n"))
@@ -183,7 +183,7 @@ class ProviderShimReasoningFormattingTests(unittest.TestCase):
                 self.assertEqual(result.status, 200, result.text)
                 frames = parse_typed_sse(result.body)
                 lifecycle_report(frames)
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
                 self.assertEqual(thinking_delta_values(frames), ["M", "N", "O"])
                 self.assertEqual("".join(thinking_delta_values(frames)), "MNO")
 
@@ -195,7 +195,7 @@ class ProviderShimReasoningFormattingTests(unittest.TestCase):
                 self.assertEqual(result.status, 200, result.text)
                 frames = parse_typed_sse(result.body)
                 lifecycle_report(frames)
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
 
                 values = thinking_delta_values(frames)
                 self.assertEqual(values, ["A", "B", "C"])
@@ -346,7 +346,7 @@ class ProviderShimReasoningFormattingTests(unittest.TestCase):
                 self.assertEqual(result.status, 200, result.text)
                 message = result.json()
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
                 self.assertEqual(extract_nonstream_thinking(message), " \t\n\nB")
 
     def test_chatgpt_duplicate_same_part_chunks_have_no_separator(self) -> None:
@@ -367,7 +367,7 @@ class ProviderShimReasoningFormattingTests(unittest.TestCase):
                 self.assertEqual(result.status, 200, result.text)
                 frames = parse_typed_sse(result.body)
                 lifecycle_report(frames)
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
                 self.assertEqual(thinking_delta_values(frames), ["A", "B", "C"])
                 self.assertEqual("".join(thinking_delta_values(frames)), "ABC")
 
@@ -386,7 +386,7 @@ class ProviderShimReasoningFormattingTests(unittest.TestCase):
                 self.assertEqual(result.status, 200, result.text)
                 frames = parse_typed_sse(result.body)
                 lifecycle_report(frames)
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
                 self.assertEqual(
                     "".join(thinking_delta_values(frames)),
                     "Fifth\n\nSecond\n\nNinth",
@@ -400,7 +400,7 @@ class ProviderShimReasoningFormattingTests(unittest.TestCase):
                 self.assertEqual(result.status, 200, result.text)
                 frames = parse_typed_sse(result.body)
                 lifecycle_report(frames)
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
                 self.assertEqual("".join(thinking_delta_values(frames)), CENTRAL_DESIRED_TEXT)
                 self.assertTrue(CENTRAL_DESIRED_TEXT.endswith("\n\n**Checking reset**"))
 
@@ -413,7 +413,7 @@ class ProviderShimReasoningFormattingTests(unittest.TestCase):
                 frames = parse_typed_sse(result.body)
                 lifecycle = lifecycle_report(frames)
                 events = event_dicts(frames)
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
 
                 self.assertEqual([kind for _, kind in lifecycle.starts], ["thinking", "text"])
                 thinking_index, text_index = [index for index, _ in lifecycle.starts]
@@ -454,7 +454,7 @@ class ProviderShimReasoningFormattingTests(unittest.TestCase):
                 frames = parse_typed_sse(result.body)
                 lifecycle = lifecycle_report(frames)
                 events = event_dicts(frames)
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
 
                 self.assertEqual([kind for _, kind in lifecycle.starts], ["thinking", "tool_use"])
                 thinking_index, tool_index = [index for index, _ in lifecycle.starts]
@@ -502,7 +502,7 @@ class ProviderShimReasoningFormattingTests(unittest.TestCase):
                 self.assertEqual(result.status, 200, result.text)
                 frames = parse_typed_sse(result.body)
                 lifecycle = lifecycle_report(frames)
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
 
                 self.assertEqual(
                     [kind for _, kind in lifecycle.starts],
@@ -520,7 +520,7 @@ class ProviderShimReasoningFormattingTests(unittest.TestCase):
                 self.assertEqual(openai_result.status, 200, openai_result.text)
                 openai_frames = parse_typed_sse(openai_result.body)
                 lifecycle_report(openai_frames)
-                openai_backend.assert_request_counts(responses=1, oauth=0)
+                openai_backend.assert_request_counts(responses=1)
                 openai_body = openai_backend.responses_requests[0].body
                 openai_headers = openai_backend.responses_requests[0].headers
 
@@ -530,7 +530,7 @@ class ProviderShimReasoningFormattingTests(unittest.TestCase):
                 self.assertEqual(chatgpt_result.status, 200, chatgpt_result.text)
                 chatgpt_frames = parse_typed_sse(chatgpt_result.body)
                 lifecycle_report(chatgpt_frames)
-                chatgpt_backend.assert_request_counts(responses=1, oauth=0)
+                chatgpt_backend.assert_request_counts(responses=1)
                 chatgpt_body = chatgpt_backend.responses_requests[0].body
                 chatgpt_headers = chatgpt_backend.responses_requests[0].headers
 
@@ -570,7 +570,7 @@ class ProviderShimReasoningFormattingTests(unittest.TestCase):
                     result = shim.post_messages(stream=False)
                     self.assertEqual(result.status, 200, result.text)
                     shim.assert_offline_contract()
-                    backend.assert_request_counts(responses=1, oauth=0)
+                    backend.assert_request_counts(responses=1)
                     for name in seeded_names:
                         self.assertNotIn(name, shim.child_env, name)
                     allowed_names = (
@@ -620,7 +620,6 @@ class ProviderShimReasoningFormattingTests(unittest.TestCase):
         with MockResponsesServer(scenario) as backend:
             self.assertTrue(is_loopback_url(backend.base_url))
             self.assertTrue(is_loopback_url(backend.responses_url))
-            self.assertTrue(is_loopback_url(backend.oauth_url))
             with RealShim(backend, "chatgpt") as shim:
                 scratch_dir = shim.scratch_dir
                 auth_path = shim.auth_path
@@ -638,7 +637,7 @@ class ProviderShimReasoningFormattingTests(unittest.TestCase):
                 shim.assert_offline_contract()
                 result = shim.post_messages(stream=False)
                 self.assertEqual(result.status, 200, result.text)
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
                 request = backend.responses_requests[0]
                 self.assertEqual(request.headers.get("accept"), "text/event-stream")
                 self.assertTrue(request.headers.get("authorization", "").startswith("Bearer "))

@@ -84,7 +84,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 except AssertionError as error:
                     self.fail(f"{marker}: {error}")
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
                 self.assertEqual(
                     [kind for _index, kind in lifecycle.starts],
                     [expected_kind],
@@ -113,7 +113,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 frames = parse_typed_sse(result.body)
                 lifecycle = failure_lifecycle_report(frames, expected_error_type)
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=expected_requests, oauth=0)
+                backend.assert_request_counts(responses=expected_requests)
                 self.assertEqual(
                     [kind for _index, kind in lifecycle.starts],
                     expected_kinds,
@@ -140,7 +140,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 self.assertIsInstance(error.get("message"), str, marker)
                 self.assertLessEqual(len(error.get("message", "")), 200, marker)
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
 
     def test_chatgpt_nonstream_forces_upstream_sse_and_aggregates(self) -> None:
         scenario = full_response_scenario(reject_nonstream=True)
@@ -156,7 +156,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 )
                 message = result.json()
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
                 self.assertIs(backend.responses_requests[0].body.get("stream"), True)
                 self.assertEqual(
                     [block.get("type") for block in message.get("content", [])],
@@ -186,7 +186,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 self.assertEqual(result.status, 200, result.text)
                 message = result.json()
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
                 self.assertIs(backend.responses_requests[0].body.get("stream"), False)
                 self.assertEqual(result.headers.get("content-type"), "application/json")
                 self.assertEqual(
@@ -267,7 +267,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                     thinking_delta_values(frames), ["Out-of-order thinking."]
                 )
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
 
     def test_reasoning_while_tool_open_defers_to_trailing_thinking(self) -> None:
         # v1.2.14 (R3, adjudicated flip): out-of-order reasoning while a tool block is
@@ -290,7 +290,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                     thinking_delta_values(frames), ["Out-of-order thinking."]
                 )
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
 
     def test_missing_terminal_response_fails_cleanly(self) -> None:
         self._assert_terminal_error(
@@ -391,7 +391,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 self.assertIsInstance(error.get("message"), str, marker)
                 self.assertLessEqual(len(error.get("message", "")), 200, marker)
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=expected_requests, oauth=0)
+                backend.assert_request_counts(responses=expected_requests)
 
     def test_nonstream_backend_400_passes_through_as_invalid_request_error(self) -> None:
         # v1.2.10 (a): a deterministic 400 reaches the client as its real 400 with
@@ -430,7 +430,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 self.assertIn("ChatGPT (Codex)", error.get("message", ""))
                 self.assertIn("environment_settings.txt", error.get("message", ""))
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=0, oauth=0)
+                backend.assert_request_counts(responses=0)
 
     def test_chatgpt_claude_slug_fast_fails_stream_without_round_trip(self) -> None:
         # v1.2.10 (c): the same fast-fail applies to a streaming inbound request —
@@ -444,7 +444,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 error = (result.json().get("error") or {})
                 self.assertEqual(error.get("type"), "invalid_request_error")
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=0, oauth=0)
+                backend.assert_request_counts(responses=0)
 
     def test_chatgpt_provider_prefixed_claude_slug_fast_fails_without_round_trip(self) -> None:
         # v1.2.10 review-amendment: a PROVIDER-PREFIXED claude slug
@@ -461,7 +461,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 self.assertEqual(error.get("type"), "invalid_request_error")
                 self.assertIn("ChatGPT (Codex)", error.get("message", ""))
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=0, oauth=0)
+                backend.assert_request_counts(responses=0)
 
     def test_openai_lane_does_not_fast_fail_claude_slug(self) -> None:
         # v1.2.10 (c): the openai/API-key lane forwards any slug unchanged — no
@@ -472,7 +472,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 result = shim.post_messages(stream=False, model="claude-fable-5")
                 self.assertEqual(result.status, 200, result.text)
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
 
     def test_terminal_incomplete_stream_and_nonstream_maps_max_tokens(self) -> None:
         scenario = incomplete_response_scenario()
@@ -488,7 +488,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 self.assertEqual(terminal["usage"]["input_tokens"], USAGE["input_tokens"])
                 self.assertEqual(terminal["usage"]["output_tokens"], USAGE["output_tokens"])
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
         with MockResponsesServer(scenario) as backend:
             with RealShim(backend, "chatgpt") as shim:
                 result = shim.post_messages(stream=False)
@@ -503,7 +503,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                     },
                 )
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
 
     def test_completed_event_rejects_failed_missing_and_incomplete_status_both_modes(self) -> None:
         cases = (
@@ -632,7 +632,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                         )
                         self.assertEqual(terminal["usage"], expected_stream)
                         shim.assert_offline_contract()
-                        backend.assert_request_counts(responses=1, oauth=0)
+                        backend.assert_request_counts(responses=1)
             with self.subTest(case=label, mode="nonstream"):
                 with MockResponsesServer(scenario) as backend:
                     with RealShim(backend, "chatgpt") as shim:
@@ -642,7 +642,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                         self.assertEqual(message.get("stop_reason"), "end_turn")
                         self.assertEqual(message.get("usage"), expected_nonstream)
                         shim.assert_offline_contract()
-                        backend.assert_request_counts(responses=1, oauth=0)
+                        backend.assert_request_counts(responses=1)
 
     def test_response_failed_never_converts_as_nonstream_success(self) -> None:
         self._assert_nonstream_api_error(
@@ -774,7 +774,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 )
                 lifecycle_report(parse_typed_sse(result.body))
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
 
     def test_sse_partial_line_at_eof_fails(self) -> None:
         scenario = raw_sse_scenario(
@@ -844,7 +844,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                                 lifecycle_report(frames)
                             else:
                                 failure_lifecycle_report(frames)
-                            backend.assert_request_counts(responses=1, oauth=0)
+                            backend.assert_request_counts(responses=1)
 
     def test_sse_event_size_counts_repeated_data_field_newline_join(self) -> None:
         limit = 16 * 1024 * 1024
@@ -900,7 +900,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                             lifecycle_report(frames)
                         else:
                             failure_lifecycle_report(frames)
-                        backend.assert_request_counts(responses=1, oauth=0)
+                        backend.assert_request_counts(responses=1)
 
     def test_sse_oversized_partial_line_eof_fails_without_dispatch(self) -> None:
         limit = 16 * 1024 * 1024
@@ -935,7 +935,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 self.assertEqual(result.status, 200, result.text)
                 lifecycle_report(parse_typed_sse(result.body))
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
 
     def test_sse_multiple_data_lines_join_with_newline_and_succeed(self) -> None:
         first = '{"type":"response.completed",'
@@ -959,7 +959,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 self.assertEqual(result.status, 200, result.text)
                 lifecycle_report(parse_typed_sse(result.body))
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
 
     def test_first_valid_terminal_stops_later_semantic_processing_both_modes(self) -> None:
         first_output = [
@@ -1024,7 +1024,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 self.assertEqual(terminal["delta"]["stop_reason"], "end_turn")
                 self.assertEqual(terminal["usage"]["input_tokens"], USAGE["input_tokens"])
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
         with MockResponsesServer(scenario) as backend:
             with RealShim(backend, "chatgpt") as shim:
                 result = shim.post_messages(stream=False)
@@ -1034,7 +1034,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 self.assertEqual(message["stop_reason"], "end_turn")
                 self.assertEqual(message["usage"]["input_tokens"], USAGE["input_tokens"])
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
 
     def test_duplicate_identical_arguments_done_emits_one_delta(self) -> None:
         base = full_response_scenario()
@@ -1064,7 +1064,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 self.assertEqual(len(tool_indexes), 1)
                 self.assertEqual(lifecycle.stops.count(tool_indexes[0]), 1)
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
 
     def test_duplicate_conflicting_arguments_done_is_protocol_failure(self) -> None:
         base = full_response_scenario()
@@ -1111,7 +1111,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 self.assertEqual(len(tool_indexes), 1)
                 self.assertEqual(lifecycle.stops.count(tool_indexes[0]), 1)
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
 
         conflicting = json.loads(json.dumps(events))
         conflicting[index]["name"] = "Edit"
@@ -1158,7 +1158,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 ]
                 self.assertEqual(len(argument_deltas), 1)
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
 
     def test_arguments_done_after_closed_tool_conflict_fails(self) -> None:
         base = full_response_scenario()
@@ -1203,7 +1203,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 self.assertEqual(len(tool_indexes), 1)
                 self.assertEqual(lifecycle.stops.count(tool_indexes[0]), 1)
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
 
     def test_duplicate_conflicting_output_item_done_is_protocol_failure(self) -> None:
         base = full_response_scenario()
@@ -1286,7 +1286,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                     ["Aggregated answer.", "overlapping text"],
                 )
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
 
     def test_second_tool_while_first_open_defers_to_sequential_blocks(self) -> None:
         # v1.2.14 (R3, adjudicated flip): a second tool added while the first is open
@@ -1338,7 +1338,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                     ["call_full_fixture", "call_overlap_second"],
                 )
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
 
     def test_normal_sequential_two_tools_remains_supported(self) -> None:
         scenario = sequential_two_tools_scenario()
@@ -1354,7 +1354,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 self.assertEqual(len(lifecycle.stops), 2)
                 self.assertEqual(len(set(lifecycle.stops)), 2)
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
 
     def test_lifecycle_oracles_reject_duplicate_terminal_grammar(self) -> None:
         failure_frames = [
@@ -1393,7 +1393,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                         result = shim.post_messages(stream=False)
                         self.assertEqual(result.status, 200, result.text)
                         shim.assert_offline_contract()
-                        backend.assert_request_counts(responses=1, oauth=0)
+                        backend.assert_request_counts(responses=1)
                 except (OSError, RuntimeError, TimeoutError) as error:
                     self.fail(
                         "REALSHIM_ADDRESS_IN_USE_RETRY_REQUIRED "
@@ -1434,7 +1434,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 self.assertEqual(health.status, 200, health.text)
                 self.assertEqual(health.json().get("status"), "ok")
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
         self.assertEqual(provider_scratch_residue(), before)
 
     def test_client_disconnect_cancels_stream_body_read(self) -> None:
@@ -1468,7 +1468,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 self.assertEqual(health.status, 200, health.text)
                 self.assertEqual(health.json().get("status"), "ok")
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
         self.assertEqual(provider_scratch_residue(), before)
 
     # v1.3.0 (A1): test_disconnect_during_rotating_oauth_refresh_persists_new_token
@@ -1580,7 +1580,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                     "CLIENT_DISCONNECT_RETRY_ISSUED_SECOND_REQUEST "
                     f"requests={len(backend.responses_requests)}",
                 )
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
         self.assertEqual(provider_scratch_residue(), before)
 
     def test_v1211_request_id_headers_and_lifecycle_correlation(self) -> None:
@@ -1645,7 +1645,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                     [line.event for line in sse_lines],
                 )
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=2, oauth=0)
+                backend.assert_request_counts(responses=2)
 
     def test_v1211_concurrent_requests_keep_request_local_state(self) -> None:
         scenario = full_response_scenario()
@@ -1698,7 +1698,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                     self.assertEqual({line.req_id for line in groups[req_id]}, {req_id})
                     assert_lifecycle_log_contract(groups[req_id])
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=2, oauth=0)
+                backend.assert_request_counts(responses=2)
 
     def test_v1211_attempt_and_retry_accounting_matrix(self) -> None:
         cases = (
@@ -1748,7 +1748,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                             name,
                         )
                         shim.assert_offline_contract()
-                        backend.assert_request_counts(responses=attempts, oauth=0)
+                        backend.assert_request_counts(responses=attempts)
 
         for name, statuses, expected_status, attempts, retries, outcome in (
             ("buffered-transport-retry", ["transport", 200], 200, 2, 1, "success"),
@@ -1765,7 +1765,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                         self.assertEqual(terminal["attempts"], str(attempts))
                         self.assertEqual(terminal["retries"], str(retries))
                         self.assertEqual(terminal["outcome"], outcome)
-                        backend.assert_request_counts(responses=attempts, oauth=0)
+                        backend.assert_request_counts(responses=attempts)
 
     def test_v1211_upstream_metadata_allowlist_precedence_and_length_cap(self) -> None:
         secret = "sk-FAKE_METADATA_SECRET_123456789"
@@ -2435,7 +2435,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                             name,
                         )
                         shim.assert_offline_contract()
-                        backend.assert_request_counts(responses=1, oauth=0)
+                        backend.assert_request_counts(responses=1)
 
     def test_v1211_same_turn_terminal_send_disconnect_prefers_completed_send(self) -> None:
         report = controlled_asgi_probe(send_action="same_turn_terminal_disconnect")
@@ -2962,7 +2962,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                     16,
                 )
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
 
     def test_v1211_failure_phase_identifies_parse_translation_and_auth_boundaries(self) -> None:
         invalid_json = controlled_asgi_probe(raw_request_body=b"{invalid-json")
@@ -3221,7 +3221,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 self.assertEqual(terminal["terminal_frame_send"], "send_completed")
                 self.assertEqual(terminal["body_close_send"], "send_completed")
                 self.assertNotIn("upstream_attempt", [line.event for line in lines])
-                backend.assert_request_counts(responses=0, oauth=0)
+                backend.assert_request_counts(responses=0)
 
         scenario = abrupt_eof_scenario("text")
         with MockResponsesServer(scenario) as backend:
@@ -3237,7 +3237,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 self.assertEqual(terminal["terminal_frame_send"], "send_completed")
                 self.assertEqual(terminal["body_close_send"], "send_completed")
                 self.assertIn("backend_error", [line.event for line in lines])
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
 
     def test_v1211_auth_error_has_one_terminal_and_cleanup(self) -> None:
         scenario = full_response_scenario()
@@ -3261,7 +3261,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                     [line.event for line in lines].count("cleanup"),
                     1,
                 )
-                backend.assert_request_counts(responses=0, oauth=0)
+                backend.assert_request_counts(responses=0)
 
 
 if __name__ == "__main__":

@@ -101,7 +101,7 @@ class ProviderShimV1214HeartbeatTests(unittest.TestCase):
                 self.assertIn("max_idle_gap_ms", terminal)
                 self.assertGreaterEqual(int(terminal["max_idle_gap_ms"]), 400)
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
 
     def test_ping_interval_zero_disables_heartbeat(self) -> None:
         # The identical held-open scenario with SHIM_PING_INTERVAL_S=0 must produce
@@ -125,7 +125,7 @@ class ProviderShimV1214HeartbeatTests(unittest.TestCase):
                 terminal = self._terminal_fields(lifecycle_for_response(shim, result))
                 self.assertEqual(terminal["outcome"], "success")
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
 
 
 class ProviderShimV1214QuotaSnapshotTests(unittest.TestCase):
@@ -159,7 +159,7 @@ class ProviderShimV1214QuotaSnapshotTests(unittest.TestCase):
                 self.assertEqual(fields["secondary_window_min"], "-")
                 self.assertEqual(fields["secondary_reset_s"], "-")
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
 
     def test_openai_lane_emits_no_quota_snapshot(self) -> None:
         scenario = full_response_scenario()
@@ -184,7 +184,7 @@ class ProviderShimV1214QuotaSnapshotTests(unittest.TestCase):
                 lines = lifecycle_for_response(shim, result)
                 self.assertEqual(self._quota_lines(lines), [])
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
 
     def test_allowlist_prefix_captures_x_codex_excludes_unrelated(self) -> None:
         # A chatgpt 4xx routes its headers through _diag_headers. The x-codex-*

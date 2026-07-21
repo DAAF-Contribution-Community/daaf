@@ -344,7 +344,7 @@ class ProviderShimV132QuotaStateSeamTests(unittest.TestCase):
                     stat.S_IMODE(os.stat(seam_path).st_mode), 0o600
                 )
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
 
     def test_spawned_chatgpt_shim_does_not_touch_install_shared_file(self) -> None:
         # The regression that matters: a full spawned chatgpt-lane exchange must leave the
