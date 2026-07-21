@@ -63,6 +63,18 @@
 #   * GET /health endpoint for the manager's idempotency/status checks.
 #
 # Changelog:
+#   v1.3.5 (2026-07-21): Janitorial — removed the dead non-streaming lazy-401 refresh
+#     branch (no behavior change). The branch lived inside the OpenAI/API-key
+#     `if not stream:` block and was guarded by `SHIM_BACKEND_MODE == "chatgpt"`, but
+#     that condition is unreachable there: the earlier v1.2.7 chatgpt non-stream adapter
+#     (`if not stream and SHIM_BACKEND_MODE == "chatgpt":`) returns on every exit path, so
+#     control reaches the OpenAI/API-key `if not stream:` block only when
+#     SHIM_BACKEND_MODE != "chatgpt", making the deleted guard a permanent contradiction.
+#     Unreachable since the v1.3.0 auth delegation reshaped the non-stream chatgpt path;
+#     the live chatgpt non-stream case is fully handled by the v1.2.7 adapter, and the
+#     live lazy-401 refresh path is the shared opener's did_401_refresh guard
+#     (_open_backend_stream). No test asserted the deleted branch's log strings; the
+#     lazy-401 regression tests exercise the live opener path. SHIM_VERSION -> 1.3.5.
 #   v1.3.4 (2026-07-21): Stale-blob insurance for restored reasoning + known-events
 #     allowlist absorption + reasoning-cache effectiveness telemetry (minor bump — the
 #     insurance is additive around the existing 400 fail-fast contract, and the other two
@@ -944,7 +956,7 @@ import httpx
 import uvicorn
 
 # --- Config ---
-SHIM_VERSION = "1.3.4"
+SHIM_VERSION = "1.3.5"
 SHIM_SERVICE_ID = "daaf-anthropic-openai-shim"
 
 SHIM_PORT = int(os.environ.get("SHIM_PORT", "4141"))
@@ -5305,37 +5317,6 @@ async def _handle_messages(body, receive, send):
                 log.error("messages non-stream transport error: %s", type(e).__name__)
                 await _send_json(send, 502, {"type": "error", "error": {"type": "api_error", "message": "backend transport error"}})
                 return
-            # v1.2.5: lazy-401 refresh (chatgpt lane only). A 401 from the Codex
-            # backend means the access_token expired between our exp check and the
-            # request; refresh ONCE, rebuild the Authorization header, and retry the
-            # request a single time. A second 401 -> surface the fast-fail re-login
-            # message. openai mode is untouched (SHIM_BACKEND_MODE guard).
-            if SHIM_BACKEND_MODE == "chatgpt" and r.status_code == 401:
-                await r.aclose()
-                log.warning("chatgpt backend 401; attempting one token refresh + retry")
-                _record_retry("auth_401")
-                _rejected = _bearer_of(headers)
-                try:
-                    _set_phase("backend_authentication")
-                    headers = await _build_backend_headers(
-                        force_token_refresh=True, rejected_token=_rejected)
-                except RuntimeError as e:
-                    log.error("chatgpt lazy-401 refresh failed: %s", str(e))
-                    await _send_json(send, 401, {"type": "error", "error": {
-                        "type": "authentication_error", "message": str(e)}})
-                    return
-                try:
-                    r, retries = await _post_with_retry(url, headers, responses_payload, disconnect_event)
-                except httpx.HTTPError as e:
-                    log.error("messages non-stream transport error (post-refresh): %s", type(e).__name__)
-                    await _send_json(send, 502, {"type": "error", "error": {"type": "api_error", "message": "backend transport error"}})
-                    return
-                if r.status_code == 401:
-                    log.error("chatgpt backend still 401 after refresh; %s", _RELOGIN_MSG)
-                    await r.aclose()
-                    await _send_json(send, 401, {"type": "error", "error": {
-                        "type": "authentication_error", "message": _RELOGIN_MSG}})
-                    return
             if r.status_code >= 400:
                 # Retain only structural classification metadata plus allowlisted
                 # headers. Free-form backend body/message prose is parsed in memory for
