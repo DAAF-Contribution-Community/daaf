@@ -24,20 +24,22 @@ load 'test_helper'
 CONTEXT_REPORTER_SH="${CONTEXT_REPORTER_SH:-${REPO_ROOT}/.claude/hooks/context-reporter.sh}"
 CONTEXT_BAR_SH="${CONTEXT_BAR_SH:-${REPO_ROOT}/.claude/scripts/context-bar.sh}"
 
-# Fixed fake session id so tests never touch a real session's /tmp caches.
+# Fixed fake session id so tests never touch a real session's caches.
 FAKE_SESSION="bats-ctxrep-session"
 FAKE_AGENT="bats-agent-0001"
 
-# /tmp cache files this hook reads/writes for FAKE_SESSION (cleaned each test).
+# Cache files this hook reads/writes for FAKE_SESSION (cleaned each test). All
+# live under the DAAF_CONTEXT_REPORTER_CACHE_DIR test seam (project scratch),
+# never real /tmp -- mirroring context_bar.bats' DAAF_CONTEXT_BAR_CACHE_DIR.
 _ctx_caches() {
     printf '%s\n' \
-        "/tmp/claude-ctx-window-${FAKE_SESSION}" \
-        "/tmp/claude-model-${FAKE_SESSION}" \
-        "/tmp/claude-ctx-ts-${FAKE_SESSION}" \
-        "/tmp/claude-ctx-ts-${FAKE_SESSION}-${FAKE_AGENT}" \
-        "/tmp/claude-model-${FAKE_SESSION}.transcript-signature" \
-        "/tmp/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}" \
-        "/tmp/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}.transcript-signature"
+        "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-ctx-window-${FAKE_SESSION}" \
+        "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-model-${FAKE_SESSION}" \
+        "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-ctx-ts-${FAKE_SESSION}" \
+        "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-ctx-ts-${FAKE_SESSION}-${FAKE_AGENT}" \
+        "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-model-${FAKE_SESSION}.transcript-signature" \
+        "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}" \
+        "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}.transcript-signature"
 }
 
 _clean_ctx_caches() {
@@ -45,23 +47,38 @@ _clean_ctx_caches() {
     while read -r f; do
         [ -n "$f" ] && rm -f "$f"
     done < <(_ctx_caches)
-    rm -f /tmp/claude-model-"${FAKE_SESSION}".tmp.*
-    rm -f /tmp/claude-model-"${FAKE_SESSION}".transcript-signature.tmp.*
-    rm -f /tmp/claude-subagent-model-"${FAKE_SESSION}"-*.tmp.*
-    rm -f /tmp/claude-subagent-model-"${FAKE_SESSION}"-*.transcript-signature.tmp.*
+    rm -f "${DAAF_CONTEXT_REPORTER_CACHE_DIR}"/claude-model-"${FAKE_SESSION}".tmp.*
+    rm -f "${DAAF_CONTEXT_REPORTER_CACHE_DIR}"/claude-model-"${FAKE_SESSION}".transcript-signature.tmp.*
+    rm -f "${DAAF_CONTEXT_REPORTER_CACHE_DIR}"/claude-subagent-model-"${FAKE_SESSION}"-*.tmp.*
+    rm -f "${DAAF_CONTEXT_REPORTER_CACHE_DIR}"/claude-subagent-model-"${FAKE_SESSION}"-*.transcript-signature.tmp.*
 }
 
 setup() {
     common_setup
+    # Deterministic-test seam: point the reporter's cache dir at per-test project
+    # scratch so its gate/model/window caches never collide with the live
+    # container session's real /tmp/claude-* caches (the source of the prior
+    # flakiness). Mirrors context_bar.bats exactly. DAAF_CONTEXT_BAR_CACHE_DIR is
+    # aimed at the SAME dir so the statusline writer-to-reporter test rendezvouses
+    # in scratch: context-bar writes the ctx-window cache the reporter then reads.
+    SCRATCH_DIR="${REPO_ROOT}/scripts/scratch/context-reporter-bats-${BATS_TEST_NUMBER}-$$"
+    DAAF_CONTEXT_REPORTER_CACHE_DIR="${SCRATCH_DIR}/cache"
+    DAAF_CONTEXT_BAR_CACHE_DIR="${DAAF_CONTEXT_REPORTER_CACHE_DIR}"
+    mkdir -p "$DAAF_CONTEXT_REPORTER_CACHE_DIR"
     _clean_ctx_caches
     unset CLAUDE_CODE_MAX_CONTEXT_TOKENS
     unset DAAF_PROVIDER_SHIM
     unset SHIM_BACKEND_MODE
     export FAKE_SESSION FAKE_AGENT CONTEXT_REPORTER_SH CONTEXT_BAR_SH
+    export SCRATCH_DIR DAAF_CONTEXT_REPORTER_CACHE_DIR DAAF_CONTEXT_BAR_CACHE_DIR
 }
 
 teardown() {
-    _clean_ctx_caches
+    # rm -rf the whole per-test scratch dir removes every cache file AND the
+    # (empty) directory the Convention 6 EISDIR test plants at a gate path, so no
+    # cross-test residue survives and nothing is left under the repo for the
+    # workspace-invariants check.
+    rm -rf "$SCRATCH_DIR"
     common_teardown
 }
 
@@ -127,7 +144,7 @@ _payload_statusline() {
         "$1" "$1" "$TEST_DIR" "$2" "$FAKE_SESSION" "$3"
 }
 
-_seed_window() { printf '%s' "$1" > "/tmp/claude-ctx-window-${FAKE_SESSION}"; }
+_seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-ctx-window-${FAKE_SESSION}"; }
 
 # =========================================================================
 # Syntax
@@ -245,7 +262,7 @@ _seed_window() { printf '%s' "$1" > "/tmp/claude-ctx-window-${FAKE_SESSION}"; }
         "277499 HIGH 74" \
         "277500 CRITICAL 75"; do
         read -r tokens expected_severity expected_pct <<< "$boundary"
-        rm -f "/tmp/claude-ctx-ts-${FAKE_SESSION}"
+        rm -f "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-ctx-ts-${FAKE_SESSION}"
         _write_main_transcript "${TEST_DIR}/t.jsonl" "gpt-5.6-sol" "$tokens"
         run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
             bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
@@ -266,7 +283,7 @@ _seed_window() { printf '%s' "$1" > "/tmp/claude-ctx-window-${FAKE_SESSION}"; }
         "499999 HIGH 47" \
         "500000 CRITICAL 47"; do
         read -r tokens expected_severity expected_pct <<< "$boundary"
-        rm -f "/tmp/claude-ctx-ts-${FAKE_SESSION}"
+        rm -f "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-ctx-ts-${FAKE_SESSION}"
         _write_main_transcript "${TEST_DIR}/t.jsonl" \
             "openrouter/openai/gpt-5.6-sol[1m]" "$tokens"
         run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
@@ -302,8 +319,8 @@ _seed_window() { printf '%s' "$1" > "/tmp/claude-ctx-window-${FAKE_SESSION}"; }
 }
 
 @test "mixed: GPT 5.6 Sol subagent under sonnet session gets 1050k and retained absolute gates" {
-    printf 'claude-sonnet-4-6' > "/tmp/claude-model-${FAKE_SESSION}"
-    printf 'openai/gpt-5.6-sol' > "/tmp/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
+    printf 'claude-sonnet-4-6' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-model-${FAKE_SESSION}"
+    printf 'openai/gpt-5.6-sol' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
     _seed_window 200000
     parent="${TEST_DIR}/main.jsonl"
     printf '{"type":"user","isSidechain":false,"message":{"content":"x"}}\n' > "$parent"
@@ -417,8 +434,8 @@ _seed_window() { printf '%s' "$1" > "/tmp/claude-ctx-window-${FAKE_SESSION}"; }
 @test "mixed: sonnet subagent under a fable session is measured conservatively" {
     # Session model is fable; subagent model is sonnet. The subagent is measured
     # against a 200k window (its own model) with the conservative family.
-    printf 'claude-fable-5' > "/tmp/claude-model-${FAKE_SESSION}"
-    printf 'claude-sonnet-4-6' > "/tmp/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
+    printf 'claude-fable-5' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-model-${FAKE_SESSION}"
+    printf 'claude-sonnet-4-6' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
     _seed_window 1000000  # session window is 1M; subagent correction overrides to 200k
 
     # Parent transcript path -> subagent transcript derived alongside it.
@@ -437,8 +454,8 @@ _seed_window() { printf '%s' "$1" > "/tmp/claude-ctx-window-${FAKE_SESSION}"; }
 }
 
 @test "mixed inverse: fable subagent under a sonnet session uses permissive family" {
-    printf 'claude-sonnet-4-6' > "/tmp/claude-model-${FAKE_SESSION}"
-    printf 'claude-fable-5' > "/tmp/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
+    printf 'claude-sonnet-4-6' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-model-${FAKE_SESSION}"
+    printf 'claude-fable-5' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
     _seed_window 200000  # session window; subagent correction overrides to 1M
 
     parent="${TEST_DIR}/main.jsonl"
@@ -460,8 +477,8 @@ _seed_window() { printf '%s' "$1" > "/tmp/claude-ctx-window-${FAKE_SESSION}"; }
 # =========================================================================
 
 @test "mixed: exact GLM-5.2 subagent maps to 1048k and is ELEVATED at 150k" {
-    printf 'claude-fable-5' > "/tmp/claude-model-${FAKE_SESSION}"
-    printf 'z-ai/glm-5.2' > "/tmp/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
+    printf 'claude-fable-5' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-model-${FAKE_SESSION}"
+    printf 'z-ai/glm-5.2' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
     _seed_window 1000000
     parent="${TEST_DIR}/main.jsonl"
     printf '{"type":"user","isSidechain":false,"message":{"content":"x"}}\n' > "$parent"
@@ -475,8 +492,8 @@ _seed_window() { printf '%s' "$1" > "/tmp/claude-ctx-window-${FAKE_SESSION}"; }
 }
 
 @test "mixed: date-suffixed GLM-5.2 subagent maps to 1048k and is HIGH at 200k" {
-    printf 'claude-fable-5' > "/tmp/claude-model-${FAKE_SESSION}"
-    printf 'z-ai/glm-5.2-20260715' > "/tmp/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
+    printf 'claude-fable-5' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-model-${FAKE_SESSION}"
+    printf 'z-ai/glm-5.2-20260715' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
     _seed_window 1000000
     parent="${TEST_DIR}/main.jsonl"
     printf '{"type":"user","isSidechain":false,"message":{"content":"x"}}\n' > "$parent"
@@ -490,8 +507,8 @@ _seed_window() { printf '%s' "$1" > "/tmp/claude-ctx-window-${FAKE_SESSION}"; }
 }
 
 @test "mixed: GLM-5.2 Air subagent stays on the generic 200k window" {
-    printf 'claude-fable-5' > "/tmp/claude-model-${FAKE_SESSION}"
-    printf 'z-ai/glm-5.2-air' > "/tmp/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
+    printf 'claude-fable-5' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-model-${FAKE_SESSION}"
+    printf 'z-ai/glm-5.2-air' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
     _seed_window 1000000
     parent="${TEST_DIR}/main.jsonl"
     printf '{"type":"user","isSidechain":false,"message":{"content":"x"}}\n' > "$parent"
@@ -505,8 +522,8 @@ _seed_window() { printf '%s' "$1" > "/tmp/claude-ctx-window-${FAKE_SESSION}"; }
 }
 
 @test "mixed: explicit override wins for an exact GLM-5.2 subagent" {
-    printf 'claude-fable-5' > "/tmp/claude-model-${FAKE_SESSION}"
-    printf 'z-ai/glm-5.2' > "/tmp/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
+    printf 'claude-fable-5' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-model-${FAKE_SESSION}"
+    printf 'z-ai/glm-5.2' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
     _seed_window 1000000
     parent="${TEST_DIR}/main.jsonl"
     printf '{"type":"user","isSidechain":false,"message":{"content":"x"}}\n' > "$parent"
@@ -520,8 +537,8 @@ _seed_window() { printf '%s' "$1" > "/tmp/claude-ctx-window-${FAKE_SESSION}"; }
 }
 
 @test "mixed: exact GLM-5.2 subagent maps to 1048k and is CRITICAL at 250k" {
-    printf 'claude-fable-5' > "/tmp/claude-model-${FAKE_SESSION}"
-    printf 'z-ai/glm-5.2' > "/tmp/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
+    printf 'claude-fable-5' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-model-${FAKE_SESSION}"
+    printf 'z-ai/glm-5.2' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
     _seed_window 1000000
     parent="${TEST_DIR}/main.jsonl"
     printf '{"type":"user","isSidechain":false,"message":{"content":"x"}}\n' > "$parent"
@@ -574,12 +591,12 @@ _seed_window() { printf '%s' "$1" > "/tmp/claude-ctx-window-${FAKE_SESSION}"; }
         CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000 \
         bash "$CONTEXT_BAR_SH" < <(_payload_statusline "gpt-5.6-sol[1m]" "${TEST_DIR}/t.jsonl" 1050000)
     assert_success
-    run cat "/tmp/claude-ctx-window-${FAKE_SESSION}"
+    run cat "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-ctx-window-${FAKE_SESSION}"
     assert_success
     assert_output "370000"
 
     # Ensure no warm rate gate can suppress the reporter half of this path.
-    rm -f "/tmp/claude-ctx-ts-${FAKE_SESSION}"
+    rm -f "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-ctx-ts-${FAKE_SESSION}"
     run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
         CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000 \
         bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
@@ -589,8 +606,8 @@ _seed_window() { printf '%s' "$1" > "/tmp/claude-ctx-window-${FAKE_SESSION}"; }
 }
 
 @test "chatgpt lane: different-model gpt-5.6-sol subagent maps to 370k (81%)" {
-    printf 'claude-sonnet-4-6' > "/tmp/claude-model-${FAKE_SESSION}"
-    printf 'openai/gpt-5.6-sol' > "/tmp/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
+    printf 'claude-sonnet-4-6' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-model-${FAKE_SESSION}"
+    printf 'openai/gpt-5.6-sol' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
     _seed_window 200000
     parent="${TEST_DIR}/main.jsonl"
     printf '{"type":"user","isSidechain":false,"message":{"content":"x"}}\n' > "$parent"
@@ -605,8 +622,8 @@ _seed_window() { printf '%s' "$1" > "/tmp/claude-ctx-window-${FAKE_SESSION}"; }
 }
 
 @test "chatgpt lane: same-model exact Sol subagent caps a stale 1.05M session cache" {
-    printf 'gpt-5.6-sol[1m]' > "/tmp/claude-model-${FAKE_SESSION}"
-    printf 'gpt-5.6-sol[1m]' > "/tmp/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
+    printf 'gpt-5.6-sol[1m]' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-model-${FAKE_SESSION}"
+    printf 'gpt-5.6-sol[1m]' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
     _seed_window 1050000
     parent="${TEST_DIR}/main.jsonl"
     printf '{"type":"user","isSidechain":false,"message":{"content":"x"}}\n' > "$parent"
@@ -621,8 +638,8 @@ _seed_window() { printf '%s' "$1" > "/tmp/claude-ctx-window-${FAKE_SESSION}"; }
 }
 
 @test "chatgpt lane: explicit 1.05M cannot raise a different-model Sol subagent above 370k" {
-    printf 'claude-sonnet-4-6' > "/tmp/claude-model-${FAKE_SESSION}"
-    printf 'openai/gpt-5.6-sol' > "/tmp/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
+    printf 'claude-sonnet-4-6' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-model-${FAKE_SESSION}"
+    printf 'openai/gpt-5.6-sol' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
     _seed_window 200000
     parent="${TEST_DIR}/main.jsonl"
     printf '{"type":"user","isSidechain":false,"message":{"content":"x"}}\n' > "$parent"
@@ -637,8 +654,8 @@ _seed_window() { printf '%s' "$1" > "/tmp/claude-ctx-window-${FAKE_SESSION}"; }
 }
 
 @test "lane vars unset: gpt-5.6-sol subagent keeps the 1.05M API-lane window (28%)" {
-    printf 'claude-sonnet-4-6' > "/tmp/claude-model-${FAKE_SESSION}"
-    printf 'openai/gpt-5.6-sol' > "/tmp/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
+    printf 'claude-sonnet-4-6' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-model-${FAKE_SESSION}"
+    printf 'openai/gpt-5.6-sol' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
     _seed_window 200000
     parent="${TEST_DIR}/main.jsonl"
     printf '{"type":"user","isSidechain":false,"message":{"content":"x"}}\n' > "$parent"
@@ -652,8 +669,8 @@ _seed_window() { printf '%s' "$1" > "/tmp/claude-ctx-window-${FAKE_SESSION}"; }
 }
 
 @test "SHIM_BACKEND_MODE=chatgpt alone (no DAAF_PROVIDER_SHIM) keeps 1.05M (28%)" {
-    printf 'claude-sonnet-4-6' > "/tmp/claude-model-${FAKE_SESSION}"
-    printf 'openai/gpt-5.6-sol' > "/tmp/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
+    printf 'claude-sonnet-4-6' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-model-${FAKE_SESSION}"
+    printf 'openai/gpt-5.6-sol' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
     _seed_window 200000
     parent="${TEST_DIR}/main.jsonl"
     printf '{"type":"user","isSidechain":false,"message":{"content":"x"}}\n' > "$parent"
@@ -679,8 +696,8 @@ _seed_window() { printf '%s' "$1" > "/tmp/claude-ctx-window-${FAKE_SESSION}"; }
 
 @test "chatgpt lane preserves a lower positive explicit context window" {
     # A 250k override remains below the 370k final ceiling: 200k -> 80%.
-    printf 'claude-sonnet-4-6' > "/tmp/claude-model-${FAKE_SESSION}"
-    printf 'openai/gpt-5.6-sol' > "/tmp/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
+    printf 'claude-sonnet-4-6' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-model-${FAKE_SESSION}"
+    printf 'openai/gpt-5.6-sol' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
     _seed_window 200000
     parent="${TEST_DIR}/main.jsonl"
     printf '{"type":"user","isSidechain":false,"message":{"content":"x"}}\n' > "$parent"
@@ -698,8 +715,8 @@ _seed_window() { printf '%s' "$1" > "/tmp/claude-ctx-window-${FAKE_SESSION}"; }
 @test "chatgpt lane does not perturb a non-GPT (Claude) subagent window (fable 1M, 25%)" {
     # The lane gate only rewrites the gpt-5.4/5.5/5.6 arm. A fable subagent still
     # maps to its 1M window regardless of the lane env: 250k -> 25% -> NOMINAL.
-    printf 'claude-sonnet-4-6' > "/tmp/claude-model-${FAKE_SESSION}"
-    printf 'claude-fable-5' > "/tmp/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
+    printf 'claude-sonnet-4-6' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-model-${FAKE_SESSION}"
+    printf 'claude-fable-5' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
     _seed_window 200000
     parent="${TEST_DIR}/main.jsonl"
     printf '{"type":"user","isSidechain":false,"message":{"content":"x"}}\n' > "$parent"
@@ -718,7 +735,7 @@ _seed_window() { printf '%s' "$1" > "/tmp/claude-ctx-window-${FAKE_SESSION}"; }
 
 @test "main cache refreshes Claude -> Sol -> Terra -> Claude before cap and tier selection" {
     local transcript="${TEST_DIR}/main-switch.jsonl"
-    local model_cache="/tmp/claude-model-${FAKE_SESSION}"
+    local model_cache="${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-model-${FAKE_SESSION}"
     local signature_cache="${model_cache}.transcript-signature"
     _seed_window 1000000
     _write_main_transcript "$transcript" "claude-fable-5" 100000
@@ -731,7 +748,7 @@ _seed_window() { printf '%s' "$1" > "/tmp/claude-ctx-window-${FAKE_SESSION}"; }
     run test -s "$signature_cache"
     assert_success
 
-    rm -f "/tmp/claude-ctx-ts-${FAKE_SESSION}"
+    rm -f "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-ctx-ts-${FAKE_SESSION}"
     _append_model_usage "$transcript" "gpt-5.6-sol" 111000 false
     run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
         bash "$CONTEXT_REPORTER_SH" < <(_payload_main "$transcript")
@@ -742,7 +759,7 @@ _seed_window() { printf '%s' "$1" > "/tmp/claude-ctx-window-${FAKE_SESSION}"; }
     run cat "$model_cache"
     assert_output "gpt-5.6-sol"
 
-    rm -f "/tmp/claude-ctx-ts-${FAKE_SESSION}"
+    rm -f "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-ctx-ts-${FAKE_SESSION}"
     _append_model_usage "$transcript" "gpt-5.6-terra" 111000 false
     run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
         bash "$CONTEXT_REPORTER_SH" < <(_payload_main "$transcript")
@@ -752,7 +769,7 @@ _seed_window() { printf '%s' "$1" > "/tmp/claude-ctx-window-${FAKE_SESSION}"; }
     run cat "$model_cache"
     assert_output "gpt-5.6-terra"
 
-    rm -f "/tmp/claude-ctx-ts-${FAKE_SESSION}"
+    rm -f "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-ctx-ts-${FAKE_SESSION}"
     _append_model_usage "$transcript" "claude-sonnet-4-6" 90000 false
     run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
         bash "$CONTEXT_REPORTER_SH" < <(_payload_main "$transcript")
@@ -767,7 +784,7 @@ _seed_window() { printf '%s' "$1" > "/tmp/claude-ctx-window-${FAKE_SESSION}"; }
 @test "subagent cache ignores synthetic entries, refreshes on later real models, and changes physical/tier decisions" {
     local parent="${TEST_DIR}/main.jsonl"
     local transcript="${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl"
-    local model_cache="/tmp/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
+    local model_cache="${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
     printf '{"type":"assistant","isSidechain":false,"message":{"model":"claude-sonnet-4-6"}}\n' > "$parent"
     _seed_window 200000
     _write_subagent_transcript "$transcript" "claude-sonnet-4-6" 90000
@@ -778,7 +795,7 @@ _seed_window() { printf '%s' "$1" > "/tmp/claude-ctx-window-${FAKE_SESSION}"; }
     run cat "$model_cache"
     assert_output "claude-sonnet-4-6"
 
-    rm -f "/tmp/claude-ctx-ts-${FAKE_SESSION}-${FAKE_AGENT}"
+    rm -f "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-ctx-ts-${FAKE_SESSION}-${FAKE_AGENT}"
     _append_model_usage "$transcript" "<synthetic>" 100000 true
     run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
     assert_success
@@ -786,7 +803,7 @@ _seed_window() { printf '%s' "$1" > "/tmp/claude-ctx-window-${FAKE_SESSION}"; }
     run cat "$model_cache"
     assert_output "claude-sonnet-4-6"
 
-    rm -f "/tmp/claude-ctx-ts-${FAKE_SESSION}-${FAKE_AGENT}"
+    rm -f "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-ctx-ts-${FAKE_SESSION}-${FAKE_AGENT}"
     _append_model_usage "$transcript" "gpt-5.6-sol" 111000 true
     run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
         bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
@@ -796,7 +813,7 @@ _seed_window() { printf '%s' "$1" > "/tmp/claude-ctx-window-${FAKE_SESSION}"; }
     run cat "$model_cache"
     assert_output "gpt-5.6-sol"
 
-    rm -f "/tmp/claude-ctx-ts-${FAKE_SESSION}-${FAKE_AGENT}"
+    rm -f "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-ctx-ts-${FAKE_SESSION}-${FAKE_AGENT}"
     _append_model_usage "$transcript" "gpt-5.6-terra" 111000 true
     run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
         bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
@@ -806,7 +823,7 @@ _seed_window() { printf '%s' "$1" > "/tmp/claude-ctx-window-${FAKE_SESSION}"; }
     run cat "$model_cache"
     assert_output "gpt-5.6-terra"
 
-    rm -f "/tmp/claude-ctx-ts-${FAKE_SESSION}-${FAKE_AGENT}"
+    rm -f "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-ctx-ts-${FAKE_SESSION}-${FAKE_AGENT}"
     _append_model_usage "$transcript" "claude-fable-5" 100000 true
     run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
         bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
@@ -819,7 +836,7 @@ _seed_window() { printf '%s' "$1" > "/tmp/claude-ctx-window-${FAKE_SESSION}"; }
 
 @test "unchanged transcript signature reuses a nonempty compatible bare cache" {
     local transcript="${TEST_DIR}/unchanged.jsonl"
-    local model_cache="/tmp/claude-model-${FAKE_SESSION}"
+    local model_cache="${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-model-${FAKE_SESSION}"
     _seed_window 1050000
     _write_main_transcript "$transcript" "claude-sonnet-4-6" 90000
 
@@ -836,7 +853,7 @@ _seed_window() { printf '%s' "$1" > "/tmp/claude-ctx-window-${FAKE_SESSION}"; }
     [[ "$cached_signature" == "$current_signature" ]]
     cached_model=$(cat "$model_cache")
     [[ "$cached_model" == "gpt-5.6-sol" ]]
-    rm -f "/tmp/claude-ctx-ts-${FAKE_SESSION}"
+    rm -f "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-ctx-ts-${FAKE_SESSION}"
 
     run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
         bash "$CONTEXT_REPORTER_SH" < <(_payload_main "$transcript")
@@ -860,7 +877,7 @@ _seed_window() { printf '%s' "$1" > "/tmp/claude-ctx-window-${FAKE_SESSION}"; }
     assert_success
     assert_output --partial "111k / 370k"
 
-    rm -f "/tmp/claude-ctx-ts-${FAKE_SESSION}"
+    rm -f "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-ctx-ts-${FAKE_SESSION}"
     run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
         CLAUDE_CODE_MAX_CONTEXT_TOKENS=250000 \
         bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
@@ -881,7 +898,7 @@ _seed_window() { printf '%s' "$1" > "/tmp/claude-ctx-window-${FAKE_SESSION}"; }
         '370000 ' \
         9223372036854775808 \
         99999999999999999999999999999999999999; do
-        rm -f "/tmp/claude-ctx-ts-${FAKE_SESSION}"
+        rm -f "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-ctx-ts-${FAKE_SESSION}"
         run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
             CLAUDE_CODE_MAX_CONTEXT_TOKENS="$value" \
             bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
@@ -1002,8 +1019,342 @@ _seed_window() { printf '%s' "$1" > "/tmp/claude-ctx-window-${FAKE_SESSION}"; }
     _seed_window 1000000
     _write_main_transcript "${TEST_DIR}/t.jsonl" "claude-fable-5" 500000
     # Seed the gate with 'now' so the 60s interval has not elapsed.
-    date +%s > "/tmp/claude-ctx-ts-${FAKE_SESSION}"
+    date +%s > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-ctx-ts-${FAKE_SESSION}"
     run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
     assert_success
     refute_output --partial "Context utilization"
+}
+
+# ############################################################################
+# HARDENING CASES (2026-07-20 StatuslineHardening)
+# ----------------------------------------------------------------------------
+# The cases below exercise the CORRECTED logic in context-reporter.proposed.sh
+# (findings 2,3,4,7,8,10,11). They are parameterized on CONTEXT_REPORTER_SH:
+# run them against the proposed copy pre-apply, e.g.
+#   CONTEXT_REPORTER_SH=/daaf/research/2026-07-20_FrameworkDev_StatuslineHardening/context-reporter.proposed.sh \
+#     bats /daaf/tests/bash/context_reporter.bats
+# Once the user copies the proposed file over the installed hook from the host,
+# they pass with the default (installed) path too.
+# ############################################################################
+
+# --- Additional fixture helpers for the hardening cases ---
+
+# Emit a main-session payload with an ARBITRARY (possibly adversarial)
+# session_id, passed through %s verbatim so traversal/control bytes survive to
+# the hook exactly as an attacker would supply them.
+_payload_main_sid() {
+    # $1 = raw session_id, $2 = transcript path
+    printf '{"hook_event_name":"PreToolUse","session_id":"%s","transcript_path":"%s"}' \
+        "$1" "$2"
+}
+
+# Emit a subagent payload with a valid session_id but an ARBITRARY agent_id.
+_payload_subagent_aid() {
+    # $1 = raw agent_id, $2 = transcript path (the parent's)
+    printf '{"hook_event_name":"PreToolUse","session_id":"%s","transcript_path":"%s","agent_id":"%s"}' \
+        "$FAKE_SESSION" "$2" "$1"
+}
+
+# Emit a DIRECT-subagent payload: transcript_path IS the subagent's own
+# transcript (basename agent-<agent>.jsonl), the future-Claude-Code shape that
+# Convention 10 guards. No parent transcript is available to scan.
+_payload_direct_subagent() {
+    # $1 = path to the subagent's own transcript (basename = agent-<agent>.jsonl)
+    printf '{"hook_event_name":"PreToolUse","session_id":"%s","transcript_path":"%s","agent_id":"%s"}' \
+        "$FAKE_SESSION" "$1" "$FAKE_AGENT"
+}
+
+# Append N all-zero-token usage entries (streaming/shim placeholders).
+_append_zero_usage() {
+    # $1 path, $2 model, $3 count, $4 isSidechain JSON boolean
+    local path="$1" model="$2" n="$3" side="$4" i
+    for ((i=0; i<n; i++)); do
+        printf '{"type":"assistant","isSidechain":%s,"message":{"role":"assistant","model":"%s","usage":{"input_tokens":0,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"output_tokens":0}}}\n' \
+            "$side" "$model" >> "$path"
+    done
+}
+
+# Write a main transcript whose single usage entry carries an explicit
+# input_tokens value (used to drive the numerator-bound boundary).
+_write_main_transcript_raw_tokens() {
+    # $1 dest, $2 model, $3 input_tokens (raw integer literal)
+    local path="$1" model="$2" raw="$3"
+    {
+        printf '{"type":"user","isSidechain":false,"message":{"role":"user","content":"hi"}}\n'
+        printf '{"type":"assistant","isSidechain":false,"message":{"role":"assistant","model":"%s","usage":{"input_tokens":%s,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"output_tokens":10}}}\n' \
+            "$model" "$raw"
+    } > "$path"
+}
+
+# =========================================================================
+# Convention 2 — identifier allowlist before path construction (finding 2)
+# =========================================================================
+
+@test "adversarial session_id is rejected before any path build (exit 0, no injection)" {
+    local sid
+    # A valid fable transcript that WOULD inject (CRITICAL at 500k/1M) if the id
+    # were accepted; empty output therefore proves the id gate suppressed it.
+    _write_main_transcript "${TEST_DIR}/t.jsonl" "claude-fable-5" 500000
+    _seed_window 1000000
+    # Sentinel path lives under the test seam, never real /tmp. The \$ keeps the
+    # command substitution LITERAL in the session_id (the point of the test is
+    # that the hook must NOT eval it); if that guarantee ever regressed the touch
+    # would land in scratch, not pollute /tmp.
+    local pwned="${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-ctxrep-pwned"
+    for sid in \
+        '../x' \
+        'a/b' \
+        'a\nb' \
+        '-lead' \
+        '..' \
+        "\$(touch ${pwned})" \
+        'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'; do
+        run bash "$CONTEXT_REPORTER_SH" < <(_payload_main_sid "$sid" "${TEST_DIR}/t.jsonl")
+        assert_success
+        refute_output --partial "Context utilization"
+    done
+    # No command-substitution id could have run, and no traversal path was built.
+    run test -e "$pwned"
+    assert_failure
+}
+
+@test "adversarial agent_id is rejected before the subagent transcript path is built" {
+    local aid
+    parent="${TEST_DIR}/main.jsonl"
+    # A 'busy' parent that must NEVER be injected on the subagent branch.
+    _write_main_transcript "$parent" "claude-fable-5" 500000
+    _seed_window 1000000
+    for aid in \
+        '../../etc/x' \
+        'a/b' \
+        'a\nb' \
+        '-lead' \
+        'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'; do
+        run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent_aid "$aid" "$parent")
+        assert_success
+        refute_output --partial "Context utilization"
+    done
+}
+
+@test "the default session_id and the bats fixture ids still pass the allowlist" {
+    # is_safe_id must not regress the legitimate default: no session_id key ->
+    # jq default 'default' -> must inject normally.
+    _write_main_transcript "${TEST_DIR}/t.jsonl" "claude-fable-5" 300000
+    printf '%s' 1000000 > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-ctx-window-default"
+    run bash "$CONTEXT_REPORTER_SH" < <(printf '{"hook_event_name":"PreToolUse","transcript_path":"%s"}' "${TEST_DIR}/t.jsonl")
+    assert_success
+    assert_output --partial "[ELEVATED]"
+    rm -f "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-ctx-window-default" "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-ctx-ts-default" \
+          "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-model-default" "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-model-default.transcript-signature"
+}
+
+# =========================================================================
+# Convention 4 — full-transcript usage recovery (finding 3)
+# =========================================================================
+
+@test "full-scan recovery: >50 trailing zero-token placeholders do not hide real usage" {
+    local transcript="${TEST_DIR}/trailing-zeros.jsonl"
+    _seed_window 1000000
+    _write_main_transcript "$transcript" "claude-fable-5" 300000
+    # 60 trailing zero-token placeholders push the positive record out of the
+    # old tail-50 window; a full scan must still recover 300k.
+    _append_zero_usage "$transcript" "claude-fable-5" 60 false
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "$transcript")
+    assert_success
+    assert_output --partial "[ELEVATED]"
+    assert_output --partial "300k / 1000k"
+}
+
+@test "full-scan recovery works on the subagent branch too" {
+    local parent="${TEST_DIR}/main.jsonl"
+    local transcript="${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl"
+    printf 'claude-fable-5' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-model-${FAKE_SESSION}"
+    _seed_window 1000000
+    _write_subagent_transcript "$transcript" "claude-fable-5" 300000
+    _append_zero_usage "$transcript" "claude-fable-5" 60 true
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
+    assert_success
+    assert_output --partial "300k / 1000k"
+}
+
+# =========================================================================
+# Convention 3 — closed-set flagship classifier grammar (finding 4)
+# =========================================================================
+# The physical-window classifier must grant the 1,050,000 flagship window ONLY
+# to exact closed-set matches. Malformed codenames that the OLD broad glob
+# accepted must now fall through to the conservative 200k default (they are
+# neither mini/chat nor an exact flagship), and must not trip the 370k cap.
+
+@test "malformed flagship-ish ids map conservatively, not to the 1.05M flagship window" {
+    local model
+    parent="${TEST_DIR}/main.jsonl"
+    transcript="${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl"
+    printf 'claude-sonnet-4-6' > "$parent"  # parent-model source (any non-gpt is fine)
+    for model in \
+        'gpt-5.4-' \
+        'gpt-5.6-experimental' \
+        'gpt-5.6-sol[1m]x' \
+        'gpt-5.5[1m'; do
+        _clean_ctx_caches
+        printf 'claude-sonnet-4-6' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-model-${FAKE_SESSION}"
+        _seed_window 200000
+        _write_subagent_transcript "$transcript" "$model" 90000
+        run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+            bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
+        assert_success
+        assert_output --partial "90k / 200k"
+        refute_output --partial "/ 1050k"
+        refute_output --partial "/ 370k"
+    done
+}
+
+@test "exact closed-set flagships still receive the flagship window / 370k lane cap" {
+    local model
+    parent="${TEST_DIR}/main.jsonl"
+    transcript="${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl"
+    printf 'claude-sonnet-4-6' > "$parent"
+    for model in gpt-5.4 gpt-5.5 gpt-5.6 gpt-5.6-sol gpt-5.6-terra gpt-5.6-luna \
+                 'gpt-5.6-sol[1m]' 'gpt-5.6-luna[1m]' openrouter/openai/gpt-5.6-terra; do
+        _clean_ctx_caches
+        printf 'claude-sonnet-4-6' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-model-${FAKE_SESSION}"
+        _seed_window 200000
+        _write_subagent_transcript "$transcript" "$model" 111000
+        run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+            bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
+        assert_success
+        assert_output --partial "111k / 370k"
+    done
+}
+
+# =========================================================================
+# Convention 5 — bounded numerator before x100 (finding 10)
+# =========================================================================
+# The exact boundary floor(INT64_MAX/100) = 92233720368547758. jq coerces usage
+# sums through IEEE-754 doubles, so the input_tokens literals below are chosen as
+# multiples of 16 (double-exact near 9.2e16) that jq emits in CANONICAL fixed
+# notation bracketing the bound -- exercising the numerator guard itself, not the
+# upstream is_canonical/sci-notation reject:
+#   input 92233720368547744 -> jq emits 92233720368547740 (<= bound): injects,
+#       and 92233720368547740*100 = 9223372036854774000 < INT64_MAX (no overflow),
+#       so pct clamps to 100 -- never negative.
+#   input 92233720368547760 -> jq emits 92233720368547760 (>  bound): fails open.
+#       Pre-guard, 92233720368547760*100 = 9223372036854776000 > INT64_MAX wraps
+#       signed-64 negative, which the bound check prevents.
+
+@test "numerator bound: a canonical value <= floor(INT64_MAX/100) injects with a clamped, non-negative pct" {
+    _seed_window 1000000
+    _write_main_transcript_raw_tokens "${TEST_DIR}/t.jsonl" "claude-fable-5" 92233720368547744
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
+    assert_success
+    assert_output --partial "[CRITICAL]"
+    assert_output --partial "(100%)"
+    refute_output --partial "(-"
+}
+
+@test "numerator bound: a canonical value above floor(INT64_MAX/100) fails open (no injection, no negative pct)" {
+    _seed_window 1000000
+    _write_main_transcript_raw_tokens "${TEST_DIR}/t.jsonl" "claude-fable-5" 92233720368547760
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
+    assert_success
+    refute_output --partial "Context utilization"
+    refute_output --partial "(-"
+}
+
+# =========================================================================
+# Convention 10 — parent-model isolation on a direct subagent transcript
+# (finding 7)
+# =========================================================================
+
+@test "direct subagent transcript: session model comes from the parent cache, subagent mapped by its OWN window" {
+    # Target scenario from Convention 10: parent ctx cache 1,000,000; legacy
+    # parent model Fable; a DIRECT Sonnet subagent transcript; usage 100,000; no
+    # subagent-model cache. Must report 100k / 200k (50%) ELEVATED (Sonnet's own
+    # conservative window) -- NOT 100k / 1000k (10%), which is the pre-fix bug
+    # where SESSION_MODEL was re-parsed from the subagent transcript, made equal
+    # to AGENT_MODEL, and skipped the different-model window correction.
+    printf 'claude-fable-5' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-model-${FAKE_SESSION}"
+    _seed_window 1000000
+    local transcript="${TEST_DIR}/agent-${FAKE_AGENT}.jsonl"
+    _write_subagent_transcript "$transcript" "claude-sonnet-4-6" 100000
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_direct_subagent "$transcript")
+    assert_success
+    assert_output --partial "[ELEVATED]"
+    assert_output --partial "100k / 200k"
+    assert_output --partial "(50%)"
+    refute_output --partial "100k / 1000k"
+}
+
+@test "direct subagent transcript with NO parent model cache still maps by the subagent's own window" {
+    # No claude-model-<session> cache at all -> SESSION_MODEL empty. The
+    # correction must still run (empty != sonnet) and map by the subagent's own
+    # model, never assuming same-model as the (unknown) session.
+    _seed_window 1000000
+    local transcript="${TEST_DIR}/agent-${FAKE_AGENT}.jsonl"
+    _write_subagent_transcript "$transcript" "claude-sonnet-4-6" 100000
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_direct_subagent "$transcript")
+    assert_success
+    assert_output --partial "[ELEVATED]"
+    assert_output --partial "100k / 200k"
+    assert_output --partial "(50%)"
+    refute_output --partial "100k / 1000k"
+}
+
+# =========================================================================
+# Convention 11 — future/corrupt gate timestamp (finding 8)
+# =========================================================================
+
+@test "future gate timestamp is treated as corrupt (reset to 0) and does not suppress the report" {
+    _seed_window 1000000
+    _write_main_transcript "${TEST_DIR}/t.jsonl" "claude-fable-5" 300000
+    # A far-future gate value would make (NOW - LAST_INJECT) negative -> always
+    # under the 60s interval -> reports suppressed indefinitely, pre-fix.
+    printf '%s' "$(( $(date +%s) + 100000 ))" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-ctx-ts-${FAKE_SESSION}"
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
+    assert_success
+    assert_output --partial "[ELEVATED]"
+    assert_output --partial "300k / 1000k"
+}
+
+@test "corrupt (non-numeric) gate timestamp is treated as 0 and does not suppress the report" {
+    _seed_window 1000000
+    _write_main_transcript "${TEST_DIR}/t.jsonl" "claude-fable-5" 300000
+    printf '%s' 'not-a-timestamp' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-ctx-ts-${FAKE_SESSION}"
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
+    assert_success
+    assert_output --partial "[ELEVATED]"
+    assert_output --partial "300k / 1000k"
+}
+
+@test "a legitimate recent-past gate timestamp still suppresses within the interval" {
+    # Regression guard: the Convention 11 reset must not defeat normal rate
+    # limiting. A valid value a few seconds in the past stays under 60s.
+    _seed_window 1000000
+    _write_main_transcript "${TEST_DIR}/t.jsonl" "claude-fable-5" 300000
+    printf '%s' "$(( $(date +%s) - 5 ))" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-ctx-ts-${FAKE_SESSION}"
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
+    assert_success
+    refute_output --partial "Context utilization"
+}
+
+# =========================================================================
+# Convention 6 — suppress redirection-open diagnostics (finding 11)
+# =========================================================================
+
+@test "gate write open() failure (gate path is a directory) leaks no diagnostic and still injects" {
+    # Force an open() failure by making the gate path (under the test cache seam)
+    # an (empty) DIRECTORY: EISDIR on the '>' redirect. Convention 6 wraps the
+    # write so the "Is a directory" diagnostic cannot reach the display stream;
+    # the injection still emits and the hook exits 0. teardown's rm -rf of the
+    # scratch dir removes the planted directory.
+    _seed_window 1000000
+    _write_main_transcript "${TEST_DIR}/t.jsonl" "claude-fable-5" 300000
+    rm -f "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-ctx-ts-${FAKE_SESSION}"
+    mkdir -p "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-ctx-ts-${FAKE_SESSION}"
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
+    assert_success
+    assert_output --partial "[ELEVATED]"
+    assert_output --partial "300k / 1000k"
+    refute_output --partial "Is a directory"
+    refute_output --partial "No such file"
+    refute_output --partial "Permission denied"
 }
