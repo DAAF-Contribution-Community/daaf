@@ -47,6 +47,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import site
 import stat
 import subprocess
 import sys
@@ -531,6 +532,15 @@ class ReasoningCacheNonPollutionAndPathTests(unittest.TestCase):
         if home is not None:
             env["HOME"] = home
         env.update(extra_env)
+        # Python derives the pip --user site-packages dir from HOME at interpreter
+        # startup, so overriding HOME above silently drops per-user-installed deps
+        # (httpx on GitHub runners) off the child's sys.path and the shim import dies
+        # before the probe prints. Pass the REAL user-site (computed under the real
+        # HOME, here in the parent) through PYTHONPATH: the shim derives its cache
+        # path from HOME, not PYTHONPATH, so the derivation assertion is unaffected.
+        env["PYTHONPATH"] = os.pathsep.join(
+            filter(None, [site.getusersitepackages(), env.get("PYTHONPATH", "")])
+        )
         completed = subprocess.run(
             [sys.executable, "-c", _PATH_PROBE, str(PRODUCTION_SHIM)],
             env=env,
