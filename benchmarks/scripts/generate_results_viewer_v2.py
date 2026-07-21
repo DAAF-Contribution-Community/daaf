@@ -8,8 +8,11 @@ and per-set manifests, condenses transcripts, computes derived metrics
 the Perfect and Critical-only metrics, consistency, per-case difficulty,
 callouts, published-pricing formulations with per-basis/per-metric
 efficiency frontiers, estimated battery costs from observed token mixes
-(see the "Battery-cost metric" dev guide above PHASE_MAP), per-model
-timeout rates, provenance), and produces the viewer artifact.
+(see the "Battery-cost metric" dev guide above PHASE_MAP), estimated
+battery durations from observed per-run latencies, provenance), and
+produces the viewer artifact. Timed-out runs are excluded at load (they
+carry no gradeable signal — see the load_runs chokepoint), so every metric
+and the embedded run payload reflect completed runs only.
 
 Two output modes (v3.0.0 — see the "Bundle architecture" dev guide above
 PHASE_MAP):
@@ -226,9 +229,9 @@ def resolve_paths(args):
 #     editorial prose whose figures are injected into kt-* spans by
 #     fillTakeaways() at init from PRECOMPUTED (composite, composite_hard,
 #     per_model_phase, consistency, cost.battery — relative ratios only
-#     since v2.8.1, and the page-wide headline cost figure since v3.1.0 —
-#     and timeout_by_model built below). Span contract:
-#     23 kt-* spans — 22 in the #takeaways section + kt-foot-bat, which
+#     since v2.8.1, and the page-wide headline cost figure since v3.1.0).
+#     Span contract:
+#     22 kt-* spans — 21 in the #takeaways section + kt-foot-bat, which
 #     since the 2026-06-12 user fine-tuning round lives in the About Key
 #     Caveats cost caveat (the kt-foot paragraph itself was removed; its
 #     content was folded into the About caveats). History: 29 before the
@@ -335,10 +338,9 @@ def resolve_paths(args):
 #     removed 2026-06-12 — the canonical definition + disclosures now render
 #     as the CvP battery-disclosure footnote, batteryDisclosureHtml(), and
 #     the published list-price table survives as a collapsible under the
-#     same chart, pricingDetailsHtml()). Per-model timed-out shares are NOT
-#     duplicated here — the template reads them from
-#     PRECOMPUTED.timeout_by_model (which since 2026-06-12 also feeds the
-#     leaderboard's Timed-out column).
+#     same chart, pricingDetailsHtml()). Timeout data is NOT computed: as of
+#     v3.3.0 the viewer is timeout-blind — timed-out runs are excluded at load
+#     and never presented (no per-model timeout share, no leaderboard column).
 #   - Headline promotion (v3.1.0, user decision): the battery multiplier is
 #     THE headline cost figure page-wide — the leaderboard cost column, the
 #     Cost vs. Performance default axis, the Costs Detail headline table
@@ -407,6 +409,45 @@ def resolve_paths(args):
 #     (53 on the 2026-06 corpus), and total shard bytes ≈ the old monolith
 #     minus index.html (~21 MB). A ballooning index.html means transcript
 #     data leaked back inline.
+#
+# Timeout-blindness + duration metric (added v3.3.0, dev guide):
+#   - Timeout-blindness (user decision): timed-out runs carry NO gradeable
+#     signal, so they are removed entirely — from the data, every metric, and
+#     all presentation. The exclusion is a SINGLE chokepoint in load_runs():
+#     the harness's explicit timed_out flag is read as a filter key and
+#     matching runs are dropped before any run record enters the embedded DATA
+#     payload or any precomputed aggregate. Consequences by design:
+#       * per_model_phase / composite / consistency / per_case / cost /
+#         duration / counts see completed runs only; the existing
+#         `if not gruns/cruns` guards naturally skip cells that go empty after
+#         exclusion (a set x model pair whose every run timed out simply drops
+#         that component and renders via the existing em-dash / rs-na /
+#         composite `partial` idioms — no ZeroDivisionError, no new guard).
+#       * The disk_run_count census (load_result_sets) stays RAW so the
+#         provenance run_count_discrepancy audit still compares on-disk dirs
+#         vs summary totals unchanged.
+#       * PRECOMPUTED no longer carries timeout_by_model or totals.n_timed_out
+#         (their consumers — the leaderboard Timed-out column, the About
+#         "Timeouts are still graded" caveat, the Key Takeaways timeout figure
+#         — were all removed from the template). The per-load excluded count is
+#         a console-only maintainer diagnostic (print_summary), not embedded.
+#   - Duration multiplier: a real-world LATENCY proxy mirroring the cost
+#     machinery by direct analogy (PRECOMPUTED.duration, shaped like
+#     cost.battery): per model, est_duration_per_run = mean duration_s over
+#     completed runs; est_battery_duration = per-run x battery_size (the same
+#     distinct-case count the cost block uses); duration_multiplier_vs_ref vs
+#     BATTERY_REFERENCE_MODEL (Opus 4.8). Built from SUMMED per-run duration_s,
+#     which is parallelization-INVARIANT (independent of config.parallel) —
+#     never summary.json wall_time_s, a batch clock that depends on run mode.
+#     Duration needs no pricing, so it covers ALL models including OpenRouter
+#     and the cost-omitted subscription lane (not gated on provider). The
+#     template exposes it as a "Relative Duration" leaderboard column and a
+#     duration axis on the Cost vs. Performance scatter with its own Pareto
+#     frontier (durScale clone of batScale; PRECOMPUTED.duration.frontiers is a
+#     SEPARATE block, not a cost.frontiers form, because it covers models the
+#     cost block omits). Caveat (folded into the CvP methodology footnote):
+#     duration folds in provider routing/congestion — mitigated but not
+#     eliminated by multi-rep averaging.
 # ---------------------------------------------------------------------------
 
 PHASE_MAP = {
@@ -923,7 +964,15 @@ def compute_grade(criteria):
 def load_runs(results_dir, result_sets, cases):
     """Load all result.json files for each result set.
 
-    Returns (runs, anth_token_totals). anth_token_totals aggregates raw
+    Timed-out runs (the harness's explicit timed_out flag) are excluded at a
+    single chokepoint as each result.json is read: they carry no gradeable
+    signal, so they never enter the returned runs list, the embedded DATA
+    payload, or any precomputed aggregate. The on-disk disk_run_count census
+    (load_result_sets) is a separate earlier pass and stays raw for the
+    provenance discrepancy audit.
+
+    Returns (runs, anth_token_totals, n_timed_out_excluded).
+    anth_token_totals aggregates raw
     token counts per Anthropic-provider model — {model: {n, input, output,
     cache_read, cache_creation}} — for the battery-cost metric (see the
     "Battery-cost metric" dev guide above PHASE_MAP). Aggregated here, in
@@ -937,6 +986,7 @@ def load_runs(results_dir, result_sets, cases):
     """
     runs = []
     anth_token_totals = {}
+    n_timed_out_excluded = 0
 
     for rs in result_sets:
         ts = rs["timestamp"]
@@ -1037,17 +1087,13 @@ def load_runs(results_dir, result_sets, cases):
                 "billing_grade_cost_exclusion_reason": billing_reason,
                 "duration_s": _optional_rounded_number(result.get("duration_s"), 3),
                 "error": result.get("error", None),
-                # Explicit flag from the harness — never string-match `error`
-                # to detect timeouts. Timed-out runs are usually still graded.
-                "timed_out": bool(result.get("timed_out", False)),
                 # Phase 1 only (None elsewhere)
                 "expected_mode": result.get("expected_mode"),
                 # Phase 2/3 only (None elsewhere)
                 "subcategory": result.get("subcategory"),
                 # Phase 2/3 only (None on Phase 1 result.json)
                 "tool_call_count": result.get("tool_call_count"),
-                # Grade status computed from main criteria; orthogonal to
-                # timed_out (see compute_grade)
+                # Grade status computed from main criteria (see compute_grade)
                 "grade": compute_grade(criteria),
                 "criteria": criteria,
                 "subagent_criteria": subagent_criteria,
@@ -1063,15 +1109,34 @@ def load_runs(results_dir, result_sets, cases):
                 "tool_failures": result.get("tool_failures", []),
                 "run_dir": run_dirname,
             }
+            # --- Timeout-exclusion chokepoint (v3.3.0) ---
+            # Timed-out runs carry no gradeable signal, so they are dropped
+            # HERE — before any run record enters the embedded DATA payload or
+            # ANY precomputed aggregate (per_model_phase, composite,
+            # consistency, per_case, cost/duration, counts). `timed_out` is the
+            # harness's explicit flag (never string-match `error`); it is read
+            # ONLY as this filter key and is deliberately not carried onto the
+            # run record. The disk census that feeds the provenance
+            # run_count_discrepancy check (load_result_sets -> disk_run_count)
+            # runs in a separate earlier pass and is intentionally left RAW, so
+            # the discrepancy audit still sees every on-disk run. Because runs
+            # are filtered here, the downstream `if not gruns/cruns` guards
+            # naturally skip cells that are empty after exclusion — no extra
+            # empty-cell guard is needed.
+            if bool(result.get("timed_out", False)):
+                n_timed_out_excluded += 1
+                continue
             runs.append(run)
 
             # Battery-cost token aggregation (Anthropic provider only; see
-            # docstring). Timed-out runs are excluded (v3.1.2). Schema-v1 keeps
-            # its historical flat-field zero fallback byte-for-byte in effect so
-            # published battery calculations do not change. For schema-v2,
-            # missing categories make the run ineligible for this billing-grade
-            # token mix; explicit source zero remains valid evidence.
-            if run["provider"] == "anthropic" and not run["timed_out"]:
+            # docstring). Timed-out runs never reach this point (excluded at the
+            # chokepoint above, v3.3.0; the metric already excluded them since
+            # v3.1.2). Schema-v1 keeps its historical flat-field zero fallback
+            # byte-for-byte so published battery calculations do not change. For
+            # schema-v2, missing categories make the run ineligible for this
+            # billing-grade token mix; explicit source zero remains valid
+            # evidence.
+            if run["provider"] == "anthropic":
                 if run["legacy_schema"]:
                     token_values = {
                         "input": result.get("input_tokens", 0) or 0,
@@ -1114,7 +1179,7 @@ def load_runs(results_dir, result_sets, cases):
         rs["billing_grade_cost_eligible"] = eligible
         rs["billing_grade_cost_exclusion_reason"] = reason
 
-    return runs, anth_token_totals
+    return runs, anth_token_totals, n_timed_out_excluded
 
 
 # ---------------------------------------------------------------------------
@@ -1525,7 +1590,7 @@ def build_data_bundle(result_sets, cases, runs, transcripts, subagent_transcript
     )
     bundle = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "generator_version": "3.2.0",
+        "generator_version": "3.3.0",
         "embedded_schema_contract_version": 2,
         "result_sets": sorted_result_sets,
         "cases": cases,
@@ -2013,8 +2078,8 @@ def build_precomputed(result_sets, cases, runs, generation_params,
     # completion per covered run; the harness's OpenRouter token counts are
     # tokenizer approximations and are never used for dollars). Full metric
     # definition + staleness-guard rationale: "Battery-cost metric" dev guide
-    # above PHASE_MAP. Per-model timed-out shares live in timeout_by_model —
-    # referenced by the template, not duplicated here.
+    # above PHASE_MAP. Timed-out runs are excluded upstream at load (v3.3.0),
+    # so these token averages already reflect completed runs only.
     BATTERY_REFERENCE_MODEL = "Opus 4.8"
     battery_size = len(case_runs)  # distinct case_ids in the loaded corpus
     snapshot_date = (reconciliation or {}).get("_snapshot_date")
@@ -2183,6 +2248,87 @@ def build_precomputed(result_sets, cases, runs, generation_params,
                         best_score = score
                 cost["frontiers"][form][basis][metric] = frontier
 
+    # --- duration.battery: estimated wall-clock latency per battery (v3.3.0) ---
+    # A real-world LATENCY proxy, mirroring cost.battery but needing no pricing
+    # — so it covers EVERY model (Anthropic, OpenRouter, AND the cost-omitted
+    # subscription lane), never gated on provider or billing eligibility. Built
+    # from SUMMED per-run duration_s: est_duration_per_run = mean duration_s
+    # over that model's completed runs (timed-out runs never reach `runs`),
+    # est_battery_duration = per-run x battery_size (the SAME distinct-case
+    # count the cost block uses). Per-run durations are parallelization-
+    # INVARIANT (independent of config.parallel), unlike summary wall_time_s
+    # (a batch clock that depends on run mode) — so the figure is comparable
+    # across sets fetched serially vs in parallel. duration_multiplier_vs_ref
+    # is vs BATTERY_REFERENCE_MODEL (Opus 4.8), derived from the stored per-run
+    # figure exactly as cost_multiplier_vs_ref is.
+    DURATION_REFERENCE_MODEL = BATTERY_REFERENCE_MODEL
+    duration_models = {}
+    for model in models:
+        durs = [r["duration_s"] for r in runs
+                if r["model"] == model
+                and isinstance(r["duration_s"], (int, float))
+                and not isinstance(r["duration_s"], bool)]
+        if not durs:
+            continue
+        n = len(durs)
+        per_run = sum(durs) / n
+        duration_models[model] = {
+            "est_duration_per_run": rnd(per_run),
+            "est_battery_duration": rnd(per_run * battery_size, 1),
+            "n_runs": n,
+            "basis": "corpus-live",
+        }
+    dref_entry = duration_models.get(DURATION_REFERENCE_MODEL)
+    for model, d in duration_models.items():
+        if dref_entry and dref_entry["est_duration_per_run"]:
+            d["duration_multiplier_vs_ref"] = rnd(
+                d["est_duration_per_run"] / dref_entry["est_duration_per_run"], 3)
+        else:
+            d["duration_multiplier_vs_ref"] = None
+
+    # duration.frontiers[basis][metric]: Pareto staircase on
+    # (duration asc, score desc), reusing perf_values (already built over
+    # completed runs) for the y-values. A SEPARATE block (not a parallel
+    # cost.frontiers "form") because duration covers models the cost block
+    # omits — folding it into cost.frontiers[form] would silently restrict it
+    # to priced models. Identical staircase walk to the cost frontier. The
+    # template divides every plotted duration by the reference model's
+    # est_battery_duration (durScale, a clone of batScale) to render a relative
+    # multiplier, exactly as the battery axis does.
+    duration_frontiers = {}
+    for basis in perf_bases:
+        duration_frontiers[basis] = {}
+        for metric in ("perfect", "hard"):
+            frontier_pts = []
+            for model, score_val in perf_values[basis][metric].items():
+                dm = duration_models.get(model)
+                if dm is None:
+                    continue
+                price = dm["est_battery_duration"]
+                if price is None or price <= 0:
+                    continue
+                frontier_pts.append((price, -score_val, model))
+            frontier_pts.sort()
+            frontier = []
+            best_score = None
+            for price, neg_score, model in frontier_pts:
+                score = -neg_score
+                if best_score is None or score > best_score:
+                    frontier.append({
+                        "model": model,
+                        "price": price,
+                        "score": score,
+                    })
+                    best_score = score
+            duration_frontiers[basis][metric] = frontier
+
+    duration = {
+        "battery_size": battery_size,
+        "reference_model": DURATION_REFERENCE_MODEL,
+        "models": duration_models,
+        "frontiers": duration_frontiers,
+    }
+
     # --- provenance: per result set, manifest + disk-vs-summary disclosure ---
     provenance = []
     for rs in sorted(result_sets,
@@ -2211,31 +2357,16 @@ def build_precomputed(result_sets, cases, runs, generation_params,
                 rs.get("disk_run_count", 0) != rs.get("summary_total_runs", 0),
         })
 
-    # --- timeout_by_model: per-model timed-out run rates ---
-    # Basis: the harness's explicit timed_out flag over ALL of a model's
-    # loaded runs (all phases pooled). This flag covers genuine wall-clock
-    # timeouts AND silent stalls that ran out the clock — a broader measure
-    # than any transcript-level stall forensics (e.g., README's silent-stall
-    # figures); prose citing these rates must name this basis. Precomputed
-    # here (not hand-copied) so the Key Takeaways section's reliability
-    # claims cannot drift from the data.
-    timeout_by_model = {}
-    for model in models:
-        mruns = [r for r in runs if r["model"] == model]
-        n_to = sum(1 for r in mruns if r["timed_out"])
-        timeout_by_model[model] = {
-            "n_runs": len(mruns),
-            "n_timed_out": n_to,
-            "rate": rnd(n_to / len(mruns)) if mruns else None,
-        }
-
     # --- totals ---
+    # Timeout-blind (v3.3.0): timed-out runs were excluded at load, so
+    # total_runs counts completed runs only and there is no per-corpus timeout
+    # count here. The per-load excluded count is a console-only maintainer
+    # diagnostic (print_summary), never embedded in the payload.
     totals = {
         "total_runs": len(runs),
         "n_models": len(models),
         "n_cases": len(case_runs),
         "n_result_sets": len(result_sets),
-        "n_timed_out": sum(1 for r in runs if r["timed_out"]),
         "generation_params": generation_params,
     }
 
@@ -2256,7 +2387,7 @@ def build_precomputed(result_sets, cases, runs, generation_params,
         "per_case": per_case,
         "callouts": callouts,
         "cost": cost,
-        "timeout_by_model": timeout_by_model,
+        "duration": duration,
         "provenance": provenance,
         "totals": totals,
     }
@@ -2376,7 +2507,8 @@ def write_transcript_shards(bundle_dir, index, transcripts, subagent_transcripts
 # Print summary
 # ---------------------------------------------------------------------------
 
-def print_summary(data_bundle, transcripts, subagent_transcripts):
+def print_summary(data_bundle, transcripts, subagent_transcripts,
+                  n_timed_out_excluded=0):
     """Print a summary of what was loaded.
 
     Takes the loaded transcript dicts directly (not from data_bundle):
@@ -2419,7 +2551,9 @@ def print_summary(data_bundle, transcripts, subagent_transcripts):
 
     print(f"  Totals:")
     print(f"    Result sets:           {len(data_bundle['result_sets'])}")
-    print(f"    Runs loaded:           {total_runs}")
+    print(f"    Runs loaded:           {total_runs} completed")
+    print(f"    Timed-out excluded:    {n_timed_out_excluded} "
+          f"(dropped at load; absent from all metrics and the embedded data)")
     print(f"    Cases loaded:          {total_cases}")
     print(f"    Transcripts condensed: {total_transcripts}")
     print(f"    Subagent transcripts:  {total_subagent}")
@@ -2491,8 +2625,10 @@ def print_precomputed_report(precomputed):
     totals = precomputed["totals"]
     n_disc = sum(1 for p in precomputed["provenance"] if p["run_count_discrepancy"])
     gw = precomputed["callouts"]["global_weakest"]
-    print(f"  Total runs: {totals['total_runs']} "
-          f"({totals['n_timed_out']} timed out) | "
+    # Timed-out runs were excluded at load (v3.3.0); total_runs already counts
+    # completed runs only. The per-load excluded count is reported by
+    # print_summary (which receives it) — it is not in this function's scope.
+    print(f"  Total runs: {totals['total_runs']} completed | "
           f"models: {totals['n_models']} | cases: {totals['n_cases']} | "
           f"sets: {totals['n_result_sets']} ({n_disc} with run-count discrepancy)")
     print(f"  Pricing loaded for {len(precomputed['cost'].get('models', []))} models "
@@ -2527,7 +2663,8 @@ def main():
         sys.exit(1)
 
     cases = load_cases(datasets_dir)
-    runs, anth_token_totals = load_runs(results_dir, result_sets, cases)
+    runs, anth_token_totals, n_timed_out_excluded = load_runs(
+        results_dir, result_sets, cases)
 
     # Renumber reps globally: runs from different result sets for the same
     # (phase, model, case_id) all have rep=0. Assign sequential rep numbers
@@ -2567,7 +2704,8 @@ def main():
                                     reconciliation=reconciliation)
 
     # Print summaries
-    print_summary(data_bundle, transcripts, subagent_transcripts)
+    print_summary(data_bundle, transcripts, subagent_transcripts,
+                  n_timed_out_excluded)
     print_precomputed_report(precomputed)
 
     # Generate HTML

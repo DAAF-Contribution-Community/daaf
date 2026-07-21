@@ -246,11 +246,190 @@ class ViewerSchemaLoadingTests(unittest.TestCase):
         malformed.parent.mkdir()
         malformed.write_text("{broken", encoding="utf-8")
 
+    def _write_timeout_set(self):
+        """A dedicated Phase-1 set exercising the v3.3.0 timeout-exclusion
+        chokepoint. Two Anthropic models share case ``mc-a``: the reference
+        ``Opus 4.8`` (mean duration 2.0s over 2 completed runs) and
+        ``Timeout Model`` (mean 5.0s over 2 completed runs). ``Timeout Model``
+        also carries two ``timed_out: True`` runs that must vanish everywhere:
+        a would-have-failed ``mc-a`` run (whose 99s latency and failing
+        criteria would skew duration/rates if kept) and the ONLY run for
+        ``mc-degenerate`` (an all-timed-out (case, model) cell that must not
+        crash and must leave no per_case entry)."""
+        root = self.results_dir / "20260720_000000"
+        self._write_json(root / "manifest.json", {
+            "daaf_git_sha": "c" * 40,
+            "config": {"reps": 1, "parallel": False},
+            "models": [
+                {"id": "opus-4-8", "name": "Opus 4.8", "provider": "anthropic"},
+                {"id": "timeout-model", "name": "Timeout Model",
+                 "provider": "anthropic"},
+            ],
+        })
+        self._write_json(root / "summary.json", {
+            "total_runs": 6,
+            "errored_runs": 0,
+            "total_cost_usd": 0,
+            "wall_time_s": 10,
+            "by_model": {
+                "Opus 4.8": {"criteria": {
+                    "orchestrator_skill_loaded": {"passed": 2, "total": 2, "rate": 1.0},
+                    "all_criteria": {"passed": 2, "total": 2, "rate": 1.0},
+                }},
+                "Timeout Model": {"criteria": {
+                    "orchestrator_skill_loaded": {"passed": 2, "total": 4, "rate": 0.5},
+                    "all_criteria": {"passed": 2, "total": 4, "rate": 0.5},
+                }},
+            },
+        })
+
+        def _run(run_dir, model, model_id, case_id, duration, timed_out,
+                 passed, inp, outp):
+            self._write_json(root / "runs" / run_dir / "result.json", {
+                "case_id": case_id,
+                "model": model,
+                "model_id": model_id,
+                "provider": "anthropic",
+                "rep": 0,
+                "turns": 1,
+                "computed_cost_usd": 0,
+                "input_tokens": inp,
+                "output_tokens": outp,
+                "cache_read_tokens": 0,
+                "cache_creation_tokens": 0,
+                "duration_s": duration,
+                "timed_out": timed_out,
+                "criteria": {"orchestrator_skill_loaded": {"passed": passed}},
+            })
+
+        # Reference model: 2 completed runs, mean duration 2.0s
+        _run("opus_0", "Opus 4.8", "opus-4-8", "mc-a", 2.0, False, True, 100, 10)
+        _run("opus_1", "Opus 4.8", "opus-4-8", "mc-a", 2.0, False, True, 100, 10)
+        # Timeout Model: 2 completed runs, mean duration 5.0s
+        _run("tm_ok_0", "Timeout Model", "timeout-model", "mc-a", 4.0, False, True, 200, 20)
+        _run("tm_ok_1", "Timeout Model", "timeout-model", "mc-a", 6.0, False, True, 200, 20)
+        # Timed-out, would-have-failed mc-a run (skews rates/duration if kept)
+        _run("tm_timeout", "Timeout Model", "timeout-model", "mc-a", 99.0, True, False, 999, 999)
+        # Timed-out ONLY run for mc-degenerate (all-timed-out cell)
+        _run("tm_degenerate", "Timeout Model", "timeout-model", "mc-degenerate", 99.0, True, False, 999, 999)
+
+    def _write_phase_timeout_set(self):
+        """A per-PHASE analogue of the per-case degeneracy in
+        ``_write_timeout_set``. Two Anthropic models span two phases. In the
+        ``mode_classification`` set both models complete (``Phase Gap Model``
+        is deliberately 1-of-2 perfect, so its sole surviving composite
+        component has a non-1.0 rate). In the ``post_confirmation`` set only
+        ``Coverage Model`` completes: ``Phase Gap Model``'s ONLY
+        post_confirmation run is ``timed_out: True``. After the load-time
+        timeout exclusion, ``Phase Gap Model`` has NO runs for the
+        post_confirmation eval group, so that entire composite component drops
+        for it — while the group itself survives because ``Coverage Model``
+        keeps it alive. This is the headline degeneracy the design claims but
+        the per-case ``_write_timeout_set`` never exercises: a model whose
+        WHOLE phase timed out drops that component and still renders via the
+        composite ``partial`` idiom (the group id absent from
+        ``components_present``, listed in ``components_missing``,
+        ``partial_data`` flagged)."""
+        def _phase_run(root, run_dir, model, model_id, case_id, marker,
+                       duration, timed_out, passed):
+            self._write_json(root / "runs" / run_dir / "result.json", {
+                "case_id": case_id,
+                "model": model,
+                "model_id": model_id,
+                "provider": "anthropic",
+                "rep": 0,
+                "turns": 1,
+                "computed_cost_usd": 0,
+                "input_tokens": 100,
+                "output_tokens": 10,
+                "cache_read_tokens": 0,
+                "cache_creation_tokens": 0,
+                "duration_s": duration,
+                "timed_out": timed_out,
+                "criteria": {marker: {"passed": passed}},
+            })
+
+        # --- Phase 1 (mode_classification) set: both models complete; Phase
+        # Gap Model is 1-of-2 perfect so its retained component rate is 0.5 ---
+        p1 = self.results_dir / "20260721_030303"
+        self._write_json(p1 / "manifest.json", {
+            "daaf_git_sha": "d" * 40,
+            "config": {"reps": 1, "parallel": False},
+            "models": [
+                {"id": "coverage-model", "name": "Coverage Model",
+                 "provider": "anthropic"},
+                {"id": "phase-gap-model", "name": "Phase Gap Model",
+                 "provider": "anthropic"},
+            ],
+        })
+        self._write_json(p1 / "summary.json", {
+            "total_runs": 3,
+            "errored_runs": 0,
+            "total_cost_usd": 0,
+            "wall_time_s": 5,
+            "by_model": {
+                "Coverage Model": {"criteria": {
+                    "orchestrator_skill_loaded": {"passed": 1, "total": 1, "rate": 1.0},
+                    "all_criteria": {"passed": 1, "total": 1, "rate": 1.0},
+                }},
+                "Phase Gap Model": {"criteria": {
+                    "orchestrator_skill_loaded": {"passed": 1, "total": 2, "rate": 0.5},
+                    "all_criteria": {"passed": 1, "total": 2, "rate": 0.5},
+                }},
+            },
+        })
+        _phase_run(p1, "cov_0", "Coverage Model", "coverage-model", "mc-a",
+                   "orchestrator_skill_loaded", 2.0, False, True)
+        _phase_run(p1, "gap_0", "Phase Gap Model", "phase-gap-model", "mc-a",
+                   "orchestrator_skill_loaded", 2.0, False, True)
+        _phase_run(p1, "gap_1", "Phase Gap Model", "phase-gap-model", "mc-a",
+                   "orchestrator_skill_loaded", 2.0, False, False)
+
+        # --- Phase 2 (post_confirmation) set: Coverage Model completes and
+        # keeps the group alive; Phase Gap Model's ONLY run here is timed-out,
+        # so the whole component drops for it after load-time exclusion ---
+        p2 = self.results_dir / "20260721_040404"
+        self._write_json(p2 / "manifest.json", {
+            "daaf_git_sha": "e" * 40,
+            "config": {"reps": 1, "parallel": False},
+            "models": [
+                {"id": "coverage-model", "name": "Coverage Model",
+                 "provider": "anthropic"},
+                {"id": "phase-gap-model", "name": "Phase Gap Model",
+                 "provider": "anthropic"},
+            ],
+        })
+        self._write_json(p2 / "summary.json", {
+            "total_runs": 2,
+            "errored_runs": 0,
+            "total_cost_usd": 0,
+            "wall_time_s": 5,
+            "by_model": {
+                "Coverage Model": {"criteria": {
+                    "read_data_onboarding_mode": {"passed": 1, "total": 1, "rate": 1.0},
+                    "all_criteria": {"passed": 1, "total": 1, "rate": 1.0},
+                }},
+                "Phase Gap Model": {"criteria": {
+                    "read_data_onboarding_mode": {"passed": 0, "total": 1, "rate": 0.0},
+                    "all_criteria": {"passed": 0, "total": 1, "rate": 0.0},
+                }},
+            },
+        })
+        _phase_run(p2, "cov_p2_0", "Coverage Model", "coverage-model", "mc-b",
+                   "read_data_onboarding_mode", 3.0, False, True)
+        # Phase Gap Model's ONLY post_confirmation run is timed-out -> excluded
+        # at load, leaving it with no completed runs in this whole phase.
+        _phase_run(p2, "gap_p2_timeout", "Phase Gap Model", "phase-gap-model",
+                   "mc-b", "read_data_onboarding_mode", 99.0, True, False)
+
     def _load(self):
         stderr = io.StringIO()
         with redirect_stderr(stderr):
             result_sets = viewer.load_result_sets(str(self.results_dir))
-            runs, anth_tokens = viewer.load_runs(
+            # load_runs returns a 3-tuple as of v3.3.0; the timeout-exclusion
+            # count is asserted directly in the dedicated timeout test (which
+            # captures all three returns), so it is discarded here.
+            runs, anth_tokens, _ = viewer.load_runs(
                 str(self.results_dir), result_sets, cases={}
             )
         return result_sets, runs, anth_tokens, stderr.getvalue()
@@ -380,7 +559,7 @@ class ViewerSchemaLoadingTests(unittest.TestCase):
         )
         self.assertNotIn("cli_model_usage", subscription_run["usage_observed"])
         self.assertEqual(2, bundle["embedded_schema_contract_version"])
-        self.assertEqual("3.2.0", bundle["generator_version"])
+        self.assertEqual("3.3.0", bundle["generator_version"])
 
     def test_subscription_cost_incompatibility_retains_behavioral_scores(self):
         result_sets, runs, anth_tokens, _ = self._load()
@@ -444,6 +623,136 @@ class ViewerSchemaLoadingTests(unittest.TestCase):
         resolve.assert_not_called()
         load.assert_not_called()
         makedirs.assert_not_called()
+
+    def test_timed_out_runs_are_excluded_from_data_and_all_metrics(self):
+        self._write_timeout_set()
+        with redirect_stderr(io.StringIO()):
+            result_sets = viewer.load_result_sets(
+                str(self.results_dir), filter_timestamps=["20260720_000000"]
+            )
+            runs, anth_tokens, n_timed_out = viewer.load_runs(
+                str(self.results_dir), result_sets, cases={}
+            )
+
+        # (6) The 3rd return equals the number of injected timed-out runs.
+        self.assertEqual(2, n_timed_out)
+
+        # (3) Timed-out runs never enter the returned runs list (the embedded
+        # DATA payload), and the timed_out flag is not carried onto records.
+        self.assertEqual(4, len(runs))
+        self.assertTrue(all(not run.get("timed_out") for run in runs))
+        self.assertNotIn("timed_out", runs[0])
+        # The all-timed-out case_id is absent from the loaded runs entirely.
+        self.assertEqual({"mc-a"}, {run["case_id"] for run in runs})
+        # (3) Excluded from the Anthropic token aggregation: n counts completed
+        # runs only (the 99999-token timed-out run would inflate it if kept).
+        self.assertEqual(2, anth_tokens["Timeout Model"]["n"])
+        self.assertEqual(2, anth_tokens["Opus 4.8"]["n"])
+
+        precomputed = viewer.build_precomputed(
+            result_sets,
+            cases={},
+            runs=runs,
+            generation_params={"fixture": True},
+            model_pricing={},
+            anth_token_totals=anth_tokens,
+            reconciliation=None,
+        )
+
+        # (3) per_model_phase counts and both rates reflect completed runs only.
+        tm_cell = precomputed["per_model_phase"]["Timeout Model"]["mode_classification"]
+        self.assertEqual(2, tm_cell["n_runs"])
+        self.assertEqual(2, tm_cell["perfect_count"])
+        self.assertEqual(1.0, tm_cell["perfect_rate"])
+        self.assertEqual(1.0, tm_cell["hard_rate"])
+
+        # (3) per_case excludes timed-out runs; (3) the degenerate all-timed-out
+        # (case, model) cell produces no crash and simply leaves no per_case
+        # entry — the composite/partial idioms handle the now-empty cell.
+        self.assertEqual(4, precomputed["per_case"]["mc-a"]["n_runs"])
+        self.assertEqual(1.0, precomputed["per_case"]["mc-a"]["perfect_rate"])
+        self.assertNotIn("mc-degenerate", precomputed["per_case"])
+
+        # (4) PRECOMPUTED.duration mirrors cost.battery, over completed runs.
+        duration = precomputed["duration"]
+        dur_models = duration["models"]
+        # est_duration_per_run == mean duration_s over completed runs
+        self.assertEqual(2.0, dur_models["Opus 4.8"]["est_duration_per_run"])
+        self.assertEqual(5.0, dur_models["Timeout Model"]["est_duration_per_run"])
+        self.assertEqual(2, dur_models["Timeout Model"]["n_runs"])
+        # battery_size == distinct completed case_ids (mc-degenerate excluded)
+        self.assertEqual(1, duration["battery_size"])
+        # est_battery_duration == est_duration_per_run x battery_size
+        self.assertEqual(5.0, dur_models["Timeout Model"]["est_battery_duration"])
+        # duration_multiplier_vs_ref is vs "Opus 4.8" (reference == 1.0)
+        self.assertEqual("Opus 4.8", duration["reference_model"])
+        self.assertEqual(1.0, dur_models["Opus 4.8"]["duration_multiplier_vs_ref"])
+        self.assertEqual(2.5, dur_models["Timeout Model"]["duration_multiplier_vs_ref"])
+        # (4) The SEPARATE duration.frontiers[basis][metric] block is present.
+        self.assertIn("composite", duration["frontiers"])
+        self.assertIn("perfect", duration["frontiers"]["composite"])
+        self.assertIn("hard", duration["frontiers"]["composite"])
+
+        # (5) Removed timeout surfaces are gone from PRECOMPUTED.
+        self.assertNotIn("timeout_by_model", precomputed)
+        self.assertNotIn("n_timed_out", precomputed["totals"])
+        # totals.total_runs counts completed runs only.
+        self.assertEqual(4, precomputed["totals"]["total_runs"])
+
+    def test_all_timed_out_phase_drops_component_and_composite_renders_partial(self):
+        # Companion to the per-CASE degeneracy above: exercises an all-timed-out
+        # per-PHASE cell. The degenerate set flows through the shared _load()
+        # path (alongside the setUp fixtures), then the REAL build_precomputed
+        # path — no mocks — must not raise while dropping one model's whole
+        # phase component and rendering it via the composite partial idiom.
+        self._write_phase_timeout_set()
+        result_sets, runs, anth_tokens, _ = self._load()
+
+        precomputed = viewer.build_precomputed(
+            result_sets,
+            cases={},
+            runs=runs,
+            generation_params={"fixture": True},
+            model_pricing={},
+            anth_token_totals=anth_tokens,
+            reconciliation=None,
+        )
+
+        pmp = precomputed["per_model_phase"]
+        composite = precomputed["composite"]
+
+        # The all-timed-out phase leaves NO per_model_phase cell for that group
+        # (the model retains its mode_classification cell from the other phase)...
+        self.assertIn("mode_classification", pmp["Phase Gap Model"])
+        self.assertNotIn("post_confirmation", pmp["Phase Gap Model"])
+        # ...while the group still EXISTS in the corpus, kept alive by the model
+        # that completed a run in it — so this is a genuine dropped component,
+        # not an absent group.
+        self.assertIn("post_confirmation", pmp["Coverage Model"])
+
+        # The dropped-component model still renders, via the composite partial
+        # idiom: the group id is absent from components_present, listed in
+        # components_missing, and the entry is flagged partial_data.
+        self.assertIn("Phase Gap Model", composite)
+        gap = composite["Phase Gap Model"]
+        self.assertIn("mode_classification", gap["components_present"])
+        self.assertNotIn("post_confirmation", gap["components_present"])
+        self.assertIn("post_confirmation", gap["components_missing"])
+        self.assertTrue(gap["partial_data"])
+
+        # The composite score is the mean over PRESENT components only (missing
+        # components are excluded, not zero-filled): 0.5 over the sole
+        # mode_classification component (rate 0.5), NOT 0.25 as a zero-fill of
+        # the missing post_confirmation component would yield.
+        self.assertEqual(0.5, gap["score"])
+
+        # The coverage model that kept the group alive has full coverage: the
+        # component is present and it is not flagged partial.
+        self.assertIn(
+            "post_confirmation",
+            composite["Coverage Model"]["components_present"],
+        )
+        self.assertFalse(composite["Coverage Model"]["partial_data"])
 
 
 if __name__ == "__main__":

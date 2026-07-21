@@ -524,41 +524,6 @@ body.nav-rendered #phases,body.nav-rendered #cases{
    teal links 8.78:1, accent-light 5.65:1, chip-val teal 9.44:1,
    code-chip indigo-light 5.19:1, SVG axis text 8.72:1 — all PASS. */
 
-/* === Timeout scale (leaderboard Timed-out column; fine-tuning round 3,
-   Wave A) === A dedicated 5-step RED worst-is-hot ramp on --c-fail-rgb,
-   mirroring the .rs-* mechanism but inverted semantics: 0% timeouts reads
-   quiet/neutral (good), the highest shares read strong fail-red. This
-   resolves the original objection that kept the column off a ramp (the
-   pass-green .rs-* family reads high-is-good — it would visually reward
-   timeouts); a fail-red ramp keeps worst-is-hot honest. Color never
-   carries meaning alone: the 1-decimal % text + k/n sub-line stay in the
-   cell, so the number itself is the redundancy (no glyphs needed).
-   Thresholds (toStep(), next to rateStep()) were designed from the actual
-   2026-06 corpus distribution (design basis: 17 models, now 19) clustering low: 0% (x2),
-   1.3-1.4% (x2), 4.3-6.4% (x4), 9.2-9.8% (x2), 13.7-15.0% (x3),
-   20.3-26.8% (x3), 45.8% (x1) — so rateStep's 50/90 breaks would dump 16
-   of 17 models into two steps. Breaks 0 / >0 / >=5% / >=10% / >=20% spread
-   the corpus 2/4/4/3/4 across the five steps and stay round and readable
-   (one-in-twenty / one-in-ten / one-in-five).
-   Contrast (computed for the WCAG 4.5:1 small-text floor, worse of the
-   two surfaces #0a0f1c/#151d2e): the fail red is DARKER than the pass
-   green, so the rs-3-style dark-text flip at alpha .65 FAILS here
-   (--surface-0 text measures 3.49:1) — to-3 instead keeps light text on a
-   .55 fill (text-1 5.66:1 worst; the opacity-.85 .lb-n sub-line 4.59:1).
-   to-4 (.85) flips dark like rs-4 (--surface-0 5.24:1 worst), but the
-   .lb-n at opacity .85 measures 4.49:1 — a hair under floor — so .to-4
-   carries an opacity:1 override for its k/n line. to-1 (.16, text-1
-   12.09:1) and to-2 (.34, text-1 8.62:1) mirror the rs-* alphas. to-0 is
-   deliberately untinted: a faint red wash on a 0% cell would suggest a
-   problem where there is none, and rs-na (the no-data idiom) must stay
-   visually distinct from "zero timeouts". */
-.to-0{ background:transparent; color:var(--text-2); }
-.to-1{ background:rgba(var(--c-fail-rgb),.16); color:var(--text-1); }
-.to-2{ background:rgba(var(--c-fail-rgb),.34); color:var(--text-1); }
-.to-3{ background:rgba(var(--c-fail-rgb),.55); color:var(--text-1); }
-.to-4{ background:rgba(var(--c-fail-rgb),.85); color:var(--surface-0); }
-.to-4 .lb-n{ opacity:1; } /* .85 opacity measured 4.49:1 — see comment above */
-
 /* === Leaderboard === */
 .lb-finding,.cp-finding,.pd-finding{ font-size:15px; max-width:980px; margin:4px 0 12px; line-height:1.55; }
 .lb-controls{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:12px; }
@@ -592,8 +557,10 @@ body.nav-rendered #phases,body.nav-rendered #cases{
    engine, and ALL sortable headers have relied on it since Wave A —
    mixing a width/min-width pair into the same header row would introduce
    a second sizing mechanism for no better-defined behavior. Applied via
-   thSort()'s extraCls hook to the cost th only. */
-.lb-table th.lb-th-cost{ max-width:210px; }
+   thSort()'s extraCls hook to the cost th only. The Relative Duration
+   header ("Relative Duration (1x=Opus 4.8)") reuses the same wider cap. */
+.lb-table th.lb-th-cost,
+.lb-table th.lb-th-duration{ max-width:210px; }
 .lb-table th.lb-th-sort:hover{ color:var(--text-1); background:rgba(99,102,241,.12); }
 .lb-table th.lb-th-active{ color:var(--text-1); background:rgba(99,102,241,.18); }
 .lb-table td{ vertical-align:middle; }
@@ -809,14 +776,12 @@ body.nav-rendered #phases,body.nav-rendered #cases{
 .run-list-item .case-label{ font-weight:600; color:var(--text-1); }
 .run-list-item .model-label{ color:var(--text-2); }
 /* Grade status glyphs (WP7 taxonomy): color + glyph + tooltip, never
-   color alone. Timeout is a separate clock marker (.to-mark), not a
-   status of its own — timed-out runs are usually still graded. */
+   color alone. */
 .st-glyph{ display:inline-block; width:12px; text-align:center; font-weight:700; cursor:help; }
 .st-perfect{ color:var(--c-pass); }
 .st-partial{ color:var(--c-partial); }
 .st-failed{ color:var(--c-fail); }
 .st-ungraded{ color:var(--c-neutral); }
-.to-mark{ color:var(--text-2); font-size:11px; cursor:help; }
 .run-detail-panel{
   flex:1; overflow-y:auto; border:1px solid var(--border-1); border-radius:14px;
   background:var(--surface-1); padding:16px 20px;
@@ -938,7 +903,6 @@ body.nav-rendered #phases,body.nav-rendered #cases{
 .badge-fail{ background:rgba(var(--c-fail-rgb),.2); color:var(--c-fail-light); }
 .badge-partial{ background:rgba(251,191,36,.2); color:#fde68a; }
 .badge-neutral{ background:rgba(100,116,139,.2); color:var(--text-2); }
-.badge-timeout{ background:transparent; border:1px dashed var(--text-2); color:var(--text-2); }
 .empty-msg{ color:var(--text-3); text-align:center; padding:40px; font-size:13px; }
 .clickable{ cursor:pointer; }
 .clickable:hover{ opacity:.85; }
@@ -1343,9 +1307,7 @@ nav.site-nav{
     <p>Qwen 3.6 27B, the best of the small open models here, manages
     <b><span id="kt-t5-qwen">&mdash;</span></b>, and it's at its weakest in perhaps the most important part of the overall orchestration pipeline: careful skill routing
     (basically: How often does it load the necessary grounding references before it responds to questions? <span id="kt-t5-qwenp4">&mdash;</span>) and mode
-    classification (basically: How often does it correctly assign a natural language query to the right workflow process? <span id="kt-t5-qwenp1">&mdash;</span>). Gemma 4 31B timed
-    out on <b><span id="kt-t5-g31to">&mdash;</span></b> of its runs, often (per transcripts) not actually doing any work at all when queried: by far the worst
-    reliability in the corpus. Some of these results may be simple harness incompatibility (Claude Code is not optimized for communicating with Gemma or Qwen, to be clear), but nonetheless point to more necessary improvements/development to be viable for rigorous research orchestration workflows. That being said, they <em>will</em> get there someday, and with DAAFBench, we&rsquo;ll now be able to know when they do!</p>
+    classification (basically: How often does it correctly assign a natural language query to the right workflow process? <span id="kt-t5-qwenp1">&mdash;</span>). Some of these results may be simple harness incompatibility (Claude Code is not optimized for communicating with Gemma or Qwen, to be clear), but nonetheless point to more necessary improvements/development to be viable for rigorous research orchestration workflows. That being said, they <em>will</em> get there someday, and with DAAFBench, we&rsquo;ll now be able to know when they do!</p>
   </div>
 
   <!-- kt-foot removed (2026-06-12 user fine-tuning round): its
@@ -1584,11 +1546,6 @@ nav.site-nav{
         <li><b>All analyses were conducted via Claude Code through OpenRouter</b> in a relatively naive fashion, and at least some
           of the results will be driven by models' compatibility with this specific harness combination.
           Tune your sense of generalizability around these benchmark results accordingly!</li>
-        <li><b>Timeouts are still graded.</b> Runs that hit the wall-clock limit
-            (<span id="ab-timeouts">some</span> runs in this corpus) have zeroed turn counts
-            and a duration recorded at the cutoff limit, but their criteria are fully
-            scored from the transcript
-            produced before the cutoff &mdash; a timed-out run can be a perfect run.</li>
         <li><b>Denominators are small and uneven.</b> Repetition counts are
             relatively small and can be uneven across providers and models due
             to cost limitations &mdash; some (model, phase) cells have 2 reps
@@ -1725,8 +1682,7 @@ nav.site-nav{
     condensed transcript &mdash; including subagent transcripts where they exist. The
     filters below apply to this section only; clicks from the heatmaps and case views above
     land here with the matching filters pre-applied. Status reflects grading (perfect /
-    partial / failed / ungraded); a clock marker flags timed-out runs, which are still
-    fully graded from the transcript produced before the cutoff.
+    partial / failed / ungraded).
   </p>
   <div class="rx-filters" id="rx-filters">
     <div class="filter-group">
@@ -1754,7 +1710,6 @@ nav.site-nav{
     <div class="filter-group">
       <input type="text" class="filter-input" id="rx-search" placeholder="Search cases...">
     </div>
-    <label class="filter-checkbox"><input type="checkbox" id="rx-hide-timeouts"> Hide timeouts</label>
     <span class="rx-chip" id="rx-crit-chip" style="display:none"></span>
     <button class="filter-btn" id="rx-reset">Reset</button>
   </div>
@@ -1835,7 +1790,7 @@ const PRECOMPUTED = __PRECOMPUTED_JSON__;
 var state = {
   /* criterion has no DOM control — it is set only by heatmap deep links
      and shown as a removable chip (see updateCritChip) */
-  filters: { phase:"", model:"", caseId:"", status:"", search:"", criterion:"", hideTimeouts:false },
+  filters: { phase:"", model:"", caseId:"", status:"", search:"", criterion:"" },
   selectedRunIdx: -1,
   /* Cost vs. Performance price basis: battery (default — the page-wide
      headline cost figure) | input | output */
@@ -1905,20 +1860,6 @@ function rateGlyph(step){
   if(step===4) return "&#10003; ";
   if(step===0) return "&#10007; ";
   return "";
-}
-
-/* Timeout-share steps for the leaderboard Timed-out column's .to-0...to-4
-   red ramp (fine-tuning round 3, Wave A). Deliberately NOT rateStep():
-   timeout rates cluster low (2026-06 corpus: 0% to 45.8%, median ~9%), so
-   the pass-ramp's 50/90 breaks would dump 16 of 17 models (design basis; now 19) into two steps.
-   Breaks 0 / >0 / >=5% / >=10% / >=20% spread the measured corpus 2/4/4/3/4
-   — full distribution + contrast arithmetic in the .to-* CSS comment. */
-function toStep(rate){
-  if(rate>=0.2) return 4;
-  if(rate>=0.1) return 3;
-  if(rate>=0.05) return 2;
-  if(rate>0) return 1;
-  return 0;
 }
 
 function pct(v){ return (v*100).toFixed(0)+"%"; }
@@ -2032,7 +1973,15 @@ var COST_FORMS=[
   {key:"input",label:"Input",formula:"Published input price, per million tokens",
    axis:"Input price (USD per 1M tokens, log scale)"},
   {key:"output",label:"Output",formula:"Published output price, per million tokens",
-   axis:"Output price (USD per 1M tokens, log scale)"}
+   axis:"Output price (USD per 1M tokens, log scale)"},
+  /* Duration (v3.3.0): a real-world LATENCY proxy, not a price. Like the
+     battery form it DISPLAYS as a relative multiplier (Opus 4.8 = 1.0x),
+     reading from PRECOMPUTED.duration (not cost.models) so it covers every
+     model — including OpenRouter and the cost-omitted subscription lane.
+     Built from summed per-run durations (parallelization-invariant). */
+  {key:"duration",label:"Relative Duration (1x=Opus 4.8)",
+   formula:"Estimated relative wall-clock time to run the full benchmark battery once, as a multiple of Opus 4.8 (= 1.0×) — from summed per-run durations (parallelization-invariant), a real-world latency proxy (definition + caveats in the notes below the chart)",
+   axis:"Est. relative duration vs Opus 4.8 to run the full battery once (×, log scale)"}
 ];
 function priceMap(){
   var map={};
@@ -2058,13 +2007,26 @@ function batteryMult(m){
   return {mult:mu,stale:!!bm.stale};
 }
 
+/* Battery-duration multiplier lookup (v3.3.0), the latency twin of
+   batteryMult: a model's estimated full-battery wall-clock time as a
+   multiple of the reference model (Opus 4.8 = 1.0x), from
+   PRECOMPUTED.duration. Prefers the embedded duration_multiplier_vs_ref;
+   otherwise derives the same ratio from the embedded per-run durations.
+   Covers ALL models (no pricing gate). Returns {mult} or null. */
+function durationMult(m){
+  var dur=PRECOMPUTED.duration||{};
+  var dm=(dur.models||{})[m];
+  if(!dm) return null;
+  var refD=((dur.models||{})[dur.reference_model||"Opus 4.8"]||{}).est_duration_per_run;
+  var mu=dm.duration_multiplier_vs_ref!=null?dm.duration_multiplier_vs_ref
+    :((refD&&refD>0&&dm.est_duration_per_run!=null)?dm.est_duration_per_run/refD:null);
+  if(mu==null) return null;
+  return {mult:mu};
+}
+
 /* Run status = the precomputed grade (perfect / partial / failed /
-   ungraded), orthogonal to the timed_out flag (design record: README § 8 —
-   data realities). A
-   timed-out run is usually still fully graded, so timeout renders as
-   a separate clock marker (.to-mark / TIMED OUT badge) wherever the
-   grade appears — never as a status of its own, and never inferred by
-   string-matching the error field. */
+   ungraded), never inferred by string-matching the error field (design
+   record: README § 8 — data realities). */
 function runStatus(run){
   return run.grade||"ungraded";
 }
@@ -2284,8 +2246,6 @@ function filteredRuns(){
       var haystack=(r.case_id+" "+(c2?c2.prompt:"")).toLowerCase();
       if(haystack.indexOf(q)<0) return false;
     }
-    /* timed_out is the explicit harness flag — never string-match error */
-    if(f.hideTimeouts && r.timed_out) return false;
     return true;
   });
 }
@@ -2316,7 +2276,6 @@ function readFilters(){
   state.filters.caseId=el("rx-case").value;
   state.filters.status=el("rx-status").value;
   state.filters.search=el("rx-search").value;
-  state.filters.hideTimeouts=el("rx-hide-timeouts").checked;
   /* state.filters.criterion is deliberately NOT read from the DOM — it
      has no control; it is set by deep links and cleared via its chip */
 }
@@ -2343,7 +2302,6 @@ function clearFilterControls(){
   el("rx-case").value="";
   el("rx-status").value="";
   el("rx-search").value="";
-  el("rx-hide-timeouts").checked=false;
   state.filters.criterion="";
   readFilters();
   updateCritChip();
@@ -2479,7 +2437,6 @@ function fillTakeaways(){
   var hardComp=PRECOMPUTED.composite_hard||{};
   var pmp=PRECOMPUTED.per_model_phase||{};
   var cons=PRECOMPUTED.consistency||{};
-  var tom=PRECOMPUTED.timeout_by_model||{};
   /* Cost claims run on the battery metric (PRECOMPUTED.cost.battery) and
      render as RELATIVE figures only — ratios and multipliers, never
      dollars (v2.8.1 user decision: exact dollars imply false precision) */
@@ -2544,18 +2501,14 @@ function fillTakeaways(){
   if(dsflash!=null) set("kt-t4-dsflash",pct1(dsflash));
 
   /* T5 — Qwen's local-class ceiling (P4 skill routing + P1 mode
-     classification as the weak points); Gemma 4 31B timed-out rate (the
-     harness's timed_out flag, NOT transcript-level stall forensics) */
+     classification as the weak points). The Gemma timed-out figure was
+     removed in v3.3.0 (the viewer is timeout-blind; no timeout data). */
   var qwen=score("Qwen 3.6 27B");
   if(qwen!=null) set("kt-t5-qwen",pct1(qwen));
   var qp4=(pmp["Qwen 3.6 27B"]||{})["skill_routing"];
   if(qp4&&qp4.perfect_rate!=null) set("kt-t5-qwenp4",pct1(qp4.perfect_rate));
   var qp1=(pmp["Qwen 3.6 27B"]||{})["mode_classification"];
   if(qp1&&qp1.perfect_rate!=null) set("kt-t5-qwenp1",pct1(qp1.perfect_rate));
-  var g31=tom["Gemma 4 31B"];
-  if(g31&&g31.rate!=null){
-    set("kt-t5-g31to",fmt(g31.n_timed_out)+" of "+fmt(g31.n_runs)+" ("+(g31.rate*100).toFixed(1)+"%)");
-  }
 
   /* kt-foot-bat — battery size for the relative-multiplier caveat. The
      span moved from the (removed) kt-foot into the About Key Caveats cost
@@ -2569,7 +2522,6 @@ function fillTakeaways(){
 
 function fillAboutCounts(){
   var T=PRECOMPUTED.totals||{};
-  if(T.n_timed_out!=null) el("ab-timeouts").textContent=fmt(T.n_timed_out);
   /* Per-phase case counts derived from per_case so the About table never
      drifts from the data. per_case phases are raw names; 3a/3b share
      dispatch_compliance — the count renders on the 3a row, 3b stays
@@ -2599,9 +2551,9 @@ function fillAboutCounts(){
    Rank-ordered table-chart computed entirely from PRECOMPUTED:
    composite bar with component ticks, per-phase rate cells
    (rate + visible n, deep-linking to the phase deep-dives),
-   dispatch reliability, k-of-n consistency, the per-model timed-out
-   share (PRECOMPUTED.timeout_by_model; added 2026-06-12), and the
-   battery-cost multiplier (est. cost to run the full battery once, x Opus 4.8 —
+   dispatch reliability, k-of-n consistency, the battery-cost multiplier,
+   and the battery-duration multiplier (v3.3.0, the latency twin; est. cost
+   to run the full battery once, x Opus 4.8 —
    the page-wide headline cost figure; never observed spend, which
    was removed — see the CvP battery disclosure). A metric toggle switches composite, phase
    cells, ranks, and tier bands between the Perfect metric
@@ -2655,7 +2607,6 @@ function renderLeaderboard(container){
   var tierRule=(isHard?PRECOMPUTED.tier_rule_hard:PRECOMPUTED.tier_rule)||{};
   var pmp=PRECOMPUTED.per_model_phase||{};
   var consistency=PRECOMPUTED.consistency||{};
-  var toByModel=PRECOMPUTED.timeout_by_model||{};
   var groups=getEvalGroups();
 
   /* Composite ranking — mirrors the generator's ordering (score desc, name asc) */
@@ -2705,13 +2656,13 @@ function renderLeaderboard(container){
       var b=batteryMult(m);
       return b?b.mult:null;
     }
+    if(sortKey==="duration"){
+      var dv=durationMult(m);
+      return dv?dv.mult:null;
+    }
     if(sortKey==="consistency"){
       var k=consistency[m];
       return (k&&k.rate!=null)?k.rate:null;
-    }
-    if(sortKey==="timeout"){
-      var t=toByModel[m];
-      return (t&&t.rate!=null)?t.rate:null;
     }
     if(sortKey==="composite"){
       var e=comp[m];
@@ -2775,19 +2726,27 @@ function renderLeaderboard(container){
       '" onclick="lbSortBy(&#39;'+esc(key)+'&#39;,'+defDir+')">'+label+arrow+'</th>';
   }
 
-  /* Column order (fine-tuning round 3, Wave A — user decision): Tier, #,
-     Model, Cost, Composite, P1...P4 phases, Consistency, Timed out. Cost
-     was promoted from last to right after Model as a primary reference
-     point read alongside the composite; the Dispatch column (the P3a
+  /* Column order (v3.3.0): Tier, #, Model, Cost, Duration, Composite,
+     P1...P4 phases, Consistency. Cost was promoted (fine-tuning round 3,
+     Wave A) to right after Model as a primary reference point read
+     alongside the composite; Relative Duration (v3.3.0) sits immediately
+     after it as its latency twin. The Dispatch column (the P3a
      agent_dispatched pass rate) was REMOVED — it duplicated signal the
-     P3a phase column already carries (the per-phase
-     dispatch_compliance_dispatch rate, which stays). Tier must stay the
-     first cell of band-start rows (the rowspan gutter contract). */
+     P3a phase column already carries. The Timed-out column was REMOVED in
+     v3.3.0: the viewer is timeout-blind, so timed-out runs are excluded
+     upstream and never presented. Tier must stay the first cell of
+     band-start rows (the rowspan gutter contract). */
   html+='<div class="card"><table class="data-table lb-table"><thead><tr>';
   if(showTier) html+='<th title="'+metricLabel+' composite tier band (banding rule below)">Tier</th>';
   html+='<th title="'+metricLabel+' composite rank (fixed across re-sorts)">#</th><th>Model</th>';
   html+=thSort("cost","Relative Test Cost (1x=Opus 4.8)",
     "Estimated relative cost to run the full benchmark battery once, as a multiple of Opus 4.8 (= 1.0\u00d7) \u2014 published list rates \u00d7 each model\u2019s observed token mix, uncached basis (defined under Cost vs. Performance). Always the battery multiplier here, regardless of the price-basis toggle in Cost vs. Performance. Not measured benchmark spend.",1,'lb-th-cost');
+  /* Relative Duration (v3.3.0): the latency twin of the cost column, a
+     multiple of Opus 4.8's estimated full-battery wall-clock time, from
+     PRECOMPUTED.duration (summed per-run durations; parallelization-
+     invariant). Covers every model, including those omitted from cost. */
+  html+=thSort("duration","Relative Duration (1x=Opus 4.8)",
+    "Estimated relative wall-clock time to run the full benchmark battery once, as a multiple of Opus 4.8 (= 1.0×) — each model’s summed per-run durations (parallelization-invariant), a real-world latency proxy defined under Cost vs. Performance. Not a price; covers every model, including those without billing-grade cost data.",1,'lb-th-duration');
   html+=thSort("composite","Composite",
     metricLabel+' composite \u2014 unweighted mean of the per-phase '+metricLabel+' rates',-1);
   groups.forEach(function(g){
@@ -2796,17 +2755,6 @@ function renderLeaderboard(container){
   });
   html+=thSort("consistency","Consistency",
     "Share of repeated (phase, case) cells (2+ reps) where every rep was perfect. Always Perfect-based (all criteria), regardless of the metric toggle.",-1);
-  /* Timed-out column (2026-06-12, user fine-tuning round): per-model
-     timed-out share over all of the model's loaded runs, from
-     PRECOMPUTED.timeout_by_model — the same precompute that feeds the Key
-     Takeaways timeout claims. Default sort direction is DESCENDING
-     (worst-first): for a reliability column the interesting reading is
-     "who times out most", mirroring the worst-first instinct of the other
-     columns' best-first defaults. Since fine-tuning round 3 (Wave A) the
-     cells sit on the dedicated .to-* red worst-is-hot ramp (toStep();
-     design + contrast record at the .to-* CSS). */
-  html+=thSort("timeout","Timed out",
-    "Share of this model\u2019s runs cut off at the wall clock \u2014 the harness\u2019s timed_out flag counts genuine wall-clock timeouts AND silent stalls that simply ran out the clock. Timed-out runs are still graded from the transcript produced before the cutoff.",-1);
   html+='</tr></thead><tbody>';
 
   var anyPartial=false;
@@ -2843,6 +2791,19 @@ function renderLeaderboard(container){
         fmtMult(b.mult)+' Opus 4.8\u2019s (= 1.0\u00d7); uncached list rates \u00d7 observed token mix \u2014 defined under Cost vs. Performance'+
         (b.stale?' \u26a0 token mix from a billing snapshot that predates this model\u2019s newest corpus runs':'')+
         '">'+fmtMult(b.mult)+'</td>';
+    } else {
+      html+='<td class="lb-cost text-muted">&mdash;</td>';
+    }
+
+    /* Relative Duration (v3.3.0) — the latency twin of the cost cell,
+       Opus 4.8 = 1.0x, from PRECOMPUTED.duration (summed per-run
+       durations; parallelization-invariant). Reuses fmtMult and the
+       em-dash idiom; covers every model (no pricing gate). */
+    var dv=durationMult(m);
+    if(dv){
+      html+='<td class="lb-cost" title="Est. wall-clock time to run the full battery once ≈ '+
+        fmtMult(dv.mult)+' Opus 4.8’s (= 1.0×); summed per-run durations, parallelization-invariant — a latency proxy defined under Cost vs. Performance">'+
+        fmtMult(dv.mult)+'</td>';
     } else {
       html+='<td class="lb-cost text-muted">&mdash;</td>';
     }
@@ -2892,24 +2853,6 @@ function renderLeaderboard(container){
       html+='<td class="lb-cell"><span class="hm-cell rs-na" title="No (phase, case) cells with 2+ reps">&mdash;</span></td>';
     }
 
-    /* Timed-out share on the .to-* red worst-is-hot ramp (fine-tuning
-       round 3, Wave A; previously a plain cell). The original objection
-       to a ramp here — the pass-green .rs-* family reads high-is-good,
-       the inverse of a timeout rate — is resolved by a dedicated
-       fail-red family where MORE timeouts read HOTTER; 0% stays quiet/
-       neutral (.to-0 is untinted). The 1-decimal % text + k/n sub-line
-       stay, so color never carries the meaning alone; em-dash idiom if
-       the precompute lacks the model. Breaks + contrast record at the
-       .to-* CSS and toStep(). */
-    var to=toByModel[m];
-    if(to&&to.rate!=null){
-      html+='<td class="lb-cell"><span class="hm-cell to-'+toStep(to.rate)+'" title="'+fmt(to.n_timed_out)+' of '+fmt(to.n_runs)+
-        ' runs hit the wall clock (harness timed_out flag: wall-clock timeouts + silent stalls that ran out the clock); still graded from the transcript produced before the cutoff">'+
-        (to.rate*100).toFixed(1)+'%<span class="lb-n">'+fmt(to.n_timed_out)+'/'+fmt(to.n_runs)+'</span></span></td>';
-    } else {
-      html+='<td class="lb-cell text-muted">&mdash;</td>';
-    }
-
     html+='</tr>';
   });
   html+='</tbody></table></div>';
@@ -2929,8 +2872,10 @@ function renderLeaderboard(container){
     'expressed as a multiple of Opus 4.8 (= 1.0\u00d7), never dollars; not measured benchmark spend. '+
     'Where a model\u2019s token-mix snapshot predates its newest runs, the cell tooltip carries a \u26a0 marker. '+
     'Full definition, sources, and caveats under <a href="#cost-performance">Cost vs. Performance</a>. '+
-    'Timed out is the share of a model\u2019s runs cut off at the wall clock (the harness\u2019s timed_out flag, '+
-    'which counts genuine wall-clock timeouts and silent stalls that ran out the clock alike); timed-out runs are still graded.</p>';
+    'Relative Duration is the estimated relative wall-clock time to run the full battery once, from each '+
+    'model\u2019s summed per-run durations (parallelization-invariant) \u2014 a real-world latency proxy, also '+
+    'expressed as a multiple of Opus 4.8 (= 1.0\u00d7); covers every model, including those without '+
+    'billing-grade cost data. Full definition and caveats under <a href="#cost-performance">Cost vs. Performance</a>.</p>';
   if(anyPartial){
     html+='<p class="lb-foot">Models marked <i>partial</i> are missing one or more phase components; '+
       'their composite is the mean of the components present, not a comparable full-coverage score.</p>';
@@ -2977,40 +2922,64 @@ var CP_METRICS=[
 /* Shared point/frontier builder for the full Cost vs. Performance scatter
    AND its compact hero-flow preview (#cvp-preview) — one data path, two
    render targets, so the two charts cannot drift (2026-06-12 user
-   fine-tuning round). Returns {pts, frontier, isBat, prices, pv}. */
+   fine-tuning round). Returns {pts, frontier, isBat, isDur, prices, pv}. */
 function costPerfData(form,basis,metric){
   var prices=priceMap();
   var pvAll=(PRECOMPUTED.cost||{}).perf_values||{};
   var pv=(pvAll[basis]||{})[metric]||{};
-  var frontier=((((PRECOMPUTED.cost||{}).frontiers||{})[form]||{})[basis]||{})[metric]||[];
 
-  /* Battery formulation renders as a RELATIVE multiplier (v2.8.1): all
-     plotted values are divided by the reference model's (Opus 4.8)
-     battery cost — a pure positive scaling, so frontier membership and
-     shape are unchanged; only the axis numbers move. Dollar battery
-     figures are deliberately never displayed (false precision). */
+  /* Both the battery form and the duration form (v3.3.0) render as a
+     RELATIVE multiplier (v2.8.1 for battery): every plotted value is
+     divided by the reference model's (Opus 4.8) figure — a pure positive
+     scaling, so frontier membership and shape are unchanged; only the axis
+     numbers move. Dollar/second figures are deliberately never displayed
+     (false precision). Duration reads from a SEPARATE PRECOMPUTED.duration
+     block (its own models + frontiers), not cost.models/cost.frontiers,
+     because it covers models the cost block omits (OpenRouter, the
+     subscription lane). */
   var isBat=form==="battery";
-  var batScale=1;
+  var isDur=form==="duration";
+  var frontier;
+  if(isDur){
+    frontier=((((PRECOMPUTED.duration||{}).frontiers||{})[basis])||{})[metric]||[];
+  } else {
+    frontier=((((PRECOMPUTED.cost||{}).frontiers||{})[form]||{})[basis]||{})[metric]||[];
+  }
+
+  var scale=1;
+  var durModels=(PRECOMPUTED.duration||{}).models||{};
   if(isBat){
     var batRoot=(PRECOMPUTED.cost||{}).battery||{};
     var refB=((batRoot.models||{})[batRoot.reference_model||"Opus 4.8"]||{}).est_battery_cost;
-    if(refB>0) batScale=refB;
+    if(refB>0) scale=refB;
+  } else if(isDur){
+    var durRoot=(PRECOMPUTED.duration||{});
+    var refD=(durModels[durRoot.reference_model||"Opus 4.8"]||{}).est_battery_duration;
+    if(refD>0) scale=refD;
   }
   frontier=frontier.map(function(f){
-    return {model:f.model,price:f.price/batScale,score:f.score};
+    return {model:f.model,price:f.price/scale,score:f.score};
   });
 
   /* Points: models with a y-value under the active basis/metric AND a
-     positive published price under the active formulation (log axis
-     cannot place zero/unknown). */
+     positive x-value under the active formulation (log axis cannot place
+     zero/unknown). Duration x comes from PRECOMPUTED.duration; the
+     price formulations come from priceMap(). */
   var pts=[];
   Object.keys(pv).forEach(function(m){
-    var c=prices[m];
-    if(!c||c[form]==null||c[form]<=0) return;
-    pts.push({model:m,price:c[form]/batScale,score:pv[m],
-              provider:modelProvider(m),pm:c});
+    if(isDur){
+      var dm=durModels[m];
+      if(!dm||dm.est_battery_duration==null||dm.est_battery_duration<=0) return;
+      pts.push({model:m,price:dm.est_battery_duration/scale,score:pv[m],
+                provider:modelProvider(m),pm:dm});
+    } else {
+      var c=prices[m];
+      if(!c||c[form]==null||c[form]<=0) return;
+      pts.push({model:m,price:c[form]/scale,score:pv[m],
+                provider:modelProvider(m),pm:c});
+    }
   });
-  return {pts:pts,frontier:frontier,isBat:isBat,prices:prices,pv:pv};
+  return {pts:pts,frontier:frontier,isBat:isBat,isDur:isDur,prices:prices,pv:pv};
 }
 
 /* Billing-grade omission disclosure. PRECOMPUTED.cost.omitted_models is
@@ -3062,8 +3031,29 @@ function batteryDisclosureHtml(){
     'not have \u2014 and the relative figures can shift as providers reprice tokens and as caching mechanics '+
     'interact with each model\u2019s behavior.'+
     (anyStale?' A \u26a0 marker (here and on the leaderboard) means that model\u2019s token-mix snapshot predates its newest corpus runs.':'')+
-    ' Timed-out runs are excluded from both providers\u2019 token averages, so the estimates reflect successful-run costs; '+
-    'timeout rates are shown separately on the leaderboard.</p>';
+    ' The estimates reflect successful-run costs only.</p>';
+}
+
+/* Duration-multiplier methodology footnote (v3.3.0), the latency twin of
+   batteryDisclosureHtml. Renders in the CvP footnote area whenever any
+   duration data is present (the Relative Duration leaderboard column and
+   the duration scatter axis both point here). Battery size injects live
+   from PRECOMPUTED.duration. */
+function durationDisclosureHtml(){
+  var dur=PRECOMPUTED.duration||{};
+  var durModels=dur.models||{};
+  if(Object.keys(durModels).length===0) return '';
+  return '<p class="cp-foot"><b>The duration multiplier, precisely.</b> '+
+    'Each model\u2019s figure is its estimated wall-clock time to run the full '+
+    (dur.battery_size||"?")+'-probe DAAFBench battery once, expressed as a multiple of '+
+    esc(dur.reference_model||"Opus 4.8")+' (= 1.0\u00d7). It is computed from each model\u2019s '+
+    'summed per-run durations, which are parallelization-INVARIANT (independent of whether the '+
+    'batch ran serially or in parallel) \u2014 never the batch wall-clock, which depends on run mode. '+
+    'Read it as a real-world LATENCY proxy: it folds in provider routing and congestion at the time '+
+    'each run executed, which multi-rep averaging mitigates but does not eliminate. Unlike the cost '+
+    'multiplier it needs no pricing, so it covers every model \u2014 including those without billing-grade '+
+    'cost data. Multipliers only, never seconds \u2014 exact durations would imply a precision these '+
+    'estimates do not have.</p>';
 }
 
 /* Published list-price table (relocated from the removed Costs Detail
@@ -3103,19 +3093,31 @@ function renderCostPerf(container){
   var yShort=basisDef.label+' '+metricDef.label+' rate';
 
   var d=costPerfData(form,basis,metric);
-  var pts=d.pts, frontier=d.frontier, isBat=d.isBat;
+  var pts=d.pts, frontier=d.frontier, isBat=d.isBat, isDur=d.isDur;
+  /* isRel: both battery and duration render as relative multipliers */
+  var isRel=isBat||isDur;
+  var durModels=(PRECOMPUTED.duration||{}).models||{};
 
-  /* Omitted-model disclosure: priced models present in the baseline
-     composite view but absent under the active basis/metric. */
+  /* Omitted-model disclosure: models present in the baseline composite
+     view that have an x-value under the active formulation but no y-value
+     under the active basis/metric. */
   var pvAll=(PRECOMPUTED.cost||{}).perf_values||{};
   var omitted=0;
   Object.keys((pvAll.composite||{}).perfect||{}).forEach(function(m){
-    var c=d.prices[m];
-    if(!c||c[form]==null||c[form]<=0) return;
+    if(isDur){
+      var dm=durModels[m];
+      if(!dm||dm.est_battery_duration==null||dm.est_battery_duration<=0) return;
+    } else {
+      var c=d.prices[m];
+      if(!c||c[form]==null||c[form]<=0) return;
+    }
     if(d.pv[m]==null) omitted++;
   });
   if(pts.length===0){
-    container.innerHTML=costOmissionNoteHtml()+'<div class="empty-msg">No models with both a '+esc(yShort)+' and billing-grade published pricing in this corpus.</div>';
+    var emptyWhy=isDur
+      ?'a '+esc(yShort)+' and duration data'
+      :'a '+esc(yShort)+' and billing-grade published pricing';
+    container.innerHTML=costOmissionNoteHtml()+'<div class="empty-msg">No models with both '+emptyWhy+' in this corpus.</div>';
     return;
   }
 
@@ -3146,10 +3148,10 @@ function renderCostPerf(container){
      BELOW the chart (section layout rule); reflects the active basis +
      metric selections. */
   var finding='';
-  var priceUnit=isBat?" vs Opus 4.8":"/Mtok";
+  var priceUnit=isRel?" vs Opus 4.8":"/Mtok";
   if(frontier.length>0){
     var fbits=frontier.map(function(f){
-      return '<b>'+esc(f.model)+'</b> ('+(isBat?fmtMult(f.price):fmtCost(f.price)+priceUnit)+', '+pct(f.score)+')';
+      return '<b>'+esc(f.model)+'</b> ('+(isRel?fmtMult(f.price):fmtCost(f.price)+priceUnit)+', '+pct(f.score)+')';
     });
     finding=frontier.length+' of '+pts.length+' models sit on the efficiency frontier &mdash; '+
       fbits.join(' &rarr; ')+' &mdash; every other model is beaten on both price and '+esc(yShort)+' by one of them.';
@@ -3161,7 +3163,7 @@ function renderCostPerf(container){
         if(ratio>=1.5){
           finding+=' <b>'+esc(knee.model)+'</b> reaches '+share+'% of <b>'+esc(topF.model)+
             '</b>\u2019s '+esc(yShort)+' at roughly 1/'+ratio.toFixed(1)+' of the '+
-            (isBat?'estimated battery cost':esc(formDef.label)+' price')+'.';
+            (isDur?'estimated battery duration':(isBat?'estimated battery cost':esc(formDef.label)+' price'))+'.';
         }
       }
     }
@@ -3195,7 +3197,11 @@ function renderCostPerf(container){
        ' data for this selection and '+(omitted===1?'is':'are')+' omitted from this view.'
       :'')+'</p>';
   foot+='<p class="cp-foot">'+esc(formDef.formula)+'. '+
-    (isBat
+    (isDur
+      ?'A rough relative multiplier &mdash; a real-world latency proxy, not a stopwatch reading; '+
+       'full definition and disclosures below. Covers every model, including those without '+
+       'billing-grade cost data.'
+      :isBat
       ?'A rough relative multiplier &mdash; not a reading of an invoice; full definition '+
        'and disclosures below. Models without battery data are omitted under this basis.'
       :'Prices under this secondary basis are raw published list rates, '+
@@ -3208,6 +3214,10 @@ function renderCostPerf(container){
      — inside the Details expander since the 2026-06-12 fine-tuning
      round 2, but on every render regardless of the price-basis toggle */
   foot+=batteryDisclosureHtml();
+  /* Duration-multiplier methodology footnote (v3.3.0): renders whenever
+     duration data exists, so the Relative Duration column and the duration
+     scatter axis both have a definition to point to. */
+  foot+=durationDisclosureHtml();
   foot+='</div></details>';
 
   /* Layout: controls + legend immediately adjacent to the chart; the
@@ -3217,7 +3227,7 @@ function renderCostPerf(container){
     '<div class="card"><div class="chart-container">'+
     svgCostFrontier(pts,frontier,
       formDef.axis||(formDef.label+' price (USD per 1M tokens, log scale)'),yShort,
-      isBat?"Est. relative cost":"Published price",priceUnit,isBat)+
+      isDur?"Est. relative duration":(isBat?"Est. relative cost":"Published price"),priceUnit,isRel)+
     '</div></div>'+
     '<div class="cp-finding">'+finding+'</div>'+foot+
     pricingDetailsHtml();
@@ -3792,8 +3802,7 @@ function renderCasesSection(container){
 /* =================================================================
    SECTION 8: RUN EXPLORER
    Run list + detail panel. Status everywhere in this section is the
-   grade taxonomy (perfect / partial / failed / ungraded) with the
-   timed_out flag rendered as a separate clock marker; deep links from
+   grade taxonomy (perfect / partial / failed / ungraded); deep links from
    the leaderboard, phase heatmaps, and agreement grids land here via
    exploreRuns with filters pre-applied (incl. the chip-only criterion
    filter). Performance guard: the list renders at most
@@ -3818,14 +3827,10 @@ function renderRunExplorer(container){
       var st=runStatus(r);
       html+='<div class="run-list-item'+(state.selectedRunIdx===i?" selected":"")+'" data-ridx="'+i+'" onclick="selectRun('+i+')">';
       html+='<span class="st-glyph st-'+st+'" title="'+st+' \u2014 '+(GRADE_TIP[st]||"")+'">'+(GRADE_GLYPH[st]||"&mdash;")+'</span>';
-      if(r.timed_out){
-        html+='<span class="to-mark" title="Timed out \u2014 criteria were still scored from the transcript produced before the cutoff">&#9201;</span>';
-      }
       html+='<span class="case-label">'+esc(r.case_id)+'</span>';
       html+='<span class="model-label">'+esc(r.model)+'</span>';
       html+='<span class="text-xs text-muted">rep'+r.rep+'</span>';
-      /* Timeouts have no meaningful duration — "0s" would misread as instant */
-      html+='<span class="text-xs text-muted">'+(r.timed_out?'&mdash;':(isObserved(r.duration_s)?r.duration_s.toFixed(0)+'s':'Unavailable'))+'</span>';
+      html+='<span class="text-xs text-muted">'+(isObserved(r.duration_s)?r.duration_s.toFixed(0)+'s':'Unavailable')+'</span>';
       html+='</div>';
     }
     if(runs.length>shown){
@@ -4104,17 +4109,14 @@ function renderSchemaV2RunEvidence(r){
 function renderRunDetail(r){
   var st=runStatus(r);
   var html='';
-  /* Header: grade badge (+ glyph) with the timeout flag as a separate
-     outlined marker; subcategory and expected mode surfaced as chips */
+  /* Header: grade badge (+ glyph); subcategory and expected mode surfaced
+     as chips */
   var gradeBadge={perfect:"badge-pass",partial:"badge-partial",failed:"badge-fail",ungraded:"badge-neutral"};
   html+='<div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:12px">';
   html+='<span style="font-size:16px;font-weight:700">'+esc(r.case_id)+'</span>';
   html+='<span class="badge" style="background:'+modelColor(r.model)+';color:#fff">'+esc(r.model)+'</span>';
   html+='<span class="badge">Rep '+r.rep+'</span>';
   html+='<span class="badge '+(gradeBadge[st]||"badge-neutral")+'" title="Grade: '+(GRADE_TIP[st]||"")+'">'+(GRADE_GLYPH[st]||"")+' '+st.toUpperCase()+'</span>';
-  if(r.timed_out){
-    html+='<span class="badge badge-timeout" title="'+esc(r.error||"Hit the wall-clock limit")+' \u2014 criteria were still scored from the transcript produced before the cutoff">&#9201; TIMED OUT</span>';
-  }
   if(r.subcategory) html+='<span class="badge" title="Case subcategory">'+esc(r.subcategory)+'</span>';
   if(r.expected_mode) html+='<span class="badge" title="Expected engagement mode for this Phase 1 case">expects: '+esc(r.expected_mode)+'</span>';
   html+='</div>';
@@ -4125,10 +4127,10 @@ function renderRunDetail(r){
   html+='<div class="text-xs text-muted mb-2">Session: '+esc(r.session_id||"Unavailable")+' | Duration: '+(isObserved(r.duration_s)?r.duration_s.toFixed(1)+'s':'Unavailable')+'</div>';
   html+='<div class="text-xs text-muted mb-4">Turns: '+(isObserved(r.turns)?fmt(r.turns):'Unavailable')+
     (r.tool_call_count!=null?' | Tool calls: '+fmt(r.tool_call_count):'')+'</div>';
-  /* Non-timeout errors only — the timeout badge above already carries
-     the error string for timed-out runs (currently every on-disk error
-     is a timeout, but render genuine errors if they ever appear) */
-  if(r.error && !r.timed_out){
+  /* Render genuine errors. Timed-out runs are excluded from the corpus
+     entirely (v3.3.0 timeout-blindness), so any error surfaced here is a
+     real failure, not a wall-clock cutoff. */
+  if(r.error){
     html+='<div class="card" style="border-color:var(--c-fail);margin-bottom:12px"><strong style="color:var(--c-fail)">Error:</strong> '+esc(r.error)+'</div>';
   }
 
@@ -4720,7 +4722,6 @@ window.exploreRuns=function(model,groupId,caseId,criterion){
   el("rx-case").value=caseId||"";
   el("rx-status").value="";
   el("rx-search").value="";
-  el("rx-hide-timeouts").checked=false;
   state.filters.criterion=criterion||"";
   readFilters();
   updateCritChip();
@@ -4783,11 +4784,12 @@ window.showAllRuns=function(){
 };
 
 /* Leaderboard column-header sort: composite | per-phase gid |
-   consistency | timeout | cost. (The "dispatch" key was removed with the
-   Dispatch column, fine-tuning round 3 Wave A.) Clicking the active
+   consistency | cost | duration. (The "dispatch" and "timeout" keys were
+   removed — dispatch with its column in fine-tuning round 3 Wave A, timeout
+   with the timeout-blindness change in v3.3.0.) Clicking the active
    column flips direction; clicking a new column applies that column's
-   default direction (best-first: descending for rates and the timeout
-   share's worst-first read, ascending for price).
+   default direction (best-first: descending for rates, ascending for the
+   cost and duration multipliers).
    Performance: when the tier gutter column does not change, rows are
    reordered via DOM moves (no innerHTML rebuild); tier-column transitions
    fall back to full re-render. */
@@ -4818,7 +4820,6 @@ window.lbSortBy=function(key,defDir){
   var comp=(isHard?PRECOMPUTED.composite_hard:PRECOMPUTED.composite)||{};
   var pmp=PRECOMPUTED.per_model_phase||{};
   var consistency=PRECOMPUTED.consistency||{};
-  var toByModel=PRECOMPUTED.timeout_by_model||{};
   var sortKey=state.lbSort;
   var sortDir=state.lbSortDir;
   var rankOf={};
@@ -4830,8 +4831,8 @@ window.lbSortBy=function(key,defDir){
     .forEach(function(r,i){ rankOf[r.model]=i+1; });
   var sortVal=function(m){
     if(sortKey==="cost"){ var b=batteryMult(m); return b?b.mult:null; }
+    if(sortKey==="duration"){ var dv=durationMult(m); return dv?dv.mult:null; }
     if(sortKey==="consistency"){ var k=consistency[m]; return(k&&k.rate!=null)?k.rate:null; }
-    if(sortKey==="timeout"){ var t=toByModel[m]; return(t&&t.rate!=null)?t.rate:null; }
     if(sortKey==="composite"){ var e=comp[m]; return e?e.score:null; }
     var cell=(pmp[m]||{})[sortKey];
     return(cell&&cell[rateField]!=null)?cell[rateField]:null;
@@ -4933,7 +4934,6 @@ function init(){
     el(id).addEventListener("change",applyFilters);
   });
   el("rx-search").addEventListener("input",applyFilters);
-  el("rx-hide-timeouts").addEventListener("change",applyFilters);
   el("rx-reset").addEventListener("click",resetFilters);
 
   /* TOC: first-click landing fix (2026-06-12, user fine-tuning round).

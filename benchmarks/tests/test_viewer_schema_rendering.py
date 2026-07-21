@@ -29,6 +29,10 @@ SECRET_SENTINELS = (
     "VIEWER_RAW_ENVIRONMENT_SECRET",
     "VIEWER_PROBE_SECRET",
 )
+# A unique session_id on a timed_out run. session_id IS carried onto embedded
+# run records, so this string reaches DATA/HTML only if the timed-out run is
+# NOT excluded at load — its absence proves v3.3.0 timeout-blindness.
+TIMED_OUT_SESSION_SENTINEL = "VIEWER_TIMED_OUT_RUN_SENTINEL"
 
 
 class _StructureProbe(HTMLParser):
@@ -132,7 +136,9 @@ class ViewerSchemaRenderingTests(unittest.TestCase):
         })
         self._write_json(root / "summary.json", {
             "schema_version": 2,
-            "total_runs": 1,
+            # 2 on-disk runs: one completed, one timed_out. Kept equal to
+            # disk_run_count so provenance shows no run-count discrepancy.
+            "total_runs": 2,
             "errored_runs": 0,
             "total_cost_usd": None,
             "wall_time_s": 3,
@@ -264,6 +270,25 @@ class ViewerSchemaRenderingTests(unittest.TestCase):
             },
             "raw_json": {"secret": SECRET_SENTINELS[1]},
         })
+        # A timed_out run in the same set. It carries a unique session_id
+        # sentinel and would-have-failed criteria; v3.3.0 drops it at the
+        # load chokepoint, so neither the sentinel nor the run reaches the
+        # embedded DATA payload or the rendered HTML.
+        self._write_json(root / "runs" / "subscription_timeout_1" / "result.json", {
+            "schema_version": 2,
+            "case_id": "dc-subscription",
+            "model": "Luna Subscription",
+            "model_id": "gpt-5.6-luna",
+            "provider": "chatgpt-subscription",
+            "rep": 0,
+            "session_id": TIMED_OUT_SESSION_SENTINEL,
+            "turns": 1,
+            "computed_cost_usd": None,
+            "duration_s": 0,
+            "timed_out": True,
+            "criteria": {"agent_dispatched": {"passed": False}},
+            "subagent_criteria": {"subagent_writes_script": {"passed": False}},
+        })
 
     def _write_probe_container(self, results_dir):
         self._write_json(results_dir / "probes" / "probe-a" / "probe.json", {
@@ -275,7 +300,9 @@ class ViewerSchemaRenderingTests(unittest.TestCase):
     def _load_payload(self, results_dir):
         with redirect_stderr(io.StringIO()):
             result_sets = viewer.load_result_sets(str(results_dir))
-            runs, anth_tokens = viewer.load_runs(str(results_dir), result_sets, cases={})
+            # load_runs returns a 3-tuple as of v3.3.0 (runs, anth token totals,
+            # timeout-exclusion count); the excluded count is not needed here.
+            runs, anth_tokens, _ = viewer.load_runs(str(results_dir), result_sets, cases={})
         data_bundle = viewer.build_data_bundle(
             result_sets,
             cases={},
@@ -534,6 +561,24 @@ process.stdout.write(JSON.stringify({
             "raw_json",
         ):
             self.assertNotIn(forbidden_key, self.generated_html)
+
+    def test_timed_out_runs_absent_from_embedded_data_and_rendered_html(self):
+        # The set carries one completed run and one timed_out run; v3.3.0
+        # excludes the timed-out run at load, so exactly one Luna Subscription
+        # run reaches the embedded DATA payload.
+        embedded = self.data_bundle["runs"]
+        subscription_runs = [
+            run for run in embedded if run["provider"] == "chatgpt-subscription"
+        ]
+        self.assertEqual(1, len(subscription_runs))
+        self.assertFalse(any(run.get("timed_out") for run in embedded))
+        # The timed-out run's session_id sentinel would appear in DATA/HTML if
+        # the run were embedded — its absence confirms load-time exclusion.
+        self.assertNotIn(
+            TIMED_OUT_SESSION_SENTINEL,
+            json.dumps(self.data_bundle),
+        )
+        self.assertNotIn(TIMED_OUT_SESSION_SENTINEL, self.generated_html)
 
     def test_inline_javascript_passes_node_syntax_check(self):
         scripts = self._inline_scripts(self.generated_html)
