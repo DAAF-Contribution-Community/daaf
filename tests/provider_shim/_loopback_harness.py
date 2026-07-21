@@ -35,7 +35,11 @@ from typing import Any, Callable, Iterable, Optional
 from unittest import mock
 
 
-DAAF_ROOT = Path("/daaf")
+# Repo root resolved from this file's location (tests/provider_shim/ -> repo
+# root), not hardcoded to /daaf: in the DAAF container the two are identical,
+# but on a CI runner the checkout lands wherever the workspace is (e.g.
+# $GITHUB_WORKSPACE), and the harness must find the production shim there.
+DAAF_ROOT = Path(__file__).resolve().parents[2]
 PRODUCTION_SHIM = DAAF_ROOT / "scripts/provider_shim/anthropic_openai_shim.py"
 # v1.3.0: the fake-codex stub the shim's delegated refresh spawns instead of the
 # real codex CLI. Injected via SHIM_CODEX_BIN. Behavior is driven by FAKE_CODEX_MODE.
