@@ -483,6 +483,47 @@ JSON
     assert_output --partial "of 128k tokens"
 }
 
+# -------------------------------------------------------------------------
+# O1: anchored mini/chat grammar (byte-consistent with subagent-bar.sh).
+# The old inner globs (*-mini*/*-chat*) matched any id containing -mini/-chat
+# and mapped it to 400k/128k; the anchored gpt_mini_re/gpt_chat_re reject a
+# trailing suffix so suffixed near-misses fall through to the 200k default.
+# -------------------------------------------------------------------------
+@test "anchored mini/chat grammar rejects suffixed near-misses the old inner globs accepted (O1)" {
+    local model
+    for model in \
+        gpt-5.6-mini-preview \
+        gpt-5.6-sol-mini-preview \
+        'gpt-5.6-mini[1m]x' \
+        gpt-5.6-chat-preview \
+        gpt-5.6-sol-chat-beta \
+        'gpt-5.6-chat[1m]x'; do
+        run bash "$CONTEXT_BAR_SH" < <(_payload "$model")
+        assert_success
+        assert_output --partial "of 200k tokens"
+        refute_output --partial "of 400k tokens"
+        refute_output --partial "of 128k tokens"
+    done
+}
+
+@test "well-formed mini/chat slugs still map to 400k/128k under the anchored grammar (O1)" {
+    run bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-mini")
+    assert_success
+    assert_output --partial "of 400k tokens"
+
+    run bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol-mini[1m]")
+    assert_success
+    assert_output --partial "of 400k tokens"
+
+    run bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-chat")
+    assert_success
+    assert_output --partial "of 128k tokens"
+
+    run bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol-chat[1m]")
+    assert_success
+    assert_output --partial "of 128k tokens"
+}
+
 @test "malformed left boundaries and unsupported GPT version prefixes stay on the ordinary 200k default" {
     local model
     for model in \
@@ -496,6 +537,25 @@ JSON
         assert_output --partial "of 200k tokens"
         refute_output --partial "of 1050k tokens"
     done
+}
+
+# -------------------------------------------------------------------------
+# O3: the transcript token-sum jq must suppress stderr (idiom parity with the
+# ctx-window write at the sibling site). A corrupt transcript makes jq emit a
+# parse error; without 2>/dev/null it leaks into the statusline display stream.
+# The value path stays fail-open (// 0 + canonical-decimal guard), so the bar
+# still renders against the resolved window.
+# -------------------------------------------------------------------------
+@test "corrupt transcript does not leak jq parse errors into the display stream (O3)" {
+    local bad_transcript="${SCRATCH_DIR}/corrupt.jsonl"
+    printf '%s\n' '{"message":{"usage":{"input_tokens":123}' '<<<not json>>>' > "$bad_transcript"
+    run bash "$CONTEXT_BAR_SH" <<JSON
+{"model":{"id":"gpt-5.6-sol","display_name":"gpt-5.6-sol"},"cwd":"$TEST_DIR","transcript_path":"$bad_transcript","session_id":"$FAKE_SESSION","context_window":{"context_window_size":1050000}}
+JSON
+    assert_success
+    refute_output --partial "parse error"
+    refute_output --partial "jq:"
+    assert_output --partial "of 1050k tokens"
 }
 
 @test "chatgpt final-cap predicate accepts anchored provider slugs and rejects adversarial near misses" {

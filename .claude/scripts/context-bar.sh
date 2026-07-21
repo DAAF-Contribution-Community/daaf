@@ -289,6 +289,14 @@ fi
 # to avoid [[ =~ ]] quoting pitfalls; defined unconditionally so it is in scope for
 # the ChatGPT-lane predicate below even when this static-map block is skipped.
 gpt_flagship_re='^gpt-5\.(4|5|6)(-(sol|terra|luna))?(\[1m\])?$'
+# Closed-set mini/chat grammars (Convention 3), byte-consistent with
+# subagent-bar.sh's anchored EREs. These replace the old open-ended inner globs
+# (*-mini*/*-chat*) so suffixed near-misses (e.g. gpt-5.6-mini-preview) fail the
+# anchor and fall through to the conservative 200k default rather than being
+# mapped to 400k/128k. Anchored on the same provider-stripped physical_slug the
+# globs inspected. Defined here alongside the flagship grammar for locality.
+gpt_mini_re='^gpt-5\.(4|5|6)(-(sol|terra|luna))?-mini(\[1m\])?$'
+gpt_chat_re='^gpt-5\.(4|5|6)(-(sol|terra|luna))?-chat(\[1m\])?$'
 if [[ -n "$model_id" && "$or_context_resolved" -eq 0 && "$max_context" -eq 200000 ]]; then
     # Physical-family classification operates on the terminal provider-stripped
     # slug only. mini/chat variants have smaller windows and are matched by their
@@ -302,19 +310,17 @@ if [[ -n "$model_id" && "$or_context_resolved" -eq 0 && "$max_context" -eq 20000
         *)
             case "$physical_slug" in
                 gpt-5.4|gpt-5.4[-\[]*|gpt-5.5|gpt-5.5[-\[]*|gpt-5.6|gpt-5.6[-\[]*)
-                    case "$physical_slug" in
-                        *-mini*) max_context=400000 ;;
-                        *-chat*) max_context=128000 ;;
-                        *)
-                            # Only the anchored closed-set flagship grammar earns
-                            # the 1,050,000 window; malformed suffixes that reached
-                            # this family glob (e.g. gpt-5.4-, gpt-5.6-experimental,
-                            # gpt-5.6-sol[1m]x) fall through to the 200k default.
-                            if [[ "$physical_slug" =~ $gpt_flagship_re ]]; then
-                                max_context=1050000
-                            fi
-                            ;;
-                    esac
+                    # Closed-set classification (Convention 3), byte-consistent
+                    # with subagent-bar.sh: only the anchored flagship/mini/chat
+                    # grammars earn a GPT window. Order flagship, then mini, then
+                    # chat. Malformed suffixes that reached this family glob (e.g.
+                    # gpt-5.4-, gpt-5.6-experimental, gpt-5.6-mini-preview,
+                    # gpt-5.6-sol[1m]x) match none and fall through to the 200k
+                    # default (max_context is already 200000 in this block).
+                    if   [[ "$physical_slug" =~ $gpt_flagship_re ]]; then max_context=1050000
+                    elif [[ "$physical_slug" =~ $gpt_mini_re ]];     then max_context=400000
+                    elif [[ "$physical_slug" =~ $gpt_chat_re ]];     then max_context=128000
+                    fi
                     ;;
                 gpt-5|gpt-5[-\[]*|gpt-5.2|gpt-5.2[-\[]*)
                     case "$physical_slug" in
@@ -399,7 +405,7 @@ if [[ -n "$transcript_path" && -f "$transcript_path" ]]; then
             (.message.usage.cache_read_input_tokens // 0) +
             (.message.usage.cache_creation_input_tokens // 0)
         )] | map(select(. > 0)) | last // 0
-    ' < "$transcript_path")
+    ' < "$transcript_path" 2>/dev/null)
 
     # 20k baseline: conservative default estimate for system prompt, tools, memory,
     # skills, env block, XML framing, and other dynamic context
