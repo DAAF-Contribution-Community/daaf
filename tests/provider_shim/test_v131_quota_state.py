@@ -40,8 +40,14 @@ because ``DAAF_QUOTA_STATE_FILE`` was unset in the runner. A runner-level
 ``os.environ.setdefault`` in the loopback harness now seams every in-process load:
 
 8. In-process non-pollution: running tonight's exact polluter case through
-   ``controlled_asgi_probe`` leaves the install-shared ``quota_state.json`` byte- and
-   mtime-identical, because the runner-level seam redirects its write to scratch.
+   ``controlled_asgi_probe`` under a PER-TEST ``DAAF_QUOTA_STATE_FILE`` seam leaves the
+   install-shared ``quota_state.json`` byte- and mtime-identical, AND lands the probe's
+   snapshot at the per-test seam path (proving the write genuinely fired — non-vacuous).
+   The per-test value carries into the freshly loaded module's import-time state-path
+   constant exactly as the runner-level default does. Both non-pollution guards (6 and 8)
+   wrap their production-file check in a retry-once bracket: a bursty live write from the
+   neighbor container on the shared /daaf mount passes on the retry, while deterministic
+   suite pollution dirties both brackets and still fails.
 """
 
 from __future__ import annotations
@@ -57,6 +63,7 @@ import time
 import unittest
 import uuid
 from pathlib import Path
+from unittest import mock
 
 import httpx
 
@@ -333,24 +340,37 @@ class ProviderShimV132QuotaStateSeamTests(unittest.TestCase):
     def test_spawned_chatgpt_shim_does_not_touch_install_shared_file(self) -> None:
         # The regression that matters: a full spawned chatgpt-lane exchange must leave the
         # install-shared state file byte- and mtime-identical (or still-absent).
-        before = _stat_snapshot(_INSTALL_SHARED_STATE)
-        scenario = full_response_scenario()
-        scenario.stream_headers = dict(QUOTA_HEADERS)
-        with MockResponsesServer(scenario) as backend:
-            with RealShim(backend, "chatgpt") as shim:
-                result = shim.post_messages(stream=True)
-                self.assertEqual(result.status, 200, result.text)
-                parse_typed_sse(result.body)
-                lifecycle_for_response(shim, result)
-                # Confirm the shim really did write a snapshot (to its seam), so this
-                # test cannot pass vacuously by the write never happening at all.
-                seam_path = Path(shim.child_env["DAAF_QUOTA_STATE_FILE"])
-                self.assertTrue(seam_path.exists())
-                shim.assert_offline_contract()
-        after = _stat_snapshot(_INSTALL_SHARED_STATE)
-        self.assertEqual(
-            before,
-            after,
+        #
+        # Retry-once bracket: both containers on the shared /daaf mount run live shims that
+        # legitimately write this production file, so a bursty neighbor write landing inside
+        # a single before/after window would false-fail the strict equality. We take up to
+        # two independent brackets and pass on the first clean one. A bursty external live
+        # write passes on the retry; genuine suite pollution writes deterministically on
+        # every run (as the original 2026-07-21 defect did) and so dirties BOTH brackets,
+        # still failing. Zero risk on CI (single checkout, no neighbor); this only tolerates
+        # the real dev-time flake window.
+        dirty = True
+        for _attempt in range(2):
+            before = _stat_snapshot(_INSTALL_SHARED_STATE)
+            scenario = full_response_scenario()
+            scenario.stream_headers = dict(QUOTA_HEADERS)
+            with MockResponsesServer(scenario) as backend:
+                with RealShim(backend, "chatgpt") as shim:
+                    result = shim.post_messages(stream=True)
+                    self.assertEqual(result.status, 200, result.text)
+                    parse_typed_sse(result.body)
+                    lifecycle_for_response(shim, result)
+                    # Confirm the shim really did write a snapshot (to its seam), so this
+                    # test cannot pass vacuously by the write never happening at all.
+                    seam_path = Path(shim.child_env["DAAF_QUOTA_STATE_FILE"])
+                    self.assertTrue(seam_path.exists())
+                    shim.assert_offline_contract()
+            after = _stat_snapshot(_INSTALL_SHARED_STATE)
+            if before == after:
+                dirty = False
+                break
+        self.assertFalse(
+            dirty,
             "spawned shim polluted the install-shared quota_state.json",
         )
 
@@ -368,23 +388,55 @@ class ProviderShimV132QuotaStateSeamTests(unittest.TestCase):
         # snapshot) on every run. The fix is a runner-level os.environ.setdefault in the
         # loopback harness; this test runs the exact polluter case and asserts the
         # production file is untouched.
-        before = _stat_snapshot(_INSTALL_SHARED_STATE)
-        # tonight's exact deterministic polluter: chatgpt-lane (lazy_401_refresh), a 401
-        # then a mocked 200, with a local cleanup failure on attempt 1.
-        controlled_asgi_probe(
-            attempt_outcomes=[401, 200],
-            close_fail_attempts={1},
-            lazy_401_refresh=True,
-        )
-        after = _stat_snapshot(_INSTALL_SHARED_STATE)
-        self.assertEqual(
-            before,
-            after,
+        #
+        # Non-vacuity via a PER-TEST seam: we override DAAF_QUOTA_STATE_FILE to a per-test
+        # tmp path around the probe call. The probe loads a fresh shim inside its own
+        # mock.patch.dict(os.environ, ..., clear=False), so this per-test value carries
+        # into the module's import-time _QUOTA_STATE_PATH constant — the exact mechanism
+        # the runner-level default uses. We then assert the per-test seam file WAS created
+        # with the expected snapshot shape, proving the probe genuinely drove a quota write
+        # (so the "production untouched" assertion cannot pass merely because no write ever
+        # happened). Retry-once bracket on the SHARED production file: a bursty live write
+        # from the neighbor container on /daaf could false-fail a single before/after
+        # window, so we take up to two independent brackets and pass on the first clean one;
+        # deterministic suite pollution (the original defect) dirties both and still fails.
+        seam_tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(seam_tmp.cleanup)
+        seam_path = Path(seam_tmp.name) / "quota_state.json"
+
+        dirty = True
+        for _attempt in range(2):
+            before = _stat_snapshot(_INSTALL_SHARED_STATE)
+            # tonight's exact deterministic polluter: chatgpt-lane (lazy_401_refresh), a 401
+            # then a mocked 200, with a local cleanup failure on attempt 1. The per-test
+            # seam redirects its _write_quota_state to seam_path instead of production.
+            with mock.patch.dict(
+                os.environ, {"DAAF_QUOTA_STATE_FILE": str(seam_path)}
+            ):
+                controlled_asgi_probe(
+                    attempt_outcomes=[401, 200],
+                    close_fail_attempts={1},
+                    lazy_401_refresh=True,
+                )
+            after = _stat_snapshot(_INSTALL_SHARED_STATE)
+            if before == after:
+                dirty = False
+                break
+        self.assertFalse(
+            dirty,
             "in-process ASGI probe polluted the install-shared quota_state.json",
         )
-        # Non-vacuity: the runner-level seam is present, so the write the probe drives has
-        # a scratch destination to land in (a missing seam would send it to production).
-        self.assertTrue(os.environ.get("DAAF_QUOTA_STATE_FILE"))
+
+        # Non-vacuity: the probe genuinely reached _write_quota_state, landing a snapshot
+        # at the per-test seam (proves the "production untouched" result is not vacuous).
+        self.assertTrue(
+            seam_path.exists(),
+            "probe did not drive a quota write to the per-test seam",
+        )
+        payload = json.loads(seam_path.read_text(encoding="utf-8"))
+        self.assertIsInstance(payload["captured_at"], int)
+        for field in _ALL_SNAPSHOT_FIELDS:
+            self.assertIn(field, payload)
 
     def test_default_path_derivation_is_file_relative_without_seam(self) -> None:
         # Unset/empty seam -> the __file__-derived default, byte-identical to prior

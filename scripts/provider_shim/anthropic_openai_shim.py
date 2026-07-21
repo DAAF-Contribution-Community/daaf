@@ -71,12 +71,18 @@
 #       exact path; unset/empty: the __file__-derived default is byte-identical to v1.3.1.
 #       This is a redirect / hermetic-test seam, NOT an off-switch — the write stays
 #       unconditional and absolutely fail-open (a bad seam value is swallowed like any
-#       other failure). Motivation: the loopback test harness spawns the PRODUCTION shim
-#       in chatgpt mode, so before this seam every mocked 2xx overwrote the live INSTALL-
-#       SHARED quota_state.json with all-"-" snapshots (observed live 2026-07-21: a full-
-#       suite run rewrote the production file every ~15s, blanking the OTHER install's
-#       "Plan usage:" segment until its next real request). The harness now seams every
-#       spawned shim to its per-instance scratch dir, so test runs cannot pollute the
+#       other failure). It resolves at MODULE IMPORT time (_QUOTA_STATE_PATH is computed
+#       once when the module loads), so a post-import env change does not redirect a live
+#       shim — the seam must be set before the module loads. Motivation: the loopback
+#       harness exercises the PRODUCTION shim two ways — spawned in chatgpt mode AND loaded
+#       in-process (controlled_asgi_probe drives the real request path inside the test-
+#       runner process) — and before the seam every mocked chatgpt 2xx overwrote the live
+#       INSTALL-SHARED quota_state.json with all-"-" snapshots (observed live 2026-07-21: a
+#       full-suite run rewrote the production file every ~15s, blanking the OTHER install's
+#       "Plan usage:" segment). The decisive polluter was the in-process load, whose write
+#       ran deterministically in the runner with the env var unset. The harness now covers
+#       BOTH contexts — a per-instance child-env seam for spawned shims plus a runner-level
+#       os.environ.setdefault for in-process loads — which together keep test runs off the
 #       install-shared file.
 #     * READER (context-bar.sh, statusline-hardening deferred observation O2): the
 #       fractional-floor strip of primary/secondary used-percent is now gated on

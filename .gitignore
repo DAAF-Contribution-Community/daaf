@@ -70,3 +70,7 @@ environment_settings*.txt
 
 # Provider shim runtime logs and pidfiles (regenerated at runtime)
 scripts/provider_shim/logs/
+
+# Scratch / transient working files (inside the audit boundary, not tracked; e.g. the
+# provider-shim test harness's runner-level in-process quota-state seam writes here)
+scripts/scratch/
