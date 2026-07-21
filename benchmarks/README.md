@@ -264,7 +264,7 @@ All four runners share an identical CLI:
 | `--test-id a,b` | all | Specific case IDs (e.g., `mc-01,mc-05`) |
 | `--sequential` | off | Run one at a time instead of parallel |
 | `--delay S` | 2 | Seconds between parallel launches (ThreadPoolExecutor stagger). Parallel-mode only — the sequential loop has no sleep, so this flag is a no-op with `--sequential` |
-| `--timeout S` | phase-based | Per-run timeout in seconds. Defaults baked into each runner (2026-07-10): 120 (Phase 1), 180 (Phase 2), 300 (Phases 3 & 4). Pass explicitly to override; the old cost-tier fallback only fires if a caller passes `timeout_override=None` programmatically |
+| `--timeout S` | 900 | Per-run timeout in seconds. Uniform 900s logistical cap baked into all four runners (2026-07-21 walltime redesign; formerly 120/180/300/300 per-phase). The cap is deliberately high so runs complete rather than censor — duration is now a measured axis. Pass explicitly to override; the uniform `DEFAULT_TIMEOUT_S` fallback only fires if a caller passes `timeout_override=None` programmatically |
 | `--yes` / `-y` | off | Skip the runner's cost confirmation prompt |
 | `--preflight-only` | off | Select models/cases and validate applicable provider routes, then exit before estimates, checkpoints, sandboxes, model execution, or result artifacts |
 
@@ -278,7 +278,7 @@ Typical targeted invocation:
 
 ```bash
 python3 benchmarks/scripts/run_dispatch_compliance.py \
-    --models fable-5 --reps 1 --sequential --delay 20 --timeout 300 --yes
+    --models fable-5 --reps 1 --sequential --delay 20 --timeout 900 --yes
 ```
 
 See § 9 before launching Anthropic Phase 3 runs — they must be sequential.
@@ -1057,9 +1057,14 @@ timed-out runs, matching OpenRouter's natural exclusion.
 - **Gemma 4 31B kept IN by user decision:** silent stalls are
   model-attributable (18.5% rate for 31B, 9.3% for 26B — a Gemma-subfamily
   defect, not Google-family). Stalls score as failed runs.
-- **Timeout stays 300s for mixed/OpenRouter batches** (p99=252s, max=271s).
-  Anthropic-only batches safe at 150s. Better stall remedy: harness
-  first-activity detector (~90s → kill).
+- **Timeout is now a uniform 900s logistical cap** across all four runners
+  (2026-07-21 walltime redesign), superseding the earlier per-batch tuning
+  guidance (300s mixed/OpenRouter, 150s Anthropic-only). The high cap lets
+  runs complete rather than censor at the cap, so duration becomes a measured
+  axis rather than a truncation threshold; historical batch percentiles
+  (p99=252s, max=271s under the old 300s cap) motivated retiring the tuned
+  values. Better stall remedy remains a harness first-activity detector
+  (~90s → kill).
 - **Open follow-ups from Phase 4 routing-fix scoping:**
   (1) frontmatter description budget — svy/polars/marimo exceed the
   250-char limit documented in skill-authoring; verify which claim is

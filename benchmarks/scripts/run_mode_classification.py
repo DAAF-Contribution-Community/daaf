@@ -747,9 +747,11 @@ def main():
                         help="Run sequentially instead of parallel")
     parser.add_argument("--delay", type=float, default=LAUNCH_DELAY_SECONDS,
                         help="Seconds between parallel launches (default: 2)")
-    parser.add_argument("--timeout", type=int, default=120,
-                        help="Per-run timeout in seconds (Phase 1 default: 120; "
-                             "standardized 2026-07-10, replacing cost-tier defaults)")
+    parser.add_argument("--timeout", type=int, default=900,
+                        help="Per-run timeout in seconds. Uniform 900s logistical "
+                             "cap (2026-07-21 walltime redesign; formerly "
+                             "120/180/300/300 per-phase). High cap so runs complete "
+                             "rather than censor; duration is now the measured axis")
     parser.add_argument("--yes", "-y", action="store_true",
                         help="Skip cost confirmation prompt")
     add_preflight_arg(parser)

@@ -23,12 +23,12 @@ from benchmarks.harness.checkpoint_manager import prepare_sandbox, cleanup_sandb
 from benchmarks.harness.cost_estimator import compute_accounting
 
 
-# Timeout per cost tier (seconds)
-TIMEOUT_BY_TIER = {
-    "low": 120,      # 2 minutes for simple classification
-    "medium": 300,   # 5 minutes for multi-turn protocol tests
-    "high": 600,     # 10 minutes for code generation tests
-}
+# Uniform fallback timeout (seconds). Only fires if a caller passes
+# timeout_override=None explicitly; the phase runners always pass their
+# argparse default, so this is off the normal path. Set to match the runners'
+# uniform 900s logistical cap (2026-07-21 walltime redesign, replacing the
+# former per-cost-tier dict of 120/300/600).
+DEFAULT_TIMEOUT_S = 900
 
 # Grace window between SIGTERM and SIGKILL for timed-out runs (seconds).
 # Claude Code's main-session transcript writes are async/buffered; a hard
@@ -112,11 +112,11 @@ def execute_run(config: RunConfig) -> RunResult:
     if model.context_window_tokens is not None:
         env["CLAUDE_CODE_MAX_CONTEXT_TOKENS"] = str(model.context_window_tokens)
 
-    # Since 2026-07-10 the phase runners set per-phase --timeout defaults
-    # (120/180/300/300), so timeout_override is always truthy on the default
-    # path and the cost-tier fallback below only fires if a caller passes
-    # timeout_override=None explicitly.
-    timeout = config.timeout_override or TIMEOUT_BY_TIER.get(test_case.cost_tier, 300)
+    # Since 2026-07-21 the phase runners set a uniform --timeout default (900s
+    # logistical cap; formerly 120/180/300/300 per-phase), so timeout_override
+    # is always truthy on the default path and the uniform fallback below only
+    # fires if a caller passes timeout_override=None explicitly.
+    timeout = config.timeout_override or DEFAULT_TIMEOUT_S
 
     result = RunResult(
         test_case_id=test_case.id,
