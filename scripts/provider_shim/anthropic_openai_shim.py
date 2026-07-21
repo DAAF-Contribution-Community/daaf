@@ -1223,6 +1223,16 @@ class _RequestLifecycleState:
         self.effort_value = "-"
         self.effort_source = "-"
         self.reasoning_cache_misses = 0
+        # v1.3.4 (V4-R1): per-request working state for the stale-blob 400 insurance.
+        # injected_restored_reasoning_ids holds the reasoning-item ids (rs_...) of restored
+        # blobs actually injected into this request's outbound payload (what R3 strips, by
+        # id, from the reused payload["input"]); injected_restored_call_ids holds the
+        # matching call_ids (what R4 evicts as proven-stale). stale_strip_used is the
+        # one-shot gate — a request may strip-and-retry exactly once. None of these are
+        # emitted on the terminal record (internal working state only).
+        self.injected_restored_reasoning_ids = set()
+        self.injected_restored_call_ids = set()
+        self.stale_strip_used = False
         # v1.2.14 (R1/D2): per-request counts of unknown SSE event types and
         # unmodeled output_item types, surfaced on the terminal record (0 when clean).
         self.unknown_events = 0
@@ -2052,6 +2062,16 @@ def _request_shape_fields(payload):
 _REASONING_CACHE = OrderedDict()   # call_id -> reasoning item dict (WITH encrypted_content)
 _REASONING_CACHE_CAP = 2048
 
+# v1.3.4 (V4-R1): call_ids whose reasoning blob was loaded from the persisted snapshot at
+# import (as opposed to populated by a live backend response this process). Defined BEFORE
+# _cache_reasoning so the write path below can reference it — Python resolves module globals
+# at call time, and the first call (the import-time restore) runs after this binding exists.
+# A restored blob is the one case v1.3.3 persistence can turn a graceful cache miss into a
+# hard failure (a stale encrypted_content of unknown backend-side validity is re-injected
+# and rejected with a 400); this set lets the stale-blob 400 insurance (V4-R2..R4) tell a
+# restored blob from a live-populated one at re-injection time. Contents are call_ids only.
+_REASONING_CACHE_RESTORED_IDS = set()
+
 
 def _cache_reasoning(call_id, reasoning_item):
     # INTENT: store one reasoning item under a function_call's call_id, LRU-style.
@@ -2064,8 +2084,16 @@ def _cache_reasoning(call_id, reasoning_item):
         return False
     _REASONING_CACHE[call_id] = reasoning_item
     _REASONING_CACHE.move_to_end(call_id)
+    # v1.3.4 (V4-R1): a write here is a LIVE (re-)population of this call_id — the blob is
+    # fresh from a backend response, so it is no longer a disk-restored entry. Drop it from
+    # the restored set. The import-time restore also routes through this function, so it
+    # re-adds the genuinely-restored ids AFTER its loop (see _restore_reasoning_cache); this
+    # discard therefore never races the restore's own bookkeeping.
+    _REASONING_CACHE_RESTORED_IDS.discard(call_id)
     while len(_REASONING_CACHE) > _REASONING_CACHE_CAP:
-        _REASONING_CACHE.popitem(last=False)  # evict oldest
+        evicted_id, _evicted_item = _REASONING_CACHE.popitem(last=False)  # evict oldest
+        # An evicted entry can no longer be injected, so it cannot be a stale-blob source.
+        _REASONING_CACHE_RESTORED_IDS.discard(evicted_id)
     return True
 
 
@@ -2240,11 +2268,22 @@ def _restore_reasoning_cache():
         # _cache_reasoning enforces the 2048 cap and skips malformed pairs. A single bad
         # entry is skipped, not fatal — the rest of a well-formed file still restores.
         restored = 0
+        restored_ids = set()
         for pair in entries:
             if not isinstance(pair, (list, tuple)) or len(pair) != 2:
                 continue
             if _cache_reasoning(pair[0], pair[1]):
                 restored += 1
+                restored_ids.add(pair[0])
+        # v1.3.4 (V4-R1): record which call_ids came from disk so the stale-blob 400
+        # insurance can distinguish a restored blob from a live-populated one at
+        # re-injection. Built AFTER the loop because _cache_reasoning discards each id as it
+        # writes (treating every write as live population); we re-add the genuinely-restored
+        # ids here, intersected with what actually resides in the cache (a hand-tampered
+        # over-cap file could have evicted some during the loop). Mutated in place (clear +
+        # update) so no `global` rebinding is needed.
+        _REASONING_CACHE_RESTORED_IDS.clear()
+        _REASONING_CACHE_RESTORED_IDS.update(restored_ids & set(_REASONING_CACHE.keys()))
         # A2 review INFO-1: report the number of entries actually RESIDENT after restore,
         # not the raw insert count. A hand-tampered file with more entries than
         # _REASONING_CACHE_CAP (or with duplicate call_ids) would make `restored` exceed
@@ -2891,6 +2930,10 @@ def _messages_to_input(messages):
     input_items = []
     injected_reasoning_ids = set()
     missing_reasoning = 0
+    # v1.3.4 (V4-R1): track restored (disk-loaded) reasoning material injected this
+    # request. reasoning-item ids for the strip (R3), call_ids for the eviction (R4).
+    injected_restored_reasoning_ids = set()
+    injected_restored_call_ids = set()
 
     for message_index, message in enumerate(messages):
         role = message.get("role")
@@ -2973,6 +3016,15 @@ def _messages_to_input(messages):
                     if reasoning_id not in injected_reasoning_ids:
                         input_items.append(cached)
                         injected_reasoning_ids.add(reasoning_id)
+                    # v1.3.4 (V4-R1): if this call_id's blob came from disk, record its
+                    # reasoning-item id (for the strip) and call_id (for the eviction). The
+                    # reasoning item is guaranteed present in input_items here — appended by
+                    # this hit or an earlier one sharing the same id — so recording its id
+                    # for a possible strip is always valid. reasoning_id must be truthy so a
+                    # malformed id-less item cannot broaden the strip to every id-less item.
+                    if reasoning_id and call_id in _REASONING_CACHE_RESTORED_IDS:
+                        injected_restored_reasoning_ids.add(reasoning_id)
+                        injected_restored_call_ids.add(call_id)
                 else:
                     missing_reasoning += 1
                 input_items.append({
@@ -3002,7 +3054,10 @@ def _messages_to_input(messages):
                 )
         flush_message_parts()
 
-    return input_items, missing_reasoning
+    return (
+        input_items, missing_reasoning,
+        injected_restored_reasoning_ids, injected_restored_call_ids,
+    )
 
 
 def _tools_to_responses(tools):
@@ -3032,12 +3087,16 @@ def _tools_to_responses(tools):
 
 def _anthropic_to_responses_request(body, bare_model, slug_effort_raw):
     # Build the OpenAI Responses payload from an Anthropic Messages body.
-    # Returns (payload, missing_reasoning_count, effort_value, effort_source).
+    # Returns (payload, missing_reasoning_count, effort_value, effort_source,
+    #   injected_restored_reasoning_ids, injected_restored_call_ids). v1.3.4 (V4-R1):
+    #   the two restored-id sets are plumbed to the request state so the retry loops'
+    #   stale-blob 400 insurance can strip/evict exactly the disk-restored blobs.
     # v1.2.2: `bare_model` is the inbound model with any "#<effort>" suffix already
     # stripped (by _split_effort_suffix in the caller); `slug_effort_raw` is that
     # stripped suffix's raw token (tier 2). The suffix-free model is what reaches
     # the backend — a "#"-bearing model is never forwarded.
-    input_items, missing_reasoning = _messages_to_input(body.get("messages", []))
+    input_items, missing_reasoning, injected_restored_reasoning_ids, \
+        injected_restored_call_ids = _messages_to_input(body.get("messages", []))
 
     payload = {
         "model": _map_model(bare_model),
@@ -3137,7 +3196,10 @@ def _anthropic_to_responses_request(body, bare_model, slug_effort_raw):
     # and any unknown fields are intentionally dropped — output_config is an
     # Anthropic-inbound-only signal (its effort was consumed into reasoning.effort
     # above) and MUST NOT be forwarded to OpenAI.
-    return payload, missing_reasoning, effort_value, effort_source
+    return (
+        payload, missing_reasoning, effort_value, effort_source,
+        injected_restored_reasoning_ids, injected_restored_call_ids,
+    )
 
 
 # --- Helpers: response translation (OpenAI Responses -> Anthropic) ---
@@ -3716,6 +3778,101 @@ def _record_retry_delay_source(source):
         state.retry_delay_source = source
 
 
+# v1.3.4 (V4-R2): markers a stale/rejected reasoning blob's error body may name.
+_STALE_REASONING_MARKERS = ("reasoning", "encrypted_content")
+
+
+def _error_body_names_reasoning(raw_body):
+    # V4-R2 condition 3: does this backend error body name reasoning material? The exact
+    # backend rejection shape for a stale/expired encrypted reasoning blob is unobserved and
+    # undocumented, so the probe is deliberately BROAD — a case-insensitive search for
+    # "reasoning" or "encrypted_content" across the normalized error fields (type/code/param/
+    # message, plus a Codex-style top-level `detail`). _backend_error_fields already collapses
+    # both lane envelopes ({error:{}} openai, {status,error:{}} chatgpt) plus flat-root and
+    # {detail:} into the same fields, so this works identically on every observed shape.
+    # Breadth is safe: the caller gates on status==400 AND >=1 restored reasoning item
+    # actually injected this request AND a one-shot budget, so a false positive costs at most
+    # one extra attempt in today's graceful-miss shape. Body prose is scanned in memory ONLY
+    # and never logged (counts-only discipline). Returns False on any parse failure so an
+    # unreadable body preserves today's fail-fast contract.
+    try:
+        payload = json.loads(raw_body) if raw_body else {}
+    except (ValueError, TypeError, UnicodeDecodeError):
+        return False
+    if not isinstance(payload, dict):
+        return False
+    backend_type, backend_code, _recognized, param = _backend_error_fields(payload)
+    nested = payload.get("error") if isinstance(payload.get("error"), dict) else payload
+    message = nested.get("message") if isinstance(nested, dict) else None
+    detail = payload.get("detail")
+    haystack = " ".join(
+        part for part in (backend_type, backend_code, param, message, detail)
+        if isinstance(part, str) and part != "-"
+    ).lower()
+    return any(marker in haystack for marker in _STALE_REASONING_MARKERS)
+
+
+def _maybe_strip_restored_reasoning(payload, status, raw_body):
+    # V4-R2/R3/R4 shared entrypoint for both retry loops, called in the non-2xx block AFTER
+    # _plan_retry has declined to retry. Returns True iff it stripped the injected restored
+    # reasoning items and prepared a one-shot retry (the caller then performs its loop-local
+    # cleanup + `continue`); False leaves 400 handling byte-identical to v1.3.3 (fail-fast).
+    #
+    # Gate (ALL must hold): (1) status == 400; (2) >=1 restored reasoning item was injected
+    # this request; (3) the strip-retry has not already fired this request (one-shot, same
+    # discipline as the lazy-401 refresh); (4) the error body names reasoning material. The
+    # body-parsing condition (4) is checked LAST — the cheap request-scoped gates short-
+    # circuit it for the overwhelming majority of 400s (which injected no restored items), so
+    # a generic 400 (e.g. the pinned observability fixtures) never even parses the body.
+    if status != 400:
+        return False
+    state = _request_state()
+    if state is None or state.stale_strip_used:
+        return False
+    target_reasoning_ids = state.injected_restored_reasoning_ids
+    if not target_reasoning_ids:
+        return False
+    if not _error_body_names_reasoning(raw_body):
+        return False
+    original = payload.get("input")
+    if not isinstance(original, list):
+        return False
+    # R3: remove exactly the injected restored reasoning items from the reused payload IN
+    # PLACE (both loops reuse one payload object across attempts, with no per-attempt
+    # rebuild), matching by recorded reasoning-item id — never by positional index.
+    kept = [
+        item for item in original
+        if not (
+            isinstance(item, dict)
+            and item.get("type") == "reasoning"
+            and item.get("id") in target_reasoning_ids
+        )
+    ]
+    stripped = len(original) - len(kept)
+    if stripped == 0:
+        # Nothing matched (already gone) — do not burn the one-shot or spend a retry on an
+        # unchanged payload; fall through to today's fail-fast.
+        return False
+    original[:] = kept  # slice-assign so the object identity each loop closes over is kept
+    # R4: the stripped call_ids are proven stale — evict them from the live cache, drop them
+    # from the restored set, and rewrite the persisted snapshot via the existing fail-open
+    # writer so neither this process nor a future restart re-injects and re-trips. Eviction
+    # is not the populate path, so the persist call is explicit here.
+    for call_id in state.injected_restored_call_ids:
+        _REASONING_CACHE.pop(call_id, None)
+        _REASONING_CACHE_RESTORED_IDS.discard(call_id)
+    _write_reasoning_cache_state()
+    # One-shot: this request may strip-and-retry exactly once.
+    state.stale_strip_used = True
+    # Terminal-record plumbing via the existing retry recorder (sets retry_reason=
+    # stale_reasoning_400 / retry_source=body, increments the retry count, emits the
+    # upstream_retry lifecycle event) — same convention as every other retry.
+    _record_retry("stale_reasoning_400", source="body")
+    # Distinct counts-only event. NEVER the stripped content or the backend error prose.
+    log.info("event=reasoning_cache_stale_strip stripped=%d", stripped)
+    return True
+
+
 async def _post_with_retry(url, headers, payload, disconnect_event):
     # HARDENING: non-streaming POST with bounded retry on transient errors.
     # Each potentially blocking POST/sleep races this response's disconnect event;
@@ -3780,6 +3937,14 @@ async def _post_with_retry(url, headers, payload, disconnect_event):
             # a bare status outside RETRY_STATUSES, or a rate-limit delay beyond cap
             # (fail fast). Record the advertised source when the cap forced the choice.
             _record_retry_delay_source(delay_source)
+            # v1.3.4 (V4-R2/R3/R4): stale-blob insurance. A 400 that names reasoning material
+            # AND carried >=1 restored (disk-loaded) reasoning item is the one case v1.3.3
+            # persistence can turn a graceful miss into a hard failure — strip exactly those
+            # items from the reused payload, evict+persist them as proven stale, and retry
+            # once. Every non-triggering 400 stays fail-fast (byte-identical to v1.3.3).
+            if _maybe_strip_restored_reasoning(payload, r.status_code, r.content):
+                await r.aclose()
+                continue
         return r, attempt
     # Unreachable in practice (loop returns or raises), but keeps intent explicit.
     if last_exc:
@@ -3987,6 +4152,16 @@ async def _open_backend_stream(url, headers, payload, disconnect_event):
             # without a second network round-trip. Record the advertised delay source
             # when a rate-limit cap forced the fail-fast.
             _record_retry_delay_source(delay_source)
+            # v1.3.4 (V4-R2/R3/R4): stale-blob insurance, mirroring the JSON loop. A 400 that
+            # names reasoning material AND carried >=1 restored reasoning item strips those
+            # items from the reused payload, evicts+persists them as stale, and retries once.
+            # raw_err is the bounded, already-read error body. Every non-triggering 400 stays
+            # fail-fast (byte-identical to v1.3.3), settling and returning this response.
+            if _maybe_strip_restored_reasoning(payload, resp.status_code, raw_err):
+                await _settle_stream_context(stream_cm)
+                attempt += 1
+                retry_count = attempt
+                continue
 
         # Transfer ownership to the request lifecycle before this tuple is visible to
         # caller code. The outer ASGI finalizer can therefore settle the context even if
@@ -4688,7 +4863,8 @@ async def _handle_messages(body, receive, send):
     # here on is suffix-free; `slug_effort_raw` is the parsed tier-2 token (or None).
     model, slug_effort_raw = _split_effort_suffix(req.get("model", ""))
     try:
-        responses_payload, missing_reasoning, effort_value, effort_source = \
+        responses_payload, missing_reasoning, effort_value, effort_source, \
+            injected_restored_reasoning_ids, injected_restored_call_ids = \
             _anthropic_to_responses_request(req, model, slug_effort_raw)
     except _InvalidRequestError as error:
         # The exception text is constructed exclusively from structural indexes,
@@ -4710,6 +4886,10 @@ async def _handle_messages(body, receive, send):
         state.effort_value = effort_value
         state.effort_source = effort_source
         state.reasoning_cache_misses = missing_reasoning
+        # v1.3.4 (V4-R1): hand the restored-blob tracking to the request state so the retry
+        # loops' stale-blob 400 insurance (V4-R2..R4) can strip/evict exactly these items.
+        state.injected_restored_reasoning_ids = injected_restored_reasoning_ids
+        state.injected_restored_call_ids = injected_restored_call_ids
         # v1.2.14 (D5): capture the request key-name shape once, for a possible
         # backend invalid_request_error diagnosis line (emitted in _record_backend_error).
         state.request_shape = _request_shape_fields(responses_payload)

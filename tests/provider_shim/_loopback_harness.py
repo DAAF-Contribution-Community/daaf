@@ -791,8 +791,15 @@ def backend_status_scenario(
     status: int,
     *,
     retry_after: Optional[str] = None,
+    error_body: Optional[bytes] = None,
 ) -> Scenario:
-    """Return the same deterministic backend status on every streamed attempt."""
+    """Return the same deterministic backend status on every streamed attempt.
+
+    v1.3.4 (V4-R8): ``error_body`` overrides the fixture error body so a test can script a
+    chosen 400 envelope (e.g. a reasoning-naming body for the stale-blob insurance tests)
+    without hand-rolling ``Scenario(...)``. It defaults to ``None``, which preserves the
+    prior fixture body BYTE-IDENTICALLY so every existing caller is unaffected.
+    """
 
     headers = {"Retry-After": retry_after} if retry_after is not None else {}
     return Scenario(
@@ -803,7 +810,9 @@ def backend_status_scenario(
         stream_status=status,
         stream_headers=headers,
         stream_error_body=(
-            b'{"error":{"type":"fixture_status","message":"fixture rejection"}}'
+            bytes(error_body)
+            if error_body is not None
+            else b'{"error":{"type":"fixture_status","message":"fixture rejection"}}'
         ),
     )
 
