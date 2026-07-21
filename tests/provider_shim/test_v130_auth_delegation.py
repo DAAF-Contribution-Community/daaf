@@ -43,6 +43,7 @@ from ._loopback_harness import (
     PRODUCTION_SHIM,
     SCRATCH_ROOT,
     _make_fake_jwt,
+    _purge_in_process_reasoning_cache_seam,
 )
 
 RECOVERY_COMMAND = "codex login --device-auth"
@@ -53,6 +54,13 @@ def _load_fresh_shim():
     """Import a pristine copy of the production shim under the current environment."""
 
     module_name = f"provider_shim_authtest_{uuid.uuid4().hex}"
+    # v1.3.3 (A2-R5): clear the runner-default reasoning-cache seam before this fresh
+    # in-process load so its import-time restore starts cold — otherwise an entry a prior
+    # in-process load persisted to the shared runner-default seam would leak into this
+    # module's cache. These auth tests do not assert on the reasoning cache, so the leak
+    # is harmless today, but keeping every in-process loader cold makes the invariant
+    # uniform and future-proof (see the hazard note at the top of _loopback_harness.py).
+    _purge_in_process_reasoning_cache_seam()
     spec = importlib.util.spec_from_file_location(module_name, PRODUCTION_SHIM)
     if spec is None or spec.loader is None:
         raise RuntimeError("could not load production shim for auth-delegation test")

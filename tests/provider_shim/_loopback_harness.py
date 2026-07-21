@@ -62,6 +62,47 @@ SCRATCH_ROOT = DAAF_ROOT / "scripts/scratch"
 os.environ.setdefault(
     "DAAF_QUOTA_STATE_FILE", str(SCRATCH_ROOT / "in_process_quota_state.json")
 )
+# v1.3.3 (A2-R5): the SAME in-process seam for the reasoning-cache persistence file, so
+# an in-process load of the production shim resolves its import-time _REASONING_CACHE_PATH
+# to scratch instead of the per-container $HOME default. setdefault (not assignment) so a
+# developer's explicit export survives.
+#
+# CRITICAL HERMETICITY HAZARD (front-loaded from the v1.3.2 lesson): the reasoning cache
+# adds a failure mode quota_state does NOT have. quota_state is write-only, but the
+# reasoning cache RESTORES itself at MODULE IMPORT — so a seam file written by one
+# in-process shim load would be restored into a LATER fresh in-process load's
+# _REASONING_CACHE, and harness fixtures reuse call_ids (call_1 / call_full_fixture), so
+# the leaked entries would silently flip a later test's miss assertions. Choosing WHERE
+# the in-process default lands (this setdefault) is therefore NOT sufficient on its own;
+# the anti-leakage guarantee is enforced by _purge_in_process_reasoning_cache_seam()
+# below, which unlinks this file BEFORE each in-process fresh module load. Spawned
+# RealShim subprocesses are isolated separately via a per-instance scratch path set in
+# __enter__ (each RealShim gets its own scratch_dir, so no cross-instance leakage there).
+os.environ.setdefault(
+    "DAAF_REASONING_CACHE_FILE", str(SCRATCH_ROOT / "in_process_reasoning_cache.json")
+)
+
+
+def _purge_in_process_reasoning_cache_seam():
+    """Clear the runner-default reasoning-cache seam before an in-process fresh load.
+
+    A2-R5 hermeticity: because the production shim restores its reasoning cache at module
+    import, an in-process fresh load (controlled_asgi_probe, outer_cancel_after_stream_
+    enter_report, and any future in-process loader) would otherwise restore whatever an
+    earlier in-process load persisted to the shared runner-default seam file — leaking
+    call_ids across tests and flipping miss assertions. Unlinking the CURRENT effective
+    seam path (which honors any outer mock.patch.dict override a test set) guarantees each
+    fresh load starts cold. Idempotent and fail-quiet: an absent file is fine.
+    """
+
+    seam = os.environ.get("DAAF_REASONING_CACHE_FILE", "")
+    if seam:
+        try:
+            os.unlink(seam)
+        except OSError:
+            pass
+
+
 SCRATCH_PREFIX = "provider-shim-unittest-"
 FAKE_OPENAI_KEY = "sk-FAKE_PROVIDER_SHIM_UNITTEST_OPENAI_000000000000"
 FAKE_REFRESH_TOKEN = "FAKE_PROVIDER_SHIM_REFRESH_TOKEN_000000000000"
@@ -2120,6 +2161,10 @@ class RealShim(AbstractContextManager["RealShim"]):
         # v1.3.2: quota-state redirect seam. Seamed to per-instance scratch by default
         # (see __enter__); individual tests may override it to a chosen path.
         "DAAF_QUOTA_STATE_FILE",
+        # v1.3.3 (A2-R5): reasoning-cache persistence redirect seam. Per-instance scratch
+        # by default (see __enter__); tests may override it (e.g. a shared path to prove
+        # restart-restore across two RealShim instances).
+        "DAAF_REASONING_CACHE_FILE",
     })
     _CONTROLLED_CHILD_ENV_NAMES = frozenset({
         "SHIM_PORT",
@@ -2137,6 +2182,11 @@ class RealShim(AbstractContextManager["RealShim"]):
         # in __enter__ so a spawned production shim never writes the install-shared
         # quota_state.json. Also test-overridable (see _TEST_ENV_OVERRIDE_NAMES).
         "DAAF_QUOTA_STATE_FILE",
+        # v1.3.3 (A2-R5): reasoning-cache persistence seam, default-provisioned to
+        # per-instance scratch in __enter__ so a spawned production shim writes its
+        # reasoning cache inside its own isolated scratch dir (never the per-container
+        # $HOME default). Also test-overridable (see _TEST_ENV_OVERRIDE_NAMES).
+        "DAAF_REASONING_CACHE_FILE",
         "HTTP_PROXY",
         "HTTPS_PROXY",
         "ALL_PROXY",
@@ -2252,6 +2302,15 @@ class RealShim(AbstractContextManager["RealShim"]):
                     # single seam makes the whole suite hermetic on its own. Tests may
                     # override via env_overrides (DAAF_QUOTA_STATE_FILE is allowlisted).
                     "DAAF_QUOTA_STATE_FILE": str(self.scratch_dir / "quota_state.json"),
+                    # v1.3.3 (A2-R5): seam the reasoning-cache persistence write to this
+                    # instance's scratch dir, so a spawned production shim's reasoning cache
+                    # never lands on the per-container $HOME default and each RealShim is
+                    # isolated from every other. Tests may override via env_overrides
+                    # (DAAF_REASONING_CACHE_FILE is allowlisted) — e.g. a path SHARED between
+                    # two RealShim instances to exercise restart-restore end-to-end.
+                    "DAAF_REASONING_CACHE_FILE": str(
+                        self.scratch_dir / "reasoning_cache.json"
+                    ),
                     # Point delegated refresh at the fake-codex stub. Existing chatgpt
                     # fixtures seed a far-future token, so the stub is not actually
                     # invoked; it defaults to a benign no-op if it ever is.
@@ -2657,6 +2716,11 @@ def outer_cancel_after_stream_enter_report() -> dict[str, Any]:
 
     async def exercise() -> dict[str, Any]:
         module_name = f"provider_shim_cancel_probe_{uuid.uuid4().hex}"
+        # v1.3.3 (A2-R5): clear the runner-default reasoning-cache seam before this fresh
+        # in-process load so its import-time restore starts cold (see the ASGI probe and
+        # the harness-top hazard note). This probe drives no reasoning turn so it never
+        # persists, but covering every in-process loader keeps the invariant uniform.
+        _purge_in_process_reasoning_cache_seam()
         spec = importlib.util.spec_from_file_location(module_name, PRODUCTION_SHIM)
         if spec is None or spec.loader is None:
             raise RuntimeError("could not load production shim for ownership probe")
@@ -2781,6 +2845,12 @@ def controlled_asgi_probe(
                 SCRATCH_ROOT / f"provider-shim-missing-auth-{uuid.uuid4().hex}"
             )
         with mock.patch.dict(os.environ, controlled_env, clear=False):
+            # v1.3.3 (A2-R5): clear the runner-default reasoning-cache seam BEFORE this
+            # fresh module load so its import-time restore cannot pick up entries a prior
+            # in-process load persisted (which would leak call_ids and flip miss
+            # assertions). Runs inside the patch so it honors any outer per-test seam
+            # override. The quota seam needs no such purge (write-only, no import restore).
+            _purge_in_process_reasoning_cache_seam()
             spec = importlib.util.spec_from_file_location(module_name, PRODUCTION_SHIM)
             if spec is None or spec.loader is None:
                 raise RuntimeError("could not load production shim for ASGI probe")

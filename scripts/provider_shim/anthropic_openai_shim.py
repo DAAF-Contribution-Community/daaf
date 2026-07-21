@@ -2004,12 +2004,16 @@ def _cache_reasoning(call_id, reasoning_item):
     # INTENT: store one reasoning item under a function_call's call_id, LRU-style.
     # REASONING: move-to-end on write so the most recently paired call_ids evict
     #   last; a session's active tool loop stays warm.
+    # RETURNS: True iff the write actually landed (valid call_id + dict item), False
+    #   on a no-op reject. v1.3.3 (A2): the caller uses this to persist only on a real
+    #   mutation, and the restore path reuses it to rebuild the cache in file order.
     if not call_id or not isinstance(reasoning_item, dict):
-        return
+        return False
     _REASONING_CACHE[call_id] = reasoning_item
     _REASONING_CACHE.move_to_end(call_id)
     while len(_REASONING_CACHE) > _REASONING_CACHE_CAP:
         _REASONING_CACHE.popitem(last=False)  # evict oldest
+    return True
 
 
 def _populate_reasoning_cache(output_items):
@@ -2026,7 +2030,11 @@ def _populate_reasoning_cache(output_items):
     #   the wire-format spec skeleton, notes file 04 §4). A function_call with no
     #   preceding reasoning item (current_reasoning is None) is simply not cached
     #   — nothing to inject, and the cache miss path handles the absence.
+    # RETURNS: the number of cache entries actually written/refreshed. v1.3.3 (A2):
+    #   the call sites persist the cache only when this is nonzero, so a populate that
+    #   binds nothing (no reasoning, or unpaired function_calls) triggers no disk write.
     current_reasoning = None
+    mutated = 0
     for item in output_items or []:
         if not isinstance(item, dict):
             continue
@@ -2035,7 +2043,157 @@ def _populate_reasoning_cache(output_items):
             current_reasoning = item
         elif itype == "function_call":
             if current_reasoning is not None:
-                _cache_reasoning(item.get("call_id"), current_reasoning)
+                if _cache_reasoning(item.get("call_id"), current_reasoning):
+                    mutated += 1
+    return mutated
+
+
+# --- v1.3.3 (A2): reasoning-cache persistence across shim restarts ---
+# INTENT: the in-memory _REASONING_CACHE above is module-global and unpersisted, so
+#   every restart discards it. A restart mid-session then replays the tool history
+#   WITHOUT its reasoning items — the miss path is graceful (omit the item, count the
+#   miss, proceed), but the model loses the reasoning context for the rest of a long
+#   tool loop. Persisting a bounded newest-first snapshot on each cache mutation and
+#   restoring it at import keeps reasoning continuity across a restart.
+# SECURITY: persisted values are EXACTLY the in-memory values — opaque backend-encrypted
+#   `encrypted_content` blobs plus item metadata. No plaintext reasoning, no key
+#   material (same posture as the live cache; Anthropic thinking blocks are consumed,
+#   never stored). Logging discipline is unchanged: names/counts only, never contents.
+# PLACEMENT (A2-R4, amended by the design checkpoint): the default lives on the
+#   per-container claude-config volume ($HOME/.claude/provider_shim/), DELIBERATELY
+#   outside the /daaf repo tree. Reasoning blobs are relatively private and must not sit
+#   in a directory that is shareable across containers or ever syncable to VCS. This is
+#   why the path is HOME-derived, NOT __file__-derived like quota_state.json (which is
+#   scrubbed operational telemetry, deliberately kept install-shared in logs/). Only the
+#   content-bearing artifact moves off the repo mount. Because the file is per-container,
+#   the install-shared last-writer-wins race that quota_state.json carries does not apply
+#   here; the supported topology is one running shim per container at a time.
+# SEAM (A2-R4): DAAF_REASONING_CACHE_FILE, resolved at MODULE IMPORT time exactly like
+#   DAAF_QUOTA_STATE_FILE (a post-import env change does NOT redirect a live shim). When
+#   set and non-empty it overrides both the path and its parent dir; when unset the
+#   HOME-derived default below applies. Hermetic tests provision this seam in every
+#   module-load context (spawned child env, in-process runner setdefault, per-test patch).
+_REASONING_CACHE_FILE_ENV = os.environ.get("DAAF_REASONING_CACHE_FILE", "")
+if _REASONING_CACHE_FILE_ENV:
+    _REASONING_CACHE_PATH = _REASONING_CACHE_FILE_ENV
+    _REASONING_CACHE_DIR = os.path.dirname(_REASONING_CACHE_PATH)
+else:
+    _REASONING_CACHE_DIR = os.path.join(
+        os.path.expanduser("~"), ".claude", "provider_shim"
+    )
+    _REASONING_CACHE_PATH = os.path.join(_REASONING_CACHE_DIR, "reasoning_cache.json")
+
+# Persistence bounds (A2-R2; Decision 3 as amended). The entry/byte caps are the PRIMARY
+# bound and intentionally mirror the in-memory LRU tail — restart recovery only needs the
+# recent tail (active tool loops), not all 2048 entries, and the byte cap bounds the
+# response-path write to single-digit ms. The TTL is only a 30-day SANITY CEILING against
+# replaying ancient blobs of unknown backend-side validity; it is deliberately NOT an
+# aggressive expiry, because the live cache has no age limit (LRU only) and multi-day
+# session gaps are normal (a short TTL would erase exactly the entries a resumed session
+# replays). Keep the NEWEST entries when either bound binds.
+_REASONING_PERSIST_MAX_ENTRIES = 256
+_REASONING_PERSIST_MAX_BYTES = 2_097_152   # 2 MiB
+_REASONING_PERSIST_TTL_S = 2_592_000       # 30 days (sanity ceiling only)
+
+# Count of entries loaded from the persisted snapshot at startup (0 if none). Set by the
+# restore call below and surfaced read-only on /health. Never includes contents/call_ids.
+_REASONING_CACHE_RESTORED = 0
+
+
+def _write_reasoning_cache_state():
+    # Absolutely fail-open persistence, mirroring _write_quota_state (:1321): a persist
+    # must NEVER affect, delay, or raise on the response path. Every failure mode
+    # (unwritable dir, replace error, serialization surprise, bad seam value) is
+    # swallowed, leaving at most one debug line and no stale temp sibling.
+    tmp_path = None
+    try:
+        # Snapshot the NEWEST entries (the LRU tail). _REASONING_CACHE iterates
+        # oldest->newest, so the last N items are the most-recently-used; keeping the tail
+        # matches the in-memory eviction order and gives restore an oldest->newest list.
+        items = list(_REASONING_CACHE.items())
+        if not items:
+            return
+        entries = [[cid, item] for cid, item in items[-_REASONING_PERSIST_MAX_ENTRIES:]]
+        payload = {"captured_at": int(time.time()), "entries": entries}
+        data = json.dumps(payload).encode("utf-8")
+        # Byte cap: if oversize, drop OLDEST entries (front) until under the cap, keeping
+        # the newest. If even a single entry exceeds the cap, persist nothing this round.
+        while len(data) > _REASONING_PERSIST_MAX_BYTES and len(payload["entries"]) > 1:
+            payload["entries"] = payload["entries"][1:]
+            data = json.dumps(payload).encode("utf-8")
+        if len(data) > _REASONING_PERSIST_MAX_BYTES:
+            return
+        # The shim owns directory creation (the HOME-derived default dir may not exist yet
+        # in a fresh container). 0700 matches the logs/ dir discipline start_shim.sh uses.
+        os.makedirs(_REASONING_CACHE_DIR, mode=0o700, exist_ok=True)
+        # Atomic publish via a uniquely-named sibling temp + os.replace(): a reader sees
+        # either the old file or the fully-written new one, never a partial write. mkstemp
+        # creates the temp with mode 0600 already (matching the shim.log/quota_state
+        # permission discipline). os.replace onto a symlink replaces the symlink entry
+        # itself (rename(2) does not dereference the destination), so the atomic-publish
+        # path is not symlink-redirectable; the 0700 parent dir is the primary guard.
+        fd, tmp_path = tempfile.mkstemp(
+            prefix="reasoning_cache.", suffix=".tmp", dir=_REASONING_CACHE_DIR
+        )
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(data)
+        os.replace(tmp_path, _REASONING_CACHE_PATH)
+        tmp_path = None
+    except Exception:
+        try:
+            log.debug("reasoning_cache write skipped (fail-open)")
+        except Exception:
+            pass
+        if tmp_path is not None:
+            try:
+                os.unlink(tmp_path)
+            except Exception:
+                pass
+
+
+def _restore_reasoning_cache():
+    # Fail-open restore at import. Returns (restored_count, age_s) on a successful load,
+    # (0, None) on ANY failure or skip (missing file, unparseable JSON, bad shape, stale,
+    # oversize). Never raises. The next persist overwrites a file that failed to restore.
+    try:
+        if not os.path.exists(_REASONING_CACHE_PATH):
+            return (0, None)
+        with open(_REASONING_CACHE_PATH, "rb") as handle:
+            payload = json.loads(handle.read().decode("utf-8"))
+        if not isinstance(payload, dict):
+            return (0, None)
+        captured_at = payload.get("captured_at")
+        entries = payload.get("entries")
+        # bool is an int subclass; reject it explicitly so a stray True/False captured_at
+        # cannot pass the numeric gate.
+        if isinstance(captured_at, bool) or not isinstance(captured_at, int):
+            return (0, None)
+        if not isinstance(entries, list):
+            return (0, None)
+        age_s = int(time.time()) - captured_at
+        # Reject a future timestamp (clock skew / tampering) and anything past the 30-day
+        # sanity ceiling.
+        if age_s < 0 or age_s > _REASONING_PERSIST_TTL_S:
+            return (0, None)
+        # Rebuild in file order (oldest->newest) so the LRU tail ends up most-recently-used;
+        # _cache_reasoning enforces the 2048 cap and skips malformed pairs. A single bad
+        # entry is skipped, not fatal — the rest of a well-formed file still restores.
+        restored = 0
+        for pair in entries:
+            if not isinstance(pair, (list, tuple)) or len(pair) != 2:
+                continue
+            if _cache_reasoning(pair[0], pair[1]):
+                restored += 1
+        return (restored, age_s)
+    except Exception:
+        return (0, None)
+
+
+# Restore at import, adjacent to the cache definition. `log` is not configured yet here,
+# so the one-line restore log is DEFERRED to just after logging is set up below (mirroring
+# the _backend_mode_warn deferral). counts only — never entry contents or call_ids.
+_reasoning_restore_result = _restore_reasoning_cache()
+_REASONING_CACHE_RESTORED = _reasoning_restore_result[0]
 
 
 # HARDENING: structured logging to stderr ONLY. The manager script redirects
@@ -2057,6 +2215,16 @@ log = logging.getLogger("shim")
 # invalid value; silent for a valid one.
 if _backend_mode_warn is not None:
     log.warning(_backend_mode_warn)
+
+# v1.3.3 (A2-R3): emit the deferred reasoning-cache restore line now that `log` exists.
+# The restore itself ran at import above (before logging was configured). Silent when
+# nothing was restored (missing/stale/corrupt file all resolve to 0). counts only —
+# never entry contents or call_ids.
+if _REASONING_CACHE_RESTORED > 0:
+    log.info(
+        "event=reasoning_cache_restore entries=%d age_s=%s",
+        _REASONING_CACHE_RESTORED, _reasoning_restore_result[1],
+    )
 
 # v1.2.4: resolve the process-wide response verbosity now that `log` exists (the
 # resolver emits its one WARNING via `log` for an invalid value). Read once at
@@ -3777,7 +3945,11 @@ def _responses_to_anthropic(resp_obj, model):
     output_items = resp_obj.get("output", [])
     for item in output_items:
         _validate_output_item(item)
-    _populate_reasoning_cache(output_items)
+    # v1.3.3 (A2-R1): persist only when the populate actually mutated the cache, so a
+    # reasoning-free or unpaired turn triggers no disk write. Fail-open; never on the hot
+    # path's critical section (the write is atomic-replace and swallows all errors).
+    if _populate_reasoning_cache(output_items):
+        _write_reasoning_cache_state()
 
     content = []
     saw_tool_use = False
@@ -5838,7 +6010,10 @@ async def _handle_messages(body, receive, send):
             # from output_item.done events.
             cache_items = terminal_output_items or completed_items
             if cache_items:
-                _populate_reasoning_cache(cache_items)
+                # v1.3.3 (A2-R1): persist only on a real mutation (see the non-stream
+                # call site). Same fail-open, atomic-replace write.
+                if _populate_reasoning_cache(cache_items):
+                    _write_reasoning_cache_state()
 
             # Close any still-open text/thinking blocks (tools closed at .done).
             if text_block_open:
@@ -6133,6 +6308,15 @@ async def _handle_health(send):
         # openai lane). Derived from auth.json presence + JWT exp only — never token
         # material. start_shim.sh readiness/--status and deploy-smoke T0.9 consume it.
         "auth": _auth_health_block(),
+        # v1.3.3 (A2-R6): reasoning-cache continuity surface — COUNTS ONLY (never entry
+        # contents or call_ids). entries = current in-memory cache size; restored =
+        # entries loaded from the persisted snapshot at startup (0 if none). This file is
+        # shim-internal continuity state, so no reader outside the shim consumes it — the
+        # surface exists for operator triage (start_shim --status, deploy-smoke).
+        "reasoning_cache": {
+            "entries": len(_REASONING_CACHE),
+            "restored": _REASONING_CACHE_RESTORED,
+        },
     })
 
 

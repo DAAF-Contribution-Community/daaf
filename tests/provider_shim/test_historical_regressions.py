@@ -30,6 +30,8 @@ _HEALTH_KEYS = {
     "text_verbosity",
     # v1.3.0 (A1-R4): read-only auth-validity snapshot block.
     "auth",
+    # v1.3.3 (A2-R6): reasoning-cache continuity block (entries/restored counts only).
+    "reasoning_cache",
 }
 
 
