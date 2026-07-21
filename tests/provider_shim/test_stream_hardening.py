@@ -1637,7 +1637,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 startup_records = [
                     line
                     for line in shim.captured_stderr().splitlines()
-                    if "req_id=- phase=process shim v1.3.3 starting" in line
+                    if "req_id=- phase=process shim v1.3.4 starting" in line
                 ]
                 self.assertEqual(len(startup_records), 1, startup_records)
                 self.assertIn(

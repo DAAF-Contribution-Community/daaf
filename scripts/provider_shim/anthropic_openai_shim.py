@@ -63,6 +63,50 @@
 #   * GET /health endpoint for the manager's idempotency/status checks.
 #
 # Changelog:
+#   v1.3.4 (2026-07-21): Stale-blob insurance for restored reasoning + known-events
+#     allowlist absorption + reasoning-cache effectiveness telemetry (minor bump — the
+#     insurance is additive around the existing 400 fail-fast contract, and the other two
+#     are observability/stability riders; no change to the clean-path translation
+#     semantics). Landed as two implementation commits under one release.
+#     * STALE-BLOB INSURANCE (V4-R1..R4): v1.3.3 persistence introduced the one scenario
+#       where the reasoning cache's graceful-miss guarantee did not hold — a restored
+#       (disk-loaded) `encrypted_content` blob has an undocumented backend-side validity
+#       lifetime, and a 400 rejecting a re-injected restored blob previously failed the
+#       request outright (400s are never in RETRY_STATUSES). Now: a module-level
+#       _REASONING_CACHE_RESTORED_IDS set records which call_ids came from disk (rebuilt
+#       after each restore; discarded on any live re-population or LRU eviction), and each
+#       request tracks the restored reasoning-item ids/call_ids it actually injects. In
+#       BOTH retry loops (JSON _post_with_retry, SSE _open_backend_stream), after _plan_retry
+#       declines, a 400 whose error body NAMES reasoning material (broad case-insensitive
+#       match of `reasoning`/`encrypted_content` over the normalized type/code/param/message/
+#       detail fields) AND that injected >=1 restored item triggers a one-shot strip: remove
+#       exactly those restored reasoning items from the reused payload["input"] by id (never
+#       index), evict+discard the proven-stale call_ids and rewrite the persisted snapshot,
+#       then retry once (retry_reason=stale_reasoning_400, retry_source=body). The detector's
+#       breadth is safe because the restored-items-present + 400 + one-shot gate carries the
+#       precision: a request that injected no restored items can never trigger, and a true
+#       false positive costs at most one extra attempt in today's graceful-miss shape. Every
+#       non-triggering 400 stays fail-fast, byte-identical to v1.3.3. Logs a distinct
+#       counts-only event=reasoning_cache_stale_strip stripped=N line — never blob content or
+#       backend error prose.
+#     * ALLOWLIST ABSORPTION (V4-R5): `keepalive` (a top-level type, namespaced like `error`)
+#       and `response.metadata` join the ignored status/lifecycle group of
+#       _KNOWN_EVENT_TYPES. Both were observed live during v1.2.14 validation and have been
+#       throttle-logged as "unknown wire" ever since despite carrying nothing the translation
+#       needs; absorbing them restores unknown_events=0 on a clean stream from backends that
+#       emit them. Not added to _MALFORMED_TOLERANT_EVENT_TYPES (a malformed instance should
+#       still fail strictly). The two catch-alls compare raw event-type strings, so both
+#       absorb by plain set membership with no namespace logic.
+#     * EFFECTIVENESS TELEMETRY (V4-R6/R7): the terminal record gains two additive,
+#       always-present ints — reasoning_cache_hit (per-request cache-hit count, parallel to
+#       reasoning_cache_miss) and reasoning_cache_stripped (restored items stripped by the
+#       insurance this request, 0 otherwise). /health's existing NESTED reasoning_cache block
+#       gains hits (process-cumulative cache hits) and restored_hits (the subset whose call_id
+#       was still disk-restored at hit time — the direct measure for the ~1-week cap/ceiling
+#       review); no new top-level /health key, so the health key set is unchanged. The hit
+#       path stays strictly read-only — it reads via .get(), NEVER move_to_end, so hit-
+#       counting introduces no LRU mutation and no persist / write amplification. Counts only.
+#     SHIM_VERSION -> 1.3.4.
 #   v1.3.3 (2026-07-21): Reasoning-cache persistence across shim restarts (Tier 3 A2;
 #     minor bump — additive continuity feature, no change to the live response path's
 #     translation semantics). Before this, a restart mid-session discarded the entire
@@ -292,7 +336,10 @@
 #     R1 ALLOWLIST-SYNC OBLIGATION: the R1 unknown-event/item counters fire only for
 #       types outside _KNOWN_EVENT_TYPES/_KNOWN_ITEM_TYPES; those allowlists MUST stay
 #       in sync with the R3 reducer's handled/skippable event sets or "0 when clean"
-#       regresses (A1b tripwire tests guard this).
+#       regresses (A1b tripwire tests guard this). v1.3.4 (V4-R5) grew the ignored
+#       (skippable) group by `keepalive` and `response.metadata` — see that changelog
+#       entry; the two catch-alls compare raw event-type strings, so both absorb by
+#       plain set membership with no namespace logic.
 #     ENVIRONMENTAL NOTE: shim STATE under /daaf (the repo/volume) is install-shared
 #       across containers on the same mount, while OAuth auth under $HOME/.claude
 #       (CODEX_HOME) is per-install — a token refresh in one install does not
@@ -897,7 +944,7 @@ import httpx
 import uvicorn
 
 # --- Config ---
-SHIM_VERSION = "1.3.3"
+SHIM_VERSION = "1.3.4"
 SHIM_SERVICE_ID = "daaf-anthropic-openai-shim"
 
 SHIM_PORT = int(os.environ.get("SHIM_PORT", "4141"))
@@ -1135,6 +1182,7 @@ _UNKNOWN_WIRE_LOCK = threading.Lock()
 # reducer in _handle_messages and _accumulate_terminal_response: the first group
 # is actively translated; the second is known status/lifecycle scaffolding the
 # reducer skips (they still reach the catch-all today and must not be miscounted).
+# v1.3.4 (V4-R5) added `keepalive` and `response.metadata` to the second group.
 _KNOWN_EVENT_TYPES = frozenset({
     # Actively handled by the reducer.
     "response.reasoning_summary_text.delta",
@@ -1159,6 +1207,17 @@ _KNOWN_EVENT_TYPES = frozenset({
     "response.reasoning_summary_part.done",
     "response.reasoning_text.delta",
     "response.reasoning_text.done",
+    # v1.3.4 (V4-R5): two benign scaffolding types observed live during v1.2.14
+    # validation and throttle-logged as "unknown wire" ever since — a top-level
+    # keepalive (namespaced like `error`, matched by raw set membership at the two
+    # catch-alls) and a response.metadata lifecycle frame. Both carry nothing the
+    # translation needs, so absorbing them into the ignored group makes them silently
+    # skipped rather than counted, restoring "unknown_events=0 when clean" on the
+    # backends that emit them. Deliberately NOT added to _MALFORMED_TOLERANT_EVENT_TYPES:
+    # tolerance is for malformed FRAMES of load-free events, and there is no evidence
+    # either type appears malformed — a malformed instance should still fail strictly.
+    "keepalive",
+    "response.metadata",
 })
 # output_item.added/done item types the reducer models. Any other item type is
 # counted as unknown_items (R1) — observability only; it is still not translated.
@@ -1223,6 +1282,13 @@ class _RequestLifecycleState:
         self.effort_value = "-"
         self.effort_source = "-"
         self.reasoning_cache_misses = 0
+        # v1.3.4 (V4-R6): per-request cache-hit count (parallel to the miss count above),
+        # emitted on the terminal record. reasoning_cache_stripped is the count of restored
+        # reasoning items stripped by the stale-blob 400 insurance this request (0 unless a
+        # strip-retry fired — see _maybe_strip_restored_reasoning). Both always-present ints
+        # so the terminal record parses stably regardless of whether a strip occurred.
+        self.reasoning_cache_hits = 0
+        self.reasoning_cache_stripped = 0
         # v1.3.4 (V4-R1): per-request working state for the stale-blob 400 insurance.
         # injected_restored_reasoning_ids holds the reasoning-item ids (rs_...) of restored
         # blobs actually injected into this request's outbound payload (what R3 strips, by
@@ -1629,6 +1695,11 @@ def _log_terminal_once():
         tools_called=state.tools_called, effort="%s:%s" % (
             state.effort_value, state.effort_source),
         reasoning_cache_miss=state.reasoning_cache_misses,
+        # v1.3.4 (V4-R6): additive, always-present ints. reasoning_cache_hit is this
+        # request's cache-hit count; reasoning_cache_stripped is 0 unless the stale-blob
+        # 400 insurance stripped restored items this request (counts only, never content).
+        reasoning_cache_hit=state.reasoning_cache_hits,
+        reasoning_cache_stripped=state.reasoning_cache_stripped,
         attempts=state.attempts, retries=state.retries,
         retry_reason=state.last_retry_reason,
         retry_source=state.last_retry_source,
@@ -2071,6 +2142,28 @@ _REASONING_CACHE_CAP = 2048
 # and rejected with a 400); this set lets the stale-blob 400 insurance (V4-R2..R4) tell a
 # restored blob from a live-populated one at re-injection time. Contents are call_ids only.
 _REASONING_CACHE_RESTORED_IDS = set()
+
+# v1.3.4 (V4-R7): process-cumulative reasoning-cache hit counters for the /health restore-
+# effectiveness surface. _REASONING_CACHE_HITS_TOTAL counts every cache hit since process
+# start; _REASONING_CACHE_RESTORED_HITS_TOTAL counts the subset whose call_id was still in
+# _REASONING_CACHE_RESTORED_IDS at hit time (the direct measure of how often disk-restored
+# continuity is actually exercised, for the ~1-week cap/ceiling review). Counts only, never
+# content or call_ids. Ticked read-only alongside the .get() hit (never a move_to_end), so
+# hit-counting adds ZERO cache-file write amplification (the persist writer stays gated on
+# genuine cache mutations only).
+_REASONING_CACHE_HITS_TOTAL = 0
+_REASONING_CACHE_RESTORED_HITS_TOTAL = 0
+
+
+def _bump_reasoning_hit_counters(restored):
+    # v1.3.4 (V4-R7): tick the process-cumulative /health hit counters for one cache hit.
+    # `restored` is True iff this hit's call_id was in _REASONING_CACHE_RESTORED_IDS at hit
+    # time. This never touches the cache itself (the caller reads via .get(), never
+    # move_to_end), so it introduces no LRU mutation and no persist / write amplification.
+    global _REASONING_CACHE_HITS_TOTAL, _REASONING_CACHE_RESTORED_HITS_TOTAL
+    _REASONING_CACHE_HITS_TOTAL += 1
+    if restored:
+        _REASONING_CACHE_RESTORED_HITS_TOTAL += 1
 
 
 def _cache_reasoning(call_id, reasoning_item):
@@ -2930,6 +3023,10 @@ def _messages_to_input(messages):
     input_items = []
     injected_reasoning_ids = set()
     missing_reasoning = 0
+    # v1.3.4 (V4-R6): per-request reasoning-cache hits (parallel to missing_reasoning),
+    # surfaced on the terminal record and used to feed the process-cumulative /health
+    # counters via _bump_reasoning_hit_counters at each hit.
+    reasoning_cache_hits = 0
     # v1.3.4 (V4-R1): track restored (disk-loaded) reasoning material injected this
     # request. reasoning-item ids for the strip (R3), call_ids for the eviction (R4).
     injected_restored_reasoning_ids = set()
@@ -3012,6 +3109,14 @@ def _messages_to_input(messages):
                 call_id = block.get("id", "")
                 cached = _REASONING_CACHE.get(call_id)
                 if cached is not None:
+                    # v1.3.4 (V4-R6/R7): count this hit for the terminal record (per-request)
+                    # and the /health restore-effectiveness counters (process-cumulative). The
+                    # hit above used .get() — never move_to_end — so counting stays read-only
+                    # and adds no LRU mutation / persist / write amplification. The restored
+                    # flag reads the SAME membership V4-R1's tracking below keys off; the set
+                    # is not mutated within this translation, so the two reads agree.
+                    reasoning_cache_hits += 1
+                    _bump_reasoning_hit_counters(call_id in _REASONING_CACHE_RESTORED_IDS)
                     reasoning_id = cached.get("id")
                     if reasoning_id not in injected_reasoning_ids:
                         input_items.append(cached)
@@ -3055,7 +3160,7 @@ def _messages_to_input(messages):
         flush_message_parts()
 
     return (
-        input_items, missing_reasoning,
+        input_items, missing_reasoning, reasoning_cache_hits,
         injected_restored_reasoning_ids, injected_restored_call_ids,
     )
 
@@ -3087,16 +3192,19 @@ def _tools_to_responses(tools):
 
 def _anthropic_to_responses_request(body, bare_model, slug_effort_raw):
     # Build the OpenAI Responses payload from an Anthropic Messages body.
-    # Returns (payload, missing_reasoning_count, effort_value, effort_source,
-    #   injected_restored_reasoning_ids, injected_restored_call_ids). v1.3.4 (V4-R1):
-    #   the two restored-id sets are plumbed to the request state so the retry loops'
-    #   stale-blob 400 insurance can strip/evict exactly the disk-restored blobs.
+    # Returns (payload, missing_reasoning_count, reasoning_cache_hits, effort_value,
+    #   effort_source, injected_restored_reasoning_ids, injected_restored_call_ids).
+    #   v1.3.4 (V4-R1): the two restored-id sets are plumbed to the request state so the
+    #   retry loops' stale-blob 400 insurance can strip/evict exactly the disk-restored
+    #   blobs. v1.3.4 (V4-R6): reasoning_cache_hits is the per-request cache-hit count for
+    #   the terminal record (parallel to missing_reasoning).
     # v1.2.2: `bare_model` is the inbound model with any "#<effort>" suffix already
     # stripped (by _split_effort_suffix in the caller); `slug_effort_raw` is that
     # stripped suffix's raw token (tier 2). The suffix-free model is what reaches
     # the backend — a "#"-bearing model is never forwarded.
-    input_items, missing_reasoning, injected_restored_reasoning_ids, \
-        injected_restored_call_ids = _messages_to_input(body.get("messages", []))
+    input_items, missing_reasoning, reasoning_cache_hits, \
+        injected_restored_reasoning_ids, injected_restored_call_ids = \
+        _messages_to_input(body.get("messages", []))
 
     payload = {
         "model": _map_model(bare_model),
@@ -3197,7 +3305,7 @@ def _anthropic_to_responses_request(body, bare_model, slug_effort_raw):
     # Anthropic-inbound-only signal (its effort was consumed into reasoning.effort
     # above) and MUST NOT be forwarded to OpenAI.
     return (
-        payload, missing_reasoning, effort_value, effort_source,
+        payload, missing_reasoning, reasoning_cache_hits, effort_value, effort_source,
         injected_restored_reasoning_ids, injected_restored_call_ids,
     )
 
@@ -3854,6 +3962,10 @@ def _maybe_strip_restored_reasoning(payload, status, raw_body):
         # unchanged payload; fall through to today's fail-fast.
         return False
     original[:] = kept  # slice-assign so the object identity each loop closes over is kept
+    # v1.3.4 (V4-R6): record the stripped count for the terminal record (counts only). +=
+    # rather than = so the (one-shot-gated) figure would still accumulate correctly if the
+    # strip contract ever allowed more than one strip per request.
+    state.reasoning_cache_stripped += stripped
     # R4: the stripped call_ids are proven stale — evict them from the live cache, drop them
     # from the restored set, and rewrite the persisted snapshot via the existing fail-open
     # writer so neither this process nor a future restart re-injects and re-trips. Eviction
@@ -4863,8 +4975,8 @@ async def _handle_messages(body, receive, send):
     # here on is suffix-free; `slug_effort_raw` is the parsed tier-2 token (or None).
     model, slug_effort_raw = _split_effort_suffix(req.get("model", ""))
     try:
-        responses_payload, missing_reasoning, effort_value, effort_source, \
-            injected_restored_reasoning_ids, injected_restored_call_ids = \
+        responses_payload, missing_reasoning, reasoning_cache_hits, effort_value, \
+            effort_source, injected_restored_reasoning_ids, injected_restored_call_ids = \
             _anthropic_to_responses_request(req, model, slug_effort_raw)
     except _InvalidRequestError as error:
         # The exception text is constructed exclusively from structural indexes,
@@ -4886,6 +4998,8 @@ async def _handle_messages(body, receive, send):
         state.effort_value = effort_value
         state.effort_source = effort_source
         state.reasoning_cache_misses = missing_reasoning
+        # v1.3.4 (V4-R6): per-request cache-hit count for the terminal record.
+        state.reasoning_cache_hits = reasoning_cache_hits
         # v1.3.4 (V4-R1): hand the restored-blob tracking to the request state so the retry
         # loops' stale-blob 400 insurance (V4-R2..R4) can strip/evict exactly these items.
         state.injected_restored_reasoning_ids = injected_restored_reasoning_ids
@@ -6561,9 +6675,15 @@ async def _handle_health(send):
         # entries loaded from the persisted snapshot at startup (0 if none). This file is
         # shim-internal continuity state, so no reader outside the shim consumes it — the
         # surface exists for operator triage (start_shim --status, deploy-smoke).
+        # v1.3.4 (V4-R7): restore-effectiveness — hits = process-cumulative reasoning-cache
+        # hits since start; restored_hits = the subset whose call_id was still disk-restored
+        # at hit time (direct evidence for the ~1-week cap/ceiling review). Both counts only,
+        # nested here (NOT new top-level keys) so the /health top-level key set is unchanged.
         "reasoning_cache": {
             "entries": len(_REASONING_CACHE),
             "restored": _REASONING_CACHE_RESTORED,
+            "hits": _REASONING_CACHE_HITS_TOTAL,
+            "restored_hits": _REASONING_CACHE_RESTORED_HITS_TOTAL,
         },
     })
 

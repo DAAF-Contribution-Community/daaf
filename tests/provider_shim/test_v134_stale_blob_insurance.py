@@ -340,6 +340,9 @@ class StaleBlobStripRetryTests(unittest.TestCase):
         self.assertEqual(report.terminal.get("retry_reason"), "stale_reasoning_400")
         self.assertEqual(report.terminal.get("retry_source"), "body")
         self.assertIn("event=reasoning_cache_stale_strip stripped=1", report.logs)
+        # v1.3.4 (V4-R6): the terminal record surfaces the stripped count (additive assertion
+        # over the V4-ii telemetry; the strip stripped exactly the one injected restored item).
+        self.assertEqual(report.terminal.get("reasoning_cache_stripped"), "1")
         # Counts-only discipline: the stripped blob's opaque content never reaches a log line.
         self.assertNotIn("ENC_", report.logs)
 
