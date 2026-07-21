@@ -31,6 +31,17 @@ spawned production shim via the loopback harness:
    path resolves to the ``__file__``-derived location (and to the seam value when set),
    probed via an out-of-process ``python -c`` import of the two module constants so no
    unseamed production shim is ever spawned against the live file.
+
+The v1.3.2 fix cycle closes the residual in-process pollution path (2026-07-21 incident):
+``e665fbe`` seamed spawned shims and the in-process unit tests here, but
+``controlled_asgi_probe`` loads a fresh production module *in the test-runner process*
+and drives the real request path, so its chatgpt-lane 2xx wrote the install-shared file
+because ``DAAF_QUOTA_STATE_FILE`` was unset in the runner. A runner-level
+``os.environ.setdefault`` in the loopback harness now seams every in-process load:
+
+8. In-process non-pollution: running tonight's exact polluter case through
+   ``controlled_asgi_probe`` leaves the install-shared ``quota_state.json`` byte- and
+   mtime-identical, because the runner-level seam redirects its write to scratch.
 """
 
 from __future__ import annotations
@@ -53,6 +64,7 @@ from ._loopback_harness import (
     PRODUCTION_SHIM,
     MockResponsesServer,
     RealShim,
+    controlled_asgi_probe,
     full_response_scenario,
     lifecycle_for_response,
     parse_typed_sse,
@@ -341,6 +353,38 @@ class ProviderShimV132QuotaStateSeamTests(unittest.TestCase):
             after,
             "spawned shim polluted the install-shared quota_state.json",
         )
+
+    def test_in_process_asgi_probe_does_not_touch_install_shared_file(self) -> None:
+        # Locks the v1.3.2 fix-cycle contract: an in-process load of the production shim
+        # in the test-runner process must not write the install-shared quota_state.json.
+        #
+        # 2026-07-21 in-process pollution incident: e665fbe seamed spawned shims (child
+        # env) and the in-process unit tests here (setUp constant patching), but missed a
+        # third context — controlled_asgi_probe loads a FRESH production module in-process
+        # and drives the real request path, so a chatgpt-lane case reaching a mocked 200
+        # ran the real _record_upstream_headers -> _write_quota_state. With
+        # DAAF_QUOTA_STATE_FILE unset in the runner process, that module resolved
+        # _QUOTA_STATE_PATH to the live install-shared file and rewrote it (all-dash
+        # snapshot) on every run. The fix is a runner-level os.environ.setdefault in the
+        # loopback harness; this test runs the exact polluter case and asserts the
+        # production file is untouched.
+        before = _stat_snapshot(_INSTALL_SHARED_STATE)
+        # tonight's exact deterministic polluter: chatgpt-lane (lazy_401_refresh), a 401
+        # then a mocked 200, with a local cleanup failure on attempt 1.
+        controlled_asgi_probe(
+            attempt_outcomes=[401, 200],
+            close_fail_attempts={1},
+            lazy_401_refresh=True,
+        )
+        after = _stat_snapshot(_INSTALL_SHARED_STATE)
+        self.assertEqual(
+            before,
+            after,
+            "in-process ASGI probe polluted the install-shared quota_state.json",
+        )
+        # Non-vacuity: the runner-level seam is present, so the write the probe drives has
+        # a scratch destination to land in (a missing seam would send it to production).
+        self.assertTrue(os.environ.get("DAAF_QUOTA_STATE_FILE"))
 
     def test_default_path_derivation_is_file_relative_without_seam(self) -> None:
         # Unset/empty seam -> the __file__-derived default, byte-identical to prior

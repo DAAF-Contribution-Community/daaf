@@ -45,6 +45,23 @@ PRODUCTION_SHIM = DAAF_ROOT / "scripts/provider_shim/anthropic_openai_shim.py"
 # real codex CLI. Injected via SHIM_CODEX_BIN. Behavior is driven by FAKE_CODEX_MODE.
 FAKE_CODEX_BIN = DAAF_ROOT / "tests/provider_shim/fake_codex.py"
 SCRATCH_ROOT = DAAF_ROOT / "scripts/scratch"
+# v1.3.2 fix cycle: seam in-process loads of the production shim away from the
+# install-shared quota_state.json. Every test module imports this harness, so setting
+# the redirect env var here puts the quota-state seam on the *test-runner process* env.
+# Any in-process load of the production shim in this process — controlled_asgi_probe
+# (whose mock.patch.dict(..., clear=False) inherits this value), outer_cancel_after_
+# stream_enter_report, test_v130_auth_delegation's _load_fresh_shim, and any future
+# in-process loader — then resolves its module-level _QUOTA_STATE_PATH to scratch at
+# import instead of scripts/provider_shim/logs/quota_state.json. This complements the
+# per-instance child-env seam RealShim.__enter__ sets for *spawned* shims: spawned
+# subprocesses and in-process module loads are the two distinct contexts that can reach
+# _write_quota_state, and this default plus that child env cover both. A failed scratch
+# write is harmless either way — _write_quota_state is fail-open and swallows it — but
+# seaming keeps the write off the install-shared file. setdefault (not assignment) so a
+# value a developer exports to inspect real quota-state behavior survives untouched.
+os.environ.setdefault(
+    "DAAF_QUOTA_STATE_FILE", str(SCRATCH_ROOT / "in_process_quota_state.json")
+)
 SCRATCH_PREFIX = "provider-shim-unittest-"
 FAKE_OPENAI_KEY = "sk-FAKE_PROVIDER_SHIM_UNITTEST_OPENAI_000000000000"
 FAKE_REFRESH_TOKEN = "FAKE_PROVIDER_SHIM_REFRESH_TOKEN_000000000000"
@@ -2226,8 +2243,13 @@ class RealShim(AbstractContextManager["RealShim"]):
                     "OPENAI_API_KEY": FAKE_OPENAI_KEY,
                     "CODEX_HOME": str(self.scratch_dir),
                     # v1.3.2: seam the quota-state write to this instance's scratch dir so
-                    # a spawned production shim's chatgpt-lane 2xx writes NEVER touch the
-                    # install-shared scripts/provider_shim/logs/quota_state.json. Tests may
+                    # a spawned production shim's chatgpt-lane 2xx writes never touch the
+                    # install-shared scripts/provider_shim/logs/quota_state.json. This child
+                    # env covers the *spawned-subprocess* context only; in-process module
+                    # loads in the test-runner process are covered separately by the module-
+                    # level os.environ.setdefault seam at the top of this file. Together the
+                    # two seams keep both write contexts off the install-shared file — no
+                    # single seam makes the whole suite hermetic on its own. Tests may
                     # override via env_overrides (DAAF_QUOTA_STATE_FILE is allowlisted).
                     "DAAF_QUOTA_STATE_FILE": str(self.scratch_dir / "quota_state.json"),
                     # Point delegated refresh at the fake-codex stub. Existing chatgpt
@@ -2739,6 +2761,11 @@ def controlled_asgi_probe(
 
     async def exercise() -> ASGIProbeReport:
         module_name = f"provider_shim_asgi_probe_{uuid.uuid4().hex}"
+        # NOTE: DAAF_QUOTA_STATE_FILE is deliberately NOT set here. This probe executes
+        # the real request path in-process, so a chatgpt-lane 2xx would drive the real
+        # _write_quota_state; the module-level setdefault at the top of this file already
+        # seams that write to scratch, and mock.patch.dict(..., clear=False) below inherits
+        # the runner-process env, so the seam carries into the freshly loaded module.
         controlled_env = {
             "SHIM_BACKEND_MODE": (
                 "chatgpt"
