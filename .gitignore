@@ -72,5 +72,6 @@ environment_settings*.txt
 scripts/provider_shim/logs/
 
 # Scratch / transient working files (inside the audit boundary, not tracked; e.g. the
-# provider-shim test harness's runner-level in-process quota-state seam writes here)
+# provider-shim test harness's runner-level in-process seam files land here — both the
+# quota-state seam and the reasoning-cache seam)
 scripts/scratch/

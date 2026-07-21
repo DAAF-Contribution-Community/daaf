@@ -416,6 +416,49 @@ class ReasoningCacheWriteAndRestoreTests(unittest.TestCase):
             len(seam_path.read_bytes()), module._REASONING_PERSIST_MAX_BYTES
         )
 
+    # --- A2 review fold-in: oversized on-disk file -> restore skipped (pre-read size guard) ---
+    def test_oversized_file_is_not_restored(self) -> None:
+        # A well-formed but oversized file (> the 2 MiB persist cap) must be skipped by the
+        # pre-read size guard: WITHOUT the guard this single fat entry would restore fine;
+        # WITH it, restore is skipped, the cache stays empty, and import does not raise.
+        big_blob = "X" * (2 * 1024 * 1024 + 200_000)  # comfortably over the 2 MiB cap
+        payload = _seam_payload(
+            [(
+                "call_big",
+                {"type": "reasoning", "id": "rs_big", "encrypted_content": big_blob},
+            )]
+        )
+        module, seam_path = self._fresh_module(existing_payload=payload)
+        # Sanity: the fixture genuinely exceeds the cap (else the test would be vacuous).
+        self.assertGreater(
+            seam_path.stat().st_size, module._REASONING_PERSIST_MAX_BYTES
+        )
+        # Fail-open skip: nothing restored, cache empty, no exception raised on import.
+        self.assertEqual(module._REASONING_CACHE_RESTORED, 0)
+        self.assertEqual(len(module._REASONING_CACHE), 0)
+
+    # --- A2 review fold-in: >cap file -> /health `restored` is clamped to resident count ---
+    def test_restored_count_clamped_to_cache_cap(self) -> None:
+        # A hand-tampered file with MORE entries than the in-memory cap would, without the
+        # clamp, make restore return its raw insert count while the cache only holds
+        # _REASONING_CACHE_CAP entries — overstating /health.reasoning_cache.restored (the
+        # /health block surfaces _REASONING_CACHE_RESTORED verbatim). The clamp reports the
+        # resident count instead.
+        cold_module, _ = self._fresh_module()  # cold load only to read the cap constant
+        cap = cold_module._REASONING_CACHE_CAP
+        over = cap + 5
+        pairs = [
+            (f"call_{i}", {"type": "reasoning", "id": f"rs_{i}", "encrypted_content": "E"})
+            for i in range(over)
+        ]
+        module, _ = self._fresh_module(existing_payload=_seam_payload(pairs))
+        # Every pair inserts (returns True) but the oldest evict at the cap, so `over` entries
+        # were inserted while the cache holds exactly `cap`. The reported count is clamped to
+        # the resident size and so never exceeds the cap.
+        self.assertEqual(len(module._REASONING_CACHE), cap)
+        self.assertLessEqual(module._REASONING_CACHE_RESTORED, cap)
+        self.assertEqual(module._REASONING_CACHE_RESTORED, cap)
+
     # --- Test 8: in-memory LRU eviction / cap unit test (pre-existing coverage gap) ---
     def test_in_memory_lru_eviction_and_cap(self) -> None:
         tmp = tempfile.TemporaryDirectory()

@@ -71,6 +71,7 @@ from ._loopback_harness import (
     PRODUCTION_SHIM,
     MockResponsesServer,
     RealShim,
+    _purge_in_process_reasoning_cache_seam,
     controlled_asgi_probe,
     full_response_scenario,
     lifecycle_for_response,
@@ -81,6 +82,14 @@ from ._loopback_harness import (
 def _load_shim_module():
     """Import a fresh instance of the production shim in-process (no subprocess)."""
     module_name = f"provider_shim_quota_state_probe_{uuid.uuid4().hex}"
+    # v1.3.3 (A2-R5): clear the runner-default reasoning-cache seam before this fresh
+    # in-process load so its import-time restore starts cold — otherwise an entry a prior
+    # in-process load persisted to the shared runner-default seam would leak into this
+    # module's cache. These quota-state tests make no reasoning-cache assertions, so the
+    # leak is harmless today, but keeping every in-process loader cold makes the invariant
+    # uniform and future-proof (see the hazard note atop _loopback_harness.py, and the
+    # matching purge in test_v130_auth_delegation.py:63).
+    _purge_in_process_reasoning_cache_seam()
     spec = importlib.util.spec_from_file_location(module_name, PRODUCTION_SHIM)
     if spec is None or spec.loader is None:
         raise RuntimeError("could not load production shim for quota-state probe")

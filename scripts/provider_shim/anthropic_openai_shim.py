@@ -110,6 +110,11 @@
 #       of that checklist: it lives under $HOME/.claude/, outside start_shim's domain, and
 #       os.replace does not dereference a destination symlink.
 #     * TOPOLOGY: the supported deployment is one running shim per container at a time.
+#     * HARDENING (A2 review fold-in, no version bump): restore now (a) skips a file whose
+#       on-disk size exceeds the 2 MiB persist cap BEFORE reading it (defense-in-depth — a
+#       shim-written file can never exceed the cap, so only a hand-tampered file trips it),
+#       and (b) reports the count of entries actually RESIDENT after restore on /health, so
+#       a tampered over-cap file can no longer overstate reasoning_cache.restored.
 #     SHIM_VERSION -> 1.3.3.
 #   v1.3.2 (2026-07-21): Hermetic quota-state writes + a statusline reader tightening
 #     (two-part maintenance release; no shim behavior change on the live response path).
@@ -2206,6 +2211,14 @@ def _restore_reasoning_cache():
     try:
         if not os.path.exists(_REASONING_CACHE_PATH):
             return (0, None)
+        # Defense-in-depth (A2 review INFO-2): bound the READ the same way the writer bounds
+        # its output. Check the on-disk size BEFORE reading the whole file into memory and
+        # skip an oversized file. A shim-written file can never exceed the byte cap (the
+        # writer refuses to publish above it at the `len(data) > _REASONING_PERSIST_MAX_BYTES`
+        # guard above), so this only trips on a hand-tampered/oversized file — fail-open like
+        # every other branch here (an OSError from getsize is caught by the outer except).
+        if os.path.getsize(_REASONING_CACHE_PATH) > _REASONING_PERSIST_MAX_BYTES:
+            return (0, None)
         with open(_REASONING_CACHE_PATH, "rb") as handle:
             payload = json.loads(handle.read().decode("utf-8"))
         if not isinstance(payload, dict):
@@ -2232,7 +2245,14 @@ def _restore_reasoning_cache():
                 continue
             if _cache_reasoning(pair[0], pair[1]):
                 restored += 1
-        return (restored, age_s)
+        # A2 review INFO-1: report the number of entries actually RESIDENT after restore,
+        # not the raw insert count. A hand-tampered file with more entries than
+        # _REASONING_CACHE_CAP (or with duplicate call_ids) would make `restored` exceed
+        # what the cache actually holds (e.g. 5000 inserts -> cache caps at 2048),
+        # overstating /health.reasoning_cache.restored. Clamp against the live cache size
+        # (restore runs at import against an empty cache, so len == the resident restored
+        # count) so the surfaced number can never overstate what is truly loaded.
+        return (min(restored, len(_REASONING_CACHE)), age_s)
     except Exception:
         return (0, None)
 
