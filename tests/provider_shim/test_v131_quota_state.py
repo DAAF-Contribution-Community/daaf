@@ -16,6 +16,21 @@ never touched.
    sibling behind.
 4. Write failure is swallowed: an unwritable log dir or an ``os.replace`` that raises
    leaves the response path unaffected (no exception escapes) and no stale ``.tmp``.
+
+v1.3.2 adds the ``DAAF_QUOTA_STATE_FILE`` redirect seam (the same env var the reader,
+context-bar.sh, already honors) plus its end-to-end consequences, verified with the
+spawned production shim via the loopback harness:
+
+5. Seam honored: a spawned chatgpt-lane shim writes its snapshot to the seam path (the
+   harness's per-instance scratch dir), with the expected content shape and 0600 mode.
+6. Production-file non-pollution (the regression that matters): a representative spawned
+   chatgpt-lane exchange leaves the install-shared ``scripts/provider_shim/logs/
+   quota_state.json`` byte- and mtime-identical, because the harness seams every spawned
+   shim away from it.
+7. Default derivation unchanged: with the env var unset/empty the module-level state
+   path resolves to the ``__file__``-derived location (and to the seam value when set),
+   probed via an out-of-process ``python -c`` import of the two module constants so no
+   unseamed production shim is ever spawned against the live file.
 """
 
 from __future__ import annotations
@@ -24,6 +39,8 @@ import importlib.util
 import json
 import os
 import stat
+import subprocess
+import sys
 import tempfile
 import time
 import unittest
@@ -32,7 +49,14 @@ from pathlib import Path
 
 import httpx
 
-from ._loopback_harness import PRODUCTION_SHIM
+from ._loopback_harness import (
+    PRODUCTION_SHIM,
+    MockResponsesServer,
+    RealShim,
+    full_response_scenario,
+    lifecycle_for_response,
+    parse_typed_sse,
+)
 
 
 def _load_shim_module():
@@ -212,6 +236,132 @@ class ProviderShimV131QuotaStateTests(unittest.TestCase):
 
         self.assertFalse(self.state_path.exists())
         self.assertEqual(self._tmp_siblings(), [])
+
+
+# The install-shared quota-state file the shim writes when NOT seamed. The v1.3.2
+# regression proves a seamed spawned shim never touches this path.
+_INSTALL_SHARED_STATE = PRODUCTION_SHIM.parent / "logs" / "quota_state.json"
+
+
+def _stat_snapshot(path: Path):
+    """Return (st_mtime_ns, raw bytes) for path, or None if it does not exist."""
+    try:
+        return (path.stat().st_mtime_ns, path.read_bytes())
+    except FileNotFoundError:
+        return None
+
+
+# Out-of-process probe: import the production shim by file and print the two module-
+# level state-path constants as JSON. Run under a controlled env so DAAF_QUOTA_STATE_FILE
+# is either explicitly absent or explicitly set. Importing the module only evaluates the
+# constant/def bodies (it never calls _write_quota_state), so this probe touches no state
+# file — the reason it is used instead of spawning an unseamed production shim.
+_PATH_PROBE = (
+    "import importlib.util, json, sys\n"
+    "spec = importlib.util.spec_from_file_location('shim_path_probe', sys.argv[1])\n"
+    "m = importlib.util.module_from_spec(spec)\n"
+    "spec.loader.exec_module(m)\n"
+    "print(json.dumps({'dir': m._QUOTA_STATE_DIR, 'path': m._QUOTA_STATE_PATH}))\n"
+)
+
+
+class ProviderShimV132QuotaStateSeamTests(unittest.TestCase):
+    """v1.3.2 DAAF_QUOTA_STATE_FILE redirect-seam contracts (spawned production shim)."""
+
+    maxDiff = 12000
+
+    def _run_path_probe(self, extra_env):
+        env = {k: v for k, v in os.environ.items() if k != "DAAF_QUOTA_STATE_FILE"}
+        env.update(extra_env)
+        completed = subprocess.run(
+            [sys.executable, "-c", _PATH_PROBE, str(PRODUCTION_SHIM)],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        return json.loads(completed.stdout.strip())
+
+    def test_spawned_chatgpt_shim_writes_snapshot_to_seam_path(self) -> None:
+        scenario = full_response_scenario()
+        scenario.stream_headers = dict(QUOTA_HEADERS)
+        with MockResponsesServer(scenario) as backend:
+            with RealShim(backend, "chatgpt") as shim:
+                result = shim.post_messages(stream=True)
+                self.assertEqual(result.status, 200, result.text)
+                parse_typed_sse(result.body)
+                # Drain the lifecycle log; the state write fires on upstream headers,
+                # so it has certainly landed by the time the full body is parsed.
+                lifecycle_for_response(shim, result)
+
+                # The harness seams the write into this instance's scratch dir.
+                seam_path = Path(shim.child_env["DAAF_QUOTA_STATE_FILE"])
+                self.assertEqual(seam_path, shim.scratch_dir / "quota_state.json")
+                self.assertTrue(
+                    seam_path.exists(), "snapshot did not land at the seam path"
+                )
+
+                payload = json.loads(seam_path.read_text(encoding="utf-8"))
+                self.assertIsInstance(payload["captured_at"], int)
+                for field in _ALL_SNAPSHOT_FIELDS:
+                    self.assertIn(field, payload)
+                self.assertEqual(payload["primary_used_pct"], "73")
+                self.assertEqual(payload["primary_window_min"], "10080")
+                # Absent secondary headers pass through as "-".
+                self.assertEqual(payload["secondary_used_pct"], "-")
+
+                # Same telemetry-hygiene contract as the in-process write: 0600.
+                self.assertEqual(
+                    stat.S_IMODE(os.stat(seam_path).st_mode), 0o600
+                )
+                shim.assert_offline_contract()
+                backend.assert_request_counts(responses=1, oauth=0)
+
+    def test_spawned_chatgpt_shim_does_not_touch_install_shared_file(self) -> None:
+        # The regression that matters: a full spawned chatgpt-lane exchange must leave the
+        # install-shared state file byte- and mtime-identical (or still-absent).
+        before = _stat_snapshot(_INSTALL_SHARED_STATE)
+        scenario = full_response_scenario()
+        scenario.stream_headers = dict(QUOTA_HEADERS)
+        with MockResponsesServer(scenario) as backend:
+            with RealShim(backend, "chatgpt") as shim:
+                result = shim.post_messages(stream=True)
+                self.assertEqual(result.status, 200, result.text)
+                parse_typed_sse(result.body)
+                lifecycle_for_response(shim, result)
+                # Confirm the shim really did write a snapshot (to its seam), so this
+                # test cannot pass vacuously by the write never happening at all.
+                seam_path = Path(shim.child_env["DAAF_QUOTA_STATE_FILE"])
+                self.assertTrue(seam_path.exists())
+                shim.assert_offline_contract()
+        after = _stat_snapshot(_INSTALL_SHARED_STATE)
+        self.assertEqual(
+            before,
+            after,
+            "spawned shim polluted the install-shared quota_state.json",
+        )
+
+    def test_default_path_derivation_is_file_relative_without_seam(self) -> None:
+        # Unset/empty seam -> the __file__-derived default, byte-identical to prior
+        # behavior. Probed out-of-process so no unseamed shim runs against the live file.
+        expected_dir = PRODUCTION_SHIM.parent / "logs"
+        for extra_env in ({}, {"DAAF_QUOTA_STATE_FILE": ""}):
+            with self.subTest(extra_env=extra_env):
+                got = self._run_path_probe(extra_env)
+                self.assertEqual(got["dir"], str(expected_dir))
+                self.assertEqual(
+                    got["path"], str(expected_dir / "quota_state.json")
+                )
+
+    def test_seam_env_redirects_module_state_path(self) -> None:
+        # Set + non-empty seam -> the module constants resolve to the seam path and its
+        # dirname (the other direction of the same probe).
+        with tempfile.TemporaryDirectory() as tmp:
+            seam = str(Path(tmp) / "redirected_quota.json")
+            got = self._run_path_probe({"DAAF_QUOTA_STATE_FILE": seam})
+            self.assertEqual(got["path"], seam)
+            self.assertEqual(got["dir"], str(Path(tmp)))
 
 
 if __name__ == "__main__":

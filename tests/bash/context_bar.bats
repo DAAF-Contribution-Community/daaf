@@ -821,7 +821,9 @@ MOCK_BAD_CURL
 # -------------------------------------------------------------------------
 # The codex path now floors a fractional percent (69.9 -> 69) and clamps to <=100,
 # mirroring the native rate-limit path. Non-numeric/negative stays a fail-closed
-# drop of the whole segment.
+# drop of the whole segment. v1.3.2 (deferred obs. O2): the fractional-floor strip is
+# gated on ^[0-9]+\.[0-9]+$, so an exponent-notation value carrying a dot ("1.0e999")
+# is NOT stripped to "1" — it stays intact, fails the validator, and drops.
 # =========================================================================
 
 @test "codex Plan-usage clamps a primary percent above 100 to 100" {
@@ -847,6 +849,37 @@ MOCK_BAD_CURL
     assert_success
     assert_output --partial "Plan usage:"
     assert_output --partial "7d:69%"
+}
+
+@test "codex Plan-usage drops the segment when primary percent is exponent notation" {
+    local now
+    now="$(date +%s)"
+    # O2: "1.0e999" carries a dot but is NOT a plain fractional. The gated strip leaves
+    # it intact, is_canonical_nonneg_decimal rejects it, and the whole segment drops —
+    # it must never be floored to "1" and render "7d:1%".
+    _write_quota_state "$now" 1.0e999 10080 402168 0 0 0
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        DAAF_QUOTA_STATE_FILE="$QUOTA_STATE_FILE" \
+        bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol")
+    assert_success
+    refute_output --partial "Plan usage:"
+    refute_output --partial "7d:1%"
+    assert_output --partial "of 370k tokens"
+}
+
+@test "codex Plan-usage drops only the secondary when its percent is exponent notation" {
+    local now
+    now="$(date +%s)"
+    # Primary is a clean integer and renders; the secondary percent "2.0e9" is left
+    # intact by the gated strip, fails the validator, and the secondary is omitted
+    # (never floored to "2").
+    _write_quota_state "$now" 73 10080 402168 2.0e9 300 600
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        DAAF_QUOTA_STATE_FILE="$QUOTA_STATE_FILE" \
+        bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol")
+    assert_success
+    assert_output --partial "7d:73%"
+    refute_output --partial "5h:"
 }
 
 @test "codex Plan-usage drops the segment for a negative primary percent" {

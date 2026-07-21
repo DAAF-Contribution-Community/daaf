@@ -642,11 +642,14 @@ if [[ -z "$rl_seg" && \
         # Plan-usage percent parity with the native rate-limit path (Convention 9):
         # floor a fractional percent (69.9 -> 69) so a legitimate fractional value
         # is KEPT rather than dropped by the integer-only validator below, and so
-        # the <=100 clamp has an integer to compare. A non-numeric or negative value
-        # has no '.' to strip, still fails the is_canonical_nonneg_decimal gate, and
-        # remains a fail-closed drop.
-        q_p_pct="${q_p_pct%.*}"
-        q_s_pct="${q_s_pct%.*}"
+        # the <=100 clamp has an integer to compare. The strip is gated on a strict
+        # plain-decimal shape (^[0-9]+\.[0-9]+$) so ONLY a genuine fractional is
+        # floored: an exponent-notation value carrying a dot (e.g. "1.0e999") must not
+        # survive the strip as "1" and render "1%" — leaving it intact makes the
+        # is_canonical_nonneg_decimal gate below drop it (fail-closed). A non-numeric or
+        # negative value likewise stays intact and remains a fail-closed drop.
+        [[ "$q_p_pct" =~ ^[0-9]+\.[0-9]+$ ]] && q_p_pct="${q_p_pct%.*}"
+        [[ "$q_s_pct" =~ ^[0-9]+\.[0-9]+$ ]] && q_s_pct="${q_s_pct%.*}"
 
         # Primary window is mandatory: captured_at + used-percent (0 allowed) + a
         # positive window length + reset-after (0 allowed) must all validate.

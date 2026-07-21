@@ -2100,6 +2100,9 @@ class RealShim(AbstractContextManager["RealShim"]):
         "SHIM_TEXT_VERBOSITY",
         # v1.2.14 (R6): downstream heartbeat interval knob for the heartbeat tests.
         "SHIM_PING_INTERVAL_S",
+        # v1.3.2: quota-state redirect seam. Seamed to per-instance scratch by default
+        # (see __enter__); individual tests may override it to a chosen path.
+        "DAAF_QUOTA_STATE_FILE",
     })
     _CONTROLLED_CHILD_ENV_NAMES = frozenset({
         "SHIM_PORT",
@@ -2113,6 +2116,10 @@ class RealShim(AbstractContextManager["RealShim"]):
         # default suffices for subprocess fixtures); the in-process auth-delegation
         # tests exercise it via their own env patch.
         "SHIM_CODEX_BIN",
+        # v1.3.2: quota-state redirect seam, default-provisioned to per-instance scratch
+        # in __enter__ so a spawned production shim never writes the install-shared
+        # quota_state.json. Also test-overridable (see _TEST_ENV_OVERRIDE_NAMES).
+        "DAAF_QUOTA_STATE_FILE",
         "HTTP_PROXY",
         "HTTPS_PROXY",
         "ALL_PROXY",
@@ -2218,6 +2225,11 @@ class RealShim(AbstractContextManager["RealShim"]):
                     "SHIM_BACKEND_API_KEY": FAKE_OPENAI_KEY,
                     "OPENAI_API_KEY": FAKE_OPENAI_KEY,
                     "CODEX_HOME": str(self.scratch_dir),
+                    # v1.3.2: seam the quota-state write to this instance's scratch dir so
+                    # a spawned production shim's chatgpt-lane 2xx writes NEVER touch the
+                    # install-shared scripts/provider_shim/logs/quota_state.json. Tests may
+                    # override via env_overrides (DAAF_QUOTA_STATE_FILE is allowlisted).
+                    "DAAF_QUOTA_STATE_FILE": str(self.scratch_dir / "quota_state.json"),
                     # Point delegated refresh at the fake-codex stub. Existing chatgpt
                     # fixtures seed a far-future token, so the stub is not actually
                     # invoked; it defaults to a benign no-op if it ever is.

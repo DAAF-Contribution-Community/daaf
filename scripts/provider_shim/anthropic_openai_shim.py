@@ -63,6 +63,27 @@
 #   * GET /health endpoint for the manager's idempotency/status checks.
 #
 # Changelog:
+#   v1.3.2 (2026-07-21): Hermetic quota-state writes + a statusline reader tightening
+#     (two-part maintenance release; no shim behavior change on the live response path).
+#     * SHIM: _write_quota_state now honors DAAF_QUOTA_STATE_FILE — the SAME env var the
+#       reader (context-bar.sh) already consumes — so one variable coherently redirects
+#       both ends. Set + non-empty: the write (and its mkstemp temp sibling) land at that
+#       exact path; unset/empty: the __file__-derived default is byte-identical to v1.3.1.
+#       This is a redirect / hermetic-test seam, NOT an off-switch — the write stays
+#       unconditional and absolutely fail-open (a bad seam value is swallowed like any
+#       other failure). Motivation: the loopback test harness spawns the PRODUCTION shim
+#       in chatgpt mode, so before this seam every mocked 2xx overwrote the live INSTALL-
+#       SHARED quota_state.json with all-"-" snapshots (observed live 2026-07-21: a full-
+#       suite run rewrote the production file every ~15s, blanking the OTHER install's
+#       "Plan usage:" segment until its next real request). The harness now seams every
+#       spawned shim to its per-instance scratch dir, so test runs cannot pollute the
+#       install-shared file.
+#     * READER (context-bar.sh, statusline-hardening deferred observation O2): the
+#       fractional-floor strip of primary/secondary used-percent is now gated on
+#       ^[0-9]+\.[0-9]+$ so an exponent-notation value carrying a dot (e.g. "1.0e999")
+#       DROPS the segment instead of surviving the strip as "1" and rendering "1%". Plain
+#       fractionals (69.9 -> 69) still render; this change lives in the reader, not here.
+#     SHIM_VERSION -> 1.3.2.
 #   v1.3.1 (2026-07-20): Statusline Plan-usage telemetry (additive, no behavior change).
 #     On every chatgpt-lane 2xx (same guard as the D1 quota_snapshot line), the shim now
 #     also caches the latest quota snapshot to <log dir>/quota_state.json — an atomic,
@@ -817,7 +838,7 @@ import httpx
 import uvicorn
 
 # --- Config ---
-SHIM_VERSION = "1.3.1"
+SHIM_VERSION = "1.3.2"
 SHIM_SERVICE_ID = "daaf-anthropic-openai-shim"
 
 SHIM_PORT = int(os.environ.get("SHIM_PORT", "4141"))
@@ -1273,17 +1294,31 @@ def _normalize_http_version(value):
 # any install's context-bar.sh reads it to render "Plan usage:" (auth under $HOME stays
 # per-install). The shim records only captured_at (write-time epoch); the reader does the
 # clock math (absolute reset = captured_at + primary_reset_s).
-_QUOTA_STATE_DIR = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "logs"
-)
-_QUOTA_STATE_PATH = os.path.join(_QUOTA_STATE_DIR, "quota_state.json")
+# v1.3.2: DAAF_QUOTA_STATE_FILE, when set and non-empty, redirects the write to that exact
+# path (the state dir becomes its dirname, so the mkstemp temp sibling lands there too).
+# This is the SAME env var the reader (context-bar.sh) already honors, so one variable
+# coherently redirects BOTH ends — a hermetic-test / redirect seam mirroring the reader's,
+# NOT an off-switch: the write itself stays unconditional and fail-open (a bad seam value
+# that makes the write fail is swallowed like any other failure). When unset/empty the
+# __file__-derived default below is byte-identical to prior behavior.
+_QUOTA_STATE_FILE_ENV = os.environ.get("DAAF_QUOTA_STATE_FILE", "")
+if _QUOTA_STATE_FILE_ENV:
+    _QUOTA_STATE_PATH = _QUOTA_STATE_FILE_ENV
+    _QUOTA_STATE_DIR = os.path.dirname(_QUOTA_STATE_PATH)
+else:
+    _QUOTA_STATE_DIR = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "logs"
+    )
+    _QUOTA_STATE_PATH = os.path.join(_QUOTA_STATE_DIR, "quota_state.json")
 
 
 def _write_quota_state(snapshot):
     # Absolutely fail-open telemetry: a quota-state write must NEVER affect, delay, or
     # raise on the response path. Every failure mode (unwritable dir, replace error,
     # serialization surprise) is swallowed, leaving at most one debug line and no stale
-    # temp sibling. Pure additive — there is deliberately no env var and no off-switch.
+    # temp sibling. The DAAF_QUOTA_STATE_FILE seam (above) only redirects WHERE the write
+    # lands (mirroring the reader's seam); it is NOT an off-switch — the write stays
+    # unconditional, and a bad seam value is swallowed here like any other failure.
     tmp_path = None
     try:
         payload = {"captured_at": int(time.time())}
