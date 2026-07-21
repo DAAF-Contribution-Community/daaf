@@ -890,6 +890,32 @@ start_external_fixture() {
     [ -L "${LOG_DIR}/supervisor.state" ]
 }
 
+@test "unsafe symlink quota_state.json target is rejected by lifecycle preflight" {
+    # v1.3.3 (A2-R7): quota_state.json — a shim-written install-shared state file —
+    # is now in state_targets_are_safe()'s hijack checklist. A symlink must be
+    # refused without touching its referent.
+    mkdir -p "$LOG_DIR"
+    local referent="${SHIM_TEST_ROOT}/quota-referent"
+    printf 'quota-referent-unchanged\n' > "$referent"
+    ln -s "$referent" "${LOG_DIR}/quota_state.json"
+    run "$MANAGER" __rotate_logs
+    assert_failure
+    assert_output --partial "refusing unsafe shim state target"
+    grep -Fx 'quota-referent-unchanged' "$referent"
+    [ -L "${LOG_DIR}/quota_state.json" ]
+}
+
+@test "non-regular quota_state.json target is rejected by lifecycle preflight" {
+    # The named-target check refuses any existing non-regular file, not just
+    # symlinks; a directory planted at the quota_state.json path is rejected.
+    mkdir -p "$LOG_DIR"
+    mkdir "${LOG_DIR}/quota_state.json"
+    run "$MANAGER" __rotate_logs
+    assert_failure
+    assert_output --partial "refusing unsafe shim state target"
+    [ -d "${LOG_DIR}/quota_state.json" ]
+}
+
 # --- D4: --auto config footgun ----------------------------------------------
 
 @test "auto warns and stays boot-safe on an unrecognized DAAF_PROVIDER_SHIM value" {

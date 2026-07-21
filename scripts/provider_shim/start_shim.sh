@@ -88,6 +88,7 @@ readonly SUP_PID_FILE="${LOG_DIR}/supervisor.pid"
 readonly SUP_STATE_FILE="${LOG_DIR}/supervisor.state"
 readonly PGID_FILE="${LOG_DIR}/pgid"
 readonly STOP_FILE="${LOG_DIR}/stop.requested"
+readonly QUOTA_STATE_FILE="${LOG_DIR}/quota_state.json"
 readonly LOCK_DIR="${LOG_DIR}/lifecycle.lock"
 readonly LOCK_OWNER_FILE="${LOCK_DIR}/owner.pid"
 readonly LOG_WRITE_LOCK_DIR="${LOG_DIR}/log-write.lock"
@@ -152,8 +153,15 @@ ensure_log_dir() {
 }
 
 state_targets_are_safe() {
+    # quota_state.json is a shim-written state file that lives in this same LOG_DIR
+    # (install-shared, read by any install's statusline), so it belongs in the
+    # symlink/non-regular hijack checklist alongside the other named state targets.
+    # The reasoning-cache file is deliberately NOT covered here: it lives under
+    # $HOME/.claude/provider_shim/, outside start_shim's domain — the shim owns that
+    # path and its atomic publish uses os.replace, which does not dereference a
+    # destination symlink (rename(2) replaces the symlink entry itself).
     local target generation
-    for target in "$LOG_FILE" "$PID_FILE" "$SUP_PID_FILE" "$SUP_STATE_FILE" "$PGID_FILE" "$STOP_FILE"; do
+    for target in "$LOG_FILE" "$PID_FILE" "$SUP_PID_FILE" "$SUP_STATE_FILE" "$PGID_FILE" "$STOP_FILE" "$QUOTA_STATE_FILE"; do
         if ! path_is_safe_file_target "$target"; then
             printf 'ERROR: refusing unsafe shim state target: %s\n' "$target" >&2
             printf '  Fix: remove the symlink/non-regular object and retry.\n' >&2

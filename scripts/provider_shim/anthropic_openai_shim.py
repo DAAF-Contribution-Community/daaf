@@ -63,6 +63,54 @@
 #   * GET /health endpoint for the manager's idempotency/status checks.
 #
 # Changelog:
+#   v1.3.3 (2026-07-21): Reasoning-cache persistence across shim restarts (Tier 3 A2;
+#     minor bump — additive continuity feature, no change to the live response path's
+#     translation semantics). Before this, a restart mid-session discarded the entire
+#     in-memory _REASONING_CACHE, so every subsequent turn replayed tool history WITHOUT
+#     its reasoning items (graceful misses — the miss path has always omitted-and-sent,
+#     never 400d — but degraded model context for the rest of long tool loops). The cache
+#     now survives restarts.
+#     * PERSIST: after each cache mutation the shim writes a bounded, newest-first snapshot
+#       (LRU tail) to a state file — capped at 256 entries OR 2 MiB, whichever hits first —
+#       and restores it at module import. The write is atomic (mkstemp + os.replace), 0600,
+#       and absolutely fail-open (the whole writer is try/except: pass — a persistence write
+#       must NEVER affect, delay, or raise on the response path), exactly mirroring the
+#       _write_quota_state precedent. Restore is likewise fail-open: a missing/malformed/
+#       stale/oversize file silently skips (next persist overwrites it) and the shim starts
+#       cold. Staleness is a 30-day sanity ceiling only (_REASONING_PERSIST_TTL_S) — the
+#       primary bound is the entry/byte cap, mirroring the in-memory cache's age-less LRU;
+#       a short TTL would erase exactly the entries a multi-day session-resume replays.
+#     * PLACEMENT: default path is $HOME/.claude/provider_shim/reasoning_cache.json (the
+#       shim owns directory creation, mode 0700). This is deliberately OFF the repo tree,
+#       UNLIKE shim.log/quota_state.json which stay in scripts/provider_shim/logs/: the
+#       reasoning blobs are backend-encrypted content and must never be committable to any
+#       VCS (gitignore notwithstanding), so they live on the per-container claude-config
+#       volume ($HOME/.claude, the same volume codex CLI state uses). Per-container by
+#       intent: because the file is not install-shared, the cross-install last-writer-wins
+#       race that quota_state.json accepts as status-quo degradation cannot occur here. The
+#       file is expendable continuity state (loss = graceful misses = prior behavior), never
+#       a research artifact, and sits outside the /daaf backup/audit boundary by design.
+#     * SEAM: DAAF_REASONING_CACHE_FILE redirects the path, resolved at MODULE IMPORT time
+#       (_REASONING_CACHE_PATH is computed once when the module loads), so a post-import env
+#       change does not redirect a live shim — the seam must be set before the module loads.
+#       Same contract as DAAF_QUOTA_STATE_FILE; it is a redirect / hermetic-test seam, not
+#       an off-switch (persistence stays unconditional and fail-open).
+#     * SECURITY: persisted values are exactly the in-memory values — opaque backend
+#       `encrypted_content` blobs plus item metadata, decryptable only by the backend. No
+#       plaintext reasoning, no prompts, no tool arguments, no key material. Anthropic
+#       thinking blocks are consumed, never stored. Logging stays counts-only (a single
+#       event=reasoning_cache_restore entries=N age_s=M line on a successful restore),
+#       never entry contents.
+#     * OBSERVABILITY: /health gains "reasoning_cache": {"entries": N, "restored": M}
+#       (counts only; restored = entries loaded at startup, 0 if none). No reader outside
+#       the shim — this file is shim-internal continuity state, unlike quota_state.json.
+#     * LIFECYCLE: start_shim.sh's state_targets_are_safe() now also covers quota_state.json
+#       in its symlink/non-regular hijack checklist (closing a pre-existing gap — the file
+#       has lived in that dir since v1.3.1). The reasoning-cache file is intentionally out
+#       of that checklist: it lives under $HOME/.claude/, outside start_shim's domain, and
+#       os.replace does not dereference a destination symlink.
+#     * TOPOLOGY: the supported deployment is one running shim per container at a time.
+#     SHIM_VERSION -> 1.3.3.
 #   v1.3.2 (2026-07-21): Hermetic quota-state writes + a statusline reader tightening
 #     (two-part maintenance release; no shim behavior change on the live response path).
 #     * SHIM: _write_quota_state now honors DAAF_QUOTA_STATE_FILE — the SAME env var the
@@ -844,7 +892,7 @@ import httpx
 import uvicorn
 
 # --- Config ---
-SHIM_VERSION = "1.3.2"
+SHIM_VERSION = "1.3.3"
 SHIM_SERVICE_ID = "daaf-anthropic-openai-shim"
 
 SHIM_PORT = int(os.environ.get("SHIM_PORT", "4141"))
