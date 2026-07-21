@@ -629,3 +629,247 @@ JSON
     # Rest of the bar is intact (chatgpt lane caps gpt-5.6-sol at 370k).
     assert_output --partial "of 370k tokens"
 }
+
+# =========================================================================
+# Hardening: terminal-escape-safe rendering (Finding 1 / Convention 1)
+# -------------------------------------------------------------------------
+# Colors are ANSI-C ($'...') constants and the final render is printf '%s'.
+# A printable backslash-escape payload arriving in an untrusted field must stay
+# an inert literal (never re-materialized into a real ESC/OSC), while real
+# control bytes in a field are still stripped by the jq [[:cntrl:]] stage.
+# =========================================================================
+
+@test "printable escape payload in the display name stays a literal and is not re-materialized" {
+    local payload
+    # JSON \\033 -> literal backslash-0-3-3 after jq parse (printable, no control
+    # byte). Under the old printf '%b' render this would have become a real ESC and
+    # emitted a live OSC 52 clipboard-write sequence; under '%s' it stays literal.
+    payload='{"model":{"id":"claude-fable-5","display_name":"PRE\\033]52;c;OSCPAYLOAD"},"cwd":"'"$TEST_DIR"'","transcript_path":"","session_id":"'"$FAKE_SESSION"'","context_window":{"context_window_size":200000}}'
+    run bash "$CONTEXT_BAR_SH" <<< "$payload"
+    assert_success
+    assert_output --partial '\033]52;c;OSCPAYLOAD'
+    assert_output --partial "of 200k tokens"
+}
+
+@test "a real ESC byte in the display name is still stripped by the jq control filter" {
+    local payload
+    # JSON  -> a REAL ESC byte after parse; the display filter removes it so
+    # the surrounding text joins cleanly and no raw ESC reaches the display stream.
+    printf -v payload '{"model":{"id":"claude-fable-5","display_name":"AAA\\u%04xBBB"},"cwd":"%s","transcript_path":"","session_id":"%s","context_window":{"context_window_size":200000}}' 27 "$TEST_DIR" "$FAKE_SESSION"
+    run bash "$CONTEXT_BAR_SH" <<< "$payload"
+    assert_success
+    assert_output --partial "AAABBB"
+}
+
+# =========================================================================
+# Hardening: closed-set flagship grammar rejects malformed suffixes (Finding 4)
+# -------------------------------------------------------------------------
+# The anchored ERE ^gpt-5\.(4|5|6)(-(sol|terra|luna))?(\[1m\])?$ tightens the
+# old case-globs (gpt-5.6[-\[]*) that accepted arbitrary trailing junk. These
+# five slugs used to map to the 1,050,000 flagship window; they now fall through.
+# =========================================================================
+
+@test "anchored flagship grammar rejects malformed suffixes the old globs accepted" {
+    local model
+    for model in \
+        'gpt-5.4-' \
+        'gpt-5.4x' \
+        'gpt-5.6-experimental' \
+        'gpt-5.5[1m' \
+        'gpt-5.6-sol[1m]x'; do
+        run bash "$CONTEXT_BAR_SH" < <(_payload "$model")
+        assert_success
+        assert_output --partial "of 200k tokens"
+        refute_output --partial "of 1050k tokens"
+    done
+}
+
+@test "chatgpt lane final cap ignores malformed flagship-suffix near-misses" {
+    local model
+    for model in 'gpt-5.4-' 'gpt-5.6-experimental' 'gpt-5.5[1m' 'gpt-5.6-sol[1m]x'; do
+        run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+            bash "$CONTEXT_BAR_SH" < <(_payload "$model" 1050000)
+        assert_success
+        assert_output --partial "of 1050k tokens"
+        refute_output --partial "of 370k tokens"
+    done
+}
+
+# =========================================================================
+# Hardening: bounded numerator before x100 (Finding 10 / Convention 5)
+# -------------------------------------------------------------------------
+# context_length is guarded (is_canonical_positive_decimal AND <= INT64_MAX/100 =
+# 92233720368547758) before `context_length * 100`, so a huge token count cannot
+# overflow signed-64 and wrap pct negative. NOTE: jq (IEEE-754 doubles) rounds
+# both 92233720368547758 and ...759 to 92233720368547760 before the guard sees
+# them, so the exact +/-1 boundary is not separately observable through the
+# transcript->jq path; these tests exercise the guard's observable contract (a
+# safe value renders a real clamped pct; an overflow-inducing value falls to the
+# baseline with a non-negative reading and no arithmetic diagnostic).
+# =========================================================================
+
+@test "a large but safe transcript token count renders a real clamped percentage" {
+    local tf payload
+    tf="${SCRATCH_DIR}/transcript_safe.jsonl"
+    # 9e11 tokens: jq-exact (< 2^53) and 9e11*100 stays well within int64.
+    printf '%s\n' '{"message":{"usage":{"input_tokens":900000000000}}}' > "$tf"
+    printf -v payload '{"model":{"id":"claude-fable-5","display_name":"Fable 5"},"cwd":"%s","transcript_path":"%s","session_id":"%s","context_window":{"context_window_size":200000}}' "$TEST_DIR" "$tf" "$FAKE_SESSION"
+    run bash "$CONTEXT_BAR_SH" <<< "$payload"
+    assert_success
+    assert_output --partial "100% of 200k tokens"
+    refute_output --partial "~100%"
+}
+
+@test "an overflow-inducing transcript token count falls to baseline with no negative percent" {
+    local tf payload
+    tf="${SCRATCH_DIR}/transcript_huge.jsonl"
+    # jq rounds this to 92233720368547760 (> INT64_MAX/100); *100 would overflow
+    # signed-64 and wrap pct negative if unguarded. The guard rejects it -> baseline.
+    printf '%s\n' '{"message":{"usage":{"input_tokens":92233720368547758}}}' > "$tf"
+    printf -v payload '{"model":{"id":"claude-fable-5","display_name":"Fable 5"},"cwd":"%s","transcript_path":"%s","session_id":"%s","context_window":{"context_window_size":200000}}' "$TEST_DIR" "$tf" "$FAKE_SESSION"
+    run bash "$CONTEXT_BAR_SH" <<< "$payload"
+    assert_success
+    assert_output --partial "~10% of 200k tokens"
+    refute_output --partial "value too great"
+    refute_output --partial "syntax error"
+}
+
+# =========================================================================
+# Hardening: redirection-open diagnostics are suppressed (Finding 11 / Conv. 6)
+# -------------------------------------------------------------------------
+# Cache writes are brace-wrapped so 2>/dev/null covers an open() failure on '>'.
+# An unusable cache dir (a regular file -> ENOTDIR, or a child of a nonexistent
+# dir -> ENOENT) must not leak a diagnostic onto the display stream; the
+# statusline still renders and exits 0.
+# =========================================================================
+
+@test "cache dir that is a regular file (ENOTDIR) does not leak an open diagnostic" {
+    local regfile="${SCRATCH_DIR}/reg-not-dir"
+    printf 'x' > "$regfile"
+    run env DAAF_CONTEXT_BAR_CACHE_DIR="$regfile" \
+        bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol")
+    assert_success
+    assert_output --partial "of 1050k tokens"
+    refute_output --partial "Not a directory"
+    refute_output --partial "No such file"
+}
+
+@test "cache dir under a nonexistent parent (ENOENT) does not leak an open diagnostic" {
+    run env DAAF_CONTEXT_BAR_CACHE_DIR="${SCRATCH_DIR}/does-not-exist/sub" \
+        bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol")
+    assert_success
+    assert_output --partial "of 1050k tokens"
+    refute_output --partial "No such file"
+    refute_output --partial "Not a directory"
+}
+
+# =========================================================================
+# Hardening: atomic ctx-window publish (Finding 5 / Convention 7)
+# -------------------------------------------------------------------------
+# The claude-ctx-window-* cache is written to a writer-private temp then renamed,
+# so a concurrent reader never sees a momentarily-empty file. Observable here:
+# the final value is present and no .tmp.* artifact is left behind.
+# =========================================================================
+
+@test "context window cache is published atomically with no leftover temp file" {
+    run bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol[1m]")
+    assert_success
+    run cat "$CTX_CACHE"
+    assert_success
+    assert_output "1050000"
+    run find "$DAAF_CONTEXT_BAR_CACHE_DIR" -maxdepth 1 -name 'claude-ctx-window-*.tmp.*' -print
+    assert_success
+    assert_output ""
+}
+
+# =========================================================================
+# Hardening: OpenRouter catalog private temp + JSON validation (Finding 6 / Conv 8)
+# -------------------------------------------------------------------------
+# A 200-response body that is not a JSON object with a .data array must NOT be
+# promoted to the session cache; resolution falls back to the static map.
+# =========================================================================
+
+@test "corrupt OpenRouter catalog body is not promoted and falls back to the static map" {
+    local badbin="${SCRATCH_DIR}/badcurl-bin"
+    mkdir -p "$badbin"
+    cat > "${badbin}/curl" <<'MOCK_BAD_CURL'
+#!/usr/bin/env bash
+printf '%s' "${MOCK_OPENROUTER_BODY?MOCK_OPENROUTER_BODY must be set}"
+MOCK_BAD_CURL
+    chmod +x "${badbin}/curl"
+
+    local body
+    for body in \
+        '{"data":"not-an-array"}' \
+        '{"data":' \
+        '{"error":"rate limited"}' \
+        'null'; do
+        rm -f "$OR_CACHE"
+        run env ANTHROPIC_BASE_URL="https://openrouter.ai/api" \
+            PATH="${badbin}:${PATH}" \
+            MOCK_OPENROUTER_BODY="$body" \
+            bash "$CONTEXT_BAR_SH" < <(_payload "z-ai/glm-5.2")
+        assert_success
+        assert_output --partial "of 1048k tokens"
+        run test -e "$OR_CACHE"
+        assert_failure
+    done
+}
+
+# =========================================================================
+# Hardening: codex plan-usage percentage bounds (Finding 9 / Convention 9)
+# -------------------------------------------------------------------------
+# The codex path now floors a fractional percent (69.9 -> 69) and clamps to <=100,
+# mirroring the native rate-limit path. Non-numeric/negative stays a fail-closed
+# drop of the whole segment.
+# =========================================================================
+
+@test "codex Plan-usage clamps a primary percent above 100 to 100" {
+    local now
+    now="$(date +%s)"
+    _write_quota_state "$now" 101 10080 402168 0 0 0
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        DAAF_QUOTA_STATE_FILE="$QUOTA_STATE_FILE" \
+        bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol")
+    assert_success
+    assert_output --partial "7d:100%"
+    refute_output --partial "7d:101%"
+}
+
+@test "codex Plan-usage floors a fractional primary percent and keeps the segment" {
+    local now
+    now="$(date +%s)"
+    # 69.9 used to be dropped by the integer-only validator; it is now floored to 69.
+    _write_quota_state "$now" 69.9 10080 402168 0 0 0
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        DAAF_QUOTA_STATE_FILE="$QUOTA_STATE_FILE" \
+        bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol")
+    assert_success
+    assert_output --partial "Plan usage:"
+    assert_output --partial "7d:69%"
+}
+
+@test "codex Plan-usage drops the segment for a negative primary percent" {
+    local now
+    now="$(date +%s)"
+    _write_quota_state "$now" -1 10080 402168 0 0 0
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        DAAF_QUOTA_STATE_FILE="$QUOTA_STATE_FILE" \
+        bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol")
+    assert_success
+    refute_output --partial "Plan usage:"
+    assert_output --partial "of 370k tokens"
+}
+
+@test "codex Plan-usage clamps a secondary percent above 100 to 100" {
+    local now
+    now="$(date +%s)"
+    # secondary: 300 min -> "5h", percent 150 -> clamped to 100, reset 600s ahead.
+    _write_quota_state "$now" 50 10080 402168 150 300 600
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        DAAF_QUOTA_STATE_FILE="$QUOTA_STATE_FILE" \
+        bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol")
+    assert_success
+    assert_output --partial "5h:100%"
+    refute_output --partial "5h:150%"
+}

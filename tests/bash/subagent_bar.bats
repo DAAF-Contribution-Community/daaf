@@ -35,6 +35,11 @@ COLOR_ELEVATED="38;5;179m"
 COLOR_HIGH="1;38;5;173m"
 COLOR_CRITICAL="38;5;167m"
 
+# jq -Rsc encodes a real ESC byte as the 6-char text ESC. Trusted colors emit
+# ESC[ (CSI); an injected OSC would emit ESC] . Build the encoded OSC
+# introducer at runtime (avoids embedding a raw ESC or a \u escape in the source).
+OSC_ENC=$(printf '\033]' | jq -Rsc . | tr -d '"')
+
 # /tmp caches this script reads for FAKE_SESSION (cleaned each test). The
 # per-subagent model cache uses a task-id suffix; tests that seed it build the
 # exact path from their task id.
@@ -753,5 +758,192 @@ _append_subbar_model() {
     _seed_task_model "t1" "claude-sonnet-4-6"
     run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 10000)
     assert_success
+    assert_output --partial '"id":"t1"'
+}
+
+# =========================================================================
+# HARDENING — Convention 1: terminal-escape-safe rendering (Finding 1)
+# -------------------------------------------------------------------------
+# Colors are now $'…' (real ESC in trusted constants) and the final render is
+# printf '%s' (not '%b'). Untrusted fields are control-stripped: the main-payload
+# clean() (all C0+DEL), the agentType sidecar read, and the resolved task_model.
+# jq -Rsc encodes trusted color ESC as ESC[…; an INJECTED ESC/OSC would appear
+# as ESC] (OSC) or as a raw ESC byte — both must be absent from output.
+# =========================================================================
+
+# Single-task payload with a jq-injected description expression.
+# $1 = task id, $2 = jq expression producing the description string.
+_payload_desc() {
+    jq -nc --arg sid "$FAKE_SESSION" --arg tp "${TEST_DIR}/main.jsonl" \
+        "{session_id:\$sid,transcript_path:\$tp,tasks:[{id:\"$1\",type:\"local_agent\",status:\"running\",description:($2),tokenCount:80000}]}"
+}
+
+@test "C1: injected ESC/BEL in a display field are stripped; printable backslash stays literal; trusted color survives" {
+    _seed_window 200000
+    _seed_session_model "claude-sonnet-4-6"
+    _seed_task_model "t1" "claude-sonnet-4-6"
+    local esc bel
+    esc=$(printf '\033')
+    bel=$(printf '\007')
+    # description parses to: A <ESC> ]0;pwn <BEL> B\033C  ("\\033" is a printable
+    # backslash sequence, NOT a control byte).
+    run bash "$SUBAGENT_BAR_SH" < <(_payload_desc "t1" '"A"+([27]|implode)+"]0;pwn"+([7]|implode)+"B\\033C"')
+    assert_success
+    # trusted color CSI (ELEVATED amber, 40%) survives, encoded as ESC[38;5;179m
+    assert_output --partial "$COLOR_ELEVATED"
+    # injected ESC/BEL removed: no encoded OSC introducer, no raw control bytes
+    refute_output --partial "$OSC_ENC"
+    refute_output --partial "$esc"
+    refute_output --partial "$bel"
+    # JSON-encoding ALONE would not neutralize a materialized escape; the %b->%s
+    # fix keeps the printable backslash literal (encoded as \\033), never an ESC.
+    assert_output --partial '\\033'
+}
+
+@test "C1: raw control bytes from a hostile model cache are stripped before display" {
+    # The bare model cache is read with cat (bypasses jq), so it is the one path
+    # that can carry raw C0/DEL bytes into task_model. The bash strip removes them.
+    _seed_window 200000
+    _seed_session_model "claude-sonnet-4-6"
+    jq -rn '"g"+([27]|implode)+"]0;X"+([7]|implode)+"-5.6-sol"' \
+        > "/tmp/claude-subagent-model-${FAKE_SESSION}-c1"
+    local esc bel
+    esc=$(printf '\033')
+    bel=$(printf '\007')
+    run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "c1" 50000)
+    assert_success
+    refute_output --partial "$esc"
+    refute_output --partial "$bel"
+    refute_output --partial "$OSC_ENC"
+    # harmless text remainder survives, sans the control bytes
+    assert_output --partial 'g]0;X-5.6-sol'
+}
+
+# =========================================================================
+# HARDENING — Convention 2: identifier allowlist before path construction (Finding 2)
+# =========================================================================
+
+@test "C2: path-unsafe and mistyped ids are omitted (no row emitted)" {
+    _seed_window 200000
+    local idexpr
+    # traversal, slash, leading dash, embedded newline, JSON number, JSON object
+    for idexpr in '"../evil"' '"a/b"' '"-lead"' '("a"+([10]|implode)+"b")' '123' '{"k":1}'; do
+        run bash "$SUBAGENT_BAR_SH" < <(jq -nc --arg sid "$FAKE_SESSION" \
+            "{session_id:\$sid,transcript_path:\"x\",tasks:[{id:($idexpr),type:\"local_agent\",status:\"running\",tokenCount:50000}]}")
+        assert_success
+        refute_output --partial '"content"'
+    done
+}
+
+@test "C2: id length boundary — 128 chars renders, 129 chars omitted" {
+    _seed_window 200000
+    local id128 id129
+    id128=$(printf 'a%.0s' {1..128})
+    id129=$(printf 'a%.0s' {1..129})
+    run bash "$SUBAGENT_BAR_SH" < <(jq -nc --arg sid "$FAKE_SESSION" --arg id "$id128" \
+        '{session_id:$sid,transcript_path:"x",tasks:[{id:$id,type:"local_agent",status:"running",tokenCount:50000}]}')
+    assert_success
+    assert_output --partial '"content"'
+    run bash "$SUBAGENT_BAR_SH" < <(jq -nc --arg sid "$FAKE_SESSION" --arg id "$id129" \
+        '{session_id:$sid,transcript_path:"x",tasks:[{id:$id,type:"local_agent",status:"running",tokenCount:50000}]}')
+    assert_success
+    refute_output --partial '"content"'
+}
+
+@test "C2: unsafe session_id is blanked but rows still render (fail-open, no session path built)" {
+    _seed_window 200000
+    run bash "$SUBAGENT_BAR_SH" < <(jq -nc \
+        '{session_id:"a/b/../etc",transcript_path:"x",tasks:[{id:"t1",type:"local_agent",status:"running",tokenCount:50000}]}')
+    assert_success
+    assert_output --partial '"id":"t1"'
+}
+
+# =========================================================================
+# HARDENING — Convention 3: closed-set flagship classifier grammar (Finding 4)
+# -------------------------------------------------------------------------
+# Existing tests 39-41 cover the accept side + left-boundary/gpt-5.60 rejects.
+# This adds the RIGHT-boundary malformed rejects that the old open-ended globs
+# (gpt-5.6[-\[]*) wrongly mapped into the 1.05M physical window.
+# =========================================================================
+
+@test "C3: malformed flagship-looking slugs do NOT get the 1.05M window" {
+    local model
+    for model in gpt-5.6-experimental 'gpt-5.6-sol[1m]x' gpt-5.4- gpt-5.4x 'gpt-5.5[1m' gpt-5.60; do
+        _clean_subbar_caches
+        _seed_window 1000000
+        _seed_session_model "claude-fable-5"
+        _seed_task_model "t1" "$model"
+        run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 90000)
+        assert_success
+        # The Finding-4 invariant: NONE may map to the 1,050,000 flagship window
+        # (90k/1.05M = 8%). They land on a conservative window instead — 200k -> 45%,
+        # or the pre-existing generic [1m] arm -> 1M -> 9% for gpt-5.6-sol[1m]x — but
+        # never the flagship 8%.
+        assert_output --partial '"id":"t1"'
+        refute_output --partial "8%"
+    done
+}
+
+# =========================================================================
+# HARDENING — Convention 4: full-transcript usage recovery (Finding 3)
+# =========================================================================
+
+@test "C4: usage recovery scans the full transcript — 60 trailing zero placeholders do not hide a positive record" {
+    _seed_window 200000
+    mkdir -p "${TEST_DIR}/${FAKE_SESSION}/subagents"
+    jq -cn '[{isSidechain:true,message:{usage:{input_tokens:123000,cache_read_input_tokens:0,cache_creation_input_tokens:0}}}] + [range(60)|{isSidechain:true,message:{usage:{input_tokens:0,cache_read_input_tokens:0,cache_creation_input_tokens:0}}}] | .[]' \
+        > "${TEST_DIR}/${FAKE_SESSION}/subagents/agent-recov.jsonl"
+    run bash "$SUBAGENT_BAR_SH" < <(jq -nc --arg sid "$FAKE_SESSION" --arg tp "${TEST_DIR}/main.jsonl" \
+        '{session_id:$sid,transcript_path:$tp,tasks:[{id:"recov",type:"local_agent",status:"running",tokenCount:0}]}')
+    assert_success
+    # full scan recovers 123k -> 61%; tail -n 50 would have seen only zeros -> 0%
+    assert_output --partial "61%"
+    refute_output --partial " 0%"
+}
+
+# =========================================================================
+# HARDENING — Convention 5: bounded numerator before x100 (Finding 10)
+# =========================================================================
+
+@test "C5: numerator bound — floor(INT64/100) accepted (100%), +1 rejected (0%), no wrap" {
+    _seed_window 200000
+    _seed_session_model "claude-fable-5"
+    _seed_task_model "t1" "claude-sonnet-4-6"
+    # 92233720368547758 = floor(INT64_MAX/100): tokens*100 stays int64-valid
+    run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 92233720368547758)
+    assert_success
+    assert_output --partial "100%"
+    assert_output --partial "$COLOR_CRITICAL"
+    # +1 would overflow tokens*100 and wrap pct negative -> guarded to 0
+    run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 92233720368547759)
+    assert_success
+    # guarded to 0 -> NOMINAL green at 0% (NOT a wrapped/overflowed 100% or negative)
+    assert_output --partial "$COLOR_NOMINAL"
+    refute_output --partial "100%"
+    refute_output --partial "syntax error"
+}
+
+# =========================================================================
+# HARDENING — Convention 6: suppress redirection-open diagnostics (Finding 11)
+# =========================================================================
+
+@test "C6: an ENOTDIR cache dir emits no stderr and still renders the row (exit 0)" {
+    # A regular file as the cache dir makes every cache path under it ENOTDIR.
+    # The grouped write must swallow the open() diagnostic (not leak it to the
+    # display stream), while the row still renders from the transcript.
+    local notadir="${TEST_DIR}/notadir"
+    local payload="${TEST_DIR}/enotdir_payload.json"
+    local errfile="${TEST_DIR}/enotdir_err.txt"
+    printf 'x' > "$notadir"
+    mkdir -p "${TEST_DIR}/${FAKE_SESSION}/subagents"
+    printf '{"type":"assistant","isSidechain":true,"message":{"model":"claude-sonnet-4-6"}}\n' \
+        > "${TEST_DIR}/${FAKE_SESSION}/subagents/agent-t1.jsonl"
+    printf '{"session_id":"%s","transcript_path":"%s/main.jsonl","tasks":[{"id":"t1","type":"local_agent","status":"running","tokenCount":0}]}' \
+        "$FAKE_SESSION" "$TEST_DIR" > "$payload"
+    run bash -c "DAAF_SUBAGENT_BAR_CACHE_DIR='$notadir' bash '$SUBAGENT_BAR_SH' < '$payload' 2>'$errfile'"
+    assert_success
+    # errfile must be empty: the ENOTDIR open() diagnostic was suppressed. A bare
+    # test command (bats-assert's generic `assert` is not loaded in this harness).
+    [ ! -s "$errfile" ]
     assert_output --partial '"id":"t1"'
 }

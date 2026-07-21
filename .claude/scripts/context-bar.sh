@@ -4,24 +4,29 @@
 # lavender, rose, gold, slate, cyan (see the case block below for the codes).
 COLOR="blue"
 
-# Color codes
-C_RESET='\033[0m'
-C_GRAY='\033[38;5;245m'  # explicit gray for default text
-C_BAR_EMPTY='\033[38;5;238m'
+# Color codes.
+# ANSI-C quoting ($'...') so the real ESC byte lives in these TRUSTED variables.
+# The final render uses printf '%s' (not '%b'), so backslash sequences arriving
+# in UNTRUSTED fields (model name, effort label, cwd basename, git branch, last
+# user message) stay inert literals and can never be re-materialized into escape
+# sequences. See the render at the end of the file.
+C_RESET=$'\033[0m'
+C_GRAY=$'\033[38;5;245m'  # explicit gray for default text
+C_BAR_EMPTY=$'\033[38;5;238m'
 # Segment colors for the rate-limit addition (kept subtle so they do not
 # compete with the single-accent context bar).
-C_AMBER='\033[38;5;179m'   # rate limit warning (>=70%)
-C_RED='\033[38;5;167m'     # rate limit danger (>=90%)
+C_AMBER=$'\033[38;5;179m'   # rate limit warning (>=70%)
+C_RED=$'\033[38;5;167m'     # rate limit danger (>=90%)
 case "$COLOR" in
-    orange)   C_ACCENT='\033[38;5;173m' ;;
-    blue)     C_ACCENT='\033[38;5;74m' ;;
-    teal)     C_ACCENT='\033[38;5;66m' ;;
-    green)    C_ACCENT='\033[38;5;71m' ;;
-    lavender) C_ACCENT='\033[38;5;139m' ;;
-    rose)     C_ACCENT='\033[38;5;132m' ;;
-    gold)     C_ACCENT='\033[38;5;136m' ;;
-    slate)    C_ACCENT='\033[38;5;60m' ;;
-    cyan)     C_ACCENT='\033[38;5;37m' ;;
+    orange)   C_ACCENT=$'\033[38;5;173m' ;;
+    blue)     C_ACCENT=$'\033[38;5;74m' ;;
+    teal)     C_ACCENT=$'\033[38;5;66m' ;;
+    green)    C_ACCENT=$'\033[38;5;71m' ;;
+    lavender) C_ACCENT=$'\033[38;5;139m' ;;
+    rose)     C_ACCENT=$'\033[38;5;132m' ;;
+    gold)     C_ACCENT=$'\033[38;5;136m' ;;
+    slate)    C_ACCENT=$'\033[38;5;60m' ;;
+    cyan)     C_ACCENT=$'\033[38;5;37m' ;;
     *)        C_ACCENT="$C_GRAY" ;;  # gray: all same color
 esac
 
@@ -161,7 +166,10 @@ fi
 if [[ "$session_id_safe" -eq 1 ]]; then
     model_cache="${context_cache_dir}/claude-model-${session_id}"
     model_tmp="${model_cache}.tmp.$$"
-    if printf '%s' "$model_id" > "$model_tmp" 2>/dev/null; then
+    # Brace-wrap the redirect so 2>/dev/null also covers an open() failure on '>'
+    # (redirections apply left-to-right; a bare `> f 2>/dev/null` still prints the
+    # open() diagnostic before 2> takes effect). Convention 6.
+    if { printf '%s' "$model_id" > "$model_tmp"; } 2>/dev/null; then
         mv "$model_tmp" "$model_cache" 2>/dev/null || rm -f "$model_tmp" 2>/dev/null
     else
         rm -f "$model_tmp" 2>/dev/null
@@ -178,10 +186,14 @@ fi
 # Directory basename from cwd
 dir=$(basename "$cwd" 2>/dev/null || echo "?")
 
-# Get git branch only (skip expensive status/sync checks)
+# Get git branch only (skip expensive status/sync checks). The branch name does
+# not pass through the jq control-strip stage, so strip C0/C1/DEL controls here
+# before it reaches the printf '%s' render (belt-and-suspenders: the render no
+# longer interprets escapes, and git ref names should not contain controls, but a
+# crafted ref must not be able to emit raw ESC/OSC bytes to the display stream).
 branch=""
 if [[ -n "$cwd" && -d "$cwd" ]]; then
-    branch=$(git -C "$cwd" branch --show-current 2>/dev/null)
+    branch=$(git -C "$cwd" branch --show-current 2>/dev/null | tr -d '[:cntrl:]')
 fi
 
 # Context window size: from JSON above, but override for OpenRouter models where
@@ -207,12 +219,19 @@ if [[ "$session_id_safe" -eq 1 && "${ANTHROPIC_BASE_URL:-}" == *openrouter.ai* ]
 
     if [[ -n "$model_id" && ! -s "$or_cache" ]]; then
         # Fetch models list once per session (3s timeout to avoid blocking statusline).
-        # Write to a temp file first and move atomically to prevent truncated JSON
-        # from a mid-download timeout from poisoning the cache for the entire session.
-        or_tmp="${or_cache}.tmp"
-        if curl -sf --connect-timeout 3 --max-time 3 \
-            "https://openrouter.ai/api/v1/models" > "$or_tmp" 2>/dev/null; then
-            mv "$or_tmp" "$or_cache" 2>/dev/null
+        # Writer-private temp ($$ suffix) prevents a fixed-name race under
+        # overlapping session refreshes. Validate that the body is a JSON object
+        # carrying a .data array BEFORE the atomic promote, so a truncated or
+        # garbage 200-body (curl -sf already rejects non-2xx/timeout) cannot poison
+        # the cache for the rest of the session. Convention 6/8.
+        or_tmp="${or_cache}.tmp.$$"
+        if { curl -sf --connect-timeout 3 --max-time 3 \
+            "https://openrouter.ai/api/v1/models" > "$or_tmp"; } 2>/dev/null; then
+            if jq -e '.data | type == "array"' "$or_tmp" >/dev/null 2>&1; then
+                mv "$or_tmp" "$or_cache" 2>/dev/null || rm -f "$or_tmp" 2>/dev/null
+            else
+                rm -f "$or_tmp" 2>/dev/null
+            fi
         else
             rm -f "$or_tmp" 2>/dev/null
         fi
@@ -256,11 +275,22 @@ fi
 # have smaller windows than the base gpt-5.4/5.5/5.6 flagships (the whole
 # gpt-5.6 Sol/Terra/Luna family is 1,050,000), so they must precede the broad
 # flagship and *gpt-5* fallbacks. Verified against OpenRouter on 2026-07-09.
+# Closed-set GPT flagship grammar (Convention 3). Only the exact flagship set —
+# bare gpt-5.4/5.5/5.6 plus the sol/terra/luna codenames, with an optional [1m]
+# badge — is eligible for the 1,050,000 physical window (and the 370k ChatGPT-lane
+# cap arm below). Anchored so malformed suffixes (gpt-5.4-, gpt-5.6-experimental,
+# gpt-5.5[1m, gpt-5.6-sol[1m]x) fall through to the ordinary default rather than
+# being mapped to the flagship window. New codenames are a deliberate one-line edit
+# here, consistent with DAAF's validate-before-trust policy. Stored in a variable
+# to avoid [[ =~ ]] quoting pitfalls; defined unconditionally so it is in scope for
+# the ChatGPT-lane predicate below even when this static-map block is skipped.
+gpt_flagship_re='^gpt-5\.(4|5|6)(-(sol|terra|luna))?(\[1m\])?$'
 if [[ -n "$model_id" && "$or_context_resolved" -eq 0 && "$max_context" -eq 200000 ]]; then
     # Physical-family classification operates on the terminal provider-stripped
-    # slug only. Supported flagship versions must begin the slug and be followed
-    # by end-of-slug, '-' or '['; this rejects notgpt-5.6 and gpt-5.60 while
-    # retaining provider prefixes and established hyphen/[1m] variants.
+    # slug only. mini/chat variants have smaller windows and are matched by their
+    # own arms before the anchored flagship test; the flagship 1,050,000 window is
+    # granted only when the anchored grammar matches, so notgpt-5.6, gpt-5.60, and
+    # trailing-junk near-misses stay on the ordinary default.
     physical_slug="${model_id##*/}"
     case "$model_id" in
         z-ai/glm-5.2|z-ai/glm-5.2-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9])
@@ -271,7 +301,15 @@ if [[ -n "$model_id" && "$or_context_resolved" -eq 0 && "$max_context" -eq 20000
                     case "$physical_slug" in
                         *-mini*) max_context=400000 ;;
                         *-chat*) max_context=128000 ;;
-                        *) max_context=1050000 ;;
+                        *)
+                            # Only the anchored closed-set flagship grammar earns
+                            # the 1,050,000 window; malformed suffixes that reached
+                            # this family glob (e.g. gpt-5.4-, gpt-5.6-experimental,
+                            # gpt-5.6-sol[1m]x) fall through to the 200k default.
+                            if [[ "$physical_slug" =~ $gpt_flagship_re ]]; then
+                                max_context=1050000
+                            fi
+                            ;;
                     esac
                     ;;
                 gpt-5|gpt-5[-\[]*|gpt-5.2|gpt-5.2[-\[]*)
@@ -308,11 +346,12 @@ fi
 # lane values fail-open, while API/OpenRouter routes retain their wider windows.
 gpt_flagship=0
 physical_slug="${model_id##*/}"
-case "$physical_slug" in
-    gpt-5*-mini*|gpt-5*-chat*) ;;
-    gpt-5.4|gpt-5.4[-\[]*|gpt-5.5|gpt-5.5[-\[]*|gpt-5.6|gpt-5.6[-\[]*)
-        gpt_flagship=1 ;;
-esac
+# Same anchored closed-set predicate as the static map (Convention 3): the 370k
+# lane cap applies only to the exact flagship set, so mini/chat variants and
+# malformed near-misses keep their resolved (wider or default) window fail-open.
+if [[ "$physical_slug" =~ $gpt_flagship_re ]]; then
+    gpt_flagship=1
+fi
 if [[ "${DAAF_PROVIDER_SHIM:-}" == "openai" && \
       "${SHIM_BACKEND_MODE:-}" == "chatgpt" && \
       "$gpt_flagship" -eq 1 && "$max_context" -gt 370000 ]]; then
@@ -325,7 +364,18 @@ max_k=$((max_context / 1000))
 # payload). Unsafe session IDs skip the path construction and retain fail-open
 # statusline output without creating an attacker-controlled cache path.
 if [[ "$session_id_safe" -eq 1 ]]; then
-    printf '%s\n' "$max_context" > "${context_cache_dir}/claude-ctx-window-${session_id}" 2>/dev/null
+    # Atomic publish (Convention 7): a concurrent reader (context-reporter.sh) must
+    # never observe a momentarily-empty file from a direct truncate-write and fall
+    # back to 200k. Write a writer-private temp then rename, mirroring the model
+    # cache above. Brace-wrap so 2>/dev/null covers an open() failure on '>' too
+    # (Convention 6); if the cache dir is unusable, skip caching and keep rendering.
+    ctx_window_cache="${context_cache_dir}/claude-ctx-window-${session_id}"
+    ctx_window_tmp="${ctx_window_cache}.tmp.$$"
+    if { printf '%s\n' "$max_context" > "$ctx_window_tmp"; } 2>/dev/null; then
+        mv "$ctx_window_tmp" "$ctx_window_cache" 2>/dev/null || rm -f "$ctx_window_tmp" 2>/dev/null
+    else
+        rm -f "$ctx_window_tmp" 2>/dev/null
+    fi
 fi
 
 # Calculate context bar from transcript
@@ -352,7 +402,14 @@ if [[ -n "$transcript_path" && -f "$transcript_path" ]]; then
     baseline=20000
     bar_width=10
 
-    if [[ "$context_length" -gt 0 ]]; then
+    # Bounded numerator (Convention 5): only multiply context_length by 100 when it
+    # is a canonical positive decimal AND <= floor(INT64_MAX/100) = 92233720368547758,
+    # so a huge but int64-valid token count cannot overflow signed-64 arithmetic and
+    # wrap pct negative (a negative pct evades the `-gt 100` clamp and would render).
+    # is_canonical_positive_decimal guarantees the value fits in int64, so the -le
+    # comparison is itself overflow-safe. Anything else falls to the baseline estimate.
+    if is_canonical_positive_decimal "$context_length" && \
+       [[ "$context_length" -le 92233720368547758 ]]; then
         pct=$((context_length * 100 / max_context))
         pct_prefix=""
     else
@@ -578,6 +635,15 @@ if [[ -z "$rl_seg" && \
             codex_parsed=1
         fi
 
+        # Plan-usage percent parity with the native rate-limit path (Convention 9):
+        # floor a fractional percent (69.9 -> 69) so a legitimate fractional value
+        # is KEPT rather than dropped by the integer-only validator below, and so
+        # the <=100 clamp has an integer to compare. A non-numeric or negative value
+        # has no '.' to strip, still fails the is_canonical_nonneg_decimal gate, and
+        # remains a fail-closed drop.
+        q_p_pct="${q_p_pct%.*}"
+        q_s_pct="${q_s_pct%.*}"
+
         # Primary window is mandatory: captured_at + used-percent (0 allowed) + a
         # positive window length + reset-after (0 allowed) must all validate.
         if [[ "$codex_parsed" -eq 1 ]] && \
@@ -585,6 +651,10 @@ if [[ -z "$rl_seg" && \
            is_canonical_nonneg_decimal "$q_p_pct" && \
            is_canonical_positive_decimal "$q_p_win" && \
            is_canonical_nonneg_decimal "$q_p_reset"; then
+            # Clamp to <=100 (parity with the native path's intent): a stale/overshoot
+            # cached percent must not render as e.g. 101%. Validated int64 above, so
+            # the arithmetic comparison is safe.
+            (( q_p_pct > 100 )) && q_p_pct=100
             now_epoch=$(date +%s 2>/dev/null) || now_epoch=""
             # Both operands are already bounded to int64-representable canonical decimals
             # (is_canonical_nonneg_decimal above), but if their sum were ever to overflow
@@ -604,6 +674,7 @@ if [[ -z "$rl_seg" && \
                 # validates; live data shows an all-zero secondary, which is omitted.
                 if is_canonical_positive_decimal "$q_s_win" && \
                    is_canonical_nonneg_decimal "$q_s_pct"; then
+                    (( q_s_pct > 100 )) && q_s_pct=100
                     swl=$(window_label_for "$q_s_win")
                     scolor=$(rl_color_for "$q_s_pct")
                     cbody+=" ${scolor}${swl}:${q_s_pct}%${C_RESET}"
@@ -625,7 +696,11 @@ output="${C_ACCENT}${model_disp}${C_GRAY} | 📁${dir}"
 output+=" | ${ctx}${C_RESET}"
 output+="${rl_seg}"
 
-printf '%b\n' "$output"
+# Render with %s (not %b): the color bytes already live in the $'...' constants,
+# so untrusted field content (model name, effort, cwd, branch, message) is emitted
+# verbatim and its backslash sequences stay inert — a printable \033]52;c;... OSC
+# payload in a field can never be re-materialized into a real escape. Convention 1.
+printf '%s\n' "$output"
 
 # Get user's last message (text only, not tool results, skip unhelpful messages)
 if [[ -n "$transcript_path" && -f "$transcript_path" ]]; then
@@ -648,7 +723,7 @@ if [[ -n "$transcript_path" && -f "$transcript_path" ]]; then
         map(.message.content |
             if type == "string" then .
             else [.[] | select(.type == "text") | .text] | join(" ") end |
-            gsub("\n"; " ") | gsub("  +"; " ")) |
+            gsub("[[:cntrl:]]"; " ") | gsub("  +"; " ")) |
         map(select(is_unhelpful | not)) |
         first // ""
     ' < "$transcript_path" 2>/dev/null)
