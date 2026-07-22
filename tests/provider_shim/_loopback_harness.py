@@ -741,10 +741,11 @@ def full_response_scenario(*, reject_nonstream: bool = False) -> Scenario:
         0,
         [{"summary_index": 0, "deltas": ["Inspecting stream semantics."]}],
     )
-    # LIVE-WIRE SHAPE (notes/04, notes/07): the backend interleaves benign scaffolding
-    # frames between output items -- a top-level `keepalive` (timing-driven) and a
-    # `response.metadata` lifecycle frame. Both were observed live during v1.2.14
-    # validation and absorbed into the shim's _KNOWN_EVENT_TYPES allowlist in v1.3.4
+    # LIVE-WIRE SHAPE: the backend interleaves benign scaffolding frames between
+    # output items -- a top-level `keepalive` (timing-driven) and a
+    # `response.metadata` lifecycle frame. NOTE: these two do NOT appear in the
+    # Tier 0 capture notes (notes/04, notes/07); both were observed live during
+    # v1.2.14 validation and absorbed into the shim's _KNOWN_EVENT_TYPES allowlist in v1.3.4
     # (shim :1269-1270), so each is skipped silently and the downstream projection is
     # byte-identical (unknown_events stays 0). Emitted at ONE representative mid-stream
     # position in this commonly-exercised positive scenario -- NOT sprayed across every
