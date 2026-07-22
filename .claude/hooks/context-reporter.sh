@@ -244,6 +244,14 @@ INJECT_INTERVAL=60  # seconds between injections
 # and an optional [1m] badge; rejects malformed suffixes (gpt-5.4-,
 # gpt-5.6-experimental, gpt-5.6-sol[1m]x), mini/chat, and gpt-5.60.
 GPT_FLAGSHIP_RE='^gpt-5\.(4|5|6)(-(sol|terra|luna))?(\[1m\])?$'
+# Closed-set mini/chat grammars (Convention 3), byte-consistent with
+# subagent-bar.sh and context-bar.sh's anchored EREs. These replace the old
+# open-ended inner globs (*-mini*/*-chat*) so suffixed near-misses (e.g.
+# gpt-5.6-mini-preview) fail the anchor and fall through to the conservative
+# 200k default rather than being mapped to 400k/128k. Anchored on the same
+# provider-stripped PHYSICAL_SLUG the globs inspected.
+GPT_MINI_RE='^gpt-5\.(4|5|6)(-(sol|terra|luna))?-mini(\[1m\])?$'
+GPT_CHAT_RE='^gpt-5\.(4|5|6)(-(sol|terra|luna))?-chat(\[1m\])?$'
 
 # Read context window size from shared cache (written by context-bar.sh
 # statusline). Subagent-fired hook calls carry the PARENT's session_id, so
@@ -312,17 +320,18 @@ if [[ -n "$AGENT_ID" && -n "$AGENT_MODEL" && "$AGENT_MODEL" != "$SESSION_MODEL" 
             # instead of inheriting the flagship window.
             case "$PHYSICAL_SLUG" in
                 gpt-5.4|gpt-5.4[-\[]*|gpt-5.5|gpt-5.5[-\[]*|gpt-5.6|gpt-5.6[-\[]*)
-                    case "$PHYSICAL_SLUG" in
-                        *-mini*) MAX_CONTEXT=400000 ;;
-                        *-chat*) MAX_CONTEXT=128000 ;;
-                        *)
-                            if [[ "$PHYSICAL_SLUG" =~ $GPT_FLAGSHIP_RE ]]; then
-                                MAX_CONTEXT=1050000
-                            else
-                                MAX_CONTEXT=200000
-                            fi
-                            ;;
-                    esac
+                    # Closed-set classification (Convention 3), byte-consistent
+                    # with subagent-bar.sh and context-bar.sh: only the anchored
+                    # flagship/mini/chat grammars earn a GPT window. Order
+                    # flagship, then mini, then chat. Malformed suffixes that
+                    # reached this family glob (gpt-5.4-, gpt-5.6-experimental,
+                    # gpt-5.6-mini-preview, gpt-5.6-sol[1m]x) match none and map
+                    # conservatively to 200k rather than inheriting a GPT window.
+                    if   [[ "$PHYSICAL_SLUG" =~ $GPT_FLAGSHIP_RE ]]; then MAX_CONTEXT=1050000
+                    elif [[ "$PHYSICAL_SLUG" =~ $GPT_MINI_RE ]];     then MAX_CONTEXT=400000
+                    elif [[ "$PHYSICAL_SLUG" =~ $GPT_CHAT_RE ]];     then MAX_CONTEXT=128000
+                    else MAX_CONTEXT=200000
+                    fi
                     ;;
                 gpt-5|gpt-5[-\[]*|gpt-5.2|gpt-5.2[-\[]*)
                     case "$PHYSICAL_SLUG" in
