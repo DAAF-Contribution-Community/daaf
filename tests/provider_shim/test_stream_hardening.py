@@ -175,6 +175,9 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                     {
                         "input_tokens": USAGE["input_tokens"],
                         "output_tokens": USAGE["output_tokens"],
+                        # v1.3.6 (V6-R3, always-emit): absent cache detail -> both fields 0.
+                        "cache_read_input_tokens": 0,
+                        "cache_creation_input_tokens": 0,
                     },
                 )
 
@@ -500,6 +503,9 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                     {
                         "input_tokens": USAGE["input_tokens"],
                         "output_tokens": USAGE["output_tokens"],
+                        # v1.3.6 (V6-R3, always-emit): absent cache detail -> both fields 0.
+                        "cache_read_input_tokens": 0,
+                        "cache_creation_input_tokens": 0,
                     },
                 )
                 shim.assert_offline_contract()
@@ -584,24 +590,32 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
         # the established defaults: nonstream missing fields render as 0; the
         # streaming path estimates a missing output count from accumulated text
         # (empty here -> floor of 1) and defaults a missing input count to 0.
+        # v1.3.6 (V6-R3, always-emit): every malformed-usage case carries NO cache detail,
+        # so the expected client-visible usage gains cache_read/cache_creation as 0.
         cases = (
             (
                 "usage-list",
                 [],
-                {"input_tokens": 0, "output_tokens": 0},
-                {"input_tokens": 0, "output_tokens": 1},
+                {"input_tokens": 0, "output_tokens": 0,
+                 "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0},
+                {"input_tokens": 0, "output_tokens": 1,
+                 "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0},
             ),
             (
                 "usage-bool",
                 {"input_tokens": True, "output_tokens": USAGE["output_tokens"]},
-                {"input_tokens": 0, "output_tokens": USAGE["output_tokens"]},
-                {"input_tokens": 0, "output_tokens": USAGE["output_tokens"]},
+                {"input_tokens": 0, "output_tokens": USAGE["output_tokens"],
+                 "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0},
+                {"input_tokens": 0, "output_tokens": USAGE["output_tokens"],
+                 "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0},
             ),
             (
                 "usage-negative",
                 {"input_tokens": USAGE["input_tokens"], "output_tokens": -1},
-                {"input_tokens": USAGE["input_tokens"], "output_tokens": 0},
-                {"input_tokens": USAGE["input_tokens"], "output_tokens": 1},
+                {"input_tokens": USAGE["input_tokens"], "output_tokens": 0,
+                 "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0},
+                {"input_tokens": USAGE["input_tokens"], "output_tokens": 1,
+                 "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0},
             ),
         )
         for label, usage, expected_nonstream, expected_stream in cases:
@@ -1637,7 +1651,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 startup_records = [
                     line
                     for line in shim.captured_stderr().splitlines()
-                    if "req_id=- phase=process shim v1.3.5 starting" in line
+                    if "req_id=- phase=process shim v1.3.6 starting" in line
                 ]
                 self.assertEqual(len(startup_records), 1, startup_records)
                 self.assertIn(

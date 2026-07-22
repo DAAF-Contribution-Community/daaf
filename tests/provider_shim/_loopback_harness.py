@@ -109,6 +109,16 @@ FAKE_REFRESH_TOKEN = "FAKE_PROVIDER_SHIM_REFRESH_TOKEN_000000000000"
 FAKE_ID_TOKEN = "FAKE_PROVIDER_SHIM_ID_TOKEN_000000000000"
 FAKE_ACCOUNT_ID = "acct_provider_shim_unittest"
 USAGE = {"input_tokens": 31, "output_tokens": 17, "total_tokens": 48}
+# v1.3.6 (V6-R1 test plan item 1): sibling fixture carrying a prompt-cache detail. NOT a
+# mutation of USAGE (that would perturb existing token assertions). OpenAI's input_tokens (31)
+# INCLUDES the cached prefix (12), so the client-visible Anthropic mapping subtracts to
+# input_tokens=19 + cache_read_input_tokens=12; the terminal record keeps the OpenAI total 31.
+USAGE_WITH_CACHE = {
+    "input_tokens": 31,
+    "output_tokens": 17,
+    "total_tokens": 48,
+    "input_tokens_details": {"cached_tokens": 12},
+}
 NONSTREAM_REJECTION_BODY = {"detail": "Stream must be set to true"}
 TERMINAL_FIELD_OMITTED = object()
 

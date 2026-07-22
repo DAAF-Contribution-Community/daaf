@@ -32,6 +32,8 @@ _HEALTH_KEYS = {
     "auth",
     # v1.3.3 (A2-R6): reasoning-cache continuity block (entries/restored counts only).
     "reasoning_cache",
+    # v1.3.6 (V6-R4): prompt-cache observability block (cumulative counts only).
+    "prompt_cache",
 }
 
 
@@ -352,7 +354,7 @@ class ProviderShimHistoricalRegressionTests(unittest.TestCase):
                         self.assertEqual(set(health), _HEALTH_KEYS)
                         self.assertEqual(health["service"], "daaf-anthropic-openai-shim")
                         self.assertEqual(health["status"], "ok")
-                        self.assertEqual(health["version"], "1.3.5")
+                        self.assertEqual(health["version"], "1.3.6")
                         self.assertEqual(health["backend_mode"], mode)
                         self.assertEqual(health["sanitize_tools"], sanitize)
                         self.assertEqual(health["reasoning_effort"], effort)

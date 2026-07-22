@@ -75,7 +75,14 @@ _SERIALIZED_TWO_TOOL_PROJECTION = [
             "content": [],
             "stop_reason": None,
             "stop_sequence": None,
-            "usage": {"input_tokens": 0, "output_tokens": 0},
+            # v1.3.6 (V6-R3, always-emit): the message_start zero-usage seed gains the two
+            # cache fields as 0 for a deterministic usage shape.
+            "usage": {
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "cache_read_input_tokens": 0,
+                "cache_creation_input_tokens": 0,
+            },
         },
     },
     {
@@ -119,9 +126,12 @@ _SERIALIZED_TWO_TOOL_PROJECTION = [
     {
         "type": "message_delta",
         "delta": {"stop_reason": "tool_use", "stop_sequence": None},
+        # v1.3.6 (V6-R3, always-emit): absent cache detail -> both fields 0.
         "usage": {
             "input_tokens": USAGE["input_tokens"],
             "output_tokens": USAGE["output_tokens"],
+            "cache_read_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
         },
     },
     {"type": "message_stop"},

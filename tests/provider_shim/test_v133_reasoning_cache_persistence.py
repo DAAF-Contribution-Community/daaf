@@ -372,7 +372,7 @@ class ReasoningCacheWriteAndRestoreTests(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
         seam_path = Path(tmp.name) / "reasoning_cache.json"
         module = _load_shim_module(seam_path)  # cold start
-        total = module._REASONING_PERSIST_MAX_ENTRIES + 44  # 300 when cap is 256
+        total = module._REASONING_PERSIST_MAX_ENTRIES + 44  # cap-symbolic: MAX_ENTRIES + 44
         for i in range(total):
             module._cache_reasoning(f"call_{i}", _reasoning(f"rs_{i}"))
         module._write_reasoning_cache_state()
@@ -419,10 +419,14 @@ class ReasoningCacheWriteAndRestoreTests(unittest.TestCase):
 
     # --- A2 review fold-in: oversized on-disk file -> restore skipped (pre-read size guard) ---
     def test_oversized_file_is_not_restored(self) -> None:
-        # A well-formed but oversized file (> the 2 MiB persist cap) must be skipped by the
+        # A well-formed but oversized file (> the persist byte cap) must be skipped by the
         # pre-read size guard: WITHOUT the guard this single fat entry would restore fine;
         # WITH it, restore is skipped, the cache stays empty, and import does not raise.
-        big_blob = "X" * (2 * 1024 * 1024 + 200_000)  # comfortably over the 2 MiB cap
+        # The oversized blob is derived from the cap SYMBOLICALLY (cold-load precedent, same
+        # pattern as test_restored_count_clamped_to_cache_cap below) so a future cap resize
+        # keeps the test valid without an edit.
+        cold_module, _ = self._fresh_module()  # cold load only to read the persist byte cap
+        big_blob = "X" * (cold_module._REASONING_PERSIST_MAX_BYTES + 200_000)  # over the cap
         payload = _seam_payload(
             [(
                 "call_big",

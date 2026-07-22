@@ -63,6 +63,44 @@
 #   * GET /health endpoint for the manager's idempotency/status checks.
 #
 # Changelog:
+#   v1.3.6 (2026-07-22): Prompt-cache observability + reasoning-cache persistence cap resize
+#     (minor bump — the observability is additive and the client-visible usage mapping is
+#     sum-invariant, so downstream context accounting is byte-equivalent). Step 1 of the
+#     prompt-cache backlog item; Step 2 (prompt_cache_key emission) remains out of scope
+#     (blocked on there being no stable cross-turn identifier in the shim today).
+#     * CAPTURE (V6-R1): the shim now reads usage.input_tokens_details.cached_tokens at all
+#       three usage-parse sites (streaming response.completed/incomplete reducer, and both
+#       non-stream lanes via _responses_to_anthropic, which carries the value through a
+#       private _cached_tokens key each lane pops before send). Defensive typing via
+#       _resolve_cached_tokens: only a non-bool int >= 0 that does not exceed the reported
+#       input total is accepted; absent/null/string/negative/bool/clamped all resolve to
+#       ABSENT (None), indistinguishable from "no cache info" (old backends/fixtures emit no
+#       detail). _RequestLifecycleState gains self.cached_tokens. Never raises.
+#     * TERMINAL RECORD (V6-R2): the terminal log record gains cached_tokens (the captured
+#       int, or the "-" absent-convention when None) at the single lane-agnostic emission
+#       site. This is the field the ~1-week telemetry review greps.
+#     * ANTHROPIC USAGE MAPPING (V6-R3, Decision 1 + Decision 2 = always-emit): client-
+#       visible usage blocks now use the subtraction mapping — input_tokens = openai_total
+#       - cached, cache_read_input_tokens = cached, cache_creation_input_tokens = 0 (OpenAI
+#       reports no cache-write count). Anthropic's input_tokens is the uncached remainder,
+#       so this preserves the sum invariant EXACTLY (the three fields sum to the OpenAI
+#       total) and Claude Code shows real cache behavior natively. The two cache fields are
+#       ALWAYS present (0 when absent) for a deterministic shape matching Anthropic's own
+#       responses; message_start zero-usage seeds and error frames carry them as zeros too.
+#       Clamp guard folds into _resolve_cached_tokens (cached > input_total -> absent,
+#       fail-open, never a negative input_tokens).
+#     * /HEALTH (V6-R4, Decision 3): a NEW top-level prompt_cache block — requests_with_usage,
+#       requests_with_cached, cached_tokens_total, input_tokens_total (module-global int
+#       counters, counts only, ticked once per terminal). hit-rate = cached_tokens_total /
+#       input_tokens_total. This changes the pinned /health key set, so _HEALTH_KEYS + the
+#       version pin move in the same commit (the sanctioned money-test extension).
+#     * REASONING-CACHE PERSISTENCE CAP RESIZE (V6-R5, Decision 4b): _REASONING_PERSIST_MAX_
+#       ENTRIES 256 -> 1024, _REASONING_PERSIST_MAX_BYTES 2 MiB -> 8 MiB (4x headroom for
+#       ~4 session-tails). In-memory _REASONING_CACHE_CAP (2048) UNCHANGED — the persist cap
+#       stays under it (no RAM change, no restore-clamp interaction). Worst-case persist
+#       write measured at low tens of ms at the 8 MiB bound (see the persistence-bounds
+#       comment). Bounds stay hard constants (no env seam).
+#     SHIM_VERSION -> 1.3.6.
 #   v1.3.5 (2026-07-21): Janitorial — removed the dead non-streaming lazy-401 refresh
 #     branch (no behavior change). The branch lived inside the OpenAI/API-key
 #     `if not stream:` block and was guarded by `SHIM_BACKEND_MODE == "chatgpt"`, but
@@ -956,7 +994,7 @@ import httpx
 import uvicorn
 
 # --- Config ---
-SHIM_VERSION = "1.3.5"
+SHIM_VERSION = "1.3.6"
 SHIM_SERVICE_ID = "daaf-anthropic-openai-shim"
 
 SHIM_PORT = int(os.environ.get("SHIM_PORT", "4141"))
@@ -1289,6 +1327,11 @@ class _RequestLifecycleState:
         self.stop_reason = "-"
         self.input_tokens = None
         self.output_tokens = None
+        # v1.3.6 (V6-R1): cached-prefix count (OpenAI usage.input_tokens_details.
+        # cached_tokens), None until a backend terminal usage is parsed. Emitted on the
+        # terminal record (as "-" when None) and feeds the /health prompt_cache counters.
+        # Lane-agnostic, like the token fields above.
+        self.cached_tokens = None
         self.usage_source = "-"
         self.tools_called = 0
         self.effort_value = "-"
@@ -1698,12 +1741,21 @@ def _log_terminal_once():
         if state.body_close_send == "not_attempted":
             state.body_close_send = "skipped_disconnect"
     state.phase = "terminal"
+    # v1.3.6 (V6-R4): tick the process-cumulative /health prompt_cache counters exactly
+    # once per request (this function is idempotent via terminal_logged, checked above).
+    _bump_prompt_cache_counters(state)
     _lifecycle_event(
         "terminal", outcome=state.outcome, model=state.model,
         stream=("y" if state.stream else "n") if state.stream is not None else "-",
         msgs=state.message_count, tools=state.tool_count,
         stop=state.stop_reason, input_tokens=state.input_tokens,
         output_tokens=state.output_tokens, usage=state.usage_source,
+        # v1.3.6 (V6-R2): cached-prefix count for the ~1-week telemetry review. The
+        # captured int, or the "-" absent-convention when no valid detail was parsed
+        # (absent/malformed/clamped -> None). Mapped explicitly because _machine_field_value
+        # would render None as "None"; the "-" convention matches usage/stop above. Single
+        # lane-agnostic emission site.
+        cached_tokens=(state.cached_tokens if state.cached_tokens is not None else "-"),
         tools_called=state.tools_called, effort="%s:%s" % (
             state.effort_value, state.effort_source),
         reasoning_cache_miss=state.reasoning_cache_misses,
@@ -2178,6 +2230,40 @@ def _bump_reasoning_hit_counters(restored):
         _REASONING_CACHE_RESTORED_HITS_TOTAL += 1
 
 
+# v1.3.6 (V6-R4): process-cumulative prompt-cache observability counters for the /health
+# prompt_cache block. COUNTS ONLY — never prompt content or token material. Ticked once per
+# terminal (from _log_terminal_once, idempotent via terminal_logged) by
+# _bump_prompt_cache_counters. requests_with_usage counts terminals with a backend-parsed
+# usage; requests_with_cached is the subset reporting cached_tokens > 0; cached_tokens_total
+# and input_tokens_total are the cumulative sums (input_tokens_total is the OpenAI input
+# TOTAL) so the ~1-week review reads a cache hit-rate in ONE probe as
+# cached_tokens_total / input_tokens_total.
+_PROMPT_CACHE_REQUESTS_WITH_USAGE = 0
+_PROMPT_CACHE_REQUESTS_WITH_CACHED = 0
+_PROMPT_CACHE_CACHED_TOKENS_TOTAL = 0
+_PROMPT_CACHE_INPUT_TOKENS_TOTAL = 0
+
+
+def _bump_prompt_cache_counters(state):
+    # v1.3.6 (V6-R4): tick the /health prompt_cache counters for one terminal. Gated on a
+    # BACKEND-sourced usage (usage_source == "backend") so the estimated-fallback path
+    # (input_tokens defaulted to 0, no real cache detail) never pollutes the hit-rate
+    # denominator. The cached counters advance only on a valid, non-clamped cached detail
+    # (state.cached_tokens a real int > 0). Counts only; never raises.
+    global _PROMPT_CACHE_REQUESTS_WITH_USAGE, _PROMPT_CACHE_REQUESTS_WITH_CACHED
+    global _PROMPT_CACHE_CACHED_TOKENS_TOTAL, _PROMPT_CACHE_INPUT_TOKENS_TOTAL
+    if state is None or state.usage_source != "backend":
+        return
+    if isinstance(state.input_tokens, bool) or not isinstance(state.input_tokens, int):
+        return
+    _PROMPT_CACHE_REQUESTS_WITH_USAGE += 1
+    _PROMPT_CACHE_INPUT_TOKENS_TOTAL += state.input_tokens
+    cached = state.cached_tokens
+    if not isinstance(cached, bool) and isinstance(cached, int) and cached > 0:
+        _PROMPT_CACHE_REQUESTS_WITH_CACHED += 1
+        _PROMPT_CACHE_CACHED_TOKENS_TOTAL += cached
+
+
 def _cache_reasoning(call_id, reasoning_item):
     # INTENT: store one reasoning item under a function_call's call_id, LRU-style.
     # REASONING: move-to-end on write so the most recently paired call_ids evict
@@ -2269,16 +2355,19 @@ else:
     )
     _REASONING_CACHE_PATH = os.path.join(_REASONING_CACHE_DIR, "reasoning_cache.json")
 
-# Persistence bounds (A2-R2; Decision 3 as amended). The entry/byte caps are the PRIMARY
-# bound and intentionally mirror the in-memory LRU tail — restart recovery only needs the
-# recent tail (active tool loops), not all 2048 entries, and the byte cap bounds the
-# response-path write to single-digit ms. The TTL is only a 30-day SANITY CEILING against
+# Persistence bounds (A2-R2; Decision 3 as amended; v1.3.6 V6-R5 resize to 1024 / 8 MiB).
+# The entry/byte caps are the PRIMARY bound and intentionally mirror the in-memory LRU tail
+# — restart recovery only needs the recent tail (active tool loops), not all 2048 in-memory
+# entries, and the byte cap bounds the response-path write to low tens of ms at the 8 MiB
+# bound (measured 2026-07-22: ~19 ms median, ~25 ms worst over 20 full-snapshot serialize+
+# atomic-write iterations incl. fsync — a conservative upper bound; was "single-digit ms" at
+# the old 2 MiB cap). The TTL is only a 30-day SANITY CEILING against
 # replaying ancient blobs of unknown backend-side validity; it is deliberately NOT an
 # aggressive expiry, because the live cache has no age limit (LRU only) and multi-day
 # session gaps are normal (a short TTL would erase exactly the entries a resumed session
 # replays). Keep the NEWEST entries when either bound binds.
-_REASONING_PERSIST_MAX_ENTRIES = 256
-_REASONING_PERSIST_MAX_BYTES = 2_097_152   # 2 MiB
+_REASONING_PERSIST_MAX_ENTRIES = 1024      # v1.3.6 (V6-R5): 256 -> 1024 (4x headroom)
+_REASONING_PERSIST_MAX_BYTES = 8_388_608   # v1.3.6 (V6-R5): 2 MiB -> 8 MiB
 _REASONING_PERSIST_TTL_S = 2_592_000       # 30 days (sanity ceiling only)
 
 # Count of entries loaded from the persisted snapshot at startup (0 if none). Set by the
@@ -4297,6 +4386,55 @@ async def _open_backend_stream(url, headers, payload, disconnect_event):
     raise httpx.HTTPError("stream retry loop exhausted")
 
 
+# --- Prompt-cache observability helpers (v1.3.6, V6-R1/R3) ---
+
+def _resolve_cached_tokens(usage_obj, input_total):
+    # V6-R1/R3: extract usage.input_tokens_details.cached_tokens from a Responses usage
+    # object with defensive typing AND the R3 clamp guard. Returns the effective cached
+    # count (a non-negative int) or None. None means ABSENT — deliberately
+    # indistinguishable from "no cache info", which is exactly how old backends and
+    # fixtures emit it (they carry no input_tokens_details at all). Accept ONLY a non-bool
+    # int >= 0; absent/null/string/negative/bool all resolve to None. The OpenAI Responses
+    # `input_tokens` INCLUDES the cached prefix, so cached is a subset of that total; a
+    # value exceeding the reported input total is malformed upstream and is treated as
+    # absent (fail-open — never a negative client-visible input_tokens). Never raises:
+    # usage parsing must not turn an otherwise-good response into a failure.
+    if not isinstance(usage_obj, dict):
+        return None
+    details = usage_obj.get("input_tokens_details")
+    if not isinstance(details, dict):
+        return None
+    cached = details.get("cached_tokens")
+    if isinstance(cached, bool) or not isinstance(cached, int) or cached < 0:
+        return None
+    if isinstance(input_total, bool) or not isinstance(input_total, int):
+        return None
+    if cached > input_total:
+        return None
+    return cached
+
+
+def _anthropic_usage_block(input_total, output_total, cached):
+    # V6-R3 (Decision 1 + Decision 2 = always-emit): build the client-visible Anthropic
+    # usage block. Anthropic's `input_tokens` is the UNCACHED remainder only (unlike
+    # OpenAI's, which includes the cached prefix), and clients (incl. Claude Code context
+    # accounting) may sum input_tokens + cache_read_input_tokens + cache_creation_input_tokens
+    # for the prompt total. So the mapping SUBTRACTS the cached prefix from input_tokens and
+    # reports it as cache_read_input_tokens, preserving the sum invariant EXACTLY (the three
+    # token fields still sum to the OpenAI input total, so downstream context arithmetic is
+    # byte-equivalent whether or not caching fired). cache_read/cache_creation are ALWAYS
+    # present (0 when `cached` is None) for a deterministic usage shape that matches
+    # Anthropic's own responses. OpenAI reports no cache-WRITE count, so
+    # cache_creation_input_tokens is always 0. `cached` must already be the effective
+    # (typed, clamp-checked) value from _resolve_cached_tokens.
+    return {
+        "input_tokens": input_total - cached if cached is not None else input_total,
+        "output_tokens": output_total,
+        "cache_read_input_tokens": cached if cached is not None else 0,
+        "cache_creation_input_tokens": 0,
+    }
+
+
 # --- Non-streaming path: full Responses object -> full Anthropic message ---
 
 def _responses_to_anthropic(resp_obj, model):
@@ -4380,6 +4518,9 @@ def _responses_to_anthropic(resp_obj, model):
 
     usage = resp_obj.get("usage") or {}
     status = resp_obj.get("status", "completed")
+    input_total = usage.get("input_tokens", 0)
+    output_total = usage.get("output_tokens", 0)
+    cached = _resolve_cached_tokens(usage, input_total)
     return {
         "id": resp_obj.get("id") or f"msg_{uuid.uuid4().hex[:24]}",
         "type": "message",
@@ -4388,10 +4529,14 @@ def _responses_to_anthropic(resp_obj, model):
         "content": content,
         "stop_reason": _stop_reason_from_status(status, saw_tool_use),
         "stop_sequence": None,
-        "usage": {
-            "input_tokens": usage.get("input_tokens", 0),
-            "output_tokens": usage.get("output_tokens", 0),
-        },
+        "usage": _anthropic_usage_block(input_total, output_total, cached),
+        # V6-R1: private carry of the effective cached count (or None) for the two
+        # non-stream lane consumers. Each pops it before the message is sent so it never
+        # reaches the wire. Carried SEPARATELY from cache_read_input_tokens because a
+        # mapped cache_read of 0 cannot distinguish ABSENT (terminal cached_tokens=-) from
+        # a genuine cached_tokens:0 (terminal cached_tokens=0) — a distinction the terminal
+        # record and the /health requests_with_cached counter both need.
+        "_cached_tokens": cached,
     }
 
 
@@ -5298,12 +5443,19 @@ async def _handle_messages(body, receive, send):
                         "type": normalized_type, "message": safe_message}})
                 return
             usage = anth["usage"]
-            _calibrate_count_ratio(usage["input_tokens"], len(body))
+            cached = anth.pop("_cached_tokens", None)
+            # V6-R1: reconstruct the OpenAI input TOTAL from the always-emit block
+            # (uncached remainder + cached prefix, 0 when absent). state.input_tokens and
+            # the count-token calibrator both stay on the OpenAI total (unchanged terminal
+            # semantics), NOT the subtracted client-visible remainder.
+            input_total = usage["input_tokens"] + (cached or 0)
+            _calibrate_count_ratio(input_total, len(body))
             state = _request_state()
             if state is not None:
                 state.stop_reason = anth["stop_reason"]
-                state.input_tokens = usage["input_tokens"]
+                state.input_tokens = input_total
                 state.output_tokens = usage["output_tokens"]
+                state.cached_tokens = cached
                 state.usage_source = "backend"
             await _send_json(send, 200, anth)
             return
@@ -5355,13 +5507,18 @@ async def _handle_messages(body, receive, send):
                     "message": "backend response conversion failed"}})
                 return
             usage = anth["usage"]
-            # v1.2.1: feed the count_tokens calibrator from successful usage.
-            _calibrate_count_ratio(usage["input_tokens"], len(body))
+            cached = anth.pop("_cached_tokens", None)
+            # v1.2.1: feed the count_tokens calibrator from successful usage — the OpenAI
+            # input TOTAL (uncached remainder + cached prefix), not the subtracted client-
+            # visible remainder. V6-R1: state.input_tokens likewise stays on the total.
+            input_total = usage["input_tokens"] + (cached or 0)
+            _calibrate_count_ratio(input_total, len(body))
             state = _request_state()
             if state is not None:
                 state.stop_reason = anth["stop_reason"]
-                state.input_tokens = usage["input_tokens"]
+                state.input_tokens = input_total
                 state.output_tokens = usage["output_tokens"]
+                state.cached_tokens = cached
                 state.usage_source = "backend"
             await _send_json(send, 200, anth)
             return
@@ -5427,6 +5584,7 @@ async def _handle_messages(body, receive, send):
         failure_finalized = False
         input_tokens = None
         output_tokens = None
+        cached_tokens = None         # V6-R1: cached-prefix count from terminal usage (None until parsed)
         accumulated_text = ""        # for usage estimation fallback
         usage_estimated = False
         retries = 0
@@ -5871,7 +6029,8 @@ async def _handle_messages(body, receive, send):
                 await emit("message_start", {"type": "message_start", "message": {
                     "id": msg_id, "type": "message", "role": "assistant", "model": model,
                     "content": [], "stop_reason": None, "stop_sequence": None,
-                    "usage": {"input_tokens": 0, "output_tokens": 0}}})
+                    "usage": {"input_tokens": 0, "output_tokens": 0,
+                              "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0}}})
                 started = True
                 # v1.2.10: this is the ONLY finalizer caller that knows a real
                 # backend HTTP status (`status`). Map it to the Anthropic error type
@@ -5884,11 +6043,13 @@ async def _handle_messages(body, receive, send):
                 await _finalize_stream_failure(client_failure, error_type)
                 return
 
-            # message_start (usage filled with 0s; refined at message_delta).
+            # message_start (usage filled with 0s; refined at message_delta). V6-R3: the
+            # two cache fields are always present (0) for a deterministic usage shape.
             await emit("message_start", {"type": "message_start", "message": {
                 "id": msg_id, "type": "message", "role": "assistant", "model": model,
                 "content": [], "stop_reason": None, "stop_sequence": None,
-                "usage": {"input_tokens": 0, "output_tokens": 0}}})
+                "usage": {"input_tokens": 0, "output_tokens": 0,
+                          "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0}}})
             started = True
 
             # v1.2.14 (R6): message_start is on the wire — start the downstream
@@ -6270,6 +6431,10 @@ async def _handle_messages(body, receive, send):
                     usage = r_obj.get("usage", {})
                     input_tokens = usage.get("input_tokens", input_tokens)
                     output_tokens = usage.get("output_tokens", output_tokens)
+                    # V6-R1: capture the cached-prefix count alongside the token totals.
+                    # input_tokens is now resolved to the OpenAI total, so the clamp guard
+                    # inside _resolve_cached_tokens compares against the correct basis.
+                    cached_tokens = _resolve_cached_tokens(usage, input_tokens)
                     # Retain only validated terminal output for one post-loop cache
                     # population. The first valid terminal is final: stop semantic
                     # consumption immediately and close the upstream context in the
@@ -6438,6 +6603,10 @@ async def _handle_messages(body, receive, send):
                 state.stop_reason = stop_reason
                 state.input_tokens = input_tokens
                 state.output_tokens = output_tokens
+                # V6-R1: None on the estimated path (no terminal usage parsed) -> the
+                # terminal record renders "-"; the /health prompt_cache counters only tick
+                # on a backend-sourced usage (usage_source == "backend").
+                state.cached_tokens = cached_tokens
                 state.usage_source = "estimated" if usage_estimated else "backend"
                 state.tools_called = len(tool_state)
 
@@ -6446,7 +6615,9 @@ async def _handle_messages(body, receive, send):
             await _stop_heartbeat()
             await emit("message_delta", {"type": "message_delta",
                 "delta": {"stop_reason": stop_reason, "stop_sequence": None},
-                "usage": {"input_tokens": input_tokens, "output_tokens": output_tokens}})
+                # V6-R3: always-emit Anthropic usage shape with the subtraction mapping.
+                # cached_tokens is already the effective (typed, clamp-checked) value.
+                "usage": _anthropic_usage_block(input_tokens, output_tokens, cached_tokens)})
             await emit("message_stop", {"type": "message_stop"})
             # A returned ASGI send marks only send_completed. It does not prove
             # client acknowledgment or receipt. Success is fixed at this semantic
@@ -6483,7 +6654,9 @@ async def _handle_messages(body, receive, send):
                 await emit("message_start", {"type": "message_start", "message": {
                     "id": msg_id, "type": "message", "role": "assistant", "model": model,
                     "content": [], "stop_reason": None, "stop_sequence": None,
-                    "usage": {"input_tokens": 0, "output_tokens": 0}}})
+                    # V6-R3: always-emit cache fields (0) for a deterministic usage shape.
+                    "usage": {"input_tokens": 0, "output_tokens": 0,
+                              "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0}}})
                 started = True
             try:
                 await _finalize_stream_failure(failure_kind)
@@ -6665,6 +6838,18 @@ async def _handle_health(send):
             "restored": _REASONING_CACHE_RESTORED,
             "hits": _REASONING_CACHE_HITS_TOTAL,
             "restored_hits": _REASONING_CACHE_RESTORED_HITS_TOTAL,
+        },
+        # v1.3.6 (V6-R4): prompt-cache observability — a NEW top-level block. Unlike the
+        # v1.3.4 reasoning_cache fold-in, prompt_cache has no natural parent (reasoning_cache
+        # is a DIFFERENT cache — reasoning-continuity blobs), so it is added as its own key.
+        # This DOES change the pinned top-level key set, so _HEALTH_KEYS + the version pin
+        # move in the same commit (the sanctioned, review-visible money-test extension).
+        # Counts only, never content. hit-rate = cached_tokens_total / input_tokens_total.
+        "prompt_cache": {
+            "requests_with_usage": _PROMPT_CACHE_REQUESTS_WITH_USAGE,
+            "requests_with_cached": _PROMPT_CACHE_REQUESTS_WITH_CACHED,
+            "cached_tokens_total": _PROMPT_CACHE_CACHED_TOKENS_TOTAL,
+            "input_tokens_total": _PROMPT_CACHE_INPUT_TOKENS_TOTAL,
         },
     })
 
