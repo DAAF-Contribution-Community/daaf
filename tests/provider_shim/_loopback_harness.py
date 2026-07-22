@@ -1480,6 +1480,69 @@ def _wait_for_peer_close(
     return False
 
 
+# v1.3.6 (T2-C): live-realistic default response headers for SUCCESS (2xx) turns.
+# Before this, the mock success path emitted only Content-Type/Content-Length/
+# Connection, so the shim's header-driven observability (upstream_req_id extraction,
+# the chatgpt-lane quota_snapshot) always ran on empty input — live-unrealistic. These
+# sets are keyed by lane and merged DEFAULTS-FIRST in do_POST, so any scenario-injected
+# header (Scenario.stream_headers / attempt_headers) still wins (see the merge sites in
+# do_POST). Applied only to 2xx; error (>=400) responses keep their current header
+# behavior, matching the live captures where the openai 400 dropped x-ratelimit and the
+# chatgpt 4xx carried no x-codex quota surface (notes/04:72, notes/07:41).
+#
+# openai lane (notes/04:70-72, quoted from the live 200 turns): an opaque x-request-id,
+# an integer openai-processing-ms, and all six x-ratelimit-* members.
+_DEFAULT_OPENAI_SUCCESS_HEADERS = {
+    "x-request-id": "req_0f3c8a1b2d4e5f60718293a4b5c6d7e8",
+    "openai-processing-ms": "142",
+    "x-ratelimit-limit-requests": "5000",
+    "x-ratelimit-limit-tokens": "2000000",
+    "x-ratelimit-remaining-requests": "4999",
+    "x-ratelimit-remaining-tokens": "1999872",
+    "x-ratelimit-reset-requests": "12ms",
+    "x-ratelimit-reset-tokens": "8ms",
+}
+# chatgpt (Codex subscription) lane (notes/07:41-52): the request-id header is
+# x-oai-request-id (NOT x-request-id), and a 2xx carries the x-codex-* quota surface with
+# NO x-ratelimit-*. These are REPRESENTATIVE members of an evolving prefix FAMILY, not a
+# stable/exhaustive enumeration (map R8; notes/07:48-52 flags the live set drifting from
+# the survey) — the shim's allowlist is prefix-based (x-codex-*) precisely for this. The
+# secondary-window members are deliberately OMITTED: they were empty/absent on the live
+# capture (notes/07:44), and omitting them keeps the "absent header -> snapshot field
+# renders as '-'" contract that the quota tests pin (test_v131_quota_state.py,
+# test_v1214_heartbeat_and_quota.py) intact when they inject their own primary-only set.
+# Values are canonical (integer used-percent, integer window/reset), so the quota-state
+# writer records well-formed fields and introduces no validator noise.
+_DEFAULT_CHATGPT_SUCCESS_HEADERS = {
+    "x-oai-request-id": "req_5e6f708192a3b4c5d6e7f8091a2b3c4d",
+    "x-codex-plan-type": "pro",
+    "x-codex-active-limit": "premium",
+    "x-codex-primary-used-percent": "37",
+    "x-codex-primary-window-minutes": "10080",
+    "x-codex-primary-reset-after-seconds": "425000",
+    "x-codex-primary-reset-at": "1784984069",
+    "x-codex-credits-has-credits": "true",
+    "x-codex-credits-balance": "0",
+    "x-codex-credits-unlimited": "false",
+}
+
+
+def _default_success_headers(request_path: str) -> dict[str, str]:
+    """Return the lane-appropriate default 2xx header set for a backend request path.
+
+    Lane is read from the request path, which faithfully encodes the lane the shim
+    believes it is on: RealShim points the openai lane at ``{base}/v1`` and the chatgpt
+    lane at ``{base}`` (RealShim.__enter__), and the shim always posts to
+    ``{base}/responses`` — so an openai request arrives as ``/v1/responses`` and a chatgpt
+    request as ``/responses``. This is the same signal a real backend keys on (api.openai
+    .com/v1 vs chatgpt.com/backend-api/codex), so no synthetic lane flag is needed. A fresh
+    dict is returned each call so callers may mutate it while merging.
+    """
+    if request_path.startswith("/v1/"):
+        return dict(_DEFAULT_OPENAI_SUCCESS_HEADERS)
+    return dict(_DEFAULT_CHATGPT_SUCCESS_HEADERS)
+
+
 class MockResponsesServer(AbstractContextManager["MockResponsesServer"]):
     """Threaded loopback Responses server on an OS-assigned port."""
 
@@ -1759,7 +1822,16 @@ class MockResponsesServer(AbstractContextManager["MockResponsesServer"]):
                             attempt_action = owner.scenario.attempt_statuses[
                                 min(attempt_index, len(owner.scenario.attempt_statuses) - 1)
                             ]
-                        attempt_headers = dict(owner.scenario.stream_headers)
+                        # v1.3.6 (T2-C): seed a 2xx response with the lane-appropriate
+                        # live default header set (openai x-request-id/processing-ms/
+                        # x-ratelimit-*, chatgpt x-oai-request-id + x-codex-* quota),
+                        # then let scenario injections override (defaults first;
+                        # stream_headers and attempt_headers win). Errors (>=400) and
+                        # non-int transport actions keep their prior bare-header behavior.
+                        attempt_headers = {}
+                        if isinstance(attempt_action, int) and 200 <= attempt_action < 400:
+                            attempt_headers.update(_default_success_headers(self.path))
+                        attempt_headers.update(owner.scenario.stream_headers)
                         if owner.scenario.attempt_headers:
                             attempt_headers.update(
                                 owner.scenario.attempt_headers[
@@ -1828,7 +1900,16 @@ class MockResponsesServer(AbstractContextManager["MockResponsesServer"]):
                             attempt_action = owner.scenario.attempt_statuses[
                                 min(attempt_index, len(owner.scenario.attempt_statuses) - 1)
                             ]
-                        attempt_headers = dict(owner.scenario.stream_headers)
+                        # v1.3.6 (T2-C): seed a 2xx response with the lane-appropriate
+                        # live default header set (openai x-request-id/processing-ms/
+                        # x-ratelimit-*, chatgpt x-oai-request-id + x-codex-* quota),
+                        # then let scenario injections override (defaults first;
+                        # stream_headers and attempt_headers win). Errors (>=400) and
+                        # non-int transport actions keep their prior bare-header behavior.
+                        attempt_headers = {}
+                        if isinstance(attempt_action, int) and 200 <= attempt_action < 400:
+                            attempt_headers.update(_default_success_headers(self.path))
+                        attempt_headers.update(owner.scenario.stream_headers)
                         if owner.scenario.attempt_headers:
                             attempt_headers.update(
                                 owner.scenario.attempt_headers[
