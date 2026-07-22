@@ -426,6 +426,13 @@ def _append_text_item(
     return item
 
 
+# Opaque default `obfuscation` blob stamped on every arguments.delta to mirror
+# the live Codex wire (see _append_tool_item). The exact bytes are not read by
+# the shim (it is upstream-stripped); only the field's presence and silent
+# tolerance are load-bearing, so any bounded opaque string is faithful.
+_DEFAULT_ARG_DELTA_OBFUSCATION = "b7F3kR9mP2xQ8nL5"
+
+
 def _append_tool_item(
     builder: _EventBuilder,
     output_index: int,
@@ -434,15 +441,18 @@ def _append_tool_item(
     *,
     arg_delta_fields: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
-    # ``arg_delta_fields`` injects extra top-level fields onto every
-    # function_call_arguments.delta event (keyword-only, default None so every
-    # existing caller's fixture is byte-identical). It exists for the v1.2.14 R1
-    # `obfuscation` tolerance fixture: the live Codex wire carries an
-    # `obfuscation` field on arguments.delta that the shim must accept silently
-    # (no unknown_events increment, no stream failure) while still translating
-    # the tool call. Modeling it as a superset parameter keeps the ~dozens of
-    # existing _append_tool_item callers undisturbed.
-    extra = dict(arg_delta_fields or {})
+    # Every arguments.delta carries a default ``obfuscation`` field to mirror the
+    # live Codex wire (2026-07-16 shim.log evidence): both lanes stamp an opaque
+    # obfuscation blob on every delta. The shim tolerates it silently (no
+    # unknown_events increment, no stream failure) and strips it from the
+    # downstream Anthropic projection, so emitting it by default is live-faithful
+    # yet byte-transparent to that projection. ``arg_delta_fields`` (keyword-only)
+    # injects/overrides top-level fields on every delta; a caller-supplied
+    # ``obfuscation`` wins over the default. It backs the v1.2.14 R1
+    # obfuscation-tolerance fixture, which pins a distinct value to demonstrate
+    # the tolerance path explicitly.
+    extra = {"obfuscation": _DEFAULT_ARG_DELTA_OBFUSCATION}
+    extra.update(arg_delta_fields or {})
     arguments = '{"file_path":"/daaf/README.md"}'
     builder.add(
         "response.output_item.added",
@@ -1479,7 +1489,6 @@ class MockResponsesServer(AbstractContextManager["MockResponsesServer"]):
         self.response_timestamps: list[float] = []
         self.first_response_request = threading.Event()
         self.second_response_request = threading.Event()
-        self.rotated_access_token = _make_fake_jwt(int(time.time()) + 365 * 86400)
         self.body_prefix_flushed = threading.Event()
         self.peer_closed_before_delayed_send = threading.Event()
         self.delayed_send_failed = threading.Event()
