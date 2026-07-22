@@ -267,6 +267,27 @@ class _EventBuilder:
         return event
 
 
+def _start_response(builder: _EventBuilder, response_id: str) -> None:
+    """Emit the response.created + response.in_progress lifecycle preamble.
+
+    LIVE-WIRE SHAPE (notes/04:27, notes/07:26,62): both the openai and chatgpt lanes
+    send response.in_progress immediately after response.created on every turn. Both
+    events sit in the shim's _KNOWN_EVENT_TYPES ignored group (shim :1249-1250), so the
+    downstream Anthropic projection is byte-identical whether or not in_progress is
+    present. Emitting it here makes the positive fixtures faithful and exercises the
+    in_progress allowlist skip branch that no positive fixture previously hit
+    (`grep -c response\\.in_progress = 0` before this change). Applied only to the
+    positive text/reasoning happy-path builders; deliberately NOT applied to the
+    malformed/off-limits fixtures (their bare-created shape is part of the test) nor to
+    the tool-path scenarios (those belong to dispatch T2-B).
+    """
+    builder.add("response.created", response={"id": response_id, "status": "in_progress"})
+    builder.add(
+        "response.in_progress",
+        response={"id": response_id, "status": "in_progress"},
+    )
+
+
 def _reasoning_item(item_id: str, parts: Iterable[dict[str, Any]]) -> dict[str, Any]:
     summary = []
     for part in parts:
@@ -355,12 +376,44 @@ def _append_text_item(
             "content": [],
         },
     )
+    # LIVE-WIRE SHAPE (notes/04:27, notes/07:25-29): both lanes wrap the text deltas in a
+    # content_part.added/.done pair and emit output_text.done before the part closes:
+    #   output_item.added -> content_part.added -> output_text.delta* -> output_text.done
+    #   -> content_part.done -> output_item.done
+    # The pre-rebase fixture went added -> delta -> item.done, omitting the three framing
+    # events. All three (content_part.added/.done, output_text.done) sit in the shim's
+    # _KNOWN_EVENT_TYPES ignored group (shim :1252-1254), so the downstream Anthropic
+    # projection is BYTE-IDENTICAL to the old shape -- the rework's value is fidelity plus
+    # exercising allowlist skip branches that no positive fixture hit before (grep -c = 0).
+    # The single output_text.delta content is preserved byte-for-byte; the (builder,
+    # output_index, text) signature is unchanged so every caller's fixture text is intact.
+    builder.add(
+        "response.content_part.added",
+        item_id=item_id,
+        output_index=output_index,
+        content_index=0,
+        part={"type": "output_text", "text": ""},
+    )
     builder.add(
         "response.output_text.delta",
         item_id=item_id,
         output_index=output_index,
         content_index=0,
         delta=text,
+    )
+    builder.add(
+        "response.output_text.done",
+        item_id=item_id,
+        output_index=output_index,
+        content_index=0,
+        text=text,
+    )
+    builder.add(
+        "response.content_part.done",
+        item_id=item_id,
+        output_index=output_index,
+        content_index=0,
+        part={"type": "output_text", "text": text},
     )
     item = {
         "type": "message",
@@ -473,10 +526,7 @@ def central_multipart_scenario(transition: Optional[str] = None) -> Scenario:
     """Capture-faithful two-item fixture with a per-item summary-index reset."""
 
     builder = _EventBuilder()
-    builder.add(
-        "response.created",
-        response={"id": "resp_multipart", "status": "in_progress"},
-    )
+    _start_response(builder, "resp_multipart")
     item_a_parts = [
         {"summary_index": 0, "deltas": ["**Planning ", "tests**"]},
         {"summary_index": 1, "deltas": ["**Validating boundaries**"]},
@@ -510,7 +560,7 @@ def identity_parts_scenario(
     """Build one or more serialized reasoning items from explicit part identities."""
 
     builder = _EventBuilder()
-    builder.add("response.created", response={"id": f"resp_{name}", "status": "in_progress"})
+    _start_response(builder, f"resp_{name}")
     output: list[dict[str, Any]] = []
     position = 0
     while position < len(parts):
@@ -630,7 +680,7 @@ def reopened_thinking_scenario() -> Scenario:
     """Synthetic reasoning -> tool -> reasoning ordering for state-reset coverage."""
 
     builder = _EventBuilder()
-    builder.add("response.created", response={"id": "resp_reopen", "status": "in_progress"})
+    _start_response(builder, "resp_reopen")
     output = [
         _append_reasoning_item(
             builder,
@@ -674,22 +724,36 @@ def full_response_scenario(*, reject_nonstream: bool = False) -> Scenario:
     """Completed Responses SSE whose terminal event carries full output and usage."""
 
     builder = _EventBuilder()
-    builder.add("response.created", response={"id": "resp_full", "status": "in_progress"})
-    output = [
-        _append_reasoning_item(
-            builder,
-            "rs_full",
-            0,
-            [{"summary_index": 0, "deltas": ["Inspecting stream semantics."]}],
-        ),
-        _append_text_item(builder, 1, text="Aggregated answer."),
-        _append_tool_item(
-            builder,
-            2,
-            call_id="call_full_fixture",
-            item_id="fc_full_fixture",
-        ),
-    ]
+    _start_response(builder, "resp_full")
+    reasoning_item = _append_reasoning_item(
+        builder,
+        "rs_full",
+        0,
+        [{"summary_index": 0, "deltas": ["Inspecting stream semantics."]}],
+    )
+    # LIVE-WIRE SHAPE (notes/04, notes/07): the backend interleaves benign scaffolding
+    # frames between output items -- a top-level `keepalive` (timing-driven) and a
+    # `response.metadata` lifecycle frame. Both were observed live during v1.2.14
+    # validation and absorbed into the shim's _KNOWN_EVENT_TYPES allowlist in v1.3.4
+    # (shim :1269-1270), so each is skipped silently and the downstream projection is
+    # byte-identical (unknown_events stays 0). Emitted at ONE representative mid-stream
+    # position in this commonly-exercised positive scenario -- NOT sprayed across every
+    # builder, because live keepalives are timing-driven, not structural. This is the
+    # only positive fixture that exercises these two v1.3.4 allowlist entries
+    # (`grep -c keepalive|response\\.metadata = 0` before this change).
+    builder.add("keepalive")
+    builder.add(
+        "response.metadata",
+        response={"id": "resp_full", "status": "in_progress"},
+    )
+    text_item = _append_text_item(builder, 1, text="Aggregated answer.")
+    tool_item = _append_tool_item(
+        builder,
+        2,
+        call_id="call_full_fixture",
+        item_id="fc_full_fixture",
+    )
+    output = [reasoning_item, text_item, tool_item]
     _finish_response(builder, "resp_full", output)
     return Scenario(
         name="full-response",
@@ -709,9 +773,7 @@ def heartbeat_text_scenario(name: str = "heartbeat", *, gap_s: float = 0.6) -> S
     """
 
     builder = _EventBuilder()
-    builder.add(
-        "response.created", response={"id": "resp_heartbeat", "status": "in_progress"}
-    )
+    _start_response(builder, "resp_heartbeat")
     output = [_append_text_item(builder, 0, text="Held-open answer.")]
     _finish_response(builder, "resp_heartbeat", output)
     scenario = Scenario(
