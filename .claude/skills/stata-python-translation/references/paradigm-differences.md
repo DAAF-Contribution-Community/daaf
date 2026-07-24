@@ -643,7 +643,7 @@ m1.resid()        # residuals
 > **Sources:** UCLA Statistical Consulting, "Returned results" (stats.oarc.ucla.edu,
 > accessed 2026-03-28); StataCorp, "Estimation and postestimation commands" User's Guide
 > Ch. 20 (stata.com/manuals/u20.pdf, accessed 2026-03-28); pyfixest documentation
-> (pyfixest.org, v0.40.0, accessed 2026-03-28); marginaleffects documentation
+> (pyfixest.org, v0.60.0, accessed 2026-07-24); marginaleffects documentation
 > (marginaleffects.com, accessed 2026-03-28)
 
 ---

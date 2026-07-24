@@ -2,9 +2,9 @@
 
 ## Contents
 
-- [v0.40 Breaking Changes](#v040-breaking-changes)
-- [feglm Does NOT Support Fixed Effects](#feglm-does-not-support-fixed-effects)
-- [numba Dependency](#numba-dependency)
+- [Cumulative Breaking Changes (0.40 → 0.60)](#cumulative-breaking-changes-040--060)
+- [feglm Now Supports Fixed Effects](#feglm-now-supports-fixed-effects)
+- [numba Optional; Rust Demeaner Default](#numba-optional-rust-demeaner-default)
 - [Formula Parsing](#formula-parsing)
 - [CRV3 Memory Usage](#crv3-memory-usage)
 - [Convergence in fepois](#convergence-in-fepois)
@@ -14,14 +14,18 @@
 - [fixest (R) vs pyfixest Differences](#fixest-r-vs-pyfixest-differences)
 - [Matching Stata Results](#matching-stata-results)
 
-## v0.40 Breaking Changes
+## Cumulative Breaking Changes (0.40 → 0.60)
 
-Version 0.40.0 aligned pyfixest with R fixest 0.13, introducing several breaking changes that **silently change results**:
+DAAF ships pyfixest 0.60.0. The behavior-changing releases between the old 0.40
+target and now are 0.40.0 (fixest-0.13 alignment), 0.50.0 (maketables + FE-GLMs),
+and 0.60.0 (Rust demeaner default, numba optional, typed backend API). The items
+below **silently change results** or break old code. (There are no 0.41–0.49
+releases.)
 
-### Default Standard Errors Changed
+### Default Standard Errors Changed (0.40)
 
-**Before v0.40:** Default SE was cluster-robust by the first fixed effect variable.
-**After v0.40:** Default SE is `"iid"`.
+**Before 0.40:** Default SE was cluster-robust by the first fixed effect variable.
+**Since 0.40:** Default SE is `"iid"`.
 
 ```python
 # Old behavior: fit.vcov was auto-set to {"CRV1": "f1"}
@@ -33,7 +37,7 @@ fit = pf.feols("Y ~ X | f1", data=df, vcov={"CRV1": "f1"})
 
 **Impact:** Code that relied on the old default will produce **different standard errors, t-statistics, and p-values** without any error or warning. Always specify `vcov` explicitly to avoid ambiguity.
 
-### ssc() Arguments Renamed
+### ssc() Arguments Renamed (0.40)
 
 | Old Name (pre-0.40) | New Name (0.40+) |
 |----------------------|-------------------|
@@ -43,19 +47,22 @@ fit = pf.feols("Y ~ X | f1", data=df, vcov={"CRV1": "f1"})
 | `cluster_df` | `G_df` |
 
 ```python
-# Old (will error in v0.40+)
-pf.ssc(adj=True, fixef_k="nested", cluster_adj=True)
+# Old argument NAMES still work but raise a DeprecationWarning (verified live on 0.60):
+pf.ssc(adj=True, cluster_adj=True, cluster_df="min")   # DeprecationWarning x3
 
-# New
+# New (preferred)
 pf.ssc(k_adj=True, k_fixef="nonnested", G_adj=True)
 ```
 
-Note: the option value `"nested"` was also renamed to `"nonnested"`.
+Note: the option *value* `"nested"` was renamed to `"nonnested"`. Unlike the
+argument names, the old value is **not** back-compatible — `pf.ssc(k_fixef="nested")`
+raises `TypeError: k_fixef must be 'none', 'full', or 'nonnested'` (verified live).
+The live `ssc()` default for `k_fixef` is `"nonnested"`.
 
-### Singleton Removal Default Changed
+### Singleton Removal Default Changed (0.40)
 
-**Before v0.40:** `fixef_rm="none"` — singletons kept by default.
-**After v0.40:** `fixef_rm="singleton"` — singletons dropped by default.
+**Before 0.40:** `fixef_rm="none"` — singletons kept by default.
+**Since 0.40:** `fixef_rm="singleton"` — singletons dropped by default.
 
 Singleton fixed effects are groups with only one observation. Keeping them can inflate degrees of freedom and produce misleading inference.
 
@@ -64,52 +71,71 @@ Singleton fixed effects are groups with only one observation. Keeping them can i
 fit = pf.feols("Y ~ X | fe", data=df, fixef_rm="none")
 ```
 
-### Multicollinearity Tolerance
+### Multicollinearity Tolerance (0.40)
 
 Default `collin_tol` changed from 1e-10 to 1e-09. This may cause some near-collinear variables to be dropped that were previously kept.
 
-## feglm Does NOT Support Fixed Effects
+### etable Moved to maketables (0.50)
 
-This is the most common source of confusion. `feglm()` (logit, probit, Gaussian GLM) does **not** currently support FE demeaning:
+`etable()`/`dtable()` render through the `maketables` backend since 0.50 (pyfixest
+no longer depends on `great_tables` directly — maketables wraps it for HTML/GT
+output). The **public API is unchanged**, and on
+0.60.0 the default and `type="gt"` still return a `great_tables.gt.GT` object
+(rendered via maketables, verified live). One behavior trap: significance stars are
+now governed by the `coef_fmt` string's `*` token. Stars are on by default, but a
+custom `coef_fmt` that omits `*` drops them. See `tables-and-plots.md` § Output
+Formats. (A stars-dropping regression here was fixed in 0.50.1.)
 
-```python
-# This RAISES NotImplementedError:
-pf.feglm("binary_Y ~ X | entity", data=df, family="logit")
-```
+### Gelbach decompose() Return Type (0.40)
 
-### Workarounds
+`fit.decompose()` returns a `GelbachDecomposition` object (was a `pd.DataFrame`),
+the argument is `decomp_var` (was `param`), and it defaults to normalized effects.
+See `advanced-inference.md` § Gelbach Decomposition.
 
-| Approach | When to Use |
-|----------|-------------|
-| Linear probability model: `pf.feols("binary_Y ~ X \| fe", data=df)` | Most cases; coefficients are percentage-point changes |
-| Manual dummies with statsmodels | Small/moderate number of FE levels |
-| Conditional logit (statsmodels) | Binary outcome with entity FE |
-| `pf.fepois()` for count-like binary | If log-linear is acceptable |
+### Typed Demeaner API; Loose Kwargs Deprecated (0.60)
 
-The linear probability model with heteroskedasticity-robust or clustered SEs is the most common approach in applied economics when FE are needed with a binary outcome.
+The `demeaner_backend`, `fixef_tol`, and `fixef_maxiter` keyword arguments are
+deprecated in favor of a typed `demeaner=pf.MapDemeaner(...)` / `pf.LsmrDemeaner(...)`
+object. The old kwargs still work but raise a `DeprecationWarning` (verified live).
+The `jax` MAP backend and the `cupy`/`scipy` LSMR *backends* are deprecated. See
+`fixed-effects.md` § Backend Options.
 
-## numba Dependency
+## feglm Now Supports Fixed Effects
 
-pyfixest uses numba for the default FE demeaning backend. numba can be tricky to install:
-
-### Common Issues
-
-**Problem:** numba fails to install (especially on M-series Macs or minimal environments).
-
-```python
-# Error: ModuleNotFoundError: No module named 'numba'
-# Or: numba compilation errors on first use
-```
-
-**Fix:** Use the scipy fallback backend:
+**This reverses earlier guidance.** Since 0.50, `feglm()` supports fixed-effects
+demeaning for the `logit`, `probit`, and `gaussian` families. Verified live on
+0.60.0:
 
 ```python
-fit = pf.feols("Y ~ X | fe", data=df, demeaner_backend="scipy")
+# All of these fit and return finite coefficients on 0.60.0:
+pf.feglm("binary_Y ~ X1 | entity", data=df, family="logit")
+pf.feglm("binary_Y ~ X1 | entity", data=df, family="probit")
+pf.feglm("binary_Y ~ X1 | entity + year", data=df, family="logit")
 ```
 
-**Problem:** First call is very slow (numba JIT compilation).
+Pyfixest before 0.50 raised `NotImplementedError` for `feglm()` with fixed effects,
+and older skill guidance recommended the linear probability model (LPM) as a
+workaround. That software limitation is gone.
 
-**Fix:** This is expected — numba compiles on first use, then caches. Subsequent calls are fast. For scripts, this is a one-time cost.
+**Remaining caveat (statistical, not a bug):** Nonlinear FE-GLMs with many *small*
+FE groups can suffer incidental-parameters bias — a property of the estimator, not
+of pyfixest. When FE groups are small, the LPM (`pf.feols("binary_Y ~ X | fe", ...)`,
+coefficients as percentage-point changes) remains a useful robustness comparison.
+
+## numba Optional; Rust Demeaner Default
+
+Since 0.60 the **default FE demeaning backend is a compiled Rust extension** shipped
+in the wheel — there is no numba JIT warm-up on the default path. **numba is now an
+optional extra** (`pyfixest[numba]`); it is still used for `MapDemeaner(backend="numba")`
+and the fast randomization-inference path (`ritest(..., choose_algorithm="fast")`).
+
+**In the DAAF image:** numba is present transitively (via umap-learn/wildboottest;
+the smoke test recorded numba 0.66.0), so the numba paths remain available here
+without any action. You do not need to worry about numba installation in DAAF.
+
+**First-call latency:** The old numba JIT warm-up on the first call no longer applies
+to the default Rust path. If you explicitly select `MapDemeaner(backend="numba")`,
+the first call still pays a one-time JIT compilation cost.
 
 ## Formula Parsing
 
@@ -256,13 +282,13 @@ fit.vcov("HC3")  # Error: HC3 not supported with IV
 | Feature | R fixest | pyfixest | Notes |
 |---------|----------|----------|-------|
 | Sun-Abraham | `sunab()` function | `event_study(estimator="saturated")` | Different API, same estimator |
-| etable maturity | Full-featured | Evolving (migrating to maketables) | R version more polished |
-| feglm with FE | Supported | NOT supported | Major gap in pyfixest |
-| Default SE (v0.40+) | iid | iid | Now aligned |
+| etable maturity | Full-featured | maketables backend (since 0.50) | R version still more polished for styling |
+| feglm with FE | Supported | Supported (since 0.50) | Formerly a gap; now closed |
+| Default SE (0.40+) | iid | iid | Aligned (fixest 0.13 / pyfixest 0.40) |
 | Wild bootstrap | `fwildclusterboot` (R) | `wildboottest` (Python) | Separate packages |
 | sunab aggregation | `aggregate()` | `fit.aggregate()` | Similar API |
 | Formula syntax | Nearly identical | Nearly identical | `i()` and `|` notation shared |
-| `etable()` type argument | `"latex"`, `"md"` | `"tex"`, `"md"`, `"gt"`, `"df"` | Slight naming difference |
+| `etable()` type argument | `"latex"`, `"md"` | `"gt"` (default), `"df"`, `"md"`, `"tex"`, `"typst"`, `"html"` | Slight naming difference; `typst`/`html` added 0.60 |
 | Multiple LHS | `c(Y1, Y2)` | `Y1 + Y2` | Syntax differs |
 
 ### Features in R fixest Not Yet in pyfixest
@@ -322,9 +348,10 @@ Passing a Polars DataFrame directly may raise a `TypeError` or produce unexpecte
 | Symptom | Likely Cause | Fix |
 |---------|-------------|-----|
 | TypeError with Polars DataFrame | pyfixest expects pandas | `df = df_polars.to_pandas()` |
-| Different SEs from old code | v0.40 default SE change | Specify `vcov` explicitly |
-| `NotImplementedError` with feglm | FE not supported in feglm | Use feols (LPM) or statsmodels |
-| Very slow first call | numba JIT compilation | Normal; or use `demeaner_backend="scipy"` |
+| Different SEs from old code | 0.40 default SE change (now iid) | Specify `vcov` explicitly |
+| Missing significance stars in etable | Custom `coef_fmt` without a `*` token (0.60) | Include `*` in `coef_fmt` (e.g. `"b* \n (se)"`) |
+| `DeprecationWarning` on `demeaner_backend`/`fixef_tol` | Loose kwargs deprecated in 0.60 | Use `demeaner=pf.MapDemeaner(...)` |
+| Very slow first call with `backend="numba"` | numba JIT compilation | Normal for numba; the default Rust demeaner has no JIT warm-up |
 | Memory error with CRV3 | Too many clusters × params | Use CRV1 or wild bootstrap |
 | Poisson won't converge | Separation or sparse data | Increase maxiter, check for separation |
 | Many singletons dropped | Fine-grained FE | Expected; check FE specification |
@@ -333,7 +360,7 @@ Passing a Polars DataFrame directly may raise a `TypeError` or produce unexpecte
 
 ## References and Further Reading
 
-- pyfixest changelog: https://py-econometrics.github.io/pyfixest/changelog.html
+- pyfixest changelog: https://pyfixest.org/changelog.html
 - pyfixest GitHub issues: https://github.com/py-econometrics/pyfixest/issues
 - Berge, L., Butts, K., and McDermott, G. (2026). "Fast and User-Friendly Econometrics Estimations: The R Package fixest." arXiv:2601.21749
 - Cameron, A.C. and Miller, D.L. (2015). "A Practitioner's Guide to Cluster-Robust Inference." *Journal of Human Resources*, 50(2), 317-372

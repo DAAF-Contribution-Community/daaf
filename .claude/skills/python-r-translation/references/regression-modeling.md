@@ -15,7 +15,7 @@ DAAF's R modeling stack:
 
 > **Versions referenced:**
 > R: fixest 0.14.0, lmtest 0.9-40, sandwich 3.1-1, plm 2.6-7, lme4 2.0-1
-> Python: pyfixest 0.40.0, statsmodels 0.14.6, linearmodels 7.0
+> Python: pyfixest 0.60.0, statsmodels 0.14.6, linearmodels 7.0
 > See SKILL.md § Library Versions for the complete version table.
 
 ---
@@ -168,14 +168,16 @@ fit <- glm(y ~ x1 + x2, data = df, family = binomial(link = "logit"))
 fit <- feglm(y ~ x1 | entity + year, data = df, family = binomial)
 ```
 
-R fixest's `feglm()` supports logit/probit with high-dimensional FE. This is a
-**major gap in pyfixest** -- `pf.feglm()` does NOT support fixed effects.
+R fixest's `feglm()` supports logit/probit/gaussian with high-dimensional FE.
+pyfixest gained this too in 0.50 (DAAF ships 0.60.0): `pf.feglm("y ~ x | fe",
+family="logit")` maps almost directly. Families beyond logit/probit/gaussian
+(e.g., Gamma) and `fenegbin` still favor R fixest.
 
 | R | Python |
 |---|--------|
 | `glm(y ~ x, family = binomial)` | `smf.logit("y ~ x", data=df).fit()` |
 | `glm(y ~ x, family = poisson)` | `smf.poisson("y ~ x", data=df).fit()` |
-| `feglm(y ~ x | fe, family = binomial)` | **Not supported** in pyfixest |
+| `feglm(y ~ x | fe, family = binomial)` | `pf.feglm("y ~ x | fe", data=df, family="logit")` (since 0.50) |
 | `fepois(y ~ x | fe)` | `pf.fepois("y ~ x | fe", data=df)` |
 
 ---
@@ -247,6 +249,6 @@ R's diagnostic functions are typically single-call convenience wrappers.
 Python often requires assembling the inputs manually.
 
 > **Sources:** Berge, Butts, & McDermott, *fixest* (CRAN);
-> Fischer et al., *pyfixest* (pyfixest.org, accessed 2026-03-28);
+> Fischer et al., *pyfixest* (pyfixest.org, v0.60.0, accessed 2026-07-24);
 > Seabold & Perktold, *statsmodels* (v0.14.6);
 > Croissant & Millo, *plm* (CRAN)

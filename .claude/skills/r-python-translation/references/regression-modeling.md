@@ -14,12 +14,12 @@ DAAF's Python modeling stack has three tiers:
 This reference provides side-by-side translations for every major regression task.
 
 > **Versions referenced:**
-> Python: pyfixest 0.40.0, statsmodels 0.14.6, linearmodels 7.0
+> Python: pyfixest 0.60.0, statsmodels 0.14.6, linearmodels 7.0
 > R: fixest 0.14.0, lmtest 0.9-40, sandwich 3.1-1, plm 2.6-7, lme4 2.0-1
 > See SKILL.md § Library Versions for the complete version table.
 
 > **Sources:** Berge, Butts, & McDermott, *fixest* (CRAN, v0.13);
-> Fischer et al., *pyfixest* (pyfixest.org, v0.40.0, accessed 2026-03-28);
+> Fischer et al., *pyfixest* (pyfixest.org, v0.60.0, accessed 2026-07-23);
 > Seabold & Perktold, *statsmodels* (v0.14.6);
 > Sheppard, *linearmodels* (v7.0);
 > Croissant & Millo, *plm: Linear Models for Panel Data* (CRAN, v2.6)
@@ -473,7 +473,7 @@ fit = smf.glm("count_y ~ x1 + x2", data=df,
 | Gamma | `family=Gamma` | `family=Gamma()` |
 | Inverse Gaussian | `family=inverse.gaussian` | `family=InverseGaussian()` |
 
-### The feglm Gap: GLM with Fixed Effects
+### feglm: GLM with Fixed Effects (Gap Closed in pyfixest 0.50)
 
 R fixest provides `feglm()` which supports logit, probit, and other GLMs with
 absorbed high-dimensional fixed effects:
@@ -483,15 +483,22 @@ absorbed high-dimensional fixed effects:
 fit <- feglm(y ~ x1 | entity + year, data = df, family = binomial)
 ```
 
-**pyfixest `feglm()` does NOT support fixed effects.** Attempting
-`pf.feglm("y ~ x | fe", ...)` raises `NotImplementedError`. This is the single
-largest feature gap between R fixest and pyfixest.
+**pyfixest `feglm()` supports fixed effects since 0.50** (logit/probit/gaussian),
+so this maps almost directly:
 
-**Workarounds:**
+```python
+# Python (pyfixest 0.60.0): FE-GLM works — verified live
+fit = pf.feglm("y ~ x1 | entity + year", data=df, family="logit")
+```
+
+Pyfixest before 0.50 raised `NotImplementedError` for `feglm()` with fixed effects,
+which older guidance called the single largest R-fixest/pyfixest gap; that gap is
+now closed. The alternatives below remain useful mainly as robustness comparisons
+(e.g., when nonlinear FE-GLMs risk incidental-parameters bias with small FE groups):
 
 | Approach | Code | When to Use |
 |----------|------|-------------|
-| Linear probability model | `pf.feols("binary_y ~ x \| fe", data=df)` | Most cases; interpret coefficients as pp changes |
+| Linear probability model | `pf.feols("binary_y ~ x \| fe", data=df)` | Robustness check; interpret coefficients as pp changes |
 | Manual dummies + statsmodels | `smf.logit("y ~ x + C(entity)", data=df).fit()` | Small/moderate number of FE levels |
 | Conditional logit | `sm.discrete.ConditionalLogit(...)` | Binary outcome with entity FE |
 | Poisson pseudo-ML | `pf.fepois("binary_y ~ x \| fe", data=df)` | If log-linear approximation acceptable |
@@ -589,9 +596,10 @@ fit = PanelOLS.from_formula("y ~ x + EntityEffects", data=df_panel).fit(
   or IV. With FE, use HC1 or clustered SEs.
 - **Two-way clustering in statsmodels** is not directly supported. Use pyfixest or
   linearmodels instead.
-- **Default SE changed in pyfixest v0.40**: Both R fixest 0.13 and pyfixest 0.40
-  now default to `"iid"`. Older code that relied on automatic clustering by the
-  first FE will silently produce different results.
+- **Default SE changed in pyfixest 0.40** (unchanged through 0.60): Both R fixest
+  0.13 and pyfixest (0.40 onward, including the current 0.60.0) default to `"iid"`.
+  Older code that relied on automatic clustering by the first FE will silently
+  produce different results.
 
 ---
 

@@ -346,9 +346,9 @@ the confidence interval because it accounts for irreducible residual variance.
 | OLS with multi-way fixed effects | **pyfixest** | Absorbs FE via demeaning — much faster and memory-efficient than dummies |
 | OLS without fixed effects | **statsmodels** | Full diagnostics suite; linearmodels `IV2SLS` also works |
 | Logit / probit | **statsmodels** | Full GLM framework, marginal effects, convergence diagnostics |
-| Logit with fixed effects | **pyfixest** (LPM via `feols`) or **statsmodels** (dummies) | pyfixest: use `feols()` on binary outcome (linear probability model); statsmodels: include dummies directly but slow at scale |
+| Logit with fixed effects | **pyfixest** (`feglm()`) | `pf.feglm(family="logit")` with absorbed FE (since 0.50); LPM via `feols()` remains a robustness alternative; statsmodels dummies are slow at scale |
 | Poisson regression | **statsmodels** | Full GLM: NegBin, zero-inflated, hurdle models all available |
-| Poisson with FE | **pyfixest** | `fepois()` for Poisson with absorbed FE (note: `feglm` does NOT support FE) |
+| Poisson with FE | **pyfixest** | `fepois()` for Poisson with absorbed FE (`feglm()` also supports FE since 0.50: logit/probit/gaussian) |
 | Time series (ARIMA, VAR, ARCH) | **statsmodels** | pyfixest and linearmodels have no time series support |
 | IV / 2SLS without FE | **linearmodels** | `IV2SLS`, `IVLIML`, `IVGMM` — richer estimator set than pyfixest for non-FE IV |
 | IV / 2SLS with FE | **pyfixest** | Three-part formula syntax; linearmodels has no Panel IV |

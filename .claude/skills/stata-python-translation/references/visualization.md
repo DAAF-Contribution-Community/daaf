@@ -11,7 +11,7 @@ plotnine requires pandas DataFrames as input. In DAAF, convert polars DataFrames
 before plotting: `df_pd = df.to_pandas()`.
 
 > **Versions referenced:**
-> Python: plotnine 0.15.3, plotly 6.5.2, pyfixest 0.40.0, binsreg (latest)
+> Python: plotnine 0.15.3, plotly 6.5.2, pyfixest 0.60.0, binsreg (latest)
 > Stata: Stata 18 (graph system stable across recent versions)
 > See SKILL.md Section: Library Versions for the complete version table.
 
@@ -927,7 +927,7 @@ maintained by the same methodological authors.
 > **Sources:** plotnine documentation, v0.15.3 (plotnine.org, accessed
 > 2026-03-28); Stata Graphics Reference Manual (stata.com/manuals, accessed
 > 2026-03-28); pyfixest documentation, coefplot and iplot functions
-> (pyfixest.org, accessed 2026-03-28); Cattaneo, Crump, Farrell, & Feng,
+> (pyfixest.org, v0.60.0, accessed 2026-07-24); Cattaneo, Crump, Farrell, & Feng,
 > binsreg package documentation (nppackages.github.io/binsreg/, accessed
 > 2026-03-28); Turrell, "Data Visualisation using the Grammar of Graphics with
 > Plotnine" in *Coding for Economists* (aeturrell.github.io, accessed

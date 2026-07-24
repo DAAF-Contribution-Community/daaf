@@ -13,7 +13,7 @@ DAAF's R stack provides strong coverage:
 
 > **Versions referenced:**
 > R: fixest 0.14.0, marginaleffects 0.32.0, rdrobust 3.0.0
-> Python: pyfixest 0.40.0, marginaleffects 0.5.0, rdrobust 1.3.0
+> Python: pyfixest 0.60.0, marginaleffects 0.5.0, rdrobust 1.3.0
 > See SKILL.md § Library Versions for the complete version table.
 
 > **Availability:** Of the R packages below, `fixest`, `marginaleffects`,
@@ -173,7 +173,7 @@ statsmodels, pyfixest, and scikit-learn.
 | **Weighting** | `WeightIt` | No equivalent | **Significant gap** |
 | Synthetic control | `Synth`, `augsynth`, `gsynth` | `CausalPy` (Bayesian) | Low |
 | Causal forests | `grf` | `econml` | Medium |
-| **GLM + FE** | `fixest::feglm()` | **Not supported** | **Major gap** |
+| GLM + FE | `fixest::feglm()` | `pf.feglm()` (logit/probit/gaussian, since 0.50) | High for those families; Gamma/negbin still R-only |
 | Survival/Cox | `survival::coxph()` | `lifelines` | High |
 
 > **Sources:** Cunningham, *Causal Inference: The Mixtape* (2021);

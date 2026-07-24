@@ -709,7 +709,7 @@ into plotnine natively. Other ggforce geoms require matplotlib workarounds.
 > 2026-03-28); plotnine feature parity guide (plotnine.org/guide/feature-coverage.html,
 > accessed 2026-03-28); Plotly R reference (plotly.com/r/, accessed 2026-03-28);
 > Plotly Python reference (plotly.com/python/, accessed 2026-03-28); pyfixest
-> documentation (py-econometrics.github.io/pyfixest/, accessed 2026-03-28);
+> documentation (pyfixest.org, accessed 2026-07-23);
 > Arel-Bundock, V., marginaleffects Python package (marginaleffects.com, accessed
 > 2026-03-28); Tidy Intelligence, "ggplot2 vs plotnine" (blog.tidy-intelligence.com,
 > accessed 2026-03-28)

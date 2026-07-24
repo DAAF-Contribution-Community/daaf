@@ -38,7 +38,8 @@ currency concerns should be cross-checked against current documentation.
   difference-in-differences estimators (TWFE, did2s, lpdid, Sun-Abraham), and
   publication-quality tables via `etable()`. Formula syntax documentation makes
   direct comparison to R straightforward.
-- **Limitations:** Some R fixest features (feglm with FE) not yet implemented.
+- **Limitations:** Residual gaps vs R fixest are GLM families beyond
+  logit/probit/gaussian (e.g., Gamma) and `fenegbin`.
   See the DAAF pyfixest skill's gotchas.md for the full gap list.
 
 ### plotnine Documentation
@@ -539,8 +540,8 @@ these as the "source" for the patterns that DAAF's Python stack translates.
 - **DAAF Python equivalent:** pyfixest (intentionally parallel API)
 - **Key mapping:** `feols()` to `pf.feols()`, `fepois()` to `pf.fepois()`,
   `etable()` to `pf.etable()`, `coefplot()` to `pf.coefplot()`. Formula syntax
-  is identical: `Y ~ X1 + X2 | fe1 + fe2`. Note: `feglm()` with FE is not yet
-  supported in pyfixest.
+  is identical: `Y ~ X1 + X2 | fe1 + fe2`. `feglm()` maps to `pf.feglm()`
+  (FE support since pyfixest 0.50: logit/probit/gaussian).
 
 ### survey
 

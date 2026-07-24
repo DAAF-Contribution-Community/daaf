@@ -190,7 +190,7 @@ files note the change.
 | Python Package | DAAF Version | R Equivalent | R Version (CRAN) |
 |---|---|---|---|
 | polars | 1.39.3 | dplyr + tidyr + data.table | dplyr 1.2.0, tidyr 1.3.2, data.table 1.18.2 |
-| pyfixest | 0.40.0 | fixest | 0.14.0 |
+| pyfixest | 0.60.0 | fixest | 0.14.0 |
 | plotnine | 0.15.3 | ggplot2 | 4.0.2 |
 | plotly | 6.5.2 | plotly (R) | 4.12.0 |
 | statsmodels | 0.14.6 | base R stats + lmtest + sandwich | lmtest 0.9-40, sandwich 3.1-1 |

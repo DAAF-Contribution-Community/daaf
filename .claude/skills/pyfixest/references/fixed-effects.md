@@ -36,9 +36,12 @@ fit = pf.feols("Y ~ X1 | entity ^ year", data=df)
 pyfixest absorbs fixed effects via the **Frisch-Waugh-Lovell theorem** using alternating projections (iterative demeaning). This is fast and memory-efficient — it avoids creating dummy variable matrices.
 
 Key parameters controlling demeaning:
-- `fixef_tol=1e-08`: Convergence tolerance (decrease for more precision)
-- `fixef_maxiter=100000`: Maximum demeaning iterations
-- `fixef_rm="singleton"`: Remove singleton FE groups (default since v0.40)
+- `fixef_rm="singleton"`: Remove singleton FE groups (default since 0.40)
+- Convergence tolerance and iteration caps: since 0.60 these are set on a **typed
+  demeaner object**, e.g. `demeaner=pf.MapDemeaner(backend="rust", fixef_tol=1e-08)`
+  or `pf.LsmrDemeaner(...)`. The loose `fixef_tol`/`fixef_maxiter`/`demeaner_backend`
+  kwargs still work but raise a `DeprecationWarning` (verified live). See
+  [Backend Options](#backend-options-for-performance) below.
 
 ### Extracting Fixed Effects
 
@@ -183,45 +186,58 @@ fit = pf.feols("Y ~ X1 | fe", data=df,
 | Parameter | Default | Meaning |
 |-----------|---------|---------|
 | `k_adj` | `True` | Apply (N-1)/(N-k) small-sample adjustment |
-| `k_fixef` | `"none"` | Count FE in k: `"none"`, `"full"`, or `"nonnested"` |
+| `k_fixef` | `"nonnested"` | Count FE in k: `"none"`, `"full"`, or `"nonnested"` (live default is `"nonnested"`) |
 | `G_adj` | `True` | Apply G/(G-1) cluster adjustment |
 | `G_df` | `"min"` | Two-way cluster DOF: `"min"` (conservative) or `"conventional"` |
 
-**v0.40 breaking change:** These parameter names were all renamed. See `gotchas.md` for the mapping.
+**Breaking change (0.40):** These parameter names were all renamed (`adj`→`k_adj`, `fixef_k`→`k_fixef`, `cluster_adj`→`G_adj`, `cluster_df`→`G_df`), and the value `"nested"` became `"nonnested"`. The old argument names still work but raise a `DeprecationWarning`; passing the old value `"nested"` errors. See `gotchas.md` for the full mapping.
 
 ## Backend Options for Performance
 
-The `demeaner_backend` parameter controls the FE demeaning algorithm:
-
-| Backend | Install | Best For |
-|---------|---------|----------|
-| `"numba"` | Included by default | CPU, general use — fastest on CPU |
-| `"jax"` | `pip install pyfixest[jax]` | GPU acceleration (Nvidia A100+) |
-| `"cupy"` | CuPy + CUDA toolkit | GPU via sparse LSMR solver |
-| `"scipy"` | Included by default | Fallback if numba fails |
-| `"rust-cg"` | Rust extension | Conjugate gradient solver |
-
-> **DAAF note:** The `jax` backend is **not available** in the DAAF container —
-> jax is not pre-installed and runtime installs (`pip install pyfixest[jax]`) are
-> blocked (see CLAUDE.md § Runtime Package Installation). Use the default `numba`
-> backend (or the `scipy` fallback), both included in the base install; to enable
-> the jax GPU backend, escalate to add it to the Dockerfile user-additions block
-> and rebuild.
+Since 0.60 the demeaning backend is configured through a **typed demeaner object**
+passed as `demeaner=`. The default is the compiled Rust MAP demeaner, which ships
+in the wheel — no numba JIT warm-up on the default path.
 
 ```python
-# Use JAX backend for GPU acceleration
-fit = pf.feols("Y ~ X1 | f1 + f2", data=df, demeaner_backend="jax")
+# Default — Rust MAP demeaner (no configuration needed)
+fit = pf.feols("Y ~ X1 | f1 + f2", data=df)
 
-# Use scipy fallback if numba is problematic
-fit = pf.feols("Y ~ X1 | f1 + f2", data=df, demeaner_backend="scipy")
+# Explicit typed demeaner (0.60 API)
+fit = pf.feols("Y ~ X1 | f1 + f2", data=df,
+               demeaner=pf.MapDemeaner(backend="rust", fixef_tol=1e-08))
+
+# numba MAP backend (numba is an optional extra; present in the DAAF image)
+fit = pf.feols("Y ~ X1 | f1 + f2", data=df,
+               demeaner=pf.MapDemeaner(backend="numba"))
+
+# LSMR demeaner with a GPU device (torch backend)
+fit = pf.feols("Y ~ X1 | f1 + f2", data=df,
+               demeaner=pf.LsmrDemeaner(backend="torch", device="cuda"))
 ```
 
-GPU acceleration targets the iterative alternating-projections demeaning step, which dominates computation time for models with many FE levels. For small datasets (<100K observations) the overhead of GPU transfer may exceed the speedup — numba on CPU is typically fastest.
+| Demeaner | `backend=` | Best For |
+|----------|-----------|----------|
+| `MapDemeaner` | `"rust"` (default) | CPU, general use — compiled, no JIT warm-up |
+| `MapDemeaner` | `"numba"` | CPU; JIT-compiled MAP (numba optional extra) |
+| `LsmrDemeaner` | `"torch"` (`device="cuda"`/`"mps"`) | GPU acceleration |
+| `LsmrDemeaner` | `"scipy"` | CPU LSMR path — **deprecated in 0.60** (use the default MAP demeaner instead) |
 
-The `solver` parameter separately controls the linear algebra solver for the regression itself:
-- `"scipy.linalg.solve"` (default)
-- `"numpy.linalg.solve"`
-- `"jax"` (for GPU)
+> **Deprecated loose kwargs:** The old `demeaner_backend="numba"|"scipy"|"rust"|"jax"|"cupy"`,
+> `fixef_tol`, and `fixef_maxiter` keyword arguments still work but raise a
+> `DeprecationWarning` (verified live). The JAX MAP backend and the CuPy/SciPy LSMR
+> *backends* are deprecated in 0.60 — prefer the default Rust MAP, or
+> `LsmrDemeaner(backend="torch", device="cuda")` for GPU. Migrate loose kwargs to
+> the typed `demeaner=` object.
+
+> **DAAF note:** The `torch`/`jax` GPU backends are **not available** in the DAAF
+> container (no GPU, and `pyfixest[jax]`/torch runtime installs are blocked — see
+> CLAUDE.md § Runtime Package Installation). Use the default Rust MAP demeaner (or
+> `MapDemeaner(backend="numba")`, since numba is present transitively). To enable a
+> GPU backend, escalate to add it to the Dockerfile user-additions block and rebuild.
+
+GPU acceleration targets the iterative alternating-projections demeaning step, which dominates computation time for models with many FE levels. For small datasets (<100K observations) the overhead of GPU transfer may exceed the speedup — the CPU Rust demeaner is typically fastest.
+
+The `solver` parameter separately controls the linear algebra solver for the regression itself (`"scipy.linalg.solve"` default, `"numpy.linalg.solve"`).
 
 ## References and Further Reading
 

@@ -44,9 +44,11 @@ documentation.
 - **Strengths:** Near-identical formula syntax to Stata's reghdfe; includes
   multiple estimation shortcuts (`sw()`, `csw()`, `split`); publication-quality
   tables via `etable()` with LaTeX, markdown, and HTML output.
-- **Limitations:** `feglm()` does not yet support fixed effects absorption (the
-  single largest feature gap vs Stata). Some fixest R features not yet ported.
-  See the DAAF pyfixest skill's gotchas.md for the full gap list.
+- **Limitations:** `feglm()` supports fixed effects absorption since 0.50
+  (logit/probit/gaussian; DAAF ships 0.60.0), so the historically largest GLM gap
+  vs Stata/R is closed for those families; families beyond them (e.g., Gamma) and
+  negative binomial still require R fixest. Some other fixest R features remain
+  unported. See the DAAF pyfixest skill's gotchas.md for the full gap list.
 
 ### statsmodels Documentation
 

@@ -397,6 +397,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # -----------------------------------------------
 
 # Install core data science packages
+# NOTE: pyfixest pinned 0.60.0 — the 0.40.0 wheel declared zero runtime deps
+#       (packaging bug: no Requires-Dist in METADATA; import only worked because
+#       numba/formulaic/etc. arrived transitively via umap-learn, wildboottest,
+#       linearmodels), and the 0.40.1 hotfix declares a scipy upper bound that
+#       conflicts with scipy==1.17.0. 0.60.0 has correct metadata; expect one
+#       new transitive dep (maketables, its table backend) in the image.
 RUN uv pip install --system \
     numpy==2.4.2 \
     pandas==3.0.0 \
@@ -413,7 +419,7 @@ RUN uv pip install --system \
     umap-learn==0.5.11 \
     pyyaml==6.0.3 \
     statsmodels==0.14.6 \
-    pyfixest==0.40.0 \
+    pyfixest==0.60.0 \
     tabulate==0.10.0 \
     great-tables==0.21.0 \
     wildboottest==0.3.2
