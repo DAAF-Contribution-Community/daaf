@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import subprocess
 import sys
 from dataclasses import asdict
@@ -63,6 +64,46 @@ def attach_schema_version(payload: Mapping) -> dict:
     artifact = dict(payload)
     artifact["schema_version"] = SCHEMA_VERSION
     return artifact
+
+
+def sandbox_slug(model_name: str) -> str:
+    """Return a shell-safe sandbox-suffix slug for a model display name.
+
+    The `_sandbox/run_<suffix>` directory name is interpolated into shell
+    command lines by the harness; display names carry characters that are
+    hostile to the shell — notably parentheses (e.g. "GPT-5.6 Luna (ChatGPT
+    Subscription)"), which produce `syntax error near unexpected token '('`.
+    Collapse every character outside the safe set [A-Za-z0-9._-] to a single
+    underscore, coalescing runs, and trim leading/trailing underscores.
+
+    Slugging affects ONLY the sandbox directory name (new runs). The display
+    name is preserved verbatim everywhere else (manifests, result.json `model`
+    field, results-dir naming), so this is not an identity change.
+    """
+    slug = re.sub(r"[^A-Za-z0-9._-]+", "_", model_name)
+    return slug.strip("_")
+
+
+def assert_unique_sandbox_slugs(models) -> None:
+    """Fail fast if any two selected models slug to the same sandbox suffix.
+
+    ``sandbox_slug`` collapses shell-hostile characters to underscores, so two
+    distinct display names can collide onto one slug (e.g. "GPT-5.6 (A)" and
+    "GPT-5.6 [A]" both → "GPT-5.6_A_"). Colliding slugs share a ``_sandbox/run_*``
+    directory, cross-contaminating fixtures and transcripts between runs. Called
+    once at batch start (after model selection) so the collision surfaces as a
+    clear, named error instead of silent data corruption downstream.
+    """
+    seen = {}
+    for m in models:
+        slug = sandbox_slug(m.name)
+        if slug in seen:
+            raise SystemExit(
+                f"ERROR: sandbox_slug collision — models {seen[slug]!r} and "
+                f"{m.name!r} both slug to {slug!r}. Rename one display name so "
+                f"their _sandbox/run_* directories do not collide."
+            )
+        seen[slug] = m.name
 
 
 def _model_key(model: ModelConfig) -> str:

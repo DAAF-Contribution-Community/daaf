@@ -580,12 +580,28 @@ critical.
 `agent_dispatched`, `correct_subagent_type`, `prompt_has_base_dir`,
 `prompt_has_mode_marker`, `prompt_has_project_dir`, `prompt_has_task_section`,
 `prompt_has_context_section`, `prompt_has_instructions`,
-`prompt_contains_required`, `prompt_contains_any`. The section-heading criteria
-accept semantically equivalent variants, not just one literal string — e.g.,
-`prompt_has_context_section` matches `## Context` plus six alternatives
-(`## Scope`, `## Background`, etc.), and `prompt_has_instructions` accepts
-`## Output Format`, `## Deliverables`, and similar (see `CONTEXT_HEADERS` /
-`INSTRUCTION_HEADERS` in the scorer).
+`prompt_contains_required`, `prompt_contains_any`. The three section-heading
+criteria (`prompt_has_task_section`, `prompt_has_context_section`,
+`prompt_has_instructions`) measure the **structural presence** of a task /
+context / instructions section — NOT the use of a canonical label. The scorer
+extracts markdown/bold section headings, normalizes them (strip `#`/whitespace,
+casefold), and passes when any heading expresses the relevant concept keyword
+(`TASK_KEYWORDS` / `CONTEXT_KEYWORDS` / `INSTRUCTION_KEYWORDS` in the scorer).
+This is intentionally forgiving: framework guidance
+(`ad-hoc-collaboration-mode.md`) calls the dispatch-prompt structure "a
+skeleton, not a rigid template", so legitimate synonyms all pass — e.g.
+`## Output format` (lowercase f), `## Return format`, `## Output requirements`,
+`## Review expectations`, `## Investigation requirements`, `## Your task`,
+`## User Request`, `## Known Symptoms`. The keyword sets are a strict
+**widening** of the earlier exact-label lists: every prompt that passed under
+the old case-sensitive literal matching still passes (regression-tested), plus
+the synonyms. This replaced the earlier case-sensitive substring matching (the
+`LEGACY_TASK_LABEL` / `LEGACY_CONTEXT_HEADERS` / `LEGACY_INSTRUCTION_HEADERS`
+lists, retained in the scorer only to guarantee the strict-widening property),
+which penalized valid variants such as `## Output format` and inflated a
+spurious cross-model gap (2026-07-28 heading-normalization). The `TASK_KEYWORDS`
+set also includes `request` (added 2026-07-28) so `## User Request` satisfies the
+task concept.
 
 **Phase 3 dispatch-recovery fallback.** When a timed-out run's main
 transcript lacks the Agent tool_use record but subagent transcripts exist,
@@ -737,9 +753,12 @@ results/{YYYYMMDD_HHMMSS}_{token}/   # {token} = 6 hex of uuid4, per-batch (olde
 │                          # runs_completed self-description + aggregate
 │                          # error_counts (hook_blocks/tool_failures/
 │                          # tool_failures_unclassified)
+│                          # + rescored_at (ISO ts, present only if rescored)
 └── runs/{case}_{model}_{rep}/
     ├── result.json        # tokens, computed cost, duration, criteria results,
     │                      # error_counts (additive)
+    │                      # + rescored_at / rescore_reason (present only if
+    │                      #   rescored — see "Historical rescore" below)
     ├── transcript.jsonl   # full session transcript
     └── subagents/         # subagent transcripts (Phase 3)
 ```
@@ -758,12 +777,45 @@ use additive `schema_version: 2` fields for route provenance, separated model
 identity, nullable observed usage, actual billing, API-equivalent accounting,
 and subscription capacity. Existing flat schema-v1 fields remain where their
 semantics are valid; subscription `computed_cost_usd` is null rather than a
-fabricated zero. Historical result sets are immutable: do not migrate,
-recompute, or rewrite old archives. Readers must feature-detect schema v2 and
+fabricated zero. Historical result sets are immutable as to their
+provenance and measurement fields: do not migrate, recompute, or rewrite the
+tokens, cost, timing, transcripts, route provenance, or schema-v1/v2 identity
+fields of old archives. Readers must feature-detect schema v2 and
 continue treating schema-v1 records as legacy, with absent new fields interpreted
 as unavailable rather than zero. Viewer support for these fields is a separate
 integration task; this policy does not claim that every current display surface
 already renders them.
+
+**Historical rescore (sanctioned criteria-correction exception).** The
+immutability policy above protects measurement and provenance, not scoring
+verdicts derived from an *incorrect* scorer. When a deterministic scoring bug is
+fixed, the archived transcripts (which ARE immutable) can be re-scored under the
+corrected criteria by `scripts/rescore_archives.py`. This rewrites ONLY the
+`criteria` / `subagent_criteria` pass fields of `result.json` and the
+criteria-derived rollups of `summary.json`, always additively stamped with
+provenance so the rescore is auditable and never silent:
+
+- `result.json`: `rescored_at` (ISO-8601 UTC timestamp) and `rescore_reason`
+  (e.g. `"heading-normalization-2026-07-28"`).
+- `summary.json`: `rescored_at` (ISO-8601 UTC timestamp).
+
+Transcripts, tokens, cost, timing, and all provenance/identity fields are never
+touched. The utility defaults to `--dry-run` (report would-change counts without
+writing) and only writes under `--apply`. It is scoped to dispatch_compliance
+result sets (identified by the `dispatch_compliance` manifest benchmark / `dc-*`
+case ids); other batteries, whose criteria are unchanged, are left untouched.
+Checkpoint-line and `expected` arguments are re-derived from each set's own
+golden checkpoint and manifest exactly as the runner's `score_run` does, so
+rescored values are comparable to a fresh run.
+
+In-place replacement of the archived verdicts (rather than dual legacy+v2
+reporting that would preserve both the pre- and post-correction scores side by
+side) was a deliberate user decision (2026-07-28): the rescored history is
+accepted as the single scoring record of the benchmark, since the pre-correction
+verdicts were produced by a scorer now known to be incorrect and retaining them
+as a parallel ledger would invite confusion over which numbers are canonical. The
+`rescored_at` / `rescore_reason` provenance stamps make the correction auditable
+without a second reporting track.
 
 **Viewer generation.** `scripts/generate_results_viewer_v2.py` produces the
 viewer. The official artifact is a **multi-file bundle directory**
@@ -787,6 +839,15 @@ with a `python3 -m http.server` hint appears instead. Output filenames
 auto-increment (`daafbench_2026-06-18/`, `daafbench_2026-06-18a/`, etc.)
 and never overwrite prior artifacts. `--exclude-results` drops named sets;
 exclusions are recorded in the embedded generation parameters.
+
+> **Stale-bundle caveat (2026-07-28).** Viewer bundles generated *before*
+> 2026-07-28 embed the pre-correction dispatch_compliance criteria (the
+> case-sensitive exact-label matching, and the `TASK_KEYWORDS` set without
+> `request`) inline in their precomputed metrics. They therefore display the
+> old, spuriously-low DC pass rates and will not reflect the heading-
+> normalization fix or the rescored archives. Regenerate any such bundle from
+> the current archives (after running `rescore_archives.py --apply`) before
+> using it for reporting.
 
 **Viewer content.** The output is a single scrolling document: intro/hero,
 key takeaways with a cost-performance preview, about, leaderboard, cost
@@ -931,8 +992,14 @@ within a single run. This is inherent and not preventable by scheduling.
 **Fixture isolation (Phase 3).** `run_dispatch_compliance.py` wipes and
 recreates each run's sandbox, then copies any `datasets/test_fixtures/` paths
 referenced in the case prompt into it, rewrites the prompt, and creates a
-sandbox `workspace/` containing `scripts/run_with_capture.sh` so subagents
-treating the workspace as BASE_DIR find it. Staging happens after the wipe:
+sandbox `workspace/` (the PROJECT_DIR) alongside a BASE_DIR-level
+`scripts/run_with_capture.sh`. The sandbox is thereby isomorphic to the real
+repo layout, so the CLAUDE.md convention
+`bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/...`
+resolves: `sandbox_dir` plays BASE_DIR and `workspace/` plays PROJECT_DIR (the
+prior `workspace/scripts/` location drove models of every family to construct
+`{BASE_DIR}/scripts/run_with_capture.sh` → exit 127 + wasted recovery turns).
+Staging happens after the wipe:
 the runner passes `wipe_sandbox=False` through `RunConfig` so
 `prepare_sandbox()` does not re-wipe the staged fixtures (a prior ordering bug
 did exactly that — see Known Limitation 4).

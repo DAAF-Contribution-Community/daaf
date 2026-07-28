@@ -13,9 +13,24 @@ Scoring criteria (all deterministic, no LLM involvement):
   - prompt_has_base_dir (tier2): Agent prompt contains "BASE_DIR"
   - prompt_has_mode_marker (tier2): Agent prompt contains "Ad Hoc" (case-insensitive)
   - prompt_has_project_dir (tier2): Agent prompt contains "PROJECT_DIR"
-  - prompt_has_task_section (tier2): Agent prompt contains "## Task"
-  - prompt_has_context_section (tier2): Agent prompt contains "## Context"
-  - prompt_has_instructions (tier2): Agent prompt contains "## Instructions"
+  - prompt_has_task_section (tier2): Agent prompt has a heading expressing the
+    TASK concept (structural, not a canonical "## Task" label)
+  - prompt_has_context_section (tier2): Agent prompt has a heading expressing a
+    CONTEXT concept (context/scope/background/dataset/symptom/... — structural)
+  - prompt_has_instructions (tier2): Agent prompt has a heading expressing an
+    INSTRUCTIONS concept (instruction/output/deliverable/return/... — structural)
+
+Section-heading matching (criteria 6-8) is STRUCTURAL, not label-canonical: it
+extracts markdown/bold section headings, normalizes them (strip #/whitespace,
+casefold), and passes when any heading expresses the relevant concept keyword.
+Framework guidance (ad-hoc-collaboration-mode.md) calls the dispatch-prompt
+structure "a skeleton, not a rigid template"; case-sensitive exact-label
+matching penalized legitimate synonyms ("## Output format" with a lowercase f,
+"## Return format", "## Review expectations", "## Output requirements", ...)
+and inflated a spurious cross-model gap. The keyword sets are a strict WIDENING
+of the legacy accepted-label lists — every prompt that passed under the old
+exact-match lists still passes (asserted by unit tests) — plus observed
+synonyms.
   - prompt_contains_required (tier2): All expected strings appear in Agent prompt
   - prompt_contains_any (tier2): At least one of the optional strings appears
 
@@ -42,12 +57,100 @@ is identical to the pre-fallback scorer.
 """
 
 import json
+import re
 from pathlib import Path
 
 from benchmarks.harness.models import CriterionResult
 from benchmarks.scorers.deterministic.checkpoint_adherence import (
     extract_new_tool_calls,
 )
+
+
+# --- Structural section-heading matching (Fix 1, 2026-07-28) ---
+# ATX markdown heading: up to 3 leading spaces, 1-4 '#', a space, then text
+# (optional trailing '#'s stripped). Bold-label heading: a line that is only
+# **Label** with an optional trailing colon. Both are normalized to their
+# casefolded inner text for concept-keyword matching.
+_HEADING_RE = re.compile(r"^\s{0,3}#{1,4}\s+(.+?)\s*#*\s*$")
+_BOLD_LABEL_RE = re.compile(r"^\s*\*\*(.+?)\*\*\s*:?\s*$")
+
+# Concept keyword sets. Each is a strict WIDENING of the legacy accepted-label
+# lists (so every legacy-passing prompt still passes) plus archived-observed
+# synonyms. TASK matches on a word boundary; CONTEXT/INSTRUCTIONS match as
+# substrings of the normalized heading text.
+# "request" added 2026-07-28: the GPT diagnostic cited "## User Request" as a
+# near-miss that failed the task check under the "task"-only set. It matches on a
+# LEFT word boundary just like "task", so "request", "user request", and
+# "requests" all pass while an embedding like "prerequest" does not.
+TASK_KEYWORDS = ("task", "request")
+CONTEXT_KEYWORDS = (
+    "context", "scope", "background", "specification", "dataset",
+    "symptom", "boundary", "known", "what to search",
+)
+INSTRUCTION_KEYWORDS = (
+    "instruction", "output", "deliverable", "return", "expected",
+    "report", "what to look", "what to report", "where to look",
+    "validation requirement", "requirement", "expectation",
+)
+
+# Legacy exact-label lists (the pre-2026-07-28 matcher). Retained ONLY to
+# guarantee the strict-widening property by construction: criteria 6-8 pass on
+# (structural concept match) OR (any legacy label present as a substring). The
+# OR with the legacy substring check means every prompt that passed under the
+# old matcher — including edge cases where a label appeared somewhere other
+# than a line-start heading — still passes, while the structural matcher adds
+# the observed synonyms. Without this OR, moving from substring-anywhere to
+# heading-position matching would narrow the position axis and could regress a
+# small number of archived passes (verified: 1 such case in the archives).
+LEGACY_TASK_LABEL = "## Task"
+LEGACY_CONTEXT_HEADERS = (
+    "## Context", "## Scope", "## Background", "## Specifications",
+    "## Dataset Specifications", "## Known Symptoms", "## What to Search",
+)
+LEGACY_INSTRUCTION_HEADERS = (
+    "## Instructions", "## What to Report", "## What to Look For",
+    "## Where to Look", "## Validation Requirements", "## Output Format",
+    "## Expected Output", "## Deliverables",
+)
+
+
+def extract_normalized_headings(text: str) -> list[str]:
+    """Return casefolded heading texts from a dispatch prompt.
+
+    Recognizes ATX markdown headings (``#``..``####``) and trivial bold-label
+    section headers (``**Section**`` with an optional trailing colon on their
+    own line). Each returned string is stripped and casefolded for
+    concept-keyword matching.
+    """
+    headings = []
+    for line in text.splitlines():
+        m = _HEADING_RE.match(line)
+        if not m:
+            m = _BOLD_LABEL_RE.match(line)
+        if m:
+            headings.append(m.group(1).strip().casefold())
+    return headings
+
+
+def match_section_heading(headings, keywords, word_boundary=False):
+    """Return the first heading expressing any concept keyword, else None.
+
+    ``word_boundary`` anchors the keyword at a LEFT word boundary (used for
+    TASK): "task", "tasks", "task description", and "your task" all match,
+    while an unrelated embedding like "multitask" does not (the keyword is not
+    at a word boundary there). A trailing boundary is deliberately NOT required
+    so morphological suffixes (the plural "tasks") still pass. Without
+    ``word_boundary`` the keyword must appear as a plain substring of the
+    normalized heading text.
+    """
+    for h in headings:
+        for kw in keywords:
+            if word_boundary:
+                if re.search(r"\b" + re.escape(kw), h):
+                    return h
+            elif kw in h:
+                return h
+    return None
 
 
 def extract_agent_calls(tool_calls: list[dict]) -> list[dict]:
@@ -366,69 +469,74 @@ def score_dispatch_compliance(
             ),
         ))
 
+    # --- Structural section headings across the candidate prompt(s) ---
+    # Criteria 6-8 match section headings STRUCTURALLY (see module docstring):
+    # extract headings, normalize, and pass when any expresses the relevant
+    # concept. This is a strict widening of the old exact-label matching.
+    all_headings = []
+    for p in all_prompts:
+        all_headings.extend(extract_normalized_headings(p))
+
     # --- Criterion 6: prompt_has_task_section (tier2) ---
-    has_task = any("## Task" in p for p in all_prompts)
+    # Structural concept match OR legacy exact-label substring (strict-widening
+    # guarantee — see LEGACY_* lists above).
+    matched_task = match_section_heading(
+        all_headings, TASK_KEYWORDS, word_boundary=True
+    )
+    legacy_task = LEGACY_TASK_LABEL if any(
+        LEGACY_TASK_LABEL in p for p in all_prompts
+    ) else None
+    task_hit = matched_task or legacy_task
     results.append(CriterionResult(
         name="prompt_has_task_section",
-        passed=has_task,
+        passed=task_hit is not None,
         tier="tier2",
         detail=(
-            "Found '## Task' section in agent prompt."
-            if has_task
-            else "Missing '## Task' section in agent prompt."
+            f"Found task section (heading: '{task_hit}')."
+            if task_hit
+            else f"Missing task section. Headings found: {all_headings or 'none'}"
         ),
     ))
 
     # --- Criterion 7: prompt_has_context_section (tier2) ---
-    # Accept semantically equivalent headers for context information.
-    CONTEXT_HEADERS = [
-        "## Context", "## Scope", "## Background", "## Specifications",
-        "## Dataset Specifications", "## Known Symptoms", "## What to Search",
-    ]
-    matched_context = None
-    for p in all_prompts:
-        for header in CONTEXT_HEADERS:
-            if header in p:
-                matched_context = header
-                break
-        if matched_context:
-            break
-
+    matched_context = match_section_heading(all_headings, CONTEXT_KEYWORDS)
+    legacy_context = next(
+        (h for h in LEGACY_CONTEXT_HEADERS if any(h in p for p in all_prompts)),
+        None,
+    )
+    context_hit = matched_context or legacy_context
     results.append(CriterionResult(
         name="prompt_has_context_section",
-        passed=matched_context is not None,
+        passed=context_hit is not None,
         tier="tier2",
         detail=(
-            f"Found '{matched_context}' section in agent prompt."
-            if matched_context
-            else f"Missing context section in agent prompt. Accepted: {CONTEXT_HEADERS}"
+            f"Found context section (heading: '{context_hit}')."
+            if context_hit
+            else f"Missing context section. Accepted concepts: "
+                 f"{list(CONTEXT_KEYWORDS)}. Headings found: "
+                 f"{all_headings or 'none'}"
         ),
     ))
 
     # --- Criterion 8: prompt_has_instructions (tier2) ---
-    # Accept semantically equivalent headers for instruction content.
-    INSTRUCTION_HEADERS = [
-        "## Instructions", "## What to Report", "## What to Look For",
-        "## Where to Look", "## Validation Requirements", "## Output Format",
-        "## Expected Output", "## Deliverables",
-    ]
-    matched_instructions = None
-    for p in all_prompts:
-        for header in INSTRUCTION_HEADERS:
-            if header in p:
-                matched_instructions = header
-                break
-        if matched_instructions:
-            break
-
+    matched_instructions = match_section_heading(
+        all_headings, INSTRUCTION_KEYWORDS
+    )
+    legacy_instructions = next(
+        (h for h in LEGACY_INSTRUCTION_HEADERS if any(h in p for p in all_prompts)),
+        None,
+    )
+    instructions_hit = matched_instructions or legacy_instructions
     results.append(CriterionResult(
         name="prompt_has_instructions",
-        passed=matched_instructions is not None,
+        passed=instructions_hit is not None,
         tier="tier2",
         detail=(
-            f"Found '{matched_instructions}' section in agent prompt."
-            if matched_instructions
-            else f"Missing instructions section in agent prompt. Accepted: {INSTRUCTION_HEADERS}"
+            f"Found instructions section (heading: '{instructions_hit}')."
+            if instructions_hit
+            else f"Missing instructions section. Accepted concepts: "
+                 f"{list(INSTRUCTION_KEYWORDS)}. Headings found: "
+                 f"{all_headings or 'none'}"
         ),
     ))
 

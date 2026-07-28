@@ -50,6 +50,7 @@ from benchmarks.harness.model_loader import load_models, filter_models, add_mode
 from benchmarks.harness.cost_estimator import estimate_batch_cost, format_estimate
 from benchmarks.harness.artifacts import (
     add_preflight_arg,
+    assert_unique_sandbox_slugs,
     attach_schema_version,
     build_error_artifact,
     build_run_artifact,
@@ -60,6 +61,7 @@ from benchmarks.harness.artifacts import (
     model_manifest_entry,
     nullable_mean,
     run_preflight,
+    sandbox_slug,
 )
 from benchmarks.scorers.deterministic.checkpoint_adherence import (
     extract_new_tool_calls,
@@ -152,6 +154,10 @@ def score_run(session_id: str, test_case: TestCase) -> dict:
         "criteria": criteria_dicts,
         "transcript_path": str(transcript_path),
         "tool_call_count": tool_call_count,
+        # W1 (2026-07-28): expose the golden line count so the error scan can
+        # skip the checkpoint prefix on the parent transcript, exactly as
+        # extract_new_tool_calls does. Derived here so there is one source.
+        "checkpoint_lines": checkpoint_lines,
     }
 
 
@@ -261,8 +267,28 @@ def run_one(test_case: TestCase, model: ModelConfig, rep: int,
         sub_dir = Path(archived_transcript).parent / "subagents"
         if sub_dir.exists():
             subagent_transcripts = list(sub_dir.rglob("*.jsonl"))
+    # Fix 4 (2026-07-28): scan the parent transcript directly instead of
+    # relying on result.tool_failures. The executor extracts tool_failures
+    # only on the normal completion path — timeout/stalled/early-stopped runs
+    # return before that extraction (executor.py :229/:249), leaving the
+    # parent side undercounted. Scanning the archived parent transcript with
+    # the same _iter_transcript_error_contents used for subagents closes the
+    # gap. tool_failures is passed empty so parent errors are counted once:
+    # the transcript scan REPLACES, not augments, the tool_failures-derived
+    # counts (no double-count).
+    # W1 (2026-07-28): the parent transcript carries the prepended golden
+    # checkpoint prefix, so its scan skips the first checkpoint_lines lines
+    # (mirroring extract_new_tool_calls); subagent transcripts have no prefix
+    # and are scanned in full. Note: this scan sees FULL untruncated content
+    # over the WHOLE post-checkpoint transcript, unlike the legacy 500-char-
+    # truncated result.tool_failures path, so bucket classifications can differ
+    # from pre-2026-07-28 runs.
+    parent_skip_lines = scored.get("checkpoint_lines", 0)
     error_counts = compute_error_counts(
-        result.tool_failures, subagent_transcripts=subagent_transcripts
+        [],
+        subagent_transcripts=subagent_transcripts,
+        parent_transcript=archived_transcript,
+        parent_skip_lines=parent_skip_lines,
     )
 
     # Clean up checkpoint sandbox AFTER archiving
@@ -767,6 +793,11 @@ def main():
         print("ERROR: No valid models selected.")
         sys.exit(1)
 
+    # W2 (2026-07-28): fail fast on any sandbox-slug collision across the
+    # selected models before any run launches — colliding slugs would share a
+    # _sandbox/run_* directory and cross-contaminate fixtures/transcripts.
+    assert_unique_sandbox_slugs(models)
+
     # Load test cases
     all_cases = load_test_cases(CASES_FILE)
 
@@ -846,7 +877,7 @@ def main():
     for tc in test_cases:
         for model in models:
             for rep in range(args.reps):
-                suffix = f"{tc.id}_{model.name.replace(' ', '_')}_{rep}_{batch_token}"
+                suffix = f"{tc.id}_{sandbox_slug(model.name)}_{rep}_{batch_token}"
                 runs.append((tc, model, rep, suffix))
 
     all_results = []

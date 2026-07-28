@@ -46,6 +46,7 @@ from benchmarks.harness.model_loader import load_models, filter_models, add_mode
 from benchmarks.harness.cost_estimator import estimate_batch_cost, format_estimate
 from benchmarks.harness.artifacts import (
     add_preflight_arg,
+    assert_unique_sandbox_slugs,
     attach_schema_version,
     build_error_artifact,
     build_run_artifact,
@@ -60,6 +61,7 @@ from benchmarks.harness.artifacts import (
     purity_coverage,
     run_preflight,
     run_validity,
+    sandbox_slug,
     validity_coverage,
 )
 from benchmarks.scorers.deterministic.checkpoint_adherence import (
@@ -213,6 +215,10 @@ def score_run(
         "child_model_purity": purity,
         "transcript_path": str(transcript_path),
         "tool_call_count": len(tool_calls),
+        # W1 (2026-07-28): expose the golden line count so the error scan can
+        # skip the checkpoint prefix on the parent transcript, exactly as
+        # extract_new_tool_calls does. Derived here so there is one source.
+        "checkpoint_lines": checkpoint_lines,
     }
 
 
@@ -510,9 +516,11 @@ def prepare_fixtures(test_case: TestCase, sandbox_dir: str) -> TestCase:
        test_fixtures/, each is copied to {sandbox_dir}/fixtures/{subdir}/{file}
        and the prompt is rewritten so originals are never touched by subagents.
     2. Workspace containment (unconditional): every case — fixture-bearing or not
-       — gets a {sandbox_dir}/workspace/ (seeded with run_with_capture.sh) and a
-       prompt instruction directing all model/subagent writes into the per-run
-       sandbox. Previously non-fixture cases (dc-01..dc-06) received no
+       — gets a {sandbox_dir}/workspace/ (the PROJECT_DIR) plus a BASE_DIR-level
+       {sandbox_dir}/scripts/run_with_capture.sh (isomorphic to the real repo, so
+       the CLAUDE.md `{BASE_DIR}/scripts/run_with_capture.sh` convention resolves)
+       and a prompt instruction directing all model/subagent writes into the
+       per-run sandbox. Previously non-fixture cases (dc-01..dc-06) received no
        containment instruction, so a dispatched subagent could write a real
        /daaf/research/ project (the 2026-07-16 dc-01 MonteCarlo leak). Applying
        the same instruction fixture cases already carried closes that vector for
@@ -557,16 +565,28 @@ def prepare_fixtures(test_case: TestCase, sandbox_dir: str) -> TestCase:
     workspace_dir = Path(sandbox_dir) / "workspace"
     workspace_dir.mkdir(parents=True, exist_ok=True)
 
-    # Copy run_with_capture.sh so subagents find it at the expected relative path.
-    # Subagents treat the workspace as BASE_DIR and look for scripts/run_with_capture.sh there.
+    # Copy run_with_capture.sh to the BASE_DIR-level scripts/ dir so the sandbox
+    # is isomorphic to the real repo layout: CLAUDE.md's canonical invocation is
+    # `bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/...`, so
+    # sandbox_dir plays BASE_DIR and workspace_dir plays PROJECT_DIR. Models of
+    # every family read that convention and construct {BASE_DIR}/scripts/... — the
+    # prior workspace/scripts/ location produced exit 127 + wasted recovery turns.
     rwc_src = Path("/daaf/scripts/run_with_capture.sh")
     if rwc_src.exists():
-        rwc_dest = workspace_dir / "scripts" / "run_with_capture.sh"
+        rwc_dest = Path(sandbox_dir) / "scripts" / "run_with_capture.sh"
         rwc_dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(rwc_src, rwc_dest)
+        # copy2 preserves mode; ensure the sandbox copy is writable + executable
+        # (the source may be tracked read-only, and the wrapper must run).
+        try:
+            rwc_dest.chmod(rwc_dest.stat().st_mode | stat.S_IWUSR | stat.S_IXUSR)
+        except OSError as e:
+            print(f"  WARNING: could not chmod wrapper copy {rwc_dest} ({e}).")
 
     modified_prompt += (
-        f" Use {workspace_dir} as the project workspace: every file or folder you"
+        f" Use {workspace_dir} as the project workspace and {sandbox_dir} as the"
+        f" base directory (the script-execution wrapper is at"
+        f" {sandbox_dir}/scripts/run_with_capture.sh): every file or folder you"
         f" or your subagents create must live under {sandbox_dir} — do not create"
         f" scripts, outputs, or research project folders anywhere else in the"
         f" repository."
@@ -775,8 +795,28 @@ def run_one(test_case: TestCase, model: ModelConfig, rep: int,
         sub_dir = Path(archived_transcript).parent / "subagents"
         if sub_dir.exists():
             subagent_transcripts = list(sub_dir.rglob("*.jsonl"))
+    # Fix 4 (2026-07-28): scan the parent transcript directly instead of
+    # relying on result.tool_failures. The executor extracts tool_failures
+    # only on the normal completion path — timeout/stalled/early-stopped runs
+    # return before that extraction (executor.py :229/:249), leaving the
+    # parent side undercounted. Scanning the archived parent transcript with
+    # the same _iter_transcript_error_contents used for subagents closes the
+    # gap. tool_failures is passed empty so parent errors are counted once:
+    # the transcript scan REPLACES, not augments, the tool_failures-derived
+    # counts (no double-count).
+    # W1 (2026-07-28): the parent transcript carries the prepended golden
+    # checkpoint prefix, so its scan skips the first checkpoint_lines lines
+    # (mirroring extract_new_tool_calls); subagent transcripts have no prefix
+    # and are scanned in full. Note: this scan sees FULL untruncated content
+    # over the WHOLE post-checkpoint transcript, unlike the legacy 500-char-
+    # truncated result.tool_failures path, so bucket classifications can differ
+    # from pre-2026-07-28 runs.
+    parent_skip_lines = scored.get("checkpoint_lines", 0)
     error_counts = compute_error_counts(
-        result.tool_failures, subagent_transcripts=subagent_transcripts
+        [],
+        subagent_transcripts=subagent_transcripts,
+        parent_transcript=archived_transcript,
+        parent_skip_lines=parent_skip_lines,
     )
 
     # Clean up checkpoint sandbox AFTER archiving
@@ -1462,6 +1502,11 @@ def main():
         print("ERROR: No valid models selected.")
         sys.exit(1)
 
+    # W2 (2026-07-28): fail fast on any sandbox-slug collision across the
+    # selected models before any run launches — colliding slugs would share a
+    # _sandbox/run_* directory and cross-contaminate fixtures/transcripts.
+    assert_unique_sandbox_slugs(models)
+
     # Load test cases
     all_cases = load_test_cases(CASES_FILE)
 
@@ -1547,7 +1592,7 @@ def main():
     for tc in test_cases:
         for model in models:
             for rep in range(args.reps):
-                suffix = f"{tc.id}_{model.name.replace(' ', '_')}_{rep}_{batch_token}"
+                suffix = f"{tc.id}_{sandbox_slug(model.name)}_{rep}_{batch_token}"
                 runs.append((tc, model, rep, suffix))
 
     all_results = []

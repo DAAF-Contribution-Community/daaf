@@ -95,15 +95,24 @@ def classify_error_content(content: str) -> str:
     return "tool_failure_unclassified"
 
 
-def _iter_transcript_error_contents(transcript_path):
+def _iter_transcript_error_contents(transcript_path, skip_lines=0):
     """Yield the content string of every ``is_error`` tool_result in a .jsonl
-    transcript. Best-effort: malformed lines and unreadable files are skipped."""
+    transcript. Best-effort: malformed lines and unreadable files are skipped.
+
+    ``skip_lines`` drops the first N physical lines before scanning, mirroring
+    ``extract_new_tool_calls``'s ``lines[checkpoint_line_count:]`` slice. For a
+    parent transcript that carries a prepended golden-checkpoint prefix, pass the
+    golden line count so only the post-checkpoint benchmark run is classified;
+    the prefix's tool_results (framework setup, not model behavior) are excluded.
+    Subagent transcripts have no such prefix and are scanned in full (skip=0)."""
     p = Path(transcript_path)
     if not p.exists():
         return
     try:
         with open(p, "r") as f:
-            for line in f:
+            for lineno, line in enumerate(f):
+                if lineno < skip_lines:
+                    continue
                 line = line.strip()
                 if not line or '"is_error"' not in line:
                     continue
@@ -132,7 +141,12 @@ def _iter_transcript_error_contents(transcript_path):
         return
 
 
-def compute_error_counts(tool_failures, subagent_transcripts=None) -> dict:
+def compute_error_counts(
+    tool_failures,
+    subagent_transcripts=None,
+    parent_transcript=None,
+    parent_skip_lines=0,
+) -> dict:
     """Aggregate error-bearing tool results into the three diagnostic buckets.
 
     ``tool_failures`` is the parent-transcript failure list already extracted by
@@ -140,7 +154,17 @@ def compute_error_counts(tool_failures, subagent_transcripts=None) -> dict:
     ``content`` string). ``subagent_transcripts``, when given, is an iterable of
     transcript file paths whose ``is_error`` tool_results are scanned and
     classified too, so a run's counts cover its dispatched subagents as well as
-    the parent.
+    the parent. ``parent_transcript`` (single path) is scanned skipping its first
+    ``parent_skip_lines`` lines — pass the run's golden-checkpoint line count so
+    only post-checkpoint content is classified (the golden prefix is framework
+    setup, not model behavior). Cold-start phases pass ``parent_skip_lines=0``.
+
+    NOTE (2026-07-28, W1/I2): these transcript scans see the FULL, untruncated
+    tool_result content and the WHOLE post-checkpoint transcript, unlike the
+    legacy ``result.tool_failures`` path (executor-extracted, truncated to the
+    first 500 chars). Bucket classifications can therefore differ from
+    pre-2026-07-28 runs — a signature past char 500 that the legacy path missed
+    is now seen, so a run may reclassify from ``unclassified`` to a named bucket.
 
     Returns ``{"hook_blocks": n, "tool_failures": n,
     "tool_failures_unclassified": n}`` — additive fields for result.json.
@@ -154,6 +178,11 @@ def compute_error_counts(tool_failures, subagent_transcripts=None) -> dict:
     for tf in tool_failures or []:
         content = tf.get("content", "") if isinstance(tf, dict) else str(tf)
         counts[_bucket[classify_error_content(content)]] += 1
+    if parent_transcript:
+        for content in _iter_transcript_error_contents(
+            parent_transcript, skip_lines=parent_skip_lines
+        ):
+            counts[_bucket[classify_error_content(content)]] += 1
     for tp in subagent_transcripts or []:
         for content in _iter_transcript_error_contents(tp):
             counts[_bucket[classify_error_content(content)]] += 1

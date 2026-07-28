@@ -39,6 +39,7 @@ from benchmarks.harness.model_loader import load_models, filter_models, add_mode
 from benchmarks.harness.cost_estimator import estimate_batch_cost, format_estimate
 from benchmarks.harness.artifacts import (
     add_preflight_arg,
+    assert_unique_sandbox_slugs,
     attach_schema_version,
     build_error_artifact,
     build_run_artifact,
@@ -49,6 +50,7 @@ from benchmarks.harness.artifacts import (
     model_manifest_entry,
     nullable_mean,
     run_preflight,
+    sandbox_slug,
 )
 from benchmarks.scorers.deterministic.checkpoint_adherence import (
     extract_new_tool_calls,
@@ -478,7 +480,26 @@ def run_one(test_case: TestCase, model: ModelConfig, rep: int, sandbox_suffix: s
 
     # Classify error-bearing tool results into hook-block vs genuine-failure
     # buckets (parent transcript only in this benchmark). Additive diagnostic.
-    error_counts = compute_error_counts(result.tool_failures)
+    # Fix 4 (2026-07-28): scan the parent transcript directly instead of
+    # relying on result.tool_failures. The executor extracts tool_failures
+    # only on the normal completion path — timeout/stalled/early-stopped runs
+    # return before that extraction (executor.py :229/:249), leaving the
+    # parent side undercounted. This benchmark is single-agent (no subagents),
+    # so the parent transcript is the sole error source. tool_failures is
+    # passed empty so parent errors are counted once (the scan REPLACES, not
+    # augments, the tool_failures-derived counts — no double-count).
+    # W1 (2026-07-28): this is a cold-start phase (CHECKPOINT_LINES = 0), so
+    # there is no golden prefix to skip and parent_skip_lines stays 0. The
+    # goldens-error-free invariant test (tests/test_error_classification.py)
+    # covers the general prefix-contamination guard. Note: this scan sees FULL
+    # untruncated content over the WHOLE transcript, unlike the legacy 500-char-
+    # truncated result.tool_failures path, so bucket classifications can differ
+    # from pre-2026-07-28 runs.
+    parent_transcript = scored.get("transcript_path")
+    error_counts = compute_error_counts(
+        [],
+        parent_transcript=parent_transcript,
+    )
 
     return build_run_artifact(
         model,
@@ -920,6 +941,11 @@ def main():
         print("ERROR: No valid models selected.")
         sys.exit(1)
 
+    # W2 (2026-07-28): fail fast on any sandbox-slug collision across the
+    # selected models before any run launches — colliding slugs would share a
+    # _sandbox/run_* directory and cross-contaminate fixtures/transcripts.
+    assert_unique_sandbox_slugs(models)
+
     # Load test cases
     all_cases = load_test_cases(CASES_FILE)
 
@@ -977,7 +1003,7 @@ def main():
     for tc in test_cases:
         for model in models:
             for rep in range(args.reps):
-                suffix = f"{tc.id}_{model.name.replace(' ', '_')}_{rep}_{batch_token}"
+                suffix = f"{tc.id}_{sandbox_slug(model.name)}_{rep}_{batch_token}"
                 runs.append((tc, model, rep, suffix))
 
     all_results = []
