@@ -546,6 +546,12 @@ CHILD_PURITY_FIELDS = (
     "purity_status", "evidence_source", "evidence_boundary",
     "child_transcript_count", "readable_child_transcript_count",
     "incompleteness_reason",
+    # Added with the wire_id / non-model-marker purity fix. Archived result.json
+    # files are never rewritten, so these read as None for every pre-fix run —
+    # _safe_known_mapping already fills missing keys with None and the JS
+    # renderer reads named fields, so older payloads render exactly as before.
+    "comparison_target_child_model_id", "wire_id_declared",
+    "observed_non_model_markers", "non_model_marker_rule",
 )
 
 
@@ -628,7 +634,7 @@ def _safe_known_mapping(raw, fields):
     for field in (
         "claude_cli_model_usage_ids", "incompleteness_reasons",
         "scenario_assumptions", "observed_child_model_ids_raw",
-        "comparison_child_model_ids",
+        "comparison_child_model_ids", "observed_non_model_markers",
     ):
         if field in safe and safe[field] is not None:
             safe[field] = _string_list(safe[field])
@@ -647,6 +653,8 @@ def _safe_manifest_models(manifest):
         safe_models.append({
             "key": entry.get("key"),
             "id": entry.get("id"),
+            # Additive: None for archived manifests written before wire_id.
+            "wire_id": entry.get("wire_id"),
             "name": entry.get("name"),
             "display_name": entry.get("display_name"),
             "provider": entry.get("provider"),
@@ -852,6 +860,18 @@ def load_result_sets(results_dir, filter_timestamps=None, exclude_timestamps=Non
             "config": manifest_config,
             "disk_run_count": disk_run_count,
             "summary_total_runs": summary.get("total_runs", 0),
+            # Partial-pass disclosure (progressive-archiving redesign, 2026-07).
+            # A summary is `partial` while a pass is mid-flight or was killed
+            # before completing; runs_expected/runs_completed make the shortfall
+            # legible. Fields absent on pre-redesign archives default to complete.
+            "partial": bool(summary.get("partial", False)),
+            "runs_expected": summary.get("runs_expected"),
+            "runs_completed": summary.get(
+                "runs_completed", summary.get("total_runs", 0)
+            ),
+            # Aggregate hook-block vs tool-failure diagnostic counters (additive;
+            # None on archives predating the field).
+            "error_counts": summary.get("error_counts"),
         }
         result_sets.append(result_set)
 
@@ -1086,7 +1106,25 @@ def load_runs(results_dir, result_sets, cases):
                 "billing_grade_cost_eligible": billing_eligible,
                 "billing_grade_cost_exclusion_reason": billing_reason,
                 "duration_s": _optional_rounded_number(result.get("duration_s"), 3),
+                # Time-to-demonstrated-compliance for early-stopped runs (launch
+                # -> first score-complete pass, excluding the confirmation/kill
+                # tail). Substituted for duration_s in duration/latency aggregates
+                # when a completed_early run carries it; None (excluded) otherwise.
+                # None on archives predating the field.
+                "score_complete_seconds": _optional_rounded_number(
+                    result.get("score_complete_seconds"), 3
+                ),
                 "error": result.get("error", None),
+                # Run lifecycle status. Dispatch B (executor-side watchdog) will
+                # emit "completed_early" for early-stopped runs; these substitute
+                # score_complete_seconds into duration/latency aggregates when
+                # present (else are excluded, as their wall time is truncated and
+                # not comparable) while their scores count normally. None on
+                # archives predating the field.
+                "status": result.get("status"),
+                # Additive hook-block vs tool-failure diagnostic counters
+                # (None on archives predating the error_counts field).
+                "error_counts": result.get("error_counts"),
                 # Phase 1 only (None elsewhere)
                 "expected_mode": result.get("expected_mode"),
                 # Phase 2/3 only (None elsewhere)
@@ -2264,10 +2302,31 @@ def build_precomputed(result_sets, cases, runs, generation_params,
     DURATION_REFERENCE_MODEL = BATTERY_REFERENCE_MODEL
     duration_models = {}
     for model in models:
-        durs = [r["duration_s"] for r in runs
-                if r["model"] == model
-                and isinstance(r["duration_s"], (int, float))
-                and not isinstance(r["duration_s"], bool)]
+        # Duration/latency aggregate contribution rules (Dispatch B + review fix):
+        #   - stalled runs are ALWAYS excluded: their wall time is a
+        #     watchdog-killed hang, not a task-completion measure, and never
+        #     comparable to a real duration.
+        #   - completed_early runs contribute score_complete_seconds when present
+        #     (time-to-demonstrated-compliance: launch -> first score-complete
+        #     pass, excluding the confirmation/kill tail), else are excluded. This
+        #     keeps the duration axis populated with a meaningful "time to all
+        #     criteria pass" measure instead of dropping early-stopped runs — but
+        #     note it is NOT full-task walltime (see README § 8; label accordingly).
+        #   - every other run contributes its full duration_s.
+        # Keyed on the exact "completed_early"/"stalled" status strings.
+        durs = []
+        for r in runs:
+            if r["model"] != model:
+                continue
+            status = r.get("status")
+            if status == "stalled":
+                continue
+            if status == "completed_early":
+                val = r.get("score_complete_seconds")
+            else:
+                val = r["duration_s"]
+            if isinstance(val, (int, float)) and not isinstance(val, bool):
+                durs.append(val)
         if not durs:
             continue
         n = len(durs)
@@ -2355,6 +2414,11 @@ def build_precomputed(result_sets, cases, runs, generation_params,
             "summary_total_runs": rs.get("summary_total_runs", 0),
             "run_count_discrepancy":
                 rs.get("disk_run_count", 0) != rs.get("summary_total_runs", 0),
+            # Partial-pass disclosure (progressive-archiving redesign, 2026-07).
+            "partial": rs.get("partial", False),
+            "runs_expected": rs.get("runs_expected"),
+            "runs_completed": rs.get("runs_completed"),
+            "error_counts": rs.get("error_counts"),
         })
 
     # --- totals ---
@@ -2631,6 +2695,17 @@ def print_precomputed_report(precomputed):
     print(f"  Total runs: {totals['total_runs']} completed | "
           f"models: {totals['n_models']} | cases: {totals['n_cases']} | "
           f"sets: {totals['n_result_sets']} ({n_disc} with run-count discrepancy)")
+    # Partial-pass disclosure: a partial summary is mid-flight or was killed
+    # before completing all expected runs (progressive-archiving redesign).
+    partial_sets = [p for p in precomputed["provenance"] if p.get("partial")]
+    if partial_sets:
+        print(f"  PARTIAL result sets ({len(partial_sets)} — incomplete passes):")
+        for p in partial_sets:
+            done = p.get("runs_completed")
+            exp = p.get("runs_expected")
+            frac = f"{done}/{exp}" if done is not None and exp is not None else "?"
+            print(f"    {p['timestamp']} ({p['phase_label']}): "
+                  f"{frac} runs completed")
     print(f"  Pricing loaded for {len(precomputed['cost'].get('models', []))} models "
           f"(published list rates; observed spend tracking removed)")
     excluded = (totals.get("generation_params") or {}).get("results_excluded") or []

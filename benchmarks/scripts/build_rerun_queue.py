@@ -1,12 +1,17 @@
-"""build_rerun_queue.py — read-only scanner emitting the DAAFBench timed-out re-run queue.
+"""build_rerun_queue.py — read-only scanner emitting the DAAFBench re-run queue.
 
 Scans benchmarks/results/*/runs/*/result.json (excluding _quarantine* result
 sets, the top-level probes/ dir, and removed_runs/ provenance sidecars), tallies
-every timed-out run, and emits an ordered re-run queue: models sorted by
-descending timeout rate, with one ready-to-run command per timed-out
-(model, battery, case). Each command's --reps is set to the number of timed-out
-reps for that (model, battery, case) across the corpus, i.e. the number of fresh
-completions needed to replace the censored ones.
+every timed-out run AND every permanently-stalled run (status == "stalled" — a
+watchdog-killed hang that exhausted auto-relaunch; § 3), and emits an ordered
+re-run queue: models sorted by descending timeout rate, with one ready-to-run
+command per failing (model, battery, case). Each command's --reps is the number
+of censored reps for that (model, battery, case) across the corpus — timed-out
+plus stalled — i.e. the number of fresh completions needed to replace them. The
+two failure classes are counted separately in the report and JSON output
+(``timed_out``/``stalled`` per model, ``timed_out_reps``/``stalled_reps`` per
+queue entry) so they stay distinguishable; recovery semantics are identical (both
+produced no usable completion and are eligible for rerun).
 
 Backburnered models (default: Gemma 4 31B, Gemma 4 26B, GPT-5.6 Luna
 (ChatGPT Subscription)) are listed in a separate deferred section, not the
@@ -136,11 +141,21 @@ result_files = [
 # --- Scan ---
 total_by_model = Counter()
 timed_by_model = Counter()
-# (model_name, battery, runner, case_id) -> timed-out rep count needed
-rerun_counts = defaultdict(int)
+# Permanently-stalled runs (status == "stalled") — the watchdog killed a hung run
+# after exhausting auto-relaunch (§ 3). Recovery semantics are equivalent to a
+# timeout (the run produced no usable completion and is eligible for rerun), so
+# these are ALSO selected for the queue, but tracked in a SEPARATE counter so the
+# two failure classes stay distinguishable in the report and JSON output.
+stalled_by_model = Counter()
+# (model_name, battery, runner, case_id) -> rep counts needed, split by failure
+# class. reps_needed for a triple is the SUM (each censored run needs one fresh
+# completion regardless of which class censored it).
+timed_rerun_counts = defaultdict(int)
+stalled_rerun_counts = defaultdict(int)
 unknown_names = set()
 skipped_unmapped_case = 0
-excluded_case_reps = Counter()  # case_id -> timed-out reps omitted from the queue
+# case_id -> reps (either class) omitted from the queue as criterion-invalid.
+excluded_case_reps = Counter()
 
 for path in result_files:
     with open(path) as fh:
@@ -148,9 +163,16 @@ for path in result_files:
     model_name = rec.get("model") or rec.get("model_name")
     case_id = rec.get("case_id") or rec.get("test_case_id")
     total_by_model[model_name] += 1
-    if not rec.get("timed_out"):
+    is_timed_out = bool(rec.get("timed_out"))
+    # status == "stalled" is mutually exclusive with the timed_out flag
+    # (artifacts._run_status returns "stalled" before the timed_out branch).
+    is_stalled = rec.get("status") == "stalled"
+    if not (is_timed_out or is_stalled):
         continue
-    timed_by_model[model_name] += 1
+    if is_timed_out:
+        timed_by_model[model_name] += 1
+    if is_stalled:
+        stalled_by_model[model_name] += 1
     # Map case-id prefix -> battery/runner.
     prefix = (case_id or "")[:2]
     battery_runner = BATTERY_BY_PREFIX.get(prefix)
@@ -163,14 +185,22 @@ for path in result_files:
     if case_id in excluded_cases:
         excluded_case_reps[case_id] += 1
         continue
-    rerun_counts[(model_name, battery, runner, case_id)] += 1
+    if is_timed_out:
+        timed_rerun_counts[(model_name, battery, runner, case_id)] += 1
+    if is_stalled:
+        stalled_rerun_counts[(model_name, battery, runner, case_id)] += 1
 
 # --- Build ordering ---
 # INTENT: rank models with >=1 timeout by descending timeout RATE (per the
 #         user's "descending timeout rate" campaign spec), breaking ties by
 #         descending absolute timeout count, then registry declaration order
 #         (which yields Kimi K3 before DeepSeek V4 Pro on their 41/41 tie).
-models_with_timeouts = [m for m in timed_by_model if timed_by_model[m] > 0]
+# Any model with >=1 timeout OR >=1 stall needs rerun work. Stalled-only models
+# (timeout rate 0) sort after timed-out models but still get emitted.
+models_needing_rerun = [
+    m for m in (set(timed_by_model) | set(stalled_by_model))
+    if timed_by_model[m] > 0 or stalled_by_model[m] > 0
+]
 
 
 def _rate(m):
@@ -179,10 +209,15 @@ def _rate(m):
 
 
 def _sort_key(m):
-    return (-_rate(m), -timed_by_model[m], name_to_registry_index.get(m, 10_000), m)
+    # Primary ordering stays timeout-rate descending (the campaign spec); stalled
+    # count is a tertiary tiebreak so stalled-only models order deterministically.
+    return (
+        -_rate(m), -timed_by_model[m], -stalled_by_model[m],
+        name_to_registry_index.get(m, 10_000), m,
+    )
 
 
-ranked = sorted(models_with_timeouts, key=_sort_key)
+ranked = sorted(models_needing_rerun, key=_sort_key)
 active_models = [m for m in ranked if m not in backburner_names]
 deferred_models = [m for m in ranked if m in backburner_names]
 
@@ -194,12 +229,18 @@ for m in ranked:
         unknown_names.add(m)
         key = m.lower().replace(" ", "-").replace(".", "")  # best-effort fallback
     entries = []
-    # Case triples for this model, sorted by battery then case_id for stable output.
-    triples = sorted(
-        [(b, r, c, n) for (mm, b, r, c), n in rerun_counts.items() if mm == m],
-        key=lambda t: (t[0], t[2]),
-    )
-    for battery, runner, case_id, reps in triples:
+    # Case triples for this model (union of both failure classes), sorted by
+    # battery then case_id for stable output. reps_needed = timed + stalled.
+    triple_keys = {
+        (b, r, c)
+        for (mm, b, r, c) in set(timed_rerun_counts) | set(stalled_rerun_counts)
+        if mm == m
+    }
+    triples = sorted(triple_keys, key=lambda t: (t[0], t[2]))
+    for battery, runner, case_id in triples:
+        timed_reps = timed_rerun_counts[(m, battery, runner, case_id)]
+        stalled_reps = stalled_rerun_counts[(m, battery, runner, case_id)]
+        reps = timed_reps + stalled_reps
         cmd = (f"python3 benchmarks/scripts/{runner} "
                f"--models {key} --test-id {case_id} --reps {reps} "
                f"--timeout {RERUN_TIMEOUT_S} --sequential")
@@ -207,6 +248,8 @@ for m in ranked:
             "battery": battery,
             "case_id": case_id,
             "reps_needed": reps,
+            "timed_out_reps": timed_reps,
+            "stalled_reps": stalled_reps,
             "runner": runner,
             "command": cmd,
         })
@@ -215,14 +258,17 @@ for m in ranked:
 # --- Summary (stdout) ---
 grand_total_runs = sum(total_by_model.values())
 grand_timed_out = sum(timed_by_model.values())
+grand_stalled = sum(stalled_by_model.values())
 
 print("=" * 78)
-print("DAAFBench timed-out re-run queue")
+print("DAAFBench re-run queue (timed-out + permanently-stalled runs)")
 print("=" * 78)
 print(f"Corpus scanned : {RESULTS_DIR}")
 print(f"Result files   : {grand_total_runs} runs "
       f"(runs/ scope; excludes _quarantine*, probes/, removed_runs/)")
 print(f"Timed-out runs : {grand_timed_out}")
+print(f"Stalled runs   : {grand_stalled} (status==\"stalled\"; watchdog-killed "
+      f"hangs, distinct from timeouts — also queued for rerun)")
 _baseline_match = (grand_total_runs == EXPECTED_TOTAL_RUNS
                    and grand_timed_out == EXPECTED_TIMED_OUT)
 print(f"Self-check     : expected pre-campaign baseline "
@@ -241,12 +287,12 @@ if unknown_names:
           f"derived): {sorted(unknown_names)}")
 print()
 
-print("Per-model timeout tally (all models, descending rate):")
-print(f"  {'model':<40} {'timed':>6} {'total':>6} {'rate':>7}  section")
+print("Per-model failure tally (all models needing rerun, descending timeout rate):")
+print(f"  {'model':<40} {'timed':>6} {'stall':>6} {'total':>6} {'rate':>7}  section")
 for m in ranked:
     section = "DEFERRED" if m in backburner_names else "active"
-    print(f"  {m:<40} {timed_by_model[m]:>6} {total_by_model[m]:>6} "
-          f"{_rate(m) * 100:>6.1f}%  {section}")
+    print(f"  {m:<40} {timed_by_model[m]:>6} {stalled_by_model[m]:>6} "
+          f"{total_by_model[m]:>6} {_rate(m) * 100:>6.1f}%  {section}")
 print()
 
 print("-" * 78)
@@ -257,11 +303,11 @@ for rank, m in enumerate(active_models, start=1):
     entries = queue[m]
     reps_sum = sum(e["reps_needed"] for e in entries)
     print(f"\n[{rank}] {m}  (key: {name_to_key.get(m, '?')}) — "
-          f"{timed_by_model[m]} timed-out / {total_by_model[m]} runs "
-          f"({_rate(m) * 100:.1f}%), {len(entries)} case(s), "
-          f"{reps_sum} rep(s) to re-run")
+          f"{timed_by_model[m]} timed-out + {stalled_by_model[m]} stalled / "
+          f"{total_by_model[m]} runs ({_rate(m) * 100:.1f}% timeout), "
+          f"{len(entries)} case(s), {reps_sum} rep(s) to re-run")
     if not entries:
-        print("    (all timed-out reps are excluded cases — nothing to re-run)")
+        print("    (all failed reps are excluded cases — nothing to re-run)")
     for e in entries:
         print(f"    {e['command']}")
 
@@ -274,11 +320,11 @@ for m in deferred_models:
     entries = queue[m]
     reps_sum = sum(e["reps_needed"] for e in entries)
     print(f"\n[deferred] {m}  (key: {name_to_key.get(m, '?')}) — "
-          f"{timed_by_model[m]} timed-out / {total_by_model[m]} runs "
-          f"({_rate(m) * 100:.1f}%), {len(entries)} case(s), "
-          f"{reps_sum} rep(s) to re-run")
+          f"{timed_by_model[m]} timed-out + {stalled_by_model[m]} stalled / "
+          f"{total_by_model[m]} runs ({_rate(m) * 100:.1f}% timeout), "
+          f"{len(entries)} case(s), {reps_sum} rep(s) to re-run")
     if not entries:
-        print("    (all timed-out reps are excluded cases — nothing to re-run)")
+        print("    (all failed reps are excluded cases — nothing to re-run)")
     for e in entries:
         print(f"    {e['command']}")
 
@@ -288,6 +334,7 @@ if args.out:
         "corpus_dir": str(RESULTS_DIR),
         "total_runs": grand_total_runs,
         "timed_out": grand_timed_out,
+        "stalled": grand_stalled,
         "baseline_expected": {"total_runs": EXPECTED_TOTAL_RUNS,
                               "timed_out": EXPECTED_TIMED_OUT},
         "baseline_match": _baseline_match,
@@ -300,6 +347,7 @@ if args.out:
         "models": {
             m: {
                 "timed_out": timed_by_model[m],
+                "stalled": stalled_by_model[m],
                 "total": total_by_model[m],
                 "rate": _rate(m),
                 "key": name_to_key.get(m),

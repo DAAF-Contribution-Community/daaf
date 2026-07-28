@@ -23,12 +23,17 @@ Usage:
 
 import argparse
 import concurrent.futures
+import fcntl
 import json
 import os
 import shutil
+import stat
 import subprocess
 import sys
+import threading
 import time
+import uuid
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -68,7 +73,9 @@ from benchmarks.scorers.deterministic.dispatch_compliance import (
 from benchmarks.scorers.deterministic.subagent_behavior import (
     find_subagent_transcripts,
     score_subagent_behavior,
+    score_subagent_behavior_from_transcripts,
 )
+from benchmarks.scorers.deterministic.error_classification import compute_error_counts
 
 # --- Config ---
 
@@ -77,6 +84,16 @@ CASES_FILE = BASE_DIR / "benchmarks" / "datasets" / "dispatch_compliance" / "cas
 MODELS_FILE = BASE_DIR / "benchmarks" / "config" / "models.yaml"
 
 LAUNCH_DELAY_SECONDS = 2
+# Cap on simultaneously in-flight runs. Per-run state (sandbox dir, uuid4 session
+# ids, transcript dirs) is fully isolated, so the cap is purely a resource-
+# pressure guard, not a correctness one. --delay staggers submits independently.
+MAX_CONCURRENT_RUNS = 5
+
+# Serializes the progressive rollup (per-run archive write + summary/manifest
+# rewrite). In the parallel path the as_completed loop already collects results
+# on the main thread one at a time, but the lock makes the invariant explicit and
+# keeps the finalizer safe against any future concurrent caller.
+_ARCHIVE_LOCK = threading.Lock()
 
 
 # --- Load config ---
@@ -92,17 +109,26 @@ def score_run(
     session_id: str,
     test_case: TestCase,
     requested_child_model_id: str,
+    wire_child_model_id: str = None,
 ) -> dict:
     """Score dispatch behavior and collect CLI-observed child-model evidence.
 
     Returns phase criteria, transcript diagnostics, and a non-scoring purity
     record. Purity is infrastructure evidence only; it does not alter any
     deterministic behavioral criterion.
+
+    ``requested_child_model_id`` is the routing selector (``ModelConfig.id``);
+    ``wire_child_model_id`` is the declared wire identity
+    (``ModelConfig.comparison_model_id``) that transcript observations are
+    compared against. Omitting the latter falls back to the routing selector,
+    which is correct for every model whose wire form equals its routing id.
     """
     # Locate child transcripts even when the parent transcript is absent: their
     # independent CLI records may still establish dispatch and model identity.
     subagent_transcripts = find_subagent_transcripts(session_id)
-    purity = child_model_purity(subagent_transcripts, requested_child_model_id)
+    purity = child_model_purity(
+        subagent_transcripts, requested_child_model_id, wire_child_model_id
+    )
 
     transcript_path = find_benchmark_transcript(session_id)
     if not transcript_path:
@@ -199,6 +225,101 @@ FIXTURE_PREFIX = "/daaf/benchmarks/datasets/test_fixtures/"
 # project directory under /daaf/research/ or the repo root (B1 safety).
 SANDBOX_ROOT = "/daaf/benchmarks/_sandbox"
 
+# Cross-process reader/writer lock on the fixture surface. Deliberately lives
+# under SANDBOX_ROOT (NOT inside datasets/test_fixtures/) so the lockfile is
+# never itself a fixture path that restore/contamination checks would see.
+FIXTURE_LOCK_PATH = f"{SANDBOX_ROOT}/.fixtures.lock"
+_FIXTURE_LOCK_TIMEOUT_S = 600          # hard cap: abort a wait longer than 10 min
+_FIXTURE_LOCK_WARN_EVERY_S = 30        # warn on the console every 30s while waiting
+
+
+@contextmanager
+def _fixture_lock(lock_type, label):
+    """Hold an flock() reader/writer lock on the fixture surface for the block.
+
+    ``lock_type`` is ``fcntl.LOCK_EX`` (restore = writer: excludes all other
+    holders) or ``fcntl.LOCK_SH`` (prepare-copy = reader: coexists with other
+    readers, excludes the writer). This is what makes concurrent runner
+    PROCESSES safe: the in-process guarantee that restore runs strictly
+    pre-pool does nothing across two separate `python run_dispatch_compliance.py`
+    invocations, so batch B's restore (git restore / rmtree) could otherwise
+    race batch A's in-flight shutil.copy2 reads of the same source paths.
+
+    Blocking acquire via a non-blocking poll loop: warns every 30s while another
+    batch holds the lock and aborts (RuntimeError) only after 10 minutes, so a
+    genuinely wedged peer surfaces instead of hanging forever.
+
+    No stale-lock cleanup exists BY DESIGN: flock() locks are released by the
+    kernel automatically when the holding fd is closed OR the holding process
+    dies (including SIGKILL). Users routinely Ctrl-C / kill batches, so any
+    manual lockfile-reaping scheme would risk deleting a live lock; relying on
+    kernel release is both simpler and correct.
+    """
+    Path(FIXTURE_LOCK_PATH).parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(FIXTURE_LOCK_PATH, os.O_RDWR | os.O_CREAT, 0o644)
+    try:
+        start = time.time()
+        last_warn = 0.0
+        while True:
+            try:
+                fcntl.flock(fd, lock_type | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                waited = time.time() - start
+                if waited > _FIXTURE_LOCK_TIMEOUT_S:
+                    raise RuntimeError(
+                        f"Timed out after {_FIXTURE_LOCK_TIMEOUT_S}s waiting for the "
+                        f"fixture {label} lock ({FIXTURE_LOCK_PATH}); another batch "
+                        f"appears wedged. Aborting this operation."
+                    )
+                if waited - last_warn >= _FIXTURE_LOCK_WARN_EVERY_S:
+                    print(f"Waiting for fixture {label} lock "
+                          f"({int(waited)}s elapsed; another batch holds it)...")
+                    sys.stdout.flush()
+                    last_warn = waited
+                time.sleep(1.0)
+        yield
+    finally:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+        finally:
+            os.close(fd)
+
+
+def _set_fixture_tree_writable(writable: bool) -> None:
+    """Toggle write permission across the fixture SOURCE tree (defense-in-depth).
+
+    Read-only (``writable=False``) is the resting state asserted after every
+    successful restore (or clean early-return): files lose all write bits (a-w)
+    and directories lose write while keeping r-x — traversable but refusing new
+    entries. A benchmark subject that ignores its sandbox and writes into
+    datasets/test_fixtures/ BY NAME now fails with EACCES rather than silently
+    contaminating the source (the two historical incident classes this hardens
+    against). restore_fixtures() flips the tree writable only for the duration
+    of any actual repair work, then re-asserts read-only.
+
+    Note this does NOT create git contamination: git tracks only the executable
+    bit, not the write bit, so `git status` never sees an a-w chmod on a regular
+    file. Best-effort: chmod failures are warned, not raised, so a hardening
+    hiccup never aborts a batch.
+    """
+    root = Path(FIXTURE_PREFIX)
+    if not root.exists():
+        return
+    targets = [root]
+    for dirpath, dirnames, filenames in os.walk(root):
+        for name in dirnames + filenames:
+            targets.append(Path(dirpath) / name)
+    for p in targets:
+        try:
+            mode = p.stat().st_mode
+            if writable:
+                p.chmod(mode | stat.S_IWUSR)
+            else:
+                p.chmod(mode & ~(stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH))
+        except OSError as e:
+            print(f"  WARNING: could not chmod fixture path {p} ({e}).")
+
 
 def prepare_run_sandbox(sandbox_dir: str) -> Path:
     """Wipe and recreate a per-run sandbox so no prior-run artifacts survive (B1).
@@ -262,14 +383,38 @@ def restore_fixtures() -> None:
     Must be called per-batch, BEFORE the run pool launches: all parallel run
     threads read the shared originals at launch, so a mid-batch restore would
     race with their shutil.copy2 reads.
+
+    The ENTIRE body runs under an exclusive (LOCK_EX) fixture lock so the
+    check-then-repair is atomic across concurrent runner processes: a peer
+    batch's shared-lock copy loop cannot read a source path mid-repair, and two
+    batches cannot repair simultaneously. On completion the source tree is left
+    read-only (defense-in-depth); any repair work temporarily re-enables writes.
     """
+    with _fixture_lock(fcntl.LOCK_EX, "restore"):
+        _restore_fixtures_locked()
+
+
+def _restore_fixtures_locked() -> None:
     entries = _fixture_status_entries()
     if entries is None:
         return
     if not entries:
         print(f"Fixtures clean: {FIXTURE_PREFIX} matches git HEAD — no restore needed.")
+        # Re-assert the read-only resting state even on the clean path so a tree
+        # left writable by an older harness (or a fresh checkout) gets hardened.
+        _set_fixture_tree_writable(False)
         return
 
+    # Repair mutates the source tree (git restore writes, untracked deletes need
+    # writable parent dirs), so lift the read-only hardening for the repair only.
+    _set_fixture_tree_writable(True)
+    try:
+        _restore_fixtures_repair(entries)
+    finally:
+        _set_fixture_tree_writable(False)
+
+
+def _restore_fixtures_repair(entries: list[str]) -> None:
     print(f"Restoring {len(entries)} contaminated fixture path(s) to git HEAD:")
     for entry in entries:
         status = entry[:2]
@@ -386,15 +531,28 @@ def prepare_fixtures(test_case: TestCase, sandbox_dir: str) -> TestCase:
     fixtures_dir = Path(sandbox_dir) / "fixtures"
     modified_prompt = test_case.prompt
 
-    for orig_path in matches:
-        src = Path(orig_path)
-        if not src.exists():
-            continue
-        rel = src.relative_to(Path(FIXTURE_PREFIX).parent)
-        dest = fixtures_dir / rel
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(src, dest)
-        modified_prompt = modified_prompt.replace(orig_path, str(dest))
+    # Hold a SHARED (reader) lock around the fixture-copy portion ONLY: it must
+    # exclude a peer batch's exclusive restore (git restore / rmtree) from
+    # mutating a source path mid-copy, but must coexist with other batches'
+    # copy loops. The lock is scoped to the copies, not the whole run, so live
+    # runs never serialize on it. Non-fixture cases (no matches) skip it.
+    if matches:
+        with _fixture_lock(fcntl.LOCK_SH, "copy"):
+            for orig_path in matches:
+                src = Path(orig_path)
+                if not src.exists():
+                    continue
+                rel = src.relative_to(Path(FIXTURE_PREFIX).parent)
+                dest = fixtures_dir / rel
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src, dest)
+                # copy2 preserves mode, so a read-only source yields a read-only
+                # copy; restore u+w so the run can work with its own copy.
+                try:
+                    dest.chmod(dest.stat().st_mode | stat.S_IWUSR)
+                except OSError as e:
+                    print(f"  WARNING: could not chmod fixture copy {dest} ({e}).")
+                modified_prompt = modified_prompt.replace(orig_path, str(dest))
 
     workspace_dir = Path(sandbox_dir) / "workspace"
     workspace_dir.mkdir(parents=True, exist_ok=True)
@@ -419,43 +577,164 @@ def prepare_fixtures(test_case: TestCase, sandbox_dir: str) -> TestCase:
     return tc
 
 
+# --- Early-stop scoring callback ---
+
+def _build_early_stop_check(test_case: TestCase):
+    """Build the executor's early_stop_check closure for one dispatch case.
+
+    Returns a callable (session_id) -> bool that runs the REAL deterministic
+    scorers against the live transcripts and returns True only when every scored
+    criterion — the 10 dispatch criteria AND, when a subagent dispatch is
+    expected, the subagent-behavior criteria — has PASSED.
+
+    Why early stop is score-neutral here (the monotone-pass fairness argument):
+    every dispatch criterion locks PASS on first observation (it settles at the
+    Agent call) and the subagent-behavior criteria settle at the subagent's
+    actions; none can be voided by later activity. So killing the run the moment
+    all criteria pass cannot change the score — it only reclaims the dead wall
+    time a model would otherwise spend continuing after the gradeable behavior
+    is already on disk. (This is NOT true of the other three phases, whose
+    negative criteria — no_premature_execution / no_forbidden_skills /
+    no_tool_calls_of_type — start PASS and can only flip to FAIL; early-stopping
+    those would unfairly lock in a not-yet-violated negative, so they get stall
+    detection only.)
+
+    Flush-race protection: when a subagent dispatch is expected, the check
+    returns False until the subagent transcript exists on disk AND its behavior
+    criteria pass. Combined with the executor's one-poll confirmation grace, this
+    guarantees the dispatch-recovery fallback has the subagent's records before
+    any truncation.
+
+    Exception safety: any scorer error is swallowed and reported as "not done"
+    (return False) — a scorer crash must never kill a run mid-flight. The
+    executor also guards this, so protection is belt-and-suspenders.
+    """
+    expected_agent_type = test_case.expected.get("subagent_dispatched", "")
+    golden_path = BASE_DIR / test_case.golden_checkpoint
+
+    def _check(session_id: str) -> bool:
+        try:
+            transcript_path = find_benchmark_transcript(session_id)
+            if not transcript_path:
+                return False
+            checkpoint_lines = get_checkpoint_line_count(golden_path)
+            subagent_transcripts = find_subagent_transcripts(session_id)
+
+            dispatch_results = score_dispatch_compliance(
+                str(transcript_path), checkpoint_lines, test_case.expected,
+                subagent_transcripts=subagent_transcripts,
+            )
+            if not dispatch_results or not all(cr.passed for cr in dispatch_results):
+                return False
+
+            # When a subagent dispatch is expected, require the subagent
+            # transcript on disk and all its behavior criteria passing before
+            # declaring done (protects the flush race + Phase 3b fairness).
+            if expected_agent_type:
+                if not subagent_transcripts:
+                    return False
+                behavior = score_subagent_behavior_from_transcripts(
+                    subagent_transcripts, expected_agent_type
+                )
+                if not behavior or not all(cr.passed for cr in behavior):
+                    return False
+            return True
+        except Exception as e:
+            print(
+                f"WARNING: [{test_case.id}] early_stop_check raised "
+                f"{type(e).__name__}: {e}; not early-stopping."
+            )
+            return False
+
+    return _check
+
+
 # --- Run + diagnose ---
 
 def run_one(test_case: TestCase, model: ModelConfig, rep: int,
-            sandbox_suffix: str, timeout_override=None):
-    """Execute a single benchmark run with checkpoint scoring."""
+            sandbox_suffix: str, timeout_override=None,
+            watchdog_poll=60, stall_threshold=330, stall_retries=1,
+            enable_early_stop=True):
+    """Execute a single benchmark run with checkpoint scoring.
+
+    Run-lifecycle watchdog (Dispatch B): the executor polls every
+    ``watchdog_poll`` seconds, stopping early when all criteria pass (score
+    complete) and killing a hung run whose transcripts go quiet for
+    >``stall_threshold`` seconds across consecutive polls. A stalled run is
+    relaunched from a fresh sandbox up to ``stall_retries`` times (default 1); a
+    run that stalls again after its last retry is recorded permanently as
+    ``status="stalled"``. Set ``enable_early_stop=False`` to disable early stop.
+    """
     sandbox_dir = f"{SANDBOX_ROOT}/run_{sandbox_suffix}"
+    early_stop_check = _build_early_stop_check(test_case) if enable_early_stop else None
 
-    # Wipe and recreate the sandbox BEFORE staging fixtures, and tell
-    # execute_run() -> prepare_sandbox() not to wipe it again
-    # (wipe_sandbox=False). Previously fixtures were staged first and
-    # prepare_sandbox()'s rmtree deleted them — at model launch the rewritten
-    # prompt pointed at nonexistent sandbox paths, so models hunted the files
-    # by name and contaminated the originals under datasets/test_fixtures/.
-    # The wipe is hard-guarded to SANDBOX_ROOT (B1 repetition safety); a fresh
-    # sandbox per run means a repeated run never sees a prior run's artifacts.
-    prepare_run_sandbox(sandbox_dir)
+    attempt = 0
+    # Accumulate each stalled attempt's diagnostics so a run that stalled once
+    # then passed is legible from the archive alone (previously console-only).
+    # Carried onto the FINAL result.json as an additive stall_attempts field.
+    stall_attempts = []
+    while True:
+        # Wipe and recreate the sandbox BEFORE staging fixtures, and tell
+        # execute_run() -> prepare_sandbox() not to wipe it again
+        # (wipe_sandbox=False). Previously fixtures were staged first and
+        # prepare_sandbox()'s rmtree deleted them — at model launch the rewritten
+        # prompt pointed at nonexistent sandbox paths, so models hunted the files
+        # by name and contaminated the originals under datasets/test_fixtures/.
+        # The wipe is hard-guarded to SANDBOX_ROOT (B1 repetition safety); a fresh
+        # sandbox per run means a repeated run never sees a prior run's artifacts.
+        # On a stall relaunch this also gives the retry a pristine sandbox.
+        prepare_run_sandbox(sandbox_dir)
 
-    sandboxed_case = prepare_fixtures(test_case, sandbox_dir)
+        sandboxed_case = prepare_fixtures(test_case, sandbox_dir)
 
-    config = RunConfig(
-        test_case=sandboxed_case,
-        model=model,
-        run_index=rep,
-        sandbox_dir=sandbox_dir,
-        wipe_sandbox=False,
-        timeout_override=timeout_override,
-    )
+        config = RunConfig(
+            test_case=sandboxed_case,
+            model=model,
+            run_index=rep,
+            sandbox_dir=sandbox_dir,
+            wipe_sandbox=False,
+            timeout_override=timeout_override,
+            early_stop_check=early_stop_check,
+            watchdog_poll_seconds=watchdog_poll,
+            stall_detection=True,
+            stall_threshold_seconds=stall_threshold,
+        )
 
-    start = time.time()
-    result = execute_run(config)
-    elapsed = time.time() - start
+        start = time.time()
+        result = execute_run(config)
+        elapsed = time.time() - start
+
+        if getattr(result, "stalled", False):
+            stall_attempts.append({
+                "attempt": attempt,
+                "stall_diagnostics": dict(result.stall_diagnostics or {}),
+            })
+        if getattr(result, "stalled", False) and attempt < stall_retries:
+            print(
+                f"STALL [{test_case.id} | {model.name} | rep {rep}] attempt "
+                f"{attempt + 1}: {result.stall_diagnostics}; wiping sandbox and "
+                f"relaunching (retry {attempt + 1}/{stall_retries})."
+            )
+            # Release the checkpoint sandbox from the stalled attempt before the
+            # relaunch stages a fresh one under the same session bookkeeping.
+            if test_case.golden_checkpoint and result.session_id:
+                cleanup_sandbox(result.session_id)
+            attempt += 1
+            continue
+        break
+
+    stall_relaunch_count = attempt
 
     # Always attempt scoring if we have a session_id — even for timed-out runs,
     # the live session file may contain partial but scorable transcript data.
     if result.session_id:
         time.sleep(1)
-        scored = score_run(result.session_id, test_case, model.id)
+        # Routing stays pinned to model.id (executor.py passes it to
+        # `claude --model`); only the purity COMPARISON target uses the
+        # declared wire identity.
+        scored = score_run(
+            result.session_id, test_case, model.id, model.comparison_model_id
+        )
     else:
         scored = {
             "criteria": [
@@ -468,7 +747,9 @@ def run_one(test_case: TestCase, model: ModelConfig, rep: int,
             ],
             "subagent_criteria": [],
             "subagent_transcript_missing": True,
-            "child_model_purity": child_model_purity([], model.id),
+            "child_model_purity": child_model_purity(
+                [], model.id, model.comparison_model_id
+            ),
             "transcript_path": None,
             "tool_call_count": 0,
         }
@@ -486,6 +767,18 @@ def run_one(test_case: TestCase, model: ModelConfig, rep: int,
             if subagent_dir.exists():
                 shutil.copytree(subagent_dir, archive_dir / "subagents", dirs_exist_ok=True)
 
+    # Classify error-bearing tool results (parent + archived subagent
+    # transcripts) into hook-block vs genuine-failure buckets before cleanup
+    # removes the live transcripts. Additive diagnostic only.
+    subagent_transcripts = []
+    if archived_transcript:
+        sub_dir = Path(archived_transcript).parent / "subagents"
+        if sub_dir.exists():
+            subagent_transcripts = list(sub_dir.rglob("*.jsonl"))
+    error_counts = compute_error_counts(
+        result.tool_failures, subagent_transcripts=subagent_transcripts
+    )
+
     # Clean up checkpoint sandbox AFTER archiving
     if test_case.golden_checkpoint:
         cleanup_sandbox(result.session_id)
@@ -498,6 +791,7 @@ def run_one(test_case: TestCase, model: ModelConfig, rep: int,
             "subcategory": test_case.subcategory,
             "rep": rep,
             "criteria": scored["criteria"],
+            "error_counts": error_counts,
             "subagent_criteria": scored.get("subagent_criteria", []),
             "subagent_transcript_missing": scored.get(
                 "subagent_transcript_missing", False
@@ -510,6 +804,8 @@ def run_one(test_case: TestCase, model: ModelConfig, rep: int,
             ),
             "transcript_path": archived_transcript or scored.get("transcript_path"),
             "tool_call_count": scored.get("tool_call_count", 0),
+            "stall_relaunch_count": stall_relaunch_count,
+            "stall_attempts": stall_attempts,
         },
         duration_s=elapsed,
     )
@@ -533,12 +829,23 @@ def _error_result(test_case: TestCase, model: ModelConfig, rep: int, error_msg: 
         phase_fields={
             "subcategory": test_case.subcategory,
             "criteria": criteria,
+            "error_counts": {
+                "hook_blocks": 0,
+                "tool_failures": 0,
+                "tool_failures_unclassified": 0,
+            },
             "subagent_criteria": [],
             "subagent_transcript_missing": True,
-            "child_model_purity": child_model_purity([], model.id),
+            "child_model_purity": child_model_purity(
+                [], model.id, model.comparison_model_id
+            ),
             # An unverifiable-purity error run stays valid (scored) per B2.
             "validity": run_validity(
-                {"child_model_purity": child_model_purity([], model.id)}
+                {
+                    "child_model_purity": child_model_purity(
+                        [], model.id, model.comparison_model_id
+                    )
+                }
             ),
             "transcript_path": None,
             "tool_call_count": 0,
@@ -565,22 +872,70 @@ def get_git_sha() -> str:
     return "unknown"
 
 
+def _write_json_atomic(path: Path, obj) -> None:
+    """Write JSON to a sibling .tmp then os.replace() over the target.
+
+    Atomicity matters for the progressive rollup: a reader (or a kill) never sees
+    a half-written summary.json/manifest.json — the file either holds the prior
+    complete rollup or the new complete one.
+    """
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    with open(tmp, "w") as f:
+        json.dump(obj, f, indent=2)
+    os.replace(tmp, path)
+
+
 def archive_results(all_results: list[dict], models: list[ModelConfig],
-                    test_cases: list[TestCase], args, wall_time: float) -> Path:
-    """Archive all run results, transcripts, and summary to a timestamped folder."""
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    output_dir = BASE_DIR / "benchmarks" / "results" / timestamp
+                    test_cases: list[TestCase], args, wall_time: float,
+                    output_dir: Path = None, partial: bool = False,
+                    expected_n: int = None, git_sha: str = None,
+                    batch_token: str = None, batch_pid: int = None) -> Path:
+    """Archive run results, transcripts, and rollups to a timestamped folder.
+
+    Progressive by design (2026-07 redesign): called once before the pool with
+    ``all_results=[]`` to create the folder and seed manifest.json + an initial
+    ``partial`` summary.json, then re-invoked after every completed run over the
+    completed-so-far set, and finally once more with ``partial=False`` when all
+    runs finished. Per-run artifact writes are existence-guarded so re-invocation
+    is cheap (each run's files are written exactly once); manifest/summary are
+    recomputed and atomically rewritten each call. The whole body runs under
+    ``_ARCHIVE_LOCK`` so concurrent callers cannot interleave writes.
+    """
+    with _ARCHIVE_LOCK:
+        return _archive_results_locked(
+            all_results, models, test_cases, args, wall_time,
+            output_dir, partial, expected_n, git_sha, batch_token, batch_pid,
+        )
+
+
+def _archive_results_locked(all_results, models, test_cases, args, wall_time,
+                            output_dir, partial, expected_n, git_sha,
+                            batch_token=None, batch_pid=None) -> Path:
+    if output_dir is None:
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        # Cross-process uniqueness: two batches starting the same wall-clock
+        # second would otherwise collide on results/{timestamp} and cross-write
+        # each other's manifest/summary. The short token disambiguates while the
+        # LEADING timestamp stays intact so viewer/rerun-queue lexicographic
+        # ordering and glob discovery are unaffected.
+        tok = batch_token or uuid.uuid4().hex[:6]
+        output_dir = BASE_DIR / "benchmarks" / "results" / f"{timestamp}_{tok}"
     output_dir.mkdir(parents=True, exist_ok=True)
     runs_dir = output_dir / "runs"
     runs_dir.mkdir(parents=True, exist_ok=True)
 
-    git_sha = get_git_sha()
+    if git_sha is None:
+        git_sha = get_git_sha()
 
     # --- Write manifest.json ---
     manifest = attach_schema_version({
         "benchmark": "dispatch_compliance",
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "daaf_git_sha": git_sha,
+        # Cross-batch forensics: the per-batch uniqueness token (also the results
+        # dir-name suffix and sandbox-suffix tail) and the launching process PID.
+        "batch_token": batch_token or output_dir.name.rsplit("_", 1)[-1],
+        "batch_pid": batch_pid if batch_pid is not None else os.getpid(),
         **manifest_provenance(
             golden_checkpoints=[tc.golden_checkpoint for tc in test_cases],
             run_records=all_results,
@@ -604,13 +959,16 @@ def archive_results(all_results: list[dict], models: list[ModelConfig],
             for tc in test_cases
         ],
     })
-    with open(output_dir / "manifest.json", "w") as f:
-        json.dump(manifest, f, indent=2)
+    _write_json_atomic(output_dir / "manifest.json", manifest)
 
-    # --- Write per-run results and copy transcripts ---
+    # --- Write per-run results and copy transcripts (existence-guarded) ---
+    # Each run's artifacts are immutable once written, so re-invocation across
+    # progressive rollups writes each run exactly once (the result.json guard).
     for r in all_results:
         run_name = f"{r['case_id']}_{r['model'].replace(' ', '_')}_{r['rep']}"
         run_dir = runs_dir / run_name
+        if (run_dir / "result.json").exists():
+            continue
         run_dir.mkdir(parents=True, exist_ok=True)
 
         # Write every flat, Phase-3/3b, purity, and schema-v2 field. Transcript
@@ -619,8 +977,7 @@ def archive_results(all_results: list[dict], models: list[ModelConfig],
             key: value for key, value in r.items()
             if key != "transcript_path"
         }
-        with open(run_dir / "result.json", "w") as f:
-            json.dump(result_data, f, indent=2)
+        _write_json_atomic(run_dir / "result.json", result_data)
 
         # Copy subagent transcripts if available
         if r.get("session_id"):
@@ -765,8 +1122,25 @@ def archive_results(all_results: list[dict], models: list[ModelConfig],
             name = tf.get("tool_name", "unknown")
             tool_failure_by_name[name] = tool_failure_by_name.get(name, 0) + 1
 
+    # Aggregate the per-run hook-block vs tool-failure diagnostic counters.
+    error_counts_total = {
+        "hook_blocks": 0,
+        "tool_failures": 0,
+        "tool_failures_unclassified": 0,
+    }
+    for r in all_results:
+        ec = r.get("error_counts") or {}
+        for key in error_counts_total:
+            error_counts_total[key] += ec.get(key, 0)
+
+    runs_completed = len(all_results)
     summary = attach_schema_version({
-        "total_runs": len(all_results),
+        "total_runs": runs_completed,
+        # Additive self-description so a crashed/partial pass is legible without
+        # re-deriving from the runs/ directory.
+        "partial": partial,
+        "runs_expected": expected_n if expected_n is not None else runs_completed,
+        "runs_completed": runs_completed,
         "total_cost_usd": total_cost,
         "accounting_coverage": batch_cost["accounting_coverage"],
         "purity_coverage": purity_coverage(all_results),
@@ -778,6 +1152,7 @@ def archive_results(all_results: list[dict], models: list[ModelConfig],
             "runs_affected": runs_with_failures,
             "by_tool": tool_failure_by_name,
         },
+        "error_counts": error_counts_total,
         "criterion_names": all_criterion_names,
         "by_model": model_summaries,
         "by_case": case_summaries,
@@ -786,8 +1161,7 @@ def archive_results(all_results: list[dict], models: list[ModelConfig],
             "by_model": subagent_by_model,
         },
     })
-    with open(output_dir / "summary.json", "w") as f:
-        json.dump(summary, f, indent=2)
+    _write_json_atomic(output_dir / "summary.json", summary)
 
     return output_dir
 
@@ -815,8 +1189,17 @@ def print_run_result(r: dict):
     purity = r.get("child_model_purity", {})
     print(
         f"  Child model purity: {purity.get('purity_status', 'unverifiable')} "
-        f"(CLI transcript-observed; not backend-confirmed)"
+        f"(CLI transcript-observed model slug only; not backend-confirmed, "
+        f"and never a provider/quant pin check)"
     )
+    # Surface filtered placeholders live: they are excluded from the tally, so
+    # the console is the only place an operator would otherwise not see them.
+    markers = purity.get("observed_non_model_markers") or []
+    if markers:
+        print(
+            f"  Non-model markers observed (excluded from purity tally): "
+            f"{', '.join(markers)}"
+        )
 
     if r.get("error"):
         print(f"  ERROR: {r['error']}")
@@ -1035,11 +1418,33 @@ def main():
                         help="Run sequentially instead of parallel")
     parser.add_argument("--delay", type=float, default=LAUNCH_DELAY_SECONDS,
                         help="Seconds between parallel launches (default: 2)")
+    parser.add_argument("--max-concurrent", type=int, default=MAX_CONCURRENT_RUNS,
+                        help=f"Max simultaneously in-flight runs "
+                             f"(default: {MAX_CONCURRENT_RUNS}). Caps the thread "
+                             f"pool; --delay still staggers submits")
     parser.add_argument("--timeout", type=int, default=900,
                         help="Per-run timeout in seconds. Uniform 900s logistical "
                              "cap (2026-07-21 walltime redesign; formerly "
                              "120/180/300/300 per-phase). High cap so runs complete "
                              "rather than censor; duration is now the measured axis")
+    parser.add_argument("--watchdog-poll", type=int, default=60,
+                        help="Watchdog poll interval in seconds (default: 60). "
+                             "How often the executor checks for score-complete "
+                             "early stop and transcript staleness")
+    parser.add_argument("--stall-threshold", type=int, default=330,
+                        help="Staleness cutoff in seconds for one stalled read "
+                             "(default: 330; K3-validated — 296s of legitimate "
+                             "dead air was observed on a passing run, so 240s "
+                             "false-positives). Two consecutive stalled reads "
+                             "trigger a stall kill")
+    parser.add_argument("--stall-retries", type=int, default=1,
+                        help="Times to relaunch a stalled rep from a fresh "
+                             "sandbox (default: 1). A rep that stalls again after "
+                             "its last retry is recorded permanently as stalled")
+    parser.add_argument("--no-early-stop", action="store_true",
+                        help="Disable score-complete early stop (escape hatch). "
+                             "Stall detection still runs; runs execute to natural "
+                             "completion or the wall-clock timeout")
     parser.add_argument("--yes", "-y", action="store_true",
                         help="Skip cost confirmation prompt")
     parser.add_argument("--no-fixture-restore", action="store_true",
@@ -1130,46 +1535,104 @@ def main():
     print(f"{'='*100}")
     sys.stdout.flush()
 
+    # Per-batch uniqueness token (cross-process safety): one short token per
+    # runner invocation, reused for BOTH the results dir-name suffix and every
+    # sandbox suffix so concurrent batches never collide on results/ dirs or
+    # _sandbox/run_ dirs, even when running the same model at the same second.
+    batch_token = uuid.uuid4().hex[:6]
+    batch_pid = os.getpid()
+
     # Build run list: case x model x rep
     runs = []
     for tc in test_cases:
         for model in models:
             for rep in range(args.reps):
-                suffix = f"{tc.id}_{model.name.replace(' ', '_')}_{rep}"
+                suffix = f"{tc.id}_{model.name.replace(' ', '_')}_{rep}_{batch_token}"
                 runs.append((tc, model, rep, suffix))
 
     all_results = []
+    expected_n = len(runs)
+    git_sha = get_git_sha()
     start_time = time.time()
 
-    if args.sequential:
-        for tc, model, rep, suffix in runs:
-            try:
-                r = run_one(tc, model, rep, suffix, timeout_override=args.timeout)
-            except Exception as e:
-                r = _error_result(tc, model, rep, f"{type(e).__name__}: {e}")
-            all_results.append(r)
-            print_run_result(r)
-            sys.stdout.flush()
-    else:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=len(runs)) as pool:
-            futures = {}
-            for i, (tc, model, rep, suffix) in enumerate(runs):
-                future = pool.submit(run_one, tc, model, rep, suffix, timeout_override=args.timeout)
-                futures[future] = (tc, model, rep)
-                if i < len(runs) - 1:
-                    time.sleep(args.delay)
+    # Create the results folder and seed manifest.json + an initial partial
+    # summary.json BEFORE any run launches, so a killed pass still leaves a
+    # self-describing (partial) archive.
+    output_dir = archive_results(
+        [], models, test_cases, args, 0.0,
+        output_dir=None, partial=True, expected_n=expected_n, git_sha=git_sha,
+        batch_token=batch_token, batch_pid=batch_pid,
+    )
+    print(f"Progressive archive: {output_dir}")
+    sys.stdout.flush()
 
-            for future in concurrent.futures.as_completed(futures):
-                tc, model, rep = futures[future]
+    try:
+        if args.sequential:
+            for tc, model, rep, suffix in runs:
                 try:
-                    r = future.result()
+                    r = run_one(
+                        tc, model, rep, suffix, timeout_override=args.timeout,
+                        watchdog_poll=args.watchdog_poll,
+                        stall_threshold=args.stall_threshold,
+                        stall_retries=args.stall_retries,
+                        enable_early_stop=not args.no_early_stop,
+                    )
                 except Exception as e:
                     r = _error_result(tc, model, rep, f"{type(e).__name__}: {e}")
                 all_results.append(r)
                 print_run_result(r)
+                # Progressive per-run archive + incremental rollup.
+                archive_results(
+                    all_results, models, test_cases, args,
+                    time.time() - start_time, output_dir=output_dir,
+                    partial=True, expected_n=expected_n, git_sha=git_sha,
+                    batch_token=batch_token, batch_pid=batch_pid,
+                )
                 sys.stdout.flush()
+        else:
+            max_workers = min(len(runs), args.max_concurrent)
+            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as pool:
+                futures = {}
+                for i, (tc, model, rep, suffix) in enumerate(runs):
+                    future = pool.submit(
+                        run_one, tc, model, rep, suffix,
+                        timeout_override=args.timeout,
+                        watchdog_poll=args.watchdog_poll,
+                        stall_threshold=args.stall_threshold,
+                        stall_retries=args.stall_retries,
+                        enable_early_stop=not args.no_early_stop,
+                    )
+                    futures[future] = (tc, model, rep)
+                    if i < len(runs) - 1:
+                        time.sleep(args.delay)
 
-    wall_time = time.time() - start_time
+                for future in concurrent.futures.as_completed(futures):
+                    tc, model, rep = futures[future]
+                    try:
+                        r = future.result()
+                    except Exception as e:
+                        r = _error_result(tc, model, rep, f"{type(e).__name__}: {e}")
+                    all_results.append(r)
+                    print_run_result(r)
+                    # Progressive per-run archive + incremental rollup.
+                    archive_results(
+                        all_results, models, test_cases, args,
+                        time.time() - start_time, output_dir=output_dir,
+                        partial=True, expected_n=expected_n, git_sha=git_sha,
+                        batch_token=batch_token, batch_pid=batch_pid,
+                    )
+                    sys.stdout.flush()
+    finally:
+        # Final rollup runs even on KeyboardInterrupt/exception: partial=False
+        # only when every expected run completed.
+        wall_time = time.time() - start_time
+        all_done = len(all_results) == expected_n
+        archive_results(
+            all_results, models, test_cases, args, wall_time,
+            output_dir=output_dir, partial=not all_done,
+            expected_n=expected_n, git_sha=git_sha,
+            batch_token=batch_token, batch_pid=batch_pid,
+        )
 
     # Sort results by case order, then model order, then rep
     case_order = {tc.id: i for i, tc in enumerate(test_cases)}
@@ -1179,8 +1642,6 @@ def main():
     # Print summary
     print_summary(all_results, models, test_cases, wall_time)
 
-    # Archive results
-    output_dir = archive_results(all_results, models, test_cases, args, wall_time)
     print(f"\nResults archived to: {output_dir}")
 
     # Post-batch contamination check (detect + warn only — never restores).

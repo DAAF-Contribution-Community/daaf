@@ -25,28 +25,30 @@ and still score poorly here if it skips confirmation gates or dispatches
 free-form prompts. Conversely, a weaker model that faithfully follows protocol
 scores well.
 
-**Model matrix:** 26 registry entries across three explicit providers. The
+**Model matrix:** 34 registry entries across three explicit providers. The
 matrix is defined in `config/models.yaml`; provider labels describe the measured
 route, not interchangeable billing aliases.
 
 | Provider | Entries | Route and accounting basis |
 |----------|--------:|----------------------------|
-| `anthropic` | 8 | Claude Code subscription route for Haiku 4.5, Sonnet 4.6/5, Opus 4.5/4.6/4.7/4.8, and Fable 5 |
-| `openrouter` | 17 | OpenRouter's Anthropic-compatible endpoint; includes GLM, Kimi, Qwen, Gemma, DeepSeek, Gemini, Nemotron, and GPT entries |
-| `chatgpt-subscription` | 1 | Local provider shim to the deployed ChatGPT/Codex subscription backend; included-capacity billing and separate API-equivalent accounting |
+| `anthropic` | 9 | Claude Code subscription route for Haiku 4.5, Sonnet 4.6/5, Opus 4.5/4.6/4.7/4.8/5, and Fable 5 |
+| `openrouter` | 22 | OpenRouter's Anthropic-compatible endpoint; includes GLM, Kimi, Qwen, Gemma, DeepSeek, Gemini, Nemotron, and GPT entries |
+| `chatgpt-subscription` | 3 | Local provider shim to the deployed ChatGPT/Codex subscription backend for GPT-5.6 Luna, Terra, and Sol; included-capacity billing and separate API-equivalent accounting |
 
-The two Luna entries are deliberately distinct. OpenRouter uses registry key
-`gpt-56-luna` and wire ID `openai/gpt-5.6-luna`; the ChatGPT-subscription route
-uses registry key `gpt-56-luna-chatgpt` and OpenAI's official bare wire ID
-`gpt-5.6-luna`. The latter pins `ANTHROPIC_DEFAULT_OPUS_MODEL`,
-`ANTHROPIC_DEFAULT_SONNET_MODEL`, and `CLAUDE_CODE_SUBAGENT_MODEL` to Luna and
-sets the 1,050,000-token context limit separately from the wire ID. That figure
-is the model's true window, not this lane's effective ceiling: the ChatGPT/Codex
-subscription backend is capped far lower — measured ~370,000 for `gpt-5.6-sol`
-(2026-07-16), and big-window GPT slugs on the subscription lane are assumed
-capped the same way until individually measured (Luna's own ceiling is
-unmeasured). Never retry the OpenRouter-prefixed slug automatically if the
-deployed-path probe rejects the bare slug.
+GPT-5.6 Luna, Terra, and Sol each have deliberately distinct OpenRouter and
+ChatGPT-subscription entries. The OpenRouter keys are `gpt-56-luna`,
+`gpt-56-terra`, and `gpt-56-sol`, with `openai/gpt-5.6-*` routing IDs; the
+subscription keys append `-chatgpt` and use the corresponding bare `gpt-5.6-*`
+IDs. Each subscription entry sets a 370,000-token effective input ceiling for
+this ChatGPT/Codex lane. Sol's ceiling was measured on 2026-07-16; Luna and Terra
+remain conservatively inferred to share the lane cap until individually measured.
+Each subscription entry maps both `ANTHROPIC_DEFAULT_OPUS_MODEL` and
+`ANTHROPIC_DEFAULT_SONNET_MODEL` to its own bare parent ID and deliberately omits
+`CLAUDE_CODE_SUBAGENT_MODEL`, preserving semantic tier selection while keeping
+both tiers model-pure. The executor removes any ambient flatten selector before
+applying model-specific overrides, so entries that explicitly declare one still
+retain it. Never retry an OpenRouter-prefixed slug automatically if the
+deployed-path probe rejects a bare subscription slug.
 
 The GPT-5.6 -pro slugs and GPT-5.5 Pro were tested and REMOVED from the
 OpenRouter matrix (2026-07-10): the -pro variants hit hard "Prompt is too long"
@@ -59,6 +61,17 @@ document; the commands below are an authorized-style staged procedure.
 **Scope:** The original design specified six test categories; four are
 implemented as the phases above. The remaining designed-but-unbuilt
 categories are catalogued in the Design Backlog (§ 12).
+
+### Related suite: DAAFBench Analytics
+
+This suite measures **behavioral conformance to orchestrator protocol**. A sibling
+suite, **DAAFBench Analytics** (`analytics/`), measures an orthogonal construct:
+whether the analytical *work* is correct, whether the model notices when the data or
+code is deliberately wrong, and whether it discloses that to its caller — graded with
+and without the DAAF agent layer (a DAAF-vs-bare arm comparison). The two share harness
+machinery (executor, model pinning, fixture staging, viewer) but do not overlap in what
+they score. DAAFBench Analytics is at the specification stage; see
+[`analytics/SPEC.md`](analytics/SPEC.md) and [`analytics/README.md`](analytics/README.md).
 
 ## 2. The Four Phases
 
@@ -86,9 +99,11 @@ records exactly matches the requested wire ID; `failed` when any observed child
 ID differs; and `unverifiable` when no child transcript or no child model field
 is available. The comparison deliberately performs no alias normalization and
 retains raw IDs. This is Claude-CLI child-transcript evidence, not
-backend-confirmed identity. The ChatGPT Luna registry entry pins all child-model
-selectors, but pinning plus `verified` establishes only the observable CLI
-boundary; neither proves what alias resolution a private backend may perform.
+backend-confirmed identity. All three GPT-5.6 ChatGPT-subscription entries pin
+the operative Opus and Sonnet tier aliases to the parent ID and deliberately
+omit `CLAUDE_CODE_SUBAGENT_MODEL`; that configuration plus `verified` establishes
+only the observable CLI boundary and does not prove what alias resolution a
+private backend may perform.
 
 **Phase 4 disallows the Agent tool** (`RunConfig.disallowed_tools = ["Agent"]`),
 so subagent dispatch is impossible and all scoring is main-transcript-only —
@@ -174,11 +189,116 @@ cases.jsonl ──> phase runner (scripts/run_{phase}.py)
                   │    parse the session transcript JSONL, only lines AFTER
                   │    the golden checkpoint's line count
                   │
-                  └─ archive to results/{YYYYMMDD_HHMMSS}/
-                       manifest.json, summary.json,
+                  └─ archive to results/{YYYYMMDD_HHMMSS}/  (PROGRESSIVE)
+                       manifest.json + initial partial summary.json
+                       written BEFORE the pool starts; each run's
                        runs/{case}_{model}_{rep}/ (result.json,
-                       transcript.jsonl, subagents/)
+                       transcript.jsonl, subagents/) written as it
+                       completes, with summary.json/manifest.json
+                       re-rolled incrementally after every run
 ```
+
+**Progressive archiving (2026-07).** Persistence is no longer all-or-nothing. The
+runner creates `results/{timestamp}/` and seeds `manifest.json` plus an initial
+`summary.json` (`"partial": true`, `"runs_completed": 0`) *before* the run pool
+launches. Each worker writes its own `runs/{name}/result.json` (+ transcript +
+`subagents/`) the moment it finishes, and the runner then recomputes and
+atomically rewrites `summary.json` and `manifest.json` over the completed-so-far
+set. A `try/finally` finalizer performs a last rollup that flips
+`"partial": false` only when every expected run completed. Consequences: a killed
+or crashed pass leaves a self-describing partial archive (never an empty one),
+and the viewer can render a batch while it is still running. Rollup writes are
+serialized by a module-level lock and use write-`.tmp`-then-`os.replace()` atomic
+writes, so a reader never sees a half-written rollup. `--sequential` behaves
+identically. Per-run artifact writes are existence-guarded, so each run's files
+are written exactly once across the repeated rollups.
+
+**Concurrency cap.** The parallel pool is
+`ThreadPoolExecutor(max_workers=min(len(runs), --max-concurrent))`, capped at
+`MAX_CONCURRENT_RUNS = 5` by default (was previously uncapped at `len(runs)`).
+Per-run state (sandbox dir, uuid4 session ids, transcript dirs) is fully
+isolated, so the cap is a resource-pressure guard, not a correctness one.
+`--delay` still staggers submits independently of the cap.
+
+**Error-class counters.** Each `result.json` carries an additive
+`"error_counts": {"hook_blocks", "tool_failures", "tool_failures_unclassified"}`
+object, aggregated into `summary.json`. A run's error-bearing tool results are
+classified (see `scorers/deterministic/error_classification.py`) as `hook_block`
+(refused by a DAAF/benchmark PreToolUse hook, permission deny, or tool-availability
+policy — the framework acting as designed) vs `tool_failure` (a genuine
+tool/API/environment error). Signatures were derived empirically from archived
+transcripts; anything error-bearing that matches neither list is counted as
+`tool_failures_unclassified` rather than silently folded into `tool_failures`.
+
+**Run-lifecycle watchdog.** `executor.execute_run()` no longer blocks in a single
+`communicate(timeout=timeout)` call. When a runner opts in, a watchdog thread
+polls the run every `--watchdog-poll` seconds (default **60s** — a longer interval
+avoids constant firing across the 5 concurrent runs) and can end a run before the
+900s wall-clock backstop for two reasons. Stdout is drained by a background reader
+thread the whole time, because `claude -p --output-format json` emits its JSON only
+at exit and a naive wait loop would deadlock once the pipe buffer fills. The 900s
+timeout remains the unconditional backstop. **Backward compatibility:** with neither
+watchdog feature enabled (the `RunConfig` defaults), `execute_run()` takes the
+original single blocking `communicate()` path, byte-identical to the pre-watchdog
+harness.
+
+- **Score-complete early stop** (`status: "completed_early"`). Every poll runs the
+  *real* deterministic scorers against the live transcripts; when every scored
+  criterion has PASSED, the executor does **one confirmation poll** on the next
+  tick and, if still all-PASS, gracefully kills the run (`_graceful_kill`
+  SIGTERM→15s→SIGKILL ladder) and marks the run `early_stopped`. This is **wired
+  only for dispatch_compliance**, and the reason is a *monotone-pass fairness
+  argument*: all ten dispatch criteria lock PASS at the Agent call and the
+  subagent-behavior criteria lock PASS at the subagent's actions — none can be
+  voided by later activity — so terminating the moment they all pass **cannot
+  change the score**, it only reclaims dead wall time. The other three phases each
+  have a **monotone-FAIL negative criterion** (`no_premature_execution`,
+  `no_forbidden_skills`, `no_tool_calls_of_type`) that starts PASS and can only
+  flip to FAIL; early-stopping on all-PASS would unfairly lock in a not-yet-
+  violated negative and mask exactly the behavior the phase tests for, so early
+  stop is deliberately **not** wired there (their `--no-early-stop` flag is
+  accepted for CLI uniformity but inert). The confirmation poll also protects the
+  subagent-transcript flush race: the early-stop check returns "not done" until the
+  subagent transcript exists on disk and its behavior criteria pass, so the
+  dispatch-recovery fallback always has the subagent's records before truncation.
+  A scorer exception during polling is swallowed as "not done" (never kills a run)
+  and logged. Early stop is score-neutral, so `completed_early` runs count normally
+  toward pass rates. For duration/latency aggregates they contribute an additive
+  `score_complete_seconds` (time-to-demonstrated-compliance: launch → first
+  all-criteria-pass, excluding the confirmation poll and kill tail) rather than
+  their truncated wall clock — a meaningful measure that keeps them on the duration
+  axis instead of dropping them (see § 8).
+- **Hung-run / stall detection** (`status: "stalled"`, distinct from `timed_out`),
+  wired for **all four phases**. Staleness is computed as max-recency across the
+  parent transcript **and** all subagent transcripts (a parent-only monitor
+  false-alarms while the parent blocks on long subagent work). A single staleness
+  reading over `--stall-threshold` seconds (default **330s**) counts as one stalled
+  read; **two consecutive** stalled reads (≈120s of confirmation on top of the 330s
+  cutoff, at the 60s poll spacing) are required before the run is killed as
+  stalled. A *first-activity* rule additionally counts a stalled read when **no**
+  parent-or-subagent transcript exists at all past ~90s. The 330s threshold and the
+  never-act-on-a-single-reading rule are empirically grounded in the K3 rerun
+  campaign (`research/2026-07-18_FrameworkDev_DAAFBench_StaticAudit_Fable/2026-07-21_rerun-campaign_progress.md`):
+  **296s of legitimate dead air** was observed on a run that then passed
+  everything, so the former 240s threshold false-positives; ~330s-plus with
+  consecutive confirmations is the validated cutoff.
+- **Stall auto-relaunch.** A stalled rep is relaunched from a freshly wiped/staged
+  sandbox up to `--stall-retries` times (default **1**). The relaunch logs the
+  stall anatomy (staleness poll history, stalled-read count) and gets a new session
+  id and pristine sandbox. A rep that stalls **again** after its last retry is
+  recorded permanently with `status="stalled"` (no relaunch loops). Each run's
+  `result.json` carries an additive `stall_relaunch_count` and a `stall_attempts`
+  list (one `{attempt, stall_diagnostics}` entry per stalled attempt, including
+  those that were retried away) so a run that stalled once then passed is legible
+  from the archive alone rather than only in the console log. Per-run archiving and
+  the error-class counters (above) run for `completed_early` and `stalled` runs
+  exactly as for normal completions.
+- **Lookup-error accounting.** `stall_diagnostics` carries a `lookup_errors`
+  count — the number of transcript-recency lookup exceptions observed across a
+  run's staleness polls. A staleness lookup that throws is treated as
+  inconclusive (not as dead air), so a `lookup_errors > 0` signal marks a
+  monitoring/lookup regression to investigate rather than a genuine model stall,
+  keeping a lookup fault from masquerading as a stall.
 
 **Why the CLI and not the Agent SDK:** a deliberate design choice. Running
 `claude -p` inside the container exercises the full framework — settings.json
@@ -264,7 +384,12 @@ All four runners share an identical CLI:
 | `--test-id a,b` | all | Specific case IDs (e.g., `mc-01,mc-05`) |
 | `--sequential` | off | Run one at a time instead of parallel |
 | `--delay S` | 2 | Seconds between parallel launches (ThreadPoolExecutor stagger). Parallel-mode only — the sequential loop has no sleep, so this flag is a no-op with `--sequential` |
+| `--max-concurrent N` | 5 | Cap on simultaneously in-flight runs (`max_workers = min(len(runs), N)`). Parallel-mode only. Independent of `--delay`, which staggers submits |
 | `--timeout S` | 900 | Per-run timeout in seconds. Uniform 900s logistical cap baked into all four runners (2026-07-21 walltime redesign; formerly 120/180/300/300 per-phase). The cap is deliberately high so runs complete rather than censor — duration is now a measured axis. Pass explicitly to override; the uniform `DEFAULT_TIMEOUT_S` fallback only fires if a caller passes `timeout_override=None` programmatically |
+| `--watchdog-poll S` | 60 | Watchdog poll interval in seconds — how often the executor checks for score-complete early stop and transcript staleness (§ 3, Run-lifecycle watchdog) |
+| `--stall-threshold S` | 330 | Staleness cutoff in seconds for one stalled read (K3-validated; 296s of legitimate dead air was observed on a passing run, so 240s false-positives). Two consecutive stalled reads trigger a stall kill |
+| `--stall-retries N` | 1 | Times to relaunch a stalled rep from a fresh sandbox. A rep that stalls again after its last retry is recorded permanently with `status="stalled"` |
+| `--no-early-stop` | off | Disable score-complete early stop. **Effective only for `run_dispatch_compliance.py`** (the one phase where early stop is wired); accepted but **inert** on the other three, whose monotone-FAIL negative criteria make early stop unfair. Stall detection always runs |
 | `--yes` / `-y` | off | Skip the runner's cost confirmation prompt |
 | `--preflight-only` | off | Select models/cases and validate applicable provider routes, then exit before estimates, checkpoints, sandboxes, model execution, or result artifacts |
 
@@ -463,9 +588,10 @@ accept semantically equivalent variants, not just one literal string — e.g.,
 `INSTRUCTION_HEADERS` in the scorer).
 
 **Phase 3 dispatch-recovery fallback.** When a timed-out run's main
-transcript is missing the Agent tool_use record (lost to the timeout kill
-race) but subagent transcripts exist, `score_dispatch_compliance()`
-reconstructs the dispatch from that evidence — subagent_type from
+transcript lacks the Agent tool_use record but subagent transcripts exist,
+`score_dispatch_compliance()` reconstructs the dispatch from that evidence —
+without attributing the missing terminal parent-side record to a particular
+shutdown or write mechanism — using subagent_type from
 `agent-{id}.meta.json`, the prompt from the subagent transcript's first
 user record — and scores all ten criteria. The fallback is evidence-gated
 (it never consults the `timed_out` flag; a recorded FAILED dispatch
@@ -601,16 +727,31 @@ Sources: [OpenAI GPT-5.6 Luna model and API pricing](https://developers.openai.c
 folder:
 
 ```
-results/{YYYYMMDD_HHMMSS}/
+results/{YYYYMMDD_HHMMSS}_{token}/   # {token} = 6 hex of uuid4, per-batch (older sets are bare {YYYYMMDD_HHMMSS})
 ├── manifest.json          # benchmark name, timestamp, DAAF git SHA,
+│                          # batch_token + batch_pid (cross-batch forensics),
+│                          # dirty-worktree hash, golden SHA-256 checksums,
 │                          # run config (reps, parallelism, delays, timeout,
 │                          # model keys), model configs, case definitions
-├── summary.json           # aggregate scores
+├── summary.json           # aggregate scores + partial/runs_expected/
+│                          # runs_completed self-description + aggregate
+│                          # error_counts (hook_blocks/tool_failures/
+│                          # tool_failures_unclassified)
 └── runs/{case}_{model}_{rep}/
-    ├── result.json        # tokens, computed cost, duration, criteria results
+    ├── result.json        # tokens, computed cost, duration, criteria results,
+    │                      # error_counts (additive)
     ├── transcript.jsonl   # full session transcript
     └── subagents/         # subagent transcripts (Phase 3)
 ```
+
+The archive is written **progressively** — see § 3 (Progressive archiving): the
+folder, `manifest.json`, and an initial `"partial": true` `summary.json` are
+seeded before the pool starts, per-run files are written as each run completes,
+and the rollups are re-rolled incrementally (atomically) after every run. All
+new fields are additive: `summary.json` gains `partial` (bool), `runs_expected`,
+`runs_completed`, and `error_counts`; `result.json` gains `error_counts`. Both
+consumers ignore unknown keys, so these additions are format-compatible with all
+existing archives.
 
 **Artifact schema and archive policy.** New phase-run and route-probe artifacts
 use additive `schema_version: 2` fields for route provenance, separated model
@@ -723,8 +864,25 @@ comparisons become ~4–9% more accurate).
 aggregates come from loaded runs, not `summary.json` totals. Timed-out runs
 are **graded** (zeroed turns/cost/tokens but fully scored criteria); the
 viewer grade taxonomy (perfect/partial/failed/ungraded) is orthogonal to the
-`timed_out` flag. Cost/duration averages exclude timeout-zeroed runs, with
-excluded counts disclosed.
+`timed_out` flag. **Cost** averages exclude timeout-zeroed runs, with excluded
+counts disclosed. **Duration/latency** aggregates apply per-status contribution
+rules rather than a blanket exclusion: a normal run contributes its full
+`duration_s` (timed-out runs are excluded from viewer aggregates entirely —
+they are filtered at load, consistent with the viewer's timeout-blindness, so
+their truncated wall time never enters the duration axis); a `completed_early`
+run (early-stop watchdog — § 3) contributes its
+`score_complete_seconds` when present (a *time-to-demonstrated-compliance*
+measure: launch → first all-criteria-pass, excluding the confirmation poll and
+kill tail — **not** full-task walltime), else is excluded; a `stalled` run is
+**always excluded** (its wall time is a watchdog-killed hang, not a
+task-completion measure). `completed_early` **scores count normally** in every
+other aggregate. Runs carrying `status == "stalled"` are hung runs the watchdog
+killed after auto-relaunch (§ 3); they are distinct from `timed_out` and are
+selected for rerun by `build_rerun_queue.py` alongside timed-out runs (separate
+per-class counts). Partial result sets (`summary.json` `"partial": true`)
+are tolerated and disclosed: the generator prints each partial set with its
+`runs_completed/runs_expected`, and the per-set `partial`/`runs_expected`/
+`runs_completed`/`error_counts` fields flow into the provenance payload.
 
 ## 9. Operational Notes
 
@@ -793,6 +951,45 @@ intentionally editing fixtures. After the batch drains, a contamination check
 re-runs and warns loudly if fixtures are dirty but does NOT restore — the next
 launch's pre-run restore covers it.
 
+**Concurrent batches (separate processes) are safe.** Running two runner
+invocations at once — e.g. one Anthropic-subscription terminal and one
+OpenRouter terminal — no longer races. Three mechanisms cooperate:
+
+1. **Fixture reader/writer lock (`_sandbox/.fixtures.lock`, DC runner only).**
+   `restore_fixtures()` takes an exclusive `flock` (`LOCK_EX`) for its entire
+   check-then-repair body, and `prepare_fixtures()` takes a shared lock
+   (`LOCK_SH`) around its fixture-copy loop only. So one batch's restore
+   (`git restore`/`rmtree`) can never run while another batch is mid-`copy2` of
+   the same source paths, and two restores can never overlap. Acquisition
+   blocks with a poll loop that warns every 30s and aborts only after 10 min.
+   Acquisition happens pre-launch (before the run pool starts), so a wedged or
+   oversubscribed lock that never frees within the 600s cap aborts the incoming
+   batch with a clear `RuntimeError` before any run is dispatched — fail-loud,
+   with no partial result set archived.
+   The lock needs no stale-cleanup: `flock` is released by the kernel when the
+   holding process dies (including `kill`/Ctrl-C), so a killed batch never
+   strands a lock. The other three runners have no fixtures and take no lock.
+2. **Read-only fixture source (DC runner only).** After each restore (or clean
+   early-return), the `datasets/test_fixtures/` tree is `chmod`ed read-only
+   (files `a-w`; directories keep `r-x`), lifted to writable only for the
+   duration of any repair. A subject that ignores its sandbox and writes into
+   `test_fixtures/` by name now fails with `EACCES` — a loud, harmless failure
+   in the subject's own sandboxed run rather than silent source contamination.
+   Per-run copies are `chmod u+w` after staging so runs still work with them.
+   This does not create git noise: git tracks only the executable bit, not the
+   write bit.
+3. **Per-batch uniqueness token (all four runners).** Each invocation mints one
+   short token (6 hex of `uuid4`); it is appended to both the results directory
+   name (`results/{YYYYMMDD_HHMMSS}_{token}/`) and every sandbox suffix
+   (`_sandbox/run_{case}_{model}_{rep}_{token}/`). Two batches starting the same
+   wall-clock second, even on the same model, no longer merge results dirs or
+   `rmtree` each other's live sandboxes. The token and launching PID are also
+   recorded additively in `manifest.json` (`batch_token`, `batch_pid`) for
+   cross-batch forensics. The **leading timestamp is preserved**, so the viewer
+   (lexicographic sort, opaque dir-name identifiers) and `build_rerun_queue.py`
+   (`results/*/runs/*/result.json` glob) tolerate both old (`{timestamp}`) and
+   new (`{timestamp}_{token}`) directory names — neither parses the name.
+
 **Benchmark git-blocking hook.** `harness/executor.py` sets
 `DAAF_BENCHMARK_RUN=1` on every run's subprocess environment, activating
 `harness/hooks/block-git-writes.sh` — an env-gated PreToolUse Bash hook that
@@ -824,7 +1021,10 @@ is in flight means those runs are scored with the pre-edit logic.
 `harness/executor.py` sends SIGTERM first, drains stdout/stderr through a
 `KILL_GRACE_SECONDS = 15` grace window (via `communicate(timeout=...)`, not
 `wait()` — `wait()` with full pipes can deadlock), and escalates to SIGKILL
-only if the CLI outlives the grace. Timeout semantics: `error = "Timed out
+only if the CLI outlives the grace. The grace is a precaution motivated by
+observed incomplete terminal timeout transcripts; it does not establish the
+CLI's transcript-write internals or prove that SIGKILL caused any missing tail.
+Timeout semantics: `error = "Timed out
 after {N}s"`, the `timed_out` flag, partial-stdout parsing. The subagent's
 transcript is a separate file and survives the kill, so `subagents/` is the
 forensic fallback; the § 6 dispatch-recovery fallback automates this for
@@ -906,17 +1106,18 @@ within 300s.
    model under test all share the DAAF container and filesystem. Low practical
    risk for internal behavioral scoring; a real gap if scores ever carry
    external weight.
-8. **Manifests pin the DAAF git SHA but not golden content hashes.** A run
-   against a worktree-modified golden is indistinguishable in provenance from
-   one against the committed version. Adding a golden content hash to
-   `manifest.json` is the designed improvement (§ 12).
-9. **Timeout kill can race the async transcript writer.** Claude Code's
-   main-session transcript writes are async/buffered, so a timed-out run can
-   lose unflushed records — including the Agent dispatch. Two mitigations
-   stack: the executor's graceful-kill ladder (SIGTERM → 15s grace → SIGKILL,
-   § 9) gives the CLI a flush opportunity; the scoring-side dispatch-recovery
-   fallback (§ 6) reconstructs lost dispatches from surviving subagent
-   transcripts.
+8. **Provenance pinning does not make changed inputs comparable.** Current
+   manifests pin the DAAF Git SHA, the dirty-worktree diff hash, and the SHA-256
+   checksum of each used golden checkpoint in `golden_checksums`. These fields
+   make input changes detectable, but result sets spanning a golden change still
+   require separate interpretation (§ 5).
+9. **Some timeout archives lack terminal parent-side evidence.** Observed
+   transcripts can end without the final parent-side Agent result or response,
+   which prevents stronger causal attribution. The executor's graceful-kill
+   ladder (SIGTERM → 15s grace → SIGKILL, § 9) is a precaution that allows an
+   orderly shutdown interval; it does not prove an asynchronous/buffered write
+   model or that SIGKILL caused any particular missing tail. The scoring-side
+   dispatch-recovery fallback (§ 6) can use surviving subagent evidence.
 
 ## 12. Future Work
 
@@ -1050,21 +1251,27 @@ timed-out runs, matching OpenRouter's natural exclusion.
 
 - **Harness gap (bookmarked): transcript-less timeout runs.** Original 4
   runs (`pc-03`/`pc-07` × Fable 5) moved to `removed_runs/` and replaced
-  in set `20260611_124829`. Root cause (timeout-kill before CLI emits
-  session metadata) is mitigated by the executor graceful-kill ladder
-  (§ 9, § 11 item 9) but the confirmation pass against
-  `executor.py`/`collector.py` transcript-resolution logic remains open.
+  in set `20260611_124829`. Those archives lacked terminal session metadata;
+  the missing evidence does not establish whether shutdown timing, CLI write
+  behavior, or another mechanism caused the absence. The executor's
+  graceful-kill ladder is a precaution (§ 9, § 11 item 9), while the
+  confirmation pass against `executor.py`/`collector.py` transcript-resolution
+  logic remains open.
 - **Gemma 4 31B kept IN by user decision:** silent stalls are
   model-attributable (18.5% rate for 31B, 9.3% for 26B — a Gemma-subfamily
-  defect, not Google-family). Stalls score as failed runs.
+  defect, not Google-family). Stalls score as failed runs. **Now mitigated:** the
+  run-lifecycle watchdog (§ 3) detects hung runs (330s staleness across the
+  parent + subagent transcripts, two consecutive confirmations, plus a ~90s
+  first-activity rule) and auto-relaunches once (`--stall-retries`), recording a
+  repeat stall as `status="stalled"`.
 - **Timeout is now a uniform 900s logistical cap** across all four runners
   (2026-07-21 walltime redesign), superseding the earlier per-batch tuning
   guidance (300s mixed/OpenRouter, 150s Anthropic-only). The high cap lets
   runs complete rather than censor at the cap, so duration becomes a measured
   axis rather than a truncation threshold; historical batch percentiles
   (p99=252s, max=271s under the old 300s cap) motivated retiring the tuned
-  values. Better stall remedy remains a harness first-activity detector
-  (~90s → kill).
+  values. The harness first-activity detector (~90s → stalled read) is now
+  implemented as part of the run-lifecycle watchdog (§ 3).
 - **Open follow-ups from Phase 4 routing-fix scoping:**
   (1) frontmatter description budget — svy/polars/marimo exceed the
   250-char limit documented in skill-authoring; verify which claim is
@@ -1073,9 +1280,8 @@ timed-out runs, matching OpenRouter's natural exclusion.
   executed. (3) Maintainer note: Phase 4 criterion *emission* is hardcoded
   in the scorer; the cases' `hard_/soft_requirements` lists drive viewer
   display only.
-- **Optional:** golden content hash in `manifest.json` (§ 11 item 8);
-  review of `data-scientist SKILL.md:353` "Tool-specific syntax" branch
-  label.
+- **Optional:** review of `data-scientist SKILL.md:353` "Tool-specific
+  syntax" branch label.
 
 ## 13. AI Disclosure
 

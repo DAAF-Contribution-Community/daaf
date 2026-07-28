@@ -81,6 +81,11 @@ def model_manifest_entry(model: ModelConfig) -> dict:
     return {
         "key": _model_key(model),
         "id": model.id,
+        # The declared wire identity (purity comparison target). Recorded
+        # alongside the routing id so a result set is self-documenting about
+        # which string the child-model purity gate compared against. None for
+        # entries whose wire form equals their routing id.
+        "wire_id": model.wire_id,
         "name": model.name,
         "display_name": model.name,
         "provider": model.provider,
@@ -137,6 +142,26 @@ def computed_cost_for_run(model: ModelConfig, result: RunResult) -> Optional[flo
     return compute_cost(model, result)
 
 
+def _run_status(result: RunResult) -> str:
+    """Derive the single run-lifecycle status string for a result.json record.
+
+    Precedence (most specific first): an early stop and a stall are terminal
+    watchdog outcomes and win over the generic error/timeout classification. The
+    exact strings "completed_early" and "stalled" are contract with the viewer
+    (which substitutes score_complete_seconds for completed_early runs in duration
+    aggregates when present, else excludes them) and the README.
+    """
+    if getattr(result, "early_stopped", False):
+        return "completed_early"
+    if getattr(result, "stalled", False):
+        return "stalled"
+    if result.error and "Timed out" in result.error:
+        return "timed_out"
+    if result.error:
+        return "error"
+    return "completed"
+
+
 def build_run_artifact(
     model: ModelConfig,
     result: RunResult,
@@ -164,6 +189,20 @@ def build_run_artifact(
         ),
         "error": result.error,
         "timed_out": bool(result.error and "Timed out" in result.error),
+        # Run-lifecycle flags + a single derived status string (Dispatch B). The
+        # viewer keys duration/latency handling on status == "completed_early",
+        # substituting score_complete_seconds when present (else excluding the run);
+        # None-safe getattr keeps this working for any RunResult built before the
+        # watchdog fields existed (e.g. legacy callers, error artifacts).
+        "early_stopped": bool(getattr(result, "early_stopped", False)),
+        "stalled": bool(getattr(result, "stalled", False)),
+        "stall_diagnostics": dict(getattr(result, "stall_diagnostics", {}) or {}),
+        # Comparable duration for early-stopped runs (time-to-demonstrated-
+        # compliance; None otherwise). The viewer substitutes this for duration_s
+        # on completed_early runs in duration/latency aggregates (README § 8).
+        # getattr keeps this None-safe for RunResults built before the field existed.
+        "score_complete_seconds": getattr(result, "score_complete_seconds", None),
+        "status": _run_status(result),
         "tool_failures": list(result.tool_failures),
     }
     if phase_fields:
@@ -340,19 +379,81 @@ def format_coverage(coverage: Mapping[str, int]) -> str:
     )
 
 
+def _is_non_model_marker(value: str) -> bool:
+    """True for CLI placeholder markers that are not model identities.
+
+    # INTENT: keep non-model strings out of the model-identity tally.
+    # REASONING: the Claude CLI writes ``"<synthetic>"`` into
+    #   ``message.model`` on locally fabricated assistant records — most
+    #   commonly usage-limit / spend-cap error stubs ("You've hit your org's
+    #   monthly spend limit."). That is a stub marker, not a routing outcome,
+    #   so counting it as an observed model id turns a genuinely on-model run
+    #   into a purity failure and silently discards the run from all rollups.
+    # ASSUMES: the CLI's angle-bracket convention (``<...>``) marks placeholders
+    #   and no real model slug is ever angle-bracketed. The rule is deliberately
+    #   kept to that one narrow shape rather than a broader heuristic: a real
+    #   slug that somehow arrived bracketed would be surfaced verbatim in
+    #   ``observed_non_model_markers``, never dropped from the artifact.
+    """
+    return len(value) > 2 and value.startswith("<") and value.endswith(">")
+
+
 def child_model_purity(
     transcript_paths: Iterable,
     requested_model_id: str,
+    wire_model_id: Optional[str] = None,
 ) -> dict:
     """Evaluate child-model purity from safely observable transcript identity.
 
     The Claude CLI writes the model ID on child transcript assistant records at
-    ``record.message.model``. This helper reads JSONL incrementally, observes only
-    that identity field, and compares exact strings. No aliases are collapsed:
-    the raw IDs are also the comparison IDs, which keeps the evidence auditable
-    and avoids inventing a canonicalization rule that the backend has not
-    confirmed.
+    ``record.message.model``. This helper reads JSONL incrementally, observes
+    only that identity field, and compares exact strings. No aliases are
+    collapsed and no observed string is rewritten, which keeps the evidence
+    auditable and avoids inventing a canonicalization rule that the backend has
+    not confirmed.
+
+    Comparison target
+    -----------------
+    ``requested_model_id`` is the ROUTING SELECTOR handed to ``claude --model``.
+    ``wire_model_id`` is the identity that model is *declared* (in models.yaml)
+    to report on the wire; when omitted it defaults to ``requested_model_id``.
+    The comparison runs against the wire id, because several registry entries
+    pin a provider/quantization in the routing selector (e.g.
+    ``deepseek/deepseek-v4-flash:atlas-cloud/fp8``) while the CLI writes only
+    the bare slug into transcripts. Comparing the routing selector against the
+    wire form failed on the string mismatch alone, even for perfectly on-model
+    children. Declaring the expected wire form per model — rather than deriving
+    it by stripping the suffix — keeps the "no invented canonicalization" rule
+    intact, and ``normalization_applied`` stays truthfully ``False``.
+
+    EVIDENCE BOUNDARY — what this can and cannot establish
+    ------------------------------------------------------
+    The wire form carries **no provider/quant suffix at all**. Transcript-
+    observed purity can therefore verify the **model** only; it can NEVER verify
+    the **provider pin** or the **quantization** a pinned entry routes to. A run
+    whose ``purity_status`` is ``verified`` asserts "the child reported the
+    expected model slug", not "the child was served by the pinned
+    provider/quant". No quant-level or provider-level purity is being checked
+    here, and none should be inferred from this artifact. Confirming a provider
+    pin would require backend-side evidence this observer does not have.
+
+    Non-model markers
+    -----------------
+    Strings matching the CLI's angle-bracket placeholder shape (see
+    ``_is_non_model_marker``; ``<synthetic>`` is the known instance) are not
+    model identities and are excluded from the comparison tally. They are never
+    discarded: they remain in ``observed_child_model_ids_raw`` and are listed
+    separately in ``observed_non_model_markers``. If real model ids remain after
+    filtering and all of them match, the run is ``verified`` — positive
+    on-model evidence is not thrown away because a billing stub shared the
+    transcript. If nothing but markers was observed, the result is
+    ``unverifiable`` (no evidence either way), never ``failed``.
     """
+    # INTENT: compare against the declared wire identity, not the routing id.
+    # ASSUMES: callers that pass only two arguments have a model whose wire
+    #   identity equals its routing id (every bare-slug registry entry).
+    comparison_target_id = wire_model_id or requested_model_id
+
     paths = [Path(path) for path in transcript_paths]
     existing_paths = [path for path in paths if path.is_file()]
     observed_ids = []
@@ -382,23 +483,58 @@ def child_model_purity(
         except OSError:
             continue
 
+    # INTENT: partition raw observations into model identities vs. placeholders.
+    # REASONING: both partitions are reported. The raw list stays complete so a
+    #   reader can always reconstruct what the transcript actually contained;
+    #   only the comparison tally is narrowed.
+    non_model_markers = [
+        model_id for model_id in observed_ids if _is_non_model_marker(model_id)
+    ]
+    comparison_ids = [
+        model_id for model_id in observed_ids if not _is_non_model_marker(model_id)
+    ]
+
     if not existing_paths:
         purity_status = "unverifiable"
         incompleteness_reason = "no_child_transcript_exists"
     elif not observed_ids:
         purity_status = "unverifiable"
         incompleteness_reason = "child_transcripts_expose_no_model_id"
-    elif all(model_id == requested_model_id for model_id in observed_ids):
+    elif not comparison_ids:
+        # Only placeholders were observed: no model-identity evidence exists in
+        # either direction, so this is an absence of evidence (unverifiable),
+        # not evidence of an off-model child (failed). The validity gate treats
+        # unverifiable as valid, which is the correct outcome here.
+        purity_status = "unverifiable"
+        incompleteness_reason = (
+            "child_transcripts_expose_only_non_model_markers:"
+            + ",".join(non_model_markers)
+        )
+    elif all(model_id == comparison_target_id for model_id in comparison_ids):
+        # At least one real model id remains and every one of them matches.
+        # Markers, if any, are recorded but do not gate the run invalid.
         purity_status = "verified"
         incompleteness_reason = None
     else:
+        # A genuine mismatch among real model ids. The gate is unchanged.
         purity_status = "failed"
         incompleteness_reason = None
 
     return {
+        # The routing selector actually handed to `claude --model`.
         "requested_child_model_id": requested_model_id,
+        # The declared wire identity the observations were compared against.
+        # Equal to requested_child_model_id unless models.yaml declares wire_id.
+        "comparison_target_child_model_id": comparison_target_id,
+        "wire_id_declared": comparison_target_id != requested_model_id,
+        # Every distinct string observed, markers included — never pruned.
         "observed_child_model_ids_raw": observed_ids,
-        "comparison_child_model_ids": list(observed_ids),
+        # The subset actually compared (raw minus non-model markers).
+        "comparison_child_model_ids": comparison_ids,
+        "observed_non_model_markers": non_model_markers,
+        "non_model_marker_rule": "angle_bracketed_cli_placeholder_excluded_from_tally",
+        # Still truthfully False: no observed string is rewritten or collapsed.
+        # The expected wire form is declared per model, not derived.
         "normalization_applied": False,
         "comparison_rule": "exact_string_equality_no_alias_normalization",
         "purity_status": purity_status,

@@ -5,7 +5,7 @@ TestCase, RunConfig, RunResult, ScoredResult, and ModelConfig.
 """
 
 from dataclasses import asdict, dataclass, field
-from typing import Optional
+from typing import Callable, Optional
 import json
 from pathlib import Path
 
@@ -90,6 +90,24 @@ class ModelConfig:
     selectable keys. ``context_window_tokens`` is route metadata and is applied
     to the child process by the executor; it is deliberately not encoded in the
     wire model identifier.
+
+    ``id`` vs. ``wire_id`` are two different things and must not be conflated:
+
+    - ``id`` is the ROUTING SELECTOR. It is passed verbatim to ``claude
+      --model`` (executor.py) and to the ``ANTHROPIC_DEFAULT_*`` /
+      ``CLAUDE_CODE_SUBAGENT_MODEL`` env overrides. For OpenRouter entries it
+      may carry a ``:provider/quant`` pin (e.g.
+      ``deepseek/deepseek-v4-flash:atlas-cloud/fp8``) that pins which backend
+      and quantization serves the request. Stripping it would silently unpin
+      routing and invalidate price tables reconciled against that provider.
+    - ``wire_id`` is the WIRE IDENTITY: the model id that model is expected to
+      report back on assistant records (``message.model``) in a transcript.
+      Observed wire forms carry no provider/quant suffix, so for pinned entries
+      the wire id is the bare slug. It is used ONLY as the comparison target for
+      child-model purity (artifacts.child_model_purity) and never for routing.
+
+    ``wire_id`` is optional and defaults to ``id`` via ``comparison_model_id``,
+    so every bare-slug entry keeps its pre-existing behavior untouched.
     """
 
     id: str
@@ -107,6 +125,19 @@ class ModelConfig:
     context_window_tokens: Optional[int] = None
     actual_billing_treatment: Optional[str] = None
     api_equivalent_pricing: dict = field(default_factory=dict)
+    # INTENT: declare, per model, the identity that model reports on the wire.
+    # REASONING: the routing selector (`id`) and the wire identity can differ
+    #   (provider/quant pins are routing-only). Declaring the expected wire form
+    #   per model avoids inventing a derived canonicalization rule (e.g.
+    #   split(":")) that the backend has never confirmed.
+    # ASSUMES: absent means "wire identity equals routing id" — true for every
+    #   bare-slug registry entry.
+    wire_id: Optional[str] = None
+
+    @property
+    def comparison_model_id(self) -> str:
+        """The id a child transcript is expected to report; defaults to ``id``."""
+        return self.wire_id or self.id
 
     @classmethod
     def from_dict(cls, data: dict) -> "ModelConfig":
@@ -138,6 +169,34 @@ class RunConfig:
     # Default True preserves the original behavior for all other runners.
     wipe_sandbox: bool = True
     timeout_override: Optional[int] = None
+    # --- Run-lifecycle watchdog controls (Dispatch B) ---
+    # All optional with backward-compatible defaults: when stall_detection is
+    # False AND early_stop_check is None (the constructor defaults), execute_run()
+    # takes the original single blocking communicate(timeout=timeout) path, so
+    # behavior is byte-identical to the pre-watchdog harness for any caller that
+    # sets none of these fields. The phase runners opt in explicitly.
+    #
+    # early_stop_check: callable (session_id) -> bool. Polled every
+    #   watchdog_poll_seconds; when it returns True the executor does ONE
+    #   confirmation poll on the next tick and, if still True, gracefully kills
+    #   the run and marks result.early_stopped. Must be exception-safe (the
+    #   runner-side closure catches its own errors and returns False); the
+    #   executor additionally guards against exceptions. None disables early stop.
+    early_stop_check: Optional[Callable[[str], bool]] = None
+    watchdog_poll_seconds: int = 60
+    # stall_detection: enable the hung-run detector (transcript-recency based).
+    stall_detection: bool = False
+    # A single staleness reading over this many seconds counts as one stalled
+    # read (330s validated in the K3 rerun campaign: 296s of LEGITIMATE dead air
+    # was observed on a run that then passed everything, so 240s false-positives).
+    stall_threshold_seconds: int = 330
+    # If NO parent-or-subagent transcript activity exists at all by this elapsed
+    # time, count a stalled read (first-activity rule).
+    stall_first_activity_seconds: int = 90
+    # Number of consecutive stalled reads required before killing as stalled.
+    # At the 60s poll spacing, 2 reads add ~120s of confirmation on top of the
+    # 330s staleness cutoff — never act on a single stalled reading.
+    stall_consecutive_reads: int = 2
 
 
 @dataclass
@@ -156,6 +215,15 @@ class RouteProvenance:
     reasoning_effort: Optional[str] = None
     text_verbosity: Optional[str] = None
     captured_at: Optional[str] = None
+    # Appended fields preserve the historical positional constructor surface.
+    # These describe requested policy only; no terminal served-tier observation is
+    # stored here because the shim health terminal is process-global history.
+    gpt_requested_tier_vocabulary: Optional[str] = None
+    gpt_policy_status: Optional[str] = None
+    gpt_policy_backend_mode: Optional[str] = None
+    gpt_policy_enabled: Optional[bool] = None
+    gpt_policy_effective: Optional[bool] = None
+    native_fast_disabled: Optional[bool] = None
 
 
 @dataclass
@@ -261,6 +329,21 @@ class RunResult:
     actual_billing: ActualBilling = field(default_factory=ActualBilling)
     api_equivalent: ApiEquivalentAccounting = field(default_factory=ApiEquivalentAccounting)
     subscription_capacity: SubscriptionCapacity = field(default_factory=SubscriptionCapacity)
+    # --- Run-lifecycle watchdog outcomes (Dispatch B) ---
+    # Set by execute_run()'s watchdog. early_stopped and stalled are mutually
+    # exclusive with each other and with the timeout path. stall_diagnostics
+    # carries the staleness poll history and read count for post-hoc anatomy.
+    early_stopped: bool = False
+    stalled: bool = False
+    stall_diagnostics: dict = field(default_factory=dict)
+    # Time-to-demonstrated-compliance for an early-stopped run (seconds): elapsed
+    # wall time from launch to the poll at which the score-complete check first
+    # passed for the confirmed episode, EXCLUDING the confirmation poll and the
+    # SIGTERM/SIGKILL tail. None for every non-early-stop outcome. The viewer uses
+    # it as the duration contribution for completed_early runs (README § 8) so the
+    # duration axis stays populated with a meaningful measure instead of dropping
+    # early-stopped runs.
+    score_complete_seconds: Optional[float] = None
 
     def to_dict(self) -> dict:
         return {
@@ -294,6 +377,10 @@ class RunResult:
             "tool_failures": self.tool_failures,
             "error": self.error,
             "exit_code": self.exit_code,
+            "early_stopped": self.early_stopped,
+            "stalled": self.stalled,
+            "stall_diagnostics": self.stall_diagnostics,
+            "score_complete_seconds": self.score_complete_seconds,
         }
 
 

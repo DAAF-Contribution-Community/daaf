@@ -699,6 +699,112 @@ class ViewerSchemaLoadingTests(unittest.TestCase):
         # totals.total_runs counts completed runs only.
         self.assertEqual(4, precomputed["totals"]["total_runs"])
 
+    def test_completed_early_substitutes_score_complete_seconds_in_duration(self):
+        """The duration-aggregate contribution rule for early-stopped runs
+        (README § 8): a ``completed_early`` run carrying ``score_complete_seconds``
+        contributes THAT value (a time-to-demonstrated-compliance measure), not
+        its truncated ``duration_s`` and not an exclusion; a ``completed_early``
+        run WITHOUT the field falls through to the documented excluded path. This
+        exercises the real load_runs -> build_precomputed path (no mocks) and is
+        the seam the field-carry BLOCKER broke: load_runs must surface
+        ``score_complete_seconds`` onto the run record for the substitution to fire.
+        """
+        root = self.results_dir / "20260722_090909"
+        self._write_json(root / "manifest.json", {
+            "daaf_git_sha": "f" * 40,
+            "config": {"reps": 1, "parallel": False},
+            "models": [
+                {"id": "opus-4-8", "name": "Opus 4.8", "provider": "anthropic"},
+                {"id": "early-model", "name": "Early Model",
+                 "provider": "anthropic"},
+            ],
+        })
+        self._write_json(root / "summary.json", {
+            "total_runs": 3,
+            "errored_runs": 0,
+            "total_cost_usd": 0,
+            "wall_time_s": 10,
+            "by_model": {
+                "Opus 4.8": {"criteria": {
+                    "orchestrator_skill_loaded": {"passed": 1, "total": 1, "rate": 1.0},
+                    "all_criteria": {"passed": 1, "total": 1, "rate": 1.0},
+                }},
+                "Early Model": {"criteria": {
+                    "orchestrator_skill_loaded": {"passed": 2, "total": 2, "rate": 1.0},
+                    "all_criteria": {"passed": 2, "total": 2, "rate": 1.0},
+                }},
+            },
+        })
+
+        def _early_run(run_dir, model, model_id, duration, status,
+                       score_complete):
+            record = {
+                "case_id": "mc-a",
+                "model": model,
+                "model_id": model_id,
+                "provider": "anthropic",
+                "rep": 0,
+                "turns": 1,
+                "computed_cost_usd": 0,
+                "input_tokens": 100,
+                "output_tokens": 10,
+                "cache_read_tokens": 0,
+                "cache_creation_tokens": 0,
+                "duration_s": duration,
+                "timed_out": False,
+                "status": status,
+                "criteria": {"orchestrator_skill_loaded": {"passed": True}},
+            }
+            if score_complete is not None:
+                record["score_complete_seconds"] = score_complete
+            self._write_json(root / "runs" / run_dir / "result.json", record)
+
+        # Reference model: one normal completed run, duration 2.0s.
+        _early_run("opus_0", "Opus 4.8", "opus-4-8", 2.0, "completed", None)
+        # Early Model, run WITH the field: truncated duration_s=50.0 must be
+        # ignored in favor of score_complete_seconds=7.0.
+        _early_run("early_with", "Early Model", "early-model", 50.0,
+                   "completed_early", 7.0)
+        # Early Model, run WITHOUT the field: must be EXCLUDED (not counted as
+        # its truncated duration_s=60.0, which would otherwise pull the mean).
+        _early_run("early_without", "Early Model", "early-model", 60.0,
+                   "completed_early", None)
+
+        with redirect_stderr(io.StringIO()):
+            result_sets = viewer.load_result_sets(
+                str(self.results_dir), filter_timestamps=["20260722_090909"]
+            )
+            runs, anth_tokens, _ = viewer.load_runs(
+                str(self.results_dir), result_sets, cases={}
+            )
+
+        # load_runs must surface score_complete_seconds onto the run record (the
+        # BLOCKER: absent this field the substitution is dead code and every
+        # completed_early run is dropped from the duration aggregate).
+        early_with = next(r for r in runs if r["model"] == "Early Model"
+                          and r["score_complete_seconds"] is not None)
+        self.assertEqual(7.0, early_with["score_complete_seconds"])
+        early_without = next(r for r in runs if r["model"] == "Early Model"
+                             and r["score_complete_seconds"] is None)
+        self.assertIsNone(early_without["score_complete_seconds"])
+
+        precomputed = viewer.build_precomputed(
+            result_sets,
+            cases={},
+            runs=runs,
+            generation_params={"fixture": True},
+            model_pricing={},
+            anth_token_totals=anth_tokens,
+            reconciliation=None,
+        )
+        dur_models = precomputed["duration"]["models"]
+        # Substitution fired: mean over the ONE contributing run == 7.0
+        # (NOT 50.0 duration_s, NOT (50+60)/2 = 55.0, NOT excluded/absent).
+        self.assertIn("Early Model", dur_models)
+        self.assertEqual(1, dur_models["Early Model"]["n_runs"])
+        self.assertEqual(7.0, dur_models["Early Model"]["est_duration_per_run"])
+        self.assertEqual(2.0, dur_models["Opus 4.8"]["est_duration_per_run"])
+
     def test_all_timed_out_phase_drops_component_and_composite_renders_partial(self):
         # Companion to the per-CASE degeneracy above: exercises an all-timed-out
         # per-PHASE cell. The degenerate set flows through the shared _load()

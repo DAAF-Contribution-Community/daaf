@@ -8,6 +8,7 @@ the full framework is exercised.
 import json
 import os
 import subprocess
+import threading
 import time
 import uuid
 from datetime import datetime, timezone
@@ -21,6 +22,12 @@ from benchmarks.harness.route_provenance import (
 )
 from benchmarks.harness.checkpoint_manager import prepare_sandbox, cleanup_sandbox
 from benchmarks.harness.cost_estimator import compute_accounting
+from benchmarks.scorers.deterministic.checkpoint_adherence import (
+    find_benchmark_transcript,
+)
+from benchmarks.scorers.deterministic.subagent_behavior import (
+    find_subagent_transcripts,
+)
 
 
 # Uniform fallback timeout (seconds). Only fires if a caller passes
@@ -31,10 +38,10 @@ from benchmarks.harness.cost_estimator import compute_accounting
 DEFAULT_TIMEOUT_S = 900
 
 # Grace window between SIGTERM and SIGKILL for timed-out runs (seconds).
-# Claude Code's main-session transcript writes are async/buffered; a hard
-# SIGKILL races the writer and can truncate the transcript tail (lost Agent
-# tool_use records — see README § 11 item 9). SIGTERM first gives the CLI a
-# chance to flush before the hard kill lands.
+# Observed timeout archives sometimes lack terminal parent-side evidence. As a
+# precaution, SIGTERM first gives the CLI an orderly shutdown interval before
+# escalation. This does not establish Claude Code's write internals or prove
+# that SIGKILL caused any particular missing transcript tail (README § 11).
 KILL_GRACE_SECONDS = 15
 
 
@@ -103,6 +110,10 @@ def execute_run(config: RunConfig) -> RunResult:
     # Explicitly set CLAUDE_CODE_EFFORT_LEVEL to match --effort flag so it
     # overrides the settings.json env value (which defaults to "high").
     env = os.environ.copy()
+    # Model configuration, not an unrelated parent shell, owns the flatten
+    # selector. Scrub ambient leakage first; an explicit per-model override below
+    # is intentionally re-applied by env.update().
+    env.pop("CLAUDE_CODE_SUBAGENT_MODEL", None)
     # Activates the benchmark-scoped git-blocking hook (block-git-writes.sh)
     # for this run and all subagent sessions it spawns; inert in normal sessions.
     env["DAAF_BENCHMARK_RUN"] = "1"
@@ -158,15 +169,64 @@ def execute_run(config: RunConfig) -> RunResult:
             env=env,
         )
 
+        # The session id is knowable pre-launch (golden checkpoint resume or the
+        # pre-assigned cold-start uuid), so the watchdog can locate the live
+        # parent/subagent transcripts while the run is still in flight.
+        watchdog_session_id = checkpoint_session_id or cold_start_session_id or ""
+
         timed_out = False
-        try:
-            stdout, stderr = proc.communicate(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            # Graceful shutdown ladder: SIGTERM -> grace window -> SIGKILL.
-            stdout, stderr = _graceful_kill(proc)
-            timed_out = True
+        # Watchdog engages only when a caller opts in (stall detection and/or an
+        # early-stop callback). With neither, the path below is byte-identical to
+        # the pre-watchdog harness: a single blocking communicate() with the
+        # SIGTERM->grace->SIGKILL ladder on timeout.
+        watchdog_active = (
+            config.stall_detection or config.early_stop_check is not None
+        )
+        if not watchdog_active:
+            try:
+                stdout, stderr = proc.communicate(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                # Graceful shutdown ladder: SIGTERM -> grace window -> SIGKILL.
+                stdout, stderr = _graceful_kill(proc)
+                timed_out = True
+        else:
+            stdout, stderr, reason, stall_diag = _watchdog_wait(
+                proc, config, watchdog_session_id, start_time, timeout
+            )
+            if reason == "timeout":
+                timed_out = True
+            elif reason == "early_stop":
+                result.early_stopped = True
+                # Comparable "time-to-demonstrated-compliance" duration: launch ->
+                # first early-stop-check pass of the confirmed episode, excluding
+                # the confirmation poll and kill tail (README § 8). May be None if
+                # the executor cannot attribute it (defensive).
+                result.score_complete_seconds = stall_diag.get(
+                    "score_complete_seconds"
+                )
+            elif reason == "stalled":
+                result.stalled = True
+                result.stall_diagnostics = stall_diag
 
         result.duration_seconds = time.time() - start_time
+
+        # Early-stop and stall are terminal, non-timeout outcomes. Scoring is
+        # done downstream from the live/archived transcript (not from stdout), so
+        # the known session id is all the runner needs. An early stop is
+        # score-neutral by construction (all monotone-pass criteria already
+        # settled), so we deliberately do NOT set result.error for it; a stall is
+        # a run-health failure and carries a distinct, non-"Timed out" message.
+        if result.early_stopped or result.stalled:
+            if not result.session_id:
+                result.session_id = watchdog_session_id
+            if result.stalled:
+                result.error = (
+                    f"Stalled: transcript inactive beyond "
+                    f"{config.stall_threshold_seconds}s across "
+                    f"{config.stall_consecutive_reads} consecutive watchdog polls"
+                )
+            _finalize_result(result, model, start_time)
+            return result
 
         if timed_out:
             # Try parsing partial stdout captured through the kill sequence
@@ -226,26 +286,263 @@ def execute_run(config: RunConfig) -> RunResult:
 def _graceful_kill(proc: subprocess.Popen) -> tuple[str, str]:
     """Terminate a timed-out CLI process via a graceful shutdown ladder.
 
-    SIGTERM -> wait up to KILL_GRACE_SECONDS -> SIGKILL. The grace window
-    lets Claude Code flush its async/buffered main-session transcript writes
-    before dying (README § 11 item 9 — a hard SIGKILL truncates the
-    transcript tail, losing records like the Agent tool_use block).
+    SIGTERM -> wait up to KILL_GRACE_SECONDS -> SIGKILL. Observed timeout
+    archives sometimes lack terminal parent-side evidence, so the grace window
+    is a precaution that permits orderly CLI shutdown before escalation. It
+    does not establish the CLI's transcript-write internals or attribute any
+    particular missing tail to SIGKILL (README § 11).
 
     Uses communicate() rather than wait() for the grace wait: the CLI may
-    keep writing to stdout/stderr while flushing, and wait() with full pipes
+    keep writing to stdout/stderr during shutdown, and wait() with full pipes
     deadlocks. communicate() keeps draining the pipes, and per the subprocess
     docs a retried communicate() after TimeoutExpired loses no output.
 
     Returns (stdout, stderr) accumulated across the entire process lifetime,
     including anything emitted during the grace window.
     """
-    proc.terminate()  # SIGTERM — request shutdown, allow transcript flush
+    proc.terminate()  # SIGTERM — request orderly shutdown before escalation
     try:
         stdout, stderr = proc.communicate(timeout=KILL_GRACE_SECONDS)
     except subprocess.TimeoutExpired:
         proc.kill()  # SIGKILL — grace window expired, hard stop
         stdout, stderr = proc.communicate()
     return stdout or "", stderr or ""
+
+
+def _transcript_recency(session_id, find_parent, find_subs):
+    """Aggregate the most-recent activity time across parent AND subagent
+    transcripts for a live run.
+
+    Returns (latest_mtime_or_None, parent_exists_bool, lookup_errors_int).
+    Staleness must aggregate max-recency across BOTH the parent and every
+    subagent transcript: a parent-only monitor false-alarms while the parent
+    blocks on long subagent work (validated in the K3 rerun campaign). File mtime
+    is used as the activity signal because the CLI appends records as it works, so
+    mtime advances with real progress; it is read defensively (a transcript may
+    not exist yet, or may vanish between the find and the stat).
+
+    A lookup FUNCTION raising (find_parent/find_subs) is distinct from a
+    transcript legitimately not existing yet: the former is a monitoring
+    regression that would silently masquerade as a model stall (no mtime -> looks
+    like dead air). Such exceptions are counted in ``lookup_errors`` and printed
+    as WARNINGs (parallel to the early-stop path's warning style) so the caller
+    can surface them in stall_diagnostics rather than misattributing them. The
+    stall DECISION logic is intentionally unchanged: a lookup error still yields
+    no mtime for this poll, exactly as a genuinely absent transcript does.
+    """
+    mtimes = []
+    parent_exists = False
+    lookup_errors = 0
+    try:
+        parent = find_parent(session_id)
+    except Exception as e:
+        parent = None
+        lookup_errors += 1
+        print(
+            f"WARNING: transcript parent lookup raised {type(e).__name__}: {e}; "
+            f"treating as no parent activity this poll (not a model stall)."
+        )
+    if parent is not None:
+        parent_exists = True
+        try:
+            mtimes.append(Path(parent).stat().st_mtime)
+        except OSError:
+            pass
+    try:
+        subs = find_subs(session_id)
+    except Exception as e:
+        subs = []
+        lookup_errors += 1
+        print(
+            f"WARNING: transcript subagent lookup raised {type(e).__name__}: {e}; "
+            f"treating as no subagent activity this poll (not a model stall)."
+        )
+    for sub in subs or []:
+        try:
+            mtimes.append(Path(sub).stat().st_mtime)
+        except OSError:
+            pass
+    latest = max(mtimes) if mtimes else None
+    return latest, parent_exists, lookup_errors
+
+
+def _graceful_kill_threaded(proc, reader_threads):
+    """SIGTERM -> grace -> SIGKILL for the watchdog path, then join the pipe
+    reader threads so all buffered stdout/stderr is collected.
+
+    The watchdog drains stdout/stderr via background reader threads (a naive wait
+    loop would deadlock once ``claude -p --output-format json`` fills the pipe
+    buffer, because that format emits its JSON only at exit). Those threads own
+    the pipe file objects, so this kill path must NOT call proc.communicate()
+    (which would race the readers); it waits on the process and then joins the
+    readers, which return when the pipes close on process death.
+    """
+    proc.terminate()  # SIGTERM
+    try:
+        proc.wait(timeout=KILL_GRACE_SECONDS)
+    except subprocess.TimeoutExpired:
+        proc.kill()  # SIGKILL — grace window expired
+        try:
+            proc.wait(timeout=KILL_GRACE_SECONDS)
+        except subprocess.TimeoutExpired:
+            pass
+    for t in reader_threads:
+        t.join(timeout=KILL_GRACE_SECONDS)
+
+
+def _watchdog_wait(
+    proc,
+    config,
+    session_id,
+    start_time,
+    timeout,
+    find_parent=find_benchmark_transcript,
+    find_subs=find_subagent_transcripts,
+    now_fn=time.time,
+):
+    """Poll a running ``claude -p`` process, draining stdout/stderr on background
+    reader threads, and terminate early on score-complete or stall.
+
+    Returns ``(stdout, stderr, reason, diagnostics)`` where ``reason`` is one of:
+      - ``None``  — the process exited on its own before any watchdog action.
+      - ``"timeout"``    — the 900s wall-clock backstop fired (unchanged policy).
+      - ``"early_stop"`` — ``early_stop_check`` returned True on two consecutive
+                           polls (an initial hit plus one confirmation poll that
+                           protects the subagent-transcript flush race).
+      - ``"stalled"``    — ``stall_consecutive_reads`` consecutive stalled
+                           readings (>``stall_threshold_seconds`` staleness, or
+                           no transcript at all past
+                           ``stall_first_activity_seconds``).
+
+    The lookup functions and clock are injectable so the decision logic can be
+    unit-tested against a synthetic subprocess (e.g. ``sleep``) and transcript
+    files with controlled mtimes, without launching the CLI.
+    """
+    stdout_box = []
+    stderr_box = []
+
+    def _drain(pipe, box):
+        try:
+            box.append(pipe.read())
+        except Exception:
+            box.append("")
+
+    reader_threads = [
+        threading.Thread(target=_drain, args=(proc.stdout, stdout_box), daemon=True),
+        threading.Thread(target=_drain, args=(proc.stderr, stderr_box), daemon=True),
+    ]
+    for t in reader_threads:
+        t.start()
+
+    poll = config.watchdog_poll_seconds or 60
+    deadline = start_time + timeout
+    early_stop_pending = False  # True after an initial hit, awaiting confirmation
+    # Elapsed wall time (launch -> the poll at which early_stop_check first
+    # returned True for the episode that ultimately confirms). This is a
+    # "time-to-demonstrated-compliance" measure: it deliberately EXCLUDES the
+    # confirmation poll and the SIGTERM/SIGKILL tail, so the viewer can use it as
+    # a comparable duration contribution for completed_early runs (README § 8).
+    # Reset alongside early_stop_pending on an intermittent False so it always
+    # reflects the first hit of the winning episode.
+    score_complete_at = None
+    stall_reads = 0
+    lookup_errors_total = 0
+    poll_history = []
+    reason = None
+
+    while True:
+        try:
+            proc.wait(timeout=poll)
+            reason = None  # exited on its own
+            break
+        except subprocess.TimeoutExpired:
+            pass
+
+        now = now_fn()
+
+        # Wall-clock backstop is unchanged: the 900s cap still governs.
+        if now >= deadline:
+            reason = "timeout"
+            break
+
+        # --- Score-complete early stop (with confirmation poll) ---
+        if config.early_stop_check is not None:
+            try:
+                done = bool(config.early_stop_check(session_id))
+            except Exception as e:
+                # Never kill on a scorer crash — treat as "not done" but log it.
+                done = False
+                print(
+                    f"WARNING: early_stop_check raised {type(e).__name__}: {e}; "
+                    f"not early-stopping this poll."
+                )
+            if done:
+                if early_stop_pending:
+                    reason = "early_stop"
+                    break
+                # First hit: require one more confirming poll before killing.
+                # This also gives the subagent-transcript flush a poll-width
+                # grace so the dispatch-recovery fallback has records on disk.
+                early_stop_pending = True
+                score_complete_at = now - start_time
+            else:
+                early_stop_pending = False
+                score_complete_at = None
+
+        # --- Stall detection ---
+        if config.stall_detection:
+            latest, parent_exists, lookup_errors = _transcript_recency(
+                session_id, find_parent, find_subs
+            )
+            lookup_errors_total += lookup_errors
+            elapsed = now - start_time
+            if latest is None:
+                # No parent OR subagent transcript activity exists at all yet.
+                staleness = elapsed
+                is_stalled_read = elapsed > config.stall_first_activity_seconds
+            else:
+                staleness = now - latest
+                is_stalled_read = staleness > config.stall_threshold_seconds
+            poll_history.append(round(staleness, 1))
+            if is_stalled_read:
+                stall_reads += 1
+                if stall_reads >= config.stall_consecutive_reads:
+                    reason = "stalled"
+                    break
+            else:
+                stall_reads = 0
+
+    if reason is not None:
+        _graceful_kill_threaded(proc, reader_threads)
+    else:
+        for t in reader_threads:
+            t.join()
+
+    stdout = stdout_box[0] if stdout_box else ""
+    stderr = stderr_box[0] if stderr_box else ""
+    # The reader threads own the pipe file objects and have now joined (either via
+    # _graceful_kill_threaded or the plain join above), so no reader can race a
+    # close here. Explicitly close the pipes to release the fds promptly rather
+    # than leaning on GC/finalizer timing.
+    for pipe in (proc.stdout, proc.stderr):
+        try:
+            if pipe is not None:
+                pipe.close()
+        except Exception:
+            pass
+    diagnostics = {
+        "reason": reason,
+        "stall_reads": stall_reads,
+        "staleness_poll_history": poll_history,
+        "stall_threshold_seconds": config.stall_threshold_seconds,
+        "stall_consecutive_reads": config.stall_consecutive_reads,
+        # Count of transcript-lookup-function exceptions across all polls. >0
+        # signals a monitoring regression (not a model stall) worth investigating.
+        "lookup_errors": lookup_errors_total,
+        # Time-to-demonstrated-compliance for an early stop (None otherwise).
+        "score_complete_seconds": score_complete_at,
+    }
+    return stdout or "", stderr or "", reason, diagnostics
 
 
 def _parse_json_output(stdout_raw: str, result: RunResult) -> None:
