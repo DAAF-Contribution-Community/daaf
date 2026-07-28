@@ -76,7 +76,17 @@ class ProviderShimReasoningFormattingTests(unittest.TestCase):
                 )
                 self.assertEqual(shim.health.get("status"), "ok")
                 self.assertEqual(shim.health.get("backend_mode"), "openai")
-                self.assertEqual(shim.health.get("version"), "1.3.6")
+                self.assertEqual(shim.health.get("version"), "1.3.9")
+                self.assertEqual(
+                    set(shim.health["gpt_service_tier"]),
+                    {
+                        "backend_mode",
+                        "requested_tier_vocabulary",
+                        "policy",
+                        "native_fast_disabled",
+                        "latest_terminal",
+                    },
+                )
 
     def test_openai_nonstreaming_legacy_bytes_unchanged(self) -> None:
         scenario = central_multipart_scenario()
@@ -572,7 +582,12 @@ class ProviderShimReasoningFormattingTests(unittest.TestCase):
                     shim.assert_offline_contract()
                     backend.assert_request_counts(responses=1)
                     for name in seeded_names:
-                        self.assertNotIn(name, shim.child_env, name)
+                        if name == "HOME":
+                            self.assertEqual(
+                                shim.child_env[name], str(shim.scratch_dir), name
+                            )
+                        else:
+                            self.assertNotIn(name, shim.child_env, name)
                     allowed_names = (
                         set(RealShim._CONTROLLED_BASE_ENV)
                         | set(RealShim._CONTROLLED_CHILD_ENV_NAMES)

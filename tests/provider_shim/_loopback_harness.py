@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import copy
 import importlib.util
 import io
 import json
@@ -121,6 +122,7 @@ USAGE_WITH_CACHE = {
 }
 NONSTREAM_REJECTION_BODY = {"detail": "Stream must be set to true"}
 TERMINAL_FIELD_OMITTED = object()
+_SELECTED_BACKEND_CONTROL = object()
 
 CENTRAL_SOURCE_DELTAS = [
     "**Planning ",
@@ -240,6 +242,9 @@ class ASGIProbeReport:
     raised: Optional[str]
     cancelled: bool
     upstream_calls: int
+    auth_calls: int
+    outbound_payloads: list[dict[str, Any]]
+    gpt_service_tier_health: dict[str, Any]
     stream_close_calls: int
     stream_close_attempts: list[int]
     close_after_cleanup: list[bool]
@@ -505,23 +510,29 @@ def _finish_response(
     builder: _EventBuilder,
     response_id: str,
     output: list[dict[str, Any]],
+    *,
+    service_tier: Any = TERMINAL_FIELD_OMITTED,
 ) -> None:
-    builder.add(
-        "response.completed",
-        response={
-            "id": response_id,
-            "status": "completed",
-            "output": output,
-            "usage": dict(USAGE),
-        },
-    )
+    response = {
+        "id": response_id,
+        "status": "completed",
+        "output": output,
+        "usage": dict(USAGE),
+    }
+    # v1.3.7 Fast tests opt in to an exact terminal tier. Omission preserves every
+    # pre-v1.3.7 fixture byte-for-byte; no default tier is inferred from the request.
+    if service_tier is not TERMINAL_FIELD_OMITTED:
+        response["service_tier"] = service_tier
+    builder.add("response.completed", response=response)
 
 
 def _nonstream_response(
     response_id: str,
     output: list[dict[str, Any]],
+    *,
+    service_tier: Any = TERMINAL_FIELD_OMITTED,
 ) -> dict[str, Any]:
-    return {
+    response = {
         "id": response_id,
         "model": "gpt-fixture",
         "status": "completed",
@@ -530,6 +541,10 @@ def _nonstream_response(
         "incomplete_details": None,
         "error": None,
     }
+    # Opt-in only: the shared response fixture remains absent-tier by default.
+    if service_tier is not TERMINAL_FIELD_OMITTED:
+        response["service_tier"] = service_tier
+    return response
 
 
 def central_multipart_scenario(transition: Optional[str] = None) -> Scenario:
@@ -824,10 +839,16 @@ def terminal_contract_scenario(
     status: Any = TERMINAL_FIELD_OMITTED,
     output: Any = TERMINAL_FIELD_OMITTED,
     usage: Any = TERMINAL_FIELD_OMITTED,
+    service_tier: Any = TERMINAL_FIELD_OMITTED,
     leading_events: Optional[list[dict[str, Any]]] = None,
     trailing_events: Optional[list[dict[str, Any]]] = None,
 ) -> Scenario:
-    """Build one exact terminal event and matching JSON response for schema tests."""
+    """Build one exact terminal event and matching JSON response for schema tests.
+
+    ``service_tier`` is an opt-in exact wire value for both the streamed terminal
+    object and its matching non-stream JSON object. The omission sentinel leaves all
+    existing fixtures unchanged and deliberately does not encode production mapping.
+    """
 
     response: dict[str, Any] = {"id": f"resp_{name}"}
     if status is not TERMINAL_FIELD_OMITTED:
@@ -836,6 +857,8 @@ def terminal_contract_scenario(
         response["output"] = output
     if usage is not TERMINAL_FIELD_OMITTED:
         response["usage"] = usage
+    if service_tier is not TERMINAL_FIELD_OMITTED:
+        response["service_tier"] = service_tier
     events = list(leading_events or [])
     events.append({"type": event_type, "response": response})
     events.extend(trailing_events or [])
@@ -1133,8 +1156,11 @@ def obfuscation_tool_scenario(name: str = "obfuscation-tolerance") -> Scenario:
     )
 
 
-def incomplete_response_scenario() -> Scenario:
-    """Incomplete Responses SSE whose terminal event carries output and usage."""
+def incomplete_response_scenario(
+    *,
+    service_tier: Any = TERMINAL_FIELD_OMITTED,
+) -> Scenario:
+    """Incomplete Responses terminal with an optional exact served tier."""
 
     builder = _EventBuilder()
     builder.add(
@@ -1142,24 +1168,27 @@ def incomplete_response_scenario() -> Scenario:
         response={"id": "resp_incomplete", "status": "in_progress"},
     )
     output = [_append_text_item(builder, 0, text="Truncated fixture answer.")]
-    builder.add(
-        "response.incomplete",
-        response={
-            "id": "resp_incomplete",
-            "status": "incomplete",
-            "output": output,
-            "usage": dict(USAGE),
-            "incomplete_details": {"reason": "max_output_tokens"},
-        },
-    )
+    terminal = {
+        "id": "resp_incomplete",
+        "status": "incomplete",
+        "output": output,
+        "usage": dict(USAGE),
+        "incomplete_details": {"reason": "max_output_tokens"},
+    }
+    if service_tier is not TERMINAL_FIELD_OMITTED:
+        terminal["service_tier"] = service_tier
+    builder.add("response.incomplete", response=terminal)
+    nonstream = {
+        **_nonstream_response("resp_incomplete_nonstream", output),
+        "status": "incomplete",
+        "incomplete_details": {"reason": "max_output_tokens"},
+    }
+    if service_tier is not TERMINAL_FIELD_OMITTED:
+        nonstream["service_tier"] = service_tier
     return Scenario(
         name="incomplete-response",
         stream_events=builder.events,
-        nonstream_response={
-            **_nonstream_response("resp_incomplete_nonstream", output),
-            "status": "incomplete",
-            "incomplete_details": {"reason": "max_output_tokens"},
-        },
+        nonstream_response=nonstream,
     )
 
 
@@ -2132,6 +2161,7 @@ _LIFECYCLE_ORDER = {
             "upstream_attempt",
             "transport_failure",
             "upstream_retry",
+            "reasoning_cache_stale_strip",
             "upstream_headers",
             "quota_snapshot",
             "upstream_first_event",
@@ -2287,6 +2317,8 @@ class RealShim(AbstractContextManager["RealShim"]):
         "TZ": "UTC",
     }
     _TEST_ENV_OVERRIDE_NAMES = frozenset({
+        "CLAUDE_CODE_DISABLE_FAST_MODE",
+        "DAAF_PROVIDER_SHIM",
         "SHIM_REASONING_EFFORT",
         "SHIM_SANITIZE_TOOLS",
         "SHIM_STRIP_MODEL_PREFIX",
@@ -2302,6 +2334,8 @@ class RealShim(AbstractContextManager["RealShim"]):
         "DAAF_REASONING_CACHE_FILE",
     })
     _CONTROLLED_CHILD_ENV_NAMES = frozenset({
+        "HOME",
+        "DAAF_PROVIDER_SHIM",
         "SHIM_PORT",
         "SHIM_BACKEND_MODE",
         "SHIM_BACKEND_BASE_URL",
@@ -2420,6 +2454,11 @@ class RealShim(AbstractContextManager["RealShim"]):
 
             env.update(
                 {
+                    # v1.3.8: strict GPT tier policy is fixed under HOME. Point each
+                    # real-shim subprocess at its isolated scratch home; no production
+                    # state-path override exists or is inherited.
+                    "HOME": str(self.scratch_dir),
+                    "DAAF_PROVIDER_SHIM": "openai",
                     "SHIM_BACKEND_MODE": self.mode,
                     "SHIM_BACKEND_BASE_URL": self.backend_base_url,
                     "SHIM_BACKEND_API_KEY": FAKE_OPENAI_KEY,
@@ -2743,8 +2782,10 @@ class RealShim(AbstractContextManager["RealShim"]):
             raise AssertionError(
                 f"child environment contains non-allowlisted names: {sorted(unexpected_names)!r}"
             )
-        if "HOME" in self.child_env:
-            raise AssertionError("child environment inherited HOME unexpectedly")
+        if Path(self.child_env.get("HOME", "")) != self.scratch_dir:
+            raise AssertionError("child HOME did not point to isolated policy scratch")
+        if self.child_env.get("DAAF_PROVIDER_SHIM") != "openai":
+            raise AssertionError("child GPT provider control was not exact")
         for name in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"):
             if self.child_env.get(name) != self.proxy_url:
                 raise AssertionError(f"{name} does not target the closed loopback proxy")
@@ -2945,9 +2986,19 @@ def controlled_asgi_probe(
     disconnect_during_enter: bool = False,
     invalid_request_shape: bool = False,
     raw_request_body: Optional[bytes] = None,
+    raw_scope_headers: Optional[list[tuple[bytes, bytes]]] = None,
     response_status: int = 200,
     response_headers: Optional[dict[str, str]] = None,
     http_version: str = "HTTP/1.1",
+    backend_mode: Optional[str] = None,
+    provider_shim_control: Optional[str] = "openai",
+    backend_mode_control: object = _SELECTED_BACKEND_CONTROL,
+    native_fast_disable: Optional[str] = "1",
+    preexisting_global_policy_enabled: Optional[bool] = None,
+    global_policy_enabled: Optional[bool] = None,
+    global_policy_backend: Optional[str] = None,
+    toggle_policy_on_first_receive: Optional[bool] = None,
+    inject_stale_restored_reasoning: bool = False,
 ) -> ASGIProbeReport:
     """Drive the production app with controlled receive/send and upstream seams.
 
@@ -2956,6 +3007,8 @@ def controlled_asgi_probe(
     cleanup all execute in the production module.
     """
 
+    probe_home_holder: list[Path] = []
+
     async def exercise() -> ASGIProbeReport:
         module_name = f"provider_shim_asgi_probe_{uuid.uuid4().hex}"
         # NOTE: DAAF_QUOTA_STATE_FILE is deliberately NOT set here. This probe executes
@@ -2963,21 +3016,68 @@ def controlled_asgi_probe(
         # _write_quota_state; the module-level setdefault at the top of this file already
         # seams that write to scratch, and mock.patch.dict(..., clear=False) below inherits
         # the runner-process env, so the seam carries into the freshly loaded module.
+        probe_home = SCRATCH_ROOT / f"provider-shim-policy-home-{uuid.uuid4().hex}"
+        probe_home.mkdir(mode=0o700)
+        probe_home_holder.append(probe_home)
+        selected_backend_mode = backend_mode or (
+            "chatgpt"
+            if auth_store_unavailable or lazy_401_refresh or lazy_401_refresh_failure
+            else "openai"
+        )
+        if selected_backend_mode not in {"openai", "chatgpt"}:
+            raise ValueError(f"unsupported controlled backend mode: {selected_backend_mode}")
+        raw_backend_control = (
+            selected_backend_mode
+            if backend_mode_control is _SELECTED_BACKEND_CONTROL
+            else backend_mode_control
+        )
+        if provider_shim_control is not None and not isinstance(
+            provider_shim_control, str
+        ):
+            raise TypeError("provider shim control must be a string or None")
+        if raw_backend_control is not None and not isinstance(raw_backend_control, str):
+            raise TypeError("backend mode control must be a string or None")
         controlled_env = {
-            "SHIM_BACKEND_MODE": (
-                "chatgpt"
-                if auth_store_unavailable or lazy_401_refresh or lazy_401_refresh_failure
-                else "openai"
-            ),
+            "HOME": str(probe_home),
             "SHIM_BACKEND_BASE_URL": "http://127.0.0.1:1/v1",
             "SHIM_BACKEND_API_KEY": FAKE_OPENAI_KEY,
             "OPENAI_API_KEY": FAKE_OPENAI_KEY,
         }
+        if provider_shim_control is not None:
+            controlled_env["DAAF_PROVIDER_SHIM"] = provider_shim_control
+        if raw_backend_control is not None:
+            controlled_env["SHIM_BACKEND_MODE"] = raw_backend_control
+        if native_fast_disable is not None:
+            controlled_env["CLAUDE_CODE_DISABLE_FAST_MODE"] = native_fast_disable
+        if preexisting_global_policy_enabled is not None:
+            policy_dir = probe_home / ".claude" / "provider_shim"
+            policy_dir.mkdir(parents=True, mode=0o700)
+            policy_dir.chmod(0o700)
+            policy_path = policy_dir / "gpt_fast_policy.json"
+            policy_path.write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "backend_mode": selected_backend_mode,
+                        "enabled": preexisting_global_policy_enabled,
+                    },
+                    separators=(",", ":"),
+                ),
+                encoding="utf-8",
+            )
+            policy_path.chmod(0o600)
         if auth_store_unavailable:
             controlled_env["CODEX_HOME"] = str(
                 SCRATCH_ROOT / f"provider-shim-missing-auth-{uuid.uuid4().hex}"
             )
         with mock.patch.dict(os.environ, controlled_env, clear=False):
+            # Absence is itself a strict-boundary fixture. patch.dict(clear=False) keeps
+            # the runner's hermetic quota/reasoning seams, so explicitly remove only the
+            # two raw controls when a test requests omission; the context restores them.
+            if provider_shim_control is None:
+                os.environ.pop("DAAF_PROVIDER_SHIM", None)
+            if raw_backend_control is None:
+                os.environ.pop("SHIM_BACKEND_MODE", None)
             # v1.3.3 (A2-R5): clear the runner-default reasoning-cache seam BEFORE this
             # fresh module load so its import-time restore cannot pick up entries a prior
             # in-process load persisted (which would leak call_ids and flip miss
@@ -2990,6 +3090,31 @@ def controlled_asgi_probe(
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
 
+        if global_policy_enabled is not None:
+            module._GPT_FAST_STORE.write(
+                global_policy_backend or selected_backend_mode,
+                global_policy_enabled,
+            )
+
+        if inject_stale_restored_reasoning:
+            original_translation = module._anthropic_to_responses_request
+
+            def translation_with_restored_reasoning(*args, **kwargs):
+                translated = list(original_translation(*args, **kwargs))
+                translated[0]["input"].insert(
+                    0,
+                    {
+                        "type": "reasoning",
+                        "id": "rs_controlled_stale",
+                        "encrypted_content": "controlled-fixture-only",
+                    },
+                )
+                translated[5] = {"rs_controlled_stale"}
+                translated[6] = {"call_controlled_stale"}
+                return tuple(translated)
+
+            module._anthropic_to_responses_request = translation_with_restored_reasoning
+
         if lazy_401_refresh or lazy_401_refresh_failure:
             async def controlled_backend_headers(*args, **kwargs):
                 if lazy_401_refresh_failure and kwargs.get("force_token_refresh"):
@@ -3001,6 +3126,16 @@ def controlled_asgi_probe(
                 }
 
             module._build_backend_headers = controlled_backend_headers
+
+        auth_calls = 0
+        original_build_backend_headers = module._build_backend_headers
+
+        async def observed_backend_headers(*args, **kwargs):
+            nonlocal auth_calls
+            auth_calls += 1
+            return await original_build_backend_headers(*args, **kwargs)
+
+        module._build_backend_headers = observed_backend_headers
 
         if translation_failure:
             def controlled_translation_failure(*args, **kwargs):
@@ -3025,6 +3160,7 @@ def controlled_asgi_probe(
             for name, value in (response_headers or {}).items()
         ]
         upstream_calls = 0
+        outbound_payloads: list[dict[str, Any]] = []
         stream_close_calls = 0
         stream_close_attempts: list[int] = []
         close_after_cleanup: list[bool] = []
@@ -3088,10 +3224,12 @@ def controlled_asgi_probe(
             )
 
         class ProbeStreamContext:
-            def __init__(self, attempt_number: int):
+            def __init__(self, attempt_number: int, payload: dict[str, Any]):
                 self.attempt_number = attempt_number
+                self.payload = payload
 
             async def __aenter__(self):
+                outbound_payloads.append(copy.deepcopy(self.payload))
                 if disconnect_during_enter:
                     receive_queue.put_nowait({"type": "http.disconnect"})
                     await upstream_hold.wait()
@@ -3119,11 +3257,12 @@ def controlled_asgi_probe(
             def stream(self, *args, **kwargs):
                 nonlocal upstream_calls
                 upstream_calls += 1
-                return ProbeStreamContext(upstream_calls)
+                return ProbeStreamContext(upstream_calls, kwargs.get("json"))
 
             async def post(self, *args, **kwargs):
                 nonlocal upstream_calls
                 upstream_calls += 1
+                outbound_payloads.append(copy.deepcopy(kwargs.get("json")))
                 return response_for_attempt(upstream_calls)
 
         original_client = module._client
@@ -3185,7 +3324,18 @@ def controlled_asgi_probe(
             if pure_disconnect:
                 receive_queue.put_nowait({"type": "http.disconnect"})
 
+        first_receive = True
+
         async def receive() -> dict[str, Any]:
+            nonlocal first_receive
+            if first_receive:
+                first_receive = False
+                if toggle_policy_on_first_receive is not None:
+                    # app() has already created lifecycle state and captured its one
+                    # policy snapshot before its first body read reaches this seam.
+                    module._GPT_FAST_STORE.write(
+                        selected_backend_mode, toggle_policy_on_first_receive
+                    )
             return await receive_queue.get()
 
         messages: list[dict[str, Any]] = []
@@ -3272,7 +3422,14 @@ def controlled_asgi_probe(
 
         raised: Optional[str] = None
         cancelled = False
-        scope = {"type": "http", "method": "POST", "path": "/v1/messages"}
+        # Raw ASGI pairs preserve duplicate names, original header-name case, and malformed
+        # bytes. Normal HTTP helpers stay unchanged and continue to delegate parsing to uvicorn.
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "path": "/v1/messages",
+            "headers": list(raw_scope_headers or []),
+        }
         if send_action == "same_turn_terminal_disconnect":
             asyncio.wait = observed_asyncio_wait
         task = asyncio.create_task(module.app(scope, receive, send))
@@ -3308,13 +3465,16 @@ def controlled_asgi_probe(
         lifecycle = parse_lifecycle_logs(logs)
         if lifecycle:
             assert_lifecycle_log_contract(lifecycle)
-        return ASGIProbeReport(
+        report = ASGIProbeReport(
             messages=messages,
             logs=logs,
             lifecycle=lifecycle,
             raised=raised,
             cancelled=cancelled,
             upstream_calls=upstream_calls,
+            auth_calls=auth_calls,
+            outbound_payloads=outbound_payloads,
+            gpt_service_tier_health=module._gpt_service_tier_health_block(),
             stream_close_calls=stream_close_calls,
             stream_close_attempts=stream_close_attempts,
             close_after_cleanup=close_after_cleanup,
@@ -3325,8 +3485,13 @@ def controlled_asgi_probe(
             terminal_tie_children_done=terminal_tie_children_done,
             pending_task_count=pending_task_count,
         )
+        return report
 
-    return asyncio.run(exercise())
+    try:
+        return asyncio.run(exercise())
+    finally:
+        if probe_home_holder:
+            shutil.rmtree(probe_home_holder[0], ignore_errors=True)
 
 
 def parse_typed_sse(payload: bytes | str) -> list[TypedSSEFrame]:

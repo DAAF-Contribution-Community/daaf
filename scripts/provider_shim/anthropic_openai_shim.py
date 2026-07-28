@@ -63,6 +63,32 @@
 #   * GET /health endpoint for the manager's idempotency/status checks.
 #
 # Changelog:
+#   v1.3.9 (2026-07-26): Canonical GPT service-tier request vocabulary.
+#     Both exact GPT shim backends now converge on the one OpenAI Responses wire value
+#     `service_tier:"priority"` for valid inbound Anthropic Fast and shim-global ON.
+#     ChatGPT subscription continues to present this as Fast with plan/credit semantics;
+#     OpenAI API continues to present it as Priority with API Priority billing semantics.
+#     OFF still omits service_tier, policy persistence remains schema-v1 backend+boolean,
+#     and request snapshots, retry invariance, route reset, and no-fallback behavior are
+#     unchanged. Canonical served `priority` maps to Anthropic usage.speed=`fast`; exact
+#     served `fast` remains a compatibility-only terminal parser value and is never emitted
+#     as requested vocabulary. SHIM_VERSION -> 1.3.9.
+#   v1.3.8 (2026-07-25): Route-bound shim-native GPT service-tier control.
+#     Adds a strict persistent default-OFF policy shared across both GPT lanes, startup
+#     compare-and-set reset on route changes, one request-boundary policy snapshot reused
+#     by all retries, additive precedence with validated inbound Anthropic Fast, bounded
+#     requested-source telemetry, process-local latest-terminal evidence, and the stable
+#     gpt_service_tier /health block. SHIM_VERSION -> 1.3.8.
+#   v1.3.7 (2026-07-24): Claude Code Fast mode with route-specific service tiers.
+#     Valid `speed:"fast"` plus beta `fast-mode-2026-02-01` emits Responses
+#     `service_tier:"priority"` on the OpenAI API lane and `service_tier:"fast"` on the
+#     ChatGPT/Codex lane. Invalid speed requests fail locally before auth/upstream; beta-only
+#     and ordinary traffic omit service_tier. Fast never changes model, reasoning, tools,
+#     retry payloads, or context gating and never falls back to Standard. Terminal actual
+#     tiers priority/fast map to Anthropic usage.speed=fast; default/flex/scale/auto map to
+#     standard; absent/unknown remain omitted. Terminal telemetry distinguishes scrubbed
+#     requested_service_tier from served_service_tier. No env or /health field was added.
+#     SHIM_VERSION -> 1.3.7.
 #   v1.3.6 (2026-07-22): Prompt-cache observability + reasoning-cache persistence cap resize
 #     (minor bump — the observability is additive and the client-visible usage mapping is
 #     sum-invariant, so downstream context accounting is byte-equivalent). Step 1 of the
@@ -871,10 +897,28 @@
 #
 # Config (all via env):
 #   SHIM_PORT               default 4141
-#   SHIM_BACKEND_MODE       backend lane selector (v1.2.5). "openai" (default) |
-#                           "chatgpt". Read once at startup (case-insensitive,
-#                           whitespace-trimmed). An unknown value logs ONE startup
-#                           WARNING and falls back to "openai".
+#   CLAUDE_CODE_DISABLE_FAST_MODE
+#                           REQUIRED as exact `CLAUDE_CODE_DISABLE_FAST_MODE=1` on
+#                           GPT provider-shim installations/routes. This is Claude
+#                           Code's supported native `/fast` disable/hide control.
+#                           Control the shim-native route tier with:
+#                             bash /daaf/scripts/provider_shim/gpt_fast.sh {on|off|status}
+#                           Both exact GPT backends request canonical Responses wire
+#                           `service_tier:"priority"` when ON. ChatGPT presents this as
+#                           Fast with plan/credit semantics; OpenAI API presents it as
+#                           Priority with API Priority billing semantics. Setting changes
+#                           require container recreation and a new Claude session,
+#                           not a daemon restart or image rebuild. In-container DAAF
+#                           code does not mutate the private host configuration.
+#   SHIM_BACKEND_MODE       backend lane selector (v1.2.5). Legacy core process
+#                           behavior intentionally trims/normalizes the value,
+#                           defaults to "openai" when omitted, and warns then falls
+#                           back to "openai" for an unknown value. The strict product
+#                           boundary is separate: supported provider-route detection,
+#                           gpt_fast.sh, and v1.3.8 GPT policy activation require exact
+#                           SHIM_BACKEND_MODE="openai" or "chatgpt" paired with exact
+#                           DAAF_PROVIDER_SHIM="openai"; omitted, case-varied, or
+#                           whitespace-padded values are not accepted there.
 #                             * openai  — api.openai.com/v1 API-key lane (the
 #                               original, unchanged). Auth = Bearer of
 #                               SHIM_BACKEND_API_KEY (from env); default base URL
@@ -990,11 +1034,20 @@ import urllib.parse
 from collections import OrderedDict
 from contextvars import ContextVar
 
+# The shim is also loaded directly from its file path by deterministic tests. Add only
+# this script's own directory so the sibling strict policy library resolves identically
+# under direct execution and importlib-based loading.
+_SHIM_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+if _SHIM_SCRIPT_DIR not in sys.path:
+    sys.path.insert(0, _SHIM_SCRIPT_DIR)
+
+from gpt_fast import PolicyStore, native_fast_is_disabled
+
 import httpx
 import uvicorn
 
 # --- Config ---
-SHIM_VERSION = "1.3.6"
+SHIM_VERSION = "1.3.9"
 SHIM_SERVICE_ID = "daaf-anthropic-openai-shim"
 
 SHIM_PORT = int(os.environ.get("SHIM_PORT", "4141"))
@@ -1013,8 +1066,20 @@ SHIM_PORT = int(os.environ.get("SHIM_PORT", "4141"))
 #   impersonation = existing translator + base-URL swap + Bearer-from-auth.json).
 _BACKEND_MODE_SUPPORTED = frozenset({"openai", "chatgpt"})
 _BACKEND_MODE_DEFAULT = "openai"
-_raw_backend_mode = os.environ.get("SHIM_BACKEND_MODE", _BACKEND_MODE_DEFAULT)
-_backend_mode_norm = (_raw_backend_mode or "").strip().lower()
+_raw_provider_shim = os.environ.get("DAAF_PROVIDER_SHIM")
+_raw_backend_mode = os.environ.get("SHIM_BACKEND_MODE")
+_legacy_backend_mode_input = (
+    _BACKEND_MODE_DEFAULT if _raw_backend_mode is None else _raw_backend_mode
+)
+_backend_mode_norm = (_legacy_backend_mode_input or "").strip().lower()
+# Keep two independent boundaries. Core v1.2.5/v1.3.7 routing intentionally defaults an
+# omitted backend to OpenAI, normalizes case/whitespace, and warns+falls back on unknown
+# values. The v1.3.8 shim-global policy is stricter: only the complete raw exact provider
+# and backend pair may reconcile as valid, project effective, or activate on a request.
+_GPT_FAST_ROUTE_VALID = bool(
+    _raw_provider_shim == "openai"
+    and _raw_backend_mode in _BACKEND_MODE_SUPPORTED
+)
 if _backend_mode_norm in _BACKEND_MODE_SUPPORTED:
     SHIM_BACKEND_MODE = _backend_mode_norm
     _backend_mode_warn = None
@@ -1026,6 +1091,24 @@ else:
         "SHIM_BACKEND_MODE %r invalid (valid: openai|chatgpt); "
         "falling back to default %r" % (_raw_backend_mode, _BACKEND_MODE_DEFAULT)
     )
+
+# v1.3.8: process-wide route-bound GPT tier policy. The startup reconciliation is one
+# lock-serialized compare-and-set operation: a valid policy bound to the other lane, or
+# a current-lane ON policy without either the complete raw exact provider/backend pair
+# or exact native-Fast disable boundary, is replaced by explicit OFF. A concurrent
+# current-lane `on` that wins the writer lock is observed and preserved only when both
+# boundaries are exact. Every failure remains effective OFF; unsafe filesystem objects
+# are never overwritten and can never crash shim startup.
+_GPT_FAST_STORE = PolicyStore()
+_GPT_FAST_NATIVE_DISABLED = native_fast_is_disabled()
+try:
+    _GPT_FAST_STARTUP_NORMALIZATION = _GPT_FAST_STORE.normalize_backend(
+        SHIM_BACKEND_MODE,
+        route_boundary_valid=_GPT_FAST_ROUTE_VALID,
+        native_fast_disabled=_GPT_FAST_NATIVE_DISABLED,
+    )
+except Exception:
+    _GPT_FAST_STARTUP_NORMALIZATION = None
 
 # HARDENING: the backend base URL default is MODE-CONDITIONAL. openai ->
 # api.openai.com/v1 (the original production target); chatgpt -> the Codex backend
@@ -1296,6 +1379,120 @@ _MALFORMED_TOLERANT_EVENT_TYPES = frozenset({
 # quote/backslash qualifies; anything else yields None (strict failure preserved).
 _MALFORMED_TYPE_PROBE = re.compile(rb'"type"\s*:\s*"([^"\\]{1,64})"')
 
+# v1.3.9 Fast-mode constants. Header names are case-insensitive, while Anthropic beta
+# tokens are case-sensitive. Both exact GPT routes emit the one canonical Responses request
+# value `priority`. Served tier is read only from a terminal Responses object; exact served
+# `fast` is retained temporarily as a compatibility-only parser value and is never emitted.
+_FAST_BETA_TOKEN = "fast-mode-2026-02-01"
+_FAST_REQUEST_SERVICE_TIERS = {"openai": "priority", "chatgpt": "priority"}
+_FAST_ACTUAL_SERVICE_TIERS = frozenset({"priority", "fast"})
+_STANDARD_ACTUAL_SERVICE_TIERS = frozenset({"default", "flex", "scale", "auto"})
+_FAST_REQUEST_SOURCES = frozenset({"none", "anthropic", "shim_global", "both"})
+_LATEST_TERMINAL_LOCK = threading.Lock()
+_LATEST_TERMINAL = None
+_LATEST_TERMINAL_SEQUENCE = 0
+_LATEST_TERMINAL_ORDER = 0
+_HEALTH_MODEL_TOKEN_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,159}$")
+
+
+class _JSONObjectPairs(list):
+    """Temporary marker preserving object-pair order through JSON decoding."""
+
+
+class _DuplicateTopLevelSpeedError(ValueError):
+    """The privileged exact top-level `speed` key appeared more than once."""
+
+
+def _preserve_json_object_pairs(pairs):
+    return _JSONObjectPairs(pairs)
+
+
+def _collapse_inbound_json(value, *, root=False):
+    # Narrow duplicate-key protection for the privileged top-level Fast marker.
+    # Every unrelated duplicate and every nested duplicate retains json.loads()'s
+    # established last-key-wins behavior after recursive collapse.
+    if isinstance(value, _JSONObjectPairs):
+        collapsed = {}
+        speed_seen = False
+        for key, child in value:
+            if root and key == "speed":
+                if speed_seen:
+                    raise _DuplicateTopLevelSpeedError()
+                speed_seen = True
+            collapsed[key] = _collapse_inbound_json(child)
+        return collapsed
+    if isinstance(value, list):
+        return [_collapse_inbound_json(child) for child in value]
+    return value
+
+
+def _decode_anthropic_request_json(body):
+    preserved = json.loads(
+        body.decode("utf-8"), object_pairs_hook=_preserve_json_object_pairs
+    )
+    return _collapse_inbound_json(preserved, root=True)
+
+
+def _anthropic_beta_tokens(scope_headers):
+    # Preserve duplicate-field semantics by scanning every ASGI header pair, then split
+    # every value on commas. Malformed non-ASCII values cannot equal the ASCII beta token.
+    tokens = set()
+    for raw_name, raw_value in scope_headers or ():
+        try:
+            name = raw_name.decode("ascii").lower()
+            value = raw_value.decode("ascii")
+        except (AttributeError, UnicodeDecodeError):
+            continue
+        if name == "anthropic-beta":
+            # HTTP list optional whitespace is SP / HTAB only. A broader str.strip()
+            # would erase controls such as VT / FF and could turn a tainted member into
+            # the privileged exact beta token.
+            tokens.update(
+                part.strip(" \t") for part in value.split(",") if part.strip(" \t")
+            )
+    return tokens
+
+
+def _requested_service_tier(body, beta_tokens, policy_snapshot):
+    # v1.3.8 additive precedence. Inbound Anthropic Fast is validated exactly as in
+    # v1.3.7 even when global mode is ON; global policy never makes malformed input valid.
+    inbound_fast = False
+    if "speed" in body:
+        speed = body.get("speed")
+        if not isinstance(speed, str) or speed != "fast":
+            raise _InvalidRequestError("unsupported speed value")
+        if _FAST_BETA_TOKEN not in beta_tokens:
+            raise _InvalidRequestError(
+                "speed 'fast' requires anthropic beta fast-mode-2026-02-01")
+        inbound_fast = True
+    # The persisted opt-in is necessary but never sufficient: every accepted request
+    # also requires the complete raw exact provider/backend pair and exact native-Fast
+    # disable boundary captured for this process at startup. This keeps configuration
+    # immutable for the daemon lifetime while failing closed on every malformed control.
+    global_fast = bool(
+        _GPT_FAST_ROUTE_VALID
+        and _GPT_FAST_NATIVE_DISABLED
+        and policy_snapshot is not None
+        and policy_snapshot.status == "ok"
+        and policy_snapshot.backend_mode == SHIM_BACKEND_MODE
+        and policy_snapshot.effective
+    )
+    if inbound_fast and global_fast:
+        source = "both"
+    elif inbound_fast:
+        source = "anthropic"
+    elif global_fast:
+        source = "shim_global"
+    else:
+        source = "none"
+    # OFF means omission, never service_tier:"default" and never suppression of a valid
+    # inbound request. Both active sources converge on the lane's one canonical value.
+    requested_tier = (
+        _FAST_REQUEST_SERVICE_TIERS[SHIM_BACKEND_MODE]
+        if inbound_fast or global_fast else None
+    )
+    return requested_tier, source
+
 
 def _probe_malformed_event_type(data_bytes):
     # v1.2.14 (R3.5): best-effort event-type recovery from a malformed SSE frame.
@@ -1333,6 +1530,14 @@ class _RequestLifecycleState:
         # Lane-agnostic, like the token fields above.
         self.cached_tokens = None
         self.usage_source = "-"
+        # v1.3.7: requested intent and actual served tier remain distinct. "-" means
+        # absent/unknown and must never be interpreted as Standard.
+        self.requested_service_tier = "-"
+        self.requested_service_tier_source = "none"
+        # Captured exactly once by app() immediately after this lifecycle object is
+        # created and before body reading/authentication. Retries never consult global state.
+        self.gpt_policy_snapshot = None
+        self.served_service_tier = "-"
         self.tools_called = 0
         self.effort_value = "-"
         self.effort_source = "-"
@@ -1454,13 +1659,20 @@ def _machine_field_value(value):
     )
 
 
-def _lifecycle_event(name, **fields):
+def _lifecycle_event(name, _fields_before_elapsed=False, **fields):
     state = _request_state()
     if state is None:
         return
-    parts = ["event=%s" % name, "elapsed_ms=%d" % _elapsed_ms(state)]
+    parts = ["event=%s" % name]
+    if not _fields_before_elapsed:
+        parts.append("elapsed_ms=%d" % _elapsed_ms(state))
     for key, value in fields.items():
         parts.append("%s=%s" % (key, _machine_field_value(value)))
+    if _fields_before_elapsed:
+        # Compatibility for a pre-lifecycle diagnostic whose exact event/field prefix is
+        # consumed by focused regressions. It still uses this one bounded serializer and
+        # retains elapsed timing; only the token order is preserved.
+        parts.append("elapsed_ms=%d" % _elapsed_ms(state))
     log.info(" ".join(parts))
 
 
@@ -1756,6 +1968,9 @@ def _log_terminal_once():
         # would render None as "None"; the "-" convention matches usage/stop above. Single
         # lane-agnostic emission site.
         cached_tokens=(state.cached_tokens if state.cached_tokens is not None else "-"),
+        requested_service_tier=state.requested_service_tier,
+        requested_service_tier_source=state.requested_service_tier_source,
+        served_service_tier=state.served_service_tier,
         tools_called=state.tools_called, effort="%s:%s" % (
             state.effort_value, state.effort_source),
         reasoning_cache_miss=state.reasoning_cache_misses,
@@ -3291,7 +3506,8 @@ def _tools_to_responses(tools):
     return out
 
 
-def _anthropic_to_responses_request(body, bare_model, slug_effort_raw):
+def _anthropic_to_responses_request(
+        body, bare_model, slug_effort_raw, requested_service_tier=None):
     # Build the OpenAI Responses payload from an Anthropic Messages body.
     # Returns (payload, missing_reasoning_count, reasoning_cache_hits, effort_value,
     #   effort_source, injected_restored_reasoning_ids, injected_restored_call_ids).
@@ -3319,6 +3535,11 @@ def _anthropic_to_responses_request(body, bare_model, slug_effort_raw):
         # be re-injected (the API 404s on a bare reasoning id when store:false).
         "include": ["reasoning.encrypted_content"],
     }
+    # Only the locally validated Fast/Priority path supplies the canonical wire value.
+    # Ordinary requests and every noncanonical value omit the field; retries reuse this
+    # same payload and never downgrade it. In particular DAAF never emits raw `fast`.
+    if requested_service_tier == "priority":
+        payload["service_tier"] = "priority"
 
     # system -> top-level `instructions` (NOT a system message in input[]).
     system_text = _system_to_text(body.get("system"))
@@ -4082,7 +4303,8 @@ def _maybe_strip_restored_reasoning(payload, status, raw_body):
     # upstream_retry lifecycle event) — same convention as every other retry.
     _record_retry("stale_reasoning_400", source="body")
     # Distinct counts-only event. NEVER the stripped content or the backend error prose.
-    log.info("event=reasoning_cache_stale_strip stripped=%d", stripped)
+    _lifecycle_event(
+        "reasoning_cache_stale_strip", _fields_before_elapsed=True, stripped=stripped)
     return True
 
 
@@ -4414,7 +4636,53 @@ def _resolve_cached_tokens(usage_obj, input_total):
     return cached
 
 
-def _anthropic_usage_block(input_total, output_total, cached):
+def _actual_speed_from_response(response):
+    # Only a validated terminal upstream object calls this helper. Requested policy,
+    # HTTP success, and latency never establish served service. Capture ordering before
+    # parsing so a slower earlier terminal cannot overwrite a later terminal after it.
+    global _LATEST_TERMINAL, _LATEST_TERMINAL_SEQUENCE, _LATEST_TERMINAL_ORDER
+    with _LATEST_TERMINAL_LOCK:
+        _LATEST_TERMINAL_SEQUENCE += 1
+        terminal_order = _LATEST_TERMINAL_SEQUENCE
+    raw_tier = response.get("service_tier") if isinstance(response, dict) else None
+    canonical_served = (
+        raw_tier
+        if isinstance(raw_tier, str)
+        and raw_tier in (_FAST_ACTUAL_SERVICE_TIERS | _STANDARD_ACTUAL_SERVICE_TIERS)
+        else None
+    )
+    state = _request_state()
+    if state is not None and isinstance(raw_tier, str):
+        state.served_service_tier = _scrub_metadata(raw_tier, 100)
+    raw_model = response.get("model") if isinstance(response, dict) else None
+    if not isinstance(raw_model, str) or not _HEALTH_MODEL_TOKEN_RE.fullmatch(raw_model):
+        raw_model = None
+    requested_tier = None
+    requested_source = "none"
+    if state is not None:
+        if state.requested_service_tier in _FAST_REQUEST_SERVICE_TIERS.values():
+            requested_tier = state.requested_service_tier
+        if state.requested_service_tier_source in _FAST_REQUEST_SOURCES:
+            requested_source = state.requested_service_tier_source
+    latest = {
+        "model": raw_model,
+        "requested_service_tier": requested_tier,
+        "requested_source": requested_source,
+        "served_service_tier": canonical_served,
+        "completed_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }
+    with _LATEST_TERMINAL_LOCK:
+        if terminal_order > _LATEST_TERMINAL_ORDER:
+            _LATEST_TERMINAL = latest
+            _LATEST_TERMINAL_ORDER = terminal_order
+    if raw_tier in _FAST_ACTUAL_SERVICE_TIERS:
+        return "fast"
+    if raw_tier in _STANDARD_ACTUAL_SERVICE_TIERS:
+        return "standard"
+    return None
+
+
+def _anthropic_usage_block(input_total, output_total, cached, speed=None):
     # V6-R3 (Decision 1 + Decision 2 = always-emit): build the client-visible Anthropic
     # usage block. Anthropic's `input_tokens` is the UNCACHED remainder only (unlike
     # OpenAI's, which includes the cached prefix), and clients (incl. Claude Code context
@@ -4427,12 +4695,15 @@ def _anthropic_usage_block(input_total, output_total, cached):
     # Anthropic's own responses. OpenAI reports no cache-WRITE count, so
     # cache_creation_input_tokens is always 0. `cached` must already be the effective
     # (typed, clamp-checked) value from _resolve_cached_tokens.
-    return {
+    block = {
         "input_tokens": input_total - cached if cached is not None else input_total,
         "output_tokens": output_total,
         "cache_read_input_tokens": cached if cached is not None else 0,
         "cache_creation_input_tokens": 0,
     }
+    if speed is not None:
+        block["speed"] = speed
+    return block
 
 
 # --- Non-streaming path: full Responses object -> full Anthropic message ---
@@ -4521,6 +4792,7 @@ def _responses_to_anthropic(resp_obj, model):
     input_total = usage.get("input_tokens", 0)
     output_total = usage.get("output_tokens", 0)
     cached = _resolve_cached_tokens(usage, input_total)
+    actual_speed = _actual_speed_from_response(resp_obj)
     return {
         "id": resp_obj.get("id") or f"msg_{uuid.uuid4().hex[:24]}",
         "type": "message",
@@ -4529,7 +4801,8 @@ def _responses_to_anthropic(resp_obj, model):
         "content": content,
         "stop_reason": _stop_reason_from_status(status, saw_tool_use),
         "stop_sequence": None,
-        "usage": _anthropic_usage_block(input_total, output_total, cached),
+        "usage": _anthropic_usage_block(
+            input_total, output_total, cached, actual_speed),
         # V6-R1: private carry of the effective cached count (or None) for the two
         # non-stream lane consumers. Each pops it before the message is sent so it never
         # reaches the wire. Carried SEPARATELY from cache_read_input_tokens because a
@@ -5013,7 +5286,7 @@ async def _accumulate_terminal_response(resp, disconnect_event):
     return None, "backend stream ended without a terminal response"
 
 
-async def _handle_messages(body, receive, send):
+async def _handle_messages(body, receive, send, scope_headers=()):
     t0 = time.time()
 
     # HARDENING (client-disconnect): a response-local Event is both the lightweight
@@ -5029,10 +5302,19 @@ async def _handle_messages(body, receive, send):
                 _record_disconnect("disconnect_watcher")
                 return
 
-    # Decode Anthropic request. Malformed JSON -> 400.
+    # Decode Anthropic request. Malformed JSON -> 400. Preserve raw object pairs just
+    # long enough to reject duplicate exact top-level `speed` before ordinary dict
+    # collapse; unrelated and nested duplicates retain last-key-wins compatibility.
     _set_phase("request_parse")
     try:
-        req = json.loads(body.decode("utf-8"))
+        req = _decode_anthropic_request_json(body)
+    except _DuplicateTopLevelSpeedError:
+        _mark_error(phase="request_validation", error_type="invalid_request_error")
+        await _send_json(send, 400, {"type": "error", "error": {
+            "type": "invalid_request_error",
+            "message": "duplicate top-level speed field",
+        }})
+        return
     except (ValueError, UnicodeDecodeError) as e:
         log.error("bad request json: %s", type(e).__name__)
         await _send_json(send, 400, {"type": "error", "error": {"type": "invalid_request_error", "message": "invalid JSON"}})
@@ -5124,6 +5406,21 @@ async def _handle_messages(body, receive, send):
         }})
         return
 
+    # Validate the body/header Fast contract before authentication or any upstream call.
+    # A persistent Fast beta with no speed remains ordinary traffic.
+    try:
+        state = _request_state()
+        requested_service_tier, requested_service_tier_source = _requested_service_tier(
+            req, _anthropic_beta_tokens(scope_headers),
+            state.gpt_policy_snapshot if state is not None else None,
+        )
+    except _InvalidRequestError as error:
+        _mark_error(phase="request_validation", error_type="invalid_request_error")
+        await _send_json(send, 400, {"type": "error", "error": {
+            "type": "invalid_request_error", "message": str(error),
+        }})
+        return
+
     _set_phase("request_translation")
     stream = bool(req.get("stream", False))
     # v1.2.2: strip any "#<effort>" suffix from the inbound model up front, so the
@@ -5134,7 +5431,8 @@ async def _handle_messages(body, receive, send):
     try:
         responses_payload, missing_reasoning, reasoning_cache_hits, effort_value, \
             effort_source, injected_restored_reasoning_ids, injected_restored_call_ids = \
-            _anthropic_to_responses_request(req, model, slug_effort_raw)
+            _anthropic_to_responses_request(
+                req, model, slug_effort_raw, requested_service_tier)
     except _InvalidRequestError as error:
         # The exception text is constructed exclusively from structural indexes,
         # bounded type labels, and local constants. Never log or reflect block data.
@@ -5154,6 +5452,11 @@ async def _handle_messages(body, receive, send):
         state.tool_count = n_tools
         state.effort_value = effort_value
         state.effort_source = effort_source
+        state.requested_service_tier = (
+            _scrub_metadata(requested_service_tier, 100)
+            if requested_service_tier is not None else "-"
+        )
+        state.requested_service_tier_source = requested_service_tier_source
         state.reasoning_cache_misses = missing_reasoning
         # v1.3.4 (V4-R6): per-request cache-hit count for the terminal record.
         state.reasoning_cache_hits = reasoning_cache_hits
@@ -5585,6 +5888,7 @@ async def _handle_messages(body, receive, send):
         input_tokens = None
         output_tokens = None
         cached_tokens = None         # V6-R1: cached-prefix count from terminal usage (None until parsed)
+        actual_speed = None          # v1.3.7: only terminal service_tier evidence sets this
         accumulated_text = ""        # for usage estimation fallback
         usage_estimated = False
         retries = 0
@@ -6435,6 +6739,9 @@ async def _handle_messages(body, receive, send):
                     # input_tokens is now resolved to the OpenAI total, so the clamp guard
                     # inside _resolve_cached_tokens compares against the correct basis.
                     cached_tokens = _resolve_cached_tokens(usage, input_tokens)
+                    # Actual service is terminal evidence. Never expose requested intent
+                    # in message_start or infer Standard from an absent/unknown tier.
+                    actual_speed = _actual_speed_from_response(r_obj)
                     # Retain only validated terminal output for one post-loop cache
                     # population. The first valid terminal is final: stop semantic
                     # consumption immediately and close the upstream context in the
@@ -6617,7 +6924,8 @@ async def _handle_messages(body, receive, send):
                 "delta": {"stop_reason": stop_reason, "stop_sequence": None},
                 # V6-R3: always-emit Anthropic usage shape with the subtraction mapping.
                 # cached_tokens is already the effective (typed, clamp-checked) value.
-                "usage": _anthropic_usage_block(input_tokens, output_tokens, cached_tokens)})
+                "usage": _anthropic_usage_block(
+                    input_tokens, output_tokens, cached_tokens, actual_speed)})
             await emit("message_stop", {"type": "message_stop"})
             # A returned ASGI send marks only send_completed. It does not prove
             # client acknowledgment or receipt. Success is fixed at this semantic
@@ -6796,6 +7104,39 @@ def _auth_health_block():
     return block
 
 
+def _gpt_service_tier_health_block():
+    # Stable bounded v1.3.8 health contract. Current policy is a fresh strict read and is
+    # explicitly global requested state, while latest_terminal is process-local historical
+    # evidence from one genuine terminal upstream object. Neither is per-session proof.
+    native_fast_disabled = _GPT_FAST_NATIVE_DISABLED
+    try:
+        snapshot = _GPT_FAST_STORE.read(
+            SHIM_BACKEND_MODE if _GPT_FAST_ROUTE_VALID else None
+        )
+        policy = snapshot.health_dict()
+        # Preserve the persisted `enabled` fact while projecting request-effective state
+        # honestly. Failed reconciliation of an unsafe/invalid state, or any missing exact
+        # process boundary, cannot leave health claiming stored ON is currently active.
+        if (not _GPT_FAST_ROUTE_VALID or not native_fast_disabled) and policy["effective"]:
+            policy["effective"] = False
+    except Exception:
+        policy = {
+            "status": "unreadable",
+            "backend_mode": None,
+            "enabled": False,
+            "effective": False,
+        }
+    with _LATEST_TERMINAL_LOCK:
+        latest = dict(_LATEST_TERMINAL) if _LATEST_TERMINAL is not None else None
+    return {
+        "backend_mode": SHIM_BACKEND_MODE,
+        "requested_tier_vocabulary": _FAST_REQUEST_SERVICE_TIERS[SHIM_BACKEND_MODE],
+        "policy": policy,
+        "native_fast_disabled": native_fast_disabled,
+        "latest_terminal": latest,
+    }
+
+
 async def _handle_health(send):
     # HARDENING: health endpoint for the manager's idempotency + --status checks.
     await _send_json(send, 200, {
@@ -6851,6 +7192,7 @@ async def _handle_health(send):
             "cached_tokens_total": _PROMPT_CACHE_CACHED_TOKENS_TOTAL,
             "input_tokens_total": _PROMPT_CACHE_INPUT_TOKENS_TOTAL,
         },
+        "gpt_service_tier": _gpt_service_tier_health_block(),
     })
 
 
@@ -6878,13 +7220,23 @@ async def app(scope, receive, send):
         # Establish correlation before the first body read so body-read disconnects
         # and every nested task/log record belong to this request lifecycle.
         state = _RequestLifecycleState()
+        # v1.3.8 request-boundary snapshot: exactly one lock-free read, immediately after
+        # lifecycle creation and before request_start/body read/auth. The resulting object
+        # is the sole global-policy input used to build the one retry-stable payload.
+        try:
+            state.gpt_policy_snapshot = _GPT_FAST_STORE.read(
+                SHIM_BACKEND_MODE if _GPT_FAST_ROUTE_VALID else None
+            )
+        except Exception:
+            state.gpt_policy_snapshot = None
         token = _REQUEST_STATE.set(state)
         _lifecycle_event("request_start", method="POST", path="/v1/messages")
         try:
             body = await _read_body(receive)
             if not state.disconnect_observed:
                 # Pass `receive` through so the handler can watch for disconnect.
-                await _handle_messages(body, receive, send)
+                await _handle_messages(
+                    body, receive, send, scope.get("headers", ()))
         except _ClientDisconnected:
             _record_disconnect(state.phase)
         except asyncio.CancelledError:

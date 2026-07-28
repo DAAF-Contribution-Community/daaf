@@ -1446,7 +1446,18 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 )
                 health = shim.get_health()
                 self.assertEqual(health.status, 200, health.text)
-                self.assertEqual(health.json().get("status"), "ok")
+                health_payload = health.json()
+                self.assertEqual(health_payload.get("status"), "ok")
+                self.assertEqual(
+                    set(health_payload["gpt_service_tier"]),
+                    {
+                        "backend_mode",
+                        "requested_tier_vocabulary",
+                        "policy",
+                        "native_fast_disabled",
+                        "latest_terminal",
+                    },
+                )
                 shim.assert_offline_contract()
                 backend.assert_request_counts(responses=1)
         self.assertEqual(provider_scratch_residue(), before)
@@ -1651,7 +1662,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 startup_records = [
                     line
                     for line in shim.captured_stderr().splitlines()
-                    if "req_id=- phase=process shim v1.3.6 starting" in line
+                    if "req_id=- phase=process shim v1.3.9 starting" in line
                 ]
                 self.assertEqual(len(startup_records), 1, startup_records)
                 self.assertIn(

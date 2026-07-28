@@ -75,6 +75,7 @@ transcript_path=""
 max_context="200000"
 session_id=""
 model_id=""
+model_id_state="invalid"
 effort_level=""
 rl_5h=""
 rl_5h_reset=""
@@ -83,7 +84,7 @@ rl_7d_reset=""
 payload_parsed=0
 if command -v jq >/dev/null 2>&1; then
     if IFS=$'\x1f' read -r model cwd transcript_path max_context session_id model_id \
-    effort_level rl_5h rl_5h_reset rl_7d rl_7d_reset < <(printf '%s' "$input" | jq -er '
+    model_id_state effort_level rl_5h rl_5h_reset rl_7d rl_7d_reset < <(printf '%s' "$input" | jq -er '
         def has_control:
             test("[[:cntrl:]]");
         def display_string($fallback):
@@ -126,6 +127,18 @@ if command -v jq >/dev/null 2>&1; then
                else ""
                end),
               ((.model.id? // "") | control_free_string),
+              (if (.model | type) == "object" and (.model | has("id")) and
+                       .model.id != null
+               then
+                   if (.model.id | type) == "string" and
+                          ((.model.id | has_control) | not) and
+                          (.model.id | length) > 0 and
+                          (.model.id | length) <= 160
+                   then "valid"
+                   else "invalid"
+                   end
+               else "absent"
+               end),
               ((.effort.level? // "") | display_string("")),
               (if (.rate_limits.five_hour.used_percentage? | type) == "number"
                then (.rate_limits.five_hour.used_percentage | tostring)
@@ -484,11 +497,28 @@ fi
 # is the unmodified name.
 model_name="$model"
 gpt_model=0
-# Detect a GPT/shim model from either the id or the display name (belt-and-braces:
-# some payloads carry the slug only in display_name).
-case "${model_id}${model_name}" in
-    *gpt-*|*GPT-*) gpt_model=1 ;;
-esac
+# Classify only a bounded, anchored terminal GPT slug. The consolidated payload
+# parser preserves whether model.id is valid, genuinely absent/null, or present
+# but invalid; display_name is a fallback only for the absent/null state. Provider
+# prefixes are stripped before matching, while malformed left boundaries such as
+# notgpt-*, xgpt-*, and foo-gpt-* cannot match.
+# The display fallback first removes the established effort suffix and duplicate
+# [1m] cosmetic so legitimate shim display slugs retain their prior behavior.
+gpt_status_slug_re='^(gpt|GPT)-[A-Za-z0-9][A-Za-z0-9._-]*(\[1m\])?$'
+gpt_status_candidate=""
+if [[ "$model_id_state" == "valid" ]]; then
+    gpt_status_candidate="${model_id##*/}"
+elif [[ "$model_id_state" == "absent" ]]; then
+    gpt_status_candidate="${model_name##*/}"
+    gpt_status_candidate="${gpt_status_candidate%%#*}"
+    while [[ "$gpt_status_candidate" == *'[1m][1m]' ]]; do
+        gpt_status_candidate="${gpt_status_candidate%'[1m]'}"
+    done
+fi
+if [[ ${#gpt_status_candidate} -le 160 && \
+      "$gpt_status_candidate" =~ $gpt_status_slug_re ]]; then
+    gpt_model=1
+fi
 
 if [[ "$gpt_model" -eq 1 ]]; then
     # 1) strip a trailing "#<effort>" token (and anything the client appended
@@ -507,6 +537,132 @@ model_disp="$model_name"
 # regardless of the actual routing.
 if [[ -n "$effort_level" && "$gpt_model" -ne 1 ]]; then
     model_disp="${model_name} (${effort_level})"
+fi
+
+# --- GPT provider-shim Fast indicator ---
+# Render one route-neutral ON-only label. The indicator requires the existing
+# statusline GPT classification, an exact supported shim route, exact local
+# native-Fast disablement, and a strictly validated /health ON state. Every
+# missing, invalid, OFF, ineffective, mismatched, or unavailable state is silent.
+gpt_tier_seg=""
+if [[ "$gpt_model" -eq 1 && \
+      "${DAAF_PROVIDER_SHIM:-}" == "openai" && \
+      ( "${SHIM_BACKEND_MODE:-}" == "chatgpt" || \
+        "${SHIM_BACKEND_MODE:-}" == "openai" ) && \
+      "${CLAUDE_CODE_DISABLE_FAST_MODE:-}" == "1" ]]; then
+    gpt_route="${SHIM_BACKEND_MODE}"
+    health_port="${SHIM_PORT:-4141}"
+    if ! is_canonical_positive_decimal "$health_port" || \
+       [[ "$health_port" -gt 65535 ]]; then
+        health_port=4141
+    fi
+
+    health_on=""
+    if command -v curl >/dev/null 2>&1 && \
+       command -v python3 >/dev/null 2>&1 && \
+       command -v jq >/dev/null 2>&1; then
+        # Disable ambient curl config with first-option -q, then enforce hardcoded
+        # loopback, proxy bypass, zero allowed redirects, short deadlines, and a
+        # 16 KiB transfer ceiling. Before jq, Python's stdlib parser rejects duplicate
+        # member names at every object depth and emits canonical JSON; pipefail makes
+        # any transport/parser/semantic failure silent. Only literal "on" enters Bash.
+        health_on=$(
+            set -o pipefail
+            curl -q --fail --silent --show-error \
+                --location --max-redirs 0 \
+                --noproxy '*' --proxy '' \
+                --connect-timeout 0.2 --max-time 0.6 \
+                --max-filesize 16384 \
+                "http://127.0.0.1:${health_port}/health" 2>/dev/null |
+            python3 -c '
+import json, sys
+reject = lambda pairs: dict(pairs) if len(pairs) == len(dict(pairs)) else (_ for _ in ()).throw(ValueError("duplicate object member"))
+reject_constant = lambda value: (_ for _ in ()).throw(ValueError("invalid JSON constant"))
+json.dump(json.load(sys.stdin, object_pairs_hook=reject, parse_constant=reject_constant), sys.stdout, ensure_ascii=False, allow_nan=False, separators=(",", ":"))
+' 2>/dev/null |
+            jq -er --arg expected_backend "$gpt_route" '
+                def exact_keys($expected):
+                    type == "object" and
+                    ((keys | sort) == ($expected | sort));
+                def canonical_version:
+                    type == "string" and
+                    test("^[A-Za-z0-9._+-]{1,64}$");
+                def bounded_terminal_model:
+                    type == "string" and
+                    test("^[A-Za-z0-9][A-Za-z0-9._:/-]{0,159}$");
+
+                if type != "object" then error("health must be an object") else . end
+                | select(.service == "daaf-anthropic-openai-shim")
+                | select(.status == "ok")
+                | select(.version | canonical_version)
+                | select(.backend_mode == $expected_backend)
+                | .gpt_service_tier as $g
+                | select($g | exact_keys([
+                    "backend_mode", "requested_tier_vocabulary", "policy",
+                    "native_fast_disabled", "latest_terminal"
+                  ]))
+                | select($g.backend_mode == $expected_backend)
+                | select(
+                    ($expected_backend == "chatgpt" or
+                     $expected_backend == "openai") and
+                    $g.requested_tier_vocabulary == "priority"
+                  )
+                | select($g.native_fast_disabled | type == "boolean")
+                | $g.policy as $p
+                | select($p | exact_keys([
+                    "status", "backend_mode", "enabled", "effective"
+                  ]))
+                | select(["ok", "missing", "invalid", "unreadable", "unsafe"] |
+                         index($p.status))
+                | select($p.backend_mode == null or
+                         $p.backend_mode == "chatgpt" or
+                         $p.backend_mode == "openai")
+                | select(($p.enabled | type) == "boolean" and
+                         ($p.effective | type) == "boolean")
+                | select(
+                    ($p.status == "ok" and $p.backend_mode != null) or
+                    ($p.status != "ok" and $p.backend_mode == null and
+                     ($p.enabled | not) and ($p.effective | not))
+                  )
+                | select(($p.effective | not) or
+                         ($p.enabled and $p.backend_mode == $expected_backend))
+                | $g.latest_terminal as $l
+                | select($l == null or (
+                    ($l | exact_keys([
+                      "model", "requested_service_tier", "requested_source",
+                      "served_service_tier", "completed_at"
+                    ])) and
+                    ($l.model == null or ($l.model | bounded_terminal_model)) and
+                    ($l.requested_service_tier == null or
+                     (($expected_backend == "chatgpt" or
+                       $expected_backend == "openai") and
+                      $l.requested_service_tier == "priority")) and
+                    (["none", "anthropic", "shim_global", "both"] |
+                     index($l.requested_source)) and
+                    (($l.requested_source == "none") ==
+                     ($l.requested_service_tier == null)) and
+                    ([null, "fast", "priority", "default", "flex", "scale", "auto"] |
+                     index($l.served_service_tier)) and
+                    (($l.completed_at | type) == "string") and
+                    ($l.completed_at |
+                     test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$")) and
+                    (($l.completed_at |
+                      try (fromdateiso8601 | strftime("%Y-%m-%dT%H:%M:%SZ")) catch "") ==
+                     $l.completed_at)
+                  ))
+                | select($g.native_fast_disabled == true)
+                | select($p.status == "ok" and
+                         $p.backend_mode == $expected_backend and
+                         $p.enabled == true and
+                         $p.effective == true)
+                | "on"
+            ' 2>/dev/null
+        ) || health_on=""
+    fi
+
+    if [[ "$health_on" == "on" ]]; then
+        gpt_tier_seg=" ${C_GRAY}|${C_RESET} ${C_GRAY}GPT Fast On${C_RESET}"
+    fi
 fi
 
 # --- Rate-limit segment ---
@@ -703,10 +859,12 @@ if [[ -z "$rl_seg" && \
     fi
 fi
 
-# Build output: Model (effort) | Dir | Branch | Context [| Plan usage]
+# Build output: Model (effort) | Dir | Branch | Context
+#               [| GPT Fast On] [| Plan usage]
 output="${C_ACCENT}${model_disp}${C_GRAY} | 📁${dir}"
 [[ -n "$branch" ]] && output+=" | 🔀${branch}"
 output+=" | ${ctx}${C_RESET}"
+output+="${gpt_tier_seg}"
 output+="${rl_seg}"
 
 # Render with %s (not %b): the color bytes already live in the $'...' constants,

@@ -23,11 +23,25 @@
 # Config (env, all optional — defaults mirror the shim's own):
 #   DAAF_PROVIDER_SHIM      activation switch; must equal "openai" to auto-start
 #   SHIM_PORT               default 4141
-#   SHIM_BACKEND_MODE       backend lane selector: "openai" (default) API-key
-#                           lane, or "chatgpt" ChatGPT-subscription Codex lane.
-#                           Resolution matches the shim: case-insensitive and
-#                           whitespace-trimmed; an unknown value falls back to
-#                           "openai" (the shim logs the configuration warning).
+#   CLAUDE_CODE_DISABLE_FAST_MODE
+#                           REQUIRED as exact `CLAUDE_CODE_DISABLE_FAST_MODE=1` on
+#                           GPT provider-shim installations/routes. This is Claude
+#                           Code's supported native `/fast` disable/hide control.
+#                           Control the shim-native route tier with:
+#                             bash /daaf/scripts/provider_shim/gpt_fast.sh {on|off|status}
+#                           Both exact backends request canonical wire
+#                           `service_tier:"priority"` when ON. ChatGPT calls this Fast
+#                           under plan/credit semantics; OpenAI API calls it Priority
+#                           under API Priority billing/cost semantics. Setting changes
+#                           require container recreation and a new Claude session,
+#                           not a daemon restart or image rebuild. In-container DAAF
+#                           code does not mutate the private host configuration.
+#   SHIM_BACKEND_MODE       backend lane selector: exact "openai" for the API-key
+#                           provider-shim route, or exact "chatgpt" for the
+#                           ChatGPT-subscription Codex route. The legacy shim process
+#                           still normalizes case/whitespace and defaults/falls back to
+#                           "openai", but route detection and the GPT service-tier
+#                           controller deliberately require an explicit exact token.
 #   SHIM_BACKEND_BASE_URL   default is mode-conditional: openai ->
 #                           https://api.openai.com/v1; chatgpt ->
 #                           https://chatgpt.com/backend-api/codex. Explicit value

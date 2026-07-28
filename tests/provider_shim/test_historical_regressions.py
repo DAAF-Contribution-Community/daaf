@@ -34,6 +34,8 @@ _HEALTH_KEYS = {
     "reasoning_cache",
     # v1.3.6 (V6-R4): prompt-cache observability block (cumulative counts only).
     "prompt_cache",
+    # v1.3.8: bounded route-bound GPT requested/served observability.
+    "gpt_service_tier",
 }
 
 
@@ -354,12 +356,34 @@ class ProviderShimHistoricalRegressionTests(unittest.TestCase):
                         self.assertEqual(set(health), _HEALTH_KEYS)
                         self.assertEqual(health["service"], "daaf-anthropic-openai-shim")
                         self.assertEqual(health["status"], "ok")
-                        self.assertEqual(health["version"], "1.3.6")
+                        self.assertEqual(health["version"], "1.3.9")
                         self.assertEqual(health["backend_mode"], mode)
                         self.assertEqual(health["sanitize_tools"], sanitize)
                         self.assertEqual(health["reasoning_effort"], effort)
                         self.assertEqual(health["text_verbosity"], verbosity)
                         self.assertIs(health["codex_home_present"], True)
+                        tier = health["gpt_service_tier"]
+                        self.assertEqual(
+                            set(tier),
+                            {
+                                "backend_mode",
+                                "requested_tier_vocabulary",
+                                "policy",
+                                "native_fast_disabled",
+                                "latest_terminal",
+                            },
+                        )
+                        self.assertEqual(tier["backend_mode"], mode)
+                        self.assertEqual(
+                            tier["requested_tier_vocabulary"],
+                            "priority",
+                        )
+                        self.assertEqual(
+                            set(tier["policy"]),
+                            {"status", "backend_mode", "enabled", "effective"},
+                        )
+                        self.assertIs(tier["native_fast_disabled"], False)
+                        self.assertIsNone(tier["latest_terminal"])
                         # v1.3.0 (A1-R4): the auth block. The openai lane does not use
                         # the codex OAuth store -> "n/a" (no token material). The chatgpt
                         # lane seeds a far-future fabricated token -> "valid", with an

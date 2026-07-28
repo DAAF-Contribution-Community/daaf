@@ -244,7 +244,7 @@ I would honestly be thrilled if someone forked DAAF and adapted it for another p
 Yes, and it's been validated live (2026-07-09). There are two ways in, both documented step-by-step in [**01. Installation & Quick Start**](01_installation_and_quickstart.md#gpt-openai-models-via-openrouter-option-c-extended):
 
 - **Via OpenRouter (config-only, no rebuild):** point the existing "Option C" OpenRouter setup at GPT slugs like `openai/gpt-5.6-sol` (strong tier) and `openai/gpt-5.6-terra` (fast tier). GPT runs the full agentic stack — multi-tool loops, subagent dispatch, two-tier routing — with just environment variables.
-- **Via the DAAF provider shim (direct OpenAI API):** set `DAAF_PROVIDER_SHIM=openai` and `OPENAI_API_KEY`, then point Claude Code at the local shim (`http://127.0.0.1:4141`). This one requires an image rebuild because the shim auto-starts from the container entrypoint.
+- **Via the DAAF provider shim (direct OpenAI API):** set `DAAF_PROVIDER_SHIM=openai`, exact `SHIM_BACKEND_MODE=openai`, `OPENAI_API_KEY`, and exact `CLAUDE_CODE_DISABLE_FAST_MODE=1`, then point Claude Code at the local shim (`http://127.0.0.1:4141`). The initial shim setup requires an image rebuild because it auto-starts from the container entrypoint; later settings-only changes need only a container recreate and new Claude Code session.
 
 GPT support is a capability DAAF has engineered carefully and tested — the specifics and honest caveats are in the limitation entries below. Anthropic does not officially support routing Claude Code to non-Claude models, and OpenRouter's Anthropic-compatible endpoint is officially scoped to Claude models — GPT works through it in practice, but that is territory a vendor could change.
 
@@ -342,14 +342,14 @@ An immediate, deterministic 429 on *every* request — including the very first 
 
 Yes — through a supported route we've built carefully; because it's a newer route, it especially benefits from wider community testing. In plain terms: instead of paying per token for OpenAI API access, you reuse the ChatGPT subscription you already have. The same provider shim (Option F) has an alternate backend mode, `SHIM_BACKEND_MODE=chatgpt`, that routes Claude Code through your **ChatGPT subscription's Codex backend** using your `codex` OAuth login instead of a pay-per-token `api.openai.com` API key.
 
-**One thing to know up front.** This lane works through a backend interface that OpenAI doesn't officially offer for third-party tools like DAAF — OpenAI scopes subscription usage to its own official apps — so OpenAI could change that backend and disrupt the lane, and **you are responsible for compliance with OpenAI's terms of service.** We've engineered the lane to be smooth and reliable, and it's exercised by DAAF's own benchmark runs; but because it's the newest route, please treat it as the one most likely to have rough edges and report anything you hit. If you'd rather stay on an interface OpenAI officially offers, the API-key lane (`SHIM_BACKEND_MODE` unset → `openai`) is the alternative, covered by the [instant-429 entry above](#q-my-gpt-session-fails-instantly-with-429-errors-on-every-request-option-f).
+**One thing to know up front.** This lane works through a backend interface that OpenAI doesn't officially offer for third-party tools like DAAF — OpenAI scopes subscription usage to its own official apps — so OpenAI could change that backend and disrupt the lane, and **you are responsible for compliance with OpenAI's terms of service.** We've engineered the lane to be smooth and reliable, and it's exercised by DAAF's own benchmark runs; but because it's the newest route, please treat it as the one most likely to have rough edges and report anything you hit. If you'd rather stay on an interface OpenAI officially offers, the API-key lane (exact `SHIM_BACKEND_MODE=openai`) is the alternative, covered by the [instant-429 entry above](#q-my-gpt-session-fails-instantly-with-429-errors-on-every-request-option-f).
 
 **Setup, in brief** (full step-by-step in the [installation guide](01_installation_and_quickstart.md#option-f-alternate-lane-chatgpt-subscription-codex-backend)):
 
 - The pinned **Codex CLI ships in every DAAF image**; confirm with `codex --version` inside the container (expect `0.144.1`). Its presence does not change the default provider or activate this lane. `DAAF_DEV=1` is only for contributor/testing tools and is not required merely to obtain Codex or log in.
 - **Enable device-code login in your ChatGPT security settings first.** This toggle is **off by default** and is the most common thing to miss — the login fails immediately without it.
 - Log in with `codex login --device-auth` inside the container — that exact flag (`codex auth` does not exist, and bare `codex login` uses a browser loopback that cannot complete headless). It prints a URL + one-time code you approve on any device (laptop/phone); no in-container browser or port forwarding. `CODEX_HOME` is preset by Compose to the persisted, backed-up `codex-daaf` store, so the login survives rebuilds — you do it once.
-- Explicitly set both `DAAF_PROVIDER_SHIM=openai` and `SHIM_BACKEND_MODE=chatgpt` in `environment_settings.txt` (alongside the usual Option F `ANTHROPIC_BASE_URL`/model lines), then restart the container. In this mode `OPENAI_API_KEY` is ignored — the OAuth token is the credential. Confirm the lane is live in the shim log (`/daaf/scripts/provider_shim/logs/shim.log`): it shows `backend_mode=chatgpt` and healthy `200`s.
+- Explicitly set `DAAF_PROVIDER_SHIM=openai`, `SHIM_BACKEND_MODE=chatgpt`, and exact `CLAUDE_CODE_DISABLE_FAST_MODE=1` in `environment_settings.txt` (alongside the usual Option F `ANTHROPIC_BASE_URL`/model lines), then recreate the container and start a new Claude Code session. In this mode `OPENAI_API_KEY` is ignored — the OAuth token is the credential. Confirm the lane is live in the shim log (`/daaf/scripts/provider_shim/logs/shim.log`): it shows `backend_mode=chatgpt` and healthy `200`s.
 
 The shim reads the OAuth token from `auth.json` and **refreshes it automatically** (the token lasts ~10 days and is never logged); if a refresh fails permanently, the shim log tells you to re-run `codex login --device-auth`.
 
@@ -381,6 +381,41 @@ You have two ways to set it, both in `environment_settings.txt`:
 2. **The `SHIM_REASONING_EFFORT` env var** — a single default applied to the whole shim.
 
 Valid values are `none`, `low`, `medium`, `high`, `xhigh`, and `max` (`max` is gpt-5.6-only; `none` disables reasoning). An explicit setting always wins over the built-in `high` default, and a per-slug suffix wins over the shim-wide env var; the shim logs which source it used on each request line in `/daaf/scripts/provider_shim/logs/shim.log` (as `effort=<value>:<source>`). Most people set nothing and get `high` everywhere. Changes to `environment_settings.txt` take effect after the usual container recreate. See also the Option F [reasoning-effort paragraph](01_installation_and_quickstart.md#option-f-openai-api-directly-daaf-provider-shim) in the installation guide. If GPT replies also feel *shorter* or *terser* than you expect, that is a separate knob — see [GPT responses feel terse compared to Claude](#q-gpt-responses-feel-terse-compared-to-claude-option-f) below.
+
+### Q: How do I control GPT Fast or GPT Priority through the provider shim? (Option F)
+
+Supported Anthropic models keep Claude Code's native `/fast`. On either Option F **GPT** route, use Claude Code's supported disable/hide control instead: add exact `CLAUDE_CODE_DISABLE_FAST_MODE=1` to the private host `daaf-docker/environment_settings.txt`. This prevents native `/fast` from showing a misleading ON state for a remapped GPT model that does not emit Claude Code's Fast wire contract.
+
+Make that one-time host edit yourself—in-container DAAF code cannot access the private file—then recreate the container and start a **new Claude Code session**. No image rebuild is required for this setting. Control GPT service requests with the same command on both routes:
+
+```bash
+bash /daaf/scripts/provider_shim/gpt_fast.sh {on|off|status}
+```
+
+Inside a Claude Code prompt, prefix it with `!`, for example `!bash /daaf/scripts/provider_shim/gpt_fast.sh status`.
+
+| Backend route | ON requests | Name |
+|---------------|-------------|------|
+| ChatGPT subscription/Codex (`SHIM_BACKEND_MODE=chatgpt`) | Canonical Responses wire `service_tier: "priority"` for the friendly **Fast** setting | **GPT Fast** |
+| OpenAI API key (`SHIM_BACKEND_MODE=openai`) | Canonical Responses wire `service_tier: "priority"` for API Priority processing | **GPT Priority** |
+
+Both routes request the same canonical wire tier, `priority`, while keeping different user and billing semantics. ChatGPT **GPT Fast** is the friendly subscription setting and uses ChatGPT plan credits and catalog eligibility; the shared wire spelling does **not** mean ChatGPT usage receives OpenAI API Priority billing. The API-key route's **GPT Priority** uses the API's separate billing and eligibility rules.
+
+The v1.3.9 shim-native policy defaults **OFF**. Policy OFF adds no `service_tier`; it does not force Standard. Every production request path emits either no tier or exact `service_tier: "priority"`; DAAF never emits raw requested `fast`. A separate valid inbound Claude Fast contract remains additive for compatibility, but it resolves to the same canonical requested wire value. The policy is persistent, shim-wide, and route-bound, and it affects newly accepted requests immediately without a daemon restart. An in-flight request and its retries keep their original snapshot. Switching routes resets the policy OFF—even if you later switch back—so each route requires a fresh explicit `on`. `on` requires exact `CLAUDE_CODE_DISABLE_FAST_MODE=1`; `off` and `status` remain available for recovery or inspection on exact GPT shim routes.
+
+**Cost and eligibility:** OpenAI API **GPT Priority may cost extra** and depends on provider, model, project/account, and usage-tier eligibility; the controller warns before enabling it. ChatGPT **GPT Fast** follows the subscription route's separate credit and catalog-eligibility rules. Current Codex documentation describes roughly **1.5×** speed and says GPT-5.6 and GPT-5.5 use **2.5× Standard ChatGPT credits**. A successful request does not guarantee either tier was actually served.
+
+**Requested does not mean served.** The requested policy and outbound `service_tier` record intent only. The terminal provider response's actual `service_tier` is the sole authority for that request:
+
+| Terminal provider `service_tier` | Anthropic-compatible `usage.speed` |
+|----------------------------------|------------------------------------|
+| Canonical served `priority`, or exact served `fast` as compatibility terminal evidence | `fast` |
+| `default`, `flex`, `scale`, or `auto` | `standard` |
+| Absent or any unknown value | Omitted (served speed remains unknown) |
+
+`status` reports the route, configured model mapping, global requested policy, native-Fast disable state, and the latest completed terminal known to the running shim. That latest terminal is **process-global historical evidence**, qualified by model and completion time; another session may have produced it, and it is not proof about your current session or latest turn. The shim never silently retries GPT Fast or GPT Priority as Standard and has no local long-context cutoff.
+
+For compatibility, v1.3.9 preserves v1.3.7's translation when a client genuinely supplies the exact Claude Fast beta plus `speed: "fast"`; the shim-native controller is nevertheless the canonical GPT user control. A dated subscription probe that requested API-route `priority` and was served `default` remains historical evidence about that old request shape, not a GPT Fast entitlement test. After a shim source update, restart the persistent daemon and verify `/health` reports `"version": "1.3.9"`. For the complete setup, see [GPT Fast and GPT Priority on the provider-shim routes](01_installation_and_quickstart.md#gpt-fast-and-gpt-priority-on-the-provider-shim-routes).
 
 ### Q: GPT responses feel terse compared to Claude (Option F)
 

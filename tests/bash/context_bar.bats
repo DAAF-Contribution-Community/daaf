@@ -5,7 +5,9 @@
 # These tests are deterministic and network-independent. Static cases keep the
 # OpenRouter branch disabled; dynamic cases prepend a fake curl executable that
 # serves a controlled catalogue from project scratch. No live provider call is
-# possible, and fake catalogue/cache data never writes to /tmp.
+# possible, and all catalogue, cache, health, and quota seams stay in project scratch.
+# Synthetic health fixtures are local contract evidence only; they make no claim
+# that either provider route accepts or serves a requested tier.
 # ============================================================================
 
 load 'test_helper'
@@ -22,19 +24,52 @@ setup() {
     MODEL_CACHE="${DAAF_CONTEXT_BAR_CACHE_DIR}/claude-model-${FAKE_SESSION}"
     OR_CACHE="${DAAF_CONTEXT_BAR_CACHE_DIR}/claude-or-models-${FAKE_SESSION}"
     QUOTA_STATE_FILE="${SCRATCH_DIR}/quota_state.json"
+    DAAF_QUOTA_STATE_FILE="$QUOTA_STATE_FILE"
+    HEALTH_FILE="${SCRATCH_DIR}/health.json"
+    MOCK_CURL_LOG="${SCRATCH_DIR}/curl.log"
     mkdir -p "$MOCK_BIN" "$DAAF_CONTEXT_BAR_CACHE_DIR"
     cat > "${MOCK_BIN}/curl" <<'MOCK_CURL'
 #!/usr/bin/env bash
-printf '{"data":[{"id":"z-ai/glm-5.2","context_length":%s}]}' \
-    "${MOCK_OPENROUTER_CONTEXT:?MOCK_OPENROUTER_CONTEXT must be set}"
+printf '%s\n' "$*" >> "${MOCK_CURL_LOG:?MOCK_CURL_LOG must be set}"
+url="${!#}"
+case "$url" in
+    https://openrouter.ai/api/v1/models)
+        printf '{"data":[{"id":"z-ai/glm-5.2","context_length":%s}]}' \
+            "${MOCK_OPENROUTER_CONTEXT:?MOCK_OPENROUTER_CONTEXT must be set}"
+        ;;
+    http://127.0.0.1:*/health)
+        [[ "${MOCK_HEALTH_UNAVAILABLE:-0}" == "1" ]] && exit 22
+        [[ -f "${MOCK_HEALTH_FILE:?MOCK_HEALTH_FILE must be set}" ]] || exit 22
+        if [[ "${MOCK_HEALTH_REDIRECTED:-0}" == "1" ]]; then
+            cat "$MOCK_HEALTH_FILE"
+            exit 47
+        fi
+        if [[ "${MOCK_HEALTH_OVERSIZED:-0}" == "1" ]]; then
+            printf '%17000s' x
+            exit 63
+        fi
+        cat "$MOCK_HEALTH_FILE"
+        ;;
+    *)
+        exit 97
+        ;;
+esac
 MOCK_CURL
     chmod +x "${MOCK_BIN}/curl"
+    PATH="${MOCK_BIN}:${PATH}"
     unset ANTHROPIC_BASE_URL
     unset CLAUDE_CODE_MAX_CONTEXT_TOKENS
+    unset CLAUDE_CODE_DISABLE_FAST_MODE
     unset DAAF_PROVIDER_SHIM
     unset SHIM_BACKEND_MODE
-    export CONTEXT_BAR_SH FAKE_SESSION SCRATCH_DIR MOCK_BIN
+    unset SHIM_PORT
+    unset MOCK_HEALTH_UNAVAILABLE
+    unset MOCK_HEALTH_REDIRECTED
+    unset MOCK_HEALTH_OVERSIZED
+    export CONTEXT_BAR_SH FAKE_SESSION SCRATCH_DIR MOCK_BIN PATH
     export DAAF_CONTEXT_BAR_CACHE_DIR CTX_CACHE MODEL_CACHE OR_CACHE QUOTA_STATE_FILE
+    export DAAF_QUOTA_STATE_FILE
+    export HEALTH_FILE MOCK_HEALTH_FILE="$HEALTH_FILE" MOCK_CURL_LOG
 }
 
 # Write a quota_state.json fixture. Args: captured_at, primary_used_pct,
@@ -46,6 +81,39 @@ MOCK_CURL
 _write_quota_state() {
     printf '{"captured_at":%s,"plan_type":"pro","active_limit":"premium","primary_used_pct":"%s","primary_window_min":"%s","primary_reset_s":"%s","secondary_used_pct":"%s","secondary_window_min":"%s","secondary_reset_s":"%s","credits_has":"False","credits_balance":"0","credits_unlimited":"False"}' \
         "$1" "$2" "$3" "$4" "$5" "$6" "$7" > "$QUOTA_STATE_FILE"
+}
+
+# Write the exact v1.3.9 gpt_service_tier /health contract. Args: route,
+# policy status, policy backend (JSON scalar), enabled, effective,
+# native_fast_disabled, latest_terminal (JSON value).
+_write_gpt_health() {
+    local vocabulary
+    case "$1" in
+        chatgpt|openai) vocabulary="priority" ;;
+        *) fail "unsupported test route: $1" ;;
+    esac
+    printf '{"service":"daaf-anthropic-openai-shim","status":"ok","backend":"https://example.invalid","backend_mode":"%s","codex_home_present":true,"version":"1.3.9","sanitize_tools":true,"reasoning_effort":"high","text_verbosity":"medium","auth":{"state":"n/a"},"reasoning_cache":{"entries":0,"restored":0,"hits":0,"restored_hits":0},"prompt_cache":{"requests_with_usage":0,"requests_with_cached":0,"cached_tokens_total":0,"input_tokens_total":0},"gpt_service_tier":{"backend_mode":"%s","requested_tier_vocabulary":"%s","policy":{"status":"%s","backend_mode":%s,"enabled":%s,"effective":%s},"native_fast_disabled":%s,"latest_terminal":%s}}' \
+        "$1" "$1" "$vocabulary" "$2" "$3" "$4" "$5" "$6" "$7" > "$HEALTH_FILE"
+}
+
+_refute_legacy_gpt_status_text() {
+    refute_output --partial "GPT Fast req"
+    refute_output --partial "GPT Priority req"
+    refute_output --partial "req OFF"
+    refute_output --partial "req unavailable"
+    refute_output --partial "[global]"
+    refute_output --partial "last global"
+    refute_output --partial "served="
+}
+
+_assert_gpt_fast_on() {
+    assert_output --partial $'\033[38;5;245mGPT Fast On\033[0m'
+    _refute_legacy_gpt_status_text
+}
+
+_refute_gpt_fast_segment() {
+    refute_output --partial "GPT Fast On"
+    _refute_legacy_gpt_status_text
 }
 
 teardown() {
@@ -61,6 +129,13 @@ _payload() {
 
 @test "context-bar.sh parses without errors" {
     run bash -n "$CONTEXT_BAR_SH"
+    assert_success
+}
+
+@test "setup pins every quota read to the per-test scratch seam" {
+    [[ "$DAAF_QUOTA_STATE_FILE" == "$QUOTA_STATE_FILE" ]]
+    [[ "$DAAF_QUOTA_STATE_FILE" == "${SCRATCH_DIR}/"* ]]
+    run test ! -e "$DAAF_QUOTA_STATE_FILE"
     assert_success
 }
 
@@ -373,28 +448,634 @@ JSON
     assert_output "1050000"
 }
 
-@test "each missing lane signal leaves the 1,050,000 flagship window unchanged" {
-    run env SHIM_BACKEND_MODE=chatgpt \
-        bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol[1m]" 1050000)
-    assert_success
-    assert_output --partial "of 1050k tokens"
+# =========================================================================
+# GPT Fast ON-only indicator and bounded /health projection (v1.3.9)
+# -------------------------------------------------------------------------
+# The exact GPT routes query only the loopback health endpoint through the fake
+# curl above. Tests prove the route-neutral ON label and silence for every other
+# state; no running daemon, port 4141, proxy, or live provider is contacted.
+# =========================================================================
 
-    run env DAAF_PROVIDER_SHIM=openai \
+@test "exact ChatGPT ON state renders only the route-neutral GPT Fast On segment" {
+    _write_gpt_health chatgpt ok '"chatgpt"' true true true null
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        CLAUDE_CODE_DISABLE_FAST_MODE=1 \
         bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol[1m]" 1050000)
     assert_success
-    assert_output --partial "of 1050k tokens"
+    assert_output --partial "gpt-5.6-sol[1m]"
+    _assert_gpt_fast_on
 }
 
-@test "malformed and noncanonical lane values do not activate the subscription cap" {
-    run env DAAF_PROVIDER_SHIM=OpenAI SHIM_BACKEND_MODE=chatgpt \
+@test "exact OpenAI API ON state uses the same route-neutral GPT Fast On segment" {
+    _write_gpt_health openai ok '"openai"' true true true null
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=openai \
+        CLAUDE_CODE_DISABLE_FAST_MODE=1 \
+        bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol[1m]" 1050000)
+    assert_success
+    assert_output --partial "gpt-5.6-sol[1m]"
+    _assert_gpt_fast_on
+}
+
+@test "legacy requested fast vocabulary is silent on both exact GPT shim routes" {
+    local route
+    local canonical_health
+    for route in chatgpt openai; do
+        _write_gpt_health "$route" ok "\"${route}\"" true true true null
+        canonical_health="$(<"$HEALTH_FILE")"
+        printf '%s' "${canonical_health/\"requested_tier_vocabulary\":\"priority\"/\"requested_tier_vocabulary\":\"fast\"}" > "$HEALTH_FILE"
+        run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE="$route" \
+            CLAUDE_CODE_DISABLE_FAST_MODE=1 \
+            bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol")
+        assert_success
+        _refute_gpt_fast_segment
+    done
+}
+
+@test "root health status must be the exact string ok" {
+    local root_status
+    local canonical_health
+    local mutated_health
+    _write_gpt_health chatgpt ok '"chatgpt"' true true true null
+    canonical_health="$(<"$HEALTH_FILE")"
+
+    for root_status in '__missing__' '42' '"OK"' '" ok"' '"ok "' '"error"'; do
+        if [[ "$root_status" == "__missing__" ]]; then
+            mutated_health="${canonical_health/\"status\":\"ok\",/}"
+        else
+            mutated_health="${canonical_health/\"status\":\"ok\"/\"status\":${root_status}}"
+        fi
+        printf '%s' "$mutated_health" > "$HEALTH_FILE"
+        run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+            CLAUDE_CODE_DISABLE_FAST_MODE=1 \
+            bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol")
+        assert_success
+        _refute_gpt_fast_segment
+    done
+}
+
+@test "root health version accepts plus and exact 1 and 64 character boundaries" {
+    local canonical_health
+    local mutated_health
+    local version
+    local version_64
+    _write_gpt_health chatgpt ok '"chatgpt"' true true true null
+    canonical_health="$(<"$HEALTH_FILE")"
+    version_64="$(printf 'a%.0s' {1..64})"
+
+    # Positive control: the otherwise-canonical effective-ON document renders.
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        CLAUDE_CODE_DISABLE_FAST_MODE=1 \
+        bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol")
+    assert_success
+    _assert_gpt_fast_on
+
+    for version in 'a' '+' 'v1.3.9+fast' "$version_64"; do
+        mutated_health="${canonical_health/\"version\":\"1.3.9\"/\"version\":\"${version}\"}"
+        printf '%s' "$mutated_health" > "$HEALTH_FILE"
+        run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+            CLAUDE_CODE_DISABLE_FAST_MODE=1 \
+            bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol")
+        assert_success
+        _assert_gpt_fast_on
+    done
+}
+
+@test "root health version rejects slash empty and length 65 non-vacuously" {
+    local canonical_health
+    local mutated_health
+    local version
+    local version_65
+    _write_gpt_health chatgpt ok '"chatgpt"' true true true null
+    canonical_health="$(<"$HEALTH_FILE")"
+    version_65="$(printf 'a%.0s' {1..65})"
+
+    # Positive control: each negative fixture below changes only root version.
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        CLAUDE_CODE_DISABLE_FAST_MODE=1 \
+        bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol")
+    assert_success
+    _assert_gpt_fast_on
+
+    for version in '/' '' "$version_65"; do
+        mutated_health="${canonical_health/\"version\":\"1.3.9\"/\"version\":\"${version}\"}"
+        printf '%s' "$mutated_health" > "$HEALTH_FILE"
+        run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+            CLAUDE_CODE_DISABLE_FAST_MODE=1 \
+            bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol")
+        assert_success
+        _refute_gpt_fast_segment
+    done
+}
+
+@test "terminal model accepts exact 1 and 160 character boundaries and canonical punctuation" {
+    local canonical_latest
+    local latest
+    local model
+    local model_160
+    canonical_latest='{"model":"gpt-5.6-sol","requested_service_tier":"priority","requested_source":"shim_global","served_service_tier":"default","completed_at":"2026-07-25T19:20:30Z"}'
+    model_160="a$(printf -- '-%.0s' {1..159})"
+
+    for model in 'a' 'a._:/-Z' "$model_160"; do
+        latest="${canonical_latest/\"model\":\"gpt-5.6-sol\"/\"model\":\"${model}\"}"
+        _write_gpt_health chatgpt ok '"chatgpt"' true true true "$latest"
+        run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+            CLAUDE_CODE_DISABLE_FAST_MODE=1 \
+            bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol")
+        assert_success
+        _assert_gpt_fast_on
+    done
+}
+
+@test "terminal model rejects empty length 161 leading hyphen and plus non-vacuously" {
+    local canonical_latest
+    local latest
+    local model
+    local model_161
+    canonical_latest='{"model":"gpt-5.6-sol","requested_service_tier":"priority","requested_source":"shim_global","served_service_tier":"default","completed_at":"2026-07-25T19:20:30Z"}'
+    model_161="a$(printf -- '-%.0s' {1..160})"
+    _write_gpt_health chatgpt ok '"chatgpt"' true true true "$canonical_latest"
+
+    # Positive control: each negative fixture below changes only latest_terminal.model.
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        CLAUDE_CODE_DISABLE_FAST_MODE=1 \
+        bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol")
+    assert_success
+    _assert_gpt_fast_on
+
+    for model in '' "$model_161" '-bad' 'a+bad'; do
+        latest="${canonical_latest/\"model\":\"gpt-5.6-sol\"/\"model\":\"${model}\"}"
+        _write_gpt_health chatgpt ok '"chatgpt"' true true true "$latest"
+        run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+            CLAUDE_CODE_DISABLE_FAST_MODE=1 \
+            bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol")
+        assert_success
+        _refute_gpt_fast_segment
+    done
+}
+
+@test "duplicate health object members at any depth are rejected before jq semantics" {
+    local canonical_health
+    local fixture
+    local -a fixtures
+    _write_gpt_health chatgpt ok '"chatgpt"' true true true null
+    canonical_health="$(<"$HEALTH_FILE")"
+
+    # Positive control: canonical ON survives the duplicate-rejecting prefilter.
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        CLAUDE_CODE_DISABLE_FAST_MODE=1 \
+        bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol")
+    assert_success
+    _assert_gpt_fast_on
+
+    fixtures=(
+        "${canonical_health/\"status\":\"ok\"/\"status\":\"ok\",\"status\":\"ok\"}"
+        "${canonical_health/\"status\":\"ok\"/\"status\":\"ok\",\"status\":\"error\"}"
+        "${canonical_health/\"enabled\":true/\"enabled\":true,\"enabled\":true}"
+        "${canonical_health/\"enabled\":true/\"enabled\":true,\"enabled\":false}"
+        "${canonical_health/\"effective\":true/\"effective\":true,\"effective\":true}"
+        "${canonical_health/\"effective\":true/\"effective\":true,\"effective\":false}"
+        "${canonical_health/\"reasoning_cache\":{\"entries\":0/\"reasoning_cache\":{\"entries\":0,\"entries\":0}"
+        "${canonical_health/\"reasoning_cache\":{\"entries\":0/\"reasoning_cache\":{\"entries\":0,\"entries\":1}"
+        '{"service":"daaf-anthropic-openai-shim","status":"ok"'
+    )
+    for fixture in "${fixtures[@]}"; do
+        printf '%s' "$fixture" > "$HEALTH_FILE"
+        run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+            CLAUDE_CODE_DISABLE_FAST_MODE=1 \
+            bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol")
+        assert_success
+        _refute_gpt_fast_segment
+        refute_output --partial "duplicate object member"
+        refute_output --partial "JSONDecodeError"
+    done
+}
+
+@test "explicit OFF is silent on both exact GPT shim routes" {
+    local route
+    for route in chatgpt openai; do
+        _write_gpt_health "$route" ok "\"${route}\"" false false true null
+        run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE="$route" \
+            CLAUDE_CODE_DISABLE_FAST_MODE=1 \
+            bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol")
+        assert_success
+        _refute_gpt_fast_segment
+    done
+}
+
+@test "missing reset invalid unreadable and unsafe policy states are silent" {
+    local state
+    for state in missing invalid unreadable unsafe; do
+        _write_gpt_health chatgpt "$state" null false false true null
+        run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+            CLAUDE_CODE_DISABLE_FAST_MODE=1 \
+            bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol")
+        assert_success
+        _refute_gpt_fast_segment
+    done
+}
+
+@test "route mismatch and enabled-but-ineffective policy are silent" {
+    _write_gpt_health chatgpt ok '"openai"' true false true null
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        CLAUDE_CODE_DISABLE_FAST_MODE=1 \
+        bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol")
+    assert_success
+    _refute_gpt_fast_segment
+
+    _write_gpt_health chatgpt ok '"chatgpt"' true false true null
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        CLAUDE_CODE_DISABLE_FAST_MODE=1 \
+        bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol")
+    assert_success
+    _refute_gpt_fast_segment
+}
+
+@test "missing or incoherent native Fast disablement is silent" {
+    _write_gpt_health chatgpt ok '"chatgpt"' true true true null
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol")
+    assert_success
+    _refute_gpt_fast_segment
+
+    _write_gpt_health chatgpt ok '"chatgpt"' true true false null
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        CLAUDE_CODE_DISABLE_FAST_MODE=1 \
+        bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol")
+    assert_success
+    _refute_gpt_fast_segment
+}
+
+@test "valid terminal history never appears even when the ON indicator renders" {
+    local latest
+    latest='{"model":"gpt-5.6-sol","requested_service_tier":"priority","requested_source":"shim_global","served_service_tier":"default","completed_at":"2026-07-25T19:20:30Z"}'
+    _write_gpt_health openai ok '"openai"' true true true "$latest"
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=openai \
+        CLAUDE_CODE_DISABLE_FAST_MODE=1 \
+        bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-terra[1m]" 1050000)
+    assert_success
+    assert_output --partial "gpt-5.6-terra[1m]"
+    _assert_gpt_fast_on
+    refute_output --partial "gpt-5.6-sol served"
+    refute_output --partial "completed_at"
+    refute_output --partial "requested=priority"
+}
+
+@test "compatibility terminal served fast permits ON without becoming requested vocabulary" {
+    local latest
+    latest='{"model":"gpt-5.6-sol","requested_service_tier":"priority","requested_source":"shim_global","served_service_tier":"fast","completed_at":"2026-07-25T19:20:30Z"}'
+    _write_gpt_health chatgpt ok '"chatgpt"' true true true "$latest"
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        CLAUDE_CODE_DISABLE_FAST_MODE=1 \
+        bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol")
+    assert_success
+    _assert_gpt_fast_on
+    refute_output --partial "requested=fast"
+    refute_output --partial "served=fast"
+}
+
+@test "malformed semantic-invalid and extra-key nested health blocks are silent non-vacuously" {
+    local fixture
+    local prefix
+    local canonical_nested
+    prefix='{"service":"daaf-anthropic-openai-shim","status":"ok","version":"1.3.9","backend_mode":"chatgpt","gpt_service_tier":'
+    canonical_nested='{"backend_mode":"chatgpt","requested_tier_vocabulary":"priority","policy":{"status":"ok","backend_mode":"chatgpt","enabled":true,"effective":true},"native_fast_disabled":true,"latest_terminal":null}'
+
+    # Control: the same manually constructed root and a canonical nested block
+    # reach the literal ON projection, so each loop case fails only at its nested defect.
+    printf '%s%s}' "$prefix" "$canonical_nested" > "$HEALTH_FILE"
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        CLAUDE_CODE_DISABLE_FAST_MODE=1 \
+        bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol")
+    assert_success
+    _assert_gpt_fast_on
+
+    for fixture in \
+        '[' \
+        '{"backend_mode":"chatgpt","requested_tier_vocabulary":"priority","policy":{"status":"ok","backend_mode":"chatgpt","enabled":true,"effective":true},"native_fast_disabled":true,"latest_terminal":null,"extra":"forbidden"}' \
+        '{"backend_mode":"chatgpt","requested_tier_vocabulary":"priority","policy":{"status":"ok","backend_mode":"chatgpt","enabled":false,"effective":true},"native_fast_disabled":true,"latest_terminal":null}' \
+        '{"backend_mode":"chatgpt","requested_tier_vocabulary":"priority","policy":{"status":"ok","backend_mode":"chatgpt","enabled":true,"effective":true},"native_fast_disabled":true,"latest_terminal":{"model":"gpt-5.6-sol","requested_service_tier":"priority","requested_source":"shim_global","served_service_tier":"fast","completed_at":"2026-07-25T19:20:30Z","extra":1}}'; do
+        printf '%s%s}' "$prefix" "$fixture" > "$HEALTH_FILE"
+        run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+            CLAUDE_CODE_DISABLE_FAST_MODE=1 \
+            bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol")
+        assert_success
+        assert_output --partial "gpt-5.6-sol"
+        _refute_gpt_fast_segment
+        refute_output --partial "extra"
+    done
+}
+
+@test "invalid terminal history keeps strict health validation and is silent" {
+    local latest
+    local requested
+    local source
+    local served
+    local completed
+    local case_spec
+    for case_spec in \
+        'fast|shim_global|default|2026-07-25T19:20:30Z' \
+        ' priority|shim_global|default|2026-07-25T19:20:30Z' \
+        'priority|Shim_Global|default|2026-07-25T19:20:30Z' \
+        'priority| shim_global|default|2026-07-25T19:20:30Z' \
+        'priority|shim_global|FAST|2026-07-25T19:20:30Z' \
+        'priority|shim_global|fast |2026-07-25T19:20:30Z' \
+        'priority|shim_global|default|2026-02-30T19:20:30Z'; do
+        IFS='|' read -r requested source served completed <<< "$case_spec"
+        latest=$(printf '{"model":"gpt-5.6-sol","requested_service_tier":"%s","requested_source":"%s","served_service_tier":"%s","completed_at":"%s"}' \
+            "$requested" "$source" "$served" "$completed")
+        _write_gpt_health chatgpt ok '"chatgpt"' true true true "$latest"
+        run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+            CLAUDE_CODE_DISABLE_FAST_MODE=1 \
+            bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol")
+        assert_success
+        _refute_gpt_fast_segment
+    done
+
+    latest='{"model":"gpt-5.6-sol","requested_service_tier":null,"requested_source":"shim_global","served_service_tier":null,"completed_at":"2026-07-25T19:20:30Z"}'
+    _write_gpt_health chatgpt ok '"chatgpt"' true true true "$latest"
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        CLAUDE_CODE_DISABLE_FAST_MODE=1 \
+        bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol")
+    assert_success
+    _refute_gpt_fast_segment
+}
+
+@test "coherent null terminal history permits ON without rendering history" {
+    local latest
+    latest='{"model":"gpt-5.6-sol","requested_service_tier":null,"requested_source":"none","served_service_tier":null,"completed_at":"2026-07-25T19:20:30Z"}'
+    _write_gpt_health chatgpt ok '"chatgpt"' true true true "$latest"
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        CLAUDE_CODE_DISABLE_FAST_MODE=1 \
+        bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol")
+    assert_success
+    _assert_gpt_fast_on
+}
+
+@test "unavailable oversized and redirected health are silent while the bar remains intact" {
+    local failure_var
+    _write_gpt_health chatgpt ok '"chatgpt"' true true true null
+    for failure_var in MOCK_HEALTH_UNAVAILABLE MOCK_HEALTH_OVERSIZED MOCK_HEALTH_REDIRECTED; do
+        run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+            CLAUDE_CODE_DISABLE_FAST_MODE=1 "${failure_var}=1" \
+            bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol[1m]" 1050000)
+        assert_success
+        assert_output --partial "gpt-5.6-sol[1m]"
+        assert_output --partial "of 370k tokens"
+        _refute_gpt_fast_segment
+    done
+}
+
+@test "missing curl jq or duplicate parser is silent and confined to scratch seams" {
+    local bindir="${SCRATCH_DIR}/missing-tool-bin"
+    local unsafe_session="-missing-tools-invalid-session"
+    local unsafe_payload
+    local isolated_quota="${SCRATCH_DIR}/guaranteed-missing-quota-state.json"
+    unsafe_payload=$(printf '{"model":{"id":"gpt-5.6-sol","display_name":"gpt-5.6-sol"},"cwd":"%s","transcript_path":"","session_id":"%s","context_window":{"context_window_size":200000}}' \
+        "$TEST_DIR" "$unsafe_session")
+    mkdir -p "$bindir"
+    ln -s "$(command -v bash)" "${bindir}/bash"
+    ln -s "$(command -v cat)" "${bindir}/cat"
+    ln -s "$(command -v basename)" "${bindir}/basename"
+    ln -s "$(command -v jq)" "${bindir}/jq"
+    ln -s "$(command -v python3)" "${bindir}/python3"
+    _write_gpt_health chatgpt ok '"chatgpt"' true true true null
+    run test ! -e "$isolated_quota"
+    assert_success
+
+    # Missing curl only.
+    run env -i PATH="$bindir" \
+        DAAF_CONTEXT_BAR_CACHE_DIR="$DAAF_CONTEXT_BAR_CACHE_DIR" \
+        DAAF_QUOTA_STATE_FILE="$isolated_quota" \
+        DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        CLAUDE_CODE_DISABLE_FAST_MODE=1 \
+        bash "$CONTEXT_BAR_SH" <<< "$unsafe_payload"
+    assert_success
+    _refute_gpt_fast_segment
+    refute_output --partial "Plan usage:"
+    run test ! -e "$isolated_quota"
+    assert_success
+    run find "$DAAF_CONTEXT_BAR_CACHE_DIR" -mindepth 1 -maxdepth 1 -print
+    assert_success
+    assert_output ""
+
+    # Missing jq only.
+    rm -f "${bindir}/jq"
+    ln -s "${MOCK_BIN}/curl" "${bindir}/curl"
+    run env -i PATH="$bindir" \
+        DAAF_CONTEXT_BAR_CACHE_DIR="$DAAF_CONTEXT_BAR_CACHE_DIR" \
+        DAAF_QUOTA_STATE_FILE="$isolated_quota" \
+        DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        CLAUDE_CODE_DISABLE_FAST_MODE=1 \
+        MOCK_CURL_LOG="$MOCK_CURL_LOG" MOCK_HEALTH_FILE="$HEALTH_FILE" \
+        bash "$CONTEXT_BAR_SH" <<< "$unsafe_payload"
+    assert_success
+    _refute_gpt_fast_segment
+    refute_output --partial "Plan usage:"
+    run test ! -e "$isolated_quota"
+    assert_success
+    run find "$DAAF_CONTEXT_BAR_CACHE_DIR" -mindepth 1 -maxdepth 1 -print
+    assert_success
+    assert_output ""
+
+    # Missing duplicate-rejecting parser only.
+    ln -s "$(command -v jq)" "${bindir}/jq"
+    rm -f "${bindir}/python3"
+    run env -i PATH="$bindir" \
+        DAAF_CONTEXT_BAR_CACHE_DIR="$DAAF_CONTEXT_BAR_CACHE_DIR" \
+        DAAF_QUOTA_STATE_FILE="$isolated_quota" \
+        DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        CLAUDE_CODE_DISABLE_FAST_MODE=1 \
+        MOCK_CURL_LOG="$MOCK_CURL_LOG" MOCK_HEALTH_FILE="$HEALTH_FILE" \
+        bash "$CONTEXT_BAR_SH" <<< "$unsafe_payload"
+    assert_success
+    _refute_gpt_fast_segment
+    refute_output --partial "Plan usage:"
+    run test ! -e "$isolated_quota"
+    assert_success
+    run find "$DAAF_CONTEXT_BAR_CACHE_DIR" -mindepth 1 -maxdepth 1 -print
+    assert_success
+    assert_output ""
+}
+
+@test "health probe disables ambient curl config first and keeps all bounded transport controls" {
+    _write_gpt_health openai ok '"openai"' true true true null
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=openai \
+        CLAUDE_CODE_DISABLE_FAST_MODE=1 SHIM_PORT=' 4141 ' \
+        bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol")
+    assert_success
+    _assert_gpt_fast_on
+
+    run cat "$MOCK_CURL_LOG"
+    assert_success
+    [[ "$output" == "-q "* ]]
+    assert_output --partial "-q --fail"
+    assert_output --partial "--location"
+    assert_output --partial "--max-redirs 0"
+    assert_output --partial "--noproxy *"
+    assert_output --partial "--proxy"
+    assert_output --partial "--connect-timeout 0.2"
+    assert_output --partial "--max-time 0.6"
+    assert_output --partial "--max-filesize 16384"
+    assert_output --partial "http://127.0.0.1:4141/health"
+}
+
+@test "anchored GPT indicator classification rejects near-miss model IDs without probing health" {
+    local model
+    _write_gpt_health chatgpt ok '"chatgpt"' true true true null
+    for model in vendor/notgpt-5.6-sol xgpt-5.6-sol foo-gpt-5.6-sol; do
+        rm -f "$MOCK_CURL_LOG"
+        run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+            CLAUDE_CODE_DISABLE_FAST_MODE=1 \
+            bash "$CONTEXT_BAR_SH" < <(_payload "$model")
+        assert_success
+        assert_output --partial "$model"
+        _refute_gpt_fast_segment
+        run test ! -e "$MOCK_CURL_LOG"
+        assert_success
+    done
+}
+
+@test "provider-prefixed terminal GPT slug remains eligible for the ON indicator" {
+    _write_gpt_health chatgpt ok '"chatgpt"' true true true null
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        CLAUDE_CODE_DISABLE_FAST_MODE=1 \
+        bash "$CONTEXT_BAR_SH" < <(_payload "openrouter/openai/gpt-5.6-sol" 1050000)
+    assert_success
+    assert_output --partial "openrouter/openai/gpt-5.6-sol"
+    _assert_gpt_fast_on
+}
+
+@test "bounded display-name fallback remains eligible only when model id is absent" {
+    _write_gpt_health chatgpt ok '"chatgpt"' true true true null
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        CLAUDE_CODE_DISABLE_FAST_MODE=1 \
+        bash "$CONTEXT_BAR_SH" <<JSON
+{"model":{"display_name":"gpt-5.6-sol[1m]#xhigh[1m]"},"cwd":"$TEST_DIR","transcript_path":"","session_id":"$FAKE_SESSION","context_window":{"context_window_size":200000}}
+JSON
+    assert_success
+    assert_output --partial "gpt-5.6-sol[1m]"
+    _assert_gpt_fast_on
+
+    rm -f "$MOCK_CURL_LOG"
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        CLAUDE_CODE_DISABLE_FAST_MODE=1 \
+        bash "$CONTEXT_BAR_SH" <<JSON
+{"model":{"id":"claude-fable-5","display_name":"gpt-5.6-sol"},"cwd":"$TEST_DIR","transcript_path":"","session_id":"$FAKE_SESSION","context_window":{"context_window_size":200000}}
+JSON
+    assert_success
+    _refute_gpt_fast_segment
+    run test ! -e "$MOCK_CURL_LOG"
+    assert_success
+}
+
+@test "present invalid model ids cannot unlock GPT display-name fallback" {
+    local oversized_id
+    local payload
+    local json_escape='\'
+    local -a payloads
+    oversized_id="gpt-$(printf 'a%.0s' {1..157})"
+    payloads=(
+        '{"model":{"id":42,"display_name":"gpt-5.6-sol"},"session_id":"bats-invalid-id-number","context_window":{"context_window_size":200000}}'
+        '{"model":{"id":{"value":"gpt-5.6-sol"},"display_name":"gpt-5.6-sol"},"session_id":"bats-invalid-id-object","context_window":{"context_window_size":200000}}'
+        '{"model":{"id":["gpt-5.6-sol"],"display_name":"gpt-5.6-sol"},"session_id":"bats-invalid-id-array","context_window":{"context_window_size":200000}}'
+        "{\"model\":{\"id\":\"bad${json_escape}u001fgpt-5.6-sol\",\"display_name\":\"gpt-5.6-sol\"},\"session_id\":\"bats-invalid-id-control\",\"context_window\":{\"context_window_size\":200000}}"
+        "{\"model\":{\"id\":\"${oversized_id}\",\"display_name\":\"gpt-5.6-sol\"},\"session_id\":\"bats-invalid-id-oversized\",\"context_window\":{\"context_window_size\":200000}}"
+    )
+    _write_gpt_health chatgpt ok '"chatgpt"' true true true null
+
+    for payload in "${payloads[@]}"; do
+        rm -f "$MOCK_CURL_LOG"
+        run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+            CLAUDE_CODE_DISABLE_FAST_MODE=1 \
+            bash "$CONTEXT_BAR_SH" <<< "$payload"
+        assert_success
+        assert_output --partial "gpt-5.6-sol"
+        _refute_gpt_fast_segment
+        run test ! -e "$MOCK_CURL_LOG"
+        assert_success
+    done
+}
+
+@test "exact shim route plus a non-GPT model is silent and skips the health probe" {
+    _write_gpt_health chatgpt ok '"chatgpt"' true true true null
+    run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+        CLAUDE_CODE_DISABLE_FAST_MODE=1 \
+        bash "$CONTEXT_BAR_SH" < <(_payload "claude-fable-5" 1000000)
+    assert_success
+    assert_output --partial "claude-fable-5"
+    _refute_gpt_fast_segment
+    run test ! -e "$MOCK_CURL_LOG"
+    assert_success
+}
+
+@test "Anthropic and OpenRouter non-GPT route fixtures remain byte-for-byte unchanged" {
+    run bash "$CONTEXT_BAR_SH" < <(_payload "claude-fable-5" 1000000)
+    assert_success
+    local anthropic_baseline="$output"
+    run env DAAF_PROVIDER_SHIM=anthropic SHIM_BACKEND_MODE=chatgpt \
+        bash "$CONTEXT_BAR_SH" < <(_payload "claude-fable-5" 1000000)
+    assert_success
+    [[ "$output" == "$anthropic_baseline" ]]
+    _refute_gpt_fast_segment
+
+    rm -f "$OR_CACHE" "$MOCK_CURL_LOG"
+    run env ANTHROPIC_BASE_URL="https://openrouter.ai/api" \
+        MOCK_OPENROUTER_CONTEXT=1048576 \
+        bash "$CONTEXT_BAR_SH" < <(_payload "z-ai/glm-5.2")
+    assert_success
+    local openrouter_baseline="$output"
+    rm -f "$OR_CACHE" "$MOCK_CURL_LOG"
+    run env ANTHROPIC_BASE_URL="https://openrouter.ai/api" \
+        DAAF_PROVIDER_SHIM=openrouter SHIM_BACKEND_MODE=openai \
+        MOCK_OPENROUTER_CONTEXT=1048576 \
+        bash "$CONTEXT_BAR_SH" < <(_payload "z-ai/glm-5.2")
+    assert_success
+    [[ "$output" == "$openrouter_baseline" ]]
+    _refute_gpt_fast_segment
+
+    run cat "$MOCK_CURL_LOG"
+    assert_success
+    assert_output --partial "https://openrouter.ai/api/v1/models"
+    refute_output --partial "127.0.0.1"
+}
+
+@test "each missing shim-route signal leaves the GPT Fast segment silent" {
+    _write_gpt_health chatgpt ok '"chatgpt"' true true true null
+    run env SHIM_BACKEND_MODE=chatgpt CLAUDE_CODE_DISABLE_FAST_MODE=1 \
         bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol[1m]" 1050000)
     assert_success
     assert_output --partial "of 1050k tokens"
+    _refute_gpt_fast_segment
+
+    run env DAAF_PROVIDER_SHIM=openai CLAUDE_CODE_DISABLE_FAST_MODE=1 \
+        bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol[1m]" 1050000)
+    assert_success
+    assert_output --partial "of 1050k tokens"
+    _refute_gpt_fast_segment
+}
+
+@test "non-shim malformed and noncanonical route values leave the GPT Fast segment silent" {
+    _write_gpt_health chatgpt ok '"chatgpt"' true true true null
+    run env DAAF_PROVIDER_SHIM=OpenAI SHIM_BACKEND_MODE=chatgpt \
+        CLAUDE_CODE_DISABLE_FAST_MODE=1 \
+        bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol[1m]" 1050000)
+    assert_success
+    assert_output --partial "of 1050k tokens"
+    _refute_gpt_fast_segment
 
     run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=' chatgpt ' \
+        CLAUDE_CODE_DISABLE_FAST_MODE=1 \
         bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol[1m]" 1050000)
     assert_success
     assert_output --partial "of 1050k tokens"
+    _refute_gpt_fast_segment
+
+    run env DAAF_PROVIDER_SHIM=openrouter SHIM_BACKEND_MODE=openai \
+        CLAUDE_CODE_DISABLE_FAST_MODE=1 \
+        bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol[1m]" 1050000)
+    assert_success
+    assert_output --partial "of 1050k tokens"
+    _refute_gpt_fast_segment
 }
 
 @test "chatgpt lane does not perturb a non-GPT (Claude) model window" {
