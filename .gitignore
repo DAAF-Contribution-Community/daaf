@@ -30,6 +30,7 @@ wheels/
 venv/
 ENV/
 env/
+.shim-venv/
 
 # IDE
 .vscode/

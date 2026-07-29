@@ -1,8 +1,12 @@
 #!/usr/bin/env bats
 
 setup() {
-    export GPT_FAST_SH="/daaf/scripts/provider_shim/gpt_fast.sh"
-    export TEST_ROOT="/daaf/scripts/scratch/gpt-fast-bats-${BATS_TEST_NUMBER}-$$"
+    # Derive paths from the test's own location so the suite runs identically
+    # inside the DAAF container (repo root /daaf) and on CI runners (checkout
+    # under /home/runner/work/...). Hardcoding /daaf breaks CI with EPERM.
+    REPO_ROOT="$(cd "${BATS_TEST_DIRNAME}/../.." && pwd)"
+    export GPT_FAST_SH="${REPO_ROOT}/scripts/provider_shim/gpt_fast.sh"
+    export TEST_ROOT="${REPO_ROOT}/scripts/scratch/gpt-fast-bats-${BATS_TEST_NUMBER}-$$"
     mkdir -p "$TEST_ROOT"
     chmod 700 "$TEST_ROOT"
 }

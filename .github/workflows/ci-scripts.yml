@@ -300,11 +300,18 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
-      - name: Install shim runtime dependencies
-        run: python3 -m pip install httpx==0.28.1 uvicorn==0.51.0
+      # The loopback harness spawns the production shim with a HOME redirected
+      # to per-instance scratch (v1.3.8 policy isolation), which hides pip
+      # user-site packages (~/.local) from the child interpreter. A venv is
+      # immune: its site-packages travel with sys.executable, which the harness
+      # uses to spawn the shim, so the pinned deps resolve regardless of HOME.
+      - name: Install shim runtime dependencies (venv)
+        run: |
+          python3 -m venv .shim-venv
+          .shim-venv/bin/python -m pip install httpx==0.28.1 uvicorn==0.51.0
 
       - name: Run provider-shim unit tests
-        run: python3 -m unittest discover -s tests/provider_shim -t tests -p 'test_*.py' -v
+        run: .shim-venv/bin/python -m unittest discover -s tests/provider_shim -t tests -p 'test_*.py' -v
 
 
   # ---------------------------------------------------------------------------
