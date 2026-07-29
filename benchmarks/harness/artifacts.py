@@ -38,6 +38,15 @@ ACCOUNTING_CATEGORIES = (
 )
 PURITY_STATUSES = ("verified", "failed", "unverifiable")
 
+# Display-only relabel for accounting coverage console output. The internal
+# accounting KEYS (ACCOUNTING_CATEGORIES) are a persisted summary.json contract
+# read by generate_results_viewer_v2.py and asserted in tests, so they must not
+# change. This map only rewrites how a category is LABELED in format_coverage()
+# console text; keys not present pass through unchanged.
+ACCOUNTING_CATEGORY_LABELS = {
+    "legacy_numeric": "numeric_computed_cost",
+}
+
 # --- B2: child-model purity as an infrastructure validity gate ---
 # Non-scoring. A purity-failed run is marked invalid and excluded from score
 # rollups (never deleted); an unverifiable run stays valid but is disclosed via
@@ -413,9 +422,14 @@ def console_billing_label(record: Mapping, precision: int = 3) -> str:
 
 
 def format_coverage(coverage: Mapping[str, int]) -> str:
-    """Format stable accounting coverage counts for console output."""
+    """Format stable accounting coverage counts for console output.
+
+    Display-only: the persisted accounting keys are unchanged; only the
+    human-facing label is rewritten via ACCOUNTING_CATEGORY_LABELS.
+    """
     return ", ".join(
-        f"{category}={coverage.get(category, 0)}"
+        f"{ACCOUNTING_CATEGORY_LABELS.get(category, category)}"
+        f"={coverage.get(category, 0)}"
         for category in ACCOUNTING_CATEGORIES
     )
 

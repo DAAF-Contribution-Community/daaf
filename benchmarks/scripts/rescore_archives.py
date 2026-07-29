@@ -319,8 +319,12 @@ def recompute_summary(summary: dict, rows: list, manifest: dict) -> dict:
     return summary
 
 
-def process_set(set_dir: Path, apply: bool) -> dict:
-    """Rescore one result set. Returns a stats dict for reporting."""
+def process_set(set_dir: Path, apply: bool, reason: str = RESCORE_REASON) -> dict:
+    """Rescore one result set. Returns a stats dict for reporting.
+
+    ``reason`` is stamped into each rescored row's ``rescore_reason`` field;
+    it defaults to the module constant so existing behavior is unchanged.
+    """
     manifest = load_json(set_dir / "manifest.json")
     if not is_dispatch_set(manifest or {}):
         return {"set": set_dir.name, "skipped": "not_dispatch"}
@@ -383,7 +387,7 @@ def process_set(set_dir: Path, apply: bool) -> dict:
         if outcome["new_sub_criteria"] is not None:
             new_result["subagent_criteria"] = outcome["new_sub_criteria"]
         new_result["rescored_at"] = datetime.now(timezone.utc).isoformat()
-        new_result["rescore_reason"] = RESCORE_REASON
+        new_result["rescore_reason"] = reason
         updated_rows.append(new_result)
 
         if apply:
@@ -417,9 +421,20 @@ def main() -> int:
         "--apply", action="store_true",
         help="Write the rescored result.json / summary.json files.",
     )
+    parser.add_argument(
+        "--reason", default=RESCORE_REASON,
+        help="Provenance reason stamped into each rescored row's "
+             f"rescore_reason field (default: {RESCORE_REASON}).",
+    )
     args = parser.parse_args()
 
+    # A blank/whitespace-only reason would stamp an empty provenance marker into
+    # every rescored row, defeating the auditability the stamp exists for.
+    if not args.reason or not args.reason.strip():
+        parser.error("--reason must not be blank or whitespace-only")
+
     apply = bool(args.apply)
+    reason = args.reason
     root = Path(args.results_root)
     if not root.is_absolute():
         root = BASE_DIR / root
@@ -428,7 +443,7 @@ def main() -> int:
         return 2
 
     mode = "APPLY" if apply else "DRY-RUN"
-    print(f"=== rescore_archives.py [{mode}] root={root} reason={RESCORE_REASON} ===")
+    print(f"=== rescore_archives.py [{mode}] root={root} reason={reason} ===")
 
     set_dirs = sorted(d for d in root.iterdir() if d.is_dir())
     totals = {
@@ -438,7 +453,7 @@ def main() -> int:
     flip_totals = {}
 
     for set_dir in set_dirs:
-        stats = process_set(set_dir, apply)
+        stats = process_set(set_dir, apply, reason=reason)
         if "skipped" in stats:
             totals["sets_skipped"] += 1
             continue

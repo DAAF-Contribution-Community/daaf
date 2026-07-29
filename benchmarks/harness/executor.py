@@ -28,6 +28,9 @@ from benchmarks.scorers.deterministic.checkpoint_adherence import (
 from benchmarks.scorers.deterministic.subagent_behavior import (
     find_subagent_transcripts,
 )
+from benchmarks.scorers.deterministic.error_classification import (
+    classify_tool_failure_class,
+)
 
 
 # Uniform fallback timeout (seconds). Only fires if a caller passes
@@ -815,10 +818,22 @@ def _extract_tool_failures(result: RunResult) -> None:
                 continue
 
             tool_use_id = block.get("tool_use_id", "")
+            content = _extract_tool_content(block.get("content", ""))
+            # C4 (additive): tag each failure with a finer operational cause.
+            # The configured child model id is the run's routing selector, which
+            # the lane-refusal branch compares against the rejected id named in
+            # the error string. It is reachable here on the result identity, so
+            # no invasive plumbing is needed.
+            configured_child_model_id = getattr(
+                result.model_identity, "requested_model_id", None
+            )
             result.tool_failures.append({
                 "tool_use_id": tool_use_id,
                 "tool_name": tool_names.get(tool_use_id, "unknown"),
-                "content": _extract_tool_content(block.get("content", "")),
+                "content": content,
+                "tool_failure_class": classify_tool_failure_class(
+                    content, configured_child_model_id
+                ),
             })
 
 

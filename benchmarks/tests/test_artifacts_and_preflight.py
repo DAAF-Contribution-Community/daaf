@@ -24,6 +24,7 @@ from benchmarks.harness.artifacts import (
     console_billing_label,
     cost_summary,
     error_measurement_defaults,
+    format_coverage,
     model_manifest_entry,
     nullable_mean,
     nullable_total,
@@ -200,6 +201,20 @@ class ArtifactSerializationTests(unittest.TestCase):
         self.assertEqual(1.25, summary["total_cost_usd"])
         self.assertEqual(1.25, summary["avg_cost_usd"])
         self.assertEqual(expected, summary["accounting_coverage"])
+
+    def test_format_coverage_relabels_only_legacy_numeric(self):
+        # FIX-7 (2026-07-29): the display relabel rewrites legacy_numeric ->
+        # numeric_computed_cost for console text while every other accounting
+        # category name passes through unchanged (the persisted keys are a
+        # summary.json contract and must not be renamed).
+        out = format_coverage(
+            {"exact": 2, "scenario_only": 1, "unavailable": 0, "legacy_numeric": 3}
+        )
+        self.assertIn("numeric_computed_cost=3", out)
+        self.assertNotIn("legacy_numeric", out)
+        self.assertIn("exact=2", out)
+        self.assertIn("scenario_only=1", out)
+        self.assertIn("unavailable=0", out)
 
     def test_provider_aware_error_defaults_and_legacy_compatibility(self):
         legacy = legacy_model()

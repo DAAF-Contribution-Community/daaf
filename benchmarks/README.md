@@ -230,6 +230,19 @@ tool/API/environment error). Signatures were derived empirically from archived
 transcripts; anything error-bearing that matches neither list is counted as
 `tool_failures_unclassified` rather than silently folded into `tool_failures`.
 
+Additionally, each entry in a run's `tool_failures` list carries a per-entry
+`tool_failure_class` tag assigning a finer operational CAUSE (additive and
+non-scoring; see `classify_tool_failure_class` in
+`scorers/deterministic/error_classification.py`). The taxonomy is precedence-
+ordered (first match wins): `policy_hook` (a DAAF/benchmark hook or permission
+block — the framework acting as designed), `infra_transient` (a dropped/stalled
+stream or empty-200 — a retry candidate), `capacity_limit` (prompt-too-long, a
+quota refusal, or a standalone HTTP 429), `infra_config` (a ChatGPT/Codex lane
+refusal of the CONFIGURED child model id), and `model_error` (everything else,
+including a lane refusal naming a DIFFERENT id than the configured child — the
+model mis-routing itself). The field is additive: archives written before it was
+introduced simply omit it.
+
 **Run-lifecycle watchdog.** `executor.execute_run()` no longer blocks in a single
 `communicate(timeout=timeout)` call. When a runner opts in, a watchdog thread
 polls the run every `--watchdog-poll` seconds (default **60s** — a longer interval
@@ -611,6 +624,22 @@ spurious cross-model gap (2026-07-28 heading-normalization). The `TASK_KEYWORDS`
 set also includes `request` (added 2026-07-28) so `## User Request` satisfies the
 task concept.
 
+**Zero-dispatch gate (Phase 3 caveat, 2026-07-29):** the eight `prompt_*`
+criteria all evaluate the CONTENT of a dispatch prompt, so they are only
+evaluable when a dispatch was ATTEMPTED. When a run has NO Agent call at all —
+none recorded (succeeded or failed) and none recovered from subagent transcripts
+— every `prompt_*` criterion FAILS with detail "No Agent dispatch attempt;
+prompt criteria not evaluable." This closes the vacuous-pass hole where
+`prompt_has_project_dir` (read-only agents), the 0-required
+`prompt_contains_required`, and the unspecified `prompt_contains_any` used to
+auto-pass on a zero-dispatch run. A recovered or a recorded-failed Agent call
+both count as attempts (so the gate does not fire). One bounded residual remains,
+analogous to the Phase 4 "Vacuous tier-2 passes" caveat below: on a
+FAILED-ONLY run the prompt content is never inspected (the scorer draws prompts
+only from successful/recovered calls), so those same three checks still pass
+vacuously — the gate closes the total-absence hole, not the attempted-but-failed
+one. The two tier1 criteria are unaffected.
+
 **Phase 3 dispatch-recovery fallback.** When a timed-out run's main
 transcript lacks the Agent tool_use record but subagent transcripts exist,
 `score_dispatch_compliance()` reconstructs the dispatch from that evidence —
@@ -806,6 +835,12 @@ provenance so the rescore is auditable and never silent:
 - `result.json`: `rescored_at` (ISO-8601 UTC timestamp) and `rescore_reason`
   (e.g. `"heading-normalization-2026-07-28"`).
 - `summary.json`: `rescored_at` (ISO-8601 UTC timestamp).
+
+The `rescore_reason` value defaults to the current correction id but can be set
+per invocation with `--reason "<label>"` (e.g. when a later scoring fix is
+applied, stamp its own id). The reason must be non-blank — a blank or
+whitespace-only `--reason` is rejected up front so the provenance stamp is never
+empty.
 
 Transcripts, tokens, cost, timing, and all provenance/identity fields are never
 touched. The utility defaults to `--dry-run` (report would-change counts without

@@ -25,6 +25,7 @@ from pathlib import Path
 
 from benchmarks.scorers.deterministic.error_classification import (
     classify_error_content,
+    classify_tool_failure_class,
     compute_error_counts,
 )
 
@@ -75,6 +76,192 @@ class ClassifyContentTests(unittest.TestCase):
         self.assertEqual(
             classify_error_content("something totally novel"),
             "tool_failure_unclassified",
+        )
+
+
+class ClassifyToolFailureClassTests(unittest.TestCase):
+    """C4: additive finer-grained cause tagging for tool failures.
+
+    Covers one case per returned class, the first-match-wins precedence order,
+    and both branches of the ChatGPT/Codex lane-pattern rule.
+    """
+
+    def test_policy_hook(self):
+        self.assertEqual(
+            classify_tool_failure_class("BLOCKED by enforce-single-command hook"),
+            "policy_hook",
+        )
+
+    def test_infra_transient_stream_closed(self):
+        self.assertEqual(
+            classify_tool_failure_class("API error: stream closed before completion"),
+            "infra_transient",
+        )
+
+    def test_infra_transient_stalled_mid_stream(self):
+        self.assertEqual(
+            classify_tool_failure_class("the response stalled mid-stream"),
+            "infra_transient",
+        )
+
+    def test_infra_transient_empty_200(self):
+        self.assertEqual(
+            classify_tool_failure_class("received an empty 200 from the backend"),
+            "infra_transient",
+        )
+
+    def test_capacity_limit_prompt_too_long(self):
+        self.assertEqual(
+            classify_tool_failure_class("prompt is too long: 250000 tokens"),
+            "capacity_limit",
+        )
+
+    def test_capacity_limit_quota_429(self):
+        self.assertEqual(
+            classify_tool_failure_class("HTTP 429 too many requests"),
+            "capacity_limit",
+        )
+
+    def test_default_model_error(self):
+        self.assertEqual(
+            classify_tool_failure_class("some entirely novel model behavior"),
+            "model_error",
+        )
+
+    def test_empty_is_model_error(self):
+        self.assertEqual(classify_tool_failure_class(""), "model_error")
+
+    # --- Lane-pattern rule: both branches -----------------------------------
+
+    def test_lane_refusal_matching_id_is_infra_config(self):
+        # Rejected id equals the configured child id → an infra/config problem.
+        err = "gpt-5.6-sol is not available via the ChatGPT (Codex) lane"
+        self.assertEqual(
+            classify_tool_failure_class(err, configured_child_model_id="gpt-5.6-sol"),
+            "infra_config",
+        )
+
+    def test_lane_refusal_mismatched_id_is_model_error(self):
+        # A Terra run whose model authored a claude-fable-5 dispatch: the
+        # rejected id differs from the configured child → the model mis-routed.
+        err = "claude-fable-5 is not available via the ChatGPT (Codex) lane"
+        self.assertEqual(
+            classify_tool_failure_class(
+                err, configured_child_model_id="gpt-5.6-terra"
+            ),
+            "model_error",
+        )
+
+    def test_lane_refusal_no_configured_id_falls_back_to_infra_config(self):
+        err = "model-x is not available via the ChatGPT (Codex) lane"
+        self.assertEqual(
+            classify_tool_failure_class(err, configured_child_model_id=None),
+            "infra_config",
+        )
+
+    # --- FIX-1 (2026-07-29): delimiter-aware lane id matching --------------
+    # A bare substring match misclassified an id-with-extension as the same id.
+    # An id counts as "named by the error" only when NOT glued to an
+    # id-continuation character (letters/digits/``. _ - [ ]``), so ``[1m]``-style
+    # extensions read as a DIFFERENT id → model_error.
+
+    def test_lane_configured_base_vs_rejected_1m_is_model_error(self):
+        # Configured bare id; the error rejects the [1m] extension of it. The
+        # trailing "[" is an id-continuation char, so the bare id is NOT named →
+        # a different id → the model mis-routed → model_error.
+        err = "gpt-5.6-terra[1m] is not available via the ChatGPT (Codex) lane"
+        self.assertEqual(
+            classify_tool_failure_class(
+                err, configured_child_model_id="gpt-5.6-terra"
+            ),
+            "model_error",
+        )
+
+    def test_lane_configured_1m_vs_rejected_base_is_model_error(self):
+        # Symmetric: configured id carries the [1m] extension, the error rejects
+        # the bare slug. The configured id string is not present verbatim → not
+        # named → model_error.
+        err = "gpt-5.6-terra is not available via the ChatGPT (Codex) lane"
+        self.assertEqual(
+            classify_tool_failure_class(
+                err, configured_child_model_id="gpt-5.6-terra[1m]"
+            ),
+            "model_error",
+        )
+
+    def test_lane_exact_id_match_is_still_infra_config(self):
+        # The exact-id case is unchanged: id named verbatim with clean
+        # boundaries → the CONFIGURED child was rejected → infra_config.
+        err = "gpt-5.6-terra is not available via the ChatGPT (Codex) lane"
+        self.assertEqual(
+            classify_tool_failure_class(
+                err, configured_child_model_id="gpt-5.6-terra"
+            ),
+            "infra_config",
+        )
+
+    # --- FIX-2 (2026-07-29): anchored "429" --------------------------------
+    # A bare "429" substring false-matched trace ids and token counts. Only a
+    # standalone 429 (or an anchored HTTP-status phrasing) is a capacity signal.
+
+    def test_trace_id_429_is_not_capacity(self):
+        # "84290" contains the digits 4-2-9 but not a standalone 429.
+        self.assertNotEqual(
+            classify_tool_failure_class("request failed on trace-84290fae"),
+            "capacity_limit",
+        )
+
+    def test_token_count_429_is_not_capacity(self):
+        # "4293 tokens" — 429 is glued to a trailing digit, not standalone.
+        self.assertNotEqual(
+            classify_tool_failure_class("the call consumed 4293 tokens overall"),
+            "capacity_limit",
+        )
+
+    def test_genuine_http_429_is_capacity(self):
+        self.assertEqual(
+            classify_tool_failure_class("HTTP 429 Too Many Requests"),
+            "capacity_limit",
+        )
+
+    # --- FIX-6 (2026-07-29): transient wins over co-reported quota/429 ------
+
+    def test_transient_precedes_co_reported_429(self):
+        # A 429 rate-limit note co-occurring with a dropped stream classifies as
+        # infra_transient — the transient rule (2) precedes the capacity rule (5),
+        # and a stalled stream is the actionable, retryable cause.
+        err = "HTTP 429 rate limit; stream closed"
+        self.assertEqual(classify_tool_failure_class(err), "infra_transient")
+
+    # --- Precedence (first match wins) --------------------------------------
+
+    def test_policy_hook_precedes_transient(self):
+        # A hook block that also mentions a stream-closed phrase still classifies
+        # as policy_hook because hook signatures are checked first.
+        err = "BLOCKED by bash-safety hook; stream closed"
+        self.assertEqual(classify_tool_failure_class(err), "policy_hook")
+
+    def test_transient_precedes_capacity(self):
+        # infra_transient is checked before the prompt/quota capacity rules.
+        err = "stream closed after prompt is too long warning"
+        self.assertEqual(classify_tool_failure_class(err), "infra_transient")
+
+    def test_prompt_capacity_precedes_lane(self):
+        # prompt-too-long (rule 3) wins over the lane pattern (rule 4).
+        err = (
+            "prompt is too long and model is not available via the chatgpt lane"
+        )
+        self.assertEqual(
+            classify_tool_failure_class(err, configured_child_model_id="m"),
+            "capacity_limit",
+        )
+
+    def test_lane_precedes_quota(self):
+        # The lane branch (rule 4) is evaluated before quota/429 (rule 5).
+        err = "gpt-5.6-sol is not available via the chatgpt (codex) lane; quota"
+        self.assertEqual(
+            classify_tool_failure_class(err, configured_child_model_id="gpt-5.6-sol"),
+            "infra_config",
         )
 
 

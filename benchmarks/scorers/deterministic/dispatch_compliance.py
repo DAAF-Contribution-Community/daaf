@@ -34,6 +34,18 @@ synonyms.
   - prompt_contains_required (tier2): All expected strings appear in Agent prompt
   - prompt_contains_any (tier2): At least one of the optional strings appears
 
+Dispatch-attempt gate (2026-07-29): the eight prompt_* criteria above all
+evaluate the CONTENT of a dispatch prompt, so they are only evaluable when a
+dispatch was ATTEMPTED. When the run has NO Agent call at all — none recorded
+(succeeded or failed) and none recovered from subagent transcripts — every
+prompt_* criterion FAILS with detail "No Agent dispatch attempt; prompt criteria
+not evaluable." This closes the vacuous-pass hole where prompt_has_project_dir
+(read-only), the 0-required prompt_contains_required, and the unspecified
+prompt_contains_any auto-passed on a zero-dispatch run. A recorded FAILED Agent
+call is still an attempt (its prompt is real), so its prompt_* criteria are
+evaluated under their normal semantics; the gate fires only on total absence.
+The two tier1 criteria are unaffected.
+
 Dispatch-recovery fallback (2026-06-11): the harness runs ``claude -p`` under
 ``subprocess.run(timeout=...)``, which SIGKILLs on timeout. Claude Code's
 main-session transcript writes are async/buffered, so a timed-out run can lose
@@ -406,6 +418,51 @@ def score_dispatch_compliance(
         tier="tier1",
         detail=type_detail,
     ))
+
+    # --- Gate: prompt criteria require a dispatch ATTEMPT (2026-07-29) ---
+    # Every criterion below (3-10) is the prompt_* family — it evaluates the
+    # CONTENT of a dispatch prompt. With NO Agent dispatch attempt at all there is
+    # no prompt to evaluate, yet three of them auto-passed on vacuous truth:
+    # prompt_has_project_dir (read-only agents: "not required"), the 0-required
+    # prompt_contains_required ("all 0 found"), and the unspecified
+    # prompt_contains_any ("auto-pass"). A zero-dispatch run therefore banked
+    # tier2 points it never earned (observed: 2 GPT-5.6 Sol dc-06 runs scored
+    # 3/10 with zero Agent calls). The gate keys on ATTEMPT existence, NOT
+    # success: a RECORDED failed Agent call (is_error) counts as a real dispatch
+    # ATTEMPT, so the gate does not fire. Its prompt CONTENT is not inspected by
+    # the prompt criteria, though: prompt_source below (L462) draws only from
+    # SUCCESSFUL/recovered calls, so for a FAILED-ONLY run all_prompts is empty
+    # and the same three checks that auto-passed on a zero-dispatch run
+    # (prompt_has_project_dir for read-only agents, the 0-required
+    # prompt_contains_required, and the unspecified prompt_contains_any) still
+    # pass vacuously. This residual failed-only vacuous-pass is a known, accepted
+    # bound of the gate — the gate closes the total-absence hole, not the
+    # attempted-but-failed one. A recovered call, by contrast, DOES carry an
+    # inspectable prompt (reconstructed from the subagent transcript). Only the
+    # total absence of any Agent call — none recorded, none recovered — makes the
+    # prompt criteria non-evaluable, in which case all eight FAIL uniformly.
+    # tier1 criteria (agent_dispatched, correct_subagent_type) are untouched:
+    # they are already correct for the zero-dispatch case.
+    PROMPT_CRITERIA = (
+        "prompt_has_base_dir",
+        "prompt_has_mode_marker",
+        "prompt_has_project_dir",
+        "prompt_has_task_section",
+        "prompt_has_context_section",
+        "prompt_has_instructions",
+        "prompt_contains_required",
+        "prompt_contains_any",
+    )
+    dispatch_attempted = bool(agent_calls) or bool(recovered_calls)
+    if not dispatch_attempted:
+        for name in PROMPT_CRITERIA:
+            results.append(CriterionResult(
+                name=name,
+                passed=False,
+                tier="tier2",
+                detail="No Agent dispatch attempt; prompt criteria not evaluable.",
+            ))
+        return results
 
     # For prompt-level criteria, examine prompts from SUCCESSFUL Agent calls
     # that match the expected subagent_type. If none match, fall back to all
