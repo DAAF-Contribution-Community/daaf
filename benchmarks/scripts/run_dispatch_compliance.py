@@ -1481,10 +1481,22 @@ def main():
                         help="Times to relaunch a stalled rep from a fresh "
                              "sandbox (default: 1). A rep that stalls again after "
                              "its last retry is recorded permanently as stalled")
+    # Early stop is OFF by default as of 2026-07-29: the graceful kill can abort
+    # an in-flight Agent dispatch, flipping its tool_result to is_error=true and
+    # corrupting the archived score (observed: 4 completed_early runs scored as
+    # dispatch failures despite live all-PASS — the monotone-pass argument fails
+    # because an Agent call's success settles at its tool_result, not the call).
+    # It also truncates usage capture (output_tokens=None on early-stopped runs).
+    parser.add_argument("--early-stop", action="store_true",
+                        help="OPT IN to score-complete early stop (DEFAULT OFF "
+                             "since 2026-07-29: the kill can abort an in-flight "
+                             "Agent dispatch and corrupt the archived score, and "
+                             "it truncates usage capture). Stall detection is "
+                             "independent and always runs")
     parser.add_argument("--no-early-stop", action="store_true",
-                        help="Disable score-complete early stop (escape hatch). "
-                             "Stall detection still runs; runs execute to natural "
-                             "completion or the wall-clock timeout")
+                        help="Deprecated no-op (early stop is now off by default; "
+                             "kept for command-line compatibility). Overrides "
+                             "--early-stop if both are given")
     parser.add_argument("--yes", "-y", action="store_true",
                         help="Skip cost confirmation prompt")
     parser.add_argument("--no-fixture-restore", action="store_true",
@@ -1620,7 +1632,7 @@ def main():
                         watchdog_poll=args.watchdog_poll,
                         stall_threshold=args.stall_threshold,
                         stall_retries=args.stall_retries,
-                        enable_early_stop=not args.no_early_stop,
+                        enable_early_stop=args.early_stop and not args.no_early_stop,
                     )
                 except Exception as e:
                     r = _error_result(tc, model, rep, f"{type(e).__name__}: {e}")
@@ -1645,7 +1657,7 @@ def main():
                         watchdog_poll=args.watchdog_poll,
                         stall_threshold=args.stall_threshold,
                         stall_retries=args.stall_retries,
-                        enable_early_stop=not args.no_early_stop,
+                        enable_early_stop=args.early_stop and not args.no_early_stop,
                     )
                     futures[future] = (tc, model, rep)
                     if i < len(runs) - 1:
