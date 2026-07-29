@@ -3070,6 +3070,30 @@ def controlled_asgi_probe(
             controlled_env["CODEX_HOME"] = str(
                 SCRATCH_ROOT / f"provider-shim-missing-auth-{uuid.uuid4().hex}"
             )
+        else:
+            # Hermeticity: provision the SAME fabricated auth store RealShim writes
+            # for spawned shims, and pin CODEX_HOME to it. Without this pin the
+            # patch.dict(clear=False) below inherits the runner's CODEX_HOME — in
+            # the DAAF container the codex plugin exports one holding a REAL
+            # auth.json (so chatgpt-lane probes silently read live credentials),
+            # while CI runners export none (so the chatgpt lane fails closed with
+            # upstream_calls == 0). Both environments must see the fixture.
+            fake_access = _make_fake_jwt(int(time.time()) + 365 * 86400)
+            probe_auth = {
+                "OPENAI_API_KEY": FAKE_OPENAI_KEY,
+                "auth_mode": "chatgpt",
+                "last_refresh": "2099-01-01T00:00:00.000000000Z",
+                "tokens": {
+                    "access_token": fake_access,
+                    "account_id": FAKE_ACCOUNT_ID,
+                    "id_token": FAKE_ID_TOKEN,
+                    "refresh_token": FAKE_REFRESH_TOKEN,
+                },
+            }
+            probe_auth_path = probe_home / "auth.json"
+            probe_auth_path.write_text(json.dumps(probe_auth), encoding="utf-8")
+            probe_auth_path.chmod(0o600)
+            controlled_env["CODEX_HOME"] = str(probe_home)
         with mock.patch.dict(os.environ, controlled_env, clear=False):
             # Absence is itself a strict-boundary fixture. patch.dict(clear=False) keeps
             # the runner's hermetic quota/reasoning seams, so explicitly remove only the
