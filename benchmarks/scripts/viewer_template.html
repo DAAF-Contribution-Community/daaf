@@ -1238,7 +1238,9 @@ nav.site-nav{
   </p>
 
    <div class="two-bars">
-    <p>The bottom line for practical use of DAAF at this time: <b>Fable 5 is the undisputed top pick</b> if budget is not a constraint. For strong performance at a more moderate cost, <b>GPT-5.6 Sol and Sonnet 5</b> are the mid-budget picks, and <b>GPT-5.6 Luna is the value pick</b> when you want most of the capability for a fraction of the spend. For self-hosting, full-control, or hermetic systems, all of the leading open-weights are now viable options: <b>Kimi K3</b> sits at the top of that pack on capability when price and model size are not a constraint, while <b>GLM 5.2 and DeepSeek V4</b> are the economical picks. There may nonetheless be benefits to using more generally powerful models not explicitly tracked by this benchmark (e.g., actual coding quality, analytic fidelity, etc.) if your budget and use limits allow.</p>
+    <!-- Hero bottom-line: user-ratified VERBATIM in the 2026-07-29 voice pass
+         (v3.7.1) — do not reword. -->
+    <p>The bottom line for practical use of DAAF at this time: <b>Fable 5 is the undisputed top performer</b> if budget is not a constraint. Those who are budget-conscious should feel comfortable relying on <b>GPT-5.6 Sol or Sonnet 5</b> for strong performance at a more moderate cost, and <b>GPT-5.6 Luna</b> delivers most of that capability for a fraction of the spend. For self-hosting/full-control/hermetic systems, all of the leading open-weights are now viable options: <b>Kimi K3</b> sits at the top of that pack on capability when price and model size are not a constraint, while <b>GLM 5.2 and DeepSeek V4</b> are the economical choices. There may nonetheless be benefits to using more generally powerful models not explicitly tracked by this benchmark (e.g., actual coding quality, analytic fidelity, etc.) if your budget and use limits allow.</p>
   </div>
 
 </section>
@@ -1256,7 +1258,7 @@ nav.site-nav{
 <section class="doc-section" id="cvp-preview">
   <p class="section-lead">
     <b>The headline picture:</b> model performance across the benchmark suite plotted against estimated cost to run
-    the full battery, relative to Opus 4.8. 
+    the full battery, relative to Opus 4.8.
     <a href="#cost-performance">See the full chart</a> below for much more information, customization, and caveats.
   </p>
   <div class="card"><div class="chart-container" id="cvp-preview-chart"></div></div>
@@ -1271,7 +1273,9 @@ nav.site-nav{
   <h2>Key Takeaways (July 2026)</h2>
 
   <div class="kt-item">
-    <div class="kt-claim">1. The ceiling rises &mdash; and the top tier is no longer one vendor&rsquo;s.</div>
+    <!-- T1 headline + body: user-ratified VERBATIM in the 2026-07-29 voice
+         pass (v3.7.1) — do not reword. -->
+    <div class="kt-claim">1. Fable 5 still leads, but the top tier now spans three providers.</div>
     <!-- The section's ONE accent-strong (Wave C budget: at most one per
          major section) sits on the headline Fable figure below — the
          single most load-bearing number on the page. Everything else in
@@ -1279,15 +1283,18 @@ nav.site-nav{
     <p>Fable 5 leads the scoreboard at a Perfect average score of <b class="accent-strong"><span id="kt-t1-fable">&mdash;</span></b>.
     Opus 5 arrives right behind it at <b><span id="kt-t1-opus5">&mdash;</span></b> &mdash; but costs
     roughly <b><span id="kt-t1-opus5cost">&mdash;</span>% more</b> to run for a hair lower score, so Fable
-    dominates it outright. The bigger story is who else reaches the top: Tier 1 now also holds
+    simply dominates it. (The gap between them is small enough that sample noise matters; the cost gap is not.)
+    The bigger story is who else reaches the top: Tier 1 now also holds
     GPT-5.6 Sol (<span id="kt-t1-sol">&mdash;</span>) and the open-weights Kimi K3 (<span id="kt-t1-kimi">&mdash;</span>) &mdash;
     the first time the top tier spans three different providers rather than one.</p>
   </div>
 
   <div class="kt-item">
+    <!-- T2 frontier definition + closer: user-ratified VERBATIM in the
+         2026-07-29 voice pass (v3.7.1) — do not reword. -->
     <div class="kt-claim">2. The efficiency frontier runs through four different providers.</div>
     <p>The efficiency frontier is the set of models no other model beats on <em>both</em> cost and conformance
-    at once &mdash; the picks that are never simply outclassed by something cheaper. Six models make it, and they
+    at once (basically: the picks that are never simply outclassed by something cheaper). Six models make it, and they
     come from four different providers: <b>Gemma 4 31B</b> (<span id="kt-fr-gemma-s">&mdash;</span> at
     <span id="kt-fr-gemma-c">&mdash;</span> Opus 4.8&rsquo;s battery cost), <b>DeepSeek V4 Flash</b>
     (<span id="kt-fr-dsflash-s">&mdash;</span> at <span id="kt-fr-dsflash-c">&mdash;</span>), <b>GPT-5.6 Luna</b>
@@ -1296,44 +1303,47 @@ nav.site-nav{
     (<span id="kt-fr-sol-s">&mdash;</span> at <span id="kt-fr-sol-c">&mdash;</span>), and <b>Fable 5</b>
     (<span id="kt-fr-fable-s">&mdash;</span> at <span id="kt-fr-fable-c">&mdash;</span>). Two of the six &mdash;
     Gemma 4 31B and DeepSeek V4 Flash &mdash; are open-weights. The practical lesson is that no single
-    vendor owns price-performance: the right pick depends on <b>which budget point you are shopping at</b>,
-    not on brand loyalty.</p>
+    vendor owns price-performance: the right pick depends on <b>which budget point you are shopping at</b> (and with denominators this small, read exact frontier membership a little loosely &mdash; see the caveats below).</p>
   </div>
 
   <div class="kt-item">
+    <!-- T3 closer: user-ratified VERBATIM in the 2026-07-29 voice pass
+         (v3.7.1) — do not reword. -->
     <div class="kt-claim">3. Raw performance follows steep diminishing returns.</div>
     <p>The climb to the top gets expensive fast. GPT-5.6 Luna delivers about <b><span id="kt-t3-lunapct">&mdash;</span></b>
     of Fable 5&rsquo;s composite for roughly <b><span id="kt-t3-lunacost">&mdash;</span></b> of its battery cost;
     GPT-5.6 Sol, about <b><span id="kt-t3-solpct">&mdash;</span></b> of Fable&rsquo;s score for
     <b><span id="kt-t3-solcost">&mdash;</span></b> of the cost. Buying the last ~8 points of conformance &mdash;
-    the jump from Sol up to Fable &mdash; costs about <b><span id="kt-t3-lastmult">&mdash;</span> as much</b>. The
-    shape of that curve is the whole argument for knowing what quality bar your use case actually needs
-    <em>before</em> you pay for the very top of it.</p>
+    the jump from Sol up to Fable &mdash; costs about <b><span id="kt-t3-lastmult">&mdash;</span> as much</b>.
+    All to say: it&rsquo;s worth figuring out what quality bar your use case actually needs before you pay for the very top of it.</p>
   </div>
 
   <div class="kt-item">
-    <div class="kt-claim">4. Reliability and predictability are what the budget tiers actually give up.</div>
-    <p>Moving down the price ladder, the first thing to erode is not raw capability but <b>reliability</b> and
+    <!-- T4 headline + first sentence + "just": user-ratified VERBATIM in the
+         2026-07-29 voice pass (v3.7.1) — do not reword. The mechanism sentence
+         ("Because every case here runs up to three times...") and the "wobble"
+         phrasing are preserved verbatim per the same pass. -->
+    <div class="kt-claim">4. What budget models actually give up: reliability and predictability.</div>
+    <p>Moving down the price ladder, the first thing to erode isn&rsquo;t raw capability: it&rsquo;s <b>reliability</b> and
     <b>predictability</b>. Because every case here runs up to three times, we can measure how often a model
     gives the <em>same</em> verdict on repeat attempts: the share of repeated cases where all reps land on the
     identical outcome. Fable 5 agrees with itself on <b><span id="kt-t4-topagree">&mdash;</span></b> of its
     repeated cases; DeepSeek V4 Flash &mdash; a genuinely capable budget pick &mdash; manages only
-    <b><span id="kt-t4-budgetagree">&mdash;</span></b>. Cheaper models don&rsquo;t merely score lower on average;
+    <b><span id="kt-t4-budgetagree">&mdash;</span></b>. Cheaper models don&rsquo;t just score lower on average;
     they <b>wobble more from run to run</b>, and in a chained agentic workflow where one bad step derails
     everything downstream, that unpredictability is a real cost of its own.</p>
   </div>
 
   <div class="kt-item">
-    <div class="kt-claim">5. Open-weights are structural now, not niche &mdash; and provider flexibility is how you bank the benefit.</div>
+    <!-- T5 headline + closer: user-ratified VERBATIM in the 2026-07-29 voice
+         pass (v3.7.1) — do not reword. -->
+    <div class="kt-claim">5. Open-weight models are no longer the compromise option.</div>
     <p>Open-weights hold the budget end of the frontier outright: Gemma 4 31B and DeepSeek V4 Flash are the two
     cheapest non-dominated points on the entire chart. GLM 5.2 remains the natural <b>self-hosting</b> pick for
     teams that want full control, at <span id="kt-t5-glm">&mdash;</span> composite for about
     <b><span id="kt-t5-glmcost">&mdash;</span></b> of Opus 4.8&rsquo;s battery cost; and Kimi K3 now tops the
     open-weights pack on raw capability (<span id="kt-t5-kimi">&mdash;</span>, squarely in Tier 1) when price and
-    model size are not the binding constraint. The through-line: provider competition keeps pushing cost down
-    and capability up for end users, and orchestration tooling that stays <b>deliberately provider-flexible</b>
-    &mdash; as DAAF is built to be &mdash; is exactly what lets you capture those gains as the market keeps
-    moving.</p>
+    model size are not the binding constraint. All of this is exactly why DAAF is built to be deliberately provider-flexible: provider competition keeps pushing costs down and capability up, and staying flexible is what lets you actually capture those gains as the market keeps moving. With DAAFBench, we&rsquo;ll know when the next crossover happens!</p>
   </div>
 
   <!-- kt-foot removed (2026-06-12 user fine-tuning round): its
@@ -1594,7 +1604,7 @@ nav.site-nav{
             Anthropic&rsquo;s tokenizer rather than each OpenRouter model&rsquo;s billing
             meter, so dollar costs derived from those counts were unreliable and
             were removed. For the GPT-5.6 trio (Sol, Luna, Terra), the
-            api-equivalent list rates used here were verified against OpenAI&rsquo;s
+            API-equivalent list rates used here were verified against OpenAI&rsquo;s
             published per-model schedules on 2026-07-29. A per-request audit of
             the full GPT corpus further found zero requests above the 272k-token
             long-context pricing threshold, so the short-context rates applied
@@ -1651,14 +1661,20 @@ nav.site-nav{
     both cost and conformance at once: anything off the line is outperformed
     somewhere cheaper. On the default battery-cost basis that frontier runs
     through <b>six models from four different providers</b> (two of them
-    open-weights), spanning more than a hundredfold in cost &mdash; concrete
-    evidence that no single vendor owns price-performance, and that the best
-    pick depends on the budget point you are shopping at. The selectors switch the vertical axis between the
+    open-weights), spanning more than a hundredfold in cost. The selectors switch the vertical axis between the
     composite and any single phase group (P1&ndash;P4) under either bar (Perfect
     or Critical-only), and the price-basis toggle offers two secondary views: the
     raw published <b>input</b> and <b>output</b> list rates in dollars per
     million tokens of text ($/Mtok &mdash; a million tokens is roughly 750,000
     words). Those are list prices, not measured benchmark spend.
+    <!-- Subscription-pricing note added 2026-07-29 (AI-drafted at user direction;
+         NOT yet voice-ratified — flagged for the user's intensive pass). -->
+    One more note on all of these dollar figures: they are API-style list
+    pricing. If you run DAAF through a subscription plan instead (Claude Max, or
+    ChatGPT for the GPT models &mdash; the GPT runs in this corpus were in fact
+    executed on the ChatGPT lane), your marginal cost per analysis is effectively
+    covered by the flat subscription price &mdash; often the single biggest
+    cost-efficiency lever available before you change models at all.
     Shape and color mark the serving provider; hover any point for its exact figures.
   </p>
   <div class="sec-body" id="sec-cost-performance"></div>

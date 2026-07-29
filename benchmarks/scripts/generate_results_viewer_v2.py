@@ -71,6 +71,34 @@ Examples:
     python3 benchmarks/scripts/generate_results_viewer_v2.py --single-file /tmp/my_viewer.html
 
 Changelog:
+    v3.7.1 (2026-07-29):
+      - Prose-only voice pass over the Key Takeaways / hero narrative
+        (viewer_template.html), applying the user's 2026-07-29 edit slate. No
+        schema, PRECOMPUTED, kt-* span inventory, or JS change — the 28-span
+        contract and every fillTakeaways setter are untouched; only prose around
+        the injected spans was reworded:
+        - Hero bottom-line paragraph rewritten (top-performer framing; "economical
+          choices"; slash-joined self-host clause).
+        - T1 headline -> "Fable 5 still leads, but the top tier now spans three
+          providers"; body "dominates it outright" -> "simply dominates it" plus a
+          sample-noise/cost-gap parenthetical.
+        - T2 frontier definition recast with a "(basically: ...)" gloss; closer
+          ends at the budget-point clause + a small-denominator caveat pointer,
+          dropping "not on brand loyalty".
+        - T3 closer -> "All to say: it's worth figuring out...".
+        - T4 headline -> "What budget models actually give up: reliability and
+          predictability"; first sentence contraction+colon; "merely" -> "just".
+          Mechanism sentence and "wobble" phrasing preserved verbatim.
+        - T5 headline -> "Open-weight models are no longer the compromise option";
+          closer rewritten to the provider-flexibility / "next crossover" line
+          (optional sun-setting sentence deliberately omitted).
+        - Cost-vs-Performance lead: frontier sentence ends at "...hundredfold in
+          cost", dropping the Takeaway-2-duplicating clause.
+        - Mechanical: GPT-5.6 cost caveat "api-equivalent" -> "API-equivalent";
+          trailing whitespace removed in the cvp-preview lead.
+        All voice-passed passages flagged with anchor comments as user-ratified
+        2026-07-29; the two prior voice anchors (hero TLDR, About intro paragraphs)
+        remain byte-identical.
     v3.7.0 (2026-07-29):
       - Key Takeaways narrative overhaul (viewer_template.html) + one
         schema-additive PRECOMPUTED field:
@@ -2005,7 +2033,7 @@ def build_data_bundle(result_sets, cases, runs, transcripts, subagent_transcript
     )
     bundle = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "generator_version": "3.7.0",
+        "generator_version": "3.7.1",
         "embedded_schema_contract_version": 2,
         "result_sets": sorted_result_sets,
         "cases": cases,
