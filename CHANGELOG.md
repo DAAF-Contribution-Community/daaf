@@ -15,7 +15,7 @@ All notable changes to DAAF for each release version are documented here, in rev
 
 ## v3.0.1 -- 2026-07-29
 
-### Data Analyst Augmentation Framework -- Stability and Polish
+### Data Analyst Augmentation Framework -- Minor Fixes
 
 v3.0.1 is a simple patch release: no flashy new functionality to be aware of, just steady work making v3.0.0's foundations more solid and adding a handful of genuinely useful conveniences on top. Most of it is under-the-hood hardening -- backups that fail loudly instead of quietly, lifecycle scripts that handle more edge cases, and OpenAI provider routing that's steadier and easier to sign into -- alongside a few new opt-in features worth knowing about: read-only host-folder mounts (give DAAF access to an actual folder on your computer!), setting up a shared research workspace across separate DAAF installs, and speed controls for the GPT provider route.
 

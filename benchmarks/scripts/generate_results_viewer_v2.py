@@ -2055,7 +2055,7 @@ def build_data_bundle(result_sets, cases, runs, transcripts, subagent_transcript
     )
     bundle = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "generator_version": "3.7.1",
+        "generator_version": "3.7.2",
         "embedded_schema_contract_version": 2,
         "result_sets": sorted_result_sets,
         "cases": cases,

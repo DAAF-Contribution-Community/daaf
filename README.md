@@ -84,7 +84,7 @@ cd daaf-docker
 .\daaf.ps1
 ```
 
-On first launch, Claude Code will prompt you to authenticate. DAAF defaults to **Opus 4.8** with 1 million token context. Anthropic's lower-cost **Sonnet** tier is also an excellent choice that [matches the Opus line on DAAF's orchestration benchmarks](https://daaf.openaugments.org/bench/) at a fraction of the cost; if you'd like to use it, type `/model` to switch.  You're ready to go; see [Understanding DAAF](user_reference/02_understanding_daaf.md) for some suggestions on how to get started with progressively more complex tasks with DAAF!
+On first launch, Claude Code will prompt you to authenticate. DAAF defaults to **Opus 4.8** with 1 million token context. Several other models also perform excellently at very different price points — Anthropic's lower-cost **Sonnet** tier [sits in the top performance tier on DAAF's orchestration benchmarks](https://daaf.openaugments.org/bench/) at roughly half the cost, and strong GPT-5.6 and open-weight options exist too (see the [model-selection FAQ](user_reference/07_faq_technical.md#q-which-claude-model-should-i-use)); if you'd like to switch, type `/model`.  You're ready to go; see [Understanding DAAF](user_reference/02_understanding_daaf.md) for some suggestions on how to get started with progressively more complex tasks with DAAF!
 
 ---
 

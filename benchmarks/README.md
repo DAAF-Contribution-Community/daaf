@@ -9,6 +9,13 @@ the framework's protocols?
 
 ## 1. What This Is
 
+> **Just want to pick a model?** This README documents the benchmark's
+> internals for contributors. The user-facing guidance distilled from these
+> results lives in the FAQ —
+> [Which Claude model should I use?](../user_reference/07_faq_technical.md#q-which-claude-model-should-i-use)
+> — and the live results page is
+> [daaf.openaugments.org/bench](https://daaf.openaugments.org/bench/).
+
 The benchmark measures whether models acting as the DAAF orchestrator:
 
 - Classify user requests into the correct engagement mode and present a
