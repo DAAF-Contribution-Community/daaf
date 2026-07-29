@@ -71,6 +71,28 @@ Examples:
     python3 benchmarks/scripts/generate_results_viewer_v2.py --single-file /tmp/my_viewer.html
 
 Changelog:
+    v3.7.2 (2026-07-29):
+      - User intensive-pass hand edits over the five Key Takeaways items
+        (viewer_template.html), typed directly by the user — the strongest
+        ratification tier, superseding the v3.7.1 anchors for those passages
+        (anchor comments restamped accordingly; hero bottom-line + About
+        intro anchors untouched). Prose-only: no schema, PRECOMPUTED, kt-*
+        span inventory, or JS change; the 28-span contract and every
+        fillTakeaways setter are intact. Highlights: T1 "top tier is
+        increasingly crowded" headline + "no monopoly on frontier compute"
+        closer; T2 "model creators" headline + Gemma home-computer aside;
+        T3 "in terms of cost" headline; T4 mechanism sentence reworded
+        ("every test here runs three times" / "scores equally well");
+        T5 "next crossover" closing sentence removed.
+      - Corpus (not viewer-code) changes shipped alongside this version:
+        3 ledger-adjudicated-unusable Sol runs quarantined
+        (_quarantine_2026-07-29_solunusable), the Opus 4.5 spend-limit dc-08
+        run quarantined (_quarantine_2026-07-29_opus45spendlimit), the 11
+        Opus 4.5 dated-snapshot purity false negatives re-adjudicated to
+        verified/valid (wire_id "claude-opus-4-5-20251101" declared in
+        models.yaml; summaries rebuilt via the sanctioned rescore path, which
+        also resolves 20260726_171652's phase-"unknown" classification), and
+        a 1-rep Opus 4.5 dc-08 top-up.
     v3.7.1 (2026-07-29):
       - Prose-only voice pass over the Key Takeaways / hero narrative
         (viewer_template.html), applying the user's 2026-07-29 edit slate. No
