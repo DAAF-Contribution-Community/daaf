@@ -451,7 +451,7 @@ class ViewerSchemaLoadingTests(unittest.TestCase):
         self.assertTrue(legacy_run["billing_grade_cost_eligible"])
         self.assertEqual("perfect", legacy_run["grade"])
         self.assertEqual(1, anth_tokens["Legacy Model"]["n"])
-        self.assertIn("Ignoring reserved non-phase results container: probes", warnings)
+        self.assertIn("Ignoring non-phase results reserved container: probes", warnings)
 
     def test_missing_legacy_cost_remains_null_instead_of_zero(self):
         root = self.results_dir / "20260102_010101"
@@ -559,7 +559,7 @@ class ViewerSchemaLoadingTests(unittest.TestCase):
         )
         self.assertNotIn("cli_model_usage", subscription_run["usage_observed"])
         self.assertEqual(2, bundle["embedded_schema_contract_version"])
-        self.assertEqual("3.3.0", bundle["generator_version"])
+        self.assertEqual("3.5.0", bundle["generator_version"])
 
     def test_subscription_cost_incompatibility_retains_behavioral_scores(self):
         result_sets, runs, anth_tokens, _ = self._load()
