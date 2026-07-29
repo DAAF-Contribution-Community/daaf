@@ -71,6 +71,39 @@ Examples:
     python3 benchmarks/scripts/generate_results_viewer_v2.py --single-file /tmp/my_viewer.html
 
 Changelog:
+    v3.5.0 (2026-07-29):
+      - Fix 2 — GPT ChatGPT-subscription (provider chatgpt-subscription)
+        battery estimates on an api-equivalent counterfactual basis. These
+        models were excluded three ways (load_model_pricing skip,
+        _cost_compatibility force-omit, anthropic-only token gate); now priced
+        from models.yaml api_equivalent_pricing.short_context list rates,
+        aggregated into the live-token battery block (None cache fields -> 0,
+        uncached basis), and tagged basis="api-equivalent" so the leaderboard
+        marks them "api-equiv" (vs Anthropic "corpus-live"). The run/set-level
+        billing_grade_cost_eligible flag is intentionally NOT flipped, so the
+        run-detail not-invoiced disclosures stay accurate — only the explicitly
+        counterfactual battery estimate includes them.
+      - Fix 3 — degenerate leaderboard-column suppression in build_eval_groups
+        (and the lockstep template buildEvalGroups): skip phase "unknown", skip
+        result sets with zero loaded runs, and fold a subagent-less
+        dispatch_compliance set into the 3a dispatch group rather than emitting
+        a bare `dispatch_compliance` column. Column-derivation-scoped — runs
+        still count in the all-runs aggregates.
+      - Fix 4 — tier-banding share cap: the range-quartile fallback now also
+        fires when the gap rule's largest tier holds > TIER_MAX_TIER_SHARE
+        (50%) of ranked models, even with >= 3 tiers. tier_rule records the
+        fallback_trigger.
+      - Fix 5 — composite-bar component markers rendered as small hollow white
+        circles instead of vertical tick marks (viewer_template.html CSS only;
+        renderer positioning unchanged).
+      - Fix 1 (OpenRouter reconciliation glob) NOT applied — reported
+        BLOCKED-on-schema: the current derived/*_openrouter_reconciliation.parquet
+        artifacts carry billed-vs-computed DOLLAR reconciliation columns keyed
+        by base_slug, with NO per-run prompt/completion token mix, so they
+        cannot feed the uncached-basis battery consumer (which needs
+        openrouter_models[name].billed_tokens.{prompt,completion} + n_covered_runs
+        from the reconcile_openrouter_costs.py JSON). load_reconciliation left
+        unchanged (legacy .json glob retained).
     v3.4.0 (2026-07-29):
       - Transcript-inclusion control (--transcripts / --no-transcripts) with
         per-mode defaults: bundle includes (lazy shards), single-file now
@@ -276,6 +309,17 @@ def resolve_paths(args):
 #      load_cases() attaches case definitions (it falls back to the dirname).
 #   6. Regenerate and spot-check the new eval group's k/n in the sanity
 #      report and the deep-dive heatmap before publishing.
+#   Eval-group derivation note (degenerate-column suppression, v3.5.0 Fix 3):
+#   build_eval_groups() (and the lockstep template buildEvalGroups()) emit a
+#   column group per distinct rs["phase"], but suppress three degenerate cases
+#   so aborted/partial/mid-write sets do not spawn junk columns: (a) phase
+#   "unknown" (detect_phase fallback) is skipped; (b) a set with zero loaded
+#   runs is skipped; (c) a dispatch_compliance set lacking subagent criterion
+#   names is FOLDED into the 3a dispatch group instead of emitting a bare
+#   `dispatch_compliance` column. Suppression is column-derivation-scoped: the
+#   runs themselves still count in the all-runs aggregates (consistency,
+#   per_case, cost, duration). A genuinely new phase whose marker is wired per
+#   step 1 will NOT be classified "unknown", so it is unaffected.
 #
 # Public-prose registries in the template (maintenance guide, added v2.6.0
 # with the public-audience evolution of the viewer):
@@ -386,6 +430,26 @@ def resolve_paths(args):
 #     distinct case_ids across the loaded corpus (51 on the 2026-06-11
 #     corpus: 15 mc + 9 pc + 12 dc + 15 sr — NOT runs/reps, which are uneven
 #     across providers).
+#   - Cost bases (basis tag on each cost.battery.models entry):
+#       * "corpus-live"          — Anthropic, live token mix from result.json
+#                                  priced at models.yaml list rates.
+#       * "billing-snapshot-DATE" — OpenRouter, billed token mix from the
+#                                  reconciliation JSON.
+#       * "api-equivalent"       — chatgpt-subscription GPT-5.6 lane (v3.5.0,
+#                                  Fix 2). These are NEVER invoiced per token
+#                                  (flat subscription), so they carry no
+#                                  `pricing:` block; they are priced from
+#                                  models.yaml api_equivalent_pricing.
+#                                  short_context as an explicit COUNTERFACTUAL
+#                                  — the same uncached full-input basis, using
+#                                  their live token mix (cache fields absent ->
+#                                  0). load_model_pricing tags them
+#                                  pricing_basis="api-equivalent"; they clear
+#                                  the cost-loop omission via that tag WITHOUT
+#                                  flipping billing_grade_cost_eligible (their
+#                                  not-invoiced run-detail disclosures stay
+#                                  truthful). The leaderboard marks the cost
+#                                  cell "api-equiv".
 #   - Staleness guard: the reconciliation JSON is a dated billing snapshot.
 #     At generation time each OpenRouter model's current corpus run count is
 #     compared against the JSON's recorded n_runs; mismatches print a console
@@ -1313,7 +1377,15 @@ def load_runs(results_dir, result_sets, cases):
             # schema-v2, missing categories make the run ineligible for this
             # billing-grade token mix; explicit source zero remains valid
             # evidence.
-            if run["provider"] == "anthropic":
+            # Providers whose per-run token mix feeds the battery-cost block.
+            # "anthropic" mixes are priced corpus-live at list rates; the
+            # "chatgpt-subscription" GPT-5.6 lane (v3.5.0, Fix 2) is priced on
+            # the api-equivalent counterfactual basis (load_model_pricing). The
+            # subscription lane carries no cache accounting, so its result.json
+            # records input_tokens/output_tokens with cache fields None —
+            # coerced to 0 below so the run stays eligible under the same
+            # uncached (full input rate) basis used everywhere.
+            if run["provider"] in ("anthropic", "chatgpt-subscription"):
                 if run["legacy_schema"]:
                     token_values = {
                         "input": result.get("input_tokens", 0) or 0,
@@ -1328,6 +1400,12 @@ def load_runs(results_dir, result_sets, cases):
                         "cache_read": result.get("cache_read_tokens"),
                         "cache_creation": result.get("cache_creation_tokens"),
                     }
+                if run["provider"] == "chatgpt-subscription":
+                    # None-tolerant cache fields: the subscription lane reports
+                    # no cache read/creation, so treat missing as explicit 0.
+                    for _cache_field in ("cache_read", "cache_creation"):
+                        if token_values[_cache_field] is None:
+                            token_values[_cache_field] = 0
                 if all(
                     isinstance(value, (int, float)) and not isinstance(value, bool)
                     for value in token_values.values()
@@ -1628,7 +1706,44 @@ def load_model_pricing(base_dir):
     pricing = {}
     for entry in config.get("models", []):
         name = entry.get("name")
-        if not name or entry.get("provider", "anthropic") == "chatgpt-subscription":
+        if not name:
+            continue
+        provider = entry.get("provider", "anthropic")
+        if provider == "chatgpt-subscription":
+            # API-equivalent counterfactual pricing (v3.5.0, Fix 2). These
+            # GPT-5.6 models are accessed under a flat ChatGPT subscription and
+            # are NEVER invoiced per token, so no `pricing:` block exists.
+            # Price them at the published api_equivalent_pricing.short_context
+            # list rates as an explicit counterfactual — mirroring how the
+            # Anthropic subscription models are already priced at list rates.
+            # These entries carry pricing_basis="api-equivalent" so the battery
+            # block tags them a distinct basis and the leaderboard marks them
+            # api-equiv (vs the Anthropic corpus-live basis). NB: the schedule
+            # lives at entry["api_equivalent_pricing"]["short_context"], NOT
+            # under a `billing:` wrapper.
+            aep = entry.get("api_equivalent_pricing", {})
+            sc = aep.get("short_context", {}) if isinstance(aep, dict) else {}
+            if not isinstance(sc, dict):
+                continue
+            input_rate = sc.get("input")
+            output_rate = sc.get("output")
+            cached_rate = sc.get("cached_input")
+            if any(
+                isinstance(value, bool) or not isinstance(value, (int, float))
+                for value in (input_rate, output_rate)
+            ):
+                continue
+            pricing[name] = {
+                "input_per_million": round(input_rate, 4),
+                "output_per_million": round(output_rate, 4),
+                "cached_input_per_million": (
+                    round(cached_rate, 4)
+                    if isinstance(cached_rate, (int, float))
+                    and not isinstance(cached_rate, bool)
+                    else None
+                ),
+                "pricing_basis": "api-equivalent",
+            }
             continue
         p = entry.get("pricing", {})
         if not isinstance(p, dict):
@@ -1650,6 +1765,7 @@ def load_model_pricing(base_dir):
                 and not isinstance(cached_rate, bool)
                 else None
             ),
+            "pricing_basis": "list",
         }
     return pricing
 
@@ -1676,8 +1792,11 @@ def load_reconciliation(base_dir):
     candidates = sorted(_glob.glob(pattern))
     if not candidates:
         print("WARNING: no derived/openrouter_reconciliation_*.json found; "
-              "OpenRouter battery costs will be omitted "
-              "(run scripts/reconcile_openrouter_costs.py to produce one)",
+              "OpenRouter battery costs will be omitted (produce one from the "
+              "v2 classified billing parquet — precedent: the campaign "
+              "workspace's scripts/scratch/22_billing-tokenmix-json.py; the "
+              "legacy scripts/reconcile_openrouter_costs.py emitter is stale "
+              "for post-2026-07-27 data)",
               file=sys.stderr)
         return None
     path = candidates[-1]
@@ -1778,7 +1897,7 @@ def build_data_bundle(result_sets, cases, runs, transcripts, subagent_transcript
     )
     bundle = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "generator_version": "3.4.0",
+        "generator_version": "3.5.0",
         "embedded_schema_contract_version": 2,
         "result_sets": sorted_result_sets,
         "cases": cases,
@@ -1846,23 +1965,32 @@ COMPOSITE_GIDS = [
 #   new tier starts wherever the gap to the previous model's composite is
 #   >= TIER_GAP_THRESHOLD (5 percentage points).
 #
-#   Fallback (range quartiles): if the gap rule yields fewer than
-#   TIER_MIN_TIERS tiers across a corpus of >= TIER_FALLBACK_MIN_MODELS
-#   models — which happens on the real corpus, where the largest observed
-#   composite gap is ~6.8 points at the original 8-point threshold and the
-#   scores form a near-continuum — models are instead banded by which
-#   quarter of the composite range [min, max] their score falls in
-#   (equal-width bands; empty bands are skipped so tier labels stay
-#   contiguous T1, T2, ...).
+#   Fallback (range quartiles): on a corpus of >= TIER_FALLBACK_MIN_MODELS
+#   models, the gap rule is overridden by equal-width range-quartile banding
+#   when EITHER degeneracy appears:
+#     (a) it yields fewer than TIER_MIN_TIERS tiers — the near-continuum case,
+#         where the largest observed composite gap is ~6.8 points at the
+#         original 8-point threshold; OR
+#     (b) its largest tier holds more than TIER_MAX_TIER_SHARE of the ranked
+#         models (v3.5.0, Fix 4 — the "share cap"). Post-rescore score
+#         compression can leave >= 3 tiers while dumping the vast majority into
+#         one band (observed T1=25/T2=2/T3=2, largest interior gap 0.0428 <
+#         threshold), which is just as uninformative as a single band. The
+#         share cap catches that even though the tier-count test (a) passes.
+#   Both trigger the same range-quartile rebanding: models are banded by which
+#   quarter of the composite range [min, max] their score falls in (equal-width
+#   bands; empty bands are skipped so tier labels stay contiguous T1, T2, ...).
 #
 # The applied method is recorded in PRECOMPUTED["tier_rule"] so the viewer's
 # leaderboard prose can disclose which rule produced the bands on this corpus.
 TIER_GAP_THRESHOLD = 0.05
 TIER_MIN_TIERS = 3
 TIER_FALLBACK_MIN_MODELS = 12
+TIER_MAX_TIER_SHARE = 0.5  # Fix 4: gap rule is overridden if its largest tier
+                           # exceeds this share of ranked models (share cap).
 
 
-def build_eval_groups(result_sets):
+def build_eval_groups(result_sets, active_timestamps=None):
     """Build eval groups, mirroring the viewer JS buildEvalGroups() split.
 
     Phase 1 and Phase 2 are single groups. Phase 3 result sets that carry
@@ -1870,9 +1998,34 @@ def build_eval_groups(result_sets):
     (3a — scored on run['criteria']) and a subagent group (3b — scored on
     run['subagent_criteria']). The eval-group semantics here must stay in
     lockstep with the template JS so precomputed and JS-derived numbers agree.
+
+    Degenerate-column suppression (v3.5.0, Fix 3): a result set contributes a
+    leaderboard column group only if it clears three gates. These skips are
+    COLUMN-DERIVATION-SCOPED — the underlying runs still count in the all-runs
+    aggregates (consistency, per_case, cost, duration), which iterate DATA.runs
+    directly rather than through eval groups:
+      1. phase != "unknown" — detect_phase() falls back to "unknown" on
+         empty/aborted/mid-write summary.json sets whose criteria match no
+         known phase marker; such a set must not spawn an "Unknown Phase"
+         column.
+      2. the set has >= 1 completed (loaded) run — `active_timestamps` is the
+         set of result_set timestamps present in the loaded runs (post
+         load-time no-signal exclusion). A set with zero loaded runs produces
+         only an empty column. When active_timestamps is None the gate is
+         disabled (back-compat).
+      3. a dispatch_compliance set lacking subagent criterion names is FOLDED
+         into the dispatch group (3a) rather than emitting a bare, second
+         `dispatch_compliance` column — its main criteria are scored exactly
+         like any other 3a set.
     """
     gmap = {}
     for rs in result_sets:
+        # Gate 1: skip the Unknown-Phase fallback bucket.
+        if rs["phase"] == "unknown":
+            continue
+        # Gate 2: skip sets with no loaded/completed runs (empty column).
+        if active_timestamps is not None and rs["timestamp"] not in active_timestamps:
+            continue
         if rs["phase"] == "dispatch_compliance" and rs.get("subagent_criterion_names"):
             gid = "dispatch_compliance_dispatch"
             if gid not in gmap:
@@ -1890,6 +2043,18 @@ def build_eval_groups(result_sets):
                     "label": "Phase 3b \u2014 Subagent Behavior",
                     "timestamps": [], "is_subagent": True,
                     "criterion_names": list(rs["subagent_criterion_names"]),
+                }
+            gmap[gid]["timestamps"].append(rs["timestamp"])
+        elif rs["phase"] == "dispatch_compliance":
+            # Gate 3: subagent-less dc set — fold into the 3a dispatch group
+            # instead of emitting a bare `dispatch_compliance` column.
+            gid = "dispatch_compliance_dispatch"
+            if gid not in gmap:
+                gmap[gid] = {
+                    "id": gid, "phase": rs["phase"],
+                    "label": "Phase 3a — Dispatch Compliance",
+                    "timestamps": [], "is_subagent": False,
+                    "criterion_names": list(rs["criterion_names"]),
                 }
             gmap[gid]["timestamps"].append(rs["timestamp"])
         else:
@@ -1919,7 +2084,10 @@ def build_precomputed(result_sets, cases, runs, generation_params,
                       model_pricing=None, anth_token_totals=None,
                       reconciliation=None):
     """Compute the derived-metrics bundle embedded as PRECOMPUTED."""
-    groups = build_eval_groups(result_sets)
+    # active_timestamps drives Fix 3 Gate 2: only result sets with >= 1 loaded
+    # (completed, post-exclusion) run may spawn a leaderboard column.
+    active_timestamps = {r["result_set"] for r in runs}
+    groups = build_eval_groups(result_sets, active_timestamps)
     group_ts = {g["id"]: set(g["timestamps"]) for g in groups}
     models = sorted({r["model"] for r in runs})
     phase_lookup = {rs["timestamp"]: rs["phase"] for rs in result_sets}
@@ -2063,15 +2231,24 @@ def build_precomputed(result_sets, cases, runs, generation_params,
             entry["tier"] = tiers[-1]["label"]
             prev_score = entry["score"]
         tier_rule = {"method": "gap", "gap_threshold": TIER_GAP_THRESHOLD}
-        # Stage 2 (fallback): on a large corpus whose composites form a
-        # near-continuum, the gap rule degenerates to a single band. If it
-        # produced fewer than TIER_MIN_TIERS tiers across >=
-        # TIER_FALLBACK_MIN_MODELS models, band instead by which quarter of
-        # the composite range [min, max] each score falls in. Walking the
-        # descending ranking, band indices are non-decreasing, so a band
-        # change starts a new tier; empty bands are skipped and labels stay
-        # contiguous.
-        if len(ranked) >= TIER_FALLBACK_MIN_MODELS and len(tiers) < TIER_MIN_TIERS:
+        # Stage 2 (fallback): on a large corpus (>= TIER_FALLBACK_MIN_MODELS)
+        # the gap rule is overridden by range-quartile banding when it
+        # degenerates in either of two ways — too few tiers (near-continuum),
+        # or a single tier dominating the field (v3.5.0, Fix 4 share cap:
+        # largest tier > TIER_MAX_TIER_SHARE of ranked models, even with >= 3
+        # tiers). Both cases band by which quarter of the composite range
+        # [min, max] each score falls in. Walking the descending ranking, band
+        # indices are non-decreasing, so a band change starts a new tier; empty
+        # bands are skipped and labels stay contiguous.
+        largest_tier_share = (
+            max((len(t["models"]) for t in tiers), default=0) / len(ranked)
+            if ranked else 0
+        )
+        share_cap_exceeded = largest_tier_share > TIER_MAX_TIER_SHARE
+        too_few_tiers = len(tiers) < TIER_MIN_TIERS
+        if len(ranked) >= TIER_FALLBACK_MIN_MODELS and (
+            too_few_tiers or share_cap_exceeded
+        ):
             hi = ranked[0][1]["score"]
             lo = ranked[-1][1]["score"]
             span = hi - lo
@@ -2087,8 +2264,15 @@ def build_precomputed(result_sets, cases, runs, generation_params,
                         prev_band = band
                     tiers[-1]["models"].append(model)
                     entry["tier"] = tiers[-1]["label"]
-                tier_rule = {"method": "range_quartiles",
-                             "gap_threshold": TIER_GAP_THRESHOLD}
+                tier_rule = {
+                    "method": "range_quartiles",
+                    "gap_threshold": TIER_GAP_THRESHOLD,
+                    # Which degeneracy forced the fallback (Fix 4 disclosure).
+                    "fallback_trigger": (
+                        "min_tiers" if too_few_tiers else "share_cap"
+                    ),
+                    "max_tier_share": TIER_MAX_TIER_SHARE,
+                }
         return tiers, tier_rule
 
     tiers, tier_rule = compute_tiers_for(composite)
@@ -2225,21 +2409,41 @@ def build_precomputed(result_sets, cases, runs, generation_params,
             if run.get("billing_grade_cost_eligible") is False
         ]
         if incompatible:
-            reasons = sorted({
-                run.get("billing_grade_cost_exclusion_reason")
-                for run in incompatible
-                if run.get("billing_grade_cost_exclusion_reason")
-            })
-            cost["omitted_models"].append({
-                "model": model,
-                "providers": providers,
-                "reason": (
-                    reasons[0] if len(reasons) == 1
-                    else "mixed_incompatible_billing_treatments"
-                ),
-                "behavioral_scores_retained": True,
-            })
-            continue
+            # A model flagged not-billing-grade (e.g. chatgpt-subscription:
+            # subscription access, never invoiced per token). v3.5.0 (Fix 2):
+            # if an api-equivalent counterfactual price schedule exists for the
+            # model, price it on that explicit basis instead of omitting it —
+            # the battery figure is already a counterfactual (uncached list
+            # rates) for every provider, so an api-equivalent GPT estimate is
+            # directly comparable. We deliberately do NOT flip the run/set-level
+            # billing_grade_cost_eligible flag: these models remain correctly
+            # disclosed as not-invoiced in the run-detail ledger, and only the
+            # counterfactual battery estimate includes them (tagged api-equiv).
+            # Models with no api-equivalent schedule are omitted exactly as
+            # before.
+            p_api = pricing.get(model)
+            has_api_equiv = (
+                isinstance(p_api, dict)
+                and p_api.get("pricing_basis") == "api-equivalent"
+                and p_api.get("input_per_million") is not None
+                and p_api.get("output_per_million") is not None
+            )
+            if not has_api_equiv:
+                reasons = sorted({
+                    run.get("billing_grade_cost_exclusion_reason")
+                    for run in incompatible
+                    if run.get("billing_grade_cost_exclusion_reason")
+                })
+                cost["omitted_models"].append({
+                    "model": model,
+                    "providers": providers,
+                    "reason": (
+                        reasons[0] if len(reasons) == 1
+                        else "mixed_incompatible_billing_treatments"
+                    ),
+                    "behavioral_scores_retained": True,
+                })
+                continue
         p = pricing.get(model)
         if not p:
             continue
@@ -2287,12 +2491,19 @@ def build_precomputed(result_sets, cases, runs, generation_params,
                       + agg["cache_creation"]) / n
         output_side = agg["output"] / n
         per_run = (input_side * pm["input"] + output_side * pm["output"]) / 1e6
+        # Basis tag distinguishes the two live-token lanes sharing this loop:
+        # Anthropic mixes are "corpus-live" (billing-grade usage meter);
+        # chatgpt-subscription GPT mixes are "api-equivalent" (v3.5.0, Fix 2 —
+        # counterfactual list price, not invoiced). The template surfaces the
+        # distinction as an "api-equiv" marker on the leaderboard cost cell.
+        model_basis = (pricing.get(model, {}) or {}).get("pricing_basis")
         battery_models[model] = {
             "est_cost_per_run": rnd(per_run),
             "est_battery_cost": rnd(per_run * battery_size, 2),
             "tokens_per_run": round(input_side + output_side),
             "n_runs": n,
-            "basis": "corpus-live",
+            "basis": ("api-equivalent" if model_basis == "api-equivalent"
+                      else "corpus-live"),
         }
 
     if reconciliation:

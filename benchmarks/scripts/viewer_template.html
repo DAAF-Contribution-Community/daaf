@@ -589,7 +589,12 @@ body.nav-rendered #phases,body.nav-rendered #cases{
   border:1px solid var(--border-1); overflow:hidden;
 }
 .lb-bar-fill{ position:absolute; left:0; top:0; bottom:0; background:rgba(var(--c-pass-rgb),.75); }
-.lb-bar-tick{ position:absolute; top:0; bottom:0; width:1px; background:var(--text-1); opacity:.7; }
+/* Composite-bar component markers (v3.5.0, Fix 5): small hollow circles
+   (stroke = tick color, transparent fill), vertically centered on the bar and
+   horizontally centered on the component's left:X% position. Replaces the
+   former 1px vertical tick; positioning logic in the renderer is unchanged. */
+.lb-bar-tick{ position:absolute; top:50%; width:6px; height:6px; margin-top:-3px; margin-left:-3px; border-radius:50%; border:1px solid var(--text-1); background:transparent; opacity:.85; box-sizing:border-box; }
+.lb-api-equiv{ display:inline-block; margin-left:4px; padding:0 4px; font-size:9px; font-weight:600; line-height:1.5; letter-spacing:.02em; border:1px solid var(--border-1); border-radius:3px; color:var(--text-2); vertical-align:middle; text-transform:uppercase; }
 .lb-cell{ text-align:center; }
 .lb-cell .hm-cell{ min-width:64px; }
 .lb-n{ display:block; font-size:9px; font-weight:400; opacity:.85; }
@@ -2004,7 +2009,13 @@ function batteryMult(m){
   var mu=bm.cost_multiplier_vs_ref!=null?bm.cost_multiplier_vs_ref
     :((refCost&&refCost>0&&bm.est_battery_cost!=null)?bm.est_battery_cost/refCost:null);
   if(mu==null) return null;
-  return {mult:mu,stale:!!bm.stale};
+  /* basis (v3.5.0, Fix 2): three token-mix provenances — "corpus-live"
+     (Anthropic, from result.json usage), "billing-snapshot-YYYY-MM-DD"
+     (OpenRouter, from the derived reconciliation snapshot), and
+     "api-equivalent" (chatgpt-subscription GPT lane, counterfactual list
+     price, never invoiced). Dollars are always uncached-list-rate
+     normalized. The leaderboard badges only api-equivalent rows. */
+  return {mult:mu,stale:!!bm.stale,basis:bm.basis||null};
 }
 
 /* Battery-duration multiplier lookup (v3.3.0), the latency twin of
@@ -2064,7 +2075,17 @@ function runPhase(run){
 var evalGroups = [];
 (function buildEvalGroups(){
   var gmap={};
+  /* Degenerate-column suppression (v3.5.0, Fix 3) — lockstep with
+     build_eval_groups() in the generator. A result set spawns a column only
+     if it (1) is not the "unknown" phase fallback, (2) has >= 1 loaded run,
+     and (3) — for a subagent-less dispatch_compliance set — is folded into
+     the 3a dispatch group rather than emitting a bare column. Suppression is
+     column-scoped: runs still count in the all-runs (DATA.runs) aggregates. */
+  var activeTs={};
+  (DATA.runs||[]).forEach(function(r){ if(r&&r.result_set) activeTs[r.result_set]=true; });
   DATA.result_sets.forEach(function(rs){
+    if(rs.phase === "unknown") return;              /* Gate 1 */
+    if(!activeTs[rs.timestamp]) return;             /* Gate 2 */
     if(rs.phase === "dispatch_compliance" && rs.subagent_criterion_names && rs.subagent_criterion_names.length > 0){
       var idD=rs.phase+"_dispatch";
       if(!gmap[idD]) gmap[idD]={id:idD,phase:rs.phase,label:"Phase 3a — Dispatch Compliance",timestamps:[],criterion_names:rs.criterion_names.slice(),is_subagent:false};
@@ -2072,6 +2093,10 @@ var evalGroups = [];
       var idS=rs.phase+"_subagent";
       if(!gmap[idS]) gmap[idS]={id:idS,phase:rs.phase,label:"Phase 3b — Subagent Behavior",timestamps:[],criterion_names:rs.subagent_criterion_names.slice(),is_subagent:true};
       gmap[idS].timestamps.push(rs.timestamp);
+    } else if(rs.phase === "dispatch_compliance"){    /* Gate 3: fold */
+      var idF=rs.phase+"_dispatch";
+      if(!gmap[idF]) gmap[idF]={id:idF,phase:rs.phase,label:"Phase 3a — Dispatch Compliance",timestamps:[],criterion_names:rs.criterion_names.slice(),is_subagent:false};
+      gmap[idF].timestamps.push(rs.timestamp);
     } else {
       var id=rs.phase;
       if(!gmap[id]) gmap[id]={id:id,phase:rs.phase,label:rs.phase_label,timestamps:[],criterion_names:rs.criterion_names.slice(),is_subagent:false};
@@ -2787,10 +2812,14 @@ function renderLeaderboard(container){
        disclosure). */
     var b=batteryMult(m);
     if(b){
+      var apiEquiv=b.basis&&b.basis.indexOf('api-equivalent')===0;
       html+='<td class="lb-cost" title="Est. cost to run the full battery once \u2248 '+
         fmtMult(b.mult)+' Opus 4.8\u2019s (= 1.0\u00d7); uncached list rates \u00d7 observed token mix \u2014 defined under Cost vs. Performance'+
+        (apiEquiv?' \u2014 API-equivalent counterfactual pricing (ChatGPT-subscription lane: list rates, never invoiced), not corpus-billed spend':'')+
         (b.stale?' \u26a0 token mix from a billing snapshot that predates this model\u2019s newest corpus runs':'')+
-        '">'+fmtMult(b.mult)+'</td>';
+        '">'+fmtMult(b.mult)+
+        (apiEquiv?' <span class="lb-api-equiv" aria-label="API-equivalent counterfactual pricing">api-equiv</span>':'')+
+        '</td>';
     } else {
       html+='<td class="lb-cost text-muted">&mdash;</td>';
     }

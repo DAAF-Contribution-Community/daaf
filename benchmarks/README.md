@@ -892,7 +892,10 @@ key takeaways with a cost-performance preview, about, leaderboard, cost
 vs. performance, phase deep-dives, cases & consistency, run explorer, and
 provenance. The leaderboard composite is the unweighted mean of five
 per-phase Perfect rates (P1, P2, P3a, P3b, P4); tier bands are derived
-mechanically from gaps in composite score. Models lacking runs for a
+mechanically from gaps in composite score, with an equal-width range-quartile
+fallback when the gap rule degenerates — either too few tiers on a
+near-continuum, or (v3.5.0) a single tier holding more than half the ranked
+models. Models lacking runs for a
 component are scored on available components with a visible "partial"
 marker. Cost vs. Performance has a phase-basis selector. To add a new
 phase, follow the guide above `PHASE_MAP` in the generator.
@@ -946,6 +949,14 @@ disclosed on the leaderboard). Anthropic token mixes come from corpus
 `result.json`; OpenRouter from the reconciliation snapshot
 (`derived/openrouter_reconciliation_*.json`). A generation-time staleness
 guard compares corpus run counts to the snapshot and warns on drift.
+ChatGPT-subscription models (GPT-5.6 Luna/Terra/Sol) are priced on an
+explicit **`api-equivalent` counterfactual** (v3.5.0): never-invoiced GPT
+API list rates from `models.yaml` `api_equivalent_pricing.short_context`,
+same uncached basis, marked with an "api-equiv" badge on the leaderboard so
+counterfactual figures are never mistaken for invoiced spend. Note the basis
+labels (`corpus-live` / `billing-snapshot-*` / `api-equivalent`) name each
+model's **token-mix provenance** — the dollar normalization is always
+uncached list rates, never invoiced dollars.
 
 **Battery timeout-exclusion fix (2026-06-18, generator v3.1.2).** Prior
 to this fix, Anthropic token averages included timed-out runs (zeroed
