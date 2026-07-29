@@ -91,6 +91,17 @@ models:
     name: "Opus 4.5"
     provider: anthropic
     cost_tier: "high"
+    # wire_id OBSERVED 2026-07-29 (user-approved re-adjudication): the bare
+    # alias `claude-opus-4-5` resolves on the wire to its dated snapshot.
+    # Evidence: results/20260726_163821 + 20260726_171652 — all 11 substantive
+    # runs report exactly one distinct child-transcript model id,
+    # "claude-opus-4-5-20251101" (parent live records match; the 11
+    # claude-opus-4-6 parent records per run are the replayed
+    # golden/dispatch_compliance/ad_hoc_initialized.jsonl checkpoint prefix,
+    # which contains exactly 11 assistant records, all claude-opus-4-6).
+    # Without this declaration the purity gate false-failed authentic Opus 4.5
+    # runs under exact_string_equality_no_alias_normalization.
+    wire_id: "claude-opus-4-5-20251101"
     pricing:
       input: 5.00
       output: 25.00
@@ -152,11 +163,13 @@ models:
   # against Anthropic's published model list (this authoring pass had no web
   # access).
   #
-  # wire_id: deliberately OMITTED. Anthropic ids are bare slugs with no
-  # ":provider/quant" pin, so the wire form equals `id` and ModelConfig
-  # defaults comparison_model_id to `id` (harness/models.py:135-140). Every
-  # other bare-slug entry in this file likewise omits it; the wire_id field
-  # added 2026-07-24 applies only to the pinned OpenRouter entries.
+  # wire_id: deliberately OMITTED. "claude-opus-5" was OBSERVED directly on
+  # the wire (above), so the wire form equals `id` and ModelConfig defaults
+  # comparison_model_id to `id` (harness/models.py:135-140). NOTE (2026-07-29):
+  # "bare slug means wire form equals id" is NOT a safe general rule for
+  # Anthropic entries — claude-opus-4-5 resolves on the wire to its dated
+  # snapshot claude-opus-4-5-20251101 and now declares wire_id (see that
+  # entry). Declare wire_id wherever the observed wire form differs from `id`.
   #
   # PRICING PROVENANCE: mirrors opus-4-8 per user statement 2026-07-25
   # ("Opus 5 is the same price as Opus 4.8"). NOT independently verified
