@@ -263,7 +263,7 @@ h1,h2,h3{ font-family:var(--font-display); letter-spacing:-0.02em; }
    keeps scrollbar geometry plausible before first render ("auto" then reuses
    the last rendered size); hash deep-links still work — the engine renders
    the navigation target on jump (Chrome / Firefox 125+). */
-#leaderboard,#cost-performance,#run-explorer,#provenance{
+#leaderboard,#cost-performance,#run-explorer{
   content-visibility:auto;
   contain-intrinsic-size:auto 900px;
 }
@@ -289,7 +289,7 @@ h1,h2,h3{ font-family:var(--font-display); letter-spacing:-0.02em; }
    pages. (http(s) retest item: re-verify the first-click landing and
    subsequent anchor jumps post-deploy.) */
 body.nav-rendered #leaderboard,body.nav-rendered #cost-performance,
-body.nav-rendered #run-explorer,body.nav-rendered #provenance,
+body.nav-rendered #run-explorer,
 body.nav-rendered #phases,body.nav-rendered #cases{
   content-visibility:visible;
 }
@@ -593,8 +593,10 @@ body.nav-rendered #phases,body.nav-rendered #cases{
    (stroke = tick color, transparent fill), vertically centered on the bar and
    horizontally centered on the component's left:X% position. Replaces the
    former 1px vertical tick; positioning logic in the renderer is unchanged. */
-.lb-bar-tick{ position:absolute; top:50%; width:6px; height:6px; margin-top:-3px; margin-left:-3px; border-radius:50%; border:1px solid var(--text-1); background:transparent; opacity:.85; box-sizing:border-box; }
-.lb-api-equiv{ display:inline-block; margin-left:4px; padding:0 4px; font-size:9px; font-weight:600; line-height:1.5; letter-spacing:.02em; border:1px solid var(--border-1); border-radius:3px; color:var(--text-2); vertical-align:middle; text-transform:uppercase; }
+.lb-bar-tick{ position:absolute; top:50%; width:6px; height:6px; margin-top:-3px; margin-left:-3px; border-radius:50%; border:2px solid var(--text-1); background:transparent; opacity:.85; box-sizing:border-box; }
+/* .lb-api-equiv rule removed in v3.6.0 with its leaderboard badge (V4);
+   the api-equivalent basis disclosure now lives in the Relative Test Cost
+   methods prose and the cost-cell tooltip. */
 .lb-cell{ text-align:center; }
 .lb-cell .hm-cell{ min-width:64px; }
 .lb-n{ display:block; font-size:9px; font-weight:400; opacity:.85; }
@@ -1197,7 +1199,6 @@ nav.site-nav{
       <a class="toc-link" href="#phases" data-target="phases">Phase Deep-Dives</a>
       <a class="toc-link" href="#cases" data-target="cases">Cases &amp; Consistency</a>
       <a class="toc-link" href="#run-explorer" data-target="run-explorer">Run Explorer</a>
-      <a class="toc-link" href="#provenance" data-target="provenance">Provenance</a>
     </div>
     <a class="toc-top" href="#hero">&#8593; top</a>
   </div>
@@ -1721,23 +1722,12 @@ nav.site-nav{
   <div class="sec-body" id="sec-run-explorer"></div>
 </section>
 
-<!-- 9. Provenance footer -->
-<section class="doc-section" id="provenance">
-  <div class="sec-eyebrow">The Audit Trail</div>
-  <h2>Provenance</h2>
-  <p class="section-lead">
-    The audit trail for where the numbers come from: <b>one row per archived result set</b>,
-    with the DAAF git SHA and run configuration it was produced under. Run-level data
-    on disk is the source of truth; summary counts are shown for disclosure.
-  </p>
-  <div class="sec-body" id="sec-provenance"></div>
-  <p class="prov-foot">
-    Generator v<span id="prov-generator-version"></span> &middot; generated
-    __GENERATED_DISPLAY__ UTC.<br>
-    This document and the benchmark system that produced it were built with DAAF
-    (Data Analyst Augmentation Framework) tooling.
-  </p>
-</section>
+<!-- The Provenance footer section was removed in v3.6.0 (display cleanup).
+     The PRECOMPUTED.provenance data pipeline stays intact (still built and
+     embedded for inspection / other consumers); only the rendered section,
+     its TOC link, renderer, and registry entries were removed. The
+     generated-timestamp survives in the hero (#hero .gen) and DAAF/Open
+     Augments attribution survives in the site footer below. -->
 
 <!-- The #next-steps closing CTA section was removed 2026-06-12 (user
      fine-tuning round); its CTA links live on in the hero ¶1 and the About
@@ -1869,6 +1859,19 @@ function rateGlyph(step){
 
 function pct(v){ return (v*100).toFixed(0)+"%"; }
 function esc(s){ if(!s) return ""; var d=document.createElement("div"); d.textContent=s; return d.innerHTML; }
+/* Model DISPLAY name (v3.6.0): strip the trailing " (ChatGPT Subscription)"
+   access-lane suffix for RENDERING ONLY. The full name (suffix included)
+   stays the payload join key across DATA.runs[].model, pricing, and the
+   reconciliation dicts — so never strip it for object keys, color/lookup
+   (modelColor), filter comparisons, data-model attributes, sort order, or
+   exploreRuns() arguments. escModel() is the escape-a-display-model-name
+   convenience wrapper (esc(displayModelName(m))). */
+function displayModelName(m){ return String(m==null?"":m).replace(/\s*\(ChatGPT Subscription\)\s*$/,""); }
+function escModel(m){ return esc(displayModelName(m)); }
+/* Provider DISPLAY label (v3.6.0): the "chatgpt-subscription" access lane
+   renders as "chatgpt" in badges/labels. Display only — run.provider keys,
+   pricing/route lookups, and cost-eligibility logic keep the raw value. */
+function displayProvider(p){ return p==="chatgpt-subscription"?"chatgpt":(p==null?"":String(p)); }
 function truncate(s,n){ if(!s) return ""; return s.length>n ? s.substring(0,n)+"..." : s; }
 function el(id){ return document.getElementById(id); }
 function fmt(n){ return n.toLocaleString(); }
@@ -2284,7 +2287,7 @@ function initFilters(){
   var mSel=el("rx-model");
   mSel.innerHTML='<option value="">All Models</option>';
   uniqueModels().forEach(function(m){
-    mSel.innerHTML+='<option value="'+esc(m)+'">'+esc(m)+'</option>';
+    mSel.innerHTML+='<option value="'+esc(m)+'">'+escModel(m)+'</option>';
   });
   var cSel=el("rx-case");
   cSel.innerHTML='<option value="">All Cases</option>';
@@ -2649,14 +2652,14 @@ function renderLeaderboard(container){
 
   /* Finding-as-title (computed): top model, runner-up gap, tier count */
   var top=ranked[0];
-  var finding='<b>'+esc(top.model)+'</b> leads at <b>'+pct(top.e.score)+'</b> '+metricLabel+' composite';
+  var finding='<b>'+escModel(top.model)+'</b> leads at <b>'+pct(top.e.score)+'</b> '+metricLabel+' composite';
   if(ranked.length>1){
     var ru=ranked[1];
     var gapPts=Math.round((top.e.score-ru.e.score)*100);
     if(gapPts>=1){
-      finding+=' &mdash; '+gapPts+' point'+(gapPts===1?'':'s')+' clear of <b>'+esc(ru.model)+'</b> at <b>'+pct(ru.e.score)+'</b>';
+      finding+=' &mdash; '+gapPts+' point'+(gapPts===1?'':'s')+' clear of <b>'+escModel(ru.model)+'</b> at <b>'+pct(ru.e.score)+'</b>';
     } else {
-      finding+=' &mdash; effectively tied with <b>'+esc(ru.model)+'</b> at <b>'+pct(ru.e.score)+'</b>';
+      finding+=' &mdash; effectively tied with <b>'+escModel(ru.model)+'</b> at <b>'+pct(ru.e.score)+'</b>';
     }
   }
   if(tiers.length>1){
@@ -2794,8 +2797,8 @@ function renderLeaderboard(container){
     html+='<td class="lb-rank">'+rankOf[m]+'</td>';
 
     /* Model + provider chip (+ partial-data chip) */
-    html+='<td><span class="lb-model-name">'+esc(m)+'</span>'+
-      '<span class="lb-provider">'+esc(modelProvider(m))+'</span>';
+    html+='<td><span class="lb-model-name">'+escModel(m)+'</span>'+
+      '<span class="lb-provider">'+esc(displayProvider(modelProvider(m)))+'</span>';
     if(e.partial_data){
       anyPartial=true;
       var missing=(e.components_missing||[]).map(groupShort).join(", ");
@@ -2818,7 +2821,6 @@ function renderLeaderboard(container){
         (apiEquiv?' \u2014 API-equivalent counterfactual pricing (ChatGPT-subscription lane: list rates, never invoiced), not corpus-billed spend':'')+
         (b.stale?' \u26a0 token mix from a billing snapshot that predates this model\u2019s newest corpus runs':'')+
         '">'+fmtMult(b.mult)+
-        (apiEquiv?' <span class="lb-api-equiv" aria-label="API-equivalent counterfactual pricing">api-equiv</span>':'')+
         '</td>';
     } else {
       html+='<td class="lb-cost text-muted">&mdash;</td>';
@@ -2900,6 +2902,9 @@ function renderLeaderboard(container){
     '&mdash; every token priced at uncached published list rates, applied to each model\u2019s own observed token mix &mdash; '+
     'expressed as a multiple of Opus 4.8 (= 1.0\u00d7), never dollars; not measured benchmark spend. '+
     'Where a model\u2019s token-mix snapshot predates its newest runs, the cell tooltip carries a \u26a0 marker. '+
+    'For the ChatGPT-subscription GPT models, this figure is an API list-rate counterfactual: those models are '+
+    'accessed under a flat ChatGPT subscription and are never invoiced per token, so their battery cost is a '+
+    'published-list-rate estimate (basis <code>api-equivalent</code>), not corpus-billed spend. '+
     'Full definition, sources, and caveats under <a href="#cost-performance">Cost vs. Performance</a>. '+
     'Relative Duration is the estimated relative wall-clock time to run the full battery once, from each '+
     'model\u2019s summed per-run durations (parallelization-invariant) \u2014 a real-world latency proxy, also '+
@@ -3018,14 +3023,14 @@ function costOmissionNoteHtml(){
   var omitted=((PRECOMPUTED.cost||{}).omitted_models)||[];
   if(omitted.length===0) return '';
   var items=omitted.map(function(entry){
-    var providers=(entry.providers||[]).length?' ('+esc(entry.providers.join(', '))+')':'';
+    var providers=(entry.providers||[]).length?' ('+esc(entry.providers.map(displayProvider).join(', '))+')':'';
     var retained=entry.behavioral_scores_retained
       ?' remains in behavioral score views'
       :' has no behavioral-score retention flag';
     var reason=entry.reason==='subscription_access_api_equivalent_is_counterfactual_not_invoiced'
       ?'subscription access has API-equivalent counterfactual accounting that is not invoiced'
       :humanCode(entry.reason)||'its billing treatment is incompatible';
-    return '<b>'+esc(entry.model)+'</b>'+providers+retained+
+    return '<b>'+escModel(entry.model)+'</b>'+providers+retained+
       ', but is omitted from billing-grade cost charts, frontiers, relative battery estimates, and list-price tables because '+esc(reason)+'.';
   });
   return '<aside class="cost-omission-note" role="note"><span aria-hidden="true">ⓘ</span> '+
@@ -3100,13 +3105,30 @@ function pricingDetailsHtml(){
   h+='<div class="table-wrap"><table class="data-table" style="width:auto"><thead><tr><th style="cursor:default">Model</th><th style="cursor:default">Input / 1M</th><th style="cursor:default">Output / 1M</th><th style="cursor:default">Cache Read / 1M</th></tr></thead><tbody>';
   rows.forEach(function(m){
     var p=pricing[m];
-    h+='<tr><td style="font-weight:600;color:'+modelColorLight(m)+'">'+esc(m)+'</td>'+
+    h+='<tr><td style="font-weight:600;color:'+modelColorLight(m)+'">'+escModel(m)+'</td>'+
       '<td>$'+p.input_per_million.toFixed(2)+'</td>'+
       '<td>$'+p.output_per_million.toFixed(2)+'</td>'+
       '<td>'+(p.cached_input_per_million>0?'$'+p.cached_input_per_million.toFixed(2):'N/A')+'</td></tr>';
   });
   h+='</tbody></table></div></div></details>';
   return h;
+}
+
+/* Provider legend (color + shape redundancy; design record: README § 8 —
+   design system). Extracted to a shared helper in v3.6.0 so the full
+   Cost-vs-Performance chart and the intro #cvp-preview render the identical
+   legend (markers must match svgCostFrontier's point shapes exactly). */
+function costPerfLegend(pts){
+  var provSeen={};
+  pts.forEach(function(p){ provSeen[p.provider||"unknown"]=true; });
+  var legend='<div class="cp-legend">';
+  if(provSeen.anthropic) legend+='<span><svg width="14" height="14"><circle cx="7" cy="7" r="5" style="fill:var(--accent-light)"/></svg>Anthropic</span>';
+  if(provSeen.openrouter) legend+='<span><svg width="14" height="14"><path d="M7 1.5 L12.5 7 L7 12.5 L1.5 7 Z" style="fill:var(--c-partial)"/></svg>OpenRouter</span>';
+  if(provSeen["chatgpt-subscription"]) legend+='<span><svg width="14" height="14"><path d="M7 2 L12 11.5 L2 11.5 Z" style="fill:var(--c-pass)"/></svg>ChatGPT</span>';
+  if(provSeen.unknown) legend+='<span><svg width="14" height="14"><rect x="2.5" y="2.5" width="9" height="9" style="fill:var(--c-neutral)"/></svg>other provider</span>';
+  legend+='<span><svg width="26" height="14"><line x1="1" y1="7" x2="25" y2="7" stroke="rgba(52,211,153,.8)" stroke-width="1.5" stroke-dasharray="4 3"/></svg>efficiency frontier (outlined points)</span>';
+  legend+='</div>';
+  return legend;
 }
 
 function renderCostPerf(container){
@@ -3180,7 +3202,7 @@ function renderCostPerf(container){
   var priceUnit=isRel?" vs Opus 4.8":"/Mtok";
   if(frontier.length>0){
     var fbits=frontier.map(function(f){
-      return '<b>'+esc(f.model)+'</b> ('+(isRel?fmtMult(f.price):fmtCost(f.price)+priceUnit)+', '+pct(f.score)+')';
+      return '<b>'+escModel(f.model)+'</b> ('+(isRel?fmtMult(f.price):fmtCost(f.price)+priceUnit)+', '+pct(f.score)+')';
     });
     finding=frontier.length+' of '+pts.length+' models sit on the efficiency frontier &mdash; '+
       fbits.join(' &rarr; ')+' &mdash; every other model is beaten on both price and '+esc(yShort)+' by one of them.';
@@ -3190,7 +3212,7 @@ function renderCostPerf(container){
         var ratio=topF.price/knee.price;
         var share=Math.round(knee.score/topF.score*100);
         if(ratio>=1.5){
-          finding+=' <b>'+esc(knee.model)+'</b> reaches '+share+'% of <b>'+esc(topF.model)+
+          finding+=' <b>'+escModel(knee.model)+'</b> reaches '+share+'% of <b>'+escModel(topF.model)+
             '</b>\u2019s '+esc(yShort)+' at roughly 1/'+ratio.toFixed(1)+' of the '+
             (isDur?'estimated battery duration':(isBat?'estimated battery cost':esc(formDef.label)+' price'))+'.';
         }
@@ -3200,15 +3222,7 @@ function renderCostPerf(container){
     finding='No efficiency frontier could be computed for this corpus under '+esc(yShort)+'.';
   }
 
-  /* Provider legend (color + shape redundancy; design record: README § 8 — design system) */
-  var provSeen={};
-  pts.forEach(function(p){ provSeen[p.provider||"unknown"]=true; });
-  var legend='<div class="cp-legend">';
-  if(provSeen.anthropic) legend+='<span><svg width="14" height="14"><circle cx="7" cy="7" r="5" style="fill:var(--accent-light)"/></svg>Anthropic API</span>';
-  if(provSeen.openrouter) legend+='<span><svg width="14" height="14"><path d="M7 1.5 L12.5 7 L7 12.5 L1.5 7 Z" style="fill:var(--c-partial)"/></svg>OpenRouter</span>';
-  if(provSeen.unknown) legend+='<span><svg width="14" height="14"><rect x="2.5" y="2.5" width="9" height="9" style="fill:var(--c-neutral)"/></svg>other provider</span>';
-  legend+='<span><svg width="26" height="14"><line x1="1" y1="7" x2="25" y2="7" stroke="rgba(52,211,153,.8)" stroke-width="1.5" stroke-dasharray="4 3"/></svg>efficiency frontier (outlined points)</span>';
-  legend+='</div>';
+  var legend=costPerfLegend(pts);
 
   /* Footnotes: active selections + omitted-model count (if any) +
      published-pricing-only disclosure + the battery disclosure block —
@@ -3281,7 +3295,8 @@ function renderCostPerfPreview(){
   }
   slot.innerHTML=svgCostFrontier(d.pts,d.frontier,
     COST_FORMS[0].axis,"Composite Perfect rate",
-    "Est. relative cost"," vs Opus 4.8",true,{H:330});
+    "Est. relative cost"," vs Opus 4.8",true,{H:330})+
+    costPerfLegend(d.pts);
 }
 
 /* =================================================================
@@ -3390,7 +3405,7 @@ function pdGroupHtml(g,agg){
     }
     if(co.top_model){
       var tm=co.top_model;
-      cbits.push('top model: <b>'+esc(tm.model)+'</b> at <b>'+pct(tm.perfect_rate)+
+      cbits.push('top model: <b>'+escModel(tm.model)+'</b> at <b>'+pct(tm.perfect_rate)+
         '</b> perfect ('+fmt(tm.n_runs)+' runs)');
     }
     calloutHtml='<div class="pd-callout">'+cbits.join('; ')+'.</div>';
@@ -3415,7 +3430,7 @@ function pdGroupHtml(g,agg){
 
   models.forEach(function(m){
     var cellPM=(pmp[m]||{})[gid];
-    html+='<tr><td class="pd-model">'+esc(m)+
+    html+='<tr><td class="pd-model">'+escModel(m)+
       (cellPM?'<span class="pd-row-rate">'+pct(cellPM.perfect_rate)+' perfect, '+
         cellPM.perfect_count+'/'+cellPM.n_runs+'</span>':'')+'</td>';
     cols.forEach(function(k,i){
@@ -3423,7 +3438,7 @@ function pdGroupHtml(g,agg){
       var cell=(byModel[m]||{})[k];
       if(!cell||cell.total===0){
         html+='<td class="pd-cell rs-na'+sep+'" title="'+esc(k)+' \u2014 not applicable: never scored on '+
-          esc(m)+'\u2019s runs in this group">&mdash;</td>';
+          escModel(m)+'\u2019s runs in this group">&mdash;</td>';
         return;
       }
       var rate=cell.passed/cell.total;
@@ -3431,7 +3446,7 @@ function pdGroupHtml(g,agg){
       /* Criterion-level deep link: lands on the Run Explorer with the
          (model, group, criterion) filters pre-applied — the criterion
          filter keeps exactly the runs this cell's denominator counts. */
-      html+='<td class="pd-cell rs-'+step+sep+'" title="'+esc(k)+' \u2014 '+esc(m)+': '+
+      html+='<td class="pd-cell rs-'+step+sep+'" title="'+esc(k)+' \u2014 '+escModel(m)+': '+
         cell.passed+'/'+cell.total+' passed ('+pct(rate)+') \u2014 click to open these runs" '+
         'onclick="exploreRuns(&#39;'+esc(m)+'&#39;,&#39;'+esc(gid)+'&#39;,null,&#39;'+esc(k)+'&#39;)">'+
         rateGlyph(step)+pct(rate)+'</td>';
@@ -3615,7 +3630,7 @@ function agreementGroupHtml(g){
   html+='<th class="pd-crit-th" title="Cross-model difficulty: perfect reps over all reps of this case in this group"><span class="pd-crit-rot">All models</span></th>';
   models.forEach(function(m){
     var cell=(pmp[m]||{})[gid];
-    html+='<th class="pd-crit-th" title="'+esc(m)+(cell?' \u2014 '+pct(cell.perfect_rate)+' perfect in this group':'')+'"><span class="pd-crit-rot">'+esc(m)+'</span></th>';
+    html+='<th class="pd-crit-th" title="'+escModel(m)+(cell?' \u2014 '+pct(cell.perfect_rate)+' perfect in this group':'')+'"><span class="pd-crit-rot">'+escModel(m)+'</span></th>';
   });
   html+='</tr></thead><tbody>';
 
@@ -3629,11 +3644,11 @@ function agreementGroupHtml(g){
     models.forEach(function(m){
       var c=byCase[cid][m];
       if(!c||c.n===0){
-        html+='<td class="pd-cell rs-na" title="'+esc(m)+' never ran '+esc(cid)+' in this group">&mdash;</td>';
+        html+='<td class="pd-cell rs-na" title="'+escModel(m)+' never ran '+esc(cid)+' in this group">&mdash;</td>';
         return;
       }
       var step=konStep(c.k,c.n);
-      html+='<td class="pd-cell rs-'+step+'" title="'+esc(m)+' on '+esc(cid)+': '+c.k+' of '+c.n+' reps perfect'+
+      html+='<td class="pd-cell rs-'+step+'" title="'+escModel(m)+' on '+esc(cid)+': '+c.k+' of '+c.n+' reps perfect'+
         (c.k>0&&c.k<c.n?' \u2014 split reps (flaky)':'')+' \u2014 click to open these runs" '+
         'onclick="exploreRuns(&#39;'+esc(m)+'&#39;,&#39;'+esc(gid)+'&#39;,&#39;'+esc(cid)+'&#39;)">'+
         rateGlyph(step)+c.k+'/'+c.n+'</td>';
@@ -3694,7 +3709,7 @@ function caseMatrixHtml(group,cid){
   var html='<div class="section-title" style="margin:14px 0 6px">'+esc(group.label)+' &mdash; per-rep marks</div>';
   html+='<div style="overflow-x:auto"><table class="data-table"><thead><tr>';
   html+='<th style="width:60px"></th><th>Criterion</th><th style="width:36px">Tier</th>';
-  models.forEach(function(m){ html+='<th style="text-align:center;color:'+modelColorLight(m)+'">'+esc(m)+'</th>'; });
+  models.forEach(function(m){ html+='<th style="text-align:center;color:'+modelColorLight(m)+'">'+escModel(m)+'</th>'; });
   html+='</tr></thead><tbody>';
 
   for(var rep=0;rep<=maxRep;rep++){
@@ -3857,7 +3872,7 @@ function renderRunExplorer(container){
       html+='<div class="run-list-item'+(state.selectedRunIdx===i?" selected":"")+'" data-ridx="'+i+'" onclick="selectRun('+i+')">';
       html+='<span class="st-glyph st-'+st+'" title="'+st+' \u2014 '+(GRADE_TIP[st]||"")+'">'+(GRADE_GLYPH[st]||"&mdash;")+'</span>';
       html+='<span class="case-label">'+esc(r.case_id)+'</span>';
-      html+='<span class="model-label">'+esc(r.model)+'</span>';
+      html+='<span class="model-label">'+escModel(r.model)+'</span>';
       html+='<span class="text-xs text-muted">rep'+r.rep+'</span>';
       html+='<span class="text-xs text-muted">'+(isObserved(r.duration_s)?r.duration_s.toFixed(0)+'s':'Unavailable')+'</span>';
       html+='</div>';
@@ -3962,8 +3977,7 @@ function transcriptPlaceholder(r){
       var idx=(DATA.transcripts_index||{})[r.result_set]||{};
       msg+=' The transcript data file ('+esc(idx.file||"")+') was not reachable.';
     }
-    msg+=' The archived run directory is named at the bottom of this panel; '+
-      'the Provenance section lists its result set.';
+    msg+=' The archived run directory is named at the bottom of this panel.';
     slot.innerHTML='<div class="section-title" style="margin-top:16px">Condensed Transcript</div>'+
       '<div class="card" style="border-color:var(--c-partial);font-size:12px;line-height:1.6">'+msg+'</div>';
   });
@@ -4166,7 +4180,7 @@ function renderRunDetail(r){
   var gradeBadge={perfect:"badge-pass",partial:"badge-partial",failed:"badge-fail",ungraded:"badge-neutral"};
   html+='<div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:12px">';
   html+='<span style="font-size:16px;font-weight:700">'+esc(r.case_id)+'</span>';
-  html+='<span class="badge" style="background:'+modelColor(r.model)+';color:#fff">'+esc(r.model)+'</span>';
+  html+='<span class="badge" style="background:'+modelColor(r.model)+';color:#fff">'+escModel(r.model)+'</span>';
   html+='<span class="badge">Rep '+r.rep+'</span>';
   html+='<span class="badge '+(gradeBadge[st]||"badge-neutral")+'" title="Grade: '+(GRADE_TIP[st]||"")+'">'+(GRADE_GLYPH[st]||"")+' '+st.toUpperCase()+'</span>';
   if(r.subcategory) html+='<span class="badge" title="Case subcategory">'+esc(r.subcategory)+'</span>';
@@ -4346,94 +4360,11 @@ function renderTranscriptBlocks(r,tx,stx){
   return html;
 }
 
-/* =================================================================
-   SECTION 9: PROVENANCE FOOTER
-   One row per result set from PRECOMPUTED.provenance; rows where the
-   on-disk run count disagrees with summary.json are highlighted.
-   ================================================================= */
-
-function renderProvenance(container){
-  var prov=PRECOMPUTED.provenance||[];
-  var anyDisc=false;
-
-  function resultSetByTimestamp(ts){
-    for(var i=0;i<DATA.result_sets.length;i++){
-      if(DATA.result_sets[i].timestamp===ts) return DATA.result_sets[i];
-    }
-    return null;
-  }
-  function resultSetRoutes(ts){
-    var seen={};
-    DATA.runs.forEach(function(run){
-      if(run.result_set===ts&&isObserved(run.route_type)&&run.route_type!=='') seen[run.route_type]=true;
-    });
-    return Object.keys(seen).sort();
-  }
-  function coverageHtml(coverage,keys){
-    if(!coverage) return evidenceMissing('Not reported');
-    return keys.map(function(key){
-      return esc(humanCode(key))+': '+countEvidence(coverage[key],'Unavailable');
-    }).join('<br>');
-  }
-
-  var html='<div class="card"><table class="data-table"><thead><tr>'+
-    '<th scope="col">Result Set</th><th scope="col">Phase</th><th scope="col">Schema</th>'+
-    '<th scope="col">Observed provider / route</th><th scope="col">Accounting / purity coverage</th>'+
-    '<th scope="col">Cost surface</th><th scope="col">DAAF Git SHA</th><th scope="col">Config</th>'+
-    '<th scope="col">Runs (disk / summary)</th></tr></thead><tbody>';
-  prov.forEach(function(p){
-    var rs=resultSetByTimestamp(p.timestamp)||{};
-    var cfg=p.config||null;
-    var cfgStr='Unavailable';
-    if(cfg){
-      var bits=[];
-      if(cfg.reps!=null) bits.push('reps='+cfg.reps);
-      if(cfg.parallel!=null) bits.push(cfg.parallel?'parallel':'sequential');
-      if(cfg.launch_delay_s!=null) bits.push('delay='+cfg.launch_delay_s+'s');
-      bits.push('timeout='+(cfg.timeout_override!=null?cfg.timeout_override+'s':'tier default'));
-      cfgStr=bits.join(', ');
-    }
-    var disc=!!p.run_count_discrepancy;
-    if(disc) anyDisc=true;
-    var providers=p.providers||rs.providers||[];
-    var routes=resultSetRoutes(p.timestamp);
-    var schemaVersion=isObserved(p.schema_version)?p.schema_version:(isObserved(rs.schema_version)?rs.schema_version:1);
-    var classification=p.schema_classification||rs.schema_classification||(schemaVersion>=2?'schema_v2':'legacy_schema_v1');
-    var schemaSource=rs.schema_version_source||'Not reported';
-    var eligible=p.billing_grade_cost_eligible!==false;
-    var costStatus=eligible
-      ?statusEvidence('pass','✓','Billing-grade cost eligible')
-      :statusEvidence('partial','⊘','Excluded from billing-grade cost views');
-    var costReason=p.billing_grade_cost_exclusion_reason||rs.billing_grade_cost_exclusion_reason;
-    var totalCost=isObserved(rs.total_cost_usd)?usdEvidence(rs.total_cost_usd,'Unavailable'):evidenceMissing('Unavailable');
-
-    html+='<tr'+(disc?' class="prov-discrepancy"':'')+'>';
-    html+='<td><code>'+esc(p.timestamp)+'</code></td>';
-    html+='<td>'+esc(p.phase_label||p.phase)+'</td>';
-    html+='<td class="text-xs"><b>v'+esc(String(schemaVersion))+'</b><br>'+esc(humanCode(classification))+'<br><span class="text-muted">source: '+esc(humanCode(schemaSource))+'</span></td>';
-    html+='<td class="text-xs"><b>Provider:</b> '+(providers.length?providers.map(function(v){return '<code>'+esc(v)+'</code>';}).join(', '):evidenceMissing('Not observed'))+
-      '<br><b>Route:</b> '+(routes.length?routes.map(function(v){return '<code>'+esc(v)+'</code>';}).join(', '):evidenceMissing('Not observed'))+'</td>';
-    html+='<td class="text-xs"><b>Accounting</b><br>'+coverageHtml(rs.accounting_coverage,['exact','scenario_only','unavailable','legacy_numeric'])+
-      '<br><b>Purity</b><br>'+coverageHtml(p.purity_coverage||rs.purity_coverage,['verified','failed','unverifiable'])+'</td>';
-    html+='<td class="text-xs">'+costStatus+'<br><b>Archived total:</b> '+totalCost+
-      (!eligible?'<br>Behavioral scores retained; billing-grade cost surfaces omit this condition.':'')+
-      (costReason?'<br><code>'+esc(costReason)+'</code>':'')+'</td>';
-    html+='<td><code>'+esc(p.daaf_git_sha||'Unavailable')+'</code></td>';
-    html+='<td class="text-xs">'+esc(cfgStr)+'</td>';
-    html+='<td>'+countEvidence(p.disk_run_count,'Unavailable')+' / '+countEvidence(p.summary_total_runs,'Unavailable')+
-      (disc?' <span class="badge badge-partial">! mismatch</span>':'')+'</td>';
-    html+='</tr>';
-  });
-  html+='</tbody></table></div>';
-  if(anyDisc){
-    html+='<p class="prov-foot">Highlighted rows: summary.json reports a different run count '+
-      'than the run directories actually on disk. Run-level data on disk is the source of '+
-      'truth; every aggregate on this page is computed from it.</p>';
-  }
-
-  container.innerHTML=html;
-  el('prov-generator-version').textContent=DATA.generator_version||'?';
-}
+/* SECTION 9 (PROVENANCE FOOTER) renderer removed in v3.6.0 (display
+   cleanup). PRECOMPUTED.provenance is still built and embedded for
+   inspection / other consumers; only the rendered section, its TOC link,
+   this renderer, and its sectionRenderers/SECTION_IDS registrations were
+   removed. */
 
 /* =================================================================
    CHART HELPERS
@@ -4561,9 +4492,9 @@ function svgCostFrontier(pts,frontier,axisLabel,yLabel,priceName,priceUnit,relat
   pts.forEach(function(p){
     var px=xPos(p.price), py=yPos(p.score);
     var prov=p.provider||"unknown";
-    var fillVar=prov==="anthropic"?"var(--accent-light)":(prov==="openrouter"?"var(--c-partial)":"var(--c-neutral)");
+    var fillVar=prov==="anthropic"?"var(--accent-light)":(prov==="openrouter"?"var(--c-partial)":(prov==="chatgpt-subscription"?"var(--c-pass)":"var(--c-neutral)"));
     var ring=onFrontier[p.model]?' stroke="#f0f4f8" stroke-width="1.2"':'';
-    var tipHtml=esc(p.model)+'<br>'+esc(yLabel)+': <b>'+pct(p.score)+'</b><br>'+esc(priceName)+': <b>'+fmtPoint(p.price)+esc(priceUnit)+'</b>'+
+    var tipHtml=escModel(p.model)+'<br>'+esc(yLabel)+': <b>'+pct(p.score)+'</b><br>'+esc(priceName)+': <b>'+fmtPoint(p.price)+esc(priceUnit)+'</b>'+
       '<br>List rates: $'+p.pm.input.toFixed(2)+' in / $'+p.pm.output.toFixed(2)+' out per 1M tokens'+
       (onFrontier[p.model]?'<br><b>On the efficiency frontier</b>':'');
     /* No <title> children on the points (removed 2026-06-12, user
@@ -4576,6 +4507,12 @@ function svgCostFrontier(pts,frontier,axisLabel,yLabel,priceName,priceUnit,relat
         ' L'+px.toFixed(1)+' '+(py+6).toFixed(1)+' L'+(px-6).toFixed(1)+' '+py.toFixed(1)+' Z"'+common+'/>';
     } else if(prov==="anthropic"){
       svg+='<circle cx="'+px.toFixed(1)+'" cy="'+py.toFixed(1)+'" r="5"'+common+'/>';
+    } else if(prov==="chatgpt-subscription"){
+      /* ChatGPT lane (v3.6.0): distinct triangle + --c-pass fill so the
+         chatgpt-subscription GPT points are their own legend category
+         rather than falling through to the generic "other provider" square. */
+      svg+='<path d="M'+px.toFixed(1)+' '+(py-6).toFixed(1)+' L'+(px+6).toFixed(1)+' '+(py+5).toFixed(1)+
+        ' L'+(px-6).toFixed(1)+' '+(py+5).toFixed(1)+' Z"'+common+'/>';
     } else {
       svg+='<rect x="'+(px-4.5).toFixed(1)+'" y="'+(py-4.5).toFixed(1)+'" width="9" height="9"'+common+'/>';
     }
@@ -4605,7 +4542,7 @@ function svgCostFrontier(pts,frontier,axisLabel,yLabel,priceName,priceUnit,relat
     while(collides()&&guard<20){ ly+=11; guard++; }
     if(ly>pad.t+ch-2) ly=pad.t+ch-2;
     placed.push({ly:ly,x0:x0,x1:x1});
-    svg+='<text x="'+lx.toFixed(1)+'" y="'+ly.toFixed(1)+'" fill="#b0bcc8" font-size="9.5" text-anchor="'+anchor+'" pointer-events="none">'+esc(lb.model)+'</text>';
+    svg+='<text x="'+lx.toFixed(1)+'" y="'+ly.toFixed(1)+'" fill="#b0bcc8" font-size="9.5" text-anchor="'+anchor+'" pointer-events="none">'+escModel(lb.model)+'</text>';
   });
 
   svg+='</svg>';
@@ -4625,8 +4562,7 @@ var sectionRenderers={
   "cost-performance": renderCostPerf,
   "phases": renderPhaseDives,
   "cases": renderCasesSection,
-  "run-explorer": renderRunExplorer,
-  "provenance": renderProvenance
+  "run-explorer": renderRunExplorer
 };
 var renderedSections={};
 
@@ -4690,7 +4626,7 @@ function idlePrerender(queue){
    assigning location.hash during scroll would scroll-jump.
    ================================================================= */
 
-var SECTION_IDS=["hero","takeaways","about","leaderboard","cost-performance","phases","cases","run-explorer","provenance"];
+var SECTION_IDS=["hero","takeaways","about","leaderboard","cost-performance","phases","cases","run-explorer"];
 
 /* Scrollspy detection offset is nav-height-aware (geometry rework,
    2026-06-12): the sticky topbar occupies --nav-height + the 3px strip, so

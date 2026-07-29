@@ -559,7 +559,7 @@ class ViewerSchemaLoadingTests(unittest.TestCase):
         )
         self.assertNotIn("cli_model_usage", subscription_run["usage_observed"])
         self.assertEqual(2, bundle["embedded_schema_contract_version"])
-        self.assertEqual("3.5.0", bundle["generator_version"])
+        self.assertEqual("3.6.1", bundle["generator_version"])
 
     def test_subscription_cost_incompatibility_retains_behavioral_scores(self):
         result_sets, runs, anth_tokens, _ = self._load()
@@ -859,6 +859,93 @@ class ViewerSchemaLoadingTests(unittest.TestCase):
             composite["Coverage Model"]["components_present"],
         )
         self.assertFalse(composite["Coverage Model"]["partial_data"])
+
+    def test_legacy_instant_exit_stub_excluded_but_errored_and_valid_kept(self):
+        """v3.6.1 load-time guard: a LEGACY instant-exit stub (status absent,
+        not timed out, error null, output_tokens null, 0/N criteria) is dropped
+        at load — mirroring the corpus parity scan — so it can never re-enter
+        rep counts or score averages. Two sibling legacy runs prove the screen
+        is narrow: one with output_tokens present is KEPT, and an errored
+        null-output run is KEPT with its handling UNCHANGED from pre-3.6.1 (the
+        loader has never screened legacy runs on output_tokens; only the pure
+        stub signature — null output AND null error — is newly excluded)."""
+        root = self.results_dir / "20260729_120000"
+        self._write_json(root / "manifest.json", {
+            "daaf_git_sha": "a" * 40,
+            "config": {"reps": 3, "parallel": False},
+            "models": [
+                {"id": "stub-model", "name": "Stub Legacy Model",
+                 "provider": "anthropic"},
+            ],
+        })
+        self._write_json(root / "summary.json", {
+            "total_runs": 3,
+            "errored_runs": 1,
+            "total_cost_usd": 0,
+            "wall_time_s": 6,
+            "by_model": {
+                "Stub Legacy Model": {"criteria": {
+                    "orchestrator_skill_loaded":
+                        {"passed": 1, "total": 3, "rate": 0.333},
+                    "all_criteria": {"passed": 1, "total": 3, "rate": 0.333},
+                }},
+            },
+        })
+
+        def _legacy_run(run_dir, rep, output_tokens, error, passed):
+            # NOTE: no "status" key is written — a legacy record (status
+            # absent/null) is exactly the branch the v3.6.1 stub screen targets.
+            self._write_json(root / "runs" / run_dir / "result.json", {
+                "case_id": "mc-a",
+                "model": "Stub Legacy Model",
+                "model_id": "stub-model",
+                "provider": "anthropic",
+                "rep": rep,
+                "turns": 1,
+                "computed_cost_usd": 0,
+                "input_tokens": 100,
+                "output_tokens": output_tokens,
+                "cache_read_tokens": 0,
+                "cache_creation_tokens": 0,
+                "duration_s": 2.0,
+                "timed_out": False,
+                "error": error,
+                "criteria": {"orchestrator_skill_loaded": {"passed": passed}},
+            })
+
+        # (1) The instant-exit stub: null output, no error, criterion fails.
+        _legacy_run("stub_rep0", 0, None, None, False)
+        # (2) Sibling legacy run WITH output_tokens present -> still loaded.
+        _legacy_run("valid_rep1", 1, 10, None, True)
+        # (3) Errored legacy null-output run -> handling UNCHANGED (kept).
+        _legacy_run("errored_rep2", 2, None, "TimeoutError: watchdog fired", False)
+
+        stderr = io.StringIO()
+        with redirect_stderr(stderr):
+            result_sets = viewer.load_result_sets(
+                str(self.results_dir), filter_timestamps=["20260729_120000"]
+            )
+            runs, anth_tokens, n_excluded = viewer.load_runs(
+                str(self.results_dir), result_sets, cases={}
+            )
+
+        loaded_dirs = {run["run_dir"] for run in runs}
+        # The stub is gone from the loaded runs (and thus every downstream
+        # metric — rep counts, per_case, composite, cost/duration).
+        self.assertNotIn("stub_rep0", loaded_dirs)
+        # The output-bearing sibling and the errored null-output run are kept.
+        self.assertIn("valid_rep1", loaded_dirs)
+        self.assertIn("errored_rep2", loaded_dirs)
+        self.assertEqual(2, len(runs))
+        # The stub is folded into the No-signal excluded count and emits a NOTE.
+        self.assertEqual(1, n_excluded)
+        self.assertIn("legacy instant-exit stub", stderr.getvalue())
+        self.assertIn("stub_rep0", stderr.getvalue())
+        # The errored run's real failure signal is carried through untouched —
+        # its handling is identical to pre-3.6.1 (loaded, error preserved).
+        errored = next(r for r in runs if r["run_dir"] == "errored_rep2")
+        self.assertEqual("TimeoutError: watchdog fired", errored["error"])
+        self.assertIsNone(errored["status"])
 
 
 if __name__ == "__main__":

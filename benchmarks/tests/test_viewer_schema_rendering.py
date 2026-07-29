@@ -337,7 +337,6 @@ class ViewerSchemaRenderingTests(unittest.TestCase):
         main_script = main_script.replace(
             "\ninit();\n",
             "\nglobalThis.__DAAF_RENDER__={renderRunDetail:renderRunDetail," \
-            "renderProvenance:renderProvenance," \
             "costOmissionNoteHtml:costOmissionNoteHtml};\n",
         )
         node_source = r'''
@@ -380,16 +379,13 @@ var purity={};
   if(state==="unverifiable") variant.child_model_purity.incompleteness_reason="child_transcript_unreadable";
   purity[state]=__DAAF_RENDER__.renderRunDetail(variant);
 });
-var provenanceContainer={innerHTML:""};
-__DAAF_RENDER__.renderProvenance(provenanceContainer);
 process.stdout.write(JSON.stringify({
   legacy:__DAAF_RENDER__.renderRunDetail(legacy),
   subscription:__DAAF_RENDER__.renderRunDetail(subscription),
   exact:__DAAF_RENDER__.renderRunDetail(exact),
   actualZero:__DAAF_RENDER__.renderRunDetail(actualZero),
   purity:purity,
-  omission:__DAAF_RENDER__.costOmissionNoteHtml(),
-  provenance:provenanceContainer.innerHTML
+  omission:__DAAF_RENDER__.costOmissionNoteHtml()
 }));
 '''
         runner_path = TEST_SCRATCH / "render_template.js"
@@ -531,22 +527,31 @@ process.stdout.write(JSON.stringify({
         self.assertIn("remains in behavioral score views", omission)
         self.assertIn("omitted from billing-grade cost charts", omission)
         self.assertIn("not invoiced", omission)
-        self.assertIn("Behavioral scores retained", rendered["provenance"])
-        self.assertIn("Excluded from billing-grade cost views", rendered["provenance"])
 
-    def test_provenance_surfaces_schema_routes_and_summary_coverage(self):
-        provenance = self._node_render_payload()["provenance"]
-        self.assertIn("v1", provenance)
-        self.assertIn("legacy schema v1", provenance)
-        self.assertIn("default absent version", provenance)
-        self.assertIn("v2", provenance)
-        self.assertIn("schema v2", provenance)
-        self.assertIn("chatgpt-subscription", provenance)
-        self.assertIn("chatgpt_subscription_shim", provenance)
-        self.assertIn("scenario only: 1", provenance)
-        self.assertIn("verified: 1", provenance)
-        self.assertIn("failed: 0", provenance)
-        self.assertIn("Archived total", provenance)
+    def test_provenance_data_pipeline_intact_but_section_removed(self):
+        # v3.6.0 removed the rendered Provenance SECTION (renderProvenance,
+        # its TOC link, sectionRenderers/SECTION_IDS entries) but explicitly
+        # kept the provenance DATA pipeline. This test guards both halves:
+        # (a) PRECOMPUTED.provenance is still built with its schema fields and
+        # is still embedded in the generated HTML for inspection, and
+        # (b) the rendered section, its TOC link, and its renderer are gone.
+        provenance = self.precomputed["provenance"]
+        self.assertTrue(provenance, "provenance data pipeline must stay intact")
+        first = provenance[0]
+        for field in (
+            "timestamp", "phase", "schema_version", "providers",
+            "purity_coverage", "billing_grade_cost_eligible",
+            "disk_run_count", "summary_total_runs", "run_count_discrepancy",
+        ):
+            self.assertIn(field, first)
+        providers_seen = {p for entry in provenance for p in entry["providers"]}
+        self.assertIn("chatgpt-subscription", providers_seen)
+        # The embedded PRECOMPUTED payload still carries provenance (inspectable).
+        self.assertIn('"provenance"', self.generated_html)
+        # The rendered section and its wiring are gone.
+        self.assertNotIn('id="provenance"', self.generated_html)
+        self.assertNotIn("renderProvenance", self.generated_html)
+        self.assertNotIn('data-target="provenance"', self.generated_html)
 
     def test_probe_and_secret_sentinels_never_enter_generated_html(self):
         timestamps = [entry["timestamp"] for entry in self.data_bundle["result_sets"]]

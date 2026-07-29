@@ -71,6 +71,44 @@ Examples:
     python3 benchmarks/scripts/generate_results_viewer_v2.py --single-file /tmp/my_viewer.html
 
 Changelog:
+    v3.6.1 (2026-07-29):
+      - Load-time behavior change: the no-signal exclusion chokepoint now also
+        drops legacy instant-exit stub runs. For legacy-schema records
+        (schema_version < 2, so status predates the field and is null) it
+        additionally excludes a run when top-level output_tokens is null AND
+        error is null — the instant-exit signature (status null, not timed out,
+        no error, null output, 0/N criteria) surfaced by the 2026-07-29
+        instant-exit corpus audit (7 stubs, since quarantined on disk). Mirrors
+        the corpus parity scan's legacy screen. Errored legacy null-output runs
+        are unaffected (kept, as before). New-taxonomy (schema-v2) records are
+        unchanged — their tokens live nested under usage_observed and the audit
+        found zero stub divergences there. Each excluded stub emits a stderr
+        NOTE and is folded into the No-signal excluded count.
+    v3.6.0 (2026-07-29):
+      - Display-layer cleanup pass (viewer_template.html + this generator's
+        version constant only; no payload keys, model-name keys, or persisted
+        fields renamed — model display names remain the cross-payload join
+        keys, so every rename below is applied at RENDER time):
+        - Removed the rendered Provenance section (section markup, TOC link,
+          renderProvenance renderer, sectionRenderers/SECTION_IDS entries, and
+          the content-visibility selectors that named #provenance). The
+          PRECOMPUTED.provenance data pipeline is intact (still built and
+          embedded); only the rendered section is gone. The generated-timestamp
+          still shows in the hero and DAAF/Open Augments attribution remains in
+          the site footer.
+        - GPT model display names strip the "(ChatGPT Subscription)" suffix at
+          render time via the displayModelName() JS helper; payload "model"
+          keys are unchanged.
+        - Leaderboard provider badge renders "chatgpt-subscription" as
+          "chatgpt" (badge text only).
+        - Removed the per-cell "api-equiv" leaderboard badge; the api-equivalent
+          basis disclosure moved to Methods/battery-cost prose. The payload
+          `basis` field is retained.
+        - Cost-vs-performance scatter legend: "Anthropic API" -> "Anthropic";
+          added a "ChatGPT" legend entry for the chatgpt-lane GPT points. Same
+          legend on the #cvp-preview intro plot.
+        - Composite-score bar hollow-circle component markers: stroke width
+          +1px.
     v3.5.0 (2026-07-29):
       - Fix 2 — GPT ChatGPT-subscription (provider chatgpt-subscription)
         battery estimates on an api-equivalent counterfactual basis. These
@@ -1367,6 +1405,43 @@ def load_runs(results_dir, result_sets, cases):
             if bool(result.get("timed_out", False)) or run_status in ("stalled", "timed_out"):
                 n_timed_out_excluded += 1
                 continue
+            # --- Legacy instant-exit stub exclusion (v3.6.1; 2026-07-29
+            #     instant-exit corpus audit) ---
+            # A legacy-schema record (schema_version < 2, so status predates the
+            # field and is null) with BOTH top-level output_tokens null AND error
+            # null is an instant-exit stub: it exited in ~2s having produced no
+            # model output and locked 0/N criteria, yet its unset legacy
+            # timed_out flag lets it slip past leg 1 above and pollute rep counts
+            # and score averages. This mirrors the corpus parity scan's legacy
+            # screen (research 2026-07-18 StaticAudit,
+            # scratch/11_corpus-parity-scan_a.py L62-65), narrowed to the pure
+            # stub signature. Three deliberate narrowings:
+            #   - The `legacy_schema` gate scopes this to schema-v1 records,
+            #     whose token counts live in TOP-LEVEL flat fields. Schema-v2
+            #     records carry tokens nested under usage_observed (top-level
+            #     output_tokens is legitimately null for them, e.g. the
+            #     chatgpt-subscription lane), so they must NOT be screened here —
+            #     the audit found zero stub divergences in new-taxonomy records.
+            #   - The `error` clause keeps an errored legacy null-output run
+            #     (a real failure signal), unchanged from prior behavior.
+            #   - `status is None` is faithful to the "legacy record" definition
+            #     and is implied by legacy_schema, but stated for clarity.
+            # A per-run stderr NOTE keeps exclusions visible.
+            if (
+                run["legacy_schema"]
+                and run_status is None
+                and result.get("output_tokens") is None
+                and not result.get("error")
+            ):
+                n_timed_out_excluded += 1
+                print(
+                    f"NOTE: excluding legacy instant-exit stub "
+                    f"({run['model']} / {case_id} / rep {result.get('rep', 0)} / "
+                    f"{ts}/{run_dirname}): status null, not timed out, no error, "
+                    f"output_tokens null. See 2026-07-29 instant-exit audit.",
+                    file=sys.stderr,
+                )
+                continue
             runs.append(run)
 
             # Battery-cost token aggregation (Anthropic provider only; see
@@ -1897,7 +1972,7 @@ def build_data_bundle(result_sets, cases, runs, transcripts, subagent_transcript
     )
     bundle = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "generator_version": "3.5.0",
+        "generator_version": "3.6.1",
         "embedded_schema_contract_version": 2,
         "result_sets": sorted_result_sets,
         "cases": cases,
@@ -2984,8 +3059,9 @@ def print_summary(data_bundle, transcripts, subagent_transcripts,
     print(f"    Result sets:           {len(data_bundle['result_sets'])}")
     print(f"    Runs loaded:           {total_runs} completed")
     print(f"    No-signal excluded:    {n_timed_out_excluded} "
-          f"(timed_out flag or status stalled/timed_out; dropped at load, "
-          f"absent from all metrics and the embedded data)")
+          f"(timed_out flag, status stalled/timed_out, or legacy instant-exit "
+          f"stub; dropped at load, absent from all metrics and the embedded "
+          f"data)")
     print(f"    Cases loaded:          {total_cases}")
     if transcripts_included:
         print(f"    Transcripts condensed: {total_transcripts}")
