@@ -4,11 +4,66 @@ All notable changes to DAAF for each release version are documented here, in rev
 
 ## Table of Contents
 
+- [v3.0.1 -- 2026-07-29](#v301--2026-07-29)
 - [v3.0.0 -- 2026-07-17](#v300--2026-07-17)
 - [v2.1.0 -- 2026-05-02](#v210--2026-05-02)
 - [v2.0.1 -- 2026-04-05](#v201--2026-04-05)
 - [v2.0.0 -- 2026-03-31](#v200--2026-03-31)
 - [v1.0.0 -- 2026-02-22](#v100--2026-02-22)
+
+---
+
+## v3.0.1 -- 2026-07-29
+
+### Data Analyst Augmentation Framework -- Stability and Polish
+
+v3.0.1 is a simple patch release: no flashy new functionality to be aware of, just steady work making v3.0.0's foundations more solid and adding a handful of genuinely useful conveniences on top. Most of it is under-the-hood hardening -- backups that fail loudly instead of quietly, lifecycle scripts that handle more edge cases, and OpenAI provider routing that's steadier and easier to sign into -- alongside a few new opt-in features worth knowing about: read-only host-folder mounts (give DAAF access to an actual folder on your computer!), setting up a shared research workspace across separate DAAF installs, and speed controls for the GPT provider route.
+
+One practical note for existing users: updating will prompt a rebuild (the updater detects the Dockerfile change and offers it to you) -- accept it and you're done.
+
+### Detailed Notes
+
+Disclosure: These notes were AI-drafted from a verified inventory of the release's commits and then reviewed by hand -- they're kept concise for a patch release, but they capture what actually changed.
+
+#### Provider Shim Improvements
+
+The provider shim (the local adapter that lets DAAF run on your OpenAI or ChatGPT account) advanced to **v1.3.9**, with the work concentrated in making it smoother for operating with daily use:
+
+- **Multimodal handling** so image-bearing requests translate cleanly through the shim (e.g., for data visualization design work).
+- **GPT Fast / GPT Priority speed controls** -- a new operator command, `bash /daaf/scripts/provider_shim/gpt_fast.sh {on|off|status}`, lets you opt into faster priority service on the GPT route, turn it back off, and check the current state at a glance.
+- **Better logging and diagnostics** for when something needs troubleshooting.
+- **Steadier stability and sign-in.** ChatGPT-lane authentication is now handled by the bundled `codex` CLI, which makes signing in more reliable, and your ChatGPT plan-usage quota is now surfaced right in the status bar.
+
+#### Link Host Folders and Share a Workspace Across Installs
+
+Two new opt-in conveniences for people whose data or workflows don't fit neatly inside a single Docker container management system:
+
+- **Read-only host-folder mounts.** You can now expose a folder from your own machine to DAAF as a read-only `/host_data` mount -- handy for large local datasets you'd rather not copy in by hand. It's read-only by design, so DAAF can draw from it but never writes back (or corrupts data!); the usual reproducibility conventions still ask you to copy anything you actually use into the project itself, but feel free to override as you see fit.
+- **A shared research workspace.** A new `DAAF_DATA_VOLUME_NAME` setting lets two installs point at the same research volume, so you can (for example) run one body of work across two differently-configured containers (pit Claude models against GPT models, for example!).
+
+#### Analytics Stack: pyfixest 0.60
+
+The Python fixed-effects library `pyfixest` moved from 0.40 to **0.60**. The old 0.40 wheel shipped broken dependency metadata; 0.60 is clean and current. The corresponding skill got a full refresh so agents work against the real 0.60 API rather than a stale mental model, a now-incorrect cross-skill note (about `feglm` fixed-effects support) was corrected in the same sweep, and new smoke tests guard the analytical stack against silent breakage on future rebuilds.
+
+#### Safer Housekeeping
+
+A cluster of quiet reliability fixes across the host tooling and the safety system:
+
+- **DAAF File Backups fail loudly, not silently.** If a copy is corroborated as truncated, the backup now reports a hard failure instead of a false success.
+- **Hardened lifecycle scripts.** Parsing, rounding, and environment handling were tightened on both the Bash and PowerShell sides, closing a class of platform-specific edge cases.
+- **Broader write-protection** for session logs and audit trails, keeping the record tamper-resistant.
+- **Effort level is now an overridable default** rather than a hard pin, so the `/effort` command works as expected.
+
+#### Status Bar and Context Monitoring
+
+The status bar now surfaces your Codex plan-usage quota if you're using that route, and both its rendering and the underlying model detection were hardened so the display stays accurate across a wider range of setups.
+
+#### For Contributors
+
+A couple of contributor-facing improvements. DAAFBench -- DAAF's model-behavior benchmark harness -- got reliability work and scoring-validity corrections. In the interest of transparency: one scoring correction was significant enough that I rescored the archived results in place, and previously published GPT dispatch-compliance numbers rose as a result (from roughly 49% to 74%). On the testing side, the provider shim gained a dedicated CI suite (184 offline tests), and the Bash/PowerShell test coverage expanded further.
+
+**Full Changelog**: [v3.0.0...v3.0.1](https://github.com/DAAF-Contribution-Community/daaf/compare/v3.0.0...v3.0.1)
+<!-- AT TAG TIME: verify tag exists and this compare link resolves -->
 
 ---
 

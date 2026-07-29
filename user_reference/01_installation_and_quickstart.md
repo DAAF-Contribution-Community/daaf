@@ -331,7 +331,7 @@ The DAAF Control Panel is your launcher for any DAAF-related tools, but you can 
 Your research files, data, and outputs live inside the **Docker volume** we created during installation — a storage area managed by Docker. Think of the `daaf-docker/` folder on your computer as just the "recipe" that was used to set everything up, while the Docker volume is the actual "kitchen" where all the work happens.
 
 This means:
-- **Your work persists** — stopping or restarting the Docker container does NOT delete anything. The Docker volume retains all your research outputs, data, and notebooks across restarts, rebuilds, and even `docker compose down`. A second, dedicated Docker volume (`daaf-claude-config`) holds all of Claude Code's own state — your login/authentication, session history and transcripts (used by `/resume`), any installed plugins, and (on shim-lane installs) the provider shim's reasoning-cache continuity file (`~/.claude/provider_shim/reasoning_cache.json`) — so those persist across the same operations too, including image rebuilds. (The only command that erases either volume is an explicit `docker compose down -v` or `docker volume rm`.)
+- **Your work persists** — stopping or restarting the Docker container does NOT delete anything. The Docker volume retains all your research outputs, data, and notebooks across restarts, rebuilds, and even `docker compose down`. A second, dedicated Docker volume (`daaf-claude-config`) holds all of Claude Code's own state — your login/authentication, session history and transcripts (used by `/resume`), and any installed plugins — so those persist across the same operations too, including image rebuilds. (The only command that erases either volume is an explicit `docker compose down -v` or `docker volume rm`.)
 - **Files don't automatically appear on your computer** — unlike a traditional shared folder, files created inside the container are stored in the Docker volume, not directly on your desktop. To access them directly, you can use the included file editor (VSCode -- see below).
 - **Only the Docker volume is accessible to Claude** — Claude can only see what's in the Docker volume. Your documents, photos, and everything else are completely isolated.
 
@@ -640,8 +640,8 @@ You usually don't even have to add that line by hand: when you run an update wit
 
 If `DAAF_BRANCH` is set nowhere, the updater defaults to `main` (or `master` if `main` doesn't exist). Either way, the script validates that the branch exists on the remote before proceeding.
 
-> **Tags behave differently from branches for updates.** `DAAF_BRANCH` steers *ongoing* updates, and only a **branch** can be followed — a version tag like `v3.0.0` is a fixed snapshot with nowhere newer to move to. The updater handles a tag two ways depending on where it came from:
-> - **Set in your environment** (e.g. `DAAF_BRANCH=v3.0.0 bash update_daaf.sh`): the updater **declines**, explains why, makes no changes, and points you at the supported way to move onto a release — re-running the installer pinned to that tag (see ["Installing a specific version or branch"](#installing-a-specific-version-or-branch) below). A tag is never saved as your update branch, so ongoing updates keep tracking your persisted or default branch.
+> **Tags behave differently from branches for updates.** `DAAF_BRANCH` steers *ongoing* updates, and only a **branch** can be followed — a version tag like `v3.0.1` is a fixed snapshot with nowhere newer to move to. The updater handles a tag two ways depending on where it came from:
+> - **Set in your environment** (e.g. `DAAF_BRANCH=v3.0.1 bash update_daaf.sh`): the updater **declines**, explains why, makes no changes, and points you at the supported way to move onto a release — re-running the installer pinned to that tag (see ["Installing a specific version or branch"](#installing-a-specific-version-or-branch) below). A tag is never saved as your update branch, so ongoing updates keep tracking your persisted or default branch.
 > - **Left over in `environment_settings.txt`** (for example after a tagged install): the updater prints a warning naming the file and key, then falls back to the auto-detected default branch for that run so you are never locked out. Edit the file to set a real branch (or remove the line) to silence the warning.
 
 Your research files in `research/` are not tracked by git (they're local to your volume), so they are completely unaffected by updates.
@@ -664,7 +664,7 @@ Most updates don't change the Dockerfile, so usually `git pull` inside the conta
 ```bash
 # Inside the container
 git fetch --tags
-git checkout v3.0.0
+git checkout v3.0.1
 ```
 
 Check the [Releases page](https://github.com/DAAF-Contribution-Community/daaf/releases) to see what's changed in each version.
@@ -709,7 +709,7 @@ By default, the installer pulls the latest code from the `main` branch. To insta
 
 ```bash
 # Install a tagged release
-export DAAF_BRANCH=v3.0.0
+export DAAF_BRANCH=v3.0.1
 curl -fsSL "https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/${DAAF_BRANCH}/scripts/host/install.sh" | bash
 
 # Install from a development branch
@@ -721,7 +721,7 @@ curl -fsSL "https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/$
 
 ```powershell
 # Install a tagged release
-$env:DAAF_BRANCH="v3.0.0"; irm "https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/$env:DAAF_BRANCH/scripts/host/install.ps1" | iex
+$env:DAAF_BRANCH="v3.0.1"; irm "https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/$env:DAAF_BRANCH/scripts/host/install.ps1" | iex
 
 # Install from a development branch
 $env:DAAF_BRANCH="dev"; irm "https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/$env:DAAF_BRANCH/scripts/host/install.ps1" | iex
@@ -736,7 +736,7 @@ This fetches the installer itself from the specified branch or tag, and also con
 When the installer finishes, it sets up your `environment_settings.txt` so any DAAF options you chose at install time carry forward on their own:
 
 - **If you have no `environment_settings.txt` yet** (a typical fresh install), the installer copies the `environment_settings_example.txt` template into place as your new `environment_settings.txt`, then activates any of the six install-time `DAAF_*` options it finds in your environment — `DAAF_PROJECT_NAME`, `DAAF_PORT_MARIMO`, `DAAF_PORT_LOGVIEWER`, `DAAF_PORT_VSCODE`, `DAAF_DEV`, and `DAAF_BRANCH` — writing each one into the file in its proper place (in context, right where that setting is documented). So if you exported any of these before installing (for a specific branch, a second instance, or a developer build), you don't have to re-enter them: they're already saved for every future launch and update.
-- **`DAAF_BRANCH` is seeded only when it names a branch.** If you installed pinned to a version *tag* (e.g. `v3.0.0`), the installer does **not** write that tag into the file — a persisted tag would block future updates — and prints a short note saying so. Ongoing updates then track the default branch (see [Keeping DAAF Updated](#keeping-daaf-updated)).
+- **`DAAF_BRANCH` is seeded only when it names a branch.** If you installed pinned to a version *tag* (e.g. `v3.0.1`), the installer does **not** write that tag into the file — a persisted tag would block future updates — and prints a short note saying so. Ongoing updates then track the default branch (see [Keeping DAAF Updated](#keeping-daaf-updated)).
 - **Seeded settings take effect immediately — the installer restarts the container for you.** Because Docker injects `environment_settings.txt` into the container when the container is *created*, and a fresh install creates the container before the seeded file exists, the installer finishes by briefly recreating the container so your new settings file is in effect right away. This is automatic and takes only a few seconds; your files are safe in the Docker volume. You will *not* see the "environment_settings.txt has been modified since this container was started" note on your first launch after a fresh install. In the rare event this restart step fails, the installer prints instructions — just run `docker compose down` from your `daaf-docker` folder and launch normally, which applies the settings the same way.
 - **A reinstall never overwrites an existing `environment_settings.txt`.** If the file already exists, the installer leaves it completely untouched — your real API keys and settings are safe — and notes that any `DAAF_*` variables you set were used for that install run only. Because a reinstall reuses your existing file rather than re-reading your environment, install-time env vars must be set again on each reinstall to steer *that run*, and if you want to persist a *changed* value you edit the file yourself.
 - **The installer always prints an outcome note** at the end telling you exactly what happened — which values were seeded, that an existing file was preserved, or (in the rare event seeding can't complete) manual instructions for copying the template yourself. Seeding never blocks or fails the install.
@@ -952,7 +952,7 @@ If your background is in **Stata** or **R** rather than Python, you don't have t
 
 ### Configure authentication via environment_settings.txt
 
-By default, Claude Code prompts you to log in interactively the first time you launch it (browser-based OAuth or pasting an API key). This works great for Max subscription and direct API key setups. However, if you're using **OpenRouter**, a **cloud provider** (Bedrock/Vertex), or simply want your authentication to persist automatically without interactive login, you can configure it through the `environment_settings.txt` file in your `daaf-docker` folder.
+By default, Claude Code prompts you to log in interactively the first time you launch it (browser-based OAuth or pasting an API key). This works great for Max subscription and direct API key setups — and since your login now persists across rebuilds, signing in once is genuinely enough. However, if you're using **OpenRouter**, a **cloud provider** (Bedrock/Vertex), or simply want your authentication to persist automatically without interactive login, you can configure it through the `environment_settings.txt` file in your `daaf-docker` folder. (Subscription users who run *several* DAAF installs, or who want fully non-interactive startup, have one more option there: a one-time `claude setup-token` command mints a long-lived token you can paste into the file — see Option B in its authentication section. A normal single install doesn't need it.)
 
 Your `daaf-docker` folder includes an `environment_settings_example.txt` template. It opens with a table of contents and is organized into six numbered, lifecycle-tagged sections — **[1] Install & Update Settings**, **[2] Claude Code Authentication**, **[3] Model Routing**, **[4] Alternative Providers & Shim**, **[5] Data Source API Keys**, and **[6] Workspace & Developer Options** — so you can jump straight to the part you need. Authentication lives in **section [2]**, which covers the five direct authentication options (Options A-E) — plus interactive browser login, which needs no environment variables — and points to **section [4]** for the OpenAI/ChatGPT provider shim (Option F). To set it up:
 
@@ -1049,9 +1049,12 @@ ANTHROPIC_BASE_URL=https://openrouter.ai/api
 ANTHROPIC_AUTH_TOKEN=your_openrouter_api_key_here
 ANTHROPIC_API_KEY=
 ANTHROPIC_MODEL=openai/gpt-5.6-sol
-ANTHROPIC_DEFAULT_OPUS_MODEL=openai/gpt-5.6-sol       # strong tier (Opus-analog)
-ANTHROPIC_DEFAULT_SONNET_MODEL=openai/gpt-5.6-terra   # fast tier (Sonnet-analog)
-CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000               # see "known limitations" below
+# Strong tier (Opus-analog):
+ANTHROPIC_DEFAULT_OPUS_MODEL=openai/gpt-5.6-sol
+# Fast tier (Sonnet-analog):
+ANTHROPIC_DEFAULT_SONNET_MODEL=openai/gpt-5.6-terra
+# Context window -- see "known limitations" below:
+CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000
 ```
 
 Recommended GPT slugs (context windows and roles verified against OpenRouter on 2026-07-09):
@@ -1088,17 +1091,21 @@ The two-tier routing described above works identically: map `ANTHROPIC_DEFAULT_O
 ```bash
 # --- Option F: OpenAI API directly, via the DAAF provider shim ---
 DAAF_PROVIDER_SHIM=openai
-SHIM_BACKEND_MODE=openai                              # exact route required by gpt_fast.sh
+# Exact route value required by gpt_fast.sh:
+SHIM_BACKEND_MODE=openai
 OPENAI_API_KEY=sk-your_openai_api_key_here
 
 # Point Claude Code at the local shim (bare GPT slugs — no openai/ prefix here):
 ANTHROPIC_BASE_URL=http://127.0.0.1:4141
 ANTHROPIC_AUTH_TOKEN=daaf-shim-local
 ANTHROPIC_API_KEY=
-CLAUDE_CODE_DISABLE_FAST_MODE=1                      # hide native /fast; use gpt_fast.sh below
-ANTHROPIC_DEFAULT_OPUS_MODEL=gpt-5.6-sol[1m]         # strong tier (Opus-analog); [1m] = 1M window hint
-ANTHROPIC_DEFAULT_SONNET_MODEL=gpt-5.6-terra[1m]     # fast tier (Sonnet-analog); [1m] = 1M window hint
-CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000               # see "Context window on GPT sessions" below
+# Hide the native /fast control; use gpt_fast.sh below instead:
+CLAUDE_CODE_DISABLE_FAST_MODE=1
+# Strong tier (Opus-analog) and fast tier (Sonnet-analog); [1m] = 1M window hint:
+ANTHROPIC_DEFAULT_OPUS_MODEL=gpt-5.6-sol[1m]
+ANTHROPIC_DEFAULT_SONNET_MODEL=gpt-5.6-terra[1m]
+# Context window -- see "Context window on GPT sessions" below:
+CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000
 ```
 
 **Step 2 — Rebuild the image.** Unlike Option C (which is config-only), this lane needs a one-time rebuild, because the shim's auto-launch is baked into the container entrypoint. From the DAAF Control Panel choose **option 10, "Rebuild Container,"** or run `bash rebuild_daaf.sh` (`.\rebuild_daaf.ps1` on Windows) directly — see the [rebuild instructions](#keeping-daaf-updated). On boot, the container starts the shim automatically and keeps it alive (restarting it if it ever exits), so you normally never have to touch it.
@@ -1127,17 +1134,19 @@ See the [technical FAQ entry on controlling GPT reasoning effort](07_faq_technic
 
 **Response verbosity.** Separately from reasoning effort, the shim sends OpenAI's `text.verbosity` control on every request, defaulting to `high` for parity with DAAF's warm, educational posture (`high` adds warmth and volume; `low` is terse); set `SHIM_TEXT_VERBOSITY=low` or `medium` in `environment_settings.txt` if GPT responses feel too long, and see the [technical FAQ entry on terse GPT responses](07_faq_technical.md#q-gpt-responses-feel-terse-compared-to-claude-option-f) if they feel too brief.
 
-##### GPT Fast and GPT Priority on the provider-shim routes
+##### GPT Fast Mode on the provider-shim routes
 
-Supported Anthropic models retain Claude Code's native `/fast` command. On either Option F **GPT** route, hide that native control by setting this exact line in your private host `daaf-docker/environment_settings.txt`:
+Mirroring OpenAI Codex's "Fast mode" and API "Priority mode", you can turn on an equivalent with the GPT shim in DAAF. This basically turns on a speed-up from the model side of things, resulting in faster generation at the cost of greater subscription usage rates or higher API fees. To activate this in your session:
+
+**First, disable the native Claude Code `/fast` control.** The Claude Code mode itself doesn't work with the GPT models and can get confusing with settings, so we need to turn it off first. Set this exact line in your host `environment_settings.txt` file:
 
 ```bash
 CLAUDE_CODE_DISABLE_FAST_MODE=1
 ```
 
-This is Claude Code's supported disable/hide control. It avoids a misleading state where `/fast` can appear enabled even though a remapped GPT model is not eligible to emit Claude Code's Fast wire contract. In-container DAAF code cannot edit your private host file, so make this one-time change yourself, recreate the container (`docker compose down`, then `bash run_daaf.sh` / `.\run_daaf.ps1`), and start a **new Claude Code session**. This setting does not require an image rebuild; the separate one-time Option F shim installation still does.
+Then rebuild the container (`bash daaf.sh` / `.\daaf.ps1` and select the Rebuild option), and start a **new Claude Code session** afterwards.
 
-Shim v1.3.9 adds one canonical controller for both GPT routes:
+**Then run the appropriate fast command for the shim** to check the current state, turn the boost on, or turn it off:
 
 ```bash
 bash /daaf/scripts/provider_shim/gpt_fast.sh status
@@ -1145,22 +1154,16 @@ bash /daaf/scripts/provider_shim/gpt_fast.sh on
 bash /daaf/scripts/provider_shim/gpt_fast.sh off
 ```
 
-From a Claude Code prompt, prefix the same command with `!`, for example `!bash /daaf/scripts/provider_shim/gpt_fast.sh on`.
+From the Claude Code prompt window, you can prefix the same command with `!`, for example `!bash /daaf/scripts/provider_shim/gpt_fast.sh on` to run it directly in the chat. The boost is **off by default**, and turning it `on` requires the `CLAUDE_CODE_DISABLE_FAST_MODE=1` line above; `off` and `status` always work. Which product you get depends on your route:
 
-| Option F route | ON requests | Product name |
-|----------------|-------------|--------------|
-| ChatGPT-subscription/Codex (`SHIM_BACKEND_MODE=chatgpt`) | Canonical Responses wire `service_tier: "priority"` for the friendly **Fast** setting | **GPT Fast** |
-| OpenAI API key (`SHIM_BACKEND_MODE=openai`) | Canonical Responses wire `service_tier: "priority"` for API Priority processing | **GPT Priority** |
+| Your Option F route | What "on" gives you | Product name |
+|----------------|---------------------|--------------|
+| ChatGPT subscription (`SHIM_BACKEND_MODE=chatgpt`) | Faster responses, drawn from your ChatGPT subscription credits | **GPT Fast** |
+| OpenAI API key (`SHIM_BACKEND_MODE=openai`) | Priority processing, billed through your OpenAI API account | **GPT Priority** |
 
-Both routes use the same canonical requested wire value, `priority`, but they remain different products: on the ChatGPT-subscription route it encodes the user-facing **Fast** setting and consumes ChatGPT plan credits under subscription eligibility; it does **not** invoke or imply OpenAI API Priority billing. On the API-key route it requests **Priority** processing under the API's separate billing and eligibility rules.
+**A word on cost.** **GPT Priority can cost more** than ordinary API processing and depends on your provider, model, project/account, and usage-tier eligibility — the controller warns you before it enables it. GPT Fast draws on your ChatGPT subscription's own credit and eligibility rules; current Codex documentation describes roughly **1.5×** speed and says GPT-5.6 and GPT-5.5 use **2.5× Standard ChatGPT credits**. Either way, requesting the boost doesn't guarantee you were served it on any given request.
 
-The shim-native policy is **OFF by default**. Policy OFF adds no `service_tier`; it does not force Standard and therefore preserves the provider/project/account default. Every production request path therefore emits either no tier or exact `service_tier: "priority"`; DAAF never emits raw requested `fast`. A separate valid inbound Claude Fast contract remains additive for compatibility, but it resolves to the same canonical requested wire value. The setting is persistent, shim-wide, and route-bound: it affects every newly accepted shim request immediately without a daemon restart, while an already accepted request and all of its retries keep their original snapshot. Switching routes resets the policy OFF, and switching back does not resurrect the earlier ON state—you must run `on` again on the new route. `on` requires exact `CLAUDE_CODE_DISABLE_FAST_MODE=1`; `off` and `status` remain available as recovery and inspection controls on exact GPT shim routes.
-
-**OpenAI API cost warning:** GPT Priority can cost more than ordinary API processing and depends on provider, model, project/account, and usage-tier eligibility. The controller warns before enabling it. ChatGPT GPT Fast uses the subscription route's separate credit and eligibility rules; current Codex documentation describes roughly **1.5×** speed and says GPT-5.6 and GPT-5.5 use **2.5× Standard ChatGPT credits**. Neither requested service is guaranteed.
-
-A requested policy or outbound tier is **not served-tier evidence**. Only the terminal provider response's `service_tier` establishes what served that particular request: actual served `priority` maps to Anthropic-compatible `usage.speed: "fast"`; exact served `fast` remains accepted only as compatibility terminal evidence; actual `default`, `flex`, `scale`, or `auto` maps to `usage.speed: "standard"`; absent or unknown stays unknown and omits `usage.speed`. The controller's `status` output includes the latest completed terminal known to the running shim, but that record is process-global historical evidence—model- and completion-time-qualified—not proof about your current session or its latest turn. The shim never silently retries GPT Fast or GPT Priority as Standard and has no local long-context cutoff.
-
-For compatibility, v1.3.9 preserves v1.3.7's translation of a valid inbound Claude Fast contract (exact beta `fast-mode-2026-02-01` plus `speed: "fast"`), but the shim-native controller above is the supported GPT user control. An earlier subscription probe used API-route `priority` vocabulary and was served `default`; that dated result remains historical negative evidence for the old request shape, not a GPT Fast entitlement test. The [technical FAQ entry](07_faq_technical.md#q-how-do-i-control-gpt-fast-or-gpt-priority-through-the-provider-shim-option-f) provides the concise operational version.
+**Optional reading — under the hood.** The setting is persistent and shim-wide, and it's bound to the active route: switching routes resets it off, and switching back doesn't restore the old state — run `on` again on the new route. Requesting the faster tier is not the same as being served it; only the provider's actual response settles what served a given request, and the controller's `status` shows the latest such result the running shim has seen (qualified by model and completion time), not a promise about your current turn. One early ChatGPT-subscription probe requested priority and was served the standard tier — a dated, single-shape result, kept scoped to that old request rather than read as a standing entitlement test. The full policy semantics, wire-contract details, and version history live in the shim code, its tests, and git history.
 
 **Context window on GPT sessions.** Two small settings tell Claude Code how big your GPT model's context window really is — without them it assumes a small (~200K) window for slugs it doesn't recognize, far below the 1,050,000-token window of the gpt-5.6 family.
 
@@ -1177,6 +1180,8 @@ For compatibility, v1.3.9 preserves v1.3.7's translation of a valid inbound Clau
 **Optional reading.** Here for when you want to look under the hood or diagnose a problem. These mechanics are shared by both shim lanes (this one and the ChatGPT lane below).
 
 **Logs and diagnostics.** The shim keeps its own diagnostic log at `/daaf/scripts/provider_shim/logs/shim.log`. It records only technical metadata — timings, status codes, error types, retry counts, and request-correlation IDs — and **never** your prompts or text, tool inputs, image bytes or URLs, credentials, raw response streams, or full request/response bodies. If a GPT session misbehaves, run `--restart` and check that log; the [technical FAQ](07_faq_technical.md#q-my-gpt-session-fails-instantly-with-429-errors-on-every-request-option-f) walks through common status/type/code triage such as `insufficient_quota` (billing) versus a true rate limit. The shim is a persistent daemon: changing its Python source does not update the already-running process. After any source update, run `bash /daaf/scripts/provider_shim/start_shim.sh --restart`, then confirm that `curl -s http://127.0.0.1:4141/health` reports `"version": "1.3.9"` before testing the new behavior.
+
+**Session continuity across rebuilds.** On a shim lane, the shim keeps a small reasoning-cache file (`~/.claude/provider_shim/reasoning_cache.json`) that carries GPT reasoning continuity from one turn to the next. It lives on your per-install `daaf-claude-config` volume, so it survives container restarts and image rebuilds — you don't have to do anything to preserve it. Only an explicit `docker compose down -v` or `docker volume rm` erases it.
 
 **Images.** The shim accepts images in your messages and tool results and forwards them to OpenAI without inspecting or logging the bytes; the [image troubleshooting entry](07_faq_technical.md#q-what-image-inputs-does-the-provider-shim-support) lists exactly what's accepted. Image support was verified with a dated privacy-safe probe (a 2026-07-18 Base64-PNG request) — that's evidence the shape worked on that date, not an official OpenAI guarantee.
 
@@ -1248,7 +1253,7 @@ See the [technical FAQ entry on the ChatGPT subscription lane](07_faq_technical.
 
 Separate from the provider-shim lanes above, OpenAI ships an official plugin — **`codex-plugin-cc`** — that lets a Claude Code session **delegate a task to Codex** for a second opinion: a code review, an adversarial review, a rescue attempt. It adds slash commands like `/codex:review` and `/codex:adversarial-review`. Think of it as a way to get an *independent* model's eyes on a piece of work, complementary to DAAF's own review agents — not a provider route for running DAAF itself.
 
-**What's already in the image.** The plugin shells out to the local `codex` CLI, and DAAF bakes that in (a pinned static binary — the same one the ChatGPT lane uses). Node.js is present and version-sufficient too, guaranteed by the Dockerfile as of this change. `npm` is absent (Ubuntu packages it separately from `nodejs`), but that shouldn't matter here: `npm` is only needed by `/codex:setup`'s "install Codex for you" branch, and Codex is already installed — so that branch never runs. (If any plugin step ever *does* complain about a missing `npm`, that absence is the likely cause — the codex CLI itself needs no npm.)
+**What's already in the image.** The plugin shells out to the local `codex` CLI, and DAAF bakes that in (a pinned static binary — the same one the ChatGPT lane uses). Node.js is present and version-sufficient too, guaranteed by the Dockerfile. `npm` isn't included, but nothing here needs it — Codex is already installed, so if a plugin step ever mentions a missing `npm`, that's the harmless reason and you can ignore it.
 
 **Install and authenticate (inside a Claude Code session):**
 

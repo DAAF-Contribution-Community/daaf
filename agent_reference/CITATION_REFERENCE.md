@@ -24,7 +24,7 @@ Cite when the library's **analytical functionality** drives a result. Do NOT cit
 
 | Library | Canonical Citation | Cite When | Do NOT Cite When |
 |---------|-------------------|-----------|------------------|
-| DAAF | Kim, B.H. (2026). *DAAF: Data Analyst Augmentation Framework* (Version 3.0.0) [Computer software]. https://github.com/DAAF-Contribution-Community/daaf | Always (pre-populated in STATE.md) | — |
+| DAAF | Kim, B.H. (2026). *DAAF: Data Analyst Augmentation Framework* (Version 3.0.1) [Computer software]. https://github.com/DAAF-Contribution-Community/daaf | Always (pre-populated in STATE.md) | — |
 | pyfixest | Berge, L., Butts, K., & McDermott, G. (2026). pyfixest: Fast high-dimensional fixed effects estimation [Computer software]. Based on fixest (R). | Used for regression estimation or DiD | Only imported but not used for estimation |
 | statsmodels | Seabold, S. & Perktold, J. (2010). "Statsmodels: Econometric and Statistical Modeling with Python." *Proceedings of the 9th Python in Science Conference*. | Used for GLM, time series, or statistical testing | Only used for post-estimation diagnostics supporting another library's estimation |
 | linearmodels | Sheppard, K. linearmodels: Econometric models for panel, IV, and system regression [Computer software]. https://bashtage.github.io/linearmodels/ | Used for panel, IV/GMM, or system estimation | — |

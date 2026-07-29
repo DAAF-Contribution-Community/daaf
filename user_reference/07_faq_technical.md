@@ -384,38 +384,21 @@ Valid values are `none`, `low`, `medium`, `high`, `xhigh`, and `max` (`max` is g
 
 ### Q: How do I control GPT Fast or GPT Priority through the provider shim? (Option F)
 
-Supported Anthropic models keep Claude Code's native `/fast`. On either Option F **GPT** route, use Claude Code's supported disable/hide control instead: add exact `CLAUDE_CODE_DISABLE_FAST_MODE=1` to the private host `daaf-docker/environment_settings.txt`. This prevents native `/fast` from showing a misleading ON state for a remapped GPT model that does not emit Claude Code's Fast wire contract.
+On a GPT route the shim offers an optional speed boost — **GPT Fast** on the ChatGPT-subscription route, **GPT Priority** on the OpenAI API-key route. Three things get you going:
 
-Make that one-time host edit yourself—in-container DAAF code cannot access the private file—then recreate the container and start a **new Claude Code session**. No image rebuild is required for this setting. Control GPT service requests with the same command on both routes:
+1. **Step Claude Code's own `/fast` aside.** Add exact `CLAUDE_CODE_DISABLE_FAST_MODE=1` to your private host `daaf-docker/environment_settings.txt`, then recreate the container and start a new Claude Code session. (This keeps native `/fast` from showing a misleading ON state for a GPT model that can't honor it. Make the host edit yourself — in-container code can't touch the private file. No image rebuild needed.)
 
-```bash
-bash /daaf/scripts/provider_shim/gpt_fast.sh {on|off|status}
-```
+2. **Flip the boost with one command** (it starts **off**):
 
-Inside a Claude Code prompt, prefix it with `!`, for example `!bash /daaf/scripts/provider_shim/gpt_fast.sh status`.
+   ```bash
+   bash /daaf/scripts/provider_shim/gpt_fast.sh {on|off|status}
+   ```
 
-| Backend route | ON requests | Name |
-|---------------|-------------|------|
-| ChatGPT subscription/Codex (`SHIM_BACKEND_MODE=chatgpt`) | Canonical Responses wire `service_tier: "priority"` for the friendly **Fast** setting | **GPT Fast** |
-| OpenAI API key (`SHIM_BACKEND_MODE=openai`) | Canonical Responses wire `service_tier: "priority"` for API Priority processing | **GPT Priority** |
+   Inside a Claude Code prompt, prefix it with `!`, for example `!bash /daaf/scripts/provider_shim/gpt_fast.sh status`. Turning it `on` requires the `CLAUDE_CODE_DISABLE_FAST_MODE=1` line above; `off` and `status` always work.
 
-Both routes request the same canonical wire tier, `priority`, while keeping different user and billing semantics. ChatGPT **GPT Fast** is the friendly subscription setting and uses ChatGPT plan credits and catalog eligibility; the shared wire spelling does **not** mean ChatGPT usage receives OpenAI API Priority billing. The API-key route's **GPT Priority** uses the API's separate billing and eligibility rules.
+3. **Mind the cost.** OpenAI API **GPT Priority may cost extra** and depends on your provider, model, project/account, and usage-tier eligibility — the controller warns before enabling it. ChatGPT **GPT Fast** follows your subscription's own credit and eligibility rules; current Codex documentation describes roughly **1.5×** speed and says GPT-5.6 and GPT-5.5 use **2.5× Standard ChatGPT credits**. And requesting the boost doesn't guarantee it was served on any given request.
 
-The v1.3.9 shim-native policy defaults **OFF**. Policy OFF adds no `service_tier`; it does not force Standard. Every production request path emits either no tier or exact `service_tier: "priority"`; DAAF never emits raw requested `fast`. A separate valid inbound Claude Fast contract remains additive for compatibility, but it resolves to the same canonical requested wire value. The policy is persistent, shim-wide, and route-bound, and it affects newly accepted requests immediately without a daemon restart. An in-flight request and its retries keep their original snapshot. Switching routes resets the policy OFF—even if you later switch back—so each route requires a fresh explicit `on`. `on` requires exact `CLAUDE_CODE_DISABLE_FAST_MODE=1`; `off` and `status` remain available for recovery or inspection on exact GPT shim routes.
-
-**Cost and eligibility:** OpenAI API **GPT Priority may cost extra** and depends on provider, model, project/account, and usage-tier eligibility; the controller warns before enabling it. ChatGPT **GPT Fast** follows the subscription route's separate credit and catalog-eligibility rules. Current Codex documentation describes roughly **1.5×** speed and says GPT-5.6 and GPT-5.5 use **2.5× Standard ChatGPT credits**. A successful request does not guarantee either tier was actually served.
-
-**Requested does not mean served.** The requested policy and outbound `service_tier` record intent only. The terminal provider response's actual `service_tier` is the sole authority for that request:
-
-| Terminal provider `service_tier` | Anthropic-compatible `usage.speed` |
-|----------------------------------|------------------------------------|
-| Canonical served `priority`, or exact served `fast` as compatibility terminal evidence | `fast` |
-| `default`, `flex`, `scale`, or `auto` | `standard` |
-| Absent or any unknown value | Omitted (served speed remains unknown) |
-
-`status` reports the route, configured model mapping, global requested policy, native-Fast disable state, and the latest completed terminal known to the running shim. That latest terminal is **process-global historical evidence**, qualified by model and completion time; another session may have produced it, and it is not proof about your current session or latest turn. The shim never silently retries GPT Fast or GPT Priority as Standard and has no local long-context cutoff.
-
-For compatibility, v1.3.9 preserves v1.3.7's translation when a client genuinely supplies the exact Claude Fast beta plus `speed: "fast"`; the shim-native controller is nevertheless the canonical GPT user control. A dated subscription probe that requested API-route `priority` and was served `default` remains historical evidence about that old request shape, not a GPT Fast entitlement test. After a shim source update, restart the persistent daemon and verify `/health` reports `"version": "1.3.9"`. For the complete setup, see [GPT Fast and GPT Priority on the provider-shim routes](01_installation_and_quickstart.md#gpt-fast-and-gpt-priority-on-the-provider-shim-routes).
+For the route-to-product mapping, the full setup steps, and the policy details under the hood, see [GPT Fast and GPT Priority on the provider-shim routes](01_installation_and_quickstart.md#gpt-fast-and-gpt-priority-on-the-provider-shim-routes) in the installation guide.
 
 ### Q: GPT responses feel terse compared to Claude (Option F)
 

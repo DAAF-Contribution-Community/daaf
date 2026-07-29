@@ -24,6 +24,10 @@
 #                an inline comment breaks some parsers). Delete the one leading
 #                '#' to turn it on.
 #   # text       An explanatory prose line (it may be indented AFTER the '#').
+#   Write values bare: KEY=value with nothing extra -- no quotes around the
+#   value and no spaces around the '='. DAAF's readers take the line literally,
+#   so quotes or stray spaces can end up inside your value. (Editing on Windows
+#   is fine -- Windows line endings are tolerated.)
 #   Adjacent #KEY lines introduced with "pick ONE" are mutually exclusive
 #   alternatives -- uncomment only the set for the method you chose.
 #
@@ -174,8 +178,12 @@
 # ----------------------------------------------------------------------------
 # Option B: Max / Pro / Team / Enterprise subscription
 # ----------------------------------------------------------------------------
-# Run `claude setup-token` once inside the container to generate a long-lived
-# OAuth token (valid ~1 year), then paste it here for persistent auth.
+# Most users don't need this anymore: your interactive login (option 5 in the
+# priority list above) now persists across rebuilds on the config volume, so
+# signing in once is enough. This token method is mainly useful if you run
+# SEVERAL installs (skip logging in per container) or need fully non-interactive
+# startup. If that's you: run `claude setup-token` once inside the container to
+# generate a long-lived OAuth token (valid ~1 year), then paste it here.
 # NOTE: do NOT also set ANTHROPIC_API_KEY -- it takes priority and you would be
 # billed per-use instead of through your subscription.
 # --- To activate, remove the leading '#': ---
@@ -203,6 +211,10 @@
 # ----------------------------------------------------------------------------
 # Option D: Amazon Bedrock
 # ----------------------------------------------------------------------------
+# For organizations that run Claude through their own cloud platform. Claude
+# Code supports these routes, but the DAAF maintainers have not yet validated
+# them end-to-end -- see the install guide's cloud-provider note before relying
+# on one.
 # Docs: https://code.claude.com/docs/en/bedrock-vertex
 # --- To activate, remove the leading '#' on the lines you need: ---
 #CLAUDE_CODE_USE_BEDROCK=1
@@ -212,6 +224,8 @@
 # ----------------------------------------------------------------------------
 # Option E: Google Vertex AI
 # ----------------------------------------------------------------------------
+# Same audience and caveat as Option D above: org cloud platforms only, not yet
+# maintainer-validated end-to-end.
 # Docs: https://code.claude.com/docs/en/bedrock-vertex
 # --- To activate, remove the leading '#' on the lines you need: ---
 #CLAUDE_CODE_USE_VERTEX=1
@@ -263,6 +277,9 @@
 # ----------------------------------------------------------------------------
 # Context window size
 # ----------------------------------------------------------------------------
+# TL;DR: on a standard Anthropic setup you can ignore this key entirely -- it
+# only matters on alternative-provider routes (OpenRouter, GLM, GPT).
+#
 # Tell Claude Code the real context window so it does not assume ~200K for an
 # unknown slug and end sessions early with "Prompt is too long." This override is
 # GLOBAL: it applies to the main session and every subagent, not per model. Choose
@@ -366,17 +383,16 @@
 # container and start a new Claude session after changing it; no image rebuild is
 # required for this setting.
 #
-# GPT SERVICE TIER (shim v1.3.9+): default OFF. Control it inside the container:
+# GPT FAST / GPT PRIORITY SPEED BOOST (shim v1.3.9+): OFF by default. One command
+# inside the container turns it on, turns it off, or reports where things stand:
 #     bash /daaf/scripts/provider_shim/gpt_fast.sh {on|off|status}
-# In Claude Code, prefix the same command with `!`. The policy is persistent,
-# shim-wide, and route-bound; new requests see changes immediately without a daemon
-# restart. A route switch resets it OFF and requires a new explicit `on`. `on`
-# requires exact CLAUDE_CODE_DISABLE_FAST_MODE=1; `off` and `status` remain recovery/
-# inspection controls on exact GPT shim routes. Policy OFF adds no service_tier and
-# never forces Standard; a valid inbound Claude Fast contract remains additive.
-# Requested policy is not served-tier evidence; only terminal
-# provider service_tier establishes what served a request. `status`'s latest
-# terminal is process-global historical evidence, not current-session proof.
+# (In a Claude Code session, prefix the same command with `!`.) Changes apply
+# immediately -- no restart needed. Turning it `on` requires the exact
+# CLAUDE_CODE_DISABLE_FAST_MODE=1 line above, and switching provider routes
+# resets the boost OFF until you explicitly turn it back on. One honest caveat:
+# requesting the boost doesn't guarantee it was served on any given request --
+# `status` reports the most recent evidence of what actually served. Full
+# details: the technical FAQ's GPT Fast entry.
 #
 # Then pick ONE auth lane below: 4.2 (OpenAI API key, sanctioned) or 4.3 (ChatGPT
 # subscription via Codex OAuth, an unofficial dev lane).
@@ -426,14 +442,9 @@
 # 4.3 Auth lane B: ChatGPT subscription (Codex backend)  (unofficial dev lane)
 # ----------------------------------------------------------------------------
 # Instead of a pay-per-token OpenAI API key, the SAME shim can route Claude Code
-# through your CHATGPT SUBSCRIPTION's Codex backend. Request translation, tools,
-# and content-block lifecycle stay shared. As of v1.2.7, ChatGPT always uses
-# upstream SSE (including for inbound non-stream callers, which receive internally
-# accumulated JSON), fails explicitly on malformed/missing terminals or invalid
-# block order, and retains v1.2.6's ChatGPT-only reasoning-summary blank-line
-# boundaries (`\n\n`). OpenAI/API-key mode retains its real upstream non-stream
-# JSON path and legacy exact concatenation. This lane reads OAuth from your `codex`
-# login (auth.json).
+# through your CHATGPT SUBSCRIPTION's Codex backend. Everything else about how
+# the shim behaves stays the same on this lane. It reads its sign-in from your
+# `codex` login (auth.json).
 #
 # UNOFFICIAL / DEV-LANE PATH: this reuses Codex's OAuth against an undocumented,
 # OpenAI-controlled backend -- NOT an OpenAI-sanctioned API method. It may break if
