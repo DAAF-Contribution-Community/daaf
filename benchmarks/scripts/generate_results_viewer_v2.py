@@ -71,6 +71,32 @@ Examples:
     python3 benchmarks/scripts/generate_results_viewer_v2.py --single-file /tmp/my_viewer.html
 
 Changelog:
+    v3.7.0 (2026-07-29):
+      - Key Takeaways narrative overhaul (viewer_template.html) + one
+        schema-additive PRECOMPUTED field:
+        - Rewrote the five Key Takeaways items for the July 2026 corpus (the
+          top tier now spans three providers — Fable 5, Opus 5, GPT-5.6 Sol,
+          and the open-weights Kimi K3), retitled the section "Key Takeaways
+          (July 2026)", and reworked the hero bottom-line paragraph, the
+          Cost-vs-Performance section lead (six-point / four-provider battery
+          frontier), the cost-estimate caveat (GPT rate verification), and the
+          Phase 3a dispatch explainer (GPT alias-dispatch temptation). The two
+          voice anchors (hero TLDR, the four About intro paragraphs) are
+          untouched.
+        - fillTakeaways() kt-* span inventory rebuilt to match the new prose;
+          every numeric figure is live-injected from PRECOMPUTED so future
+          regenerations track the data (frontier scores/costs, diminishing-
+          returns ratios, per-model agreement rates).
+        - PRECOMPUTED.consistency gains two schema-additive fields per model:
+          cells_all_agree and rate_agree — the share of repeated (phase, case)
+          cells where every rep lands on the identical grade (an agreement /
+          predictability measure decoupled from score level, distinct from the
+          existing all-perfect `rate`). Powers the Key Takeaways reliability
+          claim. No existing field renamed or removed.
+        - Removed the "Relative Duration" leaderboard column (header, cells,
+          sort hooks, its footnote sentence, and the lb-th-duration CSS). The
+          PRECOMPUTED.duration pipeline and the Cost-vs-Performance duration
+          scatter axis are unchanged; only the leaderboard column is gone.
     v3.6.1 (2026-07-29):
       - Load-time behavior change: the no-signal exclusion chokepoint now also
         drops legacy instant-exit stub runs. For legacy-schema records
@@ -372,15 +398,22 @@ def resolve_paths(args):
 #     replaced by spaces (critLabel()).
 #   - Key Takeaways (#takeaways section in the template): DATED hand-written
 #     editorial prose whose figures are injected into kt-* spans by
-#     fillTakeaways() at init from PRECOMPUTED (composite, composite_hard,
-#     per_model_phase, consistency, cost.battery — relative ratios only
-#     since v2.8.1, and the page-wide headline cost figure since v3.1.0).
+#     fillTakeaways() at init from PRECOMPUTED (composite, consistency —
+#     including the v3.7.0 rate_agree agreement field — and cost.battery, with
+#     relative ratios/multipliers only since v2.8.1). The July-2026 overhaul
+#     (v3.7.0) rewrote all five items; fillTakeaways no longer reads
+#     composite_hard or per_model_phase.
 #     Span contract:
-#     22 kt-* spans — 21 in the #takeaways section + kt-foot-bat, which
+#     28 kt-* spans — 27 in the #takeaways section + kt-foot-bat, which
 #     since the 2026-06-12 user fine-tuning round lives in the About Key
 #     Caveats cost caveat (the kt-foot paragraph itself was removed; its
-#     content was folded into the About caveats). History: 29 before the
-#     2026-06-12 e099982 repair pass, 31 originally. Every kt-* span must
+#     content was folded into the About caveats). The 27 #takeaways spans
+#     (v3.7.0): T1 kt-t1-{fable,opus5,opus5cost,sol,kimi} (5); T2 the six
+#     frontier points kt-fr-{gemma,dsflash,luna,sonnet5,sol,fable}-{s,c}
+#     (12); T3 kt-t3-{lunapct,lunacost,solpct,solcost,lastmult} (5); T4
+#     kt-t4-{topagree,budgetagree} (2); T5 kt-t5-{glm,glmcost,kimi} (3).
+#     History: 22 (21 + kt-foot-bat) from 2026-06-12 through v3.6.x, 29 before
+#     the 2026-06-12 e099982 repair pass, 31 originally. Every kt-* span must
 #     have a fillTakeaways() setter and every setter a live span; verify
 #     both directions when editing either side. Injected numbers track the data
 #     automatically; the qualitative claims do NOT — when the corpus changes
@@ -1972,7 +2005,7 @@ def build_data_bundle(result_sets, cases, runs, transcripts, subagent_transcript
     )
     bundle = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "generator_version": "3.6.1",
+        "generator_version": "3.7.0",
         "embedded_schema_contract_version": 2,
         "result_sets": sorted_result_sets,
         "cases": cases,
@@ -2372,10 +2405,25 @@ def build_precomputed(result_sets, cases, runs, generation_params,
             1 for grades in multi.values()
             if all(gr == "perfect" for gr in grades)
         )
+        # Agreement/predictability (v3.7.0): a cell "agrees" when every rep
+        # lands on the IDENTICAL grade (all perfect, OR all partial, OR all
+        # failed, OR all ungraded) — i.e., the model produces the same verdict
+        # on repeat attempts. Distinct from cells_all_perfect: that measures
+        # capability (all reps clean), whereas agreement measures reliability
+        # decoupled from score level (a model that fails identically every time
+        # is predictable, if not good). Powers the Key Takeaways "reliability
+        # and predictability" claim (fillTakeaways T4), which contrasts a
+        # top-tier model's agreement rate against a budget-tier one.
+        all_agree = sum(
+            1 for grades in multi.values()
+            if len(set(grades)) == 1
+        )
         consistency[model] = {
             "cells_total": len(multi),
             "cells_all_perfect": all_perfect,
             "rate": rnd(all_perfect / len(multi)) if multi else None,
+            "cells_all_agree": all_agree,
+            "rate_agree": rnd(all_agree / len(multi)) if multi else None,
         }
 
     # --- per_case: cross-model difficulty ---

@@ -557,10 +557,8 @@ body.nav-rendered #phases,body.nav-rendered #cases{
    engine, and ALL sortable headers have relied on it since Wave A —
    mixing a width/min-width pair into the same header row would introduce
    a second sizing mechanism for no better-defined behavior. Applied via
-   thSort()'s extraCls hook to the cost th only. The Relative Duration
-   header ("Relative Duration (1x=Opus 4.8)") reuses the same wider cap. */
-.lb-table th.lb-th-cost,
-.lb-table th.lb-th-duration{ max-width:210px; }
+   thSort()'s extraCls hook to the cost th only. */
+.lb-table th.lb-th-cost{ max-width:210px; }
 .lb-table th.lb-th-sort:hover{ color:var(--text-1); background:rgba(99,102,241,.12); }
 .lb-table th.lb-th-active{ color:var(--text-1); background:rgba(99,102,241,.18); }
 .lb-table td{ vertical-align:middle; }
@@ -1240,7 +1238,7 @@ nav.site-nav{
   </p>
 
    <div class="two-bars">
-    <p>The bottom line for practical use of DAAF at this time: Fable 5 is the undisputed top performer if budget is not a constraint. Those who <b>are</b> budget-constrained should feel comfortable relying on Sonnet 4.6, and <b>GLM5.2 is equally viable for self-hosting/full control/hermetic systems</b>. There may nonetheless be benefits to using more generally powerful models like Opus 4.8 not explicitly tracked by this benchmark (e.g., actual coding quality, analytic fidelity, etc.) if your budget/use limits allow.</p>
+    <p>The bottom line for practical use of DAAF at this time: <b>Fable 5 is the undisputed top pick</b> if budget is not a constraint. For strong performance at a more moderate cost, <b>GPT-5.6 Sol and Sonnet 5</b> are the mid-budget picks, and <b>GPT-5.6 Luna is the value pick</b> when you want most of the capability for a fraction of the spend. For self-hosting, full-control, or hermetic systems, all of the leading open-weights are now viable options: <b>Kimi K3</b> sits at the top of that pack on capability when price and model size are not a constraint, while <b>GLM 5.2 and DeepSeek V4</b> are the economical picks. There may nonetheless be benefits to using more generally powerful models not explicitly tracked by this benchmark (e.g., actual coding quality, analytic fidelity, etc.) if your budget and use limits allow.</p>
   </div>
 
 </section>
@@ -1270,50 +1268,72 @@ nav.site-nav{
      generator's dev-guide comment block.) -->
 <section class="doc-section" id="takeaways">
   <div class="sec-eyebrow">The Headlines</div>
-  <h2>Key Takeaways (June 2026)</h2>
+  <h2>Key Takeaways (July 2026)</h2>
 
   <div class="kt-item">
-    <div class="kt-claim">1. Fable 5 is actually in a class of its own.</div>
+    <div class="kt-claim">1. The ceiling rises &mdash; and the top tier is no longer one vendor&rsquo;s.</div>
     <!-- The section's ONE accent-strong (Wave C budget: at most one per
          major section) sits on the headline Fable figure below — the
          single most load-bearing number on the page. Everything else in
          #takeaways stays plain <b>. -->
-    <p>Fable 5 leads the scoreboard at a Perfect average score of <b class="accent-strong"><span id="kt-t1-comp">&mdash;</span></b>
-    &mdash; <b><span id="kt-t1-margin">&mdash;</span></b> points clear of the next
-    model. It is also by far the most consistent model tested:
-    <b><span id="kt-t1-cons">&mdash;</span></b> of its repeated cases scored perfectly across every criterion
-    on every single repetition. Given that errors and issues quickly percolate and multiply in these chained agentic systems, this is an enormously valuable characteristic relative to competitors, and likely holds similar additional value in terms of code quality and other moment-to-moment junctures not tested by this benchmark.</p>
+    <p>Fable 5 leads the scoreboard at a Perfect average score of <b class="accent-strong"><span id="kt-t1-fable">&mdash;</span></b>.
+    Opus 5 arrives right behind it at <b><span id="kt-t1-opus5">&mdash;</span></b> &mdash; but costs
+    roughly <b><span id="kt-t1-opus5cost">&mdash;</span>% more</b> to run for a hair lower score, so Fable
+    dominates it outright. The bigger story is who else reaches the top: Tier 1 now also holds
+    GPT-5.6 Sol (<span id="kt-t1-sol">&mdash;</span>) and the open-weights Kimi K3 (<span id="kt-t1-kimi">&mdash;</span>) &mdash;
+    the first time the top tier spans three different providers rather than one.</p>
   </div>
 
   <div class="kt-item">
-    <div class="kt-claim">2. Opus 4.7 was genuinely worse than Opus 4.5/4.6, but Opus 4.8 was a strong return to form.</div>
-    <p>Claude Opus 4.7 was widely criticized for being far too stingy in its effort, perceived as a strategy by Anthropic to manage intense compute constraints at launch time. The testing bears this out empirically: Opus 4.5 and 4.6 scored at
-    <span id="kt-t2-o45">&mdash;</span> and 
-    <span id="kt-t2-o46">&mdash;</span>, respectively, Opus 4.7 came in at 
-    <b><span id="kt-t2-o47">&mdash;</span></b>, and Opus 4.8 returned to form at <b><span id="kt-t2-o48">&mdash;</span></b>. The 4.7 dip is even more pronounced when focusing only on critical criteria completion (&ldquo;Critical-only&rdquo;: scores counting just the must-pass criteria): <span id="kt-t2-o45h">&mdash;</span>/<span id="kt-t2-o46h">&mdash;</span>/<b><span id="kt-t2-o47h">&mdash;</span></b>/<span id="kt-t2-o48h">&mdash;</span> across the four Opus releases.</p>
+    <div class="kt-claim">2. The efficiency frontier runs through four different providers.</div>
+    <p>The efficiency frontier is the set of models no other model beats on <em>both</em> cost and conformance
+    at once &mdash; the picks that are never simply outclassed by something cheaper. Six models make it, and they
+    come from four different providers: <b>Gemma 4 31B</b> (<span id="kt-fr-gemma-s">&mdash;</span> at
+    <span id="kt-fr-gemma-c">&mdash;</span> Opus 4.8&rsquo;s battery cost), <b>DeepSeek V4 Flash</b>
+    (<span id="kt-fr-dsflash-s">&mdash;</span> at <span id="kt-fr-dsflash-c">&mdash;</span>), <b>GPT-5.6 Luna</b>
+    (<span id="kt-fr-luna-s">&mdash;</span> at <span id="kt-fr-luna-c">&mdash;</span>), <b>Sonnet 5</b>
+    (<span id="kt-fr-sonnet5-s">&mdash;</span> at <span id="kt-fr-sonnet5-c">&mdash;</span>), <b>GPT-5.6 Sol</b>
+    (<span id="kt-fr-sol-s">&mdash;</span> at <span id="kt-fr-sol-c">&mdash;</span>), and <b>Fable 5</b>
+    (<span id="kt-fr-fable-s">&mdash;</span> at <span id="kt-fr-fable-c">&mdash;</span>). Two of the six &mdash;
+    Gemma 4 31B and DeepSeek V4 Flash &mdash; are open-weights. The practical lesson is that no single
+    vendor owns price-performance: the right pick depends on <b>which budget point you are shopping at</b>,
+    not on brand loyalty.</p>
   </div>
 
   <div class="kt-item">
-    <div class="kt-claim">3. Sonnet 4.6 is an enormously high performer relative to its cost.</div>
-    <p>Sonnet 4.6 posts a Perfect average score of <b><span id="kt-t3-comp">&mdash;</span></b> &mdash;
-    #2 overall, shockingly ahead of every Opus model in this corpus (best Opus:
-    <span id="kt-t3-bestopus">&mdash;</span>) except in the Critical-only category. And it does so cheaply:
-    running this benchmark&rsquo;s full battery on Sonnet costs roughly
-    <b><span id="kt-t3-batpct">&mdash;</span>%</b> of what it costs on
-    Opus 4.8. Recognizing that there is uncertainty/imprecision in these results, and many model capabilities not explicitly tested by these current tests, these numbers nonetheless suggest Sonnet 4.6 is more than capable of orchestration work on a budget with potentially minimal trade-off.</p>
+    <div class="kt-claim">3. Raw performance follows steep diminishing returns.</div>
+    <p>The climb to the top gets expensive fast. GPT-5.6 Luna delivers about <b><span id="kt-t3-lunapct">&mdash;</span></b>
+    of Fable 5&rsquo;s composite for roughly <b><span id="kt-t3-lunacost">&mdash;</span></b> of its battery cost;
+    GPT-5.6 Sol, about <b><span id="kt-t3-solpct">&mdash;</span></b> of Fable&rsquo;s score for
+    <b><span id="kt-t3-solcost">&mdash;</span></b> of the cost. Buying the last ~8 points of conformance &mdash;
+    the jump from Sol up to Fable &mdash; costs about <b><span id="kt-t3-lastmult">&mdash;</span> as much</b>. The
+    shape of that curve is the whole argument for knowing what quality bar your use case actually needs
+    <em>before</em> you pay for the very top of it.</p>
   </div>
 
   <div class="kt-item">
-    <div class="kt-claim">4. Open-weight models have finally crossed the capability threshold &mdash; a real win for self-hosting.</div>
-    <p>GLM 5.2 leads the open-weight pack at <span id="kt-t4-glm">&mdash;</span>, looking roughly indistinguishable from the Opus line on every metric at anywhere between <b>a quarter and half of the cost</b>. This is an enormous boon for researchers, especially, given that open-weight models like GLM 5.2 also allow for self-hosting, modification/fine-tuning, and greater long-term support guarantees (i.e., not worrying about Opus 4.5 getting sun-setted in a few months when multiple analyses and products rely explicitly on it). DeepSeek V4 Flash presents a greater dip in performance relative to the Opus line (<span id="kt-t4-dsflash">&mdash;</span>) but with an almost unbelievable price differential, costing only 3-5% of Anthropic's flagships for the same tasks.</p>
+    <div class="kt-claim">4. Reliability and predictability are what the budget tiers actually give up.</div>
+    <p>Moving down the price ladder, the first thing to erode is not raw capability but <b>reliability</b> and
+    <b>predictability</b>. Because every case here runs up to three times, we can measure how often a model
+    gives the <em>same</em> verdict on repeat attempts: the share of repeated cases where all reps land on the
+    identical outcome. Fable 5 agrees with itself on <b><span id="kt-t4-topagree">&mdash;</span></b> of its
+    repeated cases; DeepSeek V4 Flash &mdash; a genuinely capable budget pick &mdash; manages only
+    <b><span id="kt-t4-budgetagree">&mdash;</span></b>. Cheaper models don&rsquo;t merely score lower on average;
+    they <b>wobble more from run to run</b>, and in a chained agentic workflow where one bad step derails
+    everything downstream, that unpredictability is a real cost of its own.</p>
   </div>
 
   <div class="kt-item">
-    <div class="kt-claim">5. Local-class open-weight models just aren&rsquo;t there yet.</div>
-    <p>Qwen 3.6 27B, the best of the small open models here, manages
-    <b><span id="kt-t5-qwen">&mdash;</span></b>, and it's at its weakest in perhaps the most important part of the overall orchestration pipeline: careful skill routing
-    (basically: How often does it load the necessary grounding references before it responds to questions? <span id="kt-t5-qwenp4">&mdash;</span>) and mode
-    classification (basically: How often does it correctly assign a natural language query to the right workflow process? <span id="kt-t5-qwenp1">&mdash;</span>). Some of these results may be simple harness incompatibility (Claude Code is not optimized for communicating with Gemma or Qwen, to be clear), but nonetheless point to more necessary improvements/development to be viable for rigorous research orchestration workflows. That being said, they <em>will</em> get there someday, and with DAAFBench, we&rsquo;ll now be able to know when they do!</p>
+    <div class="kt-claim">5. Open-weights are structural now, not niche &mdash; and provider flexibility is how you bank the benefit.</div>
+    <p>Open-weights hold the budget end of the frontier outright: Gemma 4 31B and DeepSeek V4 Flash are the two
+    cheapest non-dominated points on the entire chart. GLM 5.2 remains the natural <b>self-hosting</b> pick for
+    teams that want full control, at <span id="kt-t5-glm">&mdash;</span> composite for about
+    <b><span id="kt-t5-glmcost">&mdash;</span></b> of Opus 4.8&rsquo;s battery cost; and Kimi K3 now tops the
+    open-weights pack on raw capability (<span id="kt-t5-kimi">&mdash;</span>, squarely in Tier 1) when price and
+    model size are not the binding constraint. The through-line: provider competition keeps pushing cost down
+    and capability up for end users, and orchestration tooling that stays <b>deliberately provider-flexible</b>
+    &mdash; as DAAF is built to be &mdash; is exactly what lets you capture those gains as the market keeps
+    moving.</p>
   </div>
 
   <!-- kt-foot removed (2026-06-12 user fine-tuning round): its
@@ -1573,7 +1593,12 @@ nav.site-nav{
             through an Anthropic-compatible endpoint whose counts come from
             Anthropic&rsquo;s tokenizer rather than each OpenRouter model&rsquo;s billing
             meter, so dollar costs derived from those counts were unreliable and
-            were removed.</li>
+            were removed. For the GPT-5.6 trio (Sol, Luna, Terra), the
+            api-equivalent list rates used here were verified against OpenAI&rsquo;s
+            published per-model schedules on 2026-07-29. A per-request audit of
+            the full GPT corpus further found zero requests above the 272k-token
+            long-context pricing threshold, so the short-context rates applied
+            here are exact for this corpus rather than a blended approximation.</li>
         <li><b>Deterministic scorers have known false negatives.</b>
             <code>prompt_has_context_section</code> is the canonical case: the scorer
             accepts seven heading variants, yet models often place genuine contextual
@@ -1624,7 +1649,11 @@ nav.site-nav{
     whose costs span more than a hundredfold onto one chart. The stepped line
     traces the <b>efficiency frontier</b>, or the models no other model beats on
     both cost and conformance at once: anything off the line is outperformed
-    somewhere cheaper. The selectors switch the vertical axis between the
+    somewhere cheaper. On the default battery-cost basis that frontier runs
+    through <b>six models from four different providers</b> (two of them
+    open-weights), spanning more than a hundredfold in cost &mdash; concrete
+    evidence that no single vendor owns price-performance, and that the best
+    pick depends on the budget point you are shopping at. The selectors switch the vertical axis between the
     composite and any single phase group (P1&ndash;P4) under either bar (Perfect
     or Critical-only), and the price-basis toggle offers two secondary views: the
     raw published <b>input</b> and <b>output</b> list rates in dollars per
@@ -2021,22 +2050,10 @@ function batteryMult(m){
   return {mult:mu,stale:!!bm.stale,basis:bm.basis||null};
 }
 
-/* Battery-duration multiplier lookup (v3.3.0), the latency twin of
-   batteryMult: a model's estimated full-battery wall-clock time as a
-   multiple of the reference model (Opus 4.8 = 1.0x), from
-   PRECOMPUTED.duration. Prefers the embedded duration_multiplier_vs_ref;
-   otherwise derives the same ratio from the embedded per-run durations.
-   Covers ALL models (no pricing gate). Returns {mult} or null. */
-function durationMult(m){
-  var dur=PRECOMPUTED.duration||{};
-  var dm=(dur.models||{})[m];
-  if(!dm) return null;
-  var refD=((dur.models||{})[dur.reference_model||"Opus 4.8"]||{}).est_duration_per_run;
-  var mu=dm.duration_multiplier_vs_ref!=null?dm.duration_multiplier_vs_ref
-    :((refD&&refD>0&&dm.est_duration_per_run!=null)?dm.est_duration_per_run/refD:null);
-  if(mu==null) return null;
-  return {mult:mu};
-}
+/* (v3.7.0) The batteryMult latency twin durationMult() was removed with the
+   Relative Duration leaderboard column. The Cost vs. Performance duration
+   scatter axis reads PRECOMPUTED.duration directly (svgCostFrontier /
+   renderCostPerf), so the duration data pipeline is unaffected. */
 
 /* Run status = the precomputed grade (perfect / partial / failed /
    ungraded), never inferred by string-matching the error field (design
@@ -2462,8 +2479,6 @@ function fillTakeaways(){
   function set(id,txt){ var n=el(id); if(n&&txt!=null) n.textContent=txt; }
   function pct1(v){ return (v*100).toFixed(1)+"%"; }
   var comp=PRECOMPUTED.composite||{};
-  var hardComp=PRECOMPUTED.composite_hard||{};
-  var pmp=PRECOMPUTED.per_model_phase||{};
   var cons=PRECOMPUTED.consistency||{};
   /* Cost claims run on the battery metric (PRECOMPUTED.cost.battery) and
      render as RELATIVE figures only — ratios and multipliers, never
@@ -2471,72 +2486,76 @@ function fillTakeaways(){
   var bat=(PRECOMPUTED.cost||{}).battery||{};
   var batModels=bat.models||{};
   function score(m){ return (comp[m]&&comp[m].score!=null)?comp[m].score:null; }
-  function hardScore(m){ return (hardComp[m]&&hardComp[m].score!=null)?hardComp[m].score:null; }
   function batCost(m){
     var b=batModels[m];
     return (b&&b.est_battery_cost!=null&&b.est_battery_cost>0)?b.est_battery_cost:null;
   }
-  /* All Opus variants share list pricing; 4.8 is the battery-cost anchor */
-  var OPUS_ANCHOR="Opus 4.8";
-
-  /* T1 — Fable's margin over the best non-Fable composite */
-  var fable=score("Fable 5");
-  var bestOther=null;
-  Object.keys(comp).forEach(function(m){
-    if(m==="Fable 5") return;
-    var s=score(m);
-    if(s!=null&&(bestOther==null||s>bestOther)) bestOther=s;
-  });
-  if(fable!=null) set("kt-t1-comp",pct1(fable));
-  if(fable!=null&&bestOther!=null){
-    var margin=(fable-bestOther)*100;
-    set("kt-t1-margin",margin.toFixed(1));
+  /* Relative battery-cost multiplier vs the Opus 4.8 anchor (the page-wide
+     cost lens); rendered via fmtMult (e.g. "0.02×"), consistent with the
+     leaderboard and Cost vs. Performance chart. */
+  function costMult(m){
+    var b=batModels[m];
+    return (b&&b.cost_multiplier_vs_ref!=null)?b.cost_multiplier_vs_ref:null;
   }
-  if(cons["Fable 5"]&&cons["Fable 5"].rate!=null) set("kt-t1-cons",pct1(cons["Fable 5"].rate));
+  /* GPT ChatGPT-subscription models carry the "(ChatGPT Subscription)"
+     suffix in the PAYLOAD key (the cross-payload join key); prose renders
+     the stripped display name statically. Use the full keys for lookups. */
+  var SOL="GPT-5.6 Sol (ChatGPT Subscription)";
+  var LUNA="GPT-5.6 Luna (ChatGPT Subscription)";
 
-  /* T2 — the Opus line on both bars: the Perfect composite (kt-t2-o4X)
-     and the Critical-only composite (kt-t2-o4Xh, from composite_hard —
-     the same source as the leaderboard's Critical-only toggle) */
-  [["kt-t2-o45","Opus 4.5"],["kt-t2-o46","Opus 4.6"],
-   ["kt-t2-o47","Opus 4.7"],["kt-t2-o48","Opus 4.8"]].forEach(function(pair){
-    var s=score(pair[1]);
-    if(s!=null) set(pair[0],pct1(s));
-  });
-  [["kt-t2-o45h","Opus 4.5"],["kt-t2-o46h","Opus 4.6"],
-   ["kt-t2-o47h","Opus 4.7"],["kt-t2-o48h","Opus 4.8"]].forEach(function(pair){
-    var s=hardScore(pair[1]);
-    if(s!=null) set(pair[0],pct1(s));
+  /* T1 — the new three-provider top tier: Fable's headline, Opus 5 close
+     behind but pricier, and Sol + Kimi K3 joining Tier 1. */
+  var fable=score("Fable 5");
+  if(fable!=null) set("kt-t1-fable",pct1(fable));
+  var opus5=score("Opus 5");
+  if(opus5!=null) set("kt-t1-opus5",pct1(opus5));
+  var fBat=batCost("Fable 5"), o5Bat=batCost("Opus 5");
+  if(fBat!=null&&o5Bat!=null) set("kt-t1-opus5cost",String(Math.round((o5Bat/fBat-1)*100)));
+  var sol=score(SOL);
+  if(sol!=null) set("kt-t1-sol",pct1(sol));
+  var kimi=score("Kimi K3");
+  if(kimi!=null) set("kt-t1-kimi",pct1(kimi));
+
+  /* T2 — the six efficiency-frontier points, each with its Perfect
+     composite and its relative battery-cost multiplier (vs Opus 4.8). Static
+     names in the prose; live score + cost figures here so a repriced or
+     reshuffled frontier tracks automatically. */
+  [["gemma","Gemma 4 31B"],["dsflash","DeepSeek V4 Flash"],["luna",LUNA],
+   ["sonnet5","Sonnet 5"],["sol",SOL],["fable","Fable 5"]].forEach(function(p){
+    var s=score(p[1]);   if(s!=null) set("kt-fr-"+p[0]+"-s",pct1(s));
+    var cm=costMult(p[1]); if(cm!=null) set("kt-fr-"+p[0]+"-c",fmtMult(cm));
   });
 
-  /* T3 — Sonnet 4.6 vs the best Opus, and the battery-cost percentage
-     (Sonnet's est. battery cost as a share of Opus 4.8's) */
-  var sonnet=score("Sonnet 4.6");
-  var bestOpus=null;
-  ["Opus 4.5","Opus 4.6","Opus 4.7","Opus 4.8"].forEach(function(m){
-    var s=score(m);
-    if(s!=null&&(bestOpus==null||s>bestOpus)) bestOpus=s;
-  });
-  if(sonnet!=null) set("kt-t3-comp",pct1(sonnet));
-  if(bestOpus!=null) set("kt-t3-bestopus",pct1(bestOpus));
-  var sBat=batCost("Sonnet 4.6"), oBat=batCost(OPUS_ANCHOR);
-  if(sBat!=null&&oBat!=null) set("kt-t3-batpct",String(Math.round(sBat/oBat*100)));
+  /* T3 — diminishing returns: Luna and Sol as a share of Fable on both
+     score and battery cost, plus the Sol->Fable cost multiple. */
+  var luna=score(LUNA);
+  var lBat=batCost(LUNA), solBat=batCost(SOL);
+  function shareOfFableScore(s){ return (fable!=null&&s!=null)?Math.round(s/fable*100)+"%":null; }
+  function shareOfFableCost(c){ return (fBat!=null&&c!=null)?Math.round(c/fBat*100)+"%":null; }
+  set("kt-t3-lunapct",shareOfFableScore(luna));
+  set("kt-t3-lunacost",shareOfFableCost(lBat));
+  set("kt-t3-solpct",shareOfFableScore(sol));
+  set("kt-t3-solcost",shareOfFableCost(solBat));
+  if(fBat!=null&&solBat!=null&&solBat>0) set("kt-t3-lastmult",fmtMult(fBat/solBat));
 
-  /* T4 — the open-weight pack: GLM 5.2 leads on score; DS Flash
-     cost-differential highlight */
+  /* T4 — reliability/predictability via the agreement metric (v3.7.0):
+     rate_agree is the share of repeated (phase, case) cells where every rep
+     landed on the identical grade — a predictability measure decoupled from
+     score level (distinct from `rate`, which is all-reps-perfect). Contrast
+     a top-tier model (Fable 5) with a capable budget pick (DeepSeek V4
+     Flash) to show that the cheap end gives up consistency, not just score. */
+  var topA=cons["Fable 5"];
+  if(topA&&topA.rate_agree!=null) set("kt-t4-topagree",pct1(topA.rate_agree));
+  var budA=cons["DeepSeek V4 Flash"];
+  if(budA&&budA.rate_agree!=null) set("kt-t4-budgetagree",pct1(budA.rate_agree));
+
+  /* T5 — open-weights: GLM 5.2 as the self-hosting pick (score + relative
+     cost) and Kimi K3 topping open-weights capability. */
   var glm=score("GLM 5.2");
-  if(glm!=null) set("kt-t4-glm",pct1(glm));
-  var dsflash=score("DeepSeek V4 Flash");
-  if(dsflash!=null) set("kt-t4-dsflash",pct1(dsflash));
-
-  /* T5 — Qwen's local-class ceiling (P4 skill routing + P1 mode
-     classification as the weak points). The Gemma timed-out figure was
-     removed in v3.3.0 (the viewer is timeout-blind; no timeout data). */
-  var qwen=score("Qwen 3.6 27B");
-  if(qwen!=null) set("kt-t5-qwen",pct1(qwen));
-  var qp4=(pmp["Qwen 3.6 27B"]||{})["skill_routing"];
-  if(qp4&&qp4.perfect_rate!=null) set("kt-t5-qwenp4",pct1(qp4.perfect_rate));
-  var qp1=(pmp["Qwen 3.6 27B"]||{})["mode_classification"];
-  if(qp1&&qp1.perfect_rate!=null) set("kt-t5-qwenp1",pct1(qp1.perfect_rate));
+  if(glm!=null) set("kt-t5-glm",pct1(glm));
+  var glmCost=costMult("GLM 5.2");
+  if(glmCost!=null) set("kt-t5-glmcost",fmtMult(glmCost));
+  if(kimi!=null) set("kt-t5-kimi",pct1(kimi));
 
   /* kt-foot-bat — battery size for the relative-multiplier caveat. The
      span moved from the (removed) kt-foot into the About Key Caveats cost
@@ -2684,10 +2703,6 @@ function renderLeaderboard(container){
       var b=batteryMult(m);
       return b?b.mult:null;
     }
-    if(sortKey==="duration"){
-      var dv=durationMult(m);
-      return dv?dv.mult:null;
-    }
     if(sortKey==="consistency"){
       var k=consistency[m];
       return (k&&k.rate!=null)?k.rate:null;
@@ -2754,27 +2769,22 @@ function renderLeaderboard(container){
       '" onclick="lbSortBy(&#39;'+esc(key)+'&#39;,'+defDir+')">'+label+arrow+'</th>';
   }
 
-  /* Column order (v3.3.0): Tier, #, Model, Cost, Duration, Composite,
-     P1...P4 phases, Consistency. Cost was promoted (fine-tuning round 3,
-     Wave A) to right after Model as a primary reference point read
-     alongside the composite; Relative Duration (v3.3.0) sits immediately
-     after it as its latency twin. The Dispatch column (the P3a
-     agent_dispatched pass rate) was REMOVED — it duplicated signal the
-     P3a phase column already carries. The Timed-out column was REMOVED in
-     v3.3.0: the viewer is timeout-blind, so timed-out runs are excluded
-     upstream and never presented. Tier must stay the first cell of
-     band-start rows (the rowspan gutter contract). */
+  /* Column order: Tier, #, Model, Cost, Composite, P1...P4 phases,
+     Consistency. Cost was promoted (fine-tuning round 3, Wave A) to right
+     after Model as a primary reference point read alongside the composite.
+     The Relative Duration column (v3.3.0) was REMOVED in v3.7.0 — the
+     PRECOMPUTED.duration pipeline and the Cost vs. Performance duration
+     scatter axis remain, but the leaderboard no longer carries a duration
+     column. The Dispatch column (the P3a agent_dispatched pass rate) was
+     REMOVED — it duplicated signal the P3a phase column already carries.
+     The Timed-out column was REMOVED in v3.3.0: the viewer is timeout-blind,
+     so timed-out runs are excluded upstream and never presented. Tier must
+     stay the first cell of band-start rows (the rowspan gutter contract). */
   html+='<div class="card"><table class="data-table lb-table"><thead><tr>';
   if(showTier) html+='<th title="'+metricLabel+' composite tier band (banding rule below)">Tier</th>';
   html+='<th title="'+metricLabel+' composite rank (fixed across re-sorts)">#</th><th>Model</th>';
   html+=thSort("cost","Relative Test Cost (1x=Opus 4.8)",
     "Estimated relative cost to run the full benchmark battery once, as a multiple of Opus 4.8 (= 1.0\u00d7) \u2014 published list rates \u00d7 each model\u2019s observed token mix, uncached basis (defined under Cost vs. Performance). Always the battery multiplier here, regardless of the price-basis toggle in Cost vs. Performance. Not measured benchmark spend.",1,'lb-th-cost');
-  /* Relative Duration (v3.3.0): the latency twin of the cost column, a
-     multiple of Opus 4.8's estimated full-battery wall-clock time, from
-     PRECOMPUTED.duration (summed per-run durations; parallelization-
-     invariant). Covers every model, including those omitted from cost. */
-  html+=thSort("duration","Relative Duration (1x=Opus 4.8)",
-    "Estimated relative wall-clock time to run the full benchmark battery once, as a multiple of Opus 4.8 (= 1.0×) — each model’s summed per-run durations (parallelization-invariant), a real-world latency proxy defined under Cost vs. Performance. Not a price; covers every model, including those without billing-grade cost data.",1,'lb-th-duration');
   html+=thSort("composite","Composite",
     metricLabel+' composite \u2014 unweighted mean of the per-phase '+metricLabel+' rates',-1);
   groups.forEach(function(g){
@@ -2822,19 +2832,6 @@ function renderLeaderboard(container){
         (b.stale?' \u26a0 token mix from a billing snapshot that predates this model\u2019s newest corpus runs':'')+
         '">'+fmtMult(b.mult)+
         '</td>';
-    } else {
-      html+='<td class="lb-cost text-muted">&mdash;</td>';
-    }
-
-    /* Relative Duration (v3.3.0) — the latency twin of the cost cell,
-       Opus 4.8 = 1.0x, from PRECOMPUTED.duration (summed per-run
-       durations; parallelization-invariant). Reuses fmtMult and the
-       em-dash idiom; covers every model (no pricing gate). */
-    var dv=durationMult(m);
-    if(dv){
-      html+='<td class="lb-cost" title="Est. wall-clock time to run the full battery once ≈ '+
-        fmtMult(dv.mult)+' Opus 4.8’s (= 1.0×); summed per-run durations, parallelization-invariant — a latency proxy defined under Cost vs. Performance">'+
-        fmtMult(dv.mult)+'</td>';
     } else {
       html+='<td class="lb-cost text-muted">&mdash;</td>';
     }
@@ -2905,11 +2902,7 @@ function renderLeaderboard(container){
     'For the ChatGPT-subscription GPT models, this figure is an API list-rate counterfactual: those models are '+
     'accessed under a flat ChatGPT subscription and are never invoiced per token, so their battery cost is a '+
     'published-list-rate estimate (basis <code>api-equivalent</code>), not corpus-billed spend. '+
-    'Full definition, sources, and caveats under <a href="#cost-performance">Cost vs. Performance</a>. '+
-    'Relative Duration is the estimated relative wall-clock time to run the full battery once, from each '+
-    'model\u2019s summed per-run durations (parallelization-invariant) \u2014 a real-world latency proxy, also '+
-    'expressed as a multiple of Opus 4.8 (= 1.0\u00d7); covers every model, including those without '+
-    'billing-grade cost data. Full definition and caveats under <a href="#cost-performance">Cost vs. Performance</a>.</p>';
+    'Full definition, sources, and caveats under <a href="#cost-performance">Cost vs. Performance</a>.</p>';
   if(anyPartial){
     html+='<p class="lb-foot">Models marked <i>partial</i> are missing one or more phase components; '+
       'their composite is the mean of the components present, not a comparable full-coverage score.</p>';
@@ -3348,7 +3341,7 @@ function buildPhaseAgg(){
 var PD_EXPLAINERS={
   mode_classification:"The failure this phase catches: <i>the assistant starts the wrong kind of work.</i> Each run starts cold: the model sees only the user\u2019s opening request and must route it to the right one of DAAF\u2019s workflow modes (basically: Did it recognize what kind of work is actually being asked for?). It is a fairly easy task, but the one everything downstream depends on. Criteria check the mode it picks, that it pauses at a confirmation gate for the user\u2019s sign-off, and that it executes nothing before that approval arrives.",
   post_confirmation:"The failure this phase catches: <i>improvising instead of following the established process.</i> The model resumes from a checkpoint that ends at the confirmation gate, and the user says to proceed. Strict protocol adherence means doing the homework first: loading the governing reference documents (the ones that define how the work is supposed to be done) before conducting any of it. Criteria check that it actually loads the mode reference files and skills it just committed to loading \u2014 not merely that it claims to.",
-  dispatch_compliance_dispatch:"The failure this phase catches: <i>garbled delegation that degrades everything downstream.</i> The model resumes from a fully initialized Ad Hoc Collaboration session and must hand work to a specialist subagent the way a good manager would: concisely, coherently, and instructively. Criteria check that it dispatches the correct agent type with a properly structured handoff prompt \u2014 BASE_DIR, mode marker, and task / context / instructions sections.",
+  dispatch_compliance_dispatch:"The failure this phase catches: <i>garbled delegation that degrades everything downstream.</i> The model resumes from a fully initialized Ad Hoc Collaboration session and must hand work to a specialist subagent the way a good manager would: concisely, coherently, and instructively. Criteria check that it dispatches the correct agent type with a properly structured handoff prompt \u2014 BASE_DIR, mode marker, and task / context / instructions sections. Some models fail this phase not by skipping the dispatch at all, but by requesting a specialist their environment doesn\u2019t actually provide \u2014 a temptation seen in the GPT-5.6 family, which sometimes reaches for the tool schema\u2019s Claude model aliases instead of a model its own runtime can serve.",
   dispatch_compliance_subagent:"The failure this phase catches: <i>a specialist that ignores its own role\u2019s rules.</i> Whenever a Phase 3 dispatch succeeds, the dispatched subagent\u2019s own transcript gets scored too: did it operate correctly <i>as</i> that specialist (e.g., a coding agent actually writing a script and executing it through the audit-trail wrapper)? Criteria are derived from the agent type\u2019s work protocols, and which ones apply varies by case \u2014 so denominators vary across this heatmap, and \u201c\u2014\u201d marks criteria that never applied to a model\u2019s runs.",
   skill_routing:"The failure this phase catches: <i>confident, ungrounded methodological advice.</i> Models cannot be relied on to draw research methodology from their fuzzy general knowledge (basically: the baked-in impressions left over from training), so a genuine research assistant must load curated domain references into its working context to ground what it does, says, and recommends. The model resumes from the same fully initialized checkpoint as Phase 3 and receives a brainstorming task that calls for a specific analysis library; criteria check that it FIRST consults the data-scientist hub\u2019s routing guidance and THEN loads the specific library skills \u2014 scored on the main transcript only, and one of the five leaderboard composite components."
 };
@@ -4778,12 +4771,12 @@ window.showAllRuns=function(){
 };
 
 /* Leaderboard column-header sort: composite | per-phase gid |
-   consistency | cost | duration. (The "dispatch" and "timeout" keys were
+   consistency | cost. (The "dispatch", "timeout", and "duration" keys were
    removed — dispatch with its column in fine-tuning round 3 Wave A, timeout
-   with the timeout-blindness change in v3.3.0.) Clicking the active
-   column flips direction; clicking a new column applies that column's
-   default direction (best-first: descending for rates, ascending for the
-   cost and duration multipliers).
+   with the timeout-blindness change in v3.3.0, duration with its column in
+   v3.7.0.) Clicking the active column flips direction; clicking a new column
+   applies that column's default direction (best-first: descending for rates,
+   ascending for the cost multiplier).
    Performance: when the tier gutter column does not change, rows are
    reordered via DOM moves (no innerHTML rebuild); tier-column transitions
    fall back to full re-render. */
@@ -4825,7 +4818,6 @@ window.lbSortBy=function(key,defDir){
     .forEach(function(r,i){ rankOf[r.model]=i+1; });
   var sortVal=function(m){
     if(sortKey==="cost"){ var b=batteryMult(m); return b?b.mult:null; }
-    if(sortKey==="duration"){ var dv=durationMult(m); return dv?dv.mult:null; }
     if(sortKey==="consistency"){ var k=consistency[m]; return(k&&k.rate!=null)?k.rate:null; }
     if(sortKey==="composite"){ var e=comp[m]; return e?e.score:null; }
     var cell=(pmp[m]||{})[sortKey];

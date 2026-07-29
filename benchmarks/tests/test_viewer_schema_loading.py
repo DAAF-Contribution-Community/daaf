@@ -559,7 +559,7 @@ class ViewerSchemaLoadingTests(unittest.TestCase):
         )
         self.assertNotIn("cli_model_usage", subscription_run["usage_observed"])
         self.assertEqual(2, bundle["embedded_schema_contract_version"])
-        self.assertEqual("3.6.1", bundle["generator_version"])
+        self.assertEqual("3.7.0", bundle["generator_version"])
 
     def test_subscription_cost_incompatibility_retains_behavioral_scores(self):
         result_sets, runs, anth_tokens, _ = self._load()
@@ -672,6 +672,14 @@ class ViewerSchemaLoadingTests(unittest.TestCase):
         self.assertEqual(4, precomputed["per_case"]["mc-a"]["n_runs"])
         self.assertEqual(1.0, precomputed["per_case"]["mc-a"]["perfect_rate"])
         self.assertNotIn("mc-degenerate", precomputed["per_case"])
+
+        # (3b) v3.7.0 schema-additive consistency fields: cells_all_agree /
+        # rate_agree computed over multi-rep (phase, case) cells. The fixture's
+        # "Timeout Model" has one multi-rep cell (2 completed reps, both
+        # graded perfect) -> identical grades -> full agreement.
+        tm_cons = precomputed["consistency"]["Timeout Model"]
+        self.assertEqual(1, tm_cons["cells_all_agree"])
+        self.assertEqual(1.0, tm_cons["rate_agree"])
 
         # (4) PRECOMPUTED.duration mirrors cost.battery, over completed runs.
         duration = precomputed["duration"]
