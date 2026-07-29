@@ -63,9 +63,14 @@
 set -u
 
 # --- Color codes ---
-C_RESET='\033[0m'
-C_GRAY='\033[38;5;245m'
-C_BAR_EMPTY='\033[38;5;238m'
+# ANSI-C quoting ($'…') so the ESC byte lives in these TRUSTED constants, not in
+# a printf '%b' pass over the assembled string (Convention 1). The final render
+# uses printf '%s' (see the emit step), so a printable backslash escape arriving
+# in an untrusted field (model name, agentType, description) stays inert rather
+# than being re-materialized into a real ESC/OSC/BEL sequence.
+C_RESET=$'\033[0m'
+C_GRAY=$'\033[38;5;245m'
+C_BAR_EMPTY=$'\033[38;5;238m'
 # Severity palette aligned to the Context Quality Curve. The exact numeric
 # thresholds are quality-tier conditional (see the per-row severity block near
 # the bottom of the loop): Fable/Mythos patterns use ELEVATED >= 30% OR >= 300k,
@@ -79,10 +84,10 @@ C_BAR_EMPTY='\033[38;5;238m'
 #   ELEVATED amber
 #   HIGH     orange  (bold to distinguish from amber)
 #   CRITICAL red
-C_NOMINAL='\033[38;5;71m'    # green
-C_ELEVATED='\033[38;5;179m'  # amber
-C_HIGH='\033[1;38;5;173m'    # orange, bold
-C_CRITICAL='\033[38;5;167m'  # red
+C_NOMINAL=$'\033[38;5;71m'    # green
+C_ELEVATED=$'\033[38;5;179m'  # amber
+C_HIGH=$'\033[1;38;5;173m'    # orange, bold
+C_CRITICAL=$'\033[38;5;167m'  # red
 
 # Accept only canonical positive decimal integers that Bash can represent
 # safely. Lexical and length/string bounds run before any arithmetic, so values
@@ -96,6 +101,16 @@ is_canonical_positive_decimal() {
     # Equal-length canonical decimals are intentionally compared lexicographically before arithmetic.
     # shellcheck disable=SC2071
     [[ "$value" == "$max_value" || "$value" < "$max_value" ]]
+}
+
+# Bounded identifier allowlist for values interpolated into cache/transcript
+# paths (session_id, per-agent id). Leading alnum, then alnum/dot/underscore/
+# hyphen, max 128 chars (Convention 2). Rejects slashes, traversal (..), control
+# chars, leading dash, empty, and >128. A present-but-invalid id is rejected
+# exactly like an absent one (key-presence contract shared with context-bar.sh
+# and the provider shim). Same name + regex across the hardened renderers.
+is_safe_id() {
+    [[ "${1:-}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ]]
 }
 
 # Return a signature that changes when a transcript is appended or rewritten.
@@ -131,18 +146,29 @@ resolve_model_cache() {
     fi
 
     if [[ -n "$transcript" && -f "$transcript" ]]; then
-        model=$(tail -n 50 "$transcript" 2>/dev/null | jq -rs '
+        # Full-transcript scan (Convention 4): no `tail -n 50` bound, so more than
+        # 50 trailing synthetic/placeholder model entries cannot hide the last
+        # real model. The `< "$transcript"` redirect keeps a missing/binary file
+        # fail-open, mirroring context-bar.sh's recovery idiom.
+        model=$(jq -rs '
             [.[] | (.message.model // empty)
              | select(. != "" and . != "<synthetic>")] | last // empty
-        ' 2>/dev/null) || model=""
+        ' < "$transcript" 2>/dev/null) || model=""
     fi
     [[ -z "$model" ]] && model="$cached_model"
 
     if [[ -n "$model" && -n "$signature" ]]; then
-        if printf '%s' "$model" > "$model_tmp" 2>/dev/null &&
-           printf '%s' "$signature" > "$signature_tmp" 2>/dev/null &&
-           mv "$model_tmp" "$cache" 2>/dev/null &&
-           mv "$signature_tmp" "$signature_cache" 2>/dev/null; then
+        # Group the writes+moves under ONE stderr redirect (Convention 6): a
+        # `> "$tmp"` open() failure emits its diagnostic BEFORE a trailing
+        # `2>/dev/null` on the same simple command takes effect, so the whole
+        # sequence is wrapped to suppress the open() error too. If the cache dir
+        # is unusable, drop the temps and continue without caching (fail-open).
+        if {
+            printf '%s' "$model" > "$model_tmp" &&
+            printf '%s' "$signature" > "$signature_tmp" &&
+            mv -- "$model_tmp" "$cache" &&
+            mv -- "$signature_tmp" "$signature_cache"
+        } 2>/dev/null; then
             :
         else
             rm -f "$model_tmp" "$signature_tmp" 2>/dev/null
@@ -164,6 +190,18 @@ IFS=$'\x1f' read -r session_id transcript_path < <(printf '%s' "$input" | jq -r 
 session_id="${session_id:-}"
 transcript_path="${transcript_path:-}"
 
+# Reject a present-but-unsafe session id before it reaches any cache/transcript
+# path (Convention 2). Blanking it makes every session-scoped cache read/write
+# below no-op via the existing [[ -n "$session_id" ]] guards, and the window
+# falls back to the newest cache / 200k default — fail-open, no row lost.
+is_safe_id "$session_id" || session_id=""
+
+# Cache base dir. Production caches live in /tmp; the override is a
+# deterministic-test seam (mirrors context-bar.sh's DAAF_CONTEXT_BAR_CACHE_DIR)
+# so bats can point writes at project scratch and exercise ENOTDIR paths without
+# touching live session state. Default preserves production behavior exactly.
+cache_dir="${DAAF_SUBAGENT_BAR_CACHE_DIR:-/tmp}"
+
 # Sidecar directory holding agent-<id>.meta.json (agentType lookup source).
 subagents_dir=""
 if [[ -n "$transcript_path" && -n "$session_id" ]]; then
@@ -175,11 +213,11 @@ fi
 # cache written by context-bar.sh, else the most recent cache from any session,
 # else 200000. This script NEVER writes the cache.
 max_context=""
-if [[ -n "$session_id" && -f "/tmp/claude-ctx-window-${session_id}" ]]; then
-    max_context=$(cat "/tmp/claude-ctx-window-${session_id}" 2>/dev/null)
+if [[ -n "$session_id" && -f "${cache_dir}/claude-ctx-window-${session_id}" ]]; then
+    max_context=$(cat "${cache_dir}/claude-ctx-window-${session_id}" 2>/dev/null)
 fi
 if [[ -z "$max_context" ]]; then
-    latest_ctx=$(ls -t /tmp/claude-ctx-window-* 2>/dev/null | head -1)
+    latest_ctx=$(ls -t "${cache_dir}"/claude-ctx-window-* 2>/dev/null | head -1)
     if [[ -n "${latest_ctx:-}" ]]; then
         max_context=$(cat "$latest_ctx" 2>/dev/null)
     fi
@@ -194,7 +232,7 @@ fi
 # current signature so a real model switch cannot leave the comparison stale.
 session_model=""
 if [[ -n "$session_id" ]]; then
-    session_model=$(resolve_model_cache "$transcript_path" "/tmp/claude-model-${session_id}")
+    session_model=$(resolve_model_cache "$transcript_path" "${cache_dir}/claude-model-${session_id}")
 fi
 
 # --- Extract tasks (single jq pass, one \x1f-joined record per line) ---
@@ -202,10 +240,19 @@ fi
 # are dropped (they cannot be keyed in the output). label/name are sanitized
 # of newlines/tabs/\x1f so one task always stays one record line.
 tasks_rec=$(printf '%s' "$input" | jq -r '
-    def clean: tostring | gsub("[\n\r\t]"; " ");
+    # clean strips ALL C0 controls + DEL (Convention 1), not just \n\r\t\x1f: a
+    # JSON-escaped control (e.g. an escaped ESC) parses to a real ESC byte here,
+    # so stripping it stops the byte reaching the rendered row. Replacement is a
+    # space (not "") to preserve the \x1f record structure. C1 bytes are handled
+    # upstream: jq rejects raw C1 in JSON input, so they never reach this stage.
+    def clean: tostring | gsub("[[:cntrl:]]"; " ");
     (.tasks // [])[]
-    | select((.id // "") != "")
-    | [ (.id // "" | clean),
+    # id must be a string (Convention 2): a JSON number/object id is malformed
+    # input and is dropped here; a path-unsafe string id is rejected later by
+    # is_safe_id in the render loop before any path is built from it.
+    | select((.id | type) == "string")
+    | select((.id | clean) != "")
+    | [ (.id | clean),
         (.type // "" | clean),
         (.name // "" | clean),
         (.status // "" | clean),
@@ -216,10 +263,28 @@ tasks_rec=$(printf '%s' "$input" | jq -r '
 
 [[ -z "$tasks_rec" ]] && exit 0
 
+# Closed-set GPT classifier grammar (Convention 3). Anchored EREs on the
+# provider-stripped terminal slug replace the old open-ended case-globs
+# (gpt-5.6[-\[]*), which mapped malformed ids (gpt-5.6-experimental,
+# gpt-5.6-sol[1m]x, gpt-5.4-) into the 1.05M physical window. A new codename is a
+# deliberate one-line registry edit here, consistent with validate-before-trust.
+#   flagship  -> 1,050,000 physical window + eligible for the 370k ChatGPT cap
+#   mini      -> 400,000
+#   chat      -> 128,000
+#   prev (gpt-5 / gpt-5.2) -> 400,000, or 128,000 for its -chat variant
+gpt_flagship_re='^gpt-5\.(4|5|6)(-(sol|terra|luna))?(\[1m\])?$'
+gpt_mini_re='^gpt-5\.(4|5|6)(-(sol|terra|luna))?-mini(\[1m\])?$'
+gpt_chat_re='^gpt-5\.(4|5|6)(-(sol|terra|luna))?-chat(\[1m\])?$'
+gpt_prev_re='^gpt-5(\.2)?(-mini)?(\[1m\])?$'
+gpt_prev_chat_re='^gpt-5(\.2)?-chat(\[1m\])?$'
+
 # --- Render one output line per task ---
 bar_width=5
 while IFS=$'\x1f' read -r id type name status tokens label; do
-    [[ -z "$id" ]] && continue
+    # Reject a path-unsafe agent id before it is interpolated into any transcript
+    # or cache path (Convention 2); omit the row, keep the native rendering.
+    # is_safe_id also subsumes the empty-id guard (the regex requires >=1 char).
+    is_safe_id "$id" || continue
 
     # Normalize token count to a non-negative integer (strip any fraction).
     tokens=${tokens%.*}
@@ -238,13 +303,17 @@ while IFS=$'\x1f' read -r id type name status tokens label; do
     # exists; any jq failure yields empty, and the numeric re-guard leaves
     # tokens at 0 (which keeps native rendering, this script's failure mode).
     if [[ "$tokens" -le 0 && -n "$subagents_dir" && -f "${subagents_dir}/agent-${id}.jsonl" ]]; then
-        tokens=$(tail -n 50 "${subagents_dir}/agent-${id}.jsonl" 2>/dev/null | jq -s '
+        # Full-transcript scan (Convention 4): drop the `tail -n 50` bound so more
+        # than 50 trailing zero-token shim placeholders cannot hide the real
+        # usage. The `< file` redirect keeps a missing/binary transcript
+        # fail-open, mirroring context-bar.sh's recovery idiom.
+        tokens=$(jq -s '
             [.[] | select(.message.usage and .isApiErrorMessage != true) | (
                 (.message.usage.input_tokens // 0) +
                 (.message.usage.cache_read_input_tokens // 0) +
                 (.message.usage.cache_creation_input_tokens // 0)
             )] | map(select(. > 0)) | last // 0
-        ' 2>/dev/null) || tokens=0
+        ' < "${subagents_dir}/agent-${id}.jsonl" 2>/dev/null) || tokens=0
         tokens=${tokens%.*}
         [[ "$tokens" =~ ^[0-9]+$ ]] || tokens=0
     fi
@@ -258,11 +327,24 @@ while IFS=$'\x1f' read -r id type name status tokens label; do
     task_model=""
     model_cache=""
     task_transcript=""
-    [[ -n "$session_id" ]] && model_cache="/tmp/claude-subagent-model-${session_id}-${id}"
+    [[ -n "$session_id" ]] && model_cache="${cache_dir}/claude-subagent-model-${session_id}-${id}"
     [[ -n "$subagents_dir" ]] && task_transcript="${subagents_dir}/agent-${id}.jsonl"
     if [[ -n "$model_cache" ]]; then
         task_model=$(resolve_model_cache "$task_transcript" "$model_cache")
     fi
+    # Control-strip the resolved model id before it is used for display
+    # (agent_disp) or slug classification (Convention 1). The bare cache file is
+    # read with `cat`, so a corrupt/hostile cache is the one path that can carry
+    # raw control bytes past the payload clean; a legitimate model id never
+    # contains them. jq -Rs makes the strip Unicode-aware: gsub([[:cntrl:]])
+    # removes C0, DEL, AND C1 (U+0080-U+009F — Oniguruma's [[:cntrl:]] is the
+    # Unicode Cc category, unlike byte-wise bash/tr ranges, which pass
+    # UTF-8-encoded C1 through), and jq's UTF-8 decoding replaces raw stray
+    # bytes (a lone 8-bit C1) with inert U+FFFD. Slurp (-s) keeps an embedded
+    # newline inside the one string so it is stripped rather than re-emitted as
+    # a second line. Fail-open: on any jq failure the model reads as unresolved
+    # (empty) and the row still renders.
+    task_model=$(printf '%s' "$task_model" | jq -Rsr 'gsub("[[:cntrl:]]"; "")' 2>/dev/null) || task_model=""
     # Default: the session window (covers same-model subagents and alternative
     # providers, where the mapping below does not apply).
     row_window="$max_context"
@@ -287,28 +369,24 @@ while IFS=$'\x1f' read -r id type name status tokens label; do
             z-ai/glm-5.2|z-ai/glm-5.2-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9])
                 row_window=1048576 ;;
             *)
-                case "$physical_slug" in
-                    gpt-5.4|gpt-5.4[-\[]*|gpt-5.5|gpt-5.5[-\[]*|gpt-5.6|gpt-5.6[-\[]*)
-                        case "$physical_slug" in
-                            *-mini*) row_window=400000 ;;
-                            *-chat*) row_window=128000 ;;
-                            *) row_window=1050000 ;;
-                        esac
-                        ;;
-                    gpt-5|gpt-5[-\[]*|gpt-5.2|gpt-5.2[-\[]*)
-                        case "$physical_slug" in
-                            *-chat*) row_window=128000 ;;
-                            *) row_window=400000 ;;
-                        esac
-                        ;;
-                    *)
-                        case "$task_model" in
-                            *fable-5*|*mythos-5*|*opus-4-7*|*opus-4-8*|*\[1m\]*)
-                                row_window=1000000 ;;
-                            *) row_window=200000 ;;
-                        esac
-                        ;;
-                esac
+                # Closed-set classification on the provider-stripped slug
+                # (Convention 3). Only the enumerated flagship/mini/chat/prev
+                # slugs earn a GPT physical window; anything else (malformed
+                # flagship-looking ids included) falls through to the
+                # conservative Claude/[1m]/200k map. Order: flagship, then mini,
+                # then chat before prev so a prev-chat is not shadowed.
+                if   [[ "$physical_slug" =~ $gpt_flagship_re ]];  then row_window=1050000
+                elif [[ "$physical_slug" =~ $gpt_mini_re ]];      then row_window=400000
+                elif [[ "$physical_slug" =~ $gpt_chat_re ]];      then row_window=128000
+                elif [[ "$physical_slug" =~ $gpt_prev_chat_re ]]; then row_window=128000
+                elif [[ "$physical_slug" =~ $gpt_prev_re ]];      then row_window=400000
+                else
+                    case "$task_model" in
+                        *fable-5*|*mythos-5*|*opus-4-7*|*opus-4-8*|*\[1m\]*)
+                            row_window=1000000 ;;
+                        *) row_window=200000 ;;
+                    esac
+                fi
                 ;;
         esac
     fi
@@ -329,13 +407,14 @@ while IFS=$'\x1f' read -r id type name status tokens label; do
     # capped while lower positive values survive. This is utilization/statusline
     # accounting, NOT compaction and NOT a transport-level request blocker; the
     # backend remains the ultimate hard ceiling.
+    # Flagship predicate for the ChatGPT-lane cap uses the SAME closed-set ERE
+    # (Convention 3); mini/chat slugs simply do not match it, so no explicit
+    # exclusion arm is needed. The 370k min-ceiling ordering below is unchanged.
     gpt_flagship=0
     physical_slug="${task_model##*/}"
-    case "$physical_slug" in
-        gpt-5*-mini*|gpt-5*-chat*) ;;
-        gpt-5.4|gpt-5.4[-\[]*|gpt-5.5|gpt-5.5[-\[]*|gpt-5.6|gpt-5.6[-\[]*)
-            gpt_flagship=1 ;;
-    esac
+    if [[ "$physical_slug" =~ $gpt_flagship_re ]]; then
+        gpt_flagship=1
+    fi
     if [[ "${DAAF_PROVIDER_SHIM:-}" == "openai" && \
           "${SHIM_BACKEND_MODE:-}" == "chatgpt" && \
           "$gpt_flagship" -eq 1 ]] && \
@@ -347,6 +426,17 @@ while IFS=$'\x1f' read -r id type name status tokens label; do
     # Guard: must be a canonical positive decimal, else fall back to 200k.
     if ! is_canonical_positive_decimal "$row_window"; then
         row_window=200000
+    fi
+
+    # Numerator bound (Convention 5): tokens is already ^[0-9]+$, but an int64-
+    # valid value above floor(INT64_MAX/100)=92233720368547758 would overflow
+    # tokens*100 below and wrap pct negative. row_window is already validated
+    # above; bound the numerator symmetrically. tokens==0 is legitimate (0%), so
+    # only non-zero values are checked; is_canonical_positive_decimal guarantees
+    # tokens<=INT64_MAX first, making the -gt comparison itself overflow-safe.
+    if [[ "$tokens" != "0" ]] && \
+       { ! is_canonical_positive_decimal "$tokens" || [[ "$tokens" -gt 92233720368547758 ]]; }; then
+        tokens=0
     fi
 
     pct=$((tokens * 100 / row_window))
@@ -410,7 +500,12 @@ while IFS=$'\x1f' read -r id type name status tokens label; do
     # fall back to registered name, then task type, then "agent".
     agent_disp=""
     if [[ -n "$subagents_dir" && -f "${subagents_dir}/agent-${id}.meta.json" ]]; then
-        agent_disp=$(jq -r '.agentType // empty' \
+        # Control-strip agentType (Convention 1): this sidecar read bypasses the
+        # main-payload clean, so a JSON-escaped control in agentType would
+        # otherwise reach the row. jq rejects raw C1 in the file, and gsub
+        # removes any C0/DEL that arrived as a JSON escape.
+        agent_disp=$(jq -r '(.agentType // empty) | tostring
+            | gsub("[[:cntrl:]]"; " ")' \
             "${subagents_dir}/agent-${id}.meta.json" 2>/dev/null)
     fi
     [[ -z "$agent_disp" ]] && agent_disp="$name"
@@ -436,11 +531,16 @@ while IFS=$'\x1f' read -r id type name status tokens label; do
         content+="${C_GRAY} [${status}]${C_RESET}"
     fi
 
-    # Emit {"id","content"} as ONE compact JSON line. ANSI codes are
-    # materialized via printf %b, then JSON-encoded through jq (-R raw,
-    # -s slurp, -c compact) so quotes/escapes/ESC bytes are handled safely.
-    rendered=$(printf '%b' "$content")
-    printf '%s' "$rendered" | jq -Rsc --arg id "$id" '{id: $id, content: .}' 2>/dev/null
+    # Emit {"id","content"} as ONE compact JSON line. Color CSI bytes already
+    # live as real ESC in the trusted $'…' constants, so the render uses
+    # printf '%s' — NOT '%b' (Convention 1): a printable backslash escape in an
+    # untrusted field (model name, agentType, description) stays inert instead of
+    # being re-materialized into a real ESC/OSC/BEL. jq (-R raw, -s slurp,
+    # -c compact) then JSON-encodes the line. Note that JSON-encoding ALONE does
+    # NOT neutralize escapes — the consumer decodes  back to ESC — which is
+    # why untrusted fields are control-stripped at extraction (clean, the
+    # agentType read, and task_model) rather than relying on the encode step.
+    printf '%s' "$content" | jq -Rsc --arg id "$id" '{id: $id, content: .}' 2>/dev/null
 done <<< "$tasks_rec"
 
 exit 0

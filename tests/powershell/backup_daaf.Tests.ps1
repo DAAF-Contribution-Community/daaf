@@ -235,6 +235,50 @@ Describe "backup_daaf.ps1" {
             # No PS7-only null-coalescing operator
             $Content | Should -Not -Match '\?\?'
         }
+
+        # -----------------------------------------------------------------
+        # Regression: fail-closed staging-status parse (boolean-gated TryParse)
+        # -----------------------------------------------------------------
+        # [int]::TryParse writes 0 into the [ref] on a parse FAILURE, so the old
+        # `$null = [int]::TryParse(..., [ref]$StageStatus)` form silently overwrote the
+        # fail-closed default with 0 whenever `docker wait` emitted a non-numeric last
+        # line (a daemon error merged via 2>&1) -- flipping the fatal gate from "abort"
+        # to "proceed to copy a partial staged tree." The fix parses into a temp var and
+        # adopts it ONLY when TryParse returns $true (mirrors restore_from_backup.ps1:279).
+        Context "Regression: fail-closed staging-status parse (boolean-gated TryParse)" {
+            It "gates the data-volume staging status on TryParse's boolean via a temp var" {
+                $Content | Should -Match '\[int\]::TryParse\("\$StageStatusRaw"\.Trim\(\), \[ref\]\$StageStatusParsed\)'
+                $Content | Should -Match '\$StageStatus = \$StageStatusParsed'
+                # The fail-open idiom for the status var must be gone.
+                $Content | Should -Not -Match '\$null = \[int\]::TryParse\("\$StageStatusRaw"'
+            }
+            It "gates the Claude-volume staging status the same fail-closed way" {
+                $Content | Should -Match '\[int\]::TryParse\("\$ClaudeStageStatusRaw"\.Trim\(\), \[ref\]\$ClaudeStageStatusParsed\)'
+                $Content | Should -Match '\$ClaudeStageStatus = \$ClaudeStageStatusParsed'
+                $Content | Should -Not -Match '\$null = \[int\]::TryParse\("\$ClaudeStageStatusRaw"'
+            }
+            It "keeps the explicit fail-closed default of 1 for both staging statuses" {
+                $Content | Should -Match '\$StageStatus = 1'
+                $Content | Should -Match '\$ClaudeStageStatus = 1'
+            }
+        }
+
+        # -----------------------------------------------------------------
+        # Regression: floored 1% tolerances (no banker's rounding)
+        # -----------------------------------------------------------------
+        # `[long]($TotalFiles / 100)` round-half-to-even diverges from the bash twin's
+        # truncating integer division (350 -> 4 vs floor 3). The fix uses [math]::Floor
+        # to match bash (backup_daaf.sh:454/477) and restore_from_backup.ps1:621.
+        Context "Regression: floored 1% tolerances (no banker's rounding)" {
+            It "floors the file-count tolerance with [math]::Floor (not a bare [long] cast)" {
+                $Content | Should -Match '\[math\]::Max\(1, \[long\]\[math\]::Floor\(\$TotalFiles / 100\)\)'
+                $Content | Should -Not -Match '\[long\]\(\$TotalFiles / 100\)'
+            }
+            It "floors the size tolerance with [math]::Floor (not a bare [long] cast)" {
+                $Content | Should -Match '\[math\]::Max\(1, \[long\]\[math\]::Floor\(\$SourceSizeKB / 100\)\)'
+                $Content | Should -Not -Match '\[long\]\(\$SourceSizeKB / 100\)'
+            }
+        }
     }
 }
 
@@ -300,6 +344,17 @@ Describe "backup_daaf.ps1 Import-DaafSettingsInline" {
         Import-DaafSettingsInline -SettingsFile $script:SettingsFile
         $env:DAAF_PROJECT_NAME | Should -Be "safe"
         $env:ANTHROPIC_API_KEY | Should -BeNullOrEmpty
+    }
+
+    It "rejects a whitespace-padded key (column-0 strict, parity with bash)" {
+        # A leading-space key like "  DAAF_PROJECT_NAME=..." is not flush at column 0.
+        # The bash loaders' `case` glob rejects it; the PS loader must too (key extracted
+        # WITHOUT .Trim()), so a padded key resolves identically -- to nothing -- on both
+        # platforms rather than silently working on Windows only. Pre-fix, the trimmed key
+        # matched the whitelist and the value was adopted.
+        Set-Content -Path $script:SettingsFile -Value "  DAAF_PROJECT_NAME=padded"
+        Import-DaafSettingsInline -SettingsFile $script:SettingsFile
+        $env:DAAF_PROJECT_NAME | Should -BeNullOrEmpty
     }
 }
 
@@ -398,6 +453,41 @@ Describe "backup_daaf.ps1 behavioral tests" {
             $Content | Should -Match '\$AvailableKB -lt \$RequiredKB'
         }
     }
+
+    # -----------------------------------------------------------------
+    # Executable semantics: fail-closed parse + floored tolerance
+    # -----------------------------------------------------------------
+    # These run the FIXED snippets directly so a behavioral regression (not just a
+    # text edit) is caught. Each would produce the wrong value under the pre-fix form.
+    Context "Fail-closed parse + floored tolerance (executable semantics)" {
+        It "keeps the staging status fail-closed at 1 on non-numeric docker wait output" {
+            # Reproduce the exact parse snippet and feed it a merged daemon error line.
+            # The pre-fix `$null = [int]::TryParse(...)` overwrote the default with 0.
+            $StageStatusRaw = "Error response from daemon: no such container"
+            $StageStatus = 1
+            $StageStatusParsed = 0
+            if ($null -ne $StageStatusRaw -and [int]::TryParse("$StageStatusRaw".Trim(), [ref]$StageStatusParsed)) {
+                $StageStatus = $StageStatusParsed
+            }
+            $StageStatus | Should -Be 1
+        }
+        It "adopts a genuine numeric zero status when docker wait succeeds cleanly" {
+            $StageStatusRaw = "0"
+            $StageStatus = 1
+            $StageStatusParsed = 0
+            if ($null -ne $StageStatusRaw -and [int]::TryParse("$StageStatusRaw".Trim(), [ref]$StageStatusParsed)) {
+                $StageStatus = $StageStatusParsed
+            }
+            $StageStatus | Should -Be 0
+        }
+        It "floors an odd-hundred-half tolerance to 3, not banker's-rounded 4" {
+            # 350/100: [long](...) banker's-rounds to 4; [math]::Floor gives 3, matching
+            # the bash twin's truncating integer division. The second assertion documents
+            # (with executable evidence) exactly the divergence the fix removes.
+            ([long][math]::Floor(350 / 100)) | Should -Be 3
+            ([long](350 / 100)) | Should -Be 4
+        }
+    }
 }
 
 # ============================================================================
@@ -454,6 +544,33 @@ Describe "backup_daaf.ps1 error paths" {
             # When CopyExitCode != 0 but FileCount > 0, script shows Note about warnings
             $Content | Should -Match 'File copy reported warnings'
             $Content | Should -Match 'files were transferred'
+        }
+    }
+
+    Context "Corroborated short copy is fatal" {
+        It "fails when a non-zero copy exit AND a short file count agree" {
+            # Two corroborating signals (nonzero exit + count below the scan) mean a
+            # genuinely truncated backup, so the script aborts fatally.
+            $Content | Should -Match '\$CopyExitCode -ne 0 -and \$FileCount -lt \$TotalFiles'
+            $Content | Should -Match 'only \$FileCount of \$TotalFiles expected files were copied'
+        }
+        It "tells the user to delete the partial backup folder and re-run" {
+            $Content | Should -Match 'This backup is incomplete and must not be relied on'
+            $Content | Should -Match 'partial backup folder and re-run'
+        }
+    }
+
+    Context "Warnings-aware completion banner" {
+        It "prints the plain banner when no warnings were latched" {
+            $Content | Should -Match 'Backup complete!'
+        }
+        It "prints the WITH WARNINGS banner when the latch is set" {
+            $Content | Should -Match 'Backup completed WITH WARNINGS -- verify before relying on it'
+        }
+        It "latches HadWarnings at the non-fatal WARNING sites" {
+            # Initialized false, and set true in each non-fatal WARNING path.
+            $Content | Should -Match '\$HadWarnings = \$false'
+            $Content | Should -Match '\$HadWarnings = \$true'
         }
     }
 

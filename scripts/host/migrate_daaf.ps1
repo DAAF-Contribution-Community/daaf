@@ -57,6 +57,12 @@ function Wait-ForUser {
 $Repo = "DAAF-Contribution-Community/daaf"
 $Branch = if ($env:DAAF_BRANCH) { $env:DAAF_BRANCH } else { "main" }
 $RawBase = "https://raw.githubusercontent.com/$Repo/$Branch"
+# Migration deliberately targets the DEFAULT data volume "daaf_daaf-data" and does
+# NOT honor DAAF_PROJECT_NAME or the DAAF_DATA_VOLUME_NAME override. This tool is a
+# one-time bootstrap for LEGACY installs that predate custom project names and the
+# data-volume override -- those installs always used the single hardcoded default
+# name, so deriving or overriding it here would only risk missing the volume the
+# migration is meant to find.
 $VolumeName = "daaf_daaf-data"
 $ContainerName = ""
 $BackupCompleted = $false

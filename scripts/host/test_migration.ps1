@@ -2682,6 +2682,36 @@ if (-not $SkipMultiInstance) {
     Test-Check "Default instance container still present ($ContainerMain)" (Test-DockerContainer $ContainerMain)
     Test-Check "Default instance data volume still present ($VolumeName)" (Test-DockerVolume $VolumeName)
 
+    # --- 8c-override. DAAF_DATA_VOLUME_NAME resolver sub-scenario ---
+    # Twin of the .sh 8c-override block: the checks above prove DAAF_PROJECT_NAME
+    # reprojects the DERIVED data-volume name; this proves the ORTHOGONAL escape
+    # hatch on the same machinery -- an explicit DAAF_DATA_VOLUME_NAME is honored
+    # VERBATIM (no project prefix) by Resolve-DaafDataVolumeName in daaf_lib.ps1, the
+    # single resolver every host tool (backup/restore, compose interpolation) calls
+    # to name the data volume, which is what lets two installs share ONE workspace
+    # volume. It is docker-free (pure $env reads + string ops), so we assert it
+    # directly in the same Test-Check style as the volume checks above. daaf_lib.ps1
+    # is dot-sourced for the call and the override is set/restored via the harness's
+    # save-try-finally idiom (as in 8b), so the harness env is left exactly as it was
+    # -- the paired "parent env unchanged" check evidences that non-leak.
+    $DvnOverride = "daaf_shared_workspace_daaf-data"
+    $DvnLibPath = Join-Path $LocalRepoRoot "scripts\host\daaf_lib.ps1"
+    $DvnParentBefore = $env:DAAF_DATA_VOLUME_NAME
+    $DvnResolved = "<resolver-invocation-failed>"
+    try {
+        $env:DAAF_DATA_VOLUME_NAME = $DvnOverride
+        . $DvnLibPath
+        $DvnResolved = Resolve-DaafDataVolumeName
+    } catch {
+        $DvnResolved = "<resolver-invocation-failed: $_>"
+    } finally {
+        if ($null -ne $DvnParentBefore) { $env:DAAF_DATA_VOLUME_NAME = $DvnParentBefore } else { Remove-Item Env:\DAAF_DATA_VOLUME_NAME -ErrorAction SilentlyContinue }
+    }
+    Test-Check "Host resolver honors DAAF_DATA_VOLUME_NAME verbatim ($DvnOverride)" ($DvnResolved -eq $DvnOverride)
+    # The override was restored in the finally above, so the harness's own
+    # DAAF_DATA_VOLUME_NAME is unchanged -- proving the set did not leak forward.
+    Test-Check "DAAF_DATA_VOLUME_NAME override stayed scoped to the sub-scenario (parent env unchanged)" ($env:DAAF_DATA_VOLUME_NAME -eq $DvnParentBefore)
+
     Write-Host ""
 
     # --- 8d. Tear the second instance down completely ---

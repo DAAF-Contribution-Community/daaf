@@ -397,6 +397,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # -----------------------------------------------
 
 # Install core data science packages
+# NOTE: pyfixest pinned 0.60.0 — the 0.40.0 wheel declared zero runtime deps
+#       (packaging bug: no Requires-Dist in METADATA; import only worked because
+#       numba/formulaic/etc. arrived transitively via umap-learn, wildboottest,
+#       linearmodels), and the 0.40.1 hotfix declares a scipy upper bound that
+#       conflicts with scipy==1.17.0. 0.60.0 has correct metadata; expect one
+#       new transitive dep (maketables, its table backend) in the image.
 RUN uv pip install --system \
     numpy==2.4.2 \
     pandas==3.0.0 \
@@ -413,7 +419,7 @@ RUN uv pip install --system \
     umap-learn==0.5.11 \
     pyyaml==6.0.3 \
     statsmodels==0.14.6 \
-    pyfixest==0.40.0 \
+    pyfixest==0.60.0 \
     tabulate==0.10.0 \
     great-tables==0.21.0 \
     wildboottest==0.3.2
@@ -485,6 +491,17 @@ RUN uv pip install --system \
 # machine against their real data, never in-container.
 RUN uv pip install --system \
     faker==40.31.0
+
+# Install provider-shim direct runtime dependencies after all other framework
+# Python packages. Both arrive transitively today (httpx via svy; uvicorn via
+# marimo), but the persistent shim imports them directly and must not depend on
+# unrelated packages retaining compatible versions. Keeping these direct pins
+# last in the Python stack also prevents a later framework Python block from
+# replacing them. The build is still root here; the single runtime transition to
+# appuser remains at the existing security boundary below.
+RUN uv pip install --system \
+    httpx==0.28.1 \
+    uvicorn==0.51.0
 
 # ============================================
 # Install R Data Science Packages + Quarto
@@ -694,6 +711,23 @@ RUN mkdir -p /home/appuser/.local/share/code-server/User \
              /home/appuser/.config/code-server \
     && chown -R appuser:appuser /home/appuser/.local \
                                 /home/appuser/.config
+
+# ============================================
+# Node.js runtime for codex-plugin-cc
+# ============================================
+# codex-plugin-cc (the Codex plugin for Claude Code) needs a Node.js runtime in
+# the container. Node already arrives transitively via libnode-dev (the R gt/V8
+# stack), but that presence is incidental -- install `nodejs` explicitly so a
+# future R-stack change cannot silently drop it (no exact version pin, per DAAF
+# convention: the distro's packaged Node tracks the base image release). The
+# build-time floor assertion FAILS the build loudly if the packaged Node is
+# older than 18.18 (the minimum codex-plugin-cc supports), rather than letting
+# a too-old runtime surface as an obscure plugin failure later.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        nodejs \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* \
+    && node -e 'const v=process.versions.node, [maj,min]=v.split(".").map(Number); if (maj<18 || (maj===18 && min<18)) { console.error("ERROR: Node "+v+" is older than the 18.18 floor required by codex-plugin-cc"); process.exit(1); } console.log("Node "+v+" satisfies the codex-plugin-cc >= 18.18 floor");'
 
 # ============================================
 # Set up working directory

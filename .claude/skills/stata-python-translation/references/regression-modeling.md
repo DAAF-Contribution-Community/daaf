@@ -17,11 +17,11 @@ as variables. There is no `estimates store` / `estimates restore` — every
 `pf.feols()` or `smf.ols().fit()` already returns a persistent object.
 
 > **Versions referenced:**
-> Python: pyfixest 0.40.0, statsmodels 0.14.6, linearmodels 7.0, marginaleffects 0.5.0
+> Python: pyfixest 0.60.0, statsmodels 0.14.6, linearmodels 7.0, marginaleffects 0.5.0
 > Stata: Stata 18 (SE/MP)
 > See SKILL.md for the complete version table.
 
-> **Sources:** Fischer et al., *pyfixest* (pyfixest.org, v0.40.0, accessed 2026-03-28);
+> **Sources:** Fischer et al., *pyfixest* (pyfixest.org, v0.60.0, accessed 2026-07-24);
 > Seabold & Perktold, *statsmodels* (v0.14.6);
 > Sheppard, *linearmodels* (bashtage.github.io/linearmodels, v7.0);
 > Correia, "reghdfe" (scorreia.com);
@@ -472,20 +472,30 @@ Stata's `nbreg` uses the NB2 parameterization by default (variance = mu +
 alpha*mu^2). statsmodels' `NegativeBinomial` supports `"nb2"`, `"nb1"`, and
 `"geometric"` via the `loglike_method` parameter.
 
-### GLM with Fixed Effects: The Major Gap
+### GLM with Fixed Effects
 
 Stata can absorb high-dimensional FE in GLM models via `ppmlhdfe` (Poisson) or
 manual dummies with `logit y x i.fe_var`. R fixest has `feglm()`.
 
-**pyfixest's `feglm()` does NOT support fixed effects absorption.** This is the
-single largest feature gap between Stata/R and the DAAF Python stack for GLM
-estimation.
+**pyfixest's `feglm()` supports fixed effects absorption since 0.50** (DAAF ships
+0.60.0) for logit/probit/gaussian families, so this maps almost directly:
 
-**Workarounds:**
+```python
+# pyfixest 0.60.0: FE-GLM works — verified live
+fit = pf.feglm("binary_y ~ x1 | fe_var", data=df, family="logit")
+```
+
+Pyfixest before 0.50 raised `NotImplementedError` for `feglm()` with fixed effects,
+which older guidance called the single largest GLM feature gap between Stata/R and
+the DAAF Python stack; that gap is now closed for logit/probit/gaussian. Families
+beyond those (e.g., Gamma) and negative binomial (`fenegbin` in R) still require R
+fixest or manual approaches in Python. The alternatives below remain useful mainly
+as robustness comparisons (e.g., when nonlinear FE-GLMs risk incidental-parameters
+bias with small FE groups):
 
 | Approach | Code | When to Use |
 |----------|------|-------------|
-| Linear probability model | `pf.feols("binary_y ~ x \| fe", data=df)` | Most cases; interpret coefficients as pp changes |
+| Linear probability model | `pf.feols("binary_y ~ x \| fe", data=df)` | Robustness check; interpret coefficients as pp changes |
 | Manual dummies + statsmodels | `smf.logit("y ~ x + C(fe_var)", data=df).fit()` | Small/moderate number of FE levels |
 | Conditional logit | `sm.discrete.ConditionalLogit(...)` | Binary outcome with entity FE |
 | Poisson pseudo-ML | `pf.fepois("binary_y ~ x \| fe", data=df)` | If log-linear approximation acceptable |
@@ -774,9 +784,10 @@ fit.summary()                          # Now shows new SEs
   or IV. With FE, use HC1 or clustered SEs.
 - **Two-way clustering in statsmodels** is not directly supported. Use pyfixest or
   linearmodels instead.
-- **Default SE changed in pyfixest v0.40**: Both R fixest 0.13 and pyfixest 0.40
-  now default to `"iid"`. Older pyfixest code that relied on automatic clustering
-  by the first FE variable will silently produce different results.
+- **Default SE changed in pyfixest v0.40** (still the default through 0.60): Both
+  R fixest 0.13 and pyfixest (v0.40 onward, including the 0.60.0 DAAF ships) now
+  default to `"iid"`. Older pyfixest code that relied on automatic clustering by
+  the first FE variable will silently produce different results.
 - **Stata's `robust` = HC1**: When a Stata do-file uses `, robust`, the Python
   equivalent is `vcov="hetero"` (pyfixest) or `cov_type="HC1"` (statsmodels). Do
   not use HC0 or HC3 when replicating Stata results unless the Stata code
@@ -943,7 +954,7 @@ R's `vif()` and Stata's `estat vif` are single function calls; Python requires
 a manual loop. This pattern recurs throughout diagnostics — where Stata wraps
 complexity in one command, Python requires manual assembly.
 
-> **Sources:** Fischer et al., *pyfixest* (pyfixest.org, v0.40.0);
+> **Sources:** Fischer et al., *pyfixest* (pyfixest.org, v0.60.0);
 > Seabold & Perktold, *statsmodels* (v0.14.6);
 > Sheppard, *linearmodels* (bashtage.github.io/linearmodels, v7.0);
 > Correia, "reghdfe" (scorreia.com);

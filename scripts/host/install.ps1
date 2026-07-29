@@ -146,7 +146,10 @@ if ($LASTEXITCODE -ne 0) {
 # (DAAF_PROJECT_NAME set) are detected correctly. The value comes from the process
 # environment first, else DAAF_PROJECT_NAME in the existing install's
 # environment_settings.txt, else the "daaf" default (byte-for-byte identical to the
-# former hardcoded "daaf_daaf-data"). Parse only that one key (never dot-source --
+# former hardcoded "daaf_daaf-data"). DAAF_DATA_VOLUME_NAME, when set in the
+# process environment, overrides the whole derivation with a verbatim full volume
+# name (the shared-workspace escape hatch; matches Resolve-DaafDataVolumeName in
+# daaf_lib.ps1). Parse only that one key (never dot-source --
 # the file holds API keys); process env wins; CR stripped; PS 5.1 safe.
 $InstallProjectName = $env:DAAF_PROJECT_NAME
 if ([string]::IsNullOrEmpty($InstallProjectName)) {
@@ -170,6 +173,7 @@ if ([string]::IsNullOrEmpty($InstallProjectName)) {
 }
 if ([string]::IsNullOrEmpty($InstallProjectName)) { $InstallProjectName = "daaf" }
 $DataVolumeName = "${InstallProjectName}_daaf-data"
+if ($env:DAAF_DATA_VOLUME_NAME) { $DataVolumeName = $env:DAAF_DATA_VOLUME_NAME }
 
 # --- Bridge the DAAF_DEV build flag into the environment ---
 # Unlike DAAF_PROJECT_NAME above (only needed locally to derive the volume name;
@@ -614,7 +618,7 @@ else {
     $SeedKeys = @()
     try {
         Copy-Item -LiteralPath $SeedSrc -Destination $SeedDst
-        foreach ($k in @('DAAF_PROJECT_NAME', 'DAAF_PORT_MARIMO', 'DAAF_PORT_LOGVIEWER', 'DAAF_PORT_VSCODE', 'DAAF_DEV', 'DAAF_BRANCH')) {
+        foreach ($k in @('DAAF_PROJECT_NAME', 'DAAF_PORT_MARIMO', 'DAAF_PORT_LOGVIEWER', 'DAAF_PORT_VSCODE', 'DAAF_DEV', 'DAAF_BRANCH', 'DAAF_DATA_VOLUME_NAME')) {
             $v = [Environment]::GetEnvironmentVariable($k, "Process")
             if ([string]::IsNullOrEmpty($v)) { continue }
             if ($k -eq 'DAAF_BRANCH' -and -not $SeedBranchOk) { continue }
@@ -699,12 +703,6 @@ Write-Host "     The Control Panel provides a status dashboard, service manageme
 Write-Host "     and all DAAF operations in one place."
 Write-Host ""
 Write-Host "  2. On first launch, you'll be asked to authenticate with your Anthropic account."
-Write-Host ""
-Write-Host "  3. Configure Claude Code (required):"
-Write-Host "     - Type /config and set:"
-Write-Host "         Auto-compact  -> False"
-Write-Host "         Verbose output -> True"
-Write-Host "     - Press ESC to return to the chat"
 Write-Host ""
 Write-Host "Available scripts (in $InstallDir):"
 Write-Host "  .\daaf.ps1                     DAAF Control Panel (recommended)"

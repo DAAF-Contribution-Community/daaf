@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import copy
 import importlib.util
 import io
 import json
@@ -35,17 +36,93 @@ from typing import Any, Callable, Iterable, Optional
 from unittest import mock
 
 
-DAAF_ROOT = Path("/daaf")
+# Repo root resolved from this file's location (tests/provider_shim/ -> repo
+# root), not hardcoded to /daaf: in the DAAF container the two are identical,
+# but on a CI runner the checkout lands wherever the workspace is (e.g.
+# $GITHUB_WORKSPACE), and the harness must find the production shim there.
+DAAF_ROOT = Path(__file__).resolve().parents[2]
 PRODUCTION_SHIM = DAAF_ROOT / "scripts/provider_shim/anthropic_openai_shim.py"
+# v1.3.0: the fake-codex stub the shim's delegated refresh spawns instead of the
+# real codex CLI. Injected via SHIM_CODEX_BIN. Behavior is driven by FAKE_CODEX_MODE.
+FAKE_CODEX_BIN = DAAF_ROOT / "tests/provider_shim/fake_codex.py"
 SCRATCH_ROOT = DAAF_ROOT / "scripts/scratch"
+# v1.3.2 fix cycle: seam in-process loads of the production shim away from the
+# install-shared quota_state.json. Every test module imports this harness, so setting
+# the redirect env var here puts the quota-state seam on the *test-runner process* env.
+# Any in-process load of the production shim in this process — controlled_asgi_probe
+# (whose mock.patch.dict(..., clear=False) inherits this value), outer_cancel_after_
+# stream_enter_report, test_v130_auth_delegation's _load_fresh_shim, and any future
+# in-process loader — then resolves its module-level _QUOTA_STATE_PATH to scratch at
+# import instead of scripts/provider_shim/logs/quota_state.json. This complements the
+# per-instance child-env seam RealShim.__enter__ sets for *spawned* shims: spawned
+# subprocesses and in-process module loads are the two distinct contexts that can reach
+# _write_quota_state, and this default plus that child env cover both. A failed scratch
+# write is harmless either way — _write_quota_state is fail-open and swallows it — but
+# seaming keeps the write off the install-shared file. setdefault (not assignment) so a
+# value a developer exports to inspect real quota-state behavior survives untouched.
+os.environ.setdefault(
+    "DAAF_QUOTA_STATE_FILE", str(SCRATCH_ROOT / "in_process_quota_state.json")
+)
+# v1.3.3 (A2-R5): the SAME in-process seam for the reasoning-cache persistence file, so
+# an in-process load of the production shim resolves its import-time _REASONING_CACHE_PATH
+# to scratch instead of the per-container $HOME default. setdefault (not assignment) so a
+# developer's explicit export survives.
+#
+# CRITICAL HERMETICITY HAZARD (front-loaded from the v1.3.2 lesson): the reasoning cache
+# adds a failure mode quota_state does NOT have. quota_state is write-only, but the
+# reasoning cache RESTORES itself at MODULE IMPORT — so a seam file written by one
+# in-process shim load would be restored into a LATER fresh in-process load's
+# _REASONING_CACHE, and harness fixtures reuse call_ids (call_1 / call_full_fixture), so
+# the leaked entries would silently flip a later test's miss assertions. Choosing WHERE
+# the in-process default lands (this setdefault) is therefore NOT sufficient on its own;
+# the anti-leakage guarantee is enforced by _purge_in_process_reasoning_cache_seam()
+# below, which unlinks this file BEFORE each in-process fresh module load. Spawned
+# RealShim subprocesses are isolated separately via a per-instance scratch path set in
+# __enter__ (each RealShim gets its own scratch_dir, so no cross-instance leakage there).
+os.environ.setdefault(
+    "DAAF_REASONING_CACHE_FILE", str(SCRATCH_ROOT / "in_process_reasoning_cache.json")
+)
+
+
+def _purge_in_process_reasoning_cache_seam():
+    """Clear the runner-default reasoning-cache seam before an in-process fresh load.
+
+    A2-R5 hermeticity: because the production shim restores its reasoning cache at module
+    import, an in-process fresh load (controlled_asgi_probe, outer_cancel_after_stream_
+    enter_report, and any future in-process loader) would otherwise restore whatever an
+    earlier in-process load persisted to the shared runner-default seam file — leaking
+    call_ids across tests and flipping miss assertions. Unlinking the CURRENT effective
+    seam path (which honors any outer mock.patch.dict override a test set) guarantees each
+    fresh load starts cold. Idempotent and fail-quiet: an absent file is fine.
+    """
+
+    seam = os.environ.get("DAAF_REASONING_CACHE_FILE", "")
+    if seam:
+        try:
+            os.unlink(seam)
+        except OSError:
+            pass
+
+
 SCRATCH_PREFIX = "provider-shim-unittest-"
 FAKE_OPENAI_KEY = "sk-FAKE_PROVIDER_SHIM_UNITTEST_OPENAI_000000000000"
 FAKE_REFRESH_TOKEN = "FAKE_PROVIDER_SHIM_REFRESH_TOKEN_000000000000"
 FAKE_ID_TOKEN = "FAKE_PROVIDER_SHIM_ID_TOKEN_000000000000"
 FAKE_ACCOUNT_ID = "acct_provider_shim_unittest"
 USAGE = {"input_tokens": 31, "output_tokens": 17, "total_tokens": 48}
+# v1.3.6 (V6-R1 test plan item 1): sibling fixture carrying a prompt-cache detail. NOT a
+# mutation of USAGE (that would perturb existing token assertions). OpenAI's input_tokens (31)
+# INCLUDES the cached prefix (12), so the client-visible Anthropic mapping subtracts to
+# input_tokens=19 + cache_read_input_tokens=12; the terminal record keeps the OpenAI total 31.
+USAGE_WITH_CACHE = {
+    "input_tokens": 31,
+    "output_tokens": 17,
+    "total_tokens": 48,
+    "input_tokens_details": {"cached_tokens": 12},
+}
 NONSTREAM_REJECTION_BODY = {"detail": "Stream must be set to true"}
 TERMINAL_FIELD_OMITTED = object()
+_SELECTED_BACKEND_CONTROL = object()
 
 CENTRAL_SOURCE_DELTAS = [
     "**Planning ",
@@ -101,14 +178,22 @@ class Scenario:
     reject_nonstream: bool = False
     append_done: bool = True
     raw_stream_frames: Optional[list[bytes]] = None
+    preserve_raw_stream_chunks: bool = False
     abrupt_eof: bool = False
     stream_status: int = 200
     stream_headers: dict[str, str] = field(default_factory=dict)
     stream_error_body: bytes = b'{"error":{"message":"fixture backend rejection"}}'
+    # Optional per-request JSON response sequence for stateful real-process tests.
+    # The final entry repeats when the request count exceeds the sequence length.
+    nonstream_responses: Optional[list[dict[str, Any]]] = None
     attempt_statuses: Optional[list[int | str]] = None
     attempt_headers: Optional[list[dict[str, str]]] = None
     disconnect_phase: Optional[str] = None
     disconnect_delay: float = 1.8
+    # v1.2.14 (R6): when > 0, the streaming success path pauses this many seconds
+    # just before the terminal event (WITHOUT disconnecting the client) to create a
+    # silent upstream gap the downstream heartbeat must bridge with ping frames.
+    heartbeat_gap_s: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -157,6 +242,9 @@ class ASGIProbeReport:
     raised: Optional[str]
     cancelled: bool
     upstream_calls: int
+    auth_calls: int
+    outbound_payloads: list[dict[str, Any]]
+    gpt_service_tier_health: dict[str, Any]
     stream_close_calls: int
     stream_close_attempts: list[int]
     close_after_cleanup: list[bool]
@@ -182,6 +270,27 @@ class _EventBuilder:
         self.sequence_number += 1
         self.events.append(event)
         return event
+
+
+def _start_response(builder: _EventBuilder, response_id: str) -> None:
+    """Emit the response.created + response.in_progress lifecycle preamble.
+
+    LIVE-WIRE SHAPE (notes/04:27, notes/07:26,62): both the openai and chatgpt lanes
+    send response.in_progress immediately after response.created on every turn. Both
+    events sit in the shim's _KNOWN_EVENT_TYPES ignored group (shim :1249-1250), so the
+    downstream Anthropic projection is byte-identical whether or not in_progress is
+    present. Emitting it here makes the positive fixtures faithful and exercises the
+    in_progress allowlist skip branch that no positive fixture previously hit
+    (`grep -c response\\.in_progress = 0` before this change). Applied only to the
+    positive text/reasoning happy-path builders; deliberately NOT applied to the
+    malformed/off-limits fixtures (their bare-created shape is part of the test) nor to
+    the tool-path scenarios (those belong to dispatch T2-B).
+    """
+    builder.add("response.created", response={"id": response_id, "status": "in_progress"})
+    builder.add(
+        "response.in_progress",
+        response={"id": response_id, "status": "in_progress"},
+    )
 
 
 def _reasoning_item(item_id: str, parts: Iterable[dict[str, Any]]) -> dict[str, Any]:
@@ -272,12 +381,44 @@ def _append_text_item(
             "content": [],
         },
     )
+    # LIVE-WIRE SHAPE (notes/04:27, notes/07:25-29): both lanes wrap the text deltas in a
+    # content_part.added/.done pair and emit output_text.done before the part closes:
+    #   output_item.added -> content_part.added -> output_text.delta* -> output_text.done
+    #   -> content_part.done -> output_item.done
+    # The pre-rebase fixture went added -> delta -> item.done, omitting the three framing
+    # events. All three (content_part.added/.done, output_text.done) sit in the shim's
+    # _KNOWN_EVENT_TYPES ignored group (shim :1252-1254), so the downstream Anthropic
+    # projection is BYTE-IDENTICAL to the old shape -- the rework's value is fidelity plus
+    # exercising allowlist skip branches that no positive fixture hit before (grep -c = 0).
+    # The single output_text.delta content is preserved byte-for-byte; the (builder,
+    # output_index, text) signature is unchanged so every caller's fixture text is intact.
+    builder.add(
+        "response.content_part.added",
+        item_id=item_id,
+        output_index=output_index,
+        content_index=0,
+        part={"type": "output_text", "text": ""},
+    )
     builder.add(
         "response.output_text.delta",
         item_id=item_id,
         output_index=output_index,
         content_index=0,
         delta=text,
+    )
+    builder.add(
+        "response.output_text.done",
+        item_id=item_id,
+        output_index=output_index,
+        content_index=0,
+        text=text,
+    )
+    builder.add(
+        "response.content_part.done",
+        item_id=item_id,
+        output_index=output_index,
+        content_index=0,
+        part={"type": "output_text", "text": text},
     )
     item = {
         "type": "message",
@@ -290,12 +431,33 @@ def _append_text_item(
     return item
 
 
+# Opaque default `obfuscation` blob stamped on every arguments.delta to mirror
+# the live Codex wire (see _append_tool_item). The exact bytes are not read by
+# the shim (it is upstream-stripped); only the field's presence and silent
+# tolerance are load-bearing, so any bounded opaque string is faithful.
+_DEFAULT_ARG_DELTA_OBFUSCATION = "b7F3kR9mP2xQ8nL5"
+
+
 def _append_tool_item(
     builder: _EventBuilder,
     output_index: int,
     call_id: str = "call_fixture_1",
     item_id: str = "fc_fixture_1",
+    *,
+    arg_delta_fields: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
+    # Every arguments.delta carries a default ``obfuscation`` field to mirror the
+    # live Codex wire (2026-07-16 shim.log evidence): both lanes stamp an opaque
+    # obfuscation blob on every delta. The shim tolerates it silently (no
+    # unknown_events increment, no stream failure) and strips it from the
+    # downstream Anthropic projection, so emitting it by default is live-faithful
+    # yet byte-transparent to that projection. ``arg_delta_fields`` (keyword-only)
+    # injects/overrides top-level fields on every delta; a caller-supplied
+    # ``obfuscation`` wins over the default. It backs the v1.2.14 R1
+    # obfuscation-tolerance fixture, which pins a distinct value to demonstrate
+    # the tolerance path explicitly.
+    extra = {"obfuscation": _DEFAULT_ARG_DELTA_OBFUSCATION}
+    extra.update(arg_delta_fields or {})
     arguments = '{"file_path":"/daaf/README.md"}'
     builder.add(
         "response.output_item.added",
@@ -313,12 +475,14 @@ def _append_tool_item(
         item_id=item_id,
         output_index=output_index,
         delta='{"file_path":"/daaf/',
+        **extra,
     )
     builder.add(
         "response.function_call_arguments.delta",
         item_id=item_id,
         output_index=output_index,
         delta='README.md"}',
+        **extra,
     )
     # LIVE-WIRE SHAPE (2026-07-16 shim.log evidence): the Codex backend omits
     # `name` on arguments.done — the shim resolves it from output_item.added.
@@ -346,23 +510,29 @@ def _finish_response(
     builder: _EventBuilder,
     response_id: str,
     output: list[dict[str, Any]],
+    *,
+    service_tier: Any = TERMINAL_FIELD_OMITTED,
 ) -> None:
-    builder.add(
-        "response.completed",
-        response={
-            "id": response_id,
-            "status": "completed",
-            "output": output,
-            "usage": dict(USAGE),
-        },
-    )
+    response = {
+        "id": response_id,
+        "status": "completed",
+        "output": output,
+        "usage": dict(USAGE),
+    }
+    # v1.3.7 Fast tests opt in to an exact terminal tier. Omission preserves every
+    # pre-v1.3.7 fixture byte-for-byte; no default tier is inferred from the request.
+    if service_tier is not TERMINAL_FIELD_OMITTED:
+        response["service_tier"] = service_tier
+    builder.add("response.completed", response=response)
 
 
 def _nonstream_response(
     response_id: str,
     output: list[dict[str, Any]],
+    *,
+    service_tier: Any = TERMINAL_FIELD_OMITTED,
 ) -> dict[str, Any]:
-    return {
+    response = {
         "id": response_id,
         "model": "gpt-fixture",
         "status": "completed",
@@ -371,16 +541,17 @@ def _nonstream_response(
         "incomplete_details": None,
         "error": None,
     }
+    # Opt-in only: the shared response fixture remains absent-tier by default.
+    if service_tier is not TERMINAL_FIELD_OMITTED:
+        response["service_tier"] = service_tier
+    return response
 
 
 def central_multipart_scenario(transition: Optional[str] = None) -> Scenario:
     """Capture-faithful two-item fixture with a per-item summary-index reset."""
 
     builder = _EventBuilder()
-    builder.add(
-        "response.created",
-        response={"id": "resp_multipart", "status": "in_progress"},
-    )
+    _start_response(builder, "resp_multipart")
     item_a_parts = [
         {"summary_index": 0, "deltas": ["**Planning ", "tests**"]},
         {"summary_index": 1, "deltas": ["**Validating boundaries**"]},
@@ -414,7 +585,7 @@ def identity_parts_scenario(
     """Build one or more serialized reasoning items from explicit part identities."""
 
     builder = _EventBuilder()
-    builder.add("response.created", response={"id": f"resp_{name}", "status": "in_progress"})
+    _start_response(builder, f"resp_{name}")
     output: list[dict[str, Any]] = []
     position = 0
     while position < len(parts):
@@ -534,7 +705,7 @@ def reopened_thinking_scenario() -> Scenario:
     """Synthetic reasoning -> tool -> reasoning ordering for state-reset coverage."""
 
     builder = _EventBuilder()
-    builder.add("response.created", response={"id": "resp_reopen", "status": "in_progress"})
+    _start_response(builder, "resp_reopen")
     output = [
         _append_reasoning_item(
             builder,
@@ -578,22 +749,37 @@ def full_response_scenario(*, reject_nonstream: bool = False) -> Scenario:
     """Completed Responses SSE whose terminal event carries full output and usage."""
 
     builder = _EventBuilder()
-    builder.add("response.created", response={"id": "resp_full", "status": "in_progress"})
-    output = [
-        _append_reasoning_item(
-            builder,
-            "rs_full",
-            0,
-            [{"summary_index": 0, "deltas": ["Inspecting stream semantics."]}],
-        ),
-        _append_text_item(builder, 1, text="Aggregated answer."),
-        _append_tool_item(
-            builder,
-            2,
-            call_id="call_full_fixture",
-            item_id="fc_full_fixture",
-        ),
-    ]
+    _start_response(builder, "resp_full")
+    reasoning_item = _append_reasoning_item(
+        builder,
+        "rs_full",
+        0,
+        [{"summary_index": 0, "deltas": ["Inspecting stream semantics."]}],
+    )
+    # LIVE-WIRE SHAPE: the backend interleaves benign scaffolding frames between
+    # output items -- a top-level `keepalive` (timing-driven) and a
+    # `response.metadata` lifecycle frame. NOTE: these two do NOT appear in the
+    # Tier 0 capture notes (notes/04, notes/07); both were observed live during
+    # v1.2.14 validation and absorbed into the shim's _KNOWN_EVENT_TYPES allowlist in v1.3.4
+    # (shim :1269-1270), so each is skipped silently and the downstream projection is
+    # byte-identical (unknown_events stays 0). Emitted at ONE representative mid-stream
+    # position in this commonly-exercised positive scenario -- NOT sprayed across every
+    # builder, because live keepalives are timing-driven, not structural. This is the
+    # only positive fixture that exercises these two v1.3.4 allowlist entries
+    # (`grep -c keepalive|response\\.metadata = 0` before this change).
+    builder.add("keepalive")
+    builder.add(
+        "response.metadata",
+        response={"id": "resp_full", "status": "in_progress"},
+    )
+    text_item = _append_text_item(builder, 1, text="Aggregated answer.")
+    tool_item = _append_tool_item(
+        builder,
+        2,
+        call_id="call_full_fixture",
+        item_id="fc_full_fixture",
+    )
+    output = [reasoning_item, text_item, tool_item]
     _finish_response(builder, "resp_full", output)
     return Scenario(
         name="full-response",
@@ -601,6 +787,28 @@ def full_response_scenario(*, reject_nonstream: bool = False) -> Scenario:
         nonstream_response=_nonstream_response("resp_full_nonstream", output),
         reject_nonstream=reject_nonstream,
     )
+
+
+def heartbeat_text_scenario(name: str = "heartbeat", *, gap_s: float = 0.6) -> Scenario:
+    """A single text turn whose upstream terminal is delayed by a silent gap.
+
+    v1.2.14 (R6): the shim emits message_start and the text block promptly, then the
+    upstream falls silent for ``gap_s`` before the terminal arrives (no disconnect).
+    The downstream heartbeat must bridge that gap with Anthropic ``ping`` frames and
+    the turn must still complete as a clean success.
+    """
+
+    builder = _EventBuilder()
+    _start_response(builder, "resp_heartbeat")
+    output = [_append_text_item(builder, 0, text="Held-open answer.")]
+    _finish_response(builder, "resp_heartbeat", output)
+    scenario = Scenario(
+        name=name,
+        stream_events=builder.events,
+        nonstream_response=_nonstream_response("resp_heartbeat_nonstream", output),
+    )
+    scenario.heartbeat_gap_s = gap_s
+    return scenario
 
 
 def events_scenario(
@@ -631,10 +839,16 @@ def terminal_contract_scenario(
     status: Any = TERMINAL_FIELD_OMITTED,
     output: Any = TERMINAL_FIELD_OMITTED,
     usage: Any = TERMINAL_FIELD_OMITTED,
+    service_tier: Any = TERMINAL_FIELD_OMITTED,
     leading_events: Optional[list[dict[str, Any]]] = None,
     trailing_events: Optional[list[dict[str, Any]]] = None,
 ) -> Scenario:
-    """Build one exact terminal event and matching JSON response for schema tests."""
+    """Build one exact terminal event and matching JSON response for schema tests.
+
+    ``service_tier`` is an opt-in exact wire value for both the streamed terminal
+    object and its matching non-stream JSON object. The omission sentinel leaves all
+    existing fixtures unchanged and deliberately does not encode production mapping.
+    """
 
     response: dict[str, Any] = {"id": f"resp_{name}"}
     if status is not TERMINAL_FIELD_OMITTED:
@@ -643,6 +857,8 @@ def terminal_contract_scenario(
         response["output"] = output
     if usage is not TERMINAL_FIELD_OMITTED:
         response["usage"] = usage
+    if service_tier is not TERMINAL_FIELD_OMITTED:
+        response["service_tier"] = service_tier
     events = list(leading_events or [])
     events.append({"type": event_type, "response": response})
     events.extend(trailing_events or [])
@@ -653,8 +869,18 @@ def terminal_contract_scenario(
     )
 
 
-def raw_sse_scenario(name: str, frames: list[bytes]) -> Scenario:
-    """Build an exact byte-framing fixture for upstream SSE parser contracts."""
+def raw_sse_scenario(
+    name: str,
+    frames: list[bytes],
+    *,
+    preserve_chunks: bool = False,
+) -> Scenario:
+    """Build an exact byte-framing fixture for upstream SSE parser contracts.
+
+    ``preserve_chunks`` emits each supplied frame as its own HTTP transfer chunk so
+    tests can deterministically vary upstream segmentation without joining another
+    full copy of a large logical event in the harness.
+    """
 
     return Scenario(
         name=name,
@@ -662,6 +888,7 @@ def raw_sse_scenario(name: str, frames: list[bytes]) -> Scenario:
         nonstream_response=_nonstream_response(f"resp_{name}_nonstream", []),
         append_done=False,
         raw_stream_frames=list(frames),
+        preserve_raw_stream_chunks=preserve_chunks,
     )
 
 
@@ -670,8 +897,15 @@ def backend_status_scenario(
     status: int,
     *,
     retry_after: Optional[str] = None,
+    error_body: Optional[bytes] = None,
 ) -> Scenario:
-    """Return the same deterministic backend status on every streamed attempt."""
+    """Return the same deterministic backend status on every streamed attempt.
+
+    v1.3.4 (V4-R8): ``error_body`` overrides the fixture error body so a test can script a
+    chosen 400 envelope (e.g. a reasoning-naming body for the stale-blob insurance tests)
+    without hand-rolling ``Scenario(...)``. It defaults to ``None``, which preserves the
+    prior fixture body BYTE-IDENTICALLY so every existing caller is unaffected.
+    """
 
     headers = {"Retry-After": retry_after} if retry_after is not None else {}
     return Scenario(
@@ -682,7 +916,9 @@ def backend_status_scenario(
         stream_status=status,
         stream_headers=headers,
         stream_error_body=(
-            b'{"error":{"type":"fixture_status","message":"fixture rejection"}}'
+            bytes(error_body)
+            if error_body is not None
+            else b'{"error":{"type":"fixture_status","message":"fixture rejection"}}'
         ),
     )
 
@@ -769,8 +1005,162 @@ def sequential_two_tools_scenario() -> Scenario:
     )
 
 
-def incomplete_response_scenario() -> Scenario:
-    """Incomplete Responses SSE whose terminal event carries output and usage."""
+def interleaved_two_tools_scenario() -> Scenario:
+    """Two function calls whose wire events INTERLEAVE (v1.2.14 R3).
+
+    The second tool is ``output_item.added`` while the first is still open, and the
+    two tools' ``function_call_arguments.delta`` events alternate. The tolerant R3
+    scheduler defers the second tool, buffers its args, and drains it after the first
+    tool closes — so the downstream Anthropic stream is two NON-OVERLAPPING
+    ``tool_use`` blocks in ADDED order, each with its own input reconstructed
+    correctly (strict emit, tolerant accept). This is the additive companion to
+    ``sequential_two_tools_scenario`` (which never interleaves on the wire).
+    """
+
+    builder = _EventBuilder()
+    builder.add(
+        "response.created",
+        response={"id": "resp_interleaved", "status": "in_progress"},
+    )
+    a_args = '{"file_path":"/daaf/A.md"}'
+    b_args = '{"file_path":"/daaf/B.md"}'
+    # Both tools are ADDED before either finishes: the second opens on the wire while
+    # the first is still open (the shape pre-R3 rejected as a protocol failure).
+    builder.add(
+        "response.output_item.added",
+        output_index=0,
+        item={"type": "function_call", "id": "fc_interleaved_1",
+              "call_id": "call_interleaved_1", "name": "Read", "status": "in_progress"},
+    )
+    builder.add(
+        "response.output_item.added",
+        output_index=1,
+        item={"type": "function_call", "id": "fc_interleaved_2",
+              "call_id": "call_interleaved_2", "name": "Read", "status": "in_progress"},
+    )
+    # Interleaved argument deltas across the two open items.
+    builder.add("response.function_call_arguments.delta",
+                item_id="fc_interleaved_1", output_index=0, delta='{"file_path":"/daaf/A')
+    builder.add("response.function_call_arguments.delta",
+                item_id="fc_interleaved_2", output_index=1, delta='{"file_path":"/daaf/B')
+    builder.add("response.function_call_arguments.delta",
+                item_id="fc_interleaved_1", output_index=0, delta='.md"}')
+    builder.add("response.function_call_arguments.delta",
+                item_id="fc_interleaved_2", output_index=1, delta='.md"}')
+    # Live-wire shape: no `name` on arguments.done (resolved from output_item.added).
+    builder.add("response.function_call_arguments.done",
+                item_id="fc_interleaved_1", output_index=0, arguments=a_args)
+    builder.add("response.function_call_arguments.done",
+                item_id="fc_interleaved_2", output_index=1, arguments=b_args)
+    item_a = {"type": "function_call", "id": "fc_interleaved_1",
+              "call_id": "call_interleaved_1", "name": "Read",
+              "arguments": a_args, "status": "completed"}
+    item_b = {"type": "function_call", "id": "fc_interleaved_2",
+              "call_id": "call_interleaved_2", "name": "Read",
+              "arguments": b_args, "status": "completed"}
+    builder.add("response.output_item.done", output_index=0, item=item_a)
+    builder.add("response.output_item.done", output_index=1, item=item_b)
+    output = [item_a, item_b]
+    _finish_response(builder, "resp_interleaved", output)
+    return Scenario(
+        name="interleaved-two-tools",
+        stream_events=builder.events,
+        nonstream_response=_nonstream_response("resp_interleaved_ns", output),
+    )
+
+
+def unknown_wire_scenario(
+    name: str = "unknown-wire",
+    *,
+    unknown_event_type: Optional[str] = "response.audio.delta",
+    unknown_item_type: Optional[str] = "web_search_call",
+) -> Scenario:
+    """A clean success turn that also carries unmodeled wire shapes (v1.2.14 R1).
+
+    The turn still reduces to a well-formed Anthropic success stream (one text
+    block, message_start..message_stop) so downstream completion is unaffected;
+    the unknown SSE event type and the unmodeled ``output_item.added`` item type
+    are only counted for observability (``unknown_events``/``unknown_items`` on
+    the terminal record). Both injections are optional so a caller can isolate a
+    single dimension. ``response.audio.delta`` and ``web_search_call`` are real
+    Responses-family shapes the shim does not model, chosen so the fixture reads
+    as plausible forward-compat wire rather than a synthetic token.
+    """
+
+    builder = _EventBuilder()
+    builder.add(
+        "response.created",
+        response={"id": f"resp_{name}", "status": "in_progress"},
+    )
+    if unknown_event_type is not None:
+        # A non-load-bearing unknown event: it parses as JSON, reaches the
+        # reducer catch-all, is counted, and emits nothing downstream.
+        builder.add(
+            unknown_event_type,
+            item_id="unknown_evt_item",
+            output_index=0,
+            delta="opaque-non-text-payload",
+        )
+    output = [_append_text_item(builder, 0, text="Clean answer despite unknown wire.")]
+    if unknown_item_type is not None:
+        # An output_item.added whose item.type is outside _KNOWN_ITEM_TYPES: it
+        # carries an id (so replay bookkeeping is exercised), is counted as an
+        # unknown item, and opens no Anthropic block. No matching
+        # output_item.done is emitted — the unmodeled item is not in the terminal
+        # output[], so the success reducer uses only the known text block.
+        builder.add(
+            "response.output_item.added",
+            output_index=1,
+            item={
+                "type": unknown_item_type,
+                "id": "item_unknown_1",
+                "status": "in_progress",
+            },
+        )
+    _finish_response(builder, f"resp_{name}", output)
+    return Scenario(
+        name=name,
+        stream_events=builder.events,
+        nonstream_response=_nonstream_response(f"resp_{name}_ns", output),
+    )
+
+
+def obfuscation_tool_scenario(name: str = "obfuscation-tolerance") -> Scenario:
+    """A tool turn whose arguments.delta events carry the live ``obfuscation`` field.
+
+    ``obfuscation`` is a known-but-unmodeled field (v1.2.14 R1): the shim tolerates
+    it silently — no ``unknown_events`` increment, no stream failure — while the
+    tool call still translates to a clean Anthropic ``tool_use`` block. The value
+    string mimics the live Codex obfuscation blob (opaque, bounded).
+    """
+
+    builder = _EventBuilder()
+    builder.add(
+        "response.created",
+        response={"id": f"resp_{name}", "status": "in_progress"},
+    )
+    output = [
+        _append_tool_item(
+            builder,
+            0,
+            call_id="call_obfuscation_1",
+            item_id="fc_obfuscation_1",
+            arg_delta_fields={"obfuscation": "AB12cd34EF56gh78"},
+        ),
+    ]
+    _finish_response(builder, f"resp_{name}", output)
+    return Scenario(
+        name=name,
+        stream_events=builder.events,
+        nonstream_response=_nonstream_response(f"resp_{name}_ns", output),
+    )
+
+
+def incomplete_response_scenario(
+    *,
+    service_tier: Any = TERMINAL_FIELD_OMITTED,
+) -> Scenario:
+    """Incomplete Responses terminal with an optional exact served tier."""
 
     builder = _EventBuilder()
     builder.add(
@@ -778,24 +1168,27 @@ def incomplete_response_scenario() -> Scenario:
         response={"id": "resp_incomplete", "status": "in_progress"},
     )
     output = [_append_text_item(builder, 0, text="Truncated fixture answer.")]
-    builder.add(
-        "response.incomplete",
-        response={
-            "id": "resp_incomplete",
-            "status": "incomplete",
-            "output": output,
-            "usage": dict(USAGE),
-            "incomplete_details": {"reason": "max_output_tokens"},
-        },
-    )
+    terminal = {
+        "id": "resp_incomplete",
+        "status": "incomplete",
+        "output": output,
+        "usage": dict(USAGE),
+        "incomplete_details": {"reason": "max_output_tokens"},
+    }
+    if service_tier is not TERMINAL_FIELD_OMITTED:
+        terminal["service_tier"] = service_tier
+    builder.add("response.incomplete", response=terminal)
+    nonstream = {
+        **_nonstream_response("resp_incomplete_nonstream", output),
+        "status": "incomplete",
+        "incomplete_details": {"reason": "max_output_tokens"},
+    }
+    if service_tier is not TERMINAL_FIELD_OMITTED:
+        nonstream["service_tier"] = service_tier
     return Scenario(
         name="incomplete-response",
         stream_events=builder.events,
-        nonstream_response={
-            **_nonstream_response("resp_incomplete_nonstream", output),
-            "status": "incomplete",
-            "incomplete_details": {"reason": "max_output_tokens"},
-        },
+        nonstream_response=nonstream,
     )
 
 
@@ -1117,21 +1510,78 @@ def _wait_for_peer_close(
     return False
 
 
+# v1.3.6 (T2-C): live-realistic default response headers for SUCCESS (2xx) turns.
+# Before this, the mock success path emitted only Content-Type/Content-Length/
+# Connection, so the shim's header-driven observability (upstream_req_id extraction,
+# the chatgpt-lane quota_snapshot) always ran on empty input — live-unrealistic. These
+# sets are keyed by lane and merged DEFAULTS-FIRST in do_POST, so any scenario-injected
+# header (Scenario.stream_headers / attempt_headers) still wins (see the merge sites in
+# do_POST). Applied only to 2xx; error (>=400) responses keep their current header
+# behavior, matching the live captures where the openai 400 dropped x-ratelimit and the
+# chatgpt 4xx carried no x-codex quota surface (notes/04:72, notes/07:41).
+#
+# openai lane (notes/04:70-72, quoted from the live 200 turns): an opaque x-request-id,
+# an integer openai-processing-ms, and all six x-ratelimit-* members.
+_DEFAULT_OPENAI_SUCCESS_HEADERS = {
+    "x-request-id": "req_0f3c8a1b2d4e5f60718293a4b5c6d7e8",
+    "openai-processing-ms": "142",
+    "x-ratelimit-limit-requests": "5000",
+    "x-ratelimit-limit-tokens": "2000000",
+    "x-ratelimit-remaining-requests": "4999",
+    "x-ratelimit-remaining-tokens": "1999872",
+    "x-ratelimit-reset-requests": "12ms",
+    "x-ratelimit-reset-tokens": "8ms",
+}
+# chatgpt (Codex subscription) lane (notes/07:41-52): the request-id header is
+# x-oai-request-id (NOT x-request-id), and a 2xx carries the x-codex-* quota surface with
+# NO x-ratelimit-*. These are REPRESENTATIVE members of an evolving prefix FAMILY, not a
+# stable/exhaustive enumeration (map R8; notes/07:48-52 flags the live set drifting from
+# the survey) — the shim's allowlist is prefix-based (x-codex-*) precisely for this. The
+# secondary-window members are deliberately OMITTED: they were empty/absent on the live
+# capture (notes/07:44), and omitting them keeps the "absent header -> snapshot field
+# renders as '-'" contract that the quota tests pin (test_v131_quota_state.py,
+# test_v1214_heartbeat_and_quota.py) intact when they inject their own primary-only set.
+# Values are canonical (integer used-percent, integer window/reset), so the quota-state
+# writer records well-formed fields and introduces no validator noise.
+_DEFAULT_CHATGPT_SUCCESS_HEADERS = {
+    "x-oai-request-id": "req_5e6f708192a3b4c5d6e7f8091a2b3c4d",
+    "x-codex-plan-type": "pro",
+    "x-codex-active-limit": "premium",
+    "x-codex-primary-used-percent": "37",
+    "x-codex-primary-window-minutes": "10080",
+    "x-codex-primary-reset-after-seconds": "425000",
+    "x-codex-primary-reset-at": "1784984069",
+    "x-codex-credits-has-credits": "true",
+    "x-codex-credits-balance": "0",
+    "x-codex-credits-unlimited": "false",
+}
+
+
+def _default_success_headers(request_path: str) -> dict[str, str]:
+    """Return the lane-appropriate default 2xx header set for a backend request path.
+
+    Lane is read from the request path, which faithfully encodes the lane the shim
+    believes it is on: RealShim points the openai lane at ``{base}/v1`` and the chatgpt
+    lane at ``{base}`` (RealShim.__enter__), and the shim always posts to
+    ``{base}/responses`` — so an openai request arrives as ``/v1/responses`` and a chatgpt
+    request as ``/responses``. This is the same signal a real backend keys on (api.openai
+    .com/v1 vs chatgpt.com/backend-api/codex), so no synthetic lane flag is needed. A fresh
+    dict is returned each call so callers may mutate it while merging.
+    """
+    if request_path.startswith("/v1/"):
+        return dict(_DEFAULT_OPENAI_SUCCESS_HEADERS)
+    return dict(_DEFAULT_CHATGPT_SUCCESS_HEADERS)
+
+
 class MockResponsesServer(AbstractContextManager["MockResponsesServer"]):
-    """Threaded loopback Responses/OAuth server on an OS-assigned port."""
+    """Threaded loopback Responses server on an OS-assigned port."""
 
     def __init__(self, scenario: Scenario) -> None:
         self.scenario = scenario
         self.responses_requests: list[BackendRequest] = []
         self.response_timestamps: list[float] = []
-        self.oauth_requests: list[BackendRequest] = []
         self.first_response_request = threading.Event()
         self.second_response_request = threading.Event()
-        self.oauth_request_received = threading.Event()
-        self.oauth_response_release = threading.Event()
-        self.oauth_response_sent = threading.Event()
-        self.delay_oauth_response = False
-        self.rotated_access_token = _make_fake_jwt(int(time.time()) + 365 * 86400)
         self.body_prefix_flushed = threading.Event()
         self.peer_closed_before_delayed_send = threading.Event()
         self.delayed_send_failed = threading.Event()
@@ -1186,6 +1636,74 @@ class MockResponsesServer(AbstractContextManager["MockResponsesServer"]):
                     self.wfile.write(frame)
                     self.wfile.write(b"\r\n")
                     self.wfile.flush()
+                self.close_connection = True
+
+            def _send_chunked_sse(
+                self,
+                frames: list[bytes],
+                extra_headers: Optional[dict[str, str]] = None,
+            ) -> None:
+                # Preserve each non-empty fixture frame as one HTTP transfer chunk.
+                # This is a transport-segmentation control, not SSE framing: callers
+                # may split anywhere, including inside the literal "data: " prefix.
+                self.send_response(200)
+                self.send_header("Content-Type", "text/event-stream")
+                self.send_header("Transfer-Encoding", "chunked")
+                self.send_header("Connection", "close")
+                for name, value in (extra_headers or {}).items():
+                    self.send_header(name, value)
+                self.end_headers()
+                for frame in frames:
+                    if not frame:
+                        raise ValueError("preserved stream chunks must be non-empty")
+                    self.wfile.write(f"{len(frame):X}\r\n".encode("ascii"))
+                    self.wfile.write(frame)
+                    self.wfile.write(b"\r\n")
+                    self.wfile.flush()
+                self.wfile.write(b"0\r\n\r\n")
+                self.wfile.flush()
+                self.close_connection = True
+
+            def _send_chunked_sse_with_gap(
+                self,
+                events: list[dict[str, Any]],
+                append_done: bool,
+                gap_s: float,
+                extra_headers: Optional[dict[str, str]] = None,
+            ) -> None:
+                # v1.2.14 (R6): stream the content frames, then pause `gap_s` seconds
+                # just before the terminal (response.completed/incomplete) event —
+                # WITHOUT disconnecting — so the upstream is silent while the shim's
+                # downstream heartbeat must keep the connection warm with pings. Each
+                # SSE event is one HTTP transfer chunk; the terminal is sent after the
+                # gap and the stream is then closed cleanly.
+                self.send_response(200)
+                self.send_header("Content-Type", "text/event-stream")
+                self.send_header("Transfer-Encoding", "chunked")
+                self.send_header("Connection", "close")
+                for name, value in (extra_headers or {}).items():
+                    self.send_header(name, value)
+                self.end_headers()
+
+                def _write_frame(frame: bytes) -> None:
+                    self.wfile.write(f"{len(frame):X}\r\n".encode("ascii"))
+                    self.wfile.write(frame)
+                    self.wfile.write(b"\r\n")
+                    self.wfile.flush()
+
+                for event in events:
+                    if event.get("type") in ("response.completed", "response.incomplete"):
+                        time.sleep(gap_s)
+                    _write_frame(
+                        (
+                            f"event: {event.get('type', 'message')}\n"
+                            f"data: {json.dumps(event, separators=(',', ':'))}\n\n"
+                        ).encode("utf-8")
+                    )
+                if append_done:
+                    _write_frame(b"data: [DONE]\n\n")
+                self.wfile.write(b"0\r\n\r\n")
+                self.wfile.flush()
                 self.close_connection = True
 
             def _stream_bytes(self, events: list[dict[str, Any]], append_done: bool) -> bytes:
@@ -1334,7 +1852,16 @@ class MockResponsesServer(AbstractContextManager["MockResponsesServer"]):
                             attempt_action = owner.scenario.attempt_statuses[
                                 min(attempt_index, len(owner.scenario.attempt_statuses) - 1)
                             ]
-                        attempt_headers = dict(owner.scenario.stream_headers)
+                        # v1.3.6 (T2-C): seed a 2xx response with the lane-appropriate
+                        # live default header set (openai x-request-id/processing-ms/
+                        # x-ratelimit-*, chatgpt x-oai-request-id + x-codex-* quota),
+                        # then let scenario injections override (defaults first;
+                        # stream_headers and attempt_headers win). Errors (>=400) and
+                        # non-int transport actions keep their prior bare-header behavior.
+                        attempt_headers = {}
+                        if isinstance(attempt_action, int) and 200 <= attempt_action < 400:
+                            attempt_headers.update(_default_success_headers(self.path))
+                        attempt_headers.update(owner.scenario.stream_headers)
                         if owner.scenario.attempt_headers:
                             attempt_headers.update(
                                 owner.scenario.attempt_headers[
@@ -1378,8 +1905,17 @@ class MockResponsesServer(AbstractContextManager["MockResponsesServer"]):
                                 )
                             if owner.scenario.append_done:
                                 frames.append(b"data: [DONE]\n\n")
-                        if owner.scenario.abrupt_eof:
+                        if owner.scenario.heartbeat_gap_s > 0:
+                            self._send_chunked_sse_with_gap(
+                                owner.scenario.stream_events,
+                                owner.scenario.append_done,
+                                owner.scenario.heartbeat_gap_s,
+                                attempt_headers,
+                            )
+                        elif owner.scenario.abrupt_eof:
                             self._send_abrupt_sse(frames)
+                        elif owner.scenario.preserve_raw_stream_chunks:
+                            self._send_chunked_sse(frames, attempt_headers)
                         else:
                             self._send_bytes(
                                 200,
@@ -1394,7 +1930,16 @@ class MockResponsesServer(AbstractContextManager["MockResponsesServer"]):
                             attempt_action = owner.scenario.attempt_statuses[
                                 min(attempt_index, len(owner.scenario.attempt_statuses) - 1)
                             ]
-                        attempt_headers = dict(owner.scenario.stream_headers)
+                        # v1.3.6 (T2-C): seed a 2xx response with the lane-appropriate
+                        # live default header set (openai x-request-id/processing-ms/
+                        # x-ratelimit-*, chatgpt x-oai-request-id + x-codex-* quota),
+                        # then let scenario injections override (defaults first;
+                        # stream_headers and attempt_headers win). Errors (>=400) and
+                        # non-int transport actions keep their prior bare-header behavior.
+                        attempt_headers = {}
+                        if isinstance(attempt_action, int) and 200 <= attempt_action < 400:
+                            attempt_headers.update(_default_success_headers(self.path))
+                        attempt_headers.update(owner.scenario.stream_headers)
                         if owner.scenario.attempt_headers:
                             attempt_headers.update(
                                 owner.scenario.attempt_headers[
@@ -1421,8 +1966,16 @@ class MockResponsesServer(AbstractContextManager["MockResponsesServer"]):
                                 attempt_headers,
                             )
                             return
+                        response_object = owner.scenario.nonstream_response
+                        if owner.scenario.nonstream_responses:
+                            response_object = owner.scenario.nonstream_responses[
+                                min(
+                                    request_number - 1,
+                                    len(owner.scenario.nonstream_responses) - 1,
+                                )
+                            ]
                         payload = json.dumps(
-                            owner.scenario.nonstream_response,
+                            response_object,
                             separators=(",", ":"),
                         ).encode("utf-8")
                         self._send_bytes(
@@ -1431,32 +1984,6 @@ class MockResponsesServer(AbstractContextManager["MockResponsesServer"]):
                             payload,
                             attempt_headers,
                         )
-                    return
-                if self.path.endswith("/oauth/token"):
-                    with owner._lock:
-                        owner.oauth_requests.append(record)
-                    owner.oauth_request_received.set()
-                    if owner.delay_oauth_response:
-                        if not owner.oauth_response_release.wait(10.0):
-                            self._send_bytes(
-                                504,
-                                "application/json",
-                                b'{"error":"fixture oauth release timed out"}',
-                            )
-                            return
-                    refreshed = {
-                        "access_token": owner.rotated_access_token,
-                        "refresh_token": FAKE_REFRESH_TOKEN + "_ROTATED",
-                        "id_token": FAKE_ID_TOKEN + "_ROTATED",
-                        "expires_in": 365 * 86400,
-                        "token_type": "Bearer",
-                    }
-                    self._send_bytes(
-                        200,
-                        "application/json",
-                        json.dumps(refreshed, separators=(",", ":")).encode("utf-8"),
-                    )
-                    owner.oauth_response_sent.set()
                     return
                 self._send_bytes(404, "application/json", b'{"error":"not found"}')
 
@@ -1475,7 +2002,6 @@ class MockResponsesServer(AbstractContextManager["MockResponsesServer"]):
 
     def __exit__(self, exc_type: Any, exc: Any, traceback: Any) -> None:
         self.release_delayed_send.set()
-        self.oauth_response_release.set()
         for release in self._response_request_release.values():
             release.set()
         if self._server is not None:
@@ -1492,10 +2018,6 @@ class MockResponsesServer(AbstractContextManager["MockResponsesServer"]):
     def responses_url(self) -> str:
         return f"{self.base_url}/responses"
 
-    @property
-    def oauth_url(self) -> str:
-        return f"{self.base_url}/oauth/token"
-
     def gate_response_request(
         self,
         request_number: int,
@@ -1511,12 +2033,11 @@ class MockResponsesServer(AbstractContextManager["MockResponsesServer"]):
             self._response_request_release[request_number] = release
         return entered, release
 
-    def assert_request_counts(self, responses: int, oauth: int = 0) -> None:
-        actual = (len(self.responses_requests), len(self.oauth_requests))
-        expected = (responses, oauth)
-        if actual != expected:
+    def assert_request_counts(self, responses: int) -> None:
+        actual = len(self.responses_requests)
+        if actual != responses:
             raise AssertionError(
-                f"mock request counts differ: actual={actual!r} expected={expected!r}"
+                f"mock request counts differ: actual={actual!r} expected={responses!r}"
             )
 
 
@@ -1638,11 +2159,15 @@ _LIFECYCLE_ORDER = {
             "request_start",
             "request_parsed",
             "upstream_attempt",
+            "transport_failure",
             "upstream_retry",
+            "reasoning_cache_stale_strip",
             "upstream_headers",
+            "quota_snapshot",
             "upstream_first_event",
             "downstream_first_content",
             "backend_error",
+            "request_shape",
             "disconnect",
             "terminal",
             "cleanup",
@@ -1791,15 +2316,46 @@ class RealShim(AbstractContextManager["RealShim"]):
         "LC_ALL": "C.UTF-8",
         "TZ": "UTC",
     }
+    _TEST_ENV_OVERRIDE_NAMES = frozenset({
+        "CLAUDE_CODE_DISABLE_FAST_MODE",
+        "DAAF_PROVIDER_SHIM",
+        "SHIM_REASONING_EFFORT",
+        "SHIM_SANITIZE_TOOLS",
+        "SHIM_STRIP_MODEL_PREFIX",
+        "SHIM_TEXT_VERBOSITY",
+        # v1.2.14 (R6): downstream heartbeat interval knob for the heartbeat tests.
+        "SHIM_PING_INTERVAL_S",
+        # v1.3.2: quota-state redirect seam. Seamed to per-instance scratch by default
+        # (see __enter__); individual tests may override it to a chosen path.
+        "DAAF_QUOTA_STATE_FILE",
+        # v1.3.3 (A2-R5): reasoning-cache persistence redirect seam. Per-instance scratch
+        # by default (see __enter__); tests may override it (e.g. a shared path to prove
+        # restart-restore across two RealShim instances).
+        "DAAF_REASONING_CACHE_FILE",
+    })
     _CONTROLLED_CHILD_ENV_NAMES = frozenset({
+        "HOME",
+        "DAAF_PROVIDER_SHIM",
         "SHIM_PORT",
         "SHIM_BACKEND_MODE",
         "SHIM_BACKEND_BASE_URL",
         "SHIM_BACKEND_API_KEY",
         "OPENAI_API_KEY",
         "CODEX_HOME",
-        "SHIM_OAUTH_TOKEN_URL",
-        "SHIM_OAUTH_CLIENT_ID",
+        # v1.3.0: delegated-refresh binary (replaces the deleted SHIM_OAUTH_* seams).
+        # SHIM_CODEX_TIMEOUT_S is intentionally not set by RealShim (the shim's 30s
+        # default suffices for subprocess fixtures); the in-process auth-delegation
+        # tests exercise it via their own env patch.
+        "SHIM_CODEX_BIN",
+        # v1.3.2: quota-state redirect seam, default-provisioned to per-instance scratch
+        # in __enter__ so a spawned production shim never writes the install-shared
+        # quota_state.json. Also test-overridable (see _TEST_ENV_OVERRIDE_NAMES).
+        "DAAF_QUOTA_STATE_FILE",
+        # v1.3.3 (A2-R5): reasoning-cache persistence seam, default-provisioned to
+        # per-instance scratch in __enter__ so a spawned production shim writes its
+        # reasoning cache inside its own isolated scratch dir (never the per-container
+        # $HOME default). Also test-overridable (see _TEST_ENV_OVERRIDE_NAMES).
+        "DAAF_REASONING_CACHE_FILE",
         "HTTP_PROXY",
         "HTTPS_PROXY",
         "ALL_PROXY",
@@ -1817,16 +2373,30 @@ class RealShim(AbstractContextManager["RealShim"]):
         mode: str,
         *,
         port_selector: Optional[Callable[[], int]] = None,
+        env_overrides: Optional[dict[str, str]] = None,
     ) -> None:
         if mode not in {"openai", "chatgpt"}:
             raise ValueError(f"unsupported shim mode: {mode}")
+        overrides = dict(env_overrides or {})
+        rejected = set(overrides) - self._TEST_ENV_OVERRIDE_NAMES
+        if rejected:
+            raise ValueError(
+                f"test environment override is not allowlisted: {sorted(rejected)!r}"
+            )
+        non_strings = sorted(
+            name for name, value in overrides.items() if not isinstance(value, str)
+        )
+        if non_strings:
+            raise TypeError(
+                f"test environment override values must be strings: {non_strings!r}"
+            )
         self.backend = backend
         self.mode = mode
         self._port_selector = port_selector or _reserve_dynamic_port
+        self._env_overrides = overrides
         self.port = 0
         self.base_url = ""
         self.backend_base_url = ""
-        self.oauth_url = ""
         self.proxy_url = ""
         self.scratch_dir: Optional[Path] = None
         self.auth_path: Optional[Path] = None
@@ -1879,19 +2449,44 @@ class RealShim(AbstractContextManager["RealShim"]):
                 if self.mode == "openai"
                 else self.backend.base_url
             )
-            self.oauth_url = self.backend.oauth_url
-            for url in (self.backend_base_url, self.oauth_url, self.proxy_url):
+            for url in (self.backend_base_url, self.proxy_url):
                 _assert_loopback_url(url)
 
             env.update(
                 {
+                    # v1.3.8: strict GPT tier policy is fixed under HOME. Point each
+                    # real-shim subprocess at its isolated scratch home; no production
+                    # state-path override exists or is inherited.
+                    "HOME": str(self.scratch_dir),
+                    "DAAF_PROVIDER_SHIM": "openai",
                     "SHIM_BACKEND_MODE": self.mode,
                     "SHIM_BACKEND_BASE_URL": self.backend_base_url,
                     "SHIM_BACKEND_API_KEY": FAKE_OPENAI_KEY,
                     "OPENAI_API_KEY": FAKE_OPENAI_KEY,
                     "CODEX_HOME": str(self.scratch_dir),
-                    "SHIM_OAUTH_TOKEN_URL": self.oauth_url,
-                    "SHIM_OAUTH_CLIENT_ID": "app_FAKE_PROVIDER_SHIM_UNITTEST",
+                    # v1.3.2: seam the quota-state write to this instance's scratch dir so
+                    # a spawned production shim's chatgpt-lane 2xx writes never touch the
+                    # install-shared scripts/provider_shim/logs/quota_state.json. This child
+                    # env covers the *spawned-subprocess* context only; in-process module
+                    # loads in the test-runner process are covered separately by the module-
+                    # level os.environ.setdefault seam at the top of this file. Together the
+                    # two seams keep both write contexts off the install-shared file — no
+                    # single seam makes the whole suite hermetic on its own. Tests may
+                    # override via env_overrides (DAAF_QUOTA_STATE_FILE is allowlisted).
+                    "DAAF_QUOTA_STATE_FILE": str(self.scratch_dir / "quota_state.json"),
+                    # v1.3.3 (A2-R5): seam the reasoning-cache persistence write to this
+                    # instance's scratch dir, so a spawned production shim's reasoning cache
+                    # never lands on the per-container $HOME default and each RealShim is
+                    # isolated from every other. Tests may override via env_overrides
+                    # (DAAF_REASONING_CACHE_FILE is allowlisted) — e.g. a path SHARED between
+                    # two RealShim instances to exercise restart-restore end-to-end.
+                    "DAAF_REASONING_CACHE_FILE": str(
+                        self.scratch_dir / "reasoning_cache.json"
+                    ),
+                    # Point delegated refresh at the fake-codex stub. Existing chatgpt
+                    # fixtures seed a far-future token, so the stub is not actually
+                    # invoked; it defaults to a benign no-op if it ever is.
+                    "SHIM_CODEX_BIN": str(FAKE_CODEX_BIN),
                     "HTTP_PROXY": self.proxy_url,
                     "HTTPS_PROXY": self.proxy_url,
                     "ALL_PROXY": self.proxy_url,
@@ -1903,6 +2498,9 @@ class RealShim(AbstractContextManager["RealShim"]):
                     "PYTHONUNBUFFERED": "1",
                 }
             )
+            # Apply only the narrow, constructor-validated behavior knobs. Backend,
+            # credential, proxy, port, and auth-store defaults remain fixed by the rig.
+            env.update(self._env_overrides)
 
             # The reserve/release/start sequence has an unavoidable test-only bind
             # race. Retry at most twice, and only when uvicorn's captured startup
@@ -2093,6 +2691,7 @@ class RealShim(AbstractContextManager["RealShim"]):
         tools: Optional[list[dict[str, Any]]] = None,
         messages: Optional[list[dict[str, Any]]] = None,
         headers: Optional[dict[str, str]] = None,
+        timeout: float = 30.0,
     ) -> HTTPResult:
         body: dict[str, Any] = {
             "model": model,
@@ -2109,6 +2708,7 @@ class RealShim(AbstractContextManager["RealShim"]):
         return self.post_raw_messages(
             json.dumps(body, separators=(",", ":")).encode("utf-8"),
             headers=headers,
+            timeout=timeout,
         )
 
     def post_raw_messages(
@@ -2124,6 +2724,21 @@ class RealShim(AbstractContextManager["RealShim"]):
             f"{self.base_url}/v1/messages",
             data=payload,
             headers=request_headers,
+            method="POST",
+        )
+        return _direct_request(request, timeout=timeout)
+
+    def post_count_tokens(
+        self,
+        body: dict[str, Any],
+        *,
+        timeout: float = 2.0,
+    ) -> HTTPResult:
+        payload = json.dumps(body, separators=(",", ":")).encode("utf-8")
+        request = urllib.request.Request(
+            f"{self.base_url}/v1/messages/count_tokens",
+            data=payload,
+            headers={"Content-Type": "application/json"},
             method="POST",
         )
         return _direct_request(request, timeout=timeout)
@@ -2147,7 +2762,7 @@ class RealShim(AbstractContextManager["RealShim"]):
     def assert_offline_contract(self) -> None:
         if self.scratch_dir is None or self.auth_path is None:
             raise AssertionError("shim context was not initialized")
-        for url in (self.base_url, self.backend_base_url, self.oauth_url, self.proxy_url):
+        for url in (self.base_url, self.backend_base_url, self.proxy_url):
             _assert_loopback_url(url)
         if Path(self.child_env["CODEX_HOME"]) != self.scratch_dir:
             raise AssertionError("child CODEX_HOME did not point to isolated scratch")
@@ -2157,14 +2772,20 @@ class RealShim(AbstractContextManager["RealShim"]):
             raise AssertionError("isolated credential directory is outside scripts/scratch")
         if self.child_env.get("OPENAI_API_KEY") != FAKE_OPENAI_KEY:
             raise AssertionError("child OpenAI key is not the fabricated test key")
-        allowed_names = set(self._CONTROLLED_BASE_ENV) | set(self._CONTROLLED_CHILD_ENV_NAMES)
+        allowed_names = (
+            set(self._CONTROLLED_BASE_ENV)
+            | set(self._CONTROLLED_CHILD_ENV_NAMES)
+            | set(self._TEST_ENV_OVERRIDE_NAMES)
+        )
         unexpected_names = set(self.child_env) - allowed_names
         if unexpected_names:
             raise AssertionError(
                 f"child environment contains non-allowlisted names: {sorted(unexpected_names)!r}"
             )
-        if "HOME" in self.child_env:
-            raise AssertionError("child environment inherited HOME unexpectedly")
+        if Path(self.child_env.get("HOME", "")) != self.scratch_dir:
+            raise AssertionError("child HOME did not point to isolated policy scratch")
+        if self.child_env.get("DAAF_PROVIDER_SHIM") != "openai":
+            raise AssertionError("child GPT provider control was not exact")
         for name in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"):
             if self.child_env.get(name) != self.proxy_url:
                 raise AssertionError(f"{name} does not target the closed loopback proxy")
@@ -2269,6 +2890,11 @@ def outer_cancel_after_stream_enter_report() -> dict[str, Any]:
 
     async def exercise() -> dict[str, Any]:
         module_name = f"provider_shim_cancel_probe_{uuid.uuid4().hex}"
+        # v1.3.3 (A2-R5): clear the runner-default reasoning-cache seam before this fresh
+        # in-process load so its import-time restore starts cold (see the ASGI probe and
+        # the harness-top hazard note). This probe drives no reasoning turn so it never
+        # persists, but covering every in-process loader keeps the invariant uniform.
+        _purge_in_process_reasoning_cache_seam()
         spec = importlib.util.spec_from_file_location(module_name, PRODUCTION_SHIM)
         if spec is None or spec.loader is None:
             raise RuntimeError("could not load production shim for ownership probe")
@@ -2360,9 +2986,19 @@ def controlled_asgi_probe(
     disconnect_during_enter: bool = False,
     invalid_request_shape: bool = False,
     raw_request_body: Optional[bytes] = None,
+    raw_scope_headers: Optional[list[tuple[bytes, bytes]]] = None,
     response_status: int = 200,
     response_headers: Optional[dict[str, str]] = None,
     http_version: str = "HTTP/1.1",
+    backend_mode: Optional[str] = None,
+    provider_shim_control: Optional[str] = "openai",
+    backend_mode_control: object = _SELECTED_BACKEND_CONTROL,
+    native_fast_disable: Optional[str] = "1",
+    preexisting_global_policy_enabled: Optional[bool] = None,
+    global_policy_enabled: Optional[bool] = None,
+    global_policy_backend: Optional[str] = None,
+    toggle_policy_on_first_receive: Optional[bool] = None,
+    inject_stale_restored_reasoning: bool = False,
 ) -> ASGIProbeReport:
     """Drive the production app with controlled receive/send and upstream seams.
 
@@ -2371,28 +3007,137 @@ def controlled_asgi_probe(
     cleanup all execute in the production module.
     """
 
+    probe_home_holder: list[Path] = []
+
     async def exercise() -> ASGIProbeReport:
         module_name = f"provider_shim_asgi_probe_{uuid.uuid4().hex}"
+        # NOTE: DAAF_QUOTA_STATE_FILE is deliberately NOT set here. This probe executes
+        # the real request path in-process, so a chatgpt-lane 2xx would drive the real
+        # _write_quota_state; the module-level setdefault at the top of this file already
+        # seams that write to scratch, and mock.patch.dict(..., clear=False) below inherits
+        # the runner-process env, so the seam carries into the freshly loaded module.
+        probe_home = SCRATCH_ROOT / f"provider-shim-policy-home-{uuid.uuid4().hex}"
+        probe_home.mkdir(mode=0o700)
+        probe_home_holder.append(probe_home)
+        selected_backend_mode = backend_mode or (
+            "chatgpt"
+            if auth_store_unavailable or lazy_401_refresh or lazy_401_refresh_failure
+            else "openai"
+        )
+        if selected_backend_mode not in {"openai", "chatgpt"}:
+            raise ValueError(f"unsupported controlled backend mode: {selected_backend_mode}")
+        raw_backend_control = (
+            selected_backend_mode
+            if backend_mode_control is _SELECTED_BACKEND_CONTROL
+            else backend_mode_control
+        )
+        if provider_shim_control is not None and not isinstance(
+            provider_shim_control, str
+        ):
+            raise TypeError("provider shim control must be a string or None")
+        if raw_backend_control is not None and not isinstance(raw_backend_control, str):
+            raise TypeError("backend mode control must be a string or None")
         controlled_env = {
-            "SHIM_BACKEND_MODE": (
-                "chatgpt"
-                if auth_store_unavailable or lazy_401_refresh or lazy_401_refresh_failure
-                else "openai"
-            ),
+            "HOME": str(probe_home),
             "SHIM_BACKEND_BASE_URL": "http://127.0.0.1:1/v1",
             "SHIM_BACKEND_API_KEY": FAKE_OPENAI_KEY,
             "OPENAI_API_KEY": FAKE_OPENAI_KEY,
         }
+        if provider_shim_control is not None:
+            controlled_env["DAAF_PROVIDER_SHIM"] = provider_shim_control
+        if raw_backend_control is not None:
+            controlled_env["SHIM_BACKEND_MODE"] = raw_backend_control
+        if native_fast_disable is not None:
+            controlled_env["CLAUDE_CODE_DISABLE_FAST_MODE"] = native_fast_disable
+        if preexisting_global_policy_enabled is not None:
+            policy_dir = probe_home / ".claude" / "provider_shim"
+            policy_dir.mkdir(parents=True, mode=0o700)
+            policy_dir.chmod(0o700)
+            policy_path = policy_dir / "gpt_fast_policy.json"
+            policy_path.write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "backend_mode": selected_backend_mode,
+                        "enabled": preexisting_global_policy_enabled,
+                    },
+                    separators=(",", ":"),
+                ),
+                encoding="utf-8",
+            )
+            policy_path.chmod(0o600)
         if auth_store_unavailable:
             controlled_env["CODEX_HOME"] = str(
                 SCRATCH_ROOT / f"provider-shim-missing-auth-{uuid.uuid4().hex}"
             )
+        else:
+            # Hermeticity: provision the SAME fabricated auth store RealShim writes
+            # for spawned shims, and pin CODEX_HOME to it. Without this pin the
+            # patch.dict(clear=False) below inherits the runner's CODEX_HOME — in
+            # the DAAF container the codex plugin exports one holding a REAL
+            # auth.json (so chatgpt-lane probes silently read live credentials),
+            # while CI runners export none (so the chatgpt lane fails closed with
+            # upstream_calls == 0). Both environments must see the fixture.
+            fake_access = _make_fake_jwt(int(time.time()) + 365 * 86400)
+            probe_auth = {
+                "OPENAI_API_KEY": FAKE_OPENAI_KEY,
+                "auth_mode": "chatgpt",
+                "last_refresh": "2099-01-01T00:00:00.000000000Z",
+                "tokens": {
+                    "access_token": fake_access,
+                    "account_id": FAKE_ACCOUNT_ID,
+                    "id_token": FAKE_ID_TOKEN,
+                    "refresh_token": FAKE_REFRESH_TOKEN,
+                },
+            }
+            probe_auth_path = probe_home / "auth.json"
+            probe_auth_path.write_text(json.dumps(probe_auth), encoding="utf-8")
+            probe_auth_path.chmod(0o600)
+            controlled_env["CODEX_HOME"] = str(probe_home)
         with mock.patch.dict(os.environ, controlled_env, clear=False):
+            # Absence is itself a strict-boundary fixture. patch.dict(clear=False) keeps
+            # the runner's hermetic quota/reasoning seams, so explicitly remove only the
+            # two raw controls when a test requests omission; the context restores them.
+            if provider_shim_control is None:
+                os.environ.pop("DAAF_PROVIDER_SHIM", None)
+            if raw_backend_control is None:
+                os.environ.pop("SHIM_BACKEND_MODE", None)
+            # v1.3.3 (A2-R5): clear the runner-default reasoning-cache seam BEFORE this
+            # fresh module load so its import-time restore cannot pick up entries a prior
+            # in-process load persisted (which would leak call_ids and flip miss
+            # assertions). Runs inside the patch so it honors any outer per-test seam
+            # override. The quota seam needs no such purge (write-only, no import restore).
+            _purge_in_process_reasoning_cache_seam()
             spec = importlib.util.spec_from_file_location(module_name, PRODUCTION_SHIM)
             if spec is None or spec.loader is None:
                 raise RuntimeError("could not load production shim for ASGI probe")
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
+
+        if global_policy_enabled is not None:
+            module._GPT_FAST_STORE.write(
+                global_policy_backend or selected_backend_mode,
+                global_policy_enabled,
+            )
+
+        if inject_stale_restored_reasoning:
+            original_translation = module._anthropic_to_responses_request
+
+            def translation_with_restored_reasoning(*args, **kwargs):
+                translated = list(original_translation(*args, **kwargs))
+                translated[0]["input"].insert(
+                    0,
+                    {
+                        "type": "reasoning",
+                        "id": "rs_controlled_stale",
+                        "encrypted_content": "controlled-fixture-only",
+                    },
+                )
+                translated[5] = {"rs_controlled_stale"}
+                translated[6] = {"call_controlled_stale"}
+                return tuple(translated)
+
+            module._anthropic_to_responses_request = translation_with_restored_reasoning
 
         if lazy_401_refresh or lazy_401_refresh_failure:
             async def controlled_backend_headers(*args, **kwargs):
@@ -2405,6 +3150,16 @@ def controlled_asgi_probe(
                 }
 
             module._build_backend_headers = controlled_backend_headers
+
+        auth_calls = 0
+        original_build_backend_headers = module._build_backend_headers
+
+        async def observed_backend_headers(*args, **kwargs):
+            nonlocal auth_calls
+            auth_calls += 1
+            return await original_build_backend_headers(*args, **kwargs)
+
+        module._build_backend_headers = observed_backend_headers
 
         if translation_failure:
             def controlled_translation_failure(*args, **kwargs):
@@ -2429,6 +3184,7 @@ def controlled_asgi_probe(
             for name, value in (response_headers or {}).items()
         ]
         upstream_calls = 0
+        outbound_payloads: list[dict[str, Any]] = []
         stream_close_calls = 0
         stream_close_attempts: list[int] = []
         close_after_cleanup: list[bool] = []
@@ -2437,10 +3193,37 @@ def controlled_asgi_probe(
         selected_outcomes = list(attempt_outcomes or [response_status])
         selected_close_failures = set(close_fail_attempts or set())
 
+        class MidbodyReadTimeoutStream(module.httpx.AsyncByteStream):
+            async def __aiter__(self):
+                yield (
+                    b'event: response.created\n'
+                    b'data: {"type":"response.created","response":'
+                    b'{"id":"resp_midbody","status":"in_progress"}}\n\n'
+                )
+                raise module.httpx.ReadTimeout("injected mid-body read timeout")
+
         def response_for_attempt(attempt_number: int):
             outcome = selected_outcomes[min(attempt_number - 1, len(selected_outcomes) - 1)]
-            if outcome == "transport":
-                raise module.httpx.ConnectError("injected stream transport failure")
+            injected_transport_errors = {
+                "transport": module.httpx.ConnectError,
+                "connect_timeout": module.httpx.ConnectTimeout,
+                "read_timeout": module.httpx.ReadTimeout,
+                "write_timeout": module.httpx.WriteTimeout,
+                "pool_timeout": module.httpx.PoolTimeout,
+            }
+            if outcome in injected_transport_errors:
+                error_class = injected_transport_errors[outcome]
+                raise error_class("injected transport failure")
+            if outcome == "midbody_read_timeout":
+                return module.httpx.Response(
+                    200,
+                    headers=headers,
+                    stream=MidbodyReadTimeoutStream(),
+                    request=module.httpx.Request(
+                        "POST", "http://127.0.0.1:1/v1/responses"
+                    ),
+                    extensions={"http_version": http_version.encode("ascii", "replace")},
+                )
             status = int(outcome)
             content = (
                 stream_payload
@@ -2465,10 +3248,12 @@ def controlled_asgi_probe(
             )
 
         class ProbeStreamContext:
-            def __init__(self, attempt_number: int):
+            def __init__(self, attempt_number: int, payload: dict[str, Any]):
                 self.attempt_number = attempt_number
+                self.payload = payload
 
             async def __aenter__(self):
+                outbound_payloads.append(copy.deepcopy(self.payload))
                 if disconnect_during_enter:
                     receive_queue.put_nowait({"type": "http.disconnect"})
                     await upstream_hold.wait()
@@ -2496,11 +3281,12 @@ def controlled_asgi_probe(
             def stream(self, *args, **kwargs):
                 nonlocal upstream_calls
                 upstream_calls += 1
-                return ProbeStreamContext(upstream_calls)
+                return ProbeStreamContext(upstream_calls, kwargs.get("json"))
 
             async def post(self, *args, **kwargs):
                 nonlocal upstream_calls
                 upstream_calls += 1
+                outbound_payloads.append(copy.deepcopy(kwargs.get("json")))
                 return response_for_attempt(upstream_calls)
 
         original_client = module._client
@@ -2562,7 +3348,18 @@ def controlled_asgi_probe(
             if pure_disconnect:
                 receive_queue.put_nowait({"type": "http.disconnect"})
 
+        first_receive = True
+
         async def receive() -> dict[str, Any]:
+            nonlocal first_receive
+            if first_receive:
+                first_receive = False
+                if toggle_policy_on_first_receive is not None:
+                    # app() has already created lifecycle state and captured its one
+                    # policy snapshot before its first body read reaches this seam.
+                    module._GPT_FAST_STORE.write(
+                        selected_backend_mode, toggle_policy_on_first_receive
+                    )
             return await receive_queue.get()
 
         messages: list[dict[str, Any]] = []
@@ -2649,7 +3446,14 @@ def controlled_asgi_probe(
 
         raised: Optional[str] = None
         cancelled = False
-        scope = {"type": "http", "method": "POST", "path": "/v1/messages"}
+        # Raw ASGI pairs preserve duplicate names, original header-name case, and malformed
+        # bytes. Normal HTTP helpers stay unchanged and continue to delegate parsing to uvicorn.
+        scope = {
+            "type": "http",
+            "method": "POST",
+            "path": "/v1/messages",
+            "headers": list(raw_scope_headers or []),
+        }
         if send_action == "same_turn_terminal_disconnect":
             asyncio.wait = observed_asyncio_wait
         task = asyncio.create_task(module.app(scope, receive, send))
@@ -2685,13 +3489,16 @@ def controlled_asgi_probe(
         lifecycle = parse_lifecycle_logs(logs)
         if lifecycle:
             assert_lifecycle_log_contract(lifecycle)
-        return ASGIProbeReport(
+        report = ASGIProbeReport(
             messages=messages,
             logs=logs,
             lifecycle=lifecycle,
             raised=raised,
             cancelled=cancelled,
             upstream_calls=upstream_calls,
+            auth_calls=auth_calls,
+            outbound_payloads=outbound_payloads,
+            gpt_service_tier_health=module._gpt_service_tier_health_block(),
             stream_close_calls=stream_close_calls,
             stream_close_attempts=stream_close_attempts,
             close_after_cleanup=close_after_cleanup,
@@ -2702,8 +3509,13 @@ def controlled_asgi_probe(
             terminal_tie_children_done=terminal_tie_children_done,
             pending_task_count=pending_task_count,
         )
+        return report
 
-    return asyncio.run(exercise())
+    try:
+        return asyncio.run(exercise())
+    finally:
+        if probe_home_holder:
+            shutil.rmtree(probe_home_holder[0], ignore_errors=True)
 
 
 def parse_typed_sse(payload: bytes | str) -> list[TypedSSEFrame]:

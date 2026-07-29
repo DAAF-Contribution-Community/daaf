@@ -39,7 +39,7 @@ function Wait-AndExit {
 function Import-DaafSettingsInline {
     param([string]$SettingsFile = "./environment_settings.txt")
     if (-not (Test-Path -LiteralPath $SettingsFile)) { return }
-    $known = @('DAAF_PROJECT_NAME', 'DAAF_PORT_MARIMO', 'DAAF_PORT_LOGVIEWER', 'DAAF_PORT_VSCODE', 'DAAF_DEV', 'DAAF_BRANCH')
+    $known = @('DAAF_PROJECT_NAME', 'DAAF_PORT_MARIMO', 'DAAF_PORT_LOGVIEWER', 'DAAF_PORT_VSCODE', 'DAAF_DEV', 'DAAF_BRANCH', 'DAAF_DATA_VOLUME_NAME')
     # -Encoding UTF8: PS 5.1's bare Get-Content misreads BOM-less UTF-8 as ANSI
     # (cp1252); the settings writer is BOM-less UTF-8, so reads are pinned to match.
     foreach ($rawLine in (Get-Content -LiteralPath $SettingsFile -Encoding UTF8)) {
@@ -48,7 +48,11 @@ function Import-DaafSettingsInline {
         if ($trimmed -eq "" -or $trimmed.StartsWith("#")) { continue }
         $eq = $line.IndexOf("=")
         if ($eq -lt 1) { continue }
-        $key = $line.Substring(0, $eq).Trim()
+        # Extract the key WITHOUT trimming: a leading or trailing space means the
+        # line is not flush at column 0, so it must fall through as unrecognized --
+        # matching the bash loaders' column-0 `case` glob so a padded key like
+        # "  DAAF_PROJECT_NAME=..." is rejected identically on both platforms.
+        $key = $line.Substring(0, $eq)
         if ($known -notcontains $key) { continue }
         $val = $line.Substring($eq + 1)
         if (($val.StartsWith('"') -and $val.EndsWith('"')) -or ($val.StartsWith("'") -and $val.EndsWith("'"))) {

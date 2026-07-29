@@ -43,28 +43,32 @@ print("wide-context classifier: 9/9 cases passed")
     assert_output "wide-context classifier: 9/9 cases passed"
 }
 
-@test "route detection uses exact raw ChatGPT lane controls and explains near misses" {
+@test "route detection enforces exact shim lane controls and explains near misses" {
     run env PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="${SMOKE_PROBES_DIR}:${REPO_ROOT}" python3 -c '
 from route_detection import (
     ROUTE_ANTHROPIC,
     ROUTE_CHATGPT,
     ROUTE_OPENAI_API,
+    ROUTE_OPENROUTER,
     Verdict,
     build_route_info,
     probe_route_detection,
 )
 
 cases = [
-    ("exact conjunction", {"DAAF_PROVIDER_SHIM": "openai", "SHIM_BACKEND_MODE": "chatgpt"}, ROUTE_CHATGPT, Verdict.PASS),
+    ("clean native controls", {}, ROUTE_ANTHROPIC, Verdict.PASS),
+    ("clean OpenRouter controls", {"ANTHROPIC_BASE_URL": "https://openrouter.ai/api"}, ROUTE_OPENROUTER, Verdict.PASS),
+    ("exact ChatGPT conjunction", {"DAAF_PROVIDER_SHIM": "openai", "SHIM_BACKEND_MODE": "chatgpt"}, ROUTE_CHATGPT, Verdict.PASS),
+    ("exact OpenAI conjunction", {"DAAF_PROVIDER_SHIM": "openai", "SHIM_BACKEND_MODE": "openai"}, ROUTE_OPENAI_API, Verdict.PASS),
     ("uppercase shim", {"DAAF_PROVIDER_SHIM": "OPENAI", "SHIM_BACKEND_MODE": "chatgpt"}, ROUTE_ANTHROPIC, Verdict.FAIL),
     ("leading-space shim", {"DAAF_PROVIDER_SHIM": " openai", "SHIM_BACKEND_MODE": "chatgpt"}, ROUTE_ANTHROPIC, Verdict.FAIL),
     ("trailing-space shim", {"DAAF_PROVIDER_SHIM": "openai ", "SHIM_BACKEND_MODE": "chatgpt"}, ROUTE_ANTHROPIC, Verdict.FAIL),
-    ("uppercase backend", {"DAAF_PROVIDER_SHIM": "openai", "SHIM_BACKEND_MODE": "CHATGPT"}, ROUTE_OPENAI_API, Verdict.FAIL),
-    ("leading-space backend", {"DAAF_PROVIDER_SHIM": "openai", "SHIM_BACKEND_MODE": " chatgpt"}, ROUTE_OPENAI_API, Verdict.FAIL),
-    ("trailing-space backend", {"DAAF_PROVIDER_SHIM": "openai", "SHIM_BACKEND_MODE": "chatgpt "}, ROUTE_OPENAI_API, Verdict.FAIL),
+    ("uppercase backend", {"DAAF_PROVIDER_SHIM": "openai", "SHIM_BACKEND_MODE": "CHATGPT"}, ROUTE_ANTHROPIC, Verdict.FAIL),
+    ("leading-space backend", {"DAAF_PROVIDER_SHIM": "openai", "SHIM_BACKEND_MODE": " chatgpt"}, ROUTE_ANTHROPIC, Verdict.FAIL),
+    ("trailing-space backend", {"DAAF_PROVIDER_SHIM": "openai", "SHIM_BACKEND_MODE": "chatgpt "}, ROUTE_ANTHROPIC, Verdict.FAIL),
     ("partial shim", {"DAAF_PROVIDER_SHIM": "open"}, ROUTE_ANTHROPIC, Verdict.FAIL),
-    ("partial backend", {"DAAF_PROVIDER_SHIM": "openai", "SHIM_BACKEND_MODE": "chat"}, ROUTE_OPENAI_API, Verdict.FAIL),
-    ("only shim signal", {"DAAF_PROVIDER_SHIM": "openai"}, ROUTE_OPENAI_API, Verdict.PASS),
+    ("partial backend", {"DAAF_PROVIDER_SHIM": "openai", "SHIM_BACKEND_MODE": "chat"}, ROUTE_ANTHROPIC, Verdict.FAIL),
+    ("only shim signal", {"DAAF_PROVIDER_SHIM": "openai"}, ROUTE_ANTHROPIC, Verdict.FAIL),
     ("only backend signal", {"SHIM_BACKEND_MODE": "chatgpt"}, ROUTE_ANTHROPIC, Verdict.FAIL),
 ]
 for label, env, route, verdict in cases:
@@ -74,10 +78,10 @@ for label, env, route, verdict in cases:
     assert got.verdict == verdict, (label, got.verdict, verdict, got.detail)
     if verdict == Verdict.FAIL:
         assert "exact" in got.detail.lower(), (label, got.detail)
-print("exact lane controls: 11/11 cases passed")
+print("exact lane controls: 14/14 cases passed")
 '
     assert_success
-    assert_output "exact lane controls: 11/11 cases passed"
+    assert_output "exact lane controls: 14/14 cases passed"
 }
 
 @test "GPT physical-family classifier mirrors runtime boundaries and mappings" {
@@ -186,9 +190,9 @@ cases = [
     ("chat excluded from flagship cap", {**base_chatgpt, "ANTHROPIC_MODEL": "gpt-5.6-sol-chat", "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "128000"}, Verdict.PASS),
     ("non-GPT control", {**base_chatgpt, "ANTHROPIC_MODEL": "claude-opus-4-8[1m]"}, Verdict.PASS),
     ("malformed left-boundary GPT is not capped", {**base_chatgpt, "ANTHROPIC_MODEL": "vendor/notgpt-5.6-sol", "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "1050000"}, Verdict.PASS),
-    ("direct API [1m] hint is supported", {"DAAF_PROVIDER_SHIM": "openai", "ANTHROPIC_MODEL": "gpt-5.6-sol[1m]"}, Verdict.PASS),
-    ("direct API bare GPT needs explicit declaration", {"DAAF_PROVIDER_SHIM": "openai", "ANTHROPIC_MODEL": "gpt-5.6-sol"}, Verdict.FAIL),
-    ("API route keeps canonical 1.05M", {"DAAF_PROVIDER_SHIM": "openai", "ANTHROPIC_MODEL": "gpt-5.6-sol[1m]", "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "1050000"}, Verdict.PASS),
+    ("direct API [1m] hint is supported", {"DAAF_PROVIDER_SHIM": "openai", "SHIM_BACKEND_MODE": "openai", "ANTHROPIC_MODEL": "gpt-5.6-sol[1m]"}, Verdict.PASS),
+    ("direct API bare GPT needs explicit declaration", {"DAAF_PROVIDER_SHIM": "openai", "SHIM_BACKEND_MODE": "openai", "ANTHROPIC_MODEL": "gpt-5.6-sol"}, Verdict.FAIL),
+    ("API route keeps canonical 1.05M", {"DAAF_PROVIDER_SHIM": "openai", "SHIM_BACKEND_MODE": "openai", "ANTHROPIC_MODEL": "gpt-5.6-sol[1m]", "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "1050000"}, Verdict.PASS),
     ("OpenRouter keeps canonical 1.05M", {"ANTHROPIC_BASE_URL": "https://openrouter.ai/api", "ANTHROPIC_MODEL": "openai/gpt-5.6-sol", "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "1050000"}, Verdict.PASS),
     ("OpenRouter does not generalize [1m]", {"ANTHROPIC_BASE_URL": "https://openrouter.ai/api", "ANTHROPIC_MODEL": "openai/gpt-5.6-sol[1m]"}, Verdict.FAIL),
     ("native route rejects an explicit overflow declaration", {"ANTHROPIC_MODEL": "claude-opus-4-8[1m]", "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "9223372036854775808"}, Verdict.FAIL),

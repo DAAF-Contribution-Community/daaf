@@ -30,15 +30,29 @@ pf.etable([fit1, fit2, fit3, fit4])
 
 ### Output Formats
 
+Since 0.50, `etable()` renders through the `maketables` backend (the `great_tables`
+dependency was replaced). The public API is unchanged. Return types verified live
+on 0.60.0:
+
+| `type=` | Returns | Notes |
+|---------|---------|-------|
+| *(default)* / `"gt"` | `great_tables.gt.GT` | HTML table object, rendered via maketables |
+| `"df"` | `pandas.DataFrame` | For further processing |
+| `"md"` | prints to stdout, returns `None` | Markdown |
+| `"tex"` | `str` | LaTeX (requires booktabs, threeparttable, makecell) |
+| `"typst"` | `str` | Typst markup (added 0.60) |
+| `"html"` | `str` | Raw HTML string |
+
 ```python
-# Interactive HTML table (default, requires great_tables)
+# Interactive HTML table (default, returns a great_tables GT object via maketables)
 pf.etable([fit1, fit2], type="gt")
 
-# Markdown table
+# Markdown table (printed to stdout)
 pf.etable([fit1, fit2], type="md")
 
-# LaTeX (requires booktabs, threeparttable, makecell)
+# LaTeX / Typst (both return a string)
 pf.etable([fit1, fit2], type="tex")
+pf.etable([fit1, fit2], type="typst")
 
 # DataFrame for further processing
 df_table = pf.etable([fit1, fit2], type="df")
@@ -46,6 +60,14 @@ df_table = pf.etable([fit1, fit2], type="df")
 # Save to file
 pf.etable([fit1, fit2], type="tex", file_name="regression_table.tex")
 ```
+
+> **Significance stars and `coef_fmt` (0.60 behavior):** Stars are **on by default**
+> — verified live, the default `type="df"` output shows cells like `-0.950*** \n (0.066)`.
+> In 0.60 the star behavior is governed by the `coef_fmt` string: a `*` token on a
+> statistic (e.g. `"b* \n (se)"` or `"b:.3f*"`) requests stars. The trap: if you pass
+> a **custom `coef_fmt` that omits `*`, the table loses its significance stars**. A
+> stars-dropping regression in this area was fixed in 0.50.1, so on 0.60 the default
+> is starred; keep the `*` token when customizing `coef_fmt` if you want to retain them.
 
 ### Customization
 
@@ -58,9 +80,11 @@ pf.etable(
     exact_match=False,           # False = regex matching (default)
 
     # Formatting
-    coef_fmt="b \n (se)",        # Format: b=coef, se=SE, p=p-val, ci=CI
+    coef_fmt="b* \n (se)",       # Format: b=coef, se=SE, p=p-val, ci=CI; the `*`
+                                 #   token requests significance stars (omit it and
+                                 #   the column loses stars — see note above)
     digits=3,                    # Decimal places
-    signif_code=[0.001, 0.01, 0.05],  # Significance stars
+    signif_code=[0.001, 0.01, 0.05],  # Significance thresholds for the stars
 
     # Labels
     labels={"X1": "Education", "X2": "Experience"},
@@ -79,10 +103,14 @@ The `coef_fmt` parameter controls how coefficients are displayed:
 
 | Template | Output |
 |----------|--------|
-| `"b \n (se)"` | Coefficient with SE below (default) |
-| `"b (se)"` | Coefficient and SE on same line |
-| `"b [ci]"` | Coefficient with confidence interval |
-| `"b \n (se) \n [p]"` | Coefficient, SE, and p-value |
+| `"b* \n (se)"` | Coefficient (starred) with SE below |
+| `"b* (se)"` | Coefficient and SE on same line |
+| `"b* [ci]"` | Coefficient with confidence interval |
+| `"b* \n (se) \n [p]"` | Coefficient, SE, and p-value |
+
+The `*` token controls significance stars (0.60 behavior — see the note above). A
+statistic token also accepts a format spec, e.g. `"b:.3f*"` for three decimals with
+stars.
 
 ### Fixed Effects Rows
 

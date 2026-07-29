@@ -245,7 +245,14 @@ The report follows a standard structure (Executive Summary, Key Findings, Data &
 
 ### Reading DAAF's Claims: Observed Facts vs. Inference
 
-One habit worth building as you read any DAAF output is to notice how it grades its own claims by evidence. When DAAF reports that something *ran* -- a fetch returned so many rows, a validation passed -- the actual command and its output are on record, quoted in the script's execution log for you to check; statements without that kind of record are inferences, and DAAF is instructed to phrase them so they read that way rather than as established fact. Pay especially close attention when DAAF says something is *impossible* or *unavailable* -- that a source doesn't offer a variable, or that an operation can't be done -- because a wrong "no" fails silently and can quietly harden into accepted fact, so those negative claims deserve the same "show me the check" scrutiny you'd give any surprising result. And when DAAF tells you how much it did -- files changed, outcomes addressed -- that accounting should trace back to actual tool output, not to memory. Reading with this lens tells you which parts of a report you can take at face value and which warrant a second look.
+One habit worth building as you read any DAAF output is to notice how it grades its own claims by evidence. A quick lens to read with:
+
+- **Ran-and-quoted means observed fact.** When DAAF reports that something *ran* -- a fetch returned so many rows, a validation passed -- the actual command and its output are on record in the script's execution log for you to check.
+- **Everything else is inference.** Statements without that kind of record are inferences, and DAAF is instructed to phrase them so they read that way rather than as established fact.
+- **Watch negative claims most closely.** When DAAF says something is *impossible* or *unavailable* -- that a source doesn't offer a variable, or that an operation can't be done -- give it extra scrutiny. A wrong "no" fails silently and can quietly harden into accepted fact, so those claims deserve the same "show me the check" treatment you'd give any surprising result.
+- **Completion counts should trace to output.** When DAAF tells you how much it did -- files changed, outcomes addressed -- that accounting should trace back to actual tool output, not to memory.
+
+Reading with this lens tells you which parts of a report you can take at face value and which warrant a second look.
 
 ### Reading the Notebook
 
@@ -347,7 +354,7 @@ There's one oversight responsibility that's easy to overlook because it's about 
 
 LLMs are non-deterministic, and DAAF's reference loading is orchestrated by an LLM. This means that occasionally -- not often, but not never -- an agent will proceed without loading a skill it was instructed to load, or the orchestrator will skip a reference file it was supposed to read. When this happens, the agent falls back on its general training, which produces output that looks correct but is built on plausible inference rather than curated knowledge.
 
-**Verbose output is your primary monitoring tool.** When you set Verbose output to True in `/config` (which you should -- it's a [required configuration setting](01_installation_and_quickstart.md#configure-claude-code-required)), you can see the internal thought process informing the file reads that DAAF's agents make. Here's what to watch for:
+**Verbose output is your primary monitoring tool.** DAAF ships with Verbose output turned on by default (you can confirm it anytime in `/config`), so you can see the internal thought process informing the file reads that DAAF's agents make. Here's what to watch for:
 
 **Signs that something may not have loaded:**
 - An agent explicitly mentions wanting to load something but then never doing it
@@ -502,6 +509,8 @@ The browser editor comes pre-loaded with extensions for Python and R syntax high
 - **File management:** Drag and drop files — or whole folders — from your computer into the file explorer sidebar to import them into the Docker volume (e.g., a dataset you want to profile). Create, rename, move, and delete files directly. To get files back out, right-click a file and choose **Download**; for a whole folder, right-click it, choose **Compress → zip**, then download the resulting `.zip` (see the quickstart's *Getting files OUT of the container* section for the full walkthrough).
 - **Git integration:** The Source Control panel (left sidebar) shows uncommitted changes and lets you view diffs -- the most direct way to review exactly what DAAF produced during a session -- and, if you've enabled the optional "Git commit management" preference, browse commit history too.
 - **Search across files:** `Ctrl+Shift+F` (or `Cmd+Shift+F` on Mac) searches across all files in the project -- great for finding specific variables, scripts, or content.
+
+> **Working with a bulk local dataset?** Uploading tens of gigabytes through the browser is slow. For large or frequently-refreshed local data, bind-mount the folder into the container read-only instead — see [Linking Host Folders into the Container (Bind Mounts)](01_installation_and_quickstart.md#linking-host-folders-into-the-container-bind-mounts) in the installation guide.
 
 ### Alternative: Desktop VSCode with Dev Containers
 

@@ -6,6 +6,7 @@ benchmark result, checkpoint, sandbox, or temporary directory.
 
 import io
 import json
+import os
 import shutil
 import sys
 import unittest
@@ -23,11 +24,14 @@ from benchmarks.harness.artifacts import (
     console_billing_label,
     cost_summary,
     error_measurement_defaults,
+    format_coverage,
     model_manifest_entry,
     nullable_mean,
     nullable_total,
     purity_coverage,
+    run_validity,
 )
+from benchmarks.harness.model_loader import load_models
 from benchmarks.harness.models import (
     ModelConfig,
     PricingConfig,
@@ -198,6 +202,20 @@ class ArtifactSerializationTests(unittest.TestCase):
         self.assertEqual(1.25, summary["avg_cost_usd"])
         self.assertEqual(expected, summary["accounting_coverage"])
 
+    def test_format_coverage_relabels_only_legacy_numeric(self):
+        # FIX-7 (2026-07-29): the display relabel rewrites legacy_numeric ->
+        # numeric_computed_cost for console text while every other accounting
+        # category name passes through unchanged (the persisted keys are a
+        # summary.json contract and must not be renamed).
+        out = format_coverage(
+            {"exact": 2, "scenario_only": 1, "unavailable": 0, "legacy_numeric": 3}
+        )
+        self.assertIn("numeric_computed_cost=3", out)
+        self.assertNotIn("legacy_numeric", out)
+        self.assertIn("exact=2", out)
+        self.assertIn("scenario_only=1", out)
+        self.assertIn("unavailable=0", out)
+
     def test_provider_aware_error_defaults_and_legacy_compatibility(self):
         legacy = legacy_model()
         subscription = luna_model()
@@ -349,6 +367,191 @@ class ChildModelPurityTests(unittest.TestCase):
             evidence["incompleteness_reason"],
         )
         self.assertEqual(1, evidence["child_transcript_count"])
+
+    # --- Archive-case regressions: wire_id + non-model markers ---
+    #
+    # The four cases below are the COMPLETE set of runs the purity gate has ever
+    # marked invalid, taken verbatim from the archive (established with
+    # `find /daaf/benchmarks/results -name result.json -exec grep -l
+    # "child_model_purity_failed" {} +`). Three were false positives; the fourth
+    # is a genuine off-model failure and must stay failed.
+
+    def test_archive_case_deepseek_pinned_routing_id_verifies_against_wire_id(self):
+        """results/20260724_212503/runs/dc-01_DeepSeek_V4_Flash_0 — Defect 1.
+
+        Routing id carries the :atlas-cloud/fp8 pin; the CLI wrote only the bare
+        slug. Pre-fix this was 'failed' on the string mismatch alone.
+        """
+        transcript = self._transcript(
+            "agent-deepseek.jsonl",
+            [self._assistant("deepseek/deepseek-v4-flash")],
+        )
+        evidence = child_model_purity(
+            [transcript],
+            "deepseek/deepseek-v4-flash:atlas-cloud/fp8",
+            "deepseek/deepseek-v4-flash",
+        )
+
+        self.assertEqual("verified", evidence["purity_status"])
+        # Routing id and comparison target are BOTH recorded and distinguishable.
+        self.assertEqual(
+            "deepseek/deepseek-v4-flash:atlas-cloud/fp8",
+            evidence["requested_child_model_id"],
+        )
+        self.assertEqual(
+            "deepseek/deepseek-v4-flash",
+            evidence["comparison_target_child_model_id"],
+        )
+        self.assertTrue(evidence["wire_id_declared"])
+        # No observed string was rewritten; the target was declared, not derived.
+        self.assertFalse(evidence["normalization_applied"])
+        self.assertEqual("valid", run_validity(
+            {"child_model_purity": evidence})["status"])
+
+    def test_archive_case_kimi_k3_synthetic_stub_does_not_discard_on_model_run(self):
+        """results/20260721_223921/runs/dc-12_Kimi_K3_2 — Defect 2."""
+        transcript = self._transcript(
+            "agent-k3-a.jsonl",
+            [self._assistant("moonshotai/kimi-k3"), self._assistant("<synthetic>")],
+        )
+        evidence = child_model_purity([transcript], "moonshotai/kimi-k3")
+
+        self.assertEqual("verified", evidence["purity_status"])
+        # The marker is recorded, not silently dropped: raw keeps everything.
+        self.assertEqual(
+            ["moonshotai/kimi-k3", "<synthetic>"],
+            evidence["observed_child_model_ids_raw"],
+        )
+        self.assertEqual(["<synthetic>"], evidence["observed_non_model_markers"])
+        self.assertEqual(
+            ["moonshotai/kimi-k3"], evidence["comparison_child_model_ids"]
+        )
+        self.assertIsNone(evidence["incompleteness_reason"])
+        self.assertEqual("valid", run_validity(
+            {"child_model_purity": evidence})["status"])
+
+    def test_archive_case_kimi_k3_second_run_synthetic_stub_also_verifies(self):
+        """results/20260720_164319/runs/dc-12_Kimi_K3_0 — Defect 2, second run."""
+        transcript = self._transcript(
+            "agent-k3-b.jsonl",
+            [self._assistant("moonshotai/kimi-k3"), self._assistant("<synthetic>")],
+        )
+        evidence = child_model_purity([transcript], "moonshotai/kimi-k3")
+
+        self.assertEqual("verified", evidence["purity_status"])
+        self.assertEqual(["<synthetic>"], evidence["observed_non_model_markers"])
+        self.assertEqual("valid", run_validity(
+            {"child_model_purity": evidence})["status"])
+
+    def test_archive_case_sonnet_genuine_off_model_child_still_fails(self):
+        """_quarantine_2026-07-24/.../dc-02_Sonnet_4.6_0 — the real failure.
+
+        This is the anti-regression guard: neither fix may weaken the gate.
+        """
+        transcript = self._transcript(
+            "agent-sonnet.jsonl",
+            [self._assistant("claude-opus-4-8")],
+        )
+        evidence = child_model_purity([transcript], "claude-sonnet-4-6")
+
+        self.assertEqual("failed", evidence["purity_status"])
+        self.assertEqual([], evidence["observed_non_model_markers"])
+        self.assertEqual(
+            ["claude-opus-4-8"], evidence["comparison_child_model_ids"]
+        )
+        self.assertEqual("invalid", run_validity(
+            {"child_model_purity": evidence})["status"])
+
+    def test_marker_only_transcript_is_unverifiable_not_failed(self):
+        """No model-identity evidence in either direction is an absence, not a
+        contradiction — so it must not gate the run invalid."""
+        transcript = self._transcript(
+            "agent-stub-only.jsonl", [self._assistant("<synthetic>")]
+        )
+        evidence = child_model_purity([transcript], "moonshotai/kimi-k3")
+
+        self.assertEqual("unverifiable", evidence["purity_status"])
+        self.assertEqual(
+            "child_transcripts_expose_only_non_model_markers:<synthetic>",
+            evidence["incompleteness_reason"],
+        )
+        self.assertEqual([], evidence["comparison_child_model_ids"])
+        self.assertEqual(["<synthetic>"], evidence["observed_non_model_markers"])
+        self.assertEqual("valid", run_validity(
+            {"child_model_purity": evidence})["status"])
+
+    def test_bare_slug_model_without_wire_id_behaves_exactly_as_before(self):
+        """Omitting wire_model_id must be a no-op for every unpinned entry."""
+        transcript = self._transcript(
+            "agent-bare.jsonl", [self._assistant("moonshotai/kimi-k3")]
+        )
+        two_arg = child_model_purity([transcript], "moonshotai/kimi-k3")
+        explicit = child_model_purity(
+            [transcript], "moonshotai/kimi-k3", "moonshotai/kimi-k3"
+        )
+
+        self.assertEqual(two_arg, explicit)
+        self.assertEqual("verified", two_arg["purity_status"])
+        self.assertFalse(two_arg["wire_id_declared"])
+        self.assertEqual(
+            two_arg["requested_child_model_id"],
+            two_arg["comparison_target_child_model_id"],
+        )
+        # Pre-fix identity between raw and comparison lists is preserved when
+        # no markers are present.
+        self.assertEqual(
+            two_arg["observed_child_model_ids_raw"],
+            two_arg["comparison_child_model_ids"],
+        )
+
+    def test_wire_id_mismatch_against_declared_target_still_fails(self):
+        """A declared wire_id narrows the target; it must not become permissive."""
+        transcript = self._transcript(
+            "agent-wrong-wire.jsonl", [self._assistant("z-ai/glm-5.2")]
+        )
+        evidence = child_model_purity(
+            [transcript], "z-ai/glm-5.1:atlas-cloud/fp8", "z-ai/glm-5.1"
+        )
+
+        self.assertEqual("failed", evidence["purity_status"])
+
+    def test_registry_wire_ids_cover_every_pinned_entry(self):
+        """models.yaml: every :pinned id declares a wire_id; no bare slug does.
+
+        Exercises the real loader (not a hand-rolled YAML read) so the test also
+        proves wire_id survives load_models' provider env-override merging.
+        OpenRouter creds are faked because load_models SKIPS openrouter entries
+        when they are absent — without them the pinned entries would never be
+        loaded and this assertion would pass vacuously.
+        """
+        fake_creds = {
+            "OPENROUTER_BASE_URL": "https://example.invalid/api",
+            "OPENROUTER_AUTH_TOKEN": "not-a-real-token",
+        }
+        with patch.dict(os.environ, fake_creds):
+            models = load_models(Path("/daaf/benchmarks/config/models.yaml"))
+
+        pinned = [k for k, v in models.items() if ":" in v.id]
+        self.assertEqual(
+            10, len(pinned),
+            f"expected 10 provider-pinned registry entries, got {pinned}",
+        )
+        for key, config in models.items():
+            if ":" in config.id:
+                self.assertIsNotNone(
+                    config.wire_id, f"pinned entry {key} lacks wire_id"
+                )
+                self.assertNotIn(":", config.wire_id, f"{key} wire_id still pinned")
+                self.assertEqual(
+                    config.id.split(":", 1)[0], config.wire_id,
+                    f"{key} wire_id is not the bare slug of its routing id",
+                )
+            else:
+                # Unpinned entries rely on the default, keeping them untouched.
+                self.assertIsNone(config.wire_id, f"{key} should not declare wire_id")
+            self.assertEqual(
+                config.wire_id or config.id, config.comparison_model_id
+            )
 
     def test_purity_coverage_preserves_failed_and_unverifiable_states(self):
         records = [
@@ -523,7 +726,7 @@ class RunnerPreflightTests(unittest.TestCase):
             run_skill_routing,
         ):
             with self.subTest(module=module.__name__):
-                with patch("benchmarks.harness.route_provenance.urlopen") as network, \
+                with patch("benchmarks.harness.route_provenance.build_opener") as network, \
                         patch.object(module, "load_models") as load, \
                         patch.object(module, "execute_run") as execute, \
                         patch.object(sys, "argv", [str(module.__file__), "--help"]):

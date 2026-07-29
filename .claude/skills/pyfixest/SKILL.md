@@ -5,8 +5,8 @@ description: >-
 metadata:
   audience: research-coders
   domain: python-library
-  library-version: "0.40.0"
-  skill-last-updated: "2026-03-27"
+  library-version: "0.60.0"
+  skill-last-updated: "2026-07-23"
 ---
 
 # pyfixest Skill
@@ -18,7 +18,7 @@ Comprehensive skill for fixed effects regression, instrumental variables, and di
 ## What is pyfixest?
 
 pyfixest is a Python implementation of the R **fixest** package (Berge, Butts, & McDermott, 2026):
-- **Fast**: Multi-way FE demeaning via alternating projections with numba/JAX/GPU backends
+- **Fast**: Multi-way FE demeaning via alternating projections; since 0.60 the default backend is a compiled Rust extension shipped in the wheel (numba is now optional), with PyTorch/CuPy/SciPy LSMR backends available for GPU/large problems
 - **Concise formula syntax**: Fixed effects after `|`, IV after second `|`, multiple estimation via `sw()`/`csw()`
 - **Modern DiD**: Built-in did2s, local projections DiD (lpdid), and Sun-Abraham saturated estimator
 - **Flexible inference**: Switch SE types post-estimation; wild bootstrap, randomization inference, CCV
@@ -26,11 +26,24 @@ pyfixest is a Python implementation of the R **fixest** package (Berge, Butts, &
 
 ## Version Notes
 
-This skill targets **pyfixest 0.40.0**, the major release aligning with R fixest 0.13. Breaking changes from earlier versions:
+This skill targets **pyfixest 0.60.0** (pre-installed in the DAAF container). Only three release lines sit between the previous target and this one — 0.40.0/0.40.1, 0.50.0/0.50.1, and 0.60.0 (there are no 0.41–0.49 releases). The cumulative changes that matter for existing code, oldest first:
+
+**0.40.0 (aligned with R fixest 0.13) — silent result changes:**
 - Default standard errors changed from "cluster by first FE" to `"iid"` — old code silently produces different SEs
-- `ssc()` arguments renamed: `adj` → `k_adj`, `fixef_k` → `k_fixef`, `cluster_adj` → `G_adj`, `cluster_df` → `G_df`
+- `ssc()` arguments renamed: `adj` → `k_adj`, `fixef_k` → `k_fixef`, `cluster_adj` → `G_adj`, `cluster_df` → `G_df`; the old names still work but raise a `DeprecationWarning` (verified live). The option *value* `"nested"` was renamed to `"nonnested"` — passing `"nested"` now errors
 - `fixef_rm` default changed from `"none"` to `"singleton"` — singletons now dropped by default
-- Multicollinearity tolerance reduced from 1e-10 to 1e-09
+- Multicollinearity tolerance reduced from 1e-10 to 1e-09; Gelbach `decompose()` reworked to return a `GelbachDecomposition` object (arg `param` → `decomp_var`)
+
+**0.50.0 — table backend + FE-GLMs:**
+- `etable()`/`dtable()` moved to the `maketables` backend (the `great_tables` dependency was replaced). The public `etable()` API is unchanged and, in this install, the default and `type="gt"` still return a `great_tables.gt.GT` object rendered via maketables (verified live)
+- **`feglm()` now supports fixed effects** (logit/probit/gaussian) — the pre-0.50 "feglm does not support FE" limitation is gone (verified live: `pf.feglm("ybin ~ X1 | f1", family="logit")` fits)
+
+**0.60.0 — Rust demeaner default, numba optional, typed backend API:**
+- The Rust MAP demeaner is now the default; **numba is an optional extra** (`pyfixest[numba]`). numba is still used for `MapDemeaner(backend="numba")` and fast randomization inference (`ritest(..., choose_algorithm="fast")`). DAAF's image ships numba transitively (via umap-learn/wildboottest), so the numba paths remain available here
+- The loose `demeaner_backend`, `fixef_tol`, and `fixef_maxiter` kwargs are deprecated in favor of a typed `demeaner=MapDemeaner(...)` / `LsmrDemeaner(...)` object; the old kwargs still work but raise a `DeprecationWarning` (verified live)
+- `etable(type="typst")` added; `fepois(offset=...)` exposure terms added
+
+See `gotchas.md` for the full cumulative breaking-change detail and migration notes.
 
 ## How to Use This Skill
 
@@ -47,7 +60,7 @@ Each topic in `./references/` contains focused documentation:
 | `tables-and-plots.md` | etable, coefplot, iplot, dtable | Reporting results |
 | `advanced-inference.md` | Wild bootstrap, randomization inference, MHT corrections, Gelbach | Advanced statistical inference |
 | `integration.md` | Multiple estimation, Poisson, GLM, marginaleffects, online learning | Advanced features |
-| `gotchas.md` | Common errors, v0.40 breaking changes, fixest vs pyfixest | Debugging issues |
+| `gotchas.md` | Common errors, 0.40→0.60 cumulative breaking changes, fixest vs pyfixest | Debugging issues |
 
 ### Reading Order
 
@@ -129,8 +142,8 @@ Presenting results?
 ```
 Having issues?
 ├─ Different results from old code → ./references/gotchas.md
-├─ feglm with fixed effects error → ./references/gotchas.md
-├─ numba installation problems → ./references/gotchas.md
+├─ feglm / GLM with fixed effects → ./references/gotchas.md
+├─ numba / demeaner backend questions → ./references/gotchas.md
 ├─ CRV3 memory issues → ./references/gotchas.md
 ├─ Poisson convergence → ./references/gotchas.md
 ├─ Formula parsing errors → ./references/gotchas.md
@@ -172,6 +185,7 @@ import pyfixest as pf
 |----------|---------|
 | `pf.feols("Y ~ X \| fe", data=df)` | OLS with fixed effects |
 | `pf.fepois("Y ~ X \| fe", data=df)` | Poisson with fixed effects |
+| `pf.feglm("Y ~ X \| fe", data=df, family="logit")` | GLM (logit/probit/gaussian) with fixed effects (since 0.50) |
 | `pf.feols("Y ~ X2 \| fe \| X1 ~ Z1", data=df)` | IV / 2SLS |
 | `pf.did2s(data, yname, first_stage, second_stage, treatment, cluster)` | Gardner (2022) DiD |
 | `pf.event_study(data, yname, idname, tname, gname, estimator)` | Unified event study |
@@ -257,9 +271,9 @@ pf.panelview(data, unit, time, treat)  # Treatment pattern visualization
 | Polars DataFrame input | `./references/gotchas.md` |
 | Polars-to-pandas conversion | `./references/quickstart.md` |
 | DiD clustering level | `./references/difference-in-differences.md` |
-| v0.40 breaking changes | `./references/gotchas.md` |
-| feglm FE limitation | `./references/gotchas.md` |
-| numba issues | `./references/gotchas.md` |
+| 0.40→0.60 breaking changes | `./references/gotchas.md` |
+| feglm with fixed effects | `./references/gotchas.md` |
+| numba / Rust demeaner backend | `./references/gotchas.md` |
 | Formula parsing | `./references/gotchas.md` |
 | R fixest differences | `./references/gotchas.md` |
 

@@ -28,7 +28,7 @@
 #       (hash-SPACE-key) that would activate to a valid assignment
 #   (e) CONTENTS entries correspond 1:1 (number + title, in order) with the
 #       "# ====" numbered section banners
-#   (f) the 6 host-bridged keys each appear at least once as an example key line
+#   (f) the 7 host-bridged keys each appear at least once as an example key line
 #
 # This test reads the real file (read-only); it never writes to it.
 # ============================================================================
@@ -174,12 +174,12 @@ teardown() {
 }
 
 # =========================================================================
-# (f) The six host-bridged keys each appear as an example key line
+# (f) The seven host-bridged keys each appear as an example key line
 # =========================================================================
 
 @test "(f) each host-bridged key appears as a #KEY= example line" {
     for key in DAAF_PROJECT_NAME DAAF_PORT_MARIMO DAAF_PORT_LOGVIEWER \
-               DAAF_PORT_VSCODE DAAF_DEV DAAF_BRANCH; do
+               DAAF_PORT_VSCODE DAAF_DEV DAAF_BRANCH DAAF_DATA_VOLUME_NAME; do
         run grep -qE "^#${key}=" "${EXAMPLE_FILE}"
         if [ "${status}" -ne 0 ]; then
             echo "missing host-bridged example key: #${key}="

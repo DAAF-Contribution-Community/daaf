@@ -11,20 +11,26 @@
 
 ## Installation
 
-No installation needed in DAAF: `pyfixest` (0.40.0) is pre-installed in the
-container, along with `wildboottest`, `marginaleffects`, and `great-tables` (used
-by `etable` output). Runtime installs are blocked in DAAF (`pip install`/`uv add`
-are refused both at the command line and inside executed scripts — see CLAUDE.md
-§ Runtime Package Installation). If an extra that is not pre-installed (e.g.,
-`pyfixest[jax]` for the JAX backend, or `lets-plot`) is genuinely required,
-escalate to the user to add it to the Dockerfile (user additions block near the
-end) and rebuild.
+No installation needed in DAAF: `pyfixest` (0.60.0) is pre-installed in the
+container, along with `wildboottest`, `marginaleffects`, `maketables` (the table
+rendering backend since 0.50), and `great-tables` (which maketables uses to render
+`etable(type="gt")` output; `great-tables` is pinned independently in DAAF's
+Dockerfile). Since 0.60 the default FE demeaning backend is a compiled Rust
+extension shipped in the wheel, so no numba JIT warm-up is needed for the default
+path; `numba` is now an optional extra but is present transitively in the DAAF
+image (transitively, e.g. via wildboottest), so `MapDemeaner(backend="numba")` and fast
+randomization inference still work here. Runtime installs are blocked in DAAF
+(`pip install`/`uv add` are refused both at the command line and inside executed
+scripts — see CLAUDE.md § Runtime Package Installation). If an extra that is not
+pre-installed (e.g., `pyfixest[jax]` for the JAX backend, or `lets-plot`) is
+genuinely required, escalate to the user to add it to the Dockerfile (user
+additions block near the end) and rebuild.
 
 ### Verify Installation
 
 ```python
 import pyfixest as pf
-print(pf.__version__)  # Should be 0.40.0+
+print(pf.__version__)  # DAAF ships 0.60.0
 ```
 
 ## Your First Regression

@@ -108,6 +108,17 @@ Describe "update_daaf.ps1" {
             $Content | Should -Match 'Backup recommendation'
         }
 
+        It "captures the opt-in backup exit code" {
+            # The pre-update backup is prompted/optional; its exit must be captured
+            # so a failure can abort gracefully instead of proceeding silently.
+            $Content | Should -Match '\$backupExit = \$LASTEXITCODE'
+        }
+
+        It "aborts the update when the opted-in backup fails" {
+            $Content | Should -Match 'Backup failed \(exit code \$backupExit\)'
+            $Content | Should -Match 'The update will not proceed without a successful backup'
+        }
+
         It "creates a git backup branch" {
             $Content | Should -Match 'backup/pre-update'
         }
@@ -127,6 +138,16 @@ Describe "update_daaf.ps1" {
 
         It "detects ahead/behind state" {
             $Content | Should -Match 'rev-list --count'
+        }
+
+        It "extracts the settings key column-0 strict (no .Trim(), rejects padded keys like bash)" {
+            # Import-DaafSettingsInline must extract the key WITHOUT .Trim() so a
+            # whitespace-padded "  DAAF_PROJECT_NAME=..." line falls through as
+            # unrecognized -- matching the bash loaders' column-0 `case` glob. The
+            # pre-fix `.Substring(0, $eq).Trim()` accepted padded keys, diverging from
+            # bash across the PS loader copies.
+            $Content | Should -Match '\$key = \$line\.Substring\(0, \$eq\)'
+            $Content | Should -Not -Match '\$key = \$line\.Substring\(0, \$eq\)\.Trim\(\)'
         }
     }
 }
@@ -814,6 +835,46 @@ Describe "update_daaf.ps1 behavioral tests" {
             ($output | Out-String) | Should -Not -Match 'Saved DAAF_BRANCH='
             (Get-Content -Raw $settings) | Should -Be $before
             (Test-Path (Join-Path $script:PbcDir "environment_settings.txt.pre-update")) | Should -Be $false
+        }
+    }
+
+    # -----------------------------------------------------------------
+    # Import-DaafSettingsInline (column-0 key strictness)
+    # -----------------------------------------------------------------
+    # The settings loader must extract the key WITHOUT .Trim() so a whitespace-
+    # padded "  DAAF_PROJECT_NAME=..." line is NOT flush at column 0 and falls
+    # through as unrecognized -- matching the bash loaders' column-0 `case` glob.
+    # A flush (column-0) key is still adopted. The function is called with an
+    # explicit -SettingsFile so no CWD juggling is needed; the probed env vars are
+    # cleared before and restored after so a real container env is not clobbered.
+    Context "Import-DaafSettingsInline column-0 key strictness" {
+        BeforeEach {
+            $script:IdsDir = New-Item -ItemType Directory -Path (Join-Path ([System.IO.Path]::GetTempPath()) "daaf-ids-$(Get-Random)")
+        }
+        AfterEach {
+            Remove-Item -Recurse -Force $script:IdsDir -ErrorAction SilentlyContinue
+        }
+
+        It "rejects a whitespace-padded key and adopts a flush key (like bash column-0)" {
+            $settings = Join-Path $script:IdsDir "environment_settings.txt"
+            Set-Content -Path $settings -Value @(
+                "  DAAF_PORT_MARIMO=9999",
+                "DAAF_PROJECT_NAME=flushvalue"
+            )
+            $origName   = $env:DAAF_PROJECT_NAME
+            $origMarimo = $env:DAAF_PORT_MARIMO
+            Remove-Item Env:DAAF_PROJECT_NAME -ErrorAction SilentlyContinue
+            Remove-Item Env:DAAF_PORT_MARIMO  -ErrorAction SilentlyContinue
+            try {
+                Import-DaafSettingsInline -SettingsFile $settings
+                # Flush key adopted; padded key ("  DAAF_PORT_MARIMO") off-whitelist -> unset.
+                $env:DAAF_PROJECT_NAME | Should -Be "flushvalue"
+                $env:DAAF_PORT_MARIMO  | Should -BeNullOrEmpty
+            }
+            finally {
+                if ($null -ne $origName)   { $env:DAAF_PROJECT_NAME = $origName }   else { Remove-Item Env:DAAF_PROJECT_NAME -ErrorAction SilentlyContinue }
+                if ($null -ne $origMarimo) { $env:DAAF_PORT_MARIMO  = $origMarimo } else { Remove-Item Env:DAAF_PORT_MARIMO  -ErrorAction SilentlyContinue }
+            }
         }
     }
 

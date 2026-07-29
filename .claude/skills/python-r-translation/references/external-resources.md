@@ -25,7 +25,8 @@ should be cross-checked against current documentation.
   will find the API intentionally parallel.
 - **For Python users:** The formula syntax is nearly identical to pyfixest. The
   main differences are clustering syntax (`~entity` vs `{"CRV1": "entity"}`) and
-  that `feglm()` with FE works in R but not in pyfixest.
+  that R fixest's `feglm()` covers more GLM families with FE (e.g., Gamma) plus
+  `fenegbin`; pyfixest's `feglm()` supports FE for logit/probit/gaussian since 0.50.
 
 ### ggplot2 Documentation
 

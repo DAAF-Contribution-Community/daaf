@@ -8,6 +8,44 @@
 # env_overrides are passed as environment variables to the claude CLI;
 # provider-level overrides are injected automatically by model_loader.py.
 #
+# CHILD-MODEL PURITY PINNING (added 2026-07-24, updated 2026-07-27).
+# Model entries pin child-model selectors to their own ids so benchmark-dispatched
+# children remain on the model under test. Most entries use all three selectors:
+#     ANTHROPIC_DEFAULT_OPUS_MODEL / ANTHROPIC_DEFAULT_SONNET_MODEL /
+#     CLAUDE_CODE_SUBAGENT_MODEL
+# The three GPT 5.6 ChatGPT-subscription entries intentionally use ONLY the Opus
+# and Sonnet aliases. Both aliases resolve to that entry's own parent GPT id, while
+# CLAUDE_CODE_SUBAGENT_MODEL is absent because its higher-precedence flattening
+# would bypass the semantic tier selected by agent frontmatter. The executor
+# scrubs that selector from the ambient environment before applying model-specific
+# overrides, so omission here is effective while entries that explicitly declare
+# the selector retain it. This two-alias configuration preserves operative
+# opus/sonnet tier selection while remaining model-pure because both tiers resolve
+# to the same benchmarked GPT model.
+#
+# WHY: since commit a6cf8e2 (2026-07-16) DAAF agent frontmatter declares
+# model: opus/sonnet TIERS, so dispatched children no longer inherit the session
+# model — they resolve to whatever those tier aliases point at. The B2 purity gate
+# (harness/artifacts.py) then marks off-model runs validity: invalid and EXCLUDES
+# them from every score rollup (observed: the 2026-07-23 Fable dc pass, 6/6 runs
+# "Child model purity: failed"). Pinning the applicable selectors to the entry's
+# own id restores children == parent, which is both purity-valid and faithful to
+# the original June inheritance condition (VERIFIED: both June Fable dc sets'
+# archived child transcripts are 100% claude-fable-5, 312 + 322 assistant msgs).
+#
+# CONDITION NOTE: this makes "children = the benchmarked model" an explicit,
+# uniform condition. It is NOT DAAF's live two-tier production routing (where
+# the two tiers can resolve to different models). That is the deliberate
+# purity-gate tradeoff. Archived results predating this edit are unaffected.
+#
+# MERGE SEMANTICS (verified in harness/model_loader.py:106-114):
+#   openrouter/anthropic -> {**resolved, **config.env_overrides}  (YAML wins)
+#   chatgpt-subscription -> {**config.env_overrides, **resolved}  (resolved wins)
+# The chatgpt reversal is SAFE for these pins: build_chatgpt_child_env()
+# (harness/route_provenance.py:151-168) returns only ANTHROPIC_BASE_URL,
+# ANTHROPIC_AUTH_TOKEN, and ANTHROPIC_API_KEY — no *_MODEL selector — so the
+# YAML tier-alias pins survive the fail-closed route overlay intact.
+#
 # pricing: per-million-token rates for pre-run cost estimation.
 #   input:        $/M input tokens
 #   output:       $/M output tokens
@@ -31,6 +69,10 @@ models:
       input: 1.00
       output: 5.00
       cached_input: 0.10
+    env_overrides:
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "claude-haiku-4-5-20251001"
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "claude-haiku-4-5-20251001"
+      CLAUDE_CODE_SUBAGENT_MODEL: "claude-haiku-4-5-20251001"
 
   - id: "claude-sonnet-4-6"
     name: "Sonnet 4.6"
@@ -40,15 +82,34 @@ models:
       input: 3.00
       output: 15.00
       cached_input: 0.30
+    env_overrides:
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "claude-sonnet-4-6"
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "claude-sonnet-4-6"
+      CLAUDE_CODE_SUBAGENT_MODEL: "claude-sonnet-4-6"
 
   - id: "claude-opus-4-5"
     name: "Opus 4.5"
     provider: anthropic
     cost_tier: "high"
+    # wire_id OBSERVED 2026-07-29 (user-approved re-adjudication): the bare
+    # alias `claude-opus-4-5` resolves on the wire to its dated snapshot.
+    # Evidence: results/20260726_163821 + 20260726_171652 — all 11 substantive
+    # runs report exactly one distinct child-transcript model id,
+    # "claude-opus-4-5-20251101" (parent live records match; the 11
+    # claude-opus-4-6 parent records per run are the replayed
+    # golden/dispatch_compliance/ad_hoc_initialized.jsonl checkpoint prefix,
+    # which contains exactly 11 assistant records, all claude-opus-4-6).
+    # Without this declaration the purity gate false-failed authentic Opus 4.5
+    # runs under exact_string_equality_no_alias_normalization.
+    wire_id: "claude-opus-4-5-20251101"
     pricing:
       input: 5.00
       output: 25.00
       cached_input: 0.50
+    env_overrides:
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "claude-opus-4-5"
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "claude-opus-4-5"
+      CLAUDE_CODE_SUBAGENT_MODEL: "claude-opus-4-5"
 
   - id: "claude-opus-4-6"
     name: "Opus 4.6"
@@ -58,6 +119,10 @@ models:
       input: 5.00
       output: 25.00
       cached_input: 0.50
+    env_overrides:
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "claude-opus-4-6"
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "claude-opus-4-6"
+      CLAUDE_CODE_SUBAGENT_MODEL: "claude-opus-4-6"
 
   - id: "claude-opus-4-7"
     name: "Opus 4.7"
@@ -67,6 +132,10 @@ models:
       input: 5.00
       output: 25.00
       cached_input: 0.50
+    env_overrides:
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "claude-opus-4-7"
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "claude-opus-4-7"
+      CLAUDE_CODE_SUBAGENT_MODEL: "claude-opus-4-7"
 
   - id: "claude-opus-4-8"
     name: "Opus 4.8"
@@ -76,6 +145,47 @@ models:
       input: 5.00
       output: 25.00
       cached_input: 0.50
+    env_overrides:
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "claude-opus-4-8"
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "claude-opus-4-8"
+      CLAUDE_CODE_SUBAGENT_MODEL: "claude-opus-4-8"
+
+  # Added 2026-07-25 for the Opus 5 evaluation.
+  #
+  # ID EVIDENCE: "claude-opus-5" is the wire identity OBSERVED on this repo's
+  # live Opus 5 session transcript — every assistant record reports
+  # message.model == "claude-opus-5" (jq over
+  # ~/.claude/projects/-daaf/10a8253f-....jsonl returned exactly one distinct
+  # value). The Claude Code environment string renders it as
+  # "claude-opus-5[1m]"; the "[1m]" is a client-side context-window badge (cf.
+  # "claude-opus-4-8[1m]" in .claude/hooks/context-reporter.sh:76) and is NOT
+  # part of the API model id — it never appears on the wire. Not cross-checked
+  # against Anthropic's published model list (this authoring pass had no web
+  # access).
+  #
+  # wire_id: deliberately OMITTED. "claude-opus-5" was OBSERVED directly on
+  # the wire (above), so the wire form equals `id` and ModelConfig defaults
+  # comparison_model_id to `id` (harness/models.py:135-140). NOTE (2026-07-29):
+  # "bare slug means wire form equals id" is NOT a safe general rule for
+  # Anthropic entries — claude-opus-4-5 resolves on the wire to its dated
+  # snapshot claude-opus-4-5-20251101 and now declares wire_id (see that
+  # entry). Declare wire_id wherever the observed wire form differs from `id`.
+  #
+  # PRICING PROVENANCE: mirrors opus-4-8 per user statement 2026-07-25
+  # ("Opus 5 is the same price as Opus 4.8"). NOT independently verified
+  # against Anthropic's published price list.
+  - id: "claude-opus-5"
+    name: "Opus 5"
+    provider: anthropic
+    cost_tier: "high"
+    pricing:
+      input: 5.00
+      output: 25.00
+      cached_input: 0.50
+    env_overrides:
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "claude-opus-5"
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "claude-opus-5"
+      CLAUDE_CODE_SUBAGENT_MODEL: "claude-opus-5"
 
   - id: "claude-fable-5"
     name: "Fable 5"
@@ -85,6 +195,10 @@ models:
       input: 10.00
       output: 50.00
       cached_input: 1.00
+    env_overrides:
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "claude-fable-5"
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "claude-fable-5"
+      CLAUDE_CODE_SUBAGENT_MODEL: "claude-fable-5"
 
   - id: "claude-sonnet-5"
     name: "Sonnet 5"
@@ -100,16 +214,50 @@ models:
       input: 2.00
       output: 10.00
       cached_input: 0.20
+    env_overrides:
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "claude-sonnet-5"
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "claude-sonnet-5"
+      CLAUDE_CODE_SUBAGENT_MODEL: "claude-sonnet-5"
 
   # --- OpenRouter models ---
 
+  # --- wire_id (added 2026-07-24) ---
+  #
+  # `id` is the ROUTING selector, passed verbatim to `claude --model` and to the
+  # ANTHROPIC_DEFAULT_* / CLAUDE_CODE_SUBAGENT_MODEL env overrides. Entries below
+  # that carry a ":provider/quant" suffix are PINNED to that backend and
+  # quantization; the suffix must never be stripped from `id` (doing so unpins
+  # routing and invalidates price tables reconciled against the pinned provider).
+  #
+  # `wire_id` is the identity the model reports back on transcript assistant
+  # records (message.model). The CLI does NOT echo the provider/quant suffix, so
+  # for pinned entries the wire form is the bare slug. It is used ONLY as the
+  # child-model-purity comparison target (harness/artifacts.py), never for
+  # routing. Omit `wire_id` when the wire form equals `id` (all bare-slug
+  # entries) — the code defaults to `id`.
+  #
+  # EVIDENCE GRADE (updated 2026-07-26, user-approved batch): all 10 `wire_id`
+  # entries in this file are now OBSERVED — each bare wire form confirmed from
+  # child-transcript assistant records (observed_child_model_ids_raw) during the
+  # 2026-07 re-run campaign; per-entry citations below. The bare-slug rule held
+  # 9/9 where tested, across eight suffix shapes including provider-only
+  # (:google-vertex). Evidence boundary: CLI transcript-observed identity only —
+  # never backend-confirmed, never a check of the provider/quant pin itself.
+
   - id: "z-ai/glm-5.1:atlas-cloud/fp8"
+    # wire_id OBSERVED 2026-07-25 (results/20260725_201746, GLM 5.1 dc-02:
+    # purity verified, bare slug on the wire while routing id carried the pin)
+    wire_id: "z-ai/glm-5.1"
     name: "GLM 5.1"
     provider: openrouter
     cost_tier: "medium"
     pricing:
       input: 0.98
       output: 3.08
+    env_overrides:
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "z-ai/glm-5.1:atlas-cloud/fp8"
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "z-ai/glm-5.1:atlas-cloud/fp8"
+      CLAUDE_CODE_SUBAGENT_MODEL: "z-ai/glm-5.1:atlas-cloud/fp8"
 
   - id: "z-ai/glm-5.2"
     name: "GLM 5.2"
@@ -119,22 +267,40 @@ models:
       input: 1.40
       output: 4.40
       cached_input: 0.26
+    env_overrides:
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "z-ai/glm-5.2"
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "z-ai/glm-5.2"
+      CLAUDE_CODE_SUBAGENT_MODEL: "z-ai/glm-5.2"
 
   - id: "moonshotai/kimi-k2.6:siliconflow/fp8"
+    # wire_id OBSERVED 2026-07-25 (results/20260725_131940 and 20260725_140242:
+    # purity verified, bare slug on the wire while routing id carried the pin)
+    wire_id: "moonshotai/kimi-k2.6"
     name: "Kimi K2.6"
     provider: openrouter
     cost_tier: "medium"
     pricing:
       input: 0.68
       output: 3.41
+    env_overrides:
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "moonshotai/kimi-k2.6:siliconflow/fp8"
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "moonshotai/kimi-k2.6:siliconflow/fp8"
+      CLAUDE_CODE_SUBAGENT_MODEL: "moonshotai/kimi-k2.6:siliconflow/fp8"
 
   - id: "moonshotai/kimi-k2.7-code:novita"
+    # wire_id OBSERVED 2026-07-25 (Op G dc block; purity verified, bare slug on
+    # the wire while routing id carried the pin)
+    wire_id: "moonshotai/kimi-k2.7-code"
     name: "Kimi K2.7 Code"
     provider: openrouter
     cost_tier: "medium"
     pricing:
       input: 0.75
       output: 3.50
+    env_overrides:
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "moonshotai/kimi-k2.7-code:novita"
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "moonshotai/kimi-k2.7-code:novita"
+      CLAUDE_CODE_SUBAGENT_MODEL: "moonshotai/kimi-k2.7-code:novita"
 
   # Added 2026-07-17 (G1R Kimi K3 battery), mirroring the kimi-k26 field set
   # plus full purity-env pinning (all three selectors) so dispatched children
@@ -165,14 +331,24 @@ models:
       CLAUDE_CODE_SUBAGENT_MODEL: "moonshotai/kimi-k3"
 
   - id: "qwen/qwen3.6-27b:venice/fp8"
+    # wire_id OBSERVED 2026-07-25 (Op G dc block; purity verified, bare slug on
+    # the wire while routing id carried the pin)
+    wire_id: "qwen/qwen3.6-27b"
     name: "Qwen 3.6 27B"
     provider: openrouter
     cost_tier: "medium"
     pricing:
       input: 0.289
       output: 2.40
+    env_overrides:
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "qwen/qwen3.6-27b:venice/fp8"
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "qwen/qwen3.6-27b:venice/fp8"
+      CLAUDE_CODE_SUBAGENT_MODEL: "qwen/qwen3.6-27b:venice/fp8"
 
   - id: "google/gemma-4-31b-it:venice/bf16"
+    # wire_id OBSERVED 2026-07-26 (results/20260726_003234, 3 reps: purity
+    # verified, bare slug on the wire while routing id carried the pin)
+    wire_id: "google/gemma-4-31b-it"
     name: "Gemma 4 31B"
     provider: openrouter
     cost_tier: "low"
@@ -185,8 +361,15 @@ models:
     pricing:
       input: 0.151
       output: 0.454
+    env_overrides:
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "google/gemma-4-31b-it:venice/bf16"
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "google/gemma-4-31b-it:venice/bf16"
+      CLAUDE_CODE_SUBAGENT_MODEL: "google/gemma-4-31b-it:venice/bf16"
 
   - id: "google/gemma-4-26b-a4b-it:novita/bf16"
+    # wire_id OBSERVED 2026-07-26 (results/20260726_013918, 3 reps: purity
+    # verified, bare slug on the wire while routing id carried the pin)
+    wire_id: "google/gemma-4-26b-a4b-it"
     name: "Gemma 4 26B"
     provider: openrouter
     cost_tier: "low"
@@ -199,8 +382,16 @@ models:
     pricing:
       input: 0.127
       output: 0.700
+    env_overrides:
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "google/gemma-4-26b-a4b-it:novita/bf16"
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "google/gemma-4-26b-a4b-it:novita/bf16"
+      CLAUDE_CODE_SUBAGENT_MODEL: "google/gemma-4-26b-a4b-it:novita/bf16"
 
   - id: "deepseek/deepseek-v4-pro:atlas-cloud/fp8"
+    # wire_id OBSERVED 2026-07-25 (Op F dc block; purity verified, bare slug on
+    # the wire while routing id carried the pin — Pro now observed directly,
+    # no longer inferred from the V4 Flash analogue)
+    wire_id: "deepseek/deepseek-v4-pro"
     name: "DeepSeek V4 Pro"
     provider: openrouter
     cost_tier: "medium"
@@ -214,8 +405,18 @@ models:
     pricing:
       input: 1.44
       output: 2.88
+    env_overrides:
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "deepseek/deepseek-v4-pro:atlas-cloud/fp8"
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "deepseek/deepseek-v4-pro:atlas-cloud/fp8"
+      CLAUDE_CODE_SUBAGENT_MODEL: "deepseek/deepseek-v4-pro:atlas-cloud/fp8"
 
   - id: "deepseek/deepseek-v4-flash:atlas-cloud/fp8"
+    # wire_id OBSERVED 2026-07-24 (results/20260724_212503/runs/
+    # dc-01_DeepSeek_V4_Flash_0/result.json recorded
+    # observed_child_model_ids_raw = ["deepseek/deepseek-v4-flash"] while the
+    # routing id carried the :atlas-cloud/fp8 pin). This is the one wire form in
+    # this file established by direct observation rather than inference.
+    wire_id: "deepseek/deepseek-v4-flash"
     name: "DeepSeek V4 Flash"
     provider: openrouter
     cost_tier: "low"
@@ -229,30 +430,116 @@ models:
     pricing:
       input: 0.132
       output: 0.263
+    env_overrides:
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "deepseek/deepseek-v4-flash:atlas-cloud/fp8"
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "deepseek/deepseek-v4-flash:atlas-cloud/fp8"
+      CLAUDE_CODE_SUBAGENT_MODEL: "deepseek/deepseek-v4-flash:atlas-cloud/fp8"
 
   - id: "google/gemini-3.1-pro-preview:google-vertex"
+    # wire_id OBSERVED 2026-07-25 (results/20260725_200704/runs/
+    # dc-12_Gemini_3.1_Pro_0: purity verified, bare slug on the wire). This pin
+    # is a provider-only suffix (no quant segment); observation confirmed the
+    # bare-slug rule holds for that shape too — the suffix is dropped on the wire.
+    wire_id: "google/gemini-3.1-pro-preview"
     name: "Gemini 3.1 Pro"
     provider: openrouter
     cost_tier: "high"
     pricing:
       input: 2.00
       output: 12.00
+    env_overrides:
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "google/gemini-3.1-pro-preview:google-vertex"
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "google/gemini-3.1-pro-preview:google-vertex"
+      CLAUDE_CODE_SUBAGENT_MODEL: "google/gemini-3.1-pro-preview:google-vertex"
 
   - id: "nvidia/nemotron-3-ultra-550b-a55b:deepinfra/bf16"
+    # wire_id OBSERVED 2026-07-25 (Op G dc block; purity verified, bare slug on
+    # the wire while routing id carried the pin)
+    wire_id: "nvidia/nemotron-3-ultra-550b-a55b"
     name: "Nemotron 3 Ultra"
     provider: openrouter
     cost_tier: "low"
     pricing:
       input: 0.50
       output: 2.50
+    env_overrides:
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "nvidia/nemotron-3-ultra-550b-a55b:deepinfra/bf16"
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "nvidia/nemotron-3-ultra-550b-a55b:deepinfra/bf16"
+      CLAUDE_CODE_SUBAGENT_MODEL: "nvidia/nemotron-3-ultra-550b-a55b:deepinfra/bf16"
 
-#  - id: "google/gemini-3.5-flash"
-#    name: "Gemini 3.5 Flash"
-#    provider: openrouter
-#    cost_tier: "high"
-#    pricing:
-#      input: 1.50
-#      output: 9.00
+  # Added 2026-07-27 (Gemini Flash battery). Identity/pricing/context verified
+  # online 2026-07-27 from GET /api/v1/models/google/gemini-3.5-flash/endpoints:
+  # $1.50/M input, $9.00/M output, $0.15/M cache read; context 1,048,576.
+  # Two first-party providers (Google Vertex, Google AI Studio) at identical
+  # standard-tier rates (flex/priority are separately-tagged endpoints), so no
+  # ":provider" pin — bare slug, wire_id omitted (comparison defaults to id),
+  # matching the Gemini 3.1 Flash Lite precedent. (Replaces a pre-existing
+  # commented-out stub that carried the same 1.50/9.00 rates, no cache rate.)
+  - id: "google/gemini-3.5-flash"
+    name: "Gemini 3.5 Flash"
+    provider: openrouter
+    cost_tier: "low"
+    pricing:
+      input: 1.50
+      output: 9.00
+      cached_input: 0.15
+    env_overrides:
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "google/gemini-3.5-flash"
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "google/gemini-3.5-flash"
+      CLAUDE_CODE_SUBAGENT_MODEL: "google/gemini-3.5-flash"
+
+  # Added 2026-07-27. Verified 2026-07-27 from GET /api/v1/models/google/
+  # gemini-3.6-flash/endpoints: $1.50/M input, $7.50/M output, $0.15/M cache
+  # read; context 1,048,576. Same two first-party providers at identical
+  # standard-tier rates — bare slug, no pin, wire_id omitted (see 3.5 Flash note).
+  - id: "google/gemini-3.6-flash"
+    name: "Gemini 3.6 Flash"
+    provider: openrouter
+    cost_tier: "low"
+    pricing:
+      input: 1.50
+      output: 7.50
+      cached_input: 0.15
+    env_overrides:
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "google/gemini-3.6-flash"
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "google/gemini-3.6-flash"
+      CLAUDE_CODE_SUBAGENT_MODEL: "google/gemini-3.6-flash"
+
+  # Added 2026-07-27. Verified 2026-07-27 from GET /api/v1/models/google/
+  # gemini-3.5-flash-lite/endpoints: $0.30/M input, $2.50/M output, $0.03/M
+  # cache read; context 1,048,576. Same two first-party providers at identical
+  # standard-tier rates — bare slug, no pin, wire_id omitted (see 3.5 Flash note).
+  - id: "google/gemini-3.5-flash-lite"
+    name: "Gemini 3.5 Flash Lite"
+    provider: openrouter
+    cost_tier: "low"
+    pricing:
+      input: 0.30
+      output: 2.50
+      cached_input: 0.03
+    env_overrides:
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "google/gemini-3.5-flash-lite"
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "google/gemini-3.5-flash-lite"
+      CLAUDE_CODE_SUBAGENT_MODEL: "google/gemini-3.5-flash-lite"
+
+  # Added 2026-07-27 (run LAST in the battery, under close cost watch — user
+  # recalls a prior expensive campaign on this model). Verified 2026-07-27 from
+  # GET /api/v1/models/google/gemini-2.5-pro/endpoints: $1.25/M input, $10.00/M
+  # output, $0.125/M cache read; context 1,048,576. Two first-party providers at
+  # identical standard-tier rates (plus degraded google-vertex/eu and /us
+  # regional tags, status -5) — bare slug, no pin, wire_id omitted.
+  - id: "google/gemini-2.5-pro"
+    name: "Gemini 2.5 Pro"
+    provider: openrouter
+    cost_tier: "high"
+    pricing:
+      input: 1.25
+      output: 10.00
+      cached_input: 0.125
+    env_overrides:
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "google/gemini-2.5-pro"
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "google/gemini-2.5-pro"
+      CLAUDE_CODE_SUBAGENT_MODEL: "google/gemini-2.5-pro"
 
   - id: "google/gemini-3.1-flash-lite"
     name: "Gemini 3.1 Flash Lite"
@@ -261,6 +548,10 @@ models:
     pricing:
       input: 0.25
       output: 1.50
+    env_overrides:
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "google/gemini-3.1-flash-lite"
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "google/gemini-3.1-flash-lite"
+      CLAUDE_CODE_SUBAGENT_MODEL: "google/gemini-3.1-flash-lite"
 
   # --- OpenAI GPT models (via OpenRouter Anthropic-compatible endpoint) ---
   #
@@ -300,6 +591,7 @@ models:
     env_overrides:
       ANTHROPIC_DEFAULT_OPUS_MODEL: "openai/gpt-5.6-sol"
       ANTHROPIC_DEFAULT_SONNET_MODEL: "openai/gpt-5.6-sol"
+      CLAUDE_CODE_SUBAGENT_MODEL: "openai/gpt-5.6-sol"
 
   - id: "openai/gpt-5.6-terra"
     name: "GPT-5.6 Terra"
@@ -312,6 +604,7 @@ models:
     env_overrides:
       ANTHROPIC_DEFAULT_OPUS_MODEL: "openai/gpt-5.6-terra"
       ANTHROPIC_DEFAULT_SONNET_MODEL: "openai/gpt-5.6-terra"
+      CLAUDE_CODE_SUBAGENT_MODEL: "openai/gpt-5.6-terra"
 
   - id: "openai/gpt-5.6-luna"
     name: "GPT-5.6 Luna"
@@ -324,6 +617,7 @@ models:
     env_overrides:
       ANTHROPIC_DEFAULT_OPUS_MODEL: "openai/gpt-5.6-luna"
       ANTHROPIC_DEFAULT_SONNET_MODEL: "openai/gpt-5.6-luna"
+      CLAUDE_CODE_SUBAGENT_MODEL: "openai/gpt-5.6-luna"
 
   # --- OpenAI GPT models (deployed ChatGPT-subscription shim path) ---
   # This is a system/deployment benchmark condition, not a raw-model lane:
@@ -361,12 +655,13 @@ models:
     env_overrides:
       ANTHROPIC_DEFAULT_OPUS_MODEL: "gpt-5.6-luna"
       ANTHROPIC_DEFAULT_SONNET_MODEL: "gpt-5.6-luna"
-      CLAUDE_CODE_SUBAGENT_MODEL: "gpt-5.6-luna"
 
-  # Added 2026-07-17 (G1R battery) mirroring the gpt-56-luna-chatgpt entry
-  # byte-for-byte in structure: provider chatgpt-subscription, bare OpenAI wire
-  # ID, full purity-env pinning, the same dated api_equivalent_pricing schedule,
-  # and the 370,000-token subscription-lane ceiling.
+  # Added 2026-07-17 (G1R battery) mirroring the gpt-56-luna-chatgpt entry:
+  # provider chatgpt-subscription, bare OpenAI wire ID, tier-preserving two-alias
+  # purity pinning, and the 370,000-token subscription-lane ceiling. NOTE
+  # 2026-07-29: the original mirror wrongly copied Luna's api_equivalent_pricing
+  # schedule; corrected to Terra's own published tier (2.5x Luna) after the
+  # pricing audit (verified against developers.openai.com gpt-5.6-terra).
   - key: "gpt-56-terra-chatgpt"
     id: "gpt-5.6-terra"
     name: "GPT-5.6 Terra (ChatGPT Subscription)"
@@ -381,23 +676,22 @@ models:
     context_window_tokens: 370000
     actual_billing_treatment: "not_separately_billed"
     api_equivalent_pricing:
-      source_url: "https://developers.openai.com/api/docs/models/gpt-5.6-luna"
-      accessed_at: "2026-07-15"
+      source_url: "https://developers.openai.com/api/docs/models/gpt-5.6-terra"
+      accessed_at: "2026-07-29"
       threshold_input_tokens: 272000
       short_context:
-        input: 1.00
-        cached_input: 0.10
-        cache_write: 1.25
-        output: 6.00
+        input: 2.50
+        cached_input: 0.25
+        cache_write: 3.125
+        output: 15.00
       long_context:
-        input: 2.00
-        cached_input: 0.20
-        cache_write: 2.50
-        output: 9.00
+        input: 5.00
+        cached_input: 0.50
+        cache_write: 6.25
+        output: 22.50
     env_overrides:
       ANTHROPIC_DEFAULT_OPUS_MODEL: "gpt-5.6-terra"
       ANTHROPIC_DEFAULT_SONNET_MODEL: "gpt-5.6-terra"
-      CLAUDE_CODE_SUBAGENT_MODEL: "gpt-5.6-terra"
 
   - key: "gpt-56-sol-chatgpt"
     id: "gpt-5.6-sol"
@@ -411,24 +705,26 @@ models:
     # scripts/provider_shim/probe_context_ceiling.py and raise if it proves higher.
     context_window_tokens: 370000
     actual_billing_treatment: "not_separately_billed"
+    # Pricing corrected 2026-07-29: the entry originally copied Luna's schedule
+    # (5x understatement); now Sol's own published tier, verified against
+    # developers.openai.com gpt-5.6-sol.
     api_equivalent_pricing:
-      source_url: "https://developers.openai.com/api/docs/models/gpt-5.6-luna"
-      accessed_at: "2026-07-15"
+      source_url: "https://developers.openai.com/api/docs/models/gpt-5.6-sol"
+      accessed_at: "2026-07-29"
       threshold_input_tokens: 272000
       short_context:
-        input: 1.00
-        cached_input: 0.10
-        cache_write: 1.25
-        output: 6.00
+        input: 5.00
+        cached_input: 0.50
+        cache_write: 6.25
+        output: 30.00
       long_context:
-        input: 2.00
-        cached_input: 0.20
-        cache_write: 2.50
-        output: 9.00
+        input: 10.00
+        cached_input: 1.00
+        cache_write: 12.50
+        output: 45.00
     env_overrides:
       ANTHROPIC_DEFAULT_OPUS_MODEL: "gpt-5.6-sol"
       ANTHROPIC_DEFAULT_SONNET_MODEL: "gpt-5.6-sol"
-      CLAUDE_CODE_SUBAGENT_MODEL: "gpt-5.6-sol"
 
   - id: "openai/gpt-5.5"
     name: "GPT-5.5"
@@ -441,6 +737,7 @@ models:
     env_overrides:
       ANTHROPIC_DEFAULT_OPUS_MODEL: "openai/gpt-5.5"
       ANTHROPIC_DEFAULT_SONNET_MODEL: "openai/gpt-5.5"
+      CLAUDE_CODE_SUBAGENT_MODEL: "openai/gpt-5.5"
 
   # REMOVED 2026-07-10 (user decision after the GPT smoke battery):
   #   gpt-5.6-sol-pro, gpt-5.6-terra-pro, gpt-5.6-luna-pro — all three hit
@@ -474,6 +771,7 @@ models:
     env_overrides:
       ANTHROPIC_DEFAULT_OPUS_MODEL: "openai/gpt-5.4-mini"
       ANTHROPIC_DEFAULT_SONNET_MODEL: "openai/gpt-5.4-mini"
+      CLAUDE_CODE_SUBAGENT_MODEL: "openai/gpt-5.4-mini"
 
 # Thinking level variants (uncomment to include in benchmark runs)
 #

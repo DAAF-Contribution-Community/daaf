@@ -43,7 +43,7 @@ _daaf_load_settings() {
         line="$(printf '%s' "${line}" | tr -d '\r')"
         case "${line}" in ''|'#'*) continue ;; esac
         case "${line}" in
-            DAAF_PROJECT_NAME=*|DAAF_PORT_MARIMO=*|DAAF_PORT_LOGVIEWER=*|DAAF_PORT_VSCODE=*|DAAF_DEV=*|DAAF_BRANCH=*)
+            DAAF_PROJECT_NAME=*|DAAF_PORT_MARIMO=*|DAAF_PORT_LOGVIEWER=*|DAAF_PORT_VSCODE=*|DAAF_DEV=*|DAAF_BRANCH=*|DAAF_DATA_VOLUME_NAME=*)
                 key="${line%%=*}"; val="${line#*=}"
                 case "${val}" in
                     \"*\") val="${val#\"}"; val="${val%\"}" ;;
@@ -64,7 +64,11 @@ _daaf_load_settings
 # derives the prefix from the project name (default "daaf"), so a second instance
 # with DAAF_PROJECT_NAME=daaf2 owns the volume "daaf2_daaf-data". Default unset =>
 # "daaf_daaf-data" (byte-for-byte identical to the previous hardcoded value).
-VOLUME_NAME="${DAAF_PROJECT_NAME:-daaf}_daaf-data"
+# DAAF_DATA_VOLUME_NAME, when set, overrides the whole derivation with a verbatim
+# full volume name (the shared-workspace escape hatch); unset => the derived
+# default. Matches resolve_data_volume_name in daaf_lib.sh (inlined here because
+# this standalone script does not source the library).
+VOLUME_NAME="${DAAF_DATA_VOLUME_NAME:-${DAAF_PROJECT_NAME:-daaf}_daaf-data}"
 # Second volume: Claude Code state (auth/credentials, session history and
 # transcripts, plugins, ~/.claude.json). Backed up into a dedicated hidden
 # subfolder of the backup so it does not contaminate the data-volume file
@@ -305,6 +309,12 @@ if ! STAGE_CID="$(docker run -d -v "${VOLUME_NAME}:/source:ro" busybox sh -c "${
     echo "" >&2
     echo "ERROR: Could not start the staging container for a symlink-safe backup." >&2
     echo "       No backup files were written. Check Docker Desktop for errors and re-run." >&2
+    # Best-effort reap: `docker run -d` can fail AFTER creating the container
+    # (Created/Exited state) while still printing its CID to stdout, which the
+    # command substitution above captured -- remove it so a launch failure does not
+    # leak a helper container (mirrors backup_daaf.ps1's stage-start cleanup). The
+    # `${STAGE_CID:-}` guard makes this a harmless no-op if no CID was captured.
+    docker rm -f "${STAGE_CID:-}" > /dev/null 2>&1 || true
     exit 1
 fi
 trap 'docker rm -f "${STAGE_CID:-}" > /dev/null 2>&1 || true' INT TERM
@@ -376,6 +386,14 @@ wait "${COPY_PID}" || COPY_EXIT=$?
 docker rm -f "${STAGE_CID}" > /dev/null 2>&1 || true
 trap - INT TERM
 
+# Latch for the completion banner: any of the non-fatal WARNING paths below
+# (file-count mismatch, size mismatch, Claude-state copy failure, permission-manifest
+# failure) sets this so the final banner can say the backup completed WITH WARNINGS
+# rather than claiming an unqualified success. The exit status stays 0 on those paths
+# -- the banner wording is the signal, not the exit code (the corroborated short-copy
+# case below is the one that is fatal, and it exits before the banner).
+HAD_WARNINGS=0
+
 # --- Verify ---
 # The staged tree the copy streamed = volume regular files + 1 symlink manifest
 # - symlinks. Symlinks were never counted by the `find -type f` volume scan
@@ -407,16 +425,35 @@ if [ "${FILE_COUNT}" -eq 0 ]; then
     exit 1
 fi
 
-if [ "${COPY_EXIT}" -ne 0 ]; then
+# --- Corroborated short-copy check (fatal) ---
+# A nonzero docker cp exit AND a copied count short of the volume scan are two
+# independent signals that agree the backup is truncated -- the nonzero exit
+# corroborates the shortfall, so no tolerance is applied here (unlike the 1% count
+# and size tolerances below, which absorb benign filesystem/metadata drift on an
+# otherwise-clean copy). A truncated backup that passed as usable could cost a user
+# their data on restore, so fail hard: name the partial folder, tell them to delete
+# it, and exit before the completion banner. (A nonzero exit with a FULL count falls
+# through to the Note below -- warnings without an actual shortfall.)
+if [ "${COPY_EXIT}" -ne 0 ] && [ "${FILE_COUNT}" -lt "${TOTAL_FILES}" ]; then
+    echo ""
+    echo "ERROR: Backup failed (exit code ${COPY_EXIT}); only ${FILE_COUNT} of ${TOTAL_FILES} expected files were copied."
+    echo "       This backup is incomplete and must not be relied on. Delete this"
+    echo "       partial backup folder and re-run once the copy issue is resolved."
+    echo "Location: $(pwd)/${BACKUP_NAME}/"
+    exit 1
+elif [ "${COPY_EXIT}" -ne 0 ]; then
     echo "Note: File copy reported warnings (exit code ${COPY_EXIT}); ${FILE_COUNT} of ${TOTAL_FILES} expected files were transferred."
 fi
 
 # --- File-count verification ---
 # Do NOT trust docker cp's exit code as the sole failure signal: the Windows
-# symlink-abort truncation surfaced with a ZERO exit on the user's run. Compare the
-# copied data-file count (manifest excluded) against the source scan count and warn
-# loudly on a shortfall beyond a 1% tolerance -- the count and size checks are the
-# authoritative completeness signals, not COPY_EXIT.
+# symlink-abort truncation surfaced with a ZERO exit on the user's run. A nonzero
+# exit that ALSO comes up short on the count is already fatal (the corroborated
+# short-copy branch above). This block catches the harder case -- a clean ZERO exit
+# that still copied too few files -- comparing the copied data-file count (manifest
+# excluded) against the source scan count and warning loudly on a shortfall beyond a
+# 1% tolerance. The count and size checks are the authoritative completeness signals,
+# not COPY_EXIT.
 if [ "${TOTAL_FILES}" -gt 0 ] && [ "${FILE_COUNT}" -gt 0 ]; then
     COUNT_TOLERANCE=$(( TOTAL_FILES / 100 ))
     if [ "${COUNT_TOLERANCE}" -lt 1 ]; then COUNT_TOLERANCE=1; fi
@@ -427,6 +464,7 @@ if [ "${TOTAL_FILES}" -gt 0 ] && [ "${FILE_COUNT}" -gt 0 ]; then
         echo "WARNING: Backup file-count mismatch." >&2
         echo "         Source: ${TOTAL_FILES} files, Backup: ${FILE_COUNT} files (difference: ${COUNT_DIFF})" >&2
         echo "         The backup may be incomplete. Consider re-running." >&2
+        HAD_WARNINGS=1
     fi
 fi
 
@@ -450,6 +488,7 @@ if [ "${SOURCE_SIZE_KB}" -gt 0 ] && [ "${BACKUP_SIZE_KB}" -gt 0 ]; then
         echo "WARNING: Backup size mismatch." >&2
         echo "         Source: ${SOURCE_SIZE_KB} KB, Backup: ${BACKUP_SIZE_KB} KB (difference: ${DIFF_KB} KB)" >&2
         echo "         The backup may be incomplete. Consider re-running." >&2
+        HAD_WARNINGS=1
     fi
 fi
 
@@ -475,16 +514,32 @@ if docker volume inspect "${CLAUDE_VOLUME_NAME}" &> /dev/null; then
     # replays it against the claude volume.
     # Guard the launch so a `docker run -d` failure does NOT abort the whole backup
     # under `set -e` -- the Claude backup is best-effort (failure must be a WARNING,
-    # never fatal; the data backup above already succeeded). `|| CLAUDE_STAGE_CID=""`
-    # swallows the exit status and leaves an empty CID, so the `docker wait` below
-    # yields status 1 and the `if` falls into the existing WARNING path (mirrors the
-    # `|| CLAUDE_CID=""` idiom in restore_from_backup.sh's Claude restore block).
-    CLAUDE_STAGE_CID="$(docker run -d -v "${CLAUDE_VOLUME_NAME}:/source:ro" busybox sh -c "${STAGE_PROGRAM}")" || CLAUDE_STAGE_CID=""
+    # never fatal; the data backup above already succeeded). Capture the launch
+    # outcome in a SEPARATE flag rather than blanking the CID: `docker run -d` can
+    # fail AFTER creating the container (Created/Exited) while still printing its CID,
+    # and the old `|| CLAUDE_STAGE_CID=""` discarded that CID before any cleanup could
+    # reap it -- leaking the helper container. Keep the captured CID intact so the
+    # trap below and the `docker rm -f` at the end of this block can remove it
+    # (mirrors backup_daaf.ps1's $claudeStageStartOk flag + finally-reap pattern).
+    # Assigning inside the `if` condition keeps `set -e` from aborting on a launch
+    # failure while still capturing whatever the substitution produced.
+    if CLAUDE_STAGE_CID="$(docker run -d -v "${CLAUDE_VOLUME_NAME}:/source:ro" busybox sh -c "${STAGE_PROGRAM}")"; then
+        CLAUDE_STAGE_START_OK=1
+    else
+        CLAUDE_STAGE_START_OK=0
+    fi
     # Re-register an interrupt trap around this block: the data-copy trap was
     # cleared above, so without this a Ctrl-C during the Claude staging/cp window
     # would leak the helper container. Best-effort removal; guarded under set -u.
     trap 'docker rm -f "${CLAUDE_STAGE_CID:-}" > /dev/null 2>&1 || true' INT TERM
-    CLAUDE_STAGE_STATUS="$(docker wait "${CLAUDE_STAGE_CID}" 2>/dev/null || echo 1)"
+    # Only wait on a container that actually launched; a launch failure is treated as
+    # a nonzero staging status so control flows into the WARNING path below (with the
+    # CID preserved so the reap at the end of this block can remove it).
+    if [ "${CLAUDE_STAGE_START_OK}" -eq 1 ]; then
+        CLAUDE_STAGE_STATUS="$(docker wait "${CLAUDE_STAGE_CID}" 2>/dev/null || echo 1)"
+    else
+        CLAUDE_STAGE_STATUS=1
+    fi
     # On a staging-gate trip the offender list went to the DETACHED container's log.
     # Capture it now, before the `docker rm -f` below removes the container, so the
     # WARNING branch can relay it. Kept asymmetric with the data volume: this stays a
@@ -510,6 +565,7 @@ if docker volume inspect "${CLAUDE_VOLUME_NAME}" &> /dev/null; then
             echo "         (no details could be retrieved from the staging container)" >&2
         fi
         echo "         The data volume backup above is still valid." >&2
+        HAD_WARNINGS=1
     fi
     docker rm -f "${CLAUDE_STAGE_CID}" > /dev/null 2>&1 || true
     trap - INT TERM
@@ -567,16 +623,22 @@ if EXEC_PATHS=$(docker run --rm -v "${VOLUME_NAME}:/source:ro" busybox sh -c 'fi
         echo "WARNING: Could not record the executable-permission manifest." >&2
         echo "         The backup is still valid; on restore, file permissions may need" >&2
         echo "         manual repair if this backup is restored on a Windows host." >&2
+        HAD_WARNINGS=1
     fi
 else
     echo "WARNING: Could not record the executable-permission manifest." >&2
     echo "         The backup is still valid; on restore, file permissions may need" >&2
     echo "         manual repair if this backup is restored on a Windows host." >&2
+    HAD_WARNINGS=1
 fi
 
 echo ""
 echo "=========================================="
-echo "  Backup complete!"
+if [ "${HAD_WARNINGS}" -eq 1 ]; then
+    echo "  Backup completed WITH WARNINGS -- verify before relying on it"
+else
+    echo "  Backup complete!"
+fi
 echo "=========================================="
 echo ""
 echo "Location: $(pwd)/${BACKUP_NAME}/"

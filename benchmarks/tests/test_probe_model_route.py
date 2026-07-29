@@ -165,7 +165,7 @@ class ProbeCliValidationTests(unittest.TestCase):
         with patch.object(probe_model_route, "load_models") as load, \
                 patch.object(probe_model_route, "run_preflight") as preflight, \
                 patch.object(probe_model_route, "execute_run") as execute, \
-                patch("benchmarks.harness.route_provenance.urlopen") as network, \
+                patch("benchmarks.harness.route_provenance.build_opener") as network, \
                 redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
             with self.assertRaises(SystemExit) as stopped:
                 probe_model_route.main(["--help"])

@@ -12,6 +12,7 @@ All scratch lives under benchmarks/ (no /tmp writes).
 
 import hashlib
 import json
+import os
 import shutil
 import unittest
 from pathlib import Path
@@ -110,7 +111,50 @@ class WorkspaceIsolationTests(unittest.TestCase):
         self.assertIn("do not create", result.prompt)
         workspace = self.run_sandbox / "workspace"
         self.assertTrue(workspace.is_dir())
-        self.assertTrue((workspace / "scripts" / "run_with_capture.sh").exists())
+
+    def test_prepare_fixtures_seeds_wrapper_at_base_dir_scripts(self):
+        # The wrapper must live at BASE_DIR-level scripts/ (isomorphic to the real
+        # repo), NOT under workspace/scripts/ — the mislocation drove every model
+        # family to construct {BASE_DIR}/scripts/run_with_capture.sh -> exit 127.
+        case = SimpleNamespace(
+            id="dc-01",
+            prompt="Please dispatch a research-executor to run a Monte Carlo sim.",
+        )
+        run_dispatch_compliance.prepare_run_sandbox(str(self.run_sandbox))
+        run_dispatch_compliance.prepare_fixtures(case, str(self.run_sandbox))
+
+        wrapper = self.run_sandbox / "scripts" / "run_with_capture.sh"
+        # (a) exists at the BASE_DIR-level location and is executable.
+        self.assertTrue(wrapper.exists(), f"wrapper missing at {wrapper}")
+        self.assertTrue(
+            os.access(wrapper, os.X_OK), f"wrapper not executable at {wrapper}"
+        )
+        # It must NOT be seeded at the old workspace/scripts/ location.
+        self.assertFalse(
+            (self.run_sandbox / "workspace" / "scripts" / "run_with_capture.sh").exists(),
+            "wrapper should no longer be seeded under workspace/scripts/",
+        )
+
+    def test_prompt_wrapper_path_is_consistent_with_filesystem(self):
+        # (b) The path the prompt promises for the wrapper must be the path that
+        # actually exists on disk (prompt promises X => filesystem has X).
+        case = SimpleNamespace(
+            id="dc-01",
+            prompt="Please dispatch a research-executor to run a Monte Carlo sim.",
+        )
+        run_dispatch_compliance.prepare_run_sandbox(str(self.run_sandbox))
+        result = run_dispatch_compliance.prepare_fixtures(case, str(self.run_sandbox))
+
+        promised = f"{self.run_sandbox}/scripts/run_with_capture.sh"
+        self.assertIn(
+            promised,
+            result.prompt,
+            "prompt must name the wrapper's actual location",
+        )
+        self.assertTrue(
+            Path(promised).exists(),
+            f"prompt promises {promised} but it does not exist on disk",
+        )
 
 
 # --- B2: purity validity gate ---

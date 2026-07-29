@@ -42,6 +42,12 @@ DEFAULT_CSV = os.path.join(BASE_DIR, "openrouter_activity_2026-06-11.csv")
 DEFAULT_OUT = os.path.join(BASE_DIR, "derived",
                            "openrouter_reconciliation_2026-06-11.json")
 
+# ⚠ STALE EXCLUSION (2026-07-29): gemini-3.5-flash became a REGISTERED campaign
+# model on 2026-07-27; the blanket exclusion below is only valid for the June
+# 2026 export this script was written against. For any reconciliation touching
+# post-2026-07-27 data, use the v2 pipeline instead (campaign workspace
+# scripts/scratch/19-21_billing-*-v2.py), which replaces this static exclusion
+# with empirical per-slug registration-date boundaries.
 # Known non-benchmark spend on this API key (user-confirmed):
 #   - all gemini-3.5-flash rows (preliminary testing; zero corpus runs)
 #   - anthropic/* rows (probe tests)

@@ -4,24 +4,29 @@
 # lavender, rose, gold, slate, cyan (see the case block below for the codes).
 COLOR="blue"
 
-# Color codes
-C_RESET='\033[0m'
-C_GRAY='\033[38;5;245m'  # explicit gray for default text
-C_BAR_EMPTY='\033[38;5;238m'
+# Color codes.
+# ANSI-C quoting ($'...') so the real ESC byte lives in these TRUSTED variables.
+# The final render uses printf '%s' (not '%b'), so backslash sequences arriving
+# in UNTRUSTED fields (model name, effort label, cwd basename, git branch, last
+# user message) stay inert literals and can never be re-materialized into escape
+# sequences. See the render at the end of the file.
+C_RESET=$'\033[0m'
+C_GRAY=$'\033[38;5;245m'  # explicit gray for default text
+C_BAR_EMPTY=$'\033[38;5;238m'
 # Segment colors for the rate-limit addition (kept subtle so they do not
 # compete with the single-accent context bar).
-C_AMBER='\033[38;5;179m'   # rate limit warning (>=70%)
-C_RED='\033[38;5;167m'     # rate limit danger (>=90%)
+C_AMBER=$'\033[38;5;179m'   # rate limit warning (>=70%)
+C_RED=$'\033[38;5;167m'     # rate limit danger (>=90%)
 case "$COLOR" in
-    orange)   C_ACCENT='\033[38;5;173m' ;;
-    blue)     C_ACCENT='\033[38;5;74m' ;;
-    teal)     C_ACCENT='\033[38;5;66m' ;;
-    green)    C_ACCENT='\033[38;5;71m' ;;
-    lavender) C_ACCENT='\033[38;5;139m' ;;
-    rose)     C_ACCENT='\033[38;5;132m' ;;
-    gold)     C_ACCENT='\033[38;5;136m' ;;
-    slate)    C_ACCENT='\033[38;5;60m' ;;
-    cyan)     C_ACCENT='\033[38;5;37m' ;;
+    orange)   C_ACCENT=$'\033[38;5;173m' ;;
+    blue)     C_ACCENT=$'\033[38;5;74m' ;;
+    teal)     C_ACCENT=$'\033[38;5;66m' ;;
+    green)    C_ACCENT=$'\033[38;5;71m' ;;
+    lavender) C_ACCENT=$'\033[38;5;139m' ;;
+    rose)     C_ACCENT=$'\033[38;5;132m' ;;
+    gold)     C_ACCENT=$'\033[38;5;136m' ;;
+    slate)    C_ACCENT=$'\033[38;5;60m' ;;
+    cyan)     C_ACCENT=$'\033[38;5;37m' ;;
     *)        C_ACCENT="$C_GRAY" ;;  # gray: all same color
 esac
 
@@ -39,46 +44,150 @@ is_canonical_positive_decimal() {
     [[ "$value" == "$max_value" || "$value" < "$max_value" ]]
 }
 
+# As above, but ALSO accepts a canonical zero. The codex quota fields
+# used_percent and *-reset-after-seconds are legitimately 0 (e.g. an unused
+# window or an all-zero secondary), which is_canonical_positive_decimal rejects.
+# Same length/lexical bounds run before any arithmetic so oversized or
+# non-canonical values can never reach an arithmetic context.
+is_canonical_nonneg_decimal() {
+    local value="${1:-}"
+    local max_value="9223372036854775807"
+    [[ "$value" =~ ^(0|[1-9][0-9]*)$ ]] || return 1
+    [[ ${#value} -lt ${#max_value} ]] && return 0
+    [[ ${#value} -gt ${#max_value} ]] && return 1
+    # Equal-length canonical decimals are intentionally compared lexicographically before arithmetic.
+    # shellcheck disable=SC2071
+    [[ "$value" == "$max_value" || "$value" < "$max_value" ]]
+}
+
 input=$(cat)
 
-# Single consolidated jq pass over the payload: extract every field used below
-# as one tab-separated record, then read into shell variables. This replaces
-# what were ~5 separate `jq` invocations on "$input" (one process fork each).
-# Field order and defaults are preserved byte-for-byte from the prior per-field
-# calls so downstream logic (OpenRouter override, transcript parsing, the
-# /tmp/claude-ctx-window write) behaves identically:
-#   model            = .model.display_name // .model.id // "?"
-#   cwd              = .cwd // ""
-#   transcript_path  = .transcript_path // ""
-#   max_context      = .context_window.context_window_size // 200000
-#   session_id       = .session_id // "default"
-#   model_id         = .model.id // ""           (used by the OpenRouter block)
-# New optional segments (all default to empty when absent, e.g. API-key sessions):
-#   effort_level     = .effort.level
-#   rl_5h            = .rate_limits.five_hour.used_percentage
-#   rl_5h_reset      = .rate_limits.five_hour.resets_at
-#   rl_7d            = .rate_limits.seven_day.used_percentage
-#   rl_7d_reset      = .rate_limits.seven_day.resets_at
-# Fields are joined with the ASCII unit separator \x1f, NOT @tsv: tab is IFS
-# *whitespace* in bash, so consecutive tabs collapse and any EMPTY field (e.g.
-# transcript_path at session start, or the absent effort/rate-limit fields)
-# would silently shift every later field left. A non-whitespace IFS preserves
-# empty fields. See subagent-bar.sh FIELD-JOINING NOTE for the discovery story.
-IFS=$'\x1f' read -r model cwd transcript_path max_context session_id model_id \
-    effort_level rl_5h rl_5h_reset rl_7d rl_7d_reset < <(echo "$input" | jq -r '
-    [ (.model.display_name // .model.id // "?"),
-      (.cwd // ""),
-      (.transcript_path // ""),
-      (.context_window.context_window_size // 200000 | tostring),
-      (.session_id // "default"),
-      (.model.id // ""),
-      (.effort.level // ""),
-      (.rate_limits.five_hour.used_percentage // ""),
-      (.rate_limits.five_hour.resets_at // ""),
-      (.rate_limits.seven_day.used_percentage // ""),
-      (.rate_limits.seven_day.resets_at // "") ]
-    | map(tostring) | join("\u001f")
-')
+# One jq pass validates and normalizes every field before joining it with an
+# ASCII unit separator. Identity/path strings containing C0/DEL controls become
+# empty; display-only strings have those controls removed; numeric fields accept
+# only their expected JSON scalar type. The session ID is validated against the
+# complete path-safe grammar inside jq, before Bash can normalize a newline or
+# drop a NUL. Therefore every emitted field is delimiter/control-free and the
+# fixed-order read cannot be shifted by untrusted JSON content.
+model="?"
+cwd=""
+transcript_path=""
+max_context="200000"
+session_id=""
+model_id=""
+model_id_state="invalid"
+effort_level=""
+rl_5h=""
+rl_5h_reset=""
+rl_7d=""
+rl_7d_reset=""
+payload_parsed=0
+if command -v jq >/dev/null 2>&1; then
+    if IFS=$'\x1f' read -r model cwd transcript_path max_context session_id model_id \
+    model_id_state effort_level rl_5h rl_5h_reset rl_7d rl_7d_reset < <(printf '%s' "$input" | jq -er '
+        def has_control:
+            test("[[:cntrl:]]");
+        def display_string($fallback):
+            if type == "string" then gsub("[[:cntrl:]]"; "")
+            else $fallback
+            end;
+        def control_free_string:
+            if type == "string" then
+                if has_control then "" else . end
+            else ""
+            end;
+        def reset_scalar:
+            if type == "number" then tostring
+            elif type == "string" then
+                if has_control then "" else . end
+            else ""
+            end;
+        def valid_session_id:
+            if type == "string" then
+                (has_control | not) and
+                test("^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+            else false
+            end;
+
+        if type != "object" then error("statusline payload must be an object")
+        else
+            [ ((.model.display_name? // .model.id? // "?") | display_string("?")),
+              ((.cwd? // "") | control_free_string),
+              ((.transcript_path? // "") | control_free_string),
+              (if (.context_window.context_window_size? | type) == "number" then
+                   if .context_window.context_window_size > 0 and
+                          (.context_window.context_window_size | floor) == .context_window.context_window_size
+                   then (.context_window.context_window_size | tostring)
+                   else "200000"
+                   end
+               else "200000"
+               end),
+              (if (.session_id? | valid_session_id)
+               then .session_id
+               else ""
+               end),
+              ((.model.id? // "") | control_free_string),
+              (if (.model | type) == "object" and (.model | has("id")) and
+                       .model.id != null
+               then
+                   if (.model.id | type) == "string" and
+                          ((.model.id | has_control) | not) and
+                          (.model.id | length) > 0 and
+                          (.model.id | length) <= 160
+                   then "valid"
+                   else "invalid"
+                   end
+               else "absent"
+               end),
+              ((.effort.level? // "") | display_string("")),
+              (if (.rate_limits.five_hour.used_percentage? | type) == "number"
+               then (.rate_limits.five_hour.used_percentage | tostring)
+               else ""
+               end),
+              ((.rate_limits.five_hour.resets_at? // "") | reset_scalar),
+              (if (.rate_limits.seven_day.used_percentage? | type) == "number"
+               then (.rate_limits.seven_day.used_percentage | tostring)
+               else ""
+               end),
+              ((.rate_limits.seven_day.resets_at? // "") | reset_scalar) ]
+            | join("\u001f")
+        end
+    ' 2>/dev/null); then
+        payload_parsed=1
+    fi
+fi
+
+# Production caches live in /tmp. The override is a deterministic-test seam so
+# Bats can exercise writes inside project scratch without touching live session
+# state. Cache eligibility requires a successfully parsed payload plus a
+# nonempty session ID in the established UUID-safe character set and bounded
+# length. All other cases keep statusline rendering fail-open while skipping
+# every session-scoped cache read and write below.
+context_cache_dir="${DAAF_CONTEXT_BAR_CACHE_DIR:-/tmp}"
+session_id_safe=0
+if [[ "$payload_parsed" -eq 1 && \
+      "$session_id" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ && \
+      ${#session_id} -le 128 ]]; then
+    session_id_safe=1
+fi
+
+# Seed the authoritative main-session model cache from the statusline's
+# .model.id. Replace through a same-directory sibling so reminder/reporting
+# hooks never observe a partial write. An empty authoritative ID intentionally
+# replaces any stale value with an empty file, causing GPT-specific consumers to
+# treat identity as unresolved rather than guess.
+if [[ "$session_id_safe" -eq 1 ]]; then
+    model_cache="${context_cache_dir}/claude-model-${session_id}"
+    model_tmp="${model_cache}.tmp.$$"
+    # Brace-wrap the redirect so 2>/dev/null also covers an open() failure on '>'
+    # (redirections apply left-to-right; a bare `> f 2>/dev/null` still prints the
+    # open() diagnostic before 2> takes effect). Convention 6.
+    if { printf '%s' "$model_id" > "$model_tmp"; } 2>/dev/null; then
+        mv "$model_tmp" "$model_cache" 2>/dev/null || rm -f "$model_tmp" 2>/dev/null
+    else
+        rm -f "$model_tmp" 2>/dev/null
+    fi
+fi
 
 # Guard against an unparseable payload leaving max_context empty (which would
 # cause a divide-by-zero in the pct arithmetic below). Valid payloads always
@@ -90,10 +199,18 @@ fi
 # Directory basename from cwd
 dir=$(basename "$cwd" 2>/dev/null || echo "?")
 
-# Get git branch only (skip expensive status/sync checks)
+# Get git branch only (skip expensive status/sync checks). The branch name does
+# not pass through the jq control-strip stage, so strip controls here before it
+# reaches the printf '%s' render. jq -Rs (not tr) makes the strip Unicode-aware:
+# gsub([[:cntrl:]]) removes C0, DEL, AND C1 (U+0080-U+009F) — git refnames only
+# forbid bytes < 0x20 and DEL, so a hostile repo can name a branch with a
+# UTF-8-encoded C1 control (e.g. U+009B, 8-bit CSI on xterm-class terminals),
+# which byte-wise `tr -d '[:cntrl:]'` passed through. jq's UTF-8 decoding also
+# replaces raw stray bytes with inert U+FFFD. If jq is unavailable the branch
+# segment is simply omitted (fail-open; the bar is already degraded without jq).
 branch=""
 if [[ -n "$cwd" && -d "$cwd" ]]; then
-    branch=$(git -C "$cwd" branch --show-current 2>/dev/null)
+    branch=$(git -C "$cwd" branch --show-current 2>/dev/null | jq -Rsr 'gsub("[[:cntrl:]]"; "")' 2>/dev/null) || branch=""
 fi
 
 # Context window size: from JSON above, but override for OpenRouter models where
@@ -110,23 +227,28 @@ fi
 # authoritative catalogue result and must not be mistaken for the generic
 # fallback by the static map below.
 or_context_resolved=0
-# Production uses /tmp so hooks and statuslines share one session cache. The
-# override is a deterministic-test seam only: Bats points it at project scratch
-# so fake OpenRouter catalogues never write fixture data outside the repository.
-context_cache_dir="${DAAF_CONTEXT_BAR_CACHE_DIR:-/tmp}"
-if [[ "${ANTHROPIC_BASE_URL:-}" == *openrouter.ai* ]]; then
+# context_cache_dir and the session-ID path guard are initialized immediately
+# after payload extraction. Malformed session IDs skip this cache-backed branch.
+if [[ "$session_id_safe" -eq 1 && "${ANTHROPIC_BASE_URL:-}" == *openrouter.ai* ]]; then
     # model_id already extracted in the consolidated jq pass above
     # (byte-identical to the old `.model.id // empty`).
     or_cache="${context_cache_dir}/claude-or-models-${session_id}"
 
     if [[ -n "$model_id" && ! -s "$or_cache" ]]; then
         # Fetch models list once per session (3s timeout to avoid blocking statusline).
-        # Write to a temp file first and move atomically to prevent truncated JSON
-        # from a mid-download timeout from poisoning the cache for the entire session.
-        or_tmp="${or_cache}.tmp"
-        if curl -sf --connect-timeout 3 --max-time 3 \
-            "https://openrouter.ai/api/v1/models" > "$or_tmp" 2>/dev/null; then
-            mv "$or_tmp" "$or_cache" 2>/dev/null
+        # Writer-private temp ($$ suffix) prevents a fixed-name race under
+        # overlapping session refreshes. Validate that the body is a JSON object
+        # carrying a .data array BEFORE the atomic promote, so a truncated or
+        # garbage 200-body (curl -sf already rejects non-2xx/timeout) cannot poison
+        # the cache for the rest of the session. Convention 6/8.
+        or_tmp="${or_cache}.tmp.$$"
+        if { curl -sf --connect-timeout 3 --max-time 3 \
+            "https://openrouter.ai/api/v1/models" > "$or_tmp"; } 2>/dev/null; then
+            if jq -e '.data | type == "array"' "$or_tmp" >/dev/null 2>&1; then
+                mv "$or_tmp" "$or_cache" 2>/dev/null || rm -f "$or_tmp" 2>/dev/null
+            else
+                rm -f "$or_tmp" 2>/dev/null
+            fi
         else
             rm -f "$or_tmp" 2>/dev/null
         fi
@@ -170,11 +292,30 @@ fi
 # have smaller windows than the base gpt-5.4/5.5/5.6 flagships (the whole
 # gpt-5.6 Sol/Terra/Luna family is 1,050,000), so they must precede the broad
 # flagship and *gpt-5* fallbacks. Verified against OpenRouter on 2026-07-09.
+# Closed-set GPT flagship grammar (Convention 3). Only the exact flagship set —
+# bare gpt-5.4/5.5/5.6 plus the sol/terra/luna codenames, with an optional [1m]
+# badge — is eligible for the 1,050,000 physical window (and the 370k ChatGPT-lane
+# cap arm below). Anchored so malformed suffixes (gpt-5.4-, gpt-5.6-experimental,
+# gpt-5.5[1m, gpt-5.6-sol[1m]x) fall through to the ordinary default rather than
+# being mapped to the flagship window. New codenames are a deliberate one-line edit
+# here, consistent with DAAF's validate-before-trust policy. Stored in a variable
+# to avoid [[ =~ ]] quoting pitfalls; defined unconditionally so it is in scope for
+# the ChatGPT-lane predicate below even when this static-map block is skipped.
+gpt_flagship_re='^gpt-5\.(4|5|6)(-(sol|terra|luna))?(\[1m\])?$'
+# Closed-set mini/chat grammars (Convention 3), byte-consistent with
+# subagent-bar.sh's anchored EREs. These replace the old open-ended inner globs
+# (*-mini*/*-chat*) so suffixed near-misses (e.g. gpt-5.6-mini-preview) fail the
+# anchor and fall through to the conservative 200k default rather than being
+# mapped to 400k/128k. Anchored on the same provider-stripped physical_slug the
+# globs inspected. Defined here alongside the flagship grammar for locality.
+gpt_mini_re='^gpt-5\.(4|5|6)(-(sol|terra|luna))?-mini(\[1m\])?$'
+gpt_chat_re='^gpt-5\.(4|5|6)(-(sol|terra|luna))?-chat(\[1m\])?$'
 if [[ -n "$model_id" && "$or_context_resolved" -eq 0 && "$max_context" -eq 200000 ]]; then
     # Physical-family classification operates on the terminal provider-stripped
-    # slug only. Supported flagship versions must begin the slug and be followed
-    # by end-of-slug, '-' or '['; this rejects notgpt-5.6 and gpt-5.60 while
-    # retaining provider prefixes and established hyphen/[1m] variants.
+    # slug only. mini/chat variants have smaller windows and are matched by their
+    # own arms before the anchored flagship test; the flagship 1,050,000 window is
+    # granted only when the anchored grammar matches, so notgpt-5.6, gpt-5.60, and
+    # trailing-junk near-misses stay on the ordinary default.
     physical_slug="${model_id##*/}"
     case "$model_id" in
         z-ai/glm-5.2|z-ai/glm-5.2-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9])
@@ -182,11 +323,17 @@ if [[ -n "$model_id" && "$or_context_resolved" -eq 0 && "$max_context" -eq 20000
         *)
             case "$physical_slug" in
                 gpt-5.4|gpt-5.4[-\[]*|gpt-5.5|gpt-5.5[-\[]*|gpt-5.6|gpt-5.6[-\[]*)
-                    case "$physical_slug" in
-                        *-mini*) max_context=400000 ;;
-                        *-chat*) max_context=128000 ;;
-                        *) max_context=1050000 ;;
-                    esac
+                    # Closed-set classification (Convention 3), byte-consistent
+                    # with subagent-bar.sh: only the anchored flagship/mini/chat
+                    # grammars earn a GPT window. Order flagship, then mini, then
+                    # chat. Malformed suffixes that reached this family glob (e.g.
+                    # gpt-5.4-, gpt-5.6-experimental, gpt-5.6-mini-preview,
+                    # gpt-5.6-sol[1m]x) match none and fall through to the 200k
+                    # default (max_context is already 200000 in this block).
+                    if   [[ "$physical_slug" =~ $gpt_flagship_re ]]; then max_context=1050000
+                    elif [[ "$physical_slug" =~ $gpt_mini_re ]];     then max_context=400000
+                    elif [[ "$physical_slug" =~ $gpt_chat_re ]];     then max_context=128000
+                    fi
                     ;;
                 gpt-5|gpt-5[-\[]*|gpt-5.2|gpt-5.2[-\[]*)
                     case "$physical_slug" in
@@ -222,11 +369,12 @@ fi
 # lane values fail-open, while API/OpenRouter routes retain their wider windows.
 gpt_flagship=0
 physical_slug="${model_id##*/}"
-case "$physical_slug" in
-    gpt-5*-mini*|gpt-5*-chat*) ;;
-    gpt-5.4|gpt-5.4[-\[]*|gpt-5.5|gpt-5.5[-\[]*|gpt-5.6|gpt-5.6[-\[]*)
-        gpt_flagship=1 ;;
-esac
+# Same anchored closed-set predicate as the static map (Convention 3): the 370k
+# lane cap applies only to the exact flagship set, so mini/chat variants and
+# malformed near-misses keep their resolved (wider or default) window fail-open.
+if [[ "$physical_slug" =~ $gpt_flagship_re ]]; then
+    gpt_flagship=1
+fi
 if [[ "${DAAF_PROVIDER_SHIM:-}" == "openai" && \
       "${SHIM_BACKEND_MODE:-}" == "chatgpt" && \
       "$gpt_flagship" -eq 1 && "$max_context" -gt 370000 ]]; then
@@ -235,8 +383,23 @@ fi
 
 max_k=$((max_context / 1000))
 
-# Share context window size with hooks (which don't receive it in their input payload)
-echo "$max_context" > "${context_cache_dir}/claude-ctx-window-${session_id}" 2>/dev/null
+# Share context window size with hooks (which don't receive it in their input
+# payload). Unsafe session IDs skip the path construction and retain fail-open
+# statusline output without creating an attacker-controlled cache path.
+if [[ "$session_id_safe" -eq 1 ]]; then
+    # Atomic publish (Convention 7): a concurrent reader (context-reporter.sh) must
+    # never observe a momentarily-empty file from a direct truncate-write and fall
+    # back to 200k. Write a writer-private temp then rename, mirroring the model
+    # cache above. Brace-wrap so 2>/dev/null covers an open() failure on '>' too
+    # (Convention 6); if the cache dir is unusable, skip caching and keep rendering.
+    ctx_window_cache="${context_cache_dir}/claude-ctx-window-${session_id}"
+    ctx_window_tmp="${ctx_window_cache}.tmp.$$"
+    if { printf '%s\n' "$max_context" > "$ctx_window_tmp"; } 2>/dev/null; then
+        mv "$ctx_window_tmp" "$ctx_window_cache" 2>/dev/null || rm -f "$ctx_window_tmp" 2>/dev/null
+    else
+        rm -f "$ctx_window_tmp" 2>/dev/null
+    fi
+fi
 
 # Calculate context bar from transcript
 if [[ -n "$transcript_path" && -f "$transcript_path" ]]; then
@@ -255,14 +418,21 @@ if [[ -n "$transcript_path" && -f "$transcript_path" ]]; then
             (.message.usage.cache_read_input_tokens // 0) +
             (.message.usage.cache_creation_input_tokens // 0)
         )] | map(select(. > 0)) | last // 0
-    ' < "$transcript_path")
+    ' < "$transcript_path" 2>/dev/null)
 
     # 20k baseline: conservative default estimate for system prompt, tools, memory,
     # skills, env block, XML framing, and other dynamic context
     baseline=20000
     bar_width=10
 
-    if [[ "$context_length" -gt 0 ]]; then
+    # Bounded numerator (Convention 5): only multiply context_length by 100 when it
+    # is a canonical positive decimal AND <= floor(INT64_MAX/100) = 92233720368547758,
+    # so a huge but int64-valid token count cannot overflow signed-64 arithmetic and
+    # wrap pct negative (a negative pct evades the `-gt 100` clamp and would render).
+    # is_canonical_positive_decimal guarantees the value fits in int64, so the -le
+    # comparison is itself overflow-safe. Anything else falls to the baseline estimate.
+    if is_canonical_positive_decimal "$context_length" && \
+       [[ "$context_length" -le 92233720368547758 ]]; then
         pct=$((context_length * 100 / max_context))
         pct_prefix=""
     else
@@ -327,11 +497,28 @@ fi
 # is the unmodified name.
 model_name="$model"
 gpt_model=0
-# Detect a GPT/shim model from either the id or the display name (belt-and-braces:
-# some payloads carry the slug only in display_name).
-case "${model_id}${model_name}" in
-    *gpt-*|*GPT-*) gpt_model=1 ;;
-esac
+# Classify only a bounded, anchored terminal GPT slug. The consolidated payload
+# parser preserves whether model.id is valid, genuinely absent/null, or present
+# but invalid; display_name is a fallback only for the absent/null state. Provider
+# prefixes are stripped before matching, while malformed left boundaries such as
+# notgpt-*, xgpt-*, and foo-gpt-* cannot match.
+# The display fallback first removes the established effort suffix and duplicate
+# [1m] cosmetic so legitimate shim display slugs retain their prior behavior.
+gpt_status_slug_re='^(gpt|GPT)-[A-Za-z0-9][A-Za-z0-9._-]*(\[1m\])?$'
+gpt_status_candidate=""
+if [[ "$model_id_state" == "valid" ]]; then
+    gpt_status_candidate="${model_id##*/}"
+elif [[ "$model_id_state" == "absent" ]]; then
+    gpt_status_candidate="${model_name##*/}"
+    gpt_status_candidate="${gpt_status_candidate%%#*}"
+    while [[ "$gpt_status_candidate" == *'[1m][1m]' ]]; do
+        gpt_status_candidate="${gpt_status_candidate%'[1m]'}"
+    done
+fi
+if [[ ${#gpt_status_candidate} -le 160 && \
+      "$gpt_status_candidate" =~ $gpt_status_slug_re ]]; then
+    gpt_model=1
+fi
 
 if [[ "$gpt_model" -eq 1 ]]; then
     # 1) strip a trailing "#<effort>" token (and anything the client appended
@@ -350,6 +537,132 @@ model_disp="$model_name"
 # regardless of the actual routing.
 if [[ -n "$effort_level" && "$gpt_model" -ne 1 ]]; then
     model_disp="${model_name} (${effort_level})"
+fi
+
+# --- GPT provider-shim Fast indicator ---
+# Render one route-neutral ON-only label. The indicator requires the existing
+# statusline GPT classification, an exact supported shim route, exact local
+# native-Fast disablement, and a strictly validated /health ON state. Every
+# missing, invalid, OFF, ineffective, mismatched, or unavailable state is silent.
+gpt_tier_seg=""
+if [[ "$gpt_model" -eq 1 && \
+      "${DAAF_PROVIDER_SHIM:-}" == "openai" && \
+      ( "${SHIM_BACKEND_MODE:-}" == "chatgpt" || \
+        "${SHIM_BACKEND_MODE:-}" == "openai" ) && \
+      "${CLAUDE_CODE_DISABLE_FAST_MODE:-}" == "1" ]]; then
+    gpt_route="${SHIM_BACKEND_MODE}"
+    health_port="${SHIM_PORT:-4141}"
+    if ! is_canonical_positive_decimal "$health_port" || \
+       [[ "$health_port" -gt 65535 ]]; then
+        health_port=4141
+    fi
+
+    health_on=""
+    if command -v curl >/dev/null 2>&1 && \
+       command -v python3 >/dev/null 2>&1 && \
+       command -v jq >/dev/null 2>&1; then
+        # Disable ambient curl config with first-option -q, then enforce hardcoded
+        # loopback, proxy bypass, zero allowed redirects, short deadlines, and a
+        # 16 KiB transfer ceiling. Before jq, Python's stdlib parser rejects duplicate
+        # member names at every object depth and emits canonical JSON; pipefail makes
+        # any transport/parser/semantic failure silent. Only literal "on" enters Bash.
+        health_on=$(
+            set -o pipefail
+            curl -q --fail --silent --show-error \
+                --location --max-redirs 0 \
+                --noproxy '*' --proxy '' \
+                --connect-timeout 0.2 --max-time 0.6 \
+                --max-filesize 16384 \
+                "http://127.0.0.1:${health_port}/health" 2>/dev/null |
+            python3 -c '
+import json, sys
+reject = lambda pairs: dict(pairs) if len(pairs) == len(dict(pairs)) else (_ for _ in ()).throw(ValueError("duplicate object member"))
+reject_constant = lambda value: (_ for _ in ()).throw(ValueError("invalid JSON constant"))
+json.dump(json.load(sys.stdin, object_pairs_hook=reject, parse_constant=reject_constant), sys.stdout, ensure_ascii=False, allow_nan=False, separators=(",", ":"))
+' 2>/dev/null |
+            jq -er --arg expected_backend "$gpt_route" '
+                def exact_keys($expected):
+                    type == "object" and
+                    ((keys | sort) == ($expected | sort));
+                def canonical_version:
+                    type == "string" and
+                    test("^[A-Za-z0-9._+-]{1,64}$");
+                def bounded_terminal_model:
+                    type == "string" and
+                    test("^[A-Za-z0-9][A-Za-z0-9._:/-]{0,159}$");
+
+                if type != "object" then error("health must be an object") else . end
+                | select(.service == "daaf-anthropic-openai-shim")
+                | select(.status == "ok")
+                | select(.version | canonical_version)
+                | select(.backend_mode == $expected_backend)
+                | .gpt_service_tier as $g
+                | select($g | exact_keys([
+                    "backend_mode", "requested_tier_vocabulary", "policy",
+                    "native_fast_disabled", "latest_terminal"
+                  ]))
+                | select($g.backend_mode == $expected_backend)
+                | select(
+                    ($expected_backend == "chatgpt" or
+                     $expected_backend == "openai") and
+                    $g.requested_tier_vocabulary == "priority"
+                  )
+                | select($g.native_fast_disabled | type == "boolean")
+                | $g.policy as $p
+                | select($p | exact_keys([
+                    "status", "backend_mode", "enabled", "effective"
+                  ]))
+                | select(["ok", "missing", "invalid", "unreadable", "unsafe"] |
+                         index($p.status))
+                | select($p.backend_mode == null or
+                         $p.backend_mode == "chatgpt" or
+                         $p.backend_mode == "openai")
+                | select(($p.enabled | type) == "boolean" and
+                         ($p.effective | type) == "boolean")
+                | select(
+                    ($p.status == "ok" and $p.backend_mode != null) or
+                    ($p.status != "ok" and $p.backend_mode == null and
+                     ($p.enabled | not) and ($p.effective | not))
+                  )
+                | select(($p.effective | not) or
+                         ($p.enabled and $p.backend_mode == $expected_backend))
+                | $g.latest_terminal as $l
+                | select($l == null or (
+                    ($l | exact_keys([
+                      "model", "requested_service_tier", "requested_source",
+                      "served_service_tier", "completed_at"
+                    ])) and
+                    ($l.model == null or ($l.model | bounded_terminal_model)) and
+                    ($l.requested_service_tier == null or
+                     (($expected_backend == "chatgpt" or
+                       $expected_backend == "openai") and
+                      $l.requested_service_tier == "priority")) and
+                    (["none", "anthropic", "shim_global", "both"] |
+                     index($l.requested_source)) and
+                    (($l.requested_source == "none") ==
+                     ($l.requested_service_tier == null)) and
+                    ([null, "fast", "priority", "default", "flex", "scale", "auto"] |
+                     index($l.served_service_tier)) and
+                    (($l.completed_at | type) == "string") and
+                    ($l.completed_at |
+                     test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$")) and
+                    (($l.completed_at |
+                      try (fromdateiso8601 | strftime("%Y-%m-%dT%H:%M:%SZ")) catch "") ==
+                     $l.completed_at)
+                  ))
+                | select($g.native_fast_disabled == true)
+                | select($p.status == "ok" and
+                         $p.backend_mode == $expected_backend and
+                         $p.enabled == true and
+                         $p.effective == true)
+                | "on"
+            ' 2>/dev/null
+        ) || health_on=""
+    fi
+
+    if [[ "$health_on" == "on" ]]; then
+        gpt_tier_seg=" ${C_GRAY}|${C_RESET} ${C_GRAY}GPT Fast On${C_RESET}"
+    fi
 fi
 
 # --- Rate-limit segment ---
@@ -392,6 +705,16 @@ fmt_reset() {
         printf '(%dh%dm)' $((remain / 3600)) $(((remain % 3600) / 60))
     fi
 }
+window_label_for() {
+    # $1 = window length in whole minutes (a validated positive integer). Echoes a
+    # compact window label: divisible by 1440 -> "<N>d" (10080 -> 7d), else divisible
+    # by 60 -> "<N>h" (300 -> 5h), else "<N>m". Pure arithmetic on a pre-validated int.
+    local min="$1"
+    if   [[ $((min % 1440)) -eq 0 ]]; then printf '%dd' $((min / 1440))
+    elif [[ $((min % 60)) -eq 0 ]];   then printf '%dh' $((min / 60))
+    else                                   printf '%dm' "$min"
+    fi
+}
 if [[ -n "$rl_5h" || -n "$rl_7d" ]]; then
     rl_body=""
     if [[ -n "$rl_5h" ]]; then
@@ -414,13 +737,141 @@ if [[ -n "$rl_5h" || -n "$rl_7d" ]]; then
     [[ -n "$rl_body" ]] && rl_seg=" ${C_GRAY}|${C_RESET} ${C_GRAY}Plan usage:${C_RESET} ${rl_body}"
 fi
 
-# Build output: Model (effort) | Dir | Branch | Context [| Plan usage]
+# --- Codex (ChatGPT-subscription) Plan-usage fallback ---
+# On shim-lane sessions the native Anthropic rate-limit payload fields are absent;
+# instead the provider shim caches its latest ChatGPT-subscription quota snapshot to
+# scripts/provider_shim/logs/quota_state.json (see anthropic_openai_shim.py
+# _write_quota_state — install-shared under the shared-/daaf assumption). Render that
+# file as the SAME unchanged "Plan usage:" segment, reusing rl_color_for/fmt_reset.
+# Gate (belt-and-braces): the exact shim lane AND no native rate limits in the payload
+# (if the payload somehow carries native limits, they win and this read is skipped).
+# Everything here is pure string/arithmetic + one local file read; any parse or
+# validation failure yields no segment and leaves the rest of the statusline untouched.
+if [[ -z "$rl_seg" && \
+      "${DAAF_PROVIDER_SHIM:-}" == "openai" && \
+      "${SHIM_BACKEND_MODE:-}" == "chatgpt" && \
+      -z "$rl_5h" && -z "$rl_7d" ]]; then
+    # State-file path: default derived from this script's own location
+    # (.claude/scripts -> repo root -> scripts/provider_shim/logs/quota_state.json).
+    # DAAF_QUOTA_STATE_FILE is a deterministic-test seam mirroring
+    # DAAF_CONTEXT_BAR_CACHE_DIR: Bats points it at project scratch so tests never
+    # depend on a live shim's log directory.
+    quota_state_file="${DAAF_QUOTA_STATE_FILE:-}"
+    if [[ -z "$quota_state_file" ]]; then
+        cb_scripts_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P 2>/dev/null)" || cb_scripts_dir=""
+        if [[ -n "$cb_scripts_dir" ]]; then
+            quota_state_file="${cb_scripts_dir%/.claude/scripts}/scripts/provider_shim/logs/quota_state.json"
+        fi
+    fi
+
+    if [[ -n "$quota_state_file" && -f "$quota_state_file" ]] && command -v jq >/dev/null 2>&1; then
+        # One jq pass: require a top-level object, emit captured_at plus the six
+        # numeric primary/secondary fields as an ASCII-unit-separated record. String
+        # fields carrying any control character (including the \x1f delimiter) become
+        # empty so untrusted content cannot shift the fixed-order read; every emitted
+        # field is validated numerically in Bash below before any use.
+        q_captured=""
+        q_p_pct=""
+        q_p_win=""
+        q_p_reset=""
+        q_s_pct=""
+        q_s_win=""
+        q_s_reset=""
+        codex_parsed=0
+        if IFS=$'\x1f' read -r q_captured q_p_pct q_p_win q_p_reset q_s_pct q_s_win q_s_reset \
+            < <(jq -er '
+                def num_string:
+                    if type == "string" then (if test("[[:cntrl:]]") then "" else . end)
+                    elif type == "number" then tostring
+                    else "" end;
+                if type != "object" then error("quota_state must be an object")
+                else
+                    [ (if (.captured_at? | type) == "number" and
+                            (.captured_at | floor) == .captured_at
+                       then (.captured_at | tostring) else "" end),
+                      (.primary_used_pct? | num_string),
+                      (.primary_window_min? | num_string),
+                      (.primary_reset_s? | num_string),
+                      (.secondary_used_pct? | num_string),
+                      (.secondary_window_min? | num_string),
+                      (.secondary_reset_s? | num_string) ]
+                    | join("\u001f")
+                end
+            ' "$quota_state_file" 2>/dev/null); then
+            codex_parsed=1
+        fi
+
+        # Plan-usage percent parity with the native rate-limit path (Convention 9):
+        # floor a fractional percent (69.9 -> 69) so a legitimate fractional value
+        # is KEPT rather than dropped by the integer-only validator below, and so
+        # the <=100 clamp has an integer to compare. The strip is gated on a strict
+        # plain-decimal shape (^[0-9]+\.[0-9]+$) so ONLY a genuine fractional is
+        # floored: an exponent-notation value carrying a dot (e.g. "1.0e999") must not
+        # survive the strip as "1" and render "1%" — leaving it intact makes the
+        # is_canonical_nonneg_decimal gate below drop it (fail-closed). A non-numeric or
+        # negative value likewise stays intact and remains a fail-closed drop.
+        [[ "$q_p_pct" =~ ^[0-9]+\.[0-9]+$ ]] && q_p_pct="${q_p_pct%.*}"
+        [[ "$q_s_pct" =~ ^[0-9]+\.[0-9]+$ ]] && q_s_pct="${q_s_pct%.*}"
+
+        # Primary window is mandatory: captured_at + used-percent (0 allowed) + a
+        # positive window length + reset-after (0 allowed) must all validate.
+        if [[ "$codex_parsed" -eq 1 ]] && \
+           is_canonical_nonneg_decimal "$q_captured" && \
+           is_canonical_nonneg_decimal "$q_p_pct" && \
+           is_canonical_positive_decimal "$q_p_win" && \
+           is_canonical_nonneg_decimal "$q_p_reset"; then
+            # Clamp to <=100 (parity with the native path's intent): a stale/overshoot
+            # cached percent must not render as e.g. 101%. Validated int64 above, so
+            # the arithmetic comparison is safe.
+            (( q_p_pct > 100 )) && q_p_pct=100
+            now_epoch=$(date +%s 2>/dev/null) || now_epoch=""
+            # Both operands are already bounded to int64-representable canonical decimals
+            # (is_canonical_nonneg_decimal above), but if their sum were ever to overflow
+            # bash's 64-bit arithmetic, it wraps negative -- which safely fails the
+            # `-gt now_epoch` staleness check below rather than corrupting the display.
+            primary_reset_epoch=$((q_captured + q_p_reset))
+            # Staleness: an expired primary window means the cached percent is stale, so
+            # drop the ENTIRE segment (no display beats a wrong display).
+            if [[ "$now_epoch" =~ ^[0-9]+$ && "$primary_reset_epoch" -gt "$now_epoch" ]]; then
+                cbody=""
+                pwl=$(window_label_for "$q_p_win")
+                pcolor=$(rl_color_for "$q_p_pct")
+                pcd=$(fmt_reset "$primary_reset_epoch")
+                cbody+="${pcolor}${pwl}:${q_p_pct}%${C_RESET}"
+                [[ -n "$pcd" ]] && cbody+="${C_GRAY}${pcd}${C_RESET}"
+                # Secondary renders only when its window is > 0 and its percent
+                # validates; live data shows an all-zero secondary, which is omitted.
+                if is_canonical_positive_decimal "$q_s_win" && \
+                   is_canonical_nonneg_decimal "$q_s_pct"; then
+                    (( q_s_pct > 100 )) && q_s_pct=100
+                    swl=$(window_label_for "$q_s_win")
+                    scolor=$(rl_color_for "$q_s_pct")
+                    cbody+=" ${scolor}${swl}:${q_s_pct}%${C_RESET}"
+                    if is_canonical_nonneg_decimal "$q_s_reset"; then
+                        secondary_reset_epoch=$((q_captured + q_s_reset))
+                        scd=$(fmt_reset "$secondary_reset_epoch")
+                        [[ -n "$scd" ]] && cbody+="${C_GRAY}${scd}${C_RESET}"
+                    fi
+                fi
+                rl_seg=" ${C_GRAY}|${C_RESET} ${C_GRAY}Plan usage:${C_RESET} ${cbody}"
+            fi
+        fi
+    fi
+fi
+
+# Build output: Model (effort) | Dir | Branch | Context
+#               [| GPT Fast On] [| Plan usage]
 output="${C_ACCENT}${model_disp}${C_GRAY} | 📁${dir}"
 [[ -n "$branch" ]] && output+=" | 🔀${branch}"
 output+=" | ${ctx}${C_RESET}"
+output+="${gpt_tier_seg}"
 output+="${rl_seg}"
 
-printf '%b\n' "$output"
+# Render with %s (not %b): the color bytes already live in the $'...' constants,
+# so untrusted field content (model name, effort, cwd, branch, message) is emitted
+# verbatim and its backslash sequences stay inert — a printable \033]52;c;... OSC
+# payload in a field can never be re-materialized into a real escape. Convention 1.
+printf '%s\n' "$output"
 
 # Get user's last message (text only, not tool results, skip unhelpful messages)
 if [[ -n "$transcript_path" && -f "$transcript_path" ]]; then
@@ -443,7 +894,7 @@ if [[ -n "$transcript_path" && -f "$transcript_path" ]]; then
         map(.message.content |
             if type == "string" then .
             else [.[] | select(.type == "text") | .text] | join(" ") end |
-            gsub("\n"; " ") | gsub("  +"; " ")) |
+            gsub("[[:cntrl:]]"; " ") | gsub("  +"; " ")) |
         map(select(is_unhelpful | not)) |
         first // ""
     ' < "$transcript_path" 2>/dev/null)

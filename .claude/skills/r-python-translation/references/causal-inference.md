@@ -20,14 +20,14 @@ equivalent in DAAF), generalized random forests (no grf port), and multiple
 imputation (no mice equivalent). These are documented honestly in this reference.
 
 > **Versions referenced:**
-> Python: pyfixest 0.40.0, marginaleffects 0.5.0, rdrobust 1.3.0 (all pre-installed)
+> Python: pyfixest 0.60.0, marginaleffects 0.5.0, rdrobust 1.3.0 (all pre-installed)
 > R: fixest 0.14.0, marginaleffects 0.32.0, rdrobust 3.0.0, did 2.3.0, did2s 1.2.1
 > See SKILL.md § Library Versions for the complete version table.
 
 > **Sources:** Cunningham, *Causal Inference: The Mixtape* (Yale, 2021);
 > Huntington-Klein, *The Effect* (CRC Press, 2021);
 > Berge, Butts, & McDermott, *fixest* (CRAN, v0.13);
-> Fischer et al., *pyfixest* (pyfixest.org, v0.40.0, accessed 2026-03-28);
+> Fischer et al., *pyfixest* (pyfixest.org, v0.60.0, accessed 2026-07-23);
 > Cattaneo, Idrobo, & Titiunik, *rdrobust* (rdpackages.github.io);
 > Arel-Bundock, Greifer, & Heiss, "How to Interpret Statistical Models Using
 > marginaleffects for R and Python" (JSS, 2024)
@@ -890,7 +890,7 @@ exporting the completed datasets.
 |--------|-----------|------------------|----------|---------|----------------|
 | **OLS + FE** | `fixest::feols()` | `pf.feols()` | Very High | Pre-installed | Cluster SE syntax differs |
 | **Poisson + FE** | `fixest::fepois()` | `pf.fepois()` | Very High | Pre-installed | Identical formula syntax |
-| **GLM + FE** | `fixest::feglm()` | **Not supported** | N/A | N/A | **Major gap** |
+| **GLM + FE** | `fixest::feglm()` | `pf.feglm()` (since 0.50) | High | Pre-installed | logit/probit/gaussian; Gamma and negbin remain R-only |
 | **TWFE DiD** | `fixest::feols()` | `pf.feols()` | Very High | Pre-installed | Cluster SE syntax only |
 | **did2s** | `did2s::did2s()` | `pf.did2s()` | Very High | Pre-installed | `cluster_var` vs `cluster` |
 | **Sun-Abraham** | `fixest::sunab()` | `pf.event_study(est="saturated")` | High | Pre-installed | Different API, same estimator |

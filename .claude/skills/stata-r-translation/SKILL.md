@@ -8,7 +8,7 @@ description: >-
 metadata:
   audience: research-coders
   domain: cross-language
-  skill-last-updated: "2026-05-13"
+  skill-last-updated: "2026-07-24"
 ---
 
 # Stata-to-R Translation Skill

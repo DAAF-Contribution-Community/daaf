@@ -5,7 +5,7 @@ description: >-
 metadata:
   audience: research-coders
   domain: cross-language
-  skill-last-updated: "2026-03-28"
+  skill-last-updated: "2026-07-24"
 ---
 
 # Stata-to-Python Translation Skill
@@ -221,7 +221,7 @@ versions, the reference files note the change.
 | Python Package | DAAF Version | Stata Equivalent | Stata Version |
 |---|---|---|---|
 | polars | 1.39.3 | Data management commands (gen, replace, merge, etc.) | Stata 18 |
-| pyfixest | 0.40.0 | regress, areg, reghdfe, ivreghdfe, ppmlhdfe, esttab | Stata 18 + reghdfe 6.x |
+| pyfixest | 0.60.0 | regress, areg, reghdfe, ivreghdfe, ppmlhdfe, esttab | Stata 18 + reghdfe 6.x |
 | statsmodels | 0.14.6 | regress, logit, probit, poisson, nbreg, glm | Stata 18 |
 | linearmodels | 7.0 | xtreg, sureg, ivregress | Stata 18 |
 | plotnine | 0.15.3 | graph twoway, graph bar, graph box, histogram | Stata 18 |

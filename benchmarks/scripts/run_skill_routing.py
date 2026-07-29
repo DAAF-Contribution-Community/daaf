@@ -31,10 +31,13 @@ Usage:
 import argparse
 import concurrent.futures
 import json
+import os
 import shutil
 import subprocess
 import sys
+import threading
 import time
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -47,6 +50,7 @@ from benchmarks.harness.model_loader import load_models, filter_models, add_mode
 from benchmarks.harness.cost_estimator import estimate_batch_cost, format_estimate
 from benchmarks.harness.artifacts import (
     add_preflight_arg,
+    assert_unique_sandbox_slugs,
     attach_schema_version,
     build_error_artifact,
     build_run_artifact,
@@ -57,6 +61,7 @@ from benchmarks.harness.artifacts import (
     model_manifest_entry,
     nullable_mean,
     run_preflight,
+    sandbox_slug,
 )
 from benchmarks.scorers.deterministic.checkpoint_adherence import (
     extract_new_tool_calls,
@@ -66,6 +71,7 @@ from benchmarks.scorers.deterministic.checkpoint_adherence import (
 from benchmarks.scorers.deterministic.skill_routing import (
     score_skill_routing,
 )
+from benchmarks.scorers.deterministic.error_classification import compute_error_counts
 
 # --- Config ---
 
@@ -74,6 +80,16 @@ CASES_FILE = BASE_DIR / "benchmarks" / "datasets" / "skill_routing" / "cases.jso
 MODELS_FILE = BASE_DIR / "benchmarks" / "config" / "models.yaml"
 
 LAUNCH_DELAY_SECONDS = 2
+# Cap on simultaneously in-flight runs. Per-run state (sandbox dir, uuid4 session
+# ids, transcript dirs) is fully isolated, so the cap is purely a resource-
+# pressure guard, not a correctness one. --delay staggers submits independently.
+MAX_CONCURRENT_RUNS = 5
+
+# Serializes the progressive rollup (per-run archive write + summary/manifest
+# rewrite). In the parallel path the as_completed loop already collects results
+# on the main thread one at a time, but the lock makes the invariant explicit and
+# keeps the finalizer safe against any future concurrent caller.
+_ARCHIVE_LOCK = threading.Lock()
 
 
 # --- Load config ---
@@ -138,33 +154,76 @@ def score_run(session_id: str, test_case: TestCase) -> dict:
         "criteria": criteria_dicts,
         "transcript_path": str(transcript_path),
         "tool_call_count": tool_call_count,
+        # W1 (2026-07-28): expose the golden line count so the error scan can
+        # skip the checkpoint prefix on the parent transcript, exactly as
+        # extract_new_tool_calls does. Derived here so there is one source.
+        "checkpoint_lines": checkpoint_lines,
     }
 
 
 # --- Run + diagnose ---
 
 def run_one(test_case: TestCase, model: ModelConfig, rep: int,
-            sandbox_suffix: str, timeout_override=None):
-    """Execute a single benchmark run with checkpoint scoring."""
+            sandbox_suffix: str, timeout_override=None, watchdog_poll=60,
+            stall_threshold=330, stall_retries=1):
+    """Execute a single benchmark run with checkpoint scoring.
+
+    Run-lifecycle watchdog (Dispatch B): STALL DETECTION ONLY — no score-complete
+    early stop. This phase's ``no_forbidden_skills`` criterion is a monotone-FAIL
+    negative (it starts PASS and can only flip to FAIL when the model later loads
+    a forbidden skill). Early-stopping the moment all criteria pass would lock in
+    that not-yet-violated negative and mask a later forbidden-skill load, so
+    early stop is deliberately NOT wired here. Stall detection is safe and
+    enabled; a stalled run is relaunched from a fresh sandbox up to
+    ``stall_retries`` times.
+    """
     sandbox_dir = f"/daaf/benchmarks/_sandbox/run_{sandbox_suffix}"
 
-    # Disallow the Agent tool entirely (replaces the default git Bash-pattern
-    # deny list): Phase 4 scoring is main-transcript-only, and brainstorming
-    # questions are direct-answer territory per ad-hoc-collaboration-mode.md.
-    # Whole-tool disallow by exact name works reliably (unlike Bash sub-pattern
-    # deny rules — see benchmarks/README.md section 11, Limitation 1).
-    config = RunConfig(
-        test_case=test_case,
-        model=model,
-        run_index=rep,
-        sandbox_dir=sandbox_dir,
-        disallowed_tools=["Agent"],
-        timeout_override=timeout_override,
-    )
+    attempt = 0
+    # Accumulate each stalled attempt's diagnostics so a run that stalled once
+    # then passed is legible from the archive alone (previously console-only).
+    # Carried onto the FINAL result.json as an additive stall_attempts field.
+    stall_attempts = []
+    while True:
+        # Disallow the Agent tool entirely (replaces the default git Bash-pattern
+        # deny list): Phase 4 scoring is main-transcript-only, and brainstorming
+        # questions are direct-answer territory per ad-hoc-collaboration-mode.md.
+        # Whole-tool disallow by exact name works reliably (unlike Bash sub-pattern
+        # deny rules — see benchmarks/README.md section 11, Limitation 1).
+        config = RunConfig(
+            test_case=test_case,
+            model=model,
+            run_index=rep,
+            sandbox_dir=sandbox_dir,
+            disallowed_tools=["Agent"],
+            timeout_override=timeout_override,
+            stall_detection=True,
+            watchdog_poll_seconds=watchdog_poll,
+            stall_threshold_seconds=stall_threshold,
+        )
 
-    start = time.time()
-    result = execute_run(config)
-    elapsed = time.time() - start
+        start = time.time()
+        result = execute_run(config)
+        elapsed = time.time() - start
+
+        if getattr(result, "stalled", False):
+            stall_attempts.append({
+                "attempt": attempt,
+                "stall_diagnostics": dict(result.stall_diagnostics or {}),
+            })
+        if getattr(result, "stalled", False) and attempt < stall_retries:
+            print(
+                f"STALL [{test_case.id} | {model.name} | rep {rep}] attempt "
+                f"{attempt + 1}: {result.stall_diagnostics}; relaunching from a "
+                f"fresh sandbox (retry {attempt + 1}/{stall_retries})."
+            )
+            if test_case.golden_checkpoint and result.session_id:
+                cleanup_sandbox(result.session_id)
+            attempt += 1
+            continue
+        break
+
+    stall_relaunch_count = attempt
 
     # Always attempt scoring if we have a session_id — even for timed-out runs,
     # the live session file may contain partial but scorable transcript data.
@@ -200,6 +259,38 @@ def run_one(test_case: TestCase, model: ModelConfig, rep: int,
             if subagent_dir.exists():
                 shutil.copytree(subagent_dir, archive_dir / "subagents", dirs_exist_ok=True)
 
+    # Classify error-bearing tool results (parent + any archived subagent
+    # transcripts) into hook-block vs genuine-failure buckets before cleanup
+    # removes the live transcripts. Additive diagnostic only.
+    subagent_transcripts = []
+    if archived_transcript:
+        sub_dir = Path(archived_transcript).parent / "subagents"
+        if sub_dir.exists():
+            subagent_transcripts = list(sub_dir.rglob("*.jsonl"))
+    # Fix 4 (2026-07-28): scan the parent transcript directly instead of
+    # relying on result.tool_failures. The executor extracts tool_failures
+    # only on the normal completion path — timeout/stalled/early-stopped runs
+    # return before that extraction (executor.py :229/:249), leaving the
+    # parent side undercounted. Scanning the archived parent transcript with
+    # the same _iter_transcript_error_contents used for subagents closes the
+    # gap. tool_failures is passed empty so parent errors are counted once:
+    # the transcript scan REPLACES, not augments, the tool_failures-derived
+    # counts (no double-count).
+    # W1 (2026-07-28): the parent transcript carries the prepended golden
+    # checkpoint prefix, so its scan skips the first checkpoint_lines lines
+    # (mirroring extract_new_tool_calls); subagent transcripts have no prefix
+    # and are scanned in full. Note: this scan sees FULL untruncated content
+    # over the WHOLE post-checkpoint transcript, unlike the legacy 500-char-
+    # truncated result.tool_failures path, so bucket classifications can differ
+    # from pre-2026-07-28 runs.
+    parent_skip_lines = scored.get("checkpoint_lines", 0)
+    error_counts = compute_error_counts(
+        [],
+        subagent_transcripts=subagent_transcripts,
+        parent_transcript=archived_transcript,
+        parent_skip_lines=parent_skip_lines,
+    )
+
     # Clean up checkpoint sandbox AFTER archiving
     if test_case.golden_checkpoint:
         cleanup_sandbox(result.session_id)
@@ -212,8 +303,11 @@ def run_one(test_case: TestCase, model: ModelConfig, rep: int,
             "subcategory": test_case.subcategory,
             "rep": rep,
             "criteria": scored["criteria"],
+            "error_counts": error_counts,
             "transcript_path": archived_transcript or scored.get("transcript_path"),
             "tool_call_count": scored.get("tool_call_count", 0),
+            "stall_relaunch_count": stall_relaunch_count,
+            "stall_attempts": stall_attempts,
         },
         duration_s=elapsed,
     )
@@ -237,6 +331,11 @@ def _error_result(test_case: TestCase, model: ModelConfig, rep: int, error_msg: 
         phase_fields={
             "subcategory": test_case.subcategory,
             "criteria": criteria,
+            "error_counts": {
+                "hook_blocks": 0,
+                "tool_failures": 0,
+                "tool_failures_unclassified": 0,
+            },
             "transcript_path": None,
             "tool_call_count": 0,
         },
@@ -262,22 +361,70 @@ def get_git_sha() -> str:
     return "unknown"
 
 
+def _write_json_atomic(path: Path, obj) -> None:
+    """Write JSON to a sibling .tmp then os.replace() over the target.
+
+    Atomicity matters for the progressive rollup: a reader (or a kill) never sees
+    a half-written summary.json/manifest.json — the file either holds the prior
+    complete rollup or the new complete one.
+    """
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    with open(tmp, "w") as f:
+        json.dump(obj, f, indent=2)
+    os.replace(tmp, path)
+
+
 def archive_results(all_results: list[dict], models: list[ModelConfig],
-                    test_cases: list[TestCase], args, wall_time: float) -> Path:
-    """Archive all run results, transcripts, and summary to a timestamped folder."""
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    output_dir = BASE_DIR / "benchmarks" / "results" / timestamp
+                    test_cases: list[TestCase], args, wall_time: float,
+                    output_dir: Path = None, partial: bool = False,
+                    expected_n: int = None, git_sha: str = None,
+                    batch_token: str = None, batch_pid: int = None) -> Path:
+    """Archive run results, transcripts, and rollups to a timestamped folder.
+
+    Progressive by design (2026-07 redesign): called once before the pool with
+    ``all_results=[]`` to create the folder and seed manifest.json + an initial
+    ``partial`` summary.json, then re-invoked after every completed run over the
+    completed-so-far set, and finally once more with ``partial=False`` when all
+    runs finished. Per-run artifact writes are existence-guarded so re-invocation
+    is cheap (each run's files are written exactly once); manifest/summary are
+    recomputed and atomically rewritten each call. The whole body runs under
+    ``_ARCHIVE_LOCK`` so concurrent callers cannot interleave writes.
+    """
+    with _ARCHIVE_LOCK:
+        return _archive_results_locked(
+            all_results, models, test_cases, args, wall_time,
+            output_dir, partial, expected_n, git_sha, batch_token, batch_pid,
+        )
+
+
+def _archive_results_locked(all_results, models, test_cases, args, wall_time,
+                            output_dir, partial, expected_n, git_sha,
+                            batch_token=None, batch_pid=None) -> Path:
+    if output_dir is None:
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        # Cross-process uniqueness: two batches starting the same wall-clock
+        # second would otherwise collide on results/{timestamp} and cross-write
+        # each other's manifest/summary. The short token disambiguates while the
+        # LEADING timestamp stays intact so viewer/rerun-queue lexicographic
+        # ordering and glob discovery are unaffected.
+        tok = batch_token or uuid.uuid4().hex[:6]
+        output_dir = BASE_DIR / "benchmarks" / "results" / f"{timestamp}_{tok}"
     output_dir.mkdir(parents=True, exist_ok=True)
     runs_dir = output_dir / "runs"
     runs_dir.mkdir(parents=True, exist_ok=True)
 
-    git_sha = get_git_sha()
+    if git_sha is None:
+        git_sha = get_git_sha()
 
     # --- Write manifest.json ---
     manifest = attach_schema_version({
         "benchmark": "skill_routing",
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "daaf_git_sha": git_sha,
+        # Cross-batch forensics: the per-batch uniqueness token (also the results
+        # dir-name suffix and sandbox-suffix tail) and the launching process PID.
+        "batch_token": batch_token or output_dir.name.rsplit("_", 1)[-1],
+        "batch_pid": batch_pid if batch_pid is not None else os.getpid(),
         **manifest_provenance(
             golden_checkpoints=[tc.golden_checkpoint for tc in test_cases],
             run_records=all_results,
@@ -301,13 +448,16 @@ def archive_results(all_results: list[dict], models: list[ModelConfig],
             for tc in test_cases
         ],
     })
-    with open(output_dir / "manifest.json", "w") as f:
-        json.dump(manifest, f, indent=2)
+    _write_json_atomic(output_dir / "manifest.json", manifest)
 
-    # --- Write per-run results and copy transcripts ---
+    # --- Write per-run results and copy transcripts (existence-guarded) ---
+    # Each run's artifacts are immutable once written, so re-invocation across
+    # progressive rollups writes each run exactly once (the result.json guard).
     for r in all_results:
         run_name = f"{r['case_id']}_{r['model'].replace(' ', '_')}_{r['rep']}"
         run_dir = runs_dir / run_name
+        if (run_dir / "result.json").exists():
+            continue
         run_dir.mkdir(parents=True, exist_ok=True)
 
         # Write every flat, phase-specific, and schema-v2 field. Transcript
@@ -316,8 +466,7 @@ def archive_results(all_results: list[dict], models: list[ModelConfig],
             key: value for key, value in r.items()
             if key != "transcript_path"
         }
-        with open(run_dir / "result.json", "w") as f:
-            json.dump(result_data, f, indent=2)
+        _write_json_atomic(run_dir / "result.json", result_data)
 
         # Copy transcript if available
         transcript_src = r.get("transcript_path")
@@ -408,8 +557,25 @@ def archive_results(all_results: list[dict], models: list[ModelConfig],
             name = tf.get("tool_name", "unknown")
             tool_failure_by_name[name] = tool_failure_by_name.get(name, 0) + 1
 
+    # Aggregate the per-run hook-block vs tool-failure diagnostic counters.
+    error_counts_total = {
+        "hook_blocks": 0,
+        "tool_failures": 0,
+        "tool_failures_unclassified": 0,
+    }
+    for r in all_results:
+        ec = r.get("error_counts") or {}
+        for key in error_counts_total:
+            error_counts_total[key] += ec.get(key, 0)
+
+    runs_completed = len(all_results)
     summary = attach_schema_version({
-        "total_runs": len(all_results),
+        "total_runs": runs_completed,
+        # Additive self-description so a crashed/partial pass is legible without
+        # re-deriving from the runs/ directory.
+        "partial": partial,
+        "runs_expected": expected_n if expected_n is not None else runs_completed,
+        "runs_completed": runs_completed,
         "total_cost_usd": total_cost,
         "accounting_coverage": batch_cost["accounting_coverage"],
         "wall_time_s": round(wall_time, 1),
@@ -419,12 +585,12 @@ def archive_results(all_results: list[dict], models: list[ModelConfig],
             "runs_affected": runs_with_failures,
             "by_tool": tool_failure_by_name,
         },
+        "error_counts": error_counts_total,
         "criterion_names": all_criterion_names,
         "by_model": model_summaries,
         "by_case": case_summaries,
     })
-    with open(output_dir / "summary.json", "w") as f:
-        json.dump(summary, f, indent=2)
+    _write_json_atomic(output_dir / "summary.json", summary)
 
     return output_dir
 
@@ -590,9 +756,30 @@ def main():
                         help="Run sequentially instead of parallel")
     parser.add_argument("--delay", type=float, default=LAUNCH_DELAY_SECONDS,
                         help="Seconds between parallel launches (default: 2)")
-    parser.add_argument("--timeout", type=int, default=300,
-                        help="Per-run timeout in seconds (Phase 4 default: 300; "
-                             "standardized 2026-07-10, replacing cost-tier defaults)")
+    parser.add_argument("--max-concurrent", type=int, default=MAX_CONCURRENT_RUNS,
+                        help=f"Max simultaneously in-flight runs "
+                             f"(default: {MAX_CONCURRENT_RUNS}). Caps the thread "
+                             f"pool; --delay still staggers submits")
+    parser.add_argument("--timeout", type=int, default=900,
+                        help="Per-run timeout in seconds. Uniform 900s logistical "
+                             "cap (2026-07-21 walltime redesign; formerly "
+                             "120/180/300/300 per-phase). High cap so runs complete "
+                             "rather than censor; duration is now the measured axis")
+    parser.add_argument("--watchdog-poll", type=int, default=60,
+                        help="Watchdog poll interval in seconds (default: 60)")
+    parser.add_argument("--stall-threshold", type=int, default=330,
+                        help="Staleness cutoff in seconds for one stalled read "
+                             "(default: 330; K3-validated). Two consecutive "
+                             "stalled reads trigger a stall kill")
+    parser.add_argument("--stall-retries", type=int, default=1,
+                        help="Times to relaunch a stalled rep from a fresh "
+                             "sandbox (default: 1)")
+    parser.add_argument("--no-early-stop", action="store_true",
+                        help="Accepted for CLI uniformity but INERT for this "
+                             "phase: score-complete early stop is intentionally "
+                             "not wired here (the no_forbidden_skills negative "
+                             "criterion makes it unfair). Stall detection always "
+                             "runs")
     parser.add_argument("--yes", "-y", action="store_true",
                         help="Skip cost confirmation prompt")
     add_preflight_arg(parser)
@@ -605,6 +792,11 @@ def main():
     if not models:
         print("ERROR: No valid models selected.")
         sys.exit(1)
+
+    # W2 (2026-07-28): fail fast on any sandbox-slug collision across the
+    # selected models before any run launches — colliding slugs would share a
+    # _sandbox/run_* directory and cross-contaminate fixtures/transcripts.
+    assert_unique_sandbox_slugs(models)
 
     # Load test cases
     all_cases = load_test_cases(CASES_FILE)
@@ -673,46 +865,102 @@ def main():
     print(f"{'='*100}")
     sys.stdout.flush()
 
+    # Per-batch uniqueness token (cross-process safety): one short token per
+    # runner invocation, reused for BOTH the results dir-name suffix and every
+    # sandbox suffix so concurrent batches never collide on results/ dirs or
+    # _sandbox/run_ dirs, even when running the same model at the same second.
+    batch_token = uuid.uuid4().hex[:6]
+    batch_pid = os.getpid()
+
     # Build run list: case x model x rep
     runs = []
     for tc in test_cases:
         for model in models:
             for rep in range(args.reps):
-                suffix = f"{tc.id}_{model.name.replace(' ', '_')}_{rep}"
+                suffix = f"{tc.id}_{sandbox_slug(model.name)}_{rep}_{batch_token}"
                 runs.append((tc, model, rep, suffix))
 
     all_results = []
+    expected_n = len(runs)
+    git_sha = get_git_sha()
     start_time = time.time()
 
-    if args.sequential:
-        for tc, model, rep, suffix in runs:
-            try:
-                r = run_one(tc, model, rep, suffix, timeout_override=args.timeout)
-            except Exception as e:
-                r = _error_result(tc, model, rep, f"{type(e).__name__}: {e}")
-            all_results.append(r)
-            print_run_result(r)
-            sys.stdout.flush()
-    else:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=len(runs)) as pool:
-            futures = {}
-            for i, (tc, model, rep, suffix) in enumerate(runs):
-                future = pool.submit(run_one, tc, model, rep, suffix, timeout_override=args.timeout)
-                futures[future] = (tc, model, rep)
-                if i < len(runs) - 1:
-                    time.sleep(args.delay)
+    # Create the results folder and seed manifest.json + an initial partial
+    # summary.json BEFORE any run launches, so a killed pass still leaves a
+    # self-describing (partial) archive.
+    output_dir = archive_results(
+        [], models, test_cases, args, 0.0,
+        output_dir=None, partial=True, expected_n=expected_n, git_sha=git_sha,
+        batch_token=batch_token, batch_pid=batch_pid,
+    )
+    print(f"Progressive archive: {output_dir}")
+    sys.stdout.flush()
 
-            for future in concurrent.futures.as_completed(futures):
-                tc, model, rep = futures[future]
+    try:
+        if args.sequential:
+            for tc, model, rep, suffix in runs:
                 try:
-                    r = future.result()
+                    r = run_one(
+                        tc, model, rep, suffix, timeout_override=args.timeout,
+                        watchdog_poll=args.watchdog_poll,
+                        stall_threshold=args.stall_threshold,
+                        stall_retries=args.stall_retries,
+                    )
                 except Exception as e:
                     r = _error_result(tc, model, rep, f"{type(e).__name__}: {e}")
                 all_results.append(r)
                 print_run_result(r)
+                # Progressive per-run archive + incremental rollup.
+                archive_results(
+                    all_results, models, test_cases, args,
+                    time.time() - start_time, output_dir=output_dir,
+                    partial=True, expected_n=expected_n, git_sha=git_sha,
+                    batch_token=batch_token, batch_pid=batch_pid,
+                )
                 sys.stdout.flush()
+        else:
+            max_workers = min(len(runs), args.max_concurrent)
+            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as pool:
+                futures = {}
+                for i, (tc, model, rep, suffix) in enumerate(runs):
+                    future = pool.submit(
+                        run_one, tc, model, rep, suffix,
+                        timeout_override=args.timeout,
+                        watchdog_poll=args.watchdog_poll,
+                        stall_threshold=args.stall_threshold,
+                        stall_retries=args.stall_retries,
+                    )
+                    futures[future] = (tc, model, rep)
+                    if i < len(runs) - 1:
+                        time.sleep(args.delay)
 
-    wall_time = time.time() - start_time
+                for future in concurrent.futures.as_completed(futures):
+                    tc, model, rep = futures[future]
+                    try:
+                        r = future.result()
+                    except Exception as e:
+                        r = _error_result(tc, model, rep, f"{type(e).__name__}: {e}")
+                    all_results.append(r)
+                    print_run_result(r)
+                    # Progressive per-run archive + incremental rollup.
+                    archive_results(
+                        all_results, models, test_cases, args,
+                        time.time() - start_time, output_dir=output_dir,
+                        partial=True, expected_n=expected_n, git_sha=git_sha,
+                        batch_token=batch_token, batch_pid=batch_pid,
+                    )
+                    sys.stdout.flush()
+    finally:
+        # Final rollup runs even on KeyboardInterrupt/exception: partial=False
+        # only when every expected run completed.
+        wall_time = time.time() - start_time
+        all_done = len(all_results) == expected_n
+        archive_results(
+            all_results, models, test_cases, args, wall_time,
+            output_dir=output_dir, partial=not all_done,
+            expected_n=expected_n, git_sha=git_sha,
+            batch_token=batch_token, batch_pid=batch_pid,
+        )
 
     # Sort results by case order, then model order, then rep
     case_order = {tc.id: i for i, tc in enumerate(test_cases)}
@@ -722,8 +970,6 @@ def main():
     # Print summary
     print_summary(all_results, models, test_cases, wall_time)
 
-    # Archive results
-    output_dir = archive_results(all_results, models, test_cases, args, wall_time)
     print(f"\nResults archived to: {output_dir}")
 
 

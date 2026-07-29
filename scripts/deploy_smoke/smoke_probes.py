@@ -33,8 +33,8 @@ import subprocess
 import time
 import uuid
 from pathlib import Path
-from urllib.request import urlopen
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
+from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
 from route_detection import (
     Verdict,
@@ -65,7 +65,84 @@ from benchmarks.harness.executor import (
 # interpolated into f-strings, wrapped in Path(...), and passed as cwd= throughout.
 BASE_DIR = str(Path(__file__).resolve().parents[2])
 SHIM_HEALTH_URL = "http://127.0.0.1:4141/health"
+HEALTH_BODY_LIMIT = 16_384
+EXPECTED_SHIM_SERVICE = "daaf-anthropic-openai-shim"
+_SAFE_SHIM_VERSION_RE = re.compile(r"[A-Za-z0-9._+-]{1,64}")
+_SAFE_HEALTH_MODEL_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,159}")
+_UTC_SECOND_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z")
+_GPT_REQUEST_TIER = {"chatgpt": "priority", "openai": "priority"}
+_GPT_POLICY_STATUSES = frozenset({"ok", "missing", "invalid", "unreadable", "unsafe"})
+_GPT_REQUEST_SOURCES = frozenset({"none", "anthropic", "shim_global", "both"})
+_GPT_SERVED_TIERS = frozenset({"fast", "priority", "default", "flex", "scale", "auto"})
 _GLM52_STATIC_ID = re.compile(r"z-ai/glm-5\.2(?:-[0-9]{8})?")
+
+
+class _DuplicateHealthKeyError(ValueError):
+    """A duplicate key makes the local health schema ambiguous."""
+
+
+class _RejectHealthRedirects(HTTPRedirectHandler):
+    """Reject loopback health redirects instead of following Location."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+def _read_local_health(timeout=10, opener=None):
+    """Read fixed loopback /health with no proxy, redirect, or oversized body."""
+    request = Request(SHIM_HEALTH_URL, method="GET")
+    network_opener = opener or build_opener(
+        ProxyHandler({}), _RejectHealthRedirects()
+    )
+    with network_opener.open(request, timeout=timeout) as response:
+        status = getattr(response, "status", None)
+        if status is None and hasattr(response, "getcode"):
+            status = response.getcode()
+        if status is not None and status != 200:
+            raise ValueError(f"shim /health returned HTTP {status}")
+        raw = response.read(HEALTH_BODY_LIMIT + 1)
+        if len(raw) > HEALTH_BODY_LIMIT:
+            raise ValueError("shim /health response exceeded the 16 KiB limit")
+    health = json.loads(
+        raw.decode("utf-8", "replace"),
+        object_pairs_hook=_reject_duplicate_health_keys,
+    )
+    if not isinstance(health, dict):
+        raise ValueError("shim /health JSON must be an object")
+    return health
+
+
+def _is_safe_health_model(value):
+    return (
+        isinstance(value, str)
+        and _SAFE_HEALTH_MODEL_RE.fullmatch(value) is not None
+        and "://" not in value
+    )
+
+
+def _is_gpt_backend(value):
+    return type(value) is str and value in _GPT_REQUEST_TIER
+
+
+def _is_policy_status(value):
+    return type(value) is str and value in _GPT_POLICY_STATUSES
+
+
+def _is_request_source(value):
+    return type(value) is str and value in _GPT_REQUEST_SOURCES
+
+
+def _is_served_tier(value):
+    return type(value) is str and value in _GPT_SERVED_TIERS
+
+
+def _reject_duplicate_health_keys(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise _DuplicateHealthKeyError("duplicate health JSON key")
+        result[key] = value
+    return result
 
 
 def _project_slug(base_dir: str) -> str:
@@ -485,9 +562,135 @@ def probe_statuslines(base_dir: str = BASE_DIR) -> ProbeResult:
     return r
 
 
+def _validate_gpt_service_tier_health(health, expected_mode):
+    """Return a bounded projection plus exact-schema/coherence diagnostics."""
+    problems = []
+    block = health.get("gpt_service_tier")
+    expected_block_keys = {
+        "backend_mode", "requested_tier_vocabulary", "policy",
+        "native_fast_disabled", "latest_terminal",
+    }
+    if not isinstance(block, dict):
+        return None, ["gpt_service_tier must be an object with the exact v1.3.9 key set"]
+    if set(block) != expected_block_keys:
+        return None, ["gpt_service_tier must have the exact v1.3.9 key set (no missing or extra fields)"]
+
+    backend = block.get("backend_mode")
+    vocabulary = block.get("requested_tier_vocabulary")
+    native_disabled = block.get("native_fast_disabled")
+    if backend != expected_mode:
+        problems.append("gpt_service_tier.backend_mode must exactly match the detected shim backend")
+    if vocabulary != _GPT_REQUEST_TIER[expected_mode]:
+        problems.append(
+            f"gpt_service_tier.requested_tier_vocabulary must equal "
+            f"'{_GPT_REQUEST_TIER[expected_mode]}' on the {expected_mode} backend"
+        )
+    if type(native_disabled) is not bool:
+        problems.append("gpt_service_tier.native_fast_disabled must be an exact JSON boolean")
+    elif native_disabled is not True:
+        problems.append("gpt_service_tier.native_fast_disabled must be true on an exact GPT shim route")
+
+    policy = block.get("policy")
+    policy_projection = None
+    if not isinstance(policy, dict) or set(policy) != {
+        "status", "backend_mode", "enabled", "effective",
+    }:
+        problems.append("gpt_service_tier.policy must have the exact key set (no missing or extra fields)")
+    else:
+        status = policy.get("status")
+        policy_backend = policy.get("backend_mode")
+        enabled = policy.get("enabled")
+        effective = policy.get("effective")
+        status_is_valid = _is_policy_status(status)
+        policy_backend_is_valid = _is_gpt_backend(policy_backend)
+        if not status_is_valid:
+            problems.append("gpt_service_tier.policy.status is outside the canonical vocabulary")
+        if type(enabled) is not bool or type(effective) is not bool:
+            problems.append("gpt_service_tier.policy enabled/effective must be exact JSON booleans")
+        elif status == "ok":
+            if not policy_backend_is_valid:
+                problems.append("an ok gpt_service_tier.policy requires a canonical backend_mode")
+            elif effective is not (enabled and policy_backend == expected_mode):
+                problems.append("gpt_service_tier.policy effective is incoherent with enabled/backend_mode")
+        elif status_is_valid and (
+            policy_backend is not None or enabled is not False or effective is not False
+        ):
+            problems.append("a non-ok gpt_service_tier.policy must be fail-safe OFF with null backend")
+        policy_projection = {
+            "status": status if status_is_valid else "<invalid>",
+            "backend_mode": policy_backend if policy_backend_is_valid else None,
+            "enabled": enabled if type(enabled) is bool else "<invalid>",
+            "effective": effective if type(effective) is bool else "<invalid>",
+        }
+
+    latest = block.get("latest_terminal")
+    latest_projection = None
+    if latest is not None:
+        expected_latest_keys = {
+            "model", "requested_service_tier", "requested_source",
+            "served_service_tier", "completed_at",
+        }
+        if not isinstance(latest, dict) or set(latest) != expected_latest_keys:
+            problems.append("gpt_service_tier.latest_terminal must be null or have the exact bounded key set")
+        else:
+            model = latest.get("model")
+            requested = latest.get("requested_service_tier")
+            source = latest.get("requested_source")
+            served = latest.get("served_service_tier")
+            completed = latest.get("completed_at")
+            if model is not None and (
+                not _is_safe_health_model(model)
+            ):
+                problems.append("gpt_service_tier.latest_terminal.model is not a bounded canonical token or null")
+            requested_is_valid = (
+                requested is None
+                or (type(requested) is str and requested == _GPT_REQUEST_TIER[expected_mode])
+            )
+            source_is_valid = _is_request_source(source)
+            served_is_valid = served is None or _is_served_tier(served)
+            if not requested_is_valid:
+                problems.append("gpt_service_tier.latest_terminal requested tier does not match backend vocabulary")
+            if not source_is_valid:
+                problems.append("gpt_service_tier.latest_terminal.requested_source is outside the canonical vocabulary")
+            elif (source == "none") is not (requested is None):
+                problems.append("gpt_service_tier.latest_terminal requested tier/source are incoherent")
+            if not served_is_valid:
+                problems.append("gpt_service_tier.latest_terminal.served_service_tier is not canonical or null")
+            completed_is_valid = (
+                isinstance(completed, str)
+                and _UTC_SECOND_RE.fullmatch(completed) is not None
+            )
+            if completed_is_valid:
+                try:
+                    time.strptime(completed, "%Y-%m-%dT%H:%M:%SZ")
+                except (OverflowError, ValueError):
+                    completed_is_valid = False
+            if not completed_is_valid:
+                problems.append("gpt_service_tier.latest_terminal.completed_at must be a real canonical UTC second")
+            latest_projection = {
+                "model": model if model is None or _is_safe_health_model(model) else "<invalid>",
+                "requested_service_tier": requested if requested_is_valid else "<invalid>",
+                "requested_source": source if source_is_valid else "<invalid>",
+                "served_service_tier": served if served_is_valid else "<invalid>",
+                "completed_at": completed if completed_is_valid else "<invalid>",
+            }
+
+    projection = {
+        "backend_mode": backend if _is_gpt_backend(backend) else "<invalid>",
+        "requested_tier_vocabulary": (
+            vocabulary
+            if type(vocabulary) is str and vocabulary in _GPT_REQUEST_TIER.values()
+            else "<invalid>"
+        ),
+        "policy": policy_projection if policy_projection is not None else "<invalid>",
+        "native_fast_disabled": native_disabled if type(native_disabled) is bool else "<invalid>",
+        "latest_terminal": latest_projection,
+    }
+    return projection, problems
+
+
 def probe_shim_health(route_info: RouteInfo) -> ProbeResult:
-    """GET the shim /health endpoint (shim routes only) and verify backend_mode
-    matches the detected route; report sanitize_tools, codex_home_present, version."""
+    """GET shim /health and fail closed on its route/service-tier contract."""
     r = ProbeResult(probe_id="T0.8", name="Provider shim /health", tier="0")
     if route_info.detected_route not in SHIM_ROUTES:
         r.verdict = Verdict.SKIP
@@ -496,48 +699,100 @@ def probe_shim_health(route_info: RouteInfo) -> ProbeResult:
         return r
 
     try:
-        with urlopen(SHIM_HEALTH_URL, timeout=10) as resp:
-            body = resp.read().decode("utf-8", "replace")
-        health = json.loads(body)
-        # Scrub any secret env value that the /health JSON might echo verbatim
-        # before it enters evidence (defense-in-depth; the placeholder keeps the
-        # blob parseable for the evidence/ snapshot).
-        r.add_evidence(f"GET {SHIM_HEALTH_URL}",
-                       output=scrub_secret_values(json.dumps(health, indent=2)[:1500]))
-    except (URLError, socket.timeout, json.JSONDecodeError, OSError) as e:
+        health = _read_local_health(timeout=10)
+        if not isinstance(health, dict):
+            raise ValueError("shim /health JSON must be an object")
+    except (HTTPError, URLError, socket.timeout, json.JSONDecodeError, OSError, ValueError) as e:
         r.verdict = Verdict.FAIL
-        r.detail = f"shim /health unreachable/invalid: {type(e).__name__}: {e}"
-        r.add_evidence(f"GET {SHIM_HEALTH_URL}", note=str(e))
+        r.detail = f"shim /health unreachable/invalid: {type(e).__name__}: {str(e)[:200]}"
+        r.add_evidence(f"GET {SHIM_HEALTH_URL}", note=str(e)[:200])
         return r
 
     expected_mode = "chatgpt" if route_info.detected_route == ROUTE_CHATGPT else "openai"
     actual_mode = health.get("backend_mode")
-    problems = []
-    if actual_mode != expected_mode:
-        problems.append(f"backend_mode='{actual_mode}' but route expects '{expected_mode}'")
-    if route_info.detected_route == ROUTE_CHATGPT and not health.get("codex_home_present"):
-        problems.append("codex_home_present=false (auth.json missing/unreadable) for chatgpt route")
+    version = health.get("version")
+    version_is_safe = isinstance(version, str) and _SAFE_SHIM_VERSION_RE.fullmatch(version) is not None
+    version_marker = version if version_is_safe else "<invalid>"
+    codex_home_present = health.get("codex_home_present")
+    codex_home_marker = codex_home_present if type(codex_home_present) is bool else "<invalid>"
+    tier_projection, tier_problems = _validate_gpt_service_tier_health(health, expected_mode)
 
-    r.add_evidence("", note=(
-        f"backend_mode={actual_mode} sanitize_tools={health.get('sanitize_tools')} "
-        f"codex_home_present={health.get('codex_home_present')} version={health.get('version')}"
-    ))
+    problems = []
+    if health.get("service") != EXPECTED_SHIM_SERVICE:
+        problems.append(f"service must equal '{EXPECTED_SHIM_SERVICE}'")
+    if health.get("status") != "ok":
+        problems.append("status must equal 'ok'")
+    if actual_mode != expected_mode:
+        problems.append("top-level backend_mode must exactly match the detected shim route")
+    if not version_is_safe:
+        problems.append("version must match [A-Za-z0-9._+-]{1,64}")
+    if route_info.detected_route == ROUTE_CHATGPT and codex_home_present is not True:
+        problems.append("codex_home_present must be boolean true (auth.json missing/unreadable) for chatgpt route")
+    problems.extend(tier_problems)
+
+    # Deliberately project only allowlisted identity/configuration facts.  Never
+    # serialize dict(health): the broad document includes a backend URL and can gain
+    # arbitrary nested fields that do not belong in deploy-smoke evidence.
+    health_evidence = {
+        "service": EXPECTED_SHIM_SERVICE if health.get("service") == EXPECTED_SHIM_SERVICE else "<invalid>",
+        "status": "ok" if health.get("status") == "ok" else "<invalid>",
+        "backend_mode": actual_mode if _is_gpt_backend(actual_mode) else "<invalid>",
+        "version": version_marker,
+        "sanitize_tools": health.get("sanitize_tools") if type(health.get("sanitize_tools")) is bool else "<invalid>",
+        "codex_home_present": codex_home_marker,
+        "gpt_service_tier": tier_projection if tier_projection is not None else "<invalid>",
+    }
+    r.add_evidence(f"GET {SHIM_HEALTH_URL}", output=json.dumps(health_evidence, indent=2))
+
+    policy = tier_projection.get("policy") if isinstance(tier_projection, dict) else None
+    latest = tier_projection.get("latest_terminal") if isinstance(tier_projection, dict) else None
+    policy_on = bool(
+        isinstance(policy, dict)
+        and policy.get("status") == "ok"
+        and policy.get("effective") is True
+    )
+    policy_marker = "ON" if policy_on else "OFF"
+    policy_status = policy.get("status") if isinstance(policy, dict) else "<invalid>"
+    served_marker = (
+        latest.get("served_service_tier") if isinstance(latest, dict) else None
+    ) or "unknown"
+    r.add_evidence(
+        "",
+        note=(
+            f"backend_mode={actual_mode if _is_gpt_backend(actual_mode) else '<invalid>'} "
+            f"version={version_marker} codex_home_present={codex_home_marker} "
+            f"native_fast_disabled="
+            f"{tier_projection.get('native_fast_disabled') if isinstance(tier_projection, dict) else '<invalid>'} "
+            f"requested_policy={policy_marker} policy_status={policy_status} "
+            f"latest_terminal_served={served_marker}; requested policy is not served-tier evidence"
+        ),
+    )
     if problems:
         r.verdict = Verdict.FAIL
         r.detail = "; ".join(problems)
     else:
         r.verdict = Verdict.PASS
-        r.detail = f"shim healthy: backend_mode={actual_mode}, version={health.get('version')}."
+        r.detail = (
+            f"shim healthy: backend_mode={actual_mode}, version={version_marker}, "
+            f"requested_policy={policy_marker} (status={policy_status}); "
+            f"latest terminal served tier={served_marker}. Requested policy is not "
+            "proof of provider-served Fast/Priority service."
+        )
     return r
 
 
 def probe_auth_json(route_info: RouteInfo, env) -> ProbeResult:
-    """chatgpt route only: confirm $CODEX_HOME/auth.json exists and is readable
-    (presence/readability only — never read or emit its contents)."""
-    r = ProbeResult(probe_id="T0.9", name="ChatGPT auth.json readable", tier="0")
+    """chatgpt route only: assert the shim /health auth block reports usable
+    subscription auth. v1.3.0 (A1-R6b) extends this from a bare "auth.json readable"
+    filesystem check to the authoritative /health auth state (derived by the shim from
+    auth.json presence + the access_token's JWT exp — never token material):
+    FAIL on expired|absent|unreadable, WARN on expiring, PASS on valid. The filesystem
+    readability check is retained as supplementary evidence (presence/readability only —
+    contents never read). Non-chatgpt routes SKIP (auth validity N/A there)."""
+    r = ProbeResult(probe_id="T0.9", name="ChatGPT auth validity (/health)", tier="0")
     if route_info.detected_route != ROUTE_CHATGPT:
         r.verdict = Verdict.SKIP
-        r.detail = f"Not the chatgpt-subscription route ({route_info.detected_route}); auth.json N/A."
+        r.detail = f"Not the chatgpt-subscription route ({route_info.detected_route}); auth validity N/A."
         return r
     codex_home = env.get("CODEX_HOME")
     if not codex_home:
@@ -545,15 +800,63 @@ def probe_auth_json(route_info: RouteInfo, env) -> ProbeResult:
         r.detail = "CODEX_HOME unset — cannot locate auth.json for the chatgpt route."
         r.add_evidence("env: CODEX_HOME", output="<unset>")
         return r
+
+    # Supplementary filesystem evidence (presence/readability only; contents never read).
     auth_path = Path(codex_home) / "auth.json"
-    readable = auth_path.exists() and os.access(auth_path, os.R_OK)
-    r.add_evidence(f"os.access({auth_path}, R_OK)", output=str(readable), note="presence/readability only; contents never read")
-    if readable:
-        r.verdict = Verdict.PASS
-        r.detail = "auth.json present and readable (contents not inspected)."
-    else:
+    fs_readable = auth_path.exists() and os.access(auth_path, os.R_OK)
+    r.add_evidence(
+        f"os.access({auth_path}, R_OK)", output=str(fs_readable),
+        note="supplementary; presence/readability only, contents never read",
+    )
+
+    # Authoritative: the /health auth block (JWT-exp-derived validity state).
+    try:
+        health = _read_local_health(timeout=10)
+        if not isinstance(health, dict):
+            raise ValueError("shim /health JSON must be an object")
+    except (HTTPError, URLError, socket.timeout, json.JSONDecodeError, OSError, ValueError) as e:
         r.verdict = Verdict.FAIL
-        r.detail = f"auth.json missing or unreadable at {auth_path} — run 'codex login --device-auth'."
+        r.detail = f"shim /health unreachable/invalid, cannot assess auth: {type(e).__name__}: {str(e)[:200]}"
+        r.add_evidence(f"GET {SHIM_HEALTH_URL}", note=str(e)[:200])
+        return r
+
+    auth = health.get("auth")
+    if not isinstance(auth, dict):
+        r.verdict = Verdict.FAIL
+        r.detail = "shim /health carries no auth block — a pre-v1.3.0 shim or a broken build."
+        r.add_evidence("GET /health .auth", output="<absent>")
+        return r
+
+    _KNOWN_STATES = {"valid", "expiring", "expired", "absent", "unreadable", "n/a"}
+    state = auth.get("state")
+    state_marker = state if state in _KNOWN_STATES else "<invalid>"
+    days_left = auth.get("days_left")
+    days_marker = days_left if isinstance(days_left, (int, float)) else "<n/a>"
+    r.add_evidence(
+        "GET /health .auth",
+        output=scrub_secret_values(json.dumps(auth)[:500]),
+        note=f"state={state_marker} days_left={days_marker}",
+    )
+
+    if state == "valid":
+        r.verdict = Verdict.PASS
+        r.detail = f"ChatGPT subscription auth valid (days_left={days_marker})."
+    elif state == "expiring":
+        r.verdict = Verdict.WARN
+        r.detail = (
+            f"ChatGPT subscription auth expires soon (days_left={days_marker}) — "
+            "run 'codex login --device-auth' before it lapses."
+        )
+    elif state in ("expired", "absent", "unreadable"):
+        r.verdict = Verdict.FAIL
+        r.detail = (
+            f"ChatGPT subscription auth is dead (state={state_marker}) — "
+            "run 'codex login --device-auth' to re-authenticate."
+        )
+    else:
+        # "n/a" on a chatgpt route, or an unrecognized state — both unexpected here.
+        r.verdict = Verdict.FAIL
+        r.detail = f"unexpected auth state on the chatgpt route: state={state_marker}."
     return r
 
 

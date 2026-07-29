@@ -49,7 +49,7 @@ Claude Code is the AI assistant platform that powers this project. It runs insid
 |--------|------|-------|--------------|
 | **Anthropic Max subscription** (recommended for heavy use) | $100-200/mo flat | Interactive login on first launch -- no config needed | Best value for heavy use. You can get by with much less (perhaps even the $20/mo Pro plan) if you're doing smaller, more discrete tasks with DAAF. [Get one here](https://claude.com/pricing/max) or [upgrade an existing plan](https://claude.ai/upgrade). Team/Enterprise subscriptions also work, but mileage may vary based on organizational settings/limits. |
 | **Anthropic API key** | Pay-per-use (can get expensive fast) | Interactive login on first launch -- no config needed | Unlimited use, but a full pipeline analysis can cost $50+ in API fees. I'd have paid roughly 10x more via API key than my Max subscription. [Get one here](https://console.anthropic.com/). |
-| **OpenRouter** | Pay-per-token via openrouter.ai with a 5.5% fee on credit purchases | Configure via `environment_settings.txt` ([instructions below](#configure-authentication-via-environment_settingstxt)) | No Anthropic subscription required. OpenRouter provides access to Anthropic's Claude models as well as high-performing open-weight alternatives. **GLM 5.2** in particular [benchmarks competitively with the Opus line](https://daaf.openaugments.org/bench/) at roughly 33% of the cost — an excellent option if you want strong performance without a monthly commitment. [Get a key here](https://openrouter.ai/). |
+| **OpenRouter** | Pay-per-token via openrouter.ai with a 5.5% fee on credit purchases | Configure via `environment_settings.txt` ([instructions below](#configure-authentication-via-environment_settingstxt)) | No Anthropic subscription required. OpenRouter provides access to Anthropic's Claude models as well as high-performing open-weight alternatives: [per DAAFBench](https://daaf.openaugments.org/bench/), **Kimi K3** reaches the top performance tier outright, **GLM 5.2** sits among the Opus-line models at ~22% of Opus 4.8's cost, and **DeepSeek V4 Flash** / **Gemma 4 31B** deliver credible budget performance at ~2-3% — strong options at every price point without a monthly commitment. [Get a key here](https://openrouter.ai/). |
 | **OpenAI** (API key or ChatGPT subscription) | OpenAI API pay-per-use, or your existing ChatGPT subscription | Configure via `environment_settings.txt` + one rebuild ([Option F instructions](#option-f-openai-api-directly-daaf-provider-shim)) | Run DAAF on GPT models with no Anthropic account. These are supported routes that benefit from wider community testing; the ChatGPT-subscription lane in particular has a smaller context ceiling, so it comes with practical [session-length guidance](#option-f-alternate-lane-chatgpt-subscription-codex-backend). |
 | **Cloud providers** (Bedrock, Vertex AI) | Per your organization's arrangement | Configure via `environment_settings.txt` ([instructions below](#configure-authentication-via-environment_settingstxt)) | Route through your org's existing cloud platform. DAAF provides configuration templates for these (see `environment_settings_example.txt` in `daaf-docker` for the required variables), aimed at organizations already running on Bedrock or Vertex. Note that DAAF's maintainers haven't been able to validate these two routes end-to-end ourselves — so treat them as a starting point you'll stand up and test in your own environment, and please share reports if you run them. |
 
@@ -185,15 +185,9 @@ On first launch, Claude Code should prompt you to authenticate (API key or subsc
 
 ### Configure Claude Code (optional)
 
-Once you're in, there are a few settings you can adjust to your liking. You can check which Claude model is being used by checking the indicator below the chat line (Opus, Sonnet, Haiku). DAAF defaults to using **Opus 4.8** with 1 million token context -- no action needed on your part. You can change which Claude model is being used at any time by typing `/model`. Development and testing has spanned several Anthropic model generations, and [empirical benchmarking across available Anthropic and open-weight models](https://daaf.openaugments.org/bench/) has shown that several models perform excellently with DAAF's orchestration workflows. The table below reflects just a small quick reference:
+Once you're in, there are a few settings you can adjust to your liking. You can check which Claude model is being used by checking the indicator below the chat line (Opus, Sonnet, Haiku). DAAF defaults to using **Opus 4.8** with 1 million token context -- no action needed on your part. You can change which Claude model is being used at any time by typing `/model`. Development and testing has spanned several Anthropic model generations, and [empirical benchmarking across 29 Anthropic, OpenAI, Google, and open-weight models](https://daaf.openaugments.org/bench/) has shown that several models perform excellently with DAAF's orchestration workflows -- at very different price points.
 
-| Model | Benchmark Performance | Relative Cost | Best For |
-|-------|----------------------|---------------|----------|
-| **Opus 4.8** | Strong | 1.0x (baseline) | Maximum analytical reasoning depth; complex methodology |
-| **Sonnet 4.6** and **Sonnet 5** | Excellent — #2 and #3 overall | ~0.44x-0.56x | Best cost-performance ratio with an Anthropic subscription |
-| **GLM 5.2** (via OpenRouter) | Excellent — #4 overall, competitive with the Opus line | ~0.33x | Strong performance without an Anthropic subscription |
-
-The current shipped default is **Opus 4.8**, chosen for its analytical reasoning depth on complex tasks; the benchmarked results above show that the lower-cost Sonnet tier is a genuinely excellent alternative at a fraction of the cost, and GLM 5.2 via OpenRouter makes DAAF accessible without any Anthropic subscription at all. Because new model generations arrive faster than we can revise this guide, treat [daaf.openaugments.org/bench](https://daaf.openaugments.org/bench/) as the live, continuously updated results page -- it carries standings for newer model generations (including newer Opus and Sonnet releases) as we benchmark them, so check there rather than assuming the table above is current. It helps to be clear about what these scores can and can't decide for you. This testing (called DAAFBench, with full public results at [daaf.openaugments.org/bench](https://daaf.openaugments.org/bench/)) measures how reliably a model *follows DAAF's process* — classifying your request correctly, dispatching the right specialists, loading the right skills, and honoring the confirmation gates. That is exactly the question that matters when you're weighing a model against your budget: it tells you which models you can trust to drive the framework faithfully at a given price point. What it does **not** measure is which model produces *better research* — the depth of analytical reasoning and judgment on the hardest problems. Opus may still have an edge there, though the gap between the top models is smaller than once assumed. So use the scores to pick a model you can afford that stays on-protocol, and remember that your own review of the output is still what judges the quality of the analysis itself.
+The short version, as of the July 2026 corpus: **Fable 5** is the top performer if budget is not a constraint; **GPT-5.6 Sol** and **Sonnet 5** deliver top-tier performance at moderate cost; **GPT-5.6 Luna** covers most of that capability for a fraction of the spend; and on the open-weights side, **Kimi K3** reaches the top tier while **GLM 5.2**, **DeepSeek V4 Flash**, and **Gemma 4 31B** anchor the self-hosting and budget end. The canonical, regularly refreshed guidance table lives in the FAQ — see [**Which Claude model should I use?**](07_faq_technical.md#q-which-claude-model-should-i-use) — and because new model generations arrive faster than we can revise this guide, treat [daaf.openaugments.org/bench](https://daaf.openaugments.org/bench/) as the live results page rather than assuming any table in the docs is current. It helps to be clear about what these scores can and can't decide for you. This testing (called DAAFBench, with full public results at [daaf.openaugments.org/bench](https://daaf.openaugments.org/bench/)) measures how reliably a model *follows DAAF's process* — classifying your request correctly, dispatching the right specialists, loading the right skills, and honoring the confirmation gates. That is exactly the question that matters when you're weighing a model against your budget: it tells you which models you can trust to drive the framework faithfully at a given price point. What it does **not** measure is which model produces *better research* — the depth of analytical reasoning and judgment on the hardest problems. Opus may still have an edge there, though the gap between the top models is smaller than once assumed. So use the scores to pick a model you can afford that stays on-protocol, and remember that your own review of the output is still what judges the quality of the analysis itself.
 
 Current Claude models also let you select a "thinking level" by tapping the left-and-right arrow keys while the model is selected on the /model selector in Claude Code. All tests I've conducted to date use the "High" setting -- as this is a case where quality is far more important than quantity, I strongly recommend doing the same. This will have usage and API limit ramifications, though, so it is a reasonable thing to test out the tradeoffs for yourself. The [DAAFBench results](https://daaf.openaugments.org/bench/) are a great starting reference for understanding the quality-cost frontier across models. Please do report back with any findings so we can continue to refine this guidance!
 
@@ -371,9 +365,64 @@ You can also use the Docker Desktop GUI to explore the DAAF docker volume by nav
 - **Getting a large research folder out wholesale:** rather than zipping folder by folder, take a full **backup** — from the DAAF Control Panel choose **option 7, "Create Backup"** — which copies *everything* (all your research data) out to your host machine in one step. See [**Backing Up Your Work**](#backing-up-your-work) below.
 - **Bringing files in:** drag and drop them from your computer straight onto the editor's file explorer sidebar — this works for single files and whole folders (see *Getting files INTO the container* above).
 
+### Linking Host Folders into the Container (Bind Mounts)
+
+The drag-and-drop upload described above is the right tool for most files. But if you have a **large local dataset** — tens of gigabytes of parquet, a folder of survey extracts, a directory you refresh regularly from elsewhere — copying it through the browser editor is slow and duplicates the data into the Docker volume. For those cases you can **bind-mount** a folder on your computer straight into the container, so DAAF reads your files in place. Reach for this when the data is bulky or lives naturally on your host; stick with the [drag-and-drop upload](#viewing-and-editing-files) for the occasional single file or small dataset.
+
+DAAF ships this capability **off by default** as a commented-out block in `docker-compose.yml` that you opt into. The recommended pattern is a **read-only** mount of one host folder onto `/host_data` inside the container.
+
+**Set it up (edit in the container, then rebuild):**
+
+1. **Open the container's copy of `docker-compose.yml`.** Edit it *inside* the container — either ask Claude to edit `/daaf/docker-compose.yml`, or open it in the [browser-based code editor](#viewing-and-editing-files). This matters: `rebuild_daaf.sh` copies the container's compose file *out* to your host and rebuilds from it, so a host-side edit is silently overwritten on the next rebuild. Editing the container copy is the only change that survives.
+2. **Uncomment the bind-mount block** in the `daaf-docker` service's `volumes:` section and set `source:` to the folder on your computer you want to expose. Leave `read_only: true` in place:
+   ```yaml
+   # In the daaf-docker service, under volumes:
+   - type: bind
+     source: /Users/yourname/datasets   # <-- your host folder (Windows: C:\Users\yourname\datasets)
+     target: /host_data
+     read_only: true
+   ```
+3. **Rebuild so the host picks up the change:**
+
+   **macOS / Linux (Terminal):**
+   ```bash
+   cd daaf-docker
+   bash rebuild_daaf.sh
+   ```
+
+   **Windows (PowerShell):**
+   ```powershell
+   cd daaf-docker
+   .\rebuild_daaf.ps1
+   ```
+
+Your files now appear at `/host_data` inside the container, and DAAF can read them directly.
+
+**Why the long (`type: bind`) syntax?** DAAF uses the verbose form on purpose: if you mistype `source:`, Docker **fails loudly** with a clear error. The short one-line form (`./typo:/host_data`) instead **silently creates an empty directory** at the bad path — so a typo would leave DAAF staring at an empty `/host_data` with no hint why.
+
+**Permissions: will your files be readable?** The container runs as a non-root user, `appuser` (UID/GID **1000**), and — unlike the two managed Docker volumes — a bind mount is **not** ownership-corrected by DAAF's `daaf-init` step. Whether `appuser` can read your files therefore depends on your platform:
+
+| Your platform | Read-only mount | What's happening |
+|---------------|-----------------|------------------|
+| **macOS (Docker Desktop)** | Generally just works | Docker Desktop translates/fakes ownership, so your files appear owned by the container user regardless of your Mac UID (behavior is version-dependent; rare file-sharing bugs exist) |
+| **Windows — `/mnt/c/...` (WSL2)** or a path shared in Docker Desktop | Just works | Windows permissions are translated through the Docker Desktop file-sharing layer |
+| **Native Linux** | Works **if** UID 1000 can read the files | Real UID/GID pass-through — no translation layer. Only the numbers matter, not usernames |
+| **Windows — WSL filesystem path** (`/home/<you>` inside a distro) | Works **if** UID 1000 can read the files | Native Linux rules apply inside the distro — the same case as native Linux |
+
+On the two "if" rows, diagnose with `ls -ln` (the `-n` shows **numeric** owner IDs): if your files aren't owned by `1000` and aren't world-readable, `appuser` can't read them. The simplest fix for a read-only data folder is to make it group- or world-readable on the host.
+
+**Advanced: write-enabled mounts.** Keep `read_only: true` unless you have a specific reason to let the container write back to your host folder — a read-only mount is safer and keeps DAAF from ever modifying your source data. If you *do* need writes (drop `read_only: true`), permissions get stricter:
+
+- **Native Linux / WSL-filesystem paths:** the container writes files as UID 1000, so align ownership — either `chown` the host folder to UID 1000, or add yourself to a shared group and make the folder group-writable. **Don't reach for `chmod 777`** — it works, but it exposes the folder to every user on the machine; group alignment is the right tool.
+- **macOS and Windows `/mnt/c` paths:** writes "just work" through the Docker Desktop translation layer, with files landing under your host user on the other side.
+
+> **Reproducibility trade-off — a deliberate decision to make.** Bind-mounted files live **outside** DAAF's archive and hash boundary: they are not captured by `backup_daaf.sh` and not part of the project's audit trail. That means reproducing the analysis later depends on *you* guaranteeing the same files are present at the same mount point — DAAF can't freeze them for you. The recommended mitigation is to have your **fetch scripts copy** the inputs you actually use from `/host_data` into the project's own `data/raw/` directory (with the normal raw-data naming conventions). The bind mount then serves as a fast on-ramp, while the archived working copy inside the project keeps the audit trail complete.
+
+> **Boundary.** `/host_data` is *not* covered by `backup_daaf.sh`, so never treat it as a place to store DAAF outputs — write results into your project as usual. And never point a bind mount at the container's own system paths (`/daaf`, `/daaf/.claude`, and the like): mounting over DAAF's own files would shadow them and break the install.
+
 ### Backing Up Your Work
 
-Since your research files live inside the Docker volume, it'll be extremely important to regularly back up your work separately from the Docker volume. The easiest way is from the **DAAF Control Panel** — run `bash daaf.sh` (`.\daaf.ps1` on Windows) in your `daaf-docker` folder and choose **option 7, "Create Backup."** If you'd rather call the backup script directly, that works too:
+Since your research files live inside the Docker volume, it'll be extremely important to regularly back up your work separately from the Docker volume. The easiest way is from the **DAAF Control Panel** — run `bash daaf.sh` (`.\daaf.ps1` on Windows) in your `daaf-docker` folder and choose **option 7, "Create Backup."** (If you've set up a [shared research workspace](#sharing-one-research-workspace-across-two-installs-advanced) across two installs, note the caveat in that section: run backups from **one** install only.) If you'd rather call the backup script directly, that works too:
 
 **macOS / Linux (Terminal):**
 
@@ -391,7 +440,7 @@ cd daaf-docker
 
 The backup script creates a date-versioned folder (e.g., `2026-04-21_daaf_backup/`) in your `daaf-docker` directory. Multiple backups on the same day are automatically suffixed (`2026-04-21a_daaf_backup/`, `2026-04-21b_daaf_backup/`, etc.). Feel free to move or copy these folders to another location on your computer (or an external drive) for safekeeping.
 
-The backup script also checks itself as it goes: it verifies there's enough free disk space before it starts (and stops with a clear message if there isn't), and after copying it compares the backup against the original — checking both the number of files and their total size — so a truncated or incomplete backup gets flagged with a warning rather than passing silently.
+The backup script also checks itself as it goes: it verifies there's enough free disk space before it starts (and stops with a clear message if there isn't), and after copying it compares the backup against the original — checking both the number of files and their total size. How a shortfall is handled depends on how serious it is. If the copy step itself reports an error *and* fewer files landed than the volume scan expected, the backup is treated as genuinely incomplete: the script stops with an error and a nonzero exit code, and tells you to delete the partial backup folder and re-run once the problem is resolved (any tool that ran the backup for you — the updater or the migration tool — then halts too, rather than continuing on top of a bad backup). A milder discrepancy — the copy reported success but the file count or total size is still a little off — is flagged as a warning instead: the backup finishes, but its completion banner reads `Backup completed WITH WARNINGS -- verify before relying on it` rather than the plain `Backup complete!`, so a questionable backup never passes silently.
 
 The backup covers both DAAF volumes: your research data, plus Claude Code's own state (your login, session history, and plugins) in a hidden `.daaf-claude-config/` subfolder. **Because the backup includes your Claude Code login credentials, treat backup folders as sensitive** — store them somewhere private, and if you share a backup with a colleague for collaboration, delete the `.daaf-claude-config/` subfolder from the copy first. (The backup also contains one or two small hidden manifest files you can ignore — the restore consumes them automatically. `.daaf-permissions` records which files were executable, so the restore can put file permissions back correctly even when the backup was stored on a Windows drive, which does not preserve them. `.daaf-symlinks`, present only when your data contains symbolic links, records those links so the restore can recreate them — this is what lets backups complete cleanly on Windows, where the copy step would otherwise stop at the first symbolic link.)
 
@@ -585,8 +634,8 @@ You usually don't even have to add that line by hand: when you run an update wit
 
 If `DAAF_BRANCH` is set nowhere, the updater defaults to `main` (or `master` if `main` doesn't exist). Either way, the script validates that the branch exists on the remote before proceeding.
 
-> **Tags behave differently from branches for updates.** `DAAF_BRANCH` steers *ongoing* updates, and only a **branch** can be followed — a version tag like `v3.0.0` is a fixed snapshot with nowhere newer to move to. The updater handles a tag two ways depending on where it came from:
-> - **Set in your environment** (e.g. `DAAF_BRANCH=v3.0.0 bash update_daaf.sh`): the updater **declines**, explains why, makes no changes, and points you at the supported way to move onto a release — re-running the installer pinned to that tag (see ["Installing a specific version or branch"](#installing-a-specific-version-or-branch) below). A tag is never saved as your update branch, so ongoing updates keep tracking your persisted or default branch.
+> **Tags behave differently from branches for updates.** `DAAF_BRANCH` steers *ongoing* updates, and only a **branch** can be followed — a version tag like `v3.0.1` is a fixed snapshot with nowhere newer to move to. The updater handles a tag two ways depending on where it came from:
+> - **Set in your environment** (e.g. `DAAF_BRANCH=v3.0.1 bash update_daaf.sh`): the updater **declines**, explains why, makes no changes, and points you at the supported way to move onto a release — re-running the installer pinned to that tag (see ["Installing a specific version or branch"](#installing-a-specific-version-or-branch) below). A tag is never saved as your update branch, so ongoing updates keep tracking your persisted or default branch.
 > - **Left over in `environment_settings.txt`** (for example after a tagged install): the updater prints a warning naming the file and key, then falls back to the auto-detected default branch for that run so you are never locked out. Edit the file to set a real branch (or remove the line) to silence the warning.
 
 Your research files in `research/` are not tracked by git (they're local to your volume), so they are completely unaffected by updates.
@@ -609,7 +658,7 @@ Most updates don't change the Dockerfile, so usually `git pull` inside the conta
 ```bash
 # Inside the container
 git fetch --tags
-git checkout v3.0.0
+git checkout v3.0.1
 ```
 
 Check the [Releases page](https://github.com/DAAF-Contribution-Community/daaf/releases) to see what's changed in each version.
@@ -654,7 +703,7 @@ By default, the installer pulls the latest code from the `main` branch. To insta
 
 ```bash
 # Install a tagged release
-export DAAF_BRANCH=v3.0.0
+export DAAF_BRANCH=v3.0.1
 curl -fsSL "https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/${DAAF_BRANCH}/scripts/host/install.sh" | bash
 
 # Install from a development branch
@@ -666,7 +715,7 @@ curl -fsSL "https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/$
 
 ```powershell
 # Install a tagged release
-$env:DAAF_BRANCH="v3.0.0"; irm "https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/$env:DAAF_BRANCH/scripts/host/install.ps1" | iex
+$env:DAAF_BRANCH="v3.0.1"; irm "https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/$env:DAAF_BRANCH/scripts/host/install.ps1" | iex
 
 # Install from a development branch
 $env:DAAF_BRANCH="dev"; irm "https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/$env:DAAF_BRANCH/scripts/host/install.ps1" | iex
@@ -681,7 +730,7 @@ This fetches the installer itself from the specified branch or tag, and also con
 When the installer finishes, it sets up your `environment_settings.txt` so any DAAF options you chose at install time carry forward on their own:
 
 - **If you have no `environment_settings.txt` yet** (a typical fresh install), the installer copies the `environment_settings_example.txt` template into place as your new `environment_settings.txt`, then activates any of the six install-time `DAAF_*` options it finds in your environment — `DAAF_PROJECT_NAME`, `DAAF_PORT_MARIMO`, `DAAF_PORT_LOGVIEWER`, `DAAF_PORT_VSCODE`, `DAAF_DEV`, and `DAAF_BRANCH` — writing each one into the file in its proper place (in context, right where that setting is documented). So if you exported any of these before installing (for a specific branch, a second instance, or a developer build), you don't have to re-enter them: they're already saved for every future launch and update.
-- **`DAAF_BRANCH` is seeded only when it names a branch.** If you installed pinned to a version *tag* (e.g. `v3.0.0`), the installer does **not** write that tag into the file — a persisted tag would block future updates — and prints a short note saying so. Ongoing updates then track the default branch (see [Keeping DAAF Updated](#keeping-daaf-updated)).
+- **`DAAF_BRANCH` is seeded only when it names a branch.** If you installed pinned to a version *tag* (e.g. `v3.0.1`), the installer does **not** write that tag into the file — a persisted tag would block future updates — and prints a short note saying so. Ongoing updates then track the default branch (see [Keeping DAAF Updated](#keeping-daaf-updated)).
 - **Seeded settings take effect immediately — the installer restarts the container for you.** Because Docker injects `environment_settings.txt` into the container when the container is *created*, and a fresh install creates the container before the seeded file exists, the installer finishes by briefly recreating the container so your new settings file is in effect right away. This is automatic and takes only a few seconds; your files are safe in the Docker volume. You will *not* see the "environment_settings.txt has been modified since this container was started" note on your first launch after a fresh install. In the rare event this restart step fails, the installer prints instructions — just run `docker compose down` from your `daaf-docker` folder and launch normally, which applies the settings the same way.
 - **A reinstall never overwrites an existing `environment_settings.txt`.** If the file already exists, the installer leaves it completely untouched — your real API keys and settings are safe — and notes that any `DAAF_*` variables you set were used for that install run only. Because a reinstall reuses your existing file rather than re-reading your environment, install-time env vars must be set again on each reinstall to steer *that run*, and if you want to persist a *changed* value you edit the file yourself.
 - **The installer always prints an outcome note** at the end telling you exactly what happened — which values were seeded, that an existing file was preserved, or (in the rare event seeding can't complete) manual instructions for copying the template yourself. Seeding never blocks or fails the install.
@@ -736,7 +785,7 @@ If the installer detects a previous attempt that didn't complete successfully (e
 
 ### Running multiple DAAF instances
 
-Most people run a single DAAF installation and never need this section. But if you want **two (or more) independent DAAF installs on the same machine** — for example, one folder for work and another for personal projects, each with its own Docker volume and research history — you can, with a small amount of configuration.
+Most people run a single DAAF installation and never need this section. But if you want **two (or more) independent DAAF installs on the same machine** — for example, one folder for work and another for personal projects, each with its own Docker volume and research history — you can, with a small amount of configuration. (If instead you want two installs to **share** one research workspace — say, to work the same projects from both a Claude and a ChatGPT install — see [Sharing One Research Workspace Across Two Installs](#sharing-one-research-workspace-across-two-installs-advanced) below; that pattern is the deliberate exception to the per-instance volumes described here.)
 
 Two things must be unique per install so they don't collide:
 
@@ -781,6 +830,73 @@ The DAAF launcher and control-panel scripts (`run_daaf`, `daaf`, the `view_*` br
 
 > **Changing these on an existing install** requires the same `docker compose down` + relaunch: the project name and published ports are baked in at container-creation time, so a running container will not adopt new values until it is recreated. Your data volume moves with the project name — renaming `DAAF_PROJECT_NAME` on an existing install points it at a *different* (empty) volume, so choose the name once, up front.
 
+### Sharing One Research Workspace Across Two Installs (Advanced)
+
+The section above sets up **independent** instances — each with its own research volume and history. This one does the opposite: it points **two** DAAF installs at a **single, shared research workspace**, so both can work the same `research/` folder, projects, and audit trail.
+
+The motivating scenario is running **two different AI providers against one body of work** — for example, one install authenticated to your **Claude (Anthropic) subscription** and a second install on your **ChatGPT subscription** via the [provider shim](#option-f-alternate-lane-chatgpt-subscription-codex-backend). Each install keeps its **own** configuration and authentication volume (`<project>_daaf-claude-config`), so their logins never collide — only the *research data* volume is shared.
+
+DAAF supports this with a setting, **`DAAF_DATA_VOLUME_NAME`**, plus a second commented opt-in block in `docker-compose.yml`. `DAAF_DATA_VOLUME_NAME` overrides the full Docker volume name for the shared research data (leave it unset and each install gets its own default `<project>_daaf-data`, exactly as in the section above). Its value must match the `name:` in the compose file's external-volume block. The steps below convert two installs to share one volume.
+
+**Step 1 — Install the first instance normally.** Follow the standard [installation](#installing-daaf), let it run, and confirm your research data is where you expect. Its data volume is `<project1>_daaf-data` (where `<project1>` is its `DAAF_PROJECT_NAME`, default `daaf` — so the default volume is `daaf_daaf-data`).
+
+**Step 2 — Convert the first install to an external (shared) volume.** Edit the **container's** copy of `docker-compose.yml` (via Claude or the [browser editor](#viewing-and-editing-files) — remember `rebuild_daaf.sh` copies the container's copy out over the host one, so the container-side edit is the one that survives). Uncomment the external-volume block under the top-level `daaf-data:` key and set `name:` to the volume's **existing** full name:
+
+   ```yaml
+   volumes:
+     daaf-data:
+       external: true
+       name: daaf_daaf-data      # <-- your existing <project1>_daaf-data volume
+   ```
+
+   Then set the matching line in the **host** `environment_settings.txt`:
+
+   ```
+   DAAF_DATA_VOLUME_NAME=daaf_daaf-data
+   ```
+
+   Rebuild (`bash rebuild_daaf.sh` / `.\rebuild_daaf.ps1`). Nothing about this install's behavior changes — it still uses the same data — but the volume is now declared `external`, which has one important consequence: **`docker compose down -v` will no longer delete it.** Compose never removes external volumes, so your shared research data is now immune to an accidental `-v` wipe. (Deliberate deletion still works via `docker volume rm` — see the caveats.)
+
+**Step 3 — Install the second instance, pre-seeded to the shared volume.** Install into a **different folder**, giving it a distinct project name, distinct ports, **its own provider/auth settings** (e.g. the [ChatGPT-subscription shim lane](#option-f-alternate-lane-chatgpt-subscription-codex-backend)), and `DAAF_DATA_VOLUME_NAME` **exported at install time** so it lands in the new install's `environment_settings.txt` from the start (the value stays inert until Step 4 activates the shared volume):
+
+   **macOS / Linux (Terminal):**
+
+   ```bash
+   export DAAF_PROJECT_NAME=daaf-gpt
+   export DAAF_PORT_MARIMO=2818
+   export DAAF_PORT_LOGVIEWER=2819
+   export DAAF_PORT_VSCODE=2820
+   export DAAF_DATA_VOLUME_NAME=daaf_daaf-data     # same shared volume as install #1
+   curl -fsSL https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scripts/host/install.sh | bash
+   ```
+
+   **Windows (PowerShell):**
+
+   ```powershell
+   $env:DAAF_PROJECT_NAME = "daaf-gpt"
+   $env:DAAF_PORT_MARIMO = "2818"
+   $env:DAAF_PORT_LOGVIEWER = "2819"
+   $env:DAAF_PORT_VSCODE = "2820"
+   $env:DAAF_DATA_VOLUME_NAME = "daaf_daaf-data"
+   irm https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scripts/host/install.ps1 | iex
+   ```
+
+**Step 4 — Convert the second install identically.** The installer still had to create the container from a compose file referencing this instance's *own* `<project2>_daaf-data`, so a transitional volume (`daaf-gpt_daaf-data` in the example) now exists and holds only the fresh repo clone. Convert this install exactly as in Step 2 — uncomment the external block in its container compose, set `name: daaf_daaf-data`, confirm `DAAF_DATA_VOLUME_NAME=daaf_daaf-data` is in its `environment_settings.txt`, and rebuild. Once it comes up on the shared volume, delete the now-orphaned transitional volume:
+
+   ```bash
+   docker volume ls | grep daaf-gpt_daaf-data      # confirm it exists and is unused
+   docker volume rm daaf-gpt_daaf-data             # remove the orphaned transitional volume
+   ```
+
+**Step 5 — Steady state.** Both installs now mount the **same** `daaf_daaf-data` volume, which means they share **one** `/daaf` — including a single canonical `docker-compose.yml` and the whole framework tree. Because there is only one copy of those files, a rebuild of *either* install reads and writes the *same* compose file, so the two installs stay consistent by construction; you never maintain two diverging compose files. Each install still keeps its own separate `*_daaf-claude-config` volume, so its provider login and session history remain its own.
+
+> **Caveats — read before you rely on this.**
+> - **One active pipeline per research project at a time.** Docker provides *no* write coordination between two containers on one volume. Running two analysis pipelines against the same project simultaneously can corrupt files. Coordinate yourself: let one install work a given project at a time. (Working *different* projects in the shared workspace concurrently is fine.)
+> - **Back up from one install only.** Both installs see the same data, so a single `backup_daaf.sh` run from *either* one captures everything — running backups from both just duplicates work and can race.
+> - **Shim state splits across the two volumes.** Each container runs at most one provider-shim instance at a time. The shim's operational telemetry on the shared workspace (`scripts/provider_shim/logs/`) is therefore install-shared, while its reasoning-cache continuity file stays per-container on that install's own `*_daaf-claude-config` volume (`~/.claude/provider_shim/reasoning_cache.json`) — so the shim lane's reasoning continuity never crosses between the two installs.
+> - **Deleting the shared volume is deliberate.** Because it's external, `docker compose down -v` won't touch it. To actually delete it you must bring **both** installs down (no container may reference it) and run `docker volume rm daaf_daaf-data` explicitly.
+> - **The second install's initial clone is discarded.** The transitional `<project2>_daaf-data` volume created at Step 3 held only a fresh repo clone; converting to the shared volume in Step 4 abandons it (you delete it), and install #2 adopts install #1's existing `/daaf`. That's expected.
+
 ### Building with the developer test toolchain (DAAF_DEV)
 
 Most people never need this section — it is for **framework developers** who want to run DAAF's own shell and PowerShell test suites (`bats` and Pester) *inside* the container, so an in-container run reproduces what the project's CI does.
@@ -824,15 +940,13 @@ Including R (with the full package set and Quarto) accounts for roughly **2 GB**
 
 **To use R**, just tell DAAF "set execution language to R" at the start of a session — no configuration files to edit. See the [R and Language Support FAQ](07_faq_technical.md#r-and-language-support) for details on switching between languages.
 
-The smoke tests and their runner in `scripts/smoke_tests/` exercise each R library skill, plus a Python import smoke (`smoke_imports.py`) covering the pinned Python analysis stack; all run via `run_all_smoke_tests.sh` in any DAAF container.
-
 #### Coming from Stata or R? Get code comments in your language
 
 If your background is in **Stata** or **R** rather than Python, you don't have to read unfamiliar code cold. Just tell DAAF your background once — for example, "I'm coming from Stata" or "my background is in R" — and it will offer to save that as a preference. From then on, every piece of analysis code DAAF writes carries inline comments showing the equivalent command in your language: Stata users see the `reghdfe`, `xtreg`, `esttab`, and `svy:` equivalents next to the Python (or R) that runs, and R users see their familiar `tidyverse`/`fixest` equivalents. This is powered by DAAF's built-in translation skills, so it stays accurate to the actual code. The preference persists across sessions, and turning it on is entirely conversational — there are no configuration files to edit and nothing to set up in advance. (Under the hood this sets the cross-language annotation preference described in `CLAUDE.md` § User Preferences; you never have to touch that file yourself.)
 
 ### Configure authentication via environment_settings.txt
 
-By default, Claude Code prompts you to log in interactively the first time you launch it (browser-based OAuth or pasting an API key). This works great for Max subscription and direct API key setups. However, if you're using **OpenRouter**, a **cloud provider** (Bedrock/Vertex), or simply want your authentication to persist automatically without interactive login, you can configure it through the `environment_settings.txt` file in your `daaf-docker` folder.
+By default, Claude Code prompts you to log in interactively the first time you launch it (browser-based OAuth or pasting an API key). This works great for Max subscription and direct API key setups — and since your login now persists across rebuilds, signing in once is genuinely enough. However, if you're using **OpenRouter**, a **cloud provider** (Bedrock/Vertex), or simply want your authentication to persist automatically without interactive login, you can configure it through the `environment_settings.txt` file in your `daaf-docker` folder. (Subscription users who run *several* DAAF installs, or who want fully non-interactive startup, have one more option there: a one-time `claude setup-token` command mints a long-lived token you can paste into the file — see Option B in its authentication section. A normal single install doesn't need it.)
 
 Your `daaf-docker` folder includes an `environment_settings_example.txt` template. It opens with a table of contents and is organized into six numbered, lifecycle-tagged sections — **[1] Install & Update Settings**, **[2] Claude Code Authentication**, **[3] Model Routing**, **[4] Alternative Providers & Shim**, **[5] Data Source API Keys**, and **[6] Workspace & Developer Options** — so you can jump straight to the part you need. Authentication lives in **section [2]**, which covers the five direct authentication options (Options A-E) — plus interactive browser login, which needs no environment variables — and points to **section [4]** for the OpenAI/ChatGPT provider shim (Option F). To set it up:
 
@@ -929,9 +1043,12 @@ ANTHROPIC_BASE_URL=https://openrouter.ai/api
 ANTHROPIC_AUTH_TOKEN=your_openrouter_api_key_here
 ANTHROPIC_API_KEY=
 ANTHROPIC_MODEL=openai/gpt-5.6-sol
-ANTHROPIC_DEFAULT_OPUS_MODEL=openai/gpt-5.6-sol       # strong tier (Opus-analog)
-ANTHROPIC_DEFAULT_SONNET_MODEL=openai/gpt-5.6-terra   # fast tier (Sonnet-analog)
-CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000               # see "known limitations" below
+# Strong tier (Opus-analog):
+ANTHROPIC_DEFAULT_OPUS_MODEL=openai/gpt-5.6-sol
+# Fast tier (Sonnet-analog):
+ANTHROPIC_DEFAULT_SONNET_MODEL=openai/gpt-5.6-terra
+# Context window -- see "known limitations" below:
+CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000
 ```
 
 Recommended GPT slugs (context windows and roles verified against OpenRouter on 2026-07-09):
@@ -949,7 +1066,7 @@ The two-tier routing described above works identically: map `ANTHROPIC_DEFAULT_O
 
 > **GPT-5.6 tier naming:** the GPT-5.6 family uses OpenAI's tier-analog names — *Sol* (strong; Opus-analog), *Terra* (mid; Sonnet-analog), and *Luna* (economy; Haiku-analog) — all with 1,050,000-token windows. DAAF's recommended defaults are Sol and Terra, validated live through the full agentic stack (including subagent dispatch on the tier remaps) on 2026-07-09, the day of the OpenRouter release.
 >
-> **Avoid the `-pro` slugs via OpenRouter (Option C):** despite listing the same 1,050,000-token windows and identical pricing, `gpt-5.6-sol-pro` / `-terra-pro` / `-luna-pro` fail with hard "Prompt is too long" API errors once a session's real context reaches roughly 50k tokens — through the Anthropic-compatible endpoint their token accounting runs ~4x the non-pro count against an enforced ~200k ceiling, and the inflation also makes them bill ~2-4x more for identical work. Empirically verified across all three -pro variants in the 2026-07-10 DAAFBench smoke battery (see `benchmarks/README.md` § 1). The non-pro slugs are unaffected.
+> **Avoid the `-pro` slugs via OpenRouter (Option C) — they fail and cost more.** `gpt-5.6-sol-pro` / `-terra-pro` / `-luna-pro` error out with hard "Prompt is too long" failures once a session grows past roughly 50k tokens, and they bill ~2-4x more for identical work (their token accounting runs ~4x the non-pro count against an enforced ~200k ceiling). Empirically verified across all three -pro variants in the 2026-07-10 DAAFBench smoke battery (see `benchmarks/README.md` § 1); the non-pro slugs are unaffected.
 
 **Restart the container** (`docker compose down`, then `bash run_daaf.sh`) to pick up the changes. No rebuild is needed for OpenRouter — it is config-only.
 
@@ -957,26 +1074,32 @@ The two-tier routing described above works identically: map `ANTHROPIC_DEFAULT_O
 
 **Who this is for:** researchers who have an **OpenAI API key** (pay-per-use) and would rather talk to OpenAI directly, with no OpenRouter middle-hop.
 
-**What you'll end up with:** DAAF running on GPT models through a lightweight translation shim that ships built into DAAF. The shim presents an Anthropic-compatible endpoint on `localhost`, quietly forwards your requests to OpenAI, has **zero new dependencies**, and starts automatically inside the container — once it's set up, you won't think about it again. (Would you rather use a **ChatGPT subscription** than a pay-per-use API key? Skip ahead to the [ChatGPT subscription lane](#option-f-alternate-lane-chatgpt-subscription-codex-backend) below.)
+**What you'll end up with:** DAAF running on GPT models through a lightweight translation shim that ships built into DAAF. The shim presents an Anthropic-compatible endpoint on `localhost`, forwards your requests to OpenAI, and starts automatically inside the container — once it's set up, you normally won't think about it again. (Would you rather use a **ChatGPT subscription** than a pay-per-use API key? Skip ahead to the [ChatGPT subscription lane](#option-f-alternate-lane-chatgpt-subscription-codex-backend) below.)
 
 > **Billing prerequisite — API credits are separate from ChatGPT.** An OpenAI API key only works if its platform.openai.com project has **prepaid credits purchased**: adding a payment card alone is not enough (the $5+ credit purchase is a separate step), and new API accounts receive no free credits. A ChatGPT Plus/Pro subscription does **not** include API access — ChatGPT and the API are separate billing systems, and there is **no OpenAI-sanctioned** way to run a third-party tool like DAAF on a ChatGPT subscription (subscription usage is scoped to OpenAI's official apps; verified against OpenAI's terms and Codex documentation, 2026-07-11). An unfunded key fails with an instant `429 insufficient_quota` on every request — see the [technical FAQ entry on instant 429s](07_faq_technical.md#q-my-gpt-session-fails-instantly-with-429-errors-on-every-request-option-f). DAAF *does* ship a supported alternative that reuses your Codex (ChatGPT) OAuth login to route through your ChatGPT subscription — see the ["ChatGPT subscription lane"](#option-f-alternate-lane-chatgpt-subscription-codex-backend) below. It's a functional, carefully built route, but it works through a backend interface OpenAI doesn't officially offer for third-party tools, so it may change if OpenAI changes the backend, and you are responsible for compliance with OpenAI's terms. The API-key lane described here is the alternative if you'd rather stay on an officially offered interface.
 
 **Setup — four steps from an API key to a working GPT session.**
 
-**Step 1 — Add your settings to `environment_settings.txt`.** Open that file in your `daaf-docker` folder and add the block below, pasting your real OpenAI API key in place of the placeholder. The first two lines turn the shim on; the rest point Claude Code at it and choose your GPT models:
+**Step 1 — Add your settings to `environment_settings.txt`.** Open that file in your `daaf-docker` folder and add the block below, pasting your real OpenAI API key in place of the placeholder. The first settings activate the shim, bind the exact OpenAI route needed by its controller, and authenticate the API; the rest point Claude Code at it and choose your GPT models:
 
 ```bash
 # --- Option F: OpenAI API directly, via the DAAF provider shim ---
 DAAF_PROVIDER_SHIM=openai
+# Exact route value required by gpt_fast.sh:
+SHIM_BACKEND_MODE=openai
 OPENAI_API_KEY=sk-your_openai_api_key_here
 
 # Point Claude Code at the local shim (bare GPT slugs — no openai/ prefix here):
 ANTHROPIC_BASE_URL=http://127.0.0.1:4141
 ANTHROPIC_AUTH_TOKEN=daaf-shim-local
 ANTHROPIC_API_KEY=
-ANTHROPIC_DEFAULT_OPUS_MODEL=gpt-5.6-sol[1m]         # strong tier (Opus-analog); [1m] = 1M window hint
-ANTHROPIC_DEFAULT_SONNET_MODEL=gpt-5.6-terra[1m]     # fast tier (Sonnet-analog); [1m] = 1M window hint
-CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000               # see "Context window on GPT sessions" below
+# Hide the native /fast control; use gpt_fast.sh below instead:
+CLAUDE_CODE_DISABLE_FAST_MODE=1
+# Strong tier (Opus-analog) and fast tier (Sonnet-analog); [1m] = 1M window hint:
+ANTHROPIC_DEFAULT_OPUS_MODEL=gpt-5.6-sol[1m]
+ANTHROPIC_DEFAULT_SONNET_MODEL=gpt-5.6-terra[1m]
+# Context window -- see "Context window on GPT sessions" below:
+CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000
 ```
 
 **Step 2 — Rebuild the image.** Unlike Option C (which is config-only), this lane needs a one-time rebuild, because the shim's auto-launch is baked into the container entrypoint. From the DAAF Control Panel choose **option 10, "Rebuild Container,"** or run `bash rebuild_daaf.sh` (`.\rebuild_daaf.ps1` on Windows) directly — see the [rebuild instructions](#keeping-daaf-updated). On boot, the container starts the shim automatically and keeps it alive (restarting it if it ever exits), so you normally never have to touch it.
@@ -986,13 +1109,16 @@ CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000               # see "Context window on GP
 **Step 4 — Confirm it's working (optional).** If a GPT session ever misbehaves, a small manager script and a health endpoint let you check the shim at a glance:
 
 ```bash
-bash /daaf/scripts/provider_shim/start_shim.sh --status   # is it running?
-curl -s http://127.0.0.1:4141/health                       # health check
+bash /daaf/scripts/provider_shim/start_shim.sh --status    # is it running?
+bash /daaf/scripts/provider_shim/start_shim.sh --restart # replace it atomically
+curl -s http://127.0.0.1:4141/health                      # health check
 ```
 
-That's the whole setup. The paragraphs that follow are optional tuning you can safely skip at first, and deeper mechanics and diagnostics live in **Under the hood / troubleshooting reference** at the very end of this lane.
+In short: `--status` tells you whether the shim is healthy, and `--restart` safely replaces it in one step (it stops the old shim, waits, launches a fresh one, and confirms it's ready). Reach for `--restart` whenever you change shim settings or a session misbehaves. **One important caution: if the active Claude Code session itself routes through this shim, never ask it to run `--stop` and then `--start` in separate turns**—the stop severs your own session's route before the later turn can run. Always use `--restart`, which does both under a single lock.
 
-**Optional tuning (safe to skip at first).**
+That's the whole setup. The paragraphs that follow are optional reading you can come back to when you need it — and deeper mechanics and diagnostics live in **Under the hood / troubleshooting reference** at the very end of this lane.
+
+**Optional tuning.**
 
 **Reasoning effort.** The shim always sets the OpenAI request's reasoning effort, resolved by a four-tier precedence chain — first present wins: (1) a per-request signal from Claude Code, (2) a `#<effort>` suffix you append to a model slug (e.g. `ANTHROPIC_DEFAULT_SONNET_MODEL=gpt-5.6-terra[1m]#medium`; it works alongside the `[1m]` window hint and is stripped before the request reaches OpenAI), (3) the `SHIM_REASONING_EFFORT` env var, and (4) the default `high` (parity with DAAF Claude sessions). Valid values are `none`, `low`, `medium`, `high`, `xhigh`, and `max` (`max` is gpt-5.6-only). Leave everything unset to get `high` everywhere; set the env var or a slug suffix only if you want a different level.
 
@@ -1002,23 +1128,58 @@ See the [technical FAQ entry on controlling GPT reasoning effort](07_faq_technic
 
 **Response verbosity.** Separately from reasoning effort, the shim sends OpenAI's `text.verbosity` control on every request, defaulting to `high` for parity with DAAF's warm, educational posture (`high` adds warmth and volume; `low` is terse); set `SHIM_TEXT_VERBOSITY=low` or `medium` in `environment_settings.txt` if GPT responses feel too long, and see the [technical FAQ entry on terse GPT responses](07_faq_technical.md#q-gpt-responses-feel-terse-compared-to-claude-option-f) if they feel too brief.
 
-**Context window on GPT sessions.** Claude Code enforces its context-window budget *locally*, and for a model slug it does not recognize it assumes a small (~200K) window — far below the 1,050,000-token physical window of the gpt-5.6 family on API/OpenRouter routes. On the direct OpenAI-API shim route, **append `[1m]` to your bare GPT slugs** in the model variables (e.g. `ANTHROPIC_DEFAULT_OPUS_MODEL=gpt-5.6-sol[1m]`, as shown above) and declare `CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000`: Claude Code reads `[1m]` as a 1M-window hint and strips the suffix before sending, while the explicit declaration aligns Claude Code and DAAF's accounting denominator. On OpenRouter, keep the provider-prefixed **bare** slug (e.g. `ANTHROPIC_MODEL=openai/gpt-5.6-sol`) and declare `CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000` explicitly; `[1m]` is not established for those provider-prefixed slugs and must not be generalized across routes. DAAF does **not** use `CLAUDE_CODE_AUTO_COMPACT_WINDOW` as an alternative — automatic compaction remains disabled because it can disrupt orchestration. Separately, **the shim calibrates its token-count estimates against the real backend counts**: it learns the true tokens-per-byte ratio from each backend response and estimates slightly *under* the real count, so if a limit is ever reached the failure mode is a loud, recoverable backend error rather than a silent client-side stop ("Prompt is too long") well below the real window. If a GPT session still reports "Context limit reached" / "Prompt is too long" at low utilization, see the [technical FAQ entry on low-utilization context errors](07_faq_technical.md#q-my-gpt-session-says-context-limit-reached--prompt-is-too-long-at-low-utilization). **The [ChatGPT-subscription (Codex) lane below](#option-f-alternate-lane-chatgpt-subscription-codex-backend) is different:** its backend enforces a much lower effective input ceiling — measured at ~370,000 tokens for `gpt-5.6-sol` (2026-07-16) — that no client hint can raise. On that lane, set `CLAUDE_CODE_MAX_CONTEXT_TOKENS=370000` so Claude Code and DAAF account against the measured backend ceiling. DAAF uses that denominator for utilization, statusline rendering, severity, and behavioral stop/restart guidance; it does not enable automatic compaction or implement a transport-level request blocker, and the backend remains the ultimate hard ceiling.
+##### GPT Fast Mode on the provider-shim routes
+
+Mirroring OpenAI Codex's "Fast mode" and API "Priority mode", you can turn on an equivalent with the GPT shim in DAAF. This basically turns on a speed-up from the model side of things, resulting in faster generation at the cost of greater subscription usage rates or higher API fees. To activate this in your session:
+
+**First, disable the native Claude Code `/fast` control.** The Claude Code mode itself doesn't work with the GPT models and can get confusing with settings, so we need to turn it off first. Set this exact line in your host `environment_settings.txt` file:
+
+```bash
+CLAUDE_CODE_DISABLE_FAST_MODE=1
+```
+
+Then rebuild the container (`bash daaf.sh` / `.\daaf.ps1` and select the Rebuild option), and start a **new Claude Code session** afterwards.
+
+**Then run the appropriate fast command for the shim** to check the current state, turn the boost on, or turn it off:
+
+```bash
+bash /daaf/scripts/provider_shim/gpt_fast.sh status
+bash /daaf/scripts/provider_shim/gpt_fast.sh on
+bash /daaf/scripts/provider_shim/gpt_fast.sh off
+```
+
+From the Claude Code prompt window, you can prefix the same command with `!`, for example `!bash /daaf/scripts/provider_shim/gpt_fast.sh on` to run it directly in the chat. The boost is **off by default**, and turning it `on` requires the `CLAUDE_CODE_DISABLE_FAST_MODE=1` line above; `off` and `status` always work. Which product you get depends on your route:
+
+| Your Option F route | What "on" gives you | Product name |
+|----------------|---------------------|--------------|
+| ChatGPT subscription (`SHIM_BACKEND_MODE=chatgpt`) | Faster responses, drawn from your ChatGPT subscription credits | **GPT Fast** |
+| OpenAI API key (`SHIM_BACKEND_MODE=openai`) | Priority processing, billed through your OpenAI API account | **GPT Priority** |
+
+**A word on cost.** **GPT Priority can cost more** than ordinary API processing and depends on your provider, model, project/account, and usage-tier eligibility — the controller warns you before it enables it. GPT Fast draws on your ChatGPT subscription's own credit and eligibility rules; current Codex documentation describes roughly **1.5×** speed and says GPT-5.6 and GPT-5.5 use **2.5× Standard ChatGPT credits**. Either way, requesting the boost doesn't guarantee you were served it on any given request.
+
+**Optional reading — under the hood.** The setting is persistent and shim-wide, and it's bound to the active route: switching routes resets it off, and switching back doesn't restore the old state — run `on` again on the new route. Requesting the faster tier is not the same as being served it; only the provider's actual response settles what served a given request, and the controller's `status` shows the latest such result the running shim has seen (qualified by model and completion time), not a promise about your current turn. One early ChatGPT-subscription probe requested priority and was served the standard tier — a dated, single-shape result, kept scoped to that old request rather than read as a standing entitlement test. The full policy semantics, wire-contract details, and version history live in the shim code, its tests, and git history.
+
+**Context window on GPT sessions.** Two small settings tell Claude Code how big your GPT model's context window really is — without them it assumes a small (~200K) window for slugs it doesn't recognize, far below the 1,050,000-token window of the gpt-5.6 family.
+
+- **On the direct OpenAI-API shim route,** append `[1m]` to your bare GPT slugs (e.g. `ANTHROPIC_DEFAULT_OPUS_MODEL=gpt-5.6-sol[1m]`, as shown above) and set `CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000`. Claude Code reads `[1m]` as a 1M-window hint and strips it before sending.
+- **On OpenRouter,** keep the provider-prefixed bare slug (e.g. `ANTHROPIC_MODEL=openai/gpt-5.6-sol`) and set `CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000`. Don't add `[1m]` to provider-prefixed slugs — it isn't established for that form.
+- **On the [ChatGPT-subscription (Codex) lane below](#option-f-alternate-lane-chatgpt-subscription-codex-backend),** set `CLAUDE_CODE_MAX_CONTEXT_TOKENS=370000` instead — that backend caps input around 370,000 tokens (measured for `gpt-5.6-sol`, 2026-07-16), and no client hint can raise it.
+
+*Why it matters:* the declaration keeps Claude Code and DAAF measuring utilization against the same real window. DAAF does **not** use `CLAUDE_CODE_AUTO_COMPACT_WINDOW` — automatic compaction stays off because it can disrupt orchestration. If a GPT session reports "Context limit reached" / "Prompt is too long" at low utilization, see the [technical FAQ entry on low-utilization context errors](07_faq_technical.md#q-my-gpt-session-says-context-limit-reached--prompt-is-too-long-at-low-utilization).
 
 **Optional 64K Claude Code output budget.** Claude Code defaults `CLAUDE_CODE_MAX_OUTPUT_TOKENS` to `32000` and supports a maximum of `64000`. If unusually long specialist work is being cut off, you may opt in by adding the plain decimal `CLAUDE_CODE_MAX_OUTPUT_TOKENS=64000` (the form supported by the pinned Claude Code 2.1.202) to the **host** `daaf-docker/environment_settings.txt` before Claude Code/the container starts, then recreate the container through the normal host flow. This is not free context: thinking tokens count toward the output budget, and raising the reservation leaves less context for conversation history and tool results, which can cause DAAF's context-pressure stop/restart guidance to fire earlier. Your provider or selected model may enforce a lower limit regardless. Keep specialist final returns bounded even with 64K enabled; prefer the default `32000` unless you have a concrete truncation problem. See the [technical FAQ entry](07_faq_technical.md#q-how-do-i-opt-in-to-a-64k-claude-code-output-budget) for the tradeoff summary.
 
 ##### Under the hood / troubleshooting reference (Option F)
 
-*You can safely skip this subsection — it's here for when you want to look under the hood or diagnose a problem. These mechanics are shared by both shim lanes (this one and the ChatGPT lane below).*
+**Optional reading.** Here for when you want to look under the hood or diagnose a problem. These mechanics are shared by both shim lanes (this one and the ChatGPT lane below).
 
-**Shim controls, logs, and tuning variables.** The manager script (`start_shim.sh`, shown in Step 4) also accepts `--start`, `--stop`, and `--auto`. The shim's log lives at `/daaf/scripts/provider_shim/logs/shim.log`. Backend failures are logged as structural metadata — status, exact structured type/code, mapped Anthropic type, retry/attempt information, phase, and safe allowlisted headers/request IDs. Free-form backend response bodies and messages are not retained, because provider prose can reflect request content; downstream client errors use bounded, classification-derived text instead. The [technical FAQ](07_faq_technical.md#q-my-gpt-session-fails-instantly-with-429-errors-on-every-request-option-f) walks through status/type/code triage such as `insufficient_quota` (billing) versus a true rate limit. Defaults are fine for almost everyone; the tuning variables (`SHIM_PORT`, `SHIM_BACKEND_BASE_URL`, `SHIM_BACKEND_API_KEY`, `SHIM_STRIP_MODEL_PREFIX`, `SHIM_SANITIZE_TOOLS`, `SHIM_REASONING_EFFORT`, `SHIM_TEXT_VERBOSITY`) are documented in `environment_settings_example.txt`.
+**Logs and diagnostics.** The shim keeps its own diagnostic log at `/daaf/scripts/provider_shim/logs/shim.log`. It records only technical metadata — timings, status codes, error types, retry counts, and request-correlation IDs — and **never** your prompts or text, tool inputs, image bytes or URLs, credentials, raw response streams, or full request/response bodies. If a GPT session misbehaves, run `--restart` and check that log; the [technical FAQ](07_faq_technical.md#q-my-gpt-session-fails-instantly-with-429-errors-on-every-request-option-f) walks through common status/type/code triage such as `insufficient_quota` (billing) versus a true rate limit. The shim is a persistent daemon: changing its Python source does not update the already-running process. After any source update, run `bash /daaf/scripts/provider_shim/start_shim.sh --restart`, then confirm that `curl -s http://127.0.0.1:4141/health` reports `"version": "1.3.9"` before testing the new behavior.
 
-**Tool-call sanitization.** This is **on by default** (`SHIM_SANITIZE_TOOLS`): the shim silently strips known GPT tool-call quirks (empty `pages` parameters, `isolation` fills on subagent dispatches, redundant sandbox flags) that would otherwise each cost a wasted error round-trip; every strip is recorded in the shim log. Set `SHIM_SANITIZE_TOOLS=0` (and restart the shim — the flag is read at startup) when running DAAFBench against shim-routed models, which must observe raw model behavior; confirm via the `/health` endpoint's `sanitize_tools` field.
+**Session continuity across rebuilds.** On a shim lane, the shim keeps a small reasoning-cache file (`~/.claude/provider_shim/reasoning_cache.json`) that carries GPT reasoning continuity from one turn to the next. It lives on your per-install `daaf-claude-config` volume, so it survives container restarts and image rebuilds — you don't have to do anything to preserve it. Only an explicit `docker compose down -v` or `docker volume rm` erases it.
 
-**Correlated request diagnostics.** Every JSON or SSE response from `POST /v1/messages` carries an `x-daaf-request-id` response header containing an internally generated 32-character hexadecimal ID. The same value appears as `req_id=<32-hex-id>` on that request's shim and HTTP-client log records, so saving the header lets you reconstruct one request without matching unrelated concurrent traffic. The stable lifecycle event names are `request_start`, `request_parsed`, `upstream_attempt`, `upstream_retry`, `upstream_headers`, `upstream_first_event`, `downstream_first_content`, `backend_error`, `disconnect`, `terminal`, and `cleanup`; retry events can repeat and some milestones apply only to streaming or failure paths, but every `/v1/messages` lifecycle has exactly one `event=terminal` summary and one `event=cleanup` record. These records expose diagnostic metadata rather than content (`phase`, monotonic `elapsed_ms`/`dur_ms`, attempt and retry counts, allowlisted upstream request-ID metadata such as `upstream_req_id_header` and `upstream_req_id`, normalized `http_version`, failure phase and structured error type/code, disconnect state, `terminal_frame_send`, `body_close_send`, and cleanup status/error); prompts, request message bodies, translated payloads, tool schemas and inputs, raw SSE content, free-form backend response bodies/messages, credentials, and arbitrary headers are never logged, and upstream IDs never replace the local `x-daaf-request-id` correlation value. For a safe request-ID grep workflow and a field-by-field mid-response diagnostic, see [How do I diagnose a provider-shim server error mid-response?](07_faq_technical.md#q-how-do-i-diagnose-a-provider-shim-server-error-mid-response).
+**Images.** The shim accepts images in your messages and tool results and forwards them to OpenAI without inspecting or logging the bytes; the [image troubleshooting entry](07_faq_technical.md#q-what-image-inputs-does-the-provider-shim-support) lists exactly what's accepted. Image support was verified with a dated privacy-safe probe (a 2026-07-18 Base64-PNG request) — that's evidence the shape worked on that date, not an official OpenAI guarantee.
 
-**Reading the evidence carefully.** The terminal send fields are deliberately narrow evidence. `send_completed` means only that the awaited ASGI `send` call returned; it does **not** prove that the client received or acknowledged the bytes. Likewise, `event=disconnect` records that the shim observed an ASGI `http.disconnect` event at `observed_phase`; it is not proof of what the user received or displayed, does not establish that the disconnect caused an upstream operation to be cancelled, and does not imply that an upstream operation existed. Generic ASGI task cancellation is not itself recorded as client-disconnect evidence. Read the correlated events in order before drawing a causal conclusion: for example, a structured backend `server_error` followed by `disconnect` is evidence that the shim observed the backend-declared error first, not proof that the later disconnect caused it or that the terminal error reached the client.
-
-**Structured-error normalization.** The shim's structured-error normalizer gives a real non-2xx backend HTTP status first precedence. When there is no such status, it checks backend `code` before backend `type`: `context_length_exceeded` maps to Anthropic `invalid_request_error`, `server_error` maps to `api_error`, and unknown structured failures remain `api_error`. Users receive bounded, classification-derived messages selected from status/type/code families and a fixed unknown fallback; arbitrary provider prose is neither retained nor reflected. Only observability and error presentation are shaped this way — retry policy, timeout values, backoff, connection pooling, and heartbeat behavior are independent of it.
+**Advanced tuning.** Tool-call sanitization is on by default (`SHIM_SANITIZE_TOOLS`); the shim quietly strips known GPT tool-call quirks that would otherwise waste an error round-trip. Turn it off (`SHIM_SANITIZE_TOOLS=0`, then restart) only when running DAAFBench, which must observe raw model behavior. The remaining tuning variables are documented in `environment_settings_example.txt`.
 
 #### Option F, alternate lane: ChatGPT subscription (Codex backend)
 
@@ -1026,7 +1187,7 @@ See the [technical FAQ entry on controlling GPT reasoning effort](07_faq_technic
 
 **What you'll end up with:** the same DAAF provider shim as Option F above, but pointed at your ChatGPT subscription's Codex backend. You authenticate once with your ChatGPT login (an OAuth token from your `codex` login) instead of an API key, and from there everything works the same. Request translation, tools, and the content-block lifecycle are shared across both lanes; only the authentication and endpoint differ. (The lane's deeper wire-level behavior — how it handles streaming, tolerates the optional fields the undocumented Codex backend may omit, and formats reasoning summaries — is documented in the [technical FAQ](07_faq_technical.md#q-can-i-use-my-chatgpt-subscription-instead-of-an-openai-api-key-option-f).)
 
-> **A supported route we've built carefully — and DAAF's newest, so help us test it.** This lane routes Claude Code through your ChatGPT subscription, and we've done the engineering to make it a smooth, productive experience — it's exercised by DAAF's own benchmark runs. One thing to know up front, said plainly: it works through a backend interface that OpenAI doesn't officially offer for third-party tools like DAAF (OpenAI scopes subscription usage to its own official apps), so OpenAI could change that backend and disrupt the lane at any time, and **you are responsible for compliance with OpenAI's terms of service.** Because it's the newest route, please treat it as the one most likely to have rough edges and tell us about anything you hit. If you'd prefer to stay on an interface OpenAI officially offers, the API-key lane above (`SHIM_BACKEND_MODE` unset → `openai`) is the alternative.
+> **A supported route we've built carefully — and DAAF's newest, so help us test it.** This lane routes Claude Code through your ChatGPT subscription, and we've done the engineering to make it a smooth, productive experience — it's exercised by DAAF's own benchmark runs. One thing to know up front, said plainly: it works through a backend interface that OpenAI doesn't officially offer for third-party tools like DAAF (OpenAI scopes subscription usage to its own official apps), so OpenAI could change that backend and disrupt the lane at any time, and **you are responsible for compliance with OpenAI's terms of service.** Because it's the newest route, please treat it as the one most likely to have rough edges and tell us about anything you hit. If you'd prefer to stay on an interface OpenAI officially offers, the API-key lane above (exact `SHIM_BACKEND_MODE=openai`) is the alternative.
 
 **Prerequisite — confirm the standard-image Codex CLI.** The pinned **Codex CLI ships in every DAAF image**. Its presence is optional infrastructure only: it does not change DAAF's default provider, authenticate you, or activate the shim. Confirm Codex installed successfully inside the container before going further:
 
@@ -1052,11 +1213,12 @@ If that reports `codex: command not found`, your image predates the universal in
    ANTHROPIC_BASE_URL=http://127.0.0.1:4141
    ANTHROPIC_AUTH_TOKEN=daaf-shim-local
    ANTHROPIC_API_KEY=
+   CLAUDE_CODE_DISABLE_FAST_MODE=1   # hide native /fast; use gpt_fast.sh below
    ANTHROPIC_DEFAULT_OPUS_MODEL=gpt-5.6-sol[1m]
    ANTHROPIC_DEFAULT_SONNET_MODEL=gpt-5.6-terra[1m]
    CLAUDE_CODE_MAX_CONTEXT_TOKENS=370000   # Codex lane: backend-capped ~370k (measured), NOT 1,050,000 — see below
    ```
-   In this mode `OPENAI_API_KEY` / `SHIM_BACKEND_API_KEY` are **ignored** — the OAuth token is the credential. Codex availability alone does not select this lane; both `DAAF_PROVIDER_SHIM=openai` and `SHIM_BACKEND_MODE=chatgpt` are explicit opt-ins. **Note the `CLAUDE_CODE_MAX_CONTEXT_TOKENS=370000`** above: unlike the API-key lane's full `1050000`, the ChatGPT/Codex backend enforces a much lower effective *input* ceiling (~370,000 tokens, measured for `gpt-5.6-sol` on 2026-07-16 — accepted at 369,941, rejected at 372,905), independent of the model's true 1M window on the API route. Declaring `370000` aligns Claude Code and DAAF's physical-window accounting with that ceiling. DAAF uses it for utilization, statusline rendering, severity, and behavioral stop/restart guidance. DAAF keeps automatic compaction disabled and does not implement a transport-level request blocker; the Codex backend remains the ultimate hard ceiling. Keeping `[1m]` on the configured slugs does not raise that ceiling because DAAF's matched runtime consumers apply `min(resolved_window, 370000)` as a final accounting constraint. A breach surfaces as a clean `invalid_request_error` (`context_length_exceeded`) rather than a retryable-looking 502. Re-measure with `scripts/provider_shim/probe_context_ceiling.py` if OpenAI changes the backend.
+   In this mode `OPENAI_API_KEY` / `SHIM_BACKEND_API_KEY` are **ignored** — the OAuth token is the credential. Codex availability alone does not select this lane; both `DAAF_PROVIDER_SHIM=openai` and `SHIM_BACKEND_MODE=chatgpt` are explicit opt-ins. **Note the `CLAUDE_CODE_MAX_CONTEXT_TOKENS=370000`** above: unlike the API-key lane's full `1050000`, the ChatGPT/Codex backend caps input around 370,000 tokens (measured for `gpt-5.6-sol`, 2026-07-16), independent of the model's true 1M window on the API route — and no `[1m]` hint or client setting can raise it. Declaring `370000` keeps Claude Code and DAAF's utilization accounting aligned with that ceiling; a breach surfaces as a clean `invalid_request_error` (`context_length_exceeded`). Re-measure with `scripts/provider_shim/probe_context_ceiling.py` if OpenAI changes the backend.
 5. **Recreate the container** to apply (`docker compose down`, then `bash run_daaf.sh` / `.\run_daaf.ps1`). The shim reads `SHIM_BACKEND_MODE` at startup.
 
 **Confirm it's working.** After the container comes back up, check the shim log:
@@ -1077,17 +1239,46 @@ A healthy ChatGPT lane logs `backend_mode=chatgpt` at startup and then healthy `
 | `codex: command not found` | The image predates the universal Codex installation or was built from a stale Dockerfile. Update DAAF and rebuild (`rebuild_daaf.sh` / `rebuild_daaf.ps1`) so the current Dockerfile is used; `DAAF_DEV=1` is not required. |
 | Shim log tells you to re-login | The OAuth token refresh failed permanently — run `codex login --device-auth` again inside the container. |
 
-**Running more than one container.** Each DAAF container does its **own** `codex login`, which creates an **independent refresh-token grant** — there is no credential collision between containers. They share only your ChatGPT **usage pool** (the 5-hour and weekly caps), so running two in parallel simply draws that pool down faster. This is the clean way to run parallel DAAF instances. (The subtler case is running several codex-based tools — the `codex` CLI, `codex-plugin-cc`, the shim — inside a *single* container off the *same* login: that can rarely trigger a refresh-token-rotation race. To isolate them, give each its own `codex login` under a separate `CODEX_HOME`; `CODEX_HOME` and the `SHIM_OAUTH_TOKEN_URL` / `SHIM_OAUTH_CLIENT_ID` override variables in `environment_settings_example.txt` are the hooks for that. None of this is needed for a normal single-tool setup.)
+**Running more than one container.** Each DAAF container does its **own** `codex login`, which creates an **independent refresh-token grant** — there is no credential collision between containers. They share only your ChatGPT **usage pool** (the 5-hour and weekly caps), so running two in parallel simply draws that pool down faster. This is the clean way to run parallel DAAF instances. (The subtler case is running several codex-based tools — the `codex` CLI, the [Codex plugin](#using-the-codex-plugin-for-claude-code), the shim — inside a *single* container off the *same* login. As of shim v1.3.0 the shim is a pure *reader* of `auth.json`: it never rewrites the store, delegating every token refresh to the `codex` CLI — the single writer per `CODEX_HOME` — so the old shim-versus-other-tool rotation race is structurally eliminated. What stays unverified is *codex-versus-codex*: two independent codex invocations against one `CODEX_HOME` (for instance the plugin and the shim's delegated refresh firing at nearly the same moment). The safe posture is therefore still to give each codex-based tool its own `codex login` under a separate `CODEX_HOME`. None of this is needed for a normal single-tool setup.)
 
 See the [technical FAQ entry on the ChatGPT subscription lane](07_faq_technical.md#q-can-i-use-my-chatgpt-subscription-instead-of-an-openai-api-key-option-f).
+
+#### Using the Codex Plugin for Claude Code
+
+Separate from the provider-shim lanes above, OpenAI ships an official plugin — **`codex-plugin-cc`** — that lets a Claude Code session **delegate a task to Codex** for a second opinion: a code review, an adversarial review, a rescue attempt. It adds slash commands like `/codex:review` and `/codex:adversarial-review`. Think of it as a way to get an *independent* model's eyes on a piece of work, complementary to DAAF's own review agents — not a provider route for running DAAF itself.
+
+**What's already in the image.** The plugin shells out to the local `codex` CLI, and DAAF bakes that in (a pinned static binary — the same one the ChatGPT lane uses). Node.js is present and version-sufficient too, guaranteed by the Dockerfile. `npm` isn't included, but nothing here needs it — Codex is already installed, so if a plugin step ever mentions a missing `npm`, that's the harmless reason and you can ignore it.
+
+**Install and authenticate (inside a Claude Code session):**
+
+```
+/plugin marketplace add openai/codex-plugin-cc
+/plugin install codex@openai-codex
+/reload-plugins
+/codex:setup
+```
+
+Then authenticate Codex with the same headless device-code flow the ChatGPT lane uses:
+
+```bash
+codex login --device-auth
+```
+
+As with the shim's ChatGPT lane, this requires **device-code login enabled in your ChatGPT security settings** (off by default — enable it first, or the login fails immediately).
+
+**Which setups are safe.** There are two race-free ways to use the plugin:
+
+1. **Two containers (the natural pairing with the ChatGPT lane).** Run the plugin in a container on the **Anthropic route** (Claude subscription/API), and keep the ChatGPT-subscription **shim lane** in a *separate* container. Because each container has its own config volume, each has its own Codex login — the plugin and the shim never touch the same token. This pairs naturally with the [shared-workspace setup above](#sharing-one-research-workspace-across-two-installs-advanced).
+2. **One Anthropic-route container plus the plugin.** If the container is *not* running the ChatGPT shim lane, nothing else is consuming the Codex login, so the plugin is the sole consumer and there is no contention.
+
+> **Do not add the Codex plugin to a container that is already using the ChatGPT-subscription shim lane.** In that lane the shim is *itself* a consumer of your Codex login: it reads the OAuth token from `auth.json` and (as of shim v1.3.0) triggers refreshes by invoking the `codex` CLI against its `CODEX_HOME` rather than rewriting the file itself. Adding a second consumer of the same login — the plugin, or for that matter running the `codex` CLI by hand — is exactly the unverified *codex-versus-codex* case described above: two codex invocations can still rotate the refresh token at nearly the same moment, and a lost rotation **permanently invalidates the login** (a `refresh_token_reused` lockout that forces a fresh `codex login`). If you genuinely must run both in one container, give each tool its own **separate `CODEX_HOME`** with its own **separate `codex login --device-auth`**, so they never share a token file. Either way, remember that all logins on one ChatGPT account draw from the **same usage pool** (the 5-hour and weekly caps), so adding a second Codex consumer spends that pool faster.
 
 #### Known limitations of GPT sessions (both lanes)
 
 GPT support is a **supported capability we've engineered carefully** — actively tested, including through DAAF's own benchmark runs, and still gathering wider community experience across different setups. A few specifics are worth knowing:
 
 - **Context utilization is estimated, not exact.** OpenRouter's Anthropic-compatible endpoint does not implement token counting, so Claude Code falls back to estimation on GPT sessions (the shim does the same). The context bar and utilization warnings are close approximations, not precise counts.
-- **Set `CLAUDE_CODE_MAX_CONTEXT_TOKENS` to the route's real physical accounting window.** Claude Code assumes a 200k window for models it doesn't recognize, which is wrong for the 400k and 1,050,000-token GPT models. Setting this variable (as shown in the blocks above) aligns Claude Code and DAAF's utilization denominator. **The two shim lanes differ here:** the API-key lane (and OpenRouter) serve the model's full window (`1050000`), but the ChatGPT-subscription (Codex) lane's backend enforces a much lower effective *input* ceiling — measured at ~370,000 tokens for `gpt-5.6-sol` (2026-07-16) — so on that lane declare `CLAUDE_CODE_MAX_CONTEXT_TOKENS=370000` instead. This is a backend-enforced limit on the Codex route, independent of the model's true 1M window on the API route; no `[1m]` hint or client setting can raise it. DAAF's three runtime consumers use the exact `DAAF_PROVIDER_SHIM=openai` + `SHIM_BACKEND_MODE=chatgpt` gate and apply `min(resolved_window, 370000)` to the mapped GPT 5.4/5.5/5.6 flagship family, including stale-cache and same-model paths. DAAF uses the result for utilization, statusline rendering, severity, and behavioral stop/restart guidance; it keeps automatic compaction disabled and does not implement a transport-level request blocker. The backend remains the ultimate hard ceiling. Re-measure with `scripts/provider_shim/probe_context_ceiling.py` if OpenAI changes it. Sol keeps its exact-Sol quality-threshold profile on both lanes — physical-window mapping and quality-threshold profile selection are separate lookups.
-- **Exact GPT 5.6 Sol is the validated exception; other GPT variants stay conservative.** The terminal model slug must be exactly `gpt-5.6-sol` or `gpt-5.6-sol[1m]`; the identifier may be bare or may contain one or more provider path prefixes ending in `/`. These exact terminal GPT 5.6 Sol model slugs use the standard percentage gates — ELEVATED at 40%, HIGH at 60%, and CRITICAL at 75% — while retaining Sol's higher validated absolute gates of 300,000, 400,000, and 500,000 tokens, respectively; each status fires when either its percentage or absolute gate is reached. Claude Fable/Mythos remains on 30%/40%/50% with the same 300,000/400,000/500,000 absolute gates. On the ChatGPT-subscription lane's 370,000-token physical window, Sol's percentage gates correspond to 148,000, 222,000, and 277,500 tokens, so they fire before the retained absolute gates. Malformed left-boundary strings such as `xgpt-5.6-sol`, `foo-gpt-5.6-sol`, and `vendor/notgpt-5.6-sol` remain conservative, as do Terra, Luna, Pro, mini, chat, date snapshots, future variants, and right-side suffix or trailing variants. Those use the conservative-default gates (40%/150,000, 60%/200,000, 75%/250,000) unless separately validated and registered. Threshold-profile selection is version-specific and independent of physical context-window mapping: the wider GPT 5.6 family can still map to a 1,050,000-token window even when a particular variant uses conservative quality thresholds. GPT is not part of the Claude Fable/Mythos model family; exact Sol now shares the standard 40%/60%/75% percentages but retains the higher validated Sol absolute gates.
+- **Set `CLAUDE_CODE_MAX_CONTEXT_TOKENS` to match your route.** Claude Code assumes a small (~200k) window for models it doesn't recognize, which is wrong for the large GPT windows. Set it to `1050000` on the API-key and OpenRouter routes, or to `370000` on the ChatGPT-subscription (Codex) lane, whose backend caps input around 370k tokens regardless of the model's true 1M window. DAAF detects your model and applies the matching quality thresholds automatically. Re-measure the Codex ceiling with `scripts/provider_shim/probe_context_ceiling.py` if OpenAI changes it.
 - **OpenRouter's Anthropic endpoint is officially scoped to Anthropic models.** GPT works through it (proven live), but OpenRouter documents this endpoint for Claude models — it is effectively unsupported territory the vendor could change at any time.
 - **Anthropic does not officially support routing Claude Code to non-Claude models** through any gateway. DAAF offers and tests these lanes as a supported capability, not something either vendor guarantees.
 

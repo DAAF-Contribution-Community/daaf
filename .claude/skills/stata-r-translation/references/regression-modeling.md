@@ -150,14 +150,16 @@ fit <- fepois(y ~ x1 + x2 | state + year, data = df)
 # Negative binomial (MASS)
 fit <- MASS::glm.nb(y ~ x1 + x2, data = df)
 
-# GLM with FE (fixest -- unlike pyfixest, R fixest DOES support feglm with FE)
+# GLM with FE (fixest -- broader family coverage than pyfixest's feglm)
 fit <- feglm(y ~ x1 + x2 | state, data = df, family = binomial)
 fit <- fenegbin(y ~ x1 + x2 | state, data = df)
 ```
 
-**Key advantage over Python:** R's fixest `feglm()` and `fenegbin()` support
-FE absorption for GLM models. This is a major gap in pyfixest that does not
-exist in R fixest.
+**Advantage over Python:** R's fixest `feglm()` absorbs FE across the full GLM
+family range (including Gamma), and `fenegbin()` adds FE negative binomial with no
+Python equivalent. pyfixest's `feglm()` gained FE support in 0.50 (DAAF ships
+0.60.0) but only for logit/probit/gaussian — so for those three families the two
+are on par, while Gamma and negative-binomial FE-GLMs still favor R fixest.
 
 ---
 

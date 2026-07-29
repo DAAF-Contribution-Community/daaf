@@ -99,6 +99,17 @@ fit = pf.fepois("Y ~ X1 | fe1 + fe2", data=df,
                 )
 ```
 
+### Exposure / Offset (0.60)
+
+`fepois()` accepts an `offset=` column name for exposure terms (e.g., population
+at risk, person-years) — the classic use case for count/rate models. Verified live
+on 0.60.0.
+
+```python
+# Model a rate: offset is the log-exposure column
+fit = pf.fepois("events ~ X1 | entity + year", data=df, offset="log_exposure")
+```
+
 **Separation** occurs when some FE levels perfectly predict zero counts. Separated observations have infinite likelihood and must be detected and handled. pyfixest can check for separation but the user should be aware of this possibility with sparse count data.
 
 ### Poisson with Multiple Estimation
@@ -111,12 +122,13 @@ pf.etable(fits)
 
 ## GLM (Logit/Probit)
 
-`feglm()` estimates generalized linear models.
+`feglm()` estimates generalized linear models, **including with fixed effects**
+since 0.50.
 
 ### Basic Usage
 
 ```python
-# Logit model
+# Logit model (no FE)
 fit = pf.feglm("binary_Y ~ X1 + X2", data=df, family="logit",
                vcov="hetero")
 fit.summary()
@@ -129,15 +141,32 @@ fit = pf.feglm("binary_Y ~ X1 + X2", data=df, family="probit",
 fit = pf.feglm("Y ~ X1 + X2", data=df, family="gaussian")
 ```
 
-### Fixed Effects Limitation
+### Fixed Effects (Supported Since 0.50)
 
-**`feglm()` does NOT currently support fixed effects demeaning.** This is a work in progress. Attempting `pf.feglm("Y ~ X | fe", ...)` raises `NotImplementedError`.
+`feglm()` supports fixed-effects demeaning for the `logit`, `probit`, and
+`gaussian` families. Verified live on 0.60.0: `pf.feglm("ybin ~ X1 | f1", family="logit")`
+and `... | f1 + f2` both fit and return finite coefficients.
 
-**Workarounds:**
-- **Linear probability model**: Use `pf.feols("binary_Y ~ X | fe", data=df)` — interprets coefficients as percentage point changes in probability
-- **Manual dummies**: Include FE as explicit dummy variables (slow for many levels)
-- **statsmodels**: For logit/probit with moderately many FE levels, use `statsmodels` with dummy variables
-- **Conditional logit**: For binary outcomes with entity FE, Chamberlain's conditional logit eliminates the incidental parameters problem
+```python
+# Logit with one-way FE
+fit = pf.feglm("binary_Y ~ X1 | entity", data=df, family="logit",
+               vcov={"CRV1": "entity"})
+
+# Probit with two-way FE
+fit = pf.feglm("binary_Y ~ X1 | entity + year", data=df, family="probit")
+```
+
+> **Historical note:** Pyfixest before 0.50 raised `NotImplementedError` for
+> `feglm()` with fixed effects, and older skill guidance recommended the linear
+> probability model as a workaround. That limitation no longer applies — FE-GLMs
+> are estimated natively.
+
+**Incidental-parameters caveat (statistical, not a software limit):** Nonlinear
+FE-GLMs (logit/probit) with many small FE groups can suffer incidental-parameters
+bias. This is a property of the estimator, not of pyfixest. When entity groups are
+small, consider the linear probability model (`pf.feols("binary_Y ~ X | fe", ...)`,
+coefficients as percentage-point changes) or bias-correction methods as robustness
+checks, and interpret nonlinear FE-GLM coefficients accordingly.
 
 ## Quantile Regression
 
@@ -176,7 +205,9 @@ fit = pf.quantreg("Y ~ X1 + X2", data=df, quantile=0.5,
 | `"cfm1"` (default multi) | Independent estimation of each quantile |
 | `"cfm2"` | Faster but uses asymptotic equivalence approximation |
 
-**Note:** Quantile regression is marked **experimental** in pyfixest. Check the changelog for stability updates.
+**Note:** Quantile regression (`pf.quantreg`/`pf.qplot`, both present in 0.60.0)
+matured through the 0.50 line (multi-quantile process, robust/clustered SEs via a
+Rust CRV1 vcov loop). Check the changelog for the latest stability status.
 
 ## marginaleffects Integration
 
@@ -251,30 +282,40 @@ fit = pf.feols("Y ~ X1 + X2 | fe", data=df,
                use_compression=True)
 ```
 
-Returns a `FeolsCompressed` object. Point estimates are identical to standard `feols()`; inference adjusts for the compression.
+Returns a `FeolsCompressed` object. Point estimates are identical to standard `feols()`; inference adjusts for the compression. Compressed regression supports only CRV1 inference, and the cluster variable must appear among the model features (verified live: passing `use_compression=True` with a default `iid` vcov, or with a cluster variable not in the model, raises `NotImplementedError`).
+
+> **0.60 note:** The `use_compression` (Wong et al. 2021 Mundlak compression) path
+> is flagged for deprecation in the 0.60 release notes in favor of the `duckreg`
+> package. The feature remains present in 0.60.0 (probed live only up to its
+> CRV1/cluster constraints, not through a full compressed run), but prefer
+> `duckreg` for new compressed-regression work if it is available.
 
 ## Performance Tuning
 
-### Backend Selection
+### Backend Selection (0.60 typed API)
+
+Since 0.60 the demeaning backend is set via a typed `demeaner=` object; the default
+is the compiled Rust MAP demeaner. The loose `demeaner_backend` kwarg is deprecated
+(still works with a `DeprecationWarning`). See `fixed-effects.md` § Backend Options
+for the full table.
 
 | Component | Parameter | Options | Default |
 |-----------|-----------|---------|---------|
-| FE demeaning | `demeaner_backend` | `"numba"`, `"jax"`, `"cupy"`, `"scipy"`, `"rust-cg"` | `"numba"` |
-| Linear solver | `solver` | `"scipy.linalg.solve"`, `"numpy.linalg.solve"`, `"jax"` | `"scipy.linalg.solve"` |
+| FE demeaning | `demeaner=` | `MapDemeaner(backend="rust"\|"numba")`, `LsmrDemeaner(backend="torch"\|"scipy")` | `MapDemeaner(backend="rust")` |
+| Linear solver | `solver` | `"scipy.linalg.solve"`, `"numpy.linalg.solve"` | `"scipy.linalg.solve"` |
 
 ### When to Switch Backends
 
 | Scenario | Recommendation |
 |----------|---------------|
-| Standard use (<1M obs) | Default (numba + scipy) |
-| Large data, many FE | Try `jax` or `cupy` with GPU |
-| numba installation issues | `demeaner_backend="scipy"` |
-| GPU available (Nvidia A100+) | `demeaner_backend="jax"`, `solver="jax"` |
+| Standard use (<1M obs) | Default (Rust MAP demeaner) |
+| Large data, many FE, GPU available | `demeaner=pf.LsmrDemeaner(backend="torch", device="cuda")` |
+| Prefer JIT MAP path | `demeaner=pf.MapDemeaner(backend="numba")` |
 
 ```python
-# GPU-accelerated estimation
+# GPU-accelerated estimation (requires a torch GPU build — not in the DAAF image)
 fit = pf.feols("Y ~ X1 | f1 + f2 + f3", data=large_df,
-               demeaner_backend="jax", solver="jax")
+               demeaner=pf.LsmrDemeaner(backend="torch", device="cuda"))
 ```
 
 ### Other Performance Parameters

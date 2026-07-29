@@ -63,6 +63,390 @@
 #   * GET /health endpoint for the manager's idempotency/status checks.
 #
 # Changelog:
+#   v1.3.9 (2026-07-26): Canonical GPT service-tier request vocabulary.
+#     Both exact GPT shim backends now converge on the one OpenAI Responses wire value
+#     `service_tier:"priority"` for valid inbound Anthropic Fast and shim-global ON.
+#     ChatGPT subscription continues to present this as Fast with plan/credit semantics;
+#     OpenAI API continues to present it as Priority with API Priority billing semantics.
+#     OFF still omits service_tier, policy persistence remains schema-v1 backend+boolean,
+#     and request snapshots, retry invariance, route reset, and no-fallback behavior are
+#     unchanged. Canonical served `priority` maps to Anthropic usage.speed=`fast`; exact
+#     served `fast` remains a compatibility-only terminal parser value and is never emitted
+#     as requested vocabulary. SHIM_VERSION -> 1.3.9.
+#   v1.3.8 (2026-07-25): Route-bound shim-native GPT service-tier control.
+#     Adds a strict persistent default-OFF policy shared across both GPT lanes, startup
+#     compare-and-set reset on route changes, one request-boundary policy snapshot reused
+#     by all retries, additive precedence with validated inbound Anthropic Fast, bounded
+#     requested-source telemetry, process-local latest-terminal evidence, and the stable
+#     gpt_service_tier /health block. SHIM_VERSION -> 1.3.8.
+#   v1.3.7 (2026-07-24): Claude Code Fast mode with route-specific service tiers.
+#     Valid `speed:"fast"` plus beta `fast-mode-2026-02-01` emits Responses
+#     `service_tier:"priority"` on the OpenAI API lane and `service_tier:"fast"` on the
+#     ChatGPT/Codex lane. Invalid speed requests fail locally before auth/upstream; beta-only
+#     and ordinary traffic omit service_tier. Fast never changes model, reasoning, tools,
+#     retry payloads, or context gating and never falls back to Standard. Terminal actual
+#     tiers priority/fast map to Anthropic usage.speed=fast; default/flex/scale/auto map to
+#     standard; absent/unknown remain omitted. Terminal telemetry distinguishes scrubbed
+#     requested_service_tier from served_service_tier. No env or /health field was added.
+#     SHIM_VERSION -> 1.3.7.
+#   v1.3.6 (2026-07-22): Prompt-cache observability + reasoning-cache persistence cap resize
+#     (minor bump — the observability is additive and the client-visible usage mapping is
+#     sum-invariant, so downstream context accounting is byte-equivalent). Step 1 of the
+#     prompt-cache backlog item; Step 2 (prompt_cache_key emission) remains out of scope
+#     (blocked on there being no stable cross-turn identifier in the shim today).
+#     * CAPTURE (V6-R1): the shim now reads usage.input_tokens_details.cached_tokens at all
+#       three usage-parse sites (streaming response.completed/incomplete reducer, and both
+#       non-stream lanes via _responses_to_anthropic, which carries the value through a
+#       private _cached_tokens key each lane pops before send). Defensive typing via
+#       _resolve_cached_tokens: only a non-bool int >= 0 that does not exceed the reported
+#       input total is accepted; absent/null/string/negative/bool/clamped all resolve to
+#       ABSENT (None), indistinguishable from "no cache info" (old backends/fixtures emit no
+#       detail). _RequestLifecycleState gains self.cached_tokens. Never raises.
+#     * TERMINAL RECORD (V6-R2): the terminal log record gains cached_tokens (the captured
+#       int, or the "-" absent-convention when None) at the single lane-agnostic emission
+#       site. This is the field the ~1-week telemetry review greps.
+#     * ANTHROPIC USAGE MAPPING (V6-R3, Decision 1 + Decision 2 = always-emit): client-
+#       visible usage blocks now use the subtraction mapping — input_tokens = openai_total
+#       - cached, cache_read_input_tokens = cached, cache_creation_input_tokens = 0 (OpenAI
+#       reports no cache-write count). Anthropic's input_tokens is the uncached remainder,
+#       so this preserves the sum invariant EXACTLY (the three fields sum to the OpenAI
+#       total) and Claude Code shows real cache behavior natively. The two cache fields are
+#       ALWAYS present (0 when absent) for a deterministic shape matching Anthropic's own
+#       responses; message_start zero-usage seeds and error frames carry them as zeros too.
+#       Clamp guard folds into _resolve_cached_tokens (cached > input_total -> absent,
+#       fail-open, never a negative input_tokens).
+#     * /HEALTH (V6-R4, Decision 3): a NEW top-level prompt_cache block — requests_with_usage,
+#       requests_with_cached, cached_tokens_total, input_tokens_total (module-global int
+#       counters, counts only, ticked once per terminal). hit-rate = cached_tokens_total /
+#       input_tokens_total. This changes the pinned /health key set, so _HEALTH_KEYS + the
+#       version pin move in the same commit (the sanctioned money-test extension).
+#     * REASONING-CACHE PERSISTENCE CAP RESIZE (V6-R5, Decision 4b): _REASONING_PERSIST_MAX_
+#       ENTRIES 256 -> 1024, _REASONING_PERSIST_MAX_BYTES 2 MiB -> 8 MiB (4x headroom for
+#       ~4 session-tails). In-memory _REASONING_CACHE_CAP (2048) UNCHANGED — the persist cap
+#       stays under it (no RAM change, no restore-clamp interaction). Worst-case persist
+#       write measured at low tens of ms at the 8 MiB bound (see the persistence-bounds
+#       comment). Bounds stay hard constants (no env seam).
+#     SHIM_VERSION -> 1.3.6.
+#   v1.3.5 (2026-07-21): Janitorial — removed the dead non-streaming lazy-401 refresh
+#     branch (no behavior change). The branch lived inside the OpenAI/API-key
+#     `if not stream:` block and was guarded by `SHIM_BACKEND_MODE == "chatgpt"`, but
+#     that condition is unreachable there: the earlier v1.2.7 chatgpt non-stream adapter
+#     (`if not stream and SHIM_BACKEND_MODE == "chatgpt":`) returns on every exit path, so
+#     control reaches the OpenAI/API-key `if not stream:` block only when
+#     SHIM_BACKEND_MODE != "chatgpt", making the deleted guard a permanent contradiction.
+#     Unreachable since the v1.3.0 auth delegation reshaped the non-stream chatgpt path;
+#     the live chatgpt non-stream case is fully handled by the v1.2.7 adapter, and the
+#     live lazy-401 refresh path is the shared opener's did_401_refresh guard
+#     (_open_backend_stream). No test asserted the deleted branch's log strings; the
+#     lazy-401 regression tests exercise the live opener path. SHIM_VERSION -> 1.3.5.
+#   v1.3.4 (2026-07-21): Stale-blob insurance for restored reasoning + known-events
+#     allowlist absorption + reasoning-cache effectiveness telemetry (minor bump — the
+#     insurance is additive around the existing 400 fail-fast contract, and the other two
+#     are observability/stability riders; no change to the clean-path translation
+#     semantics). Landed as two implementation commits under one release.
+#     * STALE-BLOB INSURANCE (V4-R1..R4): v1.3.3 persistence introduced the one scenario
+#       where the reasoning cache's graceful-miss guarantee did not hold — a restored
+#       (disk-loaded) `encrypted_content` blob has an undocumented backend-side validity
+#       lifetime, and a 400 rejecting a re-injected restored blob previously failed the
+#       request outright (400s are never in RETRY_STATUSES). Now: a module-level
+#       _REASONING_CACHE_RESTORED_IDS set records which call_ids came from disk (rebuilt
+#       after each restore; discarded on any live re-population or LRU eviction), and each
+#       request tracks the restored reasoning-item ids/call_ids it actually injects. In
+#       BOTH retry loops (JSON _post_with_retry, SSE _open_backend_stream), after _plan_retry
+#       declines, a 400 whose error body NAMES reasoning material (broad case-insensitive
+#       match of `reasoning`/`encrypted_content` over the normalized type/code/param/message/
+#       detail fields) AND that injected >=1 restored item triggers a one-shot strip: remove
+#       exactly those restored reasoning items from the reused payload["input"] by id (never
+#       index), evict+discard the proven-stale call_ids and rewrite the persisted snapshot,
+#       then retry once (retry_reason=stale_reasoning_400, retry_source=body). The detector's
+#       breadth is safe because the restored-items-present + 400 + one-shot gate carries the
+#       precision: a request that injected no restored items can never trigger, and a true
+#       false positive costs at most one extra attempt in today's graceful-miss shape. Every
+#       non-triggering 400 stays fail-fast, byte-identical to v1.3.3. Logs a distinct
+#       counts-only event=reasoning_cache_stale_strip stripped=N line — never blob content or
+#       backend error prose.
+#     * ALLOWLIST ABSORPTION (V4-R5): `keepalive` (a top-level type, namespaced like `error`)
+#       and `response.metadata` join the ignored status/lifecycle group of
+#       _KNOWN_EVENT_TYPES. Both were observed live during v1.2.14 validation and have been
+#       throttle-logged as "unknown wire" ever since despite carrying nothing the translation
+#       needs; absorbing them restores unknown_events=0 on a clean stream from backends that
+#       emit them. Not added to _MALFORMED_TOLERANT_EVENT_TYPES (a malformed instance should
+#       still fail strictly). The two catch-alls compare raw event-type strings, so both
+#       absorb by plain set membership with no namespace logic.
+#     * EFFECTIVENESS TELEMETRY (V4-R6/R7): the terminal record gains two additive,
+#       always-present ints — reasoning_cache_hit (per-request cache-hit count, parallel to
+#       reasoning_cache_miss) and reasoning_cache_stripped (restored items stripped by the
+#       insurance this request, 0 otherwise). /health's existing NESTED reasoning_cache block
+#       gains hits (process-cumulative cache hits) and restored_hits (the subset whose call_id
+#       was still disk-restored at hit time — the direct measure for the ~1-week cap/ceiling
+#       review); no new top-level /health key, so the health key set is unchanged. The hit
+#       path stays strictly read-only — it reads via .get(), NEVER move_to_end, so hit-
+#       counting introduces no LRU mutation and no persist / write amplification. Counts only.
+#     SHIM_VERSION -> 1.3.4.
+#   v1.3.3 (2026-07-21): Reasoning-cache persistence across shim restarts (Tier 3 A2;
+#     minor bump — additive continuity feature, no change to the live response path's
+#     translation semantics). Before this, a restart mid-session discarded the entire
+#     in-memory _REASONING_CACHE, so every subsequent turn replayed tool history WITHOUT
+#     its reasoning items (graceful misses — the miss path has always omitted-and-sent,
+#     never 400d — but degraded model context for the rest of long tool loops). The cache
+#     now survives restarts.
+#     * PERSIST: after each cache mutation the shim writes a bounded, newest-first snapshot
+#       (LRU tail) to a state file — capped at 256 entries OR 2 MiB, whichever hits first —
+#       and restores it at module import. The write is atomic (mkstemp + os.replace), 0600,
+#       and absolutely fail-open (the whole writer is try/except: pass — a persistence write
+#       must NEVER affect, delay, or raise on the response path), exactly mirroring the
+#       _write_quota_state precedent. Restore is likewise fail-open: a missing/malformed/
+#       stale/oversize file silently skips (next persist overwrites it) and the shim starts
+#       cold. Staleness is a 30-day sanity ceiling only (_REASONING_PERSIST_TTL_S) — the
+#       primary bound is the entry/byte cap, mirroring the in-memory cache's age-less LRU;
+#       a short TTL would erase exactly the entries a multi-day session-resume replays.
+#     * PLACEMENT: default path is $HOME/.claude/provider_shim/reasoning_cache.json (the
+#       shim owns directory creation, mode 0700). This is deliberately OFF the repo tree,
+#       UNLIKE shim.log/quota_state.json which stay in scripts/provider_shim/logs/: the
+#       reasoning blobs are backend-encrypted content and must never be committable to any
+#       VCS (gitignore notwithstanding), so they live on the per-container claude-config
+#       volume ($HOME/.claude, the same volume codex CLI state uses). Per-container by
+#       intent: because the file is not install-shared, the cross-install last-writer-wins
+#       race that quota_state.json accepts as status-quo degradation cannot occur here. The
+#       file is expendable continuity state (loss = graceful misses = prior behavior), never
+#       a research artifact, and sits outside the /daaf backup/audit boundary by design.
+#     * SEAM: DAAF_REASONING_CACHE_FILE redirects the path, resolved at MODULE IMPORT time
+#       (_REASONING_CACHE_PATH is computed once when the module loads), so a post-import env
+#       change does not redirect a live shim — the seam must be set before the module loads.
+#       Same contract as DAAF_QUOTA_STATE_FILE; it is a redirect / hermetic-test seam, not
+#       an off-switch (persistence stays unconditional and fail-open).
+#     * SECURITY: persisted values are exactly the in-memory values — opaque backend
+#       `encrypted_content` blobs plus item metadata, decryptable only by the backend. No
+#       plaintext reasoning, no prompts, no tool arguments, no key material. Anthropic
+#       thinking blocks are consumed, never stored. Logging stays counts-only (a single
+#       event=reasoning_cache_restore entries=N age_s=M line on a successful restore),
+#       never entry contents.
+#     * OBSERVABILITY: /health gains "reasoning_cache": {"entries": N, "restored": M}
+#       (counts only; restored = entries loaded at startup, 0 if none). No reader outside
+#       the shim — this file is shim-internal continuity state, unlike quota_state.json.
+#     * LIFECYCLE: start_shim.sh's state_targets_are_safe() now also covers quota_state.json
+#       in its symlink/non-regular hijack checklist (closing a pre-existing gap — the file
+#       has lived in that dir since v1.3.1). The reasoning-cache file is intentionally out
+#       of that checklist: it lives under $HOME/.claude/, outside start_shim's domain, and
+#       os.replace does not dereference a destination symlink.
+#     * TOPOLOGY: the supported deployment is one running shim per container at a time.
+#     * HARDENING (A2 review fold-in, no version bump): restore now (a) skips a file whose
+#       on-disk size exceeds the 2 MiB persist cap BEFORE reading it (defense-in-depth — a
+#       shim-written file can never exceed the cap, so only a hand-tampered file trips it),
+#       and (b) reports the count of entries actually RESIDENT after restore on /health, so
+#       a tampered over-cap file can no longer overstate reasoning_cache.restored.
+#     SHIM_VERSION -> 1.3.3.
+#   v1.3.2 (2026-07-21): Hermetic quota-state writes + a statusline reader tightening
+#     (two-part maintenance release; no shim behavior change on the live response path).
+#     * SHIM: _write_quota_state now honors DAAF_QUOTA_STATE_FILE — the SAME env var the
+#       reader (context-bar.sh) already consumes — so one variable coherently redirects
+#       both ends. Set + non-empty: the write (and its mkstemp temp sibling) land at that
+#       exact path; unset/empty: the __file__-derived default is byte-identical to v1.3.1.
+#       This is a redirect / hermetic-test seam, NOT an off-switch — the write stays
+#       unconditional and absolutely fail-open (a bad seam value is swallowed like any
+#       other failure). It resolves at MODULE IMPORT time (_QUOTA_STATE_PATH is computed
+#       once when the module loads), so a post-import env change does not redirect a live
+#       shim — the seam must be set before the module loads. Motivation: the loopback
+#       harness exercises the PRODUCTION shim two ways — spawned in chatgpt mode AND loaded
+#       in-process (controlled_asgi_probe drives the real request path inside the test-
+#       runner process) — and before the seam every mocked chatgpt 2xx overwrote the live
+#       INSTALL-SHARED quota_state.json with all-"-" snapshots (observed live 2026-07-21: a
+#       full-suite run rewrote the production file every ~15s, blanking the OTHER install's
+#       "Plan usage:" segment). The decisive polluter was the in-process load, whose write
+#       ran deterministically in the runner with the env var unset. The harness now covers
+#       BOTH contexts — a per-instance child-env seam for spawned shims plus a runner-level
+#       os.environ.setdefault for in-process loads — which together keep test runs off the
+#       install-shared file.
+#     * READER (context-bar.sh, statusline-hardening deferred observation O2): the
+#       fractional-floor strip of primary/secondary used-percent is now gated on
+#       ^[0-9]+\.[0-9]+$ so an exponent-notation value carrying a dot (e.g. "1.0e999")
+#       DROPS the segment instead of surviving the strip as "1" and rendering "1%". Plain
+#       fractionals (69.9 -> 69) still render; this change lives in the reader, not here.
+#     SHIM_VERSION -> 1.3.2.
+#   v1.3.1 (2026-07-20): Statusline Plan-usage telemetry (additive, no behavior change).
+#     On every chatgpt-lane 2xx (same guard as the D1 quota_snapshot line), the shim now
+#     also caches the latest quota snapshot to <log dir>/quota_state.json — an atomic,
+#     0600, absolutely-fail-open write next to shim.log. The file is a single JSON object
+#     {captured_at:<int epoch>, <the 11 x-codex-* snapshot fields, raw header strings or
+#     "-">}; the READER (context-bar.sh) computes the absolute reset instant as
+#     captured_at + primary_reset_s. context-bar.sh renders it as the "Plan usage:"
+#     segment on shim-lane sessions (window labels derived from window-minutes; stale-
+#     window drop rule; zero secondary omitted). INSTALL-SHARED: under the shared-/daaf
+#     multi-install assumption this state file lives on the shared mount and is read by
+#     any install's statusline (auth under $HOME stays per-install). Pure additive
+#     telemetry: no new env vars, no off-switch; a write failure is swallowed and never
+#     touches the response path. SHIM_VERSION -> 1.3.1.
+#   v1.3.0 (2026-07-20): ChatGPT-lane auth refresh DELEGATED to the codex CLI
+#     (Tier 3 A1; minor bump — behavior + config-surface change). The shim is now a
+#     pure READER of $CODEX_HOME/auth.json; codex is the SINGLE WRITER. This deletes
+#     the shim's Python OAuth reimplementation and structurally eliminates the
+#     refresh-rotation race that caused the 2026-07-20 auth lockout.
+#     A1-i (delegation core, committed separately):
+#       * DELETED the Python refresh path: the OAuth token POST to
+#         auth.openai.com/oauth/token, rotated-refresh-token atomic persistence, the
+#         manager.rs-mirror reload-before-refresh guard, and the SHIM_OAUTH_TOKEN_URL/
+#         SHIM_OAUTH_CLIENT_ID env seams (their only consumer was the deleted path).
+#         No legacy fallback flag — a retained Python path would preserve the race.
+#       * ADDED delegated_refresh(): a single-flight (asyncio.Lock) primitive that
+#         spawns `{SHIM_CODEX_BIN} login status` (CODEX_HOME passthrough, bounded by
+#         SHIM_CODEX_TIMEOUT_S) then RE-READS auth.json and judges success SOLELY by
+#         the re-read result — the subprocess exit code/output are diagnostic-only.
+#         Proactive trigger: token within a 5-min exp margin (was 30 min) mirroring
+#         codex's CHATGPT_ACCESS_TOKEN_REFRESH_WINDOW_MINUTES so codex actually
+#         refreshes when asked. Reactive trigger: backend 401 -> one delegated_refresh
+#         + single retry (existing retry-guard shape preserved).
+#       * NEW config: SHIM_CODEX_BIN (default "codex") and SHIM_CODEX_TIMEOUT_S
+#         (float, default 30, unparseable->30). CODEX_HOME passthrough unchanged.
+#       * Every auth-failure surface (failed delegation, post-retry 401, absent/
+#         unreadable store, codex "Not logged in"/missing/timeout) raises the actionable
+#         _RELOGIN_MSG that literally contains `codex login --device-auth` (A1-R5).
+#     A1-ii (auth surfaces, this dispatch):
+#       * A1-R4: /health gains a read-only `auth` block {state, expires_at, days_left,
+#         recovery?} on the chatgpt lane ("n/a" on the openai lane). state is
+#         valid|expiring|expired|absent|unreadable, derived from auth.json presence +
+#         JWT exp decode only — NEVER token material. `recovery` (the literal re-login
+#         command) is present only for the four actionable states. "expiring" = exp
+#         within _AUTH_EXPIRING_WINDOW_S (48h) — a USER heads-up horizon, deliberately
+#         wider than the internal 5-min refresh margin.
+#       * A1-R6a: start_shim.sh readiness + --status query /health and print an auth
+#         line; expiring -> prominent "expires in N days" warning naming
+#         `codex login --device-auth`; expired/absent/unreadable -> the "is dead" phrasing.
+#       * A1-R6b: deploy-smoke T0.9 extends from "auth.json readable" to asserting the
+#         /health auth block on shim routes: FAIL on expired|absent|unreadable, WARN on
+#         expiring, PASS on valid (SKIP on non-shim routes).
+#       * A1-R7: SHIM_CODEX_BIN/SHIM_CODEX_TIMEOUT_S documented in the Config block and
+#         start_shim.sh help/env passthrough.
+#     Review fix-it (post-A1 three-angle review; version unchanged): guard
+#       _auth_health_block() against a pathological JWT exp overflowing platform time_t
+#       (classify "unreadable" rather than raising, upholding the never-raises
+#       contract); bound the post-kill codex reap with a 5s wait_for so an unkillable
+#       child cannot stall the request path; and swept the deleted SHIM_OAUTH_* seams
+#       out of the host settings template and the user docs (install guide + technical
+#       FAQ), which still framed the now-delegated refresh as a shim-side rotation race.
+#     The two historical v1.2.5 comments describing the now-deleted Python OAuth path
+#     carry inline "[superseded in v1.3.0 ...]" markers so version history stays
+#     accurate without asserting present-tense behavior that no longer exists.
+#     SHIM_VERSION -> 1.3.0.
+#   v1.2.14 (2026-07-20): Robustness (R1-R6) + diagnostics (D1-D5) hardening pass,
+#     driven by the v1.2.8/v1.2.13 self-inflicted-outage retrospective. Doctrine:
+#     "strict emit, tolerant accept" — every change moves an unexpected upstream
+#     input from {silent drop | hard fail} to {tolerate + count + log}, while the
+#     downstream Anthropic SSE emission stays exactly as strict as before.
+#     ROBUSTNESS:
+#       R1 (observability): a bounded process map + per-request counters make unknown
+#         SSE event types, unmodeled output_item types, and unrecognized error
+#         envelopes VISIBLE (terminal record: unknown_events/unknown_items, 0 when
+#         clean) instead of vanishing. Logged via the v1.2.12 wire-divergence channel
+#         (first + every 100th), never per-event, never bodies. A live obfuscation
+#         field on arguments.delta is explicitly tolerated (no count, no failure).
+#       R2 (classification): ONE code-driven classifier on all failure paths (pre-
+#         stream HTTP, in-band error, response.failed, non-stream adapter). Envelope
+#         tolerance parses {error:{...}}, {status,error:{...}}, flat root code/message,
+#         and the Codex {detail:"..."} shape; first match wins, unrecognized is R1-
+#         counted then status-classified. insufficient_quota/usage_not_included ->
+#         invalid_request_error (mirrors Anthropic's own credit-balance 400); unknown-
+#         code 4xx -> invalid_request_error (CHANGED from retryable api_error).
+#         ADJUDICATED: a bare/unknown-code 503 -> api_error (retryable); overloaded_
+#         error is reserved for recognized overload codes and status 529 (both classes
+#         retryable, so client behavior is equivalent).
+#       R4 (retry policy): retry gating is now classification-driven (RETRY_STATUSES
+#         stays as the envelope-less fallback). insufficient_quota-coded 429 fails
+#         fast (was retried as a transient 429 — a confirmed defect class). Per-attempt
+#         delay precedence parsed -> Retry-After -> backoff; the rate-limit-delay hint
+#         ("try again in <n>") is parsed for the NUMBER only (gated on
+#         rate_limit_exceeded, never logged). Rate-limit-class cap raised 30s -> 60s;
+#         a delay beyond the cap fails fast with rate_limit_error so the client owns
+#         the long wait. Terminal record gains retry_delay_source (parsed|header|
+#         backoff). Retry counts and the no-retry-after-first-byte invariant unchanged.
+#         The ≥400 error body read for classification is bounded at 1 MiB
+#         (MAX_ERROR_BODY_BYTES): a pathologically large body is truncated before the
+#         retry-classification parse and falls back to HTTP-status gating; the full body
+#         stays cached on resp for the caller's error re-read (behavior unchanged).
+#       R5 (SSE tail): BEHAVIOR CHANGE — at EOF a non-blank-terminated tail whose
+#         pending event parses cleanly is now FLUSHED as the final event (recovers a
+#         complete terminal whose trailing blank line a proxy trimmed, B7); a malformed
+#         tail after the terminal frame is R1-counted and ignored; before the terminal
+#         it stays a fatal framing failure. One pinned test intentionally flipped
+#         (..._fails -> ..._flushes).
+#       R3 (tolerant reducer): open-block bookkeeping is a deferred-open scheduler
+#         (pending tools opened FIFO in added order; at most one Anthropic tool_use
+#         block open at a time; downstream blocks stay strictly non-overlapping).
+#         null/[] response.completed.output after tool events is guarded (streamed
+#         state wins); a text block still opens on output_text.delta independent of
+#         content_part.added; a no-reasoning turn is tolerated. Malformed-JSON on NON-
+#         load-bearing status events is skipped + R1-counted; load-bearing events
+#         (deltas, argument events, output_item.*, terminal, error) keep strict
+#         failure. Out-of-order text/reasoning arriving while a block is open is
+#         buffered and emitted as a TRAILING text/thinking block (ratified shapes).
+#         DEVIATION: _finalize_stream_failure's block-close sort is filtered to OPENED
+#         tools only (a still-deferred tool has no downstream block and a None index) —
+#         semantically inert. DEFERRED: oversized-payload tolerance (the 16 MiB cap
+#         fires inside the bounded reader before the event type is knowable; a type-
+#         aware reader would disturb the R5 EOF-tail region). Four pinned strict-
+#         ordering tests intentionally flipped to the tolerant contract.
+#       R6 (heartbeat): while the upstream is silent after message_start, the streaming
+#         path emits Anthropic `ping` SSE events every SHIM_PING_INTERVAL_S (env, float-
+#         tolerant, default 15, <=0 disables) through the SAME single-writer lock as
+#         emit(), so a ping can never split a partial frame. The watchdog stops before
+#         the terminal frames and on failure/disconnect (reaped by the request resource
+#         finalizer as a safety net); a failed ping write is treated as a disconnect
+#         (fast dead-client detection). Streaming only; /health unchanged. Terminal
+#         record gains max_idle_gap_ms (max upstream inter-event silence, ms).
+#     DIAGNOSTICS:
+#       D1 (quota capture): DIAG_HEADER_ALLOWLIST gains prefix matching (x-codex-*)
+#         plus exact x-oai-request-id; a chatgpt-lane 2xx now emits ONE grep-stable
+#         event=quota_snapshot line of numeric/enum fields (plan/limit, primary+
+#         secondary used-percent/window-minutes/reset-after, credits flags/balance;
+#         absent -> "-", values machine-field-encoded, never free text). openai lane
+#         and every non-2xx unchanged (no line).
+#       D2 (terminal enrichment): additive-only terminal fields — unknown_events/
+#         unknown_items, populated backend_type/backend_code on in-band failures,
+#         retry_delay_source, max_idle_gap_ms. All existing fields unchanged.
+#       D5 (400 diagnosis): a backend-classified invalid_request_error emits one
+#         request-correlated event=request_shape line of sorted top-level request key
+#         NAMES (+ text/reasoning sub-key names) — names only, never values.
+#       D3/D4 (lifecycle honesty + --auto footgun): implemented in start_shim.sh by a
+#         parallel dispatch (supervisor.state running|gave_up_storm|stopped surfaced by
+#         --status; an unrecognized non-empty DAAF_PROVIDER_SHIM warns once and still
+#         exits 0). See start_shim.sh; not in this file.
+#     R1 ALLOWLIST-SYNC OBLIGATION: the R1 unknown-event/item counters fire only for
+#       types outside _KNOWN_EVENT_TYPES/_KNOWN_ITEM_TYPES; those allowlists MUST stay
+#       in sync with the R3 reducer's handled/skippable event sets or "0 when clean"
+#       regresses (A1b tripwire tests guard this). v1.3.4 (V4-R5) grew the ignored
+#       (skippable) group by `keepalive` and `response.metadata` — see that changelog
+#       entry; the two catch-alls compare raw event-type strings, so both absorb by
+#       plain set membership with no namespace logic.
+#     ENVIRONMENTAL NOTE: shim STATE under /daaf (the repo/volume) is install-shared
+#       across containers on the same mount, while OAuth auth under $HOME/.claude
+#       (CODEX_HOME) is per-install — a token refresh in one install does not
+#       propagate, so concurrent installs must not be assumed to share auth.
+#     SCOPE: no auth-layer changes (the OAuth/token-delegation direction is the
+#       BindMounts session's Tier 3). Additive-only logging; scrubber discipline
+#       preserved. INTENTIONAL TEST UPDATES: 6 total (2 R5-region + 4 R3-region flips).
+#       SHIM_VERSION -> 1.2.14.
+#   v1.2.13 (2026-07-19): System-role message admission (live-outage fix). Current
+#     Claude Code appends a role:"system" message inside `messages`; the v1.2.12
+#     request-validation role check (user/assistant only) and the translator's
+#     matching raise rejected every real conversation turn with the static 400
+#     "invalid request structure" while small side requests (no system-role
+#     message) still passed. Validation now admits "system" and the translator
+#     folds system-role messages to user-role input — the exact pre-v1.2.12
+#     mapping proven against the live Codex backend. Captured-payload repro and
+#     bisection: scripts/scratch/replay_captured_request.py. All other v1.2.12
+#     hardening, translation, and lifecycle behavior unchanged.
+#     SHIM_VERSION -> 1.2.13.
+#   v1.2.12 (2026-07-18): Content-blind image fidelity and bounded translator
+#     diagnostics. User and tool-result image blocks now map to Responses
+#     input_image parts for the shared OpenAI/ChatGPT payload shape, with strict
+#     local validation and explicit 400s for unsupported sources, assistant images,
+#     and unknown history blocks. Transport lifecycle records now attribute bounded
+#     exception classes/phases, sent and returned request IDs, and retry sources.
+#     The live Codex arguments.done missing-name divergence is process-aggregated
+#     (first occurrence plus periodic summaries) instead of warning per event.
+#     /health now carries an exact service identity so the lifecycle manager can
+#     reject an unrelated HTTP 200 before declaring readiness. Retry counts,
+#     backoff policy, response translation, reasoning continuity, and cancellation/
+#     cleanup ownership are unchanged. SHIM_VERSION -> 1.2.12.
 #   v1.2.11 (2026-07-17): Correlated request-lifecycle observability and
 #     structured backend-error normalization. Every /v1/messages request now owns
 #     an internally generated 32-hex correlation ID in a ContextVar before body
@@ -298,7 +682,12 @@
 #       strict:false->true) and returns STANDARD Responses SSE. So chatgpt mode emits
 #       ONLY the 3-header floor: authorization (Bearer <access_token>),
 #       content-type: application/json, accept: text/event-stream.
-#     TOKEN LAYER (the only genuinely new component; notes/09 + notes/10, live-
+#     TOKEN LAYER [SUPERSEDED in v1.3.0 — the Python OAuth refresh described in
+#       present tense below (the auth.openai.com token POST, rotated-refresh-token
+#       persistence, and the manager.rs-mirror reload guard) was DELETED in v1.3.0;
+#       auth refresh is now delegated to the codex CLI (see the v1.3.0 entry). The
+#       paragraph is preserved verbatim as v1.2.5 history — read it in the past tense]
+#       (the only genuinely new component; notes/09 + notes/10, live-
 #       verified): the access_token TTL is ~10 days, so within any DAAF session the
 #       shim refreshes ~never — it is read-mostly. It decodes the access_token JWT
 #       PAYLOAD ONLY (never the signature) for the `exp` claim and refreshes only
@@ -332,9 +721,11 @@
 #       hung auth.openai.com cannot hold _token_refresh_lock (and block concurrent
 #       chatgpt-lane requests) for up to 600s; httpx timeout -> the existing clean
 #       RuntimeError(_RELOGIN_MSG). (b) The two OAuth test/staging override env vars
-#       (SHIM_OAUTH_TOKEN_URL, SHIM_OAUTH_CLIENT_ID) are now documented in the Config
-#       block here and in start_shim.sh (production leaves them unset -> hardcoded
-#       codex defaults). (c) codex_home_present is now HONEST — it reflects actual
+#       (SHIM_OAUTH_TOKEN_URL, SHIM_OAUTH_CLIENT_ID) were documented in the Config
+#       block and in start_shim.sh (production leaves them unset -> hardcoded
+#       codex defaults). [SUPERSEDED in v1.3.0 — both env seams were REMOVED with the
+#       Python refresh path; they no longer exist in the Config block or start_shim.sh.]
+#       (c) codex_home_present is now HONEST — it reflects actual
 #       auth.json readability (os.access R_OK), not merely CODEX_HOME being set,
 #       matching the "resolvable auth.json" docstring; applied to BOTH /health and
 #       the startup log field so they agree. Still a presence-only boolean (no
@@ -506,10 +897,28 @@
 #
 # Config (all via env):
 #   SHIM_PORT               default 4141
-#   SHIM_BACKEND_MODE       backend lane selector (v1.2.5). "openai" (default) |
-#                           "chatgpt". Read once at startup (case-insensitive,
-#                           whitespace-trimmed). An unknown value logs ONE startup
-#                           WARNING and falls back to "openai".
+#   CLAUDE_CODE_DISABLE_FAST_MODE
+#                           REQUIRED as exact `CLAUDE_CODE_DISABLE_FAST_MODE=1` on
+#                           GPT provider-shim installations/routes. This is Claude
+#                           Code's supported native `/fast` disable/hide control.
+#                           Control the shim-native route tier with:
+#                             bash /daaf/scripts/provider_shim/gpt_fast.sh {on|off|status}
+#                           Both exact GPT backends request canonical Responses wire
+#                           `service_tier:"priority"` when ON. ChatGPT presents this as
+#                           Fast with plan/credit semantics; OpenAI API presents it as
+#                           Priority with API Priority billing semantics. Setting changes
+#                           require container recreation and a new Claude session,
+#                           not a daemon restart or image rebuild. In-container DAAF
+#                           code does not mutate the private host configuration.
+#   SHIM_BACKEND_MODE       backend lane selector (v1.2.5). Legacy core process
+#                           behavior intentionally trims/normalizes the value,
+#                           defaults to "openai" when omitted, and warns then falls
+#                           back to "openai" for an unknown value. The strict product
+#                           boundary is separate: supported provider-route detection,
+#                           gpt_fast.sh, and v1.3.8 GPT policy activation require exact
+#                           SHIM_BACKEND_MODE="openai" or "chatgpt" paired with exact
+#                           DAAF_PROVIDER_SHIM="openai"; omitted, case-varied, or
+#                           whitespace-padded values are not accepted there.
 #                             * openai  — api.openai.com/v1 API-key lane (the
 #                               original, unchanged). Auth = Bearer of
 #                               SHIM_BACKEND_API_KEY (from env); default base URL
@@ -519,10 +928,9 @@
 #                               (default; still overridable via SHIM_BACKEND_BASE_URL).
 #                               Auth = Bearer of the OAuth access_token read from
 #                               $CODEX_HOME/auth.json (NOT an API key); the outbound
-#                               request emits ONLY the 3-header floor (authorization,
-#                               content-type: application/json, accept:
-#                               text/event-stream) — the backend gates on nothing
-#                               else (notes/08). REQUIRES CODEX_HOME set and a
+#                               request emits the validated auth/content/accept floor
+#                               plus the privacy-safe X-Client-Request-Id used for
+#                               transport correlation. REQUIRES CODEX_HOME set and a
 #                               readable auth.json; if either is missing the shim
 #                               fails fast with the re-login message rather than
 #                               inventing a default path. Request translation, tools,
@@ -548,21 +956,23 @@
 #   CODEX_HOME              (chatgpt mode only) directory holding auth.json (the
 #                           codex OAuth token store, mode 0600). Compose sets it to
 #                           /home/appuser/.claude/codex-daaf. In chatgpt mode the
-#                           shim reads $CODEX_HOME/auth.json for the access_token
-#                           and refreshes it in place when near expiry or on a 401.
-#                           Never logged as a path-of-secrets; /health reports only
-#                           a codex_home_present boolean (True iff auth.json is
+#                           shim READS $CODEX_HOME/auth.json for the access_token;
+#                           when the token is near expiry or a backend 401 rejects
+#                           it, the shim DELEGATES the refresh to the codex CLI
+#                           (`codex login status`, CODEX_HOME passed through) and
+#                           re-reads the result — codex is the single writer, the
+#                           shim never writes auth.json. Never logged as a
+#                           path-of-secrets; /health reports only a
+#                           codex_home_present boolean (True iff auth.json is
 #                           readable).
-#   SHIM_OAUTH_TOKEN_URL    (chatgpt mode only) TEST/STAGING OVERRIDE for the OAuth
-#                           token endpoint. Default (production) is the hardcoded
-#                           https://auth.openai.com/oauth/token. Set only to point
-#                           the refresh POST at a mock/staging token endpoint (the
-#                           mock rig uses this); leave unset in production.
-#   SHIM_OAUTH_CLIENT_ID    (chatgpt mode only) TEST/STAGING OVERRIDE for the OAuth
-#                           client_id sent on refresh. Default (production) is the
-#                           hardcoded codex first-party client_id. Set only for a
-#                           mock/staging token endpoint that expects a different
-#                           client_id; leave unset in production.
+#   SHIM_CODEX_BIN          (chatgpt mode only) codex binary invoked for delegated
+#                           token refresh. Default "codex" (on PATH in the DAAF
+#                           image). Overridable for portability and for test
+#                           injection of a fake-codex stub.
+#   SHIM_CODEX_TIMEOUT_S    (chatgpt mode only) wall-clock bound (float seconds) on
+#                           the `codex login status` subprocess. Default 30; an
+#                           unparseable value falls back to 30. On timeout the child
+#                           is killed and the auth.json re-read decides success.
 #   SHIM_STRIP_MODEL_PREFIX default "" (e.g. "openai/" to strip for api.openai.com)
 #   SHIM_SANITIZE_TOOLS     default ON ("0"/"false"/"no" to disable). Strips
 #                           known GPT "fill-every-optional" tool-call quirks
@@ -612,20 +1022,33 @@
 import os
 import sys
 import json
+import re
 import uuid
 import time
 import random
 import asyncio
 import logging
+import tempfile
+import threading
 import urllib.parse
 from collections import OrderedDict
 from contextvars import ContextVar
+
+# The shim is also loaded directly from its file path by deterministic tests. Add only
+# this script's own directory so the sibling strict policy library resolves identically
+# under direct execution and importlib-based loading.
+_SHIM_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+if _SHIM_SCRIPT_DIR not in sys.path:
+    sys.path.insert(0, _SHIM_SCRIPT_DIR)
+
+from gpt_fast import PolicyStore, native_fast_is_disabled
 
 import httpx
 import uvicorn
 
 # --- Config ---
-SHIM_VERSION = "1.2.11"
+SHIM_VERSION = "1.3.9"
+SHIM_SERVICE_ID = "daaf-anthropic-openai-shim"
 
 SHIM_PORT = int(os.environ.get("SHIM_PORT", "4141"))
 
@@ -643,8 +1066,20 @@ SHIM_PORT = int(os.environ.get("SHIM_PORT", "4141"))
 #   impersonation = existing translator + base-URL swap + Bearer-from-auth.json).
 _BACKEND_MODE_SUPPORTED = frozenset({"openai", "chatgpt"})
 _BACKEND_MODE_DEFAULT = "openai"
-_raw_backend_mode = os.environ.get("SHIM_BACKEND_MODE", _BACKEND_MODE_DEFAULT)
-_backend_mode_norm = (_raw_backend_mode or "").strip().lower()
+_raw_provider_shim = os.environ.get("DAAF_PROVIDER_SHIM")
+_raw_backend_mode = os.environ.get("SHIM_BACKEND_MODE")
+_legacy_backend_mode_input = (
+    _BACKEND_MODE_DEFAULT if _raw_backend_mode is None else _raw_backend_mode
+)
+_backend_mode_norm = (_legacy_backend_mode_input or "").strip().lower()
+# Keep two independent boundaries. Core v1.2.5/v1.3.7 routing intentionally defaults an
+# omitted backend to OpenAI, normalizes case/whitespace, and warns+falls back on unknown
+# values. The v1.3.8 shim-global policy is stricter: only the complete raw exact provider
+# and backend pair may reconcile as valid, project effective, or activate on a request.
+_GPT_FAST_ROUTE_VALID = bool(
+    _raw_provider_shim == "openai"
+    and _raw_backend_mode in _BACKEND_MODE_SUPPORTED
+)
 if _backend_mode_norm in _BACKEND_MODE_SUPPORTED:
     SHIM_BACKEND_MODE = _backend_mode_norm
     _backend_mode_warn = None
@@ -656,6 +1091,24 @@ else:
         "SHIM_BACKEND_MODE %r invalid (valid: openai|chatgpt); "
         "falling back to default %r" % (_raw_backend_mode, _BACKEND_MODE_DEFAULT)
     )
+
+# v1.3.8: process-wide route-bound GPT tier policy. The startup reconciliation is one
+# lock-serialized compare-and-set operation: a valid policy bound to the other lane, or
+# a current-lane ON policy without either the complete raw exact provider/backend pair
+# or exact native-Fast disable boundary, is replaced by explicit OFF. A concurrent
+# current-lane `on` that wins the writer lock is observed and preserved only when both
+# boundaries are exact. Every failure remains effective OFF; unsafe filesystem objects
+# are never overwritten and can never crash shim startup.
+_GPT_FAST_STORE = PolicyStore()
+_GPT_FAST_NATIVE_DISABLED = native_fast_is_disabled()
+try:
+    _GPT_FAST_STARTUP_NORMALIZATION = _GPT_FAST_STORE.normalize_backend(
+        SHIM_BACKEND_MODE,
+        route_boundary_valid=_GPT_FAST_ROUTE_VALID,
+        native_fast_disabled=_GPT_FAST_NATIVE_DISABLED,
+    )
+except Exception:
+    _GPT_FAST_STARTUP_NORMALIZATION = None
 
 # HARDENING: the backend base URL default is MODE-CONDITIONAL. openai ->
 # api.openai.com/v1 (the original production target); chatgpt -> the Codex backend
@@ -788,6 +1241,17 @@ MAX_RETRIES = 3
 BACKOFF_BASE = 0.5   # seconds; doubles each attempt
 BACKOFF_CAP = 8.0    # seconds; ceiling before jitter
 RETRY_AFTER_CAP = 30.0  # seconds; never honor an absurd Retry-After
+# v1.2.14 (R4): rate-limit-class retries may honor a longer advertised/parsed delay
+# than other classes (a genuine per-minute rate window can exceed 30s), but a delay
+# beyond THIS cap is failed fast to the client rather than slept internally, so the
+# client owns any multi-minute wait instead of a silent shim stall. Non-rate-limit
+# classes keep RETRY_AFTER_CAP.
+RATE_LIMIT_RETRY_AFTER_CAP = 60.0  # seconds
+# v1.2.14 (R4): Codex-style rate-limit delay hint embedded in the backend message
+# text. Parsed for the NUMBER only (gated on code rate_limit_exceeded); the prose is
+# never logged or reflected. "s"/"seconds" -> seconds, "ms" -> milliseconds.
+_RATE_LIMIT_DELAY_RE = re.compile(
+    r"try again in (\d+(?:\.\d+)?)\s*(s|ms|seconds?)", re.IGNORECASE)
 
 # Backend-error diagnostics distinguish status plus exact structured type/code
 # (for example insufficient_quota versus rate_limit_exceeded) and retain only
@@ -798,6 +1262,23 @@ ERR_BODY_MAXLEN = 500  # chars; bound locally generated diagnostic text
 # payloads, so 16 MiB is deliberately generous while still preventing an unbounded
 # upstream line from exhausting shim memory. The raw SSE transcript is never stored.
 MAX_RESPONSES_SSE_EVENT_BYTES = 16 * 1024 * 1024
+# v1.2.14 (F3): cap the ≥400 error body handed to the retry classifier at 1 MiB. A
+# legitimate backend error envelope is tiny; a pathological/oversized body must not
+# drive an unbounded json.loads/scan in _plan_retry. Beyond-cap bodies are truncated
+# and parse-fail on the truncated bytes, falling back to HTTP-status classification.
+MAX_ERROR_BODY_BYTES = 1024 * 1024
+
+# v1.2.14 (R6): downstream heartbeat interval in seconds. After message_start is on
+# the wire, the streaming path emits Anthropic `ping` SSE events every
+# SHIM_PING_INTERVAL_S while the upstream is silent, so an intermediary/client keeps
+# the connection warm and a dead client is detected within one interval instead of
+# only at the next upstream event. Float-tolerant: an unparseable value falls back to
+# the 15s default; a value <= 0 disables the heartbeat entirely (no watchdog task is
+# started). Streaming responses only — non-streaming paths never start a watchdog.
+try:
+    SHIM_PING_INTERVAL_S = float(os.environ.get("SHIM_PING_INTERVAL_S", "15"))
+except (ValueError, TypeError):
+    SHIM_PING_INTERVAL_S = 15.0
 
 # v1.2.11 request-local lifecycle accounting. The mutable record is intentionally
 # stored as one ContextVar value: child tasks inherit the same record, while
@@ -812,6 +1293,223 @@ _UPSTREAM_REQUEST_ID_HEADERS = (
 _UPSTREAM_REQUEST_ID_MAXLEN = 200
 _CLIENT_ERROR_MESSAGE_MAXLEN = 200
 _MACHINE_FIELD_VALUE_MAXLEN = 1000
+_WIRE_DIVERGENCE_SUMMARY_INTERVAL = 100
+_WIRE_DIVERGENCE_COUNTS = {}
+_WIRE_DIVERGENCE_LAST_EMITTED = {}
+_WIRE_DIVERGENCE_LOCK = threading.Lock()
+
+# v1.2.14 (R1): forward-compatible observability for wire shapes the shim does not
+# model. Bounded process-level aggregation keyed by (kind, name) with kind in
+# {event_type, item_type, envelope}. The cap bounds distinct keys; once reached,
+# further novel keys collapse into (kind, "__overflow__") so a hostile or highly
+# variable backend cannot grow the map without limit. Lock-guarded independently
+# of the wire-divergence lock it forwards into.
+_UNKNOWN_WIRE_COUNTS = {}
+_UNKNOWN_WIRE_CAP = 256
+_UNKNOWN_WIRE_LOCK = threading.Lock()
+
+# Event types the shim either explicitly handles or benignly ignores. A clean
+# stream contains ONLY these, so the reducer/accumulator catch-alls can count any
+# event type outside this set as genuinely unknown wire (R1) while keeping
+# unknown_events at 0 for well-behaved backends. Kept in sync with the streaming
+# reducer in _handle_messages and _accumulate_terminal_response: the first group
+# is actively translated; the second is known status/lifecycle scaffolding the
+# reducer skips (they still reach the catch-all today and must not be miscounted).
+# v1.3.4 (V4-R5) added `keepalive` and `response.metadata` to the second group.
+_KNOWN_EVENT_TYPES = frozenset({
+    # Actively handled by the reducer.
+    "response.reasoning_summary_text.delta",
+    "response.output_text.delta",
+    "response.output_item.added",
+    "response.output_item.done",
+    "response.function_call_arguments.delta",
+    "response.function_call_arguments.done",
+    "response.completed",
+    "response.incomplete",
+    "response.failed",
+    "error",
+    # Known status/lifecycle events the reducer legitimately ignores.
+    "response.created",
+    "response.in_progress",
+    "response.queued",
+    "response.content_part.added",
+    "response.content_part.done",
+    "response.output_text.done",
+    "response.reasoning_summary_text.done",
+    "response.reasoning_summary_part.added",
+    "response.reasoning_summary_part.done",
+    "response.reasoning_text.delta",
+    "response.reasoning_text.done",
+    # v1.3.4 (V4-R5): two benign scaffolding types observed live during v1.2.14
+    # validation and throttle-logged as "unknown wire" ever since — a top-level
+    # keepalive (namespaced like `error`, matched by raw set membership at the two
+    # catch-alls) and a response.metadata lifecycle frame. Both carry nothing the
+    # translation needs, so absorbing them into the ignored group makes them silently
+    # skipped rather than counted, restoring "unknown_events=0 when clean" on the
+    # backends that emit them. Deliberately NOT added to _MALFORMED_TOLERANT_EVENT_TYPES:
+    # tolerance is for malformed FRAMES of load-free events, and there is no evidence
+    # either type appears malformed — a malformed instance should still fail strictly.
+    "keepalive",
+    "response.metadata",
+})
+# output_item.added/done item types the reducer models. Any other item type is
+# counted as unknown_items (R1) — observability only; it is still not translated.
+_KNOWN_ITEM_TYPES = frozenset({"function_call", "message", "reasoning"})
+
+# v1.2.14 (R3.5): non-load-bearing event types whose FRAME may be tolerated when it
+# fails strict JSON parse. These are pure status/lifecycle scaffolding the reducer
+# already ignores when well-formed, so a malformed instance carries nothing the
+# translation needs — it is counted (R1) and skipped rather than failing the stream.
+# A load-bearing event type (deltas, tool-argument events, terminal frames, error)
+# is deliberately absent, so a malformed instance of one still fails strictly. This
+# is a subset of the ignored group in _KNOWN_EVENT_TYPES and must stay consistent
+# with it. Tolerance is malformed-JSON only; an oversized payload is capped inside
+# the bounded SSE reader before the type is knowable and is deferred (see changelog).
+_MALFORMED_TOLERANT_EVENT_TYPES = frozenset({
+    "response.created",
+    "response.in_progress",
+    "response.queued",
+    "response.content_part.added",
+    "response.content_part.done",
+    "response.reasoning_summary_part.added",
+    "response.reasoning_summary_part.done",
+})
+# Extract a clean, bounded, unescaped `"type":"..."` token from the RAW bytes of an
+# SSE frame that failed strict JSON parse. Only an ASCII type of 1-64 chars with no
+# quote/backslash qualifies; anything else yields None (strict failure preserved).
+_MALFORMED_TYPE_PROBE = re.compile(rb'"type"\s*:\s*"([^"\\]{1,64})"')
+
+# v1.3.9 Fast-mode constants. Header names are case-insensitive, while Anthropic beta
+# tokens are case-sensitive. Both exact GPT routes emit the one canonical Responses request
+# value `priority`. Served tier is read only from a terminal Responses object; exact served
+# `fast` is retained temporarily as a compatibility-only parser value and is never emitted.
+_FAST_BETA_TOKEN = "fast-mode-2026-02-01"
+_FAST_REQUEST_SERVICE_TIERS = {"openai": "priority", "chatgpt": "priority"}
+_FAST_ACTUAL_SERVICE_TIERS = frozenset({"priority", "fast"})
+_STANDARD_ACTUAL_SERVICE_TIERS = frozenset({"default", "flex", "scale", "auto"})
+_FAST_REQUEST_SOURCES = frozenset({"none", "anthropic", "shim_global", "both"})
+_LATEST_TERMINAL_LOCK = threading.Lock()
+_LATEST_TERMINAL = None
+_LATEST_TERMINAL_SEQUENCE = 0
+_LATEST_TERMINAL_ORDER = 0
+_HEALTH_MODEL_TOKEN_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,159}$")
+
+
+class _JSONObjectPairs(list):
+    """Temporary marker preserving object-pair order through JSON decoding."""
+
+
+class _DuplicateTopLevelSpeedError(ValueError):
+    """The privileged exact top-level `speed` key appeared more than once."""
+
+
+def _preserve_json_object_pairs(pairs):
+    return _JSONObjectPairs(pairs)
+
+
+def _collapse_inbound_json(value, *, root=False):
+    # Narrow duplicate-key protection for the privileged top-level Fast marker.
+    # Every unrelated duplicate and every nested duplicate retains json.loads()'s
+    # established last-key-wins behavior after recursive collapse.
+    if isinstance(value, _JSONObjectPairs):
+        collapsed = {}
+        speed_seen = False
+        for key, child in value:
+            if root and key == "speed":
+                if speed_seen:
+                    raise _DuplicateTopLevelSpeedError()
+                speed_seen = True
+            collapsed[key] = _collapse_inbound_json(child)
+        return collapsed
+    if isinstance(value, list):
+        return [_collapse_inbound_json(child) for child in value]
+    return value
+
+
+def _decode_anthropic_request_json(body):
+    preserved = json.loads(
+        body.decode("utf-8"), object_pairs_hook=_preserve_json_object_pairs
+    )
+    return _collapse_inbound_json(preserved, root=True)
+
+
+def _anthropic_beta_tokens(scope_headers):
+    # Preserve duplicate-field semantics by scanning every ASGI header pair, then split
+    # every value on commas. Malformed non-ASCII values cannot equal the ASCII beta token.
+    tokens = set()
+    for raw_name, raw_value in scope_headers or ():
+        try:
+            name = raw_name.decode("ascii").lower()
+            value = raw_value.decode("ascii")
+        except (AttributeError, UnicodeDecodeError):
+            continue
+        if name == "anthropic-beta":
+            # HTTP list optional whitespace is SP / HTAB only. A broader str.strip()
+            # would erase controls such as VT / FF and could turn a tainted member into
+            # the privileged exact beta token.
+            tokens.update(
+                part.strip(" \t") for part in value.split(",") if part.strip(" \t")
+            )
+    return tokens
+
+
+def _requested_service_tier(body, beta_tokens, policy_snapshot):
+    # v1.3.8 additive precedence. Inbound Anthropic Fast is validated exactly as in
+    # v1.3.7 even when global mode is ON; global policy never makes malformed input valid.
+    inbound_fast = False
+    if "speed" in body:
+        speed = body.get("speed")
+        if not isinstance(speed, str) or speed != "fast":
+            raise _InvalidRequestError("unsupported speed value")
+        if _FAST_BETA_TOKEN not in beta_tokens:
+            raise _InvalidRequestError(
+                "speed 'fast' requires anthropic beta fast-mode-2026-02-01")
+        inbound_fast = True
+    # The persisted opt-in is necessary but never sufficient: every accepted request
+    # also requires the complete raw exact provider/backend pair and exact native-Fast
+    # disable boundary captured for this process at startup. This keeps configuration
+    # immutable for the daemon lifetime while failing closed on every malformed control.
+    global_fast = bool(
+        _GPT_FAST_ROUTE_VALID
+        and _GPT_FAST_NATIVE_DISABLED
+        and policy_snapshot is not None
+        and policy_snapshot.status == "ok"
+        and policy_snapshot.backend_mode == SHIM_BACKEND_MODE
+        and policy_snapshot.effective
+    )
+    if inbound_fast and global_fast:
+        source = "both"
+    elif inbound_fast:
+        source = "anthropic"
+    elif global_fast:
+        source = "shim_global"
+    else:
+        source = "none"
+    # OFF means omission, never service_tier:"default" and never suppression of a valid
+    # inbound request. Both active sources converge on the lane's one canonical value.
+    requested_tier = (
+        _FAST_REQUEST_SERVICE_TIERS[SHIM_BACKEND_MODE]
+        if inbound_fast or global_fast else None
+    )
+    return requested_tier, source
+
+
+def _probe_malformed_event_type(data_bytes):
+    # v1.2.14 (R3.5): best-effort event-type recovery from a malformed SSE frame.
+    # INTENT: decide whether a frame that failed json.loads is a tolerable
+    #   non-load-bearing status event. Probes only the first 4 KiB so a large junk
+    #   frame cannot drive an unbounded scan. Returns the type string or None.
+    # REASONING: a regex over the raw bytes never executes the malformed JSON and
+    #   cannot be tricked into recovering a load-bearing type via escapes (the token
+    #   class excludes quote and backslash). The caller checks membership in
+    #   _MALFORMED_TOLERANT_EVENT_TYPES; a non-match falls through to strict failure.
+    match = _MALFORMED_TYPE_PROBE.search(data_bytes[:4096])
+    if not match:
+        return None
+    try:
+        return match.group(1).decode("ascii")
+    except (UnicodeDecodeError, AttributeError):
+        return None
 
 
 class _RequestLifecycleState:
@@ -826,13 +1524,72 @@ class _RequestLifecycleState:
         self.stop_reason = "-"
         self.input_tokens = None
         self.output_tokens = None
+        # v1.3.6 (V6-R1): cached-prefix count (OpenAI usage.input_tokens_details.
+        # cached_tokens), None until a backend terminal usage is parsed. Emitted on the
+        # terminal record (as "-" when None) and feeds the /health prompt_cache counters.
+        # Lane-agnostic, like the token fields above.
+        self.cached_tokens = None
         self.usage_source = "-"
+        # v1.3.7: requested intent and actual served tier remain distinct. "-" means
+        # absent/unknown and must never be interpreted as Standard.
+        self.requested_service_tier = "-"
+        self.requested_service_tier_source = "none"
+        # Captured exactly once by app() immediately after this lifecycle object is
+        # created and before body reading/authentication. Retries never consult global state.
+        self.gpt_policy_snapshot = None
+        self.served_service_tier = "-"
         self.tools_called = 0
         self.effort_value = "-"
         self.effort_source = "-"
         self.reasoning_cache_misses = 0
+        # v1.3.4 (V4-R6): per-request cache-hit count (parallel to the miss count above),
+        # emitted on the terminal record. reasoning_cache_stripped is the count of restored
+        # reasoning items stripped by the stale-blob 400 insurance this request (0 unless a
+        # strip-retry fired — see _maybe_strip_restored_reasoning). Both always-present ints
+        # so the terminal record parses stably regardless of whether a strip occurred.
+        self.reasoning_cache_hits = 0
+        self.reasoning_cache_stripped = 0
+        # v1.3.4 (V4-R1): per-request working state for the stale-blob 400 insurance.
+        # injected_restored_reasoning_ids holds the reasoning-item ids (rs_...) of restored
+        # blobs actually injected into this request's outbound payload (what R3 strips, by
+        # id, from the reused payload["input"]); injected_restored_call_ids holds the
+        # matching call_ids (what R4 evicts as proven-stale). stale_strip_used is the
+        # one-shot gate — a request may strip-and-retry exactly once. None of these are
+        # emitted on the terminal record (internal working state only).
+        self.injected_restored_reasoning_ids = set()
+        self.injected_restored_call_ids = set()
+        self.stale_strip_used = False
+        # v1.2.14 (R1/D2): per-request counts of unknown SSE event types and
+        # unmodeled output_item types, surfaced on the terminal record (0 when clean).
+        self.unknown_events = 0
+        self.unknown_items = 0
+        # v1.2.14 (R6/D2): maximum upstream inter-event idle gap in whole
+        # milliseconds (monotonic clock), surfaced on the terminal record for stall
+        # triage. last_upstream_event_at holds the monotonic timestamp of the previous
+        # upstream event yield; the first event has no predecessor and therefore
+        # contributes no gap (it only seeds the timer).
+        self.max_idle_gap_ms = 0
+        self.last_upstream_event_at = None
+        # v1.2.14 (R6): the downstream heartbeat watchdog task for a streaming
+        # response (None until message_start is emitted; torn down before the terminal
+        # frames and reaped by the request-level resource finalizer as a safety net).
+        self.heartbeat_task = None
+        # v1.2.14 (D5): sorted top-level request key names (+ text/reasoning sub-key
+        # names) captured once after translation, emitted once if the backend
+        # classifies the request as invalid_request_error. Names only, never values.
+        self.request_shape = None
+        self.invalid_request_shape_logged = False
         self.attempts = 0
         self.retries = 0
+        self.last_retry_reason = "-"
+        self.last_retry_source = "-"
+        # v1.2.14 (R4/D2): source of the delay used for the most recent retry sleep
+        # (parsed = backend message "try again in" text; header = Retry-After; backoff
+        # = local exponential backoff). Stays "-" when no retry slept; on a fail-fast
+        # beyond the rate-limit cap it records the advertised source that triggered it.
+        self.retry_delay_source = "-"
+        self.client_request_id = self.req_id
+        self.transport_exception = "-"
         self.upstream_request_id = "-"
         self.upstream_request_id_header = "-"
         self.upstream_http_version = "unknown"
@@ -902,13 +1659,20 @@ def _machine_field_value(value):
     )
 
 
-def _lifecycle_event(name, **fields):
+def _lifecycle_event(name, _fields_before_elapsed=False, **fields):
     state = _request_state()
     if state is None:
         return
-    parts = ["event=%s" % name, "elapsed_ms=%d" % _elapsed_ms(state)]
+    parts = ["event=%s" % name]
+    if not _fields_before_elapsed:
+        parts.append("elapsed_ms=%d" % _elapsed_ms(state))
     for key, value in fields.items():
         parts.append("%s=%s" % (key, _machine_field_value(value)))
+    if _fields_before_elapsed:
+        # Compatibility for a pre-lifecycle diagnostic whose exact event/field prefix is
+        # consumed by focused regressions. It still uses this one bounded serializer and
+        # retains elapsed timing; only the token order is preserved.
+        parts.append("elapsed_ms=%d" % _elapsed_ms(state))
     log.info(" ".join(parts))
 
 
@@ -922,6 +1686,70 @@ def _scrub_metadata(value, max_len=_UPSTREAM_REQUEST_ID_MAXLEN):
 def _normalize_http_version(value):
     normalized = str(value or "").upper()
     return normalized if normalized in {"HTTP/1.0", "HTTP/1.1", "HTTP/2"} else "unknown"
+
+
+# v1.3.1: quota-state cache for the statusline Plan-usage segment. The file lives in
+# the shim's own logs/ directory — the SAME directory start_shim.sh writes shim.log to
+# (SCRIPT_DIR/logs); it is derived here from __file__ because the shim itself logs only
+# to stderr and holds no log-directory constant of its own. Under the shared-/daaf
+# multi-install assumption this file is INSTALL-SHARED across containers on the mount:
+# any install's context-bar.sh reads it to render "Plan usage:" (auth under $HOME stays
+# per-install). The shim records only captured_at (write-time epoch); the reader does the
+# clock math (absolute reset = captured_at + primary_reset_s).
+# v1.3.2: DAAF_QUOTA_STATE_FILE, when set and non-empty, redirects the write to that exact
+# path (the state dir becomes its dirname, so the mkstemp temp sibling lands there too).
+# This is the SAME env var the reader (context-bar.sh) already honors, so one variable
+# coherently redirects BOTH ends — a hermetic-test / redirect seam mirroring the reader's,
+# NOT an off-switch: the write itself stays unconditional and fail-open (a bad seam value
+# that makes the write fail is swallowed like any other failure). When unset/empty the
+# __file__-derived default below is byte-identical to prior behavior.
+_QUOTA_STATE_FILE_ENV = os.environ.get("DAAF_QUOTA_STATE_FILE", "")
+if _QUOTA_STATE_FILE_ENV:
+    _QUOTA_STATE_PATH = _QUOTA_STATE_FILE_ENV
+    _QUOTA_STATE_DIR = os.path.dirname(_QUOTA_STATE_PATH)
+else:
+    _QUOTA_STATE_DIR = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "logs"
+    )
+    _QUOTA_STATE_PATH = os.path.join(_QUOTA_STATE_DIR, "quota_state.json")
+
+
+def _write_quota_state(snapshot):
+    # Absolutely fail-open telemetry: a quota-state write must NEVER affect, delay, or
+    # raise on the response path. Every failure mode (unwritable dir, replace error,
+    # serialization surprise) is swallowed, leaving at most one debug line and no stale
+    # temp sibling. The DAAF_QUOTA_STATE_FILE seam (above) only redirects WHERE the write
+    # lands (mirroring the reader's seam); it is NOT an off-switch — the write stays
+    # unconditional, and a bad seam value is swallowed here like any other failure.
+    tmp_path = None
+    try:
+        payload = {"captured_at": int(time.time())}
+        # snapshot carries the 11 raw header-string values (or "-" when the header was
+        # absent), exactly as emitted on the quota_snapshot line.
+        payload.update(snapshot)
+        data = json.dumps(payload).encode("utf-8")
+        # Atomic publish via a uniquely-named sibling temp file + os.replace(): a reader
+        # sees either the old file or the fully-written new one, never a partial write.
+        # mkstemp creates the temp with mode 0600 already (matching the shim.log
+        # permission discipline) and a unique name, so concurrent installs sharing this
+        # directory cannot clobber each other's in-flight temp file.
+        fd, tmp_path = tempfile.mkstemp(
+            prefix="quota_state.", suffix=".tmp", dir=_QUOTA_STATE_DIR
+        )
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(data)
+        os.replace(tmp_path, _QUOTA_STATE_PATH)
+        tmp_path = None
+    except Exception:
+        try:
+            log.debug("quota_state write skipped (fail-open)")
+        except Exception:
+            pass
+        if tmp_path is not None:
+            try:
+                os.unlink(tmp_path)
+            except Exception:
+                pass
 
 
 def _record_upstream_headers(response):
@@ -942,6 +1770,20 @@ def _record_upstream_headers(response):
         upstream_req_id_header=state.upstream_request_id_header,
         upstream_req_id=state.upstream_request_id,
     )
+    # v1.2.14 (D1): on the chatgpt lane a 2xx carries the full x-codex-* subscription
+    # quota surface. Emit ONE compact, grep-stable quota_snapshot line of numeric/enum
+    # fields for subscription-window triage. The openai lane (no x-codex-*) and every
+    # non-2xx response are unchanged — no line is emitted.
+    if SHIM_BACKEND_MODE == "chatgpt" and 200 <= response.status_code < 300:
+        snapshot = {}
+        for field, header_name in _QUOTA_SNAPSHOT_HEADER_FIELDS:
+            value = response.headers.get(header_name)
+            snapshot[field] = value if value is not None else "-"
+        _lifecycle_event("quota_snapshot", **snapshot)
+        # v1.3.1: also cache the snapshot to an install-shared JSON state file so the
+        # statusline (context-bar.sh) can render a "Plan usage:" segment on shim-lane
+        # sessions. Fail-open; never affects the response path.
+        _write_quota_state(snapshot)
 
 
 def _record_upstream_first_event():
@@ -951,6 +1793,28 @@ def _record_upstream_first_event():
     state.phase = "upstream_stream"
     state.upstream_first_event_at = time.monotonic()
     _lifecycle_event("upstream_first_event")
+
+
+def _record_upstream_event_gap():
+    # v1.2.14 (R6): timestamp each dispatched upstream SSE event and track the maximum
+    # inter-event idle gap (monotonic clock) for stall triage on the terminal record.
+    # INTENT: give the terminal record a single max_idle_gap_ms number that summarizes
+    #   the longest silent stretch between upstream events, without storing a
+    #   transcript or per-event timing.
+    # REASONING: the first event has no predecessor, so it only seeds the timer; every
+    #   later event updates the running maximum with the elapsed span since the prior
+    #   event when it is larger. Purely additive telemetry — it never alters the
+    #   control flow of the bounded SSE reader that calls it at each yield point.
+    # ASSUMES: called once per yielded upstream event, on the same request context.
+    state = _request_state()
+    if state is None:
+        return
+    now = time.monotonic()
+    if state.last_upstream_event_at is not None:
+        gap_ms = int((now - state.last_upstream_event_at) * 1000)
+        if gap_ms > state.max_idle_gap_ms:
+            state.max_idle_gap_ms = gap_ms
+    state.last_upstream_event_at = now
 
 
 def _record_downstream_first_content():
@@ -971,13 +1835,33 @@ def _record_attempt(transport):
     _lifecycle_event("upstream_attempt", attempt=state.attempts, transport=transport)
 
 
-def _record_retry(reason):
+def _record_retry(reason, source="shim_policy"):
     state = _request_state()
     if state is None:
         return
     state.phase = "upstream_retry"
     state.retries += 1
-    _lifecycle_event("upstream_retry", retry=state.retries, reason=reason)
+    state.last_retry_reason = _scrub_metadata(reason, 100)
+    state.last_retry_source = _scrub_metadata(source, 100)
+    _lifecycle_event(
+        "upstream_retry", retry=state.retries, reason=state.last_retry_reason,
+        source=state.last_retry_source,
+    )
+
+
+def _record_transport_failure(error, phase, retryable):
+    state = _request_state()
+    if state is None:
+        return
+    exception_class = _scrub_metadata(type(error).__name__, 100)
+    state.transport_exception = exception_class
+    if not retryable and state.failure_phase == "-":
+        state.failure_phase = phase
+    _lifecycle_event(
+        "transport_failure", exception_class=exception_class,
+        failure_phase=phase, attempt=state.attempts,
+        retryable="y" if retryable else "n",
+    )
 
 
 def _record_disconnect(phase):
@@ -1018,6 +1902,15 @@ def _record_backend_error(error_type="api_error", backend_type="-", backend_code
             backend_code=state.backend_code, anthropic_type=error_type,
             failure_phase=state.failure_phase,
         )
+    # v1.2.14 (D5): a backend-classified invalid_request_error gets one
+    # request-correlated shape line to aid 400 diagnosis. Guarded by its own flag
+    # (independent of backend_error_logged) so it emits exactly once even when the
+    # backend_error line was already recorded by an earlier failure hop. Names only.
+    if (error_type == "invalid_request_error"
+            and not state.invalid_request_shape_logged
+            and state.request_shape is not None):
+        state.invalid_request_shape_logged = True
+        _lifecycle_event("request_shape", **state.request_shape)
 
 
 def _mark_success():
@@ -1060,21 +1953,55 @@ def _log_terminal_once():
         if state.body_close_send == "not_attempted":
             state.body_close_send = "skipped_disconnect"
     state.phase = "terminal"
+    # v1.3.6 (V6-R4): tick the process-cumulative /health prompt_cache counters exactly
+    # once per request (this function is idempotent via terminal_logged, checked above).
+    _bump_prompt_cache_counters(state)
     _lifecycle_event(
         "terminal", outcome=state.outcome, model=state.model,
         stream=("y" if state.stream else "n") if state.stream is not None else "-",
         msgs=state.message_count, tools=state.tool_count,
         stop=state.stop_reason, input_tokens=state.input_tokens,
         output_tokens=state.output_tokens, usage=state.usage_source,
+        # v1.3.6 (V6-R2): cached-prefix count for the ~1-week telemetry review. The
+        # captured int, or the "-" absent-convention when no valid detail was parsed
+        # (absent/malformed/clamped -> None). Mapped explicitly because _machine_field_value
+        # would render None as "None"; the "-" convention matches usage/stop above. Single
+        # lane-agnostic emission site.
+        cached_tokens=(state.cached_tokens if state.cached_tokens is not None else "-"),
+        requested_service_tier=state.requested_service_tier,
+        requested_service_tier_source=state.requested_service_tier_source,
+        served_service_tier=state.served_service_tier,
         tools_called=state.tools_called, effort="%s:%s" % (
             state.effort_value, state.effort_source),
         reasoning_cache_miss=state.reasoning_cache_misses,
+        # v1.3.4 (V4-R6): additive, always-present ints. reasoning_cache_hit is this
+        # request's cache-hit count; reasoning_cache_stripped is 0 unless the stale-blob
+        # 400 insurance stripped restored items this request (counts only, never content).
+        reasoning_cache_hit=state.reasoning_cache_hits,
+        reasoning_cache_stripped=state.reasoning_cache_stripped,
         attempts=state.attempts, retries=state.retries,
+        retry_reason=state.last_retry_reason,
+        retry_source=state.last_retry_source,
+        # v1.2.14 (R4/D2): additive. "-" when no retry slept.
+        retry_delay_source=state.retry_delay_source,
+        transport_exception=state.transport_exception,
+        client_req_id=state.client_request_id,
+        upstream_req_id=state.upstream_request_id,
         failure_phase=state.failure_phase,
         terminal_frame_send=state.terminal_frame_send,
         body_close_send=state.body_close_send,
         disconnect=state.disconnect_observed,
         disconnect_phase=state.disconnect_phase,
+        # v1.2.14 (D2): additive observability. unknown_events/unknown_items are 0
+        # on a clean stream; backend_type/backend_code default to "-" and carry the
+        # extracted structural metadata on an in-band or HTTP backend failure.
+        unknown_events=state.unknown_events,
+        unknown_items=state.unknown_items,
+        backend_type=state.backend_type,
+        backend_code=state.backend_code,
+        # v1.2.14 (R6/D2): additive. Longest observed upstream inter-event silence in
+        # whole milliseconds (0 on a single-event or non-streaming response).
+        max_idle_gap_ms=state.max_idle_gap_ms,
         dur_ms=_elapsed_ms(state),
     )
 
@@ -1133,6 +2060,10 @@ class _RequestLogFilter(logging.Filter):
 
 class _ProtocolError(Exception):
     """Controlled upstream Responses protocol/schema violation."""
+
+
+class _InvalidRequestError(Exception):
+    """Sanitized local Anthropic request rejection before any backend call."""
 
 
 class _ClientDisconnected(Exception):
@@ -1285,11 +2216,41 @@ DIAG_HEADER_ALLOWLIST = (
     "x-ratelimit-limit-tokens",
     "x-ratelimit-remaining-tokens",
     "x-ratelimit-reset-tokens",
+    # v1.2.14 (D1): the chatgpt lane's request-id header (openai lane uses the
+    # x-*request-id family already captured for upstream correlation).
+    "x-oai-request-id",
+)
+# v1.2.14 (D1): prefix-allowlisted diagnostic header families. The live chatgpt lane
+# emits a broad, evolving x-codex-* quota surface (used-percent, window-minutes,
+# reset-after, plan-type, credits, per-model-family buckets) that a fixed name list
+# cannot track, so it is matched by prefix. Authorization and any credential-bearing
+# header remain structurally unreachable — a prefix here is never "authorization".
+DIAG_HEADER_PREFIX_ALLOWLIST = (
+    "x-codex-",
+)
+# v1.2.14 (D1): the compact chatgpt-lane subscription quota snapshot. ONLY numeric and
+# enum x-codex-* fields are surfaced — never a free-text header such as a promo message
+# or limit name. Each pair maps one header to one stable grep-line key; an absent header
+# renders as "-". Values still pass the shared machine-field encoding, so a hostile
+# value cannot break the single-token grammar. Header names are lowercased because
+# httpx.Headers.get() is case-insensitive. (Live capture: notes/07 §8.)
+_QUOTA_SNAPSHOT_HEADER_FIELDS = (
+    ("plan_type", "x-codex-plan-type"),
+    ("active_limit", "x-codex-active-limit"),
+    ("primary_used_pct", "x-codex-primary-used-percent"),
+    ("primary_window_min", "x-codex-primary-window-minutes"),
+    ("primary_reset_s", "x-codex-primary-reset-after-seconds"),
+    ("secondary_used_pct", "x-codex-secondary-used-percent"),
+    ("secondary_window_min", "x-codex-secondary-window-minutes"),
+    ("secondary_reset_s", "x-codex-secondary-reset-after-seconds"),
+    ("credits_has", "x-codex-credits-has-credits"),
+    ("credits_balance", "x-codex-credits-balance"),
+    ("credits_unlimited", "x-codex-credits-unlimited"),
 )
 # Defense in depth: even though credentials and Authorization are architecturally
 # excluded from logs, upstream-controlled metadata and error text receive one shared
 # sensitive-text pass before any truncation or lifecycle-field encoding.
-import re
+# (re is imported at module top for the v1.2.14 rate-limit-delay pattern.)
 _SK_KEY_RE = re.compile(r"(?i)\b(?:sk|rk|org|proj|sess)[-_][A-Za-z0-9_-]{8,}")
 _AUTH_SCHEME_RE = re.compile(
     r"(?i)\b((?:authorization\s*:\s*)?(?:bearer|basic))"
@@ -1356,6 +2317,78 @@ def _scrub_log_token(value):
     # Non-strings pass through for existing %s rendering semantics.
     return _sanitize_sensitive_text(value) if isinstance(value, str) else value
 
+
+def _record_wire_divergence(kind):
+    # Process-level aggregation is protected even when validators run from multiple
+    # server tasks or test threads. Emit one discovery warning, then one bounded
+    # summary per fixed interval; no event IDs or payload values enter the record.
+    # The summary reports records suppressed strictly BETWEEN emitted records: the
+    # first summary at observation 100 therefore covers observations 2..99 (98),
+    # while later summaries cover 101..199, 201..299, and so on (99 each). Keep the
+    # warning writes inside the same lock so concurrent observations cannot reorder
+    # an emitted summary ahead of the discovery record it follows.
+    with _WIRE_DIVERGENCE_LOCK:
+        count = _WIRE_DIVERGENCE_COUNTS.get(kind, 0) + 1
+        _WIRE_DIVERGENCE_COUNTS[kind] = count
+        if count == 1:
+            log.warning("wire-divergence: %s observed=1", kind)
+            _WIRE_DIVERGENCE_LAST_EMITTED[kind] = count
+        elif count % _WIRE_DIVERGENCE_SUMMARY_INTERVAL == 0:
+            previous_emitted = _WIRE_DIVERGENCE_LAST_EMITTED.get(kind, 0)
+            suppressed = count - previous_emitted - 1
+            log.warning(
+                "wire-divergence-summary kind=%s observed=%d suppressed=%d",
+                kind, count, suppressed,
+            )
+            _WIRE_DIVERGENCE_LAST_EMITTED[kind] = count
+    return count
+
+
+def _record_unknown_wire(kind, name):
+    # v1.2.14 (R1): record one observation of an unmodeled wire shape.
+    # INTENT: make unknown SSE event types, unmodeled output_item types, and
+    #   unrecognized error envelopes VISIBLE instead of vanishing, without ever
+    #   logging event bodies or values. Three effects, in order: (a) bump the bounded
+    #   process aggregate, (b) route first/every-100th logging through the existing
+    #   wire-divergence channel, (c) bump the per-request terminal-record counter.
+    # REASONING: the process map is bounded and overflow-collapsed so a novel-name
+    #   flood cannot grow it; the name is scrubbed and length-bounded before it can
+    #   reach a log line. The behavior is observability-only — unknown shapes are
+    #   still not translated (there is nothing to translate them to).
+    # ASSUMES: kind is a source constant ("event_type"/"item_type"/"envelope");
+    #   only `name` is backend-influenced and therefore scrubbed.
+    safe_name = _sanitize_sensitive_text(name, max_len=64) if isinstance(
+        name, str) and name else "-"
+    with _UNKNOWN_WIRE_LOCK:
+        key = (kind, safe_name)
+        if key not in _UNKNOWN_WIRE_COUNTS and (
+                len(_UNKNOWN_WIRE_COUNTS) >= _UNKNOWN_WIRE_CAP):
+            key = (kind, "__overflow__")
+        _UNKNOWN_WIRE_COUNTS[key] = _UNKNOWN_WIRE_COUNTS.get(key, 0) + 1
+    _record_wire_divergence("unknown_%s:%s" % (kind, key[1]))
+    state = _request_state()
+    if state is not None:
+        if kind == "item_type":
+            state.unknown_items += 1
+        else:
+            state.unknown_events += 1
+
+
+def _request_shape_fields(payload):
+    # v1.2.14 (D5): capture only the SORTED top-level request key NAMES (plus
+    # text/reasoning sub-key names) for a possible invalid_request_error diagnosis
+    # line. Names only, never values; the outbound Responses payload keys are
+    # shim-constructed identifiers, and _lifecycle_event scrubs each value anyway.
+    if not isinstance(payload, dict):
+        return None
+    fields = {"keys": ",".join(sorted(str(k) for k in payload.keys()))}
+    for sub in ("text", "reasoning"):
+        val = payload.get(sub)
+        if isinstance(val, dict):
+            fields["%s_keys" % sub] = ",".join(sorted(str(k) for k in val.keys()))
+    return fields
+
+
 # v1.2.0: reasoning-item cache (module-level, bounded LRU).
 # INTENT: the Responses API pairs a `reasoning` output item with the
 #   function_call(s) that follow it. On store:false stateless replay the caller
@@ -1379,17 +2412,95 @@ def _scrub_log_token(value):
 _REASONING_CACHE = OrderedDict()   # call_id -> reasoning item dict (WITH encrypted_content)
 _REASONING_CACHE_CAP = 2048
 
+# v1.3.4 (V4-R1): call_ids whose reasoning blob was loaded from the persisted snapshot at
+# import (as opposed to populated by a live backend response this process). Defined BEFORE
+# _cache_reasoning so the write path below can reference it — Python resolves module globals
+# at call time, and the first call (the import-time restore) runs after this binding exists.
+# A restored blob is the one case v1.3.3 persistence can turn a graceful cache miss into a
+# hard failure (a stale encrypted_content of unknown backend-side validity is re-injected
+# and rejected with a 400); this set lets the stale-blob 400 insurance (V4-R2..R4) tell a
+# restored blob from a live-populated one at re-injection time. Contents are call_ids only.
+_REASONING_CACHE_RESTORED_IDS = set()
+
+# v1.3.4 (V4-R7): process-cumulative reasoning-cache hit counters for the /health restore-
+# effectiveness surface. _REASONING_CACHE_HITS_TOTAL counts every cache hit since process
+# start; _REASONING_CACHE_RESTORED_HITS_TOTAL counts the subset whose call_id was still in
+# _REASONING_CACHE_RESTORED_IDS at hit time (the direct measure of how often disk-restored
+# continuity is actually exercised, for the ~1-week cap/ceiling review). Counts only, never
+# content or call_ids. Ticked read-only alongside the .get() hit (never a move_to_end), so
+# hit-counting adds ZERO cache-file write amplification (the persist writer stays gated on
+# genuine cache mutations only).
+_REASONING_CACHE_HITS_TOTAL = 0
+_REASONING_CACHE_RESTORED_HITS_TOTAL = 0
+
+
+def _bump_reasoning_hit_counters(restored):
+    # v1.3.4 (V4-R7): tick the process-cumulative /health hit counters for one cache hit.
+    # `restored` is True iff this hit's call_id was in _REASONING_CACHE_RESTORED_IDS at hit
+    # time. This never touches the cache itself (the caller reads via .get(), never
+    # move_to_end), so it introduces no LRU mutation and no persist / write amplification.
+    global _REASONING_CACHE_HITS_TOTAL, _REASONING_CACHE_RESTORED_HITS_TOTAL
+    _REASONING_CACHE_HITS_TOTAL += 1
+    if restored:
+        _REASONING_CACHE_RESTORED_HITS_TOTAL += 1
+
+
+# v1.3.6 (V6-R4): process-cumulative prompt-cache observability counters for the /health
+# prompt_cache block. COUNTS ONLY — never prompt content or token material. Ticked once per
+# terminal (from _log_terminal_once, idempotent via terminal_logged) by
+# _bump_prompt_cache_counters. requests_with_usage counts terminals with a backend-parsed
+# usage; requests_with_cached is the subset reporting cached_tokens > 0; cached_tokens_total
+# and input_tokens_total are the cumulative sums (input_tokens_total is the OpenAI input
+# TOTAL) so the ~1-week review reads a cache hit-rate in ONE probe as
+# cached_tokens_total / input_tokens_total.
+_PROMPT_CACHE_REQUESTS_WITH_USAGE = 0
+_PROMPT_CACHE_REQUESTS_WITH_CACHED = 0
+_PROMPT_CACHE_CACHED_TOKENS_TOTAL = 0
+_PROMPT_CACHE_INPUT_TOKENS_TOTAL = 0
+
+
+def _bump_prompt_cache_counters(state):
+    # v1.3.6 (V6-R4): tick the /health prompt_cache counters for one terminal. Gated on a
+    # BACKEND-sourced usage (usage_source == "backend") so the estimated-fallback path
+    # (input_tokens defaulted to 0, no real cache detail) never pollutes the hit-rate
+    # denominator. The cached counters advance only on a valid, non-clamped cached detail
+    # (state.cached_tokens a real int > 0). Counts only; never raises.
+    global _PROMPT_CACHE_REQUESTS_WITH_USAGE, _PROMPT_CACHE_REQUESTS_WITH_CACHED
+    global _PROMPT_CACHE_CACHED_TOKENS_TOTAL, _PROMPT_CACHE_INPUT_TOKENS_TOTAL
+    if state is None or state.usage_source != "backend":
+        return
+    if isinstance(state.input_tokens, bool) or not isinstance(state.input_tokens, int):
+        return
+    _PROMPT_CACHE_REQUESTS_WITH_USAGE += 1
+    _PROMPT_CACHE_INPUT_TOKENS_TOTAL += state.input_tokens
+    cached = state.cached_tokens
+    if not isinstance(cached, bool) and isinstance(cached, int) and cached > 0:
+        _PROMPT_CACHE_REQUESTS_WITH_CACHED += 1
+        _PROMPT_CACHE_CACHED_TOKENS_TOTAL += cached
+
 
 def _cache_reasoning(call_id, reasoning_item):
     # INTENT: store one reasoning item under a function_call's call_id, LRU-style.
     # REASONING: move-to-end on write so the most recently paired call_ids evict
     #   last; a session's active tool loop stays warm.
+    # RETURNS: True iff the write actually landed (valid call_id + dict item), False
+    #   on a no-op reject. v1.3.3 (A2): the caller uses this to persist only on a real
+    #   mutation, and the restore path reuses it to rebuild the cache in file order.
     if not call_id or not isinstance(reasoning_item, dict):
-        return
+        return False
     _REASONING_CACHE[call_id] = reasoning_item
     _REASONING_CACHE.move_to_end(call_id)
+    # v1.3.4 (V4-R1): a write here is a LIVE (re-)population of this call_id — the blob is
+    # fresh from a backend response, so it is no longer a disk-restored entry. Drop it from
+    # the restored set. The import-time restore also routes through this function, so it
+    # re-adds the genuinely-restored ids AFTER its loop (see _restore_reasoning_cache); this
+    # discard therefore never races the restore's own bookkeeping.
+    _REASONING_CACHE_RESTORED_IDS.discard(call_id)
     while len(_REASONING_CACHE) > _REASONING_CACHE_CAP:
-        _REASONING_CACHE.popitem(last=False)  # evict oldest
+        evicted_id, _evicted_item = _REASONING_CACHE.popitem(last=False)  # evict oldest
+        # An evicted entry can no longer be injected, so it cannot be a stale-blob source.
+        _REASONING_CACHE_RESTORED_IDS.discard(evicted_id)
+    return True
 
 
 def _populate_reasoning_cache(output_items):
@@ -1406,7 +2517,11 @@ def _populate_reasoning_cache(output_items):
     #   the wire-format spec skeleton, notes file 04 §4). A function_call with no
     #   preceding reasoning item (current_reasoning is None) is simply not cached
     #   — nothing to inject, and the cache miss path handles the absence.
+    # RETURNS: the number of cache entries actually written/refreshed. v1.3.3 (A2):
+    #   the call sites persist the cache only when this is nonzero, so a populate that
+    #   binds nothing (no reasoning, or unpaired function_calls) triggers no disk write.
     current_reasoning = None
+    mutated = 0
     for item in output_items or []:
         if not isinstance(item, dict):
             continue
@@ -1415,7 +2530,186 @@ def _populate_reasoning_cache(output_items):
             current_reasoning = item
         elif itype == "function_call":
             if current_reasoning is not None:
-                _cache_reasoning(item.get("call_id"), current_reasoning)
+                if _cache_reasoning(item.get("call_id"), current_reasoning):
+                    mutated += 1
+    return mutated
+
+
+# --- v1.3.3 (A2): reasoning-cache persistence across shim restarts ---
+# INTENT: the in-memory _REASONING_CACHE above is module-global and unpersisted, so
+#   every restart discards it. A restart mid-session then replays the tool history
+#   WITHOUT its reasoning items — the miss path is graceful (omit the item, count the
+#   miss, proceed), but the model loses the reasoning context for the rest of a long
+#   tool loop. Persisting a bounded newest-first snapshot on each cache mutation and
+#   restoring it at import keeps reasoning continuity across a restart.
+# SECURITY: persisted values are EXACTLY the in-memory values — opaque backend-encrypted
+#   `encrypted_content` blobs plus item metadata. No plaintext reasoning, no key
+#   material (same posture as the live cache; Anthropic thinking blocks are consumed,
+#   never stored). Logging discipline is unchanged: names/counts only, never contents.
+# PLACEMENT (A2-R4, amended by the design checkpoint): the default lives on the
+#   per-container claude-config volume ($HOME/.claude/provider_shim/), DELIBERATELY
+#   outside the /daaf repo tree. Reasoning blobs are relatively private and must not sit
+#   in a directory that is shareable across containers or ever syncable to VCS. This is
+#   why the path is HOME-derived, NOT __file__-derived like quota_state.json (which is
+#   scrubbed operational telemetry, deliberately kept install-shared in logs/). Only the
+#   content-bearing artifact moves off the repo mount. Because the file is per-container,
+#   the install-shared last-writer-wins race that quota_state.json carries does not apply
+#   here; the supported topology is one running shim per container at a time.
+# SEAM (A2-R4): DAAF_REASONING_CACHE_FILE, resolved at MODULE IMPORT time exactly like
+#   DAAF_QUOTA_STATE_FILE (a post-import env change does NOT redirect a live shim). When
+#   set and non-empty it overrides both the path and its parent dir; when unset the
+#   HOME-derived default below applies. Hermetic tests provision this seam in every
+#   module-load context (spawned child env, in-process runner setdefault, per-test patch).
+_REASONING_CACHE_FILE_ENV = os.environ.get("DAAF_REASONING_CACHE_FILE", "")
+if _REASONING_CACHE_FILE_ENV:
+    _REASONING_CACHE_PATH = _REASONING_CACHE_FILE_ENV
+    _REASONING_CACHE_DIR = os.path.dirname(_REASONING_CACHE_PATH)
+else:
+    _REASONING_CACHE_DIR = os.path.join(
+        os.path.expanduser("~"), ".claude", "provider_shim"
+    )
+    _REASONING_CACHE_PATH = os.path.join(_REASONING_CACHE_DIR, "reasoning_cache.json")
+
+# Persistence bounds (A2-R2; Decision 3 as amended; v1.3.6 V6-R5 resize to 1024 / 8 MiB).
+# The entry/byte caps are the PRIMARY bound and intentionally mirror the in-memory LRU tail
+# — restart recovery only needs the recent tail (active tool loops), not all 2048 in-memory
+# entries, and the byte cap bounds the response-path write to low tens of ms at the 8 MiB
+# bound (measured 2026-07-22: ~19 ms median, ~25 ms worst over 20 full-snapshot serialize+
+# atomic-write iterations incl. fsync — a conservative upper bound; was "single-digit ms" at
+# the old 2 MiB cap). The TTL is only a 30-day SANITY CEILING against
+# replaying ancient blobs of unknown backend-side validity; it is deliberately NOT an
+# aggressive expiry, because the live cache has no age limit (LRU only) and multi-day
+# session gaps are normal (a short TTL would erase exactly the entries a resumed session
+# replays). Keep the NEWEST entries when either bound binds.
+_REASONING_PERSIST_MAX_ENTRIES = 1024      # v1.3.6 (V6-R5): 256 -> 1024 (4x headroom)
+_REASONING_PERSIST_MAX_BYTES = 8_388_608   # v1.3.6 (V6-R5): 2 MiB -> 8 MiB
+_REASONING_PERSIST_TTL_S = 2_592_000       # 30 days (sanity ceiling only)
+
+# Count of entries loaded from the persisted snapshot at startup (0 if none). Set by the
+# restore call below and surfaced read-only on /health. Never includes contents/call_ids.
+_REASONING_CACHE_RESTORED = 0
+
+
+def _write_reasoning_cache_state():
+    # Absolutely fail-open persistence, mirroring _write_quota_state (:1321): a persist
+    # must NEVER affect, delay, or raise on the response path. Every failure mode
+    # (unwritable dir, replace error, serialization surprise, bad seam value) is
+    # swallowed, leaving at most one debug line and no stale temp sibling.
+    tmp_path = None
+    try:
+        # Snapshot the NEWEST entries (the LRU tail). _REASONING_CACHE iterates
+        # oldest->newest, so the last N items are the most-recently-used; keeping the tail
+        # matches the in-memory eviction order and gives restore an oldest->newest list.
+        items = list(_REASONING_CACHE.items())
+        if not items:
+            return
+        entries = [[cid, item] for cid, item in items[-_REASONING_PERSIST_MAX_ENTRIES:]]
+        payload = {"captured_at": int(time.time()), "entries": entries}
+        data = json.dumps(payload).encode("utf-8")
+        # Byte cap: if oversize, drop OLDEST entries (front) until under the cap, keeping
+        # the newest. If even a single entry exceeds the cap, persist nothing this round.
+        while len(data) > _REASONING_PERSIST_MAX_BYTES and len(payload["entries"]) > 1:
+            payload["entries"] = payload["entries"][1:]
+            data = json.dumps(payload).encode("utf-8")
+        if len(data) > _REASONING_PERSIST_MAX_BYTES:
+            return
+        # The shim owns directory creation (the HOME-derived default dir may not exist yet
+        # in a fresh container). 0700 matches the logs/ dir discipline start_shim.sh uses.
+        os.makedirs(_REASONING_CACHE_DIR, mode=0o700, exist_ok=True)
+        # Atomic publish via a uniquely-named sibling temp + os.replace(): a reader sees
+        # either the old file or the fully-written new one, never a partial write. mkstemp
+        # creates the temp with mode 0600 already (matching the shim.log/quota_state
+        # permission discipline). os.replace onto a symlink replaces the symlink entry
+        # itself (rename(2) does not dereference the destination), so the atomic-publish
+        # path is not symlink-redirectable; the 0700 parent dir is the primary guard.
+        fd, tmp_path = tempfile.mkstemp(
+            prefix="reasoning_cache.", suffix=".tmp", dir=_REASONING_CACHE_DIR
+        )
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(data)
+        os.replace(tmp_path, _REASONING_CACHE_PATH)
+        tmp_path = None
+    except Exception:
+        try:
+            log.debug("reasoning_cache write skipped (fail-open)")
+        except Exception:
+            pass
+        if tmp_path is not None:
+            try:
+                os.unlink(tmp_path)
+            except Exception:
+                pass
+
+
+def _restore_reasoning_cache():
+    # Fail-open restore at import. Returns (restored_count, age_s) on a successful load,
+    # (0, None) on ANY failure or skip (missing file, unparseable JSON, bad shape, stale,
+    # oversize). Never raises. The next persist overwrites a file that failed to restore.
+    try:
+        if not os.path.exists(_REASONING_CACHE_PATH):
+            return (0, None)
+        # Defense-in-depth (A2 review INFO-2): bound the READ the same way the writer bounds
+        # its output. Check the on-disk size BEFORE reading the whole file into memory and
+        # skip an oversized file. A shim-written file can never exceed the byte cap (the
+        # writer refuses to publish above it at the `len(data) > _REASONING_PERSIST_MAX_BYTES`
+        # guard above), so this only trips on a hand-tampered/oversized file — fail-open like
+        # every other branch here (an OSError from getsize is caught by the outer except).
+        if os.path.getsize(_REASONING_CACHE_PATH) > _REASONING_PERSIST_MAX_BYTES:
+            return (0, None)
+        with open(_REASONING_CACHE_PATH, "rb") as handle:
+            payload = json.loads(handle.read().decode("utf-8"))
+        if not isinstance(payload, dict):
+            return (0, None)
+        captured_at = payload.get("captured_at")
+        entries = payload.get("entries")
+        # bool is an int subclass; reject it explicitly so a stray True/False captured_at
+        # cannot pass the numeric gate.
+        if isinstance(captured_at, bool) or not isinstance(captured_at, int):
+            return (0, None)
+        if not isinstance(entries, list):
+            return (0, None)
+        age_s = int(time.time()) - captured_at
+        # Reject a future timestamp (clock skew / tampering) and anything past the 30-day
+        # sanity ceiling.
+        if age_s < 0 or age_s > _REASONING_PERSIST_TTL_S:
+            return (0, None)
+        # Rebuild in file order (oldest->newest) so the LRU tail ends up most-recently-used;
+        # _cache_reasoning enforces the 2048 cap and skips malformed pairs. A single bad
+        # entry is skipped, not fatal — the rest of a well-formed file still restores.
+        restored = 0
+        restored_ids = set()
+        for pair in entries:
+            if not isinstance(pair, (list, tuple)) or len(pair) != 2:
+                continue
+            if _cache_reasoning(pair[0], pair[1]):
+                restored += 1
+                restored_ids.add(pair[0])
+        # v1.3.4 (V4-R1): record which call_ids came from disk so the stale-blob 400
+        # insurance can distinguish a restored blob from a live-populated one at
+        # re-injection. Built AFTER the loop because _cache_reasoning discards each id as it
+        # writes (treating every write as live population); we re-add the genuinely-restored
+        # ids here, intersected with what actually resides in the cache (a hand-tampered
+        # over-cap file could have evicted some during the loop). Mutated in place (clear +
+        # update) so no `global` rebinding is needed.
+        _REASONING_CACHE_RESTORED_IDS.clear()
+        _REASONING_CACHE_RESTORED_IDS.update(restored_ids & set(_REASONING_CACHE.keys()))
+        # A2 review INFO-1: report the number of entries actually RESIDENT after restore,
+        # not the raw insert count. A hand-tampered file with more entries than
+        # _REASONING_CACHE_CAP (or with duplicate call_ids) would make `restored` exceed
+        # what the cache actually holds (e.g. 5000 inserts -> cache caps at 2048),
+        # overstating /health.reasoning_cache.restored. Clamp against the live cache size
+        # (restore runs at import against an empty cache, so len == the resident restored
+        # count) so the surfaced number can never overstate what is truly loaded.
+        return (min(restored, len(_REASONING_CACHE)), age_s)
+    except Exception:
+        return (0, None)
+
+
+# Restore at import, adjacent to the cache definition. `log` is not configured yet here,
+# so the one-line restore log is DEFERRED to just after logging is set up below (mirroring
+# the _backend_mode_warn deferral). counts only — never entry contents or call_ids.
+_reasoning_restore_result = _restore_reasoning_cache()
+_REASONING_CACHE_RESTORED = _reasoning_restore_result[0]
 
 
 # HARDENING: structured logging to stderr ONLY. The manager script redirects
@@ -1438,6 +2732,16 @@ log = logging.getLogger("shim")
 if _backend_mode_warn is not None:
     log.warning(_backend_mode_warn)
 
+# v1.3.3 (A2-R3): emit the deferred reasoning-cache restore line now that `log` exists.
+# The restore itself ran at import above (before logging was configured). Silent when
+# nothing was restored (missing/stale/corrupt file all resolve to 0). counts only —
+# never entry contents or call_ids.
+if _REASONING_CACHE_RESTORED > 0:
+    log.info(
+        "event=reasoning_cache_restore entries=%d age_s=%s",
+        _REASONING_CACHE_RESTORED, _reasoning_restore_result[1],
+    )
+
 # v1.2.4: resolve the process-wide response verbosity now that `log` exists (the
 # resolver emits its one WARNING via `log` for an invalid value). Read once at
 # startup; the hot path just reads this constant into text:{"verbosity": ...}.
@@ -1447,51 +2751,56 @@ SHIM_TEXT_VERBOSITY = _resolve_startup_verbosity()
 _client = httpx.AsyncClient(timeout=httpx.Timeout(600.0, connect=30.0))
 
 
-# --- v1.2.5: ChatGPT-subscription OAuth token layer (chatgpt mode ONLY) ---
+# --- v1.3.0: ChatGPT-subscription auth layer — delegated to the codex CLI ---
 # INTENT: in chatgpt mode the Bearer is the OAuth access_token from
 #   $CODEX_HOME/auth.json, not an api.openai.com API key. The access_token TTL is
-#   ~10 days (notes/09 A), so within any DAAF session the shim refreshes ~never:
-#   this layer is READ-MOSTLY. It reads the access_token, sends it as Bearer, and
-#   refreshes ONLY when the JWT `exp` is within a 30-min safety margin OR on a
-#   backend 401 (lazy). Refresh rotates the refresh_token (notes/10) and MUST
-#   persist atomically; a guarded reload-before-refresh (notes/09 B2, codex
-#   manager.rs:2388) skips the refresh when another writer already produced a
-#   newer on-disk token. All own-refreshes are serialized by an asyncio.Lock.
-# CREDENTIAL SAFETY: no token value is ever logged. Writing token values INTO
-#   auth.json (0600) is the intended credential-store operation, not a leak.
-#   Presence is checked with `if not tok:` guards, never by printing.
+#   ~10 days (notes/09 A), so within any DAAF session refreshes are rare: this layer
+#   is READ-MOSTLY. It reads the access_token, sends it as Bearer, and — when the
+#   token is near expiry (proactive) or a backend 401 rejects it (reactive) —
+#   DELEGATES the refresh to the codex CLI. The codex CLI is the SINGLE WRITER of
+#   auth.json; the shim NEVER writes it. The shim invokes `codex login status`, then
+#   re-reads auth.json and judges validity from the JWT `exp` claim. Delegating the
+#   write structurally eliminates the refresh-token-rotation race a Python-side
+#   refresh had with any other codex-based tool sharing the same CODEX_HOME (the
+#   live-confirmed 2026-07-20 auth-lockout cause).
+# CREDENTIAL SAFETY: no token value is ever logged. The shim only READS auth.json;
+#   codex owns every write. Presence is checked with `if not tok:` guards, never by
+#   printing. The codex subprocess's stdout/stderr are captured (to keep them off the
+#   shim's own streams) but NEVER logged — codex may echo account detail. Only its
+#   exit code and a coarse event label are logged.
 
-# OAuth refresh endpoint + client_id (first-party, notes/09 B). Both are the codex
-# constants; env-overridable purely for testing (the mock rig points them at a
-# local mock token endpoint). Real production leaves them unset -> these defaults.
-_OAUTH_TOKEN_URL = os.environ.get(
-    "SHIM_OAUTH_TOKEN_URL", "https://auth.openai.com/oauth/token"
-)
-_OAUTH_CLIENT_ID = os.environ.get(
-    "SHIM_OAUTH_CLIENT_ID", "app_EMoamEEZ73f0CkXaXp7hrann"
-)
-# Refresh when the access_token is within this many seconds of its `exp` (notes/09
-# F: 30-min safety margin — deliberately wider than codex's 5-min window because a
-# DAAF session is long and a mid-turn expiry is worse than a slightly-early refresh).
-_TOKEN_REFRESH_MARGIN_S = 30 * 60
-# Actionable message surfaced on a permanent refresh failure or a missing/unreadable
-# auth store. No secret content — just the recovery instruction (notes/09 B/F).
-_RELOGIN_MSG = ("ChatGPT OAuth token refresh failed permanently; run "
-                "'codex login --device-auth' inside the container to re-authenticate")
+# The codex binary used for delegated refresh. Default `codex` (on PATH in the DAAF
+# image); overridable for test injection (a fake-codex stub) and portability.
+SHIM_CODEX_BIN = os.environ.get("SHIM_CODEX_BIN", "").strip() or "codex"
+# Wall-clock bound on the `codex login status` subprocess. Float-tolerant: an
+# unparseable value falls back to the 30s default (mirrors the SHIM_PING_INTERVAL_S
+# convention). A hung codex must not stall a chatgpt-lane request indefinitely; on
+# timeout the child is killed and the re-read decides success/failure.
+try:
+    SHIM_CODEX_TIMEOUT_S = float(os.environ.get("SHIM_CODEX_TIMEOUT_S", "30"))
+except (ValueError, TypeError):
+    SHIM_CODEX_TIMEOUT_S = 30.0
+# Refresh when the access_token is within this many seconds of its `exp`. Mirrors
+# codex's own CHATGPT_ACCESS_TOKEN_REFRESH_WINDOW_MINUTES (5 min, notes/05) so that
+# when the shim decides to refresh, codex — keying refresh on the same window —
+# actually performs it rather than treating `login status` as a no-op.
+_TOKEN_REFRESH_MARGIN_S = 5 * 60
+# Actionable message surfaced on ANY auth failure (a failed delegated refresh, a
+# post-retry 401, a missing/unreadable auth store, or codex reporting "Not logged
+# in"). No secret content — just the recovery instruction. It MUST literally contain
+# `codex login --device-auth` (A1-R5); every auth-failure surface reuses this string.
+_RELOGIN_MSG = ("ChatGPT OAuth token is invalid or expired and the codex CLI could "
+                "not refresh it; run 'codex login --device-auth' inside the container "
+                "to re-authenticate")
 
-# In-process serialization of our OWN refreshes (the shim is async; concurrent
-# requests must not each fire a refresh). Per-process only — cross-process
-# coordination is the guarded reload-before-refresh below (notes/09 B2).
+# In-process single-flight serialization of delegated refreshes (the shim is async;
+# concurrent requests that all observe a stale/rejected token must not each spawn a
+# codex subprocess — the first refresh wins and the rest adopt its result).
+# Cross-process coordination is now codex's own domain as the single writer.
 _token_refresh_lock = asyncio.Lock()
 # The access_token currently held in memory. Seeded lazily from disk on first use.
 # Value is a secret string; never logged.
 _token_state = {"access_token": None, "exp": None}
-# Explicit ownership for the rotating-token commit. The task exists only while the
-# holder of _token_refresh_lock supervises one refresh exchange through persistence.
-# A bounded failure is retained for the process lifetime to prevent accidental reuse
-# of a possibly consumed refresh token. Neither field ever contains token values.
-_refresh_commit_task = None
-_refresh_commit_failure = None
 
 
 def _b64url_decode(seg):
@@ -1558,233 +2867,134 @@ def _read_auth_json():
     return data
 
 
-def _codex_last_refresh_now():
-    # INTENT: produce a `last_refresh` timestamp string matching codex's EXACT
-    #   format so an external codex reload treats our write as well-formed.
-    # REASONING: codex writes RFC3339 UTC with 9-digit (nanosecond) fractional
-    #   seconds + trailing "Z" (chrono's DateTime<Utc>::to_rfc3339() default,
-    #   notes/10). Python's datetime sources only microseconds (6 digits), so we
-    #   format to microseconds and zero-pad the fractional field to 9 digits.
-    # ASSUMES: nanosecond-precision beyond microseconds is not required for
-    #   correctness — codex only parses the field; the padding matches its STRING
-    #   shape (notes/10 wrote 2026-07-15T00:46:57.074803000Z this exact way).
-    from datetime import datetime, timezone
-    now = datetime.now(timezone.utc)
-    # e.g. 2026-07-15T00:46:57.074803 -> pad microseconds (6) to nanoseconds (9).
-    return now.strftime("%Y-%m-%dT%H:%M:%S.") + ("%06d000" % now.microsecond) + "Z"
-
-
-def _atomic_write_auth_json(new_data):
-    # INTENT: persist the updated auth.json ATOMICALLY, mode 0600, in the SAME
-    #   directory as the real file (same-fs rename requirement for os.replace).
-    # REASONING: temp file in the same dir -> chmod 0600 on the temp -> os.replace()
-    #   (atomic same-fs rename). This fixes the torn-write hazard codex itself has
-    #   (notes/09 B2) — a reader never sees a partial file. Live-validated write
-    #   path (notes/10). The temp is uniquely named to avoid colliding with a
-    #   concurrent writer's temp.
-    # CREDENTIAL SAFETY: writing token values into the 0600 store is the INTENDED
-    #   operation, not a leak. Nothing is logged here.
-    import tempfile
-    d = os.path.dirname(_CODEX_AUTH_PATH)
-    fd, tmp = tempfile.mkstemp(prefix=".auth.json.tmp.", dir=d)
+async def _run_codex_login_status():
+    # INTENT: invoke `{SHIM_CODEX_BIN} login status` so the codex CLI — the SINGLE
+    #   writer of auth.json — performs any needed token refresh in its own store.
+    # REASONING: async create_subprocess_exec keeps the event loop unblocked; the
+    #   subprocess inherits the shim's environ (CODEX_HOME already exported) so codex
+    #   targets the same per-install store the shim reads. Bounded by
+    #   SHIM_CODEX_TIMEOUT_S. This call's exit code and output are DIAGNOSTIC ONLY —
+    #   the authoritative refresh outcome is the auth.json re-read the caller performs
+    #   afterward, NEVER parsed from this subprocess's stdout/stderr (A1-R3). A spawn
+    #   failure (missing binary) or a timeout is non-fatal here; the re-read decides.
+    # CREDENTIAL SAFETY: stdout/stderr are captured (to keep them off the shim's own
+    #   streams) but NEVER logged — codex may echo account detail. Only the exit code
+    #   and a coarse event label are logged.
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(new_data, f)
-        os.chmod(tmp, 0o600)
-        os.replace(tmp, _CODEX_AUTH_PATH)  # atomic same-fs rename
-    except Exception:
-        # Best-effort cleanup of the temp on any failure so we never leave a
-        # partial credential file behind.
+        proc = await asyncio.create_subprocess_exec(
+            SHIM_CODEX_BIN, "login", "status",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env=os.environ.copy(),
+        )
+    except (OSError, ValueError) as e:
+        # Missing binary (FileNotFoundError), permission error, bad argv, etc. Log the
+        # exception TYPE only; the caller's re-read surfaces the actionable error.
+        log.warning("event=codex_spawn_failed err=%s", type(e).__name__)
+        return
+    try:
+        await asyncio.wait_for(proc.communicate(), timeout=SHIM_CODEX_TIMEOUT_S)
+    except asyncio.TimeoutError:
+        log.warning("event=codex_login_status_timeout timeout_s=%s",
+                    SHIM_CODEX_TIMEOUT_S)
         try:
-            os.unlink(tmp)
-        except OSError:
+            proc.kill()
+        except ProcessLookupError:
             pass
-        raise
+        # Reap the killed child so it does not linger as a zombie or leak its pipes.
+        # Bound the reap: an unkillable child (e.g. stuck in uninterruptible sleep)
+        # must not stall the request path — log a coarse event and keep going.
+        try:
+            await asyncio.wait_for(proc.communicate(), timeout=5)
+        except asyncio.TimeoutError:
+            log.warning("event=codex_login_status_reap_timeout timeout_s=5")
+        except Exception:
+            pass
+        return
+    log.info("event=codex_login_status rc=%s", proc.returncode)
 
 
-async def _refresh_tokens(current):
-    # INTENT: exchange the current refresh_token for a fresh token set, persist the
-    #   rotated tokens atomically, and update in-memory state. Returns the new
-    #   access_token.
-    # REASONING: POST _OAUTH_TOKEN_URL with client_id + grant_type=refresh_token +
-    #   the current refresh_token. On HTTP 200 the response carries a ROTATED
-    #   refresh_token (notes/10) plus new access_token/id_token; we MUST persist the
-    #   rotation or a later reuse of the consumed refresh_token triggers a permanent
-    #   refresh_token_reused lockout (notes/09 B). Deserialize LENIENTLY — the live
-    #   response also carries undocumented fields (earliest_refresh_at, oai_is) that
-    #   we tolerate/ignore (notes/10). We do NOT honor earliest_refresh_at for
-    #   scheduling; the shim keys refresh decisions on the live JWT `exp` claim.
-    # FAST-FAIL: a non-200, or a 200 missing access_token, is a permanent failure
-    #   for this session — raise RuntimeError(_RELOGIN_MSG). We do NOT spin.
-    # CREDENTIAL SAFETY: the refresh_token/access_token/id_token are handled
-    #   in-memory and written into auth.json only; never logged. The request body
-    #   contains the refresh_token — httpx does not log bodies, and we never print it.
-    tokens = current.get("tokens") or {}
-    refresh_token = tokens.get("refresh_token")
-    if not refresh_token:
-        raise RuntimeError("auth.json has no refresh_token; " + _RELOGIN_MSG)
-    payload = {
-        "client_id": _OAUTH_CLIENT_ID,
-        "grant_type": "refresh_token",
-        "refresh_token": refresh_token,
-    }
-    try:
-        # TIMEOUT: this single OAuth POST gets a DEDICATED short timeout, NOT the
-        #   shared _client's 600s read window.
-        # REASONING: _refresh_tokens runs inside _token_refresh_lock; a hung
-        #   auth.openai.com would otherwise hold that lock for up to 600s and stall
-        #   every concurrent chatgpt-lane request behind it. The OAuth token
-        #   endpoint is a fast, small JSON exchange — 10s connect / 30s read is
-        #   generous for it while capping the worst-case lock hold. On timeout httpx
-        #   raises httpx.HTTPError (TimeoutException is a subclass), which the
-        #   existing except-clause converts to a clean RuntimeError(_RELOGIN_MSG),
-        #   releasing the lock via the `async with` in _get_access_token.
-        r = await _client.post(_OAUTH_TOKEN_URL, json=payload,
-                               headers={"Content-Type": "application/json"},
-                               timeout=httpx.Timeout(30.0, connect=10.0))
-    except httpx.HTTPError as e:
-        # A transport error is not necessarily permanent, but we do not retry-spin
-        # a refresh (rare path); surface it as a clean failure for this attempt.
-        raise RuntimeError("token refresh transport error (%s); %s"
-                           % (type(e).__name__, _RELOGIN_MSG))
-    if r.status_code != 200:
-        # Permanent: refresh_token_reused, invalid_grant, etc. Do NOT log the body
-        # (may echo token fragments); log only the status.
-        log.error("token refresh failed status=%d (permanent); %s",
-                  r.status_code, _RELOGIN_MSG)
+async def delegated_refresh(rejected_token=None):
+    # INTENT: the single delegated-refresh primitive. Serialize (single-flight),
+    #   invoke the codex CLI to refresh, then re-read auth.json and judge validity by
+    #   the JWT `exp` — returning a currently-valid access_token or raising
+    #   RuntimeError(_RELOGIN_MSG). Success/failure is determined ONLY by the re-read
+    #   result, never by the subprocess's exit code or output (A1-R3).
+    # REASONING: the asyncio.Lock makes concurrent callers single-flight — the first
+    #   waiter refreshes; the rest, after acquiring the lock, adopt the now-fresh
+    #   in-memory token WITHOUT re-invoking codex (the short-circuit below).
+    # rejected_token: on the reactive (401) path this is the token the backend just
+    #   rejected. A token that merely LOOKS exp-valid but EQUALS rejected_token must
+    #   NOT short-circuit the codex invocation — the server has already rejected it,
+    #   so its exp margin cannot vouch for it. On the proactive path it is None.
+    # CREDENTIAL SAFETY: token values live in memory / auth.json only; never logged.
+    async with _token_refresh_lock:
+        now = time.time()
+        # Single-flight short-circuit: a concurrent waiter may have already refreshed
+        # to a comfortably-valid token. Adopt it without re-invoking codex — unless it
+        # is the very token we were told the backend rejected.
+        cached = _token_state["access_token"]
+        cached_exp = _token_state["exp"]
+        if (cached and cached_exp is not None
+                and cached_exp - now > _TOKEN_REFRESH_MARGIN_S
+                and (rejected_token is None or cached != rejected_token)):
+            return cached
+
+        # Delegate the refresh to codex (the single writer). Diagnostic only.
+        await _run_codex_login_status()
+
+        # Authoritative outcome: re-read auth.json and judge validity from the JWT
+        # exp. A missing/unreadable/malformed store raises RuntimeError(_RELOGIN_MSG).
+        current = _read_auth_json()
+        disk_access = (current.get("tokens") or {}).get("access_token")
+        disk_exp = _jwt_exp(disk_access)
+        if disk_access and disk_exp is not None and disk_exp - now > _TOKEN_REFRESH_MARGIN_S:
+            _token_state["access_token"] = disk_access
+            _token_state["exp"] = disk_exp
+            log.info("chatgpt token refreshed via codex (new exp=%s)", disk_exp)
+            return disk_access
+        # Still invalid/absent after delegation -> actionable failure (A1-R5).
         raise RuntimeError(_RELOGIN_MSG)
-    try:
-        resp = r.json()
-    except ValueError:
-        raise RuntimeError("token refresh returned non-JSON; " + _RELOGIN_MSG)
-    new_access = resp.get("access_token")
-    new_refresh = resp.get("refresh_token")   # ROTATED — differs from the input
-    new_id = resp.get("id_token")
-    if not new_access:
-        raise RuntimeError("token refresh response missing access_token; " + _RELOGIN_MSG)
-
-    # Build the new auth.json preserving the fields codex owns, updating only the
-    # rotated tokens + last_refresh. Lenient: unknown response fields are ignored.
-    new_data = dict(current)  # shallow copy preserves OPENAI_API_KEY/auth_mode/etc.
-    new_tokens = dict(tokens)  # preserves tokens.account_id (not returned by refresh)
-    new_tokens["access_token"] = new_access
-    if new_refresh:
-        new_tokens["refresh_token"] = new_refresh
-    if new_id:
-        new_tokens["id_token"] = new_id
-    new_data["tokens"] = new_tokens
-    new_data["last_refresh"] = _codex_last_refresh_now()
-    _atomic_write_auth_json(new_data)
-
-    _token_state["access_token"] = new_access
-    _token_state["exp"] = _jwt_exp(new_access)
-    # SAFETY: log ONLY the fact of a refresh and the new expiry (a unix ts / ISO is
-    # NOT a secret); never the token itself.
-    log.info("chatgpt token refreshed (new exp=%s)", _token_state["exp"])
-    return new_access
-
-
-async def _await_refresh_commit(current):
-    # INTENT: supervise one rotating-token refresh from POST launch through atomic
-    # persistence and in-memory update, regardless of request disconnect/cancellation.
-    # REASONING: the OAuth server may consume the old refresh token before the response
-    # arrives. Cancelling at that point could strand auth.json permanently stale. The
-    # token-lock holder therefore creates one explicit task and awaits it to settlement
-    # with _settle_owned_task; request cancellation is remembered and propagated only
-    # after response validation, rotated-token extraction, atomic replace, and state
-    # update finish. A failed exchange is retained as a bounded process-lifetime
-    # failure so no waiter can retry a refresh token that might already be consumed.
-    # CREDENTIAL SAFETY: supervision stores only the task and a generic exception;
-    # token values remain solely inside _refresh_tokens/auth.json and are never logged.
-    global _refresh_commit_task, _refresh_commit_failure
-
-    if _refresh_commit_failure is not None:
-        raise RuntimeError(_RELOGIN_MSG)
-    if _refresh_commit_task is not None:
-        # _get_access_token owns _token_refresh_lock across this call, so a second live
-        # task would mean lock ownership was violated rather than useful deduplication.
-        raise RuntimeError("token refresh commit ownership conflict; " + _RELOGIN_MSG)
-
-    refresh_task = asyncio.create_task(_refresh_tokens(current))
-    _refresh_commit_task = refresh_task
-    kind, outcome, owner_cancellation = await _settle_owned_task(refresh_task)
-    _refresh_commit_task = None
-
-    if kind == "exception":
-        _refresh_commit_failure = outcome
-    elif kind == "cancelled":
-        _refresh_commit_failure = RuntimeError(_RELOGIN_MSG)
-
-    # Cancellation remains cancellation even when the commit itself failed. The task
-    # outcome has already been retrieved and the bounded failure remains for waiters.
-    if owner_cancellation is not None:
-        raise owner_cancellation
-    if kind == "result":
-        return outcome
-    if kind == "exception":
-        raise outcome
-    raise asyncio.CancelledError
 
 
 async def _get_access_token(force_refresh=False, rejected_token=None):
     # INTENT: return a currently-valid access_token for the chatgpt-lane Bearer.
-    #   Refresh (guarded reload -> POST -> rotate -> atomic persist) only when the
-    #   token is within _TOKEN_REFRESH_MARGIN_S of exp, OR when force_refresh is set
-    #   (the lazy-401 path forces one refresh regardless of exp).
-    # REASONING (read-mostly): the common path reads auth.json (or the cached
-    #   in-memory token), checks exp, and returns the Bearer with NO network call —
-    #   the ~10-day TTL means this is the path ~always taken. Only near-expiry or a
-    #   401 triggers the refresh branch, which is serialized by _token_refresh_lock.
-    # GUARDED RELOAD-BEFORE-REFRESH (notes/09 B2, codex manager.rs:2388): inside the
-    #   lock we re-read auth.json; if another writer (codex CLI/plugin) already
-    #   rotated the on-disk token, adopt it and SKIP our own refresh — this avoids
-    #   consuming (and rotating away) a refresh_token another process just replaced.
-    #   The comparison differs by path (see below): the proactive path keys on exp
-    #   margin; the lazy-401 path keys on TOKEN IDENTITY vs. the rejected token,
-    #   because a 401'd token can still be far from its nominal exp (it was rejected
-    #   server-side, so exp margin cannot decide whether a refresh is needed).
+    #   The common path is a pure READ (no subprocess): the ~10-day TTL means the
+    #   token is almost always comfortably valid. A refresh — DELEGATED to the codex
+    #   CLI — happens only proactively (token within _TOKEN_REFRESH_MARGIN_S of exp)
+    #   or reactively (force_refresh, the lazy-401 path).
+    # REASONING: the proactive path checks the cached token, then the authoritative
+    #   on-disk token; only if that is missing or near-expiry does it delegate. The
+    #   reactive path always delegates (passing the rejected token) because a 401'd
+    #   token can still be far from its nominal exp — exp margin cannot decide.
     # CREDENTIAL SAFETY: token values live in memory / auth.json only; never logged.
     now = time.time()
 
-    # Fast path (no lock): a cached in-memory token that is comfortably valid and no
-    # forced refresh -> return it directly.
+    # Fast path (no lock, no subprocess): a cached in-memory token that is comfortably
+    # valid and no forced refresh -> return it directly.
     if not force_refresh:
         cached = _token_state["access_token"]
         cached_exp = _token_state["exp"]
         if cached and cached_exp is not None and cached_exp - now > _TOKEN_REFRESH_MARGIN_S:
             return cached
 
-    async with _token_refresh_lock:
-        # Re-read from disk under the lock (this IS the guarded reload). This picks
-        # up any external writer's refresh and is the authoritative current state.
-        current = _read_auth_json()
-        disk_access = (current.get("tokens") or {}).get("access_token")
-        disk_exp = _jwt_exp(disk_access)
+    if force_refresh:
+        # Reactive (lazy-401): delegate unconditionally, passing the rejected token so
+        # the single-flight short-circuit cannot hand back the just-rejected token.
+        return await delegated_refresh(rejected_token=rejected_token)
 
-        # Adopt the on-disk token into memory (it is at least as fresh as ours).
-        if disk_access:
-            _token_state["access_token"] = disk_access
-            _token_state["exp"] = disk_exp
-
-        if force_refresh:
-            # Lazy-401 path. Guarded reload by TOKEN IDENTITY (not exp margin): if the
-            # on-disk token DIFFERS from the token the backend just rejected, another
-            # writer already rotated it — adopt it and skip our refresh, retrying with
-            # the fresh on-disk token first. If the on-disk token is the SAME one that
-            # got 401'd (the common single-writer case), we MUST refresh — its exp
-            # margin is irrelevant because the server has already rejected it.
-            if (disk_access and rejected_token is not None
-                    and disk_access != rejected_token):
-                log.info("chatgpt 401 refresh skipped: on-disk token rotated by another writer (guarded reload)")
-                return disk_access
-            return await _await_refresh_commit(current)
-
-        # Proactive path: refresh only if the (authoritative on-disk) token is
-        # missing or within the safety margin of exp.
-        if disk_access and disk_exp is not None and disk_exp - now > _TOKEN_REFRESH_MARGIN_S:
-            # Guarded reload already adopted a fresh on-disk token — no refresh.
-            return disk_access
-        return await _await_refresh_commit(current)
+    # Proactive: re-read the authoritative on-disk token (cheap). If it is present and
+    # comfortably valid, adopt and return it with no subprocess. Otherwise delegate.
+    # A missing/unreadable store raises RuntimeError(_RELOGIN_MSG) (A1-R5).
+    current = _read_auth_json()
+    disk_access = (current.get("tokens") or {}).get("access_token")
+    disk_exp = _jwt_exp(disk_access)
+    if disk_access:
+        _token_state["access_token"] = disk_access
+        _token_state["exp"] = disk_exp
+    if disk_access and disk_exp is not None and disk_exp - now > _TOKEN_REFRESH_MARGIN_S:
+        return disk_access
+    return await delegated_refresh()
 
 
 # --- Helpers: request translation (Anthropic -> OpenAI Responses) ---
@@ -1971,135 +3181,304 @@ def _system_to_text(system):
     return "\n".join(p for p in parts if p)
 
 
-def _flatten_tool_result_content(tr_content):
-    # tool_result content may be a string OR an array of blocks. Flatten to text.
-    # INTENT: the Responses `function_call_output.output` field is a plain string,
-    #   so we reduce the Anthropic tool_result content to text (same flattening
-    #   the chat lane used, preserved verbatim for behavioral continuity).
-    if isinstance(tr_content, list):
-        flat = []
-        for sub in tr_content:
-            if isinstance(sub, dict) and sub.get("type") == "text":
-                flat.append(sub.get("text", ""))
-            elif isinstance(sub, str):
-                flat.append(sub)
-        return "\n".join(flat)
+_IMAGE_MEDIA_TYPES = frozenset({
+    "image/jpeg", "image/png", "image/gif", "image/webp",
+})
+_BASE64_IMAGE_RE = re.compile(
+    r"(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?\Z"
+)
+_CONTENT_LABEL_RE = re.compile(r"[^A-Za-z0-9_.-]+")
+
+
+def _content_label(value):
+    # Content errors may identify only structural coordinates and type labels. Keep
+    # arbitrary request text, URLs, file IDs, and image bytes structurally unreachable.
+    if not isinstance(value, str) or not value:
+        return "unknown"
+    return _CONTENT_LABEL_RE.sub("_", value)[:40] or "unknown"
+
+
+def _content_error(message_index, block_index, role, block_type, reason):
+    return _InvalidRequestError(
+        "message %d block %s role %s type %s: %s" % (
+            message_index, block_index, _content_label(role),
+            _content_label(block_type), reason,
+        )
+    )
+
+
+def _image_to_responses_part(block, message_index, block_index, role):
+    # INTENT: translate visual bytes without inspecting, decoding, or logging them.
+    # REASONING: MIME prefixes come only from an exact allowlist; strict RFC-4648
+    #   syntax is checked with a bounded-character regex so validation never creates
+    #   a second decoded image copy. GIF is accepted syntactically; this stdlib-only
+    #   shim does not claim animated-GIF detection, so the later live lane smoke is
+    #   the release gate for each provider endpoint.
+    if role != "user":
+        raise _content_error(
+            message_index, block_index, role, "image",
+            "assistant/history images are unsupported",
+        )
+    source = block.get("source")
+    if not isinstance(source, dict):
+        raise _content_error(
+            message_index, block_index, role, "image", "invalid image source",
+        )
+    source_type = source.get("type")
+    if source_type == "base64":
+        media_type = source.get("media_type")
+        data = source.get("data")
+        if media_type not in _IMAGE_MEDIA_TYPES:
+            raise _content_error(
+                message_index, block_index, role, "image",
+                "unsupported image media type",
+            )
+        if (
+            not isinstance(data, str)
+            or not data
+            or len(data) % 4 != 0
+            or _BASE64_IMAGE_RE.fullmatch(data) is None
+        ):
+            raise _content_error(
+                message_index, block_index, role, "image", "invalid base64 image data",
+            )
+        return {
+            "type": "input_image",
+            "image_url": "data:%s;base64,%s" % (media_type, data),
+            "detail": "auto",
+        }
+    if source_type == "url":
+        url = source.get("url")
+        valid = isinstance(url, str) and bool(url) and not any(
+            char.isspace() or ord(char) < 0x20 or ord(char) == 0x7f
+            for char in url
+        ) and "\\" not in url
+        if valid:
+            try:
+                parsed = urllib.parse.urlsplit(url)
+                valid = (
+                    parsed.scheme.lower() in {"http", "https"}
+                    and bool(parsed.netloc)
+                    and bool(parsed.hostname)
+                    and parsed.username is None
+                    and parsed.password is None
+                )
+                if valid:
+                    parsed.port  # force invalid-port validation
+            except (TypeError, ValueError):
+                valid = False
+        if not valid:
+            raise _content_error(
+                message_index, block_index, role, "image", "invalid image URL",
+            )
+        return {"type": "input_image", "image_url": url, "detail": "auto"}
+    if source_type == "file":
+        raise _content_error(
+            message_index, block_index, role, "image",
+            "provider-scoped file image sources are unsupported",
+        )
+    raise _content_error(
+        message_index, block_index, role, "image", "unsupported image source type",
+    )
+
+
+def _tool_result_output(tr_content, message_index, block_index, role):
+    # Preserve the historical string output for text-only results. The Responses
+    # function-call output item-list form is used only when an image is present.
+    # Other container/scalar types are malformed Anthropic history, not values to
+    # serialize opportunistically into a backend function-call output.
     if isinstance(tr_content, str):
         return tr_content
-    return json.dumps(tr_content)
+    if not isinstance(tr_content, list):
+        raise _content_error(
+            message_index, block_index, role, "tool_result",
+            "content must be a string or list (got %s)" % _content_label(
+                type(tr_content).__name__
+            ),
+        )
+    parts = []
+    flat_text = []
+    saw_image = False
+    for sub_index, sub in enumerate(tr_content):
+        nested_index = "%d.%d" % (block_index, sub_index)
+        if isinstance(sub, str):
+            text = sub
+            parts.append({"type": "input_text", "text": text})
+            flat_text.append(text)
+            continue
+        if not isinstance(sub, dict):
+            raise _content_error(
+                message_index, nested_index, role, "non_object",
+                "unsupported tool-result content block",
+            )
+        sub_type = sub.get("type")
+        if sub_type == "text":
+            text = sub.get("text", "")
+            if not isinstance(text, str):
+                raise _content_error(
+                    message_index, nested_index, role, "text", "invalid text block",
+                )
+            parts.append({"type": "input_text", "text": text})
+            flat_text.append(text)
+        elif sub_type == "image":
+            saw_image = True
+            parts.append(_image_to_responses_part(
+                sub, message_index, nested_index, role,
+            ))
+        else:
+            raise _content_error(
+                message_index, nested_index, role, sub_type,
+                "unsupported tool-result content block",
+            )
+    return parts if saw_image else "\n".join(flat_text)
 
 
 def _messages_to_input(messages):
-    # Translate Anthropic messages[] into a Responses `input[]` array, threading
-    # cached reasoning items in before the function_calls they justify.
-    #
-    # INTENT: produce the ordered list of Responses input items:
-    #   * user text          -> {"role":"user","content":[{"type":"input_text",...}]}
-    #   * assistant text      -> {"type":"message","role":"assistant",
-    #                             "content":[{"type":"output_text",...}]}
-    #   * assistant tool_use  -> [cached reasoning item?] then
-    #                             {"type":"function_call","call_id","name","arguments"}
-    #   * user tool_result    -> {"type":"function_call_output","call_id","output"}
-    # REASONING: assistant history content parts MUST be `output_text`, NOT
-    #   `input_text` — the Responses API rejects input_text on resent assistant
-    #   messages (spec file 04 §1 "Important deprecation"). Reasoning items are
-    #   injected from the cache (see _REASONING_CACHE) immediately before their
-    #   paired function_call so gpt-5.x's required-reasoning-item invariant holds
-    #   on stateless replay.
-    # ASSUMES: image/thinking/other unknown blocks are ignored gracefully (chat-
-    #   lane behavior preserved). Thinking blocks that Claude Code resends from
-    #   OUR own thinking emission are DROPPED here — the reasoning cache, not
-    #   resent thinking text, is the continuity mechanism.
+    # Translate in source order. User text/images remain adjacent content parts;
+    # assistant tool replay keeps reasoning-cache injection immediately before calls.
     input_items = []
-    injected_reasoning_ids = set()  # dedupe: a reasoning item shared by parallel
-                                    # calls is injected ONCE per request build.
-    missing_reasoning = 0           # count cache misses for the request log line.
+    injected_reasoning_ids = set()
+    missing_reasoning = 0
+    # v1.3.4 (V4-R6): per-request reasoning-cache hits (parallel to missing_reasoning),
+    # surfaced on the terminal record and used to feed the process-cumulative /health
+    # counters via _bump_reasoning_hit_counters at each hit.
+    reasoning_cache_hits = 0
+    # v1.3.4 (V4-R1): track restored (disk-loaded) reasoning material injected this
+    # request. reasoning-item ids for the strip (R3), call_ids for the eviction (R4).
+    injected_restored_reasoning_ids = set()
+    injected_restored_call_ids = set()
 
-    for m in messages:
-        role = m.get("role", "user")
-        content = m.get("content", "")
-
-        # Plain string content -> a single message item for this role.
+    for message_index, message in enumerate(messages):
+        role = message.get("role")
+        # v1.2.13: fold role:"system" messages to user-role input. Live Claude
+        # Code appends a system-role message to `messages`; pre-v1.2.12 code
+        # mapped every non-assistant role to user and that behavior is proven
+        # against the live Codex backend, so system reuses it verbatim rather
+        # than inventing untested native system/developer-role translation.
+        # ORDERING DEPENDENCY: the request-validation gauntlet checks RAW roles
+        # and pre-rejects system-role messages carrying tool_use/tool_result;
+        # this fold runs after it, so the post-fold tool checks below never see
+        # them. Callers must not invoke this translator without that gauntlet.
+        if role == "system":
+            role = "user"
+        if role not in ("user", "assistant"):
+            raise _InvalidRequestError(
+                "message %d role invalid: expected user or assistant" % message_index
+            )
+        content = message.get("content", "")
         if isinstance(content, str):
-            if role == "assistant":
-                input_items.append({
-                    "type": "message", "role": "assistant",
-                    "content": [{"type": "output_text", "text": content}],
-                })
-            else:
-                input_items.append({
-                    "role": "user",
-                    "content": [{"type": "input_text", "text": content}],
-                })
+            input_items.append({
+                **({"type": "message"} if role == "assistant" else {}),
+                "role": "assistant" if role == "assistant" else "user",
+                "content": [{
+                    "type": "output_text" if role == "assistant" else "input_text",
+                    "text": content,
+                }],
+            })
             continue
 
-        text_parts = []
-        for block in content:
+        pending_parts = []
+
+        def flush_message_parts():
+            if not pending_parts:
+                return
+            input_items.append({
+                **({"type": "message"} if role == "assistant" else {}),
+                "role": "assistant" if role == "assistant" else "user",
+                "content": list(pending_parts),
+            })
+            pending_parts.clear()
+
+        for block_index, block in enumerate(content):
             if not isinstance(block, dict):
-                continue
-            btype = block.get("type")
-
-            if btype == "text":
-                text_parts.append(block.get("text", ""))
-
-        # Emit the message item (text) for this turn FIRST, so text precedes the
-        # function_call items within an assistant turn (mirrors output order).
-        if text_parts:
-            joined = "\n".join(text_parts)
-            if role == "assistant":
-                input_items.append({
-                    "type": "message", "role": "assistant",
-                    "content": [{"type": "output_text", "text": joined}],
+                raise _content_error(
+                    message_index, block_index, role, "non_object",
+                    "unsupported content block",
+                )
+            block_type = block.get("type")
+            if block_type == "text":
+                text = block.get("text", "")
+                if not isinstance(text, str):
+                    raise _content_error(
+                        message_index, block_index, role, "text", "invalid text block",
+                    )
+                pending_parts.append({
+                    "type": "output_text" if role == "assistant" else "input_text",
+                    "text": text,
                 })
-            else:
-                input_items.append({
-                    "role": "user",
-                    "content": [{"type": "input_text", "text": joined}],
-                })
-
-        # Second pass over blocks for tool_use / tool_result (order-preserving).
-        for block in content:
-            if not isinstance(block, dict):
+            elif block_type == "image":
+                pending_parts.append(_image_to_responses_part(
+                    block, message_index, block_index, role,
+                ))
+            elif block_type in {"thinking", "redacted_thinking"}:
+                # Known Claude continuity blocks are intentionally consumed rather
+                # than forwarded. Encrypted Responses reasoning cache entries, not
+                # replayed Anthropic thinking prose/signatures, preserve continuity.
                 continue
-            btype = block.get("type")
-
-            if btype == "tool_use":
+            elif block_type == "tool_use":
+                if role != "assistant":
+                    raise _content_error(
+                        message_index, block_index, role, "tool_use",
+                        "tool_use is permitted only in assistant messages",
+                    )
+                flush_message_parts()
                 call_id = block.get("id", "")
-                # REASONING-CACHE INJECTION: if we have a cached reasoning item
-                # for this call_id, insert it immediately BEFORE the function_call
-                # (unless an equivalent reasoning item — same id — was already
-                # injected for this request build; parallel calls share one).
                 cached = _REASONING_CACHE.get(call_id)
                 if cached is not None:
-                    rs_id = cached.get("id")
-                    if rs_id not in injected_reasoning_ids:
+                    # v1.3.4 (V4-R6/R7): count this hit for the terminal record (per-request)
+                    # and the /health restore-effectiveness counters (process-cumulative). The
+                    # hit above used .get() — never move_to_end — so counting stays read-only
+                    # and adds no LRU mutation / persist / write amplification. The restored
+                    # flag reads the SAME membership V4-R1's tracking below keys off; the set
+                    # is not mutated within this translation, so the two reads agree.
+                    reasoning_cache_hits += 1
+                    _bump_reasoning_hit_counters(call_id in _REASONING_CACHE_RESTORED_IDS)
+                    reasoning_id = cached.get("id")
+                    if reasoning_id not in injected_reasoning_ids:
                         input_items.append(cached)
-                        injected_reasoning_ids.add(rs_id)
+                        injected_reasoning_ids.add(reasoning_id)
+                    # v1.3.4 (V4-R1): if this call_id's blob came from disk, record its
+                    # reasoning-item id (for the strip) and call_id (for the eviction). The
+                    # reasoning item is guaranteed present in input_items here — appended by
+                    # this hit or an earlier one sharing the same id — so recording its id
+                    # for a possible strip is always valid. reasoning_id must be truthy so a
+                    # malformed id-less item cannot broaden the strip to every id-less item.
+                    if reasoning_id and call_id in _REASONING_CACHE_RESTORED_IDS:
+                        injected_restored_reasoning_ids.add(reasoning_id)
+                        injected_restored_call_ids.add(call_id)
                 else:
-                    # Cache miss (e.g. shim restarted mid-session, or unknown
-                    # call_id). Omit the reasoning item and proceed — do NOT fail
-                    # the request. Live testing will establish whether the API
-                    # hard-rejects; the documented risk is the community-reported
-                    # "function_call was provided without its required 'reasoning'
-                    # item" error.
                     missing_reasoning += 1
                 input_items.append({
                     "type": "function_call",
                     "call_id": call_id,
                     "name": block.get("name", ""),
-                    # arguments is a JSON *string*, not an object.
                     "arguments": json.dumps(block.get("input", {})),
                 })
-
-            elif btype == "tool_result":
+            elif block_type == "tool_result":
+                if role != "user":
+                    raise _content_error(
+                        message_index, block_index, role, "tool_result",
+                        "tool_result is permitted only in user messages",
+                    )
+                flush_message_parts()
                 input_items.append({
                     "type": "function_call_output",
                     "call_id": block.get("tool_use_id", ""),
-                    "output": _flatten_tool_result_content(block.get("content", "")),
+                    "output": _tool_result_output(
+                        block.get("content", ""), message_index, block_index, role,
+                    ),
                 })
-            # Unknown block types (image, thinking) are ignored gracefully.
+            else:
+                raise _content_error(
+                    message_index, block_index, role, block_type,
+                    "unsupported content block",
+                )
+        flush_message_parts()
 
-    return input_items, missing_reasoning
+    return (
+        input_items, missing_reasoning, reasoning_cache_hits,
+        injected_restored_reasoning_ids, injected_restored_call_ids,
+    )
 
 
 def _tools_to_responses(tools):
@@ -2127,14 +3506,22 @@ def _tools_to_responses(tools):
     return out
 
 
-def _anthropic_to_responses_request(body, bare_model, slug_effort_raw):
+def _anthropic_to_responses_request(
+        body, bare_model, slug_effort_raw, requested_service_tier=None):
     # Build the OpenAI Responses payload from an Anthropic Messages body.
-    # Returns (payload, missing_reasoning_count, effort_value, effort_source).
+    # Returns (payload, missing_reasoning_count, reasoning_cache_hits, effort_value,
+    #   effort_source, injected_restored_reasoning_ids, injected_restored_call_ids).
+    #   v1.3.4 (V4-R1): the two restored-id sets are plumbed to the request state so the
+    #   retry loops' stale-blob 400 insurance can strip/evict exactly the disk-restored
+    #   blobs. v1.3.4 (V4-R6): reasoning_cache_hits is the per-request cache-hit count for
+    #   the terminal record (parallel to missing_reasoning).
     # v1.2.2: `bare_model` is the inbound model with any "#<effort>" suffix already
     # stripped (by _split_effort_suffix in the caller); `slug_effort_raw` is that
     # stripped suffix's raw token (tier 2). The suffix-free model is what reaches
     # the backend — a "#"-bearing model is never forwarded.
-    input_items, missing_reasoning = _messages_to_input(body.get("messages", []))
+    input_items, missing_reasoning, reasoning_cache_hits, \
+        injected_restored_reasoning_ids, injected_restored_call_ids = \
+        _messages_to_input(body.get("messages", []))
 
     payload = {
         "model": _map_model(bare_model),
@@ -2148,6 +3535,11 @@ def _anthropic_to_responses_request(body, bare_model, slug_effort_raw):
         # be re-injected (the API 404s on a bare reasoning id when store:false).
         "include": ["reasoning.encrypted_content"],
     }
+    # Only the locally validated Fast/Priority path supplies the canonical wire value.
+    # Ordinary requests and every noncanonical value omit the field; retries reuse this
+    # same payload and never downgrade it. In particular DAAF never emits raw `fast`.
+    if requested_service_tier == "priority":
+        payload["service_tier"] = "priority"
 
     # system -> top-level `instructions` (NOT a system message in input[]).
     system_text = _system_to_text(body.get("system"))
@@ -2234,7 +3626,10 @@ def _anthropic_to_responses_request(body, bare_model, slug_effort_raw):
     # and any unknown fields are intentionally dropped — output_config is an
     # Anthropic-inbound-only signal (its effort was consumed into reasoning.effort
     # above) and MUST NOT be forwarded to OpenAI.
-    return payload, missing_reasoning, effort_value, effort_source
+    return (
+        payload, missing_reasoning, reasoning_cache_hits, effort_value, effort_source,
+        injected_restored_reasoning_ids, injected_restored_call_ids,
+    )
 
 
 # --- Helpers: response translation (OpenAI Responses -> Anthropic) ---
@@ -2294,7 +3689,14 @@ def _validate_terminal_response(event_type, response):
     status = response.get("status")
     if not isinstance(status, str) or status != expected_status:
         raise _ProtocolError("backend terminal event/status mismatch")
-    if "output" in response and not isinstance(response["output"], list):
+    if (
+        "output" in response
+        and response["output"] is not None
+        and not isinstance(response["output"], list)
+    ):
+        # v1.2.14 (R3.3): `output: null` is a captured Codex quirk on a completed
+        # response after a tool turn. Tolerate it here (streamed/collected state is
+        # the fallback source); only a non-null, non-list output is a real violation.
         raise _ProtocolError("backend terminal response output is not a list")
     if "usage" in response:
         usage = response["usage"]
@@ -2415,6 +3817,11 @@ def _validate_stream_event_fields(event):
         _require_protocol_string(
             event.get("delta"), "function argument delta", allow_empty=True
         )
+        # v1.2.14 (R1): only item_id/delta are load-bearing here. Known-but-unmodeled
+        # extra fields (e.g. the live `obfuscation` string the Codex backend attaches
+        # to arguments.delta) are tolerated by design — validated-when-present is not
+        # required, and they are deliberately NOT counted as unknown wire (too noisy
+        # to flag a benign per-delta field).
     elif event_type == "response.function_call_arguments.done":
         _require_protocol_string(event.get("item_id"), "function item id")
         # v1.2.8 wire tolerance: the public API documents name/arguments on this
@@ -2425,8 +3832,7 @@ def _validate_stream_event_fields(event):
         if "name" in event:
             _require_protocol_string(event.get("name"), "function name")
         else:
-            log.warning("wire-divergence: arguments.done missing name (item %s)",
-                        _scrub_log_token(event.get("item_id")))
+            _record_wire_divergence("arguments.done_missing_name")
         if "arguments" in event:
             _require_protocol_string(
                 event.get("arguments"), "function arguments", allow_empty=True
@@ -2639,10 +4045,34 @@ def _diag_headers(headers):
         val = headers.get(name)
         if val is not None:
             parts.append(f"{name}={_sanitize_sensitive_text(val)}")
+    # v1.2.14 (D1): also surface any prefix-allowlisted header (e.g. x-codex-*). Iterate
+    # actual headers only for the prefix rule so the exact-match ordering above is
+    # unchanged; skip a name already emitted by the exact loop so it is never doubled.
+    for name, val in headers.items():
+        lname = name.lower()
+        if val is None or lname in DIAG_HEADER_ALLOWLIST:
+            continue
+        if lname.startswith(DIAG_HEADER_PREFIX_ALLOWLIST):
+            parts.append(f"{lname}={_sanitize_sensitive_text(val)}")
     return " ".join(parts) if parts else "(none)"
 
 
-# --- HARDENING: retry helper (UNCHANGED) ---
+# --- HARDENING: retry helper ---
+
+
+def _transport_failure_phase(error, post_stream_start=False):
+    if post_stream_start:
+        return "post_stream_start_body_read"
+    if isinstance(error, (httpx.ConnectTimeout, httpx.ConnectError)):
+        return "connect"
+    if isinstance(error, httpx.PoolTimeout):
+        return "connection_pool_wait"
+    if isinstance(error, (httpx.WriteTimeout, httpx.WriteError)):
+        return "request_body_write"
+    if isinstance(error, (httpx.ReadTimeout, httpx.ReadError)):
+        return "header_wait_or_body_read"
+    return "connect_or_header_wait"
+
 
 async def _discard_httpx_response(response):
     """Close a successful buffered POST result discarded by outer cancellation."""
@@ -2664,6 +4094,218 @@ def _retry_delay(attempt, retry_after):
     base = min(BACKOFF_BASE * (2 ** attempt), BACKOFF_CAP)
     # Full jitter: spreads retries so concurrent clients don't thundering-herd.
     return random.uniform(0, base)
+
+
+def _parse_rate_limit_delay_seconds(message_text):
+    # v1.2.14 (R4): extract the numeric "try again in <n>" hint from a backend
+    # rate-limit message. Returns float seconds or None. The prose is inspected
+    # locally ONLY and is never logged, reflected, or persisted.
+    if not isinstance(message_text, str) or not message_text:
+        return None
+    match = _RATE_LIMIT_DELAY_RE.search(message_text)
+    if not match:
+        return None
+    try:
+        value = float(match.group(1))
+    except (ValueError, TypeError):
+        return None
+    if value < 0:
+        return None
+    return value / 1000.0 if match.group(2).lower() == "ms" else value
+
+
+def _numeric_retry_after_seconds(retry_after):
+    # Parse a Retry-After header value as non-negative seconds, else None (an
+    # HTTP-date form is intentionally treated as absent -> fall through to backoff).
+    if retry_after is None:
+        return None
+    try:
+        value = float(retry_after)
+    except (ValueError, TypeError):
+        return None
+    return value if value >= 0 else None
+
+
+def _retry_signals_from_body(raw_body):
+    # v1.2.14 (R4): classify a backend error body for retry gating. Returns
+    # (backend_code, backend_type, code_norm, message_text, signal_recognized).
+    # message_text is retained ONLY for the internal rate-limit delay regex.
+    try:
+        payload = json.loads(raw_body) if raw_body else {}
+    except (ValueError, TypeError, UnicodeDecodeError):
+        payload = {}
+    backend_type, backend_code, _recognized, _param = _backend_error_fields(payload)
+    code_norm = backend_code.strip().lower() if backend_code != "-" else ""
+    type_norm = backend_type.strip().lower() if backend_type != "-" else ""
+    root = payload if isinstance(payload, dict) else {}
+    nested = root.get("error") if isinstance(root.get("error"), dict) else root
+    message = nested.get("message") if isinstance(nested, dict) else None
+    message_text = message if isinstance(message, str) else ""
+    signal_recognized = bool(
+        (code_norm and code_norm in _BACKEND_SIGNAL_CLASSIFICATION)
+        or (type_norm and type_norm in _BACKEND_SIGNAL_CLASSIFICATION)
+    )
+    return backend_code, backend_type, code_norm, message_text, signal_recognized
+
+
+def _plan_retry(status, retry_after_header, raw_body, attempt):
+    # v1.2.14 (R4): classification-driven retry decision + delay selection for one
+    # non-2xx attempt. Returns (should_retry, delay_seconds, delay_source).
+    # INTENT: retry iff the classifier marks the failure retryable when a recognized
+    #   backend code/type is present; otherwise reproduce today's bare-status behavior
+    #   (RETRY_STATUSES, plus 408 as standard-retryable). A recognized deterministic
+    #   code OVERRIDES the status (e.g. insufficient_quota-coded 429 fails fast).
+    # REASONING: delay precedence per attempt is (1) parsed rate-limit message hint
+    #   (gated on code rate_limit_exceeded), (2) Retry-After header, (3) local backoff.
+    #   Rate-limit-class delays cap at 60s; a parsed/advertised delay beyond the cap
+    #   fails fast (should_retry False) so the client owns the long wait rather than a
+    #   silent shim stall. Non-rate-limit classes keep the 30s clamp.
+    # ASSUMES: caller has already handled the chatgpt lazy-401 path; message prose is
+    #   never logged (only its parsed number is used).
+    backend_code, backend_type, code_norm, message_text, signal_recognized = \
+        _retry_signals_from_body(raw_body)
+    anthropic_type, _client_message, retryable = _classify_backend_error(
+        status, backend_code, backend_type)
+    if signal_recognized:
+        should_retry = retryable
+    else:
+        # 408 is standard-retryable (retries up to MAX_RETRIES) — the once-only
+        # special case in the design was judged not worth its bookkeeping.
+        should_retry = (status in RETRY_STATUSES) or (status == 408)
+    if not should_retry or attempt >= MAX_RETRIES:
+        return False, 0.0, "-"
+    is_rate_limit_class = (anthropic_type == "rate_limit_error")
+    delay = None
+    source = "backoff"
+    if code_norm == "rate_limit_exceeded":
+        parsed = _parse_rate_limit_delay_seconds(message_text)
+        if parsed is not None:
+            delay, source = parsed, "parsed"
+    if delay is None:
+        header_delay = _numeric_retry_after_seconds(retry_after_header)
+        if header_delay is not None:
+            delay, source = header_delay, "header"
+    if delay is None:
+        base = min(BACKOFF_BASE * (2 ** attempt), BACKOFF_CAP)
+        return True, random.uniform(0, base), "backoff"
+    cap = RATE_LIMIT_RETRY_AFTER_CAP if is_rate_limit_class else RETRY_AFTER_CAP
+    if delay > cap:
+        if is_rate_limit_class:
+            # Fail fast: do not sleep a multi-minute wait internally. Record the
+            # advertised source so the terminal record explains the fast-fail.
+            return False, 0.0, source
+        delay = cap
+    return True, delay, source
+
+
+def _record_retry_delay_source(source):
+    # v1.2.14 (R4): persist the selected delay source on the request record (both a
+    # taken retry and a fail-fast-beyond-cap set it; a plain non-retryable keeps "-").
+    if source == "-":
+        return
+    state = _request_state()
+    if state is not None:
+        state.retry_delay_source = source
+
+
+# v1.3.4 (V4-R2): markers a stale/rejected reasoning blob's error body may name.
+_STALE_REASONING_MARKERS = ("reasoning", "encrypted_content")
+
+
+def _error_body_names_reasoning(raw_body):
+    # V4-R2 condition 3: does this backend error body name reasoning material? The exact
+    # backend rejection shape for a stale/expired encrypted reasoning blob is unobserved and
+    # undocumented, so the probe is deliberately BROAD — a case-insensitive search for
+    # "reasoning" or "encrypted_content" across the normalized error fields (type/code/param/
+    # message, plus a Codex-style top-level `detail`). _backend_error_fields already collapses
+    # both lane envelopes ({error:{}} openai, {status,error:{}} chatgpt) plus flat-root and
+    # {detail:} into the same fields, so this works identically on every observed shape.
+    # Breadth is safe: the caller gates on status==400 AND >=1 restored reasoning item
+    # actually injected this request AND a one-shot budget, so a false positive costs at most
+    # one extra attempt in today's graceful-miss shape. Body prose is scanned in memory ONLY
+    # and never logged (counts-only discipline). Returns False on any parse failure so an
+    # unreadable body preserves today's fail-fast contract.
+    try:
+        payload = json.loads(raw_body) if raw_body else {}
+    except (ValueError, TypeError, UnicodeDecodeError):
+        return False
+    if not isinstance(payload, dict):
+        return False
+    backend_type, backend_code, _recognized, param = _backend_error_fields(payload)
+    nested = payload.get("error") if isinstance(payload.get("error"), dict) else payload
+    message = nested.get("message") if isinstance(nested, dict) else None
+    detail = payload.get("detail")
+    haystack = " ".join(
+        part for part in (backend_type, backend_code, param, message, detail)
+        if isinstance(part, str) and part != "-"
+    ).lower()
+    return any(marker in haystack for marker in _STALE_REASONING_MARKERS)
+
+
+def _maybe_strip_restored_reasoning(payload, status, raw_body):
+    # V4-R2/R3/R4 shared entrypoint for both retry loops, called in the non-2xx block AFTER
+    # _plan_retry has declined to retry. Returns True iff it stripped the injected restored
+    # reasoning items and prepared a one-shot retry (the caller then performs its loop-local
+    # cleanup + `continue`); False leaves 400 handling byte-identical to v1.3.3 (fail-fast).
+    #
+    # Gate (ALL must hold): (1) status == 400; (2) >=1 restored reasoning item was injected
+    # this request; (3) the strip-retry has not already fired this request (one-shot, same
+    # discipline as the lazy-401 refresh); (4) the error body names reasoning material. The
+    # body-parsing condition (4) is checked LAST — the cheap request-scoped gates short-
+    # circuit it for the overwhelming majority of 400s (which injected no restored items), so
+    # a generic 400 (e.g. the pinned observability fixtures) never even parses the body.
+    if status != 400:
+        return False
+    state = _request_state()
+    if state is None or state.stale_strip_used:
+        return False
+    target_reasoning_ids = state.injected_restored_reasoning_ids
+    if not target_reasoning_ids:
+        return False
+    if not _error_body_names_reasoning(raw_body):
+        return False
+    original = payload.get("input")
+    if not isinstance(original, list):
+        return False
+    # R3: remove exactly the injected restored reasoning items from the reused payload IN
+    # PLACE (both loops reuse one payload object across attempts, with no per-attempt
+    # rebuild), matching by recorded reasoning-item id — never by positional index.
+    kept = [
+        item for item in original
+        if not (
+            isinstance(item, dict)
+            and item.get("type") == "reasoning"
+            and item.get("id") in target_reasoning_ids
+        )
+    ]
+    stripped = len(original) - len(kept)
+    if stripped == 0:
+        # Nothing matched (already gone) — do not burn the one-shot or spend a retry on an
+        # unchanged payload; fall through to today's fail-fast.
+        return False
+    original[:] = kept  # slice-assign so the object identity each loop closes over is kept
+    # v1.3.4 (V4-R6): record the stripped count for the terminal record (counts only). +=
+    # rather than = so the (one-shot-gated) figure would still accumulate correctly if the
+    # strip contract ever allowed more than one strip per request.
+    state.reasoning_cache_stripped += stripped
+    # R4: the stripped call_ids are proven stale — evict them from the live cache, drop them
+    # from the restored set, and rewrite the persisted snapshot via the existing fail-open
+    # writer so neither this process nor a future restart re-injects and re-trips. Eviction
+    # is not the populate path, so the persist call is explicit here.
+    for call_id in state.injected_restored_call_ids:
+        _REASONING_CACHE.pop(call_id, None)
+        _REASONING_CACHE_RESTORED_IDS.discard(call_id)
+    _write_reasoning_cache_state()
+    # One-shot: this request may strip-and-retry exactly once.
+    state.stale_strip_used = True
+    # Terminal-record plumbing via the existing retry recorder (sets retry_reason=
+    # stale_reasoning_400 / retry_source=body, increments the retry count, emits the
+    # upstream_retry lifecycle event) — same convention as every other retry.
+    _record_retry("stale_reasoning_400", source="body")
+    # Distinct counts-only event. NEVER the stripped content or the backend error prose.
+    _lifecycle_event(
+        "reasoning_cache_stale_strip", _fields_before_elapsed=True, stripped=stripped)
+    return True
 
 
 async def _post_with_retry(url, headers, payload, disconnect_event):
@@ -2692,6 +4334,9 @@ async def _post_with_retry(url, headers, payload, disconnect_event):
             raise
         except httpx.HTTPError as e:
             last_exc = e
+            _record_transport_failure(
+                e, _transport_failure_phase(e), attempt < MAX_RETRIES,
+            )
             if attempt < MAX_RETRIES:
                 delay = _retry_delay(attempt, None)
                 _record_retry("transport")
@@ -2703,20 +4348,38 @@ async def _post_with_retry(url, headers, payload, disconnect_event):
                                   phase="upstream_request")
             raise
         _record_upstream_headers(r)
-        if r.status_code in RETRY_STATUSES and attempt < MAX_RETRIES:
-            delay = _retry_delay(attempt, r.headers.get("retry-after"))
-            _record_retry("status_%d" % r.status_code)
-            # Retry diagnostics retain status, attempt, delay, and allowlisted headers
-            # only. Backend body prose is neither needed for retry policy nor safe to
-            # persist because it can reflect request-derived content.
-            log.warning(
-                "backend %d (attempt %d/%d), retrying in %.2fs | headers: %s",
-                r.status_code, attempt + 1, MAX_RETRIES + 1, delay,
-                _diag_headers(r.headers),
-            )
-            await r.aclose()
-            await _await_or_disconnect(asyncio.sleep(delay), disconnect_event)
-            continue
+        if r.status_code >= 400 and attempt < MAX_RETRIES:
+            # v1.2.14 (R4): classify the error body ONCE (for gating + delay source),
+            # then decide. r.content is already buffered (non-streaming POST); the
+            # prose is parsed in memory for structural signals and never logged.
+            should_retry, delay, delay_source = _plan_retry(
+                r.status_code, r.headers.get("retry-after"), r.content, attempt)
+            if should_retry:
+                _record_retry_delay_source(delay_source)
+                _record_retry("status_%d" % r.status_code)
+                # Retry diagnostics retain status, attempt, delay, delay-source, and
+                # allowlisted headers only. Backend body prose is neither needed for
+                # retry policy nor safe to persist (it can reflect request content).
+                log.warning(
+                    "backend %d (attempt %d/%d), retrying in %.2fs (source=%s) | headers: %s",
+                    r.status_code, attempt + 1, MAX_RETRIES + 1, delay,
+                    delay_source, _diag_headers(r.headers),
+                )
+                await r.aclose()
+                await _await_or_disconnect(asyncio.sleep(delay), disconnect_event)
+                continue
+            # Not retrying: a non-retryable code (e.g. insufficient_quota-coded 429),
+            # a bare status outside RETRY_STATUSES, or a rate-limit delay beyond cap
+            # (fail fast). Record the advertised source when the cap forced the choice.
+            _record_retry_delay_source(delay_source)
+            # v1.3.4 (V4-R2/R3/R4): stale-blob insurance. A 400 that names reasoning material
+            # AND carried >=1 restored (disk-loaded) reasoning item is the one case v1.3.3
+            # persistence can turn a graceful miss into a hard failure — strip exactly those
+            # items from the reused payload, evict+persist them as proven stale, and retry
+            # once. Every non-triggering 400 stays fail-fast (byte-identical to v1.3.3).
+            if _maybe_strip_restored_reasoning(payload, r.status_code, r.content):
+                await r.aclose()
+                continue
         return r, attempt
     # Unreachable in practice (loop returns or raises), but keeps intent explicit.
     if last_exc:
@@ -2761,6 +4424,22 @@ async def _settle_request_resources(state):
             await _settle_stream_context(stream_cm)
         except asyncio.CancelledError as cancellation:
             owner_cancellation = cancellation
+
+    # v1.2.14 (R6): the downstream heartbeat watchdog is normally stopped before the
+    # terminal frames; this is the request-teardown safety net for the paths that
+    # return without a terminal (mid-stream disconnect, early exit). Settled exactly
+    # like the disconnect watcher.
+    heartbeat = state.heartbeat_task
+    state.heartbeat_task = None
+    if heartbeat is not None:
+        kind, outcome, heartbeat_cancellation = await _settle_owned_task(
+            heartbeat, cancel=True)
+        if kind == "exception":
+            _record_cleanup_result(False, type(outcome).__name__)
+        else:
+            _record_cleanup_result(True)
+        if heartbeat_cancellation is not None:
+            owner_cancellation = heartbeat_cancellation
 
     watcher = state.disconnect_watcher
     state.disconnect_watcher = None
@@ -2820,6 +4499,9 @@ async def _open_backend_stream(url, headers, payload, disconnect_event):
             raise cancellation
         except httpx.HTTPError as e:
             await _settle_stream_context(stream_cm)
+            _record_transport_failure(
+                e, _transport_failure_phase(e), attempt < MAX_RETRIES,
+            )
             if attempt >= MAX_RETRIES:
                 _record_backend_error(
                     "api_error", backend_type=type(e).__name__,
@@ -2859,13 +4541,13 @@ async def _open_backend_stream(url, headers, payload, disconnect_event):
             # preserve the retry budget and reconnect before semantic content.
             continue
 
-        if resp.status_code in RETRY_STATUSES and attempt < MAX_RETRIES:
-            delay = _retry_delay(attempt, resp.headers.get("retry-after"))
-            _record_retry("status_%d" % resp.status_code)
+        if resp.status_code >= 400 and attempt < MAX_RETRIES:
+            # v1.2.14 (R4): read the error body ONCE for classification-driven gating
+            # and delay-source selection. The body is parsed in memory for structural
+            # signals only (never decoded into a log line). On disconnect the read is
+            # cancelled and the owned context is settled before propagating.
             try:
-                # Drain for connection-pool behavior, but never decode or retain the
-                # free-form backend body: it can reflect request-derived content.
-                await _await_or_disconnect(
+                raw_err = await _await_or_disconnect(
                     resp.aread(),
                     disconnect_event,
                 )
@@ -2873,20 +4555,48 @@ async def _open_backend_stream(url, headers, payload, disconnect_event):
                 await _settle_stream_context(stream_cm)
                 raise
             except Exception:
-                pass
-            await _settle_stream_context(stream_cm)
-            attempt += 1
-            retry_count = attempt
-            # Keep the structural diagnostic adjacent to the raced delay. The
-            # real-subprocess regression uses the line plus a bounded scheduler turn
-            # as evidence that the target phase is retry sleep, not header acquisition.
-            log.warning(
-                "backend stream %d (attempt %d/%d), retrying in %.2fs | headers: %s",
-                resp.status_code, attempt, MAX_RETRIES + 1, delay,
-                _diag_headers(resp.headers),
-            )
-            await _await_or_disconnect(asyncio.sleep(delay), disconnect_event)
-            continue
+                raw_err = b""
+            # v1.2.14 (F3): bound the body handed to the classifier at MAX_ERROR_BODY_BYTES
+            # (1 MiB). resp.aread() caches the full body on resp for the caller's error
+            # re-read (comment below), so this truncation caps only the structural
+            # retry-classification parse — a pathologically large error body cannot drive
+            # an unbounded json.loads/scan. Beyond-cap bodies parse-fail on the truncated
+            # bytes and fall back to HTTP-status classification (RETRY_STATUSES).
+            if len(raw_err) > MAX_ERROR_BODY_BYTES:
+                raw_err = raw_err[:MAX_ERROR_BODY_BYTES]
+            should_retry, delay, delay_source = _plan_retry(
+                resp.status_code, resp.headers.get("retry-after"), raw_err, attempt)
+            if should_retry:
+                _record_retry_delay_source(delay_source)
+                _record_retry("status_%d" % resp.status_code)
+                await _settle_stream_context(stream_cm)
+                attempt += 1
+                retry_count = attempt
+                # Keep the structural diagnostic adjacent to the raced delay. The
+                # real-subprocess regression uses the line plus a bounded scheduler
+                # turn as evidence that the phase is retry sleep, not header acquisition.
+                log.warning(
+                    "backend stream %d (attempt %d/%d), retrying in %.2fs (source=%s) | headers: %s",
+                    resp.status_code, attempt, MAX_RETRIES + 1, delay,
+                    delay_source, _diag_headers(resp.headers),
+                )
+                await _await_or_disconnect(asyncio.sleep(delay), disconnect_event)
+                continue
+            # Not retrying: fall through to return this final non-2xx response. Its
+            # body is already cached on resp, so the caller's error path re-reads it
+            # without a second network round-trip. Record the advertised delay source
+            # when a rate-limit cap forced the fail-fast.
+            _record_retry_delay_source(delay_source)
+            # v1.3.4 (V4-R2/R3/R4): stale-blob insurance, mirroring the JSON loop. A 400 that
+            # names reasoning material AND carried >=1 restored reasoning item strips those
+            # items from the reused payload, evicts+persists them as stale, and retries once.
+            # raw_err is the bounded, already-read error body. Every non-triggering 400 stays
+            # fail-fast (byte-identical to v1.3.3), settling and returning this response.
+            if _maybe_strip_restored_reasoning(payload, resp.status_code, raw_err):
+                await _settle_stream_context(stream_cm)
+                attempt += 1
+                retry_count = attempt
+                continue
 
         # Transfer ownership to the request lifecycle before this tuple is visible to
         # caller code. The outer ASGI finalizer can therefore settle the context even if
@@ -2896,6 +4606,104 @@ async def _open_backend_stream(url, headers, payload, disconnect_event):
         return resp, stream_cm, headers, retry_count, did_401_refresh
 
     raise httpx.HTTPError("stream retry loop exhausted")
+
+
+# --- Prompt-cache observability helpers (v1.3.6, V6-R1/R3) ---
+
+def _resolve_cached_tokens(usage_obj, input_total):
+    # V6-R1/R3: extract usage.input_tokens_details.cached_tokens from a Responses usage
+    # object with defensive typing AND the R3 clamp guard. Returns the effective cached
+    # count (a non-negative int) or None. None means ABSENT — deliberately
+    # indistinguishable from "no cache info", which is exactly how old backends and
+    # fixtures emit it (they carry no input_tokens_details at all). Accept ONLY a non-bool
+    # int >= 0; absent/null/string/negative/bool all resolve to None. The OpenAI Responses
+    # `input_tokens` INCLUDES the cached prefix, so cached is a subset of that total; a
+    # value exceeding the reported input total is malformed upstream and is treated as
+    # absent (fail-open — never a negative client-visible input_tokens). Never raises:
+    # usage parsing must not turn an otherwise-good response into a failure.
+    if not isinstance(usage_obj, dict):
+        return None
+    details = usage_obj.get("input_tokens_details")
+    if not isinstance(details, dict):
+        return None
+    cached = details.get("cached_tokens")
+    if isinstance(cached, bool) or not isinstance(cached, int) or cached < 0:
+        return None
+    if isinstance(input_total, bool) or not isinstance(input_total, int):
+        return None
+    if cached > input_total:
+        return None
+    return cached
+
+
+def _actual_speed_from_response(response):
+    # Only a validated terminal upstream object calls this helper. Requested policy,
+    # HTTP success, and latency never establish served service. Capture ordering before
+    # parsing so a slower earlier terminal cannot overwrite a later terminal after it.
+    global _LATEST_TERMINAL, _LATEST_TERMINAL_SEQUENCE, _LATEST_TERMINAL_ORDER
+    with _LATEST_TERMINAL_LOCK:
+        _LATEST_TERMINAL_SEQUENCE += 1
+        terminal_order = _LATEST_TERMINAL_SEQUENCE
+    raw_tier = response.get("service_tier") if isinstance(response, dict) else None
+    canonical_served = (
+        raw_tier
+        if isinstance(raw_tier, str)
+        and raw_tier in (_FAST_ACTUAL_SERVICE_TIERS | _STANDARD_ACTUAL_SERVICE_TIERS)
+        else None
+    )
+    state = _request_state()
+    if state is not None and isinstance(raw_tier, str):
+        state.served_service_tier = _scrub_metadata(raw_tier, 100)
+    raw_model = response.get("model") if isinstance(response, dict) else None
+    if not isinstance(raw_model, str) or not _HEALTH_MODEL_TOKEN_RE.fullmatch(raw_model):
+        raw_model = None
+    requested_tier = None
+    requested_source = "none"
+    if state is not None:
+        if state.requested_service_tier in _FAST_REQUEST_SERVICE_TIERS.values():
+            requested_tier = state.requested_service_tier
+        if state.requested_service_tier_source in _FAST_REQUEST_SOURCES:
+            requested_source = state.requested_service_tier_source
+    latest = {
+        "model": raw_model,
+        "requested_service_tier": requested_tier,
+        "requested_source": requested_source,
+        "served_service_tier": canonical_served,
+        "completed_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }
+    with _LATEST_TERMINAL_LOCK:
+        if terminal_order > _LATEST_TERMINAL_ORDER:
+            _LATEST_TERMINAL = latest
+            _LATEST_TERMINAL_ORDER = terminal_order
+    if raw_tier in _FAST_ACTUAL_SERVICE_TIERS:
+        return "fast"
+    if raw_tier in _STANDARD_ACTUAL_SERVICE_TIERS:
+        return "standard"
+    return None
+
+
+def _anthropic_usage_block(input_total, output_total, cached, speed=None):
+    # V6-R3 (Decision 1 + Decision 2 = always-emit): build the client-visible Anthropic
+    # usage block. Anthropic's `input_tokens` is the UNCACHED remainder only (unlike
+    # OpenAI's, which includes the cached prefix), and clients (incl. Claude Code context
+    # accounting) may sum input_tokens + cache_read_input_tokens + cache_creation_input_tokens
+    # for the prompt total. So the mapping SUBTRACTS the cached prefix from input_tokens and
+    # reports it as cache_read_input_tokens, preserving the sum invariant EXACTLY (the three
+    # token fields still sum to the OpenAI input total, so downstream context arithmetic is
+    # byte-equivalent whether or not caching fired). cache_read/cache_creation are ALWAYS
+    # present (0 when `cached` is None) for a deterministic usage shape that matches
+    # Anthropic's own responses. OpenAI reports no cache-WRITE count, so
+    # cache_creation_input_tokens is always 0. `cached` must already be the effective
+    # (typed, clamp-checked) value from _resolve_cached_tokens.
+    block = {
+        "input_tokens": input_total - cached if cached is not None else input_total,
+        "output_tokens": output_total,
+        "cache_read_input_tokens": cached if cached is not None else 0,
+        "cache_creation_input_tokens": 0,
+    }
+    if speed is not None:
+        block["speed"] = speed
+    return block
 
 
 # --- Non-streaming path: full Responses object -> full Anthropic message ---
@@ -2913,7 +4721,11 @@ def _responses_to_anthropic(resp_obj, model):
     output_items = resp_obj.get("output", [])
     for item in output_items:
         _validate_output_item(item)
-    _populate_reasoning_cache(output_items)
+    # v1.3.3 (A2-R1): persist only when the populate actually mutated the cache, so a
+    # reasoning-free or unpaired turn triggers no disk write. Fail-open; never on the hot
+    # path's critical section (the write is atomic-replace and swallows all errors).
+    if _populate_reasoning_cache(output_items):
+        _write_reasoning_cache_state()
 
     content = []
     saw_tool_use = False
@@ -2977,6 +4789,10 @@ def _responses_to_anthropic(resp_obj, model):
 
     usage = resp_obj.get("usage") or {}
     status = resp_obj.get("status", "completed")
+    input_total = usage.get("input_tokens", 0)
+    output_total = usage.get("output_tokens", 0)
+    cached = _resolve_cached_tokens(usage, input_total)
+    actual_speed = _actual_speed_from_response(resp_obj)
     return {
         "id": resp_obj.get("id") or f"msg_{uuid.uuid4().hex[:24]}",
         "type": "message",
@@ -2985,10 +4801,15 @@ def _responses_to_anthropic(resp_obj, model):
         "content": content,
         "stop_reason": _stop_reason_from_status(status, saw_tool_use),
         "stop_sequence": None,
-        "usage": {
-            "input_tokens": usage.get("input_tokens", 0),
-            "output_tokens": usage.get("output_tokens", 0),
-        },
+        "usage": _anthropic_usage_block(
+            input_total, output_total, cached, actual_speed),
+        # V6-R1: private carry of the effective cached count (or None) for the two
+        # non-stream lane consumers. Each pops it before the message is sent so it never
+        # reaches the wire. Carried SEPARATELY from cache_read_input_tokens because a
+        # mapped cache_read of 0 cannot distinguish ABSENT (terminal cached_tokens=-) from
+        # a genuine cached_tokens:0 (terminal cached_tokens=0) — a distinction the terminal
+        # record and the /health requests_with_cached counter both need.
+        "_cached_tokens": cached,
     }
 
 
@@ -3103,55 +4924,131 @@ def _backend_error_fields(payload):
     #   arbitrary prose is safe, so the durable boundary is structural extraction only.
     # ASSUMES: exact type/code strings remain approved bounded metadata and are scrubbed
     #   by lifecycle/log serializers before persistence.
+    # v1.2.14 (R2): recognize the four observed envelope shapes and report whether
+    # the payload was a structured error envelope at all. The four shapes:
+    #   1. {"error": {type, code, message, param}}        (openai lane, captured)
+    #   2. {"status": N, "error": {…}}                    (chatgpt lane, captured)
+    #   3. flat root {code, message, param}               (documented in-stream error)
+    #   4. {"detail": "…"}                                (Codex model-rejection, survey)
+    # Shape 2's top-level `status` is metadata only — the HTTP status is passed
+    # separately to the classifier; here we just descend into root["error"].
     root = payload if isinstance(payload, dict) else {}
     nested = root.get("error") if isinstance(root.get("error"), dict) else root
     if nested is root and isinstance(root.get("incomplete_details"), dict):
         nested = root["incomplete_details"]
     backend_type = nested.get("type") if isinstance(nested.get("type"), str) else "-"
     backend_code = nested.get("code") if isinstance(nested.get("code"), str) else "-"
+    param = nested.get("param") if isinstance(nested.get("param"), str) else "-"
     message = nested.get("message")
     if isinstance(message, dict):
         if backend_type == "-" and isinstance(message.get("type"), str):
             backend_type = message["type"]
         if backend_code == "-" and isinstance(message.get("code"), str):
             backend_code = message["code"]
-    return backend_type, backend_code
+    # "recognized" is about SHAPE, not whether the type/code VALUE is modeled: an
+    # unknown-valued type is still a recognized error envelope. A payload is
+    # recognized when it carries any structured error field (type/code/param), a
+    # string message, a Codex-style string `detail` (shape 4, code-less), or
+    # incomplete_details. Truly shapeless payloads ({} from an unparseable body, or
+    # a dict with no error-ish fields) are unrecognized and counted via R1.
+    recognized = (
+        backend_type != "-"
+        or backend_code != "-"
+        or param != "-"
+        or isinstance(nested.get("message"), str)
+        or isinstance(root.get("detail"), str)
+        or isinstance(root.get("incomplete_details"), dict)
+    )
+    return backend_type, backend_code, recognized, param
+
+
+def _status_fallback_classification(status):
+    # v1.2.14 (R2) pure HTTP-status fallback, used only when no recognized backend
+    # code/type is present. Type mapping per the R2 design table. Two deliberate
+    # points: (1) other-4xx -> invalid_request_error (non-retryable) is the
+    # intentional change from the prior retryable api_error, so a deterministic
+    # rejection is not client-retried; (2) overloaded_error is reserved for the
+    # recognized codes server_is_overloaded/slow_down and status 529 — a bare 503
+    # with an UNKNOWN code falls to the "unknown code + 5xx -> api_error" row (design
+    # table row 9), which also preserves the v1.2.10 pinned-status behavior. The
+    # client MESSAGE keeps the v1.2.11 fixed-message rule unchanged.
+    if status in _BACKEND_ERROR_MESSAGE_BY_STATUS:
+        client_message = _BACKEND_ERROR_MESSAGE_BY_STATUS[status]
+    elif status >= 500:
+        client_message = "backend server error"
+    else:
+        client_message = "backend request failed"
+    if status == 401:
+        return "authentication_error", client_message, False
+    if status == 429:
+        return "rate_limit_error", client_message, True
+    if status == 529:
+        return "overloaded_error", client_message, True
+    if status == 408:
+        return "api_error", client_message, True
+    if 400 <= status < 500:
+        return "invalid_request_error", client_message, False
+    return "api_error", client_message, True
+
+
+# v1.2.14 (R2): recognized backend code/type -> (anthropic_type, message, retryable).
+# Ordered checks inside the classifier; a code match beats a type match, and both
+# beat the HTTP status. Fixed messages only (v1.2.11 no-prose rule).
+_BACKEND_SIGNAL_CLASSIFICATION = {
+    "context_length_exceeded": (
+        "invalid_request_error", "backend context length exceeded", False),
+    "insufficient_quota": (
+        "invalid_request_error", "backend quota or plan limit reached", False),
+    "usage_not_included": (
+        "invalid_request_error", "backend quota or plan limit reached", False),
+    "invalid_prompt": ("invalid_request_error", "backend rejected the request", False),
+    "bio_policy": ("invalid_request_error", "backend rejected the request", False),
+    "cyber_policy": ("invalid_request_error", "backend rejected the request", False),
+    "token_invalidated": ("authentication_error", "backend authentication failed", False),
+    "rate_limit_exceeded": ("rate_limit_error", "backend rate limit exceeded", True),
+    "server_is_overloaded": ("overloaded_error", "backend overloaded", True),
+    "slow_down": ("overloaded_error", "backend overloaded", True),
+    "server_error": ("api_error", "backend server error", False),
+}
 
 
 def _classify_backend_error(status, backend_code, backend_type):
-    # INTENT: map status > code > type to an Anthropic type and a fixed client message.
-    # REASONING: fixed classification-derived text preserves useful failure families
-    #   without reflecting any free-form backend response prose to clients or logs.
-    # ASSUMES: callers without a real non-2xx status pass None; unknown structured
-    #   values keep the historical api_error mapping and use one fixed fallback.
-    if status is not None and status >= 400:
-        anthropic_type = _anthropic_error_type_for_status(status)
-        if status in _BACKEND_ERROR_MESSAGE_BY_STATUS:
-            client_message = _BACKEND_ERROR_MESSAGE_BY_STATUS[status]
-        elif status >= 500:
-            client_message = "backend server error"
-        else:
-            client_message = "backend request failed"
-        return anthropic_type, client_message
-
+    # v1.2.14 (R2): map a backend failure to (anthropic_type, client_message,
+    # retryable) with CODE/TYPE precedence over HTTP status.
+    # INTENT: one classifier for every failure path (pre-stream HTTP, in-band error,
+    #   response.failed, chatgpt inbound-nonstream). Returns a retryable hint.
+    # REASONING: known code/type first (most specific), else HTTP status, else the
+    #   historical bodyless api_error/retryable fallback. Code beats type (mirrors the
+    #   captured backend precedence, e.g. code=server_error over type=context_length).
+    # RETRYABLE: COMPUTED here but NOT yet consumed — A1 leaves the retry loops
+    #   (RETRY_STATUSES-gated in _post_with_retry/_open_backend_stream) byte-identical;
+    #   A2 rewires gating to consume this flag. Fixed messages preserve the v1.2.11
+    #   no-prose rule.
     code_norm = backend_code.strip().lower() if backend_code != "-" else ""
     type_norm = backend_type.strip().lower() if backend_type != "-" else ""
-    if code_norm == "context_length_exceeded":
-        return "invalid_request_error", "backend context length exceeded"
-    if code_norm == "server_error":
-        return "api_error", "backend server error"
-    if type_norm == "context_length_exceeded":
-        return "invalid_request_error", "backend context length exceeded"
-    if type_norm == "server_error":
-        return "api_error", "backend server error"
-    return "api_error", "backend request failed"
+    for signal in (code_norm, type_norm):
+        if signal and signal in _BACKEND_SIGNAL_CLASSIFICATION:
+            return _BACKEND_SIGNAL_CLASSIFICATION[signal]
+    if status is not None and status >= 400:
+        return _status_fallback_classification(status)
+    return "api_error", "backend request failed", True
 
 
 def _normalize_backend_error(payload, status=None, phase=None):
     # Extract and persist only approved structural metadata. The client message is
     # selected from local constants and never from payload.message or raw body text.
-    backend_type, backend_code = _backend_error_fields(payload)
-    anthropic_type, client_message = _classify_backend_error(
+    backend_type, backend_code, recognized, _param = _backend_error_fields(payload)
+    if not recognized:
+        # v1.2.14 (R1): an unrecognized error envelope is counted for observability
+        # and then classified by HTTP status. The tag is a bounded shape descriptor,
+        # never payload content: "empty" for a non-dict/empty body (typically an
+        # unparseable one collapsed to {}), "unstructured" for a dict with no
+        # error-ish fields.
+        tag = "empty" if not isinstance(payload, dict) or not payload else "unstructured"
+        _record_unknown_wire("envelope", tag)
+    # v1.2.14 (R2): retryable is returned by the classifier but intentionally dropped
+    # here — A1 does not consume it; A2 threads it through to the retry loops.
+    anthropic_type, client_message, _retryable = _classify_backend_error(
         status, backend_code, backend_type)
     _record_backend_error(
         anthropic_type, backend_type=backend_type, backend_code=backend_code,
@@ -3174,16 +5071,17 @@ def _bearer_of(headers):
 
 async def _build_backend_headers(force_token_refresh=False, rejected_token=None):
     # v1.2.5: assemble the backend request headers for the active lane.
-    # INTENT: openai mode -> {Authorization: Bearer <env key>, Content-Type}. chatgpt
-    #   mode -> the 3-header floor {authorization: Bearer <access_token>,
-    #   content-type: application/json, accept: text/event-stream} the Codex backend
-    #   gates on (notes/08); NO api-key/openai-specific headers.
+    # INTENT: both lanes add the local X-Client-Request-Id for safe correlation.
+    #   OpenAI mode otherwise sends Authorization + Content-Type; ChatGPT mode sends
+    #   its validated authorization/content-type/accept floor and no API-key header.
     # REASONING: keeping this in one helper means the lazy-401 retry path can rebuild
     #   the headers (with force_token_refresh=True + the rejected token for the
     #   guarded-reload identity check) identically to the first attempt.
     # CREDENTIAL SAFETY: returns a dict CONTAINING the Bearer; callers must never log
     #   it. In chatgpt mode a token-layer failure raises RuntimeError(_RELOGIN_MSG)
     #   (no secret content) for the caller to surface as a clean client error.
+    state = _request_state()
+    client_request_id = state.client_request_id if state is not None else uuid.uuid4().hex
     if SHIM_BACKEND_MODE == "chatgpt":
         access_token = await _get_access_token(
             force_refresh=force_token_refresh, rejected_token=rejected_token)
@@ -3191,12 +5089,32 @@ async def _build_backend_headers(force_token_refresh=False, rejected_token=None)
             "authorization": f"Bearer {access_token}",
             "content-type": "application/json",
             "accept": "text/event-stream",
+            "X-Client-Request-Id": client_request_id,
         }
-    # openai mode (unchanged behavior).
     return {
         "Authorization": f"Bearer {SHIM_BACKEND_API_KEY}",
         "Content-Type": "application/json",
+        "X-Client-Request-Id": client_request_id,
     }
+
+
+def _pending_sse_data_bytes(line_buffer):
+    # Return the logical payload bytes currently buffered for a data field, or None
+    # when the partial line is not a data field. SSE framing ("data:", one optional
+    # space, and a possible trailing CR awaiting LF) is deliberately excluded.
+    # This makes the event cap independent of where upstream transport chunks split,
+    # including splits inside the field prefix and immediately before CRLF.
+    logical_end = len(line_buffer)
+    if logical_end and line_buffer[-1] == 0x0D:
+        logical_end -= 1
+    if logical_end == 4 and line_buffer[:logical_end] == b"data":
+        return 0
+    if logical_end < 5 or line_buffer[:5] != b"data:":
+        return None
+    value_start = 5
+    if logical_end > value_start and line_buffer[value_start] == 0x20:
+        value_start += 1
+    return logical_end - value_start
 
 
 def _consume_sse_line(raw_line, data_lines, event_size, event_open):
@@ -3223,7 +5141,7 @@ def _consume_sse_line(raw_line, data_lines, event_size, event_open):
     return None, event_size, event_open
 
 
-async def _iter_bounded_sse_data(resp, disconnect_event):
+async def _iter_bounded_sse_data(resp, disconnect_event, terminal_seen=None):
     # v1.2.7 incremental SSE reader. Do not use aiter_lines(): it may allocate an
     # unbounded line before the caller can reject it. This parser retains only the
     # current line and current data event, each capped at 16 MiB, and never stores
@@ -3248,8 +5166,21 @@ async def _iter_bounded_sse_data(resp, disconnect_event):
         while True:
             newline_at = line_buffer.find(b"\n")
             if newline_at < 0:
-                if len(line_buffer) > MAX_RESPONSES_SSE_EVENT_BYTES:
-                    raise ValueError("upstream SSE line exceeded size limit")
+                pending_data_bytes = _pending_sse_data_bytes(line_buffer)
+                if pending_data_bytes is None:
+                    # Non-data fields still receive a raw-line bound. Data fields use
+                    # the logical event bound below so their fixed SSE framing does not
+                    # make an exactly-at-limit payload fail under one chunking pattern.
+                    if len(line_buffer) > MAX_RESPONSES_SSE_EVENT_BYTES:
+                        raise ValueError("upstream SSE line exceeded size limit")
+                else:
+                    joined_size = (
+                        event_size
+                        + (1 if data_lines else 0)
+                        + pending_data_bytes
+                    )
+                    if joined_size > MAX_RESPONSES_SSE_EVENT_BYTES:
+                        raise ValueError("upstream SSE event exceeded size limit")
                 break
             raw_line = bytes(line_buffer[:newline_at])
             del line_buffer[:newline_at + 1]
@@ -3257,9 +5188,36 @@ async def _iter_bounded_sse_data(resp, disconnect_event):
                 raw_line, data_lines, event_size, event_open)
             if payload is not None:
                 _record_upstream_first_event()
+                _record_upstream_event_gap()  # v1.2.14 (R6) idle-gap timestamp
                 yield payload
-    if line_buffer or event_open or data_lines:
-        raise ValueError("upstream SSE ended before a blank-line event boundary")
+    if not (line_buffer or event_open or data_lines):
+        return
+    # v1.2.14 (R5): a non-blank-terminated tail at EOF. If a complete, dispatchable
+    # event is pending (data lines were seen and any residual partial line is NOT a
+    # data-field continuation that would join into it), flush it as the final event.
+    # This recovers a fully generated terminal response whose trailing blank line a
+    # proxy trimmed (B7); downstream keeps its strict JSON/terminal validation, so a
+    # semantically bad flushed payload still fails there. Any residual non-data bytes
+    # after the complete event are a malformed tail: counted for observability, then
+    # dropped.
+    partial_data = _pending_sse_data_bytes(line_buffer)
+    if data_lines and partial_data is None:
+        if line_buffer:
+            _record_unknown_wire("event_type", "malformed_sse_tail")
+        payload = b"\n".join(data_lines)
+        data_lines.clear()
+        _record_upstream_first_event()
+        _record_upstream_event_gap()  # v1.2.14 (R6) idle-gap timestamp
+        yield payload
+        return
+    # Otherwise the residual is a genuinely incomplete event (a partial data line, or
+    # a dangling field with no dispatchable data). Tolerate it ONLY once a terminal
+    # semantic frame has already been accepted (the response is complete, so trailing
+    # junk is harmless); before the terminal frame it stays a fatal framing failure.
+    if terminal_seen is not None and terminal_seen[0]:
+        _record_unknown_wire("event_type", "malformed_sse_tail")
+        return
+    raise ValueError("upstream SSE ended before a blank-line event boundary")
 
 
 async def _accumulate_terminal_response(resp, disconnect_event):
@@ -3272,8 +5230,12 @@ async def _accumulate_terminal_response(resp, disconnect_event):
     # are validated in arrival order so malformed content cannot hide behind a later
     # superficially valid terminal object. The first valid terminal ends consumption.
     # Returns (terminal_response, failure_message). Exactly one is non-None.
+    # v1.2.14 (R5): a mutable one-slot flag lets the bounded SSE reader tolerate a
+    # malformed tail at EOF only after a terminal semantic frame was accepted.
+    terminal_seen = [False]
     try:
-        async for data_bytes in _iter_bounded_sse_data(resp, disconnect_event):
+        async for data_bytes in _iter_bounded_sse_data(
+                resp, disconnect_event, terminal_seen):
             if data_bytes.strip() == b"[DONE]":
                 return None, "backend stream ended without a terminal response"
             try:
@@ -3282,6 +5244,7 @@ async def _accumulate_terminal_response(resp, disconnect_event):
                 return None, "backend stream contained malformed SSE JSON"
             etype = _validate_stream_event_fields(ev)
             if etype in ("response.completed", "response.incomplete"):
+                terminal_seen[0] = True
                 terminal = _validate_terminal_response(etype, ev.get("response"))
                 return terminal, None
             if etype == "response.failed":
@@ -3305,6 +5268,17 @@ async def _accumulate_terminal_response(resp, disconnect_event):
                         phase="upstream_stream",
                     )
                 return None, message
+            # v1.2.14 (R1): terminal/error events above return; a non-terminal event
+            # reaching here is ignored (this adapter only extracts the terminal
+            # object). Count only genuinely unknown event types, not the known
+            # status/content events a normal stream interleaves before its terminal.
+            if etype not in _KNOWN_EVENT_TYPES:
+                _record_unknown_wire("event_type", etype)
+    except httpx.HTTPError as error:
+        _record_transport_failure(
+            error, _transport_failure_phase(error, post_stream_start=True), False,
+        )
+        raise
     except _ProtocolError as error:
         return None, _scrub_and_trim_body(str(error))[:200] or "backend protocol error"
     except ValueError as error:
@@ -3312,7 +5286,7 @@ async def _accumulate_terminal_response(resp, disconnect_event):
     return None, "backend stream ended without a terminal response"
 
 
-async def _handle_messages(body, receive, send):
+async def _handle_messages(body, receive, send, scope_headers=()):
     t0 = time.time()
 
     # HARDENING (client-disconnect): a response-local Event is both the lightweight
@@ -3328,10 +5302,19 @@ async def _handle_messages(body, receive, send):
                 _record_disconnect("disconnect_watcher")
                 return
 
-    # Decode Anthropic request. Malformed JSON -> 400.
+    # Decode Anthropic request. Malformed JSON -> 400. Preserve raw object pairs just
+    # long enough to reject duplicate exact top-level `speed` before ordinary dict
+    # collapse; unrelated and nested duplicates retain last-key-wins compatibility.
     _set_phase("request_parse")
     try:
-        req = json.loads(body.decode("utf-8"))
+        req = _decode_anthropic_request_json(body)
+    except _DuplicateTopLevelSpeedError:
+        _mark_error(phase="request_validation", error_type="invalid_request_error")
+        await _send_json(send, 400, {"type": "error", "error": {
+            "type": "invalid_request_error",
+            "message": "duplicate top-level speed field",
+        }})
+        return
     except (ValueError, UnicodeDecodeError) as e:
         log.error("bad request json: %s", type(e).__name__)
         await _send_json(send, 400, {"type": "error", "error": {"type": "invalid_request_error", "message": "invalid JSON"}})
@@ -3348,9 +5331,39 @@ async def _handle_messages(body, receive, send):
         if not invalid_structure:
             invalid_structure = any(not isinstance(message, dict) for message in messages)
         if not invalid_structure:
+            # v1.2.13: "system" is admitted alongside user/assistant. Live Claude
+            # Code sends a trailing role:"system" message inside `messages`; the
+            # v1.2.12 two-role check rejected every real conversation turn with
+            # the static 400 (captured-payload repro: scripts/scratch/
+            # replay_captured_request.py). Translation folds system to user-role
+            # input, the pre-v1.2.12 behavior proven against the live backend.
+            invalid_structure = any(
+                message.get("role") not in ("user", "assistant", "system")
+                for message in messages
+            )
+        if not invalid_structure:
             invalid_structure = any(
                 "content" in message
                 and not isinstance(message.get("content"), (str, list))
+                for message in messages
+            )
+        if not invalid_structure:
+            invalid_structure = any(
+                isinstance(message.get("content"), list)
+                and any(
+                    isinstance(block, dict)
+                    and (
+                        (block.get("type") == "tool_use"
+                         and message.get("role") != "assistant")
+                        or (block.get("type") == "tool_result"
+                            and message.get("role") != "user")
+                        or (
+                            block.get("type") == "tool_result"
+                            and not isinstance(block.get("content", ""), (str, list))
+                        )
+                    )
+                    for block in message["content"]
+                )
                 for message in messages
             )
         if not invalid_structure:
@@ -3393,6 +5406,21 @@ async def _handle_messages(body, receive, send):
         }})
         return
 
+    # Validate the body/header Fast contract before authentication or any upstream call.
+    # A persistent Fast beta with no speed remains ordinary traffic.
+    try:
+        state = _request_state()
+        requested_service_tier, requested_service_tier_source = _requested_service_tier(
+            req, _anthropic_beta_tokens(scope_headers),
+            state.gpt_policy_snapshot if state is not None else None,
+        )
+    except _InvalidRequestError as error:
+        _mark_error(phase="request_validation", error_type="invalid_request_error")
+        await _send_json(send, 400, {"type": "error", "error": {
+            "type": "invalid_request_error", "message": str(error),
+        }})
+        return
+
     _set_phase("request_translation")
     stream = bool(req.get("stream", False))
     # v1.2.2: strip any "#<effort>" suffix from the inbound model up front, so the
@@ -3400,8 +5428,19 @@ async def _handle_messages(body, receive, send):
     # every log line below, and the response echoed to Claude Code. `model` from
     # here on is suffix-free; `slug_effort_raw` is the parsed tier-2 token (or None).
     model, slug_effort_raw = _split_effort_suffix(req.get("model", ""))
-    responses_payload, missing_reasoning, effort_value, effort_source = \
-        _anthropic_to_responses_request(req, model, slug_effort_raw)
+    try:
+        responses_payload, missing_reasoning, reasoning_cache_hits, effort_value, \
+            effort_source, injected_restored_reasoning_ids, injected_restored_call_ids = \
+            _anthropic_to_responses_request(
+                req, model, slug_effort_raw, requested_service_tier)
+    except _InvalidRequestError as error:
+        # The exception text is constructed exclusively from structural indexes,
+        # bounded type labels, and local constants. Never log or reflect block data.
+        _mark_error(phase="request_translation", error_type="invalid_request_error")
+        await _send_json(send, 400, {"type": "error", "error": {
+            "type": "invalid_request_error", "message": str(error),
+        }})
+        return
     n_msgs = len(responses_payload["input"])
     n_tools = len(responses_payload.get("tools", []))
     state = _request_state()
@@ -3413,7 +5452,21 @@ async def _handle_messages(body, receive, send):
         state.tool_count = n_tools
         state.effort_value = effort_value
         state.effort_source = effort_source
+        state.requested_service_tier = (
+            _scrub_metadata(requested_service_tier, 100)
+            if requested_service_tier is not None else "-"
+        )
+        state.requested_service_tier_source = requested_service_tier_source
         state.reasoning_cache_misses = missing_reasoning
+        # v1.3.4 (V4-R6): per-request cache-hit count for the terminal record.
+        state.reasoning_cache_hits = reasoning_cache_hits
+        # v1.3.4 (V4-R1): hand the restored-blob tracking to the request state so the retry
+        # loops' stale-blob 400 insurance (V4-R2..R4) can strip/evict exactly these items.
+        state.injected_restored_reasoning_ids = injected_restored_reasoning_ids
+        state.injected_restored_call_ids = injected_restored_call_ids
+        # v1.2.14 (D5): capture the request key-name shape once, for a possible
+        # backend invalid_request_error diagnosis line (emitted in _record_backend_error).
+        state.request_shape = _request_shape_fields(responses_payload)
     _lifecycle_event(
         "request_parsed", model=model, stream="y" if stream else "n",
         msgs=n_msgs, tools=n_tools,
@@ -3461,9 +5514,9 @@ async def _handle_messages(body, receive, send):
             return
 
     # v1.2.5: build the backend auth headers by lane.
-    # INTENT: in openai mode, Bearer the env API key (unchanged). In chatgpt mode,
-    #   Bearer the OAuth access_token from auth.json and emit ONLY the 3-header floor
-    #   the Codex backend gates on (notes/08). Request translation, tools, and SSE
+    # INTENT: in openai mode, Bearer the env API key. In chatgpt mode, Bearer the
+    #   OAuth access_token from auth.json and emit its validated header floor. Both
+    #   lanes add the local X-Client-Request-Id for content-blind correlation. Tools and SSE
     #   block lifecycle stay shared. v1.2.7 makes chatgpt transport always-streaming
     #   (inbound non-stream callers are internally accumulated), while v1.2.6's one
     #   route-specific response-formatting rule preserves reliable reasoning-summary
@@ -3668,8 +5721,19 @@ async def _handle_messages(body, receive, send):
                 # the client. Accumulation/conversion failures after a 200 (no
                 # backend_status) retain the original 502 api_error shape.
                 if backend_status is not None:
+                    # v1.2.14 (R2): surface the CLASSIFIER type (code/type precedence
+                    # over status), set by _normalize_backend_error on the successful
+                    # parse. Fall back to the status-only mapping only when the body
+                    # was unparseable and no classifier type was recorded. Preserves
+                    # the real backend HTTP status passthrough.
+                    state = _request_state()
+                    passthrough_type = (
+                        state.anthropic_error_type
+                        if state is not None and state.anthropic_error_type != "-"
+                        else _anthropic_error_type_for_status(backend_status)
+                    )
                     await _send_json(send, backend_status, {"type": "error", "error": {
-                        "type": _anthropic_error_type_for_status(backend_status),
+                        "type": passthrough_type,
                         "message": safe_message}})
                 else:
                     state = _request_state()
@@ -3682,12 +5746,19 @@ async def _handle_messages(body, receive, send):
                         "type": normalized_type, "message": safe_message}})
                 return
             usage = anth["usage"]
-            _calibrate_count_ratio(usage["input_tokens"], len(body))
+            cached = anth.pop("_cached_tokens", None)
+            # V6-R1: reconstruct the OpenAI input TOTAL from the always-emit block
+            # (uncached remainder + cached prefix, 0 when absent). state.input_tokens and
+            # the count-token calibrator both stay on the OpenAI total (unchanged terminal
+            # semantics), NOT the subtracted client-visible remainder.
+            input_total = usage["input_tokens"] + (cached or 0)
+            _calibrate_count_ratio(input_total, len(body))
             state = _request_state()
             if state is not None:
                 state.stop_reason = anth["stop_reason"]
-                state.input_tokens = usage["input_tokens"]
+                state.input_tokens = input_total
                 state.output_tokens = usage["output_tokens"]
+                state.cached_tokens = cached
                 state.usage_source = "backend"
             await _send_json(send, 200, anth)
             return
@@ -3701,37 +5772,6 @@ async def _handle_messages(body, receive, send):
                 log.error("messages non-stream transport error: %s", type(e).__name__)
                 await _send_json(send, 502, {"type": "error", "error": {"type": "api_error", "message": "backend transport error"}})
                 return
-            # v1.2.5: lazy-401 refresh (chatgpt lane only). A 401 from the Codex
-            # backend means the access_token expired between our exp check and the
-            # request; refresh ONCE, rebuild the Authorization header, and retry the
-            # request a single time. A second 401 -> surface the fast-fail re-login
-            # message. openai mode is untouched (SHIM_BACKEND_MODE guard).
-            if SHIM_BACKEND_MODE == "chatgpt" and r.status_code == 401:
-                await r.aclose()
-                log.warning("chatgpt backend 401; attempting one token refresh + retry")
-                _record_retry("auth_401")
-                _rejected = _bearer_of(headers)
-                try:
-                    _set_phase("backend_authentication")
-                    headers = await _build_backend_headers(
-                        force_token_refresh=True, rejected_token=_rejected)
-                except RuntimeError as e:
-                    log.error("chatgpt lazy-401 refresh failed: %s", str(e))
-                    await _send_json(send, 401, {"type": "error", "error": {
-                        "type": "authentication_error", "message": str(e)}})
-                    return
-                try:
-                    r, retries = await _post_with_retry(url, headers, responses_payload, disconnect_event)
-                except httpx.HTTPError as e:
-                    log.error("messages non-stream transport error (post-refresh): %s", type(e).__name__)
-                    await _send_json(send, 502, {"type": "error", "error": {"type": "api_error", "message": "backend transport error"}})
-                    return
-                if r.status_code == 401:
-                    log.error("chatgpt backend still 401 after refresh; %s", _RELOGIN_MSG)
-                    await r.aclose()
-                    await _send_json(send, 401, {"type": "error", "error": {
-                        "type": "authentication_error", "message": _RELOGIN_MSG}})
-                    return
             if r.status_code >= 400:
                 # Retain only structural classification metadata plus allowlisted
                 # headers. Free-form backend body/message prose is parsed in memory for
@@ -3770,13 +5810,18 @@ async def _handle_messages(body, receive, send):
                     "message": "backend response conversion failed"}})
                 return
             usage = anth["usage"]
-            # v1.2.1: feed the count_tokens calibrator from successful usage.
-            _calibrate_count_ratio(usage["input_tokens"], len(body))
+            cached = anth.pop("_cached_tokens", None)
+            # v1.2.1: feed the count_tokens calibrator from successful usage — the OpenAI
+            # input TOTAL (uncached remainder + cached prefix), not the subtracted client-
+            # visible remainder. V6-R1: state.input_tokens likewise stays on the total.
+            input_total = usage["input_tokens"] + (cached or 0)
+            _calibrate_count_ratio(input_total, len(body))
             state = _request_state()
             if state is not None:
                 state.stop_reason = anth["stop_reason"]
-                state.input_tokens = usage["input_tokens"]
+                state.input_tokens = input_total
                 state.output_tokens = usage["output_tokens"]
+                state.cached_tokens = cached
                 state.usage_source = "backend"
             await _send_json(send, 200, anth)
             return
@@ -3812,6 +5857,11 @@ async def _handle_messages(body, receive, send):
         # this — notes file 05 §3c). So key tool routing state on item_id.
         # item_id -> lifecycle/canonical replay state for one function call.
         tool_state = {}
+        # v1.2.14 (R3): FIFO order of function_call item_ids as they were ADDED. The
+        # tolerant scheduler opens at most one tool_use block at a time and drains the
+        # rest in this order, so concurrently/interleaved-added tools still translate
+        # to non-overlapping Anthropic blocks in added order.
+        tool_added_order = []
         # Every output_item.added id is single-use, regardless of item kind. Completed
         # item values retain canonical JSON so identical replays are idempotent while
         # conflicting replays fail before duplicate stop/cache effects.
@@ -3831,32 +5881,93 @@ async def _handle_messages(body, receive, send):
         failure_message = "backend stream failed"   # fixed local/classification text only
         failure_error_type = "api_error"
         saw_terminal_response = False
+        # v1.2.14 (R5): one-slot mutable flag shared with the bounded SSE reader so it
+        # can tolerate a malformed tail at EOF only after a terminal frame was seen.
+        terminal_seen = [False]
         failure_finalized = False
         input_tokens = None
         output_tokens = None
+        cached_tokens = None         # V6-R1: cached-prefix count from terminal usage (None until parsed)
+        actual_speed = None          # v1.3.7: only terminal service_tier evidence sets this
         accumulated_text = ""        # for usage estimation fallback
         usage_estimated = False
         retries = 0
+        # v1.2.14 (R3): out-of-order text/reasoning that arrives while a tool (or, for
+        # text, another text) block is open is buffered here and flushed as a TRAILING
+        # text/thinking block once all preceding blocks close (ratified downstream
+        # shapes). This keeps Anthropic content blocks strictly non-overlapping while
+        # tolerating the interleaved-emission wire instead of failing the stream.
+        deferred_text = ""
+        deferred_thinking = ""
+
+        # v1.2.14 (R6): single-writer lock shared by every emit() call AND the ping
+        # watchdog below. Each downstream frame is written under this lock, so a
+        # heartbeat ping can never be interleaved into the middle of a partial content
+        # frame — the writer discipline stays exactly single-writer.
+        emit_lock = asyncio.Lock()
 
         async def emit(ev, data):
             state = _request_state()
             is_terminal = ev in ("message_stop", "error")
-            if is_terminal and state is not None:
-                state.terminal_frame_send = "attempted"
-            _record_downstream_first_content()
-            try:
-                await send({"type": "http.response.body", "body": _sse(ev, data), "more_body": True})
-            except _ClientDisconnected:
+            async with emit_lock:
                 if is_terminal and state is not None:
-                    state.terminal_frame_send = "skipped_disconnect"
-                _record_disconnect("terminal_frame_send" if is_terminal else "content_send")
-                raise
-            except Exception:
+                    state.terminal_frame_send = "attempted"
+                _record_downstream_first_content()
+                try:
+                    await send({"type": "http.response.body", "body": _sse(ev, data), "more_body": True})
+                except _ClientDisconnected:
+                    if is_terminal and state is not None:
+                        state.terminal_frame_send = "skipped_disconnect"
+                    _record_disconnect("terminal_frame_send" if is_terminal else "content_send")
+                    raise
+                except Exception:
+                    if is_terminal and state is not None:
+                        state.terminal_frame_send = "write_failed"
+                    raise
                 if is_terminal and state is not None:
-                    state.terminal_frame_send = "write_failed"
-                raise
-            if is_terminal and state is not None:
-                state.terminal_frame_send = "send_completed"
+                    state.terminal_frame_send = "send_completed"
+
+        async def _heartbeat_loop():
+            # v1.2.14 (R6): keep the downstream SSE connection warm during upstream
+            # silence and detect a dead client within one interval.
+            # INTENT: emit an Anthropic `ping` event every SHIM_PING_INTERVAL_S once
+            #   message_start is on the wire, through emit() (hence emit_lock) so a ping
+            #   shares the single-writer discipline and never splits a partial frame.
+            # REASONING: a failed ping write is positive evidence the client is gone.
+            #   emit() has already recorded the disconnect; we set disconnect_event so
+            #   the main reader loop tears down promptly (the fast dead-client-detection
+            #   benefit) and then stop pinging. CancelledError (normal teardown at the
+            #   terminal/failure boundary) is a BaseException and is intentionally NOT
+            #   caught by `except Exception`, so it propagates and cancels cleanly.
+            # ASSUMES: started only for a streaming response with SHIM_PING_INTERVAL_S
+            #   > 0; runs in the request's inherited context so _request_state() and the
+            #   downstream `send` resolve to this request.
+            while True:
+                await asyncio.sleep(SHIM_PING_INTERVAL_S)
+                try:
+                    await emit("ping", {"type": "ping"})
+                except _ClientDisconnected:
+                    disconnect_event.set()
+                    return
+                except Exception:
+                    # A non-disconnect write failure is still evidence the client is
+                    # gone; surface it as a disconnect and stop the heartbeat.
+                    disconnect_event.set()
+                    return
+
+        async def _stop_heartbeat():
+            # v1.2.14 (R6): tear the watchdog down exactly once, before the terminal
+            # frames (so no ping can follow message_delta/message_stop) and as the
+            # request-teardown safety net. Idempotent: a no-op once already stopped.
+            st = _request_state()
+            if st is None or st.heartbeat_task is None:
+                return
+            task = st.heartbeat_task
+            st.heartbeat_task = None
+            _kind, _outcome, owner_cancellation = await _settle_owned_task(
+                task, cancel=True)
+            if owner_cancellation is not None:
+                raise owner_cancellation
 
         def _reasoning_part_key(ev):
             # v1.2.6 chatgpt-only semantic identity extraction.
@@ -3978,6 +6089,96 @@ async def _handle_messages(body, receive, send):
                     "index": text_index,
                     "content_block": {"type": "text", "text": ""}})
 
+        async def _flush_tool_args_sanitized(st, complete_args):
+            # v1.2.14 (R3): sanitize-mode single input_json_delta emission for one tool
+            # block. The caller guarantees the block is OPEN and its args have not been
+            # emitted yet; the sanitize/parse/fallback logic is identical to the
+            # pre-R3 inline sites — only the emission point (open, not pending) moved.
+            try:
+                parsed = json.loads(complete_args or "{}")
+                parsed, dropped = _sanitize_tool_args(st["name"], parsed)
+                if dropped:
+                    log.info("sanitize tool=%s dropped=%s", st["name"], ",".join(dropped))
+                out_json = json.dumps(parsed)
+            except (ValueError, TypeError):
+                # Fail-open: unparseable args pass through verbatim — sanitization must
+                # never break a working tool call.
+                log.warning("sanitize: unparseable args for tool=%s; passing through", st["name"])
+                out_json = complete_args or "{}"
+            await emit("content_block_delta", {"type": "content_block_delta",
+                "index": st["anth_index"],
+                "delta": {"type": "input_json_delta", "partial_json": out_json}})
+            st["args_emitted"] = True
+
+        async def _open_tool(st):
+            # v1.2.14 (R3): open one deferred/serialized tool_use block. anth_index is
+            # assigned HERE (not at output_item.added) so Anthropic block indices stay
+            # monotonic in EMISSION order. A serialized tool has no other tool open when
+            # it is added, so it opens immediately and its index/bytes equal what the
+            # pre-R3 single-slot reducer produced (byte-identical serialized path).
+            nonlocal next_index
+            st["anth_index"] = next_index
+            next_index += 1
+            st["opened"] = True
+            await emit("content_block_start", {"type": "content_block_start",
+                "index": st["anth_index"],
+                "content_block": {"type": "tool_use", "id": st["call_id"],
+                                  "name": st["name"], "input": {}}})
+            if not SHIM_SANITIZE_TOOLS:
+                # Flush any argument bytes buffered while this tool waited its turn as
+                # ONE input_json_delta. A serialized tool has nothing buffered at open
+                # (its deltas arrive after), so this is a no-op on the byte-identical
+                # path; a deferred tool flushes its whole buffer here.
+                pending = st["args_buf"][st["emitted_len"]:]
+                if pending:
+                    await emit("content_block_delta", {"type": "content_block_delta",
+                        "index": st["anth_index"],
+                        "delta": {"type": "input_json_delta", "partial_json": pending}})
+                    st["emitted_len"] = len(st["args_buf"])
+            elif st["arguments_done"] is not None and not st["args_emitted"]:
+                # Sanitize mode: the complete args already arrived while this tool was
+                # deferred — emit the single sanitized delta now that the block is open.
+                await _flush_tool_args_sanitized(st, st["arguments_done"][1])
+
+        async def _close_tool(st):
+            # v1.2.14 (R3): emit the terminal content_block_stop for one open tool.
+            await emit("content_block_stop", {
+                "type": "content_block_stop", "index": st["anth_index"]})
+            st["closed"] = True
+
+        async def _try_open_next_tool():
+            # v1.2.14 (R3): FIFO-drain deferred tools when the active tool closes. Open
+            # the next not-yet-opened tool in added order; if it is ALREADY fully
+            # finalized (its output_item.done arrived while it waited), close it
+            # contiguously and continue, so a run of finalized deferrals emits
+            # back-to-back start->delta->stop blocks. Stop at the first tool still
+            # awaiting its own events — that one becomes the active open block and its
+            # remaining deltas/done flow through the normal handlers.
+            while True:
+                nxt = None
+                for iid in tool_added_order:
+                    cand = tool_state[iid]
+                    if not cand["opened"] and not cand["closed"]:
+                        nxt = cand
+                        break
+                if nxt is None:
+                    return
+                await _open_tool(nxt)
+                if nxt["finalized"]:
+                    await _close_tool(nxt)
+                    continue
+                return
+
+        async def _drain_pending_tools():
+            # v1.2.14 (R3): terminal-success flush — open and close every still-deferred
+            # tool in added order so each becomes a complete non-overlapping tool_use
+            # block. Called after the single active tool (if any) has been closed.
+            for iid in tool_added_order:
+                st = tool_state[iid]
+                if not st["opened"] and not st["closed"]:
+                    await _open_tool(st)
+                    await _close_tool(st)
+
         async def _finalize_stream_failure(message, error_type="api_error"):
             # v1.2.7 common post-start failure finalizer.
             # INTENT: leave every emitted block structurally closed, then make the
@@ -3994,6 +6195,9 @@ async def _handle_messages(body, receive, send):
             # (mid-stream protocol/framing/transport failures with no backend status)
             # keeps the default api_error, preserving the v1.2.8 finalizer semantics.
             nonlocal text_block_open, thinking_block_open, failure_finalized
+            # v1.2.14 (R6): stop the heartbeat before emitting any terminal-failure
+            # frames so a ping can never interleave with the error/body-close sequence.
+            await _stop_heartbeat()
             _record_backend_error(error_type, phase="upstream_stream")
             if failure_finalized or disconnect_event.is_set():
                 return False
@@ -4011,9 +6215,16 @@ async def _handle_messages(body, receive, send):
                     "delta": {"type": "signature_delta", "signature": ""}})
                 await emit("content_block_stop", {
                     "type": "content_block_stop", "index": thinking_index})
-            for item_id in sorted(tool_state, key=lambda key: tool_state[key]["anth_index"]):
+            # v1.2.14 (R3): only OPENED tools have a downstream block (and a real
+            # anth_index) to close; a still-deferred tool never emitted a
+            # content_block_start, so it is skipped here. Filtering to opened tools
+            # also keeps the sort key from comparing a pending tool's None index.
+            for item_id in sorted(
+                (key for key in tool_state if tool_state[key]["opened"]),
+                key=lambda key: tool_state[key]["anth_index"],
+            ):
                 st = tool_state[item_id]
-                if st["opened"] and not st.get("closed"):
+                if not st.get("closed"):
                     st["closed"] = True
                     await emit("content_block_stop", {
                         "type": "content_block_stop", "index": st["anth_index"]})
@@ -4122,7 +6333,8 @@ async def _handle_messages(body, receive, send):
                 await emit("message_start", {"type": "message_start", "message": {
                     "id": msg_id, "type": "message", "role": "assistant", "model": model,
                     "content": [], "stop_reason": None, "stop_sequence": None,
-                    "usage": {"input_tokens": 0, "output_tokens": 0}}})
+                    "usage": {"input_tokens": 0, "output_tokens": 0,
+                              "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0}}})
                 started = True
                 # v1.2.10: this is the ONLY finalizer caller that knows a real
                 # backend HTTP status (`status`). Map it to the Anthropic error type
@@ -4135,15 +6347,27 @@ async def _handle_messages(body, receive, send):
                 await _finalize_stream_failure(client_failure, error_type)
                 return
 
-            # message_start (usage filled with 0s; refined at message_delta).
+            # message_start (usage filled with 0s; refined at message_delta). V6-R3: the
+            # two cache fields are always present (0) for a deterministic usage shape.
             await emit("message_start", {"type": "message_start", "message": {
                 "id": msg_id, "type": "message", "role": "assistant", "model": model,
                 "content": [], "stop_reason": None, "stop_sequence": None,
-                "usage": {"input_tokens": 0, "output_tokens": 0}}})
+                "usage": {"input_tokens": 0, "output_tokens": 0,
+                          "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0}}})
             started = True
 
+            # v1.2.14 (R6): message_start is on the wire — start the downstream
+            # heartbeat. A `ping` every SHIM_PING_INTERVAL_S keeps the connection warm
+            # during upstream silence; SHIM_PING_INTERVAL_S <= 0 disables it. This is
+            # the ONLY start site, so the watchdog never runs for a non-streaming
+            # response or for the pre-content error branch above (which returns first).
+            if SHIM_PING_INTERVAL_S > 0:
+                _hb_state = _request_state()
+                if _hb_state is not None:
+                    _hb_state.heartbeat_task = asyncio.create_task(_heartbeat_loop())
+
             async for data_bytes in _iter_bounded_sse_data(
-                resp, disconnect_event
+                resp, disconnect_event, terminal_seen
             ):
                 # HARDENING (client-disconnect mid-stream): stop pulling from the
                 # backend the moment the client goes away.
@@ -4158,6 +6382,15 @@ async def _handle_messages(body, receive, send):
                 try:
                     ev = json.loads(data_bytes)
                 except (ValueError, UnicodeDecodeError):
+                    # v1.2.14 (R3.5): a malformed frame whose recoverable type is a
+                    # non-load-bearing status event is counted (R1) and skipped rather
+                    # than failing the whole stream — the frame carried nothing the
+                    # translation needs. Any other (or unrecoverable) type stays a
+                    # strict failure, so a malformed load-bearing frame still aborts.
+                    probed_type = _probe_malformed_event_type(data_bytes)
+                    if probed_type in _MALFORMED_TOLERANT_EVENT_TYPES:
+                        _record_unknown_wire("event_type", probed_type)
+                        continue
                     stream_failed = True
                     failure_message = "backend stream contained malformed SSE JSON"
                     break
@@ -4176,11 +6409,13 @@ async def _handle_messages(body, receive, send):
                             for st in tool_state.values()
                         )
                         if text_block_open or unfinished_tool:
-                            stream_failed = True
-                            failure_message = (
-                                "backend emitted reasoning while a content block was open"
-                            )
-                            break
+                            # v1.2.14 (R3): tolerate out-of-order reasoning. A text or
+                            # tool block is open, so buffer this reasoning and emit it
+                            # as a TRAILING thinking block once those blocks close
+                            # (ratified shape) — keeps Anthropic blocks non-overlapping
+                            # instead of failing the stream as pre-R3 did.
+                            deferred_thinking += delta
+                            continue
                         await _ensure_thinking_open()
                         if SHIM_BACKEND_MODE == "chatgpt":
                             # v1.2.6: synthesize a boundary only before the first
@@ -4234,9 +6469,13 @@ async def _handle_messages(body, receive, send):
                             for st in tool_state.values()
                         )
                         if unfinished_tool:
-                            raise _ProtocolError(
-                                "backend emitted text while a tool block was open"
-                            )
+                            # v1.2.14 (R3): tolerate text emitted while a tool block is
+                            # open. Buffer it and emit as a TRAILING text block once the
+                            # tool closes (ratified shape) — keeps Anthropic blocks
+                            # non-overlapping instead of failing the stream as pre-R3 did.
+                            deferred_text += delta
+                            accumulated_text += delta
+                            continue
                         await _ensure_text_open()
                         accumulated_text += delta
                         await emit("content_block_delta", {"type": "content_block_delta",
@@ -4255,50 +6494,57 @@ async def _handle_messages(body, receive, send):
                             )
                         added_item_ids.add(item_id)
                     if item.get("type") == "function_call":
-                        # Before a tool opens, every prior tool must be fully closed.
-                        # A second concurrent tool would overlap Anthropic blocks and
-                        # must fail rather than silently overwrite/reroute state.
-                        unfinished_tool = any(
+                        if item_id in tool_state:
+                            raise _ProtocolError("backend reused a function item id")
+                        # v1.2.14 (R3): tolerant scheduler. A function_call added while
+                        # another tool block is still OPEN is DEFERRED (registered
+                        # pending, args buffered), not rejected as a protocol failure —
+                        # it opens later via _try_open_next_tool when the active tool
+                        # closes, producing non-overlapping Anthropic tool_use blocks in
+                        # added order (strict-emit downstream). On a SERIALIZED wire no
+                        # tool is ever open here, so `other_tool_open` is always False
+                        # and this reduces to the pre-R3 immediate-open path.
+                        other_tool_open = any(
                             st["opened"] and not st.get("closed")
                             for st in tool_state.values()
                         )
-                        if unfinished_tool:
-                            raise _ProtocolError(
-                                "backend opened a tool while another tool was unfinished"
-                            )
-                        if item_id in tool_state:
-                            raise _ProtocolError("backend reused a function item id")
-
-                        # Close ALL open non-tool blocks before opening tool_use. This
-                        # preserves strict Anthropic block serialization while still
-                        # supporting normal text -> tool transitions.
-                        if thinking_block_open:
-                            await emit("content_block_delta", {"type": "content_block_delta",
-                                "index": thinking_index,
-                                "delta": {"type": "signature_delta", "signature": ""}})
-                            await emit("content_block_stop", {"type": "content_block_stop", "index": thinking_index})
-                            thinking_block_open = False
-                        if text_block_open:
-                            await emit("content_block_stop", {"type": "content_block_stop", "index": text_index})
-                            text_block_open = False
-                        anth_index = next_index
-                        next_index += 1
                         st = {
-                            "anth_index": anth_index,
-                            "opened": True,
+                            "anth_index": None,        # assigned at open (emission order)
+                            "opened": False,
+                            "closed": False,
                             "call_id": item["call_id"],
                             "name": item["name"],
                             "args_buf": "",
+                            "emitted_len": 0,          # sanitize-off incremental cursor
                             "arguments_done": None,
+                            "args_emitted": False,     # sanitize-on single-delta guard
+                            "finalized": False,        # output_item.done seen
                             "completed_item": None,
-                            "closed": False,
                         }
                         tool_state[item_id] = st
+                        tool_added_order.append(item_id)
                         saw_tool_use = True
-                        await emit("content_block_start", {"type": "content_block_start",
-                            "index": anth_index,
-                            "content_block": {"type": "tool_use", "id": st["call_id"],
-                                              "name": st["name"], "input": {}}})
+                        if not other_tool_open:
+                            # Serialized path: close ALL open non-tool blocks before
+                            # opening tool_use (normal text/thinking -> tool transition),
+                            # then open immediately. While another tool IS open, text and
+                            # thinking are already closed, so the deferred branch has
+                            # nothing to close and emits nothing until it drains.
+                            if thinking_block_open:
+                                await emit("content_block_delta", {"type": "content_block_delta",
+                                    "index": thinking_index,
+                                    "delta": {"type": "signature_delta", "signature": ""}})
+                                await emit("content_block_stop", {"type": "content_block_stop", "index": thinking_index})
+                                thinking_block_open = False
+                            if text_block_open:
+                                await emit("content_block_stop", {"type": "content_block_stop", "index": text_index})
+                                text_block_open = False
+                            await _open_tool(st)
+                    elif item.get("type") not in _KNOWN_ITEM_TYPES:
+                        # v1.2.14 (R1): message/reasoning items are known and handled
+                        # elsewhere; any other output_item type is unmodeled and
+                        # counted for observability (still not translated).
+                        _record_unknown_wire("item_type", item.get("type"))
                     continue
 
                 # --- function_call argument deltas (route by item_id) ---
@@ -4321,10 +6567,14 @@ async def _handle_messages(body, receive, send):
                     # in both sanitize modes. Sanitize mode still defers emission
                     # to .done; sanitize-off still forwards incrementally.
                     st["args_buf"] += frag
-                    if not SHIM_SANITIZE_TOOLS:
+                    # v1.2.14 (R3): forward incrementally only once the block is OPEN.
+                    # A still-deferred tool just buffers (emitted_len stays behind, and
+                    # _open_tool flushes args_buf[emitted_len:] as one delta on open).
+                    if not SHIM_SANITIZE_TOOLS and st["opened"]:
                         await emit("content_block_delta", {"type": "content_block_delta",
                             "index": st["anth_index"],
                             "delta": {"type": "input_json_delta", "partial_json": frag}})
+                        st["emitted_len"] = len(st["args_buf"])
                     continue
 
                 # --- function_call arguments finalized ---
@@ -4372,26 +6622,15 @@ async def _handle_messages(body, receive, send):
                             "backend completed conflicting arguments after tool closure"
                         )
                     complete_args = canonical_done[1]
-                    if SHIM_SANITIZE_TOOLS:
-                        # SANITIZE MODE: parse the complete string, sanitize, and
-                        # emit as ONE input_json_delta. Identical replay is ignored
-                        # above, so downstream sees this exact delta at most once.
-                        try:
-                            parsed = json.loads(complete_args or "{}")
-                            parsed, dropped = _sanitize_tool_args(st["name"], parsed)
-                            if dropped:
-                                log.info("sanitize tool=%s dropped=%s", st["name"], ",".join(dropped))
-                            out_json = json.dumps(parsed)
-                        except (ValueError, TypeError):
-                            # Fail-open: unparseable args pass through verbatim —
-                            # sanitization must never break a working tool call.
-                            log.warning("sanitize: unparseable args for tool=%s; passing through", st["name"])
-                            out_json = complete_args or "{}"
-                        await emit("content_block_delta", {"type": "content_block_delta",
-                            "index": st["anth_index"],
-                            "delta": {"type": "input_json_delta", "partial_json": out_json}})
-                    # Sanitize-off already forwarded the deltas; nothing to emit.
                     st["arguments_done"] = canonical_done
+                    # v1.2.14 (R3): SANITIZE MODE emits the sanitized args as ONE
+                    # input_json_delta, but only once the block is OPEN. A still-deferred
+                    # tool records arguments_done now; _open_tool emits the sanitized
+                    # delta when it drains. Identical replay is ignored above, so
+                    # downstream sees this exact delta at most once. Sanitize-off already
+                    # forwarded (open) or buffered (deferred) the deltas — nothing to emit.
+                    if SHIM_SANITIZE_TOOLS and st["opened"] and not st["args_emitted"]:
+                        await _flush_tool_args_sanitized(st, complete_args)
                     continue
 
                 # --- an output item completed ---
@@ -4426,6 +6665,12 @@ async def _handle_messages(body, receive, send):
                             "backend replayed a conflicting completed output item"
                         )
 
+                    # v1.2.14 (R1): count unmodeled completed item types for
+                    # observability. function_call/message/reasoning are known; any
+                    # other type is still cached below but not otherwise translated.
+                    if item.get("type") not in _KNOWN_ITEM_TYPES:
+                        _record_unknown_wire("item_type", item.get("type"))
+
                     # Validate all state relationships before adding the item to the
                     # completed/cache set or emitting a fallback delta/stop.
                     if item.get("type") == "function_call":
@@ -4452,28 +6697,23 @@ async def _handle_messages(body, receive, send):
                                 "backend completed a tool after an inconsistent closure"
                             )
 
-                        # Fallback: if no arguments.done event fired, emit the full
-                        # item arguments once under sanitize mode.
-                        if SHIM_SANITIZE_TOOLS and prior_done is None:
-                            raw = item["arguments"]
-                            try:
-                                parsed = json.loads(raw or "{}")
-                                parsed, dropped = _sanitize_tool_args(st["name"], parsed)
-                                if dropped:
-                                    log.info("sanitize tool=%s dropped=%s", st["name"], ",".join(dropped))
-                                out_json = json.dumps(parsed)
-                            except (ValueError, TypeError):
-                                log.warning("sanitize: unparseable args for tool=%s; passing through", st["name"])
-                                out_json = raw or "{}"
-                            await emit("content_block_delta", {"type": "content_block_delta",
-                                "index": st["anth_index"],
-                                "delta": {"type": "input_json_delta", "partial_json": out_json}})
                         if prior_done is None:
                             st["arguments_done"] = item_done
-                        await emit("content_block_stop", {
-                            "type": "content_block_stop", "index": st["anth_index"]})
-                        st["closed"] = True
+                        # v1.2.14 (R3): the tool is now fully finalized on the wire.
+                        # finalized lets a still-deferred tool drain as a contiguous
+                        # start->delta->stop block when its turn comes.
+                        st["finalized"] = True
                         st["completed_item"] = item
+                        if st["opened"]:
+                            # Sanitize-mode fallback: if arguments.done never fired, emit
+                            # the single sanitized delta from the completed item's
+                            # arguments now, before the block closes.
+                            if SHIM_SANITIZE_TOOLS and not st["args_emitted"]:
+                                await _flush_tool_args_sanitized(st, st["arguments_done"][1])
+                            await _close_tool(st)
+                            # An active tool just closed — drain the next deferred tool.
+                            await _try_open_next_tool()
+                        # else: still deferred — it opens and closes on drain later.
 
                     completed_item_values[item_id] = item
                     completed_items.append(item)
@@ -4482,14 +6722,26 @@ async def _handle_messages(body, receive, send):
                 # --- terminal SUCCESS/TRUNCATION events ---
                 if etype in ("response.completed", "response.incomplete"):
                     r_obj = _validate_terminal_response(etype, ev.get("response"))
-                    terminal_output = r_obj.get("output", [])
+                    # v1.2.14 (R3.3): tolerate `output: null`/absent — fall back to the
+                    # streamed/collected state (cache_items below uses completed_items
+                    # when terminal_output_items is empty). `or []` covers both the
+                    # null (validated-tolerated) and the missing-key cases.
+                    terminal_output = r_obj.get("output") or []
                     for item in terminal_output:
                         _validate_output_item(item)
                     saw_terminal_response = True
+                    terminal_seen[0] = True
                     final_status = r_obj["status"]
                     usage = r_obj.get("usage", {})
                     input_tokens = usage.get("input_tokens", input_tokens)
                     output_tokens = usage.get("output_tokens", output_tokens)
+                    # V6-R1: capture the cached-prefix count alongside the token totals.
+                    # input_tokens is now resolved to the OpenAI total, so the clamp guard
+                    # inside _resolve_cached_tokens compares against the correct basis.
+                    cached_tokens = _resolve_cached_tokens(usage, input_tokens)
+                    # Actual service is terminal evidence. Never expose requested intent
+                    # in message_start or infer Standard from an absent/unknown tier.
+                    actual_speed = _actual_speed_from_response(r_obj)
                     # Retain only validated terminal output for one post-loop cache
                     # population. The first valid terminal is final: stop semantic
                     # consumption immediately and close the upstream context in the
@@ -4543,7 +6795,13 @@ async def _handle_messages(body, receive, send):
                     )
                     stream_failed = True
                     break
-                # Any other event type is ignored gracefully.
+                # v1.2.14 (R1): every handled event type above continues or breaks,
+                # so anything reaching here is unhandled. Known status/lifecycle
+                # events (created, in_progress, content_part.*, *_text.done, reasoning
+                # summary part boundaries) are ignored silently; a genuinely unknown
+                # event type is counted for observability without translation.
+                if etype not in _KNOWN_EVENT_TYPES:
+                    _record_unknown_wire("event_type", etype)
 
             # v1.2.7 terminal invariant: [DONE] and clean EOF are framing signals,
             # never proof that generation completed. Only a parsed complete terminal
@@ -4567,7 +6825,10 @@ async def _handle_messages(body, receive, send):
             # from output_item.done events.
             cache_items = terminal_output_items or completed_items
             if cache_items:
-                _populate_reasoning_cache(cache_items)
+                # v1.3.3 (A2-R1): persist only on a real mutation (see the non-stream
+                # call site). Same fail-open, atomic-replace write.
+                if _populate_reasoning_cache(cache_items):
+                    _write_reasoning_cache_state()
 
             # Close any still-open text/thinking blocks (tools closed at .done).
             if text_block_open:
@@ -4581,12 +6842,45 @@ async def _handle_messages(body, receive, send):
                     "delta": {"type": "signature_delta", "signature": ""}})
                 await emit("content_block_stop", {"type": "content_block_stop", "index": thinking_index})
                 thinking_block_open = False
-            # Close any tool blocks that never received an output_item.done.
-            for item_id in sorted(tool_state, key=lambda k: tool_state[k]["anth_index"]):
+            # Close the active tool that never received an output_item.done (at most one
+            # is open under the R3 scheduler), then drain any still-deferred tools so
+            # each becomes a complete non-overlapping tool_use block in added order.
+            for item_id in tool_added_order:
                 st = tool_state[item_id]
                 if st["opened"] and not st.get("closed"):
                     await emit("content_block_stop", {"type": "content_block_stop", "index": st["anth_index"]})
                     st["closed"] = True
+            await _drain_pending_tools()
+
+            # v1.2.14 (R3): flush reasoning/text that arrived out of order (while a tool
+            # or text block was open) as TRAILING thinking/text blocks (ratified shapes).
+            # By construction all preceding blocks are now closed, so these open with
+            # fresh monotonic indices and stay non-overlapping.
+            if deferred_thinking:
+                deferred_thinking_index = next_index
+                next_index += 1
+                await emit("content_block_start", {"type": "content_block_start",
+                    "index": deferred_thinking_index,
+                    "content_block": {"type": "thinking", "thinking": ""}})
+                await emit("content_block_delta", {"type": "content_block_delta",
+                    "index": deferred_thinking_index,
+                    "delta": {"type": "thinking_delta", "thinking": deferred_thinking}})
+                await emit("content_block_delta", {"type": "content_block_delta",
+                    "index": deferred_thinking_index,
+                    "delta": {"type": "signature_delta", "signature": ""}})
+                await emit("content_block_stop", {"type": "content_block_stop", "index": deferred_thinking_index})
+                deferred_thinking = ""
+            if deferred_text:
+                deferred_text_index = next_index
+                next_index += 1
+                await emit("content_block_start", {"type": "content_block_start",
+                    "index": deferred_text_index,
+                    "content_block": {"type": "text", "text": ""}})
+                await emit("content_block_delta", {"type": "content_block_delta",
+                    "index": deferred_text_index,
+                    "delta": {"type": "text_delta", "text": deferred_text}})
+                await emit("content_block_stop", {"type": "content_block_stop", "index": deferred_text_index})
+                deferred_text = ""
 
             # HARDENING (empty-response guard): if neither text, thinking, nor a
             # tool call was produced, emit an empty text block so Claude Code sees
@@ -4616,12 +6910,22 @@ async def _handle_messages(body, receive, send):
                 state.stop_reason = stop_reason
                 state.input_tokens = input_tokens
                 state.output_tokens = output_tokens
+                # V6-R1: None on the estimated path (no terminal usage parsed) -> the
+                # terminal record renders "-"; the /health prompt_cache counters only tick
+                # on a backend-sourced usage (usage_source == "backend").
+                state.cached_tokens = cached_tokens
                 state.usage_source = "estimated" if usage_estimated else "backend"
                 state.tools_called = len(tool_state)
 
+            # v1.2.14 (R6): stop the heartbeat before the terminal frames so no ping
+            # can be written after message_delta/message_stop.
+            await _stop_heartbeat()
             await emit("message_delta", {"type": "message_delta",
                 "delta": {"stop_reason": stop_reason, "stop_sequence": None},
-                "usage": {"input_tokens": input_tokens, "output_tokens": output_tokens}})
+                # V6-R3: always-emit Anthropic usage shape with the subtraction mapping.
+                # cached_tokens is already the effective (typed, clamp-checked) value.
+                "usage": _anthropic_usage_block(
+                    input_tokens, output_tokens, cached_tokens, actual_speed)})
             await emit("message_stop", {"type": "message_stop"})
             # A returned ASGI send marks only send_completed. It does not prove
             # client acknowledgment or receipt. Success is fixed at this semantic
@@ -4642,6 +6946,9 @@ async def _handle_messages(body, receive, send):
             elif isinstance(e, ValueError):
                 failure_kind = "backend SSE framing error"
             elif isinstance(e, httpx.HTTPError):
+                _record_transport_failure(
+                    e, _transport_failure_phase(e, post_stream_start=True), False,
+                )
                 failure_kind = "backend transport error"
             else:
                 failure_kind = "backend stream translation error"
@@ -4655,7 +6962,9 @@ async def _handle_messages(body, receive, send):
                 await emit("message_start", {"type": "message_start", "message": {
                     "id": msg_id, "type": "message", "role": "assistant", "model": model,
                     "content": [], "stop_reason": None, "stop_sequence": None,
-                    "usage": {"input_tokens": 0, "output_tokens": 0}}})
+                    # V6-R3: always-emit cache fields (0) for a deterministic usage shape.
+                    "usage": {"input_tokens": 0, "output_tokens": 0,
+                              "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0}}})
                 started = True
             try:
                 await _finalize_stream_failure(failure_kind)
@@ -4725,9 +7034,113 @@ async def _handle_models(send):
     ]})
 
 
+# A1-R4 (v1.3.0): read-only auth-validity snapshot for /health. Derived ENTIRELY from
+# auth.json presence + the access_token's JWT `exp` claim (payload decoded, never
+# verified, never the signature). It NEVER returns token material — only a coarse
+# state, the decoded expiry, a day count, and (for actionable states) the literal
+# recovery command. This is a REPORTING mirror of the auth store: it never writes,
+# never refreshes, and never touches the delegation path (delegated_refresh's domain).
+# The "expiring" horizon is deliberately WIDER than the internal 5-min refresh margin
+# (_TOKEN_REFRESH_MARGIN_S): that margin governs when the shim asks codex to refresh;
+# this window is a USER heads-up ("subscription auth expires in N days") surfaced by
+# start_shim.sh readiness and deploy-smoke, so it warns 48h ahead — enough lead time to
+# run `codex login --device-auth` before work is blocked.
+_AUTH_EXPIRING_WINDOW_S = 48 * 3600
+_AUTH_RECOVERY_CMD = "codex login --device-auth"
+
+
+def _auth_health_block():
+    # INTENT: return the /health "auth" block: {state, expires_at, days_left, recovery?}.
+    #   state is valid|expiring|expired|absent|unreadable on the chatgpt lane, and "n/a"
+    #   on the openai (API-key) lane, which does not use the codex OAuth store.
+    # REASONING: absent = no readable auth.json (CODEX_HOME unset, or the file missing/
+    #   unreadable); unreadable = the file reads but yields no decodable access_token exp
+    #   (malformed JSON, missing tokens/access_token, or a non-JWT/undecodable token);
+    #   otherwise the exp decides expired (exp <= now) / expiring (within
+    #   _AUTH_EXPIRING_WINDOW_S) / valid. `recovery` (the literal re-login command) is
+    #   present ONLY for the four actionable states, never for valid or n/a.
+    # CREDENTIAL SAFETY: never returns token material — only the coarse state, the
+    #   decoded expiry timestamp, a day count, and a static command string. Never raises
+    #   (a /health probe must not 500); every failure path degrades to absent/unreadable.
+    if SHIM_BACKEND_MODE != "chatgpt":
+        return {"state": "n/a"}
+    if not _CODEX_AUTH_PATH or not os.access(_CODEX_AUTH_PATH, os.R_OK):
+        return {"state": "absent", "expires_at": None, "days_left": None,
+                "recovery": _AUTH_RECOVERY_CMD}
+    try:
+        with open(_CODEX_AUTH_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        access = (data.get("tokens") or {}).get("access_token") if isinstance(data, dict) else None
+    except (OSError, ValueError):
+        access = None
+    exp = _jwt_exp(access) if access else None
+    if exp is None:
+        return {"state": "unreadable", "expires_at": None, "days_left": None,
+                "recovery": _AUTH_RECOVERY_CMD}
+    now = time.time()
+    try:
+        remaining = exp - now
+        if remaining <= 0:
+            state = "expired"
+        elif remaining <= _AUTH_EXPIRING_WINDOW_S:
+            state = "expiring"
+        else:
+            state = "valid"
+        block = {
+            "state": state,
+            "expires_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(exp)),
+            "days_left": round(remaining / 86400, 1),
+        }
+    except (OverflowError, OSError, ValueError):
+        # A pathological numeric exp (corrupt/partial-write auth.json, or a non-codex
+        # writer yielding a garbage-but-numeric exp) can overflow the platform time_t
+        # inside time.gmtime/strftime. The file reached us and parsed, but the auth
+        # data is unusable -> classify "unreadable" (an actionable state, recovery
+        # command included), preserving this function's "never raises" contract.
+        return {"state": "unreadable", "expires_at": None, "days_left": None,
+                "recovery": _AUTH_RECOVERY_CMD}
+    if state != "valid":
+        block["recovery"] = _AUTH_RECOVERY_CMD
+    return block
+
+
+def _gpt_service_tier_health_block():
+    # Stable bounded v1.3.8 health contract. Current policy is a fresh strict read and is
+    # explicitly global requested state, while latest_terminal is process-local historical
+    # evidence from one genuine terminal upstream object. Neither is per-session proof.
+    native_fast_disabled = _GPT_FAST_NATIVE_DISABLED
+    try:
+        snapshot = _GPT_FAST_STORE.read(
+            SHIM_BACKEND_MODE if _GPT_FAST_ROUTE_VALID else None
+        )
+        policy = snapshot.health_dict()
+        # Preserve the persisted `enabled` fact while projecting request-effective state
+        # honestly. Failed reconciliation of an unsafe/invalid state, or any missing exact
+        # process boundary, cannot leave health claiming stored ON is currently active.
+        if (not _GPT_FAST_ROUTE_VALID or not native_fast_disabled) and policy["effective"]:
+            policy["effective"] = False
+    except Exception:
+        policy = {
+            "status": "unreadable",
+            "backend_mode": None,
+            "enabled": False,
+            "effective": False,
+        }
+    with _LATEST_TERMINAL_LOCK:
+        latest = dict(_LATEST_TERMINAL) if _LATEST_TERMINAL is not None else None
+    return {
+        "backend_mode": SHIM_BACKEND_MODE,
+        "requested_tier_vocabulary": _FAST_REQUEST_SERVICE_TIERS[SHIM_BACKEND_MODE],
+        "policy": policy,
+        "native_fast_disabled": native_fast_disabled,
+        "latest_terminal": latest,
+    }
+
+
 async def _handle_health(send):
     # HARDENING: health endpoint for the manager's idempotency + --status checks.
     await _send_json(send, 200, {
+        "service": SHIM_SERVICE_ID,
         "status": "ok",
         "backend": SHIM_BACKEND_BASE_URL,
         "backend_mode": SHIM_BACKEND_MODE,
@@ -4748,6 +7161,38 @@ async def _handle_health(send):
         "sanitize_tools": SHIM_SANITIZE_TOOLS,
         "reasoning_effort": SHIM_REASONING_EFFORT,
         "text_verbosity": SHIM_TEXT_VERBOSITY,
+        # A1-R4 (v1.3.0): read-only auth-validity snapshot (chatgpt lane; "n/a" on the
+        # openai lane). Derived from auth.json presence + JWT exp only — never token
+        # material. start_shim.sh readiness/--status and deploy-smoke T0.9 consume it.
+        "auth": _auth_health_block(),
+        # v1.3.3 (A2-R6): reasoning-cache continuity surface — COUNTS ONLY (never entry
+        # contents or call_ids). entries = current in-memory cache size; restored =
+        # entries loaded from the persisted snapshot at startup (0 if none). This file is
+        # shim-internal continuity state, so no reader outside the shim consumes it — the
+        # surface exists for operator triage (start_shim --status, deploy-smoke).
+        # v1.3.4 (V4-R7): restore-effectiveness — hits = process-cumulative reasoning-cache
+        # hits since start; restored_hits = the subset whose call_id was still disk-restored
+        # at hit time (direct evidence for the ~1-week cap/ceiling review). Both counts only,
+        # nested here (NOT new top-level keys) so the /health top-level key set is unchanged.
+        "reasoning_cache": {
+            "entries": len(_REASONING_CACHE),
+            "restored": _REASONING_CACHE_RESTORED,
+            "hits": _REASONING_CACHE_HITS_TOTAL,
+            "restored_hits": _REASONING_CACHE_RESTORED_HITS_TOTAL,
+        },
+        # v1.3.6 (V6-R4): prompt-cache observability — a NEW top-level block. Unlike the
+        # v1.3.4 reasoning_cache fold-in, prompt_cache has no natural parent (reasoning_cache
+        # is a DIFFERENT cache — reasoning-continuity blobs), so it is added as its own key.
+        # This DOES change the pinned top-level key set, so _HEALTH_KEYS + the version pin
+        # move in the same commit (the sanctioned, review-visible money-test extension).
+        # Counts only, never content. hit-rate = cached_tokens_total / input_tokens_total.
+        "prompt_cache": {
+            "requests_with_usage": _PROMPT_CACHE_REQUESTS_WITH_USAGE,
+            "requests_with_cached": _PROMPT_CACHE_REQUESTS_WITH_CACHED,
+            "cached_tokens_total": _PROMPT_CACHE_CACHED_TOKENS_TOTAL,
+            "input_tokens_total": _PROMPT_CACHE_INPUT_TOKENS_TOTAL,
+        },
+        "gpt_service_tier": _gpt_service_tier_health_block(),
     })
 
 
@@ -4775,13 +7220,23 @@ async def app(scope, receive, send):
         # Establish correlation before the first body read so body-read disconnects
         # and every nested task/log record belong to this request lifecycle.
         state = _RequestLifecycleState()
+        # v1.3.8 request-boundary snapshot: exactly one lock-free read, immediately after
+        # lifecycle creation and before request_start/body read/auth. The resulting object
+        # is the sole global-policy input used to build the one retry-stable payload.
+        try:
+            state.gpt_policy_snapshot = _GPT_FAST_STORE.read(
+                SHIM_BACKEND_MODE if _GPT_FAST_ROUTE_VALID else None
+            )
+        except Exception:
+            state.gpt_policy_snapshot = None
         token = _REQUEST_STATE.set(state)
         _lifecycle_event("request_start", method="POST", path="/v1/messages")
         try:
             body = await _read_body(receive)
             if not state.disconnect_observed:
                 # Pass `receive` through so the handler can watch for disconnect.
-                await _handle_messages(body, receive, send)
+                await _handle_messages(
+                    body, receive, send, scope.get("headers", ()))
         except _ClientDisconnected:
             _record_disconnect(state.phase)
         except asyncio.CancelledError:

@@ -119,7 +119,10 @@ fi
 # (DAAF_PROJECT_NAME set) are detected correctly. The value comes from the shell
 # environment first, else DAAF_PROJECT_NAME in the existing install's
 # environment_settings.txt, else the "daaf" default (byte-for-byte identical to
-# the former hardcoded "daaf_daaf-data"). Parse only that one key (never `source`
+# the former hardcoded "daaf_daaf-data"). DAAF_DATA_VOLUME_NAME, when set in the
+# shell environment, overrides the whole derivation with a verbatim full volume
+# name (the shared-workspace escape hatch; matches resolve_data_volume_name in
+# daaf_lib.sh). Parse only that one key (never `source`
 # -- the file holds API keys); shell env wins; CR stripped; Bash 3.2 safe.
 INSTALL_PROJECT_NAME="${DAAF_PROJECT_NAME:-}"
 if [ -z "${INSTALL_PROJECT_NAME}" ] && [ -f "${INSTALL_DIR}/environment_settings.txt" ]; then
@@ -137,7 +140,7 @@ if [ -z "${INSTALL_PROJECT_NAME}" ] && [ -f "${INSTALL_DIR}/environment_settings
         esac
     done < "${INSTALL_DIR}/environment_settings.txt"
 fi
-DATA_VOLUME_NAME="${INSTALL_PROJECT_NAME:-daaf}_daaf-data"
+DATA_VOLUME_NAME="${DAAF_DATA_VOLUME_NAME:-${INSTALL_PROJECT_NAME:-daaf}_daaf-data}"
 
 # --- Bridge the DAAF_DEV build flag into the environment ---
 # Unlike DAAF_PROJECT_NAME above (only needed locally to derive the volume name;
@@ -590,7 +593,7 @@ else
     SEED_OK=1
     SEED_KEYS=""
     if cp "${SEED_SRC}" "${SEED_DST}"; then
-        for _k in DAAF_PROJECT_NAME DAAF_PORT_MARIMO DAAF_PORT_LOGVIEWER DAAF_PORT_VSCODE DAAF_DEV DAAF_BRANCH; do
+        for _k in DAAF_PROJECT_NAME DAAF_PORT_MARIMO DAAF_PORT_LOGVIEWER DAAF_PORT_VSCODE DAAF_DEV DAAF_BRANCH DAAF_DATA_VOLUME_NAME; do
             _v="${!_k:-}"
             [ -n "${_v}" ] || continue
             if [ "${_k}" = "DAAF_BRANCH" ] && [ "${SEED_BRANCH_OK}" != "1" ]; then
@@ -675,12 +678,6 @@ echo "     The Control Panel provides a status dashboard, service management,"
 echo "     and all DAAF operations in one place."
 echo ""
 echo "  2. On first launch, you'll be asked to authenticate with your Anthropic account."
-echo ""
-echo "  3. Configure Claude Code (required):"
-echo "     - Type /config and set:"
-echo "         Auto-compact  -> False"
-echo "         Verbose output -> True"
-echo "     - Press ESC to return to the chat"
 echo ""
 echo "Available scripts (in ${INSTALL_DIR}):"
 echo "  bash daaf.sh                    DAAF Control Panel (recommended)"

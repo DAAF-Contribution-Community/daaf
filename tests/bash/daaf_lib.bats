@@ -471,6 +471,80 @@ teardown() {
     [ ! -f /tmp/daaf_should_not_exist ]
 }
 
+@test "load_daaf_settings rejects a whitespace-padded key (column-0 strict, parity with PS)" {
+    # A leading-space "  DAAF_PROJECT_NAME=..." line is not flush at column 0, so the
+    # column-0 `case` glob rejects it. This is the conformance anchor the PowerShell
+    # loaders were fixed to match (PS now extracts the key WITHOUT .Trim()), so a padded
+    # key resolves to nothing on BOTH platforms rather than silently working on one.
+    printf '  DAAF_PROJECT_NAME=padded\n' > "${TEST_DIR}/environment_settings.txt"
+    run bash -c '
+        unset _DAAF_LIB_LOADED
+        source "'"${REPO_ROOT}"'/scripts/host/daaf_lib.sh"
+        unset DAAF_PROJECT_NAME
+        load_daaf_settings "./environment_settings.txt"
+        echo "NAME=${DAAF_PROJECT_NAME:-UNSET}"
+    '
+    assert_success
+    assert_output --partial "NAME=UNSET"
+}
+
+# =========================================================================
+# Data-volume name resolver (resolve_data_volume_name)
+# =========================================================================
+# Precedence: DAAF_DATA_VOLUME_NAME (verbatim) > "<project>_daaf-data" default.
+# An unset override reproduces the historical hardcoded derivation byte-for-byte.
+
+@test "resolve_data_volume_name derives the default when no override and no project name" {
+    run bash -c '
+        unset _DAAF_LIB_LOADED
+        source "'"${REPO_ROOT}"'/scripts/host/daaf_lib.sh"
+        unset DAAF_DATA_VOLUME_NAME DAAF_PROJECT_NAME
+        resolve_data_volume_name
+    '
+    assert_success
+    # Unset override + unset project name => the legacy hardcoded name, unchanged.
+    assert_output "daaf_daaf-data"
+}
+
+@test "resolve_data_volume_name applies the project prefix when only DAAF_PROJECT_NAME is set" {
+    run bash -c '
+        unset _DAAF_LIB_LOADED
+        source "'"${REPO_ROOT}"'/scripts/host/daaf_lib.sh"
+        unset DAAF_DATA_VOLUME_NAME
+        export DAAF_PROJECT_NAME=daaf2
+        resolve_data_volume_name
+    '
+    assert_success
+    # A second instance owns "<project>_daaf-data" without touching the override.
+    assert_output "daaf2_daaf-data"
+}
+
+@test "resolve_data_volume_name uses DAAF_DATA_VOLUME_NAME verbatim when set (ignores project prefix)" {
+    run bash -c '
+        unset _DAAF_LIB_LOADED
+        source "'"${REPO_ROOT}"'/scripts/host/daaf_lib.sh"
+        export DAAF_DATA_VOLUME_NAME=shared_workspace_vol
+        export DAAF_PROJECT_NAME=daaf2
+        resolve_data_volume_name
+    '
+    assert_success
+    # Set override wins verbatim -- no project prefix is added (shared-workspace hatch).
+    assert_output "shared_workspace_vol"
+}
+
+@test "resolve_data_volume_name treats a set-but-empty override as unset (derived default)" {
+    run bash -c '
+        unset _DAAF_LIB_LOADED
+        source "'"${REPO_ROOT}"'/scripts/host/daaf_lib.sh"
+        export DAAF_DATA_VOLUME_NAME=
+        unset DAAF_PROJECT_NAME
+        resolve_data_volume_name
+    '
+    assert_success
+    # The `:-` default treats empty and unset alike, so it falls through to derived.
+    assert_output "daaf_daaf-data"
+}
+
 # =========================================================================
 # docker-compose.yml multi-instance interpolation defaults
 # =========================================================================

@@ -54,6 +54,12 @@ fi
 REPO="DAAF-Contribution-Community/daaf"
 BRANCH="${DAAF_BRANCH:-main}"
 RAW_BASE="https://raw.githubusercontent.com/${REPO}/${BRANCH}"
+# Migration deliberately targets the DEFAULT data volume "daaf_daaf-data" and does
+# NOT honor DAAF_PROJECT_NAME or the DAAF_DATA_VOLUME_NAME override. This tool is a
+# one-time bootstrap for LEGACY installs that predate custom project names and the
+# data-volume override -- those installs always used the single hardcoded default
+# name, so deriving or overriding it here would only risk missing the volume the
+# migration is meant to find.
 VOLUME_NAME="daaf_daaf-data"
 CONTAINER_NAME=""
 BACKUP_COMPLETED=false
@@ -373,8 +379,21 @@ if [ "${DAAF_DRY_RUN:-}" = "1" ]; then
 else
     ORIGINAL_DIR="$(pwd)"
     cd "${HOST_DIR}"
-    DAAF_NESTED=1 bash backup_daaf.sh
+    # Capture the backup exit explicitly. Under this script's `set -euo pipefail` an
+    # unguarded failed backup would abort the migration abruptly with no explanation;
+    # `|| BACKUP_EXIT=$?` defuses set -e so we can abort gracefully with a clear
+    # message instead. This backup is mandatory (not prompted), so any failure stops
+    # the migration -- mirroring migrate_daaf.ps1's existing gated abort.
+    BACKUP_EXIT=0
+    DAAF_NESTED=1 bash backup_daaf.sh || BACKUP_EXIT=$?
     cd "${ORIGINAL_DIR}"
+    if [ "${BACKUP_EXIT}" -ne 0 ]; then
+        echo ""
+        echo "ERROR: Backup failed (exit code ${BACKUP_EXIT})."
+        echo "The migration will not proceed without a successful backup."
+        echo "Please resolve the backup issue and re-run: bash migrate_daaf.sh"
+        exit 1
+    fi
     BACKUP_COMPLETED=true
 fi
 

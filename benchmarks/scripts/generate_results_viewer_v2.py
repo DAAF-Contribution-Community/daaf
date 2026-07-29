@@ -8,8 +8,11 @@ and per-set manifests, condenses transcripts, computes derived metrics
 the Perfect and Critical-only metrics, consistency, per-case difficulty,
 callouts, published-pricing formulations with per-basis/per-metric
 efficiency frontiers, estimated battery costs from observed token mixes
-(see the "Battery-cost metric" dev guide above PHASE_MAP), per-model
-timeout rates, provenance), and produces the viewer artifact.
+(see the "Battery-cost metric" dev guide above PHASE_MAP), estimated
+battery durations from observed per-run latencies, provenance), and
+produces the viewer artifact. Timed-out runs are excluded at load (they
+carry no gradeable signal — see the load_runs chokepoint), so every metric
+and the embedded run payload reflect completed runs only.
 
 Two output modes (v3.0.0 — see the "Bundle architecture" dev guide above
 PHASE_MAP):
@@ -17,36 +20,218 @@ PHASE_MAP):
   Bundle (DEFAULT) — a multi-file directory, benchmarks/
   daafbench_YYYY-MM-DD[suffix]/, containing index.html (the full report
   with all run-level data + precomputed metrics inline, ~4 MB on the
-  2026-06 corpus) plus data/tx_{result_set}.json transcript shards fetched
-  on demand by the Run Explorer. This is the official artifact for website
+  2026-06 corpus). By default it ALSO writes data/tx_{result_set}.json
+  transcript shards fetched on demand by the Run Explorer (lazy-loaded, so
+  index.html stays small). This is the official artifact for website
   hosting. Bundles REQUIRE http(s) serving — fetch() of sibling files is
   CORS-blocked on file:// (the viewer shows a fallback message with a
   `python3 -m http.server` hint).
 
-  Single-file (--single-file) — the pre-3.0 self-contained monolith with
-  full inline transcripts (~25 MB on the 2026-06 corpus), named
-  viewer_YYYY-MM-DD{letter}.html. Works opened directly from disk
-  (file://); kept for offline auditing.
+  Single-file (--single-file) — a self-contained monolith named
+  viewer_YYYY-MM-DD{letter}.html that works opened directly from disk
+  (file://); kept for offline auditing. As of v3.4.0 the DEFAULT single-file
+  artifact is transcript-LITE (scores/runs/aggregates only) so it stays
+  small; pass --transcripts to restore the full inline-transcript monolith
+  (~25 MB on the 2026-06 corpus).
+
+Transcript-inclusion control (v3.4.0 — see the "Transcript-inclusion
+control" dev guide above PHASE_MAP): --transcripts / --no-transcripts are a
+mutually exclusive pair that overrides the per-mode default in either
+direction. Mode defaults: bundle INCLUDES transcripts (lazy shards),
+single-file EXCLUDES them. A transcript-less build carries neither
+DATA.transcripts nor DATA.transcripts_index and the Run Explorer shows a
+"transcripts not included in this build" notice (no broken fetch, no empty
+pane).
 
 The HTML/CSS/JS lives in the sibling template file viewer_template.html;
 this script is data preparation + placeholder substitution. v1
 The v1 generator has been retired.
 
 Usage:
-    python3 benchmarks/scripts/generate_results_viewer_v2.py [--results TIMESTAMP...] [--exclude-results TIMESTAMP...] [--output PATH] [--single-file [PATH]]
+    python3 benchmarks/scripts/generate_results_viewer_v2.py [--results TIMESTAMP...] [--exclude-results TIMESTAMP...] [--output PATH] [--single-file [PATH]] [--transcripts | --no-transcripts]
 
 Examples:
     # Generate the bundle for all result sets (benchmarks/daafbench_YYYY-MM-DD[suffix]/)
+    # — includes lazy transcript shards by default
     python3 benchmarks/scripts/generate_results_viewer_v2.py
+
+    # Bundle with NO transcript shards (index.html only, smallest official build)
+    python3 benchmarks/scripts/generate_results_viewer_v2.py --no-transcripts
 
     # Generate for specific result sets, bundle at an explicit directory
     python3 benchmarks/scripts/generate_results_viewer_v2.py --results 20260608_181352 20260608_181751 --output /tmp/daafbench_view/
 
-    # Single-file monolith for offline auditing (auto-named viewer_YYYY-MM-DD{letter}.html)
+    # Transcript-lite single-file monolith for offline auditing (DEFAULT single-file)
     python3 benchmarks/scripts/generate_results_viewer_v2.py --single-file
+
+    # Full inline-transcript single-file monolith (pre-3.4 behavior)
+    python3 benchmarks/scripts/generate_results_viewer_v2.py --single-file --transcripts
 
     # Single-file monolith at an explicit path
     python3 benchmarks/scripts/generate_results_viewer_v2.py --single-file /tmp/my_viewer.html
+
+Changelog:
+    v3.7.2 (2026-07-29):
+      - User intensive-pass hand edits over the five Key Takeaways items
+        (viewer_template.html), typed directly by the user — the strongest
+        ratification tier, superseding the v3.7.1 anchors for those passages
+        (anchor comments restamped accordingly; hero bottom-line + About
+        intro anchors untouched). Prose-only: no schema, PRECOMPUTED, kt-*
+        span inventory, or JS change; the 28-span contract and every
+        fillTakeaways setter are intact. Highlights: T1 "top tier is
+        increasingly crowded" headline + "no monopoly on frontier compute"
+        closer; T2 "model creators" headline + Gemma home-computer aside;
+        T3 "in terms of cost" headline; T4 mechanism sentence reworded
+        ("every test here runs three times" / "scores equally well");
+        T5 "next crossover" closing sentence removed.
+      - Corpus (not viewer-code) changes shipped alongside this version:
+        3 ledger-adjudicated-unusable Sol runs quarantined
+        (_quarantine_2026-07-29_solunusable), the Opus 4.5 spend-limit dc-08
+        run quarantined (_quarantine_2026-07-29_opus45spendlimit), the 11
+        Opus 4.5 dated-snapshot purity false negatives re-adjudicated to
+        verified/valid (wire_id "claude-opus-4-5-20251101" declared in
+        models.yaml; summaries rebuilt via the sanctioned rescore path, which
+        also resolves 20260726_171652's phase-"unknown" classification), and
+        a 1-rep Opus 4.5 dc-08 top-up.
+    v3.7.1 (2026-07-29):
+      - Prose-only voice pass over the Key Takeaways / hero narrative
+        (viewer_template.html), applying the user's 2026-07-29 edit slate. No
+        schema, PRECOMPUTED, kt-* span inventory, or JS change — the 28-span
+        contract and every fillTakeaways setter are untouched; only prose around
+        the injected spans was reworded:
+        - Hero bottom-line paragraph rewritten (top-performer framing; "economical
+          choices"; slash-joined self-host clause).
+        - T1 headline -> "Fable 5 still leads, but the top tier now spans three
+          providers"; body "dominates it outright" -> "simply dominates it" plus a
+          sample-noise/cost-gap parenthetical.
+        - T2 frontier definition recast with a "(basically: ...)" gloss; closer
+          ends at the budget-point clause + a small-denominator caveat pointer,
+          dropping "not on brand loyalty".
+        - T3 closer -> "All to say: it's worth figuring out...".
+        - T4 headline -> "What budget models actually give up: reliability and
+          predictability"; first sentence contraction+colon; "merely" -> "just".
+          Mechanism sentence and "wobble" phrasing preserved verbatim.
+        - T5 headline -> "Open-weight models are no longer the compromise option";
+          closer rewritten to the provider-flexibility / "next crossover" line
+          (optional sun-setting sentence deliberately omitted).
+        - Cost-vs-Performance lead: frontier sentence ends at "...hundredfold in
+          cost", dropping the Takeaway-2-duplicating clause.
+        - Mechanical: GPT-5.6 cost caveat "api-equivalent" -> "API-equivalent";
+          trailing whitespace removed in the cvp-preview lead.
+        All voice-passed passages flagged with anchor comments as user-ratified
+        2026-07-29; the two prior voice anchors (hero TLDR, About intro paragraphs)
+        remain byte-identical.
+    v3.7.0 (2026-07-29):
+      - Key Takeaways narrative overhaul (viewer_template.html) + one
+        schema-additive PRECOMPUTED field:
+        - Rewrote the five Key Takeaways items for the July 2026 corpus (the
+          top tier now spans three providers — Fable 5, Opus 5, GPT-5.6 Sol,
+          and the open-weights Kimi K3), retitled the section "Key Takeaways
+          (July 2026)", and reworked the hero bottom-line paragraph, the
+          Cost-vs-Performance section lead (six-point / four-provider battery
+          frontier), the cost-estimate caveat (GPT rate verification), and the
+          Phase 3a dispatch explainer (GPT alias-dispatch temptation). The two
+          voice anchors (hero TLDR, the four About intro paragraphs) are
+          untouched.
+        - fillTakeaways() kt-* span inventory rebuilt to match the new prose;
+          every numeric figure is live-injected from PRECOMPUTED so future
+          regenerations track the data (frontier scores/costs, diminishing-
+          returns ratios, per-model agreement rates).
+        - PRECOMPUTED.consistency gains two schema-additive fields per model:
+          cells_all_agree and rate_agree — the share of repeated (phase, case)
+          cells where every rep lands on the identical grade (an agreement /
+          predictability measure decoupled from score level, distinct from the
+          existing all-perfect `rate`). Powers the Key Takeaways reliability
+          claim. No existing field renamed or removed.
+        - Removed the "Relative Duration" leaderboard column (header, cells,
+          sort hooks, its footnote sentence, and the lb-th-duration CSS). The
+          PRECOMPUTED.duration pipeline and the Cost-vs-Performance duration
+          scatter axis are unchanged; only the leaderboard column is gone.
+    v3.6.1 (2026-07-29):
+      - Load-time behavior change: the no-signal exclusion chokepoint now also
+        drops legacy instant-exit stub runs. For legacy-schema records
+        (schema_version < 2, so status predates the field and is null) it
+        additionally excludes a run when top-level output_tokens is null AND
+        error is null — the instant-exit signature (status null, not timed out,
+        no error, null output, 0/N criteria) surfaced by the 2026-07-29
+        instant-exit corpus audit (7 stubs, since quarantined on disk). Mirrors
+        the corpus parity scan's legacy screen. Errored legacy null-output runs
+        are unaffected (kept, as before). New-taxonomy (schema-v2) records are
+        unchanged — their tokens live nested under usage_observed and the audit
+        found zero stub divergences there. Each excluded stub emits a stderr
+        NOTE and is folded into the No-signal excluded count.
+    v3.6.0 (2026-07-29):
+      - Display-layer cleanup pass (viewer_template.html + this generator's
+        version constant only; no payload keys, model-name keys, or persisted
+        fields renamed — model display names remain the cross-payload join
+        keys, so every rename below is applied at RENDER time):
+        - Removed the rendered Provenance section (section markup, TOC link,
+          renderProvenance renderer, sectionRenderers/SECTION_IDS entries, and
+          the content-visibility selectors that named #provenance). The
+          PRECOMPUTED.provenance data pipeline is intact (still built and
+          embedded); only the rendered section is gone. The generated-timestamp
+          still shows in the hero and DAAF/Open Augments attribution remains in
+          the site footer.
+        - GPT model display names strip the "(ChatGPT Subscription)" suffix at
+          render time via the displayModelName() JS helper; payload "model"
+          keys are unchanged.
+        - Leaderboard provider badge renders "chatgpt-subscription" as
+          "chatgpt" (badge text only).
+        - Removed the per-cell "api-equiv" leaderboard badge; the api-equivalent
+          basis disclosure moved to Methods/battery-cost prose. The payload
+          `basis` field is retained.
+        - Cost-vs-performance scatter legend: "Anthropic API" -> "Anthropic";
+          added a "ChatGPT" legend entry for the chatgpt-lane GPT points. Same
+          legend on the #cvp-preview intro plot.
+        - Composite-score bar hollow-circle component markers: stroke width
+          +1px.
+    v3.5.0 (2026-07-29):
+      - Fix 2 — GPT ChatGPT-subscription (provider chatgpt-subscription)
+        battery estimates on an api-equivalent counterfactual basis. These
+        models were excluded three ways (load_model_pricing skip,
+        _cost_compatibility force-omit, anthropic-only token gate); now priced
+        from models.yaml api_equivalent_pricing.short_context list rates,
+        aggregated into the live-token battery block (None cache fields -> 0,
+        uncached basis), and tagged basis="api-equivalent" so the leaderboard
+        marks them "api-equiv" (vs Anthropic "corpus-live"). The run/set-level
+        billing_grade_cost_eligible flag is intentionally NOT flipped, so the
+        run-detail not-invoiced disclosures stay accurate — only the explicitly
+        counterfactual battery estimate includes them.
+      - Fix 3 — degenerate leaderboard-column suppression in build_eval_groups
+        (and the lockstep template buildEvalGroups): skip phase "unknown", skip
+        result sets with zero loaded runs, and fold a subagent-less
+        dispatch_compliance set into the 3a dispatch group rather than emitting
+        a bare `dispatch_compliance` column. Column-derivation-scoped — runs
+        still count in the all-runs aggregates.
+      - Fix 4 — tier-banding share cap: the range-quartile fallback now also
+        fires when the gap rule's largest tier holds > TIER_MAX_TIER_SHARE
+        (50%) of ranked models, even with >= 3 tiers. tier_rule records the
+        fallback_trigger.
+      - Fix 5 — composite-bar component markers rendered as small hollow white
+        circles instead of vertical tick marks (viewer_template.html CSS only;
+        renderer positioning unchanged).
+      - Fix 1 (OpenRouter reconciliation glob) NOT applied — reported
+        BLOCKED-on-schema: the current derived/*_openrouter_reconciliation.parquet
+        artifacts carry billed-vs-computed DOLLAR reconciliation columns keyed
+        by base_slug, with NO per-run prompt/completion token mix, so they
+        cannot feed the uncached-basis battery consumer (which needs
+        openrouter_models[name].billed_tokens.{prompt,completion} + n_covered_runs
+        from the reconcile_openrouter_costs.py JSON). load_reconciliation left
+        unchanged (legacy .json glob retained).
+    v3.4.0 (2026-07-29):
+      - Transcript-inclusion control (--transcripts / --no-transcripts) with
+        per-mode defaults: bundle includes (lazy shards), single-file now
+        defaults to a transcript-lite monolith. Transcript-less builds emit a
+        DATA payload with neither transcripts nor transcripts_index; the Run
+        Explorer feature-detects this and shows a "not included" notice.
+      - Explicit non-phase discovery skip: results-root children named in
+        RESERVED_RESULT_CONTAINERS (probes, removed_runs) OR prefixed with `_`
+        (the `_quarantine*` convention) are skipped up front rather than
+        relying on the implicit "no summary.json" filter. A QUARANTINE_NOTE.md
+        at a kept set's root is inert (discovery keys only off summary.json).
+      - Extended the load-time no-signal exclusion chokepoint to drop
+        new-taxonomy status=="stalled"/"timed_out" runs alongside the legacy
+        timed_out flag.
 """
 
 import argparse
@@ -97,11 +282,39 @@ def parse_args():
         const=True,
         default=None,
         metavar="PATH",
-        help="Emit the pre-3.0 self-contained monolith (full inline "
-             "transcripts, ~25 MB) instead of the multi-file bundle — the "
-             "offline/file:// audit path. Optional PATH names the output "
-             "HTML file (equivalent to --output in this mode; PATH given "
+        help="Emit the self-contained single-file monolith instead of the "
+             "multi-file bundle — the offline/file:// audit path. By DEFAULT "
+             "this is now a transcript-lite monolith (scores/runs/aggregates "
+             "only); pass --transcripts to restore the full inline-transcript "
+             "monolith (the pre-3.4 behavior, ~25 MB). Optional PATH names the "
+             "output HTML file (equivalent to --output in this mode; PATH given "
              "here wins if both are supplied).",
+    )
+    # Transcript-inclusion control (v3.4.0). Tri-state: the flag pair is
+    # optional and mutually exclusive; when neither is given the mode default
+    # applies (bundle: INCLUDED via lazy shards; single-file: EXCLUDED). Either
+    # default is overridable in either direction.
+    tx_group = parser.add_mutually_exclusive_group()
+    tx_group.add_argument(
+        "--transcripts",
+        dest="transcripts",
+        action="store_true",
+        default=None,
+        help="Force transcripts INTO the build, overriding the mode default. "
+             "In bundle mode this is already the default (writes data/"
+             "tx_*.json shards); in single-file mode it restores the full "
+             "inline-transcript monolith.",
+    )
+    tx_group.add_argument(
+        "--no-transcripts",
+        dest="transcripts",
+        action="store_false",
+        default=None,
+        help="Force transcripts OUT of the build, overriding the mode default. "
+             "In bundle mode this writes index.html only (no shards); in "
+             "single-file mode it is already the default. Transcript-less "
+             "builds carry neither DATA.transcripts nor DATA.transcripts_index, "
+             "and the Run Explorer shows a 'transcripts not included' notice.",
     )
     return parser.parse_args()
 
@@ -210,6 +423,17 @@ def resolve_paths(args):
 #      load_cases() attaches case definitions (it falls back to the dirname).
 #   6. Regenerate and spot-check the new eval group's k/n in the sanity
 #      report and the deep-dive heatmap before publishing.
+#   Eval-group derivation note (degenerate-column suppression, v3.5.0 Fix 3):
+#   build_eval_groups() (and the lockstep template buildEvalGroups()) emit a
+#   column group per distinct rs["phase"], but suppress three degenerate cases
+#   so aborted/partial/mid-write sets do not spawn junk columns: (a) phase
+#   "unknown" (detect_phase fallback) is skipped; (b) a set with zero loaded
+#   runs is skipped; (c) a dispatch_compliance set lacking subagent criterion
+#   names is FOLDED into the 3a dispatch group instead of emitting a bare
+#   `dispatch_compliance` column. Suppression is column-derivation-scoped: the
+#   runs themselves still count in the all-runs aggregates (consistency,
+#   per_case, cost, duration). A genuinely new phase whose marker is wired per
+#   step 1 will NOT be classified "unknown", so it is unaffected.
 #
 # Public-prose registries in the template (maintenance guide, added v2.6.0
 # with the public-audience evolution of the viewer):
@@ -224,15 +448,22 @@ def resolve_paths(args):
 #     replaced by spaces (critLabel()).
 #   - Key Takeaways (#takeaways section in the template): DATED hand-written
 #     editorial prose whose figures are injected into kt-* spans by
-#     fillTakeaways() at init from PRECOMPUTED (composite, composite_hard,
-#     per_model_phase, consistency, cost.battery — relative ratios only
-#     since v2.8.1, and the page-wide headline cost figure since v3.1.0 —
-#     and timeout_by_model built below). Span contract:
-#     23 kt-* spans — 22 in the #takeaways section + kt-foot-bat, which
+#     fillTakeaways() at init from PRECOMPUTED (composite, consistency —
+#     including the v3.7.0 rate_agree agreement field — and cost.battery, with
+#     relative ratios/multipliers only since v2.8.1). The July-2026 overhaul
+#     (v3.7.0) rewrote all five items; fillTakeaways no longer reads
+#     composite_hard or per_model_phase.
+#     Span contract:
+#     28 kt-* spans — 27 in the #takeaways section + kt-foot-bat, which
 #     since the 2026-06-12 user fine-tuning round lives in the About Key
 #     Caveats cost caveat (the kt-foot paragraph itself was removed; its
-#     content was folded into the About caveats). History: 29 before the
-#     2026-06-12 e099982 repair pass, 31 originally. Every kt-* span must
+#     content was folded into the About caveats). The 27 #takeaways spans
+#     (v3.7.0): T1 kt-t1-{fable,opus5,opus5cost,sol,kimi} (5); T2 the six
+#     frontier points kt-fr-{gemma,dsflash,luna,sonnet5,sol,fable}-{s,c}
+#     (12); T3 kt-t3-{lunapct,lunacost,solpct,solcost,lastmult} (5); T4
+#     kt-t4-{topagree,budgetagree} (2); T5 kt-t5-{glm,glmcost,kimi} (3).
+#     History: 22 (21 + kt-foot-bat) from 2026-06-12 through v3.6.x, 29 before
+#     the 2026-06-12 e099982 repair pass, 31 originally. Every kt-* span must
 #     have a fillTakeaways() setter and every setter a live span; verify
 #     both directions when editing either side. Injected numbers track the data
 #     automatically; the qualitative claims do NOT — when the corpus changes
@@ -320,6 +551,26 @@ def resolve_paths(args):
 #     distinct case_ids across the loaded corpus (51 on the 2026-06-11
 #     corpus: 15 mc + 9 pc + 12 dc + 15 sr — NOT runs/reps, which are uneven
 #     across providers).
+#   - Cost bases (basis tag on each cost.battery.models entry):
+#       * "corpus-live"          — Anthropic, live token mix from result.json
+#                                  priced at models.yaml list rates.
+#       * "billing-snapshot-DATE" — OpenRouter, billed token mix from the
+#                                  reconciliation JSON.
+#       * "api-equivalent"       — chatgpt-subscription GPT-5.6 lane (v3.5.0,
+#                                  Fix 2). These are NEVER invoiced per token
+#                                  (flat subscription), so they carry no
+#                                  `pricing:` block; they are priced from
+#                                  models.yaml api_equivalent_pricing.
+#                                  short_context as an explicit COUNTERFACTUAL
+#                                  — the same uncached full-input basis, using
+#                                  their live token mix (cache fields absent ->
+#                                  0). load_model_pricing tags them
+#                                  pricing_basis="api-equivalent"; they clear
+#                                  the cost-loop omission via that tag WITHOUT
+#                                  flipping billing_grade_cost_eligible (their
+#                                  not-invoiced run-detail disclosures stay
+#                                  truthful). The leaderboard marks the cost
+#                                  cell "api-equiv".
 #   - Staleness guard: the reconciliation JSON is a dated billing snapshot.
 #     At generation time each OpenRouter model's current corpus run count is
 #     compared against the JSON's recorded n_runs; mismatches print a console
@@ -335,10 +586,9 @@ def resolve_paths(args):
 #     removed 2026-06-12 — the canonical definition + disclosures now render
 #     as the CvP battery-disclosure footnote, batteryDisclosureHtml(), and
 #     the published list-price table survives as a collapsible under the
-#     same chart, pricingDetailsHtml()). Per-model timed-out shares are NOT
-#     duplicated here — the template reads them from
-#     PRECOMPUTED.timeout_by_model (which since 2026-06-12 also feeds the
-#     leaderboard's Timed-out column).
+#     same chart, pricingDetailsHtml()). Timeout data is NOT computed: as of
+#     v3.3.0 the viewer is timeout-blind — timed-out runs are excluded at load
+#     and never presented (no per-model timeout share, no leaderboard column).
 #   - Headline promotion (v3.1.0, user decision): the battery multiplier is
 #     THE headline cost figure page-wide — the leaderboard cost column, the
 #     Cost vs. Performance default axis, the Costs Detail headline table
@@ -407,6 +657,75 @@ def resolve_paths(args):
 #     (53 on the 2026-06 corpus), and total shard bytes ≈ the old monolith
 #     minus index.html (~21 MB). A ballooning index.html means transcript
 #     data leaked back inline.
+#
+# Transcript-inclusion control (added v3.4.0, dev guide):
+#   - Three DATA shapes now exist, along a single "does this build carry
+#     transcripts, and how" axis (build_data_bundle):
+#       (a) inline   — DATA.transcripts + DATA.subagent_transcripts embedded
+#                      in full (full single-file monolith).
+#       (b) lazy     — DATA.transcripts_index only; per-set shards on disk
+#                      (bundle default).
+#       (c) none     — NEITHER key present (transcript-lite build).
+#     The three are mutually exclusive and the client feature-detects in this
+#     exact priority: DATA.transcripts -> inline render; else
+#     DATA.transcripts_index -> placeholder + lazy shard fetch; else -> a
+#     static "Transcripts not included in this build" notice (renderRunDetail
+#     in viewer_template.html). Shape (c) makes NO fetch attempt — there is no
+#     index to fetch from — so a transcript-less build cannot 404 or hang.
+#   - Per-mode defaults + overrides (parse_args, main):
+#       bundle      default INCLUDE (lazy shards)   | --no-transcripts -> none
+#       single-file default EXCLUDE (none, v3.4.0)  | --transcripts    -> inline
+#     --transcripts / --no-transcripts are a mutually exclusive pair; absent
+#     both, the mode default applies. Rationale: the bundle is the official
+#     hosted artifact where lazy transcripts cost nothing until a run is
+#     opened, so it keeps them; the single-file monolith is the offline/
+#     file:// convenience artifact where inlining every transcript is what
+#     bloated it to ~25 MB, so it now ships transcript-lite unless explicitly
+#     asked for the full monolith. Either default is overridable in either
+#     direction in either mode.
+#   - When transcripts are excluded, main() SKIPS load_transcripts() entirely
+#     (the dominant load-time cost), passes empty dicts, and — in bundle mode —
+#     writes no data/ shards. generation_params records transcripts_included
+#     for provenance.
+#
+# Timeout-blindness + duration metric (added v3.3.0, dev guide):
+#   - Timeout-blindness (user decision): timed-out runs carry NO gradeable
+#     signal, so they are removed entirely — from the data, every metric, and
+#     all presentation. The exclusion is a SINGLE chokepoint in load_runs():
+#     the harness's explicit timed_out flag is read as a filter key and
+#     matching runs are dropped before any run record enters the embedded DATA
+#     payload or any precomputed aggregate. Consequences by design:
+#       * per_model_phase / composite / consistency / per_case / cost /
+#         duration / counts see completed runs only; the existing
+#         `if not gruns/cruns` guards naturally skip cells that go empty after
+#         exclusion (a set x model pair whose every run timed out simply drops
+#         that component and renders via the existing em-dash / rs-na /
+#         composite `partial` idioms — no ZeroDivisionError, no new guard).
+#       * The disk_run_count census (load_result_sets) stays RAW so the
+#         provenance run_count_discrepancy audit still compares on-disk dirs
+#         vs summary totals unchanged.
+#       * PRECOMPUTED no longer carries timeout_by_model or totals.n_timed_out
+#         (their consumers — the leaderboard Timed-out column, the About
+#         "Timeouts are still graded" caveat, the Key Takeaways timeout figure
+#         — were all removed from the template). The per-load excluded count is
+#         a console-only maintainer diagnostic (print_summary), not embedded.
+#   - Duration multiplier: a real-world LATENCY proxy mirroring the cost
+#     machinery by direct analogy (PRECOMPUTED.duration, shaped like
+#     cost.battery): per model, est_duration_per_run = mean duration_s over
+#     completed runs; est_battery_duration = per-run x battery_size (the same
+#     distinct-case count the cost block uses); duration_multiplier_vs_ref vs
+#     BATTERY_REFERENCE_MODEL (Opus 4.8). Built from SUMMED per-run duration_s,
+#     which is parallelization-INVARIANT (independent of config.parallel) —
+#     never summary.json wall_time_s, a batch clock that depends on run mode.
+#     Duration needs no pricing, so it covers ALL models including OpenRouter
+#     and the cost-omitted subscription lane (not gated on provider). The
+#     template exposes it as a "Relative Duration" leaderboard column and a
+#     duration axis on the Cost vs. Performance scatter with its own Pareto
+#     frontier (durScale clone of batScale; PRECOMPUTED.duration.frontiers is a
+#     SEPARATE block, not a cost.frontiers form, because it covers models the
+#     cost block omits). Caveat (folded into the CvP methodology footnote):
+#     duration folds in provider routing/congestion — mitigated but not
+#     eliminated by multi-rep averaging.
 # ---------------------------------------------------------------------------
 
 PHASE_MAP = {
@@ -463,11 +782,28 @@ def normalize_criteria(criteria_raw):
 # Result set loading
 # ---------------------------------------------------------------------------
 
-# ``results/probes`` is a separately shaped artifact container owned by the
-# bounded route-probe CLI. It deliberately has probe.json files rather than the
-# manifest.json/summary.json/runs contract of a phase result set. Keep reserved
-# containers explicit until a dedicated probe collection is designed.
-RESERVED_RESULT_CONTAINERS = frozenset({"probes"})
+# Non-phase results-root children that discovery must skip EXPLICITLY rather
+# than relying on the implicit "lacks a summary.json" filter below. Two forms
+# are excluded (behaviorally equivalent to the corpus-scan idiom used across
+# the campaign workspace for the operative `_quarantine*` convention; the exact
+# predicates here are `startswith("_")` + the reserved names below):
+#   1. Named containers in RESERVED_RESULT_CONTAINERS (exact match):
+#        - ``results/probes``      — bounded route-probe CLI output; carries
+#          probe.json files, not the manifest.json/summary.json/runs contract.
+#        - ``results/removed_runs`` — a holding area for run dirs pulled out of
+#          otherwise-kept sets; not a phase result set itself.
+#   2. Any child whose name STARTS WITH ``_`` — the operative quarantine
+#      convention is ``_quarantine*`` (e.g. ``_quarantine_2026-07-29``), and the
+#      leading underscore also covers any other maintainer scratch/staging dir
+#      parked at the results root. Underscore-prefixed dirs sort ahead of the
+#      ``YYYYMMDD_*`` timestamps and are never valid result-set timestamps, so
+#      the prefix test cannot suppress a real set.
+# NB: a KEPT result set may contain a ``QUARANTINE_NOTE.md`` at its root (added
+# 2026-07-29 to the 8 sets whose individual run dirs were relocated to
+# ``removed_runs``). This does NOT affect discovery: a set is recognized solely
+# by its ``summary.json`` (and enriched from ``manifest.json``/``runs/``); a
+# stray ``.md`` at the set root is simply never consulted. The note is inert.
+RESERVED_RESULT_CONTAINERS = frozenset({"probes", "removed_runs"})
 
 PROVENANCE_FIELDS = (
     "route_type", "provider", "endpoint_origin", "backend_mode", "backend",
@@ -505,6 +841,12 @@ CHILD_PURITY_FIELDS = (
     "purity_status", "evidence_source", "evidence_boundary",
     "child_transcript_count", "readable_child_transcript_count",
     "incompleteness_reason",
+    # Added with the wire_id / non-model-marker purity fix. Archived result.json
+    # files are never rewritten, so these read as None for every pre-fix run —
+    # _safe_known_mapping already fills missing keys with None and the JS
+    # renderer reads named fields, so older payloads render exactly as before.
+    "comparison_target_child_model_id", "wire_id_declared",
+    "observed_non_model_markers", "non_model_marker_rule",
 )
 
 
@@ -587,7 +929,7 @@ def _safe_known_mapping(raw, fields):
     for field in (
         "claude_cli_model_usage_ids", "incompleteness_reasons",
         "scenario_assumptions", "observed_child_model_ids_raw",
-        "comparison_child_model_ids",
+        "comparison_child_model_ids", "observed_non_model_markers",
     ):
         if field in safe and safe[field] is not None:
             safe[field] = _string_list(safe[field])
@@ -606,6 +948,8 @@ def _safe_manifest_models(manifest):
         safe_models.append({
             "key": entry.get("key"),
             "id": entry.get("id"),
+            # Additive: None for archived manifests written before wire_id.
+            "wire_id": entry.get("wire_id"),
             "name": entry.get("name"),
             "display_name": entry.get("display_name"),
             "provider": entry.get("provider"),
@@ -667,11 +1011,25 @@ def load_result_sets(results_dir, filter_timestamps=None, exclude_timestamps=Non
         d for d in os.listdir(results_dir)
         if os.path.isdir(os.path.join(results_dir, d)) and not d.startswith(".")
     ])
-    reserved_present = [d for d in discovered_dirs if d in RESERVED_RESULT_CONTAINERS]
-    for dirname in reserved_present:
-        print(f"NOTE: Ignoring reserved non-phase results container: {dirname}",
+    # Explicit non-phase skip (see RESERVED_RESULT_CONTAINERS comment): named
+    # reserved containers OR any underscore-prefixed dir (the `_quarantine*`
+    # convention plus other maintainer scratch/staging). Both are excluded up
+    # front rather than left to the implicit "no summary.json" filter, so a
+    # quarantine container that happens to acquire a summary-shaped file can
+    # never leak into the corpus.
+    skipped_present = [
+        d for d in discovered_dirs
+        if d in RESERVED_RESULT_CONTAINERS or d.startswith("_")
+    ]
+    for dirname in skipped_present:
+        kind = ("reserved container" if dirname in RESERVED_RESULT_CONTAINERS
+                else "quarantine/underscore container")
+        print(f"NOTE: Ignoring non-phase results {kind}: {dirname}",
               file=sys.stderr)
-    all_timestamps = [d for d in discovered_dirs if d not in RESERVED_RESULT_CONTAINERS]
+    all_timestamps = [
+        d for d in discovered_dirs
+        if d not in RESERVED_RESULT_CONTAINERS and not d.startswith("_")
+    ]
 
     if filter_timestamps:
         timestamps = [t for t in all_timestamps if t in filter_timestamps]
@@ -811,6 +1169,18 @@ def load_result_sets(results_dir, filter_timestamps=None, exclude_timestamps=Non
             "config": manifest_config,
             "disk_run_count": disk_run_count,
             "summary_total_runs": summary.get("total_runs", 0),
+            # Partial-pass disclosure (progressive-archiving redesign, 2026-07).
+            # A summary is `partial` while a pass is mid-flight or was killed
+            # before completing; runs_expected/runs_completed make the shortfall
+            # legible. Fields absent on pre-redesign archives default to complete.
+            "partial": bool(summary.get("partial", False)),
+            "runs_expected": summary.get("runs_expected"),
+            "runs_completed": summary.get(
+                "runs_completed", summary.get("total_runs", 0)
+            ),
+            # Aggregate hook-block vs tool-failure diagnostic counters (additive;
+            # None on archives predating the field).
+            "error_counts": summary.get("error_counts"),
         }
         result_sets.append(result_set)
 
@@ -923,7 +1293,15 @@ def compute_grade(criteria):
 def load_runs(results_dir, result_sets, cases):
     """Load all result.json files for each result set.
 
-    Returns (runs, anth_token_totals). anth_token_totals aggregates raw
+    Timed-out runs (the harness's explicit timed_out flag) are excluded at a
+    single chokepoint as each result.json is read: they carry no gradeable
+    signal, so they never enter the returned runs list, the embedded DATA
+    payload, or any precomputed aggregate. The on-disk disk_run_count census
+    (load_result_sets) is a separate earlier pass and stays raw for the
+    provenance discrepancy audit.
+
+    Returns (runs, anth_token_totals, n_timed_out_excluded).
+    anth_token_totals aggregates raw
     token counts per Anthropic-provider model — {model: {n, input, output,
     cache_read, cache_creation}} — for the battery-cost metric (see the
     "Battery-cost metric" dev guide above PHASE_MAP). Aggregated here, in
@@ -937,6 +1315,7 @@ def load_runs(results_dir, result_sets, cases):
     """
     runs = []
     anth_token_totals = {}
+    n_timed_out_excluded = 0
 
     for rs in result_sets:
         ts = rs["timestamp"]
@@ -1036,18 +1415,32 @@ def load_runs(results_dir, result_sets, cases):
                 "billing_grade_cost_eligible": billing_eligible,
                 "billing_grade_cost_exclusion_reason": billing_reason,
                 "duration_s": _optional_rounded_number(result.get("duration_s"), 3),
+                # Time-to-demonstrated-compliance for early-stopped runs (launch
+                # -> first score-complete pass, excluding the confirmation/kill
+                # tail). Substituted for duration_s in duration/latency aggregates
+                # when a completed_early run carries it; None (excluded) otherwise.
+                # None on archives predating the field.
+                "score_complete_seconds": _optional_rounded_number(
+                    result.get("score_complete_seconds"), 3
+                ),
                 "error": result.get("error", None),
-                # Explicit flag from the harness — never string-match `error`
-                # to detect timeouts. Timed-out runs are usually still graded.
-                "timed_out": bool(result.get("timed_out", False)),
+                # Run lifecycle status. Dispatch B (executor-side watchdog) will
+                # emit "completed_early" for early-stopped runs; these substitute
+                # score_complete_seconds into duration/latency aggregates when
+                # present (else are excluded, as their wall time is truncated and
+                # not comparable) while their scores count normally. None on
+                # archives predating the field.
+                "status": result.get("status"),
+                # Additive hook-block vs tool-failure diagnostic counters
+                # (None on archives predating the error_counts field).
+                "error_counts": result.get("error_counts"),
                 # Phase 1 only (None elsewhere)
                 "expected_mode": result.get("expected_mode"),
                 # Phase 2/3 only (None elsewhere)
                 "subcategory": result.get("subcategory"),
                 # Phase 2/3 only (None on Phase 1 result.json)
                 "tool_call_count": result.get("tool_call_count"),
-                # Grade status computed from main criteria; orthogonal to
-                # timed_out (see compute_grade)
+                # Grade status computed from main criteria (see compute_grade)
                 "grade": compute_grade(criteria),
                 "criteria": criteria,
                 "subagent_criteria": subagent_criteria,
@@ -1063,15 +1456,94 @@ def load_runs(results_dir, result_sets, cases):
                 "tool_failures": result.get("tool_failures", []),
                 "run_dir": run_dirname,
             }
+            # --- No-gradeable-signal exclusion chokepoint (v3.3.0; status
+            #     taxonomy extended v3.4.0) ---
+            # Runs that carry no gradeable signal are dropped HERE — before any
+            # run record enters the embedded DATA payload or ANY precomputed
+            # aggregate (per_model_phase, composite, consistency, per_case,
+            # cost/duration, counts). Two exclusion keys, both watchdog/harness
+            # facts (never a string-match on `error`):
+            #   1. `timed_out` — the harness's explicit legacy timeout flag.
+            #   2. `status` in the run-lifecycle taxonomy (README § 3, post
+            #      2026-07-28): "stalled" (watchdog-killed hang — wall time is a
+            #      kill artifact, scores are truncated/absent) and "timed_out"
+            #      (the new-taxonomy spelling of the same terminal timeout).
+            #      Both are excluded exactly like a legacy timed-out run; without
+            #      this a `status="stalled"`/`"timed_out"` record whose legacy
+            #      `timed_out` flag is unset (newer archives) would slip past
+            #      leg 1 and pollute the metrics. "completed" and
+            #      "completed_early" are normal completions and are KEPT
+            #      (completed_early is score-neutral — README § 3); None status
+            #      (archives predating the field) is also kept and governed by
+            #      leg 1 alone.
+            # These keys are read ONLY as filter keys; the exclusion count is a
+            # console-only maintainer diagnostic. The disk census that feeds the
+            # provenance run_count_discrepancy check (load_result_sets ->
+            # disk_run_count) runs in a separate earlier pass and is left RAW, so
+            # the discrepancy audit still sees every on-disk run. Because runs
+            # are filtered here, the downstream `if not gruns/cruns` guards
+            # naturally skip cells that are empty after exclusion — no extra
+            # empty-cell guard is needed.
+            run_status = result.get("status")
+            if bool(result.get("timed_out", False)) or run_status in ("stalled", "timed_out"):
+                n_timed_out_excluded += 1
+                continue
+            # --- Legacy instant-exit stub exclusion (v3.6.1; 2026-07-29
+            #     instant-exit corpus audit) ---
+            # A legacy-schema record (schema_version < 2, so status predates the
+            # field and is null) with BOTH top-level output_tokens null AND error
+            # null is an instant-exit stub: it exited in ~2s having produced no
+            # model output and locked 0/N criteria, yet its unset legacy
+            # timed_out flag lets it slip past leg 1 above and pollute rep counts
+            # and score averages. This mirrors the corpus parity scan's legacy
+            # screen (research 2026-07-18 StaticAudit,
+            # scratch/11_corpus-parity-scan_a.py L62-65), narrowed to the pure
+            # stub signature. Three deliberate narrowings:
+            #   - The `legacy_schema` gate scopes this to schema-v1 records,
+            #     whose token counts live in TOP-LEVEL flat fields. Schema-v2
+            #     records carry tokens nested under usage_observed (top-level
+            #     output_tokens is legitimately null for them, e.g. the
+            #     chatgpt-subscription lane), so they must NOT be screened here —
+            #     the audit found zero stub divergences in new-taxonomy records.
+            #   - The `error` clause keeps an errored legacy null-output run
+            #     (a real failure signal), unchanged from prior behavior.
+            #   - `status is None` is faithful to the "legacy record" definition
+            #     and is implied by legacy_schema, but stated for clarity.
+            # A per-run stderr NOTE keeps exclusions visible.
+            if (
+                run["legacy_schema"]
+                and run_status is None
+                and result.get("output_tokens") is None
+                and not result.get("error")
+            ):
+                n_timed_out_excluded += 1
+                print(
+                    f"NOTE: excluding legacy instant-exit stub "
+                    f"({run['model']} / {case_id} / rep {result.get('rep', 0)} / "
+                    f"{ts}/{run_dirname}): status null, not timed out, no error, "
+                    f"output_tokens null. See 2026-07-29 instant-exit audit.",
+                    file=sys.stderr,
+                )
+                continue
             runs.append(run)
 
             # Battery-cost token aggregation (Anthropic provider only; see
-            # docstring). Timed-out runs are excluded (v3.1.2). Schema-v1 keeps
-            # its historical flat-field zero fallback byte-for-byte in effect so
-            # published battery calculations do not change. For schema-v2,
-            # missing categories make the run ineligible for this billing-grade
-            # token mix; explicit source zero remains valid evidence.
-            if run["provider"] == "anthropic" and not run["timed_out"]:
+            # docstring). Timed-out runs never reach this point (excluded at the
+            # chokepoint above, v3.3.0; the metric already excluded them since
+            # v3.1.2). Schema-v1 keeps its historical flat-field zero fallback
+            # byte-for-byte so published battery calculations do not change. For
+            # schema-v2, missing categories make the run ineligible for this
+            # billing-grade token mix; explicit source zero remains valid
+            # evidence.
+            # Providers whose per-run token mix feeds the battery-cost block.
+            # "anthropic" mixes are priced corpus-live at list rates; the
+            # "chatgpt-subscription" GPT-5.6 lane (v3.5.0, Fix 2) is priced on
+            # the api-equivalent counterfactual basis (load_model_pricing). The
+            # subscription lane carries no cache accounting, so its result.json
+            # records input_tokens/output_tokens with cache fields None —
+            # coerced to 0 below so the run stays eligible under the same
+            # uncached (full input rate) basis used everywhere.
+            if run["provider"] in ("anthropic", "chatgpt-subscription"):
                 if run["legacy_schema"]:
                     token_values = {
                         "input": result.get("input_tokens", 0) or 0,
@@ -1086,6 +1558,12 @@ def load_runs(results_dir, result_sets, cases):
                         "cache_read": result.get("cache_read_tokens"),
                         "cache_creation": result.get("cache_creation_tokens"),
                     }
+                if run["provider"] == "chatgpt-subscription":
+                    # None-tolerant cache fields: the subscription lane reports
+                    # no cache read/creation, so treat missing as explicit 0.
+                    for _cache_field in ("cache_read", "cache_creation"):
+                        if token_values[_cache_field] is None:
+                            token_values[_cache_field] = 0
                 if all(
                     isinstance(value, (int, float)) and not isinstance(value, bool)
                     for value in token_values.values()
@@ -1114,7 +1592,7 @@ def load_runs(results_dir, result_sets, cases):
         rs["billing_grade_cost_eligible"] = eligible
         rs["billing_grade_cost_exclusion_reason"] = reason
 
-    return runs, anth_token_totals
+    return runs, anth_token_totals, n_timed_out_excluded
 
 
 # ---------------------------------------------------------------------------
@@ -1386,7 +1864,44 @@ def load_model_pricing(base_dir):
     pricing = {}
     for entry in config.get("models", []):
         name = entry.get("name")
-        if not name or entry.get("provider", "anthropic") == "chatgpt-subscription":
+        if not name:
+            continue
+        provider = entry.get("provider", "anthropic")
+        if provider == "chatgpt-subscription":
+            # API-equivalent counterfactual pricing (v3.5.0, Fix 2). These
+            # GPT-5.6 models are accessed under a flat ChatGPT subscription and
+            # are NEVER invoiced per token, so no `pricing:` block exists.
+            # Price them at the published api_equivalent_pricing.short_context
+            # list rates as an explicit counterfactual — mirroring how the
+            # Anthropic subscription models are already priced at list rates.
+            # These entries carry pricing_basis="api-equivalent" so the battery
+            # block tags them a distinct basis and the leaderboard marks them
+            # api-equiv (vs the Anthropic corpus-live basis). NB: the schedule
+            # lives at entry["api_equivalent_pricing"]["short_context"], NOT
+            # under a `billing:` wrapper.
+            aep = entry.get("api_equivalent_pricing", {})
+            sc = aep.get("short_context", {}) if isinstance(aep, dict) else {}
+            if not isinstance(sc, dict):
+                continue
+            input_rate = sc.get("input")
+            output_rate = sc.get("output")
+            cached_rate = sc.get("cached_input")
+            if any(
+                isinstance(value, bool) or not isinstance(value, (int, float))
+                for value in (input_rate, output_rate)
+            ):
+                continue
+            pricing[name] = {
+                "input_per_million": round(input_rate, 4),
+                "output_per_million": round(output_rate, 4),
+                "cached_input_per_million": (
+                    round(cached_rate, 4)
+                    if isinstance(cached_rate, (int, float))
+                    and not isinstance(cached_rate, bool)
+                    else None
+                ),
+                "pricing_basis": "api-equivalent",
+            }
             continue
         p = entry.get("pricing", {})
         if not isinstance(p, dict):
@@ -1408,6 +1923,7 @@ def load_model_pricing(base_dir):
                 and not isinstance(cached_rate, bool)
                 else None
             ),
+            "pricing_basis": "list",
         }
     return pricing
 
@@ -1434,8 +1950,11 @@ def load_reconciliation(base_dir):
     candidates = sorted(_glob.glob(pattern))
     if not candidates:
         print("WARNING: no derived/openrouter_reconciliation_*.json found; "
-              "OpenRouter battery costs will be omitted "
-              "(run scripts/reconcile_openrouter_costs.py to produce one)",
+              "OpenRouter battery costs will be omitted (produce one from the "
+              "v2 classified billing parquet — precedent: the campaign "
+              "workspace's scripts/scratch/22_billing-tokenmix-json.py; the "
+              "legacy scripts/reconcile_openrouter_costs.py emitter is stale "
+              "for post-2026-07-27 data)",
               file=sys.stderr)
         return None
     path = candidates[-1]
@@ -1504,20 +2023,31 @@ def build_transcripts_index(result_sets, transcripts, subagent_transcripts):
 
 
 def build_data_bundle(result_sets, cases, runs, transcripts, subagent_transcripts,
-                      model_pricing=None, inline_transcripts=True):
+                      model_pricing=None, inline_transcripts=True,
+                      include_transcripts=True):
     """Assemble the DATA bundle for embedding in HTML.
 
-    Two artifact shapes (v3.0.0 — "Bundle architecture" dev guide above
-    PHASE_MAP):
-      inline_transcripts=True  (single-file monolith): transcripts and
-        subagent_transcripts embedded in full — the pre-3.0 shape.
-      inline_transcripts=False (bundle index.html): both transcript dicts
-        are DROPPED and replaced by transcripts_index pointing at the
-        per-result-set shard files written next to index.html.
+    Three artifact shapes, selected by (include_transcripts, inline_transcripts)
+    (v3.0.0 introduced the first two; v3.4.0 added the transcript-less shape —
+    see "Bundle architecture" and "Transcript-inclusion control" dev guides
+    above PHASE_MAP):
+      include_transcripts=True, inline_transcripts=True (full single-file
+        monolith): transcripts and subagent_transcripts embedded in full — the
+        pre-3.0 shape (single-file only under --transcripts as of v3.4.0).
+      include_transcripts=True, inline_transcripts=False (bundle index.html):
+        both transcript dicts are DROPPED from DATA and replaced by
+        transcripts_index pointing at the per-result-set shard files written
+        next to index.html. The v3.0.0 bundle default.
+      include_transcripts=False (transcript-less, either mode): DATA carries
+        NEITHER transcripts/subagent_transcripts NOR transcripts_index. This is
+        the v3.4.0 single-file default (transcript-lite offline monolith) and
+        the bundle behavior under --no-transcripts. The client feature-detects
+        the absence of both keys and shows a "transcripts not included in this
+        build" notice instead of attempting any shard fetch.
     The transcripts/subagent_transcripts and transcripts_index keys are
     mutually exclusive BY DESIGN: the template feature-detects the artifact
-    shape on DATA.transcripts presence, and a single-file artifact carrying
-    an index (or vice versa) would make the mode ambiguous.
+    shape on DATA.transcripts / DATA.transcripts_index presence, so the three
+    shapes (inline / lazy-index / neither) are each unambiguous.
     """
     # Sort result_sets by phase order so they always appear Phase 1, 2, 3, 4
     sorted_result_sets = sorted(
@@ -1525,14 +2055,19 @@ def build_data_bundle(result_sets, cases, runs, transcripts, subagent_transcript
     )
     bundle = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "generator_version": "3.2.0",
+        "generator_version": "3.7.2",
         "embedded_schema_contract_version": 2,
         "result_sets": sorted_result_sets,
         "cases": cases,
         "runs": runs,
         "model_pricing": model_pricing or {},
     }
-    if inline_transcripts:
+    if not include_transcripts:
+        # Transcript-less shape: emit neither key. The client's three-way
+        # feature detect (DATA.transcripts -> inline; DATA.transcripts_index ->
+        # lazy; neither -> "not included" notice) covers this.
+        pass
+    elif inline_transcripts:
         bundle["transcripts"] = transcripts
         bundle["subagent_transcripts"] = subagent_transcripts
     else:
@@ -1588,23 +2123,32 @@ COMPOSITE_GIDS = [
 #   new tier starts wherever the gap to the previous model's composite is
 #   >= TIER_GAP_THRESHOLD (5 percentage points).
 #
-#   Fallback (range quartiles): if the gap rule yields fewer than
-#   TIER_MIN_TIERS tiers across a corpus of >= TIER_FALLBACK_MIN_MODELS
-#   models — which happens on the real corpus, where the largest observed
-#   composite gap is ~6.8 points at the original 8-point threshold and the
-#   scores form a near-continuum — models are instead banded by which
-#   quarter of the composite range [min, max] their score falls in
-#   (equal-width bands; empty bands are skipped so tier labels stay
-#   contiguous T1, T2, ...).
+#   Fallback (range quartiles): on a corpus of >= TIER_FALLBACK_MIN_MODELS
+#   models, the gap rule is overridden by equal-width range-quartile banding
+#   when EITHER degeneracy appears:
+#     (a) it yields fewer than TIER_MIN_TIERS tiers — the near-continuum case,
+#         where the largest observed composite gap is ~6.8 points at the
+#         original 8-point threshold; OR
+#     (b) its largest tier holds more than TIER_MAX_TIER_SHARE of the ranked
+#         models (v3.5.0, Fix 4 — the "share cap"). Post-rescore score
+#         compression can leave >= 3 tiers while dumping the vast majority into
+#         one band (observed T1=25/T2=2/T3=2, largest interior gap 0.0428 <
+#         threshold), which is just as uninformative as a single band. The
+#         share cap catches that even though the tier-count test (a) passes.
+#   Both trigger the same range-quartile rebanding: models are banded by which
+#   quarter of the composite range [min, max] their score falls in (equal-width
+#   bands; empty bands are skipped so tier labels stay contiguous T1, T2, ...).
 #
 # The applied method is recorded in PRECOMPUTED["tier_rule"] so the viewer's
 # leaderboard prose can disclose which rule produced the bands on this corpus.
 TIER_GAP_THRESHOLD = 0.05
 TIER_MIN_TIERS = 3
 TIER_FALLBACK_MIN_MODELS = 12
+TIER_MAX_TIER_SHARE = 0.5  # Fix 4: gap rule is overridden if its largest tier
+                           # exceeds this share of ranked models (share cap).
 
 
-def build_eval_groups(result_sets):
+def build_eval_groups(result_sets, active_timestamps=None):
     """Build eval groups, mirroring the viewer JS buildEvalGroups() split.
 
     Phase 1 and Phase 2 are single groups. Phase 3 result sets that carry
@@ -1612,9 +2156,34 @@ def build_eval_groups(result_sets):
     (3a — scored on run['criteria']) and a subagent group (3b — scored on
     run['subagent_criteria']). The eval-group semantics here must stay in
     lockstep with the template JS so precomputed and JS-derived numbers agree.
+
+    Degenerate-column suppression (v3.5.0, Fix 3): a result set contributes a
+    leaderboard column group only if it clears three gates. These skips are
+    COLUMN-DERIVATION-SCOPED — the underlying runs still count in the all-runs
+    aggregates (consistency, per_case, cost, duration), which iterate DATA.runs
+    directly rather than through eval groups:
+      1. phase != "unknown" — detect_phase() falls back to "unknown" on
+         empty/aborted/mid-write summary.json sets whose criteria match no
+         known phase marker; such a set must not spawn an "Unknown Phase"
+         column.
+      2. the set has >= 1 completed (loaded) run — `active_timestamps` is the
+         set of result_set timestamps present in the loaded runs (post
+         load-time no-signal exclusion). A set with zero loaded runs produces
+         only an empty column. When active_timestamps is None the gate is
+         disabled (back-compat).
+      3. a dispatch_compliance set lacking subagent criterion names is FOLDED
+         into the dispatch group (3a) rather than emitting a bare, second
+         `dispatch_compliance` column — its main criteria are scored exactly
+         like any other 3a set.
     """
     gmap = {}
     for rs in result_sets:
+        # Gate 1: skip the Unknown-Phase fallback bucket.
+        if rs["phase"] == "unknown":
+            continue
+        # Gate 2: skip sets with no loaded/completed runs (empty column).
+        if active_timestamps is not None and rs["timestamp"] not in active_timestamps:
+            continue
         if rs["phase"] == "dispatch_compliance" and rs.get("subagent_criterion_names"):
             gid = "dispatch_compliance_dispatch"
             if gid not in gmap:
@@ -1632,6 +2201,18 @@ def build_eval_groups(result_sets):
                     "label": "Phase 3b \u2014 Subagent Behavior",
                     "timestamps": [], "is_subagent": True,
                     "criterion_names": list(rs["subagent_criterion_names"]),
+                }
+            gmap[gid]["timestamps"].append(rs["timestamp"])
+        elif rs["phase"] == "dispatch_compliance":
+            # Gate 3: subagent-less dc set — fold into the 3a dispatch group
+            # instead of emitting a bare `dispatch_compliance` column.
+            gid = "dispatch_compliance_dispatch"
+            if gid not in gmap:
+                gmap[gid] = {
+                    "id": gid, "phase": rs["phase"],
+                    "label": "Phase 3a — Dispatch Compliance",
+                    "timestamps": [], "is_subagent": False,
+                    "criterion_names": list(rs["criterion_names"]),
                 }
             gmap[gid]["timestamps"].append(rs["timestamp"])
         else:
@@ -1661,7 +2242,10 @@ def build_precomputed(result_sets, cases, runs, generation_params,
                       model_pricing=None, anth_token_totals=None,
                       reconciliation=None):
     """Compute the derived-metrics bundle embedded as PRECOMPUTED."""
-    groups = build_eval_groups(result_sets)
+    # active_timestamps drives Fix 3 Gate 2: only result sets with >= 1 loaded
+    # (completed, post-exclusion) run may spawn a leaderboard column.
+    active_timestamps = {r["result_set"] for r in runs}
+    groups = build_eval_groups(result_sets, active_timestamps)
     group_ts = {g["id"]: set(g["timestamps"]) for g in groups}
     models = sorted({r["model"] for r in runs})
     phase_lookup = {rs["timestamp"]: rs["phase"] for rs in result_sets}
@@ -1805,15 +2389,24 @@ def build_precomputed(result_sets, cases, runs, generation_params,
             entry["tier"] = tiers[-1]["label"]
             prev_score = entry["score"]
         tier_rule = {"method": "gap", "gap_threshold": TIER_GAP_THRESHOLD}
-        # Stage 2 (fallback): on a large corpus whose composites form a
-        # near-continuum, the gap rule degenerates to a single band. If it
-        # produced fewer than TIER_MIN_TIERS tiers across >=
-        # TIER_FALLBACK_MIN_MODELS models, band instead by which quarter of
-        # the composite range [min, max] each score falls in. Walking the
-        # descending ranking, band indices are non-decreasing, so a band
-        # change starts a new tier; empty bands are skipped and labels stay
-        # contiguous.
-        if len(ranked) >= TIER_FALLBACK_MIN_MODELS and len(tiers) < TIER_MIN_TIERS:
+        # Stage 2 (fallback): on a large corpus (>= TIER_FALLBACK_MIN_MODELS)
+        # the gap rule is overridden by range-quartile banding when it
+        # degenerates in either of two ways — too few tiers (near-continuum),
+        # or a single tier dominating the field (v3.5.0, Fix 4 share cap:
+        # largest tier > TIER_MAX_TIER_SHARE of ranked models, even with >= 3
+        # tiers). Both cases band by which quarter of the composite range
+        # [min, max] each score falls in. Walking the descending ranking, band
+        # indices are non-decreasing, so a band change starts a new tier; empty
+        # bands are skipped and labels stay contiguous.
+        largest_tier_share = (
+            max((len(t["models"]) for t in tiers), default=0) / len(ranked)
+            if ranked else 0
+        )
+        share_cap_exceeded = largest_tier_share > TIER_MAX_TIER_SHARE
+        too_few_tiers = len(tiers) < TIER_MIN_TIERS
+        if len(ranked) >= TIER_FALLBACK_MIN_MODELS and (
+            too_few_tiers or share_cap_exceeded
+        ):
             hi = ranked[0][1]["score"]
             lo = ranked[-1][1]["score"]
             span = hi - lo
@@ -1829,8 +2422,15 @@ def build_precomputed(result_sets, cases, runs, generation_params,
                         prev_band = band
                     tiers[-1]["models"].append(model)
                     entry["tier"] = tiers[-1]["label"]
-                tier_rule = {"method": "range_quartiles",
-                             "gap_threshold": TIER_GAP_THRESHOLD}
+                tier_rule = {
+                    "method": "range_quartiles",
+                    "gap_threshold": TIER_GAP_THRESHOLD,
+                    # Which degeneracy forced the fallback (Fix 4 disclosure).
+                    "fallback_trigger": (
+                        "min_tiers" if too_few_tiers else "share_cap"
+                    ),
+                    "max_tier_share": TIER_MAX_TIER_SHARE,
+                }
         return tiers, tier_rule
 
     tiers, tier_rule = compute_tiers_for(composite)
@@ -1855,10 +2455,25 @@ def build_precomputed(result_sets, cases, runs, generation_params,
             1 for grades in multi.values()
             if all(gr == "perfect" for gr in grades)
         )
+        # Agreement/predictability (v3.7.0): a cell "agrees" when every rep
+        # lands on the IDENTICAL grade (all perfect, OR all partial, OR all
+        # failed, OR all ungraded) — i.e., the model produces the same verdict
+        # on repeat attempts. Distinct from cells_all_perfect: that measures
+        # capability (all reps clean), whereas agreement measures reliability
+        # decoupled from score level (a model that fails identically every time
+        # is predictable, if not good). Powers the Key Takeaways "reliability
+        # and predictability" claim (fillTakeaways T4), which contrasts a
+        # top-tier model's agreement rate against a budget-tier one.
+        all_agree = sum(
+            1 for grades in multi.values()
+            if len(set(grades)) == 1
+        )
         consistency[model] = {
             "cells_total": len(multi),
             "cells_all_perfect": all_perfect,
             "rate": rnd(all_perfect / len(multi)) if multi else None,
+            "cells_all_agree": all_agree,
+            "rate_agree": rnd(all_agree / len(multi)) if multi else None,
         }
 
     # --- per_case: cross-model difficulty ---
@@ -1967,21 +2582,41 @@ def build_precomputed(result_sets, cases, runs, generation_params,
             if run.get("billing_grade_cost_eligible") is False
         ]
         if incompatible:
-            reasons = sorted({
-                run.get("billing_grade_cost_exclusion_reason")
-                for run in incompatible
-                if run.get("billing_grade_cost_exclusion_reason")
-            })
-            cost["omitted_models"].append({
-                "model": model,
-                "providers": providers,
-                "reason": (
-                    reasons[0] if len(reasons) == 1
-                    else "mixed_incompatible_billing_treatments"
-                ),
-                "behavioral_scores_retained": True,
-            })
-            continue
+            # A model flagged not-billing-grade (e.g. chatgpt-subscription:
+            # subscription access, never invoiced per token). v3.5.0 (Fix 2):
+            # if an api-equivalent counterfactual price schedule exists for the
+            # model, price it on that explicit basis instead of omitting it —
+            # the battery figure is already a counterfactual (uncached list
+            # rates) for every provider, so an api-equivalent GPT estimate is
+            # directly comparable. We deliberately do NOT flip the run/set-level
+            # billing_grade_cost_eligible flag: these models remain correctly
+            # disclosed as not-invoiced in the run-detail ledger, and only the
+            # counterfactual battery estimate includes them (tagged api-equiv).
+            # Models with no api-equivalent schedule are omitted exactly as
+            # before.
+            p_api = pricing.get(model)
+            has_api_equiv = (
+                isinstance(p_api, dict)
+                and p_api.get("pricing_basis") == "api-equivalent"
+                and p_api.get("input_per_million") is not None
+                and p_api.get("output_per_million") is not None
+            )
+            if not has_api_equiv:
+                reasons = sorted({
+                    run.get("billing_grade_cost_exclusion_reason")
+                    for run in incompatible
+                    if run.get("billing_grade_cost_exclusion_reason")
+                })
+                cost["omitted_models"].append({
+                    "model": model,
+                    "providers": providers,
+                    "reason": (
+                        reasons[0] if len(reasons) == 1
+                        else "mixed_incompatible_billing_treatments"
+                    ),
+                    "behavioral_scores_retained": True,
+                })
+                continue
         p = pricing.get(model)
         if not p:
             continue
@@ -2013,8 +2648,8 @@ def build_precomputed(result_sets, cases, runs, generation_params,
     # completion per covered run; the harness's OpenRouter token counts are
     # tokenizer approximations and are never used for dollars). Full metric
     # definition + staleness-guard rationale: "Battery-cost metric" dev guide
-    # above PHASE_MAP. Per-model timed-out shares live in timeout_by_model —
-    # referenced by the template, not duplicated here.
+    # above PHASE_MAP. Timed-out runs are excluded upstream at load (v3.3.0),
+    # so these token averages already reflect completed runs only.
     BATTERY_REFERENCE_MODEL = "Opus 4.8"
     battery_size = len(case_runs)  # distinct case_ids in the loaded corpus
     snapshot_date = (reconciliation or {}).get("_snapshot_date")
@@ -2029,12 +2664,19 @@ def build_precomputed(result_sets, cases, runs, generation_params,
                       + agg["cache_creation"]) / n
         output_side = agg["output"] / n
         per_run = (input_side * pm["input"] + output_side * pm["output"]) / 1e6
+        # Basis tag distinguishes the two live-token lanes sharing this loop:
+        # Anthropic mixes are "corpus-live" (billing-grade usage meter);
+        # chatgpt-subscription GPT mixes are "api-equivalent" (v3.5.0, Fix 2 —
+        # counterfactual list price, not invoiced). The template surfaces the
+        # distinction as an "api-equiv" marker on the leaderboard cost cell.
+        model_basis = (pricing.get(model, {}) or {}).get("pricing_basis")
         battery_models[model] = {
             "est_cost_per_run": rnd(per_run),
             "est_battery_cost": rnd(per_run * battery_size, 2),
             "tokens_per_run": round(input_side + output_side),
             "n_runs": n,
-            "basis": "corpus-live",
+            "basis": ("api-equivalent" if model_basis == "api-equivalent"
+                      else "corpus-live"),
         }
 
     if reconciliation:
@@ -2183,6 +2825,108 @@ def build_precomputed(result_sets, cases, runs, generation_params,
                         best_score = score
                 cost["frontiers"][form][basis][metric] = frontier
 
+    # --- duration.battery: estimated wall-clock latency per battery (v3.3.0) ---
+    # A real-world LATENCY proxy, mirroring cost.battery but needing no pricing
+    # — so it covers EVERY model (Anthropic, OpenRouter, AND the cost-omitted
+    # subscription lane), never gated on provider or billing eligibility. Built
+    # from SUMMED per-run duration_s: est_duration_per_run = mean duration_s
+    # over that model's completed runs (timed-out runs never reach `runs`),
+    # est_battery_duration = per-run x battery_size (the SAME distinct-case
+    # count the cost block uses). Per-run durations are parallelization-
+    # INVARIANT (independent of config.parallel), unlike summary wall_time_s
+    # (a batch clock that depends on run mode) — so the figure is comparable
+    # across sets fetched serially vs in parallel. duration_multiplier_vs_ref
+    # is vs BATTERY_REFERENCE_MODEL (Opus 4.8), derived from the stored per-run
+    # figure exactly as cost_multiplier_vs_ref is.
+    DURATION_REFERENCE_MODEL = BATTERY_REFERENCE_MODEL
+    duration_models = {}
+    for model in models:
+        # Duration/latency aggregate contribution rules (Dispatch B + review fix):
+        #   - stalled runs are ALWAYS excluded: their wall time is a
+        #     watchdog-killed hang, not a task-completion measure, and never
+        #     comparable to a real duration.
+        #   - completed_early runs contribute score_complete_seconds when present
+        #     (time-to-demonstrated-compliance: launch -> first score-complete
+        #     pass, excluding the confirmation/kill tail), else are excluded. This
+        #     keeps the duration axis populated with a meaningful "time to all
+        #     criteria pass" measure instead of dropping early-stopped runs — but
+        #     note it is NOT full-task walltime (see README § 8; label accordingly).
+        #   - every other run contributes its full duration_s.
+        # Keyed on the exact "completed_early"/"stalled" status strings.
+        durs = []
+        for r in runs:
+            if r["model"] != model:
+                continue
+            status = r.get("status")
+            if status == "stalled":
+                continue
+            if status == "completed_early":
+                val = r.get("score_complete_seconds")
+            else:
+                val = r["duration_s"]
+            if isinstance(val, (int, float)) and not isinstance(val, bool):
+                durs.append(val)
+        if not durs:
+            continue
+        n = len(durs)
+        per_run = sum(durs) / n
+        duration_models[model] = {
+            "est_duration_per_run": rnd(per_run),
+            "est_battery_duration": rnd(per_run * battery_size, 1),
+            "n_runs": n,
+            "basis": "corpus-live",
+        }
+    dref_entry = duration_models.get(DURATION_REFERENCE_MODEL)
+    for model, d in duration_models.items():
+        if dref_entry and dref_entry["est_duration_per_run"]:
+            d["duration_multiplier_vs_ref"] = rnd(
+                d["est_duration_per_run"] / dref_entry["est_duration_per_run"], 3)
+        else:
+            d["duration_multiplier_vs_ref"] = None
+
+    # duration.frontiers[basis][metric]: Pareto staircase on
+    # (duration asc, score desc), reusing perf_values (already built over
+    # completed runs) for the y-values. A SEPARATE block (not a parallel
+    # cost.frontiers "form") because duration covers models the cost block
+    # omits — folding it into cost.frontiers[form] would silently restrict it
+    # to priced models. Identical staircase walk to the cost frontier. The
+    # template divides every plotted duration by the reference model's
+    # est_battery_duration (durScale, a clone of batScale) to render a relative
+    # multiplier, exactly as the battery axis does.
+    duration_frontiers = {}
+    for basis in perf_bases:
+        duration_frontiers[basis] = {}
+        for metric in ("perfect", "hard"):
+            frontier_pts = []
+            for model, score_val in perf_values[basis][metric].items():
+                dm = duration_models.get(model)
+                if dm is None:
+                    continue
+                price = dm["est_battery_duration"]
+                if price is None or price <= 0:
+                    continue
+                frontier_pts.append((price, -score_val, model))
+            frontier_pts.sort()
+            frontier = []
+            best_score = None
+            for price, neg_score, model in frontier_pts:
+                score = -neg_score
+                if best_score is None or score > best_score:
+                    frontier.append({
+                        "model": model,
+                        "price": price,
+                        "score": score,
+                    })
+                    best_score = score
+            duration_frontiers[basis][metric] = frontier
+
+    duration = {
+        "battery_size": battery_size,
+        "reference_model": DURATION_REFERENCE_MODEL,
+        "models": duration_models,
+        "frontiers": duration_frontiers,
+    }
+
     # --- provenance: per result set, manifest + disk-vs-summary disclosure ---
     provenance = []
     for rs in sorted(result_sets,
@@ -2209,33 +2953,23 @@ def build_precomputed(result_sets, cases, runs, generation_params,
             "summary_total_runs": rs.get("summary_total_runs", 0),
             "run_count_discrepancy":
                 rs.get("disk_run_count", 0) != rs.get("summary_total_runs", 0),
+            # Partial-pass disclosure (progressive-archiving redesign, 2026-07).
+            "partial": rs.get("partial", False),
+            "runs_expected": rs.get("runs_expected"),
+            "runs_completed": rs.get("runs_completed"),
+            "error_counts": rs.get("error_counts"),
         })
 
-    # --- timeout_by_model: per-model timed-out run rates ---
-    # Basis: the harness's explicit timed_out flag over ALL of a model's
-    # loaded runs (all phases pooled). This flag covers genuine wall-clock
-    # timeouts AND silent stalls that ran out the clock — a broader measure
-    # than any transcript-level stall forensics (e.g., README's silent-stall
-    # figures); prose citing these rates must name this basis. Precomputed
-    # here (not hand-copied) so the Key Takeaways section's reliability
-    # claims cannot drift from the data.
-    timeout_by_model = {}
-    for model in models:
-        mruns = [r for r in runs if r["model"] == model]
-        n_to = sum(1 for r in mruns if r["timed_out"])
-        timeout_by_model[model] = {
-            "n_runs": len(mruns),
-            "n_timed_out": n_to,
-            "rate": rnd(n_to / len(mruns)) if mruns else None,
-        }
-
     # --- totals ---
+    # Timeout-blind (v3.3.0): timed-out runs were excluded at load, so
+    # total_runs counts completed runs only and there is no per-corpus timeout
+    # count here. The per-load excluded count is a console-only maintainer
+    # diagnostic (print_summary), never embedded in the payload.
     totals = {
         "total_runs": len(runs),
         "n_models": len(models),
         "n_cases": len(case_runs),
         "n_result_sets": len(result_sets),
-        "n_timed_out": sum(1 for r in runs if r["timed_out"]),
         "generation_params": generation_params,
     }
 
@@ -2256,7 +2990,7 @@ def build_precomputed(result_sets, cases, runs, generation_params,
         "per_case": per_case,
         "callouts": callouts,
         "cost": cost,
-        "timeout_by_model": timeout_by_model,
+        "duration": duration,
         "provenance": provenance,
         "totals": totals,
     }
@@ -2376,7 +3110,8 @@ def write_transcript_shards(bundle_dir, index, transcripts, subagent_transcripts
 # Print summary
 # ---------------------------------------------------------------------------
 
-def print_summary(data_bundle, transcripts, subagent_transcripts):
+def print_summary(data_bundle, transcripts, subagent_transcripts,
+                  n_timed_out_excluded=0):
     """Print a summary of what was loaded.
 
     Takes the loaded transcript dicts directly (not from data_bundle):
@@ -2410,6 +3145,7 @@ def print_summary(data_bundle, transcripts, subagent_transcripts):
     total_transcripts = len(transcripts)
     total_subagent = sum(len(v) for v in subagent_transcripts.values())
     total_cases = len(data_bundle["cases"])
+    transcripts_included = "transcripts" in data_bundle or "transcripts_index" in data_bundle
     observed_set_costs = [
         rs["total_cost_usd"] for rs in data_bundle["result_sets"]
         if isinstance(rs.get("total_cost_usd"), (int, float))
@@ -2419,10 +3155,19 @@ def print_summary(data_bundle, transcripts, subagent_transcripts):
 
     print(f"  Totals:")
     print(f"    Result sets:           {len(data_bundle['result_sets'])}")
-    print(f"    Runs loaded:           {total_runs}")
+    print(f"    Runs loaded:           {total_runs} completed")
+    print(f"    No-signal excluded:    {n_timed_out_excluded} "
+          f"(timed_out flag, status stalled/timed_out, or legacy instant-exit "
+          f"stub; dropped at load, absent from all metrics and the embedded "
+          f"data)")
     print(f"    Cases loaded:          {total_cases}")
-    print(f"    Transcripts condensed: {total_transcripts}")
-    print(f"    Subagent transcripts:  {total_subagent}")
+    if transcripts_included:
+        print(f"    Transcripts condensed: {total_transcripts}")
+        print(f"    Subagent transcripts:  {total_subagent}")
+    else:
+        print(f"    Transcripts:           EXCLUDED from this build "
+              f"(--no-transcripts / single-file default; DATA carries neither "
+              f"transcripts nor transcripts_index)")
     total_cost_label = f"${total_cost:.2f}" if total_cost is not None else "unavailable"
     print(f"    Total cost:            {total_cost_label}")
     print()
@@ -2491,10 +3236,23 @@ def print_precomputed_report(precomputed):
     totals = precomputed["totals"]
     n_disc = sum(1 for p in precomputed["provenance"] if p["run_count_discrepancy"])
     gw = precomputed["callouts"]["global_weakest"]
-    print(f"  Total runs: {totals['total_runs']} "
-          f"({totals['n_timed_out']} timed out) | "
+    # Timed-out runs were excluded at load (v3.3.0); total_runs already counts
+    # completed runs only. The per-load excluded count is reported by
+    # print_summary (which receives it) — it is not in this function's scope.
+    print(f"  Total runs: {totals['total_runs']} completed | "
           f"models: {totals['n_models']} | cases: {totals['n_cases']} | "
           f"sets: {totals['n_result_sets']} ({n_disc} with run-count discrepancy)")
+    # Partial-pass disclosure: a partial summary is mid-flight or was killed
+    # before completing all expected runs (progressive-archiving redesign).
+    partial_sets = [p for p in precomputed["provenance"] if p.get("partial")]
+    if partial_sets:
+        print(f"  PARTIAL result sets ({len(partial_sets)} — incomplete passes):")
+        for p in partial_sets:
+            done = p.get("runs_completed")
+            exp = p.get("runs_expected")
+            frac = f"{done}/{exp}" if done is not None and exp is not None else "?"
+            print(f"    {p['timestamp']} ({p['phase_label']}): "
+                  f"{frac} runs completed")
     print(f"  Pricing loaded for {len(precomputed['cost'].get('models', []))} models "
           f"(published list rates; observed spend tracking removed)")
     excluded = (totals.get("generation_params") or {}).get("results_excluded") or []
@@ -2516,9 +3274,21 @@ def main():
     base_dir, results_dir, datasets_dir, output_path = resolve_paths(args)
     single_file = args.single_file is not None
 
+    # Transcript inclusion (v3.4.0). Tri-state: an explicit --transcripts/
+    # --no-transcripts wins; otherwise the mode default applies — bundle
+    # INCLUDES (lazy shards, the official website artifact), single-file
+    # EXCLUDES (transcript-lite offline monolith). See parse_args and the
+    # "Transcript-inclusion control" dev guide above PHASE_MAP.
+    if args.transcripts is None:
+        include_transcripts = not single_file
+    else:
+        include_transcripts = args.transcripts
+
+    tx_state = "included" if include_transcripts else "EXCLUDED"
     print(f"Results dir: {results_dir}")
     print(f"Datasets dir: {datasets_dir}")
-    print(f"Output ({'single-file' if single_file else 'bundle'}): {output_path}")
+    print(f"Output ({'single-file' if single_file else 'bundle'}, "
+          f"transcripts {tx_state}): {output_path}")
 
     # Load data
     result_sets = load_result_sets(results_dir, args.results, args.exclude_results)
@@ -2527,7 +3297,8 @@ def main():
         sys.exit(1)
 
     cases = load_cases(datasets_dir)
-    runs, anth_token_totals = load_runs(results_dir, result_sets, cases)
+    runs, anth_token_totals, n_timed_out_excluded = load_runs(
+        results_dir, result_sets, cases)
 
     # Renumber reps globally: runs from different result sets for the same
     # (phase, model, case_id) all have rep=0. Assign sequential rep numbers
@@ -2541,7 +3312,13 @@ def main():
         run["rep"] = rep_counters[key]
         rep_counters[key] += 1
 
-    transcripts, subagent_transcripts = load_transcripts(results_dir, runs)
+    # Transcript condensation is the expensive load step and the dominant byte
+    # source; skip it entirely when the build excludes transcripts (v3.4.0
+    # single-file default and bundle --no-transcripts).
+    if include_transcripts:
+        transcripts, subagent_transcripts = load_transcripts(results_dir, runs)
+    else:
+        transcripts, subagent_transcripts = {}, {}
     model_pricing = load_model_pricing(base_dir)
     reconciliation = load_reconciliation(base_dir)
 
@@ -2551,6 +3328,7 @@ def main():
         result_sets, cases, runs, transcripts, subagent_transcripts,
         model_pricing=model_pricing,
         inline_transcripts=single_file,
+        include_transcripts=include_transcripts,
     )
 
     # Precomputed metrics (embedded as PRECOMPUTED alongside DATA)
@@ -2558,6 +3336,7 @@ def main():
         "results_filter": args.results if args.results else "all",
         "results_excluded": args.exclude_results if args.exclude_results else [],
         "output_mode": "single-file" if single_file else "bundle",
+        "transcripts_included": include_transcripts,
         "generated_at": data_bundle["generated_at"],
         "generator_version": data_bundle["generator_version"],
     }
@@ -2567,7 +3346,8 @@ def main():
                                     reconciliation=reconciliation)
 
     # Print summaries
-    print_summary(data_bundle, transcripts, subagent_transcripts)
+    print_summary(data_bundle, transcripts, subagent_transcripts,
+                  n_timed_out_excluded)
     print_precomputed_report(precomputed)
 
     # Generate HTML
@@ -2586,20 +3366,27 @@ def main():
         index_path = os.path.join(output_path, "index.html")
         with open(index_path, "w", encoding="utf-8") as f:
             f.write(html)
-        n_shards, shard_bytes, largest = write_transcript_shards(
-            output_path, data_bundle["transcripts_index"],
-            transcripts, subagent_transcripts)
         index_mb = os.path.getsize(index_path) / (1024 * 1024)
         print(f"  Bundle written: {output_path}/")
         print(f"    index.html:  {index_mb:.2f} MB")
-        print(f"    Shards:      {n_shards} files, "
-              f"{shard_bytes / (1024 * 1024):.2f} MB total in data/")
-        if largest[0]:
-            print(f"    Largest:     {shard_filename(largest[0])} "
-                  f"({largest[1] / (1024 * 1024):.2f} MB)")
-        print(f"  Serve over http(s) — transcripts are fetched on demand "
-              f"(e.g. `python3 -m http.server` from the bundle dir); on "
-              f"file:// the Run Explorer shows a fetch-fallback message.")
+        if include_transcripts:
+            # transcripts_index is present on DATA only when transcripts are
+            # included; shards are written next to index.html.
+            n_shards, shard_bytes, largest = write_transcript_shards(
+                output_path, data_bundle["transcripts_index"],
+                transcripts, subagent_transcripts)
+            print(f"    Shards:      {n_shards} files, "
+                  f"{shard_bytes / (1024 * 1024):.2f} MB total in data/")
+            if largest[0]:
+                print(f"    Largest:     {shard_filename(largest[0])} "
+                      f"({largest[1] / (1024 * 1024):.2f} MB)")
+            print(f"  Serve over http(s) — transcripts are fetched on demand "
+                  f"(e.g. `python3 -m http.server` from the bundle dir); on "
+                  f"file:// the Run Explorer shows a fetch-fallback message.")
+        else:
+            print(f"    Shards:      none (--no-transcripts; index.html only)")
+            print(f"  Transcript-less bundle — the Run Explorer shows a "
+                  f"'transcripts not included in this build' notice.")
     print(f"  Done.\n")
 
 

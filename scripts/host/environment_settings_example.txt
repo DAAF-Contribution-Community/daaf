@@ -24,6 +24,10 @@
 #                an inline comment breaks some parsers). Delete the one leading
 #                '#' to turn it on.
 #   # text       An explanatory prose line (it may be indented AFTER the '#').
+#   Write values bare: KEY=value with nothing extra -- no quotes around the
+#   value and no spaces around the '='. DAAF's readers take the line literally,
+#   so quotes or stray spaces can end up inside your value. (Editing on Windows
+#   is fine -- Windows line endings are tolerated.)
 #   Adjacent #KEY lines introduced with "pick ONE" are mutually exclusive
 #   alternatives -- uncomment only the set for the method you chose.
 #
@@ -131,6 +135,17 @@
 #DAAF_PORT_LOGVIEWER=3719
 #DAAF_PORT_VSCODE=3720
 #
+# Data-volume override (advanced; shared workspace across installs). Normally the
+# research workspace lives in a Docker volume named "<project>_daaf-data" (the
+# default install uses "daaf_daaf-data"). Set DAAF_DATA_VOLUME_NAME to a full,
+# verbatim volume name to point THIS install at a specific data volume -- the
+# escape hatch for sharing ONE research workspace across two installs. When set it
+# must match the "name:" under the external "daaf-data" block you uncomment in
+# docker-compose.yml. Leave unset for normal installs (the project-prefixed
+# default derivation is used, byte-for-byte identical to the historical behavior).
+# --- To activate, remove the leading '#': ---
+#DAAF_DATA_VOLUME_NAME=daaf_daaf-data
+#
 # The developer build flag DAAF_DEV also belongs to this install-time family, but
 # it is documented alongside the other developer options in section [6].
 #
@@ -163,8 +178,12 @@
 # ----------------------------------------------------------------------------
 # Option B: Max / Pro / Team / Enterprise subscription
 # ----------------------------------------------------------------------------
-# Run `claude setup-token` once inside the container to generate a long-lived
-# OAuth token (valid ~1 year), then paste it here for persistent auth.
+# Most users don't need this anymore: your interactive login (option 5 in the
+# priority list above) now persists across rebuilds on the config volume, so
+# signing in once is enough. This token method is mainly useful if you run
+# SEVERAL installs (skip logging in per container) or need fully non-interactive
+# startup. If that's you: run `claude setup-token` once inside the container to
+# generate a long-lived OAuth token (valid ~1 year), then paste it here.
 # NOTE: do NOT also set ANTHROPIC_API_KEY -- it takes priority and you would be
 # billed per-use instead of through your subscription.
 # --- To activate, remove the leading '#': ---
@@ -192,6 +211,10 @@
 # ----------------------------------------------------------------------------
 # Option D: Amazon Bedrock
 # ----------------------------------------------------------------------------
+# For organizations that run Claude through their own cloud platform. Claude
+# Code supports these routes, but the DAAF maintainers have not yet validated
+# them end-to-end -- see the install guide's cloud-provider note before relying
+# on one.
 # Docs: https://code.claude.com/docs/en/bedrock-vertex
 # --- To activate, remove the leading '#' on the lines you need: ---
 #CLAUDE_CODE_USE_BEDROCK=1
@@ -201,6 +224,8 @@
 # ----------------------------------------------------------------------------
 # Option E: Google Vertex AI
 # ----------------------------------------------------------------------------
+# Same audience and caveat as Option D above: org cloud platforms only, not yet
+# maintainer-validated end-to-end.
 # Docs: https://code.claude.com/docs/en/bedrock-vertex
 # --- To activate, remove the leading '#' on the lines you need: ---
 #CLAUDE_CODE_USE_VERTEX=1
@@ -252,6 +277,9 @@
 # ----------------------------------------------------------------------------
 # Context window size
 # ----------------------------------------------------------------------------
+# TL;DR: on a standard Anthropic setup you can ignore this key entirely -- it
+# only matters on alternative-provider routes (OpenRouter, GLM, GPT).
+#
 # Tell Claude Code the real context window so it does not assume ~200K for an
 # unknown slug and end sessions early with "Prompt is too long." This override is
 # GLOBAL: it applies to the main session and every subagent, not per model. Choose
@@ -342,11 +370,29 @@
 # ----------------------------------------------------------------------------
 # 4.1 Basic shim setup (both auth lanes need these)
 # ----------------------------------------------------------------------------
-# --- To activate, remove the leading '#' on all four lines: ---
+# --- To activate, remove the leading '#' on all five lines: ---
 #DAAF_PROVIDER_SHIM=openai
 #ANTHROPIC_BASE_URL=http://127.0.0.1:4141
 #ANTHROPIC_AUTH_TOKEN=daaf-shim-local
 #ANTHROPIC_API_KEY=
+#CLAUDE_CODE_DISABLE_FAST_MODE=1
+#
+# The exact disable value above hides Claude Code's misleading native /fast control
+# on GPT routes. Supported Anthropic models retain native /fast. Edit this private
+# HOST file yourself: in-container DAAF code cannot access it. Recreate the
+# container and start a new Claude session after changing it; no image rebuild is
+# required for this setting.
+#
+# GPT FAST / GPT PRIORITY SPEED BOOST (shim v1.3.9+): OFF by default. One command
+# inside the container turns it on, turns it off, or reports where things stand:
+#     bash /daaf/scripts/provider_shim/gpt_fast.sh {on|off|status}
+# (In a Claude Code session, prefix the same command with `!`.) Changes apply
+# immediately -- no restart needed. Turning it `on` requires the
+# exact CLAUDE_CODE_DISABLE_FAST_MODE=1 line above, and switching provider
+# routes resets the boost OFF until you explicitly turn it back on. One honest
+# caveat: requesting the boost doesn't guarantee it was served on any given
+# request -- `status` reports the most recent evidence of what actually served.
+# Full details: the technical FAQ's GPT Fast entry.
 #
 # Then pick ONE auth lane below: 4.2 (OpenAI API key, sanctioned) or 4.3 (ChatGPT
 # subscription via Codex OAuth, an unofficial dev lane).
@@ -377,8 +423,11 @@
 # 4.2 Auth lane A: OpenAI API key  (sanctioned)
 # ----------------------------------------------------------------------------
 # Get a key: https://platform.openai.com/api-keys
-# This is the default lane (SHIM_BACKEND_MODE unset -> "openai").
-# --- To activate, remove the leading '#': ---
+# The legacy shim process still defaults to openai when unset, but a supported GPT
+# provider-shim route and its service-tier controller require this exact route value.
+# Set it explicitly; unset, case-varied, or whitespace-padded values fail route checks.
+# --- To activate, remove the leading '#' on both lines: ---
+#SHIM_BACKEND_MODE=openai
 #OPENAI_API_KEY=sk-your_openai_key_here
 #
 # CONTEXT WINDOW (API-key lane): this lane serves the model's full window
@@ -386,18 +435,16 @@
 # --- To activate, remove the leading '#': ---
 #CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000
 #
+# ON on this lane requests GPT Priority (`service_tier:"priority"`). Priority may
+# cost extra and depends on provider/model/account eligibility.
+#
 # ----------------------------------------------------------------------------
 # 4.3 Auth lane B: ChatGPT subscription (Codex backend)  (unofficial dev lane)
 # ----------------------------------------------------------------------------
 # Instead of a pay-per-token OpenAI API key, the SAME shim can route Claude Code
-# through your CHATGPT SUBSCRIPTION's Codex backend. Request translation, tools,
-# and content-block lifecycle stay shared. As of v1.2.7, ChatGPT always uses
-# upstream SSE (including for inbound non-stream callers, which receive internally
-# accumulated JSON), fails explicitly on malformed/missing terminals or invalid
-# block order, and retains v1.2.6's ChatGPT-only reasoning-summary blank-line
-# boundaries (`\n\n`). OpenAI/API-key mode retains its real upstream non-stream
-# JSON path and legacy exact concatenation. This lane reads OAuth from your `codex`
-# login (auth.json).
+# through your CHATGPT SUBSCRIPTION's Codex backend. Everything else about how
+# the shim behaves stays the same on this lane. It reads its sign-in from your
+# `codex` login (auth.json).
 #
 # UNOFFICIAL / DEV-LANE PATH: this reuses Codex's OAuth against an undocumented,
 # OpenAI-controlled backend -- NOT an OpenAI-sanctioned API method. It may break if
@@ -460,18 +507,25 @@
 # --- To activate, remove the leading '#': ---
 #CLAUDE_CODE_MAX_CONTEXT_TOKENS=370000
 #
+# ON on this lane requests friendly ChatGPT Fast using canonical Responses wire
+# `service_tier:"priority"`. This remains ChatGPT plan/credit usage, NOT OpenAI API
+# Priority Processing billing. Availability depends on provider/model/account eligibility.
+#
 # CODEX_HOME (chatgpt mode): the directory holding auth.json. Compose already sets
 # this to the persisted, backed-up store and pre-creates it on fresh volumes;
 # override only to point at a separate per-tool login store for parallel use.
 # --- To activate, remove the leading '#': ---
 #CODEX_HOME=/home/appuser/.claude/codex-daaf
 #
-# The two OAuth override vars below are TEST / STAGING overrides only -- the
-# production defaults are correct (auth.openai.com/oauth/token and the codex
-# first-party client_id). Leave them unset for normal use.
+# CODEX DELEGATION (shim v1.3.0+, chatgpt lane): the shim delegates token refresh
+# to the codex CLI (the single writer of auth.json). The two knobs below tune that
+# delegated call; the defaults are correct for the standard image.
+# SHIM_CODEX_BIN: path to the codex binary the shim invokes for the delegated auth
+#   refresh (default "codex" -- resolved on PATH).
+# SHIM_CODEX_TIMEOUT_S: seconds to wait for that invocation (default 30).
 # --- To activate, remove the leading '#' on the lines you need: ---
-#SHIM_OAUTH_TOKEN_URL=
-#SHIM_OAUTH_CLIENT_ID=
+#SHIM_CODEX_BIN=
+#SHIM_CODEX_TIMEOUT_S=
 #
 # Troubleshooting (inside the container):
 #     codex --version                                          (confirm the standard-image Codex CLI is present)
@@ -486,7 +540,9 @@
 # ----------------------------------------------------------------------------
 # Network / backend overrides (SHIM_BACKEND_API_KEY defaults to OPENAI_API_KEY):
 # --- To activate, remove the leading '#' on the lines you need: ---
+# DEFAULT: 4141 is the default port; the line below shows it, so uncommenting it changes nothing.
 #SHIM_PORT=4141
+# DEFAULT: https://api.openai.com/v1 is the default backend; the line below shows it, so uncommenting it changes nothing.
 #SHIM_BACKEND_BASE_URL=https://api.openai.com/v1
 #SHIM_BACKEND_API_KEY=
 #

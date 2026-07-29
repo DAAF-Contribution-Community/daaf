@@ -9,7 +9,7 @@ DAAF's four install routes is active — exactly as the user configured it.
 The four routes (auto-detected from the live env, per the approved design):
 
     DAAF_PROVIDER_SHIM=openai + SHIM_BACKEND_MODE=chatgpt  -> chatgpt-subscription
-    DAAF_PROVIDER_SHIM=openai (otherwise)                  -> openai-api
+    DAAF_PROVIDER_SHIM=openai + SHIM_BACKEND_MODE=openai   -> openai-api
     ANTHROPIC_BASE_URL contains "openrouter.ai"            -> openrouter
     else                                                   -> anthropic-subscription
 
@@ -155,8 +155,10 @@ class RouteInfo:
             "remap_active": self.remap_active,
             "session_model": self.session_model,
             "route_match": self.route_match,
-            "shim_control": self.shim_control,
-            "backend_mode_control": self.backend_mode_control,
+            "shim_control": _bounded_lane_control(self.shim_control, ("openai",)),
+            "backend_mode_control": _bounded_lane_control(
+                self.backend_mode_control, ("chatgpt", "openai")
+            ),
             "lane_control_issues": list(self.lane_control_issues),
         }
 
@@ -177,6 +179,15 @@ def redact_env_value(name: str, value):
     """
     if value is None:
         return "<unset>"
+    if name == "CLAUDE_CODE_DISABLE_FAST_MODE":
+        # This control is intentionally an exact-string contract.  Preserve the
+        # useful success fact while bounding every near miss instead of reflecting
+        # arbitrary environment text into a report.
+        return "1" if value == "1" else "<invalid:not-exact-1>"
+    if name == "DAAF_PROVIDER_SHIM":
+        return _bounded_lane_control(value, ("openai",))
+    if name == "SHIM_BACKEND_MODE":
+        return _bounded_lane_control(value, ("chatgpt", "openai"))
     if _SECRET_NAME_RE.search(name):
         return "<redacted:empty>" if value == "" else "<redacted:set>"
     return value
@@ -225,6 +236,7 @@ FINGERPRINT_VARS = (
     "CLAUDE_CODE_MAX_CONTEXT_TOKENS",
     "CLAUDE_CODE_AUTO_COMPACT_WINDOW",
     "CLAUDE_CODE_EFFORT_LEVEL",
+    "CLAUDE_CODE_DISABLE_FAST_MODE",
     "CODEX_HOME",
     # Secret-bearing (values redacted by name match; empty/set state preserved):
     "ANTHROPIC_API_KEY",
@@ -314,38 +326,53 @@ def _has_supported_1m_hint(model_id: str) -> bool:
     return bool(re.search(r"\[1m\](?:#[^/]*)?$", slug))
 
 
+def _bounded_lane_control(value: str, exact_values: tuple) -> str:
+    """Classify a lane control without reflecting arbitrary environment text."""
+    if value in exact_values:
+        return value
+    if not value:
+        return ""
+    if value.strip().lower() in exact_values:
+        return "<invalid:case-or-whitespace>"
+    return "<invalid:unsupported>"
+
+
 def _lane_control_issues(env) -> tuple:
     """Explain exact-value lane-control near misses without normalizing them."""
     shim = env.get("DAAF_PROVIDER_SHIM", "")
     backend = env.get("SHIM_BACKEND_MODE", "")
     problems = []
 
+    # A clean native/OpenRouter environment is not attempting a shim lane. Once
+    # either control is nonempty, require the complete exact pair fail-closed.
+    if not shim and not backend:
+        return ()
+
     if shim != "openai":
         if shim.strip().lower() == "openai":
             problems.append(
-                f"DAAF_PROVIDER_SHIM={shim!r} is a near miss; runtime requires exact "
-                "DAAF_PROVIDER_SHIM='openai' (case- and whitespace-sensitive)."
+                "DAAF_PROVIDER_SHIM is a case/whitespace near miss; runtime requires "
+                "exact DAAF_PROVIDER_SHIM='openai'."
             )
         elif shim:
             problems.append(
-                f"DAAF_PROVIDER_SHIM={shim!r} is not the exact supported shim value "
-                "'openai'; partial or alternate values do not activate a shim lane."
+                "DAAF_PROVIDER_SHIM is not the exact supported shim value 'openai'; "
+                "partial or alternate values do not activate a shim lane."
             )
-    if backend != "chatgpt":
-        if backend.strip().lower() == "chatgpt":
+    if backend not in ("chatgpt", "openai"):
+        if backend.strip().lower() in ("chatgpt", "openai"):
             problems.append(
-                f"SHIM_BACKEND_MODE={backend!r} is a near miss; runtime requires exact "
-                "SHIM_BACKEND_MODE='chatgpt' (case- and whitespace-sensitive)."
+                "SHIM_BACKEND_MODE is a case/whitespace near miss; runtime requires "
+                "exact SHIM_BACKEND_MODE='chatgpt' or 'openai'."
             )
-        elif backend not in ("", "openai"):
+        else:
             problems.append(
-                f"SHIM_BACKEND_MODE={backend!r} is not an exact supported lane value; "
-                "use 'chatgpt' for the subscription lane or leave it unset/use 'openai' "
-                "for the direct API lane."
+                "SHIM_BACKEND_MODE is not an exact supported lane value; use 'chatgpt' "
+                "for the subscription lane or 'openai' for the direct API lane."
             )
-    if backend == "chatgpt" and shim != "openai":
+    if backend in ("chatgpt", "openai") and shim != "openai":
         problems.append(
-            "SHIM_BACKEND_MODE='chatgpt' is set without the other exact lane signal: "
+            "SHIM_BACKEND_MODE is set without the other exact lane signal: "
             "DAAF_PROVIDER_SHIM must equal 'openai'."
         )
     return tuple(problems)
@@ -365,8 +392,10 @@ def detect_route(env) -> str:
     backend_mode = env.get("SHIM_BACKEND_MODE", "")
     base_url = (env.get("ANTHROPIC_BASE_URL") or "").strip().lower()
 
-    if shim == "openai":
-        return ROUTE_CHATGPT if backend_mode == "chatgpt" else ROUTE_OPENAI_API
+    if shim == "openai" and backend_mode == "chatgpt":
+        return ROUTE_CHATGPT
+    if shim == "openai" and backend_mode == "openai":
+        return ROUTE_OPENAI_API
     if "openrouter.ai" in base_url:
         return ROUTE_OPENROUTER
     return ROUTE_ANTHROPIC
@@ -465,9 +494,11 @@ def probe_route_detection(route_info: RouteInfo) -> ProbeResult:
     )
     r.add_evidence(
         "env: DAAF_PROVIDER_SHIM / SHIM_BACKEND_MODE",
-        output=(f"DAAF_PROVIDER_SHIM={route_info.shim_control!r}; "
-                f"SHIM_BACKEND_MODE={route_info.backend_mode_control!r}"),
-        note="raw values shown without trimming or case normalization",
+        output=("DAAF_PROVIDER_SHIM="
+                f"{_bounded_lane_control(route_info.shim_control, ('openai',))!r}; "
+                "SHIM_BACKEND_MODE="
+                f"{_bounded_lane_control(route_info.backend_mode_control, ('chatgpt', 'openai'))!r}"),
+        note="exact values or bounded invalid classifications; no normalization into success",
     )
     if route_info.lane_control_issues:
         r.verdict = Verdict.FAIL
@@ -575,9 +606,18 @@ def probe_env_coherence(route_info: RouteInfo, env) -> ProbeResult:
         note_var("DAAF_PROVIDER_SHIM")
         note_var("ANTHROPIC_BASE_URL")
         note_var("ANTHROPIC_AUTH_TOKEN")
+        note_var("CLAUDE_CODE_DISABLE_FAST_MODE")
         base = (env.get("ANTHROPIC_BASE_URL") or "").lower()
         if "127.0.0.1:4141" not in base and "localhost:4141" not in base:
             problems.append("ANTHROPIC_BASE_URL should point at the local shim (http://127.0.0.1:4141) for shim routes.")
+        if env.get("CLAUDE_CODE_DISABLE_FAST_MODE") != "1":
+            problems.append(
+                "CLAUDE_CODE_DISABLE_FAST_MODE must be the exact string '1' for GPT "
+                "shim routes. Run 'bash /daaf/scripts/provider_shim/gpt_fast.sh off' "
+                "to keep the requested GPT service-tier policy safely OFF, set "
+                "CLAUDE_CODE_DISABLE_FAST_MODE=1 in the host environment_settings.txt, "
+                "recreate the container, and start a new Claude session."
+            )
         if route == ROUTE_CHATGPT:
             note_var("SHIM_BACKEND_MODE")
             note_var("CODEX_HOME")
@@ -586,8 +626,11 @@ def probe_env_coherence(route_info: RouteInfo, env) -> ProbeResult:
             if not env.get("CODEX_HOME"):
                 problems.append("CODEX_HOME must be set (holds auth.json) for the ChatGPT route.")
         else:  # openai-api
+            note_var("SHIM_BACKEND_MODE")
             note_var("OPENAI_API_KEY")
             note_var("SHIM_BACKEND_API_KEY")
+            if env.get("SHIM_BACKEND_MODE") != "openai":
+                problems.append("SHIM_BACKEND_MODE must equal exact value 'openai' for the OpenAI-API route.")
             if _key_state(env, "OPENAI_API_KEY") != "set" and _key_state(env, "SHIM_BACKEND_API_KEY") != "set":
                 problems.append("OPENAI_API_KEY or SHIM_BACKEND_API_KEY must be set for the OpenAI-API route.")
 

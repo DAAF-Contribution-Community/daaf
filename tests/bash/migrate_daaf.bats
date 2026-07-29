@@ -735,6 +735,117 @@ SH
     assert_output --partial "Migration complete"
 }
 
+# --- Pre-migration backup gate (section 3) ---
+# migrate's backup is MANDATORY (not prompted): section 3 captures the exit with
+# `BACKUP_EXIT=0; DAAF_NESTED=1 bash backup_daaf.sh || BACKUP_EXIT=$?` and aborts
+# on any nonzero code with a clear message. These are real-run-path tests (the
+# dry-run path skips the nested backup call entirely, keeping BACKUP_COMPLETED=true).
+# The full-run harness's curl mock writes every downloaded host script, INCLUDING
+# backup_daaf.sh, so the exit code is controlled by special-casing that file in the
+# curl mock rather than by a pre-seeded stub (which the download would clobber).
+
+@test "migrate: backup failure aborts the migration with a clear message" {
+    setup_migrate_integrated
+    run bash -c '
+        cd "'"${TEST_DIR}"'"
+        curl() {
+            local outfile=""
+            local args=("$@")
+            for ((i=0; i<${#args[@]}; i++)); do
+                if [ "${args[$i]}" = "-o" ]; then
+                    outfile="${args[$((i+1))]}"
+                    break
+                fi
+            done
+            if [ -n "${outfile}" ]; then
+                mkdir -p "$(dirname "${outfile}")"
+                echo "#!/usr/bin/env bash" > "${outfile}"
+                if [ "$(basename "${outfile}")" = "backup_daaf.sh" ]; then
+                    # The mandatory backup fails: emit a marker, then exit nonzero.
+                    echo "echo \"STUB BACKUP RAN\"" >> "${outfile}"
+                    echo "exit 1" >> "${outfile}"
+                else
+                    echo "exit 0" >> "${outfile}"
+                fi
+            fi
+            return 0
+        }
+        export -f curl
+        docker() {
+            local all_args="$*"
+            case "$all_args" in
+                "info") return 0 ;;
+                *"volume inspect"*) return 0 ;;
+                *"ps -a"*"--filter"*"volume="*"--format"*) echo "daaf-test-1" ;;
+                *"inspect --format"*"State.Status"*) echo "running" ;;
+                *) return 0 ;;
+            esac
+        }
+        export -f docker
+        bash "'"${REPO_ROOT}"'/scripts/host/migrate_daaf.sh"
+    '
+    assert_failure
+    assert_output --partial "STUB BACKUP RAN"
+    assert_output --partial "ERROR: Backup failed (exit code 1)"
+    assert_output --partial "The migration will not proceed without a successful backup."
+    # The abort happens in section 3, so no section-4 post-backup step is reached.
+    refute_output --partial "Starting container"
+    refute_output --partial "Migration complete"
+}
+
+@test "migrate: backup success lets the migration proceed past the backup step" {
+    setup_migrate_integrated
+    run bash -c '
+        cd "'"${TEST_DIR}"'"
+        curl() {
+            local outfile=""
+            local args=("$@")
+            for ((i=0; i<${#args[@]}; i++)); do
+                if [ "${args[$i]}" = "-o" ]; then
+                    outfile="${args[$((i+1))]}"
+                    break
+                fi
+            done
+            if [ -n "${outfile}" ]; then
+                mkdir -p "$(dirname "${outfile}")"
+                echo "#!/usr/bin/env bash" > "${outfile}"
+                if [ "$(basename "${outfile}")" = "backup_daaf.sh" ]; then
+                    # The mandatory backup succeeds: emit a marker, then exit 0.
+                    echo "echo \"STUB BACKUP RAN\"" >> "${outfile}"
+                    echo "exit 0" >> "${outfile}"
+                else
+                    echo "exit 0" >> "${outfile}"
+                fi
+            fi
+            return 0
+        }
+        export -f curl
+        docker() {
+            local all_args="$*"
+            case "$all_args" in
+                "info") return 0 ;;
+                *"volume inspect"*) return 0 ;;
+                *"ps -a"*"--filter"*"volume="*"--format"*) echo "daaf-test-1" ;;
+                *"inspect --format"*"State.Status"*) echo "running" ;;
+                *"exec"*"true"*) return 0 ;;
+                *"exec"*"test -f"*"CLAUDE.md"*) return 0 ;;
+                *"exec"*"remote get-url"*"origin"*) echo "https://github.com/DAAF-Contribution-Community/daaf.git" ;;
+                *"exec"*"fetch"*) return 0 ;;
+                *"exec"*"branch --set-upstream"*) return 0 ;;
+                *"exec"*"remote get-url"*"upstream"*) echo "" ; return 1 ;;
+                *) return 0 ;;
+            esac
+        }
+        export -f docker
+        bash "'"${REPO_ROOT}"'/scripts/host/migrate_daaf.sh"
+    '
+    assert_success
+    assert_output --partial "STUB BACKUP RAN"
+    # The gate must NOT false-fire, and the flow must reach the post-backup step.
+    refute_output --partial "The migration will not proceed without a successful backup."
+    assert_output --partial "Starting container"
+}
+
 @test "migrate: already migrated (idempotency) skips graft via replace-ref leg" {
     # Idempotency via LEG 1 (replace-ref): a non-empty `git replace -l` marks the
     # graft as already done. cat-file returns NO parent here, so the ONLY thing

@@ -8,7 +8,7 @@ This reference focuses on the DAAF Python stack: polars for data manipulation,
 pyfixest/statsmodels for modeling, and plotnine for visualization.
 
 > **Versions referenced:**
-> Python: polars 1.39.3, pyfixest 0.40.0, statsmodels 0.14.6
+> Python: polars 1.39.3, pyfixest 0.60.0, statsmodels 0.14.6
 > R: R 4.5.3
 > See SKILL.md § Library Versions for the complete version table.
 
@@ -316,13 +316,14 @@ in fixest also defaults to IID (since fixest 0.13).
 
 | Library | Default SE | Notes |
 |---------|-----------|-------|
-| pyfixest (v0.40+) | IID | Aligned with R fixest 0.13 |
+| pyfixest (0.40+, incl. 0.60.0) | IID | Aligned with R fixest 0.13 |
 | statsmodels OLS | Non-robust (IID) | Use `.get_robustcov_results()` for robust |
 | scikit-learn | No SEs provided | Not a statistical inference tool |
 
 pyfixest's alignment with fixest means R users get familiar defaults.
-However, pre-v0.40 pyfixest defaulted to clustering by the first FE, so
-older code may produce different results.
+However, pre-0.40 pyfixest defaulted to clustering by the first FE, so
+older code may produce different results. This default is unchanged through the
+current 0.60.0.
 
 ## Environment Traps
 

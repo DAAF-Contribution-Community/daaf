@@ -139,7 +139,7 @@ $PersistBranch = ""
 function Import-DaafSettingsInline {
     param([string]$SettingsFile = "./environment_settings.txt")
     if (-not (Test-Path -LiteralPath $SettingsFile)) { return }
-    $known = @('DAAF_PROJECT_NAME', 'DAAF_PORT_MARIMO', 'DAAF_PORT_LOGVIEWER', 'DAAF_PORT_VSCODE', 'DAAF_DEV', 'DAAF_BRANCH')
+    $known = @('DAAF_PROJECT_NAME', 'DAAF_PORT_MARIMO', 'DAAF_PORT_LOGVIEWER', 'DAAF_PORT_VSCODE', 'DAAF_DEV', 'DAAF_BRANCH', 'DAAF_DATA_VOLUME_NAME')
     # -Encoding UTF8: PS 5.1's bare Get-Content misreads BOM-less UTF-8 as ANSI
     # (cp1252); the settings writer is BOM-less UTF-8, so reads are pinned to match.
     foreach ($rawLine in (Get-Content -LiteralPath $SettingsFile -Encoding UTF8)) {
@@ -148,7 +148,11 @@ function Import-DaafSettingsInline {
         if ($trimmed -eq "" -or $trimmed.StartsWith("#")) { continue }
         $eq = $line.IndexOf("=")
         if ($eq -lt 1) { continue }
-        $key = $line.Substring(0, $eq).Trim()
+        # Extract the key WITHOUT trimming: a leading or trailing space means the
+        # line is not flush at column 0, so it must fall through as unrecognized --
+        # matching the bash loaders' column-0 `case` glob so a padded key like
+        # "  DAAF_PROJECT_NAME=..." is rejected identically on both platforms.
+        $key = $line.Substring(0, $eq)
         if ($known -notcontains $key) { continue }
         $val = $line.Substring($eq + 1)
         if (($val.StartsWith('"') -and $val.EndsWith('"')) -or ($val.StartsWith("'") -and $val.EndsWith("'"))) {
@@ -1404,11 +1408,28 @@ if (Test-Path "backup_daaf.ps1") {
         # above): a bare Remove-Item would clobber a value inherited from a
         # parent process.
         $savedNested = $env:DAAF_NESTED
+        # Defensive pre-init: if the try below unwinds before $backupExit is
+        # assigned, the nonzero default makes the gate fail closed (abort) rather
+        # than compare against $null.
+        $backupExit = 1
         try {
             $env:DAAF_NESTED = "1"
             & .\backup_daaf.ps1
+            $backupExit = $LASTEXITCODE
         } finally {
             if ($null -ne $savedNested) { $env:DAAF_NESTED = $savedNested } else { Remove-Item Env:\DAAF_NESTED -ErrorAction SilentlyContinue }
+        }
+        # A user who opted into a backup and had it fail must not have the update
+        # proceed on a missing restore point (a DECLINED backup -- the else path below
+        # -- still lets the update continue). The .sh twin runs under `set -e`, so it
+        # guards the call with `|| BACKUP_EXIT=$?`; here we read $LASTEXITCODE, which
+        # PS 5.1 does not gate. Mirrors migrate_daaf.ps1's gated abort.
+        if ($backupExit -ne 0) {
+            Write-Host ""
+            Write-Host "ERROR: Backup failed (exit code $backupExit)."
+            Write-Host "The update will not proceed without a successful backup."
+            Write-Host "Please resolve the backup issue and re-run: .\update_daaf.ps1"
+            Wait-AndExit 1
         }
         Write-Host ""
     }

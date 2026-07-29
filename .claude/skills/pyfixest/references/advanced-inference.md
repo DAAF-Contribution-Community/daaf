@@ -164,6 +164,8 @@ Do NOT routinely apply corrections to:
 
 Gelbach (2016) decomposes the change in a coefficient when additional controls are added. This answers: "Which specific controls explain most of the change in the coefficient of interest?"
 
+Since 0.40, `fit.decompose()` returns a `GelbachDecomposition` object (previously a `pd.DataFrame`), takes the coefficient to decompose as `decomp_var` (previously `param`), and defaults to reporting normalized contributions. Use its `.etable()`, `.tidy()`, and `.coefplot()` methods (shown below) to view results.
+
 ### Basic Usage
 
 ```python

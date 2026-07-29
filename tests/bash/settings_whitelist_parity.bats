@@ -11,8 +11,8 @@
 # + 2 optional dev-workspace pairs, enumerated below). Every copy hardcodes the
 # SAME whitelist of DAAF_* keys:
 #
-#     DAAF_BRANCH DAAF_DEV DAAF_PORT_LOGVIEWER DAAF_PORT_MARIMO
-#     DAAF_PORT_VSCODE DAAF_PROJECT_NAME
+#     DAAF_BRANCH DAAF_DATA_VOLUME_NAME DAAF_DEV DAAF_PORT_LOGVIEWER
+#     DAAF_PORT_MARIMO DAAF_PORT_VSCODE DAAF_PROJECT_NAME
 #
 # If one copy drifts (a key added to the library but not propagated to a
 # launcher, or vice versa), a second install's project name / published ports /
@@ -76,6 +76,7 @@ OPTIONAL_COPIES=(
 canonical_expected() {
     LC_ALL=C sort -u <<'KEYS'
 DAAF_BRANCH
+DAAF_DATA_VOLUME_NAME
 DAAF_DEV
 DAAF_PORT_LOGVIEWER
 DAAF_PORT_MARIMO
@@ -122,29 +123,29 @@ INSTALL_SH="${REPO_ROOT}/scripts/host/install.sh"
 INSTALL_PS1="${REPO_ROOT}/scripts/host/install.ps1"
 
 # ===========================================================================
-# (d) Canonical sets are EXACTLY the pinned literal 6 keys (both languages).
+# (d) Canonical sets are EXACTLY the pinned literal 7 keys (both languages).
 # Placed first: if the extraction returns empty or wrong, every set-equality
 # test below would pass vacuously, so this pin is the anti-vacuity anchor.
 # ===========================================================================
 
-@test "parity: daaf_lib.sh canonical whitelist is exactly the pinned 6 keys" {
+@test "parity: daaf_lib.sh canonical whitelist is exactly the pinned 7 keys" {
     local got want
     got="$(extract_sh_whitelist "${DAAF_LIB_SH}")"
     want="$(canonical_expected)"
     [ "${got}" = "${want}" ] || {
-        echo "CANONICAL DRIFT: daaf_lib.sh whitelist != pinned 6 keys"
+        echo "CANONICAL DRIFT: daaf_lib.sh whitelist != pinned 7 keys"
         echo "-- extracted:"; echo "${got}"
         echo "-- pinned:";    echo "${want}"
         return 1
     }
 }
 
-@test "parity: daaf_lib.ps1 canonical whitelist is exactly the pinned 6 keys" {
+@test "parity: daaf_lib.ps1 canonical whitelist is exactly the pinned 7 keys" {
     local got want
     got="$(extract_ps1_whitelist "${DAAF_LIB_PS1}")"
     want="$(canonical_expected)"
     [ "${got}" = "${want}" ] || {
-        echo "CANONICAL DRIFT: daaf_lib.ps1 \$known != pinned 6 keys"
+        echo "CANONICAL DRIFT: daaf_lib.ps1 \$known != pinned 7 keys"
         echo "-- extracted:"; echo "${got}"
         echo "-- pinned:";    echo "${want}"
         return 1
@@ -240,7 +241,7 @@ INSTALL_PS1="${REPO_ROOT}/scripts/host/install.ps1"
 # parsing arms are therefore bespoke, NOT the shared pattern. This test pins that
 # deviation to exactly {DAAF_DEV, DAAF_PROJECT_NAME} so that a well-meaning
 # "let's make install consistent too" edit that silently converts them to the
-# full 6-key whitelist TRIPS here and forces a deliberate decision + a matching
+# full 7-key whitelist TRIPS here and forces a deliberate decision + a matching
 # update to this allowlist.
 
 @test "deviation: install.sh parses exactly {DAAF_DEV, DAAF_PROJECT_NAME}" {
@@ -278,8 +279,8 @@ INSTALL_PS1="${REPO_ROOT}/scripts/host/install.ps1"
 
 @test "parity SELF-TEST: perturbing a .sh copy's whitelist trips the comparison" {
     cp "${REPO_ROOT}/scripts/host/backup_daaf.sh" "${TEST_DIR}/perturbed.sh"
-    # Drop DAAF_BRANCH from the case-arm (a one-key regression).
-    sed -i 's/|DAAF_DEV=\*|DAAF_BRANCH=\*)/|DAAF_DEV=*)/' "${TEST_DIR}/perturbed.sh"
+    # Drop the terminal DAAF_DATA_VOLUME_NAME from the case-arm (a one-key regression).
+    sed -i 's/|DAAF_BRANCH=\*|DAAF_DATA_VOLUME_NAME=\*)/|DAAF_BRANCH=*)/' "${TEST_DIR}/perturbed.sh"
 
     local canon perturbed
     canon="$(extract_sh_whitelist "${DAAF_LIB_SH}")"
@@ -291,17 +292,17 @@ INSTALL_PS1="${REPO_ROOT}/scripts/host/install.ps1"
         echo "${perturbed}"
         return 1
     }
-    # And specifically DAAF_BRANCH must be the key that disappeared.
-    if echo "${perturbed}" | grep -qx 'DAAF_BRANCH'; then
-        echo "SELF-TEST: perturbation failed to remove DAAF_BRANCH (sed anchor stale?)"
+    # And specifically DAAF_DATA_VOLUME_NAME must be the key that disappeared.
+    if echo "${perturbed}" | grep -qx 'DAAF_DATA_VOLUME_NAME'; then
+        echo "SELF-TEST: perturbation failed to remove DAAF_DATA_VOLUME_NAME (sed anchor stale?)"
         return 1
     fi
 }
 
 @test "parity SELF-TEST: perturbing a .ps1 copy's whitelist trips the comparison" {
     cp "${REPO_ROOT}/scripts/host/backup_daaf.ps1" "${TEST_DIR}/perturbed.ps1"
-    # Drop DAAF_BRANCH from the $known array.
-    sed -i "s/, 'DAAF_DEV', 'DAAF_BRANCH')/, 'DAAF_DEV')/" "${TEST_DIR}/perturbed.ps1"
+    # Drop the terminal DAAF_DATA_VOLUME_NAME from the $known array.
+    sed -i "s/, 'DAAF_BRANCH', 'DAAF_DATA_VOLUME_NAME')/, 'DAAF_BRANCH')/" "${TEST_DIR}/perturbed.ps1"
 
     local canon perturbed
     canon="$(extract_ps1_whitelist "${DAAF_LIB_PS1}")"
@@ -312,8 +313,8 @@ INSTALL_PS1="${REPO_ROOT}/scripts/host/install.ps1"
         echo "${perturbed}"
         return 1
     }
-    if echo "${perturbed}" | grep -qx 'DAAF_BRANCH'; then
-        echo "SELF-TEST: perturbation failed to remove DAAF_BRANCH (sed anchor stale?)"
+    if echo "${perturbed}" | grep -qx 'DAAF_DATA_VOLUME_NAME'; then
+        echo "SELF-TEST: perturbation failed to remove DAAF_DATA_VOLUME_NAME (sed anchor stale?)"
         return 1
     fi
 }

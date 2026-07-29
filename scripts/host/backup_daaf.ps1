@@ -74,7 +74,7 @@ if ($env:DAAF_DRY_RUN -eq "1") {
 function Import-DaafSettingsInline {
     param([string]$SettingsFile = "./environment_settings.txt")
     if (-not (Test-Path -LiteralPath $SettingsFile)) { return }
-    $known = @('DAAF_PROJECT_NAME', 'DAAF_PORT_MARIMO', 'DAAF_PORT_LOGVIEWER', 'DAAF_PORT_VSCODE', 'DAAF_DEV', 'DAAF_BRANCH')
+    $known = @('DAAF_PROJECT_NAME', 'DAAF_PORT_MARIMO', 'DAAF_PORT_LOGVIEWER', 'DAAF_PORT_VSCODE', 'DAAF_DEV', 'DAAF_BRANCH', 'DAAF_DATA_VOLUME_NAME')
     # -Encoding UTF8: PS 5.1's bare Get-Content misreads BOM-less UTF-8 as ANSI
     # (cp1252); the settings writer is BOM-less UTF-8, so reads are pinned to match.
     foreach ($rawLine in (Get-Content -LiteralPath $SettingsFile -Encoding UTF8)) {
@@ -83,7 +83,11 @@ function Import-DaafSettingsInline {
         if ($trimmed -eq "" -or $trimmed.StartsWith("#")) { continue }
         $eq = $line.IndexOf("=")
         if ($eq -lt 1) { continue }
-        $key = $line.Substring(0, $eq).Trim()
+        # Extract the key WITHOUT trimming: a leading or trailing space means the
+        # line is not flush at column 0, so it must fall through as unrecognized --
+        # matching the bash loaders' column-0 `case` glob so a padded key like
+        # "  DAAF_PROJECT_NAME=..." is rejected identically on both platforms.
+        $key = $line.Substring(0, $eq)
         if ($known -notcontains $key) { continue }
         $val = $line.Substring($eq + 1)
         if (($val.StartsWith('"') -and $val.EndsWith('"')) -or ($val.StartsWith("'") -and $val.EndsWith("'"))) {
@@ -116,9 +120,14 @@ Set-StrictMode -Version 3.0
 # derives the prefix from the project name (default "daaf"), so a second instance
 # with DAAF_PROJECT_NAME=daaf2 owns the volume "daaf2_daaf-data". Default unset =>
 # "daaf_daaf-data" (byte-for-byte identical to the previous hardcoded value).
+# DAAF_DATA_VOLUME_NAME, when set, overrides the whole derivation with a verbatim
+# full volume name (the shared-workspace escape hatch); unset => the derived
+# default. Matches Resolve-DaafDataVolumeName in daaf_lib.ps1 (inlined here because
+# this standalone script does not dot-source the library).
 $projectName = "daaf"
 if ($env:DAAF_PROJECT_NAME) { $projectName = $env:DAAF_PROJECT_NAME }
 $VolumeName = "${projectName}_daaf-data"
+if ($env:DAAF_DATA_VOLUME_NAME) { $VolumeName = $env:DAAF_DATA_VOLUME_NAME }
 # Second volume: Claude Code state (auth/credentials, session history and
 # transcripts, plugins, ~/.claude.json). Backed up into a dedicated hidden
 # subfolder of the backup so it does not contaminate the data-volume file counts
@@ -221,9 +230,9 @@ Write-Host ""
 # staging-failure error below points the user at the Docker Desktop disk image.
 $BackupDrive = (Get-Item -Path ".").PSDrive.Name
 $DriveInfo = New-Object System.IO.DriveInfo($BackupDrive)
-$AvailableKB = [long]($DriveInfo.AvailableFreeSpace / 1024)
+$AvailableKB = [long][math]::Floor($DriveInfo.AvailableFreeSpace / 1024)
 # Add 10% buffer to account for filesystem overhead
-$RequiredKB = [long]($VolumeSizeKB * 110 / 100)
+$RequiredKB = [long][math]::Floor($VolumeSizeKB * 110 / 100)
 if ($AvailableKB -lt $RequiredKB) {
     $RequiredMB = [math]::Floor($RequiredKB / 1024)
     $AvailableMB = [math]::Floor($AvailableKB / 1024)
@@ -343,8 +352,18 @@ if (-not $stageStartOk) {
 $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
 $StageStatusRaw = (docker wait $StageCid 2>&1 | Select-Object -Last 1)
 $ErrorActionPreference = $savedEAP
+# Gate on TryParse's BOOLEAN return. [int]::TryParse writes 0 into the [ref] on a
+# parse FAILURE (not just a parse of "0"), so the old `$null = TryParse(...)` form
+# silently overwrote the fail-closed default with 0 whenever `docker wait` emitted a
+# non-numeric last line (e.g. a daemon error merged via 2>&1) -- flipping this fatal
+# gate from "abort" to "proceed to copy a partial staged tree." Parse into a temp var
+# and adopt it ONLY on success; otherwise stay fail-closed at 1 (mirrors the correct
+# idiom at restore_from_backup.ps1:279).
 $StageStatus = 1
-if ($null -ne $StageStatusRaw) { $null = [int]::TryParse("$StageStatusRaw".Trim(), [ref]$StageStatus) }
+$StageStatusParsed = 0
+if ($null -ne $StageStatusRaw -and [int]::TryParse("$StageStatusRaw".Trim(), [ref]$StageStatusParsed)) {
+    $StageStatus = $StageStatusParsed
+}
 if ($StageStatus -ne 0) {
     # The staging container is DETACHED (`docker run -d`), so the gate's STDOUT --
     # including the offender list it prints on an exit-3 -- went to the container
@@ -422,6 +441,14 @@ try {
 $CopyProcess.WaitForExit()
 $CopyExitCode = if ($null -ne $CopyProcess.ExitCode) { $CopyProcess.ExitCode } else { 0 }
 
+# Latch for the completion banner: any of the non-fatal WARNING paths below
+# (file-count mismatch, size mismatch, Claude-state copy failure, permission-manifest
+# failure) sets this so the final banner can say the backup completed WITH WARNINGS
+# rather than claiming an unqualified success. The exit status stays 0 on those paths
+# -- the banner wording is the signal, not the exit code (the corroborated short-copy
+# case below is the one that is fatal, and it exits before the banner).
+$HadWarnings = $false
+
 # --- Verify ---
 # The staged tree the copy streamed = volume regular files + 1 symlink manifest
 # - symlinks. Symlinks were never counted by the source scan (TotalFiles), and the
@@ -452,24 +479,44 @@ if ($FileCount -eq 0) {
     Wait-AndExit 1
 }
 
-if ($CopyExitCode -ne 0) {
+# --- Corroborated short-copy check (fatal) ---
+# A nonzero docker cp exit AND a copied count short of the volume scan are two
+# independent signals that agree the backup is truncated -- the nonzero exit
+# corroborates the shortfall, so no tolerance is applied here (unlike the 1% count
+# and size tolerances below, which absorb benign filesystem/metadata drift on an
+# otherwise-clean copy). A truncated backup that passed as usable could cost a user
+# their data on restore, so fail hard: name the partial folder, tell them to delete
+# it, and exit before the completion banner. (A nonzero exit with a FULL count falls
+# through to the Note below -- warnings without an actual shortfall.)
+if ($CopyExitCode -ne 0 -and $FileCount -lt $TotalFiles) {
+    Write-Host ""
+    Write-Host "ERROR: Backup failed (exit code $CopyExitCode); only $FileCount of $TotalFiles expected files were copied." -ForegroundColor Red
+    Write-Host "       This backup is incomplete and must not be relied on. Delete this"
+    Write-Host "       partial backup folder and re-run once the copy issue is resolved."
+    Write-Host "Location: $HostPath\"
+    Wait-AndExit 1
+} elseif ($CopyExitCode -ne 0) {
     Write-Host "Note: File copy reported warnings (exit code $CopyExitCode); $FileCount of $TotalFiles expected files were transferred." -ForegroundColor Yellow
 }
 
 # --- File-count verification ---
 # Do NOT trust docker cp's exit code as the sole failure signal: the Windows
-# symlink-abort truncation surfaced with a ZERO exit on the user's run. Compare the
-# copied data-file count (manifest excluded) against the source scan count and warn
-# loudly on a shortfall beyond a 1% tolerance -- the count and size checks are the
-# authoritative completeness signals, not $CopyExitCode.
+# symlink-abort truncation surfaced with a ZERO exit on the user's run. A nonzero
+# exit that ALSO comes up short on the count is already fatal (the corroborated
+# short-copy branch above). This block catches the harder case -- a clean ZERO exit
+# that still copied too few files -- comparing the copied data-file count (manifest
+# excluded) against the source scan count and warning loudly on a shortfall beyond a
+# 1% tolerance. The count and size checks are the authoritative completeness signals,
+# not $CopyExitCode.
 if ($TotalFiles -gt 0 -and $FileCount -gt 0) {
-    $CountTolerance = [math]::Max(1, [long]($TotalFiles / 100))
+    $CountTolerance = [math]::Max(1, [long][math]::Floor($TotalFiles / 100))
     $CountDiff = [math]::Abs($TotalFiles - $FileCount)
     if ($CountDiff -gt $CountTolerance) {
         Write-Host ""
         Write-Host "WARNING: Backup file-count mismatch." -ForegroundColor Yellow
         Write-Host "         Source: $TotalFiles files, Backup: $FileCount files (difference: $CountDiff)"
         Write-Host "         The backup may be incomplete. Consider re-running."
+        $HadWarnings = $true
     }
 }
 
@@ -479,16 +526,17 @@ $SourceSizeKB = $VolumeLogicalKB
 # Exclude the ".daaf-symlinks" manifest from the backup byte sum: it exists in the
 # backup but not the volume, and the source side (VolumeLogicalKB) never counted it
 # -- so counting it here would skew the comparison.
-$BackupSizeKB = [long]((Get-ChildItem -Path $BackupName -Recurse -Force -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne $SymlinksManifest } | Measure-Object -Property Length -Sum).Sum / 1024)
+$BackupSizeKB = [long][math]::Floor((Get-ChildItem -Path $BackupName -Recurse -Force -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne $SymlinksManifest } | Measure-Object -Property Length -Sum).Sum / 1024)
 if ($SourceSizeKB -gt 0 -and $BackupSizeKB -gt 0) {
     # Allow 1% tolerance for filesystem metadata differences
-    $ToleranceKB = [math]::Max(1, [long]($SourceSizeKB / 100))
+    $ToleranceKB = [math]::Max(1, [long][math]::Floor($SourceSizeKB / 100))
     $DiffKB = [math]::Abs($SourceSizeKB - $BackupSizeKB)
     if ($DiffKB -gt $ToleranceKB) {
         Write-Host ""
         Write-Host "WARNING: Backup size mismatch." -ForegroundColor Yellow
         Write-Host "         Source: ${SourceSizeKB} KB, Backup: ${BackupSizeKB} KB (difference: ${DiffKB} KB)"
         Write-Host "         The backup may be incomplete. Consider re-running."
+        $HadWarnings = $true
     }
 }
 
@@ -528,8 +576,15 @@ if ($claudeVolumeExists) {
             $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
             $ClaudeStageStatusRaw = (docker wait $ClaudeStageCid 2>&1 | Select-Object -Last 1)
             $ErrorActionPreference = $savedEAP
+            # Gate on TryParse's BOOLEAN return (see the data-volume staging block
+            # above): a parse failure writes 0 into the [ref], which would flip this
+            # gate from "skip the copy" to "copy a partial staged tree." Parse into a
+            # temp var; stay fail-closed at 1 on failure.
             $ClaudeStageStatus = 1
-            if ($null -ne $ClaudeStageStatusRaw) { $null = [int]::TryParse("$ClaudeStageStatusRaw".Trim(), [ref]$ClaudeStageStatus) }
+            $ClaudeStageStatusParsed = 0
+            if ($null -ne $ClaudeStageStatusRaw -and [int]::TryParse("$ClaudeStageStatusRaw".Trim(), [ref]$ClaudeStageStatusParsed)) {
+                $ClaudeStageStatus = $ClaudeStageStatusParsed
+            }
             if ($ClaudeStageStatus -eq 0) {
                 $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
                 $null = docker cp "${ClaudeStageCid}:/staging/." "${ClaudeDestPath}" 2>&1
@@ -575,6 +630,7 @@ if ($claudeVolumeExists) {
             Write-Host "         (no details could be retrieved from the staging container)"
         }
         Write-Host "         The data volume backup above is still valid."
+        $HadWarnings = $true
     }
 } else {
     Write-Host ""
@@ -639,16 +695,22 @@ if ($manifestScanOk) {
         Write-Host "WARNING: Could not record the executable-permission manifest." -ForegroundColor Yellow
         Write-Host "         The backup is still valid; on restore, file permissions may need"
         Write-Host "         manual repair if this backup is restored on a Windows host."
+        $HadWarnings = $true
     }
 } else {
     Write-Host "WARNING: Could not record the executable-permission manifest." -ForegroundColor Yellow
     Write-Host "         The backup is still valid; on restore, file permissions may need"
     Write-Host "         manual repair if this backup is restored on a Windows host."
+    $HadWarnings = $true
 }
 
 Write-Host ""
 Write-Host "=========================================="
-Write-Host "  Backup complete!"
+if ($HadWarnings) {
+    Write-Host "  Backup completed WITH WARNINGS -- verify before relying on it"
+} else {
+    Write-Host "  Backup complete!"
+}
 Write-Host "=========================================="
 Write-Host ""
 Write-Host "Location: $HostPath\"

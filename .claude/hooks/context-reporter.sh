@@ -24,8 +24,10 @@
 #
 # Performance:
 #   Uses transcript byte-size + mtime signatures to reuse model caches without
-#   rescanning unchanged files. Changed transcripts are resolved from `tail -50`,
-#   which also bounds usage parsing to the end of the JSONL.
+#   rescanning unchanged files. When a transcript has changed, the model and
+#   usage are recovered from a full scan of the JSONL (last non-synthetic model,
+#   last positive usage sum) so a long run of trailing zero-token shim
+#   placeholders cannot hide the real values.
 #
 # Subagent support:
 #   settings.json PreToolUse hooks also fire for tool calls made BY subagents.
@@ -45,6 +47,17 @@
 #   the parent transcript in the subagent branch — that would inject the
 #   orchestrator's utilization into the subagent's context, causing subagents
 #   to falsely throttle or refuse work at HIGH/CRITICAL.
+#
+# Parent-model isolation:
+#   The parent/session model is derived ONLY from a genuinely-parent source —
+#   the parent model cache (/tmp/claude-model-<session_id>) refreshed from the
+#   parent's MAIN transcript. It is NEVER inferred by re-parsing a path that is
+#   itself a subagent transcript. When Claude Code passes the subagent's own
+#   transcript directly (basename == agent-<id>.jsonl) there is no parent
+#   transcript to scan, so the parent model comes from the cache alone (or is
+#   left empty). A measured subagent is then mapped by ITS OWN model/window and
+#   never assumed to share the session model (see Convention 10 in the
+#   hardening spec).
 #
 # Threshold tier (see calculate()):
 #   The severity thresholds are keyed on the model identity of the agent being
@@ -86,6 +99,17 @@ is_canonical_positive_decimal() {
     [[ "$value" == "$max_value" || "$value" < "$max_value" ]]
 }
 
+# Bounded identifier allowlist (Convention 2). Leading alnum, then
+# alnum/dot/underscore/hyphen, max 128 chars. Rejects slashes, traversal (..),
+# control chars, leading dash, empty, and >128. Every session_id / agent_id must
+# pass this BEFORE it is interpolated into any transcript or /tmp cache path, so
+# an attacker-shaped id can neither escape the /tmp namespace nor the subagent
+# transcript subtree. A present-but-invalid id is rejected exactly like an
+# absent one (key-presence contract).
+is_safe_id() {
+    [[ "${1:-}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ]]
+}
+
 # Return a signature that changes when a transcript is appended or rewritten.
 # GNU stat supplies byte size plus nanosecond-resolution mtime in one probe.
 transcript_signature() {
@@ -98,9 +122,13 @@ transcript_signature() {
 # paths consumed by audit-log.sh and statusline components. The neighboring
 # .transcript-signature sidecar is the commit marker: unchanged signatures reuse
 # a nonempty bare cache without parsing; changed signatures refresh from the last
-# nonempty, non-synthetic model. Both files are replaced through same-directory
-# temporary siblings, with the signature moved last so interrupted writes force
-# a safe refresh on the next invocation.
+# nonempty, non-synthetic model via a FULL scan of the JSONL (Convention 4 —
+# a long tail of zero-token/synthetic placeholders cannot hide the real model).
+# Both files are replaced through same-directory temporary siblings, with the
+# signature moved last so interrupted writes force a safe refresh on the next
+# invocation. When called with an empty transcript (e.g. the parent transcript
+# is unavailable in the direct-subagent branch) it returns the cached value
+# without scanning or writing.
 resolve_model_cache() {
     local transcript="${1:-}"
     local cache="${2:-}"
@@ -119,16 +147,20 @@ resolve_model_cache() {
     fi
 
     if [[ -n "$transcript" && -f "$transcript" ]]; then
-        model=$(tail -n 50 "$transcript" 2>/dev/null | jq -rs '
+        model=$(jq -rs '
             [.[] | (.message.model // empty)
              | select(. != "" and . != "<synthetic>")] | last // empty
-        ' 2>/dev/null) || model=""
+        ' < "$transcript" 2>/dev/null) || model=""
     fi
     [[ -z "$model" ]] && model="$cached_model"
 
     if [[ -n "$model" && -n "$signature" ]]; then
-        if printf '%s' "$model" > "$model_tmp" 2>/dev/null &&
-           printf '%s' "$signature" > "$signature_tmp" 2>/dev/null &&
+        # Convention 6: wrap the redirection so an open() failure on the temp
+        # target cannot leak "No such file"/"Permission denied" to the display
+        # stream (redirections apply left-to-right, so a bare `> f 2>/dev/null`
+        # would still print the open() diagnostic before 2> takes effect).
+        if { printf '%s' "$model" > "$model_tmp"; } 2>/dev/null &&
+           { printf '%s' "$signature" > "$signature_tmp"; } 2>/dev/null &&
            mv "$model_tmp" "$cache" 2>/dev/null &&
            mv "$signature_tmp" "$signature_cache" 2>/dev/null; then
             :
@@ -146,47 +178,92 @@ SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // "default"' 2>/dev/null) || SE
 TRANSCRIPT_PATH=$(echo "$INPUT" | jq -r '.transcript_path // empty' 2>/dev/null) || TRANSCRIPT_PATH=""
 AGENT_ID=$(echo "$INPUT" | jq -r '.agent_id // empty' 2>/dev/null) || AGENT_ID=""
 
+# Convention 2: allowlist ids BEFORE any path/cache interpolation. Fail open
+# (emit nothing, exit 0) on a rejected id — do not construct or read/write any
+# path built from it. SESSION_ID is always used (every /tmp cache is keyed on
+# it); AGENT_ID is only checked when present (its absence marks the main
+# session). A present-but-invalid id is rejected like an absent one.
+is_safe_id "$SESSION_ID" || exit 0
+if [[ -n "$AGENT_ID" ]]; then
+    is_safe_id "$AGENT_ID" || exit 0
+fi
+
+# Production caches live in /tmp. The override is a deterministic-test seam so
+# Bats can exercise the gate/model/window cache reads and writes inside project
+# scratch without touching live session state. The default is /tmp so
+# production behavior is byte-identical; the name follows the per-script
+# DAAF_<SCRIPT>_CACHE_DIR convention shared with context-bar.sh
+# (DAAF_CONTEXT_BAR_CACHE_DIR) and subagent-bar.sh (DAAF_SUBAGENT_BAR_CACHE_DIR).
+reporter_cache_dir="${DAAF_CONTEXT_REPORTER_CACHE_DIR:-/tmp}"
+
 # ---------------------------------------------------------------------------
 # Agent-aware measurement setup: decide WHICH transcript to measure, whether
-# the sidechain filter applies, and which rate-limit gate file to use.
+# the sidechain filter applies, which rate-limit gate file to use, and which
+# path (if any) is a genuine PARENT transcript for session-model inference.
 # ---------------------------------------------------------------------------
 if [[ -n "$AGENT_ID" ]]; then
     # Subagent-fired call: measure the subagent's OWN transcript.
     [[ -z "$TRANSCRIPT_PATH" ]] && exit 0
     if [[ "$(basename "$TRANSCRIPT_PATH")" == "agent-${AGENT_ID}.jsonl" ]]; then
         # Robustness for future Claude Code versions that may pass the
-        # subagent's transcript path directly.
+        # subagent's transcript path directly. In this case the supplied path
+        # IS the subagent transcript, so there is NO parent transcript to scan
+        # (Convention 10): the parent/session model must come from the parent
+        # cache alone, never by re-parsing this subagent transcript.
         MEASURE_TRANSCRIPT="$TRANSCRIPT_PATH"
+        PARENT_TRANSCRIPT=""
     else
         MEASURE_TRANSCRIPT="$(dirname "$TRANSCRIPT_PATH")/${SESSION_ID}/subagents/agent-${AGENT_ID}.jsonl"
+        # The supplied path is the parent's MAIN transcript — a genuine parent
+        # source for session-model inference.
+        PARENT_TRANSCRIPT="$TRANSCRIPT_PATH"
     fi
     # Fail silent, never wrong: no fallback to the parent transcript here.
     [[ ! -f "$MEASURE_TRANSCRIPT" ]] && exit 0
     # Subagent transcripts are entirely isSidechain:true — disable the filter.
     ALLOW_SIDECHAIN=true
     # Per-agent gate so parent and subagents don't race on a shared timer.
-    LAST_INJECT_FILE="/tmp/claude-ctx-ts-${SESSION_ID}-${AGENT_ID}"
+    LAST_INJECT_FILE="${reporter_cache_dir}/claude-ctx-ts-${SESSION_ID}-${AGENT_ID}"
 else
     # Main session: measure the parent transcript's main chain only.
     [[ -z "$TRANSCRIPT_PATH" ]] && exit 0
     MEASURE_TRANSCRIPT="$TRANSCRIPT_PATH"
+    PARENT_TRANSCRIPT="$TRANSCRIPT_PATH"
     ALLOW_SIDECHAIN=false
-    LAST_INJECT_FILE="/tmp/claude-ctx-ts-${SESSION_ID}"
+    LAST_INJECT_FILE="${reporter_cache_dir}/claude-ctx-ts-${SESSION_ID}"
 fi
 
 INJECT_INTERVAL=60  # seconds between injections
+
+# Convention 3: closed-set GPT flagship grammar. Only these exact terminal
+# slugs (after stripping any provider path prefix) are eligible for the
+# 1,050,000-token physical window and the 370k ChatGPT-lane cap arm. New
+# codenames are a deliberate one-line registry edit (validate-before-trust,
+# consistent with DAAF policy). Stored in a variable to avoid [[ =~ ]] quoting
+# pitfalls. Accepts gpt-5.4/5.5/5.6 with an optional -sol/-terra/-luna codename
+# and an optional [1m] badge; rejects malformed suffixes (gpt-5.4-,
+# gpt-5.6-experimental, gpt-5.6-sol[1m]x), mini/chat, and gpt-5.60.
+GPT_FLAGSHIP_RE='^gpt-5\.(4|5|6)(-(sol|terra|luna))?(\[1m\])?$'
+# Closed-set mini/chat grammars (Convention 3), byte-consistent with
+# subagent-bar.sh and context-bar.sh's anchored EREs. These replace the old
+# open-ended inner globs (*-mini*/*-chat*) so suffixed near-misses (e.g.
+# gpt-5.6-mini-preview) fail the anchor and fall through to the conservative
+# 200k default rather than being mapped to 400k/128k. Anchored on the same
+# provider-stripped PHYSICAL_SLUG the globs inspected.
+GPT_MINI_RE='^gpt-5\.(4|5|6)(-(sol|terra|luna))?-mini(\[1m\])?$'
+GPT_CHAT_RE='^gpt-5\.(4|5|6)(-(sol|terra|luna))?-chat(\[1m\])?$'
 
 # Read context window size from shared cache (written by context-bar.sh
 # statusline). Subagent-fired hook calls carry the PARENT's session_id, so
 # this resolves the SESSION's window; a subagent running on a different model
 # than the session is corrected below. If the cache is absent, fall back to
 # the most recent cache from any session, then to 200k as a last resort.
-CTX_CACHE="/tmp/claude-ctx-window-${SESSION_ID}"
+CTX_CACHE="${reporter_cache_dir}/claude-ctx-window-${SESSION_ID}"
 MAX_CONTEXT=""
 if [[ -f "$CTX_CACHE" ]]; then
     MAX_CONTEXT=$(cat "$CTX_CACHE" 2>/dev/null)
 else
-    LATEST_CTX=$(ls -t /tmp/claude-ctx-window-* 2>/dev/null | head -1)
+    LATEST_CTX=$(ls -t "${reporter_cache_dir}"/claude-ctx-window-* 2>/dev/null | head -1)
     if [[ -n "${LATEST_CTX:-}" ]]; then
         MAX_CONTEXT=$(cat "$LATEST_CTX" 2>/dev/null)
     fi
@@ -199,10 +276,15 @@ fi
 # Refresh model identity before same/different-model window selection, final-cap
 # selection, and quality-tier selection. The main and subagent consumers share
 # these bare cache paths and their synchronized .transcript-signature sidecars.
-SESSION_MODEL=$(resolve_model_cache "$TRANSCRIPT_PATH" "/tmp/claude-model-${SESSION_ID}")
+# Convention 10: the session model is derived ONLY from a genuine parent source
+# (PARENT_TRANSCRIPT — empty when the supplied path is itself a subagent
+# transcript), never by re-parsing a subagent transcript. An empty
+# PARENT_TRANSCRIPT makes resolve_model_cache return the cached parent model (or
+# empty), so a direct subagent measurement is never mistaken for the session.
+SESSION_MODEL=$(resolve_model_cache "$PARENT_TRANSCRIPT" "${reporter_cache_dir}/claude-model-${SESSION_ID}")
 AGENT_MODEL=""
 if [[ -n "$AGENT_ID" ]]; then
-    AGENT_MODEL_CACHE="/tmp/claude-subagent-model-${SESSION_ID}-${AGENT_ID}"
+    AGENT_MODEL_CACHE="${reporter_cache_dir}/claude-subagent-model-${SESSION_ID}-${AGENT_ID}"
     AGENT_MODEL=$(resolve_model_cache "$MEASURE_TRANSCRIPT" "$AGENT_MODEL_CACHE")
     MEASURE_MODEL="$AGENT_MODEL"
 else
@@ -213,9 +295,14 @@ fi
 # session gets the window Claude Code provisions for ITS model, not the
 # session's (e.g. a sonnet subagent inside a 1M fable session has 200k — its
 # severity must be computed against 200k, or HIGH/CRITICAL fire far too late).
-# Physical GPT classification uses the terminal provider-stripped slug. Valid
-# flagship versions begin that slug and are followed by end-of-slug, '-' or '[';
-# mini/chat retain precedence. Physical size remains independent of quality tier.
+# When SESSION_MODEL is empty (no parent cache) and AGENT_MODEL is set, they
+# differ, so the correction still runs and maps the subagent by its OWN window
+# rather than inheriting the session's — never assuming same-model (Convention
+# 10). Physical GPT classification uses the terminal provider-stripped slug and
+# the closed-set flagship predicate (Convention 3): the 1,050,000 flagship
+# window is granted only to exact matches, while mini/chat retain their smaller
+# windows and malformed codenames fall through to the conservative default.
+# Physical size remains independent of the quality tier.
 if [[ -n "$AGENT_ID" && -n "$AGENT_MODEL" && "$AGENT_MODEL" != "$SESSION_MODEL" ]]; then
     PHYSICAL_SLUG="${AGENT_MODEL##*/}"
     case "$AGENT_MODEL" in
@@ -224,13 +311,27 @@ if [[ -n "$AGENT_ID" && -n "$AGENT_MODEL" && "$AGENT_MODEL" != "$SESSION_MODEL" 
         z-ai/glm-5.2|z-ai/glm-5.2-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9])
             MAX_CONTEXT=1048576 ;;
         *)
+            # gpt-5.4/5.5/5.6 family (broad glob selects the arm). Within it:
+            # mini/chat keep their smaller windows and take precedence; the
+            # 1,050,000 flagship window is granted ONLY to an exact closed-set
+            # match (GPT_FLAGSHIP_RE). A malformed codename that entered the arm
+            # (gpt-5.6-experimental, gpt-5.4-, gpt-5.6-sol[1m]x) is neither
+            # mini/chat nor an exact flagship, so it maps conservatively to 200k
+            # instead of inheriting the flagship window.
             case "$PHYSICAL_SLUG" in
                 gpt-5.4|gpt-5.4[-\[]*|gpt-5.5|gpt-5.5[-\[]*|gpt-5.6|gpt-5.6[-\[]*)
-                    case "$PHYSICAL_SLUG" in
-                        *-mini*) MAX_CONTEXT=400000 ;;
-                        *-chat*) MAX_CONTEXT=128000 ;;
-                        *) MAX_CONTEXT=1050000 ;;
-                    esac
+                    # Closed-set classification (Convention 3), byte-consistent
+                    # with subagent-bar.sh and context-bar.sh: only the anchored
+                    # flagship/mini/chat grammars earn a GPT window. Order
+                    # flagship, then mini, then chat. Malformed suffixes that
+                    # reached this family glob (gpt-5.4-, gpt-5.6-experimental,
+                    # gpt-5.6-mini-preview, gpt-5.6-sol[1m]x) match none and map
+                    # conservatively to 200k rather than inheriting a GPT window.
+                    if   [[ "$PHYSICAL_SLUG" =~ $GPT_FLAGSHIP_RE ]]; then MAX_CONTEXT=1050000
+                    elif [[ "$PHYSICAL_SLUG" =~ $GPT_MINI_RE ]];     then MAX_CONTEXT=400000
+                    elif [[ "$PHYSICAL_SLUG" =~ $GPT_CHAT_RE ]];     then MAX_CONTEXT=128000
+                    else MAX_CONTEXT=200000
+                    fi
                     ;;
                 gpt-5|gpt-5[-\[]*|gpt-5.2|gpt-5.2[-\[]*)
                     case "$PHYSICAL_SLUG" in
@@ -258,19 +359,18 @@ fi
 
 # ChatGPT-subscription/Codex final physical-window accounting constraint.
 # Canonical activation requires BOTH exact lane signals and a measured model in
-# the anchored gpt-5.4/5.5/5.6 flagship arm; mini/chat variants are excluded by
-# ordering. Probe 2026-07-16 (gpt-5.6-sol) accepted 369,941 real input tokens and
-# rejected 372,905, so 370000 is the lane-wide accounting ceiling for this arm.
-# Applying min(resolved, 370000) after model/cache/override resolution prevents
-# stale or unsafe ordinary values from surviving while preserving lower valid
-# values. This is accounting, not compaction or a transport-level blocker.
+# the anchored gpt-5.4/5.5/5.6 flagship arm (Convention 3 closed set; mini/chat
+# are excluded because they carry suffixes the ERE does not accept). Probe
+# 2026-07-16 (gpt-5.6-sol) accepted 369,941 real input tokens and rejected
+# 372,905, so 370000 is the lane-wide accounting ceiling for this arm. Applying
+# min(resolved, 370000) after model/cache/override resolution prevents stale or
+# unsafe ordinary values from surviving while preserving lower valid values.
+# This is accounting, not compaction or a transport-level blocker.
 GPT_FLAGSHIP=0
 PHYSICAL_SLUG="${MEASURE_MODEL##*/}"
-case "$PHYSICAL_SLUG" in
-    gpt-5*-mini*|gpt-5*-chat*) ;;
-    gpt-5.4|gpt-5.4[-\[]*|gpt-5.5|gpt-5.5[-\[]*|gpt-5.6|gpt-5.6[-\[]*)
-        GPT_FLAGSHIP=1 ;;
-esac
+if [[ "$PHYSICAL_SLUG" =~ $GPT_FLAGSHIP_RE ]]; then
+    GPT_FLAGSHIP=1
+fi
 if [[ "${DAAF_PROVIDER_SHIM:-}" == "openai" && \
       "${SHIM_BACKEND_MODE:-}" == "chatgpt" && \
       "$GPT_FLAGSHIP" -eq 1 ]] && \
@@ -287,8 +387,9 @@ MAX_K=$((MAX_CONTEXT / 1000))
 
 # ---------------------------------------------------------------------------
 # calculate: Parse the transcript's most recent usage data and format a
-# utilization message with timestamp. Uses tail -50 to avoid parsing the
-# entire JSONL file.
+# utilization message with timestamp. Scans the FULL JSONL (Convention 4) and
+# takes the last POSITIVE usage sum, so trailing zero-token shim placeholders
+# cannot mask a real reading.
 # Args: $1 = transcript path, $2 = allow_sidechain (true/false). When true,
 # sidechain entries count; when false, only main-chain entries count.
 # $3 = model id of the agent being measured (drives the threshold tier; may
@@ -305,7 +406,9 @@ calculate() {
     # Map each qualifying usage entry to its token sum, then take the last
     # POSITIVE sum. Shim-routed transcripts can end with zero-token streaming
     # placeholders; native Claude transcripts are unchanged by last-positive.
-    tokens=$(tail -50 "$transcript" 2>/dev/null | jq -s --argjson allow_sidechain "$allow_sidechain" '
+    # Convention 4: full-transcript scan via `< "$transcript"` (the -f guard
+    # above keeps a missing/binary file fail-open).
+    tokens=$(jq -s --argjson allow_sidechain "$allow_sidechain" '
         [.[] | select(
             .message.usage and
             ((.isSidechain != true) or $allow_sidechain) and
@@ -315,9 +418,15 @@ calculate() {
             (.message.usage.cache_read_input_tokens // 0) +
             (.message.usage.cache_creation_input_tokens // 0)
         )] | map(select(. > 0)) | last // 0
-    ' 2>/dev/null) || tokens=0
+    ' < "$transcript" 2>/dev/null) || tokens=0
 
-    [[ "$tokens" -le 0 ]] && return
+    # Convention 5: bound the numerator before tokens*100 so a huge (but
+    # jq-emitted, int64-valid) value cannot overflow signed-64 and wrap pct
+    # negative. Require a canonical positive decimal <= floor(INT64_MAX/100);
+    # anything else (including 0, non-numeric, or over-large) fails open by
+    # omitting the injection — symmetric with the validated denominator.
+    is_canonical_positive_decimal "$tokens" || return
+    [[ "$tokens" -le 92233720368547758 ]] || return
 
     local pct=$((tokens * 100 / MAX_CONTEXT))
     [[ $pct -gt 100 ]] && pct=100
@@ -360,6 +469,15 @@ NOW=$(date +%s)
 LAST_INJECT=0
 [[ -f "$LAST_INJECT_FILE" ]] && LAST_INJECT=$(cat "$LAST_INJECT_FILE" 2>/dev/null)
 
+# Convention 11: a corrupt or future gate timestamp would make (NOW - LAST_INJECT)
+# negative — always under the interval — and suppress every future report
+# indefinitely. Treat a non-canonical value OR one greater than NOW as corrupt
+# and reset to 0 (allow the report). The short-circuit keeps the -gt arithmetic
+# off any non-integer value. A legitimate recent-past value still suppresses.
+if ! is_canonical_positive_decimal "$LAST_INJECT" || [[ "$LAST_INJECT" -gt "$NOW" ]]; then
+    LAST_INJECT=0
+fi
+
 if [[ $((NOW - LAST_INJECT)) -lt $INJECT_INTERVAL ]]; then
     # Interval not elapsed — skip injection, don't block
     exit 0
@@ -369,8 +487,11 @@ fi
 MSG=$(calculate "$MEASURE_TRANSCRIPT" "$ALLOW_SIDECHAIN" "$MEASURE_MODEL")
 [[ -z "${MSG:-}" ]] && exit 0
 
-# Update the per-agent timestamp gate
-printf '%s' "$NOW" > "$LAST_INJECT_FILE" 2>/dev/null
+# Update the per-agent timestamp gate. Convention 6: wrap the redirection so an
+# open() failure (unwritable /tmp, ENOTDIR) cannot leak its diagnostic to the
+# display stream before 2> takes effect. If the write fails, continue without
+# gating — display output is preserved and the hook still exits 0.
+{ printf '%s' "$NOW" > "$LAST_INJECT_FILE"; } 2>/dev/null
 
 # ---------------------------------------------------------------------------
 # Event dispatch (format differs per event, but both share the gate above)

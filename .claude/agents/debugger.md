@@ -133,7 +133,7 @@ When diagnosing data-related bugs (unexpected values, failed joins, wrong coded 
 When debugging Stage 8 analysis failures: if the error traceback involves a specific library, load the corresponding skill via the Skill tool (see § Language-Conditional Skill Loading for the full mapping). Each library skill's `gotchas.md` reference file documents common failure modes:
 
 **Python libraries:**
-- **pyfixest:** Formula syntax errors, singleton fixed effect warnings, SE specification issues, v0.40.0 breaking changes
+- **pyfixest:** Formula syntax errors, singleton fixed effect warnings, SE specification issues, cumulative 0.40→0.60 breaking changes
 - **statsmodels:** Convergence failures, perfect separation in logit, singular matrix in GLS, missing formula API import
 - **linearmodels:** Entity effects specification, absorbed variable errors, GMM weight matrix issues
 - **geopandas:** CRS mismatch errors, invalid geometry, spatial join row explosion, Shapely 2.x migration issues

@@ -1439,6 +1439,83 @@ setup_state_machine() {
     assert_output --partial "Failed to start"
 }
 
+# --- Pre-update backup gate ---
+# The updater's pre-update backup is prompted/optional. In the non-interactive test
+# harness prompt_choice auto-selects the FIRST valid choice ("y"), so these tests
+# exercise the opted-in path: a FAILED backup must abort the update with a clear
+# message, and a SUCCESSFUL backup must let it continue (the abort must not
+# false-fire). A declined backup (CHOICE=n) is unreachable non-interactively, so it
+# is not exercised here.
+
+@test "update: opted-in backup failure aborts the update with a clear message" {
+    setup_state_machine
+    # Stub backup script the updater will find in the CWD and run; it fails (exit 1).
+    cat > "${TEST_DIR}/backup_daaf.sh" <<'STUB'
+#!/usr/bin/env bash
+echo "STUB BACKUP RAN"
+exit 1
+STUB
+    chmod +x "${TEST_DIR}/backup_daaf.sh"
+    run bash -c '
+        docker() {
+            local all_args="$*"
+            case "$all_args" in
+                "info") return 0 ;;
+                *"compose ps"*"--format"*) echo "daaf-docker" ;;
+                *"compose exec"*"true"*) return 0 ;;
+                *"compose exec"*"test -f"*"/daaf/CLAUDE.md"*) return 0 ;;
+                *) return 0 ;;
+            esac
+        }
+        export -f docker
+        bash "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+    '
+    assert_failure
+    assert_output --partial "STUB BACKUP RAN"
+    assert_output --partial "Backup failed (exit code 1)"
+    assert_output --partial "The update will not proceed without a successful backup"
+}
+
+@test "update: opted-in backup success lets the update continue past the backup step" {
+    setup_state_machine
+    # Stub backup script that succeeds (exit 0); the update must NOT abort and should
+    # proceed to its normal outcome (same SHA everywhere -> "Already up to date").
+    cat > "${TEST_DIR}/backup_daaf.sh" <<'STUB'
+#!/usr/bin/env bash
+echo "STUB BACKUP RAN"
+exit 0
+STUB
+    chmod +x "${TEST_DIR}/backup_daaf.sh"
+    run bash -c '
+        docker() {
+            local all_args="$*"
+            case "$all_args" in
+                "info") return 0 ;;
+                *"compose ps"*"--format"*) echo "daaf-docker" ;;
+                *"compose exec"*"true"*) return 0 ;;
+                *"compose exec"*"test -f"*"/daaf/CLAUDE.md"*) return 0 ;;
+                *"compose exec"*"test -f"*"/daaf/.git/shallow"*) return 1 ;;
+                *"compose exec"*"remote get-url"*"origin"*) echo "https://github.com/DAAF-Contribution-Community/daaf.git" ;;
+                *"compose exec"*"fetch"*) return 0 ;;
+                *"compose exec"*"rev-parse --verify"*"backup/"*) return 1 ;;
+                *"compose exec"*"rev-parse --verify"*"origin/main"*) return 0 ;;
+                *"compose exec"*"branch --show-current"*) echo "main" ;;
+                *"compose exec"*"rev-parse"*"origin/main"*) echo "abc123same" ;;
+                *"compose exec"*"rev-parse"*"HEAD"*) echo "abc123same" ;;
+                *"compose exec"*"diff --name-only"*"HEAD"*) echo "" ;;
+                *"compose exec"*"branch"*) return 0 ;;
+                *) return 0 ;;
+            esac
+        }
+        export -f docker
+        bash "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+    '
+    assert_success
+    assert_output --partial "STUB BACKUP RAN"
+    assert_output --partial "Already up to date"
+    refute_output --partial "The update will not proceed without a successful backup"
+}
+
 @test "update: DAAF not installed (CLAUDE.md missing) exits with error" {
     setup_state_machine
     run bash -c '

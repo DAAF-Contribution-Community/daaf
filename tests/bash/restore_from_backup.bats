@@ -836,3 +836,103 @@ teardown() {
     assert_output --partial "may predate"
     assert_output --partial "permission preservation"
 }
+
+# =========================================================================
+# --- Helper-container reap on `docker create` launch failure ---
+# =========================================================================
+# `docker create` echoes a CID to stdout; if the command then exits nonzero the
+# command substitution has ALREADY captured that CID. The two launch guards must
+# reap it (docker rm -f <cid>) so a launch failure does not leak a helper container.
+# `docker create` is single-phase, so a fail-with-CID is near-theoretical here --
+# these tests pin insurance parity with backup_daaf.sh's fixed launch guards and
+# with the .ps1 twin's finally-reap. The mocks log every docker call to a file so
+# the reap can be asserted after `run` (a bats array does not survive the `run`
+# subshell). Each test FAILS against the pre-fix restore code (main branch: no reap
+# before exit 1; Claude branch: `|| CLAUDE_CID=""` blanked the CID before the
+# end-of-block reap).
+
+@test "restore: main create launch failure reaps the captured helper container" {
+    mkdir -p "${TEST_DIR}/2026-01-01_daaf_backup"
+    touch "${TEST_DIR}/2026-01-01_daaf_backup/f1"
+
+    export DAAF_NESTED=1
+
+    # Step 1 volume-clear (`docker run --rm ... rm -rf`) succeeds; the Site A
+    # `docker create` for the data volume prints a CID but exits nonzero. The error
+    # branch must run `docker rm -f mockcid0000` before `exit 1`.
+    docker() {
+        printf '%s\n' "$*" >> "${TEST_DIR}/docker_calls.log"
+        case "$1" in
+            info)   return 0 ;;
+            volume) return 0 ;;
+            ps)     return 0 ;;
+            create) echo "mockcid0000"; return 1 ;;
+            cp)     return 0 ;;
+            rm)     return 0 ;;
+            run)    return 0 ;;
+            *)      return 0 ;;
+        esac
+    }
+    export -f docker
+
+    run bash -c 'printf "1\nRESTORE\n" | bash "'"${REPO_ROOT}"'/scripts/host/restore_from_backup.sh"'
+    assert_failure
+    assert_output --partial "Could not create the helper container"
+    # The captured CID must have been reaped in the error branch (fix-specific).
+    run grep -F 'rm -f mockcid0000' "${TEST_DIR}/docker_calls.log"
+    assert_success
+}
+
+@test "restore: Claude create launch failure preserves and reaps the captured CID (WARNING, not fatal)" {
+    mkdir -p "${TEST_DIR}/2026-01-01_daaf_backup"
+    touch "${TEST_DIR}/2026-01-01_daaf_backup/f1"
+    # A non-empty Claude subfolder => HAS_CLAUDE_BACKUP=1, so the Claude restore path
+    # runs after the data-volume restore succeeds.
+    mkdir -p "${TEST_DIR}/2026-01-01_daaf_backup/.daaf-claude-config"
+    touch "${TEST_DIR}/2026-01-01_daaf_backup/.daaf-claude-config/creds"
+
+    export DAAF_NESTED=1
+
+    # Data-volume restore succeeds (its `docker create` -> CID, exit 0). The
+    # Claude-volume `docker create` prints a CID but exits nonzero; the fix keeps that
+    # CID (no `|| CLAUDE_CID=""`) so the end-of-block `docker rm -f claudecid1111`
+    # reaps it. The two creates are distinguished by the "claude-config" volume
+    # substring. Both manifests probe ABSENT (test -f -> 1); verification returns a
+    # positive count so the data restore succeeds. Claude failure stays a WARNING and
+    # the script still completes (overall success).
+    docker() {
+        printf '%s\n' "$*" >> "${TEST_DIR}/docker_calls.log"
+        case "$1" in
+            info)   return 0 ;;
+            volume) return 0 ;;
+            ps)     return 0 ;;
+            create)
+                if printf '%s' "$*" | grep -q 'claude-config'; then
+                    echo "claudecid1111"; return 1
+                fi
+                echo "datacid0000"; return 0
+                ;;
+            cp)     return 0 ;;
+            rm)     return 0 ;;
+            run)
+                shift
+                local args_str="$*"
+                if [[ "${args_str}" == *"test -f"* ]]; then
+                    return 1
+                elif [[ "${args_str}" == *"find /dest"* ]] && [[ "${args_str}" == *"wc -l"* ]]; then
+                    echo "1"; return 0
+                fi
+                return 0
+                ;;
+            *)      return 0 ;;
+        esac
+    }
+    export -f docker
+
+    run bash -c 'printf "1\nRESTORE\n" | bash "'"${REPO_ROOT}"'/scripts/host/restore_from_backup.sh"'
+    assert_success
+    assert_output --partial "Failed to restore the Claude Code state volume"
+    # The captured Claude CID must be reaped -- proving it was NOT blanked before cleanup.
+    run grep -F 'rm -f claudecid1111' "${TEST_DIR}/docker_calls.log"
+    assert_success
+}

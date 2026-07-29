@@ -1,8 +1,9 @@
 """Provider-free regression tests for the DAAF deployment smoke harness.
 
 Standard-library unittest + unittest.mock ONLY — no third-party test deps, no
-network, no live provider calls. Every fixture lives under scripts/scratch/
-(NEVER /tmp) and is removed in tearDown.
+network, no live provider calls. Synthetic health fixtures are contract evidence
+only; they do not claim provider acceptance of any requested tier. Every fixture
+lives under scripts/scratch/ (NEVER /tmp) and is removed in tearDown.
 
 This module is wired into Tier D as TD.0 (run BEFORE the broader batteries) so an
 official Tier D run first validates its own harness: environment sanitization,
@@ -13,6 +14,7 @@ Run directly:
   python3 -m unittest discover -s /daaf/tests/python -p 'test_deploy_smoke.py'
 """
 
+import json
 import os
 import subprocess
 import sys
@@ -21,6 +23,7 @@ import unittest
 import uuid
 from pathlib import Path
 from unittest import mock
+from urllib.error import URLError
 
 # --- Import path guard: mirror run_deploy_smoke.py so route_detection /
 # smoke_probes / run_deploy_smoke and the benchmarks harness all import
@@ -46,6 +49,789 @@ def _scratch_dir(prefix):
     d = _SCRATCH / f"{prefix}_{uuid.uuid4().hex[:10]}"
     d.mkdir(parents=True, exist_ok=False)
     return d
+
+
+class _HealthResponse:
+    status = 200
+
+    def __init__(self, payload):
+        self.payload = payload
+        self.read_limit = None
+
+    def read(self, limit=None):
+        self.read_limit = limit
+        if isinstance(self.payload, bytes):
+            return self.payload[:limit] if limit is not None else self.payload
+        raw = json.dumps(self.payload).encode("utf-8")
+        return raw[:limit] if limit is not None else raw
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, traceback):
+        return False
+
+
+class _HealthOpener:
+    def __init__(self, response):
+        self.response = response
+        self.request = None
+        self.timeout = None
+
+    def open(self, request, timeout):
+        self.request = request
+        self.timeout = timeout
+        return self.response
+
+
+class LocalHealthTransportTests(unittest.TestCase):
+    def test_fixed_loopback_no_proxy_no_redirect_and_bounded_valid_read(self):
+        response = _HealthResponse({"status": "ok"})
+        opener = _HealthOpener(response)
+        with mock.patch.object(smoke_probes, "build_opener", return_value=opener) as build:
+            payload = smoke_probes._read_local_health(timeout=3.5)
+        self.assertEqual(payload, {"status": "ok"})
+        self.assertEqual(opener.request.full_url, smoke_probes.SHIM_HEALTH_URL)
+        self.assertEqual(opener.timeout, 3.5)
+        self.assertEqual(response.read_limit, smoke_probes.HEALTH_BODY_LIMIT + 1)
+        handlers = build.call_args.args
+        self.assertTrue(any(isinstance(item, smoke_probes.ProxyHandler) and item.proxies == {} for item in handlers))
+        redirect_handler = next(item for item in handlers if isinstance(item, smoke_probes._RejectHealthRedirects))
+        self.assertIsNone(redirect_handler.redirect_request(None, None, 302, "Found", {}, "http://example.invalid"))
+
+    def test_oversized_health_is_rejected_before_json_decode(self):
+        body = b"{" + b"x" * smoke_probes.HEALTH_BODY_LIMIT
+        with self.assertRaisesRegex(ValueError, "16 KiB"):
+            smoke_probes._read_local_health(opener=_HealthOpener(_HealthResponse(body)))
+
+
+class RouteServiceTierCoherenceTests(unittest.TestCase):
+    def _env(self, backend):
+        env = {
+            "DAAF_PROVIDER_SHIM": "openai",
+            "SHIM_BACKEND_MODE": backend,
+            "ANTHROPIC_BASE_URL": "http://127.0.0.1:4141",
+            "ANTHROPIC_AUTH_TOKEN": "shim-local-token",
+            "CLAUDE_CODE_DISABLE_FAST_MODE": "1",
+        }
+        if backend == "chatgpt":
+            env["CODEX_HOME"] = "/bounded/codex-home"
+        else:
+            env["OPENAI_API_KEY"] = "secret-not-reported"
+        return env
+
+    def test_safe_fingerprint_includes_exact_native_disable_control(self):
+        exact = route_detection.env_fingerprint(
+            {"CLAUDE_CODE_DISABLE_FAST_MODE": "1"}
+        )
+        malformed = route_detection.env_fingerprint(
+            {"CLAUDE_CODE_DISABLE_FAST_MODE": " arbitrary\ntext "}
+        )
+        self.assertEqual(exact["CLAUDE_CODE_DISABLE_FAST_MODE"], "1")
+        self.assertEqual(
+            malformed["CLAUDE_CODE_DISABLE_FAST_MODE"],
+            "<invalid:not-exact-1>",
+        )
+        self.assertNotIn("arbitrary", json.dumps(malformed))
+
+    def test_both_exact_gpt_routes_require_exact_string_one(self):
+        invalid_values = (None, "", "0", "true", "TRUE", " 1", "1 ", "01")
+        for backend in ("openai", "chatgpt"):
+            for value in invalid_values:
+                with self.subTest(backend=backend, value=value):
+                    env = self._env(backend)
+                    if value is None:
+                        env.pop("CLAUDE_CODE_DISABLE_FAST_MODE")
+                    else:
+                        env["CLAUDE_CODE_DISABLE_FAST_MODE"] = value
+                    route = route_detection.build_route_info(env)
+                    result = route_detection.probe_env_coherence(route, env)
+                    self.assertEqual(result.verdict, Verdict.FAIL)
+                    self.assertIn("exact string '1'", result.detail)
+                    self.assertIn("gpt_fast.sh", result.detail)
+                    self.assertIn("environment_settings.txt", result.detail)
+                    self.assertIn("recreate the container", result.detail)
+                    self.assertIn("new Claude session", result.detail)
+
+    def test_both_exact_gpt_routes_accept_exact_string_one(self):
+        expected_routes = {
+            "openai": route_detection.ROUTE_OPENAI_API,
+            "chatgpt": route_detection.ROUTE_CHATGPT,
+        }
+        for backend, expected_route in expected_routes.items():
+            with self.subTest(backend=backend):
+                env = self._env(backend)
+                route = route_detection.build_route_info(env)
+                result = route_detection.probe_env_coherence(route, env)
+                self.assertEqual(route.detected_route, expected_route)
+                self.assertEqual(result.verdict, Verdict.PASS, result.detail)
+
+    def test_route_detection_accepts_clean_routes_and_rejects_incomplete_shim_attempts(self):
+        cases = (
+            (
+                "empty native environment",
+                {},
+                route_detection.ROUTE_ANTHROPIC,
+                Verdict.PASS,
+                None,
+            ),
+            (
+                "explicit native model",
+                {"ANTHROPIC_MODEL": "claude-opus-4-8"},
+                route_detection.ROUTE_ANTHROPIC,
+                Verdict.PASS,
+                None,
+            ),
+            (
+                "coherent OpenRouter controls",
+                {
+                    "ANTHROPIC_BASE_URL": "https://openrouter.ai/api",
+                    "ANTHROPIC_AUTH_TOKEN": "openrouter-test-token",
+                    "ANTHROPIC_API_KEY": "",
+                },
+                route_detection.ROUTE_OPENROUTER,
+                Verdict.PASS,
+                None,
+            ),
+            (
+                "shim control only",
+                {"DAAF_PROVIDER_SHIM": "openai"},
+                route_detection.ROUTE_ANTHROPIC,
+                Verdict.FAIL,
+                "SHIM_BACKEND_MODE",
+            ),
+            (
+                "backend control only",
+                {"SHIM_BACKEND_MODE": "openai"},
+                route_detection.ROUTE_ANTHROPIC,
+                Verdict.FAIL,
+                "DAAF_PROVIDER_SHIM",
+            ),
+            (
+                "exact ChatGPT pair",
+                {
+                    "DAAF_PROVIDER_SHIM": "openai",
+                    "SHIM_BACKEND_MODE": "chatgpt",
+                },
+                route_detection.ROUTE_CHATGPT,
+                Verdict.PASS,
+                None,
+            ),
+            (
+                "exact OpenAI pair",
+                {
+                    "DAAF_PROVIDER_SHIM": "openai",
+                    "SHIM_BACKEND_MODE": "openai",
+                },
+                route_detection.ROUTE_OPENAI_API,
+                Verdict.PASS,
+                None,
+            ),
+        )
+        for label, env, expected_route, expected_verdict, diagnostic in cases:
+            with self.subTest(label=label):
+                route = route_detection.build_route_info(env)
+                result = route_detection.probe_route_detection(route)
+                self.assertEqual(route.detected_route, expected_route)
+                self.assertEqual(result.verdict, expected_verdict, result.detail)
+                if diagnostic is not None:
+                    self.assertIn(diagnostic, result.detail)
+
+    def test_route_control_diagnostics_are_bounded_and_do_not_reflect_values(self):
+        marker = "credential-shaped-private-marker-" + "x" * 200
+        env = {
+            "DAAF_PROVIDER_SHIM": marker,
+            "SHIM_BACKEND_MODE": marker,
+        }
+        route = route_detection.build_route_info(env)
+        result = route_detection.probe_route_detection(route)
+        reported = (
+            result.detail
+            + json.dumps(route.to_dict())
+            + json.dumps(route_detection.env_fingerprint(env))
+            + "".join(
+                evidence.output + evidence.note for evidence in result.evidence
+            )
+        )
+        self.assertEqual(result.verdict, Verdict.FAIL)
+        self.assertNotIn(marker, reported)
+        self.assertIn("<invalid:unsupported>", reported)
+        self.assertLess(len(result.detail), 500)
+
+    def test_api_route_requires_explicit_exact_openai_backend_control(self):
+        for value in (None, "", "OpenAI", " OPENAI ", "openai ", "other"):
+            with self.subTest(value=value):
+                env = self._env("openai")
+                if value is None:
+                    env.pop("SHIM_BACKEND_MODE")
+                else:
+                    env["SHIM_BACKEND_MODE"] = value
+                route = route_detection.build_route_info(env)
+                result = route_detection.probe_route_detection(route)
+                self.assertNotEqual(route.detected_route, route_detection.ROUTE_OPENAI_API)
+                self.assertEqual(result.verdict, Verdict.FAIL)
+                self.assertIn("SHIM_BACKEND_MODE", result.detail)
+
+    def test_clean_native_tier0_has_no_route_detection_failure(self):
+        env = {}
+        route = route_detection.build_route_info(env)
+        stub = route_detection.ProbeResult(
+            probe_id="stub",
+            name="provider-free stub",
+            tier="0",
+            verdict=Verdict.SKIP,
+        )
+        with mock.patch.object(smoke_probes, "probe_cli_available", return_value=stub), \
+             mock.patch.object(smoke_probes, "probe_hook_registration", return_value=stub), \
+             mock.patch.object(smoke_probes, "probe_statuslines", return_value=stub), \
+             mock.patch.object(smoke_probes, "probe_shim_health", return_value=stub), \
+             mock.patch.object(smoke_probes, "probe_auth_json", return_value=stub), \
+             mock.patch.object(smoke_probes, "probe_workspace_invariants", return_value=stub), \
+             mock.patch.object(smoke_probes, "probe_r_locale", return_value=stub):
+            results = smoke_probes.run_tier0(route, env, base_dir="/not-used")
+        route_results = [result for result in results if result.probe_id == "T0.1"]
+        self.assertEqual(len(route_results), 1)
+        self.assertEqual(route_results[0].verdict, Verdict.PASS, route_results[0].detail)
+
+    def test_non_gpt_route_behavior_is_unchanged_by_native_disable_absence(self):
+        cases = (
+            (
+                route_detection.ROUTE_ANTHROPIC,
+                {"ANTHROPIC_MODEL": "claude-opus-4-8"},
+            ),
+            (
+                route_detection.ROUTE_OPENROUTER,
+                {
+                    "ANTHROPIC_BASE_URL": "https://openrouter.ai/api",
+                    "ANTHROPIC_AUTH_TOKEN": "openrouter-token",
+                    "ANTHROPIC_API_KEY": "",
+                },
+            ),
+        )
+        for expected_route, env in cases:
+            with self.subTest(expected_route=expected_route):
+                route = route_detection.build_route_info(env)
+                result = route_detection.probe_env_coherence(route, env)
+                self.assertEqual(route.detected_route, expected_route)
+                self.assertEqual(result.verdict, Verdict.PASS, result.detail)
+
+
+class ShimHealthProbeTests(unittest.TestCase):
+    def _payload(self, **overrides):
+        backend = overrides.get("backend_mode", "openai")
+        tier = "priority"
+        payload = {
+            "service": "daaf-anthropic-openai-shim",
+            "status": "ok",
+            "backend_mode": backend,
+            "version": "1.3.9",
+            "sanitize_tools": True,
+            "codex_home_present": True,
+            "gpt_service_tier": {
+                "backend_mode": backend,
+                "requested_tier_vocabulary": tier,
+                "policy": {
+                    "status": "ok",
+                    "backend_mode": backend,
+                    "enabled": False,
+                    "effective": False,
+                },
+                "native_fast_disabled": True,
+                "latest_terminal": None,
+            },
+        }
+        payload.update(overrides)
+        return payload
+
+    def _probe(self, route_name, payload):
+        route = route_detection.RouteInfo(route_name)
+        with mock.patch.object(
+            smoke_probes, "_read_local_health", return_value=payload
+        ):
+            return smoke_probes.probe_shim_health(route)
+
+    def _reported_text(self, result):
+        parts = [result.detail]
+        for evidence in result.evidence:
+            parts.extend((evidence.output or "", evidence.note or ""))
+        return "\n".join(parts)
+
+    def test_probe_uses_shared_safe_local_health_reader(self):
+        route = route_detection.RouteInfo(route_detection.ROUTE_OPENAI_API)
+        payload = self._payload()
+        with mock.patch.object(
+            smoke_probes, "_read_local_health", return_value=payload
+        ) as reader:
+            result = smoke_probes.probe_shim_health(route)
+        self.assertEqual(result.verdict, Verdict.PASS, result.detail)
+        reader.assert_called_once_with(timeout=10)
+
+    def test_exact_service_status_route_mode_and_safe_version_pass(self):
+        result = self._probe(
+            route_detection.ROUTE_OPENAI_API,
+            self._payload(version="1.2.12+build_7-x"),
+        )
+        self.assertEqual(result.verdict, Verdict.PASS, result.detail)
+        self.assertIn("version=1.2.12+build_7-x", result.detail)
+
+    def test_missing_version_fails_with_bounded_marker(self):
+        payload = self._payload()
+        payload.pop("version")
+        result = self._probe(route_detection.ROUTE_OPENAI_API, payload)
+        reported = self._reported_text(result)
+        self.assertEqual(result.verdict, Verdict.FAIL)
+        self.assertIn("version must match", result.detail)
+        self.assertIn("version=<invalid>", reported)
+
+    def test_empty_version_fails_with_bounded_marker(self):
+        result = self._probe(
+            route_detection.ROUTE_OPENAI_API,
+            self._payload(version=""),
+        )
+        reported = self._reported_text(result)
+        self.assertEqual(result.verdict, Verdict.FAIL)
+        self.assertIn("version must match", result.detail)
+        self.assertIn("version=<invalid>", reported)
+
+    def test_unsafe_version_fails_without_reflecting_endpoint_text(self):
+        unsafe_version = "release/unsafe\nprivate-version-marker"
+        result = self._probe(
+            route_detection.ROUTE_OPENAI_API,
+            self._payload(version=unsafe_version),
+        )
+        reported = self._reported_text(result)
+        self.assertEqual(result.verdict, Verdict.FAIL)
+        self.assertIn("version must match", result.detail)
+        self.assertIn("version=<invalid>", reported)
+        self.assertNotIn(unsafe_version, reported)
+        self.assertNotIn("private-version-marker", reported)
+
+    def test_overlong_version_fails_without_reflecting_endpoint_text(self):
+        overlong_version = "A" * 65
+        result = self._probe(
+            route_detection.ROUTE_OPENAI_API,
+            self._payload(version=overlong_version),
+        )
+        reported = self._reported_text(result)
+        self.assertEqual(result.verdict, Verdict.FAIL)
+        self.assertIn("version must match", result.detail)
+        self.assertIn("version=<invalid>", reported)
+        self.assertNotIn(overlong_version, reported)
+
+    def test_nonstring_versions_fail_with_bounded_marker(self):
+        for version in (None, 12, True, ["1.2.12"]):
+            with self.subTest(version=version):
+                result = self._probe(
+                    route_detection.ROUTE_OPENAI_API,
+                    self._payload(version=version),
+                )
+                reported = self._reported_text(result)
+                self.assertEqual(result.verdict, Verdict.FAIL)
+                self.assertIn("version must match", result.detail)
+                self.assertIn("version=<invalid>", reported)
+
+    def test_chatgpt_boolean_true_auth_presence_passes(self):
+        result = self._probe(
+            route_detection.ROUTE_CHATGPT,
+            self._payload(backend_mode="chatgpt", codex_home_present=True),
+        )
+        self.assertEqual(result.verdict, Verdict.PASS, result.detail)
+
+    def test_chatgpt_boolean_false_auth_presence_fails(self):
+        result = self._probe(
+            route_detection.ROUTE_CHATGPT,
+            self._payload(backend_mode="chatgpt", codex_home_present=False),
+        )
+        self.assertEqual(result.verdict, Verdict.FAIL)
+        self.assertIn("codex_home_present must be boolean true", result.detail)
+
+    def test_chatgpt_missing_auth_presence_fails(self):
+        payload = self._payload(backend_mode="chatgpt")
+        payload.pop("codex_home_present")
+        result = self._probe(route_detection.ROUTE_CHATGPT, payload)
+        self.assertEqual(result.verdict, Verdict.FAIL)
+        self.assertIn("codex_home_present must be boolean true", result.detail)
+
+    def test_chatgpt_string_auth_presence_fails_with_bounded_marker(self):
+        result = self._probe(
+            route_detection.ROUTE_CHATGPT,
+            self._payload(backend_mode="chatgpt", codex_home_present="true"),
+        )
+        reported = self._reported_text(result)
+        self.assertEqual(result.verdict, Verdict.FAIL)
+        self.assertIn("codex_home_present must be boolean true", result.detail)
+        self.assertIn("codex_home_present=<invalid>", reported)
+
+    def test_chatgpt_truthy_nonboolean_auth_presence_fails(self):
+        result = self._probe(
+            route_detection.ROUTE_CHATGPT,
+            self._payload(backend_mode="chatgpt", codex_home_present=1),
+        )
+        reported = self._reported_text(result)
+        self.assertEqual(result.verdict, Verdict.FAIL)
+        self.assertIn("codex_home_present must be boolean true", result.detail)
+        self.assertIn("codex_home_present=<invalid>", reported)
+
+    def test_unrelated_service_degraded_status_and_wrong_mode_fail(self):
+        cases = (
+            self._payload(service="unrelated-service"),
+            self._payload(status="degraded"),
+            self._payload(backend_mode="chatgpt"),
+        )
+        for payload in cases:
+            with self.subTest(payload=payload):
+                result = self._probe(route_detection.ROUTE_OPENAI_API, payload)
+                self.assertEqual(result.verdict, Verdict.FAIL)
+
+    def test_nonobject_and_malformed_health_json_fail_cleanly(self):
+        for payload in (["not", "an", "object"], b"{not-json"):
+            with self.subTest(payload=payload):
+                result = self._probe(route_detection.ROUTE_OPENAI_API, payload)
+                self.assertEqual(result.verdict, Verdict.FAIL)
+                self.assertIn("invalid", result.detail)
+
+    def test_both_lane_vocabularies_and_valid_off_on_policies_pass(self):
+        lanes = (
+            (route_detection.ROUTE_OPENAI_API, "openai", "priority"),
+            (route_detection.ROUTE_CHATGPT, "chatgpt", "priority"),
+        )
+        for route_name, backend, tier in lanes:
+            for enabled in (False, True):
+                with self.subTest(backend=backend, enabled=enabled):
+                    payload = self._payload(backend_mode=backend)
+                    payload["gpt_service_tier"]["policy"].update(
+                        enabled=enabled, effective=enabled
+                    )
+                    result = self._probe(route_name, payload)
+                    self.assertEqual(result.verdict, Verdict.PASS, result.detail)
+                    self.assertIn(f"requested_policy={'ON' if enabled else 'OFF'}", result.detail)
+                    self.assertEqual(
+                        payload["gpt_service_tier"]["requested_tier_vocabulary"], tier
+                    )
+                    self.assertIn("not proof", result.detail)
+
+    def test_legacy_requested_fast_fails_closed_on_both_backends(self):
+        lanes = (
+            (route_detection.ROUTE_OPENAI_API, "openai"),
+            (route_detection.ROUTE_CHATGPT, "chatgpt"),
+        )
+        for route_name, backend in lanes:
+            with self.subTest(backend=backend):
+                payload = self._payload(backend_mode=backend)
+                payload["gpt_service_tier"]["requested_tier_vocabulary"] = "fast"
+                payload["gpt_service_tier"]["latest_terminal"] = {
+                    "model": "gpt-5.6-sol",
+                    "requested_service_tier": "fast",
+                    "requested_source": "shim_global",
+                    "served_service_tier": "default",
+                    "completed_at": "2026-07-25T20:00:00Z",
+                }
+                result = self._probe(route_name, payload)
+                self.assertEqual(result.verdict, Verdict.FAIL)
+                self.assertIn("must equal 'priority'", result.detail)
+
+    def test_non_ok_policy_statuses_are_valid_fail_safe_off_not_on_claims(self):
+        for status in ("missing", "invalid", "unreadable", "unsafe"):
+            with self.subTest(status=status):
+                payload = self._payload()
+                payload["gpt_service_tier"]["policy"] = {
+                    "status": status,
+                    "backend_mode": None,
+                    "enabled": False,
+                    "effective": False,
+                }
+                result = self._probe(route_detection.ROUTE_OPENAI_API, payload)
+                self.assertEqual(result.verdict, Verdict.PASS, result.detail)
+                self.assertIn("requested_policy=OFF", result.detail)
+                self.assertIn(f"status={status}", result.detail)
+                self.assertNotIn("requested_policy=ON", self._reported_text(result))
+
+    def test_service_tier_block_and_policy_reject_missing_extra_and_incoherence(self):
+        cases = []
+        missing_block_key = self._payload()
+        missing_block_key["gpt_service_tier"].pop("native_fast_disabled")
+        cases.append(missing_block_key)
+        extra_block_key = self._payload()
+        extra_block_key["gpt_service_tier"]["path"] = "/sensitive"
+        cases.append(extra_block_key)
+        wrong_vocabulary = self._payload()
+        wrong_vocabulary["gpt_service_tier"]["requested_tier_vocabulary"] = "fast"
+        cases.append(wrong_vocabulary)
+        nonboolean_native = self._payload()
+        nonboolean_native["gpt_service_tier"]["native_fast_disabled"] = 1
+        cases.append(nonboolean_native)
+        native_not_disabled = self._payload()
+        native_not_disabled["gpt_service_tier"]["native_fast_disabled"] = False
+        cases.append(native_not_disabled)
+        extra_policy_key = self._payload()
+        extra_policy_key["gpt_service_tier"]["policy"]["extra"] = False
+        cases.append(extra_policy_key)
+        incoherent_on = self._payload()
+        incoherent_on["gpt_service_tier"]["policy"].update(
+            enabled=True, effective=False
+        )
+        cases.append(incoherent_on)
+        corrupt_claims_on = self._payload()
+        corrupt_claims_on["gpt_service_tier"]["policy"] = {
+            "status": "invalid",
+            "backend_mode": "openai",
+            "enabled": True,
+            "effective": True,
+        }
+        cases.append(corrupt_claims_on)
+        unhashable_policy_values = self._payload()
+        unhashable_policy_values["gpt_service_tier"]["policy"].update(
+            status=["ok"], backend_mode={"lane": "openai"}
+        )
+        cases.append(unhashable_policy_values)
+        for payload in cases:
+            with self.subTest(payload=payload["gpt_service_tier"]):
+                result = self._probe(route_detection.ROUTE_OPENAI_API, payload)
+                self.assertEqual(result.verdict, Verdict.FAIL)
+
+    def test_valid_latest_terminal_passes_for_both_lanes_and_separates_requested_from_served(self):
+        lanes = (
+            (route_detection.ROUTE_OPENAI_API, "openai", "priority"),
+            (route_detection.ROUTE_CHATGPT, "chatgpt", "priority"),
+        )
+        for route_name, backend, tier in lanes:
+            with self.subTest(backend=backend):
+                payload = self._payload(backend_mode=backend)
+                payload["gpt_service_tier"]["policy"].update(
+                    enabled=True, effective=True
+                )
+                payload["gpt_service_tier"]["latest_terminal"] = {
+                    "model": "openai/gpt-5.6-sol",
+                    "requested_service_tier": tier,
+                    "requested_source": "shim_global",
+                    "served_service_tier": "default",
+                    "completed_at": "2026-07-25T20:00:00Z",
+                }
+                result = self._probe(route_name, payload)
+                self.assertEqual(result.verdict, Verdict.PASS, result.detail)
+                self.assertIn("requested_policy=ON", result.detail)
+                self.assertIn("latest terminal served tier=default", result.detail)
+                self.assertIn("not proof", result.detail)
+
+    def test_latest_terminal_rejects_extra_or_malformed_canonical_fields(self):
+        valid = {
+            "model": "gpt-5.6-sol",
+            "requested_service_tier": "priority",
+            "requested_source": "anthropic",
+            "served_service_tier": "priority",
+            "completed_at": "2026-07-25T20:00:00Z",
+        }
+        variants = []
+        extra = dict(valid, path="/sensitive")
+        variants.append(extra)
+        for key, value in (
+            ("model", "gpt bad\nmodel"),
+            ("model", "https://private.example.invalid/model"),
+            ("requested_service_tier", "fast"),
+            ("requested_service_tier", ["priority"]),
+            ("requested_source", "NONE"),
+            ("requested_source", ["none"]),
+            ("served_service_tier", "Priority"),
+            ("served_service_tier", {"tier": "priority"}),
+            ("completed_at", "2026-02-30T20:00:00Z"),
+        ):
+            malformed = dict(valid)
+            malformed[key] = value
+            variants.append(malformed)
+        incoherent = dict(valid)
+        incoherent["requested_service_tier"] = None
+        variants.append(incoherent)
+        for latest in variants:
+            with self.subTest(latest=latest):
+                payload = self._payload()
+                payload["gpt_service_tier"]["latest_terminal"] = latest
+                result = self._probe(route_detection.ROUTE_OPENAI_API, payload)
+                self.assertEqual(result.verdict, Verdict.FAIL)
+
+    def test_health_evidence_is_bounded_projection_not_broad_health_document(self):
+        payload = self._payload(
+            backend="https://private.example.invalid/v1",
+            auth={"token": "must-not-appear"},
+            unrelated={"path": "/private/path", "content": "arbitrary"},
+        )
+        result = self._probe(route_detection.ROUTE_OPENAI_API, payload)
+        reported = self._reported_text(result)
+        self.assertEqual(result.verdict, Verdict.PASS, result.detail)
+        for forbidden in (
+            "private.example.invalid", "must-not-appear", "/private/path", "arbitrary"
+        ):
+            self.assertNotIn(forbidden, reported)
+
+    def test_duplicate_health_keys_fail_before_schema_validation(self):
+        payload = json.dumps(self._payload(), separators=(",", ":")).encode("utf-8")
+        duplicate = payload.replace(
+            b'{"service":', b'{"service":"duplicate","service":', 1
+        )
+        route = route_detection.RouteInfo(route_detection.ROUTE_OPENAI_API)
+        with mock.patch.object(
+            smoke_probes,
+            "_read_local_health",
+            side_effect=smoke_probes._DuplicateHealthKeyError("duplicate health JSON key"),
+        ):
+            result = smoke_probes.probe_shim_health(route)
+        self.assertEqual(result.verdict, Verdict.FAIL)
+        self.assertIn("duplicate health JSON key", result.detail)
+
+
+class AuthJsonProbeTests(unittest.TestCase):
+    """T0.9 (probe_auth_json): the shim /health `auth` block is authoritative for
+    chatgpt-route auth validity (v1.3.0 / A1-R6b). FAIL on
+    expired|absent|unreadable, WARN on expiring, PASS on valid, route-appropriate
+    SKIP off shim routes."""
+
+    def setUp(self):
+        # Supplementary filesystem evidence target (presence/readability only,
+        # never blocking on its own) — a real scratch dir keeps os.access() honest
+        # without requiring an actual auth.json to exist.
+        self.codex_home = _scratch_dir("codex_home")
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.codex_home, ignore_errors=True)
+
+    def _route(self, route_name):
+        return route_detection.RouteInfo(route_name)
+
+    def _env(self):
+        return {"CODEX_HOME": str(self.codex_home)}
+
+    def _health(self, **auth_overrides):
+        auth = {"state": "valid", "days_left": 30}
+        auth.update(auth_overrides)
+        return {"auth": auth}
+
+    def _probe(self, route_name, env, payload):
+        route = self._route(route_name)
+        with mock.patch.object(
+            smoke_probes, "_read_local_health", return_value=payload
+        ):
+            return smoke_probes.probe_auth_json(route, env)
+
+    def test_auth_probe_uses_shared_safe_local_health_reader(self):
+        route = self._route(route_detection.ROUTE_CHATGPT)
+        payload = self._health(state="valid", days_left=45)
+        with mock.patch.object(
+            smoke_probes, "_read_local_health", return_value=payload
+        ) as reader:
+            result = smoke_probes.probe_auth_json(route, self._env())
+        self.assertEqual(result.verdict, Verdict.PASS, result.detail)
+        reader.assert_called_once_with(timeout=10)
+
+    def test_non_chatgpt_route_skips_without_hitting_health(self):
+        # SKIP fires on route alone; env/health are never consulted.
+        result = smoke_probes.probe_auth_json(
+            self._route(route_detection.ROUTE_OPENAI_API), {}
+        )
+        self.assertEqual(result.verdict, Verdict.SKIP)
+        self.assertIn("Not the chatgpt-subscription route", result.detail)
+
+    def test_missing_codex_home_fails_before_any_health_call(self):
+        result = smoke_probes.probe_auth_json(
+            self._route(route_detection.ROUTE_CHATGPT), {}
+        )
+        self.assertEqual(result.verdict, Verdict.FAIL)
+        self.assertIn("CODEX_HOME", result.detail)
+
+    def test_valid_state_passes(self):
+        result = self._probe(
+            route_detection.ROUTE_CHATGPT, self._env(),
+            self._health(state="valid", days_left=45),
+        )
+        self.assertEqual(result.verdict, Verdict.PASS, result.detail)
+        self.assertIn("days_left=45", result.detail)
+
+    def test_expiring_state_warns(self):
+        result = self._probe(
+            route_detection.ROUTE_CHATGPT, self._env(),
+            self._health(state="expiring", days_left=2),
+        )
+        self.assertEqual(result.verdict, Verdict.WARN)
+        self.assertIn("expires soon", result.detail)
+        self.assertIn("days_left=2", result.detail)
+
+    def test_expired_state_fails(self):
+        result = self._probe(
+            route_detection.ROUTE_CHATGPT, self._env(),
+            self._health(state="expired", days_left=None),
+        )
+        self.assertEqual(result.verdict, Verdict.FAIL)
+        self.assertIn("auth is dead", result.detail)
+        self.assertIn("state=expired", result.detail)
+
+    def test_absent_state_fails(self):
+        result = self._probe(
+            route_detection.ROUTE_CHATGPT, self._env(),
+            self._health(state="absent", days_left=None),
+        )
+        self.assertEqual(result.verdict, Verdict.FAIL)
+        self.assertIn("auth is dead", result.detail)
+        self.assertIn("state=absent", result.detail)
+
+    def test_unreadable_state_fails(self):
+        result = self._probe(
+            route_detection.ROUTE_CHATGPT, self._env(),
+            self._health(state="unreadable", days_left=None),
+        )
+        self.assertEqual(result.verdict, Verdict.FAIL)
+        self.assertIn("auth is dead", result.detail)
+        self.assertIn("state=unreadable", result.detail)
+
+    def test_missing_auth_block_fails_cleanly(self):
+        # Pre-v1.3.0 shim / broken build: no "auth" key at all in /health.
+        result = self._probe(
+            route_detection.ROUTE_CHATGPT, self._env(),
+            {"service": "daaf-anthropic-openai-shim", "status": "ok"},
+        )
+        self.assertEqual(result.verdict, Verdict.FAIL)
+        self.assertIn("no auth block", result.detail)
+
+    def test_auth_block_wrong_type_fails_cleanly(self):
+        # Malformed shape: "auth" present but not an object.
+        result = self._probe(
+            route_detection.ROUTE_CHATGPT, self._env(),
+            {"auth": "not-an-object"},
+        )
+        self.assertEqual(result.verdict, Verdict.FAIL)
+        self.assertIn("no auth block", result.detail)
+
+    def test_unrecognized_state_value_fails_without_crashing(self):
+        # Garbage state string outside the known vocabulary must not crash the
+        # probe and must be bounded (never reflected verbatim) in the detail.
+        garbage_state = "totally-bogus-state"
+        result = self._probe(
+            route_detection.ROUTE_CHATGPT, self._env(),
+            self._health(state=garbage_state, days_left=None),
+        )
+        self.assertEqual(result.verdict, Verdict.FAIL)
+        self.assertIn("unexpected auth state", result.detail)
+        self.assertIn("state=<invalid>", result.detail)
+        self.assertNotIn(garbage_state, result.detail)
+
+    def test_health_reported_na_state_on_chatgpt_route_fails(self):
+        # "n/a" is a KNOWN state string, but is unexpected specifically on the
+        # chatgpt route (it's the non-shim-route marker) — must still FAIL, not
+        # crash, and the known-but-wrong-here value is reflected verbatim.
+        result = self._probe(
+            route_detection.ROUTE_CHATGPT, self._env(),
+            self._health(state="n/a", days_left=None),
+        )
+        self.assertEqual(result.verdict, Verdict.FAIL)
+        self.assertIn("unexpected auth state", result.detail)
+        self.assertIn("state=n/a", result.detail)
+
+    def test_health_endpoint_unreachable_fails(self):
+        route = self._route(route_detection.ROUTE_CHATGPT)
+        with mock.patch.object(
+            smoke_probes, "_read_local_health", side_effect=URLError("refused")
+        ):
+            result = smoke_probes.probe_auth_json(route, self._env())
+        self.assertEqual(result.verdict, Verdict.FAIL)
+        self.assertIn("cannot assess auth", result.detail)
 
 
 class TierDEnvSanitizationTests(unittest.TestCase):

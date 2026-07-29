@@ -282,9 +282,9 @@ etable(fit_ols, fit_pois, fit_logit,
 
 ## pyfixest vs fixest Differences
 
-| Feature | R fixest 0.14 | pyfixest 0.40 |
+| Feature | R fixest 0.14 | pyfixest 0.60 |
 |---------|--------------|---------------|
-| feglm with FE | Fully supported | NOT supported |
+| feglm with FE | Fully supported | Supported (since 0.50) |
 | sunab() | Formula function | `event_study(estimator="saturated")` |
 | did2s | Not built-in (use `did2s` package) | `pf.did2s()` built-in |
 | lpdid | Not built-in | `pf.lpdid()` built-in |

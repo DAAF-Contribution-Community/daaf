@@ -49,7 +49,7 @@ function Wait-AndExit {
 function Import-DaafSettingsInline {
     param([string]$SettingsFile = "./environment_settings.txt")
     if (-not (Test-Path -LiteralPath $SettingsFile)) { return }
-    $known = @('DAAF_PROJECT_NAME', 'DAAF_PORT_MARIMO', 'DAAF_PORT_LOGVIEWER', 'DAAF_PORT_VSCODE', 'DAAF_DEV', 'DAAF_BRANCH')
+    $known = @('DAAF_PROJECT_NAME', 'DAAF_PORT_MARIMO', 'DAAF_PORT_LOGVIEWER', 'DAAF_PORT_VSCODE', 'DAAF_DEV', 'DAAF_BRANCH', 'DAAF_DATA_VOLUME_NAME')
     # -Encoding UTF8: PS 5.1's bare Get-Content misreads BOM-less UTF-8 as ANSI
     # (cp1252); the settings writer is BOM-less UTF-8, so reads are pinned to match.
     foreach ($rawLine in (Get-Content -LiteralPath $SettingsFile -Encoding UTF8)) {
@@ -58,7 +58,11 @@ function Import-DaafSettingsInline {
         if ($trimmed -eq "" -or $trimmed.StartsWith("#")) { continue }
         $eq = $line.IndexOf("=")
         if ($eq -lt 1) { continue }
-        $key = $line.Substring(0, $eq).Trim()
+        # Extract the key WITHOUT trimming: a leading or trailing space means the
+        # line is not flush at column 0, so it must fall through as unrecognized --
+        # matching the bash loaders' column-0 `case` glob so a padded key like
+        # "  DAAF_PROJECT_NAME=..." is rejected identically on both platforms.
+        $key = $line.Substring(0, $eq)
         if ($known -notcontains $key) { continue }
         $val = $line.Substring($eq + 1)
         if (($val.StartsWith('"') -and $val.EndsWith('"')) -or ($val.StartsWith("'") -and $val.EndsWith("'"))) {
@@ -290,12 +294,23 @@ Write-Host ""
 # on `docker compose up --progress`, which is rejected as "unknown flag" on
 # Docker Compose versions prior to ~v2.27.
 # BUILDX_BUILDER is set only when the diagnostic builder was selected above, then
-# cleared right after the build so it does not leak into later docker calls.
+# restored right after the build so it does not leak into later docker calls.
+# HAZARD (parallel to the bash twin's comment at rebuild_daaf.sh:251-255, whose
+# command-scoped `BUILDX_BUILDER=... docker compose build` prefix never mutates the
+# process env): assigning `$env:BUILDX_BUILDER = $null` REMOVES the variable entirely
+# rather than setting it empty, so a naive clear would DESTROY a user's own
+# pre-exported BUILDX_BUILDER selection. Save the prior value first and restore it
+# afterwards; remove the var only when the user had none set. ($env: reads are
+# strict-mode-safe even when the variable is unset -- they yield $null, not an error.)
+$priorBuildxBuilder = $env:BUILDX_BUILDER   # $null when the user had none set
 if ($UseDiagBuilder) { $env:BUILDX_BUILDER = "daaf-diag-builder" }
 $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
 docker compose build --progress plain
 $ErrorActionPreference = $savedEAP
-if ($UseDiagBuilder) { $env:BUILDX_BUILDER = $null }
+if ($UseDiagBuilder) {
+    if ($null -ne $priorBuildxBuilder) { $env:BUILDX_BUILDER = $priorBuildxBuilder }
+    else { $env:BUILDX_BUILDER = $null }
+}
 if ($LASTEXITCODE -ne 0) {
     Write-Host ""
     Write-Host "ERROR: Rebuild failed. Check the output above for details." -ForegroundColor Red

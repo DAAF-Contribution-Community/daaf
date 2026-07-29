@@ -52,8 +52,9 @@ estimation in applied economics and quantitative social science:
 ## Version Notes
 
 This skill targets **fixest 0.14.0** (R 4.5.3). fixest 0.13 introduced the
-breaking changes that pyfixest 0.40.0 adopted (default SE changed to IID,
-singleton removal by default, ssc argument renames). fixest 0.14.0 is a stable
+breaking changes that pyfixest adopted in 0.40.0 (default SE changed to IID,
+singleton removal by default, ssc argument renames); DAAF now ships pyfixest
+0.60.0, which keeps those fixest-0.13-aligned defaults. fixest 0.14.0 is a stable
 release building on those defaults.
 
 Key defaults in 0.14.0:
@@ -101,7 +102,7 @@ knowledge lack.
 
 | Skill | Relationship |
 |-------|-------------|
-| `pyfixest` | Python port of this package — near-identical formula syntax, some features missing (feglm with FE, etable maturity). Load when execution language is Python. |
+| `pyfixest` | Python port of this package — near-identical formula syntax; residual gaps are GLM families beyond logit/probit/gaussian and `fenegbin`. Load when execution language is Python. |
 | `data-scientist` | Methodology guidance — load for "why and when" behind methods |
 | `r-python-translation` | Cross-language mappings for R fixest vs Python pyfixest and statsmodels |
 | `plm` | Random effects, between estimator, Hausman test — complements fixest when FE-only is insufficient |

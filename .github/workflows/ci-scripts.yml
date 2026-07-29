@@ -3,7 +3,7 @@
 # Validates all .sh and .ps1 scripts across the repository.
 # Companion workflow: ci-integration.yml runs Docker integration tests weekly.
 #
-# Nine jobs:
+# Eleven jobs:
 #   1. lint-bash           - ShellCheck on all .sh files (ubuntu)
 #   2. lint-powershell     - PSScriptAnalyzer on all .ps1 files (ubuntu/pwsh 7)
 #   3. hygiene-checks      - Executable bits, LF endings, script pair parity
@@ -11,7 +11,8 @@
 #   5. bats-tests          - BATS unit/smoke tests for .sh scripts (ubuntu)
 #   6. pester-tests        - Pester tests for .ps1 scripts (ubuntu + windows)
 #   7. daaf-conventions    - Custom DAAF-specific lint checks (ubuntu)
-#   7b. deployment-smoke   - Harness self-tests (provider-free, stdlib only)
+#   7b. deploy-smoke-unit   - Harness self-tests (provider-free, stdlib only)
+#   7c. provider-shim-tests - Provider-shim unit suite (offline loopback harness)
 #   8. smoke-tests         - Cross-platform dry-run smoke tests (ubuntu + macos + windows)
 #   9. bats-bash32         - Host-script BATS suite under real Bash 3.2 (ubuntu container)
 #
@@ -32,6 +33,7 @@ on:
       - 'scripts/**.py'
       - 'scripts/**.R'
       - 'tests/python/**'
+      - 'tests/provider_shim/**'
       - 'tests/bash/**.py'
       - 'tests/fixtures/**'
   pull_request:
@@ -40,12 +42,13 @@ on:
       - '**.ps1'
       - '**.bats'
       - '**/*.Tests.ps1'
-      - 'tests/lint/**'
       - '.github/workflows/ci-scripts.yml'
       - '.github/linters/**'
+      - 'tests/lint/**'
       - 'scripts/**.py'
       - 'scripts/**.R'
       - 'tests/python/**'
+      - 'tests/provider_shim/**'
       - 'tests/bash/**.py'
       - 'tests/fixtures/**'
 
@@ -279,6 +282,36 @@ jobs:
 
       - name: Run deploy-smoke unit tests
         run: python3 -m unittest discover -s tests/python -p 'test_deploy_smoke.py' -v
+
+
+  # ---------------------------------------------------------------------------
+  # Job 7c: Provider-shim unit suite (offline: loopback harness + fake-codex
+  # stub; no network, no credentials, no real codex binary). The only
+  # third-party imports across the shim and its tests are httpx and uvicorn,
+  # pinned here to the versions validated in the DAAF container image.
+  # ---------------------------------------------------------------------------
+  provider-shim-tests:
+    name: Provider Shim Unit Tests
+    runs-on: ubuntu-latest
+    # The suite normally completes in ~3 minutes; the cap guards runner minutes
+    # against a hung asyncio/socket test rather than the 6-hour GitHub default.
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      # The loopback harness spawns the production shim with a HOME redirected
+      # to per-instance scratch (v1.3.8 policy isolation), which hides pip
+      # user-site packages (~/.local) from the child interpreter. A venv is
+      # immune: its site-packages travel with sys.executable, which the harness
+      # uses to spawn the shim, so the pinned deps resolve regardless of HOME.
+      - name: Install shim runtime dependencies (venv)
+        run: |
+          python3 -m venv .shim-venv
+          .shim-venv/bin/python -m pip install httpx==0.28.1 uvicorn==0.51.0
+
+      - name: Run provider-shim unit tests
+        run: .shim-venv/bin/python -m unittest discover -s tests/provider_shim -t tests -p 'test_*.py' -v
 
 
   # ---------------------------------------------------------------------------

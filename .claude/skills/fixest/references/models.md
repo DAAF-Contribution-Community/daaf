@@ -73,7 +73,8 @@ Poisson coefficients are semi-elasticities (in the log-linear model):
 ## feglm: Generalized Linear Models with FE
 
 `feglm()` supports GLM families with absorbed high-dimensional fixed effects.
-This is a major advantage over pyfixest, where `feglm()` does NOT support FE.
+pyfixest's `feglm()` gained FE support in 0.50 (logit/probit/gaussian); R fixest
+retains broader family coverage (e.g., Gamma) and `fenegbin`.
 
 ### Supported Families
 
@@ -95,9 +96,9 @@ summary(fit)
 fit <- feglm(binary_y ~ x1 + x2 | entity + year, data = df, family = binomial)
 ```
 
-This is one of the strongest features of R fixest over pyfixest. In Python,
-logit/probit with high-dimensional FE requires manual dummies (which is infeasible
-with many FE levels) or using a linear probability model instead.
+pyfixest (>= 0.50, DAAF ships 0.60.0) matches this for logit/probit/gaussian via
+`pf.feglm("y ~ x1 | entity", family="logit")`; families beyond those (e.g., Gamma)
+still require R fixest or manual approaches in Python.
 
 ### Probit with Fixed Effects
 

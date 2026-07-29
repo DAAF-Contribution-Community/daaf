@@ -29,6 +29,10 @@ SECRET_SENTINELS = (
     "VIEWER_RAW_ENVIRONMENT_SECRET",
     "VIEWER_PROBE_SECRET",
 )
+# A unique session_id on a timed_out run. session_id IS carried onto embedded
+# run records, so this string reaches DATA/HTML only if the timed-out run is
+# NOT excluded at load — its absence proves v3.3.0 timeout-blindness.
+TIMED_OUT_SESSION_SENTINEL = "VIEWER_TIMED_OUT_RUN_SENTINEL"
 
 
 class _StructureProbe(HTMLParser):
@@ -132,7 +136,9 @@ class ViewerSchemaRenderingTests(unittest.TestCase):
         })
         self._write_json(root / "summary.json", {
             "schema_version": 2,
-            "total_runs": 1,
+            # 2 on-disk runs: one completed, one timed_out. Kept equal to
+            # disk_run_count so provenance shows no run-count discrepancy.
+            "total_runs": 2,
             "errored_runs": 0,
             "total_cost_usd": None,
             "wall_time_s": 3,
@@ -264,6 +270,25 @@ class ViewerSchemaRenderingTests(unittest.TestCase):
             },
             "raw_json": {"secret": SECRET_SENTINELS[1]},
         })
+        # A timed_out run in the same set. It carries a unique session_id
+        # sentinel and would-have-failed criteria; v3.3.0 drops it at the
+        # load chokepoint, so neither the sentinel nor the run reaches the
+        # embedded DATA payload or the rendered HTML.
+        self._write_json(root / "runs" / "subscription_timeout_1" / "result.json", {
+            "schema_version": 2,
+            "case_id": "dc-subscription",
+            "model": "Luna Subscription",
+            "model_id": "gpt-5.6-luna",
+            "provider": "chatgpt-subscription",
+            "rep": 0,
+            "session_id": TIMED_OUT_SESSION_SENTINEL,
+            "turns": 1,
+            "computed_cost_usd": None,
+            "duration_s": 0,
+            "timed_out": True,
+            "criteria": {"agent_dispatched": {"passed": False}},
+            "subagent_criteria": {"subagent_writes_script": {"passed": False}},
+        })
 
     def _write_probe_container(self, results_dir):
         self._write_json(results_dir / "probes" / "probe-a" / "probe.json", {
@@ -275,7 +300,9 @@ class ViewerSchemaRenderingTests(unittest.TestCase):
     def _load_payload(self, results_dir):
         with redirect_stderr(io.StringIO()):
             result_sets = viewer.load_result_sets(str(results_dir))
-            runs, anth_tokens = viewer.load_runs(str(results_dir), result_sets, cases={})
+            # load_runs returns a 3-tuple as of v3.3.0 (runs, anth token totals,
+            # timeout-exclusion count); the excluded count is not needed here.
+            runs, anth_tokens, _ = viewer.load_runs(str(results_dir), result_sets, cases={})
         data_bundle = viewer.build_data_bundle(
             result_sets,
             cases={},
@@ -310,7 +337,6 @@ class ViewerSchemaRenderingTests(unittest.TestCase):
         main_script = main_script.replace(
             "\ninit();\n",
             "\nglobalThis.__DAAF_RENDER__={renderRunDetail:renderRunDetail," \
-            "renderProvenance:renderProvenance," \
             "costOmissionNoteHtml:costOmissionNoteHtml};\n",
         )
         node_source = r'''
@@ -353,16 +379,13 @@ var purity={};
   if(state==="unverifiable") variant.child_model_purity.incompleteness_reason="child_transcript_unreadable";
   purity[state]=__DAAF_RENDER__.renderRunDetail(variant);
 });
-var provenanceContainer={innerHTML:""};
-__DAAF_RENDER__.renderProvenance(provenanceContainer);
 process.stdout.write(JSON.stringify({
   legacy:__DAAF_RENDER__.renderRunDetail(legacy),
   subscription:__DAAF_RENDER__.renderRunDetail(subscription),
   exact:__DAAF_RENDER__.renderRunDetail(exact),
   actualZero:__DAAF_RENDER__.renderRunDetail(actualZero),
   purity:purity,
-  omission:__DAAF_RENDER__.costOmissionNoteHtml(),
-  provenance:provenanceContainer.innerHTML
+  omission:__DAAF_RENDER__.costOmissionNoteHtml()
 }));
 '''
         runner_path = TEST_SCRATCH / "render_template.js"
@@ -504,22 +527,31 @@ process.stdout.write(JSON.stringify({
         self.assertIn("remains in behavioral score views", omission)
         self.assertIn("omitted from billing-grade cost charts", omission)
         self.assertIn("not invoiced", omission)
-        self.assertIn("Behavioral scores retained", rendered["provenance"])
-        self.assertIn("Excluded from billing-grade cost views", rendered["provenance"])
 
-    def test_provenance_surfaces_schema_routes_and_summary_coverage(self):
-        provenance = self._node_render_payload()["provenance"]
-        self.assertIn("v1", provenance)
-        self.assertIn("legacy schema v1", provenance)
-        self.assertIn("default absent version", provenance)
-        self.assertIn("v2", provenance)
-        self.assertIn("schema v2", provenance)
-        self.assertIn("chatgpt-subscription", provenance)
-        self.assertIn("chatgpt_subscription_shim", provenance)
-        self.assertIn("scenario only: 1", provenance)
-        self.assertIn("verified: 1", provenance)
-        self.assertIn("failed: 0", provenance)
-        self.assertIn("Archived total", provenance)
+    def test_provenance_data_pipeline_intact_but_section_removed(self):
+        # v3.6.0 removed the rendered Provenance SECTION (renderProvenance,
+        # its TOC link, sectionRenderers/SECTION_IDS entries) but explicitly
+        # kept the provenance DATA pipeline. This test guards both halves:
+        # (a) PRECOMPUTED.provenance is still built with its schema fields and
+        # is still embedded in the generated HTML for inspection, and
+        # (b) the rendered section, its TOC link, and its renderer are gone.
+        provenance = self.precomputed["provenance"]
+        self.assertTrue(provenance, "provenance data pipeline must stay intact")
+        first = provenance[0]
+        for field in (
+            "timestamp", "phase", "schema_version", "providers",
+            "purity_coverage", "billing_grade_cost_eligible",
+            "disk_run_count", "summary_total_runs", "run_count_discrepancy",
+        ):
+            self.assertIn(field, first)
+        providers_seen = {p for entry in provenance for p in entry["providers"]}
+        self.assertIn("chatgpt-subscription", providers_seen)
+        # The embedded PRECOMPUTED payload still carries provenance (inspectable).
+        self.assertIn('"provenance"', self.generated_html)
+        # The rendered section and its wiring are gone.
+        self.assertNotIn('id="provenance"', self.generated_html)
+        self.assertNotIn("renderProvenance", self.generated_html)
+        self.assertNotIn('data-target="provenance"', self.generated_html)
 
     def test_probe_and_secret_sentinels_never_enter_generated_html(self):
         timestamps = [entry["timestamp"] for entry in self.data_bundle["result_sets"]]
@@ -534,6 +566,24 @@ process.stdout.write(JSON.stringify({
             "raw_json",
         ):
             self.assertNotIn(forbidden_key, self.generated_html)
+
+    def test_timed_out_runs_absent_from_embedded_data_and_rendered_html(self):
+        # The set carries one completed run and one timed_out run; v3.3.0
+        # excludes the timed-out run at load, so exactly one Luna Subscription
+        # run reaches the embedded DATA payload.
+        embedded = self.data_bundle["runs"]
+        subscription_runs = [
+            run for run in embedded if run["provider"] == "chatgpt-subscription"
+        ]
+        self.assertEqual(1, len(subscription_runs))
+        self.assertFalse(any(run.get("timed_out") for run in embedded))
+        # The timed-out run's session_id sentinel would appear in DATA/HTML if
+        # the run were embedded — its absence confirms load-time exclusion.
+        self.assertNotIn(
+            TIMED_OUT_SESSION_SENTINEL,
+            json.dumps(self.data_bundle),
+        )
+        self.assertNotIn(TIMED_OUT_SESSION_SENTINEL, self.generated_html)
 
     def test_inline_javascript_passes_node_syntax_check(self):
         scripts = self._inline_scripts(self.generated_html)

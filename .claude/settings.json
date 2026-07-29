@@ -94,20 +94,26 @@
       "Edit(environment_settings.txt)",
       "Edit(.claude/hooks/*)",
       "Write(.claude/hooks/*)",
-      "Edit(.claude/logs/*)",
-      "Write(.claude/logs/*)",
+      "Edit(/.claude/logs/**)",
+      "Write(/.claude/logs/**)",
+      "Edit(//home/appuser/.claude/**/*.jsonl)",
+      "Write(//home/appuser/.claude/**/*.jsonl)",
+      "Edit(/research/*/logs/**)",
+      "Write(/research/*/logs/**)",
       "Write(//tmp/**)",
       "Edit(//tmp/**)"
     ]
   },
   "env": {
     "ANTHROPIC_MODEL": "claude-opus-4-8[1m]",
-    "CLAUDE_CODE_EFFORT_LEVEL": "high",
     "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1",
     "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1",
     "DISABLE_AUTOUPDATER": "1",
-    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
     "ENABLE_PROMPT_CACHING_1H": "1"
+  },
+  "effortLevel": "high",
+  "skillOverrides": {
+    "claude-api": "off"
   },
   "outputStyle": "Explanatory",
   "disableWorkflows": true,

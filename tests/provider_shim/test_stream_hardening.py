@@ -21,6 +21,7 @@ from ._loopback_harness import (
     TypedSSEFrame,
     abrupt_eof_scenario,
     backend_status_scenario,
+    block_starts,
     assert_lifecycle_log_contract,
     controlled_asgi_probe,
     delayed_body_disconnect_scenario,
@@ -47,6 +48,8 @@ from ._loopback_harness import (
     structured_error_scenario,
     terminal_contract_scenario,
     terminal_failure_scenario,
+    text_delta_values,
+    thinking_delta_values,
 )
 
 
@@ -81,7 +84,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 except AssertionError as error:
                     self.fail(f"{marker}: {error}")
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
                 self.assertEqual(
                     [kind for _index, kind in lifecycle.starts],
                     [expected_kind],
@@ -110,7 +113,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 frames = parse_typed_sse(result.body)
                 lifecycle = failure_lifecycle_report(frames, expected_error_type)
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=expected_requests, oauth=0)
+                backend.assert_request_counts(responses=expected_requests)
                 self.assertEqual(
                     [kind for _index, kind in lifecycle.starts],
                     expected_kinds,
@@ -137,7 +140,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 self.assertIsInstance(error.get("message"), str, marker)
                 self.assertLessEqual(len(error.get("message", "")), 200, marker)
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
 
     def test_chatgpt_nonstream_forces_upstream_sse_and_aggregates(self) -> None:
         scenario = full_response_scenario(reject_nonstream=True)
@@ -153,7 +156,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 )
                 message = result.json()
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
                 self.assertIs(backend.responses_requests[0].body.get("stream"), True)
                 self.assertEqual(
                     [block.get("type") for block in message.get("content", [])],
@@ -172,6 +175,9 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                     {
                         "input_tokens": USAGE["input_tokens"],
                         "output_tokens": USAGE["output_tokens"],
+                        # v1.3.6 (V6-R3, always-emit): absent cache detail -> both fields 0.
+                        "cache_read_input_tokens": 0,
+                        "cache_creation_input_tokens": 0,
                     },
                 )
 
@@ -183,7 +189,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 self.assertEqual(result.status, 200, result.text)
                 message = result.json()
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
                 self.assertIs(backend.responses_requests[0].body.get("stream"), False)
                 self.assertEqual(result.headers.get("content-type"), "application/json")
                 self.assertEqual(
@@ -241,19 +247,53 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                     marker=f"INBAND_ERROR_{prefix.upper()}",
                 )
 
-    def test_reasoning_while_text_open_fails_cleanly(self) -> None:
-        self._assert_terminal_error(
-            scenario=reasoning_while_text_open_scenario(),
-            expected_kind="text",
-            marker="REASONING_WHILE_TEXT_OPEN_TERMINAL_ERROR",
-        )
+    def test_reasoning_while_text_open_defers_to_trailing_thinking(self) -> None:
+        # v1.2.14 (R3, adjudicated flip): out-of-order reasoning that arrives while a
+        # text block is open is TOLERATED — buffered and emitted as a TRAILING thinking
+        # block after the text block closes (ratified downstream shape), not failed as
+        # the pre-R3 strict contract required.
+        scenario = reasoning_while_text_open_scenario()
+        with MockResponsesServer(scenario) as backend:
+            with RealShim(backend, "chatgpt") as shim:
+                result = shim.post_messages(stream=True)
+                self.assertEqual(result.status, 200, result.text)
+                frames = parse_typed_sse(result.body)
+                report = lifecycle_report(frames)
+                self.assertEqual(
+                    [kind for _index, kind in report.starts],
+                    ["text", "thinking"],
+                    "text block, then a trailing thinking block",
+                )
+                self.assertEqual(report.open_at_end, set())
+                self.assertEqual(text_delta_values(frames), ["Partial text."])
+                self.assertEqual(
+                    thinking_delta_values(frames), ["Out-of-order thinking."]
+                )
+                shim.assert_offline_contract()
+                backend.assert_request_counts(responses=1)
 
-    def test_reasoning_while_tool_open_fails_cleanly(self) -> None:
-        self._assert_terminal_error(
-            scenario=reasoning_while_tool_open_scenario(),
-            expected_kind="tool_use",
-            marker="REASONING_WHILE_TOOL_OPEN_TERMINAL_ERROR",
-        )
+    def test_reasoning_while_tool_open_defers_to_trailing_thinking(self) -> None:
+        # v1.2.14 (R3, adjudicated flip): out-of-order reasoning while a tool block is
+        # open is tolerated — the tool block closes first, then the buffered reasoning
+        # is emitted as a TRAILING thinking block (ratified shape).
+        scenario = reasoning_while_tool_open_scenario()
+        with MockResponsesServer(scenario) as backend:
+            with RealShim(backend, "chatgpt") as shim:
+                result = shim.post_messages(stream=True, tools=[READ_TOOL])
+                self.assertEqual(result.status, 200, result.text)
+                frames = parse_typed_sse(result.body)
+                report = lifecycle_report(frames)
+                self.assertEqual(
+                    [kind for _index, kind in report.starts],
+                    ["tool_use", "thinking"],
+                    "tool_use block, then a trailing thinking block",
+                )
+                self.assertEqual(report.open_at_end, set())
+                self.assertEqual(
+                    thinking_delta_values(frames), ["Out-of-order thinking."]
+                )
+                shim.assert_offline_contract()
+                backend.assert_request_counts(responses=1)
 
     def test_missing_terminal_response_fails_cleanly(self) -> None:
         self._assert_terminal_error(
@@ -354,7 +394,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 self.assertIsInstance(error.get("message"), str, marker)
                 self.assertLessEqual(len(error.get("message", "")), 200, marker)
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=expected_requests, oauth=0)
+                backend.assert_request_counts(responses=expected_requests)
 
     def test_nonstream_backend_400_passes_through_as_invalid_request_error(self) -> None:
         # v1.2.10 (a): a deterministic 400 reaches the client as its real 400 with
@@ -393,7 +433,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 self.assertIn("ChatGPT (Codex)", error.get("message", ""))
                 self.assertIn("environment_settings.txt", error.get("message", ""))
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=0, oauth=0)
+                backend.assert_request_counts(responses=0)
 
     def test_chatgpt_claude_slug_fast_fails_stream_without_round_trip(self) -> None:
         # v1.2.10 (c): the same fast-fail applies to a streaming inbound request —
@@ -407,7 +447,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 error = (result.json().get("error") or {})
                 self.assertEqual(error.get("type"), "invalid_request_error")
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=0, oauth=0)
+                backend.assert_request_counts(responses=0)
 
     def test_chatgpt_provider_prefixed_claude_slug_fast_fails_without_round_trip(self) -> None:
         # v1.2.10 review-amendment: a PROVIDER-PREFIXED claude slug
@@ -424,7 +464,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 self.assertEqual(error.get("type"), "invalid_request_error")
                 self.assertIn("ChatGPT (Codex)", error.get("message", ""))
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=0, oauth=0)
+                backend.assert_request_counts(responses=0)
 
     def test_openai_lane_does_not_fast_fail_claude_slug(self) -> None:
         # v1.2.10 (c): the openai/API-key lane forwards any slug unchanged — no
@@ -435,7 +475,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 result = shim.post_messages(stream=False, model="claude-fable-5")
                 self.assertEqual(result.status, 200, result.text)
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
 
     def test_terminal_incomplete_stream_and_nonstream_maps_max_tokens(self) -> None:
         scenario = incomplete_response_scenario()
@@ -451,7 +491,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 self.assertEqual(terminal["usage"]["input_tokens"], USAGE["input_tokens"])
                 self.assertEqual(terminal["usage"]["output_tokens"], USAGE["output_tokens"])
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
         with MockResponsesServer(scenario) as backend:
             with RealShim(backend, "chatgpt") as shim:
                 result = shim.post_messages(stream=False)
@@ -463,10 +503,13 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                     {
                         "input_tokens": USAGE["input_tokens"],
                         "output_tokens": USAGE["output_tokens"],
+                        # v1.3.6 (V6-R3, always-emit): absent cache detail -> both fields 0.
+                        "cache_read_input_tokens": 0,
+                        "cache_creation_input_tokens": 0,
                     },
                 )
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
 
     def test_completed_event_rejects_failed_missing_and_incomplete_status_both_modes(self) -> None:
         cases = (
@@ -547,24 +590,32 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
         # the established defaults: nonstream missing fields render as 0; the
         # streaming path estimates a missing output count from accumulated text
         # (empty here -> floor of 1) and defaults a missing input count to 0.
+        # v1.3.6 (V6-R3, always-emit): every malformed-usage case carries NO cache detail,
+        # so the expected client-visible usage gains cache_read/cache_creation as 0.
         cases = (
             (
                 "usage-list",
                 [],
-                {"input_tokens": 0, "output_tokens": 0},
-                {"input_tokens": 0, "output_tokens": 1},
+                {"input_tokens": 0, "output_tokens": 0,
+                 "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0},
+                {"input_tokens": 0, "output_tokens": 1,
+                 "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0},
             ),
             (
                 "usage-bool",
                 {"input_tokens": True, "output_tokens": USAGE["output_tokens"]},
-                {"input_tokens": 0, "output_tokens": USAGE["output_tokens"]},
-                {"input_tokens": 0, "output_tokens": USAGE["output_tokens"]},
+                {"input_tokens": 0, "output_tokens": USAGE["output_tokens"],
+                 "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0},
+                {"input_tokens": 0, "output_tokens": USAGE["output_tokens"],
+                 "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0},
             ),
             (
                 "usage-negative",
                 {"input_tokens": USAGE["input_tokens"], "output_tokens": -1},
-                {"input_tokens": USAGE["input_tokens"], "output_tokens": 0},
-                {"input_tokens": USAGE["input_tokens"], "output_tokens": 1},
+                {"input_tokens": USAGE["input_tokens"], "output_tokens": 0,
+                 "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0},
+                {"input_tokens": USAGE["input_tokens"], "output_tokens": 1,
+                 "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0},
             ),
         )
         for label, usage, expected_nonstream, expected_stream in cases:
@@ -595,7 +646,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                         )
                         self.assertEqual(terminal["usage"], expected_stream)
                         shim.assert_offline_contract()
-                        backend.assert_request_counts(responses=1, oauth=0)
+                        backend.assert_request_counts(responses=1)
             with self.subTest(case=label, mode="nonstream"):
                 with MockResponsesServer(scenario) as backend:
                     with RealShim(backend, "chatgpt") as shim:
@@ -605,7 +656,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                         self.assertEqual(message.get("stop_reason"), "end_turn")
                         self.assertEqual(message.get("usage"), expected_nonstream)
                         shim.assert_offline_contract()
-                        backend.assert_request_counts(responses=1, oauth=0)
+                        backend.assert_request_counts(responses=1)
 
     def test_response_failed_never_converts_as_nonstream_success(self) -> None:
         self._assert_nonstream_api_error(
@@ -708,7 +759,12 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
             marker="MALFORMED_TOOL_OUTPUT_DONE_NONSTREAM",
         )
 
-    def test_sse_complete_data_line_without_blank_boundary_fails(self) -> None:
+    def test_sse_complete_data_line_without_blank_boundary_flushes(self) -> None:
+        # v1.2.14 (R5): a fully-formed terminal event whose trailing blank-line
+        # boundary a proxy trimmed is now flushed at EOF and finalizes SUCCESS. Before
+        # R5 this raised a framing failure (B7 — a completed response reported as an
+        # error). The payload is complete and parses cleanly, so downstream strict
+        # validation still applies; only the missing blank line is tolerated.
         terminal = {
             "type": "response.completed",
             "response": {
@@ -722,11 +778,17 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
             "unterminated-complete-data-line",
             [f"data: {json.dumps(terminal, separators=(',', ':'))}\n".encode()],
         )
-        self._assert_stream_failure(
-            scenario=scenario,
-            marker="SSE_COMPLETE_LINE_WITHOUT_BLANK_BOUNDARY",
-            expected_kinds=[],
-        )
+        with MockResponsesServer(scenario) as backend:
+            with RealShim(backend, "chatgpt") as shim:
+                result = shim.post_messages(stream=True)
+                self.assertEqual(
+                    result.status,
+                    200,
+                    f"SSE_COMPLETE_LINE_WITHOUT_BLANK_BOUNDARY {result.text}",
+                )
+                lifecycle_report(parse_typed_sse(result.body))
+                shim.assert_offline_contract()
+                backend.assert_request_counts(responses=1)
 
     def test_sse_partial_line_at_eof_fails(self) -> None:
         scenario = raw_sse_scenario(
@@ -736,6 +798,133 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
         self._assert_stream_failure(
             scenario=scenario,
             marker="SSE_PARTIAL_LINE_AT_EOF",
+            expected_kinds=[],
+        )
+
+    def test_sse_event_size_limit_is_transport_segmentation_invariant(self) -> None:
+        limit = 16 * 1024 * 1024
+        template = {
+            "type": "response.completed",
+            "response": {
+                "id": "resp_size_boundary",
+                "status": "completed",
+                "output": [],
+                "usage": dict(USAGE),
+                "padding": "",
+            },
+        }
+        empty_payload = json.dumps(template, separators=(",", ":"))
+        marker = '"padding":""'
+        self.assertIn(marker, empty_payload)
+        prefix, suffix = empty_payload.split(marker)
+        payload_overhead = len((prefix + '"padding":""' + suffix).encode("utf-8"))
+
+        for label, target_size, should_succeed in (
+            ("below", limit - 1, True),
+            ("at", limit, True),
+            ("above", limit + 1, False),
+        ):
+            padding_size = target_size - payload_overhead
+            self.assertGreaterEqual(padding_size, 0)
+            payload = (
+                prefix + '"padding":"' + ("X" * padding_size) + '"' + suffix
+            ).encode("utf-8")
+            self.assertEqual(len(payload), target_size)
+            segmentations = (
+                (
+                    "joined-by-harness",
+                    [b"data: ", payload, b"\n\n"],
+                    False,
+                ),
+                (
+                    "prefix-and-terminator-fragmented",
+                    [b"d", b"a", b"t", b"a", b":", b" ", payload, b"\n", b"\n"],
+                    True,
+                ),
+            )
+            for segmentation, chunks, preserve_chunks in segmentations:
+                with self.subTest(boundary=label, segmentation=segmentation):
+                    scenario = raw_sse_scenario(
+                        f"event-size-{label}-{segmentation}",
+                        chunks,
+                        preserve_chunks=preserve_chunks,
+                    )
+                    with MockResponsesServer(scenario) as backend:
+                        with RealShim(backend, "chatgpt") as shim:
+                            result = shim.post_messages(stream=True, timeout=60.0)
+                            self.assertEqual(result.status, 200)
+                            frames = parse_typed_sse(result.body)
+                            if should_succeed:
+                                lifecycle_report(frames)
+                            else:
+                                failure_lifecycle_report(frames)
+                            backend.assert_request_counts(responses=1)
+
+    def test_sse_event_size_counts_repeated_data_field_newline_join(self) -> None:
+        limit = 16 * 1024 * 1024
+        template = {
+            "type": "response.completed",
+            "response": {
+                "id": "resp_multidata_size_boundary",
+                "status": "completed",
+                "output": [],
+                "usage": dict(USAGE),
+                "padding": "",
+            },
+        }
+        empty_payload = json.dumps(template, separators=(",", ":"))
+        marker = '"padding":""'
+        prefix, suffix = empty_payload.split(marker)
+        payload_overhead = len((prefix + '"padding":""' + suffix).encode("utf-8"))
+
+        for label, logical_size, should_succeed in (
+            ("at", limit, True),
+            ("above", limit + 1, False),
+        ):
+            # Repeated SSE data fields insert one logical newline. Size the JSON bytes
+            # one byte below the target, then split after a comma where JSON permits
+            # that newline as insignificant whitespace.
+            padding_size = logical_size - 1 - payload_overhead
+            payload = (
+                prefix + '"padding":"' + ("Y" * padding_size) + '"' + suffix
+            ).encode("utf-8")
+            split_at = payload.find(b',"response"') + 1
+            self.assertGreater(split_at, 0)
+            self.assertEqual(len(payload) + 1, logical_size)
+            scenario = raw_sse_scenario(
+                f"multidata-event-size-{label}",
+                [
+                    b"data: ",
+                    payload[:split_at],
+                    b"\n",
+                    b"data: ",
+                    payload[split_at:],
+                    b"\n",
+                    b"\n",
+                ],
+                preserve_chunks=True,
+            )
+            with self.subTest(boundary=label):
+                with MockResponsesServer(scenario) as backend:
+                    with RealShim(backend, "chatgpt") as shim:
+                        result = shim.post_messages(stream=True, timeout=60.0)
+                        self.assertEqual(result.status, 200)
+                        frames = parse_typed_sse(result.body)
+                        if should_succeed:
+                            lifecycle_report(frames)
+                        else:
+                            failure_lifecycle_report(frames)
+                        backend.assert_request_counts(responses=1)
+
+    def test_sse_oversized_partial_line_eof_fails_without_dispatch(self) -> None:
+        limit = 16 * 1024 * 1024
+        scenario = raw_sse_scenario(
+            "oversized-partial-line-eof",
+            [b"data: " + (b"Z" * (limit + 1))],
+        )
+        self._assert_stream_failure(
+            scenario=scenario,
+            marker="SSE_OVERSIZED_PARTIAL_LINE_EOF",
             expected_kinds=[],
         )
 
@@ -760,7 +949,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 self.assertEqual(result.status, 200, result.text)
                 lifecycle_report(parse_typed_sse(result.body))
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
 
     def test_sse_multiple_data_lines_join_with_newline_and_succeed(self) -> None:
         first = '{"type":"response.completed",'
@@ -784,7 +973,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 self.assertEqual(result.status, 200, result.text)
                 lifecycle_report(parse_typed_sse(result.body))
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
 
     def test_first_valid_terminal_stops_later_semantic_processing_both_modes(self) -> None:
         first_output = [
@@ -849,7 +1038,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 self.assertEqual(terminal["delta"]["stop_reason"], "end_turn")
                 self.assertEqual(terminal["usage"]["input_tokens"], USAGE["input_tokens"])
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
         with MockResponsesServer(scenario) as backend:
             with RealShim(backend, "chatgpt") as shim:
                 result = shim.post_messages(stream=False)
@@ -859,7 +1048,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 self.assertEqual(message["stop_reason"], "end_turn")
                 self.assertEqual(message["usage"]["input_tokens"], USAGE["input_tokens"])
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
 
     def test_duplicate_identical_arguments_done_emits_one_delta(self) -> None:
         base = full_response_scenario()
@@ -889,7 +1078,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 self.assertEqual(len(tool_indexes), 1)
                 self.assertEqual(lifecycle.stops.count(tool_indexes[0]), 1)
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
 
     def test_duplicate_conflicting_arguments_done_is_protocol_failure(self) -> None:
         base = full_response_scenario()
@@ -936,7 +1125,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 self.assertEqual(len(tool_indexes), 1)
                 self.assertEqual(lifecycle.stops.count(tool_indexes[0]), 1)
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
 
         conflicting = json.loads(json.dumps(events))
         conflicting[index]["name"] = "Edit"
@@ -983,7 +1172,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 ]
                 self.assertEqual(len(argument_deltas), 1)
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
 
     def test_arguments_done_after_closed_tool_conflict_fails(self) -> None:
         base = full_response_scenario()
@@ -1028,7 +1217,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 self.assertEqual(len(tool_indexes), 1)
                 self.assertEqual(lifecycle.stops.count(tool_indexes[0]), 1)
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
 
     def test_duplicate_conflicting_output_item_done_is_protocol_failure(self) -> None:
         base = full_response_scenario()
@@ -1072,7 +1261,10 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
         ]
         self.assertEqual(len(tool_starts), 1)
 
-    def test_text_while_tool_open_is_protocol_failure(self) -> None:
+    def test_text_while_tool_open_defers_to_trailing_text(self) -> None:
+        # v1.2.14 (R3, adjudicated flip): text emitted while a tool block is open is
+        # TOLERATED — buffered and emitted as a TRAILING text block after the tool
+        # closes (ratified shape), not failed as the pre-R3 strict contract required.
         base = full_response_scenario()
         events = json.loads(json.dumps(base.stream_events))
         index = next(
@@ -1089,13 +1281,31 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 "delta": "overlapping text",
             },
         )
-        self._assert_stream_failure(
-            scenario=events_scenario("text-while-tool-open", events),
-            marker="TEXT_WHILE_TOOL_OPEN",
-            expected_kinds=["thinking", "text", "tool_use"],
-        )
+        scenario = events_scenario("text-while-tool-open", events)
+        with MockResponsesServer(scenario) as backend:
+            with RealShim(backend, "chatgpt") as shim:
+                result = shim.post_messages(stream=True, tools=[READ_TOOL])
+                self.assertEqual(result.status, 200, result.text)
+                frames = parse_typed_sse(result.body)
+                report = lifecycle_report(frames)
+                self.assertEqual(
+                    [kind for _index, kind in report.starts],
+                    ["thinking", "text", "tool_use", "text"],
+                    "leading thinking+text, the tool, then a trailing text block",
+                )
+                self.assertEqual(report.open_at_end, set())
+                # Leading streamed text, then the deferred out-of-order text trailing.
+                self.assertEqual(
+                    text_delta_values(frames),
+                    ["Aggregated answer.", "overlapping text"],
+                )
+                shim.assert_offline_contract()
+                backend.assert_request_counts(responses=1)
 
-    def test_second_tool_while_first_open_is_protocol_failure(self) -> None:
+    def test_second_tool_while_first_open_defers_to_sequential_blocks(self) -> None:
+        # v1.2.14 (R3, adjudicated flip): a second tool added while the first is open
+        # is TOLERATED — DEFERRED and drained after the first closes, yielding two
+        # NON-OVERLAPPING tool_use blocks in added order (ratified shape), not failed.
         base = full_response_scenario()
         events = json.loads(json.dumps(base.stream_events))
         index = next(
@@ -1117,11 +1327,32 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 },
             },
         )
-        self._assert_stream_failure(
-            scenario=events_scenario("second-tool-while-first-open", events),
-            marker="SECOND_TOOL_WHILE_FIRST_OPEN",
-            expected_kinds=["thinking", "text", "tool_use"],
-        )
+        scenario = events_scenario("second-tool-while-first-open", events)
+        with MockResponsesServer(scenario) as backend:
+            with RealShim(backend, "chatgpt") as shim:
+                result = shim.post_messages(stream=True, tools=[READ_TOOL])
+                self.assertEqual(result.status, 200, result.text)
+                frames = parse_typed_sse(result.body)
+                report = lifecycle_report(frames)
+                self.assertEqual(
+                    [kind for _index, kind in report.starts],
+                    ["thinking", "text", "tool_use", "tool_use"],
+                    "leading thinking+text, then two non-overlapping tool blocks",
+                )
+                self.assertEqual(report.open_at_end, set())
+                # Both tool_use blocks carry the correct call ids in added order; the
+                # deferred second tool supplied no arguments, so its input stays empty.
+                tool_starts = [
+                    start
+                    for start in block_starts(frames)
+                    if (start.get("content_block") or {}).get("type") == "tool_use"
+                ]
+                self.assertEqual(
+                    [start["content_block"]["id"] for start in tool_starts],
+                    ["call_full_fixture", "call_overlap_second"],
+                )
+                shim.assert_offline_contract()
+                backend.assert_request_counts(responses=1)
 
     def test_normal_sequential_two_tools_remains_supported(self) -> None:
         scenario = sequential_two_tools_scenario()
@@ -1137,7 +1368,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 self.assertEqual(len(lifecycle.stops), 2)
                 self.assertEqual(len(set(lifecycle.stops)), 2)
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
 
     def test_lifecycle_oracles_reject_duplicate_terminal_grammar(self) -> None:
         failure_frames = [
@@ -1176,7 +1407,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                         result = shim.post_messages(stream=False)
                         self.assertEqual(result.status, 200, result.text)
                         shim.assert_offline_contract()
-                        backend.assert_request_counts(responses=1, oauth=0)
+                        backend.assert_request_counts(responses=1)
                 except (OSError, RuntimeError, TimeoutError) as error:
                     self.fail(
                         "REALSHIM_ADDRESS_IN_USE_RETRY_REQUIRED "
@@ -1215,9 +1446,20 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 )
                 health = shim.get_health()
                 self.assertEqual(health.status, 200, health.text)
-                self.assertEqual(health.json().get("status"), "ok")
+                health_payload = health.json()
+                self.assertEqual(health_payload.get("status"), "ok")
+                self.assertEqual(
+                    set(health_payload["gpt_service_tier"]),
+                    {
+                        "backend_mode",
+                        "requested_tier_vocabulary",
+                        "policy",
+                        "native_fast_disabled",
+                        "latest_terminal",
+                    },
+                )
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
         self.assertEqual(provider_scratch_residue(), before)
 
     def test_client_disconnect_cancels_stream_body_read(self) -> None:
@@ -1251,81 +1493,17 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 self.assertEqual(health.status, 200, health.text)
                 self.assertEqual(health.json().get("status"), "ok")
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
         self.assertEqual(provider_scratch_residue(), before)
 
-    def test_disconnect_during_rotating_oauth_refresh_persists_new_token(self) -> None:
-        before = provider_scratch_residue()
-        scenario = full_response_scenario()
-        with MockResponsesServer(scenario) as backend:
-            backend.delay_oauth_response = True
-            with RealShim(backend, "chatgpt") as shim:
-                shim.expire_auth_access_token()
-                client_errors: list[BaseException] = []
-
-                def disconnecting_client() -> None:
-                    try:
-                        raw_disconnect_messages(
-                            shim,
-                            close_after_event=backend.oauth_request_received,
-                            timeout=4.0,
-                        )
-                    except BaseException as error:
-                        client_errors.append(error)
-
-                client = threading.Thread(
-                    target=disconnecting_client,
-                    name="provider-shim-oauth-disconnect-client",
-                    daemon=True,
-                )
-                client.start()
-                self.assertTrue(
-                    backend.oauth_request_received.wait(4.0),
-                    "ROTATING_OAUTH_REQUEST_NOT_RECEIVED",
-                )
-                client.join(timeout=2.0)
-                self.assertFalse(client.is_alive(), "ROTATING_OAUTH_CLIENT_DID_NOT_DISCONNECT")
-                self.assertEqual(client_errors, [])
-                backend.oauth_response_release.set()
-                self.assertTrue(
-                    backend.oauth_response_sent.wait(2.0),
-                    "ROTATING_OAUTH_RESPONSE_NOT_SENT_AFTER_DISCONNECT",
-                )
-
-                persisted = False
-                persisted_deadline = time.monotonic() + 3.0
-                while time.monotonic() < persisted_deadline:
-                    auth = json.loads(shim.auth_path.read_text(encoding="utf-8"))
-                    tokens = auth.get("tokens") or {}
-                    if (
-                        tokens.get("access_token") == backend.rotated_access_token
-                        and tokens.get("refresh_token") == FAKE_REFRESH_TOKEN + "_ROTATED"
-                    ):
-                        persisted = True
-                        break
-                    time.sleep(0.02)
-                self.assertTrue(persisted, "ROTATING_OAUTH_TOKEN_PAIR_NOT_PERSISTED")
-                self.assertEqual(len(backend.oauth_requests), 1)
-                self.assertTrue(
-                    backend.oauth_requests[0].body.get("refresh_token")
-                    == FAKE_REFRESH_TOKEN,
-                    "ROTATING_OAUTH_SERVER_DID_NOT_CONSUME_ORIGINAL_REFRESH_TOKEN",
-                )
-
-                result = shim.post_messages(stream=True)
-                self.assertEqual(result.status, 200, result.text)
-                lifecycle_report(parse_typed_sse(result.body))
-                self.assertEqual(len(backend.responses_requests), 1)
-                self.assertTrue(
-                    backend.responses_requests[0].headers.get("authorization")
-                    == "Bearer " + backend.rotated_access_token,
-                    "NEXT_REQUEST_DID_NOT_USE_ROTATED_ACCESS_TOKEN",
-                )
-                backend.assert_request_counts(responses=1, oauth=1)
-                health = shim.get_health()
-                self.assertEqual(health.status, 200, health.text)
-                shim.assert_offline_contract()
-        self.assertEqual(provider_scratch_residue(), before)
+    # v1.3.0 (A1): test_disconnect_during_rotating_oauth_refresh_persists_new_token
+    # was DELETED here. It pinned the deleted Python OAuth-refresh path — the shim
+    # POSTing to /oauth/token, atomically persisting the ROTATED refresh/access token
+    # pair into auth.json, and reusing it on the next request. Under the delegation
+    # design (A1-R2) the shim never writes auth.json and never performs an OAuth POST;
+    # codex is the single writer. The disconnect-mid-refresh persistence hazard this
+    # test guarded is structurally gone (no shim-side write to strand). Delegated
+    # refresh is covered in test_v130_auth_delegation.py.
 
     def test_outer_task_cancel_after_stream_enter_closes_context(self) -> None:
         report = outer_cancel_after_stream_enter_report()
@@ -1427,7 +1605,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                     "CLIENT_DISCONNECT_RETRY_ISSUED_SECOND_REQUEST "
                     f"requests={len(backend.responses_requests)}",
                 )
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
         self.assertEqual(provider_scratch_residue(), before)
 
     def test_v1211_request_id_headers_and_lifecycle_correlation(self) -> None:
@@ -1484,7 +1662,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 startup_records = [
                     line
                     for line in shim.captured_stderr().splitlines()
-                    if "req_id=- phase=process shim v1.2.11 starting" in line
+                    if "req_id=- phase=process shim v1.3.9 starting" in line
                 ]
                 self.assertEqual(len(startup_records), 1, startup_records)
                 self.assertIn(
@@ -1492,7 +1670,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                     [line.event for line in sse_lines],
                 )
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=2, oauth=0)
+                backend.assert_request_counts(responses=2)
 
     def test_v1211_concurrent_requests_keep_request_local_state(self) -> None:
         scenario = full_response_scenario()
@@ -1545,7 +1723,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                     self.assertEqual({line.req_id for line in groups[req_id]}, {req_id})
                     assert_lifecycle_log_contract(groups[req_id])
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=2, oauth=0)
+                backend.assert_request_counts(responses=2)
 
     def test_v1211_attempt_and_retry_accounting_matrix(self) -> None:
         cases = (
@@ -1595,7 +1773,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                             name,
                         )
                         shim.assert_offline_contract()
-                        backend.assert_request_counts(responses=attempts, oauth=0)
+                        backend.assert_request_counts(responses=attempts)
 
         for name, statuses, expected_status, attempts, retries, outcome in (
             ("buffered-transport-retry", ["transport", 200], 200, 2, 1, "success"),
@@ -1612,7 +1790,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                         self.assertEqual(terminal["attempts"], str(attempts))
                         self.assertEqual(terminal["retries"], str(retries))
                         self.assertEqual(terminal["outcome"], outcome)
-                        backend.assert_request_counts(responses=attempts, oauth=0)
+                        backend.assert_request_counts(responses=attempts)
 
     def test_v1211_upstream_metadata_allowlist_precedence_and_length_cap(self) -> None:
         secret = "sk-FAKE_METADATA_SECRET_123456789"
@@ -2282,7 +2460,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                             name,
                         )
                         shim.assert_offline_contract()
-                        backend.assert_request_counts(responses=1, oauth=0)
+                        backend.assert_request_counts(responses=1)
 
     def test_v1211_same_turn_terminal_send_disconnect_prefers_completed_send(self) -> None:
         report = controlled_asgi_probe(send_action="same_turn_terminal_disconnect")
@@ -2809,7 +2987,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                     16,
                 )
                 shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
 
     def test_v1211_failure_phase_identifies_parse_translation_and_auth_boundaries(self) -> None:
         invalid_json = controlled_asgi_probe(raw_request_body=b"{invalid-json")
@@ -3068,7 +3246,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 self.assertEqual(terminal["terminal_frame_send"], "send_completed")
                 self.assertEqual(terminal["body_close_send"], "send_completed")
                 self.assertNotIn("upstream_attempt", [line.event for line in lines])
-                backend.assert_request_counts(responses=0, oauth=0)
+                backend.assert_request_counts(responses=0)
 
         scenario = abrupt_eof_scenario("text")
         with MockResponsesServer(scenario) as backend:
@@ -3084,7 +3262,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                 self.assertEqual(terminal["terminal_frame_send"], "send_completed")
                 self.assertEqual(terminal["body_close_send"], "send_completed")
                 self.assertIn("backend_error", [line.event for line in lines])
-                backend.assert_request_counts(responses=1, oauth=0)
+                backend.assert_request_counts(responses=1)
 
     def test_v1211_auth_error_has_one_terminal_and_cleanup(self) -> None:
         scenario = full_response_scenario()
@@ -3108,7 +3286,7 @@ class ProviderShimStreamHardeningTests(unittest.TestCase):
                     [line.event for line in lines].count("cleanup"),
                     1,
                 )
-                backend.assert_request_counts(responses=0, oauth=0)
+                backend.assert_request_counts(responses=0)
 
 
 if __name__ == "__main__":

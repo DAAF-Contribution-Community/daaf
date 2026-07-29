@@ -20,7 +20,7 @@ DAAF's Python stack covers the most common causal designs:
 This reference documents both what translates cleanly and where real gaps remain.
 
 > **Versions referenced:**
-> Python: pyfixest 0.40.0, rdrobust 1.3.0, marginaleffects 0.5.0 (all
+> Python: pyfixest 0.60.0, rdrobust 1.3.0, marginaleffects 0.5.0 (all
 > pre-installed).
 > Stata: Stata 18 (SE/MP)
 > See SKILL.md for the complete version table.
@@ -39,7 +39,7 @@ This reference documents both what translates cleanly and where real gaps remain
 
 > **Sources:** Cunningham, *Causal Inference: The Mixtape* (Yale, 2021);
 > Huntington-Klein, *The Effect* (CRC Press, 2021);
-> Fischer et al., *pyfixest* (pyfixest.org, v0.40.0, accessed 2026-03-28);
+> Fischer et al., *pyfixest* (pyfixest.org, v0.60.0, accessed 2026-07-24);
 > Cattaneo, Idrobo, & Titiunik, *A Practical Introduction to Regression
 > Discontinuity Designs* (Cambridge, 2020);
 > Arel-Bundock, Greifer, & Heiss, "marginaleffects for R and Python" (JSS, 2024);
@@ -762,7 +762,7 @@ correction, Sargan/Hansen tests for over-identification).
 | `teffects psmatch` SE correction | SEs accounting for estimated propensity scores | **High** | Run matching in Stata/R; import matched data |
 | `teffects ipwra` / `teffects aipw` | Doubly-robust AIPW with correct SEs | **High** | `econml.dr.DRLearner` (different implementation) |
 | `xtabond` / `xtabond2` / `xtdpd` | Dynamic panel GMM (Arellano-Bond, Blundell-Bond) | **High** | No adequate Python equivalent |
-| `feglm` / GLM + high-dim FE | pyfixest `feglm()` does not support FE absorption | **High** | LPM, manual dummies, or `fepois` |
+| `feglm` / GLM + high-dim FE | pyfixest `feglm()` covers logit/probit/gaussian FE-GLMs since 0.50; Gamma and negative-binomial FE-GLMs still unported | **Low** | Direct `pf.feglm()` for logit/probit/gaussian; R fixest for Gamma/negbin |
 | `synth_runner` | Automated SC inference and placebo tests | **Medium** | Manual iteration; `scpi` for prediction intervals |
 | `psmatch2` balance diagnostics | Balance tables, variance ratios | **Medium** | Manual computation |
 | `cem` (coarsened exact matching) | Limited Python coverage | **Medium** | `pymatchit-causal` partial support |
@@ -837,6 +837,6 @@ correction, Sargan/Hansen tests for over-identification).
 > Goodman-Bacon, "Difference-in-Differences with Variation in Treatment Timing"
 > (*J. Econometrics*, 2021);
 > Arel-Bundock, "marginaleffects" (marginaleffects.com, accessed 2026-03-28);
-> Fischer et al., *pyfixest* (pyfixest.org, v0.40.0, accessed 2026-03-28);
+> Fischer et al., *pyfixest* (pyfixest.org, v0.60.0, accessed 2026-07-24);
 > Naqvi, "DiD estimator comparison" (asjadnaqvi.github.io/DiD);
 > Stata `teffects` manual (stata.com/manuals/causal.pdf)

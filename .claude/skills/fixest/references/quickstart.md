@@ -327,7 +327,7 @@ fit <- feols(y ~ x1 | entity + year, data = df,
 | Clustered SE | `vcov = ~g` | `vcov={"CRV1": "g"}` |
 | Two-way cluster | `vcov = ~g1 + g2` | `vcov={"CRV1": "g1+g2"}` |
 | Poisson + FE | `fepois(y ~ x \| fe, data)` | `pf.fepois("y ~ x \| fe", data)` |
-| GLM + FE | `feglm(y ~ x \| fe, data, family)` | **Not supported** |
+| GLM + FE | `feglm(y ~ x \| fe, data, family)` | `pf.feglm("y ~ x \| fe", data, family="logit")` (since 0.50; logit/probit/gaussian) |
 | IV + FE | `feols(y ~ 1 \| fe \| x ~ z, data)` | `pf.feols("y ~ 1 \| fe \| x ~ z", data)` |
 | Sun-Abraham | `feols(y ~ sunab(g,t) \| ...)` | `pf.event_study(estimator="saturated")` |
 | Regression table | `etable(fit1, fit2)` | `pf.etable([fit1, fit2])` |
@@ -339,7 +339,7 @@ The most notable syntax differences:
 1. **Clustering**: R uses one-sided formula (`~state`); Python uses dict (`{"CRV1": "state"}`)
 2. **Multiple outcomes**: R uses `c()`; Python uses `+`
 3. **Formulas are unquoted in R**, quoted strings in Python
-4. **feglm with FE**: Works in R, not in pyfixest (major gap)
+4. **feglm with FE**: Supported in both (pyfixest since 0.50, logit/probit/gaussian); Gamma and `fenegbin` remain R-only
 5. **Sun-Abraham**: R uses `sunab()` in formula; Python uses separate `event_study()` function
 
 ## Next Steps
