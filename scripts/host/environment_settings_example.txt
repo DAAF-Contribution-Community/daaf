@@ -387,12 +387,12 @@
 # inside the container turns it on, turns it off, or reports where things stand:
 #     bash /daaf/scripts/provider_shim/gpt_fast.sh {on|off|status}
 # (In a Claude Code session, prefix the same command with `!`.) Changes apply
-# immediately -- no restart needed. Turning it `on` requires the exact
-# CLAUDE_CODE_DISABLE_FAST_MODE=1 line above, and switching provider routes
-# resets the boost OFF until you explicitly turn it back on. One honest caveat:
-# requesting the boost doesn't guarantee it was served on any given request --
-# `status` reports the most recent evidence of what actually served. Full
-# details: the technical FAQ's GPT Fast entry.
+# immediately -- no restart needed. Turning it `on` requires the
+# exact CLAUDE_CODE_DISABLE_FAST_MODE=1 line above, and switching provider
+# routes resets the boost OFF until you explicitly turn it back on. One honest
+# caveat: requesting the boost doesn't guarantee it was served on any given
+# request -- `status` reports the most recent evidence of what actually served.
+# Full details: the technical FAQ's GPT Fast entry.
 #
 # Then pick ONE auth lane below: 4.2 (OpenAI API key, sanctioned) or 4.3 (ChatGPT
 # subscription via Codex OAuth, an unofficial dev lane).
