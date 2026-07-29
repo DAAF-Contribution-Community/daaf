@@ -3869,6 +3869,11 @@ function renderRunExplorer(container){
    failure fallback below says so with a `python3 -m http.server`
    hint. The --single-file artifact remains the offline/file://
    audit path.
+   v3.4.0: a build may carry NO transcripts at all (neither DATA.transcripts
+   nor DATA.transcripts_index) — the --no-transcripts bundle or the
+   transcript-lite single-file default. renderRunDetail feature-detects that
+   third shape and renders transcriptsExcludedNotice() instead; this shard
+   machinery is only reached when DATA.transcripts_index is present.
    ================================================================= */
 
 /* Shard cache: result_set -> Promise of the parsed shard. Shards are
@@ -3935,6 +3940,24 @@ function transcriptPlaceholder(r){
   });
   return '<div id="run-tx-slot"><div class="section-title" style="margin-top:16px">Condensed Transcript</div>'+
     '<div class="text-muted text-xs">Loading transcript\u2026</div></div>';
+}
+
+/* Transcript-less build notice (generator v3.4.0). Shown when DATA carries
+   neither transcripts (inline) nor transcripts_index (lazy shards) \u2014 i.e. a
+   --no-transcripts bundle or the transcript-lite single-file default. Static:
+   there is nothing to fetch, so this never touches the network. The run's
+   scores, metrics, and provenance are all still present; only the condensed
+   transcript payload was omitted to keep the artifact small. */
+function transcriptsExcludedNotice(){
+  return '<div class="section-title" style="margin-top:16px">Condensed Transcript</div>'+
+    '<div class="card" style="border-color:var(--c-neutral);font-size:12px;line-height:1.6">'+
+    'Transcripts were not included in this build. This is a transcript-lite '+
+    'artifact (generated with <code>--no-transcripts</code>, or the default '+
+    'single-file monolith) \u2014 run scores, metrics, and provenance are complete, '+
+    'but the per-run condensed transcript payload was omitted to keep the file '+
+    'small. Regenerate the bundle (its default includes lazy-loaded '+
+    'transcripts) or run <code>--single-file --transcripts</code> for the full '+
+    'inline-transcript monolith.</div>';
 }
 
 function renderSchemaV2RunEvidence(r){
@@ -4187,19 +4210,25 @@ function renderRunDetail(r){
     });
   }
 
-  /* Transcript block — two artifact shapes (generator v3.0.0):
-     single-file artifacts embed DATA.transcripts inline (render
-     synchronously, exactly the pre-3.0 behavior); bundle artifacts
-     ship transcripts in per-result-set shards listed in
-     DATA.transcripts_index (render a loading placeholder now, fill
-     when the shard arrives — cache, stale-click token, and file://
-     failure fallback all live in the shard-loading block above). */
+  /* Transcript block — three artifact shapes (generator v3.0.0 inline/lazy;
+     v3.4.0 added transcript-less). Feature-detect in priority order:
+       1. DATA.transcripts present -> inline dicts (full single-file monolith):
+          render synchronously, exactly the pre-3.0 behavior.
+       2. DATA.transcripts_index present -> bundle lazy shards: render a
+          loading placeholder now, fill when the shard arrives (cache,
+          stale-click token, and file:// failure fallback live in the
+          shard-loading block above).
+       3. Neither present -> transcript-less build (--no-transcripts, or the
+          v3.4.0 single-file default): show a static "not included" notice.
+          No fetch is attempted — there is no index to fetch from. */
   if(DATA.transcripts){
     html+=renderTranscriptBlocks(r,
       DATA.transcripts[r.result_set+"/"+r.run_dir],
       (DATA.subagent_transcripts||{})[r.result_set+"/"+r.run_dir]);
-  } else {
+  } else if(DATA.transcripts_index){
     html+=transcriptPlaceholder(r);
+  } else {
+    html+=transcriptsExcludedNotice();
   }
 
   html+='<div class="text-xs text-muted mt-4">Run dir: '+esc(r.run_dir)+'</div>';
@@ -5009,15 +5038,18 @@ function init(){
   console.log("  Result sets:",DATA.result_sets.length);
   console.log("  Cases:",Object.keys(DATA.cases).length);
   console.log("  Runs:",DATA.runs.length);
-  /* Artifact-shape aware (v3.0.0): single-file embeds DATA.transcripts;
-     bundles carry only transcripts_index (counts, lazy shard fetch) */
+  /* Artifact-shape aware (v3.0.0 inline/lazy; v3.4.0 transcript-less):
+     single-file embeds DATA.transcripts; bundles carry transcripts_index
+     (counts, lazy shard fetch); transcript-less builds carry neither */
   if(DATA.transcripts){
     console.log("  Transcripts:",Object.keys(DATA.transcripts).length,"(inline, single-file artifact)");
-  } else {
+  } else if(DATA.transcripts_index){
     var txIdx=DATA.transcripts_index||{};
     var txMain=0;
     Object.keys(txIdx).forEach(function(k){ txMain+=txIdx[k].n_main||0; });
     console.log("  Transcripts:",txMain,"(lazy, "+Object.keys(txIdx).length+" shards)");
+  } else {
+    console.log("  Transcripts: none (transcript-less build — not included)");
   }
 }
 

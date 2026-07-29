@@ -20,36 +20,71 @@ PHASE_MAP):
   Bundle (DEFAULT) — a multi-file directory, benchmarks/
   daafbench_YYYY-MM-DD[suffix]/, containing index.html (the full report
   with all run-level data + precomputed metrics inline, ~4 MB on the
-  2026-06 corpus) plus data/tx_{result_set}.json transcript shards fetched
-  on demand by the Run Explorer. This is the official artifact for website
+  2026-06 corpus). By default it ALSO writes data/tx_{result_set}.json
+  transcript shards fetched on demand by the Run Explorer (lazy-loaded, so
+  index.html stays small). This is the official artifact for website
   hosting. Bundles REQUIRE http(s) serving — fetch() of sibling files is
   CORS-blocked on file:// (the viewer shows a fallback message with a
   `python3 -m http.server` hint).
 
-  Single-file (--single-file) — the pre-3.0 self-contained monolith with
-  full inline transcripts (~25 MB on the 2026-06 corpus), named
-  viewer_YYYY-MM-DD{letter}.html. Works opened directly from disk
-  (file://); kept for offline auditing.
+  Single-file (--single-file) — a self-contained monolith named
+  viewer_YYYY-MM-DD{letter}.html that works opened directly from disk
+  (file://); kept for offline auditing. As of v3.4.0 the DEFAULT single-file
+  artifact is transcript-LITE (scores/runs/aggregates only) so it stays
+  small; pass --transcripts to restore the full inline-transcript monolith
+  (~25 MB on the 2026-06 corpus).
+
+Transcript-inclusion control (v3.4.0 — see the "Transcript-inclusion
+control" dev guide above PHASE_MAP): --transcripts / --no-transcripts are a
+mutually exclusive pair that overrides the per-mode default in either
+direction. Mode defaults: bundle INCLUDES transcripts (lazy shards),
+single-file EXCLUDES them. A transcript-less build carries neither
+DATA.transcripts nor DATA.transcripts_index and the Run Explorer shows a
+"transcripts not included in this build" notice (no broken fetch, no empty
+pane).
 
 The HTML/CSS/JS lives in the sibling template file viewer_template.html;
 this script is data preparation + placeholder substitution. v1
 The v1 generator has been retired.
 
 Usage:
-    python3 benchmarks/scripts/generate_results_viewer_v2.py [--results TIMESTAMP...] [--exclude-results TIMESTAMP...] [--output PATH] [--single-file [PATH]]
+    python3 benchmarks/scripts/generate_results_viewer_v2.py [--results TIMESTAMP...] [--exclude-results TIMESTAMP...] [--output PATH] [--single-file [PATH]] [--transcripts | --no-transcripts]
 
 Examples:
     # Generate the bundle for all result sets (benchmarks/daafbench_YYYY-MM-DD[suffix]/)
+    # — includes lazy transcript shards by default
     python3 benchmarks/scripts/generate_results_viewer_v2.py
+
+    # Bundle with NO transcript shards (index.html only, smallest official build)
+    python3 benchmarks/scripts/generate_results_viewer_v2.py --no-transcripts
 
     # Generate for specific result sets, bundle at an explicit directory
     python3 benchmarks/scripts/generate_results_viewer_v2.py --results 20260608_181352 20260608_181751 --output /tmp/daafbench_view/
 
-    # Single-file monolith for offline auditing (auto-named viewer_YYYY-MM-DD{letter}.html)
+    # Transcript-lite single-file monolith for offline auditing (DEFAULT single-file)
     python3 benchmarks/scripts/generate_results_viewer_v2.py --single-file
+
+    # Full inline-transcript single-file monolith (pre-3.4 behavior)
+    python3 benchmarks/scripts/generate_results_viewer_v2.py --single-file --transcripts
 
     # Single-file monolith at an explicit path
     python3 benchmarks/scripts/generate_results_viewer_v2.py --single-file /tmp/my_viewer.html
+
+Changelog:
+    v3.4.0 (2026-07-29):
+      - Transcript-inclusion control (--transcripts / --no-transcripts) with
+        per-mode defaults: bundle includes (lazy shards), single-file now
+        defaults to a transcript-lite monolith. Transcript-less builds emit a
+        DATA payload with neither transcripts nor transcripts_index; the Run
+        Explorer feature-detects this and shows a "not included" notice.
+      - Explicit non-phase discovery skip: results-root children named in
+        RESERVED_RESULT_CONTAINERS (probes, removed_runs) OR prefixed with `_`
+        (the `_quarantine*` convention) are skipped up front rather than
+        relying on the implicit "no summary.json" filter. A QUARANTINE_NOTE.md
+        at a kept set's root is inert (discovery keys only off summary.json).
+      - Extended the load-time no-signal exclusion chokepoint to drop
+        new-taxonomy status=="stalled"/"timed_out" runs alongside the legacy
+        timed_out flag.
 """
 
 import argparse
@@ -100,11 +135,39 @@ def parse_args():
         const=True,
         default=None,
         metavar="PATH",
-        help="Emit the pre-3.0 self-contained monolith (full inline "
-             "transcripts, ~25 MB) instead of the multi-file bundle — the "
-             "offline/file:// audit path. Optional PATH names the output "
-             "HTML file (equivalent to --output in this mode; PATH given "
+        help="Emit the self-contained single-file monolith instead of the "
+             "multi-file bundle — the offline/file:// audit path. By DEFAULT "
+             "this is now a transcript-lite monolith (scores/runs/aggregates "
+             "only); pass --transcripts to restore the full inline-transcript "
+             "monolith (the pre-3.4 behavior, ~25 MB). Optional PATH names the "
+             "output HTML file (equivalent to --output in this mode; PATH given "
              "here wins if both are supplied).",
+    )
+    # Transcript-inclusion control (v3.4.0). Tri-state: the flag pair is
+    # optional and mutually exclusive; when neither is given the mode default
+    # applies (bundle: INCLUDED via lazy shards; single-file: EXCLUDED). Either
+    # default is overridable in either direction.
+    tx_group = parser.add_mutually_exclusive_group()
+    tx_group.add_argument(
+        "--transcripts",
+        dest="transcripts",
+        action="store_true",
+        default=None,
+        help="Force transcripts INTO the build, overriding the mode default. "
+             "In bundle mode this is already the default (writes data/"
+             "tx_*.json shards); in single-file mode it restores the full "
+             "inline-transcript monolith.",
+    )
+    tx_group.add_argument(
+        "--no-transcripts",
+        dest="transcripts",
+        action="store_false",
+        default=None,
+        help="Force transcripts OUT of the build, overriding the mode default. "
+             "In bundle mode this writes index.html only (no shards); in "
+             "single-file mode it is already the default. Transcript-less "
+             "builds carry neither DATA.transcripts nor DATA.transcripts_index, "
+             "and the Run Explorer shows a 'transcripts not included' notice.",
     )
     return parser.parse_args()
 
@@ -410,6 +473,36 @@ def resolve_paths(args):
 #     minus index.html (~21 MB). A ballooning index.html means transcript
 #     data leaked back inline.
 #
+# Transcript-inclusion control (added v3.4.0, dev guide):
+#   - Three DATA shapes now exist, along a single "does this build carry
+#     transcripts, and how" axis (build_data_bundle):
+#       (a) inline   — DATA.transcripts + DATA.subagent_transcripts embedded
+#                      in full (full single-file monolith).
+#       (b) lazy     — DATA.transcripts_index only; per-set shards on disk
+#                      (bundle default).
+#       (c) none     — NEITHER key present (transcript-lite build).
+#     The three are mutually exclusive and the client feature-detects in this
+#     exact priority: DATA.transcripts -> inline render; else
+#     DATA.transcripts_index -> placeholder + lazy shard fetch; else -> a
+#     static "Transcripts not included in this build" notice (renderRunDetail
+#     in viewer_template.html). Shape (c) makes NO fetch attempt — there is no
+#     index to fetch from — so a transcript-less build cannot 404 or hang.
+#   - Per-mode defaults + overrides (parse_args, main):
+#       bundle      default INCLUDE (lazy shards)   | --no-transcripts -> none
+#       single-file default EXCLUDE (none, v3.4.0)  | --transcripts    -> inline
+#     --transcripts / --no-transcripts are a mutually exclusive pair; absent
+#     both, the mode default applies. Rationale: the bundle is the official
+#     hosted artifact where lazy transcripts cost nothing until a run is
+#     opened, so it keeps them; the single-file monolith is the offline/
+#     file:// convenience artifact where inlining every transcript is what
+#     bloated it to ~25 MB, so it now ships transcript-lite unless explicitly
+#     asked for the full monolith. Either default is overridable in either
+#     direction in either mode.
+#   - When transcripts are excluded, main() SKIPS load_transcripts() entirely
+#     (the dominant load-time cost), passes empty dicts, and — in bundle mode —
+#     writes no data/ shards. generation_params records transcripts_included
+#     for provenance.
+#
 # Timeout-blindness + duration metric (added v3.3.0, dev guide):
 #   - Timeout-blindness (user decision): timed-out runs carry NO gradeable
 #     signal, so they are removed entirely — from the data, every metric, and
@@ -504,11 +597,28 @@ def normalize_criteria(criteria_raw):
 # Result set loading
 # ---------------------------------------------------------------------------
 
-# ``results/probes`` is a separately shaped artifact container owned by the
-# bounded route-probe CLI. It deliberately has probe.json files rather than the
-# manifest.json/summary.json/runs contract of a phase result set. Keep reserved
-# containers explicit until a dedicated probe collection is designed.
-RESERVED_RESULT_CONTAINERS = frozenset({"probes"})
+# Non-phase results-root children that discovery must skip EXPLICITLY rather
+# than relying on the implicit "lacks a summary.json" filter below. Two forms
+# are excluded (behaviorally equivalent to the corpus-scan idiom used across
+# the campaign workspace for the operative `_quarantine*` convention; the exact
+# predicates here are `startswith("_")` + the reserved names below):
+#   1. Named containers in RESERVED_RESULT_CONTAINERS (exact match):
+#        - ``results/probes``      — bounded route-probe CLI output; carries
+#          probe.json files, not the manifest.json/summary.json/runs contract.
+#        - ``results/removed_runs`` — a holding area for run dirs pulled out of
+#          otherwise-kept sets; not a phase result set itself.
+#   2. Any child whose name STARTS WITH ``_`` — the operative quarantine
+#      convention is ``_quarantine*`` (e.g. ``_quarantine_2026-07-29``), and the
+#      leading underscore also covers any other maintainer scratch/staging dir
+#      parked at the results root. Underscore-prefixed dirs sort ahead of the
+#      ``YYYYMMDD_*`` timestamps and are never valid result-set timestamps, so
+#      the prefix test cannot suppress a real set.
+# NB: a KEPT result set may contain a ``QUARANTINE_NOTE.md`` at its root (added
+# 2026-07-29 to the 8 sets whose individual run dirs were relocated to
+# ``removed_runs``). This does NOT affect discovery: a set is recognized solely
+# by its ``summary.json`` (and enriched from ``manifest.json``/``runs/``); a
+# stray ``.md`` at the set root is simply never consulted. The note is inert.
+RESERVED_RESULT_CONTAINERS = frozenset({"probes", "removed_runs"})
 
 PROVENANCE_FIELDS = (
     "route_type", "provider", "endpoint_origin", "backend_mode", "backend",
@@ -716,11 +826,25 @@ def load_result_sets(results_dir, filter_timestamps=None, exclude_timestamps=Non
         d for d in os.listdir(results_dir)
         if os.path.isdir(os.path.join(results_dir, d)) and not d.startswith(".")
     ])
-    reserved_present = [d for d in discovered_dirs if d in RESERVED_RESULT_CONTAINERS]
-    for dirname in reserved_present:
-        print(f"NOTE: Ignoring reserved non-phase results container: {dirname}",
+    # Explicit non-phase skip (see RESERVED_RESULT_CONTAINERS comment): named
+    # reserved containers OR any underscore-prefixed dir (the `_quarantine*`
+    # convention plus other maintainer scratch/staging). Both are excluded up
+    # front rather than left to the implicit "no summary.json" filter, so a
+    # quarantine container that happens to acquire a summary-shaped file can
+    # never leak into the corpus.
+    skipped_present = [
+        d for d in discovered_dirs
+        if d in RESERVED_RESULT_CONTAINERS or d.startswith("_")
+    ]
+    for dirname in skipped_present:
+        kind = ("reserved container" if dirname in RESERVED_RESULT_CONTAINERS
+                else "quarantine/underscore container")
+        print(f"NOTE: Ignoring non-phase results {kind}: {dirname}",
               file=sys.stderr)
-    all_timestamps = [d for d in discovered_dirs if d not in RESERVED_RESULT_CONTAINERS]
+    all_timestamps = [
+        d for d in discovered_dirs
+        if d not in RESERVED_RESULT_CONTAINERS and not d.startswith("_")
+    ]
 
     if filter_timestamps:
         timestamps = [t for t in all_timestamps if t in filter_timestamps]
@@ -1147,21 +1271,36 @@ def load_runs(results_dir, result_sets, cases):
                 "tool_failures": result.get("tool_failures", []),
                 "run_dir": run_dirname,
             }
-            # --- Timeout-exclusion chokepoint (v3.3.0) ---
-            # Timed-out runs carry no gradeable signal, so they are dropped
-            # HERE — before any run record enters the embedded DATA payload or
-            # ANY precomputed aggregate (per_model_phase, composite,
-            # consistency, per_case, cost/duration, counts). `timed_out` is the
-            # harness's explicit flag (never string-match `error`); it is read
-            # ONLY as this filter key and is deliberately not carried onto the
-            # run record. The disk census that feeds the provenance
-            # run_count_discrepancy check (load_result_sets -> disk_run_count)
-            # runs in a separate earlier pass and is intentionally left RAW, so
+            # --- No-gradeable-signal exclusion chokepoint (v3.3.0; status
+            #     taxonomy extended v3.4.0) ---
+            # Runs that carry no gradeable signal are dropped HERE — before any
+            # run record enters the embedded DATA payload or ANY precomputed
+            # aggregate (per_model_phase, composite, consistency, per_case,
+            # cost/duration, counts). Two exclusion keys, both watchdog/harness
+            # facts (never a string-match on `error`):
+            #   1. `timed_out` — the harness's explicit legacy timeout flag.
+            #   2. `status` in the run-lifecycle taxonomy (README § 3, post
+            #      2026-07-28): "stalled" (watchdog-killed hang — wall time is a
+            #      kill artifact, scores are truncated/absent) and "timed_out"
+            #      (the new-taxonomy spelling of the same terminal timeout).
+            #      Both are excluded exactly like a legacy timed-out run; without
+            #      this a `status="stalled"`/`"timed_out"` record whose legacy
+            #      `timed_out` flag is unset (newer archives) would slip past
+            #      leg 1 and pollute the metrics. "completed" and
+            #      "completed_early" are normal completions and are KEPT
+            #      (completed_early is score-neutral — README § 3); None status
+            #      (archives predating the field) is also kept and governed by
+            #      leg 1 alone.
+            # These keys are read ONLY as filter keys; the exclusion count is a
+            # console-only maintainer diagnostic. The disk census that feeds the
+            # provenance run_count_discrepancy check (load_result_sets ->
+            # disk_run_count) runs in a separate earlier pass and is left RAW, so
             # the discrepancy audit still sees every on-disk run. Because runs
             # are filtered here, the downstream `if not gruns/cruns` guards
             # naturally skip cells that are empty after exclusion — no extra
             # empty-cell guard is needed.
-            if bool(result.get("timed_out", False)):
+            run_status = result.get("status")
+            if bool(result.get("timed_out", False)) or run_status in ("stalled", "timed_out"):
                 n_timed_out_excluded += 1
                 continue
             runs.append(run)
@@ -1607,20 +1746,31 @@ def build_transcripts_index(result_sets, transcripts, subagent_transcripts):
 
 
 def build_data_bundle(result_sets, cases, runs, transcripts, subagent_transcripts,
-                      model_pricing=None, inline_transcripts=True):
+                      model_pricing=None, inline_transcripts=True,
+                      include_transcripts=True):
     """Assemble the DATA bundle for embedding in HTML.
 
-    Two artifact shapes (v3.0.0 — "Bundle architecture" dev guide above
-    PHASE_MAP):
-      inline_transcripts=True  (single-file monolith): transcripts and
-        subagent_transcripts embedded in full — the pre-3.0 shape.
-      inline_transcripts=False (bundle index.html): both transcript dicts
-        are DROPPED and replaced by transcripts_index pointing at the
-        per-result-set shard files written next to index.html.
+    Three artifact shapes, selected by (include_transcripts, inline_transcripts)
+    (v3.0.0 introduced the first two; v3.4.0 added the transcript-less shape —
+    see "Bundle architecture" and "Transcript-inclusion control" dev guides
+    above PHASE_MAP):
+      include_transcripts=True, inline_transcripts=True (full single-file
+        monolith): transcripts and subagent_transcripts embedded in full — the
+        pre-3.0 shape (single-file only under --transcripts as of v3.4.0).
+      include_transcripts=True, inline_transcripts=False (bundle index.html):
+        both transcript dicts are DROPPED from DATA and replaced by
+        transcripts_index pointing at the per-result-set shard files written
+        next to index.html. The v3.0.0 bundle default.
+      include_transcripts=False (transcript-less, either mode): DATA carries
+        NEITHER transcripts/subagent_transcripts NOR transcripts_index. This is
+        the v3.4.0 single-file default (transcript-lite offline monolith) and
+        the bundle behavior under --no-transcripts. The client feature-detects
+        the absence of both keys and shows a "transcripts not included in this
+        build" notice instead of attempting any shard fetch.
     The transcripts/subagent_transcripts and transcripts_index keys are
     mutually exclusive BY DESIGN: the template feature-detects the artifact
-    shape on DATA.transcripts presence, and a single-file artifact carrying
-    an index (or vice versa) would make the mode ambiguous.
+    shape on DATA.transcripts / DATA.transcripts_index presence, so the three
+    shapes (inline / lazy-index / neither) are each unambiguous.
     """
     # Sort result_sets by phase order so they always appear Phase 1, 2, 3, 4
     sorted_result_sets = sorted(
@@ -1628,14 +1778,19 @@ def build_data_bundle(result_sets, cases, runs, transcripts, subagent_transcript
     )
     bundle = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "generator_version": "3.3.0",
+        "generator_version": "3.4.0",
         "embedded_schema_contract_version": 2,
         "result_sets": sorted_result_sets,
         "cases": cases,
         "runs": runs,
         "model_pricing": model_pricing or {},
     }
-    if inline_transcripts:
+    if not include_transcripts:
+        # Transcript-less shape: emit neither key. The client's three-way
+        # feature detect (DATA.transcripts -> inline; DATA.transcripts_index ->
+        # lazy; neither -> "not included" notice) covers this.
+        pass
+    elif inline_transcripts:
         bundle["transcripts"] = transcripts
         bundle["subagent_transcripts"] = subagent_transcripts
     else:
@@ -2606,6 +2761,7 @@ def print_summary(data_bundle, transcripts, subagent_transcripts,
     total_transcripts = len(transcripts)
     total_subagent = sum(len(v) for v in subagent_transcripts.values())
     total_cases = len(data_bundle["cases"])
+    transcripts_included = "transcripts" in data_bundle or "transcripts_index" in data_bundle
     observed_set_costs = [
         rs["total_cost_usd"] for rs in data_bundle["result_sets"]
         if isinstance(rs.get("total_cost_usd"), (int, float))
@@ -2616,11 +2772,17 @@ def print_summary(data_bundle, transcripts, subagent_transcripts,
     print(f"  Totals:")
     print(f"    Result sets:           {len(data_bundle['result_sets'])}")
     print(f"    Runs loaded:           {total_runs} completed")
-    print(f"    Timed-out excluded:    {n_timed_out_excluded} "
-          f"(dropped at load; absent from all metrics and the embedded data)")
+    print(f"    No-signal excluded:    {n_timed_out_excluded} "
+          f"(timed_out flag or status stalled/timed_out; dropped at load, "
+          f"absent from all metrics and the embedded data)")
     print(f"    Cases loaded:          {total_cases}")
-    print(f"    Transcripts condensed: {total_transcripts}")
-    print(f"    Subagent transcripts:  {total_subagent}")
+    if transcripts_included:
+        print(f"    Transcripts condensed: {total_transcripts}")
+        print(f"    Subagent transcripts:  {total_subagent}")
+    else:
+        print(f"    Transcripts:           EXCLUDED from this build "
+              f"(--no-transcripts / single-file default; DATA carries neither "
+              f"transcripts nor transcripts_index)")
     total_cost_label = f"${total_cost:.2f}" if total_cost is not None else "unavailable"
     print(f"    Total cost:            {total_cost_label}")
     print()
@@ -2727,9 +2889,21 @@ def main():
     base_dir, results_dir, datasets_dir, output_path = resolve_paths(args)
     single_file = args.single_file is not None
 
+    # Transcript inclusion (v3.4.0). Tri-state: an explicit --transcripts/
+    # --no-transcripts wins; otherwise the mode default applies — bundle
+    # INCLUDES (lazy shards, the official website artifact), single-file
+    # EXCLUDES (transcript-lite offline monolith). See parse_args and the
+    # "Transcript-inclusion control" dev guide above PHASE_MAP.
+    if args.transcripts is None:
+        include_transcripts = not single_file
+    else:
+        include_transcripts = args.transcripts
+
+    tx_state = "included" if include_transcripts else "EXCLUDED"
     print(f"Results dir: {results_dir}")
     print(f"Datasets dir: {datasets_dir}")
-    print(f"Output ({'single-file' if single_file else 'bundle'}): {output_path}")
+    print(f"Output ({'single-file' if single_file else 'bundle'}, "
+          f"transcripts {tx_state}): {output_path}")
 
     # Load data
     result_sets = load_result_sets(results_dir, args.results, args.exclude_results)
@@ -2753,7 +2927,13 @@ def main():
         run["rep"] = rep_counters[key]
         rep_counters[key] += 1
 
-    transcripts, subagent_transcripts = load_transcripts(results_dir, runs)
+    # Transcript condensation is the expensive load step and the dominant byte
+    # source; skip it entirely when the build excludes transcripts (v3.4.0
+    # single-file default and bundle --no-transcripts).
+    if include_transcripts:
+        transcripts, subagent_transcripts = load_transcripts(results_dir, runs)
+    else:
+        transcripts, subagent_transcripts = {}, {}
     model_pricing = load_model_pricing(base_dir)
     reconciliation = load_reconciliation(base_dir)
 
@@ -2763,6 +2943,7 @@ def main():
         result_sets, cases, runs, transcripts, subagent_transcripts,
         model_pricing=model_pricing,
         inline_transcripts=single_file,
+        include_transcripts=include_transcripts,
     )
 
     # Precomputed metrics (embedded as PRECOMPUTED alongside DATA)
@@ -2770,6 +2951,7 @@ def main():
         "results_filter": args.results if args.results else "all",
         "results_excluded": args.exclude_results if args.exclude_results else [],
         "output_mode": "single-file" if single_file else "bundle",
+        "transcripts_included": include_transcripts,
         "generated_at": data_bundle["generated_at"],
         "generator_version": data_bundle["generator_version"],
     }
@@ -2799,20 +2981,27 @@ def main():
         index_path = os.path.join(output_path, "index.html")
         with open(index_path, "w", encoding="utf-8") as f:
             f.write(html)
-        n_shards, shard_bytes, largest = write_transcript_shards(
-            output_path, data_bundle["transcripts_index"],
-            transcripts, subagent_transcripts)
         index_mb = os.path.getsize(index_path) / (1024 * 1024)
         print(f"  Bundle written: {output_path}/")
         print(f"    index.html:  {index_mb:.2f} MB")
-        print(f"    Shards:      {n_shards} files, "
-              f"{shard_bytes / (1024 * 1024):.2f} MB total in data/")
-        if largest[0]:
-            print(f"    Largest:     {shard_filename(largest[0])} "
-                  f"({largest[1] / (1024 * 1024):.2f} MB)")
-        print(f"  Serve over http(s) — transcripts are fetched on demand "
-              f"(e.g. `python3 -m http.server` from the bundle dir); on "
-              f"file:// the Run Explorer shows a fetch-fallback message.")
+        if include_transcripts:
+            # transcripts_index is present on DATA only when transcripts are
+            # included; shards are written next to index.html.
+            n_shards, shard_bytes, largest = write_transcript_shards(
+                output_path, data_bundle["transcripts_index"],
+                transcripts, subagent_transcripts)
+            print(f"    Shards:      {n_shards} files, "
+                  f"{shard_bytes / (1024 * 1024):.2f} MB total in data/")
+            if largest[0]:
+                print(f"    Largest:     {shard_filename(largest[0])} "
+                      f"({largest[1] / (1024 * 1024):.2f} MB)")
+            print(f"  Serve over http(s) — transcripts are fetched on demand "
+                  f"(e.g. `python3 -m http.server` from the bundle dir); on "
+                  f"file:// the Run Explorer shows a fetch-fallback message.")
+        else:
+            print(f"    Shards:      none (--no-transcripts; index.html only)")
+            print(f"  Transcript-less bundle — the Run Explorer shows a "
+                  f"'transcripts not included in this build' notice.")
     print(f"  Done.\n")
 
 

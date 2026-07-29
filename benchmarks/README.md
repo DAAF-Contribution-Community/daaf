@@ -242,32 +242,39 @@ watchdog feature enabled (the `RunConfig` defaults), `execute_run()` takes the
 original single blocking `communicate()` path, byte-identical to the pre-watchdog
 harness.
 
-- **Score-complete early stop** (`status: "completed_early"`). Every poll runs the
-  *real* deterministic scorers against the live transcripts; when every scored
-  criterion has PASSED, the executor does **one confirmation poll** on the next
-  tick and, if still all-PASS, gracefully kills the run (`_graceful_kill`
-  SIGTERM→15s→SIGKILL ladder) and marks the run `early_stopped`. This is **wired
-  only for dispatch_compliance**, and the reason is a *monotone-pass fairness
-  argument*: all ten dispatch criteria lock PASS at the Agent call and the
-  subagent-behavior criteria lock PASS at the subagent's actions — none can be
-  voided by later activity — so terminating the moment they all pass **cannot
-  change the score**, it only reclaims dead wall time. The other three phases each
-  have a **monotone-FAIL negative criterion** (`no_premature_execution`,
-  `no_forbidden_skills`, `no_tool_calls_of_type`) that starts PASS and can only
-  flip to FAIL; early-stopping on all-PASS would unfairly lock in a not-yet-
-  violated negative and mask exactly the behavior the phase tests for, so early
-  stop is deliberately **not** wired there (their `--no-early-stop` flag is
-  accepted for CLI uniformity but inert). The confirmation poll also protects the
-  subagent-transcript flush race: the early-stop check returns "not done" until the
-  subagent transcript exists on disk and its behavior criteria pass, so the
-  dispatch-recovery fallback always has the subagent's records before truncation.
-  A scorer exception during polling is swallowed as "not done" (never kills a run)
-  and logged. Early stop is score-neutral, so `completed_early` runs count normally
-  toward pass rates. For duration/latency aggregates they contribute an additive
-  `score_complete_seconds` (time-to-demonstrated-compliance: launch → first
-  all-criteria-pass, excluding the confirmation poll and kill tail) rather than
-  their truncated wall clock — a meaningful measure that keeps them on the duration
-  axis instead of dropping them (see § 8).
+- **Score-complete early stop** (`status: "completed_early"`) — **OFF by default
+  since 2026-07-29; opt-in via `--early-stop`, dispatch_compliance only.** When
+  enabled, every poll runs the *real* deterministic scorers against the live
+  transcripts; when every scored criterion has PASSED, the executor does **one
+  confirmation poll** on the next tick and, if still all-PASS, gracefully kills
+  the run (`_graceful_kill` SIGTERM→15s→SIGKILL ladder) and marks the run
+  `early_stopped`. The original design rationale was a *monotone-pass fairness
+  argument*: all ten dispatch criteria were believed to lock PASS at the Agent
+  call and the subagent-behavior criteria at the subagent's actions, so
+  terminating on all-PASS could not change the score. **That argument was
+  falsified in practice (2026-07-29):** an Agent call's success actually settles
+  at its *tool_result*, which lands only when the subagent finishes — the
+  graceful kill can abort an in-flight dispatch, flipping its tool_result to
+  `is_error=true`, causing archival scoring to fail the dispatch and (by design)
+  suppressing the dispatch-recovery fallback. Observed: 4 of 59 `completed_early`
+  runs scored as dispatch failures despite live all-PASS; all 59 were quarantined
+  (`results/_quarantine_2026-07-29_earlystop/`) and re-run. Early stop also
+  truncates usage capture (`output_tokens=None` — the kill precedes the CLI's
+  final usage summary), breaking cost comparability. Hence the default flip.
+  The other three phases each have a **monotone-FAIL negative criterion**
+  (`no_premature_execution`, `no_forbidden_skills`, `no_tool_calls_of_type`)
+  that starts PASS and can only flip to FAIL; early stop was never wired there.
+  When enabled, the confirmation poll protects the subagent-transcript flush
+  race (the check returns "not done" until the subagent transcript exists on
+  disk and its behavior criteria pass), and a scorer exception during polling is
+  swallowed as "not done" (never kills a run) and logged — but note the flush
+  race is distinct from the tool_result race above, which the confirmation poll
+  does NOT close. Historical `completed_early` runs count as completions for
+  parity/validity purposes, subject to the quarantine above. For duration/latency
+  aggregates they contribute an additive `score_complete_seconds`
+  (time-to-demonstrated-compliance: launch → first all-criteria-pass, excluding
+  the confirmation poll and kill tail) rather than their truncated wall clock
+  (see § 8).
 - **Hung-run / stall detection** (`status: "stalled"`, distinct from `timed_out`),
   wired for **all four phases**. Staleness is computed as max-recency across the
   parent transcript **and** all subagent transcripts (a parent-only monitor
@@ -386,10 +393,11 @@ All four runners share an identical CLI:
 | `--delay S` | 2 | Seconds between parallel launches (ThreadPoolExecutor stagger). Parallel-mode only — the sequential loop has no sleep, so this flag is a no-op with `--sequential` |
 | `--max-concurrent N` | 5 | Cap on simultaneously in-flight runs (`max_workers = min(len(runs), N)`). Parallel-mode only. Independent of `--delay`, which staggers submits |
 | `--timeout S` | 900 | Per-run timeout in seconds. Uniform 900s logistical cap baked into all four runners (2026-07-21 walltime redesign; formerly 120/180/300/300 per-phase). The cap is deliberately high so runs complete rather than censor — duration is now a measured axis. Pass explicitly to override; the uniform `DEFAULT_TIMEOUT_S` fallback only fires if a caller passes `timeout_override=None` programmatically |
-| `--watchdog-poll S` | 60 | Watchdog poll interval in seconds — how often the executor checks for score-complete early stop and transcript staleness (§ 3, Run-lifecycle watchdog) |
+| `--watchdog-poll S` | 60 | Watchdog poll interval in seconds — how often the executor checks transcript staleness, plus score-complete early stop when enabled via `--early-stop` (§ 3, Run-lifecycle watchdog) |
 | `--stall-threshold S` | 330 | Staleness cutoff in seconds for one stalled read (K3-validated; 296s of legitimate dead air was observed on a passing run, so 240s false-positives). Two consecutive stalled reads trigger a stall kill |
 | `--stall-retries N` | 1 | Times to relaunch a stalled rep from a fresh sandbox. A rep that stalls again after its last retry is recorded permanently with `status="stalled"` |
-| `--no-early-stop` | off | Disable score-complete early stop. **Effective only for `run_dispatch_compliance.py`** (the one phase where early stop is wired); accepted but **inert** on the other three, whose monotone-FAIL negative criteria make early stop unfair. Stall detection always runs |
+| `--early-stop` | off | **Opt IN** to score-complete early stop (`run_dispatch_compliance.py` only — the one phase where it is wired). **Default flipped OFF 2026-07-29:** the graceful kill can abort an in-flight Agent dispatch and corrupt the archived score, and it truncates usage capture (§ 3). Stall detection is independent and always runs |
+| `--no-early-stop` | off | **Deprecated no-op** since the 2026-07-29 default flip (early stop is already off). Kept for command-line compatibility; overrides `--early-stop` if both are given. Still accepted-but-inert on the other three runners, where early stop was never wired |
 | `--yes` / `-y` | off | Skip the runner's cost confirmation prompt |
 | `--preflight-only` | off | Select models/cases and validate applicable provider routes, then exit before estimates, checkpoints, sandboxes, model execution, or result artifacts |
 
@@ -819,26 +827,56 @@ without a second reporting track.
 
 **Viewer generation.** `scripts/generate_results_viewer_v2.py` produces the
 viewer. The official artifact is a **multi-file bundle directory**
-`daafbench_YYYY-MM-DD[suffix]/`; `--single-file` emits a self-contained
-monolith for offline `file://` auditing. Both are gitignored.
+`daafbench_YYYY-MM-DD[suffix]/` (the hosted website build, with lazy-loaded
+transcripts by default); `--single-file` emits a self-contained monolith for
+offline `file://` auditing, which as of generator v3.4.0 is **transcript-lite
+by default** (scores/runs/aggregates only — pass `--transcripts` for the full
+inline-transcript monolith). Both are gitignored.
 
 ```bash
-python3 benchmarks/scripts/generate_results_viewer_v2.py              # bundle, all result sets
+python3 benchmarks/scripts/generate_results_viewer_v2.py              # bundle, all result sets (lazy transcripts)
+python3 benchmarks/scripts/generate_results_viewer_v2.py --no-transcripts  # bundle, index.html only (no shards)
 python3 benchmarks/scripts/generate_results_viewer_v2.py \
     --results 20260609_214335 20260609_224824 --output /tmp/daafbench_view/
 python3 benchmarks/scripts/generate_results_viewer_v2.py \
     --exclude-results 20260608_181352                                  # all sets except these
-python3 benchmarks/scripts/generate_results_viewer_v2.py --single-file # offline monolith
+python3 benchmarks/scripts/generate_results_viewer_v2.py --single-file # transcript-lite offline monolith (default)
+python3 benchmarks/scripts/generate_results_viewer_v2.py --single-file --transcripts  # full inline-transcript monolith
 ```
 
 The **bundle** contains `index.html` (~4 MB; all run-level data and
-precomputed metrics inline) plus `data/tx_{result_set}.json` transcript
-shards fetched on demand by the Run Explorer. The bundle requires http(s)
-serving — `fetch()` is CORS-blocked on `file://`, so a fallback message
+precomputed metrics inline) plus, by default, `data/tx_{result_set}.json`
+transcript shards fetched on demand by the Run Explorer. The bundle requires
+http(s) serving — `fetch()` is CORS-blocked on `file://`, so a fallback message
 with a `python3 -m http.server` hint appears instead. Output filenames
 auto-increment (`daafbench_2026-06-18/`, `daafbench_2026-06-18a/`, etc.)
 and never overwrite prior artifacts. `--exclude-results` drops named sets;
 exclusions are recorded in the embedded generation parameters.
+
+**Transcript inclusion (`--transcripts` / `--no-transcripts`, generator
+v3.4.0).** This mutually exclusive flag pair controls whether the build carries
+per-run transcripts at all, overriding the per-mode default in either
+direction. Defaults: **bundle includes** transcripts (lazy shards — they cost
+nothing until a run is opened, so the official hosted artifact keeps them);
+**single-file excludes** them (the offline monolith is transcript-lite unless
+you ask for the full payload). A transcript-less build embeds a `DATA` payload
+carrying **neither** `transcripts` nor `transcripts_index`; the Run Explorer
+feature-detects this and shows a "Transcripts not included in this build"
+notice in place of each run's transcript pane — it makes no fetch attempt, so
+there is no broken request or empty pane. Every other surface (scores, metrics,
+cost, provenance) is unaffected. The chosen state is recorded as
+`transcripts_included` in the embedded generation parameters.
+
+**Result-set discovery (quarantine exclusion, generator v3.4.0).** Discovery
+scans the children of `results/` and skips non-phase containers **explicitly**:
+any child named `probes` or `removed_runs`, or any child whose name **starts
+with `_`** (the operative quarantine convention is `_quarantine*`), is ignored
+up front rather than relying on the implicit "lacks a `summary.json`" filter.
+A kept result set may carry a `QUARANTINE_NOTE.md` at its root (added
+2026-07-29 to the 8 sets whose individual run dirs were relocated to
+`removed_runs`); this is inert — discovery recognizes a set solely by its
+`summary.json` (enriched from `manifest.json`/`runs/`), so a stray `.md` at the
+set root is never consulted.
 
 > **Stale-bundle caveat (2026-07-28).** Viewer bundles generated *before*
 > 2026-07-28 embed the pre-correction dispatch_compliance criteria (the
@@ -937,7 +975,10 @@ measure: launch → first all-criteria-pass, excluding the confirmation poll and
 kill tail — **not** full-task walltime), else is excluded; a `stalled` run is
 **always excluded** (its wall time is a watchdog-killed hang, not a
 task-completion measure). `completed_early` **scores count normally** in every
-other aggregate. Runs carrying `status == "stalled"` are hung runs the watchdog
+other aggregate — though note the 2026-07-29 finding (§ 3): the early-stop kill
+can itself corrupt dispatch scores, so all 59 `completed_early` runs produced
+under the on-by-default era were quarantined and re-run; early stop is now
+opt-in. Runs carrying `status == "stalled"` are hung runs the watchdog
 killed after auto-relaunch (§ 3); they are distinct from `timed_out` and are
 selected for rerun by `build_rerun_queue.py` alongside timed-out runs (separate
 per-class counts). Partial result sets (`summary.json` `"partial": true`)

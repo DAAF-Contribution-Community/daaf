@@ -607,7 +607,16 @@ def _build_early_stop_check(test_case: TestCase):
     criterion — the 10 dispatch criteria AND, when a subagent dispatch is
     expected, the subagent-behavior criteria — has PASSED.
 
-    Why early stop is score-neutral here (the monotone-pass fairness argument):
+    CAVEAT (2026-07-29): the monotone-pass argument below was FALSIFIED in
+    practice — an Agent call's success settles at its tool_result (i.e. when the
+    subagent finishes), not at the call, so the graceful kill can abort an
+    in-flight dispatch, flip its tool_result to is_error=true, and corrupt the
+    archived score (observed on 4 of 59 completed_early runs; all 59 quarantined
+    2026-07-29). Early stop is therefore OFF by default (opt-in --early-stop);
+    see the argparse comment. The original rationale is preserved below as
+    design history.
+
+    Original (falsified) rationale — the monotone-pass fairness argument:
     every dispatch criterion locks PASS on first observation (it settles at the
     Agent call) and the subagent-behavior criteria settle at the subagent's
     actions; none can be voided by later activity. So killing the run the moment
@@ -674,16 +683,18 @@ def _build_early_stop_check(test_case: TestCase):
 def run_one(test_case: TestCase, model: ModelConfig, rep: int,
             sandbox_suffix: str, timeout_override=None,
             watchdog_poll=60, stall_threshold=330, stall_retries=1,
-            enable_early_stop=True):
+            enable_early_stop=False):
     """Execute a single benchmark run with checkpoint scoring.
 
     Run-lifecycle watchdog (Dispatch B): the executor polls every
-    ``watchdog_poll`` seconds, stopping early when all criteria pass (score
-    complete) and killing a hung run whose transcripts go quiet for
+    ``watchdog_poll`` seconds, killing a hung run whose transcripts go quiet for
     >``stall_threshold`` seconds across consecutive polls. A stalled run is
     relaunched from a fresh sandbox up to ``stall_retries`` times (default 1); a
     run that stalls again after its last retry is recorded permanently as
-    ``status="stalled"``. Set ``enable_early_stop=False`` to disable early stop.
+    ``status="stalled"``. Score-complete early stop is OFF by default
+    (2026-07-29 — the kill can abort an in-flight dispatch and corrupt the
+    archived score; see _build_early_stop_check's caveat); pass
+    ``enable_early_stop=True`` to opt in.
     """
     sandbox_dir = f"{SANDBOX_ROOT}/run_{sandbox_suffix}"
     early_stop_check = _build_early_stop_check(test_case) if enable_early_stop else None
