@@ -909,6 +909,47 @@ function Sync-HostScript {
         Write-Host ""
     }
 
+    # --- In-folder double-click shortcut: create-or-refresh (non-fatal) ---
+    # Create (or refresh) a DAAF.lnk shortcut to daaf.bat *inside the install
+    # folder*, mirroring the block install.ps1 runs at install time. Existing
+    # installs predate that installer block and so never received a shortcut;
+    # doing it here on update delivers one to them. The operation is a
+    # create-or-refresh: CreateShortcut() on an already-existing .lnk opens it in
+    # place, so re-setting TargetPath/WorkingDirectory/IconLocation and calling
+    # Save() refreshes just those three properties while preserving any other
+    # customizations the user added (hotkey, window style, run mode). A copy the
+    # user dragged elsewhere (Desktop, taskbar) is a separate file and is left
+    # untouched. Because TargetPath is stored as an absolute path, this also
+    # self-repairs a stale shortcut after the daaf-docker folder was moved. The
+    # daaf.bat guard is why this lives here -- daaf.bat is synced above, so it is
+    # present by now on a healthy update. The whole step is a convenience: any
+    # failure warns and continues, and never fails the update. Dry-run gated so
+    # CI (no Windows Shell COM object) never invokes WScript.Shell.
+    if ($env:DAAF_DRY_RUN -eq "1") {
+        Write-Host "[DRY-RUN] Would create or refresh the in-folder DAAF.lnk shortcut to daaf.bat"
+    } else {
+        try {
+            $InstallDir = (Get-Location).Path
+            $BatPath = Join-Path $InstallDir "daaf.bat"
+            if (Test-Path -LiteralPath $BatPath) {
+                $ShortcutPath = Join-Path $InstallDir "DAAF.lnk"
+                $WshShell = New-Object -ComObject WScript.Shell
+                $Shortcut = $WshShell.CreateShortcut($ShortcutPath)
+                $Shortcut.TargetPath = $BatPath
+                $Shortcut.WorkingDirectory = $InstallDir
+                $Shortcut.Description = "Launch the DAAF Control Panel"
+                $IconPath = Join-Path $InstallDir "daaf.ico"
+                if (Test-Path -LiteralPath $IconPath) {
+                    $Shortcut.IconLocation = $IconPath
+                }
+                $Shortcut.Save()
+                Write-Host "Created/refreshed in-folder DAAF.lnk shortcut." -ForegroundColor Green
+            }
+        } catch {
+            Write-Warning "Could not create or refresh the DAAF.lnk shortcut (non-fatal): $_"
+        }
+    }
+
     # --- Self-update notice ---
     # If the updater itself was refreshed as a CHANGED file, its new logic is on
     # disk but was not executed this run. Prompt a re-run so the new updater's

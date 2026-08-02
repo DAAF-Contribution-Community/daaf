@@ -149,6 +149,45 @@ Describe "update_daaf.ps1" {
             $Content | Should -Match '\$key = \$line\.Substring\(0, \$eq\)'
             $Content | Should -Not -Match '\$key = \$line\.Substring\(0, \$eq\)\.Trim\(\)'
         }
+
+        # -----------------------------------------------------------------
+        # In-folder DAAF.lnk shortcut create-or-refresh
+        # -----------------------------------------------------------------
+        # These are STATIC (content) assertions, not behavioral ones: the shortcut
+        # is built with the Windows-only WScript.Shell COM object, which does not
+        # exist on the Linux pwsh that runs this CI suite, so a runtime creation
+        # test cannot pass here. The suite has no -Skip / platform-gate pattern, so
+        # we assert the block's structure and safety invariants against the raw
+        # script text instead. (The installer's equivalent block is likewise not
+        # behaviorally tested for the same reason.)
+        It "creates or refreshes an in-folder DAAF.lnk shortcut on update" {
+            $Content | Should -Match 'DAAF\.lnk'
+            $Content | Should -Match 'New-Object -ComObject WScript\.Shell'
+            $Content | Should -Match 'CreateShortcut'
+        }
+
+        It "gates the shortcut behind DAAF_DRY_RUN so CI never invokes COM" {
+            # The WScript.Shell invocation must live in the else (non-dry-run)
+            # branch -- under DAAF_DRY_RUN=1 no COM object is created. Textual
+            # order alone (dry-run message before COM) could pass spuriously if
+            # the COM call were hoisted below the if but outside the else, so we
+            # additionally require an '} else {' token BETWEEN the dry-run
+            # message and the COM call, pinning the branch nesting. Index-based
+            # check, mirroring the Set-StrictMode placement test above.
+            $dryIdx  = $Content.IndexOf('[DRY-RUN] Would create or refresh the in-folder DAAF.lnk')
+            $comIdx  = $Content.IndexOf('New-Object -ComObject WScript.Shell')
+            $elseIdx = $Content.IndexOf('} else {', $dryIdx)
+            $dryIdx  | Should -BeGreaterThan -1
+            $elseIdx | Should -BeGreaterThan $dryIdx
+            $comIdx  | Should -BeGreaterThan $elseIdx
+        }
+
+        It "guards the shortcut on daaf.bat presence and is non-fatal (warn-and-continue)" {
+            # Test-Path on daaf.bat means the block no-ops if the launcher was not
+            # synced; the catch's Write-Warning proves failure never aborts the update.
+            $Content | Should -Match 'Test-Path -LiteralPath \$BatPath'
+            $Content | Should -Match 'Could not create or refresh the DAAF\.lnk shortcut'
+        }
     }
 }
 
