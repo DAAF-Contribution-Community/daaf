@@ -680,6 +680,8 @@ Report to the user **adaptively** at these trigger points:
 
 **Note:** Progress reports during a phase are one-way informational updates. Phase Status Updates at phase boundaries are BLOCKING — the orchestrator must wait for user confirmation before proceeding.
 
+**Turn-end briefing.** PSUs are the heavyweight, blocking, phase-boundary instances of DAAF's general Turn-End Briefing standard, and the lightweight Progress Update above is its in-phase, non-blocking form. Every *other* substantive turn that returns control to the user — an error-recovery pause, a mid-phase return after a wave of dispatches, an answer to a user question during execution — still closes with a briefing of what happened since the user's last message, taken altogether. See the master statement in `SKILL.md` § User-Facing Communication Standards > "Turn-End Briefing."
+
 ### Phase Status Updates (Mandatory)
 
 **Phase Status Updates (PSU) are enforced pause points at every phase boundary.** After completing a phase, the orchestrator MUST present a comprehensive Phase Status Update to the user and WAIT for explicit confirmation before proceeding to the next phase.

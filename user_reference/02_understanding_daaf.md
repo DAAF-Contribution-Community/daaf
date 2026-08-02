@@ -846,6 +846,8 @@ Here's how a typical task flows through the system during a Full Pipeline analys
 
 That's the core loop. Every piece has a job. Every job has a quality check. Every quality check has consequences (stop, revise, or proceed). And you get four mandatory check-in points where DAAF pauses and waits for your explicit approval before continuing.
 
+**Between those checkpoints, you won't be left in the dark.** DAAF doesn't assume you're watching every step as it happens -- you might kick off a round of work and step away. So whenever it finishes a round and hands control back to you, it ends with a plain-language briefing of what happened since your last message: the bottom line first, then the key findings, decisions, and any files produced, and finally anything it needs from you to keep going. The four formal checkpoints above are the big, structured versions of this; the briefings in between are lighter, but they follow the same habit of catching you up rather than making you piece together what happened from the transcript.
+
 ---
 
 ## Session Management: Multi-Session Work and Recovery

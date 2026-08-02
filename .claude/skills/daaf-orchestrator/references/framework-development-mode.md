@@ -625,6 +625,8 @@ found issues you want addressed, let me know. Otherwise, confirm and we're done.
 
 If the user requests changes, loop back to Phase 3 for targeted fixes (respecting iteration limits from Gate Definitions).
 
+**Turn-end briefing.** The two checkpoints (Scope Review and Review Complete) are this mode's heavyweight instances of DAAF's general Turn-End Briefing standard. Every *other* substantive turn that returns control to the user — a scoping-wave synthesis, a framework specialist's return, a review-fix iteration — still closes with a briefing of what happened since the user's last message, taken altogether. See the master statement in `SKILL.md` § User-Facing Communication Standards > "Turn-End Briefing."
+
 ---
 
 ## Orchestrator Skill Loading

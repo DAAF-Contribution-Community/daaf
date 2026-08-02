@@ -148,6 +148,8 @@ When re-executing pipeline stages for a revision, load these files based on the 
 
 **Phase Status Updates (PSUs):** PSUs are NOT required for revision re-execution. Instead, present a single **Revision Status Update** to the user after all re-executed stages complete, summarizing what changed and verification results.
 
+The Revision Status Update is this mode's instance of DAAF's Turn-End Briefing standard — the comprehensive catch-up presented once re-execution finishes. Between that and any interim returns (an error pause, a question answered mid-revision), the general standard still governs: close each substantive turn with a briefing of what happened since the user's last message, taken altogether. See the master statement in `SKILL.md` § User-Facing Communication Standards > "Turn-End Briefing."
+
 ### Revision-Specific Subagent Context
 
 When dispatching subagents for re-executed stages during a revision, include this additional context beyond the standard invocation template:

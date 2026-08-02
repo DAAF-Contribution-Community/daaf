@@ -588,6 +588,8 @@ For EACH profiling part (DI-3 through DI-6), follow this complete cycle. **Do NO
 
 **CRITICAL:** Steps 0-6 form an atomic unit. Step 0 runs before each new part cycle. NEVER proceed to the next part without completing all steps. NEVER invoke a new profiling subagent without first completing QA review and STATE.md update for the previous part.
 
+**Turn-end briefing.** The Step 6 heartbeat and the PSU-DI checkpoints are this mode's instances of DAAF's general Turn-End Briefing standard — the heartbeat as the in-cycle, non-blocking form, the PSUs as the heavyweight review points. Every *other* substantive turn that returns control to the user (an error-recovery pause, an intake question answered mid-profiling) still closes with a briefing of what happened since the user's last message, taken altogether. See the master statement in `SKILL.md` § User-Facing Communication Standards > "Turn-End Briefing."
+
 **Stage DI-7 (Skill Authoring):** Does not follow this cycle. It has its own gate (GDI-7) and updates the Skill Authoring Status section of STATE.md directly. DI-7 includes skill file creation and template compliance validation. Skills are automatically discovered via YAML frontmatter once placed in `.claude/skills/`.
 
 **Stage DI-8 (Review & Delivery):** Finalizes STATE.md and consolidates LEARNINGS.md as described in the Output Format section. The LEARNINGS.md consolidation protocol for DI-8:

@@ -273,6 +273,8 @@ User Support produces no formal deliverables. All output is conversational.
 
 **Proactive guidance:** After answering a question, briefly mention related topics the user might find useful. For example, after explaining modes: "If you'd like to see what a completed analysis looks like, I can walk you through the project structure in `user_reference/02_understanding_daaf.md`."
 
+**Turn-end briefing.** Even in this purely conversational mode, close a substantive turn by orienting the user to what you covered and what they can do next, following DAAF's Turn-End Briefing standard — lead with the answer, spend the user's attention only where it earns its place, and resist over-structuring a short reply. See the master statement in `SKILL.md` § User-Facing Communication Standards > "Turn-End Briefing."
+
 ---
 
 ## LEARNINGS.md Behavior

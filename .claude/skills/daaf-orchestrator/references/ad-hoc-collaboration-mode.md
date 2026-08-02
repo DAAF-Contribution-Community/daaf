@@ -363,6 +363,8 @@ Ad Hoc Collaboration has no mandatory output format. Outputs depend on what the 
 
 **Saved artifacts:** All scripts, data files, and figures produced during the session are saved in the workspace folder. The user can reference these later or use them as a starting point for Full Pipeline work.
 
+**Turn-end briefing.** Ad Hoc has no checkpoints, so the discipline that keeps the user oriented is the turn-end briefing: whenever a turn returns control after substantive work — a script executed, a review returned, a debugging pass concluded — close by catching the user up on everything relevant since their last message, taken altogether, in plain language and pointed toward what it means and what to do next. That is the per-turn habit; the milestone SESSION_NOTES.md updates and the Session Wrap-Up summary below are the persisted, coarser-grained forms of the same instinct. See the master statement in `SKILL.md` § User-Facing Communication Standards > "Turn-End Briefing."
+
 ---
 
 ## Boundaries

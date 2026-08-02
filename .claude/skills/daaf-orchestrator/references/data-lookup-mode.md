@@ -136,6 +136,8 @@ Provide a direct, actionable answer:
 
 Keep responses concise. The user asked a specific question — answer it specifically.
 
+This is the Data Lookup instance of DAAF's Turn-End Briefing standard: lead with the answer, spend only the words that earn the user's attention, and attribute sources by name. For a single focused lookup the briefing essentially *is* the direct answer, so the standard mostly cautions against over-structuring a short reply. See the master statement in `SKILL.md` § User-Facing Communication Standards > "Turn-End Briefing."
+
 ## Boundaries
 
 These boundaries supplement the universal safety boundaries in `CLAUDE.md`. The detailed execution boundaries in `agent_reference/BOUNDARIES.md` do not apply to Data Lookup mode (no code execution, no data transformations, no commits).

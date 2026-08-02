@@ -77,6 +77,8 @@ DAAF version: [commit hash]. See `agent_reference/AI_DISCLOSURE_REFERENCE.md` fo
 disclosure guidance if incorporating these findings into published work.
 ```
 
+**Turn-end briefing.** When presenting findings, follow DAAF's Turn-End Briefing standard: lead with the feasibility bottom line, order sources and caveats by how much they bear on the user's question, and reference any preliminary notes by path rather than reproducing them. See the master statement in `SKILL.md` § User-Facing Communication Standards > "Turn-End Briefing."
+
 ## Multi-Source Synthesis Protocol
 
 When Data Discovery explores multiple data sources (multiple Stage 3 returns), the orchestrator consolidates findings directly (without dispatching the research-synthesizer agent). Follow this protocol:
