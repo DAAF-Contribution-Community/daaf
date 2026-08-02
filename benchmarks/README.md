@@ -406,7 +406,7 @@ All four runners share an identical CLI:
 | Flag | Default | Meaning |
 |------|---------|---------|
 | `--reps N` | 3 | Repetitions per case × model |
-| `--models a,b` | all | Comma-separated model keys (lowercased names from models.yaml, spaces → hyphens, dots removed: `fable-5`, `sonnet-46`, `deepseek-v4-flash`). Keys come from this registry transformation, not bare model names — `sonnet`/`haiku` are not valid keys |
+| `--models a,b` | all | Comma-separated model keys (lowercased names from models.yaml, spaces → hyphens, dots removed: `fable-5`, `sonnet-46`, `deepseek-v4-flash-0731`). Keys come from this registry transformation, not bare model names — `sonnet`/`haiku` are not valid keys |
 | `--provider X` | all | `anthropic`, `openrouter`, `chatgpt-subscription`, or `all` |
 | `--test-id a,b` | all | Specific case IDs (e.g., `mc-01,mc-05`) |
 | `--sequential` | off | Run one at a time instead of parallel |
@@ -505,6 +505,114 @@ already run:
 Pause after the four representative behavioral cases. Do not infer a
 three-repetition reliability rate from these one-run gates, and do not start a
 reliability sample without a separate decision.
+
+### Adding a New Model
+
+Onboarding a model is: author the registry entry → verify its facts online →
+prove the route before spending real capacity → run the full battery → fold the
+results into the viewer. The DeepSeek V4 Flash 0731 entry (`config/models.yaml`,
+added 2026-08-02) is the current worked example; read it and its neighbors before
+authoring. Follow the steps in order — each gate is cheap insurance against the
+next, more expensive one.
+
+1. **Author the registry entry** in `config/models.yaml`, matching the shape of an
+   existing entry of the same provider. Fields:
+   - `id` — the routing slug. For OpenRouter this may carry an optional
+     `:provider/quant` endpoint pin (e.g. `deepseek/deepseek-v4-flash-0731:novita/fp8`);
+     the pin selects a specific serving endpoint (quantization, uptime, price). For
+     Anthropic use the bare model id; for `chatgpt-subscription` use the bare
+     `gpt-5.6-*` id.
+   - `name` — the human label. The **selectable registry key** is derived from it by
+     `model_loader.py` (`load_models`): lowercase, spaces → hyphens, dots removed
+     (`"DeepSeek V4 Flash 0731"` → `deepseek-v4-flash-0731`). Confirm the derived key
+     does not collide with an existing entry, and that it reads well as a `--models`
+     value (§ 4 flag table). To pin an explicit key instead of deriving one, set the
+     optional `key:` field (the three `chatgpt-subscription` entries do this to append
+     `-chatgpt` while keeping a bare `id`).
+   - `provider` — `anthropic`, `openrouter`, or `chatgpt-subscription`; controls the
+     env-var wiring injected by `model_loader.py` (§ 4 Environment).
+   - `cost_tier` — coarse `low`/`medium`/`high` label.
+   - `pricing` — per-million-token `input` / `output`, plus `cached_input` when the
+     endpoint discounts cache reads (the 0731 Novita endpoint lists one, so it is
+     declared). `chatgpt-subscription` entries carry `api_equivalent_pricing` instead
+     (§ 7 dual ledger), not `pricing`.
+   - `env_overrides` — **child-model purity pinning** (models.yaml header, "CHILD-MODEL
+     PURITY PINNING"). OpenRouter/Anthropic entries pin all three selectors
+     (`ANTHROPIC_DEFAULT_OPUS_MODEL`, `ANTHROPIC_DEFAULT_SONNET_MODEL`,
+     `CLAUDE_CODE_SUBAGENT_MODEL`) to the entry's **own `id`** so dispatched children
+     stay on the model under test. `chatgpt-subscription` entries deliberately pin only
+     the two Opus/Sonnet aliases and omit `CLAUDE_CODE_SUBAGENT_MODEL` (its
+     higher-precedence flatten would bypass semantic tier selection).
+
+2. **Verify every factual field online** and cite it inline. Pricing, context length,
+   and the endpoint pin must be checked against OpenRouter
+   `GET /api/v1/models/{slug}/endpoints` (or provider docs) with a comment recording
+   the source and **accessed date** — the 0731 entry's comment is the template
+   (verified 2026-08-02: tag, quantization, `context_length`, uptime, and the three
+   list rates). Document *why* the specific endpoint pin was chosen (quantization,
+   uptime, price) when more than one endpoint serves the slug. List prices are
+   **provisional until billing reconciliation** — mark them so, as the 0731 comment
+   does, deferring to the 2026-06-11 reconciliation precedent on the older DeepSeek
+   entries (§ 7).
+
+3. **Set `wire_id` with discipline.** Declare `wire_id` only when the wire-observed
+   `message.model` differs from the routing `id`. OpenRouter `:provider/quant` pins are
+   dropped on the wire (directly observed 2026-07-24/25), so a pinned OpenRouter id
+   needs a `wire_id` equal to the unpinned slug; Anthropic bare aliases *sometimes*
+   resolve to dated snapshots (`claude-opus-4-5` → `-20251101`) and sometimes do not
+   (`claude-opus-5` stays bare) — so wire_id must be **OBSERVED, not assumed**. When you
+   have not yet observed it, mark the value `INFERRED` in a comment (as the 0731 entry
+   did before its probe run) and confirm it on the first probe run below, then update the
+   comment with the observing `result.json` path — the 0731 entry's now-`OBSERVED`
+   comment shows the finished form. Purity comparison performs no alias normalization, so
+   an inaccurate `wire_id` will read as a purity failure.
+
+4. **Zero-cost preflight.** Run `--preflight-only` for the new key to confirm route and
+   env coherence before spending anything (§ 4 Zero-model-cost preflight). For an
+   OpenRouter model this validates that `OPENROUTER_*` env vars are present and the key
+   filters correctly; it creates no result and makes no model call.
+
+5. **Paid single-test wire probe.** Run one sequential 1-rep case (e.g.
+   `run_dispatch_compliance.py --models <key> --test-id dc-01 --reps 1 --sequential --yes`)
+   to confirm the wire_id and child-model purity on real traffic. Inspect the run's
+   `observed_child_model_ids_raw` / purity state (§ 3 Phase 3 child-model purity), and if
+   `wire_id` was `INFERRED`, promote the comment to `OBSERVED` with the result path.
+
+6. **Full four-phase battery** at `--reps 3` across
+   `run_mode_classification.py`, `run_post_confirmation.py`,
+   `run_dispatch_compliance.py`, and `run_skill_routing.py`. OpenRouter models run in
+   parallel waves at the default settings; **Anthropic Phase 3 must be sequential** (§ 9
+   rate limits — this constraint is provider-specific, not universal). Per-run sandbox
+   isolation and the per-batch fixture lock (§ 9) make concurrent batches safe.
+
+7. **Rerun failed/stalled/timed-out runs** as needed. Use `build_rerun_queue.py`
+   selection and the rate-limited-run replacement protocol (§ 9); raise `--timeout`
+   only if a run legitimately needs longer wall-clock. Stalls auto-relaunch once
+   (`--stall-retries`, § 3).
+
+8. **Regenerate the viewer bundle** with
+   `scripts/generate_results_viewer_v2.py` (§ 8) so the new model joins the leaderboard
+   and cost/performance surfaces. Filenames auto-increment and never overwrite prior
+   bundles.
+
+9. **(Optional) Retire a superseded entry.** There is no schema retirement flag —
+   **comment out the entry's block** in `config/models.yaml` with a dated
+   `# REMOVED YYYY-MM-DD` rationale and an evidence pointer (precedent: the GPT `-pro`
+   block, models.yaml ≈ § REMOVED 2026-07-10). Archived result sets remain immutable and
+   rescoreable (§ 8); removing a live entry never touches its history. **If the retiree
+   has corpus history**, also copy its `name` + `pricing` into the top-level
+   `retired_model_pricing:` section at the bottom of `models.yaml` — the viewer prices
+   historical runs from there (a commented-out entry alone silently drops the model's
+   cost estimate; observed 2026-08-02).
+
+10. **Re-sweep the registry counts and key references.** After any add or retire,
+    re-derive the active-entry count (`grep -cE '^  - (id|key):' config/models.yaml` —
+    entries may start with either `- id:` or `- key:`, so an `- id:`-only grep
+    undercounts) and update the § 1 model-matrix numbers to match. Also update the
+    key-set partition in `tests/test_chatgpt_route.py` (`PREEXISTING_MODEL_KEYS` /
+    the `*_ADDITIONS` sets) — its identity assertion runs against the live registry
+    and breaks on any unrecorded add or retire. A net-zero swap keeps the § 1 counts
+    unchanged but still requires the test-partition update.
 
 ## 5. Golden Checkpoints
 
@@ -735,6 +843,32 @@ Phase 4 profiles are provider-split because Anthropic runs are dominated by
 cache reads while OpenRouter resends uncached context. OpenRouter rates were
 reconciled against billing exports; historical archives are not recomputed when
 rates change.
+
+**Billing reconciliation pipeline (OpenRouter).** Observed-vs-predicted cost
+calibration runs per campaign against the user-supplied OpenRouter activity
+export (`openrouter_activity_YYYY-MM-DD.csv` at the benchmarks root). Lineage:
+the canonical v1 script (`scripts/reconcile_openrouter_costs.py`) is **stale
+for post-2026-07-27 data** (static slug exclusions); v2 (2026-07-29, Kimi
+K3 / Gemini campaigns) and v3 (2026-08-02, DeepSeek V4 Flash 0731) live as
+campaign-workspace scratch scripts
+(`research/2026-07-18_FrameworkDev_DAAFBench_StaticAudit_Fable/scripts/scratch/19-22_billing-*-v2.py`
+and
+`research/2026-08-02_FrameworkDev_DAAFBench_DeepSeek0731/scripts/scratch/01-05_billing-*-v3.py`),
+each consolidating all prior exports (generation_id-deduplicated, provenance
+column), classifying rows kept/excluded on empirical per-slug
+registration-date boundaries, and reconciling per model × campaign over
+kept + covered + non-timed-out runs with a `runs_uncovered == 0` guard.
+Snapshots land in `derived/` (`YYYY-MM-DD_openrouter_billing_consolidated /
+_classified / _reconciliation.parquet` + `openrouter_reconciliation_YYYY-MM-DD.json`,
+the file the viewer's staleness guard reads). **Correction rule:** a cell with
+|obs/pred − 1| ≥ 0.26 flags the model for a `models.yaml` rate review (the
+2026-06-11 precedent — corrections apply in either direction, and list-price
+entries stay marked provisional until reconciled). **Dated-slug gotcha
+(2026-08-02):** billing permaslugs carry full-date suffixes
+(`deepseek/deepseek-v4-flash-20260731`) while registry slugs use the short
+form (`-0731`); the blind date-strip regex would collide such models onto
+retired undated slugs, so new dated models need an explicit permaslug →
+base-slug override in the classify step.
 
 ### ChatGPT-subscription dual ledger
 
@@ -1394,6 +1528,18 @@ timed-out runs, matching OpenRouter's natural exclusion.
 - **Reconciliation snapshot (2026-06-16):**
   `derived/openrouter_reconciliation_2026-06-16.json`. GLM 5.2 obs/pred
   billing ratio 0.70 (caching benefit from sequential runs).
+- **Reconciliation snapshot (2026-08-02, v3 pipeline — § 7):**
+  `derived/openrouter_reconciliation_2026-08-02.json`. Four exports
+  consolidated ($1,089.37 total, conserves to the cent); all 2,755 covered
+  kept runs matched (`runs_uncovered == 0`). July-campaign calibrations
+  confirmed stable vs v2 — Kimi K3 obs/pred 1.087 and Gemini 3.6 Flash
+  0.959 (both unflagged). New cell: DeepSeek V4 Flash 0731 obs/pred
+  **0.639, flagged** — the Novita/fp8 endpoint bills ~35% below OpenRouter
+  list; downward `models.yaml` rate correction pending maintainer decision
+  (single small heavy-cache campaign; magnitude MEDIUM-confidence).
+  GPT models: zero kept-corpus rows in the OpenRouter billing window, so no
+  GPT obs/pred exists on this route (subscription-lane GPT costs are the
+  `api_equivalent_pricing` counterfactual, § 7).
 
 #### Completed infrastructure
 

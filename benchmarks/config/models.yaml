@@ -410,30 +410,68 @@ models:
       ANTHROPIC_DEFAULT_SONNET_MODEL: "deepseek/deepseek-v4-pro:atlas-cloud/fp8"
       CLAUDE_CODE_SUBAGENT_MODEL: "deepseek/deepseek-v4-pro:atlas-cloud/fp8"
 
-  - id: "deepseek/deepseek-v4-flash:atlas-cloud/fp8"
-    # wire_id OBSERVED 2026-07-24 (results/20260724_212503/runs/
-    # dc-01_DeepSeek_V4_Flash_0/result.json recorded
-    # observed_child_model_ids_raw = ["deepseek/deepseek-v4-flash"] while the
-    # routing id carried the :atlas-cloud/fp8 pin). This is the one wire form in
-    # this file established by direct observation rather than inference.
-    wire_id: "deepseek/deepseek-v4-flash"
-    name: "DeepSeek V4 Flash"
+  # REMOVED 2026-08-02: DeepSeek V4 Flash (undated slug) retired, superseded by
+  # the dated DeepSeek V4 Flash 0731 entry above (re-post-trained revision,
+  # released 2026-07-31). The undated slug remains active on OpenRouter; this
+  # retirement is a registry decision to benchmark the dated revision going
+  # forward, not a provider deprecation. Full 4-phase battery for the successor
+  # completed 2026-08-02 (results/20260802_120055_4ec213, _120056_20ebe9,
+  # _120058_00c2f8, _120058_d1cac3; purity verified 36/36 in DC) before this
+  # removal. Historical archives for this entry remain immutable and
+  # rescoreable (README § Results). Entry preserved below for provenance:
+  #
+  # - id: "deepseek/deepseek-v4-flash:atlas-cloud/fp8"
+  #   # wire_id OBSERVED 2026-07-24 (results/20260724_212503/runs/
+  #   # dc-01_DeepSeek_V4_Flash_0/result.json recorded
+  #   # observed_child_model_ids_raw = ["deepseek/deepseek-v4-flash"] while the
+  #   # routing id carried the :atlas-cloud/fp8 pin). This is the one wire form in
+  #   # this file established by direct observation rather than inference.
+  #   wire_id: "deepseek/deepseek-v4-flash"
+  #   name: "DeepSeek V4 Flash"
+  #   provider: openrouter
+  #   cost_tier: "low"
+  #
+  #   # Corrected 2026-06-11: effective billed rates derived from the OpenRouter
+  #   # billing reconciliation of 2026-06-11 (obs/pred 1.34 — observed billing vs
+  #   # published rates applied to the billed token mix; see
+  #   # scripts/reconcile_openrouter_costs.py and derived/
+  #   # openrouter_reconciliation_2026-06-11.json). Previous rates:
+  #   # 0.0983/0.1966.
+  #   pricing:
+  #     input: 0.132
+  #     output: 0.263
+  #   env_overrides:
+  #     ANTHROPIC_DEFAULT_OPUS_MODEL: "deepseek/deepseek-v4-flash:atlas-cloud/fp8"
+  #     ANTHROPIC_DEFAULT_SONNET_MODEL: "deepseek/deepseek-v4-flash:atlas-cloud/fp8"
+  #     CLAUDE_CODE_SUBAGENT_MODEL: "deepseek/deepseek-v4-flash:atlas-cloud/fp8"
+
+  - id: "deepseek/deepseek-v4-flash-0731:novita/fp8"
+    # wire_id OBSERVED 2026-08-02 (results/20260802_115807_682041/runs/
+    # dc-01_DeepSeek_V4_Flash_0731_0/result.json recorded
+    # observed_child_model_ids_raw = ["deepseek/deepseek-v4-flash-0731"] while
+    # the routing id carried the :novita/fp8 pin; purity_status verified).
+    wire_id: "deepseek/deepseek-v4-flash-0731"
+    name: "DeepSeek V4 Flash 0731"
     provider: openrouter
     cost_tier: "low"
 
-    # Corrected 2026-06-11: effective billed rates derived from the OpenRouter
-    # billing reconciliation of 2026-06-11 (obs/pred 1.34 — observed billing vs
-    # published rates applied to the billed token mix; see
-    # scripts/reconcile_openrouter_costs.py and derived/
-    # openrouter_reconciliation_2026-06-11.json). Previous rates:
-    # 0.0983/0.1966.
+    # Verified online 2026-08-02 from GET /api/v1/models/deepseek/
+    # deepseek-v4-flash-0731/endpoints: Novita endpoint (tag novita/fp8,
+    # quantization fp8, context_length 1048576, uptime_last_30m ~99.99)
+    # lists prompt $0.14/M, completion $0.28/M, input_cache_read $0.028/M.
+    # Endpoint pinned to novita/fp8 per maintainer choice (atlas-cloud/fp8 is
+    # also served for this revision but was not selected; full tag list
+    # captured 2026-08-02). Rates are published list prices, not
+    # yet billing-reconciled (cf. the 2026-06-11 reconciliation note on the
+    # undated Flash entry above).
     pricing:
-      input: 0.132
-      output: 0.263
+      input: 0.14
+      output: 0.28
+      cached_input: 0.028
     env_overrides:
-      ANTHROPIC_DEFAULT_OPUS_MODEL: "deepseek/deepseek-v4-flash:atlas-cloud/fp8"
-      ANTHROPIC_DEFAULT_SONNET_MODEL: "deepseek/deepseek-v4-flash:atlas-cloud/fp8"
-      CLAUDE_CODE_SUBAGENT_MODEL: "deepseek/deepseek-v4-flash:atlas-cloud/fp8"
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "deepseek/deepseek-v4-flash-0731:novita/fp8"
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "deepseek/deepseek-v4-flash-0731:novita/fp8"
+      CLAUDE_CODE_SUBAGENT_MODEL: "deepseek/deepseek-v4-flash-0731:novita/fp8"
 
   - id: "google/gemini-3.1-pro-preview:google-vertex"
     # wire_id OBSERVED 2026-07-25 (results/20260725_200704/runs/
@@ -796,3 +834,19 @@ models:
 #      cached_input: 0.30
 #    env_overrides:
 #      CLAUDE_CODE_EFFORT_LEVEL: "max"
+
+# --- Retired model pricing (historical costing only) ---
+# Models retired from the active `models:` list above whose archived corpus
+# runs still need list-rate pricing in the results viewer (a retired entry
+# with corpus history would otherwise silently lose its cost estimate —
+# observed 2026-08-02 when the DeepSeek V4 Flash retirement dropped the
+# viewer's pricing coverage from 30 to 29 corpus models).
+# Read by load_model_pricing() in scripts/generate_results_viewer_v2.py;
+# ignored by the harness and phase runners (they read only `models:`).
+retired_model_pricing:
+  - name: "DeepSeek V4 Flash"
+    # Retired 2026-08-02 (see the REMOVED block above). Rates preserved from
+    # the retired entry (2026-06-11 billing-reconciliation values).
+    pricing:
+      input: 0.132
+      output: 0.263

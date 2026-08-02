@@ -1297,13 +1297,13 @@ nav.site-nav{
     <p>The efficiency frontier is the set of models no other model beats on <em>both</em> cost and conformance
     at once (basically: the picks that are never simply outclassed by something cheaper). Six models make it, and they
     come from four different providers: <b>Gemma 4 31B</b> (<span id="kt-fr-gemma-s">&mdash;</span> at
-    <span id="kt-fr-gemma-c">&mdash;</span> Opus 4.8&rsquo;s battery cost), <b>DeepSeek V4 Flash</b>
+    <span id="kt-fr-gemma-c">&mdash;</span> Opus 4.8&rsquo;s battery cost), <b>DeepSeek V4 Flash 0731</b>
     (<span id="kt-fr-dsflash-s">&mdash;</span> at <span id="kt-fr-dsflash-c">&mdash;</span>), <b>GPT-5.6 Luna</b>
     (<span id="kt-fr-luna-s">&mdash;</span> at <span id="kt-fr-luna-c">&mdash;</span>), <b>Sonnet 5</b>
     (<span id="kt-fr-sonnet5-s">&mdash;</span> at <span id="kt-fr-sonnet5-c">&mdash;</span>), <b>GPT-5.6 Sol</b>
     (<span id="kt-fr-sol-s">&mdash;</span> at <span id="kt-fr-sol-c">&mdash;</span>), and <b>Fable 5</b>
     (<span id="kt-fr-fable-s">&mdash;</span> at <span id="kt-fr-fable-c">&mdash;</span>). Two of the six &mdash;
-    Gemma 4 31B and DeepSeek V4 Flash &mdash; are open-weights, and Gemma can even be run on sufficiently powerful home computers. The practical lesson is that no single
+    Gemma 4 31B and DeepSeek V4 Flash 0731 &mdash; are open-weights, and Gemma can even be run on sufficiently powerful home computers. The practical lesson is that no single
     vendor owns price-performance: the right pick depends on <b>which budget point you are shopping at</b> (and given imprecision in these estimates, note some fluidity in these recommendations; see the caveats below).</p>
   </div>
 
@@ -1330,7 +1330,7 @@ nav.site-nav{
     <b>predictability</b>. Because every test here runs three times, we can measure how often a model
     scores <em>equally</em> well on repeat attempts: the share of repeated cases where all reps land on the
     identical outcome. Fable 5 agrees with itself on <b><span id="kt-t4-topagree">&mdash;</span></b> of its
-    repeated cases; DeepSeek V4 Flash (a genuinely capable budget pick) manages only
+    repeated cases; DeepSeek V4 Flash 0731 (a genuinely capable budget pick) manages only
     <b><span id="kt-t4-budgetagree">&mdash;</span></b>. Cheaper models don&rsquo;t just score lower on average;
     they <b>wobble more from run to run</b>, and in a chained agentic workflow where one bad step derails
     everything downstream, that unpredictability is a real cost of its own to weigh against very judiciously.</p>
@@ -1342,7 +1342,7 @@ nav.site-nav{
          "next crossover" closing sentence was deliberately removed by the
          user) — the strongest anchor tier; do not reword. -->
     <div class="kt-claim">5. Open-weight models are no longer the compromise option.</div>
-    <p>Open-weights hold the budget end of the frontier outright: Gemma 4 31B and DeepSeek V4 Flash are the two
+    <p>Open-weights hold the budget end of the frontier outright: Gemma 4 31B and DeepSeek V4 Flash 0731 are the two
     cheapest non-dominated points on the entire chart. GLM 5.2 remains the natural <b>self-hosting</b> pick for
     teams that want full control, at <span id="kt-t5-glm">&mdash;</span> composite for about
     <b><span id="kt-t5-glmcost">&mdash;</span></b> of Opus 4.8&rsquo;s battery cost; and Kimi K3 now tops the
@@ -2540,7 +2540,7 @@ function fillTakeaways(){
      composite and its relative battery-cost multiplier (vs Opus 4.8). Static
      names in the prose; live score + cost figures here so a repriced or
      reshuffled frontier tracks automatically. */
-  [["gemma","Gemma 4 31B"],["dsflash","DeepSeek V4 Flash"],["luna",LUNA],
+  [["gemma","Gemma 4 31B"],["dsflash","DeepSeek V4 Flash 0731"],["luna",LUNA],
    ["sonnet5","Sonnet 5"],["sol",SOL],["fable","Fable 5"]].forEach(function(p){
     var s=score(p[1]);   if(s!=null) set("kt-fr-"+p[0]+"-s",pct1(s));
     var cm=costMult(p[1]); if(cm!=null) set("kt-fr-"+p[0]+"-c",fmtMult(cm));
@@ -2563,10 +2563,10 @@ function fillTakeaways(){
      landed on the identical grade — a predictability measure decoupled from
      score level (distinct from `rate`, which is all-reps-perfect). Contrast
      a top-tier model (Fable 5) with a capable budget pick (DeepSeek V4
-     Flash) to show that the cheap end gives up consistency, not just score. */
+     Flash 0731) to show that the cheap end gives up consistency, not just score. */
   var topA=cons["Fable 5"];
   if(topA&&topA.rate_agree!=null) set("kt-t4-topagree",pct1(topA.rate_agree));
-  var budA=cons["DeepSeek V4 Flash"];
+  var budA=cons["DeepSeek V4 Flash 0731"];
   if(budA&&budA.rate_agree!=null) set("kt-t4-budgetagree",pct1(budA.rate_agree));
 
   /* T5 — open-weights: GLM 5.2 as the self-hosting pick (score + relative

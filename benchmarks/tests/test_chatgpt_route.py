@@ -54,7 +54,6 @@ PREEXISTING_MODEL_KEYS = {
     "gemma-4-31b",
     "gemma-4-26b",
     "deepseek-v4-pro",
-    "deepseek-v4-flash",
     "gemini-31-pro",
     "nemotron-3-ultra",
     "gemini-31-flash-lite",
@@ -83,12 +82,16 @@ G1R_OPENROUTER_ADDITIONS = {
 
 # Concurrent OpenRouter keys added after the PREEXISTING snapshot. Kept separate
 # from the G1R Kimi K3 addition so both post-snapshot registry changes remain
-# explicit in the preexisting-key identity assertion.
+# explicit in the preexisting-key identity assertion. deepseek-v4-flash-0731
+# added 2026-08-02, superseding the retired deepseek-v4-flash (removed from
+# PREEXISTING_MODEL_KEYS the same day; see the REMOVED 2026-08-02 block in
+# config/models.yaml).
 POST_SNAPSHOT_OPENROUTER_ADDITIONS = {
     "gemini-35-flash",
     "gemini-36-flash",
     "gemini-35-flash-lite",
     "gemini-25-pro",
+    "deepseek-v4-flash-0731",
 }
 
 # Anthropic keys added after the PREEXISTING snapshot (opus-5 added 2026-07-25
@@ -255,12 +258,35 @@ class ModelRegistryTests(unittest.TestCase):
 
     def test_chatgpt_entries_preserve_tier_aliases_without_flatten_override(self):
         models = self.load_all()
-        expected = {
-            "gpt-56-luna-chatgpt": "gpt-5.6-luna",
-            "gpt-56-terra-chatgpt": "gpt-5.6-terra",
-            "gpt-56-sol-chatgpt": "gpt-5.6-sol",
+        # Per-model published schedules. Terra/Sol originally (wrongly) copied
+        # Luna's schedule; the registry was corrected 2026-07-29 to each model's
+        # own published tier (developers.openai.com), so each entry is asserted
+        # against its own rates. Luna keeps asserting the cost_estimator
+        # constants to preserve the registry <-> estimator coherence check.
+        TERRA_SHORT_CONTEXT_RATES = {
+            "input": 2.50, "cached_input": 0.25, "cache_write": 3.125, "output": 15.00,
         }
-        for key, parent_id in expected.items():
+        TERRA_LONG_CONTEXT_RATES = {
+            "input": 5.00, "cached_input": 0.50, "cache_write": 6.25, "output": 22.50,
+        }
+        SOL_SHORT_CONTEXT_RATES = {
+            "input": 5.00, "cached_input": 0.50, "cache_write": 6.25, "output": 30.00,
+        }
+        SOL_LONG_CONTEXT_RATES = {
+            "input": 10.00, "cached_input": 1.00, "cache_write": 12.50, "output": 45.00,
+        }
+        expected = {
+            "gpt-56-luna-chatgpt": (
+                "gpt-5.6-luna", LUNA_SHORT_CONTEXT_RATES, LUNA_LONG_CONTEXT_RATES,
+            ),
+            "gpt-56-terra-chatgpt": (
+                "gpt-5.6-terra", TERRA_SHORT_CONTEXT_RATES, TERRA_LONG_CONTEXT_RATES,
+            ),
+            "gpt-56-sol-chatgpt": (
+                "gpt-5.6-sol", SOL_SHORT_CONTEXT_RATES, SOL_LONG_CONTEXT_RATES,
+            ),
+        }
+        for key, (parent_id, short_rates, long_rates) in expected.items():
             with self.subTest(key=key):
                 selected = filter_models(models, [key])
                 self.assertEqual(1, len(selected))
@@ -274,8 +300,8 @@ class ModelRegistryTests(unittest.TestCase):
                 self.assertEqual(
                     LUNA_LONG_CONTEXT_THRESHOLD, prices["threshold_input_tokens"]
                 )
-                self.assertEqual(LUNA_SHORT_CONTEXT_RATES, prices["short_context"])
-                self.assertEqual(LUNA_LONG_CONTEXT_RATES, prices["long_context"])
+                self.assertEqual(short_rates, prices["short_context"])
+                self.assertEqual(long_rates, prices["long_context"])
                 # Keep semantic tier selection operative while both aliases resolve
                 # to the same parent model for the child-model purity condition.
                 self.assertEqual(

@@ -1925,6 +1925,38 @@ def load_model_pricing(base_dir):
             ),
             "pricing_basis": "list",
         }
+
+    # Retired models with archived corpus history: their entries are commented
+    # out of `models:` (the retirement convention), which would silently drop
+    # pricing for their historical runs. The registry preserves those rates in
+    # the top-level `retired_model_pricing:` section — same schema, same list
+    # basis. Active entries win on any name collision.
+    for entry in config.get("retired_model_pricing", []):
+        name = entry.get("name")
+        if not name or name in pricing:
+            continue
+        p = entry.get("pricing", {})
+        if not isinstance(p, dict):
+            continue
+        input_rate = p.get("input")
+        output_rate = p.get("output")
+        cached_rate = p.get("cached_input")
+        if any(
+            isinstance(value, bool) or not isinstance(value, (int, float))
+            for value in (input_rate, output_rate)
+        ):
+            continue
+        pricing[name] = {
+            "input_per_million": round(input_rate, 4),
+            "output_per_million": round(output_rate, 4),
+            "cached_input_per_million": (
+                round(cached_rate, 4)
+                if isinstance(cached_rate, (int, float))
+                and not isinstance(cached_rate, bool)
+                else None
+            ),
+            "pricing_basis": "list",
+        }
     return pricing
 
 
