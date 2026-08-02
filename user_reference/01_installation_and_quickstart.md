@@ -167,6 +167,16 @@ cd daaf-docker
 
 The DAAF Control Panel (`daaf.sh` on macOS/Linux, `daaf.ps1` on Windows) is an interactive menu with a status dashboard, service management, and all DAAF operations in one place. The dashboard is live — it shows at a glance which of DAAF's web services (notebooks, log viewer, and the browser-based code editor) are actually up and listening, so you can see the state of your install before choosing an action. Select **option 1, "Start Claude Code,"** from the menu to get started.
 
+**Prefer not to type in the terminal? Double-click instead.**
+
+If terminal commands feel like a hassle, you can open the Control Panel straight from your file explorer:
+
+- **Windows:** open the `daaf-docker` folder in File Explorer and double-click **`daaf.bat`**. The installer also drops a **DAAF** shortcut (`DAAF.lnk`) inside that same folder — drag it to your Desktop or taskbar if you want one-click access from there.
+- **macOS:** open the `daaf-docker` folder in Finder and double-click **`DAAF.command`**.
+- **Linux:** no double-click launcher ships, because Linux desktop environments run double-clicked scripts too inconsistently to rely on. Use the terminal command above instead — most file managers offer a right-click "Open Terminal Here" on the `daaf-docker` folder, after which you just run `bash daaf.sh`.
+
+These launchers are thin shortcuts to the very same Control Panel — they simply move into the `daaf-docker` folder and run `daaf.sh`/`daaf.ps1` for you. The terminal commands above always work as the universal fallback on every platform. (If you ever obtain `DAAF.command` by downloading it in a browser rather than from the installer, macOS may block it once as coming from an "unidentified developer" — allow it via **System Settings > Privacy & Security > "Open Anyway"**. Copies the installer places for you are not blocked.)
+
 **Alternative -- launch Claude Code directly:**
 
 ```bash
@@ -1126,7 +1136,7 @@ That's the whole setup. The paragraphs that follow are optional reading you can 
 
 See the [technical FAQ entry on controlling GPT reasoning effort](07_faq_technical.md#q-how-do-i-control-gpt-reasoning-effort-option-f).
 
-**Response verbosity.** Separately from reasoning effort, the shim sends OpenAI's `text.verbosity` control on every request, defaulting to `high` for parity with DAAF's warm, educational posture (`high` adds warmth and volume; `low` is terse); set `SHIM_TEXT_VERBOSITY=low` or `medium` in `environment_settings.txt` if GPT responses feel too long, and see the [technical FAQ entry on terse GPT responses](07_faq_technical.md#q-gpt-responses-feel-terse-compared-to-claude-option-f) if they feel too brief.
+**Response verbosity.** Separately from reasoning effort, the shim sends OpenAI's `text.verbosity` control on every request, defaulting to `medium` to balance decision-focused responses with enough detail for DAAF evidence and caveats (`high` adds warmth and volume; `low` is terse). Set `SHIM_TEXT_VERBOSITY=high` or `low` in `environment_settings.txt` if you prefer a more expansive or more concise style, and see the [technical FAQ entry on GPT response verbosity](07_faq_technical.md#q-how-do-i-control-gpt-response-verbosity-option-f) for details.
 
 ##### GPT Fast Mode on the provider-shim routes
 
@@ -1173,7 +1183,7 @@ From the Claude Code prompt window, you can prefix the same command with `!`, fo
 
 **Optional reading.** Here for when you want to look under the hood or diagnose a problem. These mechanics are shared by both shim lanes (this one and the ChatGPT lane below).
 
-**Logs and diagnostics.** The shim keeps its own diagnostic log at `/daaf/scripts/provider_shim/logs/shim.log`. It records only technical metadata — timings, status codes, error types, retry counts, and request-correlation IDs — and **never** your prompts or text, tool inputs, image bytes or URLs, credentials, raw response streams, or full request/response bodies. If a GPT session misbehaves, run `--restart` and check that log; the [technical FAQ](07_faq_technical.md#q-my-gpt-session-fails-instantly-with-429-errors-on-every-request-option-f) walks through common status/type/code triage such as `insufficient_quota` (billing) versus a true rate limit. The shim is a persistent daemon: changing its Python source does not update the already-running process. After any source update, run `bash /daaf/scripts/provider_shim/start_shim.sh --restart`, then confirm that `curl -s http://127.0.0.1:4141/health` reports `"version": "1.3.9"` before testing the new behavior.
+**Logs and diagnostics.** The shim keeps its own diagnostic log at `/daaf/scripts/provider_shim/logs/shim.log`. It records only technical metadata — timings, status codes, error types, retry counts, and request-correlation IDs — and **never** your prompts or text, tool inputs, image bytes or URLs, credentials, raw response streams, or full request/response bodies. If a GPT session misbehaves, run `--restart` and check that log; the [technical FAQ](07_faq_technical.md#q-my-gpt-session-fails-instantly-with-429-errors-on-every-request-option-f) walks through common status/type/code triage such as `insufficient_quota` (billing) versus a true rate limit. The shim is a persistent daemon: changing its Python source does not update the already-running process. After any source update, run `bash /daaf/scripts/provider_shim/start_shim.sh --restart`, then confirm that `curl -s http://127.0.0.1:4141/health` reports `"version": "1.3.10"` before testing the new behavior.
 
 **Session continuity across rebuilds.** On a shim lane, the shim keeps a small reasoning-cache file (`~/.claude/provider_shim/reasoning_cache.json`) that carries GPT reasoning continuity from one turn to the next. It lives on your per-install `daaf-claude-config` volume, so it survives container restarts and image rebuilds — you don't have to do anything to preserve it. Only an explicit `docker compose down -v` or `docker volume rm` erases it.
 

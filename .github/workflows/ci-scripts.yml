@@ -802,7 +802,7 @@ jobs:
       - name: Syntax-check host scripts (bash -n)
         run: |
           failed=0
-          for f in scripts/host/*.sh; do
+          for f in scripts/host/*.sh scripts/host/*.command; do
             echo "=== bash -n: $f ==="
             if ! bash -n "$f"; then
               echo "FAILED: $f has a syntax error under Bash 3.2"

@@ -368,6 +368,40 @@ Describe "update_daaf.ps1 behavioral tests" {
             ($output | Where-Object { $_ -match "Updated: test_migration.ps1" }) | Should -BeNullOrEmpty
         }
 
+        It "syncs the Windows launcher daaf.bat and the daaf.ico icon" {
+            # daaf.bat (Windows double-click launcher) and daaf.ico (icon) must
+            # pass the platform filter on Windows -- they are delivered here, not
+            # by update_daaf.sh. Copy-HostScript byte-copies both via docker cp.
+            Mock docker {
+                $allArgs = $args -join " "
+                if ($allArgs -match "rev-parse HEAD") { return "new-sha-999" }
+                if ($allArgs -match "ls-files") { return "scripts/host/daaf.bat`nscripts/host/daaf.ico" }
+                if ($allArgs -match "diff --name-only") { return "scripts/host/daaf.bat`nscripts/host/daaf.ico" }
+                $global:LASTEXITCODE = 0
+                return ""
+            }
+
+            $output = Sync-HostScript "old-sha-111" 6>&1
+            ($output | Where-Object { $_ -match "Updated: daaf.bat" }) | Should -Not -BeNullOrEmpty
+            ($output | Where-Object { $_ -match "Updated: daaf.ico" }) | Should -Not -BeNullOrEmpty
+        }
+
+        It "drops the macOS launcher DAAF.command on Windows" {
+            # DAAF.command is the macOS Finder launcher; the Windows updater must
+            # filter it out (delivered by update_daaf.sh on Darwin only).
+            Mock docker {
+                $allArgs = $args -join " "
+                if ($allArgs -match "rev-parse HEAD") { return "new-sha-999" }
+                if ($allArgs -match "ls-files") { return "scripts/host/DAAF.command" }
+                if ($allArgs -match "diff --name-only") { return "scripts/host/DAAF.command" }
+                $global:LASTEXITCODE = 0
+                return ""
+            }
+
+            $output = Sync-HostScript "old-sha-111" 6>&1
+            ($output | Where-Object { $_ -match "DAAF.command" }) | Should -BeNullOrEmpty
+        }
+
         It "prints self-update notice when update_daaf.ps1 changed" {
             New-Item -ItemType File -Path "./update_daaf.ps1" | Out-Null
             # The cp mock MATERIALIZES the destination: the staged-copy redesign

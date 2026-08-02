@@ -1,7 +1,7 @@
 ---
 name: shell-scripting
 description: >-
-  Standards for Bash and PowerShell scripts in DAAF: preambles, quoting, error handling, cleanup, testing. Use when writing or reviewing .sh/.ps1 files (hooks, lifecycle, utilities). Not runtime safety — that is bash-safety.sh hook.
+  Standards for Bash and PowerShell scripts in DAAF: preambles, quoting, error handling, cleanup, testing. Use when writing or reviewing .sh/.ps1 files (hooks, lifecycle, utilities) and the host double-click launcher shims (.bat/.command under scripts/host/). Not runtime safety — that is bash-safety.sh hook.
 metadata:
   audience: any-agent
   domain: scripting-standards
@@ -12,6 +12,8 @@ metadata:
 Coding quality standards and best practices for all `.sh` (Bash) and `.ps1` (PowerShell) scripts within DAAF. Covers preamble conventions, quoting discipline, error handling philosophy, signal/cleanup patterns, Docker interaction, output formatting, testing strategies, and cross-platform gotchas. Use when authoring new shell scripts (hooks, Docker lifecycle, utilities), reviewing existing scripts for compliance, debugging script failures, or setting up CI for shell code.
 
 **Boundary with `bash-safety.sh`:** This skill governs *how to write good scripts* (coding quality). The `bash-safety.sh` hook governs *what commands are safe to run* (runtime safety enforcement). A script can follow every standard in this skill and still be blocked by `bash-safety.sh` if it contains a dangerous command like `rm -rf /`. Conversely, a script that passes `bash-safety.sh` may still be poorly written if it ignores these standards.
+
+**Host launcher shims (`scripts/host/*.command`, `scripts/host/*.bat`):** These standards also apply to the double-click launcher shims. A `.command` shim is a Bash script that runs on the user's macOS machine, so it follows the host-script **Bash 3.2 + BSD userland** rules in `bash-standards.md`. A `.bat` shim is a Windows batch file that ships with **CRLF line endings** (declared `*.bat -text` in `.gitattributes`, since the installer downloads the raw blob) and **ASCII** content, and is kept a **thin passthrough shim** (change into its own folder, verify the delegate is present, hand off to `daaf.ps1`) rather than growing logic of its own.
 
 ## How to Use This Skill
 

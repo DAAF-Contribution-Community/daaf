@@ -684,9 +684,12 @@ function Sync-HostScript {
     if ([string]::IsNullOrWhiteSpace($allHostFiles)) { return }
 
     # Platform filter (Windows hosts): keep *.ps1 files (which now includes the
-    # native Control Panel pair daaf.ps1 / daaf_lib.ps1) and the shared
-    # plain-text files (environment_settings_example.txt, README.txt). All *.sh
-    # files are dropped -- Windows uses the .ps1 Control Panel, not daaf.sh.
+    # native Control Panel pair daaf.ps1 / daaf_lib.ps1), the daaf.bat double-click
+    # launcher, the daaf.ico icon (future, user-supplied -- absent from the repo
+    # until then, so it simply never appears in the git ls-files list), and the
+    # shared plain-text files (environment_settings_example.txt, README.txt). All
+    # *.sh files and DAAF.command (the macOS launcher) are dropped -- Windows uses
+    # the .ps1 Control Panel, not daaf.sh.
     # Bootstrap-only scripts (install.ps1, migrate_daaf.ps1) are intentionally
     # excluded -- fetched via irm on demand, not needed post-install. The
     # dev-only test harness (test_migration.ps1) is likewise excluded -- it is a
@@ -698,6 +701,8 @@ function Sync-HostScript {
         if (-not $repoPath) { continue }
         if ($repoPath -eq "scripts/host/install.ps1" -or $repoPath -eq "scripts/host/migrate_daaf.ps1" -or $repoPath -eq "scripts/host/test_migration.ps1") { continue }
         if ($repoPath -like "*.ps1" -or
+            $repoPath -eq "scripts/host/daaf.bat" -or
+            $repoPath -eq "scripts/host/daaf.ico" -or
             $repoPath -eq "scripts/host/environment_settings_example.txt" -or
             $repoPath -eq "scripts/host/README.txt") {
             $syncList += $repoPath

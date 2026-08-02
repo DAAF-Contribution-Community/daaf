@@ -46,6 +46,15 @@ If you're new to some of the technical vocabulary, here's a quick reference:
 
 Docker Desktop isn't installed or isn't in your system PATH. Download it from [docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop/), install it, and make sure it's running (you should see the Docker whale icon in your system tray/menu bar). You may need to restart your terminal after installation.
 
+### The double-click launcher (DAAF.command / daaf.bat) won't open
+
+DAAF installs a double-click launcher next to your other host files so you can start the Control Panel without opening a terminal: `DAAF.command` on macOS, `daaf.bat` on Windows. A few things can trip it up:
+
+- **macOS: "DAAF.command can't be opened because it is from an unidentified developer."** This is Gatekeeper, and it only appears on a copy you downloaded through a browser (the installer-created file is not quarantined). Right-click `DAAF.command` → **Open**, then click **Open** again in the dialog; or go to **System Settings → Privacy & Security** and click **Open Anyway**. You only have to do this once. The always-works fallback is to open Terminal in your `daaf-docker` folder and run `bash daaf.sh`.
+- **A terminal/console window flashes open and closes instantly.** This should not happen — both shims pause on error so you can read the message. If it does, launch from a terminal instead so the output stays visible: `bash daaf.sh` (macOS/Linux) or `.\daaf.ps1` (Windows) from your `daaf-docker` folder.
+- **Windows: no `DAAF.lnk` shortcut appeared.** The installer creates a `DAAF.lnk` shortcut inside your `daaf-docker` folder as a convenience (drag it to your Desktop or taskbar if you want it there), but skipping it is non-fatal — you can always double-click `daaf.bat` directly in that folder. To recreate the shortcut, re-run the installer, or right-click `daaf.bat` → **Show more options → Create shortcut**, then drag the new shortcut anywhere you like.
+- **Linux has no double-click launcher.** This is by design — Linux desktop environments vary too much for a reliable one. Launch DAAF from a terminal in your `daaf-docker` folder with `bash daaf.sh`.
+
 ### Malformed authentication URL when trying to log in to Claude Code
 
 If you're trying to copy the URL authentication link, be careful to check it for erroneous line-breaks in the URL. Paste this into a simple notepad editor and remove any extra line-breaks, then try pasting the revised URL into your browser.
@@ -391,7 +400,7 @@ You have two ways to set it, both in `environment_settings.txt`:
 1. **A `#<effort>` suffix on the model slug** — e.g. `ANTHROPIC_DEFAULT_SONNET_MODEL=gpt-5.6-terra[1m]#medium`. This works alongside the `[1m]` window hint, and the shim strips the suffix before the request reaches OpenAI (the backend only ever sees the bare `gpt-5.6-terra`).
 2. **The `SHIM_REASONING_EFFORT` env var** — a single default applied to the whole shim.
 
-Valid values are `none`, `low`, `medium`, `high`, `xhigh`, and `max` (`max` is gpt-5.6-only; `none` disables reasoning). An explicit setting always wins over the built-in `high` default, and a per-slug suffix wins over the shim-wide env var; the shim logs which source it used on each request line in `/daaf/scripts/provider_shim/logs/shim.log` (as `effort=<value>:<source>`). Most people set nothing and get `high` everywhere. Changes to `environment_settings.txt` take effect after the usual container recreate. See also the Option F [reasoning-effort paragraph](01_installation_and_quickstart.md#option-f-openai-api-directly-daaf-provider-shim) in the installation guide. If GPT replies also feel *shorter* or *terser* than you expect, that is a separate knob — see [GPT responses feel terse compared to Claude](#q-gpt-responses-feel-terse-compared-to-claude-option-f) below.
+Valid values are `none`, `low`, `medium`, `high`, `xhigh`, and `max` (`max` is gpt-5.6-only; `none` disables reasoning). An explicit setting always wins over the built-in `high` default, and a per-slug suffix wins over the shim-wide env var; the shim logs which source it used on each request line in `/daaf/scripts/provider_shim/logs/shim.log` (as `effort=<value>:<source>`). Most people set nothing and get `high` everywhere. Changes to `environment_settings.txt` take effect after the usual container recreate. See also the Option F [reasoning-effort paragraph](01_installation_and_quickstart.md#option-f-openai-api-directly-daaf-provider-shim) in the installation guide. If GPT response length is not what you expect, that is a separate knob — see [How do I control GPT response verbosity?](#q-how-do-i-control-gpt-response-verbosity-option-f) below.
 
 ### Q: How do I control GPT Fast or GPT Priority through the provider shim? (Option F)
 
@@ -411,15 +420,15 @@ On a GPT route the shim offers an optional speed boost — **GPT Fast** on the C
 
 For the route-to-product mapping, the full setup steps, and the policy details under the hood, see [GPT Fast and GPT Priority on the provider-shim routes](01_installation_and_quickstart.md#gpt-fast-and-gpt-priority-on-the-provider-shim-routes) in the installation guide.
 
-### Q: GPT responses feel terse compared to Claude (Option F)
+### Q: How do I control GPT response verbosity? (Option F)
 
 Two things are in play, and only one of them is tunable.
 
-**Model personality (not fully fixable).** DAAF's prompts, agent protocols, and skill documents are written and tuned for Claude, whose default register is comparatively warm and explanatory. A GPT model running the same prompts brings its own default style, which tends to read as more clipped or matter-of-fact. No shim setting fully closes that gap — some of the difference is just the model, and the DAAF prompts can't override a model's underlying voice.
+**Model personality (not fully fixable).** DAAF's prompts, agent protocols, and skill documents are written and tuned for Claude, whose default register is comparatively warm and explanatory. A GPT model running the same prompts brings its own default style. No shim setting fully closes that gap — some of the difference is just the model, and DAAF's prompts cannot completely override its underlying voice.
 
-**Response verbosity (tunable).** On the direct-OpenAI shim lane, the shim sends OpenAI's `text.verbosity` control on every request, and it defaults to **`high`** — chosen for parity with DAAF's warm, educational posture (the same rationale as the reasoning-effort default). `high` adds warmth and volume to responses; `low` makes them terse. So by default you are already getting the most expansive setting.
+**Response verbosity (tunable).** On the provider-shim routes, the shim sends OpenAI's `text.verbosity` control on every request. It defaults to **`medium`**, balancing decision-focused responses with enough detail for DAAF evidence and caveats. Set `SHIM_TEXT_VERBOSITY=high` in `environment_settings.txt` for more warmth and volume, or `SHIM_TEXT_VERBOSITY=low` for terse responses. Valid values are `low`, `medium`, and `high`.
 
-If responses still feel too brief, verbosity is already maxed and the remaining gap is model personality (above). If instead you find GPT responses too *long* or padded, dial verbosity down: set `SHIM_TEXT_VERBOSITY=low` (or `medium`) in `environment_settings.txt`. Valid values are `low`, `medium`, and `high`; the value is read once at shim startup, so a change requires the usual container recreate. You can confirm what the shim resolved via the `/health` endpoint's `text_verbosity` field, and the shim startup log line records it as `text_verbosity=<value>`. This is independent of reasoning effort — [that control](#q-how-do-i-control-gpt-reasoning-effort-option-f) governs how hard the model *thinks*, while verbosity governs how much it *writes*.
+The value is read once at shim startup. After editing the host `environment_settings.txt`, recreate the container so Docker Compose injects the updated value; restarting only the shim cannot reload a host-file change. You can confirm what the shim resolved via the `/health` endpoint's `text_verbosity` field, and the shim startup log records it as `text_verbosity=<value>`. This is independent of reasoning effort — [that control](#q-how-do-i-control-gpt-reasoning-effort-option-f) governs how hard the model *thinks*, while verbosity governs how much it *writes*.
 
 ### Q: Is my data sent to Anthropic? What about privacy?
 

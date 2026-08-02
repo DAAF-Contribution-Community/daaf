@@ -404,6 +404,110 @@ teardown() {
     assert_output --partial "Updated: README.txt"
 }
 
+@test "update: sync_host_scripts syncs DAAF.command on macOS (Darwin gate)" {
+    # DAAF.command (the macOS double-click launcher) must pass the platform
+    # filter only when uname reports Darwin, mirroring install.sh's gate. The
+    # *.command chmod case restores its executable bit after the docker cp.
+    run bash -c '
+        DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+        trap - ERR
+        set +eu
+
+        uname() { echo "Darwin"; }
+
+        docker() {
+            case "$*" in
+                *rev-parse*HEAD*) echo "new5678" ;;
+                *ls-files*) printf "scripts/host/DAAF.command\n" ;;
+                *diff*--name-only*) printf "scripts/host/DAAF.command\n" ;;
+                cp*) return 0 ;;
+                *) return 0 ;;
+            esac
+        }
+
+        sync_host_scripts "old1234"
+    '
+    assert_success
+    assert_output --partial "Updated: DAAF.command"
+}
+
+@test "update: sync_host_scripts drops DAAF.command on Linux (Darwin gate)" {
+    # On a non-Darwin host DAAF.command must be filtered out -- Linux desktops
+    # handle double-clicked scripts inconsistently; those users launch via
+    # `bash daaf.sh`.
+    run bash -c '
+        DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+        trap - ERR
+        set +eu
+
+        uname() { echo "Linux"; }
+
+        docker() {
+            case "$*" in
+                *rev-parse*HEAD*) echo "new5678" ;;
+                *ls-files*) printf "scripts/host/DAAF.command\n" ;;
+                *diff*--name-only*) printf "scripts/host/DAAF.command\n" ;;
+                cp*) return 0 ;;
+                *) return 0 ;;
+            esac
+        }
+
+        sync_host_scripts "old1234"
+    '
+    assert_success
+    refute_output --partial "DAAF.command"
+}
+
+@test "update: sync_host_scripts drops daaf.bat on Unix (Windows-only launcher)" {
+    # daaf.bat is delivered by update_daaf.ps1 on Windows; the Unix updater must
+    # filter it out (it falls through to the *) arm).
+    run bash -c '
+        DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+        trap - ERR
+        set +eu
+
+        docker() {
+            case "$*" in
+                *rev-parse*HEAD*) echo "new5678" ;;
+                *ls-files*) printf "scripts/host/daaf.bat\n" ;;
+                *diff*--name-only*) printf "scripts/host/daaf.bat\n" ;;
+                cp*) return 0 ;;
+                *) return 0 ;;
+            esac
+        }
+
+        sync_host_scripts "old1234"
+    '
+    assert_success
+    refute_output --partial "daaf.bat"
+}
+
+@test "update: sync_host_scripts syncs daaf.ico on Unix when present" {
+    # daaf.ico is shared (both platforms) and copied as-is by docker cp. When it
+    # exists upstream it must pass the filter; when absent it simply never
+    # appears in the git ls-files list, so no special missing-file handling is
+    # needed. It receives NO executable bit (only *.sh/*.command do).
+    run bash -c '
+        DAAF_TEST_MODE=1 source "'"${REPO_ROOT}"'/scripts/host/update_daaf.sh"
+        trap - ERR
+        set +eu
+
+        docker() {
+            case "$*" in
+                *rev-parse*HEAD*) echo "new5678" ;;
+                *ls-files*) printf "scripts/host/daaf.ico\n" ;;
+                *diff*--name-only*) printf "scripts/host/daaf.ico\n" ;;
+                cp*) return 0 ;;
+                *) return 0 ;;
+            esac
+        }
+
+        sync_host_scripts "old1234"
+    '
+    assert_success
+    assert_output --partial "Updated: daaf.ico"
+}
+
 @test "update: sync_host_scripts prints self-update notice when update_daaf.sh changed" {
     # update_daaf.sh present on host (tier A skips) but changed in the range ->
     # tier B refreshes it and the self-update re-run notice must fire.

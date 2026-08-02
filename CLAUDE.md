@@ -342,6 +342,8 @@ bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage5_fetch/0
 
 **All `.sh` files must be committed with the executable bit set.** After creating or modifying any shell script, run `chmod +x <file>` to set filesystem permissions, then `git update-index --chmod=+x <file>` to ensure Git's index tracks the file as mode `100755`. Verify with `git ls-files -s <file>` — the mode column must show `100755`, not `100644`. This applies to hooks in `.claude/hooks/` and utility scripts in `scripts/`.
 
+The same executable-bit convention applies to the macOS double-click launcher shim `scripts/host/DAAF.command` (it must be double-clickable from Finder, so it is committed mode `100755`); the Windows `scripts/host/daaf.bat` shim is the exception — it stays mode `100644` and instead ships with CRLF bytes (`*.bat -text` in `.gitattributes`), since Windows does not use the Unix executable bit.
+
 ### Scratch Files
 
 **Temporary and intermediate working files go inside the project, never in `/tmp`.** Use `{PROJECT_DIR}/scripts/scratch/` (create it on first use). It is inside the backup boundary and the audit trail; scratch files are transient by nature but are retained for provenance. For sessions without a research project yet (e.g., early-stage exploration), use the session workspace once it is created.

@@ -515,9 +515,9 @@ _sync_copy_one() {
             SYNC_COPY_FAILED=true
             return 1
         fi
-        # Text files (.txt) do not need the executable bit; scripts do.
+        # Text and icon (.txt/.ico) files do not need the executable bit; scripts do.
         case "${script}" in
-            *.sh) chmod +x "./${script}" 2>/dev/null || true ;;
+            *.sh|*.command) chmod +x "./${script}" 2>/dev/null || true ;;
         esac
         if [ "${backed_up}" = true ]; then
             echo "  Updated: ${script} (your previous copy was saved as ${script}.pre-update)"
@@ -528,9 +528,9 @@ _sync_copy_one() {
         return 0
     fi
     if docker cp "${CONTAINER_ID}:/daaf/${repo_path}" "./${script}" 2>/dev/null; then
-        # Text files (.txt) do not need the executable bit; scripts do.
+        # Text and icon (.txt/.ico) files do not need the executable bit; scripts do.
         case "${script}" in
-            *.sh) chmod +x "./${script}" 2>/dev/null || true ;;
+            *.sh|*.command) chmod +x "./${script}" 2>/dev/null || true ;;
         esac
         echo "  Updated: ${script}"
         SYNC_COPIED="${SYNC_COPIED} ${script}"
@@ -577,8 +577,12 @@ sync_host_scripts() {
         return
     fi
 
-    # Platform filter (macOS/Linux hosts): keep *.sh files and shared plain-text
-    # files (environment_settings_example.txt, README.txt); drop all *.ps1 (Windows-only).
+    # Platform filter (macOS/Linux hosts): keep *.sh files, the macOS double-click
+    # launcher DAAF.command (Darwin-gated below), the daaf.ico icon (future,
+    # user-supplied -- absent from the repo until then, so it simply never appears
+    # in the git ls-files list), and shared plain-text files
+    # (environment_settings_example.txt, README.txt); drop all *.ps1 and daaf.bat
+    # (Windows-only -- delivered by update_daaf.ps1 instead).
     # Bootstrap-only scripts (install.sh, migrate_daaf.sh) are intentionally
     # excluded -- they are fetched via curl on demand and are not needed in the
     # daaf-docker folder post-install. This preserves the pre-existing exclusion
@@ -594,11 +598,22 @@ sync_host_scripts() {
     # (prevents a short path from matching as a substring of a longer one).
     local sync_list="
 "
+    # DAAF.command (the macOS double-click launcher) is Finder-specific and is
+    # delivered on macOS only, mirroring install.sh's `uname -s = Darwin` gate;
+    # on Linux hosts it is filtered out (Linux users launch via `bash daaf.sh`).
+    local is_darwin=false
+    if [ "$(uname -s 2>/dev/null)" = "Darwin" ]; then
+        is_darwin=true
+    fi
     while IFS= read -r repo_path; do
         [ -z "${repo_path}" ] && continue
         case "${repo_path}" in
             scripts/host/install.sh|scripts/host/migrate_daaf.sh|scripts/host/test_migration.sh) continue ;;
-            *.sh|scripts/host/environment_settings_example.txt|scripts/host/README.txt) sync_list="${sync_list}${repo_path}
+            scripts/host/DAAF.command)
+                [ "${is_darwin}" = true ] || continue
+                sync_list="${sync_list}${repo_path}
+" ;;
+            *.sh|scripts/host/daaf.ico|scripts/host/environment_settings_example.txt|scripts/host/README.txt) sync_list="${sync_list}${repo_path}
 " ;;
             *) continue ;;
         esac
@@ -765,9 +780,9 @@ ${repo_path}
                 # to the old warning for that file.
                 if cp -f "./${script}" "./${script}.pre-update" 2>/dev/null; then
                     if cp -f "${repo_copy}" "./${script}" 2>/dev/null; then
-                        # Text files (.txt) do not need the executable bit; scripts do.
+                        # Text and icon (.txt/.ico) files do not need the executable bit; scripts do.
                         case "${script}" in
-                            *.sh) chmod +x "./${script}" 2>/dev/null || true ;;
+                            *.sh|*.command) chmod +x "./${script}" 2>/dev/null || true ;;
                         esac
                         echo "  Updated: ${script} (your previous copy was saved as ${script}.pre-update)"
                         drift_found=true
