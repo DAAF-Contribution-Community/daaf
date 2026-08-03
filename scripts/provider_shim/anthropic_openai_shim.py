@@ -63,6 +63,12 @@
 #   * GET /health endpoint for the manager's idempotency/status checks.
 #
 # Changelog:
+#   v1.3.10 (2026-07-29): Default GPT response verbosity to "medium".
+#     SHIM_TEXT_VERBOSITY still accepts explicit low|medium|high overrides, but an
+#     unset, empty, whitespace-only, or invalid value now resolves to "medium".
+#     This balances decision-focused responses with DAAF's evidence requirements;
+#     reasoning effort and every other request field are unchanged. User-approved.
+#     SHIM_VERSION -> 1.3.10.
 #   v1.3.9 (2026-07-26): Canonical GPT service-tier request vocabulary.
 #     Both exact GPT shim backends now converge on the one OpenAI Responses wire value
 #     `service_tier:"priority"` for valid inbound Anthropic Fast and shim-global ON.
@@ -1008,15 +1014,15 @@
 #                           the other flags. The outbound payload ALWAYS carries
 #                           text:{"verbosity": <value>}. Valid values: low | medium
 #                           | high (case-insensitive; surrounding whitespace
-#                           trimmed). Default "high" — parity with DAAF's
-#                           warm/educational posture (same rationale as the
-#                           SHIM_REASONING_EFFORT "high" default). "high" adds
-#                           warmth/volume; "low" is terse. An unrecognized, empty,
-#                           or whitespace-only value logs ONE startup WARNING and
-#                           falls back to "high". Live-confirmed accepted by
-#                           gpt-5.6-sol on /v1/responses (high/low HTTP 200, probe
-#                           live_tests/18); "medium" is the documented middle value
-#                           (asserted in mock, not independently live-probed here).
+#                           trimmed). Default "medium" — a balanced response length
+#                           for decision-focused collaboration while preserving
+#                           DAAF's evidence requirements. "high" adds warmth/volume;
+#                           "low" is terse. An unrecognized, empty, or whitespace-only
+#                           value logs ONE startup WARNING and falls back to "medium".
+#                           Live-confirmed accepted by gpt-5.6-sol on /v1/responses
+#                           (high/low HTTP 200, probe live_tests/18); "medium" is the
+#                           documented middle value (asserted in mock, not
+#                           independently live-probed here).
 # =============================================================================
 
 import os
@@ -1047,7 +1053,7 @@ import httpx
 import uvicorn
 
 # --- Config ---
-SHIM_VERSION = "1.3.9"
+SHIM_VERSION = "1.3.10"
 SHIM_SERVICE_ID = "daaf-anthropic-openai-shim"
 
 SHIM_PORT = int(os.environ.get("SHIM_PORT", "4141"))
@@ -1169,9 +1175,9 @@ SHIM_REASONING_EFFORT = os.environ.get("SHIM_REASONING_EFFORT", "").strip() or N
 #   middle value and is treated as accepted here on that basis — it was NOT
 #   independently live-probed (the 18-probe exercised only default/high/low). If a
 #   backend later rejects "medium", drop it from _VERBOSITY_SUPPORTED. The default
-#   "high" is a user-locked posture choice for parity with DAAF Claude sessions.
+#   "medium" balances decision-focused responses with DAAF's evidence requirements.
 _VERBOSITY_SUPPORTED = frozenset({"low", "medium", "high"})
-_VERBOSITY_DEFAULT = "high"
+_VERBOSITY_DEFAULT = "medium"
 
 
 def _resolve_startup_verbosity():
@@ -1180,7 +1186,7 @@ def _resolve_startup_verbosity():
     #   value; WARNING + default for anything else) but as a startup-only, no-tier
     #   resolution since verbosity has a single source.
     # WARNING semantics: distinguish "var not set at all" (the common, deliberate
-    #   unset -> silent default "high") from "var IS set but to an invalid value,
+    #   unset -> silent default "medium") from "var IS set but to an invalid value,
     #   including an empty/whitespace-only string" (a misconfiguration the operator
     #   should see -> ONE WARNING, then default). A present-but-blank value is a
     #   config mistake, not an intentional unset, so it warns.
@@ -3599,7 +3605,7 @@ def _anthropic_to_responses_request(
     payload["reasoning"] = reasoning_obj
 
     # v1.2.4: ALWAYS carry response verbosity. text:{"verbosity": V} where V is the
-    # startup-resolved SHIM_TEXT_VERBOSITY (default "high").
+    # startup-resolved SHIM_TEXT_VERBOSITY (default "medium").
     # REASONING: verbosity is a whole-session posture (no inbound per-request signal
     #   exists on the Anthropic wire), so it is resolved once at startup and applied
     #   uniformly. text.verbosity is live-confirmed accepted by gpt-5.6-sol on

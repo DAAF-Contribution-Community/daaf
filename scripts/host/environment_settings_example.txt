@@ -587,10 +587,11 @@
 #SHIM_REASONING_EFFORT=
 #
 # SHIM_TEXT_VERBOSITY (shim v1.2.4+): the outbound OpenAI request always carries
-# text.verbosity. Valid values low|medium|high. Default "high" (parity with
-# DAAF's warm / educational posture) -- "high" adds warmth and volume, "low" is
-# terse. Set this to dial GPT responses that feel too brief or too long. Unset ->
-# "high". Read at shim startup, so a restart is required.
+# text.verbosity. Valid values low|medium|high. Default "medium" balances concise,
+# decision-focused responses with enough detail for DAAF evidence and caveats;
+# "high" adds warmth and volume, while "low" is terse. Set this to dial GPT
+# responses that feel too brief or too long. Unset -> "medium". Read at shim
+# startup, so a restart is required.
 # --- To activate, remove the leading '#': ---
 #SHIM_TEXT_VERBOSITY=
 #

@@ -283,12 +283,12 @@ class ProviderShimHistoricalRegressionTests(unittest.TestCase):
 
     def test_verbosity_startup_health_warning_and_payload_matrix(self) -> None:
         cases = [
-            ("unset", None, "high", 0),
+            ("unset", None, "medium", 0),
             ("low", "low", "low", 0),
             ("medium", " MeDiUm ", "medium", 0),
             ("high", "high", "high", 0),
-            ("blank", "   ", "high", 1),
-            ("invalid", "verbose", "high", 1),
+            ("blank", "   ", "medium", 1),
+            ("invalid", "verbose", "medium", 1),
         ]
         scenario = full_response_scenario()
         for name, raw, expected, warning_count in cases:
@@ -356,7 +356,7 @@ class ProviderShimHistoricalRegressionTests(unittest.TestCase):
                         self.assertEqual(set(health), _HEALTH_KEYS)
                         self.assertEqual(health["service"], "daaf-anthropic-openai-shim")
                         self.assertEqual(health["status"], "ok")
-                        self.assertEqual(health["version"], "1.3.9")
+                        self.assertEqual(health["version"], "1.3.10")
                         self.assertEqual(health["backend_mode"], mode)
                         self.assertEqual(health["sanitize_tools"], sanitize)
                         self.assertEqual(health["reasoning_effort"], effort)

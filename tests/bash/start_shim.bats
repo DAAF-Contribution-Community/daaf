@@ -62,7 +62,7 @@ class Handler(BaseHTTPRequestHandler):
                 "codex_home_present": True,
                 "sanitize_tools": True,
                 "reasoning_effort": None,
-                "text_verbosity": "high",
+                "text_verbosity": "medium",
             }
             # v1.3.0 (A1-R4): optional auth block, driven by FAKE_HEALTH_AUTH_STATE.
             auth_state = os.environ.get("FAKE_HEALTH_AUTH_STATE")

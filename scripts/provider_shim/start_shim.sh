@@ -64,7 +64,7 @@
 #                           DAAFBench runs of shim-routed models
 #   SHIM_REASONING_EFFORT   tier 3 of the effort precedence chain (per-request
 #                           signal > "#<effort>" slug suffix > env > high)
-#   SHIM_TEXT_VERBOSITY     low|medium|high; default high
+#   SHIM_TEXT_VERBOSITY     low|medium|high; default medium
 #
 # Keepalive: the supervisor restarts the shim after an unexpected exit. A guard
 # stops after 10 crashes in 60 seconds so a broken configuration cannot spin.

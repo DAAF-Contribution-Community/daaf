@@ -76,7 +76,7 @@ class ProviderShimReasoningFormattingTests(unittest.TestCase):
                 )
                 self.assertEqual(shim.health.get("status"), "ok")
                 self.assertEqual(shim.health.get("backend_mode"), "openai")
-                self.assertEqual(shim.health.get("version"), "1.3.9")
+                self.assertEqual(shim.health.get("version"), "1.3.10")
                 self.assertEqual(
                     set(shim.health["gpt_service_tier"]),
                     {
