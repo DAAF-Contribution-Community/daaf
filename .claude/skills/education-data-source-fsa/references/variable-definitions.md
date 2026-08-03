@@ -20,9 +20,9 @@ Comprehensive reference for variables available in FSA datasets through the Urba
 - [Overview](#overview)
 - [Grants Dataset Variables](#grants-dataset-variables)
 - [Loans Dataset Variables](#loans-dataset-variables)
-- [Campus-Based Volume Variables](#campus-based-volume-variables)
-- [Financial Responsibility Variables](#financial-responsibility-variables)
-- [90/10 Revenue Variables](#9010-revenue-variables)
+- [Campus-Based Volume Dataset Variables](#campus-based-volume-dataset-variables)
+- [Financial Responsibility Dataset Variables](#financial-responsibility-dataset-variables)
+- [90/10 Revenue Dataset Variables](#9010-revenue-dataset-variables)
 - [Common Identifiers](#common-identifiers)
 - [Missing Data Codes](#missing-data-codes)
 

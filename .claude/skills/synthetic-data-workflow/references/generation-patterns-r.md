@@ -4,25 +4,25 @@ How to construct a seeded synthetic dataset *from a profile report alone* in R, 
 
 ## Contents
 
-- [Why simstudy fits the profile boundary](#why-simstudy)
-- [The generation recipe](#recipe)
-- [T1: schema-only skeleton](#t1-skeleton)
+- [Why simstudy fits the profile boundary](#why-simstudy-fits-the-profile-boundary)
+- [The generation recipe](#the-generation-recipe)
+- [T1: schema-only skeleton](#t1-schema-only-skeleton)
 - [T2: marginals](#t2-marginals)
-- [T3: relationships via copula](#t3-relationships)
-- [Categorical generation and the __OTHER__ bucket](#categorical)
-- [Identifier columns](#identifiers)
+- [T3: relationships via copula](#t3-relationships-via-copula)
+- [Categorical generation and the __OTHER__ bucket](#categorical-generation-and-the-__other__-bucket)
+- [Identifier columns](#identifier-columns)
 - [Missingness](#missingness)
-- [fabricatr for hierarchical structure](#fabricatr)
-- [Seeding and output](#seeding-output)
+- [fabricatr for hierarchical structure](#fabricatr-for-hierarchical-structure)
+- [Seeding and output](#seeding-and-output)
 - [Caveats](#caveats)
 
-## Why simstudy fits the profile boundary {#why-simstudy}
+## Why simstudy fits the profile boundary
 
 `simstudy` generates data from *declarations* — a distribution family plus parameters, and a correlation matrix — with **no microdata** (`synthetic-data-research.md` §1). That is exactly the profile boundary: the report gives us marginal parameters (percentiles, mean/SD, category proportions) and, at T3, a correlation matrix. `simstudy::genCorGen` / `addCorGen` draw correlated variables through a Gaussian copula given those inputs. Nothing fits on real rows, so nothing about the real data is needed or touched.
 
 `synthpop`/SDV are deliberately *not* used here — they fit on real data and belong to the T4 local path (`local-synthesis-t4.md`).
 
-## The generation recipe {#recipe}
+## The generation recipe
 
 1. **Read the report.** Parse the JSON; pull `row_count`, the per-column blocks, and (T3) the correlation matrix.
 2. **Generate numerics** through a copula so their correlations match (T3) or independently (T2).
@@ -32,7 +32,7 @@ How to construct a seeded synthetic dataset *from a profile report alone* in R, 
 6. **Inject missingness** per column at the reported rate.
 7. **Validate** synthetic-vs-profile (`validation-checks.md` QA(c)) and write seeded parquet to `data/synthetic/`.
 
-## T1: schema-only skeleton {#t1-skeleton}
+## T1: schema-only skeleton
 
 At T1 the report carries only names, dtypes, and row count. Generate a correctly-typed, correctly-sized frame with placeholder values — enough for code to compile and run, nothing more.
 
@@ -60,7 +60,7 @@ names(syn) <- vapply(report$columns, \(c) c$name, character(1))
 stopifnot(nrow(syn) == n)  # validate row count matches profile
 ```
 
-## T2: marginals {#t2-marginals}
+## T2: marginals
 
 Draw each numeric column to match its reported percentiles and mean/SD, and each categorical to match its level proportions — **independently** (T2 carries no relationships).
 
@@ -84,7 +84,7 @@ if (report$columns[[i]]$dtype == "integer") col_vals <- round(col_vals)
 
 Validate immediately: the synthetic column's own percentiles should land within tolerance of `knots` (that check is formalized in `validation-checks.md`).
 
-## T3: relationships via copula {#t3-relationships}
+## T3: relationships via copula
 
 At T3 draw the numeric columns *jointly* through a Gaussian copula so their pairwise correlations match the reported matrix, then map each margin to its target distribution as in T2.
 
@@ -132,7 +132,7 @@ syn[[rel$outcome]] <- rel$ols$intercept + rel$ols$slope * x_pred + rnorm(n, 0, r
 
 This reproduces the reported slope/intercept within tolerance (the synthetic OLS slope lands near the declared slope) and gives the outcome a realistic conditional spread. Categorical associations (Cramér's V) are weaker constraints; reproduce categoricals from their marginals (below) and, when a named *categorical* association matters, bias the linked draw conditional on the other variable. Perfect joint reproduction is neither possible nor the goal — structural validity for code development is.
 
-## Categorical generation and the `__OTHER__` bucket {#categorical}
+## Categorical generation and the `__OTHER__` bucket
 
 Draw categorical levels from the reported (suppressed) proportions. `__OTHER__` is an aggregate of binned rare levels — generate it as a single synthetic level literally labeled `__OTHER__` (do not invent fake real-looking rare values; that would fabricate structure the profile deliberately withheld). A fully-suppressed categorical column (`levels: []`, all levels sparse) carries no usable marginal — synthesize a single constant placeholder level and note the column was withheld.
 
@@ -146,7 +146,7 @@ counts <- vapply(cat$levels, \(l) l$count, numeric(1))
 syn[[colname]] <- sample(levs, size = n, replace = TRUE, prob = counts / sum(counts))
 ```
 
-## Identifier columns {#identifiers}
+## Identifier columns
 
 Identifier columns arrive value-free (structure-only). Synthesize fresh fake identifiers of the right shape from the reported length stats and pattern flags — never anything resembling a real value.
 
@@ -165,7 +165,7 @@ if (isTRUE(struct$pattern_flags$email)) {
 
 Use reserved non-routable forms (`example.invalid`) so synthetic identifiers can never collide with real addresses/domains.
 
-## Free-text `role: "string"` columns {#string-role}
+## Free-text `role: "string"` columns
 
 A column with `role: "string"` (high-cardinality free text, non-identifier) arrives value-free — only length stats + pattern flags. Generate right-shaped fake strings from the length stats; **never** reconstruct real content. Seeded random alphanumerics of the reported mean length are enough for code development (or `stringi`/a wordlist if the code needs word-like tokens).
 
@@ -180,7 +180,7 @@ syn[[colname]] <- vapply(seq_len(n),
 
 If a `date` pattern flag is set, emit ISO-shaped fake dates (`sprintf("%04d-%02d-%02d", ...)`) instead of random strings, so downstream date parsing still exercises.
 
-## Missingness {#missingness}
+## Missingness
 
 Inject missingness per column at the reported rate. The profile carries only the *rate*, not the *mechanism* — so this is MCAR by construction, and that limitation must be stated (real missingness is usually systematic; see `synthetic-data-research.md` §4).
 
@@ -195,11 +195,11 @@ if (rate > 0) {
 }
 ```
 
-## fabricatr for hierarchical structure {#fabricatr}
+## fabricatr for hierarchical structure
 
 When the real data is nested (students in schools, visits in patients) and the profile records that structure, `fabricatr::add_level` builds the hierarchy declaratively (`synthetic-data-research.md` §1). Use it to generate the level sizes and nest lower-level records within higher-level units, then apply the marginal/relationship draws above within levels. fabricatr honors marginals, categorical proportions, nested structure, and pairwise rank correlation, but has no full-matrix copula solve — so for multi-way numeric correlation, generate numerics with simstudy and attach them to the fabricatr scaffold.
 
-## Seeding and output {#seeding-output}
+## Seeding and output
 
 - **Always** `set.seed()` at the top with a recorded integer seed. The seed goes into the generation log so the synthetic data is exactly reproducible.
 - Write parquet to the project's `data/synthetic/` directory (create on first use), named per DAAF conventions (`{date}_{description}_synthetic.parquet`).
@@ -212,7 +212,7 @@ write_parquet(syn, "data/synthetic/2026-07-15_clients_synthetic.parquet")
 cat("Seed:", 20260715L, "| rows:", nrow(syn), "| tier:", report$settings$tier, "\n")
 ```
 
-## Caveats {#caveats}
+## Caveats
 
 - **simstudy recovers Poisson correlation more faithfully than binary** (`synthetic-data-research.md` §1) — for binary/low-cardinality columns, expect the achieved correlation to fall somewhat short of the target; validate and report the gap rather than forcing it.
 - **A correlation matrix from a suppressed profile may not be positive semidefinite** (rounding, partial columns). Project to the nearest PD matrix (`Matrix::nearPD`) before the copula draw, and note that this slightly perturbs the target correlations — the validation tolerance in `validation-checks.md` accounts for it.

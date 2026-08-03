@@ -8,13 +8,13 @@ The three-part QA model for the privacy-preserving synthetic-data workflow. Beca
 
 ## Contents
 
-- [(a) Disclosure-safety review of the outbound script](#a-disclosure-safety)
-- [(b) Internal-consistency validation of the returned report](#b-internal-consistency)
-- [(c) Synthetic-vs-profile validation](#c-synthetic-vs-profile)
+- [(a) Disclosure-safety review of the outbound script](#a-disclosure-safety-review-of-the-outbound-script)
+- [(b) Internal-consistency validation of the returned report](#b-internal-consistency-validation-of-the-returned-report)
+- [(c) Synthetic-vs-profile validation](#c-synthetic-vs-profile-validation)
 - [Tolerances](#tolerances)
 - [Severity mapping](#severity-mapping)
 
-## (a) Disclosure-safety review of the outbound script {#a-disclosure-safety}
+## (a) Disclosure-safety review of the outbound script
 
 **The single most important control in this workflow.** A disclosure leak is irreversible once the report is shared — so a *possible* leak is a BLOCKER, never a WARNING. Reviewed by code-reviewer against the chosen tier's forbidden-emissions list (`disclosure-tiers.md` § forbidden-emissions). This runs on the *configured script*, before the user executes it.
 
@@ -37,7 +37,7 @@ a6 deserves emphasis: the common leak is not the main path but the edge case —
 
 If any item is uncertain (not clearly safe), treat it as a failure and fix the script before the user runs it.
 
-## (b) Internal-consistency validation of the returned report {#b-internal-consistency}
+## (b) Internal-consistency validation of the returned report
 
 At intake (DS-3), verify the returned report is internally coherent — the checks the outbound script also embedded (`profiling-script-spec.md` § embedded validation), re-verified on this side because the embedded `all_passed` is the user's claim, not DAAF's verification. Confirm both that the checks are present AND that they actually hold on re-computation from the report's own numbers.
 
@@ -58,7 +58,7 @@ At intake (DS-3), verify the returned report is internally coherent — the chec
 
 b2, b3, b5 are the load-bearing consistency checks: they catch a report that was hand-edited, truncated, or produced by a tampered script. A report that fails b5 (a small cell slipped through) is *also* a disclosure event — flag it as BLOCKER and tell the user their shared report contains a sub-threshold cell.
 
-## (c) Synthetic-vs-profile validation {#c-synthetic-vs-profile}
+## (c) Synthetic-vs-profile validation
 
 After generation (DS-5), verify the synthetic data faithfully reflects the profile — within tolerance, because profile-based synthesis is approximate by design.
 
@@ -78,7 +78,7 @@ After generation (DS-5), verify the synthetic data faithfully reflects the profi
 
 c5, c7, c8 are disclosure-adjacent: they confirm generation did not *fabricate* withheld structure or produce anything resembling a real identifier.
 
-## Tolerances {#tolerances}
+## Tolerances
 
 Profile-based synthesis is approximate; tolerances make "within reason" concrete. These are defaults — tighten or loosen per the use case and record the choice.
 
@@ -92,7 +92,7 @@ Profile-based synthesis is approximate; tolerances make "within reason" concrete
 | Named relationship slope (c11) | within ±10% of the reported slope; R² within ±0.10 |
 | Correlation PSD tolerance (b7) | smallest eigenvalue ≥ −1e-6 |
 
-## Severity mapping {#severity-mapping}
+## Severity mapping
 
 | Finding | Severity |
 |---------|----------|

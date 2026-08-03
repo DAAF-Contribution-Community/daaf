@@ -4,23 +4,23 @@ The four-tier disclosure ladder that governs what may cross the DAAF container b
 
 ## Contents
 
-- [Governing principle: minimize the residual](#governing-principle)
-- [T1 — Schema](#t1-schema)
-- [T2 — Marginals (default)](#t2-marginals-default)
-- [T3 — Relationships](#t3-relationships)
-- [T4 — Local high-fidelity synthesis](#t4-local-high-fidelity-synthesis)
-- [Suppression rules (shared across T2+)](#suppression-rules)
+- [Governing principle: minimize the residual](#governing-principle-minimize-the-residual)
+- [T1 — Schema](#t1--schema)
+- [T2 — Marginals (default)](#t2--marginals-default)
+- [T3 — Relationships](#t3--relationships)
+- [T4 — Local high-fidelity synthesis](#t4--local-high-fidelity-synthesis)
+- [Suppression rules (shared across T2+)](#suppression-rules-shared-across-t2)
 - [Choosing a tier](#choosing-a-tier)
-- [The forbidden-emissions list (for disclosure-safety review)](#forbidden-emissions-list)
-- [Grounding in disclosure-control practice](#grounding)
+- [The forbidden-emissions list (for disclosure-safety review)](#the-forbidden-emissions-list-for-disclosure-safety-review)
+- [Grounding in disclosure-control practice](#grounding-in-disclosure-control-practice)
 
-## Governing principle: minimize the residual {#governing-principle}
+## Governing principle: minimize the residual
 
 The Five Safes framework (Ritchie/ONS) treats "safe data" as a **residual** — you strip only as much information as the other safeguards force you to. Applied here: pick the *lowest* tier that still lets the intended code-development work proceed. A pipeline that only needs to compile and run against correctly-typed columns needs T1. A pipeline whose logic branches on category values or numeric thresholds needs T2. A pipeline being dry-run for plausible model behavior (coefficient signs, join fan-out, correlation-driven feature engineering) needs T3. Only when the user needs synthetic data faithful enough to trust intermediate diagnostics do they escalate to T4 — and even then, per the cardinal doctrine, findings are never final until re-run on real data.
 
 Higher tiers carry more re-identification risk. Every additional statistic is a constraint on the real data, and constraints combine: primary suppression alone is insufficient because values can be recovered from marginal totals or by differencing across queries (UK Data Service SDC handbook; NCES SPWP22). That is why the tiers are cumulative and why suppression is applied consistently, not ad hoc.
 
-## T1 — Schema {#t1-schema}
+## T1 — Schema
 
 **Emits:** column names, column dtypes (as detected by the profiler), and the total row count. Nothing else. Each column object is exactly `{name, dtype}`.
 
@@ -30,7 +30,7 @@ Higher tiers carry more re-identification risk. Every additional statistic is a 
 
 **Re-identification risk:** minimal. Column names can occasionally leak sensitive structure (e.g., a column literally named `hiv_status`), so the `.txt` review still asks the user to confirm the schema itself is shareable, but no record-level information is present.
 
-## T2 — Marginals (default) {#t2-marginals-default}
+## T2 — Marginals (default)
 
 The default tier. Emits everything in T1, plus per-column univariate summaries with suppression applied.
 
@@ -63,7 +63,7 @@ Two guards degrade the numeric summary when the ordinary case would leak more th
 
 **Forbids:** raw min/max, any example string value, any category count below the suppression threshold, any identifier value, any joint/bivariate information.
 
-## T3 — Relationships {#t3-relationships}
+## T3 — Relationships
 
 Emits everything in T2, plus bivariate structure. This is what lets synthetic data reproduce approximate relationships (correlated numerics, associated categoricals), which matters when the code being developed depends on those relationships (feature engineering, join behavior, model dry-runs).
 
@@ -77,7 +77,7 @@ Emits everything in T2, plus bivariate structure. This is what lets synthetic da
 
 **Forbids:** all T2 forbiddens, plus any unsuppressed small cross-tab cell.
 
-## T4 — Local high-fidelity synthesis {#t4-local-high-fidelity-synthesis}
+## T4 — Local high-fidelity synthesis
 
 A different mechanism, not just more statistics. At T1-T3 the profile crosses the boundary and DAAF generates synthetic data *from the profile*. At T4 the **user runs a data-fitted synthesizer locally**, inside their own environment, on the real data — and only the resulting **synthetic rows** cross the boundary.
 
@@ -89,7 +89,7 @@ A different mechanism, not just more statistics. At T1-T3 the profile crosses th
 
 **Framing (from Census SIPP Synthetic Beta):** even T4 synthetic rows are "synthetic," not "gold standard." A cell near 10 in the synthetic data may be smaller in the real data. T4 buys higher fidelity for code development; it does not lift the finalize-against-real-data requirement.
 
-## Suppression rules (shared across T2+) {#suppression-rules}
+## Suppression rules (shared across T2+)
 
 | Rule | Behavior | Rationale |
 |------|----------|-----------|
@@ -103,7 +103,7 @@ A different mechanism, not just more statistics. At T1-T3 the profile crosses th
 
 The threshold is user-configurable because agencies differ (5 is common; some use 10). Higher is safer. It is recorded in the report so downstream validation knows the rule that was applied.
 
-## Choosing a tier {#choosing-a-tier}
+## Choosing a tier
 
 ```
 What does the code being developed actually need?
@@ -122,7 +122,7 @@ What does the code being developed actually need?
 
 Escalate one tier at a time, and only on demonstrated need — every step up adds disclosure risk. Document the chosen tier and why in the skill's Synthetic Data Notice.
 
-## The forbidden-emissions list (for disclosure-safety review) {#forbidden-emissions-list}
+## The forbidden-emissions list (for disclosure-safety review)
 
 The disclosure-safety review (QA check (a) in `validation-checks.md`) verifies the configured profiling script cannot emit, at the chosen tier, anything on this list:
 
@@ -135,7 +135,7 @@ The disclosure-safety review (QA check (a) in `validation-checks.md`) verifies t
 
 If the script *could* emit any forbidden item — even in an edge case (all-null column, single-row group, an identifier that slipped the >95% heuristic) — that is a BLOCKER, because a disclosure leak is irreversible once the report is shared.
 
-## Grounding in disclosure-control practice {#grounding}
+## Grounding in disclosure-control practice
 
 Every rule above traces to established practice, documented with sources in `synthetic-data-research.md` §3:
 

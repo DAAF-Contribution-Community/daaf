@@ -4,19 +4,19 @@ The T4 tier: instead of DAAF generating synthetic data from a profile, the **use
 
 ## Contents
 
-- [When to escalate to T4](#when-t4)
-- [The boundary rule for T4](#boundary-rule)
-- [synthpop (R, flagship)](#synthpop)
-- [SDV (Python)](#sdv)
-- [What crosses vs. what stays](#what-crosses)
-- [Consuming T4 output on the DAAF side](#consuming)
-- [Why not synthcity / CTGAN by default](#not-synthcity)
+- [When to escalate to T4](#when-to-escalate-to-t4)
+- [The boundary rule for T4](#the-boundary-rule-for-t4)
+- [synthpop (R, flagship)](#synthpop-r-flagship)
+- [SDV (Python)](#sdv-python)
+- [What crosses vs. what stays](#what-crosses-vs-what-stays)
+- [Consuming T4 output on the DAAF side](#consuming-t4-output-on-the-daaf-side)
+- [Why not synthcity / CTGAN by default](#why-not-synthcity--ctgan-by-default)
 
-## When to escalate to T4 {#when-t4}
+## When to escalate to T4
 
 T1-T3 profile-based synthesis is structurally valid but marginals-and-pairwise at best. Escalate to T4 only when the code being developed needs synthetic data faithful enough to trust *intermediate diagnostics* — e.g., a multi-stage pipeline whose middle stages depend on realistic joint structure, or a model whose dry-run is only informative if higher-order relationships hold approximately. Escalate on demonstrated need, not by default: T4 requires the user to install and run a synthesizer, and it still does not lift the finalize-against-real-data doctrine (Census SIPP Synthetic Beta: even synthesized rows are "synthetic," not "gold standard" — a cell near 10 in synthetic may be smaller in real).
 
-## The boundary rule for T4 {#boundary-rule}
+## The boundary rule for T4
 
 Two things stay local, always:
 
@@ -25,7 +25,7 @@ Two things stay local, always:
 
 Only synthetic rows plus a generation log cross the boundary. **Parquet is the preferred exchange format**; CSV is a permitted fallback only when the local environment lacks `arrow`/`pyarrow`. A CSV hand-off is an **audited boundary exception** — see § Consuming T4 output for the mandatory convert-to-Parquet-and-manifest first action that keeps the in-container Parquet-only rule intact.
 
-## synthpop (R, flagship) {#synthpop}
+## synthpop (R, flagship)
 
 `synthpop` (ESRC SYLLS project) is the agency-grade, light-dependency choice. `syn()` uses **CART by default** with conditional/sequential specification that respects logical constraints and missing-data patterns, and ships its own utility comparison (`compare.synds`) and disclosure-risk tooling (`synthetic-data-research.md` §2).
 
@@ -47,7 +47,7 @@ utility <- compare(syn_obj, real)            # aggregated utility comparison (sa
 write.csv(syn_obj$syn, OUTPUT_SYNTHETIC_PATH, row.names = FALSE)  # ONLY this file is shareable
 ```
 
-## SDV (Python) {#sdv}
+## SDV (Python)
 
 SDV `GaussianCopulaSynthesizer` is the Python equivalent — fast, interpretable, robust on small data (`synthetic-data-research.md` §2). The `assets/synthesize_local_template.py` template:
 - Builds SDV `Metadata` from the real data, fits `GaussianCopulaSynthesizer`.
@@ -72,7 +72,7 @@ synthetic.to_csv(OUTPUT_SYNTHETIC_PATH, index=False)  # ONLY this file is sharea
 
 `enforce_min_max_values` clamps to real ranges — note that this is a mild disclosure of the real min/max through the synthetic extremes; if the user's threat model cares, set it to `False`.
 
-## What crosses vs. what stays {#what-crosses}
+## What crosses vs. what stays
 
 | Artifact | Crosses the boundary? |
 |----------|------------------------|
@@ -82,7 +82,7 @@ synthetic.to_csv(OUTPUT_SYNTHETIC_PATH, index=False)  # ONLY this file is sharea
 | Fitted model object (`syn` object / fitted synthesizer) | **Never** |
 | Real min/max (if `enforce_min_max_values=True` leaks them via extremes) | User's choice — flag it |
 
-## Consuming T4 output on the DAAF side {#consuming}
+## Consuming T4 output on the DAAF side
 
 T4 synthetic rows arrive as an actual dataset (not a profile). DAAF treats them like any synthetic dataset:
 - **Boundary format (audited exception).** If the rows arrived as CSV (the fallback for a local environment without Arrow/PyArrow), the **first in-container action converts the CSV to Parquet and writes an exchange manifest** (a JSON sidecar named `{converted_filename}_exchange_manifest.json`) beside the converted file — original filename, source format, row/column counts, file hash, and conversion timestamp — after which all subsequent work uses only the converted Parquet. Parquet arrivals are imported directly. This is what keeps a boundary CSV consistent with the framework's in-container Parquet-only rule (Parquet-only, with one audited exception at the T4 local-exchange boundary).
@@ -90,6 +90,6 @@ T4 synthetic rows arrive as an actual dataset (not a profile). DAAF treats them 
 - The synthetic-vs-profile validation (`validation-checks.md` QA(c)) is lighter here (there is no suppressed profile to check against), but the disclosure-safety concern shifts to confirming the user shared only synthetic rows — spot-check for anything that looks like a memorized real record (exact-duplicate rows, implausibly unique identifier values) and flag if found.
 - Findings are still never final on T4 data — re-run against real data inside the user's environment.
 
-## Why not synthcity / CTGAN by default {#not-synthcity}
+## Why not synthcity / CTGAN by default
 
 `synthcity` (van der Schaar Lab) has a large generator arsenal (CTGAN, TVAE, PrivBayes, DP-GAN, PATEGAN, diffusion) but a heavy deep-learning dependency footprint and does **not handle missing data** (must impute first with HyperImpute) — a poor fit for a lightweight user-run local script (`synthetic-data-research.md` §2). CTGAN specifically risks training instability and mode collapse. Reserve these for users who explicitly want them and understand the tradeoffs; `synthpop` (R) is the far lighter, agency-proven default, and SDV `GaussianCopulaSynthesizer` (Python) is the light default on that side.

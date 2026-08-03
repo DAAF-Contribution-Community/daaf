@@ -5,7 +5,7 @@
 - [fepois: Poisson Regression](#fepois-poisson-regression)
 - [feglm: Generalized Linear Models with FE](#feglm-generalized-linear-models-with-fe)
 - [fenegbin: Negative Binomial](#fenegbin-negative-binomial)
-- [feNmlm: Nonlinear Models](#fenlml-nonlinear-models)
+- [feNmlm: Nonlinear Models](#fenmlm-nonlinear-models)
 - [Model Selection Guide](#model-selection-guide)
 
 ## fepois: Poisson Regression

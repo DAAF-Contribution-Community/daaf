@@ -28,13 +28,12 @@ Complete reference for PSEO variables, codes, and status flags.
 ## Contents
 
 - [Identifier Variables](#identifier-variables)
-- [Earnings Variables](#earnings-variables)
-- [Flow Variables](#flow-variables)
-- [Status Flags](#status-flags)
-- [Degree Level Codes](#degree-level-codes)
-- [CIP Codes](#cip-codes)
-- [Institution Codes](#institution-codes)
-- [Geography Codes](#geography-codes)
+- [Earnings Variables](#earnings-variables-portal-schema)
+- [Flow Variables](#flow-variables-portal-schema)
+- [Degree Level Codes](#degree-level-codes-portal-integer-encoding)
+- [CIP Codes](#cip-codes-portal-integer-encoding)
+- [Institution Codes](#institution-codes-portal-integer-encoding)
+- [Geography Codes](#geography-codes-portal-integer-encoding)
 - [Aggregation Levels](#aggregation-levels)
 
 ## Identifier Variables

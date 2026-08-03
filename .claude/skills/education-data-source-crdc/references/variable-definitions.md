@@ -24,7 +24,7 @@ Detailed definitions for key CRDC variables, including codes, disaggregation cat
 - [Race/Ethnicity Categories](#raceethnicity-categories)
 - [Sex Categories](#sex-categories)
 - [Disability Categories](#disability-categories)
-- [English Learner Definition](#english-learner-definition)
+- [English Learner (LEP) Status](#english-learner-lep-status)
 - [Discipline Definitions](#discipline-definitions)
 - [Restraint and Seclusion Definitions](#restraint-and-seclusion-definitions)
 - [Harassment Categories](#harassment-categories)

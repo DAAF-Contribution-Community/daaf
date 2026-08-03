@@ -418,7 +418,7 @@ On a GPT route the shim offers an optional speed boost — **GPT Fast** on the C
 
 3. **Mind the cost.** OpenAI API **GPT Priority may cost extra** and depends on your provider, model, project/account, and usage-tier eligibility — the controller warns before enabling it. ChatGPT **GPT Fast** follows your subscription's own credit and eligibility rules; current Codex documentation describes roughly **1.5×** speed and says GPT-5.6 and GPT-5.5 use **2.5× Standard ChatGPT credits**. And requesting the boost doesn't guarantee it was served on any given request.
 
-For the route-to-product mapping, the full setup steps, and the policy details under the hood, see [GPT Fast and GPT Priority on the provider-shim routes](01_installation_and_quickstart.md#gpt-fast-and-gpt-priority-on-the-provider-shim-routes) in the installation guide.
+For the route-to-product mapping, the full setup steps, and the policy details under the hood, see [GPT Fast Mode on the provider-shim routes](01_installation_and_quickstart.md#gpt-fast-mode-on-the-provider-shim-routes) in the installation guide.
 
 ### Q: How do I control GPT response verbosity? (Option F)
 

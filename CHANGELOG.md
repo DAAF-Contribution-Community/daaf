@@ -13,7 +13,7 @@ All notable changes to DAAF for each release version are documented here, in rev
 
 ---
 
-## v3.0.1 -- 2026-07-29
+## v3.0.1 — 2026-07-29
 
 ### Data Analyst Augmentation Framework -- Minor Fixes
 
@@ -67,7 +67,7 @@ A couple of contributor-facing improvements. DAAFBench -- DAAF's model-behavior 
 
 ---
 
-## v3.0.0 -- 2026-07-17
+## v3.0.0 — 2026-07-17
 
 ### Data Analyst Augmentation Framework -- Opening Doors
 
@@ -242,7 +242,7 @@ If you'd like to contribute, the CONTRIBUTING guide has expanded for v3: it now 
 
 ---
 
-## v2.1.0 -- 2026-05-02
+## v2.1.0 — 2026-05-02
 
 ### Data Analyst Augmentation Framework -- The Frictionless Update
 
@@ -366,7 +366,7 @@ DAAF v2.0.0 is a ground-up architectural overhaul driven by four reinforcing goa
 
 ---
 
-### Painfully Detailed Changelog
+### Detailed Notes
 
 Note that Claude absolutely had to help me write most of this, there were like 100 commits to shift through major changes on.
 
