@@ -88,7 +88,7 @@ When ambiguous, prefer the type that re-runs MORE stages (safer). For example, "
 
 ## Version Control Protocol
 
-Version suffixes follow the convention defined in `CLAUDE.md` > "Version Control Protocol" (e.g., original → `a` → `b` → `c`).
+Version suffixes follow the convention defined in `CLAUDE.md` > "Versioning & Naming" (e.g., original → `a` → `b` → `c`; full tables in `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` § Project File Naming Conventions).
 
 **Rules:**
 - Always create new version files — never modify existing versions
@@ -290,7 +290,7 @@ These boundaries supplement the universal boundaries in `CLAUDE.md` and `agent_r
 - Copy raw data files from prior version (regenerate fresh)
 - Proceed without reading existing Plan.md, Plan_Tasks.md, and STATE.md
 
-**Version Suffix Convention:** See `CLAUDE.md` > "Version Control Protocol" for the canonical convention (e.g., original → `a` → `b` → `c`).
+**Version Suffix Convention:** See `CLAUDE.md` > "Versioning & Naming" for the canonical convention (e.g., original → `a` → `b` → `c`).
 
 ## Arriving from Reproducibility Verification Mode
 
