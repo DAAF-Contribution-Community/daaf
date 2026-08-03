@@ -71,6 +71,18 @@ Examples:
     python3 benchmarks/scripts/generate_results_viewer_v2.py --single-file /tmp/my_viewer.html
 
 Changelog:
+    v3.7.3 (2026-08-03):
+      - Key Takeaways T4 reworked (viewer_template.html) to run on the
+        all-perfect Consistency `rate` — the same metric as the leaderboard's
+        Consistency column — instead of the v3.7.0 rate_agree agreement
+        variant, per user decision (supersedes the 2026-07-29 T4 hand-edit
+        anchor; prose ratified by the user in this pass). Headline narrowed
+        to "reliability" (dropping "predictability", which was the agreement
+        framing); mechanism sentence now names the leaderboard tie-in; spans
+        renamed kt-t4-{topagree,budgetagree} -> kt-t4-{topcons,budgetcons}
+        (28-span contract count unchanged). Schema untouched: rate_agree /
+        cells_all_agree remain in PRECOMPUTED.consistency (schema-additive
+        contract) but no longer have a display consumer.
     v3.7.2 (2026-07-29):
       - User intensive-pass hand edits over the five Key Takeaways items
         (viewer_template.html), typed directly by the user — the strongest
@@ -448,11 +460,13 @@ def resolve_paths(args):
 #     replaced by spaces (critLabel()).
 #   - Key Takeaways (#takeaways section in the template): DATED hand-written
 #     editorial prose whose figures are injected into kt-* spans by
-#     fillTakeaways() at init from PRECOMPUTED (composite, consistency —
-#     including the v3.7.0 rate_agree agreement field — and cost.battery, with
-#     relative ratios/multipliers only since v2.8.1). The July-2026 overhaul
-#     (v3.7.0) rewrote all five items; fillTakeaways no longer reads
-#     composite_hard or per_model_phase.
+#     fillTakeaways() at init from PRECOMPUTED (composite, consistency, and
+#     cost.battery, with relative ratios/multipliers only since v2.8.1). The
+#     July-2026 overhaul (v3.7.0) rewrote all five items; fillTakeaways no
+#     longer reads composite_hard or per_model_phase. Since v3.7.3 T4 reads
+#     the all-perfect consistency `rate` (the leaderboard Consistency metric);
+#     the v3.7.0 rate_agree agreement field stays in the payload but has no
+#     display consumer.
 #     Span contract:
 #     28 kt-* spans — 27 in the #takeaways section + kt-foot-bat, which
 #     since the 2026-06-12 user fine-tuning round lives in the About Key
@@ -461,7 +475,9 @@ def resolve_paths(args):
 #     (v3.7.0): T1 kt-t1-{fable,opus5,opus5cost,sol,kimi} (5); T2 the six
 #     frontier points kt-fr-{gemma,dsflash,luna,sonnet5,sol,fable}-{s,c}
 #     (12); T3 kt-t3-{lunapct,lunacost,solpct,solcost,lastmult} (5); T4
-#     kt-t4-{topagree,budgetagree} (2); T5 kt-t5-{glm,glmcost,kimi} (3).
+#     kt-t4-{topcons,budgetcons} (2, renamed from -{topagree,budgetagree}
+#     in v3.7.3 with the switch to the all-perfect rate); T5
+#     kt-t5-{glm,glmcost,kimi} (3).
 #     History: 22 (21 + kt-foot-bat) from 2026-06-12 through v3.6.x, 29 before
 #     the 2026-06-12 e099982 repair pass, 31 originally. Every kt-* span must
 #     have a fillTakeaways() setter and every setter a live span; verify
@@ -2087,7 +2103,7 @@ def build_data_bundle(result_sets, cases, runs, transcripts, subagent_transcript
     )
     bundle = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "generator_version": "3.7.2",
+        "generator_version": "3.7.3",
         "embedded_schema_contract_version": 2,
         "result_sets": sorted_result_sets,
         "cases": cases,
@@ -2493,9 +2509,10 @@ def build_precomputed(result_sets, cases, runs, generation_params,
         # on repeat attempts. Distinct from cells_all_perfect: that measures
         # capability (all reps clean), whereas agreement measures reliability
         # decoupled from score level (a model that fails identically every time
-        # is predictable, if not good). Powers the Key Takeaways "reliability
-        # and predictability" claim (fillTakeaways T4), which contrasts a
-        # top-tier model's agreement rate against a budget-tier one.
+        # is predictable, if not good). Display-orphaned since v3.7.3: the
+        # Key Takeaways T4 reliability claim now runs on the all-perfect
+        # `rate` (matching the leaderboard Consistency column); rate_agree
+        # stays in the payload under the schema-additive contract.
         all_agree = sum(
             1 for grades in multi.values()
             if len(set(grades)) == 1

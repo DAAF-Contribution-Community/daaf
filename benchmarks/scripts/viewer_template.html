@@ -1321,19 +1321,22 @@ nav.site-nav{
   </div>
 
   <div class="kt-item">
-    <!-- T4: user HAND-EDITED directly in the 2026-07-29 intensive pass
-         (v3.7.2, supersedes the v3.7.1 ratification; the mechanism sentence
-         and closer were themselves reworded by the user in that pass) — the
-         strongest anchor tier; do not reword. -->
-    <div class="kt-claim">4. What budget models actually give up: reliability and predictability.</div>
-    <p>Moving down the price ladder, the first thing to erode isn&rsquo;t raw capability: it&rsquo;s <b>reliability</b> and
-    <b>predictability</b>. Because every test here runs three times, we can measure how often a model
-    scores <em>equally</em> well on repeat attempts: the share of repeated cases where all reps land on the
-    identical outcome. Fable 5 agrees with itself on <b><span id="kt-t4-topagree">&mdash;</span></b> of its
+    <!-- T4: reworked 2026-08-03 per user decision (supersedes the
+         2026-07-29 hand-edit protection): the metric switched from the
+         grade-agreement rate (rate_agree, now display-orphaned) to the
+         all-perfect Consistency rate — the same measure as the
+         leaderboard's Consistency column — so the takeaway and the table
+         speak the same number. Prose ratified by the user in that pass. -->
+    <div class="kt-claim">4. What budget models actually give up: reliability.</div>
+    <p>Moving down the price ladder, the first thing to erode isn&rsquo;t headline capability: it&rsquo;s <b>reliability</b>.
+    Because every test here runs three times, we can hold models to a stricter bar than a good average: the
+    share of repeated cases where the model turns in a perfect run <em>every single time</em> &mdash; the same
+    Consistency measure shown in the leaderboard. Fable 5 clears that bar on <b><span id="kt-t4-topcons">&mdash;</span></b> of its
     repeated cases; DeepSeek V4 Flash 0731 (a genuinely capable budget pick) manages only
-    <b><span id="kt-t4-budgetagree">&mdash;</span></b>. Cheaper models don&rsquo;t just score lower on average;
-    they <b>wobble more from run to run</b>, and in a chained agentic workflow where one bad step derails
-    everything downstream, that unpredictability is a real cost of its own to weigh against very judiciously.</p>
+    <b><span id="kt-t4-budgetcons">&mdash;</span></b>. Cheaper models don&rsquo;t just score lower on average;
+    their successes are <b>less repeatable from run to run</b>, and in a chained agentic workflow where one bad
+    step derails everything downstream, the odds that every step lands are a real cost of their own to weigh
+    very judiciously.</p>
   </div>
 
   <div class="kt-item">
@@ -2558,16 +2561,18 @@ function fillTakeaways(){
   set("kt-t3-solcost",shareOfFableCost(solBat));
   if(fBat!=null&&solBat!=null&&solBat>0) set("kt-t3-lastmult",fmtMult(fBat/solBat));
 
-  /* T4 — reliability/predictability via the agreement metric (v3.7.0):
-     rate_agree is the share of repeated (phase, case) cells where every rep
-     landed on the identical grade — a predictability measure decoupled from
-     score level (distinct from `rate`, which is all-reps-perfect). Contrast
-     a top-tier model (Fable 5) with a capable budget pick (DeepSeek V4
-     Flash 0731) to show that the cheap end gives up consistency, not just score. */
-  var topA=cons["Fable 5"];
-  if(topA&&topA.rate_agree!=null) set("kt-t4-topagree",pct1(topA.rate_agree));
-  var budA=cons["DeepSeek V4 Flash 0731"];
-  if(budA&&budA.rate_agree!=null) set("kt-t4-budgetagree",pct1(budA.rate_agree));
+  /* T4 — reliability via the all-perfect Consistency rate (reworked
+     2026-08-03): `rate` is the share of repeated (phase, case) cells where
+     EVERY rep graded perfect — the identical metric behind the leaderboard's
+     Consistency column, so the takeaway is verifiable in the table. (The
+     v3.7.0 agreement variant, rate_agree, remains in the payload but has no
+     display consumer.) Contrast a top-tier model (Fable 5) with a capable
+     budget pick (DeepSeek V4 Flash 0731) to show that the cheap end's
+     successes are less repeatable, not just its average lower. */
+  var topC=cons["Fable 5"];
+  if(topC&&topC.rate!=null) set("kt-t4-topcons",pct1(topC.rate));
+  var budC=cons["DeepSeek V4 Flash 0731"];
+  if(budC&&budC.rate!=null) set("kt-t4-budgetcons",pct1(budC.rate));
 
   /* T5 — open-weights: GLM 5.2 as the self-hosting pick (score + relative
      cost) and Kimi K3 topping open-weights capability. */
