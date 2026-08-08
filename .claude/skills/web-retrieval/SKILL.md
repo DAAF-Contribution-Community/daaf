@@ -111,6 +111,15 @@ overhead never masks a genuinely empty extract. If a fetch's raw SHA-256 matches
 a prior artifact in the same `web_fetches/`, the manifest notes the duplication
 (there is no separate dedup store).
 
+**Tool citation (Responsible pillar):** extraction is performed by trafilatura
+(the version is recorded in every manifest row). When retrieved web content
+materially supports a deliverable's findings, cite the extraction tool alongside
+the sources themselves: Barbaresi, A. (2021). "Trafilatura: A Web Scraping
+Library and Command-Line Tool for Text Discovery and Extraction." *Proceedings
+of ACL-IJCNLP 2021: System Demonstrations*, 122–131.
+https://aclanthology.org/2021.acl-demo.15/ — mirroring how data-source skills
+carry citation guidance for their sources.
+
 ## Reading Order and Size Rules
 
 Read cheaply and safely, in this order:
