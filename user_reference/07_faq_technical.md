@@ -134,7 +134,7 @@ DAAF has nine engagement modes, each designed for a different type of task. You 
 - **Data Onboarding** — Profile and register a new dataset ("I have this CSV I want to use")
 - **Data Discovery** — Explore what data exists ("Is it possible to study X?")
 - **Data Lookup** — Quick factual answers ("What are the coded values for variable X?")
-- **Ad Hoc Collaboration** — Flexible working session ("Help me debug this" / "Think through this with me")
+- **Ad Hoc Collaboration** — Flexible working session ("Help me debug this" / "Think through this with me" / "Stress-test this result before I present it")
 - **Revision and Extension** — Modify existing work ("Update the analysis to include 2024 data")
 - **Reproducibility Verification** — Verify an analysis reproduces ("Re-run this and check the results match")
 - **Framework Development** — Modify DAAF itself ("Create a new skill for survey methods")

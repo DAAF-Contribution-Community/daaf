@@ -123,7 +123,7 @@ When you open DAAF, just begin by asking it any question or for support with any
 - *What you get:* An in-depth summary of relevant opportunities, insights, clarifications, and caveats to consider
 - *Example:* What are all the socioeconomic status related variables we have access to across the Urban Institute Education Portal datasets?
 
-**Ad Hoc Collaboration:** A smarter, more grounded research partner
+**Ad Hoc Collaboration:** A smarter, more grounded research partner (including creatively stress-testing your findings together)
 - *What you do:* Ask DAAF to help you riff on anything research-related -- code review, debugging, brainstorming, writing scripts
 - *What DAAF does:* Engages as a collaborator with embedded domain and methodological expertise guiding the way
 - *What you get:* A much more knowledgeable and careful Claude assistant for flexible, multi-turn working sessions

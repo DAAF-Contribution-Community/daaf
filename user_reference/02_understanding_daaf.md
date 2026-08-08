@@ -307,7 +307,7 @@ And here's what each of them do in more detail, and how the workflow works so yo
 
 **Trigger words:** "help me with," "review this," "debug this," "how do I," "advise on," "think through this with me," "what's the best approach for..."
 
-**What it is:** A flexible, multi-turn working session where you bring whatever you're working on and DAAF acts as a thought partner. This is the mode for skilled researchers who want rigorous support without committing to a formal pipeline. You might ask DAAF to review your code, help you debug a script, brainstorm an analytic approach, explain how to use a particular Python package, investigate a data source, or write a one-off analysis script. The conversation flows naturally -- you change topics, ask follow-ups, and go wherever the work takes you.
+**What it is:** A flexible, multi-turn working session where you bring whatever you're working on and DAAF acts as a thought partner. This is the mode for skilled researchers who want rigorous support without committing to a formal pipeline. You might ask DAAF to review your code, help you debug a script, brainstorm an analytic approach, explain how to use a particular Python package, investigate a data source, stress-test a finding you want to be able to stand behind, or write a one-off analysis script. The conversation flows naturally -- you change topics, ask follow-ups, and go wherever the work takes you.
 
 **What you get:**
 - A lightweight workspace folder for anything produced during the session (scripts, data, figures)
@@ -316,7 +316,7 @@ And here's what each of them do in more detail, and how the workflow works so yo
 
 **Expected time investment:** As long as you need. There are no mandatory checkpoints or gates -- the session ends when you're done. If the session produces artifacts, DAAF will summarize what's in the workspace at the end.
 
-**When to use it:** When you want a capable research partner for whatever you're working on right now. Some examples: "Can you review this script I wrote for cleaning CCD data?" "I'm getting a weird join error -- help me figure out what's going on." "What's the best way to handle suppressed data in a trend analysis?" "How do I use plotnine to create faceted bar charts?" "How do I use ggplot2 to create faceted bar charts with custom themes?" "Help me think through the right approach for a school-level poverty analysis."
+**When to use it:** When you want a capable research partner for whatever you're working on right now. Some examples: "Can you review this script I wrote for cleaning CCD data?" "I'm getting a weird join error -- help me figure out what's going on." "What's the best way to handle suppressed data in a trend analysis?" "How do I use plotnine to create faceted bar charts?" "How do I use ggplot2 to create faceted bar charts with custom themes?" "Help me think through the right approach for a school-level poverty analysis." "Help me poke holes in this result before I present it -- I want to know it holds up, without re-reading every line of code."
 
 **When NOT to use it:** When you know you want a complete, formal analysis with a Plan, Notebook, and Report -- that's Full Pipeline mode. When you just need a quick variable definition -- that's Data Lookup. Ad Hoc Collaboration is for the messy, real-world middle ground where you're actively working on something and want a knowledgeable partner.
 
