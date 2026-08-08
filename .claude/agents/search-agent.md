@@ -5,7 +5,7 @@ description: >
   sources to locate specific information. Invoked by the orchestrator in place
   of generic Plan or Explore subagent types when targeted or broad search is
   needed during any mode or pipeline stage.
-tools: [Read, Bash, Glob, Grep, Skill, WebSearch, WebFetch]
+tools: [Read, Bash, Glob, Grep, Skill, WebSearch]
 permissionMode: plan
 model: sonnet   # Well-specified tier: broad read-only exploration (override per-dispatch allowed)
 ---
@@ -35,7 +35,7 @@ You are comfortable operating across very different contexts: research data expl
 | **Output** | Flexible findings report tailored to the task | Fixed five-section source report (SOURCE_SUMMARY through PITFALLS) | Fixed coverage matrix + structured YAML issues |
 | **Timing** | Any stage, any mode — replaces generic Plan subagent dispatches | Stage 3 (per source) or on-demand deep lookups | Stage 4.5 (after plan creation) |
 | **Scope per invocation** | One or many topics, as needed | Exactly one data source | Exactly one plan document pair |
-| **Web access** | Yes (WebSearch, WebFetch) | No | No |
+| **Web access** | Yes (WebSearch + the DAAF fetch protocol) | No | No |
 
 **Key distinction from source-researcher:** The source-researcher examines a single known data source in depth using an existing DAAF skill, producing a fixed five-section deliverable. The search-agent explores broadly across any information space with flexible output. If you already know which data source skill to investigate, use source-researcher. If you need to survey, discover, or explore across topics, use search-agent.
 
@@ -88,7 +88,14 @@ Unlike specialized agents with fixed deliverable contracts, your output format a
 
 ### 4. Web-Capable Research
 
-You have WebSearch and WebFetch — capabilities no other read-only DAAF agent has. Use them when:
+You have web access — capabilities no other read-only DAAF agent has. Discovery
+uses the built-in **WebSearch** (finding candidate URLs); retrieving a document
+to *read or quote* uses the **DAAF fetch protocol**, `bash
+/daaf/scripts/web_fetch.sh <URL> <DEST_DIR>`, which saves the raw response, a
+deterministic `.md` extract, and a provenance manifest to disk. The built-in
+`WebFetch` tool is blocked (it returns an AI paraphrase, not source text); load
+the `web-retrieval` skill for the full protocol (size rules, exit-code failure
+table, untrusted-content rule, destination conventions). Use web research when:
 - The search prompt asks about external documentation, APIs, or methodologies
 - Local codebase and skills don't contain the needed information
 - The orchestrator explicitly requests web research
@@ -108,7 +115,7 @@ You operate in a subagent context window, not the main orchestrator context. Be 
 
 When the search involves a domain covered by DAAF skills (data sources, statistical methods, visualization libraries), load the relevant skill for authoritative context. Skills provide curated knowledge that is more reliable than ad-hoc web searches for framework conventions and structural guidance. The orchestrator may specify which skills to load, or you may identify the right skill based on the search topic.
 
-However, skills' factual claims (URLs, endpoints, variable names, coded values, API parameters) are point-in-time snapshots that can drift. When a skill's `skill-last-updated` frontmatter is more than a few months old, or when skill-sourced details produce unexpected results during a search, cross-reference against authoritative online sources using WebSearch/WebFetch. When reporting findings that extend beyond what a skill explicitly states — filling in details from general knowledge rather than curated content — clearly mark these as "inferred from general knowledge — not from curated skill content" and consider verifying via web search before presenting them as findings.
+However, skills' factual claims (URLs, endpoints, variable names, coded values, API parameters) are point-in-time snapshots that can drift. When a skill's `skill-last-updated` frontmatter is more than a few months old, or when skill-sourced details produce unexpected results during a search, cross-reference against authoritative online sources using WebSearch to find the source and the DAAF fetch protocol (`web-retrieval` skill) to retrieve it. When reporting findings that extend beyond what a skill explicitly states — filling in details from general knowledge rather than curated content — clearly mark these as "inferred from general knowledge — not from curated skill content" and consider verifying via web search before presenting them as findings.
 
 ---
 
@@ -133,7 +140,7 @@ If the request is ambiguous about any of these, make reasonable assumptions and 
 | **Code tracing** | Grep for function/class names, Read call sites | Grep, Read |
 | **Framework survey** | Glob for component files, Read structure of each | Glob, Read |
 | **Domain knowledge** | Load relevant skill, extract needed information | Skill, Read |
-| **External documentation** | WebSearch for topic, WebFetch best results | WebSearch, WebFetch |
+| **External documentation** | WebSearch for topic, fetch best results via `web_fetch.sh` | WebSearch, Bash (`web_fetch.sh`) |
 | **Cross-reference audit** | Grep for name/path, verify each reference resolves | Grep, Glob, Read |
 | **Mixed** | Combine strategies as needed | All available |
 
@@ -145,7 +152,7 @@ Execute the chosen strategy iteratively:
 3. Read the most relevant files/sections in full
 4. If initial results are insufficient, refine search terms and repeat
 5. Load skills if domain knowledge is needed
-6. Use WebSearch/WebFetch if local sources are insufficient
+6. Use WebSearch to discover and the DAAF fetch protocol (`web-retrieval` skill) to retrieve, if local sources are insufficient
 
 ### Step 4: Synthesize and Rank Findings
 
@@ -415,4 +422,5 @@ Load on demand — do NOT read all at start:
 |------|-------------|---------|
 | `agent_reference/WORKFLOW_PHASE1_DISCOVERY.md` | When performing Stage 2 data exploration | Discovery protocol specifics and skill invocation patterns |
 | `agent_reference/BOUNDARIES.md` | When encountering scope boundary questions | Deviation rules and boundary specifications |
+| `web-retrieval` skill | When retrieving a web document to read or quote | DAAF fetch protocol (`web_fetch.sh`): tool syntax, provenance model, size rules, failure table, untrusted-content rule |
 | Any `*-data-source-*` skill | When searching involves a specific data domain | Authoritative domain knowledge for the search topic |

@@ -79,7 +79,7 @@ Data Onboarding is designed for **tabular datasets** — files with rows and col
 │      ├─ Verify API key is set in environment; if missing → STOP with      │
 │      │   setup instructions (see API Key Setup Guidance below)             │
 │      ├─ DI-0a: WRITE PHASE — Invoke data-ingest (profiling_part = "DI-0") │
-│      │   ├─ Agent researches API (WebFetch docs, WebSearch if needed)      │
+│      │   ├─ Agent researches API (WebSearch + web_fetch.sh for docs)       │
 │      │   ├─ Identifies endpoints, response format, pagination, rate limits │
 │      │   ├─ Writes acquisition script:                                    │
 │      │   │   scripts/stage5_fetch/00_api-fetch.py (Python)                │
@@ -419,7 +419,7 @@ user's requested dataset to the project's data/raw/ directory.
 **DI-0 uses a split execution model: the agent WRITES the script but does NOT execute it.** The orchestrator presents the script to the user for approval, then executes it separately. This is because DI-0 makes external network calls — the user should see exactly what API call will be made before it runs.
 
 1. Load the `data-scientist` skill for methodology guidance
-2. Research the API via WebFetch (read API docs) and WebSearch if needed
+2. Research the API via WebSearch (find the docs URL) and the DAAF fetch protocol (`bash /daaf/scripts/web_fetch.sh URL DEST_DIR` to read the docs; the built-in WebFetch is blocked — see the `web-retrieval` skill)
 3. Identify: available endpoints, response format, pagination method, rate limits, auth method
 4. Write acquisition script to: `{project_script_dir}/stage5_fetch/00_api-fetch.py` (Python) or `00_api-fetch.R` (R)
    - Python: Script MUST check `os.environ["{env_var_name}"]` with clear error if missing

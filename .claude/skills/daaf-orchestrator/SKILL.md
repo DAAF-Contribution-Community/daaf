@@ -521,8 +521,8 @@ agent fills in details *beyond* what a skill explicitly states, that is
 LLM-generated inference — not curated knowledge — and is substantially more
 likely to be inaccurate. When the orchestrator or a subagent encounters
 unexpected results, errors, or uncertainty while working with skill-sourced
-information, online verification via WebSearch/WebFetch is the appropriate
-response. For agents without web tools, flag the uncertainty in the return output
+information, online verification via WebSearch (discovery) plus the DAAF fetch
+protocol (`web-retrieval` skill) is the appropriate response. For agents without web tools, flag the uncertainty in the return output
 so the orchestrator can dispatch verification. See `CLAUDE.md` § Execution
 Philosophy > "Skill information awareness" for the universal principle.
 
@@ -632,7 +632,7 @@ See `.claude/agents/README.md` for the complete agent index with key inputs and 
 | `Plan` | Read-only operations when `search-agent` is not suitable | Can read files and make data access calls; CANNOT write files. Prefer `search-agent` for most read-only tasks. |
 | `general-purpose` | Code generation, analysis execution, file creation | Full capabilities including file writes and code execution |
 
-**When to use generic types:** Only for ad-hoc tasks that do not map to any named agent (e.g., Stage DI-7 skill authoring using a `general-purpose` subagent). For all standard pipeline stages, use the corresponding named agent. For read-only exploration tasks, prefer `search-agent` over generic `Plan` — it defaults to the `sonnet` tier (with per-dispatch override available; see Model Selection below), has web access (WebSearch, WebFetch), and understands DAAF conventions. **NEVER use `Explore` subagents.** `Explore` agents are blocked by project hooks (they run on Haiku, which lacks reasoning depth) and will be rejected, wasting time and context on failed launches.
+**When to use generic types:** Only for ad-hoc tasks that do not map to any named agent (e.g., Stage DI-7 skill authoring using a `general-purpose` subagent). For all standard pipeline stages, use the corresponding named agent. For read-only exploration tasks, prefer `search-agent` over generic `Plan` — it defaults to the `sonnet` tier (with per-dispatch override available; see Model Selection below), has web access (WebSearch plus the DAAF fetch protocol — `web-retrieval` skill), and understands DAAF conventions. **NEVER use `Explore` subagents.** `Explore` agents are blocked by project hooks (they run on Haiku, which lacks reasoning depth) and will be rejected, wasting time and context on failed launches.
 
 **Nested dispatch is policy-blocked.** Only the orchestrator dispatches subagents — subagents never launch nested subagents, because all dispatch authority belongs to the orchestrator. A subagent that runs short on context or scope returns remaining work via the early-return protocol so the orchestrator can redelegate it, rather than spawning its own subagents. This is enforced by the `block-nested-dispatch.sh` PreToolUse hook, which denies any Task/Agent dispatch originating inside a subagent (the named agents also omit `Agent`/`Task` from their `tools:` lists; the hook additionally covers the generic built-in types).
 

@@ -72,8 +72,10 @@ These principles apply to all agents writing code in the DAAF system:
   assuming the skill is correct. Critically, information that an agent supplies
   *beyond* what is explicitly encoded in a skill is LLM-generated inference —
   not curated knowledge — and should be verified with even greater diligence.
-  Agents with web access (WebSearch, WebFetch) should verify directly; agents
-  without web access should flag uncertainty for the orchestrator to resolve.
+  Agents with web access (WebSearch for discovery plus the DAAF fetch protocol,
+  `bash /daaf/scripts/web_fetch.sh` — see the `web-retrieval` skill) should
+  verify directly; agents without web access should flag uncertainty for the
+  orchestrator to resolve.
 - **Evidence-graded reporting:** Every report must let the reader distinguish
   observed facts from inference. An observed fact means a command was actually
   run and the command plus its relevant output are quoted; everything else is
