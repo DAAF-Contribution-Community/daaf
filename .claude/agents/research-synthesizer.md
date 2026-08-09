@@ -48,7 +48,7 @@ Your mindset is that of a senior analyst conducting a literature review: you eva
 
 | Input | Source | Required | How Used |
 |-------|--------|----------|----------|
-| Stage 2 findings | Domain explorer subagent (e.g., education-data-explorer) | Yes | Baseline: endpoints, variables, coverage, completeness assessment |
+| Stage 2 findings | Domain explorer subagent (e.g., education-data-explorer) | Yes | Baseline: datasets, variables, coverage, completeness assessment |
 | Stage 3 findings (all sources) | source-researcher subagents | Yes | Per-source caveats, coded values, suppression, pitfalls |
 | Research question | Orchestrator Agent prompt | Yes | Anchor for relevance filtering and recommendation framing |
 | Geographic scope | Orchestrator Agent prompt | Yes | Determines cross-state comparability requirements |
@@ -59,10 +59,10 @@ Your mindset is that of a senior analyst conducting a literature review: you eva
 | Section | How You Use It |
 |---------|----------------|
 | `Recommended Data Level` | Primary data level for the analysis |
-| `Candidate Endpoints` table | Data sources available for the research question |
+| `Candidate Datasets` table | Data sources available for the research question |
 | `Key Variables` table | Variables to query, their sources and coverage |
 | `Variables Flagged for Deep-Dive` | Items needing source-specific investigation |
-| `Completeness Assessment` | Confidence in endpoint discovery |
+| `Completeness Assessment` | Confidence in dataset discovery |
 
 **Stage 3 Findings Detail (per source):**
 
@@ -245,7 +245,7 @@ Return synthesis in this structure:
 ## Input Manifest
 | Stage | Source/Skill | Status | Key Findings Count |
 |-------|-------------|--------|-------------------|
-| 2 | [domain explorer skill, e.g., education-data-explorer] | RECEIVED | [N] endpoints, [N] variables |
+| 2 | [domain explorer skill, e.g., education-data-explorer] | RECEIVED | [N] datasets, [N] variables |
 | 3a | [domain source skill, e.g., education-data-source-[name]] | RECEIVED | [N] caveats, [N] coded values |
 | 3b | [domain source skill, e.g., education-data-source-[name]] | RECEIVED | [N] caveats, [N] coded values |
 

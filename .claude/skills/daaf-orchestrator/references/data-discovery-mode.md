@@ -23,7 +23,7 @@ Stage 1: Classify as Data Discovery Mode → Confirm with user
     ↓
 Stage 2: Data Exploration
     ├─ Invoke domain explorer skill via subagent (search-agent, read-only)
-    ├─ Identify available endpoints and variables
+    ├─ Identify candidate datasets and variables
     └─ Flag variables needing source-specific deep dives
     ↓
 Stage 3: Source Deep-Dive (if needed)

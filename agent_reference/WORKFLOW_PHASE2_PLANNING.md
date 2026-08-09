@@ -77,7 +77,7 @@ Before proceeding to Phase 3, the orchestrator MUST verify the Plan is complete 
 |---------|-----------------|-------------------|
 | **Original Request** | Verbatim user request present | Contains actual request text, not placeholder |
 | **Research Question** | Clear, answerable statement | Specific and measurable |
-| **Query Specification** | All fields populated | Endpoint, years, filters, variables, expected records all present |
+| **Query Specification** | All fields populated | Dataset identifier(s), years, filters, variables, expected records all present |
 | **Transformation Sequence** | All rows complete with validation criteria | Each row has: transformation description, expected outcome, validation criteria, cardinality (if join) |
 | **Validation Checkpoints** | Expected values defined | CP1-CP4 sections have specific thresholds |
 | **Output Specification** | Required deliverables listed | Notebook structure, report sections, visualizations specified |
@@ -255,7 +255,7 @@ Stage 4.5 catches these issues **before** expensive data acquisition begins.
 |-----------|----------------|
 | **Completeness** | All required sections populated, no placeholders |
 | **Consistency** | Internal references match, no contradictions |
-| **Feasibility** | Data sources exist, endpoints valid, years available |
+| **Feasibility** | Data sources exist, dataset identifiers valid, years available |
 | **Testability** | Research Outcomes are measurable investigation objectives, validation criteria specific |
 | **Clarity** | Tasks unambiguous, file paths explicit |
 | **Scope** | Boundaries defined, escalation conditions clear; task-count bands and the 21+ user-decision protocol are canonical in `agent_reference/SCOPE_POLICY.md` |
@@ -374,7 +374,7 @@ The PSU2 checkpoint presents a **high-level summary** of the Plan — not the Pl
 **PSU2 Content Requirements (this is a SUMMARY — not the full Plan):**
 - Research question as stated in the Plan
 - Methodology summary: statistical approach, key analytical decisions
-- Data sources confirmed: endpoints, year ranges, geographic scope
+- Data sources confirmed: dataset identifiers, year ranges, geographic scope
 - Transformation sequence overview: number of tasks, wave structure, key joins
 - Research Outcomes the analysis will investigate
 - Risk Register highlights: top risks and mitigation strategies
@@ -427,7 +427,7 @@ Apply this checklist after the data-planner subagent returns the Plan documents 
 - [ ] Research question clearly stated (not placeholder)
 - [ ] Research Outcomes section has ≥3 investigation/measurement objectives that do not pre-specify directional results
 - [ ] Hypotheses (if any) are clearly separated from Research Outcomes and include basis citations
-- [ ] Data Sources table complete with endpoints and years
+- [ ] Data Sources table complete with dataset identifiers and years
 - [ ] Transformation Sequence table has all tasks with waves assigned
 - [ ] Every task has explicit file paths (no placeholders like "TBD")
 - [ ] Every task has a skill or agent identified
