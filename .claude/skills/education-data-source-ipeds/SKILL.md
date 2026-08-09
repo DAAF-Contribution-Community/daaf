@@ -1,17 +1,17 @@
 ---
 name: education-data-source-ipeds
 description: >-
-  IPEDS — primary federal postsecondary data (~6,500 institutions, 1980-present): enrollment, completions, graduation rates, finance, aid, admissions, HR. For college/university analysis. Grad rates = first-time full-time; finance needs GASB/FASB care.
+  IPEDS — primary federal postsecondary data (~6,500 institutions, 1979-present in the mirror; the IPEDS program dates from 1980): enrollment, completions, graduation rates, finance, aid, admissions, HR. For college/university analysis. Grad rates = first-time full-time; finance needs GASB/FASB care.
 metadata:
   audience: any-agent
   domain: data-source
   skill-authored: "2026-02-09"
-  skill-last-updated: "2026-02-09"
+  skill-last-updated: "2026-08-06"
 ---
 
 # IPEDS Data Source Reference
 
-IPEDS (Integrated Postsecondary Education Data System) — the primary federal data system for ~6,500 U.S. postsecondary institutions, comprising 12+ annual survey components: enrollment, completions, graduation rates, finance, financial aid, admissions, human resources, and institutional characteristics (1980-present, varies by component). Use when analyzing postsecondary enrollment, degree completions by CIP code, institutional finances, or admissions data. Graduation rates track first-time full-time students only (150% cohort). Cross-sector finance comparisons require care due to GASB vs. FASB accounting.
+IPEDS (Integrated Postsecondary Education Data System) — the primary federal data system for ~6,500 U.S. postsecondary institutions, comprising 12+ annual survey components: enrollment, completions, graduation rates, finance, financial aid, admissions, human resources, and institutional characteristics (1979-present in the mirror — the IPEDS program dates from 1980; varies by component). Use when analyzing postsecondary enrollment, degree completions by CIP code, institutional finances, or admissions data. Graduation rates track first-time full-time students only (150% cohort). Cross-sector finance comparisons require care due to GASB vs. FASB accounting.
 
 Comprehensive guide to understanding and using IPEDS data correctly. IPEDS is the most widely used source for postsecondary education data but has significant complexities — including sector-specific accounting standards, cohort-limited graduation rates, and integer-encoded categorical variables — that users must understand.
 
@@ -34,7 +34,7 @@ IPEDS (Integrated Postsecondary Education Data System) is a system of 12+ interr
 - **Coverage**: ~6,500 Title IV-participating postsecondary institutions
 - **Frequency**: Annual collection in three periods (Fall, Winter, Spring)
 - **Mandate**: Required for Title IV federal student aid participation
-- **Available years**: 1980-present (varies by component)
+- **Available years**: content spans **1979-2024** in the v2 mirror (build validated 2026-08-06), varies by component. Note the content minimum is 1979 (not 1980); most series now reach 2023-24, while Finance lags (see Data Availability & Lag Times).
 - **Primary identifier**: UNITID (6-digit institution ID)
 - **Available through**: Education Data Portal mirrors (32 datasets covering most survey components; some variables not mirrored — see Data Access section)
 
@@ -309,14 +309,16 @@ df <- df |> filter(sector == 1, degree_granting == 1)
 
 IPEDS data becomes available with significant lag. Always verify year availability before committing to a year range.
 
-| Survey Component | Typical Lag | Latest Available (as of Jan 2026) |
+| Survey Component | Typical Lag | Latest Available (v2 mirror, 2026-08-06) |
 |------------------|-------------|-----------------------------------|
-| **Directory** | ~1 year | 2023 |
-| **Admissions-Enrollment** | ~2 years | 2022 |
-| **Fall Enrollment** | ~2-3 years | 2022 |
-| **Completions** | ~2 years | 2022 |
-| **Finance** | ~4+ years | **2017** (see warning below) |
-| **Graduation Rates** | ~2-3 years | 2022 |
+| **Directory** | ~1 year | 2024 (also +7 `cc_*_2025` Carnegie classification columns) |
+| **Admissions-Enrollment** | ~2 years | 2024 |
+| **Fall Enrollment** | ~2-3 years | 2024 (race and age files extended through 2024) |
+| **Completions** | ~2 years | 2023 (2-digit and 6-digit CIP completions; the `completers` file itself drops 2022, reaching 2021) |
+| **Finance** | ~4+ years | **2017** (not re-verified against the v2 mirror; see warning below) |
+| **Graduation Rates** | ~2-3 years | 2023 (grad-rates-pell reaches 2023; the 150% grad-rates file reaches 2023 — see the dedup+revaluation note in `education-data-query/references/vintage-drift.md`) |
+
+> **New in the v2 mirror (2026-08-06):** the directory gained the 2023-24 year and seven Carnegie-2025 classification columns (`cc_*_2025`); fall-enrollment-race and fall-enrollment-age each gained 2023 and 2024 files; 2-digit/6-digit CIP completions gained 2023. The 150% graduation-rates file was de-duplicated and wholesale-revalued (10.69M → 6.14M rows) — any pre-2026q3 analysis of it must be fully re-run. See the vintage-drift reference for the complete change map.
 
 > **CRITICAL: IPEDS Finance Data Cutoff.** As of January 2026, IPEDS Finance data is only available through **2017** in the Portal mirrors. This affects endowment values (`endowment_end`), revenue/expense data, and any financial ratios. Options: (1) limit analysis to available years, (2) use NCCS 990 data for private institutions as an alternative, or (3) forward-fill with a documented caveat and indicator column.
 
@@ -491,7 +493,7 @@ if (length(issues) > 0) cat(paste(issues, collapse = "\n"), "\n")
 | `education-data-source-eada` | College athletics | Athletics equity and finance |
 | `education-data-source-nacubo` | Endowment data | Endowment analysis beyond IPEDS |
 | `education-data-source-campus-safety` | Campus crime statistics | Safety and compliance |
-| `education-data-explorer` | Parent discovery skill | Finding available endpoints |
+| `education-data-explorer` | Parent discovery skill | Routing questions to mirror dataset files |
 | `education-data-query` | Data fetching | Downloading parquet/CSV files |
 
 ## Topic Index

@@ -159,11 +159,11 @@ comparison <- if (diff < 1.96 * se_combined) {
 
 ## MEPS 2.0 Updates
 
-### Key Improvements in MEPS 2.0 (December 2025)
+### Key Improvements in MEPS 2.0 (Released 2025-12-11)
 
-> **Portal Status (Feb 2026):** MEPS 2.0 has not yet been integrated into the Education Data Portal mirrors. Portal data still reflects MEPS 1.0 (2009-2022). The improvements below apply to the Urban Institute's direct release, not yet to mirror-accessible data.
+> **Current vintage:** Urban's MEPS 2.0 release covers school years 2009-10 through 2022-23 and states that updates will occur annually. The Portal's 2022 endpoint returned rows (count 94,941) and its 2023 endpoint returned an empty result (count 0), re-probed 2026-08-06. Treat this as the observed publication vintage; no fixed methodological lag is documented.
 
-1. **Extended time coverage**: Additional years of data
+1. **Extended time coverage**: School years 2009-10 through 2022-23
 2. **ISP integration**: Incorporates Identified Student Percentage data
 3. **Improved CEP handling**: Better accounts for universal meal schools
 4. **Updated calibration**: Uses more recent SAIPE data

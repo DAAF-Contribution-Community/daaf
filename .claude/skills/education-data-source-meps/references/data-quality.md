@@ -70,20 +70,17 @@ MEPS covers **only public schools**:
 | Version | Years Available | Notes |
 |---------|-----------------|-------|
 | MEPS 1.0 | 2006-2019 | Original release |
-| MEPS 2.0 | Extended range | December 2025 release |
+| MEPS 2.0 | School years 2009-10 through 2022-23 | Released 2025-12-11; Urban states updates will occur annually |
 
-> **Portal Status (Feb 2026):** MEPS 2.0 has not yet been integrated into the Education Data Portal mirrors. Portal data still reflects MEPS 1.0 (2009-2022). Check `datasets-reference.md` for current availability.
+> **Portal status re-probed 2026-08-06:** The Portal's 2022 endpoint returned rows (count 94,941), while its 2023 endpoint returned an empty result (count 0). Portal `year=2022` corresponds to the terminal 2022-23 school year convention used in the release description. Re-probe the needed year before analysis.
 
-**Impact**: Cannot analyze poverty before 2006 or after available years with MEPS.
+**Impact**: Cannot analyze poverty outside the years supplied by the selected release and Portal file.
 
-### 3. Data Lag
+### 3. Publication Vintage
 
-MEPS depends on CCD and SAIPE data, both of which have lag:
-- CCD: ~1-2 years behind current year
-- SAIPE: Released December for prior year
-- MEPS: Additional processing time
+The terminal year reflects the currently published release. Urban documents an annual update intention for MEPS 2.0 but does not document an inherent or guaranteed fixed lag. The current gap should therefore be described as a **publication-vintage observation**, not as a methodological rule and not as a proven consequence of CCD or SAIPE production timing.
 
-**Impact**: Most recent year available is typically 2-3 years behind current date.
+**Impact**: Record the release date and covered school years, and verify that the Portal endpoint or mirror actually contains the target year.
 
 ### 4. 100% FPL Only
 
@@ -145,7 +142,7 @@ Smaller schools have larger estimation errors:
 |----------|---------|-------------|
 | Private school poverty | Not covered | Use other measures |
 | Before 2006 | No data | Use FRPL (with caveats) |
-| Real-time monitoring | Data lag | Use local data |
+| Real-time monitoring | Latest published vintage may not cover the current school year | Use current local data and document the vintage difference |
 | 185% FPL threshold | Different threshold | Use FRPL (with CEP adjustment) |
 | Meal program planning | Wrong measure | Use FRPL/ISP |
 | Compliance with FRPL-based formulas | May not satisfy requirements | Use FRPL |
@@ -342,10 +339,10 @@ Clarify:
 **Problem**: Making strong claims about individual schools
 **Solution**: Use aggregations or acknowledge uncertainty
 
-### 4. Outdated Data
+### 4. Publication Vintage
 
-**Problem**: Using MEPS for current policy without noting data lag
-**Solution**: State the years covered; note lag
+**Problem**: Using MEPS for current policy without recording the release date and terminal school year
+**Solution**: State the release and years covered; verify the target Portal year and describe any gap as publication vintage
 
 ### 5. Ignoring Modified MEPS
 
@@ -371,7 +368,7 @@ MEPS is a **high-quality, research-grade** poverty measure when used appropriate
 | Strength | Limitation |
 |----------|------------|
 | Cross-state comparable | Model-based (not direct counts) |
-| Time-consistent | 2-3 year data lag |
+| Time-consistent | Published release has a finite terminal school year; annual updates are stated but not guaranteed on a fixed lag |
 | Calibrated to Census | 100% FPL only (not 185%) |
 | Accounts for CEP | Public schools only |
 | Standard errors provided | Some uncertainty for small schools |

@@ -51,7 +51,7 @@ The Common Core of Data is the primary federal database on public elementary and
 - **FRPL in CEP schools**: Often reported as 100%, unreliable as poverty measure
 - **Missing data**: Some schools have missing enrollment or FRPL counts
 - **Definitional changes**: School IDs can change with restructuring
-- **Lag time**: CCD data typically 1-2 years behind current year
+- **Input vintage**: Record the exact CCD vintage used by the selected MEPS release; do not infer a fixed MEPS publication lag from CCD timing
 
 ## Small Area Income and Poverty Estimates (SAIPE)
 
@@ -172,15 +172,15 @@ ISP Data ────────┴──── Matched to schools via state/sc
 
 ### Coverage by Year
 
-| Data Source | Available Years | Update Frequency |
-|-------------|-----------------|------------------|
-| CCD | 1986-2023 | Annual |
-| SAIPE | 1995-2023 | Annual (December) |
-| ISP | 2011-present | Annual |
-| MEPS 1.0 | 2006-2019 | One-time release |
-| MEPS 2.0 | Extended range | December 2025 |
+| Data Source | Relevant Coverage / Status | Update Note |
+|-------------|----------------------------|-------------|
+| CCD | Verify the exact input years documented for the selected MEPS release | Federal source updates separately from MEPS |
+| SAIPE | Verify the exact input years documented for the selected MEPS release | Federal source updates separately from MEPS |
+| ISP | Used in MEPS 2.0 | State availability and linkage vary |
+| MEPS 1.0 | 2006-2019 | Original release |
+| MEPS 2.0 | School years 2009-10 through 2022-23 | Released 2025-12-11; Urban states updates will occur annually |
 
-> **Portal Status (Feb 2026):** MEPS 2.0 has not yet been integrated into the Education Data Portal mirrors. Portal data still reflects MEPS 1.0 (2009-2022).
+> **Portal status re-probed 2026-08-06:** Portal year 2022 returned rows (count 94,941); Portal year 2023 returned an empty result (count 0). This is a publication-vintage observation, not evidence of a fixed methodological lag or a causal delay attributable to CCD or SAIPE.
 
 ### Known Data Gaps
 

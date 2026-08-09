@@ -28,7 +28,7 @@ Comprehensive reference for key CCD variables, coding schemes, and special value
 **Portal column name:** `ncessch` (lowercase)
 **NCES source name:** NCESSCH
 
-**Format**: 12 characters (when String) or equivalent integer
+**Required canonical format**: Numeric string of exactly 12 characters. Validate width after loading; an integer is not semantically equivalent because it cannot preserve leading zeros or display width.
 
 **Structure**:
 ```
@@ -39,9 +39,14 @@ Example: 010000100100
          00100   = School ID within LEA
 ```
 
-> **Type Warning:** `ncessch` is String in the Schools Directory dataset (preserving leading zeros)
-> but Int64 in the Schools Enrollment dataset. Always check dtype before joining.
-> An additional column `ncessch_num` (always Int64) exists in some datasets as a numeric equivalent.
+> **Per-file type warning (v2 mirror, observed 2026-08-06):** The mirror has no universal
+> identifier dtype — per-file typing is heterogeneous, so the 12-character rule above is an
+> *analysis-time normalization* contract, not a statement about raw file storage. Some Hugging Face
+> Parquet enrollment objects expose `ncessch` as `Int64`, which cannot preserve leading zeros or
+> 12-character display-width semantics. Inspect each file's schema, cast any integer `ncessch` to a
+> zero-padded string, and width-validate every nonmissing, nonsentinel value at exactly 12 numeric
+> characters before joining. Treat any `ncessch_num` field only as a numeric convenience, never as
+> the canonical join key.
 
 **Characteristics**:
 - Assigned by NCES when school first reported
@@ -57,7 +62,7 @@ Example: 010000100100
 **Portal column name:** `leaid` (lowercase)
 **NCES source name:** LEAID
 
-**Format**: 7 characters (when String) or equivalent integer
+**Required canonical format**: Numeric string of exactly 7 characters. Validate width after loading; an integer is not semantically equivalent because it cannot preserve leading zeros or display width.
 
 **Structure**:
 ```
@@ -67,9 +72,15 @@ Example: 0100001
          00001 = State-assigned district ID
 ```
 
-> **Type Warning:** `leaid` is Int64 in the Districts Directory and District Enrollment datasets
-> but String in the Schools Directory and District Finance datasets. Always check dtype and
-> cast as needed when joining across datasets.
+> **Per-file type warning (v2 mirror, observed 2026-08-06):** `leaid` typing varies by file — there
+> is no universal contract. Observed in v2: `leaid` is native-width `String` (including alphanumeric
+> values such as `06D0004`, widths 2-7) in `districts_ccd_finance`, but `Int64` in
+> `school-districts_lea_directory` and `districts_saipe`. An `Int64` `leaid` cannot preserve
+> leading-zero or 7-character display-width semantics. The 7-character rule above is an analysis-time
+> normalization contract: inspect each file's schema, cast integer `leaid` to a zero-padded string,
+> and width-validate before joins. Note that finance `leaid` values legitimately fall outside the
+> plain 7-digit numeric pattern (alphanumeric, variable width), so reconcile id domains across files
+> rather than assuming a single canonical form.
 
 **When LEAID Changes**:
 - District merger

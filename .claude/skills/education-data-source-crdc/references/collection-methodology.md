@@ -34,7 +34,7 @@ Understanding how CRDC data is collected, who reports it, and what universe it c
 2. **Civil rights focus** - Designed for equity monitoring and enforcement
 3. **Subgroup disaggregation** - Extensive breakdown by protected classes
 4. **Self-reported** - Schools report their own data
-5. **Universal coverage** - All public schools (since 2015-16)
+5. **Universe coverage** - Official evidence establishes the 2013-14 collection as a universe collection; verify each collection's scope from its own documentation
 
 ---
 
@@ -44,14 +44,14 @@ Understanding how CRDC data is collected, who reports it, and what universe it c
 
 | Year | Approach | Coverage | Notes |
 |------|----------|----------|-------|
-| **1968-2008** | Sample | Varied | Traditional sample-based survey |
-| **2009-10** | Transitional | ~7,000 LEAs | First modern CRDC redesign |
-| **2011-12** | Sample | ~7,000 LEAs | Stratified sample |
-| **2013-14** | Expanded sample | ~16,000+ LEAs | Larger but still sampled |
-| **2015-16** | Near-universe | ~96,000 schools | First near-complete coverage |
-| **2017-18** | Universe | ~96,000 schools | Full universe collection |
-| **2020-21** | Universe | ~97,500 schools | Full coverage, COVID year |
-| **2021-22** | Universe | ~98,000 schools | Full coverage |
+| **1968-2008** | Collection-specific | Varied | Consult historical collection documentation |
+| **2009-10** | Transitional | ~7,000 LEAs | Modern CRDC redesign |
+| **2011-12** | Not re-verified here | Portal data include selected 2011 topics | Do not infer sampled or universe status without authoritative collection-specific evidence |
+| **2013-14** | **Universe** | 16,758 districts; 95,507 schools | Official first-look document explicitly identifies a universe collection |
+| **2015-16** | Universe | ~96,000 schools | Chronic absenteeism added |
+| **2017-18** | Universe | ~96,000 schools | Expanded variables |
+| **2020-21** | Universe | ~97,500 schools | COVID-impacted year |
+| **2021-22** | Universe | ~98,000 schools | Consecutive collection after 2020-21 |
 
 ### Implications for Analysis
 
@@ -60,30 +60,30 @@ def check_coverage_appropriateness(year, analysis_type):
     """
     Determine if CRDC year is appropriate for analysis type.
     """
-    sample_years = [2011, 2013]
-    universe_years = [2015, 2017, 2020, 2021]
+    coverage_requires_verification = [2011]
+    universe_years = [2013, 2015, 2017, 2020, 2021]
     
     if analysis_type == 'national_totals':
-        if year in sample_years:
+        if year in coverage_requires_verification:
             return {
                 'appropriate': False,
-                'reason': 'Sample years cannot produce national totals without weighting',
-                'recommendation': 'Use 2015+ for national estimates'
+                'reason': 'This skill did not re-verify 2011-12 collection coverage',
+                'recommendation': 'Consult authoritative 2011-12 collection documentation'
             }
     
     if analysis_type == 'school_level':
-        if year in sample_years:
+        if year in coverage_requires_verification:
             return {
                 'appropriate': True,
-                'warning': 'Not all schools included; cannot generalize',
-                'recommendation': 'Verify school is in sample'
+                'warning': 'Collection coverage was not re-verified here',
+                'recommendation': 'Verify inclusion and coverage in official 2011-12 documentation'
             }
     
     if analysis_type == 'time_series':
         return {
             'appropriate': year in universe_years,
             'reason': 'Time series requires consistent coverage',
-            'recommendation': 'Use only 2015+ for trends'
+            'recommendation': 'Use consistently defined verified-universe collections; note the COVID break'
         }
     
     return {'appropriate': True}
@@ -91,48 +91,45 @@ def check_coverage_appropriateness(year, analysis_type):
 
 ```r
 # Determine if a CRDC year is appropriate for the analysis type.
-sample_years <- c(2011, 2013)
-universe_years <- c(2015, 2017, 2020, 2021)
+coverage_requires_verification <- c(2011)
+universe_years <- c(2013, 2015, 2017, 2020, 2021)
 
 year <- 2013
 analysis_type <- "national_totals"  # or "school_level", "time_series"
 
-if (analysis_type == "national_totals" && year %in% sample_years) {
+if (analysis_type == "national_totals" && year %in% coverage_requires_verification) {
   result <- list(
     appropriate = FALSE,
-    reason = "Sample years cannot produce national totals without weighting",
-    recommendation = "Use 2015+ for national estimates"
+    reason = "This skill did not re-verify 2011-12 collection coverage",
+    recommendation = "Consult authoritative 2011-12 collection documentation"
   )
-} else if (analysis_type == "school_level" && year %in% sample_years) {
+} else if (analysis_type == "school_level" && year %in% coverage_requires_verification) {
   result <- list(
     appropriate = TRUE,
-    warning = "Not all schools included; cannot generalize",
-    recommendation = "Verify school is in sample"
+    warning = "Collection coverage was not re-verified here",
+    recommendation = "Verify inclusion and coverage in official 2011-12 documentation"
   )
 } else if (analysis_type == "time_series") {
   result <- list(
     appropriate = year %in% universe_years,
     reason = "Time series requires consistent coverage",
-    recommendation = "Use only 2015+ for trends"
+    recommendation = "Use consistently defined verified-universe collections; note the COVID break"
   )
 } else {
   result <- list(appropriate = TRUE)
 }
 ```
 
-### Sample Years (2011, 2013) Limitations
+### Early Collection Coverage Verification
 
-- **No sample weights provided** - Cannot weight up to national estimates
-- **Not all schools/districts included** - Selection may introduce bias
-- **Stratified but not representative** - Designed for OCR needs, not research
-- **Cannot calculate national totals** - Only descriptive for included schools
+The 2011-12 coverage status was not independently established by the authoritative evidence used for this correction. Do not copy a sample/universe label from another collection year; consult the official 2011-12 collection documentation before estimating totals or generalizing beyond observed schools.
 
-### Universe Years (2015+) Strengths
+### Universe Collection Strengths (2013-14 and later verified collections)
 
-- **All schools included** - Complete enumeration
-- **National estimates possible** - Sum to national totals
-- **Time series valid** - Consistent universe for comparisons
-- **Small area analysis possible** - State, district, school-level analysis
+- **Comprehensive enumeration** - Official 2013-14 evidence reports 16,758 districts and 95,507 schools
+- **National aggregation possible** - Subject to response, suppression, and data-quality checks
+- **Longitudinal analysis still requires care** - Definitions, family availability, and COVID context vary
+- **Small area analysis possible** - State, district, and school-level analysis, with suppression checks
 
 ---
 

@@ -1,17 +1,17 @@
 ---
 name: education-data-source-crdc
 description: >-
-  CRDC — biennial OCR survey of all U.S. public schools (2011-2021). Discipline, course access, harassment, restraint/seclusion by race/sex/disability/EL. Use for civil rights and equity analysis. 2020-21 COVID-impacted; 2011-14 sampled, not universe.
+  CRDC — OCR civil rights collection for U.S. public schools; Portal families have topic-specific coverage from 2011 through 2022. Discipline, course access, harassment, restraint/seclusion by race/sex/disability/EL. Use for civil rights and equity analysis. Official evidence identifies 2013-14 as a universe collection; 2020-21 is COVID-impacted.
 metadata:
   audience: any-agent
   domain: data-source
   skill-authored: "2026-02-09"
-  skill-last-updated: "2026-02-09"
+  skill-last-updated: "2026-08-06"
 ---
 
 # CRDC Data Source Reference
 
-Civil Rights Data Collection (CRDC) — mandatory biennial OCR survey of all U.S. public schools measuring educational opportunity and civil rights compliance (2011-2021). Use when analyzing school discipline disparities by race/disability, course access equity, harassment, restraint/seclusion, or chronic absenteeism. Data disaggregated by race, sex, disability, and English learner status. Note: 2020-21 is COVID-impacted and not directly comparable to other years; 2011-14 are sampled, not universe.
+Civil Rights Data Collection (CRDC) — mandatory OCR collection measuring educational opportunity and civil rights compliance in U.S. public schools. Portal dataset families have topic-specific coverage from 2011 through 2022; use them for school discipline disparities, course access equity, harassment, restraint/seclusion, or chronic absenteeism by race, sex, disability, and English learner status. The 2013-14 collection was officially a universe collection covering 16,758 districts and 95,507 schools; this skill does not make an unverified coverage claim for 2011-12. The 2020-21 collection is COVID-impacted and not directly comparable to ordinary years.
 
 The Civil Rights Data Collection is a mandatory biennial survey of all U.S. public schools measuring educational opportunity and civil rights compliance. It is the only national source for school-level discipline disparities, course access equity, harassment, and restraint/seclusion data disaggregated by race, sex, disability, and English learner status.
 
@@ -31,15 +31,15 @@ The Civil Rights Data Collection is a mandatory biennial survey of all U.S. publ
 
 ## What is CRDC?
 
-The Civil Rights Data Collection is a **mandatory biennial survey** of all public schools and districts that measures educational opportunity and civil rights compliance:
+The Civil Rights Data Collection is a **mandatory OCR collection** of public schools and districts that measures educational opportunity and civil rights compliance:
 
 - **Collector**: U.S. Department of Education, Office for Civil Rights (OCR)
 - **Purpose**: Enforce civil rights laws, identify discrimination, monitor equity
-- **Coverage**: All public LEAs and schools receiving federal financial assistance
-- **Frequency**: Biennial (every 2 school years)
+- **Coverage**: Collection-specific; official evidence establishes 2013-14 as a universe collection. Verify 2011-12 against its own authoritative documentation rather than applying a blanket early-year label.
+- **Cadence**: Usually organized by school-year collection cycles, historically often biennial, but not governed by an odd/even parity rule; 2020-21 and 2021-22 are consecutive collections
 - **Disaggregation**: Race/ethnicity, sex, disability status, English learner status
 - **History**: Collected since 1968 (as Elementary and Secondary School Civil Rights Survey)
-- **Available years**: 2011, 2013, 2015, 2017, 2020, 2021 (biennial — no data for even-numbered school years)
+- **Portal coverage (v2 mirror, build validated 2026-08-06)**: Topic-specific families spanning **2011 through 2022** (content-based year range confirmed in the v2 build); year availability differs by topic
 - **Available through**: Education Data Portal mirrors
 
 ## Reference File Structure
@@ -116,17 +116,19 @@ Data quality issue?
 
 ### Collection Years
 
-| School Year | Collection | Coverage | Key Notes |
-|-------------|------------|----------|-----------|
-| 2011-12 | Sample | ~7,000 districts | First modern CRDC; sampled |
-| 2013-14 | Expanded | ~16,000 districts | Larger sample |
-| 2015-16 | Near-universe | ~96,000 schools | First near-complete |
-| 2017-18 | Universe | ~96,000 schools | Full universe collection |
-| 2020-21 | Universe | ~97,500 schools | COVID-impacted year |
-| 2021-22 | Universe | ~98,000 schools | Post-pandemic baseline |
-| 2023-24 | Universe | In progress | Current collection |
+| School Year | Coverage status | Scale / Portal note | Key Notes |
+|-------------|-----------------|---------------------|-----------|
+| 2011-12 | Not re-verified in this correction cycle | Portal families include 2011 for some topics | Consult collection-specific authoritative documentation before generalizing |
+| 2013-14 | **Universe** | 16,758 districts; 95,507 schools (First Look figure; the revised target population was 95,958 schools) | Official first-look evidence explicitly calls this a universe collection |
+| 2015-16 | Universe collection | ~96,000 schools | Chronic absenteeism added |
+| 2017-18 | Universe collection | ~96,000 schools | Expanded variables |
+| 2020-21 | Universe collection | ~97,500 schools | COVID-impacted year |
+| 2021-22 | Universe collection | ~98,000 schools; selected Portal topics reach 2022 | Consecutive collection after 2020-21 |
+| 2023-24 | No Portal data established | No Portal CRDC 2024 data as of the probes: original 2026-08-06 probe errored (HTTP 500; exact endpoint not recorded), and a 2026-08-07 re-probe of `https://educationdata.urban.org/api/v1/schools/crdc/enrollment/2024/` returned HTTP 404 — either way zero rows | Do not infer 2024 data from the count of dataset families |
 
-**Critical**: CRDC is biennial - no data for odd years (2012, 2014, 2016, 2018, 2019).
+**Cadence:** CRDC is organized by school-year collection cycles and is often described as biennial, but there is no valid odd/even-year rule. Portal year labels represent the terminal year of the school year; 2020 and 2021 are consecutive available collection labels. Re-probed 2026-08-06: `chronic-absenteeism/2022/race/sex/` returned rows (HTTP 200), while a direct 2024 CRDC enrollment probe returned no rows (the original 2026-08-06 probe errored HTTP 500 with the exact endpoint not recorded; a 2026-08-07 re-probe of `https://educationdata.urban.org/api/v1/schools/crdc/enrollment/2024/` returned HTTP 404).
+
+> **Source verification (accessed 2026-07-21):** [Official 2013-14 first look](https://www.ed.gov/about/offices/list/ocr/docs/crdc-2013-14.html), [Portal endpoint catalog](https://educationdata.urban.org/api/v1/api-endpoints/), and [Portal bulk manifest](https://educationdata.urban.org/api/v1/api-downloads/).
 
 ### Data Categories
 
@@ -152,7 +154,7 @@ Data quality issue?
 
 > **Note:** The OCR-internal `combokey` (e.g., `AL-0010-00002`) does NOT appear as a column in Portal data. Use `crdc_id` or `ncessch` for school-level identification.
 
-> **WARNING: String Type Override Required.** When reading CRDC data from CSV, `ncessch`, `leaid`, and `crdc_id` must be read as String (`pl.Utf8`) via `schema_overrides`. Polars infers these as Int64, silently destroying leading zeros for ~19% of rows (FIPS 01-09 states: AL, AK, AZ, AR, CA, CO, CT). In R, `readr::read_csv()` has the identical failure mode — apply the same guard with `col_types = cols(ncessch = col_character(), leaid = col_character(), crdc_id = col_character())`. Parquet files preserve types automatically.
+> **WARNING: String Type Override Required.** When reading CRDC data from CSV, `ncessch`, `leaid`, and `crdc_id` must be read as String (`pl.Utf8`) via `schema_overrides`. Polars infers these as Int64, silently destroying leading zeros for ~19% of rows (FIPS 01-09 states: AL, AK, AZ, AR, CA, CO, CT). In R, `readr::read_csv()` has the identical failure mode — apply the same guard with `col_types = cols(ncessch = col_character(), leaid = col_character(), crdc_id = col_character())`. Parquet files preserve whatever dtype the file was written with — and that dtype is **not** uniformly String across CRDC files. A 2026-08-07 per-file audit found id typing is heterogeneous even within the 2020 vintage (e.g. `school_characteristics` all String, but `enrollment_k12_2020` `crdc_id` and `harass_bully_students_2020` all three ids are Int64). Do not assume a parquet read yields String ids — inspect the schema and normalize/cast on read. See `references/data-quality.md` § Identifier Typing for the per-file evidence.
 
 ### Race/Ethnicity (Portal Integer Codes)
 
@@ -214,9 +216,9 @@ Data quality issue?
 
 Datasets for CRDC are available via the Education Data Portal mirror system. See `datasets-reference.md` for canonical paths, `mirrors.yaml` for mirror configuration, and `fetch-patterns.md` for fetch code patterns including `fetch_from_mirrors()` and `fetch_yearly_from_mirrors()`.
 
-**Key datasets (6 of 22 total):**
+**Portal bulk family inventory observed 2026-07-21 (24 families: 10 year-sharded, 14 multi-year/single-file):**
 
-| Dataset | Path | Type | Codebook |
+| Dataset family | Path | Type | Codebook |
 |---------|------|------|----------|
 | Discipline | `crdc/schools_crdc_discipline_k12_{year}` | Yearly | `crdc/codebook_schools_crdc_discipline` |
 | AP/IB Enrollment | `crdc/schools_crdc_apib_enroll` | Single | `crdc/codebook_schools_crdc_ap-ib-enrollment` |
@@ -224,8 +226,26 @@ Datasets for CRDC are available via the Education Data Portal mirror system. See
 | Chronic Absenteeism | `crdc/schools_crdc_chronic_absenteeism_{year}` | Yearly | `crdc/codebook_schools_crdc_chronic-absenteeism` |
 | Harassment/Bullying | `crdc/schools_crdc_harass_bully_students_{year}` | Yearly | `crdc/codebook_schools_crdc_harrassment-bullying-students` |
 | Restraint/Seclusion | `crdc/schools_crdc_restraint_seclusion_students_{year}` | Yearly | `crdc/codebook_schools_crdc_restraint-seclusion-students` |
+| Algebra | `crdc/schools_crdc_algebra_{year}` | Yearly | `crdc/codebook_schools_crdc_algebra-1` |
+| AP Exams | `crdc/schools_crdc_ap_exams_{year}` | Yearly | `crdc/codebook_schools_crdc_ap-exams` |
+| Retention | `crdc/schools_crdc_retention_{year}` | Yearly | `crdc/codebook_schools_crdc_retention` |
+| SAT/ACT Participation | `crdc/schools_crdc_sat_and_act_participation_{year}` | Yearly | `crdc/codebook_schools_crdc_sat-act-participation` |
+| COVID Indicators | `crdc/schools_crdc_covid_indicators` | Single | `crdc/codebook_schools_crdc_covid_indicators` |
+| Credit Recovery | `crdc/schools_crdc_credit_recovery` | Single | `crdc/codebook_schools_crdc_credit-recovery` |
+| Directory/Characteristics | `crdc/schools_crdc_school_characteristics` | Single | `crdc/codebook_schools_crdc_directory` |
+| Discipline Instances | `crdc/schools_crdc_disciplineinstances` | Single | `crdc/codebook_schools_crdc_discipline_instances` |
+| Dual Enrollment | `crdc/schools_crdc_dual_enrollment` | Single | `crdc/codebook_schools_crdc_dual_enrollment` |
+| Harassment/Bullying Allegations | `crdc/schools_crdc_harass_bully_allegations` | Single | `crdc/codebook_schools_crdc_harrassment-bullying-allegations` |
+| Internet Access | `crdc/schools_crdc_internet_access` | Single | `crdc/codebook_schools_crdc_internet_access` |
+| Math and Science | `crdc/schools_crdc_mathandscience` | Single | `crdc/codebook_schools_crdc_math-and-science` |
+| Offenses | `crdc/schools_crdc_offenses` | Single | `crdc/codebook_schools_crdc_offenses` |
+| Offerings | `crdc/schools_crdc_offerings` | Single | `crdc/codebook_schools_crdc_offerings` |
+| Restraint/Seclusion Instances | `crdc/schools_crdc_restraint_seclusion_instances` | Single | `crdc/codebook_schools_crdc_restraint-seclusion-instances` |
+| School Finance | `crdc/schools_crdc_finance` | Single | `crdc/codebook_schools_crdc_finance` |
+| Suspensions (Days) | `crdc/schools_crdc_suspensions` | Single | `crdc/codebook_schools_crdc_suspensions_days` |
+| Teachers/Staff | `crdc/schools_crdc_teacher` | Single | `crdc/codebook_schools_crdc_teachers_staff` |
 
-22 CRDC datasets exist total (6 yearly, 16 single-file). See `datasets-reference.md` for the complete list with all paths and codebook references.
+The **24** count is the deduplicated Urban bulk family inventory, not a year, row count, or API endpoint count. The live Portal catalog separately exposed **50 CRDC endpoint templates** because topic/disaggregation routes split more finely than bulk files. Family-specific year coverage varies; neither number implies CRDC 2024 data.
 
 > **CRDC naming note:** Some data file paths use concatenated names (e.g., `disciplineinstances`, `mathandscience`) while their codebook counterparts use underscored names (e.g., `discipline_instances`, `math_and_science`). Always use the exact paths from `datasets-reference.md`.
 
@@ -294,10 +314,10 @@ df <- df |> filter(
 |---------|-------|----------|
 | **Using string codes** | Portal uses integers, not strings | `race == 2` not `race == "BL"` |
 | **Raw counts** | Different enrollment sizes | Use rates per 100/1000 students |
-| **Missing years** | Assuming annual data | Remember biennial schedule |
+| **Collection cadence** | Assuming annual data or applying an odd/even parity rule | Check topic-specific collection labels; 2020 and 2021 are consecutive |
 | **COVID year** | 2020-21 not comparable | Flag or exclude from trends |
 | **Suppression** | Small cell suppression | Check suppression rates first |
-| **Sample years** | Early years sampled | Use 2015+ for national estimates |
+| **Coverage history** | Applying one sampling label to both early collections | 2013-14 is an official universe collection; verify 2011-12 separately |
 | **Definition drift** | Variables change over time | Check codebooks for each year |
 | **Forgetting code 99** | Including totals in calculations | Filter `race < 99` for disaggregated analysis |
 | **CSV type inference** | Polars and readr infer `ncessch`/`leaid`/`crdc_id` as integer, destroying leading zeros | Python: `schema_overrides={"ncessch": pl.Utf8, "leaid": pl.Utf8, "crdc_id": pl.Utf8}`; R: `readr::read_csv(..., col_types = cols(ncessch = col_character(), leaid = col_character(), crdc_id = col_character()))` |
@@ -382,7 +402,7 @@ disparity <- rate_a / rate_b
 |--------|--------------|-------------|
 | `education-data-source-ccd` | School/district characteristics | Linking CRDC to school demographics, locale, Title I status (join on `ncessch` or `leaid`) |
 | `education-data-source-edfacts` | Assessment outcomes | Comparing discipline patterns to academic outcomes |
-| `education-data-explorer` | Parent discovery skill | Finding available CRDC endpoints and variables |
+| `education-data-explorer` | Parent discovery skill | Routing questions to mirror CRDC dataset files and variables |
 | `education-data-query` | Data fetching | Downloading CRDC parquet/CSV files from mirrors |
 | `education-data-context` | General interpretation | Education data interpretation and citation generation |
 

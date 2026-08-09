@@ -202,7 +202,9 @@ Cells with protected count < 30 are suppressed due to low quality:
 | 2020 | First public release (September 30) |
 | 2022 | Expanded to 29 states |
 | 2024 | State-level aggregations added |
-| 2025 | Coverage reaches ~29% of graduates |
+| V4.13.0 (2025Q4) | 952 institutions; partners in 32 states plus D.C. |
+
+PSEO coverage changes by release. The V4.13.0 count was verified on 2026-07-21 from the Census latest-release institution, partner, and version files; those files should be rechecked before reporting current coverage. No national graduate-coverage percentage is asserted here.
 
 ### PSEO Coalition
 

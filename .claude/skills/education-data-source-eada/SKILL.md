@@ -191,7 +191,7 @@ Interpretation question?
 | Coaching details | 2002–2021 | Annual |
 | Financial data | 2002–2021 | Annual |
 
-> **Note:** Some columns (e.g., `num_sports`, aggregated totals with `_all` suffix) are null for earlier years (2002) and were added in later reporting cycles. The `opeid` column is null for 2002.
+> **Note:** Some columns (e.g., `num_sports`, aggregated totals with `_all` suffix) are null for earlier years (2002) and were added in later reporting cycles. The `opeid` column has substantial nulls in early years (2002) but is not all-null there (live-verified 2026-08-07) — do not rely on it as a complete key for early years.
 
 ### Example Research Questions
 
@@ -299,7 +299,7 @@ Public disclosure                  Enforcement mechanism
 | Source | Relationship | When to Use |
 |--------|--------------|-------------|
 | `education-data-source-ipeds` | Complementary institution data | Joining enrollment, demographics, finances via `unitid` |
-| `education-data-explorer` | Parent discovery skill | Finding available endpoints across all sources |
+| `education-data-explorer` | Parent discovery skill | Routing questions to mirror dataset files across all sources |
 | `education-data-query` | Data fetching | Downloading parquet/CSV files from mirrors |
 
 ## Topic Index

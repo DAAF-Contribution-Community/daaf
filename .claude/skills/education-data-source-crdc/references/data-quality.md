@@ -43,6 +43,43 @@ Understanding data quality limitations is essential for responsible analysis of 
 
 ---
 
+## Identifier Typing Across Vintages (`crdc_id` / `leaid`)
+
+CRDC identifiers must be treated as strings, but their **raw file dtype is not
+uniform across mirror vintages** — a change to watch when reproducing older
+analyses or joining across files.
+
+- **The one genuine dtype flip (v0.24.0 → v0.26.1):** in the discipline files
+  `schools_crdc_discipline_k12_2020` (and `_2021`), `crdc_id` / `leaid` changed
+  from `Int64` to `String`. The 2020/2021 discipline id domain went **alphanumeric**,
+  so these ids can no longer be represented as integers. This was the **only**
+  genuine dtype change across the 26 old↔new parquet *pairs* the v2 drift battery
+  compared (observed 2026-08-06; see `education-data-query/references/vintage-drift.md`).
+  It does **not** mean the 2020 vintage is uniformly typed — see the per-file
+  heterogeneity bullet below.
+- **Per-file heterogeneity within the 2020 vintage (do not generalize to "all
+  String"):** a 2026-08-07 per-file audit found id dtypes vary *across* 2020 CRDC
+  files: `schools_crdc_school_characteristics` stores `crdc_id`/`ncessch`/`leaid`
+  all as String; `discipline_k12_2020` has `ncessch` as Int64 (with `crdc_id`/`leaid`
+  String); `enrollment_k12_2020` has `crdc_id` as Int64; `harass_bully_students_2020`
+  has all three as Int64. There is no universal String contract, which is exactly
+  why the general rule below (normalize on read) matters. Where these ids are String
+  they are zero-padded **numeric** strings (e.g. `0100002`, FIPS 01), not alphanumeric
+  — the letter-bearing pattern is CCD-`districts_ccd_finance`-specific.
+- **Why it matters for joins:** a script written against the old vintage may have
+  keyed these columns as integers. Against the v2 mirror the same columns are
+  strings, so a naive join can silently produce zero matches. Cast **both sides to
+  String** before joining discipline files, and do not assume `Int64` id storage
+  for 2020/2021 discipline data.
+- **General rule (unchanged):** always read `crdc_id`, `ncessch`, and `leaid` as
+  String (`pl.Utf8` / `col_character()`) regardless of the file's declared dtype,
+  and validate width/domain per file. See the SKILL.md "String Type Override
+  Required" warning. Parquet preserves the stored type, so an old-vintage parquet
+  read still yields `Int64` for these columns while the v2 parquet yields `String` —
+  normalize explicitly rather than relying on the stored type.
+
+---
+
 ## Self-Reported Data Issues
 
 ### The Fundamental Limitation
@@ -422,7 +459,7 @@ CRDC added temporary COVID-related variables:
 
 | Factor | Impact |
 |--------|--------|
-| **Coverage change** | Sample → universe (pre-2015 vs. post) |
+| **Coverage verification** | Collection scope must be checked by cycle; 2013-14 is an official universe collection |
 | **Variable changes** | Variables added, removed, redefined |
 | **Definition changes** | Same variable, different definition |
 | **Form changes** | Collection instrument updates |
@@ -432,8 +469,8 @@ CRDC added temporary COVID-related variables:
 
 | Period | Comparability | Notes |
 |--------|---------------|-------|
-| 2011 vs. 2013 | Limited | Both sampled, but different samples |
-| 2015-2017-2020 | Good | Universe years, similar definitions |
+| 2011 vs. 2013 | Limited | Verify 2011-12 coverage separately; 2013-14 is universe |
+| 2013-2015-2017 | Potentially usable | Universe collections; still harmonize definitions and variables |
 | Including 2020-21 | Poor | COVID impact |
 | 2021-22 onward | Good | Post-pandemic baseline |
 
@@ -602,7 +639,7 @@ When analyzing CRDC data, document:
 
 ### For Time Series
 
-1. **Use 2015+ only** - Universe years only
+1. **Use verified universe collections** - 2013-14 is officially universe; verify each cycle and harmonize definitions
 2. **Exclude or flag 2020-21** - COVID anomaly
 3. **Check variable consistency** - Same definition across years
 4. **Same schools if possible** - Panel approach

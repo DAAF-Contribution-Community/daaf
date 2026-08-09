@@ -1,17 +1,17 @@
 ---
 name: education-data-source-pseo
 description: >-
-  PSEO — Census data linking graduates to employment via LEHD wage records. Earnings percentiles at 1/5/10 years post-graduation by institution, degree, CIP. Use for graduate earnings analysis. Coverage: ~29% of graduates from ~31 states.
+  PSEO — Census data linking graduates to employment via LEHD wage records. Earnings percentiles at 1/5/10 years post-graduation by institution, degree, and CIP. Use for graduate earnings analysis. Coverage changes by release; Census V4.13.0 (2025Q4) lists 952 institutions and partners in 32 states plus D.C.
 metadata:
   audience: any-agent
   domain: data-source
   skill-authored: "2026-02-09"
-  skill-last-updated: "2026-02-09"
+  skill-last-updated: "2026-07-21"
 ---
 
 # PSEO Data Source Reference
 
-Postsecondary Employment Outcomes (PSEO) — Census Bureau experimental statistics linking college graduates to employment outcomes via UI wage records (LEHD program). Covers earnings (25th/50th/75th percentile, measured 1, 5, and 10 years post-graduation) and employment flows by institution, degree level, and CIP field. Use when comparing graduate earnings across programs or institutions, analyzing industry entry patterns, or studying geographic migration of graduates. Coverage limited to ~29% of graduates from ~31 participating states.
+Postsecondary Employment Outcomes (PSEO) — Census Bureau experimental statistics linking college graduates to employment outcomes via UI wage records (LEHD program). Covers earnings (25th/50th/75th percentile, measured 1, 5, and 10 years post-graduation) and employment flows by institution, degree level, and CIP field. Use when comparing graduate earnings across programs or institutions, analyzing industry entry patterns, or studying geographic migration of graduates. Coverage is partner-based and changes by release; Census V4.13.0 (2025Q4) contains 952 institutions and partners in 32 states plus the District of Columbia.
 
 Postsecondary Employment Outcomes (PSEO) is an experimental data product from the U.S. Census Bureau that links college graduate records to national employment data, providing earnings and employment outcomes by institution, degree level, and field of study.
 
@@ -31,10 +31,10 @@ Postsecondary Employment Outcomes (PSEO) is an experimental data product from th
 ## What is PSEO?
 
 - **Producer**: U.S. Census Bureau, LEHD program (Longitudinal Employer-Household Dynamics)
-- **Coverage**: ~29% of all U.S. college graduates from 31 states + D.C. + Western Governors University
+- **Coverage**: Partner-based and release-specific; V4.13.0 (2025Q4) contains 952 institutions and partners in 32 states plus D.C., including Western Governors University
 - **Content**: Links university transcript data with national UI wage records to track graduate employment outcomes
 - **Two data types**: Graduate Earnings (percentile earnings) and Employment Flows (industry/geography)
-- **Frequency**: Updated periodically; cohorts span 3-year (Bachelor's) or 5-year (all others) windows
+- **Frequency**: Updated periodically; cohorts span 3-year (Bachelor's) or 5-year (all others) windows; verify the latest institution, partner, and version files before reporting coverage
 - **Primary identifiers**: `unitid` (IPEDS Unit ID, integer), `opeid` (integer in Portal data)
 - **Privacy method**: Differential privacy mechanisms protect individual data
 - **Available through**: Education Data Portal mirrors (restructured from Census Bureau LEHD format with integer encodings and lowercase variable names)
@@ -95,9 +95,9 @@ Degree level?
 
 ```
 Checking data availability?
-├─ Which states participate → ./references/state-coverage.md
-├─ Which institutions have data → Check PSEO Explorer or mirror data
-├─ Coverage rate for state → ./references/state-coverage.md
+├─ Current participating partners/institutions → Check Census latest-release files
+├─ Release-specific coverage context → ./references/state-coverage.md
+├─ Portal-covered institution/cohort rows → Check the mirror data actually used
 └─ Why data might be missing
     ├─ Institution not partnered
     ├─ Cell suppressed (count < 30)
@@ -262,6 +262,16 @@ df |> filter(industry == "54")  # Professional Services
 2. **Census bulk download**: CSV/XLS files at `https://lehd.ces.census.gov/data/pseo/`
 3. **Census API**: `https://api.census.gov/data/timeseries/pseo/earnings` and `.../flows` (uses different variable naming and string codes; not used in this system)
 
+### Release-Specific Coverage Verification
+
+PSEO participation changes between releases. Before reporting a state, partner, or institution count, inspect the current Census release metadata rather than carrying a fixed historical count forward:
+
+- Institutions: `https://lehd.ces.census.gov/data/pseo/latest_release/all/pseo_all_institutions.csv`
+- Partners: `https://lehd.ces.census.gov/data/pseo/latest_release/all/pseo_all_partners.txt`
+- Version: `https://lehd.ces.census.gov/data/pseo/latest_release/all/version_pseo.txt`
+
+As verified on 2026-07-21, version **V4.13.0 (2025Q4)** lists **952 institutions** and partners in **32 states plus D.C.** This release-specific roster does not establish a national percentage of all graduates. The Portal mirror remains a fixed 2001–2021 snapshot; distinguish its observed rows from the current Census release roster.
+
 ## Common Pitfalls
 
 | Pitfall | Issue | Solution |
@@ -269,7 +279,7 @@ df |> filter(industry == "54")  # Professional Services
 | Using Census string codes | Portal uses integers (e.g., `5` for Bachelor's), not Census strings (`"05"`) | Always check encoding; see variable-definitions.md |
 | Ignoring suppression | Cells with <30 graduates are suppressed; missing data looks like no program exists | Check `total_grads_count` to confirm cell exists; null earnings may mean suppression |
 | Cross-institution comparison without controlling degree/CIP | Institutions offer different program mixes; aggregate comparison is misleading | Always filter to same `degree_level` and `cipcode` when comparing institutions |
-| Treating PSEO as comprehensive | Only ~29% of graduates covered; participating states differ systematically | Acknowledge selection bias; do not generalize to all U.S. graduates |
+| Treating PSEO as comprehensive | Participation is voluntary and changes by release; no verified national graduate-coverage percentage is documented here | Report the release/version and partner roster used; acknowledge selection bias and do not generalize to all U.S. graduates |
 | Ignoring labor attachment | Workers need 3+ quarters above minimum wage threshold to appear in earnings data | Some graduates are employed but excluded; note this limitation |
 | Treating Portal opeid as string | Portal stores `opeid` as integer (e.g., `105100`), not Census's 8-digit zero-padded string (`"00105100"`) | Use integer comparison in Portal data; only Census API uses string format |
 | Mixing cohort spans | Bachelor's uses 3-year cohorts; all others use 5-year | Filter by `degree_level` first, then verify cohort format matches |
@@ -300,7 +310,7 @@ df |> filter(industry == "54")  # Professional Services
 ## Important Limitations
 
 1. **Experimental status**: Not official Census statistics; methodology may change
-2. **Partial coverage**: Only ~29% of graduates from participating institutions
+2. **Partial, changing coverage**: Partner and institution participation varies by Census release; V4.13.0 (2025Q4) lists 952 institutions and partners in 32 states plus D.C., but no verified national graduate-coverage percentage is asserted here
 3. **Selection bias**: Participating states/institutions may differ systematically
 4. **Employment coverage**: Excludes self-employed, independent contractors, military, some federal
 5. **Labor attachment requirement**: Workers must have 3+ quarters of earnings above minimum wage threshold
@@ -313,7 +323,7 @@ df |> filter(industry == "54")  # Professional Services
 |--------|--------------|-------------|
 | `education-data-source-scorecard` | Alternative earnings source (median only, all enrollees) | When PSEO coverage is insufficient or need non-graduate outcomes |
 | `education-data-source-ipeds` | Institution characteristics, enrollment, graduation rates | Contextualizing PSEO institutions; join on `unitid` |
-| `education-data-explorer` | Parent discovery skill | Finding available endpoints |
+| `education-data-explorer` | Parent discovery skill | Routing questions to mirror dataset files |
 | `education-data-query` | Data fetching | Downloading parquet/CSV files |
 
 ## Topic Index

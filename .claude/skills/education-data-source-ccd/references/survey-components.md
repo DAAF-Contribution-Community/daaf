@@ -16,7 +16,7 @@ The Common Core of Data consists of six major survey components, each collecting
 
 | NCES Name | Portal Name | Description | Notes |
 |-----------|-------------|-------------|-------|
-| `NCESSCH` | `ncessch` | 12-character unique school identifier | State FIPS + LEA suffix + School ID |
+| `NCESSCH` | `ncessch` | Canonical 12-character school identifier | Validate as a numeric string of length 12; prior HF objects may expose integer storage |
 | `SCH_NAME` | `school_name` | School name | As reported by state |
 | `LSTREET1/2` | `street_location` | Physical address | Location address |
 | `MSTREET1/2` | `street_mailing` | Mailing address | May differ from physical |
@@ -56,7 +56,7 @@ The Common Core of Data consists of six major survey components, each collecting
 
 | NCES Name | Portal Name | Description | Notes |
 |-----------|-------------|-------------|-------|
-| `LEAID` | `leaid` | 7-character unique LEA identifier | State FIPS + State-assigned ID; **Int64 in this dataset** |
+| `LEAID` | `leaid` | Canonical 7-character LEA identifier | Validate as a numeric string of length 7; observed file storage may be `Int64` and require normalization |
 | `LEA_NAME` | `lea_name` | District name | |
 | `LEA_TYPE` | `agency_type` | Agency type (1-9) | Regular, Supervisory Union, Charter, etc. |
 | `BOUND` | `boundary_change_indicator` | Agency status | Similar to school status |

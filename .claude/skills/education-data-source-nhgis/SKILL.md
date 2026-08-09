@@ -1,17 +1,17 @@
 ---
 name: education-data-source-nhgis
 description: >-
-  NHGIS — census geography crosswalks via Portal: links schools (ncessch) and colleges (unitid) to census tracts, block groups, CBSAs, and regions (1990-2020). Portal provides geography linkage tables ONLY — census demographic variables (population, income, poverty, race, educational attainment) are NOT available through the Portal and must be accessed directly from NHGIS (free IPUMS registration required). Use for linking education or institutional data to census geography for contextual analysis.
+  NHGIS — census geography crosswalks via Portal: links schools (ncessch) and colleges (unitid) to census tracts, block groups, CBSAs, and regions (census-geography vintages 1990-2020; mirror file-year/linkage coverage 1980-2023). Portal provides geography linkage tables ONLY; browse census demographics in the public NHGIS Data Finder, then sign in with a free IPUMS NHGIS account to submit, manage, or download extracts. API extract requests also need an API key. Use for linking education or institutional data to census geography.
 metadata:
   audience: any-agent
   domain: data-source
   skill-authored: "2026-02-09"
-  skill-last-updated: "2026-02-09"
+  skill-last-updated: "2026-07-21"
 ---
 
 # NHGIS Data Source Reference
 
-IPUMS NHGIS — census geography crosswalks and demographic data for education research. Via the Education Data Portal: geographic crosswalk tables linking K-12 schools (ncessch) and colleges (unitid) to census tracts, block groups, CBSAs, and regions (census 1990-2020). Census demographic variables (income, poverty, race, educational attainment) are NOT in the Portal — access directly from NHGIS via free IPUMS registration. Use when linking school or institutional data to census geography for contextual analysis.
+IPUMS NHGIS — census geography crosswalks and demographic data for education research. Via the Education Data Portal: geographic crosswalk tables linking K-12 schools (ncessch) and colleges (unitid) to census tracts, block groups, CBSAs, and regions. The `1990-2020` here denotes the **census-geography vintages** the crosswalks resolve to; the mirror files themselves span **1980-2023** file-years (the education/institution linkage years). See `datasets-reference.md` for per-file year ranges. Census demographic variables (income, poverty, race, educational attainment) are NOT in the Portal. Browse those variables publicly in the NHGIS Data Finder; sign in with a free IPUMS NHGIS account to submit, manage, or download extracts, and use an API key for API extract requests. Use when linking school or institutional data to census geography for contextual analysis.
 
 Census geography and demographic data source for education research. NHGIS provides the foundation for linking schools to community characteristics via census tracts, block groups, and school district boundaries.
 
@@ -35,9 +35,9 @@ Census geography and demographic data source for education research. NHGIS provi
 >
 > The Education Data Portal provides ONLY **geographic crosswalk tables** that link schools and colleges to census geography (tracts, block groups, regions, CBSAs). These contain geographic identifiers and assignment columns — approximately 35-47 columns per file.
 >
-> The Portal does **NOT** provide census demographic data (population, income, poverty, race, education attainment, housing, language, etc.). For demographic variables, you must access NHGIS directly via IPUMS (free registration required). See `./references/data-access.md` for direct access methods.
+> The Portal does **NOT** provide census demographic data (population, income, poverty, race, education attainment, housing, language, etc.). For demographic variables, browse the public NHGIS Data Finder, then use a free IPUMS NHGIS account to submit, manage, or download an extract. API extract requests additionally require an API key. See `./references/data-access.md` for direct access methods.
 >
-> This skill documents both contexts: Portal crosswalk data (with integer encodings above) and direct NHGIS census variables (in `./references/variable-catalog.md`, clearly marked as requiring direct NHGIS access).
+> This skill documents both contexts: Portal crosswalk data (with integer encodings above) and direct NHGIS census variables (in `./references/variable-catalog.md`). Direct NHGIS products remain subject to separate IPUMS terms, citation requirements, and redistribution restrictions; the Portal's ODC-By terms do not automatically apply to them.
 
 ## What is NHGIS?
 
@@ -286,7 +286,7 @@ south <- df |> filter(census_region == 3)
 recent <- df |> filter(year == 2023)
 ```
 
-> **Note**: The Portal provides pre-processed school/college-to-census-geography links. For custom census analysis (tract-level demographics, time series, boundary files), use NHGIS directly via methods in `./references/data-access.md` (requires free IPUMS registration).
+> **Direct-access note:** The Portal provides pre-processed school/college-to-census-geography links. For custom census analysis (tract-level demographics, time series, boundary files), browse the NHGIS Data Finder without signing in; a free IPUMS NHGIS account and login are required to submit, manage, or download extracts, and API requests additionally need an API key. See `./references/data-access.md`. Direct NHGIS data is governed by separate IPUMS terms and citation requirements.
 
 ## Common Pitfalls
 
@@ -310,7 +310,7 @@ recent <- df |> filter(year == 2023)
 | `education-data-source-saipe` | District-level poverty | Use SAIPE for district poverty; NHGIS for tract/block group poverty |
 | `education-data-source-meps` | School-level poverty | MEPS provides school-level poverty estimates; NHGIS provides community context |
 | `education-data-source-ipeds` | College identifiers for linking | Join college data to census geography via `unitid` |
-| `education-data-explorer` | Parent discovery skill | Finding available endpoints |
+| `education-data-explorer` | Parent discovery skill | Routing questions to mirror dataset files |
 | `education-data-query` | Data fetching | Downloading parquet/CSV files |
 
 ## Topic Index

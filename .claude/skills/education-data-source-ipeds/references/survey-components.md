@@ -323,7 +323,7 @@ Point-in-time enrollment snapshot.
 | `class_level` | Int64 | Class level | 1=First-year, 2=Second-year, 3=Third-year, 4=Fourth-year+, 99=Total |
 | `enrollment_fall` | Int64 | Fall enrollment count | Integer |
 
-**Fall Retention Variables** (single-file, 9 columns):
+**Fall Retention Variables** (single-file, 10 columns):
 
 | Portal Variable | Type | Description | Values |
 |-----------------|------|-------------|--------|
@@ -334,6 +334,7 @@ Point-in-time enrollment snapshot.
 | `retention_rate` | Float64 | Retention rate | Percentage |
 | `returning_students` | String | Number returning | String (may contain suppression markers) |
 | `prev_cohort` | String | Previous year cohort size | String |
+| `prev_inclusions` | String | Additions to cohort | String (live-verified 2026-08-07; undocumented in prior Portal codebook — consult the sfa/retention codebook for exact meaning) |
 | `prev_exclusions` | String | Exclusions from cohort | String |
 | `prev_cohort_adj` | String | Adjusted cohort | String |
 

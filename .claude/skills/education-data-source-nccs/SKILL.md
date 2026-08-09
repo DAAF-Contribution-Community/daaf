@@ -6,12 +6,12 @@ metadata:
   audience: any-agent
   domain: data-source
   skill-authored: "2026-02-09"
-  skill-last-updated: "2026-02-09"
+  skill-last-updated: "2026-07-21"
 ---
 
 # NCCS Data Source Reference
 
-National Center for Charitable Statistics (NCCS) Form 990 data for private nonprofit colleges and universities (Portal mirror: IPEDS-matched institutions, 1993-2016). Use when IRS-based financial data — revenue, expenses, assets, endowment details — or governance information (board composition, executive compensation) is needed beyond what IPEDS provides. Portal data ends at 2016; for current filings use full NCCS directly. Public institutions do not file Form 990 and are excluded.
+National Center for Charitable Statistics (NCCS) Form 990 data for private nonprofit colleges and universities (Portal mirror: IPEDS-matched institutions, 1993-2016). Use when IRS-based financial data — revenue, expenses, assets, endowment details — or governance information (board composition, executive compensation) is needed beyond what IPEDS provides. Portal data ends at 2016; for newer direct-source data, use the official NCCS Core catalog, whose merged Core currently covers 1987-2024 and whose SOI-current panel covers 2012-2024. Tax year 2024 is provisional, and recent years remain in progress as late and amended returns arrive. Public institutions do not file Form 990 and are excluded.
 
 The NCCS (National Center for Charitable Statistics) is the principal U.S. repository for empirical data on the nonprofit sector, derived from IRS Form 990 filings. It provides financial depth, governance detail, and historical coverage for private nonprofit colleges and universities that goes well beyond what IPEDS collects.
 
@@ -33,7 +33,7 @@ The NCCS (National Center for Charitable Statistics) is the principal U.S. repos
 - **Coverage**: All U.S. tax-exempt nonprofit organizations (~3.8M in BMF)
 - **Primary data source**: IRS Form 990 tax filings
 - **Frequency**: Annual (with filing lag)
-- **Available years**: 1989-present (Core Series); 2012-present (Efile); 1993-2016 (Portal)
+- **Available years**: Portal 1993-2016; direct merged Core 1987-2024; direct SOI-current 2012-2024 (2024 provisional and recent years in progress, catalog verified 2026-07-21)
 - **Primary identifier**: EIN (Employer Identification Number, 9-digit)
 - **Education relevance**: Private nonprofit colleges/universities are 501(c)(3) orgs filing Form 990; NTEE codes B40-B50 cover higher education
 
@@ -99,7 +99,7 @@ Linking NCCS to education data?
 ├─ Want institutional comparisons?
 │   └─ Filter by NTEE codes B40-B50 for higher ed
 └─ Analyzing trends over time?
-    └─ Use Core data panel (1989-present)
+    └─ Use the official Core catalog; choose merged Core (1987-2024) or SOI-current (2012-2024) and record provisional/in-progress status
 ```
 
 ## Quick Reference: NCCS Datasets and Variables
@@ -112,17 +112,18 @@ Linking NCCS to education data?
 |---------|-------------|----------|------|
 | 990 Forms (`nccs/colleges_nccs_all`) | Form 990 data for higher ed institutions matched to IPEDS | 1993-2016, ~2,600 institutions | ~30K |
 
-**Full NCCS** (direct download, outside Portal):
+**Direct NCCS sources** (outside Portal):
 
-| Dataset | Description | Coverage | Key Use |
-|---------|-------------|----------|---------|
-| Business Master File (BMF) | All active tax-exempt organizations | ~3.8M orgs | Sampling frame, basic info |
-| NCCS Core Series | 990/990EZ filer financials | 1989-2022 | Historical financial analysis |
-| IRS 990 Efile | Full electronic filings (2000+ fields) | 2012-present | Detailed governance, programs |
-| Form 990-N ePostcard | Small nonprofits (<$50K revenue) | 2007-present | Grassroots organizations |
-| Pub78 | Organizations eligible for tax-deductible donations | Current | Verify charitable status |
+| Dataset | Description | Current Catalog Coverage | Key Use |
+|---------|-------------|--------------------------|---------|
+| Merged Core | Harmonized Form 990/990-EZ financial records | 1987-2024 | Broad historical financial analysis |
+| SOI-current Core | Current-panel Core files | 2012-2024 | More recent annual analysis |
+| Business Master File (BMF) | Tax-exempt organization registry | Verify in current BMF catalog | Sampling frame, basic information |
+| IRS 990 Efile | Full electronic filings with detailed fields | Verify in current Efile catalog | Detailed governance and programs |
 
-> **Scope note:** The Portal mirror dataset contains NCCS Form 990 data matched to IPEDS institutions only (~2,600 institutions). It does NOT include the full NCCS universe of ~3.8M nonprofits. For non-education nonprofits, NTEE-based filtering, or BMF/Core/Efile data, download directly from NCCS.
+> **Direct-source status (verified 2026-07-21):** Tax year 2024 is provisional, and recent tax years remain in progress as late and amended returns arrive. Start at the official Core catalog, `https://urbaninstitute.github.io/nccs/catalogs/catalog-core.html`, and record the selected product, tax years, retrieval date, and provisional/in-progress status.
+>
+> **Scope note:** The Portal mirror contains only Form 990 data matched to IPEDS institutions (~2,600 institutions), fixed at 1993-2016. It does NOT include the broader nonprofit universe or NTEE fields. For non-education nonprofits, NTEE-based filtering, or newer tax years, select the appropriate direct product from the official NCCS catalogs rather than treating "NCCS" as one undifferentiated dataset.
 
 ### Key Identifiers
 
@@ -301,31 +302,38 @@ df <- df |> mutate(
 
 4. **Analyze** — See variable definitions for meaning and limitations
 
-### Using Full NCCS (for Non-Education or Pre-Portal Research)
+### Using Direct NCCS Sources (for Newer Years or Broader Nonprofit Research)
 
-1. **Identify target organizations**
-   - Filter BMF by NTEE codes (B40-B50 for higher ed)
-   - Verify 501(c)(3) status (SUBSECCD = 03)
-   - Note EINs for organizations of interest
+1. **Open the official catalog**
+   - Core catalog: `https://urbaninstitute.github.io/nccs/catalogs/catalog-core.html`
+   - Use this stable catalog as the sole documented Core navigation route
 
-2. **Select appropriate dataset**
-   - Core PZ for broad coverage
-   - Core PC for detailed financials (larger orgs)
-   - Efile for maximum detail (governance, compensation)
+2. **Choose the product deliberately**
+   - Merged Core for harmonized 1987-2024 coverage
+   - SOI-current for the 2012-2024 current panel
+   - Use the BMF or Efile catalog only when registry fields or filing-level detail is required
 
-3. **Extract and clean data**
-   - Download relevant years from NCCS directly
-   - Merge with BMF for organizational attributes
-   - Handle missing data codes
+3. **Record release status before downloading**
+   - Tax year 2024 is provisional as verified on 2026-07-21
+   - Recent years remain in progress while late and amended returns arrive
+   - Capture product name, tax years, retrieval date, and any catalog status note
 
-4. **Analyze** — See variable definitions for meaning and limitations
+4. **Identify and validate organizations**
+   - Filter BMF/NTEE fields (for example B40-B50 for higher education) only in direct products that actually include them
+   - Verify 501(c)(3) status where relevant and retain EINs
+   - Do not assume a direct NCCS record has a Portal `unitid`; build or validate an EIN-UNITID crosswalk separately
+
+5. **Extract, clean, and analyze**
+   - Follow the exact file links and documentation in the current catalog
+   - Merge BMF attributes only when needed and handle product-specific missing values
+   - See variable definitions for interpretation and limitations
 
 ## Related Data Sources
 
 | Source | Relationship | When to Use |
 |--------|--------------|-------------|
 | `education-data-source-ipeds` | Complementary institution data | Join on EIN-UNITID crosswalk for enrollment, degrees, and education-specific financials |
-| `education-data-explorer` | Parent discovery skill | Finding available endpoints |
+| `education-data-explorer` | Parent discovery skill | Routing questions to mirror dataset files |
 | `education-data-query` | Data fetching | Downloading parquet/CSV files |
 
 ## Topic Index

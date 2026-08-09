@@ -13,110 +13,38 @@ Participating states, coverage rates, data partners, and experimental data statu
 
 ## Coverage Overview
 
-As of 2025, PSEO covers approximately **29% of all U.S. college graduates** through partnerships in:
+PSEO coverage is **partner-based and release-specific**. Census release **V4.13.0 (2025Q4)** contains:
 
-- **31 states** + District of Columbia
-- **1 online-only institution** (Western Governors University)
-- **825+ institutions**
+- **952 institutions**
+- Partners in **32 states plus the District of Columbia**
+- Western Governors University as an online-only participating institution
 
-Coverage varies significantly by state based on:
-- Which institutions/systems have partnered
-- Whether state-level coordination exists
-- Historical timing of partnership
+These counts were verified from Census latest-release files on 2026-07-21. They do **not** establish a national percentage of all U.S. graduates, so this reference does not quote one.
+
+Coverage varies because institutions and systems enter the product through separate data partnerships. Partner composition, institution counts, cohorts, and available outcomes can change between releases.
 
 ## Participating States and Partners
 
-| State | Data Partner(s) | Coverage |
-|-------|-----------------|----------|
-| Alabama | University of Alabama System | 21% |
-| Arizona | Arizona Board of Regents | 25% |
-| Colorado | Colorado Department of Higher Education | 72% |
-| Connecticut | CT Independent Colleges, CT State Colleges, UConn | 69% |
-| District of Columbia | University of the District of Columbia | 3% |
-| Georgia | Georgia Independent College Association, University System of Georgia | 43% |
-| Hawaii | University of Hawaii System | 72% |
-| Illinois | IL Board of Higher Ed, IL Community College Board | 69% |
-| Indiana | Indiana Commission for Higher Education | 77% |
-| Iowa | Iowa Board of Regents, Iowa Dept of Education | 66% |
-| Louisiana | Louisiana Board of Regents | 74% |
-| Maine | Maine Community College System, University of Maine System | 54% |
-| Massachusetts | Massachusetts Department of Higher Education | 32% |
-| Michigan | Institute for Research on Innovation and Science (UMich) | 10% |
-| Minnesota | Minnesota Office of Higher Education | 74% |
-| Missouri | Missouri Dept of Higher Ed and Workforce Development | 50% |
-| Montana | Montana University System | 83% |
-| New York | CUNY, SUNY | 44% |
-| Ohio | Ohio Department of Higher Education | 61% |
-| Oklahoma | Oklahoma State Regents for Higher Education | 66% |
-| Oregon | Oregon Higher Education Coordinating Commission | 70% |
-| Pennsylvania | The Pennsylvania State University | 11% |
-| Rhode Island | Bryant University, Providence College | 10% |
-| South Carolina | South Carolina Commission on Higher Education | 86% |
-| South Dakota | SD Board of Regents, SD Board of Technical Education | 80% |
-| Texas | TX Higher Ed Coordinating Board, University of Texas System | 77% |
-| Utah | Utah System of Higher Education | 73% |
-| Virginia | State Council of Higher Education for Virginia | 87% |
-| West Virginia | West Virginia Higher Education Policy Commission | 43% |
-| Wisconsin | IRIS (UW-Madison), University of Wisconsin System | 45% |
-| Wyoming | University of Wyoming, Wyoming Community College Commission | 86% |
-| Online | Western Governors University | -- |
+Do not treat a copied state or institution roster as permanently current. Use the Census release files as the authoritative participation inventory:
 
-*Coverage percentages based on share of state's public and private graduates from 2015 IPEDS Completions data.*
+| Evidence | Stable Latest-Release URL | Use |
+|----------|---------------------------|-----|
+| Version | `https://lehd.ces.census.gov/data/pseo/latest_release/all/version_pseo.txt` | Record the exact release identifier and quarter |
+| Institutions | `https://lehd.ces.census.gov/data/pseo/latest_release/all/pseo_all_institutions.csv` | Verify institution membership and count |
+| Partners | `https://lehd.ces.census.gov/data/pseo/latest_release/all/pseo_all_partners.txt` | Verify participating states, D.C., systems, and institutions |
+
+For reproducible reporting, save the release identifier alongside the analysis and state whether coverage refers to the current Census release or to the fixed Education Data Portal snapshot.
 
 ## Coverage Rates
 
-### High Coverage States (>70%)
+The latest-release partner and institution files establish participation, but they do not by themselves provide a single current national graduate-coverage percentage. If a project needs a state or national coverage rate:
 
-| State | Coverage | Notes |
-|-------|----------|-------|
-| Virginia | 87% | Comprehensive state agency partnership |
-| South Carolina | 86% | State commission coordinates |
-| Wyoming | 86% | Small state, comprehensive coverage |
-| Montana | 83% | University system partnership |
-| South Dakota | 80% | Multiple boards coordinating |
-| Indiana | 77% | State commission partnership |
-| Texas | 77% | Multiple major partners |
-| Louisiana | 74% | Board of Regents |
-| Minnesota | 74% | State office partnership |
-| Utah | 73% | System-wide participation |
-| Colorado | 72% | Dept of Higher Ed |
-| Hawaii | 72% | University system |
-| Oregon | 70% | Coordinating commission |
+1. Select a clearly defined denominator, such as IPEDS completions for a specified year and credential scope.
+2. Match only institutions present in the exact PSEO release being analyzed.
+3. Report the PSEO release, denominator source/year, matching rules, and unmatched institutions.
+4. Treat the result as an analyst-derived estimate, not as a Census-published national coverage statistic.
 
-### Medium Coverage States (40-70%)
-
-| State | Coverage | Notes |
-|-------|----------|-------|
-| Connecticut | 69% | Multiple system partnerships |
-| Illinois | 69% | State board + community colleges |
-| Iowa | 66% | Board of Regents + Dept of Ed |
-| Oklahoma | 66% | State regents |
-| Ohio | 61% | Dept of Higher Ed |
-| Maine | 54% | Community college + university systems |
-| Missouri | 50% | State agency |
-| Wisconsin | 45% | Partial system coverage |
-| New York | 44% | CUNY + SUNY (public only) |
-| Georgia | 43% | University system + independents |
-| West Virginia | 43% | Policy commission |
-
-### Low Coverage States (<40%)
-
-| State | Coverage | Notes |
-|-------|----------|-------|
-| Massachusetts | 32% | Dept of Higher Ed (partial) |
-| Arizona | 25% | Board of Regents only |
-| Alabama | 21% | UA System only |
-| Pennsylvania | 11% | Penn State only |
-| Michigan | 10% | UMich only (through IRIS) |
-| Rhode Island | 10% | Two private institutions only |
-| D.C. | 3% | UDC only |
-
-### Non-Participating States
-
-As of 2025, these states have no PSEO coverage:
-- Alaska, Arkansas, California, Delaware, Florida, Idaho, Kansas, Kentucky
-- Maryland, Mississippi, Nebraska, Nevada, New Hampshire, New Jersey
-- New Mexico, North Carolina, North Dakota, Tennessee, Vermont, Washington
+Historical state percentages based on 2015 IPEDS completions are not carried forward here because partner composition has changed. Recompute rates for the release and denominator relevant to the study.
 
 ## Experimental Data Status
 
@@ -176,10 +104,10 @@ Participating states/institutions may differ from non-participants:
 
 When analyzing PSEO data:
 
-1. **Check coverage**: Know what percentage of graduates are represented
+1. **Check coverage**: Identify the exact release, partners, institutions, cohorts, and rows represented
 2. **Consider selection**: Participating institutions may not be representative
 3. **Note changes**: Partner composition changes over time
-4. **Report limitations**: Always disclose experimental status
+4. **Report limitations**: Always disclose experimental status and avoid unsupported national percentages
 
 ### Comparison Guidelines
 
@@ -238,11 +166,13 @@ Partners must provide for each graduate:
 
 ## Timeline of Coverage Expansion
 
-| Year | Milestone |
-|------|-----------|
+| Release / Year | Milestone |
+|----------------|-----------|
 | ~2014 | University of Texas System pilot |
 | 2018 | First PSEO data released |
 | 2020 | Public release, initial partners |
 | 2022 | Expansion to 29 states |
 | 2024 | State-level aggregations added |
-| 2025 | 31 states + D.C., ~29% coverage |
+| V4.13.0 (2025Q4) | 952 institutions; partners in 32 states plus D.C. |
+
+The final row is release-specific, verified on 2026-07-21 from the Census institution, partner, and version files. Recheck those files before reusing the count.
