@@ -1,6 +1,8 @@
 # Variable Codes Reference
 
-Comprehensive reference for coded values used across Education Data Portal endpoints.
+> **Vintage & verification banner.** Coded values here are keyed to **mirror vintage 0.26.1 (pinned HuggingFace revision `0ad00ce0e232c96b0642459e4e7326607a8d26aa`)**. Facts were verified against Portal v0.26.1 variable metadata and live probes on 2026-08-07/08 (route + variable audits under `research/2026-08-06_FrameworkDev_MirrorV2Update/2026-08-07_endpoint-ground-truth/`). The `urban_csv` fallback mirror is unpinned/current-Portal, so these guarantees are exact only for the pinned mirror. For the complete, mechanically generated per-variable coded-value strings (all 2,235 per-source variables, deduplicated from 2,994 endpoint-variable rows), see the `variable-dictionary-{source}.md` files in this directory — those carry the Portal's verbatim `values` metadata; this file curates the analytically load-bearing schemes with cross-source populated-subset notes that the mechanical dictionaries cannot express.
+
+Reference for coded values used across Education Data Portal mirror datasets.
 
 ## Contents
 
@@ -17,6 +19,7 @@ Comprehensive reference for coded values used across Education Data Portal endpo
 - [Award Level Codes](#award-level-codes)
 - [Special Population Codes](#special-population-codes)
 - [Missing Value Codes](#missing-value-codes)
+- [Legacy / Federal Name Aliases](#legacy--federal-name-aliases)
 
 ---
 
@@ -102,12 +105,14 @@ Used in response data:
 | 14 | Ungraded |
 | 99 | Total (all grades) |
 
-### URL Grade Values
+### Grade Values (Portal route form)
 
-Used in endpoint URL paths:
+Portal route form (citation/maintenance reference). In the mirror these are the `grade`
+column value on `ccd/schools_ccd_enrollment_{year}` — filter locally rather than
+constructing a route:
 
-| URL Value | Grade |
-|-----------|-------|
+| Portal route form | Grade |
+|-------------------|-------|
 | `grade-pk` | Pre-Kindergarten |
 | `grade-k` | Kindergarten |
 | `grade-1` | Grade 1 |
@@ -126,7 +131,7 @@ Used in endpoint URL paths:
 | `grade-14` | Ungraded |
 | `grade-99` | Total (all grades) |
 
-**Example**: `/schools/ccd/enrollment/2022/grade-5/` for 5th grade enrollment
+**Example**: for 5th grade enrollment, filter `pl.col("grade") == 5` on `ccd/schools_ccd_enrollment_2022` (Portal route form: `/schools/ccd/enrollment/2022/grade-5/`).
 
 ---
 
@@ -143,17 +148,19 @@ Used in endpoint URL paths:
 | 7 | Two or More Races |
 | 8 | Nonresident Alien (colleges only) |
 | 9 | Unknown |
-| 20 | Other / Not Specified |
+| 20 | Other / Not Specified (legacy; not observed in any probed Portal source as of 2026-08-07) |
 | 99 | Total (all races) |
 
 ### Race Codes in Different Data Sources
 
 | Source | Codes Available |
 |--------|-----------------|
-| CCD | 1-7, 20, 99 |
-| CRDC | 1-7, 20, 99 |
-| IPEDS | 1-9, 99 |
-| EDFacts | 1-7, 99 |
+| CCD | 1-7, 9, 99 (live-verified) |
+| CRDC | 1-7, 99 (live-verified) |
+| IPEDS | 1-9, 99 (live-verified; code 8 IPEDS-only) |
+| EDFacts | 1-9, 20, 99 + sentinels (**metadata-declared, not live-confirmed**) |
+
+> **EDFacts race — metadata-declared only.** The EDFacts `race` set `{1-9, 20, 99}` plus missing sentinels is taken from Portal metadata, not a live probe: 2026-08-08 live probes of EDFacts assessments were blocked by an Urban API outage (HTTP 500 on EDFacts assessments), so the populated subset could not be confirmed. Treat the EDFacts race set as provisional until re-probed. A 2026-08-09 re-probe (`scripts/mirror_maintenance/56_race-edfacts-reprobe.py`) again returned HTTP 500 on all three attempted slices, so the outage persists across two sessions and these codes stay provisional; the next re-probe is recommended on a longer cadence. Valid `grade_edfacts` codes are `{3-8, 9="Grades 9-12", 99}`.
 
 ### Historical Note
 
@@ -172,7 +179,7 @@ Prior to 2008, race categories differed. The current categories align with OMB s
 | 9 | Unknown / Not Reported |
 | 99 | Total (all sexes) |
 
-> **Note:** Codes 3 and 4 were added to IPEDS starting with the 2022-23 collection. K-12 sources (CCD, CRDC, EDFacts) currently use only codes 1, 2, and 99.
+> **Note:** Codes 3 and 4 were added to IPEDS starting with the 2022-23 collection. Among K-12 sources, live CCD data **does** carry `sex=9` (Unknown) — verified live at `schools/ccd/enrollment/2020/grade-9/race/sex/?fips=11`, distinct sex = `[1, 2, 9, 99]`. CRDC in the same probe set showed only `{1, 2, 99}`. Do not assume K-12 sources are limited to `{1, 2, 99}`; inspect the actual distinct values per source and year.
 
 ---
 
@@ -283,9 +290,13 @@ For analysis, often grouped as:
 
 | Code | Description |
 |------|-------------|
-| 1 | Four-year or above |
-| 2 | Two-year (associates) |
-| 3 | Less-than-two-year |
+| 1 | Less-than-2-year |
+| 2 | 2-year |
+| 4 | 4-year or above |
+
+Code `3` is **unpopulated** in probed data. (Live-verified 2026-08-07: `ipeds/directory/2022` `unitid=110635`, UC Berkeley → `institution_level=4`; existence probes `?institution_level=3` returned count 0 for 1990, 2004, and 2022, and a CA directory slice showed only `{1, 2, 4}`.)
+
+> **Footnote (metadata vs. data):** Portal v0.26.1 metadata *does* define code `3` ("Less than four years") alongside `1`, `2`, `4`. It is simply unpopulated in the years probed (1990/2004/2022 + a CA slice). Filter on observed values, but do not treat code `3` as impossible — it is reserved in the Portal scheme.
 
 ---
 
@@ -310,22 +321,24 @@ Combined control and level:
 
 ## Award Level Codes
 
-IPEDS award/degree level classifications:
+IPEDS `award_level` classification (Portal scheme, used on the two `completions` families). This replaces a prior mis-mapped table — the earlier scheme (`3=Associate's, 5=Bachelor's, 7=Master's, 9=Doctor's`, plus codes 10-12) was **contradicted** by Portal metadata (variable audit §43-C3, 2026-08-07). Shared codes carried different meanings and codes 10-12 do not exist in the Portal scheme.
 
 | Code | Description |
 |------|-------------|
-| 1 | Award of less than 1 academic year |
-| 2 | Award of 1-2 academic years |
-| 3 | Associate's degree |
-| 4 | Award of 2-4 academic years |
-| 5 | Bachelor's degree |
-| 6 | Post-baccalaureate certificate |
-| 7 | Master's degree |
-| 8 | Post-master's certificate |
-| 9 | Doctor's degree - research/scholarship |
-| 10 | Doctor's degree - professional practice |
-| 11 | Doctor's degree - other |
-| 12 | First professional degree (historical) |
+| 4 | Associate's degree |
+| 5 | Award of at least one but less than four academic years |
+| 7 | Bachelor's degree |
+| 9 | Master's degree |
+| 20 | Doctor's degree (until 2008) |
+| 22 | Doctor's degree — research/scholarship (starting 2007) |
+| 23 | Doctor's degree — professional practice |
+| 30 | Postsecondary certificate (various; see codebook) |
+| 31 | Postsecondary certificate (various; see codebook) |
+| 32 | Postsecondary certificate (various; see codebook) |
+| 33 | Postsecondary certificate (various; see codebook) |
+| 99 | Total |
+
+> Codes 30-33 are certificate categories; consult the `completions` codebook (`ipeds/codebook_colleges_ipeds_completions-2digcip` / `-6digcip`) for the exact certificate label per code. The `20` vs `22`/`23` split reflects the 2007-08 doctoral reclassification.
 
 ---
 
@@ -335,11 +348,18 @@ Used in EDFacts and CRDC for student subgroups:
 
 ### Disability Status
 
-| Code | Description |
-|------|-------------|
-| 0 | Students without disabilities |
-| 1 | Students with disabilities (IDEA) |
-| 99 | Total (all students) |
+Full Portal scheme (the prior binary `0/1/99` table undercounted — Section 504 code `2` was observed live but missing; variable audit §43-C2):
+
+| Code | Description | Confirmation |
+|------|-------------|--------------|
+| 0 | Students without disabilities | live |
+| 1 | Students served under IDEA | live |
+| 2 | Students served under Section 504 only | live-observed (CRDC) |
+| 3 | Students not served under IDEA | metadata-defined |
+| 4 | (Portal metadata category) | metadata-defined |
+| 99 | Total (all students) | live |
+
+> Code `2` (Section 504 only) is a distinct, analytically meaningful category — verified live at `schools/crdc/discipline/2017/disability/race/sex/?fips=11`, distinct disability = `[0, 1, 2, 99]`. Do not collapse disability to a `0/1` binary.
 
 ### Economic Status
 
@@ -369,15 +389,14 @@ Used in EDFacts and CRDC for student subgroups:
 
 ## Missing Value Codes
 
-Standard codes for missing or suppressed data:
+Standard codes for missing or suppressed data. A scan of the **entire** Portal `values` corpus (all 2,994 variables, 2026-08-07) found the negative sentinels `-1, -2, -3, -99` only — codes `-4` (previously documented as "Derived/Imputed") and `-9` ("Not available") appear **nowhere** in the corpus and have been removed. `-99` is present in Portal metadata and is newly documented here.
 
 | Code | Meaning |
 |------|---------|
 | -1 | Missing / Not reported |
 | -2 | Not applicable |
 | -3 | Suppressed (privacy protection) |
-| -4 | Derived / Imputed |
-| -9 | Not available |
+| -99 | Missing / Not reported (alternate sentinel present in Portal metadata) |
 
 ### Interpretation Guidelines
 
@@ -386,8 +405,7 @@ Standard codes for missing or suppressed data:
 | -1 | Data not collected or reported | Exclude from analysis |
 | -2 | Question doesn't apply (e.g., no AP offered) | Exclude from analysis |
 | -3 | Small cell size suppressed | May estimate or exclude |
-| -4 | Value derived from other data | Use with caution |
-| -9 | Historical data not available | Exclude from analysis |
+| -99 | Alternate missing sentinel (Portal metadata) | Exclude from analysis |
 
 ### Suppression Rules
 
@@ -435,7 +453,7 @@ Data suppression for privacy varies by source:
 
 ## Carnegie Basic Classification Codes (2021)
 
-The `ccbasic` variable uses the 2021 Carnegie Classification. A 2025 update exists but is not yet reflected in Portal data.
+The `ccbasic` variable uses the 2021 Carnegie Classification. The 2025 Carnegie update **is** now reflected in Portal data: as of Portal v0.25.0 (released 2026-03-30), ipeds/directory responses now carry new Carnegie 2025 variables — observed 2026-08-07 are `cc_basic_2025`, `cc_undergrad_2025`, `cc_research_act_desig_2025`, `cc_stud_access_earn_2025`, `cc_instit_size_2025`, and `cc_award_level_focus_2025` (the Portal release history records seven Carnegie 2025 variables added in v0.25.0). These are null for years predating the 2025 classification. The `ccbasic` codes below remain the 2021 scheme; use the `cc_*_2025` variables for the 2025 classification.
 
 | Code | Description |
 |------|-------------|
@@ -476,29 +494,53 @@ The `ccbasic` variable uses the 2021 Carnegie Classification. A 2025 update exis
 
 ---
 
+## Legacy / Federal Name Aliases
+
+The Portal renames many federal/documented variables. If you arrive with one of these
+stale or federal-documentation names, the current mirror variable is on the right. Each
+target below was verified present in the matching `variable-dictionary-{source}.md` file.
+
+| Legacy / federal name | Current mirror variable | Source (dictionary) |
+|-----------------------|-------------------------|---------------------|
+| `inst_level` | `institution_level` | IPEDS (`variable-dictionary-ipeds.md`) |
+| `applicants_total` | `number_applied` | IPEDS (`variable-dictionary-ipeds.md`) |
+| `admissions_total` | `number_admitted` | IPEDS (`variable-dictionary-ipeds.md`) |
+| `grad_rate_150pct` | `completion_rate_150pct` | IPEDS (`variable-dictionary-ipeds.md`) |
+| `school_poverty` | `meps_poverty_pct` | MEPS (`variable-dictionary-meps.md`) |
+| `population_5_17_poverty` | `est_population_5_17_poverty` | SAIPE (`variable-dictionary-saipe.md`) |
+
+> This is a reverse-lookup convenience only. For the full per-variable catalog with coded
+> values, see the `variable-dictionary-{source}.md` files. Always verify the actual column
+> names against the downloaded file schema before filtering.
+
+---
+
 ## Quick Code Lookup
 
 ### Common Filter Values
 
-| Filter | Common Values |
-|--------|---------------|
-| California schools | `?fips=6` |
-| Texas schools | `?fips=48` |
-| New York schools | `?fips=36` |
-| Charter schools | `?charter=1` |
-| High schools | `?school_level=3` |
-| Total enrollment | `/grade-99/` |
-| All races | `/race/` with `race=99` or omit filter |
-| Public colleges | `?inst_control=1` |
-| 4-year colleges | `?inst_level=1` |
-| HBCUs | `?hbcu=1` |
+Applied as LOCAL filter expressions on the downloaded mirror file (Polars). The code
+values are the same values stored in the mirror columns — only the filter syntax is local.
+
+| Filter | Local Polars expression |
+|--------|-------------------------|
+| California schools | `pl.col("fips") == 6` |
+| Texas schools | `pl.col("fips") == 48` |
+| New York schools | `pl.col("fips") == 36` |
+| Charter schools | `pl.col("charter") == 1` |
+| High schools | `pl.col("school_level") == 3` |
+| Total enrollment | `pl.col("grade") == 99` |
+| All races | `pl.col("race") == 99` (or omit the filter) |
+| Public colleges | `pl.col("inst_control") == 1` |
+| 4-year colleges | `pl.col("institution_level") == 4` (after verifying the file schema) |
+| HBCUs | `pl.col("hbcu") == 1` |
 
 ### Combining Filters
 
-Filters can be combined with `&`:
+Combine local expressions with `&`:
 
 ```
-?fips=6&charter=1&school_level=3
+(pl.col("fips") == 6) & (pl.col("charter") == 1) & (pl.col("school_level") == 3)
 ```
 
-Gets California charter high schools.
+Selects California charter high schools.
