@@ -7,14 +7,43 @@
 # UNIFIED PATH MODEL
 # ============================================================================
 # All mirrors use the same canonical path from datasets-reference.md.
-# Each mirror's url_template resolves {path} to a full URL:
+# Each mirror's url_template resolves {path} (and, for versioned mirrors,
+# {revision}) to a full URL:
 #
 #   url = mirror["url_template"].format(root_url=mirror["root_url"],
+#                                       revision=mirror_revision(mirror),
 #                                       path=canonical_path,
 #                                       format=mirror["format"])
 #
 # The canonical path is mirror-agnostic: "{source}/{filename}"
 # Example: "ccd/schools_ccd_directory" → each mirror appends its own extension.
+# {revision} is unused by mirrors that omit it (str.format ignores extra kwargs),
+# so the same call works for both versioned and unversioned mirrors.
+#
+# ============================================================================
+# MIRROR VERSIONING: VINTAGE + REVISION PINNING (WHY)
+# ============================================================================
+# A "vintage" is a dated snapshot of the Education Data Portal captured into one
+# Hugging Face dataset repo. A "revision" is the HF git ref (branch, tag, or
+# commit SHA) that pins requests to one immutable state of that repo — the URL
+# form is `.../resolve/{revision}/{path}` for data and
+# `.../tree/{revision}?recursive=true` for discovery (per HF's documented API).
+#
+# Why pin? The Portal revises historical values between releases WITHOUT schema
+# changes — e.g., Portal 0.26.1 retroactively corrected IPEDS Graduation Rates
+# 150% for 1996-2023. An unpinned mirror (revision "main") can therefore serve
+# silently different numbers to a rerun of the same script. Pinning `hf_revision`
+# to an immutable commit SHA makes a research project's fetches byte-reproducible.
+#
+# Single-value pinning: `vintage.hf_revision` is the ONE place the revision is
+# set; url_template and discovery.url_template both consume it. The v2 mirror's
+# SHA is now pinned there (see `vintage.hf_revision` below), so every URL (data +
+# discovery) pins in lockstep off that one value. Future vintages (v3+) follow the
+# same pattern: upload the snapshot, then set its commit SHA in `hf_revision`.
+#
+# mirror_revision(mirror) returns mirror["vintage"]["hf_revision"] (or "main"
+# when a mirror has no vintage block). See fetch-patterns.md for the tested
+# Python/R helpers.
 #
 # Mirrors are tried in priority order (first entry = highest priority).
 # The first mirror that successfully serves the requested file is used.
@@ -24,9 +53,12 @@
 # HOW TO ADD A NEW MIRROR
 # ============================================================================
 # 1. Add a new entry to the `mirrors` list below (position = priority)
-# 2. Define url_template using {root_url}, {path}, and {format} placeholders
+# 2. Define url_template using {root_url}, {revision}, {path}, and {format}
+#    placeholders
 #    - {path} comes from the single `path` column in datasets-reference.md
 #    - {format} comes from the mirror's `format` field
+#    - {revision} comes from the mirror's `vintage.hf_revision` (versioned
+#      mirrors only; omit both the placeholder and the vintage block otherwise)
 # 3. Set read_strategy to match your file format (see options below)
 # 4. Define a discovery section so agents can check file availability
 # 5. No other documentation files need to change — paths are in datasets-reference.md
@@ -40,23 +72,56 @@
 #
 # discovery.method options:
 #   http_json      - GET a URL that returns JSON listing available files
-#   known_complete - Mirror has complete coverage; no discovery query needed
+#
+# Discovery is inventory evidence for one surface at one observation time. Never
+# encode a mirror as universally complete: endpoint declarations, live API rows,
+# Urban bulk objects, and derivative-mirror objects can diverge.
 # ============================================================================
 
 mirrors:
   - name: huggingface
-    root_url: "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main"
+    # root_url ends at /resolve; the {revision} segment is supplied by
+    # vintage.hf_revision so the whole mirror pins from one value (see the
+    # MIRROR VERSIONING header above).
+    root_url: "https://huggingface.co/datasets/brhkim/education_data_portal_mirror_2026q3/resolve"
     format: parquet
     timeout: 300
-    url_template: "{root_url}/{path}.parquet"
+    url_template: "{root_url}/{revision}/{path}.parquet"
     read_strategy: eager_parquet
+    vintage:
+      # This mirror snapshots Education Data Portal v0.26.1 (released 2026-08-05).
+      # Citations of data fetched here MUST use Portal version 0.26.1.
+      portal_version: "0.26.1"
+      collected: "2026-08-06"       # v2 build validated 2026-08-06 (497 objects; see coverage_notes)
+      hf_revision: "0ad00ce0e232c96b0642459e4e7326607a8d26aa"  # immutable commit SHA of the v2 upload (pinned 2026-08-07)
+      predecessor:
+        # The v1 mirror: Portal v0.24.0, frozen for reproducibility of pre-2026q3
+        # analyses. Not deleted — a rerun that must reproduce old numbers points
+        # here (see education-data-query/SKILL.md "Mirror Versioning & Reproducibility").
+        repo: "brhkim/education_data_portal_mirror"
+        root_url: "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve"
+        portal_version: "0.24.0"
+        collected: "2026-02-07"
+        status: frozen
+        # Pinned to an immutable commit SHA for byte-exact reproduction. This SHA
+        # was recorded 2026-08-07 from the HF API after freeze validation (README
+        # freeze banner present + 5/5 resolve probes returned HTTP 200).
+        hf_revision: "10fea9c7671e8e0ab90a7976674913bc2d16f8b1"
     discovery:
       method: http_json
-      url: "https://huggingface.co/api/datasets/brhkim/education_data_portal_mirror/tree/main?recursive=true"
+      # url_template consumes the same {revision} as the data URLs (tree API form).
+      url_template: "https://huggingface.co/api/datasets/brhkim/education_data_portal_mirror_2026q3/tree/{revision}?recursive=true"
       file_path_key: "path"
       file_filter: "*.parquet"
     coverage_notes: >
-      Complete coverage of all data sources in flat {source}/{filename}.parquet structure.
+      Derivative Parquet/XLS inventory; do not treat it as universally complete or
+      synchronized with the live API or Urban bulk objects. The v2 build (Portal
+      v0.26.1) was validated on 2026-08-06: 497 objects (406 Parquet data + 91 XLS
+      codebooks), plus an in-repo build_manifest.parquet recording per-file
+      provenance. This closes the eight previously-absent Urban data objects — the
+      build reports zero Urban-catalog gaps. The tree is size/sha256-verified and
+      all 406 parquets open with rows>0. Still reconcile dynamically: this is
+      inventory evidence for one build, not a permanent completeness guarantee.
       Parquet format: columnar, compressed (3-10x smaller than CSV), schema embedded.
       Provenance: files are Polars-written. Some declare string columns as Arrow
       'string_view' in the parquet-native schema (confirmed: saipe/districts_saipe,
@@ -75,12 +140,13 @@ mirrors:
       before the mirror loop (or use curl::multi_download for very large files).
       See fetch-patterns.md. Python (Polars/pyarrow) is unaffected.
     metadata:
-      url_template: "{root_url}/{path}.{format}"
+      url_template: "{root_url}/{revision}/{path}.{format}"
       formats: [xls]
       filename_pattern: "codebook_{entity}_{source}_{topic}"
       notes: >
         Codebook .xls files are co-located with data files in the same directory structure.
         Path matches the codebook column in datasets-reference.md with .xls extension.
+        Codebook URLs pin to the same vintage.hf_revision as the data URLs.
 
   - name: urban_csv
     root_url: "https://educationdata.urban.org/csv"
@@ -93,18 +159,19 @@ mirrors:
       url: "https://educationdata.urban.org/api/v1/api-downloads"
       # Response is a JSON array of objects with fields:
       #   id, endpoint_id, sort_order, file_dir, file_name, file_label, file_size, hide
-      # file_name includes the .csv/.xls extension already.
-      # Filter: hide == 0 for active files; file_name ends with .csv for data.
-      #
-      # NOTE: The discovery API returns separate file_dir + file_name fields,
-      # but the canonical path is "{file_dir}/{file_name}" (matching datasets-reference.md).
-      # The discover_mirror_files() function constructs paths as:
-      #   path = f"{entry['file_dir']}/{entry['file_name']}"
+      # file_name includes the .csv/.xls extension already. Discovery must deduplicate
+      # exact "{file_dir}/{file_name}" identities, then return extensionless canonical
+      # keys: strip one terminal .csv for data or one terminal .xls for codebooks.
+      # Retain the raw rows separately when endpoint-to-object bridge fidelity matters.
       file_dir_key: "file_dir"
       file_name_key: "file_name"
       file_filter: "*.csv"
     coverage_notes: >
-      Complete coverage of all data sources in flat {source}/{filename}.csv structure.
+      Urban-hosted bulk CSV/XLS inventory; do not equate it with endpoint-catalog
+      declarations or actual live API responses. Dated reconciliation on 2026-07-21
+      found 958 presentation rows that deduplicated by exact file_dir/file_name to
+      495 unique objects (404 CSV data files, 91 XLS codebooks). Manifest rows are
+      endpoint-linked presentation records and can map many-to-many to objects.
       Large files (500MB+); always use lazy loading with filters.
       Some datasets are split into yearly files (e.g., ccd/schools_ccd_enrollment_{year}.csv)
       while others contain all years in a single file (e.g., fsa/colleges_fsa_grants.csv).

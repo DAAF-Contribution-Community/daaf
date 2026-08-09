@@ -28,8 +28,8 @@ df <- read_parquet("data/schools.parquet", col_select = starts_with("enroll"))
 #### View-Safe Read for External / Polars-Written Parquet
 
 `read_parquet()` works directly on DAAF's own outputs, but parquet files written
-by **Polars** (notably the HuggingFace education-data mirror,
-`brhkim/education_data_portal_mirror`) may declare string columns as Arrow *view*
+by **Polars** (notably the versioned HuggingFace education-data mirror,
+`brhkim/education_data_portal_mirror_2026q3`) may declare string columns as Arrow *view*
 types (`string_view`, `large_string_view`, `binary_view`) in the parquet-native
 schema. The R `arrow` binding reads these at the C++ layer but cannot convert them
 to R vectors directly — the plain `read_parquet(src)` call fails at the
@@ -49,7 +49,14 @@ library(arrow)
 
 # INTENT: read external parquet robustly against Arrow "view" string/binary types
 #   that Polars emits but the R arrow binding cannot convert to R vectors directly.
-src <- "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main/saipe/districts_saipe.parquet"
+# Mirror root + pinned revision. The education-data mirror is versioned by vintage
+# (a dated Portal snapshot); REVISION is the HF git ref pinning byte-exact bytes.
+# For real fetches use education-data-query/references/{mirrors.yaml,fetch-patterns.md};
+# this standalone example inlines the URL, so REVISION is pinned here too (keep
+# in sync with mirrors.yaml vintage.hf_revision).
+MIRROR_ROOT <- "https://huggingface.co/datasets/brhkim/education_data_portal_mirror_2026q3/resolve"
+REVISION <- "0ad00ce0e232c96b0642459e4e7326607a8d26aa"   # immutable commit SHA of the v2 upload
+src <- sprintf("%s/%s/saipe/districts_saipe.parquet", MIRROR_ROOT, REVISION)
 
 tbl <- read_parquet(src, as_data_frame = FALSE)   # C++ read tolerates view types
 sch <- tbl$schema

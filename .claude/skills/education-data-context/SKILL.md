@@ -35,6 +35,14 @@ Each `education-data-source-*` skill documents what is available through the Por
 
 > **Note:** This provenance applies specifically to the current education data source skills. Future data source skills may access data from other providers with different characteristics.
 
+### Mirror Vintage Awareness
+
+Portal data reaches this system through a **versioned mirror**, and each mirror snapshot is a dated *vintage* tied to a specific Portal version. This matters for interpretation and citation:
+
+- **Know your vintage.** When analyzing Portal files, know which mirror vintage produced them — the Portal revises historical values between releases *without schema changes* (e.g., Portal 0.26.1 retroactively corrected IPEDS Graduation Rates 150% for 1996-2023), so two vintages can carry different numbers for the same rows.
+- **Cite the vintage's Portal version.** An analysis citing Portal data must cite the Portal version of the vintage it used — currently v0.26.1 (mirror `..._2026q3`). Analyses run before 2026q3 used the frozen v0.24.0 mirror and should cite v0.24.0.
+- **Mechanics live elsewhere.** For revision pinning, the frozen-predecessor recipe, and URL construction, see the `education-data-query` skill (§ Mirror Versioning & Reproducibility) and its `mirrors.yaml` — this skill is the interpretation router, not the mirror manual.
+
 ## Reference File Structure
 
 ### Quick Context (This Skill)
@@ -98,8 +106,11 @@ What endpoint did you use?
 │   └─ Need more depth? → Load education-data-source-scorecard skill
 ├─ college-university/fsa/* → Load education-data-source-fsa skill
 ├─ college-university/nacubo/* → Load education-data-source-nacubo skill
+├─ college-university/nccs/* → Load education-data-source-nccs skill
 ├─ college-university/eada/* → Load education-data-source-eada skill
 ├─ college-university/pseo/* → Load education-data-source-pseo skill
+├─ college-university/campus-crime/* → Load education-data-source-campus-safety skill
+│   └─ Bulk/mirror directory is csafety (not campus-crime)
 ├─ school-districts/saipe/* → Load education-data-source-saipe skill
 └─ Multiple sources → Read ./references/data-relationships.md first
 ```
@@ -266,6 +277,12 @@ mean(df$enrollment)
 df |> filter(enrollment >= 0) |> pull(enrollment) |> mean()
 ```
 
+### Identifier Materialization
+
+- Protect CCD `ncessch` and `leaid` as materialized strings and validate exact widths: 12 and 7 characters. Do not treat an integer-typed prior mirror file as preserving canonical display width; integer storage has already discarded any leading-zero semantics.
+- Keep IPEDS `unitid` as an integer (`Int64`/Arrow `int64`). Do not route it through floating point, which can introduce precision loss.
+- Apply identifier rules before joins and validate widths/domains after every CSV fallback read.
+
 ### Year Definitions
 
 - `year` refers to the **FALL** of the academic year
@@ -350,10 +367,17 @@ made available under the ODC Attribution License.
 **Example:**
 ```
 Common Core of Data (CCD) School Directory, Education Data Portal 
-(Version 0.20.0), Urban Institute, accessed January 15, 2026, 
+(Version 0.26.1), Urban Institute, accessed August 6, 2026,
 https://educationdata.urban.org/documentation/, 
 made available under the ODC Attribution License.
 ```
+
+> **Version anchor (must match the vintage you fetched):** cite **Version 0.26.1**
+> for data from the current mirror (`..._2026q3`) and **Version 0.24.0** for data
+> reproduced from the frozen predecessor mirror. The version number is not
+> cosmetic — the Portal revises historical values between releases, so the cited
+> version identifies exactly which numbers you used. Never mix vintages in one
+> citation. See `education-data-query` for the mirror-versioning mechanics.
 
 ### Short Citation Format
 
@@ -366,7 +390,7 @@ Urban Institute, ODC-By License.
 
 **Example:**
 ```
-Source: CCD School Directory, Education Data Portal v.0.20.0, 
+Source: CCD School Directory, Education Data Portal v.0.26.1,
 Urban Institute, ODC-By License.
 ```
 

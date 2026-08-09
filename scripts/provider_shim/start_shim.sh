@@ -104,9 +104,7 @@ readonly PGID_FILE="${LOG_DIR}/pgid"
 readonly STOP_FILE="${LOG_DIR}/stop.requested"
 readonly QUOTA_STATE_FILE="${LOG_DIR}/quota_state.json"
 readonly LOCK_DIR="${LOG_DIR}/lifecycle.lock"
-readonly LOCK_OWNER_FILE="${LOCK_DIR}/owner.pid"
 readonly LOG_WRITE_LOCK_DIR="${LOG_DIR}/log-write.lock"
-readonly LOG_WRITE_OWNER_FILE="${LOG_WRITE_LOCK_DIR}/owner.pid"
 readonly SHIM_SERVICE_ID="daaf-anthropic-openai-shim"
 
 SHIM_PORT="${SHIM_PORT:-4141}"
@@ -127,11 +125,13 @@ storm_limit="$STORM_LIMIT"
 storm_window="$STORM_WINDOW"
 restart_delay="$RESTART_DELAY"
 readiness_wait="$READINESS_WAIT"
+termination_wait=5
 if [ "${DAAF_SHIM_TEST_MODE:-0}" = "1" ]; then
     storm_limit="${DAAF_SHIM_TEST_STORM_LIMIT:-$STORM_LIMIT}"
     storm_window="${DAAF_SHIM_TEST_STORM_WINDOW:-$STORM_WINDOW}"
     restart_delay="${DAAF_SHIM_TEST_RESTART_DELAY:-$RESTART_DELAY}"
     readiness_wait="${DAAF_SHIM_TEST_READINESS_WAIT:-$READINESS_WAIT}"
+    termination_wait="${DAAF_SHIM_TEST_TERMINATION_WAIT:-5}"
 fi
 
 HEALTH_JSON=""
@@ -140,7 +140,14 @@ EXPECTED_SHIM_VERSION=""
 EXPECTED_BACKEND_MODE="openai"
 START_FAILURE_KIND="not_started"
 ACTIVE_LAUNCH_PID=""
+ACTIVE_LAUNCH_STREAM_DIR=""
+ACTIVE_LAUNCH_STREAM_FD=""
+START_SIGNAL_QUEUED=""
 LIFECYCLE_LOCK_HELD=0
+LIFECYCLE_LOCK_FD=""
+LOG_WRITE_LOCK_FD=""
+VALIDATED_STATE_GATE=0
+START_INTERRUPT_KIND="explicit"
 
 # --- Filesystem and logging helpers -----------------------------------------
 path_is_safe_file_target() {
@@ -208,32 +215,79 @@ state_targets_are_safe() {
     return 0
 }
 
-acquire_log_write_lock() {
-    local owner attempts=0
-    while [ "$attempts" -lt 200 ]; do
-        if mkdir "$LOG_WRITE_LOCK_DIR" 2>/dev/null; then
-            printf '%s\n' "${BASHPID:-$$}" > "$LOG_WRITE_OWNER_FILE" || return 1
-            chmod 0700 "$LOG_WRITE_LOCK_DIR" || return 1
-            chmod 0600 "$LOG_WRITE_OWNER_FILE" || return 1
-            return 0
+open_stable_lock_directory() {
+    # Lock directories are permanent rendezvous inodes: managers never remove them.
+    # flock owns exclusion in the kernel and releases automatically on process death,
+    # eliminating stale-owner reclamation and its unavoidable delete/takeover race.
+    local lock_dir="$1" label="$2" fd proc_fd path_identity fd_identity dependency
+    OPENED_LOCK_FD=""
+    for dependency in flock stat; do
+        if ! command -v "$dependency" >/dev/null 2>&1; then
+            printf 'ERROR: required shim-manager dependency is unavailable: %s\n' \
+                "$dependency" >&2
+            printf '  Fix: rebuild from the current DAAF Dockerfile.\n' >&2
+            return 1
         fi
-        owner="$(read_pid_file "$LOG_WRITE_OWNER_FILE")" || owner=""
-        if [ -z "$owner" ] || ! kill -0 "$owner" 2>/dev/null; then
-            rm -f "$LOG_WRITE_OWNER_FILE" 2>/dev/null || true
-            rmdir "$LOG_WRITE_LOCK_DIR" 2>/dev/null || true
-        else
-            sleep 0.01
-        fi
-        attempts=$((attempts + 1))
     done
-    printf 'ERROR: timed out acquiring shim log-write lock: %s\n' \
-        "$LOG_WRITE_LOCK_DIR" >&2
-    return 1
+    if [ -L "$lock_dir" ] || { [ -e "$lock_dir" ] && [ ! -d "$lock_dir" ]; }; then
+        printf 'ERROR: refusing unsafe shim %s-lock target: %s\n' "$label" "$lock_dir" >&2
+        printf '  Fix: remove the symlink/non-directory object and retry.\n' >&2
+        return 1
+    fi
+    if [ ! -d "$lock_dir" ]; then
+        mkdir "$lock_dir" 2>/dev/null || {
+            # Another manager may have won creation; accept only its real directory.
+            [ ! -L "$lock_dir" ] && [ -d "$lock_dir" ] || return 1
+        }
+    fi
+    chmod 0700 "$lock_dir" || return 1
+    exec {fd}<"$lock_dir" || return 1
+    proc_fd="/proc/${BASHPID:-$$}/fd/${fd}"
+    if [ ! -d "$proc_fd" ] || [ -L "$lock_dir" ] || [ ! -d "$lock_dir" ]; then
+        exec {fd}<&-
+        return 1
+    fi
+    fd_identity="$(stat -Lc '%d:%i' "$proc_fd" 2>/dev/null)" || fd_identity=""
+    path_identity="$(stat -Lc '%d:%i' "$lock_dir" 2>/dev/null)" || path_identity=""
+    if [ -z "$fd_identity" ] || [ "$fd_identity" != "$path_identity" ]; then
+        exec {fd}<&-
+        printf 'ERROR: shim %s-lock target changed during acquisition: %s\n' \
+            "$label" "$lock_dir" >&2
+        return 1
+    fi
+    OPENED_LOCK_FD="$fd"
+    return 0
+}
+
+acquire_log_write_lock() {
+    local fd
+    open_stable_lock_directory "$LOG_WRITE_LOCK_DIR" log-write || return 1
+    fd="$OPENED_LOCK_FD"
+    if ! flock -w 2 "$fd"; then
+        exec {fd}<&-
+        printf 'ERROR: timed out acquiring shim log-write lock: %s\n' \
+            "$LOG_WRITE_LOCK_DIR" >&2
+        return 1
+    fi
+    LOG_WRITE_LOCK_FD="$fd"
+    if [ "${DAAF_SHIM_TEST_MODE:-0}" = "1" ] && \
+        [ -n "${DAAF_SHIM_TEST_LOG_LOCK_HOLD_S:-}" ]; then
+        printf '%s\n' "$$" > "${SCRIPT_DIR}/test.log-write.locked"
+        (
+            exec {fd}<&-
+            exec sleep "$DAAF_SHIM_TEST_LOG_LOCK_HOLD_S"
+        )
+    fi
+    return 0
 }
 
 release_log_write_lock() {
-    rm -f "$LOG_WRITE_OWNER_FILE" 2>/dev/null || true
-    rmdir "$LOG_WRITE_LOCK_DIR" 2>/dev/null || true
+    local fd="$LOG_WRITE_LOCK_FD"
+    if is_decimal_pid "$fd"; then
+        flock -u "$fd" 2>/dev/null || true
+        exec {fd}<&-
+    fi
+    LOG_WRITE_LOCK_FD=""
 }
 
 # --- Supervisor state file (lifecycle status honesty) -----------------------
@@ -527,8 +581,31 @@ is_decimal_pid() {
 }
 
 read_pid_file() {
-    local path="$1" value
-    value="$(awk 'NR == 1 { print; exit }' "$path" 2>/dev/null)"
+    # PID files are an untrusted filesystem boundary. Open read/write so a FIFO
+    # cannot block in open(2), then validate the opened descriptor itself before
+    # reading a bounded first line. The manager creates its real PID files 0600,
+    # so inability to open one read/write is safely treated as absent/invalid.
+    local path="$1" value="" fd proc_fd path_identity fd_identity
+    [ ! -L "$path" ] && [ -f "$path" ] || return 1
+    command -v stat >/dev/null 2>&1 || return 1
+    exec {fd}<>"$path" 2>/dev/null || return 1
+    proc_fd="/proc/${BASHPID:-$$}/fd/${fd}"
+    if [ ! -f "$proc_fd" ] || [ -L "$path" ] || [ ! -f "$path" ]; then
+        exec {fd}>&-
+        return 1
+    fi
+    fd_identity="$(stat -Lc '%d:%i' "$proc_fd" 2>/dev/null)" || fd_identity=""
+    path_identity="$(stat -Lc '%d:%i' "$path" 2>/dev/null)" || path_identity=""
+    if [ -z "$fd_identity" ] || [ "$fd_identity" != "$path_identity" ]; then
+        exec {fd}>&-
+        return 1
+    fi
+    # 64 bytes is far beyond a Linux decimal PID but keeps hostile regular files
+    # bounded. read -n stops at the first newline, preserving the historical
+    # first-line contract; 65 captured bytes means an oversized first line.
+    IFS= read -r -n 65 -u "$fd" value || true
+    exec {fd}>&-
+    [ "${#value}" -le 64 ] || return 1
     is_decimal_pid "$value" || return 1
     printf '%s' "$value"
 }
@@ -573,103 +650,269 @@ process_group_is_owned() {
     [ "$actual" = "$pgid" ]
 }
 
-terminate_verified_pid() {
-    local role="$1" pid="$2" waited=0
+pid_has_verified_role() {
+    local role="$1" pid="$2"
     case "$role" in
-        supervisor) pid_is_supervisor "$pid" || return 1 ;;
-        shim) pid_is_shim "$pid" || return 1 ;;
+        supervisor) pid_is_supervisor "$pid" ;;
+        shim) pid_is_shim "$pid" ;;
         *) return 1 ;;
     esac
+}
+
+terminate_verified_pid() {
+    # Identity is checked before every signal. TERM receives a bounded grace period;
+    # a still-matching process is KILLed and rechecked before success is reported.
+    local role="$1" pid="$2" waited=0 wait_limit
+    pid_has_verified_role "$role" "$pid" || return 1
+    wait_limit=$((termination_wait * 10))
     kill -TERM "$pid" 2>/dev/null || true
-    while [ "$waited" -lt 5 ]; do
-        if [ "$role" = "supervisor" ]; then
-            pid_is_supervisor "$pid" || return 0
-        else
-            pid_is_shim "$pid" || return 0
-        fi
-        sleep 1
+    while [ "$waited" -lt "$wait_limit" ]; do
+        pid_has_verified_role "$role" "$pid" || return 0
+        sleep 0.1
         waited=$((waited + 1))
     done
-    if [ "$role" = "supervisor" ]; then
-        pid_is_supervisor "$pid" && kill -KILL "$pid" 2>/dev/null || true
-    else
-        pid_is_shim "$pid" && kill -KILL "$pid" 2>/dev/null || true
-    fi
+    pid_has_verified_role "$role" "$pid" && kill -KILL "$pid" 2>/dev/null || true
+    waited=0
+    while [ "$waited" -lt 20 ]; do
+        pid_has_verified_role "$role" "$pid" || return 0
+        sleep 0.05
+        waited=$((waited + 1))
+    done
+    pid_has_verified_role "$role" "$pid" && return 1
     return 0
 }
 
 # --- Lifecycle lock ---------------------------------------------------------
 acquire_lifecycle_lock() {
-    local wait_mode="${1:-wait}" owner attempts=0
+    local wait_mode="${1:-wait}" fd
     ensure_log_dir || return 1
     state_targets_are_safe || return 1
+    open_stable_lock_directory "$LOCK_DIR" lifecycle || return 1
+    fd="$OPENED_LOCK_FD"
 
-    # Public lifecycle actions serialize by waiting for the current live owner.
-    # This lock is deliberately acquired only by outer action wrappers; helpers
-    # with a _locked suffix never recurse into this non-reentrant lock.
-    # Sixty seconds exceeds the manager's five-second stop plus 15-second
-    # readiness budget while remaining bounded if an owner is wedged.
-    while [ "$attempts" -lt 6000 ]; do
-        if mkdir "$LOCK_DIR" 2>/dev/null; then
-            LIFECYCLE_LOCK_HELD=1
-            trap release_lifecycle_lock EXIT
-            trap 'exit 130' INT TERM HUP
-            if ! printf '%s\n' "$$" > "$LOCK_OWNER_FILE"; then
-                release_lifecycle_lock
-                return 1
-            fi
-            if ! chmod 0700 "$LOCK_DIR" || ! chmod 0600 "$LOCK_OWNER_FILE"; then
-                release_lifecycle_lock
-                return 1
-            fi
-            return 0
+    # Public actions lock one permanent directory inode. The descriptor is the
+    # ownership token: no PID metadata is consulted, and process death releases it.
+    if [ "$wait_mode" = "no_wait" ]; then
+        if ! flock -n "$fd"; then
+            exec {fd}<&-
+            printf 'ERROR: another shim lifecycle action is active.\n' >&2
+            printf '  Fix: let it finish; boot will continue and a later health check can retry.\n' >&2
+            return 1
         fi
+    elif ! flock -w 60 "$fd"; then
+        exec {fd}<&-
+        printf 'ERROR: timed out acquiring shim lifecycle lock: %s\n' "$LOCK_DIR" >&2
+        printf '  Fix: wait for the active lifecycle action to finish, then retry.\n' >&2
+        return 1
+    fi
 
-        owner="$(read_pid_file "$LOCK_OWNER_FILE")" || owner=""
-        if [ -z "$owner" ] || ! kill -0 "$owner" 2>/dev/null; then
-            # A dead/malformed owner means a prior manager died while holding the
-            # lock. Remove only the known owner file and empty lock directory.
-            rm -f "$LOCK_OWNER_FILE" 2>/dev/null || true
-            rmdir "$LOCK_DIR" 2>/dev/null || true
-        else
-            if [ "$wait_mode" = "no_wait" ]; then
-                printf 'ERROR: another shim lifecycle action is active (pid %s).\n' "$owner" >&2
-                printf '  Fix: let it finish; boot will continue and a later health check can retry.\n' >&2
-                return 1
-            fi
-            sleep 0.01
-        fi
-        attempts=$((attempts + 1))
-    done
-
-    printf 'ERROR: timed out acquiring shim lifecycle lock: %s\n' "$LOCK_DIR" >&2
-    printf '  Fix: wait for the active lifecycle action to finish, then retry.\n' >&2
-    return 1
+    LIFECYCLE_LOCK_FD="$fd"
+    LIFECYCLE_LOCK_HELD=1
+    trap release_lifecycle_lock EXIT
+    if [ "${DAAF_SHIM_TEST_MODE:-0}" = "1" ] && \
+        [ -n "${DAAF_SHIM_TEST_LIFECYCLE_LOCK_HOLD_S:-}" ]; then
+        printf '%s\n' "$$" > "${SCRIPT_DIR}/test.lifecycle.locked"
+        (
+            exec {fd}<&-
+            exec sleep "$DAAF_SHIM_TEST_LIFECYCLE_LOCK_HOLD_S"
+        )
+    fi
+    return 0
 }
 
 release_lifecycle_lock() {
-    local owner=""
-    if [ "$LIFECYCLE_LOCK_HELD" -eq 1 ]; then
-        owner="$(read_pid_file "$LOCK_OWNER_FILE")" || owner=""
-        if [ "$owner" = "$$" ]; then
-            rm -f "$LOCK_OWNER_FILE" 2>/dev/null || true
-            rmdir "$LOCK_DIR" 2>/dev/null || true
-        fi
-        LIFECYCLE_LOCK_HELD=0
+    local fd="$LIFECYCLE_LOCK_FD"
+    if [ "$LIFECYCLE_LOCK_HELD" -eq 1 ] && is_decimal_pid "$fd"; then
+        flock -u "$fd" 2>/dev/null || true
+        exec {fd}<&-
     fi
+    LIFECYCLE_LOCK_FD=""
+    LIFECYCLE_LOCK_HELD=0
     trap - EXIT INT TERM HUP
+}
+
+# --- Private launch stream workspace ---------------------------------------
+stream_workspace_is_owned() {
+    local stream_dir="$1" suffix fifo owner current_owner
+    suffix="${stream_dir#"${LOG_DIR}/shim.stream."}"
+    [ "$suffix" != "$stream_dir" ] || return 1
+    case "$suffix" in
+        ''|*/*) return 1 ;;
+    esac
+    fifo="${stream_dir}/output.fifo"
+    [ ! -L "$stream_dir" ] && [ -d "$stream_dir" ] || return 1
+    [ ! -L "$fifo" ] && [ -p "$fifo" ] || return 1
+    owner="$(stat -c '%u' "$stream_dir" 2>/dev/null)" || owner=""
+    current_owner="$(id -u 2>/dev/null)" || current_owner=""
+    [ -n "$owner" ] && [ "$owner" = "$current_owner" ] || return 1
+    [ "$(stat -c '%a' "$stream_dir" 2>/dev/null)" = "700" ] || return 1
+    [ "$(stat -c '%a' "$fifo" 2>/dev/null)" = "600" ] || return 1
+}
+
+allocate_launch_stream_workspace() {
+    local stream_dir fifo fd
+    ACTIVE_LAUNCH_STREAM_DIR=""
+    ACTIVE_LAUNCH_STREAM_FD=""
+    stream_dir="$(mktemp -d "${LOG_DIR}/shim.stream.XXXXXXXXXX")" || return 1
+    chmod 0700 "$stream_dir" || { rmdir "$stream_dir" 2>/dev/null || true; return 1; }
+    fifo="${stream_dir}/output.fifo"
+    if ! mkfifo "$fifo" || ! chmod 0600 "$fifo"; then
+        rm -f "$fifo" 2>/dev/null || true
+        rmdir "$stream_dir" 2>/dev/null || true
+        return 1
+    fi
+    # A read/write anchor prevents FIFO open from blocking and remains owned by
+    # the foreground manager until the supervisor publishes or dies. The child
+    # explicitly closes its inherited copy before exec.
+    if ! exec {fd}<>"$fifo"; then
+        rm -f "$fifo" 2>/dev/null || true
+        rmdir "$stream_dir" 2>/dev/null || true
+        return 1
+    fi
+    ACTIVE_LAUNCH_STREAM_DIR="$stream_dir"
+    ACTIVE_LAUNCH_STREAM_FD="$fd"
+    return 0
+}
+
+release_launch_stream_workspace() {
+    local remove_owned="${1:-0}" stream_dir="$ACTIVE_LAUNCH_STREAM_DIR"
+    local fd="$ACTIVE_LAUNCH_STREAM_FD" fifo
+    if is_decimal_pid "$fd"; then
+        exec {fd}>&-
+    fi
+    ACTIVE_LAUNCH_STREAM_FD=""
+    if [ "$remove_owned" -eq 1 ] && [ -n "$stream_dir" ] && \
+        stream_workspace_is_owned "$stream_dir"; then
+        fifo="${stream_dir}/output.fifo"
+        rm -f "$fifo" 2>/dev/null || true
+        rmdir "$stream_dir" 2>/dev/null || true
+    fi
+    ACTIVE_LAUNCH_STREAM_DIR=""
 }
 
 # --- Keepalive supervisor ---------------------------------------------------
 run_supervisor() {
+    local inherited_stream_dir="${1:-}"
+    local pgid child_pid logger_pid stream_dir log_pipe window_start crashes rc now
+    local gave_up_storm setup_complete setup_failure_reason sup_pid_written pgid_written
+    local child_termination_failed
+    child_pid=""
+    logger_pid=""
+    stream_dir="$inherited_stream_dir"
+    log_pipe=""
+    gave_up_storm=0
+    setup_complete=0
+    setup_failure_reason="not_started"
+    sup_pid_written=0
+    pgid_written=0
+    child_termination_failed=0
+
+    cleanup_supervisor() {
+        if [ -n "$child_pid" ] && pid_is_shim "$child_pid"; then
+            if ! terminate_verified_pid shim "$child_pid"; then
+                child_termination_failed=1
+            fi
+        fi
+        if [ -n "$logger_pid" ] && kill -0 "$logger_pid" 2>/dev/null; then
+            kill -TERM "$logger_pid" 2>/dev/null || true
+            wait "$logger_pid" 2>/dev/null || true
+        fi
+        # stream_dir is allocated atomically by this supervisor. Remove only its
+        # fixed FIFO and then its private directory; legacy shim.stream.* paths
+        # may belong to another install sharing the persistent /daaf volume.
+        if [ -n "$log_pipe" ]; then
+            rm -f "$log_pipe" 2>/dev/null || true
+        fi
+        if [ -n "$stream_dir" ]; then
+            rmdir "$stream_dir" 2>/dev/null || true
+        fi
+        if [ "$setup_complete" -eq 1 ] && [ "$child_termination_failed" -eq 0 ]; then
+            rm -f "$PID_FILE" 2>/dev/null || true
+        fi
+        if [ "$sup_pid_written" -eq 1 ]; then
+            rm -f "$SUP_PID_FILE" 2>/dev/null || true
+        fi
+        if [ "$pgid_written" -eq 1 ]; then
+            rm -f "$PGID_FILE" 2>/dev/null || true
+        fi
+        if [ "$VALIDATED_STATE_GATE" -eq 1 ]; then
+            if [ "$setup_complete" -eq 0 ] && \
+                [ "$setup_failure_reason" != "not_started" ]; then
+                log_line "SUPERVISOR_SETUP_FAILURE status=failed reason=${setup_failure_reason}" || true
+            fi
+            if [ "$child_termination_failed" -eq 1 ]; then
+                log_line "SUPERVISOR_TEARDOWN_FAILURE status=failed reason=child_termination_unverified child_pid=${child_pid} pid_evidence=retained" || true
+            fi
+            # A storm give-up already recorded gave_up_storm and must persist so
+            # --status can report it distinctly; every other exit is a clean stop.
+            if [ "$setup_complete" -eq 1 ] && [ "$gave_up_storm" -eq 0 ] && \
+                [ "$child_termination_failed" -eq 0 ]; then
+                write_supervisor_state stopped || true
+            fi
+            log_line "supervisor exiting" || true
+        else
+            if [ "$setup_failure_reason" != "not_started" ]; then
+                printf 'SUPERVISOR_SETUP_FAILURE status=failed reason=%s persistence=skipped_unvalidated_state\n' \
+                    "$setup_failure_reason" >&2
+            fi
+            printf 'SUPERVISOR_EXIT status=exited persistence=skipped_unvalidated_state\n' >&2
+        fi
+    }
+    stop_supervisor_signal() {
+        trap - INT TERM
+        exit 0
+    }
+    # Register ownership-safe cleanup before the first setup operation. Any
+    # failure below removes only state and stream paths created by this process.
+    trap cleanup_supervisor EXIT
+    trap stop_supervisor_signal INT TERM
+
+    setup_failure_reason="log_directory"
     ensure_log_dir || exit 1
+    setup_failure_reason="unsafe_state_target"
     state_targets_are_safe || exit 1
+    VALIDATED_STATE_GATE=1
+
+    if [ "${DAAF_SHIM_TEST_MODE:-0}" = "1" ] && \
+        [ -n "${DAAF_SHIM_TEST_PRE_PID_DELAY_S:-}" ]; then
+        printf 'SUPERVISOR_TEST_DELAY phase=pre_pid seconds=%s\n' \
+            "$DAAF_SHIM_TEST_PRE_PID_DELAY_S" >&2
+        sleep "$DAAF_SHIM_TEST_PRE_PID_DELAY_S"
+    fi
+
+    setup_failure_reason="stream_directory_allocation"
+    if [ -n "$stream_dir" ]; then
+        stream_workspace_is_owned "$stream_dir" || exit 1
+        log_pipe="${stream_dir}/output.fifo"
+    else
+        # Direct/internal supervisor invocations retain the same private allocation
+        # contract. Public launches allocate in the foreground manager so that
+        # manager can reclaim after pre-publication supervisor death.
+        stream_dir="$(mktemp -d "${LOG_DIR}/shim.stream.XXXXXXXXXX")" || exit 1
+        chmod 0700 "$stream_dir" || exit 1
+        log_pipe="${stream_dir}/output.fifo"
+        setup_failure_reason="stream_fifo_creation"
+        mkfifo "$log_pipe" || exit 1
+        chmod 0600 "$log_pipe" || exit 1
+    fi
+
+    if [ "${DAAF_SHIM_TEST_MODE:-0}" = "1" ] && \
+        [ -n "${DAAF_SHIM_TEST_AFTER_FIFO_DELAY_S:-}" ]; then
+        printf '%s\n' "$$" > "${SCRIPT_DIR}/test.stream.fifo.ready"
+        sleep "$DAAF_SHIM_TEST_AFTER_FIFO_DELAY_S"
+    fi
+
+    setup_failure_reason="supervisor_pid_write"
+    # Mark ownership before redirection so even a partial/failed write is removed.
+    sup_pid_written=1
     printf '%s\n' "$$" > "$SUP_PID_FILE" || exit 1
     chmod 0600 "$SUP_PID_FILE" || exit 1
 
-    local pgid child_pid logger_pid log_pipe window_start crashes rc now gave_up_storm
+    setup_failure_reason="process_group_write"
     pgid="$(ps -o pgid= -p "$$" 2>/dev/null | tr -d ' ')"
     if [ "$pgid" = "$$" ]; then
+        # Mark ownership before redirection so even a partial/failed write is removed.
+        pgid_written=1
         printf '%s\n' "$pgid" > "$PGID_FILE" || exit 1
         chmod 0600 "$PGID_FILE" || exit 1
     else
@@ -679,40 +922,16 @@ run_supervisor() {
         log_line "process-group isolation unavailable; using verified per-pid stop"
     fi
 
-    rm -f "$STOP_FILE" 2>/dev/null || true
-    child_pid=""
-    logger_pid=""
-    gave_up_storm=0
-    log_pipe="${LOG_DIR}/shim.stream.$$"
-    if [ -e "$log_pipe" ] || [ -L "$log_pipe" ]; then
-        printf 'ERROR: refusing existing shim log-stream target: %s\n' "$log_pipe" >&2
+    setup_failure_reason="setup_finalize"
+    if [ "${DAAF_SHIM_TEST_MODE:-0}" = "1" ] && \
+        [ "${DAAF_SHIM_TEST_FORCE_SETUP_FAILURE:-}" = "after_state_write" ]; then
         exit 1
     fi
-    mkfifo "$log_pipe" || exit 1
-    chmod 0600 "$log_pipe" || exit 1
 
-    cleanup_supervisor() {
-        if [ -n "$child_pid" ] && pid_is_shim "$child_pid"; then
-            kill -TERM "$child_pid" 2>/dev/null || true
-        fi
-        if [ -n "$logger_pid" ] && kill -0 "$logger_pid" 2>/dev/null; then
-            kill -TERM "$logger_pid" 2>/dev/null || true
-            wait "$logger_pid" 2>/dev/null || true
-        fi
-        rm -f "$log_pipe" "$PID_FILE" "$SUP_PID_FILE" "$PGID_FILE" 2>/dev/null || true
-        # A storm give-up already recorded gave_up_storm and must persist so
-        # --status can report it distinctly; every other exit is a clean stop.
-        if [ "$gave_up_storm" -eq 0 ]; then
-            write_supervisor_state stopped || true
-        fi
-        log_line "supervisor exiting" || true
-    }
-    stop_supervisor_signal() {
-        trap - INT TERM
-        exit 0
-    }
-    trap cleanup_supervisor EXIT
-    trap stop_supervisor_signal INT TERM
+    setup_failure_reason="stop_sentinel_cleanup"
+    rm -f "$STOP_FILE" 2>/dev/null || true
+    setup_complete=1
+    setup_failure_reason="none"
 
     window_start="$(date +%s)"
     crashes=0
@@ -845,7 +1064,7 @@ preflight_start_contract() {
         return 1
     fi
     local dependency
-    for dependency in python3 curl jq ps awk wc; do
+    for dependency in python3 curl jq ps awk wc mktemp flock stat id; do
         if ! command -v "$dependency" >/dev/null 2>&1; then
             printf 'ERROR: required shim-manager dependency is unavailable: %s\n' "$dependency" >&2
             printf '  Fix: rebuild from the current DAAF Dockerfile.\n' >&2
@@ -855,12 +1074,43 @@ preflight_start_contract() {
     load_expected_contract
 }
 
+queue_start_handoff_signal() {
+    # Keep only the first pending lifecycle signal. One known signal is sufficient
+    # to preserve the action's documented interruption result, and cleanup exits.
+    [ -n "$START_SIGNAL_QUEUED" ] || START_SIGNAL_QUEUED="$1"
+}
+
+restore_start_signal_handler() {
+    local queued_signal="$START_SIGNAL_QUEUED"
+    START_SIGNAL_QUEUED=""
+    if [ "$START_INTERRUPT_KIND" = "restart" ]; then
+        trap 'handle_restart_interrupt INT' INT
+        trap 'handle_restart_interrupt TERM' TERM
+        trap 'handle_restart_interrupt HUP' HUP
+    else
+        trap 'handle_start_interrupt INT' INT
+        trap 'handle_start_interrupt TERM' TERM
+        trap 'handle_start_interrupt HUP' HUP
+    fi
+    if [ -n "$queued_signal" ]; then
+        if [ "$START_INTERRUPT_KIND" = "restart" ]; then
+            handle_restart_interrupt "$queued_signal"
+        else
+            handle_start_interrupt "$queued_signal"
+        fi
+    fi
+}
+
 do_start_locked() {
     local launch_kind="${1:-explicit}" waited=0 spawned=0 supervisor_pid=""
-    START_FAILURE_KIND="launch"
+    START_FAILURE_KIND="preflight"
     ACTIVE_LAUNCH_PID=""
+    ACTIVE_LAUNCH_STREAM_DIR=""
+    ACTIVE_LAUNCH_STREAM_FD=""
+    START_SIGNAL_QUEUED=""
 
     preflight_start_contract || return 1
+    START_FAILURE_KIND="launch"
 
     printf 'Shim backend mode: %s.\n' "$EXPECTED_BACKEND_MODE" >&2
     if [ "$EXPECTED_BACKEND_MODE" = "chatgpt" ]; then
@@ -899,20 +1149,59 @@ do_start_locked() {
     rm -f "$PID_FILE" "$SUP_PID_FILE" "$SUP_STATE_FILE" "$PGID_FILE" "$STOP_FILE" 2>/dev/null || true
     rotate_log_if_needed || return 1
 
-    if command -v setsid >/dev/null 2>&1 && [ "${DAAF_SHIM_TEST_NO_SETSID:-0}" != "1" ]; then
-        setsid "${BASH_SOURCE[0]}" __supervise >/dev/null 2>&1 &
+    allocate_launch_stream_workspace || return 1
+
+    # The detached generation must not inherit foreground-only descriptors. The
+    # stream workspace path is passed as an argv capability; its descriptor and
+    # lifecycle lock stay solely with the manager across the launch handoff.
+    local launch_lock_fd="$LIFECYCLE_LOCK_FD"
+    local launch_stream_fd="$ACTIVE_LAUNCH_STREAM_FD"
+    local launch_stream_dir="$ACTIVE_LAUNCH_STREAM_DIR"
+    local handoff_signal="${DAAF_SHIM_TEST_HANDOFF_SIGNAL:-}"
+    if [ "${DAAF_SHIM_TEST_MODE:-0}" != "1" ]; then
+        handoff_signal=""
     else
-        nohup "${BASH_SOURCE[0]}" __supervise >/dev/null 2>&1 &
+        case "$handoff_signal" in
+            ''|INT|TERM|HUP) ;;
+            *) release_launch_stream_workspace 1; return 1 ;;
+        esac
+    fi
+    trap 'queue_start_handoff_signal INT' INT
+    trap 'queue_start_handoff_signal TERM' TERM
+    trap 'queue_start_handoff_signal HUP' HUP
+    if command -v setsid >/dev/null 2>&1 && [ "${DAAF_SHIM_TEST_NO_SETSID:-0}" != "1" ]; then
+        (
+            exec {launch_lock_fd}<&-
+            exec {launch_stream_fd}>&-
+            exec setsid "${BASH_SOURCE[0]}" __supervise "$launch_stream_dir"
+        ) >/dev/null 2>&1 &
+    else
+        (
+            exec {launch_lock_fd}<&-
+            exec {launch_stream_fd}>&-
+            exec nohup "${BASH_SOURCE[0]}" __supervise "$launch_stream_dir"
+        ) >/dev/null 2>&1 &
+    fi
+    if [ -n "$handoff_signal" ]; then
+        kill "-${handoff_signal}" "$$"
     fi
     supervisor_pid=$!
     ACTIVE_LAUNCH_PID="$supervisor_pid"
     spawned=1
+    restore_start_signal_handler
     disown 2>/dev/null || true
 
     while [ "$waited" -lt "$readiness_wait" ]; do
+        # PID publication transfers setup ownership to the supervisor. Until that
+        # exact identity is visible, retain the FIFO anchor and workspace path so
+        # pre-publication death remains recoverable by this foreground manager.
+        if [ -n "$ACTIVE_LAUNCH_STREAM_FD" ] && supervisor_running; then
+            release_launch_stream_workspace 0
+        fi
         if is_healthy; then
             START_FAILURE_KIND="none"
             ACTIVE_LAUNCH_PID=""
+            release_launch_stream_workspace 0
             printf 'Shim started and strictly ready on port %s.\n' "$SHIM_PORT" >&2
             print_auth_line
             return 0
@@ -938,16 +1227,75 @@ do_start_locked() {
     if [ "$launch_kind" != "auto" ] && [ "$spawned" -eq 1 ]; then
         stop_processes_locked >/dev/null 2>&1 || true
     fi
+    if [ "$spawned" -eq 1 ] && ! kill -0 "$supervisor_pid" 2>/dev/null && \
+        ! supervisor_running; then
+        release_launch_stream_workspace 1
+    else
+        release_launch_stream_workspace 0
+    fi
     ACTIVE_LAUNCH_PID=""
     return 1
 }
 
+handle_start_interrupt() {
+    local signal_name="$1" launch_pid="$ACTIVE_LAUNCH_PID" exit_code=130 launch_waited=0
+    trap - INT TERM HUP
+    # Once acquired, the lifecycle descriptor remains locked throughout cleanup.
+    # Before acquisition there is no launch owned by this action and nothing to stop.
+    if [ "$LIFECYCLE_LOCK_HELD" -eq 1 ]; then
+        # The direct PID closes the pre-publication window; pidfiles close later ones.
+        # Give the just-forked Bash wrapper a bounded turn to exec __supervise so
+        # exact cmdline identity can be established before any signal is sent.
+        while [ -n "$launch_pid" ] && kill -0 "$launch_pid" 2>/dev/null && \
+            ! pid_is_supervisor "$launch_pid" && [ "$launch_waited" -lt 100 ]; do
+            sleep 0.01
+            launch_waited=$((launch_waited + 1))
+        done
+        if [ -n "$launch_pid" ] && pid_is_supervisor "$launch_pid"; then
+            terminate_verified_pid supervisor "$launch_pid" || true
+        fi
+        stop_processes_locked >/dev/null 2>&1 || true
+    fi
+    # This manager allocated and retained the path before launch, so it can
+    # reclaim a dead pre-publication supervisor's private transport without
+    # trusting any on-disk owner metadata.
+    release_launch_stream_workspace 1
+    if [ "$START_INTERRUPT_KIND" = "auto" ]; then
+        exit_code=0
+    fi
+    if [ "$VALIDATED_STATE_GATE" -eq 1 ]; then
+        manager_log_line "SHIM_START_INTERRUPTED status=interrupted kind=${START_INTERRUPT_KIND} signal=${signal_name} cleanup=attempted exit_code=${exit_code}" || \
+            printf 'SHIM_START_INTERRUPTED status=interrupted kind=%s signal=%s cleanup=attempted exit_code=%s record_persisted=no\n' \
+                "$START_INTERRUPT_KIND" "$signal_name" "$exit_code" >&2
+    else
+        printf 'SHIM_START_INTERRUPTED status=interrupted kind=%s signal=%s cleanup=attempted exit_code=%s persistence=skipped_unvalidated_state\n' \
+            "$START_INTERRUPT_KIND" "$signal_name" "$exit_code" >&2
+    fi
+    release_lifecycle_lock
+    exit "$exit_code"
+}
+
 do_start() {
     local launch_kind="${1:-explicit}" rc
+    START_FAILURE_KIND="preflight"
+    ensure_log_dir || return 1
+    state_targets_are_safe || return 1
+    VALIDATED_STATE_GATE=1
+    START_FAILURE_KIND="lifecycle_lock"
+    START_INTERRUPT_KIND="$launch_kind"
+    trap 'handle_start_interrupt INT' INT
+    trap 'handle_start_interrupt TERM' TERM
+    trap 'handle_start_interrupt HUP' HUP
     if [ "$launch_kind" = "auto" ]; then
-        acquire_lifecycle_lock no_wait || return 1
+        acquire_lifecycle_lock no_wait || {
+            trap - INT TERM HUP
+            return 1
+        }
     else
-        acquire_lifecycle_lock wait || return 1
+        acquire_lifecycle_lock wait || {
+            trap - INT TERM HUP
+            return 1
+        }
     fi
     do_start_locked "$launch_kind"
     rc=$?
@@ -1041,6 +1389,7 @@ handle_restart_interrupt() {
         terminate_verified_pid supervisor "$ACTIVE_LAUNCH_PID" || true
     fi
     stop_processes_locked >/dev/null 2>&1 || true
+    release_launch_stream_workspace 1
     if [ "$interrupted_during_write" -eq 0 ]; then
         emit_restart_result_locked failed interrupt "signal_${signal_name}" 130 - || true
     fi
@@ -1111,6 +1460,7 @@ do_restart() {
     esac
 
     RESTART_PHASE="launch"
+    START_INTERRUPT_KIND="restart"
     do_start_locked restart
     start_rc=$?
     if [ "$start_rc" -ne 0 ]; then
@@ -1199,7 +1549,7 @@ do_status() {
 }
 
 do_auto() {
-    local requested="${DAAF_PROVIDER_SHIM:-}" observed
+    local requested="${DAAF_PROVIDER_SHIM:-}" observed auto_reason
     # Empty/unset stays a silent no-op: the shim is opt-in and must not announce
     # itself on every boot where it was never requested.
     if [ -z "$requested" ]; then
@@ -1224,12 +1574,20 @@ do_auto() {
         exit 0
     fi
     ensure_log_dir || {
-        printf 'SHIM_AUTO_FAILURE status=failed reason=unsafe_log_directory\n' >&2
+        printf 'SHIM_AUTO_FAILURE status=failed reason=preflight continuing_boot=y\n' >&2
         exit 0
     }
     if ! do_start auto; then
-        manager_log_line "SHIM_AUTO_FAILURE status=failed reason=start_or_readiness_check continuing_boot=y" || \
-            printf 'SHIM_AUTO_FAILURE status=failed reason=manager_log_write continuing_boot=y\n' >&2
+        case "$START_FAILURE_KIND" in
+            lifecycle_lock) auto_reason="lifecycle_lock" ;;
+            preflight) auto_reason="preflight" ;;
+            readiness) auto_reason="strict_readiness" ;;
+            launch) auto_reason="launch_setup" ;;
+            *) auto_reason="launch_setup" ;;
+        esac
+        manager_log_line "SHIM_AUTO_FAILURE status=failed reason=${auto_reason} continuing_boot=y" || \
+            printf 'SHIM_AUTO_FAILURE status=failed reason=%s continuing_boot=y record_persisted=no\n' \
+                "$auto_reason" >&2
     else
         manager_log_line "SHIM_AUTO_READY status=ready continuing_boot=y" || \
             printf 'SHIM_AUTO_FAILURE status=failed reason=manager_log_write continuing_boot=y\n' >&2
@@ -1256,7 +1614,7 @@ ACTION="${1:-}"
 case "$ACTION" in
     __supervise)
         load_expected_contract || exit 1
-        run_supervisor
+        run_supervisor "${2:-}"
         ;;
     __rotate_logs)
         do_rotate_only
