@@ -3,24 +3,34 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>DAAFBench: Orchestration &mdash; How Well Do AI Models Follow a Rigorous Research Framework?</title>
+<meta name="theme-color" content="#0a0f1c">
+<title>DAAFBench: Orchestration - How Well Do AI Models Follow a Rigorous Research Framework?</title>
 <meta name="description" content="DAAFBench: Orchestration benchmarks language models on whether they can operate DAAF, a structured open-source research framework, as designed: routing requests, following protocol, delegating to subagents, and grounding methodological advice. Every score traces to an individual archived run.">
 <!-- OpenGraph / Twitter cards. og:image is deliberately omitted (deferred to
      the deploy infrastructure — it must be an absolute URL on the host).
      DEPLOY STEP: replace the og:url placeholder below with the final public
      URL before publishing. -->
-<meta property="og:title" content="DAAFBench: Orchestration &mdash; How Well Do AI Models Follow a Rigorous Research Framework?">
+<meta property="og:title" content="DAAFBench: Orchestration - How Well Do AI Models Follow a Rigorous Research Framework?">
 <meta property="og:description" content="Language models dropped into a live research-orchestration framework and scored on whether they follow its protocols, with every number traceable to an individual archived run.">
 <meta property="og:type" content="website">
+<meta property="og:site_name" content="Open Augments">
 <meta property="og:url" content="https://daaf.openaugments.org/REPLACE-WITH-FINAL-URL.html">
+<!-- og:image itself is deploy-injected (deploy.sh Rule 8 inserts exactly one tag
+     after the og:url line and asserts a count of one) — do NOT add a static
+     og:image here. The companion tags below are static by design. -->
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="DAAFBench: Orchestration - benchmark results for AI models operating the DAAF research framework">
 <!-- The og:url placeholder above is owned by the website deploy script (exact-string
      substitution of REPLACE-WITH-FINAL-URL.html) — do not alter the token. The
      canonical URL below is fixed per the site convention (every DAAF page declares one). -->
 <link rel="canonical" href="https://daaf.openaugments.org/bench/">
-<meta name="twitter:card" content="summary">
-<meta name="twitter:title" content="DAAFBench: Orchestration &mdash; How Well Do AI Models Follow a Rigorous Research Framework?">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="DAAFBench: Orchestration - How Well Do AI Models Follow a Rigorous Research Framework?">
 <meta name="twitter:description" content="Language models dropped into a live research-orchestration framework and scored on whether they follow its protocols.">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%236366f1'/%3E%3Ctext x='8' y='12.5' font-size='11' font-weight='700' text-anchor='middle' fill='%23f0f4f8' font-family='Arial,sans-serif'%3ED%3C/text%3E%3C/svg%3E">
+<meta name="twitter:image" content="https://daaf.openaugments.org/assets/daaf_ogimage.png">
+<link rel="apple-touch-icon" sizes="180x180" href="https://daaf.openaugments.org/assets/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="https://daaf.openaugments.org/assets/favicon-32.png">
 <!-- Fonts — mirrored EXACTLY from the DAAF product site (preconnect pair +
      one css2 stylesheet, display=swap): Space Grotesk (display), DM Sans
      (body), JetBrains Mono (mono). Offline / single-file use: when Google
@@ -1308,8 +1318,8 @@ nav.site-nav{
     (<span id="kt-fr-luna-s">&mdash;</span> at <span id="kt-fr-luna-c">&mdash;</span>), <b>Sonnet 5</b>
     (<span id="kt-fr-sonnet5-s">&mdash;</span> at <span id="kt-fr-sonnet5-c">&mdash;</span>), <b>GPT-5.6 Sol</b>
     (<span id="kt-fr-sol-s">&mdash;</span> at <span id="kt-fr-sol-c">&mdash;</span>), and <b>Fable 5</b>
-    (<span id="kt-fr-fable-s">&mdash;</span> at <span id="kt-fr-fable-c">&mdash;</span>). Two of the six &mdash;
-    Gemma 4 31B and DeepSeek V4 Flash 0731 &mdash; are open-weights, and Gemma can even be run on sufficiently powerful home computers. The practical lesson is that no single
+    (<span id="kt-fr-fable-s">&mdash;</span> at <span id="kt-fr-fable-c">&mdash;</span>). Two of the six --
+    Gemma 4 31B and DeepSeek V4 Flash 0731 -- are open-weights, and Gemma can even be run on sufficiently powerful home computers. The practical lesson is that no single
     vendor owns price-performance: the right pick depends on <b>which budget point you are shopping at</b> (and given imprecision in these estimates, note some fluidity in these recommendations; see the caveats below).</p>
   </div>
 
@@ -1336,7 +1346,7 @@ nav.site-nav{
     <div class="kt-claim">4. What budget models actually give up: reliability.</div>
     <p>Moving down the price ladder, the first thing to erode isn&rsquo;t headline capability: it&rsquo;s <b>reliability</b>.
     Because every test here runs three times, we can hold models to a stricter bar than a good average: the
-    share of repeated cases where the model turns in a perfect run <em>every single time</em> &mdash; the same
+    share of repeated cases where the model turns in a perfect run <em>every single time</em> -- the same
     Consistency measure shown in the leaderboard. Fable 5 clears that bar on <b><span id="kt-t4-topcons">&mdash;</span></b> of its
     repeated cases; DeepSeek V4 Flash 0731 (a genuinely capable budget pick) manages only
     <b><span id="kt-t4-budgetcons">&mdash;</span></b>. Cheaper models don&rsquo;t just score lower on average;
@@ -1403,7 +1413,7 @@ nav.site-nav{
     Importantly, DAAFBench: Orchestration measures <b class="accent-strong">behavioral conformance only</b>:
     not answer quality, not analytical capability, not general intelligence. A
     brilliant analyst model that skips confirmation gates scores poorly here,
-    and a modest model that faithfully follows protocol scores well. It is deliberately only half of the picture: a companion suite still in development (predictably, DAAFBench: Analytics) will test analytic competency directly, or whether models make the right calls <em>inside</em> the analysis itself (i.e., explicit decision-making in analytic code and data-cleaning steps, tested via adversarial examples, known-good code, and deterministically verifiable outputs). Orchestration discipline and analytic judgment are complementary halves of trustworthy AI-assisted research, and each deserves its own dedicated measurement. Put differently: Orchestration is an <b>inputs-based</b> assessment &mdash; if a model gets the process right, downstream results improve &mdash; while Analytics will assess <b>outputs</b> directly. More to come there!
+    and a modest model that faithfully follows protocol scores well. It is deliberately only half of the picture: a companion suite still in development (predictably, DAAFBench: Analytics) will test analytic competency directly, or whether models make the right calls <em>inside</em> the analysis itself (i.e., explicit decision-making in analytic code and data-cleaning steps, tested via adversarial examples, known-good code, and deterministically verifiable outputs). Orchestration discipline and analytic judgment are complementary halves of trustworthy AI-assisted research, and each deserves its own dedicated measurement. Put differently: Orchestration is an <b>inputs-based</b> assessment -- if a model gets the process right, downstream results improve -- while Analytics will assess <b>outputs</b> directly. More to come there!
   </p>
   <p class="about-intro">
     Regardless, DAAFBench: Orchestration results are a crucial step in understanding how models actually perform under these conditions and allow for far greater nuance in thinking about the exact use of specific models (especially more expensive versus cheaper, and proprietary versus open-source) across these types of workflows (and within!). Most importantly, it allows us to more directly track whether and when locally-hosted models (e.g., on a home computer with consumer hardware) can start to tackle these sorts of tasks, opening the door for <b>unprecedented access to analytic capacity</b> going forward.
@@ -1418,7 +1428,7 @@ nav.site-nav{
   <div class="two-bars">
     <p><b>Two quality indicators run through every number on this page.</b></p>
     <p><b>Perfect</b> is the high bar: did the model do everything exactly right on
-    a run &mdash; every criterion (a single named requirement a run either meets
+    a run -- every criterion (a single named requirement a run either meets
     or misses) passed, right down to the protocol details? It tells
     you how well, and how often, a model delivers a fully clean run, and it is
     the basis of the headline composite.</p>
@@ -1433,31 +1443,31 @@ nav.site-nav{
     <summary>Glossary: ten terms this page leans on</summary>
     <div>
       <ul>
-        <li><b>Orchestrator</b> &mdash; the main assistant in a DAAF session: it talks
+        <li><b>Orchestrator</b> -- the main assistant in a DAAF session: it talks
             to the user, classifies requests, and coordinates everything else.
             Think of it as a lab manager.</li>
-        <li><b>Subagent</b> &mdash; a specialist assistant the orchestrator delegates
+        <li><b>Subagent</b> -- a specialist assistant the orchestrator delegates
             work to (a data analyst, a code reviewer, a debugger), each with its own
             working rules.</li>
-        <li><b>Skill</b> &mdash; a curated reference document the assistant can load on
+        <li><b>Skill</b> -- a curated reference document the assistant can load on
             demand, injecting domain expertise (a statistics library&rsquo;s quirks, a data
             source&rsquo;s structure) at the right moment.</li>
-        <li><b>Engagement mode</b> &mdash; one of DAAF&rsquo;s nine workflow types (a full
+        <li><b>Engagement mode</b> -- one of DAAF&rsquo;s nine workflow types (a full
             analysis pipeline, onboarding a new dataset, a quick lookup, and so on);
             every user request must be routed into one to facilitate self-verification workflows and coordination among specialist subagents.</li>
-        <li><b>Confirmation gate</b> &mdash; the required pause where the assistant
+        <li><b>Confirmation gate</b> -- the required pause where the assistant
             states its plan and waits for explicit user approval before doing
             anything.</li>
-        <li><b>Golden checkpoint</b> &mdash; a truncated transcript of a known-good
+        <li><b>Golden checkpoint</b> -- a truncated transcript of a known-good
             session; later phases resume from one, so every model starts at an
             identical mid-conversation point.</li>
-        <li><b>Case</b> &mdash; one benchmark scenario: a specific prompt with defined
+        <li><b>Case</b> -- one benchmark scenario: a specific prompt with defined
             expected behavior and scoring criteria.</li>
-        <li><b>Rep</b> &mdash; one repetition of a case: the identical prompt run again,
+        <li><b>Rep</b> -- one repetition of a case: the identical prompt run again,
             because a model can succeed on one attempt and fail on the next.</li>
-        <li><b>Composite</b> &mdash; a model&rsquo;s headline score: the unweighted mean of
+        <li><b>Composite</b> -- a model&rsquo;s headline score: the unweighted mean of
             its rates across the five phase components (P1, P2, P3a, P3b, P4).</li>
-        <li><b>Tier band</b> &mdash; a grouping of models whose composites cluster
+        <li><b>Tier band</b> -- a grouping of models whose composites cluster
             together; a new tier starts wherever the ranking shows a sufficiently
             large gap.</li>
       </ul>
@@ -1477,53 +1487,53 @@ nav.site-nav{
         <thead><tr><th>Phase</th><th>Starts from</th><th>What it tests</th></tr></thead>
         <tbody>
           <tr>
-            <td><b>1 &mdash; Mode Classification</b><br><span id="ab-p1-cases">&mdash;</span> cases</td>
+            <td><b>1 -- Mode Classification</b><br><span id="ab-p1-cases">&mdash;</span> cases</td>
             <td>A cold start: the model sees only the user&rsquo;s first request</td>
             <td>Can it interpret a natural-language request and route it to the right
-                one of DAAF&rsquo;s workflow modes &mdash; a fairly easy task, but the one
-                everything downstream depends on &mdash; while presenting a confirmation
+                one of DAAF&rsquo;s workflow modes -- a fairly easy task, but the one
+                everything downstream depends on -- while presenting a confirmation
                 gate and executing nothing prematurely?
                 <i>Failure mode: the assistant starts the wrong kind of work.</i></td>
           </tr>
           <tr>
-            <td><b>2 &mdash; Post-Confirmation</b><br><span id="ab-p2-cases">&mdash;</span> cases, one per engagement mode</td>
+            <td><b>2 -- Post-Confirmation</b><br><span id="ab-p2-cases">&mdash;</span> cases, one per engagement mode</td>
             <td>A checkpoint ending at the confirmation gate; the user says
                 &ldquo;Sounds good, let&rsquo;s proceed.&rdquo;</td>
             <td>Strict protocol adherence: does it load the governing reference
-                documents and skills it just committed to &mdash; the references that
-                define how the work is supposed to be done &mdash; before doing any of it?
+                documents and skills it just committed to -- the references that
+                define how the work is supposed to be done -- before doing any of it?
                 <i>Failure mode: improvising instead of following the established
                 process.</i></td>
           </tr>
           <tr>
-            <td><b>3a &mdash; Dispatch Compliance</b><br><span id="ab-p3a-cases">&mdash;</span> cases, 2 per agent type</td>
+            <td><b>3a -- Dispatch Compliance</b><br><span id="ab-p3a-cases">&mdash;</span> cases, 2 per agent type</td>
             <td>A checkpoint with Ad Hoc Collaboration mode fully initialized</td>
             <td>Can it hand work to a subagent concisely, coherently, and instructively
-                &mdash; the correct agent type, with a properly structured prompt
+                -- the correct agent type, with a properly structured prompt
                 (BASE_DIR, mode marker, task / context / instructions sections)?
                 <i>Failure mode: garbled delegation that degrades everything
                 downstream.</i></td>
           </tr>
           <tr>
-            <td><b>3b &mdash; Subagent Behavior</b></td>
+            <td><b>3b -- Subagent Behavior</b></td>
             <td>The subagent&rsquo;s own transcript, whenever a Phase 3 dispatch succeeds</td>
             <td>Does the dispatched agent operate correctly <i>as</i> the specialist
-                &mdash; following the work protocols its agent specification demands,
+                -- following the work protocols its agent specification demands,
                 e.g., a coding agent writing a script and executing it through the
                 audit-trail wrapper?
                 <i>Failure mode: a specialist that ignores its role&rsquo;s rules.</i></td>
           </tr>
           <tr>
-            <td><b>4 &mdash; Skill Routing</b><br><span id="ab-p4-cases">&mdash;</span> cases</td>
+            <td><b>4 -- Skill Routing</b><br><span id="ab-p4-cases">&mdash;</span> cases</td>
             <td>The same initialized Ad Hoc checkpoint as Phase 3; the user asks a
                 brainstorming question</td>
             <td>The research-brainstorming dimension: models cannot be relied on to
                 draw research methodology from their fuzzy general knowledge (the
                 baked-in impressions left over from training), so a genuine research
                 assistant must judiciously load curated domain expertise through skill
-                reference files &mdash; FIRST the data-scientist hub&rsquo;s method-selection
+                reference files -- FIRST the data-scientist hub&rsquo;s method-selection
                 guidance, THEN the specific library skills the task calls for (e.g.,
-                pyfixest for fixed effects, geopandas for spatial work) &mdash; to ground
+                pyfixest for fixed effects, geopandas for spatial work) -- to ground
                 what it does, says, and recommends in real research methodology.
                 <i>Failure mode: confident, ungrounded methodological advice.</i></td>
           </tr>
@@ -1542,9 +1552,9 @@ nav.site-nav{
     <div>
       <p>Every run is graded against named criteria by <b>deterministic scorers</b>
       (basically: simple, repeatable text-and-structure checks on the archived
-      transcript &mdash; no AI judging AI anywhere in the loop, so the same run always
+      transcript -- no AI judging AI anywhere in the loop, so the same run always
       gets the same grade). Each criterion is either <b>critical</b> (a structural must-pass, like
-      whether a subagent was dispatched at all &mdash; <code>agent_dispatched</code>) or
+      whether a subagent was dispatched at all -- <code>agent_dispatched</code>) or
       <b>normal</b> (a protocol detail, like whether the
       dispatch prompt carries a context section). The two bars described above come
       straight from this split: <b>Perfect</b> demands every criterion pass,
@@ -1553,15 +1563,15 @@ nav.site-nav{
       &ldquo;soft&rdquo;.)</p>
       <p>Three rates appear throughout this page, and they answer different questions:</p>
       <ul>
-        <li><b>Perfect</b> (per run) &mdash; did <i>all</i> criteria pass on this run?
+        <li><b>Perfect</b> (per run) -- did <i>all</i> criteria pass on this run?
             This is the high bar, the headline metric, and the basis of the leaderboard
             composite.</li>
-        <li><b>Critical rate</b> (per criterion) &mdash; across all of a model&rsquo;s runs, what
+        <li><b>Critical rate</b> (per criterion) -- across all of a model&rsquo;s runs, what
             fraction of its critical criteria passed?</li>
       </ul>
       <p>They diverge by design. Worked example: in a 12-run batch where 4 runs each fail
       exactly one normal criterion, Perfect drops to 67% (8/12 runs) while the critical rate
-      stays at 100% &mdash; a model can look strong on
+      stays at 100% -- a model can look strong on
       criterion-level rates yet rarely deliver a fully clean run.</p>
     </div>
   </details>
@@ -1571,7 +1581,7 @@ nav.site-nav{
     <div>
       <p>Runs execute inside the real DAAF Docker container through the
       <code>claude -p</code> command line, with all framework hooks, permission rules, and
-      skill discovery live &mdash; <b>nothing is mocked</b>. Phases 2&ndash;4 resume from golden
+      skill discovery live -- <b>nothing is mocked</b>. Phases 2&ndash;4 resume from golden
       checkpoints so every model starts at an identical protocol point, and each
       (phase, model, case) cell is repeated up to three times. Every batch archives to a
       timestamped, self-contained result set from which this page is generated.</p>
@@ -1591,22 +1601,22 @@ nav.site-nav{
             as the working model, so part of any score difference between models is
             prompting-style fit rather than capability. Read these results as one
             particular view of how models behave under a very specific AI orchestration
-            system &mdash; not as an absolute indicator of model quality.</li>
+            system -- not as an absolute indicator of model quality.</li>
         <li><b>All analyses were conducted via Claude Code through OpenRouter</b> in a relatively naive fashion, and at least some
           of the results will be driven by models' compatibility with this specific harness combination.
           Tune your sense of generalizability around these benchmark results accordingly!</li>
         <li><b>Denominators are small and uneven.</b> Repetition counts are
             relatively small and can be uneven across providers and models due
-            to cost limitations &mdash; some (model, phase) cells have 2 reps
-            instead of 3 &mdash; so the results are necessarily imprecise: read
+            to cost limitations -- some (model, phase) cells have 2 reps
+            instead of 3 -- so the results are necessarily imprecise: read
             every rate together with its n, and recognize there are unshown confidence intervals to think about.</li>
         <li><b>Cost figures are estimates at published list prices, not invoices.</b>
             The headline cost lens throughout this page is the <b>battery-cost
             multiplier</b>: each model&rsquo;s estimated cost to run the full
             <span id="kt-foot-bat">&mdash;</span>-probe benchmark
             battery once, expressed relative to Opus 4.8 (= 1.0&times;), built from
-            published list prices and each model&rsquo;s observed token mix &mdash; taken
-            from provider billing data, not the harness&rsquo;s counts &mdash; on an
+            published list prices and each model&rsquo;s observed token mix -- taken
+            from provider billing data, not the harness&rsquo;s counts -- on an
             everything-uncached basis (defined under
             <a href="#cost-performance">Cost vs. Performance</a>). These relative
             figures can shift as providers reprice tokens and as provider caching
@@ -1639,15 +1649,15 @@ nav.site-nav{
   <h2>Leaderboard</h2>
   <p class="section-lead">
     The ranking runs by default on each model&rsquo;s
-    <b>composite score</b> (basically: a report-card average &mdash; take the model&rsquo;s
+    <b>composite score</b> (basically: a report-card average -- take the model&rsquo;s
     share of fully clean runs in each of the five phase components (P1, P2, P3a,
     P3b, P4), and average those five numbers with equal weight). Every rate shows its
     denominator underneath to better convey uncertainty with smaller samples. <b>Tier bands</b> group
     models whose composites cluster together: gaps between tiers are meaningful,
     ordering within a tier may not be. The metric toggle switches every rate,
     rank, and tier band between the two bars defined above: <b>Perfect</b>
-    (everything exactly right &mdash; every criterion passed) and <b>Critical-only</b>
-    (will it generally work &mdash; every must-pass criterion passed). Click a phase cell
+    (everything exactly right -- every criterion passed) and <b>Critical-only</b>
+    (will it generally work -- every must-pass criterion passed). Click a phase cell
     to open that phase&rsquo;s deep-dive; click any numeric column header to re-sort, and click
     it again to reverse the direction.
   </p>
@@ -1666,7 +1676,7 @@ nav.site-nav{
     expressed as a multiple of Opus 4.8 (= 1.0&times;). The multiplier folds each
     model&rsquo;s observed token appetite into its price (basically: two models
     with identical list rates can differ in what the same work actually costs,
-    because one chews through more tokens to do it &mdash; defined, with its
+    because one chews through more tokens to do it -- defined, with its
     caveats, in the notes below the chart). The cost axis is also logarithmic: each major
     gridline is 10&times; the previous one, which is the only way to fit models
     whose costs span more than a hundredfold onto one chart. The stepped line
@@ -1678,15 +1688,15 @@ nav.site-nav{
     composite and any single phase group (P1&ndash;P4) under either bar (Perfect
     or Critical-only), and the price-basis toggle offers two secondary views: the
     raw published <b>input</b> and <b>output</b> list rates in dollars per
-    million tokens of text ($/Mtok &mdash; a million tokens is roughly 750,000
+    million tokens of text ($/Mtok -- a million tokens is roughly 750,000
     words). Those are list prices, not measured benchmark spend.
     <!-- Subscription-pricing note added 2026-07-29 (AI-drafted at user direction;
          NOT yet voice-ratified — flagged for the user's intensive pass). -->
     One more note on all of these dollar figures: they are API-style list
     pricing. If you run DAAF through a subscription plan instead (Claude Max, or
-    ChatGPT for the GPT models &mdash; the GPT runs in this corpus were in fact
+    ChatGPT for the GPT models -- the GPT runs in this corpus were in fact
     executed on the ChatGPT lane), your marginal cost per analysis is effectively
-    covered by the flat subscription price &mdash; often the single biggest
+    covered by the flat subscription price -- often the single biggest
     cost-efficiency lever available before you change models at all.
     Shape and color mark the serving provider; hover any point for its exact figures.
   </p>
@@ -1743,7 +1753,7 @@ nav.site-nav{
     This is the <b>audit layer</b> of the page: every aggregate above can be traced down to the
     individual runs it was computed from, here.
     Every individual run with its grade, per-criterion verdicts and diagnostic details, and
-    condensed transcript &mdash; including subagent transcripts where they exist. The
+    condensed transcript -- including subagent transcripts where they exist. The
     filters below apply to this section only; clicks from the heatmaps and case views above
     land here with the matching filters pre-applied. Status reflects grading (perfect /
     partial / failed / ungraded).
@@ -2034,7 +2044,7 @@ function safeEvidenceLink(url){
    scatter. */
 var COST_FORMS=[
   {key:"battery",label:"Relative Test Cost (1x=Opus 4.8)",
-   formula:"Estimated relative cost to run the full benchmark battery once, as a multiple of Opus 4.8 (= 1.0\u00d7) \u2014 every token at published list input/output rates with no cache discounts, using each model\u2019s observed token mix (definition + caveats in the notes below the chart)",
+   formula:"Estimated relative cost to run the full benchmark battery once, as a multiple of Opus 4.8 (= 1.0\u00d7) -- every token at published list input/output rates with no cache discounts, using each model\u2019s observed token mix (definition + caveats in the notes below the chart)",
    axis:"Est. relative cost vs Opus 4.8 to run the full battery once (\u00d7, log scale)"},
   {key:"input",label:"Input",formula:"Published input price, per million tokens",
    axis:"Input price (USD per 1M tokens, log scale)"},
@@ -2046,7 +2056,7 @@ var COST_FORMS=[
      model — including OpenRouter and the cost-omitted subscription lane.
      Built from summed per-run durations (parallelization-invariant). */
   {key:"duration",label:"Relative Duration (1x=Opus 4.8)",
-   formula:"Estimated relative wall-clock time to run the full benchmark battery once, as a multiple of Opus 4.8 (= 1.0×) — from summed per-run durations (parallelization-invariant), a real-world latency proxy (definition + caveats in the notes below the chart)",
+   formula:"Estimated relative wall-clock time to run the full benchmark battery once, as a multiple of Opus 4.8 (= 1.0×) -- from summed per-run durations (parallelization-invariant), a real-world latency proxy (definition + caveats in the notes below the chart)",
    axis:"Est. relative duration vs Opus 4.8 to run the full battery once (×, log scale)"}
 ];
 function priceMap(){
@@ -2137,14 +2147,14 @@ var evalGroups = [];
     if(!activeTs[rs.timestamp]) return;             /* Gate 2 */
     if(rs.phase === "dispatch_compliance" && rs.subagent_criterion_names && rs.subagent_criterion_names.length > 0){
       var idD=rs.phase+"_dispatch";
-      if(!gmap[idD]) gmap[idD]={id:idD,phase:rs.phase,label:"Phase 3a — Dispatch Compliance",timestamps:[],criterion_names:rs.criterion_names.slice(),is_subagent:false};
+      if(!gmap[idD]) gmap[idD]={id:idD,phase:rs.phase,label:"Phase 3a -- Dispatch Compliance",timestamps:[],criterion_names:rs.criterion_names.slice(),is_subagent:false};
       gmap[idD].timestamps.push(rs.timestamp);
       var idS=rs.phase+"_subagent";
-      if(!gmap[idS]) gmap[idS]={id:idS,phase:rs.phase,label:"Phase 3b — Subagent Behavior",timestamps:[],criterion_names:rs.subagent_criterion_names.slice(),is_subagent:true};
+      if(!gmap[idS]) gmap[idS]={id:idS,phase:rs.phase,label:"Phase 3b -- Subagent Behavior",timestamps:[],criterion_names:rs.subagent_criterion_names.slice(),is_subagent:true};
       gmap[idS].timestamps.push(rs.timestamp);
     } else if(rs.phase === "dispatch_compliance"){    /* Gate 3: fold */
       var idF=rs.phase+"_dispatch";
-      if(!gmap[idF]) gmap[idF]={id:idF,phase:rs.phase,label:"Phase 3a — Dispatch Compliance",timestamps:[],criterion_names:rs.criterion_names.slice(),is_subagent:false};
+      if(!gmap[idF]) gmap[idF]={id:idF,phase:rs.phase,label:"Phase 3a -- Dispatch Compliance",timestamps:[],criterion_names:rs.criterion_names.slice(),is_subagent:false};
       gmap[idF].timestamps.push(rs.timestamp);
     } else {
       var id=rs.phase;
@@ -2654,15 +2664,15 @@ function lbTierRuleText(rule,tiers,metricLabel){
   rule=rule||{};
   tiers=tiers||[];
   var thresholdPts=((rule.gap_threshold||0)*100).toFixed(0);
-  var head='Tier bands are read mechanically off the '+metricLabel+' composite ranking \u2014 a fixed rule, no judgment calls ('+
+  var head='Tier bands are read mechanically off the '+metricLabel+' composite ranking -- a fixed rule, no judgment calls ('+
     tiers.length+' tier'+(tiers.length===1?'':'s')+' in this corpus; shown under the composite sort, best first). ';
   if(rule.method==="gap"){
-    return head+'Banding rule applied: <b>gap</b> &mdash; a new tier starts wherever the drop to the '+
+    return head+'Banding rule applied: <b>gap</b> -- a new tier starts wherever the drop to the '+
       'next model\'s composite is at least '+thresholdPts+' points. Gaps between tiers are '+
       'meaningful; ordering within a tier may not be.';
   }
   if(rule.method==="range_quartiles"){
-    return head+'Banding rule applied: <b>range quartiles</b> &mdash; no composite gap reached the '+
+    return head+'Banding rule applied: <b>range quartiles</b> -- no composite gap reached the '+
       thresholdPts+'-point threshold, so models are banded by which quarter of the observed '+
       'composite range their score falls in. Treat tier boundaries as approximate.';
   }
@@ -2707,9 +2717,9 @@ function renderLeaderboard(container){
     var ru=ranked[1];
     var gapPts=Math.round((top.e.score-ru.e.score)*100);
     if(gapPts>=1){
-      finding+=' &mdash; '+gapPts+' point'+(gapPts===1?'':'s')+' clear of <b>'+escModel(ru.model)+'</b> at <b>'+pct(ru.e.score)+'</b>';
+      finding+=' -- '+gapPts+' point'+(gapPts===1?'':'s')+' clear of <b>'+escModel(ru.model)+'</b> at <b>'+pct(ru.e.score)+'</b>';
     } else {
-      finding+=' &mdash; effectively tied with <b>'+escModel(ru.model)+'</b> at <b>'+pct(ru.e.score)+'</b>';
+      finding+=' -- effectively tied with <b>'+escModel(ru.model)+'</b> at <b>'+pct(ru.e.score)+'</b>';
     }
   }
   if(tiers.length>1){
@@ -2772,15 +2782,15 @@ function renderLeaderboard(container){
   /* Metric toggle + disclosure line — controls sit immediately above the
      table; the computed finding renders BELOW it (section layout rule) */
   var html='<div class="lb-controls"><span class="lb-sort-label">Metric</span>';
-  [{key:"perfect",label:"Perfect",tip:"The high bar \u2014 everything exactly right: a run counts when every criterion (critical + normal) passed"},
-   {key:"hard",label:"Critical-only",tip:"The lower bar \u2014 will it generally work: a run counts when every critical (must-pass) criterion passed; normal criteria are ignored"}
+  [{key:"perfect",label:"Perfect",tip:"The high bar -- everything exactly right: a run counts when every criterion (critical + normal) passed"},
+   {key:"hard",label:"Critical-only",tip:"The lower bar -- will it generally work: a run counts when every critical (must-pass) criterion passed; normal criteria are ignored"}
   ].forEach(function(o){
     html+='<button class="lb-sort-btn'+(metric===o.key?' active':'')+'" title="'+esc(o.tip)+
       '" onclick="setLbMetric(&#39;'+esc(o.key)+'&#39;)">'+esc(o.label)+'</button>';
   });
   html+='<span class="lb-metric-note">'+(isHard
-    ?'Showing <b>Critical-only</b> rates &mdash; the &ldquo;will it generally work&rdquo; bar: a run counts when every critical (must-pass) criterion passed. Composite, phase cells, ranks, and tier bands recompute; Consistency stays Perfect-based.'
-    :'Showing <b>Perfect</b> rates &mdash; the &ldquo;everything exactly right&rdquo; bar: a run counts when every criterion (critical + normal) passed.')+'</span>';
+    ?'Showing <b>Critical-only</b> rates -- the &ldquo;will it generally work&rdquo; bar: a run counts when every critical (must-pass) criterion passed. Composite, phase cells, ranks, and tier bands recompute; Consistency stays Perfect-based.'
+    :'Showing <b>Perfect</b> rates -- the &ldquo;everything exactly right&rdquo; bar: a run counts when every criterion (critical + normal) passed.')+'</span>';
   html+='</div>';
 
   /* Sortable column headers: \u25B2/\u25BC on the active column, pointer +
@@ -2796,7 +2806,7 @@ function renderLeaderboard(container){
     var arrow=active?(sortDir===1?'\u00a0\u25B2':'\u00a0\u25BC'):'';
     var aria=active?(sortDir===1?'ascending':'descending'):'none';
     return '<th class="lb-th-sort'+(extraCls?' '+extraCls:'')+(active?' lb-th-active':'')+'" aria-sort="'+aria+
-      '" title="'+esc(tip)+' \u2014 click to sort'+(active?'; click again to reverse':'')+
+      '" title="'+esc(tip)+' -- click to sort'+(active?'; click again to reverse':'')+
       '" onclick="lbSortBy(&#39;'+esc(key)+'&#39;,'+defDir+')">'+label+arrow+'</th>';
   }
 
@@ -2815,12 +2825,12 @@ function renderLeaderboard(container){
   if(showTier) html+='<th title="'+metricLabel+' composite tier band (banding rule below)">Tier</th>';
   html+='<th title="'+metricLabel+' composite rank (fixed across re-sorts)">#</th><th>Model</th>';
   html+=thSort("cost","Relative Test Cost (1x=Opus 4.8)",
-    "Estimated relative cost to run the full benchmark battery once, as a multiple of Opus 4.8 (= 1.0\u00d7) \u2014 published list rates \u00d7 each model\u2019s observed token mix, uncached basis (defined under Cost vs. Performance). Always the battery multiplier here, regardless of the price-basis toggle in Cost vs. Performance. Not measured benchmark spend.",1,'lb-th-cost');
+    "Estimated relative cost to run the full benchmark battery once, as a multiple of Opus 4.8 (= 1.0\u00d7) -- published list rates \u00d7 each model\u2019s observed token mix, uncached basis (defined under Cost vs. Performance). Always the battery multiplier here, regardless of the price-basis toggle in Cost vs. Performance. Not measured benchmark spend.",1,'lb-th-cost');
   html+=thSort("composite","Composite",
-    metricLabel+' composite \u2014 unweighted mean of the per-phase '+metricLabel+' rates',-1);
+    metricLabel+' composite -- unweighted mean of the per-phase '+metricLabel+' rates',-1);
   groups.forEach(function(g){
     html+=thSort(g.id,esc(groupShort(g.id))+' '+metricLabel,
-      g.label+' \u2014 share of runs with every '+(isHard?'critical (must-pass)':'')+' criterion passed',-1);
+      g.label+' -- share of runs with every '+(isHard?'critical (must-pass)':'')+' criterion passed',-1);
   });
   html+=thSort("consistency","Consistency",
     "Share of repeated (phase, case) cells (2+ reps) where every rep was perfect. Always Perfect-based (all criteria), regardless of the metric toggle.",-1);
@@ -2858,8 +2868,8 @@ function renderLeaderboard(container){
     if(b){
       var apiEquiv=b.basis&&b.basis.indexOf('api-equivalent')===0;
       html+='<td class="lb-cost" title="Est. cost to run the full battery once \u2248 '+
-        fmtMult(b.mult)+' Opus 4.8\u2019s (= 1.0\u00d7); uncached list rates \u00d7 observed token mix \u2014 defined under Cost vs. Performance'+
-        (apiEquiv?' \u2014 API-equivalent counterfactual pricing (ChatGPT-subscription lane: list rates, never invoiced), not corpus-billed spend':'')+
+        fmtMult(b.mult)+' Opus 4.8\u2019s (= 1.0\u00d7); uncached list rates \u00d7 observed token mix -- defined under Cost vs. Performance'+
+        (apiEquiv?' -- API-equivalent counterfactual pricing (ChatGPT-subscription lane: list rates, never invoiced), not corpus-billed spend':'')+
         (b.stale?' \u26a0 token mix from a billing snapshot that predates this model\u2019s newest corpus runs':'')+
         '">'+fmtMult(b.mult)+
         '</td>';
@@ -2897,7 +2907,7 @@ function renderLeaderboard(container){
       html+='<td class="lb-cell"><span class="hm-cell rs-'+step+' clickable" '+
         'title="'+esc(g.label)+': '+kn+' '+(isHard?'critical-pass':'perfect')+' runs'+
         (g.id==='dispatch_compliance_subagent'?' (includes runs with no scorable subagent transcript in the denominator)':'')+
-        ' — click for the phase deep-dive" '+
+        ' -- click for the phase deep-dive" '+
         'onclick="lbJumpPhase(&#39;'+esc(g.id)+'&#39;)">'+
         rateGlyph(step)+pct(rate)+'<span class="lb-n">'+kn+'</span></span></td>';
     });
@@ -2927,7 +2937,7 @@ function renderLeaderboard(container){
   html+='<details class="foot-details"><summary>Details</summary><div>';
   html+='<p class="lb-foot">'+lbTierRuleText(tierRule,tiers,metricLabel)+'</p>';
   html+='<p class="lb-foot">Relative Test Cost is the estimated relative cost to run the full benchmark battery once '+
-    '&mdash; every token priced at uncached published list rates, applied to each model\u2019s own observed token mix &mdash; '+
+    '-- every token priced at uncached published list rates, applied to each model\u2019s own observed token mix -- '+
     'expressed as a multiple of Opus 4.8 (= 1.0\u00d7), never dollars; not measured benchmark spend. '+
     'Where a model\u2019s token-mix snapshot predates its newest runs, the cell tooltip carries a \u26a0 marker. '+
     'For the ChatGPT-subscription GPT models, this figure is an API list-rate counterfactual: those models are '+
@@ -2973,8 +2983,8 @@ evalGroups.forEach(function(g){
   CP_PERF_BASES.push({key:g.id,label:groupShort(g.id)});
 });
 var CP_METRICS=[
-  {key:"perfect",label:"Perfect",tip:"The high bar \u2014 everything exactly right: a run counts when every criterion (critical + normal) passed"},
-  {key:"hard",label:"Critical-only",tip:"The lower bar \u2014 will it generally work: a run counts when every critical (must-pass) criterion passed; normal criteria are ignored"}
+  {key:"perfect",label:"Perfect",tip:"The high bar -- everything exactly right: a run counts when every criterion (critical + normal) passed"},
+  {key:"hard",label:"Critical-only",tip:"The lower bar -- will it generally work: a run counts when every critical (must-pass) criterion passed; normal criteria are ignored"}
 ];
 
 /* Shared point/frontier builder for the full Cost vs. Performance scatter
@@ -3080,13 +3090,13 @@ function batteryDisclosureHtml(){
     'Each model\u2019s figure is its estimated cost to run the full '+
     (bat.battery_size||"?")+'-probe DAAFBench battery once, expressed as a multiple of '+
     esc(bat.reference_model||"Opus 4.8")+' (= 1.0\u00d7): every token the model consumed is priced at its '+
-    'uncached published list input and output rates (no cache discounts \u2014 the only basis that compares '+
+    'uncached published list input and output rates (no cache discounts -- the only basis that compares '+
     'providers with wildly different caching schemes like-for-like), applied to the model\u2019s own observed '+
     'token mix. Token mixes come from provider billing data, not the harness\u2019s approximate counts: '+
     'Anthropic models live from this corpus\u2019s archived run records (Anthropic\u2019s own usage meter), '+
     'OpenRouter models from an OpenRouter billing export dated '+esc(bat.snapshot_date||"2026-06-11")+'. '+
-    'Multipliers only, never dollars \u2014 exact dollar figures would imply a precision these estimates do '+
-    'not have \u2014 and the relative figures can shift as providers reprice tokens and as caching mechanics '+
+    'Multipliers only, never dollars -- exact dollar figures would imply a precision these estimates do '+
+    'not have -- and the relative figures can shift as providers reprice tokens and as caching mechanics '+
     'interact with each model\u2019s behavior.'+
     (anyStale?' A \u26a0 marker (here and on the leaderboard) means that model\u2019s token-mix snapshot predates its newest corpus runs.':'')+
     ' The estimates reflect successful-run costs only.</p>';
@@ -3106,11 +3116,11 @@ function durationDisclosureHtml(){
     (dur.battery_size||"?")+'-probe DAAFBench battery once, expressed as a multiple of '+
     esc(dur.reference_model||"Opus 4.8")+' (= 1.0\u00d7). It is computed from each model\u2019s '+
     'summed per-run durations, which are parallelization-INVARIANT (independent of whether the '+
-    'batch ran serially or in parallel) \u2014 never the batch wall-clock, which depends on run mode. '+
+    'batch ran serially or in parallel) -- never the batch wall-clock, which depends on run mode. '+
     'Read it as a real-world LATENCY proxy: it folds in provider routing and congestion at the time '+
     'each run executed, which multi-rep averaging mitigates but does not eliminate. Unlike the cost '+
-    'multiplier it needs no pricing, so it covers every model \u2014 including those without billing-grade '+
-    'cost data. Multipliers only, never seconds \u2014 exact durations would imply a precision these '+
+    'multiplier it needs no pricing, so it covers every model -- including those without billing-grade '+
+    'cost data. Multipliers only, never seconds -- exact durations would imply a precision these '+
     'estimates do not have.</p>';
 }
 
@@ -3122,8 +3132,8 @@ function pricingDetailsHtml(){
   var rows=uniqueModels().filter(function(m){ return pricing[m]; });
   if(rows.length===0) return '';
   rows.sort(function(a,b){ return pricing[a].input_per_million-pricing[b].input_per_million; });
-  var h='<details class="cp-pricing"><summary>Published list prices (per 1M tokens) \u2014 secondary detail</summary><div>';
-  h+='<p class="cp-foot" style="margin:6px 0 8px">Raw published list rates \u2014 the price tag alone, before token appetite \u2014 not measured benchmark spend. The battery multiplier above is the headline cost figure.</p>';
+  var h='<details class="cp-pricing"><summary>Published list prices (per 1M tokens) -- secondary detail</summary><div>';
+  h+='<p class="cp-foot" style="margin:6px 0 8px">Raw published list rates -- the price tag alone, before token appetite -- not measured benchmark spend. The battery multiplier above is the headline cost figure.</p>';
   /* .table-wrap (Wave B overflow fix): four numeric columns are marginal
      on narrow phones — scroll within the panel, never widen the page */
   h+='<div class="table-wrap"><table class="data-table" style="width:auto"><thead><tr><th style="cursor:default">Model</th><th style="cursor:default">Input / 1M</th><th style="cursor:default">Output / 1M</th><th style="cursor:default">Cache Read / 1M</th></tr></thead><tbody>';
@@ -3228,8 +3238,8 @@ function renderCostPerf(container){
     var fbits=frontier.map(function(f){
       return '<b>'+escModel(f.model)+'</b> ('+(isRel?fmtMult(f.price):fmtCost(f.price)+priceUnit)+', '+pct(f.score)+')';
     });
-    finding=frontier.length+' of '+pts.length+' models sit on the efficiency frontier &mdash; '+
-      fbits.join(' &rarr; ')+' &mdash; every other model is beaten on both price and '+esc(yShort)+' by one of them.';
+    finding=frontier.length+' of '+pts.length+' models sit on the efficiency frontier -- '+
+      fbits.join(' &rarr; ')+' -- every other model is beaten on both price and '+esc(yShort)+' by one of them.';
     if(frontier.length>1){
       var topF=frontier[frontier.length-1], knee=frontier[frontier.length-2];
       if(knee.price>0&&topF.score>0){
@@ -3255,7 +3265,7 @@ function renderCostPerf(container){
      content unchanged). The relocated list-price collapsible
      (.cp-pricing) stays its own SIBLING expander beneath this one. */
   var foot='<details class="foot-details"><summary>Details</summary><div>';
-  foot+='<p class="cp-foot">Y-axis: '+esc(yShort)+' &mdash; '+
+  foot+='<p class="cp-foot">Y-axis: '+esc(yShort)+' -- '+
     (metric==="hard"
       ?'the &ldquo;will it generally work&rdquo; bar: a run counts when every critical (must-pass) criterion passed.'
       :'the &ldquo;everything exactly right&rdquo; bar: a run counts when every criterion (critical + normal) passed.')+
@@ -3265,14 +3275,14 @@ function renderCostPerf(container){
       :'')+'</p>';
   foot+='<p class="cp-foot">'+esc(formDef.formula)+'. '+
     (isDur
-      ?'A rough relative multiplier &mdash; a real-world latency proxy, not a stopwatch reading; '+
+      ?'A rough relative multiplier -- a real-world latency proxy, not a stopwatch reading; '+
        'full definition and disclosures below. Covers every model, including those without '+
        'billing-grade cost data.'
       :isBat
-      ?'A rough relative multiplier &mdash; not a reading of an invoice; full definition '+
+      ?'A rough relative multiplier -- not a reading of an invoice; full definition '+
        'and disclosures below. Models without battery data are omitted under this basis.'
       :'Prices under this secondary basis are raw published list rates, '+
-       'not measured benchmark spend &mdash; token-derived spend tracking was removed '+
+       'not measured benchmark spend -- token-derived spend tracking was removed '+
        'because OpenRouter token accounting does not align with the harness\u2019s usage '+
        'logging. The default battery basis folds observed token appetite in; this view '+
        'shows the price tag alone.')+'</p>';
@@ -3371,10 +3381,10 @@ function buildPhaseAgg(){
    intuition first, then the technical criteria sentence */
 var PD_EXPLAINERS={
   mode_classification:"The failure this phase catches: <i>the assistant starts the wrong kind of work.</i> Each run starts cold: the model sees only the user\u2019s opening request and must route it to the right one of DAAF\u2019s workflow modes (basically: Did it recognize what kind of work is actually being asked for?). It is a fairly easy task, but the one everything downstream depends on. Criteria check the mode it picks, that it pauses at a confirmation gate for the user\u2019s sign-off, and that it executes nothing before that approval arrives.",
-  post_confirmation:"The failure this phase catches: <i>improvising instead of following the established process.</i> The model resumes from a checkpoint that ends at the confirmation gate, and the user says to proceed. Strict protocol adherence means doing the homework first: loading the governing reference documents (the ones that define how the work is supposed to be done) before conducting any of it. Criteria check that it actually loads the mode reference files and skills it just committed to loading \u2014 not merely that it claims to.",
-  dispatch_compliance_dispatch:"The failure this phase catches: <i>garbled delegation that degrades everything downstream.</i> The model resumes from a fully initialized Ad Hoc Collaboration session and must hand work to a specialist subagent the way a good manager would: concisely, coherently, and instructively. Criteria check that it dispatches the correct agent type with a properly structured handoff prompt \u2014 BASE_DIR, mode marker, and task / context / instructions sections. Some models fail this phase not by skipping the dispatch at all, but by requesting a specialist their environment doesn\u2019t actually provide \u2014 a temptation seen in the GPT-5.6 family, which sometimes reaches for the tool schema\u2019s Claude model aliases instead of a model its own runtime can serve.",
-  dispatch_compliance_subagent:"The failure this phase catches: <i>a specialist that ignores its own role\u2019s rules.</i> Whenever a Phase 3 dispatch succeeds, the dispatched subagent\u2019s own transcript gets scored too: did it operate correctly <i>as</i> that specialist (e.g., a coding agent actually writing a script and executing it through the audit-trail wrapper)? Criteria are derived from the agent type\u2019s work protocols, and which ones apply varies by case \u2014 so denominators vary across this heatmap, and \u201c\u2014\u201d marks criteria that never applied to a model\u2019s runs.",
-  skill_routing:"The failure this phase catches: <i>confident, ungrounded methodological advice.</i> Models cannot be relied on to draw research methodology from their fuzzy general knowledge (basically: the baked-in impressions left over from training), so a genuine research assistant must load curated domain references into its working context to ground what it does, says, and recommends. The model resumes from the same fully initialized checkpoint as Phase 3 and receives a brainstorming task that calls for a specific analysis library; criteria check that it FIRST consults the data-scientist hub\u2019s routing guidance and THEN loads the specific library skills \u2014 scored on the main transcript only, and one of the five leaderboard composite components."
+  post_confirmation:"The failure this phase catches: <i>improvising instead of following the established process.</i> The model resumes from a checkpoint that ends at the confirmation gate, and the user says to proceed. Strict protocol adherence means doing the homework first: loading the governing reference documents (the ones that define how the work is supposed to be done) before conducting any of it. Criteria check that it actually loads the mode reference files and skills it just committed to loading -- not merely that it claims to.",
+  dispatch_compliance_dispatch:"The failure this phase catches: <i>garbled delegation that degrades everything downstream.</i> The model resumes from a fully initialized Ad Hoc Collaboration session and must hand work to a specialist subagent the way a good manager would: concisely, coherently, and instructively. Criteria check that it dispatches the correct agent type with a properly structured handoff prompt -- BASE_DIR, mode marker, and task / context / instructions sections. Some models fail this phase not by skipping the dispatch at all, but by requesting a specialist their environment doesn\u2019t actually provide -- a temptation seen in the GPT-5.6 family, which sometimes reaches for the tool schema\u2019s Claude model aliases instead of a model its own runtime can serve.",
+  dispatch_compliance_subagent:"The failure this phase catches: <i>a specialist that ignores its own role\u2019s rules.</i> Whenever a Phase 3 dispatch succeeds, the dispatched subagent\u2019s own transcript gets scored too: did it operate correctly <i>as</i> that specialist (e.g., a coding agent actually writing a script and executing it through the audit-trail wrapper)? Criteria are derived from the agent type\u2019s work protocols, and which ones apply varies by case -- so denominators vary across this heatmap, and \u201c\u2014\u201d marks criteria that never applied to a model\u2019s runs.",
+  skill_routing:"The failure this phase catches: <i>confident, ungrounded methodological advice.</i> Models cannot be relied on to draw research methodology from their fuzzy general knowledge (basically: the baked-in impressions left over from training), so a genuine research assistant must load curated domain references into its working context to ground what it does, says, and recommends. The model resumes from the same fully initialized checkpoint as Phase 3 and receives a brainstorming task that calls for a specific analysis library; criteria check that it FIRST consults the data-scientist hub\u2019s routing guidance and THEN loads the specific library skills -- scored on the main transcript only, and one of the five leaderboard composite components."
 };
 
 /* One heatmap block for one eval group. Emits id="phase-<gid>" so
@@ -3446,7 +3456,7 @@ function pdGroupHtml(g,agg){
     var sep=(hard.length>0&&soft.length>0&&i===hard.length)?' pd-soft-start':'';
     /* Header keeps the raw id (traceable to the scorers); the tooltip
        appends the plain-language label */
-    html+='<th class="pd-crit-th'+sep+'" title="'+esc(k)+' \u2014 '+esc(critLabel(k))+
+    html+='<th class="pd-crit-th'+sep+'" title="'+esc(k)+' -- '+esc(critLabel(k))+
       ' ('+esc(tierDisplay(tiers[k]))+' criterion)">'+
       '<span class="pd-crit-rot">'+esc(k)+'</span></th>';
   });
@@ -3461,7 +3471,7 @@ function pdGroupHtml(g,agg){
       var sep=(hard.length>0&&soft.length>0&&i===hard.length)?' pd-soft-start':'';
       var cell=(byModel[m]||{})[k];
       if(!cell||cell.total===0){
-        html+='<td class="pd-cell rs-na'+sep+'" title="'+esc(k)+' \u2014 not applicable: never scored on '+
+        html+='<td class="pd-cell rs-na'+sep+'" title="'+esc(k)+' -- not applicable: never scored on '+
           escModel(m)+'\u2019s runs in this group">&mdash;</td>';
         return;
       }
@@ -3470,8 +3480,8 @@ function pdGroupHtml(g,agg){
       /* Criterion-level deep link: lands on the Run Explorer with the
          (model, group, criterion) filters pre-applied — the criterion
          filter keeps exactly the runs this cell's denominator counts. */
-      html+='<td class="pd-cell rs-'+step+sep+'" title="'+esc(k)+' \u2014 '+escModel(m)+': '+
-        cell.passed+'/'+cell.total+' passed ('+pct(rate)+') \u2014 click to open these runs" '+
+      html+='<td class="pd-cell rs-'+step+sep+'" title="'+esc(k)+' -- '+escModel(m)+': '+
+        cell.passed+'/'+cell.total+' passed ('+pct(rate)+') -- click to open these runs" '+
         'onclick="exploreRuns(&#39;'+esc(m)+'&#39;,&#39;'+esc(gid)+'&#39;,null,&#39;'+esc(k)+'&#39;)">'+
         rateGlyph(step)+pct(rate)+'</td>';
     });
@@ -3529,8 +3539,8 @@ function renderPhaseDives(container){
     html+='<div class="pd-finding">The weakest criterion among the composite phases (P1&ndash;P4) is &ldquo;'+
       esc(critLabel(gw.name))+'&rdquo; (<code>'+esc(gw.name)+
       '</code>) at <b>'+pct(gw.rate)+'</b> ('+fmt(gw.passed)+'/'+fmt(gw.total)+', '+esc(gw.group_label)+
-      ') \u2014 read down its column above to see whether the weakness is universal or concentrated in a few models.'+
-      (KNOWN_SCORER_CAVEATS[gw.name]?' ('+esc(KNOWN_SCORER_CAVEATS[gw.name])+' \u2014 see <a href="#about">caveats</a>)':'')+
+      ') -- read down its column above to see whether the weakness is universal or concentrated in a few models.'+
+      (KNOWN_SCORER_CAVEATS[gw.name]?' ('+esc(KNOWN_SCORER_CAVEATS[gw.name])+' -- see <a href="#about">caveats</a>)':'')+
       '</div>';
   }
   container.innerHTML=html;
@@ -3640,21 +3650,21 @@ function agreementGroupHtml(g){
   });
 
   var html='<div class="pd-group" id="agree-'+esc(gid)+'">';
-  html+='<h3>'+esc(g.label)+' &mdash; rep agreement</h3>';
+  html+='<h3>'+esc(g.label)+' -- rep agreement</h3>';
   /* Computed mini-finding: hardest case + how much flakiness exists —
      built here, appended BELOW the grid (section layout rule: computed
      findings render after the chart, never between heading and chart) */
   var hardest=caseIds[0], hd=diff[hardest];
   var miniFinding='<p class="pd-explainer">Hardest case: <code>'+esc(hardest)+'</code> at <b>'+pct(hd.rate)+
     '</b> perfect across all models ('+hd.k+'/'+hd.n+' reps). '+
-    mixedCells+' of '+popCells+' populated (case, model) cells have split reps &mdash; the identical prompt sometimes perfect, sometimes not.</p>';
+    mixedCells+' of '+popCells+' populated (case, model) cells have split reps -- the identical prompt sometimes perfect, sometimes not.</p>';
 
   html+='<div class="card" style="display:inline-block;max-width:100%"><table class="pd-table"><thead><tr>';
   html+='<th style="text-align:left">Case</th>';
   html+='<th class="pd-crit-th" title="Cross-model difficulty: perfect reps over all reps of this case in this group"><span class="pd-crit-rot">All models</span></th>';
   models.forEach(function(m){
     var cell=(pmp[m]||{})[gid];
-    html+='<th class="pd-crit-th" title="'+escModel(m)+(cell?' \u2014 '+pct(cell.perfect_rate)+' perfect in this group':'')+'"><span class="pd-crit-rot">'+escModel(m)+'</span></th>';
+    html+='<th class="pd-crit-th" title="'+escModel(m)+(cell?' -- '+pct(cell.perfect_rate)+' perfect in this group':'')+'"><span class="pd-crit-rot">'+escModel(m)+'</span></th>';
   });
   html+='</tr></thead><tbody>';
 
@@ -3673,7 +3683,7 @@ function agreementGroupHtml(g){
       }
       var step=konStep(c.k,c.n);
       html+='<td class="pd-cell rs-'+step+'" title="'+escModel(m)+' on '+esc(cid)+': '+c.k+' of '+c.n+' reps perfect'+
-        (c.k>0&&c.k<c.n?' \u2014 split reps (flaky)':'')+' \u2014 click to open these runs" '+
+        (c.k>0&&c.k<c.n?' -- split reps (flaky)':'')+' -- click to open these runs" '+
         'onclick="exploreRuns(&#39;'+esc(m)+'&#39;,&#39;'+esc(gid)+'&#39;,&#39;'+esc(cid)+'&#39;)">'+
         rateGlyph(step)+c.k+'/'+c.n+'</td>';
     });
@@ -3730,7 +3740,7 @@ function caseMatrixHtml(group,cid){
   caseRuns.forEach(function(r){ if(r.rep>maxRep) maxRep=r.rep; });
   var criteria=group.criterion_names.slice().sort();
 
-  var html='<div class="section-title" style="margin:14px 0 6px">'+esc(group.label)+' &mdash; per-rep marks</div>';
+  var html='<div class="section-title" style="margin:14px 0 6px">'+esc(group.label)+' -- per-rep marks</div>';
   html+='<div style="overflow-x:auto"><table class="data-table"><thead><tr>';
   html+='<th style="width:60px"></th><th>Criterion</th><th style="width:36px">Tier</th>';
   models.forEach(function(m){ html+='<th style="text-align:center;color:'+modelColorLight(m)+'">'+escModel(m)+'</th>'; });
@@ -3894,7 +3904,7 @@ function renderRunExplorer(container){
       var r=runs[i];
       var st=runStatus(r);
       html+='<div class="run-list-item'+(state.selectedRunIdx===i?" selected":"")+'" data-ridx="'+i+'" onclick="selectRun('+i+')">';
-      html+='<span class="st-glyph st-'+st+'" title="'+st+' \u2014 '+(GRADE_TIP[st]||"")+'">'+(GRADE_GLYPH[st]||"&mdash;")+'</span>';
+      html+='<span class="st-glyph st-'+st+'" title="'+st+' -- '+(GRADE_TIP[st]||"")+'">'+(GRADE_GLYPH[st]||"&mdash;")+'</span>';
       html+='<span class="case-label">'+esc(r.case_id)+'</span>';
       html+='<span class="model-label">'+escModel(r.model)+'</span>';
       html+='<span class="text-xs text-muted">rep'+r.rep+'</span>';
@@ -3994,7 +4004,7 @@ function transcriptPlaceholder(r){
     if(isFileProto){
       msg+=' This page was opened directly from disk (<code>file://</code>); '+
         'transcripts are fetched on demand and need the report served over '+
-        'http(s) \u2014 from the bundle directory run '+
+        'http(s) -- from the bundle directory run '+
         '<code>python3 -m http.server</code>, then open '+
         '<code>http://localhost:8000/</code>.';
     } else {
@@ -4020,7 +4030,7 @@ function transcriptsExcludedNotice(){
     '<div class="card" style="border-color:var(--c-neutral);font-size:12px;line-height:1.6">'+
     'Transcripts were not included in this build. This is a transcript-lite '+
     'artifact (generated with <code>--no-transcripts</code>, or the default '+
-    'single-file monolith) \u2014 run scores, metrics, and provenance are complete, '+
+    'single-file monolith) -- run scores, metrics, and provenance are complete, '+
     'but the per-run condensed transcript payload was omitted to keep the file '+
     'small. Regenerate the bundle (its default includes lazy-loaded '+
     'transcripts) or run <code>--single-file --transcripts</code> for the full '+
@@ -4112,7 +4122,7 @@ function renderSchemaV2RunEvidence(r){
   html+='<section class="run-evidence-card run-ledger-actual" aria-labelledby="actual-ledger-heading"><h4 id="actual-ledger-heading">Actual billing</h4><dl>';
   html+=evidenceRow('Access type',textEvidence(humanCode(ab.access_type),'Unavailable'));
   html+=evidenceRow('Charge status',textEvidence(humanCode(ab.charge_status),'Unavailable'));
-  html+=evidenceRow('Marginal charge',usdEvidence(ab.actual_marginal_charge_usd,'Unavailable — no marginal USD charge was reported'));
+  html+=evidenceRow('Marginal charge',usdEvidence(ab.actual_marginal_charge_usd,'Unavailable -- no marginal USD charge was reported'));
   html+=evidenceRow('Archived computed cost',usdEvidence(r.computed_cost_usd,'Unavailable'));
   html+='</dl><p class="run-evidence-note">A missing marginal charge remains unavailable; no zero-valued or access-price inference is made.</p></section>';
 
@@ -4177,7 +4187,7 @@ function renderSchemaV2RunEvidence(r){
     html+=evidenceRow('Raw observed IDs',listEvidence(purity.observed_child_model_ids_raw,'Not observed'));
     html+=evidenceRow('Comparison IDs',listEvidence(purity.comparison_child_model_ids,'Not observed'));
     var norm=isObserved(purity.normalization_applied)
-      ?(purity.normalization_applied?statusEvidence('partial','!','Applied'):statusEvidence('pass','✓','Not applied — exact comparison'))
+      ?(purity.normalization_applied?statusEvidence('partial','!','Applied'):statusEvidence('pass','✓','Not applied -- exact comparison'))
       :statusEvidence('neutral','—','Not reported');
     html+=evidenceRow('Alias normalization',norm);
     html+=evidenceRow('Comparison rule',codeEvidence(purity.comparison_rule,'Not reported'));
@@ -5037,7 +5047,7 @@ function init(){
     Object.keys(txIdx).forEach(function(k){ txMain+=txIdx[k].n_main||0; });
     console.log("  Transcripts:",txMain,"(lazy, "+Object.keys(txIdx).length+" shards)");
   } else {
-    console.log("  Transcripts: none (transcript-less build — not included)");
+    console.log("  Transcripts: none (transcript-less build -- not included)");
   }
 }
 
