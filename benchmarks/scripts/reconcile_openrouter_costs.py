@@ -23,7 +23,8 @@ Usage:
         [--csv PATH] [--tolerance-s 120] [--output PATH]
 
 Prints a full report to stdout and writes a machine-readable JSON summary
-(default: benchmarks/derived/openrouter_reconciliation_2026-06-11.json).
+(default: benchmarks/derived/openrouter_reconciliation_{TODAY}.json — dated at
+run time so a rerun never overwrites a prior dated snapshot).
 """
 
 import argparse
@@ -39,8 +40,13 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RESULTS_DIR = os.path.join(BASE_DIR, "results")
 MODELS_YAML = os.path.join(BASE_DIR, "config", "models.yaml")
 DEFAULT_CSV = os.path.join(BASE_DIR, "openrouter_activity_2026-06-11.csv")
-DEFAULT_OUT = os.path.join(BASE_DIR, "derived",
-                           "openrouter_reconciliation_2026-06-11.json")
+# Default output is dated with TODAY's date so successive reconciliations never
+# overwrite a prior dated snapshot (2026-08-10: the former hardcoded
+# ..._2026-06-11.json default silently clobbered the June historical file).
+DEFAULT_OUT = os.path.join(
+    BASE_DIR, "derived",
+    "openrouter_reconciliation_%s.json"
+    % datetime.now(timezone.utc).strftime("%Y-%m-%d"))
 
 # ⚠ STALE EXCLUSION (2026-07-29): gemini-3.5-flash became a REGISTERED campaign
 # model on 2026-07-27; the blanket exclusion below is only valid for the June

@@ -32,14 +32,14 @@ and still score poorly here if it skips confirmation gates or dispatches
 free-form prompts. Conversely, a weaker model that faithfully follows protocol
 scores well.
 
-**Model matrix:** 34 registry entries across three explicit providers. The
+**Model matrix:** 36 registry entries across three explicit providers. The
 matrix is defined in `config/models.yaml`; provider labels describe the measured
 route, not interchangeable billing aliases.
 
 | Provider | Entries | Route and accounting basis |
 |----------|--------:|----------------------------|
 | `anthropic` | 9 | Claude Code subscription route for Haiku 4.5, Sonnet 4.6/5, Opus 4.5/4.6/4.7/4.8/5, and Fable 5 |
-| `openrouter` | 22 | OpenRouter's Anthropic-compatible endpoint; includes GLM, Kimi, Qwen, Gemma, DeepSeek, Gemini, Nemotron, and GPT entries |
+| `openrouter` | 24 | OpenRouter's Anthropic-compatible endpoint; includes GLM, Kimi, Qwen, Gemma, DeepSeek, Gemini, Nemotron, Inkling, and GPT entries |
 | `chatgpt-subscription` | 3 | Local provider shim to the deployed ChatGPT/Codex subscription backend for GPT-5.6 Luna, Terra, and Sol; included-capacity billing and separate API-equivalent accounting |
 
 GPT-5.6 Luna, Terra, and Sol each have deliberately distinct OpenRouter and

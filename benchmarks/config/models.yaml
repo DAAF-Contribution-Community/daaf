@@ -591,6 +591,79 @@ models:
       ANTHROPIC_DEFAULT_SONNET_MODEL: "google/gemini-3.1-flash-lite"
       CLAUDE_CODE_SUBAGENT_MODEL: "google/gemini-3.1-flash-lite"
 
+  # Added 2026-08-10 (Inkling onboarding, paired with Inkling Small below —
+  # both pinned to the SAME provider for cross-pair comparability per
+  # maintainer decision 2026-08-10). Verified online 2026-08-10 from
+  # GET /api/v1/models/thinkingmachines/inkling-small/endpoints: deepinfra/fp8
+  # endpoint (quantization fp8, context_length 524288, uptime_last_30m ~99.97)
+  # lists prompt $0.45/M, completion $1.20/M, input_cache_read $0.10/M.
+  # Endpoint pinned to deepinfra/fp8: the alternative `together` endpoint
+  # (maintainer's initial preference) reports no uptime for this slug and an
+  # 89.6%-uptime/status:-2 degradation on the sibling Inkling entry, so the
+  # shared pin moved to deepinfra/fp8 (disclosed quant, ~100% uptime, cheapest;
+  # user-approved 2026-08-10).
+  #
+  # Corrected 2026-08-10: effective billed rates calibrated to the OpenRouter
+  # billing reconciliation of 2026-08-10 so predicted $/run matches billed
+  # $/run at obs/pred 1.00 on this model's billed token mix (heavy DeepInfra
+  # cache discounting drives billed well below list; a single global scale
+  # factor overcorrected, so rates were iterated to convergence — see
+  # scripts/reconcile_openrouter_costs.py and
+  # derived/openrouter_reconciliation_2026-08-10.json). Published list rates:
+  # 0.45/1.20/0.10.
+  - id: "thinkingmachines/inkling-small:deepinfra/fp8"
+    # wire_id OBSERVED 2026-08-10 (results/20260810_172003_b1e8db/runs/
+    # dc-01_Inkling_Small_0/result.json: observed_child_model_ids_raw =
+    # ["thinkingmachines/inkling-small"] while the routing id carried the
+    # :deepinfra/fp8 pin; purity verified).
+    wire_id: "thinkingmachines/inkling-small"
+    name: "Inkling Small"
+    provider: openrouter
+    cost_tier: "low"
+    pricing:
+      input: 0.258
+      output: 0.691
+      cached_input: 0.057
+    env_overrides:
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "thinkingmachines/inkling-small:deepinfra/fp8"
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "thinkingmachines/inkling-small:deepinfra/fp8"
+      CLAUDE_CODE_SUBAGENT_MODEL: "thinkingmachines/inkling-small:deepinfra/fp8"
+
+  # Added 2026-08-10 (Inkling onboarding — see pairing note on Inkling Small
+  # above). Verified online 2026-08-10 from
+  # GET /api/v1/models/thinkingmachines/inkling/endpoints: deepinfra/fp8
+  # endpoint (quantization fp8, context_length 524288, uptime_last_30m 100)
+  # lists prompt $0.95/M, completion $4.05/M, input_cache_read $0.16/M.
+  # Alternatives at fetch time: baseten/fp8 (1M context, $1.00/$4.05, 100%
+  # uptime) and together (quant unknown, 89.6% uptime, status -2 — degraded).
+  # deepinfra/fp8 chosen for the shared pair pin (user-approved 2026-08-10).
+  #
+  # Corrected 2026-08-10: effective billed rates calibrated to the OpenRouter
+  # billing reconciliation of 2026-08-10 so predicted $/run matches billed
+  # $/run at obs/pred 1.00 on this model's billed token mix (DeepInfra cache
+  # discounting drives billed below list; rates iterated to convergence — see
+  # scripts/reconcile_openrouter_costs.py and
+  # derived/openrouter_reconciliation_2026-08-10.json). Published list rates:
+  # 0.95/4.05/0.16. Billing permaslug observed: thinkingmachines/
+  # inkling-20260715 (dated permaslug; routing slug unchanged).
+  - id: "thinkingmachines/inkling:deepinfra/fp8"
+    # wire_id OBSERVED 2026-08-10 (results/20260810_172003_b1e8db/runs/
+    # dc-01_Inkling_0/result.json: observed_child_model_ids_raw =
+    # ["thinkingmachines/inkling"] while the routing id carried the
+    # :deepinfra/fp8 pin; purity verified).
+    wire_id: "thinkingmachines/inkling"
+    name: "Inkling"
+    provider: openrouter
+    cost_tier: "medium"
+    pricing:
+      input: 0.47
+      output: 2.00
+      cached_input: 0.078
+    env_overrides:
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "thinkingmachines/inkling:deepinfra/fp8"
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "thinkingmachines/inkling:deepinfra/fp8"
+      CLAUDE_CODE_SUBAGENT_MODEL: "thinkingmachines/inkling:deepinfra/fp8"
+
   # --- OpenAI GPT models (via OpenRouter Anthropic-compatible endpoint) ---
   #
   # Added 2026-07-09 for GPT smoke-test battery. Pricing pulled live from

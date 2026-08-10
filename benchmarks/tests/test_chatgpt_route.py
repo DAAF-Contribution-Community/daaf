@@ -92,6 +92,9 @@ POST_SNAPSHOT_OPENROUTER_ADDITIONS = {
     "gemini-35-flash-lite",
     "gemini-25-pro",
     "deepseek-v4-flash-0731",
+    # Inkling pair added 2026-08-10 (thinkingmachines/*:deepinfra/fp8 pins).
+    "inkling-small",
+    "inkling",
 }
 
 # Anthropic keys added after the PREEXISTING snapshot (opus-5 added 2026-07-25
@@ -227,11 +230,12 @@ class ModelRegistryTests(unittest.TestCase):
 
     def test_provider_filter_adds_chatgpt_without_changing_existing_counts(self):
         models = self.load_all()
-        self.assertEqual(34, len(models))
+        self.assertEqual(36, len(models))
         # 8 preexisting + opus-5 (added 2026-07-25 for the Opus 5 evaluation).
         self.assertEqual(9, len(filter_models(models, provider="anthropic")))
-        # 17 preexisting + Kimi K3 + four later Gemini additions.
-        self.assertEqual(22, len(filter_models(models, provider="openrouter")))
+        # 17 preexisting + Kimi K3 + four later Gemini additions + the Inkling
+        # pair (2026-08-10).
+        self.assertEqual(24, len(filter_models(models, provider="openrouter")))
         # Luna + Terra + Sol on the ChatGPT-subscription lane (2026-07-17).
         self.assertEqual(3, len(filter_models(models, provider="chatgpt-subscription")))
 
