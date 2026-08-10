@@ -356,7 +356,7 @@ class ProviderShimHistoricalRegressionTests(unittest.TestCase):
                         self.assertEqual(set(health), _HEALTH_KEYS)
                         self.assertEqual(health["service"], "daaf-anthropic-openai-shim")
                         self.assertEqual(health["status"], "ok")
-                        self.assertEqual(health["version"], "1.3.10")
+                        self.assertEqual(health["version"], "1.3.18")
                         self.assertEqual(health["backend_mode"], mode)
                         self.assertEqual(health["sanitize_tools"], sanitize)
                         self.assertEqual(health["reasoning_effort"], effort)
