@@ -2142,15 +2142,15 @@ var COST_FORMS=[
   {key:"input",label:"Input",formula:"Published input price, per million tokens",
    axis:"Input price (USD per 1M tokens, log scale)"},
   {key:"output",label:"Output",formula:"Published output price, per million tokens",
-   axis:"Output price (USD per 1M tokens, log scale)"},
-  /* Duration (v3.3.0): a real-world LATENCY proxy, not a price. Like the
-     battery form it DISPLAYS as a relative multiplier (Opus 4.8 = 1.0x),
-     reading from PRECOMPUTED.duration (not cost.models) so it covers every
-     model — including OpenRouter and the cost-omitted subscription lane.
-     Built from summed per-run durations (parallelization-invariant). */
-  {key:"duration",label:"Relative Duration (1x=Opus 4.8)",
-   formula:"Estimated relative wall-clock time to run the full benchmark battery once, as a multiple of Opus 4.8 (= 1.0×) -- from summed per-run durations (parallelization-invariant), a real-world latency proxy (definition + caveats in the notes below the chart)",
-   axis:"Est. relative duration vs Opus 4.8 to run the full battery once (×, log scale)"}
+   axis:"Output price (USD per 1M tokens, log scale)"}
+  /* Duration form REMOVED 2026-08-11 (user decision): the Relative Duration
+     scatter axis (v3.3.0) and its "duration multiplier, precisely" footnote
+     were the last live consumers of the duration display and had been
+     functionally deactivated; the toggle button and footnote are gone. The
+     PRECOMPUTED.duration payload and the isDur branch in renderCostPerf
+     remain (unreachable — no COST_FORMS entry can select "duration"),
+     matching the v3.7.0 precedent of removing display consumers while
+     keeping the payload schema-additive. */
 ];
 function priceMap(){
   var map={};
@@ -3195,27 +3195,9 @@ function batteryDisclosureHtml(){
     ' The estimates reflect successful-run costs only.</p>';
 }
 
-/* Duration-multiplier methodology footnote (v3.3.0), the latency twin of
-   batteryDisclosureHtml. Renders in the CvP footnote area whenever any
-   duration data is present (the Relative Duration leaderboard column and
-   the duration scatter axis both point here). Battery size injects live
-   from PRECOMPUTED.duration. */
-function durationDisclosureHtml(){
-  var dur=PRECOMPUTED.duration||{};
-  var durModels=dur.models||{};
-  if(Object.keys(durModels).length===0) return '';
-  return '<p class="cp-foot"><b>The duration multiplier, precisely.</b> '+
-    'Each model\u2019s figure is its estimated wall-clock time to run the full '+
-    (dur.battery_size||"?")+'-probe DAAFBench battery once, expressed as a multiple of '+
-    esc(dur.reference_model||"Opus 4.8")+' (= 1.0\u00d7). It is computed from each model\u2019s '+
-    'summed per-run durations, which are parallelization-INVARIANT (independent of whether the '+
-    'batch ran serially or in parallel) -- never the batch wall-clock, which depends on run mode. '+
-    'Read it as a real-world LATENCY proxy: it folds in provider routing and congestion at the time '+
-    'each run executed, which multi-rep averaging mitigates but does not eliminate. Unlike the cost '+
-    'multiplier it needs no pricing, so it covers every model -- including those without billing-grade '+
-    'cost data. Multipliers only, never seconds -- exact durations would imply a precision these '+
-    'estimates do not have.</p>';
-}
+/* durationDisclosureHtml() ("The duration multiplier, precisely." footnote,
+   v3.3.0) REMOVED 2026-08-11 with the duration COST_FORMS entry \u2014 see the
+   dated note in the COST_FORMS registry. */
 
 /* Published list-price table (relocated from the removed Costs Detail
    section as a compact collapsible): raw per-Mtok list rates from
@@ -3384,10 +3366,8 @@ function renderCostPerf(container){
      — inside the Details expander since the 2026-06-12 fine-tuning
      round 2, but on every render regardless of the price-basis toggle */
   foot+=batteryDisclosureHtml();
-  /* Duration-multiplier methodology footnote (v3.3.0): renders whenever
-     duration data exists, so the Relative Duration column and the duration
-     scatter axis both have a definition to point to. */
-  foot+=durationDisclosureHtml();
+  /* Duration-multiplier footnote call removed 2026-08-11 with the duration
+     COST_FORMS entry (see the dated note in the registry). */
   foot+='</div></details>';
 
   /* Layout: controls + legend immediately adjacent to the chart; the

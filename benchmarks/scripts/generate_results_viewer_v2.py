@@ -72,6 +72,13 @@ Examples:
 
 Changelog:
     v3.8.1 (2026-08-11):
+      - Deactivated-duration cleanup (user decision, template-only): removed
+        the "Relative Duration" price-basis toggle from the CvP COST_FORMS
+        registry and the "duration multiplier, precisely" footnote
+        (durationDisclosureHtml + its call site). PRECOMPUTED.duration payload
+        and the now-unreachable isDur branch in renderCostPerf remain
+        (schema-additive, v3.7.0 precedent). Deliberately NOT a public
+        CHANGELOG.md entry (user: dead-UI removal, not audience-relevant).
       - Config-driven display exclusions (retired_display_exclusions in
         config/models.yaml): a top-level list of model NAMES whose corpus runs
         are dropped from EVERY report surface — leaderboard, cost/battery, Key
