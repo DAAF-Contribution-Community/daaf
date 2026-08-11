@@ -324,6 +324,8 @@ Its log is at `/daaf/scripts/provider_shim/logs/shim.log` — check there first.
 
 For an in-place repair or reload, use `--restart` — it stops and relaunches the shim in a single step. This matters when the active Claude Code session is itself running through the shim: do **not** split `--stop` and `--start` across separate assistant turns, because once the shim is stopped your session no longer has a working provider route to issue the `--start` with. `--restart` avoids that trap by never leaving the route down between turns.
 
+Every restart also records a one-line verdict in that same log — look for the newest `SHIM_RESTART_RESULT` line. `status=ready` with `exit_code=0` means the restart fully succeeded and the new shim confirmed healthy. A `status=failed` line instead names the phase that went wrong — stopping the old shim (`stage=stop`), launching the new one (`stage=launch`), or waiting for it to become healthy (`stage=readiness`) — along with a short reason, which is usually the fastest clue for where to look next.
+
 Remember that Option F requires the image to have been **rebuilt** after you set `DAAF_PROVIDER_SHIM=openai` (the auto-launch is baked into the entrypoint), so if nothing is running, confirm you rebuilt. If the shim *is* running but every request fails instantly with a 429, see the relevant entry below.
 
 ### Q: What image inputs does the provider shim support?
