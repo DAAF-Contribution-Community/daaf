@@ -158,7 +158,11 @@ class ArtifactSerializationTests(unittest.TestCase):
         self.assertIsNone(luna_record["actual_billing"]["actual_marginal_charge_usd"])
         self.assertEqual("not_separately_billed", luna_record["actual_billing"]["charge_status"])
         self.assertIsNone(luna_record["api_equivalent"]["cost_usd"])
-        self.assertAlmostEqual(0.228, luna_record["api_equivalent"]["short_context_uncached_scenario_usd"])
+        # 0.0456 under the 2026-08-11 Luna 5x price cut (120k uncached input *
+        # 0.20/M + 18k output * 1.20/M); was 0.228 under the prior schedule. The
+        # fixture supplies no short_context block, so this falls back to the
+        # cost_estimator LUNA_SHORT_CONTEXT_RATES constants.
+        self.assertAlmostEqual(0.0456, luna_record["api_equivalent"]["short_context_uncached_scenario_usd"])
         self.assertEqual([luna.id], luna_record["model_identity"]["claude_cli_model_usage_ids"])
         self.assertIsNone(luna_record["model_identity"]["backend_confirmed_model_id"])
         self.assertTrue(luna_record["provenance"]["sanitizer_enabled"])

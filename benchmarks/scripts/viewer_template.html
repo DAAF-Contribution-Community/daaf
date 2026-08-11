@@ -380,6 +380,62 @@ body.nav-rendered #phases,body.nav-rendered #cases{
   max-width:1000px; margin-bottom:8px;
 }
 .hero .gen{ font-family:var(--font-mono); font-size:0.78rem; color:var(--text-3); margin-top:2px; }
+/* Changelog button + modal (v3.8.0). The button mirrors the .gen mono/muted
+   palette so it reads as quiet chrome, but a pill border + hover state make it
+   unmistakably a control. The modal is a position:fixed viewport overlay
+   declared OUTSIDE every content-visibility-contained .doc-section (see the
+   containment guide near the top of this file), so it never participates in
+   section layout containment. */
+/* Date + changelog button share one flex row so the pill sits inline with
+   the "Report Updated" line (wraps gracefully on narrow viewports). */
+.gen-row{ display:flex; align-items:center; flex-wrap:wrap; gap:4px 12px; }
+.changelog-btn{
+  display:inline-flex; align-items:center; gap:6px;
+  font-family:var(--font-mono); font-size:0.72rem; color:var(--text-3);
+  background:transparent; border:1px solid var(--accent-teal);
+  border-radius:999px; padding:4px 12px; cursor:pointer;
+  transition:color .15s, border-color .15s, background .15s;
+}
+.changelog-btn[hidden]{ display:none; }
+.changelog-btn:hover{ color:var(--text-1); border-color:var(--accent-teal); background:var(--surface-1); }
+.changelog-btn:focus-visible{ outline:2px solid var(--accent-teal); outline-offset:2px; }
+.changelog-btn-sep{ opacity:.6; }
+/* Overlay: fixed to the viewport, above the topbar progress bar (z 1200).
+   Flex-centered dialog over a dark scrim. */
+.cl-modal{ position:fixed; inset:0; z-index:2000; display:flex; align-items:center; justify-content:center; padding:24px; }
+.cl-modal[hidden]{ display:none; }
+.cl-scrim{ position:absolute; inset:0; background:rgba(0,0,0,.6); }
+.cl-dialog{
+  position:relative; display:flex; flex-direction:column;
+  background:var(--surface-1); border:1px solid var(--border-2);
+  border-radius:12px; max-width:640px; width:100%; max-height:80vh;
+  box-shadow:0 12px 48px rgba(0,0,0,.45);
+}
+.cl-head{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding:14px 18px; border-bottom:1px solid var(--border-1); }
+.cl-head h2{ font-size:16px; font-weight:700; margin:0; }
+/* Close target: >=44px square for a comfortable touch target on mobile. */
+.cl-close{
+  display:flex; align-items:center; justify-content:center; flex:none;
+  width:44px; height:44px; margin:-8px -8px -8px 0; padding:0;
+  background:transparent; border:none; color:var(--text-3);
+  font-size:28px; line-height:1; cursor:pointer; border-radius:8px;
+}
+.cl-close:hover{ color:var(--text-1); background:var(--surface-sec); }
+.cl-close:focus-visible{ outline:2px solid var(--accent-teal); outline-offset:2px; }
+/* Body typography mirrors the About <details> idiom (.about details > div). */
+.cl-body{ padding:14px 18px 18px; overflow-y:auto; overflow-x:hidden; font-size:13.5px; color:var(--text-2); line-height:1.6; overflow-wrap:break-word; }
+.cl-body h3{ font-family:var(--font-mono); font-size:12px; color:var(--text-3); text-transform:uppercase; letter-spacing:.3px; margin:16px 0 6px; }
+.cl-body h3:first-child{ margin-top:0; }
+.cl-body ul{ margin:0 0 8px 18px; }
+.cl-body li{ margin-bottom:6px; }
+.cl-body .cl-tag{ color:var(--text-1); font-weight:600; }
+/* Body scroll lock while the modal is open. */
+body.cl-open{ overflow:hidden; }
+/* Narrow viewports: near-full-screen sheet, no rounded corners, full height. */
+@media (max-width:560px){
+  .cl-modal{ padding:0; }
+  .cl-dialog{ max-width:none; width:100%; max-height:100vh; height:100vh; border:none; border-radius:0; }
+}
 /* Small phones: the anatomy clamp bottoms out at 2rem, which wraps this
    long h1 to ~6 lines at 360px — mirror the site's 560px hero override */
 @media (max-width:560px){
@@ -1242,7 +1298,23 @@ nav.site-nav{
 <section class="doc-section hero" id="hero">
   <div class="hero-eyebrow">Choosing Your Model</div>
   <h1>How well do different AI models handle the complexities of <span class="gradient-text">rigorous research orchestration workflows</span>?</h1>
+  <div class="gen-row">
   <div class="gen">Report Updated __GENERATED_DISPLAY__ UTC</div>
+  <!-- Changelog control (v3.8.0): opens the #changelog-modal overlay. Hidden
+       by default (`hidden` attribute); the changelog IIFE at the bottom of
+       the page reveals it only when the build embedded changelog entries
+       (a non-empty #changelog-body). This collapses the no-JS state (button
+       stays inert/hidden) and the fail-soft empty-changelog state (button
+       omitted) to the same safe default. Muted .gen-family palette so it reads
+       as quiet chrome; the border + hover state make it unmistakably a button.
+       The CHANGELOG_LATEST token below is the newest entry date
+       (date-keyed, no version number). -->
+  <button type="button" id="changelog-btn" class="changelog-btn" hidden
+          aria-haspopup="dialog" aria-controls="changelog-modal">
+    Changelog <span class="changelog-btn-sep">&middot;</span>
+    <span id="changelog-latest">__CHANGELOG_LATEST__</span>
+  </button>
+  </div>
 
   <div class="chip-row" id="hero-chips"></div>
 
@@ -1628,7 +1700,8 @@ nav.site-nav{
             meter, so dollar costs derived from those counts were unreliable and
             were removed. For the GPT-5.6 trio (Sol, Luna, Terra), the
             API-equivalent list rates used here were verified against OpenAI&rsquo;s
-            published per-model schedules on 2026-07-29. A per-request audit of
+            published schedules on 2026-08-11, reflecting OpenAI&rsquo;s August 2026
+            price cuts for Terra and Luna. A per-request audit of
             the full GPT corpus further found zero requests above the 272k-token
             long-context pricing threshold, so the short-context rates applied
             here are exact for this corpus rather than a blended approximation.</li>
@@ -1831,6 +1904,26 @@ nav.site-nav{
 
 <!-- Tooltip -->
 <div class="tooltip" id="tooltip"></div>
+
+<!-- Changelog modal (v3.8.0): a position:fixed viewport overlay placed here,
+     OUTSIDE every content-visibility-contained .doc-section (alongside the
+     tooltip), so it never participates in section layout containment. Hidden
+     until #changelog-btn is clicked. Body typography mirrors the About
+     <details> idiom (.about details > div). Dismiss: close button, scrim
+     tap/click (data-cl-close), or Escape. The CHANGELOG_HTML token fills the
+     modal body below (generator-built: h3 date heads + bullet lists); an empty
+     substitution means the changelog failed to load and the button stays
+     hidden (see the changelog IIFE at the foot of the page). -->
+<div id="changelog-modal" class="cl-modal" hidden>
+  <div class="cl-scrim" data-cl-close></div>
+  <div class="cl-dialog" role="dialog" aria-modal="true" aria-labelledby="cl-title">
+    <div class="cl-head">
+      <h2 id="cl-title">Changelog</h2>
+      <button type="button" class="cl-close" data-cl-close aria-label="Close changelog">&times;</button>
+    </div>
+    <div class="cl-body" id="changelog-body">__CHANGELOG_HTML__</div>
+  </div>
+</div>
 
 <!-- Data -->
 <script>
@@ -5107,6 +5200,61 @@ document.querySelectorAll(".nav-dropdown-toggle").forEach(function(btn){
     dropdown.classList.toggle("mobile-open");
     btn.setAttribute("aria-expanded",dropdown.classList.contains("mobile-open"));
   });
+});
+})();
+</script>
+
+<!-- ============================================================== -->
+<!-- Changelog modal JS (v3.8.0): self-contained IIFE, introduces no -->
+<!-- globals, touches only #changelog-btn / #changelog-modal. Reveals -->
+<!-- the (default-hidden) button ONLY when the build embedded         -->
+<!-- changelog content (non-empty #changelog-body) — so the fail-soft -->
+<!-- empty-changelog state and the no-JS state both stay button-less. -->
+<!-- Dismiss: close button, scrim tap/click, or Escape; body scroll   -->
+<!-- locked (body.cl-open) while open; focus returns to the opener.   -->
+<!-- ============================================================== -->
+<script>
+(function(){
+"use strict";
+var btn=document.getElementById("changelog-btn");
+var modal=document.getElementById("changelog-modal");
+var body=document.getElementById("changelog-body");
+if(!btn||!modal||!body) return;
+/* Fail-soft: an empty body means the generator omitted the changelog
+   (missing/unparseable CHANGELOG.md) — leave the button hidden. */
+if(!body.textContent.trim()) return;
+btn.hidden=false;
+var lastFocus=null;
+function openModal(){
+  lastFocus=document.activeElement;
+  modal.hidden=false;
+  document.body.classList.add("cl-open");
+  var closeBtn=modal.querySelector(".cl-close");
+  if(closeBtn) closeBtn.focus();
+}
+function closeModal(){
+  modal.hidden=true;
+  document.body.classList.remove("cl-open");
+  if(lastFocus&&lastFocus.focus) lastFocus.focus();
+}
+btn.addEventListener("click",openModal);
+modal.querySelectorAll("[data-cl-close]").forEach(function(elm){
+  elm.addEventListener("click",closeModal);
+});
+document.addEventListener("keydown",function(e){
+  if(e.key==="Escape"&&!modal.hidden) closeModal();
+  /* Focus trap: while the dialog is open, Tab cycles within it so keyboard
+     and screen-reader focus cannot wander into the background page
+     (completes the aria-modal contract; focus RETURN is handled above). */
+  if(e.key==="Tab"&&!modal.hidden){
+    var focusables=modal.querySelectorAll(
+      "button, a[href], [tabindex]:not([tabindex='-1'])");
+    if(!focusables.length) return;
+    var first=focusables[0], last=focusables[focusables.length-1];
+    if(e.shiftKey&&document.activeElement===first){ e.preventDefault(); last.focus(); }
+    else if(!e.shiftKey&&document.activeElement===last){ e.preventDefault(); first.focus(); }
+    else if(!modal.contains(document.activeElement)){ e.preventDefault(); first.focus(); }
+  }
 });
 })();
 </script>

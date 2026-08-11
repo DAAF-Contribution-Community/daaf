@@ -48,20 +48,42 @@ DEFAULT_OUT = os.path.join(
     "openrouter_reconciliation_%s.json"
     % datetime.now(timezone.utc).strftime("%Y-%m-%d"))
 
-# ⚠ STALE EXCLUSION (2026-07-29): gemini-3.5-flash became a REGISTERED campaign
-# model on 2026-07-27; the blanket exclusion below is only valid for the June
-# 2026 export this script was written against. For any reconciliation touching
-# post-2026-07-27 data, use the v2 pipeline instead (campaign workspace
-# scripts/scratch/19-21_billing-*-v2.py), which replaces this static exclusion
-# with empirical per-slug registration-date boundaries.
 # Known non-benchmark spend on this API key (user-confirmed):
-#   - all gemini-3.5-flash rows (preliminary testing; zero corpus runs)
 #   - anthropic/* rows (probe tests)
 #   - early GLM 5.1 preliminary tests are detected dynamically: GLM rows
 #     timestamped before the first GLM corpus run window are flagged
 #     "pre-campaign" and excluded from calibration.
+#   - gemini-3.5-flash preliminary testing is likewise handled dynamically
+#     (see below), NOT by a static base-slug exclusion.
+#
+# 2026-08-11: the former static exclusion of google/gemini-3.5-flash was
+# REMOVED. It became a REGISTERED campaign model on 2026-07-27 (see
+# config/models.yaml) and now has corpus runs; blanket-excluding it silently
+# dropped its billed spend from the reconciliation snapshot (and thus from the
+# viewer's battery-cost table). Its genuine pre-registration prelim spend is
+# already caught by the dynamic pre-campaign detector (rows before the first
+# corpus run window), so no static exclusion is needed.
 EXCLUDED_SLUG_PREFIXES = ("anthropic/",)
-EXCLUDED_BASE_SLUGS = ("google/gemini-3.5-flash",)
+EXCLUDED_BASE_SLUGS = ()
+
+# Permaslug -> registry-base-slug overrides for the "dated-slug gotcha"
+# (README § Billing reconciliation pipeline > "Dated-slug gotcha"): OpenRouter
+# billing permaslugs carry a full-date suffix (`...-20260731`) while the
+# registry (config/models.yaml) uses a short-form slug (`...-0731`). The generic
+# `-20YYMMDD$` strip in base_slug_from_permaslug() would map the dated permaslug
+# onto the undated base, which (a) matches no active registry entry for a
+# short-form model and (b) collides with the retired undated revision's own
+# permaslug. Each dated model therefore needs an explicit override so its billed
+# rows attribute to the correct models.yaml entry.
+# 2026-08-11: DeepSeek V4 Flash 0731 — billing permaslug
+# `deepseek/deepseek-v4-flash-20260731` must map to registry base
+# `deepseek/deepseek-v4-flash-0731` (the generic strip yields
+# `deepseek/deepseek-v4-flash`, which matches no active entry — the undated
+# Flash was retired 2026-08-02 — and would collide with the retired revision's
+# permaslug `deepseek/deepseek-v4-flash-20260423`).
+PERMASLUG_BASE_OVERRIDES = {
+    "deepseek/deepseek-v4-flash-20260731": "deepseek/deepseek-v4-flash-0731",
+}
 
 REFERENCE_MODEL = "Opus 4.8"  # hunger-multiplier reference
 
@@ -120,7 +142,14 @@ def base_slug_from_model_id(model_id):
 
 
 def base_slug_from_permaslug(slug):
-    """CSV model_permaslug -> base slug ('z-ai/glm-5.1-20260406' -> 'z-ai/glm-5.1')."""
+    """CSV model_permaslug -> base slug ('z-ai/glm-5.1-20260406' -> 'z-ai/glm-5.1').
+
+    Dated-slug overrides (see PERMASLUG_BASE_OVERRIDES) win over the generic
+    date-strip so short-form registry revisions (e.g. `-0731`) attribute
+    correctly instead of collapsing onto the undated base.
+    """
+    if slug in PERMASLUG_BASE_OVERRIDES:
+        return PERMASLUG_BASE_OVERRIDES[slug]
     return re.sub(r"-20\d{6}$", "", slug)
 
 
@@ -420,7 +449,7 @@ def main():
     work_rows = [r for r in rows if not is_static_excluded(r)]
     print(f"Static exclusions: {len(static_excl)} rows, "
           f"{fmt_money(sum(r['cost_total'] for r in static_excl))} "
-          f"(gemini-3.5-flash prelim + anthropic probes)")
+          f"(anthropic probes; gemini-3.5-flash prelim now handled dynamically)")
 
     unknown = sorted({r["base_slug"] for r in work_rows} - set(by_base))
     if unknown:

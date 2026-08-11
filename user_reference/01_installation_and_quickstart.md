@@ -1061,13 +1061,13 @@ ANTHROPIC_DEFAULT_SONNET_MODEL=openai/gpt-5.6-terra
 CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000
 ```
 
-Recommended GPT slugs (context windows and roles verified against OpenRouter on 2026-07-09):
+Recommended GPT slugs (context windows and roles verified against OpenRouter on 2026-07-09; prices re-verified 2026-08-11, reflecting OpenAI's August 2026 Terra/Luna price cuts plus OpenRouter's additional 50% Terra/Luna discount):
 
 | Slug | Context window | Role in DAAF | Notes |
 |------|---------------|--------------|-------|
 | `openai/gpt-5.6-sol` | 1,050,000 | **Strong tier (Opus-analog) — recommended default** | $5 / $30 per M tokens in/out |
-| `openai/gpt-5.6-terra` | 1,050,000 | **Fast tier (Sonnet-analog) — recommended default** | $2.50 / $15 per M tokens |
-| `openai/gpt-5.6-luna` | 1,050,000 | Economy (Haiku-analog) | $1 / $6 per M tokens; unused by DAAF's two-tier routing (Haiku tier excluded by policy) |
+| `openai/gpt-5.6-terra` | 1,050,000 | **Fast tier (Sonnet-analog) — recommended default** | $1 / $6 per M tokens |
+| `openai/gpt-5.6-luna` | 1,050,000 | Economy (Haiku-analog) | $0.10 / $0.60 per M tokens; unused by DAAF's two-tier routing (Haiku tier excluded by policy) |
 | `openai/gpt-5.5` / `openai/gpt-5.4` | 1,050,000 | Previous strong-tier options | Still work; superseded by the 5.6 family at equal-or-better pricing |
 | `openai/gpt-5.2` | 400,000 | Previous fast-tier option | Smaller window than Terra at similar price |
 | `openai/gpt-5.*-chat` | 128,000 | Not recommended | Small window; avoid for pipeline work |

@@ -708,10 +708,16 @@ models:
     name: "GPT-5.6 Terra"
     provider: openrouter
     cost_tier: "medium"
+    # Pricing updated 2026-08-11: OpenRouter applies a 50% exclusive discount on
+    # top of OpenAI's Terra price cut (input 1.00 vs OpenAI direct 2.00, output
+    # 6.00 vs 12.00), verified against openrouter.ai/openai/gpt-5.6-terra raw HTML.
+    # cached_input NOT captured from the OpenRouter page; 0.10 is INFERRED from the
+    # 10%-of-input convention observed on Luna — provisional pending the next
+    # OpenRouter billing reconciliation. Prior: input 2.50 / output 15.00 / cached 0.25.
     pricing:
-      input: 2.50
-      output: 15.00
-      cached_input: 0.25
+      input: 1.00
+      output: 6.00
+      cached_input: 0.10
     env_overrides:
       ANTHROPIC_DEFAULT_OPUS_MODEL: "openai/gpt-5.6-terra"
       ANTHROPIC_DEFAULT_SONNET_MODEL: "openai/gpt-5.6-terra"
@@ -721,10 +727,14 @@ models:
     name: "GPT-5.6 Luna"
     provider: openrouter
     cost_tier: "medium"
+    # Pricing updated 2026-08-11: OpenRouter applies a 50% exclusive discount on
+    # top of OpenAI's 5x Luna price cut (input 0.10 vs OpenAI direct 0.20, output
+    # 0.60 vs 1.20), verified against openrouter.ai/openai/gpt-5.6-luna raw HTML;
+    # cached_input 0.01 also captured there. Prior: input 1.00 / output 6.00 / cached 0.10.
     pricing:
-      input: 1.00
-      output: 6.00
-      cached_input: 0.10
+      input: 0.10
+      output: 0.60
+      cached_input: 0.01
     env_overrides:
       ANTHROPIC_DEFAULT_OPUS_MODEL: "openai/gpt-5.6-luna"
       ANTHROPIC_DEFAULT_SONNET_MODEL: "openai/gpt-5.6-luna"
@@ -749,20 +759,24 @@ models:
     # scripts/provider_shim/probe_context_ceiling.py and raise if Luna proves higher.
     context_window_tokens: 370000
     actual_billing_treatment: "not_separately_billed"
+    # Pricing updated 2026-08-11: OpenAI cut Luna direct-API list prices 5x
+    # (verified against the pricing table at developers.openai.com/api/docs/pricing).
+    # Prior schedule was 1.00/0.10/1.25/6.00 short, 2.00/0.20/2.50/9.00 long.
+    # Coherence-checked against cost_estimator.LUNA_*_CONTEXT_RATES.
     api_equivalent_pricing:
-      source_url: "https://developers.openai.com/api/docs/models/gpt-5.6-luna"
-      accessed_at: "2026-07-15"
+      source_url: "https://developers.openai.com/api/docs/pricing"
+      accessed_at: "2026-08-11"
       threshold_input_tokens: 272000
       short_context:
-        input: 1.00
-        cached_input: 0.10
-        cache_write: 1.25
-        output: 6.00
+        input: 0.20
+        cached_input: 0.02
+        cache_write: 0.25
+        output: 1.20
       long_context:
-        input: 2.00
-        cached_input: 0.20
-        cache_write: 2.50
-        output: 9.00
+        input: 0.40
+        cached_input: 0.04
+        cache_write: 0.50
+        output: 1.80
     env_overrides:
       ANTHROPIC_DEFAULT_OPUS_MODEL: "gpt-5.6-luna"
       ANTHROPIC_DEFAULT_SONNET_MODEL: "gpt-5.6-luna"
@@ -786,20 +800,23 @@ models:
     # scripts/provider_shim/probe_context_ceiling.py.
     context_window_tokens: 370000
     actual_billing_treatment: "not_separately_billed"
+    # Pricing updated 2026-08-11: OpenAI cut Terra direct-API list prices ~20%
+    # (verified against the pricing table at developers.openai.com/api/docs/pricing).
+    # Prior schedule was 2.50/0.25/3.125/15.00 short, 5.00/0.50/6.25/22.50 long.
     api_equivalent_pricing:
-      source_url: "https://developers.openai.com/api/docs/models/gpt-5.6-terra"
-      accessed_at: "2026-07-29"
+      source_url: "https://developers.openai.com/api/docs/pricing"
+      accessed_at: "2026-08-11"
       threshold_input_tokens: 272000
       short_context:
-        input: 2.50
-        cached_input: 0.25
-        cache_write: 3.125
-        output: 15.00
+        input: 2.00
+        cached_input: 0.20
+        cache_write: 2.50
+        output: 12.00
       long_context:
-        input: 5.00
-        cached_input: 0.50
-        cache_write: 6.25
-        output: 22.50
+        input: 4.00
+        cached_input: 0.40
+        cache_write: 5.00
+        output: 18.00
     env_overrides:
       ANTHROPIC_DEFAULT_OPUS_MODEL: "gpt-5.6-terra"
       ANTHROPIC_DEFAULT_SONNET_MODEL: "gpt-5.6-terra"
@@ -819,9 +836,12 @@ models:
     # Pricing corrected 2026-07-29: the entry originally copied Luna's schedule
     # (5x understatement); now Sol's own published tier, verified against
     # developers.openai.com gpt-5.6-sol.
+    # Re-verified 2026-08-11 against developers.openai.com/api/docs/pricing:
+    # Sol direct-API list prices are UNCHANGED (OpenAI's cut applied to Terra
+    # and Luna only). Refreshed accessed_at; schedule below is unmodified.
     api_equivalent_pricing:
-      source_url: "https://developers.openai.com/api/docs/models/gpt-5.6-sol"
-      accessed_at: "2026-07-29"
+      source_url: "https://developers.openai.com/api/docs/pricing"
+      accessed_at: "2026-08-11"
       threshold_input_tokens: 272000
       short_context:
         input: 5.00
@@ -908,6 +928,26 @@ models:
 #    env_overrides:
 #      CLAUDE_CODE_EFFORT_LEVEL: "max"
 
+# --- Retired display exclusions (drop a model from ALL report surfaces) ---
+# Model NAMES (matching run.model / the retired `name:` field) whose corpus
+# runs must be dropped from EVERY display surface of the results viewer —
+# leaderboard, cost/battery, Key Takeaways aggregation, run counts, scatter,
+# consistency. This is quarantine-equivalent at model granularity: the runs
+# stay immutable on disk (rescoreable), but the generator excludes them at
+# load time (load_display_exclusions() -> load_runs chokepoint in
+# scripts/generate_results_viewer_v2.py). Use this when a model has been
+# retired and the maintainer wants it fully gone from the report rather than
+# shown as archived history (contrast retired_model_pricing below, which KEEPS
+# a retired model visible and merely preserves its list rates). Ignored by the
+# harness and phase runners (they read only `models:`).
+retired_display_exclusions:
+  # 2026-08-11: the pre-0731 (undated) DeepSeek V4 Flash is fully removed from
+  # the report. It was retired from `models:` on 2026-08-02 (superseded by the
+  # DeepSeek V4 Flash 0731 revision, see the REMOVED block above); per user
+  # decision its corpus history is now excluded from display entirely rather
+  # than carried as archived cost history. Runs remain on disk untouched.
+  - "DeepSeek V4 Flash"
+
 # --- Retired model pricing (historical costing only) ---
 # Models retired from the active `models:` list above whose archived corpus
 # runs still need list-rate pricing in the results viewer (a retired entry
@@ -916,10 +956,14 @@ models:
 # viewer's pricing coverage from 30 to 29 corpus models).
 # Read by load_model_pricing() in scripts/generate_results_viewer_v2.py;
 # ignored by the harness and phase runners (they read only `models:`).
-retired_model_pricing:
-  - name: "DeepSeek V4 Flash"
-    # Retired 2026-08-02 (see the REMOVED block above). Rates preserved from
-    # the retired entry (2026-06-11 billing-reconciliation values).
-    pricing:
-      input: 0.132
-      output: 0.263
+#
+# 2026-08-11: the sole entry (DeepSeek V4 Flash) was removed — that model is
+# now a retired_display_exclusions member (above), so it no longer renders and
+# needs no preserved pricing. The section (and its load_model_pricing reader)
+# is retained for the next retire-but-keep-visible model; the key is left
+# commented out so it parses as an empty list rather than null.
+# retired_model_pricing:
+#   - name: "DeepSeek V4 Flash"
+#     pricing:
+#       input: 0.132
+#       output: 0.263

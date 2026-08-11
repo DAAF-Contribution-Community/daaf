@@ -267,11 +267,13 @@ class ModelRegistryTests(unittest.TestCase):
         # own published tier (developers.openai.com), so each entry is asserted
         # against its own rates. Luna keeps asserting the cost_estimator
         # constants to preserve the registry <-> estimator coherence check.
+        # Terra schedule updated 2026-08-11: OpenAI cut Terra list prices ~20%
+        # (prior short 2.50/0.25/3.125/15.00, long 5.00/0.50/6.25/22.50).
         TERRA_SHORT_CONTEXT_RATES = {
-            "input": 2.50, "cached_input": 0.25, "cache_write": 3.125, "output": 15.00,
+            "input": 2.00, "cached_input": 0.20, "cache_write": 2.50, "output": 12.00,
         }
         TERRA_LONG_CONTEXT_RATES = {
-            "input": 5.00, "cached_input": 0.50, "cache_write": 6.25, "output": 22.50,
+            "input": 4.00, "cached_input": 0.40, "cache_write": 5.00, "output": 18.00,
         }
         SOL_SHORT_CONTEXT_RATES = {
             "input": 5.00, "cached_input": 0.50, "cache_write": 6.25, "output": 30.00,

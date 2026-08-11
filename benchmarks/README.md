@@ -600,10 +600,14 @@ next, more expensive one.
    `# REMOVED YYYY-MM-DD` rationale and an evidence pointer (precedent: the GPT `-pro`
    block, models.yaml ≈ § REMOVED 2026-07-10). Archived result sets remain immutable and
    rescoreable (§ 8); removing a live entry never touches its history. **If the retiree
-   has corpus history**, also copy its `name` + `pricing` into the top-level
-   `retired_model_pricing:` section at the bottom of `models.yaml` — the viewer prices
-   historical runs from there (a commented-out entry alone silently drops the model's
-   cost estimate; observed 2026-08-02).
+   has corpus history**, choose one of two dispositions at the bottom of
+   `models.yaml`: to **keep it visible as archived history**, copy its `name` +
+   `pricing` into the top-level `retired_model_pricing:` section — the viewer
+   prices historical runs from there (a commented-out entry alone silently drops
+   the model's cost estimate; observed 2026-08-02). To **remove it from the
+   report entirely**, add its `name` to `retired_display_exclusions:` instead —
+   the generator (v3.8.1) then drops its runs from every display surface at load
+   time (§ 8), leaving the on-disk runs immutable and rescoreable.
 
 10. **Re-sweep the registry counts and key references.** After any add or retire,
     re-derive the active-entry count (`grep -cE '^  - (id|key):' config/models.yaml` —
@@ -847,10 +851,14 @@ rates change.
 **Billing reconciliation pipeline (OpenRouter).** Observed-vs-predicted cost
 calibration runs per campaign against the user-supplied OpenRouter activity
 export (`openrouter_activity_YYYY-MM-DD.csv` at the benchmarks root). Lineage:
-the canonical v1 script (`scripts/reconcile_openrouter_costs.py`) is **stale
-for post-2026-07-27 data** (static slug exclusions); v2 (2026-07-29, Kimi
-K3 / Gemini campaigns) and v3 (2026-08-02, DeepSeek V4 Flash 0731) live as
-campaign-workspace scratch scripts
+the canonical v1 script (`scripts/reconcile_openrouter_costs.py`) was **stale
+for post-2026-07-27 data** (a static gemini-3.5-flash slug exclusion); as of
+2026-08-11 that static exclusion was removed (gemini-3.5-flash prelim spend is
+now caught dynamically like GLM's) and a `PERMASLUG_BASE_OVERRIDES` map was
+added for the dated-slug gotcha, so the v1 script now covers DeepSeek V4 Flash
+0731 and Gemini 3.5 Flash directly. The v2 (2026-07-29, Kimi
+K3 / Gemini campaigns) and v3 (2026-08-02, DeepSeek V4 Flash 0731) campaign
+lineage lives as campaign-workspace scratch scripts
 (`research/2026-07-18_FrameworkDev_DAAFBench_StaticAudit_Fable/scripts/scratch/19-22_billing-*-v2.py`
 and
 `research/2026-08-02_FrameworkDev_DAAFBench_DeepSeek0731/scripts/scratch/01-05_billing-*-v3.py`),
@@ -868,7 +876,8 @@ entries stay marked provisional until reconciled). **Dated-slug gotcha
 (`deepseek/deepseek-v4-flash-20260731`) while registry slugs use the short
 form (`-0731`); the blind date-strip regex would collide such models onto
 retired undated slugs, so new dated models need an explicit permaslug →
-base-slug override in the classify step.
+base-slug override in the classify step (v1: the `PERMASLUG_BASE_OVERRIDES`
+map in `scripts/reconcile_openrouter_costs.py`).
 
 ### ChatGPT-subscription dual ledger
 
@@ -881,13 +890,22 @@ The monthly subscription is not amortized across runs by default.
 
 A separate `api_equivalent` ledger answers a counterfactual question: what the
 observed token mix would cost at OpenAI's standard GPT-5.6 Luna API list prices.
-The schedule is labeled **accessed 2026-07-15** because the source publishes no
-page-level effective date:
+The schedule is labeled **accessed 2026-08-11** because the source publishes no
+page-level effective date. OpenAI's 5x cut to Luna's direct-API list prices was
+observed on this date (prior schedule: $1.00/$0.10/$1.25/$6.00 short,
+$2.00/$0.20/$2.50/$9.00 long, accessed 2026-07-15):
 
 | Request tier | Ordinary input | Cached input | Cache write | Output |
 |--------------|---------------:|-------------:|------------:|-------:|
-| At or below 272,000 request input tokens | $1.00/M | $0.10/M | $1.25/M | $6.00/M |
-| Above 272,000 request input tokens | $2.00/M | $0.20/M | $2.50/M | $9.00/M |
+| At or below 272,000 request input tokens | $0.20/M | $0.02/M | $0.25/M | $1.20/M |
+| Above 272,000 request input tokens | $0.40/M | $0.04/M | $0.50/M | $1.80/M |
+
+Note (2026-08-11): the api-equivalent ledger above prices against OpenAI's
+**direct-API** list rates. The separate OpenRouter lane (`openai/gpt-5.6-*`
+entries in `models.yaml`) currently applies an additional **50% exclusive
+discount** to Terra and Luna on top of OpenAI's cut — OpenRouter Luna is
+$0.10/M input / $0.60/M output, Terra $1.00/M input / $6.00/M output — while Sol
+matches OpenAI direct on both lanes.
 
 The `>272,000` threshold applies the long-context prices to the entire request.
 `output_tokens` already includes hidden reasoning tokens, so reasoning is never
@@ -913,7 +931,7 @@ published credit schedule has no universal USD-per-credit conversion. Record
 throttling or observed allowance movement separately; never infer a constant
 cost per message.
 
-Sources: [OpenAI GPT-5.6 Luna model and API pricing](https://developers.openai.com/api/docs/models/gpt-5.6-luna), [OpenAI reasoning-token semantics](https://developers.openai.com/api/docs/guides/reasoning), [OpenAI prompt-cache semantics](https://developers.openai.com/api/docs/guides/prompt-caching), and [OpenAI Codex plans, limits, and credits](https://learn.chatgpt.com/docs/pricing), all pricing/limit facts accessed 2026-07-15.
+Sources: [OpenAI GPT-5.6 Luna model and API pricing](https://developers.openai.com/api/docs/models/gpt-5.6-luna), [OpenAI reasoning-token semantics](https://developers.openai.com/api/docs/guides/reasoning), [OpenAI prompt-cache semantics](https://developers.openai.com/api/docs/guides/prompt-caching), and [OpenAI Codex plans, limits, and credits](https://learn.chatgpt.com/docs/pricing), all pricing/limit facts accessed 2026-08-11 (GPT-5.6 API list rates re-verified against the [OpenAI API pricing page](https://developers.openai.com/api/docs/pricing) on that date; Codex plan/limit facts unchanged since 2026-07-15).
 
 ## 8. Results & Viewer
 
@@ -1002,7 +1020,10 @@ as a parallel ledger would invite confusion over which numbers are canonical. Th
 without a second reporting track.
 
 **Viewer generation.** `scripts/generate_results_viewer_v2.py` produces the
-viewer. The official artifact is a **multi-file bundle directory**
+viewer. **Before regenerating**, if the corpus changed (new/retired model,
+pricing update, rescore) add a dated entry to `benchmarks/CHANGELOG.md` (format
+contract under **Viewer design → Changelog** below) so the in-report changelog
+stays current. The official artifact is a **multi-file bundle directory**
 `daafbench_YYYY-MM-DD[suffix]/` (the hosted website build, with lazy-loaded
 transcripts by default); `--single-file` emits a self-contained monolith for
 offline `file://` auditing, which as of generator v3.4.0 is **transcript-lite
@@ -1054,6 +1075,23 @@ A kept result set may carry a `QUARANTINE_NOTE.md` at its root (added
 `summary.json` (enriched from `manifest.json`/`runs/`), so a stray `.md` at the
 set root is never consulted.
 
+**Model-level display exclusion (generator v3.8.1).** Where quarantine operates
+at run/result-set granularity (the `_quarantine*` convention above),
+`retired_display_exclusions:` in `config/models.yaml` operates at **model
+granularity**: a top-level list of model *names* whose corpus runs are dropped
+from **every** report surface (leaderboard, cost/battery, Key Takeaways, run
+counts, scatter, consistency). `load_display_exclusions()` reads the list and
+`load_runs()` skips those runs at the same chokepoint as timed-out/instant-exit
+runs, so no aggregate ever observes them; the runs stay immutable on disk and
+remain rescoreable. Use this to fully retire a superseded model from the report
+rather than carrying it as archived history. It is the deliberate complement of
+`retired_model_pricing:` (§ 4), which does the opposite — *keeps* a retired
+model visible and merely preserves its list rates. First use (2026-08-11): the
+pre-0731 undated **DeepSeek V4 Flash**, superseded 2026-08-02 by DeepSeek V4
+Flash 0731, is excluded (and its obsolete `retired_model_pricing` entry
+removed). Expect the hero run count, `Total runs`, and consistency denominators
+to drop accordingly — that is correct.
+
 > **Stale-bundle caveat (2026-07-28).** Viewer bundles generated *before*
 > 2026-07-28 embed the pre-correction dispatch_compliance criteria (the
 > case-sensitive exact-label matching, and the `TASK_KEYWORDS` set without
@@ -1076,6 +1114,31 @@ component are scored on available components with a visible "partial"
 marker. Cost vs. Performance has a phase-basis selector. To add a new
 phase, follow the guide above `PHASE_MAP` in the generator.
 
+**Changelog (`CHANGELOG.md`, generator v3.8.0).** `benchmarks/CHANGELOG.md` is
+a curated, public-facing, date-keyed record of notable report changes — new
+models, pricing updates, scoring changes, display refinements, and corpus
+hygiene. It is the **single source** the viewer reads for its in-report
+changelog; keep it as release notes (one plain-language line per event), not a
+dev log. **Format contract** (parsed by `load_changelog()` — a small inline
+converter, no markdown dependency): `## YYYY-MM-DD` date headings **newest
+first**, `- ` bullets, each opening with a `**Category**` bold tag
+(**Models** / **Pricing** / **Scoring** / **Display** / **Corpus**); the H1
+title and any intro prose before the first date heading are ignored. Entry
+text must not contain double-underscore substitution tokens (the
+`__TOKEN__` form) — the template substitution pass would rewrite them. At build
+time the generator substitutes two tokens — `__CHANGELOG_HTML__` (the modal
+body) and `__CHANGELOG_LATEST__` (the newest entry date, shown on the hero
+button; date-keyed only, no version number). The report renders a quiet pill
+button beside the "Report Updated" line that opens a scrollable, mobile-
+friendly modal. **Fail-soft** (mirroring the reconciliation-JSON pattern): a
+missing, unreadable, or entry-less `CHANGELOG.md` prints a `WARNING`,
+substitutes empty strings, and the button and modal are omitted — the build
+never fails. The console reports `Changelog: N entries, latest YYYY-MM-DD`.
+**When you change the corpus, land a changelog entry:** onboarding or retiring
+a model, changing pricing, rescoring, or a notable display change should each
+add a dated bullet (under the applicable category) before you regenerate the
+viewer.
+
 **Notable internals:**
 
 - **Global rep renumbering:** runs from separate `--reps 1` batches all
@@ -1094,10 +1157,12 @@ phase, follow the guide above `PHASE_MAP` in the generator.
 
 **Template architecture:** data-prep Python + placeholder substitution into
 `scripts/viewer_template.html` (bare `__DATA_JSON__` and
-`__PRECOMPUTED_JSON__` tokens; substitution order is load-bearing, with small
-controlled placeholders filled first and `__DATA_JSON__` last so transcript
-content can never be treated as a placeholder). The generator is the single
-entry point, no build step. JS is vanilla, IIFE-wrapped, ES5-style; headline
+`__PRECOMPUTED_JSON__` tokens, the small controlled placeholders
+`__GENERATED_DISPLAY__` / `__HERO_MODELS__` / `__HERO_RUNS__`, and the
+changelog tokens `__CHANGELOG_HTML__` / `__CHANGELOG_LATEST__`; substitution
+order is load-bearing, with small controlled placeholders filled first and
+`__DATA_JSON__` last so transcript content can never be treated as a
+placeholder). The generator is the single entry point, no build step. JS is vanilla, IIFE-wrapped, ES5-style; headline
 numbers are precomputed in Python and embedded so prose and charts cannot
 drift apart.
 
