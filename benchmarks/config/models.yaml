@@ -345,6 +345,55 @@ models:
       ANTHROPIC_DEFAULT_SONNET_MODEL: "qwen/qwen3.6-27b:venice/fp8"
       CLAUDE_CODE_SUBAGENT_MODEL: "qwen/qwen3.6-27b:venice/fp8"
 
+  # Added 2026-08-12 (day-of-release onboarding). Verified online 2026-08-12
+  # from GET /api/v1/models/qwen/qwen3.8-2.4t-a95b/endpoints: single endpoint
+  # (tag digitalocean, quantization unknown/undisclosed, context_length 262144,
+  # uptime_last_30m null — listing too new to have uptime data) lists prompt
+  # $2.00/M, completion $6.00/M, input_cache_read $0.20/M. Single upstream
+  # provider as of access date, so no ":provider" pin suffix exists — bare
+  # slug is correct (Kimi K3 precedent); wire_id omitted (comparison defaults
+  # to id). Raw endpoint listing archived:
+  # research/2026-08-12_FrameworkDev_DAAFBenchGrokDeepSeek/fetches/.
+  # Rates are published list prices, provisional until billing reconciliation;
+  # day-zero listings warrant a re-check once more providers pick up the slug
+  # (a cheaper endpoint appearing later would NOT move this entry without a
+  # deliberate re-pin decision).
+  #
+  # ENDPOINT NOT YET BENCHMARK-VIABLE (observed 2026-08-12): three dc-01 wire
+  # probes all failed instantly with "API Error: 400 Provider returned error"
+  # on the first live turn ($0 billed, no child transcript; results/
+  # 20260812_163508_3f158d — quarantined 2026-08-12 as
+  # _quarantine_2026-08-12_onboardingprobes_163508_3f158d, rep-count hygiene —
+  # plus _164217_42cb21, _164931_36cc48). Direct probes of
+  # the same Anthropic-compat route succeed on every isolated feature: tiny
+  # prompts, ~90k-token bulk prompts, thinking-block history, tools +
+  # cache_control, system + tools (research/2026-08-12_FrameworkDev_
+  # DAAFBenchGrokDeepSeek session). The 400 is specific to the full Claude
+  # Code payload (combined system prompt + full tool schemas + large
+  # checkpoint history) on the day-zero DigitalOcean endpoint; upstream 429
+  # rate-limiting was also observed during probing. Re-probe 2026-08-12
+  # ~19:27 UTC (results/20260812_192714_b6b8f1): still failing, but the mode
+  # shifted from instant 400 rejection to a 502 upstream error after ~209s —
+  # endpoint unstable rather than request-incompatible; keep waiting.
+  # Zero-cost preflight and
+  # the registry route tests PASS for this key — only full-payload live
+  # traffic fails, which is why the entry stays active rather than commented
+  # out. Re-probe after the endpoint matures or additional providers pick up
+  # the slug before running any battery. wire_id unobserved for the same reason (bare slug, so
+  # comparison defaults to id when a run eventually succeeds).
+  - id: "qwen/qwen3.8-2.4t-a95b"
+    name: "Qwen 3.8 2.4T A95B"
+    provider: openrouter
+    cost_tier: "medium"
+    pricing:
+      input: 2.00
+      output: 6.00
+      cached_input: 0.20
+    env_overrides:
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "qwen/qwen3.8-2.4t-a95b"
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "qwen/qwen3.8-2.4t-a95b"
+      CLAUDE_CODE_SUBAGENT_MODEL: "qwen/qwen3.8-2.4t-a95b"
+
   - id: "google/gemma-4-31b-it:venice/bf16"
     # wire_id OBSERVED 2026-07-26 (results/20260726_003234, 3 reps: purity
     # verified, bare slug on the wire while routing id carried the pin)
@@ -446,7 +495,10 @@ models:
   #     CLAUDE_CODE_SUBAGENT_MODEL: "deepseek/deepseek-v4-flash:atlas-cloud/fp8"
 
   - id: "deepseek/deepseek-v4-flash-0731:novita/fp8"
-    # wire_id OBSERVED 2026-08-02 (results/20260802_115807_682041/runs/
+    # wire_id OBSERVED 2026-08-02 (results/20260802_115807_682041 — set
+    # quarantined 2026-08-12 as
+    # _quarantine_2026-08-12_onboardingprobe_115807_682041, rep-count
+    # hygiene; see its QUARANTINE_NOTE.md — /runs/
     # dc-01_DeepSeek_V4_Flash_0731_0/result.json recorded
     # observed_child_model_ids_raw = ["deepseek/deepseek-v4-flash-0731"] while
     # the routing id carried the :novita/fp8 pin; purity_status verified).
@@ -472,6 +524,42 @@ models:
       ANTHROPIC_DEFAULT_OPUS_MODEL: "deepseek/deepseek-v4-flash-0731:novita/fp8"
       ANTHROPIC_DEFAULT_SONNET_MODEL: "deepseek/deepseek-v4-flash-0731:novita/fp8"
       CLAUDE_CODE_SUBAGENT_MODEL: "deepseek/deepseek-v4-flash-0731:novita/fp8"
+
+  # Added 2026-08-12 (dated revision of DeepSeek V4 Pro; the undated
+  # deepseek/deepseek-v4-pro entry above remains ACTIVE by maintainer decision
+  # 2026-08-12 — run both and compare before deciding on retirement, unlike the
+  # Flash → Flash 0731 supersession which retired the undated slug).
+  # Verified online 2026-08-12 from GET /api/v1/models/deepseek/
+  # deepseek-v4-pro-0813/endpoints: single first-party endpoint (tag deepseek,
+  # quantization unknown, context_length 1048576, uptime_last_30m 100) lists
+  # prompt $0.435/M, completion $0.87/M, input_cache_read $0.003625/M. Single
+  # upstream provider as of access date, so no ":provider" pin suffix exists —
+  # bare slug is correct (Kimi K3 precedent); wire_id omitted (comparison
+  # defaults to id). Raw endpoint listing archived:
+  # research/2026-08-12_FrameworkDev_DAAFBenchGrokDeepSeek/fetches/.
+  #
+  # PRICING RECONCILED 2026-08-12: billed/harness ratio 1.04 on the full
+  # 4-phase battery's billed token mix (derived/openrouter_reconciliation_
+  # 2026-08-12.json) — list rates below predict billing within tolerance and
+  # are retained. The undated sibling's ~3.3x understatement at these same
+  # list rates (2026-06-10) did NOT recur on this endpoint. Billing permaslug
+  # observed: deepseek/deepseek-v4-pro-20260813 (dated; routing slug
+  # unchanged; mapped via PERMASLUG_BASE_OVERRIDES in
+  # scripts/reconcile_openrouter_costs.py — without that override its rows
+  # misattribute to the still-active undated Pro entry). cost_tier held at
+  # medium pending a fuller cost picture.
+  - id: "deepseek/deepseek-v4-pro-0813"
+    name: "DeepSeek V4 Pro 0813"
+    provider: openrouter
+    cost_tier: "medium"
+    pricing:
+      input: 0.435
+      output: 0.87
+      cached_input: 0.003625
+    env_overrides:
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "deepseek/deepseek-v4-pro-0813"
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "deepseek/deepseek-v4-pro-0813"
+      CLAUDE_CODE_SUBAGENT_MODEL: "deepseek/deepseek-v4-pro-0813"
 
   - id: "google/gemini-3.1-pro-preview:google-vertex"
     # wire_id OBSERVED 2026-07-25 (results/20260725_200704/runs/
@@ -663,6 +751,42 @@ models:
       ANTHROPIC_DEFAULT_OPUS_MODEL: "thinkingmachines/inkling:deepinfra/fp8"
       ANTHROPIC_DEFAULT_SONNET_MODEL: "thinkingmachines/inkling:deepinfra/fp8"
       CLAUDE_CODE_SUBAGENT_MODEL: "thinkingmachines/inkling:deepinfra/fp8"
+
+  # Added 2026-08-12 (Grok onboarding — first xAI entry in the registry).
+  # Verified online 2026-08-12 from GET /api/v1/models/x-ai/grok-4.6/endpoints:
+  # four endpoints, all first-party xAI, all context_length 500000, all
+  # uptime_last_30m 100, quantization unknown (not disclosed): xai and xai/zdr
+  # at prompt $2.00/M, completion $6.00/M, input_cache_read $0.50/M; the
+  # xai/priority and xai/zdr/priority tags at exactly 2x those rates. Endpoint
+  # pinned to xai/zdr per maintainer choice (zero-data-retention guarantee at
+  # zero price premium over the base xai tag; priority tiers not needed for
+  # benchmark traffic). Raw endpoint listing archived:
+  # research/2026-08-12_FrameworkDev_DAAFBenchGrokDeepSeek/fetches/.
+  # PRICING RECONCILED 2026-08-12: billed/harness ratio 1.06 on the full
+  # 4-phase battery's billed token mix (derived/openrouter_reconciliation_
+  # 2026-08-12.json) — list rates below predict billing within tolerance and
+  # are retained. Billing permaslug observed: x-ai/grok-4.6-20260810 (dated;
+  # routing slug unchanged; the generic date-strip attributes it correctly).
+  - id: "x-ai/grok-4.6:xai/zdr"
+    # wire_id OBSERVED 2026-08-12 (results/20260812_163508_3f158d — set
+    # quarantined 2026-08-12 as
+    # _quarantine_2026-08-12_onboardingprobes_163508_3f158d, rep-count
+    # hygiene; see its QUARANTINE_NOTE.md — /runs/
+    # dc-01_Grok_4.6_0/result.json: observed_child_model_ids_raw =
+    # ["x-ai/grok-4.6"] while the routing id carried the :xai/zdr pin;
+    # purity_status verified).
+    wire_id: "x-ai/grok-4.6"
+    name: "Grok 4.6"
+    provider: openrouter
+    cost_tier: "medium"
+    pricing:
+      input: 2.00
+      output: 6.00
+      cached_input: 0.50
+    env_overrides:
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "x-ai/grok-4.6:xai/zdr"
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "x-ai/grok-4.6:xai/zdr"
+      CLAUDE_CODE_SUBAGENT_MODEL: "x-ai/grok-4.6:xai/zdr"
 
   # --- OpenAI GPT models (via OpenRouter Anthropic-compatible endpoint) ---
   #
@@ -941,6 +1065,14 @@ models:
 # a retired model visible and merely preserves its list rates). Ignored by the
 # harness and phase runners (they read only `models:`).
 retired_display_exclusions:
+  # 2026-08-12: Qwen 3.8 2.4T A95B — TEMPORARY display quarantine, not a
+  # retirement. Its only corpus runs are failed $0 endpoint probes (400/502
+  # provider errors, no model behavior observed — see the entry's ENDPOINT
+  # NOT YET BENCHMARK-VIABLE note above); as a zero-score corpus model they
+  # distorted the leaderboard's range-quartile tier breaks (user-observed
+  # 2026-08-12). REMOVE this line once the endpoint stabilizes and real
+  # battery runs land.
+  - "Qwen 3.8 2.4T A95B"
   # 2026-08-11: the pre-0731 (undated) DeepSeek V4 Flash is fully removed from
   # the report. It was retired from `models:` on 2026-08-02 (superseded by the
   # DeepSeek V4 Flash 0731 revision, see the REMOVED block above); per user

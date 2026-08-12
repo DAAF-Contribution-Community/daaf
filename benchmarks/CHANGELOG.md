@@ -5,6 +5,12 @@ report — new models, pricing updates, scoring changes, display refinements,
 and corpus hygiene. Newest entries first. Dates are the day each change landed
 in the public report.
 
+## 2026-08-12
+
+- **Models** Added xAI Grok 4.6 and DeepSeek V4 Pro (0813). The preview
+  version of DeepSeek V4 Pro stays in the matrix for side-by-side comparison
+  with its revision.
+
 ## 2026-08-11
 
 - **Pricing** GPT-5.6 Terra and Luna are now cheaper: OpenAI cut their list

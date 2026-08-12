@@ -17,13 +17,13 @@ Backburnered models (default: Gemma 4 31B, Gemma 4 26B, GPT-5.6 Luna
 (ChatGPT Subscription)) are listed in a separate deferred section, not the
 active queue.
 
-Criterion-invalid cases (default: dc-11, dc-12) are excluded from the queue
-entirely: the 2026-07-18 static criteria audit ruled their evaluated criteria
-NEEDS REWORK (invalid at birth), and they were excluded from the G1R run set
-on the same grounds — re-running them would produce runs whose scoring
-criteria are known-bad. Their timed-out reps still count in the corpus
-baseline tally (the scan reports ground truth); they are omitted only from
-the emitted commands, with an explicit exclusion line in the summary.
+No cases are excluded by default (maintainer decision 2026-08-12: the
+data-ingest dispatch cases dc-11/dc-12 are VALID and retained — this
+supersedes the 2026-07-18 static criteria audit's NEEDS REWORK ruling and
+the G1R-era default exclusion). --exclude-cases remains available for ad hoc
+scoping; excluded cases' timed-out reps still count in the corpus baseline
+tally (the scan reports ground truth) and are omitted only from the emitted
+commands, with an explicit exclusion line in the summary.
 
 This tool is READ-ONLY: it opens result.json files and models.yaml and writes
 nothing under benchmarks/results/. The only write path is the optional --out
@@ -76,11 +76,11 @@ EXPECTED_TIMED_OUT = 401
 
 DEFAULT_BACKBURNER = "Gemma 4 31B,Gemma 4 26B,GPT-5.6 Luna (ChatGPT Subscription)"
 
-# Cases whose evaluated criteria the 2026-07-18 static audit ruled invalid
-# (NEEDS REWORK; excluded from the G1R run set). Re-running them would spend
-# tokens on runs whose scoring criteria are known-bad, so they are excluded
-# from the emitted queue by default (override with --exclude-cases "").
-DEFAULT_EXCLUDED_CASES = "dc-11,dc-12"
+# No default exclusions (maintainer decision 2026-08-12): dc-11/dc-12 are
+# valid, retained cases — this supersedes the 2026-07-18 static audit's
+# NEEDS REWORK ruling that previously excluded them here by default. Use
+# --exclude-cases for ad hoc scoping only.
+DEFAULT_EXCLUDED_CASES = ""
 
 parser = argparse.ArgumentParser(
     description="Emit the DAAFBench timed-out re-run queue (read-only scanner). "
@@ -91,11 +91,10 @@ parser.add_argument("--backburner", type=str, default=DEFAULT_BACKBURNER,
                          f"(default: {DEFAULT_BACKBURNER!r}).")
 parser.add_argument("--exclude-cases", type=str, default=DEFAULT_EXCLUDED_CASES,
                     help="Comma-separated case ids to EXCLUDE from the emitted "
-                         "queue (still counted in the baseline tally). Default "
-                         f"{DEFAULT_EXCLUDED_CASES!r}: criterion-invalid per the "
-                         "2026-07-18 static criteria audit (NEEDS REWORK; "
-                         "excluded from the G1R run set). Pass an empty string "
-                         "to disable.")
+                         "queue (still counted in the baseline tally). Default: "
+                         "none — dc-11/dc-12 are valid, retained cases per the "
+                         "2026-08-12 maintainer decision, superseding the "
+                         "2026-07-18 audit's default exclusion.")
 parser.add_argument("--out", type=str, default=None,
                     help="Optional path to write the queue as JSON for tooling. "
                          "This is the only write path; the scan is read-only.")
@@ -154,7 +153,7 @@ timed_rerun_counts = defaultdict(int)
 stalled_rerun_counts = defaultdict(int)
 unknown_names = set()
 skipped_unmapped_case = 0
-# case_id -> reps (either class) omitted from the queue as criterion-invalid.
+# case_id -> reps (either class) omitted from the queue via --exclude-cases.
 excluded_case_reps = Counter()
 
 for path in result_files:
@@ -180,7 +179,7 @@ for path in result_files:
         skipped_unmapped_case += 1
         continue
     battery, runner = battery_runner
-    # INTENT: keep criterion-invalid cases out of the emitted queue while the
+    # INTENT: keep --exclude-cases cases out of the emitted queue while the
     #         baseline tally above stays raw (scan reports ground truth).
     if case_id in excluded_cases:
         excluded_case_reps[case_id] += 1
@@ -277,8 +276,7 @@ print(f"Self-check     : expected pre-campaign baseline "
 if excluded_case_reps:
     _excl_detail = ", ".join(f"{c} ({n})" for c, n in sorted(excluded_case_reps.items()))
     print(f"Excluded cases : {sum(excluded_case_reps.values())} timed-out rep(s) "
-          f"omitted from the queue — criterion-invalid per the 2026-07-18 "
-          f"static audit: {_excl_detail}")
+          f"omitted from the queue per --exclude-cases: {_excl_detail}")
 if skipped_unmapped_case:
     print(f"WARNING        : {skipped_unmapped_case} timed-out run(s) had an "
           f"unmapped case-id prefix and were omitted from the queue")

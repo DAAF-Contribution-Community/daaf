@@ -81,8 +81,18 @@ EXCLUDED_BASE_SLUGS = ()
 # `deepseek/deepseek-v4-flash`, which matches no active entry — the undated
 # Flash was retired 2026-08-02 — and would collide with the retired revision's
 # permaslug `deepseek/deepseek-v4-flash-20260423`).
+# 2026-08-12: DeepSeek V4 Pro 0813 — billing permaslug
+# `deepseek/deepseek-v4-pro-20260813` must map to registry base
+# `deepseek/deepseek-v4-pro-0813`. Sharper failure mode than the Flash case:
+# the generic strip yields `deepseek/deepseek-v4-pro`, which IS an active
+# registry entry (the undated Pro was deliberately kept for side-by-side
+# comparison), so without this override the 0813 revision's billed rows
+# silently attribute to the undated Pro and contaminate a live model's
+# calibration ratio (observed 2026-08-12: 1,082 rows misattributed before
+# this override landed).
 PERMASLUG_BASE_OVERRIDES = {
     "deepseek/deepseek-v4-flash-20260731": "deepseek/deepseek-v4-flash-0731",
+    "deepseek/deepseek-v4-pro-20260813": "deepseek/deepseek-v4-pro-0813",
 }
 
 REFERENCE_MODEL = "Opus 4.8"  # hunger-multiplier reference

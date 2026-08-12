@@ -1328,7 +1328,7 @@ nav.site-nav{
    <div class="two-bars">
     <!-- Hero bottom-line: user-ratified VERBATIM in the 2026-07-29 voice pass
          (v3.7.1) — do not reword. -->
-    <p>The bottom line for practical use of DAAF at this time: <b>Fable 5 is the undisputed top performer</b> if budget is not a constraint. Those who are budget-conscious should feel comfortable relying on <b>GPT-5.6 Sol or Sonnet 5</b> for strong performance at a more moderate cost, and <b>GPT-5.6 Luna</b> delivers most of that capability for a fraction of the spend. For self-hosting/full-control/hermetic systems, all of the leading open-weights are now viable options: <b>Kimi K3</b> sits at the top of that pack on capability when price and model size are not a constraint, while <b>GLM 5.2 and DeepSeek V4</b> are the economical choices. There may nonetheless be benefits to using more generally powerful models not explicitly tracked by this benchmark (e.g., actual coding quality, analytic fidelity, etc.) if your budget and use limits allow.</p>
+    <p>The bottom line for practical use of DAAF at this time: <b>Fable 5 is the undisputed top performer</b> if budget is not a constraint. Those who are budget-conscious should feel comfortable relying on <b>Grok 4.6, GPT-5.6 Sol, or Sonnet 5</b> for strong performance at a more moderate cost, and <b>GPT-5.6 Luna</b> delivers most of that capability for a tiny fraction of the spend. For self-hosting/full-control/hermetic systems, all of the leading open-weights are now viable options: <b>Kimi K3</b> sits at the top of that pack on capability when price and model size are not a constraint, while <b>GLM 5.2 and DeepSeek V4</b> are the economical choices. There may nonetheless be benefits to using more generally powerful models not explicitly tracked by this benchmark (e.g., actual coding quality, analytic fidelity, etc.) if your budget and use limits allow.</p>
   </div>
 
 </section>
@@ -1358,7 +1358,7 @@ nav.site-nav{
      generator's dev-guide comment block.) -->
 <section class="doc-section" id="takeaways">
   <div class="sec-eyebrow">The Headlines</div>
-  <h2>Key Takeaways (July 2026)</h2>
+  <h2>Key Takeaways (August 2026)</h2>
 
   <div class="kt-item">
     <!-- T1 headline + body: user HAND-EDITED directly in the 2026-07-29
@@ -1374,7 +1374,7 @@ nav.site-nav{
     roughly <b><span id="kt-t1-opus5cost">&mdash;</span>% more</b> to run for a hair lower score, so Fable
     simply dominates it. (The gap between them is small enough that sample noise matters; the cost gap is not.)
     The bigger story is who else reaches the top: Tier 1 now also holds
-    GPT-5.6 Sol (<span id="kt-t1-sol">&mdash;</span>) and the open-weights Kimi K3 (<span id="kt-t1-kimi">&mdash;</span>), making clear that Anthropic has no monopoly on frontier compute capability for research orchestration.</p>
+    Grok 4.6 (<span id="kt-t1-grok">&mdash;</span>), GPT-5.6 Sol (<span id="kt-t1-sol">&mdash;</span>), and the open-weights Kimi K3 (<span id="kt-t1-kimi">&mdash;</span>), making clear that Anthropic has no monopoly on frontier compute capability for research orchestration.</p>
   </div>
 
   <div class="kt-item">
@@ -1383,15 +1383,14 @@ nav.site-nav{
          ratification) — the strongest anchor tier; do not reword. -->
     <div class="kt-claim">2. The efficiency frontier runs through four different model creators.</div>
     <p>The efficiency frontier is the set of models no other model beats on <em>both</em> cost and conformance
-    at once (basically: the picks that are never simply outclassed by something cheaper). Six models make it, and they
+    at once (basically: the picks that are never simply outclassed by something cheaper). Five models make it, and they
     come from four different providers: <b>Gemma 4 31B</b> (<span id="kt-fr-gemma-s">&mdash;</span> at
-    <span id="kt-fr-gemma-c">&mdash;</span> Opus 4.8&rsquo;s battery cost), <b>DeepSeek V4 Flash 0731</b>
-    (<span id="kt-fr-dsflash-s">&mdash;</span> at <span id="kt-fr-dsflash-c">&mdash;</span>), <b>GPT-5.6 Luna</b>
+    <span id="kt-fr-gemma-c">&mdash;</span> Opus 4.8&rsquo;s battery cost), <b>GPT-5.6 Luna</b>
     (<span id="kt-fr-luna-s">&mdash;</span> at <span id="kt-fr-luna-c">&mdash;</span>), <b>Sonnet 5</b>
-    (<span id="kt-fr-sonnet5-s">&mdash;</span> at <span id="kt-fr-sonnet5-c">&mdash;</span>), <b>GPT-5.6 Sol</b>
-    (<span id="kt-fr-sol-s">&mdash;</span> at <span id="kt-fr-sol-c">&mdash;</span>), and <b>Fable 5</b>
-    (<span id="kt-fr-fable-s">&mdash;</span> at <span id="kt-fr-fable-c">&mdash;</span>). Two of the six --
-    Gemma 4 31B and DeepSeek V4 Flash 0731 -- are open-weights, and Gemma can even be run on sufficiently powerful home computers. The practical lesson is that no single
+    (<span id="kt-fr-sonnet5-s">&mdash;</span> at <span id="kt-fr-sonnet5-c">&mdash;</span>), <b>Grok 4.6</b>
+    (<span id="kt-fr-grok-s">&mdash;</span> at <span id="kt-fr-grok-c">&mdash;</span>), and <b>Fable 5</b>
+    (<span id="kt-fr-fable-s">&mdash;</span> at <span id="kt-fr-fable-c">&mdash;</span>). The frontier&rsquo;s one
+    open-weight, Gemma 4 31B, can even be run on sufficiently powerful home computers. The practical lesson is that no single
     vendor owns price-performance: the right pick depends on <b>which budget point you are shopping at</b> (and given imprecision in these estimates, note some fluidity in these recommendations; see the caveats below).</p>
   </div>
 
@@ -1433,8 +1432,9 @@ nav.site-nav{
          "next crossover" closing sentence was deliberately removed by the
          user) — the strongest anchor tier; do not reword. -->
     <div class="kt-claim">5. Open-weight models are no longer the compromise option.</div>
-    <p>Open-weights hold the budget end of the frontier outright: Gemma 4 31B and DeepSeek V4 Flash 0731 are the two
-    cheapest non-dominated points on the entire chart. GLM 5.2 remains the natural <b>self-hosting</b> pick for
+    <p>Open-weights still anchor the budget end of the frontier: Gemma 4 31B is the cheapest non-dominated point
+    on the entire chart, and DeepSeek V4 Flash 0731 sits just off the frontier as a genuinely capable near-miss at a
+    similar price. GLM 5.2 remains the natural <b>self-hosting</b> pick for
     teams that want full control, at <span id="kt-t5-glm">&mdash;</span> composite for about
     <b><span id="kt-t5-glmcost">&mdash;</span></b> of Opus 4.8&rsquo;s battery cost; and Kimi K3 now tops the
     open-weights pack on raw capability (<span id="kt-t5-kimi">&mdash;</span>, squarely in Tier 1) when price and
@@ -2635,25 +2635,29 @@ function fillTakeaways(){
   var SOL="GPT-5.6 Sol (ChatGPT Subscription)";
   var LUNA="GPT-5.6 Luna (ChatGPT Subscription)";
 
-  /* T1 — the new three-provider top tier: Fable's headline, Opus 5 close
-     behind but pricier, and Sol + Kimi K3 joining Tier 1. */
+  /* T1 — the multi-provider top tier: Fable's headline, Opus 5 close
+     behind but pricier, and Grok 4.6 + Sol + Kimi K3 joining Tier 1. */
   var fable=score("Fable 5");
   if(fable!=null) set("kt-t1-fable",pct1(fable));
   var opus5=score("Opus 5");
   if(opus5!=null) set("kt-t1-opus5",pct1(opus5));
   var fBat=batCost("Fable 5"), o5Bat=batCost("Opus 5");
   if(fBat!=null&&o5Bat!=null) set("kt-t1-opus5cost",String(Math.round((o5Bat/fBat-1)*100)));
+  var grok=score("Grok 4.6");
+  if(grok!=null) set("kt-t1-grok",pct1(grok));
   var sol=score(SOL);
   if(sol!=null) set("kt-t1-sol",pct1(sol));
   var kimi=score("Kimi K3");
   if(kimi!=null) set("kt-t1-kimi",pct1(kimi));
 
-  /* T2 — the six efficiency-frontier points, each with its Perfect
-     composite and its relative battery-cost multiplier (vs Opus 4.8). Static
-     names in the prose; live score + cost figures here so a repriced or
-     reshuffled frontier tracks automatically. */
-  [["gemma","Gemma 4 31B"],["dsflash","DeepSeek V4 Flash 0731"],["luna",LUNA],
-   ["sonnet5","Sonnet 5"],["sol",SOL],["fable","Fable 5"]].forEach(function(p){
+  /* T2 — the five efficiency-frontier points (2026-08-12: Grok 4.6 joined,
+     displacing GPT-5.6 Sol and DeepSeek V4 Flash 0731; the kt-fr-sol and
+     kt-fr-dsflash span pairs were retired with the prose), each with its
+     Perfect composite and its relative battery-cost multiplier (vs Opus
+     4.8). Static names in the prose; live score + cost figures here so a
+     repriced or reshuffled frontier tracks automatically. */
+  [["gemma","Gemma 4 31B"],["luna",LUNA],
+   ["sonnet5","Sonnet 5"],["grok","Grok 4.6"],["fable","Fable 5"]].forEach(function(p){
     var s=score(p[1]);   if(s!=null) set("kt-fr-"+p[0]+"-s",pct1(s));
     var cm=costMult(p[1]); if(cm!=null) set("kt-fr-"+p[0]+"-c",fmtMult(cm));
   });

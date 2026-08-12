@@ -32,14 +32,14 @@ and still score poorly here if it skips confirmation gates or dispatches
 free-form prompts. Conversely, a weaker model that faithfully follows protocol
 scores well.
 
-**Model matrix:** 36 registry entries across three explicit providers. The
+**Model matrix:** 39 registry entries across three explicit providers. The
 matrix is defined in `config/models.yaml`; provider labels describe the measured
 route, not interchangeable billing aliases.
 
 | Provider | Entries | Route and accounting basis |
 |----------|--------:|----------------------------|
 | `anthropic` | 9 | Claude Code subscription route for Haiku 4.5, Sonnet 4.6/5, Opus 4.5/4.6/4.7/4.8/5, and Fable 5 |
-| `openrouter` | 24 | OpenRouter's Anthropic-compatible endpoint; includes GLM, Kimi, Qwen, Gemma, DeepSeek, Gemini, Nemotron, Inkling, and GPT entries |
+| `openrouter` | 27 | OpenRouter's Anthropic-compatible endpoint; includes GLM, Kimi, Qwen, Gemma, DeepSeek, Gemini, Nemotron, Inkling, Grok, and GPT entries |
 | `chatgpt-subscription` | 3 | Local provider shim to the deployed ChatGPT/Codex subscription backend for GPT-5.6 Luna, Terra, and Sol; included-capacity billing and separate API-equivalent accounting |
 
 GPT-5.6 Luna, Terra, and Sol each have deliberately distinct OpenRouter and
@@ -590,10 +590,48 @@ next, more expensive one.
    only if a run legitimately needs longer wall-clock. Stalls auto-relaunch once
    (`--stall-retries`, § 3).
 
+7b. **Rep-count hygiene — exactly 3 complete reps per case (mandatory before
+   the viewer step).** The corpus contract is exactly three complete (gradeable)
+   reps for every case on every display model. Two failure directions, both
+   introduced by onboarding itself:
+   - **Surplus runs:** the step-5 wire probe leaves a 4th rep of its test case
+     once the full battery lands. Quarantine the probe result set (rename it
+     with the `_quarantine_YYYY-MM-DD_<reason>` prefix, § Result-set discovery,
+     and drop a `QUARANTINE_NOTE.md` inside). If the probe run is cited as
+     wire_id evidence in models.yaml, update that citation to the quarantined
+     path — runs are never deleted, so the evidence survives.
+   - **Missing runs:** timed-out reps carry no gradeable signal and are
+     excluded by the viewer's loader, leaving the case under 3. Top these up
+     (raising `--timeout` when the case legitimately needs longer wall-clock —
+     precedent: 1500s for slow models on the data-ingest dispatch cases).
+   Then verify the whole corpus, not just the new model: count gradeable runs
+   per model x case through the generator's own `load_result_sets`/`load_runs`
+   pipeline (so validity and display exclusions match the report exactly) and
+   require every cell == 3. Worked example:
+   `scratch/verify_rep_counts_2026-08-12.py` (2026-08-12: 33 models x 51
+   cases, 1 deviation found and topped up).
+
 8. **Regenerate the viewer bundle** with
    `scripts/generate_results_viewer_v2.py` (§ 8) so the new model joins the leaderboard
    and cost/performance surfaces. Filenames auto-increment and never overwrite prior
    bundles.
+
+8b. **Editorial review — narrative, Key Takeaways, and headline writing
+   (mandatory).** The viewer's injected figures track the data automatically;
+   its *qualitative claims do not* (see the span-contract dev guide in the
+   generator). After the new model's runs land, re-read the hero bottom line,
+   the cost-performance lead, and every Key Takeaways item against the fresh
+   `PRECOMPUTED` payload and ask: is the tier story still true? Did the
+   efficiency frontier change membership (a new model can displace incumbents
+   on both axes)? Do model lists, counts ("six models make it"), open-weights
+   claims, and the takeaways date in the h2 still hold? Where prose is marked
+   user-ratified VERBATIM, draft the revision and get explicit maintainer
+   approval before landing it — never silently reword protected text. When
+   frontier membership changes, update the `fillTakeaways()` span sets in
+   lockstep with the prose and re-verify the two-way span<->setter contract.
+   (Precedent: the 2026-08-12 Grok 4.6 onboarding moved the frontier from six
+   models to five and touched the hero, T1, T2, and T5 — all ratified
+   step-by-step in-session.)
 
 9. **(Optional) Retire a superseded entry.** There is no schema retirement flag —
    **comment out the entry's block** in `config/models.yaml` with a dated

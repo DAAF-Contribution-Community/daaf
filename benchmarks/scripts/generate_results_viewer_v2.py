@@ -519,17 +519,21 @@ def resolve_paths(args):
 #     the v3.7.0 rate_agree agreement field stays in the payload but has no
 #     display consumer.
 #     Span contract:
-#     28 kt-* spans — 27 in the #takeaways section + kt-foot-bat, which
+#     27 kt-* spans — 26 in the #takeaways section + kt-foot-bat, which
 #     since the 2026-06-12 user fine-tuning round lives in the About Key
 #     Caveats cost caveat (the kt-foot paragraph itself was removed; its
-#     content was folded into the About caveats). The 27 #takeaways spans
-#     (v3.7.0): T1 kt-t1-{fable,opus5,opus5cost,sol,kimi} (5); T2 the six
-#     frontier points kt-fr-{gemma,dsflash,luna,sonnet5,sol,fable}-{s,c}
-#     (12); T3 kt-t3-{lunapct,lunacost,solpct,solcost,lastmult} (5); T4
+#     content was folded into the About caveats). The 26 #takeaways spans
+#     (2026-08-12 Grok refresh): T1 kt-t1-{fable,opus5,opus5cost,grok,sol,
+#     kimi} (6); T2 the five frontier points
+#     kt-fr-{gemma,luna,sonnet5,grok,fable}-{s,c} (10 — Grok 4.6 joined the
+#     frontier, displacing GPT-5.6 Sol and DeepSeek V4 Flash 0731, whose
+#     kt-fr span pairs were retired); T3
+#     kt-t3-{lunapct,lunacost,solpct,solcost,lastmult} (5); T4
 #     kt-t4-{topcons,budgetcons} (2, renamed from -{topagree,budgetagree}
 #     in v3.7.3 with the switch to the all-perfect rate); T5
 #     kt-t5-{glm,glmcost,kimi} (3).
-#     History: 22 (21 + kt-foot-bat) from 2026-06-12 through v3.6.x, 29 before
+#     History: 28 (27 + kt-foot-bat) v3.7.0 through 2026-08-11; 22 (21 +
+#     kt-foot-bat) from 2026-06-12 through v3.6.x, 29 before
 #     the 2026-06-12 e099982 repair pass, 31 originally. Every kt-* span must
 #     have a fillTakeaways() setter and every setter a live span; verify
 #     both directions when editing either side. Injected numbers track the data
