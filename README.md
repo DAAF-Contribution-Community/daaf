@@ -1,5 +1,5 @@
 <!--
-  README v3.0.1
+  README v3.0.2
 -->
 
 ## Summary: What is DAAF?
@@ -7,7 +7,7 @@
 <img width="1258" height="433" alt="daaf_20_thumbnail4" src="https://github.com/user-attachments/assets/21b17b1d-a4d8-4558-a91d-a9ecb0d43f22" />
 
 <p align="center">
-  <a href="https://github.com/DAAF-Contribution-Community/daaf/releases"><img src="https://img.shields.io/badge/version-v3.0.1-blue" alt="Version v3.0.1"></a>
+  <a href="https://github.com/DAAF-Contribution-Community/daaf/releases"><img src="https://img.shields.io/badge/version-v3.0.2-blue" alt="Version v3.0.2"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-LGPL--3.0--or--later-green" alt="License: LGPL-3.0-or-later"></a>
   <a href="https://github.com/DAAF-Contribution-Community/daaf/stargazers"><img src="https://img.shields.io/github/stars/DAAF-Contribution-Community/daaf?style=flat" alt="GitHub Stars"></a>
   <a href="https://github.com/DAAF-Contribution-Community/daaf/commits/main"><img src="https://img.shields.io/github/last-commit/DAAF-Contribution-Community/daaf" alt="Last Commit"></a>
@@ -201,7 +201,11 @@ Interactive dashboards (Plotly) &bull; Reactive analytic notebooks (marimo for P
 ## Why does DAAF have education datasets bundled with it?
 DAAF is designed to be fully domain-extensible -- you can readily bring your own data sources into the ecosystem by engaging with the Data Onboarding mode (see this [10-minute tutorial](https://youtu.be/G5uKSlI6jls) for a demonstration). 
 
-Note: If you plan to use DAAF with private, proprietary, or regulated data (FERPA, HIPAA, etc.), the implications depend entirely on your specific Anthropic license and access method. Enterprise agreements, AWS Bedrock, and Google Vertex AI each offer different data governance guarantees. DAAF ships configuration templates for the Bedrock and Vertex routes, though these routes aren't maintainer-validated end-to-end -- treat them as a starting point you'll need to stand up and test in your own environment (see the [technical FAQ](user_reference/07_faq_technical.md#q-is-my-data-sent-to-anthropic-what-about-privacy)). **It is your responsibility to understand and evaluate these nuances for your use case before using DAAF with any non-public data.** Consult your IT team and legal counsel, and review [Anthropic's current data policies](https://www.anthropic.com/policies) for your specific agreement type. For more detail, see the [Data Privacy FAQ](user_reference/07_faq_technical.md#q-is-my-data-sent-to-anthropic-what-about-privacy). And if your data genuinely can't leave your environment, DAAF includes a built-in **synthetic-data protocol** for exactly this situation -- you profile the data locally and DAAF works from a disclosure-controlled summary alone, so the real data never enters the container. Its disclosure controls minimize what leaves your machine but are not a formal privacy guarantee -- you review the profile summary yourself before it ever crosses the boundary. See [Can I use DAAF with data that can't leave my secure environment?](user_reference/07_faq_technical.md#q-can-i-use-daaf-with-data-that-cant-leave-my-secure-environment).
+Note: If you plan to use DAAF with private, proprietary, or regulated data (FERPA, HIPAA, etc.), your data-privacy situation depends entirely on your specific Anthropic license and access method. Enterprise agreements, AWS Bedrock, and Google Vertex AI each offer different data governance guarantees. **It is your responsibility to understand and evaluate these nuances for your use case before using DAAF with any non-public data.** Consult your IT team and legal counsel, and review [Anthropic's current data policies](https://www.anthropic.com/policies) for your specific agreement type.
+
+DAAF ships configuration templates for the Bedrock and Vertex routes, though these routes aren't maintainer-validated end-to-end -- treat them as a starting point you'll need to stand up and test in your own environment. For more detail, see the [Data Privacy FAQ](user_reference/07_faq_technical.md#q-is-my-data-sent-to-anthropic-what-about-privacy).
+
+And if your data genuinely can't leave your environment, DAAF includes a built-in **synthetic-data protocol** for exactly this situation -- you profile the data locally and DAAF works from a disclosure-controlled summary alone, so the real data never enters the container. Its disclosure controls minimize what leaves your machine but are not a formal privacy guarantee -- you review the profile summary yourself before it ever crosses the boundary. See [Can I use DAAF with data that can't leave my secure environment?](user_reference/07_faq_technical.md#q-can-i-use-daaf-with-data-that-cant-leave-my-secure-environment).
 
 
 All that being said, the [Urban Institute Education Data Portal](https://educationdata.urban.org/) serves as an excellent out-of-the-box demonstration domain because it offers:
@@ -246,7 +250,7 @@ If you use DAAF in your research, please cite it and all underlying data sources
 
 **Plain text (APA):**
 
-> Kim, B. H. (2026). *DAAF: Data Analyst Augmentation Framework* (Version 3.0.1) [Computer software]. [https://doi.org/10.5281/zenodo.19343886](https://doi.org/10.5281/zenodo.19343886)
+> Kim, B. H. (2026). *DAAF: Data Analyst Augmentation Framework* (Version 3.0.2) [Computer software]. [https://doi.org/10.5281/zenodo.19343886](https://doi.org/10.5281/zenodo.19343886)
 
 **BibTeX:**
 
@@ -257,7 +261,7 @@ If you use DAAF in your research, please cite it and all underlying data sources
   year = {2026},
   url = {https://github.com/DAAF-Contribution-Community/daaf},
   doi = {10.5281/zenodo.19343886},
-  version = {3.0.1},
+  version = {3.0.2},
   license = {LGPL-3.0-or-later}
 }
 ```

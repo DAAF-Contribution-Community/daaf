@@ -234,7 +234,7 @@ These are two different Claude Code features that happen to share a name.
 
 Separately, Claude Code runs *subagents* (the specialists DAAF dispatches for research, coding, and review work) in the background and notifies the session when each finishes. The official documentation says this setting disables background execution for subagent dispatches too, but on DAAF's pinned Claude Code version the observed behavior is that specialist dispatches still run in the background with the setting active. Either behavior is fine for DAAF: its workflows wait for all dispatched specialists to report back before making decisions, and the audit-trail concern applies to analysis scripts (which the setting reliably keeps in the foreground), not to specialist scheduling. If a future version update makes specialists run in the foreground instead, nothing in DAAF's workflows breaks — turns just complete sequentially.
 
-(Related trivia: `DISABLE_AUTOUPDATER` in the same settings block is technically redundant — `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` subsumes it — but it's kept as an explicit standalone pin so the version-pinned container can never auto-update, even if the umbrella setting is temporarily lifted for diagnostics.)
+(`DISABLE_AUTOUPDATER` in the same settings block is kept as an explicit pin so the version-pinned container can never auto-update, even if the umbrella `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` setting is temporarily lifted for diagnostics.)
 
 ### Q: Can I use DAAF with a different AI provider (OpenAI, Google, etc.)?
 
@@ -287,7 +287,7 @@ Not exactly — treat it as a close estimate. OpenRouter's Anthropic-compatible 
 
 ### Q: The statusline shows the wrong context window on a GPT session (e.g. 200k when my model has more)
 
-Nothing is broken here — the bar is just showing a wrong guess, and it's a one-line fix. Claude Code assumes a 200k context window for any model it doesn't recognize, which is wrong for the 400k `gpt-5.2` / `gpt-5.4-mini` and the 1,050,000-token `gpt-5.4` / `gpt-5.5` / `gpt-5.6` family (Sol/Terra/Luna) on API/OpenRouter routes. Fix it by setting `CLAUDE_CODE_MAX_CONTEXT_TOKENS` in `environment_settings.txt` to the route's real physical accounting window (for example, `1050000` for `gpt-5.6-sol` over OpenRouter or the OpenAI API), then recreate the container and restart the Claude Code session.
+Nothing is broken here — the bar is just showing a wrong guess, and it's a one-line fix. Claude Code assumes a 200k context window for any model it doesn't recognize, which underreports the larger GPT windows on API/OpenRouter routes. Fix it by setting `CLAUDE_CODE_MAX_CONTEXT_TOKENS` in `environment_settings.txt` to the route's real physical accounting window (for example, `1050000` for `gpt-5.6-sol` over OpenRouter or the OpenAI API), then recreate the container and restart the Claude Code session. (The real windows are 400k for `gpt-5.2` / `gpt-5.4-mini` and 1,050,000 for the `gpt-5.4` / `gpt-5.5` / `gpt-5.6` family — Sol/Terra/Luna.)
 
 The **ChatGPT-subscription (Codex) lane** is different: its backend caps the usable input window much lower — measured at ~370,000 tokens for `gpt-5.6-sol` (2026-07-16), regardless of the model's true 1M window on the API route. On that lane, set `CLAUDE_CODE_MAX_CONTEXT_TOKENS=370000` instead, so Claude Code and DAAF measure usage against the real ceiling. DAAF applies this automatically wherever it can, and keeps automatic compaction off; the backend itself remains the ultimate hard limit.
 
@@ -305,7 +305,9 @@ Treat this as an opt-in escape hatch for demonstrated output truncation, not a u
 
 If a GPT session complains it's out of room while the context bar says it's nearly empty, the window size is being misread — the session isn't actually full, and the fix is one setting. This is a *client-side* budget error — Claude Code decided the request is too big before it ever reached the model — and on a GPT session at genuinely low utilization the cause is that Claude Code assumes a small (~200K) window for a model slug it doesn't recognize, so it thinks the window is nearly full when it is not. The fix is to declare the real window:
 
-- **For the OpenAI-API lane, append `[1m]` to your GPT slugs and declare the full route window** in `environment_settings.txt` (e.g. `ANTHROPIC_DEFAULT_OPUS_MODEL=gpt-5.6-sol[1m]` plus `CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000`). Claude Code reads `[1m]` as a 1M-window hint and strips the suffix before sending — the shim and OpenAI backend still see the bare `gpt-5.6-sol` — while the explicit positive declaration aligns Claude Code and DAAF's accounting. `CLAUDE_CODE_AUTO_COMPACT_WINDOW` is not an equivalent alternative in DAAF; automatic compaction remains disabled. (`[1m]` also composes with a `#<effort>` reasoning-effort suffix — e.g. `gpt-5.6-sol[1m]#medium` — if you want to set both at once; see [How do I control GPT reasoning effort?](#q-how-do-i-control-gpt-reasoning-effort-option-f). For the ChatGPT-subscription/Codex lane, use the separate `370000` declaration described below.)
+- **For the OpenAI-API lane, append `[1m]` to your GPT slugs and declare the full route window** in `environment_settings.txt` (e.g. `ANTHROPIC_DEFAULT_OPUS_MODEL=gpt-5.6-sol[1m]` plus `CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000`). For the ChatGPT-subscription/Codex lane, use the separate `370000` declaration described below instead.
+
+  *Under the hood:* Claude Code reads `[1m]` as a 1M-window hint and strips the suffix before sending — the shim and OpenAI backend still see the bare `gpt-5.6-sol` — while the explicit declaration aligns Claude Code and DAAF's accounting. `CLAUDE_CODE_AUTO_COMPACT_WINDOW` is not an equivalent alternative in DAAF; automatic compaction remains disabled. (`[1m]` also composes with a `#<effort>` reasoning-effort suffix — e.g. `gpt-5.6-sol[1m]#medium` — if you want to set both at once; see [How do I control GPT reasoning effort?](#q-how-do-i-control-gpt-reasoning-effort-option-f).)
 - **The provider shim isn't inflating the count.** The shim (Option F) calibrates its token-count estimates against the backend's own reported counts and biases slightly low, so it won't push the perceived request size over the window — declaring the real window above is what resolves the error. You can confirm the shim is healthy with `curl -s http://127.0.0.1:4141/health`.
 
 Restart the container after editing `environment_settings.txt`.
@@ -324,7 +326,7 @@ Its log is at `/daaf/scripts/provider_shim/logs/shim.log` — check there first.
 
 For an in-place repair or reload, use `--restart` — it stops and relaunches the shim in a single step. This matters when the active Claude Code session is itself running through the shim: do **not** split `--stop` and `--start` across separate assistant turns, because once the shim is stopped your session no longer has a working provider route to issue the `--start` with. `--restart` avoids that trap by never leaving the route down between turns.
 
-Every restart also records a one-line verdict in that same log — look for the newest `SHIM_RESTART_RESULT` line. `status=ready` with `exit_code=0` means the restart fully succeeded and the new shim confirmed healthy. A `status=failed` line instead names the phase that went wrong — stopping the old shim (`stage=stop`), launching the new one (`stage=launch`), or waiting for it to become healthy (`stage=readiness`) — along with a short reason, which is usually the fastest clue for where to look next.
+Every restart also logs a one-line pass/fail verdict in that same log; if it failed, the line names which step broke and gives a short reason — usually the fastest clue for where to look next.
 
 Remember that Option F requires the image to have been **rebuilt** after you set `DAAF_PROVIDER_SHIM=openai` (the auto-launch is baked into the entrypoint), so if nothing is running, confirm you rebuilt. If the shim *is* running but every request fails instantly with a 429, see the relevant entry below.
 
@@ -354,11 +356,13 @@ Importantly, the log records only this lifecycle metadata — it **never** conta
 
 ### Q: My GPT session fails instantly with 429 errors on every request (Option F)
 
-An immediate, deterministic 429 on *every* request — including the very first one after a restart — is almost never a real rate limit. Check the shim log (`/daaf/scripts/provider_shim/logs/shim.log`): backend error records include the HTTP status, exact structured type/code when supplied, mapped Anthropic type, and allowlisted rate-limit headers. They deliberately omit free-form backend prose. What to look for:
+An immediate, deterministic 429 on *every* request — including the very first one after a restart — is almost never a real rate limit. Check the shim log (`/daaf/scripts/provider_shim/logs/shim.log`) for the backend error record. What to look for:
 
 - **`"code": "insufficient_quota"`** — the key's platform.openai.com project has no credits, or hit its monthly spend cap. This is by far the most common cause: ChatGPT Plus/Pro does **not** include API credits, new API accounts get no free credits, and adding a payment card without completing the separate credit *purchase* step leaves the account unfunded. Retrying can never fix this — buy credits at platform.openai.com → Settings → Billing.
-- **A rate-limit error with a `retry-after` header** — a genuine per-minute request/token limit for your usage tier. This clears on its own; current Tier 1 token-per-minute limits are generous (500K TPM for gpt-5/gpt-5-mini as of late 2025 — OpenAI has not published per-tier tables for the gpt-5.6 variants), but heavily parallel agentic sessions can still burst past request-per-minute caps. Sustained work may warrant a higher usage tier (tiers advance with cumulative spend).
+- **A rate-limit error with a `retry-after` header** — a genuine per-minute limit for your usage tier that clears on its own. Heavily parallel agentic sessions can burst past request-per-minute caps; sustained work may warrant a higher usage tier (tiers advance with cumulative spend).
 - **401 `invalid_api_key`** — the key itself is wrong: check for truncation or stray whitespace in `environment_settings.txt`, and remember the container only picks up environment changes after `docker compose down` + `run_daaf.sh` (the shim reads its key at startup).
+
+**Optional reading — under the hood.** The shim's backend error records carry the HTTP status, structured type/code when supplied, mapped Anthropic type, and allowlisted rate-limit headers, deliberately omitting free-form backend prose. On tier limits, current Tier 1 token-per-minute allowances are generous (500K TPM for gpt-5/gpt-5-mini as of late 2025 — OpenAI has not published per-tier tables for the gpt-5.6 variants).
 
 ### Q: Can I use my ChatGPT subscription instead of an OpenAI API key? (Option F)
 
@@ -377,7 +381,7 @@ The shim reads the OAuth token from `auth.json` and **refreshes it automatically
 
 **Context ceiling on this lane.** The Codex subscription backend caps the usable input window much lower than the model's true 1M window — measured at ~370,000 tokens for `gpt-5.6-sol` (2026-07-16). This is a hard backend limit on the Codex route, not a client setting: no `[1m]` hint or local declaration can raise it. Set `CLAUDE_CODE_MAX_CONTEXT_TOKENS=370000` on this lane (not the API-key lane's `1050000`), so Claude Code and DAAF measure usage against the real ceiling. DAAF applies this automatically and keeps automatic compaction off; the backend itself remains the ultimate hard limit. If you exceed it, you'll get a clean "context length exceeded" error rather than a confusing retry loop.
 
-**Parallel use.** Running more than one container is the clean way to parallelize: each container does its own `codex login` (an independent token grant — no collision), and they share only your ChatGPT usage pool, so running them in parallel just draws that pool down faster. For several codex-based tools inside a *single* container, the shim itself is no longer a factor — as of v1.3.0 it never writes `auth.json`, delegating every refresh to the `codex` CLI (the single writer) — but two independent *codex* invocations sharing one `CODEX_HOME` stay unverified, so give each tool its own login under a separate `CODEX_HOME` to stay safe.
+**Parallel use.** Running more than one container is the clean way to parallelize: each container does its own `codex login` (an independent token grant — no collision), and they share only your ChatGPT usage pool, so running them in parallel just draws that pool down faster. For several codex-based tools inside a *single* container, give each tool its own login under a separate `CODEX_HOME` to stay safe — two independent *codex* invocations sharing one `CODEX_HOME` stay unverified.
 
 **Optional reading — under the hood.** Both lanes handle tools and message content the same way; only the login method and endpoint differ. If the backend ever sends something malformed or out of order, the shim fails loudly rather than quietly passing along corrupted output. A few small formatting and logging details differ between the two lanes, but nothing you need to configure or worry about.
 
@@ -416,7 +420,7 @@ On a GPT route the shim offers an optional speed boost — **GPT Fast** on the C
    bash /daaf/scripts/provider_shim/gpt_fast.sh {on|off|status}
    ```
 
-   Inside a Claude Code prompt, prefix it with `!`, for example `!bash /daaf/scripts/provider_shim/gpt_fast.sh status`. Turning it `on` requires the `CLAUDE_CODE_DISABLE_FAST_MODE=1` line above; `off` and `status` always work.
+   Inside a Claude Code prompt, prefix it with `!`, for example `!bash /daaf/scripts/provider_shim/gpt_fast.sh status`. Turning it `on` requires the step-1 line; `off` and `status` always work.
 
 3. **Mind the cost.** OpenAI API **GPT Priority may cost extra** and depends on your provider, model, project/account, and usage-tier eligibility — the controller warns before enabling it. ChatGPT **GPT Fast** follows your subscription's own credit and eligibility rules; current Codex documentation describes roughly **1.5×** speed and says GPT-5.6 and GPT-5.5 use **2.5× Standard ChatGPT credits**. And requesting the boost doesn't guarantee it was served on any given request.
 
@@ -523,7 +527,7 @@ Cost remains a meaningful barrier to entry for DAAF, but it's shrinking. As open
 
 ### Q: How much disk space does DAAF use?
 
-The Docker image is roughly **8.6 GB** after building (the exact size varies with your Docker version and platform). It includes an Ubuntu 24.04 (Noble) base image, Python 3.12, **~52 pinned Python packages** covering data science, geospatial, econometrics, visualization, ML, and shim infrastructure; geospatial system libraries (GDAL/GEOS/PROJ); Claude Code; R; 60+ pinned R packages (tidyverse, fixest, survey, sf, and more); and the Quarto CLI. The R runtime, packages, and Quarto account for roughly **2 GB** of that total (approximately 8.6 GB with R versus 6.4 GB without). Docker also keeps build cache layers, so total Docker disk usage may be somewhat higher.
+The Docker image is roughly **8.6 GB** after building (the exact size varies with your Docker version and platform). It includes an Ubuntu 24.04 (Noble) base image, Python 3.12, **~57 pinned Python packages** covering data science, geospatial, econometrics, visualization, ML, and shim infrastructure; geospatial system libraries (GDAL/GEOS/PROJ); Claude Code; R; 60+ pinned R packages (tidyverse, fixest, survey, sf, and more); and the Quarto CLI. The R runtime, packages, and Quarto account for roughly **2 GB** of that total (approximately 8.6 GB with R versus 6.4 GB without). Docker also keeps build cache layers, so total Docker disk usage may be somewhat higher.
 
 Beyond the image, your Docker volume will grow as you create research projects. Each project accumulates scripts, parquet data files, session logs, and notebooks. A typical full-pipeline project might add 50-500 MB depending on how many datasets you fetch and how large they are.
 
@@ -745,7 +749,7 @@ A virtual environment (venv, conda, etc.) handles one thing well: Python package
 
 **Complete reproducibility.** Docker pins *everything*: the OS (Ubuntu 24.04), Python version (3.12), system packages, Python libraries, and Claude Code itself. When I say DAAF works, I mean it works in that exact environment. Virtualenvs only manage Python packages, not system-level dependencies, OS differences, or tool versions.
 
-**Clean recovery.** If something goes wrong -- a corrupted package, a broken state, whatever -- you can tear down the container and rebuild from scratch in minutes. Your research data persists in its Docker volume, and Claude Code's own login and session history -- plus, on shim-lane installs, the provider shim's reasoning-cache continuity file (`~/.claude/provider_shim/reasoning_cache.json`) -- persist in a second dedicated volume (`daaf-claude-config`), so both are completely unaffected by a rebuild. That reasoning-cache file holds backend-encrypted reasoning-continuity blobs and lives on the per-container config volume deliberately, outside the shareable, VCS-trackable repo tree. (Only an explicit `docker compose down -v` or `docker volume rm` deletes those volumes.) Try doing that with a corrupted virtualenv.
+**Clean recovery.** If something goes wrong -- a corrupted package, a broken state, whatever -- you can tear down the container and rebuild from scratch in minutes. Your research data persists in its Docker volume, and Claude Code's login and session history persist in a second dedicated volume (`daaf-claude-config`), untouched by rebuilds. (Only an explicit `docker compose down -v` or `docker volume rm` deletes those volumes.) Try doing that with a corrupted virtualenv.
 
 **Cross-platform consistency.** Docker runs the same way on Mac, Windows, and Linux. No more "it works on my machine" problems.
 
@@ -980,18 +984,20 @@ Claude has a finite context window. As a session progresses and Claude processes
 
 The exact trigger points vary by model — DAAF detects which model you're running automatically and applies the matching profile, so there's nothing to configure. Broadly, models DAAF has specifically validated (Claude Fable/Mythos, and exact GPT 5.6 Sol) get more generous thresholds, while everything else — Opus, Sonnet, other GPT variants, GLM, and any unrecognized model — uses conservative defaults. One wrinkle worth knowing: on the ChatGPT-subscription (Codex) lane the usable context window itself is capped lower (~370k tokens), so the thresholds there fire earlier than on the full-window API route. The four status levels and what DAAF does at each are the same for every model; only the trigger points differ:
 
-| Threshold Profile | Membership | ELEVATED at | HIGH at | CRITICAL at |
-|-------------------|------------|-------------|---------|-------------|
-| **Validated extended-horizon** | Claude Fable/Mythos models | ≥ 30% or ≥ 300k tokens | ≥ 40% or ≥ 400k tokens | ≥ 50% or ≥ 500k tokens |
-| **Exact GPT 5.6 Sol** | Exact terminal model slugs, bare or provider-prefixed: `gpt-5.6-sol` or `gpt-5.6-sol[1m]` | ≥ 40% or ≥ 300k tokens | ≥ 60% or ≥ 400k tokens | ≥ 75% or ≥ 500k tokens |
-| **Conservative-default** | Opus, Sonnet, unknown model IDs, every other GPT variant, GLM models, and all other alternative-provider models unless individually validated and registered | ≥ 40% or ≥ 150k tokens | ≥ 60% or ≥ 200k tokens | ≥ 75% or ≥ 250k tokens |
-
 | Status | What Happens |
 |--------|--------------|
 | NOMINAL | Normal operations |
 | ELEVATED | Works normally but starts delegating more to subagents |
 | HIGH | Finishes current work and prepares for a session restart |
 | CRITICAL | Stops new work and asks you to restart the session |
+
+**Optional reading — exact numbers.** The trigger points fire at whichever comes first, a percentage of the window or an absolute token count:
+
+| Profile | ELEVATED at | HIGH at | CRITICAL at |
+|---------|-------------|---------|-------------|
+| Validated extended-horizon (Claude Fable/Mythos) | ≥ 30% or ≥ 300k tokens | ≥ 40% or ≥ 400k tokens | ≥ 50% or ≥ 500k tokens |
+| Exact GPT 5.6 Sol | ≥ 40% or ≥ 300k tokens | ≥ 60% or ≥ 400k tokens | ≥ 75% or ≥ 500k tokens |
+| Conservative-default (everything else) | ≥ 40% or ≥ 150k tokens | ≥ 60% or ≥ 200k tokens | ≥ 75% or ≥ 250k tokens |
 
 When you see CRITICAL, it means Claude's context window is nearly full and continuing would degrade the quality of its work. This is by design -- DAAF would rather stop and restart cleanly than continue with increasingly unreliable output.
 

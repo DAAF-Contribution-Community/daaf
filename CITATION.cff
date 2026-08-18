@@ -12,8 +12,8 @@ authors:
   - family-names: Kim
     given-names: Brian Heseung
     orcid: "https://orcid.org/0000-0002-7988-1802"
-version: "3.0.1"
-date-released: "2026-07-29"
+version: "3.0.2"
+date-released: "2026-08-18"
 license: LGPL-3.0-or-later
 url: "https://github.com/DAAF-Contribution-Community/daaf"
 repository-code: "https://github.com/DAAF-Contribution-Community/daaf"

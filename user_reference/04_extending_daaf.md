@@ -363,7 +363,7 @@ To share learnings with the broader community, [open an issue](https://github.co
 
 ## Customizing Your Python and R Environment
 
-DAAF ships with a comprehensive Python data science stack (50+ packages covering statistics, econometrics, geospatial analysis, machine learning, visualization, and more), plus a full R environment with 11 library skills covering data manipulation, visualization, econometrics, spatial analysis, machine learning, and more. But research is unpredictable -- you may need a package we didn't anticipate. This section covers how to add Python packages, R packages, system-level libraries, and other software to your DAAF environment. The Python instructions come first, followed by [R Packages](#r-packages) at the end of this section.
+DAAF ships with a comprehensive Python data science stack (50+ packages covering statistics, econometrics, geospatial analysis, machine learning, visualization, and more), plus a full R environment with 12 library skills covering data manipulation, visualization, econometrics, spatial analysis, machine learning, and more. But research is unpredictable -- you may need a package we didn't anticipate. This section covers how to add Python packages, R packages, system-level libraries, and other software to your DAAF environment. The Python instructions come first, followed by [R Packages](#r-packages) at the end of this section.
 
 ### The Recommended Path: Modify the Dockerfile (Python)
 
@@ -390,7 +390,7 @@ The two files start out identical, but they can drift apart as soon as either si
 
 **A second host/container boundary to know about:** *bind mounts* — linking a folder on your computer directly into the container — are the other place where the host and container filesystems meet. If you want DAAF to read a large local dataset in place rather than copying it into the Docker volume, see [Linking Host Folders into the Container (Bind Mounts)](01_installation_and_quickstart.md#linking-host-folders-into-the-container-bind-mounts) in the installation guide.
 
-> **One structural note before you edit:** DAAF's image defines a custom `ENTRYPOINT` (`daaf-entrypoint.sh`, written inline by a heredoc block near the end of the Dockerfile — there is no separate source file). It runs optional startup tasks -- such as auto-launching the OpenAI provider shim when `DAAF_PROVIDER_SHIM` is configured (see the [installation guide's Option F](01_installation_and_quickstart.md#option-f-openai-api-directly-daaf-provider-shim)) -- and then hands control to the normal `CMD ["bash"]`. Adding packages or changing `CMD` is safe, but adding a second `ENTRYPOINT` line would silently replace this wrapper and disable those startup behaviors. The heredoc's comment block explains exactly what it does.
+> **Optional reading — under the hood.** DAAF's image defines a custom `ENTRYPOINT` (`daaf-entrypoint.sh`, written inline by a heredoc block near the end of the Dockerfile — there is no separate source file). It runs optional startup tasks -- such as auto-launching the OpenAI provider shim when `DAAF_PROVIDER_SHIM` is configured (see the [installation guide's Option F](01_installation_and_quickstart.md#option-f-openai-api-directly-daaf-provider-shim)) -- and then hands control to the normal `CMD ["bash"]`. Adding packages or changing `CMD` is safe, but adding a second `ENTRYPOINT` line would silently replace this wrapper and disable those startup behaviors. The heredoc's comment block explains exactly what it does.
 
 #### Step-by-Step Process
 
@@ -459,7 +459,7 @@ bash rebuild_daaf.sh         # macOS / Linux
 .\rebuild_daaf.ps1           # Windows
 ```
 
-The rebuild script handles the tricky part automatically: it copies the updated Dockerfile and docker-compose.yml from inside the container back to your host build directory (where `docker compose` reads them), then rebuilds the Docker image. Docker uses **layer caching**, so only the changed layers (and anything below them) are rebuilt. This is exactly why the **user additions block** near the end of the Dockerfile is the recommended default location: because nothing downstream depends on it, a package added there is the *only* thing rebuilt, and you'll see just the new package being downloaded and installed -- the build takes only as long as that install, typically seconds to a couple of minutes. A package added to a mid-file block, by contrast, forces every expensive layer below it to rebuild too.
+The rebuild script handles the tricky part automatically: it copies the updated Dockerfile and docker-compose.yml from inside the container back to your host build directory (where `docker compose` reads them), then rebuilds the Docker image. Thanks to Docker layer caching (explained above), a package in the **user additions block** is typically the only thing rebuilt -- seconds to a couple of minutes -- while a mid-file addition forces every expensive layer below it to rebuild too.
 
 **Why is this step needed?** The Dockerfile lives in two places -- inside the Docker volume (where DAAF just edited it) and in your `daaf-docker/` folder on your computer (where `docker compose` reads it for builds). The rebuild script bridges this gap so the two copies stay in sync.
 
@@ -541,9 +541,7 @@ The recommended workflow is:
 
 ### Building with the developer test toolchain (DAAF_DEV)
 
-If you are **developing the framework itself** (not just running research) and want to run DAAF's own shell/PowerShell test suites inside the container, there is an opt-in build flag: `DAAF_DEV`. Setting `DAAF_DEV=1` in your `daaf-docker` folder's `environment_settings.txt` and rebuilding (`rebuild_daaf.sh` / `.ps1`) installs `shellcheck`, `bats`, PowerShell 7, Pester, PSScriptAnalyzer, and the GitHub CLI (`gh` — authenticate by adding a `GH_TOKEN` key to `environment_settings.txt`; see the commented entry in `environment_settings_example.txt`) into the image so `bats tests/bash/` and `pwsh -NoProfile -Command "Invoke-Pester -Path ./tests/powershell/"` reproduce the project's CI locally. It is a **build-time** flag (it changes what is installed), so it rides the same rebuild boundary described above — the install/rebuild scripts bridge it from `environment_settings.txt` into the shell environment and Compose forwards it as `--build-arg DAAF_DEV=${DAAF_DEV:-0}`. When it is unset or `0` (the default for all normal installs) the image is identical to a standard build. See `user_reference/01_installation_and_quickstart.md` ("Building with the developer test toolchain") for the full walkthrough.
-
-The `DAAF_DEV=1` image is also what lets a contributor run the **deployment smoke suite** (`scripts/deploy_smoke/run_deploy_smoke.py`) — a route-aware, in-situ check that a live install functions end-to-end in its configured provider route (routing, hooks, subagent dispatch, statuslines, shim health). It is a contributor tool, documented in the `daaf-deploy-smoke-testing` skill and in `CONTRIBUTING.md`.
+If you are **developing the framework itself** (not just running research), an opt-in `DAAF_DEV=1` build flag adds DAAF's own testing toolchain: set it in your `daaf-docker` folder's `environment_settings.txt` and rebuild (`rebuild_daaf.sh` / `.ps1`) to install the shell/PowerShell test suites, linters, and GitHub CLI into the image (the same image also enables the contributor-only deployment smoke suite). It is a build-time flag, so when unset or `0` — the default for all normal installs — the image is identical to a standard build. For the full toolchain list, the CI commands, and the smoke-suite walkthrough, see `CONTRIBUTING.md` and `user_reference/01_installation_and_quickstart.md` ("Building with the developer test toolchain").
 
 ### Understanding the `uv` Package Manager
 
@@ -619,7 +617,7 @@ RUN Rscript -e 'install.packages("broom.mixed")'
 
 **Where the R line goes.** Just like Python packages, the recommended default is the **user additions block** near the end of the Dockerfile -- an added `RUN Rscript -e 'install.packages(...)'` line there rebuilds fast thanks to layer caching, whereas appending to the mid-file R install blocks re-runs the (large, ~2.2 GB) R stack and everything below it. The R packages install from the same P3M date-pinned snapshot wherever the line sits, so reproducibility is unaffected by the choice.
 
-**One R-specific nuance — the presence gate.** The framework's R install blocks are followed by a *presence gate* that verifies every package it lists actually installed (a safety net against a package silently failing to install). That gate only checks the packages named in the framework blocks. So if you want your added R package covered by that verification, add it to the appropriate framework R block *and* to the presence-gate list, rather than to the user additions block. For a package you're comfortable verifying yourself (e.g. by loading it once), the fast-rebuilding user additions block is the simpler choice. DAAF will explain this tradeoff when it proposes the edit.
+**One R-specific nuance — the presence gate.** The framework's R install blocks are backed by a *presence gate* that verifies each listed package actually installed, so if you want your added package covered by that check, add it to a framework R block (and its gate list) rather than the user additions block; otherwise the fast-rebuilding user additions block is simpler. DAAF will explain this tradeoff when it proposes the edit.
 
 Then follow the same exit-and-rebuild process described in the Python section above: exit Claude Code, exit the container, and run `bash rebuild_daaf.sh` (or `.\rebuild_daaf.ps1` on Windows) from your `daaf-docker` folder.
 
@@ -636,7 +634,7 @@ You don't need to specify version numbers when installing R packages -- the P3M 
 - **Ask DAAF directly:** "What R packages are installed?" -- DAAF can check for you
 - **Run `Rscript -e 'installed.packages()[, "Package"]'`** inside the container to see all installed packages
 - **Read the Dockerfile** to see exactly what's installed
-- **Check the smoke tests** in `scripts/smoke_tests/` -- each R library skill has a corresponding smoke test (`smoke_tidyverse.R`, `smoke_ggplot2.R`, etc.) that exercises core functionality, and a Python import-smoke (`smoke_imports.py`) verifies every pinned Python analysis package imports (the per-skill R smokes came first because the newly added R packages needed install verification; the Python import-smoke rounds out the suite). Run the whole set with `bash scripts/smoke_tests/run_all_smoke_tests.sh`
+- **Check the smoke tests** in `scripts/smoke_tests/` -- each R library skill has a corresponding smoke test (`smoke_tidyverse.R`, `smoke_ggplot2.R`, etc.) that exercises core functionality, and a Python import-smoke (`smoke_imports.py`) verifies every pinned Python analysis package imports. Run the whole set with `bash scripts/smoke_tests/run_all_smoke_tests.sh`
 
 ---
 

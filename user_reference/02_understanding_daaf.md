@@ -369,7 +369,7 @@ And here's what each of them do in more detail, and how the workflow works so yo
 
 **When to use:** You have a raw data file (CSV, Parquet, Excel, etc.) that you want to profile and add as a reusable data source for future analyses.
 
-**What happens:** DAAF runs a thorough profiling protocol (up to 11 scripts, depending on data characteristics) in 3 top-level phases (Setup, Profiling, Skill Creation). The Profiling phase contains 4 sub-phases: Structural Discovery, Statistical Deep Dive, Relational Analysis, and Interpretation & Reconciliation. You review the findings and confirm the interpretations before DAAF creates a standalone data source skill. After that review, DAAF offers (optionally — you can skip it in one word) to research the source online first, so the skill's methodology, coverage, and limitations sections are grounded in the source's documentation and the research literature rather than inference. The entire process is tracked in a reproducible research project folder.
+**What happens:** DAAF profiles the file thoroughly in a few structured passes (up to 11 scripts, depending on the data), then builds a reusable data source skill from what it finds — you review the findings and confirm the interpretations before it does. After that review, DAAF offers (optionally — you can skip it in one word) to research the source online first, so the skill's methodology, coverage, and limitations sections are grounded in the source's documentation and the research literature rather than inference. The entire process is tracked in a reproducible research project folder.
 
 **What you get:** A standalone data source skill (`.claude/skills/`) that future analyses can reference, plus a research project folder with all profiling scripts, QA reviews, and session state.
 
@@ -386,24 +386,15 @@ And here's what each of them do in more detail, and how the workflow works so yo
 
 **Trigger words:** "verify," "reproduce," "reproduction," "does this replicate," "check reproducibility," "verify this analysis..."
 
-**What it is:** You have an existing completed DAAF analysis and want an independent mechanical check from its delivered audit notebook. Intake requires one unambiguous original Report and one unambiguous DAAF Stage 9 archive: Marimo `.py` for Python or canonical Quarto `.qmd` for R. Generic Marimo apps and arbitrary Quarto projects are not supported. If there are multiple candidates or both formats, DAAF stops and asks you to choose. Reproduction always uses a new folder and a new extraction root; it never merges into or overwrites an earlier attempt.
+**What it is:** You have a completed DAAF analysis and want an independent, mechanical double-check that it holds up when someone re-runs it. DAAF works from the audit notebook that was delivered with the original analysis — you point it at the finished report and its notebook, and DAAF re-runs the work in a fresh, separate project folder, never touching or overwriting the original.
 
-Before re-running anything, DAAF checks each script to make sure it's safe to re-run — that it points at the new reproduction folder and won't reach back into the original project's files. A script that fails this check isn't run until it's either corrected or you explicitly approve running it as-is. This is a safety check on where scripts read and write, not a guarantee that every possible path in the code is safe.
+**What it checks — and what it doesn't claim.** DAAF re-runs the analysis and compares the new results against the original across the different kinds of evidence: the data files, the figures, the execution logs, and the numbers reported in the write-up. It grades only what it can actually observe — anything missing, or that it can't directly confirm, is flagged as unverified rather than quietly waved through as a match. And "reproduced" means the results held up within reasonable tolerances, not that every digit came out identical: data that was re-downloaded may have been updated at the source since the original run, software environments move on, and some statistical methods involve a degree of randomness. The goal is a trustworthy, well-documented answer to "does this hold up when someone re-runs it?", not a guarantee of identical numbers.
 
-Evidence is graded rather than guessed. Log comparison covers only metrics actually printed in both logs. Supported Parquet data files get a direct schema and content comparison; selected files can also be compared byte-for-byte, which proves they are identical. Figures are reviewed side by side, and saved tables/models are compared only when an inspectable representation exists. Anything missing, unsupported, or unproven is labeled **NOT DIRECTLY VERIFIED**, never silently treated as a match.
+**What you get:** A Reproduction Report that lays out, claim by claim, what matched, what diverged, and what couldn't be verified — and then a single plain-language verdict: **FULLY REPRODUCED**, **PARTIALLY REPRODUCED**, or **NOT REPRODUCED**. Any in-scope evidence gap prevents a FULLY REPRODUCED verdict. Things you deliberately agree to leave out of scope up front are kept separate from genuine failures — but anything you *don't* explicitly exclude still counts, so a script you skip partway through remains an in-scope gap rather than a free pass.
 
-**What a "reproduced" verdict does and doesn't promise.** When DAAF reports an analysis as reproduced, it means DAAF re-ran the work and the results matched the original within reasonable tolerances -- not that every number came out bit-for-bit identical. Small, legitimate differences can arise: data that was re-downloaded may have been updated at the source since the original run, the software environment may have moved on, and some statistical methods involve a degree of randomness. DAAF's comparison uses purpose-built checks for the different kinds of evidence -- data files, figures, execution logs, and the quantitative claims in the report -- and those checks are built to account for reasonable tolerances rather than to demand exact equality. The goal is a trustworthy, well-documented answer to "does this hold up when someone re-runs it?", not a guarantee of identical digits.
-
-**What you get:**
-- A Reproduction Report with `MATCH`, `DIVERGED`, or `NOT DIRECTLY VERIFIED` assessments for in-scope claims, figures, findings, artifacts, and required dimensions
-- One canonical overall verdict: **FULLY REPRODUCED**, **PARTIALLY REPRODUCED**, or **NOT REPRODUCED**. Any in-scope evidence gap prevents FULLY REPRODUCED
-- Explicit scope-design exclusions kept separate from failures, ad hoc skips, and evidence gaps
-
-**Two key user decisions:**
-- **Whether to re-fetch data** (default: yes). Re-fetch mode executes Stage 5 and tests current acquisition behavior. Frozen-input mode copies and hashes the original raw files, does **not** run Stage 5, starts with downstream scripts, and verifies those raw hashes remain unchanged. In frozen mode, acquisition reproducibility and mirrors are explicitly out of scope.
-- **Methodological review depth** (default: light). Light review focuses on mechanical reproduction and notable concerns; full review also scrutinizes methodology, assumptions, and interpretation.
-
-Something only drops out of the reproduction verdict if you approve excluding it up front — a script you skip partway through still counts as an in-scope gap. DAAF also compares the software environments the two runs used (which language, notebook, and package versions), labeling anything it can't pin down as UNKNOWN / NOT DIRECTLY VERIFIED rather than guessing. Any helper scripts it writes for that comparison are kept with the rest of the reproduction project's files, and it never installs packages into the running environment.
+**Two decisions DAAF asks you to make up front:**
+- **Whether to re-fetch the data** (default: yes) — re-download the data and test whether acquisition still works today, or work from a frozen copy of the original raw files instead — in which case whether the data could still be re-downloaded today is simply left out of scope.
+- **How deep the methodological review goes** (default: light) — a light pass focuses on mechanical reproduction and any notable concerns; a full pass also scrutinizes the methodology, assumptions, and interpretation.
 
 **Expected time investment:** Depends on the complexity of the original analysis. A straightforward single-source analysis might take 15-30 minutes; a multi-source analysis with extensive transformations could take longer. You'll review the Reproduction Report at the end.
 
@@ -708,11 +699,11 @@ A companion file, **Plan_Tasks.md**, contains the detailed machine-readable task
 
 **What's inside:**
 - **Section headers** identifying which script stage is being shown
-- **Archived script code:** Marimo stores the literal Python code comment-prefixed so it cannot re-execute; Quarto keeps the literal R code un-commented for syntax highlighting but protects every archive chunk with `eval: false`
+- **Archived script code:** the real, unmodified script code from the analysis — shown for you to read, but locked so it can't re-run
 - **Captured execution logs** showing exactly what happened when each script ran -- verbatim in a collapsed Marimo accordion or Quarto callout, never summarized
 - **Optional bounded display cells/chunks** -- the only permitted new display code: either preview an existing Parquet file without transforming it (first 100 rows in Marimo; `glimpse()` plus first 20 rows in Quarto) or display an already-created Stage 8 figure. They never perform new analysis or generate a new figure.
 
-**What you won't see:** New analysis code, interactive dashboards, filter widgets, additional transformations, or newly generated figures. Every archived script must also carry its real execution log; an empty log or placeholder such as `No execution log found` blocks canonical assembly. The notebook is a viewer, not an analysis tool.
+**What you won't see:** New analysis code, interactive dashboards, filter widgets, additional transformations, or newly generated figures. Every archived script must also carry its real execution log — a script with an empty or missing log can't be assembled into the notebook. The notebook is a viewer, not an analysis tool.
 
 **How to view marimo notebooks (Python):** The easiest way is the **DAAF Control Panel** (`bash daaf.sh` / `.\daaf.ps1` from your `daaf-docker` folder → **4) View Marimo Notebooks (Python)**), which runs `view_notebooks.sh` for you — this opens marimo's notebook browser at [http://localhost:2718](http://localhost:2718) where you can browse and open any notebook. (You can also run `bash view_notebooks.sh` / `.\view_notebooks.ps1` directly.) Alternatively, from inside the container you can view a single notebook read-only with:
 ```bash
@@ -831,17 +822,17 @@ Here's how a typical task flows through the system during a Full Pipeline analys
 
 1. **You** ask a research question
 2. **The orchestrator** classifies the request as Full Pipeline and confirms with you
-3. **The orchestrator** delegates data exploration to a subagent, which loads the `education-data-explorer` skill
-4. **The orchestrator** delegates source deep-dives to `source-researcher` agents (one per data source), each loading the appropriate `education-data-source-*` skill
-5. **The `research-synthesizer`** consolidates all findings into unified guidance
+3. **The orchestrator** sends a subagent to explore what data exists
+4. **The orchestrator** sends a research assistant to deep-dive each data source (one per source), reading its documentation and caveats
+5. **A synthesizer** consolidates all those findings into unified guidance
 6. **The orchestrator** pauses for your review (Phase Status Update 1) ← *your checkpoint*
-7. **The `data-planner`** creates a detailed Plan, validated by the **`plan-checker`**
+7. **A research design lead** drafts a detailed Plan, which a separate checker validates
 8. **The orchestrator** pauses for your review again (Phase Status Update 2) ← *your checkpoint*
-9. **A separate `research-executor`** is called up to work through each task in the Plan, one at a time, with **a separate `code-reviewer`** inspecting each script immediately after execution
+9. **A technician/analyst** works through each task in the Plan, one at a time, with **a separate reviewer** inspecting each script immediately after it runs
 10. **The orchestrator** pauses twice more for your review to provide updates and get your input on any key decisions/issues (Phase Status Updates 3 and 4) ← *your checkpoints*
-11. **The `notebook-assembler`** compiles all scripts into a browsable notebook
-12. **The `report-writer`** creates the stakeholder report
-13. **The `data-verifier`** performs adversarial final verification on the final report, checking it closely for errors and drift from the outputs of the actual analytic scripts
+11. **An assembler** compiles all the scripts into a browsable notebook
+12. **A writer** creates the stakeholder report
+13. **A final verifier** performs adversarial verification on the report, checking it closely for errors and drift from the outputs of the actual analytic scripts
 14. **The orchestrator** delivers everything to you with file paths for final review.
 
 That's the core loop. Every piece has a job. Every job has a quality check. Every quality check has consequences (stop, revise, or proceed). And you get four mandatory check-in points where DAAF pauses and waits for your explicit approval before continuing.
@@ -856,11 +847,11 @@ Real research analyses take time -- often more time than a single Claude Code se
 
 ### Understanding Context and Sessions
 
-Claude Code operates within a context window that can be up to 1M tokens. However, quality can degrade well before the window is full, so DAAF enforces dual thresholds — both percentage-based and absolute token counts, whichever fires first. As DAAF works through a Full Pipeline analysis, delegating tasks to agents, receiving results, and coordinating the workflow, it gradually fills up this context. When it gets too full, Claude's performance degrades, and it becomes increasingly susceptible to erratic behavior due to **context rot**.
+Claude Code operates within a context window that can be up to 1M tokens. As DAAF works through a Full Pipeline analysis — delegating tasks to agents, receiving results, and coordinating the workflow — it gradually fills up this context. The catch is that quality can start to degrade well before the window is technically full, leaving Claude increasingly susceptible to erratic behavior known as **context rot**.
 
-DAAF watches context usage for every agent it runs and applies model-appropriate thresholds automatically — you configure nothing. It detects which model you're running and picks the right profile: models DAAF has specifically validated (Claude Fable/Mythos, and exact GPT 5.6 Sol) get more generous thresholds, while everything else uses conservative defaults. The important part isn't the exact numbers — it's that quality can start to degrade before a window is technically full, which is why DAAF acts early rather than waiting for it to fill.
+So DAAF watches how full its memory is getting and eases off before quality suffers — automatically, tuned to whichever model you're running, with nothing for you to configure. It acts early rather than waiting for the window to fill.
 
-DAAF monitors its own context utilization continuously and takes escalating protective action as it climbs. The four levels below, and what DAAF does at each, are the same for every model — only the exact trigger points differ:
+DAAF takes escalating protective action as context climbs. The four levels below, and what DAAF does at each, are the same for every model:
 
 | Status | What DAAF Does |
 |--------|----------------|
