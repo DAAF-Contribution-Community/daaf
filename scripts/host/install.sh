@@ -243,15 +243,35 @@ fi
 # and so carries no quarantine attribute). Linux desktop environments handle
 # double-clicked scripts inconsistently, so no launcher is shipped there; Linux
 # users launch via `bash daaf.sh` from a terminal (documented in the quickstart).
-# Non-fatal: a download failure degrades to a note, never aborts the install.
+# Non-fatal: a download failure emits a prominent diagnostic WARNING (with the
+# curl exit code, the URL attempted, and the branch) but never aborts the
+# install -- the launcher is a convenience, and update_daaf.sh can heal it later.
 if [ "$(uname -s 2>/dev/null)" = "Darwin" ]; then
     if [ "${DAAF_DRY_RUN:-}" = "1" ]; then
         echo "[DRY-RUN] Would download and chmod +x the macOS launcher (DAAF.command)"
-    elif curl -fsSL "${RAW_BASE}/scripts/host/DAAF.command" -o "${INSTALL_DIR}/DAAF.command"; then
-        chmod +x "${INSTALL_DIR}/DAAF.command"
     else
-        echo "NOTE: Could not download the macOS double-click launcher (DAAF.command)."
-        echo "      You can still launch DAAF from a terminal with: bash daaf.sh"
+        # Capture curl's exit code explicitly. The `|| rc=$?` keeps the failure
+        # from tripping `set -e` (equivalent to the old `elif` safety) while
+        # letting us report the exact code in the diagnostic below.
+        DAAF_CMD_URL="${RAW_BASE}/scripts/host/DAAF.command"
+        DAAF_CMD_RC=0
+        curl -fsSL "${DAAF_CMD_URL}" -o "${INSTALL_DIR}/DAAF.command" || DAAF_CMD_RC=$?
+        if [ "${DAAF_CMD_RC}" -eq 0 ]; then
+            chmod +x "${INSTALL_DIR}/DAAF.command"
+        else
+            # A failed curl can leave a partial or zero-byte file behind; remove
+            # it so a broken launcher can't shadow a later heal by update_daaf.sh.
+            rm -f "${INSTALL_DIR}/DAAF.command"
+            echo ""
+            echo "WARNING: Could not download the macOS double-click launcher (DAAF.command)."
+            echo "         curl exit code: ${DAAF_CMD_RC}"
+            echo "         URL attempted:  ${DAAF_CMD_URL}"
+            echo "         Branch:         ${BRANCH}"
+            echo "         This is non-fatal -- the rest of the install continues."
+            echo "         The launcher can be delivered later by running: bash update_daaf.sh"
+            echo "         (its existence-heal copies missing host files). In the meantime you"
+            echo "         can always launch DAAF from a terminal with: bash daaf.sh"
+        fi
     fi
 fi
 
