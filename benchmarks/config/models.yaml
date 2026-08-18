@@ -345,6 +345,79 @@ models:
       ANTHROPIC_DEFAULT_SONNET_MODEL: "qwen/qwen3.6-27b:venice/fp8"
       CLAUDE_CODE_SUBAGENT_MODEL: "qwen/qwen3.6-27b:venice/fp8"
 
+  # Added 2026-08-12 (day-of-release onboarding). Verified online 2026-08-12
+  # from GET /api/v1/models/qwen/qwen3.8-2.4t-a95b/endpoints: single endpoint
+  # (tag digitalocean, quantization unknown/undisclosed, context_length 262144,
+  # uptime_last_30m null — listing too new to have uptime data) lists prompt
+  # $2.00/M, completion $6.00/M, input_cache_read $0.20/M. Single upstream
+  # provider as of access date, so no ":provider" pin suffix exists — bare
+  # slug is correct (Kimi K3 precedent); wire_id omitted (comparison defaults
+  # to id). Raw endpoint listing archived:
+  # research/2026-08-12_FrameworkDev_DAAFBenchGrokDeepSeek/fetches/.
+  # Rates are published list prices, provisional until billing reconciliation;
+  # day-zero listings warrant a re-check once more providers pick up the slug
+  # (a cheaper endpoint appearing later would NOT move this entry without a
+  # deliberate re-pin decision).
+  #
+  # ENDPOINT NOT YET BENCHMARK-VIABLE (observed 2026-08-12): three dc-01 wire
+  # probes all failed instantly with "API Error: 400 Provider returned error"
+  # on the first live turn ($0 billed, no child transcript; results/
+  # 20260812_163508_3f158d — quarantined 2026-08-12 as
+  # _quarantine_2026-08-12_onboardingprobes_163508_3f158d, rep-count hygiene —
+  # plus _164217_42cb21, _164931_36cc48). Direct probes of
+  # the same Anthropic-compat route succeed on every isolated feature: tiny
+  # prompts, ~90k-token bulk prompts, thinking-block history, tools +
+  # cache_control, system + tools (research/2026-08-12_FrameworkDev_
+  # DAAFBenchGrokDeepSeek session). The 400 is specific to the full Claude
+  # Code payload (combined system prompt + full tool schemas + large
+  # checkpoint history) on the day-zero DigitalOcean endpoint; upstream 429
+  # rate-limiting was also observed during probing. Re-probe 2026-08-12
+  # ~19:27 UTC (results/20260812_192714_b6b8f1): still failing, but the mode
+  # shifted from instant 400 rejection to a 502 upstream error after ~209s —
+  # endpoint unstable rather than request-incompatible; keep waiting.
+  # Re-probe 2026-08-13 ~11:18 UTC (results/20260813_111747_d3c120): third
+  # distinct failure mode — HTTP 200 with an empty/malformed body after ~8s
+  # ($0 billed). Still not benchmark-viable.
+  # Zero-cost preflight and
+  # the registry route tests PASS for this key — only full-payload live
+  # traffic fails, which is why the entry stays active rather than commented
+  # out. Re-probe after the endpoint matures or additional providers pick up
+  # the slug before running any battery. wire_id unobserved for the same reason (bare slug, so
+  # comparison defaults to id when a run eventually succeeds).
+  # ENDPOINT PINNED 2026-08-13 (user-approved): the slug grew from one
+  # provider to four overnight (digitalocean, deepinfra/fp4, modal/nvfp4,
+  # together — fetched 2026-08-13, archived in the FrameworkDev workspace).
+  # Pinned to modal/nvfp4: 100% uptime, 1M context (others 262k), 262k
+  # max_completion, disclosed quantization, same $2/$6 rates (cache read
+  # $0.25/M vs digitalocean's $0.20/M — cached_input updated accordingly).
+  # All four endpoints passed small-payload probes on the Anthropic-compat
+  # route 2026-08-13; digitalocean also passed those yesterday while failing
+  # every full benchmark payload, so small-probe health is necessary, not
+  # sufficient — the dc-01 wire probe below is the real gate.
+  - id: "qwen/qwen3.8-2.4t-a95b:modal/nvfp4"
+    # wire_id OBSERVED 2026-08-14 (results/20260814_174926_a06806: first
+    # SUCCESSFUL dc-01 run — all 10 criteria pass, purity verified,
+    # observed_child_model_ids_raw = ["qwen/qwen3.8-2.4t-a95b"] while the
+    # routing id carried the :modal/nvfp4 pin; $3.48, 407s). NOTE: the pin is
+    # a routing PREFERENCE with fallback, not a guarantee — direct probes
+    # 2026-08-13 observed pinned requests served by DeepInfra and
+    # DigitalOcean; verify actual serving provider via billing provider_name
+    # at reconciliation. Entry remains display-quarantined
+    # (retired_display_exclusions) until the full 3-rep battery lands per the
+    # exactly-3 contract (README § Adding a New Model step 7b).
+    wire_id: "qwen/qwen3.8-2.4t-a95b"
+    name: "Qwen 3.8 2.4T A95B"
+    provider: openrouter
+    cost_tier: "medium"
+    pricing:
+      input: 2.00
+      output: 6.00
+      cached_input: 0.25
+    env_overrides:
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "qwen/qwen3.8-2.4t-a95b:modal/nvfp4"
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "qwen/qwen3.8-2.4t-a95b:modal/nvfp4"
+      CLAUDE_CODE_SUBAGENT_MODEL: "qwen/qwen3.8-2.4t-a95b:modal/nvfp4"
+
   - id: "google/gemma-4-31b-it:venice/bf16"
     # wire_id OBSERVED 2026-07-26 (results/20260726_003234, 3 reps: purity
     # verified, bare slug on the wire while routing id carried the pin)
@@ -410,30 +483,107 @@ models:
       ANTHROPIC_DEFAULT_SONNET_MODEL: "deepseek/deepseek-v4-pro:atlas-cloud/fp8"
       CLAUDE_CODE_SUBAGENT_MODEL: "deepseek/deepseek-v4-pro:atlas-cloud/fp8"
 
-  - id: "deepseek/deepseek-v4-flash:atlas-cloud/fp8"
-    # wire_id OBSERVED 2026-07-24 (results/20260724_212503/runs/
-    # dc-01_DeepSeek_V4_Flash_0/result.json recorded
-    # observed_child_model_ids_raw = ["deepseek/deepseek-v4-flash"] while the
-    # routing id carried the :atlas-cloud/fp8 pin). This is the one wire form in
-    # this file established by direct observation rather than inference.
-    wire_id: "deepseek/deepseek-v4-flash"
-    name: "DeepSeek V4 Flash"
+  # REMOVED 2026-08-02: DeepSeek V4 Flash (undated slug) retired, superseded by
+  # the dated DeepSeek V4 Flash 0731 entry above (re-post-trained revision,
+  # released 2026-07-31). The undated slug remains active on OpenRouter; this
+  # retirement is a registry decision to benchmark the dated revision going
+  # forward, not a provider deprecation. Full 4-phase battery for the successor
+  # completed 2026-08-02 (results/20260802_120055_4ec213, _120056_20ebe9,
+  # _120058_00c2f8, _120058_d1cac3; purity verified 36/36 in DC) before this
+  # removal. Historical archives for this entry remain immutable and
+  # rescoreable (README § Results). Entry preserved below for provenance:
+  #
+  # - id: "deepseek/deepseek-v4-flash:atlas-cloud/fp8"
+  #   # wire_id OBSERVED 2026-07-24 (results/20260724_212503/runs/
+  #   # dc-01_DeepSeek_V4_Flash_0/result.json recorded
+  #   # observed_child_model_ids_raw = ["deepseek/deepseek-v4-flash"] while the
+  #   # routing id carried the :atlas-cloud/fp8 pin). This is the one wire form in
+  #   # this file established by direct observation rather than inference.
+  #   wire_id: "deepseek/deepseek-v4-flash"
+  #   name: "DeepSeek V4 Flash"
+  #   provider: openrouter
+  #   cost_tier: "low"
+  #
+  #   # Corrected 2026-06-11: effective billed rates derived from the OpenRouter
+  #   # billing reconciliation of 2026-06-11 (obs/pred 1.34 — observed billing vs
+  #   # published rates applied to the billed token mix; see
+  #   # scripts/reconcile_openrouter_costs.py and derived/
+  #   # openrouter_reconciliation_2026-06-11.json). Previous rates:
+  #   # 0.0983/0.1966.
+  #   pricing:
+  #     input: 0.132
+  #     output: 0.263
+  #   env_overrides:
+  #     ANTHROPIC_DEFAULT_OPUS_MODEL: "deepseek/deepseek-v4-flash:atlas-cloud/fp8"
+  #     ANTHROPIC_DEFAULT_SONNET_MODEL: "deepseek/deepseek-v4-flash:atlas-cloud/fp8"
+  #     CLAUDE_CODE_SUBAGENT_MODEL: "deepseek/deepseek-v4-flash:atlas-cloud/fp8"
+
+  - id: "deepseek/deepseek-v4-flash-0731:novita/fp8"
+    # wire_id OBSERVED 2026-08-02 (results/20260802_115807_682041 — set
+    # quarantined 2026-08-12 as
+    # _quarantine_2026-08-12_onboardingprobe_115807_682041, rep-count
+    # hygiene; see its QUARANTINE_NOTE.md — /runs/
+    # dc-01_DeepSeek_V4_Flash_0731_0/result.json recorded
+    # observed_child_model_ids_raw = ["deepseek/deepseek-v4-flash-0731"] while
+    # the routing id carried the :novita/fp8 pin; purity_status verified).
+    wire_id: "deepseek/deepseek-v4-flash-0731"
+    name: "DeepSeek V4 Flash 0731"
     provider: openrouter
     cost_tier: "low"
 
-    # Corrected 2026-06-11: effective billed rates derived from the OpenRouter
-    # billing reconciliation of 2026-06-11 (obs/pred 1.34 — observed billing vs
-    # published rates applied to the billed token mix; see
-    # scripts/reconcile_openrouter_costs.py and derived/
-    # openrouter_reconciliation_2026-06-11.json). Previous rates:
-    # 0.0983/0.1966.
+    # Verified online 2026-08-02 from GET /api/v1/models/deepseek/
+    # deepseek-v4-flash-0731/endpoints: Novita endpoint (tag novita/fp8,
+    # quantization fp8, context_length 1048576, uptime_last_30m ~99.99)
+    # lists prompt $0.14/M, completion $0.28/M, input_cache_read $0.028/M.
+    # Endpoint pinned to novita/fp8 per maintainer choice (atlas-cloud/fp8 is
+    # also served for this revision but was not selected; full tag list
+    # captured 2026-08-02). Rates are published list prices, not
+    # yet billing-reconciled (cf. the 2026-06-11 reconciliation note on the
+    # undated Flash entry above).
     pricing:
-      input: 0.132
-      output: 0.263
+      input: 0.14
+      output: 0.28
+      cached_input: 0.028
     env_overrides:
-      ANTHROPIC_DEFAULT_OPUS_MODEL: "deepseek/deepseek-v4-flash:atlas-cloud/fp8"
-      ANTHROPIC_DEFAULT_SONNET_MODEL: "deepseek/deepseek-v4-flash:atlas-cloud/fp8"
-      CLAUDE_CODE_SUBAGENT_MODEL: "deepseek/deepseek-v4-flash:atlas-cloud/fp8"
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "deepseek/deepseek-v4-flash-0731:novita/fp8"
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "deepseek/deepseek-v4-flash-0731:novita/fp8"
+      CLAUDE_CODE_SUBAGENT_MODEL: "deepseek/deepseek-v4-flash-0731:novita/fp8"
+
+  # Added 2026-08-12 (dated revision of DeepSeek V4 Pro; the undated
+  # deepseek/deepseek-v4-pro entry above remains ACTIVE by maintainer decision
+  # 2026-08-12 — run both and compare before deciding on retirement, unlike the
+  # Flash → Flash 0731 supersession which retired the undated slug).
+  # Verified online 2026-08-12 from GET /api/v1/models/deepseek/
+  # deepseek-v4-pro-0813/endpoints: single first-party endpoint (tag deepseek,
+  # quantization unknown, context_length 1048576, uptime_last_30m 100) lists
+  # prompt $0.435/M, completion $0.87/M, input_cache_read $0.003625/M. Single
+  # upstream provider as of access date, so no ":provider" pin suffix exists —
+  # bare slug is correct (Kimi K3 precedent); wire_id omitted (comparison
+  # defaults to id). Raw endpoint listing archived:
+  # research/2026-08-12_FrameworkDev_DAAFBenchGrokDeepSeek/fetches/.
+  #
+  # PRICING RECONCILED 2026-08-12: billed/harness ratio 1.04 on the full
+  # 4-phase battery's billed token mix (derived/openrouter_reconciliation_
+  # 2026-08-12.json) — list rates below predict billing within tolerance and
+  # are retained. The undated sibling's ~3.3x understatement at these same
+  # list rates (2026-06-10) did NOT recur on this endpoint. Billing permaslug
+  # observed: deepseek/deepseek-v4-pro-20260813 (dated; routing slug
+  # unchanged; mapped via PERMASLUG_BASE_OVERRIDES in
+  # scripts/reconcile_openrouter_costs.py — without that override its rows
+  # misattribute to the still-active undated Pro entry). cost_tier held at
+  # medium pending a fuller cost picture.
+  - id: "deepseek/deepseek-v4-pro-0813"
+    name: "DeepSeek V4 Pro 0813"
+    provider: openrouter
+    cost_tier: "medium"
+    pricing:
+      input: 0.435
+      output: 0.87
+      cached_input: 0.003625
+    env_overrides:
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "deepseek/deepseek-v4-pro-0813"
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "deepseek/deepseek-v4-pro-0813"
+      CLAUDE_CODE_SUBAGENT_MODEL: "deepseek/deepseek-v4-pro-0813"
 
   - id: "google/gemini-3.1-pro-preview:google-vertex"
     # wire_id OBSERVED 2026-07-25 (results/20260725_200704/runs/
@@ -553,6 +703,115 @@ models:
       ANTHROPIC_DEFAULT_SONNET_MODEL: "google/gemini-3.1-flash-lite"
       CLAUDE_CODE_SUBAGENT_MODEL: "google/gemini-3.1-flash-lite"
 
+  # Added 2026-08-10 (Inkling onboarding, paired with Inkling Small below —
+  # both pinned to the SAME provider for cross-pair comparability per
+  # maintainer decision 2026-08-10). Verified online 2026-08-10 from
+  # GET /api/v1/models/thinkingmachines/inkling-small/endpoints: deepinfra/fp8
+  # endpoint (quantization fp8, context_length 524288, uptime_last_30m ~99.97)
+  # lists prompt $0.45/M, completion $1.20/M, input_cache_read $0.10/M.
+  # Endpoint pinned to deepinfra/fp8: the alternative `together` endpoint
+  # (maintainer's initial preference) reports no uptime for this slug and an
+  # 89.6%-uptime/status:-2 degradation on the sibling Inkling entry, so the
+  # shared pin moved to deepinfra/fp8 (disclosed quant, ~100% uptime, cheapest;
+  # user-approved 2026-08-10).
+  #
+  # Corrected 2026-08-10: effective billed rates calibrated to the OpenRouter
+  # billing reconciliation of 2026-08-10 so predicted $/run matches billed
+  # $/run at obs/pred 1.00 on this model's billed token mix (heavy DeepInfra
+  # cache discounting drives billed well below list; a single global scale
+  # factor overcorrected, so rates were iterated to convergence — see
+  # scripts/reconcile_openrouter_costs.py and
+  # derived/openrouter_reconciliation_2026-08-10.json). Published list rates:
+  # 0.45/1.20/0.10.
+  - id: "thinkingmachines/inkling-small:deepinfra/fp8"
+    # wire_id OBSERVED 2026-08-10 (results/20260810_172003_b1e8db/runs/
+    # dc-01_Inkling_Small_0/result.json: observed_child_model_ids_raw =
+    # ["thinkingmachines/inkling-small"] while the routing id carried the
+    # :deepinfra/fp8 pin; purity verified).
+    wire_id: "thinkingmachines/inkling-small"
+    name: "Inkling Small"
+    provider: openrouter
+    cost_tier: "low"
+    pricing:
+      input: 0.258
+      output: 0.691
+      cached_input: 0.057
+    env_overrides:
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "thinkingmachines/inkling-small:deepinfra/fp8"
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "thinkingmachines/inkling-small:deepinfra/fp8"
+      CLAUDE_CODE_SUBAGENT_MODEL: "thinkingmachines/inkling-small:deepinfra/fp8"
+
+  # Added 2026-08-10 (Inkling onboarding — see pairing note on Inkling Small
+  # above). Verified online 2026-08-10 from
+  # GET /api/v1/models/thinkingmachines/inkling/endpoints: deepinfra/fp8
+  # endpoint (quantization fp8, context_length 524288, uptime_last_30m 100)
+  # lists prompt $0.95/M, completion $4.05/M, input_cache_read $0.16/M.
+  # Alternatives at fetch time: baseten/fp8 (1M context, $1.00/$4.05, 100%
+  # uptime) and together (quant unknown, 89.6% uptime, status -2 — degraded).
+  # deepinfra/fp8 chosen for the shared pair pin (user-approved 2026-08-10).
+  #
+  # Corrected 2026-08-10: effective billed rates calibrated to the OpenRouter
+  # billing reconciliation of 2026-08-10 so predicted $/run matches billed
+  # $/run at obs/pred 1.00 on this model's billed token mix (DeepInfra cache
+  # discounting drives billed below list; rates iterated to convergence — see
+  # scripts/reconcile_openrouter_costs.py and
+  # derived/openrouter_reconciliation_2026-08-10.json). Published list rates:
+  # 0.95/4.05/0.16. Billing permaslug observed: thinkingmachines/
+  # inkling-20260715 (dated permaslug; routing slug unchanged).
+  - id: "thinkingmachines/inkling:deepinfra/fp8"
+    # wire_id OBSERVED 2026-08-10 (results/20260810_172003_b1e8db/runs/
+    # dc-01_Inkling_0/result.json: observed_child_model_ids_raw =
+    # ["thinkingmachines/inkling"] while the routing id carried the
+    # :deepinfra/fp8 pin; purity verified).
+    wire_id: "thinkingmachines/inkling"
+    name: "Inkling"
+    provider: openrouter
+    cost_tier: "medium"
+    pricing:
+      input: 0.47
+      output: 2.00
+      cached_input: 0.078
+    env_overrides:
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "thinkingmachines/inkling:deepinfra/fp8"
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "thinkingmachines/inkling:deepinfra/fp8"
+      CLAUDE_CODE_SUBAGENT_MODEL: "thinkingmachines/inkling:deepinfra/fp8"
+
+  # Added 2026-08-12 (Grok onboarding — first xAI entry in the registry).
+  # Verified online 2026-08-12 from GET /api/v1/models/x-ai/grok-4.6/endpoints:
+  # four endpoints, all first-party xAI, all context_length 500000, all
+  # uptime_last_30m 100, quantization unknown (not disclosed): xai and xai/zdr
+  # at prompt $2.00/M, completion $6.00/M, input_cache_read $0.50/M; the
+  # xai/priority and xai/zdr/priority tags at exactly 2x those rates. Endpoint
+  # pinned to xai/zdr per maintainer choice (zero-data-retention guarantee at
+  # zero price premium over the base xai tag; priority tiers not needed for
+  # benchmark traffic). Raw endpoint listing archived:
+  # research/2026-08-12_FrameworkDev_DAAFBenchGrokDeepSeek/fetches/.
+  # PRICING RECONCILED 2026-08-12: billed/harness ratio 1.06 on the full
+  # 4-phase battery's billed token mix (derived/openrouter_reconciliation_
+  # 2026-08-12.json) — list rates below predict billing within tolerance and
+  # are retained. Billing permaslug observed: x-ai/grok-4.6-20260810 (dated;
+  # routing slug unchanged; the generic date-strip attributes it correctly).
+  - id: "x-ai/grok-4.6:xai/zdr"
+    # wire_id OBSERVED 2026-08-12 (results/20260812_163508_3f158d — set
+    # quarantined 2026-08-12 as
+    # _quarantine_2026-08-12_onboardingprobes_163508_3f158d, rep-count
+    # hygiene; see its QUARANTINE_NOTE.md — /runs/
+    # dc-01_Grok_4.6_0/result.json: observed_child_model_ids_raw =
+    # ["x-ai/grok-4.6"] while the routing id carried the :xai/zdr pin;
+    # purity_status verified).
+    wire_id: "x-ai/grok-4.6"
+    name: "Grok 4.6"
+    provider: openrouter
+    cost_tier: "medium"
+    pricing:
+      input: 2.00
+      output: 6.00
+      cached_input: 0.50
+    env_overrides:
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "x-ai/grok-4.6:xai/zdr"
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "x-ai/grok-4.6:xai/zdr"
+      CLAUDE_CODE_SUBAGENT_MODEL: "x-ai/grok-4.6:xai/zdr"
+
   # --- OpenAI GPT models (via OpenRouter Anthropic-compatible endpoint) ---
   #
   # Added 2026-07-09 for GPT smoke-test battery. Pricing pulled live from
@@ -597,10 +856,16 @@ models:
     name: "GPT-5.6 Terra"
     provider: openrouter
     cost_tier: "medium"
+    # Pricing updated 2026-08-11: OpenRouter applies a 50% exclusive discount on
+    # top of OpenAI's Terra price cut (input 1.00 vs OpenAI direct 2.00, output
+    # 6.00 vs 12.00), verified against openrouter.ai/openai/gpt-5.6-terra raw HTML.
+    # cached_input NOT captured from the OpenRouter page; 0.10 is INFERRED from the
+    # 10%-of-input convention observed on Luna — provisional pending the next
+    # OpenRouter billing reconciliation. Prior: input 2.50 / output 15.00 / cached 0.25.
     pricing:
-      input: 2.50
-      output: 15.00
-      cached_input: 0.25
+      input: 1.00
+      output: 6.00
+      cached_input: 0.10
     env_overrides:
       ANTHROPIC_DEFAULT_OPUS_MODEL: "openai/gpt-5.6-terra"
       ANTHROPIC_DEFAULT_SONNET_MODEL: "openai/gpt-5.6-terra"
@@ -610,10 +875,14 @@ models:
     name: "GPT-5.6 Luna"
     provider: openrouter
     cost_tier: "medium"
+    # Pricing updated 2026-08-11: OpenRouter applies a 50% exclusive discount on
+    # top of OpenAI's 5x Luna price cut (input 0.10 vs OpenAI direct 0.20, output
+    # 0.60 vs 1.20), verified against openrouter.ai/openai/gpt-5.6-luna raw HTML;
+    # cached_input 0.01 also captured there. Prior: input 1.00 / output 6.00 / cached 0.10.
     pricing:
-      input: 1.00
-      output: 6.00
-      cached_input: 0.10
+      input: 0.10
+      output: 0.60
+      cached_input: 0.01
     env_overrides:
       ANTHROPIC_DEFAULT_OPUS_MODEL: "openai/gpt-5.6-luna"
       ANTHROPIC_DEFAULT_SONNET_MODEL: "openai/gpt-5.6-luna"
@@ -638,20 +907,24 @@ models:
     # scripts/provider_shim/probe_context_ceiling.py and raise if Luna proves higher.
     context_window_tokens: 370000
     actual_billing_treatment: "not_separately_billed"
+    # Pricing updated 2026-08-11: OpenAI cut Luna direct-API list prices 5x
+    # (verified against the pricing table at developers.openai.com/api/docs/pricing).
+    # Prior schedule was 1.00/0.10/1.25/6.00 short, 2.00/0.20/2.50/9.00 long.
+    # Coherence-checked against cost_estimator.LUNA_*_CONTEXT_RATES.
     api_equivalent_pricing:
-      source_url: "https://developers.openai.com/api/docs/models/gpt-5.6-luna"
-      accessed_at: "2026-07-15"
+      source_url: "https://developers.openai.com/api/docs/pricing"
+      accessed_at: "2026-08-11"
       threshold_input_tokens: 272000
       short_context:
-        input: 1.00
-        cached_input: 0.10
-        cache_write: 1.25
-        output: 6.00
+        input: 0.20
+        cached_input: 0.02
+        cache_write: 0.25
+        output: 1.20
       long_context:
-        input: 2.00
-        cached_input: 0.20
-        cache_write: 2.50
-        output: 9.00
+        input: 0.40
+        cached_input: 0.04
+        cache_write: 0.50
+        output: 1.80
     env_overrides:
       ANTHROPIC_DEFAULT_OPUS_MODEL: "gpt-5.6-luna"
       ANTHROPIC_DEFAULT_SONNET_MODEL: "gpt-5.6-luna"
@@ -675,20 +948,23 @@ models:
     # scripts/provider_shim/probe_context_ceiling.py.
     context_window_tokens: 370000
     actual_billing_treatment: "not_separately_billed"
+    # Pricing updated 2026-08-11: OpenAI cut Terra direct-API list prices ~20%
+    # (verified against the pricing table at developers.openai.com/api/docs/pricing).
+    # Prior schedule was 2.50/0.25/3.125/15.00 short, 5.00/0.50/6.25/22.50 long.
     api_equivalent_pricing:
-      source_url: "https://developers.openai.com/api/docs/models/gpt-5.6-terra"
-      accessed_at: "2026-07-29"
+      source_url: "https://developers.openai.com/api/docs/pricing"
+      accessed_at: "2026-08-11"
       threshold_input_tokens: 272000
       short_context:
-        input: 2.50
-        cached_input: 0.25
-        cache_write: 3.125
-        output: 15.00
+        input: 2.00
+        cached_input: 0.20
+        cache_write: 2.50
+        output: 12.00
       long_context:
-        input: 5.00
-        cached_input: 0.50
-        cache_write: 6.25
-        output: 22.50
+        input: 4.00
+        cached_input: 0.40
+        cache_write: 5.00
+        output: 18.00
     env_overrides:
       ANTHROPIC_DEFAULT_OPUS_MODEL: "gpt-5.6-terra"
       ANTHROPIC_DEFAULT_SONNET_MODEL: "gpt-5.6-terra"
@@ -708,9 +984,12 @@ models:
     # Pricing corrected 2026-07-29: the entry originally copied Luna's schedule
     # (5x understatement); now Sol's own published tier, verified against
     # developers.openai.com gpt-5.6-sol.
+    # Re-verified 2026-08-11 against developers.openai.com/api/docs/pricing:
+    # Sol direct-API list prices are UNCHANGED (OpenAI's cut applied to Terra
+    # and Luna only). Refreshed accessed_at; schedule below is unmodified.
     api_equivalent_pricing:
-      source_url: "https://developers.openai.com/api/docs/models/gpt-5.6-sol"
-      accessed_at: "2026-07-29"
+      source_url: "https://developers.openai.com/api/docs/pricing"
+      accessed_at: "2026-08-11"
       threshold_input_tokens: 272000
       short_context:
         input: 5.00
@@ -796,3 +1075,51 @@ models:
 #      cached_input: 0.30
 #    env_overrides:
 #      CLAUDE_CODE_EFFORT_LEVEL: "max"
+
+# --- Retired display exclusions (drop a model from ALL report surfaces) ---
+# Model NAMES (matching run.model / the retired `name:` field) whose corpus
+# runs must be dropped from EVERY display surface of the results viewer —
+# leaderboard, cost/battery, Key Takeaways aggregation, run counts, scatter,
+# consistency. This is quarantine-equivalent at model granularity: the runs
+# stay immutable on disk (rescoreable), but the generator excludes them at
+# load time (load_display_exclusions() -> load_runs chokepoint in
+# scripts/generate_results_viewer_v2.py). Use this when a model has been
+# retired and the maintainer wants it fully gone from the report rather than
+# shown as archived history (contrast retired_model_pricing below, which KEEPS
+# a retired model visible and merely preserves its list rates). Ignored by the
+# harness and phase runners (they read only `models:`).
+retired_display_exclusions:
+  # 2026-08-12: Qwen 3.8 2.4T A95B — TEMPORARY display quarantine, not a
+  # retirement. Its only corpus runs are failed $0 endpoint probes (400/502
+  # provider errors, no model behavior observed — see the entry's ENDPOINT
+  # NOT YET BENCHMARK-VIABLE note above); as a zero-score corpus model they
+  # distorted the leaderboard's range-quartile tier breaks (user-observed
+  # 2026-08-12). REMOVE this line once the endpoint stabilizes and real
+  # battery runs land.
+  - "Qwen 3.8 2.4T A95B"
+  # 2026-08-11: the pre-0731 (undated) DeepSeek V4 Flash is fully removed from
+  # the report. It was retired from `models:` on 2026-08-02 (superseded by the
+  # DeepSeek V4 Flash 0731 revision, see the REMOVED block above); per user
+  # decision its corpus history is now excluded from display entirely rather
+  # than carried as archived cost history. Runs remain on disk untouched.
+  - "DeepSeek V4 Flash"
+
+# --- Retired model pricing (historical costing only) ---
+# Models retired from the active `models:` list above whose archived corpus
+# runs still need list-rate pricing in the results viewer (a retired entry
+# with corpus history would otherwise silently lose its cost estimate —
+# observed 2026-08-02 when the DeepSeek V4 Flash retirement dropped the
+# viewer's pricing coverage from 30 to 29 corpus models).
+# Read by load_model_pricing() in scripts/generate_results_viewer_v2.py;
+# ignored by the harness and phase runners (they read only `models:`).
+#
+# 2026-08-11: the sole entry (DeepSeek V4 Flash) was removed — that model is
+# now a retired_display_exclusions member (above), so it no longer renders and
+# needs no preserved pricing. The section (and its load_model_pricing reader)
+# is retained for the next retire-but-keep-visible model; the key is left
+# commented out so it parses as an empty list rather than null.
+# retired_model_pricing:
+#   - name: "DeepSeek V4 Flash"
+#     pricing:
+#       input: 0.132
+#       output: 0.263

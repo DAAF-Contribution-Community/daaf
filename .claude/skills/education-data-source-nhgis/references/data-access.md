@@ -63,16 +63,17 @@ Codebooks are `.xls` files co-located with data in all mirrors. Use `get_codeboo
 
 ## Direct NHGIS Access (Custom Analysis)
 
-For full census data access beyond school/college-census links, register for NHGIS directly. This is separate from the Education Data Portal mirror system.
+For full census data access beyond school/college-census links, use NHGIS directly. This is separate from the Education Data Portal mirror system.
 
-### Registration
+### Browsing, Account, and API Requirements
 
-**Required**: Free registration at https://uma.pop.umn.edu/nhgis/user/new
+The NHGIS Data Finder at `https://data2.nhgis.org/main` can be browsed without signing in: users can inspect datasets, tables, years, topics, and geographic levels publicly. A free IPUMS NHGIS account and login are required to **submit, manage, and download extracts**. Register at `https://uma.pop.umn.edu/nhgis/user/new`.
 
-All direct NHGIS access methods require authentication. Registration provides:
-- Web interface access
-- API key for programmatic access
-- Extract history and downloads
+API extract requests have an additional requirement: an IPUMS API key associated with the registered account. See `https://developer.ipums.org/docs/v2/get-started/` for current prerequisites.
+
+Authentication therefore applies to extract operations, not to ordinary Data Finder browsing. Account access provides:
+- Extract submission, history, management, and downloads
+- API-key creation for programmatic extract requests
 
 ## Method 1: NHGIS Data Finder (Web Interface)
 
@@ -582,14 +583,11 @@ completed <- lapply(extracts, wait_for_extract)
 | Missing variables | Table not available for level | Choose different geographic level |
 | Shapefile mismatch | Year mismatch | Ensure shapefile year matches data year |
 
-## Citation
+## Terms, Citation, and Redistribution
 
-Include in publications:
+Direct NHGIS extracts are governed by IPUMS terms, citation requirements, and redistribution restrictions that are separate from the Education Data Portal's ODC-By terms. Review the current requirements before sharing an extract or derivative:
 
-```
-Steven Manson, Jonathan Schroeder, David Van Riper, Tracy Kugler, and Steven Ruggles. 
-IPUMS National Historical Geographic Information System: Version 18.0 [dataset]. 
-Minneapolis, MN: IPUMS. 2023. http://doi.org/10.18128/D050.V18.0
-```
+- Citation and use: `https://www.nhgis.org/citation-and-use-nhgis-data`
+- IPUMS terms: `https://www.ipums.org/about/terms`
 
-Check https://www.nhgis.org/citation-and-use-nhgis-data for current version.
+As verified on 2026-07-21, the citation page identifies **IPUMS NHGIS Version 21.0 (2026)**. Use the exact citation generated for the extract or shown on the current citation page rather than copying a frozen version string from this reference.

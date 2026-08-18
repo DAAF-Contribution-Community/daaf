@@ -32,11 +32,11 @@ This reference documents how the Civil Rights Data Collection has evolved across
   ↓
 2009-10 Modern CRDC redesign begins
   ↓
-2011-12 First modern CRDC (sampled)
+2011-12 First modern CRDC (coverage not re-verified here)
   ↓
-2013-14 Expanded sample
+2013-14 Universe collection (16,758 districts; 95,507 schools)
   ↓
-2015-16 First near-universe collection
+2015-16 Universe collection; chronic absenteeism added
   ↓
 2017-18 Full universe, expanded variables
   ↓
@@ -96,7 +96,7 @@ Major transformation of the collection:
 | Collection | Paper/manual | Web-based |
 | Variables | Limited | Extensive |
 | Frequency | Irregular | Biennial |
-| Coverage | Sample | Universe (from 2015) |
+| Coverage | Collection-specific | Official evidence verifies a universe collection in 2013-14; later collections remain collection-specific |
 
 ---
 
@@ -122,28 +122,25 @@ Major transformation of the collection:
 
 ### 2013-14 Collection
 
-**Expanded sample**
+**Universe collection**
 
 | Aspect | Detail |
 |--------|--------|
-| Coverage | Larger sample (~16,500 LEAs) |
+| Coverage | 16,758 districts and 95,507 schools |
 | Changes | Minor refinements to definitions |
 | New elements | Some optional elements added |
 
-**Key changes**:
-- Expanded sample size
-- Clarified definitions based on 2011-12 experience
-- Added optional elements for certain data
+The official 2013-14 first-look document explicitly identifies this as a **universe collection**. Earlier wording that characterized it as anything less than universe coverage was incorrect. Definitions were clarified based on earlier collection experience, and optional elements were added. Source: https://www.ed.gov/about/offices/list/ocr/docs/crdc-2013-14.html (accessed 2026-07-21).
 
 ### 2015-16 Collection
 
-**Near-universe collection**
+**Universe collection**
 
 | Aspect | Detail |
 |--------|--------|
-| Coverage | Near-universe (~96,000 schools) |
+| Coverage | Universe (~96,000 schools) |
 | New elements | Chronic absenteeism, preschool expansion |
-| Significance | First near-complete national data |
+| Significance | First collection with chronic absenteeism in this series |
 
 **Major additions**:
 - **Chronic absenteeism** - First collection of this variable
@@ -152,9 +149,9 @@ Major transformation of the collection:
 - Sports participation (Title IX)
 
 **What this means**:
-- First year suitable for national totals
-- Baseline for time series
 - Comprehensive school-level coverage
+- New chronic-absenteeism baseline
+- Longitudinal use still requires definition and availability checks
 
 ### 2017-18 Collection
 
@@ -332,21 +329,20 @@ Major transformation of the collection:
 
 ## Coverage Evolution
 
-### Sample to Universe Transition
+### Collection Coverage Timeline
 
 ```
-2011    Sample (~7,000 LEAs)
-        └── Stratified sample, not generalizable
-        
-2013    Expanded Sample (~16,500 LEAs)
-        └── Larger but still sampled
-        
-2015    Near-Universe (~96,000 schools)
-        └── First comprehensive coverage
-        
-2017+   Full Universe
-        └── All public schools required
+2011    Coverage not re-verified in this correction
+        └── Consult authoritative 2011-12 collection documentation
+
+2013    Universe (16,758 districts; 95,507 schools)
+        └── Official first-look evidence
+
+2015+   Universe collections
+        └── Definitions and topic availability still change by cycle
 ```
+
+Do not apply one sampling label across both 2011-12 and 2013-14. The 2013-14 collection is authoritatively documented as universe; the 2011-12 status must be established separately.
 
 ### Geographic Coverage
 
@@ -374,8 +370,8 @@ Major transformation of the collection:
 
 | Analysis Period | Recommendation |
 |-----------------|----------------|
-| 2011-2013 only | Can compare, but both sampled |
-| 2011-2017 | Not recommended (sample vs. universe) |
+| 2011-2013 | Compare only after verifying 2011-12 coverage and harmonizing definitions |
+| 2011-2017 | Requires collection-specific coverage and definition checks |
 | 2015-2017 only | Good for trends |
 | 2015-2020 | Good, but note COVID |
 | Including 2020-21 | Not recommended for trends |

@@ -7,7 +7,7 @@ What industries graduates enter: employment by NAICS sector.
 ## Contents
 
 - [Overview](#overview)
-- [NAICS Sector Codes](#naics-sector-codes)
+- [NAICS Sector Codes](#naics-sector-codes-portal-integer-encoding)
 - [Industry Flow Variables](#industry-flow-variables)
 - [Analysis Patterns](#analysis-patterns)
 - [Matching Programs to Industries](#matching-programs-to-industries)

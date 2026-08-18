@@ -158,7 +158,11 @@ class ArtifactSerializationTests(unittest.TestCase):
         self.assertIsNone(luna_record["actual_billing"]["actual_marginal_charge_usd"])
         self.assertEqual("not_separately_billed", luna_record["actual_billing"]["charge_status"])
         self.assertIsNone(luna_record["api_equivalent"]["cost_usd"])
-        self.assertAlmostEqual(0.228, luna_record["api_equivalent"]["short_context_uncached_scenario_usd"])
+        # 0.0456 under the 2026-08-11 Luna 5x price cut (120k uncached input *
+        # 0.20/M + 18k output * 1.20/M); was 0.228 under the prior schedule. The
+        # fixture supplies no short_context block, so this falls back to the
+        # cost_estimator LUNA_SHORT_CONTEXT_RATES constants.
+        self.assertAlmostEqual(0.0456, luna_record["api_equivalent"]["short_context_uncached_scenario_usd"])
         self.assertEqual([luna.id], luna_record["model_identity"]["claude_cli_model_usage_ids"])
         self.assertIsNone(luna_record["model_identity"]["backend_confirmed_model_id"])
         self.assertTrue(luna_record["provenance"]["sanitizer_enabled"])
@@ -516,13 +520,15 @@ class ChildModelPurityTests(unittest.TestCase):
         self.assertEqual("failed", evidence["purity_status"])
 
     def test_registry_wire_ids_cover_every_pinned_entry(self):
-        """models.yaml: every :pinned id declares a wire_id; no bare slug does.
+        """models.yaml pins all routed wire ids and only one approved alias.
 
         Exercises the real loader (not a hand-rolled YAML read) so the test also
         proves wire_id survives load_models' provider env-override merging.
-        OpenRouter creds are faked because load_models SKIPS openrouter entries
-        when they are absent — without them the pinned entries would never be
-        loaded and this assertion would pass vacuously.
+        The exact unpinned exception is the observed Opus 4.5 alias-to-snapshot
+        mapping; every other unpinned entry must omit wire_id. OpenRouter creds
+        are faked because load_models SKIPS openrouter entries when they are
+        absent — without them the pinned entries would never be loaded and this
+        assertion would pass vacuously.
         """
         fake_creds = {
             "OPENROUTER_BASE_URL": "https://example.invalid/api",
@@ -536,6 +542,15 @@ class ChildModelPurityTests(unittest.TestCase):
             10, len(pinned),
             f"expected 10 provider-pinned registry entries, got {pinned}",
         )
+        unpinned_wire_ids = sorted(
+            (config.id, config.wire_id)
+            for config in models.values()
+            if ":" not in config.id and config.wire_id is not None
+        )
+        self.assertEqual(
+            [("claude-opus-4-5", "claude-opus-4-5-20251101")],
+            unpinned_wire_ids,
+        )
         for key, config in models.items():
             if ":" in config.id:
                 self.assertIsNotNone(
@@ -546,9 +561,6 @@ class ChildModelPurityTests(unittest.TestCase):
                     config.id.split(":", 1)[0], config.wire_id,
                     f"{key} wire_id is not the bare slug of its routing id",
                 )
-            else:
-                # Unpinned entries rely on the default, keeping them untouched.
-                self.assertIsNone(config.wire_id, f"{key} should not declare wire_id")
             self.assertEqual(
                 config.wire_id or config.id, config.comparison_model_id
             )

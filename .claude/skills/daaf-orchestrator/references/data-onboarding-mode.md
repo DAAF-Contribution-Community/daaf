@@ -79,7 +79,7 @@ Data Onboarding is designed for **tabular datasets** — files with rows and col
 │      ├─ Verify API key is set in environment; if missing → STOP with      │
 │      │   setup instructions (see API Key Setup Guidance below)             │
 │      ├─ DI-0a: WRITE PHASE — Invoke data-ingest (profiling_part = "DI-0") │
-│      │   ├─ Agent researches API (WebFetch docs, WebSearch if needed)      │
+│      │   ├─ Agent researches API (WebSearch + web_fetch.sh for docs)       │
 │      │   ├─ Identifies endpoints, response format, pagination, rate limits │
 │      │   ├─ Writes acquisition script:                                    │
 │      │   │   scripts/stage5_fetch/00_api-fetch.py (Python)                │
@@ -419,7 +419,7 @@ user's requested dataset to the project's data/raw/ directory.
 **DI-0 uses a split execution model: the agent WRITES the script but does NOT execute it.** The orchestrator presents the script to the user for approval, then executes it separately. This is because DI-0 makes external network calls — the user should see exactly what API call will be made before it runs.
 
 1. Load the `data-scientist` skill for methodology guidance
-2. Research the API via WebFetch (read API docs) and WebSearch if needed
+2. Research the API via WebSearch (find the docs URL) and the DAAF fetch protocol (`bash /daaf/scripts/web_fetch.sh URL DEST_DIR` to read the docs; the built-in WebFetch is blocked — see the `web-retrieval` skill)
 3. Identify: available endpoints, response format, pagination method, rate limits, auth method
 4. Write acquisition script to: `{project_script_dir}/stage5_fetch/00_api-fetch.py` (Python) or `00_api-fetch.R` (R)
    - Python: Script MUST check `os.environ["{env_var_name}"]` with clear error if missing
@@ -587,6 +587,8 @@ For EACH profiling part (DI-3 through DI-6), follow this complete cycle. **Do NO
 ```
 
 **CRITICAL:** Steps 0-6 form an atomic unit. Step 0 runs before each new part cycle. NEVER proceed to the next part without completing all steps. NEVER invoke a new profiling subagent without first completing QA review and STATE.md update for the previous part.
+
+**Turn-end briefing.** The Step 6 heartbeat and the PSU-DI checkpoints are this mode's instances of DAAF's general Turn-End Briefing standard — the heartbeat as the in-cycle, non-blocking form, the PSUs as the heavyweight review points. Every *other* substantive turn that returns control to the user (an error-recovery pause, an intake question answered mid-profiling) still closes with a briefing of what happened since the user's last message, taken altogether. See the master statement in `SKILL.md` § User-Facing Communication Standards > "Turn-End Briefing."
 
 **Stage DI-7 (Skill Authoring):** Does not follow this cycle. It has its own gate (GDI-7) and updates the Skill Authoring Status section of STATE.md directly. DI-7 includes skill file creation and template compliance validation. Skills are automatically discovered via YAML frontmatter once placed in `.claude/skills/`.
 

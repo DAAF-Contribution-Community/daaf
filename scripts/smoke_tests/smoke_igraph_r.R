@@ -163,3 +163,90 @@ cat("=== All 10 tests PASSED ===\n")
 cat("Tested: igraph", igraph_ver, "/ tidygraph", tidygraph_ver,
     "/ ggraph", ggraph_ver, "\n")
 cat("Seed used for all stochastic steps:", SEED, "\n")
+
+
+# =============================================================================
+# EXECUTION LOG
+# =============================================================================
+#
+# Executed: 2026-08-18 20:29:28
+# Command: Rscript /daaf/scripts/smoke_tests/smoke_igraph_r.R
+# Duration: 2s
+# Exit code: 0
+#
+# --- STDOUT ---
+# 
+# Attaching package: ‘igraph’
+# 
+# The following objects are masked from ‘package:stats’:
+# 
+#     decompose, spectrum
+# 
+# The following object is masked from ‘package:base’:
+# 
+#     union
+# 
+# 
+# Attaching package: ‘tidygraph’
+# 
+# The following object is masked from ‘package:igraph’:
+# 
+#     groups
+# 
+# The following object is masked from ‘package:stats’:
+# 
+#     filter
+# 
+# Loading required package: ggplot2
+# === igraph-r Smoke Test ===
+# 
+# Test 1: Version checks
+#   igraph: 2.2.3 
+#   tidygraph: 1.3.1 
+#   ggraph: 2.2.2 
+#   PASS: All versions match skill metadata
+# 
+# Test 2: tbl_graph construction from edge-list tibble
+#   Nodes: 7  Edges: 8  (unweighted, undirected)
+#   PASS
+# 
+# Test 3: tidyverse round-trip (activate/as_tibble)
+#   Round-trip preserved 7 nodes, 8 edges
+#   PASS
+# 
+# Test 4: Centrality with weights = NA
+#   Max degree: 4  Max betweenness: 8 
+#   PASS
+# 
+# Test 5: Component-aware closeness
+#   Components: 1  (connected -> closeness well-defined)
+#   PASS
+# 
+# Test 6: Seeded Louvain community detection
+#   Louvain communities: 2  Modularity: 0.25  (reproducible under seed)
+#   PASS
+# 
+# Test 7: Seeded Leiden community detection
+#   Leiden communities: 2 
+#   PASS
+# 
+# Test 8: Directed -> undirected conversion for community detection
+#   Directed graph collapsed to undirected; 2 communities found
+#   PASS
+# 
+# Test 9: Bipartite construction + projection
+#   Bipartition valid; author projection: 3 authors, 2 co-author edges
+#   PASS
+# 
+# Test 10: Seeded ggraph plot object build
+#   ggraph object built and layout computed (not rendered)
+#   PASS
+# 
+# === All 10 tests PASSED ===
+# Tested: igraph 2.2.3 / tidygraph 1.3.1 / ggraph 2.2.2 
+# Seed used for all stochastic steps: 20260715 
+#
+# --- STDERR ---
+# (captured in STDOUT above via 2>&1)
+#
+# =============================================================================

@@ -7,12 +7,6 @@
 # loaded this session. If not, injects a reminder via stdout that appears as
 # <user-prompt-submit-hook> text in the LLM's context.
 #
-# While that normal reminder branch is active, genuine terminal gpt-* session
-# models also receive a compact collaborator-guidance reminder. Model identity
-# comes only from the session-scoped /tmp/claude-model-<session_id> cache written
-# by context-bar.sh. Missing, empty, or malformed identity is a silent no-op for
-# GPT-specific guidance; the ordinary orchestrator reminder still fires.
-#
 # Additionally, on the user's FIRST EVER session (detected via activity.log
 # line count), injects a first-run transparency statement that Claude must
 # present before proceeding with normal workflow. The transparency content
@@ -58,7 +52,7 @@ CALLER_ELIGIBLE=0
 # eligibility is also reduced to a trusted 0/1 scalar inside jq: raw agent fields
 # never enter Bash, and non-string or malformed nonempty identities stay silent.
 # Missing jq, malformed/non-object JSON, or extraction failure preserves the
-# ordinary reminder but can never authorize a model-cache read or GPT guidance.
+# ordinary reminder.
 if command -v jq >/dev/null 2>&1; then
     if IFS=$'\x1f' read -r SESSION_ID CALLER_ELIGIBLE < <(printf '%s' "$INPUT" | jq -er '
         def valid_session_id:
@@ -91,19 +85,16 @@ fi
 
 # Explicit main-thread guard. Successfully parsed subagent or malformed caller
 # identity stays silent. Unresolved payload identity preserves the fail-open
-# ordinary reminder while GPT-specific guidance remains disabled below.
+# ordinary reminder.
 if [[ "$INPUT_PARSED" -eq 1 && "$CALLER_ELIGIBLE" -ne 1 ]]; then
     exit 0
 fi
 
-# Session IDs become path components for both the transcript-lifetime flag and
-# the session-runtime model cache. Only jq-validated IDs are exposed to Bash.
-# Invalid or absent IDs retain historical "default" LOADED-FLAG semantics, but
-# never select a shared default model cache.
-SESSION_ID_VALID=0
+# The session ID becomes a path component for the transcript-lifetime flag.
+# Only jq-validated IDs are exposed to Bash. Invalid or absent IDs retain the
+# historical "default" LOADED-FLAG semantics.
 FLAG_SESSION_ID="default"
 if [[ "$INPUT_PARSED" -eq 1 && -n "$SESSION_ID" ]]; then
-    SESSION_ID_VALID=1
     FLAG_SESSION_ID="$SESSION_ID"
 fi
 
@@ -112,27 +103,6 @@ FLAG="${HOME}/.claude/daaf-state/orchestrator-loaded-${FLAG_SESSION_ID}"
 if [[ ! -f "$FLAG" ]]; then
     # Always remind to load the orchestrator
     echo "You are interacting with a human user. You MUST IMMEDIATELY invoke the daaf-orchestrator skill (Skill tool with skill: \"daaf-orchestrator\") BEFORE doing any other work."
-
-    # The statusline payload is the authoritative source for the active session
-    # model. No transcript or environment fallback is used: stale or unresolved
-    # identity must suppress GPT-specific guidance rather than guess.
-    MODEL_ID=""
-    if [[ "$INPUT_PARSED" -eq 1 && "$SESSION_ID_VALID" -eq 1 ]]; then
-        MODEL_CACHE_DIR="${DAAF_REMIND_MODEL_CACHE_DIR:-/tmp}"
-        MODEL_CACHE="${MODEL_CACHE_DIR}/claude-model-${SESSION_ID}"
-        if [[ -s "$MODEL_CACHE" ]]; then
-            # Command substitution removes trailing newlines. Append a sentinel
-            # byte before substitution, then remove only that byte afterward so
-            # cache whitespace — including a final newline — remains detectable.
-            MODEL_ID_WITH_SENTINEL=$(cat "$MODEL_CACHE" 2>/dev/null; printf 'x')
-            MODEL_ID="${MODEL_ID_WITH_SENTINEL%x}"
-        fi
-    fi
-
-    MODEL_SLUG="${MODEL_ID##*/}"
-    if [[ -n "$MODEL_ID" && "$MODEL_ID" != *[[:space:]]* && "$MODEL_SLUG" == gpt-?* ]]; then
-        echo "For this GPT session, treat the user as an equal stakeholder and thoughtful collaborator. Default to concise, user-relevant responses in plain language at their demonstrated technical depth. Lead with the answer or decision; put an immediate action first only when action is what they need. Make required actions, options, recommendations, and consequences easy to spot. When several independent decisions are genuinely needed, present them separately rather than collapsing them into one question. Put secondary technical and implementation detail in clearly marked optional sections or artifacts. Be warm, direct, and easy to scan, never patronizing. Keep full evidence and reproducibility detail available, while surfacing the uncertainty, caveats, citations, safety warnings, and consent checkpoints that affect the current decision."
-    fi
 
     # Check if this is the user's first-ever session
     ACTIVITY_LOG="${CLAUDE_PROJECT_DIR:-.}/.claude/logs/activity.log"

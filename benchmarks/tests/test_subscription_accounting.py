@@ -60,8 +60,10 @@ class SubscriptionAccountingTests(unittest.TestCase):
         self.assertEqual("not_separately_billed", actual.charge_status)
         self.assertIsNone(actual.actual_marginal_charge_usd)
         self.assertIsNone(equivalent.cost_usd)
-        self.assertAlmostEqual(0.228, equivalent.short_context_uncached_scenario_usd)
-        self.assertAlmostEqual(0.402, equivalent.long_context_uncached_scenario_usd)
+        # 2026-08-11 Luna 5x price cut (short 0.20/1.20, long 0.40/1.80):
+        # 120k uncached input + 18k output. Was 0.228 / 0.402 prior.
+        self.assertAlmostEqual(0.0456, equivalent.short_context_uncached_scenario_usd)
+        self.assertAlmostEqual(0.0804, equivalent.long_context_uncached_scenario_usd)
         self.assertIn("cache_read_tokens_unavailable", equivalent.incompleteness_reasons)
         self.assertIn("cache_write_tokens_unavailable", equivalent.incompleteness_reasons)
         self.assertTrue(equivalent.not_invoiced)
@@ -88,7 +90,9 @@ class SubscriptionAccountingTests(unittest.TestCase):
         # output. The 12k reasoning subset is already inside 18k output.
         self.assertEqual("short", equivalent.context_tier)
         self.assertEqual("exact_from_observed_token_categories", equivalent.calculation_status)
-        self.assertAlmostEqual(0.2125, equivalent.cost_usd, places=12)
+        # 2026-08-11 Luna cut: 90k input*0.20 + 20k read*0.02 + 10k write*0.25 +
+        # 18k output*1.20, all /1M = 0.0425. Was 0.2125 prior.
+        self.assertAlmostEqual(0.0425, equivalent.cost_usd, places=12)
 
         usage.reasoning_tokens = 0
         without_reasoning_detail = compute_accounting(self.model, result)["api_equivalent"]
@@ -109,7 +113,10 @@ class SubscriptionAccountingTests(unittest.TestCase):
 
         equivalent = compute_accounting(self.model, result)["api_equivalent"]
         self.assertEqual("long", equivalent.context_tier)
-        self.assertAlmostEqual(0.771, equivalent.cost_usd, places=12)
+        # 2026-08-11 Luna cut (long 0.40/0.04/0.50/1.80): 290k input*0.40 +
+        # 20k read*0.04 + 10k write*0.50 + 18k output*1.80, /1M = 0.1542.
+        # Was 0.771 prior.
+        self.assertAlmostEqual(0.1542, equivalent.cost_usd, places=12)
 
     def test_cache_categories_are_subsets_not_additions(self):
         result = self.result()
@@ -123,7 +130,8 @@ class SubscriptionAccountingTests(unittest.TestCase):
         usage.max_request_input_tokens = 100
 
         equivalent = compute_accounting(self.model, result)["api_equivalent"]
-        expected = (70 * 1.0 + 20 * 0.1 + 10 * 1.25) / 1_000_000
+        # 2026-08-11 Luna short rates: input 0.20, cached 0.02, cache_write 0.25.
+        expected = (70 * 0.20 + 20 * 0.02 + 10 * 0.25) / 1_000_000
         self.assertAlmostEqual(expected, equivalent.cost_usd, places=15)
 
     def test_inconsistent_cache_breakdown_never_produces_exact_cost(self):

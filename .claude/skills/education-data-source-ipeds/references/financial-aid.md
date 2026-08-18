@@ -475,7 +475,7 @@ grant_coverage <- total_grants / cost_of_attendance * 100
 | `average_amount` | Float64 | Average award amount (dollars) |
 | `total_amount` | Float64 | Total amount awarded (dollars) |
 
-**`type_of_aid` codes in this dataset:** 1, 2, 3, 4, 5, 7, 8, 10, 11, 12
+**`type_of_aid` codes in this dataset:** 1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12 (code `6` is present in the data — live-verified 2026-08-07; its label is not documented in the codebook excerpt, so verify meaning in the `sfa_ftft` codebook before relying on it)
 
 > **Note on `type_of_aid` codes:** These are integer codes identifying aid categories. Definitions vary by dataset. In `sfa_grants_and_net_price`, code `9` = **all grant and scholarship aid** (Pell + institutional + state/local combined) -- this is NOT Pell-specific. Consult the codebook for the specific dataset you are using: `get_codebook_url("ipeds/codebook_colleges_ipeds_sfa_ftft")`.
 
@@ -587,8 +587,12 @@ The Portal converts NCES wide-format variables into long/tidy rows. For example:
 ```python
 import polars as pl
 
-MIRROR = "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main"
-url = f"{MIRROR}/ipeds/colleges_ipeds_sfa_grants_and_net_price.parquet"
+# Mirror root + pinned revision (keep in sync with education-data-query
+# references/mirrors.yaml: HF root_url + vintage.hf_revision). "vintage" = a dated
+# Portal snapshot; "revision" = the HF git ref pinning byte-exact bytes.
+MIRROR = "https://huggingface.co/datasets/brhkim/education_data_portal_mirror_2026q3/resolve"
+REVISION = "0ad00ce0e232c96b0642459e4e7326607a8d26aa"  # immutable commit SHA of the v2 upload
+url = f"{MIRROR}/{REVISION}/ipeds/colleges_ipeds_sfa_grants_and_net_price.parquet"
 df = pl.read_parquet(url)
 
 # Net price by income level for a specific institution and year
@@ -608,8 +612,12 @@ net_prices = (
 library(arrow)
 library(dplyr)
 
-MIRROR <- "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main"
-url <- paste0(MIRROR, "/ipeds/colleges_ipeds_sfa_grants_and_net_price.parquet")
+# Mirror root + pinned revision (keep in sync with education-data-query
+# references/mirrors.yaml: HF root_url + vintage.hf_revision). "vintage" = a dated
+# Portal snapshot; "revision" = the HF git ref pinning byte-exact bytes.
+MIRROR <- "https://huggingface.co/datasets/brhkim/education_data_portal_mirror_2026q3/resolve"
+REVISION <- "0ad00ce0e232c96b0642459e4e7326607a8d26aa"  # immutable commit SHA of the v2 upload
+url <- paste0(MIRROR, "/", REVISION, "/ipeds/colleges_ipeds_sfa_grants_and_net_price.parquet")
 # NOTE: illustrative only — mirror parquet files are Polars-written and may
 # declare string_view columns, so a plain read can fail under R arrow
 # ("cannot handle Array of type <utf8_view>"). Real fetch scripts must use the

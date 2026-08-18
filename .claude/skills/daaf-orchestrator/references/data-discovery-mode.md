@@ -23,7 +23,7 @@ Stage 1: Classify as Data Discovery Mode → Confirm with user
     ↓
 Stage 2: Data Exploration
     ├─ Invoke domain explorer skill via subagent (search-agent, read-only)
-    ├─ Identify available endpoints and variables
+    ├─ Identify candidate datasets and variables
     └─ Flag variables needing source-specific deep dives
     ↓
 Stage 3: Source Deep-Dive (if needed)
@@ -76,6 +76,8 @@ Present findings as a structured summary:
 DAAF version: [commit hash]. See `agent_reference/AI_DISCLOSURE_REFERENCE.md` for
 disclosure guidance if incorporating these findings into published work.
 ```
+
+**Turn-end briefing.** When presenting findings, follow DAAF's Turn-End Briefing standard: lead with the feasibility bottom line, order sources and caveats by how much they bear on the user's question, and reference any preliminary notes by path rather than reproducing them. See the master statement in `SKILL.md` § User-Facing Communication Standards > "Turn-End Briefing."
 
 ## Multi-Source Synthesis Protocol
 

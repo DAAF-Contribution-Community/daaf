@@ -2,7 +2,7 @@
 
 College Scorecard provides program-level data on earnings and debt by field of study (CIP code), enabling analysis of outcomes at the major/program level.
 
-> **Portal availability note:** Field-of-study data is **not available as a separate Portal mirror dataset**. The 6 Portal Scorecard datasets cover institution-level earnings, default, repayment, institutional characteristics, and student body characteristics. For program-level data, use the College Scorecard bulk downloads at `collegescorecard.ed.gov` (the "Most Recent Institution-Level Data" or "Field of Study" files). Variable names below use the original Scorecard naming convention, not Portal lowercase names.
+> **Portal boundary:** Field-of-study data is **not mirrored by the Education Data Portal**. The six Portal Scorecard families are institution-level earnings, default, repayment, institutional characteristics, and two student-body families. For current program-level data, use the stable official page `https://collegescorecard.ed.gov/data/` and choose **Most Recent Data by Field of Study**, or use the documented Scorecard API. Do not rely on a date-stamped ZIP as the sole route. Variable names below describe direct Scorecard products and may differ by release; verify the current file/API documentation before use.
 
 ## Overview
 
@@ -37,7 +37,7 @@ Field of study data links outcomes to specific academic programs:
 
 ### Credential Levels
 
-> **Portal Encoding:** These are integer codes in the Portal data.
+> **Direct-source encoding:** These credential codes apply to the direct field-of-study product described here. Verify them against the current Scorecard file/API documentation; this is not a Portal dataset.
 
 | Code | Description |
 |------|-------------|
@@ -218,7 +218,8 @@ To reduce suppression, aggregate across similar institutions:
 import polars as pl
 
 # Aggregate 2-digit CIP earnings across public 4-years
-# Portal uses integer codes: control=1 is public
+# This example assumes the direct file has been normalized to lowercase and
+# its documented control code 1 means public; verify the current release
 field_summary = (
     df.filter(pl.col("control") == 1)  # Public (integer code)
     .filter(pl.col("credlev") == 3)    # Bachelor's (integer code)
@@ -232,7 +233,8 @@ field_summary = (
 ```
 ```r
 # Aggregate 2-digit CIP earnings across public 4-years
-# Portal uses integer codes: control=1 is public
+# This example assumes the direct file has been normalized to lowercase and
+# its documented control code 1 means public; verify the current release
 field_summary <- df |>
   filter(control == 1, credlev == 3, earn_mdn_hi_2yr > 0) |>
   group_by(cipcode) |>
@@ -312,7 +314,7 @@ Join field data to institution characteristics:
 import polars as pl
 
 # Merge field data with institution data
-# Note: Portal column names are lowercase
+# Assumes direct field and institution files were normalized to lowercase before joining
 combined = field_df.join(
     institution_df.select(["unitid", "inst_name", "control", "state_abbr"]),
     on="unitid",
@@ -321,7 +323,7 @@ combined = field_df.join(
 ```
 ```r
 # Merge field data with institution data
-# Note: Portal column names are lowercase
+# Assumes direct field and institution files were normalized to lowercase before joining
 combined <- field_df |> left_join(
   institution_df |> select(unitid, inst_name, control, state_abbr),
   by = "unitid"

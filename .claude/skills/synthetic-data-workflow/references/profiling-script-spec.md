@@ -4,15 +4,15 @@ The contract for the disclosure-controlled profiling script the user runs locall
 
 ## Contents
 
-- [Design constraints for the outbound script](#design-constraints)
-- [Config block (what the user edits)](#config-block)
-- [Measurement inventory by tier](#measurement-inventory)
-- [Canonical JSON report schema](#json-schema)
-- [The plain-text review summary](#txt-summary)
-- [Embedded validation checks](#embedded-validation)
-- [Derivation from Data Onboarding scripts 01-09](#derivation)
+- [Design constraints for the outbound script](#design-constraints-for-the-outbound-script)
+- [Config block (what the user edits)](#config-block-what-the-user-edits)
+- [Measurement inventory by tier](#measurement-inventory-by-tier)
+- [Canonical JSON report schema](#canonical-json-report-schema)
+- [The plain-text review summary](#the-plain-text-review-summary)
+- [Embedded validation checks](#embedded-validation-checks)
+- [Derivation from Data Onboarding scripts 01-09](#derivation-from-data-onboarding-scripts-01-09)
 
-## Design constraints for the outbound script {#design-constraints}
+## Design constraints for the outbound script
 
 This script runs where DAAF cannot reach and touches the real sensitive data. It must be trustworthy on inspection by a non-programmer researcher, and it must be incapable of emitting anything the chosen tier forbids.
 
@@ -23,7 +23,7 @@ This script runs where DAAF cannot reach and touches the real sensitive data. It
 - **Loud final review block.** The script ends by printing a prominent block instructing the user to REVIEW THE `.txt` BEFORE SHARING and enumerating what to check.
 - **Base-first dependencies.** R: base R for CSV; optional `arrow` (parquet) and `haven` (Stata/SPSS/SAS) behind graceful "install if needed" guards. Python: stdlib + pandas (ubiquitous); optional `pyarrow` for parquet, documented. Hand-rolled JSON emission is acceptable in base R to avoid a jsonlite dependency; Python uses stdlib `json`.
 
-## Config block (what the user edits) {#config-block}
+## Config block (what the user edits)
 
 The `# --- Config (EDIT THESE) ---` block exposes exactly these knobs:
 
@@ -39,7 +39,7 @@ The `# --- Config (EDIT THESE) ---` block exposes exactly these knobs:
 
 `TIER` and `SUPPRESSION_THRESHOLD` are recorded verbatim in the report so downstream validation applies the same rules.
 
-## Measurement inventory by tier {#measurement-inventory}
+## Measurement inventory by tier
 
 Cumulative — each tier includes all rows marked for lower tiers.
 
@@ -76,7 +76,7 @@ Cumulative — each tier includes all rows marked for lower tiers.
 
 Only **full-summary** numeric columns enter the correlation matrix and are eligible as named-relationship variables — degraded columns carry no usable variance/percentile grid.
 
-## Canonical JSON report schema {#json-schema}
+## Canonical JSON report schema
 
 Versioned via `report_version` so intake code can evolve. Current version: `"1.0"`. Structure:
 
@@ -192,7 +192,7 @@ Schema notes:
 - `__OTHER__` is the reserved binned-category label; intake and generation code treat it as an aggregate, not a real level. Its count is always ≥ the suppression threshold: a sub-threshold `__OTHER__` residual is folded further (the smallest retained levels are rolled in) until it clears the threshold, or the whole column is suppressed if it cannot.
 - Identifier columns never carry a `numeric` or `categorical` values block — only `string_structure` (or, for numeric-encoded IDs, a minimal structure block with length/uniqueness and no percentiles).
 
-## The plain-text review summary {#txt-summary}
+## The plain-text review summary
 
 `{dataset}_profile_report.txt` is the human disclosure-review artifact — the thing the user actually reads before sharing. It restates the JSON in prose and tables a non-programmer can scan, and it foregrounds anything disclosure-relevant:
 
@@ -202,7 +202,7 @@ Schema notes:
 - The embedded validation results (all checks and pass/fail).
 - A closing **REVIEW BEFORE SHARING** block enumerating: confirm no column *name* itself is disclosive; confirm the identifier flags caught every real identifier; confirm the tier matches what you intend to share; the JSON and this txt are the only files to share — nothing else.
 
-## Embedded validation checks {#embedded-validation}
+## Embedded validation checks
 
 The script validates its own output before writing, and embeds the results in both outputs (`validation` block in JSON; a section in txt). These are the same internal-consistency checks the DS-3 intake re-verifies (`validation-checks.md` QA(b)) — embedding them lets the user see pass/fail locally and lets intake confirm they were run:
 
@@ -214,7 +214,7 @@ The script validates its own output before writing, and embeds the results in bo
 
 `all_passed` is the AND of every check. If it is false, the txt tells the user not to share and to report the failure back to DAAF.
 
-## Derivation from Data Onboarding scripts 01-09 {#derivation}
+## Derivation from Data Onboarding scripts 01-09
 
 The measurement inventory is the mechanical (non-LLM) subset of Data Onboarding profiling, filtered for disclosure (derived from the Data Onboarding profiling measurement inventory — see `WORKFLOW_PHASE_DO_PROFILING.md` § Part Details):
 

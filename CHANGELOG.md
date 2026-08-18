@@ -4,6 +4,7 @@ All notable changes to DAAF for each release version are documented here, in rev
 
 ## Table of Contents
 
+- [v3.0.2 -- 2026-08-18](#v302--2026-08-18)
 - [v3.0.1 -- 2026-07-29](#v301--2026-07-29)
 - [v3.0.0 -- 2026-07-17](#v300--2026-07-17)
 - [v2.1.0 -- 2026-05-02](#v210--2026-05-02)
@@ -13,7 +14,58 @@ All notable changes to DAAF for each release version are documented here, in rev
 
 ---
 
-## v3.0.1 -- 2026-07-29
+## v3.0.2 -- 2026-08-18
+<!-- AT TAG TIME: confirm this date matches the actual tag date -->
+
+### Data Analyst Augmentation Framework -- Minor Improvements
+
+v3.0.2 is a minor patch release with a few quite nice quality-of-life features and functionality improvements. Your DAAF folder now includes a launcher you can simply double-click to start DAAF -- a `DAAF.lnk` shortcut (with its own icon) on Windows and a `DAAF.command` on macOS -- no more terminal commands to remember! Under the hood this release also gives agents a provenance-preserving way to read web pages (basically, a better, more transparent, and more reproducible "WebFetch" tool for searching the internet!), adds a new analytic stress-testing toolkit for challenging provisional findings, minor GPT-subscription support improvements, and updates the education-data skills to align with the newest version from the Urban Institute Education Data Portal, also adding in a version-pinned data mirror for future reproducibility and consistency.
+
+Two practical notes for existing users. First, **updating from v3.0.1 takes two updater runs to receive the new click-to-run files**: the first run fetches the new update logic itself, and the second run delivers the click-to-run scripts themselves (that second run will also offer a rebuild of the updated image -- accept it). Second, on Windows, some antivirus tools may flag the new `daaf.bat` helper the first time they see it -- this is a known false-positive pattern for unsigned batch files that create shortcuts programmatically; the file ships in the repository where you can read exactly what it does. Feel free to ask Claude or another AI assistant to review the code itself if you'd like a second opinion! I promise it's a false-positive.
+
+### Detailed Notes
+
+Disclosure: These notes were AI-drafted from a verified inventory of the release's commits and then reviewed by hand.
+
+#### Double-Click Launchers for Windows and macOS
+
+Starting DAAF no longer requires opening a terminal:
+
+- **Windows** gets a `DAAF.lnk` shortcut with a proper DAAF icon, backed by a small `daaf.bat` helper. The updater creates the shortcut in your DAAF folder and refreshes it on every update, so it stays correct even if your folder moves.
+- **macOS** gets a double-clickable `DAAF.command`.
+
+#### Reading the Web, With Receipts
+
+Agents that need to read a web page (documentation, API references, data-source pages) now do it through a **provenance-preserving fetch utility** instead of the built-in AI-paraphrase fetcher (it's so, so bad!!). Every fetch saves the raw website download, produces a deterministic text extract, and generates a manifest recording what was fetched, when, and from where -- so anything an agent read can be audited later. The extraction stack (Trafilatura and friends, now pinned in the image) arrives with the rebuild; before the rebuild the tool still works with a simpler fallback extractor. Trafilatura thus joins the open-source acknowledgments in the README.
+
+#### Stress-Testing Findings Before You Trust Them
+
+A new **creative-verification** toolkit lets you ask DAAF to challenge a provisional finding rather than just produce it: it turns a concern ("is this effect just a composition artifact?") into competing explanations, bounded discriminating tests, and evidence-calibrated interpretations in a hypothesis/evidence ledger. It's wired into the Ad Hoc Collaboration mode -- ask to "stress-test" or "challenge" a result to invoke it.
+
+#### Updated and Version-Pinned Education Data
+
+The Urban Institute education-data skills moved onto a **revision-pinned data mirror** (vintage 0.26.1): discovery now routes research questions straight to the mirror files that answer them, fetches pin to an exact mirror revision for reproducibility, and all fourteen source skills were deep-updated against the new vintage. Contributor tooling for building, validating, and regenerating the mirror ships alongside.
+
+#### Provider Shim Improvements
+
+The provider shim (the local adapter for OpenAI/ChatGPT routes) advanced to **v1.3.18**: a rebuilt lifecycle manager closes an auto-start race that could collide on startup, GPT responses now default to medium verbosity (less rambling by default), and the setup docs got a plain-language pass plus clearer triage guidance for restart verdicts.
+
+#### Documentation and Orchestration Refinements
+
+- **Clearer end-of-turn briefings.** The orchestrator now follows an explicit communication standard for catching you up after substantive work -- lead with the outcome, select for what matters, expand internal shorthand -- regardless of which model is running the session.
+- **A leaner core rulebook.** The always-loaded instruction file was trimmed to universal content, with details relocated to the references that load when actually needed.
+- Broken jump links in the changelog and framework docs were repaired.
+
+#### For Contributors
+
+DAAFBench -- DAAF's model-behavior benchmark harness (it measures behavioral adherence to DAAF's protocols, not research quality) -- had an active month: new model onboardings (Grok 4.6, DeepSeek V4 Pro and Flash, Thinking Machines Inkling and Inkling Small), GPT-5.6 repricing with billing reconciliation, a hardened onboarding process, and public results-viewer improvements through v3.8.1 (including a changelog for the viewer itself).
+
+**Full Changelog**: [v3.0.1...v3.0.2](https://github.com/DAAF-Contribution-Community/daaf/compare/v3.0.1...v3.0.2)
+<!-- AT TAG TIME: verify tag exists and this compare link resolves -->
+
+---
+
+## v3.0.1 — 2026-07-29
 
 ### Data Analyst Augmentation Framework -- Minor Fixes
 
@@ -67,7 +119,7 @@ A couple of contributor-facing improvements. DAAFBench -- DAAF's model-behavior 
 
 ---
 
-## v3.0.0 -- 2026-07-17
+## v3.0.0 — 2026-07-17
 
 ### Data Analyst Augmentation Framework -- Opening Doors
 
@@ -242,7 +294,7 @@ If you'd like to contribute, the CONTRIBUTING guide has expanded for v3: it now 
 
 ---
 
-## v2.1.0 -- 2026-05-02
+## v2.1.0 — 2026-05-02
 
 ### Data Analyst Augmentation Framework -- The Frictionless Update
 
@@ -366,7 +418,7 @@ DAAF v2.0.0 is a ground-up architectural overhaul driven by four reinforcing goa
 
 ---
 
-### Painfully Detailed Changelog
+### Detailed Notes
 
 Note that Claude absolutely had to help me write most of this, there were like 100 commits to shift through major changes on.
 

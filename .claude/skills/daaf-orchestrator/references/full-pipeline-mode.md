@@ -148,9 +148,9 @@ The Full Pipeline workflow consists of **5 Phases** and **12 Stages**.
 │  └──────────────────────────────────────────────────────────────────────┘   │
 │                          ↓                                                  │
 │  Stage 2: Data Exploration ←── domain explorer skill                        │
-│      ├─ Identify available endpoints and variables                          │
+│      ├─ Identify candidate datasets and variables                          │
 │      ├─ Report findings to user (adaptive)                                  │
-│      └─ Gate G2: ≥1 endpoint identified, key variables flagged              │
+│      └─ Gate G2: ≥1 dataset identified, key variables flagged               │
 │                          ↓                                                  │
 │  Stage 3: Source Deep-Dive ←── domain source skills                         │
 │      ├─ Understand limitations, caveats, suppression patterns               │
@@ -680,6 +680,8 @@ Report to the user **adaptively** at these trigger points:
 
 **Note:** Progress reports during a phase are one-way informational updates. Phase Status Updates at phase boundaries are BLOCKING — the orchestrator must wait for user confirmation before proceeding.
 
+**Turn-end briefing.** PSUs are the heavyweight, blocking, phase-boundary instances of DAAF's general Turn-End Briefing standard, and the lightweight Progress Update above is its in-phase, non-blocking form. Every *other* substantive turn that returns control to the user — an error-recovery pause, a mid-phase return after a wave of dispatches, an answer to a user question during execution — still closes with a briefing of what happened since the user's last message, taken altogether. See the master statement in `SKILL.md` § User-Facing Communication Standards > "Turn-End Briefing."
+
 ### Phase Status Updates (Mandatory)
 
 **Phase Status Updates (PSU) are enforced pause points at every phase boundary.** After completing a phase, the orchestrator MUST present a comprehensive Phase Status Update to the user and WAIT for explicit confirmation before proceeding to the next phase.
@@ -904,8 +906,8 @@ Each stage has explicit input/output contracts and gate criteria:
 | Stage | Input From | Output To | Gate Criteria |
 |-------|------------|-----------|---------------|
 | 1 | User request | Stage 2 | G1: Mode classified, scope confirmed |
-| 2 | Stage 1 (mode + scope) | Stage 3 | G2: ≥1 endpoint identified, key variables flagged |
-| 3 | Stage 2 endpoints | Stage 3.5 | G3: All flagged variables investigated, coded values documented, suppression patterns identified |
+| 2 | Stage 1 (mode + scope) | Stage 3 | G2: ≥1 dataset identified, key variables flagged |
+| 3 | Stage 2 datasets | Stage 3.5 | G3: All flagged variables investigated, coded values documented, suppression patterns identified |
 | 3.5 | Stages 2, 3 | PSU1 to user, then Stage 4 | G3.5: Synthesis complete, conflicts resolved, user confirmed PSU1 |
 | 4 | Phase 1 findings | Stage 4.5 | G4: Plan.md + Plan_Tasks.md created, STATE.md created, LEARNINGS.md skeleton created |
 | 4.5 | Stage 4 (Plan) | PSU2 to user, then Stage 5 | G4.5: Plan validation PASSED or PASSED_WITH_WARNINGS, user confirmed PSU2 |
@@ -968,7 +970,7 @@ Each stage has explicit input/output contracts and gate criteria:
 
 Checklist:
 - [x] Recommended Data Level specified
-- [x] Candidate Endpoints table complete (3 endpoints found)
+- [x] Candidate Datasets table complete (3 mirror paths found)
 - [x] Key Variables table complete (8 variables identified)
 - [x] Variables Flagged for Deep-Dive (2 flagged with reasons)
 - [x] Limitations Encountered documented
@@ -1035,10 +1037,10 @@ After invoking a skill, confirm it loaded successfully:
 ```markdown
 After calling skill tool with name 'education-data-explorer':
 - ✓ Core guidance loaded: Understand data levels (schools, districts, colleges)
-- ✓ Reference files accessible: schools-endpoints.md, districts-endpoints.md, colleges-endpoints.md
-- ✓ Decision trees clear: "What data level do I need?" flow available
+- ✓ Reference files accessible: schools-datasets.md, districts-datasets.md, colleges-datasets.md
+- ✓ Decision trees clear: "What data level (and mirror file) do I need?" flow available
 
-Status: Skill loaded successfully, proceeding with data exploration
+Status: Skill loaded successfully, proceeding to route the question to mirror datasets
 ```
 
 ### Subagent Type Selection
@@ -1182,7 +1184,7 @@ Return findings in this EXACT structure:
 ### checkpoint:auto (Default)
 
 Use for:
-- Mirror-based data downloads
+- Data downloads (mirror-based, API-based, etc.)
 - Data cleaning
 - Transformations
 - Aggregations
@@ -1506,7 +1508,7 @@ Awaiting user guidance.
 
 | Context Item | Source | Required In Stage 3 Prompt |
 |--------------|--------|---------------------------|
-| Endpoints identified | Stage 2 output | YES — exact endpoint URLs |
+| Candidate datasets identified | Stage 2 output | YES — canonical dataset identifiers (e.g., mirror paths for education data) |
 | Variables flagged for deep-dive | Stage 2 output | YES — with reasons for flagging |
 | Research question | Stage 1 | YES — verbatim |
 | Years needed | Stage 1/2 | YES — exact range |
@@ -1526,7 +1528,7 @@ Awaiting user guidance.
 
 | Context Item | Source | Required In Stage 5 Prompt |
 |--------------|--------|---------------------------|
-| Query specifications | Plan.md + Plan_Tasks.md | YES — exact endpoint, years, filters |
+| Query specifications | Plan.md + Plan_Tasks.md | YES — exact dataset identifier, years, filters |
 | Expected row counts | Plan_Tasks.md | YES — ranges |
 | Risk Register items for fetch | Plan.md | YES — relevant risks |
 | Output file paths | Plan_Tasks.md | YES — explicit paths |
@@ -1578,7 +1580,7 @@ Awaiting user guidance.
 |-------------|-------------------|--------------|----------------|
 | Official NCES documentation | HIGH | — | Contradicted by actual data |
 | Skill reference content | HIGH | — | Outdated info discovered |
-| Data exploration results | MEDIUM | Multiple mirrors confirm | Single endpoint, unclear docs |
+| Data exploration results | MEDIUM | Multiple mirrors confirm | Single dataset identifier, unclear docs |
 | Inferred from data patterns | LOW | Documentation confirms | Contradicted by test |
 | User-provided information | HIGH | — | Conflicts with official sources |
 
@@ -1756,7 +1758,7 @@ Forcing functions are mandatory design interventions that **prevent** poor pract
 | Gate | Transition | Requires | Enforcement |
 |------|------------|----------|-------------|
 | G1 | 1 → 2 | Mode classified and confirmed | Cannot invoke Stage 2 subagent |
-| G2 | 2 → 3 | ≥1 endpoint identified, key variables flagged | Cannot invoke source deep-dive |
+| G2 | 2 → 3 | ≥1 dataset identified, key variables flagged | Cannot invoke source deep-dive |
 | G3 | 3 → 3.5 | All flagged variables investigated, coded values documented, suppression patterns identified | Cannot invoke research-synthesizer |
 | G3.5 | 3.5 → 4 | Synthesis complete, cross-source conflicts resolved, **User confirmed PSU1** | Cannot create Plan documents without user PSU1 confirmation |
 | **G4** | **4 → 4.5** | **Plan.md + Plan_Tasks.md created AND STATE.md created AND LEARNINGS.md skeleton created** | **Cannot invoke plan-checker** |
@@ -1863,7 +1865,7 @@ These conditions trigger an immediate STOP with escalation to user. See `agent_r
 
 | Condition | Stage | Action |
 |-----------|-------|--------|
-| Data access mirror returns empty data | Stage 5 | STOP, report to user, await guidance |
+| Data acquisition returns empty data (mirror or API) | Stage 5 | STOP, report to user, await guidance |
 | Suppression rate >50% | Stage 6 | STOP, report issue, propose alternatives |
 | Domain governance rule violation (e.g., cross-state assessment comparison in education) | Stage 6 | BLOCK with explanation (never valid) |
 | Row count drops >90% after transformation | Stage 7 | STOP, verify transformation logic |

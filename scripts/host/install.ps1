@@ -251,6 +251,7 @@ try {
     Invoke-WebRequest -UseBasicParsing -Uri "$RawBase/Dockerfile"                          -OutFile "$InstallDir\Dockerfile"
     Invoke-WebRequest -UseBasicParsing -Uri "$RawBase/docker-compose.yml"                   -OutFile "$InstallDir\docker-compose.yml"
     Invoke-WebRequest -UseBasicParsing -Uri "$RawBase/scripts/host/daaf.ps1"                 -OutFile "$InstallDir\daaf.ps1"
+    Invoke-WebRequest -UseBasicParsing -Uri "$RawBase/scripts/host/daaf.bat"                 -OutFile "$InstallDir\daaf.bat"
     Invoke-WebRequest -UseBasicParsing -Uri "$RawBase/scripts/host/daaf_lib.ps1"             -OutFile "$InstallDir\daaf_lib.ps1"
     Invoke-WebRequest -UseBasicParsing -Uri "$RawBase/scripts/host/run_daaf.ps1"             -OutFile "$InstallDir\run_daaf.ps1"
     Invoke-WebRequest -UseBasicParsing -Uri "$RawBase/scripts/host/backup_daaf.ps1"          -OutFile "$InstallDir\backup_daaf.ps1"
@@ -270,6 +271,20 @@ try {
     Write-Host "You can check available branches at: https://github.com/$Repo/branches"
     Write-Host "Details: $_"
     Wait-ForUser; return
+}
+
+# --- Icon asset (daaf.ico, non-fatal) ---
+# Downloaded outside the load-bearing try/catch above: the icon only feeds the
+# DAAF.lnk shortcut's IconLocation below, so a failed download degrades to the
+# default shortcut icon rather than aborting the install.
+if ($env:DAAF_DRY_RUN -eq "1") {
+    Write-Host "[DRY-RUN] Would download the DAAF icon (daaf.ico)"
+} else {
+    try {
+        Invoke-WebRequest -UseBasicParsing -Uri "$RawBase/scripts/host/daaf.ico" -OutFile "$InstallDir\daaf.ico"
+    } catch {
+        Write-Warning "Could not download daaf.ico (non-fatal); the DAAF.lnk shortcut will use the default icon."
+    }
 }
 
 # --- Apple Silicon / arm64 build-time notice ---
@@ -688,6 +703,44 @@ else {
     }
 }
 
+# --- Optional: in-folder double-click shortcut (non-fatal) ---
+# Create a DAAF.lnk shortcut to daaf.bat *inside the install folder itself* so the
+# Control Panel can be launched with a double-click. The user drags this shortcut
+# wherever they like (Desktop, taskbar); we never write to the Desktop ourselves.
+# A .lnk is drag-safe because it stores the absolute TargetPath, so it keeps
+# working from anywhere -- unlike daaf.bat itself, which resolves paths via %~dp0
+# and would break if moved out of the install folder. WorkingDirectory is set to
+# the install folder so the panel's docker-compose.yml preflight resolves.
+# IconLocation uses daaf.ico only if that asset is present (downloaded above,
+# non-fatal); absent it, the shortcut falls back to the default icon.
+# This whole step is a convenience: any failure warns and continues, and never
+# breaks the install.
+if ($env:DAAF_DRY_RUN -eq "1") {
+    Write-Host "[DRY-RUN] Would create an in-folder shortcut (DAAF.lnk) to daaf.bat"
+} else {
+    try {
+        $BatPath = Join-Path $InstallDir "daaf.bat"
+        if (Test-Path -LiteralPath $BatPath) {
+            $ShortcutPath = Join-Path $InstallDir "DAAF.lnk"
+            $WshShell = New-Object -ComObject WScript.Shell
+            $Shortcut = $WshShell.CreateShortcut($ShortcutPath)
+            $Shortcut.TargetPath = $BatPath
+            $Shortcut.WorkingDirectory = $InstallDir
+            $Shortcut.Description = "Launch the DAAF Control Panel"
+            $IconPath = Join-Path $InstallDir "daaf.ico"
+            if (Test-Path -LiteralPath $IconPath) {
+                $Shortcut.IconLocation = $IconPath
+            }
+            $Shortcut.Save()
+            Write-Host "Created an in-folder shortcut (DAAF.lnk) pointing at daaf.bat. Drag it to your Desktop or taskbar if you like." -ForegroundColor Green
+        } else {
+            Write-Warning "daaf.bat not found in $InstallDir; skipping DAAF.lnk shortcut (non-fatal). You can double-click daaf.bat directly once it is present, or launch with .\daaf.ps1."
+        }
+    } catch {
+        Write-Warning "Could not create the DAAF.lnk shortcut (non-fatal): $_"
+    }
+}
+
 Write-Host ""
 Write-Host "=========================================="
 Write-Host "  Installation complete!"
@@ -698,6 +751,10 @@ Write-Host ""
 Write-Host "  1. Navigate to the install directory and launch the DAAF Control Panel:"
 Write-Host "     cd $InstallDir"
 Write-Host "     .\daaf.ps1"
+Write-Host ""
+Write-Host "     Or, to skip the terminal: double-click daaf.bat in $InstallDir"
+Write-Host "     (or the DAAF shortcut in that same folder, which you can drag to"
+Write-Host "     your Desktop or taskbar) from File Explorer."
 Write-Host ""
 Write-Host "     The Control Panel provides a status dashboard, service management,"
 Write-Host "     and all DAAF operations in one place."

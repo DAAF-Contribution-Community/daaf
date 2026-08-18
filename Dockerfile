@@ -492,6 +492,22 @@ RUN uv pip install --system \
 RUN uv pip install --system \
     faker==40.31.0
 
+# Install the DAAF web-retrieval extraction stack (scripts/web_fetch.py)
+# trafilatura provides high-fidelity main-content extraction for the DAAF
+# web-retrieval fetch utility (scripts/web_fetch.py + web_fetch.sh). Pinned
+# per research/2026-08-08_FrameworkDev_WebRetrieval/DESIGN_SPEC.md. lxml is
+# pinned to the exact version already resolved in the image (no ownership
+# conflict); courlan/htmldate/justext are the genuinely new direct deps.
+# certifi/charset_normalizer/urllib3 are left to existing resolution to avoid
+# duplicate pin ownership. web_fetch.py degrades to a bs4 fallback if this
+# stack is absent, so the tool works pre-rebuild and gains fidelity post-rebuild.
+RUN uv pip install --system \
+    trafilatura==2.2.0 \
+    lxml==6.1.1 \
+    courlan==1.4.0 \
+    htmldate==1.10.0 \
+    justext==3.0.2
+
 # Install provider-shim direct runtime dependencies after all other framework
 # Python packages. Both arrive transitively today (httpx via svy; uvicorn via
 # marimo), but the persistent shim imports them directly and must not depend on

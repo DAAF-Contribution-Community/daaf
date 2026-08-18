@@ -16,6 +16,208 @@ All data fetching uses a **mirror-first** approach:
 
 ---
 
+## Canonical Path Contract (Python Executable Reference)
+
+Python is the executable source of truth for mirror-path canonicalization and discovery. Copy these helpers into a Stage 5 script before the fetch/discovery patterns below. A canonical **data** key is extensionless after normalizing exactly one terminal `.csv` or `.parquet`; a canonical **codebook** key is extensionless after normalizing exactly one terminal `.xls`. Nested relative directories are preserved.
+
+The object kind is required even for extensionless input. This prevents an untyped string from being silently interpreted as either data or a codebook. Empty paths, absolute paths, traversal, backslashes, URL-like strings, unknown extensions, doubled extensions, and kind/extension mismatches fail before URL construction.
+
+```python
+import re
+from urllib.parse import urlparse
+
+
+def canonicalize_mirror_path(path: str, object_kind: str) -> str:
+    """Return one validated, extensionless canonical mirror key.
+
+    Args:
+        path: Relative mirror path, with one recognized terminal extension or no
+            extension. Nested directories are retained.
+        object_kind: Explicitly ``"data"`` or ``"codebook"``.
+
+    Raises:
+        TypeError: ``path`` is not a string.
+        ValueError: the path or object-kind/extension pairing is invalid.
+    """
+    if object_kind not in {"data", "codebook"}:
+        raise ValueError("object_kind must be exactly 'data' or 'codebook'")
+    if not isinstance(path, str):
+        raise TypeError("mirror path must be a string")
+    if not path or path != path.strip():
+        raise ValueError("mirror path must be nonempty and have no outer whitespace")
+    if path.startswith("/") or "\\" in path or ":" in path:
+        raise ValueError("mirror path must be a relative POSIX path, not an absolute path or URL")
+
+    parts = path.split("/")
+    if any(part in {"", ".", ".."} for part in parts):
+        raise ValueError("mirror path cannot contain empty, current-directory, or traversal segments")
+
+    allowed_extensions = {
+        "data": (".csv", ".parquet"),
+        "codebook": (".xls",),
+    }
+    recognized_extensions = (".csv", ".parquet", ".xls")
+    lower_path = path.lower()
+    matched_extension = next(
+        (extension for extension in recognized_extensions if lower_path.endswith(extension)),
+        None,
+    )
+
+    if matched_extension is not None:
+        if matched_extension not in allowed_extensions[object_kind]:
+            raise ValueError(
+                f"{object_kind} path cannot use terminal extension {matched_extension!r}"
+            )
+        canonical_key = path[: -len(matched_extension)]
+        if canonical_key.lower().endswith(recognized_extensions):
+            raise ValueError("mirror path has a doubled recognized extension")
+    else:
+        final_component = parts[-1]
+        if "." in final_component:
+            raise ValueError("mirror path has an unsupported terminal extension")
+        canonical_key = path
+
+    if not canonical_key or canonical_key.endswith("/"):
+        raise ValueError("canonical mirror key cannot be empty or directory-like")
+    return canonical_key
+
+
+def mirror_revision(mirror: dict) -> str:
+    """Return the pinned Hugging Face git revision for a mirror.
+
+    A "vintage" is a dated Portal snapshot captured into one HF dataset repo; the
+    "revision" is the git ref (branch, tag, or commit SHA) that pins requests to
+    one immutable state of that repo. Feeding the revision from mirrors.yaml
+    (``vintage.hf_revision``) keeps every URL — data, codebook, and discovery — on
+    the same pinned bytes, so a rerun of a fetch script is byte-reproducible.
+    Returns ``"main"`` for a mirror with no vintage block (unversioned fallback).
+    """
+    vintage = mirror.get("vintage") or {}
+    return str(vintage.get("hf_revision", "main"))
+
+
+def build_mirror_url(
+    mirror: dict,
+    path: str,
+    object_kind: str,
+) -> str:
+    """Build a URL containing exactly one extension expected for the object kind."""
+    canonical_key = canonicalize_mirror_path(path, object_kind)
+    if object_kind == "data":
+        expected_format = str(mirror.get("format", "")).lower()
+        template = mirror.get("url_template")
+        if expected_format not in {"csv", "parquet"}:
+            raise ValueError("data mirror format must be exactly 'csv' or 'parquet'")
+    else:
+        metadata = mirror.get("metadata") or {}
+        formats = metadata.get("formats") or []
+        template = metadata.get("url_template")
+        if formats != ["xls"]:
+            raise ValueError("codebook metadata formats must be exactly ['xls']")
+        expected_format = "xls"
+
+    if not isinstance(template, str) or not template:
+        raise ValueError(f"mirror has no URL template for {object_kind} objects")
+    # revision is unused by templates that omit {revision} (e.g. the Urban CSV
+    # fallback) — str.format ignores extra kwargs, so this call is uniform.
+    url = template.format(
+        root_url=mirror["root_url"],
+        revision=mirror_revision(mirror),
+        path=canonical_key,
+        format=expected_format,
+    )
+    url_path = urlparse(url).path.lower()
+    expected_suffix = f".{expected_format}"
+    if not url_path.endswith(expected_suffix):
+        raise ValueError(f"URL template did not append expected {expected_suffix} extension")
+    without_expected = url_path[: -len(expected_suffix)]
+    if without_expected.endswith((".csv", ".parquet", ".xls")):
+        raise ValueError("URL template produced a doubled recognized extension")
+    return url
+```
+
+### R Semantic Translation
+
+The Python helpers above define the tested executable contract. R fetch scripts may use the following semantic translation for URL construction; do not create an independent looser path policy. In particular, R discovery must consume the same explicit object kind and return the same extensionless keys as the Python reference.
+
+```r
+canonicalize_mirror_path <- function(path, object_kind) {
+  if (!is.character(path) || length(path) != 1L || is.na(path)) {
+    stop("mirror path must be one nonmissing string")
+  }
+  if (!(object_kind %in% c("data", "codebook"))) {
+    stop("object_kind must be exactly 'data' or 'codebook'")
+  }
+  if (!nzchar(path) || path != trimws(path)) {
+    stop("mirror path must be nonempty and have no outer whitespace")
+  }
+  if (startsWith(path, "/") || grepl("\\\\", path) || grepl(":", path, fixed = TRUE)) {
+    stop("mirror path must be a relative POSIX path, not an absolute path or URL")
+  }
+  parts <- strsplit(path, "/", fixed = TRUE)[[1]]
+  if (any(parts %in% c("", ".", ".."))) {
+    stop("mirror path cannot contain empty, current-directory, or traversal segments")
+  }
+
+  recognized <- c(".parquet", ".csv", ".xls")
+  allowed <- if (object_kind == "data") c(".parquet", ".csv") else ".xls"
+  lower_path <- tolower(path)
+  matched <- recognized[endsWith(lower_path, recognized)]
+  if (length(matched) > 0L) {
+    matched <- matched[[1]]
+    if (!(matched %in% allowed)) stop("object kind and terminal extension do not match")
+    canonical_key <- substr(path, 1L, nchar(path) - nchar(matched))
+    if (any(endsWith(tolower(canonical_key), recognized))) {
+      stop("mirror path has a doubled recognized extension")
+    }
+  } else {
+    if (grepl("\\.", tail(parts, 1L))) stop("mirror path has an unsupported terminal extension")
+    canonical_key <- path
+  }
+  if (!nzchar(canonical_key) || endsWith(canonical_key, "/")) {
+    stop("canonical mirror key cannot be empty or directory-like")
+  }
+  canonical_key
+}
+
+# Return the pinned Hugging Face git revision for a mirror. A "vintage" is a dated
+# Portal snapshot in one HF repo; the "revision" is the git ref (branch/tag/commit
+# SHA) pinning requests to one immutable state. Sourcing it from mirrors.yaml
+# (vintage$hf_revision) keeps data, codebook, and discovery URLs on the same
+# bytes. Falls back to "main" for a mirror with no vintage block.
+mirror_revision <- function(mirror) {
+  rev <- mirror$vintage$hf_revision
+  if (is.null(rev)) "main" else as.character(rev)
+}
+
+build_mirror_url <- function(mirror, path, object_kind) {
+  canonical_key <- canonicalize_mirror_path(path, object_kind)
+  if (object_kind == "data") {
+    expected_format <- tolower(mirror$format)
+    template <- mirror$url_template
+    if (!(expected_format %in% c("csv", "parquet"))) stop("invalid data mirror format")
+  } else {
+    if (!identical(unlist(mirror$metadata$formats), "xls")) stop("invalid codebook format")
+    expected_format <- "xls"
+    template <- mirror$metadata$url_template
+  }
+  # revision is unused by templates without a {revision} placeholder (e.g. the
+  # Urban CSV fallback) — glue only substitutes referenced names.
+  url <- glue::glue(template, root_url = mirror$root_url,
+                    revision = mirror_revision(mirror),
+                    path = canonical_key, format = expected_format)
+  expected_suffix <- paste0(".", expected_format)
+  without_expected <- substr(url, 1L, nchar(url) - nchar(expected_suffix))
+  if (!endsWith(tolower(url), expected_suffix) ||
+      any(endsWith(tolower(without_expected), c(".csv", ".parquet", ".xls")))) {
+    stop("URL template did not append exactly one expected extension")
+  }
+  as.character(url)
+}
+```
+
+---
+
 ## Mirror Resolution Pattern
 
 This pattern is inlined into every Stage 5 fetch script. It tries each mirror in priority order and falls back gracefully.
@@ -102,6 +304,7 @@ def fetch_from_mirrors(
     Returns:
         Filtered Polars DataFrame
     """
+    canonical_path = canonicalize_mirror_path(path, "data")
     _rate_limit()
     last_error = None
 
@@ -110,8 +313,8 @@ def fetch_from_mirrors(
         strategy = mirror["read_strategy"]
         timeout = mirror["timeout"]
 
-        # Build URL from template + canonical path
-        url = mirror["url_template"].format(root_url=mirror["root_url"], path=path, format=mirror["format"])
+        # Build a URL only after validating the extensionless data contract.
+        url = build_mirror_url(mirror, canonical_path, "data")
 
         print(f"  Trying {name}: {url}")
 
@@ -260,11 +463,8 @@ for (mirror in mirrors) {
   mirror_name <- mirror$name
   strategy <- mirror$read_strategy
 
-  # Build URL from template + canonical path
-  url <- glue::glue(mirror$url_template,
-                     root_url = mirror$root_url,
-                     path = DATASET_PATH,
-                     format = mirror$format)
+  # Build a URL only after validating the extensionless data contract.
+  url <- build_mirror_url(mirror, DATASET_PATH, "data")
   cat(sprintf("  Trying %s: %s\n", mirror_name, url))
 
   result <- tryCatch({
@@ -413,10 +613,7 @@ for (year in years) {
     year_df <- NULL
 
     for (mirror in mirrors) {
-      url <- glue::glue(mirror$url_template,
-                         root_url = mirror$root_url,
-                         path = year_path,
-                         format = mirror$format)
+      url <- build_mirror_url(mirror, year_path, "data")
       cat(sprintf("    Trying %s: %s\n", mirror$name, url))
 
       year_result <- tryCatch({
@@ -494,11 +691,18 @@ library(curl)
 # REASONING: curl::multi_download() streams to disk and resumes partial transfers,
 #   so a dropped connection does not restart from zero. It bypasses R's
 #   download.file() 60s timeout entirely (uses libcurl connect/low-speed timeouts).
-# ASSUMES: DATASET_PATH and the huggingface root_url resolve to a real parquet URL;
+# ASSUMES: DATASET_PATH, root_url, and REVISION resolve to a real parquet URL;
 #   cache_dir is inside the project (never /tmp — outside the backup/audit boundary).
 DATASET_PATH <- "ccd/schools_ccd_directory"
-root_url <- "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main"
-url <- sprintf("%s/%s.parquet", root_url, DATASET_PATH)
+# Mirror root + pinned revision — keep in sync with mirrors.yaml (the HF entry's
+# root_url + vintage.hf_revision). "vintage" = a dated Portal snapshot; "revision"
+# = the HF git ref (branch/tag/commit SHA) that pins byte-exact bytes. Real fetch
+# scripts get both from mirrors.yaml via build_mirror_url(); this standalone
+# large-file sample inlines them, so REVISION is pinned here too (keep in sync
+# with mirrors.yaml vintage.hf_revision).
+root_url <- "https://huggingface.co/datasets/brhkim/education_data_portal_mirror_2026q3/resolve"
+REVISION <- "0ad00ce0e232c96b0642459e4e7326607a8d26aa"   # immutable commit SHA of the v2 upload
+url <- sprintf("%s/%s/%s.parquet", root_url, REVISION, DATASET_PATH)
 
 cache_dir <- file.path(PROJECT_DIR, "scripts", "scratch")   # inside project; NOT /tmp
 dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
@@ -547,155 +751,181 @@ cat(sprintf("  Read %s rows x %d cols\n", format(nrow(df), big.mark = ","), ncol
 
 ## Mirror Discovery
 
-Use mirror discovery to check what files are currently available before attempting a fetch. The discovery method for each mirror is defined in `mirrors.yaml`.
+Use mirror discovery to observe what is available on one configured surface at request time. Discovery is explicit about object kind: request `"data"` for `.csv`/`.parquet` source objects or `"codebook"` for `.xls` objects. It never claims universal or future completeness.
 
-### Generic Discovery Function
+Urban manifest rows are presentation/endpoint associations, not unique object rows. `discover_mirror_inventory()` therefore retains every raw row for bridge construction while deduplicating object discovery by the exact `file_dir/file_name` path. Hugging Face tree traversal follows RFC `Link` headers; Urban traversal follows the response envelope's `next` URL. Both traversals have a fail-closed page bound and reject malformed envelopes.
+
+### Python Discovery Reference
 
 ```python
+import re
+from urllib.parse import urljoin
+
 import requests
 
-def discover_mirror_files(mirror_config: dict) -> list[str] | None:
-    """Query a mirror's discovery endpoint to list available files.
 
-    Args:
-        mirror_config: A single mirror entry from mirrors.yaml, including
-            its 'discovery' section.
+def _rfc_link_next(link_header: str) -> str | None:
+    """Return the RFC Link target whose relation list contains ``next``."""
+    for match in re.finditer(r'<([^>]+)>\s*((?:;\s*[^,]+)*)', link_header or ""):
+        parameters = match.group(2)
+        relation = re.search(r';\s*rel\s*=\s*"?([^";,]+)"?', parameters, re.IGNORECASE)
+        if relation and "next" in relation.group(1).lower().split():
+            return match.group(1)
+    return None
 
-    Returns:
-        List of file paths available in the mirror, or None if discovery
-        is not supported (e.g., method is 'known_complete').
+
+def discover_mirror_inventory(
+    mirror_config: dict,
+    object_kind: str,
+    timeout: int = 30,
+    max_pages: int = 100,
+    session: requests.Session | None = None,
+) -> dict:
+    """Return canonical object keys plus raw and exact-path discovery evidence.
+
+    ``raw_rows`` preserves every manifest/tree row for endpoint-object bridge or
+    audit use. ``object_rows`` contains one row per exact source path. The
+    ``canonical_paths`` list is sorted, deduplicated, and extensionless.
     """
-    discovery = mirror_config.get("discovery", {})
-    method = discovery.get("method")
-
-    if method == "http_json":
-        url = discovery["url"]
-        file_filter = discovery.get("file_filter", "*")
-
-        response = requests.get(url, timeout=30)
-        response.raise_for_status()
-        raw = response.json()
-
-        # Handle paginated response envelopes (e.g., Urban CSV returns
-        # {"count": N, "results": [...]} instead of a flat list).
-        if isinstance(raw, dict) and "results" in raw:
-            entries = raw["results"]
-        elif isinstance(raw, list):
-            entries = raw
-        else:
-            print(f"  Unexpected discovery response type: {type(raw)}")
-            return None
-
-        # Handle response format differences between mirrors.
-        # Some mirrors return separate dir + name fields; others use a single path field.
-        # The keys are configured in mirrors.yaml's discovery section.
-        file_dir_key = discovery.get("file_dir_key")
-        file_name_key = discovery.get("file_name_key")
-        path_key = discovery.get("file_path_key", "path")
-
-        if file_dir_key and file_name_key:
-            # Construct paths from separate dir + name fields
-            paths = [
-                f"{e[file_dir_key]}/{e[file_name_key]}"
-                for e in entries
-                if isinstance(e, dict) and e.get("hide", 0) == 0
-            ]
-        else:
-            # Single path field
-            paths = [e[path_key] for e in entries if isinstance(e, dict) and e.get("type") == "file"]
-
-        # Apply file_filter if specified (simple suffix matching)
-        if file_filter != "*":
-            suffix = file_filter.lstrip("*")
-            paths = [p for p in paths if p.endswith(suffix)]
-
-        return paths
-
-    elif method == "known_complete":
-        # This mirror has complete coverage — all datasets in
-        # datasets-reference.md are available. No query needed.
-        return None
-
+    if object_kind not in {"data", "codebook"}:
+        raise ValueError("object_kind must be exactly 'data' or 'codebook'")
+    discovery = mirror_config.get("discovery") or {}
+    if discovery.get("method") != "http_json":
+        raise ValueError("mirror discovery method must be exactly 'http_json'")
+    # A versioned mirror declares discovery.url_template with a {revision} segment
+    # (the HF tree API) so discovery pins to the same vintage as its data URLs; an
+    # unversioned mirror (e.g. the Urban CSV fallback) declares a static url.
+    url_template = discovery.get("url_template")
+    if isinstance(url_template, str) and url_template:
+        next_url = url_template.format(revision=mirror_revision(mirror_config))
     else:
-        print(f"  Unknown discovery method: {method}")
-        return None
+        next_url = discovery.get("url")
+    if not isinstance(next_url, str) or not next_url:
+        raise ValueError("mirror discovery requires a nonempty url or url_template")
+    if not isinstance(max_pages, int) or max_pages < 1:
+        raise ValueError("max_pages must be a positive integer")
+
+    client = session or requests.Session()
+    raw_rows = []
+    visited_urls = set()
+    page_number = 0
+    while next_url is not None:
+        page_number += 1
+        if page_number > max_pages:
+            raise RuntimeError(f"mirror discovery exceeded {max_pages}-page safety bound")
+        if next_url in visited_urls:
+            raise RuntimeError("mirror discovery pagination repeated a URL")
+        visited_urls.add(next_url)
+
+        response = client.get(next_url, timeout=timeout)
+        response.raise_for_status()
+        payload = response.json()
+        if isinstance(payload, dict):
+            if not isinstance(payload.get("results"), list):
+                raise ValueError("paginated discovery envelope must contain a results list")
+            page_rows = payload["results"]
+            raw_next = payload.get("next")
+            if raw_next is not None and not isinstance(raw_next, str):
+                raise ValueError("discovery envelope next value must be a URL string or null")
+            next_url = urljoin(response.url, raw_next) if raw_next else None
+        elif isinstance(payload, list):
+            page_rows = payload
+            next_target = _rfc_link_next(response.headers.get("Link", ""))
+            next_url = urljoin(response.url, next_target) if next_target else None
+        else:
+            raise ValueError("discovery response must be a results envelope or a list")
+        if not all(isinstance(row, dict) for row in page_rows):
+            raise ValueError("every discovery result must be an object")
+        raw_rows.extend(page_rows)
+
+    expected_extensions = {
+        "data": (".csv", ".parquet"),
+        "codebook": (".xls",),
+    }[object_kind]
+    file_dir_key = discovery.get("file_dir_key")
+    file_name_key = discovery.get("file_name_key")
+    path_key = discovery.get("file_path_key", "path")
+    uses_split_path = bool(file_dir_key or file_name_key)
+    if uses_split_path and not (file_dir_key and file_name_key):
+        raise ValueError("split-path discovery requires both file_dir_key and file_name_key")
+
+    object_by_exact_path = {}
+    canonical_to_exact_path = {}
+    for row in raw_rows:
+        if uses_split_path:
+            if file_dir_key not in row or file_name_key not in row:
+                raise ValueError("Urban discovery row lacks configured file_dir/file_name fields")
+            hide_value = row.get("hide", 0)
+            if hide_value not in {0, "0", False, None}:
+                continue
+            file_dir = row[file_dir_key]
+            file_name = row[file_name_key]
+            if not isinstance(file_dir, str) or not isinstance(file_name, str):
+                raise ValueError("Urban file_dir and file_name must be strings")
+            raw_path = f"{file_dir.strip('/')}/{file_name}"
+        else:
+            if row.get("type") != "file":
+                continue
+            if path_key not in row or not isinstance(row[path_key], str):
+                raise ValueError("tree file row lacks the configured string path field")
+            raw_path = row[path_key]
+
+        if not raw_path.lower().endswith(expected_extensions):
+            continue
+        canonical_key = canonicalize_mirror_path(raw_path, object_kind)
+        prior_exact_path = canonical_to_exact_path.get(canonical_key)
+        if prior_exact_path is not None and prior_exact_path != raw_path:
+            raise ValueError(
+                f"distinct source paths collide on canonical key {canonical_key!r}"
+            )
+        canonical_to_exact_path[canonical_key] = raw_path
+        object_by_exact_path.setdefault(
+            raw_path,
+            {
+                "exact_path": raw_path,
+                "canonical_path": canonical_key,
+                "object_kind": object_kind,
+                "first_raw_row": row,
+            },
+        )
+
+    object_rows = [object_by_exact_path[path] for path in sorted(object_by_exact_path)]
+    return {
+        "canonical_paths": sorted(canonical_to_exact_path),
+        "object_rows": object_rows,
+        "raw_rows": raw_rows,
+        "pages_fetched": page_number,
+    }
 
 
-# Usage example:
-# Check if a specific dataset is available in the primary mirror
-# mirror = MIRRORS[0]  # highest priority
-# files = discover_mirror_files(mirror)
-# if files is not None:
-#     target = "saipe/districts_saipe.parquet"
-#     if target in files:
-#         print("Available in primary mirror")
-#     else:
-#         print("Not in primary mirror — will fall through to next")
+def discover_mirror_files(
+    mirror_config: dict,
+    object_kind: str,
+    **kwargs,
+) -> list[str]:
+    """Return canonical extensionless keys discovered for one explicit object kind."""
+    return discover_mirror_inventory(mirror_config, object_kind, **kwargs)[
+        "canonical_paths"
+    ]
+
+
+# Usage: data and codebook inventories are separate and extensionless.
+# data_keys = discover_mirror_files(MIRRORS[0], "data")
+# codebook_keys = discover_mirror_files(MIRRORS[0], "codebook")
+# target = "saipe/districts_saipe"
+# print(target in data_keys)
+# bridge_rows = discover_mirror_inventory(MIRRORS[1], "data")["raw_rows"]
 ```
 
-```r
-# --- Mirror Discovery: check what files are available ---
-# INTENT: Query a mirror's discovery endpoint to list available files.
-# Returns character vector of file paths, or NULL if discovery not supported.
+### R Discovery Semantics
 
-mirror <- mirrors[[1]]
-discovery <- mirror$discovery
-
-if (!is.null(discovery) && discovery$method == "http_json") {
-  resp <- httr2::request(discovery$url) |>
-    httr2::req_timeout(30) |>
-    httr2::req_perform()
-  raw <- httr2::resp_body_json(resp)
-
-  # Handle paginated response envelopes
-  entries <- if (!is.null(raw$results)) raw$results else raw
-
-  # Extract paths based on mirror's discovery config
-  file_dir_key <- discovery$file_dir_key
-  file_name_key <- discovery$file_name_key
-
-  if (!is.null(file_dir_key) && !is.null(file_name_key)) {
-    # Construct paths from separate dir + name fields
-    paths <- vapply(entries, function(e) {
-      if (!is.null(e$hide) && e$hide != 0) return(NA_character_)
-      paste0(e[[file_dir_key]], "/", e[[file_name_key]])
-    }, character(1))
-    paths <- paths[!is.na(paths)]
-  } else {
-    # Single path field
-    path_key <- if (!is.null(discovery$file_path_key)) discovery$file_path_key else "path"
-    paths <- vapply(entries, function(e) {
-      if (!is.null(e$type) && e$type != "file") return(NA_character_)
-      e[[path_key]]
-    }, character(1))
-    paths <- paths[!is.na(paths)]
-  }
-
-  # Apply file_filter if specified
-  file_filter <- discovery$file_filter
-  if (!is.null(file_filter) && file_filter != "*") {
-    suffix <- sub("^\\*", "", file_filter)
-    paths <- paths[grepl(paste0(suffix, "$"), paths)]
-  }
-
-  cat(sprintf("  Available files: %d\n", length(paths)))
-} else if (!is.null(discovery) && discovery$method == "known_complete") {
-  cat("  Mirror has complete coverage — no query needed\n")
-  paths <- NULL
-}
-
-# Usage example:
-# target <- "saipe/districts_saipe.parquet"
-# if (!is.null(paths) && target %in% paths) {
-#   cat("Available in primary mirror\n")
-# }
-```
+The maintained contract tests execute the Python reference. An R script that needs a mirror inventory must preserve the same semantics rather than copying the former one-page, extension-bearing snippet: resolve the discovery URL from `discovery$url_template` by substituting the mirror's revision (`mirror_revision(mirror)`) so the tree traversal pins to the same vintage as the data URLs, falling back to a static `discovery$url` for an unversioned mirror; follow Urban `next` URLs or Hugging Face RFC `Link` cursors to exhaustion within a page bound; retain raw Urban rows for bridge fidelity; deduplicate exact `file_dir/file_name`; select one explicit object kind; and pass each selected source path through `canonicalize_mirror_path()` before membership checks. Thus the R target is `"saipe/districts_saipe"`, never `"saipe/districts_saipe.parquet"`.
 
 ---
 
 ## Metadata File References
 
-Codebook and metadata files are available alongside data files in both mirrors. These are `.xls` files that document variable definitions, coded values, and data structure. Per the Truth Hierarchy below, codebooks rank **second** — below the actual data but above archived skill docs. They are not ingested into the analysis pipeline as data, but agents can download and read them programmatically to resolve ambiguities.
+Codebook and metadata objects use `.xls` on the configured mirrors. The 2026-08-06 v2 build validation confirmed **91 XLS codebooks** present in the Hugging Face mirror (part of the 497-object tree; see `mirrors.yaml` coverage_notes) with zero codebook gaps; this is inventory evidence for that build, not a permanent completeness guarantee. Discover and probe the specific codebook before relying on it. Per the Truth Hierarchy below, codebooks rank **second** — below the actual data but above archived skill docs. They are not ingested into the analysis pipeline as data, but agents can download and read them programmatically to resolve ambiguities.
 
 ### Truth Hierarchy
 
@@ -744,19 +974,11 @@ def get_codebook_url(
     if mirrors is None:
         mirrors = load_mirrors(yaml_path or MIRRORS_YAML)
 
+    canonical_codebook_path = canonicalize_mirror_path(codebook_path, "codebook")
     for mirror in mirrors:
-        meta = mirror.get("metadata")
-        if not meta:
+        if not mirror.get("metadata"):
             continue
-
-        fmt = meta["formats"][0]  # e.g., "xls"
-        template = meta["url_template"]
-        root_url = mirror["root_url"]
-
-        # All mirrors resolve codebook the same way using the canonical path
-        url = template.format(root_url=root_url, path=codebook_path, format=fmt)
-
-        return url
+        return build_mirror_url(mirror, canonical_codebook_path, "codebook")
 
     raise ValueError("No mirror with metadata configuration found")
 
@@ -773,18 +995,14 @@ def get_codebook_url(
 #   codebook_path: Canonical codebook path (e.g., "saipe/codebook_districts_saipe")
 # Returns: Full URL string to the codebook .xls file.
 
-codebook_path <- "saipe/codebook_districts_saipe"
+codebook_path <- canonicalize_mirror_path(
+  "saipe/codebook_districts_saipe", "codebook"
+)
 
 codebook_url <- NULL
 for (mirror in mirrors) {
-  meta <- mirror$metadata
-  if (is.null(meta)) next
-
-  fmt <- meta$formats[[1]]  # e.g., "xls"
-  codebook_url <- glue::glue(meta$url_template,
-                              root_url = mirror$root_url,
-                              path = codebook_path,
-                              format = fmt)
+  if (is.null(mirror$metadata)) next
+  codebook_url <- build_mirror_url(mirror, codebook_path, "codebook")
   break
 }
 if (is.null(codebook_url)) stop("No mirror with metadata configuration found")
@@ -823,11 +1041,12 @@ def fetch_codebook(
     Returns:
         Path to the downloaded .xls file.
     """
+    canonical_codebook_path = canonicalize_mirror_path(codebook_path, "codebook")
     cache_dir = Path(cache_dir)
     cache_dir.mkdir(parents=True, exist_ok=True)
 
-    # Derive local filename from the canonical path (flatten source/filename → filename.xls)
-    local_name = codebook_path.replace("/", "_") + ".xls"
+    # Derive local filename from the validated canonical path.
+    local_name = canonical_codebook_path.replace("/", "_") + ".xls"
     local_path = cache_dir / local_name
 
     if local_path.exists():
@@ -837,17 +1056,12 @@ def fetch_codebook(
     if mirrors is None:
         mirrors = load_mirrors(yaml_path or MIRRORS_YAML)
 
-    # Try each mirror with metadata config
+    # Try each mirror with metadata config.
     last_error = None
     for mirror in mirrors:
-        meta = mirror.get("metadata")
-        if not meta:
+        if not mirror.get("metadata"):
             continue
-
-        fmt = meta["formats"][0]  # e.g., "xls"
-        template = meta["url_template"]
-        root_url = mirror["root_url"]
-        url = template.format(root_url=root_url, path=codebook_path, format=fmt)
+        url = build_mirror_url(mirror, canonical_codebook_path, "codebook")
 
         print(f"  Fetching codebook from {mirror['name']}: {url}")
 
@@ -884,7 +1098,9 @@ def fetch_codebook(
 #   codebook_path: Canonical codebook path (e.g., "saipe/codebook_districts_saipe")
 #   cache_dir: Local directory for cached codebook files.
 
-codebook_path <- "saipe/codebook_districts_saipe"
+codebook_path <- canonicalize_mirror_path(
+  "saipe/codebook_districts_saipe", "codebook"
+)
 cache_dir <- "data/codebooks"
 dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
 
@@ -899,14 +1115,8 @@ if (file.exists(local_path)) {
   downloaded <- FALSE
 
   for (mirror in mirrors) {
-    meta <- mirror$metadata
-    if (is.null(meta)) next
-
-    fmt <- meta$formats[[1]]
-    url <- glue::glue(meta$url_template,
-                       root_url = mirror$root_url,
-                       path = codebook_path,
-                       format = fmt)
+    if (is.null(mirror$metadata)) next
+    url <- build_mirror_url(mirror, codebook_path, "codebook")
     cat(sprintf("  Fetching codebook from %s: %s\n", mirror$name, url))
 
     result_cb <- tryCatch({

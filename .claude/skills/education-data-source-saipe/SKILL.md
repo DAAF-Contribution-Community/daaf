@@ -6,7 +6,7 @@ metadata:
   audience: any-agent
   domain: data-source
   skill-authored: "2026-02-09"
-  skill-last-updated: "2026-02-09"
+  skill-last-updated: "2026-08-06"
 ---
 
 # SAIPE Data Source Reference
@@ -37,7 +37,7 @@ SAIPE is the Census Bureau's program for producing **model-based** estimates of 
 - **Coverage**: All 50 states, 3,100+ counties, 13,000+ school districts
 - **Key measure**: Related children ages 5-17 in families in poverty
 - **Update frequency**: Annual (released each December, ~18-month lag)
-- **Available years**: 1995-2023 (gaps at 1996, 1998; annual from 1999)
+- **Available years**: 1995-2024 (gaps at 1996, 1998; annual from 1999). The v2 mirror (build validated 2026-08-06) extends `districts_saipe` through 2024.
 - **Primary identifier**: FIPS code + LEAID (district ID)
 - **Methodology**: Model-based — combines ACS survey data with administrative records (IRS tax returns, SNAP data) using regression models with "shrinkage" techniques; school district estimates are allocated from county totals using within-county shares; all estimates contain uncertainty and confidence intervals are essential
 - **Available through**: Education Data Portal mirrors (district-level only; state and county SAIPE are not in Portal mirrors — see Data Access section)
@@ -184,7 +184,7 @@ Datasets for SAIPE are available via the Education Data Portal mirror system. Se
 
 | Dataset | Type | Years | Path | Codebook |
 |---------|------|-------|------|----------|
-| District Poverty Estimates | Single | 1995-2023 (gaps: 1996, 1998) | `saipe/districts_saipe` | `saipe/codebook_districts_saipe` |
+| District Poverty Estimates | Single | 1995-2024 (gaps: 1996, 1998) | `saipe/districts_saipe` | `saipe/codebook_districts_saipe` |
 
 > **Only district-level SAIPE data is available in the Portal mirrors.** State and county SAIPE estimates are published by the Census Bureau but are not included in the Education Data Portal mirror system.
 
@@ -251,7 +251,7 @@ df_high <- df |> filter(!is.na(est_population_5_17_poverty_pct),
 | Pitfall | Issue | Solution |
 |---------|-------|----------|
 | Model-based estimates | Not direct counts; contain model uncertainty | Always use confidence intervals; check CV for small districts |
-| ~18 month lag | 2023 estimates released Dec 2024; data never "current" | Accept lag for federal allocations; document vintage |
+| ~18 month lag | e.g. 2023 estimates released Dec 2024; data never "current" (v2 mirror now reaches 2024) | Accept lag for federal allocations; document vintage |
 | No race/ethnicity | School district estimates are not disaggregated by demographics | Use ACS 5-year estimates for racial breakdowns |
 | Not enrollment | Population-based (residential), not enrolled students | Different from FRPL counts; do not equate with enrollment |
 | Boundary timing | May not reflect very recent district consolidations or splits | Check SDRP update cycle in `./references/historical-changes.md` |
@@ -277,7 +277,7 @@ SAIPE uses the **official Census Bureau poverty definition**:
 | `education-data-source-meps` | Complementary poverty source (school-level) | School-level poverty estimates (MEPS) vs district-level (SAIPE) |
 | `education-data-source-ccd` | K-12 enrollment and demographics | Join on LEAID for district enrollment alongside poverty |
 | `education-data-source-nhgis` | Census/demographic data | ACS 5-year tables for race-disaggregated poverty |
-| `education-data-explorer` | Parent discovery skill | Finding available endpoints and variables |
+| `education-data-explorer` | Parent discovery skill | Routing questions to mirror dataset files and variables |
 | `education-data-query` | Data fetching | Downloading parquet/CSV files from mirrors |
 
 ## Topic Index

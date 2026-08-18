@@ -62,13 +62,13 @@ Stages 1, 2, 3, 3.5. Cross-phase orchestration guidance (invocation templates, Q
    - School districts (LEAs)
    - College/university (postsecondary)
 
-2. **Search Endpoints**
-   - Query Education Data Portal metadata
-   - Identify relevant sources (CCD, IPEDS, CRDC, etc.)
-   - Check year coverage
+2. **Route to Canonical Datasets**
+   - Consult the explorer routing references (for education: `schools-datasets.md`, `districts-datasets.md`, `colleges-datasets.md`)
+   - Identify relevant sources and their canonical dataset identifiers — the identifier the domain's retrieval skill consumes (for education: the canonical mirror path, `{source}/{filename}`)
+   - Check year coverage against the source's pinned vintage (for education: the pinned mirror vintage)
 
 3. **Identify Variables**
-   - List variables relevant to research question
+   - List variables relevant to research question (real column names, verified against the domain's variable reference — for education: `variable-dictionary-{source}.md`)
    - Note data types
    - Flag variables needing deep-dive
 
@@ -126,13 +126,14 @@ Return findings in this structure:
 ### 1. Recommended Data Level
 [schools | school-districts | college-university] with rationale
 
-### 2. Candidate Endpoints
-| Endpoint | Source | Description | Years Available |
-|----------|--------|-------------|-----------------|
+### 2. Candidate Datasets
+*Dataset Identifier = the canonical identifier the domain's retrieval skill consumes (for education data: the canonical mirror path, e.g. `ccd/schools_ccd_directory`).*
+| Dataset Identifier | Source | Grain | Description | Years Available |
+|--------------------|--------|-------|-------------|-----------------|
 
 ### 3. Key Variables
-| Variable | Endpoint | Type | Description |
-|----------|----------|------|-------------|
+| Variable | Dataset Identifier | Type | Description |
+|----------|--------------------|------|-------------|
 
 ### 4. Variables Flagged for Deep-Dive
 | Variable | Reason for Deep-Dive |
@@ -166,14 +167,14 @@ After completing the skill's Required Actions, return findings using the format 
 ```markdown
 1. Recommended Data Level: [schools | school-districts | college-university]
 
-2. Candidate Endpoints:
-| Endpoint | Source | Description | Years Available |
-|----------|--------|-------------|-----------------|
-| ... | ... | ... | ... |
+2. Candidate Datasets:
+| Dataset Identifier | Source | Grain | Description | Years Available |
+|--------------------|--------|-------|-------------|-----------------|
+| ... | ... | ... | ... | ... |
 
 3. Key Variables:
-| Variable | Endpoint | Type | Description |
-|----------|----------|------|-------------|
+| Variable | Dataset Identifier | Type | Description |
+|----------|--------------------|------|-------------|
 | ... | ... | ... | ... |
 
 4. Variables Flagged for Deep-Dive:
@@ -204,7 +205,7 @@ Stage 2 preliminary notes must exist on disk before dispatching Stage 3 (source-
 
 ### Gate Criteria (G2)
 
-- [ ] At least one candidate endpoint identified
+- [ ] At least one candidate dataset identified (canonical dataset identifier)
 - [ ] Key variables identified
 - [ ] Variables for deep-dive flagged
 - [ ] Year coverage verified
@@ -277,7 +278,7 @@ Call the skill tool with name 'data-scientist'.
 Then, call the skill tool with name '{domain}-data-source-{source}'.
 
 **CONTEXT FROM STAGE 2:**
-Endpoints identified: {endpoints}
+Candidate datasets identified: {dataset_identifiers}
 Variables to investigate: {variables}
 
 **VARIABLES REQUIRING DEEP-DIVE:**
@@ -440,7 +441,7 @@ After the research-synthesizer returns, the orchestrator persists the full retur
 3. WAIT for explicit user confirmation
 
 **PSU1 Content Requirements:**
-- Data sources identified (with endpoints and year ranges)
+- Data sources identified (with dataset identifiers and year ranges)
 - Key variables discovered and their availability status
 - Source-specific caveats and limitations (from Stage 3 deep-dives)
 - Suppression patterns identified
@@ -473,7 +474,7 @@ Include in the "What's Most Useful From You Here" field:
 #### PSU1 Content Requirements
 
 The PSU1 checkpoint MUST include:
-- Data sources identified (with endpoints and year ranges)
+- Data sources identified (with dataset identifiers and year ranges)
 - Key variables and their availability
 - Source-specific caveats and limitations discovered
 - Suppression patterns and cross-region comparability issues (e.g., cross-state for education)
@@ -495,7 +496,7 @@ Apply the relevant checklist after each subagent returns findings for the corres
 ### Stage 2 (Data Exploration) Verification
 
 - [ ] Recommended Data Level specified (not "TBD" or placeholder)
-- [ ] Candidate Endpoints table has ≥1 endpoint with complete rows
+- [ ] Candidate Datasets table has ≥1 dataset identifier with complete rows
 - [ ] Key Variables table has actual variable names (not "[add more]")
 - [ ] Variables Flagged for Deep-Dive has rationale for each flag
 - [ ] Completeness Assessment checkboxes all marked

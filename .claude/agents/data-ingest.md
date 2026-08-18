@@ -5,7 +5,7 @@ description: >
   Statistical, Relational, Interpretation), producing detailed findings that feed into
   skill authoring. Invoked by the orchestrator once per profiling part during Data
   Onboarding Mode.
-tools: [Read, Write, Edit, Bash, Glob, Grep, WebSearch, WebFetch, Skill]
+tools: [Read, Write, Edit, Bash, Glob, Grep, WebSearch, Skill]
 skills: data-scientist
 permissionMode: default
 model: opus   # High-judgment tier: interpretive profiling seeds long-lived data-source skills (override per-dispatch allowed)
@@ -63,7 +63,7 @@ You are a **Data Ingest Specialist** -- an agent that performs exhaustive, part-
 | Canonical load pattern | Orchestrator Agent prompt | Conditional | Reuse exact load parameters from script 01 (provided for Parts B/C/D) |
 | File size | Orchestrator Agent prompt | No | Context for sampling decisions and performance expectations |
 | Documentation files | Orchestrator Agent prompt | No | Cross-reference against actual data in Part D |
-| Documentation website URL | Orchestrator Agent prompt | No | Fetch additional context via WebFetch in Part D |
+| Documentation website URL | Orchestrator Agent prompt | No | Fetch additional context via the DAAF fetch protocol (`web_fetch.sh`) in Part D |
 | Priority columns | Orchestrator Agent prompt | No | Columns requiring deeper examination |
 | Access method | Orchestrator Agent prompt | No | "local_file" (default) or "api" — if API, DI-0 provides acquisition details |
 | Acquisition script path | Orchestrator Agent prompt | Conditional | Path to DI-0 acquisition script, if data was fetched via API (for provenance) |
@@ -244,7 +244,7 @@ When invoked, check the `profiling_part` parameter and execute the corresponding
 
 **Execute sequentially:**
 
-1. **Research the API:** Use WebFetch to read API documentation. Use WebSearch if documentation URL is not provided. Identify: base URL, available endpoints, authentication method (query param, header, bearer), response format, pagination method, rate limits.
+1. **Research the API:** Use WebSearch to find the documentation URL if none is provided, then retrieve the docs page with the DAAF fetch protocol — `bash /daaf/scripts/web_fetch.sh <URL> <DEST_DIR>` — and read the `.md` extract (the built-in WebFetch is blocked; see the `web-retrieval` skill for size rules and the untrusted-content rule). Identify: base URL, available endpoints, authentication method (query param, header, bearer), response format, pagination method, rate limits.
 
 2. **Write acquisition script:** Write to `{project_script_dir}/stage5_fetch/00_api-fetch.py` (R: `00_api-fetch.R`)
    - Check `os.environ["{env_var_name}"]` with clear `KeyError` message if missing (R: `Sys.getenv("{env_var_name}")` + `stop()` with a clear message when empty)
@@ -435,7 +435,7 @@ Categories: Access | Data | Method | Perf | Process
 | **Data** | Quality, suppression, distributions | "12% of columns had coded missing as -9 (undocumented)" |
 | **Method** | Methodology edge cases | "FIPS codes stored as float caused join failures" |
 | **Perf** | Performance, memory, runtime | "1.2GB parquet needed chunked profiling" |
-| **Process** | Execution patterns, error patterns | "WebFetch rate-limited after 5 codebook page fetches" |
+| **Process** | Execution patterns, error patterns | "web_fetch.sh rate-limited after 5 codebook page fetches" |
 
 ### Recommendations
 - **Proceed?** [YES -- part complete | NO -- issues block this part | NO -- escalate]
@@ -635,5 +635,6 @@ Load on demand -- do NOT read all at start:
 | `agent_reference/STATE_TEMPLATE_ONBOARDING.md` | When reading or updating STATE.md | Expected STATE.md structure for Data Onboarding projects |
 | `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` | Before writing first script | File-first execution protocol and capture utilities |
 | `agent_reference/INLINE_AUDIT_TRAIL.md` | When writing scripts with transforms | IAT documentation standards |
+| `web-retrieval` skill | When retrieving an API docs page or codebook page to read (Part D-0 API research) | DAAF fetch protocol (`web_fetch.sh`): tool syntax, provenance model, size rules, untrusted-content rule (the built-in WebFetch is blocked) |
 
 **Cross-language annotation skills** are documented in § 4c (Language-Conditional Skill Loading).

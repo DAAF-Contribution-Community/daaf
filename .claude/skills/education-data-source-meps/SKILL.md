@@ -1,17 +1,17 @@
 ---
 name: education-data-source-meps
 description: >-
-  MEPS — Urban Institute modeled school-level poverty (% at 100% FPL), from CCD + SAIPE (public schools, 2009-2022, 2-3yr lag). Use when FRPL is unreliable due to CEP. Consistent cross-state measurement. Public schools only.
+  MEPS — Urban Institute modeled school-level poverty (% at 100% FPL) for public schools. MEPS 2.0 (released 2025-12-11) covers school years 2009-10 through 2022-23 and is planned for annual updates; Portal year 2022 returned rows while 2023 was empty on 2026-08-06 (re-probed). Use when FRPL is unreliable due to CEP and for consistent cross-state measurement.
 metadata:
   audience: any-agent
   domain: data-source
   skill-authored: "2026-02-09"
-  skill-last-updated: "2026-02-09"
+  skill-last-updated: "2026-08-06"
 ---
 
 # MEPS Data Source Reference
 
-Model Estimates of Poverty in Schools (MEPS) — Urban Institute modeled estimates of school-level poverty (% students at or below 100% FPL), derived from CCD and Census SAIPE data (public schools, 2009-2022, 2-3 year lag). Use when analyzing school poverty rates, comparing poverty across states, or when FRPL data is unreliable due to CEP enrollment. Unlike FRPL, MEPS provides consistent cross-state measurement at a standardized 100% FPL threshold. Public schools only.
+Model Estimates of Poverty in Schools (MEPS) — Urban Institute modeled estimates of school-level poverty (% students at or below 100% FPL) for public schools. MEPS 2.0, released 2025-12-11, covers school years 2009-10 through 2022-23 and says updates will occur annually. In the Portal, year 2022 returned rows (count 94,941) while year 2023 returned an empty result (count 0), re-probed 2026-08-06. Use when analyzing school poverty rates, comparing poverty across states, or when FRPL data is unreliable due to CEP enrollment. Treat the present gap as a publication-vintage observation, not as a documented fixed methodological lag or as a proven consequence of CCD/SAIPE timing.
 
 School-level poverty measure from the Urban Institute that is **comparable across states and time**, unlike Free/Reduced-Price Lunch (FRPL) data.
 
@@ -38,8 +38,9 @@ MEPS is a **modeled estimate** of the share of students from households with inc
 - **Purpose**: Provide consistent school poverty measurement across all US states
 - **Key advantage**: Comparable across states (unlike FRPL which varies by state policy)
 - **Data level**: School-level (individual schools)
-- **Coverage**: 2009-2022 (actual Portal data range)
-- **Source**: Urban Institute, derived from CCD and SAIPE data
+- **Coverage**: MEPS 2.0 school years 2009-10 through 2022-23; Portal year values 2009-2022, with rows in 2022 and an empty 2023 response re-probed 2026-08-06
+- **Release cadence**: MEPS 2.0 was released 2025-12-11 and states that updates will occur annually; no fixed methodological lag is documented
+- **Source**: Urban Institute, using CCD, SAIPE, and MEPS 2.0 inputs documented in the methodology
 - **Primary identifier**: `ncessch` (12-digit NCES school ID)
 - **Public schools only**: Does not cover private schools
 
@@ -189,6 +190,14 @@ url <- paste0(mirror$root_url, "/", "meps/codebook_schools_meps", ".xls")
 >
 > If this documentation contradicts the codebook, trust the codebook. If the codebook contradicts observed data, trust the data and investigate.
 
+### Current Publication Vintage
+
+- Urban MEPS 2.0 release (2025-12-11): `https://www.urban.org/research/publication/model-estimates-poverty-schools-20`
+- Portal 2022 probe: `https://educationdata.urban.org/api/v1/schools/meps/2022/` — returned rows (count 94,941) on 2026-08-06
+- Portal 2023 probe: `https://educationdata.urban.org/api/v1/schools/meps/2023/` — returned an empty result (count 0) on 2026-08-06
+
+MEPS 2.0 covers school years 2009-10 through 2022-23 and states that updates will occur annually. Describe any current-year gap as the observed publication vintage. Do not assert a fixed production lag or attribute it causally to CCD or SAIPE without separate evidence.
+
 ### Filtering
 
 ```python
@@ -232,7 +241,7 @@ df <- df |> mutate(
 | Using wrong field names | Documentation says `meps` but actual Portal field is `meps_poverty_pct` | Always use Portal field names: `meps_poverty_pct`, `meps_mod_poverty_pct`, `meps_poverty_se` |
 | Ignoring standard errors | Treating MEPS as exact counts; they are modeled estimates with uncertainty | Use `meps_poverty_se` for close comparisons; flag when SE exceeds meaningful difference |
 | Including private schools | MEPS only covers public schools; joining with datasets containing private schools inflates nulls | Filter to public schools before joining |
-| Expecting recent data | MEPS has 2-3 year data lag; latest available may be several years behind | Check actual year range (2009-2022) before planning analysis |
+| Treating vintage as a fixed lag | The current terminal year is a publication-vintage observation, not a documented fixed methodological delay | Record the MEPS release date and covered school years; probe the Portal year needed before planning analysis |
 
 ## Why MEPS Instead of FRPL?
 
@@ -281,7 +290,7 @@ df <- df |> mutate(
 - **Public schools only**: No private school coverage
 - **Modeled estimates**: Subject to estimation error (use `meps_poverty_se`)
 - **100% FPL only**: Does not capture near-poverty (100-185% FPL)
-- **Not real-time**: 2-3 year data lag typical
+- **Publication vintage**: MEPS 2.0 (released 2025-12-11) ends with school year 2022-23; check the latest release and Portal response rather than assuming a fixed lag
 
 ## Related Data Sources
 
@@ -291,7 +300,7 @@ df <- df |> mutate(
 | `education-data-source-ccd` | School/district characteristics | Join for enrollment, demographics, finance |
 | `education-data-source-crdc` | Civil rights/discipline data | Join on `ncessch` for poverty + discipline analysis |
 | `education-data-source-edfacts` | State assessment data | Join on `ncessch` for poverty + achievement analysis |
-| `education-data-explorer` | Parent discovery skill | Finding available endpoints |
+| `education-data-explorer` | Parent discovery skill | Routing questions to mirror dataset files |
 | `education-data-query` | Data fetching | Downloading MEPS parquet/CSV files |
 
 ## Topic Index

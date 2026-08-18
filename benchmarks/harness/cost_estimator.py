@@ -33,20 +33,23 @@ from benchmarks.harness.models import (
 
 
 CHATGPT_SUBSCRIPTION_PROVIDER = "chatgpt-subscription"
-LUNA_API_PRICE_SOURCE_URL = "https://developers.openai.com/api/docs/models/gpt-5.6-luna"
-LUNA_API_PRICE_ACCESSED_AT = "2026-07-15"
+# Rates updated 2026-08-11: OpenAI cut Luna direct-API list prices 5x
+# (verified against the pricing table at the source URL below). Prior schedule
+# was 1.00/0.10/1.25/6.00 short, 2.00/0.20/2.50/9.00 long (accessed 2026-07-15).
+LUNA_API_PRICE_SOURCE_URL = "https://developers.openai.com/api/docs/pricing"
+LUNA_API_PRICE_ACCESSED_AT = "2026-08-11"
 LUNA_LONG_CONTEXT_THRESHOLD = 272_000
 LUNA_SHORT_CONTEXT_RATES = {
-    "input": 1.00,
-    "cached_input": 0.10,
-    "cache_write": 1.25,
-    "output": 6.00,
+    "input": 0.20,
+    "cached_input": 0.02,
+    "cache_write": 0.25,
+    "output": 1.20,
 }
 LUNA_LONG_CONTEXT_RATES = {
-    "input": 2.00,
-    "cached_input": 0.20,
-    "cache_write": 2.50,
-    "output": 9.00,
+    "input": 0.40,
+    "cached_input": 0.04,
+    "cache_write": 0.50,
+    "output": 1.80,
 }
 
 # --- Calibration: average (input_tokens, output_tokens, cache_read_tokens) per case ---

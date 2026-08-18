@@ -361,6 +361,33 @@ During any mode, watch for signals that the user needs additional guidance and r
 
 **Proactive guidance:** If the user's response to a checkpoint is very brief (e.g., just "ok"), and this is their first Full Pipeline session (based on conversation history), consider briefly previewing what comes next: *"Great — moving on to [next activity]. I'll check back in when [next checkpoint condition]."*
 
+### Turn-End Briefing
+
+Do not assume the user has been watching the work unfold. Tool calls, subagent dispatches, file writes, and intermediate results all scroll past in the transcript, but the user is a collaborator who may well have stepped away — attending to their own work while DAAF runs — and comes back to a wall of activity they did not read. So whenever a turn returns control to the user after substantive work, close it with a briefing that catches them up on everything relevant since their last message, taken altogether — not a report on the most recent step alone. Write it the way you would brief a colleague who left the room: in plain language with internal shorthand expanded, and oriented toward what the work means and what to do about it rather than which commands ran.
+
+**Attention is the scarce resource.** The discipline that keeps a briefing short is selectivity about what earns a place in it, not the compression of full sentences into terse fragments. Every claim on the user's attention — every sentence, every bullet — has to carry enough value to justify the read. Depth therefore scales with substance: a quick lookup warrants a sentence or two, while a large multi-specialist round with several findings and decisions genuinely deserves proportionally more room. There is deliberately no fixed length or item budget here; the test is always whether an item is worth the user's attention, never whether it fits a quota.
+
+**How to order it** (a coverage-and-sequence guide, not a template to mechanically fill in):
+
+- **Bottom line first.** Open with the outcome or current state — what is now true, or what got resolved — never a chronology of how you got there.
+- **Findings and decisions in order of importance,** each tied briefly to why it matters for the user's goal. Lead with what changes their picture, not with what was easiest to produce.
+- **Artifacts by path.** Point to files, data, and figures by their location; never paste file contents or execution logs into the briefing itself.
+- **Assumptions and limitations that affect interpretation** — the caveats a reader needs in order to weigh the findings correctly.
+- **Next steps and any decisions you need from the user.** Keep genuinely independent decisions separate and individually visible rather than collapsing them into a single question — each may deserve its own answer, and folding them together hides choices from the user.
+
+**What to steer clear of:**
+
+- Re-narrating the sequence of tool calls or subagent dispatches as though the process were the point.
+- Dumping logs, full file contents, or raw data samples instead of referencing paths.
+- Leaving internal codenames, stage numbers, or agent names unexplained — expand them per the Plain-Language Rule table above.
+- Presenting inference as observed fact. The evidence grading from CLAUDE.md and the claim-adjudication discipline from Subagent Return Processing both stay in force: a specialist's finding you have not independently verified is relayed with its provenance marked, and completion counts come from tool output, not memory.
+- Over-structuring a small answer — headers, tables, and bulleted scaffolding wrapped around what is really a two-sentence update read as mechanical and spend attention without adding value.
+- Burying an action the user must take at the bottom of a long recap where it is easy to miss.
+
+**Relationship to the existing machinery.** The Phase Status Update and checkpoint templates are the heavyweight, phase-boundary instances of this standard — formal, blocking, and comprehensive. The briefing rule governs every *other* substantive turn end, in every mode, including the conversational modes that carry no formal checkpoints at all. It also does not replace mid-wave interim narration: telling the user "two of three specialists are back" while a wave is still in flight stays status-only (see Wave Barrier Discipline) and is not a substitute for the end-of-turn briefing once the whole wave has landed.
+
+This standard is model-agnostic by design. The same structural discipline — lead with the outcome, select for value, ground every claim in evidence — is what keeps a verbose model focused and a terse model complete, so it holds regardless of which model is running the session.
+
 ---
 
 ## What to Load Next
@@ -494,8 +521,8 @@ agent fills in details *beyond* what a skill explicitly states, that is
 LLM-generated inference — not curated knowledge — and is substantially more
 likely to be inaccurate. When the orchestrator or a subagent encounters
 unexpected results, errors, or uncertainty while working with skill-sourced
-information, online verification via WebSearch/WebFetch is the appropriate
-response. For agents without web tools, flag the uncertainty in the return output
+information, online verification via WebSearch (discovery) plus the DAAF fetch
+protocol (`web-retrieval` skill) is the appropriate response. For agents without web tools, flag the uncertainty in the return output
 so the orchestrator can dispatch verification. See `CLAUDE.md` § Execution
 Philosophy > "Skill information awareness" for the universal principle.
 
@@ -605,7 +632,7 @@ See `.claude/agents/README.md` for the complete agent index with key inputs and 
 | `Plan` | Read-only operations when `search-agent` is not suitable | Can read files and make data access calls; CANNOT write files. Prefer `search-agent` for most read-only tasks. |
 | `general-purpose` | Code generation, analysis execution, file creation | Full capabilities including file writes and code execution |
 
-**When to use generic types:** Only for ad-hoc tasks that do not map to any named agent (e.g., Stage DI-7 skill authoring using a `general-purpose` subagent). For all standard pipeline stages, use the corresponding named agent. For read-only exploration tasks, prefer `search-agent` over generic `Plan` — it defaults to the `sonnet` tier (with per-dispatch override available; see Model Selection below), has web access (WebSearch, WebFetch), and understands DAAF conventions. **NEVER use `Explore` subagents.** `Explore` agents are blocked by project hooks (they run on Haiku, which lacks reasoning depth) and will be rejected, wasting time and context on failed launches.
+**When to use generic types:** Only for ad-hoc tasks that do not map to any named agent (e.g., Stage DI-7 skill authoring using a `general-purpose` subagent). For all standard pipeline stages, use the corresponding named agent. For read-only exploration tasks, prefer `search-agent` over generic `Plan` — it defaults to the `sonnet` tier (with per-dispatch override available; see Model Selection below), has web access (WebSearch plus the DAAF fetch protocol — `web-retrieval` skill), and understands DAAF conventions. **NEVER use `Explore` subagents.** `Explore` agents are blocked by project hooks (they run on Haiku, which lacks reasoning depth) and will be rejected, wasting time and context on failed launches.
 
 **Nested dispatch is policy-blocked.** Only the orchestrator dispatches subagents — subagents never launch nested subagents, because all dispatch authority belongs to the orchestrator. A subagent that runs short on context or scope returns remaining work via the early-return protocol so the orchestrator can redelegate it, rather than spawning its own subagents. This is enforced by the `block-nested-dispatch.sh` PreToolUse hook, which denies any Task/Agent dispatch originating inside a subagent (the named agents also omit `Agent`/`Task` from their `tools:` lists; the hook additionally covers the generic built-in types).
 

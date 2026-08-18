@@ -2,6 +2,10 @@
 
 Known dataset file paths for the Education Data Portal mirrors. This is a human-readable reference for planning fetch scripts. For mirrors with discovery support (see `mirrors.yaml`), the discovery endpoint is the authoritative source for what's currently available.
 
+> **Discovery vs. fetch.** Complete question→dataset routing (which mirror file answers a research question, across all 85 dataset families — grain, year coverage, key variables, join keys) now lives in the `education-data-explorer` skill's `*-datasets.md` references. This file is the fetch-time path catalog: use it once discovery has named the datasets, to look up the exact canonical `path` and year list to fetch.
+
+> **Vintage note.** Year ranges below reflect mirror vintage **2026q3 / Portal v0.26.1** (collected 2026-08-06). Historical values and coverage differ from the frozen v0.24.0 predecessor; see `vintage-drift.md` for what changed (revised datasets/years, cosmetic vs. substantive) before reconciling a result across vintages.
+
 ---
 
 ## How to Use This Reference
@@ -15,7 +19,7 @@ Known dataset file paths for the Education Data Portal mirrors. This is a human-
 
 ### Unified Path Model
 
-All mirrors use the same canonical `path` from this reference. Each mirror appends its own format extension (see `mirrors.yaml` for mirror definitions, URL templates, and read strategies).
+All mirrors use the same extensionless canonical `path` from this reference. Data discovery removes exactly one terminal `.csv` or `.parquet`; codebook discovery removes exactly one terminal `.xls`. URL templates append the appropriate extension. Do not pass an extension-bearing discovery result to a fetch template, because that would construct a doubled extension. See `mirrors.yaml` for definitions and `fetch-patterns.md` for canonicalization.
 
 ### Building a Fetch Call
 
@@ -52,7 +56,7 @@ No per-mirror path dicts needed — one path works for all mirrors.
 | Topic | Type | Years | path | codebook |
 |-------|------|-------|------|----------|
 | Directory | Single | varies | `ccd/school-districts_lea_directory` | `ccd/codebook_districts_ccd_directory` |
-| Enrollment | Yearly | 1986-2023 | `ccd/schools_ccd_lea_enrollment_{year}` | `ccd/codebook_districts_ccd_enrollment` |
+| Enrollment | Yearly | 1986-2024 | `ccd/schools_ccd_lea_enrollment_{year}` | `ccd/codebook_districts_ccd_enrollment` |
 | Finance | Single | varies | `ccd/districts_ccd_finance` | `ccd/codebook_districts_ccd_finance` |
 
 ### EDFacts
@@ -68,7 +72,7 @@ No per-mirror path dicts needed — one path works for all mirrors.
 
 | Topic | Type | Years | path | codebook |
 |-------|------|-------|------|----------|
-| Poverty Estimates | Single | 1995-2023 | `saipe/districts_saipe` | `saipe/codebook_districts_saipe` |
+| Poverty Estimates | Single | 1995-2024 | `saipe/districts_saipe` | `saipe/codebook_districts_saipe` |
 
 ---
 
@@ -79,7 +83,7 @@ No per-mirror path dicts needed — one path works for all mirrors.
 | Topic | Type | Years | path | codebook |
 |-------|------|-------|------|----------|
 | Directory | Single | varies | `ccd/schools_ccd_directory` | `ccd/codebook_schools_ccd_directory` |
-| Enrollment | Yearly | 1986-2023 | `ccd/schools_ccd_enrollment_{year}` | `ccd/codebook_schools_ccd_enrollment` |
+| Enrollment | Yearly | 1986-2024 | `ccd/schools_ccd_enrollment_{year}` | `ccd/codebook_schools_ccd_enrollment` |
 
 ### CRDC
 
@@ -122,7 +126,7 @@ No per-mirror path dicts needed — one path works for all mirrors.
 
 > **CRDC naming note:** CRDC codebook filenames frequently use hyphens where data paths use underscores or concatenated names. Additionally, some codebook names differ structurally from their data counterparts (e.g., data `harass_bully_students` vs codebook `harrassment-bullying-students`; data `restraint_seclusion_students` vs codebook `restraint-seclusion-students`). Note the mirror's codebook files spell "harassment" as "harrassment" (double r) — this is intentional and must be preserved. Always use the exact paths shown above.
 
-> **CRDC ID columns:** All CRDC datasets have `crdc_id`, `ncessch`, and `leaid` as String columns (zero-padded IDs). When reading from CSV, these **must** be forced to String via `schema_overrides` — Polars infers them as Int64, silently destroying leading zeros for ~19% of rows (FIPS 01-09 states: AL, AK, AZ, AR, CA, CO, CT). Parquet preserves types automatically. See `education-data-source-crdc` skill for full details.
+> **CRDC ID columns (no universal dtype contract):** CRDC `crdc_id`, `ncessch`, and `leaid` are **not** uniformly String — id typing is heterogeneous per file, even within the single 2020 vintage. Observed on the v2 mirror (2026-08-07): `schools_crdc_school_characteristics` stores all three as String; `discipline_k12_2020` has `ncessch` as Int64; `enrollment_k12_2020` has `crdc_id` as Int64; `harass_bully_students_2020` has all three as Int64. Always inspect the actual file schema before joining and cast/normalize identifiers on read — never assume a uniform id dtype across CRDC files. Where these ids are String they are zero-padded **numeric** strings (e.g. `0100002`, FIPS 01), not alphanumeric, so they must not be cast to Int without care. The CSV-fallback trap still applies to any numeric-string id: when reading from CSV, force String via `schema_overrides` — Polars infers Int64 and silently destroys leading zeros for ~19% of rows (FIPS 01-09 states: AL, AK, AZ, AR, CA, CO, CT). Parquet preserves whatever dtype the file was written with (which is why the per-file typing above varies). See `education-data-source-crdc` skill for full details.
 >
 > **Zero-padded IDs are not CRDC-only.** The same CSV-fallback trap applies to EDFacts and SAIPE `ncessch`/`leaid`, and force-string alone is not always enough: 2019 EDFacts source files ship *already-truncated* IDs, so the canonical recipe is force-string **plus** pad-and-assert (`ncessch`→12, `leaid`→7) after read. See the "Zero-padded ID columns" bullets in `fetch-patterns.md` § Format Handling for the bilingual pattern and per-source specifics.
 
@@ -161,8 +165,10 @@ No per-mirror path dicts needed — one path works for all mirrors.
 | Directory | Single | varies | `ipeds/colleges_ipeds_directory` | `ipeds/codebook_colleges_ipeds_directory` |
 | Admissions | Single | varies | `ipeds/colleges_ipeds_admissions-enrollment` | `ipeds/codebook_colleges_ipeds_admissions-enrollment` |
 | Enrollment FTE | Single | varies | `ipeds/colleges_ipeds_enrollment-fte` | `ipeds/codebook_colleges_ipeds_enrollment-fte` |
-| Graduation Rates | Single | varies | `ipeds/colleges_ipeds_grad-rates` | `ipeds/codebook_colleges_ipeds_grad-rates` |
+| Graduation Rates | Single | 1996-2023 | `ipeds/colleges_ipeds_grad-rates` | `ipeds/codebook_colleges_ipeds_grad-rates` |
 | Finance | Single | varies | `ipeds/colleges_ipeds_finance` | `ipeds/codebook_colleges_ipeds_finance` |
+
+> **Graduation Rates (150%) vintage note:** the `grad-rates` file content reaches **2023**. In Portal v0.26.1 it was de-duplicated and wholesale-revalued (10.69M → 6.14M rows) under the "grad-rates-150% year alignment" correction — any pre-2026q3 analysis of it must be fully re-run. See `vintage-drift.md`.
 
 #### Additional IPEDS Datasets (Mirror Available)
 
@@ -172,42 +178,42 @@ No per-mirror path dicts needed — one path works for all mirrors.
 
 | Topic | Type | Years | path | codebook |
 |-------|------|-------|------|----------|
-| Academic Libraries | Single | 2013-2020 | `ipeds/colleges_ipeds_academic_libraries` | `ipeds/codebook_colleges_ipeds_academic-libraries` |
+| Academic Libraries | Single | 2013-2023 | `ipeds/colleges_ipeds_academic_libraries` | `ipeds/codebook_colleges_ipeds_academic-libraries` |
 | Admissions Requirements | Single | 1990-2022 | `ipeds/colleges_ipeds_admissions-requirements` | `ipeds/codebook_colleges_ipeds_admissions-requirements` |
-| AY Room, Board, and Other | Single | 1999-2021 | `ipeds/colleges_ipeds_ay_room_board_other` | `ipeds/codebook_colleges_ipeds_ay_room_board_other` |
-| AY Tuition and Fees | Single | 1986-2021 | `ipeds/colleges_ipeds_ay_tuition_fees` | `ipeds/codebook_colleges_ipeds_ay_tuition_fees` |
-| AY Tuition (First-Professional) | Single | 1986-2021 | `ipeds/colleges_ipeds_ay_tuition_firstprof` | `ipeds/codebook_colleges_ipeds_ay_tuition_firstprof` |
-| Completers | Single | 2011-2022 | `ipeds/colleges_ipeds_completers` | `ipeds/codebook_colleges_ipeds_completers` |
+| AY Room, Board, and Other | Single | 1999-2023 | `ipeds/colleges_ipeds_ay_room_board_other` | `ipeds/codebook_colleges_ipeds_ay_room_board_other` |
+| AY Tuition and Fees | Single | 1986-2023 | `ipeds/colleges_ipeds_ay_tuition_fees` | `ipeds/codebook_colleges_ipeds_ay_tuition_fees` |
+| AY Tuition (First-Professional) | Single | 1986-2023 | `ipeds/colleges_ipeds_ay_tuition_firstprof` | `ipeds/codebook_colleges_ipeds_ay_tuition_firstprof` |
+| Completers | Single | 2011-2021 | `ipeds/colleges_ipeds_completers` | `ipeds/codebook_colleges_ipeds_completers` |
 | Enrollment Headcount | Single | 1996-2021 | `ipeds/colleges_ipeds_headcount` | `ipeds/codebook_colleges_ipeds_enrollment-headcount` |
-| Fall Enrollment (Residence) | Single | 1986-2020 | `ipeds/colleges_ipeds_fall-res` | `ipeds/codebook_colleges_ipeds_fall-enrollment-residence` |
-| Fall Retention | Single | 2003-2020 | `ipeds/colleges_ipeds_fall-retention` | `ipeds/codebook_colleges_ipeds_fall-retention` |
-| Grad Rates (200%) | Single | 2007-2022 | `ipeds/colleges_ipeds_grad-rates-200pct` | `ipeds/codebook_colleges_ipeds_grad-rates-200pct` |
-| Grad Rates (Pell) | Single | 2015-2017 | `ipeds/colleges_ipeds_grad-rates-pell` | `ipeds/codebook_colleges_ipeds_grad-rates-pell` |
-| Institutional Characteristics | Single | 1980-2023 | `ipeds/colleges_ipeds_institutional-characteristics` | `ipeds/codebook_colleges_ipeds_institutional-characteristics` |
-| Instructional Staff Salaries | Single | 1980-2022 | `ipeds/colleges_ipeds_salaries_is` | `ipeds/codebook_colleges_ipeds_instructional_staff_salaries` |
-| Noninstructional Staff Salaries | Single | 2012-2022 | `ipeds/colleges_ipeds_salaries_nis` | `ipeds/codebook_colleges_ipeds_noninstructional_staff_salaries` |
-| Outcome Measures | Single | 2015-2022 | `ipeds/colleges_ipeds_outcome-measures` | `ipeds/codebook_colleges_ipeds_outcome-measures` |
-| PY Room, Board, and Other | Single | 1999-2021 | `ipeds/colleges_ipeds_py_room_board_other` | `ipeds/codebook_colleges_ipeds_py_room_board_other` |
-| PY Tuition by CIP Code | Single | 1987-2021 | `ipeds/colleges_ipeds_py_tuition_cip` | `ipeds/codebook_colleges_ipeds_py_tuition_cip` |
+| Fall Enrollment (Residence) | Single | 1986-2024 | `ipeds/colleges_ipeds_fall-res` | `ipeds/codebook_colleges_ipeds_fall-enrollment-residence` |
+| Fall Retention | Single | 2003-2024 | `ipeds/colleges_ipeds_fall-retention` | `ipeds/codebook_colleges_ipeds_fall-retention` |
+| Grad Rates (200%) | Single | 2007-2023 | `ipeds/colleges_ipeds_grad-rates-200pct` | `ipeds/codebook_colleges_ipeds_grad-rates-200pct` |
+| Grad Rates (Pell) | Single | 2015-2023 | `ipeds/colleges_ipeds_grad-rates-pell` | `ipeds/codebook_colleges_ipeds_grad-rates-pell` |
+| Institutional Characteristics | Single | 1980-2024 | `ipeds/colleges_ipeds_institutional-characteristics` | `ipeds/codebook_colleges_ipeds_institutional-characteristics` |
+| Instructional Staff Salaries | Single | 1980-2024 | `ipeds/colleges_ipeds_salaries_is` | `ipeds/codebook_colleges_ipeds_instructional_staff_salaries` |
+| Noninstructional Staff Salaries | Single | 2012-2024 | `ipeds/colleges_ipeds_salaries_nis` | `ipeds/codebook_colleges_ipeds_noninstructional_staff_salaries` |
+| Outcome Measures | Single | 2015-2021 | `ipeds/colleges_ipeds_outcome-measures` | `ipeds/codebook_colleges_ipeds_outcome-measures` |
+| PY Room, Board, and Other | Single | 1999-2023 | `ipeds/colleges_ipeds_py_room_board_other` | `ipeds/codebook_colleges_ipeds_py_room_board_other` |
+| PY Tuition by CIP Code | Single | 1987-2023 | `ipeds/colleges_ipeds_py_tuition_cip` | `ipeds/codebook_colleges_ipeds_py_tuition_cip` |
 | SFA All Undergraduates | Single | 2007-2017 | `ipeds/colleges_ipeds_sfa_all_undergrads` | `ipeds/codebook_colleges_ipeds_sfa_all_undergrads` |
 | SFA by Living Arrangement | Single | 2008-2017 | `ipeds/colleges_ipeds_sfa_by_living_arrangement` | `ipeds/codebook_colleges_ipeds_sfa_by_living_arrangement` |
 | SFA by Tuition Type | Single | 1999-2017 | `ipeds/colleges_ipeds_sfa_by_tuition_type` | `ipeds/codebook_colleges_ipeds_sfa_by_tuition_type` |
 | SFA FTFT | Single | 1999-2017 | `ipeds/colleges_ipeds_sfa_ftft` | `ipeds/codebook_colleges_ipeds_sfa_FTFT` |
 | SFA Grants and Net Price | Single | 2008-2021 | `ipeds/colleges_ipeds_sfa_grants_and_net_price` | `ipeds/codebook_colleges_ipeds_sfa_grants_and_net_price` |
-| Student-Faculty Ratio | Single | 2009-2020 | `ipeds/colleges_ipeds_student-faculty-ratio` | `ipeds/codebook_colleges_ipeds_student-faculty-ratio` |
+| Student-Faculty Ratio | Single | 2009-2024 | `ipeds/colleges_ipeds_student-faculty-ratio` | `ipeds/codebook_colleges_ipeds_student-faculty-ratio` |
 
 ##### Additional Yearly Datasets
 
 | Topic | Type | Years | path | codebook |
 |-------|------|-------|------|----------|
-| Completions (CIP 2-digit) | Yearly | 1991-2022 | `ipeds/colleges_ipeds_completions-2digcip_{year}` | `ipeds/codebook_colleges_ipeds_completions-2digcip` |
-| Completions (CIP 6-digit) | Yearly | 1983-2022 | `ipeds/colleges_ipeds_completions-6digcip_{year}` | `ipeds/codebook_colleges_ipeds_completions-6digcip` |
-| Fall Enrollment (Age) | Yearly | 1991-2020 | `ipeds/colleges_ipeds_fall-enrollment-age_{year}` | `ipeds/codebook_colleges_ipeds_fall-enrollment-age` |
-| Fall Enrollment (Race) | Yearly | 1986-2022 | `ipeds/colleges_ipeds_fall-enrollment-race_{year}` | `ipeds/codebook_colleges_ipeds_fall-enrollment-race` |
+| Completions (CIP 2-digit) | Yearly | 1991-2023 | `ipeds/colleges_ipeds_completions-2digcip_{year}` | `ipeds/codebook_colleges_ipeds_completions-2digcip` |
+| Completions (CIP 6-digit) | Yearly | 1983-2023 | `ipeds/colleges_ipeds_completions-6digcip_{year}` | `ipeds/codebook_colleges_ipeds_completions-6digcip` |
+| Fall Enrollment (Age) | Yearly | 1991-2024 | `ipeds/colleges_ipeds_fall-enrollment-age_{year}` | `ipeds/codebook_colleges_ipeds_fall-enrollment-age` |
+| Fall Enrollment (Race) | Yearly | 1986-2024 | `ipeds/colleges_ipeds_fall-enrollment-race_{year}` | `ipeds/codebook_colleges_ipeds_fall-enrollment-race` |
 
 > **IPEDS naming note:** Some data file paths differ from their codebook counterparts. Notable mismatches: data `headcount` vs codebook `enrollment-headcount`; data `fall-res` vs codebook `fall-enrollment-residence`; data `salaries_is` vs codebook `instructional_staff_salaries`; data `salaries_nis` vs codebook `noninstructional_staff_salaries`; data `sfa_ftft` vs codebook `sfa_FTFT` (case difference). Always use the exact paths shown above.
 
-> **IPEDS yearly datasets:** Fall Enrollment (Age) has non-contiguous years (1991, 1993, 1995, 1997, 1999-2020). Fall Enrollment (Race) has all years 1986-2022. Completions datasets have all years within their stated ranges.
+> **IPEDS yearly datasets:** Fall Enrollment (Age) has non-contiguous years (1991, 1993, 1995, 1997, 1999-2024). Fall Enrollment (Race) has all years 1986-2024. Completions datasets have all years within their stated ranges.
 
 ### Scorecard
 
@@ -288,5 +294,5 @@ No per-mirror path dicts needed — one path works for all mirrors.
 
 - **Single-file datasets** contain all years in one file. Filter locally with `pl.col("year").is_in(years)`.
 - **Yearly datasets** have one file per year with `{year}` in the path. Fetch each year separately and concatenate.
-- **Codebook files** are `.xls` files available on all mirrors. Use `get_codebook_url()` from `fetch-patterns.md` to construct download URLs. Codebooks are for human reference — not parsed programmatically.
+- **Codebook canonical paths** are extensionless and distinct from data paths. Current discovery can observe `.xls` objects on both configured surfaces; `get_codebook_url()` appends `.xls`. Codebooks are for human reference — not parsed programmatically. Verify the specific object instead of assuming universal mirror coverage.
 - **Cross-reference** source-specific skills for variable names, coded values, and caveats.

@@ -804,7 +804,7 @@ Validation Failure
 
 **A hook block is a deliberate guardrail, not a transient error.** It is not an access timeout or a flaky failure — the hook evaluated the command and refused it by design. Retrying the identical command will fail identically and consumes budget for nothing. The recovery is always to change *what* you are doing, per the block category below, not to re-issue the same command.
 
-CLAUDE.md's § Boundaries & Safety and its Defense-in-Depth Architecture table are the authoritative source for exactly which commands each hook blocks and why; the paths below are the recovery action, not a restatement of the rules.
+CLAUDE.md § Boundaries & Safety (summary) and the full Defense-in-Depth Architecture table in `agent_reference/BOUNDARIES.md` are the authoritative source for exactly which commands each hook blocks and why; the paths below are the recovery action, not a restatement of the rules.
 
 | Block category | Why it fired | Recovery |
 |----------------|-------------|----------|

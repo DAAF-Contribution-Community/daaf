@@ -684,9 +684,12 @@ function Sync-HostScript {
     if ([string]::IsNullOrWhiteSpace($allHostFiles)) { return }
 
     # Platform filter (Windows hosts): keep *.ps1 files (which now includes the
-    # native Control Panel pair daaf.ps1 / daaf_lib.ps1) and the shared
-    # plain-text files (environment_settings_example.txt, README.txt). All *.sh
-    # files are dropped -- Windows uses the .ps1 Control Panel, not daaf.sh.
+    # native Control Panel pair daaf.ps1 / daaf_lib.ps1), the daaf.bat double-click
+    # launcher, the daaf.ico icon (future, user-supplied -- absent from the repo
+    # until then, so it simply never appears in the git ls-files list), and the
+    # shared plain-text files (environment_settings_example.txt, README.txt). All
+    # *.sh files and DAAF.command (the macOS launcher) are dropped -- Windows uses
+    # the .ps1 Control Panel, not daaf.sh.
     # Bootstrap-only scripts (install.ps1, migrate_daaf.ps1) are intentionally
     # excluded -- fetched via irm on demand, not needed post-install. The
     # dev-only test harness (test_migration.ps1) is likewise excluded -- it is a
@@ -698,6 +701,8 @@ function Sync-HostScript {
         if (-not $repoPath) { continue }
         if ($repoPath -eq "scripts/host/install.ps1" -or $repoPath -eq "scripts/host/migrate_daaf.ps1" -or $repoPath -eq "scripts/host/test_migration.ps1") { continue }
         if ($repoPath -like "*.ps1" -or
+            $repoPath -eq "scripts/host/daaf.bat" -or
+            $repoPath -eq "scripts/host/daaf.ico" -or
             $repoPath -eq "scripts/host/environment_settings_example.txt" -or
             $repoPath -eq "scripts/host/README.txt") {
             $syncList += $repoPath
@@ -902,6 +907,47 @@ function Sync-HostScript {
     if ($syncCopyFailed) {
         Write-Host "Warning: some host scripts could not be synced -- see the messages above for manual copy commands."
         Write-Host ""
+    }
+
+    # --- In-folder double-click shortcut: create-or-refresh (non-fatal) ---
+    # Create (or refresh) a DAAF.lnk shortcut to daaf.bat *inside the install
+    # folder*, mirroring the block install.ps1 runs at install time. Existing
+    # installs predate that installer block and so never received a shortcut;
+    # doing it here on update delivers one to them. The operation is a
+    # create-or-refresh: CreateShortcut() on an already-existing .lnk opens it in
+    # place, so re-setting TargetPath/WorkingDirectory/IconLocation and calling
+    # Save() refreshes just those three properties while preserving any other
+    # customizations the user added (hotkey, window style, run mode). A copy the
+    # user dragged elsewhere (Desktop, taskbar) is a separate file and is left
+    # untouched. Because TargetPath is stored as an absolute path, this also
+    # self-repairs a stale shortcut after the daaf-docker folder was moved. The
+    # daaf.bat guard is why this lives here -- daaf.bat is synced above, so it is
+    # present by now on a healthy update. The whole step is a convenience: any
+    # failure warns and continues, and never fails the update. Dry-run gated so
+    # CI (no Windows Shell COM object) never invokes WScript.Shell.
+    if ($env:DAAF_DRY_RUN -eq "1") {
+        Write-Host "[DRY-RUN] Would create or refresh the in-folder DAAF.lnk shortcut to daaf.bat"
+    } else {
+        try {
+            $InstallDir = (Get-Location).Path
+            $BatPath = Join-Path $InstallDir "daaf.bat"
+            if (Test-Path -LiteralPath $BatPath) {
+                $ShortcutPath = Join-Path $InstallDir "DAAF.lnk"
+                $WshShell = New-Object -ComObject WScript.Shell
+                $Shortcut = $WshShell.CreateShortcut($ShortcutPath)
+                $Shortcut.TargetPath = $BatPath
+                $Shortcut.WorkingDirectory = $InstallDir
+                $Shortcut.Description = "Launch the DAAF Control Panel"
+                $IconPath = Join-Path $InstallDir "daaf.ico"
+                if (Test-Path -LiteralPath $IconPath) {
+                    $Shortcut.IconLocation = $IconPath
+                }
+                $Shortcut.Save()
+                Write-Host "Created/refreshed in-folder DAAF.lnk shortcut." -ForegroundColor Green
+            }
+        } catch {
+            Write-Warning "Could not create or refresh the DAAF.lnk shortcut (non-fatal): $_"
+        }
     }
 
     # --- Self-update notice ---

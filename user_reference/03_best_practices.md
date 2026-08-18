@@ -247,8 +247,8 @@ The report follows a standard structure (Executive Summary, Key Findings, Data &
 
 One habit worth building as you read any DAAF output is to notice how it grades its own claims by evidence. A quick lens to read with:
 
-- **Ran-and-quoted means observed fact.** When DAAF reports that something *ran* -- a fetch returned so many rows, a validation passed -- the actual command and its output are on record in the script's execution log for you to check.
-- **Everything else is inference.** Statements without that kind of record are inferences, and DAAF is instructed to phrase them so they read that way rather than as established fact.
+- **Things DAAF actually ran and quoted are observed fact.** When DAAF reports that something *ran* -- a fetch returned so many rows, a validation passed -- the actual command and its output are on record in the script's execution log for you to check.
+- **Everything else is something it's inferring.** Statements without that kind of record are inferences, and DAAF is instructed to phrase them so they read that way rather than as established fact.
 - **Watch negative claims most closely.** When DAAF says something is *impossible* or *unavailable* -- that a source doesn't offer a variable, or that an operation can't be done -- give it extra scrutiny. A wrong "no" fails silently and can quietly harden into accepted fact, so those claims deserve the same "show me the check" treatment you'd give any surprising result.
 - **Completion counts should trace to output.** When DAAF tells you how much it did -- files changed, outcomes addressed -- that accounting should trace back to actual tool output, not to memory.
 
@@ -299,7 +299,7 @@ The `scripts/cr/` directory contains the code-reviewer's inspection scripts for 
 - `stage5_01_cr1.py` -- First QA review of Stage 5, script 01
 - `stage7_02_cr2.py` -- Second QA iteration for Stage 7, script 02
 
-Analysis-stage (Stage 8) reviews split into two tracks and use lettered suffixes to tell them apart: `_cra{N}` names a statistical/analysis review and `_crb{N}` names a visualization review. So `stage8_01_cra1.py` is the first analysis review of Stage 8 script 01, and `stage8_01_crb1.py` is the first visualization review of that same script. If you encounter these `cra`/`crb` files, they are expected -- Stage 8 simply gets reviewed from both angles.
+Stage 8 gets two review tracks -- an analysis review (`_cra{N}`, e.g. `stage8_01_cra1.py`) and a visualization review (`_crb{N}`, e.g. `stage8_01_crb1.py`) -- so you'll see both `cra` and `crb` files for Stage 8; that's expected.
 
 These scripts contain the adversarial checks that the code-reviewer ran, along with their results. If a QA review returned WARNING or BLOCKER, the findings will be in these files. You generally do not need to read these unless you are investigating a specific concern -- but they are there for full transparency.
 

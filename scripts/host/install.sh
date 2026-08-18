@@ -236,6 +236,57 @@ else
     chmod +x "${INSTALL_DIR}/daaf.sh" "${INSTALL_DIR}/daaf_lib.sh" "${INSTALL_DIR}/run_daaf.sh" "${INSTALL_DIR}/backup_daaf.sh" "${INSTALL_DIR}/restore_from_backup.sh" "${INSTALL_DIR}/rebuild_daaf.sh" "${INSTALL_DIR}/update_daaf.sh" "${INSTALL_DIR}/view_logs.sh" "${INSTALL_DIR}/view_notebooks.sh" "${INSTALL_DIR}/view_quarto.sh" "${INSTALL_DIR}/run_vscode.sh"
 fi
 
+# --- macOS-only: double-click launcher (DAAF.command) ---
+# Only macOS ships a double-click launcher. Finder runs a .command file in
+# Terminal, and it needs the executable bit to launch (setting it here means the
+# installer-placed copy is never blocked -- it never traverses a browser download
+# and so carries no quarantine attribute). Linux desktop environments handle
+# double-clicked scripts inconsistently, so no launcher is shipped there; Linux
+# users launch via `bash daaf.sh` from a terminal (documented in the quickstart).
+# Non-fatal: a download failure emits a prominent diagnostic WARNING (with the
+# curl exit code, the URL attempted, and the branch) but never aborts the
+# install -- the launcher is a convenience, and update_daaf.sh can heal it later.
+if [ "$(uname -s 2>/dev/null)" = "Darwin" ]; then
+    if [ "${DAAF_DRY_RUN:-}" = "1" ]; then
+        echo "[DRY-RUN] Would download and chmod +x the macOS launcher (DAAF.command)"
+    else
+        # Capture curl's exit code explicitly. The `|| rc=$?` keeps the failure
+        # from tripping `set -e` (equivalent to the old `elif` safety) while
+        # letting us report the exact code in the diagnostic below.
+        DAAF_CMD_URL="${RAW_BASE}/scripts/host/DAAF.command"
+        DAAF_CMD_RC=0
+        curl -fsSL "${DAAF_CMD_URL}" -o "${INSTALL_DIR}/DAAF.command" || DAAF_CMD_RC=$?
+        if [ "${DAAF_CMD_RC}" -eq 0 ]; then
+            chmod +x "${INSTALL_DIR}/DAAF.command"
+        else
+            # A failed curl can leave a partial or zero-byte file behind; remove
+            # it so a broken launcher can't shadow a later heal by update_daaf.sh.
+            rm -f "${INSTALL_DIR}/DAAF.command"
+            echo ""
+            echo "WARNING: Could not download the macOS double-click launcher (DAAF.command)."
+            echo "         curl exit code: ${DAAF_CMD_RC}"
+            echo "         URL attempted:  ${DAAF_CMD_URL}"
+            echo "         Branch:         ${BRANCH}"
+            echo "         This is non-fatal -- the rest of the install continues."
+            echo "         The launcher can be delivered later by running: bash update_daaf.sh"
+            echo "         (its existence-heal copies missing host files). In the meantime you"
+            echo "         can always launch DAAF from a terminal with: bash daaf.sh"
+        fi
+    fi
+fi
+
+# --- Icon asset (daaf.ico) ---
+# The DAAF icon ships on every platform so the installed file set matches what
+# update_daaf.sh syncs (its platform filter whitelists daaf.ico on Unix too).
+# Today only Windows uses it (the DAAF.lnk shortcut created by install.ps1); on
+# macOS/Linux it is a small inert asset kept for install/update parity.
+# Non-fatal: a download failure degrades to a note, never aborts the install.
+if [ "${DAAF_DRY_RUN:-}" = "1" ]; then
+    echo "[DRY-RUN] Would download the DAAF icon (daaf.ico)"
+elif ! curl -fsSL "${RAW_BASE}/scripts/host/daaf.ico" -o "${INSTALL_DIR}/daaf.ico"; then
+    echo "NOTE: Could not download the DAAF icon (daaf.ico); continuing without it."
+fi
+
 # --- Apple Silicon (arm64) build-time notice ---
 # On the Ubuntu noble base, arm64 gets P3M pre-built R binaries (same as x86_64),
 # so Apple Silicon no longer compiles R packages from source. The first build is
@@ -676,6 +727,11 @@ echo "     bash daaf.sh"
 echo ""
 echo "     The Control Panel provides a status dashboard, service management,"
 echo "     and all DAAF operations in one place."
+if [ "$(uname -s 2>/dev/null)" = "Darwin" ]; then
+    echo ""
+    echo "     Or, to skip the terminal: double-click DAAF.command in ${INSTALL_DIR}"
+    echo "     from Finder to open the Control Panel."
+fi
 echo ""
 echo "  2. On first launch, you'll be asked to authenticate with your Anthropic account."
 echo ""

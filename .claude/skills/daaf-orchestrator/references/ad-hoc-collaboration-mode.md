@@ -90,7 +90,7 @@ mkdir -p {PROJECT_DIR}/output/figures
 
 ## Orchestrator Skill Loading
 
-**Exception to standard pattern:** The orchestrator loads `data-scientist` directly via the Skill tool at the start of Ad Hoc Collaboration mode. This is one of two modes where the orchestrator itself loads skills directly (the other is Framework Development, which loads `skill-authoring` and `agent-authoring`). Normally skills are loaded by subagents only.
+**Exception to standard pattern:** The orchestrator loads `data-scientist` directly via the Skill tool at the start of Ad Hoc Collaboration mode, and also loads `creative-verification` directly on demand when a verification need surfaces (see "Creative Verification (Analytic Triangulation)" below). This is one of two modes where the orchestrator itself loads skills directly (the other is Framework Development, which loads `skill-authoring` and `agent-authoring`). Normally skills are loaded by subagents only.
 
 **Rationale:** In this mode, the orchestrator frequently responds directly to the user -- advising on methodology, discussing approaches, explaining concepts -- and needs the `data-scientist` skill's methodology knowledge to provide rigorous advice without dispatching a subagent for every question.
 
@@ -116,13 +116,61 @@ When the user asks about a specific tool or package and the orchestrator answers
 
 ---
 
+## Creative Verification (Analytic Triangulation)
+
+Ad Hoc Collaboration is the pilot venue for **creative verification** — collaborative
+analytic triangulation that stress-tests a provisional finding or designs pre-specified
+challenges before an analysis runs. Its purpose is to reduce the researcher's line-by-
+line code-review burden by substituting behavioral, output-level verification
+(independent re-derivation, reconciliation, discriminating tests) for granular code
+spelunking: "calibrated confidence per unit of researcher attention."
+
+**Trigger signals.** Reach for it when the user wants to:
+
+- verify, challenge, stress-test, or "poke holes in" a result they already have;
+- understand whether a finding survives different denominators, specifications, windows,
+  or measures;
+- design discriminating or pre-specified challenges *before* running an analysis;
+- reduce what they would otherwise feel obligated to inspect by hand, line by line.
+
+**How the orchestrator runs it.** Load the `creative-verification` skill **directly** via
+the Skill tool — the same direct-load exception this mode grants `data-scientist`
+(Orchestrator Skill Loading above), loaded on-demand when a verification need surfaces
+rather than at session start. Then run the skill's **challenge loop** conversationally
+(elicit the researcher's own concern first → state the focal claim precisely → generate
+competing explanations including data/process ones → identify discriminating observables
+→ prioritize a small first bundle → pre-commit each test's interpretation rule → execute
+through normal DAAF machinery → interpret against the pre-committed rule → update the
+ledger, then stop, iterate, or promote). Existing agents execute the tests: dispatch
+`research-executor` for challenge scripts and diagnostic artifacts, `code-reviewer` for
+QA, `debugger` for a *reveals-data/process-issue* result that needs root-causing —
+using the standard Ad Hoc dispatch conventions above.
+
+**Maintain the ledger.** Keep a hypothesis/evidence ledger at
+`{PROJECT_DIR}/TRIANGULATION_LEDGER.md` per `agent_reference/TRIANGULATION_PROTOCOL.md`
+(two tables — hypotheses and tests — with interpretation rules pre-committed before
+execution; the ledger is the arbiter and doubles as a coverage map of what has and has
+not been triangulated). The orchestrator owns the ledger; subagents return results and
+the orchestrator records them. Diagnostic dashboards (Plotly HTML / standalone Marimo
+apps) are separately-planned artifacts, never Stage 9 notebooks, and pass the skill's
+interactive-artifact QA contract.
+
+**Escalation.** Creative verification runs alongside the official analysis and never
+silently changes it. New data sources, population changes, or methodology changes need
+explicit user approval before a test runs. When a confirmed triangulation result should
+be acted on — adopting a different denominator, adding a robustness result, correcting a
+data-process issue — **promote it into Revision and Extension mode** (Escalation Triggers
+below), rather than editing the official analysis in place.
+
+---
+
 ## Skill Information and Online Verification
 
 Skills are a solid starting point for framework conventions and domain knowledge — they represent curated, reviewed content that is more reliable than ad-hoc inference. However, skills are point-in-time snapshots: APIs evolve, endpoints deprecate, documentation updates, and coded values change.
 
 **The critical distinction:** Information the orchestrator or agents supply *beyond* what is explicitly encoded in a skill is LLM-generated inference — not curated knowledge — and is substantially more likely to be wrong. This is a core limitation of LLM agents: they can confidently produce plausible-sounding details that are partially or entirely fabricated. When responding directly (without dispatching), the orchestrator should distinguish between what it knows from a loaded skill vs. what it is inferring from general knowledge, and be transparent about this distinction with the user.
 
-**When to verify online:** The orchestrator CAN and SHOULD use WebSearch/WebFetch to verify information when:
+**When to verify online:** The orchestrator CAN and SHOULD use WebSearch (to discover) plus the DAAF fetch protocol (`web-retrieval` skill's `web_fetch.sh`; the built-in WebFetch is blocked) to verify information when:
 - A skill's `skill-last-updated` frontmatter date suggests staleness (more than a few months old)
 - The orchestrator is filling in details beyond what the skill explicitly covers
 - An API endpoint, URL, variable name, or coded value produces unexpected results
@@ -363,6 +411,8 @@ Ad Hoc Collaboration has no mandatory output format. Outputs depend on what the 
 
 **Saved artifacts:** All scripts, data files, and figures produced during the session are saved in the workspace folder. The user can reference these later or use them as a starting point for Full Pipeline work.
 
+**Turn-end briefing.** Ad Hoc has no checkpoints, so the discipline that keeps the user oriented is the turn-end briefing: whenever a turn returns control after substantive work — a script executed, a review returned, a debugging pass concluded — close by catching the user up on everything relevant since their last message, taken altogether, in plain language and pointed toward what it means and what to do next. That is the per-turn habit; the milestone SESSION_NOTES.md updates and the Session Wrap-Up summary below are the persisted, coarser-grained forms of the same instinct. See the master statement in `SKILL.md` § User-Facing Communication Standards > "Turn-End Briefing."
+
 ---
 
 ## Boundaries
@@ -409,6 +459,7 @@ These boundaries supplement the universal safety boundaries in `CLAUDE.md`. See 
 | User reveals their data is sensitive/PII/proprietary or can't leave their environment | Data Onboarding | Propose escalation to the **sensitivity gate** — DAAF's synthetic-data protocol keeps the real data out of the container (profile locally → share only a disclosure-controlled report → DAAF builds a synthetic stand-in; finalize findings against the real data). See the `synthetic-data-workflow` skill. |
 | Session has naturally produced a research plan | Full Pipeline | Suggest: "This is shaping up to be a full analysis -- want me to formalize it?" |
 | Debugging reveals an existing analysis needs revision | Revision and Extension | Propose escalation to modify the original project |
+| A confirmed creative-verification finding should change the official analysis | Revision and Extension | Promote the confirmed change per `agent_reference/TRIANGULATION_PROTOCOL.md`; the official analysis is preserved until the user approves promotion |
 | User wants to verify an existing analysis reproduces | Reproducibility Verification | Propose escalation |
 | User wants to create or modify DAAF framework components (skills, agents, modes) | Framework Development | Propose escalation: "That's framework development work. Want me to switch to Framework Development mode?" |
 | User's questions shift from hands-on work to understanding DAAF, its tools, or setup | User Support | Propose: "It sounds like you want to understand DAAF better first. Want me to switch to User Support mode?" |

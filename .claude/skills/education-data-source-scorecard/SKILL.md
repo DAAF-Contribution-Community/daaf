@@ -6,12 +6,12 @@ metadata:
   audience: any-agent
   domain: data-source
   skill-authored: "2026-02-09"
-  skill-last-updated: "2026-02-09"
+  skill-last-updated: "2026-07-21"
 ---
 
 # Scorecard Data Source Reference
 
-College Scorecard — the primary institutional-level source for post-enrollment labor market outcomes, linking NSLDS financial aid records to IRS/Treasury earnings data. Use when comparing institutions on post-graduation earnings, loan repayment, or student debt, or when actual tax-record-based earnings are required rather than survey estimates. Covers six sub-datasets accessed via Portal mirrors. Critical limitation: tracks only Title IV federal aid recipients, not all students.
+College Scorecard — the primary institutional-level source for post-enrollment labor market outcomes, linking NSLDS financial aid records to IRS/Treasury earnings data. Use when comparing institutions on post-graduation earnings, loan repayment, or student debt, or when actual tax-record-based earnings are required rather than survey estimates. The Portal mirrors six institution-level families and does not mirror program/field-of-study data; use the official Scorecard Data page or documented API for program-level work. Critical limitation: tracks only Title IV federal aid recipients, not all students.
 
 Federal data on post-college outcomes including earnings, debt, and repayment for students who received Title IV financial aid. Links education records to IRS tax data for actual earnings, making it the primary source for post-college labor market outcomes.
 
@@ -62,11 +62,12 @@ Federal data on post-college outcomes including earnings, debt, and repayment fo
 ```
 Outcome type?
 ├─ Post-college earnings
-│   ├─ Institution-level → ./references/earnings-data.md
-│   └─ By field of study → ./references/field-of-study.md
+│   ├─ Institution-level → Portal earnings family; ./references/earnings-data.md
+│   └─ Program/field of study → NOT in Portal; use https://collegescorecard.ed.gov/data/
+│       └─ Choose "Most Recent Data by Field of Study" or the documented API; see ./references/field-of-study.md
 ├─ Student debt levels
-│   ├─ Cumulative borrowing → ./references/debt-repayment.md
-│   └─ Debt by field → ./references/field-of-study.md
+│   ├─ Institution-level borrowing → Portal repayment families; ./references/debt-repayment.md
+│   └─ Debt by program/field → NOT in Portal; use the official Data page or documented API
 ├─ Loan repayment/default
 │   └─ Repayment rates → ./references/debt-repayment.md
 ├─ Completion rates
@@ -96,10 +97,12 @@ Interpretation question?
 
 ```
 Query construction?
+├─ Portal institution-level family → Use exact path in "All Scorecard Datasets" below
 ├─ Variable names and codes → ./references/variable-definitions.md
 ├─ Suppression flags to handle → ./references/data-quality.md
 ├─ Understanding cohort years → ./references/earnings-data.md
-└─ Field-level queries → ./references/field-of-study.md
+└─ Program/field-level query → Not mirrored by Portal
+    └─ Use https://collegescorecard.ed.gov/data/ or documented API; see ./references/field-of-study.md
 ```
 
 ## Quick Reference: Scorecard Variables
@@ -216,7 +219,9 @@ Codebooks are `.xls` files co-located with data in all mirrors. Use `get_codeboo
 >
 > If this documentation contradicts the codebook, trust the codebook. If the codebook contradicts observed data, trust the data and investigate.
 
-### All Scorecard Datasets (6 total)
+### All Portal Scorecard Datasets (6 Institution-Level Families)
+
+The Portal manifest exposes the six families below. It does **not** expose a field-of-study/program-level family. For current program data, go to `https://collegescorecard.ed.gov/data/` and choose **Most Recent Data by Field of Study**, or use the documented Scorecard API. Do not make a date-stamped ZIP URL the only access route.
 
 | Dataset | Path | Codebook | Type | Years |
 |---------|------|----------|------|-------|
@@ -233,7 +238,12 @@ Codebooks are `.xls` files co-located with data in all mirrors. Use `get_codeboo
 
 ```python
 import polars as pl
-from fetch_utils import fetch_from_mirrors  # See fetch-patterns.md
+
+# Load `education-data-query` before authoring the Stage 5 script, then copy its
+# documented `fetch_from_mirrors()` helper contract inline from
+# `education-data-query/references/fetch-patterns.md`. There is no local
+# `fetch_utils` module to import. The inline helper handles mirror priority,
+# failover, and local filtering under the shared query contract.
 
 # Fetch earnings data
 earnings = fetch_from_mirrors("scorecard/colleges_scorecard_earnings")
@@ -354,7 +364,7 @@ Scorecard tracks ONLY students who received federal financial aid (Title IV):
 | `education-data-source-ipeds` | Institutional characteristics, enrollment, finance | Join on `unitid` for institution names, control type, enrollment context |
 | `education-data-source-pseo` | Alternative post-college earnings (Census LEHD) | When broader population coverage needed (not limited to Title IV) |
 | `education-data-source-fsa` | Federal student aid details | Deeper analysis of aid types and disbursements |
-| `education-data-explorer` | Parent discovery skill | Finding available endpoints |
+| `education-data-explorer` | Parent discovery skill | Routing questions to mirror dataset files |
 | `education-data-query` | Data fetching | Downloading parquet/CSV files |
 
 ## Topic Index

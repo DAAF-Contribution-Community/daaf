@@ -7,7 +7,7 @@ Where graduates work after completion: employment by Census Division and in-stat
 ## Contents
 
 - [Overview](#overview)
-- [Census Divisions](#census-divisions)
+- [Census Divisions](#census-divisions-portal-integer-encoding)
 - [Geographic Flow Variables](#geographic-flow-variables)
 - [In-State Employment](#in-state-employment)
 - [Analysis Patterns](#analysis-patterns)

@@ -6,7 +6,7 @@ metadata:
   audience: any-agent
   domain: data-source
   skill-authored: "2026-02-09"
-  skill-last-updated: "2026-02-09"
+  skill-last-updated: "2026-08-06"
 ---
 
 # CCD Data Source Reference
@@ -38,7 +38,7 @@ The CCD is the Department of Education's comprehensive, annual, national databas
 - **Coverage**: ~100,000 public schools and ~18,000 school districts nationwide
 - **Historical depth**: Data available from 1986 to present (varies by component)
 - **Collector**: National Center for Education Statistics (NCES) via EDFacts
-- **Available through**: Education Data Portal mirrors (5 of 6 survey components; see Data Access section for details)
+- **Mirror coverage (v2 build validated 2026-08-06)**: Five bulk dataset families; the current versioned mirror (Portal v0.26.1) carries CCD content spanning **1986-2024**, with directory and enrollment reaching the 2023-24 school year (file year 2024) while district finance remains at 2020. Mirror publication differs by surface; see Data Access.
 
 ## Reference File Structure
 
@@ -128,10 +128,20 @@ Building a time series?
 | `leaid` | 7 characters | District | `0100001` | State FIPS (2) + State-assigned (5) |
 | `fips` | 2 digits | State | `01` | Federal Information Processing Standard |
 
-> **ID Type Warning:** `ncessch` and `leaid` may be String or Int64 depending on the dataset.
-> In the Schools Directory, `ncessch` is String (preserving leading zeros); in enrollment data,
-> `ncessch` is Int64. In the Districts Directory, `leaid` is Int64; in Finance data, `leaid` is String.
-> Always check the actual dtype and cast as needed when joining across datasets.
+> **Identifier-width requirement (an analysis-time normalization contract, not a raw-file guarantee):**
+> Treat `ncessch` and `leaid` as identifiers, not quantities. At analysis time, validate
+> nonmissing, nonsentinel `ncessch` as a numeric string of exactly 12 characters and `leaid` as a
+> numeric string of exactly 7 characters before joining.
+>
+> The current v2 mirror (validated 2026-08-06) has **no universal identifier contract** — per-file
+> id typing is heterogeneous, so this width rule describes how you must *normalize on read*, not
+> what the raw files contain. Observed reality: `leaid` is native-width `String` (including
+> alphanumeric values such as `06D0004`, widths 2-7) in `districts_ccd_finance`, but `Int64` in
+> `school-districts_lea_directory` and `districts_saipe`. Integer storage cannot preserve leading
+> zeros or display-width semantics, so an `Int64` `leaid`/`ncessch` must be cast to a zero-padded
+> string before width validation. Inspect the actual file schema and normalize to validated strings
+> explicitly; never assume a uniform id dtype across CCD files. See `variable-definitions.md` for the
+> per-file detail and the canonical materialization rules.
 
 ### Missing Data Codes
 
@@ -234,17 +244,19 @@ Schools → Local Education Agencies (LEAs)
 
 ## Data Access
 
-Datasets for CCD are available via the mirror system. See `datasets-reference.md` for canonical paths, `mirrors.yaml` for mirror configuration, and `fetch-patterns.md` for fetch code patterns.
+Data for the 2023-24 school year (file year 2024) is available. The current versioned mirror (Portal v0.26.1, **v2 build validated 2026-08-06**) carries CCD content spanning 1986-2024: directory and enrollment reach file year 2024, while district finance remains at 2020. See `datasets-reference.md` for canonical paths, `mirrors.yaml` for mirror configuration, and `fetch-patterns.md` for fetch code patterns.
 
-**Key datasets (5 datasets; see `datasets-reference.md` for the authoritative list):**
+**Key datasets (5 dataset families; see `datasets-reference.md` for the authoritative list):**
 
-| Dataset | Type | Path | Codebook |
+| Dataset | Type / coverage (v2 mirror, 2026-08-06) | Path | Codebook |
 |---------|------|------|----------|
-| School Directory | Single | `ccd/schools_ccd_directory` | `ccd/codebook_schools_ccd_directory` |
-| School Enrollment | Yearly (1986-2023) | `ccd/schools_ccd_enrollment_{year}` | `ccd/codebook_schools_ccd_enrollment` |
-| District Directory | Single | `ccd/school-districts_lea_directory` | `ccd/codebook_districts_ccd_directory` |
-| District Enrollment | Yearly (1986-2023) | `ccd/schools_ccd_lea_enrollment_{year}` | `ccd/codebook_districts_ccd_enrollment` |
-| District Finance | Single | `ccd/districts_ccd_finance` | `ccd/codebook_districts_ccd_finance` |
+| School Directory | Single, through 2024 | `ccd/schools_ccd_directory` | `ccd/codebook_schools_ccd_directory` |
+| School Enrollment | Yearly, 1986-2024 | `ccd/schools_ccd_enrollment_{year}` | `ccd/codebook_schools_ccd_enrollment` |
+| District Directory | Single, through 2024 | `ccd/school-districts_lea_directory` | `ccd/codebook_districts_ccd_directory` |
+| District Enrollment | Yearly, 1986-2024 | `ccd/schools_ccd_lea_enrollment_{year}` | `ccd/codebook_districts_ccd_enrollment` |
+| District Finance | Single, through 2020 | `ccd/districts_ccd_finance` | `ccd/codebook_districts_ccd_finance` |
+
+> **Verification sources:** The 1986-2024 span (finance at 2020) is confirmed by the v2 mirror build validation (content-based year table, 2026-08-06). The underlying declaration sources — [Portal endpoint catalog](https://educationdata.urban.org/api/v1/api-endpoints/), [Portal bulk manifest](https://educationdata.urban.org/api/v1/api-downloads/), and [NCES CCD files](https://nces.ed.gov/ccd/files.asp) — were last consulted 2026-07-27. Catalog years and labels are declarations; verify actual rows/files for the selected surface.
 
 > **Not in Portal mirrors:** The following CCD components are documented in this skill for reference but are **not available** through the Education Data Portal mirrors:
 > - **Dropout/Completers** — completion and dropout data by demographics
@@ -311,10 +323,14 @@ df <- df |> filter(grade >= 0, grade <= 12)
 
 ### Finance Data Notes
 
-- **Finance data lag:** The latest available year in the mirror is **2020** (empirically verified). Finance data typically lags 2+ years behind current school year.
+- **Finance coverage:** District finance (`districts_ccd_finance`) reaches **2020** in the v2 mirror (build validated 2026-08-06; the file was byte-stable content between the v0.24.0 and v0.26.1 vintages). Treat that as a dated Portal-surface cutoff, not a timeless statement about current NCES files.
 - Finance dataset has 163 columns -- by far the most complex CCD dataset
 - Some finance columns use `_total` suffix (e.g., `exp_current_instruction_total`)
 - `leaid` is String type in Finance data (unlike the Districts Directory where it is Int64)
+
+### API vs. Bulk Representation
+
+- **`teachers_fte` precision differs by delivery channel (verified 2026-08-07):** the live Portal API serves `teachers_fte` (school directory) integer-rounded, while bulk-file-derived data (and the mirror) carries 2-decimal precision — cell-exact against the bulk CSV (e.g., `28.98` in the CSV and mirror vs. `28.0` returned by the API). API and bulk representations can differ even at the same Portal version, so prefer the bulk/mirror value when precision matters and note the source channel when reporting.
 
 ## Common Pitfalls
 
@@ -330,7 +346,7 @@ df <- df |> filter(grade >= 0, grade <= 12)
 | Dropout rate comparison | State definitions vary | Within-state comparisons only |
 | Using NCES string codes | Portal uses integers | See variable-definitions.md for mappings |
 | Assuming `charter=1/2` | Portal uses `0=No, 1=Yes` | Empirically verified; not NCES `1=Yes, 2=No` |
-| ID type across datasets | `leaid`/`ncessch` may be String or Int64 | Always check dtype before joining |
+| Identifier type/width across files | Prior HF Parquet objects may expose integer `leaid`/`ncessch`, losing leading-zero/display-width semantics | Normalize to strings; validate `leaid` length 7 and `ncessch` length 12 before joining |
 
 ## Coverage Notes
 

@@ -148,9 +148,9 @@ Legal or statistical area description code for the state legislative district lo
 
 > **STOP — Portal Boundary**
 >
-> **The variables documented below are NOT available through the Education Data Portal mirrors.** They are available only through direct NHGIS access (free IPUMS registration required at https://www.nhgis.org/). See `data-access.md` for direct access methods.
+> **The variables documented below are NOT available through the Education Data Portal mirrors.** Browse their datasets, tables, and geographic availability publicly in the NHGIS Data Finder at `https://data2.nhgis.org/main`. A free IPUMS NHGIS account and login are required to submit, manage, or download extracts; API extract requests additionally require an API key. See `data-access.md` for direct access methods.
 >
-> If your analysis plan relies on census demographic variables (population, poverty, income, race, education attainment, etc.), you **cannot** fetch them through the DAAF mirror system. You must use direct NHGIS access.
+> If your analysis plan relies on census demographic variables (population, poverty, income, race, education attainment, etc.), you **cannot** fetch them through the DAAF mirror system. You must obtain them through direct NHGIS access under the separate IPUMS terms and citation requirements.
 
 ---
 

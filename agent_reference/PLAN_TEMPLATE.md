@@ -303,18 +303,18 @@ must_haves:
 
 **Data Level:** [schools | school-districts | college-university]
 
-**Candidate Endpoints:**
+**Candidate Datasets:** *(example rows use education mirror paths as the Dataset Identifier)*
 
-| Endpoint | Source | Description | Years Available |
-|----------|--------|-------------|-----------------|
-| `/schools/ccd/directory/` | CCD | School directory info | 1986-2022 |
-| [add more] | | | |
+| Dataset Identifier | Source | Grain | Description | Years Available |
+|--------------------|--------|-------|-------------|-----------------|
+| `ccd/schools_ccd_directory` | CCD | school × year | School directory info | 1986-2024 |
+| [add more] | | | | |
 
 **Key Variables Identified:**
 
-| Variable | Endpoint | Type | Description |
-|----------|----------|------|-------------|
-| `enrollment` | `/schools/ccd/enrollment/` | integer | Total student enrollment |
+| Variable | Dataset Identifier | Type | Description |
+|----------|--------------------|------|-------------|
+| `enrollment` | `ccd/schools_ccd_enrollment_{year}` | integer | Total student enrollment |
 | [add more] | | | |
 
 **Variables Flagged for Deep-Dive:**
@@ -419,7 +419,7 @@ must_haves:
 
 *Complete before proceeding to Phase 2:*
 
-- [ ] All candidate endpoints documented with year coverage
+- [ ] All candidate datasets documented with year coverage
 - [ ] All key variables documented with types and descriptions
 - [ ] All source-specific caveats captured
 - [ ] All coded value mappings complete
@@ -449,7 +449,7 @@ must_haves:
 | Field | Value |
 |-------|-------|
 | Dataset | CCD Schools Directory |
-| Mirror Paths | Per-mirror path parameters from datasets-reference.md |
+| Dataset Identifiers | Per-dataset identifier parameters (for education: mirror path parameters from datasets-reference.md) |
 | File Type | Single-file (all years) / Yearly |
 | Years | `2020, 2021, 2022` |
 | Filters (local) | `fips=6` (California), `charter=1` |

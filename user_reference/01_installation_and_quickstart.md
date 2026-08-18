@@ -49,7 +49,7 @@ Claude Code is the AI assistant platform that powers this project. It runs insid
 |--------|------|-------|--------------|
 | **Anthropic Max subscription** (recommended for heavy use) | $100-200/mo flat | Interactive login on first launch -- no config needed | Best value for heavy use. You can get by with much less (perhaps even the $20/mo Pro plan) if you're doing smaller, more discrete tasks with DAAF. [Get one here](https://claude.com/pricing/max) or [upgrade an existing plan](https://claude.ai/upgrade). Team/Enterprise subscriptions also work, but mileage may vary based on organizational settings/limits. |
 | **Anthropic API key** | Pay-per-use (can get expensive fast) | Interactive login on first launch -- no config needed | Unlimited use, but a full pipeline analysis can cost $50+ in API fees. I'd have paid roughly 10x more via API key than my Max subscription. [Get one here](https://console.anthropic.com/). |
-| **OpenRouter** | Pay-per-token via openrouter.ai with a 5.5% fee on credit purchases | Configure via `environment_settings.txt` ([instructions below](#configure-authentication-via-environment_settingstxt)) | No Anthropic subscription required. OpenRouter provides access to Anthropic's Claude models as well as high-performing open-weight alternatives: [per DAAFBench](https://daaf.openaugments.org/bench/), **Kimi K3** reaches the top performance tier outright, **GLM 5.2** sits among the Opus-line models at ~22% of Opus 4.8's cost, and **DeepSeek V4 Flash** / **Gemma 4 31B** deliver credible budget performance at ~2-3% — strong options at every price point without a monthly commitment. [Get a key here](https://openrouter.ai/). |
+| **OpenRouter** | Pay-per-token via openrouter.ai with a 5.5% fee on credit purchases | Configure via `environment_settings.txt` ([instructions below](#configure-authentication-via-environment_settingstxt)) | No Anthropic subscription required. OpenRouter provides access to Anthropic's Claude models as well as high-performing open-weight alternatives at every price point, with no monthly commitment (the [FAQ](07_faq_technical.md#q-which-claude-model-should-i-use) and [DAAFBench](https://daaf.openaugments.org/bench/) cover which ones hold up). [Get a key here](https://openrouter.ai/). |
 | **OpenAI** (API key or ChatGPT subscription) | OpenAI API pay-per-use, or your existing ChatGPT subscription | Configure via `environment_settings.txt` + one rebuild ([Option F instructions](#option-f-openai-api-directly-daaf-provider-shim)) | Run DAAF on GPT models with no Anthropic account. These are supported routes that benefit from wider community testing; the ChatGPT-subscription lane in particular has a smaller context ceiling, so it comes with practical [session-length guidance](#option-f-alternate-lane-chatgpt-subscription-codex-backend). |
 | **Cloud providers** (Bedrock, Vertex AI) | Per your organization's arrangement | Configure via `environment_settings.txt` ([instructions below](#configure-authentication-via-environment_settingstxt)) | Route through your org's existing cloud platform. DAAF provides configuration templates for these (see `environment_settings_example.txt` in `daaf-docker` for the required variables), aimed at organizations already running on Bedrock or Vertex. Note that DAAF's maintainers haven't been able to validate these two routes end-to-end ourselves — so treat them as a starting point you'll stand up and test in your own environment, and please share reports if you run them. |
 
@@ -117,23 +117,26 @@ curl -fsSL https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/ma
 irm https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scripts/host/install.ps1 | iex
 ```
 
-The installer will show its progress as it works through four steps: creating a build directory, downloading the Docker files, building the image, and cloning DAAF into the container. When it finishes, it prints instructions for entering the container and launching Claude Code.
+The installer will show its progress as it works through four steps: creating a build directory, downloading the installation files, building the image, and cloning DAAF into the container. When it finishes, it prints instructions for entering the container and launching Claude Code.
 
 **What you should expect to see:**
 
 ```
-╔══════════════════════════════════════════════════════╗
-║          DAAF Installer                              ║
-║          Data Analyst Augmentation Framework         ║
-╚══════════════════════════════════════════════════════╝
+==========================================
+  DAAF Installer
+==========================================
 
-[1/4] Creating build directory...
-[2/4] Downloading Docker files...
-[3/4] Building Docker image (this may take a few minutes)...
+Branch: main
+
+[1/4] Creating initial directory for installation files at <dir> ...
+[2/4] Downloading installation files ...
+[3/4] Building Docker image (this may take a few minutes on first run since there are a lot of Python libraries to install)...
 ....[lots of text scrolling by]
-[4/4] Cloning DAAF repository into container...
+[4/4] Cloning DAAF repository files into the Docker container ...
 
-✓ Installation complete!
+==========================================
+  Installation complete!
+==========================================
 ```
 
 The actual output will include more detail as each step progresses, but these are the key milestones to watch for.
@@ -167,6 +170,16 @@ cd daaf-docker
 
 The DAAF Control Panel (`daaf.sh` on macOS/Linux, `daaf.ps1` on Windows) is an interactive menu with a status dashboard, service management, and all DAAF operations in one place. The dashboard is live — it shows at a glance which of DAAF's web services (notebooks, log viewer, and the browser-based code editor) are actually up and listening, so you can see the state of your install before choosing an action. Select **option 1, "Start Claude Code,"** from the menu to get started.
 
+**Prefer not to type in the terminal? Double-click instead.**
+
+If terminal commands feel like a hassle, you can open the Control Panel straight from your file explorer:
+
+- **Windows:** open the `daaf-docker` folder in File Explorer and double-click **`daaf.bat`**. The installer also drops a **DAAF** shortcut (`DAAF.lnk`) inside that same folder — drag it to your Desktop or taskbar if you want one-click access from there.
+- **macOS:** open the `daaf-docker` folder in Finder and double-click **`DAAF.command`**.
+- **Linux:** no double-click launcher ships, because Linux desktop environments run double-clicked scripts too inconsistently to rely on. Use the terminal command above instead — most file managers offer a right-click "Open Terminal Here" on the `daaf-docker` folder, after which you just run `bash daaf.sh`.
+
+These launchers are thin shortcuts to the very same Control Panel — they simply move into the `daaf-docker` folder and run `daaf.sh`/`daaf.ps1` for you. The terminal commands above always work as the universal fallback on every platform. (If you ever obtain `DAAF.command` by downloading it in a browser rather than from the installer, macOS may block it once as coming from an "unidentified developer" — allow it via **System Settings > Privacy & Security > "Open Anyway"**. Copies the installer places for you are not blocked.)
+
 **Alternative -- launch Claude Code directly:**
 
 ```bash
@@ -187,7 +200,7 @@ On first launch, Claude Code should prompt you to authenticate (API key or subsc
 
 Once you're in, there are a few settings you can adjust to your liking. You can check which Claude model is being used by checking the indicator below the chat line (Opus, Sonnet, Haiku). DAAF defaults to using **Opus 4.8** with 1 million token context -- no action needed on your part. You can change which Claude model is being used at any time by typing `/model`. Development and testing has spanned several Anthropic model generations, and [empirical benchmarking across 29 Anthropic, OpenAI, Google, and open-weight models](https://daaf.openaugments.org/bench/) has shown that several models perform excellently with DAAF's orchestration workflows -- at very different price points.
 
-The short version, as of the July 2026 corpus: **Fable 5** is the top performer if budget is not a constraint; **GPT-5.6 Sol** and **Sonnet 5** deliver top-tier performance at moderate cost; **GPT-5.6 Luna** covers most of that capability for a fraction of the spend; and on the open-weights side, **Kimi K3** reaches the top tier while **GLM 5.2**, **DeepSeek V4 Flash**, and **Gemma 4 31B** anchor the self-hosting and budget end. The canonical, regularly refreshed guidance table lives in the FAQ — see [**Which Claude model should I use?**](07_faq_technical.md#q-which-claude-model-should-i-use) — and because new model generations arrive faster than we can revise this guide, treat [daaf.openaugments.org/bench](https://daaf.openaugments.org/bench/) as the live results page rather than assuming any table in the docs is current. It helps to be clear about what these scores can and can't decide for you. This testing (called DAAFBench, with full public results at [daaf.openaugments.org/bench](https://daaf.openaugments.org/bench/)) measures how reliably a model *follows DAAF's process* — classifying your request correctly, dispatching the right specialists, loading the right skills, and honoring the confirmation gates. That is exactly the question that matters when you're weighing a model against your budget: it tells you which models you can trust to drive the framework faithfully at a given price point. What it does **not** measure is which model produces *better research* — the depth of analytical reasoning and judgment on the hardest problems. Opus may still have an edge there, though the gap between the top models is smaller than once assumed. So use the scores to pick a model you can afford that stays on-protocol, and remember that your own review of the output is still what judges the quality of the analysis itself.
+There's nothing you need to change here — Opus 4.8 is a great default. But if you'd like to weigh cost against capability, the FAQ keeps a regularly refreshed guidance table: see [**Which Claude model should I use?**](07_faq_technical.md#q-which-claude-model-should-i-use). New model generations arrive faster than we can revise this guide, so treat [daaf.openaugments.org/bench](https://daaf.openaugments.org/bench/) as the live results page rather than assuming any table in the docs is current.
 
 Current Claude models also let you select a "thinking level" by tapping the left-and-right arrow keys while the model is selected on the /model selector in Claude Code. All tests I've conducted to date use the "High" setting -- as this is a case where quality is far more important than quantity, I strongly recommend doing the same. This will have usage and API limit ramifications, though, so it is a reasonable thing to test out the tradeoffs for yourself. The [DAAFBench results](https://daaf.openaugments.org/bench/) are a great starting reference for understanding the quality-cost frontier across models. Please do report back with any findings so we can continue to refine this guidance!
 
@@ -416,7 +429,7 @@ On the two "if" rows, diagnose with `ls -ln` (the `-n` shows **numeric** owner I
 - **Native Linux / WSL-filesystem paths:** the container writes files as UID 1000, so align ownership — either `chown` the host folder to UID 1000, or add yourself to a shared group and make the folder group-writable. **Don't reach for `chmod 777`** — it works, but it exposes the folder to every user on the machine; group alignment is the right tool.
 - **macOS and Windows `/mnt/c` paths:** writes "just work" through the Docker Desktop translation layer, with files landing under your host user on the other side.
 
-> **Reproducibility trade-off — a deliberate decision to make.** Bind-mounted files live **outside** DAAF's archive and hash boundary: they are not captured by `backup_daaf.sh` and not part of the project's audit trail. That means reproducing the analysis later depends on *you* guaranteeing the same files are present at the same mount point — DAAF can't freeze them for you. The recommended mitigation is to have your **fetch scripts copy** the inputs you actually use from `/host_data` into the project's own `data/raw/` directory (with the normal raw-data naming conventions). The bind mount then serves as a fast on-ramp, while the archived working copy inside the project keeps the audit trail complete.
+> **One habit to keep it reproducible.** Bind-mounted files aren't backed up or archived with your project, so have your **fetch scripts copy** the inputs you actually use from `/host_data` into the project's own `data/raw/` directory (with the normal raw-data naming conventions). The bind mount stays a fast on-ramp, while the copied-in working files keep your analysis reproducible from the project alone.
 
 > **Boundary.** `/host_data` is *not* covered by `backup_daaf.sh`, so never treat it as a place to store DAAF outputs — write results into your project as usual. And never point a bind mount at the container's own system paths (`/daaf`, `/daaf/.claude`, and the like): mounting over DAAF's own files would shadow them and break the install.
 
@@ -440,9 +453,9 @@ cd daaf-docker
 
 The backup script creates a date-versioned folder (e.g., `2026-04-21_daaf_backup/`) in your `daaf-docker` directory. Multiple backups on the same day are automatically suffixed (`2026-04-21a_daaf_backup/`, `2026-04-21b_daaf_backup/`, etc.). Feel free to move or copy these folders to another location on your computer (or an external drive) for safekeeping.
 
-The backup script also checks itself as it goes: it verifies there's enough free disk space before it starts (and stops with a clear message if there isn't), and after copying it compares the backup against the original — checking both the number of files and their total size. How a shortfall is handled depends on how serious it is. If the copy step itself reports an error *and* fewer files landed than the volume scan expected, the backup is treated as genuinely incomplete: the script stops with an error and a nonzero exit code, and tells you to delete the partial backup folder and re-run once the problem is resolved (any tool that ran the backup for you — the updater or the migration tool — then halts too, rather than continuing on top of a bad backup). A milder discrepancy — the copy reported success but the file count or total size is still a little off — is flagged as a warning instead: the backup finishes, but its completion banner reads `Backup completed WITH WARNINGS -- verify before relying on it` rather than the plain `Backup complete!`, so a questionable backup never passes silently.
+The backup script also checks itself as it goes. It confirms there's enough free disk space before starting (and stops with a clear message if there isn't), then compares the finished backup against the original by file count and total size. A serious shortfall — the copy step reported an error *and* fewer files landed than expected — stops the script with a nonzero exit code and tells you to delete the partial folder and re-run (any updater or migration tool that triggered the backup halts too, rather than building on a bad one). A milder mismatch finishes the backup but swaps the completion banner from the plain `Backup complete!` to `Backup completed WITH WARNINGS -- verify before relying on it`, so a questionable backup never passes silently.
 
-The backup covers both DAAF volumes: your research data, plus Claude Code's own state (your login, session history, and plugins) in a hidden `.daaf-claude-config/` subfolder. **Because the backup includes your Claude Code login credentials, treat backup folders as sensitive** — store them somewhere private, and if you share a backup with a colleague for collaboration, delete the `.daaf-claude-config/` subfolder from the copy first. (The backup also contains one or two small hidden manifest files you can ignore — the restore consumes them automatically. `.daaf-permissions` records which files were executable, so the restore can put file permissions back correctly even when the backup was stored on a Windows drive, which does not preserve them. `.daaf-symlinks`, present only when your data contains symbolic links, records those links so the restore can recreate them — this is what lets backups complete cleanly on Windows, where the copy step would otherwise stop at the first symbolic link.)
+The backup covers both DAAF volumes: your research data, plus Claude Code's own state (your login, session history, and plugins) in a hidden `.daaf-claude-config/` subfolder. **Because the backup includes your Claude Code login credentials, treat backup folders as sensitive** — store them somewhere private, and if you share a backup with a colleague for collaboration, delete the `.daaf-claude-config/` subfolder from the copy first. (You may notice one or two small hidden manifest files in the backup — `.daaf-permissions` and, sometimes, `.daaf-symlinks`; you can ignore them, as they simply let the restore rebuild file permissions and links correctly even from a Windows drive.)
 
 You can also back up manually using Docker Desktop's GUI: go into the Docker volume file viewer (see above) and download the whole `daaf` or `research` folder to somewhere else on your computer.
 
@@ -1051,13 +1064,13 @@ ANTHROPIC_DEFAULT_SONNET_MODEL=openai/gpt-5.6-terra
 CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000
 ```
 
-Recommended GPT slugs (context windows and roles verified against OpenRouter on 2026-07-09):
+Recommended GPT slugs (context windows and roles verified against OpenRouter on 2026-07-09; prices re-verified 2026-08-11, reflecting OpenAI's August 2026 Terra/Luna price cuts plus OpenRouter's additional 50% Terra/Luna discount):
 
 | Slug | Context window | Role in DAAF | Notes |
 |------|---------------|--------------|-------|
 | `openai/gpt-5.6-sol` | 1,050,000 | **Strong tier (Opus-analog) — recommended default** | $5 / $30 per M tokens in/out |
-| `openai/gpt-5.6-terra` | 1,050,000 | **Fast tier (Sonnet-analog) — recommended default** | $2.50 / $15 per M tokens |
-| `openai/gpt-5.6-luna` | 1,050,000 | Economy (Haiku-analog) | $1 / $6 per M tokens; unused by DAAF's two-tier routing (Haiku tier excluded by policy) |
+| `openai/gpt-5.6-terra` | 1,050,000 | **Fast tier (Sonnet-analog) — recommended default** | $1 / $6 per M tokens |
+| `openai/gpt-5.6-luna` | 1,050,000 | Economy (Haiku-analog) | $0.10 / $0.60 per M tokens; unused by DAAF's two-tier routing (Haiku tier excluded by policy) |
 | `openai/gpt-5.5` / `openai/gpt-5.4` | 1,050,000 | Previous strong-tier options | Still work; superseded by the 5.6 family at equal-or-better pricing |
 | `openai/gpt-5.2` | 400,000 | Previous fast-tier option | Smaller window than Terra at similar price |
 | `openai/gpt-5.*-chat` | 128,000 | Not recommended | Small window; avoid for pipeline work |
@@ -1116,6 +1129,8 @@ curl -s http://127.0.0.1:4141/health                      # health check
 
 In short: `--status` tells you whether the shim is healthy, and `--restart` safely replaces it in one step (it stops the old shim, waits, launches a fresh one, and confirms it's ready). Reach for `--restart` whenever you change shim settings or a session misbehaves. **One important caution: if the active Claude Code session itself routes through this shim, never ask it to run `--stop` and then `--start` in separate turns**—the stop severs your own session's route before the later turn can run. Always use `--restart`, which does both under a single lock.
 
+Behind these commands, the manager is heavily hardened against the classic failure modes of background services — leftover files from crashed runs, interrupted starts and stops, and processes that merely look like the shim — so a `--restart` reliably lands you in a clean, healthy state. If you're curious exactly what it protects against (and where those protections honestly stop), that's covered under **Lifecycle safety and its limits** in the troubleshooting reference at the end of this lane.
+
 That's the whole setup. The paragraphs that follow are optional reading you can come back to when you need it — and deeper mechanics and diagnostics live in **Under the hood / troubleshooting reference** at the very end of this lane.
 
 **Optional tuning.**
@@ -1126,7 +1141,7 @@ That's the whole setup. The paragraphs that follow are optional reading you can 
 
 See the [technical FAQ entry on controlling GPT reasoning effort](07_faq_technical.md#q-how-do-i-control-gpt-reasoning-effort-option-f).
 
-**Response verbosity.** Separately from reasoning effort, the shim sends OpenAI's `text.verbosity` control on every request, defaulting to `high` for parity with DAAF's warm, educational posture (`high` adds warmth and volume; `low` is terse); set `SHIM_TEXT_VERBOSITY=low` or `medium` in `environment_settings.txt` if GPT responses feel too long, and see the [technical FAQ entry on terse GPT responses](07_faq_technical.md#q-gpt-responses-feel-terse-compared-to-claude-option-f) if they feel too brief.
+**Response verbosity.** Separately from reasoning effort, the shim sends OpenAI's `text.verbosity` control on every request, defaulting to `medium` to balance decision-focused responses with enough detail for DAAF evidence and caveats (`high` adds warmth and volume; `low` is terse). Set `SHIM_TEXT_VERBOSITY=high` or `low` in `environment_settings.txt` if you prefer a more expansive or more concise style, and see the [technical FAQ entry on GPT response verbosity](07_faq_technical.md#q-how-do-i-control-gpt-response-verbosity-option-f) for details.
 
 ##### GPT Fast Mode on the provider-shim routes
 
@@ -1173,13 +1188,15 @@ From the Claude Code prompt window, you can prefix the same command with `!`, fo
 
 **Optional reading.** Here for when you want to look under the hood or diagnose a problem. These mechanics are shared by both shim lanes (this one and the ChatGPT lane below).
 
-**Logs and diagnostics.** The shim keeps its own diagnostic log at `/daaf/scripts/provider_shim/logs/shim.log`. It records only technical metadata — timings, status codes, error types, retry counts, and request-correlation IDs — and **never** your prompts or text, tool inputs, image bytes or URLs, credentials, raw response streams, or full request/response bodies. If a GPT session misbehaves, run `--restart` and check that log; the [technical FAQ](07_faq_technical.md#q-my-gpt-session-fails-instantly-with-429-errors-on-every-request-option-f) walks through common status/type/code triage such as `insufficient_quota` (billing) versus a true rate limit. The shim is a persistent daemon: changing its Python source does not update the already-running process. After any source update, run `bash /daaf/scripts/provider_shim/start_shim.sh --restart`, then confirm that `curl -s http://127.0.0.1:4141/health` reports `"version": "1.3.9"` before testing the new behavior.
+**Logs and diagnostics.** The shim keeps its own diagnostic log at `/daaf/scripts/provider_shim/logs/shim.log`. It records only technical metadata — timings, status codes, error types, retry counts, and request-correlation IDs — and **never** your prompts or text, tool inputs, image bytes or URLs, credentials, raw response streams, or full request/response bodies. If a GPT session misbehaves, run `--restart` and check that log; the [technical FAQ](07_faq_technical.md#q-my-gpt-session-fails-instantly-with-429-errors-on-every-request-option-f) walks through common status/type/code triage such as `insufficient_quota` (billing) versus a true rate limit. The shim is a persistent daemon: changing its Python source does not update the already-running process. After any source update, run `bash /daaf/scripts/provider_shim/start_shim.sh --restart`, then confirm that `curl -s http://127.0.0.1:4141/health` reports `"version": "1.3.18"` before testing the new behavior.
 
 **Session continuity across rebuilds.** On a shim lane, the shim keeps a small reasoning-cache file (`~/.claude/provider_shim/reasoning_cache.json`) that carries GPT reasoning continuity from one turn to the next. It lives on your per-install `daaf-claude-config` volume, so it survives container restarts and image rebuilds — you don't have to do anything to preserve it. Only an explicit `docker compose down -v` or `docker volume rm` erases it.
 
 **Images.** The shim accepts images in your messages and tool results and forwards them to OpenAI without inspecting or logging the bytes; the [image troubleshooting entry](07_faq_technical.md#q-what-image-inputs-does-the-provider-shim-support) lists exactly what's accepted. Image support was verified with a dated privacy-safe probe (a 2026-07-18 Base64-PNG request) — that's evidence the shape worked on that date, not an official OpenAI guarantee.
 
 **Advanced tuning.** Tool-call sanitization is on by default (`SHIM_SANITIZE_TOOLS`); the shim quietly strips known GPT tool-call quirks that would otherwise waste an error round-trip. Turn it off (`SHIM_SANITIZE_TOOLS=0`, then restart) only when running DAAFBench, which must observe raw model behavior. The remaining tuning variables are documented in `environment_settings_example.txt`.
+
+**Lifecycle safety and its limits.** For readers who want the precise picture of how `--start`/`--stop`/`--restart` avoid acting on the wrong thing: the lifecycle manager treats PID files and its private stream workspace as typed, identity-bound capabilities rather than trusting pathnames alone. Workspace cleanup atomically moves each captured `.owner` and `output.fifo` entry to an unpredictable private quarantine name, revalidates that quarantined inode, and deletes only on a match; a one-time same-UID substitute is restored when safely possible and cleanup reports non-success instead of falsely claiming completion. Because Linux provides no inode-conditional deletion primitive, the final removal necessarily addresses the quarantined entry by its name; the unguessable random name makes interference in that instant a matter of blind chance rather than an achievable target, so member cleanup is best-effort hardening against same-UID substitution, not an absolute identity-bound deletion guarantee. Before escalating a verified serving process from TERM to KILL on Linux, the manager requires the same PID, exact accepted argv role, and unchanged `/proc` process start-time token; a reused PID is not KILLed. These checks protect against stale evidence, accidental or concurrent substitution, non-continuous same-UID replacement, and interrupted lifecycle operations. They do **not** claim protection against a continuously racing malicious process running as the same UID with signal or `ptrace` access; defending against that stronger active-adversary model would require privilege separation and native primitives beyond this manager.
 
 #### Option F, alternate lane: ChatGPT subscription (Codex backend)
 

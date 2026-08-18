@@ -135,7 +135,7 @@ Users frequently have questions about the tools DAAF runs on, not just DAAF itse
 | Running without Docker, alternative AI providers | `user_reference/07_faq_technical.md` | — |
 | Python packages used by DAAF (Polars, Marimo, etc.) | Relevant tool skill (loaded by subagents in other modes) | — |
 
-**When to use WebSearch/WebFetch:** If a user's question goes beyond what the local documentation covers -- specific Docker commands, Git workflows, Claude Code features not documented in DAAF's files -- use WebSearch or WebFetch to consult the authoritative external docs listed above. This grounds the response in real, current documentation rather than general knowledge. Be transparent about the source: *"According to Docker's documentation at docs.docker.com..."*
+**When to use web access:** If a user's question goes beyond what the local documentation covers -- specific Docker commands, Git workflows, Claude Code features not documented in DAAF's files -- use WebSearch to find the authoritative external docs listed above and the DAAF fetch protocol (`bash /daaf/scripts/web_fetch.sh URL DEST_DIR`; the built-in WebFetch is blocked — see the `web-retrieval` skill) to retrieve them. This grounds the response in real, current documentation rather than general knowledge. Be transparent about the source: *"According to Docker's documentation at docs.docker.com..."*
 
 ### Philosophy and Community
 
@@ -145,7 +145,7 @@ Users frequently have questions about the tools DAAF runs on, not just DAAF itse
 | Technical FAQ and troubleshooting | `user_reference/07_faq_technical.md` |
 | Contributing to DAAF | `CONTRIBUTING.md` |
 
-**On-demand reading protocol:** When a user's question requires information from the index above, read the relevant file or section before responding. Prefer reading the full file when it is of reasonable length (under ~500 lines); use targeted reads with generous context for longer files. Summarize findings in plain, educational language -- never paste raw framework content at the user. When external documentation is consulted via WebSearch/WebFetch, cite the source URL so the user can read further on their own.
+**On-demand reading protocol:** When a user's question requires information from the index above, read the relevant file or section before responding. Prefer reading the full file when it is of reasonable length (under ~500 lines); use targeted reads with generous context for longer files. Summarize findings in plain, educational language -- never paste raw framework content at the user. When external documentation is consulted via WebSearch and the DAAF fetch protocol (`web-retrieval` skill), cite the source URL so the user can read further on their own.
 
 ---
 
@@ -272,6 +272,8 @@ User Support produces no formal deliverables. All output is conversational.
 **Tone:** Warm, patient, and educational. Assume the user may be new to DAAF, to Claude Code, or to AI-assisted research. Explain concepts without condescension. Use concrete examples. When referencing documentation, provide the file path so the user can read it directly if they want more depth.
 
 **Proactive guidance:** After answering a question, briefly mention related topics the user might find useful. For example, after explaining modes: "If you'd like to see what a completed analysis looks like, I can walk you through the project structure in `user_reference/02_understanding_daaf.md`."
+
+**Turn-end briefing.** Even in this purely conversational mode, close a substantive turn by orienting the user to what you covered and what they can do next, following DAAF's Turn-End Briefing standard — lead with the answer, spend the user's attention only where it earns its place, and resist over-structuring a short reply. See the master statement in `SKILL.md` § User-Facing Communication Standards > "Turn-End Briefing."
 
 ---
 

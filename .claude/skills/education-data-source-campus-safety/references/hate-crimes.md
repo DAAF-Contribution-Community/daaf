@@ -10,9 +10,9 @@
 > | `2` | Religion | `13` | Simple Assault |
 > | `3` | Sexual Orientation | `14` | Intimidation |
 > | `4` | Gender | `15` | Vandalism |
-> | `99` | Total | `99` | Total |
+> | `99` | Total | — | *(crime_type has no Total code)* |
 >
-> See `variable-definitions.md` for complete mappings. Verify codes against the live codebook.
+> **`crime_type` values are `1`-`18` only** — code `99` (Total) does NOT appear in the actual mirror data (empirically verified 2026-08-07), despite older references documenting it. See `variable-definitions.md` for complete mappings. Verify codes against the live codebook.
 > Use `get_codebook_url("csafety/codebook_colleges_csafety_hate_crimes")` from `fetch-patterns.md`.
 
 ## Definition
@@ -231,7 +231,7 @@ In Portal mirror parquet files:
 
 | Variable | Type | Description |
 |----------|------|-------------|
-| `crime_type` | Integer | Crime type code (1-18, 99) |
+| `crime_type` | Integer | Crime type code (1-18; no code 99/Total in the data) |
 | `bias` | Integer | Bias category code (1-9, 99) |
 | `on_campus_hate_crimes` | Integer | Count on campus |
 | `residence_hall_hate_crimes` | Integer | Count in residence halls |

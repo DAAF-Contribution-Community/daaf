@@ -559,7 +559,7 @@ class ViewerSchemaLoadingTests(unittest.TestCase):
         )
         self.assertNotIn("cli_model_usage", subscription_run["usage_observed"])
         self.assertEqual(2, bundle["embedded_schema_contract_version"])
-        self.assertEqual("3.7.1", bundle["generator_version"])
+        self.assertEqual("3.8.1", bundle["generator_version"])
 
     def test_subscription_cost_incompatibility_retains_behavioral_scores(self):
         result_sets, runs, anth_tokens, _ = self._load()

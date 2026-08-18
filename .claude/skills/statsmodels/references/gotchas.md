@@ -15,7 +15,7 @@ guidance only.
 4. [summary() vs summary2()](#4-summary-vs-summary2)
 5. [Large-Sample vs Exact Tests](#5-large-sample-vs-exact-tests)
 6. [results.predict() Requires exog in Array API](#6-resultspredict-requires-exog-in-array-api)
-7. [statsmodels vs pyfixest: When to Use Which](#7-statsmodels-vs-pyfixest-when-to-use-which)
+7. [statsmodels vs pyfixest vs linearmodels: When to Use Which](#7-statsmodels-vs-pyfixest-vs-linearmodels-when-to-use-which)
 8. [DataFrame Index Issues](#8-dataframe-index-issues)
 9. [Categorical Variable Gotchas](#9-categorical-variable-gotchas)
 10. [NaN/Missing Data Handling](#10-nanmissing-data-handling)

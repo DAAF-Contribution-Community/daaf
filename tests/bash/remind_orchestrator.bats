@@ -15,16 +15,10 @@ REMIND_ORCHESTRATOR_SH="${REMIND_ORCHESTRATOR_SH:-${REPO_ROOT}/.claude/hooks/rem
 CONTEXT_BAR_SH="${CONTEXT_BAR_SH:-${REPO_ROOT}/.claude/scripts/context-bar.sh}"
 FAKE_SESSION="bats-remind-orchestrator-session"
 ORDINARY_REMINDER='You are interacting with a human user. You MUST IMMEDIATELY invoke the daaf-orchestrator skill'
+# GPT-gated collaborator guidance was removed from the hook in 7defcc8
+# (superseded by the model-agnostic Turn-End Briefing standard). The marker is
+# retained only as a regression guard: no session model may re-enable it.
 GUIDANCE_MARKER='For this GPT session, treat the user as an equal stakeholder and thoughtful collaborator'
-GUIDANCE_CONCISE='Default to concise, user-relevant responses in plain language'
-GUIDANCE_DEPTH='at their demonstrated technical depth'
-GUIDANCE_ANSWER='Lead with the answer or decision'
-GUIDANCE_ACTION='put an immediate action first only when action is what they need'
-GUIDANCE_OPTIONS='Make required actions, options, recommendations, and consequences easy to spot'
-GUIDANCE_DECISIONS='When several independent decisions are genuinely needed, present them separately'
-GUIDANCE_DETAIL='Put secondary technical and implementation detail in clearly marked optional sections or artifacts'
-GUIDANCE_RIGOR='Keep full evidence and reproducibility detail available'
-GUIDANCE_UNCERTAINTY='surfacing the uncertainty, caveats, citations, safety warnings, and consent checkpoints that affect the current decision'
 
 setup() {
     common_setup
@@ -38,9 +32,7 @@ setup() {
     printf 'session-one\nsession-two\n' > "$ACTIVITY_LOG"
     export REMIND_ORCHESTRATOR_SH CONTEXT_BAR_SH FAKE_SESSION TEST_HOME PROJECT_DIR
     export MODEL_CACHE_DIR STATE_DIR ACTIVITY_LOG TRANSPARENCY_FILE
-    export ORDINARY_REMINDER GUIDANCE_MARKER GUIDANCE_CONCISE GUIDANCE_DEPTH
-    export GUIDANCE_ANSWER GUIDANCE_ACTION GUIDANCE_OPTIONS GUIDANCE_DECISIONS
-    export GUIDANCE_DETAIL GUIDANCE_RIGOR GUIDANCE_UNCERTAINTY
+    export ORDINARY_REMINDER GUIDANCE_MARKER
 }
 
 teardown() {
@@ -77,31 +69,19 @@ _run_hook() {
     assert_success
 }
 
-@test "bare GPT Sol receives the stable collaborator policy clauses without a one-question constraint" {
-    _seed_model 'gpt-5.6-sol'
-    _run_hook < <(_payload_main)
-    assert_success
-    assert_output --partial "$ORDINARY_REMINDER"
-    assert_output --partial "$GUIDANCE_MARKER"
-    assert_output --partial "$GUIDANCE_CONCISE"
-    assert_output --partial "$GUIDANCE_DEPTH"
-    assert_output --partial "$GUIDANCE_ANSWER"
-    assert_output --partial "$GUIDANCE_ACTION"
-    assert_output --partial "$GUIDANCE_OPTIONS"
-    assert_output --partial "$GUIDANCE_DECISIONS"
-    assert_output --partial "$GUIDANCE_DETAIL"
-    assert_output --partial "$GUIDANCE_RIGOR"
-    assert_output --partial "$GUIDANCE_UNCERTAINTY"
-    assert_output --partial 'Be warm, direct, and easy to scan, never patronizing.'
-    refute_output --partial 'ask one'
-    refute_output --partial 'single question'
-    refute_output --partial 'one clear question'
-    refute_output --partial 'at most one'
-    refute_output --partial 'only one question'
-    refute_output --partial 'one question at a time'
+@test "terminal GPT session models receive the ordinary reminder and no removed guidance" {
+    local model
+    for model in gpt-5.6-sol 'gpt-5.6-sol[1m]' gpt-5.6-terra gpt-5.5 \
+        openai/gpt-5.6-sol 'openrouter/openai/gpt-5.6-terra[1m]'; do
+        _seed_model "$model"
+        _run_hook < <(_payload_main)
+        assert_success
+        assert_output --partial "$ORDINARY_REMINDER"
+        refute_output --partial "$GUIDANCE_MARKER"
+    done
 }
 
-@test "statusline model-cache writer feeds the first-prompt guidance path end to end" {
+@test "statusline model-cache writer feeds the first-prompt path end to end without guidance" {
     run env DAAF_CONTEXT_BAR_CACHE_DIR="$MODEL_CACHE_DIR" \
         bash "$CONTEXT_BAR_SH" <<JSON
 {"model":{"id":"openrouter/openai/gpt-5.6-terra[1m]","display_name":"gpt-5.6-terra[1m]"},"cwd":"$PROJECT_DIR","transcript_path":"","session_id":"$FAKE_SESSION","context_window":{"context_window_size":1050000}}
@@ -111,35 +91,7 @@ JSON
     _run_hook < <(_payload_main)
     assert_success
     assert_output --partial "$ORDINARY_REMINDER"
-    assert_output --partial "$GUIDANCE_MARKER"
-}
-
-@test "GPT Terra and other terminal GPT variants receive guidance" {
-    local model
-    for model in gpt-5.6-terra gpt-5.5 gpt-4.1 gpt-future-collaborator; do
-        _seed_model "$model"
-        _run_hook < <(_payload_main)
-        assert_success
-        assert_output --partial "$ORDINARY_REMINDER"
-        assert_output --partial "$GUIDANCE_MARKER"
-    done
-}
-
-@test "bracketed context modifier receives guidance" {
-    _seed_model 'gpt-5.6-sol[1m]'
-    _run_hook < <(_payload_main)
-    assert_success
-    assert_output --partial "$GUIDANCE_MARKER"
-}
-
-@test "one and multiple provider prefixes preserve terminal GPT matching" {
-    local model
-    for model in openai/gpt-5.6-sol openrouter/openai/gpt-5.6-terra[1m]; do
-        _seed_model "$model"
-        _run_hook < <(_payload_main)
-        assert_success
-        assert_output --partial "$GUIDANCE_MARKER"
-    done
+    refute_output --partial "$GUIDANCE_MARKER"
 }
 
 @test "malformed left-boundary lookalikes keep ordinary reminder but receive no guidance" {
@@ -257,14 +209,14 @@ JSON
     done
 }
 
-@test "explicit empty caller identity remains eligible for GPT guidance" {
+@test "explicit empty caller identity remains eligible for the ordinary reminder" {
     _seed_model 'gpt-5.6-sol'
     _run_hook <<JSON
 {"hook_event_name":"UserPromptSubmit","session_id":"$FAKE_SESSION","agent_id":"","agent_type":""}
 JSON
     assert_success
     assert_output --partial "$ORDINARY_REMINDER"
-    assert_output --partial "$GUIDANCE_MARKER"
+    refute_output --partial "$GUIDANCE_MARKER"
 }
 
 @test "payload with agent_id is explicitly ignored" {
@@ -281,12 +233,12 @@ JSON
     assert_output ""
 }
 
-@test "positive orchestrator agent_type remains eligible for GPT guidance" {
+@test "positive orchestrator agent_type remains eligible for the ordinary reminder" {
     _seed_model 'openai/gpt-5.6-terra'
     _run_hook < <(_payload_agent_type 'orchestrator')
     assert_success
     assert_output --partial "$ORDINARY_REMINDER"
-    assert_output --partial "$GUIDANCE_MARKER"
+    refute_output --partial "$GUIDANCE_MARKER"
 }
 
 @test "existing persistent loaded flag suppresses every reminder" {
@@ -297,13 +249,13 @@ JSON
     assert_output ""
 }
 
-@test "first-run transparency still appears alongside ordinary and GPT reminders" {
+@test "first-run transparency still appears alongside the ordinary reminder" {
     printf 'first-session\n' > "$ACTIVITY_LOG"
     _seed_model 'gpt-5.6-sol'
     _run_hook < <(_payload_main)
     assert_success
     assert_output --partial "$ORDINARY_REMINDER"
-    assert_output --partial "$GUIDANCE_MARKER"
+    refute_output --partial "$GUIDANCE_MARKER"
     assert_output --partial 'FIRST-TIME USER DETECTED: ONBOARDING PROCESS TRIGGERED.'
     assert_output --partial 'KEY POINTS TO COVER:'
 }

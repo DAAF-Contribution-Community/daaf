@@ -4,26 +4,26 @@ Python equivalents of the R generation patterns (`generation-patterns-r.md` is t
 
 ## Contents
 
-- [Why not SDV here](#why-not-sdv)
-- [The generation recipe](#recipe)
-- [T1: schema-only skeleton](#t1-skeleton)
+- [Why not SDV here](#why-not-sdv-here)
+- [The generation recipe](#the-generation-recipe)
+- [T1: schema-only skeleton](#t1-schema-only-skeleton)
 - [T2: marginals](#t2-marginals)
-- [T3: relationships via copula](#t3-relationships)
-- [Categorical generation and __OTHER__](#categorical)
-- [Identifier columns with Faker](#identifiers)
+- [T3: relationships via copula](#t3-relationships-via-copula)
+- [Categorical generation and __OTHER__](#categorical-generation-and-__other__)
+- [Identifier columns with Faker](#identifier-columns-with-faker)
 - [Missingness](#missingness)
-- [Seeding and output](#seeding-output)
+- [Seeding and output](#seeding-and-output)
 - [Caveats](#caveats)
 
-## Why not SDV here {#why-not-sdv}
+## Why not SDV here
 
 SDV's synthesizers `fit()` on real rows — DAAF never has them (`synthetic-data-research.md` §1). For profile-only generation on the DAAF side of the boundary, use plain NumPy/SciPy: a Gaussian copula is a few lines and needs only a correlation matrix and marginal quantiles, both of which the report provides. SDV `GaussianCopulaSynthesizer` belongs to the T4 *local* path (`local-synthesis-t4.md`), run by the user on real data inside their environment.
 
-## The generation recipe {#recipe}
+## The generation recipe
 
 Same seven steps as the R path: read report → draw correlated normals (T3) or independent uniforms (T2) → map each margin to its target via the percentile grid → draw categoricals from suppressed proportions → synthesize identifiers structurally → inject missingness at the reported rate → validate and write seeded parquet to `data/synthetic/`.
 
-## T1: schema-only skeleton {#t1-skeleton}
+## T1: schema-only skeleton
 
 ```python
 # --- Config ---
@@ -48,7 +48,7 @@ syn = pd.DataFrame({
 assert len(syn) == n, "row count must match profile"
 ```
 
-## T2: marginals {#t2-marginals}
+## T2: marginals
 
 Draw each numeric independently by inverse-transform sampling over the reported percentile grid; draw each categorical from its (suppressed) proportions.
 
@@ -67,7 +67,7 @@ if col["dtype"] == "integer":
 syn[col["name"]] = vals
 ```
 
-## T3: relationships via copula {#t3-relationships}
+## T3: relationships via copula
 
 Draw correlated standard normals with the reported Pearson matrix (a Gaussian copula), apply the probability integral transform, then map each margin to its target percentiles.
 
@@ -120,7 +120,7 @@ syn[rel["outcome"]] = rel["ols"]["intercept"] + rel["ols"]["slope"] * x_pred + r
 
 This reproduces the reported slope/intercept within tolerance. Categorical associations (Cramér's V) are weaker constraints; reproduce categoricals from marginals, and when a named categorical association matters, bias the linked draw. Exact joint reproduction is not the goal; structural validity for code development is.
 
-## Categorical generation and `__OTHER__` {#categorical}
+## Categorical generation and `__OTHER__`
 
 ```python
 # --- Generate a categorical column from suppressed level proportions ---
@@ -135,7 +135,7 @@ Keep `__OTHER__` a literal synthetic level — do not invent fake rare values, w
 
 When a crosstab informs the draw, its `cells` array uses **`None`/`null` for suppressed cells**, never `0`: a `None` means "withheld/unknown" and must be skipped, while a real `0` means a genuine empty combination. A crosstab with `"collapsed": true` was fully suppressed — no association signal.
 
-## Identifier columns with Faker {#identifiers}
+## Identifier columns with Faker
 
 Identifier columns arrive value-free. Synthesize right-shaped fake values from the pattern flags and length stats — `Faker` is seedable and locale-aware for identifier-shaped fields (`synthetic-data-research.md` §1).
 
@@ -159,7 +159,7 @@ else:
 
 Use reserved non-routable forms (`example.invalid`) so synthetic identifiers cannot collide with real ones.
 
-## Free-text `role: "string"` columns {#string-role}
+## Free-text `role: "string"` columns
 
 A `role: "string"` column (high-cardinality free text, non-identifier) arrives value-free — length stats + pattern flags only. Generate right-shaped fake strings from the length stats; never reconstruct real content.
 
@@ -172,7 +172,7 @@ syn[cname] = [fake.lexify("?" * L) for _ in range(n)]     # or rng-drawn alphanu
 
 If the `date` pattern flag is set, emit ISO-shaped fake dates instead so downstream date parsing still exercises.
 
-## Missingness {#missingness}
+## Missingness
 
 ```python
 # --- Inject missingness at the reported rate ---
@@ -184,7 +184,7 @@ if rate > 0:
     syn.loc[idx, col["name"]] = pd.NA
 ```
 
-## Seeding and output {#seeding-output}
+## Seeding and output
 
 - **Always** construct the RNG with a recorded integer seed (`np.random.default_rng(seed)`) and seed Faker; record both in the generation log.
 - Write parquet to `data/synthetic/` (create on first use), named per DAAF conventions.
@@ -198,7 +198,7 @@ syn.to_parquet("data/synthetic/2026-07-15_clients_synthetic.parquet")
 print(f"Seed: 20260715 | rows: {len(syn)} | tier: {report['settings']['tier']}")
 ```
 
-## Caveats {#caveats}
+## Caveats
 
 - **Binary/low-cardinality correlation** recovers less faithfully through a Gaussian copula than continuous correlation — validate the achieved correlation and report the gap rather than forcing it (parallels the simstudy binary caveat).
 - **Non-PSD correlation matrices** from suppressed profiles are handled by the eigenvalue-clip projection shown above; note it slightly perturbs the targets — the validation tolerance in `validation-checks.md` accounts for it.

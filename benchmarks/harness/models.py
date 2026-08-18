@@ -106,8 +106,10 @@ class ModelConfig:
       the wire id is the bare slug. It is used ONLY as the comparison target for
       child-model purity (artifacts.child_model_purity) and never for routing.
 
-    ``wire_id`` is optional and defaults to ``id`` via ``comparison_model_id``,
-    so every bare-slug entry keeps its pre-existing behavior untouched.
+    ``wire_id`` is optional and defaults to ``id`` via ``comparison_model_id``;
+    absence means the observed wire identity equals the routing id. A bare alias
+    can resolve to a dated transport snapshot, so it must declare ``wire_id``
+    whenever the observed identities differ.
     """
 
     id: str
@@ -130,8 +132,8 @@ class ModelConfig:
     #   (provider/quant pins are routing-only). Declaring the expected wire form
     #   per model avoids inventing a derived canonicalization rule (e.g.
     #   split(":")) that the backend has never confirmed.
-    # ASSUMES: absent means "wire identity equals routing id" — true for every
-    #   bare-slug registry entry.
+    # ASSUMES: absent means the observed wire identity equals the routing id.
+    #   Bare aliases that resolve to dated snapshots declare wire_id explicitly.
     wire_id: Optional[str] = None
 
     @property

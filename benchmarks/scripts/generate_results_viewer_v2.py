@@ -71,6 +71,68 @@ Examples:
     python3 benchmarks/scripts/generate_results_viewer_v2.py --single-file /tmp/my_viewer.html
 
 Changelog:
+    v3.8.1 (2026-08-11):
+      - Deactivated-duration cleanup (user decision, template-only): removed
+        the "Relative Duration" price-basis toggle from the CvP COST_FORMS
+        registry and the "duration multiplier, precisely" footnote
+        (durationDisclosureHtml + its call site). PRECOMPUTED.duration payload
+        and the now-unreachable isDur branch in renderCostPerf remain
+        (schema-additive, v3.7.0 precedent). Deliberately NOT a public
+        CHANGELOG.md entry (user: dead-UI removal, not audience-relevant).
+      - Config-driven display exclusions (retired_display_exclusions in
+        config/models.yaml): a top-level list of model NAMES whose corpus runs
+        are dropped from EVERY report surface — leaderboard, cost/battery, Key
+        Takeaways aggregation, run counts, scatter, consistency. Read by the new
+        load_display_exclusions() and applied at the load_runs chokepoint (right
+        beside the timed-out/instant-exit exclusions), so no downstream
+        aggregate ever observes an excluded model. Quarantine-equivalent at
+        model granularity: the runs stay immutable on disk (rescoreable); only
+        the display view excludes them. Fail-soft (missing file/key or non-list
+        value -> nothing excluded). Distinct from retired_model_pricing, which
+        KEEPS a retired model visible and only preserves its list rates. First
+        use: the pre-0731 undated "DeepSeek V4 Flash" (superseded 2026-08-02 by
+        DeepSeek V4 Flash 0731) is now fully removed from the report; its
+        obsolete retired_model_pricing entry was retired with it. A console
+        NOTE reports the excluded run count.
+    v3.8.0 (2026-08-11):
+      - User-facing Changelog added to the report: a curated, date-keyed
+        benchmarks/CHANGELOG.md (newest first; `## YYYY-MM-DD` headings,
+        `- ` bullets, `**Category**` tags — Models / Pricing / Scoring /
+        Display / Corpus) is parsed at build time by the new load_changelog()
+        (small inline converter, no markdown dependency) into the
+        #changelog-modal body HTML and the latest entry date. Two new template
+        tokens — __CHANGELOG_HTML__ (modal body) and __CHANGELOG_LATEST__
+        (button label date) — are substituted in generate_html() alongside the
+        other small controlled placeholders. A quiet-but-clearly-a-button pill
+        beside the hero "Report Updated" line opens a centered, scrollable
+        modal (scrim + Escape + close-button dismiss, body scroll lock,
+        near-full-screen sheet on narrow viewports). Fail-soft, mirroring the
+        reconciliation-JSON pattern: a missing/unparseable/entry-less
+        CHANGELOG.md prints a WARNING and substitutes empty strings, and the
+        template's JS leaves the default-hidden button hidden (button + modal
+        omitted, no-JS state also inert) — the build never fails. Console
+        reports "Changelog: N entries, latest YYYY-MM-DD".
+      - Same-day review fixes (user fine-tuning): load_changelog() now joins
+        markdown hard-wrapped bullets — indented continuation lines append to
+        the open bullet; a blank line ends it (previously continuations fell
+        through to the ignore branch, truncating every wrapped bullet to its
+        first line). Keyboard focus trap added to the modal (Tab cycles
+        within; completes the aria-modal contract alongside the existing
+        focus return). Button restyled per user: inline with the "Report
+        Updated" line (shared .gen-row flex wrapper) and accent-teal border
+        instead of gray.
+    v3.7.3 (2026-08-03):
+      - Key Takeaways T4 reworked (viewer_template.html) to run on the
+        all-perfect Consistency `rate` — the same metric as the leaderboard's
+        Consistency column — instead of the v3.7.0 rate_agree agreement
+        variant, per user decision (supersedes the 2026-07-29 T4 hand-edit
+        anchor; prose ratified by the user in this pass). Headline narrowed
+        to "reliability" (dropping "predictability", which was the agreement
+        framing); mechanism sentence now names the leaderboard tie-in; spans
+        renamed kt-t4-{topagree,budgetagree} -> kt-t4-{topcons,budgetcons}
+        (28-span contract count unchanged). Schema untouched: rate_agree /
+        cells_all_agree remain in PRECOMPUTED.consistency (schema-additive
+        contract) but no longer have a display consumer.
     v3.7.2 (2026-07-29):
       - User intensive-pass hand edits over the five Key Takeaways items
         (viewer_template.html), typed directly by the user — the strongest
@@ -237,6 +299,7 @@ Changelog:
 import argparse
 import json
 import os
+import re
 import sys
 from datetime import datetime, timezone
 
@@ -448,21 +511,29 @@ def resolve_paths(args):
 #     replaced by spaces (critLabel()).
 #   - Key Takeaways (#takeaways section in the template): DATED hand-written
 #     editorial prose whose figures are injected into kt-* spans by
-#     fillTakeaways() at init from PRECOMPUTED (composite, consistency —
-#     including the v3.7.0 rate_agree agreement field — and cost.battery, with
-#     relative ratios/multipliers only since v2.8.1). The July-2026 overhaul
-#     (v3.7.0) rewrote all five items; fillTakeaways no longer reads
-#     composite_hard or per_model_phase.
+#     fillTakeaways() at init from PRECOMPUTED (composite, consistency, and
+#     cost.battery, with relative ratios/multipliers only since v2.8.1). The
+#     July-2026 overhaul (v3.7.0) rewrote all five items; fillTakeaways no
+#     longer reads composite_hard or per_model_phase. Since v3.7.3 T4 reads
+#     the all-perfect consistency `rate` (the leaderboard Consistency metric);
+#     the v3.7.0 rate_agree agreement field stays in the payload but has no
+#     display consumer.
 #     Span contract:
-#     28 kt-* spans — 27 in the #takeaways section + kt-foot-bat, which
+#     27 kt-* spans — 26 in the #takeaways section + kt-foot-bat, which
 #     since the 2026-06-12 user fine-tuning round lives in the About Key
 #     Caveats cost caveat (the kt-foot paragraph itself was removed; its
-#     content was folded into the About caveats). The 27 #takeaways spans
-#     (v3.7.0): T1 kt-t1-{fable,opus5,opus5cost,sol,kimi} (5); T2 the six
-#     frontier points kt-fr-{gemma,dsflash,luna,sonnet5,sol,fable}-{s,c}
-#     (12); T3 kt-t3-{lunapct,lunacost,solpct,solcost,lastmult} (5); T4
-#     kt-t4-{topagree,budgetagree} (2); T5 kt-t5-{glm,glmcost,kimi} (3).
-#     History: 22 (21 + kt-foot-bat) from 2026-06-12 through v3.6.x, 29 before
+#     content was folded into the About caveats). The 26 #takeaways spans
+#     (2026-08-12 Grok refresh): T1 kt-t1-{fable,opus5,opus5cost,grok,sol,
+#     kimi} (6); T2 the five frontier points
+#     kt-fr-{gemma,luna,sonnet5,grok,fable}-{s,c} (10 — Grok 4.6 joined the
+#     frontier, displacing GPT-5.6 Sol and DeepSeek V4 Flash 0731, whose
+#     kt-fr span pairs were retired); T3
+#     kt-t3-{lunapct,lunacost,solpct,solcost,lastmult} (5); T4
+#     kt-t4-{topcons,budgetcons} (2, renamed from -{topagree,budgetagree}
+#     in v3.7.3 with the switch to the all-perfect rate); T5
+#     kt-t5-{glm,glmcost,kimi} (3).
+#     History: 28 (27 + kt-foot-bat) v3.7.0 through 2026-08-11; 22 (21 +
+#     kt-foot-bat) from 2026-06-12 through v3.6.x, 29 before
 #     the 2026-06-12 e099982 repair pass, 31 originally. Every kt-* span must
 #     have a fillTakeaways() setter and every setter a live span; verify
 #     both directions when editing either side. Injected numbers track the data
@@ -525,9 +596,20 @@ def resolve_paths(args):
 #     facts, never metric jargon — see renderHero).
 #   - Substitution order in generate_html() is load-bearing: the small
 #     controlled placeholders (__GENERATED_DISPLAY__, __HERO_MODELS__,
-#     __HERO_RUNS__) are filled first, then __PRECOMPUTED_JSON__, with
-#     __DATA_JSON__ last, so transcript content can never be treated as
-#     a placeholder.
+#     __HERO_RUNS__, __CHANGELOG_LATEST__, __CHANGELOG_HTML__) are filled
+#     first, then __PRECOMPUTED_JSON__, with __DATA_JSON__ last, so
+#     transcript content can never be treated as a placeholder.
+#   - Changelog (hero button + modal, added v3.8.0): benchmarks/CHANGELOG.md
+#     is a curated, date-keyed markdown file (newest first: `## YYYY-MM-DD`
+#     headings, `- ` bullets, `**Category**` bold tags). load_changelog()
+#     parses it with a small inline converter (no markdown dependency) into
+#     the modal-body HTML (h3 date heads, <ul>/<li>, <span class="cl-tag">
+#     tags) and the latest entry date, substituted into __CHANGELOG_HTML__
+#     and __CHANGELOG_LATEST__. Fail-soft like load_reconciliation: a
+#     missing/unparseable/entry-less file warns and returns empty strings,
+#     the template's JS then leaves the default-hidden #changelog-btn hidden
+#     (button + modal omitted), and the build never fails. The button label
+#     is date-keyed only (no version number).
 #
 # Battery-cost metric (added v2.8.0, dev guide):
 #   - New data dependency: benchmarks/derived/openrouter_reconciliation_*.json
@@ -999,9 +1081,21 @@ def _cost_compatibility(providers):
     return True, None
 
 
-def load_result_sets(results_dir, filter_timestamps=None, exclude_timestamps=None):
-    """Discover normal phase result sets, excluding separately shaped containers."""
+def load_result_sets(results_dir, filter_timestamps=None, exclude_timestamps=None,
+                     display_exclusions=None):
+    """Discover normal phase result sets, excluding separately shaped containers.
+
+    display_exclusions (model names from retired_display_exclusions) are dropped
+    from the SET-LEVEL display metadata built here — the per-set `models` list,
+    `model_metadata`, and `model_accounting` (a cost surface) — so an excluded
+    model never surfaces in any per-set view. This complements the run-level
+    drop in load_runs(); the two together remove the model from every display
+    surface. The RAW disk census (disk_run_count) and the summary's own
+    total_runs are left untouched — they are provenance/audit fields, and the
+    on-disk runs remain immutable.
+    """
     result_sets = []
+    display_exclusions = display_exclusions or set()
 
     if not os.path.isdir(results_dir):
         print(f"ERROR: Results directory not found: {results_dir}", file=sys.stderr)
@@ -1102,6 +1196,15 @@ def load_result_sets(results_dir, filter_timestamps=None, exclude_timestamps=Non
         schema_version = detect_schema_version(manifest, summary, first_run)
         schema_source = _schema_version_source(manifest, summary, first_run)
         manifest_models = _safe_manifest_models(manifest)
+        if display_exclusions:
+            # Drop display-excluded models from set-level metadata so they do
+            # not surface in per-set model lists, provider detection, or the
+            # model_accounting cost surface (parallel to the run-level drop in
+            # load_runs). Match on the manifest entry `name` field.
+            manifest_models = [
+                entry for entry in manifest_models
+                if entry.get("name") not in display_exclusions
+            ]
         providers = sorted({
             entry["provider"] for entry in manifest_models
             if isinstance(entry.get("provider"), str) and entry["provider"]
@@ -1111,6 +1214,9 @@ def load_result_sets(results_dir, filter_timestamps=None, exclude_timestamps=Non
         by_model = summary.get("by_model", {})
         if not isinstance(by_model, dict):
             by_model = {}
+        if display_exclusions:
+            by_model = {name: data for name, data in by_model.items()
+                        if name not in display_exclusions}
         models = sorted(by_model.keys())
 
         criterion_names = set()
@@ -1290,7 +1396,7 @@ def compute_grade(criteria):
     return "partial"
 
 
-def load_runs(results_dir, result_sets, cases):
+def load_runs(results_dir, result_sets, cases, display_exclusions=None):
     """Load all result.json files for each result set.
 
     Timed-out runs (the harness's explicit timed_out flag) are excluded at a
@@ -1316,6 +1422,9 @@ def load_runs(results_dir, result_sets, cases):
     runs = []
     anth_token_totals = {}
     n_timed_out_excluded = 0
+    display_exclusions = display_exclusions or set()
+    n_display_excluded = 0
+    display_excluded_models = {}
 
     for rs in result_sets:
         ts = rs["timestamp"]
@@ -1332,6 +1441,23 @@ def load_runs(results_dir, result_sets, cases):
 
             result = _read_json_object(result_path, "result.json")
             if result is None:
+                continue
+
+            # --- Display-exclusion chokepoint (retired_display_exclusions) ---
+            # A model NAMED in config/models.yaml retired_display_exclusions is
+            # dropped from the report entirely (quarantine-equivalent at model
+            # granularity): its runs never enter the runs list, the DATA
+            # payload, the battery-cost token aggregation, or ANY precomputed
+            # aggregate. The runs stay immutable on disk; only the display view
+            # excludes them. Skipped here (before criteria normalization) so no
+            # downstream surface — leaderboard, cost, Key Takeaways, run counts,
+            # scatter, consistency — ever observes them. Counted for a
+            # console-only maintainer diagnostic (print_summary).
+            excl_model = result.get("model", "")
+            if excl_model in display_exclusions:
+                n_display_excluded += 1
+                display_excluded_models[excl_model] = (
+                    display_excluded_models.get(excl_model, 0) + 1)
                 continue
 
             case_id = result.get("case_id", "")
@@ -1592,6 +1718,13 @@ def load_runs(results_dir, result_sets, cases):
         rs["billing_grade_cost_eligible"] = eligible
         rs["billing_grade_cost_exclusion_reason"] = reason
 
+    if n_display_excluded:
+        detail = ", ".join(f"{m}: {c}" for m, c in
+                           sorted(display_excluded_models.items()))
+        print(f"NOTE: display-excluded {n_display_excluded} run(s) from "
+              f"retired_display_exclusions ({detail}). Runs remain on disk; "
+              f"they are dropped from every report surface.", file=sys.stderr)
+
     return runs, anth_token_totals, n_timed_out_excluded
 
 
@@ -1847,6 +1980,29 @@ def load_transcripts(results_dir, runs):
 # Model pricing loading
 # ---------------------------------------------------------------------------
 
+def load_display_exclusions(base_dir):
+    """Load the set of model NAMES to drop from ALL display surfaces.
+
+    Reads the top-level `retired_display_exclusions:` list from
+    config/models.yaml — model names (matching run.model) whose corpus runs
+    must not appear anywhere in the report (leaderboard, cost/battery, Key
+    Takeaways, run counts, scatter, consistency). Quarantine-equivalent at
+    model granularity: the runs stay immutable on disk, but they are dropped at
+    the load_runs chokepoint so no aggregate ever sees them. Fail-soft: a
+    missing file/key, a non-list value, or non-string members yield an empty
+    set (nothing excluded), never an exception — mirroring load_model_pricing.
+    """
+    config_path = os.path.join(base_dir, "config", "models.yaml")
+    if not os.path.isfile(config_path):
+        return set()
+    with open(config_path, "r") as f:
+        config = yaml.safe_load(f) or {}
+    raw = config.get("retired_display_exclusions") or []
+    if not isinstance(raw, list):
+        return set()
+    return {name for name in raw if isinstance(name, str) and name}
+
+
 def load_model_pricing(base_dir):
     """Load per-token pricing from config/models.yaml.
 
@@ -1925,6 +2081,38 @@ def load_model_pricing(base_dir):
             ),
             "pricing_basis": "list",
         }
+
+    # Retired models with archived corpus history: their entries are commented
+    # out of `models:` (the retirement convention), which would silently drop
+    # pricing for their historical runs. The registry preserves those rates in
+    # the top-level `retired_model_pricing:` section — same schema, same list
+    # basis. Active entries win on any name collision.
+    for entry in config.get("retired_model_pricing", []):
+        name = entry.get("name")
+        if not name or name in pricing:
+            continue
+        p = entry.get("pricing", {})
+        if not isinstance(p, dict):
+            continue
+        input_rate = p.get("input")
+        output_rate = p.get("output")
+        cached_rate = p.get("cached_input")
+        if any(
+            isinstance(value, bool) or not isinstance(value, (int, float))
+            for value in (input_rate, output_rate)
+        ):
+            continue
+        pricing[name] = {
+            "input_per_million": round(input_rate, 4),
+            "output_per_million": round(output_rate, 4),
+            "cached_input_per_million": (
+                round(cached_rate, 4)
+                if isinstance(cached_rate, (int, float))
+                and not isinstance(cached_rate, bool)
+                else None
+            ),
+            "pricing_basis": "list",
+        }
     return pricing
 
 
@@ -1972,6 +2160,105 @@ def load_reconciliation(base_dir):
     print(f"Reconciliation snapshot: {path} "
           f"(billing snapshot dated {recon['_snapshot_date']})")
     return recon
+
+
+# ---------------------------------------------------------------------------
+# Changelog loading (hero button + modal)
+# ---------------------------------------------------------------------------
+
+def load_changelog(base_dir):
+    """Parse benchmarks/CHANGELOG.md into modal HTML + latest entry date.
+
+    The changelog is a curated, date-keyed markdown file (newest first):
+    `## YYYY-MM-DD` date headings, `- ` bullets, and `**Category**` bold
+    category tags at the start of each bullet. This is a small inline
+    converter — no markdown dependency — that emits the exact HTML the
+    #changelog-modal body expects (h3 date headings, <ul>/<li> bullets,
+    <span class="cl-tag"> category tags). It substitutes into the
+    __CHANGELOG_HTML__ and __CHANGELOG_LATEST__ template tokens.
+
+    Fail-soft, mirroring load_reconciliation: a missing, unreadable, or
+    entry-less file prints a WARNING and returns ("", "", 0). The generator
+    then substitutes empty strings for both tokens; the template's JS leaves
+    the (default-hidden) button hidden, so the button and modal are omitted
+    and the build never fails.
+
+    Returns (html, latest_date, n_entries).
+    """
+    path = os.path.join(base_dir, "CHANGELOG.md")
+    if not os.path.exists(path):
+        print(f"WARNING: no CHANGELOG.md at {path}; changelog button/modal "
+              f"omitted (empty-string substitution)", file=sys.stderr)
+        return "", "", 0
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            lines = f.read().splitlines()
+    except OSError as exc:
+        print(f"WARNING: could not read CHANGELOG.md at {path}: {exc}; "
+              f"changelog omitted", file=sys.stderr)
+        return "", "", 0
+
+    date_re = re.compile(r"^##\s+(\d{4}-\d{2}-\d{2})\s*$")
+    bold_re = re.compile(r"\*\*(.+?)\*\*")
+    parts = []
+    dates = []
+    in_list = False
+    current_item = None  # accumulates a bullet across wrapped continuation lines
+
+    def flush_item():
+        # HTML-escape first, then promote **bold** category tags to
+        # <span class="cl-tag"> — the escape runs before the tag wrap so
+        # the injected markup survives.
+        nonlocal current_item
+        if current_item is None:
+            return
+        item = current_item.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        item = bold_re.sub(r'<span class="cl-tag">\1</span>', item)
+        parts.append(f"<li>{item}</li>")
+        current_item = None
+
+    for raw in lines:
+        line = raw.rstrip()
+        m = date_re.match(line)
+        if m:
+            # A new dated entry: close any open bullet list, emit the date head.
+            flush_item()
+            if in_list:
+                parts.append("</ul>")
+                in_list = False
+            dates.append(m.group(1))
+            parts.append(f"<h3>{m.group(1)}</h3>")
+            continue
+        if line.startswith("- ") or line.startswith("* "):
+            flush_item()
+            if not in_list:
+                parts.append("<ul>")
+                in_list = True
+            current_item = line[2:].strip()
+            continue
+        if current_item is not None and line.startswith(" ") and line.strip():
+            # Markdown hard-wrap: an indented, non-blank line continues the
+            # open bullet (curated entries wrap at ~80 cols) — join with a
+            # space so the bullet renders as one flowing line.
+            current_item += " " + line.strip()
+            continue
+        # A blank line ends any open bullet; the H1 title and any intro prose
+        # before the first date heading are ignored — only dated entries
+        # render in the modal.
+        flush_item()
+    flush_item()
+    if in_list:
+        parts.append("</ul>")
+
+    if not dates:
+        print(f"WARNING: CHANGELOG.md at {path} has no dated (## YYYY-MM-DD) "
+              f"entries; changelog omitted", file=sys.stderr)
+        return "", "", 0
+
+    # ISO dates sort lexically, so max() is the newest regardless of file order
+    # (the file is authored newest-first, but do not depend on that).
+    latest = max(dates)
+    return "".join(parts), latest, len(dates)
 
 
 # ---------------------------------------------------------------------------
@@ -2055,7 +2342,7 @@ def build_data_bundle(result_sets, cases, runs, transcripts, subagent_transcript
     )
     bundle = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "generator_version": "3.7.2",
+        "generator_version": "3.8.1",
         "embedded_schema_contract_version": 2,
         "result_sets": sorted_result_sets,
         "cases": cases,
@@ -2461,9 +2748,10 @@ def build_precomputed(result_sets, cases, runs, generation_params,
         # on repeat attempts. Distinct from cells_all_perfect: that measures
         # capability (all reps clean), whereas agreement measures reliability
         # decoupled from score level (a model that fails identically every time
-        # is predictable, if not good). Powers the Key Takeaways "reliability
-        # and predictability" claim (fillTakeaways T4), which contrasts a
-        # top-tier model's agreement rate against a budget-tier one.
+        # is predictable, if not good). Display-orphaned since v3.7.3: the
+        # Key Takeaways T4 reliability claim now runs on the all-perfect
+        # `rate` (matching the leaderboard Consistency column); rate_agree
+        # stays in the payload under the schema-additive contract.
         all_agree = sum(
             1 for grades in multi.values()
             if len(set(grades)) == 1
@@ -3020,7 +3308,8 @@ def escape_embedded_json(obj):
     return text
 
 
-def generate_html(data_bundle, precomputed):
+def generate_html(data_bundle, precomputed, changelog_html="",
+                  changelog_latest=""):
     """Generate the report HTML by filling the sibling template.
 
     Mode-agnostic: receives whichever DATA shape build_data_bundle produced
@@ -3057,6 +3346,14 @@ def generate_html(data_bundle, precomputed):
     html = html.replace("__GENERATED_DISPLAY__", generated_display)
     html = html.replace("__HERO_MODELS__", hero_models)
     html = html.replace("__HERO_RUNS__", hero_runs)
+    # Changelog (hero button label + modal body). Both are fully controlled,
+    # generator-produced strings, so they fill alongside the other small
+    # placeholders — before the data payload, which could in principle embed
+    # placeholder-like text. Empty strings when the changelog failed to load
+    # (fail-soft): the template's JS then leaves the default-hidden button
+    # hidden, omitting the button and modal.
+    html = html.replace("__CHANGELOG_LATEST__", changelog_latest)
+    html = html.replace("__CHANGELOG_HTML__", changelog_html)
     html = html.replace("__PRECOMPUTED_JSON__", precomputed_json)
     html = html.replace("__DATA_JSON__", data_json)
 
@@ -3291,14 +3588,19 @@ def main():
           f"transcripts {tx_state}): {output_path}")
 
     # Load data
-    result_sets = load_result_sets(results_dir, args.results, args.exclude_results)
+    display_exclusions = load_display_exclusions(base_dir)
+    result_sets = load_result_sets(results_dir, args.results, args.exclude_results,
+                                   display_exclusions=display_exclusions)
     if not result_sets:
         print("ERROR: No result sets found.", file=sys.stderr)
         sys.exit(1)
 
     cases = load_cases(datasets_dir)
+    if display_exclusions:
+        print(f"Display exclusions (retired_display_exclusions): "
+              f"{sorted(display_exclusions)}")
     runs, anth_token_totals, n_timed_out_excluded = load_runs(
-        results_dir, result_sets, cases)
+        results_dir, result_sets, cases, display_exclusions=display_exclusions)
 
     # Renumber reps globally: runs from different result sets for the same
     # (phase, model, case_id) all have rep=0. Assign sequential rep numbers
@@ -3321,6 +3623,11 @@ def main():
         transcripts, subagent_transcripts = {}, {}
     model_pricing = load_model_pricing(base_dir)
     reconciliation = load_reconciliation(base_dir)
+    changelog_html, changelog_latest, n_changelog = load_changelog(base_dir)
+    if n_changelog:
+        print(f"Changelog: {n_changelog} entries, latest {changelog_latest}")
+    else:
+        print("Changelog: none embedded (button/modal omitted)")
 
     # Build bundle (data prep is fully shared between modes; the shapes
     # diverge only here and at write time — see build_data_bundle)
@@ -3351,7 +3658,9 @@ def main():
     print_precomputed_report(precomputed)
 
     # Generate HTML
-    html = generate_html(data_bundle, precomputed)
+    html = generate_html(data_bundle, precomputed,
+                         changelog_html=changelog_html,
+                         changelog_latest=changelog_latest)
 
     # Write output
     if single_file:

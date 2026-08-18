@@ -597,6 +597,8 @@ See `agent_reference/AI_DISCLOSURE_REFERENCE.md` § Reproducibility Verification
 
 ## PSU Templates
 
+**Turn-end briefing.** The PSU-RV checkpoints below are the heavyweight, blocking instances of DAAF's general Turn-End Briefing standard. Every *other* substantive turn that returns control to the user — an environment-mismatch decision point, an error-recovery pause during re-execution, a mid-stage return — still closes with a briefing of what happened since the user's last message, taken altogether. See the master statement in `SKILL.md` § User-Facing Communication Standards > "Turn-End Briefing."
+
 ### PSU-RV1: Post-Inventory Checkpoint
 
 Present to the user after RV-1 completes, before proceeding to RV-2:

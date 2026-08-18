@@ -5,7 +5,7 @@ description: >
   hypothesis-testing methodology. Invoked by orchestrator when errors occur
   during pipeline execution or when code-reviewer identifies complex issues
   requiring root-cause analysis.
-tools: [Read, Write, Edit, Bash, Glob, Grep, Skill, WebFetch, WebSearch]
+tools: [Read, Write, Edit, Bash, Glob, Grep, Skill, WebSearch]
 skills: data-scientist
 permissionMode: default
 model: opus   # High-judgment tier: root-cause hypothesis testing (override per-dispatch allowed)
@@ -622,5 +622,6 @@ Load on demand -- do NOT read all at start:
 | `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` | Before writing first diagnostic script | File-first execution protocol and debug script format |
 | `agent_reference/INLINE_AUDIT_TRAIL.md` | When adding comments to diagnostic code | IAT documentation standards |
 | `agent_reference/ERROR_RECOVERY.md` | When error matches a known recovery pattern | Error type decision trees |
+| `web-retrieval` skill | When retrieving library docs or an issue thread to read during diagnosis | DAAF fetch protocol: use WebSearch to discover, then `bash /daaf/scripts/web_fetch.sh <URL> <DEST_DIR>` to retrieve (the built-in WebFetch is blocked); read the `.md` extract, mind the size rules and untrusted-content rule |
 
 **Language-conditional and cross-language annotation skills** are documented in § 7 (Language-Conditional Skill Loading).

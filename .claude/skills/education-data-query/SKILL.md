@@ -1,7 +1,7 @@
 ---
 name: education-data-query
 description: >-
-  Downloads education datasets from configured mirror sources (parquet/CSV) with local Polars filtering. Use when writing fetch scripts or retrieving CCD, IPEDS, CRDC, SAIPE data. Load after education-data-explorer — retrieval here, not discovery.
+  Downloads education datasets from configured mirror sources (parquet/CSV) with local Polars filtering, including versioned mirror vintages (revision-pinned for reproducibility). Use when writing fetch scripts, retrieving CCD, IPEDS, CRDC, SAIPE data, or pinning a fetch to a specific mirror vintage. Load after education-data-explorer — retrieval here, not discovery.
 metadata:
   audience: research-coders
   domain: data-access
@@ -9,7 +9,7 @@ metadata:
 
 # Education Data Query
 
-Downloads education datasets from configured mirror sources (parquet or CSV) using priority-ordered fallback, with local Polars filtering. Use when writing Stage 5 fetch scripts, downloading a specific CCD, IPEDS, CRDC, SAIPE, or other education dataset by path, discovering which files are available on a mirror, or retrieving codebook metadata. Load after using education-data-explorer to identify endpoints — this skill handles actual data retrieval, not endpoint discovery.
+Downloads education datasets from configured mirror sources (parquet or CSV) using priority-ordered fallback, with local Polars filtering. Use when writing Stage 5 fetch scripts, downloading a specific CCD, IPEDS, CRDC, SAIPE, or other education dataset by path, discovering which files are available on a mirror, or retrieving codebook metadata. Load after using education-data-explorer to identify mirror datasets — this skill handles actual data retrieval, not dataset discovery.
 
 Download datasets from the Education Data Portal via configured mirror sources (defined in mirrors.yaml). Mirrors are tried in priority order. All filtering is done locally with Polars. The mirror data originates from the Urban Institute Education Data Portal (EDP), which is a curation and standardization layer over original federal data sources — data has been restructured with lowercase variable names, integer-encoded categoricals, and standardized missing value codes (`-1`, `-2`, `-3`).
 
@@ -36,6 +36,7 @@ Download datasets from the Education Data Portal via configured mirror sources (
 | `datasets-reference.md` | Known dataset file paths by source | Finding the right file path for a dataset |
 | `filters-reference.md` | Complete filter variables | Filtering downloaded data locally |
 | `query-patterns.md` | Endpoint path structure reference | Understanding URL/path naming conventions |
+| `vintage-drift.md` | Old (v0.24.0) → current (v0.26.1) mirror value/coverage drift | Sizing reproducibility impact before re-running a pre-2026q3 analysis |
 
 ## Mirror System Overview
 
@@ -62,17 +63,36 @@ See `./references/mirrors.yaml` for the full configuration and instructions on a
 
 ### Mirror File Discovery
 
-Before fetching, you can check what files are available using each mirror's discovery endpoint (defined in mirrors.yaml):
+Before fetching, check the mirror discovery endpoint defined in `mirrors.yaml`. The Python patterns in `fetch-patterns.md` are **copyable inline patterns, not an importable module**. Copy `canonicalize_mirror_path()` and `discover_mirror_files()` into the Stage 5 script alongside the mirror config; do not write `from fetch_patterns import ...`.
 
 ```python
-# Generic discovery — works with any mirror that supports it
-# See fetch-patterns.md for the full discover_mirror_files() function
-from fetch_patterns import discover_mirror_files
+# Self-contained discovery probe for the configured primary mirror. The full
+# copyable helper in fetch-patterns.md adds pagination, validation, and codebooks.
+import requests
+import yaml
+from pathlib import Path
 
-# Check primary mirror
-files = discover_mirror_files(MIRRORS[0])
-if files is not None:
-    print(f"Available files: {len(files)}")
+config_path = Path("/daaf/.claude/skills/education-data-query/references/mirrors.yaml")
+with config_path.open(encoding="utf-8") as config_file:
+    mirror = yaml.safe_load(config_file)["mirrors"][0]
+# Pin discovery to the mirror's vintage: resolve the tree url_template with the
+# configured revision (falls back to a static url for an unversioned mirror).
+discovery = mirror["discovery"]
+revision = str((mirror.get("vintage") or {}).get("hf_revision", "main"))
+discovery_url = (
+    discovery["url_template"].format(revision=revision)
+    if discovery.get("url_template") else discovery["url"]
+)
+response = requests.get(discovery_url, timeout=30)
+response.raise_for_status()
+entries = response.json()
+if isinstance(entries, dict):
+    entries = entries["results"]
+raw_paths = [entry[mirror["discovery"].get("file_path_key", "path")] for entry in entries
+             if entry.get("type") == "file"]
+data_paths = [path[:-8] for path in raw_paths if path.lower().endswith(".parquet")]
+assert all(not path.lower().endswith((".csv", ".parquet", ".xls")) for path in data_paths)
+print(f"Available canonical data paths: {len(data_paths)}")
 ```
 
 ```r
@@ -82,7 +102,11 @@ if files is not None:
 mirror <- mirrors[[1]]
 discovery <- mirror$discovery
 if (!is.null(discovery) && discovery$method == "http_json") {
-  resp <- httr2::request(discovery$url) |> httr2::req_timeout(30) |> httr2::req_perform()
+  # Pin discovery to the mirror's vintage: substitute the revision into the tree
+  # url_template (fall back to a static url for an unversioned mirror).
+  revision <- if (!is.null(mirror$vintage$hf_revision)) as.character(mirror$vintage$hf_revision) else "main"
+  discovery_url <- if (!is.null(discovery$url_template)) gsub("{revision}", revision, discovery$url_template, fixed = TRUE) else discovery$url
+  resp <- httr2::request(discovery_url) |> httr2::req_timeout(30) |> httr2::req_perform()
   raw <- httr2::resp_body_json(resp)
   entries <- if (!is.null(raw$results)) raw$results else raw
   cat(sprintf("Available files: %d\n", length(entries)))
@@ -90,6 +114,20 @@ if (!is.null(discovery) && discovery$method == "http_json") {
 ```
 
 This eliminates guessing — if the file exists in a mirror, use it; if not, fall through to the next.
+
+## Mirror Versioning & Reproducibility
+
+The Hugging Face mirror is **versioned by vintage**. A *vintage* is a dated snapshot of the Education Data Portal captured into one HF dataset repo; a *revision* is the HF git ref (branch, tag, or commit SHA) that pins requests to one immutable state of that repo. In `mirrors.yaml` this is one `vintage:` block per mirror — `portal_version`, `collected`, and `hf_revision` — and the fetch helpers thread `hf_revision` into every URL (data, codebook, and discovery) via `build_mirror_url()` / `mirror_revision()`. You do not build these URLs by hand; use the patterns in `./references/fetch-patterns.md`.
+
+**Pin by default.** The current mirror snapshots Portal **v0.26.1** (repo `brhkim/education_data_portal_mirror_2026q3`). Once its commit SHA is pinned in `mirrors.yaml` (`vintage.hf_revision`), every fetch resolves to those exact bytes, so a rerun of a Stage 5 script downloads identical data.
+
+**Why this matters (silent drift).** The Portal revises historical values between releases *without schema changes* — e.g., Portal 0.26.1 retroactively corrected IPEDS Graduation Rates 150% for 1996-2023. An unpinned mirror (revision `main`) can therefore serve silently different numbers to the same script run months apart, with no error and no column change to signal it. Pinning to an immutable revision is what makes a project's fetches byte-reproducible.
+
+**Citation version rule.** Cite data using the Portal version of the vintage you fetched — v0.26.1 for this mirror. See `education-data-context` for the full Portal citation format; the version number in the citation must match the mirrored Portal version.
+
+**Reproducing a pre-2026q3 analysis (old frozen vintage).** The predecessor mirror — Portal **v0.24.0**, repo `brhkim/education_data_portal_mirror`, collected 2026-02-07 — is **frozen** (retained indefinitely for reproducibility, not deleted). To rerun an analysis built against it, point the fetch at the predecessor instead of the current mirror: resolve URLs against `https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/{revision}/{path}.parquet` (and cite Portal v0.24.0). The predecessor's coordinates live in the `vintage.predecessor` block of `mirrors.yaml`.
+
+**Which numbers actually changed (old v0.24.0 → current v0.26.1).** Before re-running a pre-2026q3 analysis, consult `./references/vintage-drift.md` — it maps exactly which datasets and years moved between the two vintages, how much of each change is a real data revision versus a cosmetic missing-code re-encoding, and the full grad-rates-150% dedup+revaluation story. Use it to size the reproducibility impact of a mirror change before deciding what must be re-executed.
 
 ## Decision Trees
 
@@ -157,7 +195,7 @@ df <- df |> filter(fips == 6, charter == 1, school_level == 3)
 
 ## Dataset Path Structure
 
-All mirrors use the same canonical path. Each mirror appends its own format extension (`.parquet`, `.csv`) via its `url_template` in mirrors.yaml:
+All mirrors use the same **extensionless data canonical path**. Discovery strips exactly one terminal `.csv` or `.parquet` before returning a data key, and each mirror appends its own format extension via `url_template`. Codebook canonical paths are also extensionless, but are a distinct `codebook` kind: discovery strips exactly one terminal `.xls`, and metadata URL templates append `.xls`. Reject extension-bearing inputs rather than constructing doubled extensions.
 
 ```
 {source}/{filename}
@@ -311,7 +349,7 @@ See `./references/filters-reference.md` for complete list.
 
 ## Cross-References
 
-- **Discover endpoints:** Load `education-data-explorer` skill to browse available endpoints and variables
+- **Discover datasets:** Load `education-data-explorer` skill to route a question to mirror files and variables
 - **Interpret data:** Load `education-data-context` skill after fetching for variable meanings and caveats
 - **Deep source understanding:** Load `education-data-source-*` skills for comprehensive methodology
 
@@ -334,6 +372,7 @@ See `./references/filters-reference.md` for complete list.
 | Topic | Location |
 |-------|----------|
 | Mirror configuration | `./references/mirrors.yaml` |
+| Vintage drift (v0.24.0 → v0.26.1) | `./references/vintage-drift.md` |
 | Fetch code patterns | `./references/fetch-patterns.md` |
 | Dataset file paths | `./references/datasets-reference.md` |
 | URL/path naming conventions | `./references/query-patterns.md` |

@@ -10,6 +10,56 @@ Every agent that writes or executes code (research-executor, code-reviewer, debu
 
 ---
 
+# Code Style: Sequential Inline Scripts
+
+All code produced by agents follows a **flat, sequential** style. Scripts read
+top-to-bottom like lab notebooks — no function definitions, no class hierarchies,
+no module abstractions. The same philosophy applies to both Python and R. (This is
+the canonical, complete statement of the sequential code-style rules that CLAUDE.md
+§ Code Style summarizes.)
+
+### Python Rules
+
+1. **No function definitions** — No `def main()`, no helper functions, no
+   `if __name__ == "__main__"` guards
+   - *Exceptions:* Marimo cell wrappers (`def _():`) and standalone CLI tools
+     requiring argparse
+2. **Inline validation** — Use `print()` and `assert` for validation, never a
+   separate `validation.py` module
+3. **Section separators** — Organize scripts with comment headers:
+   `# --- Config ---`, `# --- Load ---`, `# --- Transform ---`,
+   `# --- Validate ---`, `# --- Save ---`
+   Data Onboarding profiling scripts use: `# --- Config ---`, `# --- Load ---`,
+   `# --- Profile ---`, `# --- Validate ---`, `# --- Summary ---`
+4. **No type annotations** — Sequential scripts don't define function signatures
+5. **No test files** — Validation is inline (`assert` + `print`), not in
+   `tests/` directories
+
+### R Rules
+
+1. **No function definitions** — No reusable functions, no `source()` of external
+   modules
+   - *Exceptions:* Quarto cell structure and standalone CLI tools requiring
+     `commandArgs` argument handling (parallel to the Python argparse exception)
+2. **Inline validation** — Use `cat()` for output and `stopifnot()` for
+   assertions, never a separate `validation.R` module
+3. **Section separators** — Same convention as Python:
+   `# --- Config ---`, `# --- Load ---`, `# --- Transform ---`,
+   `# --- Validate ---`, `# --- Save ---`
+4. **Library calls at top** — All `library()` calls in the `# --- Config ---`
+   section
+5. **Pipe style** — Use native pipe `|>` (R 4.1+), not magrittr `%>%`
+6. **No test files** — Validation is inline (`stopifnot()` + `cat()`), not in
+   `tests/` directories
+
+**Why this style?** Research scripts are **write-once, execute-once, archive**
+artifacts — fundamentally different from application code. Functions add
+cognitive overhead without providing reuse value. Sequential code is immediately
+readable and self-documenting through its execution order. Combined with IAT
+documentation, a human auditor can follow every decision without running the code.
+
+---
+
 # Part 1: File-First Execution Protocol
 
 ## Overview
@@ -295,6 +345,40 @@ Profiling scripts use the same file-first execution pattern, IAT documentation s
 
 ---
 
+## Project File Naming Conventions
+
+This is the canonical, complete set of file-naming and version-suffix conventions
+for all research-project artifacts (the tables that CLAUDE.md § Project Conventions
+points to). Script-specific naming (stage directories, `{step:02d}_{task-name}`)
+follows in the Naming Convention section below.
+
+**Every change creates new version files.** No in-place modifications.
+
+**Version Suffix Convention:**
+- Original: `2026-01-24_School_Poverty_Analysis`
+- Revision 1: `2026-01-24a_School_Poverty_Analysis`
+- Revision 2: `2026-01-24b_School_Poverty_Analysis`
+- etc.
+
+**All versions remain in the same folder.**
+
+| File Type | Pattern | Example |
+|-----------|---------|---------|
+| Plan | `YYYY-MM-DD[suffix]_[Title]_Plan.md` | `2026-01-24a_School_Poverty_Analysis_Plan.md` |
+| Plan Tasks | `YYYY-MM-DD[suffix]_[Title]_Plan_Tasks.md` | `2026-01-24a_School_Poverty_Analysis_Plan_Tasks.md` |
+| Notebook (Python) | `YYYY-MM-DD[suffix]_[Title].py` | `2026-01-24a_School_Poverty_Analysis.py` |
+| Notebook (R) | `YYYY-MM-DD[suffix]_[Title].qmd` | `2026-01-24a_School_Poverty_Analysis.qmd` |
+| Report | `YYYY-MM-DD[suffix]_[Title]_Report.md` | `2026-01-24a_School_Poverty_Analysis_Report.md` |
+| Raw Data | `YYYY-MM-DD[suffix]_[source]_[description].parquet` | `2026-01-24a_ccd_schools.parquet` |
+| Processed Data | `YYYY-MM-DD[suffix]_[description].parquet` | `2026-01-24a_analysis_data.parquet` |
+| Figures | `YYYY-MM-DD[suffix]_[description].png` | `2026-01-24a_enrollment_trends.png` |
+| Preliminary Notes | `YYYY-MM-DD[suffix]_[stage]_[descriptor].md` | `2026-01-24a_stage3_ccd_source-research.md` |
+| Reproduction Report | `Reproduction_Report.md` | `Reproduction_Report.md` |
+
+> **Note:** The Reproduction Report uses a fixed name (not date-prefixed) because it serves as both the primary deliverable and the session state document for Reproducibility Verification mode.
+
+---
+
 ## Naming Convention
 
 **Pattern:** `{step:02d}_{task-name}.py` (Python) or `{step:02d}_{task-name}.R` (R)
@@ -304,6 +388,26 @@ Profiling scripts use the same file-first execution pattern, IAT documentation s
 | `step` | Step number from Transformation Sequence (e.g., 1.1, 2.3) | 2-digit zero-padded (01, 02) |
 | `task-name` | Task Name from Transformation Sequence | lowercase-with-hyphens |
 | extension | User's execution language preference | `.py` (Python) or `.R` (R) |
+
+### Stage-Based Script Directories
+
+All executed scripts are archived in the `scripts/` folder with stage-based organization. File extension is `.py` (Python) or `.R` (R) depending on the execution language preference.
+
+| Stage | Directory | Pattern | Example |
+|-------|-----------|---------|---------|
+| 5 (Fetch) | `scripts/stage5_fetch/` | `{step:02d}_{task-name}.py` | `01_fetch-ccd.py` |
+| 6 (Clean) | `scripts/stage6_clean/` | `{step:02d}_{task-name}.py` | `01_clean-ccd.py` |
+| 7 (Transform) | `scripts/stage7_transform/` | `{step:02d}_{task-name}.py` | `01_join-data.py` |
+| 8 (Analysis & Viz) | `scripts/stage8_analysis/` | `{step:02d}_{task-name}.py` | `01_regression-poverty.py` |
+| Debug | `scripts/debug/` | `{seq:02d}_diag-{slug}.py` | `01_diag-key-mismatch.py` |
+| DI-0 (API Fetch) | `scripts/stage5_fetch/` | `00_api-fetch.py` | `00_api-fetch.py` |
+| DI-3 (Structural) | `scripts/profile_structural/` | `{NN}_{task-name}.py` | `01_load-and-format.py` |
+| DI-4 (Statistical) | `scripts/profile_statistical/` | `{NN}_{task-name}.py` | `04_distribution-analysis.py` |
+| DI-5 (Relational) | `scripts/profile_relational/` | `{NN}_{task-name}.py` | `07_key-integrity.py` |
+| DI-6 (Interpretation) | `scripts/profile_interpretation/` | `{NN}_{task-name}.py` | `10_semantic-interpretation.py` |
+| RV-2 (Reproduction) | `scripts/repro/{stage_dir}/` | `{original_script_name}` | `01_fetch-ccd.py` |
+| Smoke Tests | `scripts/smoke_tests/` | `smoke_{skill-name}.R` | `smoke_tidyverse.R` |
+| Scratch (any) | `scripts/scratch/` | free-form (transient intermediates, no naming pattern) | `stripped_08_fetch.py` |
 
 **Examples (Python):**
 - Step 1.1 `fetch-ccd` → `01_fetch-ccd.py`

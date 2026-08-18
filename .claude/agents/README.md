@@ -589,7 +589,7 @@ code-reviewer returns BLOCKER
 - Breadth-first exploration (scan broadly, then drill into best candidates)
 - Evidence-based findings with mandatory source citations (file:line or URL)
 - Flexible output format adapted to the task (inventories, direct answers, surveys)
-- Web-capable research via WebSearch and WebFetch (unique among read-only agents)
+- Web-capable research via WebSearch (discovery) plus the DAAF fetch protocol (`web-retrieval` skill's `web_fetch.sh`; the built-in WebFetch is blocked) — unique among read-only agents
 - Skill-aware domain knowledge (loads relevant DAAF skills for authoritative context)
 
 **Key distinction from source-researcher:** The source-researcher examines a single known data source in depth using an existing DAAF skill, producing a fixed five-section deliverable. The search-agent explores broadly across any information space with flexible output. If you already know which data source skill to investigate, use source-researcher.

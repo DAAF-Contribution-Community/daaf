@@ -25,7 +25,7 @@ The BMF is the universe of all organizations granted tax-exempt status by the IR
 | **Coverage** | ~3.8 million organizations (all-time) |
 | **Active orgs** | ~1.8 million currently active |
 | **Update frequency** | Monthly from IRS |
-| **Time span** | NCCS Unified BMF: 1989-present |
+| **Time span** | Historical coverage varies by BMF product; verify the current BMF catalog before use |
 | **File size** | ~1.3 GB (unified version) |
 
 ### Key Variables
@@ -147,10 +147,11 @@ The Core Data Series provides standardized financial information from Form 990 f
 
 | Attribute | Value |
 |-----------|-------|
-| **Coverage** | 990 and 990-EZ filers |
-| **Time span** | 1989-2022 (ongoing) |
-| **Variables** | ~150 (PZ) to ~300 (PC) |
-| **Organizations per year** | ~200K (PC) to ~400K (PZ) |
+| **Coverage** | Form 990 and 990-EZ records; exact inclusion depends on the selected Core product |
+| **Merged Core** | 1987-2024 |
+| **SOI-current** | 2012-2024 |
+| **Release status** | Tax year 2024 provisional; recent years in progress as late and amended returns arrive |
+| **Variables** | Vary by product and file; verify the current catalog documentation |
 
 ### Data File Types
 
@@ -245,27 +246,13 @@ nccs <- read_parquet(paste0(mirror$root_url, "/", DATASET_PATH, ".", mirror$form
 # e.g., contributions_total, prog_serv_rev, revenue_total
 ```
 
-**Direct from NCCS (for full Core series — outside Portal):**
+**Direct from NCCS (outside Portal):**
 
-```python
-import polars as pl
+Start at the official Core catalog rather than constructing or copying a legacy object URL:
 
-# NCCS provides a data catalog for browsing
-# https://urbaninstitute.github.io/nccs/catalogs/catalog-core.html
+`https://urbaninstitute.github.io/nccs/catalogs/catalog-core.html`
 
-# Individual year download
-url = "https://nccsdata.s3.amazonaws.com/harmonized/core/CHARITIES_PC_2021.csv"
-core_pc = pl.read_csv(url)
-```
-
-```r
-# NCCS provides a data catalog for browsing
-# https://urbaninstitute.github.io/nccs/catalogs/catalog-core.html
-
-# Individual year download
-url <- "https://nccsdata.s3.amazonaws.com/harmonized/core/CHARITIES_PC_2021.csv"
-core_pc <- read.csv(url)
-```
+The catalog currently distinguishes merged Core (1987-2024) from SOI-current (2012-2024), marks 2024 provisional, and warns that recent tax years remain in progress. Select the product and file linked by the catalog, then record the product name, tax year, retrieval date, and status note in project provenance. Use this stable official catalog as the sole documented Core navigation route.
 
 ---
 
@@ -445,19 +432,17 @@ nccs <- read_parquet(paste0(mirror$root_url, "/", DATASET_PATH, ".", mirror$form
 - All variable names are lowercase
 - NTEE codes, SUBSECCD, and FNDNCD are NOT included (data is pre-filtered to higher ed)
 
-### Direct NCCS Download (For Full Nonprofit Universe)
+### Direct NCCS Download (For Broader or Newer Data)
 
-Most NCCS data is available as CSV files from AWS S3:
-
-```
-Base URL: https://nccsdata.s3.amazonaws.com/
-```
+Use the official catalogs as the navigation and provenance layer; do not assume a copied object URL remains current. The catalog identifies available products, files, tax years, and status notes.
 
 ### Data Catalogs
 
-- **Core Series**: https://urbaninstitute.github.io/nccs/catalogs/catalog-core.html
-- **BMF by State**: https://urbaninstitute.github.io/nccs/catalogs/catalog-bmf.html
-- **Efile**: https://urbaninstitute.github.io/nccs/catalogs/catalog-efile-v2_1.html
+- **Core Series (authoritative for Core coverage)**: `https://urbaninstitute.github.io/nccs/catalogs/catalog-core.html`
+- **BMF by State**: `https://urbaninstitute.github.io/nccs/catalogs/catalog-bmf.html`
+- **Efile**: `https://urbaninstitute.github.io/nccs/catalogs/catalog-efile-v2_1.html`
+
+As verified on 2026-07-21, the Core catalog reports merged Core 1987-2024 and SOI-current 2012-2024; tax year 2024 is provisional, and recent years remain in progress as late and amended returns arrive.
 
 ### Sector in Brief Dashboard
 

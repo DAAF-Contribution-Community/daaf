@@ -372,6 +372,16 @@ for hostfile in "${REPO_ROOT}"/scripts/host/*; do
     [ -f "${hostfile}" ] || continue
     filename=$(basename "${hostfile}")
 
+    # Binary assets (declared binary in .gitattributes) are exempt from the
+    # ASCII text gate -- currently the .ico icon that feeds the Windows
+    # DAAF.lnk shortcut. Text launchers (.bat/.command) stay in scope.
+    case "${filename}" in
+        *.ico)
+            pass "scripts/host/${filename}: binary asset (ASCII gate skipped)"
+            continue
+            ;;
+    esac
+
     # LC_ALL=C: match on raw bytes, not the locale's multibyte interpretation.
     offending=$(LC_ALL=C grep -anE "${non_ascii_re}" "${hostfile}" 2>/dev/null || true)
     if [ -n "${offending}" ]; then

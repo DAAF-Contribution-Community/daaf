@@ -149,6 +149,45 @@ Describe "update_daaf.ps1" {
             $Content | Should -Match '\$key = \$line\.Substring\(0, \$eq\)'
             $Content | Should -Not -Match '\$key = \$line\.Substring\(0, \$eq\)\.Trim\(\)'
         }
+
+        # -----------------------------------------------------------------
+        # In-folder DAAF.lnk shortcut create-or-refresh
+        # -----------------------------------------------------------------
+        # These are STATIC (content) assertions, not behavioral ones: the shortcut
+        # is built with the Windows-only WScript.Shell COM object, which does not
+        # exist on the Linux pwsh that runs this CI suite, so a runtime creation
+        # test cannot pass here. The suite has no -Skip / platform-gate pattern, so
+        # we assert the block's structure and safety invariants against the raw
+        # script text instead. (The installer's equivalent block is likewise not
+        # behaviorally tested for the same reason.)
+        It "creates or refreshes an in-folder DAAF.lnk shortcut on update" {
+            $Content | Should -Match 'DAAF\.lnk'
+            $Content | Should -Match 'New-Object -ComObject WScript\.Shell'
+            $Content | Should -Match 'CreateShortcut'
+        }
+
+        It "gates the shortcut behind DAAF_DRY_RUN so CI never invokes COM" {
+            # The WScript.Shell invocation must live in the else (non-dry-run)
+            # branch -- under DAAF_DRY_RUN=1 no COM object is created. Textual
+            # order alone (dry-run message before COM) could pass spuriously if
+            # the COM call were hoisted below the if but outside the else, so we
+            # additionally require an '} else {' token BETWEEN the dry-run
+            # message and the COM call, pinning the branch nesting. Index-based
+            # check, mirroring the Set-StrictMode placement test above.
+            $dryIdx  = $Content.IndexOf('[DRY-RUN] Would create or refresh the in-folder DAAF.lnk')
+            $comIdx  = $Content.IndexOf('New-Object -ComObject WScript.Shell')
+            $elseIdx = $Content.IndexOf('} else {', $dryIdx)
+            $dryIdx  | Should -BeGreaterThan -1
+            $elseIdx | Should -BeGreaterThan $dryIdx
+            $comIdx  | Should -BeGreaterThan $elseIdx
+        }
+
+        It "guards the shortcut on daaf.bat presence and is non-fatal (warn-and-continue)" {
+            # Test-Path on daaf.bat means the block no-ops if the launcher was not
+            # synced; the catch's Write-Warning proves failure never aborts the update.
+            $Content | Should -Match 'Test-Path -LiteralPath \$BatPath'
+            $Content | Should -Match 'Could not create or refresh the DAAF\.lnk shortcut'
+        }
     }
 }
 
@@ -366,6 +405,40 @@ Describe "update_daaf.ps1 behavioral tests" {
             ($output | Where-Object { $_ -match "run_daaf.sh" })                | Should -BeNullOrEmpty
             ($output | Where-Object { $_ -match "Updated: install.ps1" })       | Should -BeNullOrEmpty
             ($output | Where-Object { $_ -match "Updated: test_migration.ps1" }) | Should -BeNullOrEmpty
+        }
+
+        It "syncs the Windows launcher daaf.bat and the daaf.ico icon" {
+            # daaf.bat (Windows double-click launcher) and daaf.ico (icon) must
+            # pass the platform filter on Windows -- they are delivered here, not
+            # by update_daaf.sh. Copy-HostScript byte-copies both via docker cp.
+            Mock docker {
+                $allArgs = $args -join " "
+                if ($allArgs -match "rev-parse HEAD") { return "new-sha-999" }
+                if ($allArgs -match "ls-files") { return "scripts/host/daaf.bat`nscripts/host/daaf.ico" }
+                if ($allArgs -match "diff --name-only") { return "scripts/host/daaf.bat`nscripts/host/daaf.ico" }
+                $global:LASTEXITCODE = 0
+                return ""
+            }
+
+            $output = Sync-HostScript "old-sha-111" 6>&1
+            ($output | Where-Object { $_ -match "Updated: daaf.bat" }) | Should -Not -BeNullOrEmpty
+            ($output | Where-Object { $_ -match "Updated: daaf.ico" }) | Should -Not -BeNullOrEmpty
+        }
+
+        It "drops the macOS launcher DAAF.command on Windows" {
+            # DAAF.command is the macOS Finder launcher; the Windows updater must
+            # filter it out (delivered by update_daaf.sh on Darwin only).
+            Mock docker {
+                $allArgs = $args -join " "
+                if ($allArgs -match "rev-parse HEAD") { return "new-sha-999" }
+                if ($allArgs -match "ls-files") { return "scripts/host/DAAF.command" }
+                if ($allArgs -match "diff --name-only") { return "scripts/host/DAAF.command" }
+                $global:LASTEXITCODE = 0
+                return ""
+            }
+
+            $output = Sync-HostScript "old-sha-111" 6>&1
+            ($output | Where-Object { $_ -match "DAAF.command" }) | Should -BeNullOrEmpty
         }
 
         It "prints self-update notice when update_daaf.ps1 changed" {

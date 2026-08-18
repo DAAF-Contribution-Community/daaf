@@ -6,7 +6,7 @@ metadata:
   audience: any-agent
   domain: data-source
   skill-authored: "2026-02-09"
-  skill-last-updated: "2026-02-09"
+  skill-last-updated: "2026-07-21"
 ---
 
 # NACUBO Data Source Reference
@@ -266,20 +266,20 @@ url <- paste0(mirror$root_url, "/", "nacubo/codebook_colleges_nacubo_endowments"
 
 ### Public NACUBO Tables
 
-Free tables available at: https://www.nacubo.org/Research/2024/Public-NCSE-Tables
+Use NACUBO's year-neutral Endowment Management page as the stable navigation landing:
 
-Includes:
-- Participating institutions by market value
-- Average/median returns by size and type
-- Asset allocation summaries
-- Spending rate summaries
+`https://www.nacubo.org/Topics/Endowment-Management`
 
-### Full Report Access
+Follow that page to the current NACUBO-Commonfund Study of Endowments and its public tables. Public-table URLs are year-specific and should be treated as dated examples, not permanent routes. For example, as verified on 2026-07-21:
 
-- **Participants**: Free access
-- **NACUBO Members**: $250
-- **Non-members**: $1,500
-- **Academic researchers**: Contact Commonfund Institute
+- 2025 study: `https://www.nacubo.org/Research/2025/NACUBO-Commonfund-Study-of-Endowments`
+- 2025 public tables: `https://www.nacubo.org/Research/2025/Public-NCSE-Tables`
+
+Public tables may include participating institutions by market value and selected return, allocation, or spending summaries. Verify the current year's contents before claiming a specific table is available.
+
+### Rights and Full Report Access
+
+Public availability is **not** an open-data or unrestricted-republication license. NACUBO's site footer states that rights are reserved; review the current site terms and obtain permission when planned reuse goes beyond analysis or citation. The complete study may require a NACUBO account and bookstore access and may have member, participant, or purchase conditions that change over time. Use the year-neutral landing page for current access instructions rather than relying on frozen prices or entitlement rules.
 
 ## Common Pitfalls
 
@@ -324,7 +324,7 @@ Includes:
 |--------|--------------|-------------|
 | `education-data-source-ipeds` | Complementary; mandatory reporting covers all institutions | Need all institutions or just market values |
 | `education-data-source-scorecard` | Complementary; student outcomes | Linking endowment size to student outcomes |
-| `education-data-explorer` | Parent discovery skill | Finding available endpoints |
+| `education-data-explorer` | Parent discovery skill | Routing questions to mirror dataset files |
 | `education-data-query` | Data fetching | Downloading parquet/CSV files |
 
 ## Topic Index

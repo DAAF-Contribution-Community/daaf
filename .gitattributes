@@ -16,6 +16,12 @@
 *.yml text eol=lf
 *.txt text eol=lf
 
+# Windows batch launcher: must keep CRLF bytes IN THE BLOB. install.ps1 downloads
+# the raw blob directly from raw.githubusercontent.com, so `eol=crlf` (which stores
+# a normalized LF blob and only converts on checkout) would NOT give the downloaded
+# copy CRLF. `-text` disables normalization entirely, preserving the committed CRLF.
+*.bat -text
+
 # Binary files (don't modify)
 *.png binary
 *.jpg binary

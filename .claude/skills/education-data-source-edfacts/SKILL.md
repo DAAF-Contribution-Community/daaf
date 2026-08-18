@@ -416,7 +416,7 @@ state_comparison <- df |>
 | `education-data-source-crdc` | CRDC has discipline, AP, school climate data | Analyzing school equity alongside achievement |
 | `education-data-source-saipe` | SAIPE provides district poverty estimates | Linking poverty to achievement |
 | `education-data-source-meps` | MEPS provides school poverty estimates | School-level poverty and assessment analysis |
-| `education-data-explorer` | Parent discovery skill | Finding available endpoints |
+| `education-data-explorer` | Parent discovery skill | Routing questions to mirror dataset files |
 | `education-data-query` | Data fetching | Downloading via mirrors |
 
 ## Topic Index

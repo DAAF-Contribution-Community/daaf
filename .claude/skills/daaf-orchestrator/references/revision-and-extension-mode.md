@@ -88,7 +88,7 @@ When ambiguous, prefer the type that re-runs MORE stages (safer). For example, "
 
 ## Version Control Protocol
 
-Version suffixes follow the convention defined in `CLAUDE.md` > "Version Control Protocol" (e.g., original → `a` → `b` → `c`).
+Version suffixes follow the convention defined in `CLAUDE.md` > "Versioning & Naming" (e.g., original → `a` → `b` → `c`; full tables in `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` § Project File Naming Conventions).
 
 **Rules:**
 - Always create new version files — never modify existing versions
@@ -147,6 +147,8 @@ When re-executing pipeline stages for a revision, load these files based on the 
 **LEARNINGS.md:** Append revision-specific learnings to the existing LEARNINGS.md. Revision sessions often produce the richest learnings about data quality and methodology edge cases.
 
 **Phase Status Updates (PSUs):** PSUs are NOT required for revision re-execution. Instead, present a single **Revision Status Update** to the user after all re-executed stages complete, summarizing what changed and verification results.
+
+The Revision Status Update is this mode's instance of DAAF's Turn-End Briefing standard — the comprehensive catch-up presented once re-execution finishes. Between that and any interim returns (an error pause, a question answered mid-revision), the general standard still governs: close each substantive turn with a briefing of what happened since the user's last message, taken altogether. See the master statement in `SKILL.md` § User-Facing Communication Standards > "Turn-End Briefing."
 
 ### Revision-Specific Subagent Context
 
@@ -288,7 +290,7 @@ These boundaries supplement the universal boundaries in `CLAUDE.md` and `agent_r
 - Copy raw data files from prior version (regenerate fresh)
 - Proceed without reading existing Plan.md, Plan_Tasks.md, and STATE.md
 
-**Version Suffix Convention:** See `CLAUDE.md` > "Version Control Protocol" for the canonical convention (e.g., original → `a` → `b` → `c`).
+**Version Suffix Convention:** See `CLAUDE.md` > "Versioning & Naming" for the canonical convention (e.g., original → `a` → `b` → `c`).
 
 ## Arriving from Reproducibility Verification Mode
 

@@ -281,7 +281,7 @@ Before authoring a new framework artifact, the orchestrator proactively offers t
 
 Seed the **Focus areas** recommendation from the artifact being authored — do not present it blank. A concrete, artifact-specific suggestion the user can accept or adjust is far more useful than an open prompt.
 
-**Execution path (when accepted).** The orchestrator dispatches a **`search-agent`** for the research — **not** framework-engineer, which has no WebSearch/WebFetch tools and therefore cannot perform the survey itself. The research must run *before* the Phase 3 authoring dispatch so its findings can inform the design. When the search-agent returns:
+**Execution path (when accepted).** The orchestrator dispatches a **`search-agent`** for the research — **not** framework-engineer. By policy, framework-engineer does not perform agent-reading web retrieval (surveying external sources); that is search-agent's role, and keeping the survey in its own read-only dispatch is what makes the research trail separate, auditable, and reviewable. The research must run *before* the Phase 3 authoring dispatch so its findings can inform the design. When the search-agent returns:
 
 1. Persist the return **losslessly** to the session workspace, following the Subagent Return Processing / preliminary notes pattern (`SKILL.md` § Subagent Return Processing and § Preliminary Notes Persistence). Write the full, unmodified return under the mode's `research/YYYY-MM-DD_FrameworkDev_{Topic}/` workspace with the provenance header.
 2. Feed the findings into the **Phase 2** design presentation (grounding the proposed structure and design decisions in the surveyed practices).
@@ -298,8 +298,11 @@ Seed the **Focus areas** recommendation from the artifact being authored — do 
 
 ## Task: Pre-Authoring Research — [artifact type and domain]
 
-You are a READ-ONLY research agent with web access (WebSearch, WebFetch).
-Do NOT write or modify any files.
+You are a READ-ONLY research agent with web access (WebSearch for discovery
+plus the DAAF fetch protocol, `bash /daaf/scripts/web_fetch.sh URL DEST_DIR`,
+to retrieve a page — see the `web-retrieval` skill; the built-in WebFetch is
+blocked). Do NOT modify any framework files; web_fetch.sh writes only fetch
+artifacts (raw response, extract, manifest) into the session workspace.
 
 ## Focus
 
@@ -624,6 +627,8 @@ found issues you want addressed, let me know. Otherwise, confirm and we're done.
 ```
 
 If the user requests changes, loop back to Phase 3 for targeted fixes (respecting iteration limits from Gate Definitions).
+
+**Turn-end briefing.** The two checkpoints (Scope Review and Review Complete) are this mode's heavyweight instances of DAAF's general Turn-End Briefing standard. Every *other* substantive turn that returns control to the user — a scoping-wave synthesis, a framework specialist's return, a review-fix iteration — still closes with a briefing of what happened since the user's last message, taken altogether. See the master statement in `SKILL.md` § User-Facing Communication Standards > "Turn-End Briefing."
 
 ---
 

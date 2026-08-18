@@ -63,6 +63,67 @@
 #   * GET /health endpoint for the manager's idempotency/status checks.
 #
 # Changelog:
+#   v1.3.18 (2026-08-09): Bind stream-member cleanup to captured identities.
+#     Cleanup atomically quarantines `.owner` and `output.fifo`, revalidates each
+#     quarantined inode, and unlinks only a match. A one-time same-UID substitution
+#     is restored when safe and reported as contamination/non-success; partial
+#     cleanup and restoration failures are explicit. This does not claim protection
+#     against a continuously racing same-UID attacker. Request translation and
+#     /health schema are unchanged. SHIM_VERSION -> 1.3.18.
+#   v1.3.17 (2026-08-08): Tighten seven lifecycle-manager invariants.
+#     Supervisor capabilities and helper records are exact-schema; locked actions
+#     adjudicate stable typed PID roles before health or mutation and remain fail-closed
+#     after later uncertainty; TERM-to-KILL escalation binds the serving process start
+#     time; append failure consistently exits 43; and inode cleanup finds arbitrary
+#     same-parent workspace renames without deleting replacements. Request translation
+#     and /health schema are unchanged. SHIM_VERSION -> 1.3.17.
+#   v1.3.16 (2026-08-07): Complete capability-bound lifecycle hardening.
+#     Standard-library typed PID reads now use no-follow, nonblocking descriptor and
+#     path identity checks; stream workspaces carry inode/nonce capabilities through
+#     readiness and supervisor cleanup; bounded diagnostic children are identity-
+#     verified and reaped; restart-result state is monotonic with successful append
+#     as the irreversible commit boundary; and INT/TERM/HUP handlers remain queue-only
+#     through natural manager exit. Request translation and /health schema are
+#     unchanged. SHIM_VERSION -> 1.3.16.
+#   v1.3.15 (2026-08-06): Close reviewed lifecycle-manager commit/read cleanup gaps.
+#     Authoritative restart records are independent of fallible stderr presentation;
+#     PID-decoder failures fail closed; committed signal semantics survive lock release;
+#     and foreground stream ownership persists through strict readiness. Pre-append
+#     interruption diagnostics now distinguish persisted=no from genuinely unknown.
+#     Request translation and /health schema are unchanged. SHIM_VERSION -> 1.3.15.
+#   v1.3.14 (2026-08-06): Complete reviewed lifecycle-manager race hardening.
+#     Signal-handler restoration is lossless, durable READY is the restart commit
+#     boundary, process identity is positional and role-specific, partial stream
+#     allocations are reclaimable immediately, PID parsing is byte-exact, and the
+#     no-setsid control is test-mode-only. Request translation and /health schema
+#     are unchanged. SHIM_VERSION -> 1.3.14.
+#   v1.3.13 (2026-08-05): Close reviewed lifecycle-manager launch/read hazards.
+#     INT/TERM/HUP are queued across background launch-to-PID handoff and replayed
+#     only after the exact supervisor PID is known; the foreground manager now
+#     preallocates and retains a private stream-workspace capability so it can
+#     reclaim setup state if that supervisor dies before PID publication; and PID
+#     reads reject symlinks/special files, validate the opened descriptor identity,
+#     and bound the first line. Request translation and /health schema are unchanged.
+#     SHIM_VERSION -> 1.3.13.
+#   v1.3.12 (2026-08-04): Harden lifecycle-manager state transitions.
+#     Stable private lock directories now use kernel flock descriptors with no stale-
+#     owner deletion; start/auto interruption cleans direct and published launches while
+#     locked; supervisor teardown uses bounded identity-checked TERM-to-KILL escalation;
+#     and pre-validation setup failures remain stderr-only. Deterministic regressions cover
+#     process-death lock release, hostile owner metadata, launch interruption, resistant
+#     children, and rejected log-directory symlinks. Request translation is unchanged.
+#     SHIM_VERSION -> 1.3.12.
+#   v1.3.11 (2026-08-03): Harden lifecycle-manager stream setup and diagnostics.
+#     The manager now allocates a private, atomically unique FIFO directory per
+#     supervisor, cleans owned setup/state artifacts from the earliest failure
+#     point, and persists bounded setup and auto-start failure classifications.
+#     Shim request translation/runtime behavior is unchanged. SHIM_VERSION -> 1.3.11.
+#   v1.3.10 (2026-07-29): Default GPT response verbosity to "medium".
+#     SHIM_TEXT_VERBOSITY still accepts explicit low|medium|high overrides, but an
+#     unset, empty, whitespace-only, or invalid value now resolves to "medium".
+#     This balances decision-focused responses with DAAF's evidence requirements;
+#     reasoning effort and every other request field are unchanged. User-approved.
+#     SHIM_VERSION -> 1.3.10.
 #   v1.3.9 (2026-07-26): Canonical GPT service-tier request vocabulary.
 #     Both exact GPT shim backends now converge on the one OpenAI Responses wire value
 #     `service_tier:"priority"` for valid inbound Anthropic Fast and shim-global ON.
@@ -1008,15 +1069,15 @@
 #                           the other flags. The outbound payload ALWAYS carries
 #                           text:{"verbosity": <value>}. Valid values: low | medium
 #                           | high (case-insensitive; surrounding whitespace
-#                           trimmed). Default "high" — parity with DAAF's
-#                           warm/educational posture (same rationale as the
-#                           SHIM_REASONING_EFFORT "high" default). "high" adds
-#                           warmth/volume; "low" is terse. An unrecognized, empty,
-#                           or whitespace-only value logs ONE startup WARNING and
-#                           falls back to "high". Live-confirmed accepted by
-#                           gpt-5.6-sol on /v1/responses (high/low HTTP 200, probe
-#                           live_tests/18); "medium" is the documented middle value
-#                           (asserted in mock, not independently live-probed here).
+#                           trimmed). Default "medium" — a balanced response length
+#                           for decision-focused collaboration while preserving
+#                           DAAF's evidence requirements. "high" adds warmth/volume;
+#                           "low" is terse. An unrecognized, empty, or whitespace-only
+#                           value logs ONE startup WARNING and falls back to "medium".
+#                           Live-confirmed accepted by gpt-5.6-sol on /v1/responses
+#                           (high/low HTTP 200, probe live_tests/18); "medium" is the
+#                           documented middle value (asserted in mock, not
+#                           independently live-probed here).
 # =============================================================================
 
 import os
@@ -1047,7 +1108,7 @@ import httpx
 import uvicorn
 
 # --- Config ---
-SHIM_VERSION = "1.3.9"
+SHIM_VERSION = "1.3.18"
 SHIM_SERVICE_ID = "daaf-anthropic-openai-shim"
 
 SHIM_PORT = int(os.environ.get("SHIM_PORT", "4141"))
@@ -1169,9 +1230,9 @@ SHIM_REASONING_EFFORT = os.environ.get("SHIM_REASONING_EFFORT", "").strip() or N
 #   middle value and is treated as accepted here on that basis — it was NOT
 #   independently live-probed (the 18-probe exercised only default/high/low). If a
 #   backend later rejects "medium", drop it from _VERBOSITY_SUPPORTED. The default
-#   "high" is a user-locked posture choice for parity with DAAF Claude sessions.
+#   "medium" balances decision-focused responses with DAAF's evidence requirements.
 _VERBOSITY_SUPPORTED = frozenset({"low", "medium", "high"})
-_VERBOSITY_DEFAULT = "high"
+_VERBOSITY_DEFAULT = "medium"
 
 
 def _resolve_startup_verbosity():
@@ -1180,7 +1241,7 @@ def _resolve_startup_verbosity():
     #   value; WARNING + default for anything else) but as a startup-only, no-tier
     #   resolution since verbosity has a single source.
     # WARNING semantics: distinguish "var not set at all" (the common, deliberate
-    #   unset -> silent default "high") from "var IS set but to an invalid value,
+    #   unset -> silent default "medium") from "var IS set but to an invalid value,
     #   including an empty/whitespace-only string" (a misconfiguration the operator
     #   should see -> ONE WARNING, then default). A present-but-blank value is a
     #   config mistake, not an intentional unset, so it warns.
@@ -3599,7 +3660,7 @@ def _anthropic_to_responses_request(
     payload["reasoning"] = reasoning_obj
 
     # v1.2.4: ALWAYS carry response verbosity. text:{"verbosity": V} where V is the
-    # startup-resolved SHIM_TEXT_VERBOSITY (default "high").
+    # startup-resolved SHIM_TEXT_VERBOSITY (default "medium").
     # REASONING: verbosity is a whole-session posture (no inbound per-request signal
     #   exists on the Anthropic wire), so it is resolved once at startup and applied
     #   uniformly. text.verbosity is live-confirmed accepted by gpt-5.6-sol on

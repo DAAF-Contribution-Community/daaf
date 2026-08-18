@@ -33,6 +33,8 @@ Guide to understanding and using campus crime and fire safety data collected und
 > 3. **This skill documentation** -- convenient summary, may drift from codebook
 >
 > If this documentation contradicts the codebook, trust the codebook. If the codebook contradicts observed data, trust the data and investigate. Use `get_codebook_url()` from `fetch-patterns.md` to download codebooks.
+>
+> **Codebook coverage gap (verified 2026-08-07):** the mirrored csafety `.xls` codebook documents only 7 of the 13 data columns — the `bias` category and the 6 geographic offense counts — and omits `crime_type`, `year`, `unitid`, `inst_name`, `opeid`, and `fips`. For those 6 omitted columns the codebook is silent, so this skill's own data-verified variable documentation (see `./references/variable-definitions.md`) is the better authority; the "trust the codebook" step above applies only to columns the codebook actually covers.
 
 ## What is Campus Safety and Security Data?
 
@@ -336,7 +338,7 @@ For data NOT available in Portal mirrors (primary offenses, VAWA, arrests, fire 
 | Source | Relationship | When to Use |
 |--------|--------------|-------------|
 | `education-data-source-ipeds` | Institutional characteristics | Joining with IPEDS directory for enrollment, sector, control |
-| `education-data-explorer` | Parent discovery skill | Finding available endpoints |
+| `education-data-explorer` | Parent discovery skill | Routing questions to mirror dataset files |
 | `education-data-query` | Data fetching | Downloading parquet/CSV files |
 
 ## Topic Index

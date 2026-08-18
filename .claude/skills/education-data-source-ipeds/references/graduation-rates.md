@@ -391,6 +391,7 @@ transfer_adjusted <- grad_rate_150 + transfer_out_rate
 |-----------------|-------------|
 | `unitid` | Institution identifier |
 | `year` | Data year |
+| `fips` | State FIPS code |
 | `cohort_year` | Year the cohort entered |
 | `cohort_adj_150pct` | Adjusted cohort count (at 150% time) |
 | `cohort_rev` | Revised cohort count |
@@ -450,7 +451,7 @@ The following variable names appear in NCES documentation and raw IPEDS data fil
 
 ### Outcome Measures Variables (Portal Names — Verified)
 
-The outcome-measures dataset is available at path `ipeds/colleges_ipeds_outcome-measures` (2015-2022). Consult the codebook for full coded value definitions:
+The outcome-measures dataset is available at path `ipeds/colleges_ipeds_outcome-measures` (2015-2021 on the 2026q3 vintage; year 2022 is absent). Consult the codebook for full coded value definitions:
 
 ```python
 url = get_codebook_url("ipeds/codebook_colleges_ipeds_outcome-measures")
@@ -545,14 +546,20 @@ url <- paste0(mirror$root_url, "/", "ipeds/codebook_colleges_ipeds_outcome-measu
 ```python
 import polars as pl
 
-MIRROR = "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main"
-url = f"{MIRROR}/ipeds/colleges_ipeds_outcome-measures.parquet"
+# Mirror root + pinned revision (keep in sync with education-data-query
+# references/mirrors.yaml: HF root_url + vintage.hf_revision). "vintage" = a dated
+# Portal snapshot; "revision" = the HF git ref pinning byte-exact bytes.
+MIRROR = "https://huggingface.co/datasets/brhkim/education_data_portal_mirror_2026q3/resolve"
+REVISION = "0ad00ce0e232c96b0642459e4e7326607a8d26aa"  # immutable commit SHA of the v2 upload
+url = f"{MIRROR}/{REVISION}/ipeds/colleges_ipeds_outcome-measures.parquet"
 df = pl.read_parquet(url)
 
 # 8-year completion rates by enrollment intensity for first-time students
+# NOTE: outcome-measures content on this vintage ends at 2021 (covers 2015-2021);
+# there is no 2022 in this file, so filter the latest available year, 2021.
 om = (
     df.filter(
-        (pl.col("year") == 2022)
+        (pl.col("year") == 2021)
         & (pl.col("class_level") == 1)    # First-time
         & (pl.col("fed_aid_type") == 99)  # All aid types
         & (pl.col("ftpt").is_in([1, 2]))  # FT and PT separately
@@ -565,8 +572,12 @@ om = (
 library(arrow)
 library(dplyr)
 
-MIRROR <- "https://huggingface.co/datasets/brhkim/education_data_portal_mirror/resolve/main"
-url <- paste0(MIRROR, "/ipeds/colleges_ipeds_outcome-measures.parquet")
+# Mirror root + pinned revision (keep in sync with education-data-query
+# references/mirrors.yaml: HF root_url + vintage.hf_revision). "vintage" = a dated
+# Portal snapshot; "revision" = the HF git ref pinning byte-exact bytes.
+MIRROR <- "https://huggingface.co/datasets/brhkim/education_data_portal_mirror_2026q3/resolve"
+REVISION <- "0ad00ce0e232c96b0642459e4e7326607a8d26aa"  # immutable commit SHA of the v2 upload
+url <- paste0(MIRROR, "/", REVISION, "/ipeds/colleges_ipeds_outcome-measures.parquet")
 # NOTE: illustrative only — mirror parquet files are Polars-written and may
 # declare string_view columns, so a plain read can fail under R arrow
 # ("cannot handle Array of type <utf8_view>"). Real fetch scripts must use the
@@ -574,9 +585,11 @@ url <- paste0(MIRROR, "/ipeds/colleges_ipeds_outcome-measures.parquet")
 df <- read_parquet(url)
 
 # 8-year completion rates by enrollment intensity for first-time students
+# NOTE: outcome-measures content on this vintage ends at 2021 (covers 2015-2021);
+# there is no 2022 in this file, so filter the latest available year, 2021.
 om <- df |>
   filter(
-    year == 2022,
+    year == 2021,
     class_level == 1,
     fed_aid_type == 99,
     ftpt %in% c(1, 2)
