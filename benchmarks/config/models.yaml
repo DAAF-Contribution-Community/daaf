@@ -375,24 +375,48 @@ models:
   # ~19:27 UTC (results/20260812_192714_b6b8f1): still failing, but the mode
   # shifted from instant 400 rejection to a 502 upstream error after ~209s —
   # endpoint unstable rather than request-incompatible; keep waiting.
+  # Re-probe 2026-08-13 ~11:18 UTC (results/20260813_111747_d3c120): third
+  # distinct failure mode — HTTP 200 with an empty/malformed body after ~8s
+  # ($0 billed). Still not benchmark-viable.
   # Zero-cost preflight and
   # the registry route tests PASS for this key — only full-payload live
   # traffic fails, which is why the entry stays active rather than commented
   # out. Re-probe after the endpoint matures or additional providers pick up
   # the slug before running any battery. wire_id unobserved for the same reason (bare slug, so
   # comparison defaults to id when a run eventually succeeds).
-  - id: "qwen/qwen3.8-2.4t-a95b"
+  # ENDPOINT PINNED 2026-08-13 (user-approved): the slug grew from one
+  # provider to four overnight (digitalocean, deepinfra/fp4, modal/nvfp4,
+  # together — fetched 2026-08-13, archived in the FrameworkDev workspace).
+  # Pinned to modal/nvfp4: 100% uptime, 1M context (others 262k), 262k
+  # max_completion, disclosed quantization, same $2/$6 rates (cache read
+  # $0.25/M vs digitalocean's $0.20/M — cached_input updated accordingly).
+  # All four endpoints passed small-payload probes on the Anthropic-compat
+  # route 2026-08-13; digitalocean also passed those yesterday while failing
+  # every full benchmark payload, so small-probe health is necessary, not
+  # sufficient — the dc-01 wire probe below is the real gate.
+  - id: "qwen/qwen3.8-2.4t-a95b:modal/nvfp4"
+    # wire_id OBSERVED 2026-08-14 (results/20260814_174926_a06806: first
+    # SUCCESSFUL dc-01 run — all 10 criteria pass, purity verified,
+    # observed_child_model_ids_raw = ["qwen/qwen3.8-2.4t-a95b"] while the
+    # routing id carried the :modal/nvfp4 pin; $3.48, 407s). NOTE: the pin is
+    # a routing PREFERENCE with fallback, not a guarantee — direct probes
+    # 2026-08-13 observed pinned requests served by DeepInfra and
+    # DigitalOcean; verify actual serving provider via billing provider_name
+    # at reconciliation. Entry remains display-quarantined
+    # (retired_display_exclusions) until the full 3-rep battery lands per the
+    # exactly-3 contract (README § Adding a New Model step 7b).
+    wire_id: "qwen/qwen3.8-2.4t-a95b"
     name: "Qwen 3.8 2.4T A95B"
     provider: openrouter
     cost_tier: "medium"
     pricing:
       input: 2.00
       output: 6.00
-      cached_input: 0.20
+      cached_input: 0.25
     env_overrides:
-      ANTHROPIC_DEFAULT_OPUS_MODEL: "qwen/qwen3.8-2.4t-a95b"
-      ANTHROPIC_DEFAULT_SONNET_MODEL: "qwen/qwen3.8-2.4t-a95b"
-      CLAUDE_CODE_SUBAGENT_MODEL: "qwen/qwen3.8-2.4t-a95b"
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "qwen/qwen3.8-2.4t-a95b:modal/nvfp4"
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "qwen/qwen3.8-2.4t-a95b:modal/nvfp4"
+      CLAUDE_CODE_SUBAGENT_MODEL: "qwen/qwen3.8-2.4t-a95b:modal/nvfp4"
 
   - id: "google/gemma-4-31b-it:venice/bf16"
     # wire_id OBSERVED 2026-07-26 (results/20260726_003234, 3 reps: purity
