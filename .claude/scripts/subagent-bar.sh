@@ -75,7 +75,7 @@ C_BAR_EMPTY=$'\033[38;5;238m'
 # thresholds are quality-tier conditional (see the per-row severity block near
 # the bottom of the loop): Fable/Mythos patterns use ELEVATED >= 30% OR >= 300k,
 # HIGH >= 40% OR >= 400k, and CRITICAL >= 50% OR >= 500k. Exact terminal GPT
-# 5.6 Sol slugs use standard 40%/60%/75% percentage gates while retaining the
+# 5.6 Sol slugs use 60%/75%/90% percentage gates while retaining the
 # larger 300k/400k/500k absolute gates. Every other model — including Opus,
 # Sonnet, other GPT variants, GLM, and unknown ids — uses ELEVATED >= 40% OR >=
 # 150k, HIGH >= 60% OR >= 200k, and CRITICAL >= 75% OR >= 250k. Each severity
@@ -446,7 +446,7 @@ while IFS=$'\x1f' read -r id type name status tokens label; do
     # Threshold tier (percentage AND absolute k-token gates per severity), keyed
     # on the measured agent's model. Fable/Mythos keep the validated 30/40/50%
     # extended-horizon gates plus 300/400/500k absolute gates. Exact GPT 5.6 Sol
-    # ids use standard 40/60/75% gates while retaining 300/400/500k absolutes.
+    # ids use 60/75/90% gates while retaining 300/400/500k absolutes.
     # Everything else — INCLUDING opus-4-8[1m], whose 1M window does NOT relax
     # its Opus-class quality horizon — gets 40/60/75% plus 150/200/250k. GPT Sol
     # matching accepts the bare slug or a provider path only when its final
@@ -461,7 +461,7 @@ while IFS=$'\x1f' read -r id type name status tokens label; do
             elev_pct=30; high_pct=40; crit_pct=50
             elev_k=300;  high_k=400;  crit_k=500 ;;
         gpt-5.6-sol|*/gpt-5.6-sol|gpt-5.6-sol\[1m\]|*/gpt-5.6-sol\[1m\])
-            elev_pct=40; high_pct=60; crit_pct=75
+            elev_pct=60; high_pct=75; crit_pct=90
             elev_k=300;  high_k=400;  crit_k=500 ;;
         *)
             elev_pct=40; high_pct=60; crit_pct=75

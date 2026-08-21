@@ -288,3 +288,14 @@ After completing any component checklist above, run these universal verification
 | CC6 | No orphaned components | Every new file is referenced by at least one other file |
 | CC7 | No stale references | If anything was renamed or removed, old names don't appear elsewhere |
 | CC8 | Code examples and prompt templates swept | Extends CC7: the stale-reference sweep must also grep for the old pattern *inside* fenced code blocks, invocation templates, and prompt templates, not just prose. Examples silently teach stale conventions if missed |
+
+### Context-Threshold Profile Modifications
+
+When changing a model-specific context-threshold profile:
+
+- Keep `context-reporter.sh` and `subagent-bar.sh` profile assignments and adjacent comments in lockstep.
+- Preserve the separation between profile membership, physical-window mapping, and provider route caps unless the approved change explicitly targets more than the profile.
+- Add just-below/at boundary matrices for every changed percentage gate, retain full-window absolute-gate controls, and add a non-default-denominator matrix proving profile-wide behavior.
+- Retain negative controls for neighboring models, malformed/future identifiers, unknown models, and any model families intentionally left conservative.
+- Synchronize the canonical threshold reference, operational/user documentation, mode references, and every reproduced derived token boundary.
+- For protected runtime files, draft in a session workspace, test the drafts through the suites' script-under-test seams, have the user deploy them, then verify byte identity, executable mode, registrations, and post-deployment regressions.

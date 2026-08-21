@@ -4,8 +4,8 @@
 # ============================================================================
 # Focus: the model-conditional Context Quality Curve threshold tiers in
 # calculate(). Fable/Mythos use ELEVATED 30%/300k, HIGH 40%/400k, and
-# CRITICAL 50%/500k. Exact GPT 5.6 Sol ids use ELEVATED 40%/300k, HIGH
-# 60%/400k, and CRITICAL 75%/500k. Every other model -- including
+# CRITICAL 50%/500k. Exact GPT 5.6 Sol ids use ELEVATED 60%/300k, HIGH
+# 75%/400k, and CRITICAL 90%/500k. Every other model -- including
 # opus-4-8[1m] and non-exact Sol variants -- uses ELEVATED 40%/150k, HIGH
 # 60%/200k, and CRITICAL 75%/250k.
 #
@@ -212,7 +212,7 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
 }
 
 # =========================================================================
-# GPT 5.6 Sol exact tier: 1.05M window, standard percentages + retained absolutes
+# GPT 5.6 Sol exact tier: independent percentages + retained absolutes
 # =========================================================================
 
 @test "GPT 5.6 Sol: 299k on 1050k window is NOMINAL" {
@@ -251,16 +251,16 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
     assert_output --partial "500k / 1050k"
 }
 
-@test "exact Sol ChatGPT boundaries use 40/60/75% on the final 370k denominator" {
+@test "exact Sol ChatGPT boundaries use 60/75/90% on the final 370k denominator" {
     local boundary tokens expected_severity expected_pct
     _seed_window 1050000
     for boundary in \
-        "147999 NOMINAL 39" \
-        "148000 ELEVATED 40" \
-        "221999 ELEVATED 59" \
-        "222000 HIGH 60" \
-        "277499 HIGH 74" \
-        "277500 CRITICAL 75"; do
+        "221999 NOMINAL 59" \
+        "222000 ELEVATED 60" \
+        "277499 ELEVATED 74" \
+        "277500 HIGH 75" \
+        "332999 HIGH 89" \
+        "333000 CRITICAL 90"; do
         read -r tokens expected_severity expected_pct <<< "$boundary"
         rm -f "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-ctx-ts-${FAKE_SESSION}"
         _write_main_transcript "${TEST_DIR}/t.jsonl" "gpt-5.6-sol" "$tokens"
@@ -269,6 +269,28 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
         assert_success
         assert_output --partial "[${expected_severity}]"
         assert_output --partial "/ 370k tokens (${expected_pct}%)"
+    done
+}
+
+@test "exact Sol profile-wide boundaries use 60/75/90% on a non-ChatGPT 400k denominator" {
+    local boundary tokens expected_severity expected_pct
+    # A 400k denominator isolates all three percentage gates below the retained
+    # 300k/400k/500k absolute gates, so no absolute leg can mask a transition.
+    _seed_window 400000
+    for boundary in \
+        "239999 NOMINAL 59" \
+        "240000 ELEVATED 60" \
+        "299999 ELEVATED 74" \
+        "300000 HIGH 75" \
+        "359999 HIGH 89" \
+        "360000 CRITICAL 90"; do
+        read -r tokens expected_severity expected_pct <<< "$boundary"
+        rm -f "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-ctx-ts-${FAKE_SESSION}"
+        _write_main_transcript "${TEST_DIR}/t.jsonl" "openai/gpt-5.6-sol[1m]" "$tokens"
+        run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
+        assert_success
+        assert_output --partial "[${expected_severity}]"
+        assert_output --partial "/ 400k tokens (${expected_pct}%)"
     done
 }
 
@@ -560,14 +582,14 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
 # unchanged. Physical-window accounting stays separate from Sol's quality tier.
 # =========================================================================
 
-@test "chatgpt lane: exact Sol main session at 290k is CRITICAL against final 370k cap" {
+@test "chatgpt lane: exact Sol main session at 290k is HIGH against final 370k cap" {
     _seed_window 1050000
     _write_main_transcript "${TEST_DIR}/t.jsonl" "gpt-5.6-sol[1m]" 290000
 
     run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
         bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
     assert_success
-    assert_output --partial "[CRITICAL]"
+    assert_output --partial "[HIGH]"
     assert_output --partial "290k / 370k"
     assert_output --partial "(78%)"
 }
@@ -584,7 +606,7 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
     assert_output --partial "(27%)"
 }
 
-@test "statusline writer-to-reporter path caches 370k and reports Sol 290k CRITICAL" {
+@test "statusline writer-to-reporter path caches 370k and reports Sol 290k HIGH" {
     _write_main_transcript "${TEST_DIR}/t.jsonl" "gpt-5.6-sol[1m]" 290000
 
     run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
@@ -601,7 +623,7 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
         CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000 \
         bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
     assert_success
-    assert_output --partial "[CRITICAL]"
+    assert_output --partial "[HIGH]"
     assert_output --partial "290k / 370k"
 }
 
@@ -632,7 +654,7 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
     run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
         bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
     assert_success
-    assert_output --partial "[CRITICAL]"
+    assert_output --partial "[HIGH]"
     assert_output --partial "290k / 370k"
     assert_output --partial "(78%)"
 }
@@ -649,7 +671,7 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
         CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000 \
         bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
     assert_success
-    assert_output --partial "[CRITICAL]"
+    assert_output --partial "[HIGH]"
     assert_output --partial "290k / 370k"
 }
 

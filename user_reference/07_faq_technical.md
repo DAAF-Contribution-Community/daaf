@@ -996,7 +996,7 @@ The exact trigger points vary by model — DAAF detects which model you're runni
 | Profile | ELEVATED at | HIGH at | CRITICAL at |
 |---------|-------------|---------|-------------|
 | Validated extended-horizon (Claude Fable/Mythos) | ≥ 30% or ≥ 300k tokens | ≥ 40% or ≥ 400k tokens | ≥ 50% or ≥ 500k tokens |
-| Exact GPT 5.6 Sol | ≥ 40% or ≥ 300k tokens | ≥ 60% or ≥ 400k tokens | ≥ 75% or ≥ 500k tokens |
+| Exact GPT 5.6 Sol | ≥ 60% or ≥ 300k tokens | ≥ 75% or ≥ 400k tokens | ≥ 90% or ≥ 500k tokens |
 | Conservative-default (everything else) | ≥ 40% or ≥ 150k tokens | ≥ 60% or ≥ 200k tokens | ≥ 75% or ≥ 250k tokens |
 
 When you see CRITICAL, it means Claude's context window is nearly full and continuing would degrade the quality of its work. This is by design -- DAAF would rather stop and restart cleanly than continue with increasingly unreliable output.

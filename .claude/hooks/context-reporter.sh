@@ -5,7 +5,7 @@
 # conversation so the model can make informed decisions about delegation, state
 # persistence, and session recovery (see CLAUDE.md utilization gates — the
 # thresholds are quality-tier conditional: Fable/Mythos use 30%/40%/50% OR
-# 300k/400k/500k; exact GPT 5.6 Sol ids use 40%/60%/75% OR
+# 300k/400k/500k; exact GPT 5.6 Sol ids use 60%/75%/90% OR
 # 300k/400k/500k; all other models use 40%/60%/75% OR 150k/200k/250k,
 # whichever fires first; see calculate() below).
 #
@@ -64,7 +64,7 @@
 #   measured — main-session measurements use the session model; subagent
 #   measurements use that subagent's own model. Fable/Mythos patterns get the
 #   validated extended-horizon tier (30/40/50% OR 300/400/500k). The exact
-#   terminal GPT slugs gpt-5.6-sol and gpt-5.6-sol[1m] use standard 40/60/75%
+#   terminal GPT slugs gpt-5.6-sol and gpt-5.6-sol[1m] use 60/75/90%
 #   gates while retaining 300/400/500k absolute gates. Provider paths are
 #   accepted only when one of those exact slugs is the final path segment. All
 #   other models (Opus, Sonnet, other GPT variants, GLM, unknown/empty) get the
@@ -434,7 +434,7 @@ calculate() {
 
     # Quality-tier matching deliberately remains narrower than physical-family
     # matching. Fable/Mythos keep the validated extended-horizon percentage and
-    # absolute gates; exact terminal Sol slugs use standard percentage gates
+    # absolute gates; exact terminal Sol slugs use 60/75/90% percentage gates
     # while retaining the larger absolute gates.
     local elev_pct high_pct crit_pct elev_k high_k crit_k
     case "$model" in
@@ -442,7 +442,7 @@ calculate() {
             elev_pct=30; high_pct=40; crit_pct=50
             elev_k=300;  high_k=400;  crit_k=500 ;;
         gpt-5.6-sol|*/gpt-5.6-sol|gpt-5.6-sol\[1m\]|*/gpt-5.6-sol\[1m\])
-            elev_pct=40; high_pct=60; crit_pct=75
+            elev_pct=60; high_pct=75; crit_pct=90
             elev_k=300;  high_k=400;  crit_k=500 ;;
         *)
             elev_pct=40; high_pct=60; crit_pct=75

@@ -5,7 +5,7 @@
 # Focus: the model-conditional Context Quality Curve threshold tiers that drive
 # each row's severity COLOR. Fable/Mythos use ELEVATED 30%/300k, HIGH
 # 40%/400k, and CRITICAL 50%/500k. Exact GPT 5.6 Sol rows use ELEVATED
-# 40%/300k, HIGH 60%/400k, and CRITICAL 75%/500k. Every other model --
+# 60%/300k, HIGH 75%/400k, and CRITICAL 90%/500k. Every other model --
 # including opus-4-8[1m] and non-exact Sol variants -- uses ELEVATED 40%/150k,
 # HIGH 60%/200k, and CRITICAL 75%/250k.
 #
@@ -176,7 +176,7 @@ _append_subbar_model() {
 }
 
 # =========================================================================
-# GPT 5.6 Sol exact tier: 1.05M window, standard percentages + retained absolutes
+# GPT 5.6 Sol exact tier: independent percentages + retained absolutes
 # =========================================================================
 
 @test "GPT 5.6 Sol row: different-model correction maps 299k to 1050k and NOMINAL" {
@@ -229,18 +229,18 @@ _append_subbar_model() {
     assert_output --partial "28%"
 }
 
-@test "exact Sol ChatGPT row boundaries use 40/60/75% on the final 370k denominator" {
+@test "exact Sol ChatGPT row boundaries use 60/75/90% on the final 370k denominator" {
     local boundary tokens expected_severity expected_pct expected_color
     _seed_window 1050000
     _seed_session_model "claude-sonnet-4-6"
     _seed_task_model "t1" "gpt-5.6-sol"
     for boundary in \
-        "147999 NOMINAL 39" \
-        "148000 ELEVATED 40" \
-        "221999 ELEVATED 59" \
-        "222000 HIGH 60" \
-        "277499 HIGH 74" \
-        "277500 CRITICAL 75"; do
+        "221999 NOMINAL 59" \
+        "222000 ELEVATED 60" \
+        "277499 ELEVATED 74" \
+        "277500 HIGH 75" \
+        "332999 HIGH 89" \
+        "333000 CRITICAL 90"; do
         read -r tokens expected_severity expected_pct <<< "$boundary"
         case "$expected_severity" in
             NOMINAL) expected_color="$COLOR_NOMINAL" ;;
@@ -250,6 +250,34 @@ _append_subbar_model() {
         esac
         run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
             bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" "$tokens")
+        assert_success
+        assert_output --partial "$expected_color"
+        assert_output --partial "${expected_pct}%"
+    done
+}
+
+@test "exact Sol profile-wide row boundaries use 60/75/90% on a non-ChatGPT 400k denominator" {
+    local boundary tokens expected_severity expected_pct expected_color
+    # A 400k denominator isolates all three percentage gates below the retained
+    # 300k/400k/500k absolute gates, so no absolute leg can mask a transition.
+    _seed_window 400000
+    _seed_session_model "gpt-5.6-sol[1m]"
+    _seed_task_model "t1" "gpt-5.6-sol[1m]"
+    for boundary in \
+        "239999 NOMINAL 59" \
+        "240000 ELEVATED 60" \
+        "299999 ELEVATED 74" \
+        "300000 HIGH 75" \
+        "359999 HIGH 89" \
+        "360000 CRITICAL 90"; do
+        read -r tokens expected_severity expected_pct <<< "$boundary"
+        case "$expected_severity" in
+            NOMINAL) expected_color="$COLOR_NOMINAL" ;;
+            ELEVATED) expected_color="$COLOR_ELEVATED" ;;
+            HIGH) expected_color="$COLOR_HIGH" ;;
+            CRITICAL) expected_color="$COLOR_CRITICAL" ;;
+        esac
+        run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" "$tokens")
         assert_success
         assert_output --partial "$expected_color"
         assert_output --partial "${expected_pct}%"
@@ -452,14 +480,14 @@ _append_subbar_model() {
 # are required; API/OpenRouter routes and non-GPT rows retain ordinary behavior.
 # =========================================================================
 
-@test "chatgpt lane: exact Sol at 290k is CRITICAL red on the final 370k row window" {
+@test "chatgpt lane: exact Sol at 290k is HIGH orange on the final 370k row window" {
     _seed_window 200000
     _seed_session_model "claude-sonnet-4-6"
     _seed_task_model "t1" "gpt-5.6-sol"
     run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
         bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 290000)
     assert_success
-    assert_output --partial "$COLOR_CRITICAL"
+    assert_output --partial "$COLOR_HIGH"
     assert_output --partial "78%"
     refute_output --partial "27%"
 }
@@ -483,7 +511,7 @@ _append_subbar_model() {
     run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
         bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 290000)
     assert_success
-    assert_output --partial "$COLOR_CRITICAL"
+    assert_output --partial "$COLOR_HIGH"
     assert_output --partial "78%"
 }
 
@@ -519,7 +547,7 @@ _append_subbar_model() {
         CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000 \
         bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 290000)
     assert_success
-    assert_output --partial "$COLOR_CRITICAL"
+    assert_output --partial "$COLOR_HIGH"
     assert_output --partial "78%"
     refute_output --partial "27%"
 }
