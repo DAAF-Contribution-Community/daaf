@@ -103,6 +103,10 @@ POST_SNAPSHOT_OPENROUTER_ADDITIONS = {
     # Added 2026-08-12 (day-of-release): Qwen 3.8 2.4T A95B (bare slug,
     # single digitalocean endpoint at listing time).
     "qwen-38-24t-a95b",
+    # Added 2026-08-20: Qwen 3.8 27B (qwen/qwen3.8-27b:venice/fp8 pin) and
+    # GLM 5.3 (z-ai/glm-5.3 bare slug, single Z.AI endpoint at listing time).
+    "qwen-38-27b",
+    "glm-53",
 }
 
 # Anthropic keys added after the PREEXISTING snapshot (opus-5 added 2026-07-25
@@ -238,13 +242,14 @@ class ModelRegistryTests(unittest.TestCase):
 
     def test_provider_filter_adds_chatgpt_without_changing_existing_counts(self):
         models = self.load_all()
-        self.assertEqual(39, len(models))
+        self.assertEqual(41, len(models))
         # 8 preexisting + opus-5 (added 2026-07-25 for the Opus 5 evaluation).
         self.assertEqual(9, len(filter_models(models, provider="anthropic")))
         # 16 preexisting + Kimi K3 + four later Gemini additions + DeepSeek V4
         # Flash 0731 (2026-08-02) + the Inkling pair (2026-08-10) + Grok 4.6,
-        # DeepSeek V4 Pro 0813, and Qwen 3.8 2.4T A95B (2026-08-12).
-        self.assertEqual(27, len(filter_models(models, provider="openrouter")))
+        # DeepSeek V4 Pro 0813, and Qwen 3.8 2.4T A95B (2026-08-12) + Qwen 3.8
+        # 27B and GLM 5.3 (2026-08-20).
+        self.assertEqual(29, len(filter_models(models, provider="openrouter")))
         # Luna + Terra + Sol on the ChatGPT-subscription lane (2026-07-17).
         self.assertEqual(3, len(filter_models(models, provider="chatgpt-subscription")))
 

@@ -519,20 +519,22 @@ def resolve_paths(args):
 #     the v3.7.0 rate_agree agreement field stays in the payload but has no
 #     display consumer.
 #     Span contract:
-#     27 kt-* spans — 26 in the #takeaways section + kt-foot-bat, which
+#     36 kt-* spans — 35 in the #takeaways section + kt-foot-bat, which
 #     since the 2026-06-12 user fine-tuning round lives in the About Key
 #     Caveats cost caveat (the kt-foot paragraph itself was removed; its
-#     content was folded into the About caveats). The 26 #takeaways spans
-#     (2026-08-12 Grok refresh): T1 kt-t1-{fable,opus5,opus5cost,grok,sol,
-#     kimi} (6); T2 the five frontier points
-#     kt-fr-{gemma,luna,sonnet5,grok,fable}-{s,c} (10 — Grok 4.6 joined the
-#     frontier, displacing GPT-5.6 Sol and DeepSeek V4 Flash 0731, whose
-#     kt-fr span pairs were retired); T3
+#     content was folded into the About caveats). The 35 #takeaways spans
+#     (2026-08-21 Qwen 3.8 / GLM 5.3 refresh): T1 kt-t1-{fable,opus5,
+#     opus5cost,grok,sol,sonnet5,glm53,qwen24t,kimi} (9); T2 the six
+#     frontier points kt-fr-{gemma,luna,sonnet5,glm53,grok,fable}-{s,c}
+#     (12 — GLM 5.3 joined the frontier 2026-08-21); T3
 #     kt-t3-{lunapct,lunacost,solpct,solcost,lastmult} (5); T4
 #     kt-t4-{topcons,budgetcons} (2, renamed from -{topagree,budgetagree}
 #     in v3.7.3 with the switch to the all-perfect rate); T5
-#     kt-t5-{glm,glmcost,kimi} (3).
-#     History: 28 (27 + kt-foot-bat) v3.7.0 through 2026-08-11; 22 (21 +
+#     kt-t5-{glm53,glm53cost,qwen24t,kimi,qwen27b-s,qwen27b-c,glm52cost}
+#     (7 — rebuilt 2026-08-21 around the open-weights top tier; the GLM 5.2
+#     self-hosting pair kt-t5-{glm,glmcost} was retired with the prose).
+#     History: 27 (26 + kt-foot-bat) 2026-08-12 through 2026-08-20; 28
+#     (27 + kt-foot-bat) v3.7.0 through 2026-08-11; 22 (21 +
 #     kt-foot-bat) from 2026-06-12 through v3.6.x, 29 before
 #     the 2026-06-12 e099982 repair pass, 31 originally. Every kt-* span must
 #     have a fillTakeaways() setter and every setter a live span; verify

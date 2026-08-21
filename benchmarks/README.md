@@ -32,14 +32,14 @@ and still score poorly here if it skips confirmation gates or dispatches
 free-form prompts. Conversely, a weaker model that faithfully follows protocol
 scores well.
 
-**Model matrix:** 39 registry entries across three explicit providers. The
+**Model matrix:** 41 registry entries across three explicit providers. The
 matrix is defined in `config/models.yaml`; provider labels describe the measured
 route, not interchangeable billing aliases.
 
 | Provider | Entries | Route and accounting basis |
 |----------|--------:|----------------------------|
 | `anthropic` | 9 | Claude Code subscription route for Haiku 4.5, Sonnet 4.6/5, Opus 4.5/4.6/4.7/4.8/5, and Fable 5 |
-| `openrouter` | 27 | OpenRouter's Anthropic-compatible endpoint; includes GLM, Kimi, Qwen, Gemma, DeepSeek, Gemini, Nemotron, Inkling, Grok, and GPT entries |
+| `openrouter` | 29 | OpenRouter's Anthropic-compatible endpoint; includes GLM, Kimi, Qwen, Gemma, DeepSeek, Gemini, Nemotron, Inkling, Grok, and GPT entries |
 | `chatgpt-subscription` | 3 | Local provider shim to the deployed ChatGPT/Codex subscription backend for GPT-5.6 Luna, Terra, and Sol; included-capacity billing and separate API-equivalent accounting |
 
 GPT-5.6 Luna, Terra, and Sol each have deliberately distinct OpenRouter and
@@ -611,10 +611,14 @@ next, more expensive one.
    `scratch/verify_rep_counts_2026-08-12.py` (2026-08-12: 33 models x 51
    cases, 1 deviation found and topped up).
 
-8. **Regenerate the viewer bundle** with
-   `scripts/generate_results_viewer_v2.py` (§ 8) so the new model joins the leaderboard
-   and cost/performance surfaces. Filenames auto-increment and never overwrite prior
-   bundles.
+8. **Update the changelog, then regenerate the viewer bundle.** Add a dated
+   entry to `benchmarks/CHANGELOG.md` FIRST (format contract under **Viewer
+   design → Changelog**; a Models line naming the addition is usually
+   sufficient — narrative/scoring changes are implied by the takeaways
+   themselves), because the generator embeds the changelog into the bundle at
+   build time. Then run `scripts/generate_results_viewer_v2.py` (§ 8) so the
+   new model joins the leaderboard and cost/performance surfaces. Filenames
+   auto-increment and never overwrite prior bundles.
 
 8b. **Editorial review — narrative, Key Takeaways, and headline writing
    (mandatory).** The viewer's injected figures track the data automatically;
@@ -632,6 +636,14 @@ next, more expensive one.
    (Precedent: the 2026-08-12 Grok 4.6 onboarding moved the frontier from six
    models to five and touched the hero, T1, T2, and T5 — all ratified
    step-by-step in-session.)
+   **Tier and frontier membership are recomputed mechanically at every
+   regeneration** (`PRECOMPUTED.tiers`, `PRECOMPUTED.cost.frontiers`) — the
+   data is never stale, but the prose is. As part of this review, extract the
+   fresh Tier 1 list and efficiency-frontier set from the new bundle and diff
+   them against every prose list that names members (hero bottom line, T1,
+   T2, T5). Membership changes are the most common source of stale claims
+   (precedents: 2026-08-12 frontier six→five; 2026-08-21 frontier five→six
+   plus a three-model Tier 1 expansion).
 
 9. **(Optional) Retire a superseded entry.** There is no schema retirement flag —
    **comment out the entry's block** in `config/models.yaml` with a dated
@@ -1236,6 +1248,26 @@ counterfactual figures are never mistaken for invoiced spend. Note the basis
 labels (`corpus-live` / `billing-snapshot-*` / `api-equivalent`) name each
 model's **token-mix provenance** — the dollar normalization is always
 uncached list rates, never invoiced dollars.
+
+**Positively-identified attribution basis (2026-08-21).** The OpenRouter
+token mix is a **clean-set covered-run** basis: a billing row enters
+`billed_tokens` only when its timestamp falls inside the transcript window
+(±120s) of at least one **in-corpus, non-timed-out** run of the same model,
+and `n_covered_runs` counts the distinct such runs that received ≥1 row.
+Rows matching multiple same-model runs (concurrent waves) are retained in
+full — ambiguity within a clean candidate set cannot misattribute cost at
+the model level. Strict one-row-one-run identification is deliberately NOT
+used: measured 2026-08-21, it discards 55-100% of attributed rows as a
+non-random (non-concurrent-biased) slice and breaks entirely for two
+models. Quarantined and out-of-corpus runs never load, so their spend falls
+into the reconciler's **orphan** pool and is excluded from the estimate by
+construction; timed-out runs are excluded from attribution candidacy by an
+explicit guard in `reconcile_openrouter_costs.py` (structural since
+2026-08-21 — previously emergent via the 0-turn window strip; verified a
+numeric no-op on the 2026-08-21 corpus, all 25 models exactly equal).
+Orphan spend is disclosed in the reconciliation JSON; a large orphan pool
+for a model means real spend outside the display corpus (personal use,
+probes), not a gap in the corpus estimate.
 
 **Battery timeout-exclusion fix (2026-06-18, generator v3.1.2).** Prior
 to this fix, Anthropic token averages included timed-out runs (zeroed

@@ -5,6 +5,15 @@ report — new models, pricing updates, scoring changes, display refinements,
 and corpus hygiene. Newest entries first. Dates are the day each change landed
 in the public report.
 
+## 2026-08-21
+
+- **Models** Added Qwen 3.8 27B, Qwen 3.8 2.4T A95B, and Z.AI GLM 5.3, each
+  with the full test battery.
+- **Pricing** Re-priced Qwen 3.8 27B to the provider that actually served its
+  test runs (billing showed the original routing preference was mostly
+  bypassed); its cost estimate rose accordingly. Qwen 3.8 2.4T A95B was
+  re-routed the same way at identical prices, so its costs are unchanged.
+
 ## 2026-08-12
 
 - **Models** Added xAI Grok 4.6 and DeepSeek V4 Pro (0813). The preview

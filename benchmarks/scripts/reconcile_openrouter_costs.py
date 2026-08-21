@@ -361,6 +361,17 @@ def attribute_rows(rows, runs, tol_s):
     for i, r in enumerate(runs):
         if r["provider"] != "openrouter" or r["start"] is None:
             continue
+        # Timed-out runs carry no gradeable signal and are excluded from every
+        # display surface, so their billing must never enter the attributed
+        # token/cost pools that feed the battery-cost basis. On the 2026-08-21
+        # corpus this exclusion is a numeric no-op (every timed-out run is a
+        # 0-turn fixture-stalled record whose window is already stripped, so
+        # it captures zero rows — verified 2026-08-21, scoping probe), but a
+        # future timed-out run WITH real turns would have a live transcript
+        # window and would silently leak billing into the basis. This guard
+        # makes the clean-set invariant structural instead of emergent.
+        if r.get("timed_out"):
+            continue
         runs_by_base.setdefault(
             base_slug_from_model_id(r["model_id"]), []).append(i)
 

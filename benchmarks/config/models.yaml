@@ -272,6 +272,50 @@ models:
       ANTHROPIC_DEFAULT_SONNET_MODEL: "z-ai/glm-5.2"
       CLAUDE_CODE_SUBAGENT_MODEL: "z-ai/glm-5.2"
 
+  # Added 2026-08-20 (day-of-release onboarding). Verified online 2026-08-20
+  # from GET /api/v1/models/z-ai/glm-5.3/endpoints (raw archived:
+  # research/2026-08-20_FrameworkDev_DAAFBenchQwenGLM/fetches/): single endpoint
+  # (provider Z.AI, tag z-ai/fp8, quantization fp8, context_length 1048576,
+  # max_completion 131072, uptime_last_30m 99.9956%). List rates prompt $1.40/M,
+  # completion $4.40/M, input_cache_read $0.26/M (identical to GLM 5.2). Single
+  # upstream provider as of access date, so no ":provider" pin suffix exists —
+  # bare slug is correct (Kimi K3 / GLM 5.2 precedent); wire_id omitted
+  # (comparison defaults to id). Rates are published list prices, provisional
+  # until billing reconciliation; day-zero listing warrants a re-check once more
+  # providers pick up the slug (a cheaper endpoint appearing later would NOT move
+  # this entry without a deliberate re-pin decision).
+  #
+  # PRICING RECONCILED 2026-08-21: list rates RETAINED
+  # (derived/openrouter_reconciliation_2026-08-21.json; combined activity export
+  # openrouter_activity_combined_2026-08-21.csv, 39,450 deduped rows; 156 covered
+  # runs, billed $61.98, all rows served by Z.AI). obs/pred = 0.33 trips the
+  # |obs/pred-1| >= 0.26 review flag, but for a cache-heavy model that is EXPECTED
+  # and is NOT a rate-error signal: the DAAFBench cost model does NOT model cache
+  # discounts by convention. It is computed on an UNCACHED basis — README
+  # § "Battery-cost metric": est_cost is "(input tokens x list input rate + output
+  # tokens x list output rate) / 1e6, on an uncached basis (every token at full
+  # list rates, no cache discounts ...)"; the reconciler's predictor
+  # (reconcile_openrouter_costs.py L556) likewise charges every prompt token at
+  # the full input rate and ignores cached_input. Meanwhile 89.4% of GLM 5.3's
+  # billed prompt tokens (110.7M of 123.9M) are cache reads that actually bill at
+  # cached_input 0.26, so the uncached predictor structurally over-predicts and
+  # obs/pred < 1 follows mechanically — it does not indicate a wrong list rate.
+  # This mirrors the retained GLM 5.2 precedent at these identical rates (README:
+  # "GLM 5.2 obs/pred billing ratio 0.70 (caching benefit from sequential runs)").
+  # Provisional marker resolved; rates unchanged.
+  - id: "z-ai/glm-5.3"
+    name: "GLM 5.3"
+    provider: openrouter
+    cost_tier: "medium"
+    pricing:
+      input: 1.40
+      output: 4.40
+      cached_input: 0.26
+    env_overrides:
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "z-ai/glm-5.3"
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "z-ai/glm-5.3"
+      CLAUDE_CODE_SUBAGENT_MODEL: "z-ai/glm-5.3"
+
   - id: "moonshotai/kimi-k2.6:siliconflow/fp8"
     # wire_id OBSERVED 2026-07-25 (results/20260725_131940 and 20260725_140242:
     # purity verified, bare slug on the wire while routing id carried the pin)
@@ -345,6 +389,71 @@ models:
       ANTHROPIC_DEFAULT_SONNET_MODEL: "qwen/qwen3.6-27b:venice/fp8"
       CLAUDE_CODE_SUBAGENT_MODEL: "qwen/qwen3.6-27b:venice/fp8"
 
+  # Added 2026-08-20 (day-of-release onboarding). Verified online 2026-08-20
+  # from GET /api/v1/models/qwen/qwen3.8-27b/endpoints (raw archived:
+  # research/2026-08-20_FrameworkDev_DAAFBenchQwenGLM/fetches/): 7 endpoints
+  # serve the slug. Pinned to venice/fp8 by the standing criteria (uptime →
+  # context → disclosed quantization → price, user-confirmed 2026-08-20):
+  # Venice leads on uptime (99.7076%), discloses fp8 quantization, and prices
+  # $0.45/M input, $3.20/M output (no cache-read rate published). Context
+  # 262144, max_completion 65536. The larger-context alternative (Alibaba, 1M
+  # context) was rejected: undisclosed quantization ("unknown") and lower uptime
+  # (99.3769%) — 262k is ample for the dc/mc/pc/sr payloads. Rates are published
+  # list prices, provisional until billing reconciliation; the Venice endpoint
+  # display name carries a "-20260814" date suffix, so re-check once uptime and
+  # pricing mature.
+  #
+  # PRICING RECONCILED 2026-08-21: list rates RETAINED
+  # (derived/openrouter_reconciliation_2026-08-21.json; combined activity export
+  # openrouter_activity_combined_2026-08-21.csv; 154 covered runs, billed $96.67
+  # vs published-blend $88.15). obs/pred = 1.10 sits within the |obs/pred-1| <
+  # 0.26 tolerance (unflagged): the published list rates predict billing on the
+  # UNCACHED basis the DAAFBench cost model uses (README § "Battery-cost metric":
+  # "every token at full list rates, no cache discounts"; the reconciler ignores
+  # cached_input). Cache discounts are intentionally unmodeled, but here they are
+  # immaterial anyway — cache share is only 18%, so obs/pred lands near 1. NOTE:
+  # billed provider_name was predominantly Alibaba (1,847), Reka (285) and
+  # Parasail (181), not the pinned venice/fp8 endpoint (the :venice/fp8 pin is a
+  # routing preference with fallback); the obs/pred match against the registry's
+  # venice list rates holds despite the fallback. Provisional marker resolved;
+  # rates unchanged.
+  #
+  # RE-PINNED 2026-08-21 (user-approved): venice/fp8 -> alibaba, the provider
+  # that actually served the battery (billing: Alibaba 1,847 rows / $85.38 =
+  # 84.9% of cost; realized $0.585/Mtok blended, consistent with Alibaba list
+  # rates net of cache reads). Rates below re-derived to Alibaba's listing
+  # fetched 2026-08-21 (fetches/2026-08-21T174835Z_openrouter-ai_untitled_
+  # 38ce6917.json): $0.575/$3.45, cache read $0.115 (was Venice $0.45/$3.20,
+  # no cache rate). DRIFT NOTE: Alibaba's listing rose ~4.5% between the
+  # 2026-08-20 and 2026-08-21 snapshots ($0.55/$3.30 -> $0.575/$3.45) while
+  # all six other endpoints were byte-identical — cite-the-fetch-timestamp
+  # convention applies. TRADEOFF: Alibaba's quantization is UNDISCLOSED (the
+  # original reason venice/fp8 won the pin), but it served 84.9% of the
+  # battery, offers 1M context (largest of 7 endpoints), and posts the
+  # highest 1-day uptime (99.92%). Pin remains a routing preference with
+  # fallback; wire_id comparison unaffected (bare slug on the wire).
+  - id: "qwen/qwen3.8-27b:alibaba"
+    # wire_id OBSERVED 2026-08-20
+    # (results/_quarantine_2026-08-20_onboardingprobes_145515_99b74a/runs/
+    # dc-01_Qwen_3.8_27B_0/result.json: dc-01 PASS all 10 criteria, purity
+    # verified, observed_child_model_ids_raw = ["qwen/qwen3.8-27b"]). The wire
+    # resolved to the BARE slug: OpenRouter drops the ":venice/fp8" pin as
+    # expected, and the Venice display-name "-20260814" date suffix did NOT
+    # propagate to message.model (the day-zero dated-snapshot concern is
+    # resolved). Probe run quarantined for rep-count hygiene (README step 7b).
+    wire_id: "qwen/qwen3.8-27b"
+    name: "Qwen 3.8 27B"
+    provider: openrouter
+    cost_tier: "medium"
+    pricing:
+      input: 0.575
+      output: 3.45
+      cached_input: 0.115
+    env_overrides:
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "qwen/qwen3.8-27b:alibaba"
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "qwen/qwen3.8-27b:alibaba"
+      CLAUDE_CODE_SUBAGENT_MODEL: "qwen/qwen3.8-27b:alibaba"
+
   # Added 2026-08-12 (day-of-release onboarding). Verified online 2026-08-12
   # from GET /api/v1/models/qwen/qwen3.8-2.4t-a95b/endpoints: single endpoint
   # (tag digitalocean, quantization unknown/undisclosed, context_length 262144,
@@ -364,7 +473,9 @@ models:
   # on the first live turn ($0 billed, no child transcript; results/
   # 20260812_163508_3f158d — quarantined 2026-08-12 as
   # _quarantine_2026-08-12_onboardingprobes_163508_3f158d, rep-count hygiene —
-  # plus _164217_42cb21, _164931_36cc48). Direct probes of
+  # plus 20260812_164217_42cb21 and 20260812_164931_36cc48, both quarantined
+  # 2026-08-21 as _quarantine_2026-08-21_dc01surplus_20260812_164217_42cb21 /
+  # _quarantine_2026-08-21_dc01surplus_20260812_164931_36cc48). Direct probes of
   # the same Anthropic-compat route succeed on every isolated feature: tiny
   # prompts, ~90k-token bulk prompts, thinking-block history, tools +
   # cache_control, system + tools (research/2026-08-12_FrameworkDev_
@@ -372,10 +483,13 @@ models:
   # Code payload (combined system prompt + full tool schemas + large
   # checkpoint history) on the day-zero DigitalOcean endpoint; upstream 429
   # rate-limiting was also observed during probing. Re-probe 2026-08-12
-  # ~19:27 UTC (results/20260812_192714_b6b8f1): still failing, but the mode
+  # ~19:27 UTC (results/_quarantine_2026-08-21_dc01surplus_20260812_192714_b6b8f1
+  # — dc-01 surplus, quarantined 2026-08-21; runs preserved): still failing, but the mode
   # shifted from instant 400 rejection to a 502 upstream error after ~209s —
   # endpoint unstable rather than request-incompatible; keep waiting.
-  # Re-probe 2026-08-13 ~11:18 UTC (results/20260813_111747_d3c120): third
+  # Re-probe 2026-08-13 ~11:18 UTC
+  # (results/_quarantine_2026-08-21_dc01surplus_20260813_111747_d3c120 — dc-01
+  # surplus, quarantined 2026-08-21; runs preserved): third
   # distinct failure mode — HTTP 200 with an empty/malformed body after ~8s
   # ($0 billed). Still not benchmark-viable.
   # Zero-cost preflight and
@@ -394,8 +508,40 @@ models:
   # route 2026-08-13; digitalocean also passed those yesterday while failing
   # every full benchmark payload, so small-probe health is necessary, not
   # sufficient — the dc-01 wire probe below is the real gate.
-  - id: "qwen/qwen3.8-2.4t-a95b:modal/nvfp4"
-    # wire_id OBSERVED 2026-08-14 (results/20260814_174926_a06806: first
+  #
+  # PRICING RECONCILED 2026-08-21 (display exclusion lifted this date): list rates
+  # RETAINED (derived/openrouter_reconciliation_2026-08-21.json; combined activity
+  # export openrouter_activity_combined_2026-08-21.csv; 157 covered runs, billed
+  # $106.74). obs/pred = 0.40 trips the |obs/pred-1| >= 0.26 review flag, but as
+  # with GLM 5.3 this is EXPECTED for a cache-heavy model and is NOT a rate-error
+  # signal: the DAAFBench cost model does not model cache discounts by convention
+  # — it is UNCACHED (README § "Battery-cost metric": "every token at full list
+  # rates, no cache discounts"; reconcile_openrouter_costs.py L556 ignores
+  # cached_input), while 76.6% of billed prompt tokens (96.6M of 126.0M) are cache
+  # reads billing at the far lower cached_input, so the uncached predictor
+  # over-predicts and obs/pred < 1 follows mechanically (retained, mirroring the
+  # GLM 5.2 caching-benefit precedent). PROVIDER-FALLBACK NOTE (the pin caveat
+  # below asked for this check at reconciliation): billed provider_name was
+  # SiliconFlow (1,625), Venice (315), Alibaba (23) and DigitalOcean (9) — the
+  # :modal/nvfp4 pin did NOT hold for most billed traffic (routing preference with
+  # fallback), so the registry's modal cache-read $0.25 is not the rate that
+  # actually billed most rows; a deliberate re-pin or rate re-derivation is a
+  # maintainer decision, deferred here. Provisional marker resolved; rates
+  # unchanged.
+  #
+  # RE-PINNED 2026-08-21 (user-approved): modal/nvfp4 -> siliconflow/fp8, the
+  # provider that actually served the battery (billing: SiliconFlow 1,625 rows /
+  # $63.99 = 57.3% of cost and 86% of tokens; realized $0.546/Mtok blended vs
+  # Venice's $2.332). Endpoint survey 2026-08-21 (fetches/
+  # 2026-08-21T174835Z_openrouter-ai_untitled_1b462793.json): siliconflow/fp8
+  # lists the SAME rates as the old modal pin — $2.00/$6.00, cache read $0.25 —
+  # so pricing below is UNCHANGED (no cost-surface impact); quantization
+  # disclosed fp8, context 1,048,576 (largest listed), uptime_1d 99.94%
+  # (strongest of 7 endpoints). Pin remains a routing preference with fallback.
+  - id: "qwen/qwen3.8-2.4t-a95b:siliconflow/fp8"
+    # wire_id OBSERVED 2026-08-14
+    # (results/_quarantine_2026-08-21_dc01surplus_20260814_174926_a06806 — dc-01
+    # surplus, quarantined 2026-08-21; runs preserved: first
     # SUCCESSFUL dc-01 run — all 10 criteria pass, purity verified,
     # observed_child_model_ids_raw = ["qwen/qwen3.8-2.4t-a95b"] while the
     # routing id carried the :modal/nvfp4 pin; $3.48, 407s). NOTE: the pin is
@@ -414,9 +560,9 @@ models:
       output: 6.00
       cached_input: 0.25
     env_overrides:
-      ANTHROPIC_DEFAULT_OPUS_MODEL: "qwen/qwen3.8-2.4t-a95b:modal/nvfp4"
-      ANTHROPIC_DEFAULT_SONNET_MODEL: "qwen/qwen3.8-2.4t-a95b:modal/nvfp4"
-      CLAUDE_CODE_SUBAGENT_MODEL: "qwen/qwen3.8-2.4t-a95b:modal/nvfp4"
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "qwen/qwen3.8-2.4t-a95b:siliconflow/fp8"
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "qwen/qwen3.8-2.4t-a95b:siliconflow/fp8"
+      CLAUDE_CODE_SUBAGENT_MODEL: "qwen/qwen3.8-2.4t-a95b:siliconflow/fp8"
 
   - id: "google/gemma-4-31b-it:venice/bf16"
     # wire_id OBSERVED 2026-07-26 (results/20260726_003234, 3 reps: purity
@@ -1089,14 +1235,12 @@ models:
 # a retired model visible and merely preserves its list rates). Ignored by the
 # harness and phase runners (they read only `models:`).
 retired_display_exclusions:
-  # 2026-08-12: Qwen 3.8 2.4T A95B — TEMPORARY display quarantine, not a
-  # retirement. Its only corpus runs are failed $0 endpoint probes (400/502
-  # provider errors, no model behavior observed — see the entry's ENDPOINT
-  # NOT YET BENCHMARK-VIABLE note above); as a zero-score corpus model they
-  # distorted the leaderboard's range-quartile tier breaks (user-observed
-  # 2026-08-12). REMOVE this line once the endpoint stabilizes and real
-  # battery runs land.
-  - "Qwen 3.8 2.4T A95B"
+  # 2026-08-21: Qwen 3.8 2.4T A95B exclusion LIFTED. Its real 3-rep battery
+  # (results/20260820_155004_75b785) landed, and the 2026-08-12..14 stray
+  # single-rep dc-01 onboarding probes that had distorted the leaderboard were
+  # quarantined 2026-08-21 (_quarantine_2026-08-21_dc01surplus_*, runs
+  # preserved). The model now satisfies the exactly-3 corpus contract and
+  # returns to all display surfaces.
   # 2026-08-11: the pre-0731 (undated) DeepSeek V4 Flash is fully removed from
   # the report. It was retired from `models:` on 2026-08-02 (superseded by the
   # DeepSeek V4 Flash 0731 revision, see the REMOVED block above); per user
