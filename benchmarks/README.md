@@ -32,23 +32,29 @@ and still score poorly here if it skips confirmation gates or dispatches
 free-form prompts. Conversely, a weaker model that faithfully follows protocol
 scores well.
 
-**Model matrix:** 41 registry entries across three explicit providers. The
+**Model matrix:** 43 registry entries across three explicit providers. The
 matrix is defined in `config/models.yaml`; provider labels describe the measured
 route, not interchangeable billing aliases.
 
 | Provider | Entries | Route and accounting basis |
 |----------|--------:|----------------------------|
 | `anthropic` | 9 | Claude Code subscription route for Haiku 4.5, Sonnet 4.6/5, Opus 4.5/4.6/4.7/4.8/5, and Fable 5 |
-| `openrouter` | 29 | OpenRouter's Anthropic-compatible endpoint; includes GLM, Kimi, Qwen, Gemma, DeepSeek, Gemini, Nemotron, Inkling, Grok, and GPT entries |
-| `chatgpt-subscription` | 3 | Local provider shim to the deployed ChatGPT/Codex subscription backend for GPT-5.6 Luna, Terra, and Sol; included-capacity billing and separate API-equivalent accounting |
+| `openrouter` | 30 | OpenRouter's Anthropic-compatible endpoint; includes GLM, Kimi, Qwen, Gemma, DeepSeek, Gemini, Nemotron, Inkling, Grok, and GPT entries |
+| `chatgpt-subscription` | 4 | Local provider shim to the deployed ChatGPT/Codex subscription backend for GPT-5.6 Luna, Terra, and Sol plus GPT-6 Astra; included-capacity billing and separate API-equivalent accounting |
 
-GPT-5.6 Luna, Terra, and Sol each have deliberately distinct OpenRouter and
-ChatGPT-subscription entries. The OpenRouter keys are `gpt-56-luna`,
-`gpt-56-terra`, and `gpt-56-sol`, with `openai/gpt-5.6-*` routing IDs; the
-subscription keys append `-chatgpt` and use the corresponding bare `gpt-5.6-*`
-IDs. Each subscription entry sets a 370,000-token effective input ceiling for
-this ChatGPT/Codex lane. Sol's ceiling was measured on 2026-07-16; Luna and Terra
-remain conservatively inferred to share the lane cap until individually measured.
+GPT-5.6 Luna, Terra, and Sol — and, since 2026-09-05, GPT-6 Astra — each have
+deliberately distinct OpenRouter and ChatGPT-subscription entries. The OpenRouter
+keys are `gpt-56-luna`, `gpt-56-terra`, `gpt-56-sol`, and `gpt-6-astra`, with
+`openai/gpt-5.6-*` and `openai/gpt-6-astra` routing IDs; the subscription keys
+append `-chatgpt` and use the corresponding bare `gpt-5.6-*` / `gpt-6-astra`
+IDs. Each subscription entry sets a 919,000-token effective input ceiling for
+this ChatGPT/Codex lane, measured on 2026-09-05 for both `gpt-6-astra` (accept
+919,053, reject 922,552) and `gpt-5.6-sol` (accept 910,827, reject 921,973);
+that measurement supersedes the earlier 2026-07-16 Sol-only figure of ~370,000.
+Luna and Terra remain conservatively inferred to share the lane cap until
+individually measured. OpenRouter also lists a real `openai/gpt-6-astra-pro`
+slug, which is deliberately NOT in the roster: DAAF's exact-match threshold rule
+keeps any `-pro` variant on conservative context thresholds.
 Each subscription entry maps both `ANTHROPIC_DEFAULT_OPUS_MODEL` and
 `ANTHROPIC_DEFAULT_SONNET_MODEL` to its own bare parent ID and deliberately omits
 `CLAUDE_CODE_SUBAGENT_MODEL`, preserving semantic tier selection while keeping
@@ -106,7 +112,7 @@ records exactly matches the requested wire ID; `failed` when any observed child
 ID differs; and `unverifiable` when no child transcript or no child model field
 is available. The comparison deliberately performs no alias normalization and
 retains raw IDs. This is Claude-CLI child-transcript evidence, not
-backend-confirmed identity. All three GPT-5.6 ChatGPT-subscription entries pin
+backend-confirmed identity. All four GPT ChatGPT-subscription entries (GPT-5.6 Luna/Terra/Sol and GPT-6 Astra) pin
 the operative Opus and Sonnet tier aliases to the parent ID and deliberately
 omit `CLAUDE_CODE_SUBAGENT_MODEL`; that configuration plus `verified` establishes
 only the observable CLI boundary and does not prove what alias resolution a
@@ -527,7 +533,7 @@ next, more expensive one.
      (`"DeepSeek V4 Flash 0731"` → `deepseek-v4-flash-0731`). Confirm the derived key
      does not collide with an existing entry, and that it reads well as a `--models`
      value (§ 4 flag table). To pin an explicit key instead of deriving one, set the
-     optional `key:` field (the three `chatgpt-subscription` entries do this to append
+     optional `key:` field (the four `chatgpt-subscription` entries do this to append
      `-chatgpt` while keeping a bare `id`).
    - `provider` — `anthropic`, `openrouter`, or `chatgpt-subscription`; controls the
      env-var wiring injected by `model_loader.py` (§ 4 Environment).

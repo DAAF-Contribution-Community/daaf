@@ -293,15 +293,18 @@ fi
 # gpt-5.6 Sol/Terra/Luna family is 1,050,000), so they must precede the broad
 # flagship and *gpt-5* fallbacks. Verified against OpenRouter on 2026-07-09.
 # Closed-set GPT flagship grammar (Convention 3). Only the exact flagship set —
-# bare gpt-5.4/5.5/5.6 plus the sol/terra/luna codenames, with an optional [1m]
-# badge — is eligible for the 1,050,000 physical window (and the 370k ChatGPT-lane
-# cap arm below). Anchored so malformed suffixes (gpt-5.4-, gpt-5.6-experimental,
-# gpt-5.5[1m, gpt-5.6-sol[1m]x) fall through to the ordinary default rather than
-# being mapped to the flagship window. New codenames are a deliberate one-line edit
-# here, consistent with DAAF's validate-before-trust policy. Stored in a variable
-# to avoid [[ =~ ]] quoting pitfalls; defined unconditionally so it is in scope for
-# the ChatGPT-lane predicate below even when this static-map block is skipped.
-gpt_flagship_re='^gpt-5\.(4|5|6)(-(sol|terra|luna))?(\[1m\])?$'
+# bare gpt-5.4/5.5/5.6 plus the sol/terra/luna codenames, and the standalone
+# GPT-6 flagship gpt-6-astra, each with an optional [1m] badge — is eligible for
+# the 1,050,000 physical window (and the 919k ChatGPT-lane cap arm below).
+# Anchored so malformed suffixes (gpt-5.4-, gpt-5.6-experimental, gpt-5.5[1m,
+# gpt-5.6-sol[1m]x, gpt-6-astra-pro, gpt-6-astra[1m]-x) and left-boundary near
+# misses (xgpt-6-astra, gpt-6-astrab) fall through to the ordinary default
+# rather than being mapped to the flagship window. New codenames are a
+# deliberate one-line edit here, consistent with DAAF's validate-before-trust
+# policy. Stored in a variable to avoid [[ =~ ]] quoting pitfalls; defined
+# unconditionally so it is in scope for the ChatGPT-lane predicate below even
+# when this static-map block is skipped.
+gpt_flagship_re='^(gpt-5\.(4|5|6)(-(sol|terra|luna))?|gpt-6-astra)(\[1m\])?$'
 # Closed-set mini/chat grammars (Convention 3), byte-consistent with
 # subagent-bar.sh's anchored EREs. These replace the old open-ended inner globs
 # (*-mini*/*-chat*) so suffixed near-misses (e.g. gpt-5.6-mini-preview) fail the
@@ -322,14 +325,15 @@ if [[ -n "$model_id" && "$or_context_resolved" -eq 0 && "$max_context" -eq 20000
             max_context=1048576 ;;
         *)
             case "$physical_slug" in
-                gpt-5.4|gpt-5.4[-\[]*|gpt-5.5|gpt-5.5[-\[]*|gpt-5.6|gpt-5.6[-\[]*)
+                gpt-5.4|gpt-5.4[-\[]*|gpt-5.5|gpt-5.5[-\[]*|gpt-5.6|gpt-5.6[-\[]*|gpt-6-astra|gpt-6-astra[-\[]*)
                     # Closed-set classification (Convention 3), byte-consistent
                     # with subagent-bar.sh: only the anchored flagship/mini/chat
                     # grammars earn a GPT window. Order flagship, then mini, then
                     # chat. Malformed suffixes that reached this family glob (e.g.
                     # gpt-5.4-, gpt-5.6-experimental, gpt-5.6-mini-preview,
-                    # gpt-5.6-sol[1m]x) match none and fall through to the 200k
-                    # default (max_context is already 200000 in this block).
+                    # gpt-5.6-sol[1m]x, gpt-6-astra-pro, gpt-6-astra[1m]-x) match
+                    # none and fall through to the 200k default (max_context is
+                    # already 200000 in this block).
                     if   [[ "$physical_slug" =~ $gpt_flagship_re ]]; then max_context=1050000
                     elif [[ "$physical_slug" =~ $gpt_mini_re ]];     then max_context=400000
                     elif [[ "$physical_slug" =~ $gpt_chat_re ]];     then max_context=128000
@@ -355,11 +359,16 @@ fi
 
 # ChatGPT-subscription/Codex final physical-window accounting constraint.
 # Canonical activation requires BOTH exact lane signals and a model in the same
-# gpt-5.4/5.5/5.6 flagship arm used by the static map above (mini/chat variants
-# are excluded by the arm's ordering). Probe 2026-07-16 (gpt-5.6-sol) accepted
-# 369,941 real input tokens and rejected 372,905; 370000 is therefore the
-# lane-wide accounting ceiling for this mapped flagship family. Apply min() only
-# after every ordinary resolution source, including an incoming [1m] payload and
+# anchored flagship arm used by the static map above — the gpt-5.4/5.5/5.6
+# family plus gpt-6-astra (mini/chat variants are excluded by the arm's
+# ordering). Probes 2026-09-05 (Codex CLI 0.153.2, shim v1.3.19,
+# SHIM_BACKEND_MODE=chatgpt) measured BOTH lane flagships: gpt-6-astra accepted
+# 919,053 real input tokens and rejected 922,552; gpt-5.6-sol accepted 910,827
+# and rejected 921,973. 919000 is therefore the lane-wide accounting ceiling for
+# this mapped flagship family, MEASURED for Sol and Astra alike and consistent
+# with Astra's documented 922,000-token max input (1,050,000 window - 128,000
+# output). Provenance: previously 370,000 (2026-07-16), now stale. Apply min()
+# only after every ordinary resolution source, including an incoming [1m] payload and
 # CLAUDE_CODE_MAX_CONTEXT_TOKENS, so neither can raise the matched lane above the
 # backend ceiling while an explicitly lower positive value remains lower.
 #
@@ -369,7 +378,7 @@ fi
 # lane values fail-open, while API/OpenRouter routes retain their wider windows.
 gpt_flagship=0
 physical_slug="${model_id##*/}"
-# Same anchored closed-set predicate as the static map (Convention 3): the 370k
+# Same anchored closed-set predicate as the static map (Convention 3): the 919k
 # lane cap applies only to the exact flagship set, so mini/chat variants and
 # malformed near-misses keep their resolved (wider or default) window fail-open.
 if [[ "$physical_slug" =~ $gpt_flagship_re ]]; then
@@ -377,8 +386,8 @@ if [[ "$physical_slug" =~ $gpt_flagship_re ]]; then
 fi
 if [[ "${DAAF_PROVIDER_SHIM:-}" == "openai" && \
       "${SHIM_BACKEND_MODE:-}" == "chatgpt" && \
-      "$gpt_flagship" -eq 1 && "$max_context" -gt 370000 ]]; then
-    max_context=370000
+      "$gpt_flagship" -eq 1 && "$max_context" -gt 919000 ]]; then
+    max_context=919000
 fi
 
 max_k=$((max_context / 1000))

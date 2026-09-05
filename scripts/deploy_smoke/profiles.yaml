@@ -18,7 +18,7 @@
 #   overlay simply overrides the CLI session env with no daemon in the path.)
 #
 # HOW TO USE
-#   These three entries are working EXAMPLES — adapt the model slugs to models you
+#   These four entries are working EXAMPLES — adapt the model slugs to models you
 #   actually have access to on your OpenRouter account. Model slugs below are the
 #   current GPT/GLM entries from benchmarks/config/models.yaml (2026-07). Run e.g.:
 #     python3 scripts/deploy_smoke/run_deploy_smoke.py --route openrouter \
@@ -50,6 +50,20 @@ profiles:
       ANTHROPIC_MODEL: "openai/gpt-5.6-luna"
       ANTHROPIC_DEFAULT_OPUS_MODEL: "openai/gpt-5.6-luna"
       ANTHROPIC_DEFAULT_SONNET_MODEL: "openai/gpt-5.6-luna"
+      CLAUDE_CODE_MAX_CONTEXT_TOKENS: "1050000"
+
+  # OpenAI GPT-6 Astra over OpenRouter (flagship GPT slug from models.yaml,
+  # added 2026-09-05). Same tier-alias remap rationale as openrouter-gpt; Astra's
+  # OpenRouter/API physical window is 1,050,000 tokens, so the declaration below
+  # matches that route (NOT the ChatGPT-subscription lane's measured 919,000
+  # ceiling — that lane cannot be exercised via a profile overlay anyway, since
+  # the shim daemon's backend_mode is fixed at startup).
+  openrouter-astra:
+    description: "OpenAI GPT-6 Astra via OpenRouter with tier-alias remap."
+    env:
+      ANTHROPIC_MODEL: "openai/gpt-6-astra"
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "openai/gpt-6-astra"
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "openai/gpt-6-astra"
       CLAUDE_CODE_MAX_CONTEXT_TOKENS: "1050000"
 
   # Open-source GLM over OpenRouter (GLM 5.2 slug from models.yaml).

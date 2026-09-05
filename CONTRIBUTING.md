@@ -315,7 +315,7 @@ Use these terms consistently. Each describes *how much validation a route or cap
 
 A few current placements are worth calling out, because they are the ones people ask about:
 
-- The **ChatGPT-subscription (Codex) lane** is *Supported -- community-testing*. It is a real, exercised route (DAAFBench runs against it with fail-closed route provenance), but its backend enforces a measured context ceiling of roughly 370,000 tokens -- far below the ~1,050,000 of the API lane -- so it is not a drop-in equal of the Anthropic route. Describe it with that ceiling, never as an unqualified "supported."
+- The **ChatGPT-subscription (Codex) lane** is *Supported -- community-testing*. It is a real, exercised route (DAAFBench runs against it with fail-closed route provenance), but its backend enforces a measured context ceiling of 919,000 tokens (measured 2026-09-05) -- below the ~1,050,000 of the API lane -- so it is not a drop-in equal of the Anthropic route. Describe it with that ceiling, never as an unqualified "supported."
 - The **OpenRouter route** is *Supported -- community-testing*. Its credential contract is settled (the key goes in `ANTHROPIC_AUTH_TOKEN`, with `ANTHROPIC_API_KEY` present-but-empty), and it works; live validation at each release is an ongoing, shared effort.
 - **R** is a core execution language *engineered for parity* with Python -- parity contracts and an automated parity test suite back that goal -- with a few honestly documented method-level gaps remaining (for example DBSCAN/HDBSCAN clustering, and several causal-inference references are Python-oriented today). Treat parity gaps as bugs worth reporting. Here, "supported" for a capability should mean "there is a documented skill route for it," not "it is theoretically possible."
 

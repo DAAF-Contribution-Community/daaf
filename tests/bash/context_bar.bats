@@ -317,6 +317,42 @@ JSON
     assert_output "1050000"
 }
 
+@test "gpt-6-astra displays 1050k and caches the 1050000 physical window" {
+    run bash "$CONTEXT_BAR_SH" < <(_payload "gpt-6-astra")
+    assert_success
+    assert_output --partial "of 1050k tokens"
+    run cat "$CTX_CACHE"
+    assert_success
+    assert_output "1050000"
+}
+
+@test "gpt-6-astra[1m] displays 1050k and caches the 1050000 physical window" {
+    run bash "$CONTEXT_BAR_SH" < <(_payload "gpt-6-astra[1m]")
+    assert_success
+    assert_output --partial "of 1050k tokens"
+    run cat "$CTX_CACHE"
+    assert_success
+    assert_output "1050000"
+}
+
+@test "provider-prefixed gpt-6-astra maps to the 1,050,000 flagship window" {
+    run bash "$CONTEXT_BAR_SH" < <(_payload "openrouter/openai/gpt-6-astra" 1050000)
+    assert_success
+    assert_output --partial "of 1050k tokens"
+    run cat "$CTX_CACHE"
+    assert_success
+    assert_output "1050000"
+}
+
+@test "gpt-6-astra near-misses do NOT get the 1.05M flagship window" {
+    local model
+    for model in gpt-6-astra-pro gpt-6-astra-mini 'gpt-6-astra[1m]-x' gpt-6-astrab gpt-6 gpt-6-luna; do
+        run bash "$CONTEXT_BAR_SH" < <(_payload "$model")
+        assert_success
+        refute_output --partial "of 1050k tokens"
+    done
+}
+
 @test "dynamic OpenRouter context 1048576 wins over the static resolution path" {
     run env \
         ANTHROPIC_BASE_URL="https://openrouter.ai/api" \
@@ -382,35 +418,35 @@ JSON
 }
 
 # =========================================================================
-# ChatGPT-subscription lane: final gpt-5.4/5.5/5.6 accounting cap is 370k
+# ChatGPT-subscription lane: final gpt-5.4/5.5/5.6 accounting cap is 919k
 # -------------------------------------------------------------------------
 # Canonical lane gate: DAAF_PROVIDER_SHIM=openai AND SHIM_BACKEND_MODE=chatgpt.
-# The final min(resolved, 370000) constraint runs after payload, static-map,
+# The final min(resolved, 919000) constraint runs after payload, static-map,
 # dynamic, and explicit-override resolution. Both exact lane values are required;
 # malformed or partial signals keep the API/OpenRouter behavior fail-open.
 # =========================================================================
 
-@test "chatgpt lane: incoming 1,050,000 payload is finally capped and cached at 370,000" {
+@test "chatgpt lane: incoming 1,050,000 payload is finally capped and cached at 919,000" {
     run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
         bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol[1m]" 1050000)
     assert_success
-    assert_output --partial "of 370k tokens"
+    assert_output --partial "of 919k tokens"
     refute_output --partial "of 1050k tokens"
     run cat "$CTX_CACHE"
     assert_success
-    assert_output "370000"
+    assert_output "919000"
 }
 
-@test "chatgpt lane: explicit 1,050,000 override cannot raise the final 370,000 cap" {
+@test "chatgpt lane: explicit 1,050,000 override cannot raise the final 919,000 cap" {
     run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
         CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000 \
         bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol[1m]" 1050000)
     assert_success
-    assert_output --partial "of 370k tokens"
+    assert_output --partial "of 919k tokens"
     refute_output --partial "of 1050k tokens"
     run cat "$CTX_CACHE"
     assert_success
-    assert_output "370000"
+    assert_output "919000"
 }
 
 @test "chatgpt lane: lower positive explicit override remains lower than the cap" {
@@ -419,7 +455,7 @@ JSON
         bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol[1m]" 1050000)
     assert_success
     assert_output --partial "of 333k tokens"
-    refute_output --partial "of 370k tokens"
+    refute_output --partial "of 919k tokens"
     run cat "$CTX_CACHE"
     assert_success
     assert_output "333333"
@@ -430,7 +466,7 @@ JSON
         bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol[1m]" 1050000)
     assert_success
     assert_output --partial "of 1050k tokens"
-    refute_output --partial "of 370k tokens"
+    refute_output --partial "of 919k tokens"
     run cat "$CTX_CACHE"
     assert_success
     assert_output "1050000"
@@ -442,7 +478,7 @@ JSON
         bash "$CONTEXT_BAR_SH" < <(_payload "openai/gpt-5.6-sol" 1050000)
     assert_success
     assert_output --partial "of 1050k tokens"
-    refute_output --partial "of 370k tokens"
+    refute_output --partial "of 919k tokens"
     run cat "$CTX_CACHE"
     assert_success
     assert_output "1050000"
@@ -820,7 +856,7 @@ JSON
             bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol[1m]" 1050000)
         assert_success
         assert_output --partial "gpt-5.6-sol[1m]"
-        assert_output --partial "of 370k tokens"
+        assert_output --partial "of 919k tokens"
         _refute_gpt_fast_segment
     done
 }
@@ -1084,7 +1120,7 @@ JSON
         bash "$CONTEXT_BAR_SH" < <(_payload "claude-fable-5" 1000000)
     assert_success
     assert_output --partial "of 1050k tokens"
-    refute_output --partial "of 370k tokens"
+    refute_output --partial "of 919k tokens"
     run cat "$CTX_CACHE"
     assert_success
     assert_output "1050000"
@@ -1094,38 +1130,38 @@ JSON
 # Canonical positive-decimal override contract
 # =========================================================================
 
-@test "canonical override 370000 is accepted on the API lane" {
+@test "canonical override 919000 is accepted on the API lane" {
     run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=openai \
-        CLAUDE_CODE_MAX_CONTEXT_TOKENS=370000 \
+        CLAUDE_CODE_MAX_CONTEXT_TOKENS=919000 \
         bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol" 1050000)
     assert_success
-    assert_output --partial "of 370k tokens"
+    assert_output --partial "of 919k tokens"
     run cat "$CTX_CACHE"
     assert_success
-    assert_output "370000"
+    assert_output "919000"
 }
 
 @test "invalid decimal overrides are ignored without arithmetic diagnostics and the exact-lane cap still applies" {
     local value
     for value in \
-        0370000 \
+        0919000 \
         080000 \
         0 \
-        +370000 \
-        ' 370000' \
-        '370000 ' \
+        +919000 \
+        ' 919000' \
+        '919000 ' \
         9223372036854775808 \
         99999999999999999999999999999999999999; do
         run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
             CLAUDE_CODE_MAX_CONTEXT_TOKENS="$value" \
             bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol" 1050000)
         assert_success
-        assert_output --partial "of 370k tokens"
+        assert_output --partial "of 919k tokens"
         refute_output --partial "value too great"
         refute_output --partial "syntax error"
         run cat "$CTX_CACHE"
         assert_success
-        assert_output "370000"
+        assert_output "919000"
     done
 }
 
@@ -1243,7 +1279,7 @@ JSON
     run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
         bash "$CONTEXT_BAR_SH" < <(_payload "openrouter/openai/gpt-5.6-terra[1m]" 1050000)
     assert_success
-    assert_output --partial "of 370k tokens"
+    assert_output --partial "of 919k tokens"
 
     local model
     for model in vendor/notgpt-5.6-sol xgpt-5.6-sol foo-gpt-5.6-sol gpt-5.60 gpt-5.60-sol; do
@@ -1251,7 +1287,7 @@ JSON
             bash "$CONTEXT_BAR_SH" < <(_payload "$model" 1050000)
         assert_success
         assert_output --partial "of 1050k tokens"
-        refute_output --partial "of 370k tokens"
+        refute_output --partial "of 919k tokens"
     done
 }
 
@@ -1313,8 +1349,8 @@ JSON
         bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol")
     assert_success
     refute_output --partial "Plan usage:"
-    # Rest of the bar is intact (chatgpt lane caps gpt-5.6-sol at 370k).
-    assert_output --partial "of 370k tokens"
+    # Rest of the bar is intact (chatgpt lane caps gpt-5.6-sol at 919k).
+    assert_output --partial "of 919k tokens"
 }
 
 @test "codex Plan-usage is absent on malformed state JSON and the bar stays intact" {
@@ -1324,7 +1360,7 @@ JSON
         bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol")
     assert_success
     refute_output --partial "Plan usage:"
-    assert_output --partial "of 370k tokens"
+    assert_output --partial "of 919k tokens"
 }
 
 @test "codex Plan-usage is gated off on a native session even with a state file present" {
@@ -1367,8 +1403,8 @@ JSON
         bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol")
     assert_success
     refute_output --partial "Plan usage:"
-    # Rest of the bar is intact (chatgpt lane caps gpt-5.6-sol at 370k).
-    assert_output --partial "of 370k tokens"
+    # Rest of the bar is intact (chatgpt lane caps gpt-5.6-sol at 919k).
+    assert_output --partial "of 919k tokens"
 }
 
 # =========================================================================
@@ -1432,7 +1468,7 @@ JSON
             bash "$CONTEXT_BAR_SH" < <(_payload "$model" 1050000)
         assert_success
         assert_output --partial "of 1050k tokens"
-        refute_output --partial "of 370k tokens"
+        refute_output --partial "of 919k tokens"
     done
 }
 
@@ -1605,7 +1641,7 @@ MOCK_BAD_CURL
     assert_success
     refute_output --partial "Plan usage:"
     refute_output --partial "7d:1%"
-    assert_output --partial "of 370k tokens"
+    assert_output --partial "of 919k tokens"
 }
 
 @test "codex Plan-usage drops only the secondary when its percent is exponent notation" {
@@ -1632,7 +1668,7 @@ MOCK_BAD_CURL
         bash "$CONTEXT_BAR_SH" < <(_payload "gpt-5.6-sol")
     assert_success
     refute_output --partial "Plan usage:"
-    assert_output --partial "of 370k tokens"
+    assert_output --partial "of 919k tokens"
 }
 
 @test "codex Plan-usage clamps a secondary percent above 100 to 100" {

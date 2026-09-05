@@ -107,14 +107,20 @@ expected = {
     "gpt-5.60": None,
     "gpt-5.6sol": None,
     "gpt-5.6+trailing": None,
+    "gpt-6-astra": 1050000,
+    "gpt-6-astra[1m]": 1050000,
+    "openai/gpt-6-astra": 1050000,
+    "gpt-6-astra-pro": None,
+    "gpt-6": None,
+    "xgpt-6-astra": None,
 }
 for model_id, want in expected.items():
     got = _gpt_physical_window(model_id)
     assert got == want, (model_id, got, want)
-print("GPT physical mapping: 18/18 cases passed")
+print("GPT physical mapping: 24/24 cases passed")
 '
     assert_success
-    assert_output "GPT physical mapping: 18/18 cases passed"
+    assert_output "GPT physical mapping: 24/24 cases passed"
 }
 
 @test "route diagnostic enforces canonical decimal and all four effective GPT selectors" {

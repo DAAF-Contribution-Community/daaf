@@ -935,6 +935,47 @@ SH
     refute_output --partial "rm -rf"
 }
 
+@test "chatgpt-lane auth preflight accepts a pre-existing-format auth.json unchanged (codex 0.153.2 upgrade regression guard)" {
+    # Regression guard for the Codex CLI 0.144.1 -> 0.153.2 upgrade. Primary-source
+    # verification (research/2026-09-05_FrameworkDev_GPT6-Astra, notes 05) found NO
+    # change to `codex login status`, the auth.json schema/location, or the
+    # device-auth flow across releases 0.145.0-0.153.4. This locks in that the
+    # launcher's chatgpt-lane auth-store preflight still READS a pre-existing
+    # (0.144.1-era) auth.json and yields the SAME success shape post-upgrade: exit 0
+    # plus the stable "auth store present" line. The launcher never spawns codex, so
+    # the live `codex login status` exit-code/stdout round-trip is a separate concern
+    # covered by the Python delegated-refresh suite (test_v130_auth_delegation.py +
+    # fake_codex.py) and by the post-rebuild live smoke phase.
+    export SHIM_BACKEND_MODE=chatgpt
+    export FAKE_HEALTH_BACKEND_MODE=chatgpt
+    CODEX_HOME="${SHIM_TEST_ROOT}/codex-home"
+    mkdir -p "$CODEX_HOME"
+    chmod 0700 "$CODEX_HOME"
+    # Pre-existing-format auth.json: a tokens.access_token JWT plus sibling fields —
+    # exactly the 0.144.1-era on-disk shape the shim only READS (v1.3.0+; codex is the
+    # sole writer). Every token here is a transparently fabricated test-only value.
+    cat > "${CODEX_HOME}/auth.json" <<'JSON'
+{
+  "OPENAI_API_KEY": null,
+  "tokens": {
+    "id_token": "FABRICATED.TEST.IDTOKEN",
+    "access_token": "eyJhbGciOiJub25lIn0.eyJleHAiOjQ4NzAwMDAwMDAsIm1hcmtlciI6IkZBQlJJQ0FURURfVEVTVF9PTkxZIn0.ZmFrZS1zaWc",
+    "refresh_token": "FABRICATED-TEST-REFRESH",
+    "account_id": "fabricated-test-account"
+  },
+  "last_refresh": "2026-09-04T00:00:00Z"
+}
+JSON
+    chmod 0600 "${CODEX_HOME}/auth.json"
+    export CODEX_HOME
+    run "$MANAGER" --start
+    assert_manager_success
+    assert_output --partial "strictly ready"
+    # Stable preflight success line ($CODEX_HOME is printed literally by the launcher).
+    assert_output --partial "chatgpt auth store present at \$CODEX_HOME/auth.json."
+    refute_output --partial "auth store is missing/unreadable"
+}
+
 @test "non-200 health response is reachable unexpected and blocks manager launch" {
     export FAKE_HEALTH_HTTP_STATUS=404
     start_external_fixture

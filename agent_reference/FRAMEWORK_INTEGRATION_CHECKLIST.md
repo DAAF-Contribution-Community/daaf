@@ -259,7 +259,7 @@ After completing each item, note the status: Done, Skipped (with reason), or N/A
 | P10 | Sync the user- and contributor-facing doc surfaces where behavior claims change | [C] | `scripts/host/environment_settings_example.txt`, `user_reference/07_faq_technical.md`, `user_reference/01_installation_and_quickstart.md`, `README.md`, `CONTRIBUTING.md`, `CLAUDE.md` | Update only where a behavior claim actually changed; `CLAUDE.md` shim passages are gated — flag for user approval rather than editing unilaterally |
 | P11 | Run the `daaf-deploy-smoke-testing` skill's live smoke test after the change | [M] | `daaf-deploy-smoke-testing` skill (Tier 0 shim `/health` preflight + Tier 1 live round-trip) | Per `CONTRIBUTING.md` (deploy-smoke guidance), a provider-shim change requires a deploy-smoke run against the active route |
 
-> **Duplicated-constant caution:** Facts the shim asserts — context-window ceilings above all (e.g., the ~370k ChatGPT-subscription cap) — are restated across ~10 doc surfaces plus multiple benchmark/test sites with no single source. When a shim change alters such a fact, sweep every sibling consumer, not just the one literal you came in to change. CC1/CC7 catch count words; this catches duplicated *facts*.
+> **Duplicated-constant caution:** Facts the shim asserts — context-window ceilings above all (e.g., the 919,000-token ChatGPT-subscription cap measured 2026-09-05) — are restated across ~10 doc surfaces plus multiple benchmark/test sites with no single source. When a shim change alters such a fact, sweep every sibling consumer, not just the one literal you came in to change. CC1/CC7 catch count words; this catches duplicated *facts*.
 
 ### Modifying Existing Shim Behavior
 

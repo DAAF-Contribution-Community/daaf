@@ -63,6 +63,18 @@
 #   * GET /health endpoint for the manager's idempotency/status checks.
 #
 # Changelog:
+#   v1.3.19 (2026-09-05): GPT-6 Astra onboarding — model-aware effort floor + model
+#     listing. _handle_models now advertises openai/gpt-6-astra alongside the
+#     existing gpt-5.6-sol/gpt-5.5 entries (additive). A single model-conditional
+#     clamp in _anthropic_to_responses_request rewrites a resolved reasoning.effort
+#     of "none" to "low" for the Astra family (_ASTRA_FAMILY_SLUGS = {gpt-6-astra,
+#     gpt-6-astra[1m]}, matched on the provider-prefix- and effort-suffix-stripped
+#     terminal slug), because Astra's supported effort enum is
+#     {low,medium,high,xhigh,max} and REJECTS "none"
+#     (developers.openai.com/api/docs/models/gpt-6-astra, primary source
+#     2026-09-05). Every other model keeps prior behavior exactly; the general
+#     four-tier effort resolver and the /health schema are unchanged.
+#     SHIM_VERSION -> 1.3.19.
 #   v1.3.18 (2026-08-09): Bind stream-member cleanup to captured identities.
 #     Cleanup atomically quarantines `.owner` and `output.fifo`, revalidates each
 #     quarantined inode, and unlinks only a match. A one-time same-UID substitution
@@ -1060,9 +1072,13 @@
 #                           slugs the real steering surfaces are the "#<effort>"
 #                           slug suffix (tier 2) and this env var (tier 3).
 #                           Valid values: none | low | medium | high | xhigh |
-#                           max ("max" is gpt-5.6-specific). "none" disables
-#                           reasoning (and, per the API, re-enables temperature —
-#                           but this shim never sends temperature regardless). An
+#                           max. ("max"/"xhigh" are supported by both the gpt-5.6
+#                           family and gpt-6-astra. NOTE: gpt-6-astra does NOT
+#                           accept "none" — an Astra request resolving to "none" is
+#                           clamped to "low" at request build; see
+#                           _ASTRA_FAMILY_SLUGS.) "none" disables reasoning on the
+#                           gpt-5.6 family (and, per the API, re-enables temperature
+#                           — but this shim never sends temperature regardless). An
 #                           unrecognized value here is ignored with a WARNING and
 #                           the default applies.
 #   SHIM_TEXT_VERBOSITY     Response verbosity (v1.2.4). Read once at startup like
@@ -1108,7 +1124,7 @@ import httpx
 import uvicorn
 
 # --- Config ---
-SHIM_VERSION = "1.3.18"
+SHIM_VERSION = "1.3.19"
 SHIM_SERVICE_ID = "daaf-anthropic-openai-shim"
 
 SHIM_PORT = int(os.environ.get("SHIM_PORT", "4141"))
@@ -1262,7 +1278,11 @@ def _resolve_startup_verbosity():
 #   returns both (the source is logged in the per-request line for observability).
 # REASONING: the accepted set is the gpt-5.6 family's documented effort enum
 #   (notes file 04 §5: none|low|medium|high|xhigh|max). A value in this set maps
-#   through IDENTITY. A value NOT in the set is "unknown" for the tier that carried
+#   through IDENTITY. gpt-6-astra shares low|medium|high|xhigh|max but REJECTS
+#   "none" (primary source 2026-09-05); that one model-specific difference is not
+#   encoded in this generic value-set — it is handled by the Astra floor applied at
+#   request build (see _ASTRA_FAMILY_SLUGS). A value NOT in the set is "unknown"
+#   for the tier that carried
 #   it: we log ONE warning and IGNORE that tier (fall through) — never forward a
 #   value OpenAI would reject. The one deliberate exception is a known-but-LOW-
 #   confidence-for-gpt-5.6 alias ("minimal"), which we CLAMP to the nearest
@@ -1293,6 +1313,17 @@ _EFFORT_DISABLED = "none"
 # ASSUMES: "minimal" is LOW-confidence for gpt-5.6 specifically (notes file 04
 #   §5) — clamp to "low" rather than forward-and-risk-a-400.
 _EFFORT_CLAMP = {"minimal": "low"}
+# GPT-6 Astra onboarding (2026-09-05): the Astra family's reasoning.effort enum is
+# {low, medium, high, xhigh, max} — it does NOT accept "none" (OpenAI Astra model
+# page, developers.openai.com/api/docs/models/gpt-6-astra, primary-source). The
+# general resolver above still treats "none" as valid because it IS valid for the
+# gpt-5.6 family; the Astra-specific floor is applied model-conditionally at the
+# single interception point in _anthropic_to_responses_request (below), so every
+# non-Astra model keeps current behavior exactly. Membership is matched on the
+# terminal slug (provider prefix + "#<effort>" suffix already stripped by the
+# caller); the "[1m]" window-hint form is included defensively even though it is
+# consumed client-side and normally never reaches the shim.
+_ASTRA_FAMILY_SLUGS = frozenset({"gpt-6-astra", "gpt-6-astra[1m]"})
 
 # HARDENING: retry policy. Retry only on transient backend failures, and only
 # before any bytes have been emitted to the client (a partially-streamed
@@ -3656,6 +3687,24 @@ def _anthropic_to_responses_request(
     #   any effort level (raine requests summary:"auto" only when effort is set,
     #   notes file 05 §3e; we are stricter for reliable thinking surfacing).
     effort_value, effort_source = _resolve_effort(body, slug_effort_raw)
+    # GPT-6 Astra floor: Astra rejects effort:"none" (see _ASTRA_FAMILY_SLUGS note).
+    # INTENT: for an Astra-family request whose resolved effort is "none" (e.g. an
+    #   inbound thinking:{"type":"disabled"} or a "#none" slug suffix), rewrite to
+    #   "low" — the lowest Astra-supported level — so the backend does not 400.
+    # REASONING: this is the ONLY model-conditional branch in the effort path; it
+    #   runs after the general four-tier resolver and touches Astra alone. Every
+    #   other model forwards its resolved effort unchanged. `bare_model` already has
+    #   the "#<effort>" suffix stripped (by _split_effort_suffix in the caller); we
+    #   additionally drop any provider prefix (e.g. "openai/") to compare the
+    #   terminal slug. The effort_source is left as-is so the per-request log still
+    #   reports which tier supplied the (pre-clamp) value.
+    # ASSUMES: Astra's supported enum is {low, medium, high, xhigh, max} (primary
+    #   source, 2026-09-05). If Astra later accepts "none", delete this branch.
+    _terminal_slug = bare_model.rsplit("/", 1)[-1].strip().lower()
+    if _terminal_slug in _ASTRA_FAMILY_SLUGS and effort_value == "none":
+        log.warning("reasoning effort 'none' not supported for %s; clamped to 'low'",
+                    _terminal_slug)
+        effort_value = "low"
     reasoning_obj = {"summary": "auto", "effort": effort_value}
     payload["reasoning"] = reasoning_obj
 
@@ -7092,6 +7141,7 @@ async def _handle_models(send):
     await _send_json(send, 200, {"data": [
         {"type": "model", "id": "openai/gpt-5.6-sol", "display_name": "gpt-5.6-sol"},
         {"type": "model", "id": "openai/gpt-5.5", "display_name": "gpt-5.5"},
+        {"type": "model", "id": "openai/gpt-6-astra", "display_name": "gpt-6-astra"},
     ]})
 
 

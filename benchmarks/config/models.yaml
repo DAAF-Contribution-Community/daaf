@@ -998,6 +998,28 @@ models:
       ANTHROPIC_DEFAULT_SONNET_MODEL: "openai/gpt-5.6-sol"
       CLAUDE_CODE_SUBAGENT_MODEL: "openai/gpt-5.6-sol"
 
+  # Added 2026-09-05 after live route verification. OpenRouter lists
+  # openai/gpt-6-astra with context_length 1050000 and $10 prompt / $50 completion
+  # per 1M (verified against the OpenRouter models API on 2026-09-05); the pricing
+  # below is those OpenRouter rates. OpenRouter ALSO lists a real openai/gpt-6-astra-pro
+  # slug — do NOT substitute it here: DAAF's exact-match threshold rule keeps any
+  # -pro variant on conservative context thresholds (same caveat as gpt-5.6-sol-pro).
+  # No context_window_tokens override is needed on this route: the full 1,050,000
+  # API/OpenRouter window applies (declare CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000
+  # in the deployment env, per user_reference/01_installation_and_quickstart.md).
+  - id: "openai/gpt-6-astra"
+    name: "GPT-6 Astra"
+    provider: openrouter
+    cost_tier: "medium"
+    pricing:
+      input: 10.00
+      output: 50.00
+      cached_input: 1.00
+    env_overrides:
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "openai/gpt-6-astra"
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "openai/gpt-6-astra"
+      CLAUDE_CODE_SUBAGENT_MODEL: "openai/gpt-6-astra"
+
   - id: "openai/gpt-5.6-terra"
     name: "GPT-5.6 Terra"
     provider: openrouter
@@ -1046,12 +1068,13 @@ models:
     # context_window_tokens feeds CLAUDE_CODE_MAX_CONTEXT_TOKENS in the benchmark
     # child environment (harness/executor.py), so on the chatgpt-subscription lane
     # it must reflect the lane's effective INPUT ceiling, not the model's true 1M
-    # API-route window. The Codex backend ceiling was measured ~370000 for
-    # gpt-5.6-sol (2026-07-16: accept 369,941, reject 372,905); Luna is UNMEASURED
-    # on this lane and is conservatively assumed lane-capped the same way, matching
-    # the statusline/hook lane-gate policy. Re-measure with
-    # scripts/provider_shim/probe_context_ceiling.py and raise if Luna proves higher.
-    context_window_tokens: 370000
+    # API-route window. The Codex backend ceiling was MEASURED 919000 on
+    # 2026-09-05 for both gpt-6-astra (accept 919,053, reject 922,552) and
+    # gpt-5.6-sol (accept 910,827, reject 921,973), superseding the earlier
+    # 2026-07-16 Sol-only ~370000 figure; Luna is UNMEASURED on this lane and is
+    # assumed lane-capped the same way, matching the statusline/hook lane-gate
+    # policy. Re-measure with scripts/provider_shim/probe_context_ceiling.py.
+    context_window_tokens: 919000
     actual_billing_treatment: "not_separately_billed"
     # Pricing updated 2026-08-11: OpenAI cut Luna direct-API list prices 5x
     # (verified against the pricing table at developers.openai.com/api/docs/pricing).
@@ -1077,7 +1100,7 @@ models:
 
   # Added 2026-07-17 (G1R battery) mirroring the gpt-56-luna-chatgpt entry:
   # provider chatgpt-subscription, bare OpenAI wire ID, tier-preserving two-alias
-  # purity pinning, and the 370,000-token subscription-lane ceiling. NOTE
+  # purity pinning, and the subscription-lane context ceiling. NOTE
   # 2026-07-29: the original mirror wrongly copied Luna's api_equivalent_pricing
   # schedule; corrected to Terra's own published tier (2.5x Luna) after the
   # pricing audit (verified against developers.openai.com gpt-5.6-terra).
@@ -1088,11 +1111,12 @@ models:
     cost_tier: "medium"
     effort_level: "high"
     # Lane INPUT ceiling, not the model's true API-route window (see the Luna
-    # entry). The Codex backend ceiling was MEASURED ~370000 for gpt-5.6-sol
-    # (2026-07-16); Terra is UNMEASURED on this lane and is INFERRED to share the
+    # entry). The Codex backend ceiling was MEASURED 919000 on 2026-09-05 for
+    # both gpt-6-astra and gpt-5.6-sol (superseding the 2026-07-16 ~370000
+    # figure); Terra is UNMEASURED on this lane and is INFERRED to share the
     # same lane cap until re-measured with
     # scripts/provider_shim/probe_context_ceiling.py.
-    context_window_tokens: 370000
+    context_window_tokens: 919000
     actual_billing_treatment: "not_separately_billed"
     # Pricing updated 2026-08-11: OpenAI cut Terra direct-API list prices ~20%
     # (verified against the pricing table at developers.openai.com/api/docs/pricing).
@@ -1122,10 +1146,11 @@ models:
     cost_tier: "medium"
     effort_level: "high"
     # Lane INPUT ceiling, not the model's true API-route window (see the Luna
-    # entry). The Codex backend ceiling was MEASURED ~370000 for gpt-5.6-sol on
-    # this lane (2026-07-16: accept 369,941, reject 372,905). Re-measure with
-    # scripts/provider_shim/probe_context_ceiling.py and raise if it proves higher.
-    context_window_tokens: 370000
+    # entry). The Codex backend ceiling was re-MEASURED 919000 for gpt-5.6-sol on
+    # this lane (2026-09-05: accept 910,827, reject 921,973), superseding the
+    # 2026-07-16 measurement of ~370000 (accept 369,941, reject 372,905) which is
+    # now stale. Re-measure with scripts/provider_shim/probe_context_ceiling.py.
+    context_window_tokens: 919000
     actual_billing_treatment: "not_separately_billed"
     # Pricing corrected 2026-07-29: the entry originally copied Luna's schedule
     # (5x understatement); now Sol's own published tier, verified against
@@ -1150,6 +1175,44 @@ models:
     env_overrides:
       ANTHROPIC_DEFAULT_OPUS_MODEL: "gpt-5.6-sol"
       ANTHROPIC_DEFAULT_SONNET_MODEL: "gpt-5.6-sol"
+
+  # Added 2026-09-05 after live ChatGPT-lane route verification (Codex CLI 0.153.2,
+  # shim v1.3.19): gpt-6-astra returned 200 on both the API and subscription lanes.
+  # Mirrors the gpt-56-sol-chatgpt entry: provider chatgpt-subscription, bare OpenAI
+  # wire ID, tier-preserving two-alias purity pinning.
+  - key: "gpt-6-astra-chatgpt"
+    id: "gpt-6-astra"
+    name: "GPT-6 Astra (ChatGPT Subscription)"
+    provider: "chatgpt-subscription"
+    cost_tier: "medium"
+    effort_level: "high"
+    # Lane INPUT ceiling, not the model's true 1,050,000-token API/OpenRouter
+    # window. The Codex backend ceiling was MEASURED 919000 for gpt-6-astra on this
+    # lane (2026-09-05: accept 919,053, reject 922,552), consistent with Astra's
+    # documented 922,000-token max input (1,050,000 window minus 128,000 max
+    # output). Re-measure with scripts/provider_shim/probe_context_ceiling.py.
+    context_window_tokens: 919000
+    actual_billing_treatment: "not_separately_billed"
+    # Astra effort levels are low/medium/high/xhigh/max; `none` is REJECTED by the
+    # backend and the shim clamps a requested `none` to `low` (shim v1.3.19).
+    # Pricing verified 2026-09-05 against developers.openai.com/api/docs/pricing.
+    api_equivalent_pricing:
+      source_url: "https://developers.openai.com/api/docs/pricing"
+      accessed_at: "2026-09-05"
+      threshold_input_tokens: 272000
+      short_context:
+        input: 10.00
+        cached_input: 1.00
+        cache_write: 12.50
+        output: 50.00
+      long_context:
+        input: 20.00
+        cached_input: 2.00
+        cache_write: 25.00
+        output: 75.00
+    env_overrides:
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "gpt-6-astra"
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "gpt-6-astra"
 
   - id: "openai/gpt-5.5"
     name: "GPT-5.5"

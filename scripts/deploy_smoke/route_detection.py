@@ -313,6 +313,18 @@ def _gpt_physical_window(model_id: str):
         if "-chat" in slug:
             return 128000
         return 1050000
+    # gpt-6-astra is a flagship-class 1,050,000-token model (API lane). Unlike the
+    # gpt-5.x families it has no mapped '-mini'/'-chat' sub-variants: only the exact
+    # bare slug or its '[1m]' hint qualifies, so the boundary here accepts end-of-slug
+    # or '[' but NOT '-'. Near misses ('gpt-6-astra-pro/-mini/-chat', bare 'gpt-6', and
+    # left-boundary text like 'xgpt-6-astra') fall through to None. Returning the
+    # flagship window also makes Astra participate in the exact-ChatGPT-lane 919000
+    # ceiling exactly like the gpt-5.6 flagships (keyed on window == 1050000 below);
+    # that subscription-lane cap is MEASURED for Astra as of 2026-09-05 (919,053
+    # accepted / 922,552 rejected), alongside Sol (910,827 accepted / 921,973
+    # rejected). Provenance: previously 370,000 (2026-07-16), now stale.
+    if re.match(r"^gpt-6-astra(?:$|\[)", slug):
+        return 1050000
     if re.match(r"^gpt-5(?:$|[-\[])|^gpt-5\.2(?:$|[-\[])", slug):
         if "-chat" in slug:
             return 128000
@@ -647,9 +659,10 @@ def probe_context_window_coherence(route_info: RouteInfo, env) -> ProbeResult:
     """Tier 0: validate the declaration used by Claude Code and DAAF accounting.
 
     Every effective model selector is inspected. On the exact ChatGPT-subscription
-    lane, any selector mapped to the runtime's anchored GPT 5.4/5.5/5.6 flagship
-    physical family makes the 370000 ceiling relevant. Numeric declarations use
-    the same canonical positive signed-64-bit contract as the Bash consumers.
+    lane, any selector mapped to the runtime's anchored GPT flagship physical
+    family (gpt-5.4/5.5/5.6 plus gpt-6-astra) makes the 919000 ceiling relevant.
+    Numeric declarations use the same canonical positive signed-64-bit contract
+    as the Bash consumers.
     """
     r = ProbeResult(probe_id="T0.4", name="Context-window declaration", tier="0")
     selectors = [(name, env.get(name, "")) for name in MODEL_SELECTOR_VARS]
@@ -724,7 +737,7 @@ def probe_context_window_coherence(route_info: RouteInfo, env) -> ProbeResult:
             "CLAUDE_CODE_AUTO_COMPACT_WINDOW is set on the exact "
             "ChatGPT-subscription lane for mapped GPT flagship selector(s): "
             f"{relevant_text}. DAAF keeps automatic compaction disabled; remove "
-            "this setting and declare CLAUDE_CODE_MAX_CONTEXT_TOKENS=370000 "
+            "this setting and declare CLAUDE_CODE_MAX_CONTEXT_TOKENS=919000 "
             "(or a lower verified canonical positive value)."
         )
     elif max_is_present and not has_max:
@@ -742,23 +755,23 @@ def probe_context_window_coherence(route_info: RouteInfo, env) -> ProbeResult:
         r.detail = (
             "ChatGPT-subscription/Codex mapped GPT flagship selector(s) require "
             "a canonical CLAUDE_CODE_MAX_CONTEXT_TOKENS declaration no greater "
-            f"than 370000. Relevant selector(s): {relevant_text}. A [1m] suffix "
+            f"than 919000. Relevant selector(s): {relevant_text}. A [1m] suffix "
             "and CLAUDE_CODE_AUTO_COMPACT_WINDOW do not satisfy this lane policy."
         )
-    elif exact_chatgpt_flagship and int(max_ctx) > 370000:
+    elif exact_chatgpt_flagship and int(max_ctx) > 919000:
         r.verdict = Verdict.FAIL
         r.detail = (
             f"Unsafe ChatGPT-subscription context declaration: {max_ctx} exceeds "
-            "the measured 370000-token Codex backend ceiling. The declaration is "
+            "the measured 919000-token Codex backend ceiling. The declaration is "
             f"relevant because of: {relevant_text}. Set "
-            "CLAUDE_CODE_MAX_CONTEXT_TOKENS=370000, recreate the container, and "
+            "CLAUDE_CODE_MAX_CONTEXT_TOKENS=919000, recreate the container, and "
             "restart the Claude Code session."
         )
     elif exact_chatgpt_flagship:
         r.verdict = Verdict.PASS
         r.detail = (
             f"ChatGPT-subscription declaration {max_ctx} is canonical and aligned "
-            "with the measured 370000-token backend ceiling; lower positive values "
+            "with the measured 919000-token backend ceiling; lower positive values "
             f"are preserved. Relevant selector(s): {relevant_text}."
         )
     elif not needs_declaration:

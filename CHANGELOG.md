@@ -4,6 +4,7 @@ All notable changes to DAAF for each release version are documented here, in rev
 
 ## Table of Contents
 
+- [Unreleased](#unreleased)
 - [v3.0.2 -- 2026-08-18](#v302--2026-08-18)
 - [v3.0.1 -- 2026-07-29](#v301--2026-07-29)
 - [v3.0.0 -- 2026-07-17](#v300--2026-07-17)
@@ -11,6 +12,39 @@ All notable changes to DAAF for each release version are documented here, in rev
 - [v2.0.1 -- 2026-04-05](#v201--2026-04-05)
 - [v2.0.0 -- 2026-03-31](#v200--2026-03-31)
 - [v1.0.0 -- 2026-02-22](#v100--2026-02-22)
+
+---
+
+## Unreleased
+<!-- AT TAG TIME: assign the version number and date; confirm scope before release -->
+
+### GPT-6 Astra Support
+
+DAAF now supports OpenAI's **GPT-6 Astra** flagship (model slug `gpt-6-astra`) across both the OpenRouter route (Option C) and the provider-shim lanes (Option F), with parity to the existing GPT-5.6 documentation. The bundled Codex CLI advances to **0.153.2**, and Astra is registered in DAAF's validated context-threshold profile at GPT-5.6 Sol parity.
+
+### Detailed Notes
+
+Disclosure: These notes were AI-drafted from the verified change-set and then reviewed by hand.
+
+#### Codex CLI Pinned to 0.153.2
+
+The bundled Codex CLI moves from 0.144.1 to **0.153.2** (0.153.1 is the minimum version that lists `gpt-6-astra` in its model catalog). Primary-source verification of the 0.145–0.153 release range found no changes to the `codex login --device-auth` flow, `auth.json` schema/location, or token-refresh behavior that the ChatGPT-subscription lane depends on.
+
+#### GPT-6 Astra Shim Support
+
+The provider shim accepts `gpt-6-astra` on both auth lanes (OpenAI API key and ChatGPT subscription). One behavioral caveat: Astra does not support reasoning-effort `none` — the shim clamps a requested `none` to `low` for Astra. The `max` effort level is supported (as it is for the gpt-5.6 family).
+
+#### Sol-Parity Threshold Registration
+
+`gpt-6-astra` / `gpt-6-astra[1m]` (bare or provider-prefixed) join DAAF's validated extended-horizon context-threshold profile at GPT-5.6 Sol parity (ELEVATED 60%/300k, HIGH 75%/400k, CRITICAL 90%/500k). Astra's physical window is **1,050,000 tokens** (128,000-token max output) on the API and OpenRouter routes. The ChatGPT-subscription (Codex) lane's backend cap was **measured directly on 2026-09-05 at 919,000 tokens** for both `gpt-6-astra` (accepted 919,053 real input tokens, rejected 922,552) and `gpt-5.6-sol` (accepted 910,827, rejected 921,973) — consistent with Astra's documented 922,000-token maximum input (1,050,000 window minus 128,000 max output). This lane-wide 919,000 figure **replaces the stale ~370,000 cap** measured for Sol alone on 2026-07-16, and is now reflected across the canonical context-threshold reference, the environment-settings example, the installation guide, the technical FAQ, the deploy-smoke T0.4 check, and the DAAFBench registry. Near-miss slugs such as `gpt-6-astra-pro` — a real OpenRouter slug — remain on conservative thresholds. Sol's own tier history is unchanged.
+
+#### DAAFBench and Deploy-Smoke Coverage
+
+`benchmarks/config/models.yaml` gains GPT-6 Astra entries on both routes: `openai/gpt-6-astra` (OpenRouter, $10 prompt / $50 completion per 1M) and `gpt-6-astra` on the ChatGPT-subscription lane (919,000-token lane ceiling, OpenAI API-equivalent pricing $10/$1 cached/$12.50 cache-write/$50 output per 1M short-context, doubled tier above 272k input). The existing GPT-5.6 chatgpt-lane entries were corrected from the stale 370,000 ceiling to the measured 919,000. `scripts/deploy_smoke/profiles.yaml` gains an `openrouter-astra` profile mirroring the existing OpenRouter GPT profile.
+
+#### Documentation and Configuration
+
+The environment-settings example, installation guide, technical FAQ, canonical context-threshold reference, orchestrator mode references, and boundary/hook-coverage docs were updated for Astra parity. A stale GPT-5.6 Sol threshold line in the environment-settings example (previously stated as `40%/60%/75%`) was corrected to the canonical `60%/75%/90%` percentages during the pass.
 
 ---
 

@@ -580,7 +580,7 @@ teardown() {
 
 @test "Dockerfile installs Codex in every image while developer tools remain opt-in" {
     # Match active ARG directives only; comments cannot satisfy either assertion.
-    run grep -E '^[[:space:]]*ARG CODEX_VERSION=0\.144\.1[[:space:]]*$' "${REPO_ROOT}/Dockerfile"
+    run grep -E '^[[:space:]]*ARG CODEX_VERSION=0\.153\.2[[:space:]]*$' "${REPO_ROOT}/Dockerfile"
     assert_success
     run grep -E '^[[:space:]]*ARG DAAF_DEV_CODEX_VERSION([=[:space:]]|$)' "${REPO_ROOT}/Dockerfile"
     assert_failure

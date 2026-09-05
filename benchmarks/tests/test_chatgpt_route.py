@@ -65,12 +65,14 @@ PREEXISTING_MODEL_KEYS = {
 }
 
 # ChatGPT-subscription registry keys (Luna since 2026-07-15; Terra + Sol added
-# 2026-07-17 for the G1R battery). Kept separate from PREEXISTING_MODEL_KEYS so
-# the openrouter/anthropic identity assertion stays independent of this lane.
+# 2026-07-17 for the G1R battery; GPT-6 Astra added 2026-09-05 after live route
+# verification). Kept separate from PREEXISTING_MODEL_KEYS so the
+# openrouter/anthropic identity assertion stays independent of this lane.
 CHATGPT_SUBSCRIPTION_KEYS = {
     "gpt-56-luna-chatgpt",
     "gpt-56-terra-chatgpt",
     "gpt-56-sol-chatgpt",
+    "gpt-6-astra-chatgpt",
 }
 
 # OpenRouter keys added after the PREEXISTING snapshot (kimi-k3 added
@@ -107,6 +109,10 @@ POST_SNAPSHOT_OPENROUTER_ADDITIONS = {
     # GLM 5.3 (z-ai/glm-5.3 bare slug, single Z.AI endpoint at listing time).
     "qwen-38-27b",
     "glm-53",
+    # Added 2026-09-05: GPT-6 Astra over OpenRouter (openai/gpt-6-astra bare
+    # slug; the real openai/gpt-6-astra-pro slug is deliberately excluded because
+    # DAAF's exact-match rule keeps -pro variants on conservative thresholds).
+    "gpt-6-astra",
 }
 
 # Anthropic keys added after the PREEXISTING snapshot (opus-5 added 2026-07-25
@@ -225,7 +231,7 @@ class ModelRegistryTests(unittest.TestCase):
         self.assertEqual(1, len(selected))
         self.assertEqual("gpt-5.6-luna", selected[0].id)
         self.assertEqual("chatgpt-subscription", selected[0].provider)
-        self.assertEqual(370_000, selected[0].context_window_tokens)
+        self.assertEqual(919_000, selected[0].context_window_tokens)
         configured_prices = selected[0].api_equivalent_pricing
         self.assertEqual(LUNA_LONG_CONTEXT_THRESHOLD, configured_prices["threshold_input_tokens"])
         self.assertEqual(LUNA_SHORT_CONTEXT_RATES, configured_prices["short_context"])
@@ -242,16 +248,17 @@ class ModelRegistryTests(unittest.TestCase):
 
     def test_provider_filter_adds_chatgpt_without_changing_existing_counts(self):
         models = self.load_all()
-        self.assertEqual(41, len(models))
+        self.assertEqual(43, len(models))
         # 8 preexisting + opus-5 (added 2026-07-25 for the Opus 5 evaluation).
         self.assertEqual(9, len(filter_models(models, provider="anthropic")))
         # 16 preexisting + Kimi K3 + four later Gemini additions + DeepSeek V4
         # Flash 0731 (2026-08-02) + the Inkling pair (2026-08-10) + Grok 4.6,
         # DeepSeek V4 Pro 0813, and Qwen 3.8 2.4T A95B (2026-08-12) + Qwen 3.8
-        # 27B and GLM 5.3 (2026-08-20).
-        self.assertEqual(29, len(filter_models(models, provider="openrouter")))
-        # Luna + Terra + Sol on the ChatGPT-subscription lane (2026-07-17).
-        self.assertEqual(3, len(filter_models(models, provider="chatgpt-subscription")))
+        # 27B and GLM 5.3 (2026-08-20) + GPT-6 Astra (2026-09-05).
+        self.assertEqual(30, len(filter_models(models, provider="openrouter")))
+        # Luna + Terra + Sol on the ChatGPT-subscription lane (2026-07-17), plus
+        # GPT-6 Astra (2026-09-05).
+        self.assertEqual(4, len(filter_models(models, provider="chatgpt-subscription")))
 
     def test_kimi_k3_entry_is_openrouter_with_full_purity_pinning(self):
         models = self.load_all()
@@ -313,7 +320,7 @@ class ModelRegistryTests(unittest.TestCase):
                 entry = selected[0]
                 self.assertEqual(parent_id, entry.id)
                 self.assertEqual("chatgpt-subscription", entry.provider)
-                self.assertEqual(370_000, entry.context_window_tokens)
+                self.assertEqual(919_000, entry.context_window_tokens)
                 self.assertEqual("high", entry.effort_level)
                 self.assertEqual("not_separately_billed", entry.actual_billing_treatment)
                 prices = entry.api_equivalent_pricing
@@ -856,7 +863,7 @@ class ExecutorRouteTests(unittest.TestCase):
                 )
                 self.assertNotIn("CLAUDE_CODE_SUBAGENT_MODEL", child_env)
                 self.assertEqual(
-                    "370000", child_env["CLAUDE_CODE_MAX_CONTEXT_TOKENS"]
+                    "919000", child_env["CLAUDE_CODE_MAX_CONTEXT_TOKENS"]
                 )
                 self.assertEqual(parent_id, popen.call_args.args[0][4])
                 self.assertIsNone(result.total_cost_usd)

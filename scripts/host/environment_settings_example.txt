@@ -206,7 +206,8 @@
 # them (multi-tool loops, subagent dispatch, two-tier routing) with no proxy and
 # no rebuild -- just the four Option C lines above plus the model-routing keys in
 # section [3] (validated live 2026-07-09). See section [3] for the GPT model
-# slugs, context-window sizing, and the tier-analog naming (Sol / Terra / Luna).
+# slugs, context-window sizing, and the tier-analog naming (Sol / Terra / Luna),
+# plus the GPT-6 Astra flagship (slug gpt-6-astra).
 #
 # ----------------------------------------------------------------------------
 # Option D: Amazon Bedrock
@@ -254,7 +255,8 @@
 # ----------------------------------------------------------------------------
 # Strong tier (Opus-analog) and fast tier (Sonnet-analog).
 # Same-window example: openai/gpt-5.6-sol (strong) with
-# openai/gpt-5.6-terra (fast). See the GLM-specific global-window guidance below
+# openai/gpt-5.6-terra (fast); openai/gpt-6-astra also works as the strong tier.
+# See the GLM-specific global-window guidance below
 # before routing exact GLM and Air together.
 # --- To activate, remove the leading '#' and set your model slugs: ---
 #ANTHROPIC_DEFAULT_OPUS_MODEL=your-strong-model-slug
@@ -285,8 +287,8 @@
 # GLOBAL: it applies to the main session and every subagent, not per model. Choose
 # one value that is valid for every model the session can route to.
 # NOTE: on the ChatGPT-subscription shim lane (Option F alternate lane, section
-# [4.3]) the Codex backend enforces a ~370k effective input ceiling regardless of
-# the model's API-route window -- set 370000 there (see [4.3]), not 1050000.
+# [4.3]) the Codex backend enforces a 919k effective input ceiling regardless of
+# the model's API-route window -- set 919000 there (see [4.3]), not 1050000.
 # --- To activate, remove the leading '#' and set the global value: ---
 #CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000
 #
@@ -304,20 +306,23 @@
 # the one global value is valid for every routed model. This runtime path has no
 # supported per-model context-window override.
 #
-# GPT window sizes: the gpt-5.6 family (sol / terra / luna) and gpt-5.5 / 5.4
-# are 1050000 on API/OpenRouter routes; gpt-5.2 is 400000. DAAF keeps Claude
+# GPT window sizes: the gpt-5.6 family (sol / terra / luna), gpt-6-astra, and
+# gpt-5.5 / 5.4 are 1050000 on API/OpenRouter routes; gpt-5.2 is 400000. DAAF keeps Claude
 # Code automatic compaction disabled, so CLAUDE_CODE_AUTO_COMPACT_WINDOW is NOT
 # an alternative declaration or protection mechanism.
 #
 # GPT-5.6 FAMILY & TIER-ANALOG NAMING: Sol (strong / Opus-analog), Terra
 # (mid / Sonnet-analog), Luna (economy / Haiku-analog) -- all with 1,050,000-token
-# windows; the older gpt-5.5 / 5.4 / 5.2 slugs still work. Context-utilization
-# numbers are ESTIMATES on GPT sessions (OpenRouter doesn't serve Claude Code's
-# token-counting endpoint). GPT models use DAAF's conservative context-quality
-# thresholds by default; exact gpt-5.6-sol and gpt-5.6-sol[1m] (including provider-
-# prefixed forms) keep Sol's higher validated absolute gates while using the standard
-# percentages: 40%/300k, 60%/400k, and 75%/500k. Non-Sol and near-match variants
-# remain conservative. Physical-window mapping and quality thresholds are separate.
+# windows; the older gpt-5.5 / 5.4 / 5.2 slugs still work. GPT-6 Astra (slug
+# gpt-6-astra) is the newer flagship, also with a 1,050,000-token window (128,000
+# max output). Context-utilization numbers are ESTIMATES on GPT sessions
+# (OpenRouter doesn't serve Claude Code's token-counting endpoint). GPT models use
+# DAAF's conservative context-quality thresholds by default; exact gpt-5.6-sol,
+# gpt-5.6-sol[1m], gpt-6-astra, and gpt-6-astra[1m] (including provider-prefixed
+# forms) share a validated profile that keeps higher validated absolute gates while
+# using higher percentages: 60%/300k, 75%/400k, and 90%/500k (whichever fires
+# first). Non-Sol/Astra and near-match variants (e.g. gpt-6-astra-pro) remain
+# conservative. Physical-window mapping and quality thresholds are separate.
 # See the installation guide's "GPT (OpenAI) models via OpenRouter" section for
 # current model guidance.
 #
@@ -327,8 +332,8 @@
 # direct-OpenAI shim lane (Option F in [4]) but UNTESTED on "openai/"-prefixed
 # OpenRouter slugs -- so on Option C prefer the explicit
 # CLAUDE_CODE_MAX_CONTEXT_TOKENS above. On the ChatGPT-subscription lane ([4.3]),
-# the [1m] hint cannot raise the Codex backend's measured ~370k ceiling: set the
-# override CLAUDE_CODE_MAX_CONTEXT_TOKENS=370000 per section [4.3]. DAAF keeps
+# the [1m] hint cannot raise the Codex backend's measured 919k ceiling: set the
+# override CLAUDE_CODE_MAX_CONTEXT_TOKENS=919000 per section [4.3]. DAAF keeps
 # automatic compaction disabled and instead uses the aligned physical-window
 # declaration for utilization, statusline rendering, severity, and stop/restart
 # guidance.
@@ -404,6 +409,13 @@
 #ANTHROPIC_DEFAULT_OPUS_MODEL=gpt-5.6-sol[1m]
 #ANTHROPIC_DEFAULT_SONNET_MODEL=gpt-5.6-terra[1m]
 #
+# GPT-6 Astra is available as an alternative strong-tier slug on this lane --
+# gpt-6-astra[1m] (bare; the [1m] hint is verified here). One Astra-specific
+# caveat: Astra does NOT support reasoning-effort "none" -- the shim clamps a
+# requested "none" to "low" for Astra (see REASONING-EFFORT CONTROL in 4.4).
+# --- To activate, remove the leading '#': ---
+#ANTHROPIC_DEFAULT_OPUS_MODEL=gpt-6-astra[1m]
+#
 # CONTEXT WINDOW: CLAUDE_CODE_MAX_CONTEXT_TOKENS is LANE-SPECIFIC -- the two auth
 # lanes hit different effective ceilings (the ChatGPT/Codex backend is capped far
 # below the model's true 1M window), so it is set per-lane in 4.2 / 4.3 below,
@@ -431,7 +443,8 @@
 #OPENAI_API_KEY=sk-your_openai_key_here
 #
 # CONTEXT WINDOW (API-key lane): this lane serves the model's full window
-# (live-confirmed clean at 400k input, 2026-07-16). Declare the real 1M window:
+# (live-confirmed clean at 400k input, 2026-07-16). Declare the real 1M window
+# (1050000 applies to gpt-6-astra on this lane too):
 # --- To activate, remove the leading '#': ---
 #CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000
 #
@@ -456,7 +469,8 @@
 # 07_faq_technical.md, "Can I use my ChatGPT subscription instead of an OpenAI API key?"):
 #   1. CONFIRM CODEX. The pinned Codex CLI ships in every DAAF image; DAAF_DEV=1
 #      is NOT required merely to obtain it or log in. Verify inside the container
-#      with `codex --version` (expect 0.144.1). If the command is missing, update
+#      with `codex --version` (expect 0.153.2; 0.153.1 is the minimum that lists
+#      gpt-6-astra). If the command is missing, update
 #      DAAF and rebuild the image (rebuild_daaf.sh / rebuild_daaf.ps1) so the host
 #      build uses the current Dockerfile.
 #   2. ENABLE DEVICE-CODE LOGIN FIRST. In your ChatGPT personal-account security
@@ -495,17 +509,19 @@
 #SHIM_BACKEND_MODE=chatgpt
 #
 # CONTEXT WINDOW (chatgpt lane): the Codex subscription backend enforces a much
-# lower effective INPUT ceiling than the model's true 1M window -- measured ~370000
-# for gpt-5.6-sol (2026-07-16: accept 369,941, reject 372,905). The backend is the
-# ultimate hard ceiling; neither [1m] nor any client setting can raise it. Declare
-# 370000 here to align Claude Code and DAAF's physical-window accounting with that
-# ceiling. DAAF uses the aligned denominator for utilization, statusline rendering,
-# severity, and behavioral stop/restart guidance. DAAF keeps automatic compaction
-# disabled and does not implement a transport-level request blocker. Big-window GPT
-# slugs on this lane are assumed capped the same way until individually measured;
-# re-measure with scripts/provider_shim/probe_context_ceiling.py.
+# lower effective INPUT ceiling than the model's true 1M window -- measured 919000
+# on 2026-09-05 for BOTH gpt-6-astra (accept 919,053, reject 922,552) and
+# gpt-5.6-sol (accept 910,827, reject 921,973). This supersedes the earlier
+# 2026-07-16 Sol-only figure of ~370000. The backend is the ultimate hard ceiling;
+# neither [1m] nor any client setting can raise it. Declare 919000 here to align
+# Claude Code and DAAF's physical-window accounting with that ceiling. DAAF uses
+# the aligned denominator for utilization, statusline rendering, severity, and
+# behavioral stop/restart guidance. DAAF keeps automatic compaction disabled and
+# does not implement a transport-level request blocker. Big-window GPT slugs on
+# this lane are assumed capped the same way until individually measured.
+# Re-measure with scripts/provider_shim/probe_context_ceiling.py.
 # --- To activate, remove the leading '#': ---
-#CLAUDE_CODE_MAX_CONTEXT_TOKENS=370000
+#CLAUDE_CODE_MAX_CONTEXT_TOKENS=919000
 #
 # ON on this lane requests friendly ChatGPT Fast using canonical Responses wire
 # `service_tier:"priority"`. This remains ChatGPT plan/credit usage, NOT OpenAI API
@@ -579,7 +595,9 @@
 #
 # SHIM_REASONING_EFFORT (tier 3 of the effort precedence chain): sets
 # reasoning.effort when no usable per-request signal and no slug suffix are
-# present. Valid values none|low|medium|high|xhigh|max ("max" is gpt-5.6-only).
+# present. Valid values none|low|medium|high|xhigh|max ("max" is supported on the
+# gpt-5.6 family and gpt-6-astra). gpt-6-astra does NOT accept "none" -- the shim
+# clamps a requested "none" to "low" for Astra.
 # Leave unset to use the default "high" (v1.2.2+ always sends an effort now -- the
 # old implicit "medium" server default no longer applies). Read at shim startup,
 # so a restart is required.

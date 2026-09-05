@@ -30,6 +30,20 @@ rejections (the cheap outcome) do the work and accepted (expensive) requests are
 minimized. `max_tokens` is pinned to 1 so an accepted request generates almost no
 output.
 
+OBSERVED BAND (2026-09-05, Codex CLI 0.153.2, shim v1.3.19, SHIM_BACKEND_MODE=chatgpt,
+ChatGPT Pro plan): the subscription lane accepted 919,053 real input tokens for
+gpt-6-astra (rejecting 922,552) and 910,827 for gpt-5.6-sol (rejecting 921,973), so the
+lane-wide cap DAAF accounts against is 919,000 — consistent with Astra's documented
+922,000-token max input (1,050,000 window - 128,000 output). Provenance: previously
+370,000 (2026-07-16), now stale. The bracket/oversize defaults below sit just
+below/above that measured band.
+
+ROBUSTNESS: the 2026-09-05 gpt-5.6-sol run also exposed a backend that answered a
+~912k-token request with a bogus usage.input_tokens=42165. The probe adopted it as
+truth, chars/token exploded, and the remaining bisect probed meaningless sizes. A
+single reading that would change the running chars/token estimate by more than
+MAX_CALIBRATION_RATIO_CHANGE-fold is now ignored with a printed warning.
+
 COMPATIBILITY: this probe parses the rejection MESSAGE TEXT, not the HTTP status or
 error `type`, so it works against both the live v1.2.8 shim (which collapses the
 backend 400 to a flat `502 api_error` carrying the `context_length_exceeded` text in
@@ -50,13 +64,15 @@ import urllib.request
 # Default local shim endpoint (Anthropic-compatible /v1/messages).
 DEFAULT_BASE_URL = "http://127.0.0.1:4141"
 DEFAULT_MODEL = "gpt-5.6-sol"
-# Live-observed bracket (session 2026-07-16): backend ACCEPTED real 337,034 tokens
-# and REJECTED ~400k. The bisect defaults sit just below/above that band.
-DEFAULT_BRACKET_LOW = 337000
-DEFAULT_BRACKET_HIGH = 450000
+# Live-observed bracket (session 2026-09-05): the ChatGPT lane ACCEPTED real 919,053
+# tokens (gpt-6-astra) / 910,827 (gpt-5.6-sol) and REJECTED 922,552 / 921,973. The
+# bisect defaults sit just below/above that band. (Session 2026-07-16 measured a much
+# lower 337,034-accept / ~400k-reject band; that observation is stale.)
+DEFAULT_BRACKET_LOW = 900000
+DEFAULT_BRACKET_HIGH = 1000000
 # The deliberately-oversized first probe: comfortably past the observed rejection
 # point so the backend states its maximum in the error body.
-DEFAULT_OVERSIZE_TARGET = 450000
+DEFAULT_OVERSIZE_TARGET = 1150000
 # Stop the bisect once the accept/reject boundary is bracketed this tightly.
 DEFAULT_TOLERANCE = 3000
 # Initial chars-per-token guess before the first accepted response recalibrates it.
@@ -66,6 +82,11 @@ INITIAL_CHARS_PER_TOKEN = 4.0
 # When confirming a parsed ceiling, aim this many tokens BELOW it for the single
 # just-under-ceiling acceptance check.
 CONFIRM_MARGIN_TOKENS = 4000
+# Largest fold-change in the running chars-per-token estimate that a single accepted
+# response is allowed to cause. A backend that reports a wildly wrong
+# usage.input_tokens (observed 2026-09-05: input_tokens=42165 for a ~912k-token
+# request) would otherwise be adopted as truth and derail every subsequent target.
+MAX_CALIBRATION_RATIO_CHANGE = 3.0
 
 # Deterministic filler vocabulary — a fixed word list repeated so every run of the
 # probe produces byte-identical input for a given target (reproducible probing).
@@ -297,18 +318,41 @@ def run_live_probe(args, post_fn=post_probe):
     smallest_reject = None      # smallest estimated target observed rejected
 
     def record_and_log(record):
+        # Returns True when the record's reported token count was trusted, False when
+        # an implausible usage.input_tokens caused it to be ignored (see guard below).
         nonlocal chars_per_token, largest_accept, smallest_reject
         log_lines.append(summarize_record(record))
         if record["accepted"] and record["real_input_tokens"]:
             # Recalibrate chars-per-token from the REAL backend count so subsequent
             # targets are sized accurately (the shim's own estimate is biased low).
             observed = record["real_input_tokens"]
-            chars_per_token = max(1.0, record["filler_chars"] / observed)
+            candidate = max(1.0, record["filler_chars"] / observed)
+            # INTENT: reject a single absurd usage.input_tokens rather than adopting it.
+            # REASONING: observed live 2026-09-05 (gpt-5.6-sol) — the backend answered a
+            #   ~912k-token request with input_tokens=42165, which recalibrated
+            #   chars/token from ~4.4 to ~96 and sent the remaining bisect probing
+            #   multi-million-character payloads that could only be rejected.
+            # ASSUMES: a genuine backend tokenizer never shifts the running estimate by
+            #   more than MAX_CALIBRATION_RATIO_CHANGE-fold between requests that use
+            #   the same deterministic filler vocabulary.
+            ratio = max(candidate / chars_per_token, chars_per_token / candidate)
+            if ratio > MAX_CALIBRATION_RATIO_CHANGE:
+                warning = (
+                    f"  [warn] implausible usage.input_tokens={observed} for "
+                    f"{record['filler_chars']} chars (chars/token "
+                    f"{chars_per_token:.2f} -> {candidate:.2f}, {ratio:.1f}x change); "
+                    "ignoring this reading for calibration and accept bookkeeping"
+                )
+                log_lines.append(warning)
+                print(warning, flush=True)
+                return False
+            chars_per_token = candidate
             if largest_accept is None or observed > largest_accept:
                 largest_accept = observed
         elif record["context_exceeded"]:
             if smallest_reject is None or record["target_tokens"] < smallest_reject:
                 smallest_reject = record["target_tokens"]
+        return True
 
     # --- Phase 1: one deliberately-oversized request; try to parse the maximum. ---
     print(f"[probe] oversized request at ~{args.oversize_target} tokens ...", flush=True)
@@ -355,12 +399,15 @@ def run_live_probe(args, post_fn=post_probe):
             args.base_url, args.model, mid,
             chars_per_token, args.max_tokens, args.timeout, post_fn,
         )
-        record_and_log(record)
+        trusted = record_and_log(record)
         if record["accepted"]:
             # Clamp to `high`: an accept whose REAL token count overshoots the current
             # ceiling (filler over-produced) must not push `low` above `high` and
             # invert the bracket — cap it so the search interval stays well-formed.
-            low = min(record["real_input_tokens"] or mid, high)
+            # An untrusted (guard-rejected) token count falls back to the estimated
+            # target so one bogus reading cannot collapse the bracket floor either.
+            observed = record["real_input_tokens"] if trusted else None
+            low = min(observed or mid, high)
         else:
             # A rejection (cheap) tightens the ceiling.
             high = mid
@@ -516,6 +563,43 @@ def run_self_test():
     check("parsed self-test drives the real parse+confirm path", p_method == "parsed")
     check("parsed estimate equals the stated maximum", p_est == parsed_ceiling_real)
     check("parsed path ran a confirming accept", p_largest is not None)
+
+    # 3c. Calibration-guard path (regression for the 2026-09-05 gpt-5.6-sol defect):
+    #     one accepted response reports an absurd usage.input_tokens (1/20th of the
+    #     real count). The guard must ignore that reading — never adopting it as the
+    #     chars-per-token truth and never letting it stand as an accept bound — so the
+    #     bisect still converges on the true ceiling.
+    bogus_state = {"fired": False}
+
+    def fake_bogus_post(base_url, body, timeout):
+        chars = len(body["messages"][0]["content"])
+        real = int(round(chars / real_cpt))
+        if real > bisect_ceiling_real:
+            return 400, {"type": "error", "error": {
+                "type": "invalid_request_error",
+                "message": "context_length_exceeded: too many tokens"}}
+        reported = real
+        if not bogus_state["fired"]:
+            # First accepted response only: emit a wildly-too-small token count.
+            bogus_state["fired"] = True
+            reported = max(1, real // 20)
+        return 200, {"type": "message",
+                     "usage": {"input_tokens": reported, "output_tokens": 1}}
+
+    guard_args = argparse.Namespace(
+        base_url="http://fake.invalid", model="gpt-5.6-sol",
+        bracket_low=337000, bracket_high=450000, oversize_target=450000,
+        tolerance=tol, max_tokens=1, timeout=1.0,
+    )
+    g_est, g_method, g_largest, _g_reject, g_log = run_live_probe(
+        guard_args, post_fn=fake_bogus_post)
+    check("guard self-test drives the real bisect path", g_method == "bisect")
+    check("guard warned about the implausible token count",
+          any("implausible usage.input_tokens" in line for line in g_log))
+    check("guard kept the bisect converging despite the bogus reading",
+          abs(g_est - bisect_ceiling_real) <= tol)
+    check("guard never adopted the bogus count as an accept bound",
+          g_largest is not None and g_largest > bisect_ceiling_real // 2)
 
     print()
     if failures:

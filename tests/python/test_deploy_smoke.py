@@ -237,6 +237,31 @@ class RouteServiceTierCoherenceTests(unittest.TestCase):
                 if diagnostic is not None:
                     self.assertIn(diagnostic, result.detail)
 
+    def test_gpt_physical_window_maps_astra_flagship_and_rejects_near_misses(self):
+        # Parallels the bats "GPT physical-family classifier" battery. gpt-6-astra
+        # is a flagship-class 1,050,000-token model: only the exact bare slug, its
+        # [1m] hint, or a provider-prefixed terminal segment qualify. '-pro', bare
+        # 'gpt-6', and left-boundary text ('xgpt-6-astra') are near misses -> None.
+        expected = {
+            # gpt-5.x anchors (parallel with the existing families for regression)
+            "gpt-5.6-sol": 1050000,
+            "gpt-5.6-sol-mini": 400000,
+            "gpt-5.6-sol-chat": 128000,
+            # gpt-6-astra positives
+            "gpt-6-astra": 1050000,
+            "gpt-6-astra[1m]": 1050000,
+            "openai/gpt-6-astra": 1050000,
+            # gpt-6-astra near misses
+            "gpt-6-astra-pro": None,
+            "gpt-6": None,
+            "xgpt-6-astra": None,
+        }
+        for model_id, want in expected.items():
+            with self.subTest(model_id=model_id):
+                self.assertEqual(
+                    route_detection._gpt_physical_window(model_id), want
+                )
+
     def test_route_control_diagnostics_are_bounded_and_do_not_reflect_values(self):
         marker = "credential-shaped-private-marker-" + "x" * 200
         env = {
