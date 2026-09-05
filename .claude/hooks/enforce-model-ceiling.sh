@@ -73,7 +73,7 @@ set -uo pipefail
 # not a safety boundary — see FAIL-OPEN RATIONALE above).
 trap 'echo "enforce-model-ceiling: unexpected error; allowing dispatch (fail-open cost guard)" >&2; exit 0' ERR
 
-readonly AGENTS_DIR="/daaf/.claude/agents"
+readonly AGENTS_DIR="${DAAF_ENFORCE_MODEL_CEILING_AGENTS_DIR:-/daaf/.claude/agents}"
 
 # --- Dependency check: jq. Missing jq -> allow (fail-open). ---
 if ! command -v jq >/dev/null 2>&1; then

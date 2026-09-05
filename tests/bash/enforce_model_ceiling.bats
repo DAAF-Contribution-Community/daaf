@@ -72,16 +72,17 @@ _payload() {
 }
 
 # Write a fixture agent definition into TEST_DIR and echo the subagent_type
-# string that drives the hook's FRONTMATTER leg (leg c) against it. The hook
-# hardcodes `AGENTS_DIR=/daaf/.claude/agents` (readonly, no env override) and
-# builds `AGENT_FILE="${AGENTS_DIR}/${subagent_type}.md"`. We therefore feed a
-# subagent_type that path-traverses out of that hardcoded dir back to the
-# fixture: the three leading `..` segments climb agents -> .claude -> daaf -> /,
-# then TEST_DIR (absolute) descends to the fixture file. This exercises the
-# REAL hook's frontmatter `model:` awk end-to-end against a controlled file,
-# without modifying the hook or writing into the real agents dir. The fixture
-# carries an inline comment on the `model:` line on purpose: the awk prints $2
-# (the value), so a mutation to $NF would grab the trailing comment token and
+# that drives the hook's FRONTMATTER leg (leg c) against it. The hook builds
+# `AGENT_FILE="${AGENTS_DIR}/${subagent_type}.md"`, and AGENTS_DIR honors the
+# DAAF_ENFORCE_MODEL_CEILING_AGENTS_DIR override; callers set that to TEST_DIR
+# on the `run` line so the hook reads the fixture. (An earlier version reached
+# the fixture by `..`-traversing out of the hardcoded /daaf/.claude/agents; that
+# only works where /daaf exists -- the kernel resolves the missing prefix before
+# applying `..` -- so it passed in the container and failed on CI runners.)
+# This exercises the REAL hook's frontmatter `model:` awk end-to-end against a
+# controlled file without writing into the real agents dir. The fixture carries
+# an inline comment on the `model:` line on purpose: the awk prints $2 (the
+# value), so a mutation to $NF would grab the trailing comment token and
 # mis-rank the dispatch -- the over-tier DENY tests below fail under that
 # mutation, closing the coverage gap. Fixtures live in TEST_DIR and are removed
 # by common_teardown. Arg $1: fixture name; $2: the full `model:` line.
@@ -89,10 +90,8 @@ _make_agent_fixture() {
     local name="$1" modelline="$2"
     printf '%s\n' "---" "name: ${name}" "${modelline}" "tools: Read" "---" "# ${name}" "body" \
         > "${TEST_DIR}/${name}.md"
-    # `..` x3 maps /daaf/.claude/agents -> / ; TEST_DIR is absolute (leading /),
-    # so `../../..${TEST_DIR}` resolves to TEST_DIR. No trailing `.md` -- the
-    # hook appends it.
-    printf '../../..%s/%s' "${TEST_DIR}" "${name}"
+    # No trailing `.md` -- the hook appends it.
+    printf '%s' "${name}"
 }
 
 # =========================================================================
@@ -146,7 +145,7 @@ _make_agent_fixture() {
 @test "frontmatter over-tier + inline comment: session sonnet + agent 'model: opus  # ...' -> DENY (guards \$2 vs \$NF)" {
     local tp; tp="$(_make_transcript "claude-sonnet-4-5")"
     local stype; stype="$(_make_agent_fixture "fixture-opus" "model: opus   # High-judgment tier note words")"
-    run bash "$ENFORCE_MODEL_CEILING_SH" < <(_payload "bats-ceiling-fm-1" "$tp" "" "$stype")
+    run env DAAF_ENFORCE_MODEL_CEILING_AGENTS_DIR="$TEST_DIR" bash "$ENFORCE_MODEL_CEILING_SH" < <(_payload "bats-ceiling-fm-1" "$tp" "" "$stype")
     assert_success
     [ -n "$output" ]  # non-empty guard: a no-emit hook would vacuously pass jq -e
     echo "$output" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null
@@ -158,7 +157,7 @@ _make_agent_fixture() {
 @test "frontmatter within tier + inline comment: session opus + agent 'model: sonnet  # ...' -> ALLOW" {
     local tp; tp="$(_make_transcript "claude-opus-4-8")"
     local stype; stype="$(_make_agent_fixture "fixture-sonnet" "model: sonnet   # Well-specified tier note")"
-    run bash "$ENFORCE_MODEL_CEILING_SH" < <(_payload "bats-ceiling-fm-2" "$tp" "" "$stype")
+    run env DAAF_ENFORCE_MODEL_CEILING_AGENTS_DIR="$TEST_DIR" bash "$ENFORCE_MODEL_CEILING_SH" < <(_payload "bats-ceiling-fm-2" "$tp" "" "$stype")
     assert_success
     assert_output ""
 }
@@ -166,7 +165,7 @@ _make_agent_fixture() {
 @test "frontmatter over-tier + inline comment: session haiku + agent 'model: opus  # ...' -> DENY (reason names session)" {
     local tp; tp="$(_make_transcript "claude-haiku-4-5")"
     local stype; stype="$(_make_agent_fixture "fixture-opus2" "model: opus   # High-judgment tier note words")"
-    run bash "$ENFORCE_MODEL_CEILING_SH" < <(_payload "bats-ceiling-fm-3" "$tp" "" "$stype")
+    run env DAAF_ENFORCE_MODEL_CEILING_AGENTS_DIR="$TEST_DIR" bash "$ENFORCE_MODEL_CEILING_SH" < <(_payload "bats-ceiling-fm-3" "$tp" "" "$stype")
     assert_success
     [ -n "$output" ]
     echo "$output" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null
