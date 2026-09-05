@@ -5,9 +5,9 @@
 # conversation so the model can make informed decisions about delegation, state
 # persistence, and session recovery (see CLAUDE.md utilization gates — the
 # thresholds are quality-tier conditional: Fable/Mythos use 30%/40%/50% OR
-# 300k/400k/500k; exact GPT 5.6 Sol ids use 60%/75%/90% OR
-# 300k/400k/500k; all other models use 40%/60%/75% OR 150k/200k/250k,
-# whichever fires first; see calculate() below).
+# 300k/400k/500k; the exact extended-horizon GPT ids (GPT 5.6 Sol and GPT-6
+# Astra) use 60%/75%/90% OR 300k/400k/500k; all other models use 40%/60%/75%
+# OR 150k/200k/250k, whichever fires first; see calculate() below).
 #
 # Registered events:
 #   UserPromptSubmit  — stdout text → injected as <user-prompt-submit-hook>
@@ -64,17 +64,21 @@
 #   measured — main-session measurements use the session model; subagent
 #   measurements use that subagent's own model. Fable/Mythos patterns get the
 #   validated extended-horizon tier (30/40/50% OR 300/400/500k). The exact
-#   terminal GPT slugs gpt-5.6-sol and gpt-5.6-sol[1m] use 60/75/90%
-#   gates while retaining 300/400/500k absolute gates. Provider paths are
-#   accepted only when one of those exact slugs is the final path segment. All
-#   other models (Opus, Sonnet, other GPT variants, GLM, unknown/empty) get the
-#   conservative tier (40/60/75% OR 150/200/250k). This is deliberately
-#   separate from physical-window mapping: the broad GPT 5.6 family maps to a
-#   1.05M physical window on API/OpenRouter routes, while the matched ChatGPT-
-#   subscription/Codex lane is finally capped at 370k for accounting. Only exact
-#   GPT 5.6 Sol slugs retain the larger absolute quality-horizon gates without
-#   inheriting Fable/Mythos percentage gates. Likewise, claude-opus-4-8[1m] has
-#   a 1M physical window but keeps the conservative tier.
+#   terminal extended-horizon GPT slugs — gpt-5.6-sol and gpt-5.6-sol[1m], plus
+#   the second registered extended-horizon model gpt-6-astra and gpt-6-astra[1m]
+#   — use 60/75/90% gates while retaining 300/400/500k absolute gates. Provider
+#   paths are accepted only when one of those exact slugs is the final path
+#   segment. All other models (Opus, Sonnet, other GPT variants, GLM,
+#   unknown/empty) get the conservative tier (40/60/75% OR 150/200/250k). This
+#   is deliberately separate from physical-window mapping: the broad GPT 5.6
+#   family and GPT-6 Astra each map to a 1.05M physical window on API/OpenRouter
+#   routes, while the matched ChatGPT-subscription/Codex lane is finally capped
+#   at 919k for accounting (measured 2026-09-05 for both Sol and Astra;
+#   previously 370,000 (2026-07-16), now stale). Only the exact extended-horizon
+#   GPT slugs retain the larger absolute quality-horizon gates without inheriting
+#   Fable/Mythos percentage gates. Likewise, claude-opus-4-8[1m] AND Opus 5
+#   (claude-opus-5, bare and [1m]) have 1M physical windows but keep the
+#   conservative tier.
 #   If model resolution fails, the conservative tier applies (fail-conservative).
 #
 # Exit codes:
@@ -237,13 +241,15 @@ INJECT_INTERVAL=60  # seconds between injections
 
 # Convention 3: closed-set GPT flagship grammar. Only these exact terminal
 # slugs (after stripping any provider path prefix) are eligible for the
-# 1,050,000-token physical window and the 370k ChatGPT-lane cap arm. New
+# 1,050,000-token physical window and the 919k ChatGPT-lane cap arm. New
 # codenames are a deliberate one-line registry edit (validate-before-trust,
 # consistent with DAAF policy). Stored in a variable to avoid [[ =~ ]] quoting
-# pitfalls. Accepts gpt-5.4/5.5/5.6 with an optional -sol/-terra/-luna codename
-# and an optional [1m] badge; rejects malformed suffixes (gpt-5.4-,
-# gpt-5.6-experimental, gpt-5.6-sol[1m]x), mini/chat, and gpt-5.60.
-GPT_FLAGSHIP_RE='^gpt-5\.(4|5|6)(-(sol|terra|luna))?(\[1m\])?$'
+# pitfalls. Accepts gpt-5.4/5.5/5.6 with an optional -sol/-terra/-luna codename,
+# plus the standalone GPT-6 flagship gpt-6-astra, each with an optional [1m]
+# badge; rejects malformed suffixes (gpt-5.4-, gpt-5.6-experimental,
+# gpt-5.6-sol[1m]x, gpt-6-astra-pro, gpt-6-astra[1m]-x), mini/chat, gpt-5.60,
+# and left-boundary near misses (xgpt-6-astra, gpt-6-astrab).
+GPT_FLAGSHIP_RE='^(gpt-5\.(4|5|6)(-(sol|terra|luna))?|gpt-6-astra)(\[1m\])?$'
 # Closed-set mini/chat grammars (Convention 3), byte-consistent with
 # subagent-bar.sh and context-bar.sh's anchored EREs. These replace the old
 # open-ended inner globs (*-mini*/*-chat*) so suffixed near-misses (e.g.
@@ -311,15 +317,16 @@ if [[ -n "$AGENT_ID" && -n "$AGENT_MODEL" && "$AGENT_MODEL" != "$SESSION_MODEL" 
         z-ai/glm-5.2|z-ai/glm-5.2-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9])
             MAX_CONTEXT=1048576 ;;
         *)
-            # gpt-5.4/5.5/5.6 family (broad glob selects the arm). Within it:
-            # mini/chat keep their smaller windows and take precedence; the
-            # 1,050,000 flagship window is granted ONLY to an exact closed-set
-            # match (GPT_FLAGSHIP_RE). A malformed codename that entered the arm
-            # (gpt-5.6-experimental, gpt-5.4-, gpt-5.6-sol[1m]x) is neither
-            # mini/chat nor an exact flagship, so it maps conservatively to 200k
-            # instead of inheriting the flagship window.
+            # gpt-5.4/5.5/5.6 family plus the standalone GPT-6 Astra flagship
+            # (broad globs select the arm). Within it: mini/chat keep their
+            # smaller windows and take precedence; the 1,050,000 flagship window
+            # is granted ONLY to an exact closed-set match (GPT_FLAGSHIP_RE). A
+            # malformed codename that entered the arm (gpt-5.6-experimental,
+            # gpt-5.4-, gpt-5.6-sol[1m]x, gpt-6-astra-pro, gpt-6-astra[1m]-x) is
+            # neither mini/chat nor an exact flagship, so it maps conservatively
+            # to 200k instead of inheriting the flagship window.
             case "$PHYSICAL_SLUG" in
-                gpt-5.4|gpt-5.4[-\[]*|gpt-5.5|gpt-5.5[-\[]*|gpt-5.6|gpt-5.6[-\[]*)
+                gpt-5.4|gpt-5.4[-\[]*|gpt-5.5|gpt-5.5[-\[]*|gpt-5.6|gpt-5.6[-\[]*|gpt-6-astra|gpt-6-astra[-\[]*)
                     # Closed-set classification (Convention 3), byte-consistent
                     # with subagent-bar.sh and context-bar.sh: only the anchored
                     # flagship/mini/chat grammars earn a GPT window. Order
@@ -340,8 +347,18 @@ if [[ -n "$AGENT_ID" && -n "$AGENT_MODEL" && "$AGENT_MODEL" != "$SESSION_MODEL" 
                     esac
                     ;;
                 *)
+                    # Opus 5 (claude-opus-5, bare AND [1m]) is a native 1M-window
+                    # model: observed 2026-09-05 on Claude Code 2.1.261 via
+                    # /model + /context — bare `claude-opus-5` reported
+                    # "42.8k/1m tokens" and `claude-opus-5[1m]` reported
+                    # "48.2k/1m", so the bare id must map to 1,000,000 and not
+                    # fall through to the 200k arm. Opus 5 nonetheless stays on
+                    # the CONSERVATIVE quality profile below (physical window and
+                    # quality threshold are separate lookups). Provenance:
+                    # research/2026-09-05_FrameworkDev_ClaudeCode_Upgrade_2.1.261
+                    # (to-do 03 Branch A).
                     case "$AGENT_MODEL" in
-                        *fable-5*|*mythos-5*|*opus-4-7*|*opus-4-8*|*\[1m\]*)
+                        *fable-5*|*mythos-5*|*opus-4-7*|*opus-4-8*|*opus-5*|*\[1m\]*)
                             MAX_CONTEXT=1000000 ;;
                         *) MAX_CONTEXT=200000 ;;
                     esac
@@ -359,11 +376,16 @@ fi
 
 # ChatGPT-subscription/Codex final physical-window accounting constraint.
 # Canonical activation requires BOTH exact lane signals and a measured model in
-# the anchored gpt-5.4/5.5/5.6 flagship arm (Convention 3 closed set; mini/chat
-# are excluded because they carry suffixes the ERE does not accept). Probe
-# 2026-07-16 (gpt-5.6-sol) accepted 369,941 real input tokens and rejected
-# 372,905, so 370000 is the lane-wide accounting ceiling for this arm. Applying
-# min(resolved, 370000) after model/cache/override resolution prevents stale or
+# the anchored flagship arm (Convention 3 closed set — the gpt-5.4/5.5/5.6
+# family plus gpt-6-astra; mini/chat are excluded because they carry suffixes
+# the ERE does not accept). Probes 2026-09-05 (Codex CLI 0.153.2, shim v1.3.19,
+# SHIM_BACKEND_MODE=chatgpt) measured BOTH lane flagships: gpt-6-astra accepted
+# 919,053 real input tokens and rejected 922,552; gpt-5.6-sol accepted 910,827
+# and rejected 921,973. 919000 is therefore the lane-wide accounting ceiling for
+# this arm, MEASURED for Sol and Astra alike and consistent with Astra's
+# documented 922,000-token max input (1,050,000 window - 128,000 output).
+# Provenance: previously 370,000 (2026-07-16), now stale. Applying
+# min(resolved, 919000) after model/cache/override resolution prevents stale or
 # unsafe ordinary values from surviving while preserving lower valid values.
 # This is accounting, not compaction or a transport-level blocker.
 GPT_FLAGSHIP=0
@@ -375,8 +397,8 @@ if [[ "${DAAF_PROVIDER_SHIM:-}" == "openai" && \
       "${SHIM_BACKEND_MODE:-}" == "chatgpt" && \
       "$GPT_FLAGSHIP" -eq 1 ]] && \
    is_canonical_positive_decimal "$MAX_CONTEXT" && \
-   [[ "$MAX_CONTEXT" -gt 370000 ]]; then
-    MAX_CONTEXT=370000
+   [[ "$MAX_CONTEXT" -gt 919000 ]]; then
+    MAX_CONTEXT=919000
 fi
 
 # Final denominator guard before arithmetic.
@@ -434,14 +456,18 @@ calculate() {
 
     # Quality-tier matching deliberately remains narrower than physical-family
     # matching. Fable/Mythos keep the validated extended-horizon percentage and
-    # absolute gates; exact terminal Sol slugs use 60/75/90% percentage gates
-    # while retaining the larger absolute gates.
+    # absolute gates; the exact terminal extended-horizon GPT slugs — Sol and
+    # the second registered extended-horizon model GPT-6 Astra — use 60/75/90%
+    # percentage gates while retaining the larger absolute gates. Each is matched
+    # only as the bare slug or the final segment of a provider path; left- or
+    # right-boundary near misses (xgpt-6-astra, gpt-6-astra-pro, gpt-6-astra-mini,
+    # gpt-6-astra[1m]-x) fall through to the conservative tier.
     local elev_pct high_pct crit_pct elev_k high_k crit_k
     case "$model" in
         *fable-5*|*mythos-5*)
             elev_pct=30; high_pct=40; crit_pct=50
             elev_k=300;  high_k=400;  crit_k=500 ;;
-        gpt-5.6-sol|*/gpt-5.6-sol|gpt-5.6-sol\[1m\]|*/gpt-5.6-sol\[1m\])
+        gpt-5.6-sol|*/gpt-5.6-sol|gpt-5.6-sol\[1m\]|*/gpt-5.6-sol\[1m\]|gpt-6-astra|*/gpt-6-astra|gpt-6-astra\[1m\]|*/gpt-6-astra\[1m\])
             elev_pct=60; high_pct=75; crit_pct=90
             elev_k=300;  high_k=400;  crit_k=500 ;;
         *)

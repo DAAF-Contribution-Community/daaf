@@ -162,7 +162,7 @@ ARG DAAF_DEV=0
 ARG DAAF_DEV_PWSH_VERSION=7.6.3
 ARG DAAF_DEV_PESTER_VERSION=5.7.1
 ARG DAAF_DEV_PSSA_VERSION=1.24.0
-ARG CODEX_VERSION=0.144.1
+ARG CODEX_VERSION=0.153.2
 ARG DAAF_DEV_GH_VERSION=2.95.0
 
 # shellcheck + bats from the Debian repo (mirrors the CI bats-tests job).
@@ -831,11 +831,16 @@ RUN if [ "${DAAF_DEV}" = "1" ]; then \
     fi
 
 # Install Claude Code as appuser (pinned version)
-# Latest stable as of 2026-07-15 (user-verified stable channel; 2.1.210 was latest).
-# Delta review 2.1.188-2.1.202 + regression checklist:
+# Pinned to 2.1.261 (npm `latest`; changelog head) on 2026-09-05 — first version
+# where Claude Fable 5.1 (`claude-fable-5-1`, added 2.1.257) works without the
+# `[1m]`->silent-200K window bug (fixed 2.1.260), plus Opus 5 (added 2.1.219).
+# Delta review 2.1.203-2.1.261 + regression checklist (two contributing reviews):
+#   research/2026-07-29_FrameworkDev_ClaudeCode_Upgrade_2.1.212/  (2.1.203-2.1.212)
+#   research/2026-09-05_FrameworkDev_ClaudeCode_Upgrade_2.1.261/  (2.1.213-2.1.261)
+# Prior review (2.1.188-2.1.202):
 #   research/2026-07-15_FrameworkDev_ClaudeCode_Upgrade_2.1.202/
-# Rollback target: 2.1.187
-ARG CLAUDE_CODE_VERSION=2.1.202
+# Rollback target: 2.1.202
+ARG CLAUDE_CODE_VERSION=2.1.261
 RUN curl -fsSL https://claude.ai/install.sh | bash -s ${CLAUDE_CODE_VERSION}
 ENV PATH="/home/appuser/.local/bin:${PATH}"
 

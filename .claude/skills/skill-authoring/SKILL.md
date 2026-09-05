@@ -167,13 +167,13 @@ Content here.
 | Component | Limit | Notes |
 |-----------|-------|-------|
 | Name | 64 chars | Lowercase hyphen-case |
-| Description (frontmatter) | 1,024 chars | Validation limit (Agent Skills spec). Display: combined `description` + `when_to_use` is truncated at 1,536 chars in the skill listing, with a startup warning on truncation |
+| Description (frontmatter) | 1,024 chars | Validation limit (Agent Skills spec). Display: combined `description` + `when_to_use` is truncated at 1,536 chars per skill in the skill listing (the `skillListingMaxDescChars` default); the truncation breakdown is reported by `/doctor`, not a startup notification |
 | Description (body) | 2-5 sentences (~400-1,000 chars) | Expanded description as plain paragraph after `# Title`; at least as informative as the frontmatter description, adding detail omitted from the listing for budget economy |
 | SKILL.md body | <500 lines | Guideline, not enforced |
 | SKILL.md body | <5000 words | Keep concise |
 | Metadata per skill | ~100 words | Always in context |
 
-> **Version note:** Display caps reflect Claude Code behavior as of v2.1.105 / June 2026 (the listing cap was raised from 250 to 1,536 chars in that release) and are configurable via the `maxSkillDescriptionChars` setting. If observed truncation behavior differs, verify against current Claude Code docs rather than assuming this table is correct. See `./references/frontmatter.md` for the full length model, including the aggregate listing budget shared across all skills.
+> **Version note:** Display caps verified against the Claude Code settings reference on 2026-09-05 (CC 2.1.261). The per-skill listing cap is 1,536 chars (the `skillListingMaxDescChars` default; positive integer). The listing as a whole is bounded by `skillListingBudgetFraction` (a fraction >0 and ≤1, default 0.01 = 1% of the context window; DAAF sets 0.1 as a guardrail — well above any listing size DAAF ships, so truncation only fires if the listing ever grows past 10% of the window); when the listing exceeds that budget, the least-used skills' descriptions are dropped first (names kept). The truncation breakdown is inspectable via `/doctor` (since 2.1.144), not a startup notification. If observed behavior differs, verify against current Claude Code docs rather than assuming this table is correct. See `./references/frontmatter.md` for the full length model, including the aggregate listing budget shared across all skills.
 
 ### Core Principles
 

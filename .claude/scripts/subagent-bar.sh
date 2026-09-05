@@ -40,7 +40,7 @@
 #   denominator (see the loop; CLAUDE_CODE_MAX_CONTEXT_TOKENS, when set to a
 #   positive integer,
 #   ordinarily overrides the per-model mapping there, after which the matched
-#   ChatGPT-subscription/Codex flagship route is finally capped at 370k).
+#   ChatGPT-subscription/Codex flagship route is finally capped at 919k).
 #
 # OUTPUT CONTRACT (stdout — binary-verified Zod schema {id, content}):
 #   One compact JSON line per task: {"id": "<task id>", "content": "<row body>"}
@@ -74,9 +74,10 @@ C_BAR_EMPTY=$'\033[38;5;238m'
 # Severity palette aligned to the Context Quality Curve. The exact numeric
 # thresholds are quality-tier conditional (see the per-row severity block near
 # the bottom of the loop): Fable/Mythos patterns use ELEVATED >= 30% OR >= 300k,
-# HIGH >= 40% OR >= 400k, and CRITICAL >= 50% OR >= 500k. Exact terminal GPT
-# 5.6 Sol slugs use 60%/75%/90% percentage gates while retaining the
-# larger 300k/400k/500k absolute gates. Every other model — including Opus,
+# HIGH >= 40% OR >= 400k, and CRITICAL >= 50% OR >= 500k. The exact terminal
+# extended-horizon GPT slugs — GPT 5.6 Sol and GPT-6 Astra — use 60%/75%/90%
+# percentage gates while retaining the larger 300k/400k/500k absolute gates.
+# Every other model — including Opus,
 # Sonnet, other GPT variants, GLM, and unknown ids — uses ELEVATED >= 40% OR >=
 # 150k, HIGH >= 60% OR >= 200k, and CRITICAL >= 75% OR >= 250k. Each severity
 # keeps one color regardless of tier:
@@ -268,11 +269,15 @@ tasks_rec=$(printf '%s' "$input" | jq -r '
 # (gpt-5.6[-\[]*), which mapped malformed ids (gpt-5.6-experimental,
 # gpt-5.6-sol[1m]x, gpt-5.4-) into the 1.05M physical window. A new codename is a
 # deliberate one-line registry edit here, consistent with validate-before-trust.
-#   flagship  -> 1,050,000 physical window + eligible for the 370k ChatGPT cap
+# The flagship grammar covers the gpt-5.4/5.5/5.6 family plus the standalone
+# GPT-6 flagship gpt-6-astra; mini/chat stay gpt-5-only, so gpt-6-astra-mini and
+# gpt-6-astra-chat fall through to the conservative default (no evidence such
+# Astra variants exist — near misses stay conservative).
+#   flagship  -> 1,050,000 physical window + eligible for the 919k ChatGPT cap
 #   mini      -> 400,000
 #   chat      -> 128,000
 #   prev (gpt-5 / gpt-5.2) -> 400,000, or 128,000 for its -chat variant
-gpt_flagship_re='^gpt-5\.(4|5|6)(-(sol|terra|luna))?(\[1m\])?$'
+gpt_flagship_re='^(gpt-5\.(4|5|6)(-(sol|terra|luna))?|gpt-6-astra)(\[1m\])?$'
 gpt_mini_re='^gpt-5\.(4|5|6)(-(sol|terra|luna))?-mini(\[1m\])?$'
 gpt_chat_re='^gpt-5\.(4|5|6)(-(sol|terra|luna))?-chat(\[1m\])?$'
 gpt_prev_re='^gpt-5(\.2)?(-mini)?(\[1m\])?$'
@@ -352,12 +357,20 @@ while IFS=$'\x1f' read -r id type name status tokens label; do
         # Window provisioning summary: GPT mini and broad gpt-5 ids map to 400k,
         # chat variants to 128k, and 5.4/5.5/5.6 flagships to 1.05M; exact
         # z-ai/glm-5.2 and only terminal -YYYYMMDD snapshots map to 1,048,576;
-        # native 1M Claude models
+        # native 1M Claude models (Fable/Mythos 5, Opus 4.7/4.8, Opus 5)
         # and generic [1m]-suffixed Claude ids map to 1,000,000; all other models
         # map to 200,000. This broad physical-window map is separate from the
         # quality-tier selector below, where exact terminal GPT 5.6 Sol slugs
         # retain larger absolute gates. Re-verify this map after Claude
         # Code/provider updates.
+        # Opus 5 (claude-opus-5, bare AND [1m]) is a native 1M-window model:
+        # observed 2026-09-05 on Claude Code 2.1.261 via /model + /context —
+        # bare `claude-opus-5` reported "42.8k/1m tokens" and `claude-opus-5[1m]`
+        # reported "48.2k/1m", so the bare id must map to 1,000,000 too and not
+        # fall through to the 200k arm. Opus 5 nonetheless stays on the
+        # CONSERVATIVE quality profile below (physical window and quality
+        # threshold are separate lookups). Provenance: research/
+        # 2026-09-05_FrameworkDev_ClaudeCode_Upgrade_2.1.261 (to-do 03 Branch A).
         # Physical GPT classification uses only the terminal provider-stripped
         # slug. Supported flagship versions must start that slug and be followed
         # by end-of-slug, '-' or '['; mini/chat retain precedence.
@@ -382,7 +395,7 @@ while IFS=$'\x1f' read -r id type name status tokens label; do
                 elif [[ "$physical_slug" =~ $gpt_prev_re ]];      then row_window=400000
                 else
                     case "$task_model" in
-                        *fable-5*|*mythos-5*|*opus-4-7*|*opus-4-8*|*\[1m\]*)
+                        *fable-5*|*mythos-5*|*opus-4-7*|*opus-4-8*|*opus-5*|*\[1m\]*)
                             row_window=1000000 ;;
                         *) row_window=200000 ;;
                     esac
@@ -399,17 +412,23 @@ while IFS=$'\x1f' read -r id type name status tokens label; do
 
     # ChatGPT-subscription/Codex final physical-window accounting constraint.
     # Canonical activation requires BOTH exact lane signals and a task model in
-    # the existing gpt-5.4/5.5/5.6 flagship arm; mini/chat variants are excluded
-    # by ordering. Probe 2026-07-16 (gpt-5.6-sol) accepted 369,941 real input
-    # tokens and rejected 372,905, so 370000 is the lane-wide accounting ceiling
-    # for this arm. Apply min(resolved, 370000) after cache/model/override
-    # resolution so stale same-model caches and unsafe explicit declarations are
-    # capped while lower positive values survive. This is utilization/statusline
-    # accounting, NOT compaction and NOT a transport-level request blocker; the
-    # backend remains the ultimate hard ceiling.
+    # the anchored flagship arm — the gpt-5.4/5.5/5.6 family plus gpt-6-astra;
+    # mini/chat variants are excluded by ordering. Probes 2026-09-05 (Codex CLI
+    # 0.153.2, shim v1.3.19, SHIM_BACKEND_MODE=chatgpt) measured BOTH lane
+    # flagships: gpt-6-astra accepted 919,053 real input tokens and rejected
+    # 922,552; gpt-5.6-sol accepted 910,827 and rejected 921,973. 919000 is
+    # therefore the lane-wide accounting ceiling for this arm, MEASURED for Sol
+    # and Astra alike and consistent with Astra's documented 922,000-token max
+    # input (1,050,000 window - 128,000 output). Provenance: previously 370,000
+    # (2026-07-16), now stale.
+    # Apply min(resolved, 919000) after cache/model/override resolution so
+    # stale same-model caches and unsafe explicit declarations are capped while
+    # lower positive values survive. This is utilization/statusline accounting,
+    # NOT compaction and NOT a transport-level request blocker; the backend
+    # remains the ultimate hard ceiling.
     # Flagship predicate for the ChatGPT-lane cap uses the SAME closed-set ERE
     # (Convention 3); mini/chat slugs simply do not match it, so no explicit
-    # exclusion arm is needed. The 370k min-ceiling ordering below is unchanged.
+    # exclusion arm is needed. The 919k min-ceiling ordering below is unchanged.
     gpt_flagship=0
     physical_slug="${task_model##*/}"
     if [[ "$physical_slug" =~ $gpt_flagship_re ]]; then
@@ -419,8 +438,8 @@ while IFS=$'\x1f' read -r id type name status tokens label; do
           "${SHIM_BACKEND_MODE:-}" == "chatgpt" && \
           "$gpt_flagship" -eq 1 ]] && \
        is_canonical_positive_decimal "$row_window" && \
-       [[ "$row_window" -gt 370000 ]]; then
-        row_window=370000
+       [[ "$row_window" -gt 919000 ]]; then
+        row_window=919000
     fi
 
     # Guard: must be a canonical positive decimal, else fall back to 200k.
@@ -445,22 +464,28 @@ while IFS=$'\x1f' read -r id type name status tokens label; do
 
     # Threshold tier (percentage AND absolute k-token gates per severity), keyed
     # on the measured agent's model. Fable/Mythos keep the validated 30/40/50%
-    # extended-horizon gates plus 300/400/500k absolute gates. Exact GPT 5.6 Sol
-    # ids use 60/75/90% gates while retaining 300/400/500k absolutes.
-    # Everything else — INCLUDING opus-4-8[1m], whose 1M window does NOT relax
-    # its Opus-class quality horizon — gets 40/60/75% plus 150/200/250k. GPT Sol
-    # matching accepts the bare slug or a provider path only when its final
-    # segment is exactly gpt-5.6-sol or gpt-5.6-sol[1m]; left- or right-boundary
-    # near misses and unknown/empty models fall through to the conservative
-    # default (fail-conservative). Deliberately different from the physical-
-    # window case block above — the broad GPT 5.6 physical map does not imply the
-    # exact Sol quality-tier rule. See CLAUDE.md § Context Quality Curve for the
-    # authoritative threshold table.
+    # extended-horizon gates plus 300/400/500k absolute gates. The exact
+    # extended-horizon GPT ids — GPT 5.6 Sol and the second registered
+    # extended-horizon model GPT-6 Astra — use 60/75/90% gates while retaining
+    # 300/400/500k absolutes. Everything else — INCLUDING opus-4-8[1m] and
+    # opus-5 (bare or [1m]), whose 1M physical windows do NOT relax their
+    # Opus-class quality horizon — gets 40/60/75% plus 150/200/250k. Opus 5's
+    # 1M window was observed 2026-09-05 (Claude Code 2.1.261, /model + /context)
+    # and registered in the physical-window arm above; its absence from this
+    # quality-profile arm is deliberate, per CLAUDE.md § Context Quality Curve
+    # (conservative-default membership: "Opus, Sonnet, unknown model IDs, ..."). Sol/Astra matching accepts the bare slug or a provider path
+    # only when its final segment is exactly gpt-5.6-sol/gpt-6-astra or their
+    # [1m] forms; left- or right-boundary near misses (xgpt-6-astra,
+    # gpt-6-astra-pro, gpt-6-astra-mini, gpt-6-astra[1m]-x) and unknown/empty
+    # models fall through to the conservative default (fail-conservative).
+    # Deliberately different from the physical-window case block above — the
+    # broad flagship physical map does not imply the exact quality-tier rule.
+    # See CLAUDE.md § Context Quality Curve for the authoritative threshold table.
     case "$task_model" in
         *fable-5*|*mythos-5*)
             elev_pct=30; high_pct=40; crit_pct=50
             elev_k=300;  high_k=400;  crit_k=500 ;;
-        gpt-5.6-sol|*/gpt-5.6-sol|gpt-5.6-sol\[1m\]|*/gpt-5.6-sol\[1m\])
+        gpt-5.6-sol|*/gpt-5.6-sol|gpt-5.6-sol\[1m\]|*/gpt-5.6-sol\[1m\]|gpt-6-astra|*/gpt-6-astra|gpt-6-astra\[1m\]|*/gpt-6-astra\[1m\])
             elev_pct=60; high_pct=75; crit_pct=90
             elev_k=300;  high_k=400;  crit_k=500 ;;
         *)

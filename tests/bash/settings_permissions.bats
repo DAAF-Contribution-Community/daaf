@@ -6,6 +6,15 @@
 # .claude/settings.json. It does NOT dynamically prove Claude Code permission-
 # matcher semantics; runtime matcher behavior remains the responsibility of the
 # installed Claude Code version and its authoritative documentation.
+#
+# Edit-only rule form (Claude Code >= 2.1.261, observed 2026-09-05): startup
+# stderr reports that a `Write(path)` deny rule "is not matched by file
+# permission checks -- only Edit(path) rules are. Use Edit(...) instead (Edit
+# rules cover all file-editing tools)." A live probe confirmed the Write tool
+# targeting /tmp is denied by `Edit(//tmp/**)` alone. The formerly paired
+# `Write(...)` deny rules were therefore inert and were removed; this suite now
+# asserts Edit-rule coverage AND the absence of the redundant Write twins so a
+# future re-add is caught.
 # ============================================================================
 
 load 'test_helper'
@@ -16,11 +25,20 @@ teardown() { common_teardown; }
 SETTINGS_FILE="${REPO_ROOT}/.claude/settings.json"
 EXPECTED_RULES_JSON='[
   "Edit(/.claude/logs/**)",
-  "Write(/.claude/logs/**)",
   "Edit(//home/appuser/.claude/**/*.jsonl)",
+  "Edit(/research/*/logs/**)"
+]'
+# The Write twins that used to accompany each Edit rule. Inert under CC
+# >= 2.1.261 (see header); asserted ABSENT rather than present.
+REMOVED_WRITE_RULES_JSON='[
+  "Write(/.claude/logs/**)",
   "Write(//home/appuser/.claude/**/*.jsonl)",
-  "Edit(/research/*/logs/**)",
-  "Write(/research/*/logs/**)"
+  "Write(/research/*/logs/**)",
+  "Write(//tmp/**)",
+  "Write(.env)",
+  "Write(.env.*)",
+  "Write(environment_settings.txt)",
+  "Write(.claude/hooks/*)"
 ]'
 EXPECTED_PATHS=(
     '/.claude/logs/**'
@@ -74,7 +92,7 @@ PROTECTED_FAMILY_FILTER='def normalized_path:
     assert_success
 }
 
-@test "settings permissions: all six approved deny rules are present" {
+@test "settings permissions: all three approved Edit deny rules are present" {
     run jq -e --argjson expected "${EXPECTED_RULES_JSON}" '
         . as $settings
         | all($expected[]; . as $rule | $settings.permissions.deny | index($rule) != null)
@@ -91,7 +109,7 @@ PROTECTED_FAMILY_FILTER='def normalized_path:
     assert_success
 }
 
-@test "settings permissions: protected log and transcript subset is exactly six rules" {
+@test "settings permissions: protected log and transcript subset is exactly three rules" {
     run jq -e \
         --argjson expected "${EXPECTED_RULES_JSON}" \
         "${PROTECTED_FAMILY_FILTER} == (\$expected | sort)" \
@@ -112,23 +130,58 @@ PROTECTED_FAMILY_FILTER='def normalized_path:
     assert_success
 }
 
-@test "settings permissions: every approved path has exact Edit and Write variants" {
+@test "settings permissions: every approved path has an exact Edit variant and no Write twin" {
+    # Edit(path) is the only form the 2.1.261+ file-permission matcher honors,
+    # and it covers all file-editing tools (Write included). The exact-set
+    # equality below therefore requires the Edit rule AND rejects a re-added
+    # Write twin for the same path.
     local path
     for path in "${EXPECTED_PATHS[@]}"; do
         run jq -e --arg path "${path}" '
-            ["Edit(" + $path + ")", "Write(" + $path + ")"] as $expected
-            | [.permissions.deny[] | select(. == $expected[0] or . == $expected[1])] | sort
-            == ($expected | sort)
+            ["Edit(" + $path + ")"] as $expected
+            | [.permissions.deny[]
+               | select(. == "Edit(" + $path + ")" or . == "Write(" + $path + ")")]
+            == $expected
         ' "${SETTINGS_FILE}"
         assert_success
     done
 }
 
-@test "settings permissions: existing tmp Edit and Write deny rules remain present" {
+@test "settings permissions: tmp deny is the Edit rule only (Write twin removed)" {
+    run jq -e '
+        [.permissions.deny[]
+         | select(. == "Edit(//tmp/**)" or . == "Write(//tmp/**)")]
+        == ["Edit(//tmp/**)"]
+    ' "${SETTINGS_FILE}"
+    assert_success
+}
+
+@test "settings permissions: inert Write(...) deny twins are absent" {
+    # Under CC >= 2.1.261 these are ignored by the file-permission matcher and
+    # emit a startup warning; their Edit(...) counterparts carry the protection.
+    run jq -e --argjson removed "${REMOVED_WRITE_RULES_JSON}" '
+        . as $settings
+        | all($removed[]; . as $rule | $settings.permissions.deny | index($rule) == null)
+    ' "${SETTINGS_FILE}"
+    assert_success
+}
+
+@test "settings permissions: credential and hook surfaces keep Edit deny coverage" {
+    # The Edit twins that must survive the Write-rule removal.
     run jq -e '
         . as $settings
-        | ["Edit(//tmp/**)", "Write(//tmp/**)"]
+        | ["Edit(.env)", "Edit(.env.*)", "Edit(environment_settings.txt)",
+           "Edit(.claude/hooks/*)"]
         | all(. as $rule | $settings.permissions.deny | index($rule) != null)
+    ' "${SETTINGS_FILE}"
+    assert_success
+}
+
+@test "settings permissions: no Write(...) deny rule of any form remains" {
+    # Broad backstop: the matcher ignores every Write(path) deny rule, so any
+    # occurrence is dead configuration that reads as protection.
+    run jq -e '
+        [.permissions.deny[] | select(startswith("Write("))] | length == 0
     ' "${SETTINGS_FILE}"
     assert_success
 }

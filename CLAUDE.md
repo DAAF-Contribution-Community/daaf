@@ -185,7 +185,7 @@ These thresholds apply to **all agents** — orchestrator and subagents alike. T
 | Threshold Profile | Membership | ELEVATED at | HIGH at | CRITICAL at |
 |-------------------|------------|-------------|---------|-------------|
 | **Claude Fable/Mythos validated extended-horizon** | Registered Claude Fable/Mythos models | ≥ 30% or ≥ 300k tokens | ≥ 40% or ≥ 400k tokens | ≥ 50% or ≥ 500k tokens |
-| **Exact GPT 5.6 Sol validated** | Exact terminal model slugs, bare or provider-prefixed: `gpt-5.6-sol` or `gpt-5.6-sol[1m]` | ≥ 60% or ≥ 300k tokens | ≥ 75% or ≥ 400k tokens | ≥ 90% or ≥ 500k tokens |
+| **Exact GPT Sol/Astra validated** | Exact terminal model slugs, bare or provider-prefixed: `gpt-5.6-sol`, `gpt-5.6-sol[1m]`, `gpt-6-astra`, or `gpt-6-astra[1m]` | ≥ 60% or ≥ 300k tokens | ≥ 75% or ≥ 400k tokens | ≥ 90% or ≥ 500k tokens |
 | **Conservative-default** | Opus, Sonnet, unknown model IDs, every other GPT variant, GLM models, and all other alternative-provider models unless individually validated and registered | ≥ 40% or ≥ 150k tokens | ≥ 60% or ≥ 200k tokens | ≥ 75% or ≥ 250k tokens |
 
 **Status levels and required actions** (identical across profiles; NOMINAL is any utilization below the ELEVATED trigger):
@@ -280,7 +280,7 @@ Context management is NEVER about reducing the quality or completeness of work. 
 
 ### Safety-System Integrity
 
-- You MUST NEVER modify the safety system via shell writes: `cp`, `mv`, `rm`, `ln`, `tee`, output redirection (`>`/`>>`), `sed -i`, or `chmod` targeting `.claude/hooks/`, `.claude/logs/`, `benchmarks/harness/hooks/`, or `.claude/settings.json`/`.claude/settings.local.json`. These shell operations bypass the `Edit`/`Write` deny rules (which only bind those tools), and `.claude/settings.json` is the root of trust — a shell overwrite there could deregister every hook. Hook, log, and settings changes are **user-only**: the user applies them directly (host editor, browser code editor, or a `!`-typed command, which bypasses hooks).
+- You MUST NEVER modify the safety system via shell writes: `cp`, `mv`, `rm`, `ln`, `tee`, output redirection (`>`/`>>`), `sed -i`, or `chmod` targeting `.claude/hooks/`, `.claude/logs/`, `benchmarks/harness/hooks/`, or `.claude/settings.json`/`.claude/settings.local.json`. These shell operations bypass the `Edit(...)` deny rules (which bind only the file-editing tools — on Claude Code ≥ 2.1.261 an `Edit` rule covers `Write` as well, so no separate `Write(...)` rule exists), and `.claude/settings.json` is the root of trust — a shell overwrite there could deregister every hook. Hook, log, and settings changes are **user-only**: the user applies them directly (host editor, browser code editor, or a `!`-typed command, which bypasses hooks).
 - **Exception — reads and git index ops are fine:** Reading these files (`cat`, `grep`, `ls`, `bash <hook>` for testing) and git index operations (`git add`, `git update-index --chmod=+x`) stay open. Supported settings edits via the `Edit`/`Write` **tools** also remain usable, because those produce diff-visible changes; only opaque shell writes are blocked.
 
 ### Runtime Package Installation

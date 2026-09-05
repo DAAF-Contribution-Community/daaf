@@ -4,10 +4,10 @@
 # ============================================================================
 # Focus: the model-conditional Context Quality Curve threshold tiers that drive
 # each row's severity COLOR. Fable/Mythos use ELEVATED 30%/300k, HIGH
-# 40%/400k, and CRITICAL 50%/500k. Exact GPT 5.6 Sol rows use ELEVATED
-# 60%/300k, HIGH 75%/400k, and CRITICAL 90%/500k. Every other model --
-# including opus-4-8[1m] and non-exact Sol variants -- uses ELEVATED 40%/150k,
-# HIGH 60%/200k, and CRITICAL 75%/250k.
+# 40%/400k, and CRITICAL 50%/500k. The exact extended-horizon GPT rows -- GPT
+# 5.6 Sol and GPT-6 Astra -- use ELEVATED 60%/300k, HIGH 75%/400k, and CRITICAL
+# 90%/500k. Every other model -- including opus-4-8[1m] and non-exact Sol/Astra
+# variants -- uses ELEVATED 40%/150k, HIGH 60%/200k, and CRITICAL 75%/250k.
 #
 # ASSERTION TARGET: the severity is encoded as an ANSI 256-color code embedded
 # in each row's JSON `content`. The codes are unique per severity:
@@ -229,18 +229,22 @@ _append_subbar_model() {
     assert_output --partial "28%"
 }
 
-@test "exact Sol ChatGPT row boundaries use 60/75/90% on the final 370k denominator" {
+@test "exact Sol ChatGPT row boundaries are the 300k/400k/500k absolute gates on the final 919k denominator" {
     local boundary tokens expected_severity expected_pct expected_color
+    # On the 919k lane denominator the Sol/Astra percentage legs land at 551.4k
+    # (60%), 689.25k (75%) and 827.1k (90%) -- all ABOVE the retained absolute
+    # legs, so the absolute gates are the ones that fire. Percentage-gate
+    # coverage lives in the non-ChatGPT 400k-denominator test below.
     _seed_window 1050000
     _seed_session_model "claude-sonnet-4-6"
     _seed_task_model "t1" "gpt-5.6-sol"
     for boundary in \
-        "221999 NOMINAL 59" \
-        "222000 ELEVATED 60" \
-        "277499 ELEVATED 74" \
-        "277500 HIGH 75" \
-        "332999 HIGH 89" \
-        "333000 CRITICAL 90"; do
+        "299999 NOMINAL 32" \
+        "300000 ELEVATED 32" \
+        "399999 ELEVATED 43" \
+        "400000 HIGH 43" \
+        "499999 HIGH 54" \
+        "500000 CRITICAL 54"; do
         read -r tokens expected_severity expected_pct <<< "$boundary"
         case "$expected_severity" in
             NOMINAL) expected_color="$COLOR_NOMINAL" ;;
@@ -338,6 +342,87 @@ _append_subbar_model() {
 }
 
 # =========================================================================
+# GPT-6 Astra exact tier: Sol-parity extended horizon (1,050,000 window)
+# =========================================================================
+
+@test "GPT-6 Astra row: different-model correction maps 299k to 1050k and NOMINAL" {
+    _seed_window 200000
+    _seed_session_model "claude-sonnet-4-6"
+    _seed_task_model "t1" "gpt-6-astra"
+    run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 299000)
+    assert_success
+    assert_output --partial "$COLOR_NOMINAL"
+    assert_output --partial "28%"
+}
+
+@test "GPT-6 Astra row: 300k on 1050k renders ELEVATED amber" {
+    _seed_window 200000
+    _seed_session_model "claude-sonnet-4-6"
+    _seed_task_model "t1" "gpt-6-astra"
+    run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 300000)
+    assert_success
+    assert_output --partial "$COLOR_ELEVATED"
+    assert_output --partial "28%"
+}
+
+@test "provider-prefixed GPT-6 Astra[1m] row: 400k renders HIGH orange" {
+    _seed_window 200000
+    _seed_session_model "claude-sonnet-4-6"
+    _seed_task_model "t1" "openrouter/openai/gpt-6-astra[1m]"
+    run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 400000)
+    assert_success
+    assert_output --partial "$COLOR_HIGH"
+    assert_output --partial "38%"
+}
+
+@test "provider-prefixed GPT-6 Astra row: 500k renders CRITICAL red" {
+    _seed_window 200000
+    _seed_session_model "claude-sonnet-4-6"
+    _seed_task_model "t1" "openai/gpt-6-astra"
+    run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 500000)
+    assert_success
+    assert_output --partial "$COLOR_CRITICAL"
+    assert_output --partial "47%"
+}
+
+@test "GPT-6 Astra row: same-model reuse keeps cached 1050k window and extended tier" {
+    _seed_window 1050000
+    _seed_session_model "gpt-6-astra[1m]"
+    _seed_task_model "t1" "gpt-6-astra[1m]"
+    run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 300000)
+    assert_success
+    assert_output --partial "$COLOR_ELEVATED"
+    assert_output --partial "28%"
+}
+
+@test "GPT-6 Astra non-flagship and near-miss rows stay conservative" {
+    local model
+    for model in \
+        gpt-6-astra-pro \
+        gpt-6-astra-mini \
+        gpt-6-astra-chat \
+        xgpt-6-astra \
+        foo-gpt-6-astra \
+        notgpt-6-astra \
+        'vendor/notgpt-6-astra[1m]' \
+        'gpt-6-astra[1m]-x' \
+        gpt-6-astrab \
+        gpt-6 \
+        gpt-6-luna \
+        'gpt-6-astra[1m'; do
+        _clean_subbar_caches
+        _seed_window 200000
+        _seed_session_model "claude-sonnet-4-6"
+        _seed_task_model "t1" "$model"
+        run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 300000)
+        assert_success
+        # Physical windows intentionally vary for mini/chat controls; only the
+        # conservative threshold color is invariant across every near miss.
+        assert_output --partial "$COLOR_CRITICAL"
+    done
+}
+
+# =========================================================================
 # Conservative tier (non-Fable/Mythos and non-exact-Sol)
 # =========================================================================
 
@@ -399,6 +484,75 @@ _append_subbar_model() {
     # NOMINAL (< 300k) -- the exact distinction under test.
     assert_output --partial "$COLOR_HIGH"
     refute_output --partial "$COLOR_NOMINAL"
+}
+
+# =========================================================================
+# Opus 5: 1M physical window (registered 2026-09-05) but conservative
+# quality thresholds. Observed on Claude Code 2.1.261 via /model + /context:
+# bare `claude-opus-5` reports "42.8k/1m tokens" and `claude-opus-5[1m]`
+# reports "48.2k/1m" -- so the BARE id must map to 1,000,000 as well, which
+# the *opus-5* arm of the physical-window glob provides. The quality-profile
+# glob (*fable-5*|*mythos-5*) is deliberately NOT extended, so Opus 5 keeps
+# the 40/60/75% + 150/200/250k conservative gates.
+# =========================================================================
+
+@test "opus-5 (bare) row: 150k maps to a 1M window (15%) and renders ELEVATED" {
+    _seed_window 200000
+    _seed_session_model "claude-sonnet-4-6"   # differs -> per-row mapping applies
+    _seed_task_model "t1" "claude-opus-5"
+    run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 150000)
+    assert_success
+    # 15% proves the 1M denominator: on a 200k window 150k would read 75%.
+    assert_output --partial "15%"
+    refute_output --partial "75%"
+    assert_output --partial "$COLOR_ELEVATED"
+}
+
+@test "opus-5[1m] row: 150k maps to a 1M window (15%) and renders ELEVATED" {
+    _seed_window 200000
+    _seed_session_model "claude-sonnet-4-6"
+    _seed_task_model "t1" "claude-opus-5[1m]"
+    run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 150000)
+    assert_success
+    assert_output --partial "15%"
+    assert_output --partial "$COLOR_ELEVATED"
+}
+
+@test "opus-5 row: 220k on 1M window renders HIGH (conservative profile), not NOMINAL" {
+    _seed_window 1000000
+    _seed_session_model "claude-sonnet-4-6"
+    _seed_task_model "t1" "claude-opus-5"
+    run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 220000)
+    assert_success
+    # Opus 5 must NOT select the Fable/Mythos profile: 220k is in [200k, 250k)
+    # -> conservative HIGH. Under the Fable/Mythos gates the same 220k would be
+    # NOMINAL (< 300k) -- the exact distinction under test.
+    assert_output --partial "$COLOR_HIGH"
+    refute_output --partial "$COLOR_NOMINAL"
+}
+
+@test "opus-5[1m] row: 220k renders HIGH -- the [1m] suffix does not buy Fable gates" {
+    _seed_window 1000000
+    _seed_session_model "claude-sonnet-4-6"
+    _seed_task_model "t1" "claude-opus-5[1m]"
+    run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 220000)
+    assert_success
+    assert_output --partial "$COLOR_HIGH"
+    refute_output --partial "$COLOR_NOMINAL"
+}
+
+@test "fable-5-1 row: 150k maps to a 1M window (15%) and renders NOMINAL" {
+    # Locks the substring behaviour of the *fable-5* globs against the real
+    # 2.1.261 model id `claude-fable-5-1` as TESTED FACT rather than inference:
+    # 1M physical window AND the Fable/Mythos quality profile (150k < 300k and
+    # 15% < 30% -> NOMINAL, where the conservative profile would be ELEVATED).
+    _seed_window 200000
+    _seed_session_model "claude-sonnet-4-6"   # differs -> per-row mapping applies
+    _seed_task_model "t1" "claude-fable-5-1"
+    run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 150000)
+    assert_success
+    assert_output --partial "15%"
+    assert_output --partial "$COLOR_NOMINAL"
 }
 
 # =========================================================================
@@ -473,23 +627,25 @@ _append_subbar_model() {
 }
 
 # =========================================================================
-# ChatGPT-subscription lane: final gpt-5.4/5.5/5.6 row cap is 370k
+# ChatGPT-subscription lane: final gpt-5.4/5.5/5.6 row cap is 919k
 # -------------------------------------------------------------------------
-# The final min(resolved, 370000) constraint must cover same-model cache reuse,
+# The final min(resolved, 919000) constraint must cover same-model cache reuse,
 # different-model mapping, and unsafe explicit overrides. Both exact lane values
 # are required; API/OpenRouter routes and non-GPT rows retain ordinary behavior.
 # =========================================================================
 
-@test "chatgpt lane: exact Sol at 290k is HIGH orange on the final 370k row window" {
+@test "chatgpt lane: exact Sol at 400k is HIGH orange on the final 919k row window" {
+    # 400k trips the retained 400k absolute HIGH gate; 400k/919k = 43%, while
+    # the uncapped 1.05M window would render 38%.
     _seed_window 200000
     _seed_session_model "claude-sonnet-4-6"
     _seed_task_model "t1" "gpt-5.6-sol"
     run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
-        bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 290000)
+        bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 400000)
     assert_success
     assert_output --partial "$COLOR_HIGH"
-    assert_output --partial "78%"
-    refute_output --partial "27%"
+    assert_output --partial "43%"
+    refute_output --partial "38%"
 }
 
 @test "API route: exact Sol at 290k remains NOMINAL green on the 1.05M row window" {
@@ -501,7 +657,7 @@ _append_subbar_model() {
     assert_success
     assert_output --partial "$COLOR_NOMINAL"
     assert_output --partial "27%"
-    refute_output --partial "78%"
+    refute_output --partial "31%"
 }
 
 @test "chatgpt lane: same-model Sol row caps a stale 1.05M session cache" {
@@ -509,10 +665,10 @@ _append_subbar_model() {
     _seed_session_model "gpt-5.6-sol[1m]"
     _seed_task_model "t1" "gpt-5.6-sol[1m]"
     run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
-        bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 290000)
+        bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 400000)
     assert_success
     assert_output --partial "$COLOR_HIGH"
-    assert_output --partial "78%"
+    assert_output --partial "43%"
 }
 
 @test "SHIM_BACKEND_MODE=chatgpt alone (no DAAF_PROVIDER_SHIM) keeps 1.05M (10%)" {
@@ -523,11 +679,11 @@ _append_subbar_model() {
         bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 111000)
     assert_success
     assert_output --partial "10%"
-    refute_output --partial "30%"
+    refute_output --partial "12%"
 }
 
 @test "chatgpt lane preserves a lower positive explicit row window" {
-    # A 200k override remains lower than the 370k final cap: 100k -> 50%.
+    # A 200k override remains lower than the 919k final cap: 100k -> 50%.
     _seed_window 200000
     _seed_session_model "claude-sonnet-4-6"
     _seed_task_model "t1" "gpt-5.6-sol"
@@ -536,20 +692,20 @@ _append_subbar_model() {
         bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 100000)
     assert_success
     assert_output --partial "50%"
-    refute_output --partial "27%"
+    refute_output --partial "10%"
 }
 
-@test "chatgpt lane caps an explicit 1.05M row override at 370k" {
+@test "chatgpt lane caps an explicit 1.05M row override at 919k" {
     _seed_window 200000
     _seed_session_model "claude-sonnet-4-6"
     _seed_task_model "t1" "gpt-5.6-sol"
     run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
         CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000 \
-        bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 290000)
+        bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 400000)
     assert_success
     assert_output --partial "$COLOR_HIGH"
-    assert_output --partial "78%"
-    refute_output --partial "27%"
+    assert_output --partial "43%"
+    refute_output --partial "38%"
 }
 
 @test "chatgpt lane does not perturb a non-GPT (Claude) row window (fable 1M, 15%)" {
@@ -597,7 +753,7 @@ _append_subbar_model() {
         bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "$id" 111000)
     assert_success
     assert_output --partial "$COLOR_NOMINAL"
-    assert_output --partial "30%"
+    assert_output --partial "12%"
     run cat "$model_cache"
     assert_output "gpt-5.6-sol"
 
@@ -606,7 +762,7 @@ _append_subbar_model() {
         bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "$id" 111000)
     assert_success
     assert_output --partial "$COLOR_NOMINAL"
-    assert_output --partial "30%"
+    assert_output --partial "12%"
     run cat "$model_cache"
     assert_output "gpt-5.6-terra"
 
@@ -616,7 +772,7 @@ _append_subbar_model() {
     assert_success
     assert_output --partial "$COLOR_ELEVATED"
     assert_output --partial "45%"
-    refute_output --partial "24%"
+    refute_output --partial "9%"
     run cat "$model_cache"
     assert_output "claude-sonnet-4-6"
 }
@@ -655,7 +811,7 @@ _append_subbar_model() {
     run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
         bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "$id" 111000)
     assert_success
-    assert_output --partial "30%"
+    assert_output --partial "12%"
     run cat "$model_cache"
     assert_output "gpt-5.6-sol"
 }
@@ -664,16 +820,16 @@ _append_subbar_model() {
 # Canonical positive-decimal override contract
 # =========================================================================
 
-@test "canonical row overrides 370000 and a lower value are accepted" {
+@test "canonical row overrides 919000 and a lower value are accepted" {
     _seed_window 200000
     _seed_session_model "claude-sonnet-4-6"
     _seed_task_model "t1" "gpt-5.6-sol"
 
     run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=openai \
-        CLAUDE_CODE_MAX_CONTEXT_TOKENS=370000 \
+        CLAUDE_CODE_MAX_CONTEXT_TOKENS=919000 \
         bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 111000)
     assert_success
-    assert_output --partial "30%"
+    assert_output --partial "12%"
 
     run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
         CLAUDE_CODE_MAX_CONTEXT_TOKENS=250000 \
@@ -688,19 +844,19 @@ _append_subbar_model() {
     _seed_session_model "claude-sonnet-4-6"
     _seed_task_model "t1" "gpt-5.6-sol"
     for value in \
-        0370000 \
+        0919000 \
         080000 \
         0 \
-        +370000 \
-        ' 370000' \
-        '370000 ' \
+        +919000 \
+        ' 919000' \
+        '919000 ' \
         9223372036854775808 \
         99999999999999999999999999999999999999; do
         run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
             CLAUDE_CODE_MAX_CONTEXT_TOKENS="$value" \
             bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 111000)
         assert_success
-        assert_output --partial "30%"
+        assert_output --partial "12%"
         refute_output --partial "value too great"
         refute_output --partial "syntax error"
     done
@@ -754,7 +910,7 @@ _append_subbar_model() {
             bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 90000)
         assert_success
         assert_output --partial "45%"
-        refute_output --partial "24%"
+        refute_output --partial "9%"
         refute_output --partial "8%"
     done
 }

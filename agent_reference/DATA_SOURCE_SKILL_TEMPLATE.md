@@ -89,8 +89,9 @@ metadata:
     for the least-invoked skills are dropped first. Spend characters on triggering
     accuracy and critical caveats, not exhaustive content inventories.
     (Display: the listing truncates the combined description + when_to_use at 1,536
-    chars — raised from 250 in Claude Code v2.1.105; configurable via
-    maxSkillDescriptionChars, so verify if truncation behavior seems off.)
+    chars per skill — the skillListingMaxDescChars default; the aggregate listing
+    budget is skillListingBudgetFraction, default 0.01 = 1% of the context window,
+    which DAAF sets to 0.1 as a guardrail; verify via /doctor if truncation behavior seems off.)
   - description: no angle brackets (< >)
   - description: MUST include both "what it does" AND "when to use it"
   - description: MUST include approximate year coverage for the source (e.g., "2009-2022")

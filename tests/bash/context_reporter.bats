@@ -4,10 +4,10 @@
 # ============================================================================
 # Focus: the model-conditional Context Quality Curve threshold tiers in
 # calculate(). Fable/Mythos use ELEVATED 30%/300k, HIGH 40%/400k, and
-# CRITICAL 50%/500k. Exact GPT 5.6 Sol ids use ELEVATED 60%/300k, HIGH
-# 75%/400k, and CRITICAL 90%/500k. Every other model -- including
-# opus-4-8[1m] and non-exact Sol variants -- uses ELEVATED 40%/150k, HIGH
-# 60%/200k, and CRITICAL 75%/250k.
+# CRITICAL 50%/500k. The exact extended-horizon GPT ids -- GPT 5.6 Sol and
+# GPT-6 Astra -- use ELEVATED 60%/300k, HIGH 75%/400k, and CRITICAL 90%/500k.
+# Every other model -- including opus-4-8[1m] and non-exact Sol/Astra variants
+# -- uses ELEVATED 40%/150k, HIGH 60%/200k, and CRITICAL 75%/250k.
 #
 # Also covers the main/subagent measurement split (a subagent is measured with
 # ITS OWN model's family, not the session's) and fail-open behavior.
@@ -251,16 +251,20 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
     assert_output --partial "500k / 1050k"
 }
 
-@test "exact Sol ChatGPT boundaries use 60/75/90% on the final 370k denominator" {
+@test "exact Sol ChatGPT boundaries are the 300k/400k/500k absolute gates on the final 919k denominator" {
     local boundary tokens expected_severity expected_pct
+    # On the 919k lane denominator the Sol/Astra percentage legs land at 551.4k
+    # (60%), 689.25k (75%) and 827.1k (90%) -- all ABOVE the retained absolute
+    # legs, so the absolute gates are the ones that fire. Percentage-gate
+    # coverage lives in the non-ChatGPT 400k-denominator test below.
     _seed_window 1050000
     for boundary in \
-        "221999 NOMINAL 59" \
-        "222000 ELEVATED 60" \
-        "277499 ELEVATED 74" \
-        "277500 HIGH 75" \
-        "332999 HIGH 89" \
-        "333000 CRITICAL 90"; do
+        "299999 NOMINAL 32" \
+        "300000 ELEVATED 32" \
+        "399999 ELEVATED 43" \
+        "400000 HIGH 43" \
+        "499999 HIGH 54" \
+        "500000 CRITICAL 54"; do
         read -r tokens expected_severity expected_pct <<< "$boundary"
         rm -f "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-ctx-ts-${FAKE_SESSION}"
         _write_main_transcript "${TEST_DIR}/t.jsonl" "gpt-5.6-sol" "$tokens"
@@ -268,7 +272,7 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
             bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
         assert_success
         assert_output --partial "[${expected_severity}]"
-        assert_output --partial "/ 370k tokens (${expected_pct}%)"
+        assert_output --partial "/ 919k tokens (${expected_pct}%)"
     done
 }
 
@@ -347,6 +351,89 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
     parent="${TEST_DIR}/main.jsonl"
     printf '{"type":"user","isSidechain":false,"message":{"content":"x"}}\n' > "$parent"
     _write_subagent_transcript "${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl" "openai/gpt-5.6-sol" 300000
+
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
+    assert_success
+    assert_output --partial "[ELEVATED]"
+    assert_output --partial "300k / 1050k"
+    assert_output --partial "(28%)"
+}
+
+# =========================================================================
+# GPT-6 Astra exact tier: Sol-parity extended horizon (1,050,000 window)
+# =========================================================================
+# Astra registers with the same quality tier as Sol (60/75/90% + 300k/400k/500k)
+# and the same 1,050,000 physical window. The 919k ChatGPT-lane cap applies to
+# Astra via GPT_FLAGSHIP_RE and is MEASURED for both lane flagships (2026-09-05).
+
+@test "GPT-6 Astra: 299k on 1050k window is NOMINAL" {
+    _seed_window 1050000
+    _write_main_transcript "${TEST_DIR}/t.jsonl" "gpt-6-astra" 299000
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
+    assert_success
+    assert_output --partial "[NOMINAL]"
+    assert_output --partial "299k / 1050k"
+}
+
+@test "GPT-6 Astra: 300k on 1050k window is ELEVATED" {
+    _seed_window 1050000
+    _write_main_transcript "${TEST_DIR}/t.jsonl" "gpt-6-astra" 300000
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
+    assert_success
+    assert_output --partial "[ELEVATED]"
+    assert_output --partial "300k / 1050k"
+}
+
+@test "provider-prefixed GPT-6 Astra[1m]: 400k on 1050k window is HIGH" {
+    _seed_window 1050000
+    _write_main_transcript "${TEST_DIR}/t.jsonl" "openrouter/openai/gpt-6-astra[1m]" 400000
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
+    assert_success
+    assert_output --partial "[HIGH]"
+    assert_output --partial "400k / 1050k"
+}
+
+@test "provider-prefixed GPT-6 Astra: 500k on 1050k window is CRITICAL" {
+    _seed_window 1050000
+    _write_main_transcript "${TEST_DIR}/t.jsonl" "openai/gpt-6-astra" 500000
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
+    assert_success
+    assert_output --partial "[CRITICAL]"
+    assert_output --partial "500k / 1050k"
+}
+
+@test "GPT-6 Astra non-flagship and near-miss variants stay conservative" {
+    local model
+    for model in \
+        gpt-6-astra-pro \
+        gpt-6-astra-mini \
+        gpt-6-astra-chat \
+        xgpt-6-astra \
+        foo-gpt-6-astra \
+        notgpt-6-astra \
+        'vendor/notgpt-6-astra[1m]' \
+        'gpt-6-astra[1m]-x' \
+        gpt-6-astrab \
+        gpt-6 \
+        gpt-6-luna \
+        'gpt-6-astra[1m'; do
+        _clean_ctx_caches
+        _seed_window 1050000
+        _write_main_transcript "${TEST_DIR}/t.jsonl" "$model" 300000
+        run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
+        assert_success
+        assert_output --partial "[CRITICAL]"
+        assert_output --partial "300k / 1050k"
+    done
+}
+
+@test "mixed: GPT-6 Astra subagent under sonnet session gets 1050k and extended tier" {
+    printf 'claude-sonnet-4-6' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-model-${FAKE_SESSION}"
+    printf 'openai/gpt-6-astra' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
+    _seed_window 200000
+    parent="${TEST_DIR}/main.jsonl"
+    printf '{"type":"user","isSidechain":false,"message":{"content":"x"}}\n' > "$parent"
+    _write_subagent_transcript "${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl" "openai/gpt-6-astra" 300000
 
     run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
     assert_success
@@ -495,6 +582,101 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
 }
 
 # =========================================================================
+# Opus 5: 1M physical window (registered 2026-09-05) but CONSERVATIVE
+# quality thresholds. Observed on Claude Code 2.1.261 via /model + /context:
+# bare `claude-opus-5` reports "42.8k/1m tokens" and `claude-opus-5[1m]`
+# reports "48.2k/1m" -- so the BARE id must map to 1,000,000, not fall to the
+# 200k arm. The quality-profile glob (*fable-5*|*mythos-5*) is deliberately
+# NOT extended: Opus 5 keeps 40/60/75% + 150/200/250k.
+#
+# NOTE: these four cases FAIL until the user applies
+# research/2026-09-05_FrameworkDev_ClaudeCode_Upgrade_2.1.261/context-reporter_opus5.patch
+# to .claude/hooks/context-reporter.sh (a user-only surface no agent may edit).
+# The twin change in .claude/scripts/subagent-bar.sh is already applied and
+# green in tests/bash/subagent_bar.bats.
+# =========================================================================
+
+@test "mixed: bare claude-opus-5 subagent maps to 1000k and is ELEVATED at 150k" {
+    printf 'claude-sonnet-4-6' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-model-${FAKE_SESSION}"
+    printf 'claude-opus-5' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
+    _seed_window 200000  # session window; subagent correction must override to 1M
+    parent="${TEST_DIR}/main.jsonl"
+    printf '{"type":"user","isSidechain":false,"message":{"content":"x"}}\n' > "$parent"
+    _write_subagent_transcript "${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl" "claude-opus-5" 150000
+
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
+    assert_success
+    # 150k / 1000k = 15%; the conservative 150k absolute leg fires -> ELEVATED.
+    # Without the *opus-5* arm this reads "150k / 200k" (75%) -> CRITICAL.
+    assert_output --partial "150k / 1000k"
+    assert_output --partial "[ELEVATED]"
+}
+
+@test "mixed: claude-opus-5[1m] subagent maps to 1000k and is ELEVATED at 150k" {
+    printf 'claude-sonnet-4-6' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-model-${FAKE_SESSION}"
+    printf 'claude-opus-5[1m]' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
+    _seed_window 200000
+    parent="${TEST_DIR}/main.jsonl"
+    printf '{"type":"user","isSidechain":false,"message":{"content":"x"}}\n' > "$parent"
+    _write_subagent_transcript "${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl" "claude-opus-5[1m]" 150000
+
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
+    assert_success
+    assert_output --partial "150k / 1000k"
+    assert_output --partial "[ELEVATED]"
+}
+
+@test "mixed: claude-opus-5 subagent is HIGH at 220k -- conservative profile, NOT Fable/Mythos" {
+    printf 'claude-sonnet-4-6' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-model-${FAKE_SESSION}"
+    printf 'claude-opus-5' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
+    _seed_window 200000
+    parent="${TEST_DIR}/main.jsonl"
+    printf '{"type":"user","isSidechain":false,"message":{"content":"x"}}\n' > "$parent"
+    _write_subagent_transcript "${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl" "claude-opus-5" 220000
+
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
+    assert_success
+    # 220k / 1000k = 22%; conservative HIGH leg [200k, 250k). Under the
+    # Fable/Mythos profile this same 220k would be NOMINAL (< 300k) -- Opus 5
+    # must NOT select that profile despite sharing the 1M physical window.
+    assert_output --partial "220k / 1000k"
+    assert_output --partial "[HIGH]"
+}
+
+@test "mixed: claude-opus-5[1m] subagent is HIGH at 220k -- [1m] does not buy Fable gates" {
+    printf 'claude-sonnet-4-6' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-model-${FAKE_SESSION}"
+    printf 'claude-opus-5[1m]' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
+    _seed_window 200000
+    parent="${TEST_DIR}/main.jsonl"
+    printf '{"type":"user","isSidechain":false,"message":{"content":"x"}}\n' > "$parent"
+    _write_subagent_transcript "${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl" "claude-opus-5[1m]" 220000
+
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
+    assert_success
+    assert_output --partial "220k / 1000k"
+    assert_output --partial "[HIGH]"
+}
+
+@test "mixed: claude-fable-5-1 subagent maps to 1000k and keeps the Fable profile" {
+    # Locks the substring behaviour of the *fable-5* globs against the real
+    # 2.1.261 model id `claude-fable-5-1` as TESTED FACT rather than inference.
+    # This case passes with or without the Opus 5 patch.
+    printf 'claude-sonnet-4-6' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-model-${FAKE_SESSION}"
+    printf 'claude-fable-5-1' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
+    _seed_window 200000
+    parent="${TEST_DIR}/main.jsonl"
+    printf '{"type":"user","isSidechain":false,"message":{"content":"x"}}\n' > "$parent"
+    _write_subagent_transcript "${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl" "claude-fable-5-1" 250000
+
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
+    assert_success
+    # 250k / 1000k = 25% -> below the Fable 300k/30% ELEVATED leg -> NOMINAL.
+    # Under the conservative profile the same 250k would be CRITICAL.
+    assert_output --partial "250k / 1000k"
+    assert_output --partial "[NOMINAL]"
+}
+
+# =========================================================================
 # GLM-5.2: 1,048,576 physical window, conservative quality thresholds
 # =========================================================================
 
@@ -574,24 +756,26 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
 }
 
 # =========================================================================
-# ChatGPT-subscription lane: final gpt-5.4/5.5/5.6 accounting cap is 370k
+# ChatGPT-subscription lane: final gpt-5.4/5.5/5.6 accounting cap is 919k
 # -------------------------------------------------------------------------
-# The final min(resolved, 370000) constraint must cover the main cache path,
+# The final min(resolved, 919000) constraint must cover the main cache path,
 # same-model and different-model subagents, and unsafe explicit overrides. Exact
 # lane signals are required. API/OpenRouter behavior and non-GPT models remain
 # unchanged. Physical-window accounting stays separate from Sol's quality tier.
 # =========================================================================
 
-@test "chatgpt lane: exact Sol main session at 290k is HIGH against final 370k cap" {
+@test "chatgpt lane: exact Sol main session at 400k is HIGH against final 919k cap" {
+    # 400k trips the retained 400k absolute HIGH gate; on the 919k denominator
+    # that is only 43%, well below the 75% percentage leg.
     _seed_window 1050000
-    _write_main_transcript "${TEST_DIR}/t.jsonl" "gpt-5.6-sol[1m]" 290000
+    _write_main_transcript "${TEST_DIR}/t.jsonl" "gpt-5.6-sol[1m]" 400000
 
     run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
         bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
     assert_success
     assert_output --partial "[HIGH]"
-    assert_output --partial "290k / 370k"
-    assert_output --partial "(78%)"
+    assert_output --partial "400k / 919k"
+    assert_output --partial "(43%)"
 }
 
 @test "API route: exact Sol main session at 290k remains NOMINAL on 1.05M" {
@@ -606,8 +790,8 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
     assert_output --partial "(27%)"
 }
 
-@test "statusline writer-to-reporter path caches 370k and reports Sol 290k HIGH" {
-    _write_main_transcript "${TEST_DIR}/t.jsonl" "gpt-5.6-sol[1m]" 290000
+@test "statusline writer-to-reporter path caches 919k and reports Sol 400k HIGH" {
+    _write_main_transcript "${TEST_DIR}/t.jsonl" "gpt-5.6-sol[1m]" 400000
 
     run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
         CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000 \
@@ -615,7 +799,7 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
     assert_success
     run cat "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-ctx-window-${FAKE_SESSION}"
     assert_success
-    assert_output "370000"
+    assert_output "919000"
 
     # Ensure no warm rate gate can suppress the reporter half of this path.
     rm -f "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-ctx-ts-${FAKE_SESSION}"
@@ -624,10 +808,10 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
         bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
     assert_success
     assert_output --partial "[HIGH]"
-    assert_output --partial "290k / 370k"
+    assert_output --partial "400k / 919k"
 }
 
-@test "chatgpt lane: different-model gpt-5.6-sol subagent maps to 370k (81%)" {
+@test "chatgpt lane: different-model gpt-5.6-sol subagent maps to 919k (32%)" {
     printf 'claude-sonnet-4-6' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-model-${FAKE_SESSION}"
     printf 'openai/gpt-5.6-sol' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
     _seed_window 200000
@@ -638,9 +822,10 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
     run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
         bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
     assert_success
-    assert_output --partial "300k / 370k"
+    assert_output --partial "[ELEVATED]"
+    assert_output --partial "300k / 919k"
     refute_output --partial "300k / 1050k"
-    assert_output --partial "(81%)"
+    assert_output --partial "(32%)"
 }
 
 @test "chatgpt lane: same-model exact Sol subagent caps a stale 1.05M session cache" {
@@ -649,30 +834,30 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
     _seed_window 1050000
     parent="${TEST_DIR}/main.jsonl"
     printf '{"type":"user","isSidechain":false,"message":{"content":"x"}}\n' > "$parent"
-    _write_subagent_transcript "${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl" "gpt-5.6-sol[1m]" 290000
+    _write_subagent_transcript "${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl" "gpt-5.6-sol[1m]" 400000
 
     run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
         bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
     assert_success
     assert_output --partial "[HIGH]"
-    assert_output --partial "290k / 370k"
-    assert_output --partial "(78%)"
+    assert_output --partial "400k / 919k"
+    assert_output --partial "(43%)"
 }
 
-@test "chatgpt lane: explicit 1.05M cannot raise a different-model Sol subagent above 370k" {
+@test "chatgpt lane: explicit 1.05M cannot raise a different-model Sol subagent above 919k" {
     printf 'claude-sonnet-4-6' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-model-${FAKE_SESSION}"
     printf 'openai/gpt-5.6-sol' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
     _seed_window 200000
     parent="${TEST_DIR}/main.jsonl"
     printf '{"type":"user","isSidechain":false,"message":{"content":"x"}}\n' > "$parent"
-    _write_subagent_transcript "${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl" "openai/gpt-5.6-sol" 290000
+    _write_subagent_transcript "${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl" "openai/gpt-5.6-sol" 400000
 
     run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
         CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000 \
         bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
     assert_success
     assert_output --partial "[HIGH]"
-    assert_output --partial "290k / 370k"
+    assert_output --partial "400k / 919k"
 }
 
 @test "lane vars unset: gpt-5.6-sol subagent keeps the 1.05M API-lane window (28%)" {
@@ -686,7 +871,7 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
     run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
     assert_success
     assert_output --partial "300k / 1050k"
-    refute_output --partial "300k / 370k"
+    refute_output --partial "300k / 919k"
     assert_output --partial "(28%)"
 }
 
@@ -702,7 +887,7 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
         bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
     assert_success
     assert_output --partial "300k / 1050k"
-    refute_output --partial "300k / 370k"
+    refute_output --partial "300k / 919k"
 }
 
 @test "malformed lane signal values do not activate the reporter cap" {
@@ -717,7 +902,7 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
 }
 
 @test "chatgpt lane preserves a lower positive explicit context window" {
-    # A 250k override remains below the 370k final ceiling: 200k -> 80%.
+    # A 250k override remains below the 919k final ceiling: 200k -> 80%.
     printf 'claude-sonnet-4-6' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-model-${FAKE_SESSION}"
     printf 'openai/gpt-5.6-sol' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-subagent-model-${FAKE_SESSION}-${FAKE_AGENT}"
     _seed_window 200000
@@ -730,7 +915,7 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
         bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
     assert_success
     assert_output --partial "200k / 250k"
-    refute_output --partial "200k / 370k"
+    refute_output --partial "200k / 919k"
     assert_output --partial "(80%)"
 }
 
@@ -776,8 +961,8 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
         bash "$CONTEXT_REPORTER_SH" < <(_payload_main "$transcript")
     assert_success
     assert_output --partial "[NOMINAL]"
-    assert_output --partial "111k / 370k"
-    assert_output --partial "(30%)"
+    assert_output --partial "111k / 919k"
+    assert_output --partial "(12%)"
     run cat "$model_cache"
     assert_output "gpt-5.6-sol"
 
@@ -787,7 +972,7 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
         bash "$CONTEXT_REPORTER_SH" < <(_payload_main "$transcript")
     assert_success
     assert_output --partial "[NOMINAL]"
-    assert_output --partial "111k / 370k"
+    assert_output --partial "111k / 919k"
     run cat "$model_cache"
     assert_output "gpt-5.6-terra"
 
@@ -798,7 +983,7 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
     assert_success
     assert_output --partial "[NOMINAL]"
     assert_output --partial "90k / 1000k"
-    refute_output --partial "/ 370k"
+    refute_output --partial "/ 919k"
     run cat "$model_cache"
     assert_output "claude-sonnet-4-6"
 }
@@ -831,7 +1016,7 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
         bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
     assert_success
     assert_output --partial "[NOMINAL]"
-    assert_output --partial "111k / 370k"
+    assert_output --partial "111k / 919k"
     run cat "$model_cache"
     assert_output "gpt-5.6-sol"
 
@@ -841,7 +1026,7 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
         bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
     assert_success
     assert_output --partial "[NOMINAL]"
-    assert_output --partial "111k / 370k"
+    assert_output --partial "111k / 919k"
     run cat "$model_cache"
     assert_output "gpt-5.6-terra"
 
@@ -851,7 +1036,7 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
         bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
     assert_success
     assert_output --partial "100k / 1000k"
-    refute_output --partial "/ 370k"
+    refute_output --partial "/ 919k"
     run cat "$model_cache"
     assert_output "claude-fable-5"
 }
@@ -880,7 +1065,7 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
     run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
         bash "$CONTEXT_REPORTER_SH" < <(_payload_main "$transcript")
     assert_success
-    assert_output --partial "90k / 370k"
+    assert_output --partial "90k / 919k"
     run cat "$model_cache"
     assert_output "gpt-5.6-sol"
 }
@@ -889,15 +1074,15 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
 # Canonical positive-decimal override contract
 # =========================================================================
 
-@test "canonical reporter override 370000 and a lower value are accepted" {
+@test "canonical reporter override 919000 and a lower value are accepted" {
     _seed_window 1050000
     _write_main_transcript "${TEST_DIR}/t.jsonl" "gpt-5.6-sol" 111000
 
     run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=openai \
-        CLAUDE_CODE_MAX_CONTEXT_TOKENS=370000 \
+        CLAUDE_CODE_MAX_CONTEXT_TOKENS=919000 \
         bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
     assert_success
-    assert_output --partial "111k / 370k"
+    assert_output --partial "111k / 919k"
 
     rm -f "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-ctx-ts-${FAKE_SESSION}"
     run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
@@ -912,12 +1097,12 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
     _seed_window 1050000
     _write_main_transcript "${TEST_DIR}/t.jsonl" "gpt-5.6-sol" 111000
     for value in \
-        0370000 \
+        0919000 \
         080000 \
         0 \
-        +370000 \
-        ' 370000' \
-        '370000 ' \
+        +919000 \
+        ' 919000' \
+        '919000 ' \
         9223372036854775808 \
         99999999999999999999999999999999999999; do
         rm -f "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-ctx-ts-${FAKE_SESSION}"
@@ -925,7 +1110,7 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
             CLAUDE_CODE_MAX_CONTEXT_TOKENS="$value" \
             bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
         assert_success
-        assert_output --partial "111k / 370k"
+        assert_output --partial "111k / 919k"
         refute_output --partial "value too great"
         refute_output --partial "syntax error"
     done
@@ -948,7 +1133,7 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
         run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
             bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
         assert_success
-        assert_output --partial "111k / 370k"
+        assert_output --partial "111k / 919k"
     done
 }
 
@@ -991,7 +1176,7 @@ _seed_window() { printf '%s' "$1" > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-c
             bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
         assert_success
         assert_output --partial "90k / 200k"
-        refute_output --partial "/ 370k"
+        refute_output --partial "/ 919k"
         refute_output --partial "/ 1050k"
     done
 }
@@ -1205,7 +1390,7 @@ _write_main_transcript_raw_tokens() {
 # The physical-window classifier must grant the 1,050,000 flagship window ONLY
 # to exact closed-set matches. Malformed codenames that the OLD broad glob
 # accepted must now fall through to the conservative 200k default (they are
-# neither mini/chat nor an exact flagship), and must not trip the 370k cap.
+# neither mini/chat nor an exact flagship), and must not trip the 919k cap.
 
 @test "malformed flagship-ish ids map conservatively, not to the 1.05M flagship window" {
     local model
@@ -1226,11 +1411,11 @@ _write_main_transcript_raw_tokens() {
         assert_success
         assert_output --partial "90k / 200k"
         refute_output --partial "/ 1050k"
-        refute_output --partial "/ 370k"
+        refute_output --partial "/ 919k"
     done
 }
 
-@test "exact closed-set flagships still receive the flagship window / 370k lane cap" {
+@test "exact closed-set flagships still receive the flagship window / 919k lane cap" {
     local model
     parent="${TEST_DIR}/main.jsonl"
     transcript="${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${FAKE_AGENT}.jsonl"
@@ -1244,7 +1429,7 @@ _write_main_transcript_raw_tokens() {
         run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
             bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
         assert_success
-        assert_output --partial "111k / 370k"
+        assert_output --partial "111k / 919k"
     done
 }
 

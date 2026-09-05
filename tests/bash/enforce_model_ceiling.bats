@@ -71,6 +71,30 @@ _payload() {
     }'
 }
 
+# Write a fixture agent definition into TEST_DIR and echo the subagent_type
+# string that drives the hook's FRONTMATTER leg (leg c) against it. The hook
+# hardcodes `AGENTS_DIR=/daaf/.claude/agents` (readonly, no env override) and
+# builds `AGENT_FILE="${AGENTS_DIR}/${subagent_type}.md"`. We therefore feed a
+# subagent_type that path-traverses out of that hardcoded dir back to the
+# fixture: the three leading `..` segments climb agents -> .claude -> daaf -> /,
+# then TEST_DIR (absolute) descends to the fixture file. This exercises the
+# REAL hook's frontmatter `model:` awk end-to-end against a controlled file,
+# without modifying the hook or writing into the real agents dir. The fixture
+# carries an inline comment on the `model:` line on purpose: the awk prints $2
+# (the value), so a mutation to $NF would grab the trailing comment token and
+# mis-rank the dispatch -- the over-tier DENY tests below fail under that
+# mutation, closing the coverage gap. Fixtures live in TEST_DIR and are removed
+# by common_teardown. Arg $1: fixture name; $2: the full `model:` line.
+_make_agent_fixture() {
+    local name="$1" modelline="$2"
+    printf '%s\n' "---" "name: ${name}" "${modelline}" "tools: Read" "---" "# ${name}" "body" \
+        > "${TEST_DIR}/${name}.md"
+    # `..` x3 maps /daaf/.claude/agents -> / ; TEST_DIR is absolute (leading /),
+    # so `../../..${TEST_DIR}` resolves to TEST_DIR. No trailing `.md` -- the
+    # hook appends it.
+    printf '../../..%s/%s' "${TEST_DIR}" "${name}"
+}
+
 # =========================================================================
 # Syntax
 # =========================================================================
@@ -102,6 +126,51 @@ _payload() {
     [ -n "$output" ]
     echo "$output" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null
     # The deny reason names the session model so the orchestrator can re-dispatch.
+    echo "$output" | jq -e '.hookSpecificOutput.permissionDecisionReason | contains("claude-haiku-4-5")' >/dev/null
+}
+
+# =========================================================================
+# Leg (c): requested model resolved from AGENT FRONTMATTER (no tool_input.model)
+# ---------------------------------------------------------------------------
+# The live dispatch path: the orchestrator dispatches WITHOUT an explicit
+# `model:` param, so the hook parses the tier from the dispatched agent's YAML
+# frontmatter via awk (print $2 of the `model:` line, inside the leading `---`
+# block). Every test above passes tool_input.model explicitly and short-circuits
+# before this awk -- these tests exercise it. The fixtures carry an inline
+# comment after the value (matching real DAAF agent files, e.g.
+# `model: opus   # High-judgment tier ...`) so the $2-vs-$NF distinction is
+# live: a mutation to $NF would read the trailing comment word (unrankable,
+# rank 0) and silently ALLOW an over-tier dispatch.
+# =========================================================================
+
+@test "frontmatter over-tier + inline comment: session sonnet + agent 'model: opus  # ...' -> DENY (guards \$2 vs \$NF)" {
+    local tp; tp="$(_make_transcript "claude-sonnet-4-5")"
+    local stype; stype="$(_make_agent_fixture "fixture-opus" "model: opus   # High-judgment tier note words")"
+    run bash "$ENFORCE_MODEL_CEILING_SH" < <(_payload "bats-ceiling-fm-1" "$tp" "" "$stype")
+    assert_success
+    [ -n "$output" ]  # non-empty guard: a no-emit hook would vacuously pass jq -e
+    echo "$output" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null
+    # Correct parse ($2) -> "opus" (rank 3) > sonnet (rank 2) -> DENY. A $NF
+    # mutation would parse "words" (rank 0, unrankable) and ALLOW instead, so a
+    # green DENY here proves the awk reads the value, not the inline comment.
+}
+
+@test "frontmatter within tier + inline comment: session opus + agent 'model: sonnet  # ...' -> ALLOW" {
+    local tp; tp="$(_make_transcript "claude-opus-4-8")"
+    local stype; stype="$(_make_agent_fixture "fixture-sonnet" "model: sonnet   # Well-specified tier note")"
+    run bash "$ENFORCE_MODEL_CEILING_SH" < <(_payload "bats-ceiling-fm-2" "$tp" "" "$stype")
+    assert_success
+    assert_output ""
+}
+
+@test "frontmatter over-tier + inline comment: session haiku + agent 'model: opus  # ...' -> DENY (reason names session)" {
+    local tp; tp="$(_make_transcript "claude-haiku-4-5")"
+    local stype; stype="$(_make_agent_fixture "fixture-opus2" "model: opus   # High-judgment tier note words")"
+    run bash "$ENFORCE_MODEL_CEILING_SH" < <(_payload "bats-ceiling-fm-3" "$tp" "" "$stype")
+    assert_success
+    [ -n "$output" ]
+    echo "$output" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null
+    # Deny reason names the session model so the orchestrator can re-dispatch.
     echo "$output" | jq -e '.hookSpecificOutput.permissionDecisionReason | contains("claude-haiku-4-5")' >/dev/null
 }
 
