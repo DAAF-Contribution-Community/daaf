@@ -23,17 +23,38 @@
 #   higher-value guarantee, so the hook is the single enforcement layer. This
 #   is a deliberate departure from the usual defense-in-depth pattern.
 #
-# FAIL-CLOSED RATIONALE
+# FAIL-CLOSED RATIONALE AND GUARANTEE
 #   This is a doctrine/boundary guard: WebFetch must never reach the network,
 #   because its output cannot satisfy DAAF's quoting standard. Unlike the
-#   fail-OPEN dispatch guards (block-nested-dispatch.sh et al.), any unexpected
-#   error here DENIES — the ERR trap emits a deny decision. Blocking a fetch on
-#   error is cheap (the agent retries via web_fetch.sh); allowing an
-#   unattributable paraphrase through is the costly outcome.
+#   fail-OPEN dispatch guards (block-nested-dispatch.sh et al.), every path
+#   through this hook DENIES. The guarantee is precise, and holds on all three
+#   paths — none of which depends on stdin content, since the hook is
+#   registered under the WebFetch matcher alone and the decision is therefore
+#   unconditional:
+#     1. NORMAL (jq present) — emit the JSON decision
+#        `permissionDecision: deny` with the full instructional reason, and
+#        exit 0. This is the preferred path: the richer message reaches the
+#        agent as the tool result.
+#     2. jq ABSENT — jq is the hook's only structural dependency, and it is
+#        checked with `command -v` BEFORE any use. Without it the JSON
+#        decision cannot be serialized, so the hook falls back to Claude
+#        Code's documented plain-text block: the same redirect message on
+#        stderr plus `exit 2`. Exit 2 blocks the tool call regardless of
+#        whether stdout carries valid decision JSON (guaranteed as of the
+#        Claude Code 2.1.214 fix), so a jq-less container still cannot reach
+#        the network. It does NOT silently allow.
+#     3. UNEXPECTED ERROR — the ERR trap takes the same jq-free stderr +
+#        exit 2 path, so it too blocks whether or not jq is installed.
+#   Blocking a fetch on error is cheap (the agent retries via web_fetch.sh);
+#   allowing an unattributable paraphrase through is the costly outcome.
 #
 # INPUT   JSON on stdin (standard PreToolUse hook contract).
-# OUTPUT  Deny: JSON permissionDecision=deny (the convention for tool-call
-#         hooks, per enforce-explore-model.sh / deny-claude-code-guide.sh).
+# OUTPUT  Deny, by either of two equivalent mechanisms:
+#         - jq present: JSON permissionDecision=deny on stdout, exit 0 (the
+#           convention for tool-call hooks, per enforce-explore-model.sh /
+#           deny-claude-code-guide.sh).
+#         - jq absent, or unexpected error: redirect message on stderr,
+#           exit 2 (the plain-text block convention, per bash-safety.sh).
 #
 # DEPLOYMENT (human-only — .claude/hooks/ is deny-protected)
 #   1. Rebuild the container FIRST (adds trafilatura; web_fetch.sh needs it for
@@ -49,14 +70,8 @@
 # into an unintended state. The ERR trap below fails CLOSED (deny).
 set -uo pipefail
 
-# Fail-closed ERR trap: any unexpected error denies the WebFetch call.
-trap 'jq -n "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"block-webfetch hook encountered an unexpected error; denying WebFetch (fail-closed).\"}}" 2>/dev/null; exit 0' ERR
-
-# Drain stdin so the harness pipe closes cleanly (contents are not needed —
-# this hook denies unconditionally for the WebFetch matcher).
-INPUT=$(cat)
-: "${INPUT:=}"
-
+# The instructional redirect message, defined BEFORE the ERR trap so that both
+# the trap and the jq-free fallback can reference it (single source of truth).
 read -r -d '' REASON <<'MSG' || true
 WebFetch is disabled in DAAF: it returns an AI paraphrase of the page (not the source text) and fails opaquely, which conflicts with DAAF's evidence-graded quoting doctrine. Use the DAAF fetch protocol instead:
 
@@ -66,6 +81,26 @@ It saves the raw response, a deterministic extract, and a provenance manifest (U
 
 Note: web_fetch.sh requires the rebuilt container image (it adds trafilatura); pre-rebuild it degrades to a raw-only mode with a loud warning. WebSearch remains available for discovery.
 MSG
+
+# Fail-closed ERR trap. Deliberately jq-FREE: an error path that serializes its
+# deny with `jq -n` would itself fail (silently allowing) on a container missing
+# jq — precisely the case the trap exists to cover. stderr + exit 2 blocks
+# unconditionally and needs nothing but bash builtins.
+trap 'printf "%s\n" "$REASON" >&2; exit 2' ERR
+
+# Drain stdin so the harness pipe closes cleanly (contents are not needed —
+# this hook denies unconditionally for the WebFetch matcher).
+INPUT=$(cat)
+: "${INPUT:=}"
+
+# --- Dependency check (fail-closed, BEFORE any use of jq) ---
+# Without jq the JSON decision cannot be serialized. Falling through to `jq -n`
+# here would exit 0 with no decision on stdout, which the harness reads as
+# ALLOW — a silent bypass of a boundary guard. Block in plain text instead.
+if ! command -v jq >/dev/null 2>&1; then
+    printf '%s\n' "$REASON" >&2
+    exit 2
+fi
 
 jq -n --arg r "$REASON" '{
   "hookSpecificOutput": {

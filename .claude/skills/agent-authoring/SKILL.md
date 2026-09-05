@@ -181,7 +181,7 @@ hooks:
 - Hook scripts live in `.claude/hooks/` and are protected by the deny rule `Edit(.claude/hooks/*)` — human-only deployment. On Claude Code ≥ 2.1.261 the file-permission matcher honors only `Edit(path)` rules, and an `Edit` rule covers all file-editing tools (`Write` included), so no paired `Write(...)` rule is needed (adding one is inert and emits a startup warning). Shell-level writes to the same paths are blocked separately by `bash-safety.sh`
 - Use `exit 2` with stderr message to block Bash commands (convention from `bash-safety.sh`)
 - Use JSON `permissionDecision: deny` output for Agent/Task tool hooks (convention from `enforce-explore-model.sh`)
-- Fail-closed design: ERR trap should block, not allow
+- Fail-closed design: ERR trap should block, not allow — and neither the trap nor the deny path may depend on the very tool whose absence they cover (pre-check `jq`; fall back to stderr + `exit 2`, never `jq -n`, so a missing dependency cannot turn a deny into a silent allow)
 - Verify dependencies (e.g., `jq`) explicitly rather than relying on fallbacks that silently degrade
 
 ## Skills in Agent Frontmatter
