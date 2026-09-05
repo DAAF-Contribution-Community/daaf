@@ -937,12 +937,88 @@ _append_subbar_model() {
 }
 
 @test "fail-open: no window cache falls back and still renders a row" {
-    # No window cache seeded -> script falls back (latest cache or 200k default).
+    # No window cache seeded -> script maps the window by the session model
+    # (sonnet -> 200k), never another session's cache. 10000/200000 = 5%.
     _seed_session_model "claude-sonnet-4-6"
     _seed_task_model "t1" "claude-sonnet-4-6"
     run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 10000)
     assert_success
     assert_output --partial '"id":"t1"'
+    assert_output --partial "m5%"
+}
+
+# =========================================================================
+# Denominator resolution without a session window cache (2026-09-05)
+# -------------------------------------------------------------------------
+# Formerly the bar inherited the most recent window cache from ANY session,
+# else 200k, so same-model rows in an uncached GPT-6 Astra / Opus 5 session
+# rendered against 200k and went red far too early. Now: this session's cache
+# when present, else the static map for the session model.
+#
+# These tests use the DAAF_SUBAGENT_BAR_CACHE_DIR seam (an empty per-test dir)
+# rather than the shared /tmp used above, so the live container's own
+# /tmp/claude-ctx-window-* caches cannot leak into the "no cache" condition
+# and mask a regression to the any-session fallback.
+# =========================================================================
+
+_iso_cache() { # isolated cache dir for this test; echoes its path
+    local d="${TEST_DIR}/isocache"
+    mkdir -p "$d"
+    printf '%s' "$d"
+}
+_iso_seed_session_model() { printf '%s' "$1" > "$(_iso_cache)/claude-model-${FAKE_SESSION}"; }
+_iso_seed_task_model() { printf '%s' "$2" > "$(_iso_cache)/claude-subagent-model-${FAKE_SESSION}-${1}"; }
+_iso_seed_window() { printf '%s' "$1" > "$(_iso_cache)/claude-ctx-window-${FAKE_SESSION}"; }
+
+@test "no window cache: same-model gpt-6-astra row maps by model to 1.05M, not 200k" {
+    _iso_seed_session_model "gpt-6-astra"
+    _iso_seed_task_model "t1" "gpt-6-astra"
+    run env DAAF_SUBAGENT_BAR_CACHE_DIR="$(_iso_cache)" bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 210000)
+    assert_success
+    # 210000 / 1050000 = 20% (against 200k: 100%; against an inherited 1M: 21%).
+    assert_output --partial "210k"
+    assert_output --partial "m20%"
+    assert_output --partial "$COLOR_NOMINAL"
+}
+
+@test "no window cache: same-model gpt-6-astra row on the ChatGPT lane is capped at 919k" {
+    export DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt
+    _iso_seed_session_model "gpt-6-astra"
+    _iso_seed_task_model "t1" "gpt-6-astra"
+    run env DAAF_SUBAGENT_BAR_CACHE_DIR="$(_iso_cache)" bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 459500)
+    assert_success
+    # 459500 / 919000 = 50% (against 200k: 100%).
+    assert_output --partial "m50%"
+}
+
+@test "no window cache: same-model claude-opus-5 row maps to 1M, not 200k" {
+    _iso_seed_session_model "claude-opus-5"
+    _iso_seed_task_model "t1" "claude-opus-5"
+    run env DAAF_SUBAGENT_BAR_CACHE_DIR="$(_iso_cache)" bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 100000)
+    assert_success
+    # 100000 / 1000000 = 10% (against 200k it would read 50%).
+    assert_output --partial "m10%"
+}
+
+@test "no window cache: an UNRELATED session's window cache is never inherited" {
+    # Plant a 200000 cache for a different session id in the isolated cache dir;
+    # a gpt-6-astra same-model row must still map by model (1.05M -> 20%).
+    printf '200000' > "$(_iso_cache)/claude-ctx-window-some-other-session"
+    _iso_seed_session_model "gpt-6-astra"
+    _iso_seed_task_model "t1" "gpt-6-astra"
+    run env DAAF_SUBAGENT_BAR_CACHE_DIR="$(_iso_cache)" bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 210000)
+    assert_success
+    assert_output --partial "m20%"
+}
+
+@test "session window cache, when present, stays authoritative for same-model rows" {
+    _iso_seed_window 200000
+    _iso_seed_session_model "claude-opus-5"
+    _iso_seed_task_model "t1" "claude-opus-5"
+    run env DAAF_SUBAGENT_BAR_CACHE_DIR="$(_iso_cache)" bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 100000)
+    assert_success
+    # Cache (200000) wins over the static map (1M): 100000/200000 = 50%.
+    assert_output --partial "m50%"
 }
 
 # =========================================================================

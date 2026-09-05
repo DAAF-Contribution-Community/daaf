@@ -210,22 +210,21 @@ if [[ -n "$transcript_path" && -n "$session_id" ]]; then
 fi
 
 # --- Resolve context window size (read-only shared cache) ---
-# Same fallback chain as context-reporter.sh (lines ~91-100): session-specific
-# cache written by context-bar.sh, else the most recent cache from any session,
-# else 200000. This script NEVER writes the cache.
+# Same precedence as context-reporter.sh: THIS session's cache written by
+# context-bar.sh when present (authoritative — Claude Code's provisioned
+# window, with the static map/override/lane cap already applied), else the
+# static map for the session model (filled in below, once the model and the
+# classifier grammars are available), else 200000. Deliberately NO fallback to
+# "the most recent cache from any session": that inherited an unrelated
+# session's window into this one. This script NEVER writes the cache.
 max_context=""
 if [[ -n "$session_id" && -f "${cache_dir}/claude-ctx-window-${session_id}" ]]; then
     max_context=$(cat "${cache_dir}/claude-ctx-window-${session_id}" 2>/dev/null)
 fi
-if [[ -z "$max_context" ]]; then
-    latest_ctx=$(ls -t "${cache_dir}"/claude-ctx-window-* 2>/dev/null | head -1)
-    if [[ -n "${latest_ctx:-}" ]]; then
-        max_context=$(cat "$latest_ctx" 2>/dev/null)
-    fi
-fi
-# Guard: must be a positive integer, else fall back to 200k.
+# Guard: must be a canonical positive integer, else leave EMPTY for the
+# model-keyed fallback below.
 if ! is_canonical_positive_decimal "$max_context"; then
-    max_context=200000
+    max_context=""
 fi
 
 # Session model — used to decide whether a subagent shares the session's window
@@ -282,6 +281,68 @@ gpt_mini_re='^gpt-5\.(4|5|6)(-(sol|terra|luna))?-mini(\[1m\])?$'
 gpt_chat_re='^gpt-5\.(4|5|6)(-(sol|terra|luna))?-chat(\[1m\])?$'
 gpt_prev_re='^gpt-5(\.2)?(-mini)?(\[1m\])?$'
 gpt_prev_chat_re='^gpt-5(\.2)?-chat(\[1m\])?$'
+
+# static_window_for_model: map a model id to the physical context window Claude
+# Code provisions for it. Echoes a canonical positive integer; unknown or empty
+# ids map to the conservative 200000. Window provisioning summary: GPT mini and
+# broad gpt-5 ids map to 400k, chat variants to 128k, and 5.4/5.5/5.6 flagships
+# (plus gpt-6-astra) to 1.05M; exact z-ai/glm-5.2 and only terminal -YYYYMMDD
+# snapshots map to 1,048,576; native 1M Claude models (Fable/Mythos 5, Opus
+# 4.7/4.8, Opus 5) and generic [1m]-suffixed Claude ids map to 1,000,000; all
+# other models map to 200,000. This broad physical-window map is separate from
+# the quality-tier selector in the row loop. Re-verify after Claude Code /
+# provider updates. Byte-consistent with context-reporter.sh's function of the
+# same name.
+# Opus 5 (claude-opus-5, bare AND [1m]) is a native 1M-window model: observed
+# 2026-09-05 on Claude Code 2.1.261 via /model + /context — bare
+# `claude-opus-5` reported "42.8k/1m tokens" and `claude-opus-5[1m]` reported
+# "48.2k/1m", so the bare id must map to 1,000,000 too and not fall through to
+# the 200k arm. Opus 5 nonetheless stays on the CONSERVATIVE quality profile
+# (physical window and quality threshold are separate lookups). Provenance:
+# research/2026-09-05_FrameworkDev_ClaudeCode_Upgrade_2.1.261 (to-do 03 Branch A).
+static_window_for_model() {
+    local model="${1:-}"
+    local slug="${model##*/}"
+    local window=200000
+    case "$model" in
+        # Exact GLM-5.2 plus terminal date snapshots only. Keep this narrow:
+        # glm-5.2-air and future variants have no verified static window.
+        # Window size only — GLM remains in the conservative threshold family.
+        z-ai/glm-5.2|z-ai/glm-5.2-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9])
+            window=1048576 ;;
+        *)
+            # Closed-set classification on the provider-stripped slug
+            # (Convention 3). Only the enumerated flagship/mini/chat/prev slugs
+            # earn a GPT physical window; anything else (malformed
+            # flagship-looking ids included) falls through to the conservative
+            # Claude/[1m]/200k map. Order: flagship, then mini, then chat before
+            # prev so a prev-chat is not shadowed.
+            if   [[ "$slug" =~ $gpt_flagship_re ]];  then window=1050000
+            elif [[ "$slug" =~ $gpt_mini_re ]];      then window=400000
+            elif [[ "$slug" =~ $gpt_chat_re ]];      then window=128000
+            elif [[ "$slug" =~ $gpt_prev_chat_re ]]; then window=128000
+            elif [[ "$slug" =~ $gpt_prev_re ]];      then window=400000
+            else
+                case "$model" in
+                    *fable-5*|*mythos-5*|*opus-4-7*|*opus-4-8*|*opus-5*|*\[1m\]*)
+                        window=1000000 ;;
+                    *) window=200000 ;;
+                esac
+            fi
+            ;;
+    esac
+    printf '%s' "$window"
+}
+
+# Session window fallback: no authoritative cache for this session (statusline
+# not yet rendered, or a stale/corrupt cache) -> map by the SESSION model. This
+# is what same-model rows inherit below; an empty/unknown session model still
+# yields 200000 (fail-conservative). Formerly this fell to another session's
+# cache or 200k regardless of model, so a GPT-6 Astra or Opus 5 session's
+# same-model subagents rendered against 200k and hit red far too early.
+if [[ -z "$max_context" ]]; then
+    max_context=$(static_window_for_model "$session_model")
+fi
 
 # --- Render one output line per task ---
 bar_width=5
@@ -354,54 +415,9 @@ while IFS=$'\x1f' read -r id type name status tokens label; do
     # providers, where the mapping below does not apply).
     row_window="$max_context"
     if [[ -n "$task_model" && "$task_model" != "$session_model" ]]; then
-        # Window provisioning summary: GPT mini and broad gpt-5 ids map to 400k,
-        # chat variants to 128k, and 5.4/5.5/5.6 flagships to 1.05M; exact
-        # z-ai/glm-5.2 and only terminal -YYYYMMDD snapshots map to 1,048,576;
-        # native 1M Claude models (Fable/Mythos 5, Opus 4.7/4.8, Opus 5)
-        # and generic [1m]-suffixed Claude ids map to 1,000,000; all other models
-        # map to 200,000. This broad physical-window map is separate from the
-        # quality-tier selector below, where exact terminal GPT 5.6 Sol slugs
-        # retain larger absolute gates. Re-verify this map after Claude
-        # Code/provider updates.
-        # Opus 5 (claude-opus-5, bare AND [1m]) is a native 1M-window model:
-        # observed 2026-09-05 on Claude Code 2.1.261 via /model + /context —
-        # bare `claude-opus-5` reported "42.8k/1m tokens" and `claude-opus-5[1m]`
-        # reported "48.2k/1m", so the bare id must map to 1,000,000 too and not
-        # fall through to the 200k arm. Opus 5 nonetheless stays on the
-        # CONSERVATIVE quality profile below (physical window and quality
-        # threshold are separate lookups). Provenance: research/
-        # 2026-09-05_FrameworkDev_ClaudeCode_Upgrade_2.1.261 (to-do 03 Branch A).
-        # Physical GPT classification uses only the terminal provider-stripped
-        # slug. Supported flagship versions must start that slug and be followed
-        # by end-of-slug, '-' or '['; mini/chat retain precedence.
-        physical_slug="${task_model##*/}"
-        case "$task_model" in
-            # Exact GLM-5.2 plus terminal date snapshots only. Keep this narrow:
-            # glm-5.2-air and future variants have no verified static window.
-            # Window size only — GLM remains in the conservative threshold family.
-            z-ai/glm-5.2|z-ai/glm-5.2-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9])
-                row_window=1048576 ;;
-            *)
-                # Closed-set classification on the provider-stripped slug
-                # (Convention 3). Only the enumerated flagship/mini/chat/prev
-                # slugs earn a GPT physical window; anything else (malformed
-                # flagship-looking ids included) falls through to the
-                # conservative Claude/[1m]/200k map. Order: flagship, then mini,
-                # then chat before prev so a prev-chat is not shadowed.
-                if   [[ "$physical_slug" =~ $gpt_flagship_re ]];  then row_window=1050000
-                elif [[ "$physical_slug" =~ $gpt_mini_re ]];      then row_window=400000
-                elif [[ "$physical_slug" =~ $gpt_chat_re ]];      then row_window=128000
-                elif [[ "$physical_slug" =~ $gpt_prev_chat_re ]]; then row_window=128000
-                elif [[ "$physical_slug" =~ $gpt_prev_re ]];      then row_window=400000
-                else
-                    case "$task_model" in
-                        *fable-5*|*mythos-5*|*opus-4-7*|*opus-4-8*|*opus-5*|*\[1m\]*)
-                            row_window=1000000 ;;
-                        *) row_window=200000 ;;
-                    esac
-                fi
-                ;;
-        esac
+        # Different-model row: the window Claude Code provisions for ITS model
+        # (see static_window_for_model above), never the session's.
+        row_window=$(static_window_for_model "$task_model")
     fi
 
     # CLAUDE_CODE_MAX_CONTEXT_TOKENS is the ordinary user override. Apply it to

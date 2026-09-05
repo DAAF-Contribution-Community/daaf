@@ -1565,3 +1565,67 @@ _write_main_transcript_raw_tokens() {
     refute_output --partial "No such file"
     refute_output --partial "Permission denied"
 }
+
+# =========================================================================
+# Denominator resolution without a session window cache (2026-09-05)
+# -------------------------------------------------------------------------
+# The window cache is written by the statusline; the reporter can fire before
+# it exists (first prompt of a session, or a headless dispatch that never
+# renders one). Formerly the reporter then inherited the most recent cache
+# from ANY session, else 200k — so a GPT-6 Astra or Opus 5 session with no
+# cache read 100%/CRITICAL and subagents falsely throttled. Now: this
+# session's cache when present, else the static map for the MEASURED model,
+# never another session's cache. The lane cap and override still apply after.
+# =========================================================================
+
+@test "uncached main session: gpt-6-astra on the ChatGPT lane maps to 919k, not 200k" {
+    export DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt
+    _write_main_transcript "${TEST_DIR}/t.jsonl" "gpt-6-astra" 400000
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
+    assert_success
+    assert_output --partial "400k / 919k"
+    assert_output --partial "[HIGH]"
+    refute_output --partial "/ 200k"
+}
+
+@test "uncached main session: claude-opus-5 maps to 1000k, not 200k" {
+    _write_main_transcript "${TEST_DIR}/t.jsonl" "claude-opus-5" 100000
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
+    assert_success
+    assert_output --partial "100k / 1000k tokens (10%)"
+    assert_output --partial "[NOMINAL]"
+}
+
+@test "uncached main session: an UNRELATED session's window cache is never inherited" {
+    # Another session's cache says 200000; this gpt-6-astra session must still
+    # map by its own model (1050k on the API lane), not inherit 200k.
+    printf '200000\n' > "${DAAF_CONTEXT_REPORTER_CACHE_DIR}/claude-ctx-window-some-other-session"
+    _write_main_transcript "${TEST_DIR}/t.jsonl" "gpt-6-astra" 400000
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
+    assert_success
+    assert_output --partial "400k / 1050k"
+    refute_output --partial "/ 200k"
+}
+
+@test "uncached SAME-model subagent: gpt-6-astra child of a gpt-6-astra session maps by model, not 200k" {
+    export DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt
+    parent="${TEST_DIR}/main.jsonl"
+    _write_main_transcript "$parent" "gpt-6-astra" 50000
+    subdir="${TEST_DIR}/${FAKE_SESSION}/subagents"
+    _write_subagent_transcript "${subdir}/agent-${FAKE_AGENT}.jsonl" "gpt-6-astra" 400000
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_subagent "$parent")
+    assert_success
+    assert_output --partial "400k / 919k"
+    assert_output --partial "[HIGH]"
+    refute_output --partial "/ 200k"
+}
+
+@test "session window cache, when present, stays authoritative over the static map" {
+    # Cache says 200000 for a model the static map would put at 1M: the cache
+    # (Claude Code's own provisioned window) wins for the main session.
+    _seed_window 200000
+    _write_main_transcript "${TEST_DIR}/t.jsonl" "claude-opus-5" 100000
+    run bash "$CONTEXT_REPORTER_SH" < <(_payload_main "${TEST_DIR}/t.jsonl")
+    assert_success
+    assert_output --partial "100k / 200k"
+}

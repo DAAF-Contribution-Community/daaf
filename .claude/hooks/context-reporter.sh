@@ -259,24 +259,23 @@ GPT_FLAGSHIP_RE='^(gpt-5\.(4|5|6)(-(sol|terra|luna))?|gpt-6-astra)(\[1m\])?$'
 GPT_MINI_RE='^gpt-5\.(4|5|6)(-(sol|terra|luna))?-mini(\[1m\])?$'
 GPT_CHAT_RE='^gpt-5\.(4|5|6)(-(sol|terra|luna))?-chat(\[1m\])?$'
 
-# Read context window size from shared cache (written by context-bar.sh
-# statusline). Subagent-fired hook calls carry the PARENT's session_id, so
-# this resolves the SESSION's window; a subagent running on a different model
-# than the session is corrected below. If the cache is absent, fall back to
-# the most recent cache from any session, then to 200k as a last resort.
+# Read THIS session's context window from the shared cache written by
+# context-bar.sh (the statusline, which sees Claude Code's provisioned window
+# and already applies the static map, override, and lane cap before writing).
+# Subagent-fired hook calls carry the PARENT's session_id, so this is the
+# SESSION's window; a subagent on a different model is mapped by its own model
+# below. An absent or non-canonical cache leaves MAX_CONTEXT EMPTY here so the
+# model-keyed static map below can fill it. Deliberately NO fallback to "the
+# most recent cache from any session": that inherited an unrelated session's
+# window (a Claude 1M session's 1000000, or a 200k session's 200000) into
+# this one, which is neither authoritative nor related to the measured model.
 CTX_CACHE="${reporter_cache_dir}/claude-ctx-window-${SESSION_ID}"
 MAX_CONTEXT=""
 if [[ -f "$CTX_CACHE" ]]; then
     MAX_CONTEXT=$(cat "$CTX_CACHE" 2>/dev/null)
-else
-    LATEST_CTX=$(ls -t "${reporter_cache_dir}"/claude-ctx-window-* 2>/dev/null | head -1)
-    if [[ -n "${LATEST_CTX:-}" ]]; then
-        MAX_CONTEXT=$(cat "$LATEST_CTX" 2>/dev/null)
-    fi
 fi
-MAX_CONTEXT=${MAX_CONTEXT:-200000}
 if ! is_canonical_positive_decimal "$MAX_CONTEXT"; then
-    MAX_CONTEXT=200000
+    MAX_CONTEXT=""
 fi
 
 # Refresh model identity before same/different-model window selection, final-cap
@@ -297,25 +296,26 @@ else
     MEASURE_MODEL="$SESSION_MODEL"
 fi
 
-# Per-subagent window correction: a subagent on a DIFFERENT model than the
-# session gets the window Claude Code provisions for ITS model, not the
-# session's (e.g. a sonnet subagent inside a 1M fable session has 200k — its
-# severity must be computed against 200k, or HIGH/CRITICAL fire far too late).
-# When SESSION_MODEL is empty (no parent cache) and AGENT_MODEL is set, they
-# differ, so the correction still runs and maps the subagent by its OWN window
-# rather than inheriting the session's — never assuming same-model (Convention
-# 10). Physical GPT classification uses the terminal provider-stripped slug and
-# the closed-set flagship predicate (Convention 3): the 1,050,000 flagship
-# window is granted only to exact matches, while mini/chat retain their smaller
-# windows and malformed codenames fall through to the conservative default.
-# Physical size remains independent of the quality tier.
-if [[ -n "$AGENT_ID" && -n "$AGENT_MODEL" && "$AGENT_MODEL" != "$SESSION_MODEL" ]]; then
-    PHYSICAL_SLUG="${AGENT_MODEL##*/}"
-    case "$AGENT_MODEL" in
+# ---------------------------------------------------------------------------
+# static_window_for_model: map a model id to the physical context window Claude
+# Code provisions for it. Echoes a canonical positive integer; unknown or empty
+# ids map to the conservative 200000. Physical GPT classification uses the
+# terminal provider-stripped slug and the closed-set flagship predicate
+# (Convention 3): the 1,050,000 flagship window is granted only to exact
+# matches, while mini/chat retain their smaller windows and malformed codenames
+# fall through to the conservative default. Physical size remains independent
+# of the quality tier. Byte-consistent with subagent-bar.sh and the static map
+# in context-bar.sh.
+# ---------------------------------------------------------------------------
+static_window_for_model() {
+    local model="${1:-}"
+    local slug="${model##*/}"
+    local window=200000
+    case "$model" in
         # Exact GLM-5.2 plus terminal date snapshots only. Keep this narrow:
         # glm-5.2-air and future variants have no verified static window.
         z-ai/glm-5.2|z-ai/glm-5.2-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9])
-            MAX_CONTEXT=1048576 ;;
+            window=1048576 ;;
         *)
             # gpt-5.4/5.5/5.6 family plus the standalone GPT-6 Astra flagship
             # (broad globs select the arm). Within it: mini/chat keep their
@@ -325,25 +325,22 @@ if [[ -n "$AGENT_ID" && -n "$AGENT_MODEL" && "$AGENT_MODEL" != "$SESSION_MODEL" 
             # gpt-5.4-, gpt-5.6-sol[1m]x, gpt-6-astra-pro, gpt-6-astra[1m]-x) is
             # neither mini/chat nor an exact flagship, so it maps conservatively
             # to 200k instead of inheriting the flagship window.
-            case "$PHYSICAL_SLUG" in
+            case "$slug" in
                 gpt-5.4|gpt-5.4[-\[]*|gpt-5.5|gpt-5.5[-\[]*|gpt-5.6|gpt-5.6[-\[]*|gpt-6-astra|gpt-6-astra[-\[]*)
-                    # Closed-set classification (Convention 3), byte-consistent
-                    # with subagent-bar.sh and context-bar.sh: only the anchored
+                    # Closed-set classification (Convention 3): only the anchored
                     # flagship/mini/chat grammars earn a GPT window. Order
                     # flagship, then mini, then chat. Malformed suffixes that
-                    # reached this family glob (gpt-5.4-, gpt-5.6-experimental,
-                    # gpt-5.6-mini-preview, gpt-5.6-sol[1m]x) match none and map
-                    # conservatively to 200k rather than inheriting a GPT window.
-                    if   [[ "$PHYSICAL_SLUG" =~ $GPT_FLAGSHIP_RE ]]; then MAX_CONTEXT=1050000
-                    elif [[ "$PHYSICAL_SLUG" =~ $GPT_MINI_RE ]];     then MAX_CONTEXT=400000
-                    elif [[ "$PHYSICAL_SLUG" =~ $GPT_CHAT_RE ]];     then MAX_CONTEXT=128000
-                    else MAX_CONTEXT=200000
+                    # reached this family glob match none and map conservatively.
+                    if   [[ "$slug" =~ $GPT_FLAGSHIP_RE ]]; then window=1050000
+                    elif [[ "$slug" =~ $GPT_MINI_RE ]];     then window=400000
+                    elif [[ "$slug" =~ $GPT_CHAT_RE ]];     then window=128000
+                    else window=200000
                     fi
                     ;;
                 gpt-5|gpt-5[-\[]*|gpt-5.2|gpt-5.2[-\[]*)
-                    case "$PHYSICAL_SLUG" in
-                        *-chat*) MAX_CONTEXT=128000 ;;
-                        *) MAX_CONTEXT=400000 ;;
+                    case "$slug" in
+                        *-chat*) window=128000 ;;
+                        *) window=400000 ;;
                     esac
                     ;;
                 *)
@@ -357,15 +354,39 @@ if [[ -n "$AGENT_ID" && -n "$AGENT_MODEL" && "$AGENT_MODEL" != "$SESSION_MODEL" 
                     # quality threshold are separate lookups). Provenance:
                     # research/2026-09-05_FrameworkDev_ClaudeCode_Upgrade_2.1.261
                     # (to-do 03 Branch A).
-                    case "$AGENT_MODEL" in
+                    case "$model" in
                         *fable-5*|*mythos-5*|*opus-4-7*|*opus-4-8*|*opus-5*|*\[1m\]*)
-                            MAX_CONTEXT=1000000 ;;
-                        *) MAX_CONTEXT=200000 ;;
+                            window=1000000 ;;
+                        *) window=200000 ;;
                     esac
                     ;;
             esac
             ;;
     esac
+    printf '%s' "$window"
+}
+
+# Physical window resolution (denominator), in precedence order:
+#   1. DIFFERENT-model subagent: always the static map for ITS model. A sonnet
+#      subagent inside a 1M fable session has 200k — its severity must be
+#      computed against 200k, or HIGH/CRITICAL fire far too late. When
+#      SESSION_MODEL is empty (no parent cache) and AGENT_MODEL is set, they
+#      differ, so this arm still runs and never assumes same-model
+#      (Convention 10).
+#   2. Otherwise (main session, or a same-model subagent): this session's
+#      cache when present — it is authoritative, written by the statusline
+#      from Claude Code's own provisioned window.
+#   3. Otherwise: the static map for the MEASURED model. This closes the gap
+#      where an uncached main session or same-model child (statusline not yet
+#      rendered, or a headless/dispatch context that never renders one) fell
+#      to 200k regardless of model — a GPT-6 Astra or Opus 5 session at 300k
+#      then read 100%/CRITICAL and subagents falsely throttled. An unknown or
+#      empty model still yields 200000 (fail-conservative).
+# The user override and the ChatGPT-lane cap below apply after this, unchanged.
+if [[ -n "$AGENT_ID" && -n "$AGENT_MODEL" && "$AGENT_MODEL" != "$SESSION_MODEL" ]]; then
+    MAX_CONTEXT=$(static_window_for_model "$AGENT_MODEL")
+elif ! is_canonical_positive_decimal "$MAX_CONTEXT"; then
+    MAX_CONTEXT=$(static_window_for_model "$MEASURE_MODEL")
 fi
 
 # CLAUDE_CODE_MAX_CONTEXT_TOKENS is the ordinary user override. Apply it to
