@@ -252,6 +252,7 @@ _append_subbar_model() {
             HIGH) expected_color="$COLOR_HIGH" ;;
             CRITICAL) expected_color="$COLOR_CRITICAL" ;;
         esac
+        _append_subbar_usage t1 "$tokens"
         run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
             bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" "$tokens")
         assert_success
@@ -640,6 +641,7 @@ _append_subbar_model() {
     _seed_window 200000
     _seed_session_model "claude-sonnet-4-6"
     _seed_task_model "t1" "gpt-5.6-sol"
+    _append_subbar_usage t1 400000
     run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
         bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 400000)
     assert_success
@@ -664,6 +666,7 @@ _append_subbar_model() {
     _seed_window 1050000
     _seed_session_model "gpt-5.6-sol[1m]"
     _seed_task_model "t1" "gpt-5.6-sol[1m]"
+    _append_subbar_usage t1 400000
     run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
         bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 400000)
     assert_success
@@ -687,6 +690,7 @@ _append_subbar_model() {
     _seed_window 200000
     _seed_session_model "claude-sonnet-4-6"
     _seed_task_model "t1" "gpt-5.6-sol"
+    _append_subbar_usage t1 100000
     run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
         CLAUDE_CODE_MAX_CONTEXT_TOKENS=200000 \
         bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 100000)
@@ -699,6 +703,7 @@ _append_subbar_model() {
     _seed_window 200000
     _seed_session_model "claude-sonnet-4-6"
     _seed_task_model "t1" "gpt-5.6-sol"
+    _append_subbar_usage t1 400000
     run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
         CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000 \
         bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 400000)
@@ -748,6 +753,7 @@ _append_subbar_model() {
     run cat "$model_cache"
     assert_output "claude-sonnet-4-6"
 
+    _append_subbar_usage "$id" 111000
     _append_subbar_model "$transcript" "gpt-5.6-sol" true
     run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
         bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "$id" 111000)
@@ -806,6 +812,7 @@ _append_subbar_model() {
     _write_subbar_main_model "claude-sonnet-4-6"
     _write_subbar_task_model "$id" "claude-sonnet-4-6"
     printf 'gpt-5.6-sol' > "$model_cache"
+    _append_subbar_usage "$id" 111000
     stat -c '%s:%y' -- "$transcript" > "${model_cache}.transcript-signature"
 
     run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
@@ -831,6 +838,7 @@ _append_subbar_model() {
     assert_success
     assert_output --partial "12%"
 
+    _append_subbar_usage t1 100000
     run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
         CLAUDE_CODE_MAX_CONTEXT_TOKENS=250000 \
         bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 100000)
@@ -843,6 +851,7 @@ _append_subbar_model() {
     _seed_window 200000
     _seed_session_model "claude-sonnet-4-6"
     _seed_task_model "t1" "gpt-5.6-sol"
+    _append_subbar_usage t1 111000
     for value in \
         0919000 \
         080000 \
@@ -985,6 +994,7 @@ _iso_seed_window() { printf '%s' "$1" > "$(_iso_cache)/claude-ctx-window-${FAKE_
     export DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt
     _iso_seed_session_model "gpt-6-astra"
     _iso_seed_task_model "t1" "gpt-6-astra"
+    _append_subbar_usage t1 459500
     run env DAAF_SUBAGENT_BAR_CACHE_DIR="$(_iso_cache)" bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 459500)
     assert_success
     # 459500 / 919000 = 50% (against 200k: 100%).
@@ -1230,4 +1240,227 @@ _payload_desc() {
     refute_output --partial 'u009b'
     # Harmless text remainder joins, sans the control.
     assert_output --partial 'evil0;pwn-model'
+}
+
+# =========================================================================
+# Late-usage subscription streams: measured child input, never progress output
+# =========================================================================
+
+_measured_child() {
+    local model="$1" usage="${2:-70000}"
+    mkdir -p "${TEST_DIR}/${FAKE_SESSION}/subagents"
+    jq -nc --arg model "$model" --argjson usage "$usage" \
+        '{type:"assistant",message:{model:$model,usage:{input_tokens:$usage}}}' \
+        > "${TEST_DIR}/${FAKE_SESSION}/subagents/agent-measured.jsonl"
+}
+
+# Add measured usage explicitly for legacy window/threshold fixtures without
+# changing their model identity. Call before recording a signature-cache marker.
+_append_subbar_usage() {
+    local id="$1" tokens="$2"
+    mkdir -p "${TEST_DIR}/${FAKE_SESSION}/subagents"
+    jq -nc --argjson tokens "$tokens" \
+        '{type:"assistant",isSidechain:true,message:{usage:{input_tokens:$tokens}}}' \
+        >> "${TEST_DIR}/${FAKE_SESSION}/subagents/agent-${id}.jsonl"
+}
+
+_measured_payload() {
+    local tokens="${1:-24}" model="${2:-gpt-6-astra}" type="${3-local_agent}"
+    jq -nc --arg sid "$FAKE_SESSION" --arg tp "${TEST_DIR}/main.jsonl" \
+        --arg model "$model" --arg type "$type" --argjson tokens "$tokens" \
+        '{session_id:$sid,transcript_path:$tp,tasks:[{id:"measured",type:$type,
+          status:"running",model:$model,tokenCount:$tokens}]}'
+}
+
+@test "measured input: small positive progress 24 and 364 yields child 70k not parent 150k" {
+    export DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt
+    printf '%s\n' '{"message":{"model":"gpt-6-astra","usage":{"input_tokens":150000}}}' > "${TEST_DIR}/main.jsonl"
+    _measured_child gpt-6-astra
+    local tokens
+    for tokens in 0 24 364 99000; do
+        run bash "$SUBAGENT_BAR_SH" < <(_measured_payload "$tokens")
+        assert_success
+        assert_output --partial '70k'
+        assert_output --partial 'm7%'
+        refute_output --partial '150k'
+    done
+}
+
+@test "measured input: all approved terminal spellings keep their own denominators" {
+    export DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt
+    local base variant prefix suffix model pct
+    for base in gpt-5.6 gpt-5.6-sol gpt-5.6-terra gpt-5.6-luna gpt-6-astra; do
+        for variant in '' -mini -chat; do
+            [[ "$base" == gpt-6-astra && -n "$variant" ]] && continue
+            case "$variant" in -mini) pct=17 ;; -chat) pct=54 ;; *) pct=7 ;; esac
+            for prefix in '' openrouter/openai/; do
+                for suffix in '' '[1m]'; do
+                    model="${prefix}${base}${variant}${suffix}"
+                    _measured_child "$model"
+                    run bash "$SUBAGENT_BAR_SH" < <(_measured_payload)
+                    assert_success
+                    assert_output --partial '70k'
+                    assert_output --partial "m${pct}%"
+                done
+            done
+        done
+    done
+}
+
+@test "measured input: cache partitions summed and latest lower measurement wins" {
+    export DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt
+    _measured_child gpt-5.6-sol 150000
+    local transcript="${TEST_DIR}/${FAKE_SESSION}/subagents/agent-measured.jsonl"
+    printf '%s\n' '{"message":{"model":"gpt-5.6-sol","usage":{"input_tokens":11000,"cache_read_input_tokens":58000,"cache_creation_input_tokens":1000,"output_tokens":999999}}}' >> "$transcript"
+    run bash "$SUBAGENT_BAR_SH" < <(_measured_payload 99000)
+    assert_success
+    assert_output --partial '70k'
+    printf '%s\n' '{"message":{"model":"gpt-5.6-sol","usage":{"input_tokens":40000}}}' >> "$transcript"
+    run bash "$SUBAGENT_BAR_SH" < <(_measured_payload 99000)
+    assert_success
+    assert_output --partial '40k'
+    assert_output --partial 'm4%'
+}
+
+@test "measured input: malformed trailing lines fields errors and zero placeholders are ignored" {
+    export DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt
+    _measured_child gpt-6-astra
+    local transcript="${TEST_DIR}/${FAKE_SESSION}/subagents/agent-measured.jsonl" value
+    for value in '"90000"' true -5 0.5 9007199254740992 '{}' '[]'; do
+        printf '{"message":{"usage":{"input_tokens":%s}}}\n' "$value" >> "$transcript"
+    done
+    printf '%s\n' '{"isApiErrorMessage":true,"message":{"model":"claude-sonnet-4-6","usage":{"input_tokens":90000}}}' \
+        '{"message":{"usage":{"input_tokens":0}}}' 'not-json' '[]' >> "$transcript"
+    printf '{"message":' >> "$transcript"
+    run bash "$SUBAGENT_BAR_SH" < <(_measured_payload)
+    assert_success
+    assert_output --partial '70k'
+    assert_output --partial 'm7%'
+}
+
+@test "measured input: startup pending from payload or cache has no percent or estimate" {
+    export DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt
+    run bash "$SUBAGENT_BAR_SH" < <(_measured_payload 364)
+    assert_success
+    assert_output --partial 'context pending'
+    refute_output --partial '%'
+    refute_output --partial '364'
+    _seed_task_model measured gpt-5.6-luna
+    _measured_child '<synthetic>' 0
+    run bash "$SUBAGENT_BAR_SH" < <(_measured_payload 24 claude-sonnet-4-6)
+    assert_success
+    assert_output --partial 'context pending'
+    refute_output --partial '%'
+}
+
+@test "measured input: child transcript and cache precede conflicting payload models" {
+    export DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt
+    _seed_task_model measured claude-sonnet-4-6
+    _measured_child gpt-6-astra
+    run bash "$SUBAGENT_BAR_SH" < <(_measured_payload 24 claude-sonnet-4-6)
+    assert_success
+    assert_output --partial '70k'
+    _measured_child claude-sonnet-4-6
+    run bash "$SUBAGENT_BAR_SH" < <(_measured_payload 24 gpt-6-astra)
+    assert_success
+    refute_output --partial '70k'
+    assert_output --partial 'm24'
+}
+
+@test "measured input: unrelated models routes and task types retain positive native progress" {
+    local model route type
+    export DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt
+    for model in claude-sonnet-4-6 gpt-5.5 gpt-5.6-experimental gpt-6-astra-mini xgpt-5.6-sol 'gpt-5.6-sol[1m]-x'; do
+        _measured_child "$model"
+        run bash "$SUBAGENT_BAR_SH" < <(_measured_payload)
+        assert_success
+        assert_output --partial 'm24'
+        refute_output --partial '70k'
+    done
+    _measured_child gpt-6-astra
+    for route in openai ChatGPT ''; do
+        run env SHIM_BACKEND_MODE="$route" bash "$SUBAGENT_BAR_SH" < <(_measured_payload)
+        assert_success
+        assert_output --partial 'm24'
+    done
+    for route in openrouter OpenAI ''; do
+        run env DAAF_PROVIDER_SHIM="$route" bash "$SUBAGENT_BAR_SH" < <(_measured_payload)
+        assert_success
+        assert_output --partial 'm24'
+    done
+    for type in local_bash remote_agent local_workflow ''; do
+        run bash "$SUBAGENT_BAR_SH" < <(_measured_payload 24 gpt-6-astra "$type")
+        assert_success
+        assert_output --partial 'm24'
+    done
+}
+
+@test "measured input: malformed payload models cannot create startup identity or terminal escapes" {
+    export DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt
+    local model point
+    local -a invalid_models=(null true 123 '{}' '[]' '""' '"gpt-6-astra "' '"gpt-6-astra[1m]-x"')
+    # Generate control-bearing JSON without embedding raw controls in this file.
+    for point in 0 10 13 27 31 127 133 155; do
+        invalid_models+=("$(jq -nc --argjson point "$point" '"gpt-5.6-sol" + ([$point] | implode)')")
+    done
+    for model in "${invalid_models[@]}"; do
+        run bash "$SUBAGENT_BAR_SH" < <(_measured_payload | jq --argjson model "$model" '.tasks[0].model=$model')
+        assert_success
+        assert_output --partial 'm24'
+        refute_output --partial 'context pending'
+        refute_output --partial "$OSC_ENC"
+    done
+}
+
+@test "measured input: invalid partitions and unsafe sums are pending until valid input arrives" {
+    export DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt
+    local transcript="${TEST_DIR}/${FAKE_SESSION}/subagents/agent-measured.jsonl" field value
+    for field in input_tokens cache_read_input_tokens cache_creation_input_tokens; do
+        for value in '"90000"' true -1 0.5 '{}' '[]' 9007199254740992; do
+            _measured_child gpt-6-astra 0
+            jq -nc --arg field "$field" --argjson value "$value" \
+                '{message:{usage:({input_tokens:1000}+{($field):$value})}}' >> "$transcript"
+            run bash "$SUBAGENT_BAR_SH" < <(_measured_payload)
+            assert_success
+            assert_output --partial 'context pending'
+            refute_output --partial '%'
+        done
+    done
+    _measured_child gpt-6-astra 0
+    printf '%s\n' '{"message":{"usage":{"input_tokens":9007199254740991,"cache_read_input_tokens":1}}}' >> "$transcript"
+    run bash "$SUBAGENT_BAR_SH" < <(_measured_payload)
+    assert_success
+    assert_output --partial 'context pending'
+    _append_subbar_usage measured 9007199254740991
+    run bash "$SUBAGENT_BAR_SH" < <(_measured_payload)
+    assert_success
+    assert_output --partial 'm100%'
+    refute_output --partial 'context pending'
+}
+
+@test "measured input: unreadable child is pending from cache and emits no read diagnostic" {
+    export DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt
+    _seed_task_model measured gpt-6-astra
+    _measured_child gpt-6-astra
+    local transcript="${TEST_DIR}/${FAKE_SESSION}/subagents/agent-measured.jsonl"
+    chmod 000 "$transcript"
+    [ ! -r "$transcript" ]
+    run bash "$SUBAGENT_BAR_SH" < <(_measured_payload)
+    chmod 600 "$transcript"
+    assert_success
+    assert_output --partial 'context pending'
+    refute_output --partial 'Permission denied'
+    refute_output --partial '%'
+}
+
+@test "measured input: legacy generic zero fallback still reads unrelated child input" {
+    export DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt
+    _measured_child claude-sonnet-4-6
+    run bash "$SUBAGENT_BAR_SH" < <(_measured_payload 0 gpt-6-astra)
+    assert_success
+    assert_output --partial '70k'
+    assert_output --partial 'm35%'
+    run env SHIM_BACKEND_MODE=openai bash "$SUBAGENT_BAR_SH" < <(_measured_payload 24)
+    assert_success
+    assert_output --partial 'm24'
 }

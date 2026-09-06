@@ -27,13 +27,14 @@
 #     label        — computed label (progress summary for local_agent, else
 #                    falls back to description)
 #     startTime    — ms epoch
-#     tokenCount   — subagent's context token count (0 until first progress)
+#     tokenCount   — native progress count; may be output-only on late-usage streams
 #     tokenSamples — rolling number[] window
 #     cwd          — task cwd
+#     model        — optional task model (present in CC 2.1.261); startup fallback
 #   The DAAF agent type (e.g. "search-agent") is NOT in the payload; it lives
 #   in the sidecar $(dirname transcript_path)/<session_id>/subagents/
 #   agent-<id>.meta.json (key: agentType) and is looked up per row, fail-open.
-#   The subagent's MODEL is also not in the payload; it is read from the last
+#   The subagent's MODEL is preferentially read from the last
 #   real assistant entry of agent-<id>.jsonl, cached in the compatibility path
 #   /tmp/claude-subagent-model-<session>-<id> with a transcript-signature
 #   sidecar (shared with context-reporter.sh), and drives the per-row window
@@ -151,10 +152,11 @@ resolve_model_cache() {
         # 50 trailing synthetic/placeholder model entries cannot hide the last
         # real model. The `< "$transcript"` redirect keeps a missing/binary file
         # fail-open, mirroring context-bar.sh's recovery idiom.
-        model=$(jq -rs '
-            [.[] | (.message.model // empty)
+        model=$(jq -Rnr '
+            [inputs | fromjson? | objects | select(.isApiErrorMessage != true)
+             | .message? | objects | .model? | strings
              | select(. != "" and . != "<synthetic>")] | last // empty
-        ' < "$transcript" 2>/dev/null) || model=""
+        ' 2>/dev/null < "$transcript") || model=""
     fi
     [[ -z "$model" ]] && model="$cached_model"
 
@@ -236,7 +238,7 @@ if [[ -n "$session_id" ]]; then
 fi
 
 # --- Extract tasks (single jq pass, one \x1f-joined record per line) ---
-# Fields: id, type, name, status, tokenCount, label. Tasks with an empty id
+# Fields: id, type, name, status, tokenCount, label, optional model. Tasks with an empty id
 # are dropped (they cannot be keyed in the output). label/name are sanitized
 # of newlines/tabs/\x1f so one task always stays one record line.
 tasks_rec=$(printf '%s' "$input" | jq -r '
@@ -257,7 +259,15 @@ tasks_rec=$(printf '%s' "$input" | jq -r '
         (.name // "" | clean),
         (.status // "" | clean),
         ((.tokenCount // 0) | tostring),
-        ((.label // .description // "") | clean) ]
+        ((.label // .description // "") | clean),
+        # Reject malformed/control-bearing models rather than sanitize into a match.
+        (if (.model | type) == "string" then
+             # $ can match before a final newline; require absolute boundaries
+             # and reject controls before joining newline-delimited task records.
+             if (.model | test("[[:cntrl:]]") | not) and
+                (.model | test("\\A[A-Za-z0-9][A-Za-z0-9._/\\[\\]-]{0,255}\\z"))
+             then .model else "" end
+         else "" end) ]
     | join("\u001f")
 ' 2>/dev/null) || exit 0
 
@@ -346,50 +356,13 @@ fi
 
 # --- Render one output line per task ---
 bar_width=5
-while IFS=$'\x1f' read -r id type name status tokens label; do
-    # Reject a path-unsafe agent id before it is interpolated into any transcript
-    # or cache path (Convention 2); omit the row, keep the native rendering.
-    # is_safe_id also subsumes the empty-id guard (the regex requires >=1 char).
+while IFS=$'\x1f' read -r id type name status tokens label payload_model; do
+    # Reject a path-unsafe agent id before constructing any child paths.
     is_safe_id "$id" || continue
 
-    # Normalize token count to a non-negative integer (strip any fraction).
-    tokens=${tokens%.*}
-    [[ "$tokens" =~ ^[0-9]+$ ]] || tokens=0
-
-    # Transcript fallback for shim-routed (GPT) subagents: the harness stdin
-    # .tokenCount field is 0/absent for shim-routed subagents, so the panel
-    # would render "0 ░░░░░ 0%" for the whole task. When tokenCount is <= 0,
-    # recover the count from the subagent's own transcript (path already used
-    # for the model lookup just below) with the SAME last-POSITIVE-usage logic
-    # as context-reporter.sh calculate(). Subagent transcripts are entirely
-    # isSidechain:true, so no sidechain filter is needed. Shim transcripts end
-    # with streaming-placeholder usage entries whose token fields are all 0, so
-    # `last` outright would recover 0 too — map to token sums, drop zeros, take
-    # the last positive. Fail-open: only attempt when the transcript file
-    # exists; any jq failure yields empty, and the numeric re-guard leaves
-    # tokens at 0 (which keeps native rendering, this script's failure mode).
-    if [[ "$tokens" -le 0 && -n "$subagents_dir" && -f "${subagents_dir}/agent-${id}.jsonl" ]]; then
-        # Full-transcript scan (Convention 4): drop the `tail -n 50` bound so more
-        # than 50 trailing zero-token shim placeholders cannot hide the real
-        # usage. The `< file` redirect keeps a missing/binary transcript
-        # fail-open, mirroring context-bar.sh's recovery idiom.
-        tokens=$(jq -s '
-            [.[] | select(.message.usage and .isApiErrorMessage != true) | (
-                (.message.usage.input_tokens // 0) +
-                (.message.usage.cache_read_input_tokens // 0) +
-                (.message.usage.cache_creation_input_tokens // 0)
-            )] | map(select(. > 0)) | last // 0
-        ' < "${subagents_dir}/agent-${id}.jsonl" 2>/dev/null) || tokens=0
-        tokens=${tokens%.*}
-        [[ "$tokens" =~ ^[0-9]+$ ]] || tokens=0
-    fi
-
-    # Per-row context window: a subagent on a different model than the session
-    # gets a different window than the session's (e.g. a sonnet subagent
-    # dispatched from a 1M fable session is provisioned 200k — its bar must
-    # not be computed against 1M). The transcript-signature sidecar makes the
-    # shared bare cache append/rewrite-aware while avoiding rescans during the
-    # ~300ms panel refresh cycle when the transcript has not changed.
+    # Resolve the CHILD model before selecting its numerator. CC 2.1.261 first
+    # schedules decoration at ~300ms, then refreshes at ~5s. Model signatures
+    # avoid repeated model scans; measured input is refreshed on every render.
     task_model=""
     model_cache=""
     task_transcript=""
@@ -397,6 +370,63 @@ while IFS=$'\x1f' read -r id type name status tokens label; do
     [[ -n "$subagents_dir" ]] && task_transcript="${subagents_dir}/agent-${id}.jsonl"
     if [[ -n "$model_cache" ]]; then
         task_model=$(resolve_model_cache "$task_transcript" "$model_cache")
+    fi
+
+    # This source-selection grammar is separate from physical capacity and
+    # quality profiles: all registered 5.6 mini/chat variants participate, but
+    # neither gain flagship capacity nor the Sol/Astra extended quality tier.
+    measured_input_re='^(gpt-5\.6(-(sol|terra|luna))?(-(mini|chat))?|gpt-6-astra)(\[1m\])?$'
+    subscription_local=0
+    if [[ "${DAAF_PROVIDER_SHIM:-}" == "openai" && \
+          "${SHIM_BACKEND_MODE:-}" == "chatgpt" && "$type" == "local_agent" ]]; then
+        subscription_local=1
+        # Only the affected lane uses the optional validated startup identity;
+        # a resolved transcript/cache always wins, never the parent model.
+        if [[ -z "$task_model" && "${payload_model##*/}" =~ $measured_input_re ]]; then
+            task_model="$payload_model"
+        fi
+    fi
+
+    # Normalize native progress as before. Use a string comparison for zero so
+    # malformed/oversized values never enter arithmetic before the final guard.
+    tokens=${tokens%.*}
+    [[ "$tokens" =~ ^[0-9]+$ ]] || tokens=0
+    context_pending=0
+    if [[ "$subscription_local" -eq 1 && "${task_model##*/}" =~ $measured_input_re ]]; then
+        # CC 2.1.261 can snapshot zero initial usage, then retain only an output
+        # estimate (e.g. 24/364) despite final positive input on disk. Read only
+        # this child's latest positive input; never sum historical outputs or
+        # max with older usage (compaction can legitimately lower the count).
+        tokens=0
+        if [[ -n "$task_transcript" && -f "$task_transcript" ]]; then
+            tokens=$(jq -Rn '
+                [inputs | fromjson? | objects
+                 | select(.isApiErrorMessage != true)
+                 | .message? | objects | .usage? | objects
+                 | [.input_tokens, .cache_read_input_tokens, .cache_creation_input_tokens]
+                 | map(if . == null then 0 else . end)
+                 | select(all(.[]; type == "number"))
+                 | select(all(.[]; . >= 0 and . <= 9007199254740991 and . == floor))
+                 | add | select(. > 0 and . <= 9007199254740991)]
+                | last // 0
+            ' 2>/dev/null < "$task_transcript") || tokens=0
+        fi
+        # Safe-integer ceiling also keeps tokens*100 within signed int64.
+        if ! is_canonical_positive_decimal "$tokens" || [[ "$tokens" -gt 9007199254740991 ]]; then
+            tokens=0
+            context_pending=1
+        fi
+    elif [[ "$tokens" == "0" && -n "$task_transcript" && -f "$task_transcript" ]]; then
+        # Preserve the legacy generic zero-count fallback for unrelated rows.
+        tokens=$(jq -s '
+            [.[] | select(.message.usage and .isApiErrorMessage != true) | (
+                (.message.usage.input_tokens // 0) +
+                (.message.usage.cache_read_input_tokens // 0) +
+                (.message.usage.cache_creation_input_tokens // 0)
+            )] | map(select(. > 0)) | last // 0
+        ' 2>/dev/null < "$task_transcript") || tokens=0
+        tokens=${tokens%.*}
+        [[ "$tokens" =~ ^[0-9]+$ ]] || tokens=0
     fi
     # Control-strip the resolved model id before it is used for display
     # (agent_disp) or slug classification (Convention 1). The bare cache file is
@@ -567,7 +597,11 @@ while IFS=$'\x1f' read -r id type name status tokens label; do
     # "running" — the native spinner already conveys running.
     content="${color}${agent_disp}${C_RESET}"
     [[ -n "$desc" ]] && content+="${C_GRAY} · ${desc}${C_RESET}"
-    content+="${C_GRAY} ·${C_RESET} ${color}${tok_label}${C_RESET} ${bar} ${color}${pct}%${C_RESET}"
+    if [[ "$context_pending" -eq 1 ]]; then
+        content+="${C_GRAY} · context pending${C_RESET}"
+    else
+        content+="${C_GRAY} ·${C_RESET} ${color}${tok_label}${C_RESET} ${bar} ${color}${pct}%${C_RESET}"
+    fi
     if [[ -n "$status" && "$status" != "running" ]]; then
         content+="${C_GRAY} [${status}]${C_RESET}"
     fi
