@@ -22,6 +22,7 @@ from ._loopback_harness import (
     USAGE_WITH_CACHE,
     MockResponsesServer,
     RealShim,
+    heartbeat_text_scenario,
     lifecycle_for_response,
     lifecycle_report,
     parse_typed_sse,
@@ -83,32 +84,60 @@ class ProviderShimPromptCacheObservabilityTests(unittest.TestCase):
         self.assertEqual(health.status, 200, health.text)
         return health.json()
 
-    # --- item 2: streaming lane, cache-hit -----------------------------------------------
+    # --- item 2: both streaming lanes, cache-hit and late usage --------------------------
 
     def test_streaming_cache_hit_maps_usage_and_records_terminal(self) -> None:
-        scenario = _cache_hit_scenario("prompt-cache-stream")
-        with MockResponsesServer(scenario) as backend:
-            with RealShim(backend, "chatgpt") as shim:
-                result = shim.post_messages(stream=True)
-                self.assertEqual(result.status, 200, result.text)
-                usage = self._stream_client_usage(result)
-                # Subtraction mapping: total(31) - cached(12) = 19; cache_read carries the 12.
-                self.assertEqual(
-                    usage,
-                    {
-                        "input_tokens": _REMAINDER,
-                        "output_tokens": _OUTPUT,
-                        "cache_read_input_tokens": _CACHED,
-                        "cache_creation_input_tokens": 0,
-                    },
-                )
-                # Terminal record keeps the OpenAI TOTAL input_tokens and the cached subset.
-                fields = self._terminal_fields(shim, result)
-                self.assertEqual(fields["cached_tokens"], str(_CACHED))
-                self.assertEqual(fields["input_tokens"], str(_TOTAL))
-                self.assertEqual(fields["usage"], "backend")
-                shim.assert_offline_contract()
-                backend.assert_request_counts(responses=1)
+        for mode in ("chatgpt", "openai"):
+            with self.subTest(mode=mode):
+                scenario = heartbeat_text_scenario(f"prompt-cache-stream-{mode}", gap_s=0)
+                # Keep real text events so block closure versus final usage is observable.
+                terminal = scenario.stream_events[-1]
+                self.assertEqual(terminal["type"], "response.completed")
+                terminal["response"]["usage"] = dict(USAGE_WITH_CACHE)
+                with MockResponsesServer(scenario) as backend:
+                    with RealShim(backend, mode) as shim:
+                        result = shim.post_messages(stream=True)
+                        self.assertEqual(result.status, 200, result.text)
+                        frames = parse_typed_sse(result.body)
+                        lifecycle_report(frames)
+                        events = [frame.data for frame in frames if isinstance(frame.data, dict)]
+                        types = [event.get("type") for event in events]
+                        start = next(event for event in events if event.get("type") == "message_start")
+                        self.assertEqual(
+                            start["message"]["usage"],
+                            {
+                                "input_tokens": 0,
+                                "output_tokens": 0,
+                                "cache_read_input_tokens": 0,
+                                "cache_creation_input_tokens": 0,
+                            },
+                        )
+                        self.assertIn("content_block_stop", types)
+                        self.assertEqual(types.count("message_delta"), 1)
+                        self.assertLess(types.index("content_block_stop"), types.index("message_delta"))
+                        usage = next(event for event in events if event.get("type") == "message_delta")["usage"]
+                        # Subtraction: total(31) - cached(12) = 19; cache_read carries the 12.
+                        self.assertEqual(
+                            usage,
+                            {
+                                "input_tokens": _REMAINDER,
+                                "output_tokens": _OUTPUT,
+                                "cache_read_input_tokens": _CACHED,
+                                "cache_creation_input_tokens": 0,
+                            },
+                        )
+                        self.assertEqual(
+                            usage["input_tokens"] + usage["cache_read_input_tokens"]
+                            + usage["cache_creation_input_tokens"],
+                            _TOTAL,
+                        )
+                        # Terminal record retains the OpenAI TOTAL and cached subset.
+                        fields = self._terminal_fields(shim, result)
+                        self.assertEqual(fields["cached_tokens"], str(_CACHED))
+                        self.assertEqual(fields["input_tokens"], str(_TOTAL))
+                        self.assertEqual(fields["usage"], "backend")
+                        shim.assert_offline_contract()
+                        backend.assert_request_counts(responses=1)
 
     # --- item 3: both non-streaming lanes, cache-hit -------------------------------------
 

@@ -376,11 +376,12 @@ while IFS=$'\x1f' read -r id type name status tokens label payload_model; do
     # quality profiles: all registered 5.6 mini/chat variants participate, but
     # neither gain flagship capacity nor the Sol/Astra extended quality tier.
     measured_input_re='^(gpt-5\.6(-(sol|terra|luna))?(-(mini|chat))?|gpt-6-astra)(\[1m\])?$'
-    subscription_local=0
+    shim_local=0
     if [[ "${DAAF_PROVIDER_SHIM:-}" == "openai" && \
-          "${SHIM_BACKEND_MODE:-}" == "chatgpt" && "$type" == "local_agent" ]]; then
-        subscription_local=1
-        # Only the affected lane uses the optional validated startup identity;
+          ( "${SHIM_BACKEND_MODE:-}" == "chatgpt" || "${SHIM_BACKEND_MODE:-}" == "openai" ) && \
+          "$type" == "local_agent" ]]; then
+        shim_local=1
+        # Only the affected shim lanes use the optional validated startup identity;
         # a resolved transcript/cache always wins, never the parent model.
         if [[ -z "$task_model" && "${payload_model##*/}" =~ $measured_input_re ]]; then
             task_model="$payload_model"
@@ -392,7 +393,7 @@ while IFS=$'\x1f' read -r id type name status tokens label payload_model; do
     tokens=${tokens%.*}
     [[ "$tokens" =~ ^[0-9]+$ ]] || tokens=0
     context_pending=0
-    if [[ "$subscription_local" -eq 1 && "${task_model##*/}" =~ $measured_input_re ]]; then
+    if [[ "$shim_local" -eq 1 && "${task_model##*/}" =~ $measured_input_re ]]; then
         # CC 2.1.261 can snapshot zero initial usage, then retain only an output
         # estimate (e.g. 24/364) despite final positive input on disk. Read only
         # this child's latest positive input; never sum historical outputs or
