@@ -61,7 +61,7 @@ These gates replace GDI-2 through GDI-6 for the synthetic path. GDI-7 and GDI-8 
 | GDS-0 | PSU-DS1 | Tier confirmed by user; suppression threshold set; relationship spec (T3) collected if wanted; setup summary confirmed | User declines to choose a tier or wants to reconsider the sensitivity decision |
 | GDS-1 | DS-1 | Customized profiling script prepared; **QAS-A disclosure-safety review PASSED** (no forbidden emission reachable at the chosen tier) | QAS-A finds any possible disclosure leak (BLOCKER — a leak is irreversible once the report is shared) |
 | GDS-2 | DS-2 | User confirms they ran the script, reviewed the `.txt` summary, and returned the JSON report; report file present in `data/profile_report/` | User cannot run the script, or the run failed, or the user is not comfortable sharing the report after review |
-| GDS-3 | DS-3 | Report loads; `report_version` recognized; **QAS-B internal-consistency PASSED** (or WARNING) | Report corrupt/untrustworthy (b2/b3/b4/b6/b9), or a sub-threshold cell slipped through (b5 — also a disclosure event; notify the user) |
+| GDS-3 | DS-3 | Report loads; `report_version: 2.0` for new-policy acceptance (legacy preserved, local rerun requested); **QAS-B internal-consistency PASSED** (or WARNING) | Report corrupt/untrustworthy (b2/b3/b4/b6/b9), or a sub-threshold cell slipped through (b5 — also a disclosure event; notify the user) |
 | GDS-4 | DS-4 | Interpretation complete, all `[PRELIMINARY]`; **PSU-DS2 findings confirmed by user** | User rejects the interpretation basis and no revised interpretation can be agreed |
 | GDS-5 | DS-5 | Synthetic parquet in `data/synthetic/`; seed recorded; **QAS-C synthetic-vs-profile PASSED** (or WARNING) | Generation bug or disclosure-adjacent failure (c1/c2/c7/c8), or a missing seed (c10 — a BLOCKER by default; only the narrow, researcher-authorized T4 exception in § T4 Variant may proceed without one) |
 
@@ -94,8 +94,9 @@ lives. I'll carry that reminder through everything we build.
 **Source name:** [source-name]   **Target skill:** [skill-name]
 
 **How much detail should the summary capture?** More detail makes the synthetic
-data more realistic but shares a little more about your data's shape. Nothing about
-any individual record ever crosses over at any level.
+data more realistic but shares more about your data's shape. Raw records stay local,
+but summary statistics can still reveal sensitive information. Support and small-cell
+checks reduce disclosure; they do not guarantee anonymity. Your release review matters.
 
 - **Level 1 — Structure only:** just column names, types, and the row count. Safest;
   the synthetic data will have the right shape but random values.
@@ -111,13 +112,17 @@ any individual record ever crosses over at any level.
   data or the fitted model. More setup on your end; I'll provide the template.
 
   *Are there specific relationships you need preserved — say, a key outcome and a key
-  predictor? Level 3 captures those as correlations; nothing about individual records
-  crosses over. If your code doesn't lean on cross-variable relationships, Level 2 is
-  usually plenty.*
+  predictor? Level 3 captures supported relationships as summaries, never raw rows.
+  Those summaries still need your release review. If your code doesn't lean on
+  cross-variable relationships, Level 2 is usually plenty.*
 
-**Small-group hiding:** by default, any category with fewer than **5** records is
-hidden and folded into an "other" bucket, so no small group can be singled out. I can
-raise that threshold if you'd like more caution.
+**Minimum support and small-group hiding:** by default, value summaries need at
+least **5 usable records**, and small categorical groups are hidden/pooled. Four
+identical values are withheld; 5,000 identical values can share their common value.
+This counts records, not distinct values or automatically distinct people. Let's
+confirm what one record represents. Rare missing/positive events do not alone hide
+well-supported rates or means. I can raise the threshold if you'd like more caution;
+you still review the report for sensitive information before sharing.
 
 **My recommendation:** [seed from intake — e.g., "Level 2, since your described
 analysis is column-level distributions" OR "Level 3, since you mentioned needing the
@@ -212,10 +217,14 @@ special attention to a6 (edge cases — the all-null column, the single-distinct
 column, the two-level column with one small cell, the identifier that slips the
 uniqueness heuristic) and its companion edge-case checks: a8 (a residual `__OTHER__` below
 threshold must roll in the smallest retained levels — a bare `__OTHER__ = sum(binned)` with
-no roll-in is a leak), a9 (small-n / near-constant / all-missing numerics degrade to
-quartiles-only or withhold the value, and must not crash `quantile([])`), and a10 (T3
-cross-tab suppression is complementary and `null`-coded, so no row/col has a lone
-recoverable suppressed cell). The common leak is the edge case, not the main path. Trace the
+no roll-in is a leak), a9 (2.0 support gates: below-threshold numerics/string summaries
+withheld; eligible constants shared; eligible reduced numerics quartiles-only;
+all-missing numerics carry no values; actual paired support and nonzero pair variance
+required for correlations), and a10 (T3 cross-tab suppression is complementary and
+`null`-coded, so no row/col has a lone recoverable suppressed cell). Also inspect the
+typed rounded/suppressed candidate validation, complete required check set and explicit
+NOT_APPLICABLE reasons, no output on validation failure, refusal to overwrite reports,
+and success only after both output writes finish. The common leak is the edge case, not the main path. Trace the
 smallest-cell case for every categorical/cross-tab emission. You may write a probe that
 feeds SYNTHETIC toy input to the script to exercise these edge cases (never real data —
 you do not have it), but the review is primarily static.
@@ -249,8 +258,9 @@ This stage runs entirely on the user's machine; DAAF does nothing but wait. Pres
 **Your turn — run the profiling script on your own machine**
 
 I've prepared a small, self-contained profiling script and had it independently
-reviewed to confirm it only captures the summary you approved (Level {N}, small groups
-under {threshold} hidden) and nothing that could identify an individual record.
+reviewed against the summary you approved (Level {N}, minimum usable support
+{threshold}, plus categorical small-cell hiding). These safeguards do not guarantee
+anonymity; you still need to decide whether the report is appropriate to release.
 
 **1. Get the script onto the machine where your data lives.**
    The script is at:
@@ -264,22 +274,34 @@ under {threshold} hidden) and nothing that could identify an individual record.
    Open the script, set `INPUT_PATH` (and `OUTPUT_DIR`, a local folder) at the top,
    then run it with a single command in your own terminal:
    `Rscript profile_{dataset_slug}.R`
-   (If your local environment is Python, it's `python profile_{dataset_slug}.py`.)
-   It needs only a standard R (or Python) install — no DAAF, no internet.
+   (If your local environment is Python, it's `python profile_{dataset_slug}.py`;
+   run without `-O`/`-OO` or `PYTHONOPTIMIZE`, which the profiler refuses.)
+   Dependencies must already be available locally — no DAAF or network calls are used.
+   At Levels 2/3, numeric magnitude at least 2^53 is refused with a precision diagnostic
+   rather than rounded into a misleading report; tell me if that occurs, don't coerce it.
 
 **3. It produces two files:**
    - `{dataset_slug}_profile_report.json` — the machine-readable summary I'll work from
-   - `{dataset_slug}_profile_report.txt` — a plain-English version for YOU to read
+   - `{dataset_slug}_profile_report.txt` — plain-language review guidance followed by
+     the exact release candidate in JSON notation, for YOU to review
 
 **4. Review the `.txt` before you share anything — this is the important step.**
    Read the whole `.txt`. Confirm:
    - No column *name* itself gives away something sensitive.
-   - Every category label listed is safe to share, and every small group is shown as
-     hidden/"other" (check the "What was suppressed" section).
+   - Every category label listed under `categorical.levels` is safe to share.
+     `n_levels_binned` counts pooled source levels; `__OTHER__` is the pooled bucket,
+     including any original level literally named `__OTHER__`.
+   - Value/structure blocks with `withheld:true` explain omissions in `reason`.
+     Cross-tab `null` cells are hidden, not zero; relationship `available:false`
+     blocks explain their absence in `reason`. These fields are inside the exact
+     candidate; there is no separate "What was suppressed" section.
    - If you chose Level 3, look at each named relationship you asked me to preserve and
      confirm you're comfortable sharing it.
    - The tier and threshold at the top match what you intended.
-   - The script's own checks all passed (if any failed, don't share — tell me).
+   - Every applicable check passed; absent targets are explicitly NOT_APPLICABLE with
+     reasons. If validation or either write failed, do not share any partial files — tell me.
+   - Counts are records: confirm whether records are the intended contributors/individuals.
+   - Use a fresh output folder for a rerun; existing reports are deliberately preserved.
 
 **5. Send me back only the `.json` file** (the `.txt` is yours to keep). Bring it into
    the project's `data/profile_report/` folder the same way you took the script out —
@@ -305,7 +327,7 @@ The session may end here and resume later. When the user returns and confirms th
 
 **Purpose:** Confirm the returned report is internally coherent and trustworthy before anything is built from it. | **Producer:** research-executor (consistency-check script) | **Reviewer:** code-reviewer (QAS-B) | **Skill:** `synthetic-data-workflow`
 
-The report is now in-container (`data/profile_report/`), so unlike the outbound-script review this stage **can** compute — but only over the report's own numbers, never raw data. The embedded `validation.all_passed` in the report is the *user's* claim; DAAF re-verifies it independently.
+The report is now in-container (`data/profile_report/`), so this stage computes only over its own released fields, never raw data. The embedded `validation.all_passed` is not independent verification. For new-policy acceptance require `2.0`: preserve `1.0` originals as legacy and request corrected local reruns, never relabel old PASS results. Independently check the complete required check set, applicability/reasons, supported column shapes, paired support, and actual rounded fields per `profiling-script-spec.md`. Intake can check consistency of reported support but cannot independently establish raw support or pair variances it never received.
 
 ### DS-3 research-executor Invocation Template
 
@@ -325,9 +347,16 @@ All relative paths in referenced files resolve from BASE_DIR.
 
 **TASK:** Write and execute an R consistency-check script that re-verifies checks b1–b12
 from validation-checks.md § (b) against the report's own numbers — do NOT trust the
-embedded `all_passed`; recompute. Confirm: report_version recognized; percentiles
-monotone; category counts (incl. __OTHER__) ≤ row_count; missing rates in [0,1]; NO
-emitted cell has a count in (0, suppression_threshold); (T3) correlation matrices square,
+embedded `all_passed`; recompute from released fields. Require report_version 2.0;
+preserve legacy 1.0 and request a corrected local rerun, never relabel it. Check every
+numeric/string block's actual reported support and shape BEFORE using its fields;
+withheld blocks carry no values, supported constants remain eligible, reduced grids
+have only quartiles. Check all seven required embedded checks with explicit applicability
+and PASS/FAIL/NOT_APPLICABLE reasons. Missing checks/exceptions fail. Confirm percentiles
+monotone; candidate categorical totals agree with n; missing rates agree with nonmissing_n
+and all-row denominator; no visible categorical cell has count in (0, threshold).
+Rare missing/positive numerators do not veto supported rates/means. T3: respect availability;
+check actual paired-support metadata and unavailable reasons; available matrices square,
 symmetric, unit-diagonal, entries in [-1,1], smallest eigenvalue ≥ -1e-6; suppression
 settings recorded; each column's stat block matches its role; embedded validation
 present and passing; (T3) cross-tab schema well-formed — `cells` length = `rows`×`cols`,
@@ -366,9 +395,12 @@ QA — no raw data; validate the report's coherence and the DS-3 script's correc
 **REPORT:** {PROJECT_DIR}/data/profile_report/{dataset_slug}_profile_report.json
 
 **TASK:** Verify the DS-3 script genuinely re-computes b1–b12 (not merely echoing the
-report's embedded all_passed). Independently spot-check the load-bearing checks (b2
-percentile monotonicity, b3 counts ≤ row_count, b5 no sub-threshold cells) and, at T3, the
-cross-tab integrity checks (b11 schema well-formedness, b12 no lone suppressed cell). Create
+report's embedded all_passed). Require 2.0 for new-policy acceptance; preserve legacy
+reports and request local regeneration. Independently spot-check b2 (all released
+percentile grids), b3 (candidate counts/totals), b5 (no sub-threshold categorical cells),
+b9 (numeric/string shapes and support), b10 (complete required checks/applicability),
+and T3 paired-support/availability plus b11/b12 cross-tab integrity. Distinguish N/A
+absent targets from checked PASS; raw support itself is not independently observable. Create
 QA script(s) at `scripts/cr/qas_b_report-consistency.R` and execute via run_with_capture.sh.
 
 **SEVERITY** (validation-checks.md § Severity mapping): b5 sub-threshold cell present =
@@ -419,8 +451,11 @@ data-touching profiling; work entirely from the report JSON.
 **TASK (adapt Part D semantic interpretation to the report):**
 1. Column semantic classification from names + dtypes + tier-permitted stats:
    name-pattern matching (FIPS->geo, _id->identifier, _pct->percentage, _cd->categorical),
-   value-pattern inference from percentiles/levels (binary, year-like, percentage-like),
-   join-key candidates (from is_identifier flags + uniqueness ratios).
+   value-pattern inference only from AVAILABLE percentiles/levels/constants (binary,
+   year-like, percentage-like); withheld summaries are unobserved, not zero or constant.
+   Branch on 2.0 numeric/string shapes before reading values; do not infer missing
+   distributions from cardinality alone. Join-key candidates use identifier flags +
+   uniqueness ratios, with record-vs-person and heuristic uncertainty stated.
 2. Draft data dictionary — ALL entries marked [PRELIMINARY]. State the report-based
    BASIS for each (e.g., "9 suppressed-and-binned levels, uniqueness 0.001 → low-
    cardinality categorical").
@@ -485,10 +520,19 @@ matching the report:
   marginals + correlation matrix; base-R copula fallback per generation-patterns-r.md if
   simstudy is unavailable. (Python equivalent: NumPy/SciPy Gaussian-copula per
   generation-patterns-python.md — only if the project is Python.)
-- Draw categoricals ONLY from the report's emitted levels; keep `__OTHER__` as an
-  aggregate bucket — never invent real-looking rare values.
-- Identifier columns: structurally shaped but value-free (Faker-style / synthetic
-  patterns) — never anything resembling a real identifier or routable value.
+- Branch on every 2.0 numeric/string shape BEFORE percentile/moment/pattern use.
+  Generate supported constants faithfully; withheld distributions get typed placeholders
+  with explicit unobserved-fidelity status, not invented moments or a QA PASS. Reduced
+  numerics use only their quartiles. All-missing numerics are typed nulls.
+- Draw categoricals only from emitted levels; keep `__OTHER__` as an aggregate bucket;
+  empty level lists use a documented typed placeholder, never fake hidden categories.
+- Use correlations/named relationships only when available and eligible; do not feed
+  constant columns to a copula or replace unavailable correlations with zero targets.
+- Preserve separately available missingness targets, including on withheld columns;
+  inject missingness AFTER marginal/relationship generation. T1 has no such target.
+- Identifier columns: synthetic structural scaffolds with declared dtypes and non-routable
+  email domains; withheld structure gets a placeholder. Noncollision with unknown real
+  values cannot be established from the report alone.
 - Match row_count; seed the RNG and print the seed.
 - Write to `{PROJECT_DIR}/data/synthetic/{date}_{dataset_slug}_synthetic.parquet`
   (arrow::write_parquet). Print a generation log: seed, row/col counts, per-column method.
@@ -524,11 +568,18 @@ profile-based synthesis is approximate by design).
 **GENERATION SCRIPT:** {PROJECT_DIR}/scripts/synth_generate/01_generate-synthetic.R
 
 **TASK:** Create and execute QA script(s) at `scripts/cr/qas_c_synthetic-validation.R`
-checking c1–c11: row count matched; column set + types matched; numeric marginals within
-tolerance; categorical proportions within tolerance; __OTHER__ preserved as a bucket;
+checking c1–c11: first inventory available targets by 2.0 shape. Withheld/all-missing
+value distributions, unavailable relationships, and T1 fidelity targets are explicitly
+NOT_APPLICABLE with reasons, never fabricated PASS. Check supported constants against
+their shared value; reduced numerics against quartiles only; preserve eligible missingness
+checks even on withheld columns. Structural/type/seed checks apply to placeholders too.
+Then check row count; column set + types; available numeric/categorical targets within
+tolerance; __OTHER__ preserved as a bucket;
 (T3) correlations reproduced within tolerance (looser for binary/low-cardinality);
-suppressed categories absent from synthetic; identifiers structurally shaped and value-
-free (do not resemble anything real, no routable domain/format); missingness within
+synthetic categories confined to released levels or documented placeholders; identifier
+scaffolds explicitly synthetic, correctly typed, matching AVAILABLE structure and using
+non-routable email domains. Withheld identifier structure is N/A independently of dtype;
+unknown-real-value noncollision cannot be verified from this report. Missingness within
 tolerance; **seed recorded in the generation log**; (T3) each named relationship
 reproduced — the synthetic OLS slope of `outcome ~ predictor` within ±10% of the reported
 slope and R² within ±0.10 (c11). Use the § Tolerances defaults.
@@ -631,7 +682,7 @@ All synthetic-path state lives in the **Synthetic Path Tracking** section of STA
 
 #### DS-2 (User Local Run)
 - [ ] Plain-language handoff issued (get script out, run one command locally, two outputs, review `.txt`, return only JSON)
-- [ ] Disclosure-review instruction explicit (categorical levels, named relationships, suppression section, tier match)
+- [ ] Disclosure-review instruction explicit: guidance + exact candidate; inspect category levels, `n_levels_binned`/`__OTHER__`, `withheld`/`reason`, cross-tab `null`, relationship `available`, and tier match
 - [ ] Wait state recorded in STATE.md with restart prompt
 - [ ] Returned JSON present and non-empty in `data/profile_report/`
 

@@ -36,7 +36,7 @@ The default tier. Emits everything in T1, plus per-column univariate summaries w
 
 **Categorical columns emit:**
 - The list of levels **with counts**, but with **small-cell suppression**: any level whose count is below the suppression threshold (default 5, user-configurable) is removed from the explicit list.
-- **Rare-category binning:** suppressed/rare levels are collapsed into a single `__OTHER__` bucket carrying the aggregate count of all binned levels (so the total is preserved without exposing any individual small level).
+- **Rare-category binning:** suppressed/rare levels collapse into one reserved `__OTHER__` bucket. An input level literally named `__OTHER__` joins that pool regardless of its frequency and counts toward `n_levels_binned`; never emit duplicate bucket labels. For A×20, literal `__OTHER__`×10, and two rare levels×3, the result is A×20 and `__OTHER__`×16, with three source levels binned.
 - The count of distinct levels (cardinality) and the number of levels binned.
 
 **Numeric columns emit** (full-summary case):
@@ -44,21 +44,26 @@ The default tier. Emits everything in T1, plus per-column univariate summaries w
 - Mean and standard deviation.
 - **NO raw min and max** — these are outlier-disclosure risks (a single extreme value can identify a record). The p1/p99 percentiles stand in for the tails; the SDC handbook's guidance to "prefer median, quartiles, percentiles to mean/SD/min/max" for extreme data is the basis.
 
-Two guards degrade the numeric summary when the ordinary case would leak more than it appears to:
-- **Small-n guard.** If a numeric column has fewer than max(`SUPPRESSION_THRESHOLD`, 10) non-missing values, it emits **only p25/p50/p75 + n** (flagged "reduced summary"), with **no p1/p99** (at small n the extreme percentiles approximate the true min/max — the same outlier-disclosure risk min/max carry) and **no mean/SD**.
-- **Near-constant guard.** If a numeric column has a single distinct non-missing value (or SD = 0), it emits **only `{near_constant: true, n}`** — the value itself is withheld, because a mean or percentile of a constant column *is* that value.
-- An all-missing numeric emits `{n: 0, all_missing: true}` — there is nothing to summarize.
+**Support is the number of usable contributing observations, not distinct values or a numerator.** The `2.0` contract (`profiling-script-spec.md`) gates numeric summaries before computing them:
+- **All-missing:** `{n:0,all_missing:true}`; no value statistics. Nonmissing but entirely nonfinite data instead carries a withheld `no_finite_values` marker.
+- **Below minimum:** finite support `0 < n < SUPPRESSION_THRESHOLD` emits only `{n,withheld:true,reason:"insufficient_support"}`. No quartiles, moments, or fallback value summaries.
+- **Supported constant:** at or above the minimum, a constant may report `{n,constant:true,value,mean,sd}` (zero sample SD for n>1; null for n=1). Four identical records are withheld at default 5, but five or 5,000 identical records are eligible. A single distinct value is not a veto.
+- **Supported nonconstant, reduced:** between the minimum (inclusive) and `max(threshold,10)` (exclusive), release only `{n,small_n:true,percentiles:{p25,p50,p75}}`.
+- **Supported nonconstant, full:** at or above that cutoff, release `{n,mean,sd,percentiles:{p1..p99}}`.
+
+These are minimum-support and cell-suppression safeguards, not guarantees against reconstruction or auxiliary-information attacks. Counts are **records** (`settings.support_unit`), not verified unique individuals. Establish the contribution unit locally before describing record support as people; repeated records are not deduplicated by this profiler.
 
 **All columns emit:**
-- Missingness rate (fraction null in [0,1]).
+- Missingness rate (fraction null in [0,1]) and `nonmissing_n`. The denominator is all records. Two missing records among 1,000 do not veto the .002 rate; three positive values among 1,000 usable binary observations do not veto the .003 numeric mean. Existing categorical cell suppression is separate.
 
-**String columns additionally emit:**
+**String/identifier structure blocks additionally emit, only with nonmissing n at least the minimum:**
 - Length statistics (min/mean/max **length**, not min/max value).
 - Pattern flags (looks like email / phone / date / ID / free-text) as booleans — **never an example value**.
+- Below minimum: `{n,withheld:true,reason}` only (all-missing or insufficient support); no fallback lengths or flags. Ordinary role/identifier/cardinality metadata remains.
 
 **Identifier columns** get **structure-only** treatment: dtype, uniqueness ratio, and length statistics only. No values, no percentiles of the underlying encoding. The flagging rule is deliberately asymmetric to avoid crippling legitimate analytic variables:
 - A **string** column that is >95% unique is flagged (it is a key — `client_id`, an email).
-- A **continuous numeric** column that is near-unique is **not** flagged by uniqueness alone — it is a measurement (income, a test score), not a key, and the percentiles-not-min/max treatment already protects it. Flagging it would needlessly withhold exactly the distribution and correlations synthesis needs.
+- A **continuous numeric** column that is near-unique is **not** flagged by uniqueness alone — it is a measurement (income, a test score), not a key, and support-gated percentiles reduce extreme-value disclosure without guaranteeing privacy. Flagging it would needlessly withhold exactly the distribution and correlations synthesis needs.
 - **Any** column (numeric or string) whose **name** matches an identifier pattern (`*_id`, `uuid`, `account`, `ssn`, `email`, `phone`) or whose **values** match an email/phone pattern is flagged regardless of type. (Phone detection requires ≥10 digits so ISO dates, which are digit-and-dash shaped, are not mistaken for phones.)
 
 **Forbids:** raw min/max, any example string value, any category count below the suppression threshold, any identifier value, any joint/bivariate information.
@@ -67,13 +72,13 @@ Two guards degrade the numeric summary when the ordinary case would leak more th
 
 Emits everything in T2, plus bivariate structure. This is what lets synthetic data reproduce approximate relationships (correlated numerics, associated categoricals), which matters when the code being developed depends on those relationships (feature engineering, join behavior, model dry-runs).
 
-**Numeric–numeric:** Pearson and Spearman correlation matrices over the numeric columns. Correlation coefficients are ratios, not counts, and carry low disclosure risk on their own — but they are still constraints, so they only appear at T3.
+**Numeric–numeric:** Pearson and Spearman matrices over full-summary nonconstant numerics only. Every pair needs actual finite paired support at least max(threshold,2) and nonzero variance on those paired observations. Marginal n is insufficient. If any pair is unsupported/undefined, the entire matrix is unavailable with a reason and paired-support metadata — not zero-filled or imputed. Supported constant marginals remain available separately.
 
-**Categorical–categorical:** Cramér's V for pairs of categorical columns (a symmetric association measure in [0,1]).
+**Categorical–categorical:** Cramér's V for categorical pairs requires actual paired nonmissing n at least the threshold and a nondegenerate table; otherwise it is explicitly unavailable.
 
-**Optional named relationships:** if the user specifies an outcome and predictors (via `RELATIONSHIP_SPEC`), a compact summary of the outcome~predictor relationship (e.g., group means of the outcome by predictor level, or a simple coefficient vector) — with the same small-cell suppression applied to any group whose n is below threshold.
+**Optional named relationships:** `RELATIONSHIP_SPEC` numeric pairs `[outcome,predictor]` produce correlations and OLS intercept/slope/R² only with full nonconstant marginals, finite complete-case n at least max(threshold,10), and nonzero pair variances. Otherwise return only availability/support/reason. The templates do not add group-mean models; any extension would need per-group support checks. Requested categorical pairs route to cross-tabs; mixed/identifier/string pairs are unavailable, not fallback value lists.
 
-**Cross-tabs:** two-way cross-tabulations for specified categorical pairs, with **cell suppression** — any cell below the threshold is suppressed, and (because differencing can recover a single suppressed cell from margins) suppression is applied so that no row or column has exactly one suppressed cell where possible; when a lone small cell would otherwise be recoverable, an additional (complementary) cell is suppressed. See `validation-checks.md` for the consistency this must satisfy.
+**Cross-tabs:** two-way cross-tabulations for specified categorical pairs with actual complete-case support at least the threshold, with **cell suppression** — any cell below the threshold is suppressed, and (because differencing can recover a single suppressed cell from margins) suppression is applied so that no row or column has exactly one suppressed cell where possible; when a lone small cell would otherwise be recoverable, an additional (complementary) cell is suppressed. See `validation-checks.md` for the consistency this must satisfy.
 
 **Forbids:** all T2 forbiddens, plus any unsuppressed small cross-tab cell.
 
@@ -96,9 +101,9 @@ A different mechanism, not just more statistics. At T1-T3 the profile crosses th
 | Small-cell suppression | Categorical levels and cross-tab cells with count < `SUPPRESSION_THRESHOLD` (default 5) are removed from explicit output | Standard SDC threshold rule; a small cell can identify individuals |
 | Rare-category binning + roll-in | Suppressed categorical levels collapse into `__OTHER__` with aggregate count; if that `__OTHER__` residual is itself below threshold, the smallest *retained* levels are rolled in until it clears the threshold (or the whole column is suppressed) | A sub-threshold `__OTHER__` is itself a small cell — binning must not create a new one |
 | No raw min/max | Numeric tails represented by p1/p99 percentiles only | Min/max are outlier-disclosure risks |
-| Small-n / near-constant numeric guards | < max(threshold, 10) non-missing → quartiles only, no tails/mean/SD; single distinct value or SD = 0 → value withheld entirely | At small n the tail percentiles approach the real min/max; a constant column's mean *is* its value |
+| Minimum-support numeric/string guards | Usable n < threshold → no value/length/pattern summaries; eligible constants may share their value; eligible nonconstants below max(threshold,10) → quartiles only | Support is contributing observations, not distinct values; the reduced grid is not a below-threshold escape hatch |
 | No example values | String/categorical example values never emitted | Values can be direct identifiers (names, free text) |
-| Identifier structure-only | >95%-unique *string* columns, name/value-pattern-matched columns (any type) get dtype/uniqueness/length only; continuous numerics are NOT flagged by uniqueness alone | Quasi-identifiers combine to re-identify (gender+ZIP+DOB → 87% of US population); numerics stay usable because percentiles-not-min/max already protect them |
+| Identifier structure-only | >95%-unique *string* columns, name/value-pattern-matched columns (any type) get dtype/uniqueness/length only; continuous numerics are NOT flagged by uniqueness alone | Quasi-identifiers combine to re-identify (gender+ZIP+DOB → 87% of US population); numerics retain support-gated summaries, without a universal privacy assurance |
 | Complementary suppression | In a cross-tab, while any row or column has exactly one suppressed cell, the smallest visible cell in that row/column is also suppressed (iterated to a fixed point, cap 10; if it cannot converge the whole table is suppressed). Suppressed cells are emitted as `null`, never `0` | Primary suppression alone is defeated by differencing against margins; `null` (vs `0`) keeps a suppressed cell distinguishable from a true zero |
 
 The threshold is user-configurable because agencies differ (5 is common; some use 10). Higher is safer. It is recorded in the report so downstream validation knows the rule that was applied.
@@ -129,8 +134,8 @@ The disclosure-safety review (QA check (a) in `validation-checks.md`) verifies t
 | At tier | Must NOT appear in the report |
 |---------|-------------------------------|
 | T1 | Any value, any statistic, any count except the grand total row count |
-| T2 | Raw min/max; example string/categorical values; any category count < threshold; identifier values; any correlation/cross-tab/bivariate figure |
-| T3 | (T2 list except correlations/cross-tabs, which are now permitted) plus any unsuppressed cross-tab cell < threshold; any example value; any identifier value; raw min/max |
+| T2 | Raw numeric min/max fields; example string/categorical values outside supported level counts; any positive categorical count < threshold; identifier values; numeric/string value summaries with usable support < threshold; any correlation/cross-tab/bivariate figure |
+| T3 | T2 list except supported relationships/cross-tabs; additionally any positive visible cross-tab cell < threshold, any below-support relationship statistic, and fabricated zero correlations for undefined pairs |
 | T4 | The real data; the fitted model object; anything other than synthetic rows + generation log |
 
 If the script *could* emit any forbidden item — even in an edge case (all-null column, single-row group, an identifier that slipped the >95% heuristic) — that is a BLOCKER, because a disclosure leak is irreversible once the report is shared.

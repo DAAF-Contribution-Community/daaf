@@ -36,10 +36,12 @@ rng = np.random.default_rng(20260715)  # INTENT: seeded reproducible synthesis
 with open("clients_2025_profile_report.json") as f:
     report = json.load(f)
 n = report["dataset"]["row_count"]
+by_name = {c["name"]: c for c in report["columns"]}  # also used by T2/T3 snippets
 
 # --- Generate (T1 skeleton) ---
 # INTENT: one correctly-typed placeholder column per reported column.
 # ASSUMES: T1 carries no values; placeholders are intentionally non-informative.
+assert report["report_version"] == "2.0", "Preserve legacy report; request corrected local rerun"
 _dtype_default = {"integer": 0, "double": 0.0, "string": ""}
 syn = pd.DataFrame({
     col["name"]: [_dtype_default.get(col["dtype"], None)] * n
@@ -50,21 +52,35 @@ assert len(syn) == n, "row count must match profile"
 
 ## T2: marginals
 
-Draw each numeric independently by inverse-transform sampling over the reported percentile grid; draw each categorical from its (suppressed) proportions.
+First classify each `2.0` numeric shape; then draw eligible nonconstants independently over the available percentile grid and categoricals from supported proportions. Generate supported constants faithfully; withheld distributions use typed placeholders and explicit unobserved-fidelity status, while preserving their separately reported missingness. The grid may contain only quartiles. Legacy `1.0` reports are preserved, not relabeled: request a corrected local rerun before accepting this policy. For T1, value/missingness/relationship fidelity is NOT_APPLICABLE; structural/type/seed checks still apply.
 
 ```python
-# --- Generate one numeric column from reported percentiles (T2) ---
-# INTENT: reproduce marginal shape via the percentile grid as an empirical quantile function.
-# REASONING: min/max are withheld at T2+; percentiles are the disclosure-safe shape descriptor.
-p = col["numeric"]["percentiles"]
-probs = np.array([.01, .05, .10, .25, .50, .75, .90, .95, .99])
-knots = np.array([p["p1"], p["p5"], p["p10"], p["p25"], p["p50"],
-                  p["p75"], p["p90"], p["p95"], p["p99"]])
-u = rng.random(n)
-vals = np.interp(u, probs, knots)          # inverse-transform via linear interpolation
-if col["dtype"] == "integer":
-    vals = np.round(vals).astype("Int64")
-syn[col["name"]] = vals
+# --- Generate one numeric column (all 2.0 shapes; col is the selected column) ---
+# INTENT: branch BEFORE using percentiles or missingness; absent targets stay unobserved.
+# REASONING: a withheld distribution is not zero-valued evidence; constants are evidence.
+# ASSUMES: DS-3 already validated the 2.0 schema and support counts.
+assert report["report_version"] == "2.0", "Preserve legacy report; request a corrected local rerun"
+num = col["numeric"]
+if num.get("all_missing"):
+    vals = np.full(n, np.nan)
+    fidelity = "NOT_APPLICABLE: all-missing distribution"
+elif num.get("withheld"):
+    vals = np.zeros(n)  # typed scaffold, NOT an estimated value or distribution
+    fidelity = "NOT_APPLICABLE: unobserved distribution (" + num["reason"] + ")"
+elif num.get("constant"):
+    vals = np.full(n, num["value"], dtype=float)
+    fidelity = "AVAILABLE: supported constant target"
+else:
+    p = num["percentiles"]
+    keys = ("p25", "p50", "p75") if num.get("small_n") else ("p1", "p5", "p10", "p25", "p50", "p75", "p90", "p95", "p99")
+    probs = np.array([int(k[1:]) / 100 for k in keys])
+    knots = np.array([p[k] for k in keys])
+    vals = np.interp(rng.random(n), probs, knots)
+    fidelity = "AVAILABLE: released percentile targets only"
+# Pandas nullable integer dtype belongs to pd.array, NOT NumPy astype("Int64").
+syn[col["name"]] = pd.array(np.round(vals), dtype="Int64") if col["dtype"] == "integer" else pd.array(vals, dtype="Float64")
+print(col["name"], fidelity)  # record in generation log; AVAILABLE is not a QA PASS
+# Independently apply the reported missingness recipe below, including to placeholders.
 ```
 
 ## T3: relationships via copula
@@ -81,41 +97,52 @@ from numpy.linalg import cholesky, LinAlgError
 # INTENT: draw standard-normal variates carrying the reported correlation, then map each
 #         margin to its reported percentile shape via the PIT.
 # ASSUMES: reported correlation matrix is valid; if not PSD, project before Cholesky (see caveats).
-# NOTE: only FULL-summary numerics appear in the matrix (small_n / near_constant / all_missing
-#       numerics are excluded), so every column here has a full p1..p99 grid.
+# Generate ALL marginals via the shape-aware T2 recipe first. Overwrite only eligible
+# correlated marginals here; inject missingness AFTER this block.
 by_name = {c["name"]: c for c in report["columns"]}
 probs = np.array([.01, .05, .10, .25, .50, .75, .90, .95, .99])
-num_cols = report["relationships"]["pearson"]["columns"]
-corr = np.array(report["relationships"]["pearson"]["matrix"], dtype=float)
-try:
-    L = cholesky(corr)
-except LinAlgError:
-    # nearest-PD projection: symmetrize eigenvalues to non-negative, then re-Cholesky
-    w, V = np.linalg.eigh((corr + corr.T) / 2)
-    corr = V @ np.diag(np.clip(w, 1e-8, None)) @ V.T
-    d = np.sqrt(np.diag(corr))
-    corr = corr / np.outer(d, d)           # renormalize to unit diagonal
-    L = cholesky(corr)
-
-z = rng.standard_normal((n, len(num_cols))) @ L.T
-for j, cname in enumerate(num_cols):
-    u_j = norm.cdf(z[:, j])                 # probability integral transform to uniform
-    pc = by_name[cname]["numeric"]["percentiles"]        # inline: pull that column's knots
-    knots = np.array([pc[k] for k in ("p1","p5","p10","p25","p50","p75","p90","p95","p99")])
-    syn[cname] = np.interp(u_j, probs, knots)
+block = report.get("relationships", {}).get("pearson")
+if not block or not block["available"]:
+    print("NOT_APPLICABLE: correlation target", block["reason"] if block else "not released")
+else:
+    # Constants, withheld, reduced, and all-missing columns are not matrix inputs.
+    num_cols = block["columns"]
+    assert all(set(by_name[c]["numeric"]) == {"n", "mean", "sd", "percentiles"} for c in num_cols)
+    corr = np.array(block["matrix"], dtype=float)
+    try:
+        L = cholesky(corr)
+    except LinAlgError:
+        w, V = np.linalg.eigh((corr + corr.T) / 2)
+        corr = V @ np.diag(np.clip(w, 1e-8, None)) @ V.T
+        d = np.sqrt(np.diag(corr))
+        corr = corr / np.outer(d, d)
+        L = cholesky(corr)
+        print("Generation approximation: correlation matrix projected to positive definite")
+    z = rng.standard_normal((n, len(num_cols))) @ L.T
+    for j, cname in enumerate(num_cols):
+        pc = by_name[cname]["numeric"]["percentiles"]
+        knots = np.array([pc[k] for k in ("p1","p5","p10","p25","p50","p75","p90","p95","p99")])
+        vals = np.interp(norm.cdf(z[:, j]), probs, knots)
+        syn[cname] = pd.array(np.round(vals), dtype="Int64") if by_name[cname]["dtype"] == "integer" else pd.array(vals, dtype="Float64")
 ```
 
 ### Named numeric~numeric relationships (`relationships.named`)
 
-When the report carries a named relationship, honor the linear structure directly: generate the predictor from its marginal, then `outcome = intercept + slope·predictor + N(0, residual SD)`, with the residual SD backed out of R².
+When the report carries an **available** named relationship, honor the linear structure directly: generate the predictor from its marginal, then `outcome = intercept + slope·predictor + N(0, residual SD)`, with the residual SD backed out of R².
 
 ```python
 # --- Honor a named linear relationship (inline; no helper functions) ---
-rel = report["relationships"]["named"][0]                # {outcome, predictor, ols:{...}}
-# ... x_pred generated from the predictor's percentile marginal above ...
-sd_y = by_name[rel["outcome"]]["numeric"]["sd"]
-resid_sd = np.sqrt(max(1.0 - rel["ols"]["r_squared"], 0.0)) * sd_y   # residual SD from R^2
-syn[rel["outcome"]] = rel["ols"]["intercept"] + rel["ols"]["slope"] * x_pred + rng.normal(0, resid_sd, n)
+for rel in report.get("relationships", {}).get("named", []):
+    if not rel["available"]:
+        print("NOT_APPLICABLE: named relationship", rel["reason"])
+        continue
+    # Use generated marginals BEFORE missingness injection.
+    x_pred = syn[rel["predictor"]].to_numpy(dtype=float)
+    col = by_name[rel["outcome"]]
+    sd_y = col["numeric"]["sd"]
+    resid_sd = np.sqrt(max(1.0 - rel["ols"]["r_squared"], 0.0)) * sd_y
+    vals = rel["ols"]["intercept"] + rel["ols"]["slope"] * x_pred + rng.normal(0, resid_sd, n)
+    syn[rel["outcome"]] = pd.array(np.round(vals), dtype="Int64") if col["dtype"] == "integer" else pd.array(vals, dtype="Float64")
 ```
 
 This reproduces the reported slope/intercept within tolerance. Categorical associations (Cramér's V) are weaker constraints; reproduce categoricals from marginals, and when a named categorical association matters, bias the linked draw. Exact joint reproduction is not the goal; structural validity for code development is.
@@ -127,13 +154,18 @@ This reproduces the reported slope/intercept within tolerance. Categorical assoc
 # INTENT: reproduce category frequencies; __OTHER__ stays an explicit aggregate bucket.
 cat = col["categorical"]
 levels = [l["value"] for l in cat["levels"]]
+assert len(levels) == len(set(levels)), "Duplicate released category labels"
 counts = np.array([l["count"] for l in cat["levels"]], dtype=float)
-syn[col["name"]] = rng.choice(levels, size=n, p=counts / counts.sum())
+if levels:
+    syn[col["name"]] = pd.array(rng.choice(levels, size=n, p=counts / counts.sum()), dtype="string")
+else:
+    syn[col["name"]] = pd.array([""] * n, dtype="string")
+    print(col["name"], "NOT_APPLICABLE: unobserved categorical distribution")
 ```
 
-Keep `__OTHER__` a literal synthetic level — do not invent fake rare values, which would fabricate structure the profile deliberately withheld. A fully-suppressed categorical column (`levels == []`) carries no marginal; synthesize a constant placeholder and note the column was withheld.
+Keep `__OTHER__` a literal synthetic aggregate — do not invent fake rare values. The profiler merges any original level literally named `__OTHER__` into this same pool and includes it in `n_levels_binned`; it is not separately recoverable. Require unique reported labels before drawing, so duplicate bucket entries cannot silently become separate probabilities. A fully-suppressed categorical column (`levels == []`) carries no marginal; synthesize a constant placeholder and note the column was withheld.
 
-When a crosstab informs the draw, its `cells` array uses **`None`/`null` for suppressed cells**, never `0`: a `None` means "withheld/unknown" and must be skipped, while a real `0` means a genuine empty combination. A crosstab with `"collapsed": true` was fully suppressed — no association signal.
+Check `available` before reading any cross-tab fields: `available:false` has only pair/n/reason, with no association fidelity target. When an available crosstab informs the draw, its `cells` array uses **`None`/`null` for suppressed cells**, never `0`: a `None` means "withheld/unknown" and must be skipped, while a real `0` means a genuine empty combination. A crosstab with `"collapsed": true` was fully suppressed — no association signal.
 
 ## Identifier columns with Faker
 
@@ -147,17 +179,26 @@ fake = Faker()
 Faker.seed(20260715)                        # seed Faker for reproducibility
 
 struct = col["string_structure"]
-flags = struct["pattern_flags"]
-if flags["email"]:
-    syn[col["name"]] = [f"user{i:06d}@example.invalid" for i in range(n)]
-elif flags["phone"]:
-    syn[col["name"]] = [fake.numerify("###-###-####") for _ in range(n)]
+# Availability logging is independent of dtype: numeric identifiers also lose structure.
+if struct.get("withheld"):
+    print(col["name"], "NOT_APPLICABLE: unobserved identifier structure")
+if col["dtype"] in ("integer", "double"):
+    # Structure-only numeric ID: preserve type, not an invented numeric marginal.
+    syn[col["name"]] = pd.array(np.arange(n), dtype="Int64" if col["dtype"] == "integer" else "Float64")
+elif struct.get("withheld"):
+    syn[col["name"]] = pd.array([""] * n, dtype="string")
 else:
-    L = round(struct["length_mean"])
-    syn[col["name"]] = [fake.lexify("?" * L) for _ in range(n)]
+    flags = struct["pattern_flags"]
+    if flags["email"]:
+        vals = [f"user{i:06d}@example.invalid" for i in range(n)]
+    elif flags["phone"]:
+        vals = [fake.numerify("###-###-####") for _ in range(n)]
+    else:
+        vals = [fake.lexify("?" * round(struct["length_mean"])) for _ in range(n)]
+    syn[col["name"]] = pd.array(vals, dtype="string")
 ```
 
-Use reserved non-routable forms (`example.invalid`) so synthetic identifiers cannot collide with real ones.
+Use reserved non-routable domains (`example.invalid`) for email-shaped scaffolds. Numeric IDs and random phone/string placeholders can coincidentally match real values; this workflow cannot certify noncollision without raw data. Do not interpret structural placeholders as observed identifiers.
 
 ## Free-text `role: "string"` columns
 
@@ -166,8 +207,13 @@ A `role: "string"` column (high-cardinality free text, non-identifier) arrives v
 ```python
 # --- Synthesize a free-text (role "string") column from length stats only ---
 # INTENT: right-shaped fake strings; REASONING: no real values crossed the boundary.
-L = round(by_name[cname]["string_structure"]["length_mean"])
-syn[cname] = [fake.lexify("?" * L) for _ in range(n)]     # or rng-drawn alphanumerics
+struct = by_name[cname]["string_structure"]
+if struct.get("withheld"):
+    syn[cname] = pd.array([""] * n, dtype="string")
+    print(cname, "NOT_APPLICABLE: unobserved string structure")
+else:
+    L = round(struct["length_mean"])
+    syn[cname] = pd.array([fake.lexify("?" * L) for _ in range(n)], dtype="string")
 ```
 
 If the `date` pattern flag is set, emit ISO-shaped fake dates instead so downstream date parsing still exercises.
@@ -178,6 +224,8 @@ If the `date` pattern flag is set, emit ISO-shaped fake dates instead so downstr
 # --- Inject missingness at the reported rate ---
 # ASSUMES: MCAR — the profile carries a rate, not a mechanism. Real missingness is often systematic;
 #          a known fidelity limitation of profile-based synthesis (state it in the skill notice).
+# Run only at T2+ and after shape-aware marginal/relationship generation.
+# Keep this eligible target even for a withheld value summary; numerator rarity is not a veto.
 rate = col["missing_rate"]
 if rate > 0:
     idx = rng.choice(n, size=round(rate * n), replace=False)
