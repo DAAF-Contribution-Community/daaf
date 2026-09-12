@@ -134,6 +134,10 @@ All profiling code follows the mandatory file-first pattern:
 1. **WRITE** complete script to the part subdirectory under `{project_script_dir}/`
 2. **EXECUTE** as a single Bash call: `bash {BASE_DIR}/scripts/run_with_capture.sh {script_path}`
 3. **CAPTURE** -- `run_with_capture.sh` appends stdout/stderr to the script file
+   and verifies the record landed. Read its exit code: the script's own exit code
+   on a verified run, **74** (with an `EVIDENCE INCOMPLETE` banner) when the audit
+   record is incomplete -- never report such a run as done; see
+   `agent_reference/ERROR_RECOVERY.md` § Execution Wrapper Evidence Outcomes.
 
 Read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` before writing any scripts.
 

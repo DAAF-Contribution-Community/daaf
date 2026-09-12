@@ -10,9 +10,9 @@ This document provides Python and R code templates for all four validation check
 
 The workflow is:
 1. Write script to `scripts/stage{N}_{type}/` including validation code
-2. Execute as a single Bash call: `bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/.../script.py` (or `script.R` — automatically captures output and appends execution log)
+2. Execute as a single Bash call: `bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/.../script.py` (or `script.R` — automatically captures output, appends the execution log, and verifies it landed)
 3. Validation results get automatically embedded in scripts as comments
-4. Checkpoint status (PASSED/FAILED) is captured in the embedded execution log
+4. Checkpoint status (PASSED/FAILED) is captured in the embedded execution log — but only trust it when the wrapper reported the record verified (no `EVIDENCE INCOMPLETE` banner / exit 74, and the log's `# Capture:` line reads `COMPLETE`); an incomplete record can truncate or omit the checkpoint lines. See `ERROR_RECOVERY.md` § Execution Wrapper Evidence Outcomes.
 
 Closely read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the mandatory file-first execution protocol, complete script format, and checkpoint integration.
 

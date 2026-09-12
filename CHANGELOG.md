@@ -22,9 +22,17 @@ All notable changes to DAAF for each release version are documented here, in rev
 
 DAAF now supports OpenAI's **GPT-6 Astra** flagship (model slug `gpt-6-astra`) across both the OpenRouter route (Option C) and the provider-shim lanes (Option F), with parity to the existing GPT-5.6 documentation. The bundled Codex CLI advances to **0.153.2**, and Astra is registered in DAAF's validated context-threshold profile at GPT-5.6 Sol parity.
 
+### Execution Wrapper Evidence Integrity
+
+`scripts/run_with_capture.sh` now distinguishes computation success from evidence-capture and persistence success. A run that computed correctly but whose execution log was truncated or never appended used to exit 0 and print `SUCCESS`; it now prints an `EVIDENCE INCOMPLETE` banner, retains the capture buffer, and exits 74.
+
 ### Detailed Notes
 
 Disclosure: These notes were AI-drafted from the verified change-set and then reviewed by hand.
+
+#### Execution Wrapper: Evidence Persistence Verification
+
+The file-first execution wrapper tracks three outcomes separately — the script's exit code (computation), the `tee` status into a capture buffer (capture), and the appended execution log verified on disk (persistence: exactly one `# EXECUTION LOG` marker, closing banner last, exit-code line present). `SUCCESS` / `Execution log appended` print only when all three hold; otherwise the wrapper exits **74** with a banner naming the failed outcome and the retained buffer path. The buffer now lives next to the script (`.<script>.capture.XXXXXX`, inside the backup boundary, never `/tmp`) and is deleted only after a verified run. Interruptions (SIGINT/SIGTERM) append no log, retain the buffer, and exit 130/143 (the banner says if an unverified log was already appended). Concurrent duplicate runs are detected post-append by marker count (no locking). The appended log gains a `# Capture: COMPLETE|INCOMPLETE (...)` header line; a captured output line reading exactly `EXECUTION LOG` is archived as `#  EXECUTION LOG` so script output cannot forge a marker; a missing argument now prints usage. Contract updates: `SCRIPT_EXECUTION_REFERENCE.md` (new § Evidence Persistence Verification), `ERROR_RECOVERY.md` (new § Execution Wrapper Evidence Outcomes), `BOUNDARIES.md`, `CLAUDE.md`, `VALIDATION_CHECKPOINTS.md`, the research-executor and data-ingest agent files, and the Reproducibility Verification mode ASSESS step. Regression: `tests/bash/run_with_capture.bats` grows from 12 to 27 cases, including fault injection for tee/append/duplicate-marker/unwritable-directory/interruption. Repairs the S02 finding from the 2026-09-05 review synthesis.
 
 #### Codex CLI Pinned to 0.153.2
 

@@ -281,7 +281,7 @@ bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage{N}_{type
 bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage{N}_{type}/{step}_{task}.R
 ```
 
-The wrapper automatically detects the file extension and routes `.py` files to `python3` and `.R` files to `Rscript`. No explicit interpreter specification needed. It captures stdout/stderr, records timestamp/duration/exit code, and appends the execution log as comments to the script file.
+The wrapper automatically detects the file extension and routes `.py` files to `python3` and `.R` files to `Rscript`. No explicit interpreter specification needed. It captures stdout/stderr, records timestamp/duration/exit code/capture status, appends the execution log as comments to the script file, and verifies the record landed. **Read the wrapper's final banner, not just the script's output:** `SUCCESS: Script passed.` means the script exited 0 *and* the log was appended and verified. An `EVIDENCE INCOMPLETE` banner (wrapper exit 74) means the audit record is incomplete even if the computation ran — it is neither success nor a script failure; follow `ERROR_RECOVERY.md` § Execution Wrapper Evidence Outcomes (the banner says whether to re-run in place or create a revision) rather than Step 5 below.
 
 ### Step 4b: Visual Inspection (Stage 8.2 visualization scripts only)
 
@@ -596,7 +596,7 @@ Awaiting guidance before proceeding.
 
 **This task execution is COMPLETE when:**
 1. [ ] Script written to correct path following naming convention
-2. [ ] Script executed via `run_with_capture.sh` with execution log appended
+2. [ ] Script executed via `run_with_capture.sh` with execution log appended and verified (wrapper printed `Execution log appended to:`; the log's `# Capture:` line reads `COMPLETE`; no `EVIDENCE INCOMPLETE` banner / exit 74)
 3. [ ] Checkpoint validation (CP1-CP4) passed within the script
 4. [ ] Output data file(s) saved as parquet to correct directory
 5. [ ] Pre/post state documented with row counts, shapes, sample IDs

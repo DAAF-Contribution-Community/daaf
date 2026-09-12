@@ -113,11 +113,13 @@ The wrapper auto-detects the language from the file extension: `.py` files run w
 
 The wrapper automatically:
 1. Executes the script and captures all stdout/stderr
-2. Records timestamp, duration, and exit code
-3. Appends the complete execution log to the script file as comments
-4. Returns the script's exit code
+2. Records timestamp, duration, exit code, and capture status
+3. Appends the complete execution log to the script file as comments and **verifies the record landed**
+4. Returns the script's exit code — or **exit 74** when the audit record is incomplete (see "Evidence Persistence Verification" below)
 
 After execution, the script file itself contains both the code AND proof of what happened when it ran.
+
+**Read the wrapper's exit code and final banner, not just the script's output.** `SUCCESS: Script passed.` is printed only when the script exited 0 *and* the execution log was appended and verified. An `EVIDENCE INCOMPLETE` banner (exit 74) means the computation may have run, but the run cannot be reported as a completed audited run.
 
 ### Step 4: If Failed, Create a Versioned Copy
 
@@ -173,10 +175,12 @@ All scripts reference this single canonical copy directly — there is no need t
 2. Checks whether the script already has an execution log (blocks re-runs if so)
 3. Scans the script body for runtime package-install calls and refuses to execute (exit 3) if any are found (see "Package-Install Content Scan" below)
 4. Detects language from file extension (`.py` → `python3`, `.R` → `Rscript`)
-5. Executes the script with stdout/stderr capture via `tee`
-6. Records timestamp, duration, and exit code
-7. Appends the complete execution log to the script file as comments (using `#` for both Python and R)
-8. Returns the script's exit code
+5. Creates a capture buffer **next to the script** (a dotfile `.<script>.capture.XXXXXX` in the script's directory — inside the project, never `/tmp`); exit 74 before execution if it cannot
+6. Executes the script with stdout/stderr capture via `tee`, reading **both** pipeline statuses (the script's exit code and `tee`'s)
+7. Records timestamp, duration, exit code, and capture status (`COMPLETE` or `INCOMPLETE (tee exit N)`)
+8. Appends the complete execution log to the script file as comments (using `#` for both Python and R), then **verifies** it: exactly one `# EXECUTION LOG` marker, the closing banner as the last line, and the exit-code line present
+9. Deletes the capture buffer only after that verification; retains it (and prints its path) otherwise
+10. Returns the script's exit code, or **exit 74** when capture or persistence failed (see "Evidence Persistence Verification" below)
 
 ### Usage
 
@@ -196,6 +200,28 @@ bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage5_fetch/0
 ### Re-run Protection
 
 The wrapper checks for the marker `# EXECUTION LOG` in the script file. If found, it **refuses to run** (exit 1) and prints guidance to create a versioned copy instead. This enforces the versioning rule: once a script has been executed, it is a historical record.
+
+### Evidence Persistence Verification
+
+The wrapper tracks three outcomes separately and never conflates them:
+
+| Outcome | What it means | Where it is recorded |
+|---------|---------------|----------------------|
+| **Computation** | The script's own exit code | `# Exit code: N` in the log; wrapper exit code on a verified run |
+| **Capture** | The `tee` into the capture buffer succeeded, so the archived stdout is complete | `# Capture: COMPLETE` or `# Capture: INCOMPLETE (tee exit N)` in the log. A `COMPLETE (N NUL byte(s) ... stripped ...)` qualifier means the capture succeeded but the archived copy cannot hold NUL bytes; the run still counts as verified, with the loss disclosed in the record |
+| **Persistence** | The log was appended and verified on disk (exactly one marker, closing banner last, exit-code line present) | `Execution log appended to: ...` is printed **only** after this check |
+
+A run is a completed audited run only when all three succeeded. Otherwise the wrapper prints an `EVIDENCE INCOMPLETE` banner to stderr stating each outcome and the retained buffer's path, and exits **74** (`EX_IOERR`; distinct from the reserved exit 3 — but a script may itself exit 74, so key the decision off the banner, not the exit code alone). The banner also says whether a log marker is present: if **no** marker was appended (append failed), the script is still editable and runnable **in place**; if a marker **is** present (e.g. capture was incomplete but the append succeeded), immutable versioning has engaged and the next attempt goes in a `_a`/`_b` revision.
+
+**Why this matters:** an inert successful computation combined with a failed capture or append used to return exit 0 and print `SUCCESS` and `Execution log appended`, leaving either a truncated archived output or no record at all. Computation success is necessary but not sufficient; the audit record is what downstream QA reviews.
+
+**Interruption** (SIGINT/SIGTERM): the wrapper retains the capture buffer as evidence of what had been produced, prints its path, and exits 130/143. Normally no log has been appended and the script stays runnable in place; if the signal landed after the append but before verification, the `INTERRUPTED` banner says an unverified log is present and directs you to a revision instead.
+
+**Capture buffer lifecycle:** deleted after every verified run (success *or* script failure — the appended log is then the durable record); retained only on exit 74 or interruption. A leftover `.<script>.capture.*` file next to a script is therefore a signal that a run did not complete its record; keep it as failure evidence until the cause is understood. It shows up as an untracked file in `git status` and is deliberately **not** gitignored — hiding failure evidence would defeat its purpose.
+
+**Marker integrity:** captured output lines are archived with a `# ` prefix. A captured line that would then read exactly as the marker (`EXECUTION LOG`) is archived with two spaces (`#  EXECUTION LOG`) so script output — e.g. a QA script that greps another script's log — can never forge a second marker. Empty output is archived as `# (no output)`; NUL bytes cannot be archived and are reported in the `Capture:` line if present.
+
+**Agent handling of exit 74:** do not report the step as done. Report the wrapper's banner (computation, capture, persistence lines) to the orchestrator; keep the retained buffer; then either re-run in place (no marker) or create a revision (marker present) once the cause is addressed. See `ERROR_RECOVERY.md` § Execution Wrapper Evidence Outcomes.
 
 ### Package-Install Content Scan
 
@@ -541,6 +567,7 @@ print(f"\nCP{n} VALIDATION: PASSED")
 - **Timestamp:** When the script was run
 - **Duration:** How long execution took
 - **Exit code:** 0 = success, non-zero = failure
+- **Capture:** `COMPLETE` when the archived stdout is the full output; `INCOMPLETE (tee exit N)` when the capture step failed and the STDOUT section below it may be truncated (the wrapper also exits 74 in that case — see "Evidence Persistence Verification")
 - **Full stdout:** All printed output including validation results
 - **Any stderr:** Warnings or errors
 
@@ -552,9 +579,10 @@ print(f"\nCP{n} VALIDATION: PASSED")
 # =============================================================================
 #
 # Executed: 2026-01-31 14:32:05
-# Command: python scripts/stage5_fetch/01_fetch-ccd.py
-# Duration: 45.23 seconds
+# Command: python3 scripts/stage5_fetch/01_fetch-ccd.py
+# Duration: 45s
 # Exit code: 0
+# Capture: COMPLETE
 #
 # --- STDOUT ---
 # ============================================================
@@ -596,9 +624,10 @@ print(f"\nCP{n} VALIDATION: PASSED")
 # =============================================================================
 #
 # Executed: 2026-01-31 14:45:12
-# Command: python scripts/stage7_transform/01_join-ccd-meps.py
-# Duration: 2.34 seconds
+# Command: python3 scripts/stage7_transform/01_join-ccd-meps.py
+# Duration: 2s
 # Exit code: 1
+# Capture: COMPLETE
 #
 # --- STDOUT ---
 # ============================================================

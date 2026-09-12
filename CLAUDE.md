@@ -44,6 +44,10 @@ These principles apply to all agents writing code in the DAAF system:
      (or `{script_name}.R` for R scripts — `run_with_capture.sh` detects language
      from the file extension)
   3. **CAPTURE** — `run_with_capture.sh` appends stdout/stderr to the script file
+     and verifies the record landed. Read its exit code: the script's own exit
+     code on a verified run, **74** when the audit record is incomplete (capture
+     or append failed — never report such a run as done; see
+     `ERROR_RECOVERY.md`).
 
   Interactive execution bypasses the audit trail and produces no permanent record
   that can be reviewed by code-reviewer. Never run `python script.py` or
@@ -301,7 +305,7 @@ Context management is NEVER about reducing the quality or completeness of work. 
 
 ### Defense-in-Depth Architecture
 
-Safety is enforced in layers: PreToolUse hooks (`bash-safety.sh`, `enforce-single-command.sh`, agent-scoped `enforce-file-first.sh`, and the subagent-dispatch guards), a pre-execution content scan in `run_with_capture.sh`, `settings.json` permission deny/allow rules, PostToolUse audit hooks (`audit-log.sh`, `output-scanner.sh`), context-reporting and statusline scripts, session archive/recovery hooks, Docker container isolation (`cap_drop: ALL`, non-root), `.claudeignore`, and pre-commit hooks. Each hook's header comments document its exact coverage; the complete layer-by-layer table lives in `agent_reference/BOUNDARIES.md` § Defense-in-Depth Architecture (Enforcement Layers). Regression suites: `tests/bash/` and `scripts/test_safety_hooks.sh`.
+Safety is enforced in layers: PreToolUse hooks (`bash-safety.sh`, `enforce-single-command.sh`, agent-scoped `enforce-file-first.sh`, and the subagent-dispatch guards), a pre-execution content scan and post-execution evidence verification (exit 74) in `run_with_capture.sh`, `settings.json` permission deny/allow rules, PostToolUse audit hooks (`audit-log.sh`, `output-scanner.sh`), context-reporting and statusline scripts, session archive/recovery hooks, Docker container isolation (`cap_drop: ALL`, non-root), `.claudeignore`, and pre-commit hooks. Each hook's header comments document its exact coverage; the complete layer-by-layer table lives in `agent_reference/BOUNDARIES.md` § Defense-in-Depth Architecture (Enforcement Layers). Regression suites: `tests/bash/` and `scripts/test_safety_hooks.sh`.
 
 ---
 
