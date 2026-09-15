@@ -104,7 +104,18 @@ Execute the appropriate checkpoint WITHIN the script, printing results to stdout
 - **After fetch (Stage 5):** CP1 -- shape, types, missingness, year coverage
 - **After clean (Stage 6):** CP2 -- suppression rate, coded values, data loss
 - **After transform (Stage 7):** CP3 -- row counts, new nulls, invariants
-- **After analysis & viz (Stage 8):** CP4 -- statistical analysis results, model convergence, figure existence, correct data source, visual inspection of generated figures via **Read tool**
+- **After analysis & viz (Stage 8):** CP4 -- Post-Analysis & Visualization Validation. **CP4.1** analysis outputs valid (results object exists, estimates finite, convergence flag `TRUE` where the estimator reports one, n adequate against the Plan's minimum, expected sign only where the Plan pre-registers it); **CP4.2** critical nulls (no nulls in the analysis frame's outcome/key columns); **CP4.3** figures (every promised figure exists, is non-empty, and has been visually inspected via **Read tool**); **CP4.4** correct data source (script loads `data/processed/` or the Plan's named input, not `data/raw/`)
+
+Report-section completeness, Plan-commitment consistency, Research Outcome coverage, and Hypothesis assessment are **not** CP4 — they belong to **Pre-Output Verification (Stage 12)**, a data-verifier checklist, and are outside the executor's scope.
+
+Every checkpoint ends with a count line and a verdict line:
+
+```
+Checks: {passed} passed, {warning} warnings, {failed} failed, {not_verified} not verified, {skipped} skipped
+CP4 VALIDATION: PASSED | PASSED WITH WARNINGS | FAILED
+```
+
+Derive the verdict from the counters, never hard-code it: `FAILED` if `failed > 0` **or `not_verified > 0`** (a gate with missing evidence has not gated) or if zero checks ran; else `PASSED WITH WARNINGS` if `warning > 0`; else `PASSED`. Each per-check line begins with exactly one of `[PASS]`, `[WARNING]`, `[FAIL]`, `[NOT VERIFIED]`, `[SKIPPED]`, and `[PASS]` lines must carry the observed numbers.
 
 See `agent_reference/VALIDATION_CHECKPOINTS.md` for checkpoint code templates.
 
@@ -358,7 +369,7 @@ When you receive a revision request due to QA BLOCKER:
 **Do NOT include in your output:**
 - Raw execution logs or captured stdout/stderr (these are already appended to the script file)
 - Data samples, row-level examples, or Polars table displays
-- Full checkpoint output (summarize as PASSED/FAILED/WARNING + 1-line reason)
+- Full checkpoint output (summarize as PASSED/WARNING/FAILED + the checkpoint's count line + 1-line reason)
 - Verbose reasoning or multi-paragraph explanations in any section
 - QA script code or contents
 
@@ -369,6 +380,8 @@ Return findings in this structure:
 ### Summary
 **Status:** [PASSED | FAILED | WARNING]
 **Task:** [Task name from specification]
+
+> **Mapping the log verdict to this status.** The log prints one of three strings; report the corresponding status: `CP{n} VALIDATION: PASSED` ⇒ `PASSED`; **`CP{n} VALIDATION: PASSED WITH WARNINGS` ⇒ `WARNING`**; `CP{n} VALIDATION: FAILED` ⇒ `FAILED`. Never round `PASSED WITH WARNINGS` up to `PASSED`. Quote the count line with the summary — `not verified > 0` means the checkpoint FAILED, because a check that could not run has not gated anything.
 **Final Script:** `scripts/stage{N}_{type}/{step}_{task-name}[_suffix].py` (or `.R` for R pipelines)
 
 ### Script Versions

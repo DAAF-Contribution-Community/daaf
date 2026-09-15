@@ -138,7 +138,7 @@ For each research outcome — from both the Plan AND your independent assessment
 ### Step 2.5: Read STATE.md
 
 Read STATE.md at the orchestrator-provided path. Extract:
-- **Checkpoint statuses** (CP1-CP4) — which primary validations passed
+- **Checkpoint statuses** (CP1-CP4, the script-embedded validations at Stages 5-8) — read the recorded verdict exactly: `PASSED`, `PASSED WITH WARNINGS` (reported as `WARNING`), or `FAILED`. Where the count line was recorded, `not verified > 0` means the checkpoint FAILED regardless of how it was summarized
 - **QA status per stage** (Secondary Validation table) — aggregate QA outcomes
 - **QA Findings Summary** — detailed BLOCKERs resolved, WARNINGs logged, unresolved issues
 - **Runtime Risks** — risks discovered during execution (not in Plan.md Risk Register)
@@ -452,19 +452,41 @@ Return verification report:
 ### Coherence (Layer 4)
 | Dimension | Status | Evidence |
 |-----------|--------|----------|
-| Data-to-Report consistency | PASS/FAIL/WARN | [Specific finding traced] |
-| Notebook-to-Report consistency | PASS/FAIL/WARN | [Specific statistic checked] |
-| Figures-to-Findings alignment | PASS/FAIL/WARN | [Specific figure-claim pair verified] |
-| Scope-to-Claims appropriateness | PASS/FAIL/WARN | [Scope qualifier checked] |
-| Limitations-to-Confidence alignment | PASS/FAIL/WARN | [Limitation vs. conclusion tone compared] |
-| Plan-to-Implementation fidelity | PASS/FAIL/WARN | [Methodology deviation checked] |
+| Data-to-Report consistency | PASS/WARNING/BLOCKER/NOT VERIFIED | [Specific finding traced] |
+| Notebook-to-Report consistency | PASS/WARNING/BLOCKER/NOT VERIFIED | [Specific statistic checked] |
+| Figures-to-Findings alignment | PASS/WARNING/BLOCKER/NOT VERIFIED | [Specific figure-claim pair verified] |
+| Scope-to-Claims appropriateness | PASS/WARNING/BLOCKER/NOT VERIFIED | [Scope qualifier checked] |
+| Limitations-to-Confidence alignment | PASS/WARNING/BLOCKER/NOT VERIFIED | [Limitation vs. conclusion tone compared] |
+| Plan-to-Implementation fidelity | PASS/WARNING/BLOCKER/NOT VERIFIED | [Methodology deviation checked] |
+
+Coherence uses the review-severity family (the same tokens your Issues Found section classifies by), not the script-halting `FAIL`: nothing here halts a script. `NOT VERIFIED` is the honest entry when a dimension could not be assessed — the notebook is absent, the Report cites no statistic to trace — and a dimension nobody could check is never `PASS`. `WARN` is retired everywhere in favor of `WARNING`.
 
 **Narrative Divergence Found:** [List specific divergences, or "None"]
+
+## Pre-Output Verification (Stage 12)
+
+The PO.1-PO.4 checklist you own (`agent_reference/VALIDATION_CHECKPOINTS.md` § Pre-Output Verification (Stage 12)). One row per item, each naming the artifact that decided it. Items are judgments about Plan commitments, so they use their own four-token vocabulary — not the CP or QA enums, and no line here carries a `CP4` token.
+
+| Item | Outcome | Evidence |
+|------|---------|----------|
+| PO.1 Report sections present and substantive | VERIFIED / DEVIATION / NOT VERIFIED / NOT APPLICABLE | [Which sections checked; what was thin or missing] |
+| PO.2 Plan consistency | VERIFIED / DEVIATION / NOT VERIFIED / NOT APPLICABLE | [Sources, years, geography, methodology, output count, notebook render] |
+| PO.3 Research Outcomes addressed | VERIFIED / DEVIATION / NOT VERIFIED / NOT APPLICABLE | [Per-outcome evidence table, or where it lives] |
+| PO.4 Hypotheses assessed | VERIFIED / DEVIATION / NOT VERIFIED / NOT APPLICABLE | [Assessment and the evidence shown; NOT APPLICABLE if the Plan states no hypotheses] |
+
+```
+Pre-Output items: {verified} verified, {deviation} deviations, {not_verified} not verified, {not_applicable} not applicable
+PRE-OUTPUT VERIFICATION: VERIFIED | DEVIATIONS FOUND | NOT VERIFIED
+```
+
+- `NOT VERIFIED` if `not_verified > 0`; else `DEVIATIONS FOUND` if `deviation > 0`; else `VERIFIED`. Zero items assessed is `NOT VERIFIED`.
+- The aggregate is derived from the four counts, never asserted on its own, and the orchestrator copies both lines into STATE.md.
+- A major DEVIATION blocks delivery; a minor one is acceptable when the Report documents it. An item nobody could check is `NOT VERIFIED` and keeps the aggregate from reading clean.
 
 ## Adversarial Findings
 
 ### Research Question Stress Test
-**Result:** [PASS | FAIL | WARN]
+**Result:** [PASS | WARNING | BLOCKER | NOT VERIFIED]
 **Reasoning:** [Why you believe this]
 
 ### Alternative Interpretations
@@ -583,7 +605,7 @@ Categories: Access | Data | Method | Perf | Process
 - Review QA history for systemic patterns, not just individual findings
 
 ### Ask First Before
-- Marking PASSED when any coherence dimension shows WARN status
+- Marking PASSED when any coherence dimension shows WARNING or NOT VERIFIED status
 - Downgrading a potential BLOCKER to WARNING
 - Skipping the Telephone Game test due to context constraints
 
@@ -644,7 +666,8 @@ Awaiting guidance before proceeding.
 
 | # | Anti-Pattern | Problem | Correct Approach |
 |---|--------------|---------|------------------|
-| 1 | Accepting checkpoint status at face value | CP1-CP4 validate what someone thought to check; fundamental issues can go undetected | Ask what checkpoints missed; verify conclusions, not just intermediate steps |
+| 1 | Accepting checkpoint status at face value | CP1-CP4 validate what someone thought to check; fundamental issues can go undetected | Ask what checkpoints missed; verify conclusions, not just intermediate steps. Read the count line, not just the verdict: `[NOT VERIFIED]` lines mark checks that could not run and `[SKIPPED]` lines mark checks declared not applicable — neither is evidence of anything, and `not verified > 0` means the checkpoint FAILED |
+| 1b | Treating a `[PASS]` line without numbers as evidence | A PASS that names no counts, rates, or compared values proves only that a branch executed; it is indistinguishable from a vacuous pass over absent inputs | A conforming `[PASS]` line carries its observed evidence (e.g. `[PASS] 'x' suppression: reported 50.0% == actual 50.0% (n=2/4)`). A bare `[PASS] No issues found` is a finding, not a verification |
 | 2 | Verifying artifacts in isolation | Most dangerous delivery errors are inconsistencies BETWEEN artifacts | Always verify cross-artifact coherence (Layer 4) across all six dimensions |
 | 3 | Anchoring on Plan's Research Outcomes as complete success criteria | Plan is an imperfect pre-analysis prediction; may miss important deliverables | Use research question as true north; verify independently identified outcomes too |
 | 4 | Treating Report as trusted notebook summary | Translation from code to prose introduces interpretation drift | Verify Report claims precisely match computed results — exact numbers, correct labels |
@@ -723,7 +746,8 @@ Before returning output, verify:
 - [ ] Pipeline record attrition documented and justified
 - [ ] All Stage 5-8 scripts have corresponding QA scripts in `scripts/cr/`
 - [ ] All QA BLOCKERs resolved (verified as genuine fixes)
-- [ ] CP1-CP4 all passed
+- [ ] CP1-CP4 all passed (`PASSED` or `PASSED WITH WARNINGS`; any `FAILED`, or any recorded count line with `not verified > 0`, is unresolved)
+- [ ] Pre-Output Verification (Stage 12) checklist completed — report sections, Plan-commitment consistency, Research Outcomes, Hypotheses, notebook render (see `agent_reference/VALIDATION_CHECKPOINTS.md` § Pre-Output Verification (Stage 12))
 - [ ] Suppression rate documented
 - [ ] No unexpected nulls in critical columns
 - [ ] AI Use Disclosure section present in Report (not stub/placeholder)
@@ -767,7 +791,8 @@ Load on demand — do NOT read all at start:
 
 | File | When to Read | Purpose |
 |------|-------------|---------|
-| `agent_reference/VALIDATION_CHECKPOINTS.md` | Step 7.3 (Silent Failure Audit) | CP1-CP4 definitions for verifying checkpoint appropriateness |
+| `agent_reference/VALIDATION_CHECKPOINTS.md` | Step 7.3 (Silent Failure Audit) | CP1-CP4 definitions for verifying checkpoint appropriateness; per-check outcome vocabulary (`[PASS]`/`[WARNING]`/`[FAIL]`/`[NOT VERIFIED]`/`[SKIPPED]`) and the count/verdict grammar |
+| `agent_reference/VALIDATION_CHECKPOINTS.md` § Pre-Output Verification (Stage 12) | Delivery verification (this agent owns it) | The `human-verify` checklist for report sections, Plan consistency, Research Outcomes, and Hypotheses — formerly mislabeled CP4.4-CP4.7 |
 | `agent_reference/QA_CHECKPOINTS.md` | Step 7.5 (QA History Review) | QA1-QA4b definitions and severity standards |
 | `agent_reference/WORKFLOW_PHASE5_SYNTHESIS.md` | If Final Review details needed | Goal-backward verification, traditional review checklist, review outcome |
 | `agent_reference/REPORT_TEMPLATE.md` | Step 6 (Coherence) | Expected report structure for completeness verification |

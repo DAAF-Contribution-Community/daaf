@@ -288,7 +288,8 @@ cat(sprintf("Saved existing output to %s\n", output_path))
 ```
 Executed: 2026-01-24 14:32:05
 Exit code: 0
-CP1 STATUS: PASSED
+Checks: 5 passed, 0 warnings, 0 failed, 0 not verified, 0 skipped
+CP1 VALIDATION: PASSED
 ```
 :::
 ````
@@ -352,7 +353,7 @@ statements.
 
 **Script:** `scripts/stage5_fetch/01_fetch-ccd.R`
 **Output:** `data/raw/2026-01-24_ccd_schools.parquet`
-**Status:** CP1 PASSED
+**Status:** CP1 PASSED WITH WARNINGS
 
 ```{r}
 #| label: stage5-01-fetch-ccd
@@ -371,7 +372,8 @@ library(tidyverse)
 Executed: 2026-01-24 14:32:05
 Fetched: 6,234 rows x 15 columns
 Saved to: data/raw/2026-01-24_ccd_schools.parquet
-CP1 STATUS: PASSED
+Checks: 4 passed, 1 warnings, 0 failed, 0 not verified, 0 skipped
+CP1 VALIDATION: PASSED WITH WARNINGS
 ```
 :::
 
@@ -683,7 +685,8 @@ def _(mo):
     mo.accordion({"Execution Log (01_fetch-ccd.py)": mo.md('''```
 Executed: 2026-01-24 14:32:05
 Exit code: 0
-CP1 STATUS: PASSED
+Checks: 5 passed, 0 warnings, 0 failed, 0 not verified, 0 skipped
+CP1 VALIDATION: PASSED
 ```''')})
     return
 
@@ -961,6 +964,7 @@ Awaiting guidance before proceeding.
 | 8 | Omitting scripts | Breaks audit completeness; missing steps make analysis unreproducible | Every final successful script in `scripts/stage{5,6,7,8}_*/` must appear; preserve prior versions in the scripts archive and document them |
 | 9 | Omitting a format-specific safety anchor | A Marimo comment-only cell without `pass` is invalid; a Quarto archive without both eval guards or exact marker may execute or fail RV decompilation | Marimo: end archive cells with `pass`. Quarto: global/per-chunk `eval: false`, `code-fold: false`, and exact marker |
 | 10 | Modifying original scripts | Corrupts the source of truth; scripts are immutable artifacts | READ scripts to extract code and logs; never WRITE to `scripts/` |
+| 11 | Rounding a checkpoint status up in a Status column | A log that said `CP4 VALIDATION: PASSED WITH WARNINGS` recorded as `CP4 PASSED` erases a real deviation from the notebook's audit surface | Transcribe the verdict exactly as the log printed it: `PASSED`, `PASSED WITH WARNINGS`, or `FAILED` (QA: `PASSED`, `WARNING`, `BLOCKER`). Status columns are transcription, not judgment |
 
 **DO NOT create "Executive Summary" or "Data Explorer" sections with new code.** If a summary does not exist in a script, do not create it. The notebook shows what the scripts did, not new analysis.
 
@@ -1142,7 +1146,8 @@ EXECUTING: 01_fetch-ccd
 ============================================================
 Fetched: 6,234 rows x 15 columns
 Saved to: data/raw/2026-01-24_ccd_schools.parquet
-CP1 STATUS: PASSED
+Checks: 5 passed, 0 warnings, 0 failed, 0 not verified, 0 skipped
+CP1 VALIDATION: PASSED
 ```''')})
 
 # RIGHT: Optional post-bundle existing-Parquet preview (one of two display forms)

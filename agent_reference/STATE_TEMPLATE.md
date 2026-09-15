@@ -48,27 +48,56 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 
 ### Primary Validation (CP1-CP4)
 
-| Checkpoint | Status | Timestamp | Notes |
-|------------|--------|-----------|-------|
-| CP1 (Post-Fetch) | [PENDING/PASSED/FAILED] | [time] | [notes] |
-| CP2 (Post-Clean) | [PENDING/PASSED/FAILED] | [time] | [notes] |
-| CP3 (Post-Transform) | [PENDING/PASSED/FAILED] | [time] | [notes] |
-| CP4 (Pre-Output) | [PENDING/PASSED/FAILED] | [time] | [notes] |
+> Record the verdict **and** the counts from each checkpoint's count line. A verdict without counts cannot be distinguished later from a pass over checks that never ran.
+
+| Checkpoint | Verdict | Passed | Warnings | Failed | Not Verified | Skipped | Timestamp | Notes |
+|------------|---------|--------|----------|--------|--------------|---------|-----------|-------|
+| CP1 (Post-Fetch) | [PENDING/PASSED/PASSED WITH WARNINGS/FAILED] | [n] | [n] | [n] | [n] | [n] | [time] | [notes; reasons for any skipped or not-verified checks] |
+| CP2 (Post-Clean) | [PENDING/PASSED/PASSED WITH WARNINGS/FAILED] | [n] | [n] | [n] | [n] | [n] | [time] | [notes] |
+| CP3 (Post-Transform) | [PENDING/PASSED/PASSED WITH WARNINGS/FAILED] | [n] | [n] | [n] | [n] | [n] | [time] | [notes] |
+| CP4 (Post-Analysis & Viz, Stage 8) | [PENDING/PASSED/PASSED WITH WARNINGS/FAILED] | [n] | [n] | [n] | [n] | [n] | [time] | [notes] |
+
+**CP Verdict Values** (from the `CP{n} VALIDATION:` line in the script's execution log):
+- **PENDING** — the checkpoint has not executed yet
+- **PASSED** — every check ran and held; `failed` and `not verified` are both 0
+- **PASSED WITH WARNINGS** — every check ran, one or more reported a non-fatal deviation; passes the gate, maps to a reported status of `WARNING`, and is not a clean pass. The warnings carry forward to the Stage 10 QA aggregation
+- **FAILED** — one or more checks failed, **or one or more could not be verified**. A `not verified` count above zero forces FAILED regardless of the other counters: a validation gate that could not obtain its evidence has not gated. The script raises, so the transformation does not complete. Resolve by supplying the missing input, correcting the checkpoint configuration, or declaring the check not applicable with a written reason (which moves it to `skipped`) — see `agent_reference/ERROR_RECOVERY.md`
+
+### Pre-Output Verification (Stage 12)
+
+> Recorded in its own table because its outcomes are neither the CP nor the QA enum: Pre-Output
+> Verification is a data-verifier checklist over Plan commitments (`agent_reference/VALIDATION_CHECKPOINTS.md`
+> § Pre-Output Verification (Stage 12)), so its four counts — verified, deviations, not verified, not
+> applicable — do not fit the CP table's Passed/Warnings/Failed/Not Verified/Skipped columns. No line
+> here carries a `CP4` token.
+
+| Checkpoint | Aggregate | Verified | Deviations | Not Verified | Not Applicable | Timestamp | Notes |
+|------------|-----------|----------|------------|--------------|----------------|-----------|-------|
+| Pre-Output Verification (PO.1-PO.4) | [PENDING/VERIFIED/DEVIATIONS FOUND/NOT VERIFIED] | [n] | [n] | [n] | [n] | [time] | [which items deviated or could not be checked, and why] |
+
+**Aggregate Values** (from the `PRE-OUTPUT VERIFICATION:` line in the data-verifier report):
+- **PENDING** — Stage 12 verification has not run yet
+- **VERIFIED** — every item was checked against its artifact and the commitment was met; `deviations` and `not verified` are both 0
+- **DEVIATIONS FOUND** — every item was checked and one or more departed from the Plan. A major deviation blocks delivery; a minor one is acceptable when the Report documents it
+- **NOT VERIFIED** — one or more items could not be checked (Plan section absent, artifact missing). Zero items assessed is also NOT VERIFIED — an unchecked deliverable is never a clean pass
 
 ### Secondary Validation (QA1-QA4b)
 
-| Checkpoint | Stage | Status | BLOCKERs | WARNINGs | Revisions | Timestamp |
-|------------|-------|--------|----------|----------|-----------|-----------|
-| QA1 (Post-Fetch) | 5 | [PENDING/PASSED/ISSUES] | [count] | [count] | [count] | [time] |
-| QA2 (Post-Clean) | 6 | [PENDING/PASSED/ISSUES] | [count] | [count] | [count] | [time] |
-| QA3 (Post-Transform) | 7 | [PENDING/PASSED/ISSUES] | [count] | [count] | [count] | [time] |
-| QA4a (Post-Analysis) | 8.1 | [PENDING/PASSED/ISSUES] | [count] | [count] | [count] | [time] |
-| QA4b (Post-Viz) | 8.2 | [PENDING/PASSED/ISSUES] | [count] | [count] | [count] | [time] |
+| Checkpoint | Stage | Result | Passed | Warnings | Blockers | Not Verified | Skipped | Info | Revisions | Timestamp |
+|------------|-------|--------|--------|----------|----------|--------------|---------|------|-----------|-----------|
+| QA1 (Post-Fetch) | 5 | [PENDING/PASSED/WARNING/BLOCKER] | [n] | [n] | [n] | [n] | [n] | [n] | [count] | [time] |
+| QA2 (Post-Clean) | 6 | [PENDING/PASSED/WARNING/BLOCKER] | [n] | [n] | [n] | [n] | [n] | [n] | [count] | [time] |
+| QA3 (Post-Transform) | 7 | [PENDING/PASSED/WARNING/BLOCKER] | [n] | [n] | [n] | [n] | [n] | [n] | [count] | [time] |
+| QA4a (Post-Analysis) | 8.1 | [PENDING/PASSED/WARNING/BLOCKER] | [n] | [n] | [n] | [n] | [n] | [n] | [count] | [time] |
+| QA4b (Post-Viz) | 8.2 | [PENDING/PASSED/WARNING/BLOCKER] | [n] | [n] | [n] | [n] | [n] | [n] | [count] | [time] |
 
-**QA Status Values:**
+**QA Result Values** (from the `QA{n} RESULT:` line in the code-reviewer's return):
 - **PENDING** — QA checkpoint not yet executed for this stage
-- **PASSED** — All scripts passed QA review (no BLOCKERs, WARNINGs logged)
-- **ISSUES** — BLOCKERs resolved via revision, or WARNINGs logged
+- **PASSED** — every default check for this stage ran on real inputs and held, with its evidence on the line; `blockers`, `warnings`, and `not verified` are all 0. PASSED does **not** mean "no BLOCKERs were raised" — a stage with unverified checks is not PASSED
+- **WARNING** — the stage progresses, but something is on the record: a non-fatal deviation, **or a check that could not be verified** (`not verified > 0` forces at least WARNING), or a run in which zero substantive checks executed
+- **BLOCKER** — a revision-required finding; routes to the revision flow and, if unresolved after 2 revisions, STOPs and escalates to the user
+
+**Recording NOT VERIFIED and SKIPPED.** For every checkpoint with `not verified > 0`, add a row under QA Findings Summary > "Checks Not Verified or Skipped" naming each unverified check, what input was missing, and the reviewer's escalation decision (left at WARNING, or escalated to BLOCKER because the Plan had promised the input). For every checkpoint with `skipped > 0`, record the declared reason per check.
 
 **Note:** This table provides an aggregate summary per stage. Per-script QA tracking (which gates individual script progression) is recorded in the **Transformation Progress** table below, where each row tracks one script's independent QA status.
 
@@ -227,14 +256,14 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 
 ### QA Checkpoint Summary
 
-| Checkpoint | Stage | Scripts Reviewed | BLOCKERs | WARNINGs | INFOs | Revisions Applied |
-|------------|-------|------------------|----------|----------|-------|-------------------|
-| QA1 (Post-Fetch) | 5 | [count] | [count] | [count] | [count] | [count] |
-| QA2 (Post-Clean) | 6 | [count] | [count] | [count] | [count] | [count] |
-| QA3 (Post-Transform) | 7 | [count] | [count] | [count] | [count] | [count] |
-| QA4a (Post-Analysis) | 8.1 | [count] | [count] | [count] | [count] | [count] |
-| QA4b (Post-Viz) | 8.2 | [count] | [count] | [count] | [count] | [count] |
-| **Total** | — | [sum] | [sum] | [sum] | [sum] | [sum] |
+| Checkpoint | Stage | Scripts Reviewed | BLOCKERs | WARNINGs | NOT VERIFIED | SKIPPED | INFOs | Revisions Applied |
+|------------|-------|------------------|----------|----------|--------------|---------|-------|-------------------|
+| QA1 (Post-Fetch) | 5 | [count] | [count] | [count] | [count] | [count] | [count] | [count] |
+| QA2 (Post-Clean) | 6 | [count] | [count] | [count] | [count] | [count] | [count] | [count] |
+| QA3 (Post-Transform) | 7 | [count] | [count] | [count] | [count] | [count] | [count] | [count] |
+| QA4a (Post-Analysis) | 8.1 | [count] | [count] | [count] | [count] | [count] | [count] | [count] |
+| QA4b (Post-Viz) | 8.2 | [count] | [count] | [count] | [count] | [count] | [count] | [count] |
+| **Total** | — | [sum] | [sum] | [sum] | [sum] | [sum] | [sum] | [sum] |
 
 ### BLOCKERs Resolved
 
@@ -251,6 +280,14 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 | Stage | Script | Warning | Accepted Rationale |
 |-------|--------|---------|--------------------|
 | [N] | [filename.py] | [Warning description] | [Why acceptable] |
+
+### Checks Not Verified or Skipped
+
+*One row per check that could not run. An empty table means every planned check ran on real data, and it should say so rather than be omitted. This table is the source for the limitations the report must disclose at Stage 11.*
+
+| Stage | Checkpoint | Check (key) | Outcome | What Was Missing / Declared Reason | Escalation Decision |
+|-------|-----------|-------------|---------|-------------------------------------|---------------------|
+| [N] | [CP{n} / QA{n}] | [e.g., `suppression_rate`] | [NOT VERIFIED / SKIPPED] | [e.g., "no suppression_code declared in the Plan's Domain Configuration"] | [Left at WARNING / Escalated to BLOCKER because … / N/A for SKIPPED] |
 
 ### Unresolved Issues
 
@@ -588,5 +625,7 @@ STATE.md is the primary input for the Session Recovery procedure:
 4. **Next actions** provide immediate guidance
 5. **Blockers** surface issues needing resolution
 6. **Error budget** prevents infinite retries
+
+**Reading verdicts on recovery.** A resuming session reads the Checkpoint Status tables as verdict *plus counts*, never verdict alone. A checkpoint recorded `PASSED` with a nonzero NOT VERIFIED count is a contradiction — the recorded verdict is stale or was written before the truthful-checkpoint contract; re-read the script's execution log for the `CP{n} VALIDATION:` / `QA{n} RESULT:` line and its count line, and treat the log as authoritative. Before advancing past a gate, confirm the "Checks Not Verified or Skipped" table has an entry for every unverified or skipped check the counts imply; if the counts and that table disagree, the stage's QA is unresolved and must be re-reviewed rather than assumed clean.
 
 See `{BASE_DIR}/.claude/skills/daaf-orchestrator/references/session-recovery.md` for complete recovery procedure.

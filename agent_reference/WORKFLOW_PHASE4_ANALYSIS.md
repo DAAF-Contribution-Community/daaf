@@ -146,14 +146,34 @@ print(f"POST-STATE: {post_shape[0]:,} rows × {post_shape[1]} cols")
 print(f"ROW CHANGE: {(post_shape[0]/pre_shape[0]*100):.1f}%")
 
 # VALIDATION (CP3)
-row_loss_pct = 1 - (post_shape[0] / pre_shape[0])
-invariant_passed = row_loss_pct < 0.9  # <90% row loss
+# INTENT: count outcomes so the verdict line is derived, not asserted.
+cp3 = {"passed": 0, "warning": 0, "failed": 0, "not_verified": 0, "skipped": 0}
 
-if invariant_passed:
-    print("CP3 STATUS: PASSED")
-    df_transformed.write_parquet("data/processed/2026-01-31_analysis.parquet")
+# ASSUMES: an empty input frame makes row loss untestable — 0 rows in is not 0% loss.
+if pre_shape[0] == 0:
+    print("[FAIL] Row loss: input frame is empty — loss untestable")
+    cp3["failed"] += 1
 else:
-    print(f"CP3 STATUS: FAILED - Row loss {row_loss_pct:.1%}")
+    row_loss_pct = 1 - (post_shape[0] / pre_shape[0])
+    if row_loss_pct < 0.9:
+        print(f"[PASS] Row loss: {row_loss_pct:.1%} ({pre_shape[0]:,} -> {post_shape[0]:,} rows, threshold 90%)")
+        cp3["passed"] += 1
+    else:
+        print(f"[FAIL] Row loss: {row_loss_pct:.1%} ({pre_shape[0]:,} -> {post_shape[0]:,} rows, threshold 90%)")
+        cp3["failed"] += 1
+
+print(f"Checks: {cp3['passed']} passed, {cp3['warning']} warnings, {cp3['failed']} failed, "
+      f"{cp3['not_verified']} not verified, {cp3['skipped']} skipped")
+# REASONING: not-verified counts as FAILED — a gate with missing evidence has not gated.
+if cp3["failed"] > 0 or cp3["not_verified"] > 0 or (cp3["passed"] + cp3["warning"] + cp3["failed"]) == 0:
+    print("CP3 VALIDATION: FAILED")
+    raise ValueError("CP3 FAILED - see details above")
+elif cp3["warning"] > 0:
+    print("CP3 VALIDATION: PASSED WITH WARNINGS")
+else:
+    print("CP3 VALIDATION: PASSED")
+
+df_transformed.write_parquet("data/processed/2026-01-31_analysis.parquet")
 
 # EXECUTION LOG will be appended here after running:
 # bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage7_transform/01_join-data.py
@@ -189,15 +209,43 @@ cat(sprintf("ROW CHANGE: %.1f%%\n", post_shape[1] / pre_shape[1] * 100))
 
 # --- Validate ---
 # VALIDATION (CP3)
-row_loss_pct <- 1 - (post_shape[1] / pre_shape[1])
-invariant_passed <- row_loss_pct < 0.9  # <90% row loss
+# INTENT: count outcomes so the verdict line is derived, not asserted.
+cp3 <- c(passed = 0L, warning = 0L, failed = 0L, not_verified = 0L, skipped = 0L)
 
-if (invariant_passed) {
-  cat("CP3 STATUS: PASSED\n")
-  write_parquet(df_transformed, "data/processed/2026-01-31_analysis.parquet")
+# ASSUMES: an empty input frame makes row loss untestable — 0 rows in is not 0% loss.
+if (pre_shape[1] == 0) {
+  cat("[FAIL] Row loss: input frame is empty — loss untestable\n")
+  cp3["failed"] <- cp3["failed"] + 1L
 } else {
-  cat(sprintf("CP3 STATUS: FAILED - Row loss %.1f%%\n", row_loss_pct * 100))
+  row_loss_pct <- 1 - (post_shape[1] / pre_shape[1])
+  if (row_loss_pct < 0.9) {
+    cat(sprintf("[PASS] Row loss: %.1f%% (%s -> %s rows, threshold 90%%)\n",
+                row_loss_pct * 100, format(pre_shape[1], big.mark = ","),
+                format(post_shape[1], big.mark = ",")))
+    cp3["passed"] <- cp3["passed"] + 1L
+  } else {
+    cat(sprintf("[FAIL] Row loss: %.1f%% (%s -> %s rows, threshold 90%%)\n",
+                row_loss_pct * 100, format(pre_shape[1], big.mark = ","),
+                format(post_shape[1], big.mark = ",")))
+    cp3["failed"] <- cp3["failed"] + 1L
+  }
 }
+
+cat(sprintf("Checks: %d passed, %d warnings, %d failed, %d not verified, %d skipped\n",
+            cp3[["passed"]], cp3[["warning"]], cp3[["failed"]],
+            cp3[["not_verified"]], cp3[["skipped"]]))
+# REASONING: not-verified counts as FAILED — a gate with missing evidence has not gated.
+if (cp3[["failed"]] > 0 || cp3[["not_verified"]] > 0 ||
+    (cp3[["passed"]] + cp3[["warning"]] + cp3[["failed"]]) == 0) {
+  cat("CP3 VALIDATION: FAILED\n")
+  stop("CP3 FAILED - see details above")
+} else if (cp3[["warning"]] > 0) {
+  cat("CP3 VALIDATION: PASSED WITH WARNINGS\n")
+} else {
+  cat("CP3 VALIDATION: PASSED\n")
+}
+
+write_parquet(df_transformed, "data/processed/2026-01-31_analysis.parquet")
 
 # EXECUTION LOG will be appended here after running:
 # bash {BASE_DIR}/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/stage7_transform/01_join-data.R
@@ -232,11 +280,19 @@ transformation_summary = pl.DataFrame([
 # Data quality checks
 new_nulls_by_col = {col: post_nulls - pre_nulls for col in ...}
 
-# CP3 Status
+# CP3 Status — the reported status, derived from the printed verdict line
 cp3_status = "PASSED" | "WARNING" | "FAILED"
 ```
 
-> **R projects:** implement the same report with `cat()` for the change summary, a `data.frame`/`tibble` for the transformation summary table, `sapply()`/`dplyr::summarise()` for per-column null deltas, and `stopifnot()`-backed status assignment. The checks and the PASSED/WARNING/FAILED contract are identical.
+> **Log line vs. reported status.** The CP3 code prints a count line and one of three verdict
+> strings: `CP3 VALIDATION: PASSED | PASSED WITH WARNINGS | FAILED`. The status reported back to
+> the orchestrator is the three-valued `PASSED | WARNING | FAILED` used throughout this document.
+> The mapping is fixed: `PASSED` ⇒ `PASSED`, **`PASSED WITH WARNINGS` ⇒ `WARNING`**, `FAILED` ⇒
+> `FAILED`. The verdict is derived from the counters, never hard-coded — `FAILED` when
+> `failed > 0` **or `not_verified > 0`** (a check that could not run has not gated anything) or
+> when zero checks ran; `PASSED WITH WARNINGS` when `warning > 0`; `PASSED` otherwise.
+
+> **R projects:** implement the same report with `cat()` for the change summary, a `data.frame`/`tibble` for the transformation summary table, `sapply()`/`dplyr::summarise()` for per-column null deltas, and counter-derived status assignment (`stopifnot()` for the halting conditions). The checks and the PASSED/WARNING/FAILED contract are identical.
 
 ### Invocation Template: data-scientist + polars (Python) or tidyverse (R)
 
@@ -399,6 +455,13 @@ with stage-specific values for Stage 7.
 
 **Do NOT proceed to transformation #{n+1} until QA returns PASSED or WARNING.**
 
+> **QA verdict vocabulary.** A QA script prints a count line
+> (`Checks: {passed} passed, {warnings} warnings, {blockers} blockers, {not_verified} not verified, {skipped} skipped, {info} info`)
+> followed by `QA{n} RESULT: PASSED | WARNING | BLOCKER`. `BLOCKER` if `blockers > 0`; else `WARNING`
+> if `warnings > 0` **or `not_verified > 0`** or if zero checks ran; else `PASSED`. A `[NOT VERIFIED]`
+> check whose input the Plan explicitly promised escalates to BLOCKER at the reviewer's judgment.
+> `BLOCKER` does not satisfy this gate.
+
 ```python
 # Step 3: Repeat Step 2 AND QA for each transformation in sequence
 # Orchestrator increments {n} and provides next transformation
@@ -435,7 +498,11 @@ All relative paths in referenced files resolve from BASE_DIR.
 - New nulls: {count by column}
 - Unexpected changes: {list}
 
-**CP3 Status:** PASSED | FAILED | WARNING
+**Checkpoint tally (quote the script's count line):**
+`Checks: {passed} passed, {warning} warnings, {failed} failed, {not_verified} not verified, {skipped} skipped`
+
+**CP3 Status:** PASSED | WARNING | FAILED
+(Map from the printed verdict: `PASSED` ⇒ PASSED, `PASSED WITH WARNINGS` ⇒ WARNING, `FAILED` ⇒ FAILED. `not verified > 0` ⇒ FAILED.)
 
 If WARNING or FAILED, provide recommendations.""",
     subagent_type: "research-executor"
@@ -1309,7 +1376,7 @@ Apply the relevant checklist after each subagent returns findings for the corres
 - [ ] Pre-state and post-state both documented
 - [ ] Row change percentage calculated
 - [ ] Invariants checked with PASS/FAIL status
-- [ ] Overall status: PASSED/FAILED/WARNING
+- [ ] Overall status: PASSED/WARNING/FAILED (log verdict `PASSED WITH WARNINGS` maps to WARNING; count line shows 0 not verified)
 - [ ] If FAILED: Issue description and proposed fix present
 - [ ] For joins: Cardinality validation performed
 
@@ -1320,7 +1387,7 @@ Apply the relevant checklist after each subagent returns findings for the corres
 - [ ] Results saved to `output/analysis/` as parquet
 - [ ] Key findings documented with effect sizes and confidence intervals
 - [ ] Interpretation aligned with Research Outcomes in Plan.md
-- [ ] Overall status: PASSED/FAILED/WARNING
+- [ ] Overall status: PASSED/WARNING/FAILED (log verdict `PASSED WITH WARNINGS` maps to WARNING; count line shows 0 not verified)
 
 ### Stage 8.2 (Visualization) Verification
 
@@ -1330,7 +1397,7 @@ Apply the relevant checklist after each subagent returns findings for the corres
 - [ ] Data source in visualization matches analysis dataset
 - [ ] Colorblind-safe palette used
 - [ ] Visual inspection performed via **Read tool** on generated PNG files
-- [ ] Overall status: PASSED/FAILED/WARNING
+- [ ] Overall status: PASSED/WARNING/FAILED (log verdict `PASSED WITH WARNINGS` maps to WARNING; count line shows 0 not verified)
 
 ---
 

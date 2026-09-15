@@ -351,7 +351,7 @@ All `.sh` files are committed with the executable bit set: after creating or mod
 | `agent_reference/PLAN_TASKS_TEMPLATE.md` | Plan Tasks document template (Full Pipeline) |
 | `agent_reference/STATE_TEMPLATE.md` | Session state file template (Full Pipeline) |
 | `agent_reference/STATE_TEMPLATE_ONBOARDING.md` | Session state file template (Data Onboarding mode) |
-| `agent_reference/QA_CHECKPOINTS.md` | QA checkpoint definitions (QA1-QA4b) |
+| `agent_reference/QA_CHECKPOINTS.md` | QA checkpoint definitions (QA1-QA4b, QAP1-QAP4) |
 | `agent_reference/VALIDATION_CHECKPOINTS.md` | Validation checkpoint code templates |
 | `agent_reference/SCOPE_POLICY.md` | Canonical plan scope / task-count policy (data-planner + plan-checker) |
 | `agent_reference/REPORT_TEMPLATE.md` | Output report template |

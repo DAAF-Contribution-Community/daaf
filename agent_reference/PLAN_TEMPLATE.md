@@ -110,11 +110,14 @@ must_haves:
 **Explorer Skill:** [skill name, e.g., "education-data-explorer"]
 **Context Skill:** [skill name or N/A, e.g., "education-data-context"]
 **Coded Missing Values:** [list or "none", e.g., [-1, -2, -3]]
-**Suppression Code:** [value or N/A, e.g., -3]
+**Suppression Code:** [value or N/A — the domain's suppression sentinel, e.g., -3 for Urban Institute Education Data Portal sources]
 **Suppression Threshold:** [decimal or N/A, e.g., 0.5]
+**Reported Suppression Rate:** [per-column mapping or "none", e.g., {"frl": 0.12, "enrollment": 0.0} — the rate the source documents, which QA2/CP2 recompute against]
 **Year Column:** [column name or N/A, e.g., "year"]
 **Flag Years:** [list or "none", e.g., [2020, 2021] for COVID-impacted years]
 **Governance Rules:** [list or "none", e.g., "Cross-state assessment comparison is NEVER valid"]
+
+> **The suppression fields feed the QA2 and CP2 suppression checks.** Those checks read **Suppression Code** as the sentinel to count in the raw frame, and compare each column's **Reported Suppression Rate** against the rate they recompute. `0` and `0.0` are valid reported rates and must not be treated as absent. If either field is `None` or absent, the check emits `[NOT VERIFIED]` — which forces `FAILED` on a CP verdict and at least `WARNING` on a QA result — rather than passing on missing evidence. A domain that genuinely has no suppression should say so here **and** be declared in the checkpoint script's `not_applicable` mapping with that reason, which records the check as `[SKIPPED]` instead. See `agent_reference/VALIDATION_CHECKPOINTS.md` and `agent_reference/QA_CHECKPOINTS.md`; per-column detail belongs in Phase 1: Discovery Results > Stage 3: Source Deep-Dive > **Suppression Patterns** below.
 
 ---
 
@@ -711,14 +714,30 @@ Stage 9 notebooks are audit documents compiled from the final successful, alread
 | New columns exist | Yes | Missing derived columns |
 | Unexpected NAs | 0 | >10% NAs in derived columns |
 
-### CP4: Before Output
+### CP4: After Analysis & Visualization (Stage 8)
 
 **Expected Values:**
 
 | Check | Expected | STOP If |
 |-------|----------|---------|
-| All planned figures generated | Yes | Missing figures |
+| CP4.1 Analysis outputs valid | Results object exists; estimates finite; converged; n ≥ [project minimum] | Missing results, non-finite estimates, convergence failure, n below the minimum |
+| CP4.2 Critical nulls | 0 nulls in [outcome/key columns] | Any null in an outcome or key column |
+| CP4.3 Figures | Every figure this task promised exists, is non-empty, and was visually inspected via Read | Missing or empty figure |
+| CP4.4 Correct data source | Script loads `data/processed/` (or the named Plan input) | Script reads `data/raw/` |
+
+### Pre-Output Verification (Stage 12)
+
+*Not a script checkpoint — an agent checklist owned by data-verifier, classified `human-verify`.
+See `agent_reference/VALIDATION_CHECKPOINTS.md` § Pre-Output Verification (Stage 12).*
+
+**Expected Values:**
+
+| Check | Expected | STOP If |
+|-------|----------|---------|
 | Report sections complete | Yes | Missing sections |
+| Outputs match Plan commitments | Yes | Deviation in data sources, years, geography, or methodology |
+| Research Outcomes addressed with evidence | All | Any outcome unaddressed |
+| Hypotheses transparently assessed | All (if any) | Any hypothesis silently dropped |
 | Stage 9 notebook validates successfully | Yes | `marimo run` failure (Python) or `quarto render` failure (R); Quarto rendering validates assembly and enabled previews, not archived analysis re-execution |
 
 ### QA Tolerance Decisions

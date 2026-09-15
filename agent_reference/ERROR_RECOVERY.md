@@ -685,6 +685,9 @@ cat("\n=== DIAGNOSIS COMPLETE ===\n")
 | Profiling Accuracy | Distribution claim unsupported by data; uniqueness count incorrect | Re-run profiling script with corrected logic |
 | Interpretation Discipline | Semantic interpretation missing [PRELIMINARY] marker | Re-run interpretation script with markers enforced |
 | Coded Value Omission | Standard sentinels (-1, -9, -99, -999) present but not catalogued | Re-run quality-anomaly script with expanded scan |
+| Promised Input Missing (escalated NOT VERIFIED) | Documentation was supplied but script 11 never ran, so `doc_coverage` is `[NOT VERIFIED]`; structure classified HIERARCHICAL but 07b is absent, so `cross_file_linkage` is `[NOT VERIFIED]` (keys and escalation rule: `agent_reference/QA_CHECKPOINTS.md` § Profiling QA Checkpoints) | Obtain the missing input and re-run the owed profiling script — the checkpoint cannot be cleared by rerunning the review. If the input genuinely cannot be obtained, the check is declared not applicable with a written reason (becoming `[SKIPPED]`) and the limitation is carried to the user at PSU-DI2 |
+
+> **NOT VERIFIED is not automatically a BLOCKER.** A `[NOT VERIFIED]` check forces the QAP result to at least WARNING. It becomes a BLOCKER only when the profiling protocol had promised the input (the row above) — the reviewer makes that call per check and records the rationale. A NOT VERIFIED whose input was never owed (no known universe exists to test entity coverage against) stays a WARNING and travels forward as a documented limitation, not a revision cycle.
 
 **Recovery Flow:**
 
@@ -774,7 +777,8 @@ Awaiting guidance.
 - CP1: Empty data, missing critical columns
 - CP2: >50% suppression, >90% data loss
 - CP3: >90% row loss after transformation
-- CP4: Missing critical requirements
+- CP4: Non-finite estimates, convergence failure, nulls in outcome/key columns, a promised figure missing or empty, or a script reading `data/raw/`
+- Any checkpoint whose count line shows `not verified > 0` — a check that could not run has not gated anything, so the verdict is FAILED even when nothing explicitly failed
 
 **Warning Conditions (document and proceed):**
 - High but acceptable missingness
@@ -977,11 +981,13 @@ Data Onboarding uses a different error recovery pattern than the Full Pipeline. 
 | DI-0 (API Acquisition) | API auth failure (401/403), rate limit (429), empty response, unreachable docs, pagination error | Verify API key env var is set and valid; retry with backoff (max 3); adjust query params if empty response; fall back to user description if docs unreachable; reduce page size if pagination fails |
 | DI-1 (Intake) | File not found, file empty, missing inputs | Re-collect inputs from user; verify file path and accessibility |
 | DI-2 (Project Setup) | Folder creation fails | Create folder manually; verify `{BASE_DIR}/scripts/run_with_capture.sh` is accessible |
-| DI-3 (Part A) | Encoding errors, format detection failure, CPP1 fails | Check file format; try alternative encoding; re-invoke data-ingest subagent |
+| DI-3 (Part A) | Encoding errors, format detection failure, CPP1 `FAILED` on observed data | Check file format; try alternative encoding; re-invoke data-ingest subagent |
+| Any of DI-3 to DI-6 | CPP{n} `FAILED` with `not verified > 0` — the checkpoint could not obtain its evidence (missing config key, absent column, empty expected list, unset threshold) rather than observing a bad value | **A different failure from a data failure — rerunning unchanged reproduces it.** Read the `[NOT VERIFIED]` lines: each names exactly what was missing. Resolve by (a) supplying the missing input (point the checkpoint at the real column, set the expected value, obtain the documentation), (b) correcting the checkpoint configuration when the key or value is wrong, or (c) declaring the check not applicable in the script's `not_applicable` mapping **with a written reason**, which converts it to `[SKIPPED]`. Then create the versioned revision and re-execute. Never resolve it by deleting the check or by hard-coding the verdict |
 | DI-4 (Part B) | Distribution analysis errors, temporal column misidentified | Review Part A conditional decisions; re-invoke with corrected decisions |
 | DI-5 (Part C) | Key detection failure, no candidate keys found | Expand composite key search; consult user about grain of data |
 | DI-6 (Part D) | Interpretation ambiguity, documentation contradicts data | Flag uncertainties as [PRELIMINARY] with LOW confidence; proceed to PSU-DI2 for user review |
-| DI-7 (Skill Authoring) | Template compliance failure (CPP-SKILL) | Revise skill draft (max 2 attempts); escalate if still non-compliant |
+| DI-7 (Skill Authoring) | Template compliance failure — CPP-SKILL `FAILED` because a required section is genuinely absent or malformed | Revise skill draft (max 2 attempts); escalate if still non-compliant |
+| DI-7 (Skill Authoring) | CPP-SKILL `FAILED` with `not verified > 0` — compliance could not be assessed (draft path unset or unreadable, section list empty, template reference unavailable) | Fix the compliance check's inputs, not the skill draft: point it at the actual draft path, populate the required-section list, or declare a section not applicable with a reason. This failure does not consume a skill-revision attempt, because the draft was never assessed |
 | DI-8 (Review & Delivery) | User rejects skill | Collect feedback; return to DI-7 with revision instructions |
 
 ### Data Onboarding STOP Conditions

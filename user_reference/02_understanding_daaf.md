@@ -792,7 +792,11 @@ These are validation checks *embedded directly in the analysis scripts themselve
 | **CP1** | After data fetch | Empty datasets, wrong data types, >90% missing values in critical fields |
 | **CP2** | After data cleaning | Invalid coded values, suppression rates above 50%, impossible analysis types |
 | **CP3** | After each transformation | Unexpected row loss (>90%), broken joins, surprise null values |
-| **CP4** | Before final output | Missing required outputs, deviations from the plan |
+| **CP4** | After analysis and visualization | Invalid or non-finite analysis results, nulls in the columns being analyzed, missing or empty figures, a script reading the wrong data file |
+
+A separate **Pre-Output Verification** pass happens later, at delivery time (Stage 12). That one is not embedded in a script -- it is a checklist the `data-verifier` agent works through, confirming that the report has every section the Plan promised, that the outputs match the Plan's commitments, that every Research Outcome is addressed with evidence, and that any Hypotheses are transparently assessed.
+
+Each checkpoint reports one of three results -- **PASSED**, **PASSED WITH WARNINGS**, or **FAILED** -- along with a count of how many individual checks passed, warned, failed, could not be verified, or were skipped as not applicable. A check that *could not run* (a required input was missing) counts as "not verified" and makes the whole checkpoint FAILED, because a check that never ran has not actually validated anything.
 
 If a checkpoint fails, execution stops. Period. DAAF doesn't try to power through -- it reports the failure and either attempts a fix or escalates to you.
 

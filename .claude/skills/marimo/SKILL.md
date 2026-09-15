@@ -194,7 +194,8 @@ def _(mo):
     mo.accordion({"Execution Log (01_fetch.py)": mo.md('''```
 Executed: 2026-01-24 14:32:05
 Exit code: 0
-CP1 STATUS: PASSED
+Checks: 5 passed, 0 warnings, 0 failed, 0 not verified, 0 skipped
+CP1 VALIDATION: PASSED
 ```''')})
     return
 

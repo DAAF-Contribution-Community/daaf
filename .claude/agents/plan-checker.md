@@ -392,7 +392,8 @@ Confirm validation checkpoints are linked to tasks:
 | CP1 | After fetch tasks | Shape, types, missingness |
 | CP2 | After clean tasks | Coded values, suppression rate |
 | CP3 | After transform tasks | Row counts, join validation |
-| CP4 | Before output | Completeness, Plan alignment |
+| CP4 | After analysis & visualization tasks (Stage 8) | Analysis outputs valid, critical nulls, figures, correct data source |
+| Pre-Output Verification (Stage 12) | Before delivery — data-verifier checklist, not script code | Report sections, Plan-commitment consistency, Research Outcomes, Hypotheses, notebook render |
 
 ### Step 10: Determine Overall Status and Per-Dimension Confidence
 

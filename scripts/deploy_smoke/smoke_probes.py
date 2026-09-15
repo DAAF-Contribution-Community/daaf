@@ -1177,6 +1177,49 @@ def _sandbox_dir() -> Path:
 # larger number (e.g. 100).
 _EXEC_EXIT0_RE = re.compile(r"^#\s*Exit code:\s*0\s*$", re.MULTILINE)
 
+# The capture-status record the wrapper appends next to the exit code:
+# "# Capture: COMPLETE" (optionally followed by a NUL-byte note in
+# parentheses) when the archived stdout is the full output, or
+# "# Capture: INCOMPLETE (tee exit N)" when the capture step failed and the
+# STDOUT section may be truncated. Only COMPLETE is proof that the archived
+# output is whole; "\b" keeps "INCOMPLETE" from matching and admits the
+# parenthesised NUL note.
+_EXEC_CAPTURE_COMPLETE_RE = re.compile(r"^#\s*Capture:\s*COMPLETE\b", re.MULTILINE)
+
+# The wrapper's execution-log banner is a THREE-LINE frame, not a bare marker
+# line: a "# ====..." rule, "# EXECUTION LOG", another "# ====..." rule (see
+# run_with_capture.sh, $BANNER / $LOG_BLOCK — literally "# " followed by 77
+# '='). Matching the full frame — rather than the first occurrence of the marker
+# substring — is what makes the T2.2 evidence forgery-resistant: a coding agent
+# can trivially write the marker text (plus fake "# Exit code: 0" /
+# "# Capture: COMPLETE" lines and the nonce) into the script SOURCE, and a
+# substring search would accept that as proof of execution.
+#
+# The rule length is bounded at 40+ '=' rather than "one or more". A "+" quantifier
+# admits a ONE-character rule ("# =\n# EXECUTION LOG\n# ="), which an agent can
+# type into the source as easily as the bare marker — and because the wrapper
+# REFUSES to run a script that already carries the marker, the forged frame is
+# never joined by a real one, so banner_count stays at the passing value of 1.
+# The 40-character floor puts the frame out of reach of casual source text while
+# staying tolerant of any future change to the wrapper's exact rule width.
+#
+# The wrapper additionally neutralizes a captured output line that reads exactly
+# "EXECUTION LOG" to "#  EXECUTION LOG" (two spaces), so the real frame is the
+# only way a RUN can produce "^# EXECUTION LOG$" — but the SOURCE can still
+# contain one, which is why the evaluator also requires exactly ONE frame.
+_EXEC_BANNER_RE = re.compile(r"^# ={40,}\n# EXECUTION LOG\n# ={40,}$", re.MULTILINE)
+
+# The structural records the wrapper writes INSIDE the frame, in this order:
+# "# Command: <interpreter> <path>", then the "# --- STDOUT ---" section header,
+# then "# --- STDERR ---". Requiring all three (in order) after the banner means a
+# forged frame must reproduce the wrapper's whole log skeleton, not just a rule
+# and a marker. "# --- STDOUT ---" / "# --- STDERR ---" additionally delimit the
+# ONLY region of the log that carries "# "-prefixed captured output, which is
+# where a genuine nonce has to land.
+_EXEC_COMMAND_RE = re.compile(r"^# Command: \S", re.MULTILINE)
+_EXEC_STDOUT_RE = re.compile(r"^# --- STDOUT ---$", re.MULTILINE)
+_EXEC_STDERR_RE = re.compile(r"^# --- STDERR ---$", re.MULTILINE)
+
 
 def _evaluate_t22(script_created: bool, body, nonce: str):
     """Pure evaluator for T2.2 — did the coding agent actually WRITE and
@@ -1185,26 +1228,75 @@ def _evaluate_t22(script_created: bool, body, nonce: str):
     Given whether this run's script exists, its full text (source plus any
     appended execution log), and this run's unique nonce, PASS requires ALL of:
       * the script exists;
-      * run_with_capture's "# EXECUTION LOG" banner is present (proof it ran);
+      * the body contains EXACTLY ONE of run_with_capture's three-line
+        execution-log banner frames — a "# " + 40-or-more '=' rule around the
+        "# EXECUTION LOG" marker (proof it ran, once). Zero frames means it never
+        ran: neither a bare "# EXECUTION LOG" line nor a token "# =" rule around
+        one is a banner. Two or more means the evidence is ambiguous: either a
+        forged frame in the source sits ahead of the real appended log, or the
+        file carries a duplicate append. Both are FAIL;
       * the captured "# Exit code: 0" record appears AFTER the banner (success);
-      * this run's nonce appears AFTER the banner — proving it came from CAPTURED
-        OUTPUT, not merely the source print line (the token is in the source by
-        construction, so a source-only match is not proof of execution).
-    Anything short of all four is FAIL — never PASS-with-note. A stale banner
+      * the "# Capture: COMPLETE" record appears AFTER the banner — the wrapper
+        writes "Capture: INCOMPLETE" (and exits 74) when the archived stdout may
+        be truncated, and a truncated archive is not verified evidence;
+      * the frame carries the wrapper's structural records after the banner, in
+        order: a "# Command: ..." line, a "# --- STDOUT ---" header, and a
+        "# --- STDERR ---" header (fact: frame_records). A forgery must therefore
+        reproduce the whole log skeleton, not merely a rule and a marker;
+      * this run's nonce appears BETWEEN "# --- STDOUT ---" and
+        "# --- STDERR ---" (fact: nonce_in_stdout) — the only region of the log
+        that carries "# "-prefixed CAPTURED OUTPUT. The token is in the source by
+        construction, so neither a source match nor a match merely somewhere
+        after the banner is proof of execution.
+    Anything short of all of these is FAIL — never PASS-with-note. A stale banner
     from a prior run carries a different nonce; a script written but never run
-    has no banner; a nonzero recorded exit fails the success check.
+    has no banner; a nonzero recorded exit fails the success check; an
+    INCOMPLETE (or absent) capture record fails the evidence check; a
+    source-forged frame stacked ahead of the real one fails the single-banner
+    check even when the real log would otherwise satisfy the records.
 
-    Returns (verdict, facts) where facts holds the load-bearing booleans."""
+    Why the region check rather than "anywhere after the banner": the wrapper
+    refuses to run a script whose source already carries the marker, so a
+    source-forged frame is never followed by a real appended log — the count
+    stays at 1 and every "after the banner" search reads forged text. Pinning the
+    nonce to the captured-output region (and demanding the surrounding skeleton)
+    is what keeps a never-executed script from PASSing.
+
+    The post-banner facts are evaluated from the FIRST frame onward. That is
+    deliberate: with the single-banner rule in force, "first" and "only" are the
+    same frame on any PASSing body, and on a multi-banner body the verdict is
+    already FAIL regardless of what the booleans say.
+
+    Returns (verdict, facts) where facts holds the load-bearing booleans plus
+    the integer banner_count."""
     facts = {"script_created": bool(script_created), "banner": False,
-             "exit_success": False, "nonce_after_banner": False}
+             "banner_count": 0, "exit_success": False, "capture_complete": False,
+             "frame_records": False, "nonce_in_stdout": False}
     if script_created and body:
-        idx = body.find("# EXECUTION LOG")
-        if idx != -1:
+        banners = list(_EXEC_BANNER_RE.finditer(body))
+        facts["banner_count"] = len(banners)
+        if banners:
             facts["banner"] = True
-            after = body[idx:]
+            after = body[banners[0].start():]
             facts["exit_success"] = _EXEC_EXIT0_RE.search(after) is not None
-            facts["nonce_after_banner"] = bool(nonce) and nonce in after
-    verdict = Verdict.PASS if all(facts.values()) else Verdict.FAIL
+            facts["capture_complete"] = _EXEC_CAPTURE_COMPLETE_RE.search(after) is not None
+            m_cmd = _EXEC_COMMAND_RE.search(after)
+            m_out = _EXEC_STDOUT_RE.search(after)
+            # Searched from the end of the STDOUT header so the two markers are
+            # ordered by construction and the slice below is always well formed.
+            m_err = _EXEC_STDERR_RE.search(after, m_out.end()) if m_out else None
+            facts["frame_records"] = bool(m_cmd and m_out and m_err
+                                          and m_cmd.start() < m_out.start())
+            if m_out and m_err:
+                # The captured-output region. A script that itself prints
+                # "--- STDERR ---" would end this region early; that can only
+                # SHRINK the searched text, so it may cost a legitimate run a
+                # PASS but can never manufacture one.
+                facts["nonce_in_stdout"] = bool(nonce) and nonce in after[m_out.end():m_err.start()]
+    # banner_count is an int and so is checked separately; all() covers only the
+    # booleans (a count of 2 is truthy, which would otherwise silently pass).
+    booleans_ok = all(v for k, v in facts.items() if k != "banner_count")
+    verdict = Verdict.PASS if (booleans_ok and facts["banner_count"] == 1) else Verdict.FAIL
     return verdict, facts
 
 
@@ -1297,7 +1389,8 @@ def _run_tier2_body(profile_name: str, extra_env: dict, timeout: int, sandbox: P
     # T2.2 — coding agent: research-executor writes + runs a tiny script via
     # run_with_capture. A run-specific nonce ties the CAPTURED OUTPUT to THIS run:
     # the token is present in the source by construction, so PASS additionally
-    # requires the nonce to appear after the execution-log banner.
+    # requires the nonce to appear inside the execution log's captured-STDOUT
+    # region (between the "# --- STDOUT ---" and "# --- STDERR ---" markers).
     exec_nonce = f"daaf-exec-{uuid.uuid4().hex[:12]}"
     probe_script = sandbox / "t22_probe.py"
     p22 = (
@@ -1319,18 +1412,30 @@ def _run_tier2_body(profile_name: str, extra_env: dict, timeout: int, sandbox: P
     verdict22, facts22 = _evaluate_t22(script_created, body, exec_nonce)
     r22.add_evidence(f"claude -p (session {meta22['session_id'][:8]})", output=(res22.response_text or "")[:200])
     r22.add_evidence(f"test -f {probe_script}", output=str(script_created))
-    r22.add_evidence("evaluate freshness: banner + '# Exit code: 0' + run nonce after banner",
-                     output=(f"banner={facts22['banner']} exit_success={facts22['exit_success']} "
-                             f"nonce_after_banner={facts22['nonce_after_banner']}"))
+    r22.add_evidence("evaluate freshness: exactly one framed execution-log banner + '# Exit code: 0' "
+                     "+ '# Capture: COMPLETE' + wrapper frame records + run nonce inside the "
+                     "captured-STDOUT region",
+                     output=(f"banner_count={facts22['banner_count']} banner={facts22['banner']} "
+                             f"exit_success={facts22['exit_success']} "
+                             f"capture_complete={facts22['capture_complete']} "
+                             f"frame_records={facts22['frame_records']} "
+                             f"nonce_in_stdout={facts22['nonce_in_stdout']}"))
     r22.verdict = verdict22
     if verdict22 == Verdict.PASS:
         r22.detail = ("research-executor wrote the script and executed it via run_with_capture: "
-                      "'# EXECUTION LOG' banner present, '# Exit code: 0' recorded, and this run's "
-                      "nonce appears in the captured output after the banner.")
+                      "exactly one framed '# EXECUTION LOG' banner present, '# Exit code: 0' and "
+                      "'# Capture: COMPLETE' recorded, the wrapper's '# Command:' / "
+                      "'# --- STDOUT ---' / '# --- STDERR ---' records present in order, and this "
+                      "run's nonce appears between the STDOUT and STDERR markers — i.e. in captured "
+                      "output, not source text.")
     else:
         r22.detail = ("T2.2 freshness/success check failed — required ALL of: script created, "
-                      "execution-log banner, recorded '# Exit code: 0', and this run's nonce in "
-                      f"captured output after the banner. Observed: {facts22}.")
+                      "exactly ONE three-line execution-log banner frame (a bare marker line, or one "
+                      "wrapped in a token '# =' rule, is not a banner; two frames means a forged or "
+                      "duplicated log), recorded '# Exit code: 0', recorded '# Capture: COMPLETE', "
+                      "the wrapper's '# Command:' / '# --- STDOUT ---' / '# --- STDERR ---' records "
+                      "in order, and this run's nonce between the STDOUT and STDERR markers. "
+                      f"Observed: {facts22}.")
     results.append(r22)
 
     # T2.3 — web access: search-agent performs one minimal WebSearch.

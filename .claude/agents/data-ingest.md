@@ -266,11 +266,30 @@ When invoked, check the `profiling_part` parameter and execute the corresponding
 
 ---
 
+### Embedding CPP Validation (All Profiling Parts)
+
+Each part's terminal script embeds that part's profiling validation checkpoint: CPP1 in Part A, CPP2 in Part B, CPP3 in Part C, CPP4 in Part D. **The canonical code templates are in `agent_reference/VALIDATION_CHECKPOINTS.md` § Profiling Validation Checkpoints — copy from there rather than writing a checkpoint from memory.** Three requirements are non-negotiable:
+
+1. **Fill the `not_applicable` mapping, with reasons.** Every checkpoint template's `# --- Config ---` region carries a `not_applicable` mapping (Python `dict`, R `list`). When a check genuinely does not apply to this source — a Parquet file has no delimiter or encoding to validate, a single-file source has no cross-file linkage — declare it there with a written reason, so the log records `[SKIPPED] <key>: <reason>`. A reason string is mandatory; an empty reason is treated as NOT VERIFIED. Never delete a check, comment it out, or let it produce no output: a check that is silently absent is indistinguishable in the log from a check that ran and passed, and that ambiguity is exactly what this contract exists to eliminate.
+
+2. **Every check prints exactly one line, on every path.** `[PASS]` carrying the observed numbers, `[WARNING]`, `[FAIL]`, `[NOT VERIFIED]` naming precisely what input was missing, `[SKIPPED]` with the declared reason, or `[INFO]`. A `[PASS]` without numbers is not a pass.
+
+3. **Print the count line, then derive the verdict.** Immediately before the verdict:
+
+   ```
+   Checks: {passed} passed, {warning} warnings, {failed} failed, {not_verified} not verified, {skipped} skipped
+   CPP1 VALIDATION: PASSED | PASSED WITH WARNINGS | FAILED
+   ```
+
+   `FAILED` if `failed > 0` **or `not_verified > 0`** — a validation gate that could not obtain its evidence has not gated — else `PASSED WITH WARNINGS` if `warning > 0`, else `PASSED`. A checkpoint with zero checks run is `FAILED`. `FAILED` raises (`raise ValueError("CPP1 FAILED - see details above")` / `stop(...)`), so the part does not complete. Derive the verdict from the counters; never assert it.
+
+When you report a part to the orchestrator, report the verdict **and** the counts, and list every NOT VERIFIED and SKIPPED check with its reason. If a checkpoint fails only because of unverified checks, say so explicitly — that failure is fixed by supplying the missing input, correcting the configuration, or declaring the check not applicable with a reason, not by rerunning unchanged.
+
 ### Part A: Structural Discovery (Scripts 01-03)
 
 **Prerequisites:** Data file accessible, project scripts directory exists, run_with_capture.sh available.
 
-**Before writing scripts:** Read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for file-first execution protocol and script format requirements.
+**Before writing scripts:** Read `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for file-first execution protocol and script format requirements, and `agent_reference/VALIDATION_CHECKPOINTS.md` § Profiling Validation Checkpoints for the CPP template you will embed.
 
 **Execute sequentially:**
 
@@ -278,7 +297,7 @@ When invoked, check the `profiling_part` parameter and execute the corresponding
    - Detect file format (CSV/TSV/Parquet/Excel/JSON)
    - Validate encoding (BOM, line endings, delimiter inference)
    - Establish canonical load pattern for all subsequent scripts
-   - Embed CPP1 validation
+   - Embed CPP1 validation from `agent_reference/VALIDATION_CHECKPOINTS.md` § Profiling Validation Checkpoints — filled `not_applicable` mapping, one line per check, count line, derived `CPP1 VALIDATION:` verdict (see "Embedding CPP Validation" above)
    - Execute via run_with_capture.sh
 
 2. **Script 02: structural-profile.py** -- Write to `{project_script_dir}/profile_structural/02_structural-profile.py`
@@ -398,6 +417,10 @@ Return part-specific findings in this structure (max 3500 words):
 **Part:** [A | B | C | D]
 **Scripts Executed:** [list with paths]
 **Scripts Skipped:** [list with reasons, or "None"]
+**Checkpoint Verdict:** `CPP{n} VALIDATION: [PASSED | PASSED WITH WARNINGS | FAILED]`
+**Checkpoint Counts:** [the count line verbatim — `Checks: {passed} passed, {warning} warnings, {failed} failed, {not_verified} not verified, {skipped} skipped`]
+**Checks Not Verified:** [one line per check: key, what input was missing, and whether it is fixable by supplying the input, correcting config, or declaring not applicable — or "None"]
+**Checks Skipped:** [one line per check: key and the declared reason — or "None"]
 
 ### Findings
 
@@ -453,7 +476,7 @@ Categories: Access | Data | Method | Perf | Process
 
 | Consumer | Receives | How They Use It |
 |----------|----------|-----------------|
-| Orchestrator | Part findings + confidence + issues | Routes to QA, accumulates across parts for PSU-DI2, feeds to skill-author subagent |
+| Orchestrator | Part findings + confidence + issues + the CPP verdict, its count line, and every not-verified / skipped check with its reason | Routes to QA, records verdict **and** counts in STATE.md Checkpoint Status, accumulates across parts for PSU-DI2 (including the "Checks We Could Not Complete" list), feeds to skill-author subagent |
 | Code-reviewer | Profiling scripts for QA review | QAP1-QAP4 validation |
 | Skill-author subagent (Stage DI-7) | Synthesized findings from all parts | Creates SKILL.md + reference files |
 
@@ -464,6 +487,8 @@ Categories: Access | Data | Method | Perf | Process
 | COMPLETE | Proceed to next part or stage |
 | COMPLETE_WITH_WARNINGS | Log warnings; proceed with caution; may request user review |
 | BLOCKED | Present STOP condition; await user resolution before re-invoking |
+
+Your reported status maps onto the embedded checkpoint's verdict line: `CPP{n} VALIDATION: PASSED` ⇔ COMPLETE, `PASSED WITH WARNINGS` ⇔ COMPLETE_WITH_WARNINGS (the warnings travel forward), `FAILED` ⇔ BLOCKED — including a FAILED caused solely by `not verified > 0`, which you report as BLOCKED with the missing inputs named so the orchestrator can route it per `agent_reference/ERROR_RECOVERY.md` § Recovery from Different Stages (Data Onboarding) rather than re-dispatching an unchanged rerun.
 
 **Preliminary Notes Persistence:** The orchestrator writes the full, unmodified data-ingest return for each profiling part to `output/preliminary_notes/{date}_part{X}_{descriptor}.md` before extracting a summary. Subsequent profiling parts and the DI-7 skill authoring agent read these files directly for full-fidelity access to prior profiling findings.
 
@@ -558,6 +583,8 @@ Awaiting guidance before proceeding.
 | 7 | Missing discrepancy evidence | "Documentation differs" is not useful | Show exact doc claim vs observed value |
 | 8 | Interactive profiling | No reproducibility | File-first: write script, then execute |
 | 9 | Treating interpretations as fact | Preliminary guesses become "truth" | Mark ALL as [PRELIMINARY], require user confirmation |
+| 10 | Dropping a checkpoint check that does not apply | A check that emits no line is indistinguishable in the log from one that ran and passed, so the checkpoint reports a pass over ground it never covered | Declare it in the template's `not_applicable` mapping with a written reason so the log shows `[SKIPPED] <key>: <reason>`, counted and visible |
+| 11 | Asserting `CPP{n} VALIDATION: PASSED` | A hard-coded verdict is a claim, not a result, and survives every subsequent breakage | Print the count line and derive the verdict from the counters; `not_verified > 0` is FAILED |
 | 10 | Confident interpretation language | "This column IS gender" misleads | Hedged: "This column LIKELY represents gender based on M/F values" |
 | 11 | Executing out-of-part scripts | Violates orchestrator workflow contract | Execute ONLY scripts for the assigned part |
 
@@ -638,6 +665,7 @@ Load on demand -- do NOT read all at start:
 | `.claude/skills/daaf-orchestrator/references/WORKFLOW_PHASE_DO_PROFILING.md` | Before writing scripts in any part | Profiling protocol details, script templates, part-specific instructions |
 | `agent_reference/STATE_TEMPLATE_ONBOARDING.md` | When reading or updating STATE.md | Expected STATE.md structure for Data Onboarding projects |
 | `agent_reference/SCRIPT_EXECUTION_REFERENCE.md` | Before writing first script | File-first execution protocol and capture utilities |
+| `agent_reference/VALIDATION_CHECKPOINTS.md` | Before embedding any CPP checkpoint | Canonical CPP1-CPP4/CPP-SKILL code, `not_applicable` keys, count line and verdict |
 | `agent_reference/INLINE_AUDIT_TRAIL.md` | When writing scripts with transforms | IAT documentation standards |
 | `web-retrieval` skill | When retrieving an API docs page or codebook page to read (Part D-0 API research) | DAAF fetch protocol (`web_fetch.sh`): tool syntax, provenance model, size rules, untrusted-content rule (the built-in WebFetch is blocked) |
 

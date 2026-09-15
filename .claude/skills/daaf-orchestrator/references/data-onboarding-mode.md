@@ -121,7 +121,7 @@ Data Onboarding is designed for **tabular datasets** — files with rows and col
 │      ├─ 03: Per-column statistics, value distributions, patterns           │
 │      ├─ Code-reviewer QA loop (QAP1)                                        │
 │      ├─ UPDATE STATE.md (Per-Part Execution Cycle Step 5)                  │
-│      └─ Gate GDI-3: CPP1 PASSED, QAP1 PASSED/WARNING                       │
+│      └─ Gate GDI-3: CPP1 PASSED/PASSED WITH WARNINGS, QAP1 PASSED/WARNING  │
 │                          ↓                                                  │
 │  Stage DI-4: Statistical Profile (Part B — scripts 04-06)                   │
 │      ├─ 04: Distribution profiling (always)                                 │
@@ -129,7 +129,7 @@ Data Onboarding is designed for **tabular datasets** — files with rows and col
 │      ├─ 06: Entity coverage (conditional — if entity/geo ID found)          │
 │      ├─ Code-reviewer QA loop (QAP2)                                        │
 │      ├─ UPDATE STATE.md (Per-Part Execution Cycle Step 5)                  │
-│      └─ Gate GDI-4: CPP2 PASSED, QAP2 PASSED/WARNING                       │
+│      └─ Gate GDI-4: CPP2 PASSED/PASSED WITH WARNINGS, QAP2 PASSED/WARNING  │
 │                          ↓                                                  │
 │  Stage DI-5: Relational Analysis (Part C — scripts 07-09)                   │
 │      ├─ 07: Key candidate identification (always)                           │
@@ -137,14 +137,14 @@ Data Onboarding is designed for **tabular datasets** — files with rows and col
 │      ├─ 09: Completeness, coded missing values, anomaly catalog (always)    │
 │      ├─ Code-reviewer QA loop (QAP3)                                        │
 │      ├─ UPDATE STATE.md (Per-Part Execution Cycle Step 5)                  │
-│      └─ Gate GDI-5: CPP3 PASSED, QAP3 PASSED/WARNING                       │
+│      └─ Gate GDI-5: CPP3 PASSED/PASSED WITH WARNINGS, QAP3 PASSED/WARNING  │
 │                          ↓                                                  │
 │  Stage DI-6: Interpretation (Part D — scripts 10-11)                        │
 │      ├─ 10: Column semantic classification (always)                         │
 │      ├─ 11: Documentation reconciliation (conditional — if docs provided)   │
 │      ├─ Code-reviewer QA loop (QAP4)                                        │
 │      ├─ UPDATE STATE.md (Per-Part Execution Cycle Step 5)                  │
-│      └─ Gate GDI-6: CPP4 PASSED, QAP4 PASSED/WARNING                       │
+│      └─ Gate GDI-6: CPP4 PASSED/PASSED WITH WARNINGS, QAP4 PASSED/WARNING  │
 └─────────────────────────────────────────────────────────────────────────────┘
                           ↓
             ┌──────────────────────────────────┐
@@ -176,7 +176,7 @@ Data Onboarding is designed for **tabular datasets** — files with rows and col
 │      ├─ Create SKILL.md using DATA_SOURCE_SKILL_TEMPLATE.md                 │
 │      ├─ Create reference files in .claude/skills/{skill-name}/references/   │
 │      ├─ Compliance check: template (CPP-SKILL)                              │
-│      └─ Gate GDI-7: CPP-SKILL PASSED                                       │
+│      └─ Gate GDI-7: CPP-SKILL PASSED/PASSED WITH WARNINGS                  │
 │                          ↓                                                  │
 │  Stage DI-8: Review & Delivery                                              │
 │      ├─ Collect session logs: collect_session_logs.sh                        │
@@ -483,14 +483,33 @@ Return findings in this structure (max 3500 words):
 | GDI-0 | DI-0 | API key verified, data downloaded, file non-empty, acquisition script archived | API auth fails, empty response, rate limited (conditional — only if access method = API) |
 | GDI-1 | DI-1 | Required inputs collected, file(s) accessible and non-empty, access method determined, file structure classified | File cannot be loaded, file empty, required inputs missing, or API acquisition failed |
 | GDI-2 | DI-2 | Project folder created, STATE.md initialized (from `agent_reference/STATE_TEMPLATE_ONBOARDING.md`), data staged | Folder creation fails |
-| GDI-3 | DI-3 | CPP1 PASSED, QAP1 PASSED or WARNING | File >1GB without sampling plan approved by user, or critical columns entirely null |
-| GDI-4 | DI-4 | CPP2 PASSED, QAP2 PASSED or WARNING | >50% of columns are entirely null |
-| GDI-5 | DI-5 | CPP3 PASSED, QAP3 PASSED or WARNING | No candidate keys identifiable across any table |
-| GDI-6 | DI-6 | CPP4 PASSED, QAP4 PASSED or WARNING | >50% of documented columns missing from data |
-| GDI-7 | DI-7 | CPP-SKILL PASSED (template compliance) | Template compliance fails after 2 revision attempts |
+| GDI-3 | DI-3 | CPP1 verdict is `PASSED` or `PASSED WITH WARNINGS`, and QAP1 result is `PASSED` or `WARNING` | CPP1 `FAILED`, QAP1 `BLOCKER` after the revision budget, file >1GB without a sampling plan approved by the user, or critical columns entirely null |
+| GDI-4 | DI-4 | CPP2 verdict is `PASSED` or `PASSED WITH WARNINGS`, and QAP2 result is `PASSED` or `WARNING` | CPP2 `FAILED`, QAP2 `BLOCKER` after the revision budget, or >50% of columns are entirely null |
+| GDI-5 | DI-5 | CPP3 verdict is `PASSED` or `PASSED WITH WARNINGS`, and QAP3 result is `PASSED` or `WARNING` | CPP3 `FAILED`, QAP3 `BLOCKER` after the revision budget, or no candidate keys identifiable across any table |
+| GDI-6 | DI-6 | CPP4 verdict is `PASSED` or `PASSED WITH WARNINGS`, and QAP4 result is `PASSED` or `WARNING` | CPP4 `FAILED`, QAP4 `BLOCKER` after the revision budget, or >50% of documented columns missing from data |
+| GDI-7 | DI-7 | CPP-SKILL verdict is `PASSED` or `PASSED WITH WARNINGS` (template compliance) | CPP-SKILL `FAILED`, or template compliance fails after 2 revision attempts |
 | GDI-8 | DI-8 | User confirms skill is acceptable | N/A (user decision point) |
 
 **Gate enforcement:** Gates GDI-1 through GDI-7 are mandatory checkpoints. If a gate's STOP condition is triggered, halt execution, present the issue to the user, and await guidance before proceeding. Update STATE.md with the gate failure and resolution.
+
+### Reading CPP and QAP Verdicts at a Gate
+
+The two checkpoint families a profiling gate reads use different vocabularies on purpose, and the gate treats them differently.
+
+| Family | Verdict line | Values | Effect on the gate |
+|--------|--------------|--------|--------------------|
+| **CPP** (in-script validation; `CPP1`-`CPP4`, `CPP-SKILL`) | `CPP{n} VALIDATION: …` | `PASSED` / `PASSED WITH WARNINGS` / `FAILED` | `PASSED` and `PASSED WITH WARNINGS` both pass the gate; `FAILED` raises in the script itself, so the part cannot complete |
+| **QAP** (code-reviewer severity; `QAP1`-`QAP4`) | `QAP{n} RESULT: …` | `PASSED` / `WARNING` / `BLOCKER` | `PASSED` and `WARNING` pass the gate; `BLOCKER` routes to the revision flow (Per-Part Execution Cycle STEP 4) and, if unresolved after 2 revisions, STOPs |
+
+**`PASSED WITH WARNINGS` passes, but the warnings travel.** A CPP verdict of `PASSED WITH WARNINGS` clears the gate and does not trigger the revision flow. Its warning count and the warning lines themselves are carried into the part's STATE.md row and into the findings the user sees at PSU-DI2 — a warning that passes a gate silently is a warning that was never raised. The same applies to a QAP result of `WARNING`.
+
+**A NOT VERIFIED count above zero is never a clean gate.** Every checkpoint prints a count line before its verdict (`… {not_verified} not verified, {skipped} skipped …`). Read it, do not read only the verdict word:
+
+- **CPP with `not_verified > 0`:** the verdict is `FAILED` by construction (a validation gate that could not obtain its evidence has not gated), the script raises, and the part does not complete. Route it through error recovery as a *missing-evidence* failure, not a data failure — see `agent_reference/ERROR_RECOVERY.md` § Recovery from Different Stages (Data Onboarding). The three legitimate resolutions are: supply the missing input, fix the checkpoint configuration, or declare the check not applicable with a written reason (which converts it to `SKIPPED`). Rerunning unchanged is not one of them.
+- **QAP with `not_verified > 0`:** the result is at least `WARNING`, so the gate passes only in the "warnings travel" sense above. The reviewer's escalation decision is part of the QA return and must be recorded in STATE.md: whether each unverified check was left at WARNING or escalated to BLOCKER because the profiling protocol had promised the input (documentation was supplied, the structure was classified HIERARCHICAL, Part A found a time column). See `agent_reference/QA_CHECKPOINTS.md` § QAP Count Line and Verdict.
+- **`skipped > 0`** does not affect either verdict, but the declared reasons are recorded alongside the counts so PSU-DI2 shows the user how much of the profiling was declared away rather than performed.
+
+When recording a gate outcome in STATE.md, record the verdict **and** the counts. A recorded `PASSED` with no counts cannot be distinguished later from a `PASSED` over checks that never ran, which is the failure this contract exists to prevent.
 
 **Synthetic path (sensitivity-gate outcome 3):** When DI-1 routes to the synthetic path, gates GDI-2 through GDI-6 are replaced by the synthetic-path gates **GDS-0 through GDS-5** (tier selection, disclosure-safety of the outbound script, user local run, report intake, interpretation, synthetic generation), defined in full in `{SKILL_REFS}/WORKFLOW_PHASE_DO_SYNTHETIC.md` § Gate Definitions (Synthetic Path). GDI-1 (intake), GDI-7 (skill authoring), and GDI-8 (delivery) still apply after rejoin.
 
@@ -534,9 +553,12 @@ For EACH profiling part (DI-3 through DI-6), follow this complete cycle. **Do NO
 │      │                                                                      │
 │      └─ WAIT for code-reviewer to return before proceeding                 │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│  STEP 3: EVALUATE QA severity                                               │
+│  STEP 3: EVALUATE QAP result AND count line                                 │
+│      ├─ Read the count line, not just the verdict word                     │
 │      ├─ PASSED → Log to STATE.md, proceed to STEP 5                        │
-│      ├─ WARNING → Log to STATE.md (for PSU-DI2 review), proceed to STEP 5 │
+│      ├─ WARNING → Log verdict + counts to STATE.md, go to STEP 5           │
+│      ├─ not_verified > 0 → at least WARNING; record the reviewer's         │
+│      │     escalation decision for each unverified check in STATE.md       │
 │      └─ BLOCKER → Go to STEP 4                                             │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │  STEP 4: REVISION FLOW (if BLOCKER)                                         │
@@ -549,7 +571,7 @@ For EACH profiling part (DI-3 through DI-6), follow this complete cycle. **Do NO
 │      ├─ Profiling Progress table: update Status, CPP, QA Status for each  │
 │      │   script in this part; record skip reasons in Notes column           │
 │      ├─ Checkpoint Status tables: update CPP row (Primary Validation)      │
-│      │   and QAP row (Secondary Validation) for this part                  │
+│      │   and QAP row (Secondary Validation) with verdict + counts          │
 │      ├─ QA Findings Summary: append BLOCKERs Resolved / WARNINGs Logged   │
 │      │   incrementally (don't defer to DI-8)                               │
 │      ├─ Error Budget Consumed: update per-part and session totals         │
@@ -561,7 +583,8 @@ For EACH profiling part (DI-3 through DI-6), follow this complete cycle. **Do NO
 │      ├─ If Part D: populate Interpretation Tracking (Preliminary column)   │
 │      │   from subagent return; populate Documentation Reconciliation       │
 │      │   Summary from Part D discrepancy findings (if docs provided)       │
-│      ├─ Verify gate criteria (CPP + QAP status) before proceeding         │
+│      ├─ Verify gate criteria before proceeding: CPP verdict, QAP result    │
+│      │     and both count lines; not_verified > 0 is not a clean gate      │
 │      └─ Proceed to next part or PSU-DI2                                    │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │  STEP 6: PROGRESS UPDATE (informational — no user action required)         │
@@ -608,8 +631,8 @@ For EACH profiling part (DI-3 through DI-6), follow this complete cycle. **Do NO
 | Part starts (DI-3/4/5/6) | Current Position → Current Stage, Current Phase |
 | Part cycle Step 5 completes | Profiling Progress → script Status and CPP columns for each script in part |
 | Conditional script skipped | Profiling Progress → Status=SKIPPED, Notes=reason; Key Decisions Made |
-| CPP checkpoint passes | Checkpoint Status → Primary Validation (CPP row for this part) |
-| QA completes (QAP1-4) | Checkpoint Status → Secondary Validation (QAP row); QA Findings Summary |
+| CPP checkpoint returns a verdict | Checkpoint Status → Primary Validation (CPP row for this part): verdict string plus the count line's passed / warnings / failed / not verified / skipped values |
+| QA completes (QAP1-4) | Checkpoint Status → Secondary Validation (QAP row): result string plus passed / warnings / blockers / not verified / skipped / info counts; QA Findings Summary |
 | QA BLOCKER encountered | QA Blockers (Pending Resolution) table; Error Budget Consumed |
 | QA BLOCKER resolved via revision | QA Blockers → Status=Resolved; Profiling Progress → Revisions column |
 | Gate passes (GDI-3/4/5/6) | Current Position → Status; Next Actions |
@@ -784,6 +807,12 @@ Present after Stage DI-6 completes. This is the CRITICAL user review point — i
 - Anomalies: [unexpected patterns, potential data quality issues]
 - Suppression: [any suppressed or redacted values found]
 
+**Checks We Could Not Complete:**
+[List every check that was skipped or could not be verified, in plain language, with the reason. Draw these from the not-verified and skipped counts in each part's checkpoint results — do not omit them just because the parts passed.]
+- [e.g., "We could not confirm the file covers every school district, because no reference list of districts was available to compare against."]
+- [e.g., "Documentation checks did not run — no documentation was provided for this source."]
+[If everything ran:] - None — every planned check ran on real data.
+
 **Preliminary Interpretations:**
 
 | # | [File] | Interpretation | Basis | Status |
@@ -881,6 +910,8 @@ Before dispatching a code-reviewer subagent (QAP1 through QAP4), verify:
 - [ ] IAT compliance expectations stated
 - [ ] QA tolerance thresholds specified (BLOCKER if, WARNING if)
 - [ ] Prior QA findings inlined (for QAP2-QAP4: issues from earlier parts)
+- [ ] Conditional-script outcomes stated explicitly (which of 05, 06, 07b, 08, 11 ran, which did not, and why) — the reviewer needs this to tell a legitimately not-applicable check from one that could not be verified
+- [ ] Reminder that the QA return must carry the `QAP{n} RESULT:` line **and** its count line (passed / warnings / blockers / not verified / skipped / info), plus the escalation decision for every NOT VERIFIED check
 
 ### Skill Authoring Invocation Checklist
 

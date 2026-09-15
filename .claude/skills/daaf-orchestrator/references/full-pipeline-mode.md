@@ -468,8 +468,8 @@ These operations may be executed without preview:
 **Cross-Phase Concerns:**
 - **Validation Checkpoints** apply across Phases 3-5 with different checkpoints:
   - Phase 3: CP1 (after fetch), CP2 (after cleaning)
-  - Phase 4: CP3 (after transformation)
-  - Phase 5: CP4 (before final output, during Stages 11-12)
+  - Phase 4: CP3 (after transformation), CP4 (after analysis & visualization, Stage 8)
+  - Phase 5: Pre-Output Verification (Stage 12) — an agent checklist owned by data-verifier, not a script-embedded checkpoint
 - **QA Checkpoints (QA1-QA4b)** run in parallel as secondary validation during Phases 3-4
 - **Plan Document Maintenance** — Plan.md + Plan_Tasks.md are created and frozen in Phase 2; runtime state is tracked in STATE.md throughout Phases 3-5
 
@@ -1122,7 +1122,7 @@ Closely read `{BASE_DIR}/agent_reference/SCRIPT_EXECUTION_REFERENCE.md` for the 
 **Do NOT include in your output:**
 - Raw execution logs or captured stdout/stderr (already appended to the script file by `run_with_capture.sh`)
 - Data samples, row-level examples, or Polars/pandas table displays
-- Full checkpoint output (summarize as PASSED/FAILED/WARNING + 1-line reason)
+- Full checkpoint output (summarize as PASSED/WARNING/FAILED + the checkpoint's count line + 1-line reason)
 - QA script code or contents (reference by file path instead)
 
 Return findings in this EXACT structure:
@@ -1131,6 +1131,8 @@ Return findings in this EXACT structure:
 
 **Status:** [PASSED | FAILED | WARNING]
 **Task Type:** [auto | checkpoint:human-verify | checkpoint:decision]
+
+> **Log line ⇔ reported status.** The checkpoint verdict printed in the execution log uses three strings — `PASSED`, `PASSED WITH WARNINGS`, `FAILED`. Map them to the reported status above: `PASSED` ⇒ `PASSED`, **`PASSED WITH WARNINGS` ⇒ `WARNING`**, `FAILED` ⇒ `FAILED`. Never report `PASSED` for a log line that said `PASSED WITH WARNINGS`. The count line immediately above the verdict (`Checks: N passed, N warnings, N failed, N not verified, N skipped`) is part of the summary: if `not verified > 0`, the CP verdict is `FAILED` by construction, and a QA `RESULT` is at least `WARNING`.
 
 **Summary:**
 [2-3 sentence summary of what was done]
@@ -1715,20 +1717,21 @@ When interpreting data values and resolving discrepancies between sources, apply
 | **CP1** | After data fetch | Shape, types, missingness, expected rows | Empty data, >90% missing critical fields |
 | **CP2** | After cleaning | Coded values handled, suppression rate | >50% suppression, invalid analysis type |
 | **CP3** | After transformation | Row counts, join validation, no data loss | >90% row loss, unexpected NAs |
-| **CP4** | Before output | Completeness, consistency with Plan.md | Missing required outputs, Plan.md violations |
+| **CP4** | After analysis & visualization (Stage 8) | Analysis outputs valid, critical nulls, figures, correct data source | Non-finite estimates, missing or empty figures, script reading `data/raw/` |
 
-**CP4 Detail:** CP4 runs during Stages 11-12 and validates:
-- **CP4.1:** All required columns present in analysis data
-- **CP4.2:** No nulls in critical columns defined in Plan.md
-- **CP4.3:** All analysis outputs in Plan.md's analysis spec exist in output/analysis/ and all figures in Plan.md's visualization spec exist in output/figures/
-- **CP4.4:** All Plan.md-required report sections complete
-- **CP4.5:** Outputs match Plan.md commitments (data sources, years, geography, methodology)
-- **CP4.6:** All Research Outcomes in Plan.md are addressed with evidence
-- **CP4.7:** All Hypotheses in Plan.md (if any) are transparently assessed
+**CP4 Detail:** CP4 is **Stage 8 Post-Analysis & Visualization Validation**, embedded in the analysis and visualization scripts (`checkpoint:auto`). It validates:
+- **CP4.1:** Analysis outputs valid — results object exists, estimates finite, convergence flag `TRUE` when the estimator reports one, n adequate against the Plan's minimum, expected sign only where the Plan pre-registers it
+- **CP4.2:** Critical nulls — no nulls in the analysis frame's outcome/key columns
+- **CP4.3:** Figures — every figure the task promised exists, is non-empty, and has been visually inspected via the **Read tool**
+- **CP4.4:** Correct data source — the script loads `data/processed/` (or the Plan's named input), not `data/raw/`
 
-**CP4 STOP Conditions:** Missing Executive Summary, missing Key Findings, any Research Outcome not addressed, major deviation from Plan.md methodology.
+**CP4 STOP Conditions:** Non-finite estimates, a convergence flag reporting failure, nulls in the analysis frame's outcome/key columns, a promised figure missing or empty, or the script reading from `data/raw/`.
 
-See `agent_reference/VALIDATION_CHECKPOINTS.md` for Python code templates.
+**Report completeness and Plan consistency are NOT CP4.** Report sections, Plan-commitment consistency, Research Outcome coverage, Hypothesis assessment, and notebook render success belong to **Pre-Output Verification (Stage 12)** in `agent_reference/VALIDATION_CHECKPOINTS.md` — an agent checklist owned by data-verifier and classified `human-verify`, not script-embedded checkpoint code.
+
+**Pre-Output Verification STOP Conditions:** Missing Executive Summary, missing Key Findings, any Research Outcome not addressed, major deviation from Plan.md methodology.
+
+See `agent_reference/VALIDATION_CHECKPOINTS.md` for Python code templates, the count line and verdict grammar, and the Pre-Output Verification (Stage 12) checklist.
 
 ### QA Checkpoints (Secondary Validation)
 

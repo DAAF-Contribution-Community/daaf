@@ -116,6 +116,20 @@ When you see a check that says `[PASS]` in the execution log, don't accept it at
 - Could the check pass while the underlying data is still wrong? (e.g., row count is correct but wrong rows were kept)
 - Is the tolerance appropriate? (e.g., "within 10%" might hide a 9% systematic error)
 - Did the check validate the **semantics** or just the **syntax** of the result?
+- **Does the `[PASS]` line carry its numbers?** A conforming PASS states the evidence it observed — counts, rates, values compared (`[PASS] 'x' suppression: reported 50.0% == actual 50.0% (n=2/4)`). A bare `[PASS] No issues found` proves only that a branch executed, and is itself a WARNING-level finding.
+
+**Reading the per-check vocabulary.** Every check line starts with exactly one token:
+
+| Token | What it tells you |
+|-------|-------------------|
+| `[PASS]` | Ran on real inputs, condition held, numbers shown |
+| `[WARNING]` | Ran; non-fatal deviation observed |
+| `[FAIL]` / `[BLOCKER]` | Ran; fatal (CP family) / revision-required (QA family) condition observed |
+| `[NOT VERIFIED]` | **Could not run** — a required input was missing, empty, `None`/`NULL`/`NA`, wrongly typed, or an unrecognized configuration value. Evidence of nothing |
+| `[SKIPPED]` | Declared not applicable in the script's `not_applicable` config, with the reason printed |
+| `[INFO]` | Observational only; does not affect the verdict |
+
+`[NOT VERIFIED]` and `[SKIPPED]` are the checks most worth your attention: they are exactly where a checkpoint stopped validating. Read the count line above the verdict (`Checks: N passed, N warnings, ...`) as a first-class signal — `not verified > 0` means the CP verdict is `FAILED` and a QA `RESULT` is at least `WARNING`. If a `[NOT VERIFIED]` check's input is something Plan.md explicitly promised (the Plan lists `model_results` but the field is absent), escalate it to **BLOCKER** under the "validation inadequate" criterion and say so in your report. A `[SKIPPED]` whose stated reason contradicts the Plan or the data source is also a BLOCKER — verify the reason, don't just read it.
 
 ### 6. Independent Reasoning Requirement
 
@@ -285,7 +299,7 @@ Review the execution log appended to the script:
 
 #### 2.2 Warning Analysis
 - Were any warnings logged that deserve attention?
-- Did "WARN" checks that passed still indicate problems?
+- Did `[WARNING]` checks point at problems the verdict absorbed as non-fatal?
 - Are there stderr messages that were ignored?
 
 ### Phase 3: Output Data Inspection (Iterative)
@@ -325,95 +339,250 @@ import polars as pl
 from pathlib import Path
 
 # --- Config ---
+# QA_LEVEL names the checkpoint this script implements ("1", "2", "3", "4a", "4b") and is
+# what the verdict line interpolates. A verdict line without its checkpoint number cannot
+# be traced back to a checkpoint, and the orchestrator transcribes that line into STATE.md.
+QA_LEVEL = "{N}"
+# STEP names the pipeline step under review. QA_LEVEL and STEP are ordinary config
+# strings because the banner below is an f-string: interpolating the raw {N}/{step}
+# placeholders there would raise NameError on an unsubstituted template, before a
+# single check ran.
+STEP = "{step}"
 PROJECT_DIR = Path("{project_dir}")
 OUTPUT_FILE = Path("{output_file}")
 EXPECTED_COLUMNS = [{expected_columns}]
 EXPECTED_MIN_ROWS = {min_rows}
 EXPECTED_MAX_ROWS = {max_rows}
 CRITICAL_COLUMNS = [{critical_columns}]
+# CODED_MISSING_VALUES: domain-specific coded missing values from Plan.md's domain config
+# (e.g., [-1, -2, -3] for education data). Provided by orchestrator in Agent prompt.
+CODED_MISSING_VALUES = [{coded_values}]
+# PLAN_NUMERIC_COLUMNS: the numeric columns the Plan declares for this output — cr1's
+# spelling of QA2's plan_spec["numeric_columns"] (QA_CHECKPOINTS.md § QA2). The
+# coded-value scan runs over exactly these columns; leave the list empty only when the
+# Plan declares none, in which case the scan falls back to NUMERIC_DTYPES-typed columns.
+PLAN_NUMERIC_COLUMNS = [{numeric_columns}]
+
+# Shared numeric-dtype predicate — the same list as VALIDATION_CHECKPOINTS.md § CP2 and
+# the substantiveness data check. A narrower list (integers only) silently exempts
+# Float columns from both the distribution profile and the coded-value scan.
+NUMERIC_DTYPES = [pl.Int8, pl.Int16, pl.Int32, pl.Int64,
+                  pl.UInt8, pl.UInt16, pl.UInt32, pl.UInt64,
+                  pl.Float32, pl.Float64]
+
+# INTENT: declare the checks that genuinely do not apply to this output, with a reason.
+# REASONING: a check whose inputs are absent and which was NOT declared here is
+#   [NOT VERIFIED] and raises the verdict; a declared one is [SKIPPED] and prints its
+#   reason. Either way it is counted — a check may never disappear silently.
+# ASSUMES: every reason string is non-empty. A key present with an empty reason is
+#   [NOT VERIFIED] — the declaration was made but its justification is missing, and
+#   every check below tests that case explicitly rather than falling through to the
+#   check body (QA_CHECKPOINTS.md § QA2 uses the same two-branch shape).
+# Keys: schema, row_count, distributions, coded_values, critical_nulls
+not_applicable = {}  # e.g. {"coded_values": "this source uses no coded missing values"}
+
+# INTENT: count outcomes so the final verdict is derived, not asserted.
+qa = {"passed": 0, "warnings": 0, "blockers": 0, "not_verified": 0, "skipped": 0, "info": 0}
 
 # --- Load output data ---
 print("=" * 60)
-print(f"QA INSPECTION: Stage {N} Step {step}")
+print(f"QA INSPECTION: Stage {QA_LEVEL} Step {STEP}")
 print("=" * 60)
 
 df = pl.read_parquet(OUTPUT_FILE)
 print(f"Loaded: {df.shape[0]:,} rows x {df.shape[1]} cols")
 
 # --- Check 1: Schema ---
-missing_cols = [c for c in EXPECTED_COLUMNS if c not in df.columns]
-extra_cols = [c for c in df.columns if c not in EXPECTED_COLUMNS]
-schema_ok = len(missing_cols) == 0
-print(f"\n[{'PASS' if schema_ok else 'FAIL'}] Schema: ", end="")
-if schema_ok:
-    print("All expected columns present")
+# REASONING: one outcome line per check. Extra columns are reported inside the schema
+#   outcome line rather than as a second counted [INFO] line — two counted lines for
+#   one check double-count the checks and let a BLOCKER share a check with a pass.
+if not_applicable.get("schema"):
+    print(f"[SKIPPED] Schema: {not_applicable['schema']}")
+    qa["skipped"] += 1
+elif "schema" in not_applicable:
+    print("[NOT VERIFIED] Schema: declared not_applicable with an empty reason string")
+    qa["not_verified"] += 1
+elif len(EXPECTED_COLUMNS) == 0:
+    print("[NOT VERIFIED] Schema: EXPECTED_COLUMNS is empty — no Plan schema to compare against")
+    qa["not_verified"] += 1
 else:
-    print(f"Missing columns: {missing_cols}")
-if extra_cols:
-    print(f"  Extra columns (not in Plan.md): {extra_cols}")
+    missing_cols = [c for c in EXPECTED_COLUMNS if c not in df.columns]
+    extra_cols = [c for c in df.columns if c not in EXPECTED_COLUMNS]
+    extra_note = f"; {len(extra_cols)} columns not in Plan.md: {extra_cols}" if len(extra_cols) > 0 else "; 0 columns outside Plan.md"
+    if len(missing_cols) == 0:
+        print(f"[PASS] Schema: all {len(EXPECTED_COLUMNS)} expected columns present (file has {df.width}){extra_note}")
+        qa["passed"] += 1
+    else:
+        print(f"[BLOCKER] Schema: {len(missing_cols)} of {len(EXPECTED_COLUMNS)} expected columns missing: {missing_cols}{extra_note}")
+        qa["blockers"] += 1
 
 # --- Check 2: Row count ---
-row_count = len(df)
-rows_ok = EXPECTED_MIN_ROWS <= row_count <= EXPECTED_MAX_ROWS
-print(f"[{'PASS' if rows_ok else 'FAIL'}] Row count: {row_count:,} (expected {EXPECTED_MIN_ROWS:,}-{EXPECTED_MAX_ROWS:,})")
+if not_applicable.get("row_count"):
+    print(f"[SKIPPED] Row count: {not_applicable['row_count']}")
+    qa["skipped"] += 1
+elif "row_count" in not_applicable:
+    print("[NOT VERIFIED] Row count: declared not_applicable with an empty reason string")
+    qa["not_verified"] += 1
+elif EXPECTED_MIN_ROWS is None or EXPECTED_MAX_ROWS is None:
+    print("[NOT VERIFIED] Row count: EXPECTED_MIN_ROWS/EXPECTED_MAX_ROWS not supplied by the Plan")
+    qa["not_verified"] += 1
+else:
+    row_count = len(df)
+    if EXPECTED_MIN_ROWS <= row_count <= EXPECTED_MAX_ROWS:
+        print(f"[PASS] Row count: {row_count:,} within expected {EXPECTED_MIN_ROWS:,}-{EXPECTED_MAX_ROWS:,}")
+        qa["passed"] += 1
+    else:
+        print(f"[BLOCKER] Row count: {row_count:,} outside expected {EXPECTED_MIN_ROWS:,}-{EXPECTED_MAX_ROWS:,}")
+        qa["blockers"] += 1
 
 # --- Check 3: Distributions ---
-dist_issues = []
-for col in df.select(pl.col(pl.Int64, pl.Float64)).columns:
-    col_data = df[col].drop_nulls()
-    if len(col_data) == 0:
-        continue
-    if col_data.n_unique() == 1 and len(col_data) > 10:
-        dist_issues.append(f"{col}: all same value ({col_data[0]})")
-    if (col_data == 0).all():
-        dist_issues.append(f"{col}: all zeros")
-dist_ok = len(dist_issues) == 0
-print(f"[{'PASS' if dist_ok else 'FAIL'}] Distributions: ", end="")
-print("Look reasonable" if dist_ok else "; ".join(dist_issues))
+# ASSUMES: the numeric-dtype list is the shared NUMERIC_DTYPES above — the same list
+#   Check 4 scans, so no column is profiled here and exempted from the coded-value scan.
+numeric_cols = [c for c in df.columns if df[c].dtype in NUMERIC_DTYPES]
+if not_applicable.get("distributions"):
+    print(f"[SKIPPED] Distributions: {not_applicable['distributions']}")
+    qa["skipped"] += 1
+elif "distributions" in not_applicable:
+    print("[NOT VERIFIED] Distributions: declared not_applicable with an empty reason string")
+    qa["not_verified"] += 1
+elif len(numeric_cols) == 0:
+    print("[NOT VERIFIED] Distributions: output has no numeric columns — nothing to profile")
+    qa["not_verified"] += 1
+else:
+    dist_issues = []
+    for col in numeric_cols:
+        col_data = df[col].drop_nulls()
+        if len(col_data) == 0:
+            dist_issues.append(f"{col}: all null")
+            continue
+        if col_data.n_unique() == 1 and len(col_data) > 10:
+            dist_issues.append(f"{col}: all same value ({col_data[0]}, n={len(col_data)})")
+        if (col_data == 0).all():
+            dist_issues.append(f"{col}: all zeros (n={len(col_data)})")
+    if len(dist_issues) == 0:
+        print(f"[PASS] Distributions: {len(numeric_cols)} numeric columns, none constant, all-zero, or all-null")
+        qa["passed"] += 1
+    else:
+        print(f"[BLOCKER] Distributions: {'; '.join(dist_issues)}")
+        qa["blockers"] += 1
 
 # --- Check 4: Coded values ---
-# CODED_MISSING_VALUES: domain-specific coded missing values from Plan.md's domain config
-# (e.g., [-1, -2, -3] for education data). Provided by orchestrator in Agent prompt.
-# If CODED_VALUES is empty, skip coded value checks and check for standard
-# missing values (null, NaN) instead.
-CODED_MISSING_VALUES = [{coded_values}]
-
-coded_issues = []
-if CODED_MISSING_VALUES:
-    for col in df.columns:
-        if df[col].dtype not in [pl.Int8, pl.Int16, pl.Int32, pl.Int64]:
-            continue
-        for code in CODED_MISSING_VALUES:
-            count = (df[col] == code).sum()
-            if count > 0:
-                coded_issues.append(f"{col} has {count} coded value {code}")
-coded_ok = len(coded_issues) == 0
-print(f"[{'PASS' if coded_ok else 'FAIL'}] Coded values: ", end="")
-if not CODED_MISSING_VALUES:
-    print("No domain-specific coded values to check")
-elif coded_ok:
-    print("None remain")
+# INTENT: scan the columns the Plan declared numeric for the domain's coded-missing
+#   sentinels, one outcome line per column carrying its counts.
+# REASONING: dtype inference is not a column contract. Scanning only integer-typed
+#   columns inspected nothing on a frame whose numerics are Float64 (or whose codes were
+#   already cast away) and still printed "none found across 0 integer columns" — a PASS
+#   over zero columns. The Plan's declared numeric columns are the contract; the shared
+#   NUMERIC_DTYPES list is the fallback only when the Plan declares none, and an empty
+#   resulting set is [NOT VERIFIED], never a pass.
+# ASSUMES: same column set, emptiness handling, absent-column severity, and per-column
+#   granularity as QA_CHECKPOINTS.md § QA2 "Validate: coded_values" — cr1 and QA2 must
+#   not disagree about what this check means.
+if not_applicable.get("coded_values"):
+    print(f"[SKIPPED] Coded values: {not_applicable['coded_values']}")
+    qa["skipped"] += 1
+elif "coded_values" in not_applicable:
+    print("[NOT VERIFIED] Coded values: declared not_applicable with an empty reason string")
+    qa["not_verified"] += 1
+elif len(CODED_MISSING_VALUES) == 0:
+    # REASONING: an empty vocabulary proves nothing about the data. If this domain
+    #   genuinely has no coded values, declare it in not_applicable instead.
+    print("[NOT VERIFIED] Coded values: CODED_MISSING_VALUES is empty — no vocabulary to test against")
+    qa["not_verified"] += 1
 else:
-    print("; ".join(coded_issues))
+    if len(PLAN_NUMERIC_COLUMNS) > 0:
+        scan_cols = list(PLAN_NUMERIC_COLUMNS)
+        col_source = "Plan-declared numeric columns"
+    else:
+        scan_cols = [c for c in df.columns if df[c].dtype in NUMERIC_DTYPES]
+        col_source = "NUMERIC_DTYPES fallback — the Plan declared no numeric columns"
+    if len(scan_cols) == 0:
+        print("[NOT VERIFIED] Coded values: no columns to scan — PLAN_NUMERIC_COLUMNS is empty and the output has no numeric-dtype column")
+        qa["not_verified"] += 1
+    else:
+        for col in scan_cols:
+            if col not in df.columns:
+                print(f"[BLOCKER] Coded values '{col}': column named in PLAN_NUMERIC_COLUMNS is absent from the output")
+                qa["blockers"] += 1
+                continue
+            if df[col].dtype not in NUMERIC_DTYPES:
+                print(f"[NOT VERIFIED] Coded values '{col}': dtype {df[col].dtype} is not numeric — sentinels {CODED_MISSING_VALUES} are not comparable to it")
+                qa["not_verified"] += 1
+                continue
+            hits = {code: int((df[col] == code).sum()) for code in CODED_MISSING_VALUES}
+            remaining = {code: n for code, n in hits.items() if n > 0}
+            if len(remaining) > 0:
+                print(f"[BLOCKER] Coded values '{col}': {sum(remaining.values())} of {len(df)} rows still carry sentinels {remaining} ({col_source})")
+                qa["blockers"] += 1
+            else:
+                print(f"[PASS] Coded values '{col}': 0 of {len(df)} rows match any of {CODED_MISSING_VALUES} ({col_source})")
+                qa["passed"] += 1
 
 # --- Check 5: Critical nulls ---
-null_issues = []
-for col in CRITICAL_COLUMNS:
-    if col in df.columns:
-        null_count = df[col].null_count()
-        if null_count > 0:
-            null_issues.append(f"{col}: {null_count} nulls")
-nulls_ok = len(null_issues) == 0
-print(f"[{'PASS' if nulls_ok else 'FAIL'}] Critical nulls: ", end="")
-print("None" if nulls_ok else "; ".join(null_issues))
+# REASONING: one outcome line per check. An absent declared column used to print a
+#   [BLOCKER] and then a second counted [NOT VERIFIED] for the same check; the absence
+#   is the finding, and it is reported once.
+if not_applicable.get("critical_nulls"):
+    print(f"[SKIPPED] Critical nulls: {not_applicable['critical_nulls']}")
+    qa["skipped"] += 1
+elif "critical_nulls" in not_applicable:
+    print("[NOT VERIFIED] Critical nulls: declared not_applicable with an empty reason string")
+    qa["not_verified"] += 1
+elif len(CRITICAL_COLUMNS) == 0:
+    print("[NOT VERIFIED] Critical nulls: CRITICAL_COLUMNS is empty — the Plan named no critical columns")
+    qa["not_verified"] += 1
+else:
+    present = [c for c in CRITICAL_COLUMNS if c in df.columns]
+    absent = [c for c in CRITICAL_COLUMNS if c not in df.columns]
+    if len(absent) > 0:
+        print(f"[BLOCKER] Critical nulls: {len(absent)} of {len(CRITICAL_COLUMNS)} declared critical column(s) absent from the output: {absent} (present and null-checkable: {present})")
+        qa["blockers"] += 1
+    else:
+        null_issues = [f"{c}: {df[c].null_count()} nulls" for c in present if df[c].null_count() > 0]
+        if len(null_issues) == 0:
+            print(f"[PASS] Critical nulls: 0 nulls across {len(present)} critical columns ({', '.join(present)})")
+            qa["passed"] += 1
+        else:
+            print(f"[BLOCKER] Critical nulls: {'; '.join(null_issues)} (of {len(present)} critical columns, {len(df)} rows)")
+            qa["blockers"] += 1
 
 # --- Summary ---
-all_passed = all([schema_ok, rows_ok, dist_ok, coded_ok, nulls_ok])
 print("\n" + "=" * 60)
-severity = "PASSED" if all_passed else "BLOCKER"
-print(f"QA RESULT: {severity}")
+print(f"Checks: {qa['passed']} passed, {qa['warnings']} warnings, {qa['blockers']} blockers, "
+      f"{qa['not_verified']} not verified, {qa['skipped']} skipped, {qa['info']} info")
+# INTENT: derive the verdict from the counters.
+# REASONING: a check that could not run has reviewed nothing, so NOT VERIFIED raises at
+#   least WARNING; a review in which zero checks ran is a WARNING, never a PASS.
+# ASSUMES: if the Plan explicitly promised the missing input, the reviewer escalates that
+#   NOT VERIFIED to BLOCKER by hand and says so in the QA report.
+if qa["blockers"] > 0:
+    severity = "BLOCKER"
+elif qa["warnings"] > 0 or qa["not_verified"] > 0 or qa["passed"] == 0:
+    severity = "WARNING"
+else:
+    severity = "PASSED"
+print(f"QA{QA_LEVEL} RESULT: {severity}")
 print("=" * 60)
 ```
+
+**cr1 outcome-line rules (both languages):**
+
+- **`not_applicable` keys:** `schema`, `row_count`, `distributions`, `coded_values`,
+  `critical_nulls`. A key present with a non-empty reason prints `[SKIPPED] <check>: <reason>`;
+  a key present with an empty reason prints `[NOT VERIFIED] <check>: declared not_applicable
+  with an empty reason string` — the declaration was made, the justification was not.
+- **One outcome line per check.** Checks 1 and 5 report secondary observations (extra
+  columns, which declared critical columns are present) inside their single outcome line
+  rather than emitting a second counted line.
+- **Check 4 is per column, by design.** It prints one outcome line per scanned column,
+  matching `QA_CHECKPOINTS.md` § QA2 `coded_values` so cr1 and QA2 cannot disagree about
+  what the coded-value check means. The column set is `PLAN_NUMERIC_COLUMNS`, falling back
+  to the shared numeric-dtype predicate only when the Plan declares none; an empty
+  resulting set is `[NOT VERIFIED]`, and a declared column absent from the output is a
+  `[BLOCKER]`.
+- **Verdict mapping.** `QA{n} RESULT: PASSED | WARNING | BLOCKER`, derived from the
+  counters — `not verified` raises at least `WARNING`, and a run in which zero checks
+  passed is never `PASSED`.
 
 **R cr1 Base Template (for R pipeline reviews):**
 
@@ -438,112 +607,266 @@ library(dplyr)
 library(arrow)
 
 BASE_DIR <- "/daaf"
+# QA_LEVEL names the checkpoint this script implements ("1", "2", "3", "4a", "4b") and is
+# what the verdict line interpolates — a verdict line without its checkpoint number cannot
+# be traced back to a checkpoint, and the orchestrator transcribes that line into STATE.md.
+QA_LEVEL <- "{N}"
+# STEP names the pipeline step under review. Both are plain config strings so the
+# banner below interpolates bound variables rather than raw {N}/{step} placeholders.
+STEP <- "{step}"
 PROJECT_DIR <- file.path(BASE_DIR, "research/{project_name}")
 OUTPUT_FILE <- file.path(PROJECT_DIR, "data/processed/{output_file}")
 EXPECTED_COLUMNS <- c({expected_columns})
 EXPECTED_MIN_ROWS <- {min_rows}
 EXPECTED_MAX_ROWS <- {max_rows}
 CRITICAL_COLUMNS <- c({critical_columns})
+# CODED_MISSING_VALUES: domain-specific coded missing values from Plan.md's domain config
+# (e.g., c(-1, -2, -3) for education data). Provided by orchestrator in Agent prompt.
+CODED_MISSING_VALUES <- c({coded_values})
+# PLAN_NUMERIC_COLUMNS: the numeric columns the Plan declares for this output — cr1's
+# spelling of QA2's plan_spec[["numeric_columns"]] (QA_CHECKPOINTS.md § QA2). The
+# coded-value scan runs over exactly these columns; leave it empty only when the Plan
+# declares none, in which case the scan falls back to is.numeric() columns.
+PLAN_NUMERIC_COLUMNS <- c({numeric_columns})
+
+# INTENT: declare the checks that genuinely do not apply to this output, with a reason.
+# REASONING: an undeclared check whose inputs are absent is [NOT VERIFIED] and raises the
+#   verdict; a declared one is [SKIPPED] and prints its reason. Both are counted. A key
+#   present with an EMPTY reason is [NOT VERIFIED] too — the declaration was made but its
+#   justification is missing, so every check tests that case explicitly rather than
+#   falling through to the check body (same shape as QA_CHECKPOINTS.md § QA2).
+# ASSUMES: index with [[ ]], never $ — partial matching binds the wrong key silently.
+# Keys: schema, row_count, distributions, coded_values, critical_nulls
+not_applicable <- list()  # e.g. list(coded_values = "this source uses no coded missing values")
+
+qa <- c(passed = 0L, warnings = 0L, blockers = 0L, not_verified = 0L, skipped = 0L, info = 0L)
 
 # --- Load output data ---
 cat("============================================================\n")
-cat("QA INSPECTION: Stage", {N}, "Step", {step}, "\n")
+cat(sprintf("QA INSPECTION: Stage %s Step %s\n", QA_LEVEL, STEP))
 cat("============================================================\n")
 
 df <- arrow::read_parquet(OUTPUT_FILE)
 cat("Loaded:", nrow(df), "rows x", ncol(df), "cols\n")
 
 # --- Check 1: Schema ---
-missing_cols <- setdiff(EXPECTED_COLUMNS, names(df))
-extra_cols <- setdiff(names(df), EXPECTED_COLUMNS)
-schema_ok <- length(missing_cols) == 0
-
-if (schema_ok) {
-  cat("[PASS] Schema: All expected columns present\n")
+# REASONING: one outcome line per check — extra columns are reported inside the schema
+#   outcome line, not as a second counted [INFO] line for the same check.
+na_reason <- if ("schema" %in% names(not_applicable)) not_applicable[["schema"]] else NULL
+if (!is.null(na_reason) && nzchar(na_reason)) {
+  cat(sprintf("[SKIPPED] Schema: %s\n", na_reason))
+  qa["skipped"] <- qa["skipped"] + 1L
+} else if ("schema" %in% names(not_applicable)) {
+  cat("[NOT VERIFIED] Schema: declared not_applicable with an empty reason string\n")
+  qa["not_verified"] <- qa["not_verified"] + 1L
+} else if (length(EXPECTED_COLUMNS) == 0) {
+  cat("[NOT VERIFIED] Schema: EXPECTED_COLUMNS is empty — no Plan schema to compare against\n")
+  qa["not_verified"] <- qa["not_verified"] + 1L
 } else {
-  cat("[FAIL] Schema: Missing columns:", paste(missing_cols, collapse = ", "), "\n")
-}
-if (length(extra_cols) > 0) {
-  cat("  Extra columns (not in Plan.md):", paste(extra_cols, collapse = ", "), "\n")
+  missing_cols <- setdiff(EXPECTED_COLUMNS, names(df))
+  extra_cols <- setdiff(names(df), EXPECTED_COLUMNS)
+  extra_note <- if (length(extra_cols) > 0) {
+    sprintf("; %d columns not in Plan.md: %s", length(extra_cols), paste(extra_cols, collapse = ", "))
+  } else {
+    "; 0 columns outside Plan.md"
+  }
+  if (length(missing_cols) == 0) {
+    cat(sprintf("[PASS] Schema: all %d expected columns present (file has %d)%s\n",
+                length(EXPECTED_COLUMNS), ncol(df), extra_note))
+    qa["passed"] <- qa["passed"] + 1L
+  } else {
+    cat(sprintf("[BLOCKER] Schema: %d of %d expected columns missing: %s%s\n",
+                length(missing_cols), length(EXPECTED_COLUMNS),
+                paste(missing_cols, collapse = ", "), extra_note))
+    qa["blockers"] <- qa["blockers"] + 1L
+  }
 }
 
 # --- Check 2: Row count ---
-row_count <- nrow(df)
-rows_ok <- row_count >= EXPECTED_MIN_ROWS & row_count <= EXPECTED_MAX_ROWS
-cat(sprintf("[%s] Row count: %s (expected %s-%s)\n",
-    ifelse(rows_ok, "PASS", "FAIL"),
-    format(row_count, big.mark = ","),
-    format(EXPECTED_MIN_ROWS, big.mark = ","),
-    format(EXPECTED_MAX_ROWS, big.mark = ",")))
-
-# --- Check 3: Distributions ---
-dist_issues <- character(0)
-numeric_cols <- names(df)[sapply(df, is.numeric)]
-for (col in numeric_cols) {
-  col_data <- df[[col]][!is.na(df[[col]])]
-  if (length(col_data) == 0) next
-  if (length(unique(col_data)) == 1 & length(col_data) > 10) {
-    dist_issues <- c(dist_issues, sprintf("%s: all same value (%s)", col, col_data[1]))
-  }
-  if (all(col_data == 0)) {
-    dist_issues <- c(dist_issues, sprintf("%s: all zeros", col))
+na_reason <- if ("row_count" %in% names(not_applicable)) not_applicable[["row_count"]] else NULL
+if (!is.null(na_reason) && nzchar(na_reason)) {
+  cat(sprintf("[SKIPPED] Row count: %s\n", na_reason))
+  qa["skipped"] <- qa["skipped"] + 1L
+} else if ("row_count" %in% names(not_applicable)) {
+  cat("[NOT VERIFIED] Row count: declared not_applicable with an empty reason string\n")
+  qa["not_verified"] <- qa["not_verified"] + 1L
+} else if (is.null(EXPECTED_MIN_ROWS) || is.null(EXPECTED_MAX_ROWS) ||
+           is.na(EXPECTED_MIN_ROWS) || is.na(EXPECTED_MAX_ROWS)) {
+  cat("[NOT VERIFIED] Row count: EXPECTED_MIN_ROWS/EXPECTED_MAX_ROWS not supplied by the Plan\n")
+  qa["not_verified"] <- qa["not_verified"] + 1L
+} else {
+  row_count <- nrow(df)
+  if (row_count >= EXPECTED_MIN_ROWS && row_count <= EXPECTED_MAX_ROWS) {
+    cat(sprintf("[PASS] Row count: %s within expected %s-%s\n",
+                format(row_count, big.mark = ","),
+                format(EXPECTED_MIN_ROWS, big.mark = ","),
+                format(EXPECTED_MAX_ROWS, big.mark = ",")))
+    qa["passed"] <- qa["passed"] + 1L
+  } else {
+    cat(sprintf("[BLOCKER] Row count: %s outside expected %s-%s\n",
+                format(row_count, big.mark = ","),
+                format(EXPECTED_MIN_ROWS, big.mark = ","),
+                format(EXPECTED_MAX_ROWS, big.mark = ",")))
+    qa["blockers"] <- qa["blockers"] + 1L
   }
 }
-dist_ok <- length(dist_issues) == 0
-if (dist_ok) {
-  cat("[PASS] Distributions: Look reasonable\n")
+
+# --- Check 3: Distributions ---
+# ASSUMES: is.numeric() is the shared numeric predicate — Check 4 scans the same
+#   predicate, so no column is profiled here and exempted from the coded-value scan.
+numeric_cols <- names(df)[sapply(df, is.numeric)]
+na_reason <- if ("distributions" %in% names(not_applicable)) not_applicable[["distributions"]] else NULL
+if (!is.null(na_reason) && nzchar(na_reason)) {
+  cat(sprintf("[SKIPPED] Distributions: %s\n", na_reason))
+  qa["skipped"] <- qa["skipped"] + 1L
+} else if ("distributions" %in% names(not_applicable)) {
+  cat("[NOT VERIFIED] Distributions: declared not_applicable with an empty reason string\n")
+  qa["not_verified"] <- qa["not_verified"] + 1L
+} else if (length(numeric_cols) == 0) {
+  cat("[NOT VERIFIED] Distributions: output has no numeric columns — nothing to profile\n")
+  qa["not_verified"] <- qa["not_verified"] + 1L
 } else {
-  cat("[FAIL] Distributions:", paste(dist_issues, collapse = "; "), "\n")
+  dist_issues <- character(0)
+  for (col in numeric_cols) {
+    col_data <- df[[col]][!is.na(df[[col]])]
+    if (length(col_data) == 0) {
+      dist_issues <- c(dist_issues, sprintf("%s: all NA", col))
+      next
+    }
+    if (length(unique(col_data)) == 1 && length(col_data) > 10) {
+      dist_issues <- c(dist_issues, sprintf("%s: all same value (%s, n=%d)",
+                                            col, col_data[1], length(col_data)))
+    }
+    if (all(col_data == 0)) {
+      dist_issues <- c(dist_issues, sprintf("%s: all zeros (n=%d)", col, length(col_data)))
+    }
+  }
+  if (length(dist_issues) == 0) {
+    cat(sprintf("[PASS] Distributions: %d numeric columns, none constant, all-zero, or all-NA\n",
+                length(numeric_cols)))
+    qa["passed"] <- qa["passed"] + 1L
+  } else {
+    cat(sprintf("[BLOCKER] Distributions: %s\n", paste(dist_issues, collapse = "; ")))
+    qa["blockers"] <- qa["blockers"] + 1L
+  }
 }
 
 # --- Check 4: Coded values ---
-# CODED_MISSING_VALUES: domain-specific coded missing values from Plan.md's domain config
-# (e.g., c(-1, -2, -3) for education data). Provided by orchestrator in Agent prompt.
-CODED_MISSING_VALUES <- c({coded_values})
-
-coded_issues <- character(0)
-if (length(CODED_MISSING_VALUES) > 0) {
-  int_cols <- names(df)[sapply(df, is.integer)]
-  for (col in int_cols) {
-    for (code in CODED_MISSING_VALUES) {
-      count <- sum(df[[col]] == code, na.rm = TRUE)
-      if (count > 0) {
-        coded_issues <- c(coded_issues, sprintf("%s has %d coded value %d", col, count, code))
+# INTENT: scan the columns the Plan declared numeric for the domain's coded-missing
+#   sentinels, one outcome line per column carrying its counts.
+# REASONING: is.integer() is a storage-mode test, not a column contract — an R frame
+#   read from parquet carries doubles, so the integer-only scan inspected zero columns
+#   and still printed a PASS. The Plan's declared numeric columns are the contract;
+#   is.numeric() is the fallback only when the Plan declares none, and an empty
+#   resulting set is [NOT VERIFIED], never a pass. Guard length() > 0 before the loop.
+# ASSUMES: same column set, emptiness handling, absent-column severity, and per-column
+#   granularity as QA_CHECKPOINTS.md § QA2 "Validate: coded_values".
+na_reason <- if ("coded_values" %in% names(not_applicable)) not_applicable[["coded_values"]] else NULL
+if (!is.null(na_reason) && nzchar(na_reason)) {
+  cat(sprintf("[SKIPPED] Coded values: %s\n", na_reason))
+  qa["skipped"] <- qa["skipped"] + 1L
+} else if ("coded_values" %in% names(not_applicable)) {
+  cat("[NOT VERIFIED] Coded values: declared not_applicable with an empty reason string\n")
+  qa["not_verified"] <- qa["not_verified"] + 1L
+} else if (length(CODED_MISSING_VALUES) == 0) {
+  cat("[NOT VERIFIED] Coded values: CODED_MISSING_VALUES is empty — no vocabulary to test against\n")
+  qa["not_verified"] <- qa["not_verified"] + 1L
+} else {
+  if (length(PLAN_NUMERIC_COLUMNS) > 0) {
+    scan_cols <- PLAN_NUMERIC_COLUMNS
+    col_source <- "Plan-declared numeric columns"
+  } else {
+    scan_cols <- names(df)[sapply(df, is.numeric)]
+    col_source <- "is.numeric() fallback - the Plan declared no numeric columns"
+  }
+  if (length(scan_cols) == 0) {
+    cat("[NOT VERIFIED] Coded values: no columns to scan - PLAN_NUMERIC_COLUMNS is empty and the output has no numeric column\n")
+    qa["not_verified"] <- qa["not_verified"] + 1L
+  } else {
+    for (col in scan_cols) {
+      if (!col %in% names(df)) {
+        cat(sprintf("[BLOCKER] Coded values '%s': column named in PLAN_NUMERIC_COLUMNS is absent from the output\n", col))
+        qa["blockers"] <- qa["blockers"] + 1L
+        next
+      }
+      if (!is.numeric(df[[col]])) {
+        cat(sprintf("[NOT VERIFIED] Coded values '%s': column is %s, not numeric - sentinels (%s) are not comparable to it\n",
+                    col, class(df[[col]])[1], paste(CODED_MISSING_VALUES, collapse = ", ")))
+        qa["not_verified"] <- qa["not_verified"] + 1L
+        next
+      }
+      hits <- sapply(CODED_MISSING_VALUES, function(code) sum(df[[col]] == code, na.rm = TRUE))
+      if (sum(hits) > 0) {
+        present_codes <- CODED_MISSING_VALUES[hits > 0]
+        cat(sprintf("[BLOCKER] Coded values '%s': %d of %d rows still carry sentinels (%s) (%s)\n",
+                    col, sum(hits), nrow(df), paste(present_codes, collapse = ", "), col_source))
+        qa["blockers"] <- qa["blockers"] + 1L
+      } else {
+        cat(sprintf("[PASS] Coded values '%s': 0 of %d rows match any of (%s) (%s)\n",
+                    col, nrow(df), paste(CODED_MISSING_VALUES, collapse = ", "), col_source))
+        qa["passed"] <- qa["passed"] + 1L
       }
     }
   }
 }
-coded_ok <- length(coded_issues) == 0
-if (length(CODED_MISSING_VALUES) == 0) {
-  cat("[PASS] Coded values: No domain-specific coded values to check\n")
-} else if (coded_ok) {
-  cat("[PASS] Coded values: None remain\n")
-} else {
-  cat("[FAIL] Coded values:", paste(coded_issues, collapse = "; "), "\n")
-}
 
 # --- Check 5: Critical nulls ---
-null_issues <- character(0)
-for (col in CRITICAL_COLUMNS) {
-  if (col %in% names(df)) {
-    null_count <- sum(is.na(df[[col]]))
-    if (null_count > 0) {
-      null_issues <- c(null_issues, sprintf("%s: %d NAs", col, null_count))
+# REASONING: one outcome line per check — an absent declared column is reported once as
+#   a [BLOCKER], not as a [BLOCKER] plus a second counted [NOT VERIFIED].
+na_reason <- if ("critical_nulls" %in% names(not_applicable)) not_applicable[["critical_nulls"]] else NULL
+if (!is.null(na_reason) && nzchar(na_reason)) {
+  cat(sprintf("[SKIPPED] Critical nulls: %s\n", na_reason))
+  qa["skipped"] <- qa["skipped"] + 1L
+} else if ("critical_nulls" %in% names(not_applicable)) {
+  cat("[NOT VERIFIED] Critical nulls: declared not_applicable with an empty reason string\n")
+  qa["not_verified"] <- qa["not_verified"] + 1L
+} else if (length(CRITICAL_COLUMNS) == 0) {
+  cat("[NOT VERIFIED] Critical nulls: CRITICAL_COLUMNS is empty — the Plan named no critical columns\n")
+  qa["not_verified"] <- qa["not_verified"] + 1L
+} else {
+  present <- intersect(CRITICAL_COLUMNS, names(df))
+  absent <- setdiff(CRITICAL_COLUMNS, names(df))
+  if (length(absent) > 0) {
+    cat(sprintf("[BLOCKER] Critical nulls: %d of %d declared critical column(s) absent from the output: %s (present and null-checkable: %s)\n",
+                length(absent), length(CRITICAL_COLUMNS), paste(absent, collapse = ", "),
+                if (length(present) > 0) paste(present, collapse = ", ") else "none"))
+    qa["blockers"] <- qa["blockers"] + 1L
+  } else {
+    null_issues <- character(0)
+    for (col in present) {
+      null_count <- sum(is.na(df[[col]]))
+      if (null_count > 0) {
+        null_issues <- c(null_issues, sprintf("%s: %d NAs", col, null_count))
+      }
+    }
+    if (length(null_issues) == 0) {
+      cat(sprintf("[PASS] Critical nulls: 0 NAs across %d critical columns (%s)\n",
+                  length(present), paste(present, collapse = ", ")))
+      qa["passed"] <- qa["passed"] + 1L
+    } else {
+      cat(sprintf("[BLOCKER] Critical nulls: %s (of %d critical columns, %d rows)\n",
+                  paste(null_issues, collapse = "; "), length(present), nrow(df)))
+      qa["blockers"] <- qa["blockers"] + 1L
     }
   }
 }
-nulls_ok <- length(null_issues) == 0
-if (nulls_ok) {
-  cat("[PASS] Critical nulls: None\n")
-} else {
-  cat("[FAIL] Critical nulls:", paste(null_issues, collapse = "; "), "\n")
-}
 
 # --- Summary ---
-all_passed <- all(schema_ok, rows_ok, dist_ok, coded_ok, nulls_ok)
 cat("\n============================================================\n")
-severity <- ifelse(all_passed, "PASSED", "BLOCKER")
-cat("QA RESULT:", severity, "\n")
+cat(sprintf("Checks: %d passed, %d warnings, %d blockers, %d not verified, %d skipped, %d info\n",
+            qa[["passed"]], qa[["warnings"]], qa[["blockers"]],
+            qa[["not_verified"]], qa[["skipped"]], qa[["info"]]))
+# INTENT: derive the verdict from the counters.
+# REASONING: NOT VERIFIED means the check reviewed nothing, so it raises at least WARNING;
+#   a review in which zero checks ran is a WARNING, never a PASS.
+if (qa[["blockers"]] > 0) {
+  severity <- "BLOCKER"
+} else if (qa[["warnings"]] > 0 || qa[["not_verified"]] > 0 || qa[["passed"]] == 0) {
+  severity <- "WARNING"
+} else {
+  severity <- "PASSED"
+}
+cat(sprintf("QA%s RESULT: %s\n", QA_LEVEL, severity))
 cat("============================================================\n")
 ```
 
@@ -820,8 +1143,10 @@ Return QA report in this structure:
 # QA Review: [Script Name]
 
 ## Summary
-**QA Status:** [PASSED | ISSUES_FOUND]
+**Status:** [COMPLETED | ISSUES_FOUND]   <- agent status (two-field convention, `agent_reference/AGENT_TEMPLATE.md` § Output Format): did the review itself run to completion
 **Severity:** [BLOCKER | WARNING | INFO | None]
+**QA{n} RESULT:** [PASSED | WARNING | BLOCKER]   <- the checkpoint verdict, transcribed from the `QA{n} RESULT:` line your cr1 script printed
+**Checks:** {passed} passed, {warnings} warnings, {blockers} blockers, {not_verified} not verified, {skipped} skipped, {info} info
 **Script Reviewed:** `scripts/stage{N}_{type}/{step}_{name}.{py|R}`
 **QA Scripts Created:** [count] iteration(s)
 - `scripts/cr/stage{N}_{step}_cr1.{py|R}`: Standard checks + profiling
@@ -832,9 +1157,9 @@ Return QA report in this structure:
 ### Correctness
 | Check | Status | Notes |
 |-------|--------|-------|
-| Operations match intent | PASS/FAIL/WARN | [Details] |
-| Edge cases handled | PASS/FAIL/WARN | [Details] |
-| Types correct | PASS/FAIL/WARN | [Details] |
+| Operations match intent | PASS/WARNING/BLOCKER/NOT VERIFIED/SKIPPED/INFO | [Details] |
+| Edge cases handled | PASS/WARNING/BLOCKER/NOT VERIFIED/SKIPPED/INFO | [Details] |
+| Types correct | PASS/WARNING/BLOCKER/NOT VERIFIED/SKIPPED/INFO | [Details] |
 
 ### Methodology Alignment
 | Plan.md Requirement | Implementation | Status |
@@ -867,7 +1192,7 @@ Return QA report in this structure:
 - Pre-state: [Summary]
 - Post-state: [Summary]
 - Row change: [%] — [Reasonable/Concerning]
-- Checkpoint status: [All passed/Issues noted]
+- Checkpoint verdicts: [transcribe each `CP{n} VALIDATION:` line and its `Checks:` count line]
 
 ### Warnings Logged
 | Warning | Assessment | Action Needed |
@@ -893,7 +1218,7 @@ Return QA report in this structure:
 
 | Check | Result | Source Script | Severity |
 |-------|--------|--------------|----------|
-| [check name] | PASS/FAIL | cr1 | [level] |
+| [check name] | PASS/WARNING/BLOCKER/NOT VERIFIED/SKIPPED/INFO | cr1 | [level] |
 
 ### Additional Strands of Inquiry
 
@@ -972,7 +1297,7 @@ If nothing novel, emit "None" — this is the expected common case.
 
 | Consumer | Receives | How They Use It |
 |----------|----------|-----------------|
-| Orchestrator | QA Status + Severity + Recommendations | Gate decision (proceed / revise / escalate) |
+| Orchestrator | Status + Severity + `QA{n} RESULT:` + the `Checks:` count line + Recommendations | Gate decision (proceed / revise / escalate); the verdict and counts are copied into STATE.md |
 | research-executor | Issue Details + Suggested Fixes | Applies fixes in revision scripts (_a.py, _b.py) |
 | data-ingest (Data Onboarding Mode) | Issue Details + Suggested Fixes | Applies fixes in revision scripts (_a.py, _b.py) for profiling scripts |
 | debugger | Issue Details + Evidence | Diagnosis when complex issues need deeper investigation |
@@ -982,11 +1307,13 @@ If nothing novel, emit "None" — this is the expected common case.
 
 **Severity-to-Action Mapping:**
 
-| Your Status | Orchestrator Action |
+Keyed on your `QA{n} RESULT:` verdict, read together with its count line:
+
+| Your `QA{n} RESULT:` | Orchestrator Action |
 |-------------|-------------------|
 | PASSED (no issues) | Proceed to next stage/task |
 | PASSED with INFO | Log INFO items, proceed |
-| WARNING | Log for Stage 10 aggregation; proceed |
+| WARNING | Log for Stage 10 aggregation; proceed. When the count line shows `not verified > 0`, record which checks could not run and your escalation decision for each |
 | BLOCKER | Invoke revision flow (max 2 attempts, then escalate) |
 
 </downstream_consumer>
@@ -1019,6 +1346,7 @@ If nothing novel, emit "None" — this is the expected common case.
 - Review Stage 9 notebook code (QA1-QA4b cover Stages 5-8 only)
 - Skip QA script creation for any Stage 5-8 script
 - Accept execution log PASS/FAIL status at face value without reasoning
+- Treat `[NOT VERIFIED]` or `[SKIPPED]` lines as passes, or report a checkpoint as `PASSED` when its log line said `PASSED WITH WARNINGS` (that maps to reported status `WARNING`)
 
 ### Autonomous Deviation Rules
 
@@ -1083,13 +1411,17 @@ When reviewing profiling scripts in Data Onboarding mode, apply these adaptation
 **Key differences from Full Pipeline QA:**
 
 1. **No Plan.md exists.** Methodology alignment should verify profiling completeness against the Part A-D script inventory, using STATE.md and orchestrator-provided domain context/intended use instead of Plan.md.
-2. **Profiling scripts characterize data — they do not transform it.** The QA question is "Did this script correctly characterize the data?" not "Did it correctly transform the data?" Checks for coded value filtering, suppression calculations, or join cardinality do not apply.
+2. **Profiling scripts characterize data — they do not transform it.** The QA question is "Did this script correctly characterize the data?" not "Did it correctly transform the data?" Transform-oriented checks (coded value filtering, suppression rate recomputation, join cardinality against a Plan) are typically not applicable to a profiling script — but *not applicable* is a declared outcome, not silence. Report each such check as `[SKIPPED] <check>: <reason>` and count it; a check you simply omit is indistinguishable in the log from one that ran and passed. The QAP default check set for each part, with the per-check conditions that make it skippable versus unverifiable, is in `agent_reference/QA_CHECKPOINTS.md` § Profiling QA Checkpoints (QAP1-QAP4).
 3. **Output is embedded in script files.** Profiling scripts produce stdout/stderr appended to the script file by `run_with_capture.sh`, not separate parquet or figure files. QA scripts should verify the appended execution log content.
 4. **QA script naming uses part-based convention:** `scripts/cr/profile_{part}_cr{N}.{py|R}` (e.g., `profile_structural_cr1.py` or `profile_structural_cr1.R`), not the stage-based `stage{N}_{step}_cr{N}.{py|R}` pattern used in Full Pipeline.
 5. **Research question maps to intended use.** When the orchestrator provides `Research question / Intended use`, use this for methodology alignment in place of Plan.md's research question.
 6. **Multi-file (HIERARCHICAL) QA:** When reviewing profiling parts that contain per-file suffixed scripts (e.g., `01a_`, `01b_`, `07a_`, `09a_`), one QA script per part reviews ALL suffixed scripts together. Verify: (a) consistent canonical load patterns across suffixed scripts, (b) suffix-to-file mapping matches the schema map, (c) per-file conditional script decisions are independently correct. For cross-file script `07b_cross-level-linkage.py`, additionally verify: key type comparison was performed before join simulation, orphan counts are plausible given the coverage rates, and join loss simulation includes both inner-join survival rate and duplication check.
 
-7. **Synthetic (privacy-preserving) path QA (QAS-A/B/C).** When Data Onboarding takes the synthetic path, the code-reviewer performs three different QA reviews instead of QAP1-QAP4: QAS-A (disclosure-safety of the outbound profiling script, at DS-1), QAS-B (returned-report internal consistency, at DS-3), and QAS-C (synthetic-vs-profile fidelity, at DS-5). These are fully specified — including checklists, severity mapping, and skill loading — in the orchestrator's synthetic-path invocation templates; follow the prompt you receive rather than the QAP adaptations above. See `.claude/skills/daaf-orchestrator/references/WORKFLOW_PHASE_DO_SYNTHETIC.md`.
+7. **The verdict is `QAP{n} RESULT: PASSED | WARNING | BLOCKER`, derived from a count line.** Print the counts immediately before the verdict — `Checks: {passed} passed, {warnings} warnings, {blockers} blockers, {not_verified} not verified, {skipped} skipped, {info} info` — and derive: BLOCKER if any blockers; else WARNING if any warnings **or any not verified**; else PASSED; and WARNING when zero substantive checks ran. Report the verdict and the counts together to the orchestrator, which records both in STATE.md.
+
+8. **A check that could not run is `[NOT VERIFIED]`, never a pass.** Profiling parts are full of legitimately missing inputs: conditional scripts 05, 06, 07b, 08, and 11 may not have run; no known universe may exist to test entity coverage against; no documentation may have been supplied to reconcile. When the input is absent and the check was not declared not applicable, emit `[NOT VERIFIED] <check>: <exactly what was missing>`. NOT VERIFIED forces the result to at least WARNING. **Escalate it to BLOCKER when the profiling protocol had promised the input** — documentation was supplied but script 11 did not run, the structure was classified HIERARCHICAL but 07b is missing, Part A found a time column but script 05 produced no temporal coverage. That is the "Validation Inadequate" BLOCKER criterion: a check that could not run cannot catch what it exists to catch. Make the call explicitly, per check, and record the reasoning in the QA report — the orchestrator carries it into STATE.md and into what the user sees at the findings review.
+
+9. **Synthetic (privacy-preserving) path QA (QAS-A/B/C).** When Data Onboarding takes the synthetic path, the code-reviewer performs three different QA reviews instead of QAP1-QAP4: QAS-A (disclosure-safety of the outbound profiling script, at DS-1), QAS-B (returned-report internal consistency, at DS-3), and QAS-C (synthetic-vs-profile fidelity, at DS-5). These are fully specified — including checklists, severity mapping, and skill loading — in the orchestrator's synthetic-path invocation templates; follow the prompt you receive rather than the QAP adaptations above. See `.claude/skills/daaf-orchestrator/references/WORKFLOW_PHASE_DO_SYNTHETIC.md`.
 
 ---
 
@@ -1179,7 +1511,7 @@ In RV-2, the code-reviewer acts as a **reproducer**, not a reviewer. The task is
 
 **DO NOT perform shallow "LGTM" reviews.** If your review takes less effort than the script took to write, you're not reviewing thoroughly enough. A meaningful review requires forming an independent mental model of what the code should do and testing it against what the code actually does.
 
-**DO NOT anchor on the execution log's PASS/FAIL status.** The execution log tells you what the script's own checks found. Your job is to find what those checks missed. A log full of `[PASS]` should increase your suspicion, not decrease it — it may mean the checks weren't demanding enough.
+**DO NOT anchor on the execution log's PASS/FAIL status.** The execution log tells you what the script's own checks found. Your job is to find what those checks missed. A log full of `[PASS]` should increase your suspicion, not decrease it — it may mean the checks weren't demanding enough. Two specific tells: a `[PASS]` line that carries no numbers is a vacuous pass, and a count line whose `not verified` or `skipped` tallies are non-zero marks exactly where the checkpoint stopped checking. Start there.
 
 **DO NOT limit QA scripts to template checks.** The template is a starting point. Every script has unique characteristics that demand unique validation. A QA script that's identical to the template (with only config values changed) is a missed opportunity to catch real issues.
 

@@ -414,7 +414,7 @@ These patterns implement the 4 validation checkpoints from the full pipeline wor
 | **CP1: Post-Fetch** | Basic Transform-Validate | After API data retrieval |
 | **CP2: Post-Cleaning** | Multi-Condition Filter | After removing coded values |
 | **CP3: Post-Transformation** | Join/Aggregation patterns | After each transform |
-| **CP4: Pre-Output** | Validation State Tracker | Before final output — covers both Stage 8.1 analysis results and Stage 8.2 visualization outputs |
+| **CP4: Post-Analysis & Visualization** | Validation State Tracker | End of Stage 8 — covers both Stage 8.1 analysis results (CP4.1 outputs valid, CP4.2 critical nulls, CP4.4 correct data source) and Stage 8.2 figures (CP4.3) |
 
 ## Best Practices Summary
 

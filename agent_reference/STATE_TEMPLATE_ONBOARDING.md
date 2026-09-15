@@ -45,27 +45,38 @@ Copy this template to `STATE.md` in the project folder when starting a Data Onbo
 
 ### Primary Validation (CPP1-CPP4 + CPP-SKILL)
 
-| Checkpoint | Status | Timestamp | Notes |
-|------------|--------|-----------|-------|
-| CPP1 (Post-Load / Structural) | [PENDING/PASSED/FAILED] | [time] | [notes] |
-| CPP2 (Post-Statistical) | [PENDING/PASSED/FAILED] | [time] | [notes] |
-| CPP3 (Post-Relational) | [PENDING/PASSED/FAILED] | [time] | [notes] |
-| CPP4 (Post-Interpretation) | [PENDING/PASSED/FAILED] | [time] | [notes] |
-| CPP-SKILL (Post-Authoring) | [PENDING/PASSED/FAILED] | [time] | [notes] |
+> Record the verdict **and** the counts from each checkpoint's count line. A verdict without counts cannot be distinguished later from a pass over checks that never ran.
+
+| Checkpoint | Verdict | Passed | Warnings | Failed | Not Verified | Skipped | Timestamp | Notes |
+|------------|---------|--------|----------|--------|--------------|---------|-----------|-------|
+| CPP1 (Post-Load / Structural) | [PENDING/PASSED/PASSED WITH WARNINGS/FAILED] | [n] | [n] | [n] | [n] | [n] | [time] | [notes; reasons for any skipped or not-verified checks] |
+| CPP2 (Post-Statistical) | [PENDING/PASSED/PASSED WITH WARNINGS/FAILED] | [n] | [n] | [n] | [n] | [n] | [time] | [notes] |
+| CPP3 (Post-Relational) | [PENDING/PASSED/PASSED WITH WARNINGS/FAILED] | [n] | [n] | [n] | [n] | [n] | [time] | [notes] |
+| CPP4 (Post-Interpretation) | [PENDING/PASSED/PASSED WITH WARNINGS/FAILED] | [n] | [n] | [n] | [n] | [n] | [time] | [notes] |
+| CPP-SKILL (Post-Authoring) | [PENDING/PASSED/PASSED WITH WARNINGS/FAILED] | [n] | [n] | [n] | [n] | [n] | [time] | [notes] |
+
+**CPP Verdict Values** (from the `CPP{n} VALIDATION:` line in the script's execution log):
+- **PENDING** — the checkpoint has not executed yet
+- **PASSED** — every check ran and held; `failed`, `not verified` are both 0
+- **PASSED WITH WARNINGS** — every check ran, one or more reported a non-fatal deviation; passes the gate, and the warnings carry forward to the part summary and to the findings shown to the user
+- **FAILED** — one or more checks failed, **or one or more could not be verified**. A `not verified` count above zero forces FAILED regardless of the other counters: a validation gate that could not obtain its evidence has not gated. The script raises, so the part does not complete. Resolve by supplying the missing input, correcting the checkpoint configuration, or declaring the check not applicable with a written reason (which moves it to `skipped`) — see `agent_reference/ERROR_RECOVERY.md` § Recovery from Different Stages (Data Onboarding)
 
 ### Secondary Validation (QAP1-QAP4)
 
-| Checkpoint | Part | Status | BLOCKERs | WARNINGs | Revisions | Timestamp |
-|------------|-------|--------|----------|----------|-----------|-----------|
-| QAP1 (Post-Structural) | A | [PENDING/PASSED/ISSUES] | [count] | [count] | [count] | [time] |
-| QAP2 (Post-Statistical) | B | [PENDING/PASSED/ISSUES] | [count] | [count] | [count] | [time] |
-| QAP3 (Post-Relational) | C | [PENDING/PASSED/ISSUES] | [count] | [count] | [count] | [time] |
-| QAP4 (Post-Interpretation) | D | [PENDING/PASSED/ISSUES] | [count] | [count] | [count] | [time] |
+| Checkpoint | Part | Result | Passed | Warnings | Blockers | Not Verified | Skipped | Info | Revisions | Timestamp |
+|------------|------|--------|--------|----------|----------|--------------|---------|------|-----------|-----------|
+| QAP1 (Post-Structural) | A | [PENDING/PASSED/WARNING/BLOCKER] | [n] | [n] | [n] | [n] | [n] | [n] | [count] | [time] |
+| QAP2 (Post-Statistical) | B | [PENDING/PASSED/WARNING/BLOCKER] | [n] | [n] | [n] | [n] | [n] | [n] | [count] | [time] |
+| QAP3 (Post-Relational) | C | [PENDING/PASSED/WARNING/BLOCKER] | [n] | [n] | [n] | [n] | [n] | [n] | [count] | [time] |
+| QAP4 (Post-Interpretation) | D | [PENDING/PASSED/WARNING/BLOCKER] | [n] | [n] | [n] | [n] | [n] | [n] | [count] | [time] |
 
-**QA Status Values:**
+**QAP Result Values** (from the `QAP{n} RESULT:` line in the code-reviewer's return):
 - **PENDING** — QA checkpoint not yet executed for this part
-- **PASSED** — All scripts in part passed QA review (no BLOCKERs, WARNINGs logged)
-- **ISSUES** — BLOCKERs resolved via revision, or WARNINGs logged
+- **PASSED** — every default check for this part ran on real inputs and held, with its evidence on the line; `blockers`, `warnings`, and `not verified` are all 0. PASSED does **not** mean "no BLOCKERs were raised" — a part with unverified checks is not PASSED
+- **WARNING** — the part progresses, but something is on the record: a non-fatal deviation, **or a check that could not be verified** (`not verified > 0` forces at least WARNING), or a run in which zero substantive checks executed
+- **BLOCKER** — a revision-required finding; routes to the revision flow and, if unresolved after 2 revisions, STOPs and escalates to the user
+
+**Recording NOT VERIFIED and SKIPPED.** For every checkpoint with `not verified > 0`, add a line under QA Findings Summary naming each unverified check, what input was missing, and the reviewer's escalation decision (left at WARNING, or escalated to BLOCKER because the profiling protocol had promised the input). For every checkpoint with `skipped > 0`, record the declared reason per check. These are what PSU-DI2's "Checks We Could Not Complete" section is built from.
 
 ---
 
@@ -189,19 +200,19 @@ States
 
 | # | Part | Script | Script Path | Conditional? | Status | CPP | QA Status | QA Script Path | Revisions | Notes |
 |---|-------|--------|-------------|-------------|--------|-----|-----------|----------------|-----------|-------|
-| 00 | DI-0 | api-fetch | `scripts/stage5_fetch/00_api-fetch.py` | Yes: API access | [PENDING/DONE/SKIPPED/N-A] | [—/PASSED/FAILED] | — | — | [0-2] | Omit row if Access Method = Local File |
-| 01 | A | load-and-format | `scripts/profile_structural/01_load-and-format.py` | No | [PENDING/DONE/SKIPPED] | [—/PASSED/FAILED] | [NOT_RUN/PASSED/WARNING/REVISED] | `scripts/cr/profile_structural_cr1.py` | [0-2] | |
-| 02 | A | structural-profile | `scripts/profile_structural/02_structural-profile.py` | No | [PENDING/DONE/SKIPPED] | [—/PASSED/FAILED] | | | [0-2] | |
-| 03 | A | column-profile | `scripts/profile_structural/03_column-profile.py` | No | [PENDING/DONE/SKIPPED] | [—/PASSED/FAILED] | | | [0-2] | |
-| 04 | B | distribution-analysis | `scripts/profile_statistical/04_distribution-analysis.py` | No | [PENDING/DONE/SKIPPED] | [—/PASSED/FAILED] | [NOT_RUN/PASSED/WARNING/REVISED] | `scripts/cr/profile_statistical_cr1.py` | [0-2] | |
-| 05 | B | temporal-coverage | `scripts/profile_statistical/05_temporal-coverage.py` | Yes: time column | [PENDING/DONE/SKIPPED] | [—/PASSED/FAILED] | | | [0-2] | |
-| 06 | B | entity-coverage | `scripts/profile_statistical/06_entity-coverage.py` | Yes: entity/geo ID | [PENDING/DONE/SKIPPED] | [—/PASSED/FAILED] | | | [0-2] | |
-| 07 | C | key-integrity | `scripts/profile_relational/07_key-integrity.py` | No | [PENDING/DONE/SKIPPED] | [—/PASSED/FAILED] | [NOT_RUN/PASSED/WARNING/REVISED] | `scripts/cr/profile_relational_cr1.py` | [0-2] | |
-| 07b | C | cross-level-linkage | `scripts/profile_relational/07b_cross-level-linkage.py` | Yes: HIERARCHICAL | [PENDING/DONE/SKIPPED] | [—/PASSED/FAILED] | | | [0-2] | |
-| 08 | C | correlation-dependency | `scripts/profile_relational/08_correlation-dependency.py` | Yes: >=3 numeric cols | [PENDING/DONE/SKIPPED] | [—/PASSED/FAILED] | | | [0-2] | |
-| 09 | C | quality-anomaly | `scripts/profile_relational/09_quality-anomaly.py` | No | [PENDING/DONE/SKIPPED] | [—/PASSED/FAILED] | | | [0-2] | |
-| 10 | D | semantic-interpretation | `scripts/profile_interpretation/10_semantic-interpretation.py` | No | [PENDING/DONE/SKIPPED] | [—/PASSED/FAILED] | [NOT_RUN/PASSED/WARNING/REVISED] | `scripts/cr/profile_interpretation_cr1.py` | [0-2] | |
-| 11 | D | reconcile-docs | `scripts/profile_interpretation/11_reconcile-docs.py` | Yes: docs provided | [PENDING/DONE/SKIPPED] | [—/PASSED/FAILED] | | | [0-2] | |
+| 00 | DI-0 | api-fetch | `scripts/stage5_fetch/00_api-fetch.py` | Yes: API access | [PENDING/DONE/SKIPPED/N-A] | [—/PASSED/PASSED WITH WARNINGS/FAILED] | — | — | [0-2] | Omit row if Access Method = Local File |
+| 01 | A | load-and-format | `scripts/profile_structural/01_load-and-format.py` | No | [PENDING/DONE/SKIPPED] | [—/PASSED/PASSED WITH WARNINGS/FAILED] | [NOT_RUN/PASSED/WARNING/REVISED] | `scripts/cr/profile_structural_cr1.py` | [0-2] | |
+| 02 | A | structural-profile | `scripts/profile_structural/02_structural-profile.py` | No | [PENDING/DONE/SKIPPED] | [—/PASSED/PASSED WITH WARNINGS/FAILED] | | | [0-2] | |
+| 03 | A | column-profile | `scripts/profile_structural/03_column-profile.py` | No | [PENDING/DONE/SKIPPED] | [—/PASSED/PASSED WITH WARNINGS/FAILED] | | | [0-2] | |
+| 04 | B | distribution-analysis | `scripts/profile_statistical/04_distribution-analysis.py` | No | [PENDING/DONE/SKIPPED] | [—/PASSED/PASSED WITH WARNINGS/FAILED] | [NOT_RUN/PASSED/WARNING/REVISED] | `scripts/cr/profile_statistical_cr1.py` | [0-2] | |
+| 05 | B | temporal-coverage | `scripts/profile_statistical/05_temporal-coverage.py` | Yes: time column | [PENDING/DONE/SKIPPED] | [—/PASSED/PASSED WITH WARNINGS/FAILED] | | | [0-2] | |
+| 06 | B | entity-coverage | `scripts/profile_statistical/06_entity-coverage.py` | Yes: entity/geo ID | [PENDING/DONE/SKIPPED] | [—/PASSED/PASSED WITH WARNINGS/FAILED] | | | [0-2] | |
+| 07 | C | key-integrity | `scripts/profile_relational/07_key-integrity.py` | No | [PENDING/DONE/SKIPPED] | [—/PASSED/PASSED WITH WARNINGS/FAILED] | [NOT_RUN/PASSED/WARNING/REVISED] | `scripts/cr/profile_relational_cr1.py` | [0-2] | |
+| 07b | C | cross-level-linkage | `scripts/profile_relational/07b_cross-level-linkage.py` | Yes: HIERARCHICAL | [PENDING/DONE/SKIPPED] | [—/PASSED/PASSED WITH WARNINGS/FAILED] | | | [0-2] | |
+| 08 | C | correlation-dependency | `scripts/profile_relational/08_correlation-dependency.py` | Yes: >=3 numeric cols | [PENDING/DONE/SKIPPED] | [—/PASSED/PASSED WITH WARNINGS/FAILED] | | | [0-2] | |
+| 09 | C | quality-anomaly | `scripts/profile_relational/09_quality-anomaly.py` | No | [PENDING/DONE/SKIPPED] | [—/PASSED/PASSED WITH WARNINGS/FAILED] | | | [0-2] | |
+| 10 | D | semantic-interpretation | `scripts/profile_interpretation/10_semantic-interpretation.py` | No | [PENDING/DONE/SKIPPED] | [—/PASSED/PASSED WITH WARNINGS/FAILED] | [NOT_RUN/PASSED/WARNING/REVISED] | `scripts/cr/profile_interpretation_cr1.py` | [0-2] | |
+| 11 | D | reconcile-docs | `scripts/profile_interpretation/11_reconcile-docs.py` | Yes: docs provided | [PENDING/DONE/SKIPPED] | [—/PASSED/PASSED WITH WARNINGS/FAILED] | | | [0-2] | |
 
 > **Note:** Script extensions are `.py` for Python projects and `.R` for R projects. QA scripts use the same extension as the execution language.
 
@@ -212,9 +223,11 @@ States
 
 **QA Status Values (part-level):**
 - **NOT_RUN** — Code-reviewer not yet invoked for this part
-- **PASSED** — Part QA review passed (no issues)
-- **WARNING** — Non-blocking issues logged
+- **PASSED** — Every default check for the part ran on real inputs and held (no blockers, no warnings, nothing unverified)
+- **WARNING** — Non-blocking issues logged, **or one or more checks could not be verified**; the part-level counts and the reasons live in the Secondary Validation table and QA Findings Summary
 - **REVISED** — BLOCKER resolved via script revision
+
+> The CPP column carries the script's own `CPP{n} VALIDATION:` verdict; `PASSED WITH WARNINGS` clears the gate with the warnings carried forward, and `FAILED` includes the case where a check could not be verified. The full counts belong in the Checkpoint Status tables above, not in this column.
 
 **Note:** QA is part-level, not per-script. The QA Script Path column is populated only for the first script in each part (the QA review covers all scripts in that part together).
 
@@ -362,13 +375,13 @@ States
 
 ### QA Checkpoint Summary
 
-| Checkpoint | Part | Scripts Reviewed | BLOCKERs | WARNINGs | INFOs | Revisions Applied |
-|------------|------|------------------|----------|----------|-------|-------------------|
-| QAP1 (Post-Structural) | A | [count] | [count] | [count] | [count] | [count] |
-| QAP2 (Post-Statistical) | B | [count] | [count] | [count] | [count] | [count] |
-| QAP3 (Post-Relational) | C | [count] | [count] | [count] | [count] | [count] |
-| QAP4 (Post-Interpretation) | D | [count] | [count] | [count] | [count] | [count] |
-| **Total** | — | [sum] | [sum] | [sum] | [sum] | [sum] |
+| Checkpoint | Part | Scripts Reviewed | BLOCKERs | WARNINGs | NOT VERIFIED | SKIPPED | INFOs | Revisions Applied |
+|------------|------|------------------|----------|----------|--------------|---------|-------|-------------------|
+| QAP1 (Post-Structural) | A | [count] | [count] | [count] | [count] | [count] | [count] | [count] |
+| QAP2 (Post-Statistical) | B | [count] | [count] | [count] | [count] | [count] | [count] | [count] |
+| QAP3 (Post-Relational) | C | [count] | [count] | [count] | [count] | [count] | [count] | [count] |
+| QAP4 (Post-Interpretation) | D | [count] | [count] | [count] | [count] | [count] | [count] | [count] |
+| **Total** | — | [sum] | [sum] | [sum] | [sum] | [sum] | [sum] | [sum] |
 
 ### BLOCKERs Resolved
 
@@ -382,6 +395,14 @@ States
 |------|--------|---------|--------------------|
 | [A-D] | [filename.py] | [Warning description] | [Why acceptable] |
 
+### Checks Not Verified or Skipped
+
+*One row per check that could not run. This table is the source for the "Checks We Could Not Complete" section presented to the user at PSU-DI2 — an empty table means every planned check ran on real data, and it should say so rather than be omitted.*
+
+| Part | Checkpoint | Check (key) | Outcome | What Was Missing / Declared Reason | Escalation Decision |
+|------|-----------|-------------|---------|-------------------------------------|---------------------|
+| [A-D] | [CPP{n} / QAP{n}] | [e.g., `coverage_completeness`] | [NOT VERIFIED / SKIPPED] | [e.g., "no known universe available to compare entity coverage against"] | [Left at WARNING / Escalated to BLOCKER because … / N/A for SKIPPED] |
+
 ---
 
 ## Skill Authoring Status
@@ -390,7 +411,7 @@ States
 |-------|-------|
 | **Skill Draft Location** | `output/skill_draft/SKILL.md` |
 | **Final Skill Location** | `.claude/skills/[skill-name]/SKILL.md` |
-| **Template Compliance (CPP-SKILL)** | [PENDING/PASSED/FAILED] |
+| **Template Compliance (CPP-SKILL)** | [PENDING/PASSED/PASSED WITH WARNINGS/FAILED] — record the count line alongside the verdict; a `not verified` count above zero is FAILED |
 | **Reference Files Created** | [list or PENDING] |
 | **Skill Line Count** | [N] (target: 200-350, hard limit: 500) |
 
@@ -552,5 +573,7 @@ STATE.md is the primary input for session recovery:
 3. **Interpretation Tracking** preserves user decisions from PSU-DI2
 4. **Next actions** provide immediate guidance
 5. **Skill Authoring Status** shows whether skill creation has begun
+
+**Reading verdicts on recovery.** A resuming session reads the Checkpoint Status tables as verdict *plus counts*, never verdict alone. A part recorded `PASSED` with a nonzero NOT VERIFIED count is a contradiction — the recorded verdict is stale or was written before this contract; re-read the part's execution log for the `CPP{n} VALIDATION:` / `QAP{n} RESULT:` line and its count line, and treat the log as authoritative. Before advancing past a gate, confirm the "Checks Not Verified or Skipped" table has an entry for every unverified or skipped check the counts imply; if the counts and that table disagree, the part's QA is unresolved and must be re-reviewed rather than assumed clean.
 
 See `{BASE_DIR}/.claude/skills/daaf-orchestrator/references/session-recovery.md` for the complete recovery procedure.

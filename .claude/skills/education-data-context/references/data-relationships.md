@@ -665,9 +665,12 @@ print(f"Merged rows: {merged_df.height:,}")
 
 if join_type == "left":
     if merged_df.height != left_df.height:
-        print(f"[WARN] Row count changed: {left_df.height:,} → {merged_df.height:,} (duplicates in right?)")
+        print(f"[WARNING] Row count changed: {left_df.height:,} → {merged_df.height:,} (duplicates in right?)")
     else:
-        print("[PASS] Row count preserved")
+        print(f"[PASS] Row count preserved: {left_df.height:,} left rows == {merged_df.height:,} merged rows")
+else:
+    # A row-count invariant only holds for a left join; say so rather than printing nothing.
+    print(f"[NOT VERIFIED] Row count: no preservation invariant defined for join_type '{join_type}'")
 
 # Check for unexpected nulls
 null_counts = merged_df.select([
@@ -687,12 +690,18 @@ cat(sprintf("Merged rows: %s\n", format(nrow(merged_df), big.mark = ",")))
 
 if (join_type == "left") {
   if (nrow(merged_df) != nrow(left_df)) {
-    cat(sprintf("[WARN] Row count changed: %s -> %s (duplicates in right?)\n",
+    cat(sprintf("[WARNING] Row count changed: %s -> %s (duplicates in right?)\n",
                 format(nrow(left_df), big.mark = ","),
                 format(nrow(merged_df), big.mark = ",")))
   } else {
-    cat("[PASS] Row count preserved\n")
+    cat(sprintf("[PASS] Row count preserved: %s left rows == %s merged rows\n",
+                format(nrow(left_df), big.mark = ","),
+                format(nrow(merged_df), big.mark = ",")))
   }
+} else {
+  # A row-count invariant only holds for a left join; say so rather than printing nothing.
+  cat(sprintf("[NOT VERIFIED] Row count: no preservation invariant defined for join_type '%s'\n",
+              join_type))
 }
 
 # Check for unexpected NAs

@@ -169,18 +169,45 @@ This runs after every join, aggregation, or derived-variable calculation. It che
 
 **What FAILED means:** Something went wrong -- row counts dropped by more than 90%, a join produced unexpected nulls, or derived values are clearly incorrect. DAAF will stop and investigate.
 
-**CP4: Pre-Output Validation** -- *"Does the final output meet our commitments?"*
+**CP4: Post-Analysis and Visualization Validation** -- *"Are the analysis results and figures sound?"*
 
-This runs during the synthesis phase (Stages 11-12), checking the complete output against what the Plan promised. It validates:
-- Are all required columns present in the analysis dataset?
-- Do all promised output files exist (figures, analysis results, report)?
-- Are all Research Outcomes from the Plan rigorously addressed?
-- Are Hypotheses (if any) transparently assessed with evidence?
+This runs at the end of the analysis stage, inside the analysis and visualization scripts themselves. It validates:
+- Do the analysis results exist, and are the estimates finite and plausible? Did the model converge? Is the sample size adequate?
+- Are there any nulls in the outcome or key columns being analyzed?
+- Does every figure the task promised exist, is it non-empty, and has DAAF actually looked at it?
+- Did the script read from the cleaned, processed data rather than the raw download?
+
+**What PASSED means:** The results and figures are present, well-formed, and built from the right inputs.
+
+**What FAILED means:** Something is wrong -- an estimate is infinite or missing, the model did not converge, a figure was never produced, or the script analyzed raw instead of processed data. DAAF will stop and investigate.
+
+**Pre-Output Verification** -- *"Does the final output meet our commitments?"*
+
+Separately, near the very end of the pipeline (Stage 12), the `data-verifier` agent works through a delivery checklist against what the Plan promised:
 - Does the report have all required sections?
+- Do the outputs match the Plan's commitments (data sources, years, geography, methodology)?
+- Are all Research Outcomes from the Plan rigorously addressed with evidence?
+- Are Hypotheses (if any) transparently assessed?
+- Does the Stage 9 notebook render successfully?
 
-**What PASSED means:** Everything the Plan committed to investigate has been rigorously addressed. The analysis is consistent with the original research question.
+This is a review checklist rather than automated code, so it is one of the places your own judgment matters most.
 
-**What FAILED means:** Something is missing -- a figure was not generated, a report section is incomplete, or a Research Outcome was not addressed. DAAF will identify the gap and attempt to resolve it.
+### Reading a Checkpoint Result
+
+Each checkpoint prints a tally before its verdict, something like:
+
+```
+Checks: 5 passed, 1 warnings, 0 failed, 0 not verified, 0 skipped
+CP2 VALIDATION: PASSED WITH WARNINGS
+```
+
+Three things are worth knowing about that output:
+
+- **"PASSED WITH WARNINGS" is not a clean pass.** Something deviated from expectations but not fatally. It is reported to you as a WARNING.
+- **"not verified" means a check could not run** -- a required input was missing, empty, or the wrong type. DAAF treats this as a failure rather than a pass, because a check that never ran has not validated anything. (In the secondary QA reviews, it is at least a WARNING.)
+- **"skipped" means a check was explicitly declared not applicable**, with a stated reason -- for example, a data source that has no suppression code at all. Skips are always counted and always explain themselves; they are never silent.
+
+A checkpoint that reports every check as passed but shows `0 passed` in its tally has not validated anything either, and DAAF treats that as a failure too.
 
 ### When DAAF Stops and Asks for Guidance
 
@@ -319,7 +346,7 @@ These safeguards run without your involvement throughout the pipeline:
 
 | Safeguard | What It Does | Where It Happens |
 |-----------|-------------|-----------------|
-| **Primary Checkpoints (CP1-CP4)** | Validates data at fetch, clean, transform, and output stages -- catches empty data, type errors, data loss, missing outputs | Embedded in every script |
+| **Primary Checkpoints (CP1-CP4)** | Validates data at the fetch, clean, transform, and analysis/visualization stages -- catches empty data, type errors, data loss, invalid results, missing figures | Embedded in every script |
 | **Secondary QA (QA1-QA4b)** | Independent adversarial review of every script by a separate code-reviewer agent | After every script execution |
 | **Iteration Protocol** | Forces every transformation into small steps: DESCRIBE, CODE, EXECUTE, VALIDATE, DECIDE | During all data operations |
 | **Batch Size Limits** | Maximum 1-2 transformations per execution cycle to prevent error accumulation | During Stages 5-8 |

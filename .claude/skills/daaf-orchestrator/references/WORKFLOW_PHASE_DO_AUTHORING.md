@@ -334,40 +334,87 @@ without analytical guidance produces reference files that are less useful than t
 raw data itself.
 
 Part 2 — CPP-SKILL Validation:
-7. Run CPP-SKILL validation (checklist below). ALL checks must pass.
+7. Run CPP-SKILL validation. The code is canonical in `agent_reference/VALIDATION_CHECKPOINTS.md`
+   § Profiling Validation Checkpoints > CPP-SKILL: Post-Authoring Validation — copy that block
+   verbatim into a Python script and execute it via `run_with_capture.sh`. It is Python-only:
+   the artifact under test is markdown, so there is no R variant even on R projects.
+
+**Config stanza — assign these in the CPP-SKILL script's `# --- Config ---` region before
+the block** (the canonical stanza and the `not_applicable` key list live at
+`agent_reference/VALIDATION_CHECKPOINTS.md` § Profiling Validation Checkpoints > CPP-SKILL:
+Post-Authoring Validation):
+```python
+# Every variable the block reads is bound here. An unbound variable is a NameError — a
+# crash instead of a reported outcome; None means "the upstream step produced nothing",
+# which the block reports as [NOT VERIFIED].
+skill_draft_dir = "/daaf/.claude/skills/{skill_name}"   # absolute path to the drafted skill directory
+profiled_columns = ["ncessch", "year", "enrollment"]    # every column name carried forward from Part A
+not_applicable = {}   # e.g. {"cross_dataset_join": "source shares no join keys with any DAAF skill"}
+# One determination per manual checklist item. Each value starts with "PASS: " or
+# "FAIL: " and carries at least 20 characters of evidence after the colon — "PASS: ok"
+# satisfies a prefix test while asserting nothing reviewable, so it counts [NOT VERIFIED].
+manual_determinations = {
+    "related_skills_crossref": "PASS: Related Data Sources names education-data-explorer and education-data-query with paths",
+    "coded_values_complete": "PASS: coded-values.md enumerates all 5 sentinels 03_column-profile.py found (-1,-2,-3,-9,-99)",
+    "data_quality_complete": "PASS: data-quality.md catalogs all 9 anomalies from scripts 04 and 06, each with its counts",
+    "variable_definitions_grouped": "PASS: variable-definitions.md groups 212 columns into 8 semantic families, each described",
+    "interpretive_share": "PASS: sampled 200 lines across 5 reference files; 108 are interpretive guidance (54%)",
+    "topic_specific_file": "PASS: source has 4 distinct use cases; enrollment-analysis.md is the topic-specific file",
+    "cross_dataset_join": "PASS: analytical-context.md carries a worked ncessch join example against the CCD skill",
+}
+```
 
 **CPP-SKILL VALIDATION:**
 
-Skill template compliance:
-- [ ] All 12 canonical sections in correct order
-- [ ] Frontmatter includes provenance dates
-- [ ] Value Encodings Warning in position 4 with comparison table
-- [ ] Decision Trees: at least 2
-- [ ] Missing Data Codes subsection in Quick Reference
-- [ ] Truth Hierarchy blockquote in Data Access
-- [ ] Common Pitfalls: 3-column table with >=3 rows
-- [ ] Related Data Sources includes domain explorer and query skills (if they exist)
-- [ ] Total SKILL.md under 500 lines
+Every item below is covered exactly one of two ways, and the block prints one outcome line per
+item either way:
 
-Reference file density:
-- [ ] columns.md covers ALL columns (not just a subset)
-- [ ] coded-values.md enumerates ALL coded/sentinel values found during profiling (or value-interpretation.md if no codes — documenting negative value semantics, null patterns, expected ranges)
-- [ ] data-quality.md catalogs ALL anomalies from profiling scripts
-- [ ] variable-definitions.md groups columns by semantic family with descriptions
-- [ ] analytical-context.md exists with study design, population coverage, temporal scope, and valid/invalid analysis sections
-- [ ] analytical-context.md Population Coverage contains explicit "What is NOT Included" subsection with >= 2 exclusions
-- [ ] analytical-context.md contains Temporal Scope section documenting time coverage and comparison boundaries
-- [ ] analytical-context.md contains >= 3 valid and >= 3 invalid analysis patterns (with concrete examples)
-- [ ] Total reference file lines >= 3x SKILL.md lines (hard minimum; target 4-6x for complex sources)
-- [ ] Reference files contain ~40-60% interpretive/analytical content (not purely data description)
-- [ ] If source has 3+ distinct analytical use cases: at least one topic-specific reference file exists
-- [ ] If source shares join keys with other DAAF skills: cross-dataset join example present in Related Data Sources or analytical-context.md
-- [ ] Profiling scripts bundled in .claude/skills/{skill_name}/scripts/ (excluding QA/cr scripts)
-- [ ] CPP-SKILL results reported as itemized pass/fail per check item (not just overall status)
+- **[auto]** — the code checks it and emits `[PASS]` / `[FAIL]` with the observed numbers.
+- **[manual: `key`]** — the code cannot judge it. Record your determination in the block's
+  `manual_determinations` config as `"PASS: <evidence>"` or `"FAIL: <evidence>"` under that key.
+  An item left unadjudicated prints `[NOT VERIFIED]` and forces the verdict to `FAILED`, so a
+  `PASSED` CPP-SKILL verdict can never sit on top of an unexamined checklist item. If an item
+  genuinely does not apply (e.g. the source shares no join keys with any DAAF skill), declare it
+  in `not_applicable` with the reason so it counts as `[SKIPPED]` rather than missing evidence.
+
+Skill template compliance (9 items):
+- [ ] [auto] All 12 canonical sections in correct order (anchored `^## ` matching — a `## What is NOT Included` heading does not satisfy the `## What is [Source]?` requirement)
+- [ ] [auto] Frontmatter includes provenance dates
+- [ ] [auto] Value Encodings Warning in position 4 with comparison table
+- [ ] [auto] Decision Trees: at least 2 (counted as fenced blocks inside the Decision Trees section)
+- [ ] [auto] Missing Data Codes subsection in Quick Reference
+- [ ] [auto] Truth Hierarchy blockquote in Data Access
+- [ ] [auto] Common Pitfalls: 3-column table with >=3 rows
+- [ ] [manual: `related_skills_crossref`] Related Data Sources includes domain explorer and query skills (if they exist)
+- [ ] [auto] Total SKILL.md under 500 lines
+
+Reference file density (14 items):
+- [ ] [auto] columns.md covers ALL columns (not just a subset) — verified against `profiled_columns` carried forward from Part A
+- [ ] [auto existence + manual: `coded_values_complete`] coded-values.md enumerates ALL coded/sentinel values found during profiling (or value-interpretation.md if no codes — documenting negative value semantics, null patterns, expected ranges). Either filename satisfies the existence check
+- [ ] [auto existence + manual: `data_quality_complete`] data-quality.md catalogs ALL anomalies from profiling scripts
+- [ ] [auto existence + manual: `variable_definitions_grouped`] variable-definitions.md groups columns by semantic family with descriptions
+- [ ] [auto] analytical-context.md exists with study design, population coverage, temporal scope, and valid/invalid analysis sections
+- [ ] [auto] analytical-context.md Population Coverage contains explicit "What is NOT Included" subsection with >= 2 exclusions
+- [ ] [auto] analytical-context.md contains Temporal Scope section documenting time coverage and comparison boundaries
+- [ ] [auto] analytical-context.md contains >= 3 valid and >= 3 invalid analysis patterns (with concrete examples)
+- [ ] [auto] Total reference file lines >= 3x SKILL.md lines (hard minimum; target 4-6x for complex sources)
+- [ ] [manual: `interpretive_share`] Reference files contain ~40-60% interpretive/analytical content (not purely data description)
+- [ ] [manual: `topic_specific_file`] If source has 3+ distinct analytical use cases: at least one topic-specific reference file exists
+- [ ] [manual: `cross_dataset_join`] If source shares join keys with other DAAF skills: cross-dataset join example present in Related Data Sources or analytical-context.md
+- [ ] [auto] Profiling scripts bundled in .claude/skills/{skill_name}/scripts/ (excluding QA/cr scripts)
+- [ ] [auto] CPP-SKILL results reported per check item — satisfied by the block itself, which emits one outcome token per item plus a count line
+
+**Reporting the result.** Report the block's own output: the per-item outcome lines (each
+`[PASS]` carrying its numbers), the count line
+`Checks: {passed} passed, {warning} warnings, {failed} failed, {not_verified} not verified, {skipped} skipped`,
+and the verdict line `CPP-SKILL VALIDATION: PASSED | PASSED WITH WARNINGS | FAILED`. Map the
+verdict to the reported status the same way every other checkpoint does: `PASSED WITH WARNINGS`
+on the log line is reported as `WARNING`. Do not summarize the itemization away — the itemized
+lines are the evidence.
 
 **OUTPUT FORMAT (3500-word hard cap):**
 ### Skill Authoring: {skill_name}
-- CPP-SKILL Status (template compliance) — itemized pass/fail per checklist item
+- CPP-SKILL verdict + count line, followed by the itemized per-item outcome lines (one `[PASS]` / `[WARNING]` / `[FAIL]` / `[NOT VERIFIED]` / `[SKIPPED]` line per checklist item, each carrying its observed numbers)
 - Line count: SKILL.md [N] lines, reference files [N] total lines ([ratio]x)
 - Reference files created: [list with line counts]
 - Skill maturity: Initial characterization (v1) — see delivery notes""",

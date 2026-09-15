@@ -455,7 +455,7 @@ Apply the relevant checklist after each subagent returns findings for the corres
 ### Stage 5 (Data Retrieval) Verification
 
 - [ ] Fetch Summary has actual counts (not "TBD")
-- [ ] CP1 Status explicitly stated (PASSED/FAILED/WARNING)
+- [ ] CP1 Status explicitly stated (PASSED/WARNING/FAILED; log verdict `PASSED WITH WARNINGS` maps to WARNING) with its count line
 - [ ] File locations provided with actual filenames
 - [ ] If CP1 FAILED: Stop reason documented
 - [ ] If data lag ≥3 years: Flagged for user notification

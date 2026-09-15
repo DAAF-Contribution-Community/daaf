@@ -1003,26 +1003,88 @@ class BatteryEvidenceTests(unittest.TestCase):
 
 
 class T22FreshnessTests(unittest.TestCase):
-    """The pure T2.2 evaluator: fresh banner + '# Exit code: 0' + this run's
-    nonce after the banner is the ONLY PASS shape."""
+    """The pure T2.2 evaluator: exactly ONE framed banner + '# Exit code: 0' +
+    '# Capture: COMPLETE' + the wrapper's frame records + this run's nonce inside
+    the captured-STDOUT region is the ONLY PASS shape."""
 
     NONCE = "daaf-exec-abc123def456"
+    # The literal rule line run_with_capture.sh writes above and below the
+    # marker ($BANNER: "# " + 77 '='). The evaluator anchors on this full frame,
+    # so the fixtures must reproduce it exactly rather than a bare marker line.
+    RULE = "# " + "=" * 77
+    # A rule an agent can plausibly type into the script SOURCE by hand. The
+    # evaluator's 40-'=' floor is what separates it from the wrapper's real rule.
+    TOKEN_RULE = "# ="
 
-    def _log(self, exit_code, tail_body):
+    def _frame(self, rule=None):
+        rule = self.RULE if rule is None else rule
+        return f"{rule}\n# EXECUTION LOG\n{rule}\n"
+
+    def _log(self, exit_code, tail_body, capture="COMPLETE", source_prefix="",
+             command=True, stdout_header=True):
+        # capture=None omits the "# Capture:" record entirely (the pre-2026-09
+        # wrapper log shape); any other value is written verbatim.
+        # source_prefix injects attacker-controlled SOURCE text ahead of the real
+        # appended log (forgery fixtures).
+        # command / stdout_header drop one of the wrapper's structural records so
+        # the frame_records fact can be exercised in isolation.
+        capture_line = f"# Capture: {capture}\n" if capture is not None else ""
+        command_line = "# Command: python3 /daaf/x/t22_probe.py\n" if command else ""
+        stdout_line = "# --- STDOUT ---\n" if stdout_header else ""
         return (
             f"import x\nprint('{self.NONCE}')\n"          # source line (nonce present by construction)
-            "\n\n# =====\n# EXECUTION LOG\n# =====\n#\n"
+            f"{source_prefix}"
+            f"\n\n{self._frame()}#\n"
             "# Executed: 2026-07-17\n"
-            f"# Exit code: {exit_code}\n#\n"
-            "# --- STDOUT ---\n"
+            f"{command_line}"
+            "# Duration: 0s\n"
+            f"# Exit code: {exit_code}\n"
+            f"{capture_line}#\n"
+            f"{stdout_line}"
             f"{tail_body}\n"
+            "#\n"
+            "# --- STDERR ---\n"
+            "# (captured in STDOUT above via 2>&1)\n"
+            "#\n"
+            f"{self.RULE}\n"
         )
 
-    def test_fresh_success_with_nonce_after_banner_passes(self):
+    def test_fresh_success_with_nonce_in_stdout_passes(self):
+        # Happy path: the full wrapper log shape. Every fact true, including the
+        # frame skeleton and the nonce landing in the captured-STDOUT region.
         body = self._log(0, f"# {self.NONCE}")
         verdict, facts = smoke_probes._evaluate_t22(True, body, self.NONCE)
         self.assertEqual(verdict, Verdict.PASS)
         self.assertTrue(all(facts.values()))
+        self.assertEqual(facts["banner_count"], 1)
+        self.assertTrue(facts["frame_records"])
+        self.assertTrue(facts["nonce_in_stdout"])
+
+    def test_capture_complete_with_nul_note_passes(self):
+        # The wrapper reports NUL bytes as a parenthesised note on the same
+        # line; that is still a COMPLETE capture.
+        body = self._log(0, f"# {self.NONCE}", capture="COMPLETE (1 NUL byte(s) dropped)")
+        verdict, facts = smoke_probes._evaluate_t22(True, body, self.NONCE)
+        self.assertEqual(verdict, Verdict.PASS)
+        self.assertTrue(facts["capture_complete"])
+
+    def test_capture_incomplete_fails(self):
+        # Exit 0 + fresh nonce + banner, but the wrapper flagged the archived
+        # stdout as possibly truncated: not verified evidence, so FAIL.
+        body = self._log(0, f"# {self.NONCE}", capture="INCOMPLETE (tee exit 1)")
+        verdict, facts = smoke_probes._evaluate_t22(True, body, self.NONCE)
+        self.assertEqual(verdict, Verdict.FAIL)
+        self.assertFalse(facts["capture_complete"])
+        self.assertTrue(facts["exit_success"])
+        self.assertTrue(facts["nonce_in_stdout"])
+
+    def test_missing_capture_record_fails(self):
+        # A log with no "# Capture:" line at all (older wrapper shape, or a
+        # hand-forged banner) carries no evidence the archive is whole.
+        body = self._log(0, f"# {self.NONCE}", capture=None)
+        verdict, facts = smoke_probes._evaluate_t22(True, body, self.NONCE)
+        self.assertEqual(verdict, Verdict.FAIL)
+        self.assertFalse(facts["capture_complete"])
 
     def test_missing_script_fails(self):
         verdict, _ = smoke_probes._evaluate_t22(False, None, self.NONCE)
@@ -1040,7 +1102,7 @@ class T22FreshnessTests(unittest.TestCase):
         body = self._log(0, "# daaf-exec-STALERUNyyyy")
         verdict, facts = smoke_probes._evaluate_t22(True, body, self.NONCE)
         self.assertEqual(verdict, Verdict.FAIL)
-        self.assertFalse(facts["nonce_after_banner"])
+        self.assertFalse(facts["nonce_in_stdout"])
 
     def test_banner_and_nonce_but_nonzero_exit_fails(self):
         body = self._log(1, f"# {self.NONCE}")
@@ -1054,6 +1116,118 @@ class T22FreshnessTests(unittest.TestCase):
         verdict, facts = smoke_probes._evaluate_t22(True, body, self.NONCE)
         self.assertEqual(verdict, Verdict.FAIL)
         self.assertFalse(facts["exit_success"])
+
+    def test_fresh_success_reports_single_banner(self):
+        body = self._log(0, f"# {self.NONCE}")
+        _, facts = smoke_probes._evaluate_t22(True, body, self.NONCE)
+        self.assertEqual(facts["banner_count"], 1)
+
+    def test_source_forged_bare_marker_without_frame_fails(self):
+        # A coding agent writes the marker text plus fake records and the nonce
+        # into the script SOURCE and never runs it. A bare "# EXECUTION LOG"
+        # line carries no frame, so it is not a banner: banner_count == 0.
+        body = (
+            f"import x\nprint('{self.NONCE}')\n"
+            "# EXECUTION LOG\n"
+            "# Exit code: 0\n"
+            "# Capture: COMPLETE\n"
+            f"# {self.NONCE}\n"
+        )
+        verdict, facts = smoke_probes._evaluate_t22(True, body, self.NONCE)
+        self.assertEqual(verdict, Verdict.FAIL)
+        self.assertEqual(facts["banner_count"], 0)
+        self.assertFalse(facts["banner"])
+
+    def test_forged_frame_ahead_of_real_failing_log_fails(self):
+        # Worst case: a full FORGED frame in the source (with fake exit 0 /
+        # COMPLETE / nonce) sits ahead of the REAL appended log, which records
+        # exit 1 and INCOMPLETE. Two frames => ambiguous evidence => FAIL.
+        forged = (
+            f"\n{self._frame()}"
+            "# Exit code: 0\n"
+            "# Capture: COMPLETE\n"
+            f"# {self.NONCE}\n"
+        )
+        body = self._log(1, f"# {self.NONCE}", capture="INCOMPLETE (tee exit 1)",
+                         source_prefix=forged)
+        verdict, facts = smoke_probes._evaluate_t22(True, body, self.NONCE)
+        self.assertEqual(verdict, Verdict.FAIL)
+        self.assertEqual(facts["banner_count"], 2)
+
+    def test_neutralized_marker_in_captured_stdout_still_passes(self):
+        # The wrapper rewrites a captured output line reading exactly
+        # "EXECUTION LOG" to "#  EXECUTION LOG" (two spaces). That neutralized
+        # form must not count as a second banner.
+        body = self._log(0, f"#  EXECUTION LOG\n# {self.NONCE}")
+        verdict, facts = smoke_probes._evaluate_t22(True, body, self.NONCE)
+        self.assertEqual(verdict, Verdict.PASS)
+        self.assertEqual(facts["banner_count"], 1)
+
+    def test_source_forged_token_rule_frame_never_run_fails(self):
+        # The regression this suite exists for. An agent types a MINIMAL "# ="
+        # rule around the marker, plus the whole record skeleton and the nonce,
+        # into the script SOURCE and never runs it. The wrapper then refuses to
+        # run the script at all (marker already present), so no real log is ever
+        # appended and the count can never rise to a disqualifying 2 — the frame
+        # itself has to be rejected. The 40-'=' floor does that: banner_count 0.
+        body = (
+            f"import x\nprint('{self.NONCE}')\n"
+            f"{self._frame(self.TOKEN_RULE)}"
+            "# Command: python3 /daaf/x/t22_probe.py\n"
+            "# Exit code: 0\n"
+            "# Capture: COMPLETE\n"
+            "# --- STDOUT ---\n"
+            f"# {self.NONCE}\n"
+            "# --- STDERR ---\n"
+            f"{self.TOKEN_RULE}\n"
+        )
+        verdict, facts = smoke_probes._evaluate_t22(True, body, self.NONCE)
+        self.assertEqual(verdict, Verdict.FAIL)
+        self.assertEqual(facts["banner_count"], 0)
+        self.assertFalse(facts["banner"])
+
+    def test_real_frame_with_nonce_only_in_source_above_it_fails(self):
+        # A genuine wrapper frame (e.g. a stale log from a prior run) whose
+        # captured output does NOT carry this run's nonce — the token appears
+        # only on the source print line ABOVE the banner. Not proof of execution.
+        body = self._log(0, "# (no output)")
+        self.assertIn(self.NONCE, body.split("# --- STDOUT ---")[0])  # present in source
+        verdict, facts = smoke_probes._evaluate_t22(True, body, self.NONCE)
+        self.assertEqual(verdict, Verdict.FAIL)
+        self.assertFalse(facts["nonce_in_stdout"])
+        self.assertTrue(facts["frame_records"])
+
+    def test_nonce_only_after_stderr_marker_fails(self):
+        # A real frame, but the nonce sits BELOW the "# --- STDERR ---" marker —
+        # outside the region that carries "# "-prefixed captured stdout. The old
+        # "anywhere after the banner" rule accepted this; the region rule does not.
+        body = self._log(0, "# (no output)").replace(
+            "# (captured in STDOUT above via 2>&1)",
+            f"# (captured in STDOUT above via 2>&1)\n# {self.NONCE}",
+        )
+        verdict, facts = smoke_probes._evaluate_t22(True, body, self.NONCE)
+        self.assertEqual(verdict, Verdict.FAIL)
+        self.assertFalse(facts["nonce_in_stdout"])
+
+    def test_missing_stdout_header_fails_frame_records(self):
+        # A real rule + marker + exit/capture records, but the wrapper's
+        # "# --- STDOUT ---" section header is absent: the log skeleton is
+        # incomplete, so the frame is not the wrapper's own output.
+        body = self._log(0, f"# {self.NONCE}", stdout_header=False)
+        verdict, facts = smoke_probes._evaluate_t22(True, body, self.NONCE)
+        self.assertEqual(verdict, Verdict.FAIL)
+        self.assertFalse(facts["frame_records"])
+        self.assertFalse(facts["nonce_in_stdout"])
+        self.assertEqual(facts["banner_count"], 1)
+
+    def test_missing_command_record_fails_frame_records(self):
+        # Same, for the "# Command:" record — the other half of the skeleton a
+        # forgery would have to reproduce.
+        body = self._log(0, f"# {self.NONCE}", command=False)
+        verdict, facts = smoke_probes._evaluate_t22(True, body, self.NONCE)
+        self.assertEqual(verdict, Verdict.FAIL)
+        self.assertFalse(facts["frame_records"])
+        self.assertTrue(facts["nonce_in_stdout"])
 
 
 class Tier2SandboxCleanupTests(unittest.TestCase):

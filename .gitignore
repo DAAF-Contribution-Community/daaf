@@ -76,3 +76,9 @@ scripts/provider_shim/logs/
 # provider-shim test harness's runner-level in-process seam files land here — both the
 # quota-state seam and the reasoning-cache seam)
 scripts/scratch/
+
+# Ephemeral scratch for the checkpoint-template regression suite: per-run UUID
+# directories holding extracted R blocks and fixture skill trees. Created in
+# setUp and removed in tearDown; ignored so an interrupted run cannot leak into
+# `git status`. Inside the repo (never /tmp) per CLAUDE.md § Scratch Files.
+tests/python/_scratch_checkpoint_templates/
