@@ -18,6 +18,13 @@
 # Explore instead of silently allowing it. The ERR trap likewise blocks via
 # stderr + exit 2 and is jq-free.
 #
+# Multi-value stdin (2026-09-26): a concatenated or array payload carrying an
+# Explore object among benign ones used to ALLOW; the MULTI-VALUE STDIN
+# section below pins the fix (added to the 2026-09-24 hook bundle as
+# hooks_a/enforce-explore-model.sh). Those DENY cases FAIL on the live hook
+# until the user installs the bundle; run them against the draft:
+#   research/2026-09-24_FrameworkDev_ClaudeCode_Upgrade_2.1.281/hook_patches/hooks_a/enforce-explore-model.sh
+#
 # SCRIPT UNDER TEST is parameterized for pre-deployment testing of a draft copy:
 #   ENFORCE_EXPLORE_MODEL_SH=/path/to/draft.sh bats enforce_explore_model.bats
 # ============================================================================
@@ -56,6 +63,14 @@ _payload() {
 
 @test "enforce-explore-model.sh parses without errors" {
     run bash -n "$ENFORCE_EXPLORE_MODEL_SH"
+    assert_success
+}
+
+@test "enforce-explore-model.sh passes shellcheck at -S warning" {
+    if ! command -v shellcheck >/dev/null 2>&1; then
+        skip "shellcheck not installed (probe: command -v shellcheck)"
+    fi
+    run shellcheck -x -S warning "$ENFORCE_EXPLORE_MODEL_SH"
     assert_success
 }
 
@@ -229,4 +244,97 @@ _payload() {
     [ -n "$output" ]
     echo "$output" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null
     echo "$output" | jq -e '.hookSpecificOutput.permissionDecisionReason | contains("search-agent")' >/dev/null
+}
+
+# =========================================================================
+# Multi-value stdin (2026-09-26, hook bundle revision _a)
+#
+# DEFECT FIXED: `jq -r '.tool_input.subagent_type // empty'` printed one line
+# per top-level value, so a benign object glued to an Explore object yielded
+# a two-line SUBAGENT_TYPE that never equalled "Explore" -> ALLOW. Probed
+# 2026-09-26 on the HEAD (== live) hook: all four concatenated orders,
+# banned+garbage, garbage+banned and a top-level array gave rc 0 with no
+# decision. The fix denies when ANY value carries subagent_type "Explore"
+# (streaming parse, plus the raw-text match when jq reports an error).
+# Plain malformed/empty stdin still ALLOWS (pinned above). The DENY cases
+# FAIL on the pre-fix hook.
+# =========================================================================
+
+_assert_json_deny() {
+    assert_success
+    [ -n "$output" ]
+    echo "$output" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null
+}
+
+@test "concat: benign object + Explore object (no separator): DENY" {
+    run bash "$ENFORCE_EXPLORE_MODEL_SH" < <(printf '%s%s' "$(_payload "general-purpose")" "$(_payload "Explore")")
+    _assert_json_deny
+}
+
+@test "concat: Explore object + benign object (no separator): DENY" {
+    run bash "$ENFORCE_EXPLORE_MODEL_SH" < <(printf '%s%s' "$(_payload "Explore")" "$(_payload "general-purpose")")
+    _assert_json_deny
+}
+
+@test "concat: benign NEWLINE Explore: DENY" {
+    run bash "$ENFORCE_EXPLORE_MODEL_SH" < <(printf '%s\n%s\n' "$(_payload "search-agent")" "$(_payload "Explore")")
+    _assert_json_deny
+}
+
+@test "concat: Explore NEWLINE benign: DENY" {
+    run bash "$ENFORCE_EXPLORE_MODEL_SH" < <(printf '%s\n%s\n' "$(_payload "Explore")" "$(_payload "search-agent")")
+    _assert_json_deny
+}
+
+@test "concat: Explore object followed by garbage: DENY (values before the parse error count)" {
+    run bash "$ENFORCE_EXPLORE_MODEL_SH" < <(printf '%s garbage{{' "$(_payload "Explore")")
+    _assert_json_deny
+}
+
+@test "concat: garbage followed by an Explore pair: DENY (raw-text match after a parse error)" {
+    run bash "$ENFORCE_EXPLORE_MODEL_SH" < <(printf 'garbage{{ %s' "$(_payload "Explore")")
+    _assert_json_deny
+}
+
+@test "top-level array containing an Explore object: DENY" {
+    run bash "$ENFORCE_EXPLORE_MODEL_SH" < <(printf '[%s,%s]' "$(_payload "general-purpose")" "$(_payload "Explore")")
+    _assert_json_deny
+}
+
+@test "concat: two non-Explore objects: ALLOW (exit 0, empty stdout)" {
+    run bash "$ENFORCE_EXPLORE_MODEL_SH" < <(printf '%s%s' "$(_payload "general-purpose")" "$(_payload "search-agent")")
+    assert_success
+    assert_output ""
+}
+
+@test "concat: benign + lowercase 'explore': ALLOW (case-sensitive exact match)" {
+    run bash "$ENFORCE_EXPLORE_MODEL_SH" < <(printf '%s%s' "$(_payload "general-purpose")" "$(_payload "explore")")
+    assert_success
+    assert_output ""
+}
+
+@test "malformed stdin mentioning Explore only in prose: ALLOW (no subagent_type pair)" {
+    run bash "$ENFORCE_EXPLORE_MODEL_SH" <<<'not json {{{ use Explore here'
+    assert_success
+    assert_output ""
+}
+
+@test "missing jq + concatenated benign + Explore: exit 2 (raw-text fallback)" {
+    local bindir="${TEST_DIR}/nojq_bin"
+    mkdir -p "$bindir"
+    ln -s "$(command -v bash)" "${bindir}/bash"
+    ln -s "$(command -v cat)" "${bindir}/cat"
+    run env -i PATH="$bindir" bash "$ENFORCE_EXPLORE_MODEL_SH" < <(printf '%s%s' '{"tool_input":{"subagent_type":"search-agent"}}' '{"tool_input":{"subagent_type":"Explore"}}')
+    [ "$status" -eq 2 ]
+}
+
+@test "registered under both the Task and Agent PreToolUse matchers" {
+    run jq -r '
+        [.hooks.PreToolUse[]
+         | select(.hooks[].command | test("enforce-explore-model"))
+         | .matcher]
+        | sort | join(",")
+    ' "${REPO_ROOT}/.claude/settings.json"
+    assert_success
+    assert_output "Agent,Task"
 }

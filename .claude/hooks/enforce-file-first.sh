@@ -27,6 +27,16 @@
 # tools, not pipeline scripts. They produce stdout output, not audit
 # artifacts, and may be run directly.
 #
+# Fail-closed input posture: the hook BLOCKS (exit 2) when jq is missing,
+# when stdin is empty, and when stdin is not exactly one JSON object
+# (unparseable text, a bare scalar or array, whitespace only, or several
+# concatenated JSON values). [2026-09-24 hook-maintenance pass] Previously
+# malformed stdin made every `jq -r` fail, TOOL_NAME resolved to "", and the
+# hook ALLOWED at the non-Bash gate — contradicting this header's fail-closed
+# contract. The single-object requirement also stops a concatenated payload
+# (a benign object followed by a Bash one) from yielding a multi-line
+# TOOL_NAME that slips past the `== "Bash"` gate.
+#
 # Exit codes (Claude Code PreToolUse convention):
 #   0 = allow the command to proceed
 #   2 = BLOCK the command (stderr message shown to the model)
@@ -55,6 +65,17 @@ INPUT=$(cat)
 # Claude Code should always provide JSON. Empty stdin is abnormal.
 if [[ -z "$INPUT" ]]; then
     echo "BLOCKED by enforce-file-first hook: received empty input (expected JSON)" >&2
+    exit 2
+fi
+
+# --- Fail-closed on malformed input ---
+# Claude Code always sends exactly one JSON object. Anything else (non-JSON
+# text, a scalar/array, whitespace only, concatenated values) is abnormal and
+# must not reach the `!= "Bash"` allow gate below, where a failed parse would
+# read as "not a Bash call" and ALLOW. `-s` slurps every value on stdin so the
+# count can be checked; jq exits non-zero on a parse error or a false result.
+if ! printf '%s' "$INPUT" | jq -e -s 'length == 1 and (.[0] | type == "object")' >/dev/null 2>&1; then
+    echo "BLOCKED by enforce-file-first hook: stdin is not a single JSON object (malformed hook input)" >&2
     exit 2
 fi
 

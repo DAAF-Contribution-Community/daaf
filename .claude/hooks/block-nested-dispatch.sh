@@ -8,16 +8,17 @@
 #   to the orchestrator for redelegation (the early-return protocol) rather
 #   than spawning its own nested subagents.
 #
-#   Claude Code >= v2.1.172 lets a subagent spawn its own subagents (a fixed,
-#   non-configurable depth-5 cap). DAAF's 14 named agents each carry an
-#   explicit `tools:` list that omits Agent/Task, so they cannot nest — but the
-#   generic built-in types DAAF sanctions for pipeline execution
-#   (`general-purpose` = "all tools", and `Plan`) inherit Agent/Task with no
-#   DAAF-authored `tools:` list to restrict them. A live probe (2026-07-16)
-#   confirmed a `general-purpose` subagent can spawn a nested agent in this
-#   deployment with nothing blocking it. This hook closes that gap for the
-#   generic types, so the tools-list convention and this hook together
-#   guarantee no subagent nests a dispatch. Scope caveat: the guarantee covers
+#   Claude Code >= v2.1.172 lets a subagent spawn its own subagents. DAAF
+#   prevents that in three layers: (1) the harness spawn-depth limit —
+#   settings.json env sets CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1, and on
+#   2.1.261/2.1.281 subagents were observed to receive no Agent/Task tool at
+#   all; (2) DAAF's 14 named agents each carry an explicit `tools:` list that
+#   omits Agent/Task; (3) this hook, the backstop. Before the depth limit, the
+#   generic built-in types DAAF sanctions (`general-purpose` = "all tools",
+#   and `Plan`) inherited Agent/Task with no DAAF-authored `tools:` list, and a
+#   live probe (2026-07-16) confirmed a `general-purpose` subagent could nest.
+#   This hook still closes that gap should the depth limit ever be lifted or
+#   regress. Scope caveat: this layered prevention covers
 #   SPAWN-style dispatch (the Task/Agent tool matchers this hook binds).
 #   Primitives that route work to already-running agents (e.g. a
 #   SendMessage-style tool) do not match Task/Agent and are governed by the
@@ -67,8 +68,9 @@
 #   safety hooks (bash-safety.sh, enforce-single-command.sh,
 #   enforce-file-first.sh) fail CLOSED because allowing an unsafe command is
 #   high-cost and irreversible. Here the "violation" is merely a subagent
-#   spawning a bounded (depth <= 5) nested subagent instead of returning the
-#   work upward — an architectural-cleanliness concern, not a security one. A
+#   spawning a bounded nested subagent (only possible if the harness depth
+#   limit is lifted) instead of returning the work upward — an
+#   architectural-cleanliness concern, not a security one. A
 #   nested agent that does slip through still runs under bash-safety.sh,
 #   enforce-single-command.sh, every settings.json deny rule, and the model
 #   ceiling — all of which apply INSIDE subagents. Blocking legitimate

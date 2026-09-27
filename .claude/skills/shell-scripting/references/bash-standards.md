@@ -284,7 +284,7 @@ readonly PROBE_DIR="${PROJECT_DIR}/scripts/scratch"
 cleanup() {
     # Delete every symlink this probe may have created under its own dir.
     # `find … -type l -delete` removes only symlinks (not real files) and is
-    # NOT blocked by bash-safety.sh — unlike `rm -rf` of the scratch tree.
+    # not denied — unlike `rm -rf` of the scratch tree (settings.json deny rule).
     find "$PROBE_DIR" -type l -delete 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM
@@ -297,7 +297,7 @@ ln -s /some/target "$PROBE_DIR/$(printf 'pathological\tname')"
 
 **Why cleanup lives in the probe, not the dispatch prompt.** A dispatch-prompt instruction ("clean up your symlinks before returning") binds only the one agent it addresses. It does not bind a *future* runner — another engineer's harness, or a reviewer manually re-running the gate logic outside the harness's own trap. This bit DAAF concretely on 2026-07-14: verification probes left symlinks with tab/newline names under `scripts/scratch/`, and the leftovers broke real user backups **three separate times** (twice via engineers' harnesses, once via a reviewer running gate logic by hand outside any trap). A `trap cleanup EXIT INT TERM` inside the probe covers every one of those runners; a prompt covers only the addressee.
 
-**Why `find … -type l -delete` and not `rm -rf`.** The `bash-safety.sh` hook blocks `rm -rf` of scratch directories, but plain `rm` and `find … -delete` are allowed. `find "$PROBE_DIR" -type l -delete` is also *narrower* than deleting the tree — it removes exactly the symlinks (the invariant-violating objects) and leaves real scratch files intact for provenance.
+**Why `find … -type l -delete` and not `rm -rf`.** Any `rm -rf` is denied at the permission layer (the `settings.json` deny rule `Bash(rm -rf *)`), even of a scratch directory. The harmonized `bash-safety.sh` hook itself allows an in-project `rm -rf`; only the pre-2026-09-26 hook blocked it too. Plain `rm` and a `find … -delete` scoped to a subdirectory are allowed. (An unfiltered `find <project root> -delete`, including one where only `-type` sits between the root and `-delete`, is blocked by the hook's G43 guard.) `find "$PROBE_DIR" -type l -delete` is also *narrower* than deleting the tree — it removes exactly the symlinks (the invariant-violating objects) and leaves real scratch files intact for provenance.
 
 **Verification step.** After the probe runs, confirm the workspace is clean by invoking the workspace invariant checker, which walks the live filesystem for unauthorized symlinks (Invariant 1) and repo-root leak artifacts — zero-byte stubs, `*.pre-migrate` backups, or a stray `daaf-docker/` directory left by a wrong-CWD host-tool dry-run (Invariant 2) — since git cannot see untracked scratch:
 
