@@ -8,7 +8,11 @@
 # to execute (exit 3) WITHOUT appending an execution log -- leaving the script
 # editable in place. Also regresses the pre-existing behaviors this edit sits
 # next to: a clean script executes and gets a log appended; a script that
-# already has a log refuses to re-run.
+# already has a log refuses to re-run. The environment-secret print scan
+# (added 2026-09-26) shares the same refusal path; see its section at the end.
+# 2026-09-27: os.environ.items()/values() refused only with a sink or as a
+# loop header (W1, env-scrubbing allow test), NUL-byte case for both scans
+# (N1, grep -a), marker text names the three real carriers (N2).
 #
 # SCRIPT UNDER TEST is parameterized: RUN_WITH_CAPTURE_SH defaults to the
 # in-repo wrapper but can be pointed at a draft copy for pre-deployment testing.
@@ -432,4 +436,295 @@ _inert_python3() {
     refute_output --partial "EVIDENCE INCOMPLETE"
     grep -q '^# Capture: COMPLETE (1 NUL byte(s)' "$f"
     [ -z "$(ls -A "${BATS_TEST_TMPDIR}"/.22_nul.py.capture.* 2>/dev/null)" ]
+}
+
+# ============================================================================
+# Environment-secret print scan (added 2026-09-26)
+# ============================================================================
+# The wrapper refuses (exit 3, no log appended, script editable in place) a
+# script whose body prints the environment or a credential-named variable,
+# because captured output is appended permanently to the script file. It
+# reports line NUMBERS and categories only -- never line text.
+#
+# SAFETY: the container environment holds REAL API keys, so nothing in this
+# section may ever actually dump it. Three independent layers keep every
+# BLOCK fixture inert even if the scan regressed and failed to refuse:
+#   1. every test shadows BOTH interpreters (python3, Rscript) with an exported
+#      function that prints an inert marker -- no real interpreter ever runs;
+#   2. every BLOCK fixture exits at its top (`raise SystemExit(0)` /
+#      `quit(status = 0)`) before the dump line is reached;
+#   3. a scan miss makes the test FAIL (status 0 != 3, INERT marker present),
+#      so a regression is caught without any value being printed.
+# ALLOW controls likewise run only under the inert shadow: exit 0 + an
+# appended log proves the scan let them through, without executing them.
+# ============================================================================
+
+_inert_interpreters() {
+    python3() { printf 'INERT_COMPUTATION_COMPLETED\n'; return 0; }
+    Rscript() { printf 'INERT_COMPUTATION_COMPLETED\n'; return 0; }
+    export -f python3 Rscript
+}
+
+# _expect_secret_block EXT DUMP_LINE CATEGORY
+# Writes a guarded fixture whose dump sits on line 3 (.py) or line 2 (.R) and
+# asserts a full refusal naming that line and category, with no execution,
+# no log, no capture buffer, and no echo of the line text.
+_SECRET_CASE=0
+_expect_secret_block() {
+    local ext="$1" dump_line="$2" category="$3" f dump_lineno
+    _SECRET_CASE=$((_SECRET_CASE + 1))
+    f="${BATS_TEST_TMPDIR}/sec_${_SECRET_CASE}.${ext}"
+    if [ "$ext" = "py" ]; then
+        printf '%s\n' 'import os, sys, json, pprint, logging, subprocess' \
+            'raise SystemExit(0)  # inert guard: nothing below runs even if the scan misses' \
+            "$dump_line" > "$f"
+        dump_lineno=3
+    else
+        printf '%s\n' 'quit(status = 0)  # inert guard: nothing below runs even if the scan misses' \
+            "$dump_line" > "$f"
+        dump_lineno=2
+    fi
+    echo "case ${_SECRET_CASE} (.${ext}): ${dump_line}"
+    run bash "$RUN_WITH_CAPTURE_SH" "$f"
+    [ "$status" -eq 3 ]
+    assert_output --partial "environment-secret print detected"
+    assert_output --partial "line ${dump_lineno}: ${category}"
+    refute_output --partial "EXECUTING:"
+    refute_output --partial "INERT_COMPUTATION_COMPLETED"
+    # Line text is withheld from the refusal banner.
+    refute_output --partial "$dump_line"
+    run grep -q "^# EXECUTION LOG" "$f"
+    assert_failure
+    [ -z "$(ls -A "${BATS_TEST_TMPDIR}/.sec_${_SECRET_CASE}.${ext}.capture."* 2>/dev/null)" ]
+}
+
+# _expect_scan_pass FILE -- the scan let the file through: it "executed"
+# (inert shadow), exited 0, and a verified log was appended.
+_expect_scan_pass() {
+    local f="$1"
+    run bash "$RUN_WITH_CAPTURE_SH" "$f"
+    assert_success
+    assert_output --partial "SUCCESS: Script passed."
+    refute_output --partial "environment-secret print detected"
+    [ "$(grep -c '^# EXECUTION LOG' "$f")" -eq 1 ]
+    grep -q '^# INERT_COMPUTATION_COMPLETED' "$f"
+}
+
+# --- Block: Python ------------------------------------------------------------
+
+@test "secret scan blocks .py whole-environment print/serialize shapes" {
+    _inert_interpreters
+    local cat="whole environment printed or serialized"
+    _expect_secret_block py 'print(os.environ)' "$cat"
+    _expect_secret_block py 'pprint.pprint(os.environ)' "$cat"
+    _expect_secret_block py 'print(dict(os.environ))' "$cat"
+    _expect_secret_block py 'payload = json.dumps(dict(os.environ))' "$cat"
+    _expect_secret_block py 'payload = json.dumps(os.environ.copy())' "$cat"
+    _expect_secret_block py 'print("env:", os.environ)' "$cat"
+    _expect_secret_block py 'print(f"{os.environ}")' "$cat"
+    _expect_secret_block py 'logging.info("env=%s", os.environ)' "$cat"
+}
+
+# W1 (2026-09-27): .items()/.values() are refused only with an output sink on
+# the same line or as a `for ... in` loop header; see the scrubbing allow test.
+@test "secret scan blocks .py os.environ.items()/values() with a sink or as a loop header" {
+    _inert_interpreters
+    local cat="environment values iterated (os.environ.items/values)"
+    _expect_secret_block py 'for k, v in os.environ.items(): print(k, v)' "$cat"
+    _expect_secret_block py 'print(list(os.environ.values()))' "$cat"
+    _expect_secret_block py 'for name in sorted(os.environ.values()):' "$cat"
+    _expect_secret_block py 'logging.info("%s", dict(os.environ.items()))' "$cat"
+}
+
+@test "secret scan blocks .py credential-named lookups inside print/logging/stdout sinks" {
+    _inert_interpreters
+    local cat="credential-named variable printed or logged"
+    _expect_secret_block py 'print(os.environ["X_API_KEY"])' "$cat"
+    _expect_secret_block py "print(f\"token={os.environ.get('GITHUB_TOKEN')}\")" "$cat"
+    _expect_secret_block py 'logging.info("s %s", os.getenv("DB_SECRET"))' "$cat"
+    # Names match case-insensitively.
+    _expect_secret_block py 'logger.debug(os.environ["db_password"])' "$cat"
+    _expect_secret_block py 'sys.stdout.write(os.environ["X_AUTH"] + "\n")' "$cat"
+    _expect_secret_block py 'pprint.pprint(os.environ.get("AWS_SESSION_TOKEN"))' "$cat"
+}
+
+@test "secret scan blocks .py shell-outs that dump the environment" {
+    _inert_interpreters
+    local cat="shell command that dumps the environment"
+    _expect_secret_block py 'os.system("env")' "$cat"
+    _expect_secret_block py 'os.system("printenv")' "$cat"
+    _expect_secret_block py 'os.system("env | sort")' "$cat"
+    _expect_secret_block py 'subprocess.run(["env"])' "$cat"
+    _expect_secret_block py 'subprocess.run(["printenv", "X_API_KEY"])' "$cat"
+    _expect_secret_block py 'subprocess.run("set", shell=True)' "$cat"
+    _expect_secret_block py 'out = os.popen("env").read()' "$cat"
+}
+
+# --- Block: R -------------------------------------------------------------------
+
+@test "secret scan blocks .R Sys.getenv() with no name (returns every variable)" {
+    _inert_interpreters
+    local cat="all environment variables requested (Sys.getenv with no name)"
+    _expect_secret_block R 'print(Sys.getenv())' "$cat"
+    _expect_secret_block R 'env_all <- Sys.getenv()' "$cat"
+    _expect_secret_block R 'env_all <- Sys.getenv(names = TRUE)' "$cat"
+}
+
+@test "secret scan blocks .R credential-named lookups inside print/cat/message/writeLines" {
+    _inert_interpreters
+    local cat="credential-named variable printed"
+    _expect_secret_block R 'cat(Sys.getenv("HARVARD_DATAVERSE_API_KEY"), "\n")' "$cat"
+    _expect_secret_block R 'message("token: ", Sys.getenv("github_token"))' "$cat"
+    _expect_secret_block R 'writeLines(Sys.getenv("X_SECRET"))' "$cat"
+    _expect_secret_block R 'print(Sys.getenv("DB_PASSWORD"))' "$cat"
+}
+
+@test "secret scan blocks .R bare top-level credential lookup (Rscript auto-prints it)" {
+    _inert_interpreters
+    local cat="credential-named variable auto-printed (bare top-level lookup)"
+    # (Name differs from the banner's own X_API_KEY example so the
+    # line-text-withheld assertion stays meaningful.)
+    _expect_secret_block R 'Sys.getenv("OPENAI_API_KEY")' "$cat"
+    _expect_secret_block R '  Sys.getenv("X_TOKEN", unset = "")  # debugging' "$cat"
+}
+
+@test "secret scan blocks .R system()/system2() environment dumps" {
+    _inert_interpreters
+    local cat="shell command that dumps the environment"
+    _expect_secret_block R 'system("env")' "$cat"
+    _expect_secret_block R 'system2("printenv")' "$cat"
+    _expect_secret_block R 'system("printenv X_API_KEY")' "$cat"
+    _expect_secret_block R 'out <- system2("env", stdout = TRUE)' "$cat"
+}
+
+# --- Refusal banner contents ---------------------------------------------------
+
+@test "secret scan refusal withholds line text (hardcoded literal never echoed) and gives the correct pattern" {
+    _inert_interpreters
+    local f="${BATS_TEST_TMPDIR}/sec_banner.py"
+    printf '%s\n' 'import os' 'raise SystemExit(0)  # inert guard' \
+        'print(os.environ.get("X_API_KEY", "FAKE-FIXTURE-LITERAL-0000"))' > "$f"
+    run bash "$RUN_WITH_CAPTURE_SH" "$f"
+    [ "$status" -eq 3 ]
+    assert_output --partial "line 3: credential-named variable printed or logged"
+    assert_output --partial "line text withheld"
+    refute_output --partial "FAKE-FIXTURE-LITERAL-0000"
+    refute_output --partial 'os.environ.get("X_API_KEY"'
+    assert_output --partial "permanent audit record"
+    assert_output --partial "never print, log, or serialize it"
+    assert_output --partial "NO execution log was appended"
+    run grep -q "^# EXECUTION LOG" "$f"
+    assert_failure
+}
+
+@test "secret scan reports every offending line, not just the first" {
+    _inert_interpreters
+    local f="${BATS_TEST_TMPDIR}/sec_multi.py"
+    printf '%s\n' 'import os' 'raise SystemExit(0)  # inert guard' \
+        'print(os.environ)' 'x = 1' 'print(os.environ["X_TOKEN"])' > "$f"
+    run bash "$RUN_WITH_CAPTURE_SH" "$f"
+    [ "$status" -eq 3 ]
+    assert_output --partial "line 3: whole environment printed or serialized"
+    assert_output --partial "line 5: credential-named variable printed or logged"
+}
+
+# --- Allow: controls that must pass the scan -----------------------------------
+
+@test "secret scan allows .py controls: credential read into a variable/header, non-secret lookups, env copies for subprocess" {
+    _inert_interpreters
+    local f="${BATS_TEST_TMPDIR}/sec_allow.py"
+    printf '%s\n' \
+        'import os, json, subprocess' \
+        'api_key = os.environ["HARVARD_DATAVERSE_API_KEY"]' \
+        'headers = {"X-Dataverse-key": os.environ["HARVARD_DATAVERSE_API_KEY"]}' \
+        'home = os.environ.get("HOME")' \
+        'print(os.environ["HOME"])' \
+        'print(os.getcwd())' \
+        'env = os.environ.copy()' \
+        'subprocess.run(["python3", "-V"], env=env)' \
+        'subprocess.run(["python3", "-V"], env=dict(os.environ, FOO="1"))' \
+        '# print(os.environ)' \
+        'print("X_API_KEY" in os.environ)' \
+        'print(len(os.environ))' \
+        'subprocess.run(["env", "FOO=1", "python3", "-V"])' \
+        'print(os.environ["SSH_AUTH_SOCK"])' \
+        'body = json.dumps({"api_key": os.environ["X_API_KEY"]})' \
+        > "$f"
+    _expect_scan_pass "$f"
+}
+
+# W1 (2026-09-27): the env-SCRUBBING idiom builds a child environment with the
+# keys removed; it must run. The multi-line form mirrors an audited research
+# script whose `for ... in os.environ.items()` continuation line was refused.
+@test "secret scan allows .py env-scrubbing comprehensions and a bare values() copy" {
+    _inert_interpreters
+    local f="${BATS_TEST_TMPDIR}/sec_scrub.py"
+    printf '%s\n' \
+        'import os, subprocess' \
+        'child_env = {k: v for k, v in os.environ.items() if not k.endswith("_API_KEY")}' \
+        'env = {k: v for k, v in os.environ.items() if k != "X"}' \
+        'scrubbed = {' \
+        '    name: value' \
+        '    for name, value in os.environ.items()' \
+        '    if not name.upper().endswith("_API_KEY")' \
+        '}' \
+        'vals = list(os.environ.values())' \
+        'subprocess.run(["python3", "-V"], env=child_env)' \
+        > "$f"
+    _expect_scan_pass "$f"
+}
+
+# N1 (2026-09-27): a NUL byte makes GNU grep treat the file as binary and
+# print no matching lines unless -a is given; both scans must still refuse.
+@test "scans still refuse when the script contains a NUL byte (install scan and secret scan)" {
+    _inert_interpreters
+    local f="${BATS_TEST_TMPDIR}/nul_install.py"
+    printf 'import os\nraise SystemExit(0)  # inert guard\nx = "a\000b"\nos.system("pip install requests")\n' > "$f"
+    [ "$(tr -cd '\000' < "$f" | wc -c)" -eq 1 ]
+    run bash "$RUN_WITH_CAPTURE_SH" "$f"
+    [ "$status" -eq 3 ]
+    assert_output --partial "runtime package install detected"
+    refute_output --partial "INERT_COMPUTATION_COMPLETED"
+    f="${BATS_TEST_TMPDIR}/nul_secret.py"
+    printf 'import os\nraise SystemExit(0)  # inert guard\nx = "a\000b"\nprint(os.environ)\n' > "$f"
+    [ "$(tr -cd '\000' < "$f" | wc -c)" -eq 1 ]
+    run bash "$RUN_WITH_CAPTURE_SH" "$f"
+    [ "$status" -eq 3 ]
+    assert_output --partial "line 4: whole environment printed or serialized"
+    refute_output --partial "INERT_COMPUTATION_COMPLETED"
+    run grep -ac "^# EXECUTION LOG" "$f"
+    assert_output "0"
+}
+
+@test "secret scan allows .py whose only dump is on a full-line comment" {
+    _inert_interpreters
+    local f="${BATS_TEST_TMPDIR}/sec_comment.py"
+    printf '%s\n' 'import os' '    # print(os.environ)' '# os.system("env")' 'x = 1' > "$f"
+    _expect_scan_pass "$f"
+}
+
+@test "secret scan allows .R controls: credential read into a variable, non-secret lookups, presence check" {
+    _inert_interpreters
+    local f="${BATS_TEST_TMPDIR}/sec_allow.R"
+    printf '%s\n' \
+        'key <- Sys.getenv("HARVARD_DATAVERSE_API_KEY")' \
+        'home <- Sys.getenv("HOME")' \
+        'Sys.getenv("HOME")' \
+        'print(Sys.getenv("HOME"))' \
+        '# print(Sys.getenv())' \
+        'has_key <- nzchar(Sys.getenv("X_API_KEY"))' \
+        'cat(has_key, "\n")' \
+        'Sys.getenv("SSH_AUTH_SOCK")' \
+        'system2("env", c("FOO=1", "Rscript", "--version"))' \
+        > "$f"
+    _expect_scan_pass "$f"
+}
+
+# --- Vocabulary marker ----------------------------------------------------------
+
+@test "secret scan carries the shared SECRET-NAME-VOCAB v1 marker and list" {
+    run grep -c '^# SECRET-NAME-VOCAB v1 — keep identical in: output-scanner.sh, audit-log.sh, run_with_capture.sh$' "$RUN_WITH_CAPTURE_SH"
+    assert_output "1"
+    grep -q '^SECRET_NAME_VOCAB="KEY KEYS APIKEY TOKEN TOKENS SECRET SECRETS PASS PASSWORD PASSWD PASSPHRASE CREDENTIAL CREDENTIALS CREDS AUTH COOKIE COOKIES SESSION DSN PAT"$' "$RUN_WITH_CAPTURE_SH"
+    grep -q '^SECRET_NAME_ALLOWLIST="SSH_AUTH_SOCK DBUS_SESSION_BUS_ADDRESS SESSION_MANAGER XDG_SESSION_ID XDG_SESSION_TYPE XDG_SESSION_CLASS XDG_SESSION_DESKTOP"$' "$RUN_WITH_CAPTURE_SH"
 }

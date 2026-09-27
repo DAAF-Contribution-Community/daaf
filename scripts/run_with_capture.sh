@@ -10,7 +10,8 @@
 # This script:
 # 1. Detects the script language from the file extension
 # 2. Refuses to run a script that already carries an execution log
-# 3. Scans the script body for runtime package-install calls (exit 3)
+# 3. Scans the script body for runtime package-install calls and for
+#    environment-secret prints (either refuses with exit 3)
 # 4. Creates a capture buffer NEXT TO the script (inside the project, so
 #    partial output survives a fault or interruption inside the backup and
 #    audit boundary)
@@ -33,7 +34,8 @@
 #   N     script exited N (non-zero) AND capture/persistence verified
 #   1     usage error, script not found, unsupported extension, or the script
 #         already has an execution log (re-run refused)
-#   3     pre-execution package-install scan blocked execution (no log appended)
+#   3     pre-execution content scan blocked execution -- a package-install
+#         call or an environment-secret print (no log appended)
 #   74    EVIDENCE INCOMPLETE: capture buffer could not be created, the tee
 #         failed, the append failed, or post-append verification failed.
 #         The script's own exit code is stated in the banner. Any capture
@@ -121,7 +123,10 @@ fi
 # before executing. Full-line comments are excluded so a commented-out example
 # does not false-block; an inline TRAILING comment that contains a token IS an
 # accepted false positive (rare, and erring toward blocking is the safe default
-# for a reproducibility guard). Scan tokens are extension-specific: R is
+# for a reproducibility guard). Both scans run grep with -a (treat the file as
+# text): without it, a single NUL byte anywhere in the script makes GNU grep
+# classify the file as binary and print no matching lines, and both scans
+# would silently pass. Scan tokens are extension-specific: R is
 # case-sensitive so its tokens match case-sensitively (fewer false positives);
 # Python tokens match case-insensitively and cover the common string call forms
 # (os.system/subprocess("pip install ..."), pipx/uv subcommands) and the
@@ -135,10 +140,10 @@ fi
 # depth behind this scan).
 if [ "$EXT" = "py" ]; then
     SCAN_TOKENS="pip3? install|pip3?['\"], *['\"]install|pipx (install|run)|pipx['\"], *['\"](install|run)|uv (pip install|add|sync|tool install)|uv['\"], *['\"](add|sync|pip|tool)|easy_install|conda install"
-    INSTALL_HITS=$(grep -inE "$SCAN_TOKENS" "$SCRIPT_PATH" | grep -vE '^[0-9]+:[[:space:]]*#' || true)
+    INSTALL_HITS=$(grep -ainE "$SCAN_TOKENS" "$SCRIPT_PATH" | grep -vE '^[0-9]+:[[:space:]]*#' || true)
 else
     SCAN_TOKENS='install\.packages\(|update\.packages\(|remove\.packages\(|remotes::install_|devtools::install_|install_(github|gitlab|bitbucket|cran|version|local|url|git|svn|bioc|dev)\(|pak::(pak|pkg_install)\(|pkg_install\(|renv::(install|restore|update|rebuild)\(|BiocManager::install\(|biocLite\('
-    INSTALL_HITS=$(grep -nE "$SCAN_TOKENS" "$SCRIPT_PATH" | grep -vE '^[0-9]+:[[:space:]]*#' || true)
+    INSTALL_HITS=$(grep -anE "$SCAN_TOKENS" "$SCRIPT_PATH" | grep -vE '^[0-9]+:[[:space:]]*#' || true)
 fi
 
 if [ -n "$INSTALL_HITS" ]; then
@@ -165,6 +170,143 @@ if [ -n "$INSTALL_HITS" ]; then
     echo "NOTE: NO execution log was appended — immutable script versioning has" >&2
     echo "NOT engaged. You may edit THIS script file in place and re-run it once" >&2
     echo "the install call is removed (no _a/_b version needed)." >&2
+    echo "============================================================" >&2
+    exit 3
+fi
+
+# --- Pre-execution environment-secret print scan ------------------------------
+# Everything a script prints is appended, permanently, to the script file as
+# its execution log (and from there into backups and session archives). The
+# container environment holds the user's real API keys, so a script that
+# prints the environment -- typically a session "helpfully" dumping env vars
+# while debugging -- writes secret values into a permanent audit artifact.
+# Like the install scan above, this wrapper is the only chokepoint that sees
+# the script BODY before it runs, so it refuses the obvious dump shapes on the
+# same terms: exit 3, NO log appended, script editable in place, full-line
+# comments excluded (an inline trailing comment IS an accepted false positive).
+#
+# SCOPE: catches the obvious, ACCIDENTAL dump -- it is not an adversarial
+# control. All patterns match case-insensitively, deliberately erring toward
+# blocking: Linux environment variable names ARE case-sensitive, but a
+# lowercase `db_password` is as credential-like as `DB_PASSWORD`, and a
+# case-folded function token only ever adds refusals. The refusal names the
+# line NUMBER and category only, never the line text, so a hardcoded literal
+# on the line is never echoed.
+# DELIBERATE NON-MATCHES (narrowed on purpose, pinned as allow-controls in
+# tests/bash/run_with_capture.bats): a credential read into a variable or a
+# request header/body (`json.dumps({"api_key": os.environ[...]})`); presence
+# and size checks (`"X" in os.environ`, `len(os.environ)`); environment copies
+# handed to a subprocess (`os.environ.copy()`, `dict(os.environ, ...)`,
+# `["env", "FOO=1", cmd]`); `json.dump` to a file; and `os.environ.items()` /
+# `.values()` unless the same line also has an output sink (print/pprint/
+# logging/logger/sys.std*.write/json.dumps) or is a `for ... in` loop header
+# over them -- so the env-SCRUBBING idiom `{k: v for k, v in
+# os.environ.items() if not k.endswith("_API_KEY")}`, which builds a child
+# environment with the keys removed, runs.
+# ACCEPTED RESIDUALS (documented, deliberately not chased with fragile
+# regexes): a two-step leak (`key = os.environ[...]` or `vals =
+# list(os.environ.values())` then `print(...)`) -- needs data-flow analysis;
+# a lookup whose name is held in a variable or built by string ops; a print
+# call split across lines; `from os import environ` / bare `getenv(` aliases;
+# R `Sys.getenv(c(...))` vectors and auto-printing wrapped forms such as
+# `(key <- Sys.getenv(...))`; env dumps written to a FILE rather than stdout;
+# shell dumps spelled other than the forms below (e.g. `env -0`,
+# `set -o posix; set`, absolute paths); logging libraries other than
+# logging/logger. A line mentioning an allowlisted name in quotes is exempt
+# from the credential-lookup category as a whole.
+#
+# SECRET-NAME-VOCAB v1 — keep identical in: output-scanner.sh, audit-log.sh, run_with_capture.sh
+SECRET_NAME_VOCAB="KEY KEYS APIKEY TOKEN TOKENS SECRET SECRETS PASS PASSWORD PASSWD PASSPHRASE CREDENTIAL CREDENTIALS CREDS AUTH COOKIE COOKIES SESSION DSN PAT"
+SECRET_NAME_ALLOWLIST="SSH_AUTH_SOCK DBUS_SESSION_BUS_ADDRESS SESSION_MANAGER XDG_SESSION_ID XDG_SESSION_TYPE XDG_SESSION_CLASS XDG_SESSION_DESKTOP"
+# A NAME is credential-named when one of its underscore-delimited segments is
+# in the vocabulary. Q matches either quote character around a literal name.
+Q="[\"']"
+SECRET_NAME_RE="([A-Za-z0-9]+_)*(${SECRET_NAME_VOCAB// /|})(_[A-Za-z0-9]+)*"
+SECRET_ALLOW_RE="${Q}(${SECRET_NAME_ALLOWLIST// /|})${Q}"
+
+# Record one category's hits as "line N: category" -- line numbers only; the
+# matched text stays inside this function and is never printed. The third
+# argument, when set, is an ERE whose matching lines are exempted.
+SECRET_HITS=""
+add_secret_hits() {
+    local category="$1" regex="$2" exempt="${3:-}" matches ln _rest
+    matches=$(grep -ainE "$regex" "$SCRIPT_PATH" | grep -vE '^[0-9]+:[[:space:]]*#' || true)
+    if [ -n "$exempt" ] && [ -n "$matches" ]; then
+        matches=$(printf '%s\n' "$matches" | grep -viE "$exempt" || true)
+    fi
+    [ -z "$matches" ] && return 0
+    while IFS=: read -r ln _rest; do
+        SECRET_HITS="${SECRET_HITS}  line ${ln}: ${category}"$'\n'
+    done < <(printf '%s\n' "$matches")
+}
+
+# Shared shell-dump shape (both languages): the command string (or first list
+# element) is exactly `env`, `set`, or `export -p` -- optionally piped -- and
+# the call then closes or moves to a keyword argument (so `["env", "FOO=1",
+# "cmd"]`, which RUNS cmd with a modified environment, is not flagged); or it
+# starts with `printenv`, which only ever prints.
+SHELL_DUMP_RE="${Q}((env|set|export -p)([[:space:]]*\|[^\"']*)?${Q}[[:space:]]*([])]|,[[:space:]]*[a-z_.]+[[:space:]]*=)|printenv\b)"
+
+if [ "$EXT" = "py" ]; then
+    PY_SINK="\b(print|pprint|logging\.[a-z_]+|logger\.[a-z_]+|sys\.std(out|err)\.write)\("
+    # Whole mapping: os.environ (optionally wrapped in dict/str/repr, or as a
+    # later argument / f-string field) passed straight to a sink or json.dumps,
+    # NOT followed by a subscript or method (os.environ["HOME"] stays allowed).
+    add_secret_hits "whole environment printed or serialized" \
+        "\b(print|pprint|logging\.[a-z_]+|logger\.[a-z_]+|sys\.std(out|err)\.write|json\.dumps)\(([^)]*[,{][[:space:]]*)?((dict|str|repr)\([[:space:]]*)?os\.environ([^.[A-Za-z0-9_]|\.copy\(\)|$)"
+    # Only with an output sink earlier on the same line, or as a `for ... in`
+    # loop header (whose body typically prints); a comprehension that FILTERS
+    # the environment (env scrubbing) is allowed -- see DELIBERATE NON-MATCHES.
+    add_secret_hits "environment values iterated (os.environ.items/values)" \
+        "\b(print|pprint|logging\.[a-z_]+|logger\.[a-z_]+|sys\.std(out|err)\.write|json\.dumps)\(.*os\.environ\.(items|values)\(|^[[:space:]]*(async[[:space:]]+)?for[[:space:]].*[[:space:]]in[[:space:]]+((sorted|list|tuple|enumerate)\([[:space:]]*)?os\.environ\.(items|values)\([[:space:]]*\)[[:space:]]*\)?[[:space:]]*:"
+    add_secret_hits "credential-named variable printed or logged" \
+        "${PY_SINK}.*(os\.environ\[|os\.environ\.get\(|os\.getenv\()[[:space:]]*${Q}${SECRET_NAME_RE}${Q}" \
+        "$SECRET_ALLOW_RE"
+    add_secret_hits "shell command that dumps the environment" \
+        "\b(os\.(system|popen)|subprocess\.[a-z_]+)\([[:space:]]*\[?[[:space:]]*${SHELL_DUMP_RE}"
+else
+    add_secret_hits "all environment variables requested (Sys.getenv with no name)" \
+        "Sys\.getenv\([[:space:]]*(\)|names[[:space:]]*=|unset[[:space:]]*=)"
+    add_secret_hits "credential-named variable printed" \
+        "\b(print|cat|message|writeLines)\(.*Sys\.getenv\([[:space:]]*(x[[:space:]]*=[[:space:]]*)?${Q}${SECRET_NAME_RE}${Q}" \
+        "$SECRET_ALLOW_RE"
+    # Rscript auto-prints a visible top-level value, so a line that is ONLY a
+    # credential lookup prints the secret without any print() call.
+    add_secret_hits "credential-named variable auto-printed (bare top-level lookup)" \
+        "^[[:space:]]*Sys\.getenv\([[:space:]]*(x[[:space:]]*=[[:space:]]*)?${Q}${SECRET_NAME_RE}${Q}[^)]*\)[[:space:]]*;?[[:space:]]*(#.*)?$" \
+        "$SECRET_ALLOW_RE"
+    add_secret_hits "shell command that dumps the environment" \
+        "\bsystem2?\([[:space:]]*(command[[:space:]]*=[[:space:]]*)?${SHELL_DUMP_RE}"
+fi
+
+if [ -n "$SECRET_HITS" ]; then
+    echo "============================================================" >&2
+    echo "BLOCKED: run_with_capture.sh — environment-secret print detected" >&2
+    echo "============================================================" >&2
+    echo "Offending line(s) in $SCRIPT_PATH (line text withheld):" >&2
+    printf '%s' "$SECRET_HITS" >&2
+    echo "" >&2
+    echo "WHY: Everything a script prints is appended permanently to the script" >&2
+    echo "file as its execution log. This container's environment holds real" >&2
+    echo "API keys and credentials, so printing environment variables would" >&2
+    echo "write secret values into that permanent audit record (and from there" >&2
+    echo "into backups and session archives)." >&2
+    echo "" >&2
+    echo "WHAT TO DO:" >&2
+    echo "  1. Read the credential into a variable and pass it to the API --" >&2
+    echo "     never print, log, or serialize it:" >&2
+    echo "       Python: api_key = os.environ[\"X_API_KEY\"]   # then use api_key" >&2
+    echo "       R:      key <- Sys.getenv(\"X_API_KEY\")       # then use key" >&2
+    echo "  2. To confirm a credential is configured, print its PRESENCE, not" >&2
+    echo "     its value:" >&2
+    echo "       Python: print(\"X_API_KEY\" in os.environ)" >&2
+    echo "       R:      has_key <- nzchar(Sys.getenv(\"X_API_KEY\"))   then  cat(has_key)" >&2
+    echo "  3. Never dump the whole environment (os.environ, Sys.getenv()," >&2
+    echo "     env/printenv) from a script." >&2
+    echo "" >&2
+    echo "NOTE: NO execution log was appended — immutable script versioning has" >&2
+    echo "NOT engaged. You may edit THIS script file in place and re-run it once" >&2
+    echo "the flagged line(s) are removed (no _a/_b version needed)." >&2
     echo "============================================================" >&2
     exit 3
 fi

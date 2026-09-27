@@ -57,6 +57,19 @@ NEAR_RULES_JSON='[
   "Write(//home/appuser/././.claude/**/*.jsonl)",
   "Edit(/research/*/././logs/**)"
 ]'
+# Environment-disclosure Bash deny rules, added by the user on 2026-09-26
+# (SafetyHookHardening session). They are the tool-permission layer for
+# shell commands that print environment values; the in-script layer is the
+# run_with_capture.sh environment-secret print scan. Pinned as exact strings:
+# a reworded or broadened rule should surface here as a failing test to
+# review, not pass silently.
+ENV_DISCLOSURE_RULES_JSON='[
+  "Bash(env)",
+  "Bash(printenv*)",
+  "Bash(export -p*)",
+  "Bash(set)",
+  "Bash(cat /proc/*)"
+]'
 NON_MEMBER_RULES_JSON='[
   "Read(/archive/.claude/logs/**)",
   "Read(/archive/home/appuser/.claude/**/*.jsonl)",
@@ -182,6 +195,28 @@ PROTECTED_FAMILY_FILTER='def normalized_path:
     # occurrence is dead configuration that reads as protection.
     run jq -e '
         [.permissions.deny[] | select(startswith("Write("))] | length == 0
+    ' "${SETTINGS_FILE}"
+    assert_success
+}
+
+@test "settings permissions: environment-disclosure Bash deny rules are present" {
+    # Static contract only (see header): this proves the five checked-in
+    # strings exist in the deny list, not how Claude Code's matcher applies
+    # them. CLAUDE.md § Credential & Secret Protection states the policy these
+    # rules back (scripts never print environment or credential values).
+    run jq -e --argjson expected "${ENV_DISCLOSURE_RULES_JSON}" '
+        . as $settings
+        | all($expected[]; . as $rule | $settings.permissions.deny | index($rule) != null)
+    ' "${SETTINGS_FILE}"
+    assert_success
+}
+
+@test "settings permissions: environment-disclosure rules are deny-only, never allow-listed" {
+    # An identical string in the allow list would contradict the deny entry
+    # and make the intended policy ambiguous to a reader of the file.
+    run jq -e --argjson expected "${ENV_DISCLOSURE_RULES_JSON}" '
+        . as $settings
+        | all($expected[]; . as $rule | ($settings.permissions.allow // []) | index($rule) == null)
     ' "${SETTINGS_FILE}"
     assert_success
 }

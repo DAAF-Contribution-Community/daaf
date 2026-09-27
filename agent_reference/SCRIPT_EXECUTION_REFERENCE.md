@@ -173,7 +173,7 @@ All scripts reference this single canonical copy directly — there is no need t
 
 1. Validates the script path exists
 2. Checks whether the script already has an execution log (blocks re-runs if so)
-3. Scans the script body for runtime package-install calls and refuses to execute (exit 3) if any are found (see "Package-Install Content Scan" below)
+3. Scans the script body for runtime package-install calls and for environment-secret prints, and refuses to execute (exit 3) if any are found (see "Package-Install Content Scan" and "Environment-Secret Print Scan" below)
 4. Detects language from file extension (`.py` → `python3`, `.R` → `Rscript`)
 5. Creates a capture buffer **next to the script** (a dotfile `.<script>.capture.XXXXXX` in the script's directory — inside the project, never `/tmp`); exit 74 before execution if it cannot
 6. Executes the script with stdout/stderr capture via `tee`, reading **both** pipeline statuses (the script's exit code and `tee`'s)
@@ -228,6 +228,20 @@ A run is a completed audited run only when all three succeeded. Otherwise the wr
 Before executing, the wrapper scans the script **body** for runtime package-install calls in both languages — Python (`pip install`, `pipx`/`uv` subcommands, `easy_install`, `conda install`, including the `subprocess`/`os.system` string and list forms) and R (`install.packages()`, `R CMD INSTALL` is command-line-only, and the `remotes`/`devtools`/`pak`/`renv`/`BiocManager` install verbs). This is the one chokepoint that sees the script body: the `bash-safety.sh` §8 hook blocks command-line installs but cannot see an install call written *inside* a script — the dominant path for R's `install.packages()`. Full-line comments are excluded so a commented-out example does not false-block.
 
 If a token is found, the wrapper **refuses to execute** and exits **3**. Crucially, **no execution log is appended** — immutable script versioning has not engaged, so the script stays editable **in place**: remove the install call and re-run the *same file* (no `_a`/`_b` version needed). The error message points to the durable fix — add the package to the Dockerfile and rebuild (`bash rebuild_daaf.sh` from the `daaf-docker/` folder, preferably the user additions block near the end). See CLAUDE.md § Boundaries & Safety > Runtime Package Installation and `ERROR_RECOVERY.md` § PreToolUse Safety-Hook Blocks.
+
+### Environment-Secret Print Scan
+
+Everything a script prints is appended permanently to the script file as its execution log, and from there into backups and session archives. The container environment holds the user's real API keys, so the same pre-execution scan also refuses scripts that would print environment values. It targets the obvious, accidental dump (a debugging session "helpfully" printing environment variables), not a deliberate adversary. The categories, in both languages:
+
+- the whole environment printed or serialized (Python `os.environ`; R `Sys.getenv()` with no name);
+- `os.environ.items()`/`.values()` with an output sink on the same line, or as a `for` loop header;
+- a credential-named variable looked up inside a print or log call (names matched against the shared `SECRET-NAME-VOCAB v1` list, which `output-scanner.sh` and `audit-log.sh` also carry);
+- in R, a bare top-level credential lookup, which auto-prints its value;
+- a shell-out that dumps the environment.
+
+Matching is case-insensitive and errs toward refusing. Reading a credential into a variable, passing it in a request, checking presence (`"X_API_KEY" in os.environ`), copying the environment for a subprocess, and the env-scrubbing idiom that builds a child environment with the keys removed are all allowed. The script header lists these deliberate non-matches and the accepted residuals, such as a two-step leak through an intermediate variable, which would need data-flow analysis.
+
+A hit has the same outcome as an install hit: exit **3**, **no** execution log appended, and the script stays editable in place. The refusal names the line **number** and category only, never the line text, so a literal on that line is not echoed. Recovery: remove the print, check presence instead of printing the value, and re-run the same file. Both scans read the file as text (`grep -a`), so a NUL byte in the script cannot disable them. See CLAUDE.md § Boundaries & Safety > Credential & Secret Protection and `ERROR_RECOVERY.md` § PreToolUse Safety-Hook Blocks. Regression suite: `tests/bash/run_with_capture.bats` (43 cases).
 
 ---
 
