@@ -206,6 +206,28 @@ if ($null -ne $items) {
 }
 ```
 
+### Launching Child Processes (Start-Process)
+
+Prefer direct invocation (`& $exe @argArray`, then check `$LASTEXITCODE`) — PowerShell quotes each element and the exit code is reliable. Caveat: on Windows PowerShell 5.1 the direct-call path is reported to still mishandle an embedded `"` or a trailing backslash before the closing quote of a spaced argument (see `gotchas.md` > "Embedded Double-Quotes in Native Command Arguments on Windows"). PowerShell 7.3+ reworked native argument passing (`$PSNativeCommandArgumentPassing`), but that preference governs `&` / direct invocation only, NOT `Start-Process`: on pwsh 7.6 an `-ArgumentList @($script, 'a b', 'q"z')` array reached the child as `<a><b><qz>` under both `Legacy` and `Standard`, while `& sh $script 'a b' 'q"z'` gave `<a b><q"z>` under `Standard` (observed 2026-09-29, Linux). Reach for `Start-Process` only when you need what it uniquely provides: console-handle inheritance for an interactive child (`-NoNewWindow`, used by `daaf.ps1`'s delegates) or a Process object to poll while showing progress (`backup_daaf.ps1`'s `docker cp`). When you do, two rules are mandatory:
+
+1. **Pass `-ArgumentList` ONE pre-joined string, every element quoted by `ConvertTo-DaafNativeArg`.** An array is joined with bare spaces and never quoted, so any path with a space splits into several arguments.
+2. **Cache `.Handle` immediately after launch, read `ExitCode` defensively, and treat `$null` as UNKNOWN.** On Windows — Windows PowerShell 5.1 and PowerShell 6.0–7.4.0, with `-NoNewWindow` and/or `-RedirectStandard*` — an uncached `-PassThru` object's `ExitCode` reads `$null` (PowerShell#5421, #20400; fixed in 7.4.1); unknown is never success.
+
+```powershell
+# Drop $null first: a $null $ScriptArgs would otherwise become an explicit "" argument.
+$argString = (@('-NoProfile', '-File', $childPath) + @($ScriptArgs | Where-Object { $null -ne $_ }) |
+    ForEach-Object { ConvertTo-DaafNativeArg $_ }) -join ' '
+$proc = Start-Process -FilePath $hostExe -ArgumentList $argString -NoNewWindow -PassThru
+try { $null = $proc.Handle } catch { Write-Verbose "Could not cache the process handle: $_" }
+$proc.WaitForExit()
+$ec = $null
+try { $ec = $proc.ExitCode } catch { $ec = $null }
+if ($null -eq $ec) { <# UNKNOWN: warn or fail closed #> }
+elseif ($ec -ne 0) { <# FAILURE #> }
+```
+
+`ConvertTo-DaafNativeArg` is defined canonically in `scripts/host/daaf_lib.ps1`. A standalone script that does not dot-source the library carries an INLINE COPY (header comment `INLINE COPY of daaf_lib.ps1 ConvertTo-DaafNativeArg`) that must stay byte-identical, and must be added to the inline-copy list in `tests/powershell/native_arg_quoting.Tests.ps1`, which also enforces both rules structurally across `scripts/host/*.ps1`. Full rationale, sources, and BAD/GOOD examples: `gotchas.md` > "`Start-Process -ArgumentList` Joins an Array With Bare Spaces (No Quoting)" and "`Start-Process -PassThru` `ExitCode` Reads `$null` Unless `.Handle` Is Cached".
+
 ---
 
 ## Output Streams
@@ -341,3 +363,5 @@ Write-Host "Done." -ForegroundColor Green
 | 13 | Progress steps use `[N/M]` format | Visual scan |
 | 14 | ASCII-only content (no em-dashes, curly quotes, no BOM) | `file script.ps1` should report "ASCII text" |
 | 15 | Functions with interactive native commands never called in expression context | No `if (Fn)`, `$x = Fn`, or `Fn \|` for functions containing `docker exec`, `ssh`, etc. -- use script-scoped variables for return values (see gotchas.md) |
+| 16 | `Start-Process -ArgumentList` is one pre-joined string built with `ConvertTo-DaafNativeArg` | No `-ArgumentList @(...)`; see "Launching Child Processes" above (enforced by `native_arg_quoting.Tests.ps1`) |
+| 17 | `Start-Process -PassThru` caches `.Handle` at once; a `$null` exit code is UNKNOWN, never success | No `$ec -and`, `-not $ec`, `[int]$ec`, or pre-set `$ec = 0` (see gotchas.md) |

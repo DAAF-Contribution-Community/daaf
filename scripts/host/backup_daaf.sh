@@ -86,6 +86,12 @@ CLAUDE_SUBDIR=".daaf-claude-config"
 # recreate the links (see restore_from_backup.sh Step 2e). Absent manifest (older
 # backup, or a volume with no symlinks) = no-op on restore, matching the
 # ".daaf-permissions" "no manifest, no action" rule.
+# The same staging step also DELETES special files -- named pipes (FIFOs), sockets,
+# and block/char device nodes -- with no manifest: Windows `docker cp` creates
+# nothing for them and then aborts on the follow-up timestamp call, the same
+# truncation class as the symlink abort. They are runtime rendezvous objects with no
+# content (e.g. stale provider-shim `output.fifo` stream files), so restore does not
+# recreate them; the scan below counts them so the skip is visible to the user.
 SYMLINKS_MANIFEST=".daaf-symlinks"
 TODAY=$(date +%Y-%m-%d)
 
@@ -98,7 +104,9 @@ if [ "${DAAF_DRY_RUN:-}" = "1" ]; then
             "info") return 0 ;;
             *"volume inspect"*) return 0 ;;
             *"run --rm"*"find /source"*)
-                printf '100\n1024\t/source\n1M\t/source\n1024\n'
+                # Scan: file count, du -sk, du -sh, logical KB, special-file count
+                # (nonzero so the dry-run exercises the skipped-special-files note).
+                printf '100\n1024\t/source\n1M\t/source\n1024\n2\n'
                 return 0
                 ;;
             "run -d"*)
@@ -177,7 +185,11 @@ echo ""
 
 # --- Count source files ---
 echo "Scanning Docker volume..."
-SCAN_OUTPUT=$(docker run --rm -v "${VOLUME_NAME}:/source:ro" busybox sh -c 'find /source -type f | wc -l && du -sk /source && du -sh /source && find /source -type f -exec stat -c "%s" {} + | awk "{s+=\$1} END {print int(s/1024)}"') || {
+# Scan output, one value per line (line order is a parsing contract shared with the
+# .ps1 twin -- append new lines at the END only): 1 regular-file count, 2 `du -sk`,
+# 3 `du -sh`, 4 logical KB, 5 special-file count (named pipes, sockets, block/char
+# device nodes -- the set the staging program deletes).
+SCAN_OUTPUT=$(docker run --rm -v "${VOLUME_NAME}:/source:ro" busybox sh -c 'find /source -type f | wc -l && du -sk /source && du -sh /source && find /source -type f -exec stat -c "%s" {} + | awk "{s+=\$1} END {print int(s/1024)}" && find /source \( -type p -o -type s -o -type b -o -type c \) | wc -l') || {
     echo ""
     echo "ERROR: Could not scan Docker volume."
     exit 1
@@ -186,7 +198,18 @@ TOTAL_FILES=$(echo "${SCAN_OUTPUT}" | head -1 | tr -d '[:space:]')
 VOLUME_SIZE_KB=$(echo "${SCAN_OUTPUT}" | sed -n '2p' | awk '{print $1}')
 TOTAL_SIZE=$(echo "${SCAN_OUTPUT}" | sed -n '3p' | awk '{print $1}')
 VOLUME_LOGICAL_KB=$(echo "${SCAN_OUTPUT}" | sed -n '4p' | tr -d '[:space:]')
+# Line 5 is informational only: a missing or non-numeric value (e.g. a mock that
+# emits the older 4-line scan) reads as 0 rather than failing the backup. Special
+# files are never regular files, so they are already outside TOTAL_FILES and the
+# file-count verification below is unaffected by skipping them.
+SPECIAL_FILES=$(echo "${SCAN_OUTPUT}" | sed -n '5p' | tr -d '[:space:]')
+case "${SPECIAL_FILES}" in
+    ''|*[!0-9]*) SPECIAL_FILES=0 ;;
+esac
 echo "Found ${TOTAL_FILES} files to copy (${TOTAL_SIZE})."
+if [ "${SPECIAL_FILES}" -gt 0 ]; then
+    echo "Note: skipping ${SPECIAL_FILES} named pipe/socket/device file(s) -- runtime-only, not backed up."
+fi
 echo ""
 
 # --- Disk space pre-check ---
@@ -230,12 +253,28 @@ mkdir -p "${BACKUP_NAME}"
 # not an optimization) into the ".daaf-symlinks" manifest at the staging root, and
 # `find -type l -exec rm` strips the links. Restore replays the manifest.
 #
+# The final `find` then deletes special files (`-type p` named pipes, `-type s`
+# sockets, `-type b`/`-type c` device nodes). For FIFOs and device nodes, Windows
+# `docker cp` has the same abort-and-truncate failure as for symlinks: moby's Windows
+# archive extractor creates nothing for a FIFO/device entry, then its timestamp step
+# (`chtimes`) fails on the missing path and aborts the whole extraction -- after the
+# CLI has already printed "Successfully copied" (field failure 2026-09-29, sibling
+# project on a variant of this script: a stale provider-shim `output.fifo` stopped a
+# Windows backup; last progress reading 94%). Sockets are stripped defensively (how
+# Docker archives them was not verified). None of these carry data, so they are
+# dropped with NO manifest and restore does not recreate them. The
+# grouped `\( ... \)` predicates keep `-exec` bound to all four types; with no
+# matches `find` runs no `rm` and exits 0, so `set -e` is safe on a clean volume.
+#
+# The staged tree `docker cp` streams therefore holds only directories, regular
+# files, and the ".daaf-symlinks" manifest.
+#
 # The staging program contains NO embedded double quotes: it is shared logically
 # with the .ps1 twin, where embedded double quotes corrupt Windows arg parsing on
 # PS 5.1. Its /tmp writes are inside the throwaway container's own layer (NOT the
 # DAAF container's /tmp), so there is no provenance concern.
 #
-# `docker cp CID:/staging/.` then streams the staged (symlink-free) tree host-side
+# `docker cp CID:/staging/.` then streams the staged (symlink- and special-file-free) tree host-side
 # as the INVOKING user (no -a/--archive), so ownership is correct by construction
 # and no chown-repair step is needed. The trailing "/." copies the CONTENTS into
 # "${BACKUP_NAME}" rather than nesting a "staging" dir.
@@ -290,7 +329,8 @@ grep -f /tmp/tab_pat /tmp/link_targets || true
 exit 3
 fi
 paste /tmp/link_paths /tmp/link_targets > /staging/'"${SYMLINKS_MANIFEST}"'
-find /staging -type l -exec rm -f {} +'
+find /staging -type l -exec rm -f {} +
+find /staging \( -type p -o -type s -o -type b -o -type c \) -exec rm -f {} +'
 
 echo "Preparing volume snapshot (staging + symlink strip)... (this may take a while for large volumes)"
 # Launch the staging container detached and wait for it. `docker run -d` returns a
@@ -387,8 +427,9 @@ docker rm -f "${STAGE_CID}" > /dev/null 2>&1 || true
 trap - INT TERM
 
 # Latch for the completion banner: any of the non-fatal WARNING paths below
-# (file-count mismatch, size mismatch, Claude-state copy failure, permission-manifest
-# failure) sets this so the final banner can say the backup completed WITH WARNINGS
+# (nonzero copy exit code, file-count mismatch, size mismatch, Claude-state copy
+# failure, permission-manifest failure) sets this so the final banner can say the
+# backup completed WITH WARNINGS
 # rather than claiming an unqualified success. The exit status stays 0 on those paths
 # -- the banner wording is the signal, not the exit code (the corroborated short-copy
 # case below is the one that is fatal, and it exits before the banner).
@@ -396,15 +437,16 @@ HAD_WARNINGS=0
 
 # --- Verify ---
 # The staged tree the copy streamed = volume regular files + 1 symlink manifest
-# - symlinks. Symlinks were never counted by the `find -type f` volume scan
-# (TOTAL_FILES), and the manifest is metadata, not volume content -- so exclude the
+# (symlinks and special files were stripped). Neither symlinks nor special files
+# were ever counted by the `find -type f` volume scan (TOTAL_FILES), and the
+# manifest is metadata, not volume content -- so exclude the
 # manifest here to keep the copied count aligned with TOTAL_FILES. (Do NOT exclude
 # it from the completion "files copied" number below either; both must count
 # data-volume files only.)
 FILE_COUNT=$(find "${BACKUP_NAME}" -type f -not -name "${SYMLINKS_MANIFEST}" 2>/dev/null | wc -l | tr -d '[:space:]') || FILE_COUNT=0
 # Print the ACTUAL final host-side count, not a fabricated "100%". On a truncated
-# copy (the Windows symlink-abort this staging step now prevents, or any other
-# partial copy) an unconditional "100%" would lie about completeness.
+# copy (the Windows symlink/special-file abort this staging step now prevents, or
+# any other partial copy) an unconditional "100%" would lie about completeness.
 if [ "${TOTAL_FILES}" -gt 0 ]; then
     FINAL_PERCENT=$((FILE_COUNT * 100 / TOTAL_FILES))
     if [ "${FINAL_PERCENT}" -gt 100 ]; then FINAL_PERCENT=100; fi
@@ -433,7 +475,8 @@ fi
 # otherwise-clean copy). A truncated backup that passed as usable could cost a user
 # their data on restore, so fail hard: name the partial folder, tell them to delete
 # it, and exit before the completion banner. (A nonzero exit with a FULL count falls
-# through to the Note below -- warnings without an actual shortfall.)
+# through to the Note below, which latches the WITH WARNINGS banner -- warnings
+# without an actual shortfall.)
 if [ "${COPY_EXIT}" -ne 0 ] && [ "${FILE_COUNT}" -lt "${TOTAL_FILES}" ]; then
     echo ""
     echo "ERROR: Backup failed (exit code ${COPY_EXIT}); only ${FILE_COUNT} of ${TOTAL_FILES} expected files were copied."
@@ -442,7 +485,11 @@ if [ "${COPY_EXIT}" -ne 0 ] && [ "${FILE_COUNT}" -lt "${TOTAL_FILES}" ]; then
     echo "Location: $(pwd)/${BACKUP_NAME}/"
     exit 1
 elif [ "${COPY_EXIT}" -ne 0 ]; then
+    # A nonzero exit is a copy-reported problem even when the count came up full,
+    # so latch the warnings banner: "Backup complete!" would overstate a run the
+    # copy itself flagged. Exit status stays 0 (no shortfall, so not fatal).
     echo "Note: File copy reported warnings (exit code ${COPY_EXIT}); ${FILE_COUNT} of ${TOTAL_FILES} expected files were transferred."
+    HAD_WARNINGS=1
 fi
 
 # --- File-count verification ---
@@ -507,8 +554,9 @@ if docker volume inspect "${CLAUDE_VOLUME_NAME}" &> /dev/null; then
     # symlinks -- e.g. codex-daaf/tmp/arg0/... -- which is why the "Failed to back
     # up the Claude Code state volume" warning appeared on Windows: `docker cp`
     # aborted on the first link). Stage into a throwaway container to strip the
-    # symlinks into this subfolder's own ".daaf-symlinks" manifest, then cp the
-    # symlink-free staged tree out. Synchronous (this copy is small). `docker cp`
+    # symlinks into this subfolder's own ".daaf-symlinks" manifest (and delete any
+    # special files, unreported here -- the scan above covers the data volume only),
+    # then cp the stripped staged tree out. Synchronous (this copy is small). `docker cp`
     # extracts as the invoking user, so the files land user-owned with no chown
     # repair. The manifest lands at "${CLAUDE_SUBDIR}/${SYMLINKS_MANIFEST}"; restore
     # replays it against the claude volume.

@@ -76,7 +76,8 @@ teardown() {
     mkdir -p "${TEST_DIR}/${today}_daaf_backup"
 
     # Mock volume inspect to succeed, mock docker run for scan
-    # Scan now outputs 4 lines: file count, du -sk, du -sh, logical KB
+    # Legacy 4-line scan mock: file count, du -sk, du -sh, logical KB (the 5th
+    # special-file line is optional; a missing one reads as 0)
     MOCK_DOCKER_VOLUME_EXIT=0
     MOCK_DOCKER_RUN_OUTPUT=$'100\n512\t/source\n500K\t/source\n500'
     MOCK_DOCKER_RUN_EXIT=0
@@ -93,7 +94,8 @@ teardown() {
     mkdir -p "${TEST_DIR}/${today}_daaf_backup"
     mkdir -p "${TEST_DIR}/${today}a_daaf_backup"
 
-    # Scan now outputs 4 lines: file count, du -sk, du -sh, logical KB
+    # Legacy 4-line scan mock: file count, du -sk, du -sh, logical KB (the 5th
+    # special-file line is optional; a missing one reads as 0)
     MOCK_DOCKER_VOLUME_EXIT=0
     MOCK_DOCKER_RUN_OUTPUT=$'100\n512\t/source\n500K\t/source\n500'
     MOCK_DOCKER_RUN_EXIT=0
@@ -344,6 +346,228 @@ teardown() {
     run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
     assert_output --partial "1 files copied"
     refute_output --partial "file-count mismatch"
+}
+
+# --- Special-file strip (named pipes, sockets, device nodes) ---
+# Windows `docker cp` creates nothing for a FIFO/device tar entry, then aborts the
+# whole extraction on the follow-up timestamp call -- the same truncation class as
+# the symlink abort. Field report 2026-09-29 (sibling project, variant script): a stale
+# provider-shim output.fifo stopped a Windows backup, last progress reading 94%.
+# Separate probe of the maintainer volume: 714 of 71,820 files sort after the first
+# FIFO -- under the 1% (718) count tolerance, so the count check alone would not
+# flag it. The staging program must
+# delete them, and the scan must count them so the skip is visible.
+
+# Extract backup_daaf.sh's STAGE_PROGRAM with the manifest splice resolved (the same
+# anchors tests/bash/backup_twin_parity.bats uses; that file proves the .ps1 twin is
+# byte-identical, so exercising this one covers both).
+_extract_stage_program() {
+    local f="${REPO_ROOT}/scripts/host/backup_daaf.sh" m
+    m="$(sed -n 's/^SYMLINKS_MANIFEST="\([^"]*\)".*/\1/p' "${f}" | head -1)"
+    sed "s/'\"\${SYMLINKS_MANIFEST}\"'/${m}/g" "${f}" \
+    | awk '
+        BEGIN { inp=0 }
+        inp==0 && /^STAGE_PROGRAM=/ {
+            inp=1; line=$0; sub(/^STAGE_PROGRAM=./, "", line); print line; next
+        }
+        inp==1 {
+            if ($0 ~ /\047$/) { line=$0; sub(/.$/, "", line); print line; exit }
+            print $0
+        }
+    '
+}
+
+# Relocate the program's absolute container paths (/source, /staging, /tmp/) under a
+# per-test root so it can run under the local sh. Two-phase: tokenize, ASSERT no
+# absolute path survived (so a missed rewrite can never write to the real /tmp), then
+# substitute the root. Writes the runnable program to "$1/program.sh".
+_relocate_stage_program() {
+    local root="$1"
+    _extract_stage_program \
+        | sed -e 's|/tmp/|__CTMP__/|g' -e 's|/source|__SRC__|g' -e 's|/staging|__STG__|g' \
+        > "${root}/tokenized.sh"
+    [ -s "${root}/tokenized.sh" ] || { echo "FAIL: STAGE_PROGRAM extraction empty"; return 1; }
+    if grep -qE '/tmp/|/source|/staging' "${root}/tokenized.sh"; then
+        echo "FAIL: an absolute container path survived relocation:"
+        grep -nE '/tmp/|/source|/staging' "${root}/tokenized.sh"
+        return 1
+    fi
+    sed -e "s|__CTMP__|${root}/ctmp|g" -e "s|__SRC__|${root}/source|g" -e "s|__STG__|${root}/staging|g" \
+        "${root}/tokenized.sh" > "${root}/program.sh"
+}
+
+@test "backup_daaf.sh staging program strips named pipes, sockets, and device nodes" {
+    # The strip must follow the symlink strip inside STAGE_PROGRAM, group all four
+    # types so -exec binds to each, and stay quote-free (PS 5.1 twin parity).
+    run grep -cF 'find /staging \( -type p -o -type s -o -type b -o -type c \) -exec rm -f {} +' "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_output "1"
+    # It is the program's LAST line, directly after the symlink strip.
+    run _extract_stage_program
+    assert_success
+    [ "${lines[${#lines[@]}-1]}" = 'find /staging \( -type p -o -type s -o -type b -o -type c \) -exec rm -f {} +' ]
+    [ "${lines[${#lines[@]}-2]}" = 'find /staging -type l -exec rm -f {} +' ]
+}
+
+@test "backup_daaf.sh scan counts special files as an appended 5th line" {
+    # The count is appended AFTER the four existing scan values so their line-index
+    # parsing contract is unchanged, and it uses the same four types the strip deletes.
+    run grep -cF '&& find /source \( -type p -o -type s -o -type b -o -type c \) | wc -l' "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_output "1"
+    run grep -cF "SPECIAL_FILES=\$(echo \"\${SCAN_OUTPUT}\" | sed -n '5p'" "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_output "1"
+}
+
+@test "backup: staging program (run under local sh) removes a FIFO, a socket, and a symlink, keeps regular files" {
+    # Behavioral: run the REAL extracted STAGE_PROGRAM (relocated under TEST_DIR)
+    # against a tree holding a FIFO, a UNIX socket, and a symlink -- two special-file
+    # types, so a strip narrowed to `-type p` alone fails here. NOTE: this runs under
+    # the local POSIX sh + coreutils/findutils, not busybox (not installed here); the
+    # predicates used (-type p/s/b/c, \( \), -o, -exec {} +) are POSIX find. Device
+    # nodes need root to create and are not fixtured. All fixture objects live under
+    # TEST_DIR, which common_teardown removes on pass AND on failure.
+    command -v python3 > /dev/null 2>&1 || skip "python3 needed to create the UNIX-socket fixture"
+    local root="${TEST_DIR}/stagetest"
+    mkdir -p "${root}/source/sub" "${root}/ctmp"
+    printf 'alpha\n' > "${root}/source/a.txt"
+    printf 'beta\n' > "${root}/source/sub/b.txt"
+    ln -s a.txt "${root}/source/link-to-a"
+    mkfifo "${root}/source/sub/output.fifo"
+    # Bind (and leave) a UNIX socket file; the process exits, the socket inode stays.
+    # chdir + relative name: AF_UNIX paths are capped at ~108 bytes, and TEST_DIR can
+    # be deeper than that (e.g. under a project-scratch TMPDIR).
+    python3 -c "import os,socket,sys; os.chdir(sys.argv[1]); socket.socket(socket.AF_UNIX).bind(sys.argv[2])" "${root}/source/sub" rendezvous.sock
+    [ -S "${root}/source/sub/rendezvous.sock" ]
+    _relocate_stage_program "${root}"
+
+    run sh "${root}/program.sh"
+    assert_success
+
+    # No FIFO, no socket, and no symlink survive into the staged tree...
+    run find "${root}/staging" -type p
+    assert_output ""
+    run find "${root}/staging" -type s
+    assert_output ""
+    run find "${root}/staging" -type l
+    assert_output ""
+    # ...regular files do, with content intact...
+    run cat "${root}/staging/a.txt"
+    assert_output "alpha"
+    run cat "${root}/staging/sub/b.txt"
+    assert_output "beta"
+    # ...and only the symlink is recorded in the manifest (the FIFO is not).
+    run cat "${root}/staging/.daaf-symlinks"
+    assert_output "$(printf './link-to-a\ta.txt')"
+}
+
+@test "backup: staging program succeeds under set -e when no symlinks or special files exist" {
+    # With zero matches, neither strip `find` runs rm, and both exit 0 -- so the
+    # `set -e` program must still succeed and leave the regular files in place.
+    local root="${TEST_DIR}/stagetest"
+    mkdir -p "${root}/source/sub" "${root}/ctmp"
+    printf 'alpha\n' > "${root}/source/a.txt"
+    printf 'beta\n' > "${root}/source/sub/b.txt"
+    _relocate_stage_program "${root}"
+
+    run sh "${root}/program.sh"
+    assert_success
+    run find "${root}/staging" -type f -name '*.txt'
+    assert_output --partial "a.txt"
+    assert_output --partial "sub/b.txt"
+    # Manifest exists and is empty (no symlinks).
+    [ -f "${root}/staging/.daaf-symlinks" ]
+    [ ! -s "${root}/staging/.daaf-symlinks" ]
+}
+
+@test "backup: prints a skip note when the scan counts special files" {
+    export DAAF_NESTED=1
+    # 5th scan line = 3 special files. The note appears; it is informational (the
+    # banner stays plain -- stale FIFOs are expected, not a backup defect).
+    docker() {
+        case "$1" in
+            info)   return 0 ;;
+            volume) return 0 ;;
+            run)
+                if [ "${2:-}" = "-d" ]; then echo "stagecid0000"; return 0; fi
+                printf '2\n512\t/source\n500K\t/source\n0\n3\n'
+                return 0
+                ;;
+            wait) echo "0"; return 0 ;;
+            cp)
+                local dest_dir=""
+                for arg in "$@"; do dest_dir="${arg}"; done
+                dest_dir="${dest_dir%/}"
+                if [ -n "${dest_dir}" ]; then
+                    mkdir -p "${dest_dir}"
+                    touch "${dest_dir}/file1" "${dest_dir}/file2"
+                fi
+                return 0
+                ;;
+            rm) return 0 ;;
+            *)  return 0 ;;
+        esac
+    }
+    export -f docker
+
+    run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_success
+    assert_output --partial "Note: skipping 3 named pipe/socket/device file(s) -- runtime-only, not backed up."
+    assert_output --partial "Backup complete!"
+    refute_output --partial "WITH WARNINGS"
+}
+
+@test "backup: no skip note for a zero, missing (4-line scan), or non-numeric 5th line" {
+    export DAAF_NESTED=1
+    # A 5th line of 0 prints nothing; a 4-line scan (no 5th line, e.g. an older mock)
+    # and a non-numeric 5th line both read as 0 via the `case` sanitisation. All three
+    # must complete cleanly to the plain banner. Without the sanitisation, `[ "" -gt 0 ]`
+    # / `[ abc -gt 0 ]` print "integer expression expected" (and the `if` merely reads
+    # false) -- so the refute on that text is what makes this test catch its removal.
+    # SCAN_LINE5 drives the mock: "__NONE__" omits the 5th line entirely.
+    docker() {
+        case "$1" in
+            info)   return 0 ;;
+            volume) return 0 ;;
+            run)
+                if [ "${2:-}" = "-d" ]; then echo "stagecid0000"; return 0; fi
+                printf '2\n512\t/source\n500K\t/source\n0\n'
+                if [ "${SCAN_LINE5}" != "__NONE__" ]; then printf '%s\n' "${SCAN_LINE5}"; fi
+                return 0
+                ;;
+            wait) echo "0"; return 0 ;;
+            cp)
+                local dest_dir=""
+                for arg in "$@"; do dest_dir="${arg}"; done
+                dest_dir="${dest_dir%/}"
+                if [ -n "${dest_dir}" ]; then
+                    mkdir -p "${dest_dir}"
+                    touch "${dest_dir}/file1" "${dest_dir}/file2"
+                fi
+                return 0
+                ;;
+            rm) return 0 ;;
+            *)  return 0 ;;
+        esac
+    }
+    export -f docker
+
+    local line5
+    for line5 in 0 __NONE__ abc; do
+        # Later cases land in suffixed folders (a, b) -- irrelevant to these assertions.
+        export SCAN_LINE5="${line5}"
+        run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+        echo "case 5th line = ${line5}"
+        assert_success
+        refute_output --partial "Note: skipping"
+        refute_output --partial "integer expression"
+        assert_output --partial "Found 2 files to copy"
+        assert_output --partial "Backup complete!"
+    done
+}
+
+@test "backup_daaf.sh: dry-run shows the special-file skip note from the 5-line scan mock" {
+    run env DAAF_DRY_RUN=1 DAAF_NESTED=1 bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_success
+    assert_output --partial "Note: skipping 2 named pipe/socket/device file(s) -- runtime-only, not backed up."
 }
 
 # --- Date-suffix versioning edge cases ---
@@ -772,22 +996,30 @@ teardown() {
     assert_output --partial "ERROR"
 }
 
-@test "backup: copy reports non-zero exit but full file count shows Note not error" {
+@test "backup: copy reports non-zero exit but full file count shows Note (not error) and latches WITH WARNINGS" {
     export DAAF_NESTED=1
 
     # Regression anchor for the Note path: a nonzero `docker cp` exit is NOT fatal
     # when the full expected file count still landed (no shortfall). The scan reports
     # 3 files and the mock copies exactly 3 -- so the corroborated short-copy fatal
     # branch (nonzero exit AND count short) does NOT fire; execution falls through to
-    # the informational Note and completes successfully.
+    # the informational Note, which LATCHES the warnings banner: the copy itself
+    # flagged a problem, so "Backup complete!" would overstate the run. Exit stays 0.
+    # Only the DATA copy fails: the Claude-state copy (destination under
+    # .daaf-claude-config) succeeds, and the size check is skipped (logical KB 0), so
+    # the Note is the ONLY warning source -- the banner assertion below then fails if
+    # the Note branch stops setting HAD_WARNINGS.
     docker() {
         case "$1" in
             info)   return 0 ;;
             volume) return 0 ;;
             run)
                 if [ "${2:-}" = "-d" ]; then echo "stagecid0000"; return 0; fi
-                # Scan output -- 3 files, matching the 3 the copy creates below.
-                printf '3\n512\t/source\n500K\t/source\n500\n'
+                # Permission-manifest scan: no exec files.
+                case "$*" in *"-perm -0100"*) return 0 ;; esac
+                # Scan output -- 3 files, matching the 3 the copy creates below;
+                # logical KB 0 skips the size check.
+                printf '3\n512\t/source\n500K\t/source\n0\n'
                 return 0
                 ;;
             wait) echo "0"; return 0 ;;
@@ -795,6 +1027,14 @@ teardown() {
                 local dest_dir=""
                 for arg in "$@"; do dest_dir="${arg}"; done
                 dest_dir="${dest_dir%/}"
+                case "${dest_dir}" in
+                    *.daaf-claude-config)
+                        # Claude-state copy succeeds (no warning from that block).
+                        mkdir -p "${dest_dir}"
+                        touch "${dest_dir}/claude1"
+                        return 0
+                        ;;
+                esac
                 if [ -n "${dest_dir}" ]; then
                     mkdir -p "${dest_dir}"
                     touch "${dest_dir}/file1" "${dest_dir}/file2" "${dest_dir}/file3"
@@ -809,10 +1049,14 @@ teardown() {
     export -f docker
 
     run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
-    # Should succeed (full count copied) but note the warnings -- NOT the fatal error.
-    assert_output --partial "warnings"
-    assert_output --partial "files were transferred"
+    # Succeeds (full count copied) and notes the warnings -- NOT the fatal error.
+    assert_success
+    assert_output --partial "Note: File copy reported warnings (exit code 1); 3 of 3 expected files were transferred."
     refute_output --partial "must not be relied on"
+    refute_output --partial "Failed to back up the Claude Code state volume"
+    refute_output --partial "file-count mismatch"
+    assert_output --partial "Backup completed WITH WARNINGS -- verify before relying on it"
+    refute_output --partial "Backup complete!"
 }
 
 @test "backup: non-zero copy exit with short file count is a fatal error" {

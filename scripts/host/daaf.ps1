@@ -453,15 +453,17 @@ function Invoke-DaafDelegateInteractive {
     $hostExe = (Get-Process -Id $PID).Path
     $childPath = Join-Path $script:DaafScriptDir $ScriptName
 
-    # Build the argument list PS-5.1-safely (no splatting into Start-Process,
-    # which does not accept @array for -ArgumentList reliably under 5.1). Quote
-    # any token containing whitespace so multi-word args survive re-parsing;
-    # current callers pass simple tokens ("bash") or nothing.
-    $argList = @('-NoProfile', '-File', $childPath)
-    foreach ($a in $ScriptArgs) {
-        if ($a -match '\s') { $argList += ('"' + ($a -replace '"', '\"') + '"') }
-        else { $argList += $a }
-    }
+    # Build ONE pre-joined, correctly quoted argument string. Start-Process joins an
+    # -ArgumentList ARRAY with bare spaces and quotes nothing, so the child path --
+    # which lives under the install folder, e.g. "C:\Users\John Smith\daaf-docker"
+    # or a "OneDrive - Org" folder -- used to split into several argv entries and the
+    # child host failed to find the script (PowerShell#5576). Every element, the
+    # -File path included, goes through ConvertTo-DaafNativeArg (daaf_lib.ps1), which
+    # also handles embedded quotes and trailing backslashes; current callers pass
+    # simple tokens ("bash") or nothing as $ScriptArgs. $null elements are dropped
+    # first: a $null $ScriptArgs binds as ONE $null element, which the helper would
+    # turn into an explicit empty "" argument for the child.
+    $argString = (@(@('-NoProfile', '-File', $childPath) + @($ScriptArgs | Where-Object { $null -ne $_ })) | ForEach-Object { ConvertTo-DaafNativeArg $_ }) -join ' '
 
     # Ctrl+C survivability: while the child owns the console, route Ctrl+C to the
     # child (normal claude/bash break behavior) WITHOUT killing the parent panel.
@@ -472,10 +474,11 @@ function Invoke-DaafDelegateInteractive {
     # behavior in that case rather than aborting the delegation.
     $ctrlCGuarded = $false
     $priorTreatCtrlC = $false
-    # Pre-init so the post-finally read below is strict-mode-safe even if
-    # Start-Process throws before $ec is assigned (the real exception must
-    # surface, not a masking "unset variable $ec" error).
-    $ec = 0
+    # Pre-init to $null (UNKNOWN), never 0: the post-finally read below stays
+    # strict-mode-safe even if Start-Process throws before $ec is assigned (the
+    # real exception must surface, not a masking "unset variable $ec" error), and
+    # an exit status that was never read can never be mistaken for success.
+    $ec = $null
     try {
         $priorTreatCtrlC = [Console]::TreatControlCAsInput
         [Console]::TreatControlCAsInput = $true
@@ -485,10 +488,20 @@ function Invoke-DaafDelegateInteractive {
     }
 
     try {
-        $proc = Start-Process -FilePath $hostExe -ArgumentList $argList `
+        $proc = Start-Process -FilePath $hostExe -ArgumentList $argString `
             -NoNewWindow -PassThru
+        # Cache the process handle NOW, while the child is still running. On
+        # Windows -- Windows PowerShell 5.1 and PowerShell 6.0 through 7.4.0 --
+        # the Process object Start-Process -PassThru -NoNewWindow (or
+        # -RedirectStandard*) returns holds no open OS handle; if none is opened
+        # before the child exits, ExitCode later reads as $null (PowerShell#5421,
+        # #20400; fixed in 7.4.1; SO 10262231, answer 23797762; in-repo
+        # precedents: test_migration.ps1 Invoke-HardenedScript and the
+        # backup_daaf.ps1 docker cp copy). Best-effort: a failure here leaves the
+        # exit status UNKNOWN below, never success.
+        try { $null = $proc.Handle } catch { Write-Verbose "Could not cache the child process handle: $_" }
         $proc.WaitForExit()
-        $ec = $proc.ExitCode
+        try { $ec = $proc.ExitCode } catch { $ec = $null }
     } finally {
         if ($ctrlCGuarded) {
             try {
@@ -506,7 +519,13 @@ function Invoke-DaafDelegateInteractive {
         if ($null -ne $savedNested) { $env:DAAF_NESTED = $savedNested } else { Remove-Item Env:\DAAF_NESTED -ErrorAction SilentlyContinue }
     }
 
-    if ($ec -and $ec -ne 0) {
+    # Three outcomes, never two: an unreadable ($null) exit status is UNKNOWN and
+    # gets its own message -- it is not success. (The old `$ec -and $ec -ne 0`
+    # test read $null as "no error" and printed nothing.)
+    if ($null -eq $ec) {
+        Write-Host ""
+        Write-Host "  Could not read the exit status of $ScriptName -- check its output above for errors." -ForegroundColor Yellow
+    } elseif ($ec -ne 0) {
         Write-Host ""
         Write-Host "  $FailureMessage" -ForegroundColor Yellow
     }
@@ -849,17 +868,19 @@ function Invoke-DaafDelegate {
 
     $hostExe = (Get-Process -Id $PID).Path
     $childPath = Join-Path $script:DaafScriptDir $ScriptName
-    $argList = @('-NoProfile', '-File', $childPath)
+    # ONE pre-joined, quoted argument string -- see Invoke-DaafDelegateInteractive:
+    # an array -ArgumentList splits a child path containing spaces.
+    $argString = (@('-NoProfile', '-File', $childPath) | ForEach-Object { ConvertTo-DaafNativeArg $_ }) -join ' '
 
     # Ctrl+C survivability guard (see Invoke-DaafDelegateInteractive for the full
     # rationale): keep a break from killing the parent panel; degrade gracefully
     # on hosts that do not support the property.
     $ctrlCGuarded = $false
     $priorTreatCtrlC = $false
-    # Pre-init so the post-finally read below is strict-mode-safe even if
-    # Start-Process throws before $ec is assigned (surface the real exception,
-    # not a masking "unset variable $ec" error).
-    $ec = 0
+    # Pre-init to $null (UNKNOWN), never 0: strict-mode-safe for the post-finally
+    # read even if Start-Process throws (surface the real exception, not a masking
+    # "unset variable $ec" error), and never mistakable for a clean exit.
+    $ec = $null
     try {
         $priorTreatCtrlC = [Console]::TreatControlCAsInput
         [Console]::TreatControlCAsInput = $true
@@ -869,10 +890,14 @@ function Invoke-DaafDelegate {
     }
 
     try {
-        $proc = Start-Process -FilePath $hostExe -ArgumentList $argList `
+        $proc = Start-Process -FilePath $hostExe -ArgumentList $argString `
             -NoNewWindow -PassThru
+        # Cache the handle while the child runs, so ExitCode stays readable on
+        # Windows PowerShell 5.1 and PowerShell 6.0-7.4.0 on Windows (see
+        # Invoke-DaafDelegateInteractive).
+        try { $null = $proc.Handle } catch { Write-Verbose "Could not cache the child process handle: $_" }
         $proc.WaitForExit()
-        $ec = $proc.ExitCode
+        try { $ec = $proc.ExitCode } catch { $ec = $null }
     } finally {
         if ($ctrlCGuarded) {
             try {
@@ -886,7 +911,14 @@ function Invoke-DaafDelegate {
         if ($null -ne $savedNested) { $env:DAAF_NESTED = $savedNested } else { Remove-Item Env:\DAAF_NESTED -ErrorAction SilentlyContinue }
     }
 
-    if (-not $ec -or $ec -eq 0) {
+    # Three outcomes: success, failure, and UNKNOWN. An unreadable ($null) exit
+    # status is never summarised as a clean return -- the old `-not $ec` test did
+    # exactly that, so a failed backup/restore/update/rebuild could read as success.
+    if ($null -eq $ec) {
+        Write-Host ""
+        Write-Host "  Could not read the exit status of $ScriptName -- check its output above for errors." -ForegroundColor Yellow
+        Write-Host "Returned to DAAF Control Panel."
+    } elseif ($ec -eq 0) {
         Write-Host ""
         Write-Host "Returned to DAAF Control Panel."
     } else {

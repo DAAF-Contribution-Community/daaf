@@ -573,6 +573,112 @@ Describe "daaf.ps1 behavioral tests" {
             $env:DAAF_NESTED | Should -BeNullOrEmpty
         }
     }
+
+    Context "Delegates quote a spaced child path and report UNKNOWN / error / success distinctly" {
+        # F1: Start-Process joins an -ArgumentList ARRAY with bare spaces, so a
+        # child path under a spaced install folder ("C:\Users\John Smith\...") used
+        # to split into several argv entries. The delegates must hand Start-Process
+        # ONE pre-joined string with the -File path quoted as a single token.
+        # F2/F3: on Windows (PS 5.1 and pwsh 6.0-7.4.0) ExitCode can read $null (handle not
+        # cached); that is UNKNOWN and must get its own message -- never the bare
+        # "Returned to DAAF Control Panel." success path or silence.
+        # Start-Process is mocked; the mock records -ArgumentList and returns a
+        # Process-like object whose ExitCode is driven by $script:MockExitCode.
+        BeforeAll {
+            $script:OrigNested = $env:DAAF_NESTED
+            $script:OrigScriptDir = $script:DaafScriptDir
+            $script:DaafScriptDir = Join-Path $TestDrive 'John Smith dir'
+        }
+        AfterAll {
+            $script:DaafScriptDir = $script:OrigScriptDir
+            if ($null -ne $script:OrigNested) { $env:DAAF_NESTED = $script:OrigNested }
+            else { Remove-Item Env:DAAF_NESTED -ErrorAction SilentlyContinue }
+        }
+        BeforeEach {
+            $script:CapturedArgumentList = $null
+            Mock Start-Process {
+                $script:CapturedArgumentList = $ArgumentList
+                [pscustomobject]@{ ExitCode = $script:MockExitCode } |
+                    Add-Member -MemberType ScriptMethod -Name WaitForExit -Value { } -PassThru
+            }
+        }
+
+        It "Invoke-DaafDelegate passes one string with the spaced -File path as one quoted token" {
+            $script:MockExitCode = 0
+            $null = Invoke-DaafDelegate "backup_daaf.ps1" 6>&1
+            $expectedPath = Join-Path $script:DaafScriptDir 'backup_daaf.ps1'
+            @($script:CapturedArgumentList).Count | Should -Be 1
+            @($script:CapturedArgumentList)[0] | Should -BeExactly ('-NoProfile -File "' + $expectedPath + '"')
+        }
+
+        It "Invoke-DaafDelegateInteractive passes one string: quoted spaced -File path, then the script args" {
+            $script:MockExitCode = 0
+            $null = Invoke-DaafDelegateInteractive "run_daaf.ps1" @("bash") "Container terminal ended with an error." 6>&1
+            $expectedPath = Join-Path $script:DaafScriptDir 'run_daaf.ps1'
+            @($script:CapturedArgumentList).Count | Should -Be 1
+            @($script:CapturedArgumentList)[0] | Should -BeExactly ('-NoProfile -File "' + $expectedPath + '" bash')
+        }
+
+        It "Invoke-DaafDelegateInteractive: a `$null ScriptArgs adds no trailing empty `"`" argument" {
+            # A $null [string[]] binds as ONE $null element; unfiltered, the helper
+            # turned it into an explicit "" argument for the child script.
+            $script:MockExitCode = 0
+            $null = Invoke-DaafDelegateInteractive "run_daaf.ps1" $null "Claude Code session ended with an error." 6>&1
+            $expectedPath = Join-Path $script:DaafScriptDir 'run_daaf.ps1'
+            @($script:CapturedArgumentList).Count | Should -Be 1
+            @($script:CapturedArgumentList)[0] | Should -BeExactly ('-NoProfile -File "' + $expectedPath + '"')
+        }
+
+        It "Invoke-DaafDelegateInteractive: a `$null element is dropped, real script args are kept" {
+            $script:MockExitCode = 0
+            $null = Invoke-DaafDelegateInteractive "run_daaf.ps1" @("bash", $null) "Container terminal ended with an error." 6>&1
+            $expectedPath = Join-Path $script:DaafScriptDir 'run_daaf.ps1'
+            @($script:CapturedArgumentList)[0] | Should -BeExactly ('-NoProfile -File "' + $expectedPath + '" bash')
+        }
+
+        It "Invoke-DaafDelegate: a null ExitCode reports UNKNOWN, not a clean return" {
+            $script:MockExitCode = $null
+            $out = Invoke-DaafDelegate "backup_daaf.ps1" 6>&1 | Out-String
+            $out | Should -BeLike "*Could not read the exit status of backup_daaf.ps1*"
+            $out | Should -Not -BeLike "*exited without completing*"
+        }
+
+        It "Invoke-DaafDelegate: ExitCode 1 reports the failure with its code" {
+            $script:MockExitCode = 1
+            $out = Invoke-DaafDelegate "backup_daaf.ps1" 6>&1 | Out-String
+            $out | Should -BeLike "*backup_daaf.ps1 exited without completing (code 1).*"
+            $out | Should -Not -BeLike "*Could not read the exit status*"
+        }
+
+        It "Invoke-DaafDelegate: ExitCode 0 is a plain clean return" {
+            $script:MockExitCode = 0
+            $out = Invoke-DaafDelegate "backup_daaf.ps1" 6>&1 | Out-String
+            $out | Should -BeLike "*Returned to DAAF Control Panel.*"
+            $out | Should -Not -BeLike "*Could not read the exit status*"
+            $out | Should -Not -BeLike "*exited without completing*"
+        }
+
+        It "Invoke-DaafDelegateInteractive: a null ExitCode reports UNKNOWN (not silence, not the failure text)" {
+            $script:MockExitCode = $null
+            $out = Invoke-DaafDelegateInteractive "run_daaf.ps1" @() "Claude Code session ended with an error." 6>&1 | Out-String
+            $out | Should -BeLike "*Could not read the exit status of run_daaf.ps1*"
+            $out | Should -Not -BeLike "*Claude Code session ended with an error.*"
+        }
+
+        It "Invoke-DaafDelegateInteractive: ExitCode 1 prints the caller's failure message" {
+            $script:MockExitCode = 1
+            $out = Invoke-DaafDelegateInteractive "run_daaf.ps1" @() "Claude Code session ended with an error." 6>&1 | Out-String
+            $out | Should -BeLike "*Claude Code session ended with an error.*"
+            $out | Should -Not -BeLike "*Could not read the exit status*"
+        }
+
+        It "Invoke-DaafDelegateInteractive: ExitCode 0 prints neither the failure nor the UNKNOWN message" {
+            $script:MockExitCode = 0
+            $out = Invoke-DaafDelegateInteractive "run_daaf.ps1" @() "Claude Code session ended with an error." 6>&1 | Out-String
+            $out | Should -Not -BeLike "*Claude Code session ended with an error.*"
+            $out | Should -Not -BeLike "*Could not read the exit status*"
+        }
+    }
 }
 
 # ============================================================================

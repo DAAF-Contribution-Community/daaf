@@ -82,7 +82,8 @@ Describe "backup_daaf.ps1" {
 
         It "uses staging + docker cp (not bind-mounted cp -a) for the volume copy" {
             # The copy mechanism is a STAGING container (`docker run -d`) + `docker
-            # wait` + `docker cp` from /staging, which strips symlinks so a Windows
+            # wait` + `docker cp` from /staging, which strips symlinks and special
+            # files (named pipes, sockets, device nodes) so a Windows
             # `docker cp` does not abort mid-archive. It streams through the daemon,
             # not file-by-file across the Docker Desktop bind-mount layer, and does
             # NOT `docker cp` the live volume directly.
@@ -101,10 +102,39 @@ Describe "backup_daaf.ps1" {
         It "stages the volume to strip symlinks and records .daaf-symlinks" {
             # Windows `docker cp` aborts on symlinks it cannot create, truncating the
             # archive. The staging program strips symlinks into a ".daaf-symlinks"
-            # manifest so the copied tree is symlink-free. The program must be
+            # manifest (and deletes special files, no manifest) so the copied tree is
+            # free of both. The program must be
             # quote-free (shared with the .sh twin; embedded " breaks PS 5.1 args).
             $Content | Should -Match '\.daaf-symlinks'
             $Content | Should -Match 'find /staging -type l -exec rm -f'
+        }
+
+        It "staging program deletes named pipes, sockets, and device nodes after the symlink strip" {
+            # Windows `docker cp` creates nothing for a FIFO/device entry, then aborts
+            # the whole extraction on the follow-up timestamp call (field failure
+            # 2026-09-29, sibling project on a variant script: a stale provider-shim
+            # output.fifo stopped a backup; last progress reading 94%).
+            # The here-string's LAST line must be the grouped special-file strip,
+            # directly after the symlink strip. (Byte parity with the .sh twin and
+            # the zero-double-quote rule are enforced by backup_twin_parity.bats; the
+            # strip's runtime behavior is exercised under a real sh in
+            # backup_daaf.bats.)
+            $stripLine = 'find /staging \( -type p -o -type s -o -type b -o -type c \) -exec rm -f {} +'
+            $m = [regex]::Match($Content, "(?s)\`$StageProgram = @'\r?\n(.*?)\r?\n'@")
+            $m.Success | Should -BeTrue
+            $programLines = $m.Groups[1].Value -split "\r?\n"
+            $programLines[-1] | Should -Be $stripLine
+            $programLines[-2] | Should -Be 'find /staging -type l -exec rm -f {} +'
+        }
+
+        It "scan appends a special-file count as the 5th line and parses it bounds-checked" {
+            # Appended AFTER the four existing values (index contract unchanged). Under
+            # Set-StrictMode 3.0 an out-of-range index throws, so index [4] is read only
+            # when present, via TryParse (non-numeric/missing -> 0).
+            $Content | Should -Match ([regex]::Escape("&& find /source \( -type p -o -type s -o -type b -o -type c \) | wc -l"""))
+            $Content | Should -Match ([regex]::Escape('if ($ScanLines.Count -ge 5) {'))
+            $Content | Should -Match ([regex]::Escape('[int]::TryParse("$($ScanLines[4])".Trim(), [ref]$SpecialFilesParsed)'))
+            $Content | Should -Match ([regex]::Escape('Note: skipping $SpecialFiles named pipe/socket/device file(s) -- runtime-only, not backed up.'))
         }
 
         It "treats a nonzero staging exit as a fatal error before any host bytes" {
@@ -268,7 +298,8 @@ Describe "backup_daaf.ps1" {
         # -----------------------------------------------------------------
         # `[long]($TotalFiles / 100)` round-half-to-even diverges from the bash twin's
         # truncating integer division (350 -> 4 vs floor 3). The fix uses [math]::Floor
-        # to match bash (backup_daaf.sh:454/477) and restore_from_backup.ps1:621.
+        # to match bash (backup_daaf.sh COUNT_TOLERANCE / TOLERANCE_KB) and
+        # restore_from_backup.ps1 ($Tolerance).
         Context "Regression: floored 1% tolerances (no banker's rounding)" {
             It "floors the file-count tolerance with [math]::Floor (not a bare [long] cast)" {
                 $Content | Should -Match '\[math\]::Max\(1, \[long\]\[math\]::Floor\(\$TotalFiles / 100\)\)'
@@ -277,6 +308,57 @@ Describe "backup_daaf.ps1" {
             It "floors the size tolerance with [math]::Floor (not a bare [long] cast)" {
                 $Content | Should -Match '\[math\]::Max\(1, \[long\]\[math\]::Floor\(\$SourceSizeKB / 100\)\)'
                 $Content | Should -Not -Match '\[long\]\(\$SourceSizeKB / 100\)'
+            }
+        }
+
+        # -----------------------------------------------------------------
+        # Regression: docker cp exit code is cached and never coerced to 0
+        # -----------------------------------------------------------------
+        # A Start-Process -PassThru Process can report ExitCode as $null unless its
+        # Handle was opened while the process was alive (widely reported .NET/PS
+        # quirk; INFERENCE -- not reproducible on this Linux runner). The old
+        # `else { 0 }` then turned an unknown (possibly failed) copy into a clean
+        # success and disarmed the corroborated short-copy check.
+        Context "Regression: docker cp exit code is cached and never coerced to 0" {
+            It "caches the copy process handle immediately after Start-Process" {
+                $startIdx  = $Content.IndexOf('$CopyProcess = Start-Process -FilePath "docker"')
+                $handleIdx = $Content.IndexOf('$null = $CopyProcess.Handle')
+                $loopIdx   = $Content.IndexOf('while (-not $CopyProcess.HasExited)')
+                $startIdx  | Should -BeGreaterThan -1
+                $handleIdx | Should -BeGreaterThan $startIdx
+                # Before the polling loop -- i.e. while docker cp is still running.
+                $loopIdx   | Should -BeGreaterThan $handleIdx
+            }
+            It "no longer coerces a null ExitCode to 0" {
+                $Content | Should -Not -Match 'else \{ 0 \}'
+                $Content | Should -Match ([regex]::Escape('$CopyExitKnown = ($null -ne $CopyExitCode)'))
+            }
+            It "gates the fatal and Note branches on a KNOWN exit code" {
+                $Content | Should -Match ([regex]::Escape('if ($CopyExitKnown -and $CopyExitCode -ne 0 -and $FileCount -lt $TotalFiles) {'))
+                $Content | Should -Match ([regex]::Escape('} elseif ($CopyExitKnown -and $CopyExitCode -ne 0) {'))
+                $Content | Should -Match ([regex]::Escape('if ($CopyExitKnown -and $CopyExitCode -ne 0) {'))
+            }
+            It "latches HadWarnings on the known-nonzero, full-count Note branch" {
+                $noteIdx = $Content.IndexOf('} elseif ($CopyExitKnown -and $CopyExitCode -ne 0) {')
+                $nextIdx = $Content.IndexOf('} elseif (-not $CopyExitKnown) {', $noteIdx)
+                $noteIdx | Should -BeGreaterThan -1
+                $nextIdx | Should -BeGreaterThan $noteIdx
+                $Content.Substring($noteIdx, $nextIdx - $noteIdx) | Should -Match '\$HadWarnings = \$true'
+            }
+            It "builds the docker cp argument string with ConvertTo-DaafNativeArg (not an array)" {
+                $Content | Should -Match ([regex]::Escape('$CopyArgs = (@(''cp'', "${StageCid}:/staging/.", $HostPath) | ForEach-Object { ConvertTo-DaafNativeArg $_ }) -join '' '''))
+                $Content | Should -Match ([regex]::Escape('-ArgumentList $CopyArgs'))
+                $Content | Should -Not -Match '-ArgumentList @\('
+            }
+            It "warns and latches HadWarnings on an unknown exit code" {
+                $unknownIdx = $Content.IndexOf('} elseif (-not $CopyExitKnown) {')
+                $unknownIdx | Should -BeGreaterThan -1
+                $branch = $Content.Substring($unknownIdx, 1200)
+                $branch | Should -Match 'WARNING: The file copy''s exit code could not be read, and only \$FileCount of \$TotalFiles'
+                $branch | Should -Match 'Note: The file copy''s exit code could not be read'
+                $branch | Should -Match '\$HadWarnings = \$true'
+                # The unknown zero-file case is an ERROR, not "volume may be empty".
+                $Content | Should -Match ([regex]::Escape('} elseif (-not $CopyExitKnown -and $TotalFiles -gt 0) {'))
             }
         }
     }
@@ -487,6 +569,60 @@ Describe "backup_daaf.ps1 behavioral tests" {
             ([long][math]::Floor(350 / 100)) | Should -Be 3
             ([long](350 / 100)) | Should -Be 4
         }
+        It "IDIOM DOC (not a regression guard): the exit-code read idiom yields UNKNOWN for a null ExitCode" {
+            # IDIOM-DOCUMENTATION TEST: this runs a COPY of the read idiom, so it cannot
+            # fail if backup_daaf.ps1 regresses. It documents, with executable evidence,
+            # that the idiom maps the Windows symptom ($null) to UNKNOWN, where the
+            # pre-fix `else { 0 }` yielded a clean 0. The REAL regression guards are the
+            # structural assertions in "Regression: docker cp exit code is cached and
+            # never coerced to 0" (handle cache present, `else { 0 }` absent, branches
+            # gated on $CopyExitKnown).
+            $CopyProcess = [pscustomobject]@{ ExitCode = $null }
+            $CopyExitCode = $null
+            try {
+                $CopyExitCode = $CopyProcess.ExitCode
+            } catch {
+                $CopyExitCode = $null
+            }
+            $CopyExitKnown = ($null -ne $CopyExitCode)
+            $CopyExitKnown | Should -BeFalse
+            $CopyExitCode | Should -BeNullOrEmpty
+        }
+        It "IDIOM DOC (not a regression guard): the exit-code read idiom yields UNKNOWN for a throwing getter" {
+            # IDIOM-DOCUMENTATION TEST: a COPY of the idiom (see the test above); it
+            # documents that a throwing ExitCode getter is caught rather than aborting
+            # under EAP=Stop. The structural assertions are the real guard.
+            $CopyProcess = [pscustomobject]@{}
+            $CopyProcess | Add-Member -MemberType ScriptProperty -Name ExitCode -Value { throw 'Process must exit before requested information can be determined.' }
+            $CopyExitCode = $null
+            try {
+                $CopyExitCode = $CopyProcess.ExitCode
+            } catch {
+                $CopyExitCode = $null
+            }
+            ($null -ne $CopyExitCode) | Should -BeFalse
+        }
+        It "reads a real process's nonzero exit after caching its handle" {
+            # Executable evidence on THIS runner that the cache + read idiom returns the
+            # true exit status of a Start-Process -PassThru child (the Windows
+            # handle-release quirk itself cannot be reproduced here).
+            # Space-free child commands: Start-Process joins ArgumentList elements with
+            # spaces, so an element like 'exit 5' would be split on this runner.
+            $onWindows = ($PSVersionTable.PSVersion.Major -lt 6) -or $IsWindows
+            $shell    = if ($onWindows) { 'cmd.exe' } else { 'sh' }
+            $argList  = if ($onWindows) { @('/c', 'exit', '5') } else { @('-c', 'false') }
+            $expected = if ($onWindows) { 5 } else { 1 }
+            $CopyProcess = Start-Process -FilePath $shell -ArgumentList $argList -NoNewWindow -PassThru
+            $null = $CopyProcess.Handle
+            $CopyProcess.WaitForExit()
+            $CopyExitCode = $null
+            try {
+                $CopyExitCode = $CopyProcess.ExitCode
+            } catch {
+                $CopyExitCode = $null
+            }
+            $CopyExitCode | Should -Be $expected
+        }
     }
 }
 
@@ -518,6 +654,154 @@ Describe "backup_daaf.ps1 dry-run mode" {
         $env:DAAF_NESTED = "1"
         $output = & "$RepoRoot/scripts/host/backup_daaf.ps1" *>&1
         ($output | Out-String) | Should -BeLike "*``[DRY-RUN``]*"
+    }
+
+    It "parses the 5-line scan mock and prints the special-file skip note" {
+        # The dry-run docker mock emits a 5th scan line of 2 (twin of the .sh mock).
+        $env:DAAF_DRY_RUN = "1"
+        $env:DAAF_NESTED = "1"
+        $output = & "$RepoRoot/scripts/host/backup_daaf.ps1" *>&1
+        ($output | Out-String) | Should -BeLike "*Note: skipping 2 named pipe/socket/device file(s) -- runtime-only, not backed up.*"
+    }
+}
+
+# ============================================================================
+# End-to-end copy path with a fake `docker` executable on PATH (non-Windows)
+# ============================================================================
+# Runs the REAL script past the dry-run exit: scan parse, staging launch/wait, the
+# Start-Process `docker cp` + handle cache + exit-code read, and the verification
+# branches. A bash fake `docker` (written to $TestDrive) models each subcommand,
+# driven by FAKE_* env vars. Linux/macOS only: the fake is a shell script, and the
+# Windows-only ExitCode-null quirk is not reproducible here -- these cases prove the
+# plumbing and branch logic, not the quirk itself.
+
+Describe "backup_daaf.ps1 end-to-end copy path (fake docker)" -Skip:(($PSVersionTable.PSVersion.Major -lt 6) -or $IsWindows) {
+    BeforeAll {
+        . "$PSScriptRoot/TestHelper.ps1"
+        $script:SavedEnv = @{}
+        foreach ($k in @('PATH', 'DAAF_DRY_RUN', 'DAAF_NESTED', 'DAAF_TEST_MODE', 'DAAF_PROJECT_NAME', 'DAAF_DATA_VOLUME_NAME')) {
+            $script:SavedEnv[$k] = [Environment]::GetEnvironmentVariable($k, 'Process')
+        }
+        Remove-Item Env:DAAF_DRY_RUN, Env:DAAF_TEST_MODE, Env:DAAF_PROJECT_NAME, Env:DAAF_DATA_VOLUME_NAME -ErrorAction SilentlyContinue
+        $env:DAAF_NESTED = "1"
+
+        $script:FakeBin = Join-Path $TestDrive 'bin'
+        $null = New-Item -ItemType Directory -Force -Path $script:FakeBin
+        $fakeDocker = @'
+#!/usr/bin/env bash
+# Fake docker for backup_daaf.Tests.ps1 (end-to-end). FAKE_* env vars drive it.
+case "${1:-}" in
+    info) exit 0 ;;
+    volume)
+        # Data volume exists; the Claude-config volume does not (skip that block).
+        case "$*" in *claude-config*) exit 1 ;; esac
+        exit 0 ;;
+    run)
+        if [ "${2:-}" = "-d" ]; then echo stagecid0000; exit 0; fi
+        # Permission-manifest scan: no exec files.
+        case "$*" in *"-perm -0100"*) exit 0 ;; esac
+        # Volume scan: count, du -sk, du -sh, logical KB (0 skips the size check),
+        # then the optional 5th special-file line.
+        printf '%s\n' "${FAKE_SCAN_COUNT:-0}" "$(printf '512\t/source')" '500K' '0'
+        if [ -n "${FAKE_SPECIAL:-}" ]; then printf '%s\n' "${FAKE_SPECIAL}"; fi
+        exit 0 ;;
+    wait) echo 0; exit 0 ;;
+    cp)
+        # `docker cp SRC DEST` is exactly three argv entries. More means the caller
+        # let a spaced destination split (the Start-Process -ArgumentList array bug):
+        # fail loudly, as real docker would, instead of copying somewhere else.
+        if [ "$#" -ne 3 ]; then
+            echo "fake docker: cp expects 3 arguments, got $#" >&2
+            exit 64
+        fi
+        dest="${!#}"
+        mkdir -p "${dest}"
+        i=0
+        while [ "${i}" -lt "${FAKE_CP_FILES:-0}" ]; do
+            : > "${dest}/f${i}"
+            i=$((i + 1))
+        done
+        exit "${FAKE_CP_EXIT:-0}" ;;
+    *) exit 0 ;;
+esac
+'@
+        $fakePath = Join-Path $script:FakeBin 'docker'
+        [System.IO.File]::WriteAllText($fakePath, ($fakeDocker -replace "`r", ""))
+        & chmod +x $fakePath
+        $env:PATH = $script:FakeBin + [System.IO.Path]::PathSeparator + $script:SavedEnv['PATH']
+
+        function Invoke-FakeBackup {
+            param([int]$ScanCount, [string]$Special = "", [int]$CpFiles, [int]$CpExit = 0, [string]$WorkPrefix = "run-")
+            $env:FAKE_SCAN_COUNT = "$ScanCount"
+            $env:FAKE_CP_FILES = "$CpFiles"
+            $env:FAKE_CP_EXIT = "$CpExit"
+            if ($Special -ne "") { $env:FAKE_SPECIAL = $Special } else { Remove-Item Env:FAKE_SPECIAL -ErrorAction SilentlyContinue }
+            # Per-run working dir: the script writes its backup folder into CWD, so
+            # $WorkPrefix controls whether the backup destination path has a space.
+            $work = Join-Path $TestDrive ($WorkPrefix + [guid]::NewGuid().ToString('N'))
+            $null = New-Item -ItemType Directory -Path $work
+            Push-Location -LiteralPath $work
+            try {
+                $out = & "$RepoRoot/scripts/host/backup_daaf.ps1" *>&1 | Out-String
+                $code = $LASTEXITCODE
+            } finally {
+                Pop-Location
+            }
+            [pscustomobject]@{ Output = $out; ExitCode = $code }
+        }
+    }
+
+    AfterAll {
+        foreach ($k in $script:SavedEnv.Keys) {
+            [Environment]::SetEnvironmentVariable($k, $script:SavedEnv[$k], 'Process')
+        }
+        Remove-Item Env:FAKE_SCAN_COUNT, Env:FAKE_CP_FILES, Env:FAKE_CP_EXIT, Env:FAKE_SPECIAL -ErrorAction SilentlyContinue
+    }
+
+    It "clean copy with special files: prints the skip note and a plain banner" {
+        $r = Invoke-FakeBackup -ScanCount 3 -Special "4" -CpFiles 3 -CpExit 0
+        $r.ExitCode | Should -Be 0
+        $r.Output | Should -BeLike "*Note: skipping 4 named pipe/socket/device file(s) -- runtime-only, not backed up.*"
+        $r.Output | Should -BeLike "*Backup complete!*"
+        $r.Output | Should -Not -BeLike "*WITH WARNINGS*"
+        $r.Output | Should -Not -BeLike "*exit code could not be read*"
+    }
+
+    It "older 4-line scan (no special line) runs clean under strict mode with no note" {
+        $r = Invoke-FakeBackup -ScanCount 3 -CpFiles 3 -CpExit 0
+        $r.ExitCode | Should -Be 0
+        $r.Output | Should -Not -BeLike "*Note: skipping*"
+        $r.Output | Should -BeLike "*Backup complete!*"
+    }
+
+    It "nonzero docker cp exit with a short count is read (not coerced) and is fatal" {
+        $r = Invoke-FakeBackup -ScanCount 5 -CpFiles 2 -CpExit 1
+        $r.ExitCode | Should -Be 1
+        $r.Output | Should -BeLike "*ERROR: Backup failed (exit code 1); only 2 of 5 expected files were copied.*"
+        $r.Output | Should -BeLike "*must not be relied on*"
+    }
+
+    It "nonzero docker cp exit with a full count prints the Note, completes (exit 0), and latches WITH WARNINGS" {
+        # The copy itself flagged a problem, so the banner must not claim an
+        # unqualified success -- but with no shortfall the run is not fatal. (The
+        # Claude-config volume is absent in this fake, so the Note is the ONLY
+        # warning source on this run.)
+        $r = Invoke-FakeBackup -ScanCount 3 -CpFiles 3 -CpExit 1
+        $r.ExitCode | Should -Be 0
+        $r.Output | Should -BeLike "*Note: File copy reported warnings (exit code 1); 3 of 3 expected files were transferred.*"
+        $r.Output | Should -Not -BeLike "*must not be relied on*"
+        $r.Output | Should -BeLike "*Backup completed WITH WARNINGS -- verify before relying on it*"
+        $r.Output | Should -Not -BeLike "*Backup complete!*"
+    }
+
+    It "a backup destination under a folder with a space reaches docker cp as ONE argument" {
+        # F4 regression: the old array -ArgumentList split "$HostPath" at the space,
+        # so docker cp got 4+ arguments (the fake exits 64) and nothing landed.
+        $r = Invoke-FakeBackup -ScanCount 3 -CpFiles 3 -CpExit 0 -WorkPrefix "run with space-"
+        $r.Output | Should -Not -BeLike "*cp expects 3 arguments*"
+        $r.ExitCode | Should -Be 0
+        $r.Output | Should -BeLike "*Progress: 3 / 3 files (100%)*"
+        $r.Output | Should -BeLike "*Backup complete!*"
     }
 }
 

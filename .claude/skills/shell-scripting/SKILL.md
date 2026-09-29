@@ -92,11 +92,14 @@ Script behaving unexpectedly?
 │   ├─ Unexpected return value → ./references/gotchas.md (implicit returns)
 │   ├─ $null in ForEach loop → ./references/gotchas.md
 │   ├─ Validation not firing → ./references/gotchas.md (omitted params)
-│   └─ irm | iex fails with BOM error → ./references/gotchas.md (UTF-8 BOM)
+│   ├─ irm | iex fails with BOM error → ./references/gotchas.md (UTF-8 BOM)
+│   ├─ Child path/arg with a space splits → ./references/gotchas.md (Start-Process -ArgumentList)
+│   └─ Child ExitCode is $null / failure read as success → ./references/gotchas.md (Start-Process -PassThru)
 └─ Cross-platform
     ├─ Env var case mismatch → ./references/gotchas.md
     ├─ Aliases missing → ./references/gotchas.md
-    └─ Exit code truncated → ./references/gotchas.md
+    ├─ Exit code truncated → ./references/gotchas.md
+    └─ Windows docker cp copy silently truncated → ./references/gotchas.md (FIFO/device/symlink abort)
 ```
 
 ### "I need to set up tests"
@@ -159,6 +162,7 @@ Existing patterns in DAAF scripts that this skill codifies:
 | 8 | Errors via `Write-Error` with guidance | Error output |
 | 9 | ASCII-only content (no BOM) | `file script.ps1` reports "ASCII text" |
 | 10 | No interactive native commands in expression-context function calls | No `if (Fn)`, `$x = Fn` for functions with `docker exec`, `ssh`, etc. |
+| 11 | `Start-Process`: one quoted `-ArgumentList` string; `.Handle` cached; `$null` ExitCode = unknown | `ConvertTo-DaafNativeArg`; no `-ArgumentList @(...)` (see `powershell-standards.md`) |
 
 ## Exit Code Conventions
 
@@ -191,6 +195,7 @@ Existing patterns in DAAF scripts that this skill codifies:
 | PowerShell dual error system | `./references/powershell-standards.md` |
 | PowerShell defensive coding | `./references/powershell-standards.md` |
 | PowerShell output streams | `./references/powershell-standards.md` |
+| PowerShell child processes (`Start-Process`, `ConvertTo-DaafNativeArg`) | `./references/powershell-standards.md` |
 | PSScriptAnalyzer | `./references/powershell-standards.md` |
 | Fail-closed principle | `./references/error-handling.md` |
 | User-facing output formatting | `./references/error-handling.md` |
@@ -210,6 +215,9 @@ Existing patterns in DAAF scripts that this skill codifies:
 | Bash set -e edge cases | `./references/gotchas.md` |
 | PowerShell `exit` in dot-sourced functions | `./references/gotchas.md` |
 | PowerShell $LASTEXITCODE vs $? | `./references/gotchas.md` |
+| PowerShell `$null` exit code read as success (unknown is not success) | `./references/gotchas.md` |
+| PowerShell `Start-Process -ArgumentList` array joined without quoting | `./references/gotchas.md` |
+| PowerShell `Start-Process -PassThru` `ExitCode` `$null` (cache `.Handle`) | `./references/gotchas.md` |
 | PowerShell UTF-8 BOM breaks iex | `./references/gotchas.md` |
 | PowerShell implicit returns | `./references/gotchas.md` |
 | PowerShell $null pipeline behavior | `./references/gotchas.md` |
@@ -218,4 +226,5 @@ Existing patterns in DAAF scripts that this skill codifies:
 | Cross-platform exit code truncation | `./references/gotchas.md` |
 | Cross-platform path separators | `./references/gotchas.md` |
 | Cross-language octal `printf` escaping (`\\357`/`\\011` to `sh`) | `./references/gotchas.md` |
+| Windows `docker cp` aborts at FIFO/device node/symlink (stage + strip + count) | `./references/gotchas.md` |
 | Detached-container (`docker run -d`) diagnostics routing | `./references/error-handling.md` |

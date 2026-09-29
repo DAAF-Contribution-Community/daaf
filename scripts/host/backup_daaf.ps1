@@ -45,12 +45,14 @@ if ($env:DAAF_DRY_RUN -eq "1") {
             }
             "wait*" { Write-Output "0"; return }
             "*run --rm*" {
-                # Scan command -- return 4 lines matching the parsing expectations:
-                # Line 0: file count, Line 1: "KB\t/source", Line 2: "size\t/source", Line 3: logical KB
+                # Scan command -- return 5 lines matching the parsing expectations:
+                # Line 0: file count, Line 1: "KB\t/source", Line 2: "size\t/source", Line 3: logical KB,
+                # Line 4: special-file count (nonzero so the dry-run exercises the skip note)
                 Write-Output "42"
                 Write-Output "1024`t/source"
                 Write-Output "1.0M`t/source"
                 Write-Output "1000"
+                Write-Output "2"
                 return
             }
             default {
@@ -101,6 +103,20 @@ function Import-DaafSettingsInline {
 }
 Import-DaafSettingsInline
 
+# --- Native Argument Quoting (inlined from daaf_lib.ps1) ---
+# INLINE COPY of daaf_lib.ps1 ConvertTo-DaafNativeArg: this standalone script does
+# not dot-source daaf_lib.ps1, so the helper is carried inline. The function
+# definition must stay BYTE-IDENTICAL to the library version (pinned by
+# tests/powershell/native_arg_quoting.Tests.ps1) -- see daaf_lib.ps1 for the full
+# annotation of the Windows argv quoting rules it implements. Used to build the
+# single pre-joined `docker cp` argument string below.
+function ConvertTo-DaafNativeArg {
+    [CmdletBinding()]
+    param([string]$Value = '')
+    if ($Value.Length -gt 0 -and $Value -notmatch '[\s"]') { return $Value }
+    return '"' + (($Value -replace '(\\*)"', '$1$1\"') -replace '(\\+)\z', '$1$1') + '"'
+}
+
 # --- Test Mode Guard ---
 # When dot-sourced for testing, define functions but skip execution.
 # Usage: $env:DAAF_TEST_MODE = "1"; . ./scripts/host/backup_daaf.ps1
@@ -144,6 +160,12 @@ $ClaudeSubDir = ".daaf-claude-config"
 # `docker cp` streams contains NO symlinks. Restore replays the manifest to
 # recreate the links. Absent manifest (older backup, or a volume with no symlinks)
 # = no-op on restore, matching the ".daaf-permissions" "no manifest, no action" rule.
+# The same staging step also DELETES special files -- named pipes (FIFOs), sockets,
+# and block/char device nodes -- with no manifest: Windows `docker cp` creates
+# nothing for them and then aborts on the follow-up timestamp call, the same
+# truncation class as the symlink abort. They are runtime rendezvous objects with no
+# content (e.g. stale provider-shim `output.fifo` stream files), so restore does not
+# recreate them; the scan below counts them so the skip is visible to the user.
 #
 # SYNC NOTE: the container-side $StageProgram here-string below is single-quoted
 # (`@'...'@`), so it CANNOT interpolate this variable -- it hardcodes the literal
@@ -207,8 +229,15 @@ Write-Host ""
 
 # --- Count source files ---
 Write-Host "Scanning Docker volume..."
+# Scan output, one value per line (index order is a parsing contract shared with the
+# .sh twin -- append new lines at the END only): [0] regular-file count, [1] `du -sk`,
+# [2] `du -sh`, [3] logical KB, [4] special-file count (named pipes, sockets,
+# block/char device nodes -- the set the staging program deletes). The `\(`/`\)`
+# reach docker.exe intact (a backslash is literal in a PS double-quoted string and in
+# Windows argv parsing unless it precedes a double quote), exactly like the staging
+# program's existing `\;`; the container `sh` then unescapes them for `find`.
 $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-$ScanOutput = docker run --rm -v "${VolumeName}:/source:ro" busybox sh -c "find /source -type f | wc -l && du -sk /source && du -sh /source && find /source -type f -exec stat -c %s {} + | awk '{s+=`$1} END {print int(s/1024)}'"
+$ScanOutput = docker run --rm -v "${VolumeName}:/source:ro" busybox sh -c "find /source -type f | wc -l && du -sk /source && du -sh /source && find /source -type f -exec stat -c %s {} + | awk '{s+=`$1} END {print int(s/1024)}' && find /source \( -type p -o -type s -o -type b -o -type c \) | wc -l"
 $ErrorActionPreference = $savedEAP
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Could not scan Docker volume." -ForegroundColor Red
@@ -218,7 +247,23 @@ $TotalFiles = [int]($ScanOutput[0].Trim())
 $VolumeSizeKB = [long](($ScanOutput[1].Trim() -split '\s+')[0])
 $TotalSize = ($ScanOutput[2].Trim() -split '\s+')[0]
 $VolumeLogicalKB = [long]($ScanOutput[3].Trim())
+# Index [4] is informational only: a missing or non-numeric value (e.g. a mock that
+# emits the older 4-line scan) reads as 0 rather than failing the backup. The bounds
+# check matters -- Set-StrictMode 3.0 makes an out-of-range index a terminating
+# error. Special files are never regular files, so they are already outside
+# $TotalFiles and the file-count verification below is unaffected by skipping them.
+$SpecialFiles = 0
+$ScanLines = @($ScanOutput)
+if ($ScanLines.Count -ge 5) {
+    $SpecialFilesParsed = 0
+    if ([int]::TryParse("$($ScanLines[4])".Trim(), [ref]$SpecialFilesParsed)) {
+        $SpecialFiles = $SpecialFilesParsed
+    }
+}
 Write-Host "Found $TotalFiles files to copy ($TotalSize)."
+if ($SpecialFiles -gt 0) {
+    Write-Host "Note: skipping $SpecialFiles named pipe/socket/device file(s) -- runtime-only, not backed up."
+}
 Write-Host ""
 
 # --- Disk space pre-check ---
@@ -270,11 +315,26 @@ $HostPath = (Resolve-Path $BackupName).Path
 # not an optimization) into the ".daaf-symlinks" manifest at the staging root, and
 # `find -type l -exec rm` strips the links. Restore replays the manifest.
 #
+# The final `find` then deletes special files (`-type p` named pipes, `-type s`
+# sockets, `-type b`/`-type c` device nodes). For FIFOs and device nodes, Windows
+# `docker cp` has the same abort-and-truncate failure as for symlinks: moby's Windows
+# archive extractor creates nothing for a FIFO/device entry, then its timestamp step
+# (`chtimes`) fails on the missing path and aborts the whole extraction -- after the
+# CLI has already printed "Successfully copied" (field failure 2026-09-29, sibling
+# project on a variant of this script: a stale provider-shim `output.fifo` stopped a
+# Windows backup; last progress reading 94%). Sockets are stripped defensively (how
+# Docker archives them was not verified). None of these carry data, so they are
+# dropped with NO manifest and restore does not recreate them. The
+# grouped `\( ... \)` predicates keep `-exec` bound to all four types; with no
+# matches `find` runs no `rm` and exits 0, so `set -e` is safe on a clean volume.
+# The staged tree `docker cp` streams therefore holds only directories, regular
+# files, and the ".daaf-symlinks" manifest.
+#
 # The staging program contains NO embedded double quotes -- embedded double quotes
 # corrupt Windows arg parsing on PS 5.1. Its /tmp writes are inside the throwaway
 # container's own layer (NOT the DAAF container's /tmp), so no provenance concern.
-# It is passed as a single array-form ArgumentList element (robust quoting), the
-# same way the docker cp path below passes $HostPath.
+# It is passed by DIRECT invocation (`docker run ... sh -c $StageProgram`, below):
+# the call operator hands it to docker as one argument, no Start-Process involved.
 #
 # FATAL unsupported-character gate (twin of backup_daaf.sh): the ".daaf-symlinks"
 # manifest is a line-based, TAB-separated "path<TAB>target" file, and restore replays
@@ -328,6 +388,7 @@ exit 3
 fi
 paste /tmp/link_paths /tmp/link_targets > /staging/.daaf-symlinks
 find /staging -type l -exec rm -f {} +
+find /staging \( -type p -o -type s -o -type b -o -type c \) -exec rm -f {} +
 '@
 
 Write-Host "Preparing volume snapshot (staging + symlink strip)... (this may take a while for large volumes)"
@@ -404,13 +465,38 @@ if ($StageStatus -ne 0) {
 Write-Host "Copying files from Docker volume..."
 Write-Host "  Progress: 0 / $TotalFiles files (0%)" -NoNewline
 
-# Array-form ArgumentList: each element is quoted robustly by PowerShell, so a
-# $HostPath containing parentheses or ampersands (e.g. OneDrive-style folders)
-# cannot silently corrupt the single-string parse that an embedded-quote form
-# risks on PS 5.1. Source is the staged (symlink-free) tree, not the volume.
+# ONE pre-joined, quoted argument string -- NOT an array. Start-Process does not
+# quote array elements: it joins them with bare spaces (Microsoft's Start-Process
+# docs: "joins the array into a single string with each element of the array
+# separated by a single space"; PowerShell#5576), so a $HostPath under a spaced
+# folder such as "C:\Users\John Smith" or "OneDrive - Org" reached docker as
+# several arguments and the copy failed. ConvertTo-DaafNativeArg (inlined above)
+# quotes each element for the Windows argv parser. Source is the staged (symlink-
+# and special-file-free) tree, not the volume.
+$CopyArgs = (@('cp', "${StageCid}:/staging/.", $HostPath) | ForEach-Object { ConvertTo-DaafNativeArg $_ }) -join ' '
 $CopyProcess = Start-Process -FilePath "docker" `
-    -ArgumentList @("cp", "${StageCid}:/staging/.", $HostPath) `
+    -ArgumentList $CopyArgs `
     -NoNewWindow -PassThru
+# Cache the process handle NOW, while docker cp is still running. Known PowerShell
+# quirk on Windows (reported upstream, not reproduced here: it needs a Windows host):
+# with -NoNewWindow and/or -RedirectStandard*, the Process object Start-Process
+# -PassThru returns does not hold an open OS handle, so if nothing opens one before
+# the process exits, ExitCode later reads as $null (the exit status is gone).
+# PowerShell#5421 reports it for Windows PowerShell 5.1 and PowerShell 6; #20400
+# for 7.4 previews; the 7.4.1 release notes list the fix -- so it affects Windows
+# PowerShell 5.1 and PowerShell 6.0-7.4.0 on Windows. Touching .Handle opens and
+# retains one for the object's lifetime, which keeps the exit status readable after
+# exit. The old code then coerced that $null to 0 -- a plausible reason the earlier
+# symlink truncation "surfaced with a ZERO exit" (see the file-count verification
+# below). In-repo field precedent: the same `ExitCode` = $null symptom and
+# Handle-cache fix in test_migration.ps1 Invoke-HardenedScript ("exited with code
+# ."). Best-effort: if the handle cannot be opened (the process already exited),
+# the exit code is treated as UNKNOWN below, never 0.
+try {
+    $null = $CopyProcess.Handle
+} catch {
+    Write-Verbose "Could not cache the docker cp process handle: $_"
+}
 
 try {
     while (-not $CopyProcess.HasExited) {
@@ -439,11 +525,23 @@ try {
 # (Stop-Process in the finally above, if it fired, leaves the process exiting;
 # WaitForExit here settles it before we trust ExitCode.)
 $CopyProcess.WaitForExit()
-$CopyExitCode = if ($null -ne $CopyProcess.ExitCode) { $CopyProcess.ExitCode } else { 0 }
+# An unreadable exit code ($null, or a getter that throws) is UNKNOWN -- it is never
+# coerced to 0. Coercing it read an unknown (possibly failed) copy as a clean
+# success, which disarmed the corroborated short-copy check below. With
+# $CopyExitKnown false, the branches below never treat the copy as clean on the exit
+# code's say-so: they warn, latch $HadWarnings, and lean on the file counts.
+$CopyExitCode = $null
+try {
+    $CopyExitCode = $CopyProcess.ExitCode
+} catch {
+    $CopyExitCode = $null
+}
+$CopyExitKnown = ($null -ne $CopyExitCode)
 
 # Latch for the completion banner: any of the non-fatal WARNING paths below
-# (file-count mismatch, size mismatch, Claude-state copy failure, permission-manifest
-# failure) sets this so the final banner can say the backup completed WITH WARNINGS
+# (nonzero or unreadable copy exit code, file-count mismatch, size mismatch,
+# Claude-state copy failure, permission-manifest failure) sets this so the final
+# banner can say the backup completed WITH WARNINGS
 # rather than claiming an unqualified success. The exit status stays 0 on those paths
 # -- the banner wording is the signal, not the exit code (the corroborated short-copy
 # case below is the one that is fatal, and it exits before the banner).
@@ -451,15 +549,16 @@ $HadWarnings = $false
 
 # --- Verify ---
 # The staged tree the copy streamed = volume regular files + 1 symlink manifest
-# - symlinks. Symlinks were never counted by the source scan (TotalFiles), and the
-# manifest is metadata, not volume content -- so exclude the manifest here to keep
-# the copied count aligned with TotalFiles.
+# (symlinks and special files were stripped). Neither symlinks nor special files
+# were ever counted by the source scan (TotalFiles), and the manifest is metadata,
+# not volume content -- so exclude the manifest here to keep the copied count
+# aligned with TotalFiles.
 $FileCount = @(Get-ChildItem -Path $BackupName -Recurse -File -Force -ErrorAction SilentlyContinue |
     Where-Object { $_.Name -ne $SymlinksManifest }).Count
 
 # Print the ACTUAL final host-side count, not a fabricated "100%". On a truncated
-# copy (the Windows symlink-abort this staging step now prevents, or any other
-# partial copy) an unconditional "100%" would lie about completeness.
+# copy (the Windows symlink/special-file abort this staging step now prevents, or
+# any other partial copy) an unconditional "100%" would lie about completeness.
 if ($TotalFiles -gt 0) {
     $FinalPercent = [math]::Min(100, [math]::Floor($FileCount * 100 / $TotalFiles))
 } else {
@@ -469,8 +568,12 @@ Write-Host "`r  Progress: $FileCount / $TotalFiles files ($FinalPercent%)   "
 
 if ($FileCount -eq 0) {
     Write-Host ""
-    if ($CopyExitCode -ne 0) {
+    if ($CopyExitKnown -and $CopyExitCode -ne 0) {
         Write-Host "ERROR: Backup failed (exit code $CopyExitCode). Check Docker Desktop for errors." -ForegroundColor Red
+    } elseif (-not $CopyExitKnown -and $TotalFiles -gt 0) {
+        # The scan saw files but none arrived, and the copy's exit code is unknown:
+        # this is a failed copy, not an empty volume.
+        Write-Host "ERROR: Backup failed -- 0 of $TotalFiles expected files were copied (the copy's exit code could not be read). Check Docker Desktop for errors." -ForegroundColor Red
     } else {
         Write-Host "WARNING: Backup completed but 0 files were copied." -ForegroundColor Yellow
         Write-Host "The Docker volume may be empty. Is DAAF properly installed?"
@@ -487,21 +590,50 @@ if ($FileCount -eq 0) {
 # otherwise-clean copy). A truncated backup that passed as usable could cost a user
 # their data on restore, so fail hard: name the partial folder, tell them to delete
 # it, and exit before the completion banner. (A nonzero exit with a FULL count falls
-# through to the Note below -- warnings without an actual shortfall.)
-if ($CopyExitCode -ne 0 -and $FileCount -lt $TotalFiles) {
+# through to the Note below, which latches the WITH WARNINGS banner -- warnings
+# without an actual shortfall.)
+#
+# UNKNOWN exit code ($CopyExitKnown false): never read as clean. It always latches
+# $HadWarnings, so the banner says WITH WARNINGS. A shortfall on top of it gets a loud
+# WARNING at ZERO tolerance: an unknown exit is exactly when the 1% count tolerance
+# below must not be the only guard (a probe of the maintainer volume projected a
+# FIFO-abort loss of 714 of 71,820 files -- under the 718-file tolerance; the
+# 2026-09-29 field report itself only showed a last progress reading of 94%). It is
+# deliberately NOT fatal: "unknown" is missing evidence,
+# not a second signal of failure, and the source scan runs on the live volume before
+# the staging snapshot, so a small benign drift is possible. Fatal stays reserved for
+# two agreeing signals, and the WARNING tells the user not to rely on the backup.
+if ($CopyExitKnown -and $CopyExitCode -ne 0 -and $FileCount -lt $TotalFiles) {
     Write-Host ""
     Write-Host "ERROR: Backup failed (exit code $CopyExitCode); only $FileCount of $TotalFiles expected files were copied." -ForegroundColor Red
     Write-Host "       This backup is incomplete and must not be relied on. Delete this"
     Write-Host "       partial backup folder and re-run once the copy issue is resolved."
     Write-Host "Location: $HostPath\"
     Wait-AndExit 1
-} elseif ($CopyExitCode -ne 0) {
+} elseif ($CopyExitKnown -and $CopyExitCode -ne 0) {
+    # A nonzero exit is a copy-reported problem even when the count came up full,
+    # so latch the warnings banner: "Backup complete!" would overstate a run the
+    # copy itself flagged. Exit status stays 0 (no shortfall, so not fatal).
     Write-Host "Note: File copy reported warnings (exit code $CopyExitCode); $FileCount of $TotalFiles expected files were transferred." -ForegroundColor Yellow
+    $HadWarnings = $true
+} elseif (-not $CopyExitKnown) {
+    if ($FileCount -lt $TotalFiles) {
+        Write-Host ""
+        Write-Host "WARNING: The file copy's exit code could not be read, and only $FileCount of $TotalFiles" -ForegroundColor Yellow
+        Write-Host "         expected files were copied. This backup may be incomplete -- do not rely"
+        Write-Host "         on it. Re-run the backup and keep a run that finishes without this warning."
+    } else {
+        Write-Host "Note: The file copy's exit code could not be read; $FileCount of $TotalFiles expected files were transferred." -ForegroundColor Yellow
+        Write-Host "      The file-count and size checks are the completeness signal for this run."
+    }
+    $HadWarnings = $true
 }
 
 # --- File-count verification ---
 # Do NOT trust docker cp's exit code as the sole failure signal: the Windows
-# symlink-abort truncation surfaced with a ZERO exit on the user's run. A nonzero
+# symlink-abort truncation surfaced with a ZERO exit on the user's run (INFERENCE:
+# most likely the since-removed $null-to-0 ExitCode coercion -- see the handle cache
+# after Start-Process above -- since docker cp returns the extraction error). A nonzero
 # exit that ALSO comes up short on the count is already fatal (the corroborated
 # short-copy branch above). This block catches the harder case -- a clean ZERO exit
 # that still copied too few files -- comparing the copied data-file count (manifest
@@ -559,8 +691,9 @@ if ($claudeVolumeExists) {
     # symlinks -- e.g. codex-daaf/tmp/arg0/... -- which is why the "Failed to back
     # up the Claude Code state volume" warning appeared on Windows: `docker cp`
     # aborted on the first link). Stage into a throwaway container to strip the
-    # symlinks into this subfolder's own ".daaf-symlinks" manifest, then cp the
-    # symlink-free staged tree out. Run synchronously (this copy is small). Only
+    # symlinks into this subfolder's own ".daaf-symlinks" manifest (and delete any
+    # special files, unreported here -- the scan above covers the data volume only),
+    # then cp the stripped staged tree out. Run synchronously (this copy is small). Only
     # docker's text status lines reach stdout (the file data goes straight to disk),
     # so synchronous inline calls are pipeline-safe on PS 5.1.
     $ClaudeStageCid = $null

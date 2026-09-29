@@ -21,6 +21,9 @@
 #   Open-DaafUrl        -- open a URL in the default browser (best-effort)
 #   Test-DaafPort       -- test whether a port is listening inside the container
 #   Confirm-DaafContainer -- start the DAAF container if it is not running
+#   ConvertTo-DaafNativeArg -- quote one argument for a Windows-style command line
+#                              (Start-Process -ArgumentList); canonical copy of a
+#                              helper that standalone scripts carry INLINE
 #
 # Container-side probe payloads (the /proc/net/tcp + awk strings) are copied
 # VERBATIM from daaf_lib.sh: they run inside the Linux container, so they must
@@ -227,6 +230,67 @@ function Open-DaafUrl {
         # No handler available (headless, restricted shell) -- silent fallback.
         Write-Verbose "Silenced: $_"
     }
+}
+
+# --- Native Argument Quoting ---
+# Quote ONE argument so it survives the round trip through a Windows command
+# line: Start-Process -ArgumentList string -> child process argv. CANONICAL
+# definition; backup_daaf.ps1 and test_migration.ps1 are standalone (they do not
+# dot-source this library) and carry an INLINE COPY of the function that must stay
+# byte-identical to this one (pinned by tests/powershell/native_arg_quoting.Tests.ps1).
+#
+# WHY: Start-Process does NOT quote array elements. Its docs say it "joins the
+# array into a single string with each element of the array separated by a single
+# space", and the child then re-splits that string with the Windows argv rules
+# (CommandLineToArgvW; .NET on Linux/macOS applies the same rules). So an element
+# such as "C:\Users\John Smith\daaf-docker\backup_daaf.ps1" arrives as TWO argv
+# entries, and an embedded double quote is silently stripped (PowerShell#5576,
+# which lists Windows PowerShell 5.1 as affected). The issue's recommended
+# workaround is ONE pre-joined string with the quoting done by the caller -- this
+# helper does that quoting, and callers join its results with single spaces:
+#
+#   $argString = (@('-NoProfile', '-File', $childPath) | ForEach-Object { ConvertTo-DaafNativeArg $_ }) -join ' '
+#   Start-Process -FilePath $exe -ArgumentList $argString ...
+#
+# RULES (the inverse of the Windows argv parser):
+#   * A non-empty value with no whitespace and no double quote is returned bare.
+#   * Otherwise the value is wrapped in double quotes, every run of backslashes
+#     that precedes an embedded double quote is doubled and the quote escaped
+#     (\"), and a trailing run of backslashes is doubled so it cannot escape the
+#     closing quote. Backslashes elsewhere stay literal (C:\x y\z is unchanged
+#     inside the quotes). The empty string becomes "" so it survives as an
+#     explicit empty argument instead of vanishing. The trailing-run anchor is
+#     \z, not $: in .NET, $ also matches just before a final newline, which
+#     would double backslashes that are NOT at the end of the value.
+# Verified round-trip values (tests): '', 'plain', 'with space', 'q"z',
+# 'back\"slash', 'trail\', 'C:\Users\John Smith\OneDrive - Org\'.
+#
+# USAGE LIMITS:
+#   * Pass ONE value per call, as an argument -- not an array and not piped
+#     input. An array argument fails parameter binding ("Cannot convert value to
+#     type System.String"); piped input is not accepted (binding error) and the
+#     call still emits the default "" (both observed on pwsh 7). Map a list element
+#     by element: `$parts | ForEach-Object { ConvertTo-DaafNativeArg $_ }`, then
+#     -join ' '.
+#     Filter $null elements out first (`Where-Object { $null -ne $_ }`): $null
+#     binds as '' and becomes an explicit "" argument.
+#   * Quoting protects whitespace, quotes, and backslashes -- it does NOT stop a
+#     value with a leading '-' from binding as a PARAMETER NAME of a PowerShell
+#     child launched with `-File` (the argv parser removes the quotes before the
+#     child binds its parameters; observed on pwsh 7: a quoted "-Name" still
+#     bound -Name). Never forward untrusted values after `-File <script>`.
+#
+# Prefer direct invocation (`& $exe @argArray`) when the call needs neither
+# console inheritance nor a Process object to poll; PowerShell quotes each
+# whitespace-bearing element itself on that path (Windows PowerShell 5.1 is
+# reported to still mishandle an embedded double quote or a trailing backslash
+# there; native argument passing was reworked in 7.3).
+# Strict-clean (a [string] parameter never reads as $null).
+function ConvertTo-DaafNativeArg {
+    [CmdletBinding()]
+    param([string]$Value = '')
+    if ($Value.Length -gt 0 -and $Value -notmatch '[\s"]') { return $Value }
+    return '"' + (($Value -replace '(\\*)"', '$1$1\"') -replace '(\\+)\z', '$1$1') + '"'
 }
 
 # --- Port Check ---

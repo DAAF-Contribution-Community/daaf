@@ -8,7 +8,8 @@
 # identical across their .sh / .ps1 twins:
 #
 #   1. backup STAGE_PROGRAM  -- strips symlinks from a volume snapshot and writes
-#      the .daaf-symlinks manifest. In backup_daaf.sh it is a single-quoted
+#      the .daaf-symlinks manifest, then deletes special files (named pipes,
+#      sockets, device nodes; no manifest). In backup_daaf.sh it is a single-quoted
 #      `STAGE_PROGRAM='...'` var with a `'"${SYMLINKS_MANIFEST}"'` splice; in
 #      backup_daaf.ps1 it is a single-quoted `$StageProgram = @'...'@` here-string
 #      that hardcodes `.daaf-symlinks`. The two RESOLVED forms are byte-identical.

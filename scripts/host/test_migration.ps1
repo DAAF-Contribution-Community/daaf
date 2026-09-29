@@ -793,13 +793,34 @@ function Test-Check {
 #      of in-process dot/`&`-invocation, so the child's policy is Bypass
 #      regardless of the machine's RemoteSigned setting. This mirrors the
 #      canonical child-launch idiom in daaf.ps1 (Invoke-DaafDelegate: resolve
-#      the running host exe, Start-Process -NoNewWindow -PassThru, WaitForExit,
-#      read $proc.ExitCode) -- with -NoNewWindow the child inherits THIS
-#      process's console AND its environment block, so any $env:DAAF_* vars the
-#      caller set before calling are visible to the child (the Phase 6 / Phase 8
-#      env mutations keep working unchanged).
+#      the running host exe, Start-Process -NoNewWindow -PassThru, cache
+#      $proc.Handle at once, WaitForExit, then read $proc.ExitCode defensively
+#      and treat $null as UNKNOWN -- here: fail closed) -- with -NoNewWindow
+#      the child inherits THIS process's console AND its environment block, so
+#      any $env:DAAF_* vars the caller set before calling are visible to the
+#      child (the Phase 6 / Phase 8 env mutations keep working unchanged).
 # Windows PowerShell 5.1 is the host; resolve the running host exe rather than
 # hardcoding "powershell.exe" so a pwsh-driven run stays consistent.
+#
+# ARGUMENT QUOTING: Start-Process joins an -ArgumentList ARRAY with bare spaces
+# and quotes nothing (PowerShell#5576), so a $Path under a spaced user-profile
+# TEMP or install folder used to split into several argv entries. Both launchers
+# below build ONE pre-joined string whose every element goes through
+# ConvertTo-DaafNativeArg.
+
+# --- Native Argument Quoting (inlined from daaf_lib.ps1) ---
+# INLINE COPY of daaf_lib.ps1 ConvertTo-DaafNativeArg: this harness is standalone
+# (it does not dot-source daaf_lib.ps1), so the helper is carried inline. The
+# function definition must stay BYTE-IDENTICAL to the library version (pinned by
+# tests/powershell/native_arg_quoting.Tests.ps1) -- see daaf_lib.ps1 for the full
+# annotation of the Windows argv quoting rules it implements.
+function ConvertTo-DaafNativeArg {
+    [CmdletBinding()]
+    param([string]$Value = '')
+    if ($Value.Length -gt 0 -and $Value -notmatch '[\s"]') { return $Value }
+    return '"' + (($Value -replace '(\\*)"', '$1$1\"') -replace '(\\+)\z', '$1$1') + '"'
+}
+
 function Invoke-HardenedScript {
     [CmdletBinding()]
     param(
@@ -814,18 +835,20 @@ function Invoke-HardenedScript {
     try { Unblock-File -LiteralPath $Path -ErrorAction Stop } catch { Write-Verbose "Unblock-File no-op: $_" }
 
     $hostExe = (Get-Process -Id $PID).Path
-    $argList = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $Path)
-    foreach ($a in $ScriptArgs) {
-        if ($a -match '\s') { $argList += ('"' + ($a -replace '"', '\"') + '"') }
-        else { $argList += $a }
-    }
-    $proc = Start-Process -FilePath $hostExe -ArgumentList $argList -NoNewWindow -PassThru
-    # PS 5.1 gotcha: touch $proc.Handle BEFORE waiting. Start-Process -PassThru
+    # $null elements are dropped first: a $null $ScriptArgs binds as ONE $null
+    # element, which the helper would turn into an explicit empty "" argument.
+    $argString = (@(@('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $Path) + @($ScriptArgs | Where-Object { $null -ne $_ })) | ForEach-Object { ConvertTo-DaafNativeArg $_ }) -join ' '
+    $proc = Start-Process -FilePath $hostExe -ArgumentList $argString -NoNewWindow -PassThru
+    # Windows gotcha (Windows PowerShell 5.1 and PowerShell 6.0-7.4.0, with
+    # -NoNewWindow and/or -RedirectStandard*; fixed in 7.4.1 -- PowerShell#5421,
+    # #20400): touch $proc.Handle BEFORE waiting. Start-Process -PassThru
     # returns a Process object that has not opened a handle; without one, the
     # .NET runtime cannot retrieve the exit code and $proc.ExitCode is $null
     # after WaitForExit(). That $null was the field failure "exited with code ."
     # -- a SUCCESSFUL child scored as failed because $null -ne 0 is $true.
-    $null = $proc.Handle
+    # Best-effort: if the handle cannot be opened, the $null check below fails
+    # the run closed.
+    try { $null = $proc.Handle } catch { Write-Verbose "Could not cache the child process handle: $_" }
     $proc.WaitForExit()
     if ($null -eq $proc.ExitCode) {
         # Should be unreachable with the handle cached; if it ever happens,
@@ -868,16 +891,13 @@ function Invoke-HardenedScriptAuto {
     $null = New-Item -ItemType File -Path $stdinFile -Force
 
     $hostExe = (Get-Process -Id $PID).Path
-    $argList = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $Path)
-    foreach ($a in $ScriptArgs) {
-        if ($a -match '\s') { $argList += ('"' + ($a -replace '"', '\"') + '"') }
-        else { $argList += $a }
-    }
-    $proc = Start-Process -FilePath $hostExe -ArgumentList $argList -NoNewWindow -PassThru `
+    # Drop $null elements first (see Invoke-HardenedScript).
+    $argString = (@(@('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $Path) + @($ScriptArgs | Where-Object { $null -ne $_ })) | ForEach-Object { ConvertTo-DaafNativeArg $_ }) -join ' '
+    $proc = Start-Process -FilePath $hostExe -ArgumentList $argString -NoNewWindow -PassThru `
         -RedirectStandardInput $stdinFile -RedirectStandardOutput $CaptureFile -RedirectStandardError $errFile
-    # Touch $proc.Handle BEFORE waiting (same PS 5.1 gotcha as Invoke-HardenedScript:
+    # Touch $proc.Handle BEFORE waiting (same Windows gotcha as Invoke-HardenedScript:
     # without a cached handle $proc.ExitCode is $null after WaitForExit()).
-    $null = $proc.Handle
+    try { $null = $proc.Handle } catch { Write-Verbose "Could not cache the child process handle: $_" }
     $proc.WaitForExit()
 
     # Merge stderr into the capture file, then echo the whole capture to the host so

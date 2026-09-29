@@ -240,22 +240,32 @@ if ($LASTEXITCODE -ne 0) {
     throw "Command failed"  # Triggers when $LASTEXITCODE is $null
 }
 
-# GOOD: guard against $null
+# ALSO BAD: truthiness "guard" -- reads an UNKNOWN ($null) status as success
 if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) {
-    throw "Command failed"
+    throw "Command failed"   # never fires for $null, so an unknown status passes silently
 }
 
-# ALSO GOOD: explicit null check
-if ($null -ne $LASTEXITCODE -and $LASTEXITCODE -ne 0) {
-    throw "Command failed"
+# GOOD: decide what $null means explicitly, as its own outcome. Read it via
+# Get-Variable: under Set-StrictMode -Version 3.0 a never-set $LASTEXITCODE THROWS
+# on a direct read ("The variable '$LASTEXITCODE' cannot be retrieved because it
+# has not been set"), so even `$null -eq $LASTEXITCODE` would fail.
+$ec = Get-Variable -Name LASTEXITCODE -ValueOnly -ErrorAction SilentlyContinue
+if ($null -eq $ec) {
+    throw "Exit status unknown -- no native command set it"   # or warn; never assume success
+} elseif ($ec -ne 0) {
+    throw "Command failed (exit code: $ec)"
 }
 ```
 
+(StrictMode behavior observed on pwsh 7.6 / Linux on 2026-09-29: in a fresh `-File` process with `Set-StrictMode -Version 3.0`, the direct read threw and the `Get-Variable` form returned `$null`, then `3` after a native `exit 3`. Right after a native command you just ran, the variable is always set, so a plain `$LASTEXITCODE -ne 0` read is safe there.)
+
 **Why it happens:** PowerShell only sets `$LASTEXITCODE` when a native executable actually runs. Functions, cmdlets, and mock overrides of native commands (e.g., defining a `docker` function for dry-run testing) do not update `$LASTEXITCODE`. If your script overrides `docker` with a PowerShell function, `$LASTEXITCODE` stays at whatever it was before — often `$null`.
+
+**Unknown is not success.** `$null` means "no exit status was recorded", not "exit 0". The truthiness forms `$x -and $x -ne 0` and `-not $x -or $x -eq 0` both coerce `$null` to the success branch (`[int]$null` is `0`; `$null -and ...` is `$false`), which is exactly how a failed or unreadable child exit gets reported as clean. The same rule applies to any exit code that can be `$null` — above all a `Start-Process -PassThru` object's `ExitCode` (see "`Start-Process -PassThru` `ExitCode` Reads `$null`" below). The best fix is structural: read `$LASTEXITCODE` only immediately after the native command whose status you want, so it cannot be `$null` or stale; where it still can be, give `$null` its own branch.
 
 **When this bites:** CI smoke tests, dry-run modes, or any scenario where native commands are mocked with PowerShell functions. The mock function must explicitly set `$global:LASTEXITCODE = 0` if downstream code checks the exit code.
 
-**Severity:** Medium. The failure is immediate and obvious (a thrown exception), but it's confusing because there is no actual command failure.
+**Severity:** Medium. With the bare `-ne 0` form the failure is loud (a thrown exception with no real command failure); with a truthiness "guard" it is silent (an unknown status passes as success) — prefer the loud mistake.
 
 ---
 
@@ -312,6 +322,86 @@ $out = docker run --rm busybox sh -c "stat -c %s file | awk '{s+=`$1} END {print
 **Note:** This does **not** affect Bash. On Linux/macOS, Bash passes arguments via `execvp` as a pre-parsed array — there is no intermediate command-line string for a C runtime to reinterpret.
 
 **Severity:** High. The failure is completely silent — the command may exit 0 but produce truncated output. Any PowerShell script passing complex `sh -c` commands to Docker (or any native executable) on Windows is potentially affected.
+
+---
+
+### `Start-Process -ArgumentList` Joins an Array With Bare Spaces (No Quoting)
+
+**The problem:** Passing `-ArgumentList` an array looks like "one element per argument", but it is not. Start-Process joins the elements with single spaces and quotes nothing; the child then re-splits that one string with the Windows argv rules. Any element containing a space becomes several arguments, and an embedded `"` is silently stripped:
+
+```powershell
+# BAD: $childPath = "C:\Users\John Smith\daaf-docker\backup_daaf.ps1"
+Start-Process -FilePath $hostExe -ArgumentList @('-NoProfile', '-File', $childPath) -NoNewWindow -PassThru
+# The child sees: -NoProfile -File C:\Users\John Smith\daaf-docker\backup_daaf.ps1
+# -> "The argument 'C:\Users\John' is not recognized as the name of a script file"
+#    (pwsh 7 wording; Windows PowerShell 5.1 reports the missing -File path differently)
+
+# BAD: hand-rolled quoting -- misses trailing backslashes, backslashes before quotes,
+# and quote-bearing tokens without whitespace
+if ($a -match '\s') { $argList += ('"' + ($a -replace '"', '\"') + '"') }
+# 'C:\x y\' becomes "C:\x y\" -- the final \" escapes the closing quote and the
+# NEXT argument is swallowed into this one
+
+# GOOD: ONE pre-joined string, every element quoted by the canonical helper
+$argString = (@('-NoProfile', '-File', $childPath) | ForEach-Object { ConvertTo-DaafNativeArg $_ }) -join ' '
+Start-Process -FilePath $hostExe -ArgumentList $argString -NoNewWindow -PassThru
+```
+
+The canonical helper (defined in `scripts/host/daaf_lib.ps1`; standalone scripts carry a byte-identical INLINE COPY, pinned by `tests/powershell/native_arg_quoting.Tests.ps1`):
+
+```powershell
+function ConvertTo-DaafNativeArg {
+    [CmdletBinding()]
+    param([string]$Value = '')
+    if ($Value.Length -gt 0 -and $Value -notmatch '[\s"]') { return $Value }
+    return '"' + (($Value -replace '(\\*)"', '$1$1\"') -replace '(\\+)\z', '$1$1') + '"'
+}
+```
+
+It is the inverse of the Windows argv parser: bare when the value has no whitespace and no `"`; otherwise wrapped in quotes, with each backslash run before an embedded `"` doubled plus the quote escaped, and a trailing backslash run doubled. `''` becomes `""`. The trailing-run anchor is `\z`, not `$`: in .NET, `$` also matches just before a final newline, so `'(\\+)$'` would double backslashes that sit before a trailing LF (`"trail\<LF>"` came out as `"trail\\<LF>"`). Verified values that round-trip exactly through a real child process (on the Linux Pester runner): `''`, `q"z`, `back\"slash`, `trail\`, `C:\Users\John Smith\OneDrive - Org\`.
+
+**Why it happens:** Microsoft's Start-Process reference states it plainly: "The cmdlet joins the array into a single string with each element of the array separated by a single space." Windows processes receive one command-line string, not an argv array, so the join is lossy. PowerShell#5576 ("Start-Process doesn't pass arguments with embedded whitespace and double quotes correctly") lists Windows PowerShell 5.1 as affected and concludes that "the best workaround is to pass a single string containing all arguments to -ArgumentList and use embedded quoting and escaping as necessary". On Linux/macOS, .NET splits the joined string with the same Windows-style rules, so the bug and the fix both reproduce on a Linux Pester runner (observed on pwsh 7.6).
+
+**Prefer direct invocation when you can:** `& $exe @argArray` makes PowerShell quote each whitespace-bearing element for you. Use Start-Process only when you need what it uniquely gives — console inheritance for an interactive child (`-NoNewWindow` from a capturing context; see "Expression Context Breaks Interactive Native Commands" below) or a Process object to poll while showing progress. (Windows PowerShell 5.1's direct-call path is reported to still mishandle an embedded `"` — see "Embedded Double-Quotes" above — or a trailing backslash inside a spaced argument; native argument passing was reworked in PowerShell 7.3. Not reproducible on Linux, which passes argv directly.)
+
+**When this bites:** any path under the user's profile or install folder — `C:\Users\First Last\...`, `OneDrive - Org\...`. In DAAF (fixed 2026-09-29) it broke every Control Panel hand-off to a child script (`daaf.ps1`, Claude Code / shell / Quarto / backup / restore / update / rebuild) and the backup `docker cp` for spaced install folders; `tests/powershell/native_arg_quoting.Tests.ps1` now fails on any array-form or unquoted `-ArgumentList` in `scripts/host/*.ps1`.
+
+**Severity:** High. The splitting is deterministic for affected users (every run fails) and invisible to anyone whose paths have no spaces — including most developers and CI.
+
+---
+
+### `Start-Process -PassThru` `ExitCode` Reads `$null` Unless `.Handle` Is Cached
+
+**The problem:** On Windows — Windows PowerShell 5.1 and PowerShell 6.0 through 7.4.0 — the Process object returned by `Start-Process -PassThru` together with `-NoNewWindow` and/or any `-RedirectStandard*` parameter does not hold an open OS handle. If nothing opens one before the child exits, `$proc.ExitCode` reads `$null` after `WaitForExit()` — the exit status is gone. PowerShell 7.4.1 fixed it. Code that then coerces `$null` reports an unknown (possibly failed) child as a clean success:
+
+```powershell
+# BAD: no handle cached; $null then coerced to success
+$proc = Start-Process -FilePath $exe -ArgumentList $argString -NoNewWindow -PassThru
+$proc.WaitForExit()
+$ec = $proc.ExitCode                 # $null on Windows PowerShell 5.1 / pwsh 6.0-7.4.0 (Windows)
+if ($ec -and $ec -ne 0) { ... }      # $null -> "no error": failure never reported
+if (-not $ec -or $ec -eq 0) { ... }  # $null -> "clean return": same bug, other spelling
+
+# GOOD: cache the handle immediately, read defensively, treat $null as UNKNOWN
+$proc = Start-Process -FilePath $exe -ArgumentList $argString -NoNewWindow -PassThru
+try { $null = $proc.Handle } catch { Write-Verbose "Could not cache the process handle: $_" }  # while the child is alive
+$proc.WaitForExit()
+$ec = $null
+try { $ec = $proc.ExitCode } catch { $ec = $null }
+if ($null -eq $ec) {
+    # UNKNOWN: warn (or fail closed) -- never report success
+} elseif ($ec -ne 0) {
+    # FAILURE
+}
+```
+
+Never pre-set `$ec = 0`, cast `[int]$ec` (`[int]$null` is `0`), or use the `$ec -and ...` / `-not $ec` truthiness forms — each turns "unknown" into "success". Whether unknown should warn or fail closed depends on the caller: `test_migration.ps1` (`Invoke-HardenedScript`) fails closed (returns 1); `backup_daaf.ps1` keeps a separate `$CopyExitKnown` flag, never reads the copy as clean on the exit code's say-so, latches the WITH WARNINGS banner, and leans on the file-count check; `daaf.ps1`'s delegates print a distinct "Could not read the exit status" message.
+
+**Why it happens:** the widely cited Stack Overflow answer to "Obtaining ExitCode using Start-Process and WaitForExit instead of -Wait" (question 10262231, answer 23797762) reports: "All I had to do was cache the process handle. As soon as I did that, $process.ExitCode worked correctly. If I didn't cache the process handle, $process.ExitCode was null." The version scope comes from upstream: PowerShell#5421 ("Process objects created with Start-Process -NoNewWindow and/or -RedirectStandard* never report their exit code on Windows") reproduces it on "PowerShell Core v6.0.0-beta.9" and "Windows PowerShell v5.1.15063.674", notes "The problem only surfaces on Windows", and gives the same workaround ("cache the process handle before calling Wait-Process / .WaitForExit()"); PowerShell#20400 reports it again on 7.4.0-preview.5; the PowerShell v7.4.1 release notes list "Fix Start-Process -PassThru to make sure the ExitCode property is accessible for the returned Process object (Fix #20400 ...)". That fix shipped in PowerShell 7.4.1; Windows PowerShell 5.1 is a separate product that is not expected to receive it (inference, not verified against 5.1 servicing notes), so the `.Handle` cache stays mandatory for DAAF host scripts, which must work on 5.1. DAAF hit it in the field: `test_migration.ps1` scored a SUCCESSFUL child as failed ("exited with code .") until the handle was cached. The quirk does not reproduce on Linux/macOS pwsh (ExitCode is always populated there), so a Linux-only test cannot prove the fix — structural guards do instead (`tests/powershell/native_arg_quoting.Tests.ps1` parses `scripts/host/*.ps1` and requires that the first use of every `Start-Process -PassThru` result variable is a `.Handle` read, so a comment cannot satisfy it).
+
+**Related trap:** `Start-Process -Wait` without `-PassThru` leaves `$LASTEXITCODE` untouched (observed in the 2026-09-29 host sweep on pwsh/Linux: it stayed `0` after a child that exited 5) — never read `$LASTEXITCODE` after Start-Process.
+
+**Severity:** Medium-High. Silent on the affected platforms (Windows PowerShell 5.1 and PowerShell 6.0–7.4.0 on Windows), invisible on the platform most tests run on, and it converts failures into successes.
 
 ---
 
@@ -565,6 +655,44 @@ If `sh -c "$resolved"` emits `ef` (the byte) you have the right number of backsl
 
 ---
 
+### Windows `docker cp` (Container to Host) Aborts at the First FIFO, Device Node, or Uncreatable Symlink
+
+**The problem:** On a Windows host, `docker cp CONTAINER:/path HOSTDIR` stops extracting at the first named pipe (FIFO) or block/char device node in the archive stream — and at the first symlink it cannot create (symlink creation needs admin or Developer Mode). Every entry that sorts after it is silently dropped. The CLI still prints "Successfully copied ...", and the exit code alone is not a trustworthy completeness signal (DAAF's own Windows backup reported a truncation with a zero exit — most likely a since-fixed `$null`-to-0 ExitCode coercion, see the `Start-Process -PassThru` entry above).
+
+```powershell
+# BAD: copy a live volume/tree straight out and trust the success line or $LASTEXITCODE
+docker cp "${cid}:/source/." $HostPath     # stops at e.g. logs/shim.stream.x/output.fifo
+
+# GOOD (DAAF backup pattern): stage into a throwaway container, strip what Windows
+# cannot extract, then copy the stripped tree -- and verify by COUNTING files
+$StageProgram = @'
+set -e
+cp -a /source /staging
+cd /staging
+find . -type l > /tmp/link_paths
+find . -type l -exec readlink {} \; > /tmp/link_targets
+paste /tmp/link_paths /tmp/link_targets > /staging/.daaf-symlinks
+find /staging -type l -exec rm -f {} +
+find /staging \( -type p -o -type s -o -type b -o -type c \) -exec rm -f {} +
+'@
+# (abridged -- the production program also gates tab/newline symlink names; see
+# scripts/host/backup_daaf.{sh,ps1})
+```
+
+**Why it happens (verified from upstream source, 2026-09-29):** moby/go-archive's Windows `handleTarTypeBlockCharFifo` (`archive_windows.go`) is a no-op that returns nil — no file is created for the FIFO/device entry. `createTarFile` (`archive.go`) then falls through to its timestamp step, `chtimes` on the path that was never created fails, and `Unpack` returns on the first `createTarFile` error — the rest of the archive is never read. docker/cli's `cp.go` prints "Successfully copied" unconditionally after the copy call, before that call's error is returned. Sockets were stripped defensively in DAAF's fix: how Docker archives a socket on this path was not verified.
+
+**Fix:**
+1. Stage the source into a throwaway container (`docker run -d ... sh -c "$STAGE_PROGRAM"` + `docker wait`), freeze it with `cp -a`, record symlinks in a manifest for restore to replay, and delete symlinks plus `-type p`/`-type s`/`-type b`/`-type c` special files — they are runtime rendezvous objects with no content (e.g. stale provider-shim `output.fifo` stream files).
+2. `docker cp` the staged tree, never the live volume.
+3. Verify completeness independently: count the source's regular files beforehand (`find -type f | wc -l`) and the host copy's afterwards, and warn on a shortfall. Treat the success line as noise and the exit code as one signal among several — a nonzero exit with a full count still latches the WITH WARNINGS banner; a nonzero exit with a short count is fatal.
+4. Keep the count tolerance honest: a 1% tolerance can hide a real truncation (a probe of the maintainer volume projected 714 of 71,820 files dropped after its first FIFO — under the 718-file tolerance), which is why an unknown or nonzero exit is never read as clean.
+
+**Where it lives in DAAF:** `scripts/host/backup_daaf.sh` / `backup_daaf.ps1` staging program (byte-identical across twins, pinned by `tests/bash/backup_twin_parity.bats`); restore replays `.daaf-symlinks`. Linux/macOS hosts are unaffected by the abort (they can create FIFOs and symlinks), but the twins share the staging program so behavior stays aligned.
+
+**Severity:** High. Silent data loss in a backup, with a success message, on the platform least visible to developers.
+
+---
+
 ## Quick Lookup
 
 | Gotcha | Language | Severity | ShellCheck/Analyzer |
@@ -579,6 +707,9 @@ If `sh -c "$resolved"` emits `ef` (the byte) you have the right number of backsl
 | Expression context breaks TTY | PowerShell | High | — |
 | `$ErrorActionPreference` scope | PowerShell | High | — |
 | Embedded `"` in native args | PowerShell | High | — |
+| `Start-Process -ArgumentList` array joined unquoted | PowerShell | High | — |
+| `Start-Process -PassThru` `ExitCode` `$null` (no `.Handle`) | PowerShell | Medium-High | — |
+| `$LASTEXITCODE` / exit code `$null` read as success | PowerShell | Medium | — |
 | Implicit return values | PowerShell | High | — |
 | UTF-8 BOM breaks `iex` | PowerShell | High | — |
 | `$null` in ForEach pipeline | PowerShell | Medium | — |
@@ -589,3 +720,4 @@ If `sh -c "$resolved"` emits `ef` (the byte) you have the right number of backsl
 | Exit code truncation | Cross-platform | Low | — |
 | Path separator differences | Cross-platform | Medium | — |
 | Octal `printf` escapes eaten before `sh` | Cross-platform | High | — |
+| Windows `docker cp` aborts at FIFO/device/symlink | Cross-platform | High | — |
