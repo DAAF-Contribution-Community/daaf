@@ -8,7 +8,12 @@ lives under scripts/scratch/ (NEVER /tmp) and is removed in tearDown.
 This module is wired into Tier D as TD.0 (run BEFORE the broader batteries) so an
 official Tier D run first validates its own harness: environment sanitization,
 Tier D failure-evidence capture, Pester/battery output routing, per-run Tier 2
-sandbox cleanup, and the stricter T2.2 freshness/success semantics.
+sandbox cleanup, the stricter T2.2 freshness/success semantics, the Tier 1/2
+live-run verdict evaluators (the live-run health gate with recovered-error and
+--max-turns WARNs, T1.1/T1.4/T1.5/T1.6/T1.7, T2.3-T2.6 including T2.6 retry
+counting and deferred tool names), malformed (non-dict) tool_use inputs, the
+T0.7 statusline probe's report-local cache dir (no /tmp writes), and the T0.12
+local-settings-shadowing and T0.13 synced-surface probes.
 
 Run directly:
   python3 -m unittest discover -s /daaf/tests/python -p 'test_deploy_smoke.py'
@@ -16,6 +21,7 @@ Run directly:
 
 import json
 import os
+import re
 import subprocess
 import sys
 import types
@@ -237,29 +243,92 @@ class RouteServiceTierCoherenceTests(unittest.TestCase):
                 if diagnostic is not None:
                     self.assertIn(diagnostic, result.detail)
 
-    def test_gpt_physical_window_maps_astra_flagship_and_rejects_near_misses(self):
-        # Parallels the bats "GPT physical-family classifier" battery. gpt-6-astra
-        # is a flagship-class 1,050,000-token model: only the exact bare slug, its
-        # [1m] hint, or a provider-prefixed terminal segment qualify. '-pro', bare
-        # 'gpt-6', and left-boundary text ('xgpt-6-astra') are near misses -> None.
+    def test_gpt_physical_window_maps_gpt6_flagships_and_rejects_near_misses(self):
+        # Parallels the bats "GPT physical-family classifier" battery. The GPT-6
+        # flagships gpt-6-astra, gpt-6-sol and gpt-6-luna, each with an optional
+        # '-pro' and then an optional '[1m]', map to 1,050,000. The Sol/Luna and
+        # '-pro' members come from the USER POLICY DECISION of 2026-09-29, not
+        # validation. Bare 'gpt-6', the retired 'gpt-6-terra', GPT-6 mini/chat, and
+        # right- or left-boundary text are near misses and map to None.
         expected = {
-            # gpt-5.x anchors (parallel with the existing families for regression)
+            # gpt-5.x anchors (unchanged; regression guard)
             "gpt-5.6-sol": 1050000,
             "gpt-5.6-sol-mini": 400000,
             "gpt-5.6-sol-chat": 128000,
+            "gpt-5.6-mini-pro": 400000,
+            "gpt-5.6-sol-extra": 1050000,
+            "gpt-5": 400000,
+            "gpt-5.2": 400000,
+            "gpt-5-chat": 128000,
+            # gpt-5.x flagship -pro forms (already 1050000 via the gpt-5.x arm)
+            "gpt-5.6-sol-pro": 1050000,
+            "gpt-5.6-sol-pro[1m]": 1050000,
+            "openai/gpt-5.6-terra-pro": 1050000,
+            "gpt-5.5-pro": 1050000,
+            "gpt-5.4-pro": 1050000,
             # gpt-6-astra positives
             "gpt-6-astra": 1050000,
             "gpt-6-astra[1m]": 1050000,
             "openai/gpt-6-astra": 1050000,
-            # gpt-6-astra near misses
-            "gpt-6-astra-pro": None,
+            # 2026-09-29 policy registrations: bare, [1m], provider-prefixed
+            "gpt-6-sol": 1050000,
+            "gpt-6-sol[1m]": 1050000,
+            "openai/gpt-6-sol": 1050000,
+            "gpt-6-luna": 1050000,
+            "gpt-6-luna[1m]": 1050000,
+            "openai/gpt-6-luna": 1050000,
+            "gpt-6-astra-pro": 1050000,
+            "gpt-6-astra-pro[1m]": 1050000,
+            "openai/gpt-6-astra-pro": 1050000,
+            "gpt-6-sol-pro": 1050000,
+            "gpt-6-sol-pro[1m]": 1050000,
+            "openai/gpt-6-sol-pro": 1050000,
+            "gpt-6-luna-pro": 1050000,
+            "gpt-6-luna-pro[1m]": 1050000,
+            "openai/gpt-6-luna-pro": 1050000,
+            # documented '#<effort>' env-selector suffix is tolerated
+            "gpt-6-astra[1m]#xhigh": 1050000,
+            "gpt-6-sol[1m]#medium": 1050000,
+            "openai/gpt-6-luna-pro#high": 1050000,
+            # near misses
             "gpt-6": None,
+            "gpt-6-terra": None,
+            "gpt-6-terra[1m]": None,
+            "gpt-6-sol-mini": None,
+            "gpt-6-sol-chat": None,
+            "gpt-6-astra-pro-x": None,
+            "gpt-6-sol-pro[1m]x": None,
+            "gpt-6-astra[1m]x": None,
+            "gpt-6-sol[1m]-pro": None,
+            "gpt-6-astrab": None,
             "xgpt-6-astra": None,
+            "xgpt-6-sol": None,
+            "gpt-6-sol\n": None,
         }
         for model_id, want in expected.items():
             with self.subTest(model_id=model_id):
                 self.assertEqual(
                     route_detection._gpt_physical_window(model_id), want
+                )
+
+    def test_gpt_flagship_grammar_is_byte_identical_to_runtime_consumers(self):
+        # _gpt_physical_window promises to mirror the Bash consumers. Compare the
+        # pattern text with each consumer's flagship ERE assignment line (read
+        # only, never executed) so a registry edit there cannot drift from here.
+        consumers = {
+            ".claude/hooks/context-reporter.sh": "GPT_FLAGSHIP_RE",
+            ".claude/scripts/subagent-bar.sh": "gpt_flagship_re",
+            ".claude/scripts/context-bar.sh": "gpt_flagship_re",
+        }
+        for rel_path, var in consumers.items():
+            with self.subTest(consumer=rel_path):
+                text = (_REPO_ROOT / rel_path).read_text(encoding="utf-8")
+                found = re.findall(
+                    rf"^{var}='([^']*)'$", text, flags=re.MULTILINE
+                )
+                self.assertEqual(len(found), 1, (rel_path, found))
+                self.assertEqual(
+                    found[0], route_detection._GPT_FLAGSHIP_RE.pattern
                 )
 
     def test_route_control_diagnostics_are_bounded_and_do_not_reflect_values(self):
@@ -312,7 +381,9 @@ class RouteServiceTierCoherenceTests(unittest.TestCase):
              mock.patch.object(smoke_probes, "probe_shim_health", return_value=stub), \
              mock.patch.object(smoke_probes, "probe_auth_json", return_value=stub), \
              mock.patch.object(smoke_probes, "probe_workspace_invariants", return_value=stub), \
-             mock.patch.object(smoke_probes, "probe_r_locale", return_value=stub):
+             mock.patch.object(smoke_probes, "probe_r_locale", return_value=stub), \
+             mock.patch.object(smoke_probes, "probe_local_settings_shadowing", return_value=stub), \
+             mock.patch.object(smoke_probes, "probe_synced_surface", return_value=stub):
             results = smoke_probes.run_tier0(route, env, base_dir="/not-used")
         route_results = [result for result in results if result.probe_id == "T0.1"]
         self.assertEqual(len(route_results), 1)
@@ -1262,6 +1333,959 @@ class Tier2SandboxCleanupTests(unittest.TestCase):
         self.assertTrue(self.sibling.exists())
         leftover = [p for p in self.sandbox.glob("run_*") if p.is_dir()]
         self.assertEqual(leftover, [], f"run dir not cleaned: {leftover}")
+
+
+# --- Live-run verdict fixtures -----------------------------------------------
+# Minimal excerpts copied from two observed 2026-09-24 Tier 1 transcripts
+# (.claude/logs/sessions/..._0bfd41e1_orchestrator.jsonl = model_not_found run;
+# ..._86e4b2c4_orchestrator.jsonl = passing run) plus the CLI result-object
+# shape observed in scripts/scratch/postrebuild_2.1.281/r22_rm_r_probe.json.
+# Inlined so the tests never depend on log paths at run time.
+
+_SYNTHETIC_ERROR_RECORD = {
+    "type": "assistant", "isApiErrorMessage": True, "error": "model_not_found",
+    "message": {"model": "<synthetic>", "content": [{"type": "text", "text": (
+        "There's an issue with the selected model (gpt-6-astra[1m]). It may not exist or you "
+        "may not have access to it. Run --model to pick a different model.")}]},
+}
+_REAL_TOOL_USE_RECORD = {
+    "type": "assistant",
+    "message": {"model": "claude-opus-5-5", "content": [
+        {"type": "tool_use", "id": "toolu_b1", "name": "Bash", "input": {"command": "echo daaf-smoke-ok"}}]},
+}
+_REAL_FINAL_RECORD = {
+    "type": "assistant",
+    "message": {"model": "claude-opus-5-5", "content": [{"type": "text", "text": "SMOKE_TIER1_COMPLETE"}]},
+}
+# A transient mid-response provider error, as the CLI records it (shape observed
+# in .claude/logs/sessions/2026-09-22_16-54-32_0fec76e0_orchestrator.jsonl,
+# where a real record followed it both times). Trimmed to the fields the gate reads.
+_SERVER_ERROR_RECORD = {
+    "type": "assistant", "isApiErrorMessage": True, "error": "server_error",
+    "message": {"model": "<synthetic>", "content": [{"type": "text", "text": (
+        "API Error: Server error mid-response. The response above may be incomplete.")}]},
+}
+
+
+def _cli_result(is_error=False, subtype="success", usage_ids=("claude-opus-5-5[1m]",),
+                response="SMOKE_TIER1_COMPLETE", error="", input_tokens=4, output_tokens=1081,
+                total_turns=2):
+    """A RunResult-shaped stand-in: raw_json in the list-output form
+    _parse_json_output stores, plus the modelUsage ids it extracts."""
+    result_msg = {"type": "result", "subtype": subtype, "is_error": is_error, "num_turns": total_turns,
+                  "result": response, "api_error_status": None}
+    return types.SimpleNamespace(
+        raw_json={"messages": [result_msg]}, error=error, response_text=response,
+        model_identity=types.SimpleNamespace(claude_cli_model_usage_ids=list(usage_ids)),
+        input_tokens=input_tokens, output_tokens=output_tokens, total_turns=total_turns,
+        total_cost_usd=0.0, model_id="claude-opus-5-5[1m]",
+    )
+
+
+def _judge_t11(response_text, failure, warning=""):
+    """T1.1 through the production path (_judge_t11 on a fresh ProbeResult),
+    returning (verdict, detail)."""
+    r = route_detection.ProbeResult(probe_id="T1.1", name="t", tier="1")
+    return smoke_probes._judge_t11(r, response_text, failure, warning)
+
+
+class Tier1VerdictTests(unittest.TestCase):
+    """T1.1/T1.4/T1.5/T1.6/T1.7 pure evaluators against observed-shape fixtures."""
+
+    def _t11(self, result, records):
+        failure, warning = smoke_probes._live_run_health(result, records)
+        return _judge_t11(result.response_text, failure, warning)
+
+    def test_t11_synthetic_model_not_found_fails(self):
+        # The observed failure: the CLI's own error sentence arrives as the
+        # response, modelUsage is empty, the only assistant record is synthetic.
+        res = _cli_result(usage_ids=(), response=_SYNTHETIC_ERROR_RECORD["message"]["content"][0]["text"],
+                          input_tokens=None, output_tokens=None, total_turns=1)
+        verdict, detail = self._t11(res, [_SYNTHETIC_ERROR_RECORD])
+        self.assertEqual(verdict, Verdict.FAIL)
+        self.assertIn("model_not_found", detail)
+        self.assertIn("<synthetic>", detail)
+
+    def test_t11_is_error_result_fails(self):
+        res = _cli_result(is_error=True, subtype="error_during_execution")
+        verdict, detail = self._t11(res, [_REAL_TOOL_USE_RECORD, _REAL_FINAL_RECORD])
+        self.assertEqual(verdict, Verdict.FAIL)
+        self.assertIn("is_error=true", detail)
+        self.assertIn("error_during_execution", detail)
+
+    def test_non_null_api_error_status_is_a_hard_fail_labelled_inferred(self):
+        # Every observed value is null; a non-null one is read as an API
+        # failure on inference, and the reason says so.
+        res = _cli_result()
+        res.raw_json["messages"][0]["api_error_status"] = 529
+        failure, warning = smoke_probes._live_run_health(res, [_REAL_TOOL_USE_RECORD, _REAL_FINAL_RECORD])
+        self.assertIn("api_error_status='529'", failure)
+        self.assertIn("inferred", failure)
+        self.assertEqual(warning, "")
+        self.assertEqual(_judge_t11("SMOKE_TIER1_COMPLETE", failure, warning)[0], Verdict.FAIL)
+        # null and "" are not failures.
+        res.raw_json["messages"][0]["api_error_status"] = ""
+        self.assertEqual(smoke_probes._live_run_health(res, [_REAL_FINAL_RECORD])[0], "")
+
+    def test_t11_missing_completion_token_fails(self):
+        res = _cli_result(response="Done.")
+        verdict, detail = self._t11(res, [_REAL_TOOL_USE_RECORD])
+        self.assertEqual(verdict, Verdict.FAIL)
+        self.assertIn("SMOKE_TIER1_COMPLETE", detail)
+
+    def test_t11_real_model_with_token_passes(self):
+        res = _cli_result()
+        verdict, _ = self._t11(res, [_REAL_TOOL_USE_RECORD, _REAL_FINAL_RECORD])
+        self.assertEqual(verdict, Verdict.PASS)
+
+    def test_t14_claude_md_mention_is_not_injection(self):
+        # CLAUDE.md ("instructions" attachment) and a skill body (isMeta user
+        # record) both describe the reporter; neither is a hook injection.
+        prose = "context-reporter injects `Context utilization [NOMINAL]: 55k / 1000k tokens`"
+        records = [
+            {"type": "attachment", "attachment": {"type": "instructions", "content": prose}},
+            {"type": "user", "isMeta": True, "message": {"content": [{"type": "text", "text": prose}]}},
+        ]
+        self.assertEqual(smoke_probes._count_context_injections(records), 0)
+        real = {"type": "attachment", "attachment": {
+            "type": "hook_additional_context", "hookName": "PreToolUse:Agent", "hookEvent": "PreToolUse",
+            "content": ["Context utilization [NOMINAL]: 43k / 1000k tokens (4%) | 2026-09-24 15:02:10 UTC"]}}
+        self.assertEqual(smoke_probes._count_context_injections(records + [real]), 1)
+
+    def test_t15_harness_written_cache_not_counted(self):
+        # What T1.6's synthetic payload used to write: the payload model with
+        # its [1m] suffix and the hard-coded 200000 window. Must not PASS.
+        snap = {"model": {"value": "claude-opus-5-5[1m]"}, "ctx_window": {"value": "200000"}}
+        verdict, _ = smoke_probes._evaluate_t15(snap, "claude-opus-5-5", "")
+        self.assertEqual(verdict, Verdict.WARN)
+        # A populated ctx-window cache alone never makes the probe PASS.
+        verdict, detail = smoke_probes._evaluate_t15(
+            {"model": {"value": None}, "ctx_window": {"value": "200000"}}, "claude-opus-5-5", "")
+        self.assertEqual(verdict, Verdict.INFO)
+        self.assertIn("Model cache absent", detail)
+
+    def test_t15_matching_model_cache_passes_and_absent_window_is_expected(self):
+        snap = {"model": {"value": "claude-opus-5-5"}, "ctx_window": {"value": None}}
+        verdict, detail = smoke_probes._evaluate_t15(snap, "claude-opus-5-5", "")
+        self.assertEqual(verdict, Verdict.PASS)
+        self.assertIn("-p renders none", detail)
+        self.assertEqual(smoke_probes._evaluate_t15(snap, "claude-opus-5-5", "no model")[0], Verdict.SKIP)
+
+    def test_t16_uses_report_local_cache_dir_and_observed_model(self):
+        cache_dir = _scratch_dir("t16_cache")
+        self.addCleanup(__import__("shutil").rmtree, cache_dir, True)
+        r6 = route_detection.ProbeResult(probe_id="T1.6", name="t", tier="1")
+        done = subprocess.CompletedProcess(args=[], returncode=0, stdout="bar-output\n", stderr="")
+        with mock.patch.object(smoke_probes.subprocess, "run", return_value=done) as run:
+            smoke_probes._run_t16(r6, "/x/transcript.jsonl", "sid-1234", "claude-opus-5-5", cache_dir, "")
+        kwargs = run.call_args.kwargs
+        self.assertEqual(kwargs["env"]["DAAF_CONTEXT_BAR_CACHE_DIR"], str(cache_dir))
+        self.assertEqual(json.loads(kwargs["input"])["model"]["id"], "claude-opus-5-5")
+        self.assertEqual(r6.verdict, Verdict.PASS)
+        # A failed live run renders nothing at all.
+        r6b = route_detection.ProbeResult(probe_id="T1.6", name="t", tier="1")
+        with mock.patch.object(smoke_probes.subprocess, "run") as run_b:
+            smoke_probes._run_t16(r6b, "/x/t.jsonl", "sid", "m", cache_dir, "no model")
+        run_b.assert_not_called()
+        self.assertEqual(r6b.verdict, Verdict.SKIP)
+
+    def test_t17_zero_turns_none_tokens_no_typeerror(self):
+        verdict, _ = smoke_probes._evaluate_t17(None, None, 0, "")
+        self.assertEqual(verdict, Verdict.WARN)
+        verdict, detail = smoke_probes._evaluate_t17(None, None, 1, "no model named in the CLI modelUsage block")
+        self.assertEqual(verdict, Verdict.FAIL)
+        self.assertIn("modelUsage", detail)
+        self.assertEqual(smoke_probes._evaluate_t17(4, 1081, 2, "")[0], Verdict.PASS)
+
+    # --- F1: recovered vs unrecovered transient API errors -------------------
+
+    def test_recovered_transient_error_is_warn_not_fail(self):
+        # Observed pattern: real -> <synthetic> server_error -> real.
+        records = [_REAL_TOOL_USE_RECORD, _SERVER_ERROR_RECORD, _REAL_FINAL_RECORD]
+        unrecovered, note, facts = smoke_probes._evaluate_transcript_api_errors(records)
+        self.assertEqual(unrecovered, "")
+        self.assertTrue(facts["recovered"])
+        self.assertEqual(facts["error_records"], 1)
+        self.assertIn("1 transient API-error record(s) recovered", note)
+        self.assertIn("server_error", note)
+        self.assertIn("Server error mid-response", note)
+        failure, warning = smoke_probes._live_run_health(_cli_result(), records)
+        self.assertEqual(failure, "")
+        self.assertEqual(warning, note)
+        verdict, detail = _judge_t11("SMOKE_TIER1_COMPLETE", failure, warning)
+        self.assertEqual(verdict, Verdict.WARN)
+        self.assertIn("Live-run warning", detail)
+        self.assertIn("server_error", detail)
+
+    def test_unrecovered_transient_error_fails(self):
+        # The run ENDS on the error record: no real answer follows it.
+        records = [_REAL_TOOL_USE_RECORD, _SERVER_ERROR_RECORD]
+        unrecovered, note, facts = smoke_probes._evaluate_transcript_api_errors(records)
+        self.assertFalse(facts["recovered"])
+        self.assertEqual(note, "")
+        self.assertIn("server_error", unrecovered)
+        self.assertIn("<synthetic>", unrecovered)
+        failure, warning = smoke_probes._live_run_health(_cli_result(), records)
+        self.assertIn("server_error", failure)
+        self.assertEqual(_judge_t11("SMOKE_TIER1_COMPLETE", failure, warning)[0],
+                         Verdict.FAIL)
+
+    def test_recovery_is_judged_after_the_last_error_record(self):
+        # Recovered once, then a second error with nothing after it: FAIL, and
+        # the reason names the count.
+        records = [_REAL_TOOL_USE_RECORD, _SERVER_ERROR_RECORD, _REAL_FINAL_RECORD, _SERVER_ERROR_RECORD]
+        unrecovered, note, facts = smoke_probes._evaluate_transcript_api_errors(records)
+        self.assertEqual(facts["error_records"], 2)
+        self.assertFalse(facts["recovered"])
+        self.assertEqual(note, "")
+        self.assertIn("2 error records", unrecovered)
+        # An error-free transcript yields neither string.
+        self.assertEqual(smoke_probes._evaluate_transcript_api_errors([_REAL_FINAL_RECORD])[:2], ("", ""))
+
+    def test_live_warning_downgrades_pass_only(self):
+        r = route_detection.ProbeResult(probe_id="T2.4", name="t", tier="2")
+        r.verdict, r.detail = Verdict.PASS, "ok."
+        smoke_probes._apply_live_warning(r, "1 transient API-error record(s) recovered")
+        self.assertEqual(r.verdict, Verdict.WARN)
+        self.assertIn("recovered", r.detail)
+        r2 = route_detection.ProbeResult(probe_id="T2.5", name="t", tier="2")
+        r2.verdict, r2.detail = Verdict.SKIP, "nothing to strip."
+        smoke_probes._apply_live_warning(r2, "x")
+        self.assertEqual(r2.verdict, Verdict.SKIP)
+        r3 = route_detection.ProbeResult(probe_id="T2.1", name="t", tier="2")
+        r3.verdict, r3.detail = Verdict.PASS, "ok."
+        smoke_probes._apply_live_warning(r3, "")
+        self.assertEqual(r3.verdict, Verdict.PASS)
+
+    # --- F3: --max-turns stop is its own WARN, not "no real model" -----------
+
+    def test_max_turns_is_warn_with_its_own_reason(self):
+        # is_error on an error_max_turns result is unobserved; tolerate True.
+        res = _cli_result(is_error=True, subtype="error_max_turns")
+        failure, warning = smoke_probes._live_run_health(res, [_REAL_TOOL_USE_RECORD, _REAL_FINAL_RECORD])
+        self.assertEqual(failure, "")
+        self.assertIn("--max-turns", warning)
+        self.assertIn("error_max_turns", warning)
+        verdict, detail = _judge_t11("SMOKE_TIER1_COMPLETE", failure, warning)
+        self.assertEqual(verdict, Verdict.WARN)
+        # Without the token the probe's own check FAILs, and the reason is the
+        # missing token plus the max-turns note, not "did not reach a real model".
+        verdict, detail = _judge_t11("partial", failure, warning)
+        self.assertEqual(verdict, Verdict.FAIL)
+        self.assertIn("--max-turns", detail)
+        self.assertNotIn("did not reach a real model", detail)
+        # A max-turns stop with no real model billed is still a gate FAIL.
+        failure, _ = smoke_probes._live_run_health(
+            _cli_result(subtype="error_max_turns", usage_ids=()), [_SYNTHETIC_ERROR_RECORD])
+        self.assertIn("modelUsage", failure)
+
+    # --- F4: one injection is two attachments sharing a toolUseID ------------
+
+    def test_t14_injection_pair_counts_once_per_tool_use_id(self):
+        text = "Context utilization [NOMINAL]: 43k / 1000k tokens (4%) | 2026-09-24 15:02:10 UTC"
+
+        def pair(tid):
+            # Shape observed 2.1.281: hook_success (stdout) + hook_additional_context.
+            return [
+                {"type": "attachment", "attachment": {
+                    "type": "hook_success", "hookName": "PreToolUse:Bash", "hookEvent": "PreToolUse",
+                    "toolUseID": tid, "command": "context-reporter.sh", "stdout": text}},
+                {"type": "attachment", "attachment": {
+                    "type": "hook_additional_context", "hookName": "PreToolUse:Bash",
+                    "hookEvent": "PreToolUse", "toolUseID": tid, "content": [text]}},
+            ]
+        self.assertEqual(smoke_probes._count_context_injections(pair("toolu_a")), 1)
+        self.assertEqual(smoke_probes._count_context_injections(pair("toolu_a") + pair("toolu_b")), 2)
+
+
+def _sub_snapshot(tool_names):
+    return {"type": "attachment", "attachment": {
+        "type": "prompt_snapshot", "tools": [{"name": n, "description": "", "schema": {}} for n in tool_names]}}
+
+
+class Tier2VerdictTests(unittest.TestCase):
+    """T2.3-T2.6 pure evaluators plus the Tier 2 live-run failure gate."""
+
+    SKILL_PROSE = {"type": "user", "isMeta": True, "message": {"content": [{"type": "text", "text": (
+        "Base directory for this skill: /daaf/.claude/skills/daaf-orchestrator ... subagents never "
+        "launch nested subagents; they may not launch nested subagents either")}]}}
+
+    def test_t26_skill_text_is_not_denial(self):
+        # A subagent that loaded the orchestrator skill, attempted a nested
+        # dispatch, and got no hook deny: prose must not count as the deny.
+        sub = [self.SKILL_PROSE, {"type": "assistant", "message": {"model": "m", "content": [
+            {"type": "tool_use", "id": "t1", "name": "Agent", "input": {"prompt": "OK"}}]}}]
+        verdict, facts, _ = smoke_probes._evaluate_t26([sub])
+        self.assertFalse(facts["denial_seen"])
+        self.assertEqual(verdict, Verdict.WARN)
+
+    def test_t26_real_deny_record_passes(self):
+        deny = ("DAAF policy: subagents may not launch nested subagents — all dispatch authority "
+                "belongs to the orchestrator.")
+        sub = [{"type": "assistant", "message": {"model": "m", "content": [
+                   {"type": "tool_use", "id": "t1", "name": "Agent", "input": {"prompt": "OK"}}]}},
+               {"type": "user", "message": {"content": [
+                   {"type": "tool_result", "tool_use_id": "t1", "is_error": True, "content": deny}]}}]
+        verdict, facts, _ = smoke_probes._evaluate_t26([sub])
+        self.assertTrue(facts["denial_seen"])
+        self.assertEqual(verdict, Verdict.PASS)
+
+    def test_t26_depth1_no_agent_tool_passes_as_harness_layer(self):
+        # Observed 2.1.281 subagent tool list (no Agent/Task), no attempt.
+        sub = [_sub_snapshot(["Bash", "Edit", "ListAgents", "Read", "ReportFindings", "Skill",
+                              "ToolSearch", "Write"])]
+        verdict, facts, detail = smoke_probes._evaluate_t26([sub])
+        self.assertEqual(verdict, Verdict.PASS)
+        self.assertIs(facts["dispatch_tool_available"], False)
+        self.assertIn("spawn depth 1", detail)
+        self.assertIn("not exercised", detail)
+        # Without a recorded tool list the model's self-report is not enough.
+        self.assertEqual(smoke_probes._evaluate_t26([[self.SKILL_PROSE]])[0], Verdict.INFO)
+        # Two subagent transcripts still means a nested dispatch ran.
+        self.assertEqual(smoke_probes._evaluate_t26([sub, sub])[0], Verdict.FAIL)
+
+    # --- F2: a retried outer dispatch is not nesting -------------------------
+
+    @staticmethod
+    def _dispatch(tid, name="Agent", prompt="x"):
+        return {"type": "assistant", "message": {"model": "m", "content": [
+            {"type": "tool_use", "id": tid, "name": name,
+             "input": {"subagent_type": "general-purpose", "prompt": prompt}}]}}
+
+    @staticmethod
+    def _result(tid, is_error=None, content="done", tool_use_result=None):
+        block = {"type": "tool_result", "tool_use_id": tid, "content": content}
+        if is_error is not None:
+            block["is_error"] = is_error
+        rec = {"type": "user", "message": {"content": [block]}}
+        if tool_use_result is not None:
+            rec["toolUseResult"] = tool_use_result
+        return rec
+
+    # Shapes observed in stored transcripts: a completed dispatch's result
+    # record carries toolUseResult {"agentId": ...} (2.1.281, b5524e7f); a
+    # terminated-early one carries is_error true and a plain-string
+    # toolUseResult with no agentId (2026-07-26 c6024f92).
+    TERMINATED = "Agent terminated early due to an API error: Server error mid-response"
+
+    def _ok_call(self, tid, prompt, agent_id):
+        return [self._dispatch(tid, prompt=prompt),
+                self._result(tid, None, "report", {"agentId": agent_id, "status": "completed"})]
+
+    def _terminated_call(self, tid, prompt):
+        return [self._dispatch(tid, prompt=prompt),
+                self._result(tid, True, self.TERMINATED, "Error: " + self.TERMINATED)]
+
+    @staticmethod
+    def _sub(prompt=None, agent_id=None, tools=("Bash", "Read")):
+        """A subagent transcript: its opening user prompt (the parent's
+        input.prompt) and the agentId its records carry, then its tool list."""
+        recs = []
+        if prompt is not None:
+            rec = {"type": "user", "message": {"content": prompt}}
+            if agent_id:
+                rec["agentId"] = agent_id
+            recs.append(rec)
+        snap = _sub_snapshot(list(tools))
+        if agent_id:
+            snap["agentId"] = agent_id
+        recs.append(snap)
+        return recs
+
+    def test_t26_retried_dispatch_is_not_nested_dispatch(self):
+        # Two completed outer dispatches with the same prompt -> two linked transcripts.
+        main = self._ok_call("a0", "P", "agent0") + self._ok_call("a1", "P", "agent1")
+        tops = smoke_probes._top_level_dispatches(main)
+        self.assertEqual([t["agent_id"] for t in tops], ["agent0", "agent1"])
+        verdict, facts, detail = smoke_probes._evaluate_t26(
+            [self._sub("P", "agent0"), self._sub("P", "agent1")], main)
+        self.assertEqual(verdict, Verdict.PASS, detail)
+        self.assertTrue(facts["retried_dispatch"])
+        self.assertEqual((facts["top_level_dispatches"], facts["linked_subagents"]), (2, 2))
+
+    def test_t26_terminated_early_then_retry_is_not_nested(self):
+        # (c) The regression: the first subagent died on a transient API error
+        # (errored call, no agentId, but it DID leave a transcript), then the
+        # retry completed. Two transcripts, two calls, both linked.
+        main = self._terminated_call("a0", "P") + self._ok_call("a1", "P", "agent1")
+        tops = smoke_probes._top_level_dispatches(main)
+        self.assertEqual([(t["is_error"], t["agent_id"]) for t in tops], [(True, None), (False, "agent1")])
+        verdict, facts, detail = smoke_probes._evaluate_t26(
+            [self._sub("P", "agent0"), self._sub("P", "agent1")], main)
+        self.assertNotEqual(verdict, Verdict.FAIL, detail)
+        self.assertEqual(verdict, Verdict.PASS)
+        self.assertEqual((facts["top_level_errored"], facts["linked_subagents"],
+                          facts["unlinked_subagents"]), (1, 2, 0))
+
+    def test_t26_two_terminated_early_calls_are_not_nested(self):
+        # (d) Both calls terminated early; each left a transcript (linked by prompt).
+        main = self._terminated_call("a0", "P") + self._terminated_call("a1", "P")
+        verdict, facts, detail = smoke_probes._evaluate_t26(
+            [self._sub("P", "agent0"), self._sub("P", "agent1")], main)
+        self.assertNotEqual(verdict, Verdict.FAIL, detail)
+        self.assertEqual(facts["linked_subagents"], 2)
+
+    def test_t26_transcript_linked_to_no_top_level_call_fails(self):
+        # A child whose prompt and agentId match no orchestrator call: something
+        # other than the orchestrator started it.
+        main = self._ok_call("a0", "P", "agent0")
+        child = self._sub("Reply with the single word OK and do nothing else.", "agentX")
+        verdict, facts, detail = smoke_probes._evaluate_t26([self._sub("P", "agent0"), child], main)
+        self.assertEqual(verdict, Verdict.FAIL)
+        self.assertEqual(facts["unlinked_subagents"], 1)
+        self.assertIn("match no top-level Agent/Task call", detail)
+
+    def test_t26_count_backstop_for_unlinkable_or_missing_main(self):
+        sub = [_sub_snapshot(["Bash", "Read"])]          # no identity: unlinkable
+        main1 = self._terminated_call("a0", "P")
+        verdict, facts, detail = smoke_probes._evaluate_t26([sub, sub], main1)
+        self.assertEqual(verdict, Verdict.FAIL)
+        self.assertEqual(facts["unlinkable_subagents"], 2)
+        self.assertIn("more than the 1 top-level Agent/Task dispatch call(s)", detail)
+        self.assertIn("errored calls included", detail)
+        main2 = main1 + self._ok_call("a1", "P", "agent1")
+        self.assertEqual(smoke_probes._evaluate_t26([sub, sub, sub], main2)[0], Verdict.FAIL)
+        self.assertEqual(smoke_probes._evaluate_t26([sub, sub], main2)[0], Verdict.PASS)
+        # Missing/unparsed main transcript: assume ONE outer dispatch; identity
+        # cannot be judged without calls to link against.
+        self.assertEqual(smoke_probes._evaluate_t26([self._sub("P", "agent0")], None)[0], Verdict.PASS)
+        self.assertEqual(smoke_probes._evaluate_t26([sub, sub], None)[0], Verdict.FAIL)
+        self.assertEqual(smoke_probes._evaluate_t26([sub, sub], [])[1]["top_level_dispatches"], 0)
+
+    def test_t26_reviewer_repro_errored_retry_plus_successful_nested_call_fails(self):
+        # Reviewer repro: main has a0 (is_error) + a1 (ok); the subagent's
+        # nested n1 returned ok, and the child landed a second transcript.
+        main = self._terminated_call("a0", "P") + self._ok_call("a1", "P", "agent1")
+        sub = self._sub("P", "agent1", tools=("Bash", "Read", "Agent")) + [
+            self._dispatch("n1", prompt="Reply OK"), self._result("n1")]
+        child = self._sub("Reply OK", "agentN")
+        verdict, facts, detail = smoke_probes._evaluate_t26([sub, child], main)
+        self.assertEqual(facts["nested_succeeded"], 1)
+        self.assertEqual(verdict, Verdict.FAIL)
+        self.assertIn("A nested dispatch RAN", detail)
+        # Independently of transcripts and linkage: a non-error nested result alone FAILs.
+        self.assertEqual(smoke_probes._evaluate_t26([sub], main)[0], Verdict.FAIL)
+
+    # --- G1: harness-layer rejection of an attempted nested call --------------
+
+    # Records from the live 2026-09-24 16:48 run (session b5524e7f, subagent
+    # ab44467f), trimmed: the subagent's snapshot tool list, its ToolSearch for
+    # Agent/Task, then the nested Agent call and the harness's error result.
+    LIVE_TOOLS = ["Bash", "Edit", "ListAgents", "Read", "ReportFindings", "Skill", "ToolSearch", "Write"]
+    LIVE_REJECTION = ("<tool_use_error>Error: No such tool available: Agent. Agent is disabled for this "
+                      "session, in subagents as well as here.</tool_use_error>")
+
+    LIVE_AGENT_ID = "ab44467f9110314f5"   # observed: subagent records' agentId == toolUseResult.agentId
+
+    def _live_g1_main(self):
+        # The orchestrator's one Agent call (toolu_01N4tdZF...) and its completed
+        # result, whose toolUseResult.agentId links the subagent (observed).
+        return self._ok_call("toolu_01N4tdZFh38hUxr4PiekPNPx", "**BASE_DIR:** /daaf (trimmed T2.6 prompt)",
+                             self.LIVE_AGENT_ID)
+
+    def _live_g1_subagent(self):
+        return [
+            {"type": "user", "agentId": self.LIVE_AGENT_ID,
+             "message": {"content": "**BASE_DIR:** /daaf (trimmed T2.6 prompt)"}},
+            _sub_snapshot(self.LIVE_TOOLS),
+            {"type": "assistant", "message": {"model": "m", "content": [
+                {"type": "tool_use", "id": "toolu_01FP5Ym1sNJJRcWtvUgBLPXB", "name": "ToolSearch",
+                 "input": {"query": "select:Agent,Task", "max_results": 5}}]}},
+            self._result("toolu_01FP5Ym1sNJJRcWtvUgBLPXB", None, "No matching deferred tools found"),
+            {"type": "assistant", "message": {"model": "m", "content": [
+                {"type": "tool_use", "id": "toolu_01Y7siRk6EDw6p9eBZJCJoTZ", "name": "Agent",
+                 "input": {"subagent_type": "general-purpose",
+                           "prompt": "Reply with the single word OK and do nothing else."}}]}},
+            self._result("toolu_01Y7siRk6EDw6p9eBZJCJoTZ", True, self.LIVE_REJECTION),
+        ]
+
+    def test_t26_live_harness_rejection_passes_on_harness_layer(self):
+        verdict, facts, detail = smoke_probes._evaluate_t26([self._live_g1_subagent()], self._live_g1_main())
+        # The live facts that used to grade WARN.
+        self.assertEqual((facts["subagent_transcripts"], facts["top_level_dispatches"]), (1, 1))
+        self.assertEqual(facts["linked_subagents"], 1)
+        self.assertTrue(facts["nested_attempted"])
+        self.assertFalse(facts["denial_seen"])
+        self.assertIs(facts["dispatch_tool_available"], False)
+        self.assertEqual(facts["nested_errored"], 1)
+        self.assertIn("No such tool available: Agent", facts["nested_error_text"])
+        self.assertEqual(verdict, Verdict.PASS, detail)
+        self.assertIn("rejected at spawn depth 1 (harness layer)", detail)
+        self.assertIn("because the tool was absent", detail)
+        self.assertIn("not exercised", detail)
+
+    def test_t26_attempt_with_tool_available_and_no_deny_stays_warn(self):
+        sub = [_sub_snapshot(["Bash", "Agent"]), self._dispatch("n1"),
+               self._result("n1", True, "some other error")]
+        self.assertEqual(smoke_probes._evaluate_t26([sub])[0], Verdict.WARN)
+        # Tool absent but the attempt has no recorded result: still inconclusive.
+        sub2 = [_sub_snapshot(["Bash"]), self._dispatch("n2")]
+        self.assertEqual(smoke_probes._evaluate_t26([sub2])[0], Verdict.WARN)
+
+    def test_t26_harness_rejection_wording_depends_on_error_text(self):
+        # F3: "because the tool was absent" only for the harness's own
+        # "No such tool available" text; any other error gets neutral wording.
+        sub = [_sub_snapshot(["Bash"]), self._dispatch("n1"), self._result("n1", True, "Some other failure")]
+        verdict, _, detail = smoke_probes._evaluate_t26([sub])
+        self.assertEqual(verdict, Verdict.PASS)
+        self.assertNotIn("because the tool was absent", detail)
+        self.assertIn("every nested Agent/Task attempt returned an error while Agent/Task was absent", detail)
+
+    def test_t26_absent_tool_with_errored_and_unresulted_attempts_warns(self):
+        # F4: one attempt errored, one has no recorded result -> WARN.
+        sub = [_sub_snapshot(["Bash"]), self._dispatch("n1"), self._result("n1", True, self.LIVE_REJECTION),
+               self._dispatch("n2")]
+        verdict, facts, _ = smoke_probes._evaluate_t26([sub])
+        self.assertEqual((facts["nested_calls"], facts["nested_errored"]), (2, 1))
+        self.assertEqual(verdict, Verdict.WARN)
+
+    def test_t26_unrecorded_tool_list_with_all_attempts_errored_warns(self):
+        # F4: no prompt_snapshot tool list at all -> availability unknown -> WARN.
+        sub = [self._dispatch("n1"), self._result("n1", True, self.LIVE_REJECTION)]
+        verdict, facts, _ = smoke_probes._evaluate_t26([sub])
+        self.assertIsNone(facts["dispatch_tool_available"])
+        self.assertEqual(verdict, Verdict.WARN)
+
+    def test_t26_tool_absence_needs_every_transcript_recorded(self):
+        # F5: one recorded list without Agent/Task plus one unrecorded -> unknown.
+        main = self._ok_call("a0", "P", "agent0") + self._ok_call("a1", "P", "agent1")
+        recorded = self._sub("P", "agent0")
+        unrecorded = [{"type": "user", "agentId": "agent1", "message": {"content": "P"}}]
+        facts = smoke_probes._evaluate_t26([recorded, unrecorded], main)[1]
+        self.assertIsNone(facts["dispatch_tool_available"])
+        self.assertIs(smoke_probes._evaluate_t26([recorded], main)[1]["dispatch_tool_available"], False)
+
+    # --- F7: deferred tool names count toward "Agent/Task available" ---------
+
+    @staticmethod
+    def _deferred(added, removed=()):
+        # Shape observed in 2026-08 orchestrator transcripts.
+        return {"type": "attachment", "attachment": {
+            "type": "deferred_tools_delta", "addedNames": list(added), "removedNames": list(removed),
+            "addedLines": []}}
+
+    def test_t26_deferred_agent_tool_blocks_harness_layer_pass(self):
+        sub = [_sub_snapshot(["Bash", "Read", "ToolSearch"]), self._deferred(["Agent", "CronList"])]
+        verdict, facts, _ = smoke_probes._evaluate_t26([sub])
+        self.assertIs(facts["dispatch_tool_available"], True)
+        self.assertEqual(facts["subagent_deferred_tools"], ["Agent", "CronList"])
+        self.assertEqual(verdict, Verdict.SKIP)
+
+    def test_t26_deferred_names_are_matched_exactly_and_deltas_apply_in_order(self):
+        # TaskOutput/TaskStop are not the Task dispatch tool.
+        sub = [_sub_snapshot(["Bash", "Read"]), self._deferred(["TaskOutput", "TaskStop"])]
+        verdict, facts, detail = smoke_probes._evaluate_t26([sub])
+        self.assertIs(facts["dispatch_tool_available"], False)
+        self.assertEqual(verdict, Verdict.PASS)
+        self.assertIn("including any deferred tool names", detail)
+        # Added then removed: no longer available.
+        sub2 = [_sub_snapshot(["Bash"]), self._deferred(["Agent"]), self._deferred([], ["Agent"])]
+        self.assertEqual(smoke_probes._evaluate_t26([sub2])[0], Verdict.PASS)
+        # Field absent entirely (seen in some 2.1.281 subagent transcripts): recorded as None.
+        self.assertIsNone(smoke_probes._evaluate_t26([[_sub_snapshot(["Bash"])]])[1]["subagent_deferred_tools"])
+
+    def test_interpreting_results_quotes_code_strings_verbatim(self):
+        # F10: the reference doc must quote the T2.6 harness-layer detail and
+        # name T2.3 exactly as the code does, so they cannot drift apart.
+        doc = (_REPO_ROOT / ".claude" / "skills" / "daaf-deploy-smoke-testing" / "references"
+               / "interpreting-results.md").read_text()
+        _, _, detail = smoke_probes._evaluate_t26([[_sub_snapshot(["Bash", "Read"])]])
+        self.assertIn(f'"{detail}"', doc)
+        _, _, rejected = smoke_probes._evaluate_t26([self._live_g1_subagent()], self._live_g1_main())
+        self.assertIn(f'"{rejected}"', doc)
+        other = [_sub_snapshot(["Bash"]), self._dispatch("n1"), self._result("n1", True, "Some other failure")]
+        _, _, neutral = smoke_probes._evaluate_t26([other])
+        self.assertIn(f'"{neutral}"', doc)
+        self.assertIn("**T2.3 Web access (WebSearch + fetch protocol)**", doc)
+        self.assertIn("**T2.6 Nested-dispatch prevention**", doc)
+
+    def test_t23_requires_non_error_web_result(self):
+        use = {"type": "assistant", "message": {"model": "m", "content": [
+            {"type": "tool_use", "id": "w1", "name": "WebSearch", "input": {"query": "capital of France"}}]}}
+        ok = {"type": "user", "message": {"content": [
+            {"type": "tool_result", "tool_use_id": "w1", "is_error": None, "content": "Paris"}]}}
+        err = {"type": "user", "message": {"content": [
+            {"type": "tool_result", "tool_use_id": "w1", "is_error": True, "content": "denied"}]}}
+        self.assertEqual(smoke_probes._evaluate_t23([[use, ok]])[0], Verdict.PASS)
+        self.assertEqual(smoke_probes._evaluate_t23([[use, err]])[0], Verdict.FAIL)
+        self.assertEqual(smoke_probes._evaluate_t23([[use]])[0], Verdict.FAIL)
+
+    def test_t24_requires_successful_polars_skill_call(self):
+        def call(tid, skill):
+            return {"type": "assistant", "message": {"model": "m", "content": [
+                {"type": "tool_use", "id": tid, "name": "Skill", "input": {"skill": skill}}]}}
+
+        def res(tid):
+            return {"type": "user", "message": {"content": [
+                {"type": "tool_result", "tool_use_id": tid, "content": "Launching skill"}]}}
+        orchestrator_only = [call("s1", "daaf-orchestrator"), res("s1")]
+        self.assertEqual(smoke_probes._evaluate_t24(orchestrator_only)[0], Verdict.FAIL)
+        self.assertEqual(smoke_probes._evaluate_t24(orchestrator_only + [call("s2", "polars"), res("s2")])[0],
+                         Verdict.PASS)
+
+    def test_t25_strip_evidence_requires_isolation_hook_attachment(self):
+        use = {"type": "assistant", "message": {"model": "m", "content": [
+            {"type": "tool_use", "id": "a1", "name": "Agent", "input": {"isolation": "worktree", "prompt": "x"}}]}}
+        other_hook = {"type": "attachment", "attachment": {
+            "type": "hook_success", "command": "enforce-model-ceiling.sh", "stdout": '{"updatedInput": {}}'}}
+        iso_hook = {"type": "attachment", "attachment": {
+            "type": "hook_success", "hookName": "PreToolUse:Agent",
+            "command": '"$CLAUDE_PROJECT_DIR"/.claude/hooks/block-remote-isolation.sh',
+            "stdout": '{"hookSpecificOutput": {"permissionDecision": "allow", "updatedInput": {}}}'}}
+        self.assertEqual(smoke_probes._evaluate_t25([use, other_hook])[0], Verdict.WARN)
+        self.assertEqual(smoke_probes._evaluate_t25([use, iso_hook])[0], Verdict.PASS)
+        self.assertEqual(smoke_probes._evaluate_t25([iso_hook])[0], Verdict.SKIP)
+
+    def test_tier2_api_error_fails_not_skips(self):
+        # Every Tier 2 probe on a model_not_found run reads FAIL with the
+        # reason — T2.5/T2.6 used to SKIP vacuously on such runs.
+        sandbox = _scratch_dir("t2_apierr")
+        self.addCleanup(__import__("shutil").rmtree, sandbox, True)
+        bad = _cli_result(usage_ids=(), response="There's an issue with the selected model",
+                          input_tokens=None, output_tokens=None, total_turns=1)
+        with mock.patch.object(smoke_probes, "_sandbox_dir", return_value=sandbox), \
+             mock.patch.object(smoke_probes, "execute_smoke_run",
+                               return_value=(bad, {"session_id": "sid-apierr-000"})), \
+             mock.patch.object(smoke_probes, "find_transcript", return_value=Path("/fake.jsonl")), \
+             mock.patch.object(smoke_probes, "load_transcript_records",
+                               return_value=[_SYNTHETIC_ERROR_RECORD]), \
+             mock.patch.object(smoke_probes, "find_subagent_transcripts", return_value=[]):
+            results = smoke_probes.run_tier2("", {}, timeout=5)
+        self.assertEqual([r.probe_id for r in results], ["T2.1", "T2.2", "T2.3", "T2.4", "T2.5", "T2.6"])
+        for r in results:
+            with self.subTest(probe=r.probe_id):
+                self.assertEqual(r.verdict, Verdict.FAIL, r.detail)
+                self.assertIn("model_not_found", r.detail)
+
+    def test_tier2_recovered_error_does_not_trip_the_gate(self):
+        # A recovered mid-response server_error must reach each probe's own
+        # verdict (with the warning recorded), never the gate's FAIL.
+        sandbox = _scratch_dir("t2_recovered")
+        self.addCleanup(__import__("shutil").rmtree, sandbox, True)
+        records = [_REAL_TOOL_USE_RECORD, _SERVER_ERROR_RECORD, _REAL_FINAL_RECORD]
+        with mock.patch.object(smoke_probes, "_sandbox_dir", return_value=sandbox), \
+             mock.patch.object(smoke_probes, "execute_smoke_run",
+                               return_value=(_cli_result(), {"session_id": "sid-recovered-00"})), \
+             mock.patch.object(smoke_probes, "find_transcript", return_value=Path("/fake.jsonl")), \
+             mock.patch.object(smoke_probes, "load_transcript_records", return_value=records), \
+             mock.patch.object(smoke_probes, "find_subagent_transcripts", return_value=[]):
+            results = smoke_probes.run_tier2("", {}, timeout=5)
+        for r in results:
+            with self.subTest(probe=r.probe_id):
+                self.assertNotIn("did not reach a real model", r.detail)
+                self.assertIn("Live-run warning", r.detail)
+                gate = [e for e in r.evidence if e.command.startswith("live-run health")]
+                self.assertTrue(gate and gate[0].output.startswith("ok with warning"), gate)
+
+
+class MalformedToolInputTests(unittest.TestCase):
+    """R1: a tool_use whose `input` is a non-empty string or list (untrusted,
+    malformed transcript) must never raise — it used to abort the whole run with
+    no report via `(input or {}).get(...)` — and must never substring-match."""
+
+    BAD_INPUTS = ("isolation worktree prompt web_fetch.sh skill polars", ["isolation", "prompt"], 7)
+
+    @staticmethod
+    def _use(tid, name, inp):
+        return {"type": "assistant", "message": {"model": "m", "content": [
+            {"type": "tool_use", "id": tid, "name": name, "input": inp}]}}
+
+    @staticmethod
+    def _ok(tid):
+        return {"type": "user", "message": {"content": [
+            {"type": "tool_result", "tool_use_id": tid, "content": "ok"}]}}
+
+    def test_tool_input_normalizes_non_dicts(self):
+        for bad in self.BAD_INPUTS + (None, ""):
+            with self.subTest(bad=bad):
+                self.assertEqual(smoke_probes._tool_input(bad), {})
+        self.assertEqual(smoke_probes._tool_input({"prompt": "P"}), {"prompt": "P"})
+
+    def test_tool_calls_yield_dict_input(self):
+        for bad in self.BAD_INPUTS:
+            with self.subTest(bad=bad):
+                calls = smoke_probes._tool_calls([self._use("t1", "Bash", bad), self._ok("t1")])
+                self.assertEqual(calls, [("Bash", {}, False)])
+
+    def test_top_level_dispatches_non_dict_input_has_no_prompt(self):
+        for bad in self.BAD_INPUTS:
+            with self.subTest(bad=bad):
+                tops = smoke_probes._top_level_dispatches([self._use("a0", "Agent", bad), self._ok("a0")])
+                self.assertEqual([(t["id"], t["prompt"]) for t in tops], [("a0", None)])
+
+    def test_t26_main_transcript_with_string_input_does_not_raise(self):
+        # The reviewer's repro shape: the orchestrator's Agent call carries a
+        # string input. T2.6 must return a verdict, not AttributeError.
+        main = [self._use("a0", "Agent", "Reply with the single word OK"), self._ok("a0")]
+        sub = [_sub_snapshot(["Bash", "Read"])]
+        verdict, facts, _ = smoke_probes._evaluate_t26([sub], main)
+        self.assertEqual(facts["top_level_dispatches"], 1)
+        self.assertEqual(verdict, Verdict.PASS)
+        # A nested call with a list input inside the subagent is still counted.
+        sub2 = [_sub_snapshot(["Bash"]), self._use("n1", "Agent", ["x"]),
+                {"type": "user", "message": {"content": [
+                    {"type": "tool_result", "tool_use_id": "n1", "is_error": True,
+                     "content": "No such tool available: Agent"}]}}]
+        self.assertEqual(smoke_probes._evaluate_t26([sub2], main)[1]["nested_calls"], 1)
+
+    def test_t23_t24_t25_consumers_tolerate_non_dict_input(self):
+        for bad in self.BAD_INPUTS:
+            with self.subTest(bad=bad):
+                recs = [self._use("b1", "Bash", bad), self._ok("b1"),
+                        self._use("s1", "Skill", bad), self._ok("s1"),
+                        self._use("a1", "Agent", bad), self._ok("a1")]
+                # No web call, no polars skill, no isolation request can be read
+                # out of a non-dict input — in particular no substring match.
+                self.assertEqual(smoke_probes._evaluate_t23([recs])[1]["web_calls"], 0)
+                self.assertEqual(smoke_probes._evaluate_t24(recs)[1]["skills_called"], [""])
+                self.assertEqual(smoke_probes._evaluate_t25(recs),
+                                 (Verdict.SKIP, {"isolation_requested": False, "strip_evidence": False}))
+
+    def test_t26_docstring_warns_about_non_orchestrator_subagents(self):
+        # R3: a subagent not started by an orchestrator Agent/Task call reads
+        # as unlinked -> nested -> FAIL; the evaluator's docstring says so.
+        doc = smoke_probes._evaluate_t26.__doc__
+        self.assertIn("/code-review", doc)
+        self.assertIn("forked skill", doc)
+        main = [self._use("a0", "Agent", {"prompt": "P"}), self._ok("a0")]
+        review = [{"type": "user", "agentId": "agentReview", "message": {"content": "Review the diff"}},
+                  _sub_snapshot(["Bash", "Read"])]
+        linked = [{"type": "user", "agentId": "agent0", "message": {"content": "P"}}, _sub_snapshot(["Bash"])]
+        self.assertEqual(smoke_probes._evaluate_t26([linked, review], main)[0], Verdict.FAIL)
+
+
+class StatuslineProbeTests(unittest.TestCase):
+    """T0.7 renders both statuslines for a synthetic session into a report-local
+    cache dir and never writes /tmp."""
+
+    def setUp(self):
+        self.cache = _scratch_dir("t07_cache")
+        self.addCleanup(__import__("shutil").rmtree, self.cache, True)
+
+    def test_tmp_candidates_are_exact_synthetic_paths(self):
+        paths = smoke_probes._synthetic_tmp_cache_paths()
+        self.assertTrue(paths)
+        for p in paths:
+            self.assertTrue(p.startswith("/tmp/claude-"), p)
+            self.assertIn("-smoke-synthetic", p)
+            self.assertNotIn("*", p)
+
+    def test_both_seams_point_at_the_cache_dir(self):
+        done = subprocess.CompletedProcess(args=[], returncode=0, stdout="bar\n", stderr="")
+        with mock.patch.object(smoke_probes.subprocess, "run", return_value=done) as run:
+            r = smoke_probes.probe_statuslines(str(_REPO_ROOT), cache_dir=self.cache)
+        self.assertEqual(run.call_count, 2)
+        for call in run.call_args_list:
+            env = call.kwargs["env"]
+            self.assertEqual(env["DAAF_CONTEXT_BAR_CACHE_DIR"], str(self.cache))
+            self.assertEqual(env["DAAF_SUBAGENT_BAR_CACHE_DIR"], str(self.cache))
+        self.assertEqual(r.verdict, Verdict.PASS, r.detail)
+
+    def test_default_cache_dir_is_project_scratch_not_tmp(self):
+        base = _scratch_dir("t07_base")
+        self.addCleanup(__import__("shutil").rmtree, base, True)
+        scripts = base / ".claude" / "scripts"
+        scripts.mkdir(parents=True)
+        for name in ("context-bar.sh", "subagent-bar.sh"):
+            (scripts / name).write_text("echo stub\n")
+        done = subprocess.CompletedProcess(args=[], returncode=0, stdout="bar\n", stderr="")
+        with mock.patch.object(smoke_probes.subprocess, "run", return_value=done) as run:
+            smoke_probes.probe_statuslines(str(base))
+        used = run.call_args.kwargs["env"]["DAAF_CONTEXT_BAR_CACHE_DIR"]
+        self.assertEqual(used, str(base / "scripts" / "scratch" / "deploy_smoke_t07_cache"))
+        self.assertFalse(used.startswith("/tmp"))
+
+    def test_changed_tmp_cache_warns(self):
+        done = subprocess.CompletedProcess(args=[], returncode=0, stdout="bar\n", stderr="")
+        paths = smoke_probes._synthetic_tmp_cache_paths()
+        before = {p: None for p in paths}
+        after = dict(before, **{paths[0]: (1, 7)})
+        with mock.patch.object(smoke_probes.subprocess, "run", return_value=done), \
+             mock.patch.object(smoke_probes, "_stat_paths", side_effect=[before, after]):
+            r = smoke_probes.probe_statuslines(str(_REPO_ROOT), cache_dir=self.cache)
+        self.assertEqual(r.verdict, Verdict.WARN)
+        self.assertIn(paths[0], r.detail)
+        # An unchanged pre-existing /tmp file (e.g. a leftover) is not this run's write.
+        stale = dict(before, **{paths[0]: (1, 7)})
+        with mock.patch.object(smoke_probes.subprocess, "run", return_value=done), \
+             mock.patch.object(smoke_probes, "_stat_paths", side_effect=[stale, dict(stale)]):
+            self.assertEqual(smoke_probes.probe_statuslines(str(_REPO_ROOT), cache_dir=self.cache).verdict,
+                             Verdict.PASS)
+
+    def test_real_render_writes_report_local_caches_and_leaves_tmp_alone(self):
+        # Real scripts, real bash; ANTHROPIC_BASE_URL dropped so context-bar never
+        # reaches the OpenRouter catalogue (no network in this suite).
+        env = {k: v for k, v in os.environ.items() if k != "ANTHROPIC_BASE_URL"}
+        tmp_before = smoke_probes._stat_paths(smoke_probes._synthetic_tmp_cache_paths())
+        with mock.patch.dict(os.environ, env, clear=True):
+            r = smoke_probes.probe_statuslines(str(_REPO_ROOT), cache_dir=self.cache)
+        self.assertEqual(r.verdict, Verdict.PASS, r.detail)
+        written = sorted(p.name for p in self.cache.iterdir())
+        self.assertIn("claude-model-smoke-synthetic", written)
+        self.assertIn("claude-ctx-window-smoke-synthetic", written)
+        self.assertEqual(smoke_probes._stat_paths(smoke_probes._synthetic_tmp_cache_paths()), tmp_before)
+
+    def test_run_tier0_and_cli_forward_the_report_local_dir(self):
+        stub = route_detection.ProbeResult(probe_id="T0.7", name="t", tier="0", verdict=Verdict.PASS)
+        with mock.patch.object(smoke_probes, "probe_statuslines", return_value=stub) as ps, \
+             mock.patch.object(smoke_probes, "probe_cli_available", return_value=stub), \
+             mock.patch.object(smoke_probes, "probe_hook_registration", return_value=stub), \
+             mock.patch.object(smoke_probes, "probe_shim_health", return_value=stub), \
+             mock.patch.object(smoke_probes, "probe_auth_json", return_value=stub), \
+             mock.patch.object(smoke_probes, "probe_workspace_invariants", return_value=stub), \
+             mock.patch.object(smoke_probes, "probe_r_locale", return_value=stub), \
+             mock.patch.object(smoke_probes, "probe_local_settings_shadowing", return_value=stub), \
+             mock.patch.object(smoke_probes, "probe_synced_surface", return_value=stub):
+            smoke_probes.run_tier0(route_detection.build_route_info({}), {}, base_dir="/not-used",
+                                   statusline_cache_dir=self.cache)
+        self.assertEqual(ps.call_args.kwargs["cache_dir"], self.cache)
+
+        report = _scratch_dir("t07_report")
+        self.addCleanup(__import__("shutil").rmtree, report, True)
+        argv = ["run_deploy_smoke.py", "--tiers", "0", "--yes", "--report-dir", str(report)]
+        with mock.patch.object(sys, "argv", argv), \
+             mock.patch.object(smoke_probes, "run_tier0", return_value=[stub]) as rt0, \
+             mock.patch("builtins.print"):
+            run_deploy_smoke.main()
+        self.assertEqual(rt0.call_args.kwargs["statusline_cache_dir"],
+                         report / "evidence" / "t07_statusline_cache")
+
+
+class LocalSettingsShadowingTests(unittest.TestCase):
+    """T0.12 against a temporary base_dir holding .claude/settings{,.local}.json."""
+
+    SHARED_ENV = {"ANTHROPIC_MODEL": "claude-opus-5-5[1m]", "CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH": "1"}
+
+    def setUp(self):
+        self.base = _scratch_dir("t012_base")
+        (self.base / ".claude").mkdir()
+        (self.base / ".claude" / "settings.json").write_text(json.dumps({"env": self.SHARED_ENV}))
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.base, ignore_errors=True)
+
+    def _probe(self, local_text=None):
+        if local_text is not None:
+            (self.base / ".claude" / "settings.local.json").write_text(local_text)
+        return smoke_probes.probe_local_settings_shadowing(str(self.base))
+
+    def test_no_local_file_passes(self):
+        r = self._probe()
+        self.assertEqual(r.verdict, Verdict.PASS)
+        self.assertIn("No settings.local.json", r.detail)
+
+    def test_local_file_without_env_passes(self):
+        r = self._probe(json.dumps({"permissions": {"allow": []}}))
+        self.assertEqual(r.verdict, Verdict.PASS)
+
+    def test_shadowed_non_model_key_warns_and_names_file_and_key(self):
+        r = self._probe(json.dumps({"env": {"CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH": "3"}}))
+        self.assertEqual(r.verdict, Verdict.WARN)
+        self.assertIn("settings.local.json", r.detail)
+        self.assertIn("CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH", r.detail)
+        self.assertNotIn('"3"', json.dumps([e.to_dict() for e in r.evidence]))
+
+    def test_shadowed_anthropic_model_fails_with_values_via_redaction_helper(self):
+        r = self._probe(json.dumps({"env": {"ANTHROPIC_MODEL": "gpt-6-astra[1m]"}}))
+        self.assertEqual(r.verdict, Verdict.FAIL)
+        self.assertIn("ANTHROPIC_MODEL", r.detail)
+        outputs = " ".join(e.output for e in r.evidence)
+        self.assertIn("gpt-6-astra[1m]", outputs)
+        self.assertIn("claude-opus-5-5[1m]", outputs)
+
+    def test_invalid_local_json_warns(self):
+        r = self._probe("{not json")
+        self.assertEqual(r.verdict, Verdict.WARN)
+        self.assertIn("invalid JSON", r.detail)
+
+    def test_local_only_model_selector_warns(self):
+        # settings.json does not set CLAUDE_CODE_SUBAGENT_MODEL, so nothing is
+        # shadowed, but the local pin still re-points every session.
+        r = self._probe(json.dumps({"env": {"CLAUDE_CODE_SUBAGENT_MODEL": "example-model-1"}}))
+        self.assertEqual(r.verdict, Verdict.WARN)
+        self.assertIn("CLAUDE_CODE_SUBAGENT_MODEL", r.detail)
+        self.assertIn("does not set", r.detail)
+        outputs = " ".join(e.output for e in r.evidence)
+        self.assertIn("example-model-1", outputs)
+        self.assertIn("settings.json=<unset>", outputs)
+
+    def test_local_only_non_selector_key_still_passes(self):
+        r = self._probe(json.dumps({"env": {"EXAMPLE_LOCAL_FLAG": "1"}}))
+        self.assertEqual(r.verdict, Verdict.PASS)
+
+    def test_local_only_selector_is_noted_alongside_a_shadow_fail(self):
+        r = self._probe(json.dumps({"env": {"ANTHROPIC_MODEL": "example-model-2",
+                                            "CLAUDE_CODE_SUBAGENT_MODEL": "example-model-1"}}))
+        self.assertEqual(r.verdict, Verdict.FAIL)
+        self.assertIn("ANTHROPIC_MODEL", r.detail)
+        self.assertIn("CLAUDE_CODE_SUBAGENT_MODEL", r.detail)
+
+
+class SyncedSurfaceTests(unittest.TestCase):
+    """T0.13 against an injected config dir; INFO in every case."""
+
+    def setUp(self):
+        self.cfg = _scratch_dir("t013_cfg")
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.cfg, ignore_errors=True)
+
+    def test_empty_config_is_info_none(self):
+        r = smoke_probes.probe_synced_surface({}, config_dir=str(self.cfg))
+        self.assertEqual(r.verdict, Verdict.INFO)
+        self.assertIn("No claude.ai synced skills or plugins", r.detail)
+
+    def test_plugin_with_hooks_is_info_naming_events(self):
+        # Made-up bucket, skill and plugin names: the probe logic is generic.
+        bucket = "bucket0000_test"
+        (self.cfg / "skills" / "synced" / bucket / "example-skill").mkdir(parents=True)
+        (self.cfg / "skills" / "synced" / f".bucket-{bucket}").mkdir(parents=True)
+        hooks_dir = self.cfg / "plugins" / "synced" / bucket / "example-plugin" / "hooks"
+        hooks_dir.mkdir(parents=True)
+        (hooks_dir / "hooks.json").write_text(json.dumps({"hooks": {
+            "PostToolUse": [{"matcher": "Edit|Write", "hooks": []}], "Stop": [{"hooks": []}]}}))
+        (self.cfg / "plugins" / "synced" / bucket / "other-plugin").mkdir()
+        # base_dir points at the scratch cfg too, so no real project settings leak in.
+        r = smoke_probes.probe_synced_surface({"CLAUDE_CONFIG_DIR": str(self.cfg)}, base_dir=str(self.cfg))
+        self.assertEqual(r.verdict, Verdict.INFO)
+        self.assertIn("example-skill", r.detail)
+        self.assertIn("2 synced plugin(s) on disk: example-plugin (enabled state not set), "
+                      "other-plugin (enabled state not set)", r.detail)
+        self.assertIn("Plugin example-plugin registers PostToolUse, Stop hook(s)", r.detail)
+        self.assertIn("outside DAAF's audited hook set", r.detail)
+        self.assertNotIn(".bucket-", r.detail)
+
+    def test_disabled_plugin_is_labelled_from_enabled_plugins(self):
+        # G10: "<name>@synced": false (the shape /plugin writes to user
+        # settings, observed 2026-09-24) marks the on-disk plugin disabled; a
+        # later-precedence local file overrides an earlier scope per key.
+        bucket = "bucket0000_test"
+        hooks_dir = self.cfg / "plugins" / "synced" / bucket / "example-plugin" / "hooks"
+        hooks_dir.mkdir(parents=True)
+        (hooks_dir / "hooks.json").write_text(json.dumps({"hooks": {"Stop": [{"hooks": []}]}}))
+        (self.cfg / "plugins" / "synced" / bucket / "other-plugin").mkdir()
+        (self.cfg / "settings.json").write_text(json.dumps({"enabledPlugins": {
+            "example-plugin@synced": False, "other-plugin@synced": False}}))
+        (self.cfg / ".claude").mkdir()
+        (self.cfg / ".claude" / "settings.local.json").write_text(json.dumps({"enabledPlugins": {
+            "other-plugin@synced": True}}))
+        r = smoke_probes.probe_synced_surface({}, config_dir=str(self.cfg), base_dir=str(self.cfg))
+        self.assertEqual(r.verdict, Verdict.INFO)
+        self.assertIn("example-plugin (disabled), other-plugin (enabled)", r.detail)
+        self.assertIn("but enabledPlugins disables it", r.detail)
+        self.assertNotIn("Plugin example-plugin registers Stop hook(s) — these run outside", r.detail)
+
+    def test_listing_error_is_info_not_an_exception(self):
+        # F5: an OSError while listing (e.g. PermissionError on a bucket) must
+        # not abort the run; the probe stays INFO and names the error.
+        with mock.patch.object(smoke_probes, "_synced_names",
+                               side_effect=PermissionError(13, "Permission denied")):
+            r = smoke_probes.probe_synced_surface({}, config_dir=str(self.cfg))
+        self.assertEqual(r.verdict, Verdict.INFO)
+        self.assertIn("Could not list", r.detail)
+        self.assertIn("PermissionError", r.detail)
 
 
 class ParseTiersTests(unittest.TestCase):

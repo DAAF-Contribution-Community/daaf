@@ -110,17 +110,20 @@ POST_SNAPSHOT_OPENROUTER_ADDITIONS = {
     "qwen-38-27b",
     "glm-53",
     # Added 2026-09-05: GPT-6 Astra over OpenRouter (openai/gpt-6-astra bare
-    # slug; the real openai/gpt-6-astra-pro slug is deliberately excluded because
-    # DAAF's exact-match rule keeps -pro variants on conservative thresholds).
+    # slug; the real openai/gpt-6-astra-pro slug is deliberately excluded. The
+    # original reason, that DAAF kept -pro on conservative thresholds, was
+    # superseded 2026-09-29; the exclusion now rests on -pro's ~3x token-accounting
+    # inflation, i.e. cost. See config/models.yaml RETEST 2026-09-29).
     "gpt-6-astra",
 }
 
 # Anthropic keys added after the PREEXISTING snapshot (opus-5 added 2026-07-25
-# for the Opus 5 evaluation). Kept separate, mirroring G1R_OPENROUTER_ADDITIONS,
-# so the preexisting identity assertion keeps documenting exactly what predates
-# each later addition.
+# for the Opus 5 evaluation; opus-55 added 2026-09-23 for Opus 5.5). Kept
+# separate, mirroring G1R_OPENROUTER_ADDITIONS, so the preexisting identity
+# assertion keeps documenting exactly what predates each later addition.
 ANTHROPIC_ADDITIONS = {
     "opus-5",
+    "opus-55",
 }
 
 
@@ -248,9 +251,10 @@ class ModelRegistryTests(unittest.TestCase):
 
     def test_provider_filter_adds_chatgpt_without_changing_existing_counts(self):
         models = self.load_all()
-        self.assertEqual(43, len(models))
-        # 8 preexisting + opus-5 (added 2026-07-25 for the Opus 5 evaluation).
-        self.assertEqual(9, len(filter_models(models, provider="anthropic")))
+        self.assertEqual(44, len(models))
+        # 8 preexisting + opus-5 (added 2026-07-25 for the Opus 5 evaluation)
+        # + opus-55 (added 2026-09-23 for the Opus 5.5 evaluation).
+        self.assertEqual(10, len(filter_models(models, provider="anthropic")))
         # 16 preexisting + Kimi K3 + four later Gemini additions + DeepSeek V4
         # Flash 0731 (2026-08-02) + the Inkling pair (2026-08-10) + Grok 4.6,
         # DeepSeek V4 Pro 0813, and Qwen 3.8 2.4T A95B (2026-08-12) + Qwen 3.8
@@ -296,11 +300,15 @@ class ModelRegistryTests(unittest.TestCase):
         TERRA_LONG_CONTEXT_RATES = {
             "input": 4.00, "cached_input": 0.40, "cache_write": 5.00, "output": 18.00,
         }
+        # Sol schedule updated 2026-09-29 to OpenAI's PROMOTIONAL direct-API price
+        # ("available at least through November 21, 2026"); revert with the
+        # registry when it ends (prior short 5.00/0.50/6.25/30.00, long
+        # 10.00/1.00/12.50/45.00).
         SOL_SHORT_CONTEXT_RATES = {
-            "input": 5.00, "cached_input": 0.50, "cache_write": 6.25, "output": 30.00,
+            "input": 4.00, "cached_input": 0.40, "cache_write": 5.00, "output": 20.00,
         }
         SOL_LONG_CONTEXT_RATES = {
-            "input": 10.00, "cached_input": 1.00, "cache_write": 12.50, "output": 45.00,
+            "input": 8.00, "cached_input": 0.80, "cache_write": 10.00, "output": 30.00,
         }
         expected = {
             "gpt-56-luna-chatgpt": (

@@ -206,8 +206,8 @@
 # them (multi-tool loops, subagent dispatch, two-tier routing) with no proxy and
 # no rebuild -- just the four Option C lines above plus the model-routing keys in
 # section [3] (validated live 2026-07-09). See section [3] for the GPT model
-# slugs, context-window sizing, and the tier-analog naming (Sol / Terra / Luna),
-# plus the GPT-6 Astra flagship (slug gpt-6-astra).
+# slugs (recommended: gpt-6-sol strong / gpt-6-luna fast), context-window sizing,
+# and the GPT family naming, plus the GPT-6 Astra flagship (slug gpt-6-astra).
 #
 # ----------------------------------------------------------------------------
 # Option D: Amazon Bedrock
@@ -254,8 +254,8 @@
 # Two-tier routing: map DAAF's strong / fast tiers to your models
 # ----------------------------------------------------------------------------
 # Strong tier (Opus-analog) and fast tier (Sonnet-analog).
-# Same-window example: openai/gpt-5.6-sol (strong) with
-# openai/gpt-5.6-terra (fast); openai/gpt-6-astra also works as the strong tier.
+# Recommended same-window GPT pair: openai/gpt-6-sol (strong) with
+# openai/gpt-6-luna (fast); openai/gpt-6-astra is a premium strong-tier option.
 # See the GLM-specific global-window guidance below
 # before routing exact GLM and Air together.
 # --- To activate, remove the leading '#' and set your model slugs: ---
@@ -274,7 +274,7 @@
 # from this file -- DAAF's settings.json "env" block overrides it; section [4]
 # explains how to change the standing default there.
 # --- To activate, remove the leading '#': ---
-#ANTHROPIC_MODEL=openai/gpt-5.6-sol
+#ANTHROPIC_MODEL=openai/gpt-6-sol
 #
 # ----------------------------------------------------------------------------
 # Context window size
@@ -306,22 +306,26 @@
 # the one global value is valid for every routed model. This runtime path has no
 # supported per-model context-window override.
 #
-# GPT window sizes: the gpt-5.6 family (sol / terra / luna), gpt-6-astra, and
-# gpt-5.5 / 5.4 are 1050000 on API/OpenRouter routes; gpt-5.2 is 400000. DAAF keeps Claude
+# GPT window sizes: the gpt-5.6 family (sol / terra / luna), gpt-6-astra,
+# gpt-6-sol, gpt-6-luna, and gpt-5.5 / 5.4 are 1050000 on API/OpenRouter routes
+# (flagship -pro slugs share their base's window); gpt-5.2 is 400000. DAAF keeps Claude
 # Code automatic compaction disabled, so CLAUDE_CODE_AUTO_COMPACT_WINDOW is NOT
 # an alternative declaration or protection mechanism.
 #
-# GPT-5.6 FAMILY & TIER-ANALOG NAMING: Sol (strong / Opus-analog), Terra
-# (mid / Sonnet-analog), Luna (economy / Haiku-analog) -- all with 1,050,000-token
-# windows; the older gpt-5.5 / 5.4 / 5.2 slugs still work. GPT-6 Astra (slug
-# gpt-6-astra) is the newer flagship, also with a 1,050,000-token window (128,000
-# max output). Context-utilization numbers are ESTIMATES on GPT sessions
-# (OpenRouter doesn't serve Claude Code's token-counting endpoint). GPT models use
-# DAAF's conservative context-quality thresholds by default; exact gpt-5.6-sol,
-# gpt-5.6-sol[1m], gpt-6-astra, and gpt-6-astra[1m] (including provider-prefixed
-# forms) share a validated profile that keeps higher validated absolute gates while
-# using higher percentages: 60%/300k, 75%/400k, and 90%/500k (whichever fires
-# first). Non-Sol/Astra and near-match variants (e.g. gpt-6-astra-pro) remain
+# GPT FAMILY NAMING: the gpt-5.6 family has Sol (strongest), Terra (mid), and
+# Luna (fastest / cheapest); GPT-6 has Sol, Luna, and the Astra flagship (128,000
+# max output), with no Terra. All have 1,050,000-token windows; the older
+# gpt-5.5 / 5.4 / 5.2 slugs still work. DAAF's RECOMMENDED MAPPING (2026-09-29
+# user decision, not a validation run): Sol -> strong tier (OPUS key), Luna ->
+# fast tier (SONNET key), shown with gpt-6-sol / gpt-6-luna; gpt-6-astra is a
+# premium strong-tier option (5x Sol's price). Context-utilization numbers are
+# ESTIMATES on GPT sessions (OpenRouter doesn't serve Claude Code's token-counting
+# endpoint). GPT models use DAAF's conservative context-quality thresholds by
+# default; exact gpt-5.6-sol and gpt-6-astra (validated), plus gpt-6-sol and the flagship -pro form of all three
+# (admitted 2026-09-29 by user policy decision, not validation) -- each optionally
+# [1m] and provider-prefixed -- share a profile that keeps higher absolute gates
+# while using higher percentages: 60%/300k, 75%/400k, and 90%/500k (whichever
+# fires first). gpt-6-luna, other GPT variants, and near-match variants remain
 # conservative. Physical-window mapping and quality thresholds are separate.
 # See the installation guide's "GPT (OpenAI) models via OpenRouter" section for
 # current model guidance.
@@ -342,7 +346,7 @@
 # Optional Claude Code output budget (restart required)
 # ----------------------------------------------------------------------------
 # Claude Code defaults CLAUDE_CODE_MAX_OUTPUT_TOKENS to 32000 and supports up to
-# 64000. On Claude Code 2.1.202, use the plain decimal value 64000 (not "64K").
+# 64000. On the pinned Claude Code 2.1.281, use plain decimal 64000 (not "64K").
 # Thinking tokens count toward this output budget. Raising it reserves more of the
 # context window for a possible response, leaving less room for conversation
 # history and tool results and potentially causing earlier DAAF stop/restart
@@ -404,10 +408,13 @@
 #
 # MODEL SLUGS: the shim lane is the one place the [1m] window suffix is verified
 # (see section [3] for what these keys do). Use BARE OpenAI slugs here -- no
-# "openai/" prefix:
+# "openai/" prefix. gpt-6-sol / gpt-6-luna are the recommended pair but are
+# UNTESTED on both shim lanes: the shim forwards any slug unchanged, while DAAF's
+# recorded shim-lane tests used gpt-5.6-sol and gpt-6-astra. If OpenAI rejects a
+# GPT-6 slug, use gpt-5.6-sol[1m] / gpt-5.6-luna[1m] instead.
 # --- To activate, remove the leading '#': ---
-#ANTHROPIC_DEFAULT_OPUS_MODEL=gpt-5.6-sol[1m]
-#ANTHROPIC_DEFAULT_SONNET_MODEL=gpt-5.6-terra[1m]
+#ANTHROPIC_DEFAULT_OPUS_MODEL=gpt-6-sol[1m]
+#ANTHROPIC_DEFAULT_SONNET_MODEL=gpt-6-luna[1m]
 #
 # GPT-6 Astra is available as an alternative strong-tier slug on this lane --
 # gpt-6-astra[1m] (bare; the [1m] hint is verified here). One Astra-specific
@@ -423,12 +430,12 @@
 #
 # SESSION-START MODEL: do NOT set ANTHROPIC_MODEL in this file for the shim -- it
 # will not take effect. DAAF's project settings.json sets ANTHROPIC_MODEL in its
-# "env" block (shipped default: claude-opus-4-8[1m], since most DAAF users run
+# "env" block (shipped default: claude-opus-5-5[1m], since most DAAF users run
 # Claude), and a settings.json env value OVERRIDES the container environment
 # (verified empirically 2026-07-12). GPT sessions therefore open on the Claude
 # default; the first message fails loudly, which makes the needed "/model" switch
 # obvious. To make GPT your STANDING default instead, edit the ANTHROPIC_MODEL
-# line in /daaf/.claude/settings.json (e.g. to gpt-5.6-sol[1m]) -- see the
+# line in /daaf/.claude/settings.json (e.g. to gpt-6-sol[1m]) -- see the
 # technical FAQ entry "My GPT session starts on a Claude model" for details.
 #
 # ----------------------------------------------------------------------------
@@ -584,7 +591,7 @@
 # suffix works ALONGSIDE the "[1m]" window hint -- Claude Code consumes "[1m]"
 # itself and passes "#<effort>" through to the shim, which strips it before the
 # request reaches OpenAI. Example per-model override (fast tier at medium effort):
-#     ANTHROPIC_DEFAULT_SONNET_MODEL=gpt-5.6-terra[1m]#medium
+#     ANTHROPIC_DEFAULT_SONNET_MODEL=gpt-6-luna[1m]#medium
 #
 # IMPORTANT (shim v1.2.3+): the /model reasoning-effort selector in the Claude
 # Code UI does NOT work for GPT slugs. Claude Code gates effort by model-ID
@@ -597,7 +604,8 @@
 # reasoning.effort when no usable per-request signal and no slug suffix are
 # present. Valid values none|low|medium|high|xhigh|max ("max" is supported on the
 # gpt-5.6 family and gpt-6-astra). gpt-6-astra does NOT accept "none" -- the shim
-# clamps a requested "none" to "low" for Astra.
+# clamps a requested "none" to "low" for Astra. DAAF has not checked which levels
+# gpt-6-sol and gpt-6-luna accept.
 # Leave unset to use the default "high" (v1.2.2+ always sends an effort now -- the
 # old implicit "medium" server default no longer applies). Read at shim startup,
 # so a restart is required.

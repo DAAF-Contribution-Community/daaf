@@ -188,9 +188,9 @@ These thresholds apply to **all agents** — orchestrator and subagents alike. T
 
 | Threshold Profile | Membership | ELEVATED at | HIGH at | CRITICAL at |
 |-------------------|------------|-------------|---------|-------------|
-| **Claude Fable/Mythos validated extended-horizon** | Registered Claude Fable/Mythos models | ≥ 30% or ≥ 300k tokens | ≥ 40% or ≥ 400k tokens | ≥ 50% or ≥ 500k tokens |
-| **Exact GPT Sol/Astra validated** | Exact terminal model slugs, bare or provider-prefixed: `gpt-5.6-sol`, `gpt-5.6-sol[1m]`, `gpt-6-astra`, or `gpt-6-astra[1m]` | ≥ 60% or ≥ 300k tokens | ≥ 75% or ≥ 400k tokens | ≥ 90% or ≥ 500k tokens |
-| **Conservative-default** | Opus, Sonnet, unknown model IDs, every other GPT variant, GLM models, and all other alternative-provider models unless individually validated and registered | ≥ 40% or ≥ 150k tokens | ≥ 60% or ≥ 200k tokens | ≥ 75% or ≥ 250k tokens |
+| **Claude Fable/Mythos validated extended-horizon** | Registered Claude Fable/Mythos models, plus `claude-opus-5-5` (bare and `[1m]`) — admitted 2026-09-23 by user policy decision, not by DAAF quality validation | ≥ 30% or ≥ 300k tokens | ≥ 40% or ≥ 400k tokens | ≥ 50% or ≥ 500k tokens |
+| **GPT Sol/Astra extended-horizon** | Exact terminal model slugs, bare or provider-prefixed, each optionally followed by `[1m]`: `gpt-5.6-sol` and `gpt-6-astra` (validated), plus `gpt-6-sol` and the `-pro` form of all three (e.g. `gpt-6-sol-pro[1m]`) — admitted 2026-09-29 by user policy decision, not by DAAF quality validation | ≥ 60% or ≥ 300k tokens | ≥ 75% or ≥ 400k tokens | ≥ 90% or ≥ 500k tokens |
+| **Conservative-default** | all Opus models except `claude-opus-5-5` (above), Sonnet, unknown model IDs, every other GPT variant, GLM models, and all other alternative-provider models unless individually validated and registered | ≥ 40% or ≥ 150k tokens | ≥ 60% or ≥ 200k tokens | ≥ 75% or ≥ 250k tokens |
 
 **Status levels and required actions** (identical across profiles; NOMINAL is any utilization below the ELEVATED trigger):
 
@@ -221,7 +221,7 @@ Subagents receive their own `context-reporter` utilization injections, measured 
 - Any decisions made or assumptions applied that the next agent needs to know
 - Confidence assessment of completed work
 
-**Async completion note:** Subagents dispatched via the Agent tool run in the background by default; their completion — including an early return under context pressure — arrives at the orchestrator as an async task notification rather than a synchronous tool return, and when several subagents were dispatched together these notifications may arrive one at a time. A subagent's early-return output must therefore be self-contained per the protocol above, because the orchestrator will not act on it until the whole dispatched wave has returned (see `.claude/skills/daaf-orchestrator/SKILL.md` § Subagent Coordination > "Wave Barrier Discipline (Async Dispatch)").
+**Async completion note:** How a dispatched subagent's completion — including an early return under context pressure — reaches the orchestrator depends on the Claude Code version and settings. With DAAF's shipped `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`, dispatches on the pinned Claude Code version (2.1.281, observed 2026-09-24) run in the foreground and return inline in the dispatching turn; without that setting, or on other versions, completion can arrive as an async task notification rather than a synchronous tool return, and when several subagents were dispatched together these notifications may arrive one at a time. Either way, a subagent's early-return output must be self-contained per the protocol above, because the orchestrator will not act on it until the whole dispatched wave has returned (see `.claude/skills/daaf-orchestrator/SKILL.md` § Subagent Coordination > "Wave Barrier Discipline (Async Dispatch)").
 
 **STATE.md updates:** Subagents do not write STATE.md directly — that is the orchestrator's responsibility. However, subagents returning early under context pressure should include enough structured information in their return output for the orchestrator to update STATE.md accurately. The orchestrator must update STATE.md whenever a subagent returns early due to ELEVATED or higher utilization.
 

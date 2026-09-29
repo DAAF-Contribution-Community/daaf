@@ -5,6 +5,15 @@ report — new models, pricing updates, scoring changes, display refinements,
 and corpus hygiene. Newest entries first. Dates are the day each change landed
 in the public report.
 
+## 2026-09-29
+
+- **Pricing** Re-priced the GPT-5.6 models from each route's current source.
+  - On OpenRouter, the extra 50% discount on Terra and Luna has ended, so their prices doubled: Terra is now $2 / $12 and Luna $0.20 / $1.20 per million input/output tokens. Sol dropped from $5 / $30 to $2 / $10.
+  - On the ChatGPT-subscription lane, Sol's API-equivalent price follows OpenAI's promotional $4 / $20, available at least through 2026-11-21. That change will be reverted when the promotion ends.
+  - Astra, and the ChatGPT-lane Terra and Luna prices, are unchanged.
+  - These prices take effect the next time the report is regenerated.
+- **Accounting** Fixed a bug in the per-run API-equivalent costs for ChatGPT-subscription runs, which priced every model at Luna's rates. Each model now uses its own prices, and a model with no price schedule is marked unavailable rather than priced at Luna's rates. The report's headline battery costs, cost charts and leaderboard were never affected, because they are computed from the current price list when the report is built. Archived Sol and Terra runs still show Luna-priced scenario figures in their per-run detail panels. Those runs are left as recorded.
+
 ## 2026-08-21
 
 - **Models** Added Qwen 3.8 27B, Qwen 3.8 2.4T A95B, and Z.AI GLM 5.3, each

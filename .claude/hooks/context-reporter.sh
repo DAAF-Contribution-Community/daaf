@@ -4,9 +4,11 @@
 # Injects context window utilization and a current timestamp into Claude's
 # conversation so the model can make informed decisions about delegation, state
 # persistence, and session recovery (see CLAUDE.md utilization gates — the
-# thresholds are quality-tier conditional: Fable/Mythos use 30%/40%/50% OR
-# 300k/400k/500k; the exact extended-horizon GPT ids (GPT 5.6 Sol and GPT-6
-# Astra) use 60%/75%/90% OR 300k/400k/500k; all other models use 40%/60%/75%
+# thresholds are quality-tier conditional: Fable/Mythos and Opus 5.5 (user
+# policy decision 2026-09-23) use 30%/40%/50% OR
+# 300k/400k/500k; the exact extended-horizon GPT ids (GPT 5.6 Sol, GPT-6
+# Astra, GPT-6 Sol, and their flagship -pro forms) use 60%/75%/90% OR
+# 300k/400k/500k; all other models use 40%/60%/75%
 # OR 150k/200k/250k, whichever fires first; see calculate() below).
 #
 # Registered events:
@@ -66,12 +68,18 @@
 #   validated extended-horizon tier (30/40/50% OR 300/400/500k). The exact
 #   terminal extended-horizon GPT slugs — gpt-5.6-sol and gpt-5.6-sol[1m], plus
 #   the second registered extended-horizon model gpt-6-astra and gpt-6-astra[1m]
-#   — use 60/75/90% gates while retaining 300/400/500k absolute gates. Provider
+#   — use 60/75/90% gates while retaining 300/400/500k absolute gates. By USER
+#   POLICY DECISION of 2026-09-29 (not validation), gpt-6-sol and the flagship
+#   -pro form of all three (e.g. gpt-6-sol-pro[1m]) join that GPT tier
+#   (GPT_EXTENDED_RE); provenance:
+#   research/2026-09-29_FrameworkDev_OpenRouterDottedModelNames. Provider
 #   paths are accepted only when one of those exact slugs is the final path
-#   segment. All other models (Opus, Sonnet, other GPT variants, GLM,
-#   unknown/empty) get the conservative tier (40/60/75% OR 150/200/250k). This
+#   segment. All other models (every Opus model except Opus 5.5 — see below —,
+#   Sonnet, other GPT variants including GPT-6 Luna, GLM, unknown/empty) get
+#   the conservative tier (40/60/75% OR 150/200/250k). This
 #   is deliberately separate from physical-window mapping: the broad GPT 5.6
-#   family and GPT-6 Astra each map to a 1.05M physical window on API/OpenRouter
+#   family and the GPT-6 flagships (Astra, Sol, Luna) each map to a 1.05M
+#   physical window on API/OpenRouter
 #   routes, while the matched ChatGPT-subscription/Codex lane is finally capped
 #   at 919k for accounting (measured 2026-09-05 for both Sol and Astra;
 #   previously 370,000 (2026-07-16), now stale). Only the exact extended-horizon
@@ -79,6 +87,19 @@
 #   Fable/Mythos percentage gates. Likewise, claude-opus-4-8[1m] AND Opus 5
 #   (claude-opus-5, bare and [1m]) have 1M physical windows but keep the
 #   conservative tier.
+#   Opus 5.5 (claude-opus-5-5, bare and [1m]) is the ONE Opus exception: it
+#   joins the extended-horizon tier (30/40/50% OR 300/400/500k) by USER POLICY
+#   DECISION of 2026-09-23, not by validation — this deliberately departs from
+#   the 2026-07-24 "validate before promoting" doctrine (no sustained DAAF
+#   quality measurement past 300k exists for it yet). Every other Opus model,
+#   bare Opus 5 included, stays conservative: the profile arm names
+#   claude-opus-5-5 exactly (bare or as a provider path's final segment) rather
+#   than substring-matching, so near misses such as claude-opus-5-5-mini and
+#   xclaude-opus-5-5 cannot inherit the relaxed gates. Provenance:
+#   research/2026-09-23_FrameworkDev_ClaudeCode_Upgrade_2.1.280.
+#   Provider-dotted Claude ids (OpenRouter's anthropic/claude-opus-5.5 form) are
+#   rewritten to the hyphenated form by normalize_model_id before any of the
+#   above classification, so they reach the same arms as claude-opus-5-5.
 #   If model resolution fails, the conservative tier applies (fail-conservative).
 #
 # Exit codes:
@@ -176,6 +197,42 @@ resolve_model_cache() {
     [[ -n "$model" ]] && printf '%s' "$model"
 }
 
+# Provider-dotted Claude model ids (added 2026-09-29). OpenRouter reports Claude
+# models with a DOTTED version (anthropic/claude-opus-5.5, claude-opus-4.8,
+# claude-opus-5.5[1m]), while every Claude pattern in this hook expects
+# Anthropic's hyphenated form (claude-opus-5-5). Reproduced 2026-09-29 against
+# the live hook: a dotted Opus 5.5 subagent at 250k read [CRITICAL] (it missed
+# the anchored extended-horizon profile arm; expected NOMINAL), and a dotted
+# Opus 4.8 subagent at 150k read [CRITICAL] 150k / 200k (it missed the
+# *opus-4-8* window arm; expected ELEVATED 150k / 1000k). normalize_model_id
+# rewrites ONLY an id that ENDS in claude-<family>-<major>.<minor>, optionally
+# followed by [1m], to the hyphenated form, keeping any provider prefix
+# (anthropic/claude-opus-5.5 -> anthropic/claude-opus-5-5, which the anchored
+# */claude-opus-5-5 arm already matches). Every other id passes through
+# unchanged, so near misses such as anthropic/claude-opus-5.5-mini stay
+# conservative (fail-conservative) and GPT ids are never touched. It is applied
+# at CLASSIFICATION points only (SESSION_MODEL / AGENT_MODEL right after they
+# are resolved, so the same/different-model comparison, the physical-window
+# lookup, the ChatGPT-lane flagship predicate, and the quality tier all see the
+# normalized id); resolve_model_cache has already written the shared model
+# caches with the RAW name, and this hook displays no model name. The block
+# between the section-sign markers is kept BYTE-IDENTICAL with
+# .claude/scripts/subagent-bar.sh (lockstep test in
+# tests/bash/context_reporter.bats). Provenance:
+# research/2026-09-29_FrameworkDev_OpenRouterDottedModelNames (OpenRouter
+# catalogue, which lists the dotted ids anthropic/claude-opus-5.5, -4.8, -4.7
+# and claude-fable-5.1: web_fetches/2026-09-29T160403Z_openrouter-ai_untitled_051e0609.json).
+# §§ NORMALIZE_MODEL_ID
+normalize_model_id() {
+    local model="${1:-}"
+    local dotted_re='^((.*/)?claude-[a-z]+-[0-9]+)\.([0-9]+)(\[1m\])?$'
+    if [[ "$model" =~ $dotted_re ]]; then
+        model="${BASH_REMATCH[1]}-${BASH_REMATCH[3]}${BASH_REMATCH[4]}"
+    fi
+    printf '%s' "$model"
+}
+# §§ END NORMALIZE_MODEL_ID
+
 INPUT=$(cat)
 HOOK_EVENT=$(echo "$INPUT" | jq -r '.hook_event_name // empty' 2>/dev/null) || HOOK_EVENT=""
 SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // "default"' 2>/dev/null) || SESSION_ID="default"
@@ -245,11 +302,34 @@ INJECT_INTERVAL=60  # seconds between injections
 # codenames are a deliberate one-line registry edit (validate-before-trust,
 # consistent with DAAF policy). Stored in a variable to avoid [[ =~ ]] quoting
 # pitfalls. Accepts gpt-5.4/5.5/5.6 with an optional -sol/-terra/-luna codename,
-# plus the standalone GPT-6 flagship gpt-6-astra, each with an optional [1m]
-# badge; rejects malformed suffixes (gpt-5.4-, gpt-5.6-experimental,
-# gpt-5.6-sol[1m]x, gpt-6-astra-pro, gpt-6-astra[1m]-x), mini/chat, gpt-5.60,
-# and left-boundary near misses (xgpt-6-astra, gpt-6-astrab).
-GPT_FLAGSHIP_RE='^(gpt-5\.(4|5|6)(-(sol|terra|luna))?|gpt-6-astra)(\[1m\])?$'
+# plus the GPT-6 flagships gpt-6-astra, gpt-6-sol, and gpt-6-luna, each with an
+# optional -pro and then an optional [1m] badge; rejects malformed suffixes
+# (gpt-5.4-, gpt-5.6-experimental, gpt-5.6-sol[1m]x, gpt-6-astra-pro-x,
+# gpt-6-sol[1m]-pro, gpt-6-astra[1m]-x), mini/chat (and their -pro spellings,
+# e.g. gpt-5.6-mini-pro), unregistered GPT-6 names (gpt-6, gpt-6-terra,
+# gpt-6-sol-mini), gpt-5.60, and left-boundary near misses (xgpt-6-astra,
+# gpt-6-astrab).
+# USER POLICY DECISION 2026-09-29, not validation
+# (research/2026-09-29_FrameworkDev_OpenRouterDottedModelNames): (1) any
+# FLAGSHIP -pro model reads exactly as its non-pro base — same physical window,
+# same 919k ChatGPT-lane cap eligibility, same quality tier; -pro sits
+# immediately before the optional [1m]. (2) gpt-6-sol is treated identically to
+# gpt-5.6-sol and gpt-6-luna identically to gpt-5.6-luna. There is NO
+# gpt-6-terra (retired for the GPT-6 generation, per the user). Windows per the
+# OpenRouter catalogue fetched 2026-09-29 (context_length 1050000 for
+# openai/gpt-6-sol, gpt-6-sol-pro, gpt-6-luna, gpt-6-luna-pro, gpt-6-astra-pro,
+# gpt-5.6-{sol,terra,luna}-pro, gpt-5.5-pro, gpt-5.4-pro; no gpt-6-terra entry):
+# web_fetches/2026-09-29T160403Z_openrouter-ai_untitled_051e0609.json in that
+# workspace. Capping at 919k can only make a reading more conservative.
+# GPT_EXTENDED_RE is the QUALITY-TIER grammar used by calculate(), deliberately
+# narrower than the window grammar: gpt-5.6-sol and gpt-6-astra (validated),
+# plus gpt-6-sol and the -pro form of all three (policy decision above);
+# gpt-6-luna and every Terra/Luna form keep a 1.05M window but the
+# conservative tier. Both strings are kept byte-identical with subagent-bar.sh
+# (gpt_flagship_re, gpt_extended_re) and, for the flagship grammar, with
+# context-bar.sh (lockstep tests in tests/bash/context_reporter.bats).
+GPT_FLAGSHIP_RE='^(gpt-5\.(4|5|6)(-(sol|terra|luna))?|gpt-6-(astra|sol|luna))(-pro)?(\[1m\])?$'
+GPT_EXTENDED_RE='^(gpt-5\.6-sol|gpt-6-(astra|sol))(-pro)?(\[1m\])?$'
 # Closed-set mini/chat grammars (Convention 3), byte-consistent with
 # subagent-bar.sh and context-bar.sh's anchored EREs. These replace the old
 # open-ended inner globs (*-mini*/*-chat*) so suffixed near-misses (e.g.
@@ -286,11 +366,22 @@ fi
 # transcript), never by re-parsing a subagent transcript. An empty
 # PARENT_TRANSCRIPT makes resolve_model_cache return the cached parent model (or
 # empty), so a direct subagent measurement is never mistaken for the session.
+# Both ids are then normalized (normalize_model_id) for CLASSIFICATION: the
+# claude-model-<session> cache is seeded by context-bar.sh from the REQUESTED
+# .model.id and refreshed here from the transcript's RESPONSE model, so on
+# OpenRouter it may hold either the dotted or the hyphenated spelling;
+# normalizing both sides keeps a dotted-vs-hyphenated version spelling alone
+# from forcing the different-model path (a provider-prefix difference still
+# does; harmless, because the static map returns the correct window for either
+# spelling). resolve_model_cache has already written the caches
+# with the RAW name, and nothing below displays or writes these variables.
 SESSION_MODEL=$(resolve_model_cache "$PARENT_TRANSCRIPT" "${reporter_cache_dir}/claude-model-${SESSION_ID}")
+SESSION_MODEL=$(normalize_model_id "$SESSION_MODEL")
 AGENT_MODEL=""
 if [[ -n "$AGENT_ID" ]]; then
     AGENT_MODEL_CACHE="${reporter_cache_dir}/claude-subagent-model-${SESSION_ID}-${AGENT_ID}"
     AGENT_MODEL=$(resolve_model_cache "$MEASURE_TRANSCRIPT" "$AGENT_MODEL_CACHE")
+    AGENT_MODEL=$(normalize_model_id "$AGENT_MODEL")
     MEASURE_MODEL="$AGENT_MODEL"
 else
     MEASURE_MODEL="$SESSION_MODEL"
@@ -304,8 +395,16 @@ fi
 # (Convention 3): the 1,050,000 flagship window is granted only to exact
 # matches, while mini/chat retain their smaller windows and malformed codenames
 # fall through to the conservative default. Physical size remains independent
-# of the quality tier. Byte-consistent with subagent-bar.sh and the static map
-# in context-bar.sh.
+# of the quality tier. OUTPUT-consistent (not byte-identical — the code shape
+# differs) with subagent-bar.sh's function of the same name and with the static
+# map in context-bar.sh: the GPT EREs and the flagship-family glob below are
+# copied verbatim into both, so every flagship/mini/chat id and every malformed
+# flagship-family id (e.g. gpt-6-sol[1m]-pro -> 200k) maps identically
+# (cross-script agreement tests in tests/bash/context_reporter.bats and
+# tests/bash/subagent_bar.bats). Known, pre-existing difference: malformed
+# gpt-5 / gpt-5.2-family spellings (e.g. gpt-5-pro) map to 400k here and in
+# context-bar.sh but to 200k in subagent-bar.sh (anchored prev EREs; 1M there
+# if the id carries [1m], via its generic Claude arm).
 # ---------------------------------------------------------------------------
 static_window_for_model() {
     local model="${1:-}"
@@ -317,16 +416,19 @@ static_window_for_model() {
         z-ai/glm-5.2|z-ai/glm-5.2-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9])
             window=1048576 ;;
         *)
-            # gpt-5.4/5.5/5.6 family plus the standalone GPT-6 Astra flagship
-            # (broad globs select the arm). Within it: mini/chat keep their
-            # smaller windows and take precedence; the 1,050,000 flagship window
-            # is granted ONLY to an exact closed-set match (GPT_FLAGSHIP_RE). A
-            # malformed codename that entered the arm (gpt-5.6-experimental,
-            # gpt-5.4-, gpt-5.6-sol[1m]x, gpt-6-astra-pro, gpt-6-astra[1m]-x) is
-            # neither mini/chat nor an exact flagship, so it maps conservatively
-            # to 200k instead of inheriting the flagship window.
+            # gpt-5.4/5.5/5.6 family plus the GPT-6 Astra/Sol/Luna flagships
+            # (broad globs select the arm; gpt-6-sol and gpt-6-luna admitted
+            # 2026-09-29 by user policy decision). Within it: the 1,050,000
+            # flagship window is granted ONLY to an exact closed-set match
+            # (GPT_FLAGSHIP_RE, which also accepts the flagship -pro forms);
+            # mini/chat keep their smaller windows. A malformed codename that
+            # entered the arm (gpt-5.6-experimental, gpt-5.4-,
+            # gpt-5.6-sol[1m]x, gpt-6-astra-pro-x, gpt-6-sol[1m]-pro,
+            # gpt-6-sol-mini, gpt-6-astra[1m]-x) is neither mini/chat nor an
+            # exact flagship, so it maps conservatively to 200k instead of
+            # inheriting the flagship window.
             case "$slug" in
-                gpt-5.4|gpt-5.4[-\[]*|gpt-5.5|gpt-5.5[-\[]*|gpt-5.6|gpt-5.6[-\[]*|gpt-6-astra|gpt-6-astra[-\[]*)
+                gpt-5.4|gpt-5.4[-\[]*|gpt-5.5|gpt-5.5[-\[]*|gpt-5.6|gpt-5.6[-\[]*|gpt-6-astra|gpt-6-astra[-\[]*|gpt-6-sol|gpt-6-sol[-\[]*|gpt-6-luna|gpt-6-luna[-\[]*)
                     # Closed-set classification (Convention 3): only the anchored
                     # flagship/mini/chat grammars earn a GPT window. Order
                     # flagship, then mini, then chat. Malformed suffixes that
@@ -354,8 +456,22 @@ static_window_for_model() {
                     # quality threshold are separate lookups). Provenance:
                     # research/2026-09-05_FrameworkDev_ClaudeCode_Upgrade_2.1.261
                     # (to-do 03 Branch A).
+                    # Opus 5.5 (claude-opus-5-5, bare AND [1m]) is likewise a
+                    # native 1M-window model (Claude Code CHANGELOG 2.1.280:
+                    # "Added Claude Opus 5.5 (`claude-opus-5-5`), now the
+                    # default Opus model — 1M context"). The pre-existing
+                    # *opus-5* arm ALREADY substring-matched claude-opus-5-5 —
+                    # proven by an executed `case` repro on 2026-09-23 — so the
+                    # explicit *opus-5-5* arm changes no behavior; it is added
+                    # for auditability, because the implicit match is correct
+                    # only by coincidence (5.5 happens to be 1M) and the next
+                    # Opus generation may not be. A loose substring is
+                    # acceptable HERE and not in the profile arm below: mapping
+                    # a physical window is descriptive, not a privilege grant,
+                    # and *opus-5* already covered these slugs. Provenance:
+                    # research/2026-09-23_FrameworkDev_ClaudeCode_Upgrade_2.1.280.
                     case "$model" in
-                        *fable-5*|*mythos-5*|*opus-4-7*|*opus-4-8*|*opus-5*|*\[1m\]*)
+                        *fable-5*|*mythos-5*|*opus-4-7*|*opus-4-8*|*opus-5-5*|*opus-5*|*\[1m\]*)
                             window=1000000 ;;
                         *) window=200000 ;;
                     esac
@@ -398,8 +514,10 @@ fi
 # ChatGPT-subscription/Codex final physical-window accounting constraint.
 # Canonical activation requires BOTH exact lane signals and a measured model in
 # the anchored flagship arm (Convention 3 closed set — the gpt-5.4/5.5/5.6
-# family plus gpt-6-astra; mini/chat are excluded because they carry suffixes
-# the ERE does not accept). Probes 2026-09-05 (Codex CLI 0.153.2, shim v1.3.19,
+# family plus gpt-6-astra, and (user policy decision 2026-09-29, not
+# measurement) gpt-6-sol, gpt-6-luna, and the flagship -pro forms, which
+# inherit the cap from their bases; mini/chat are excluded because they carry
+# suffixes the ERE does not accept). Probes 2026-09-05 (Codex CLI 0.153.2, shim v1.3.19,
 # SHIM_BACKEND_MODE=chatgpt) measured BOTH lane flagships: gpt-6-astra accepted
 # 919,053 real input tokens and rejected 922,552; gpt-5.6-sol accepted 910,827
 # and rejected 921,973. 919000 is therefore the lane-wide accounting ceiling for
@@ -478,22 +596,56 @@ calculate() {
     # Quality-tier matching deliberately remains narrower than physical-family
     # matching. Fable/Mythos keep the validated extended-horizon percentage and
     # absolute gates; the exact terminal extended-horizon GPT slugs — Sol and
-    # the second registered extended-horizon model GPT-6 Astra — use 60/75/90%
+    # the second registered extended-horizon model GPT-6 Astra (validated),
+    # plus GPT-6 Sol and the flagship -pro form of all three (user policy
+    # decision 2026-09-29, not validation; see GPT_EXTENDED_RE) — use 60/75/90%
     # percentage gates while retaining the larger absolute gates. Each is matched
-    # only as the bare slug or the final segment of a provider path; left- or
-    # right-boundary near misses (xgpt-6-astra, gpt-6-astra-pro, gpt-6-astra-mini,
-    # gpt-6-astra[1m]-x) fall through to the conservative tier.
+    # only as the bare slug or the final segment of a provider path (the ERE is
+    # tested against the provider-stripped terminal slug); left- or
+    # right-boundary near misses (xgpt-6-astra, gpt-6-astra-pro-x,
+    # gpt-6-astra-mini, gpt-6-astra[1m]-x, gpt-6-sol[1m]-pro) and gpt-6-luna
+    # (1.05M window, conservative tier like gpt-5.6-luna) fall through to the
+    # conservative tier.
+    #
+    # Opus 5.5 (claude-opus-5-5, bare or [1m]) JOINS the
+    # extended-horizon arm below. USER POLICY DECISION, 2026-09-23 (Checkpoint 1,
+    # research/2026-09-23_FrameworkDev_ClaudeCode_Upgrade_2.1.280/SESSION_NOTES.md
+    # § Key Decisions #3): this deliberately departs from the 2026-07-24
+    # "validate before promoting" doctrine — no sustained-session DAAF
+    # measurement of Opus 5.5 quality past 300k exists yet; the user accepted the
+    # extended-horizon gates on the model's documented long-horizon design
+    # ("built for long-running agentic coding and knowledge work"). The Opus 5.5
+    # pattern is BOUNDARY-ANCHORED, not a substring glob: this arm GRANTS a
+    # privilege (relaxed gates), and a privilege-granting arm must name exactly
+    # what it privileges. A loose `*opus-5-5*` would silently hand the 30/40/50%
+    # gates to any future slug merely containing that text — `claude-opus-5-5-mini`
+    # on the right, `xclaude-opus-5-5` on the left — neither of which the user
+    # policy decision covers. The accepted forms are therefore the bare slug or a
+    # provider path whose FINAL segment is exactly claude-opus-5-5 or its [1m]
+    # form, the same anchoring convention the GPT extended-tier test below
+    # already uses (and for the same reason). Bare Opus 5 and every other Opus
+    # model — plus every near miss — stay conservative-default via the `*`
+    # fallthrough arm, which tests/bash/context_reporter.bats locks. The
+    # physical-window case block above keeps its broad `*opus-5-5*`
+    # deliberately: mapping a window is not a privilege grant, and `*opus-5*`
+    # already matched those slugs before this change. $model arrives already
+    # normalized (normalize_model_id), so a provider-dotted
+    # anthropic/claude-opus-5.5 reaches this arm as anthropic/claude-opus-5-5.
+    # Kept lockstep-identical with .claude/scripts/subagent-bar.sh.
     local elev_pct high_pct crit_pct elev_k high_k crit_k
     case "$model" in
-        *fable-5*|*mythos-5*)
+        *fable-5*|*mythos-5*|claude-opus-5-5|*/claude-opus-5-5|claude-opus-5-5\[1m\]|*/claude-opus-5-5\[1m\])
             elev_pct=30; high_pct=40; crit_pct=50
             elev_k=300;  high_k=400;  crit_k=500 ;;
-        gpt-5.6-sol|*/gpt-5.6-sol|gpt-5.6-sol\[1m\]|*/gpt-5.6-sol\[1m\]|gpt-6-astra|*/gpt-6-astra|gpt-6-astra\[1m\]|*/gpt-6-astra\[1m\])
-            elev_pct=60; high_pct=75; crit_pct=90
-            elev_k=300;  high_k=400;  crit_k=500 ;;
         *)
-            elev_pct=40; high_pct=60; crit_pct=75
-            elev_k=150;  high_k=200;  crit_k=250 ;;
+            if [[ "${model##*/}" =~ $GPT_EXTENDED_RE ]]; then
+                elev_pct=60; high_pct=75; crit_pct=90
+                elev_k=300;  high_k=400;  crit_k=500
+            else
+                elev_pct=40; high_pct=60; crit_pct=75
+                elev_k=150;  high_k=200;  crit_k=250
+            fi
+            ;;
     esac
 
     local severity

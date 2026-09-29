@@ -173,7 +173,11 @@ models:
   #
   # PRICING PROVENANCE: mirrors opus-4-8 per user statement 2026-07-25
   # ("Opus 5 is the same price as Opus 4.8"). NOT independently verified
-  # against Anthropic's published price list.
+  # against Anthropic's published price list. Contrast the claude-opus-5-5
+  # entry below, whose $4.00/$20.00 IS officially verified from Anthropic's
+  # published Opus 5.5 page (fetched 2026-09-23): Opus 5's $5.00/$25.00 here
+  # remains an unverified user recollection and should not be treated as
+  # equally sourced. Left unchanged pending an independent price-list check.
   - id: "claude-opus-5"
     name: "Opus 5"
     provider: anthropic
@@ -186,6 +190,27 @@ models:
       ANTHROPIC_DEFAULT_OPUS_MODEL: "claude-opus-5"
       ANTHROPIC_DEFAULT_SONNET_MODEL: "claude-opus-5"
       CLAUDE_CODE_SUBAGENT_MODEL: "claude-opus-5"
+
+  # PRICING PROVENANCE: OFFICIALLY VERIFIED. Input $4.00 / output $20.00 /
+  # cache read $0.20 per Mtok, quoted from Anthropic's published Opus 5.5
+  # model page https://platform.claude.com/docs/en/models/opus-5-5/overview
+  # (fetched 2026-09-23 via scripts/web_fetch.sh; artifact on disk at
+  # research/2026-09-23_FrameworkDev_ClaudeCode_Upgrade_2.1.280/web_fetches/).
+  # Concordant with Claude Code CHANGELOG 2.1.280: "1M context, $4/$20 per
+  # Mtok with $0.20/Mtok cache reads". Opus 5.5 requires Claude Code >= 2.1.280
+  # and is the `opus` alias default on the Anthropic API from that version.
+  - id: "claude-opus-5-5"
+    name: "Opus 5.5"
+    provider: anthropic
+    cost_tier: "high"
+    pricing:
+      input: 4.00
+      output: 20.00
+      cached_input: 0.20
+    env_overrides:
+      ANTHROPIC_DEFAULT_OPUS_MODEL: "claude-opus-5-5"
+      ANTHROPIC_DEFAULT_SONNET_MODEL: "claude-opus-5-5"
+      CLAUDE_CODE_SUBAGENT_MODEL: "claude-opus-5-5"
 
   - id: "claude-fable-5"
     name: "Fable 5"
@@ -962,7 +987,11 @@ models:
   #
   # Added 2026-07-09 for GPT smoke-test battery. Pricing pulled live from
   # OpenRouter /api/v1/models on 2026-07-09 (cached_input = 10% of input,
-  # except gpt-5.5-pro which lists no cache discount).
+  # except gpt-5.5-pro which lists no cache discount). Re-checked 2026-09-29
+  # against the catalogue fetched 2026-09-29T16:04Z (research/2026-09-29_
+  # FrameworkDev_OpenRouterDottedModelNames/web_fetches/2026-09-29T160403Z_
+  # openrouter-ai_untitled_051e0609.json): GPT-5.6 Sol/Terra/Luna re-priced
+  # (see each entry); GPT-6 Astra, GPT-5.5 and GPT-5.4 Mini unchanged.
   #
   # env_overrides remap BOTH tier aliases to the model under test so that
   # subagent dispatches stay model-pure: agent frontmatter now declares
@@ -989,10 +1018,20 @@ models:
     name: "GPT-5.6 Sol"
     provider: openrouter
     cost_tier: "medium"
+    # Pricing updated 2026-09-29 from the OpenRouter /api/v1/models catalogue
+    # (research/2026-09-29_FrameworkDev_OpenRouterDottedModelNames/web_fetches/
+    # 2026-09-29T160403Z_openrouter-ai_untitled_051e0609.json, fetched
+    # 2026-09-29T16:04Z; per-token strings x 1e6): prompt 2.00, completion 10.00,
+    # input_cache_read 0.20 (input_cache_write 2.50 = the in-formula 1.25x input).
+    # The catalogue's >=272,000-prompt-token override (4.00 / 15.00 / cache read
+    # 0.40) is not expressible in PricingConfig, so these short-context rates
+    # price every token. OpenRouter Sol is now half of OpenAI's direct-API
+    # (promotional) Sol rate — see the gpt-56-sol-chatgpt entry.
+    # Prior (2026-07-09): input 5.00 / output 30.00 / cached 0.50.
     pricing:
-      input: 5.00
-      output: 30.00
-      cached_input: 0.50
+      input: 2.00
+      output: 10.00
+      cached_input: 0.20
     env_overrides:
       ANTHROPIC_DEFAULT_OPUS_MODEL: "openai/gpt-5.6-sol"
       ANTHROPIC_DEFAULT_SONNET_MODEL: "openai/gpt-5.6-sol"
@@ -1000,10 +1039,17 @@ models:
 
   # Added 2026-09-05 after live route verification. OpenRouter lists
   # openai/gpt-6-astra with context_length 1050000 and $10 prompt / $50 completion
-  # per 1M (verified against the OpenRouter models API on 2026-09-05); the pricing
+  # per 1M (verified against the OpenRouter models API on 2026-09-05; re-verified
+  # unchanged 2026-09-29, cache read $1.00, against the catalogue fetched
+  # 2026-09-29T16:04Z); the pricing
   # below is those OpenRouter rates. OpenRouter ALSO lists a real openai/gpt-6-astra-pro
-  # slug — do NOT substitute it here: DAAF's exact-match threshold rule keeps any
-  # -pro variant on conservative context thresholds (same caveat as gpt-5.6-sol-pro).
+  # slug — do NOT substitute it here. (Original 2026-09-05 rationale: DAAF's
+  # exact-match threshold rule kept any -pro variant on conservative context
+  # thresholds. SUPERSEDED 2026-09-29: by user policy decision, the hooks now read a
+  # flagship -pro slug like its non-pro base. The reason not to substitute is now
+  # cost: -pro reports ~3.1x the base's input tokens on identical input, observed
+  # for gpt-6-astra-pro in the 2026-09-29 retest, at equal per-token price. See
+  # the RETEST 2026-09-29 note in the REMOVED 2026-07-10 block below.)
   # No context_window_tokens override is needed on this route: the full 1,050,000
   # API/OpenRouter window applies (declare CLAUDE_CODE_MAX_CONTEXT_TOKENS=1050000
   # in the deployment env, per user_reference/01_installation_and_quickstart.md).
@@ -1024,16 +1070,18 @@ models:
     name: "GPT-5.6 Terra"
     provider: openrouter
     cost_tier: "medium"
-    # Pricing updated 2026-08-11: OpenRouter applies a 50% exclusive discount on
-    # top of OpenAI's Terra price cut (input 1.00 vs OpenAI direct 2.00, output
-    # 6.00 vs 12.00), verified against openrouter.ai/openai/gpt-5.6-terra raw HTML.
-    # cached_input NOT captured from the OpenRouter page; 0.10 is INFERRED from the
-    # 10%-of-input convention observed on Luna — provisional pending the next
-    # OpenRouter billing reconciliation. Prior: input 2.50 / output 15.00 / cached 0.25.
+    # Pricing updated 2026-09-29 from the OpenRouter catalogue (same artifact as
+    # the gpt-5.6-sol entry, fetched 2026-09-29T16:04Z; per-token x 1e6): prompt
+    # 2.00, completion 12.00, input_cache_read 0.20 (>=272,000-prompt-token
+    # override 4.00 / 18.00 / 0.40, not expressible in PricingConfig). The
+    # 2026-08-11 OpenRouter-exclusive 50% discount no longer appears: Terra now
+    # lists at OpenAI's direct-API short-context rate. cached_input is now read
+    # directly from the catalogue (the 2026-08-11 value 0.10 was inferred).
+    # Prior (2026-08-11): input 1.00 / output 6.00 / cached 0.10.
     pricing:
-      input: 1.00
-      output: 6.00
-      cached_input: 0.10
+      input: 2.00
+      output: 12.00
+      cached_input: 0.20
     env_overrides:
       ANTHROPIC_DEFAULT_OPUS_MODEL: "openai/gpt-5.6-terra"
       ANTHROPIC_DEFAULT_SONNET_MODEL: "openai/gpt-5.6-terra"
@@ -1043,14 +1091,17 @@ models:
     name: "GPT-5.6 Luna"
     provider: openrouter
     cost_tier: "medium"
-    # Pricing updated 2026-08-11: OpenRouter applies a 50% exclusive discount on
-    # top of OpenAI's 5x Luna price cut (input 0.10 vs OpenAI direct 0.20, output
-    # 0.60 vs 1.20), verified against openrouter.ai/openai/gpt-5.6-luna raw HTML;
-    # cached_input 0.01 also captured there. Prior: input 1.00 / output 6.00 / cached 0.10.
+    # Pricing updated 2026-09-29 from the OpenRouter catalogue (same artifact as
+    # the gpt-5.6-sol entry, fetched 2026-09-29T16:04Z; per-token x 1e6): prompt
+    # 0.20, completion 1.20, input_cache_read 0.02 (>=272,000-prompt-token
+    # override 0.40 / 1.80 / 0.04, not expressible in PricingConfig). The
+    # 2026-08-11 OpenRouter-exclusive 50% discount no longer appears: Luna now
+    # lists at OpenAI's direct-API short-context rate.
+    # Prior (2026-08-11): input 0.10 / output 0.60 / cached 0.01.
     pricing:
-      input: 0.10
-      output: 0.60
-      cached_input: 0.01
+      input: 0.20
+      output: 1.20
+      cached_input: 0.02
     env_overrides:
       ANTHROPIC_DEFAULT_OPUS_MODEL: "openai/gpt-5.6-luna"
       ANTHROPIC_DEFAULT_SONNET_MODEL: "openai/gpt-5.6-luna"
@@ -1080,6 +1131,14 @@ models:
     # (verified against the pricing table at developers.openai.com/api/docs/pricing).
     # Prior schedule was 1.00/0.10/1.25/6.00 short, 2.00/0.20/2.50/9.00 long.
     # Coherence-checked against cost_estimator.LUNA_*_CONTEXT_RATES.
+    # Re-checked 2026-09-29 against the same page (research/2026-09-29_
+    # FrameworkDev_OpenRouterDottedModelNames/web_fetches/2026-09-29T204921Z_
+    # developers-openai-com_pricing-openai-api_00eaf917.html, fetched
+    # 2026-09-29T20:49Z): short_context UNCHANGED (raw HTML line 932, text-tokens
+    # Standard tier: gpt-5.6-luna 0.2 / 0.02 / 0.25 / 1.2). That page no longer
+    # publishes a GPT-5.6 long-context row, so long_context is carried unchanged
+    # from the 2026-08-11 verification, and accessed_at stays 2026-08-11 because
+    # it dates the last full-schedule observation.
     api_equivalent_pricing:
       source_url: "https://developers.openai.com/api/docs/pricing"
       accessed_at: "2026-08-11"
@@ -1121,6 +1180,10 @@ models:
     # Pricing updated 2026-08-11: OpenAI cut Terra direct-API list prices ~20%
     # (verified against the pricing table at developers.openai.com/api/docs/pricing).
     # Prior schedule was 2.50/0.25/3.125/15.00 short, 5.00/0.50/6.25/22.50 long.
+    # Re-checked 2026-09-29 (same artifact as the Luna entry): short_context
+    # UNCHANGED (raw HTML line 932, Standard tier: gpt-5.6-terra 2 / 0.2 / 2.5 /
+    # 12); no GPT-5.6 long-context row is published there any more, so
+    # long_context is carried from 2026-08-11 and accessed_at is left as is.
     api_equivalent_pricing:
       source_url: "https://developers.openai.com/api/docs/pricing"
       accessed_at: "2026-08-11"
@@ -1158,20 +1221,30 @@ models:
     # Re-verified 2026-08-11 against developers.openai.com/api/docs/pricing:
     # Sol direct-API list prices are UNCHANGED (OpenAI's cut applied to Terra
     # and Luna only). Refreshed accessed_at; schedule below is unmodified.
+    # PROMOTIONAL PRICING, re-priced 2026-09-29 against the same page
+    # (research/2026-09-29_FrameworkDev_OpenRouterDottedModelNames/web_fetches/
+    # 2026-09-29T204921Z_developers-openai-com_pricing-openai-api_00eaf917.html,
+    # fetched 2026-09-29T20:49Z). Short: raw HTML line 932 (text-tokens Standard
+    # tier: gpt-5.6-sol 4 / 0.4 / 5 / 20). Short + long: raw HTML line 1132 (the
+    # page's "Cyber models" table row for gpt-5.6-sol: 4 / 0.4 / 5 / 20, long
+    # 8 / 0.8 / 10 / 30). Footnote, raw HTML line 1129: "GPT-5.6 Sol’s
+    # promotional pricing is available at least through November 21, 2026."
+    # REVERT when the promotion ends to the prior (2026-07-29..2026-09-29)
+    # schedule: short 5.00/0.50/6.25/30.00, long 10.00/1.00/12.50/45.00.
     api_equivalent_pricing:
       source_url: "https://developers.openai.com/api/docs/pricing"
-      accessed_at: "2026-08-11"
+      accessed_at: "2026-09-29"
       threshold_input_tokens: 272000
       short_context:
-        input: 5.00
-        cached_input: 0.50
-        cache_write: 6.25
-        output: 30.00
+        input: 4.00
+        cached_input: 0.40
+        cache_write: 5.00
+        output: 20.00
       long_context:
-        input: 10.00
-        cached_input: 1.00
-        cache_write: 12.50
-        output: 45.00
+        input: 8.00
+        cached_input: 0.80
+        cache_write: 10.00
+        output: 30.00
     env_overrides:
       ANTHROPIC_DEFAULT_OPUS_MODEL: "gpt-5.6-sol"
       ANTHROPIC_DEFAULT_SONNET_MODEL: "gpt-5.6-sol"
@@ -1196,9 +1269,14 @@ models:
     # Astra effort levels are low/medium/high/xhigh/max; `none` is REJECTED by the
     # backend and the shim clamps a requested `none` to `low` (shim v1.3.19).
     # Pricing verified 2026-09-05 against developers.openai.com/api/docs/pricing.
+    # Re-verified UNCHANGED 2026-09-29 (research/2026-09-29_FrameworkDev_
+    # OpenRouterDottedModelNames/web_fetches/2026-09-29T204921Z_developers-openai-
+    # com_pricing-openai-api_00eaf917.{html,md}, fetched 2026-09-29T20:49Z):
+    # flagship Standard-tier row, extract line 10, gpt-6-astra $10.00 / $1.00 /
+    # $12.50 / $50.00, long $20.00 / $2.00 / $25.00 / $75.00. accessed_at refreshed.
     api_equivalent_pricing:
       source_url: "https://developers.openai.com/api/docs/pricing"
-      accessed_at: "2026-09-05"
+      accessed_at: "2026-09-29"
       threshold_input_tokens: 272000
       short_context:
         input: 10.00
@@ -1247,6 +1325,24 @@ models:
   #   cost. Removal stands for both lanes: hard-broken on anthropic-compat,
   #   economically irrational via the shim unless a future benchmark shows
   #   pro-tier quality worth 4x.
+  # RETEST 2026-09-29 (research/2026-09-29_FrameworkDev_OpenRouterDottedModelNames/
+  #   preliminary_notes/2026-09-29_openrouter-pro-retest.md; probe scripts
+  #   with appended logs in that project's scripts/probes/): the anthropic-compat
+  #   WALL IS GONE. On /api/v1/messages, gpt-6-sol-pro accepted up to 932,116
+  #   reported tokens, gpt-5.6-sol-pro (the July-failing slug) up to 942,594,
+  #   and gpt-6-luna-pro up to 931,924, with HTTP 200 at every step (observed).
+  #   gpt-6-astra-pro was inflation-tested only; its ceiling is extrapolated.
+  #   INFLATION PERSISTS on both endpoints (observed, ~80k-char prompt):
+  #   gpt-5.6-sol-pro 4.11x the base's input tokens (54,065 vs 13,144), and
+  #   gpt-6-{sol,astra,luna}-pro about 3.12x (e.g. 41,048 vs 13,144). Billing
+  #   follows reported tokens, so a GPT-6 -pro battery costs ~3x its base (per-
+  #   token prices equal their bases in the 2026-09-29 catalogue) and a
+  #   gpt-5.6-sol-pro battery ~8x (2x its base's per-token price x 4.11x tokens)
+  #   (derived, not invoice-verified). No wall was observed up to ~943k reported
+  #   tokens, consistent with the catalogue's 1,050,000 context_length (that
+  #   this is the real ceiling is inference). The roster is unchanged: the
+  #   "hard-broken" half of the July rationale no longer holds, but the cost
+  #   half does, and gpt-5.5-pro was not retested.
 
   - id: "openai/gpt-5.4-mini"
     name: "GPT-5.4 Mini"

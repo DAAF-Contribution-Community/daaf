@@ -74,6 +74,16 @@ MODEL_SELECTOR_VARS = (
 _MAX_SIGNED_64 = 9223372036854775807
 _CANONICAL_POSITIVE_DECIMAL_RE = re.compile(r"^[1-9][0-9]*$")
 
+# Closed-set GPT flagship grammar. The pattern text is byte-identical to
+# GPT_FLAGSHIP_RE in .claude/hooks/context-reporter.sh and gpt_flagship_re in
+# .claude/scripts/subagent-bar.sh and .claude/scripts/context-bar.sh; a lockstep
+# test in tests/python/test_deploy_smoke.py compares them. Apply it with
+# fullmatch (see _gpt_physical_window). The GPT-6 Sol/Luna and flagship -pro
+# members come from a USER POLICY DECISION of 2026-09-29, not validation.
+_GPT_FLAGSHIP_RE = re.compile(
+    r"^(gpt-5\.(4|5|6)(-(sol|terra|luna))?|gpt-6-(astra|sol|luna))(-pro)?(\[1m\])?$"
+)
+
 
 # --- Shared result types --------------------------------------------------
 
@@ -300,11 +310,15 @@ def _is_canonical_positive_decimal(value) -> bool:
 def _gpt_physical_window(model_id: str):
     """Return the runtime static-map window for a supported GPT identifier.
 
-    Physical-family matching is deliberately separate from exact-Sol quality-tier
-    matching. It operates on the terminal provider-stripped slug, requires a
-    supported version at the left boundary, and accepts only end-of-slug, '-' or
-    '[' as the version boundary. The ordering mirrors the Bash consumers so mini
-    and chat variants keep their established smaller mappings.
+    Physical-family matching is deliberately separate from the runtime's GPT
+    quality-tier grammar (GPT_EXTENDED_RE / gpt_extended_re in the Bash
+    consumers); this module implements no quality-tier matching. It operates on
+    the terminal provider-stripped slug. The gpt-5.4/5.5/5.6 arm requires a
+    supported version at the left boundary and accepts end-of-slug, '-' or '['
+    as the version boundary, so mini and chat variants keep their established
+    smaller mappings. The GPT-6 flagships are matched by the closed-set flagship
+    grammar _GPT_FLAGSHIP_RE, byte-identical to the Bash consumers' flagship
+    ERE.
     """
     slug = (model_id or "").rsplit("/", 1)[-1]
     if re.match(r"^gpt-5\.(?:4|5|6)(?:$|[-\[])", slug):
@@ -313,17 +327,42 @@ def _gpt_physical_window(model_id: str):
         if "-chat" in slug:
             return 128000
         return 1050000
-    # gpt-6-astra is a flagship-class 1,050,000-token model (API lane). Unlike the
-    # gpt-5.x families it has no mapped '-mini'/'-chat' sub-variants: only the exact
-    # bare slug or its '[1m]' hint qualifies, so the boundary here accepts end-of-slug
-    # or '[' but NOT '-'. Near misses ('gpt-6-astra-pro/-mini/-chat', bare 'gpt-6', and
-    # left-boundary text like 'xgpt-6-astra') fall through to None. Returning the
-    # flagship window also makes Astra participate in the exact-ChatGPT-lane 919000
-    # ceiling exactly like the gpt-5.6 flagships (keyed on window == 1050000 below);
-    # that subscription-lane cap is MEASURED for Astra as of 2026-09-05 (919,053
-    # accepted / 922,552 rejected), alongside Sol (910,827 accepted / 921,973
-    # rejected). Provenance: previously 370,000 (2026-07-16), now stale.
-    if re.match(r"^gpt-6-astra(?:$|\[)", slug):
+    # GPT-6 flagships: gpt-6-astra, gpt-6-sol and gpt-6-luna, each optionally
+    # followed by '-pro' and then '[1m]', are 1,050,000-token models. They are
+    # matched by the closed-set flagship grammar shared verbatim with
+    # context-reporter.sh (GPT_FLAGSHIP_RE), subagent-bar.sh and context-bar.sh
+    # (gpt_flagship_re); the grammar is used unmodified so the lockstep test can
+    # compare it byte for byte. re.fullmatch reproduces the POSIX '$' (end of
+    # string only) semantics of Bash '=~', so a trailing newline does not match.
+    # One deliberate difference from the Bash consumers: everything from the
+    # first '#' onward is removed before matching, as the provider shim does
+    # (anthropic_openai_shim.py, model.partition("#")). Env selectors may carry
+    # the shim's documented reasoning-effort suffix (e.g. 'gpt-6-astra[1m]#xhigh';
+    # user_reference/01_installation_and_quickstart.md, 07_faq_technical.md), and
+    # keeping it would drop the exact-ChatGPT-lane 919000 check below for those
+    # configs without any warning. Side effect: effort-suffixed gpt-5.4/5.5/5.6
+    # ids that the arm above rejects at the version boundary (e.g. 'gpt-5.6#high')
+    # now reach this check and map to 1050000, which over-applies the cap (the
+    # safe direction). The shim echoes the stripped id in its responses, so
+    # context-reporter.sh (response .message.model) never sees the suffix;
+    # whether context-bar.sh's requested .model.id can carry it is unverified.
+    # Near misses fall through to None: bare 'gpt-6', 'gpt-6-terra' (retired),
+    # GPT-6 mini/chat ('gpt-6-sol-mini', 'gpt-6-sol-chat'), right-boundary text
+    # ('gpt-6-astra-pro-x', 'gpt-6-sol-pro[1m]x', 'gpt-6-astra[1m]x',
+    # 'gpt-6-sol[1m]-pro') and left-boundary text ('xgpt-6-sol').
+    # Returning the flagship window makes these ids take part in the exact-
+    # ChatGPT-lane 919000 ceiling (keyed on window == 1050000 below). That
+    # subscription-lane cap is MEASURED only for Astra and Sol as of 2026-09-05:
+    # gpt-6-astra accepted 919,053 and rejected 922,552, and gpt-5.6-sol accepted
+    # 910,827 and rejected 921,973 (previously 370,000, set 2026-07-16 and now
+    # stale). gpt-6-sol, gpt-6-luna and the flagship '-pro' forms are covered by
+    # USER POLICY DECISION 2026-09-29, not validation (session workspace
+    # research/2026-09-29_FrameworkDev_OpenRouterDottedModelNames). Under that
+    # decision gpt-6-sol reads as gpt-5.6-sol, gpt-6-luna reads as gpt-5.6-luna,
+    # and every flagship '-pro' reads as its non-pro base. Their 1,050,000 window
+    # matches the OpenRouter catalogue fetched 2026-09-29. Their 919000 lane cap
+    # is INFERRED from the Sol/Astra measurements, not measured.
+    if _GPT_FLAGSHIP_RE.fullmatch(slug.split("#", 1)[0]):
         return 1050000
     if re.match(r"^gpt-5(?:$|[-\[])|^gpt-5\.2(?:$|[-\[])", slug):
         if "-chat" in slug:
@@ -660,7 +699,10 @@ def probe_context_window_coherence(route_info: RouteInfo, env) -> ProbeResult:
 
     Every effective model selector is inspected. On the exact ChatGPT-subscription
     lane, any selector mapped to the runtime's anchored GPT flagship physical
-    family (gpt-5.4/5.5/5.6 plus gpt-6-astra) makes the 919000 ceiling relevant.
+    family makes the 919000 ceiling relevant. That family is gpt-5.4/5.5/5.6 plus
+    gpt-6-astra, and also gpt-6-sol, gpt-6-luna and the flagship -pro forms under
+    the 2026-09-29 user policy decision, where the cap is inferred rather than
+    measured.
     Numeric declarations use the same canonical positive signed-64-bit contract
     as the Bash consumers.
     """
@@ -762,7 +804,9 @@ def probe_context_window_coherence(route_info: RouteInfo, env) -> ProbeResult:
         r.verdict = Verdict.FAIL
         r.detail = (
             f"Unsafe ChatGPT-subscription context declaration: {max_ctx} exceeds "
-            "the measured 919000-token Codex backend ceiling. The declaration is "
+            "the 919000-token Codex backend ceiling (measured for gpt-5.6-sol and "
+            "gpt-6-astra; applied to the other mapped flagships by 2026-09-29 "
+            "policy). The declaration is "
             f"relevant because of: {relevant_text}. Set "
             "CLAUDE_CODE_MAX_CONTEXT_TOKENS=919000, recreate the container, and "
             "restart the Claude Code session."
@@ -771,7 +815,9 @@ def probe_context_window_coherence(route_info: RouteInfo, env) -> ProbeResult:
         r.verdict = Verdict.PASS
         r.detail = (
             f"ChatGPT-subscription declaration {max_ctx} is canonical and aligned "
-            "with the measured 919000-token backend ceiling; lower positive values "
+            "with the 919000-token backend ceiling (measured for gpt-5.6-sol and "
+            "gpt-6-astra; policy-applied to the other mapped flagships); lower "
+            "positive values "
             f"are preserved. Relevant selector(s): {relevant_text}."
         )
     elif not needs_declaration:

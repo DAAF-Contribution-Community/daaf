@@ -551,11 +551,25 @@ protocols — e.g., the bundled `code-review` skill reviews git diffs
 generically, while DAAF's quality review is performed by the `code-reviewer`
 agent following `QA_CHECKPOINTS.md`.
 
+The same applies to **claude.ai-synced account skills and plugins**. When the
+user signs in with a claude.ai account, Claude Code syncs that account's skills
+and plugins. On 2.1.281, synced account skills appear in your skill listing
+namespaced as `anthropic-skills:<name>` (e.g. `anthropic-skills:docx`,
+`anthropic-skills:pdf`); the user's `/skills` UI shows them by short name.
+Synced plugins can register namespaced skills and agents, hooks, and MCP
+servers outside DAAF's audited set. A repository cannot turn this sync off,
+so DAAF coexists with it rather than disabling it; users who want a DAAF-only
+surface opt out at user or local scope (`user_reference/07_faq_technical.md`).
+
 Disambiguation rules:
 
 - For pipeline and framework work, DAAF's skills and agents always take
-  precedence — never substitute a built-in skill for a DAAF protocol step
-- Invoke a built-in skill only when the user explicitly requests it (e.g.,
+  precedence — never substitute a built-in or synced skill for a DAAF
+  protocol step
+- Never dispatch a plugin-provided agent type (e.g. `<plugin>:<agent>`) for
+  pipeline or framework work — dispatch only DAAF's named agents and the
+  generic types listed under Subagent Type Selection
+- Invoke a built-in or synced skill only when the user explicitly requests it (e.g.,
   types its slash command) or when the task is clearly outside DAAF's scope
   and no DAAF component covers it
 - When a natural-language request (no slash command typed) matches both
@@ -634,7 +648,7 @@ See `.claude/agents/README.md` for the complete agent index with key inputs and 
 
 **When to use generic types:** Only for ad-hoc tasks that do not map to any named agent (e.g., Stage DI-7 skill authoring using a `general-purpose` subagent). For all standard pipeline stages, use the corresponding named agent. For read-only exploration tasks, prefer `search-agent` over generic `Plan` — it defaults to the `sonnet` tier (with per-dispatch override available; see Model Selection below), has web access (WebSearch plus the DAAF fetch protocol — `web-retrieval` skill), and understands DAAF conventions. **NEVER use `Explore` subagents.** `Explore` agents are blocked by project hooks (they run on Haiku, which lacks reasoning depth) and will be rejected, wasting time and context on failed launches.
 
-**Nested dispatch is policy-blocked.** Only the orchestrator dispatches subagents — subagents never launch nested subagents, because all dispatch authority belongs to the orchestrator. A subagent that runs short on context or scope returns remaining work via the early-return protocol so the orchestrator can redelegate it, rather than spawning its own subagents. This is enforced by the `block-nested-dispatch.sh` PreToolUse hook, which denies any Task/Agent dispatch originating inside a subagent (the named agents also omit `Agent`/`Task` from their `tools:` lists; the hook additionally covers the generic built-in types).
+**Nested dispatch is policy-blocked.** Only the orchestrator dispatches subagents — subagents never launch nested subagents, because all dispatch authority belongs to the orchestrator. A subagent that runs short on context or scope returns remaining work via the early-return protocol so the orchestrator can redelegate it, rather than spawning its own subagents. This is enforced in layers. First, the harness: `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH=1` in settings.json `env` makes Claude Code withhold the Agent/Task tool from every subagent (observed behavior on 2.1.261 and 2.1.281; the Claude Code changelog says only that the setting disables nesting). Second, the named agents omit `Agent`/`Task` from their `tools:` lists. Third, the backstop: the `block-nested-dispatch.sh` PreToolUse hook denies any Task/Agent dispatch originating inside a subagent, covering the generic built-in types too, should the spawn-depth limit ever be lifted or regress.
 
 ### Model Selection for Subagent Dispatch
 
@@ -664,7 +678,7 @@ DAAF routes subagents across two model tiers, following a **least-capable-suffic
 
 **Ceiling rule.** Never dispatch a subagent on a *higher* tier than the current session model. A user who chose a cheaper session model did so deliberately (cost control); silently upgrading subagents defeats that choice. The orchestrator cannot reliably determine its own session model from context, so the `enforce-model-ceiling.sh` PreToolUse hook enforces this deterministically: if a dispatch would exceed the session tier, the hook denies it and its message names the session model. **Trust and follow the hook** — re-dispatch at the tier it states. (The hook is a fail-open cost guard, not a safety boundary: if it cannot detect the session model it allows the dispatch.)
 
-**Alternative providers.** Users on OpenRouter or other providers keep two-tier routing working by remapping the aliases via `ANTHROPIC_DEFAULT_OPUS_MODEL` / `ANTHROPIC_DEFAULT_SONNET_MODEL` (their models, same two-tier semantics) or by flattening to one model with `CLAUDE_CODE_SUBAGENT_MODEL`. These are set host-side in `environment_settings.txt`. When either is configured, the ceiling hook stands down (it cannot rank custom models). OpenAI GPT models are supported this way too — either through OpenRouter or through DAAF's provider shim — and the alias remaps behave identically (e.g. `ANTHROPIC_DEFAULT_OPUS_MODEL=openai/gpt-5.6-sol`, `ANTHROPIC_DEFAULT_SONNET_MODEL=openai/gpt-5.6-terra`, or `ANTHROPIC_DEFAULT_OPUS_MODEL=openai/gpt-6-astra`), with the ceiling hook standing down the same way.
+**Alternative providers.** Users on OpenRouter or other providers keep two-tier routing working by remapping the aliases via `ANTHROPIC_DEFAULT_OPUS_MODEL` / `ANTHROPIC_DEFAULT_SONNET_MODEL` (their models, same two-tier semantics) or by flattening to one model with `CLAUDE_CODE_SUBAGENT_MODEL`. These are set host-side in `environment_settings.txt`. When either is configured, the ceiling hook stands down (it cannot rank custom models). OpenAI GPT models are supported this way too — either through OpenRouter or through DAAF's provider shim — and the alias remaps behave identically (e.g. the recommended `ANTHROPIC_DEFAULT_OPUS_MODEL=openai/gpt-6-sol` with `ANTHROPIC_DEFAULT_SONNET_MODEL=openai/gpt-6-luna`, or `ANTHROPIC_DEFAULT_OPUS_MODEL=openai/gpt-6-astra` as a premium strong tier), with the ceiling hook standing down the same way.
 
 ### Orchestrator Context Budget
 
@@ -724,13 +738,13 @@ If a write fails, retry once. If the retry also fails, stop and report the issue
 
 ### Wave Barrier Discipline (Async Dispatch)
 
-Subagents dispatched via the Agent tool run in the background by default and return via completion notifications that may arrive one at a time. Under the older synchronous harness this barrier was enforced structurally — a dispatch blocked until its return arrived, so the orchestrator *could not* act on partial wave results. That enforcement is gone; the orchestrator now *can* act mid-wave, which is exactly the failure mode this norm prevents. Treat mid-wave notifications as **status-only**: do not make gate decisions, revise plans, finalize STATE.md conclusions, present user checkpoints, or begin synthesis until EVERY member of the dispatched wave has returned.
+How subagent results arrive depends on the Claude Code version and settings. With DAAF's shipped `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`, dispatches on the pinned Claude Code version (2.1.281, observed 2026-09-24) run in the foreground and return inline in the dispatching turn. Without that setting, or on other versions, they run in the background (Claude Code's default since 2.1.198) and results can arrive as later async completion notifications, one at a time. The Agent tool's own description may still say subagents run in the background; that is harness boilerplate, and the observed behavior under DAAF's settings differs. The wave barrier applies either way. Inline dispatch enforces it structurally, because the orchestrator *cannot* act on partial wave results that have not returned; async dispatch does not, and there the orchestrator *can* act mid-wave, which is exactly the failure mode this norm prevents. Because the delivery mode can change with a version or setting, the norm is binding regardless of which one is in effect. Treat mid-wave notifications as **status-only**: do not make gate decisions, revise plans, finalize STATE.md conclusions, present user checkpoints, or begin synthesis until EVERY member of the dispatched wave has returned.
 
 - **Synthesize once, over the complete wave — never incrementally per return.** Holding all wave results together before deciding is what lets you genuinely reincorporate a later return rather than anchoring on the first one.
 - **Interim narration is fine; acting on partial results is not.** Telling the user "two of three specialists have reported back" is good communication; making the next gate decision before the third returns is not.
 - **An early return (context pressure) or a failed/skipped agent still counts as that member's completion.** Handle redelegation as part of whole-wave synthesis, not as an immediate mid-wave reaction — a failed member does not license acting on the wave before the rest arrive.
 
-This norm restates a formerly-structural guarantee as an explicit discipline. It applies to every mode that dispatches subagents in waves; the mode reference files may state it more briefly and point back here.
+This norm restates as an explicit discipline a guarantee that inline dispatch provides structurally and async dispatch does not. It applies to every mode that dispatches subagents in waves; the mode reference files may state it more briefly and point back here.
 
 ### Context Recovery
 

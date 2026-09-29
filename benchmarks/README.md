@@ -32,13 +32,13 @@ and still score poorly here if it skips confirmation gates or dispatches
 free-form prompts. Conversely, a weaker model that faithfully follows protocol
 scores well.
 
-**Model matrix:** 43 registry entries across three explicit providers. The
+**Model matrix:** 44 registry entries across three explicit providers. The
 matrix is defined in `config/models.yaml`; provider labels describe the measured
 route, not interchangeable billing aliases.
 
 | Provider | Entries | Route and accounting basis |
 |----------|--------:|----------------------------|
-| `anthropic` | 9 | Claude Code subscription route for Haiku 4.5, Sonnet 4.6/5, Opus 4.5/4.6/4.7/4.8/5, and Fable 5 |
+| `anthropic` | 10 | Claude Code subscription route for Haiku 4.5, Sonnet 4.6/5, Opus 4.5/4.6/4.7/4.8/5/5.5, and Fable 5 |
 | `openrouter` | 30 | OpenRouter's Anthropic-compatible endpoint; includes GLM, Kimi, Qwen, Gemma, DeepSeek, Gemini, Nemotron, Inkling, Grok, and GPT entries |
 | `chatgpt-subscription` | 4 | Local provider shim to the deployed ChatGPT/Codex subscription backend for GPT-5.6 Luna, Terra, and Sol plus GPT-6 Astra; included-capacity billing and separate API-equivalent accounting |
 
@@ -53,8 +53,19 @@ this ChatGPT/Codex lane, measured on 2026-09-05 for both `gpt-6-astra` (accept
 that measurement supersedes the earlier 2026-07-16 Sol-only figure of ~370,000.
 Luna and Terra remain conservatively inferred to share the lane cap until
 individually measured. OpenRouter also lists a real `openai/gpt-6-astra-pro`
-slug, which is deliberately NOT in the roster: DAAF's exact-match threshold rule
-keeps any `-pro` variant on conservative context thresholds.
+slug, which is deliberately NOT in the roster. When it was left out (2026-09-05)
+DAAF's exact-match threshold rule kept every `-pro` variant on conservative
+context thresholds. Since 2026-09-29, by user policy decision rather than
+validation, DAAF's context monitoring reads a flagship `-pro` slug like its
+non-pro base. That change does not revisit the roster decision: see the
+2026-07-10 `-pro` removal note in `config/models.yaml` and its 2026-09-29
+retest annotation. The July prompt-length wall on the Anthropic-compatible
+endpoint no longer reproduces: three `-pro` slugs each accepted more than 930k
+reported tokens. The ~3–4x inflated token accounting persists, though. It
+still makes a GPT-6 `-pro` battery roughly 3x the cost of its base (equal
+per-token prices) and a `gpt-5.6-sol-pro` battery roughly 8x (its per-token
+price is 2x its base's); both multiples are derived, not invoice-verified.
+Evidence: `research/2026-09-29_FrameworkDev_OpenRouterDottedModelNames/preliminary_notes/2026-09-29_openrouter-pro-retest.md`.
 Each subscription entry maps both `ANTHROPIC_DEFAULT_OPUS_MODEL` and
 `ANTHROPIC_DEFAULT_SONNET_MODEL` to its own bare parent ID and deliberately omits
 `CLAUDE_CODE_SUBAGENT_MODEL`, preserving semantic tier selection while keeping
@@ -67,7 +78,10 @@ The GPT-5.6 -pro slugs and GPT-5.5 Pro were tested and REMOVED from the
 OpenRouter matrix (2026-07-10): the -pro variants hit hard "Prompt is too long"
 errors at realistic DAAF context sizes through that endpoint (~4x inflated token
 accounting against a ~200k ceiling; evidence in the models.yaml REMOVED block),
-and GPT-5.5 Pro's premium API pricing made its battery not worth running. No
+and GPT-5.5 Pro's premium API pricing made its battery not worth running. A
+2026-09-29 retest found the wall gone but the inflation (and so the cost
+multiple) intact. The roster is unchanged, and cost is now the remaining
+rationale for the removal. No
 live ChatGPT-subscription Luna probe or behavioral run is claimed in this
 document; the commands below are an authorized-style staged procedure.
 
@@ -541,7 +555,10 @@ next, more expensive one.
    - `pricing` — per-million-token `input` / `output`, plus `cached_input` when the
      endpoint discounts cache reads (the 0731 Novita endpoint lists one, so it is
      declared). `chatgpt-subscription` entries carry `api_equivalent_pricing` instead
-     (§ 7 dual ledger), not `pricing`.
+     (§ 7 dual ledger), not `pricing`. The block is required: without it, that
+     model's API-equivalent accounting is reported as unavailable. Quote its
+     `accessed_at` date, because an unquoted YAML date parses as a date object,
+     which fails validation.
    - `env_overrides` — **child-model purity pinning** (models.yaml header, "CHILD-MODEL
      PURITY PINNING"). OpenRouter/Anthropic entries pin all three selectors
      (`ANTHROPIC_DEFAULT_OPUS_MODEL`, `ANTHROPIC_DEFAULT_SONNET_MODEL`,
@@ -945,23 +962,38 @@ observed; it must not be rendered as `$0`, "free," or a fixed per-message cost.
 The monthly subscription is not amortized across runs by default.
 
 A separate `api_equivalent` ledger answers a counterfactual question: what the
-observed token mix would cost at OpenAI's standard GPT-5.6 Luna API list prices.
-The schedule is labeled **accessed 2026-08-11** because the source publishes no
+observed token mix would cost at OpenAI's standard API list prices for the model
+that ran. Since 2026-09-29, `compute_accounting()` prices each ChatGPT-lane model
+from its own `api_equivalent_pricing` block, covering rates, long-context
+threshold, source URL and accessed date. Before that it used Luna's schedule for
+every model. A model with no usable block gets `calculation_status =
+"unavailable_api_equivalent_pricing"`, null dollar figures, and named
+`incompleteness_reasons`; nothing falls back to Luna's rates. Archived runs keep
+the figures computed when they ran, so archived Sol and Terra runs from before
+the fix show Luna-priced scenarios. The Luna schedule is labeled **accessed 2026-08-11** because the source publishes no
 page-level effective date. OpenAI's 5x cut to Luna's direct-API list prices was
 observed on this date (prior schedule: $1.00/$0.10/$1.25/$6.00 short,
-$2.00/$0.20/$2.50/$9.00 long, accessed 2026-07-15):
+$2.00/$0.20/$2.50/$9.00 long, accessed 2026-07-15). A 2026-09-29 re-check of
+the same page found the short-context row unchanged; the page no longer
+publishes a GPT-5.6 long-context row, so the long-context rates below are
+carried from 2026-08-11 and the accessed date is unchanged:
 
 | Request tier | Ordinary input | Cached input | Cache write | Output |
 |--------------|---------------:|-------------:|------------:|-------:|
 | At or below 272,000 request input tokens | $0.20/M | $0.02/M | $0.25/M | $1.20/M |
 | Above 272,000 request input tokens | $0.40/M | $0.04/M | $0.50/M | $1.80/M |
 
-Note (2026-08-11): the api-equivalent ledger above prices against OpenAI's
+Note (2026-09-29): the api-equivalent ledger above prices against OpenAI's
 **direct-API** list rates. The separate OpenRouter lane (`openai/gpt-5.6-*`
-entries in `models.yaml`) currently applies an additional **50% exclusive
-discount** to Terra and Luna on top of OpenAI's cut — OpenRouter Luna is
-$0.10/M input / $0.60/M output, Terra $1.00/M input / $6.00/M output — while Sol
-matches OpenAI direct on both lanes.
+entries in `models.yaml`, priced from OpenRouter's catalogue) no longer shows
+the 2026-08-11 OpenRouter-exclusive 50% Terra/Luna discount: OpenRouter Luna is
+$0.20/M input / $1.20/M output and Terra $2.00/M / $12.00/M, the same as OpenAI
+direct. Sol now differs between the lanes. OpenRouter lists $2.00/M / $10.00/M.
+OpenAI direct lists **promotional** pricing of $4.00/M / $20.00/M (long context
+$8.00/M / $30.00/M), which OpenAI says is "available at least through November
+21, 2026" (previously $5.00/M / $30.00/M). The `gpt-56-sol-chatgpt`
+`api_equivalent_pricing` block carries the promotional schedule, with a revert
+note for when the promotion ends.
 
 The `>272,000` threshold applies the long-context prices to the entire request.
 `output_tokens` already includes hidden reasoning tokens, so reasoning is never
@@ -987,7 +1019,7 @@ published credit schedule has no universal USD-per-credit conversion. Record
 throttling or observed allowance movement separately; never infer a constant
 cost per message.
 
-Sources: [OpenAI GPT-5.6 Luna model and API pricing](https://developers.openai.com/api/docs/models/gpt-5.6-luna), [OpenAI reasoning-token semantics](https://developers.openai.com/api/docs/guides/reasoning), [OpenAI prompt-cache semantics](https://developers.openai.com/api/docs/guides/prompt-caching), and [OpenAI Codex plans, limits, and credits](https://learn.chatgpt.com/docs/pricing), all pricing/limit facts accessed 2026-08-11 (GPT-5.6 API list rates re-verified against the [OpenAI API pricing page](https://developers.openai.com/api/docs/pricing) on that date; Codex plan/limit facts unchanged since 2026-07-15).
+Sources: [OpenAI GPT-5.6 Luna model and API pricing](https://developers.openai.com/api/docs/models/gpt-5.6-luna), [OpenAI reasoning-token semantics](https://developers.openai.com/api/docs/guides/reasoning), [OpenAI prompt-cache semantics](https://developers.openai.com/api/docs/guides/prompt-caching), and [OpenAI Codex plans, limits, and credits](https://learn.chatgpt.com/docs/pricing), all pricing/limit facts accessed 2026-08-11 (GPT-5.6 API list rates re-verified against the [OpenAI API pricing page](https://developers.openai.com/api/docs/pricing) on that date; Codex plan/limit facts unchanged since 2026-07-15). GPT-5.6 short-context API list rates and Sol's promotional schedule re-checked on that page on 2026-09-29 (artifact `research/2026-09-29_FrameworkDev_OpenRouterDottedModelNames/web_fetches/2026-09-29T204921Z_developers-openai-com_pricing-openai-api_00eaf917.html`).
 
 ## 8. Results & Viewer
 
@@ -1554,6 +1586,17 @@ within 300s.
    orderly shutdown interval; it does not prove an asynchronous/buffered write
    model or that SIGKILL caused any particular missing tail. The scoring-side
    dispatch-recovery fallback (§ 6) can use surviving subagent evidence.
+10. **Result sets span Claude Code CLI versions.** The four phase runners
+   record the CLI version in `manifest.json` as `claude_code_version` (via
+   `harness/artifacts.py` `manifest_provenance()`). As of 2026-09-24 every
+   manifest that carries the field reads `"2.1.202 (Claude Code)"` (348 sets;
+   inference, count not re-verified: 87 older sets lack it), while DAAF's pin
+   has since moved 2.1.202 → 2.1.261 → 2.1.280 → 2.1.281. The next run is
+   therefore three pin bumps removed from the whole existing corpus, across harness changes to dispatch, resume, and
+   stream handling. Do not pool or compare result sets across
+   `claude_code_version` values without annotating the version split; the
+   viewer does not yet surface the field. The analytics pilot's own manifest
+   (`analytics/scripts/run_analytics_pilot.py`) does not record it.
 
 ## 12. Future Work
 

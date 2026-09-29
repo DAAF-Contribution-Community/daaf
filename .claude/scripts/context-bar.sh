@@ -157,6 +157,16 @@ if command -v jq >/dev/null 2>&1; then
     fi
 fi
 
+# Drop a "#<effort>" suffix (everything from the first '#') before any cache
+# seed or classification. INTENT: a shim slug such as gpt-6-astra[1m]#xhigh must
+# classify as gpt-6-astra[1m] (window map, 919k ChatGPT-lane cap, GPT display);
+# every anchored grammar below rejects '#'. The seeded claude-model-<session>
+# cache then matches the bare model the shim echoes (_split_effort_suffix in
+# anthropic_openai_shim.py), which context-reporter.sh and subagent-bar.sh read.
+# Defensive (whether .model.id carries the suffix is unverified); a no-op
+# without '#', and model_id_state keeps its verdict on the raw id.
+model_id="${model_id%%#*}"
+
 # Production caches live in /tmp. The override is a deterministic-test seam so
 # Bats can exercise writes inside project scratch without touching live session
 # state. Cache eligibility requires a successfully parsed payload plus a
@@ -231,7 +241,8 @@ or_context_resolved=0
 # after payload extraction. Malformed session IDs skip this cache-backed branch.
 if [[ "$session_id_safe" -eq 1 && "${ANTHROPIC_BASE_URL:-}" == *openrouter.ai* ]]; then
     # model_id already extracted in the consolidated jq pass above
-    # (byte-identical to the old `.model.id // empty`).
+    # (byte-identical to the old `.model.id // empty`, minus any #<effort>
+    # suffix; catalogue ids never contain '#').
     or_cache="${context_cache_dir}/claude-or-models-${session_id}"
 
     if [[ -n "$model_id" && ! -s "$or_cache" ]]; then
@@ -293,18 +304,31 @@ fi
 # gpt-5.6 Sol/Terra/Luna family is 1,050,000), so they must precede the broad
 # flagship and *gpt-5* fallbacks. Verified against OpenRouter on 2026-07-09.
 # Closed-set GPT flagship grammar (Convention 3). Only the exact flagship set —
-# bare gpt-5.4/5.5/5.6 plus the sol/terra/luna codenames, and the standalone
-# GPT-6 flagship gpt-6-astra, each with an optional [1m] badge — is eligible for
-# the 1,050,000 physical window (and the 919k ChatGPT-lane cap arm below).
+# bare gpt-5.4/5.5/5.6 plus the sol/terra/luna codenames, and the GPT-6
+# flagships gpt-6-astra, gpt-6-sol, and gpt-6-luna, each with an optional -pro
+# and then an optional [1m] badge — is eligible for the 1,050,000 physical
+# window (and the 919k ChatGPT-lane cap arm below).
 # Anchored so malformed suffixes (gpt-5.4-, gpt-5.6-experimental, gpt-5.5[1m,
-# gpt-5.6-sol[1m]x, gpt-6-astra-pro, gpt-6-astra[1m]-x) and left-boundary near
-# misses (xgpt-6-astra, gpt-6-astrab) fall through to the ordinary default
-# rather than being mapped to the flagship window. New codenames are a
-# deliberate one-line edit here, consistent with DAAF's validate-before-trust
-# policy. Stored in a variable to avoid [[ =~ ]] quoting pitfalls; defined
-# unconditionally so it is in scope for the ChatGPT-lane predicate below even
-# when this static-map block is skipped.
-gpt_flagship_re='^(gpt-5\.(4|5|6)(-(sol|terra|luna))?|gpt-6-astra)(\[1m\])?$'
+# gpt-5.6-sol[1m]x, gpt-6-astra-pro-x, gpt-6-sol[1m]-pro, gpt-6-astra[1m]-x),
+# unregistered GPT-6 names (gpt-6, gpt-6-terra, gpt-6-sol-mini), mini/chat -pro
+# spellings (gpt-5.6-mini-pro), and left-boundary near misses (xgpt-6-astra,
+# gpt-6-astrab) fall through to the ordinary default rather than being mapped
+# to the flagship window. New codenames are a deliberate one-line edit here.
+# USER POLICY DECISION 2026-09-29, not validation
+# (research/2026-09-29_FrameworkDev_OpenRouterDottedModelNames): any flagship
+# -pro reads exactly as its non-pro base; gpt-6-sol and gpt-6-luna read as
+# gpt-5.6-sol and gpt-5.6-luna; there is no gpt-6-terra. Windows per the
+# OpenRouter catalogue fetched 2026-09-29 (context_length 1050000 for
+# openai/gpt-6-sol, gpt-6-sol-pro, gpt-6-luna, gpt-6-luna-pro, gpt-6-astra-pro,
+# gpt-5.6-{sol,terra,luna}-pro, gpt-5.5-pro, gpt-5.4-pro; no gpt-6-terra entry),
+# web_fetches/2026-09-29T160403Z_openrouter-ai_untitled_051e0609.json in that
+# workspace. Kept byte-identical with subagent-bar.sh's gpt_flagship_re and
+# context-reporter.sh's GPT_FLAGSHIP_RE (three-way lockstep test in
+# tests/bash/context_reporter.bats; subagent_bar.bats additionally locks the
+# bar-vs-context-bar pair). Stored in a variable to avoid [[ =~ ]] quoting
+# pitfalls; defined unconditionally so it is in scope for the ChatGPT-lane
+# predicate below even when this static-map block is skipped.
+gpt_flagship_re='^(gpt-5\.(4|5|6)(-(sol|terra|luna))?|gpt-6-(astra|sol|luna))(-pro)?(\[1m\])?$'
 # Closed-set mini/chat grammars (Convention 3), byte-consistent with
 # subagent-bar.sh's anchored EREs. These replace the old open-ended inner globs
 # (*-mini*/*-chat*) so suffixed near-misses (e.g. gpt-5.6-mini-preview) fail the
@@ -325,13 +349,16 @@ if [[ -n "$model_id" && "$or_context_resolved" -eq 0 && "$max_context" -eq 20000
             max_context=1048576 ;;
         *)
             case "$physical_slug" in
-                gpt-5.4|gpt-5.4[-\[]*|gpt-5.5|gpt-5.5[-\[]*|gpt-5.6|gpt-5.6[-\[]*|gpt-6-astra|gpt-6-astra[-\[]*)
+                gpt-5.4|gpt-5.4[-\[]*|gpt-5.5|gpt-5.5[-\[]*|gpt-5.6|gpt-5.6[-\[]*|gpt-6-astra|gpt-6-astra[-\[]*|gpt-6-sol|gpt-6-sol[-\[]*|gpt-6-luna|gpt-6-luna[-\[]*)
                     # Closed-set classification (Convention 3), byte-consistent
                     # with subagent-bar.sh: only the anchored flagship/mini/chat
                     # grammars earn a GPT window. Order flagship, then mini, then
-                    # chat. Malformed suffixes that reached this family glob (e.g.
-                    # gpt-5.4-, gpt-5.6-experimental, gpt-5.6-mini-preview,
-                    # gpt-5.6-sol[1m]x, gpt-6-astra-pro, gpt-6-astra[1m]-x) match
+                    # chat. The family glob only admits candidates (gpt-6-sol and
+                    # gpt-6-luna added 2026-09-29 by user policy decision); the
+                    # anchored ERE decides. Malformed suffixes that reached this
+                    # family glob (e.g. gpt-5.4-, gpt-5.6-experimental,
+                    # gpt-5.6-mini-preview, gpt-5.6-sol[1m]x, gpt-6-astra-pro-x,
+                    # gpt-6-sol[1m]-pro, gpt-6-sol-mini, gpt-6-astra[1m]-x) match
                     # none and fall through to the 200k default (max_context is
                     # already 200000 in this block).
                     if   [[ "$physical_slug" =~ $gpt_flagship_re ]]; then max_context=1050000
@@ -360,7 +387,9 @@ fi
 # ChatGPT-subscription/Codex final physical-window accounting constraint.
 # Canonical activation requires BOTH exact lane signals and a model in the same
 # anchored flagship arm used by the static map above — the gpt-5.4/5.5/5.6
-# family plus gpt-6-astra (mini/chat variants are excluded by the arm's
+# family plus gpt-6-astra, and (user policy decision 2026-09-29, not
+# measurement) gpt-6-sol, gpt-6-luna, and the flagship -pro forms, which inherit
+# the cap from their bases (mini/chat variants are excluded by the arm's
 # ordering). Probes 2026-09-05 (Codex CLI 0.153.2, shim v1.3.19,
 # SHIM_BACKEND_MODE=chatgpt) measured BOTH lane flagships: gpt-6-astra accepted
 # 919,053 real input tokens and rejected 922,552; gpt-5.6-sol accepted 910,827

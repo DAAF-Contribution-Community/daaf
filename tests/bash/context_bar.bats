@@ -346,7 +346,11 @@ JSON
 
 @test "gpt-6-astra near-misses do NOT get the 1.05M flagship window" {
     local model
-    for model in gpt-6-astra-pro gpt-6-astra-mini 'gpt-6-astra[1m]-x' gpt-6-astrab gpt-6 gpt-6-luna; do
+    # 2026-09-29 policy flip (user policy decision, not validation): flagship
+    # -pro reads as its base and gpt-6-luna reads as gpt-5.6-luna, so
+    # gpt-6-astra-pro and gpt-6-luna now map to 1.05M ON PURPOSE and moved to
+    # the 2026-09-29 positive cases below. Genuine near misses replace them.
+    for model in gpt-6-astra-pro-x gpt-6-astra-mini 'gpt-6-astra[1m]-x' gpt-6-astrab gpt-6 gpt-6-terra; do
         run bash "$CONTEXT_BAR_SH" < <(_payload "$model")
         assert_success
         refute_output --partial "of 1050k tokens"
@@ -1461,6 +1465,97 @@ JSON
     done
 }
 
+# =========================================================================
+# 2026-09-29 GPT registry extension (USER POLICY DECISION, not validation):
+# flagship -pro reads as its non-pro base; gpt-6-sol reads as gpt-5.6-sol and
+# gpt-6-luna as gpt-5.6-luna (1.05M window, 919k ChatGPT-lane cap). No
+# gpt-6-terra; bare gpt-6 and GPT-6 mini/chat stay unregistered. context-bar.sh
+# applies no quality tier, so only the physical window and the lane cap are
+# asserted here. Windows per the OpenRouter catalogue fetched 2026-09-29
+# (research/2026-09-29_FrameworkDev_OpenRouterDottedModelNames/web_fetches/).
+# =========================================================================
+
+@test "gpt-6-sol, gpt-6-luna, and flagship -pro slugs map to the 1,050,000 window" {
+    local model
+    for model in \
+        gpt-6-sol \
+        'gpt-6-sol[1m]' \
+        openrouter/openai/gpt-6-sol \
+        gpt-6-luna \
+        'openai/gpt-6-luna[1m]' \
+        gpt-6-sol-pro \
+        'gpt-6-sol-pro[1m]' \
+        gpt-6-luna-pro \
+        gpt-6-astra-pro \
+        gpt-5.6-sol-pro \
+        gpt-5.6-terra-pro \
+        gpt-5.6-luna-pro \
+        gpt-5.6-pro \
+        gpt-5.5-pro \
+        gpt-5.4-pro; do
+        run bash "$CONTEXT_BAR_SH" < <(_payload "$model")
+        assert_success
+        assert_output --partial "of 1050k tokens"
+        run cat "$CTX_CACHE"
+        assert_output "1050000"
+    done
+}
+
+@test "GPT-6 and -pro near misses stay on the ordinary 200k default" {
+    local model
+    for model in \
+        gpt-6-terra \
+        gpt-6 \
+        gpt-6-sol-mini \
+        gpt-6-sol-chat \
+        'gpt-6-sol[1m]-pro' \
+        gpt-6-sol-pro-x \
+        gpt-5.6-mini-pro \
+        gpt-5.6-sol-chat-pro \
+        xgpt-6-sol \
+        vendor/notgpt-6-luna; do
+        run bash "$CONTEXT_BAR_SH" < <(_payload "$model")
+        assert_success
+        assert_output --partial "of 200k tokens"
+        refute_output --partial "of 1050k tokens"
+    done
+}
+
+@test "chatgpt lane caps gpt-6-sol, gpt-6-luna, and flagship -pro at 919,000" {
+    local model
+    for model in gpt-6-sol 'gpt-6-sol-pro[1m]' gpt-6-luna gpt-6-astra-pro gpt-5.6-sol-pro; do
+        run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+            bash "$CONTEXT_BAR_SH" < <(_payload "$model" 1050000)
+        assert_success
+        assert_output --partial "of 919k tokens"
+        run cat "$CTX_CACHE"
+        assert_output "919000"
+    done
+}
+
+@test "chatgpt lane does not cap GPT-6 / -pro near misses" {
+    local model
+    for model in gpt-6-terra 'gpt-6-sol[1m]-pro' gpt-6-sol-pro-x gpt-5.6-mini-pro; do
+        run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+            bash "$CONTEXT_BAR_SH" < <(_payload "$model" 1050000)
+        assert_success
+        assert_output --partial "of 1050k tokens"
+        refute_output --partial "of 919k tokens"
+    done
+}
+
+@test "context-bar seeds the main-session model cache with the RAW dotted Claude id" {
+    # context-bar.sh deliberately does NOT normalize provider-dotted Claude ids
+    # (it has no Claude window arm and applies no quality tier). Its
+    # claude-model-<session> cache therefore holds the requested spelling, which
+    # is why context-reporter.sh and subagent-bar.sh normalize BOTH sides of
+    # their same/different-model comparisons (2026-09-29).
+    run bash "$CONTEXT_BAR_SH" < <(_payload "anthropic/claude-opus-5.5")
+    assert_success
+    run cat "$MODEL_CACHE"
+    assert_output "anthropic/claude-opus-5.5"
+}
+
 @test "chatgpt lane final cap ignores malformed flagship-suffix near-misses" {
     local model
     for model in 'gpt-5.4-' 'gpt-5.6-experimental' 'gpt-5.5[1m' 'gpt-5.6-sol[1m]x'; do
@@ -1470,6 +1565,97 @@ JSON
         assert_output --partial "of 1050k tokens"
         refute_output --partial "of 919k tokens"
     done
+}
+
+# =========================================================================
+# "#<effort>" suffix on .model.id (2026-09-29, user-approved defensive fix)
+# -------------------------------------------------------------------------
+# context-bar.sh drops everything from the first '#' in model_id before it
+# caches or classifies it, so a shim slug such as gpt-6-astra[1m]#xhigh reads as
+# gpt-6-astra[1m]. Whether Claude Code's .model.id carries the suffix is
+# unverified; these cases lock the behavior if it does. The strip happens
+# BEFORE the anchored grammars run, so a near miss stays a near miss.
+# =========================================================================
+
+@test "effort suffix: exact ChatGPT lane caps suffixed flagship ids at 919,000" {
+    local model window
+    for model in 'gpt-6-astra[1m]#xhigh' 'openai/gpt-5.6-sol#high' 'gpt-6-sol#medium' 'gpt-6-astra[1m]'; do
+        # 200000 exercises the static map then the cap; 1050000 the cap predicate alone.
+        for window in 200000 1050000; do
+            run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+                bash "$CONTEXT_BAR_SH" < <(_payload "$model" "$window")
+            assert_success
+            assert_output --partial "of 919k tokens"
+            run cat "$CTX_CACHE"
+            assert_output "919000"
+        done
+    done
+}
+
+@test "effort suffix: suffixed flagship ids get the 1,050,000 window off the ChatGPT lane" {
+    local model
+    for model in 'gpt-6-astra[1m]#xhigh' 'openai/gpt-5.6-sol#high' 'gpt-6-sol#medium'; do
+        run bash "$CONTEXT_BAR_SH" < <(_payload "$model")
+        assert_success
+        assert_output --partial "of 1050k tokens"
+        run cat "$CTX_CACHE"
+        assert_output "1050000"
+    done
+}
+
+@test "effort suffix: near misses stay unrecognised after the strip" {
+    local model
+    for model in 'gpt-6-terra#high' 'gpt-6-sol-pro-x#high' 'gpt-6-sol[1m]-pro#low' 'xgpt-6-astra#xhigh'; do
+        run bash "$CONTEXT_BAR_SH" < <(_payload "$model")
+        assert_success
+        assert_output --partial "of 200k tokens"
+        refute_output --partial "of 1050k tokens"
+        run env DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt \
+            bash "$CONTEXT_BAR_SH" < <(_payload "$model" 1050000)
+        assert_success
+        assert_output --partial "of 1050k tokens"
+        refute_output --partial "of 919k tokens"
+    done
+}
+
+@test "effort suffix: session model cache holds the bare id and unsuffixed ids are cached verbatim" {
+    run bash "$CONTEXT_BAR_SH" < <(_payload 'gpt-6-astra[1m]#xhigh')
+    assert_success
+    run cat "$MODEL_CACHE"
+    assert_output "gpt-6-astra[1m]"
+
+    run bash "$CONTEXT_BAR_SH" < <(_payload 'openrouter/openai/gpt-6-sol-pro[1m]')
+    assert_success
+    run cat "$MODEL_CACHE"
+    assert_output "openrouter/openai/gpt-6-sol-pro[1m]"
+}
+
+@test "effort suffix: OpenRouter catalogue lookup uses the bare id" {
+    run env \
+        ANTHROPIC_BASE_URL="https://openrouter.ai/api" \
+        MOCK_OPENROUTER_CONTEXT=777777 \
+        PATH="${MOCK_BIN}:${PATH}" \
+        bash "$CONTEXT_BAR_SH" < <(_payload 'z-ai/glm-5.2#high')
+    assert_success
+    assert_output --partial "of 777k tokens"
+    run cat "$CTX_CACHE"
+    assert_output "777777"
+}
+
+@test "effort suffix: GPT display drops the suffix while native Claude display is unchanged" {
+    run bash "$CONTEXT_BAR_SH" <<JSON
+{"model":{"id":"gpt-6-astra[1m]#xhigh","display_name":"gpt-6-astra[1m]#xhigh[1m]"},"effort":{"level":"high"},"cwd":"$TEST_DIR","transcript_path":"","session_id":"$FAKE_SESSION","context_window":{"context_window_size":1000000}}
+JSON
+    assert_success
+    assert_output --partial $'\033[38;5;74mgpt-6-astra[1m]\033[38;5;245m | '
+    refute_output --partial "#xhigh"
+    refute_output --partial "(high)"
+
+    run bash "$CONTEXT_BAR_SH" <<JSON
+{"model":{"id":"claude-opus-5-5","display_name":"Opus 5.5"},"effort":{"level":"high"},"cwd":"$TEST_DIR","transcript_path":"","session_id":"$FAKE_SESSION","context_window":{"context_window_size":1000000}}
+JSON
+    assert_success
+    assert_output --partial $'\033[38;5;74mOpus 5.5 (high)\033[38;5;245m | '
 }
 
 # =========================================================================

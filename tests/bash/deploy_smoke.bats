@@ -110,17 +110,36 @@ expected = {
     "gpt-6-astra": 1050000,
     "gpt-6-astra[1m]": 1050000,
     "openai/gpt-6-astra": 1050000,
-    "gpt-6-astra-pro": None,
     "gpt-6": None,
     "xgpt-6-astra": None,
+    # USER POLICY DECISION 2026-09-29 (not validation): gpt-6-sol/-luna and the
+    # flagship -pro forms read as their bases (1,050,000); the 919k lane cap for
+    # them is inferred from Sol/Astra, not measured.
+    "gpt-6-astra-pro": 1050000,
+    "gpt-6-sol": 1050000,
+    "gpt-6-sol[1m]": 1050000,
+    "openai/gpt-6-sol": 1050000,
+    "gpt-6-luna": 1050000,
+    "openai/gpt-6-luna[1m]": 1050000,
+    "gpt-6-sol-pro[1m]": 1050000,
+    "openai/gpt-6-luna-pro": 1050000,
+    "gpt-5.6-sol-pro": 1050000,
+    "gpt-6-astra[1m]#xhigh": 1050000,
+    "gpt-6-terra": None,
+    "gpt-6-sol-mini": None,
+    "gpt-6-sol-chat": None,
+    "gpt-6-astra-pro-x": None,
+    "gpt-6-sol-pro[1m]x": None,
+    "gpt-6-astra[1m]x": None,
+    "xgpt-6-sol": None,
 }
 for model_id, want in expected.items():
     got = _gpt_physical_window(model_id)
     assert got == want, (model_id, got, want)
-print("GPT physical mapping: 24/24 cases passed")
+print(f"GPT physical mapping: {len(expected)}/{len(expected)} cases passed")
 '
     assert_success
-    assert_output "GPT physical mapping: 24/24 cases passed"
+    assert_output "GPT physical mapping: 40/40 cases passed"
 }
 
 @test "route diagnostic enforces canonical decimal and all four effective GPT selectors" {
@@ -202,12 +221,26 @@ cases = [
     ("OpenRouter keeps canonical 1.05M", {"ANTHROPIC_BASE_URL": "https://openrouter.ai/api", "ANTHROPIC_MODEL": "openai/gpt-5.6-sol", "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "1050000"}, Verdict.PASS),
     ("OpenRouter does not generalize [1m]", {"ANTHROPIC_BASE_URL": "https://openrouter.ai/api", "ANTHROPIC_MODEL": "openai/gpt-5.6-sol[1m]"}, Verdict.FAIL),
     ("native route rejects an explicit overflow declaration", {"ANTHROPIC_MODEL": "claude-opus-4-8[1m]", "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "9223372036854775808"}, Verdict.FAIL),
+    # USER POLICY DECISION 2026-09-29: GPT-6 Sol/Luna and flagship -pro forms take
+    # the exact-ChatGPT-lane 919000 ceiling (inferred from Sol/Astra, not measured).
+    ("ChatGPT gpt-6-sol above lane cap", {**base_chatgpt, "ANTHROPIC_MODEL": "gpt-6-sol", "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "1050000"}, Verdict.FAIL),
+    ("ChatGPT gpt-6-sol at lane cap", {**base_chatgpt, "ANTHROPIC_MODEL": "gpt-6-sol", "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "919000"}, Verdict.PASS),
+    ("ChatGPT gpt-6-sol-pro[1m] above lane cap", {**base_chatgpt, "ANTHROPIC_MODEL": "gpt-6-sol-pro[1m]", "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "1050000"}, Verdict.FAIL),
+    ("ChatGPT gpt-6-sol-pro[1m] at lane cap", {**base_chatgpt, "ANTHROPIC_MODEL": "gpt-6-sol-pro[1m]", "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "919000"}, Verdict.PASS),
+    ("ChatGPT gpt-6-sol-pro[1m] needs explicit declaration", {**base_chatgpt, "ANTHROPIC_MODEL": "gpt-6-sol-pro[1m]"}, Verdict.FAIL),
+    ("ChatGPT gpt-6-luna remap above lane cap", {**base_chatgpt, "ANTHROPIC_MODEL": "claude-opus-4-8[1m]", "ANTHROPIC_DEFAULT_SONNET_MODEL": "gpt-6-luna", "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "1050000"}, Verdict.FAIL),
+    ("ChatGPT gpt-6-astra-pro subagent pin above lane cap", {**base_chatgpt, "ANTHROPIC_MODEL": "claude-opus-4-8[1m]", "CLAUDE_CODE_SUBAGENT_MODEL": "gpt-6-astra-pro", "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "1050000"}, Verdict.FAIL),
+    ("ChatGPT effort-suffixed gpt-6-astra above lane cap", {**base_chatgpt, "ANTHROPIC_MODEL": "gpt-6-astra[1m]#xhigh", "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "1050000"}, Verdict.FAIL),
+    ("retired gpt-6-terra is not capped", {**base_chatgpt, "ANTHROPIC_MODEL": "gpt-6-terra", "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "1050000"}, Verdict.PASS),
+    ("OpenRouter gpt-6-sol keeps canonical 1.05M", {"ANTHROPIC_BASE_URL": "https://openrouter.ai/api", "ANTHROPIC_MODEL": "openai/gpt-6-sol", "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "1050000"}, Verdict.PASS),
 ]
 for label, env, want in cases:
     got = probe_context_window_coherence(build_route_info(env), env)
     assert got.verdict == want, (label, got.verdict, want, got.detail)
-print("route and model controls: 12/12 cases passed")
+    if want == Verdict.FAIL and "lane cap" in label:
+        assert "919000" in got.detail, (label, got.detail)
+print(f"route and model controls: {len(cases)}/{len(cases)} cases passed")
 '
     assert_success
-    assert_output "route and model controls: 12/12 cases passed"
+    assert_output "route and model controls: 22/22 cases passed"
 }

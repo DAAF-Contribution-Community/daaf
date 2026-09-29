@@ -23,6 +23,9 @@ Phase 4 is post-fix and recalibrated per provider from the fresh-golden
 baseline matrix (2026-06-10) — see the PHASE4_TOKENS_* block comment.
 """
 
+import math
+from typing import Optional
+
 from benchmarks.harness.models import (
     ActualBilling,
     ApiEquivalentAccounting,
@@ -36,6 +39,19 @@ CHATGPT_SUBSCRIPTION_PROVIDER = "chatgpt-subscription"
 # Rates updated 2026-08-11: OpenAI cut Luna direct-API list prices 5x
 # (verified against the pricing table at the source URL below). Prior schedule
 # was 1.00/0.10/1.25/6.00 short, 2.00/0.20/2.50/9.00 long (accessed 2026-07-15).
+# Re-checked 2026-09-29 (research/2026-09-29_FrameworkDev_OpenRouterDottedModelNames/
+# web_fetches/2026-09-29T204921Z_developers-openai-com_pricing-openai-api_00eaf917.html,
+# fetched 2026-09-29T20:49Z): SHORT rates UNCHANGED (raw HTML line 932, Standard
+# tier: gpt-5.6-luna 0.2 / 0.02 / 0.25 / 1.2). The page no longer publishes a
+# GPT-5.6 long-context row; LONG rates are carried from 2026-08-11 (output 1.80;
+# the 0.4 / 0.04 / 0.5 / 2.4 row on that page is Luna's Fast-tier SHORT rate,
+# not long-context). ACCESSED_AT stays 2026-08-11: it dates the full schedule.
+# Since 2026-09-29 these LUNA_* constants are NOT used for pricing:
+# compute_accounting() prices each chatgpt-subscription model from its OWN
+# models.yaml api_equivalent_pricing block (previously every model, including
+# Terra/Sol/Astra, was priced at these Luna rates). They are retained as the
+# registry <-> estimator coherence cross-check for the gpt-56-luna-chatgpt entry
+# (tests/test_chatgpt_route.py imports and asserts them).
 LUNA_API_PRICE_SOURCE_URL = "https://developers.openai.com/api/docs/pricing"
 LUNA_API_PRICE_ACCESSED_AT = "2026-08-11"
 LUNA_LONG_CONTEXT_THRESHOLD = 272_000
@@ -51,6 +67,8 @@ LUNA_LONG_CONTEXT_RATES = {
     "cache_write": 0.50,
     "output": 1.80,
 }
+# Every rate a context-tier schedule must carry (see _api_equivalent_cost).
+API_EQUIVALENT_RATE_KEYS = ("input", "cached_input", "cache_write", "output")
 
 # --- Calibration: average (input_tokens, output_tokens, cache_read_tokens) per case ---
 # input_tokens = uncached input, cache_read_tokens = cached input (additive)
@@ -212,6 +230,74 @@ def _api_equivalent_cost(
     ) / 1_000_000
 
 
+def _is_usable_rate(value) -> bool:
+    """A per-million rate must be a finite, non-negative, non-boolean number."""
+    return (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and math.isfinite(value)
+        and value >= 0
+    )
+
+
+def _resolve_api_equivalent_pricing(
+    model: ModelConfig,
+) -> tuple[Optional[dict], list[str]]:
+    """Validate the model's OWN ``api_equivalent_pricing`` schedule.
+
+    Returns ``(schedule, reasons)``. ``schedule`` is None whenever any component
+    (either tier's rates, the context threshold, the source URL, or the
+    accessed date) is missing or invalid, and ``reasons`` names each defect in
+    the module's ``<field>_unavailable`` / ``<field>_invalid`` style.
+
+    There is deliberately no fallback to another model's rates: before
+    2026-09-29 every chatgpt-subscription model was silently priced at the
+    LUNA_* schedule, understating Terra/Sol/Astra API-equivalent costs. A model
+    without a usable schedule must surface as unavailable, not as a
+    wrong-but-plausible dollar figure.
+    """
+    pricing = model.api_equivalent_pricing
+    if not isinstance(pricing, dict) or not pricing:
+        return None, ["api_equivalent_pricing_unavailable"]
+
+    reasons = []
+    for tier in ("short_context", "long_context"):
+        rates = pricing.get(tier)
+        if rates is None:
+            reasons.append(f"api_equivalent_{tier}_rates_unavailable")
+        elif not isinstance(rates, dict) or not all(
+            _is_usable_rate(rates.get(key)) for key in API_EQUIVALENT_RATE_KEYS
+        ):
+            reasons.append(f"api_equivalent_{tier}_rates_invalid")
+
+    threshold = pricing.get("threshold_input_tokens")
+    if threshold is None:
+        reasons.append("api_equivalent_threshold_input_tokens_unavailable")
+    elif not isinstance(threshold, int) or isinstance(threshold, bool) or threshold <= 0:
+        reasons.append("api_equivalent_threshold_input_tokens_invalid")
+
+    for field_name in ("source_url", "accessed_at"):
+        value = pricing.get(field_name)
+        if value is None:
+            reasons.append(f"api_equivalent_price_{field_name}_unavailable")
+        elif not isinstance(value, str) or not value.strip():
+            reasons.append(f"api_equivalent_price_{field_name}_invalid")
+
+    if reasons:
+        return None, reasons
+    return {
+        "short_context": {
+            key: pricing["short_context"][key] for key in API_EQUIVALENT_RATE_KEYS
+        },
+        "long_context": {
+            key: pricing["long_context"][key] for key in API_EQUIVALENT_RATE_KEYS
+        },
+        "threshold_input_tokens": threshold,
+        "source_url": pricing["source_url"],
+        "accessed_at": pricing["accessed_at"],
+    }, []
+
+
 def compute_accounting(model: ModelConfig, result: RunResult) -> dict:
     """Build null-aware billing and API-equivalent ledgers for one run.
 
@@ -219,6 +305,12 @@ def compute_accounting(model: ModelConfig, result: RunResult) -> dict:
     This separate path exists for ChatGPT subscription runs, whose included
     capacity is not an observed zero-dollar API invoice. Output tokens already
     include reasoning; ``reasoning_tokens`` is diagnostic and is never added.
+
+    Rates, the long-context threshold, and the price-basis URL/date all come
+    from ``model.api_equivalent_pricing`` (models.yaml). If that schedule is
+    unusable, every dollar figure is null, the status is
+    ``unavailable_api_equivalent_pricing``, and the defects are listed in
+    ``incompleteness_reasons`` — never another model's rates.
     """
     if model.provider != CHATGPT_SUBSCRIPTION_PROVIDER:
         return {
@@ -236,7 +328,8 @@ def compute_accounting(model: ModelConfig, result: RunResult) -> dict:
         actual_marginal_charge_usd=None,
     )
     usage = result.usage_observed
-    reasons = []
+    schedule, reasons = _resolve_api_equivalent_pricing(model)
+    threshold = schedule["threshold_input_tokens"] if schedule is not None else None
 
     required = {
         "input_tokens": usage.input_tokens,
@@ -273,7 +366,11 @@ def compute_accounting(model: ModelConfig, result: RunResult) -> dict:
     if context_tier is None and usage.max_request_input_tokens is not None:
         if usage.max_request_input_tokens < 0:
             reasons.append("max_request_input_tokens_invalid")
-        elif usage.max_request_input_tokens <= LUNA_LONG_CONTEXT_THRESHOLD:
+        elif threshold is None:
+            # No usable threshold to classify against; the pricing reasons
+            # already recorded keep this run from producing any dollar figure.
+            pass
+        elif usage.max_request_input_tokens <= threshold:
             context_tier = "short"
         else:
             reasons.append("mixed_request_context_tiers_unavailable")
@@ -283,28 +380,33 @@ def compute_accounting(model: ModelConfig, result: RunResult) -> dict:
     if usage.max_request_input_tokens is not None and usage.input_tokens is not None:
         if usage.max_request_input_tokens > usage.input_tokens:
             reasons.append("max_request_input_tokens_exceed_total_input")
-    if context_tier == "long" and usage.max_request_input_tokens is not None:
-        if usage.max_request_input_tokens <= LUNA_LONG_CONTEXT_THRESHOLD:
+    if context_tier == "long" and usage.max_request_input_tokens is not None \
+            and threshold is not None:
+        if usage.max_request_input_tokens <= threshold:
             reasons.append("long_context_tier_conflicts_with_request_size")
-    if context_tier == "short" and usage.max_request_input_tokens is not None:
-        if usage.max_request_input_tokens > LUNA_LONG_CONTEXT_THRESHOLD:
+    if context_tier == "short" and usage.max_request_input_tokens is not None \
+            and threshold is not None:
+        if usage.max_request_input_tokens > threshold:
             reasons.append("short_context_tier_conflicts_with_request_size")
 
     scenario_assumptions = []
     short_scenario = None
     long_scenario = None
-    if usage.input_tokens is not None and usage.output_tokens is not None \
+    if schedule is not None and usage.input_tokens is not None \
+            and usage.output_tokens is not None \
             and usage.input_tokens >= 0 and usage.output_tokens >= 0:
         # These deliberately price all observed input as ordinary uncached input.
         # They are scenarios, not point estimates, whenever cache categories or
         # request-tier telemetry are unavailable.
+        short_rates = schedule["short_context"]
+        long_rates = schedule["long_context"]
         short_scenario = (
-            usage.input_tokens * LUNA_SHORT_CONTEXT_RATES["input"]
-            + usage.output_tokens * LUNA_SHORT_CONTEXT_RATES["output"]
+            usage.input_tokens * short_rates["input"]
+            + usage.output_tokens * short_rates["output"]
         ) / 1_000_000
         long_scenario = (
-            usage.input_tokens * LUNA_LONG_CONTEXT_RATES["input"]
-            + usage.output_tokens * LUNA_LONG_CONTEXT_RATES["output"]
+            usage.input_tokens * long_rates["input"]
+            + usage.output_tokens * long_rates["output"]
         ) / 1_000_000
         scenario_assumptions.append(
             "hypothetical all-ordinary-input scenario only; it does not assert "
@@ -315,12 +417,16 @@ def compute_accounting(model: ModelConfig, result: RunResult) -> dict:
         )
 
     exact_cost = None
-    status = "unavailable_incomplete_telemetry"
-    if not reasons and context_tier in {"short", "long"}:
+    status = (
+        "unavailable_api_equivalent_pricing"
+        if schedule is None
+        else "unavailable_incomplete_telemetry"
+    )
+    if schedule is not None and not reasons and context_tier in {"short", "long"}:
         rates = (
-            LUNA_SHORT_CONTEXT_RATES
+            schedule["short_context"]
             if context_tier == "short"
-            else LUNA_LONG_CONTEXT_RATES
+            else schedule["long_context"]
         )
         exact_cost = _api_equivalent_cost(
             usage.input_tokens,
@@ -338,10 +444,12 @@ def compute_accounting(model: ModelConfig, result: RunResult) -> dict:
         long_context_uncached_scenario_usd=long_scenario,
         scenario_assumptions=scenario_assumptions,
         incompleteness_reasons=reasons,
-        price_source_url=LUNA_API_PRICE_SOURCE_URL,
-        price_schedule_accessed_at=LUNA_API_PRICE_ACCESSED_AT,
+        price_source_url=schedule["source_url"] if schedule is not None else None,
+        price_schedule_accessed_at=(
+            schedule["accessed_at"] if schedule is not None else None
+        ),
         currency="USD",
-        context_threshold_input_tokens=LUNA_LONG_CONTEXT_THRESHOLD,
+        context_threshold_input_tokens=threshold,
         context_tier=context_tier or "unknown",
         not_invoiced=True,
     )

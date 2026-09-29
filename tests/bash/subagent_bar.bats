@@ -5,9 +5,12 @@
 # Focus: the model-conditional Context Quality Curve threshold tiers that drive
 # each row's severity COLOR. Fable/Mythos use ELEVATED 30%/300k, HIGH
 # 40%/400k, and CRITICAL 50%/500k. The exact extended-horizon GPT rows -- GPT
-# 5.6 Sol and GPT-6 Astra -- use ELEVATED 60%/300k, HIGH 75%/400k, and CRITICAL
-# 90%/500k. Every other model -- including opus-4-8[1m] and non-exact Sol/Astra
-# variants -- uses ELEVATED 40%/150k, HIGH 60%/200k, and CRITICAL 75%/250k.
+# 5.6 Sol and GPT-6 Astra, plus (2026-09-29 user policy decision) GPT-6 Sol and
+# the flagship -pro form of all three -- use ELEVATED 60%/300k, HIGH 75%/400k,
+# and CRITICAL 90%/500k. Every other model -- including opus-4-8[1m] and
+# non-exact Sol/Astra variants -- uses ELEVATED 40%/150k, HIGH 60%/200k, and
+# CRITICAL 75%/250k. Provider-dotted Claude ids (anthropic/claude-opus-5.5) are
+# classified through normalize_model_id (2026-09-29 block at the end).
 #
 # ASSERTION TARGET: the severity is encoded as an ANSI 256-color code embedded
 # in each row's JSON `content`. The codes are unique per severity:
@@ -317,6 +320,10 @@ _append_subbar_model() {
 
 @test "GPT 5.6 non-Sol and near-miss rows stay conservative" {
     local model
+    # 2026-09-29 policy flip: gpt-5.6-sol-pro used to be a near miss here; the
+    # user policy decision of 2026-09-29 (flagship -pro reads as its base) now
+    # admits it ON PURPOSE, so the genuine right-boundary near miss is
+    # gpt-5.6-sol-pro-x. The -pro positive cases live in the 2026-09-29 block.
     for model in \
         gpt-5.6-terra \
         gpt-5.6-luna \
@@ -324,7 +331,7 @@ _append_subbar_model() {
         foo-gpt-5.6-sol \
         notgpt-5.6-sol \
         'vendor/notgpt-5.6-sol[1m]' \
-        gpt-5.6-sol-pro \
+        gpt-5.6-sol-pro-x \
         gpt-5.6-sol-mini \
         gpt-5.6-sol-chat \
         gpt-5.6-sol-20260715 \
@@ -398,8 +405,13 @@ _append_subbar_model() {
 
 @test "GPT-6 Astra non-flagship and near-miss rows stay conservative" {
     local model
+    # 2026-09-29 policy flip: gpt-6-astra-pro is now admitted ON PURPOSE (user
+    # policy decision: flagship -pro reads as its base), so the right-boundary
+    # near miss is gpt-6-astra-pro-x. gpt-6-luna stays here: since 2026-09-29 it
+    # maps to the 1.05M window, but its quality tier is conservative (like
+    # gpt-5.6-luna), so 300k still renders CRITICAL.
     for model in \
-        gpt-6-astra-pro \
+        gpt-6-astra-pro-x \
         gpt-6-astra-mini \
         gpt-6-astra-chat \
         xgpt-6-astra \
@@ -493,8 +505,9 @@ _append_subbar_model() {
 # bare `claude-opus-5` reports "42.8k/1m tokens" and `claude-opus-5[1m]`
 # reports "48.2k/1m" -- so the BARE id must map to 1,000,000 as well, which
 # the *opus-5* arm of the physical-window glob provides. The quality-profile
-# glob (*fable-5*|*mythos-5*) is deliberately NOT extended, so Opus 5 keeps
-# the 40/60/75% + 150/200/250k conservative gates.
+# glob is deliberately NOT extended to *opus-5* (its only Opus entry is the
+# anchored claude-opus-5-5 slug, added 2026-09-23), so Opus 5 keeps the
+# 40/60/75% + 150/200/250k conservative gates.
 # =========================================================================
 
 @test "opus-5 (bare) row: 150k maps to a 1M window (15%) and renders ELEVATED" {
@@ -1148,11 +1161,13 @@ _payload_desc() {
         run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 90000)
         assert_success
         # The Finding-4 invariant: NONE may map to the 1,050,000 flagship window
-        # (90k/1.05M = 8%). They land on a conservative window instead — 200k -> 45%,
-        # or the pre-existing generic [1m] arm -> 1M -> 9% for gpt-5.6-sol[1m]x — but
-        # never the flagship 8%.
+        # (90k/1.05M = 8%). Since the 2026-09-29 review fix they all land on the
+        # conservative 200k window (45%) — including gpt-5.6-sol[1m]x, which the
+        # flagship-family pre-filter now keeps off the generic Claude [1m] arm
+        # (formerly 1M -> 9%), matching context-reporter.sh and context-bar.sh.
         assert_output --partial '"id":"t1"'
         refute_output --partial "8%"
+        assert_output --partial "m45%"
     done
 }
 
@@ -1509,4 +1524,536 @@ _measured_payload() {
     run env SHIM_BACKEND_MODE=unknown bash "$SUBAGENT_BAR_SH" < <(_measured_payload 24)
     assert_success
     assert_output --partial 'm24'
+}
+
+# =========================================================================
+# Opus 5.5 (claude-opus-5-5, added Claude Code 2.1.280): 1M physical window
+# AND -- uniquely among Opus models -- the EXTENDED-HORIZON quality profile
+# (30/40/50% + 300/400/500k), by USER POLICY DECISION of 2026-09-23 (not by
+# validation)
+# (research/2026-09-23_FrameworkDev_ClaudeCode_Upgrade_2.1.280/SESSION_NOTES.md
+# § Key Decisions #3). The profile arm matches claude-opus-5-5 EXACTLY (bare or
+# as a provider path's final segment), NEVER *opus-5* and never a loose
+# *opus-5-5* substring: bare
+# Opus 5 must keep the conservative gates, which the last two cases lock, and
+# near misses are locked by the boundary-anchoring block appended below.
+# Lockstep twin of the Opus 5.5 block in tests/bash/context_reporter.bats
+# (whose profile cases needed the user-applied
+# research/2026-09-23_FrameworkDev_ClaudeCode_Upgrade_2.1.280/context-reporter_opus55.patch,
+# now deployed; this suite's script under test is agent-editable and carried
+# both glob changes from the start, so every case here was green throughout).
+# =========================================================================
+
+@test "opus-5-5 (bare) row: 100k maps to a 1M window (10%), not 200k" {
+    _seed_window 200000
+    _seed_session_model "claude-sonnet-4-6"   # differs -> per-row mapping applies
+    _seed_task_model "t1" "claude-opus-5-5"
+    run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 100000)
+    assert_success
+    # 10% proves the 1M denominator: on a 200k window 100k would read 50%.
+    assert_output --partial "10%"
+    refute_output --partial "50%"
+}
+
+@test "opus-5-5[1m] row: 100k maps to a 1M window (10%), not 200k" {
+    _seed_window 200000
+    _seed_session_model "claude-sonnet-4-6"
+    _seed_task_model "t1" "claude-opus-5-5[1m]"
+    run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 100000)
+    assert_success
+    assert_output --partial "10%"
+    refute_output --partial "50%"
+}
+
+@test "opus-5-5 row: 250k on 1M window renders NOMINAL -- extended-horizon profile" {
+    _seed_window 1000000
+    _seed_session_model "claude-sonnet-4-6"
+    _seed_task_model "t1" "claude-opus-5-5"
+    run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 250000)
+    assert_success
+    # 250k / 1M = 25%: below the extended-horizon 300k/30% ELEVATED leg.
+    # Under the conservative profile the same 250k would be CRITICAL (>= 250k).
+    assert_output --partial "$COLOR_NOMINAL"
+    refute_output --partial "$COLOR_CRITICAL"
+}
+
+@test "opus-5-5[1m] row: 250k renders NOMINAL -- extended-horizon profile" {
+    _seed_window 1000000
+    _seed_session_model "claude-sonnet-4-6"
+    _seed_task_model "t1" "claude-opus-5-5[1m]"
+    run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 250000)
+    assert_success
+    assert_output --partial "$COLOR_NOMINAL"
+    refute_output --partial "$COLOR_CRITICAL"
+}
+
+@test "opus-5 (bare) row: 250k STILL renders CRITICAL -- *opus-5-5* must not widen to *opus-5*" {
+    # LOCK. If the profile glob were ever written *opus-5* instead of
+    # *opus-5-5*, bare Opus 5 would silently inherit the extended-horizon gates
+    # and this 250k reading would flip from CRITICAL to NOMINAL.
+    _seed_window 1000000
+    _seed_session_model "claude-sonnet-4-6"
+    _seed_task_model "t1" "claude-opus-5"
+    run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 250000)
+    assert_success
+    assert_output --partial "$COLOR_CRITICAL"
+    refute_output --partial "$COLOR_NOMINAL"
+}
+
+@test "opus-5[1m] row: 250k STILL renders CRITICAL -- lock against glob widening" {
+    _seed_window 1000000
+    _seed_session_model "claude-sonnet-4-6"
+    _seed_task_model "t1" "claude-opus-5[1m]"
+    run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 250000)
+    assert_success
+    assert_output --partial "$COLOR_CRITICAL"
+    refute_output --partial "$COLOR_NOMINAL"
+}
+
+# =========================================================================
+# Opus 5.5 profile arm: BOUNDARY-ANCHORING locks (added 2026-09-23, fix cycle 1).
+# The profile arm grants a privilege (relaxed 30/40/50% + 300/400/500k gates),
+# so it names claude-opus-5-5 exactly -- bare, or as the FINAL segment of a
+# provider path -- rather than substring-matching *opus-5-5*. These four cases
+# are the regression lock for that choice: two right-/left-boundary near misses
+# that must stay CONSERVATIVE, and two provider-path forms that must be
+# recognized. If the arm is ever reverted to a loose *opus-5-5* glob, the first
+# two flip from CRITICAL to NOMINAL and fail. Lockstep twin of the same block in
+# tests/bash/context_reporter.bats.
+# =========================================================================
+
+@test "opus-5-5-mini row: 250k renders CRITICAL -- right-boundary near miss stays conservative" {
+    # 250k >= the conservative 250k CRITICAL absolute leg. Under a loose
+    # *opus-5-5* glob this hypothetical mini variant would read NOMINAL.
+    _seed_window 1000000
+    _seed_session_model "claude-sonnet-4-6"
+    _seed_task_model "t1" "claude-opus-5-5-mini"
+    run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 250000)
+    assert_success
+    assert_output --partial "$COLOR_CRITICAL"
+    refute_output --partial "$COLOR_NOMINAL"
+}
+
+@test "xclaude-opus-5-5 row: 250k renders CRITICAL -- left-boundary near miss stays conservative" {
+    _seed_window 1000000
+    _seed_session_model "claude-sonnet-4-6"
+    _seed_task_model "t1" "xclaude-opus-5-5"
+    run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 250000)
+    assert_success
+    assert_output --partial "$COLOR_CRITICAL"
+    refute_output --partial "$COLOR_NOMINAL"
+}
+
+@test "anthropic/claude-opus-5-5 row: 250k renders NOMINAL -- provider path is recognized" {
+    # The */claude-opus-5-5 alternative: anchoring must not break the provider-
+    # prefixed form agents actually see on non-first-party routes.
+    _seed_window 1000000
+    _seed_session_model "claude-sonnet-4-6"
+    _seed_task_model "t1" "anthropic/claude-opus-5-5"
+    run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 250000)
+    assert_success
+    assert_output --partial "$COLOR_NOMINAL"
+    refute_output --partial "$COLOR_CRITICAL"
+}
+
+@test "anthropic/claude-opus-5-5[1m] row: 250k renders NOMINAL -- provider path plus [1m]" {
+    _seed_window 1000000
+    _seed_session_model "claude-sonnet-4-6"
+    _seed_task_model "t1" "anthropic/claude-opus-5-5[1m]"
+    run bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "t1" 250000)
+    assert_success
+    assert_output --partial "$COLOR_NOMINAL"
+    refute_output --partial "$COLOR_CRITICAL"
+}
+
+# =========================================================================
+# 2026-09-29: provider-dotted Claude ids (normalize_model_id) and the GPT
+# registry extension (gpt-6-sol, gpt-6-luna, flagship -pro).
+# -------------------------------------------------------------------------
+# (A) BUG FIX. OpenRouter reports Claude models with a DOTTED version
+# (anthropic/claude-opus-5.5, claude-opus-4.8, claude-opus-5.5[1m]); every
+# Claude pattern expects the hyphenated form. normalize_model_id rewrites ONLY
+# an id ending in claude-<family>-<major>.<minor>[optional [1m]] and is applied
+# at classification points only -- the row label and the model caches keep the
+# RAW name. Reproduced before the fix: dotted Opus 5.5 at 250k read CRITICAL
+# (not NOMINAL); dotted Opus 4.8 at 150k read 75% of 200k (not 15% of 1M).
+# (B) USER POLICY DECISION 2026-09-29, not validation: flagship -pro reads as
+# its non-pro base; gpt-6-sol reads as gpt-5.6-sol (1.05M window + extended
+# tier); gpt-6-luna reads as gpt-5.6-luna (1.05M window, conservative tier);
+# gpt-6-terra, bare gpt-6, and GPT-6 mini/chat stay unregistered.
+# Provenance: research/2026-09-29_FrameworkDev_OpenRouterDottedModelNames.
+#
+# These cases use the DAAF_SUBAGENT_BAR_CACHE_DIR seam (_iso_* helpers above)
+# so no fixture touches the shared /tmp caches.
+# =========================================================================
+
+# Run one row against the isolated cache. Args: $1 task id, $2 tokenCount,
+# then optional VAR=value environment assignments.
+_iso_row() {
+    local id="$1" tokens="$2"
+    shift 2
+    env DAAF_SUBAGENT_BAR_CACHE_DIR="$(_iso_cache)" "$@" \
+        bash "$SUBAGENT_BAR_SH" < <(_payload_one_task "$id" "$tokens")
+}
+
+# Fresh sonnet-session fixture whose row model differs from the session.
+# Args: $1 task model, $2 session window (default 200000).
+_iso_sonnet_row_fixture() {
+    rm -rf "${TEST_DIR}/isocache" "${TEST_DIR}/${FAKE_SESSION}"
+    _iso_seed_session_model "claude-sonnet-4-6"
+    _iso_seed_window "${2:-200000}"
+    _iso_seed_task_model "t1" "$1"
+}
+
+_color_for() {
+    case "$1" in
+        NOMINAL) printf '%s' "$COLOR_NOMINAL" ;;
+        ELEVATED) printf '%s' "$COLOR_ELEVATED" ;;
+        HIGH) printf '%s' "$COLOR_HIGH" ;;
+        CRITICAL) printf '%s' "$COLOR_CRITICAL" ;;
+    esac
+}
+
+@test "normalize_model_id: start/end markers each appear exactly once" {
+    run grep -c '^# §§ NORMALIZE_MODEL_ID$' "$SUBAGENT_BAR_SH"
+    assert_success
+    assert_output "1"
+    run grep -c '^# §§ END NORMALIZE_MODEL_ID$' "$SUBAGENT_BAR_SH"
+    assert_success
+    assert_output "1"
+    # Exactly one definition line, so a second normalize_model_id outside the
+    # markers cannot shadow the lockstep-checked copy (review fix 2026-09-29).
+    run grep -c '^normalize_model_id() {$' "$SUBAGENT_BAR_SH"
+    assert_success
+    assert_output "1"
+}
+
+@test "normalize_model_id: rewrites only terminal dotted claude-<family>-<major>.<minor>" {
+    local fn case_row input expected
+    fn=$(sed -n '/^# §§ NORMALIZE_MODEL_ID$/,/^# §§ END NORMALIZE_MODEL_ID$/p' "$SUBAGENT_BAR_SH")
+    [ -n "$fn" ]
+    eval "$fn"
+    # input|expected ('' encodes the empty string)
+    for case_row in \
+        'anthropic/claude-opus-5.5|anthropic/claude-opus-5-5' \
+        'claude-opus-5.5[1m]|claude-opus-5-5[1m]' \
+        'anthropic/claude-opus-5.5[1m]|anthropic/claude-opus-5-5[1m]' \
+        'anthropic/claude-opus-4.8|anthropic/claude-opus-4-8' \
+        'anthropic/claude-opus-4.7|anthropic/claude-opus-4-7' \
+        'anthropic/claude-fable-5.1|anthropic/claude-fable-5-1' \
+        'claude-sonnet-4.6|claude-sonnet-4-6' \
+        'anthropic/claude-opus-5.5-mini|anthropic/claude-opus-5.5-mini' \
+        'xclaude-opus-5.5|xclaude-opus-5.5' \
+        'anthropic/claude-opus-5.5[1m]x|anthropic/claude-opus-5.5[1m]x' \
+        'claude-opus-5-5|claude-opus-5-5' \
+        'anthropic/claude-opus-5-5|anthropic/claude-opus-5-5' \
+        'gpt-5.6-sol|gpt-5.6-sol' \
+        'openai/gpt-6-sol-pro[1m]|openai/gpt-6-sol-pro[1m]' \
+        'z-ai/glm-5.2|z-ai/glm-5.2' \
+        '|'; do
+        input="${case_row%%|*}"
+        expected="${case_row#*|}"
+        run normalize_model_id "$input"
+        assert_success
+        assert_output "$expected"
+    done
+}
+
+@test "lockstep: gpt_flagship_re is byte-identical in subagent-bar.sh and context-bar.sh" {
+    local bar_re ctx_re context_bar_sh="${REPO_ROOT}/.claude/scripts/context-bar.sh"
+    bar_re=$(sed -n "s/^gpt_flagship_re='\(.*\)'\$/\1/p" "$SUBAGENT_BAR_SH")
+    ctx_re=$(sed -n "s/^gpt_flagship_re='\(.*\)'\$/\1/p" "$context_bar_sh")
+    [ -n "$bar_re" ]
+    [ "$bar_re" = "$ctx_re" ]
+    # And it is the approved 2026-09-29 grammar.
+    [ "$bar_re" = '^(gpt-5\.(4|5|6)(-(sol|terra|luna))?|gpt-6-(astra|sol|luna))(-pro)?(\[1m\])?$' ]
+    run sed -n "s/^gpt_extended_re='\(.*\)'\$/\1/p" "$SUBAGENT_BAR_SH"
+    assert_output '^(gpt-5\.6-sol|gpt-6-(astra|sol))(-pro)?(\[1m\])?$'
+}
+
+@test "dotted anthropic/claude-opus-5.5 row: 250k NOMINAL, 300k ELEVATED -- extended-horizon profile" {
+    local row tokens expected pct
+    for row in "250000 NOMINAL 25" "300000 ELEVATED 30"; do
+        read -r tokens expected pct <<< "$row"
+        _iso_sonnet_row_fixture "anthropic/claude-opus-5.5"
+        run _iso_row t1 "$tokens"
+        assert_success
+        assert_output --partial "$(_color_for "$expected")"
+        assert_output --partial "m${pct}%"
+    done
+}
+
+@test "dotted claude-opus-5.5[1m] row: 250k renders NOMINAL on the 1M window" {
+    _iso_sonnet_row_fixture "claude-opus-5.5[1m]"
+    run _iso_row t1 250000
+    assert_success
+    assert_output --partial "$COLOR_NOMINAL"
+    assert_output --partial "m25%"
+    refute_output --partial "$COLOR_CRITICAL"
+}
+
+@test "dotted near miss anthropic/claude-opus-5.5-mini row: 250k stays CRITICAL (not normalized)" {
+    _iso_sonnet_row_fixture "anthropic/claude-opus-5.5-mini"
+    run _iso_row t1 250000
+    assert_success
+    assert_output --partial "$COLOR_CRITICAL"
+    refute_output --partial "$COLOR_NOMINAL"
+}
+
+@test "dotted anthropic/claude-opus-4.8 row: 150k maps to the 1M window (15%), ELEVATED -- not 75% of 200k" {
+    _iso_sonnet_row_fixture "anthropic/claude-opus-4.8"
+    run _iso_row t1 150000
+    assert_success
+    assert_output --partial "m15%"
+    assert_output --partial "$COLOR_ELEVATED"
+    refute_output --partial "m75%"
+}
+
+@test "dotted anthropic/claude-fable-5.1 row: 250k keeps the Fable profile (NOMINAL)" {
+    _iso_sonnet_row_fixture "anthropic/claude-fable-5.1"
+    run _iso_row t1 250000
+    assert_success
+    assert_output --partial "$COLOR_NOMINAL"
+    assert_output --partial "m25%"
+}
+
+@test "dotted rows keep the RAW model name in the row label" {
+    _iso_sonnet_row_fixture "anthropic/claude-opus-5.5"
+    run _iso_row t1 250000
+    assert_success
+    assert_output --partial "(anthropic/claude-opus-5.5)"
+    refute_output --partial "claude-opus-5-5"
+    _iso_sonnet_row_fixture "claude-opus-5.5[1m]"
+    run _iso_row t1 250000
+    assert_success
+    # The label strips only a leading claude- prefix, never the dotted version.
+    assert_output --partial "(opus-5.5[1m])"
+}
+
+@test "dotted transcript models are cached RAW; dotted session + dotted row share the session window" {
+    # Both models come from transcripts (no pre-seeded model caches), so this
+    # exercises resolve_model_cache: the caches must hold the raw dotted name.
+    # Session window 800000 is deliberately distinct from the 1M static map:
+    # same-model rows use it (200k -> 25%); a spurious different-model path
+    # would read 1M (20%).
+    rm -rf "${TEST_DIR}/isocache" "${TEST_DIR}/${FAKE_SESSION}"
+    _iso_seed_window 800000
+    _write_subbar_main_model "anthropic/claude-opus-5.5"
+    _write_subbar_task_model t1 "anthropic/claude-opus-5.5"
+    run _iso_row t1 200000
+    assert_success
+    assert_output --partial "m25%"
+    refute_output --partial "m20%"
+    run cat "$(_iso_cache)/claude-subagent-model-${FAKE_SESSION}-t1"
+    assert_output "anthropic/claude-opus-5.5"
+    run cat "$(_iso_cache)/claude-model-${FAKE_SESSION}"
+    assert_output "anthropic/claude-opus-5.5"
+}
+
+@test "same model, different spelling: dotted session cache + hyphenated row stays on the session window" {
+    # context-bar.sh seeds claude-model-<session> from the REQUESTED .model.id
+    # (dotted on OpenRouter) while the row's transcript may carry the
+    # hyphenated RESPONSE spelling. Both sides are normalized, so this is a
+    # same-model row: 200k / 800k session window = 25% (different-model: 20%).
+    local session_spelling row_spelling pair
+    for pair in \
+        "anthropic/claude-opus-5.5 anthropic/claude-opus-5-5" \
+        "anthropic/claude-opus-5-5 anthropic/claude-opus-5.5"; do
+        read -r session_spelling row_spelling <<< "$pair"
+        rm -rf "${TEST_DIR}/isocache" "${TEST_DIR}/${FAKE_SESSION}"
+        _iso_seed_window 800000
+        _iso_seed_session_model "$session_spelling"
+        _iso_seed_task_model t1 "$row_spelling"
+        run _iso_row t1 200000
+        assert_success
+        assert_output --partial "m25%"
+        refute_output --partial "m20%"
+    done
+}
+
+@test "gpt-6-sol rows (bare, provider-prefixed, [1m]) map to 1.05M and use the extended tier" {
+    local model row tokens expected pct
+    for model in gpt-6-sol openai/gpt-6-sol 'gpt-6-sol[1m]' 'openrouter/openai/gpt-6-sol[1m]'; do
+        for row in \
+            "299000 NOMINAL 28" \
+            "300000 ELEVATED 28" \
+            "400000 HIGH 38" \
+            "500000 CRITICAL 47"; do
+            read -r tokens expected pct <<< "$row"
+            _iso_sonnet_row_fixture "$model"
+            run _iso_row t1 "$tokens"
+            assert_success
+            assert_output --partial "$(_color_for "$expected")"
+            assert_output --partial "m${pct}%"
+        done
+    done
+}
+
+@test "gpt-6-sol profile-wide boundaries use 60/75/90% on a non-ChatGPT 400k denominator" {
+    local row tokens expected pct
+    for row in \
+        "239999 NOMINAL 59" \
+        "240000 ELEVATED 60" \
+        "299999 ELEVATED 74" \
+        "300000 HIGH 75" \
+        "359999 HIGH 89" \
+        "360000 CRITICAL 90"; do
+        read -r tokens expected pct <<< "$row"
+        rm -rf "${TEST_DIR}/isocache" "${TEST_DIR}/${FAKE_SESSION}"
+        _iso_seed_window 400000
+        _iso_seed_session_model "gpt-6-sol[1m]"
+        _iso_seed_task_model t1 "gpt-6-sol[1m]"
+        run _iso_row t1 "$tokens"
+        assert_success
+        assert_output --partial "$(_color_for "$expected")"
+        assert_output --partial "m${pct}%"
+    done
+}
+
+@test "flagship -pro forms of 5.6-sol, 6-astra, and 6-sol use 1.05M and the extended tier" {
+    local model
+    for model in gpt-5.6-sol-pro gpt-6-astra-pro gpt-6-sol-pro 'gpt-6-sol-pro[1m]' \
+                 openai/gpt-6-astra-pro 'openrouter/openai/gpt-5.6-sol-pro[1m]'; do
+        _iso_sonnet_row_fixture "$model"
+        run _iso_row t1 300000
+        assert_success
+        # 300k / 1.05M = 28%: extended ELEVATED (conservative would be CRITICAL).
+        assert_output --partial "$COLOR_ELEVATED"
+        assert_output --partial "m28%"
+    done
+}
+
+@test "gpt-6-luna, gpt-6-luna-pro, gpt-5.6-terra-pro: 1.05M window but conservative tier" {
+    local model
+    for model in gpt-6-luna openai/gpt-6-luna 'gpt-6-luna[1m]' gpt-6-luna-pro gpt-5.6-terra-pro; do
+        _iso_sonnet_row_fixture "$model"
+        run _iso_row t1 150000
+        assert_success
+        # 150k / 1.05M = 14%; the conservative 150k absolute leg -> ELEVATED
+        # (extended tier would be NOMINAL; a 200k window would be 75%).
+        assert_output --partial "$COLOR_ELEVATED"
+        assert_output --partial "m14%"
+    done
+}
+
+@test "chatgpt lane caps gpt-6-sol, gpt-6-luna, and flagship -pro rows at 919k" {
+    local model
+    for model in gpt-6-sol gpt-6-luna gpt-6-sol-pro 'gpt-6-sol-pro[1m]' gpt-6-astra-pro gpt-5.6-sol-pro gpt-5.4-pro; do
+        _iso_sonnet_row_fixture "$model"
+        # Measured-input shim lanes read the child transcript's latest positive
+        # input for participating slugs; seed it so every model has 111k.
+        _append_subbar_usage t1 111000
+        run _iso_row t1 111000 DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt
+        assert_success
+        # 111000 / 919000 = 12% (1.05M uncapped would be 10%).
+        assert_output --partial "m12%"
+        refute_output --partial "context pending"
+    done
+}
+
+@test "measured input: gpt-6-sol, gpt-6-luna, and flagship -pro participate; mini/chat -pro does not" {
+    export DAAF_PROVIDER_SHIM=openai
+    local mode model
+    for mode in chatgpt openai; do
+        for model in gpt-6-sol 'openrouter/openai/gpt-6-luna[1m]' gpt-6-astra-pro 'gpt-5.6-sol-pro[1m]' gpt-6-sol-pro; do
+            _measured_child "$model"
+            run env SHIM_BACKEND_MODE="$mode" bash "$SUBAGENT_BAR_SH" < <(_measured_payload)
+            assert_success
+            assert_output --partial '70k'
+            refute_output --partial 'm24'
+        done
+        for model in gpt-5.6-mini-pro gpt-6-terra gpt-6-sol-mini 'gpt-6-sol[1m]-pro' gpt-6-sol-pro-x; do
+            _measured_child "$model"
+            run env SHIM_BACKEND_MODE="$mode" bash "$SUBAGENT_BAR_SH" < <(_measured_payload)
+            assert_success
+            assert_output --partial 'm24'
+            refute_output --partial '70k'
+        done
+    done
+}
+
+@test "GPT-6 and -pro near misses stay conservative on the generic 200k row window (no 919k cap)" {
+    local model
+    for model in gpt-6-terra gpt-6 gpt-6-sol-mini gpt-6-sol-pro-x gpt-5.6-mini-pro xgpt-6-sol \
+                 vendor/notgpt-6-sol gpt-6-sol-chat; do
+        _iso_sonnet_row_fixture "$model" 1000000
+        run _iso_row t1 90000 DAAF_PROVIDER_SHIM=openai SHIM_BACKEND_MODE=chatgpt
+        assert_success
+        # 90k / 200k = 45% -> conservative ELEVATED (extended would be NOMINAL;
+        # 919k or 1.05M would be 9% / 8%).
+        assert_output --partial "m45%"
+        assert_output --partial "$COLOR_ELEVATED"
+    done
+}
+
+@test "malformed GPT-family [1m] ids (gpt-6-sol[1m]-pro etc.) map to 200k and the conservative tier" {
+    # Review fix 2026-09-29: these used to fall through to the generic Claude
+    # *\[1m\]* window arm (1,000,000) in this script while the reporter and
+    # context-bar.sh mapped them to 200,000. The flagship-family pre-filter now
+    # routes them to 200k first, so all three scripts agree.
+    # 90k / 200k = 45% -> conservative ELEVATED (a 1M window would be 9% NOMINAL).
+    local model
+    for model in 'gpt-6-sol[1m]-pro' 'gpt-6-sol-mini[1m]' 'gpt-6-astra[1m]-pro' \
+                 'gpt-5.6-sol[1m]-pro' 'gpt-6-astra[1m]-x' 'openai/gpt-6-luna[1m]-pro'; do
+        _iso_sonnet_row_fixture "$model"
+        run _iso_row t1 90000
+        assert_success
+        assert_output --partial "m45%"
+        assert_output --partial "$COLOR_ELEVATED"
+        refute_output --partial "m9%"
+    done
+}
+
+# Cross-script window agreement (review fix 2026-09-29). subagent-bar.sh's
+# static_window_for_model (extracted and evaluated with its own EREs) must return
+# exactly the window context-bar.sh's static map caches for the same id (no
+# OpenRouter lookup: ANTHROPIC_BASE_URL is unset, payload window 200000). The
+# reporter side of the same table lives in tests/bash/context_reporter.bats.
+_subbar_static_window() {
+    bash -c '
+        eval "$(grep -E "^gpt_[a-z_]+_re=" "$1")"
+        eval "$(sed -n "/^static_window_for_model() {\$/,/^}\$/p" "$1")"
+        static_window_for_model "$2"
+    ' _ "$SUBAGENT_BAR_SH" "$1"
+}
+
+_ctxbar_static_window() {
+    local cache="${TEST_DIR}/ctxbarcache" context_bar_sh="${REPO_ROOT}/.claude/scripts/context-bar.sh"
+    rm -rf "$cache"
+    mkdir -p "$cache"
+    jq -nc --arg m "$1" --arg cwd "$TEST_DIR" --arg sid "$FAKE_SESSION" \
+        '{model:{id:$m,display_name:$m},cwd:$cwd,transcript_path:($cwd+"/none.jsonl"),session_id:$sid,context_window:{context_window_size:200000}}' \
+        | env -u ANTHROPIC_BASE_URL DAAF_CONTEXT_BAR_CACHE_DIR="$cache" bash "$context_bar_sh" >/dev/null 2>&1
+    tr -d '\n' < "${cache}/claude-ctx-window-${FAKE_SESSION}"
+}
+
+@test "cross-script: subagent-bar and context-bar agree on windows for malformed and exact GPT-family ids" {
+    local row model expected bar ctx
+    for row in \
+        'gpt-6-sol[1m]-pro 200000' \
+        'gpt-6-sol-mini[1m] 200000' \
+        'gpt-6-astra[1m]-pro 200000' \
+        'gpt-5.6-sol[1m]-pro 200000' \
+        'gpt-5.6-sol[1m]x 200000' \
+        'gpt-6-astra[1m]-x 200000' \
+        'openai/gpt-6-luna[1m]-pro 200000' \
+        'gpt-6-sol-pro[1m] 1050000' \
+        'openai/gpt-6-luna 1050000' \
+        'gpt-5.6-mini[1m] 400000' \
+        'gpt-5.6-chat 128000'; do
+        read -r model expected <<< "$row"
+        bar=$(_subbar_static_window "$model")
+        ctx=$(_ctxbar_static_window "$model")
+        [ "$bar" = "$expected" ] || { echo "subagent-bar $model -> $bar (want $expected)"; return 1; }
+        [ "$ctx" = "$expected" ] || { echo "context-bar $model -> $ctx (want $expected)"; return 1; }
+    done
+}
+
+@test "lockstep: GPT flagship-family pre-filter glob is byte-identical in subagent-bar.sh and context-bar.sh" {
+    local bar_glob ctx_glob context_bar_sh="${REPO_ROOT}/.claude/scripts/context-bar.sh"
+    bar_glob=$(sed -n 's/^[[:space:]]*\(gpt-5\.4|gpt-5\.4.*\))$/\1/p' "$SUBAGENT_BAR_SH")
+    ctx_glob=$(sed -n 's/^[[:space:]]*\(gpt-5\.4|gpt-5\.4.*\))$/\1/p' "$context_bar_sh")
+    [ -n "$bar_glob" ]
+    [ "$(printf '%s\n' "$bar_glob" | wc -l)" -eq 1 ]
+    [ "$bar_glob" = "$ctx_glob" ]
 }
