@@ -49,7 +49,13 @@
 load 'test_helper'
 
 setup() { common_setup; }
-teardown() { common_teardown; }
+# Re-open any chmod-000 fixture folder (the read-error tests below) before the shared
+# teardown's `rm -rf`, which cannot descend into an unreadable folder -- this runs on
+# pass AND on failure, so no fixture outlives its test.
+teardown() {
+    chmod -R u+rwx "${TEST_DIR}" 2>/dev/null || true
+    common_teardown
+}
 
 BACKUP_SH="scripts/host/backup_daaf.sh"
 BACKUP_PS1="scripts/host/backup_daaf.ps1"
@@ -370,4 +376,417 @@ dquote_count() { tr -cd '"' | wc -c | tr -d '[:space:]'; }
     # .ps1: the finally block reaps $ClaudeCid on every exit path.
     run grep -F 'docker rm -f $ClaudeCid' "${REPO_ROOT}/${RESTORE_PS1}"
     assert_success
+}
+
+# ===========================================================================
+# 7. BACKUP-FOLDER COUNT PROGRAM: byte-identical in backup_daaf.ps1 + restore .ps1
+# ===========================================================================
+# Both Windows scripts count a backup folder CONTAINER-SIDE (busybox through a
+# read-only bind mount) with the same $BackupCountProgram here-string: backup to
+# verify the copy against the staged snapshot, restore to count the selected backup
+# before comparing it with the post-restore volume. PowerShell 5.1 Get-ChildItem
+# undercounted long paths in the field (2026-09-29: 72,834 vs 73,021), which is why
+# neither script uses it as the authoritative count. The two programs must stay
+# identical so the backup report, the restore scan, and the post-restore check agree.
+# (The .sh twins count with host `find`, which has no path-length limit, so they
+# carry no such program.)
+
+extract_count_ps1() {
+    awk '
+        BEGIN { inp=0 }
+        inp==0 && /\$BackupCountProgram *= *@\047$/ { inp=1; next }
+        inp==1 && /^\047@$/ { exit }
+        inp==1 { print $0 }
+    ' "$1"
+}
+
+# Make an extracted container program runnable under the local sh: point its `cd /b`
+# at a fixture folder ($2) and relocate its container /tmp/ writes (the count's
+# /tmp/count_err) under TEST_DIR, so a test run never writes to the real /tmp.
+# Reads the program on stdin. The /tmp/ rewrite runs FIRST, on the program text only:
+# TEST_DIR itself may sit under a directory named tmp (a project-scratch TMPDIR).
+_localize_count_program() {
+    mkdir -p "${TEST_DIR}/ctmp"
+    sed -e "s#/tmp/#${TEST_DIR}/ctmp/#g" -e "s#^cd /b\$#cd \"$1\"#"
+}
+
+# Count container-absolute /tmp/ paths left in a localized program (must be 0). A
+# container path follows a space or `>`; a relocated TEST_DIR path does not.
+_container_tmp_refs() { grep -cE '(^|[ >])/tmp/' "$1" || true; }
+
+@test "twin-parity: backup-folder count program is byte-identical (backup .ps1 == restore .ps1)" {
+    extract_count_ps1 "${REPO_ROOT}/${BACKUP_PS1}"  > "${TEST_DIR}/c_backup.txt"
+    extract_count_ps1 "${REPO_ROOT}/${RESTORE_PS1}" > "${TEST_DIR}/c_restore.txt"
+    [ -s "${TEST_DIR}/c_backup.txt" ] || { echo "FAIL: backup .ps1 \$BackupCountProgram extraction empty"; return 1; }
+    [ -s "${TEST_DIR}/c_restore.txt" ] || { echo "FAIL: restore .ps1 \$BackupCountProgram extraction empty"; return 1; }
+    run diff "${TEST_DIR}/c_backup.txt" "${TEST_DIR}/c_restore.txt"
+    if [ "${status}" -ne 0 ]; then
+        echo "DRIFT: \$BackupCountProgram differs between backup_daaf.ps1 and restore_from_backup.ps1"
+        echo "${output}"
+    fi
+    assert_success
+}
+
+@test "twin-parity: backup-folder count program is quote-free and counts correctly under sh" {
+    extract_count_ps1 "${REPO_ROOT}/${BACKUP_PS1}" > "${TEST_DIR}/c.txt"
+    [ "$(dquote_count < "${TEST_DIR}/c.txt")" -eq 0 ]
+    run grep -c "'" "${TEST_DIR}/c.txt"
+    assert_output "0"
+    # Run it (local sh + awk here -- dash/mawk in the dev image -- not busybox; same
+    # predicates) against a fixture: the root manifests and the Claude subtree are
+    # excluded, a NESTED same-name file is data, and a name holding a newline counts
+    # ONCE (one `stat` line per file). 1000 + 2000 + 100 + 24 bytes -> 3 KB. The root
+    # manifest is visible, so the sentinel reads 1.
+    local b="${TEST_DIR}/bk"
+    mkdir -p "${b}/sub" "${b}/.daaf-claude-config/deep"
+    head -c 1000 /dev/zero > "${b}/a.bin"
+    head -c 2000 /dev/zero > "${b}/sub/b.bin"
+    head -c 100 /dev/zero > "${b}/sub/.daaf-symlinks"
+    head -c 24 /dev/zero > "${b}/sub/name"$'\n'"with-newline"
+    : > "${b}/.daaf-symlinks"
+    : > "${b}/.daaf-permissions"
+    : > "${b}/.daaf-claude-config/deep/c.json"
+    _localize_count_program "${b}" < "${TEST_DIR}/c.txt" > "${TEST_DIR}/c_run.sh"
+    run _container_tmp_refs "${TEST_DIR}/c_run.sh"
+    assert_output "0"
+    run sh "${TEST_DIR}/c_run.sh"
+    assert_success
+    assert_output "$(printf 'BACKUP_FILES=4\nBACKUP_KB=3\nBACKUP_SENTINEL=1')"
+}
+
+@test "twin-parity: count program on an EMPTY folder prints 0 counts and BACKUP_SENTINEL=0 (empty bind mount)" {
+    # Docker Desktop can present an empty folder for a bind mount of some locations
+    # (docker/for-win#14271). The program must still print parseable markers (0, not
+    # an empty value) and a 0 sentinel, so the backup routes to its PowerShell
+    # fallback instead of reporting "0 files copied".
+    extract_count_ps1 "${REPO_ROOT}/${BACKUP_PS1}" > "${TEST_DIR}/c.txt"
+    mkdir -p "${TEST_DIR}/empty"
+    _localize_count_program "${TEST_DIR}/empty" < "${TEST_DIR}/c.txt" > "${TEST_DIR}/c_run.sh"
+    run sh "${TEST_DIR}/c_run.sh"
+    assert_success
+    assert_output "$(printf 'BACKUP_FILES=0\nBACKUP_KB=0\nBACKUP_SENTINEL=0')"
+}
+
+# ===========================================================================
+# 7b. READ ERRORS make a count UNAVAILABLE, never a short "exact" count (F1, round 2)
+# ===========================================================================
+# A pipeline's status is its LAST command's (awk), and busybox's pipefail default is
+# unverified, so a `find` read error used to be silent: review round 2 reproduced,
+# under dash, a program that printed a short BACKUP_FILES with BACKUP_SENTINEL=1 and
+# exit 0 -- which the backup trusted as EXACT (false "missing files", even the fatal
+# short-copy branch). Both counts now send the count's stderr to /tmp/count_err and
+# print *_COUNT_ERRORS=<n> INSTEAD of the markers when it is non-empty. These run the
+# REAL programs under dash (busybox is not installed here; same POSIX constructs)
+# against a fixture with a chmod-000 subfolder. Root reads through 000, so skip there.
+
+_run_shell() { if command -v dash > /dev/null 2>&1; then echo dash; else echo sh; fi; }
+
+@test "twin-parity: a find read error makes the backup-folder count UNAVAILABLE (no BACKUP_FILES, exit 0)" {
+    [ "$(id -u)" -ne 0 ] || skip "root can read a chmod-000 folder"
+    extract_count_ps1 "${REPO_ROOT}/${BACKUP_PS1}" > "${TEST_DIR}/c.txt"
+    local b="${TEST_DIR}/bk_err"
+    mkdir -p "${b}/locked"
+    head -c 10 /dev/zero > "${b}/a.bin"
+    head -c 10 /dev/zero > "${b}/locked/hidden.bin"
+    : > "${b}/.daaf-symlinks"
+    chmod 000 "${b}/locked"
+    _localize_count_program "${b}" < "${TEST_DIR}/c.txt" > "${TEST_DIR}/c_run.sh"
+    run "$(_run_shell)" "${TEST_DIR}/c_run.sh"
+    chmod 755 "${b}/locked"
+    assert_success
+    assert_output --partial "BACKUP_COUNT_ERRORS=1"
+    assert_output --partial "BACKUP_SENTINEL=1"
+    refute_output --partial "BACKUP_FILES="
+    refute_output --partial "BACKUP_KB="
+}
+
+@test "twin-parity: a find read error in the SNAPSHOT count prints STAGED_COUNT_ERRORS and does not fail staging" {
+    [ "$(id -u)" -ne 0 ] || skip "root can read a chmod-000 folder"
+    # The staging program's count block (from `counts=` to the end), run under
+    # `set -e` like the real program: it must exit 0 (an unreadable count must never
+    # fail the staging step) and withhold the markers so the backup falls back.
+    extract_backup_ps1 "${REPO_ROOT}/${BACKUP_PS1}" > "${TEST_DIR}/stage.txt"
+    local t="${TEST_DIR}/stage_err"
+    mkdir -p "${t}/locked" "${TEST_DIR}/ctmp"
+    printf 'data\n' > "${t}/file.txt"
+    printf 'x\n' > "${t}/locked/hidden.txt"
+    chmod 000 "${t}/locked"
+    { printf 'set -e\ncd "%s"\n' "${t}"; sed -n '/^counts=\$(find /,$p' "${TEST_DIR}/stage.txt" | sed "s#/tmp/#${TEST_DIR}/ctmp/#g"; } \
+        > "${TEST_DIR}/stage_run.sh"
+    run _container_tmp_refs "${TEST_DIR}/stage_run.sh"
+    assert_output "0"
+    run "$(_run_shell)" "${TEST_DIR}/stage_run.sh"
+    chmod 755 "${t}/locked"
+    assert_success
+    assert_output --partial "STAGED_COUNT_ERRORS=1"
+    refute_output --partial "STAGED_FILES="
+    refute_output --partial "STAGED_KB="
+}
+
+@test "twin-parity: SELF-TEST -- the same fixture made readable prints exact markers (the error path is what changed)" {
+    extract_count_ps1 "${REPO_ROOT}/${BACKUP_PS1}" > "${TEST_DIR}/c.txt"
+    local b="${TEST_DIR}/bk_ok"
+    mkdir -p "${b}/locked"
+    head -c 10 /dev/zero > "${b}/a.bin"
+    head -c 10 /dev/zero > "${b}/locked/hidden.bin"
+    : > "${b}/.daaf-symlinks"
+    _localize_count_program "${b}" < "${TEST_DIR}/c.txt" > "${TEST_DIR}/c_run.sh"
+    run "$(_run_shell)" "${TEST_DIR}/c_run.sh"
+    assert_success
+    assert_output "$(printf 'BACKUP_FILES=2\nBACKUP_KB=0\nBACKUP_SENTINEL=1')"
+}
+
+# ===========================================================================
+# 8. STAGED COUNT vs BACKUP-FOLDER COUNT: identical predicate (I1, 2026-09-29)
+# ===========================================================================
+# The zero-tolerance check compares the staging program's STAGED_FILES/STAGED_KB with
+# the backup-folder count. If the two `find` predicates exclude different root paths,
+# a stray root file on one side only is a FALSE mismatch -- reproduced in review with
+# a leftover root .daaf-permissions (restore's failed permission replay leaves one in
+# the volume): STAGED_FILES=2 vs BACKUP_FILES=1. Pin the predicates as identical, and
+# prove the behavior on exactly that fixture.
+
+# The `counts=$(find ...)` line of a program (the single-pass count).
+_counts_line() { grep '^counts=\$(find ' "$1"; }
+
+@test "twin-parity: staged count and backup-folder count use the SAME find predicate and awk" {
+    extract_backup_ps1 "${REPO_ROOT}/${BACKUP_PS1}" > "${TEST_DIR}/stage.txt"
+    extract_count_ps1  "${REPO_ROOT}/${BACKUP_PS1}" > "${TEST_DIR}/count.txt"
+    run _counts_line "${TEST_DIR}/stage.txt"
+    assert_success
+    local stage_line="${output}"
+    run _counts_line "${TEST_DIR}/count.txt"
+    assert_success
+    [ "${stage_line}" = "${output}" ] || { echo "PREDICATE DRIFT:"; echo " stage: ${stage_line}"; echo " count: ${output}"; return 1; }
+    # And it excludes all three root paths, and captures the count's stderr (F1).
+    [[ "${stage_line}" == *'! -path ./.daaf-symlinks ! -path ./.daaf-permissions ! -path ./.daaf-claude-config/\*'* ]]
+    [[ "${stage_line}" == *'-exec stat -c %s {} + 2>/tmp/count_err | awk '* ]]
+    # Both programs withhold their markers when that file is non-empty.
+    run grep -cxF 'if test -s /tmp/count_err; then' "${TEST_DIR}/stage.txt"
+    assert_output "1"
+    run grep -cxF 'if test -s /tmp/count_err; then' "${TEST_DIR}/count.txt"
+    assert_output "1"
+}
+
+# The [0]/[3] segment of the source scan uses the snapshot count's predicate in BOTH
+# backup twins (F5f): otherwise the "Snapshot: N files (M fewer than the scan ...)"
+# line misreports a predicate gap (a stray root .daaf-permissions) as live drift.
+_SCAN_PRED='find . -type f ! -path ./.daaf-symlinks ! -path ./.daaf-permissions ! -path ./.daaf-claude-config/\* -exec stat -c %s {} +'
+
+@test "twin-parity: the source scan's file/KB count uses the snapshot predicate in both backup twins" {
+    local ps_line sh_line stage_pred
+    ps_line="$(grep '^\$ScanOutput = docker run' "${REPO_ROOT}/${BACKUP_PS1}")"
+    sh_line="$(grep '^SCAN_OUTPUT=\$(docker run' "${REPO_ROOT}/${BACKUP_SH}")"
+    [ -n "${ps_line}" ] && [ -n "${sh_line}" ]
+    [[ "${ps_line}" == *"cd /source && c="*"${_SCAN_PRED} | awk "* ]] || { echo "PS1 scan predicate drift: ${ps_line}"; return 1; }
+    [[ "${sh_line}" == *"cd /source && c="*"${_SCAN_PRED} | awk "* ]] || { echo "SH scan predicate drift: ${sh_line}"; return 1; }
+    # ...and it is the snapshot count's own predicate.
+    extract_backup_ps1 "${REPO_ROOT}/${BACKUP_PS1}" > "${TEST_DIR}/stage.txt"
+    stage_pred="$(_counts_line "${TEST_DIR}/stage.txt")"
+    [[ "${stage_pred}" == *"${_SCAN_PRED} 2>/tmp/count_err"* ]] || { echo "snapshot predicate drift: ${stage_pred}"; return 1; }
+}
+
+# The post-restore volume count (F5h) uses the same root exclusions and one-line-per-
+# file counting in both restore twins, textually identical.
+@test "twin-parity: the post-restore volume count program is identical in both restore twins" {
+    local sh_prog ps_prog
+    sh_prog="$(sed -n "s/^VERIFY_OUTPUT=\"\$(docker run --rm -v \"\${VOLUME_NAME}:\/dest:ro\" busybox sh -c '\([^']*\)'.*/\1/p" "${REPO_ROOT}/${RESTORE_SH}")"
+    ps_prog="$(sed -n "s/^\$VerifyOutput = @(docker run --rm -v \"\${VolumeName}:\/dest:ro\" busybox sh -c '\([^']*\)'.*/\1/p" "${REPO_ROOT}/${RESTORE_PS1}")"
+    [ -n "${sh_prog}" ] || { echo "FAIL: restore .sh verify program not found"; return 1; }
+    [ "${sh_prog}" = "${ps_prog}" ] || { echo "DRIFT:"; echo " sh:  ${sh_prog}"; echo " ps1: ${ps_prog}"; return 1; }
+    [[ "${sh_prog}" == 'set -e; : > /tmp/count_err; n=$(find /dest -type f ! -path /dest/.daaf-symlinks ! -path /dest/.daaf-permissions ! -path /dest/.daaf-claude-config/\* -exec stat -c %s {} + 2>/tmp/count_err | wc -l); if test -s /tmp/count_err; then echo RESTORED_COUNT_ERRORS=$(grep -c ^ /tmp/count_err); else echo RESTORED_FILES=$((n)); fi' ]]
+    # Quote-free (Windows PS 5.1 argv) and not ending in a backslash.
+    [ "$(printf '%s' "${sh_prog}" | dquote_count)" -eq 0 ]
+    [[ "${sh_prog}" != *'\' ]]
+    # Behavior under the local sh (relocated /dest and container /tmp/): root manifests +
+    # Claude subtree excluded, a nested same-name file counts, a newline name counts once.
+    local d="${TEST_DIR}/dest" prog
+    mkdir -p "${d}/sub" "${d}/.daaf-claude-config" "${TEST_DIR}/ctmp"
+    : > "${d}/a"
+    : > "${d}/sub/.daaf-permissions"
+    : > "${d}/sub/name"$'\n'"nl"
+    : > "${d}/.daaf-symlinks"
+    : > "${d}/.daaf-permissions"
+    : > "${d}/.daaf-claude-config/c"
+    prog="${sh_prog//\/tmp\//${TEST_DIR}/ctmp/}"
+    prog="${prog//\/dest/${d}}"
+    run "$(_run_shell)" -c "${prog}"
+    assert_success
+    assert_output "RESTORED_FILES=3"
+    # FU2: a read error inside the count makes it UNAVAILABLE (error marker, exit 0),
+    # never a short "exact" RESTORED_FILES.
+    if [ "$(id -u)" -ne 0 ]; then
+        mkdir -p "${d}/locked"
+        : > "${d}/locked/hidden"
+        chmod 000 "${d}/locked"
+        run "$(_run_shell)" -c "${prog}"
+        chmod 755 "${d}/locked"
+        assert_success
+        assert_output "RESTORED_COUNT_ERRORS=1"
+    fi
+}
+
+@test "twin-parity: a leftover ROOT .daaf-permissions in the volume gives STAGED == BACKUP counts" {
+    # Snapshot side: the staging program's count lines, run over a staged tree whose
+    # volume content included a stray root .daaf-permissions. Backup side: the count
+    # program over the copied folder (same tree + the root manifest).
+    extract_backup_ps1 "${REPO_ROOT}/${BACKUP_PS1}" > "${TEST_DIR}/stage.txt"
+    extract_count_ps1  "${REPO_ROOT}/${BACKUP_PS1}" > "${TEST_DIR}/count.txt"
+    local t="${TEST_DIR}/tree"
+    mkdir -p "${t}/sub"
+    printf 'data\n' > "${t}/sub/file.txt"
+    printf 'scripts/run.sh\n' > "${t}/.daaf-permissions"
+    : > "${t}/.daaf-symlinks"
+    mkdir -p "${TEST_DIR}/ctmp"
+    # The count block runs from `counts=` to the end of the program; its container
+    # /tmp/ writes are relocated under TEST_DIR (never the real /tmp).
+    { printf 'set -e\ncd "%s"\n' "${t}"; sed -n '/^counts=\$(find /,$p' "${TEST_DIR}/stage.txt" | sed "s#/tmp/#${TEST_DIR}/ctmp/#g"; } \
+        > "${TEST_DIR}/stage_run.sh"
+    run _container_tmp_refs "${TEST_DIR}/stage_run.sh"
+    assert_output "0"
+    run sh "${TEST_DIR}/stage_run.sh"
+    assert_success
+    assert_output "$(printf 'STAGED_FILES=1\nSTAGED_KB=0')"
+    _localize_count_program "${t}" < "${TEST_DIR}/count.txt" > "${TEST_DIR}/count_run.sh"
+    run sh "${TEST_DIR}/count_run.sh"
+    assert_success
+    assert_output --partial "BACKUP_FILES=1"
+}
+
+# ===========================================================================
+# 9. HOST COUNT FUNCTION: _daaf_tree_count is byte-identical in both .sh scripts
+# ===========================================================================
+# backup_daaf.sh and restore_from_backup.sh each carry _daaf_tree_count (the host
+# `find` count whose captured stderr turns a read error into a LOWER BOUND). Restore
+# once held a hand-trimmed copy (no mode parameter, no "kb" branch, the two manifest
+# `! -path` exclusions in swapped order) under a "Same function as" comment; it is
+# now a textually identical copy, and this pin keeps it so. The function is located
+# by its exact `_daaf_tree_count() {` opener and the first column-0 `}` after it.
+
+extract_tree_count() {
+    awk '
+        BEGIN { inf=0 }
+        inf==0 && /^_daaf_tree_count\(\) \{$/ { inf=1 }
+        inf==1 { print $0 }
+        inf==1 && /^\}$/ { exit }
+    ' "$1"
+}
+
+@test "twin-parity: _daaf_tree_count is byte-identical (backup_daaf.sh == restore_from_backup.sh)" {
+    # Exactly one definition per script, so the extraction cannot pick a stale copy.
+    run grep -c '^_daaf_tree_count() {$' "${REPO_ROOT}/${BACKUP_SH}"
+    assert_output "1"
+    run grep -c '^_daaf_tree_count() {$' "${REPO_ROOT}/${RESTORE_SH}"
+    assert_output "1"
+    extract_tree_count "${REPO_ROOT}/${BACKUP_SH}"  > "${TEST_DIR}/tc_backup.txt"
+    extract_tree_count "${REPO_ROOT}/${RESTORE_SH}" > "${TEST_DIR}/tc_restore.txt"
+    # Non-trivial extraction: opener to closer, with both count branches inside.
+    [ "$(head -n 1 "${TEST_DIR}/tc_backup.txt")" = '_daaf_tree_count() {' ] || { echo "FAIL: backup opener not extracted"; return 1; }
+    [ "$(tail -n 1 "${TEST_DIR}/tc_backup.txt")" = '}' ] || { echo "FAIL: backup closer not extracted"; return 1; }
+    grep -q -- '-print0 | LC_ALL=C tr' "${TEST_DIR}/tc_backup.txt" || { echo "FAIL: files branch missing from extraction"; return 1; }
+    grep -q -- '-exec ls -ln {} +' "${TEST_DIR}/tc_backup.txt" || { echo "FAIL: kb branch missing from extraction"; return 1; }
+    run diff "${TEST_DIR}/tc_backup.txt" "${TEST_DIR}/tc_restore.txt"
+    if [ "${status}" -ne 0 ]; then
+        echo "DRIFT: _daaf_tree_count differs between backup_daaf.sh and restore_from_backup.sh"
+        echo "${output}"
+    fi
+    assert_success
+}
+
+@test "twin-parity: restore_from_backup.sh calls _daaf_tree_count with an explicit mode (set -u safe)" {
+    # The shared function reads "$2" under `set -u`; a one-argument call would abort.
+    run grep -nE '_daaf_tree_count "[^"]*"[[:space:]]*$' "${REPO_ROOT}/${RESTORE_SH}"
+    assert_failure
+    run grep -cE '^[[:space:]]*_daaf_tree_count "[^"]*" files$' "${REPO_ROOT}/${RESTORE_SH}"
+    assert_output "2"
+}
+
+@test "twin-parity SELF-TEST: extractor+diff flags a perturbed _daaf_tree_count" {
+    # Re-create the historical drift (the two manifest exclusions swapped) in a temp copy.
+    sed 's#! -path "./${SYMLINKS_MANIFEST}" ! -path "./${PERMISSIONS_MANIFEST}"#! -path "./${PERMISSIONS_MANIFEST}" ! -path "./${SYMLINKS_MANIFEST}"#' \
+        "${REPO_ROOT}/${RESTORE_SH}" > "${TEST_DIR}/restore_drift.sh"
+    run cmp -s "${REPO_ROOT}/${RESTORE_SH}" "${TEST_DIR}/restore_drift.sh"
+    assert_failure
+    extract_tree_count "${REPO_ROOT}/${BACKUP_SH}"      > "${TEST_DIR}/ref.txt"
+    extract_tree_count "${TEST_DIR}/restore_drift.sh"   > "${TEST_DIR}/drift.txt"
+    run diff "${TEST_DIR}/ref.txt" "${TEST_DIR}/drift.txt"
+    assert_failure
+}
+
+# ===========================================================================
+# 10. RESTORE COMPLETION BANNER: same banners, same WARNING set, pinned latches
+# ===========================================================================
+# Both restore twins latch a WITH WARNINGS completion banner (HAD_WARNINGS /
+# $HadWarnings), mirroring the backup twins. The banner strings must be identical,
+# and so must the set of WARNING messages the twins can print (first lines, with
+# variable references normalized to <v>), so a WARNING added to one twin only
+# fails here. The latch assignments are pinned by count: 7 in the .sh, 8 in the
+# .ps1, whose extra latch is the LOWER-BOUND scan count (the .sh refuses such a
+# backup instead). Adding a success-path WARNING means adding its latch and
+# updating these counts (and the .ps1 count in restore_from_backup.Tests.ps1).
+# Lines are matched with grep -E + sed (no GNU-only `\|`), so busybox also works.
+
+_restore_banners() {
+    grep -E '^[[:space:]]*(echo|Write-Host) "  Restore complete' "$1" \
+    | sed 's/^[^"]*"\([^"]*\)".*/\1/'
+}
+
+_restore_warning_set() {
+    grep -E '^[[:space:]]*(echo|Write-Host) "WARNING: ' "$1" \
+    | sed -e 's/^[^"]*"\(WARNING: [^"]*\)".*/\1/' \
+          -e 's/\${[A-Za-z_][A-Za-z_0-9]*}/<v>/g' \
+          -e 's/\$[A-Za-z_][A-Za-z_0-9]*/<v>/g' \
+    | LC_ALL=C sort -u
+}
+
+@test "twin-parity: both restore twins print the same completion banners" {
+    local expected
+    expected="$(printf '%s\n%s' '  Restore completed WITH WARNINGS -- verify before relying on it' '  Restore complete!')"
+    run _restore_banners "${REPO_ROOT}/${RESTORE_SH}"
+    assert_output "${expected}"
+    run _restore_banners "${REPO_ROOT}/${RESTORE_PS1}"
+    assert_output "${expected}"
+    # Same wording pattern as the backup twins' latched banner.
+    run grep -cF '"  Backup completed WITH WARNINGS -- verify before relying on it"' "${REPO_ROOT}/${BACKUP_SH}" "${REPO_ROOT}/${BACKUP_PS1}"
+    assert_output --partial "backup_daaf.sh:1"
+    assert_output --partial "backup_daaf.ps1:1"
+}
+
+@test "twin-parity: both restore twins can print the same set of WARNING messages" {
+    _restore_warning_set "${REPO_ROOT}/${RESTORE_SH}"  > "${TEST_DIR}/w_sh.txt"
+    _restore_warning_set "${REPO_ROOT}/${RESTORE_PS1}" > "${TEST_DIR}/w_ps1.txt"
+    # Non-trivial extraction (the two variable-bearing messages normalized alike).
+    [ "$(grep -c . "${TEST_DIR}/w_sh.txt")" -ge 8 ] || { echo "FAIL: too few WARNING lines extracted from the .sh"; cat "${TEST_DIR}/w_sh.txt"; return 1; }
+    grep -qF 'WARNING: Could not verify the restored file count: Docker hit <v> read error(s)' "${TEST_DIR}/w_sh.txt" || { echo "FAIL: variable normalization did not apply"; return 1; }
+    run diff "${TEST_DIR}/w_sh.txt" "${TEST_DIR}/w_ps1.txt"
+    if [ "${status}" -ne 0 ]; then
+        echo "DRIFT: the restore twins' WARNING messages differ"
+        echo "${output}"
+    fi
+    assert_success
+}
+
+@test "twin-parity: restore latch sites are pinned (7 in .sh, 8 in .ps1 incl. the lower-bound scan)" {
+    run grep -c '^[[:space:]]*HAD_WARNINGS=0$' "${REPO_ROOT}/${RESTORE_SH}"
+    assert_output "1"
+    run grep -c '^[[:space:]]*HAD_WARNINGS=1$' "${REPO_ROOT}/${RESTORE_SH}"
+    assert_output "7"
+    run grep -c '^[[:space:]]*\$HadWarnings = \$false$' "${REPO_ROOT}/${RESTORE_PS1}"
+    assert_output "1"
+    run grep -c '^[[:space:]]*\$HadWarnings = \$true$' "${REPO_ROOT}/${RESTORE_PS1}"
+    assert_output "8"
+    # The .ps1-only latch sits in the lower-bound branch of the scan.
+    run grep -A 12 -F '$TotalFilesIsLowerBound = $true' "${REPO_ROOT}/${RESTORE_PS1}"
+    assert_output --partial '$HadWarnings = $true'
+}
+
+@test "twin-parity SELF-TEST: the WARNING-set diff flags a WARNING present in one restore twin only" {
+    # Drop one WARNING line from a temp copy of the .ps1; the sets must then differ.
+    grep -vF 'WARNING: Could not fully replay Claude state symlinks.' "${REPO_ROOT}/${RESTORE_PS1}" > "${TEST_DIR}/restore_drift.ps1"
+    run cmp -s "${REPO_ROOT}/${RESTORE_PS1}" "${TEST_DIR}/restore_drift.ps1"
+    assert_failure
+    _restore_warning_set "${REPO_ROOT}/${RESTORE_SH}"   > "${TEST_DIR}/w_ref.txt"
+    _restore_warning_set "${TEST_DIR}/restore_drift.ps1" > "${TEST_DIR}/w_drift.txt"
+    run diff "${TEST_DIR}/w_ref.txt" "${TEST_DIR}/w_drift.txt"
+    assert_failure
 }

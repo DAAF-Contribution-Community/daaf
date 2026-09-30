@@ -99,7 +99,8 @@ Script behaving unexpectedly?
     ├─ Env var case mismatch → ./references/gotchas.md
     ├─ Aliases missing → ./references/gotchas.md
     ├─ Exit code truncated → ./references/gotchas.md
-    └─ Windows docker cp copy silently truncated → ./references/gotchas.md (FIFO/device/symlink abort)
+    ├─ Windows docker cp copy silently truncated → ./references/gotchas.md (FIFO/device/symlink abort)
+    └─ Windows file count too low / folders skipped → ./references/gotchas.md (PS 5.1 Get-ChildItem long paths)
 ```
 
 ### "I need to set up tests"
@@ -163,6 +164,7 @@ Existing patterns in DAAF scripts that this skill codifies:
 | 9 | ASCII-only content (no BOM) | `file script.ps1` reports "ASCII text" |
 | 10 | No interactive native commands in expression-context function calls | No `if (Fn)`, `$x = Fn` for functions with `docker exec`, `ssh`, etc. |
 | 11 | `Start-Process`: one quoted `-ArgumentList` string; `.Handle` cached; `$null` ExitCode = unknown | `ConvertTo-DaafNativeArg`; no `-ArgumentList @(...)` (see `powershell-standards.md`) |
+| 12 | No `Get-ChildItem -Recurse ... -ErrorAction SilentlyContinue` as an authoritative count or size | Count container-side, or capture `-ErrorVariable` and report a lower bound (see `powershell-standards.md` item 18) |
 
 ## Exit Code Conventions
 
@@ -209,6 +211,7 @@ Existing patterns in DAAF scripts that this skill codifies:
 | Docker mocking strategies | `./references/testing.md` |
 | Test taxonomy (lint/unit/smoke/integration) | `./references/testing.md` |
 | In-container validation toolchain (DAAF_DEV: pwsh, Pester, PSScriptAnalyzer, shellcheck, bats) | `./references/testing.md` |
+| In-container bats/Pester runs: set `TMPDIR` to a project scratch dir (no `/tmp` fixtures; self-cleaning teardown) | `./references/testing.md` |
 | Safety-hook regression batteries (`test_safety_hooks.sh`, `test_enforce_single_command.sh`) | `./references/testing.md` |
 | What to test and what to skip | `./references/testing.md` |
 | Bash exit code masking | `./references/gotchas.md` |
@@ -227,4 +230,5 @@ Existing patterns in DAAF scripts that this skill codifies:
 | Cross-platform path separators | `./references/gotchas.md` |
 | Cross-language octal `printf` escaping (`\\357`/`\\011` to `sh`) | `./references/gotchas.md` |
 | Windows `docker cp` aborts at FIFO/device node/symlink (stage + strip + count) | `./references/gotchas.md` |
+| PS 5.1 `Get-ChildItem -Recurse` silently skips long paths (count container-side, `-ErrorVariable`) | `./references/gotchas.md` |
 | Detached-container (`docker run -d`) diagnostics routing | `./references/error-handling.md` |

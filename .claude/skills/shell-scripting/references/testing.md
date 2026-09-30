@@ -394,6 +394,48 @@ Notes:
 - `Invoke-ScriptAnalyzer -Path` takes a **single** string, not an array — lint one
   file per invocation (loop for multiple files).
 
+### Set `TMPDIR` for In-Container bats and Pester Runs
+
+Both runners put their fixtures under the system temp directory, which is `/tmp`
+unless `TMPDIR` says otherwise. bats sets `BATS_TMPDIR="${TMPDIR:-/tmp}"`
+(`/usr/libexec/bats-core/bats`), and a suite's own `mktemp -d` fixtures follow
+`TMPDIR` too. Pester's `$TestDrive` comes from `[System.IO.Path]::GetTempPath()`
+on Linux (`Get-TempDirectory` in `Pester.psm1`), which reads `TMPDIR`. DAAF forbids
+working-file writes to `/tmp` because it sits outside the backup and audit boundary
+(CLAUDE.md § Provenance Boundary). The command line names no `/tmp` path, so the
+`bash-safety.sh` guard cannot see these writes. Point `TMPDIR` at a scratch
+directory inside the project instead: `{PROJECT_DIR}/scripts/scratch/tmp` in a
+research project, or `scratch/tmp` in a Framework Development workspace. Create it
+first, because bats refuses to start when `BATS_TMPDIR` does not exist. One command
+per Bash call:
+
+```bash
+mkdir -p <project>/scratch/tmp
+```
+
+```bash
+env TMPDIR=<project>/scratch/tmp bats tests/bash/x.bats
+```
+
+```bash
+env TMPDIR=<project>/scratch/tmp pwsh -NoProfile -Command "Invoke-Pester -Path tests/powershell/x.Tests.ps1 -Output Detailed"
+```
+
+Notes:
+- **Fixtures must clean themselves up.** An in-session `rm -r` of a leftover
+  fixture directory may be denied by the permission system (this happened to both
+  the orchestrator and review subagents during the 2026-09-29 backup work), so do
+  not plan on removing fixtures after the run. Remove anything a test creates
+  (e.g. a `mktemp -d` from `setup`) in `teardown` / `AfterAll`, on pass and on
+  failure. The runners clean up their own directories: bats removes its run
+  directory on exit unless `--no-tempdir-cleanup` is given, and Pester removes
+  `$TestDrive` when the top-level block finishes.
+- **An interrupted run can leave the bats run directory behind.** That directory
+  holds a symlink that bats creates for each test file
+  (`bats-exec-file`), which `bash scripts/check_workspace_invariants.sh` flags as
+  unauthorized. Run the checker after in-container test runs, and ask the user to
+  remove any leftovers it reports.
+
 ---
 
 ## DAAF Safety-Hook Regression Batteries

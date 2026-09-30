@@ -94,9 +94,19 @@ $PermissionsManifest = ".daaf-permissions"
 # backup_daaf.ps1's staging step. Lists each symlink's path and target (TAB-
 # separated). Restore replays it container-side to recreate the links that the
 # staging step stripped so `docker cp` could stream a symlink-free tree on Windows.
-# Absent on older backups / volumes with no symlinks -- restore no-ops (see Step 2e),
+# Current backups always contain it (0 bytes when the volume had no symlinks); absent
+# only on backups that predate the feature -- restore no-ops then (see Step 2e),
 # matching the ".daaf-permissions" "no manifest, no action" rule.
 $SymlinksManifest = ".daaf-symlinks"
+#
+# SYNC NOTE: two container-side programs below cannot use these variables and
+# hardcode the literals ".daaf-symlinks", ".daaf-permissions" and ".daaf-claude-config":
+# $BackupCountProgram (a single-quoted `@'...'@` here-string, byte-identical to
+# backup_daaf.ps1's -- pinned by tests/bash/backup_twin_parity.bats) and the
+# post-restore volume count in "--- Verify ---" (a single-quoted string, identical to
+# restore_from_backup.sh's -- pinned by the same file). They are kept literal so their
+# `find` predicates stay textually identical to the backup's. If a name ever changes,
+# update those literals by hand (and backup_daaf.ps1's / the .sh twins' copies).
 
 # --- Dry-Run Support ---
 # When DAAF_DRY_RUN=1, simulate external commands (Docker) for CI
@@ -106,6 +116,16 @@ if ($env:DAAF_DRY_RUN -eq "1") {
         $argStr = $args -join ' '
         $global:LASTEXITCODE = 0
         switch -Wildcard ($argStr) {
+            "run --rm -v *:/b:ro*" {
+                # Container-side count of the selected backup folder. Listed first:
+                # the argument string holds the user's path, which can contain "info".
+                # (The dry run exits before selection; modeled so the parse stays
+                # compatible if the early exit ever moves.)
+                Write-Output "BACKUP_FILES=42"
+                Write-Output "BACKUP_KB=1000"
+                Write-Output "BACKUP_SENTINEL=1"
+                return
+            }
             "*info*" { return }
             "*volume inspect*" { return }
             "*ps --filter*" { return }
@@ -124,6 +144,68 @@ if ($env:DAAF_DRY_RUN -eq "1") {
             }
         }
     }
+}
+
+# --- Count helpers (byte-identical copies of backup_daaf.ps1's) ---
+# Each `function ... { ... }` definition is pinned byte-identical to backup_daaf.ps1's
+# by tests/powershell/restore_from_backup.Tests.ps1 (case-sensitive -BeExactly); this
+# comment block itself is not pinned. See backup_daaf.ps1 for the full rationale.
+# Get-DaafCountMarker reads one NAME=<digits> marker (anchored, TryParse-gated, $null
+# when missing). Measure-DaafBackupTree is
+# the PowerShell count of a backup folder that is never silent: Windows PowerShell 5.1
+# Get-ChildItem cannot descend into a folder whose Windows path is 248+ characters
+# unless LongPathsEnabled=1, so its enumeration errors are captured with
+# -ErrorVariable and returned, and the caller marks the count as a lower bound. Its
+# root exclusions are case-sensitive, like the container's `find -path`.
+function Get-DaafCountMarker {
+    [CmdletBinding()]
+    param(
+        [AllowNull()][object[]]$Lines,
+        [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string]$Name
+    )
+    $value = $null
+    $pattern = '^' + [regex]::Escape($Name) + '=(\d+)$'
+    foreach ($raw in @($Lines)) {
+        foreach ($line in ("$raw" -split "`r?`n")) {
+            if ($line.Trim() -match $pattern) {
+                $parsed = [long]0
+                if ([long]::TryParse($Matches[1], [ref]$parsed)) { $value = $parsed }
+            }
+        }
+    }
+    return $value
+}
+
+function Measure-DaafBackupTree {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string]$Root,
+        [string[]]$ExcludeRootFiles = @(),
+        [string[]]$ExcludeRootDirs = @()
+    )
+    $rootItem = Get-Item -LiteralPath $Root -Force -ErrorAction SilentlyContinue
+    if ($null -eq $rootItem) {
+        return [pscustomobject]@{ Files = 0; Bytes = [long]0; KB = [long]0; Errors = 1 }
+    }
+    $rootFull = $rootItem.FullName.TrimEnd('\', '/')
+    $sep = [string][System.IO.Path]::DirectorySeparatorChar
+    $enumErrors = $null
+    $files = 0
+    $bytes = [long]0
+    foreach ($item in @(Get-ChildItem -LiteralPath $Root -Recurse -File -Force -ErrorAction SilentlyContinue -ErrorVariable enumErrors)) {
+        $rel = $item.FullName.Substring($rootFull.Length + 1)
+        if ($ExcludeRootFiles -ccontains $rel) { continue }
+        $underExcludedDir = $false
+        foreach ($dir in $ExcludeRootDirs) {
+            if ($rel.StartsWith($dir + $sep, [System.StringComparison]::Ordinal)) { $underExcludedDir = $true; break }
+        }
+        if ($underExcludedDir) { continue }
+        $files++
+        $bytes += $item.Length
+    }
+    $errorCount = 0
+    if ($null -ne $enumErrors) { $errorCount = @($enumErrors).Count }
+    return [pscustomobject]@{ Files = $files; Bytes = $bytes; KB = [long][math]::Floor($bytes / 1024); Errors = $errorCount }
 }
 
 # --- Test Mode Guard ---
@@ -237,19 +319,21 @@ Write-Host ""
 for ($i = 0; $i -lt $Backups.Count; $i++) {
     $dir = $Backups[$i]
     # Count and size the DATA-volume contents only -- exclude the hidden Claude
-    # subfolder (it restores to its own volume, not the data volume) and BOTH
-    # metadata manifests (".daaf-permissions", ".daaf-symlinks" -- neither is
-    # restored content). This makes the listing count agree exactly with the
-    # "Scanning backup" count below, the post-restore verification count, and the
-    # backup script's completion report (all four count data-volume files only).
-    # When Claude state is present it is noted inline rather than folded silently
-    # into the number.
+    # subfolder (it restores to its own volume, not the data volume) and BOTH root
+    # metadata manifests (".daaf-permissions", ".daaf-symlinks" -- neither is restored
+    # content). These are the same root-relative exclusions as the "Scanning backup"
+    # count below and the backup script's completion report, so they agree with each
+    # other and with the post-restore volume count -- EXCEPT that this listing stays on
+    # PowerShell for speed (one container scan per listed backup would be slow), and
+    # Windows PowerShell 5.1 cannot read folders past the Windows path-length limit.
+    # When it hit read errors the count is shown as a lower bound ("72834+ files");
+    # the scan of the selected backup below counts inside Docker and is exact. When
+    # Claude state is present it is noted inline rather than folded into the number.
     $claudeSub = Join-Path $dir.FullName $ClaudeSubDir
-    $dataItems = @(Get-ChildItem -Path $dir.FullName -Recurse -File -Force -ErrorAction SilentlyContinue |
-        Where-Object { $_.FullName -notlike "$claudeSub*" -and $_.Name -ne $PermissionsManifest -and $_.Name -ne $SymlinksManifest })
-    $fileCount = $dataItems.Count
-    $sizeBytes = ($dataItems | Measure-Object -Property Length -Sum).Sum
-    if ($null -eq $sizeBytes) { $sizeBytes = 0 }
+    $listing = Measure-DaafBackupTree -Root $dir.FullName -ExcludeRootFiles @($PermissionsManifest, $SymlinksManifest) -ExcludeRootDirs @($ClaudeSubDir)
+    $fileCount = "$($listing.Files)"
+    if ($listing.Errors -gt 0) { $fileCount = "$($listing.Files)+" }
+    $sizeBytes = $listing.Bytes
     if ($sizeBytes -ge 1073741824) {
         $sizeStr = "{0:N1}G" -f ($sizeBytes / 1073741824)
     } elseif ($sizeBytes -ge 1048576) {
@@ -310,6 +394,23 @@ if (Test-Path -LiteralPath $ClaudeBackupPath -PathType Container) {
     if ($claudeItemCount -gt 0) { $HasClaudeBackup = $true }
 }
 
+# --- Completion-banner latch ---
+# Mirrors backup_daaf.ps1's $HadWarnings: every non-fatal WARNING on the success path
+# below (a permission or symlink replay failure, a restored file count that could not
+# be verified, a post-restore file-count mismatch, a Claude-state clear, copy or
+# symlink-replay failure) sets this so the final banner can say the restore completed
+# WITH WARNINGS rather than claiming an unqualified success. The exit status stays 0
+# on those paths -- the banner wording is the signal, not the exit code (callers such
+# as daaf.ps1 branch on the exit code only). The NOTEs do not latch: a backup that
+# predates the permission manifest or the Claude volume restores exactly what it
+# holds. Refusals and errors exit nonzero before the banner, so they need no latch.
+# This twin also latches a LOWER-BOUND backup count (the PowerShell fallback in the
+# scan below hit read errors), as backup_daaf.ps1 does: the post-restore check can
+# then show the restore is consistent with the backup but not that it is complete.
+# That latch is set before the destructive prompt; a cancelled restore exits before
+# the banner. The .sh twin refuses such a backup instead, so it has no such latch.
+$HadWarnings = $false
+
 # --- Count source files ---
 # Exclude the Claude subfolder from the DATA-volume count -- it is restored to a
 # separate volume below, not into the data volume. Also exclude BOTH metadata
@@ -318,11 +419,93 @@ if (Test-Path -LiteralPath $ClaudeBackupPath -PathType Container) {
 # so counting them would make this scan disagree with the post-restore verification
 # count (which runs after both manifests are stripped from the volume) and with the
 # listing count above.
+#
+# Counted CONTAINER-SIDE through a read-only bind mount -- the authoritative count
+# the post-restore verification is compared against. Windows PowerShell 5.1
+# Get-ChildItem cannot descend into folders whose Windows path is 248+ characters
+# when LongPathsEnabled=0, and with `-ErrorAction SilentlyContinue` that was a quiet
+# undercount (field 2026-09-29: 72,834 counted vs 73,021 present), which would then
+# show up as a spurious post-restore mismatch against the container `find` below.
+# $BackupCountProgram is byte-identical to backup_daaf.ps1's (pinned by
+# tests/bash/backup_twin_parity.bats), which documents it: root-relative exclusions
+# (the three above), one traversal for files and KB, a BACKUP_SENTINEL line, and
+# BACKUP_COUNT_ERRORS in place of the count when its `find` hit read errors (a
+# pipeline's status is awk's, so an error would otherwise print a short count and
+# exit 0). A count with errors is unavailable here too: the PowerShell count runs.
+# Restore does NOT require that sentinel -- backups that predate the ".daaf-symlinks"
+# manifest have none. Instead it treats a container count of 0 as UNAVAILABLE: Docker
+# Desktop has been reported to present an EMPTY folder for a bind mount of some
+# locations (a non-C:, USB or network drive; docker/for-win#14271, not reproduced
+# here), which would otherwise show "Found 0 files" in the destructive prompt below.
+# On 0 the PowerShell count runs; a genuinely empty backup then reads 0 there too,
+# silently, while a folder Docker could not see gets a note. The restore copy itself
+# is unaffected (`docker cp` streams through the Docker API, not a bind mount). The
+# path is one direct-invocation argument ("<path>:/b:ro"), so a spaced folder stays
+# one argument and never ends in a backslash. Fallback: the PowerShell count, with
+# read errors shown as a lower bound rather than hidden.
+$BackupCountProgram = @'
+set -e
+cd /b
+: > /tmp/count_err
+seen=0
+if test -e ./.daaf-symlinks; then seen=1; fi
+counts=$(find . -type f ! -path ./.daaf-symlinks ! -path ./.daaf-permissions ! -path ./.daaf-claude-config/\* -exec stat -c %s {} + 2>/tmp/count_err | awk \{n++\;s+=\$1\}\ END\ \{print\ n+0,int\(s/1024\)\})
+if test -s /tmp/count_err; then
+echo BACKUP_COUNT_ERRORS=$(grep -c ^ /tmp/count_err)
+else
+echo BACKUP_FILES=${counts% *}
+echo BACKUP_KB=${counts#* }
+fi
+echo BACKUP_SENTINEL=$seen
+'@
 Write-Host ""
 Write-Host "Scanning backup..."
-$TotalFiles = @(Get-ChildItem -Path $SelectedPath -Recurse -File -Force -ErrorAction SilentlyContinue | Where-Object { $_.FullName -notlike "$ClaudeBackupPath*" -and $_.Name -ne $PermissionsManifest -and $_.Name -ne $SymlinksManifest }).Count
-$TotalSizeBytes = (Get-ChildItem -Path $SelectedPath -Recurse -Force -ErrorAction SilentlyContinue | Where-Object { $_.FullName -notlike "$ClaudeBackupPath*" -and $_.Name -ne $PermissionsManifest -and $_.Name -ne $SymlinksManifest } | Measure-Object -Property Length -Sum).Sum
-if ($null -eq $TotalSizeBytes) { $TotalSizeBytes = 0 }
+$savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+$ScanCountOutput = @(docker run --rm -v "${SelectedPath}:/b:ro" busybox sh -c $BackupCountProgram 2>&1)
+$scanCountExit = $LASTEXITCODE
+$ErrorActionPreference = $savedEAP
+$TotalFiles = $null
+$TotalSizeKB = $null
+$ScanCountErrors = $null
+if ($scanCountExit -eq 0) {
+    $TotalFiles = Get-DaafCountMarker -Lines $ScanCountOutput -Name 'BACKUP_FILES'
+    $TotalSizeKB = Get-DaafCountMarker -Lines $ScanCountOutput -Name 'BACKUP_KB'
+    $ScanCountErrors = Get-DaafCountMarker -Lines $ScanCountOutput -Name 'BACKUP_COUNT_ERRORS'
+}
+$TotalFilesLabel = ""
+$TotalFilesIsLowerBound = $false
+if ($null -ne $TotalFiles -and $null -ne $TotalSizeKB -and $TotalFiles -gt 0) {
+    $TotalSizeBytes = $TotalSizeKB * 1024
+    $TotalFilesLabel = "$TotalFiles"
+} else {
+    # 0 from a successful container count is "Docker saw nothing" -- possibly an
+    # empty bind-mount view -- so it is treated as unavailable, like a failed count.
+    $ContainerSawNothing = ($null -ne $TotalFiles -and $null -ne $TotalSizeKB)
+    $ScanFallback = Measure-DaafBackupTree -Root $SelectedPath -ExcludeRootFiles @($PermissionsManifest, $SymlinksManifest) -ExcludeRootDirs @($ClaudeSubDir)
+    if ($null -ne $ScanCountErrors -and $ScanCountErrors -gt 0) {
+        Write-Host "Note: Docker hit $ScanCountErrors read error(s) while counting this backup, so it is counted" -ForegroundColor Yellow
+        Write-Host "      with PowerShell instead."
+    } elseif (-not $ContainerSawNothing) {
+        Write-Host "Note: Could not count the backup inside Docker (exit $scanCountExit); counting it with" -ForegroundColor Yellow
+        Write-Host "      PowerShell instead."
+    } elseif ($ScanFallback.Files -gt 0 -or $ScanFallback.Errors -gt 0) {
+        Write-Host "Note: Docker could not see the files in this backup folder, so they are counted with" -ForegroundColor Yellow
+        Write-Host "      PowerShell instead. (Docker Desktop can show an empty folder for some locations,"
+        Write-Host "      such as a USB, network, or non-C: drive. The restore copy itself is not affected.)"
+    }
+    $TotalFiles = $ScanFallback.Files
+    $TotalSizeBytes = $ScanFallback.Bytes
+    $TotalFilesLabel = "$TotalFiles"
+    if ($ScanFallback.Errors -gt 0) {
+        $TotalFilesIsLowerBound = $true
+        $TotalFilesLabel = "$TotalFiles+"
+        Write-Host "Note: PowerShell could not read $($ScanFallback.Errors) folder(s) or file(s) in this backup," -ForegroundColor Yellow
+        Write-Host "      most likely because of the Windows path-length limit, so the count below is a"
+        Write-Host "      LOWER BOUND. The restore itself copies everything (Docker handles long paths);"
+        Write-Host "      the post-restore check may then report more files than this count."
+        $HadWarnings = $true
+    }
+}
 if ($TotalSizeBytes -ge 1073741824) {
     $TotalSizeStr = "{0:N1}G" -f ($TotalSizeBytes / 1073741824)
 } elseif ($TotalSizeBytes -ge 1048576) {
@@ -330,7 +513,7 @@ if ($TotalSizeBytes -ge 1073741824) {
 } else {
     $TotalSizeStr = "{0:N0}K" -f ($TotalSizeBytes / 1024)
 }
-Write-Host "Found $TotalFiles files ($TotalSizeStr) to restore."
+Write-Host "Found $TotalFilesLabel files ($TotalSizeStr) to restore."
 
 # --- Destructive warning ---
 Write-Host ""
@@ -345,7 +528,7 @@ Write-Host "All existing files, git history, research data, and"
 Write-Host "configuration in the Docker volume will be permanently"
 Write-Host "deleted and overwritten by the backup contents."
 Write-Host ""
-Write-Host "Source:      $SelectedName\ ($TotalFiles files, $TotalSizeStr)"
+Write-Host "Source:      $SelectedName\ ($TotalFilesLabel files, $TotalSizeStr)"
 Write-Host "Destination: Docker volume '$VolumeName'"
 if ($HasClaudeBackup) {
     Write-Host ""
@@ -536,6 +719,7 @@ if ($manifestPresent) {
         Write-Host "         Your data was restored intact; only file permissions may be off."
         Write-Host "         If git reports many files as changed by mode only, or a script"
         Write-Host "         will not run, repair with: chmod +x <file> inside the container."
+        $HadWarnings = $true
     }
 } else {
     Write-Host "NOTE: No $PermissionsManifest manifest found in this backup (it may predate"
@@ -596,39 +780,84 @@ if ($symlinkManifestPresent) {
         Write-Host "         Your data was restored intact; only symbolic links may be missing."
         Write-Host "         Such links are usually regenerable (e.g. by re-running the step that"
         Write-Host "         created them). Inspect $SymlinksManifest in the backup for the list."
+        $HadWarnings = $true
     }
 }
 Write-Host "Copy complete."
 Write-Host ""
 
 # --- Verify ---
+# Count the restored volume like with like: the same root exclusions as the backup
+# count above (a root ".daaf-symlinks"/".daaf-permissions" left behind when a manifest
+# replay failed, and the ".daaf-claude-config" subtree), and one `stat` line per file
+# so a name holding a newline counts once. Quote-free (Windows argv), and textually
+# identical to restore_from_backup.sh's program (tests/bash/backup_twin_parity.bats).
 Write-Host "Verifying restore..."
 $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-$VerifyOutput = docker run --rm -v "${VolumeName}:/dest:ro" busybox sh -c 'find /dest -type f | wc -l' 2>&1
+$VerifyOutput = @(docker run --rm -v "${VolumeName}:/dest:ro" busybox sh -c 'set -e; : > /tmp/count_err; n=$(find /dest -type f ! -path /dest/.daaf-symlinks ! -path /dest/.daaf-permissions ! -path /dest/.daaf-claude-config/\* -exec stat -c %s {} + 2>/tmp/count_err | wc -l); if test -s /tmp/count_err; then echo RESTORED_COUNT_ERRORS=$(grep -c ^ /tmp/count_err); else echo RESTORED_FILES=$((n)); fi' 2>&1)
+$verifyExit = $LASTEXITCODE
 $ErrorActionPreference = $savedEAP
-$RestoredCount = 0
-if ($null -ne $VerifyOutput) {
-    $null = [int]::TryParse(($VerifyOutput | Out-String).Trim(), [ref]$RestoredCount)
-}
+# Markers, not a bare number: the old `2>&1` + TryParse of the whole output turned any
+# stderr line into a failed parse, i.e. a false "0 files found" ERROR. The program
+# prints RESTORED_FILES only when its count's stderr was empty (the same F1 pattern as
+# $BackupCountProgram), else RESTORED_COUNT_ERRORS. Unavailable ($null) is its own
+# outcome: a WARNING with exit 0, because the copy, ownership repair and replays all
+# succeeded and only this check could not run (exit 1 would tell a caller the restore
+# failed with the data in place). A count that WAS read as 0 still fails with exit 1.
+# Parsed on ANY exit, exactly like the .sh twin: an error marker is evidence of read
+# errors even when docker also exited nonzero, and it takes precedence in choosing the
+# WARNING variant below. A count marker is trusted only on exit 0 (a nonzero exit means
+# the count did not run cleanly), so both twins print the same variant for one input.
+$RestoredCount = Get-DaafCountMarker -Lines $VerifyOutput -Name 'RESTORED_FILES'
+$RestoredErrors = Get-DaafCountMarker -Lines $VerifyOutput -Name 'RESTORED_COUNT_ERRORS'
+if ($verifyExit -ne 0) { $RestoredCount = $null }
+# The completion report's "Files:" value (identical wording in the .sh twin).
+$RestoredLabel = "$RestoredCount files in volume"
 
-if ($RestoredCount -eq 0) {
+if ($null -eq $RestoredCount) {
+    $RestoredLabel = "not verified (the restored file count could not be read)"
+    Write-Host ""
+    if ($null -ne $RestoredErrors) {
+        Write-Host "WARNING: Could not verify the restored file count: Docker hit $RestoredErrors read error(s)" -ForegroundColor Yellow
+        Write-Host "         while counting the restored volume."
+    } else {
+        Write-Host "WARNING: Could not verify the restored file count (the count inside Docker did not" -ForegroundColor Yellow
+        Write-Host "         run cleanly, exit $verifyExit)."
+    }
+    Write-Host "         The copy itself reported success, so your data is most likely in place. Start"
+    Write-Host "         DAAF and check your files; if anything is missing, re-run this restore."
+    $HadWarnings = $true
+} elseif ($RestoredCount -eq 0) {
     Write-Host ""
     Write-Host "ERROR: Verification failed -- 0 files found in restored volume." -ForegroundColor Red
     Write-Host "The restore may have failed. Consider re-running or reinstalling DAAF."
     Wait-AndExit 1
+} else {
+    Write-Host "Verified: $RestoredCount files in restored volume."
 }
 
-Write-Host "Verified: $RestoredCount files in restored volume."
-
 # --- File count comparison ---
-if ($TotalFiles -gt 0 -and $RestoredCount -gt 0) {
-    $Diff = [math]::Abs($TotalFiles - $RestoredCount)
-    $Tolerance = [math]::Max(1, [math]::Floor($TotalFiles / 100))
-    if ($Diff -gt $Tolerance) {
-        Write-Host ""
-        Write-Host "WARNING: File count mismatch." -ForegroundColor Yellow
-        Write-Host "         Backup: $TotalFiles files, Restored: $RestoredCount files (difference: $Diff)"
-        Write-Host "         The restore may be incomplete."
+# When the backup count is a LOWER BOUND (the PowerShell fallback could not read some
+# folders), a restored volume holding at least that many files is exactly what is
+# expected -- the restore copies everything, and `find` inside Docker sees it all --
+# so it gets an informational line, not a "may be incomplete" warning. Only a
+# restored count BELOW the lower bound is a real mismatch. (The banner still ends
+# WITH WARNINGS: the scan latched it, because a lower bound cannot prove the restore
+# complete.)
+if ($null -ne $RestoredCount -and $TotalFiles -gt 0 -and $RestoredCount -gt 0) {
+    if ($TotalFilesIsLowerBound -and $RestoredCount -ge $TotalFiles) {
+        Write-Host "Note: The backup count ($TotalFilesLabel files) was a lower bound; the restored volume holds"
+        Write-Host "      $RestoredCount files, which is consistent with it."
+    } else {
+        $Diff = [math]::Abs($TotalFiles - $RestoredCount)
+        $Tolerance = [math]::Max(1, [math]::Floor($TotalFiles / 100))
+        if ($Diff -gt $Tolerance) {
+            Write-Host ""
+            Write-Host "WARNING: File count mismatch." -ForegroundColor Yellow
+            Write-Host "         Backup: $TotalFilesLabel files, Restored: $RestoredCount files (difference: $Diff)"
+            Write-Host "         The restore may be incomplete."
+            $HadWarnings = $true
+        }
     }
 }
 
@@ -678,6 +907,7 @@ if ($HasClaudeBackup) {
                             if ($LASTEXITCODE -ne 0) {
                                 Write-Host "WARNING: Could not fully replay Claude state symlinks." -ForegroundColor Yellow
                                 Write-Host "         Claude state was restored; only symbolic links may be missing."
+                                $HadWarnings = $true
                             }
                         }
                     }
@@ -700,9 +930,11 @@ if ($HasClaudeBackup) {
     if (-not $clearOk) {
         Write-Host "WARNING: Failed to clear the Claude Code state volume before restore." -ForegroundColor Yellow
         Write-Host "         Data volume restore above succeeded; Claude state may be inconsistent."
+        $HadWarnings = $true
     } elseif (-not $claudeCopyOk) {
         Write-Host "WARNING: Failed to restore the Claude Code state volume." -ForegroundColor Yellow
         Write-Host "         Data volume restore above succeeded; you may need to re-run /login."
+        $HadWarnings = $true
     } else {
         Write-Host "Claude Code state restored."
     }
@@ -716,11 +948,15 @@ if ($HasClaudeBackup) {
 
 Write-Host ""
 Write-Host "=========================================="
-Write-Host "  Restore complete!"
+if ($HadWarnings) {
+    Write-Host "  Restore completed WITH WARNINGS -- verify before relying on it"
+} else {
+    Write-Host "  Restore complete!"
+}
 Write-Host "=========================================="
 Write-Host ""
 Write-Host "Restored: $SelectedName"
-Write-Host "Files:    $RestoredCount files in volume"
+Write-Host "Files:    $RestoredLabel"
 Write-Host ""
 Write-Host "You can now start DAAF with:"
 Write-Host "  .\run_daaf.ps1"

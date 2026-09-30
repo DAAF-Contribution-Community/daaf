@@ -82,9 +82,51 @@ PERMISSIONS_MANIFEST=".daaf-permissions"
 # backup_daaf.sh's staging step. Lists each symlink's path and target (TAB-
 # separated). Restore replays it container-side to recreate the links that the
 # staging step stripped so `docker cp` could stream a symlink-free tree on Windows.
-# Absent on older backups / volumes with no symlinks -- restore no-ops (see Step 2e),
+# Current backups always contain it (0 bytes when the volume had no symlinks); absent
+# only on backups that predate the feature -- restore no-ops then (see Step 2e),
 # matching the ".daaf-permissions" "no manifest, no action" rule.
 SYMLINKS_MANIFEST=".daaf-symlinks"
+
+# --- Host-side backup-folder count (never silent) ---
+# A textually identical copy of backup_daaf.sh's _daaf_tree_count, from its
+# `_daaf_tree_count() {` line to its closing `}` (pinned by the "_daaf_tree_count is
+# byte-identical" test in tests/bash/backup_twin_parity.bats -- edit both copies
+# together). See that script for the full rationale. Restore only calls it in "files"
+# mode; the "kb" branch is kept so the two copies stay identical. The group's stderr is
+# captured with the NUL count, which the pipeline prints last, so a read error makes the
+# count a LOWER BOUND (TREE_COUNT_LOWER_BOUND=1, TREE_COUNT_ERRORS /
+# TREE_COUNT_FIRST_ERROR set) instead of vanishing into `2>/dev/null` or aborting the
+# script under pipefail. find only opens FOLDERS, so this catches unreadable folders,
+# not unreadable files -- the scan of the selected backup below checks files separately.
+_daaf_tree_count() {
+    local dir="$1" mode="$2" raw last status=0
+    if [ "${mode}" = "kb" ]; then
+        raw=$( { cd "${dir}" && find . -type f ! -path "./${SYMLINKS_MANIFEST}" ! -path "./${PERMISSIONS_MANIFEST}" ! -path "./${CLAUDE_SUBDIR}/*" -exec ls -ln {} + | awk '{s+=$5} END {printf "%d\n", s/1024}'; } 2>&1 ) || status=$?
+    else
+        # One NUL per file (`-print0`, GNU and BSD find), so a name holding a newline
+        # counts once, matching the snapshot's one-`stat`-line-per-file count.
+        raw=$( { cd "${dir}" && find . -type f ! -path "./${SYMLINKS_MANIFEST}" ! -path "./${PERMISSIONS_MANIFEST}" ! -path "./${CLAUDE_SUBDIR}/*" -print0 | LC_ALL=C tr -dc '\000' | wc -c; } 2>&1 ) || status=$?
+    fi
+    last="$(printf '%s\n' "${raw}" | tail -n 1 | tr -d '[:space:]')"
+    case "${last}" in
+        ''|*[!0-9]*)
+            # No result line: nothing could be counted; every line is an error.
+            TREE_COUNT=0
+            TREE_COUNT_LOWER_BOUND=1
+            TREE_COUNT_ERRORS="$(printf '%s\n' "${raw}" | grep -c .)" || true
+            TREE_COUNT_FIRST_ERROR="$(printf '%s\n' "${raw}" | grep . | head -n 1)" || true
+            ;;
+        *)
+            TREE_COUNT="${last}"
+            TREE_COUNT_ERRORS="$(printf '%s\n' "${raw}" | sed '$d' | grep -c .)" || true
+            TREE_COUNT_FIRST_ERROR="$(printf '%s\n' "${raw}" | sed '$d' | grep . | head -n 1)" || true
+            TREE_COUNT_LOWER_BOUND=0
+            if [ "${status}" -ne 0 ] || [ "${TREE_COUNT_ERRORS:-0}" -gt 0 ]; then
+                TREE_COUNT_LOWER_BOUND=1
+            fi
+            ;;
+    esac
+}
 
 # --- Dry-Run Support ---
 # When DAAF_DRY_RUN=1, simulate external commands (Docker) for CI
@@ -218,30 +260,50 @@ for i in "${!SORTED_BACKUPS[@]}"; do
     # Count and size the DATA-volume contents only -- exclude the hidden Claude
     # subfolder (it restores to its own volume, not the data volume) and BOTH
     # metadata manifests (".daaf-permissions", ".daaf-symlinks" -- neither is
-    # restored content). This makes the listing count agree exactly with the
-    # "Scanning backup" count below, the post-restore verification count, and the
-    # backup script's completion report (all four count data-volume files only).
-    # When Claude state is present it is noted inline rather than folded silently
-    # into the number.
+    # restored content). The exclusions are ROOT-relative, the rule every count site
+    # now shares (the backup twins' snapshot and host counts, the .ps1 twin's
+    # container-side and PowerShell counts): only the root manifests and the root
+    # Claude subfolder are skipped, so a data file that merely has the same name
+    # deeper in the tree still counts. It also counts the same way as the backup
+    # script's completion report: one NUL per file (`-print0`, supported by BSD and
+    # GNU find), not one line, so a file name holding a newline counts once. With the
+    # same predicate AND the same counting method, this listing, the "Scanning backup"
+    # count below and the backup's report agree, and match the post-restore volume
+    # count (which also counts one line per file, via `stat`). (The .ps1 twin's listing
+    # can show a lower bound, "N+", where Windows PowerShell cannot read very long
+    # paths; macOS/Linux `find` has no such limit.) `find .` from inside the folder
+    # plus POSIX `!`/`-path` keeps this working with BSD find on macOS and GNU find on
+    # Linux; `LC_ALL=C tr` keeps macOS's multibyte `tr` from failing with "Illegal
+    # byte sequence" on an odd byte in a name. When Claude state is present it is noted
+    # inline rather than folded silently into the number. A folder that could not be
+    # fully read shows its count as a lower bound ("N+"), like the .ps1 twin; the scan
+    # of the selected backup below then refuses to restore it (see there).
     claude_sub="${dir}/${CLAUDE_SUBDIR}"
-    count=$(find "${dir}" -type f -not -path "${claude_sub}/*" -not -name "${PERMISSIONS_MANIFEST}" -not -name "${SYMLINKS_MANIFEST}" 2>/dev/null | wc -l | tr -d '[:space:]') || count="?"
+    _daaf_tree_count "${dir}" files
+    count="${TREE_COUNT}"
+    if [ "${TREE_COUNT_LOWER_BOUND}" -eq 1 ]; then count="${TREE_COUNT}+"; fi
     # BSD du has no --exclude, so total the data-volume KB by subtracting the Claude
-    # subfolder's KB AND both metadata manifests' KB from the whole-folder KB, then
-    # humanize with awk. Subtracting the manifests (not just the Claude subfolder)
-    # keeps this size aligned with the .ps1 twin's Measure-Object, which excludes both
+    # subfolder's KB AND both root metadata manifests' KB from the whole-folder KB,
+    # then humanize with awk. Subtracting the manifests (not just the Claude
+    # subfolder) keeps this size aligned with the .ps1 twin, whose counts
+    # (Measure-DaafBackupTree and the container-side $BackupCountProgram) exclude both
     # ".daaf-permissions" and ".daaf-symlinks". Mirrors the "Scanning backup" logic below.
-    total_kb=$(du -sk "${dir}" 2>/dev/null | awk '{print $1}')
+    # `|| true` on every du below: du exits 1 on a folder it cannot read, and under
+    # pipefail + set -e that aborted the whole script right here -- silently, before the
+    # "N+" note -- instead of letting the scan below refuse with an explanation. du still
+    # prints the total it could read, which is all this display line needs.
+    total_kb=$(du -sk "${dir}" 2>/dev/null | awk '{print $1}') || true
     total_kb=${total_kb:-0}
     for mf in "${dir}/${PERMISSIONS_MANIFEST}" "${dir}/${SYMLINKS_MANIFEST}"; do
         if [ -f "${mf}" ]; then
-            mf_kb=$(du -sk "${mf}" 2>/dev/null | awk '{print $1}')
+            mf_kb=$(du -sk "${mf}" 2>/dev/null | awk '{print $1}') || true
             total_kb=$(( total_kb - ${mf_kb:-0} ))
         fi
     done
     has_claude=0
     if [ -d "${claude_sub}" ] && [ -n "$(ls -A "${claude_sub}" 2>/dev/null)" ]; then
         has_claude=1
-        claude_kb=$(du -sk "${claude_sub}" 2>/dev/null | awk '{print $1}')
+        claude_kb=$(du -sk "${claude_sub}" 2>/dev/null | awk '{print $1}') || true
         total_kb=$(( total_kb - ${claude_kb:-0} ))
     fi
     size=$(awk -v kb="${total_kb}" 'BEGIN { if (kb >= 1048576) printf "%.1fG", kb/1048576; else if (kb >= 1024) printf "%.1fM", kb/1024; else printf "%dK", kb }') || size="?"
@@ -249,6 +311,9 @@ for i in "${!SORTED_BACKUPS[@]}"; do
         printf "  %d) %s  (%s files + Claude state, %s)\n" "$((i + 1))" "${name}" "${count}" "${size}"
     else
         printf "  %d) %s  (%s files, %s)\n" "$((i + 1))" "${name}" "${count}" "${size}"
+    fi
+    if [ "${TREE_COUNT_LOWER_BOUND}" -eq 1 ]; then
+        echo "     (some folders in this backup could not be read; the file count is a lower bound)"
     fi
 done
 echo ""
@@ -274,7 +339,21 @@ fi
 
 SELECTED="${SORTED_BACKUPS[$((CHOICE - 1))]}"
 SELECTED_NAME="$(basename "${SELECTED}")"
-SELECTED_PATH="$(cd "${SELECTED}" && pwd)"
+# Guarded: an unguarded `$(cd ... && pwd)` under `set -e` aborted the script here with
+# only bash's bare "cd: ... Permission denied" when the backup folder itself was not
+# readable/searchable. Refuse in the same style as the scan below -- before anything is
+# changed. cd's error is captured into SELECTED_PATH (stdout is only pwd on success).
+if ! SELECTED_PATH="$(cd "${SELECTED}" 2>&1 && pwd)"; then
+    echo "" >&2
+    echo "ERROR: Could not open the backup folder ${SELECTED_NAME}/, so it cannot be restored." >&2
+    echo "       Your DAAF data has not been changed." >&2
+    if [ -n "${SELECTED_PATH}" ]; then
+        echo "       First error: ${SELECTED_PATH}" >&2
+    fi
+    echo "       Make ${SELECTED_NAME}/ and every folder and file in it readable by your user" >&2
+    echo "       account (check its ownership and permissions), then re-run the restore." >&2
+    exit 1
+fi
 
 echo ""
 echo "Selected: ${SELECTED_NAME}"
@@ -294,6 +373,20 @@ if [ -d "${CLAUDE_BACKUP_PATH}" ] && [ -n "$(ls -A "${CLAUDE_BACKUP_PATH}" 2>/de
     HAS_CLAUDE_BACKUP=1
 fi
 
+# --- Completion-banner latch ---
+# Mirrors backup_daaf.sh's HAD_WARNINGS: every non-fatal WARNING on the success path
+# below (a permission or symlink replay failure, a restored file count that could not
+# be verified, a post-restore file-count mismatch, a Claude-state clear, copy or
+# symlink-replay failure) sets this so the final banner can say the restore completed
+# WITH WARNINGS rather than claiming an unqualified success. The exit status stays 0
+# on those paths -- the banner wording is the signal, not the exit code (callers such
+# as daaf.sh branch on the exit code only). The NOTEs do not latch: a backup that
+# predates the permission manifest or the Claude volume restores exactly what it
+# holds. Refusals and errors exit nonzero before the banner, so they need no latch.
+# (Same latch set as the .ps1 twin, except that twin also latches a lower-bound
+# backup count, which this twin refuses instead.)
+HAD_WARNINGS=0
+
 # --- Count source files ---
 # Exclude the Claude subfolder from the DATA-volume count -- it is restored to a
 # separate volume below, not into the data volume. Also exclude BOTH metadata
@@ -301,25 +394,93 @@ fi
 # ".daaf-symlinks" (consumed by Step 2e, then removed). Neither is restored content,
 # so counting them would make this scan disagree with the post-restore verification
 # count (which runs after both manifests are stripped from the volume) and with the
-# listing count above.
+# listing count above. Root-relative, like the listing: a nested data file that
+# merely shares a manifest's name is restored content and counts. One NUL per file,
+# like the listing, so a name holding a newline counts once.
+#
+# A READ ERROR here REFUSES the restore, before the destructive prompt. This twin
+# deliberately differs from the .ps1, which proceeds with an "N+" count: there the
+# lower bound comes from Windows PowerShell 5.1's path-length limit, which `docker cp`
+# (Go, long-path aware) does not share. On macOS/Linux `find` has no such limit, so a
+# read error is a real permission or I/O problem -- and `docker cp` reads the same
+# files as the same user, so the copy would most likely hit it too, AFTER Step 1 had
+# already erased the volume. (Whether `docker cp` then skips such a file or fails
+# outright was not verified here; either outcome is worse than refusing, which changes
+# nothing.) Previously an unguarded `$(...)` under pipefail aborted the script at this
+# point with only find's own error lines as explanation.
+#
+# `find` only opens FOLDERS (to list them); it never opens a regular file, so the count
+# alone catches an unreadable folder but NOT an unreadable file (a mode-000 file, or a
+# root-owned 0600 file left by a one-off `sudo`). A second pass below therefore tests
+# every regular file in the backup -- the whole folder, manifests and the Claude
+# subfolder included, since `docker cp` copies all of it -- with POSIX `[ -r ]` (BSD
+# and GNU alike; GNU find's `-readable` does not exist on macOS) and refuses the same
+# way. `-exec ... {} +` batches the paths, so the cost is a few `sh` processes plus
+# one access() check per file, not a process per file.
 echo ""
 echo "Scanning backup..."
-TOTAL_FILES=$(find "${SELECTED_PATH}" -type f -not -path "${CLAUDE_BACKUP_PATH}/*" -not -name "${PERMISSIONS_MANIFEST}" -not -name "${SYMLINKS_MANIFEST}" | wc -l | tr -d '[:space:]')
+_daaf_tree_count "${SELECTED_PATH}" files
+if [ "${TREE_COUNT_LOWER_BOUND}" -eq 1 ]; then
+    echo "" >&2
+    echo "ERROR: Could not read every file in this backup folder (at least ${TREE_COUNT} files were" >&2
+    echo "       readable), so it cannot be restored safely: the copy would hit the same problem" >&2
+    echo "       after your current data had been erased. Your DAAF data has not been changed." >&2
+    if [ -n "${TREE_COUNT_FIRST_ERROR:-}" ]; then
+        echo "       First error: ${TREE_COUNT_FIRST_ERROR}" >&2
+    fi
+    echo "       Make every folder and file in ${SELECTED_NAME}/ readable by your user account" >&2
+    echo "       (check its ownership and permissions), then re-run the restore." >&2
+    exit 1
+fi
+# Unreadable FILES (see the note above). Each unreadable path is printed as one line
+# starting "./"; any other line is an error from the check itself (e.g. a folder that
+# became unreadable since the count). A file name holding a newline could over-count
+# here, which only makes the refusal message's number too high -- never a false pass.
+# A nonzero status with no "./" line means the check could not finish: refuse too.
+UNREADABLE_STATUS=0
+UNREADABLE_OUT="$(cd "${SELECTED_PATH}" && find . -type f -exec sh -c 'for f do [ -r "$f" ] || printf "%s\n" "$f"; done' sh {} + 2>&1)" || UNREADABLE_STATUS=$?
+UNREADABLE_COUNT="$(printf '%s\n' "${UNREADABLE_OUT}" | grep -c '^\./')" || true
+UNREADABLE_FIRST="$(printf '%s\n' "${UNREADABLE_OUT}" | grep '^\./' | head -n 1)" || true
+if [ "${UNREADABLE_COUNT:-0}" -gt 0 ]; then
+    echo "" >&2
+    echo "ERROR: ${UNREADABLE_COUNT} file(s) in this backup folder cannot be read by your user account," >&2
+    echo "       so it cannot be restored safely: the copy would hit the same problem after" >&2
+    echo "       your current data had been erased. Your DAAF data has not been changed." >&2
+    echo "       First unreadable file: ${SELECTED_NAME}/${UNREADABLE_FIRST#./}" >&2
+    echo "       Make every file in ${SELECTED_NAME}/ readable by your user account (check its" >&2
+    echo "       ownership and permissions -- e.g. a file created with sudo), then re-run the restore." >&2
+    exit 1
+elif [ "${UNREADABLE_STATUS}" -ne 0 ]; then
+    echo "" >&2
+    echo "ERROR: Could not check that every file in this backup folder is readable, so it" >&2
+    echo "       cannot be restored safely. Your DAAF data has not been changed." >&2
+    UNREADABLE_FIRST="$(printf '%s\n' "${UNREADABLE_OUT}" | grep . | head -n 1)" || true
+    if [ -n "${UNREADABLE_FIRST}" ]; then
+        echo "       First error: ${UNREADABLE_FIRST}" >&2
+    fi
+    echo "       Make every folder and file in ${SELECTED_NAME}/ readable by your user account" >&2
+    echo "       (check its ownership and permissions), then re-run the restore." >&2
+    exit 1
+fi
+TOTAL_FILES="${TREE_COUNT}"
 # Size must match the file count above: data-volume contents only, excluding the
-# Claude subfolder (which restores to its own volume) AND both metadata manifests.
-# BSD du has no --exclude, so subtract the subfolder's KB and each manifest's KB from
-# the total and humanize with awk. Subtracting the manifests keeps this aligned with
-# the .ps1 twin's Measure-Object (which excludes both) and with the file count above.
-TOTAL_KB=$(du -sk "${SELECTED_PATH}" 2>/dev/null | awk '{print $1}')
+# Claude subfolder (which restores to its own volume) AND both root metadata
+# manifests. BSD du has no --exclude, so subtract the subfolder's KB and each
+# manifest's KB from the total and humanize with awk. Subtracting the manifests keeps
+# this aligned with the .ps1 twin's counts (which exclude both) and with the file
+# count above.
+# `|| true` on each du: see the listing above (a du read error must not abort under
+# pipefail + set -e; the file count above already refused an unreadable backup).
+TOTAL_KB=$(du -sk "${SELECTED_PATH}" 2>/dev/null | awk '{print $1}') || true
 TOTAL_KB=${TOTAL_KB:-0}
 for mf in "${SELECTED_PATH}/${PERMISSIONS_MANIFEST}" "${SELECTED_PATH}/${SYMLINKS_MANIFEST}"; do
     if [ -f "${mf}" ]; then
-        MF_KB=$(du -sk "${mf}" 2>/dev/null | awk '{print $1}')
+        MF_KB=$(du -sk "${mf}" 2>/dev/null | awk '{print $1}') || true
         TOTAL_KB=$(( TOTAL_KB - ${MF_KB:-0} ))
     fi
 done
 if [ "${HAS_CLAUDE_BACKUP}" -eq 1 ]; then
-    CLAUDE_KB=$(du -sk "${CLAUDE_BACKUP_PATH}" 2>/dev/null | awk '{print $1}')
+    CLAUDE_KB=$(du -sk "${CLAUDE_BACKUP_PATH}" 2>/dev/null | awk '{print $1}') || true
     TOTAL_KB=$(( TOTAL_KB - ${CLAUDE_KB:-0} ))
 fi
 TOTAL_SIZE=$(awk -v kb="${TOTAL_KB}" 'BEGIN { if (kb >= 1048576) printf "%.1fG", kb/1048576; else if (kb >= 1024) printf "%.1fM", kb/1024; else printf "%dK", kb }')
@@ -531,6 +692,7 @@ if docker run --rm -v "${VOLUME_NAME}:/dest:ro" busybox test -f "/dest/${PERMISS
         echo "         Your data was restored intact; only file permissions may be off." >&2
         echo "         If git reports many files as changed by mode only, or a script" >&2
         echo "         will not run, repair with: chmod +x <file> inside the container." >&2
+        HAD_WARNINGS=1
     fi
 else
     echo "NOTE: No ${PERMISSIONS_MANIFEST} manifest found in this backup (it may predate"
@@ -581,6 +743,7 @@ if docker run --rm -v "${VOLUME_NAME}:/dest:ro" busybox test -f "/dest/${SYMLINK
         echo "         Your data was restored intact; only symbolic links may be missing." >&2
         echo "         Such links are usually regenerable (e.g. by re-running the step that" >&2
         echo "         created them). Inspect ${SYMLINKS_MANIFEST} in the backup for the list." >&2
+        HAD_WARNINGS=1
     fi
 else
     # No symlink manifest: older backup, or a volume that had no symlinks. Silent
@@ -591,20 +754,57 @@ echo "Copy complete."
 echo ""
 
 # --- Verify ---
+# Count the restored volume like with like: the same root exclusions as the backup
+# count above (a root manifest left behind when a replay failed, and the
+# ".daaf-claude-config" subtree) and one `stat` line per file, so a name holding a
+# newline counts once. Quote-free and textually identical to the .ps1 twin's program
+# (pinned by tests/bash/backup_twin_parity.bats); the names are hardcoded literals
+# (SYNC NOTE: update by hand if PERMISSIONS_MANIFEST, SYMLINKS_MANIFEST or
+# CLAUDE_SUBDIR changes). The comparison below uses a 1% tolerance (floor 1).
+#
+# READ ERRORS (same F1 pattern as the backup's count programs): a pipeline's status
+# is its last command's (wc), so a `find`/`stat` error inside the container would
+# otherwise print a SHORT count and exit 0. The count's stderr goes to /tmp/count_err
+# (the throwaway container's own /tmp; the volume is mounted read-only), and the
+# program prints RESTORED_FILES=<n> only when that file is empty, else
+# RESTORED_COUNT_ERRORS=<lines>. `$((n))` strips any padding from wc's output.
+# Unavailable count (error marker, docker failure, or no marker): a WARNING, exit 0 --
+# the copy, ownership repair and replays all succeeded; only this check could not run,
+# and exit 1 would tell a caller the restore failed when the data is in place. A count
+# that WAS read as 0 still fails (exit 1): that is evidence, not missing evidence.
 echo "Verifying restore..."
-RESTORED_COUNT=$(docker run --rm -v "${VOLUME_NAME}:/dest:ro" busybox sh -c 'find /dest -type f | wc -l' | tr -d '[:space:]')
+VERIFY_EXIT=0
+VERIFY_OUTPUT="$(docker run --rm -v "${VOLUME_NAME}:/dest:ro" busybox sh -c 'set -e; : > /tmp/count_err; n=$(find /dest -type f ! -path /dest/.daaf-symlinks ! -path /dest/.daaf-permissions ! -path /dest/.daaf-claude-config/\* -exec stat -c %s {} + 2>/tmp/count_err | wc -l); if test -s /tmp/count_err; then echo RESTORED_COUNT_ERRORS=$(grep -c ^ /tmp/count_err); else echo RESTORED_FILES=$((n)); fi' 2>&1 | tr -d '\r')" || VERIFY_EXIT=$?
+RESTORED_COUNT="$(printf '%s\n' "${VERIFY_OUTPUT}" | sed -n 's/^RESTORED_FILES=\([0-9][0-9]*\)$/\1/p' | tail -n 1)"
+RESTORED_ERRORS="$(printf '%s\n' "${VERIFY_OUTPUT}" | sed -n 's/^RESTORED_COUNT_ERRORS=\([0-9][0-9]*\)$/\1/p' | tail -n 1)"
+if [ "${VERIFY_EXIT}" -ne 0 ]; then RESTORED_COUNT=""; fi
+# The completion report's "Files:" value (identical wording in the .ps1 twin).
+RESTORED_LABEL="${RESTORED_COUNT} files in volume"
 
-if [ "${RESTORED_COUNT}" -eq 0 ]; then
+if [ -z "${RESTORED_COUNT}" ]; then
+    RESTORED_LABEL="not verified (the restored file count could not be read)"
+    echo "" >&2
+    if [ -n "${RESTORED_ERRORS}" ]; then
+        echo "WARNING: Could not verify the restored file count: Docker hit ${RESTORED_ERRORS} read error(s)" >&2
+        echo "         while counting the restored volume." >&2
+    else
+        echo "WARNING: Could not verify the restored file count (the count inside Docker did not" >&2
+        echo "         run cleanly, exit ${VERIFY_EXIT})." >&2
+    fi
+    echo "         The copy itself reported success, so your data is most likely in place. Start" >&2
+    echo "         DAAF and check your files; if anything is missing, re-run this restore." >&2
+    HAD_WARNINGS=1
+elif [ "${RESTORED_COUNT}" -eq 0 ]; then
     echo "" >&2
     echo "ERROR: Verification failed -- 0 files found in restored volume." >&2
     echo "The restore may have failed. Consider re-running or reinstalling DAAF." >&2
     exit 1
+else
+    echo "Verified: ${RESTORED_COUNT} files in restored volume."
 fi
 
-echo "Verified: ${RESTORED_COUNT} files in restored volume."
-
-# --- Size comparison ---
-if [ "${TOTAL_FILES}" -gt 0 ] && [ "${RESTORED_COUNT}" -gt 0 ]; then
+# --- File count comparison ---
+if [ -n "${RESTORED_COUNT}" ] && [ "${TOTAL_FILES}" -gt 0 ] && [ "${RESTORED_COUNT}" -gt 0 ]; then
     DIFF=$((TOTAL_FILES - RESTORED_COUNT))
     if [ "${DIFF}" -lt 0 ]; then DIFF=$(( -DIFF )); fi
     TOLERANCE=$(( TOTAL_FILES / 100 ))
@@ -614,6 +814,7 @@ if [ "${TOTAL_FILES}" -gt 0 ] && [ "${RESTORED_COUNT}" -gt 0 ]; then
         echo "WARNING: File count mismatch." >&2
         echo "         Backup: ${TOTAL_FILES} files, Restored: ${RESTORED_COUNT} files (difference: ${DIFF})" >&2
         echo "         The restore may be incomplete." >&2
+        HAD_WARNINGS=1
     fi
 fi
 
@@ -637,6 +838,7 @@ if [ "${HAS_CLAUDE_BACKUP}" -eq 1 ]; then
     if ! docker run --rm -v "${CLAUDE_VOLUME_NAME}:/dest" busybox sh -c 'rm -rf /dest/* /dest/.[!.]* /dest/..?*'; then
         echo "WARNING: Failed to clear the Claude Code state volume before restore." >&2
         echo "         Data volume restore above succeeded; Claude state may be inconsistent." >&2
+        HAD_WARNINGS=1
     else
         # Best-effort helper-container cleanup on interrupt, guarded under set -u.
         trap 'docker rm -f "${CLAUDE_CID:-}" > /dev/null 2>&1 || true' INT TERM
@@ -682,12 +884,14 @@ if [ "${HAS_CLAUDE_BACKUP}" -eq 1 ]; then
                 '; then
                     echo "WARNING: Could not fully replay Claude state symlinks." >&2
                     echo "         Claude state was restored; only symbolic links may be missing." >&2
+                    HAD_WARNINGS=1
                 fi
             fi
             echo "Claude Code state restored."
         else
             echo "WARNING: Failed to restore the Claude Code state volume." >&2
             echo "         Data volume restore above succeeded; you may need to re-run /login." >&2
+            HAD_WARNINGS=1
         fi
         # Best-effort: a spurious rm failure must never abort AFTER a successful
         # restore. `|| true` keeps `set -e` from tripping here.
@@ -704,11 +908,15 @@ fi
 
 echo ""
 echo "=========================================="
-echo "  Restore complete!"
+if [ "${HAD_WARNINGS}" -eq 1 ]; then
+    echo "  Restore completed WITH WARNINGS -- verify before relying on it"
+else
+    echo "  Restore complete!"
+fi
 echo "=========================================="
 echo ""
 echo "Restored: ${SELECTED_NAME}"
-echo "Files:    ${RESTORED_COUNT} files in volume"
+echo "Files:    ${RESTORED_LABEL}"
 echo ""
 echo "You can now start DAAF with:"
 echo "  bash run_daaf.sh"

@@ -187,12 +187,43 @@ Describe "restore_from_backup.ps1" {
         }
 
         It "excludes both manifests and the Claude subfolder from the listing/scan counts" {
-            # The listing loop and the Scanning-backup count must exclude BOTH the
-            # ".daaf-permissions" and ".daaf-symlinks" manifests so all four counts
-            # (listing, scan, verification, backup completion report) agree exactly.
-            $Content | Should -Match '\$_\.Name -ne \$PermissionsManifest'
-            $Content | Should -Match '\$_\.Name -ne \$SymlinksManifest'
+            # The listing loop and the Scanning-backup count must exclude BOTH root
+            # manifests and the Claude subfolder so the counts (listing, scan,
+            # verification, backup completion report) agree. The listing stays on
+            # PowerShell (Measure-DaafBackupTree) and marks read errors with "+".
+            $excl = '-ExcludeRootFiles @($PermissionsManifest, $SymlinksManifest) -ExcludeRootDirs @($ClaudeSubDir)'
+            $Content | Should -Match ([regex]::Escape('$listing = Measure-DaafBackupTree -Root $dir.FullName ' + $excl))
+            $Content | Should -Match ([regex]::Escape('if ($listing.Errors -gt 0) { $fileCount = "$($listing.Files)+" }'))
             $Content | Should -Match '\+ Claude state'
+        }
+
+        It "counts the SELECTED backup container-side (authoritative), with a never-silent fallback" {
+            # 2026-09-29: Windows PowerShell 5.1 Get-ChildItem undercounted a backup
+            # with long paths (72,834 vs 73,021) -- a spurious post-restore mismatch.
+            $Content | Should -Match ([regex]::Escape('@(docker run --rm -v "${SelectedPath}:/b:ro" busybox sh -c $BackupCountProgram 2>&1)'))
+            $Content | Should -Match ([regex]::Escape("Get-DaafCountMarker -Lines `$ScanCountOutput -Name 'BACKUP_FILES'"))
+            $Content | Should -Match ([regex]::Escape('$ScanFallback = Measure-DaafBackupTree -Root $SelectedPath'))
+            $Content | Should -Match ([regex]::Escape('$TotalFilesLabel = "$TotalFiles+"'))
+            # No Get-ChildItem + SilentlyContinue count remains outside the helper.
+            @(($Content -split "`n") | Where-Object { $_ -match '^\s*[^#]*Get-ChildItem .*-Recurse' }).Count | Should -Be 1
+        }
+
+        It "carries BYTE-IDENTICAL copies of backup_daaf.ps1's count helpers" {
+            $backup = Get-Content "$RepoRoot/scripts/host/backup_daaf.ps1" -Raw
+            foreach ($fn in @('Get-DaafCountMarker', 'Measure-DaafBackupTree')) {
+                $pat = "(?ms)^function $fn \{.*?^\}"
+                $a = [regex]::Match($backup, $pat).Value
+                $b = [regex]::Match($Content, $pat).Value
+                $a | Should -Not -BeNullOrEmpty
+                # -BeExactly: -Be is case-INsensitive, which would pass a copy that
+                # differs only in case (e.g. -contains vs -Contains) -- not byte identity.
+                $b | Should -BeExactly $a -Because "$fn must stay byte-identical across backup/restore"
+            }
+        }
+
+        It "is ASCII-only with no BOM" {
+            $bytes = [IO.File]::ReadAllBytes("$RepoRoot/scripts/host/restore_from_backup.ps1")
+            @($bytes | Where-Object { $_ -gt 127 }).Count | Should -Be 0
         }
 
         It "verifies file count after restore" {
@@ -201,6 +232,50 @@ Describe "restore_from_backup.ps1" {
 
         It "includes file count mismatch check" {
             $Content | Should -Match 'File count mismatch'
+        }
+
+        It "latches a WITH WARNINGS completion banner without changing the exit code" {
+            # Mirrors backup_daaf.ps1's $HadWarnings. One init; eight latch sites: the
+            # lower-bound scan count, the permission and symlink replays, the unverified
+            # post-restore count, the file-count mismatch, and the Claude-state clear,
+            # copy and symlink replay. A new success-path WARNING must latch too (update
+            # this count and backup_twin_parity.bats's restore latch pin together).
+            ([regex]::Matches($Content, [regex]::Escape('$HadWarnings = $false'))).Count | Should -Be 1
+            ([regex]::Matches($Content, [regex]::Escape('$HadWarnings = $true'))).Count | Should -Be 8
+            $bannerLines = @(
+                'if ($HadWarnings) {',
+                '    Write-Host "  Restore completed WITH WARNINGS -- verify before relying on it"',
+                '} else {',
+                '    Write-Host "  Restore complete!"',
+                '}'
+            )
+            $Content | Should -Match ((@($bannerLines | ForEach-Object { [regex]::Escape($_) })) -join '\r?\n')
+            # The warnings run still ends on the success exit (callers branch on it).
+            $Content | Should -Match 'Wait-AndExit 0\s*$'
+        }
+
+        It "counts the restored volume with the backup count's root exclusions, one stat line per file" {
+            # Review round 2 (F5h): `find /dest -type f | wc -l` counted a root manifest
+            # left behind by a failed replay (and newline names twice).
+            # FU2 (2026-09-30): the count's stderr is captured in-container and the result
+            # is a marker (RESTORED_FILES / RESTORED_COUNT_ERRORS) parsed with
+            # Get-DaafCountMarker -- a merged stderr line can no longer read as "0 files".
+            $Content | Should -MatchExactly ([regex]::Escape("busybox sh -c 'set -e; : > /tmp/count_err; n=`$(find /dest -type f ! -path /dest/.daaf-symlinks ! -path /dest/.daaf-permissions ! -path /dest/.daaf-claude-config/\* -exec stat -c %s {} + 2>/tmp/count_err | wc -l); if test -s /tmp/count_err; then echo RESTORED_COUNT_ERRORS=`$(grep -c ^ /tmp/count_err); else echo RESTORED_FILES=`$((n)); fi' 2>&1)"))
+            $Content | Should -MatchExactly ([regex]::Escape("`$RestoredCount = Get-DaafCountMarker -Lines `$VerifyOutput -Name 'RESTORED_FILES'"))
+            $Content | Should -MatchExactly ([regex]::Escape('WARNING: Could not verify the restored file count'))
+            $Content | Should -Not -Match ([regex]::Escape("'find /dest -type f | wc -l'"))
+            $Content | Should -Not -Match ([regex]::Escape('[int]::TryParse(($VerifyOutput'))
+        }
+
+        It "treats a Docker count with read errors as unavailable (BACKUP_COUNT_ERRORS)" {
+            $Content | Should -Match ([regex]::Escape("`$ScanCountErrors = Get-DaafCountMarker -Lines `$ScanCountOutput -Name 'BACKUP_COUNT_ERRORS'"))
+            $Content | Should -Match ([regex]::Escape('Note: Docker hit $ScanCountErrors read error(s) while counting this backup'))
+        }
+
+        It "treats a container count of 0 as unavailable and never warns on a satisfied lower bound" {
+            $Content | Should -Match ([regex]::Escape('if ($null -ne $TotalFiles -and $null -ne $TotalSizeKB -and $TotalFiles -gt 0) {'))
+            $Content | Should -Match ([regex]::Escape('if ($TotalFilesIsLowerBound -and $RestoredCount -ge $TotalFiles) {'))
+            $Content | Should -Match ([regex]::Escape('Backup: $TotalFilesLabel files, Restored: $RestoredCount files'))
         }
 
         It "displays available backups with numbered list" {
@@ -380,6 +455,40 @@ Describe "restore_from_backup.ps1 dry-run mode" {
         }
     }
 
+    It "dry-run listing shows a plain count for a readable backup (no lower-bound '+')" {
+        Push-Location $script:TestDir
+        try {
+            $null = New-Item -ItemType Directory -Path (Join-Path $script:TestDir "2026-01-01_daaf_backup") -Force
+            $null = New-Item -ItemType File -Path (Join-Path $script:TestDir "2026-01-01_daaf_backup/f1") -Force
+            $null = New-Item -ItemType File -Path (Join-Path $script:TestDir "2026-01-01_daaf_backup/.daaf-symlinks") -Force
+            $env:DAAF_DRY_RUN = "1"
+            $env:DAAF_NESTED = "1"
+            $output = & "$RepoRoot/scripts/host/restore_from_backup.ps1" *>&1 | Out-String
+            $output | Should -BeLike "*2026-01-01_daaf_backup  (1 files,*"
+        } finally {
+            Pop-Location
+        }
+    }
+
+    It "dry-run listing marks an incompletely-read backup as a lower bound ('N+ files')" -Skip:(($PSVersionTable.PSVersion.Major -lt 6) -or $IsWindows -or ((& id -u) -eq '0')) {
+        # An unreadable folder stands in for the Windows path-length failure.
+        Push-Location $script:TestDir
+        $locked = Join-Path $script:TestDir "2026-01-02_daaf_backup/locked"
+        try {
+            $null = New-Item -ItemType Directory -Path $locked -Force
+            $null = New-Item -ItemType File -Path (Join-Path $script:TestDir "2026-01-02_daaf_backup/f1") -Force
+            $null = New-Item -ItemType File -Path (Join-Path $locked "hidden") -Force
+            & chmod 000 $locked
+            $env:DAAF_DRY_RUN = "1"
+            $env:DAAF_NESTED = "1"
+            $output = & "$RepoRoot/scripts/host/restore_from_backup.ps1" *>&1 | Out-String
+            $output | Should -BeLike "*2026-01-02_daaf_backup  (1+ files,*"
+        } finally {
+            & chmod 755 $locked
+            Pop-Location
+        }
+    }
+
     It "dry-run produces DRY-RUN markers" {
         Push-Location $script:TestDir
         try {
@@ -392,6 +501,248 @@ Describe "restore_from_backup.ps1 dry-run mode" {
         } finally {
             Pop-Location
         }
+    }
+}
+
+# ============================================================================
+# End-to-end with a fake `docker` on PATH (non-Windows): count paths (2026-09-29)
+# ============================================================================
+# Runs the REAL script in a child pwsh with the two prompts answered on stdin
+# ("1" = the only backup, "RESTORE"). -NonInteractive is deliberately NOT passed:
+# with it, Read-Host refuses to read (observed on pwsh 7.6); without it, Read-Host
+# consumes the piped lines. A bash fake `docker` models each subcommand; the
+# container-side count runs the REAL $BackupCountProgram under the local sh.
+
+Describe "restore_from_backup.ps1 end-to-end count paths (fake docker)" -Skip:(($PSVersionTable.PSVersion.Major -lt 6) -or $IsWindows) {
+    BeforeAll {
+        . "$PSScriptRoot/TestHelper.ps1"
+        $script:FakeBin = Join-Path $TestDrive 'bin'
+        $null = New-Item -ItemType Directory -Force -Path $script:FakeBin
+        $fakeDocker = @'
+#!/usr/bin/env bash
+# Fake docker for restore_from_backup.Tests.ps1 (end-to-end). FAKE_* env vars drive it.
+case "${1:-}" in
+    info|volume|cp|rm) exit 0 ;;
+    ps) exit 0 ;;
+    create) echo fakecid0000; exit 0 ;;
+    run)
+        case "$*" in *":/b:ro"*)
+            [ "${FAKE_COUNT_FAIL:-0}" = "1" ] && exit 1
+            host="${4%:/b:ro}"
+            [ -d "${host}" ] || { echo "fake docker: bind source is not a folder: ${host}" >&2; exit 65; }
+            # FAKE_EMPTY_MOUNT=1: Docker Desktop shows an EMPTY folder for the mount.
+            if [ "${FAKE_EMPTY_MOUNT:-0}" = "1" ]; then
+                host="$(dirname "${host}")/empty-mount-view"
+                mkdir -p "${host}"
+            fi
+            prog="${!#}"
+            # Relocate the program's container /tmp/ (its /tmp/count_err) to a private
+            # mktemp dir (under TMPDIR when set), removed after the run.
+            ctmp="$(mktemp -d)"
+            FAKE_B="${host}" sh -c "$(printf '%s\n' "${prog}" | sed -e 's#^cd /b$#cd "$FAKE_B"#' -e "s#/tmp/#${ctmp}/#g")"
+            rc=$?
+            rm -rf "${ctmp}"
+            exit "${rc}" ;;
+        esac
+        # Manifest probes: no manifests in the restored volume.
+        case "$*" in *"test -f"*) exit 1 ;; esac
+        # Post-restore verification count. FAKE_VERIFY_MODE: ok (RESTORED_FILES marker),
+        # errors (the program's read-error marker instead), fail (docker run exits 1),
+        # errorsfail (the read-error marker AND a nonzero exit), countfail (a count
+        # marker but a nonzero exit -- the count is then not trusted).
+        case "$*" in *"find /dest -type f "*"RESTORED_FILES="*)
+            case "${FAKE_VERIFY_MODE:-ok}" in
+                errors) echo "RESTORED_COUNT_ERRORS=2"; exit 0 ;;
+                fail) echo "fake docker: verification container failed" >&2; exit 1 ;;
+                errorsfail) echo "RESTORED_COUNT_ERRORS=2"; exit 1 ;;
+                countfail) echo "RESTORED_FILES=${FAKE_RESTORED:-0}"; exit 1 ;;
+            esac
+            echo "RESTORED_FILES=${FAKE_RESTORED:-0}"; exit 0 ;;
+        esac
+        # Volume clear, Claude-subfolder strip, chown: succeed.
+        exit 0 ;;
+    *) exit 0 ;;
+esac
+'@
+        $fakePath = Join-Path $script:FakeBin 'docker'
+        [System.IO.File]::WriteAllText($fakePath, ($fakeDocker -replace "`r", ""))
+        & chmod +x $fakePath
+
+        function Invoke-FakeRestore {
+            param([int]$DataFiles, [int]$Restored, [switch]$EmptyMount, [switch]$CountFail, [switch]$Locked, [string]$VerifyMode = 'ok')
+            $work = Join-Path $TestDrive ('restore-' + [guid]::NewGuid().ToString('N'))
+            $bk = Join-Path $work '2026-01-01_daaf_backup'
+            $null = New-Item -ItemType Directory -Path $bk
+            for ($i = 0; $i -lt $DataFiles; $i++) { [IO.File]::WriteAllText((Join-Path $bk "f$i"), 'x') }
+            [IO.File]::WriteAllText((Join-Path $bk '.daaf-symlinks'), '')
+            # (Not "$locked": PowerShell names are case-insensitive, so it would be the
+            # [switch]$Locked parameter.)
+            $lockedDir = Join-Path $bk 'locked'
+            if ($Locked) {
+                $null = New-Item -ItemType Directory -Path $lockedDir
+                [IO.File]::WriteAllText((Join-Path $lockedDir 'hidden'), 'x')
+                & chmod 000 $lockedDir
+            }
+            $envLines = @(
+                "PATH=$($script:FakeBin)$([IO.Path]::PathSeparator)$env:PATH",
+                'DAAF_NESTED=1',
+                "FAKE_RESTORED=$Restored",
+                "FAKE_EMPTY_MOUNT=$(if ($EmptyMount) { '1' } else { '0' })",
+                "FAKE_COUNT_FAIL=$(if ($CountFail) { '1' } else { '0' })",
+                "FAKE_VERIFY_MODE=$VerifyMode"
+            )
+            Push-Location -LiteralPath $work
+            try {
+                # env(1) sets the child's environment without touching this session's.
+                $out = "1`nRESTORE`n" | & env @envLines pwsh -NoProfile -File "$RepoRoot/scripts/host/restore_from_backup.ps1" 2>&1 | Out-String
+                $code = $LASTEXITCODE
+            } finally {
+                Pop-Location
+                if ($Locked) { & chmod 755 $lockedDir }
+            }
+            [pscustomobject]@{ Output = $out; ExitCode = $code }
+        }
+    }
+
+    It "B1: a container count of 0 with files present is treated as unavailable (never 'Found 0 files')" {
+        $r = Invoke-FakeRestore -DataFiles 3 -Restored 3 -EmptyMount
+        $r.ExitCode | Should -Be 0
+        $r.Output | Should -BeLike "*Docker could not see the files in this backup folder*"
+        $r.Output | Should -BeLike "*Found 3 files*"
+        $r.Output | Should -Not -BeLike "*Found 0 files*"
+        $r.Output | Should -Not -BeLike "*File count mismatch*"
+        # The fallback note is informational (the PowerShell count read everything, so
+        # it is exact): it does not latch the warnings banner, as in backup_daaf.ps1.
+        $r.Output | Should -BeLike "*Restore complete!*"
+        $r.Output | Should -Not -BeLike "*WITH WARNINGS*"
+    }
+
+    It "a readable backup is counted inside Docker with no fallback note" {
+        $r = Invoke-FakeRestore -DataFiles 3 -Restored 3
+        $r.ExitCode | Should -Be 0
+        $r.Output | Should -BeLike "*Found 3 files*"
+        $r.Output | Should -Not -BeLike "*Could not count the backup inside Docker*"
+        $r.Output | Should -Not -BeLike "*Docker could not see*"
+        $r.Output | Should -BeLike "*Verified: 3 files in restored volume.*"
+        $r.Output.Contains('Files:    3 files in volume') | Should -BeTrue
+        $r.Output | Should -Not -BeLike "*Could not verify the restored file count*"
+        # Clean run: the plain banner. The two NOTEs this fixture triggers (no
+        # permission manifest, no Claude state) are informational and do not latch.
+        $r.Output | Should -BeLike "*NOTE: No .daaf-permissions manifest found*"
+        $r.Output | Should -BeLike "*NOTE: This backup does not contain Claude Code state*"
+        $r.Output | Should -BeLike "*  Restore complete!*"
+        $r.Output | Should -Not -BeLike "*WITH WARNINGS*"
+        $r.Output | Should -BeLike "*You can now start DAAF with:*"
+    }
+
+    # FU2: the post-restore count is a marker program. An UNAVAILABLE count (read-error
+    # marker, or the verification container failing) is a WARNING with exit 0 -- the
+    # copy succeeded, only the check could not run -- never the false "0 files found"
+    # ERROR the old bare-number parse produced. A count READ as 0 is evidence: exit 1.
+    It "FU2: a post-restore count with read errors is a WARNING, exit 0, never '0 files found'" {
+        $r = Invoke-FakeRestore -DataFiles 3 -Restored 3 -VerifyMode 'errors'
+        $r.ExitCode | Should -Be 0
+        $r.Output | Should -BeLike "*WARNING: Could not verify the restored file count: Docker hit 2 read error(s)*"
+        $r.Output | Should -BeLike "*The copy itself reported success, so your data is most likely in place.*"
+        $r.Output.Contains('Files:    not verified (the restored file count could not be read)') | Should -BeTrue
+        $r.Output | Should -Not -BeLike "*0 files found*"
+        $r.Output | Should -Not -BeLike "*File count mismatch*"
+        $r.Output | Should -Not -BeLike "*not verified files in volume*"
+        # An unverified count latches the banner; the exit code stays 0 (asserted above).
+        $r.Output | Should -BeLike "*Restore completed WITH WARNINGS -- verify before relying on it*"
+        $r.Output | Should -Not -BeLike "*Restore complete!*"
+    }
+
+    It "FU2: a failed post-restore count container is a WARNING, exit 0, never '0 files found'" {
+        $r = Invoke-FakeRestore -DataFiles 3 -Restored 3 -VerifyMode 'fail'
+        $r.ExitCode | Should -Be 0
+        $r.Output | Should -BeLike "*WARNING: Could not verify the restored file count (the count inside Docker did not*"
+        $r.Output | Should -BeLike "*run cleanly, exit 1).*"
+        $r.Output.Contains('Files:    not verified (the restored file count could not be read)') | Should -BeTrue
+        $r.Output | Should -Not -BeLike "*0 files found*"
+        $r.Output | Should -BeLike "*Restore completed WITH WARNINGS -- verify before relying on it*"
+        $r.Output | Should -Not -BeLike "*Restore complete!*"
+    }
+
+    # Marker parity with the .sh twin (restore_from_backup.bats "restore FU2: ... nonzero
+    # exit"): the markers are parsed on ANY exit, an error marker takes precedence in
+    # choosing the WARNING variant, and a count marker is trusted only on exit 0.
+    It "FU2: nonzero exit + read-error marker gives the read-error WARNING variant (twin parity)" {
+        $r = Invoke-FakeRestore -DataFiles 3 -Restored 3 -VerifyMode 'errorsfail'
+        $r.ExitCode | Should -Be 0
+        $r.Output | Should -BeLike "*WARNING: Could not verify the restored file count: Docker hit 2 read error(s)*"
+        $r.Output | Should -BeLike "*while counting the restored volume.*"
+        $r.Output | Should -Not -BeLike "*the count inside Docker did not*"
+        $r.Output.Contains('Files:    not verified (the restored file count could not be read)') | Should -BeTrue
+        $r.Output | Should -Not -BeLike "*0 files found*"
+        $r.Output | Should -BeLike "*Restore completed WITH WARNINGS -- verify before relying on it*"
+    }
+
+    It "FU2: nonzero exit + a count marker is not trusted (exit-code WARNING variant)" {
+        $r = Invoke-FakeRestore -DataFiles 3 -Restored 3 -VerifyMode 'countfail'
+        $r.ExitCode | Should -Be 0
+        $r.Output | Should -BeLike "*WARNING: Could not verify the restored file count (the count inside Docker did not*"
+        $r.Output | Should -BeLike "*run cleanly, exit 1).*"
+        $r.Output | Should -Not -BeLike "*Verified: 3 files*"
+        $r.Output.Contains('Files:    not verified (the restored file count could not be read)') | Should -BeTrue
+        $r.Output | Should -BeLike "*Restore completed WITH WARNINGS -- verify before relying on it*"
+    }
+
+    It "FU2: a post-restore count READ as RESTORED_FILES=0 still exits 1" {
+        $r = Invoke-FakeRestore -DataFiles 3 -Restored 0
+        $r.ExitCode | Should -Be 1
+        $r.Output | Should -BeLike "*ERROR: Verification failed -- 0 files found in restored volume.*"
+        $r.Output | Should -Not -BeLike "*Could not verify the restored file count*"
+        # A fatal exit prints neither banner.
+        $r.Output | Should -Not -BeLike "*Restore complete!*"
+        $r.Output | Should -Not -BeLike "*Restore completed WITH WARNINGS*"
+    }
+
+    It "a post-restore file-count mismatch is a WARNING that latches WITH WARNINGS, exit 0" {
+        # 50 vs 10: far past the 1% tolerance (floor 1).
+        $r = Invoke-FakeRestore -DataFiles 50 -Restored 10
+        $r.ExitCode | Should -Be 0
+        $r.Output | Should -BeLike "*WARNING: File count mismatch.*"
+        $r.Output | Should -BeLike "*Backup: 50 files, Restored: 10 files (difference: 40)*"
+        $r.Output | Should -BeLike "*Restore completed WITH WARNINGS -- verify before relying on it*"
+        $r.Output | Should -Not -BeLike "*Restore complete!*"
+        $r.Output | Should -BeLike "*You can now start DAAF with:*"
+    }
+
+    It "I3: a LOWER-BOUND backup count with at least that many restored files gets no mismatch warning, but latches WITH WARNINGS" -Skip:((& id -u) -eq '0') {
+        # 10 restored vs a 3+ count: past the 1% tolerance (floor 1), so the old code
+        # warned "restore may be incomplete" on exactly the long-path case. The note
+        # stays informational (no mismatch WARNING), but a lower bound cannot prove the
+        # restore complete, so the banner is latched -- as backup_daaf.ps1 latches its
+        # own lower-bound count. Exit code unchanged (0).
+        $r = Invoke-FakeRestore -DataFiles 3 -Restored 10 -CountFail -Locked
+        $r.ExitCode | Should -Be 0
+        $r.Output | Should -BeLike "*Found 3+ files*"
+        $r.Output | Should -BeLike "*The backup count (3+ files) was a lower bound*"
+        $r.Output | Should -Not -BeLike "*File count mismatch*"
+        $r.Output | Should -Not -BeLike "*restore may be incomplete*"
+        $r.Output | Should -BeLike "*Restore completed WITH WARNINGS -- verify before relying on it*"
+        $r.Output | Should -Not -BeLike "*Restore complete!*"
+    }
+
+    It "F1: a Docker count that hits a read error falls back to PowerShell (never a short exact count)" -Skip:((& id -u) -eq '0') {
+        # No -CountFail: the REAL program runs and cannot read the locked folder.
+        # Before the fix it printed BACKUP_FILES=3 with exit 0 -- "Found 3 files" as
+        # if exact -- and the 4-file restore then looked like a mismatch.
+        $r = Invoke-FakeRestore -DataFiles 3 -Restored 4 -Locked
+        $r.ExitCode | Should -Be 0
+        $r.Output | Should -BeLike "*Docker hit 1 read error(s) while counting this backup*"
+        $r.Output | Should -BeLike "*Found 3+ files*"
+        $r.Output | Should -BeLike "*The backup count (3+ files) was a lower bound*"
+        $r.Output | Should -Not -BeLike "*File count mismatch*"
+    }
+
+    It "I3: a restored count BELOW the lower bound still warns, labelled with '+'" -Skip:((& id -u) -eq '0') {
+        $r = Invoke-FakeRestore -DataFiles 5 -Restored 1 -CountFail -Locked
+        $r.ExitCode | Should -Be 0
+        $r.Output | Should -BeLike "*WARNING: File count mismatch.*"
+        $r.Output | Should -BeLike "*Backup: 5+ files, Restored: 1 files (difference: 4)*"
+        $r.Output | Should -BeLike "*Restore completed WITH WARNINGS -- verify before relying on it*"
     }
 }
 

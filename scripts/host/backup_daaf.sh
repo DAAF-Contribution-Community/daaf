@@ -83,9 +83,10 @@ CLAUDE_SUBDIR=".daaf-claude-config"
 # first STAGED into a throwaway container: the staging step records each symlink's
 # path+target into this manifest and then removes the symlinks, so the tree
 # `docker cp` streams contains NO symlinks. Restore replays the manifest to
-# recreate the links (see restore_from_backup.sh Step 2e). Absent manifest (older
-# backup, or a volume with no symlinks) = no-op on restore, matching the
-# ".daaf-permissions" "no manifest, no action" rule.
+# recreate the links (see restore_from_backup.sh Step 2e). The staging step ALWAYS
+# writes it (0 bytes when the volume has no symlinks). Absent manifest (a backup that
+# predates this feature) = no-op on restore, matching the ".daaf-permissions" "no
+# manifest, no action" rule.
 # The same staging step also DELETES special files -- named pipes (FIFOs), sockets,
 # and block/char device nodes -- with no manifest: Windows `docker cp` creates
 # nothing for them and then aborts on the follow-up timestamp call, the same
@@ -93,7 +94,60 @@ CLAUDE_SUBDIR=".daaf-claude-config"
 # content (e.g. stale provider-shim `output.fifo` stream files), so restore does not
 # recreate them; the scan below counts them so the skip is visible to the user.
 SYMLINKS_MANIFEST=".daaf-symlinks"
+# Executable-permission manifest, written into the backup root after verification
+# (see "Capture the executable-permission manifest" below). Declared here because
+# the backup-folder count excludes it too.
+PERMISSIONS_MANIFEST=".daaf-permissions"
 TODAY=$(date +%Y-%m-%d)
+
+# --- Host-side backup-folder count (never silent) ---
+# Counts the data files ("files") or their logical KB ("kb") under a backup folder,
+# with the root-relative exclusions every count site shares (the root manifests and
+# the root Claude subfolder), and says whether the count is COMPLETE. The old form,
+# `$(cd ... && find ... 2>/dev/null | ...) || FILE_COUNT=0`, discarded find's read
+# errors and, under pipefail, replaced a partial count with 0: one unreadable folder
+# printed "0 files were copied. The Docker volume may be empty." and exited 1.
+#
+# Here the group's stderr (find's read errors, and any from tr/wc/ls/awk) lands in the
+# SAME captured string as the result, which the pipeline prints LAST: wc/awk write
+# only after reading EOF, i.e. after find has exited, so every error line precedes the
+# result line. No temp file is involved, so an interrupt leaves nothing behind and the
+# EXIT trap (the pause prompt) stays untouched. Any error line, a nonzero status
+# (pipefail carries find's exit 1 on a read error), or a result line that is not
+# digits (e.g. `cd` failed) makes the value a LOWER BOUND -- 0 when nothing could be
+# read -- which callers show as "N+" and never treat as proof of loss or emptiness.
+# Sets TREE_COUNT, TREE_COUNT_LOWER_BOUND (1/0), TREE_COUNT_ERRORS (error lines) and
+# TREE_COUNT_FIRST_ERROR. Bash 3.2 + BSD userland safe (`LC_ALL=C tr`: macOS's
+# multibyte-aware tr can fail with "Illegal byte sequence" on a non-UTF-8 name byte).
+_daaf_tree_count() {
+    local dir="$1" mode="$2" raw last status=0
+    if [ "${mode}" = "kb" ]; then
+        raw=$( { cd "${dir}" && find . -type f ! -path "./${SYMLINKS_MANIFEST}" ! -path "./${PERMISSIONS_MANIFEST}" ! -path "./${CLAUDE_SUBDIR}/*" -exec ls -ln {} + | awk '{s+=$5} END {printf "%d\n", s/1024}'; } 2>&1 ) || status=$?
+    else
+        # One NUL per file (`-print0`, GNU and BSD find), so a name holding a newline
+        # counts once, matching the snapshot's one-`stat`-line-per-file count.
+        raw=$( { cd "${dir}" && find . -type f ! -path "./${SYMLINKS_MANIFEST}" ! -path "./${PERMISSIONS_MANIFEST}" ! -path "./${CLAUDE_SUBDIR}/*" -print0 | LC_ALL=C tr -dc '\000' | wc -c; } 2>&1 ) || status=$?
+    fi
+    last="$(printf '%s\n' "${raw}" | tail -n 1 | tr -d '[:space:]')"
+    case "${last}" in
+        ''|*[!0-9]*)
+            # No result line: nothing could be counted; every line is an error.
+            TREE_COUNT=0
+            TREE_COUNT_LOWER_BOUND=1
+            TREE_COUNT_ERRORS="$(printf '%s\n' "${raw}" | grep -c .)" || true
+            TREE_COUNT_FIRST_ERROR="$(printf '%s\n' "${raw}" | grep . | head -n 1)" || true
+            ;;
+        *)
+            TREE_COUNT="${last}"
+            TREE_COUNT_ERRORS="$(printf '%s\n' "${raw}" | sed '$d' | grep -c .)" || true
+            TREE_COUNT_FIRST_ERROR="$(printf '%s\n' "${raw}" | sed '$d' | grep . | head -n 1)" || true
+            TREE_COUNT_LOWER_BOUND=0
+            if [ "${status}" -ne 0 ] || [ "${TREE_COUNT_ERRORS:-0}" -gt 0 ]; then
+                TREE_COUNT_LOWER_BOUND=1
+            fi
+            ;;
+    esac
+}
 
 # --- Dry-Run Support ---
 # When DAAF_DRY_RUN=1, simulate external commands (Docker, curl) for CI
@@ -115,6 +169,13 @@ if [ "${DAAF_DRY_RUN:-}" = "1" ]; then
                 return 0
                 ;;
             "wait"*) echo "0"; return 0 ;;
+            "logs "*)
+                # Staging log after a clean `docker wait`: the snapshot count markers
+                # (the dry run exits before staging; modeled so the parse stays
+                # compatible if the early exit ever moves).
+                printf 'STAGED_FILES=100\nSTAGED_KB=1024\n'
+                return 0
+                ;;
             *)
                 # The dry-run path exits before any cp/rm or the staging step's
                 # cp/wait, so no match arm is needed for the copy mechanism -- the
@@ -181,6 +242,11 @@ if [ -e "${BACKUP_NAME}" ]; then
 fi
 
 echo "Backup name: ${BACKUP_NAME}/"
+# Name the volume being copied (the resolved name, so DAAF_PROJECT_NAME and the
+# DAAF_DATA_VOLUME_NAME override both show; twin of the .ps1 line). With more than
+# one install on a machine, nothing else in the output said which volume a backup
+# came from.
+echo "Source volume: ${VOLUME_NAME}"
 echo ""
 
 # --- Count source files ---
@@ -188,8 +254,23 @@ echo "Scanning Docker volume..."
 # Scan output, one value per line (line order is a parsing contract shared with the
 # .ps1 twin -- append new lines at the END only): 1 regular-file count, 2 `du -sk`,
 # 3 `du -sh`, 4 logical KB, 5 special-file count (named pipes, sockets, block/char
-# device nodes -- the set the staging program deletes).
-SCAN_OUTPUT=$(docker run --rm -v "${VOLUME_NAME}:/source:ro" busybox sh -c 'find /source -type f | wc -l && du -sk /source && du -sh /source && find /source -type f -exec stat -c "%s" {} + | awk "{s+=\$1} END {print int(s/1024)}" && find /source \( -type p -o -type s -o -type b -o -type c \) | wc -l') || {
+# device nodes -- the set the staging program deletes). Line 6 is RESERVED: the .ps1
+# twin appends a Windows long-path count there (files whose path in the backup folder
+# will be 260+ characters). This twin does not emit it -- macOS/Linux have no such
+# limit. A future value shared by both twins goes at line 7, with this twin then
+# emitting a placeholder at 6 so the indices stay aligned.
+# tests/bash/backup_daaf.bats runs this program and pins exactly 5 output lines.
+# Lines 1 and 4 use the SNAPSHOT COUNT's `find` predicate and one-line-per-file
+# counting (see STAGE_PROGRAM below): run from /source, the root ".daaf-symlinks",
+# ".daaf-permissions" and ".daaf-claude-config" subtree are excluded, and one `find
+# -exec stat -c %s {} + | awk` pass yields "<files> <KB>" into `c` (a `find | wc -l`
+# would count a name holding a newline twice). So a "Snapshot: N files (M fewer than
+# the scan ...)" difference is genuine live-volume change, not a predicate gap, and on
+# the fallback path the scan is a like-for-like expected count. The names are
+# hardcoded literals (SYNC NOTE: update them by hand if SYMLINKS_MANIFEST,
+# PERMISSIONS_MANIFEST or CLAUDE_SUBDIR changes); tests/bash/backup_twin_parity.bats
+# pins the predicate against the .ps1 twin's scan and the snapshot count.
+SCAN_OUTPUT=$(docker run --rm -v "${VOLUME_NAME}:/source:ro" busybox sh -c 'cd /source && c=$(find . -type f ! -path ./.daaf-symlinks ! -path ./.daaf-permissions ! -path ./.daaf-claude-config/\* -exec stat -c %s {} + | awk "{n++; s+=\$1} END {print n+0, int(s/1024)}") && echo ${c% *} && du -sk /source && du -sh /source && echo ${c#* } && find /source \( -type p -o -type s -o -type b -o -type c \) | wc -l') || {
     echo ""
     echo "ERROR: Could not scan Docker volume."
     exit 1
@@ -306,6 +387,37 @@ mkdir -p "${BACKUP_NAME}"
 # double-backslash forms survive the single-quote string so the container `sh` hands
 # printf ONE backslash (mirrors the restore-replay octal idiom); the echo/cat/grep
 # offender lines add no printf escapes and stay quote-free for PS 5.1 twin parity.
+#
+# SNAPSHOT COUNT: on success only (every earlier step is under `set -e`), the program
+# ends by printing STAGED_FILES=<n> and STAGED_KB=<n> to STDOUT -- the regular files of
+# the FROZEN staged tree the copy streams, with the source scan's logical-KB formula
+# (sum of `stat -c %s`, int(s/1024)). The source scan runs on the LIVE volume before
+# `cp -a`, so it can drift from what is actually backed up; this count cannot, which
+# is what lets the verification below run at ZERO tolerance. The `find` predicate
+# excludes exactly what the host-side count below (and the .ps1 twin's
+# $BackupCountProgram) excludes: the root manifest, a root ".daaf-permissions", and a
+# root ".daaf-claude-config" subtree. Restore's permission replay can leave a stray
+# root ".daaf-permissions" in the volume when it fails; counting it on one side only
+# produced a false zero-tolerance mismatch. SYNC NOTE: those two names are hardcoded
+# literals here (only the symlink manifest is spliced in), so update them by hand if
+# PERMISSIONS_MANIFEST or CLAUDE_SUBDIR ever changes.
+#
+# ONE traversal yields both numbers: `stat -c %s` prints one size line per file (even
+# for a name that holds a newline, which `find | wc -l` would count twice) and awk
+# prints "<files> <KB>" at END (`n+0` so an empty tree prints 0, not an empty field);
+# `${counts% *}` / `${counts#* }` split the pair. The awk program is backslash-escaped
+# rather than quoted: the program must stay quote-free (PS 5.1 argv; and a line
+# ending in a single quote would end the parity extractor in
+# tests/bash/backup_twin_parity.bats). A pipeline's status is its last command's, so
+# the count line cannot trip `set -e`, and with no files `find` runs no `stat` and
+# awk prints 0 0.
+#
+# That same rule makes a `find`/`stat` read error SILENT (busybox `sh` has no verified
+# `pipefail` default): awk would print a short count and the program would exit 0. So
+# the count's stderr goes to /tmp/count_err (the throwaway container's own /tmp), and
+# the markers are printed only when it is empty; otherwise STAGED_COUNT_ERRORS=<lines>
+# is printed INSTEAD. Missing markers take the existing "Could not read the snapshot's
+# file count" fallback below; the `if` never fails `set -e`, so staging still exits 0.
 STAGE_PROGRAM='set -e
 cp -a /source /staging
 cd /staging
@@ -330,7 +442,14 @@ exit 3
 fi
 paste /tmp/link_paths /tmp/link_targets > /staging/'"${SYMLINKS_MANIFEST}"'
 find /staging -type l -exec rm -f {} +
-find /staging \( -type p -o -type s -o -type b -o -type c \) -exec rm -f {} +'
+find /staging \( -type p -o -type s -o -type b -o -type c \) -exec rm -f {} +
+counts=$(find . -type f ! -path ./'"${SYMLINKS_MANIFEST}"' ! -path ./.daaf-permissions ! -path ./.daaf-claude-config/\* -exec stat -c %s {} + 2>/tmp/count_err | awk \{n++\;s+=\$1\}\ END\ \{print\ n+0,int\(s/1024\)\})
+if test -s /tmp/count_err; then
+echo STAGED_COUNT_ERRORS=$(grep -c ^ /tmp/count_err)
+else
+echo STAGED_FILES=${counts% *}
+echo STAGED_KB=${counts#* }
+fi'
 
 echo "Preparing volume snapshot (staging + symlink strip)... (this may take a while for large volumes)"
 # Launch the staging container detached and wait for it. `docker run -d` returns a
@@ -395,8 +514,44 @@ if [ "${STAGE_STATUS}" != "0" ]; then
     exit 1
 fi
 
+# --- Snapshot count (the verification target) ---
+# Staging exited 0, so its last step printed STAGED_FILES/STAGED_KB to STDOUT (see
+# SNAPSHOT COUNT above). The container is detached, so its log is the only channel:
+# read it now, before the `docker rm -f` after the copy. When both markers parse
+# (anchored, digits only), the snapshot is the expected count and verification is
+# exact (zero tolerance); otherwise (including a count that hit read errors and
+# printed STAGED_COUNT_ERRORS instead) fall back to the live-volume scan and its 1%
+# tolerance, and say so -- a Note, not a warning: the copy itself is unaffected.
+STAGE_DONE_LOG="$(docker logs "${STAGE_CID}" 2>/dev/null | tr -d '\r')" || STAGE_DONE_LOG=""
+STAGED_FILES="$(printf '%s\n' "${STAGE_DONE_LOG}" | sed -n 's/^STAGED_FILES=\([0-9][0-9]*\)$/\1/p' | tail -n 1)"
+STAGED_KB="$(printf '%s\n' "${STAGE_DONE_LOG}" | sed -n 's/^STAGED_KB=\([0-9][0-9]*\)$/\1/p' | tail -n 1)"
+if [ -n "${STAGED_FILES}" ] && [ -n "${STAGED_KB}" ]; then
+    HAVE_STAGED_COUNTS=1
+    EXPECTED_FILES="${STAGED_FILES}"
+    EXPECTED_KB="${STAGED_KB}"
+    if [ "${STAGED_FILES}" -eq "${TOTAL_FILES}" ]; then
+        echo "Snapshot: ${STAGED_FILES} files."
+    else
+        # Net change only: the scan saw the live volume moments before `cp -a` froze it
+        # (the scan's line 1 uses the snapshot's own predicate, so this is real change).
+        if [ "${STAGED_FILES}" -gt "${TOTAL_FILES}" ]; then
+            SNAPSHOT_DELTA="$(( STAGED_FILES - TOTAL_FILES )) more"
+        else
+            SNAPSHOT_DELTA="$(( TOTAL_FILES - STAGED_FILES )) fewer"
+        fi
+        echo "Snapshot: ${STAGED_FILES} files (${SNAPSHOT_DELTA} than the scan -- the live volume changed in"
+        echo "          between; the snapshot is what gets backed up)."
+    fi
+else
+    HAVE_STAGED_COUNTS=0
+    EXPECTED_FILES="${TOTAL_FILES}"
+    EXPECTED_KB="${VOLUME_LOGICAL_KB}"
+    echo "Note: Could not read the snapshot's file count; verifying against the volume scan"
+    echo "      instead (1% tolerance)."
+fi
+
 echo "Copying files from Docker volume..."
-printf "  Progress: 0 / %d files (0%%)" "${TOTAL_FILES}"
+printf "  Progress: 0 / %d files (0%%)" "${EXPECTED_FILES}"
 
 docker cp "${STAGE_CID}:/staging/." "${BACKUP_NAME}/" &
 COPY_PID=$!
@@ -409,13 +564,13 @@ while kill -0 "${COPY_PID}" 2>/dev/null; do
         break
     fi
     COPIED=$(find "${BACKUP_NAME}" -type f 2>/dev/null | wc -l | tr -d '[:space:]') || COPIED=0
-    if [ "${TOTAL_FILES}" -gt 0 ]; then
-        PERCENT=$((COPIED * 100 / TOTAL_FILES))
+    if [ "${EXPECTED_FILES}" -gt 0 ]; then
+        PERCENT=$((COPIED * 100 / EXPECTED_FILES))
         if [ "${PERCENT}" -gt 100 ]; then PERCENT=100; fi
     else
         PERCENT=0
     fi
-    printf "\r  Progress: %d / %d files (%d%%)   " "${COPIED}" "${TOTAL_FILES}" "${PERCENT}"
+    printf "\r  Progress: %d / %d files (%d%%)   " "${COPIED}" "${EXPECTED_FILES}" "${PERCENT}"
 done
 
 COPY_EXIT=0
@@ -427,37 +582,93 @@ docker rm -f "${STAGE_CID}" > /dev/null 2>&1 || true
 trap - INT TERM
 
 # Latch for the completion banner: any of the non-fatal WARNING paths below
-# (nonzero copy exit code, file-count mismatch, size mismatch, Claude-state copy
-# failure, permission-manifest failure) sets this so the final banner can say the
-# backup completed WITH WARNINGS
-# rather than claiming an unqualified success. The exit status stays 0 on those paths
-# -- the banner wording is the signal, not the exit code (the corroborated short-copy
-# case below is the one that is fatal, and it exits before the banner).
+# (nonzero copy exit code, a backup folder missing its symlink manifest, a
+# lower-bound count or size total, file-count mismatch, size mismatch, Claude-state
+# copy failure, permission-manifest failure) sets this so the final banner can say the
+# backup completed WITH WARNINGS rather than claiming an unqualified success. The
+# exit status stays 0 on those paths -- the banner wording is the signal, not the
+# exit code (the corroborated short-copy case below is the one that is fatal, and it
+# exits before the banner).
 HAD_WARNINGS=0
+
+# --- Symlink-manifest presence ---
+# The staging step writes the root ".daaf-symlinks" into EVERY backup (0 bytes when the
+# volume has no symlinks), so a copy that lacks it did not finish cleanly -- and
+# restore could not recreate this backup's symbolic links. The count below excludes the
+# manifest, so without this check a copy that lost only the manifest would pass
+# cleanly. Twin of backup_daaf.ps1's missing-manifest WARNING (same wording and next
+# step; the .ps1 checks it wherever its container count did not already prove the file
+# is there via the BACKUP_SENTINEL marker).
+if [ ! -f "${BACKUP_NAME}/${SYMLINKS_MANIFEST}" ]; then
+    echo "" >&2
+    echo "WARNING: The backup folder is missing its ${SYMLINKS_MANIFEST} file (every backup writes one)," >&2
+    echo "         so the copy did not finish cleanly." >&2
+    echo "         Re-run the backup; restoring this one would not recreate symbolic links." >&2
+    HAD_WARNINGS=1
+fi
 
 # --- Verify ---
 # The staged tree the copy streamed = volume regular files + 1 symlink manifest
-# (symlinks and special files were stripped). Neither symlinks nor special files
-# were ever counted by the `find -type f` volume scan (TOTAL_FILES), and the
-# manifest is metadata, not volume content -- so exclude the
-# manifest here to keep the copied count aligned with TOTAL_FILES. (Do NOT exclude
-# it from the completion "files copied" number below either; both must count
-# data-volume files only.)
-FILE_COUNT=$(find "${BACKUP_NAME}" -type f -not -name "${SYMLINKS_MANIFEST}" 2>/dev/null | wc -l | tr -d '[:space:]') || FILE_COUNT=0
+# (symlinks and special files were stripped). Count the host copy with the SAME
+# root-relative predicates as the staged count (the root ".daaf-symlinks", a root
+# ".daaf-permissions" and the ".daaf-claude-config" subtree are excluded on both), so
+# the two are comparable file-for-file, mirroring the .ps1 twin's container-side
+# count. The staged count counts one `stat` line per file, so this side counts one
+# NUL per file (`-print0`, supported by GNU and BSD find) rather than lines: a name
+# holding a newline would otherwise count twice here and trip the zero-tolerance
+# check. The completion "files copied" number below is this same data-volume count.
+# Host-side `find` is authoritative here: macOS/Linux have no path-length limit that
+# could hide files (the .ps1 twin counts inside Docker for exactly that reason). It
+# can still hit a READ error (e.g. a folder this user cannot read): _daaf_tree_count
+# (see above) then reports a LOWER BOUND, shown as "N+", with the .ps1 twin's
+# lower-bound semantics -- a WARNING that latches WITH WARNINGS, never "may be empty",
+# never the fatal short-copy branch, and "could not be verified" (exit 1) at 0.
+_daaf_tree_count "${BACKUP_NAME}" files
+FILE_COUNT="${TREE_COUNT}"
+COUNT_IS_LOWER_BOUND="${TREE_COUNT_LOWER_BOUND}"
+FILE_COUNT_LABEL="${FILE_COUNT}"
+if [ "${COUNT_IS_LOWER_BOUND}" -eq 1 ]; then
+    FILE_COUNT_LABEL="${FILE_COUNT}+"
+    echo "" >&2
+    if [ "${TREE_COUNT_ERRORS:-0}" -gt 0 ]; then
+        echo "WARNING: Could not read ${TREE_COUNT_ERRORS} folder(s) or file(s) in the backup folder, so the count" >&2
+    else
+        echo "WARNING: Could not read the whole backup folder, so the count" >&2
+    fi
+    echo "         below is a LOWER BOUND (${FILE_COUNT_LABEL} files): the backup may be complete, but this" >&2
+    echo "         run could not prove it. Check that your user account can read every folder in it." >&2
+    if [ -n "${TREE_COUNT_FIRST_ERROR:-}" ]; then
+        echo "         First error: ${TREE_COUNT_FIRST_ERROR}" >&2
+    fi
+    HAD_WARNINGS=1
+fi
 # Print the ACTUAL final host-side count, not a fabricated "100%". On a truncated
 # copy (the Windows symlink/special-file abort this staging step now prevents, or
 # any other partial copy) an unconditional "100%" would lie about completeness.
-if [ "${TOTAL_FILES}" -gt 0 ]; then
-    FINAL_PERCENT=$((FILE_COUNT * 100 / TOTAL_FILES))
+if [ "${EXPECTED_FILES}" -gt 0 ]; then
+    FINAL_PERCENT=$((FILE_COUNT * 100 / EXPECTED_FILES))
     if [ "${FINAL_PERCENT}" -gt 100 ]; then FINAL_PERCENT=100; fi
 else
     FINAL_PERCENT=0
 fi
-printf "\r  Progress: %d / %d files (%d%%)   \n" "${FILE_COUNT}" "${TOTAL_FILES}" "${FINAL_PERCENT}"
+printf "\r  Progress: %s / %d files (%d%%)   \n" "${FILE_COUNT_LABEL}" "${EXPECTED_FILES}" "${FINAL_PERCENT}"
 
+# Zero files counted. When that 0 is a LOWER BOUND (the folder could not be read), it
+# is not evidence of an empty or failed copy -- nothing could be counted. It still
+# exits 1 like the other zero-file cases (twin of the .ps1): an unverifiable backup
+# must not pass as good, and exit 1 makes a calling updater or migration stop instead
+# of building on it. The wording never suggests the volume is empty.
 if [ "${FILE_COUNT}" -eq 0 ]; then
     echo ""
-    if [ "${COPY_EXIT}" -ne 0 ]; then
+    if [ "${COUNT_IS_LOWER_BOUND}" -eq 1 ]; then
+        echo "ERROR: The backup could not be verified: the backup folder could not be read, so no"
+        echo "       files could be counted. This does not show the backup is empty, but do not"
+        echo "       rely on it. Check that your user account can read the backup folder, then"
+        echo "       re-run the backup."
+        if [ "${COPY_EXIT}" -ne 0 ]; then
+            echo "       The file copy also reported an error (exit code ${COPY_EXIT})."
+        fi
+    elif [ "${COPY_EXIT}" -ne 0 ]; then
         echo "ERROR: Backup failed (exit code ${COPY_EXIT}). Check Docker Desktop for errors."
     else
         echo "WARNING: Backup completed but 0 files were copied."
@@ -468,18 +679,28 @@ if [ "${FILE_COUNT}" -eq 0 ]; then
 fi
 
 # --- Corroborated short-copy check (fatal) ---
-# A nonzero docker cp exit AND a copied count short of the volume scan are two
-# independent signals that agree the backup is truncated -- the nonzero exit
-# corroborates the shortfall, so no tolerance is applied here (unlike the 1% count
-# and size tolerances below, which absorb benign filesystem/metadata drift on an
-# otherwise-clean copy). A truncated backup that passed as usable could cost a user
-# their data on restore, so fail hard: name the partial folder, tell them to delete
-# it, and exit before the completion banner. (A nonzero exit with a FULL count falls
-# through to the Note below, which latches the WITH WARNINGS banner -- warnings
+# A nonzero docker cp exit AND a copied count short of the expected count (the
+# snapshot, or the scan on the fallback path) are two independent signals that
+# agree the backup is truncated -- the nonzero exit corroborates the shortfall, so no
+# tolerance is applied here. A truncated backup that passed as usable could cost a
+# user their data on restore, so fail hard: name the partial folder, tell them to
+# delete it, and exit before the completion banner. (A nonzero exit with a FULL count
+# falls through to the Note below, which latches the WITH WARNINGS banner -- warnings
 # without an actual shortfall.)
-if [ "${COPY_EXIT}" -ne 0 ] && [ "${FILE_COUNT}" -lt "${TOTAL_FILES}" ]; then
+#
+# LOWER-BOUND count (the folder could not be fully read): not a second signal -- the
+# "missing" files may only be unreadable -- so a nonzero exit with a short lower-bound
+# count is downgraded to a WARNING (latched, exit 0), as in the .ps1 twin.
+if [ "${COPY_EXIT}" -ne 0 ] && [ "${FILE_COUNT}" -lt "${EXPECTED_FILES}" ] && [ "${COUNT_IS_LOWER_BOUND}" -eq 1 ]; then
     echo ""
-    echo "ERROR: Backup failed (exit code ${COPY_EXIT}); only ${FILE_COUNT} of ${TOTAL_FILES} expected files were copied."
+    echo "WARNING: The file copy reported an error (exit code ${COPY_EXIT}), and only ${FILE_COUNT_LABEL} of ${EXPECTED_FILES}" >&2
+    echo "         expected files could be counted. That count is a lower bound (some folders could not" >&2
+    echo "         be read), so this run cannot tell whether files are missing. Do not rely on this" >&2
+    echo "         backup until a run finishes without this warning." >&2
+    HAD_WARNINGS=1
+elif [ "${COPY_EXIT}" -ne 0 ] && [ "${FILE_COUNT}" -lt "${EXPECTED_FILES}" ]; then
+    echo ""
+    echo "ERROR: Backup failed (exit code ${COPY_EXIT}); only ${FILE_COUNT} of ${EXPECTED_FILES} expected files were copied."
     echo "       This backup is incomplete and must not be relied on. Delete this"
     echo "       partial backup folder and re-run once the copy issue is resolved."
     echo "Location: $(pwd)/${BACKUP_NAME}/"
@@ -488,7 +709,7 @@ elif [ "${COPY_EXIT}" -ne 0 ]; then
     # A nonzero exit is a copy-reported problem even when the count came up full,
     # so latch the warnings banner: "Backup complete!" would overstate a run the
     # copy itself flagged. Exit status stays 0 (no shortfall, so not fatal).
-    echo "Note: File copy reported warnings (exit code ${COPY_EXIT}); ${FILE_COUNT} of ${TOTAL_FILES} expected files were transferred."
+    echo "Note: File copy reported warnings (exit code ${COPY_EXIT}); ${FILE_COUNT_LABEL} of ${EXPECTED_FILES} expected files were transferred."
     HAD_WARNINGS=1
 fi
 
@@ -497,44 +718,119 @@ fi
 # symlink-abort truncation surfaced with a ZERO exit on the user's run. A nonzero
 # exit that ALSO comes up short on the count is already fatal (the corroborated
 # short-copy branch above). This block catches the harder case -- a clean ZERO exit
-# that still copied too few files -- comparing the copied data-file count (manifest
-# excluded) against the source scan count and warning loudly on a shortfall beyond a
-# 1% tolerance. The count and size checks are the authoritative completeness signals,
-# not COPY_EXIT.
-if [ "${TOTAL_FILES}" -gt 0 ] && [ "${FILE_COUNT}" -gt 0 ]; then
+# that still copied the wrong number of files -- and warns loudly (latching the WITH
+# WARNINGS banner) on a mismatch in either direction beyond the tolerance below.
+#
+# ZERO tolerance when the snapshot markers were read: the snapshot is exactly the
+# tree `docker cp` streamed and both counts use the same predicates, so any
+# difference is a real one (the old 1% tolerance hid a Windows gap of 197 files out
+# of 73,031 on 2026-09-29 -- 187 hidden by the PowerShell 5.1 long-path skip, plus 10
+# most likely live-volume drift between scan and snapshot -- a volume-vs-backup diff
+# found every surviving pre-backup file present -- and a probed FIFO-abort
+# truncation of 714 of 71,820 files). The 1% tolerance survives ONLY on the fallback
+# path, where the expected count is the live-volume scan and benign drift between
+# scan and snapshot is possible, so a mismatch there is only "may be incomplete".
+#
+# Against the snapshot the wording follows the direction (same structure as the .ps1
+# twin; the example file names and the "names this disk cannot store" hint differ by
+# platform on purpose): FEWER files is a proven loss; MORE files is not a loss
+# (something the snapshot never held landed in the folder, e.g. an OS-added
+# .DS_Store), so it still
+# latches WITH WARNINGS but says the DAAF data appears complete.
+if [ "${HAVE_STAGED_COUNTS}" -eq 1 ]; then
+    COUNT_TOLERANCE=0
+    EXPECTED_LABEL="Snapshot"
+else
     COUNT_TOLERANCE=$(( TOTAL_FILES / 100 ))
     if [ "${COUNT_TOLERANCE}" -lt 1 ]; then COUNT_TOLERANCE=1; fi
-    COUNT_DIFF=$(( TOTAL_FILES - FILE_COUNT ))
+    EXPECTED_LABEL="Source"
+fi
+if [ "${HAVE_STAGED_COUNTS}" -eq 1 ] || [ "${TOTAL_FILES}" -gt 0 ]; then
+    COUNT_DIFF=$(( EXPECTED_FILES - FILE_COUNT ))
     if [ "${COUNT_DIFF}" -lt 0 ]; then COUNT_DIFF=$(( -COUNT_DIFF )); fi
     if [ "${COUNT_DIFF}" -gt "${COUNT_TOLERANCE}" ]; then
+        # A lower-bound count bounds the difference only one way: a shortfall is "up
+        # to" it, an excess is "at least" it (same labels as the .ps1 twin).
+        COUNT_DIFF_LABEL="${COUNT_DIFF}"
+        if [ "${COUNT_IS_LOWER_BOUND}" -eq 1 ]; then
+            if [ "${FILE_COUNT}" -lt "${EXPECTED_FILES}" ]; then COUNT_DIFF_LABEL="up to ${COUNT_DIFF}"; else COUNT_DIFF_LABEL="at least ${COUNT_DIFF}"; fi
+            COUNT_DIFF_LABEL="${COUNT_DIFF_LABEL}; the backup count is a lower bound"
+        fi
         echo ""
         echo "WARNING: Backup file-count mismatch." >&2
-        echo "         Source: ${TOTAL_FILES} files, Backup: ${FILE_COUNT} files (difference: ${COUNT_DIFF})" >&2
-        echo "         The backup may be incomplete. Consider re-running." >&2
+        echo "         ${EXPECTED_LABEL}: ${EXPECTED_FILES} files, Backup: ${FILE_COUNT_LABEL} files (difference: ${COUNT_DIFF_LABEL})" >&2
+        if [ "${HAVE_STAGED_COUNTS}" -ne 1 ]; then
+            echo "         The backup may be incomplete. Consider re-running." >&2
+        elif [ "${FILE_COUNT}" -gt "${EXPECTED_FILES}" ]; then
+            echo "         The backup folder holds files that are not in the snapshot, for example" >&2
+            echo "         .DS_Store, desktop.ini or Thumbs.db files added by the operating system or a" >&2
+            echo "         sync app. The DAAF data itself appears complete." >&2
+        elif [ "${COUNT_IS_LOWER_BOUND}" -eq 1 ]; then
+            echo "         Some folders could not be read, so this run cannot tell whether these files" >&2
+            echo "         are missing or only uncounted. Do not rely on this backup until a run" >&2
+            echo "         finishes without this warning." >&2
+        else
+            echo "         ${COUNT_DIFF} file(s) from the snapshot are missing from this backup. Do not rely on it." >&2
+            echo "         One possible cause that re-running will not fix: file names this disk cannot" >&2
+            echo "         store side by side, such as names that differ only in upper/lower case on a" >&2
+            echo "         case-insensitive disk (the macOS default)." >&2
+        fi
         HAD_WARNINGS=1
     fi
 fi
 
 # --- Size verification ---
-# Compare source vs backup logical byte sums to detect truncated files
-SOURCE_SIZE_KB="${VOLUME_LOGICAL_KB}"
-# Exclude the ".daaf-symlinks" manifest from the backup byte sum: it exists in the
-# backup but not the volume, and the source side (VOLUME_LOGICAL_KB) never counted
-# it -- so counting it here would skew the comparison (as .daaf-permissions is
-# likewise negligible/excluded by not being under -type f in the source scan).
-BACKUP_SIZE_KB=$(find "${BACKUP_NAME}" -type f -not -name "${SYMLINKS_MANIFEST}" -exec ls -ln {} + 2>/dev/null | awk '{s+=$5} END {printf "%d\n", s/1024}') || BACKUP_SIZE_KB=0
-if [ "${SOURCE_SIZE_KB}" -gt 0 ] && [ "${BACKUP_SIZE_KB}" -gt 0 ]; then
-    # Allow 1% tolerance for filesystem metadata differences
+# Compare expected vs backup logical byte sums (KB) to detect truncated files, with
+# the same root-relative exclusions as FILE_COUNT (the ".daaf-symlinks" manifest is
+# metadata the volume never held). Same tolerance rule as the file count: zero
+# against the snapshot, 1% against the live-volume scan on the fallback path.
+# Against the snapshot, a size difference with EQUAL file counts means file contents
+# differ, so the wording says not to rely on the backup; with unequal counts it points
+# back at the file-count warning.
+SOURCE_SIZE_KB="${EXPECTED_KB}"
+# A read error makes the size a LOWER BOUND (see _daaf_tree_count), labelled "+" below;
+# the file count above already warned when the same folders were unreadable.
+_daaf_tree_count "${BACKUP_NAME}" kb
+BACKUP_SIZE_KB="${TREE_COUNT}"
+SIZE_IS_LOWER_BOUND="${TREE_COUNT_LOWER_BOUND}"
+if [ "${SIZE_IS_LOWER_BOUND}" -eq 1 ] && [ "${COUNT_IS_LOWER_BOUND}" -eq 0 ]; then
+    # The count pass read everything but the size pass did not (a file changed or
+    # became unreadable in between): say so rather than compare silently.
+    echo "WARNING: Could not read every file while totalling the backup size; the size check" >&2
+    echo "         below uses a lower bound (${BACKUP_SIZE_KB}+ KB)." >&2
+    HAD_WARNINGS=1
+fi
+if [ "${HAVE_STAGED_COUNTS}" -eq 1 ]; then
+    TOLERANCE_KB=0
+else
     TOLERANCE_KB=$(( SOURCE_SIZE_KB / 100 ))
     if [ "${TOLERANCE_KB}" -lt 1 ]; then TOLERANCE_KB=1; fi
+fi
+if [ "${HAVE_STAGED_COUNTS}" -eq 1 ] || { [ "${SOURCE_SIZE_KB}" -gt 0 ] && [ "${BACKUP_SIZE_KB}" -gt 0 ]; }; then
     DIFF_KB=$(( SOURCE_SIZE_KB - BACKUP_SIZE_KB ))
     # Absolute value
     if [ "${DIFF_KB}" -lt 0 ]; then DIFF_KB=$(( -DIFF_KB )); fi
     if [ "${DIFF_KB}" -gt "${TOLERANCE_KB}" ]; then
+        BACKUP_SIZE_LABEL="${BACKUP_SIZE_KB} KB"
+        DIFF_KB_LABEL="${DIFF_KB} KB"
+        if [ "${SIZE_IS_LOWER_BOUND}" -eq 1 ]; then
+            BACKUP_SIZE_LABEL="${BACKUP_SIZE_KB}+ KB"
+            DIFF_KB_LABEL="${DIFF_KB} KB; the backup size is a lower bound"
+        fi
         echo ""
         echo "WARNING: Backup size mismatch." >&2
-        echo "         Source: ${SOURCE_SIZE_KB} KB, Backup: ${BACKUP_SIZE_KB} KB (difference: ${DIFF_KB} KB)" >&2
-        echo "         The backup may be incomplete. Consider re-running." >&2
+        echo "         ${EXPECTED_LABEL}: ${SOURCE_SIZE_KB} KB, Backup: ${BACKUP_SIZE_LABEL} (difference: ${DIFF_KB_LABEL})" >&2
+        if [ "${HAVE_STAGED_COUNTS}" -ne 1 ]; then
+            echo "         The backup may be incomplete. Consider re-running." >&2
+        elif [ "${SIZE_IS_LOWER_BOUND}" -eq 1 ]; then
+            echo "         Some files could not be read, so this run cannot prove the contents match." >&2
+            echo "         Do not rely on this backup until a run finishes without this warning." >&2
+        elif [ "${FILE_COUNT}" -eq "${EXPECTED_FILES}" ]; then
+            echo "         The file counts match, but the file contents differ in size from the" >&2
+            echo "         snapshot. Do not rely on this backup." >&2
+        else
+            echo "         See the file-count mismatch above." >&2
+        fi
         HAD_WARNINGS=1
     fi
 fi
@@ -548,7 +844,7 @@ fi
 CLAUDE_BACKED_UP=0
 if docker volume inspect "${CLAUDE_VOLUME_NAME}" &> /dev/null; then
     echo ""
-    echo "Backing up Claude Code state (credentials, session history, plugins)..."
+    echo "Backing up Claude Code state from volume ${CLAUDE_VOLUME_NAME} (credentials, session history, plugins)..."
     mkdir -p "${BACKUP_NAME}/${CLAUDE_SUBDIR}"
     # Same STAGING mechanism as the data volume above (this volume ALSO carries
     # symlinks -- e.g. codex-daaf/tmp/arg0/... -- which is why the "Failed to back
@@ -597,9 +893,16 @@ if docker volume inspect "${CLAUDE_VOLUME_NAME}" &> /dev/null; then
         CLAUDE_STAGE_LOG="$(docker logs "${CLAUDE_STAGE_CID}" 2>&1 || true)"
     fi
     if [ "${CLAUDE_STAGE_STATUS}" = "0" ] && docker cp "${CLAUDE_STAGE_CID}:/staging/." "${BACKUP_NAME}/${CLAUDE_SUBDIR}/"; then
-        # Count data files only -- exclude the symlink manifest (metadata, not
-        # volume content), mirroring the data-volume FILE_COUNT exclusion.
-        CLAUDE_FILE_COUNT=$(find "${BACKUP_NAME}/${CLAUDE_SUBDIR}" -type f -not -name "${SYMLINKS_MANIFEST}" 2>/dev/null | wc -l | tr -d '[:space:]') || CLAUDE_FILE_COUNT=0
+        # Count data files only, with the snapshot count's root-relative predicate
+        # (the same STAGE_PROGRAM staged this volume): exclude the subfolder's ROOT
+        # ".daaf-symlinks" and ".daaf-permissions" and a root ".daaf-claude-config"
+        # subtree, exactly like the data-volume FILE_COUNT and the .ps1 twin's Claude
+        # count. A nested file that merely has the same name is data and counts.
+        # Display only (the copy's success is judged by the docker cp exit code): a
+        # count that hit read errors is shown as "N+" (lower bound), like the .ps1 twin.
+        _daaf_tree_count "${BACKUP_NAME}/${CLAUDE_SUBDIR}" files
+        CLAUDE_FILE_COUNT="${TREE_COUNT}"
+        if [ "${TREE_COUNT_LOWER_BOUND}" -eq 1 ]; then CLAUDE_FILE_COUNT="${TREE_COUNT}+"; fi
         echo "Claude Code state backed up (${CLAUDE_FILE_COUNT} files)."
         CLAUDE_BACKED_UP=1
     else
@@ -644,7 +947,7 @@ fi
 # so the paths are volume-relative. Manifest write failure is a WARNING, not
 # fatal -- the data backup is still valid, and restore degrades gracefully (an
 # absent manifest simply means no permission normalization happens).
-PERMISSIONS_MANIFEST=".daaf-permissions"
+# (PERMISSIONS_MANIFEST is declared in the Configuration section.)
 echo ""
 echo "Recording executable-permission manifest..."
 if EXEC_PATHS=$(docker run --rm -v "${VOLUME_NAME}:/source:ro" busybox sh -c 'find /source -type f -perm -0100' 2>/dev/null); then
@@ -690,7 +993,7 @@ fi
 echo "=========================================="
 echo ""
 echo "Location: $(pwd)/${BACKUP_NAME}/"
-echo "Files:    ${FILE_COUNT} files copied"
+echo "Files:    ${FILE_COUNT_LABEL} files copied"
 if [ "${CLAUDE_BACKED_UP}" -eq 1 ]; then
     echo ""
     echo "IMPORTANT: This backup INCLUDES your Claude Code credentials and session"
