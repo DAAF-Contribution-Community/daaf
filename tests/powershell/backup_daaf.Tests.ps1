@@ -657,6 +657,112 @@ Describe "backup_daaf.ps1 count helpers and verification structure" {
         Remove-Item Env:DAAF_TEST_MODE -ErrorAction SilentlyContinue
     }
 
+    Context "Write-DaafNameReport (names Windows cannot create, 2026-09-30)" {
+        It "lists removed names and case clashes, states the file total, and returns true" {
+            $log = @("STAGE_STRIP_NAME`t./scratch/fx/sub/name?nl", "STAGE_CASE_FILE`t./fx/mf1`t./fx/MF1",
+                'STAGED_STRIPPED_NAMES=2', 'STAGED_STRIPPED_FILES=5', 'STAGED_FILES=10', 'STAGED_KB=1')
+            $out = & { $null = Write-DaafNameReport -Lines $log -Where 'Docker volume' } 6>&1 | Out-String
+            $out | Should -BeLike '*WARNING: 2 file or folder name(s) in the Docker volume cannot be created on Windows,*'
+            $out | Should -BeLike '*so they were left out of this backup (5 file(s) in total, counting folder contents):*'
+            $out | Should -BeLike '*           ./scratch/fx/sub/name?nl*'
+            $out | Should -BeLike '*           ./fx/mf1   (same as ./fx/MF1 except for upper/lower case)*'
+            $out | Should -BeLike '*Rename them inside DAAF, then back up again.*'
+            $out | Should -BeLike '*or a path that is the same as*another path except for upper/lower case (like ./Data/x and ./data/x).*'
+            $out | Should -Not -BeLike '*folder path(s) in the Docker volume are the same*'
+            Write-DaafNameReport -Lines $log -Where 'Docker volume' 6>$null | Should -BeTrue
+        }
+        It "reports folder pairs as merged (a separate WARNING), and returns true" {
+            $log = @("STAGE_CASE_DIR`t./cdir`t./CDIR", 'STAGED_STRIPPED_NAMES=0', 'STAGED_STRIPPED_FILES=0')
+            $out = & { $null = Write-DaafNameReport -Lines $log -Where 'Claude Code state volume' } 6>&1 | Out-String
+            $out | Should -BeLike '*WARNING: 1 folder path(s) in the Claude Code state volume are the same as another folder path*'
+            $out | Should -BeLike '*except for upper/lower case. Windows keeps one folder for each pair*'
+            $out | Should -BeLike '*contents were merged in this backup (a restore puts them in one folder):*'
+            $out | Should -BeLike '*           ./cdir   (same as ./CDIR except for upper/lower case)*'
+            $out | Should -Not -BeLike '*left out*'
+            Write-DaafNameReport -Lines $log -Where 'Docker volume' 6>$null | Should -BeTrue
+        }
+        It "caps each list at 20 entries with 'and N more'" {
+            $log = @(1..23 | ForEach-Object { "STAGE_STRIP_NAME`t./n$_" })
+            $out = & { $null = Write-DaafNameReport -Lines $log -Where 'Docker volume' } 6>&1 | Out-String
+            $out | Should -BeLike '*./n20*'
+            $out | Should -Not -BeLike '*./n21*'
+            $out | Should -BeLike '*           ... and 3 more*'
+        }
+        It "prints nothing and returns false for a clean log, `$null, or look-alike lines" {
+            foreach ($case in @(, @('STAGED_FILES=3', 'STAGED_KB=0')) + , $null + , @("STAGE_STRIP_NAMEX`t./a", "stage_strip_name`t./a", "STAGE_CASE_FILE`t./only-one-field", 'STAGE_STRIP_NAME ./space-not-tab')) {
+                $out = & { $null = Write-DaafNameReport -Lines $case -Where 'Docker volume' } 6>&1 | Out-String
+                $out.Trim() | Should -BeNullOrEmpty
+                Write-DaafNameReport -Lines $case -Where 'Docker volume' 6>$null | Should -BeFalse
+            }
+        }
+        It "-ExpectMarker: a log without STAGED_STRIPPED_NAMES warns that the list could not be read, and returns true" {
+            foreach ($case in @(, @('STAGED_FILES=3', 'STAGED_KB=0')) + , $null + , @() + , @('STAGED_STRIPPED_NAMES=x', 'XSTAGED_STRIPPED_NAMES=0')) {
+                $out = & { $null = Write-DaafNameReport -Lines $case -Where 'Docker volume' -ExpectMarker } 6>&1 | Out-String
+                $out | Should -BeLike '*WARNING: Could not read the list of names in the Docker volume that Windows cannot create,*'
+                $out | Should -BeLike '*without being named here. Re-run the backup; if this warning comes back, list*'
+                Write-DaafNameReport -Lines $case -Where 'Docker volume' -ExpectMarker 6>$null | Should -BeTrue
+            }
+        }
+        It "-ExpectMarker: a log WITH the marker (0 removed) prints nothing and returns false" {
+            $log = @('STAGED_STRIPPED_NAMES=0', 'STAGED_STRIPPED_FILES=0', 'STAGED_FILES=3', 'STAGED_KB=0')
+            $out = & { $null = Write-DaafNameReport -Lines $log -Where 'Docker volume' -ExpectMarker } 6>&1 | Out-String
+            $out.Trim() | Should -BeNullOrEmpty
+            Write-DaafNameReport -Lines $log -Where 'Docker volume' -ExpectMarker 6>$null | Should -BeFalse
+        }
+        It "-ExpectMarker:`$false (a failed Claude staging) never warns about the list" {
+            Write-DaafNameReport -Lines @() -Where 'Claude Code state volume' -ExpectMarker:$false 6>$null | Should -BeFalse
+        }
+        It "-CheckRoot: the unreadable-list hint points the names-only checker at that folder (polish 2026-10-01, review round 9)" {
+            # check_workspace_invariants.sh walks /daaf unless DAAF_INVARIANT_ROOT says
+            # otherwise; pointed at Claude Code's folder, its symlink/repo-root checks flag
+            # files that belong there, so both hints pass --names-only (names check only).
+            $out = & { $null = Write-DaafNameReport -Lines @() -Where 'Claude Code state volume' -ExpectMarker -CheckRoot '/home/appuser/.claude' } 6>&1 | Out-String
+            $out | Should -BeLike '*WARNING: Could not read the list of names in the Claude Code state volume that Windows cannot create,*'
+            $out | Should -BeLike '*         such names inside DAAF with:*'
+            $out | Should -BeLike '*           DAAF_INVARIANT_ROOT=/home/appuser/.claude bash scripts/check_workspace_invariants.sh --names-only*'
+            $out | Should -Not -BeLike '*read only its*'
+            $out | Should -Not -BeLike '*do not delete*'
+            # Without -CheckRoot (the data volume): the /daaf hint, no override.
+            $plain = & { $null = Write-DaafNameReport -Lines @() -Where 'Docker volume' -ExpectMarker } 6>&1 | Out-String
+            $plain | Should -BeLike '*         such names inside DAAF with:*'
+            $plain | Should -BeLike '*           bash scripts/check_workspace_invariants.sh --names-only*'
+            $plain | Should -Not -BeLike '*DAAF_INVARIANT_ROOT*'
+        }
+    }
+
+    Context "Uncreatable-name switch and latch wiring" {
+        It "passes DAAF_STAGE_NAMES=win AFTER the -v for BOTH staging launches (data + Claude)" {
+            $Content | Should -Match ([regex]::Escape('$StageCid = (docker run -d -v "${VolumeName}:/source:ro" -e DAAF_STAGE_NAMES=win busybox sh -c $StageProgram 2>&1'))
+            $Content | Should -Match ([regex]::Escape('$ClaudeStageCid = (docker run -d -v "${ClaudeVolumeName}:/source:ro" -e DAAF_STAGE_NAMES=win busybox sh -c $StageProgram 2>&1'))
+            @([regex]::Matches($Content, 'busybox sh -c \$StageProgram')).Count | Should -Be 2
+        }
+        It "latches HadWarnings from the name report for both volumes (each called exactly once)" {
+            $data = "if (Write-DaafNameReport -Lines `$StageDoneLog -Where 'Docker volume' -ExpectMarker) { `$HadWarnings = `$true }"
+            $claude = "if (Write-DaafNameReport -Lines `$ClaudeStageDoneLog -Where 'Claude Code state volume' -ExpectMarker:`$claudeStagedOk -CheckRoot `$ClaudeContainerPath) { `$HadWarnings = `$true }"
+            ([regex]::Matches($Content, [regex]::Escape($data))).Count | Should -Be 1
+            ([regex]::Matches($Content, [regex]::Escape($claude))).Count | Should -Be 1
+            ([regex]::Matches($Content, '(?m)^[^#]*Write-DaafNameReport -Lines')).Count | Should -Be 2
+        }
+        It "points the Claude-volume hint at the volume's mount point from docker-compose.yml" {
+            $Content | Should -Match ([regex]::Escape('$ClaudeContainerPath = "/home/appuser/.claude"'))
+            $compose = Get-Content "$RepoRoot/docker-compose.yml" -Raw
+            $compose | Should -Match ([regex]::Escape('- daaf-claude-config:/home/appuser/.claude'))
+        }
+        It "reports the data-volume names BEFORE both fatal exits that follow the copy (review round 7)" {
+            $call = $Content.IndexOf("if (Write-DaafNameReport -Lines `$StageDoneLog -Where 'Docker volume'")
+            $call | Should -BeGreaterThan 0
+            $call | Should -BeGreaterThan $Content.IndexOf('Write-Host "  Progress: $FileCountLabel / $ExpectedFiles files ($FinalPercent%)   "')
+            $call | Should -BeLessThan $Content.IndexOf('if ($FileCount -eq 0) {')
+            $call | Should -BeLessThan $Content.IndexOf('# --- Corroborated short-copy check (fatal) ---')
+        }
+        It "reports the Claude-volume names after the success/failure branch, not inside the success branch" {
+            $call = $Content.IndexOf("if (Write-DaafNameReport -Lines `$ClaudeStageDoneLog")
+            $call | Should -BeGreaterThan $Content.IndexOf('Write-Host "         The data volume backup above is still valid."')
+            $call | Should -BeLessThan $Content.IndexOf('# --- Capture the executable-permission manifest ---')
+            $Content | Should -Match 'if \(\$ClaudeStageStatus -eq 0\) \{\r?\n\s+\$claudeStagedOk = \$true'
+        }
+    }
+
     Context "Get-DaafCountMarker" {
         It "parses a well-formed marker from mixed output (string array)" {
             Get-DaafCountMarker -Lines @('noise', 'STAGED_FILES=73021', 'STAGED_KB=12') -Name 'STAGED_FILES' | Should -Be 73021
@@ -739,12 +845,18 @@ Describe "backup_daaf.ps1 count helpers and verification structure" {
 
     Context "Verification structure" {
         It "never uses Get-ChildItem + SilentlyContinue as the authoritative count" {
-            # The only remaining GCI calls are the progress display and the fallback
-            # helper, which captures -ErrorVariable.
+            # The only remaining GCI call is the fallback helper, which captures
+            # -ErrorVariable (the progress display now goes through that helper too).
             $gci = @(($Content -split "`n") | Where-Object { $_ -match '^\s*[^#]*Get-ChildItem ' })
-            $gci.Count | Should -Be 2
+            $gci.Count | Should -Be 1
             ($gci -join "`n") | Should -Match '-ErrorVariable enumErrors'
-            ($gci -join "`n") | Should -Match '\$Copied = @\(Get-ChildItem'
+        }
+        It "the copy-progress count uses the fallback count's exact root exclusions (no N+1 / N, field 2026-10-01)" {
+            # The staged tree carries the root .daaf-symlinks manifest the snapshot
+            # excludes; a plain count of every file read "73848 / 73847" in the field.
+            $args3 = '-ExcludeRootFiles @($SymlinksManifest, $PermissionsManifest) -ExcludeRootDirs @($ClaudeSubDir)'
+            $Content | Should -Match ([regex]::Escape('$Copied = (Measure-DaafBackupTree -Root $HostPath ' + $args3 + ').Files'))
+            $Content | Should -Match ([regex]::Escape('$Fallback = Measure-DaafBackupTree -Root $HostPath ' + $args3))
         }
         It "counts the host folder container-side via a read-only bind mount, by direct invocation" {
             $Content | Should -Match ([regex]::Escape('@(docker run --rm -v "${HostPath}:/b:ro" busybox sh -c $BackupCountProgram 2>&1)'))
@@ -957,7 +1069,11 @@ case "${1:-}" in
         case "$*" in *claude-config*) exit 1 ;; esac
         exit 0 ;;
     run)
-        if [ "${2:-}" = "-d" ]; then echo stagecid0000; exit 0; fi
+        if [ "${2:-}" = "-d" ]; then
+            # FAKE_RUN_D_LOG records the staging launch's arguments (the name switch).
+            if [ -n "${FAKE_RUN_D_LOG:-}" ]; then printf '%s\n' "$*" >> "${FAKE_RUN_D_LOG}"; fi
+            echo stagecid0000; exit 0
+        fi
         # Permission-manifest scan: no exec files.
         case "$*" in *"-perm -0100"*) exit 0 ;; esac
         case "$*" in *":/b:ro"*)
@@ -1022,6 +1138,9 @@ case "${1:-}" in
             : > "${dest}/locked/hidden"
             chmod 000 "${dest}/locked"
         fi
+        # FAKE_CP_SLEEP (seconds) keeps the copy "running" after its files land, so
+        # the script's 3-second progress loop prints at least one line.
+        sleep "${FAKE_CP_SLEEP:-0}"
         exit "${FAKE_CP_EXIT:-0}" ;;
     *) exit 0 ;;
 esac
@@ -1034,12 +1153,22 @@ esac
         function Invoke-FakeBackup {
             param([int]$ScanCount, [string]$Special = "", [int]$CpFiles, [int]$CpExit = 0, [string]$WorkPrefix = "run-",
                 [string]$StageLog = "", [string]$Long = "", [switch]$CountFail, [switch]$LogsFail,
-                [switch]$EmptyMount, [switch]$NoManifest, [switch]$Locked)
+                [switch]$EmptyMount, [switch]$NoManifest, [switch]$Locked, [switch]$NoNameMarkers, [int]$CpSleep = 0)
             $env:FAKE_SCAN_COUNT = "$ScanCount"
             $env:FAKE_CP_FILES = "$CpFiles"
             $env:FAKE_CP_EXIT = "$CpExit"
+            $env:FAKE_CP_SLEEP = "$CpSleep"
             if ($Special -ne "") { $env:FAKE_SPECIAL = $Special } else { Remove-Item Env:FAKE_SPECIAL -ErrorAction SilentlyContinue }
             if ($Long -ne "") { $env:FAKE_LONG = $Long } else { Remove-Item Env:FAKE_LONG -ErrorAction SilentlyContinue }
+            # A real win-mode staging run always prints STAGED_STRIPPED_NAMES/_FILES (0 when
+            # nothing was removed) BEFORE its final markers, and the script now warns when a
+            # log it could read lacks them (the list of removed names could not be read). So
+            # a non-empty fake log gets the zero name markers in front unless it carries its
+            # own or -NoNameMarkers asks for the unreadable-list case. An EMPTY log stays
+            # empty: it models a log that could not be read at all.
+            if ($StageLog -ne "" -and -not $NoNameMarkers -and $StageLog -notlike '*STAGED_STRIPPED_NAMES=*') {
+                $StageLog = 'STAGED_STRIPPED_NAMES=0\nSTAGED_STRIPPED_FILES=0\n' + $StageLog
+            }
             $env:FAKE_STAGE_LOG = $StageLog
             if ($CountFail) { $env:FAKE_COUNT_FAIL = "1" } else { $env:FAKE_COUNT_FAIL = "0" }
             if ($LogsFail) { $env:FAKE_LOGS_FAIL = "1" } else { $env:FAKE_LOGS_FAIL = "0" }
@@ -1069,7 +1198,7 @@ esac
         foreach ($k in $script:SavedEnv.Keys) {
             [Environment]::SetEnvironmentVariable($k, $script:SavedEnv[$k], 'Process')
         }
-        Remove-Item Env:FAKE_SCAN_COUNT, Env:FAKE_CP_FILES, Env:FAKE_CP_EXIT, Env:FAKE_SPECIAL, Env:FAKE_LONG, Env:FAKE_STAGE_LOG, Env:FAKE_COUNT_FAIL, Env:FAKE_LOGS_FAIL, Env:FAKE_EMPTY_MOUNT, Env:FAKE_CP_NO_MANIFEST, Env:FAKE_CP_LOCKED -ErrorAction SilentlyContinue
+        Remove-Item Env:FAKE_SCAN_COUNT, Env:FAKE_CP_FILES, Env:FAKE_CP_EXIT, Env:FAKE_SPECIAL, Env:FAKE_LONG, Env:FAKE_STAGE_LOG, Env:FAKE_COUNT_FAIL, Env:FAKE_LOGS_FAIL, Env:FAKE_EMPTY_MOUNT, Env:FAKE_CP_NO_MANIFEST, Env:FAKE_CP_LOCKED, Env:FAKE_CP_SLEEP -ErrorAction SilentlyContinue
     }
 
     # --- Review round 1 fixes (B1 empty bind mount, I2 wording, I3 lower bound) ---
@@ -1097,6 +1226,11 @@ esac
         $r.Output | Should -BeLike "*1 file(s) from the snapshot are missing from this backup. Do not rely on it.*"
         $r.Output | Should -BeLike "*re-running will not fix*"
         $r.Output | Should -Not -BeLike "*may be incomplete*"
+        # Polish 2026-10-01 (e): names Windows cannot create are removed before the copy
+        # now, so the hint no longer blames them; it names the case-folding gap instead.
+        $r.Output | Should -BeLike "*(Files left out because Windows cannot create their names are not part of*"
+        $r.Output | Should -BeLike "*letter outside A-Z, such as an accented letter, which Windows also treats as*"
+        $r.Output | Should -Not -Match ([regex]::Escape('contain characters like : * ? < > |'))
     }
 
     It "I2: EXTRA files against the snapshot are reported as extras, with the data complete" {
@@ -1190,6 +1324,18 @@ esac
         $r.Output | Should -BeLike "*Backup complete!*"
     }
 
+    It "polish 2026-10-01 (a): the copy-progress line excludes the root manifest, so it never reads N+1 / N" {
+        # Field: "Progress: 73848 / 73847 files" -- the loop counted the root
+        # .daaf-symlinks the snapshot excludes. The fake copy lands 3 files + the
+        # manifest and then sleeps, so the loop runs while the copy is still going.
+        $r = Invoke-FakeBackup -ScanCount 3 -CpFiles 3 -StageLog 'STAGED_FILES=3\nSTAGED_KB=0\n' -CpSleep 5
+        $r.ExitCode | Should -Be 0
+        $r.Output | Should -Not -BeLike "*Progress: 4 / 3*"
+        # The loop's own line AND the final line read 3 / 3 (non-vacuous: the loop ran).
+        ([regex]::Matches($r.Output, [regex]::Escape('Progress: 3 / 3 files (100%)'))).Count | Should -BeGreaterOrEqual 2
+        $r.Output | Should -BeLike "*Backup complete!*"
+    }
+
     It "zero tolerance: a 1-file shortfall against the snapshot warns (1% floor would hide it)" {
         $r = Invoke-FakeBackup -ScanCount 4 -CpFiles 3 -StageLog 'STAGED_FILES=4\nSTAGED_KB=0\n'
         $r.ExitCode | Should -Be 0
@@ -1215,14 +1361,24 @@ esac
     }
 
     It "missing, garbage, or unreadable markers fall back to the scan (1% tolerance) with a Note" {
-        foreach ($case in @(@{ Log = '' }, @{ Log = 'STAGED_FILES=abc\nSTAGED_KB=0\n' }, @{ Log = 'STAGED_FILES=3\n' },
-                            @{ Log = 'STAGED_FILES=99999999999999999999\nSTAGED_KB=0\n' }, @{ Log = 'STAGED_FILES=3\nSTAGED_KB=0\n'; Fail = $true })) {
+        # Unreadable = an EMPTY log or a failed `docker logs`: the list of names Windows
+        # cannot create is unreadable too, so those two also WARN and latch (review round
+        # 7). The others model a log whose name markers were read but whose snapshot
+        # markers are garbled: Note only, plain banner.
+        foreach ($case in @(@{ Log = ''; Unread = $true }, @{ Log = 'STAGED_FILES=abc\nSTAGED_KB=0\n' }, @{ Log = 'STAGED_FILES=3\n' },
+                            @{ Log = 'STAGED_FILES=99999999999999999999\nSTAGED_KB=0\n' }, @{ Log = 'STAGED_FILES=3\nSTAGED_KB=0\n'; Fail = $true; Unread = $true })) {
             # Scan 2, copy 3: diff 1 is inside the fallback's floor-1 tolerance.
             $r = Invoke-FakeBackup -ScanCount 2 -CpFiles 3 -StageLog $case.Log -LogsFail:([bool]$case['Fail'])
             $r.ExitCode | Should -Be 0 -Because "log case [$($case.Log)]"
             $r.Output | Should -BeLike "*Could not read the snapshot's file count*"
             $r.Output | Should -Not -BeLike "*mismatch*"
-            $r.Output | Should -BeLike "*Backup complete!*"
+            if ($case['Unread']) {
+                $r.Output | Should -BeLike "*WARNING: Could not read the list of names in the Docker volume that Windows cannot create,*" -Because "log case [$($case.Log)]"
+                $r.Output | Should -BeLike "*Backup completed WITH WARNINGS*" -Because "log case [$($case.Log)]"
+            } else {
+                $r.Output | Should -Not -BeLike "*Could not read the list of names*" -Because "log case [$($case.Log)]"
+                $r.Output | Should -BeLike "*Backup complete!*" -Because "log case [$($case.Log)]"
+            }
         }
     }
 
@@ -1257,7 +1413,7 @@ esac
     }
 
     It "clean copy with special files: prints the skip note and a plain banner" {
-        $r = Invoke-FakeBackup -ScanCount 3 -Special "4" -CpFiles 3 -CpExit 0
+        $r = Invoke-FakeBackup -ScanCount 3 -Special "4" -CpFiles 3 -CpExit 0 -StageLog 'STAGED_FILES=3\nSTAGED_KB=0\n'
         $r.ExitCode | Should -Be 0
         $r.Output | Should -BeLike "*Note: skipping 4 named pipe/socket/device file(s) -- runtime-only, not backed up.*"
         $r.Output | Should -BeLike "*Backup complete!*"
@@ -1266,7 +1422,7 @@ esac
     }
 
     It "older 4-line scan (no special line) runs clean under strict mode with no note" {
-        $r = Invoke-FakeBackup -ScanCount 3 -CpFiles 3 -CpExit 0
+        $r = Invoke-FakeBackup -ScanCount 3 -CpFiles 3 -CpExit 0 -StageLog 'STAGED_FILES=3\nSTAGED_KB=0\n'
         $r.ExitCode | Should -Be 0
         $r.Output | Should -Not -BeLike "*Note: skipping*"
         $r.Output | Should -BeLike "*Backup complete!*"
@@ -1284,18 +1440,98 @@ esac
         # unqualified success -- but with no shortfall the run is not fatal. (The
         # Claude-config volume is absent in this fake, so the Note is the ONLY
         # warning source on this run.)
-        $r = Invoke-FakeBackup -ScanCount 3 -CpFiles 3 -CpExit 1
+        $r = Invoke-FakeBackup -ScanCount 3 -CpFiles 3 -CpExit 1 -StageLog 'STAGED_FILES=3\nSTAGED_KB=0\n'
         $r.ExitCode | Should -Be 0
         $r.Output | Should -BeLike "*Note: File copy reported warnings (exit code 1); 3 of 3 expected files were transferred.*"
+        $r.Output | Should -Not -BeLike "*WARNING:*"
         $r.Output | Should -Not -BeLike "*must not be relied on*"
         $r.Output | Should -BeLike "*Backup completed WITH WARNINGS -- verify before relying on it*"
         $r.Output | Should -Not -BeLike "*Backup complete!*"
     }
 
+    # --- Names Windows cannot create (2026-09-30) ---
+
+    It "names: the staging launch carries -e DAAF_STAGE_NAMES=win after the -v" {
+        $env:FAKE_RUN_D_LOG = Join-Path $TestDrive ('rund-' + [guid]::NewGuid().ToString('N'))
+        try {
+            $r = Invoke-FakeBackup -ScanCount 3 -CpFiles 3 -StageLog 'STAGED_FILES=3\nSTAGED_KB=0\n'
+            $r.ExitCode | Should -Be 0
+            $recorded = Get-Content -LiteralPath $env:FAKE_RUN_D_LOG -Raw
+            $recorded | Should -Match '(?m)^run -d -v daaf_daaf-data:/source:ro -e DAAF_STAGE_NAMES=win busybox sh -c set -e'
+        } finally {
+            Remove-Item Env:FAKE_RUN_D_LOG -ErrorAction SilentlyContinue
+        }
+    }
+
+    It "names: removed names print the WARNING, latch WITH WARNINGS, exit 0, and are not blamed on live change" {
+        # Scan 5 = snapshot 3 + 2 removed files: the copy of 3 is exact, nothing drifted.
+        $log = 'STAGE_STRIP_NAME\t./fx/sub/name?nl\nSTAGE_CASE_FILE\t./fx/mf1\t./fx/MF1\nSTAGED_STRIPPED_NAMES=2\nSTAGED_STRIPPED_FILES=2\nSTAGED_FILES=3\nSTAGED_KB=0\n'
+        $r = Invoke-FakeBackup -ScanCount 5 -CpFiles 3 -StageLog $log
+        $r.ExitCode | Should -Be 0
+        $r.Output | Should -BeLike "*Snapshot: 3 files (2 more left out because their names cannot be*"
+        $r.Output | Should -BeLike "*created on Windows -- see the WARNING after the copy).*"
+        $r.Output | Should -Not -BeLike "*live volume changed*"
+        $r.Output | Should -Not -BeLike "*mismatch*"
+        $r.Output | Should -BeLike "*WARNING: 2 file or folder name(s) in the Docker volume cannot be created on Windows,*"
+        $r.Output | Should -BeLike "*           ./fx/sub/name?nl*"
+        $r.Output | Should -BeLike "*           ./fx/mf1   (same as ./fx/MF1 except for upper/lower case)*"
+        $r.Output | Should -BeLike "*Backup completed WITH WARNINGS -- verify before relying on it*"
+        $r.Output | Should -Not -BeLike "*Backup complete!*"
+    }
+
+    It "names: a removal on top of real live change reports both, separately" {
+        # Scan 6 = snapshot 3 + 2 removed + 1 file that vanished before the snapshot.
+        $log = 'STAGE_STRIP_NAME\t./a:b\nSTAGED_STRIPPED_NAMES=1\nSTAGED_STRIPPED_FILES=2\nSTAGED_FILES=3\nSTAGED_KB=0\n'
+        $r = Invoke-FakeBackup -ScanCount 6 -CpFiles 3 -StageLog $log
+        $r.ExitCode | Should -Be 0
+        $r.Output | Should -BeLike "*Snapshot: 3 files (2 more left out because their names cannot be*"
+        $r.Output | Should -BeLike "*Apart from those, the snapshot has 1 fewer files than the scan -- the live*"
+    }
+
+    It "names: the list prints BEFORE a fatal short-copy exit, exactly once (review round 7)" {
+        # The copy still stopped early (exit 1, 2 of 3): the run is fatal, but the user
+        # of THIS run must still learn which names were left out.
+        $log = 'STAGE_STRIP_NAME\t./fx/sub/name?nl\nSTAGED_STRIPPED_NAMES=1\nSTAGED_STRIPPED_FILES=1\nSTAGED_FILES=3\nSTAGED_KB=0\n'
+        $r = Invoke-FakeBackup -ScanCount 4 -CpFiles 2 -CpExit 1 -StageLog $log
+        $r.ExitCode | Should -Be 1
+        $r.Output | Should -BeLike "*ERROR: Backup failed (exit code 1); only 2 of 3 expected files were copied.*"
+        $warn = 'WARNING: 1 file or folder name(s) in the Docker volume cannot be created on Windows,'
+        ([regex]::Matches($r.Output, [regex]::Escape($warn))).Count | Should -Be 1
+        $r.Output.IndexOf($warn) | Should -BeLessThan $r.Output.IndexOf('ERROR: Backup failed')
+        $r.Output | Should -BeLike "*           ./fx/sub/name?nl*"
+    }
+
+    It "names: the list prints BEFORE the zero-files fatal exit too" {
+        $log = 'STAGE_STRIP_NAME\t./a:b\nSTAGED_STRIPPED_NAMES=1\nSTAGED_STRIPPED_FILES=1\nSTAGED_FILES=3\nSTAGED_KB=0\n'
+        $r = Invoke-FakeBackup -ScanCount 4 -CpFiles 0 -CpExit 1 -StageLog $log -CountFail
+        $r.ExitCode | Should -Be 1
+        $warn = 'WARNING: 1 file or folder name(s) in the Docker volume cannot be created on Windows,'
+        ([regex]::Matches($r.Output, [regex]::Escape($warn))).Count | Should -Be 1
+        $r.Output.IndexOf($warn) | Should -BeLessThan $r.Output.IndexOf('ERROR: Backup failed (exit code 1)')
+    }
+
+    It "names: a readable log WITHOUT the name markers warns that the list could not be read, latches, exit 0" {
+        $r = Invoke-FakeBackup -ScanCount 3 -CpFiles 3 -StageLog 'STAGED_FILES=3\nSTAGED_KB=0\n' -NoNameMarkers
+        $r.ExitCode | Should -Be 0
+        $r.Output | Should -BeLike "*Snapshot: 3 files.*"
+        $r.Output | Should -BeLike "*WARNING: Could not read the list of names in the Docker volume that Windows cannot create,*"
+        $r.Output | Should -BeLike "*so files or folders with such names may have been left out of this backup*"
+        $r.Output | Should -BeLike "*bash scripts/check_workspace_invariants.sh --names-only*"
+        $r.Output | Should -BeLike "*Backup completed WITH WARNINGS -- verify before relying on it*"
+    }
+
+    It "names: a FAILED docker logs read also warns that the list could not be read" {
+        $r = Invoke-FakeBackup -ScanCount 3 -CpFiles 3 -StageLog 'STAGED_FILES=3\nSTAGED_KB=0\n' -LogsFail
+        $r.ExitCode | Should -Be 0
+        $r.Output | Should -BeLike "*Could not read the snapshot's file count*"
+        $r.Output | Should -BeLike "*WARNING: Could not read the list of names in the Docker volume that Windows cannot create,*"
+        $r.Output | Should -BeLike "*Backup completed WITH WARNINGS*"
+    }
+
     It "a backup destination under a folder with a space reaches docker cp as ONE argument" {
         # F4 regression: the old array -ArgumentList split "$HostPath" at the space,
         # so docker cp got 4+ arguments (the fake exits 64) and nothing landed.
-        $r = Invoke-FakeBackup -ScanCount 3 -CpFiles 3 -CpExit 0 -WorkPrefix "run with space-"
+        $r = Invoke-FakeBackup -ScanCount 3 -CpFiles 3 -CpExit 0 -WorkPrefix "run with space-" -StageLog 'STAGED_FILES=3\nSTAGED_KB=0\n'
         $r.Output | Should -Not -BeLike "*cp expects 3 arguments*"
         $r.ExitCode | Should -Be 0
         $r.Output | Should -BeLike "*Progress: 3 / 3 files (100%)*"

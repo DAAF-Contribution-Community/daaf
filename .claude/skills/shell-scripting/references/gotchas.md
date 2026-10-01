@@ -655,9 +655,9 @@ If `sh -c "$resolved"` emits `ef` (the byte) you have the right number of backsl
 
 ---
 
-### Windows `docker cp` (Container to Host) Aborts at the First FIFO, Device Node, or Uncreatable Symlink
+### Windows `docker cp` (Container to Host) Aborts at the First FIFO, Device Node, Uncreatable Symlink, or Uncreatable Name
 
-**The problem:** On a Windows host, `docker cp CONTAINER:/path HOSTDIR` stops extracting at the first named pipe (FIFO) or block/char device node in the archive stream — and at the first symlink it cannot create (symlink creation needs admin or Developer Mode). Every entry that sorts after it is silently dropped. The CLI still prints "Successfully copied ...", and the exit code alone is not a trustworthy completeness signal (DAAF's own Windows backup reported a truncation with a zero exit — most likely a since-fixed `$null`-to-0 ExitCode coercion, see the `Start-Process -PassThru` entry above).
+**The problem:** On a Windows host, `docker cp CONTAINER:/path HOSTDIR` stops extracting at the first named pipe (FIFO) or block/char device node in the archive stream — at the first symlink it cannot create (symlink creation needs admin or Developer Mode) — and at the first file or folder NAME Windows cannot create (a control byte such as a newline, one of `< > " | ? *`, a device name such as `CON` or `NUL.txt`), or a file and a folder whose names differ only in upper/lower case. Every entry that sorts after it is silently dropped. The CLI still prints "Successfully copied ...", and the exit code alone is not a trustworthy completeness signal (DAAF's own Windows backup reported a truncation with a zero exit — most likely a since-fixed `$null`-to-0 ExitCode coercion, see the `Start-Process -PassThru` entry above).
 
 ```powershell
 # BAD: copy a live volume/tree straight out and trust the success line or $LASTEXITCODE
@@ -675,7 +675,9 @@ paste /tmp/link_paths /tmp/link_targets > /staging/.daaf-symlinks
 find /staging -type l -exec rm -f {} +
 find /staging \( -type p -o -type s -o -type b -o -type c \) -exec rm -f {} +
 '@
-# (abridged -- the production program also gates tab/newline symlink names; see
+# (abridged -- the production program also gates tab/newline symlink names, and,
+# before the symlink manifest, removes and lists names Windows cannot create and
+# case-only clashes when launched with `-e DAAF_STAGE_NAMES=win`; see
 # scripts/host/backup_daaf.{sh,ps1})
 ```
 
@@ -687,7 +689,9 @@ find /staging \( -type p -o -type s -o -type b -o -type c \) -exec rm -f {} +
 3. Verify completeness independently: have the staging program print the frozen snapshot's own counts (`STAGED_FILES=`/`STAGED_KB=` to stdout, read back with `docker logs` before `docker rm -f`), then count the host copy with the same predicates, container-side on Windows (see the next entry). Treat the success line as noise and the exit code as one signal among several — a nonzero exit with a full count still latches the WITH WARNINGS banner; a nonzero exit with a short count is fatal only when that count is exact. A short **lower-bound** count (the host count hit read errors, see the next entry) is not a second signal, since the "missing" files may only be unreadable, so it is downgraded to a latched WARNING; a lower-bound count of 0 exits 1 as "could not be verified" (an unverifiable backup must stop an update or migration, but is never reported as empty or truncated).
 4. Compare at ZERO tolerance against the snapshot, with the SAME `find` predicate on both sides (a root file excluded on one side only, such as a stray `.daaf-permissions`, is a false mismatch). A 1% tolerance hid real gaps: a probe of the maintainer volume projected 714 of 71,820 files dropped after its first FIFO (under the 718-file tolerance), and the 2026-09-29 Windows run below was 197 files short of 73,031 (187 hidden by the PowerShell 5.1 long-path skip, plus 10 most likely from live-volume drift between the scan and the snapshot, an inference from the field evidence below). A live-volume scan taken before the snapshot can drift from it, which is why the snapshot, not the scan, is the target; the 1% tolerance survives only as the fallback when the markers cannot be read.
 
-**Where it lives in DAAF:** `scripts/host/backup_daaf.sh` / `backup_daaf.ps1` staging program (byte-identical across twins, pinned by `tests/bash/backup_twin_parity.bats`); restore replays `.daaf-symlinks`. Linux/macOS hosts are unaffected by the abort (they can create FIFOs and symlinks), but the twins share the staging program so behavior stays aligned.
+**Uncreatable names (field evidence, 2026-09-30):** a Windows backup with Docker Client 29.1.3 (Docker Desktop 4.55.0) stopped at a file named `name<LF>nl` with `The filename, directory name, or volume label syntax is incorrect.` after 72,386 of 73,785 files; DAAF's zero-tolerance count check failed the run (exit 1), so nothing passed silently, but the backup was unusable. Behavior by name class, from upstream source review (moby/go-archive; Microsoft's "Naming Files, Paths, and Namespaces"; not executed on a Windows host): control bytes 0x01-0x1F, `< > " | ? *`, and the device names `CON PRN AUX NUL COM1-9 LPT1-9` (also with the superscript digits ¹²³, `CONIN$`, `CONOUT$`, and with any extension) abort the extraction; `:` aborts in the newer code and is unverified in the older (strip it anyway); `\` is skipped or misplaced; a trailing dot or space is silently renamed (which can then collide). Case-only clashes on case-insensitive NTFS (`docker cp` extracts with no-overwrite-dir-with-non-dir): file+file silently keeps one (count short, exit 0); folder+folder merges; file+folder fails with "cannot overwrite" and aborts. **Version dependence:** Docker CLI 29.7 moved to go-archive v0.3 (`os.Root`-based extraction), which changes some of these outcomes (per specialist source review, not executed); the field host ran the older path, so do not rely on the exact per-class behavior — strip the whole class. DAAF's fix: the staging program, launched with `-e DAAF_STAGE_NAMES=win` by `backup_daaf.ps1` only (the names are legal on macOS/Linux), removes every non-symlink entry with such a name (`-prune` + `rm -rf`, so a folder takes its subtree, before the symlink manifest), removes all but the first (C-locale byte order) of each case-insensitive full-path clash involving a file, lists folder+folder clashes, and prints the list and a `STAGED_STRIPPED_FILES=` count before the final markers; the host prints a WARNING and latches WITH WARNINGS. That list is printed right after the final count line, before either fatal exit, so a run that still stops early names what it left out; and on Windows a staging log that lacks the `STAGED_STRIPPED_NAMES=` marker (the list could not be read) gets its own latched WARNING, because names may then have been removed unannounced. On macOS (`casewarn`) the same step only lists case clashes. Two busybox differences are designed around from source: the busybox `find -iname` fallback upcases the name but not the pattern when libc lacks `FNM_CASEFOLD`, so keep `-iname` patterns upper case; and busybox never runs the last batch of an `-exec ... {} +` inside `\( \)` (see the busybox entry below), so the case listing uses top-level `-o` branches. The test suite runs the step under dash + GNU find; a one-shot host probe ran it under real busybox on Windows (2026-10-01) and matched the expected output exactly (see the busybox entry below).
+
+**Where it lives in DAAF:** `scripts/host/backup_daaf.sh` / `backup_daaf.ps1` staging program (byte-identical across twins, pinned by `tests/bash/backup_twin_parity.bats`); restore replays `.daaf-symlinks`. Linux/macOS hosts are unaffected by the abort (they can create FIFOs, symlinks and these names), but the twins share the staging program so behavior stays aligned; the name step runs only when a twin switches it on.
 
 **Severity:** High. Silent data loss in a backup, with a success message, on the platform least visible to developers.
 
@@ -732,6 +736,38 @@ if (@($errs).Count -gt 0) { Write-Host "Could not read $(@($errs).Count) folder(
 
 ---
 
+### busybox `find` Never Runs the Last Batch of an `-exec ... {} +` Inside `\( \)`
+
+**The problem:** busybox `find` batches `-exec ... {} +` like GNU `find`, but it runs the final (partial) batch at the end of the walk only for `-exec` actions at the TOP level of the expression. An `-exec ... {} +` inside a parenthesized group collects its paths and then never runs for the last batch, which for a small or medium tree is the only batch: the command prints nothing and no error message (observed on a real host, see the field evidence below); that `find` still exits 0 is inferred from the source, not observed. GNU `find` runs it, so a test suite that runs container programs under GNU `find` (DAAF's dev image has no busybox) passes while the real `docker run ... busybox` does nothing.
+
+```sh
+# BAD: the -exec sits inside \( \) -- busybox prints nothing, GNU prints the paths
+find . -mindepth 1 \( -type d -exec printf '%s d\n' {} + -o -type f -exec printf '%s f\n' {} + \)
+
+# GOOD: top-level OR branches, each carrying its own tests (identical output under GNU)
+find . -mindepth 1 -type d -exec printf '%s d\n' {} + -o -type f -exec printf '%s f\n' {} +
+
+# ALSO GOOD: tests inside the parentheses, the action after them
+find /staging \( -type p -o -type s -o -type b -o -type c \) -exec rm -f {} +
+```
+
+`-exec ... \;` (one run per path, not batched) is not affected.
+
+**Why it happens (from source, not executed here):** in busybox `findutils/find.c`, `flush_exec_plus()` runs the pending batch of every `func_exec` action it finds by walking `G.actions`, the top-level OR branches and their AND lists; a `\( \)` group is a single `func_paren` action whose own `subexpr` action list it never visits ([busybox find.c, `mirror/busybox` master](https://github.com/mirror/busybox/blob/master/findutils/find.c), read on 2026-09-30). Alpine's downstream patch documents the symptom: `touch a; busybox find a \( -exec echo {} + \)` "didn't output anything but should output a" ([Alpine aports MR !75008](https://gitlab.alpinelinux.org/alpine/aports/-/merge_requests/75008), not yet upstreamed when read). The unpinned `busybox` image DAAF uses is the upstream (glibc) build, and it is affected: see the field evidence below.
+
+**Field evidence (2026-10-01, Windows host, Docker 29.1.3, the `busybox` image as pulled that day):** a one-shot probe (`research/2026-09-29_FrameworkDev_BackupLongPathCount/2026-09-30_busybox_host_probe.md`) printed `CANARY_PARENS=0` for `find /source -name keep.txt \( -exec echo {} + \) | wc -l` and `CONTROL_TOPLEVEL=1` for the same `-exec` at the top level, with no error line in the output. So the batch inside the parentheses never ran and printed nothing. The probe did not capture `find`'s exit status. The same probe ran the fixed staging program (top-level `-o` branches) under that busybox in both name modes, and its output matched the expected listing exactly.
+
+**Field relevance (review round 7, 2026-09-30):** the Windows backup's case-clash listing (`STAGE_PROGRAM` in `scripts/host/backup_daaf.{sh,ps1}`) first grouped its two `-exec printf ... {} +` branches in `\( \)`. Under busybox it would have listed nothing, so case clashes involving a file would neither have been removed nor reported (the zero-tolerance count would still have caught any file lost to them). Fixed by the top-level form above.
+
+**Fix:**
+1. Keep every batched `-exec ... {} +` at the top level: put tests in the parentheses and the action after them, or split the group into `-o` branches that each repeat their tests.
+2. Guard it mechanically: `tests/bash/backup_twin_parity.bats` reads the host backup/restore scripts and their extracted container programs as text and fails on any `{} +` inside `\( \)` (continuation lines joined, comment lines skipped), with a self-test that rebuilds the pre-fix line.
+3. When busybox itself is not available to the test suite, give the user a one-shot probe to run on the real host (`docker run --rm busybox ...`) with a canary line that proves the probe ran on busybox.
+
+**Severity:** High. A silent no-op in a container program, invisible to GNU-based tests.
+
+---
+
 ## Quick Lookup
 
 | Gotcha | Language | Severity | ShellCheck/Analyzer |
@@ -759,5 +795,6 @@ if (@($errs).Count -gt 0) { Write-Host "Could not read $(@($errs).Count) folder(
 | Exit code truncation | Cross-platform | Low | — |
 | Path separator differences | Cross-platform | Medium | — |
 | Octal `printf` escapes eaten before `sh` | Cross-platform | High | — |
-| Windows `docker cp` aborts at FIFO/device/symlink | Cross-platform | High | — |
+| Windows `docker cp` aborts at FIFO/device/symlink/name | Cross-platform | High | — |
 | PS 5.1 `Get-ChildItem -Recurse` silently skips long paths | PowerShell | High | — |
+| busybox `find`: batched `-exec ... {} +` inside `\( \)` never runs its last batch | Cross-platform | High | — |

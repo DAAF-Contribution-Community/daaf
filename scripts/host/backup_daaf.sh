@@ -76,6 +76,10 @@ VOLUME_NAME="${DAAF_DATA_VOLUME_NAME:-${DAAF_PROJECT_NAME:-daaf}_daaf-data}"
 # predate the volume -- handled gracefully below.
 CLAUDE_VOLUME_NAME="${DAAF_PROJECT_NAME:-daaf}_daaf-claude-config"
 CLAUDE_SUBDIR=".daaf-claude-config"
+# Where that volume is mounted INSIDE the DAAF container (docker-compose.yml:
+# `daaf-claude-config:/home/appuser/.claude`). Used only in a warning's next step
+# (_daaf_case_report); update it by hand if the compose mount moves.
+CLAUDE_CONTAINER_PATH="/home/appuser/.claude"
 # Symlink manifest: backup-root sibling of .daaf-permissions. On Windows hosts,
 # `docker cp` extraction ABORTS the moment it hits a symlink it cannot create
 # (symlink creation needs admin/Developer Mode), silently dropping every file that
@@ -99,6 +103,16 @@ SYMLINKS_MANIFEST=".daaf-symlinks"
 # the backup-folder count excludes it too.
 PERMISSIONS_MANIFEST=".daaf-permissions"
 TODAY=$(date +%Y-%m-%d)
+# Name-handling switch for the staging program (see UNCREATABLE NAMES in the
+# STAGE_PROGRAM comments below), passed as `-e DAAF_STAGE_NAMES=...`. This twin NEVER removes a
+# name -- names Windows cannot create are legal on macOS/Linux disks. On macOS it asks
+# for "casewarn": list names that differ only in upper/lower case (the default macOS
+# disk format is case-insensitive, so one of each pair can overwrite the other). On
+# Linux the value is empty and the step does not run. Only backup_daaf.ps1 passes "win".
+STAGE_NAMES_MODE=""
+if [ "$(uname -s 2>/dev/null || true)" = "Darwin" ]; then
+    STAGE_NAMES_MODE="casewarn"
+fi
 
 # --- Host-side backup-folder count (never silent) ---
 # Counts the data files ("files") or their logical KB ("kb") under a backup folder,
@@ -147,6 +161,65 @@ _daaf_tree_count() {
             fi
             ;;
     esac
+}
+
+# --- Case-clash report (macOS "casewarn" staging mode) ---
+# Reads a staging log ($1) for the lines the staging program prints in "casewarn" mode
+# (see UNCREATABLE NAMES in the STAGE_PROGRAM comments): "STAGE_CASE_FILE" (a clash that
+# involves a file) or "STAGE_CASE_DIR" (two folders), then a TAB, the path, a TAB, and
+# the first path of the clash in byte order. The case list never holds a control byte,
+# so the fields cannot contain a tab. When there are any, it prints a WARNING naming
+# them (at most 20, then "... and N more") for the volume named in $2 and latches
+# HAD_WARNINGS. Nothing is removed on macOS -- the names are legal here -- but the
+# default macOS disk format is case-insensitive, so one name of each pair can overwrite
+# the other when the backup lands (or, for a file and a folder, stop the copy, which the
+# zero-tolerance count check then reports). WARNING to stderr like the others.
+#
+# $3 = 1 when the caller EXPECTS the list: casewarn mode and a staging run that exited
+# 0. Such a run always ends its log with STAGED_FILES= (or STAGED_COUNT_ERRORS= when
+# its count hit read errors), printed AFTER the case lines, so a log without either
+# final marker could not be read back (`docker logs` failed, came back empty, or was
+# cut short) and case-only pairs may be in the backup unnamed. That prints its own
+# WARNING and latches, twin of the .ps1's unreadable-list WARNING (which keys on its
+# win-mode STAGED_STRIPPED_NAMES marker; casewarn mode prints no such marker). Never on
+# Linux: the callers pass 1 only when STAGE_NAMES_MODE is set. $4 = the volume's mount
+# point inside the DAAF container when it is not /daaf (the Claude Code state volume),
+# for the next step: the invariants checker walks /daaf unless DAAF_INVARIANT_ROOT says
+# otherwise. Both hints pass --names-only, which runs only the checker's names check:
+# its symlink and repo-root checks are DAAF-folder rules that flag files belonging in
+# Claude Code's folder and say to delete them.
+_daaf_case_report() {
+    local log="$1" where="$2" expect="${3:-0}" check_root="${4:-}" tab lines n
+    tab="$(printf '\t')"
+    # grep reads the whole log (no -q): an early -q exit could SIGPIPE printf, and
+    # pipefail would then turn a found marker into a false "could not read".
+    if [ "${expect}" = "1" ] && ! printf '%s\n' "${log}" | grep -E '^STAGED_(FILES|COUNT_ERRORS)=[0-9]+$' > /dev/null; then
+        echo "" >&2
+        echo "WARNING: Could not read the list of paths in the ${where} that differ only in upper/lower" >&2
+        echo "         case, so such pairs may be in this backup without being named here (this Mac's" >&2
+        echo "         disk most likely keeps only one of each pair). Re-run the backup; if this warning" >&2
+        if [ -z "${check_root}" ]; then
+            echo "         comes back, list such names inside DAAF with:" >&2
+            echo "           bash scripts/check_workspace_invariants.sh --names-only" >&2
+        else
+            echo "         comes back, list such names inside DAAF with:" >&2
+            echo "           DAAF_INVARIANT_ROOT=${check_root} bash scripts/check_workspace_invariants.sh --names-only" >&2
+        fi
+        HAD_WARNINGS=1
+    fi
+    lines="$(printf '%s\n' "${log}" | grep -E "^STAGE_CASE_(FILE|DIR)${tab}" || true)"
+    [ -n "${lines}" ] || return 0
+    n="$(printf '%s\n' "${lines}" | grep -c .)" || n=0
+    echo "" >&2
+    echo "WARNING: ${n} path(s) in the ${where} are the same as another path except for upper/lower" >&2
+    echo "         case (like ./Data/x and ./data/x). This Mac's disk most likely treats each pair as ONE" >&2
+    echo "         path, so the backup may keep only one of them (or the copy may stop early):" >&2
+    printf '%s\n' "${lines}" | head -n 20 | while IFS="${tab}" read -r _ path first; do
+        echo "           ${path}   (same as ${first} except for upper/lower case)" >&2
+    done || true
+    if [ "${n}" -gt 20 ]; then echo "           ... and $(( n - 20 )) more" >&2; fi
+    echo "         Rename one name of each pair inside DAAF, then back up again." >&2
+    HAD_WARNINGS=1
 }
 
 # --- Dry-Run Support ---
@@ -418,9 +491,108 @@ mkdir -p "${BACKUP_NAME}"
 # the markers are printed only when it is empty; otherwise STAGED_COUNT_ERRORS=<lines>
 # is printed INSTEAD. Missing markers take the existing "Could not read the snapshot's
 # file count" fallback below; the `if` never fails `set -e`, so staging still exits 0.
+#
+# UNCREATABLE NAMES (runs right after `cd /staging`, BEFORE the symlink manifest, so a
+# symlink inside a removed folder never enters ".daaf-symlinks" and restore's replay
+# cannot trip on it; it is also why the pinned tail of the program is untouched). A
+# name Windows cannot create makes Windows `docker cp` ABORT mid-extraction and drop
+# every later entry (field failure 2026-09-30, Docker Client 29.1.3: `docker cp`
+# stopped at a file named `name<LF>nl` -- "The filename, directory name, or volume
+# label syntax is incorrect" -- after 72,386 of 73,785 files). The step is switched by
+# the DAAF_STAGE_NAMES environment variable, passed with `docker run -e` AFTER the
+# `-v` (the program itself stays byte-identical in both twins):
+#   win      -- backup_daaf.ps1 ONLY. Removes (rm -rf, so a folder takes its subtree)
+#               every non-symlink entry whose own name Windows cannot create: control
+#               bytes 0x01-0x1F, any of < > : " | ? * \, a trailing dot or space, and
+#               the device names CON PRN AUX NUL COM1-9 LPT1-9 (also COM/LPT with the
+#               superscript digits 1-3, CONIN$, CONOUT$), case-insensitively and with
+#               any extension. `-prune` keeps a removed folder's children off the list.
+#               Then, for each case-insensitive full-path clash that involves a FILE
+#               (file+file: Windows silently keeps only one; file+folder: `docker cp`
+#               aborts with "cannot overwrite"), keeps the FIRST path in C-locale byte
+#               order and removes the others. Folder+folder clashes are LISTED only
+#               (Windows merges them; clashing children are caught at the full-path
+#               level). Prints STAGE_STRIP_NAME / STAGE_CASE_FILE / STAGE_CASE_DIR lines
+#               and STAGED_STRIPPED_NAMES=<entries> / STAGED_STRIPPED_FILES=<regular files
+#               removed, counted with the snapshot predicate> BEFORE the final markers,
+#               so the markers stay last (last-match-wins parsing).
+#   casewarn -- this twin on macOS (Darwin). LISTS case-only clashes (the macOS disk is
+#               case-insensitive by default), removes nothing.
+#   empty    -- this twin on Linux: the step does not run (these names are legal on
+#               macOS/Linux disks, so they are never removed there).
+# Symlinks are never removed here (`! -type l`): they are stripped into the manifest
+# below as before, and the fatal tab/newline symlink gate still applies to them.
+# Hostile names cannot spoof a marker: every listed path follows a fixed prefix on its
+# own line, and `tr` turns NUL separators into newlines and every control byte 0x01-0x1F
+# inside a name (newline, CR, tab, ESC ...) into `?` (32 bytes in, 32 out: \012 plus
+# the 31 `?` in Q). The case list excludes control-byte paths (`! -path $C`: in win mode
+# they are already gone), so its tab-separated "prefix, path, first path" lines are
+# unambiguous. The step runs in a subshell with `set -f` (the bracket patterns must not
+# glob in /staging), IFS= (no word splitting of the pattern variables) and LC_ALL=C
+# (byte ranges, byte sort, ASCII tolower). The awk program is written by a here-document
+# (`\$` keeps the dollars literal) and uses no string literals, so the program stays
+# free of double quotes; -v passes the words it prints. Tested under dash + GNU
+# find/awk/tr/sort (tests/bash/backup_daaf.bats); busybox is not installed in the dev
+# image, and a one-shot host probe ran the real program under busybox on Windows
+# (2026-10-01, matched exactly: research/2026-09-29_FrameworkDev_BackupLongPathCount/
+# 2026-09-30_busybox_host_probe.md). Two busybox differences are designed around from
+# its source: (1) busybox `-iname` upcases the NAME when libc lacks
+# FNM_CASEFOLD, so every -iname pattern is written in upper case; (2) busybox `find`
+# runs the final batch of an `-exec ... {} +` only for actions at the TOP level of the
+# expression (flush_exec_plus() walks the top-level OR branches and never looks
+# inside `\( \)`; Alpine aports MR !75008), so a batched -exec inside parentheses
+# silently never runs for the last -- usually the only -- batch. The case listing
+# therefore uses two top-level OR branches, each with its own `! -path $C`, instead of
+# a parenthesized group (identical output under GNU find), and
+# tests/bash/backup_twin_parity.bats fails on any `{} +` inside `\( \)` in these
+# container programs.
 STAGE_PROGRAM='set -e
 cp -a /source /staging
 cd /staging
+if [ ${DAAF_STAGE_NAMES:-0} = win ] || [ ${DAAF_STAGE_NAMES:-0} = casewarn ]; then
+(
+set -f
+IFS=
+export LC_ALL=C
+C=$(printf \\052[\\001-\\037]\\052)
+R=$(printf \\052[\\074\\076:\\042\\174?\\052\\134\\134]\\052)
+S=$(printf \\302[\\262\\263\\271])
+Q=$(printf %31s | tr \\040 \\077)
+T=$(printf \\011)
+M=0
+: > /tmp/name_list
+: > /tmp/case_strip
+if [ $DAAF_STAGE_NAMES = win ]; then
+M=1
+before=$(find . -type f ! -path ./'"${SYMLINKS_MANIFEST}"' ! -path ./.daaf-permissions ! -path ./.daaf-claude-config/\* -exec stat -c %s {} + | wc -l)
+find . -mindepth 1 ! -type l \( -name $C -o -name $R -o -name \*[.\ ] \
+-o -iname CON -o -iname CON.\* -o -iname PRN -o -iname PRN.\* -o -iname AUX -o -iname AUX.\* \
+-o -iname NUL -o -iname NUL.\* -o -iname COM[1-9] -o -iname COM[1-9].\* -o -iname LPT[1-9] -o -iname LPT[1-9].\* \
+-o -iname COM$S -o -iname COM$S.\* -o -iname LPT$S -o -iname LPT$S.\* \
+-o -iname CONIN\$ -o -iname CONIN\$.\* -o -iname CONOUT\$ -o -iname CONOUT\$.\* \) \
+-prune -print0 -exec rm -rf {} + > /tmp/name_list
+fi
+cat > /tmp/case_awk <<EOF
+{ p = substr(\$0, 1, length(\$0) - 2); t = substr(\$0, length(\$0)); k = tolower(p) }
+!(k in first) { first[k] = p; ft[k] = t; next }
+{ q = p; while (match(q, /\/[^\/]*\$/)) { q = substr(q, 1, RSTART - 1); if (q in gone) next } }
+t == D && ft[k] == D { print PD, p, first[k]; next }
+{ print PF, p, first[k] }
+M == 1 { print p > F; if (t == D) gone[p] = 1 }
+EOF
+find . -mindepth 1 ! -path $C -type d -exec printf %s\\011d\\n {} + -o ! -path $C -type f -exec printf %s\\011f\\n {} + | sort > /tmp/case_sorted
+awk -v D=d -v PD=STAGE_CASE_DIR -v PF=STAGE_CASE_FILE -v M=$M -v F=/tmp/case_strip -v OFS=$T -f /tmp/case_awk /tmp/case_sorted
+while read -r p; do rm -rf -- $p; done < /tmp/case_strip
+if [ $M = 1 ]; then
+after=$(find . -type f ! -path ./'"${SYMLINKS_MANIFEST}"' ! -path ./.daaf-permissions ! -path ./.daaf-claude-config/\* -exec stat -c %s {} + | wc -l)
+tr \\000\\001-\\037 \\012$Q < /tmp/name_list | sed s/^/STAGE_STRIP_NAME$T/
+n1=$(tr -dc \\000 < /tmp/name_list | wc -c)
+n2=$(wc -l < /tmp/case_strip)
+echo STAGED_STRIPPED_NAMES=$((n1 + n2))
+echo STAGED_STRIPPED_FILES=$((before - after))
+fi
+)
+fi
 find . -type l > /tmp/link_paths
 find . -type l -exec readlink {} \; > /tmp/link_targets
 printf \\011 > /tmp/tab_pat
@@ -464,7 +636,7 @@ echo "Preparing volume snapshot (staging + symlink strip)... (this may take a wh
 # an empty backup folder and no explanation. Capture into STAGE_CID inside the `if`
 # so a launch failure falls into the fatal ERROR path below (precedent:
 # restore_from_backup.sh's `if ! CID="$(docker create ...)"` guard).
-if ! STAGE_CID="$(docker run -d -v "${VOLUME_NAME}:/source:ro" busybox sh -c "${STAGE_PROGRAM}")"; then
+if ! STAGE_CID="$(docker run -d -v "${VOLUME_NAME}:/source:ro" -e "DAAF_STAGE_NAMES=${STAGE_NAMES_MODE}" busybox sh -c "${STAGE_PROGRAM}")"; then
     echo "" >&2
     echo "ERROR: Could not start the staging container for a symlink-safe backup." >&2
     echo "       No backup files were written. Check Docker Desktop for errors and re-run." >&2
@@ -525,22 +697,41 @@ fi
 STAGE_DONE_LOG="$(docker logs "${STAGE_CID}" 2>/dev/null | tr -d '\r')" || STAGE_DONE_LOG=""
 STAGED_FILES="$(printf '%s\n' "${STAGE_DONE_LOG}" | sed -n 's/^STAGED_FILES=\([0-9][0-9]*\)$/\1/p' | tail -n 1)"
 STAGED_KB="$(printf '%s\n' "${STAGE_DONE_LOG}" | sed -n 's/^STAGED_KB=\([0-9][0-9]*\)$/\1/p' | tail -n 1)"
+# Regular files the staging step removed because their names cannot be created on the
+# destination (see UNCREATABLE NAMES above; only the .ps1 twin's "win" mode removes
+# any, so this is 0 here in practice -- parsed anyway so both twins do the same
+# snapshot arithmetic). They were in the scan but are not in the snapshot, so they are
+# subtracted before the difference is blamed on live-volume change.
+STAGED_STRIPPED_FILES="$(printf '%s\n' "${STAGE_DONE_LOG}" | sed -n 's/^STAGED_STRIPPED_FILES=\([0-9][0-9]*\)$/\1/p' | tail -n 1)"
+if [ -z "${STAGED_STRIPPED_FILES}" ]; then STAGED_STRIPPED_FILES=0; fi
 if [ -n "${STAGED_FILES}" ] && [ -n "${STAGED_KB}" ]; then
     HAVE_STAGED_COUNTS=1
     EXPECTED_FILES="${STAGED_FILES}"
     EXPECTED_KB="${STAGED_KB}"
-    if [ "${STAGED_FILES}" -eq "${TOTAL_FILES}" ]; then
-        echo "Snapshot: ${STAGED_FILES} files."
+    SNAPSHOT_ACCOUNTED=$(( STAGED_FILES + STAGED_STRIPPED_FILES ))
+    if [ "${STAGED_STRIPPED_FILES}" -gt 0 ]; then
+        echo "Snapshot: ${STAGED_FILES} files (${STAGED_STRIPPED_FILES} more left out because their names cannot be"
+        echo "          created on this computer -- see the WARNING after the copy)."
+    fi
+    if [ "${SNAPSHOT_ACCOUNTED}" -eq "${TOTAL_FILES}" ]; then
+        if [ "${STAGED_STRIPPED_FILES}" -eq 0 ]; then
+            echo "Snapshot: ${STAGED_FILES} files."
+        fi
     else
         # Net change only: the scan saw the live volume moments before `cp -a` froze it
         # (the scan's line 1 uses the snapshot's own predicate, so this is real change).
-        if [ "${STAGED_FILES}" -gt "${TOTAL_FILES}" ]; then
-            SNAPSHOT_DELTA="$(( STAGED_FILES - TOTAL_FILES )) more"
+        if [ "${SNAPSHOT_ACCOUNTED}" -gt "${TOTAL_FILES}" ]; then
+            SNAPSHOT_DELTA="$(( SNAPSHOT_ACCOUNTED - TOTAL_FILES )) more"
         else
-            SNAPSHOT_DELTA="$(( TOTAL_FILES - STAGED_FILES )) fewer"
+            SNAPSHOT_DELTA="$(( TOTAL_FILES - SNAPSHOT_ACCOUNTED )) fewer"
         fi
-        echo "Snapshot: ${STAGED_FILES} files (${SNAPSHOT_DELTA} than the scan -- the live volume changed in"
-        echo "          between; the snapshot is what gets backed up)."
+        if [ "${STAGED_STRIPPED_FILES}" -gt 0 ]; then
+            echo "          Apart from those, the snapshot has ${SNAPSHOT_DELTA} files than the scan -- the live"
+            echo "          volume changed in between; the snapshot is what gets backed up."
+        else
+            echo "Snapshot: ${STAGED_FILES} files (${SNAPSHOT_DELTA} than the scan -- the live volume changed in"
+            echo "          between; the snapshot is what gets backed up)."
+        fi
     fi
 else
     HAVE_STAGED_COUNTS=0
@@ -563,7 +754,13 @@ while kill -0 "${COPY_PID}" 2>/dev/null; do
     if ! kill -0 "${COPY_PID}" 2>/dev/null; then
         break
     fi
-    COPIED=$(find "${BACKUP_NAME}" -type f 2>/dev/null | wc -l | tr -d '[:space:]') || COPIED=0
+    # Progress display only. Counted with the SAME root exclusions as the snapshot it is
+    # shown against (_daaf_tree_count, as in the verification below): the staged tree
+    # always carries the root ".daaf-symlinks" manifest, which the snapshot excludes, so
+    # a plain `find | wc -l` read one high at the end of the copy (the .ps1 twin showed
+    # "73848 / 73847" in the field, 2026-10-01) and counted a name holding a newline twice.
+    _daaf_tree_count "${BACKUP_NAME}" files
+    COPIED="${TREE_COUNT}"
     if [ "${EXPECTED_FILES}" -gt 0 ]; then
         PERCENT=$((COPIED * 100 / EXPECTED_FILES))
         if [ "${PERCENT}" -gt 100 ]; then PERCENT=100; fi
@@ -583,8 +780,10 @@ trap - INT TERM
 
 # Latch for the completion banner: any of the non-fatal WARNING paths below
 # (nonzero copy exit code, a backup folder missing its symlink manifest, a
-# lower-bound count or size total, file-count mismatch, size mismatch, Claude-state
-# copy failure, permission-manifest failure) sets this so the final banner can say the
+# lower-bound count or size total, file-count mismatch, size mismatch, case-only name
+# clashes on macOS or a macOS case list that could not be read, Claude-state copy
+# failure, permission-manifest failure) sets this
+# so the final banner can say the
 # backup completed WITH WARNINGS rather than claiming an unqualified success. The
 # exit status stays 0 on those paths -- the banner wording is the signal, not the
 # exit code (the corroborated short-copy case below is the one that is fatal, and it
@@ -652,6 +851,19 @@ else
     FINAL_PERCENT=0
 fi
 printf "\r  Progress: %s / %d files (%d%%)   \n" "${FILE_COUNT_LABEL}" "${EXPECTED_FILES}" "${FINAL_PERCENT}"
+
+# --- Case-only name clashes (macOS) ---
+# In "casewarn" mode the staging log lists names that differ only in upper/lower case
+# (see UNCREATABLE NAMES). Reported HERE -- right after the final count line and
+# BEFORE the two fatal exits below (zero files; corroborated short copy) -- because a
+# file+folder clash can itself stop the copy on a case-insensitive disk, and a list
+# printed after those exits would never reach the user of the run that needs it
+# (review round 7). Printed exactly once per volume. Skipped on Linux, where the step
+# does not run. The data-volume staging exited 0 to get here, so the list is expected
+# (1): a log without its final marker warns that the list could not be read.
+if [ -n "${STAGE_NAMES_MODE}" ]; then
+    _daaf_case_report "${STAGE_DONE_LOG}" "Docker volume" 1
+fi
 
 # Zero files counted. When that 0 is a LOWER BOUND (the folder could not be read), it
 # is not evidence of an empty or failed copy -- nothing could be counted. It still
@@ -773,7 +985,8 @@ if [ "${HAVE_STAGED_COUNTS}" -eq 1 ] || [ "${TOTAL_FILES}" -gt 0 ]; then
             echo "         ${COUNT_DIFF} file(s) from the snapshot are missing from this backup. Do not rely on it." >&2
             echo "         One possible cause that re-running will not fix: file names this disk cannot" >&2
             echo "         store side by side, such as names that differ only in upper/lower case on a" >&2
-            echo "         case-insensitive disk (the macOS default)." >&2
+            echo "         case-insensitive disk (the macOS default). On a Mac, any such pairs are listed" >&2
+            echo "         in a WARNING above." >&2
         fi
         HAD_WARNINGS=1
     fi
@@ -867,7 +1080,7 @@ if docker volume inspect "${CLAUDE_VOLUME_NAME}" &> /dev/null; then
     # (mirrors backup_daaf.ps1's $claudeStageStartOk flag + finally-reap pattern).
     # Assigning inside the `if` condition keeps `set -e` from aborting on a launch
     # failure while still capturing whatever the substitution produced.
-    if CLAUDE_STAGE_CID="$(docker run -d -v "${CLAUDE_VOLUME_NAME}:/source:ro" busybox sh -c "${STAGE_PROGRAM}")"; then
+    if CLAUDE_STAGE_CID="$(docker run -d -v "${CLAUDE_VOLUME_NAME}:/source:ro" -e "DAAF_STAGE_NAMES=${STAGE_NAMES_MODE}" busybox sh -c "${STAGE_PROGRAM}")"; then
         CLAUDE_STAGE_START_OK=1
     else
         CLAUDE_STAGE_START_OK=0
@@ -891,6 +1104,17 @@ if docker volume inspect "${CLAUDE_VOLUME_NAME}" &> /dev/null; then
     CLAUDE_STAGE_LOG=""
     if [ "${CLAUDE_STAGE_STATUS}" != "0" ]; then
         CLAUDE_STAGE_LOG="$(docker logs "${CLAUDE_STAGE_CID}" 2>&1 || true)"
+    fi
+    # On a clean staging run in "casewarn" mode (macOS), keep the log for the case-clash
+    # report after the copy attempt (same reason: read it before the `docker rm -f` below).
+    # CLAUDE_CASE_EXPECT=1 marks exactly that case (casewarn + staging exited 0): only
+    # then must the log carry its final marker (see _daaf_case_report). A failed staging
+    # run never printed it, and the WARNING above already covers that.
+    CLAUDE_STAGE_DONE_LOG=""
+    CLAUDE_CASE_EXPECT=0
+    if [ "${CLAUDE_STAGE_STATUS}" = "0" ] && [ -n "${STAGE_NAMES_MODE}" ]; then
+        CLAUDE_CASE_EXPECT=1
+        CLAUDE_STAGE_DONE_LOG="$(docker logs "${CLAUDE_STAGE_CID}" 2>/dev/null | tr -d '\r' || true)"
     fi
     if [ "${CLAUDE_STAGE_STATUS}" = "0" ] && docker cp "${CLAUDE_STAGE_CID}:/staging/." "${BACKUP_NAME}/${CLAUDE_SUBDIR}/"; then
         # Count data files only, with the snapshot count's root-relative predicate
@@ -918,6 +1142,10 @@ if docker volume inspect "${CLAUDE_VOLUME_NAME}" &> /dev/null; then
         echo "         The data volume backup above is still valid." >&2
         HAD_WARNINGS=1
     fi
+    # Case-clash list for this volume (macOS "casewarn"; empty log elsewhere), after
+    # EITHER branch: when the copy failed, a file+folder clash may be why, so the list
+    # must not be skipped on that path. Printed once.
+    _daaf_case_report "${CLAUDE_STAGE_DONE_LOG}" "Claude Code state volume" "${CLAUDE_CASE_EXPECT}" "${CLAUDE_CONTAINER_PATH}"
     docker rm -f "${CLAUDE_STAGE_CID}" > /dev/null 2>&1 || true
     trap - INT TERM
 else

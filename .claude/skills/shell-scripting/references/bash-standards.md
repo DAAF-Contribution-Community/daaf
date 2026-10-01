@@ -271,7 +271,13 @@ The `-E` flag ensures the ERR trap is inherited by functions and subshells.
 
 ### Probe and Test-Harness Hygiene (Self-Cleaning Filesystem Objects)
 
-A scratch probe or test harness that creates **invariant-violating filesystem objects** — symlinks, and especially symlinks with pathological names (embedded tabs or newlines) — must delete those objects before it exits, from **inside the probe script itself**. The cleanup binds via a `trap`, not via the dispatch prompt that launched the probe:
+A scratch probe or test harness that creates **invariant-violating filesystem objects** must delete those objects before it exits, from **inside the probe script itself**. Invariant-violating objects are:
+
+- **Symlinks**, and especially symlinks with pathological names (embedded tabs or newlines).
+- **Files or folders whose names Windows cannot create**: a name containing a control character (0x01-0x1F, including tab and newline) or any of `< > : " | ? * \`, a name ending in a dot or a space, or a reserved device name (`CON`, `PRN`, `AUX`, `NUL`, `COM1`-`COM9`, `LPT1`-`LPT9` and `COM¹`-`COM³`/`LPT¹`-`LPT³` with the superscript digits, `CONIN$`, `CONOUT$`, in any case and with or without an extension, so `nul.txt` counts too).
+- **Case-only name pairs**: two entries in one directory whose names differ only in case (`MF1` and `mf1`, `CDIR/` and `cdir/`).
+
+These objects are legitimate *test inputs*. Backup-gate, name-filter and path-handling tests need them. The problem is only that they outlive the test. Create them in a **dedicated fixture directory**, and register the cleanup with a `trap` in the script. Do not rely on the dispatch prompt that launched the probe to get them removed:
 
 ```bash
 #!/usr/bin/env bash
@@ -279,33 +285,52 @@ set -euo pipefail
 
 # --- Config ---
 readonly PROBE_DIR="${PROJECT_DIR}/scripts/scratch"
+mkdir -p "$PROBE_DIR"
+# Every hostile object goes under FIXTURE_DIR and nowhere else, so cleanup can
+# remove the whole fixture tree without touching the probe's real outputs.
+FIXTURE_DIR="$(mktemp -d "$PROBE_DIR/fixture.XXXXXX")"
+readonly FIXTURE_DIR
 
 # --- Cleanup (register before creating any objects) ---
 cleanup() {
-    # Delete every symlink this probe may have created under its own dir.
-    # `find … -type l -delete` removes only symlinks (not real files) and is
-    # not denied — unlike `rm -rf` of the scratch tree (settings.json deny rule).
+    # Depth-first delete of the fixture tree: hostile-named files and folders,
+    # case pairs and symlinks all go, children before parents. `find … -delete`
+    # scoped to a named subdirectory is not denied, unlike `rm -rf` of the
+    # scratch tree (settings.json deny rule).
+    find "$FIXTURE_DIR" -depth -delete 2>/dev/null || true
+    # Belt-and-braces for a symlink created outside FIXTURE_DIR by mistake.
     find "$PROBE_DIR" -type l -delete 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM
 
-# --- Probe body: create symlinks, exercise the code under test ---
-mkdir -p "$PROBE_DIR"
-ln -s /some/target "$PROBE_DIR/$(printf 'pathological\tname')"
-# ... run the gate/verification logic against the symlink ...
+# --- Probe body: create hostile objects, exercise the code under test ---
+ln -s /some/target "$FIXTURE_DIR/$(printf 'pathological\tname')"
+printf 'x\n' > "$FIXTURE_DIR/$(printf 'name\nnl')"   # newline in a file name
+printf 'x\n' > "$FIXTURE_DIR/nul.txt"                  # reserved device name
+printf 'x\n' > "$FIXTURE_DIR/MF1"                      # case pair ...
+printf 'x\n' > "$FIXTURE_DIR/mf1"                      # ... with this one
+# ... run the gate/verification logic against the fixtures ...
 ```
 
-**Why cleanup lives in the probe, not the dispatch prompt.** A dispatch-prompt instruction ("clean up your symlinks before returning") binds only the one agent it addresses. It does not bind a *future* runner — another engineer's harness, or a reviewer manually re-running the gate logic outside the harness's own trap. This bit DAAF concretely on 2026-07-14: verification probes left symlinks with tab/newline names under `scripts/scratch/`, and the leftovers broke real user backups **three separate times** (twice via engineers' harnesses, once via a reviewer running gate logic by hand outside any trap). A `trap cleanup EXIT INT TERM` inside the probe covers every one of those runners; a prompt covers only the addressee.
+In a bats suite the same rule applies to `teardown`: create fixtures under the `mktemp -d` from `setup`, delete that tree in `teardown` (which runs on pass and on failure), and assert it is gone. `tests/bash/check_workspace_invariants.bats` is a worked example.
 
-**Why `find … -type l -delete` and not `rm -rf`.** Any `rm -rf` is denied at the permission layer (the `settings.json` deny rule `Bash(rm -rf *)`), even of a scratch directory. The harmonized `bash-safety.sh` hook itself allows an in-project `rm -rf`; only the pre-2026-09-26 hook blocked it too. Plain `rm` and a `find … -delete` scoped to a subdirectory are allowed. (An unfiltered `find <project root> -delete`, including one where only `-type` sits between the root and `-delete`, is blocked by the hook's G43 guard.) `find "$PROBE_DIR" -type l -delete` is also *narrower* than deleting the tree — it removes exactly the symlinks (the invariant-violating objects) and leaves real scratch files intact for provenance.
+**Why cleanup lives in the probe, not the dispatch prompt.** A dispatch-prompt instruction ("clean up your fixtures before returning") binds only the agent it is addressed to. It does not bind a *future* runner, such as another engineer's harness or a reviewer re-running the gate logic by hand outside the harness's own trap. This has caused real failures twice. On 2026-07-14, verification probes left symlinks with tab/newline names under `scripts/scratch/`, and the leftovers broke real user backups **three separate times**: twice via engineers' harnesses, once via a reviewer running gate logic by hand outside any trap. On 2026-09-30, a leftover review-agent fixture (a file whose name contained a newline, next to case-only pairs) aborted a real **Windows** backup: Windows `docker cp` stops extracting at the first name Windows cannot create and drops every file after it. A `trap cleanup EXIT INT TERM` inside the probe covers every one of those runners. A prompt covers only the agent it addresses.
 
-**Verification step.** After the probe runs, confirm the workspace is clean by invoking the workspace invariant checker, which walks the live filesystem for unauthorized symlinks (Invariant 1) and repo-root leak artifacts — zero-byte stubs, `*.pre-migrate` backups, or a stray `daaf-docker/` directory left by a wrong-CWD host-tool dry-run (Invariant 2) — since git cannot see untracked scratch:
+**Why `find … -delete` and not `rm -rf`.** Any `rm -rf` is denied at the permission layer by the `settings.json` deny rule `Bash(rm -rf *)`, even for a scratch directory. The harmonized `bash-safety.sh` hook itself allows an in-project `rm -rf`; only the pre-2026-09-26 hook also blocked it. Plain `rm` and a `find … -delete` scoped to a subdirectory are allowed. The exception is an unfiltered `find <project root> -delete`, including one where only traversal options such as `-type` or `-depth` sit between the root and `-delete`: the hook's G43 guard blocks it, so always root the delete at the fixture directory, never at the project. Deleting only `FIXTURE_DIR` is also *narrower* than deleting the scratch tree. It removes exactly the hostile objects and leaves real scratch files in place for provenance.
+
+**Verification step.** After the probe runs, confirm the workspace is clean with the workspace invariant checker. Git cannot see untracked scratch, so the checker walks the live filesystem for three things:
+
+- unauthorized symlinks (Invariant 1)
+- repo-root leak artifacts: zero-byte stubs, `*.pre-migrate` backups, or a stray `daaf-docker/` directory left by a host-tool dry-run started from the wrong CWD (Invariant 2)
+- names Windows cannot create and case-only name clashes anywhere outside `.git` (Invariant 3)
 
 ```bash
 bash "${BASE_DIR}/scripts/check_workspace_invariants.sh"   # prints an OK line on pass; exits 1 and lists offenders (control chars escaped) on violation
 ```
 
-The checker is the *checkable invariant* that binds everyone, complementing the per-probe trap that binds each runner. A green run here is the gate: if it lists an offending symlink, a probe leaked it — delete the object before proceeding.
+The per-probe trap binds each runner. The checker is the *checkable invariant* that binds everyone. A clean run is the gate: if the checker lists an offending object, a probe or test leaked it, so rename or delete it before proceeding.
+
+The full check is for `/daaf` only. `--names-only` (combinable with `-q`) runs Invariant 3 alone; with `DAAF_INVARIANT_ROOT=<dir>` it is the safe way to check another folder, such as the Claude Code state volume at `/home/appuser/.claude` that the backup's unreadable-name-list hint points at. Invariants 1-2 there would flag legitimate files (Codex's symlinks, Claude Code's own zero-byte files) as objects to delete.
 
 ### Composable Scripts (DAAF_NESTED)
 

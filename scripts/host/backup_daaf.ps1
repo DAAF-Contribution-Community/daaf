@@ -208,6 +208,105 @@ function Measure-DaafBackupTree {
     return [pscustomobject]@{ Files = $files; Bytes = $bytes; KB = [long][math]::Floor($bytes / 1024); Errors = $errorCount }
 }
 
+# Write-DaafNameReport prints what the staging program left out (or found) because of
+# a NAME Windows cannot create -- see UNCREATABLE NAMES above $StageProgram. It reads
+# the staging log's lines, each a fixed prefix, a TAB, and fields separated by TABs:
+#   STAGE_STRIP_NAME  <path>          -- removed: the name itself cannot be created
+#                                        (control bytes were printed as "?")
+#   STAGE_CASE_FILE   <path> <first>  -- removed: differs from <first> only in case,
+#                                        and a file is involved
+#   STAGE_CASE_DIR    <path> <first>  -- two folders that differ only in case: kept,
+#                                        Windows merges them into one folder
+# plus the STAGED_STRIPPED_FILES=<n> marker (regular files removed, counting the
+# contents of removed folders). A line with any other shape is ignored, so stray text
+# never lists. Each list shows at most $Cap entries, then "... and N more". Returns
+# $true when it printed a WARNING (the caller latches $HadWarnings), else $false.
+#
+# -ExpectMarker: the caller passes it when the staging program EXITED 0 in win mode.
+# Such a run always prints STAGED_STRIPPED_NAMES=<n> (0 when nothing was removed), so
+# a log WITHOUT that marker means the list could not be read (`docker logs` failed,
+# came back empty, or was cut short) -- and names may have been removed with nobody
+# told. That prints its own WARNING and returns $true. A WARNING that latches, not a
+# Note: leaving names out is a WARNING when the list is read (D3, 2026-09-30), an
+# unreadable list cannot rule it out, and the snapshot markers are then usually
+# unreadable too, so the fallback 1% count tolerance could hide the removed files.
+#
+# -CheckRoot: where that volume's files live INSIDE the DAAF container, for the
+# warning's next step. Empty (the data volume, /daaf) =
+# `bash scripts/check_workspace_invariants.sh --names-only`, which walks /daaf. The
+# Claude Code state volume passes its mount point, so the hint becomes
+# `DAAF_INVARIANT_ROOT=<path> bash scripts/check_workspace_invariants.sh --names-only`.
+# Both pass --names-only, which runs only the checker's names check: pointed at Claude
+# Code's folder, its other two checks (symlinks, repo-root leftovers) list files that
+# belong there and tell the reader to delete them (observed 2026-10-01: Codex's
+# symlinks and two zero-byte files at that folder's root were flagged).
+function Write-DaafNameReport {
+    [CmdletBinding()]
+    param(
+        [AllowNull()][object[]]$Lines,
+        [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string]$Where,
+        [int]$Cap = 20,
+        [switch]$ExpectMarker,
+        [string]$CheckRoot = ''
+    )
+    $leftOut = New-Object System.Collections.Generic.List[string]
+    $merged = New-Object System.Collections.Generic.List[string]
+    foreach ($raw in @($Lines)) {
+        foreach ($line in ("$raw" -split "`r?`n")) {
+            $f = @($line -split "`t")
+            if ($f.Count -eq 2 -and $f[0] -ceq 'STAGE_STRIP_NAME') {
+                $leftOut.Add($f[1])
+            } elseif ($f.Count -eq 3 -and $f[0] -ceq 'STAGE_CASE_FILE') {
+                $leftOut.Add("$($f[1])   (same as $($f[2]) except for upper/lower case)")
+            } elseif ($f.Count -eq 3 -and $f[0] -ceq 'STAGE_CASE_DIR') {
+                $merged.Add("$($f[1])   (same as $($f[2]) except for upper/lower case)")
+            }
+        }
+    }
+    $warned = $false
+    if ($ExpectMarker -and $null -eq (Get-DaafCountMarker -Lines $Lines -Name 'STAGED_STRIPPED_NAMES')) {
+        Write-Host ""
+        Write-Host "WARNING: Could not read the list of names in the $Where that Windows cannot create," -ForegroundColor Yellow
+        Write-Host "         so files or folders with such names may have been left out of this backup"
+        Write-Host "         without being named here. Re-run the backup; if this warning comes back, list"
+        Write-Host "         such names inside DAAF with:"
+        if ([string]::IsNullOrEmpty($CheckRoot)) {
+            Write-Host "           bash scripts/check_workspace_invariants.sh --names-only"
+        } else {
+            Write-Host "           DAAF_INVARIANT_ROOT=$CheckRoot bash scripts/check_workspace_invariants.sh --names-only"
+        }
+        $warned = $true
+    }
+    if ($leftOut.Count -gt 0) {
+        $strippedFiles = Get-DaafCountMarker -Lines $Lines -Name 'STAGED_STRIPPED_FILES'
+        Write-Host ""
+        Write-Host "WARNING: $($leftOut.Count) file or folder name(s) in the $Where cannot be created on Windows," -ForegroundColor Yellow
+        if ($null -ne $strippedFiles) {
+            Write-Host "         so they were left out of this backup ($strippedFiles file(s) in total, counting folder contents):"
+        } else {
+            Write-Host "         so they were left out of this backup:"
+        }
+        foreach ($entry in @($leftOut | Select-Object -First $Cap)) { Write-Host "           $entry" }
+        if ($leftOut.Count -gt $Cap) { Write-Host "           ... and $($leftOut.Count - $Cap) more" }
+        Write-Host "         Rename them inside DAAF, then back up again. Windows cannot create names with"
+        Write-Host "         control characters, any of : * ? < > | \ or a double quote, a trailing dot or"
+        Write-Host "         space, device names such as CON, NUL or COM1, or a path that is the same as"
+        Write-Host "         another path except for upper/lower case (like ./Data/x and ./data/x)."
+        $warned = $true
+    }
+    if ($merged.Count -gt 0) {
+        Write-Host ""
+        Write-Host "WARNING: $($merged.Count) folder path(s) in the $Where are the same as another folder path" -ForegroundColor Yellow
+        Write-Host "         except for upper/lower case. Windows keeps one folder for each pair, so their"
+        Write-Host "         contents were merged in this backup (a restore puts them in one folder):"
+        foreach ($entry in @($merged | Select-Object -First $Cap)) { Write-Host "           $entry" }
+        if ($merged.Count -gt $Cap) { Write-Host "           ... and $($merged.Count - $Cap) more" }
+        Write-Host "         Rename one folder of each pair inside DAAF, then back up again."
+        $warned = $true
+    }
+    return $warned
+}
+
 # --- Test Mode Guard ---
 # When dot-sourced for testing, define functions but skip execution.
 # Usage: $env:DAAF_TEST_MODE = "1"; . ./scripts/host/backup_daaf.ps1
@@ -242,6 +341,10 @@ if ($env:DAAF_DATA_VOLUME_NAME) { $VolumeName = $env:DAAF_DATA_VOLUME_NAME }
 # the volume -- handled gracefully below.
 $ClaudeVolumeName = "${projectName}_daaf-claude-config"
 $ClaudeSubDir = ".daaf-claude-config"
+# Where that volume is mounted INSIDE the DAAF container (docker-compose.yml:
+# `daaf-claude-config:/home/appuser/.claude`). Used only in a warning's next step
+# (Write-DaafNameReport -CheckRoot); update it by hand if the compose mount moves.
+$ClaudeContainerPath = "/home/appuser/.claude"
 # Symlink manifest: backup-root sibling of .daaf-permissions. On Windows hosts,
 # `docker cp` extraction ABORTS the moment it hits a symlink it cannot create
 # (symlink creation needs admin/Developer Mode), silently dropping every file that
@@ -557,10 +660,85 @@ $HostPath = (Resolve-Path $BackupName).Path
 # ending in a single quote). A pipeline's status is its last command's, so the count
 # line cannot trip `set -e` (which is also why errors are detected through
 # /tmp/count_err, above), and with no files `find` runs no `stat` and awk prints 0 0.
+#
+# UNCREATABLE NAMES (twin of backup_daaf.sh; the full annotation lives there). Right
+# after `cd /staging` and BEFORE the symlink manifest, a step switched by the
+# DAAF_STAGE_NAMES environment variable handles names Windows cannot create -- a name
+# that made Windows `docker cp` ABORT mid-extraction and drop every later entry (field
+# failure 2026-09-30, Docker Client 29.1.3: stopped at a file named `name<LF>nl`,
+# "The filename, directory name, or volume label syntax is incorrect", after 72,386
+# of 73,785 files). THIS twin passes `-e DAAF_STAGE_NAMES=win` (after the `-v`) for
+# both volumes; the .sh twin never does (the names are legal on macOS/Linux; it passes
+# "casewarn" on macOS to LIST case-only clashes, and nothing on Linux). In win mode the
+# step removes every non-symlink entry (a folder with its subtree) whose own name has a
+# control byte 0x01-0x1F, any of < > : " | ? * \, a trailing dot or space, or is a
+# device name (CON PRN AUX NUL COM1-9 LPT1-9, COM/LPT with superscript 1-3, CONIN$,
+# CONOUT$; any case, any extension). Then, for each case-insensitive full-path clash
+# involving a FILE (file+file: Windows silently keeps one; file+folder: `docker cp`
+# aborts), it keeps the FIRST path in C-locale byte order and removes the rest;
+# folder+folder clashes are listed only (Windows merges them). It prints
+# STAGE_STRIP_NAME / STAGE_CASE_FILE / STAGE_CASE_DIR lines (control bytes shown as
+# "?", so a name can never start a line of its own) and STAGED_STRIPPED_NAMES /
+# STAGED_STRIPPED_FILES markers, all BEFORE the final STAGED_FILES/STAGED_KB, which
+# stay last (last match wins). Write-DaafNameReport turns them into the WARNING after
+# the copy, and STAGED_STRIPPED_FILES keeps the "Snapshot" line from blaming removed
+# files on live-volume change. Symlinks are never removed by this step, so the fatal
+# tab/newline symlink gate below is unchanged. The bats suite runs it under dash + GNU
+# find; a one-shot host probe ran it under real busybox on Windows (2026-10-01, matched
+# exactly: research/2026-09-29_FrameworkDev_BackupLongPathCount/
+# 2026-09-30_busybox_host_probe.md). Two busybox differences are designed around
+# from its source (see the .sh twin): upper-case -iname patterns, and NO batched
+# `-exec ... {} +` inside `\( \)` -- busybox never runs the final batch of an -exec
+# that is not at the top level of the expression (Alpine aports MR !75008), so the
+# case listing uses two top-level OR branches (pinned by backup_twin_parity.bats).
 $StageProgram = @'
 set -e
 cp -a /source /staging
 cd /staging
+if [ ${DAAF_STAGE_NAMES:-0} = win ] || [ ${DAAF_STAGE_NAMES:-0} = casewarn ]; then
+(
+set -f
+IFS=
+export LC_ALL=C
+C=$(printf \\052[\\001-\\037]\\052)
+R=$(printf \\052[\\074\\076:\\042\\174?\\052\\134\\134]\\052)
+S=$(printf \\302[\\262\\263\\271])
+Q=$(printf %31s | tr \\040 \\077)
+T=$(printf \\011)
+M=0
+: > /tmp/name_list
+: > /tmp/case_strip
+if [ $DAAF_STAGE_NAMES = win ]; then
+M=1
+before=$(find . -type f ! -path ./.daaf-symlinks ! -path ./.daaf-permissions ! -path ./.daaf-claude-config/\* -exec stat -c %s {} + | wc -l)
+find . -mindepth 1 ! -type l \( -name $C -o -name $R -o -name \*[.\ ] \
+-o -iname CON -o -iname CON.\* -o -iname PRN -o -iname PRN.\* -o -iname AUX -o -iname AUX.\* \
+-o -iname NUL -o -iname NUL.\* -o -iname COM[1-9] -o -iname COM[1-9].\* -o -iname LPT[1-9] -o -iname LPT[1-9].\* \
+-o -iname COM$S -o -iname COM$S.\* -o -iname LPT$S -o -iname LPT$S.\* \
+-o -iname CONIN\$ -o -iname CONIN\$.\* -o -iname CONOUT\$ -o -iname CONOUT\$.\* \) \
+-prune -print0 -exec rm -rf {} + > /tmp/name_list
+fi
+cat > /tmp/case_awk <<EOF
+{ p = substr(\$0, 1, length(\$0) - 2); t = substr(\$0, length(\$0)); k = tolower(p) }
+!(k in first) { first[k] = p; ft[k] = t; next }
+{ q = p; while (match(q, /\/[^\/]*\$/)) { q = substr(q, 1, RSTART - 1); if (q in gone) next } }
+t == D && ft[k] == D { print PD, p, first[k]; next }
+{ print PF, p, first[k] }
+M == 1 { print p > F; if (t == D) gone[p] = 1 }
+EOF
+find . -mindepth 1 ! -path $C -type d -exec printf %s\\011d\\n {} + -o ! -path $C -type f -exec printf %s\\011f\\n {} + | sort > /tmp/case_sorted
+awk -v D=d -v PD=STAGE_CASE_DIR -v PF=STAGE_CASE_FILE -v M=$M -v F=/tmp/case_strip -v OFS=$T -f /tmp/case_awk /tmp/case_sorted
+while read -r p; do rm -rf -- $p; done < /tmp/case_strip
+if [ $M = 1 ]; then
+after=$(find . -type f ! -path ./.daaf-symlinks ! -path ./.daaf-permissions ! -path ./.daaf-claude-config/\* -exec stat -c %s {} + | wc -l)
+tr \\000\\001-\\037 \\012$Q < /tmp/name_list | sed s/^/STAGE_STRIP_NAME$T/
+n1=$(tr -dc \\000 < /tmp/name_list | wc -c)
+n2=$(wc -l < /tmp/case_strip)
+echo STAGED_STRIPPED_NAMES=$((n1 + n2))
+echo STAGED_STRIPPED_FILES=$((before - after))
+fi
+)
+fi
 find . -type l > /tmp/link_paths
 find . -type l -exec readlink {} \; > /tmp/link_targets
 printf \\011 > /tmp/tab_pat
@@ -598,7 +776,7 @@ Write-Host "Preparing volume snapshot (staging + symlink strip)... (this may tak
 # status, which MUST be checked -- a nonzero status means staging failed before any
 # host bytes were written, so the backup aborts fatally (nothing useful produced).
 $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-$StageCid = (docker run -d -v "${VolumeName}:/source:ro" busybox sh -c $StageProgram 2>&1 | Select-Object -Last 1)
+$StageCid = (docker run -d -v "${VolumeName}:/source:ro" -e DAAF_STAGE_NAMES=win busybox sh -c $StageProgram 2>&1 | Select-Object -Last 1)
 if ($null -ne $StageCid) { $StageCid = "$StageCid".Trim() }
 $stageStartOk = ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrEmpty($StageCid))
 $ErrorActionPreference = $savedEAP
@@ -628,6 +806,8 @@ $CopyProcess = $null
 $HaveStagedCounts = $false
 $ExpectedFiles = $TotalFiles
 $ExpectedKB = $VolumeLogicalKB
+# The staging log, kept for the name report after the copy (Write-DaafNameReport).
+$StageDoneLog = @()
 try {
     $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
     $StageStatusRaw = (docker wait $StageCid 2>&1 | Select-Object -Last 1)
@@ -679,18 +859,39 @@ try {
             $StagedKB = Get-DaafCountMarker -Lines $StageDoneLog -Name 'STAGED_KB'
         }
         $HaveStagedCounts = ($null -ne $StagedFiles -and $null -ne $StagedKB)
+        # Regular files the staging step removed because Windows cannot create their
+        # names (see UNCREATABLE NAMES above $StageProgram). They were in the scan but
+        # not in the snapshot, so they are added back before any remaining difference
+        # is blamed on live-volume change. Missing marker = 0.
+        $StagedStrippedFiles = [long]0
+        if ($stageLogsOk) {
+            $strippedParsed = Get-DaafCountMarker -Lines $StageDoneLog -Name 'STAGED_STRIPPED_FILES'
+            if ($null -ne $strippedParsed) { $StagedStrippedFiles = $strippedParsed }
+        } else {
+            $StageDoneLog = @()
+        }
         if ($HaveStagedCounts) {
             $ExpectedFiles = $StagedFiles
             $ExpectedKB = $StagedKB
-            if ($StagedFiles -eq $TotalFiles) {
-                Write-Host "Snapshot: $StagedFiles files."
+            $SnapshotAccounted = $StagedFiles + $StagedStrippedFiles
+            if ($StagedStrippedFiles -gt 0) {
+                Write-Host "Snapshot: $StagedFiles files ($StagedStrippedFiles more left out because their names cannot be"
+                Write-Host "          created on Windows -- see the WARNING after the copy)."
+            }
+            if ($SnapshotAccounted -eq $TotalFiles) {
+                if ($StagedStrippedFiles -eq 0) { Write-Host "Snapshot: $StagedFiles files." }
             } else {
                 # Net change only: the scan saw the live volume moments before `cp -a` froze
                 # it. The scan's [0] uses the snapshot's own predicate, so the difference is
                 # real change on the volume, not a counting difference.
-                if ($StagedFiles -gt $TotalFiles) { $SnapshotDelta = "$($StagedFiles - $TotalFiles) more" } else { $SnapshotDelta = "$($TotalFiles - $StagedFiles) fewer" }
-                Write-Host "Snapshot: $StagedFiles files ($SnapshotDelta than the scan -- the live volume changed in"
-                Write-Host "          between; the snapshot is what gets backed up)."
+                if ($SnapshotAccounted -gt $TotalFiles) { $SnapshotDelta = "$($SnapshotAccounted - $TotalFiles) more" } else { $SnapshotDelta = "$($TotalFiles - $SnapshotAccounted) fewer" }
+                if ($StagedStrippedFiles -gt 0) {
+                    Write-Host "          Apart from those, the snapshot has $SnapshotDelta files than the scan -- the live"
+                    Write-Host "          volume changed in between; the snapshot is what gets backed up."
+                } else {
+                    Write-Host "Snapshot: $StagedFiles files ($SnapshotDelta than the scan -- the live volume changed in"
+                    Write-Host "          between; the snapshot is what gets backed up)."
+                }
             }
         } else {
             $ExpectedFiles = $TotalFiles
@@ -740,8 +941,12 @@ try {
             if ($CopyProcess.HasExited) { break }
             # Progress display only: Get-ChildItem undercounts folders past the Windows
             # path-length limit, so this can read low. The final line below reports the
-            # verified (container-side) count.
-            $Copied = @(Get-ChildItem -Path $BackupName -Recurse -File -Force -ErrorAction SilentlyContinue).Count
+            # verified (container-side) count. Counted with the SAME root exclusions as
+            # the snapshot it is shown against (Measure-DaafBackupTree, as in the fallback
+            # count below): the staged tree always carries the root ".daaf-symlinks"
+            # manifest, which the snapshot excludes, so a plain count of every file read
+            # one high at the end of the copy (field 2026-10-01: "73848 / 73847").
+            $Copied = (Measure-DaafBackupTree -Root $HostPath -ExcludeRootFiles @($SymlinksManifest, $PermissionsManifest) -ExcludeRootDirs @($ClaudeSubDir)).Files
             if ($ExpectedFiles -gt 0) {
                 $Percent = [math]::Min(100, [math]::Floor($Copied * 100 / $ExpectedFiles))
             } else {
@@ -812,8 +1017,9 @@ $CopyExitKnown = ($null -ne $CopyExitCode)
 
 # Latch for the completion banner: any of the non-fatal WARNING paths below
 # (nonzero or unreadable copy exit code, a backup folder missing its symlink manifest,
-# a lower-bound fallback count, file-count mismatch, size mismatch, Claude-state copy
-# failure, permission-manifest failure) sets this so the final banner can say the
+# a lower-bound fallback count, file-count mismatch, size mismatch, names Windows cannot
+# create, Claude-state copy failure, permission-manifest failure) sets this so the final
+# banner can say the
 # backup completed WITH WARNINGS rather than claiming an unqualified success. The
 # exit status stays 0 on those paths -- the banner wording is the signal, not the
 # exit code (the corroborated short-copy case below is the one that is fatal, and it
@@ -962,6 +1168,17 @@ if ($ExpectedFiles -gt 0) {
 }
 Write-Host "  Progress: $FileCountLabel / $ExpectedFiles files ($FinalPercent%)   "
 
+# --- Names Windows cannot create ---
+# The staging step removed (or, for folder pairs, listed) names Windows cannot create
+# -- see UNCREATABLE NAMES above $StageProgram. Reported HERE, right after the final
+# count line and BEFORE the two fatal exits below (zero files; corroborated short
+# copy): if the copy still stopped early for some other reason, the user of that run
+# must still learn which names were left out (review round 7; twin of the .sh case
+# report's placement). Printed exactly once. The data-volume staging exited 0 to get
+# here, so -ExpectMarker is always right: a log without STAGED_STRIPPED_NAMES means the
+# list could not be read. On the success path the exit status stays 0.
+if (Write-DaafNameReport -Lines $StageDoneLog -Where 'Docker volume' -ExpectMarker) { $HadWarnings = $true }
+
 # Zero files counted. When that 0 is a LOWER BOUND (the PowerShell fallback hit read
 # errors), it is not evidence of an empty or failed copy -- nothing could be counted.
 # It still exits 1 like the other zero-file cases: an unverifiable backup must not
@@ -1104,10 +1321,17 @@ if ($HaveStagedCounts -or $TotalFiles -gt 0) {
             Write-Host "         files are missing or only uncounted. Do not rely on this backup until a run"
             Write-Host "         finishes without this warning."
         } else {
+            # Names Windows cannot create never reach this count: the staging step removed
+            # them before the copy and the name WARNING above lists them. The remaining
+            # cause a re-run cannot fix is a case-only clash the staging step's ASCII case
+            # folding misses (letters outside A-Z), which NTFS still treats as one name
+            # (inference: NTFS folds case through its Unicode upcase table; not tested).
             Write-Host "         $CountDiff file(s) from the snapshot are missing from this backup. Do not rely on it."
-            Write-Host "         One possible cause that re-running will not fix: file names Windows cannot"
-            Write-Host "         store, such as names that differ only in upper/lower case, or names that"
-            Write-Host "         contain characters like : * ? < > |"
+            Write-Host "         (Files left out because Windows cannot create their names are not part of"
+            Write-Host "         this number; any such names are listed in a WARNING above.) One possible cause"
+            Write-Host "         that re-running will not fix: two names that differ only in the case of a"
+            Write-Host "         letter outside A-Z, such as an accented letter, which Windows also treats as"
+            Write-Host "         one name."
         }
         $HadWarnings = $true
     }
@@ -1182,9 +1406,11 @@ if ($claudeVolumeExists) {
     $claudeCopyOk = $false
     $ClaudeStageLog = ""
     $ClaudeStagedFiles = $null
+    $ClaudeStageDoneLog = @()
+    $claudeStagedOk = $false
     try {
         $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-        $ClaudeStageCid = (docker run -d -v "${ClaudeVolumeName}:/source:ro" busybox sh -c $StageProgram 2>&1 | Select-Object -Last 1)
+        $ClaudeStageCid = (docker run -d -v "${ClaudeVolumeName}:/source:ro" -e DAAF_STAGE_NAMES=win busybox sh -c $StageProgram 2>&1 | Select-Object -Last 1)
         if ($null -ne $ClaudeStageCid) { $ClaudeStageCid = "$ClaudeStageCid".Trim() }
         $claudeStageStartOk = ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrEmpty($ClaudeStageCid))
         $ErrorActionPreference = $savedEAP
@@ -1202,6 +1428,7 @@ if ($claudeVolumeExists) {
                 $ClaudeStageStatus = $ClaudeStageStatusParsed
             }
             if ($ClaudeStageStatus -eq 0) {
+                $claudeStagedOk = $true
                 # Same $StageProgram, so its log carries STAGED_FILES too (unless that
                 # count hit read errors, in which case the fallback below runs): read it
                 # before the finally below removes the container. Used for the
@@ -1266,6 +1493,11 @@ if ($claudeVolumeExists) {
         Write-Host "         The data volume backup above is still valid."
         $HadWarnings = $true
     }
+    # Same name report as the data volume (the same win-mode $StageProgram staged it),
+    # after EITHER branch: a failed Claude copy must still say which names were left
+    # out. -ExpectMarker only when this staging exited 0 -- a failed staging run never
+    # reached its marker lines, and its own WARNING above already covers it.
+    if (Write-DaafNameReport -Lines $ClaudeStageDoneLog -Where 'Claude Code state volume' -ExpectMarker:$claudeStagedOk -CheckRoot $ClaudeContainerPath) { $HadWarnings = $true }
 } else {
     Write-Host ""
     Write-Host "NOTE: No Claude Code state volume ('$ClaudeVolumeName') found."

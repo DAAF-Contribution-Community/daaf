@@ -861,8 +861,9 @@ def probe_auth_json(route_info: RouteInfo, env) -> ProbeResult:
 
 
 def probe_workspace_invariants(base_dir: str = BASE_DIR) -> ProbeResult:
-    """Run check_workspace_invariants.sh -q (no unauthorized symlinks / repo-root
-    leak artifacts on the live filesystem)."""
+    """Run check_workspace_invariants.sh -q (no unauthorized symlinks, repo-root
+    leak artifacts, names Windows cannot create, or case-only name clashes on the
+    live filesystem)."""
     r = ProbeResult(probe_id="T0.10", name="Workspace invariants", tier="0")
     script = Path(base_dir) / "scripts" / "check_workspace_invariants.sh"
     try:

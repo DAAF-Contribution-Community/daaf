@@ -45,7 +45,7 @@ What kind of script?
 │   ├─ Preamble and structure → ./references/bash-standards.md
 │   ├─ Error handling design → ./references/error-handling.md
 │   ├─ Signal handling / cleanup → ./references/bash-standards.md
-│   └─ Scratch probe that makes symlinks (self-cleaning) → ./references/bash-standards.md
+│   └─ Scratch probe that makes symlinks or hostile-named fixtures (self-cleaning) → ./references/bash-standards.md
 ├─ PowerShell (.ps1)
 │   ├─ Preamble and structure → ./references/powershell-standards.md
 │   ├─ Native command error handling → ./references/powershell-standards.md
@@ -99,8 +99,9 @@ Script behaving unexpectedly?
     ├─ Env var case mismatch → ./references/gotchas.md
     ├─ Aliases missing → ./references/gotchas.md
     ├─ Exit code truncated → ./references/gotchas.md
-    ├─ Windows docker cp copy silently truncated → ./references/gotchas.md (FIFO/device/symlink abort)
-    └─ Windows file count too low / folders skipped → ./references/gotchas.md (PS 5.1 Get-ChildItem long paths)
+    ├─ Windows docker cp copy silently truncated → ./references/gotchas.md (FIFO/device/symlink/name abort)
+    ├─ Windows file count too low / folders skipped → ./references/gotchas.md (PS 5.1 Get-ChildItem long paths)
+    └─ busybox find -exec {} + prints/does nothing → ./references/gotchas.md (-exec + inside \( \))
 ```
 
 ### "I need to set up tests"
@@ -186,7 +187,7 @@ Existing patterns in DAAF scripts that this skill codifies:
 | Bash variable handling | `./references/bash-standards.md` |
 | ShellCheck integration | `./references/bash-standards.md` |
 | Bash signal handling and cleanup | `./references/bash-standards.md` |
-| Probe / test-harness hygiene (self-cleaning symlinks, workspace invariant checker) | `./references/bash-standards.md` |
+| Probe / test-harness hygiene (self-cleaning symlinks and hostile-name fixtures, workspace invariant checker) | `./references/bash-standards.md` |
 | Bash never-do list | `./references/bash-standards.md` |
 | Host-script Bash 3.2 portability (macOS `/bin/bash`) | `./references/bash-standards.md` |
 | Banned Bash-4.x-only constructs for host scripts | `./references/bash-standards.md` |
@@ -229,6 +230,7 @@ Existing patterns in DAAF scripts that this skill codifies:
 | Cross-platform exit code truncation | `./references/gotchas.md` |
 | Cross-platform path separators | `./references/gotchas.md` |
 | Cross-language octal `printf` escaping (`\\357`/`\\011` to `sh`) | `./references/gotchas.md` |
-| Windows `docker cp` aborts at FIFO/device node/symlink (stage + strip + count) | `./references/gotchas.md` |
+| Windows `docker cp` aborts at FIFO/device node/symlink/uncreatable name (stage + strip + count) | `./references/gotchas.md` |
 | PS 5.1 `Get-ChildItem -Recurse` silently skips long paths (count container-side, `-ErrorVariable`) | `./references/gotchas.md` |
+| busybox `find` never runs the last batch of `-exec ... {} +` inside `\( \)` (keep batched actions top-level) | `./references/gotchas.md` |
 | Detached-container (`docker run -d`) diagnostics routing | `./references/error-handling.md` |

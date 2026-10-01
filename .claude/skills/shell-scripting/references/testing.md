@@ -430,11 +430,22 @@ Notes:
   failure. The runners clean up their own directories: bats removes its run
   directory on exit unless `--no-tempdir-cleanup` is given, and Pester removes
   `$TestDrive` when the top-level block finishes.
+- **Fixtures with hostile names must be removed in teardown.** Hostile names
+  include a control character (newline, tab) or any of `< > : " | ? * \`, a
+  trailing dot or space, a reserved device name such as `CON` or `nul.txt`, and
+  case-only pairs such as `MF1`/`mf1`. They are exactly what breaks a Windows
+  backup if they outlive the test: `docker cp` stops at the first name Windows
+  cannot create. Create them only under the test's own temp directory and delete
+  that tree in `teardown` / `AfterAll`. `bash scripts/check_workspace_invariants.sh`
+  flags them anywhere outside `.git` (Invariant 3). The pattern is in
+  `bash-standards.md` > "Probe and Test-Harness Hygiene".
 - **An interrupted run can leave the bats run directory behind.** That directory
   holds a symlink that bats creates for each test file
   (`bats-exec-file`), which `bash scripts/check_workspace_invariants.sh` flags as
   unauthorized. Run the checker after in-container test runs, and ask the user to
-  remove any leftovers it reports.
+  remove any leftovers it reports. The same symlink exists while a run is in
+  progress, so a checker run *during* a bats run, whether a concurrent one or a
+  test that checks the live `/daaf`, reports it too.
 
 ---
 

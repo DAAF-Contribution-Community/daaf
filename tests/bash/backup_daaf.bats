@@ -503,12 +503,30 @@ _mock_snapshot_docker() {
                 mkdir -p "${dest_dir}"
                 while [ "${i}" -lt "${CP_FILES}" ]; do touch "${dest_dir}/file${i}"; i=$((i + 1)); done
                 touch "${dest_dir}/.daaf-symlinks"
+                # CP_SLEEP (seconds) keeps the background copy "running" after its files
+                # land, so the 3-second progress loop prints at least one line.
+                sleep "${CP_SLEEP:-0}"
                 return 0
                 ;;
             *)  return 0 ;;
         esac
     }
     export -f docker
+}
+
+@test "backup: the copy-progress count excludes the root manifest like the snapshot (no N+1 / N)" {
+    # Field 2026-10-01 (.ps1 twin; this loop had the same count): the progress line read
+    # "73848 / 73847 files" because it counted the root .daaf-symlinks manifest, which
+    # the snapshot excludes. The fake copy lands 2 files + the manifest, then sleeps so
+    # the progress loop runs while the copy is still going.
+    export DAAF_NESTED=1 SCAN_COUNT=2 CP_FILES=2 CP_SLEEP=5 STAGE_LOG_TEXT='STAGED_FILES=2\nSTAGED_KB=0\n'
+    _mock_snapshot_docker
+    run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_success
+    refute_output --partial "Progress: 3 / 2"
+    # The loop's own line AND the final line both read 2 / 2 (non-vacuous: the loop ran).
+    [ "$(grep -o 'Progress: 2 / 2 files (100%)' <<< "${output}" | wc -l)" -ge 2 ]
+    assert_output --partial "Backup complete!"
 }
 
 @test "backup: markers match the copy -> Snapshot line, plain banner, no fallback note" {
@@ -1892,4 +1910,600 @@ _mock_locked_copy_docker() {
     refute_output --partial "file-count mismatch"
     assert_output --partial "Backup completed WITH WARNINGS -- verify before relying on it"
     refute_output --partial "Backup complete!"
+}
+
+# =========================================================================
+# UNCREATABLE NAMES (2026-09-30): the staging step that removes names Windows cannot
+# create (DAAF_STAGE_NAMES=win, passed ONLY by backup_daaf.ps1) or lists case-only
+# clashes (casewarn, this twin on macOS). Field failure: Windows `docker cp` (Docker
+# Client 29.1.3) aborted at a file named `name<LF>nl` and dropped 1,399 of 73,785
+# files. These run the REAL extracted STAGE_PROGRAM under the local sh (dash + GNU
+# find/awk/tr/sort here, not busybox -- not installed) against fixtures holding hostile
+# names. Every fixture lives under TEST_DIR, which the teardown removes on pass AND on
+# failure (rm -rf handles every name used here).
+# =========================================================================
+
+# Build a source tree with one of every class the win step must remove, look-alikes it
+# must keep, and symlinks inside and outside a removed folder.
+_names_fixture() {
+    local s="$1/source"
+    mkdir -p "${s}/sub" "${s}/bad:dir/deep" "$1/ctmp"
+    printf 'keep\n' > "${s}/normal.txt"
+    : > "${s}/.hidden"
+    : > "${s}/..twodots"
+    : > "${s}/com0"
+    : > "${s}/console"
+    : > "${s}/nulx"
+    : > "${s}/name"$'\n'"nl"
+    : > "${s}/tab"$'\t'"name"
+    : > "${s}/cr"$'\r'"name"
+    : > "${s}/a<b"
+    : > "${s}/a>b"
+    : > "${s}/c:d"
+    : > "${s}/q\"x"
+    : > "${s}/p|x"
+    : > "${s}/w?x"
+    : > "${s}/s*x"
+    : > "${s}/back\\slash"
+    : > "${s}/trail."
+    : > "${s}/trail "
+    : > "${s}/sub/CON"
+    : > "${s}/sub/nul.txt"
+    : > "${s}/sub/Com1.log"
+    : > "${s}/sub/lpt9"
+    : > "${s}/sub/PRN.tar.gz"
+    : > "${s}/sub/aux"
+    : > "${s}/sub/COM"$'\xc2\xb9'
+    : > "${s}/sub/lpt"$'\xc2\xb3'".x"
+    : > "${s}/sub/conin\$"
+    : > "${s}/sub/CONOUT\$.txt"
+    : > "${s}/bad:dir/f1"
+    : > "${s}/bad:dir/deep/f2"
+    ln -s f1 "${s}/bad:dir/inner-link"
+    ln -s ../normal.txt "${s}/sub/link:colon"
+}
+
+@test "backup names (win): every uncreatable class is removed, listed, and counted; look-alikes and outside symlinks stay" {
+    local root="${TEST_DIR}/names"
+    _names_fixture "${root}"
+    _relocate_stage_program "${root}"
+    run env DAAF_STAGE_NAMES=win sh "${root}/program.sh"
+    assert_success
+    # 24 top-level entries removed (23 files + the folder bad:dir, which takes its two
+    # files and its symlink with it): 25 regular files in total.
+    assert_output --partial "STAGED_STRIPPED_NAMES=24"
+    assert_output --partial "STAGED_STRIPPED_FILES=25"
+    # Kept: normal.txt .hidden ..twodots com0 console nulx -> 6 files.
+    assert_output --partial "STAGED_FILES=6"
+    # Every listed path follows the fixed prefix; control bytes are shown as "?".
+    local tab=$'\t'
+    assert_output --partial "STAGE_STRIP_NAME${tab}./name?nl"
+    assert_output --partial "STAGE_STRIP_NAME${tab}./tab?name"
+    assert_output --partial "STAGE_STRIP_NAME${tab}./cr?name"
+    assert_output --partial "STAGE_STRIP_NAME${tab}./bad:dir"
+    assert_output --partial "STAGE_STRIP_NAME${tab}./q\"x"
+    assert_output --partial "STAGE_STRIP_NAME${tab}./back\\slash"
+    assert_output --partial "STAGE_STRIP_NAME${tab}./trail "
+    assert_output --partial "STAGE_STRIP_NAME${tab}./sub/COM"$'\xc2\xb9'
+    assert_output --partial "STAGE_STRIP_NAME${tab}./sub/CONOUT\$.txt"
+    # -prune: the removed folder's children are not listed separately.
+    refute_output --partial "bad:dir/f1"
+    # Nothing but the look-alikes, the kept folders, and the outside symlink remains.
+    run bash -c "cd '${root}/staging' && LC_ALL=C find . -mindepth 1 ! -name .daaf-symlinks | LC_ALL=C sort | tr '\n' ' '"
+    assert_output "./..twodots ./.hidden ./com0 ./console ./normal.txt ./nulx ./sub "
+    # The outside symlink went to the manifest as before; the one inside the removed
+    # folder never did (restore's replay would otherwise fail on a missing parent).
+    run cat "${root}/staging/.daaf-symlinks"
+    assert_output "$(printf './sub/link:colon\t../normal.txt')"
+}
+
+@test "backup names (win): markers stay LAST and a hostile name cannot spoof one" {
+    local root="${TEST_DIR}/spoof"
+    mkdir -p "${root}/source" "${root}/ctmp"
+    : > "${root}/source/ok.txt"
+    : > "${root}/source/x"$'\n'"STAGED_FILES=999"
+    : > "${root}/source/y"$'\r'"STAGED_KB=999"
+    _relocate_stage_program "${root}"
+    run env DAAF_STAGE_NAMES=win sh "${root}/program.sh"
+    assert_success
+    # The real markers are the last lines, and no line of the log is a forged marker.
+    [ "${lines[${#lines[@]}-2]}" = "STAGED_FILES=1" ]
+    [ "${lines[${#lines[@]}-1]}" = "STAGED_KB=0" ]
+    local log="${output}"
+    run grep -cxE 'STAGED_(FILES|KB)=999' <<< "${log}"
+    assert_output "0"
+    # And the host-side parse (anchored, last match wins, CR removed) reads the truth.
+    run bash -c "printf '%s\n' \"\$1\" | tr -d '\r' | sed -n 's/^STAGED_FILES=\([0-9][0-9]*\)\$/\1/p' | tail -n 1" _ "${log}"
+    assert_output "1"
+}
+
+@test "backup names (win): case clashes -- file+file and file+folder keep the FIRST in byte order; folder+folder is listed and its clashing children resolved" {
+    local root="${TEST_DIR}/case"
+    local s="${root}/source"
+    mkdir -p "${s}/CDIR" "${s}/cdir" "${s}/fD" "${s}/dF" "${root}/ctmp"
+    printf 'upper\n' > "${s}/MF1"
+    printf 'lower\n' > "${s}/mf1"
+    : > "${s}/CDIR/x"
+    : > "${s}/cdir/X"
+    : > "${s}/cdir/y"
+    : > "${s}/Fd"
+    : > "${s}/fD/inner"
+    : > "${s}/dF/in2"
+    : > "${s}/df"
+    _relocate_stage_program "${root}"
+    run env DAAF_STAGE_NAMES=win sh "${root}/program.sh"
+    assert_success
+    local tab=$'\t'
+    assert_output --partial "STAGE_CASE_FILE${tab}./mf1${tab}./MF1"
+    assert_output --partial "STAGE_CASE_FILE${tab}./cdir/X${tab}./CDIR/x"
+    assert_output --partial "STAGE_CASE_FILE${tab}./fD${tab}./Fd"
+    assert_output --partial "STAGE_CASE_FILE${tab}./df${tab}./dF"
+    assert_output --partial "STAGE_CASE_DIR${tab}./cdir${tab}./CDIR"
+    # 4 entries removed: mf1, cdir/X, the folder fD (with inner), the file df.
+    assert_output --partial "STAGED_STRIPPED_NAMES=4"
+    assert_output --partial "STAGED_STRIPPED_FILES=4"
+    assert_output --partial "STAGED_FILES=5"
+    # The first in byte order survives with its own content; folder pairs both stay.
+    run cat "${root}/staging/MF1"
+    assert_output "upper"
+    [ ! -e "${root}/staging/mf1" ]
+    [ -f "${root}/staging/CDIR/x" ]
+    [ -f "${root}/staging/cdir/y" ]
+    [ ! -e "${root}/staging/cdir/X" ]
+    [ -f "${root}/staging/Fd" ]
+    [ ! -e "${root}/staging/fD" ]
+    [ -d "${root}/staging/dF" ]
+    [ ! -e "${root}/staging/df" ]
+}
+
+@test "backup names (casewarn): case clashes are LISTED only -- nothing removed, Windows-only names kept" {
+    local root="${TEST_DIR}/cw"
+    _names_fixture "${root}"
+    printf 'upper\n' > "${root}/source/MF1"
+    printf 'lower\n' > "${root}/source/mf1"
+    _relocate_stage_program "${root}"
+    run env DAAF_STAGE_NAMES=casewarn sh "${root}/program.sh"
+    assert_success
+    assert_output --partial "STAGE_CASE_FILE"$'\t'"./mf1"$'\t'"./MF1"
+    refute_output --partial "STAGE_STRIP_NAME"
+    refute_output --partial "STAGED_STRIPPED_"
+    # Nothing was removed: every regular file (33, incl. MF1/mf1) is in the snapshot.
+    assert_output --partial "STAGED_FILES=33"
+    [ -f "${root}/staging/mf1" ]
+    [ -f "${root}/staging/c:d" ]
+    [ -f "${root}/staging/name"$'\n'"nl" ]
+}
+
+@test "backup names (switch off): unset or empty DAAF_STAGE_NAMES removes and lists nothing (macOS/Linux names are legal)" {
+    local root="${TEST_DIR}/off" mode
+    for mode in unset empty; do
+        rm -rf "${root}"
+        _names_fixture "${root}"
+        : > "${root}/source/MF1"
+        : > "${root}/source/mf1"
+        _relocate_stage_program "${root}"
+        if [ "${mode}" = unset ]; then
+            run env -u DAAF_STAGE_NAMES sh "${root}/program.sh"
+        else
+            run env DAAF_STAGE_NAMES= sh "${root}/program.sh"
+        fi
+        echo "case: ${mode}"
+        assert_success
+        # Exactly the two snapshot markers, as before this step existed.
+        assert_output "$(printf 'STAGED_FILES=33\nSTAGED_KB=0')"
+        [ -f "${root}/staging/c:d" ]
+        [ -f "${root}/staging/sub/CON" ]
+        [ -f "${root}/staging/bad:dir/deep/f2" ]
+    done
+}
+
+@test "backup names (win): a TAB-named symlink still hits the fatal gate (exit 3) -- symlinks are never removed by the name step" {
+    local root="${TEST_DIR}/tabl"
+    mkdir -p "${root}/source" "${root}/ctmp"
+    : > "${root}/source/t.txt"
+    ln -s t.txt "${root}/source/bad"$'\t'"link"
+    _relocate_stage_program "${root}"
+    run env DAAF_STAGE_NAMES=win sh "${root}/program.sh"
+    [ "${status}" -eq 3 ]
+    assert_output --partial "STAGE_ERR_TAB"
+    refute_output --partial "STAGE_STRIP_NAME"
+}
+
+@test "backup names: the step sits after cd /staging and before the symlink manifest (pinned tail unchanged)" {
+    run _extract_stage_program
+    assert_success
+    [ "${lines[2]}" = 'cd /staging' ]
+    [ "${lines[3]}" = 'if [ ${DAAF_STAGE_NAMES:-0} = win ] || [ ${DAAF_STAGE_NAMES:-0} = casewarn ]; then' ]
+    local i manifest_idx=-1 step_end=-1
+    for i in "${!lines[@]}"; do
+        [ "${lines[$i]}" = 'find . -type l > /tmp/link_paths' ] && manifest_idx="${i}"
+        [ "${lines[$i]}" = 'echo STAGED_STRIPPED_FILES=$((before - after))' ] && step_end="${i}"
+    done
+    [ "${step_end}" -gt 3 ]
+    [ "${manifest_idx}" -gt "${step_end}" ]
+    # The removal only runs in win mode, and it never touches a symlink itself.
+    run grep -c -- '-prune -print0 -exec rm -rf {} + > /tmp/name_list' <(_extract_stage_program)
+    assert_output "1"
+    run grep -c -- 'find . -mindepth 1 ! -type l ' <(_extract_stage_program)
+    assert_output "1"
+}
+
+# Mock for the host-side name handling: records every `docker run -d` argument list in
+# RUN_D_ARGS_FILE, returns a distinct CID for the Claude volume, and serves DATA_LOG /
+# CLAUDE_LOG (printf formats) from `docker logs <cid>`. CP_EXIT / CLAUDE_CP_EXIT set the
+# data / Claude `docker cp` exit status (default 0); CLAUDE_WAIT sets the Claude
+# staging status `docker wait` prints (default 0).
+_mock_names_docker() {
+    docker() {
+        case "$1" in
+            info)   return 0 ;;
+            volume) return 0 ;;
+            run)
+                if [ "${2:-}" = "-d" ]; then
+                    printf '%s\n' "$*" >> "${RUN_D_ARGS_FILE}"
+                    case "${4:-}" in *claude-config*) echo "claudecid" ;; *) echo "datacid" ;; esac
+                    return 0
+                fi
+                printf '%s\n512\t/source\n500K\t/source\n0\n' "${SCAN_COUNT}"
+                return 0
+                ;;
+            wait) case "$2" in claudecid) echo "${CLAUDE_WAIT:-0}" ;; *) echo "0" ;; esac; return 0 ;;
+            logs)
+                # shellcheck disable=SC2059 -- the test deliberately passes printf formats
+                case "$2" in claudecid) printf "${CLAUDE_LOG}" ;; *) printf "${DATA_LOG}" ;; esac
+                return 0
+                ;;
+            cp)
+                local dest_dir="" i=0
+                for arg in "$@"; do dest_dir="${arg}"; done
+                dest_dir="${dest_dir%/}"
+                mkdir -p "${dest_dir}"
+                case "${dest_dir}" in *daaf-claude-config*) touch "${dest_dir}/c1"; return "${CLAUDE_CP_EXIT:-0}" ;; esac
+                while [ "${i}" -lt "${CP_FILES}" ]; do touch "${dest_dir}/file${i}"; i=$((i + 1)); done
+                touch "${dest_dir}/.daaf-symlinks"
+                return "${CP_EXIT:-0}"
+                ;;
+            *)  return 0 ;;
+        esac
+    }
+    export -f docker
+}
+
+@test "backup names (.sh host): Linux passes an EMPTY switch, macOS passes casewarn, and this twin never passes win" {
+    export DAAF_NESTED=1 SCAN_COUNT=2 CP_FILES=2 RUN_D_ARGS_FILE="${TEST_DIR}/run_d_args"
+    export DATA_LOG='STAGED_FILES=2\nSTAGED_KB=0\n' CLAUDE_LOG='STAGED_FILES=1\nSTAGED_KB=0\n'
+    _mock_names_docker
+    uname() { echo Linux; }
+    export -f uname
+    run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_success
+    # Both staging launches (data + Claude) carry the switch AFTER the -v, value empty.
+    run grep -c -- '-d -v [^ ]*:/source:ro -e DAAF_STAGE_NAMES= busybox sh -c' "${RUN_D_ARGS_FILE}"
+    assert_output "2"
+    rm -f "${RUN_D_ARGS_FILE}"
+    uname() { echo Darwin; }
+    export -f uname
+    run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_success
+    assert_output --partial "Backup complete!"
+    run grep -c -- '-d -v [^ ]*:/source:ro -e DAAF_STAGE_NAMES=casewarn busybox sh -c' "${RUN_D_ARGS_FILE}"
+    assert_output "2"
+    # D1: removal is Windows-only -- the .sh twin has no way to request it.
+    run grep -c 'DAAF_STAGE_NAMES=win' "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_output "0"
+}
+
+@test "backup names (.sh host, macOS): listed case clashes print a WARNING per volume, latch WITH WARNINGS, exit 0" {
+    export DAAF_NESTED=1 SCAN_COUNT=2 CP_FILES=2 RUN_D_ARGS_FILE="${TEST_DIR}/run_d_args"
+    export DATA_LOG='STAGE_CASE_FILE\t./a/mf1\t./a/MF1\nSTAGE_CASE_DIR\t./cdir\t./CDIR\nSTAGED_FILES=2\nSTAGED_KB=0\n'
+    export CLAUDE_LOG='STAGE_CASE_FILE\t./s/x\t./s/X\nSTAGED_FILES=1\nSTAGED_KB=0\n'
+    _mock_names_docker
+    uname() { echo Darwin; }
+    export -f uname
+    run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_success
+    assert_output --partial "WARNING: 2 path(s) in the Docker volume are the same as another path except for upper/lower"
+    assert_output --partial "         case (like ./Data/x and ./data/x). This Mac's disk most likely treats each pair as ONE"
+    assert_output --partial "           ./a/mf1   (same as ./a/MF1 except for upper/lower case)"
+    assert_output --partial "           ./cdir   (same as ./CDIR except for upper/lower case)"
+    assert_output --partial "WARNING: 1 path(s) in the Claude Code state volume are the same as another path except for upper/lower"
+    assert_output --partial "Rename one name of each pair inside DAAF, then back up again."
+    # Nothing was removed, so the counts are exact and not blamed on anything.
+    assert_output --partial "Snapshot: 2 files."
+    refute_output --partial "file-count mismatch"
+    assert_output --partial "Backup completed WITH WARNINGS -- verify before relying on it"
+    # The same clash lines on Linux are never reported (the step does not run there;
+    # this proves the report is tied to the mode, not to stray log text).
+    uname() { echo Linux; }
+    export -f uname
+    run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_success
+    refute_output --partial "the same as another path except for upper/lower"
+    assert_output --partial "Backup complete!"
+}
+
+@test "backup names (.sh host): the report caps its list at 20 entries with 'and N more'" {
+    export DAAF_NESTED=1 SCAN_COUNT=2 CP_FILES=2 RUN_D_ARGS_FILE="${TEST_DIR}/run_d_args" CLAUDE_LOG=''
+    local i log=''
+    for i in $(seq 1 23); do log="${log}STAGE_CASE_FILE\\t./n${i}\\t./N${i}\\n"; done
+    export DATA_LOG="${log}STAGED_FILES=2\\nSTAGED_KB=0\\n"
+    _mock_names_docker
+    uname() { echo Darwin; }
+    export -f uname
+    run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_success
+    assert_output --partial "WARNING: 23 path(s) in the Docker volume"
+    assert_output --partial "./n20   (same as ./N20"
+    refute_output --partial "./n21   (same as"
+    assert_output --partial "           ... and 3 more"
+}
+
+@test "backup names (.sh host): stripped files are subtracted before the Snapshot line blames live-volume change" {
+    export DAAF_NESTED=1 CP_FILES=2 RUN_D_ARGS_FILE="${TEST_DIR}/run_d_args" CLAUDE_LOG=''
+    _mock_names_docker
+    uname() { echo Linux; }
+    export -f uname
+    # Scan 5 = snapshot 2 + 3 stripped: no live change, so no "live volume changed".
+    export SCAN_COUNT=5 DATA_LOG='STAGED_STRIPPED_NAMES=1\nSTAGED_STRIPPED_FILES=3\nSTAGED_FILES=2\nSTAGED_KB=0\n'
+    run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_success
+    assert_output --partial "Snapshot: 2 files (3 more left out because their names cannot be"
+    refute_output --partial "live volume changed"
+    refute_output --partial "file-count mismatch"
+    # Scan 6 = snapshot 2 + 3 stripped + 1 file that vanished before the snapshot.
+    export SCAN_COUNT=6
+    run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_success
+    assert_output --partial "Apart from those, the snapshot has 1 fewer files than the scan -- the live"
+}
+
+# --- Review round 7: adversarial names + report placement ---------------------------
+# Fixtures are built under TEST_DIR (removed by the teardown on pass AND failure); no
+# fixture name reaches the workspace outside it.
+
+@test "backup names (win, adversarial): leading dash, spaces, %s, a TAB folder with children, a hostile folder hiding a clash, a forged-marker newline name" {
+    local root="${TEST_DIR}/adv" tab=$'\t'
+    local s="${root}/source"
+    mkdir -p "${s}/sp ace" "${s}/tab${tab}dir/sub" "${s}/bad|dir" "${root}/ctmp"
+    printf 'upper\n' > "${s}/-LEAD"
+    printf 'lower\n' > "${s}/-lead"
+    : > "${s}/sp ace/My File"
+    : > "${s}/sp ace/my file"
+    : > "${s}/PCT%sX"
+    : > "${s}/pct%sX"
+    : > "${s}/only%s%d"
+    : > "${s}/tab${tab}dir/c1"
+    : > "${s}/tab${tab}dir/sub/c2"
+    : > "${s}/bad|dir/X"
+    : > "${s}/bad|dir/x"
+    : > "${s}/x"$'\n'"STAGE_CASE_FILE${tab}evil${tab}EVIL"
+    _relocate_stage_program "${root}"
+    run env DAAF_STAGE_NAMES=win sh "${root}/program.sh"
+    assert_success
+    # Case clashes: the byte-order first survives (upper case sorts first).
+    assert_output --partial "STAGE_CASE_FILE${tab}./-lead${tab}./-LEAD"
+    assert_output --partial "STAGE_CASE_FILE${tab}./sp ace/my file${tab}./sp ace/My File"
+    assert_output --partial "STAGE_CASE_FILE${tab}./pct%sX${tab}./PCT%sX"
+    # Hostile names: the TAB folder and the | folder go with their children (-prune:
+    # the children are not listed, and the clash inside bad|dir is never reported);
+    # the newline name is ONE line under the fixed prefix, control bytes shown as ?.
+    assert_output --partial "STAGE_STRIP_NAME${tab}./tab?dir"
+    assert_output --partial "STAGE_STRIP_NAME${tab}./bad|dir"
+    assert_output --partial "STAGE_STRIP_NAME${tab}./x?STAGE_CASE_FILE?evil?EVIL"
+    refute_output --partial "c1"
+    refute_output --partial "bad|dir/"
+    # No forged line: nothing starts with the case prefix and names the evil paths.
+    run grep -c "^STAGE_CASE_FILE${tab}evil" <<< "${output}"
+    assert_output "0"
+    # 6 entries removed (3 hostile + 3 clash losers) holding 8 regular files; 4 kept.
+    run cat "${root}/staging/-LEAD"
+    assert_output "upper"
+    [ ! -e "${root}/staging/-lead" ]
+    [ -f "${root}/staging/sp ace/My File" ]
+    [ ! -e "${root}/staging/sp ace/my file" ]
+    [ -f "${root}/staging/PCT%sX" ]
+    [ ! -e "${root}/staging/pct%sX" ]
+    [ -f "${root}/staging/only%s%d" ]
+    [ ! -e "${root}/staging/tab${tab}dir" ]
+    [ ! -e "${root}/staging/bad|dir" ]
+    run bash -c "cd '${root}/staging' && LC_ALL=C find . -type f ! -name .daaf-symlinks | LC_ALL=C sort | tr '\n' '|'"
+    assert_output "./-LEAD|./PCT%sX|./only%s%d|./sp ace/My File|"
+}
+
+@test "backup names (win, adversarial): marker counts for the adversarial fixture" {
+    local root="${TEST_DIR}/advc" tab=$'\t'
+    local s="${root}/source"
+    mkdir -p "${s}/sp ace" "${s}/tab${tab}dir/sub" "${s}/bad|dir" "${root}/ctmp"
+    : > "${s}/-LEAD"; : > "${s}/-lead"
+    : > "${s}/sp ace/My File"; : > "${s}/sp ace/my file"
+    : > "${s}/PCT%sX"; : > "${s}/pct%sX"; : > "${s}/only%s%d"
+    : > "${s}/tab${tab}dir/c1"; : > "${s}/tab${tab}dir/sub/c2"
+    : > "${s}/bad|dir/X"; : > "${s}/bad|dir/x"
+    : > "${s}/x"$'\n'"STAGE_CASE_FILE${tab}evil${tab}EVIL"
+    _relocate_stage_program "${root}"
+    run env DAAF_STAGE_NAMES=win sh "${root}/program.sh"
+    assert_success
+    assert_output --partial "STAGED_STRIPPED_NAMES=6"
+    assert_output --partial "STAGED_STRIPPED_FILES=8"
+    [ "${lines[${#lines[@]}-2]}" = "STAGED_FILES=4" ]
+    [ "${lines[${#lines[@]}-1]}" = "STAGED_KB=0" ]
+}
+
+@test "backup names (casewarn, adversarial): backslash, dash and %s clashes are LISTED verbatim; control-byte paths are never listed; nothing removed" {
+    local root="${TEST_DIR}/advw" tab=$'\t'
+    local s="${root}/source"
+    mkdir -p "${s}/tab${tab}dir" "${root}/ctmp"
+    : > "${s}/BACK\\slash"
+    : > "${s}/back\\slash"
+    : > "${s}/-LEAD"
+    : > "${s}/-lead"
+    : > "${s}/PCT%sX"
+    : > "${s}/pct%sX"
+    : > "${s}/tab${tab}dir/A"
+    : > "${s}/tab${tab}dir/a"
+    : > "${s}/x"$'\n'"STAGE_CASE_FILE${tab}evil${tab}EVIL"
+    _relocate_stage_program "${root}"
+    run env DAAF_STAGE_NAMES=casewarn sh "${root}/program.sh"
+    assert_success
+    assert_output --partial "STAGE_CASE_FILE${tab}./back\\slash${tab}./BACK\\slash"
+    assert_output --partial "STAGE_CASE_FILE${tab}./-lead${tab}./-LEAD"
+    assert_output --partial "STAGE_CASE_FILE${tab}./pct%sX${tab}./PCT%sX"
+    # A clash under a control-byte path cannot be listed unambiguously, so it is left
+    # out of the list (the zero-tolerance count still reports any loss); the forged
+    # marker inside a newline name never becomes a line of its own.
+    refute_output --partial "tab"
+    refute_output --partial "evil"
+    refute_output --partial "STAGE_STRIP_NAME"
+    refute_output --partial "STAGED_STRIPPED_"
+    [ "$(grep -c "^STAGE_CASE_" <<< "${output}")" -eq 3 ]
+    # Nothing removed: all 9 regular files are in the snapshot.
+    [ "${lines[${#lines[@]}-2]}" = "STAGED_FILES=9" ]
+    [ -f "${root}/staging/back\\slash" ]
+    [ -f "${root}/staging/-lead" ]
+    [ -f "${root}/staging/tab${tab}dir/a" ]
+}
+
+@test "backup names (.sh host, macOS): a backslash path from the staging log is reported verbatim" {
+    export DAAF_NESTED=1 SCAN_COUNT=2 CP_FILES=2 RUN_D_ARGS_FILE="${TEST_DIR}/run_d_args" CLAUDE_LOG=''
+    # DATA_LOG is a printf format: \\ prints one backslash.
+    export DATA_LOG='STAGE_CASE_FILE\t./back\\slash\t./BACK\\slash\nSTAGED_FILES=2\nSTAGED_KB=0\n'
+    _mock_names_docker
+    uname() { echo Darwin; }
+    export -f uname
+    run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_success
+    assert_output --partial '           ./back\slash   (same as ./BACK\slash except for upper/lower case)'
+}
+
+@test "backup names (.sh host, macOS): the case list prints BEFORE a fatal short-copy exit, exactly once (review round 7)" {
+    export DAAF_NESTED=1 SCAN_COUNT=3 CP_FILES=2 CP_EXIT=1 RUN_D_ARGS_FILE="${TEST_DIR}/run_d_args" CLAUDE_LOG=''
+    export DATA_LOG='STAGE_CASE_FILE\t./fD\t./Fd\nSTAGED_FILES=3\nSTAGED_KB=0\n'
+    _mock_names_docker
+    uname() { echo Darwin; }
+    export -f uname
+    run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_failure
+    assert_output --partial "ERROR: Backup failed (exit code 1); only 2 of 3 expected files were copied."
+    local warn="WARNING: 1 path(s) in the Docker volume are the same as another path except for upper/lower"
+    [ "$(grep -cF "${warn}" <<< "${output}")" -eq 1 ]
+    assert_output --partial "           ./fD   (same as ./Fd except for upper/lower case)"
+    # Order: the list comes before the fatal ERROR.
+    local w e
+    w="$(grep -nF "${warn}" <<< "${output}" | cut -d: -f1)"
+    e="$(grep -nF "ERROR: Backup failed" <<< "${output}" | cut -d: -f1)"
+    [ "${w}" -lt "${e}" ]
+}
+
+@test "backup names (.sh host, macOS): the case list prints BEFORE the zero-files fatal exit too" {
+    export DAAF_NESTED=1 SCAN_COUNT=1 CP_FILES=0 CP_EXIT=1 RUN_D_ARGS_FILE="${TEST_DIR}/run_d_args" CLAUDE_LOG=''
+    export DATA_LOG='STAGE_CASE_FILE\t./fD\t./Fd\nSTAGED_FILES=1\nSTAGED_KB=0\n'
+    _mock_names_docker
+    uname() { echo Darwin; }
+    export -f uname
+    run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_failure
+    local warn="WARNING: 1 path(s) in the Docker volume are the same as another path except for upper/lower"
+    [ "$(grep -cF "${warn}" <<< "${output}")" -eq 1 ]
+    local w e
+    w="$(grep -nF "${warn}" <<< "${output}" | cut -d: -f1)"
+    e="$(grep -nF "ERROR: Backup failed (exit code 1)" <<< "${output}" | cut -d: -f1)"
+    [ -n "${e}" ]
+    [ "${w}" -lt "${e}" ]
+}
+
+@test "backup names (.sh host, macOS): a FAILED Claude copy still prints that volume's case list, once" {
+    export DAAF_NESTED=1 SCAN_COUNT=2 CP_FILES=2 CLAUDE_CP_EXIT=1 RUN_D_ARGS_FILE="${TEST_DIR}/run_d_args"
+    export DATA_LOG='STAGED_FILES=2\nSTAGED_KB=0\n'
+    export CLAUDE_LOG='STAGE_CASE_FILE\t./s/x\t./s/X\nSTAGED_FILES=1\nSTAGED_KB=0\n'
+    _mock_names_docker
+    uname() { echo Darwin; }
+    export -f uname
+    run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_success
+    assert_output --partial "WARNING: Failed to back up the Claude Code state volume."
+    local warn="WARNING: 1 path(s) in the Claude Code state volume are the same as another path except for upper/lower"
+    [ "$(grep -cF "${warn}" <<< "${output}")" -eq 1 ]
+    assert_output --partial "           ./s/x   (same as ./s/X except for upper/lower case)"
+    assert_output --partial "Backup completed WITH WARNINGS -- verify before relying on it"
+}
+
+# --- Polish 2026-10-01 (g): an unreadable macOS case list is not silent -------------
+
+@test "backup names (.sh host, macOS): a data-volume log without its final marker warns that the case list could not be read" {
+    export DAAF_NESTED=1 SCAN_COUNT=2 CP_FILES=2 RUN_D_ARGS_FILE="${TEST_DIR}/run_d_args"
+    export DATA_LOG='' CLAUDE_LOG='STAGED_FILES=1\nSTAGED_KB=0\n'
+    _mock_names_docker
+    uname() { echo Darwin; }
+    export -f uname
+    run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_success
+    assert_output --partial "WARNING: Could not read the list of paths in the Docker volume that differ only in upper/lower"
+    assert_output --partial "         case, so such pairs may be in this backup without being named here (this Mac's"
+    assert_output --partial "         comes back, list such names inside DAAF with:"
+    assert_output --partial "           bash scripts/check_workspace_invariants.sh --names-only"
+    refute_output --partial "DAAF_INVARIANT_ROOT"
+    refute_output --partial "Could not read the list of paths in the Claude Code state volume"
+    assert_output --partial "Backup completed WITH WARNINGS -- verify before relying on it"
+    # A log that ends in STAGED_COUNT_ERRORS (the count hit read errors) WAS read to its
+    # end: no list warning, and its case lines are still reported.
+    export DATA_LOG='STAGE_CASE_FILE\t./a\t./A\nSTAGED_COUNT_ERRORS=1\n'
+    run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_success
+    refute_output --partial "Could not read the list of paths"
+    assert_output --partial "           ./a   (same as ./A except for upper/lower case)"
+    # Linux: the step does not run, so the same unreadable log never warns.
+    uname() { echo Linux; }
+    export -f uname
+    export DATA_LOG='' CLAUDE_LOG=''
+    run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_success
+    refute_output --partial "Could not read the list of paths"
+}
+
+@test "backup names (.sh host, macOS): an unreadable Claude-volume case list warns with the DAAF_INVARIANT_ROOT hint; a failed Claude staging does not" {
+    export DAAF_NESTED=1 SCAN_COUNT=2 CP_FILES=2 RUN_D_ARGS_FILE="${TEST_DIR}/run_d_args"
+    export DATA_LOG='STAGED_FILES=2\nSTAGED_KB=0\n' CLAUDE_LOG=''
+    _mock_names_docker
+    uname() { echo Darwin; }
+    export -f uname
+    run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_success
+    assert_output --partial "WARNING: Could not read the list of paths in the Claude Code state volume that differ only in upper/lower"
+    assert_output --partial "           DAAF_INVARIANT_ROOT=/home/appuser/.claude bash scripts/check_workspace_invariants.sh --names-only"
+    # --names-only runs only the names check, so the old "read only its names part /
+    # do not delete" caveat is gone (review round 9).
+    refute_output --partial "read only its"
+    # The hinted path is the Claude volume's mount point in docker-compose.yml.
+    run grep -cF -- '- daaf-claude-config:/home/appuser/.claude' "${REPO_ROOT}/docker-compose.yml"
+    assert_output "1"
+    run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    refute_output --partial "Could not read the list of paths in the Docker volume"
+    assert_output --partial "Claude Code state backed up"
+    assert_output --partial "Backup completed WITH WARNINGS -- verify before relying on it"
+    # A FAILED Claude staging never printed its marker; its own WARNING covers it.
+    export CLAUDE_WAIT=3
+    run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_success
+    assert_output --partial "WARNING: Failed to back up the Claude Code state volume."
+    refute_output --partial "Could not read the list of paths"
+}
+
+@test "backup names: the .sh case report sits before both fatal exits; the Claude report after its if/else (structure pin)" {
+    local f="${REPO_ROOT}/scripts/host/backup_daaf.sh" call prog zero fatal
+    call="$(grep -nF '_daaf_case_report "${STAGE_DONE_LOG}" "Docker volume"' "${f}" | cut -d: -f1)"
+    prog="$(grep -nF 'printf "\r  Progress: %s / %d files (%d%%)   \n"' "${f}" | cut -d: -f1)"
+    zero="$(grep -nxF 'if [ "${FILE_COUNT}" -eq 0 ]; then' "${f}" | cut -d: -f1)"
+    fatal="$(grep -n '^# --- Corroborated short-copy check (fatal) ---' "${f}" | cut -d: -f1)"
+    [ -n "${call}" ]
+    [ -n "${prog}" ]
+    [ -n "${zero}" ]
+    [ -n "${fatal}" ]
+    [ "$(grep -c '_daaf_case_report "' "${f}")" -eq 2 ]
+    [ "${prog}" -lt "${call}" ]
+    [ "${call}" -lt "${zero}" ]
+    [ "${call}" -lt "${fatal}" ]
+    local ccall valid
+    ccall="$(grep -nF '_daaf_case_report "${CLAUDE_STAGE_DONE_LOG}"' "${f}" | cut -d: -f1)"
+    valid="$(grep -n 'The data volume backup above is still valid' "${f}" | cut -d: -f1)"
+    [ "${ccall}" -gt "${valid}" ]
 }

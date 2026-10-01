@@ -577,7 +577,8 @@ _SCAN_PRED='find . -type f ! -path ./.daaf-symlinks ! -path ./.daaf-permissions 
     local ps_line sh_line stage_pred
     ps_line="$(grep '^\$ScanOutput = docker run' "${REPO_ROOT}/${BACKUP_PS1}")"
     sh_line="$(grep '^SCAN_OUTPUT=\$(docker run' "${REPO_ROOT}/${BACKUP_SH}")"
-    [ -n "${ps_line}" ] && [ -n "${sh_line}" ]
+    [ -n "${ps_line}" ]
+    [ -n "${sh_line}" ]
     [[ "${ps_line}" == *"cd /source && c="*"${_SCAN_PRED} | awk "* ]] || { echo "PS1 scan predicate drift: ${ps_line}"; return 1; }
     [[ "${sh_line}" == *"cd /source && c="*"${_SCAN_PRED} | awk "* ]] || { echo "SH scan predicate drift: ${sh_line}"; return 1; }
     # ...and it is the snapshot count's own predicate.
@@ -789,4 +790,107 @@ _restore_warning_set() {
     _restore_warning_set "${TEST_DIR}/restore_drift.ps1" > "${TEST_DIR}/w_drift.txt"
     run diff "${TEST_DIR}/w_ref.txt" "${TEST_DIR}/w_drift.txt"
     assert_failure
+}
+
+# ===========================================================================
+# 11. BUSYBOX: no batched `-exec ... {} +` inside `\( ... \)` in container programs
+# ===========================================================================
+# busybox `find` runs the FINAL batch of an `-exec ... {} +` only for actions at the
+# TOP level of the expression: flush_exec_plus() in findutils/find.c walks the
+# top-level OR branches (G.actions) and never descends into a `\( \)` subexpression
+# (ACTF(paren) keeps its own ap->subexpr). A batched -exec inside parentheses
+# therefore never runs for the last -- usually the only -- batch, silently: Alpine
+# aports MR !75008 ("this didn't output anything but should output a":
+# `busybox find a \( -exec echo {} + \)`). GNU find flushes it, so the dev image's
+# dash + GNU tests cannot see the bug. Review round 7 found exactly this in the
+# staging program's case-clash listing (which would have listed nothing on Windows).
+# This guard reads the container programs as text: every logical line (backslash
+# continuations joined, comment lines skipped) is split on whitespace, `\(` / `\)`
+# tokens track depth, and a `{}` `+` token pair at depth > 0 is an offender.
+# `-exec ... \;` inside parentheses is fine (not batched) and is not flagged.
+# Scope: every scripts/host file that mentions busybox (found by grep, so a new one is
+# covered automatically) -- backup, restore, migrate and test_migration, both twins --
+# plus the extracted staging programs. Programs that run in the DAAF container itself
+# (`docker compose exec ... sh -c`) use GNU find and are out of scope.
+# KNOWN BLIND SPOTS (text matching, not a shell parser): a quoted paren (`'('`, `"("`
+# or `'\('`), a `\(` / `\)` glued to the next token (`\(-type`), `{}` glued to `+`
+# (`{}+`), a program assembled at run time from variables or string pieces, and a
+# find command continued onto the next line with PowerShell's backtick (only a
+# trailing backslash is joined, so the parts are read as separate lines) are not
+# seen. Write container find programs with the separate `\(` ... `\)` and
+# `{} +` tokens used throughout these scripts so the guard can read them.
+
+# Print "<file>:<line>: <logical line>" for every offender; empty output = clean.
+_exec_plus_in_parens() {
+    awk '
+        {
+            line = $0; start = FNR
+            while (line ~ /\\$/ && (getline nxt) > 0) { sub(/\\$/, "", line); line = line " " nxt }
+            if (line ~ /^[[:space:]]*#/) next
+            n = split(line, tok, /[[:space:]]+/)
+            depth = 0; prev = ""
+            for (i = 1; i <= n; i++) {
+                t = tok[i]
+                if (t == "\\(") depth++
+                else if (t == "\\)") { if (depth > 0) depth-- }
+                else if (depth > 0 && t == "+" && prev == "{}") { print FILENAME ":" start ": " line; break }
+                prev = t
+            }
+        }
+    ' "$@"
+}
+
+@test "twin-parity: no batched -exec {} + inside \\( \\) in STAGE_PROGRAM or any host script that runs busybox" {
+    extract_backup_sh  "${REPO_ROOT}/${BACKUP_SH}"  > "${TEST_DIR}/b_sh.txt"
+    extract_backup_ps1 "${REPO_ROOT}/${BACKUP_PS1}" > "${TEST_DIR}/b_ps1.txt"
+    # Non-vacuous: the programs hold batched -exec actions and parenthesized groups.
+    grep -qF -- '-exec printf %s\\011d\\n {} +' "${TEST_DIR}/b_sh.txt" || { echo "FAIL: case listing not found in the extracted STAGE_PROGRAM"; return 1; }
+    grep -qF -- '\( -type p -o -type s -o -type b -o -type c \) -exec rm -f {} +' "${TEST_DIR}/b_sh.txt" || { echo "FAIL: special-file strip not found"; return 1; }
+    # Every host script that runs a busybox program (polish 2026-10-01: migrate and
+    # test_migration joined backup/restore). The known eight must all be in the list.
+    local f busybox_files=()
+    while IFS= read -r f; do busybox_files+=("${f}"); done < <(grep -l busybox "${REPO_ROOT}"/scripts/host/*.sh "${REPO_ROOT}"/scripts/host/*.ps1 | LC_ALL=C sort)
+    for f in backup_daaf.sh backup_daaf.ps1 restore_from_backup.sh restore_from_backup.ps1 \
+        migrate_daaf.sh migrate_daaf.ps1 test_migration.sh test_migration.ps1; do
+        printf '%s\n' "${busybox_files[@]}" | grep -qxF "${REPO_ROOT}/scripts/host/${f}" \
+            || { echo "FAIL: ${f} not in the busybox scan list"; return 1; }
+    done
+    run _exec_plus_in_parens "${TEST_DIR}/b_sh.txt" "${TEST_DIR}/b_ps1.txt" "${busybox_files[@]}"
+    assert_success
+    if [ -n "${output}" ]; then
+        echo "BUSYBOX HAZARD: a batched -exec ... {} + inside \\( \\) never runs its last batch under busybox find:"
+        echo "${output}"
+        return 1
+    fi
+}
+
+@test "twin-parity SELF-TEST: the busybox guard flags the OLD case-listing construct and the MR !75008 repro" {
+    local line old
+    line="$(grep -F -- '-exec printf %s\\011d\\n {} +' "${REPO_ROOT}/${BACKUP_SH}")"
+    [ -n "${line}" ] || { echo "FAIL: current case-listing line not found"; return 1; }
+    # Rebuild the pre-fix line (review round 7): the two branches grouped in \( \).
+    old="${line/ -type d / \\( -type d }"
+    old="${old/-o ! -path \$C -type f/-o -type f}"
+    old="${old/ | sort/ \\) | sort}"
+    [ "${old}" = 'find . -mindepth 1 ! -path $C \( -type d -exec printf %s\\011d\\n {} + -o -type f -exec printf %s\\011f\\n {} + \) | sort > /tmp/case_sorted' ] \
+        || { echo "FAIL: could not rebuild the old construct:"; echo "${old}"; return 1; }
+    # Mutate a copy of the real script back to the old line: the guard must fail on it.
+    TGT="${line}" NEW="${old}" awk '$0 == ENVIRON["TGT"] { print ENVIRON["NEW"]; next } { print }' \
+        "${REPO_ROOT}/${BACKUP_SH}" > "${TEST_DIR}/backup_mutant.sh"
+    run cmp -s "${REPO_ROOT}/${BACKUP_SH}" "${TEST_DIR}/backup_mutant.sh"
+    assert_failure
+    run _exec_plus_in_parens "${TEST_DIR}/backup_mutant.sh"
+    assert_output --partial 'backup_mutant.sh:'
+    assert_output --partial '\( -type d -exec printf'
+    [ "${#lines[@]}" -eq 1 ]
+    # The upstream repro, one spread over a continuation, and the clean shapes.
+    printf '%s\n' 'find a \( -exec echo {} + \)' \
+        'find . \( -name x -o \' '-name y -exec rm {} + \)' \
+        'find /staging \( -type p -o -type c \) -exec rm -f {} +' \
+        'find . \( -type l -exec readlink {} \; \)' \
+        '# comment: find a \( -exec echo {} + \)' > "${TEST_DIR}/shapes.txt"
+    run _exec_plus_in_parens "${TEST_DIR}/shapes.txt"
+    [ "${#lines[@]}" -eq 2 ] || { echo "expected exactly 2 offenders, got:"; echo "${output}"; return 1; }
+    [[ "${lines[0]}" == *'shapes.txt:1: find a \( -exec echo {} + \)' ]]
+    [[ "${lines[1]}" == *'shapes.txt:2: find . \( -name x -o  -name y -exec rm {} + \)' ]]
 }
