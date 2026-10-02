@@ -1,7 +1,76 @@
 # Data Science Dockerfile with uv and Claude Code
 # Base: Ubuntu 24.04 (noble) with Python 3.12 + Astral uv (binary COPY)
 
-FROM ubuntu:24.04
+# ============================================
+# ENVIRONMENT DATE -- what a rebuild reproduces
+# ============================================
+# DAAF freezes its build inputs to ONE "environment date" so that rebuilding
+# this file later reproduces the same image, instead of whatever the package
+# indexes happen to serve on the day of the rebuild. The current environment
+# date is 2026-09-24T13:20:00Z (the build time of the image these values were
+# verified against). Four inputs carry it:
+#
+#   UBUNTU_BASE_IMAGE  ubuntu:24.04@sha256:008173c2...  base OS layers
+#                      (multi-arch index digest; = tag noble-20260911)
+#   uv COPY --from     ghcr.io/astral-sh/uv:0.9.30@sha256:538e0b39...
+#                      the uv/uvx binaries (multi-arch index digest)
+#   UV_EXCLUDE_NEWER   2026-09-24T13:20:00Z  EVERY Python distribution,
+#                      including transitive and isolated build dependencies
+#   UBUNTU_SNAPSHOT    20260924T132000Z      EVERY apt package, served from
+#                      snapshot.ubuntu.com instead of the live archive
+#
+# R packages are frozen separately by P3M_SNAPSHOT_DATE (2026-04-15, the Posit
+# Package Manager CRAN snapshot). It is deliberately independent of the date
+# above: the R 4.5 / P3M binary-availability and S7 constraints documented at
+# the R toolchain and P3M blocks below govern when it can move.
+#
+# NOT covered by the environment date: binary downloads pinned only by the
+# version in their URL (R runtime .deb, Quarto, code-server, Codex CLI, gh,
+# PowerShell, VS Code extensions) and Claude Code (CLAUDE_CODE_VERSION) --
+# version-pinned, but neither date-frozen nor checksummed. Claude Code's
+# installer script (https://claude.ai/install.sh) is additionally fetched live
+# on every build; only the version it installs is pinned.
+#
+# BUMPING: move UV_EXCLUDE_NEWER and UBUNTU_SNAPSHOT TOGETHER (same instant),
+# optionally re-pin the base digest, then rebuild and diff `uv pip list`. RULE:
+# the base image's dated tag (noble-YYYYMMDD) must be ON OR BEFORE the snapshot
+# date. Packages such as libc6-dev and libssl-dev depend on the EXACT version of
+# a library the base already ships (libc6-dev Depends: libc6 (= ...)); apt never
+# downgrades, so a base newer than the snapshot can make those installs fail.
+# Full procedure: user_reference/04_extending_daaf.md § "Bumping the environment
+# date".
+#
+# RETENTION: snapshot.ubuntu.com intends "to ensure snapshots are available for
+# dates up to at least 2 years in the past, which we may extend if there is
+# demand" -- a stated intent, not a guarantee, so an exact rebuild of this date
+# is only stated to remain possible until about 2028-09. For long-term
+# reproducibility, archive the BUILT IMAGE itself (`docker save`), not just
+# this file.
+#
+# ARM64 (Apple Silicon): the snapshot layer below REPLACES the base image's apt
+# sources with direct snapshot URIs (https://snapshot.ubuntu.com/ubuntu/<ID>/,
+# which serves amd64 AND arm64 binaries), so it does not depend on which archive
+# URIs the base ships for either architecture. Index resolution was verified in
+# a sandboxed apt 2.8.3 (APT::Architecture=arm64, direct snapshot URIs,
+# 2026-10-01); a full arm64 image build is still UNVERIFIED pending a test
+# build. If an arm64 build fails at the snapshot layer, the escape hatch is to
+# set the UBUNTU_SNAPSHOT default below to empty: the stock sources are then
+# left untouched, apt resolves against the live archive (system packages NOT
+# frozen), and every apt layer prints a WARNING.
+
+# Base image, pinned by DIGEST (not just tag) so a re-pushed `24.04` tag cannot
+# silently change the OS layers. This is the multi-arch OCI INDEX digest (not a
+# per-arch manifest digest), so amd64 and arm64 hosts each still pull their own
+# platform image from it. It equals the dated tag noble-20260911 (on or before
+# the UBUNTU_SNAPSHOT date, as required -- see BUMPING in the banner). To bump:
+# pick a dated tag noble-YYYYMMDD ON OR BEFORE the new environment date (inspect
+# that dated tag, not the moving `24.04` tag, which may be newer), on the host
+# run `docker buildx imagetools inspect ubuntu:noble-YYYYMMDD`, copy the
+# top-level `Digest:` value here, and note the tag in this comment.
+# (An ARG declared before FROM is usable only in FROM; it is not visible to the
+# build steps below, which do not need it.)
+ARG UBUNTU_BASE_IMAGE=ubuntu:24.04@sha256:008173c23f95b170204355c12626cb5a965d779a7e1283b09e9cffbb1bf33ca3
+FROM ${UBUNTU_BASE_IMAGE}
 
 LABEL maintainer="Data Science Environment"
 LABEL description="Python data science with uv and Claude Code"
@@ -25,6 +94,42 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV UV_SYSTEM_PYTHON=1
 ENV UV_BREAK_SYSTEM_PACKAGES=1
 ENV UV_COMPILE_BYTECODE=1
+
+# Freeze Python resolution to the environment date (see the ENVIRONMENT DATE
+# banner at the top of this file). The `==` pins in the uv blocks below fix only
+# the ~57 top-level packages; the other ~107 of the ~164 installed distributions
+# are transitive dependencies that uv re-resolves against live PyPI on every
+# rebuild. Without a cutoff they drift: re-resolving the very same pins 7 days
+# after the 2026-09-24 build changed 13 of 164 packages (numba 0.67.0 -> 0.68.0
+# and llvmlite 0.49.0 -> 0.50.0 among them). UV_EXCLUDE_NEWER makes uv ignore
+# every distribution file uploaded after the cutoff, so the same pins re-resolve
+# to the same full set (verified 2026-10-01: `uv pip compile --exclude-newer
+# 2026-09-24T13:20:00Z` of the pins reproduced the installed set, 164/164).
+#   - ALWAYS a full RFC 3339 timestamp ending in `Z`. uv interprets a bare
+#     date (2026-09-24) in the local time zone of whatever machine runs it.
+#     Inside this build that is the image's UTC, but the same value used in a
+#     `uv pip compile` dry-run elsewhere (or after a future image time-zone
+#     change) could resolve a different set; an explicit `Z` instant cannot.
+#   - It also freezes isolated BUILD dependencies (build-system.requires such as
+#     setuptools/hatchling) for any package built from an sdist -- e.g. fiona,
+#     which has no arm64 wheel and builds from source on Apple Silicon.
+#   - It persists as an image ENV (not just a build ARG) so an in-container
+#     `uv pip compile` dry-run resolves against the SAME date as the build --
+#     which is what makes that dry-run a meaningful compatibility check for a
+#     proposed addition (user_reference/04_extending_daaf.md).
+#   - Residual risk (inference, not observed): PyPI yank status and file
+#     deletions are read live. A transitive version yanked after the cutoff
+#     would be skipped on a rebuild (drift); a deleted file would fail it.
+#   - Adding a package released AFTER the cutoff: either bump the environment
+#     date (procedure in user_reference/04_extending_daaf.md), or exempt only
+#     that package on its own install line:
+#       uv pip install --system --exclude-newer-package PKG=<RFC 3339 Z time> PKG==X.Y
+#     Its dependencies still resolve at the global cutoff; if they too need
+#     newer releases, bump the date instead. NOTE: uv's "No solution found"
+#     error does NOT mention that the cutoff excluded anything, so an `==` pin
+#     newer than the cutoff looks like a nonexistent version.
+ARG UV_EXCLUDE_NEWER=2026-09-24T13:20:00Z
+ENV UV_EXCLUDE_NEWER=${UV_EXCLUDE_NEWER}
 
 # Set the process locale to UTF-8 (root-cause fix for R's Unicode handling).
 # Unlike Python — which self-coerces an unset/POSIX locale to UTF-8 at startup
@@ -50,17 +155,241 @@ ENV LC_ALL=C.UTF-8
 # Copy the pinned uv/uvx static binaries from Astral's published image (no
 # uv-on-noble image exists, so this is the canonical way to get a pinned uv onto
 # an Ubuntu base). The tag carries the same uv version the old bookworm base
-# pinned (0.9.30). noble's default `python3` is 3.12, so the interpreter, its dev
-# headers, and venv support are installed from apt to back UV_SYSTEM_PYTHON=1.
+# pinned (0.9.30), and the reference is additionally pinned by DIGEST (part of
+# the environment date; see the banner at the top of this file) so a re-pushed
+# tag cannot swap the binaries. Like the base image, this is the multi-arch OCI
+# INDEX digest (linux/amd64 + linux/arm64), so each platform still copies its
+# own binaries. To bump: `docker buildx imagetools inspect
+# ghcr.io/astral-sh/uv:<version>` on the host and copy the top-level `Digest:`.
+# The reference stays literal on purpose (no ARG): variable expansion in
+# `COPY --from` is not something this file relies on. noble's default `python3`
+# is 3.12, so the interpreter, its dev headers, and venv support are installed
+# from apt ("Install System Dependencies" below) to back UV_SYSTEM_PYTHON=1.
 # The bare `python3` metapackage is required too: minimal ubuntu:24.04 ships no
 # /usr/bin/python3 symlink, and DAAF's execution wrapper (run_with_capture.sh)
 # invokes the bare `python3` name for every Python script.
-COPY --from=ghcr.io/astral-sh/uv:0.9.30 /uv /uvx /usr/local/bin/
+COPY --from=ghcr.io/astral-sh/uv:0.9.30@sha256:538e0b39736e7feae937a65983e49d2ab75e1559d35041f9878b7b7e51de91e4 /uv /uvx /usr/local/bin/
+
+# ============================================
+# apt index refresh helper (snapshot origin guard)
+# ============================================
+# Every apt layer in this file calls `daaf-apt-update` instead of a bare
+# `apt-get update`. It runs `apt-get update` with any arguments passed through,
+# then -- when the build froze apt to an Ubuntu snapshot (the marker file the
+# snapshot layer below writes) -- FAILS the layer unless every index apt will
+# resolve packages from is served by snapshot.ubuntu.com at that snapshot ID.
+# Two mechanisms share the work:
+#   - `apt-get update --error-on=any` makes ANY index download failure fatal.
+#     Plain `apt-get update` only warns (exit 0) and silently drops the failed
+#     source, so later installs could fall back to older versions from the
+#     remaining suites. This flag is what guarantees the indexes are complete.
+#   - The origin guard then reads apt's own index-target records
+#     (`apt-get indextargets`, the targets the solver resolves from) rather than
+#     guessing from file names in /var/lib/apt/lists, and requires every site to
+#     be https://snapshot.ubuntu.com/ubuntu/<ID>. A live-archive source, an
+#     unfrozen third-party repository, or a `Shadowed: true` target (the
+#     live-archive twin apt 2.8 creates for a sources-level `Snapshot:` field --
+#     a mode DAAF deliberately does not use, see the snapshot layer) each FAIL
+#     the layer, naming the offending index, instead of yielding an image that
+#     merely looks frozen.
+# With the snapshot disabled (marker absent) it prints a WARNING and lets the
+# layer continue.
+#
+# apt 2.8.3 semantics this relies on (observed 2026-10-01 in a sandboxed apt):
+# without `--no-release-info`, `indextargets` lists only targets whose index
+# files exist, and its `$(SHADOWED)` format field is substituted only for
+# shadowed targets (otherwise the literal text `$(SHADOWED)` is printed).
+#
+# Written inline via a BuildKit heredoc for the same reason as the entrypoint
+# wrapper at the end of this file: the host build context is the distributed
+# daaf-docker folder, which does not contain the DAAF repo tree, so a COPY of a
+# repo file can never succeed (see that block's NOTE).
+COPY --chmod=0755 <<'DAAF_APT_UPDATE_EOF' /usr/local/bin/daaf-apt-update
+#!/usr/bin/env bash
+# daaf-apt-update -- build-time `apt-get update` wrapper with an Ubuntu-snapshot
+# origin guard (generated from the Dockerfile heredoc above; there is no
+# separate source file). Usage: daaf-apt-update [apt-get update options...]
+# Snapshot mode is decided by the marker file the Dockerfile's snapshot layer
+# writes (absent = snapshot disabled), so callers need no ARG plumbing.
+# DAAF_APT_SNAPSHOT_MARKER exists only as a test seam for exercising this guard
+# against a sandboxed apt (APT_CONFIG); builds never set it.
+set -euo pipefail
+
+readonly SNAPSHOT_MARKER="${DAAF_APT_SNAPSHOT_MARKER:-/etc/daaf/ubuntu-snapshot}"
+
+# --error-on=any: plain `apt-get update` only WARNS (exit 0) when an index
+# fails to download, and apt then silently drops that source's targets -- a
+# transient failure of one snapshot suite (e.g. noble-updates) would let later
+# installs fall back to older versions from the remaining suites. Any fetch
+# failure therefore fails the layer (observed: exit 100 with apt 2.8.3). This
+# is the ONLY download-completeness check: indextargets below lists just the
+# targets whose files exist, so it cannot detect a missing index itself.
+apt-get update --error-on=any "$@"
+
+if [ ! -s "$SNAPSHOT_MARKER" ]; then
+    echo "daaf-apt-update: WARNING: no Ubuntu snapshot configured ($SNAPSHOT_MARKER absent) -- this layer resolved apt against the LIVE archive; system packages are NOT frozen to the environment date." >&2
+    exit 0
+fi
+
+snapshot_id="$(head -n 1 "$SNAPSHOT_MARKER")"
+if [ -z "$snapshot_id" ]; then
+    echo "daaf-apt-update: ERROR: snapshot marker $SNAPSHOT_MARKER has an empty first line." >&2
+    exit 1
+fi
+
+# One line per index target: shadowed flag | site. apt prints `true` for a
+# shadowed target and the literal text `$(SHADOWED)` otherwise.
+# shellcheck disable=SC2016  # $(FIELD) is apt's --format syntax, not a shell expansion
+targets="$(apt-get indextargets --format '$(SHADOWED)|$(SITE)' "$@")"
+
+active=0
+offenders=()
+while IFS='|' read -r is_shadowed site; do
+    [ -n "$site" ] || continue
+    active=$((active + 1))
+    if [ "$is_shadowed" = "true" ]; then
+        offenders+=("shadowed live-archive target (a sources-level 'Snapshot:' field is in use; DAAF writes direct snapshot URIs instead): ${site}")
+        continue
+    fi
+    case "$site" in
+        https://snapshot.ubuntu.com/ubuntu/"${snapshot_id}" | https://snapshot.ubuntu.com/ubuntu/"${snapshot_id}"/) ;;
+        *) offenders+=("not served by snapshot ${snapshot_id}: ${site}") ;;
+    esac
+done <<< "$targets"
+
+if [ "$active" -eq 0 ]; then
+    echo "daaf-apt-update: ERROR: apt reports no index targets; cannot verify the snapshot origin." >&2
+    exit 1
+fi
+
+if [ "${#offenders[@]}" -gt 0 ]; then
+    echo "daaf-apt-update: ERROR: apt is frozen to Ubuntu snapshot ${snapshot_id}, but these indexes would NOT resolve from it:" >&2
+    printf '  %s\n' "${offenders[@]}" | sort -u >&2
+    echo "daaf-apt-update: a source points at a live archive or a third-party repository, so this build would NOT be frozen. Point every apt source at https://snapshot.ubuntu.com/ubuntu/${snapshot_id}/ or install third-party software another way; to build unfrozen deliberately, set the UBUNTU_SNAPSHOT default in the Dockerfile to empty." >&2
+    exit 1
+fi
+
+echo "daaf-apt-update: OK -- all ${active} index targets served from Ubuntu snapshot ${snapshot_id}"
+DAAF_APT_UPDATE_EOF
+
+# ============================================
+# Freeze apt to the Ubuntu snapshot (environment date) + TLS bootstrap
+# ============================================
+# Points every apt source at snapshot.ubuntu.com as of UBUNTU_SNAPSHOT, so all
+# apt packages in this image (python3.12, GDAL, OpenSSL, tzdata, nodejs, the R
+# system libraries, ...) are the versions the archive served at the environment
+# date rather than whatever a later rebuild would fetch. Snapshot IDs have the
+# form YYYYMMDDTHHMMSSZ (UTC); keep this value the SAME instant as
+# UV_EXCLUDE_NEWER above.
+#
+# HOW (direct snapshot URIs): the deb822 sources file is OVERWRITTEN with two
+# stanzas -- noble/noble-updates/noble-backports and noble-security, all four
+# components (main universe restricted multiverse) -- whose URIs point
+# straight at https://snapshot.ubuntu.com/ubuntu/${UBUNTU_SNAPSHOT}/, keeping
+# the stock `Signed-By` Ubuntu archive keyring. Because it replaces whatever
+# URIs the base ships, it is architecture-independent: the snapshot's /ubuntu/
+# path serves amd64 and arm64 binaries alike (it has no /ubuntu-ports/ path),
+# and no ports.ubuntu.com mapping is needed. Every index comes from the
+# snapshot and nothing is fetched from the live archive (observed 2026-10-01,
+# sandboxed apt 2.8.3: on amd64 the package candidates matched the installed
+# image; with APT::Architecture=arm64 every index resolved from the snapshot
+# host only).
+# Deliberately NOT used: apt's own snapshot options. The global `APT::Snapshot`
+# / `--snapshot` silently falls back to the live archive for any source it
+# cannot map, and a sources-level `Snapshot:` field makes apt also download a
+# "shadowed" live-archive copy of every index (twice the downloads, a
+# live-archive dependency, and 404s for arm64 indexes on archive.ubuntu.com).
+# The layer fails the build if the base is not noble (the stanzas name noble
+# suites), if the Signed-By keyring is missing, or if a legacy one-line
+# /etc/apt/sources.list carries active entries (they would float on the live
+# archive).
+#
+# TLS BOOTSTRAP: snapshot.ubuntu.com is HTTPS-only, but the stock base image
+# ships no ca-certificates, so apt cannot verify its certificate until that
+# package is installed. This layer's own `daaf-apt-update` and
+# `apt-get install ca-certificates` therefore pass
+# `-o Acquire::https::snapshot.ubuntu.com::Verify-Peer=false` -- scoped to
+# those two commands and that one host, and never written to a config file.
+# (Key order matters: this host-scoped form was observed to disable peer
+# verification for snapshot.ubuntu.com, while the look-alike
+# `Acquire::https::Verify-Peer::snapshot.ubuntu.com` was observed to have NO
+# effect -- sandboxed apt 2.8.3 probes with an empty CA bundle, 2026-10-01.)
+# apt's package integrity does not rest on TLS: the InRelease index is
+# GPG-verified against the `Signed-By` Ubuntu archive keyring, and every package
+# hash chains from it (the stock sources themselves use plain http). From the
+# next layer on, ca-certificates is present and every apt layer verifies TLS
+# normally.
+#
+# ESCAPE HATCH: set the UBUNTU_SNAPSHOT default below to EMPTY (edit this file;
+# it is not wired as a compose build arg) to skip all snapshot configuration --
+# the base image's stock sources are left untouched (whatever URIs it ships for
+# its architecture), no Verify-Peer override, ca-certificates from the live
+# archive. apt is then NOT frozen; this layer and every `daaf-apt-update` print
+# a WARNING saying so. The ID is also recorded in /etc/daaf/ubuntu-snapshot
+# (the marker daaf-apt-update reads), so a built image reports what it was
+# frozen to.
+ARG UBUNTU_SNAPSHOT=20260924T132000Z
+RUN set -eu; \
+    SOURCES=/etc/apt/sources.list.d/ubuntu.sources; \
+    KEYRING=/usr/share/keyrings/ubuntu-archive-keyring.gpg; \
+    SNAPSHOT_MARKER=/etc/daaf/ubuntu-snapshot; \
+    if [ -z "${UBUNTU_SNAPSHOT}" ]; then \
+        echo "WARNING: UBUNTU_SNAPSHOT is empty -- the Ubuntu snapshot is DISABLED. The stock apt sources are left untouched and every apt layer in this build resolves against the LIVE archive, so system packages are NOT frozen to the environment date." >&2; \
+        rm -f "${SNAPSHOT_MARKER}"; \
+        daaf-apt-update; \
+        apt-get install -y --no-install-recommends ca-certificates; \
+    else \
+        case "${UBUNTU_SNAPSHOT}" in \
+            [0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]T[0-9][0-9][0-9][0-9][0-9][0-9]Z) ;; \
+            *) echo "FATAL: UBUNTU_SNAPSHOT='${UBUNTU_SNAPSHOT}' is not a YYYYMMDDTHHMMSSZ snapshot ID" >&2; exit 1 ;; \
+        esac; \
+        if ! grep -qx 'VERSION_CODENAME=noble' /etc/os-release; then \
+            echo "FATAL: the base image is not Ubuntu noble, but the snapshot sources written here name noble suites -- update them together with the base image." >&2; \
+            exit 1; \
+        fi; \
+        if [ ! -s "${KEYRING}" ]; then \
+            echo "FATAL: Signed-By keyring ${KEYRING} is missing or empty -- apt could not verify the snapshot indexes." >&2; \
+            exit 1; \
+        fi; \
+        if grep -qE '^[[:space:]]*deb(-src)?[[:space:]]' /etc/apt/sources.list 2>/dev/null; then \
+            echo "FATAL: /etc/apt/sources.list has active one-line entries that the snapshot sources do not replace -- they would float on the live archive." >&2; \
+            exit 1; \
+        fi; \
+        SNAPSHOT_URI="https://snapshot.ubuntu.com/ubuntu/${UBUNTU_SNAPSHOT}/"; \
+        mkdir -p "$(dirname "${SOURCES}")"; \
+        printf '%s\n' \
+            "# Written by the DAAF Dockerfile snapshot layer: apt frozen to Ubuntu snapshot ${UBUNTU_SNAPSHOT}." \
+            "Types: deb" \
+            "URIs: ${SNAPSHOT_URI}" \
+            "Suites: noble noble-updates noble-backports" \
+            "Components: main universe restricted multiverse" \
+            "Signed-By: ${KEYRING}" \
+            "" \
+            "Types: deb" \
+            "URIs: ${SNAPSHOT_URI}" \
+            "Suites: noble-security" \
+            "Components: main universe restricted multiverse" \
+            "Signed-By: ${KEYRING}" \
+            > "${SOURCES}"; \
+        mkdir -p "$(dirname "${SNAPSHOT_MARKER}")"; \
+        printf '%s\n' "${UBUNTU_SNAPSHOT}" > "${SNAPSHOT_MARKER}"; \
+        echo "apt frozen to Ubuntu snapshot ${UBUNTU_SNAPSHOT}:"; \
+        cat "${SOURCES}"; \
+        daaf-apt-update -o Acquire::https::snapshot.ubuntu.com::Verify-Peer=false; \
+        apt-get install -y --no-install-recommends \
+            -o Acquire::https::snapshot.ubuntu.com::Verify-Peer=false \
+            ca-certificates; \
+    fi; \
+    apt-get clean; \
+    rm -rf /var/lib/apt/lists/*
 
 # ============================================
 # Install System Dependencies (Git, Python 3.12)
 # ============================================
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# ca-certificates is already installed by the snapshot layer above; it stays
+# listed here so this block still states the image's full system-dependency
+# set (re-listing an installed package is a no-op).
+RUN daaf-apt-update && apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
     jq \
@@ -88,14 +417,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # /etc/apt/sources.list.d/ubuntu.sources, so on the normal base this guard is a
 # fast no-op. It exists to make that assumption explicit and to self-heal a
 # minimal base: it enables universe if absent and fails fast (exit 1) only if it
-# still cannot. `apt-get update` for the real installs is left to the blocks
-# below, so the no-op path costs nothing beyond a grep.
+# still cannot. The index refresh (`daaf-apt-update`) for the real installs is
+# left to the blocks below, so the no-op path costs nothing beyond a grep.
+# With the snapshot enabled, the snapshot layer above writes `universe`
+# explicitly into its sources, so this guard is a no-op there too; the self-heal
+# branch can only run on the escape-hatch (stock sources) path. On that path,
+# `daaf-apt-update || exit 1` keeps the helper's failures fatal even though this
+# branch otherwise runs without `set -e`.
 RUN if grep -rqE '^[[:space:]]*(Components:.*\buniverse\b|deb .*\buniverse\b)' \
         /etc/apt/sources.list /etc/apt/sources.list.d/ 2>/dev/null; then \
         echo "universe component already enabled"; \
     else \
         echo "universe component not found; enabling via add-apt-repository"; \
-        apt-get update; \
+        daaf-apt-update || exit 1; \
         apt-get install -y --no-install-recommends software-properties-common; \
         add-apt-repository -y universe; \
         apt-get clean; \
@@ -109,7 +443,7 @@ RUN if grep -rqE '^[[:space:]]*(Components:.*\buniverse\b|deb .*\buniverse\b)' \
 # Install Geospatial System Libraries (GDAL/GEOS/PROJ)
 # ============================================
 # Required by fiona (rasterstats dep) and beneficial for rasterio, geopandas, osmnx
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN daaf-apt-update && apt-get install -y --no-install-recommends \
     libgdal-dev \
     gdal-bin \
     libgeos-dev \
@@ -167,7 +501,7 @@ ARG DAAF_DEV_GH_VERSION=2.95.0
 
 # shellcheck + bats from the Debian repo (mirrors the CI bats-tests job).
 RUN if [ "${DAAF_DEV}" = "1" ]; then \
-        apt-get update && apt-get install -y --no-install-recommends \
+        daaf-apt-update && apt-get install -y --no-install-recommends \
             shellcheck \
             bats \
         && apt-get clean \
@@ -289,7 +623,7 @@ ARG R_VERSION=4.5.3
 # R runtime from Posit pre-built binaries (Ubuntu 24.04 / noble).
 RUN curl -fsSL -o /tmp/r-${R_VERSION}.deb \
       "https://cdn.posit.co/r/ubuntu-2404/pkgs/r-${R_VERSION}_1_$(dpkg --print-architecture).deb" \
-    && apt-get update \
+    && daaf-apt-update \
     && apt-get install -y --no-install-recommends /tmp/r-${R_VERSION}.deb \
     && rm /tmp/r-${R_VERSION}.deb \
     && ln -s /opt/R/${R_VERSION}/bin/R /usr/local/bin/R \
@@ -335,7 +669,7 @@ RUN curl -fsSL -o /tmp/r-${R_VERSION}.deb \
 # guard RUN earlier in this file (placed before the geospatial block, universe's
 # first consumer), which fails fast if it cannot be enabled — so these installs
 # do not need to re-check it.
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN daaf-apt-update && apt-get install -y --no-install-recommends \
         gfortran \
         libcurl4-openssl-dev \
         libxml2-dev \
@@ -372,6 +706,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 #
 # To add a Python package here, append it to the appropriate RUN block below
 # (or add a new block), then rebuild.
+#
+# FROZEN ENVIRONMENT DATE: every uv install here resolves against
+# UV_EXCLUDE_NEWER, and every apt install against the UBUNTU_SNAPSHOT snapshot
+# (see the ENVIRONMENT DATE banner at the top of this file). A version released
+# AFTER that date is invisible to the build: uv fails with "No solution found"
+# (without mentioning the cutoff) and apt with "Unable to locate package" or
+# "Version ... was not found". Either bump the environment date, or for a single
+# Python package add `--exclude-newer-package PKG=<RFC 3339 Z time>` to its own
+# `uv pip install` line (details at the UV_EXCLUDE_NEWER comment above). For a
+# new apt package, call `daaf-apt-update` (never a bare `apt-get update`) so the
+# snapshot origin guard still runs.
 #
 # IMPORTANT — CONTAINER-HOST BOUNDARY: If you (or DAAF/Claude Code) are
 # editing this file from inside a running DAAF container, your edits
@@ -544,7 +889,11 @@ RUN uv pip install --system \
 # Configure R package repository (P3M date-pinned snapshot for reproducibility).
 # Pin to a specific date snapshot so rebuilds produce identical package versions.
 # Update the date when intentionally upgrading R packages (and update skill
-# metadata). On the Ubuntu 24.04 (noble) base P3M provides pre-built binaries on
+# metadata). This is the R member of the frozen build inputs listed in the
+# ENVIRONMENT DATE banner at the top of this file, but it moves on its own
+# schedule -- independent of UV_EXCLUDE_NEWER / UBUNTU_SNAPSHOT -- because of the
+# R 4.5 binary-availability and S7 constraints in the R VERSION NOTE above.
+# On the Ubuntu 24.04 (noble) base P3M provides pre-built binaries on
 # BOTH x86_64 and arm64 — much faster than source compilation — so no framework R
 # package compiles from source on either architecture (verified 2026-07-14:
 # x-package-binary-tag 4.5-noble on x86_64 and 4.5-noble-arm64 on aarch64 for the
@@ -734,12 +1083,15 @@ RUN mkdir -p /home/appuser/.local/share/code-server/User \
 # codex-plugin-cc (the Codex plugin for Claude Code) needs a Node.js runtime in
 # the container. Node already arrives transitively via libnode-dev (the R gt/V8
 # stack), but that presence is incidental -- install `nodejs` explicitly so a
-# future R-stack change cannot silently drop it (no exact version pin, per DAAF
-# convention: the distro's packaged Node tracks the base image release). The
-# build-time floor assertion FAILS the build loudly if the packaged Node is
-# older than 18.18 (the minimum codex-plugin-cc supports), rather than letting
-# a too-old runtime surface as an obscure plugin failure later.
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# future R-stack change cannot silently drop it. There is no exact version pin
+# in the package name, per DAAF convention -- yet the version is still frozen:
+# like every apt package it resolves from the Ubuntu snapshot at the environment
+# date (UBUNTU_SNAPSHOT; see the banner at the top of this file), so it changes
+# only when that date is bumped. The build-time floor assertion FAILS the build
+# loudly if the packaged Node is older than 18.18 (the minimum codex-plugin-cc
+# supports), rather than letting a too-old runtime surface as an obscure plugin
+# failure later.
+RUN daaf-apt-update && apt-get install -y --no-install-recommends \
         nodejs \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
@@ -876,6 +1228,23 @@ ENV PATH="/home/appuser/.local/bin:${PATH}"
 # A standalone tool that nothing else depends on (a CLI utility, an extra
 # analysis package) is the ideal candidate for this block.
 #
+# FROZEN ENVIRONMENT DATE: additions here inherit the image's frozen inputs (see
+# the ENVIRONMENT DATE banner at the top of this file). `uv pip install` resolves
+# against UV_EXCLUDE_NEWER and apt against the UBUNTU_SNAPSHOT snapshot, so you
+# get the newest release AS OF THAT DATE -- a rebuild next year installs the same
+# versions (good for reproducibility), but a package or version published after
+# the date cannot be installed as-is. uv then says "No solution found" WITHOUT
+# mentioning the cutoff; apt says "Unable to locate package" / "Version ... was
+# not found". Two ways forward:
+#   - one Python package: add `--exclude-newer-package PKG=<RFC 3339 Z time>`
+#     to its `uv pip install` line (its dependencies stay at the cutoff);
+#   - anything else: bump the environment date (user_reference/04_extending_daaf.md
+#     § "Bumping the environment date") -- this rebuilds every layer.
+# Use `daaf-apt-update`, never a bare `apt-get update`: it runs the snapshot
+# origin guard, which also means a third-party apt repository (no snapshot)
+# FAILS the build by design -- install such software from a version-pinned
+# release download instead. R installs use the separate P3M snapshot date.
+#
 # CONTAINER-HOST BOUNDARY: the same warning that applies to the mid-file
 # customization blocks applies here — if you edit this file from inside a running
 # DAAF container you are editing the VOLUME copy, not the HOST copy Docker
@@ -894,8 +1263,9 @@ ENV PATH="/home/appuser/.local/bin:${PATH}"
 #
 # USER root
 #
-# System package (apt) — matches the apt hygiene pattern used up top:
-# RUN apt-get update && apt-get install -y --no-install-recommends \
+# System package (apt) — matches the apt hygiene pattern used up top
+# (daaf-apt-update = apt-get update + the snapshot origin guard):
+# RUN daaf-apt-update && apt-get install -y --no-install-recommends \
 #         your-package-here \
 #     && apt-get clean \
 #     && rm -rf /var/lib/apt/lists/*

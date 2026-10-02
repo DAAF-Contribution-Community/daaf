@@ -323,13 +323,25 @@ Copy this template to `Reproduction_Report.md` in the reproduction project folde
 
 ### Environment Compatibility Assessment
 
-> **Populated during RV-1 with language-aware observed evidence.** Python comparison covers the runtime, marimo, and installed versions of packages imported by scripts. R comparison covers the R runtime, Quarto, repository/snapshot metadata, and `installed.packages()` versions for imported packages. Unversioned original `install.packages()` lines and snapshot dates do not prove exact package versions; mark original values UNKNOWN / NOT DIRECTLY VERIFIED rather than synthesizing a complete table from Python-style pins. Diagnostic scripts are verification instrumentation: store them under project `scripts/repro_checks/`, execute them through `run_with_capture.sh`, retain their appended logs, and never install packages at runtime.
+> **Populated during RV-1 with language-aware observed evidence.** Python comparison covers the runtime, marimo, and installed versions of packages imported by scripts. R comparison covers the R runtime, Quarto, repository/snapshot metadata, and `installed.packages()` versions for imported packages. Unversioned original `install.packages()` lines without snapshot evidence, and snapshot dates without either a matching current snapshot date or a quoted lookup, do not prove exact package versions; mark such original values UNKNOWN / NOT DIRECTLY VERIFIED rather than synthesizing a complete table from Python-style pins. When the original Dockerfile declares `UV_EXCLUDE_NEWER`, its `==` pins plus that cutoff (and any `--exclude-newer-package` overrides) establish the full original Python set, subject to the yank/deletion and architecture caveats (reconstruct it read-only with `uv pip compile --exclude-newer`, run as a single Bash command with absolute `{PROJECT_DIR}` paths — not via `run_with_capture.sh` — and quote the command and its output; never install). A reconstructed version that differs from an observed one, or a package that fails to resolve, is NOT DIRECTLY VERIFIED, not a version difference. Pre-freeze originals leave transitive Python versions UNKNOWN. See the mode reference's RV-1 step 12. Diagnostic scripts are verification instrumentation: store them under project `scripts/repro_checks/`, execute them through `run_with_capture.sh`, retain their appended logs, and never install packages at runtime.
 
 **Original DAAF Version:** [commit hash from Report's AI Disclosure, e.g., `abc1234`]
 **Original DAAF Release:** [semver if identifiable, e.g., `v2.1.0`, or `—` if not mapped to a release]
 **Current DAAF Version:** [current commit hash]
 **Current DAAF Release:** [current semver if identifiable]
 **Original Dockerfile Source:** [URL used to fetch, e.g., `https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/{hash}/Dockerfile`, or `unavailable — see notes`]
+
+**Environment-date inputs** (quote the matched Dockerfile lines as evidence; record a setting the original Dockerfile does not declare as `ABSENT (pre-freeze)`):
+
+| Input | Original (original commit's Dockerfile) | Current (`/daaf/Dockerfile` + running image) | Status |
+|-------|------------------------------------------|----------------------------------------------|--------|
+| `UV_EXCLUDE_NEWER` (Python cutoff) | [timestamp / ABSENT (pre-freeze)] | [timestamp; running image `echo $UV_EXCLUDE_NEWER`] | [MATCH / DIFFERS / ABSENT] |
+| `UBUNTU_SNAPSHOT` (apt snapshot) | [snapshot ID / ABSENT (pre-freeze)] | [snapshot ID; running image `/etc/daaf/ubuntu-snapshot`] | [MATCH / DIFFERS / ABSENT] |
+| Base image digest (`UBUNTU_BASE_IMAGE` / `FROM`) | [digest / tag only] | [digest] | [MATCH / DIFFERS / TAG ONLY] |
+| `P3M_SNAPSHOT_DATE` (R snapshot) | [date / ABSENT (pre-freeze)] | [date] | [MATCH / DIFFERS / ABSENT] |
+| `--exclude-newer-package` overrides | [PKG=DATE list / none] | [PKG=DATE list / none] | [MATCH / DIFFERS] |
+
+**Original Python set reconstruction:** [N/A — cutoffs, pins, and overrides match / `{PROJECT_DIR}/scripts/repro_checks/[file]` from read-only `uv pip compile --exclude-newer <original cutoff> [--exclude-newer-package ...]` (quote the command) / not possible — pre-freeze original]
 
 **Overall Compatibility:** [COMPATIBLE / MINOR DIFFERENCES / SIGNIFICANT DIFFERENCES / UNKNOWN]
 

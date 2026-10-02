@@ -401,7 +401,7 @@ I'd like to add networkx==3.4.2 to the Dockerfile so I can use
 it for graph analysis. Please add it to the appropriate block.
 ```
 
-DAAF will recognize this as a Framework Development task and pause for your approval before modifying the Dockerfile (modifying the Dockerfile is one of DAAF's "ask first" boundaries -- it never edits this file silently). You'll see exactly where DAAF wants to add the package and the version pin it's proposing. You can approve the change, adjust it, or ask DAAF to verify version compatibility against the existing pinned packages first -- a `uv pip compile` dry-run is a good safety check before committing to a rebuild, especially for packages with many transitive dependencies.
+DAAF will recognize this as a Framework Development task and pause for your approval before modifying the Dockerfile (modifying the Dockerfile is one of DAAF's "ask first" boundaries -- it never edits this file silently). You'll see exactly where DAAF wants to add the package and the version pin it's proposing. You can approve the change, adjust it, or ask DAAF to verify version compatibility against the existing pinned packages first -- a `uv pip compile` dry-run is a good safety check before committing to a rebuild, especially for packages with many transitive dependencies. The dry-run automatically uses the image's frozen environment date (the `UV_EXCLUDE_NEWER` setting baked into the container), so it resolves exactly what the rebuild will resolve, not whatever PyPI serves today. One consequence: a version released *after* that date shows up as "no solution found" (see [How DAAF Freezes the Environment](#how-daaf-freezes-the-environment-reproducible-rebuilds) below).
 
 **Where the package goes — and why it matters for rebuild speed.** DAAF's default is to add your package to the **user additions block** near the *end* of the Dockerfile — a clearly marked section (the banner reads `USER ADDITIONS — add your own packages and tools here`) that exists specifically for your own software. The reason is Docker **layer caching**: Docker rebuilds each layer only when that layer (or something above it) changes, and it reuses everything else from cache. The user additions block sits below every expensive framework layer -- the system libraries, the large R package stack, the Python install blocks, the editor extensions -- so adding a package there invalidates essentially nothing downstream — the rebuild takes only as long as installing your package itself, typically seconds to a couple of minutes. If instead you append your package to one of the mid-file categorized blocks (see below), every expensive layer *underneath* that block has to re-run, which can turn a quick rebuild into a many-minute one.
 
@@ -440,7 +440,7 @@ RUN uv pip install --system \
 
 A few things to note about the Dockerfile syntax (DAAF will handle these for you, but it's helpful to recognize them when reviewing the proposed change):
 - Every line in a `RUN` block except the last ends with a backslash (`\`) to continue the command
-- Versions are pinned with `==` (e.g., `networkx==3.4.2`) for reproducibility -- DAAF can look up the latest version on [PyPI](https://pypi.org/) for you, or use a version you specify
+- Versions are pinned with `==` (e.g., `networkx==3.4.2`) -- DAAF can look up the latest version on [PyPI](https://pypi.org/) for you, or use a version you specify. The `==` pin fixes only the package you name; its own dependencies are kept stable by the Dockerfile's frozen environment date, and it takes the two together to make the full set reproducible (see [How DAAF Freezes the Environment](#how-daaf-freezes-the-environment-reproducible-rebuilds))
 - If you're unsure which version to pin, you can ask DAAF to use the latest compatible version, but pinning a specific version is strongly recommended
 
 **2. Exit the container and rebuild.** After DAAF finishes editing the Dockerfile, exit Claude Code and the container, then run the rebuild script:
@@ -499,7 +499,7 @@ If you're adding a Python package that needs a system library, you'll need to as
 # ============================================
 # Install System Dependencies (Git)
 # ============================================
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN daaf-apt-update && apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
     jq \
@@ -509,6 +509,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 ```
+
+(`daaf-apt-update` is DAAF's wrapper around `apt-get update`, defined near the top of the Dockerfile. It also checks that every package index came from the frozen Ubuntu snapshot, so keep using it rather than a bare `apt-get update`.)
 
 **2. Add the Python package** to the appropriate `RUN uv pip install --system` block (as described above).
 
@@ -530,7 +532,7 @@ To install one yourself for a quick test, run (via `!`-prefix or host terminal):
 uv pip install --user networkx
 ```
 
-This installs the package into your user directory inside the container, which works because it doesn't require root privileges. You can start using the package immediately in your current session.
+This installs the package into your user directory inside the container, which works because it doesn't require root privileges. You can start using the package immediately in your current session. Note that `uv` inside the container honors the image's frozen environment date (`UV_EXCLUDE_NEWER`), so it installs the newest version *as of that date* — the same one a Dockerfile addition would get. Plain `pip install --user` does not apply the cutoff.
 
 **Important caveat:** Runtime-installed packages are **ephemeral**. They are stored in the container's filesystem, not in the Docker volume where your research data lives. This means they will be **lost** when the container is rebuilt or restarted (e.g., after running `docker compose up -d --build` or `docker compose down` followed by `docker compose up -d`). Think of runtime installs as a test drive -- once you've confirmed the package works for your needs, add it to the Dockerfile to make it permanent.
 
@@ -547,7 +549,7 @@ If you are **developing the framework itself** (not just running research), an o
 
 You may have noticed that DAAF uses `uv` rather than plain `pip` for package installation. `uv` is a fast, Rust-based Python package manager that's fully compatible with pip but significantly faster -- often 10-50x faster for large installs. The Dockerfile uses `uv pip install --system` (which installs packages system-wide during the build, when running as root). For a one-off runtime install — which only *you* can run, via `!`-prefix or a host terminal, since DAAF's agents are blocked from runtime installs (see the callout above) — use `uv pip install --user` instead, because you're running as a non-root user.
 
-Both `uv` and regular `pip` work at runtime -- `pip install --user <package>` is equally valid. The main advantage of `uv` is speed, which matters more during Dockerfile rebuilds than during one-off runtime installs.
+Both `uv` and regular `pip` work at runtime -- `pip install --user <package>` is equally valid. The main advantage of `uv` is speed, which matters more during Dockerfile rebuilds than during one-off runtime installs. One difference to keep in mind: inside the container `uv` resolves at the image's frozen environment date, while `pip` resolves against today's PyPI, so the two can install different versions of the same package.
 
 ### Checking What's Already Installed
 
@@ -566,7 +568,7 @@ Ask DAAF to add `networkx==3.4.2` (or your preferred version) to the core data s
 
 **"I need a specific version of a package that's already installed"**
 
-Ask DAAF to edit the version pin in the Dockerfile. For example, to change Polars from `1.38.1` to `1.39.0`, find `polars==1.38.1` and change it to `polars==1.39.0`. Then follow the same Steps 2-3 from "Step-by-Step Process" above (exit and run `rebuild_daaf`) -- the container-host boundary applies to version-pin edits exactly the same way it applies to new package additions. Be cautious with version changes -- other packages may depend on the currently pinned version, so test your analysis after upgrading. Ask DAAF/Claude Code to run a `uv pip compile` dry-run to test compatibility between all the package versions before committing to the rebuild.
+Ask DAAF to edit the version pin in the Dockerfile. For example, to change Polars from `1.38.1` to `1.39.0`, find `polars==1.38.1` and change it to `polars==1.39.0`. Then follow the same Steps 2-3 from "Step-by-Step Process" above (exit and run `rebuild_daaf`) -- the container-host boundary applies to version-pin edits exactly the same way it applies to new package additions. Be cautious with version changes -- other packages may depend on the currently pinned version, so test your analysis after upgrading. Ask DAAF/Claude Code to run a `uv pip compile` dry-run to test compatibility between all the package versions before committing to the rebuild. The dry-run uses the same frozen environment date as the build, so if the version you want was released after that date, it reports "no solution found". In that case see [Adding a package newer than the environment date](#adding-a-package-newer-than-the-environment-date).
 
 **"I need an R package that isn't included"**
 
@@ -623,7 +625,7 @@ Then follow the same exit-and-rebuild process described in the Python section ab
 
 #### How DAAF Ensures R Package Reproducibility
 
-DAAF pins R package versions using **Posit Package Manager (P3M)**, a date-specific CRAN snapshot. The Dockerfile configures R to install packages from a snapshot frozen on a specific date, which means that every `install.packages()` call -- whether at build time or runtime -- pulls the exact same package versions regardless of when you run it. This is the R equivalent of pinning Python packages with `==` version specifiers: it ensures that your R environment is reproducible across builds and across machines.
+DAAF pins R package versions using **Posit Package Manager (P3M)**, a date-specific CRAN snapshot. The Dockerfile configures R to install packages from a snapshot frozen on a specific date, which means that every `install.packages()` call -- whether at build time or runtime -- pulls the exact same package versions regardless of when you run it. This is the R counterpart of the Python environment date described in [How DAAF Freezes the Environment](#how-daaf-freezes-the-environment-reproducible-rebuilds) below: it ensures that your R environment is reproducible across builds and across machines.
 
 You don't need to specify version numbers when installing R packages -- the P3M snapshot handles that automatically. If you need a newer version of a package than what's available in the current snapshot, you can temporarily override the repository URL in your `install.packages()` call, but this trades reproducibility for currency and should be done deliberately.
 
@@ -635,6 +637,64 @@ You don't need to specify version numbers when installing R packages -- the P3M 
 - **Run `Rscript -e 'installed.packages()[, "Package"]'`** inside the container to see all installed packages
 - **Read the Dockerfile** to see exactly what's installed
 - **Check the smoke tests** in `scripts/smoke_tests/` -- each R library skill has a corresponding smoke test (`smoke_tidyverse.R`, `smoke_ggplot2.R`, etc.) that exercises core functionality, and a Python import-smoke (`smoke_imports.py`) verifies every pinned Python analysis package imports. Run the whole set with `bash scripts/smoke_tests/run_all_smoke_tests.sh`
+
+### How DAAF Freezes the Environment (Reproducible Rebuilds)
+
+Pinning a version with `==` sounds like it should make a rebuild identical, but it only fixes the packages you name. DAAF's ~57 top-level Python packages pull in roughly 107 more as dependencies, and without any further control those are re-resolved against PyPI on every rebuild. In a test, re-resolving the very same pins one week after a build changed 13 of 164 installed packages, including `numba` and `llvmlite`. System packages (the Python interpreter itself, GDAL, OpenSSL, Node.js) and the base image drift the same way. So the Dockerfile freezes the Python and system-package layers (and the base image) to a single **environment date**: whenever you rebuild, you get what was available on that date, not what happens to be newest today.
+
+#### What each mechanism covers
+
+| Layer | Dockerfile setting | What it freezes |
+|-------|--------------------|-----------------|
+| Base operating system | `UBUNTU_BASE_IMAGE` (image pinned by digest) | The exact Ubuntu 24.04 base layers, even if the `24.04` tag is re-pushed |
+| uv itself | Digest on the `COPY --from=ghcr.io/astral-sh/uv:...` line | The uv/uvx binaries |
+| Python packages | `UV_EXCLUDE_NEWER` (a full UTC timestamp) | **Every** Python distribution, including transitive dependencies and the build tools used to compile source packages. uv ignores any file uploaded to PyPI after the cutoff |
+| System (apt) packages | `UBUNTU_SNAPSHOT` (an Ubuntu snapshot ID) | Every apt package, served from [snapshot.ubuntu.com](https://snapshot.ubuntu.com/) as it stood at that instant. Each apt step runs through `daaf-apt-update`, which fails the build if any package index came from somewhere else |
+| R packages | `P3M_SNAPSHOT_DATE` | R packages, from a Posit Package Manager snapshot ([above](#how-daaf-ensures-r-package-reproducibility)). This date moves on its own schedule because of R-specific binary-availability constraints documented in the Dockerfile |
+
+The current environment date is **2026-09-24T13:20:00Z** (`UV_EXCLUDE_NEWER=2026-09-24T13:20:00Z`, `UBUNTU_SNAPSHOT=20260924T132000Z`). A built image also records it: `echo $UV_EXCLUDE_NEWER` and `cat /etc/daaf/ubuntu-snapshot` inside the container show the values it was built with.
+
+**Not covered by the environment date:** tools downloaded as a specific release file (the R runtime, Quarto, code-server, the Codex CLI, the GitHub CLI, PowerShell, and the editor extensions) and Claude Code itself. Each is pinned to an exact version number, but not to a date or a checksum.
+
+#### Adding a package newer than the environment date
+
+Because the build only sees what existed on the environment date, anything released later is invisible to it — including a newer version of a package that's already installed. The symptoms can be confusing:
+
+- **uv** reports `No solution found when resolving dependencies` and does **not** mention the date cutoff. The version you asked for looks as if it doesn't exist.
+- **apt** reports `Unable to locate package` or `Version '...' for '...' was not found`.
+
+You have two ways forward:
+
+1. **For a single Python package**, ask DAAF to exempt just that package on its own install line with uv's `--exclude-newer-package` option, giving it a later cutoff:
+
+   ```dockerfile
+   RUN uv pip install --system \
+       --exclude-newer-package yourpackage=2026-11-01T00:00:00Z \
+       yourpackage==X.Y.Z
+   ```
+
+   Only that package gets the later cutoff. Its dependencies still resolve at the environment date, so if *they* also need newer releases, bump the date instead.
+2. **Otherwise, bump the environment date** (next section).
+
+#### Bumping the environment date
+
+Moving the environment date upgrades everything at once, so treat it as a deliberate maintenance step rather than a side effect of adding one package. Changing the Dockerfile is an "ask first" action in DAAF, so DAAF will confirm with you before editing.
+
+1. **Pick one instant in UTC** — for example `2027-01-15T12:00:00Z`.
+2. **Set both settings to that same instant**, each in its own format: `ARG UV_EXCLUDE_NEWER=2027-01-15T12:00:00Z` and `ARG UBUNTU_SNAPSHOT=20270115T120000Z`. Always use the full timestamp ending in `Z`: uv reads a bare date like `2027-01-15` in the local time zone of whatever machine runs it, so a dry-run on a different machine could resolve different packages than the build. Update the values listed in the `ENVIRONMENT DATE` banner at the top of the Dockerfile to match, and the current values quoted in this guide's [How DAAF Freezes the Environment](#how-daaf-freezes-the-environment-reproducible-rebuilds) section.
+3. **Optionally re-pin the base image — to a date on or before the environment date.** Some system packages DAAF installs (for example `libc6-dev`) require the *exact* version of a library the base image already contains, and apt never downgrades. If the base image is newer than the snapshot, those installs can fail. So pick a dated tag `noble-YYYYMMDD` on or before your environment date (the moving `24.04` tag may be newer), run `docker buildx imagetools inspect ubuntu:noble-YYYYMMDD` on your host, copy the top-level `Digest:` value into `ARG UBUNTU_BASE_IMAGE`, and note the tag in the comment above it. Do the same with `ghcr.io/astral-sh/uv:<version>` if you are also upgrading uv.
+4. **Move `P3M_SNAPSHOT_DATE` separately**, and only after checking the R constraints described at the R blocks of the Dockerfile.
+5. **Record the current package set** before rebuilding: inside the container, run `uv pip list --format=freeze` and save the output somewhere in your project.
+6. **Rebuild** with `bash rebuild_daaf.sh` (or `.\rebuild_daaf.ps1`) from your `daaf-docker` folder. The date settings sit near the top of the Dockerfile, so this is a full, slow rebuild.
+7. **Verify**: run `uv pip list --format=freeze` again and diff it against the saved list, so you know exactly which versions moved. Check that the build log shows `daaf-apt-update: OK` lines, and run `bash scripts/smoke_tests/run_all_smoke_tests.sh`.
+
+#### Limits and caveats
+
+- **Apple Silicon (arm64) is not yet verified end-to-end.** The build replaces the base image's package sources with direct snapshot addresses (`https://snapshot.ubuntu.com/ubuntu/<ID>/`), which serve both Intel/AMD and Apple Silicon packages. A sandboxed test confirmed that apt resolves every arm64 package index from the snapshot this way. A full arm64 image build has not been tested yet. If your build fails at the snapshot step (the build log shows the `RUN` step that sets `SOURCES=/etc/apt/sources.list.d/ubuntu.sources`, and it prints either `apt frozen to Ubuntu snapshot ...` or a `FATAL:` / `daaf-apt-update: ERROR:` line), use the escape hatch: change the line `ARG UBUNTU_SNAPSHOT=20260924T132000Z` in the Dockerfile to `ARG UBUNTU_SNAPSHOT=` (empty) and rebuild. System packages then come from the live Ubuntu archive and are **not** frozen, and the build log says so in a `WARNING` on every apt step. Python packages stay frozen either way. Please report the failure so it can be fixed.
+- **Snapshots are intended to be kept for at least two years.** Canonical says it intends "to ensure snapshots are available for dates up to at least 2 years in the past, which we may extend if there is demand." After that, an exact rebuild of an old environment date may no longer be possible. For long-term reproducibility of a finished analysis, archive the **built image** itself, not just the Dockerfile: on your host, find the DAAF image with `docker images` and save it with `docker save -o daaf-image.tar <image-name>`.
+- **PyPI can still change underneath a frozen date.** Yanked releases and deleted files are read live, so a dependency yanked after the environment date could be skipped on a rebuild, and a deleted file could make the rebuild fail. This is an inference from how uv documents its cutoff and has not been observed. Your `==` pins are not affected by yanks.
+- **Builds depend on snapshot.ubuntu.com being reachable.** Every system package comes from the snapshot server and nothing from the regular Ubuntu archive. If the snapshot server is down, or a package index fails to download, the build stops with an error rather than quietly mixing in packages from elsewhere.
+- **One deliberate exception during bootstrap.** The base image ships without the certificates needed to check the snapshot server's HTTPS identity, so the very first apt step installs them with certificate checking turned off for `snapshot.ubuntu.com` only, for that one step. Package integrity does not depend on HTTPS: apt verifies the GPG-signed index against Ubuntu's archive key and checks every package's hash. Every later step checks certificates normally.
 
 ---
 

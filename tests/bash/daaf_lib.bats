@@ -623,3 +623,70 @@ teardown() {
     run grep -q 'DAAF_R' "${REPO_ROOT}/Dockerfile"
     assert_failure
 }
+
+@test "Dockerfile freezes the build to one environment date (digests, uv cutoff, apt snapshot)" {
+    # Base image: digest-pinned via a pre-FROM ARG, and the only FROM is that ARG.
+    run grep -E '^ARG UBUNTU_BASE_IMAGE=ubuntu:24\.04@sha256:[0-9a-f]{64}$' "${REPO_ROOT}/Dockerfile"
+    assert_success
+    run grep -E '^FROM ' "${REPO_ROOT}/Dockerfile"
+    assert_success
+    [ "${#lines[@]}" -eq 1 ]
+    [ "${lines[0]}" = 'FROM ${UBUNTU_BASE_IMAGE}' ]
+
+    # uv binaries: tag AND index digest on the literal COPY --from reference.
+    run grep -E '^COPY --from=ghcr\.io/astral-sh/uv:[0-9]+\.[0-9]+\.[0-9]+@sha256:[0-9a-f]{64} /uv /uvx /usr/local/bin/$' "${REPO_ROOT}/Dockerfile"
+    assert_success
+
+    # Python cutoff: full RFC 3339 UTC timestamp (never a TZ-dependent bare
+    # date), persisted as ENV so in-container dry-runs see the same date.
+    run grep -E '^ARG UV_EXCLUDE_NEWER=[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$' "${REPO_ROOT}/Dockerfile"
+    assert_success
+    local uv_cutoff="${output#ARG UV_EXCLUDE_NEWER=}"
+    run grep -E '^ENV UV_EXCLUDE_NEWER=\$\{UV_EXCLUDE_NEWER\}$' "${REPO_ROOT}/Dockerfile"
+    assert_success
+
+    # apt snapshot ID, and it must name the SAME instant as the uv cutoff.
+    run grep -E '^ARG UBUNTU_SNAPSHOT=[0-9]{8}T[0-9]{6}Z$' "${REPO_ROOT}/Dockerfile"
+    assert_success
+    local snapshot_id="${output#ARG UBUNTU_SNAPSHOT=}"
+    local cutoff_compact="${uv_cutoff//[-:]/}"
+    [ "${cutoff_compact}" = "${snapshot_id}" ]
+
+    # apt is frozen by DIRECT snapshot URIs (architecture-independent), not by
+    # apt's Snapshot: field / APT::Snapshot (shadowed live-archive fetches, or a
+    # silent live fallback) and not by a ports.ubuntu.com host-mapping conf.
+    run grep -F 'SNAPSHOT_URI="https://snapshot.ubuntu.com/ubuntu/${UBUNTU_SNAPSHOT}/"' "${REPO_ROOT}/Dockerfile"
+    assert_success
+    run grep -F '"URIs: ${SNAPSHOT_URI}"' "${REPO_ROOT}/Dockerfile"
+    assert_success
+    run grep -E '^[^#]*(50daaf-snapshot|Snapshot: \$|APT::Snapshot|--snapshot)' "${REPO_ROOT}/Dockerfile"
+    assert_failure
+
+    # The snapshot origin guard helper is defined and refreshes with --error-on=any.
+    run grep -F "COPY --chmod=0755 <<'DAAF_APT_UPDATE_EOF' /usr/local/bin/daaf-apt-update" "${REPO_ROOT}/Dockerfile"
+    assert_success
+    run grep -F 'apt-get update --error-on=any "$@"' "${REPO_ROOT}/Dockerfile"
+    assert_success
+
+    # No bare `apt-get update` anywhere outside the helper heredoc: neither in an
+    # active instruction nor in a commented example (examples teach the pattern).
+    # Prose comments that merely mention the command are allowed.
+    run awk '
+        /^COPY --chmod=0755 <<.DAAF_APT_UPDATE_EOF. / { in_helper = 1; next }
+        /^DAAF_APT_UPDATE_EOF$/ { in_helper = 0; next }
+        in_helper { next }
+        /apt-get update/ && ($0 !~ /^[[:space:]]*#/ || $0 ~ /^[[:space:]]*#[[:space:]]*RUN /) { print NR ": " $0 }
+    ' "${REPO_ROOT}/Dockerfile"
+    assert_success
+    [ -z "${output}" ]
+
+    # Every apt layer calls the helper: snapshot layer x2 branches + 7 install
+    # layers (system deps, universe self-heal, geospatial, DAAF_DEV
+    # shellcheck/bats, R runtime .deb, R system libs, nodejs) = 9. The helper's
+    # own COPY line is excluded, and the commented USER ADDITIONS example is
+    # excluded by matching active lines only. An exact count makes a dropped
+    # call site fail this test.
+    run bash -c "grep -E '^[^#]*daaf-apt-update( |;|\$)' '${REPO_ROOT}/Dockerfile' | grep -vc '^COPY '"
+    assert_success
+    [ "${output}" -eq 9 ]
+}

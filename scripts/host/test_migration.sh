@@ -2185,7 +2185,8 @@ if [ "${UPDATE_RAN}" = "true" ]; then
         skip_note "No rebuild strings in update output (Dockerfile/compose unchanged across this update -- rebuild legitimately not triggered)."
     fi
 
-    # Noble base image: the HEAD Dockerfile is FROM ubuntu:24.04 (noble).
+    # Noble base image: the HEAD Dockerfile builds FROM a digest-pinned
+    # ubuntu:24.04 (noble) via ARG UBUNTU_BASE_IMAGE.
     OS_RELEASE=$(container_exec cat /etc/os-release 2>/dev/null || echo "")
     if echo "${OS_RELEASE}" | grep -q 'VERSION_CODENAME=noble'; then
         check "Container base image is Ubuntu noble (24.04) after update" "0"

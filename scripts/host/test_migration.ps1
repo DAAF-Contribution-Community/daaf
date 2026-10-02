@@ -2519,8 +2519,9 @@ if ($script:UpdateRan) {
         Add-Skip "No rebuild strings in update output (Dockerfile/compose unchanged across this update -- rebuild legitimately not triggered)."
     }
 
-    # Noble base image: the HEAD Dockerfile is FROM ubuntu:24.04 (noble). Capture as
-    # one string (Out-String) so -match returns a scalar bool for Test-Check.
+    # Noble base image: the HEAD Dockerfile builds FROM a digest-pinned
+    # ubuntu:24.04 (noble) via ARG UBUNTU_BASE_IMAGE. Capture as one string
+    # (Out-String) so -match returns a scalar bool for Test-Check.
     $OsRelease = (Invoke-ContainerExec cat /etc/os-release | Out-String)
     Test-Check "Container base image is Ubuntu noble (24.04) after update" ($OsRelease -match 'VERSION_CODENAME=noble')
 

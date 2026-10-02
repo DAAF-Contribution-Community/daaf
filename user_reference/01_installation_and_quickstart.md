@@ -952,7 +952,7 @@ When `DAAF_DEV` is unset or `0` (the default for every normal install), none of 
 Every DAAF image ships with **R** as a first-class execution language alongside Python — there is nothing to enable and no flag to set. The build installs:
 
 - **R 4.5.3** (the current DAAF-pinned R release)
-- **60+ pinned R packages** covering data manipulation (tidyverse), visualization (ggplot2, plotly, gt), econometrics (fixest, plm, survey), spatial analysis (sf, terra), and machine learning (tidymodels) — installed from a **date-pinned Posit Package Manager (P3M) snapshot** so rebuilds produce identical package versions
+- **60+ pinned R packages** covering data manipulation (tidyverse), visualization (ggplot2, plotly, gt), econometrics (fixest, plm, survey), spatial analysis (sf, terra), and machine learning (tidymodels) — installed from a **date-pinned Posit Package Manager (P3M) snapshot** so rebuilds produce identical package versions. The Python and system layers get the same treatment: the Dockerfile freezes the full Python package set (transitive dependencies included) and every Ubuntu system package to a single environment date (see [How DAAF Freezes the Environment](04_extending_daaf.md#how-daaf-freezes-the-environment-reproducible-rebuilds))
 - **Quarto CLI 1.7.29** — R's literate-programming notebook system, the R equivalent of Marimo for Python
 
 Including R (with the full package set and Quarto) accounts for roughly **2 GB** of the image size — approximately 8.6 GB with R versus 6.4 GB without — though the exact figures vary with your Docker version and platform.

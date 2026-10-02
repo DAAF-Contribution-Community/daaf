@@ -307,7 +307,7 @@ Hello! My name is Brian Heseung Kim ([@brhkim](https://github.com/brhkim)). I ha
 - **[Trafilatura](https://trafilatura.readthedocs.io/)** (Adrien Barbaresi) -- Web content extraction library powering DAAF's provenance-preserving web retrieval layer (`web_fetch.sh`); if your research relies on retrieved web content, please cite [Barbaresi (2021)](https://aclanthology.org/2021.acl-demo.15/)
 - **[uv](https://github.com/astral-sh/uv)** ([Astral](https://astral.sh/)) -- Fast Python package manager powering DAAF's build
 - **[Git](https://git-scm.com/)** and **[pre-commit](https://pre-commit.com/)** -- Version control and commit-time safety checks
-- DAAF also relies on a broad ecosystem of specific Python and R packages for statistical computing, visualization, and geospatial analysis -- see the [Dockerfile](Dockerfile) for the complete list with pinned versions.
+- DAAF also relies on a broad ecosystem of specific Python and R packages for statistical computing, visualization, and geospatial analysis -- see the [Dockerfile](Dockerfile) for the full list. It pins the top-level Python packages with `==` and freezes the Python and system-package layers to a single environment date: uv's `UV_EXCLUDE_NEWER` cutoff fixes the complete Python set, transitive dependencies included, and system packages come from an Ubuntu snapshot at the same date. R packages come from their own date-pinned Posit Package Manager snapshot.
 
 ### Methodological Foundations
 
