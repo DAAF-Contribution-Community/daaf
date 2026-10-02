@@ -187,6 +187,51 @@ function Wait-ForUser {
 
 ---
 
+### A Ctrl+C Inside `try`/`finally` Runs the `finally`, Then the Script Exits 0
+
+**The problem:** A Ctrl+C (SIGINT on Linux/macOS) stops the running pipeline. PowerShell runs the enclosing `finally` blocks and then ends the script: no `catch` runs, nothing after the `finally` runs (including an `exit N` placed there), and a `pwsh -File` process exits **0**. A parent that reads only the exit code (a launcher, a CI step, DAAF's Control Panel) sees a clean return, even though the `finally` printed "interrupted". A script with no `try` at all also exits 0 on SIGINT (review round 5 repro, pwsh 7 on Linux), so the fix below covers only the code inside its own `try`/`finally`.
+
+```powershell
+$ReachedEnd = $false
+try {
+    & sleep 20          # Ctrl+C here
+    $ReachedEnd = $true
+} finally {
+    if (-not $ReachedEnd) { Write-Host "Interrupted -- cleaned up." }   # prints
+}
+exit 1                  # never runs: the process exits 0
+```
+
+**Field evidence:** observed with pwsh 7.6.3 on Linux, 2026-10-02 (`research/2026-10-01_FrameworkDev_RestoreCopyThenSwap/scratch/engineer17/repro_child.ps1`, driven by `repro_driver.sh` and `repro_repeat.sh` in the same folder). A SIGINT sent to the child `pwsh -NoProfile -File` process while its `try` ran a native `sleep` or `Start-Sleep`:
+- No exit in the `finally`: exit 0, all 40 lines of the `finally`'s text printed, the line after the `finally` never printed.
+- `[Environment]::Exit(130)` as the `finally`'s last statement: exit 130 in 10 of 10 runs per wait type, each after all 40 lines were printed.
+- `exit 130` in the `finally`: exit 130 too.
+- The `catch` did not run on the SIGINT; on a `throw` it did, and the process exited 1.
+- With a native command running, the process ended only when that command had finished (17-18 s after the SIGINT, for a `sleep 20` started 3 s before it); with `Start-Sleep`, at once.
+Windows PowerShell 5.1, and a console Ctrl+C on Windows (a console control event, not a POSIX signal), were not tested (inference that they behave the same).
+
+**Fix:** Decide "interrupted" from flags (the `try` did not reach its end, a `catch` that rethrows recorded no error, and no outcome flag explains it) and end the process from the `finally`'s LAST statement, after every message. Do it only when a parent reads the exit code: in a script the user started in their own PowerShell window, `[Environment]::Exit` ends that whole session and closes the window the recovery text was just printed in (and, called through `&` in an in-process Pester test, it kills the test host; see the entry above).
+
+```powershell
+$ReachedEnd = $false; $Faulted = $false
+try {
+    # ... every outcome sets a flag and leaves with `break`, never `exit` ...
+    $ReachedEnd = $true
+} catch {
+    $Faulted = $true    # a real error: keep PowerShell's own exit code
+    throw
+} finally {
+    # ... cleanup and messages ...
+    if ((-not $ReachedEnd) -and (-not $Faulted) -and $env:DAAF_NESTED) { [Environment]::Exit(130) }
+}
+```
+
+**Where it lives in DAAF:** `scripts/host/restore_from_backup.ps1` (the copy-then-swap `try`/`finally`; `daaf.ps1`'s `Invoke-DaafDelegate` starts it as a child process with `DAAF_NESTED=1`). Pinned and exercised in `tests/powershell/restore_from_backup.Tests.ps1` (SIGINT sent to the child pwsh while preparing and during the swap, with and without `DAAF_NESTED`, plus an injected error). A standalone run keeps exit 0 (documented known limit).
+
+**Severity:** Medium. The cleanup and the message are right; only the exit code lies, and only callers that read it are misled.
+
+---
+
 ### `$?` Is Unreliable for Native Commands
 
 **The problem:** `$?` checks whether the last *PowerShell operation* succeeded, but stderr output from native commands can make `$?` return `$false` even when the command exited 0:
@@ -728,8 +773,8 @@ if (@($errs).Count -gt 0) { Write-Host "Could not read $(@($errs).Count) folder(
 
 **Fix:**
 1. Never use `Get-ChildItem -Recurse ... -ErrorAction SilentlyContinue` as an **authoritative** count or size. Progress displays are fine: label them as approximate and verify separately.
-2. Count container-side when Docker is at hand: bind-mount the host folder read-only and run `find` (DAAF: `$BackupCountProgram` in `backup_daaf.ps1` / `restore_from_backup.ps1`, byte-identical, pinned by `tests/bash/backup_twin_parity.bats`; one `find -exec stat -c %s {} + | awk` pass yields files and KB, since each walk of a bind mount crosses Docker Desktop's host file sharing). Pass the path by direct invocation as one argument (`"${HostPath}:/b:ro"`); it contains no `"` and never ends in `\`, so PowerShell's quoting of a spaced path is safe. **Prove the mount is visible before trusting a count:** Docker Desktop has been reported to present an EMPTY folder for bind mounts of some locations (a non-C:, USB or network drive; docker/for-win#14271, not reproduced here), and an empty view counts 0 and exits 0. DAAF's program prints `BACKUP_SENTINEL=1` only when it sees a file every backup contains (the root `.daaf-symlinks`); backup treats a missing sentinel as "count unavailable" and falls back, and restore (which must accept older backups without that file) treats a count of 0 the same way. **Prove the count saw everything, too:** a pipeline's exit status is its LAST command's, so in `find ... | awk` a `find` read error (e.g. `Permission denied` through the bind mount) is silent: awk prints a SHORT count and the program exits 0. `set -e` does not help (the pipeline "succeeded"), and busybox's `pipefail` build default is unverified. DAAF sends the count's stderr to a file inside the throwaway container (`find ... 2>/tmp/count_err | awk ...`) and prints the count markers only when that file is empty, otherwise `BACKUP_COUNT_ERRORS=<n>` (the snapshot count does the same with `STAGED_COUNT_ERRORS`), so an error routes to the fallback instead of being trusted as exact (review round 2 reproduced the silent short count under dash). The post-restore volume count in both restore twins uses the same pattern (`RESTORED_FILES=` only on an empty error file, else `RESTORED_COUNT_ERRORS=`); there an unavailable count is a WARNING with exit 0 that latches restore's WITH WARNINGS banner, because the copy already succeeded and only the check could not run, while a count actually read as 0 still fails.
-3. When you must use `Get-ChildItem`, capture `-ErrorVariable` and report a non-empty error set as a lower bound (DAAF: `Measure-DaafBackupTree`; `backup_daaf.ps1` shows the count as `N+` and latches the WITH WARNINGS banner, and `restore_from_backup.ps1`'s listing and scan show `N+`, the scan's `N+` also latching restore's WITH WARNINGS banner). Never treat a lower bound as proof of loss: a short lower-bound count does not trigger backup's fatal short-copy branch, and restore prints no mismatch warning when the restored volume holds at least that many files (its banner still ends WITH WARNINGS, because a lower bound cannot prove the restore complete). The macOS/Linux twins apply the same lower-bound semantics to a host `find` that hits a read error (`_daaf_tree_count`: `backup_daaf.sh` and the `restore_from_backup.sh` listing show `N+`), with one deliberate difference: `restore_from_backup.sh`'s scan of the selected backup **refuses** to restore (exit 1, before the destructive prompt) instead of proceeding with `N+`. It also refuses when the backup folder itself cannot be opened, and when any regular file in it is unreadable: `find` opens only folders, so a separate POSIX `[ -r ]` pass over every file catches unreadable files, such as a root-owned 0600 file left by a backup run under sudo. Off Windows there is no path-length limit to explain the error, so it is a real permission or I/O problem that `docker cp`, reading the same files as the same user, would most likely hit too, after the volume had already been cleared (inference: whether `docker cp` then skips such a file or fails outright was not verified).
+2. Count container-side when Docker is at hand: bind-mount the host folder read-only and run `find` (DAAF: `$BackupCountProgram` in `backup_daaf.ps1` / `restore_from_backup.ps1`, byte-identical, pinned by `tests/bash/backup_twin_parity.bats`; one `find -exec stat -c %s {} + | awk` pass yields files and KB, since each walk of a bind mount crosses Docker Desktop's host file sharing). Pass the path by direct invocation as one argument (`"${HostPath}:/b:ro"`); it contains no `"` and never ends in `\`, so PowerShell's quoting of a spaced path is safe. **Prove the mount is visible before trusting a count:** Docker Desktop has been reported to present an EMPTY folder for bind mounts of some locations (a non-C:, USB or network drive; docker/for-win#14271, not reproduced here), and an empty view counts 0 and exits 0. DAAF's program prints `BACKUP_SENTINEL=1` only when it sees a file every backup contains (the root `.daaf-symlinks`); backup treats a missing sentinel as "count unavailable" and falls back, and restore (which must accept older backups without that file) treats a count of 0 the same way. **Prove the count saw everything, too:** a pipeline's exit status is its LAST command's, so in `find ... | awk` a `find` read error (e.g. `Permission denied` through the bind mount) is silent: awk prints a SHORT count and the program exits 0. `set -e` does not help (the pipeline "succeeded"). busybox ash does support `set -o pipefail` (from source: `BASH_PIPEFAIL = ENABLE_ASH_BASH_COMPAT`, and `ASH_BASH_COMPAT` is `default y`; `research/2026-10-01_FrameworkDev_RestoreCopyThenSwap/scoping/02_docker_volume_disk_mechanics.md` § E), but no DAAF program has been executed with it under busybox, and a program that must stay portable to other images should not rely on a build option. DAAF sends the count's stderr to a file inside the throwaway container (`find ... 2>/tmp/count_err | awk ...`) and prints the count markers only when that file is empty, otherwise `BACKUP_COUNT_ERRORS=<n>` (the snapshot count does the same with `STAGED_COUNT_ERRORS`), so an error routes to the fallback instead of being trusted as exact (review round 2 reproduced the silent short count under dash). The post-restore volume count in both restore twins uses the same pattern (`RESTORED_FILES=` only on an empty error file, else `RESTORED_COUNT_ERRORS=`); there an unavailable count is a WARNING with exit 0 that latches restore's WITH WARNINGS banner, because the copy already succeeded and only the check could not run, while a count that was read must equal the checked temporary copy's count exactly (any difference, including 0, fails with the temporary copy kept).
+3. When you must use `Get-ChildItem`, capture `-ErrorVariable` and report a non-empty error set as a lower bound (DAAF: `Measure-DaafBackupTree`; `backup_daaf.ps1` shows the count as `N+` and latches the WITH WARNINGS banner, and `restore_from_backup.ps1`'s listing and scan show `N+`, the scan's `N+` also latching restore's WITH WARNINGS banner). Never treat a lower bound as proof of loss: a short lower-bound count does not trigger backup's fatal short-copy branch, and restore's check of its temporary copy only requires at least that many files (its banner still ends WITH WARNINGS, because a lower bound cannot prove the restore complete). `restore_from_backup.ps1` treats every PowerShell-fallback count as such a lower bound, even one without read errors, because PowerShell can miss what `docker cp` streams; only a count made inside Docker is an exact gate. The macOS/Linux twins apply the same lower-bound semantics to a host `find` that hits a read error (`_daaf_tree_count`: `backup_daaf.sh` and the `restore_from_backup.sh` listing show `N+`), with one deliberate difference: `restore_from_backup.sh`'s scan of the selected backup **refuses** to restore (exit 1, before anything is copied) instead of proceeding with `N+`. It also refuses when the backup folder itself cannot be opened, and when any regular file in it is unreadable: `find` opens only folders, so a separate POSIX `[ -r ]` pass over every file catches unreadable files, such as a root-owned 0600 file left by a backup run under sudo. Off Windows there is no path-length limit to explain the error, so it is a real permission or I/O problem that `docker cp`, reading the same files as the same user, would most likely hit too, partway through the copy (inference: whether `docker cp` then skips such a file or fails outright was not verified). The general lesson: when an input is known to be unreadable, refuse before any destructive step, and say which file. Until 2026-10-01 DAAF's restore cleared the live volume before copying, so that failure would have hit after the clear. The restore now copies into a temporary volume and checks it before it replaces anything (copy-then-swap; see the Ctrl+C and `docker volume create` entries below), so a failed or short copy no longer touches the live data. The refusal is kept anyway, because it can name the unreadable file and a failed or short copy cannot.
 4. Warn users up front when files *will* exceed the limit: other Windows tools (Explorer, zip, cloud-sync clients) share it. DAAF's backup scan counts files whose path in the backup folder would reach 260+ characters and prints a notice suggesting a shorter folder (e.g. `C:\daaf`) or enabling long-path support.
 
 **Severity:** High. A silent undercount on the completeness check of a backup, hidden further by a percentage tolerance.
@@ -768,6 +813,152 @@ find /staging \( -type p -o -type s -o -type b -o -type c \) -exec rm -f {} +
 
 ---
 
+### A Forwarded Ctrl+C Stops a Container's `sh -c` Between Commands (PID 1 Does Not Protect a Shell)
+
+**The problem:** A multi-step program run with `docker run ... sh -c '<step 1>; <step 2>'` looks safe from Ctrl+C, because the shell is the container's PID 1 and "PID 1 ignores signals". That rule covers only signals with their *default* action, and a shell running `-c` installs its own SIGINT handler. By default, `docker run` forwards the host's Ctrl+C to PID 1 (`--sig-proxy`, default `true`). The shell lets the current command finish, then exits 130 without running the next one. For a destructive pair like clear-then-copy, that leaves the target EMPTY.
+
+```sh
+# BAD: a Ctrl+C during rm is forwarded to the shell, which exits 130 after rm -- cp never runs
+docker run --rm -v "${TEMP}:/src:ro" -v "${LIVE}:/dest" busybox sh -c 'rm -rf /dest/*; cp -a /src/. /dest/'
+
+# GOOD (DAAF restore swap): forward nothing, and have the shell catch INT/TERM/HUP with a no-op
+docker run --rm --sig-proxy=false --name "${LIVE}-restore-swap" -v "${TEMP}:/src:ro" -v "${LIVE}:/dest" busybox \
+    sh -c 'trap : INT TERM HUP; test -f /src/.daaf-restore-swap-started || exit 3; rm -rf /dest/* /dest/.[!.]* /dest/..?* && cp -a /src/. /dest/ && rm -f /dest/.daaf-restore-swap-started'
+```
+
+(The BAD form's `/dest/*` also misses dotfiles; the three globs in the GOOD form cover them. The `test -f ... || exit 3` marker guard makes the program erase nothing unless its source is the copy the restore just marked, and reports that refusal with an exit code of its own; see the vanished-volume entry below. `trap :` installs a no-op handler and needs no quotes. DAAF's container programs must stay quote-free, because Windows PowerShell 5.1 mangles a `"` in a native argument and the `.sh` twin wraps each program in single quotes. `trap '' INT` would ignore the signal too, but it needs quotes.)
+
+**Why it happens:**
+1. **The CLI forwards signals.** `docker run --sig-proxy` defaults to `true`, "Proxy received signals to the process" ([docker container run](https://docs.docker.com/reference/cli/docker/container/run/), options table). docker/cli's `signals.go` calls `gosignal.Notify(sigc)` with no signal list, which catches every signal, and sends each one on with `ContainerKill` ([signals.go](https://raw.githubusercontent.com/docker/cli/master/cli/command/container/signals.go), [run.go](https://raw.githubusercontent.com/docker/cli/master/cli/command/container/run.go); read 2026-10-01).
+2. **The PID-1 rule does not cover a shell.** Docker's docs: "A process running as PID 1 inside a container is treated specially by Linux: it ignores any signal with the default action. So, the process doesn't terminate on SIGINT or SIGTERM unless it's coded to do so." A shell given `-c` is coded to. busybox ash (`shell/ash.c`, lines 3718-3720 of [master](https://raw.githubusercontent.com/mirror/busybox/master/shell/ash.c), read 2026-10-01) catches SIGINT whenever `-c` is in use: `case SIGINT: if (iflag || minusc || sflag == 0) new_act = S_CATCH;`. Per the same source, the interrupt is deferred while a child runs and the shell then exits with status 130 (`raise_interrupt()`). Under dash the shell exited 130 after the child finished (observed, below). Whether busybox waits for the child to end or exits before it does is not settled: the host probe accepts either, as long as the next command never runs (probe doc, "Where busybox may legitimately differ", item 4). In both readings the next command never runs (observed under dash; inference for busybox until the probe runs).
+3. **Inference, from the same source:** busybox runs the *last* command of a `-c` string in place of the shell when no trap is set. A single-command `sh -c 'cp ...'` therefore makes `cp` PID 1 with default actions, and a forwarded INT is dropped. That only holds for one command, so do not rely on it.
+
+**Field evidence:**
+- **Observed under dash, not busybox** (this dev container, 2026-10-01; dash 0.5.12, GNU coreutils 9.4; `research/2026-10-01_FrameworkDev_RestoreCopyThenSwap/scratch/agent2/probe_signals_b.sh` and `probe_trap_noop.sh`). The probes send SIGINT to the `sh -c` process only, as `docker kill` does.
+  - `dash -c 'sleep 2; echo B_RAN'` showed `SigCgt: 0000000000010002`, meaning SIGINT (bit 2) is caught, then printed `Q1 exit=130` and never printed `B_RAN`.
+  - With `trap '' INT TERM` first, it printed `B_RAN` and `Q2 exit=0`.
+  - With `trap : INT TERM HUP` first, and a SIGTERM one second after the INT, it printed `B_RAN`, `C_RAN` and `Q5 exit=0`.
+  - That dash was not PID 1. For INT this does not matter: the shell has a handler, so the PID-1 rule never applies.
+- **busybox in a real container: pending.** The one-shot host probe (`research/2026-10-01_FrameworkDev_RestoreCopyThenSwap/2026-10-01_restore_busybox_host_probe.md`, Step 7) hits the swap's trap prefix and a trap-less control with `docker kill -s INT/TERM/HUP`. It has not been run on a host yet.
+
+**Fix:**
+1. Run every destructive multi-step container program with `--sig-proxy=false`, so the CLI forwards nothing. A Ctrl+C then stops only the CLI that is waiting. The container runs to the end, and with `--rm` Docker removes it when it exits.
+2. Put `trap : INT TERM HUP` first in the program as a second layer, in case a signal reaches it some other way (for example `docker kill -s INT`). Only SIGKILL or Docker itself stopping can cut it short then.
+3. Give the container a fixed `--name`, so a re-run can see it still running (`docker container inspect --format '{{.State.Running}}' <name>`). Read that state from stdout only, and count any line that is exactly `true` as running: with stderr merged in (`2>&1 | tail -n 1` in bash, or PowerShell's `2>&1` output joined into one string), a Docker warning line on stderr can make a running container look stopped, and a script would then offer to `docker rm -f` it (DAAF review round 2, I-A; found by reading the code, not reproduced against a real daemon). Keep the source copy until the result has been checked, and tell the user the operation keeps running inside Docker.
+4. Do not add `--init` for such a program. tini as PID 1 forwards signals to the shell, which is exactly what must not happen here (inference from tini's documented purpose).
+
+**Where it lives in DAAF:** `SWAP_PROGRAM` / `$SwapProgram` in `scripts/host/restore_from_backup.{sh,ps1}` (byte-identical). `tests/bash/backup_twin_parity.bats` pins the trap prefix and `--sig-proxy=false` on every swap call.
+
+**Severity:** High. An ordinary Ctrl+C silently empties the live data.
+
+---
+
+### `docker volume create` Silently Reuses an Existing Volume, and `docker volume ls --filter name=` Is an Unanchored Regex
+
+**The problem:** Two Docker behaviors make "create a scratch volume, find it again later" unsafe:
+- `docker volume create NAME` on a name that already exists does not fail. It hands back the existing volume, contents and all, with exit 0. A stale scratch volume from an earlier failed run is silently adopted.
+- `docker volume ls --filter name=X` matches any volume whose name *contains* X, as a regular expression. `name=daaf_daaf-data` also matches `daaf_daaf-data-restore-tmp`, `name=_daaf-data` matches every install's data volume, and `.` matches any character.
+
+```bash
+# BAD: adopts a stale $TEMP silently; the "exists?" test matches other volumes too
+docker volume create "${TEMP}"
+if docker volume ls -q --filter "name=${LIVE}" | grep -q .; then echo "live volume exists"; fi
+
+# GOOD: check the EXACT name first, create only when absent, and mark ownership with a label
+if docker volume inspect "${TEMP}" > /dev/null 2>&1; then
+    echo "A leftover ${TEMP} exists"      # ask, remove or refuse -- never reuse it blindly
+    exit 1
+fi
+docker volume create --label "org.daaf.restore-tmp-for=${LIVE}" "${TEMP}"
+docker ps -aq --filter "label=org.daaf.restore-tmp-for=${LIVE}"   # label=key=value matches exactly
+```
+
+**Why it happens (from the docs and source, read 2026-10-01):** [docker volume create](https://docs.docker.com/reference/cli/docker/volume/create/): "If you specify a volume name already in use on the current driver, Docker assumes you want to reuse the existing volume and doesn't return an error." [docker volume ls](https://docs.docker.com/reference/cli/docker/volume/ls/): "The name filter matches on all or part of a volume's name." In moby's `daemon/internal/filters/parse.go` ([master](https://raw.githubusercontent.com/moby/moby/master/daemon/internal/filters/parse.go)), `Args.Match` tries an exact match first and then falls back to `regexp.MatchString(name2match, source)`. A `label=key=value` filter is an exact key/value match (same `volume ls` page).
+
+**Related:**
+- `docker volume rm` refuses a volume that any container still references, including a stopped one. [docker volume rm](https://docs.docker.com/reference/cli/docker/volume/rm/) says "You can't remove a volume that's in use by a container", and [moby#18250](https://github.com/moby/moby/issues/18250) shows `volume is in use` from a stopped, not-removed container. A `docker create` helper that was never started most likely holds it the same way (inference). So remove the helper containers by label before removing the volume.
+- `docker volume inspect` also exits nonzero when the daemon is unreachable, not only when the volume is missing (inference: not reproduced here). So a nonzero exit alone does not mean "absent". Reading every failure as "absent" lets a transient error lead to a `docker volume create` that silently reuses a leftover, and to a cleanup that then removes it (review round 1, I2; inference, not reproduced).
+
+**Fix:**
+1. Test existence by exact name (`docker volume inspect` / `docker container inspect`), never with `ls --filter name=`. Treat a "no such volume / container / object" error (case-insensitive) as absent. For any other failure, do not guess from the error text, whose wording is not a stable interface (inference): fall back to an exact whole-line match against Docker's own name list, stdout only (`docker volume ls -q`, or `docker ps -a --format '{{.Names}}'`; `docker ps --format '{{.Names}}'` then tells a running container from a stopped one), and refuse only when that list fails too, because then the check could not be made.
+2. Never `docker volume create` a scratch volume without that check. Decide what a leftover means (DAAF's restore asks `Remove it and continue? (y/n)`) instead of reusing it.
+3. Still verify right after the create, because a volume can appear between the check and the create: the new volume must be empty (`find /dest -mindepth 1` lists nothing) and carry a label whose value is unique to this run. Labels are fixed at creation, so a reused volume keeps its own. If either fails, refuse and leave the volume alone: it may be another run's.
+4. Derive scratch names from the resolved full volume name, not a project prefix. An override such as `DAAF_DATA_VOLUME_NAME` can make the two differ.
+5. Put a label on every scratch volume and helper container, and reap them with `--filter label=key=value`. Leave the label off any container that must never be reaped while it runs. DAAF's swap containers carry no label.
+6. Never add `com.docker.compose.*` labels to scratch volumes: compose would treat them as its own.
+
+**Where it lives in DAAF:** `scripts/host/restore_from_backup.{sh,ps1}`: `<volume>-restore-tmp` volumes with labels `org.daaf.restore-tmp-for=<live volume>` (reaping) and `org.daaf.restore-run=<per-run token>` (identity); the not-found test is `_restore_is_not_found` / `Test-DaafRestoreNotFound`, the exact-name list fallback `_restore_name_listed` / `Find-DaafRestoreExactName`, the post-create check `_restore_check_new_temp` / `Test-DaafRestoreNewTemp`. `tests/bash/restore_from_backup.bats` checks that a similarly named volume is not taken for a leftover, that a failed inspect refuses, and that a non-empty new temp volume is left alone.
+
+**Severity:** High. Stale data silently reused, or the wrong install's volume matched.
+
+---
+
+### `docker run -v NAME:/path` Silently Re-Creates a Vanished Named Volume, Empty
+
+**The problem:** Mounting a named volume that does not exist is not an error: Docker creates a new, empty volume under that name and the command succeeds. A script that created a scratch volume, checked it, and later mounts it again by name cannot tell from that mount whether it is still the same volume. If the volume was removed in between (another run of the same script, a user cleaning up in Docker Desktop), the next write that mounts it creates an empty one, and a check that compares two trees can then compare two empty ones and report a match.
+
+```bash
+# BAD: the identity check comes after a write that mounts the volume by name
+docker run --rm -v "${TEMP}:/dest" busybox touch /dest/.marker   # re-creates ${TEMP} empty if it vanished
+check_identity "${TEMP}"                                           # too late: Docker already made a new volume
+
+# GOOD: check identity BEFORE any mount, again right before the destructive step,
+# and make the destructive program refuse a source that lacks what this run put there
+check_identity "${TEMP}" || exit 1          # e.g. this run's unique label is still on the volume
+docker run --rm -v "${TEMP}:/dest" busybox touch /dest/.marker
+check_identity "${TEMP}" || exit 1
+docker run --rm -v "${TEMP}:/src:ro" -v "${LIVE}:/dest" busybox sh -c 'test -f /src/.marker || exit 3; ...'
+```
+
+**Why it happens:** Docker's volumes guide ([Volumes](https://docs.docker.com/engine/storage/volumes/), "Start a container with a volume", fetched 2026-10-01 to `research/2026-10-01_FrameworkDev_RestoreCopyThenSwap/web/2026-10-01T162728Z_docs-docker-com_volumes-docker-docs_ea5bbea4.md`, line 107): "If you start a container with a volume that doesn't yet exist, Docker creates the volume for you." A volume created this way does not carry the per-run label the script set on its own `docker volume create` (inference: nothing on the mount passes one), so that label survives only on the volume the script actually created.
+
+**Field evidence:** review round 1 (2026-10-01) ran DAAF's `SWAP_VERIFY_PROGRAM` under dash on two empty trees and got `SWAP_VERIFY=MATCH` and `SWAP_VERIFY_ENTRIES=0:0`. The re-creation itself was not reproduced against a real Docker daemon; it rests on the documentation quote above. The busybox host probe's Step 8 reads the label format back on a real host (not yet run).
+
+**Fix:**
+1. Give the scratch volume an identity that a re-created volume cannot have: a label whose value is unique to this run (`docker volume create --label org.daaf.restore-run=<token>`). Read it back with `docker volume inspect --format '{{.Labels}}'` (one argument with no space or quote, so Windows PowerShell 5.1 passes it unchanged).
+2. Re-check the identity before the first write that mounts the volume after a wait, and again right before each destructive step. Refuse and remove nothing when it fails: the volume under that name may belong to another run.
+3. Make the destructive program itself refuse a source that lacks a marker this run wrote (`test -f /src/<marker> || exit 3; ...`), as a second layer for a volume that vanishes between the last check and the program. Give that refusal an exit code that nothing else in the program uses, so the caller can report "nothing was replaced" instead of "the data may be incomplete" (with `test -f ... && rm ...` the refusal exits 1, like a failed `rm` or `cp`). Keep the code out of 125-127, which `docker run` uses for its own failures ([Running containers](https://docs.docker.com/engine/containers/run/), "Exit status", fetched 2026-10-01 to `research/2026-10-01_FrameworkDev_RestoreCopyThenSwap/web/2026-10-01T194739Z_docs-docker-com_running-containers-docker-docs_91e3e7fa.md`, lines 168-191: "Exit code 125 indicates that the error is with Docker daemon itself"). Do not read a 125 as "nothing ran", not even when the named `--rm` container is gone afterwards: an engine that stops or restarts while the program runs can make `docker run` exit 125 after the program had already started, and the engine removes a `--rm` container that exited meanwhile, so "exit 125, container gone" can follow an erase that already happened. This rests on upstream PR discussion, not on a DAAF reproduction: in [moby#34999](https://github.com/moby/moby/pull/34999) (fetched 2026-10-01 to `research/2026-10-01_FrameworkDev_RestoreCopyThenSwap/scratch/review3q/web/2026-10-01T205329Z_github-com_containerwait-on-remove-don-39-t-stuck-on-rm-fail-by-kolyshk_d0f5614f.md`, line 67) the author stopped a daemon "while having a few docker run processes stuck in wait" and docker-cli 17.06 printed `error waiting for container: EOF` and exited 125; [moby#46857](https://github.com/moby/moby/pull/46857) (fetched 2026-10-01 to `.../scratch/review3q/web/2026-10-01T205539Z_github-com_liverestore-don-39-t-remove-rm-containers-on-restart-by-vvol_b7fa1494.md`, lines 39-42) stops live-restore from killing `--rm` containers on an engine restart, and says they "still should be removed if they exited while the engine was down". Only the program's own refusal code means nothing was replaced; treat every other nonzero exit, 125 included, as "may have stopped partway" and keep the source copy.
+4. Never accept a comparison of two empty trees as proof: require equal, nonzero entry counts where the data cannot legitimately be empty.
+
+**Where it lives in DAAF:** `scripts/host/restore_from_backup.{sh,ps1}`: `_restore_temp_is_ours` / `Test-DaafRestoreTempIdentity` (checked after the create, before the state-marker write, and before each swap), the `test -f /src/.daaf-restore-swap-started || exit 3;` guard in `SWAP_PROGRAM` / `$SwapProgram` with its host-side reading `_restore_fail_swap_not_run` / the `$swapExit -eq 3` branch (only 3 means nothing was replaced; any other nonzero exit, 125 included, keeps the checked copy and takes the after-swap path, review round 3, I-1), and `_restore_swap_checked` / `Test-DaafRestoreSwapChecked` (MATCH plus `SWAP_VERIFY_ENTRIES=n:n`, n > 0 for the data volume).
+
+**Severity:** High. A volume removed while a script waited comes back empty, and an empty-versus-empty comparison passes.
+
+---
+
+### `df` Inside a Docker Desktop Container Reports the VM's Virtual Disk, Not the Computer's Drive
+
+**The problem:** A free-space check run inside a container (`df`, `stat -f`) measures the filesystem that holds Docker's data. On Docker Desktop that is a virtual disk with a fixed maximum size: a WSL2 `.vhdx` on Windows, a disk image on macOS, and most likely a disk image with Docker Desktop for Linux too (see "Other platforms" below). It is not the host drive. The check can pass with hundreds of GB "available" while the computer's drive is nearly full. The virtual disk file then can't grow, and writes fail partway.
+
+```sh
+# BAD: treat the in-container figure as the user's free disk space
+avail_kb=$(df -Pk /dest | tail -n 1 | awk '{print $4}')   # also: the pipeline hides a df failure
+
+# GOOD: measure Docker's own limit without a pipeline, and say what it is NOT
+a=$(stat -f -c %a /dest) && s=$(stat -f -c %S /dest) && echo AVAIL_KB=$((a*s/1024))
+# ...then tell the user the host drive needs that room too (the script cannot see it)
+```
+
+**Field evidence (observed in this dev container, WSL2 kernel `6.6.87.2-microsoft-standard-WSL2`, `/daaf` a named volume, 2026-10-01):** `df -Pk /daaf` printed `/dev/sde 1055762868 173717588 828341808 18% /daaf` (orchestrator run), and `/dev/sde 1055762868 175276104 826783292 18% /daaf` on a re-run. 1,055,762,868 KB is about 1007 GiB, the WSL2 default 1 TB virtual size, whatever the host drive holds. Microsoft documents the effect ([How to manage WSL disk space](https://learn.microsoft.com/en-us/windows/wsl/disk-space), read 2026-10-01): "The amount of disk space allocated to your VHD by WSL will always show the default maximum amount (1TB in the most recent version of WSL), even if the amount of disk space on your actual Windows device is less than that", and `df`'s "Avail: Amount of space left in the VHD".
+
+**Other platforms (inference, not observed):**
+- macOS and Hyper-V Docker Desktop have a configurable "Disk usage limit", and the Mac FAQ notes that "many tools report the maximum file size, not the actual file size", so in-container `df` there most likely reports the image's limit too.
+- Docker Desktop for Linux runs a VM as well. Its FAQ says it "stores Linux containers and images in a single, large "disk image" file in the Linux filesystem. This is different from Docker on Linux, which usually stores containers and images in the /var/lib/docker directory on the host's filesystem." ([FAQs for Docker Desktop for Linux](https://docs.docker.com/desktop/troubleshoot-and-support/faqs/linuxfaqs/), fetched 2026-10-01 to `research/2026-10-01_FrameworkDev_RestoreCopyThenSwap/web/2026-10-01T194729Z_docs-docker-com_faqs-for-docker-desktop-for-linux-docker-docs_2a32f60e.md`, line 26.) That volumes live in the same image, and that in-container `df` there reports the image's limit, is inference.
+- On Linux Docker Engine, a named volume is a host directory (`/var/lib/docker/volumes/<name>/_data`), so the in-container figure is the host filesystem's.
+
+**Fix:**
+1. Treat the in-container figure as Docker's limit only. Make the user-facing message say the computer's drive needs the room too: DAAF's restore messages say "inside Docker", and the docs add the host-drive caveat.
+2. Do not try to locate the disk image from a host script unless you accept a heuristic. Docker documents only the default WSL2 data location (`%LOCALAPPDATA%\Docker\wsl`, movable in Settings), and the settings keys that hold a moved location are undocumented (community sources only). DAAF's restore checks inside Docker only (user decision D5, 2026-10-01).
+3. Prefer `stat -f -c %a` / `%S` (free blocks for unprivileged users times block size) over `df | tail`, so a failure propagates. If you use `df`, pass `-P`: busybox `df` wraps the line for a device name longer than 20 characters without it (busybox `coreutils/df.c`, from source).
+4. Size the margin for real overhead. Apparent sizes undercount allocated blocks (about 1.4% observed on the DAAF volume), so DAAF requires max(10% of the size, 1,048,576 KB) on top of the peak need max(B, 2B - L). Its messages print KB / 1,048,576 labelled "GB" (a binary gigabyte), and the user docs say "about 1 GB".
+5. Expect the host-side file to stay large. Space freed inside the virtual disk is most likely not returned to the computer's drive until the image is compacted (inference from the Mac FAQ and WSL docs, not observed).
+
+**Where it lives in DAAF:** `SPACE_PROGRAM` / `$SpaceProgram` in `scripts/host/restore_from_backup.{sh,ps1}`, plus the user-facing caveat in `user_reference/07_faq_technical.md` and `01_installation_and_quickstart.md`.
+
+**Severity:** Medium. A space check that passes and then runs out. DAAF's restore most likely runs out while preparing the temporary copy (nothing replaced); if the swap itself runs out, the checked copy is kept and the restore can be re-run.
+
+---
+
 ## Quick Lookup
 
 | Gotcha | Language | Severity | ShellCheck/Analyzer |
@@ -778,6 +969,7 @@ find /staging \( -type p -o -type s -o -type b -o -type c \) -exec rm -f {} +
 | `cd` without `\|\| exit` | Bash | Medium | SC2164 |
 | Backtick nesting | Bash | Low | SC2006 |
 | `exit` in dot-sourced functions | PowerShell | High | — |
+| Ctrl+C inside `try`/`finally`: the `finally` runs, then exit 0 | PowerShell | Medium | — |
 | `$?` for native commands | PowerShell | High | — |
 | Expression context breaks TTY | PowerShell | High | — |
 | `$ErrorActionPreference` scope | PowerShell | High | — |
@@ -798,3 +990,7 @@ find /staging \( -type p -o -type s -o -type b -o -type c \) -exec rm -f {} +
 | Windows `docker cp` aborts at FIFO/device/symlink/name | Cross-platform | High | — |
 | PS 5.1 `Get-ChildItem -Recurse` silently skips long paths | PowerShell | High | — |
 | busybox `find`: batched `-exec ... {} +` inside `\( \)` never runs its last batch | Cross-platform | High | — |
+| Forwarded Ctrl+C stops a container's `sh -c` between commands (`--sig-proxy=false` + `trap : INT TERM HUP`) | Cross-platform | High | — |
+| `docker volume create` reuses an existing name; `volume ls --filter name=` is an unanchored regex | Cross-platform | High | — |
+| `docker run -v NAME:/path` silently re-creates a vanished named volume, empty (check identity before any mount) | Cross-platform | High | — |
+| In-container `df` on Docker Desktop reports the VM's virtual disk, not the host drive | Cross-platform | Medium | — |

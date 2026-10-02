@@ -101,7 +101,12 @@ Script behaving unexpectedly?
     ├─ Exit code truncated → ./references/gotchas.md
     ├─ Windows docker cp copy silently truncated → ./references/gotchas.md (FIFO/device/symlink/name abort)
     ├─ Windows file count too low / folders skipped → ./references/gotchas.md (PS 5.1 Get-ChildItem long paths)
-    └─ busybox find -exec {} + prints/does nothing → ./references/gotchas.md (-exec + inside \( \))
+    ├─ busybox find -exec {} + prints/does nothing → ./references/gotchas.md (-exec + inside \( \))
+    ├─ Ctrl+C stopped a container's sh -c between commands → ./references/gotchas.md (--sig-proxy=false + trap : INT TERM HUP)
+    ├─ docker volume create reused stale data / --filter name= matched too much → ./references/gotchas.md (exact-name inspect + labels)
+    ├─ A volume removed mid-run came back empty / two empty trees "matched" → ./references/gotchas.md (docker run -v re-creates a vanished volume)
+    ├─ Space check passed but the host drive filled up → ./references/gotchas.md (in-container df on Docker Desktop)
+    └─ PowerShell script exits 0 after Ctrl+C → ./references/gotchas.md (Ctrl+C inside try/finally)
 ```
 
 ### "I need to set up tests"
@@ -233,4 +238,9 @@ Existing patterns in DAAF scripts that this skill codifies:
 | Windows `docker cp` aborts at FIFO/device node/symlink/uncreatable name (stage + strip + count) | `./references/gotchas.md` |
 | PS 5.1 `Get-ChildItem -Recurse` silently skips long paths (count container-side, `-ErrorVariable`) | `./references/gotchas.md` |
 | busybox `find` never runs the last batch of `-exec ... {} +` inside `\( \)` (keep batched actions top-level) | `./references/gotchas.md` |
+| Container `sh -c` as PID 1 still catches a forwarded Ctrl+C (`--sig-proxy=false` + `trap : INT TERM HUP` for destructive programs) | `./references/gotchas.md` |
+| PowerShell Ctrl+C inside `try`/`finally` runs the `finally`, then exits 0 (`[Environment]::Exit` only in a child process) | `./references/gotchas.md` |
+| `docker volume create` silently reuses a name; `docker volume ls --filter name=` is an unanchored regex (exact `inspect` + labels) | `./references/gotchas.md` |
+| `docker run -v NAME:/path` silently re-creates a vanished named volume, empty (per-run label checked before any mount; marker guard with its own exit code; nonzero entry counts) | `./references/gotchas.md` |
+| In-container `df` / `stat -f` on Docker Desktop measures the VM's virtual disk, not the host drive | `./references/gotchas.md` |
 | Detached-container (`docker run -d`) diagnostics routing | `./references/error-handling.md` |

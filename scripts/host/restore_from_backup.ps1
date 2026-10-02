@@ -11,8 +11,11 @@
 # naming pattern produced by backup_daaf.ps1 (e.g., 2026-04-21_daaf_backup\)
 # and presents them for interactive selection.
 #
-# WARNING: Restoring is a DESTRUCTIVE operation. The entire contents of the
-# Docker volume are erased and replaced with the backup contents.
+# WARNING: Restoring is a DESTRUCTIVE operation: the entire contents of the
+# Docker volume are replaced with the backup contents. The backup is first copied
+# into a TEMPORARY Docker volume and checked there; only after you type RESTORE is
+# the live volume replaced, in one step inside Docker ("copy-then-swap"). Any
+# failure before that step leaves your current data untouched.
 #
 # Supports $env:DAAF_TEST_MODE = "1" for Pester test dot-sourcing (see tests/).
 # Supports DAAF_DRY_RUN=1 for CI cross-platform smoke testing (see tests/).
@@ -81,29 +84,58 @@ $VolumeName = "${projectName}_daaf-data"
 if ($env:DAAF_DATA_VOLUME_NAME) { $VolumeName = $env:DAAF_DATA_VOLUME_NAME }
 # Second volume: Claude Code state. Restored only when the selected backup
 # contains the dedicated subfolder (newer backups); older backups predating the
-# volume are restored data-only with a warning.
+# volume are restored data-only with a NOTE.
 $ClaudeVolumeName = "${projectName}_daaf-claude-config"
 $ClaudeSubDir = ".daaf-claude-config"
 # Executable-permission manifest written into the backup root by backup_daaf.ps1
 # (see the "Capture the executable-permission manifest" block there). Lists every
 # regular file that had the owner-exec bit set at backup time. Restore uses it to
 # put POSIX modes back after a Windows round-trip (NTFS) erased them. Absent on
-# older backups -- restore handles that gracefully (no normalization; see Step 2d).
+# older backups -- restore handles that gracefully (no normalization; see Step 3d).
 $PermissionsManifest = ".daaf-permissions"
 # Symlink manifest written into the backup root (and the Claude subfolder root) by
 # backup_daaf.ps1's staging step. Lists each symlink's path and target (TAB-
 # separated). Restore replays it container-side to recreate the links that the
 # staging step stripped so `docker cp` could stream a symlink-free tree on Windows.
 # Current backups always contain it (0 bytes when the volume had no symlinks); absent
-# only on backups that predate the feature -- restore no-ops then (see Step 2e),
+# only on backups that predate the feature -- restore no-ops then (see Step 3e),
 # matching the ".daaf-permissions" "no manifest, no action" rule.
 $SymlinksManifest = ".daaf-symlinks"
+# --- Copy-then-swap names and container programs ---
+# Same names, label, marker and programs as restore_from_backup.sh (see its
+# "Copy-then-swap names and container programs" block for the full rationale). The
+# three programs are single-quoted, quote-free (no `"`: the Windows PowerShell 5.1
+# native-argument rule) and BYTE-IDENTICAL to the .sh twin's (pinned by
+# tests/bash/backup_twin_parity.bats). Every name is checked by EXACT name (`docker
+# volume inspect` / `docker container inspect`); `docker volume create` silently
+# reuses an existing volume, so a temp volume is only created after that check found
+# none. Temp volumes and prepare-phase helpers carry the label; the swap containers do
+# not, so no reap can ever kill a running swap. The state marker is written into a temp
+# volume right before its swap and deleted from the live volume as the swap's last
+# step, so it only survives in a leftover temp volume (evidence that a swap started).
+$TempVolumeName = "${VolumeName}-restore-tmp"
+$ClaudeTempVolumeName = "${ClaudeVolumeName}-restore-tmp"
+$SwapContainerName = "${VolumeName}-restore-swap"
+$ClaudeSwapContainerName = "${ClaudeVolumeName}-restore-swap"
+$RestoreLabel = "org.daaf.restore-tmp-for"
+# Identity of THIS run's temp volumes (see the .sh twin's RESTORE_RUN_LABEL): a second
+# label whose value is unique to this run, re-checked with `docker volume inspect
+# --format {{.Labels}}` (one argument with no space or quote, so Windows PowerShell 5.1
+# passes it unchanged) right after creation, before the state marker, and right before
+# each swap.
+$RestoreRunLabel = "org.daaf.restore-run"
+$RestoreRunId = (Get-Date -Format 'yyyyMMddHHmmss') + '-' + $PID + '-' + [guid]::NewGuid().ToString('N')
+$SwapMarker = ".daaf-restore-swap-started"
+$SpaceProgram = 'a=$(stat -f -c %a /dest) && s=$(stat -f -c %S /dest) && echo AVAIL_KB=$((a*s/1024)) && set -- $(du -sk /dest) && echo LIVE_KB=$1 && if test -d /src; then set -- $(du -sk /src) && echo SRC_KB=$1; fi'
+$SwapProgram = 'trap : INT TERM HUP; test -f /src/.daaf-restore-swap-started || exit 3; rm -rf /dest/* /dest/.[!.]* /dest/..?* && cp -a /src/. /dest/ && rm -f /dest/.daaf-restore-swap-started'
+$SwapVerifyProgram = 'export LC_ALL=C; : > /tmp/err || exit 4; for t in src dest; do cd /$t 2>>/tmp/err && { find . ! -path ./.daaf-restore-swap-started ! -type d -exec stat -c %f:%u:%g:%s:%n {} + ; find . ! -path . -type d -exec stat -c %f:%u:%g:%n {} + ; find . -type l -exec readlink {} \; ; } 2>>/tmp/err | sort 2>>/tmp/err > /tmp/$t.lst || echo LIST_FAILED_$t >> /tmp/err; done; if test -s /tmp/err; then echo SWAP_VERIFY_ERRORS=$(grep -c ^ /tmp/err); elif cmp -s /tmp/src.lst /tmp/dest.lst; then echo SWAP_VERIFY=MATCH; else echo SWAP_VERIFY=MISMATCH; fi; echo SWAP_VERIFY_ENTRIES=$(grep -c ^ /tmp/src.lst):$(grep -c ^ /tmp/dest.lst)'
 #
-# SYNC NOTE: two container-side programs below cannot use these variables and
+# SYNC NOTE: the container-side count programs below cannot use these variables and
 # hardcode the literals ".daaf-symlinks", ".daaf-permissions" and ".daaf-claude-config":
 # $BackupCountProgram (a single-quoted `@'...'@` here-string, byte-identical to
-# backup_daaf.ps1's -- pinned by tests/bash/backup_twin_parity.bats) and the
-# post-restore volume count in "--- Verify ---" (a single-quoted string, identical to
+# backup_daaf.ps1's -- pinned by tests/bash/backup_twin_parity.bats) and the volume
+# count program used twice, for the temporary copy (Step 3f) and for the post-restore
+# count in "--- Verify ---" (single-quoted strings, identical to each other and to
 # restore_from_backup.sh's -- pinned by the same file). They are kept literal so their
 # `find` predicates stay textually identical to the backup's. If a name ever changes,
 # update those literals by hand (and backup_daaf.ps1's / the .sh twins' copies).
@@ -253,9 +285,22 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # --- Check for running containers using the volume ---
+# Names from STDOUT only (review round 2): through 2>&1 a stderr line (a Docker config
+# WARNING, or the error text of a failing `docker ps`) was listed as a running
+# "container". A FAILED `docker ps` is not "nothing is running" -- until 2026-10-02 its
+# exit code was not read here -- so refuse: nothing has been created yet. Same wording,
+# outcome and exit code as the .sh twin, and the same first line as the swap-time
+# re-check below.
 $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-$RunningContainers = @(docker ps --filter "volume=$VolumeName" --format '{{.Names}}' 2>&1)
+$RunningContainers = @(docker ps --filter "volume=$VolumeName" --format '{{.Names}}' 2>$null)
+$runningContainersExit = $LASTEXITCODE
 $ErrorActionPreference = $savedEAP
+if ($runningContainersExit -ne 0) {
+    Write-Host "ERROR: Could not check whether DAAF is running (docker ps failed, exit $runningContainersExit)," -ForegroundColor Red
+    Write-Host "       so the restore cannot start safely. This restore has not changed anything."
+    Write-Host "       Make sure Docker Desktop is running, then run the restore again."
+    Wait-AndExit 1
+}
 $RunningContainers = @($RunningContainers | Where-Object { $_ -and $_.Trim() -ne "" })
 
 if ($RunningContainers.Count -gt 0) {
@@ -381,12 +426,12 @@ Write-Host "Selected: $SelectedName"
 # --- Detect Claude Code state in the backup ---
 # Newer backups nest the Claude Code state volume in a hidden subfolder. Older
 # backups (created before the dedicated volume existed) lack it -- those restore
-# data-only with a warning.
+# data-only with a NOTE.
 $ClaudeBackupPath = Join-Path $SelectedPath $ClaudeSubDir
 # Require the subfolder to exist AND be non-empty. An empty "$ClaudeSubDir\" dir
 # (e.g., a stray pre-created folder from an interrupted backup) must NOT trigger
-# the Claude restore path below -- that path CLEARS the live claude-config volume
-# before copying, so restoring from an empty source would wipe the user's Claude
+# the Claude restore path below -- that path REPLACES the live claude-config volume's
+# contents, so restoring from an empty source would wipe the user's Claude
 # Code login and session history and copy nothing back.
 $HasClaudeBackup = $false
 if (Test-Path -LiteralPath $ClaudeBackupPath -PathType Container) {
@@ -396,9 +441,10 @@ if (Test-Path -LiteralPath $ClaudeBackupPath -PathType Container) {
 
 # --- Completion-banner latch ---
 # Mirrors backup_daaf.ps1's $HadWarnings: every non-fatal WARNING on the success path
-# below (a permission or symlink replay failure, a restored file count that could not
-# be verified, a post-restore file-count mismatch, a Claude-state clear, copy or
-# symlink-replay failure) sets this so the final banner can say the restore completed
+# below (a free space that could not be checked, a permission or symlink replay
+# failure in the temporary copy, a Claude-state symlink-replay failure, a restored
+# file count that could not be verified, a temporary copy that could not be removed)
+# sets this so the final banner can say the restore completed
 # WITH WARNINGS rather than claiming an unqualified success. The exit status stays 0
 # on those paths -- the banner wording is the signal, not the exit code (callers such
 # as daaf.ps1 branch on the exit code only). The NOTEs do not latch: a backup that
@@ -414,8 +460,8 @@ $HadWarnings = $false
 # --- Count source files ---
 # Exclude the Claude subfolder from the DATA-volume count -- it is restored to a
 # separate volume below, not into the data volume. Also exclude BOTH metadata
-# manifests: ".daaf-permissions" (consumed by Step 2d, then removed) and
-# ".daaf-symlinks" (consumed by Step 2e, then removed). Neither is restored content,
+# manifests: ".daaf-permissions" (consumed by Step 3d, then removed) and
+# ".daaf-symlinks" (consumed by Step 3e, then removed). Neither is restored content,
 # so counting them would make this scan disagree with the post-restore verification
 # count (which runs after both manifests are stripped from the volume) and with the
 # listing count above.
@@ -474,6 +520,11 @@ if ($scanCountExit -eq 0) {
 }
 $TotalFilesLabel = ""
 $TotalFilesIsLowerBound = $false
+# $true when the count below came from the PowerShell fallback (Docker could not count
+# the folder). That count is never authoritative -- Windows PowerShell can miss files
+# (long paths) and cannot see what `docker cp` will stream -- so the temp-copy check in
+# step 3f treats it as a LOWER BOUND (the temp copy must hold at least that many).
+$TotalFilesFromFallback = $false
 if ($null -ne $TotalFiles -and $null -ne $TotalSizeKB -and $TotalFiles -gt 0) {
     $TotalSizeBytes = $TotalSizeKB * 1024
     $TotalFilesLabel = "$TotalFiles"
@@ -493,6 +544,7 @@ if ($null -ne $TotalFiles -and $null -ne $TotalSizeKB -and $TotalFiles -gt 0) {
         Write-Host "      PowerShell instead. (Docker Desktop can show an empty folder for some locations,"
         Write-Host "      such as a USB, network, or non-C: drive. The restore copy itself is not affected.)"
     }
+    $TotalFilesFromFallback = $true
     $TotalFiles = $ScanFallback.Files
     $TotalSizeBytes = $ScanFallback.Bytes
     $TotalFilesLabel = "$TotalFiles"
@@ -515,276 +567,887 @@ if ($TotalSizeBytes -ge 1073741824) {
 }
 Write-Host "Found $TotalFilesLabel files ($TotalSizeStr) to restore."
 
-# --- Destructive warning ---
-Write-Host ""
-Write-Host "==========================================" -ForegroundColor Red
-Write-Host "  *** WARNING: DESTRUCTIVE OPERATION ***" -ForegroundColor Red
-Write-Host "==========================================" -ForegroundColor Red
-Write-Host ""
-Write-Host "This will COMPLETELY ERASE the current contents of your"
-Write-Host "DAAF Docker volume and replace them with the backup."
-Write-Host ""
-Write-Host "All existing files, git history, research data, and"
-Write-Host "configuration in the Docker volume will be permanently"
-Write-Host "deleted and overwritten by the backup contents."
-Write-Host ""
-Write-Host "Source:      $SelectedName\ ($TotalFilesLabel files, $TotalSizeStr)"
-Write-Host "Destination: Docker volume '$VolumeName'"
+# ============================================================================
+# Copy-then-swap
+# ============================================================================
+# Nothing above changed anything. From here: (1) leftovers from an earlier restore,
+# (2) a free-space check, (3) copy the backup into TEMPORARY volumes and check them,
+# (4) the RESTORE confirmation, (5) replace the live volumes inside Docker, (6) check
+# the result and remove the temporary volumes. Until step 5 starts, every failure,
+# cancel or Ctrl+C removes what this run created (the try/finally below) and leaves
+# the live volumes untouched. Once step 5 has started, a temporary volume may hold the
+# only complete copy, so NOTHING deletes it any more ($SwapStarted). As elsewhere in
+# this script, no `exit` runs inside the try: outcomes are flags, acted on after the
+# finally (calling `exit` from inside a try whose finally must run is version-fragile
+# on PS 5.1). Mirrors restore_from_backup.sh step for step.
+$TempCreated = $false
+$ClaudeTempCreated = $false
+$SwapStarted = $false
+$TempRemoveFailed = $false
+# $true once the state marker may have been written into a temp volume (see
+# Invoke-DaafRestoreTempCleanup); the .sh twin's MARKERS_WRITTEN.
+$MarkersWritten = $false
+# $true when a temp volume under one of this run's names may belong to someone else:
+# cleanup then skips the label reap and removes only temps that are still this run's
+# (the .sh twin's TEMP_CLEANUP_CAREFUL).
+$TempCleanupCareful = $false
+$RerunCommand = ".\restore_from_backup.ps1"
+
+# Run docker with the given arguments inside the usual SilentlyContinue bracket (docker
+# writes progress to stderr); returns stdout+stderr as strings. $LASTEXITCODE is
+# docker's exit code on return.
+function Invoke-DaafRestoreDocker {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string[]]$DockerArgs)
+    $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+    $out = @(docker @DockerArgs 2>&1 | ForEach-Object { "$_" })
+    $ErrorActionPreference = $savedEAP
+    return $out
+}
+
+# Like Invoke-DaafRestoreDocker, but keeps stdout and stderr APART (review round 2,
+# I-A): with 2>&1 a native command's stderr lines arrive as ErrorRecord objects and its
+# stdout lines as strings (observed on pwsh 7.6; Windows PowerShell 5.1 wraps native
+# stderr the same way, inferred from its NativeCommandError behaviour). Use it wherever
+# a VALUE in the output is matched, so a stray stderr line (a Docker config WARNING)
+# can never be read as that value. Returns Out, Err (string arrays) and Exit.
+function Invoke-DaafRestoreDockerSplit {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string[]]$DockerArgs)
+    $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+    $all = @(docker @DockerArgs 2>&1)
+    $code = $LASTEXITCODE
+    $ErrorActionPreference = $savedEAP
+    $out = @($all | Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] } | ForEach-Object { "$_" })
+    $err = @($all | Where-Object { $_ -is [System.Management.Automation.ErrorRecord] } | ForEach-Object { "$_" })
+    return [pscustomobject]@{ Out = $out; Err = $err; Exit = $code }
+}
+
+# The exact-name fallback (review round 2, S3; the .sh twin's _restore_name_listed) for
+# a check whose inspect failed with text that is not a recognised "no such ..." message:
+# list the names, STDOUT only, and compare whole lines exactly. -Kind volume | container
+# (all containers) | running (running containers only). Returns 'listed', 'absent', or
+# 'failed' (the list itself failed: the check could not be made).
+function Find-DaafRestoreExactName {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][ValidateSet('volume', 'container', 'running')][string]$Kind, [Parameter(Mandatory)][string]$Name)
+    $listArgs = @('ps', '--format', '{{.Names}}')
+    if ($Kind -eq 'volume') { $listArgs = @('volume', 'ls', '-q') }
+    if ($Kind -eq 'container') { $listArgs = @('ps', '-a', '--format', '{{.Names}}') }
+    $list = Invoke-DaafRestoreDockerSplit -DockerArgs $listArgs
+    if ($list.Exit -ne 0) { return 'failed' }
+    if (@($list.Out | Where-Object { "$_".Trim() -ceq $Name }).Count -gt 0) { return 'listed' }
+    return 'absent'
+}
+
+# Best-effort removal of every prepare-phase helper container of this volume pair
+# (exact label match): a leftover helper keeps a temp volume "in use". IDs from stdout
+# only (a stderr line is not an ID).
+function Invoke-DaafRestoreHelperReap {
+    [CmdletBinding()]
+    param()
+    foreach ($lbl in @($VolumeName, $ClaudeVolumeName)) {
+        $ids = Invoke-DaafRestoreDockerSplit -DockerArgs @('ps', '-aq', '--filter', "label=$RestoreLabel=$lbl")
+        if ($ids.Exit -ne 0) { continue }
+        foreach ($id in $ids.Out) {
+            if ("$id".Trim() -ne '') { $null = Invoke-DaafRestoreDocker -DockerArgs @('rm', '-f', "$id".Trim()) }
+        }
+    }
+}
+
+# Remove the temp volumes this run created; a no-op once a swap has started, unless
+# -Final (after every check passed). Sets $TempRemoveFailed when one is kept. With
+# -Final -- and on any call once a marker may have been written ($MarkersWritten) --
+# each temp volume's state marker is deleted first (best-effort), so a temp copy that
+# then cannot be removed is not later reported as a restore that had "started
+# replacing" the data. With $TempCleanupCareful the label reap is skipped and a temp
+# that no longer carries this run's identity label is left alone (and no longer
+# counted as this run's) -- consistency review round 2 (SF2); the .sh twin's
+# TEMP_CLEANUP_CAREFUL.
+function Invoke-DaafRestoreTempCleanup {
+    [CmdletBinding()]
+    param([switch]$Final)
+    if ($script:SwapStarted -and -not $Final) { return }
+    $script:TempRemoveFailed = $false
+    $unmark = ($Final -or $script:MarkersWritten)
+    if ($script:TempCleanupCareful) {
+        if ($script:TempCreated -and -not (Test-DaafRestoreTempIdentity -Name $TempVolumeName)) { $script:TempCreated = $false }
+        if ($script:ClaudeTempCreated -and -not (Test-DaafRestoreTempIdentity -Name $ClaudeTempVolumeName)) { $script:ClaudeTempCreated = $false }
+    } else {
+        Invoke-DaafRestoreHelperReap
+    }
+    if ($script:TempCreated) {
+        if ($unmark) { $null = Invoke-DaafRestoreDocker -DockerArgs @('run', '--rm', '--label', "$RestoreLabel=$VolumeName", '-v', "${TempVolumeName}:/dest", 'busybox', 'rm', '-f', "/dest/$SwapMarker") }
+        $null = Invoke-DaafRestoreDocker -DockerArgs @('volume', 'rm', $TempVolumeName)
+        if ($LASTEXITCODE -eq 0) { $script:TempCreated = $false } else { $script:TempRemoveFailed = $true }
+    }
+    if ($script:ClaudeTempCreated) {
+        if ($unmark) { $null = Invoke-DaafRestoreDocker -DockerArgs @('run', '--rm', '--label', "$RestoreLabel=$ClaudeVolumeName", '-v', "${ClaudeTempVolumeName}:/dest", 'busybox', 'rm', '-f', "/dest/$SwapMarker") }
+        $null = Invoke-DaafRestoreDocker -DockerArgs @('volume', 'rm', $ClaudeTempVolumeName)
+        if ($LASTEXITCODE -eq 0) { $script:ClaudeTempCreated = $false } else { $script:TempRemoveFailed = $true }
+    }
+}
+
+# The temp volumes this run still holds, space-separated (for removal commands).
+function Get-DaafRestoreKeptTempList {
+    [CmdletBinding()]
+    param()
+    $names = @()
+    if ($script:TempCreated) { $names += $TempVolumeName }
+    if ($script:ClaudeTempCreated) { $names += $ClaudeTempVolumeName }
+    return ($names -join ' ')
+}
+
+# A KB figure as GB with one decimal (invariant culture: same text as the .sh twin).
+function Format-DaafRestoreGB {
+    [CmdletBinding()]
+    param([long]$KB)
+    return ([double]$KB / 1048576).ToString('F1', [Globalization.CultureInfo]::InvariantCulture)
+}
+
+# $true when the leftover check found that an earlier restore had started replacing the
+# live data, or could not tell: "nothing changed" messages then say that THIS restore
+# changed nothing but the data may still be incomplete from the earlier one.
+$EarlierSwapStarted = $false
+
+# The "nothing was changed" sentence for refusals, cancels and interrupts before any
+# swap (the .sh twin's _restore_unchanged). -First = text before it on its first line,
+# -Indent = indent for a continuation line.
+function Write-DaafRestoreUnchanged {
+    [CmdletBinding()]
+    param([string]$First = '', [string]$Indent = '')
+    if ($script:EarlierSwapStarted) {
+        Write-Host "${First}This restore did not change anything, but your DAAF data may still be"
+        Write-Host "${Indent}incomplete from the earlier restore. Run the restore again to finish it."
+    } else {
+        Write-Host "${First}Your DAAF data has not been changed."
+    }
+}
+
+# $true when the volume still carries THIS run's identity label ($RestoreRunLabel).
+# Any other answer -- another token, no such label, no such volume, or an inspect that
+# failed -- is "not ours". stdout only: an error line must not be read as a label.
+function Test-DaafRestoreTempIdentity {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Name)
+    $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+    $labelLines = @(docker volume inspect --format '{{.Labels}}' $Name 2>$null)
+    $inspectExit = $LASTEXITCODE
+    $ErrorActionPreference = $savedEAP
+    if ($inspectExit -ne 0) { return $false }
+    $text = ((@($labelLines) | ForEach-Object { "$_" }) -join ' ').Trim()
+    $text = ($text -replace '^map\[', '') -replace '\]$', ''
+    return (@($text -split ' ') -ccontains "${RestoreRunLabel}:$RestoreRunId")
+}
+
+# $true when inspect output says the object does not exist (case-insensitive). Any
+# other failure is "could not check", never "absent".
+function Test-DaafRestoreNotFound {
+    [CmdletBinding()]
+    param([AllowNull()][object[]]$Lines)
+    $text = (@($Lines) | ForEach-Object { "$_" }) -join ' '
+    return ($text -match 'no such (volume|container|object)')
+}
+
+# $true when $SwapVerifyProgram output proves a match: SWAP_VERIFY=MATCH AND
+# SWAP_VERIFY_ENTRIES=n:n with equal counts -- and, with -NonEmpty, n > 0 (two EMPTY
+# trees, e.g. a vanished temp volume that Docker re-created empty, otherwise "match").
+# The Claude volume may legitimately be empty, so it is checked without -NonEmpty.
+function Test-DaafRestoreSwapChecked {
+    [CmdletBinding()]
+    param([AllowNull()][object[]]$Lines, [switch]$NonEmpty)
+    if (@(@($Lines) | Where-Object { "$_".Trim() -ceq 'SWAP_VERIFY=MATCH' }).Count -eq 0) { return $false }
+    $srcEntries = $null
+    $destEntries = $null
+    foreach ($line in @($Lines)) {
+        if ("$line".Trim() -match '^SWAP_VERIFY_ENTRIES=(\d+):(\d+)$') {
+            $srcEntries = [long]$Matches[1]
+            $destEntries = [long]$Matches[2]
+        }
+    }
+    if ($null -eq $srcEntries -or $srcEntries -ne $destEntries) { return $false }
+    if ($NonEmpty -and $srcEntries -eq 0) { return $false }
+    return $true
+}
+
+# The after-swap failure text: the ERROR lines given, then how to finish (the temp
+# volumes are KEPT; they may hold the only complete copy). The caller exits 1.
+# -ClaudeOnly (review round 2, S5): a Claude Code state failure AFTER the data swap
+# succeeded and was checked -- say plainly that the project files are in place and only
+# the login and history are not (the .sh twin's _restore_fail_claude_after_data).
+# -ClaudeSwapRan (review round 3, S-a): the Claude swap container ran, so the old login
+# may be erased too -- say so, and that the restore puts the backup's back.
+function Write-DaafRestoreSwapFailure {
+    [CmdletBinding()]
+    param([string[]]$Lines, [switch]$ClaudeOnly, [switch]$ClaudeSwapRan)
+    Write-Host ""
+    foreach ($line in $Lines) { Write-Host $line -ForegroundColor Red }
+    if ($ClaudeOnly -and $ClaudeSwapRan) {
+        Write-Host "       Your project files (DAAF data) were restored and checked. Only the Claude Code"
+        Write-Host "       login and session history were not restored."
+        Write-Host "       Your previous Claude Code login may also be gone now; running the restore again"
+        Write-Host "       puts the backup's login and history back."
+        Write-Host "       The checked copy of the backup is"
+    } elseif ($ClaudeOnly) {
+        Write-Host "       Your project files (DAAF data) were restored and checked. Only the Claude Code"
+        Write-Host "       login and session history were not restored. The checked copy of the backup is"
+    } else {
+        Write-Host "       Your DAAF data may now be incomplete. The checked copy of the backup is"
+    }
+    Write-Host "       kept in Docker (volume(s): $(Get-DaafRestoreKeptTempList)), and your backup"
+    Write-Host "       folder $SelectedName\ is unchanged. To finish, run this restore again"
+    Write-Host "       and choose the same backup:"
+    Write-Host "         $RerunCommand"
+    Write-Host "       It will offer to remove the leftover copy (answer y) and then redo the restore."
+}
+
+# Delete the state marker from temp volume -Name if it still carries this run's identity
+# label (best-effort; review round 2, S2). Used when a refusal keeps this run's temps.
+function Clear-DaafRestoreOwnMarker {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Name)
+    if (Test-DaafRestoreTempIdentity -Name $Name) {
+        $null = Invoke-DaafRestoreDocker -DockerArgs @('run', '--rm', '-v', "${Name}:/dest", 'busybox', 'rm', '-f', "/dest/$SwapMarker")
+    }
+}
+
+# An exact-name check that FAILED for a reason other than "no such ...", whose
+# exact-name list (Find-DaafRestoreExactName) failed too: refuse.
+function Write-DaafRestoreInspectFailure {
+    [CmdletBinding()]
+    param([string]$Kind, [AllowNull()][object[]]$Lines)
+    $first = @(@($Lines) | ForEach-Object { "$_".Trim() } | Where-Object { $_ -ne '' }) | Select-Object -First 1
+    Write-Host ""
+    Write-Host "ERROR: Could not check for a temporary copy left by an earlier restore (docker" -ForegroundColor Red
+    Write-Host "       $Kind inspect failed: $first)."
+    Write-Host "       This restore has not changed anything. Make sure Docker Desktop is running,"
+    Write-Host "       then run the restore again. If this keeps happening, restart Docker Desktop"
+    Write-Host "       and try again."
+}
+
+# --- (1) Leftovers from an earlier restore ---
+# A RUNNING swap container: refuse. A leftover temp volume or a stopped swap
+# container: offer to remove it (y/n). The prompt appears ONLY when a leftover exists.
+$LeftoverVolumes = @()
+$LeftoverContainers = @()
+# Review round 2 (I-A): the running state is read from STDOUT only, and the swap counts
+# as running when ANY line is exactly "true". (Read through 2>&1 and joined, a stderr
+# line made a RUNNING swap look stopped, and the user was then offered `docker rm -f`
+# of a live swap.) (S3) Error text that is not a recognised "no such ..." message falls
+# back to the exact-name lists before the check is given up as "could not check".
+foreach ($sc in @($SwapContainerName, $ClaudeSwapContainerName)) {
+    $scCheck = Invoke-DaafRestoreDockerSplit -DockerArgs @('container', 'inspect', '--format', '{{.State.Running}}', $sc)
+    $scRunning = (@($scCheck.Out | Where-Object { "$_".Trim() -ceq 'true' }).Count -gt 0)
+    if ($scCheck.Exit -ne 0) {
+        if (Test-DaafRestoreNotFound -Lines $scCheck.Err) { continue }
+        $scListed = Find-DaafRestoreExactName -Kind 'container' -Name $sc
+        if ($scListed -eq 'absent') { continue }
+        if ($scListed -eq 'listed') {
+            # It exists: the running-only list says whether it runs.
+            $scListed = Find-DaafRestoreExactName -Kind 'running' -Name $sc
+            $scRunning = ($scListed -eq 'listed')
+        }
+        if ($scListed -eq 'failed') {
+            Write-DaafRestoreInspectFailure -Kind 'container' -Lines $scCheck.Err
+            Wait-AndExit 1
+        }
+    }
+    if ($scRunning) {
+        Write-Host ""
+        Write-Host "ERROR: An earlier restore is still replacing your DAAF data inside Docker" -ForegroundColor Red
+        Write-Host "       (Docker container '$sc' is running). Wait a few minutes for it to"
+        Write-Host "       finish, then run this restore again. This restore has not changed anything."
+        Write-Host "       If this keeps happening, restart Docker Desktop and try again."
+        Wait-AndExit 1
+    }
+    $LeftoverContainers += $sc
+}
+foreach ($tv in @($TempVolumeName, $ClaudeTempVolumeName)) {
+    $tvCheck = Invoke-DaafRestoreDockerSplit -DockerArgs @('volume', 'inspect', $tv)
+    if ($tvCheck.Exit -ne 0) {
+        if (Test-DaafRestoreNotFound -Lines $tvCheck.Err) { continue }
+        $tvListed = Find-DaafRestoreExactName -Kind 'volume' -Name $tv
+        if ($tvListed -eq 'absent') { continue }
+        if ($tvListed -eq 'failed') {
+            Write-DaafRestoreInspectFailure -Kind 'volume' -Lines $tvCheck.Err
+            Wait-AndExit 1
+        }
+    }
+    $LeftoverVolumes += $tv
+}
+if (($LeftoverVolumes.Count + $LeftoverContainers.Count) -gt 0) {
+    # Did that earlier restore start replacing live data? 0 = no, 1 = yes, 2 = unknown.
+    $SwapEvidence = 0
+    if ($LeftoverContainers.Count -gt 0) { $SwapEvidence = 1 }
+    foreach ($tv in $LeftoverVolumes) {
+        $null = Invoke-DaafRestoreDocker -DockerArgs @('run', '--rm', '-v', "${tv}:/src:ro", 'busybox', 'sh', '-c', "test ! -e /src/$SwapMarker || exit 3")
+        if ($LASTEXITCODE -eq 3) { $SwapEvidence = 1 }
+        elseif ($LASTEXITCODE -ne 0 -and $SwapEvidence -eq 0) { $SwapEvidence = 2 }
+    }
+    Write-Host ""
+    Write-Host "A temporary copy left behind by an earlier restore that did not finish was found:"
+    foreach ($tv in $LeftoverVolumes) { Write-Host "  - Docker volume '$tv'" }
+    foreach ($sc in $LeftoverContainers) { Write-Host "  - Docker container '$sc' (stopped)" }
+    if ($SwapEvidence -eq 1) {
+        Write-Host "That earlier restore had started replacing your DAAF data, so your current"
+        Write-Host "DAAF data may be incomplete. Continuing redoes the restore from the backup"
+        Write-Host "folder you chose."
+    } elseif ($SwapEvidence -eq 2) {
+        Write-Host "It could not be checked whether that earlier restore had started replacing"
+        Write-Host "your DAAF data, so your current DAAF data may be incomplete. Continuing redoes"
+        Write-Host "the restore from the backup folder you chose."
+    } else {
+        Write-Host "That earlier restore stopped before it replaced anything, so your current"
+        Write-Host "DAAF data was not changed by it."
+    }
+    if ($SwapEvidence -ne 0) { $EarlierSwapStarted = $true }
+    Write-Host "Your backup folders are not affected, so this temporary copy is not needed."
+    Write-Host "If another restore window is still open, answer n."
+    Write-Host ""
+    # End of input: Read-Host returns $null (observed on pwsh 7), which is a "no" here.
+    $LeftoverChoice = Read-Host "Remove it and continue? (y/n)"
+    if ($LeftoverChoice -ne "y" -and $LeftoverChoice -ne "Y") {
+        Write-Host ""
+        Write-DaafRestoreUnchanged -First 'Restore cancelled. '
+        Write-Host "To remove the temporary copy later, run:"
+        if ($LeftoverContainers.Count -gt 0) { Write-Host "  docker rm $($LeftoverContainers -join ' ')" }
+        if ($LeftoverVolumes.Count -gt 0) { Write-Host "  docker volume rm $($LeftoverVolumes -join ' ')" }
+        Wait-AndExit 0
+    }
+    Invoke-DaafRestoreHelperReap
+    $LeftoverFailed = $false
+    foreach ($sc in $LeftoverContainers) {
+        $null = Invoke-DaafRestoreDocker -DockerArgs @('rm', '-f', $sc)
+        if ($LASTEXITCODE -ne 0) { $LeftoverFailed = $true }
+    }
+    foreach ($tv in $LeftoverVolumes) {
+        $null = Invoke-DaafRestoreDocker -DockerArgs @('volume', 'rm', $tv)
+        if ($LASTEXITCODE -ne 0) { $LeftoverFailed = $true }
+    }
+    if ($LeftoverFailed) {
+        Write-Host ""
+        Write-Host "ERROR: Could not remove the temporary copy left by the earlier restore." -ForegroundColor Red
+        Write-DaafRestoreUnchanged -First '       ' -Indent '       '
+        Write-Host "       Make sure no other restore is running (and Docker Desktop is running), then"
+        Write-Host "       run this restore again, or remove it yourself with:"
+        if ($LeftoverContainers.Count -gt 0) { Write-Host "         docker rm -f $($LeftoverContainers -join ' ')" }
+        if ($LeftoverVolumes.Count -gt 0) { Write-Host "         docker volume rm $($LeftoverVolumes -join ' ')" }
+        Write-Host "       If this keeps happening, restart Docker Desktop and try again."
+        Wait-AndExit 1
+    }
+    Write-Host "Removed the leftover temporary copy."
+}
+
+# --- (2) Free space inside Docker ---
+# Same rule as the .sh twin: refuse below max(B, 2B - L) + max(10% of B, 1 GiB),
+# measured inside Docker only; unmeasurable -> a latched WARNING and continue. B is
+# the scan's data KB plus the Claude subfolder's KB (a PowerShell count of a small,
+# shallow folder -- only an estimate for this check, never a verification).
+$NeedBKB = [long][math]::Floor($TotalSizeBytes / 1024)
 if ($HasClaudeBackup) {
-    Write-Host ""
-    Write-Host "This backup also contains Claude Code state (credentials and session"
-    Write-Host "history), which will be restored to volume '$ClaudeVolumeName',"
-    Write-Host "overwriting any existing Claude Code login/history in this install."
+    $claudeMeasure = Measure-DaafBackupTree -Root $ClaudeBackupPath
+    $NeedBKB += $claudeMeasure.KB
 }
-Write-Host ""
-$Confirm = Read-Host "Type RESTORE to confirm, or anything else to cancel"
-
-if ($Confirm -ne "RESTORE") {
-    Write-Host ""
-    Write-Host "Restore cancelled."
-    Wait-AndExit 0
-}
-
-Write-Host ""
-
-# --- Step 1: Clear the Docker volume ---
-Write-Host "Clearing Docker volume..."
-$savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-$null = docker run --rm -v "${VolumeName}:/dest" busybox sh -c 'rm -rf /dest/* /dest/.[!.]* /dest/..?*' 2>&1
-$ErrorActionPreference = $savedEAP
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "ERROR: Failed to clear Docker volume." -ForegroundColor Red
-    Write-Host "The volume may be in an inconsistent state."
-    Wait-AndExit 1
-}
-Write-Host "Volume cleared."
-Write-Host ""
-
-# --- Step 2: Copy backup into volume ---
-Write-Host "Copying backup into Docker volume..."
-Write-Host "  This may take a few minutes for large backups."
-Write-Host ""
-
-# Copy the backup into the data volume via `docker create` + `docker cp` instead
-# of a bind-mounted `busybox cp -a`. On Docker Desktop for Windows, a bind-mounted
-# copy reads every host file across the 9p/gRPC-FUSE host<->VM boundary
-# individually, so a large restore takes minutes; `docker cp` streams the whole
-# tree to the daemon in one pass and extracts it inside the VM, avoiding that
-# per-file overhead. The helper container is created but never started -- `docker
-# cp` still writes into the volume because the daemon mounts the container root AND
-# its volume MountPoints into the archive view regardless of container state. The
-# trailing "/." on the source copies the backup's CONTENTS into /dest.
-#
-# Two asymmetries vs the backup script's copy-OUT:
-#   1. Ownership: `docker cp` INTO a container writes files as ROOT (not the
-#      volume's appuser, UID 1000), so a container-side chown repair is REQUIRED
-#      below (Step 2c). Copy-OUT needs no repair because `docker cp` extracts
-#      container->host as the invoking user.
-#   2. Exclusion: `docker cp` has no exclude flag, so it copies the whole backup
-#      folder INCLUDING the hidden ".daaf-claude-config\" subfolder. That subfolder
-#      belongs in the separate Claude volume (restored below), not the data volume,
-#      so it is stripped container-side in Step 2b -- matching the old
-#      `cp -a ... && rm -rf "/dest/$ClaudeSubDir"` outcome exactly.
-# Only docker cp's text status line reaches stdout here (the file data goes over
-# the daemon API pipe, not the PS pipeline), so synchronous inline calls are
-# pipeline-safe on PS 5.1.
-#
-# Structure (mirrors backup_daaf.ps1): do the create + copy inside try, set
-# $createOk/$copyOk flags, and put ONLY the best-effort container cleanup in
-# finally. All error checks and Wait-AndExit calls happen AFTER the try/finally
-# completes -- calling `exit` from inside a `try` whose `finally` must still run is
-# version-fragile on PS 5.1, so it is avoided entirely.
-$Cid = $null
-$createOk = $false
-$copyOk = $false
-try {
-    $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-    $Cid = (docker create -v "${VolumeName}:/dest" busybox 2>&1).Trim()
-    $createOk = ($LASTEXITCODE -eq 0)
-    $ErrorActionPreference = $savedEAP
-
-    if ($createOk) {
-        # Step 2a: copy the backup CONTENTS into the volume.
-        $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-        $null = docker cp "${SelectedPath}/." "${Cid}:/dest/" 2>&1
-        $copyOk = ($LASTEXITCODE -eq 0)
-        $ErrorActionPreference = $savedEAP
-    }
-} finally {
-    # Remove the helper container even if the copy is interrupted (PS finally runs
-    # on Ctrl-C). Best-effort; guarded so an unset/empty CID is a no-op. Subsequent
-    # container-side steps use `docker run --rm`.
-    if (-not [string]::IsNullOrEmpty($Cid)) {
-        $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-        $null = docker rm -f $Cid 2>&1
-        $ErrorActionPreference = $savedEAP
-    }
-}
-
-if (-not $createOk) {
-    Write-Host "" -ForegroundColor Red
-    Write-Host "ERROR: Could not create the helper container for the volume copy." -ForegroundColor Red
-    Write-Host "The Docker volume has already been cleared and is now EMPTY."
-    Write-Host "Re-run this restore, or reinstall DAAF, to repopulate it."
-    Wait-AndExit 1
-}
-
-if (-not $copyOk) {
-    Write-Host "" -ForegroundColor Red
-    Write-Host "ERROR: File copy failed." -ForegroundColor Red
-    Write-Host "The Docker volume may be in an inconsistent state."
-    Write-Host "You may want to re-run this restore or reinstall DAAF."
-    Wait-AndExit 1
-}
-
-# Step 2b: strip the Claude subfolder from the DATA volume. `docker cp` copied the
-# whole backup, including "$ClaudeSubDir\"; remove it container-side (fast: inside
-# the VM, no bind mount) so the data volume matches the old copy's outcome. It is
-# restored to its own volume below when present.
-$savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-$null = docker run --rm -v "${VolumeName}:/dest" busybox rm -rf "/dest/${ClaudeSubDir}" 2>&1
-$stripOk = ($LASTEXITCODE -eq 0)
-$ErrorActionPreference = $savedEAP
-if (-not $stripOk) {
-    Write-Host "" -ForegroundColor Red
-    Write-Host "ERROR: Failed to remove the $ClaudeSubDir subfolder from the data volume." -ForegroundColor Red
-    Write-Host "WARNING: The restore copied the whole backup into the data volume, so Claude" -ForegroundColor Yellow
-    Write-Host "         Code credentials and session data may REMAIN inside the data volume"
-    Write-Host "         until this is resolved. Re-run this restore to clear them."
-    Wait-AndExit 1
-}
-
-# Step 2c: repair ownership. `docker cp` wrote files as root; the volume must be
-# owned by appuser (UID 1000). Chown container-side (inside the VM, no bind mount,
-# so it is fast). The literal 1000:1000 mirrors the daaf-init service in
-# docker-compose.yml, which chowns both volumes to 1000:1000 on every startup;
-# that init container is a second net, but restore must not depend on it.
-$savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-$null = docker run --rm -v "${VolumeName}:/dest" busybox chown -R 1000:1000 /dest 2>&1
-$chownOk = ($LASTEXITCODE -eq 0)
-$ErrorActionPreference = $savedEAP
-if (-not $chownOk) {
-    Write-Host "" -ForegroundColor Red
-    Write-Host "ERROR: Failed to repair ownership on the data volume." -ForegroundColor Red
-    Write-Host "The files were restored intact, but the DAAF container may not be able to"
-    Write-Host "read them. Re-run this restore, or restart DAAF -- the compose init service"
-    Write-Host "also repairs volume ownership on startup."
-    Wait-AndExit 1
-}
-
-# Step 2d: replay executable permissions from the manifest. The manifest
-# ("$PermissionsManifest") was copied into the volume by the whole-folder
-# `docker cp` above. When it is PRESENT, normalize every regular file to 0644 and
-# re-apply 0755 to exactly the paths it lists -- undoing the mode loss the NTFS
-# round-trip inflicts (where `docker cp` fabricates 0755 for every file and git
-# then flags every tracked 0644 file as a spurious 100644->100755 change).
-#
-# SAFETY RULE -- no manifest, no normalization: when the manifest is ABSENT (older
-# backups, OR a manifest whose write failed at backup time), do NOTHING. A blanket
-# 0644 without the manifest would strip exec from every script and hook and make
-# matters worse than the fabricated 0755. The manifest's presence is the signal for
-# "these files should be executable, everything else 0644"; without it there is no
-# safe baseline. Replay failure is a WARNING (data is intact), never fatal.
-#
-# Trailing CR (WriteAllLines emits CRLF on Windows) and a leading UTF-8 BOM are both
-# stripped as parameter-expansion suffix/prefix (`${p%`$cr} / `${p#`$bom}), NOT with
-# sed: busybox sed has no \xNN hex escapes, so a `sed 1s/^\xef\xbb\xbf//` would match
-# those bytes literally and silently do nothing. The BOM bytes are derived once via
-# octal `printf '\357\273\277'` (portable) and removed only as a leading prefix --
-# never with `tr -d`, which would also delete them where they legitimately appear
-# inside multi-byte UTF-8 filenames. The `[ -e ... ] && chmod` on a missing path does
-# NOT trip `set -e`: a non-final command in an AND-OR list is exempt from errexit per
-# POSIX, so a manifest path absent from this backup is skipped, not fatal.
-#
-# Windows quoting: the `sh -c` program reaches docker.exe as a single command-line
-# string, so it must contain NO embedded double-quotes (they get re-parsed by the
-# Windows C runtime and silently mangle the argument -- see shell-scripting
-# gotchas.md). This is a PS double-quoted outer string using sh single-quotes
-# throughout; sh variables are backtick-escaped (`$p, `$manifest, `$cr, `$bom) so
-# PowerShell does not interpolate them, and $PermissionsManifest (a fixed constant,
-# no user input) IS interpolated by PowerShell to build the container path.
-$savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-$null = docker run --rm -v "${VolumeName}:/dest:ro" busybox test -f "/dest/${PermissionsManifest}" 2>&1
-$manifestPresent = ($LASTEXITCODE -eq 0)
-$ErrorActionPreference = $savedEAP
-if ($manifestPresent) {
-    Write-Host "Restoring executable permissions from $PermissionsManifest..."
-    $replayScript = "set -e; manifest=/dest/$PermissionsManifest; find /dest -type f -exec chmod 644 {} +; cr=`$(printf '\r'); bom=`$(printf '\357\273\277'); while IFS= read -r p; do p=`${p%`$cr}; p=`${p#`$bom}; [ -z `$p ] && continue; [ -e /dest/`$p ] && chmod 755 /dest/`$p; done < `$manifest; rm -f `$manifest"
-    $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-    $null = docker run --rm -v "${VolumeName}:/dest" busybox sh -c $replayScript 2>&1
-    $replayOk = ($LASTEXITCODE -eq 0)
-    $ErrorActionPreference = $savedEAP
-    if (-not $replayOk) {
-        Write-Host "WARNING: Could not fully replay executable permissions." -ForegroundColor Yellow
-        Write-Host "         Your data was restored intact; only file permissions may be off."
-        Write-Host "         If git reports many files as changed by mode only, or a script"
-        Write-Host "         will not run, repair with: chmod +x <file> inside the container."
-        $HadWarnings = $true
+$SpaceMarginKB = [long][math]::Max([math]::Floor($NeedBKB / 10), 1048576)
+$SpaceOutput = @(Invoke-DaafRestoreDocker -DockerArgs @('run', '--rm', '-v', "${VolumeName}:/dest:ro", 'busybox', 'sh', '-c', $SpaceProgram))
+$spaceExit = $LASTEXITCODE
+$AvailKB = Get-DaafCountMarker -Lines $SpaceOutput -Name 'AVAIL_KB'
+$LiveKB = Get-DaafCountMarker -Lines $SpaceOutput -Name 'LIVE_KB'
+$SpaceKnown = ($spaceExit -eq 0 -and $null -ne $AvailKB -and $null -ne $LiveKB)
+if ($SpaceKnown) {
+    $SpaceNeededKB = [long][math]::Max($NeedBKB, 2 * $NeedBKB - $LiveKB) + $SpaceMarginKB
+    if ($AvailKB -lt $SpaceNeededKB) {
+        Write-Host ""
+        Write-Host "ERROR: There is not enough free space inside Docker for this restore." -ForegroundColor Red
+        Write-Host "       The restore needs about $(Format-DaafRestoreGB $SpaceNeededKB) GB free inside Docker (it makes a temporary"
+        Write-Host "       copy of the backup first, then replaces your current data); Docker has"
+        Write-Host "       $(Format-DaafRestoreGB $AvailKB) GB free. Free up space for Docker (for example, delete unused"
+        Write-Host "       images in Docker Desktop, or free space on the drive that holds Docker's"
+        Write-Host "       data), then run the restore again."
+        Write-DaafRestoreUnchanged -First '       ' -Indent '       '
+        Wait-AndExit 1
     }
 } else {
-    Write-Host "NOTE: No $PermissionsManifest manifest found in this backup (it may predate"
-    Write-Host "      permission preservation, or the manifest write may have failed during"
-    Write-Host "      backup). File permissions were left as-is -- no normalization was applied."
+    # L unknown: quote the worst case (L = 0).
+    $SpaceNeededKB = 2 * $NeedBKB + $SpaceMarginKB
+    Write-Host ""
+    Write-Host "WARNING: Could not check the free space inside Docker before the restore." -ForegroundColor Yellow
+    Write-Host "         The restore needs up to about $(Format-DaafRestoreGB $SpaceNeededKB) GB free inside Docker. If it"
+    Write-Host "         runs out while preparing, it stops without changing your DAAF data."
+    $HadWarnings = $true
 }
 
-# Step 2e: replay symlinks from the manifest. The symlink manifest
-# ("$SymlinksManifest") was copied into the volume by the whole-folder `docker cp`
-# above. backup_daaf.ps1's staging step stripped every symlink from the tree (so
-# `docker cp` could stream a symlink-free archive that does not abort on Windows)
-# and recorded each link's path + target here, TAB-separated. When the manifest is
-# PRESENT, recreate each link, chown it to appuser (-h: the link, not its target),
-# then remove the manifest from the volume.
-#
-# SAFETY / no manifest, no action: when the manifest is ABSENT (older backups, a
-# volume with no symlinks, or a manifest whose write failed at backup time), do
-# NOTHING -- matching the $PermissionsManifest rule. Replay failure is a WARNING
-# (regular files are intact; such links are typically regenerable), never fatal.
-#
-# Windows quoting: the `sh -c` program reaches docker.exe as a single command-line
-# string, so it must contain NO embedded double-quotes (they get re-parsed by the
-# Windows C runtime and silently mangle the argument -- see shell-scripting
-# gotchas.md). Unquoted sh expansions are exact because of `set -f` (no globbing) +
-# an empty global IFS (no word splitting); the `IFS=$tab` prefix scopes field
-# splitting to the `read` alone. Trailing CR / leading BOM are stripped as parameter-
-# expansion suffix/prefix (never `tr -d`); the BOM is derived via octal printf
-# (busybox sed has no \xNN escapes). This is a PS double-quoted outer string using
-# sh single-quotes throughout; sh variables are backtick-escaped (`$p, `$t, `$cr,
-# `$bom, `$tab) so PowerShell does not interpolate them, and $SymlinksManifest (a
-# fixed constant, no user input) IS interpolated by PowerShell to build the path.
-#
-# Double backslashes (\\r, \\357...) so the sh that runs this program receives a
-# SINGLE backslash after its own unquoted-backslash processing, which printf then
-# interprets as the escape. A single backslash here would be eaten by sh before
-# printf sees it (yielding literal digits, not the byte) -- verified against the
-# busybox/ash + dash behavior; this mirrors the .sh twin's `printf \\357...`.
-#
-# Defined UNCONDITIONALLY (before the manifest probe) so the Claude-volume replay
-# below can reuse it even when the DATA volume had no symlink manifest -- otherwise
-# a strict-mode read of an unset variable would throw. Building the string is a
-# harmless no-op when no manifest is present. Both replay call sites (data volume
-# here, Claude volume in the "Restore the Claude Code state volume" block) run the
-# SAME program against their own `/dest`.
-$symlinkReplayScript = "set -ef; IFS=; cr=`$(printf \\r); bom=`$(printf \\357\\273\\277); tab=`$(printf \\t); while IFS=`$tab read -r p t; do p=`${p#`$bom}; t=`${t%`$cr}; [ -z `$p ] && continue; [ -z `$t ] && continue; ln -sf -- `$t /dest/`$p; chown -h 1000:1000 /dest/`$p; done < /dest/$SymlinksManifest; rm -f /dest/$SymlinksManifest"
-$savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-$null = docker run --rm -v "${VolumeName}:/dest:ro" busybox test -f "/dest/${SymlinksManifest}" 2>&1
-$symlinkManifestPresent = ($LASTEXITCODE -eq 0)
-$ErrorActionPreference = $savedEAP
-if ($symlinkManifestPresent) {
-    Write-Host "Restoring symlinks from $SymlinksManifest..."
-    $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-    $null = docker run --rm -v "${VolumeName}:/dest" busybox sh -c $symlinkReplayScript 2>&1
-    $symlinkReplayOk = ($LASTEXITCODE -eq 0)
-    $ErrorActionPreference = $savedEAP
-    if (-not $symlinkReplayOk) {
-        Write-Host "WARNING: Could not fully replay symlinks from the manifest." -ForegroundColor Yellow
-        Write-Host "         Your data was restored intact; only symbolic links may be missing."
-        Write-Host "         Such links are usually regenerable (e.g. by re-running the step that"
-        Write-Host "         created them). Inspect $SymlinksManifest in the backup for the list."
-        $HadWarnings = $true
-    }
+# --- (3) .. (5): prepare, confirm, swap (cleanup-safe) ---
+$PrepFail = $null       # ERROR lines: stopped before any swap (nothing changed)
+$SwapFail = $null       # ERROR lines: a swap failed or did not check out (temps kept)
+$Cancelled = $false
+$ChangedTemp = $null    # a temp volume that is no longer this run's: refuse, remove nothing
+$SwapFailClaudeOnly = $false  # $SwapFail came after the data swap was replaced and checked (S5)
+$ClaudeSwapRan = $false       # the Claude swap container ran (any exit but its own refusal, 3; S-a)
+$ReachedEnd = $false
+$Faulted = $false             # an unexpected error ended the try (set by its catch; never a Ctrl+C)
+# Right after `docker volume create`: $true when the volume carries THIS run's identity
+# label (a reused existing volume keeps its own labels) AND is empty (`find /dest
+# -mindepth 1` prints nothing on STDOUT; review round 2: a merged stderr line, e.g. a
+# Docker config WARNING, once made every new temp look non-empty -- a `find` that hits
+# an error still exits nonzero, which fails the check). Otherwise it may hold another
+# restore's copy, and it is left alone.
+function Test-DaafRestoreNewTemp {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Name, [Parameter(Mandatory)][string]$Live)
+    $listing = Invoke-DaafRestoreDockerSplit -DockerArgs @('run', '--rm', '--label', "$RestoreLabel=$Live", '-v', "${Name}:/dest:ro", 'busybox', 'find', '/dest', '-mindepth', '1')
+    if ($listing.Exit -ne 0) { return $false }
+    if (@($listing.Out | Where-Object { "$_".Trim() -ne '' }).Count -gt 0) { return $false }
+    return (Test-DaafRestoreTempIdentity -Name $Name)
 }
-Write-Host "Copy complete."
-Write-Host ""
+function Get-DaafRestoreNewTempFailure {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Name)
+    return @("ERROR: Could not confirm that the new temporary Docker volume '$Name' is empty",
+        "       and was created by this restore, so it was left as it is (it may belong to",
+        "       another restore, for example one still open in another window).",
+        "       Close any other restore window, then run this restore again: it will show",
+        "       the leftover copy and ask whether to remove it.")
+}
+$TempCount = $null
+$SwapSpaceKnown = $false
+# Defined UNCONDITIONALLY before both replay sites (data and Claude temp copies), so a
+# strict-mode read can never hit an unset variable. Same program, byte for byte after
+# the manifest splice, as the .sh twin's two inlined replays (parity-pinned). Double
+# backslashes (\\r, \\357...) so the sh that runs it receives a SINGLE backslash after
+# its own unquoted-backslash processing (see shell-scripting gotchas.md, octal printf).
+# No `"` anywhere (Windows argv); sh variables are backtick-escaped.
+$symlinkReplayScript = "set -ef; IFS=; cr=`$(printf \\r); bom=`$(printf \\357\\273\\277); tab=`$(printf \\t); while IFS=`$tab read -r p t; do p=`${p#`$bom}; t=`${t%`$cr}; [ -z `$p ] && continue; [ -z `$t ] && continue; ln -sf -- `$t /dest/`$p; chown -h 1000:1000 /dest/`$p; done < /dest/$SymlinksManifest; rm -f /dest/$SymlinksManifest"
+try {
+    do {
+        # --- (3) Prepare the temporary copy of the data volume ---
+        # `docker create` + `docker cp` into the TEMP volume (one streamed pass instead
+        # of a slow per-file bind-mount copy on Docker Desktop); the helper is never
+        # started. `docker cp` writes as root (3c repairs ownership) and has no exclude
+        # flag (3b strips the Claude subfolder). See the .sh twin for the full notes.
+        Write-Host ""
+        Write-Host "Preparing a temporary copy of the backup inside Docker..."
+        Write-Host "  Your current DAAF data is not touched until you confirm below."
+        Write-Host "  This may take a few minutes for large backups."
+        Write-Host ""
+        $null = Invoke-DaafRestoreDocker -DockerArgs @('volume', 'create', '--label', "$RestoreLabel=$VolumeName", '--label', "$RestoreRunLabel=$RestoreRunId", $TempVolumeName)
+        if ($LASTEXITCODE -ne 0) { $PrepFail = @("ERROR: Could not create a temporary Docker volume ('$TempVolumeName') for the restore."); break }
+        # SF2 (review round 2): a refused new temp may be another restore's, so the
+        # cleanup is careful (no label reap; only temps still this run's are removed).
+        if (-not (Test-DaafRestoreNewTemp -Name $TempVolumeName -Live $VolumeName)) { $PrepFail = @(Get-DaafRestoreNewTempFailure -Name $TempVolumeName); $TempCleanupCareful = $true; break }
+        $TempCreated = $true
+        # stdout ONLY for the CID (the old `(docker create ... 2>&1).Trim()` would have
+        # folded a stderr warning line into it). A CID from a create that then failed is
+        # reaped by label with the temp volume.
+        $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+        $cidLines = @(docker create --label "$RestoreLabel=$VolumeName" -v "${TempVolumeName}:/dest" busybox 2>$null)
+        $createOk = ($LASTEXITCODE -eq 0)
+        $ErrorActionPreference = $savedEAP
+        $Cid = ''
+        if ($cidLines.Count -gt 0) { $Cid = "$($cidLines[$cidLines.Count - 1])".Trim() }
+        if (-not $createOk -or $Cid -eq '') { $PrepFail = @("ERROR: Could not create the helper container for the copy."); break }
+        # Only docker cp's text status line reaches stdout (the data goes over the daemon
+        # API pipe), so a synchronous inline call is pipeline-safe on PS 5.1.
+        $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+        $cpOut = @(docker cp "${SelectedPath}/." "${Cid}:/dest/" 2>&1 | ForEach-Object { "$_" })
+        $copyOk = ($LASTEXITCODE -eq 0)
+        $null = docker rm -f $Cid 2>&1
+        $ErrorActionPreference = $savedEAP
+        if (-not $copyOk) {
+            $PrepFail = @("ERROR: Copying the backup into Docker failed.")
+            if ($cpOut.Count -gt 0) { $PrepFail += "       Docker said: $($cpOut[$cpOut.Count - 1])" }
+            break
+        }
+
+        # Step 3b: strip the Claude subfolder from the temporary DATA copy.
+        $null = Invoke-DaafRestoreDocker -DockerArgs @('run', '--rm', '--label', "$RestoreLabel=$VolumeName", '-v', "${TempVolumeName}:/dest", 'busybox', 'rm', '-rf', "/dest/$ClaudeSubDir")
+        if ($LASTEXITCODE -ne 0) { $PrepFail = @("ERROR: Failed to remove the $ClaudeSubDir subfolder from the temporary copy."); break }
+
+        # Step 3c: repair ownership (appuser, UID 1000, mirroring daaf-init).
+        $null = Invoke-DaafRestoreDocker -DockerArgs @('run', '--rm', '--label', "$RestoreLabel=$VolumeName", '-v', "${TempVolumeName}:/dest", 'busybox', 'chown', '-R', '1000:1000', '/dest')
+        if ($LASTEXITCODE -ne 0) { $PrepFail = @("ERROR: Failed to set file ownership in the temporary copy."); break }
+
+        # Step 3d: replay executable permissions from the manifest. When it is PRESENT,
+        # normalize every regular file to 0644 and re-apply 0755 to exactly the listed
+        # paths (undoing the NTFS mode loss); when ABSENT, do NOTHING (a blanket 0644
+        # would strip exec from every script). CR and a leading UTF-8 BOM are stripped
+        # as parameter-expansion suffix/prefix (busybox sed has no \xNN; never `tr -d`).
+        # No `"` in the program (Windows argv); sh variables are backtick-escaped and
+        # $PermissionsManifest (a fixed constant) is interpolated by PowerShell. Replay
+        # failure stays a latched WARNING (the copy is intact).
+        $null = Invoke-DaafRestoreDocker -DockerArgs @('run', '--rm', '--label', "$RestoreLabel=$VolumeName", '-v', "${TempVolumeName}:/dest:ro", 'busybox', 'test', '-f', "/dest/$PermissionsManifest")
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "Restoring executable permissions from $PermissionsManifest..."
+            $replayScript = "set -e; manifest=/dest/$PermissionsManifest; find /dest -type f -exec chmod 644 {} +; cr=`$(printf '\r'); bom=`$(printf '\357\273\277'); while IFS= read -r p; do p=`${p%`$cr}; p=`${p#`$bom}; [ -z `$p ] && continue; [ -e /dest/`$p ] && chmod 755 /dest/`$p; done < `$manifest; rm -f `$manifest"
+            $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+            $null = docker run --rm --label "$RestoreLabel=$VolumeName" -v "${TempVolumeName}:/dest" busybox sh -c $replayScript 2>&1
+            $replayOk = ($LASTEXITCODE -eq 0)
+            $ErrorActionPreference = $savedEAP
+            if (-not $replayOk) {
+                Write-Host "WARNING: Could not fully replay executable permissions." -ForegroundColor Yellow
+                Write-Host "         Your data was copied intact; only file permissions may be off."
+                Write-Host "         If git reports many files as changed by mode only, or a script"
+                Write-Host "         will not run, repair with: chmod +x <file> inside the container."
+                $HadWarnings = $true
+            }
+        } else {
+            Write-Host "NOTE: No $PermissionsManifest manifest found in this backup (it may predate"
+            Write-Host "      permission preservation, or the manifest write may have failed during"
+            Write-Host "      backup). File permissions were left as-is -- no normalization was applied."
+        }
+
+        # Step 3e: replay symlinks from the manifest (no manifest, no action; failure is
+        # a latched WARNING).
+        $null = Invoke-DaafRestoreDocker -DockerArgs @('run', '--rm', '--label', "$RestoreLabel=$VolumeName", '-v', "${TempVolumeName}:/dest:ro", 'busybox', 'test', '-f', "/dest/$SymlinksManifest")
+        $symlinkManifestPresent = ($LASTEXITCODE -eq 0)
+        if ($symlinkManifestPresent) {
+            Write-Host "Restoring symlinks from $SymlinksManifest..."
+            $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+            $null = docker run --rm --label "$RestoreLabel=$VolumeName" -v "${TempVolumeName}:/dest" busybox sh -c $symlinkReplayScript 2>&1
+            $symlinkReplayOk = ($LASTEXITCODE -eq 0)
+            $ErrorActionPreference = $savedEAP
+            if (-not $symlinkReplayOk) {
+                Write-Host "WARNING: Could not fully replay symlinks from the manifest." -ForegroundColor Yellow
+                Write-Host "         Your data was copied intact; only symbolic links may be missing."
+                Write-Host "         Such links are usually regenerable (e.g. by re-running the step that"
+                Write-Host "         created them). Inspect $SymlinksManifest in the backup for the list."
+                $HadWarnings = $true
+            }
+        }
+
+        # Step 3f: check the temporary copy against the backup, with the same count
+        # program as the post-restore check (textually identical, parity-pinned). A
+        # backup count made inside Docker must match EXACTLY; a count from the
+        # PowerShell fallback (Docker could not count the folder; "N+" when it also hit
+        # read errors) is a lower bound that must be reached. Unreadable or short: stop
+        # before anything is replaced.
+        Write-Host "Checking the temporary copy..."
+        $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+        $TempVerifyOutput = @(docker run --rm --label "$RestoreLabel=$VolumeName" -v "${TempVolumeName}:/dest:ro" busybox sh -c 'set -e; : > /tmp/count_err; n=$(find /dest -type f ! -path /dest/.daaf-symlinks ! -path /dest/.daaf-permissions ! -path /dest/.daaf-claude-config/\* -exec stat -c %s {} + 2>/tmp/count_err | wc -l); if test -s /tmp/count_err; then echo RESTORED_COUNT_ERRORS=$(grep -c ^ /tmp/count_err); else echo RESTORED_FILES=$((n)); fi' 2>&1)
+        $tempVerifyExit = $LASTEXITCODE
+        $ErrorActionPreference = $savedEAP
+        $TempCount = Get-DaafCountMarker -Lines $TempVerifyOutput -Name 'RESTORED_FILES'
+        if ($tempVerifyExit -ne 0) { $TempCount = $null }
+        if ($null -eq $TempCount) {
+            $PrepFail = @("ERROR: Could not count the files in the temporary copy (exit $tempVerifyExit), so it", "       cannot be checked against the backup.")
+            break
+        }
+        $tempShort = ($TempCount -eq 0) -or ($TempCount -lt $TotalFiles) -or ((-not $TotalFilesIsLowerBound) -and (-not $TotalFilesFromFallback) -and $TempCount -ne $TotalFiles)
+        if ($tempShort) {
+            $PrepFail = @("ERROR: The temporary copy holds $TempCount files, but the backup has $TotalFilesLabel,", "       so the copy into Docker is not complete.")
+            break
+        }
+        Write-Host "Verified: $TempCount files in the temporary copy."
+
+        # --- Restore the Claude Code state volume ---
+        # Step 3g: prepare its temporary copy (the swap is step 5b below). Any failure
+        # here stops the restore before ANY volume is replaced (user decision D2).
+        if ($HasClaudeBackup) {
+            Write-Host "Preparing the Claude Code state (credentials, session history, plugins)..."
+            $claudeFail = @("ERROR: Could not prepare the Claude Code state (login and session history)", "       from this backup: copying it into Docker failed.")
+            $null = Invoke-DaafRestoreDocker -DockerArgs @('volume', 'create', '--label', "$RestoreLabel=$ClaudeVolumeName", '--label', "$RestoreRunLabel=$RestoreRunId", $ClaudeTempVolumeName)
+            if ($LASTEXITCODE -ne 0) {
+                $PrepFail = @("ERROR: Could not prepare the Claude Code state (login and session history)", "       from this backup: a temporary Docker volume could not be created.")
+                break
+            }
+            if (-not (Test-DaafRestoreNewTemp -Name $ClaudeTempVolumeName -Live $ClaudeVolumeName)) { $PrepFail = @(Get-DaafRestoreNewTempFailure -Name $ClaudeTempVolumeName); $TempCleanupCareful = $true; break }
+            $ClaudeTempCreated = $true
+            $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+            $claudeCidLines = @(docker create --label "$RestoreLabel=$ClaudeVolumeName" -v "${ClaudeTempVolumeName}:/dest" busybox 2>$null)
+            $claudeCreateOk = ($LASTEXITCODE -eq 0)
+            $ClaudeCid = ''
+            if ($claudeCidLines.Count -gt 0) { $ClaudeCid = "$($claudeCidLines[$claudeCidLines.Count - 1])".Trim() }
+            $claudeCpOk = $false
+            if ($claudeCreateOk -and $ClaudeCid -ne '') {
+                $null = docker cp "${ClaudeBackupPath}/." "${ClaudeCid}:/dest/" 2>&1
+                $claudeCpOk = ($LASTEXITCODE -eq 0)
+            }
+            if (-not [string]::IsNullOrEmpty($ClaudeCid)) { $null = docker rm -f $ClaudeCid 2>&1 }
+            $ErrorActionPreference = $savedEAP
+            if (-not $claudeCpOk) { $PrepFail = $claudeFail; break }
+            $null = Invoke-DaafRestoreDocker -DockerArgs @('run', '--rm', '--label', "$RestoreLabel=$ClaudeVolumeName", '-v', "${ClaudeTempVolumeName}:/dest", 'busybox', 'chown', '-R', '1000:1000', '/dest')
+            if ($LASTEXITCODE -ne 0) { $PrepFail = $claudeFail; break }
+            # The Claude volume's own symlink manifest (at the Claude subfolder root).
+            $null = Invoke-DaafRestoreDocker -DockerArgs @('run', '--rm', '--label', "$RestoreLabel=$ClaudeVolumeName", '-v', "${ClaudeTempVolumeName}:/dest:ro", 'busybox', 'test', '-f', "/dest/$SymlinksManifest")
+            if ($LASTEXITCODE -eq 0) {
+                $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+                $null = docker run --rm --label "$RestoreLabel=$ClaudeVolumeName" -v "${ClaudeTempVolumeName}:/dest" busybox sh -c $symlinkReplayScript 2>&1
+                $claudeReplayOk = ($LASTEXITCODE -eq 0)
+                $ErrorActionPreference = $savedEAP
+                if (-not $claudeReplayOk) {
+                    Write-Host "WARNING: Could not fully replay Claude state symlinks." -ForegroundColor Yellow
+                    Write-Host "         Claude state was copied; only symbolic links may be missing."
+                    $HadWarnings = $true
+                }
+            }
+            Write-Host "Claude Code state prepared."
+        }
+
+        # Re-check the free space with the temporary copy in place: the swap needs
+        # F + L >= S + margin. Unmeasurable -> said at the prompt.
+        $SpaceOutput = @(Invoke-DaafRestoreDocker -DockerArgs @('run', '--rm', '-v', "${VolumeName}:/dest:ro", '-v', "${TempVolumeName}:/src:ro", 'busybox', 'sh', '-c', $SpaceProgram))
+        $spaceExit = $LASTEXITCODE
+        $AvailKB = Get-DaafCountMarker -Lines $SpaceOutput -Name 'AVAIL_KB'
+        $LiveKB = Get-DaafCountMarker -Lines $SpaceOutput -Name 'LIVE_KB'
+        $SrcKB = Get-DaafCountMarker -Lines $SpaceOutput -Name 'SRC_KB'
+        if ($spaceExit -eq 0 -and $null -ne $AvailKB -and $null -ne $LiveKB -and $null -ne $SrcKB) {
+            $SwapSpaceKnown = $true
+            if (($AvailKB + $LiveKB) -lt ($SrcKB + $SpaceMarginKB)) {
+                $PrepFail = @("ERROR: There is not enough free space inside Docker to replace your data with the",
+                    "       checked copy: it needs about $(Format-DaafRestoreGB ($SrcKB + $SpaceMarginKB - $LiveKB)) GB free, Docker has $(Format-DaafRestoreGB $AvailKB) GB.",
+                    "       Free up space for Docker (for example, delete unused images in Docker Desktop),",
+                    "       then run the restore again.")
+                break
+            }
+        }
+
+        # --- (4) Confirmation (after the copy was checked; user decision D1) ---
+        Write-Host ""
+        Write-Host "==========================================" -ForegroundColor Red
+        Write-Host "  *** WARNING: DESTRUCTIVE OPERATION ***" -ForegroundColor Red
+        Write-Host "==========================================" -ForegroundColor Red
+        Write-Host ""
+        Write-Host "The backup was copied into Docker and checked: $TempCount files."
+        Write-Host "Typing RESTORE will now COMPLETELY ERASE the current contents of your"
+        Write-Host "DAAF Docker volume and replace them with this checked copy."
+        Write-Host ""
+        Write-Host "All existing files, git history, research data, and"
+        Write-Host "configuration in the Docker volume will be permanently"
+        Write-Host "deleted and overwritten by the backup contents."
+        Write-Host ""
+        Write-Host "Source:      $SelectedName\ ($TotalFilesLabel files, $TotalSizeStr)"
+        Write-Host "Destination: Docker volume '$VolumeName'"
+        if ($HasClaudeBackup) {
+            Write-Host ""
+            Write-Host "This backup also contains Claude Code state (credentials and session"
+            Write-Host "history), which will be restored to volume '$ClaudeVolumeName',"
+            Write-Host "overwriting any existing Claude Code login/history in this install."
+        }
+        if (-not $SwapSpaceKnown) {
+            Write-Host ""
+            Write-Host "Note: The free space inside Docker could not be checked. Replacing your data"
+            Write-Host "      needs up to about $(Format-DaafRestoreGB $SpaceNeededKB) GB free. If Docker runs out of space during"
+            Write-Host "      this step, your DAAF data may be left incomplete; the checked copy is then"
+            Write-Host "      kept so you can run the restore again."
+        }
+        Write-Host ""
+        $Confirm = Read-Host "Type RESTORE to confirm, or anything else to cancel"
+        if ($Confirm -ne "RESTORE") { $Cancelled = $true; break }
+
+        # Nothing may use the live volumes while they are replaced. Names come from
+        # stdout ONLY (2>$null): with 2>&1 a failing `docker ps` would list its error
+        # text as a "container". A FAILED `docker ps` is not "nothing is running": the
+        # check could not be made, so refuse (same wording and outcome as the .sh twin).
+        $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+        $runningNowLines = @(docker ps --filter "volume=$VolumeName" --filter "volume=$ClaudeVolumeName" --format '{{.Names}}' 2>$null)
+        $runningNowExit = $LASTEXITCODE
+        $ErrorActionPreference = $savedEAP
+        if ($runningNowExit -ne 0) {
+            $PrepFail = @("ERROR: Could not check whether DAAF is running (docker ps failed, exit $runningNowExit),",
+                "       so your data cannot be replaced safely. Make sure Docker Desktop is running,",
+                "       then run the restore again.")
+            break
+        }
+        $RunningNow = @($runningNowLines | ForEach-Object { "$_".Trim() } | Where-Object { $_ -ne "" })
+        if ($RunningNow.Count -gt 0) {
+            $PrepFail = @("ERROR: A container started using your DAAF data while the restore was being",
+                "       prepared: $($RunningNow -join ' ')",
+                "       Stop it (docker compose down) and run the restore again.")
+            break
+        }
+
+        # The temp volumes must still be the ones this run created and checked (a restore
+        # in another window, or a user, could have removed or replaced one while the
+        # prompt waited). Checked BEFORE the marker write, which would make Docker
+        # create a new, EMPTY volume under a vanished name. Not ours: refuse and remove
+        # NOTHING (the volume under that name may belong to another restore).
+        foreach ($tv in @((Get-DaafRestoreKeptTempList) -split ' ' | Where-Object { $_ -ne '' })) {
+            if (-not (Test-DaafRestoreTempIdentity -Name $tv)) { $ChangedTemp = $tv; break }
+        }
+        if ($null -ne $ChangedTemp) { $TempCreated = $false; $ClaudeTempCreated = $false; break }
+
+        # State marker into each temp volume, right before the swaps (see $SwapMarker).
+        $markOk = $true
+        $MarkersWritten = $true
+        foreach ($tv in @((Get-DaafRestoreKeptTempList) -split ' ' | Where-Object { $_ -ne '' })) {
+            $null = Invoke-DaafRestoreDocker -DockerArgs @('run', '--rm', '--label', "$RestoreLabel=$VolumeName", '-v', "${tv}:/dest", 'busybox', 'touch', "/dest/$SwapMarker")
+            if ($LASTEXITCODE -ne 0) { $markOk = $false }
+        }
+        if (-not $markOk) { $PrepFail = @("ERROR: Could not prepare the temporary copy for the final step."); break }
+
+        # Right before the data swap (after the marker write): still our volume? S2
+        # (review round 2): the refusal removes nothing, but the Claude temp of this run
+        # (if still ours) loses its marker, so the next run does not report a swap.
+        if (-not (Test-DaafRestoreTempIdentity -Name $TempVolumeName)) {
+            $ChangedTemp = $TempVolumeName
+            if ($ClaudeTempCreated) { Clear-DaafRestoreOwnMarker -Name $ClaudeTempVolumeName }
+            $TempCreated = $false; $ClaudeTempCreated = $false; break
+        }
+
+        # --- (5) Replace the live volumes inside Docker ---
+        # ONE named, unlabelled container per volume, --sig-proxy=false, so a Ctrl+C is
+        # never forwarded into the swap: it ends only the docker client (PowerShell 7
+        # source; inferred, not observed, for Windows PowerShell 5.1), and the swap
+        # itself runs to the end inside Docker. From here on nothing deletes a temp
+        # volume except the final cleanup. A Ctrl+C anywhere inside this try (preparing,
+        # at the prompt, or during the swap) prints the right text from the finally
+        # below; for its exit code (130 under the Control Panel, 0 when run on its own)
+        # see the end of that finally.
+        Write-Host ""
+        Write-Host "Replacing your DAAF data with the checked copy..."
+        Write-Host "  Do not close this window or quit Docker Desktop until this step finishes."
+        $SwapStarted = $true
+        $null = Invoke-DaafRestoreDocker -DockerArgs @('run', '--rm', '--sig-proxy=false', '--name', $SwapContainerName, '-v', "${TempVolumeName}:/src:ro", '-v', "${VolumeName}:/dest", 'busybox', 'sh', '-c', $SwapProgram)
+        $swapExit = $LASTEXITCODE
+        # S1 (review round 2): a swap that provably replaced NOTHING -- ONLY exit 3, the
+        # program's own refusal before its rm -- is not the after-swap path: careful
+        # cleanup (marker first, identity-checked, no reap) and a plain message. Review
+        # round 3 (I-1): Docker's 125 is NOT such proof. Docker documents 125 as "the
+        # error is with Docker daemon itself" (Running containers guide, "Exit status"),
+        # and `docker run` can return 125 after the container started -- e.g. when it
+        # loses track of it in a daemon restart mid-swap (moby PR #34999 / #46857),
+        # possibly after the rm ran. So 125, whether or not the swap container still
+        # exists, takes the after-swap path below (temps and marker kept). The careful
+        # flag is set BEFORE the swap-started flag is cleared (S-c): a Ctrl+C between the
+        # two then still finds the swap "started" (temps kept), never an ordinary
+        # cleanup with a label reap. (The .sh twin's _restore_fail_swap_not_run.)
+        if ($swapExit -eq 3) {
+            $TempCleanupCareful = $true
+            $SwapStarted = $false
+            $PrepFail = @("ERROR: The temporary copy of the backup in Docker was gone or could not be used",
+                "       (exit $swapExit), so NOTHING was replaced. Run the restore again.")
+            break
+        }
+        if ($swapExit -ne 0) { $SwapFail = @("ERROR: Replacing your DAAF data did not complete (exit $swapExit)."); break }
+        $swapCheck = @(Invoke-DaafRestoreDocker -DockerArgs @('run', '--rm', '-v', "${TempVolumeName}:/src:ro", '-v', "${VolumeName}:/dest:ro", 'busybox', 'sh', '-c', $SwapVerifyProgram))
+        if (-not (Test-DaafRestoreSwapChecked -Lines $swapCheck -NonEmpty)) {
+            $SwapFail = @("ERROR: After replacing your DAAF data, it could not be confirmed to match the",
+                "       checked copy (file names, sizes, permissions and owners).")
+            break
+        }
+
+        # --- (5b) Replace the Claude Code state volume (same program and check) ---
+        if ($HasClaudeBackup) {
+            Write-Host ""
+            Write-Host "Replacing the Claude Code state..."
+            # Right before the Claude swap: still our volume? The data volume is already
+            # replaced and checked, so every Claude failure below is an after-swap failure
+            # that says so plainly ($SwapFailClaudeOnly, S5); the changed volume is not
+            # ours, so it is not listed as the kept copy.
+            $SwapFailClaudeOnly = $true
+            if (-not (Test-DaafRestoreTempIdentity -Name $ClaudeTempVolumeName)) {
+                $ClaudeTempCreated = $false
+                $SwapFail = @("ERROR: The temporary copy of the Claude Code state (volume '$ClaudeTempVolumeName')",
+                    "       was changed by something else -- for example, a restore started in another",
+                    "       window -- so it was not used.")
+                break
+            }
+            $null = Invoke-DaafRestoreDocker -DockerArgs @('run', '--rm', '--sig-proxy=false', '--name', $ClaudeSwapContainerName, '-v', "${ClaudeTempVolumeName}:/src:ro", '-v', "${ClaudeVolumeName}:/dest", 'busybox', 'sh', '-c', $SwapProgram)
+            $swapExit = $LASTEXITCODE
+            # Exit 3 is the program's own refusal before its rm (the live Claude state is
+            # untouched); any other outcome means the swap ran and may have erased it (S-a).
+            if ($swapExit -ne 3) { $ClaudeSwapRan = $true }
+            if ($swapExit -ne 0) {
+                $SwapFail = @("ERROR: Replacing the Claude Code state (login and session history) did not",
+                    "       complete (exit $swapExit).")
+                break
+            }
+            $swapCheck = @(Invoke-DaafRestoreDocker -DockerArgs @('run', '--rm', '-v', "${ClaudeTempVolumeName}:/src:ro", '-v', "${ClaudeVolumeName}:/dest:ro", 'busybox', 'sh', '-c', $SwapVerifyProgram))
+            if (-not (Test-DaafRestoreSwapChecked -Lines $swapCheck)) {
+                $SwapFail = @("ERROR: After replacing the Claude Code state, it could not be confirmed to match",
+                    "       the checked copy.")
+                break
+            }
+            Write-Host "Claude Code state restored."
+        }
+    } while ($false)
+    $ReachedEnd = $true
+} catch {
+    # An unexpected error (a bug, not an outcome: every outcome above is a flag plus
+    # `break`). Recorded so the interrupt exit code at the end of the finally is never
+    # given to it, then rethrown unchanged: after the finally it still ends the script
+    # with PowerShell's own error text and exit code (1). A Ctrl+C never runs a catch
+    # (a stopped pipeline runs only the finally; observed on pwsh 7.6, see below).
+    $Faulted = $true
+    throw
+} finally {
+    # Ctrl+C, a failure or a cancel BEFORE any swap: remove what this run created.
+    # After a swap started: never (the temp copy may be the only complete one). Nor
+    # when a temp volume is no longer this run's ($ChangedTemp): that refusal removes
+    # NOTHING -- not even the label reap of prepare helpers, which could belong to the
+    # other restore that changed it (the .sh twin's _restore_refuse_changed_temp).
+    if (-not $SwapStarted -and $null -eq $ChangedTemp) { Invoke-DaafRestoreTempCleanup }
+    if (-not $ReachedEnd) {
+        Write-Host ""
+        if ($SwapStarted) {
+            Write-Host "Restore interrupted while your DAAF data was being replaced." -ForegroundColor Red
+            Write-Host "The replacement keeps running inside Docker until it finishes. Your backup"
+            Write-Host "folder $SelectedName\ is unchanged. Wait a few minutes, then run this restore"
+            Write-Host "again and choose the same backup:"
+            Write-Host "  $RerunCommand"
+        } else {
+            Write-DaafRestoreUnchanged -First 'Restore interrupted. '
+            if ($TempRemoveFailed) {
+                Write-Host "The temporary copy could not be removed. To free the space it uses, run:"
+                Write-Host "  docker volume rm $(Get-DaafRestoreKeptTempList)"
+            }
+        }
+    }
+    # Interrupt exit code. A Ctrl+C stops the script right after this finally: nothing
+    # below it runs, so without this line the process exits 0 (observed under pwsh 7.6
+    # on Linux) and a caller that reads only the exit code -- the Control Panel,
+    # daaf.ps1's Invoke-DaafDelegate, which starts this script as a child process with
+    # DAAF_NESTED=1 -- would report an interrupted restore as a clean return. So, ONLY
+    # when DAAF_NESTED is set, an interrupt ends the process with 130 (the .sh twin's
+    # code), as the LAST statement of the finally, after every message above. A run
+    # started on its own in the user's PowerShell window is NOT ended this way:
+    # [Environment]::Exit would end that whole PowerShell session, closing the window
+    # the recovery text was just printed in, so it keeps exit 0 (documented known limit).
+    # "Interrupted" = the try did not reach its end, the catch did not record an error,
+    # and no outcome flag explains it (each is set before a `break` that reaches
+    # $ReachedEnd; an interrupt between a flag and its `break` errs toward exit 0, never
+    # toward a false 130). Only this try is covered: a Ctrl+C at an earlier prompt or in
+    # the post-swap count/cleanup below still exits 0 (pwsh -File exits 0 on SIGINT). [Environment]::Exit, not `exit`, because no `exit` statement runs
+    # inside this try/finally (see the section comment above). Verified under pwsh 7.6 on
+    # Linux (a SIGINT during a native command or a cmdlet: 10 of 10 runs exited 130 with
+    # the finally's text printed in full; `exit 130` behaved the same there); Windows
+    # PowerShell 5.1 and a real console Ctrl+C on Windows are untested (inference).
+    $Interrupted = (-not $ReachedEnd) -and (-not $Faulted) -and ($null -eq $PrepFail) -and ($null -eq $SwapFail) -and (-not $Cancelled) -and ($null -eq $ChangedTemp)
+    if ($Interrupted -and $env:DAAF_NESTED) { [Environment]::Exit(130) }
+}
+
+if ($null -ne $ChangedTemp) {
+    Write-Host ""
+    Write-Host "ERROR: The temporary copy of the backup in Docker (volume '$ChangedTemp') was changed by" -ForegroundColor Red
+    Write-Host "       something else while this restore was running -- for example, a restore"
+    Write-Host "       started in another window. It was not used, and nothing was removed."
+    Write-DaafRestoreUnchanged -First '       ' -Indent '       '
+    Write-Host "       Close any other restore window, then run this restore again."
+    Wait-AndExit 1
+}
+if ($null -ne $PrepFail) {
+    Write-Host ""
+    foreach ($line in $PrepFail) { Write-Host $line -ForegroundColor Red }
+    Write-DaafRestoreUnchanged -First '       ' -Indent '       '
+    if ($TempRemoveFailed) {
+        Write-Host "       The temporary copy could not be removed. To free the space it uses, run:"
+        Write-Host "         docker volume rm $(Get-DaafRestoreKeptTempList)"
+    }
+    Wait-AndExit 1
+}
+if ($Cancelled) {
+    Write-Host ""
+    Write-DaafRestoreUnchanged -First 'Restore cancelled. '
+    if ($TempRemoveFailed) {
+        Write-Host "The temporary copy could not be removed. To free the space it uses, run:"
+        Write-Host "  docker volume rm $(Get-DaafRestoreKeptTempList)"
+    }
+    Wait-AndExit 0
+}
+if ($null -ne $SwapFail) {
+    Write-DaafRestoreSwapFailure -Lines $SwapFail -ClaudeOnly:$SwapFailClaudeOnly -ClaudeSwapRan:$ClaudeSwapRan
+    Wait-AndExit 1
+}
 
 # --- Verify ---
 # Count the restored volume like with like: the same root exclusions as the backup
@@ -803,7 +1466,9 @@ $ErrorActionPreference = $savedEAP
 # $BackupCountProgram), else RESTORED_COUNT_ERRORS. Unavailable ($null) is its own
 # outcome: a WARNING with exit 0, because the copy, ownership repair and replays all
 # succeeded and only this check could not run (exit 1 would tell a caller the restore
-# failed with the data in place). A count that WAS read as 0 still fails with exit 1.
+# failed with the data in place). A count that WAS read must EQUAL the temp copy's
+# count from step 3f (the same program; the swap copied that copy): any difference --
+# including 0 -- goes through the after-swap failure path (temp copy kept, exit 1).
 # Parsed on ANY exit, exactly like the .sh twin: an error marker is evidence of read
 # errors even when docker also exited nonzero, and it takes precedence in choosing the
 # WARNING variant below. A count marker is trusted only on exit 0 (a nonzero exit means
@@ -827,123 +1492,41 @@ if ($null -eq $RestoredCount) {
     Write-Host "         The copy itself reported success, so your data is most likely in place. Start"
     Write-Host "         DAAF and check your files; if anything is missing, re-run this restore."
     $HadWarnings = $true
-} elseif ($RestoredCount -eq 0) {
-    Write-Host ""
-    Write-Host "ERROR: Verification failed -- 0 files found in restored volume." -ForegroundColor Red
-    Write-Host "The restore may have failed. Consider re-running or reinstalling DAAF."
+} elseif ($RestoredCount -ne $TempCount) {
+    Write-DaafRestoreSwapFailure -Lines @("ERROR: After replacing your DAAF data, it holds $RestoredCount files, but the checked",
+        "       copy held $TempCount.")
     Wait-AndExit 1
 } else {
     Write-Host "Verified: $RestoredCount files in restored volume."
-}
-
-# --- File count comparison ---
-# When the backup count is a LOWER BOUND (the PowerShell fallback could not read some
-# folders), a restored volume holding at least that many files is exactly what is
-# expected -- the restore copies everything, and `find` inside Docker sees it all --
-# so it gets an informational line, not a "may be incomplete" warning. Only a
-# restored count BELOW the lower bound is a real mismatch. (The banner still ends
-# WITH WARNINGS: the scan latched it, because a lower bound cannot prove the restore
-# complete.)
-if ($null -ne $RestoredCount -and $TotalFiles -gt 0 -and $RestoredCount -gt 0) {
-    if ($TotalFilesIsLowerBound -and $RestoredCount -ge $TotalFiles) {
+    # A LOWER-BOUND backup count ("N+", the PowerShell fallback could not read some
+    # folders): the temp copy reached it in step 3f, so this restored count -- equal to
+    # the temp copy's -- is consistent with it. Informational; the scan already latched
+    # WITH WARNINGS, because a lower bound cannot prove the restore complete.
+    if ($TotalFilesIsLowerBound) {
         Write-Host "Note: The backup count ($TotalFilesLabel files) was a lower bound; the restored volume holds"
         Write-Host "      $RestoredCount files, which is consistent with it."
-    } else {
-        $Diff = [math]::Abs($TotalFiles - $RestoredCount)
-        $Tolerance = [math]::Max(1, [math]::Floor($TotalFiles / 100))
-        if ($Diff -gt $Tolerance) {
-            Write-Host ""
-            Write-Host "WARNING: File count mismatch." -ForegroundColor Yellow
-            Write-Host "         Backup: $TotalFilesLabel files, Restored: $RestoredCount files (difference: $Diff)"
-            Write-Host "         The restore may be incomplete."
-            $HadWarnings = $true
-        }
     }
 }
 
-# --- Restore the Claude Code state volume ---
-# Only when the backup contains it. Older backups predating the volume are
-# restored data-only, with a clear warning (not an error) so the user knows
-# Claude Code login/history was not part of that backup.
-if ($HasClaudeBackup) {
-    Write-Host ""
-    Write-Host "Restoring Claude Code state (credentials, session history, plugins)..."
-    # Ensure the volume exists (idempotent) in case restore runs before first start.
-    $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-    $null = docker volume create $ClaudeVolumeName 2>&1
-    # Clear then copy, mirroring the data-volume restore semantics. The copy uses
-    # the same `docker create` + `docker cp` mechanism (with the same root->1000
-    # ownership repair) as the data volume above; the claude-config volume is also
-    # chowned to 1000:1000 by daaf-init in docker-compose.yml, but restore repairs
-    # it here rather than depending on that init container.
-    $null = docker run --rm -v "${ClaudeVolumeName}:/dest" busybox sh -c 'rm -rf /dest/* /dest/.[!.]* /dest/..?*' 2>&1
-    $clearOk = ($LASTEXITCODE -eq 0)
-    # Pre-init the full guard set (not just $claudeCopyOk) so a strict-mode read
-    # is safe even if a docker step throws before its own assignment.
-    $claudeCopyOk = $false
-    $claudeCreateOk = $false
-    $claudeCpOk = $false
-    if ($clearOk) {
-        $ClaudeCid = $null
-        try {
-            $ClaudeCid = (docker create -v "${ClaudeVolumeName}:/dest" busybox 2>&1).Trim()
-            $claudeCreateOk = ($LASTEXITCODE -eq 0)
-            if ($claudeCreateOk) {
-                $null = docker cp "${ClaudeBackupPath}/." "${ClaudeCid}:/dest/" 2>&1
-                $claudeCpOk = ($LASTEXITCODE -eq 0)
-                if ($claudeCpOk) {
-                    $null = docker run --rm -v "${ClaudeVolumeName}:/dest" busybox chown -R 1000:1000 /dest 2>&1
-                    $claudeCopyOk = ($LASTEXITCODE -eq 0)
-                    if ($claudeCopyOk) {
-                        # Replay the Claude volume's own symlink manifest (staged out
-                        # by backup), then strip it. Same $symlinkReplayScript program
-                        # + no-manifest-no-op + WARNING-not-fatal semantics as the
-                        # data-volume Step 2e. The manifest copied into this volume's
-                        # root as /dest/.daaf-symlinks. Replay failure must NOT flip
-                        # $claudeCopyOk to false (the state itself restored fine).
-                        $null = docker run --rm -v "${ClaudeVolumeName}:/dest:ro" busybox test -f "/dest/${SymlinksManifest}" 2>&1
-                        if ($LASTEXITCODE -eq 0) {
-                            $null = docker run --rm -v "${ClaudeVolumeName}:/dest" busybox sh -c $symlinkReplayScript 2>&1
-                            if ($LASTEXITCODE -ne 0) {
-                                Write-Host "WARNING: Could not fully replay Claude state symlinks." -ForegroundColor Yellow
-                                Write-Host "         Claude state was restored; only symbolic links may be missing."
-                                $HadWarnings = $true
-                            }
-                        }
-                    }
-                }
-            }
-        } finally {
-            # Remove the helper container even if the copy is interrupted (PS
-            # finally runs on Ctrl-C). Best-effort; guarded on an unset/empty CID.
-            # Wrap in its own SilentlyContinue bracket -- on an interrupt path the
-            # ambient EAP is not guaranteed, and under EAP=Stop a stderr line from
-            # `docker rm` would throw inside finally.
-            if (-not [string]::IsNullOrEmpty($ClaudeCid)) {
-                $innerEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-                $null = docker rm -f $ClaudeCid 2>&1
-                $ErrorActionPreference = $innerEAP
-            }
-        }
-    }
-    $ErrorActionPreference = $savedEAP
-    if (-not $clearOk) {
-        Write-Host "WARNING: Failed to clear the Claude Code state volume before restore." -ForegroundColor Yellow
-        Write-Host "         Data volume restore above succeeded; Claude state may be inconsistent."
-        $HadWarnings = $true
-    } elseif (-not $claudeCopyOk) {
-        Write-Host "WARNING: Failed to restore the Claude Code state volume." -ForegroundColor Yellow
-        Write-Host "         Data volume restore above succeeded; you may need to re-run /login."
-        $HadWarnings = $true
-    } else {
-        Write-Host "Claude Code state restored."
-    }
-} else {
+if (-not $HasClaudeBackup) {
     Write-Host ""
     Write-Host "NOTE: This backup does not contain Claude Code state (it predates the"
     Write-Host "      dedicated Claude volume). Your data was restored, but Claude Code"
     Write-Host "      login and session history were NOT part of this backup -- you may"
     Write-Host "      need to run /login again after starting DAAF."
+}
+
+# --- (6) Remove the temporary copies ---
+# Every check passed. A removal failure does not undo the restore: a latched WARNING
+# with the exact command, exit 0.
+Invoke-DaafRestoreTempCleanup -Final
+if ($TempRemoveFailed) {
+    $KeptTemps = Get-DaafRestoreKeptTempList
+    Write-Host ""
+    Write-Host "WARNING: Could not remove the temporary copy of your data (Docker volume(s): $KeptTemps)." -ForegroundColor Yellow
+    Write-Host "         Your DAAF data was restored. To free the space it uses, run:"
+    Write-Host "           docker volume rm $KeptTemps"
+    $HadWarnings = $true
 }
 
 Write-Host ""

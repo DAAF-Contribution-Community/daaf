@@ -36,9 +36,27 @@ if [ "${_BATS_HELPERS_LOADED}" != "true" ]; then
             return 1
         fi
     }
+    # Optional expected status, as in bats-assert (`assert_failure 3`). Without it, a
+    # fallback run passed every status-specific pin (exit 1 vs 3 vs 130) whenever the
+    # status was merely nonzero, so in-container runs could not catch a wrong exit code.
+    # A non-numeric expected status (a typo such as `assert_failure l`) fails LOUDLY:
+    # otherwise `[ ... -ne "$1" ]` errors out, its test is false, and the pin passes.
     assert_failure() {
+        if [ "$#" -gt 0 ]; then
+            case "$1" in
+                ''|*[!0-9]*)
+                    echo "assert_failure failed: expected status '$1' is not a number"
+                    return 1
+                    ;;
+            esac
+        fi
         if [ "${status}" -eq 0 ]; then
             echo "assert_failure failed: expected non-zero exit"
+            echo "output: ${output}"
+            return 1
+        fi
+        if [ "$#" -gt 0 ] && [ "${status}" -ne "$1" ]; then
+            echo "assert_failure failed: expected status $1, got ${status}"
             echo "output: ${output}"
             return 1
         fi
@@ -208,7 +226,44 @@ mock_docker() {
                 return "${MOCK_DOCKER_CP_EXIT:-0}"
                 ;;
             volume)
+                # `docker volume inspect <name>-restore-tmp` is restore_from_backup.sh's
+                # exact-name check for a TEMPORARY volume left by an earlier restore.
+                # Default: ABSENT (exit 1), whatever MOCK_DOCKER_VOLUME_EXIT says about the
+                # live volume -- otherwise every test reaching the copy-then-swap section
+                # would see a phantom leftover and its stdin would answer the leftover
+                # prompt. No other script uses that suffix, so other callers are unchanged.
+                # "Absent" says so on stderr like Docker: restore treats any OTHER inspect
+                # failure as "could not check" and refuses (review round 1, I2).
+                if [ "${2:-}" = "inspect" ]; then
+                    case "${3:-}" in
+                        *-restore-tmp)
+                            if [ "${MOCK_DOCKER_RESTORE_TMP_EXIT:-1}" != "0" ]; then
+                                echo "Error response from daemon: get ${3}: no such volume" >&2
+                            fi
+                            return "${MOCK_DOCKER_RESTORE_TMP_EXIT:-1}"
+                            ;;
+                    esac
+                fi
                 return "${MOCK_DOCKER_VOLUME_EXIT:-0}"
+                ;;
+            container)
+                # `docker container inspect --format ... <name>-restore-swap` is restore's
+                # exact-name check for a swap container left by an earlier restore.
+                # Default: ABSENT (exit 1). Every other `docker container ...` call keeps
+                # the old default-arm behavior (MOCK_DOCKER_EXIT).
+                if [ "${2:-}" = "inspect" ]; then
+                    local _last=""
+                    for _last in "$@"; do :; done
+                    case "${_last}" in
+                        *-restore-swap)
+                            if [ "${MOCK_DOCKER_RESTORE_SWAP_EXIT:-1}" != "0" ]; then
+                                echo "Error: No such container: ${_last}" >&2
+                            fi
+                            return "${MOCK_DOCKER_RESTORE_SWAP_EXIT:-1}"
+                            ;;
+                    esac
+                fi
+                return "${MOCK_DOCKER_EXIT:-0}"
                 ;;
             run)
                 # Distinguish the detached staging launch (`run -d ...`) from the

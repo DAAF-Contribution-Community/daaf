@@ -87,7 +87,7 @@ CLAUDE_CONTAINER_PATH="/home/appuser/.claude"
 # first STAGED into a throwaway container: the staging step records each symlink's
 # path+target into this manifest and then removes the symlinks, so the tree
 # `docker cp` streams contains NO symlinks. Restore replays the manifest to
-# recreate the links (see restore_from_backup.sh Step 2e). The staging step ALWAYS
+# recreate the links (see restore_from_backup.sh Step 3e). The staging step ALWAYS
 # writes it (0 bytes when the volume has no symlinks). Absent manifest (a backup that
 # predates this feature) = no-op on restore, matching the ".daaf-permissions" "no
 # manifest, no action" rule.
@@ -485,11 +485,13 @@ mkdir -p "${BACKUP_NAME}"
 # the count line cannot trip `set -e`, and with no files `find` runs no `stat` and
 # awk prints 0 0.
 #
-# That same rule makes a `find`/`stat` read error SILENT (busybox `sh` has no verified
-# `pipefail` default): awk would print a short count and the program would exit 0. So
-# the count's stderr goes to /tmp/count_err (the throwaway container's own /tmp), and
-# the markers are printed only when it is empty; otherwise STAGED_COUNT_ERRORS=<lines>
-# is printed INSTEAD. Missing markers take the existing "Could not read the snapshot's
+# That same rule makes a `find`/`stat` read error SILENT. busybox ash does support
+# `set -o pipefail` (BASH_PIPEFAIL = ENABLE_ASH_BASH_COMPAT, and ASH_BASH_COMPAT is
+# `default y`; read in the busybox source, not executed under busybox), but this
+# program does not turn it on, so awk would print a short count and the program would
+# exit 0. So the count's stderr goes to /tmp/count_err (the throwaway container's own
+# /tmp), and the markers are printed only when it is empty; otherwise
+# STAGED_COUNT_ERRORS=<lines> is printed INSTEAD. Missing markers take the existing "Could not read the snapshot's
 # file count" fallback below; the `if` never fails `set -e`, so staging still exits 0.
 #
 # UNCREATABLE NAMES (runs right after `cd /staging`, BEFORE the symlink manifest, so a
@@ -1233,6 +1235,7 @@ echo "To restore from this backup, run the restore script from this folder:"
 echo ""
 echo "  bash restore_from_backup.sh"
 echo ""
-echo "The restore script lets you pick which backup to restore from and"
-echo "handles clearing the volume before copying to ensure a clean state."
+echo "The restore script lets you pick which backup to restore from. It first"
+echo "copies the backup into a temporary Docker volume and checks it there; only"
+echo "after you confirm does it replace your current DAAF data."
 echo ""

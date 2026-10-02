@@ -632,7 +632,9 @@ $HostPath = (Resolve-Path $BackupName).Path
 # is what lets the verification below run at ZERO tolerance.
 #
 # A count that hit a read error is NOT a count. A pipeline's exit status is its LAST
-# command's (awk here), and busybox `sh` has no verified `pipefail` default, so a
+# command's (awk here). busybox ash does support `set -o pipefail` (BASH_PIPEFAIL =
+# ENABLE_ASH_BASH_COMPAT, and ASH_BASH_COMPAT is `default y`; read in the busybox
+# source, not executed under busybox), but this program does not turn it on, so a
 # `find` or `stat` error would otherwise be silent: awk would print a SHORT count and
 # the program would exit 0 (reproduced under dash in review round 2). So the count's
 # stderr goes to /tmp/count_err (the throwaway container's own /tmp, like the link
@@ -1592,7 +1594,8 @@ Write-Host "To restore from this backup, run the restore script from this folder
 Write-Host ""
 Write-Host "  .\restore_from_backup.ps1"
 Write-Host ""
-Write-Host "The restore script lets you pick which backup to restore from and"
-Write-Host "handles clearing the volume before copying to ensure a clean state."
+Write-Host "The restore script lets you pick which backup to restore from. It first"
+Write-Host "copies the backup into a temporary Docker volume and checks it there; only"
+Write-Host "after you confirm does it replace your current DAAF data."
 Write-Host ""
 Wait-AndExit 0

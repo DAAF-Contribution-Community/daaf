@@ -236,14 +236,18 @@ dquote_count() { tr -cd '"' | wc -c | tr -d '[:space:]'; }
 }
 
 @test "twin-parity: each restore .sh replay site binds a distinct volume (data + Claude)" {
-    # The two `set -ef` replay sites must mount ${VOLUME_NAME} and
-    # ${CLAUDE_VOLUME_NAME} respectively -- proving both volumes get their
-    # symlinks replayed, not the same volume twice.
+    # The two `set -ef` replay sites must mount ${TEMP_VOLUME_NAME} and
+    # ${CLAUDE_TEMP_VOLUME_NAME} respectively -- proving both volumes get their
+    # symlinks replayed, not the same volume twice. Copy-then-swap (2026-10-01): the
+    # replays run on the TEMPORARY copies, before the swap, so they bind the temp names.
     local data_sites claude_sites
-    data_sites="$(grep -A1 '"${VOLUME_NAME}:/dest" busybox sh -c '"'"'$' "${REPO_ROOT}/${RESTORE_SH}" | grep -c 'set -ef')"
-    claude_sites="$(grep -A1 '"${CLAUDE_VOLUME_NAME}:/dest" busybox sh -c '"'"'$' "${REPO_ROOT}/${RESTORE_SH}" | grep -c 'set -ef')"
-    [ "${data_sites}" -eq 1 ] || { echo "FAIL: expected exactly 1 data-volume (\${VOLUME_NAME}) replay site, found ${data_sites}"; return 1; }
-    [ "${claude_sites}" -eq 1 ] || { echo "FAIL: expected exactly 1 Claude-volume (\${CLAUDE_VOLUME_NAME}) replay site, found ${claude_sites}"; return 1; }
+    data_sites="$(grep -A1 '"${TEMP_VOLUME_NAME}:/dest" busybox sh -c '"'"'$' "${REPO_ROOT}/${RESTORE_SH}" | grep -c 'set -ef')"
+    claude_sites="$(grep -A1 '"${CLAUDE_TEMP_VOLUME_NAME}:/dest" busybox sh -c '"'"'$' "${REPO_ROOT}/${RESTORE_SH}" | grep -c 'set -ef')"
+    [ "${data_sites}" -eq 1 ] || { echo "FAIL: expected exactly 1 data-volume (\${TEMP_VOLUME_NAME}) replay site, found ${data_sites}"; return 1; }
+    [ "${claude_sites}" -eq 1 ] || { echo "FAIL: expected exactly 1 Claude-volume (\${CLAUDE_TEMP_VOLUME_NAME}) replay site, found ${claude_sites}"; return 1; }
+    # No replay may bind a LIVE volume (`docker run` lines only; the swap mounts live).
+    run grep -cE -- '-v "\$\{(CLAUDE_)?VOLUME_NAME\}:/dest" busybox sh -c .$' "${REPO_ROOT}/${RESTORE_SH}"
+    assert_output "0"
 }
 
 # ===========================================================================
@@ -344,16 +348,31 @@ dquote_count() { tr -cd '"' | wc -c | tr -d '[:space:]'; }
 # reap tests in restore_from_backup.bats.
 
 @test "twin-parity: both restore twins reap the captured MAIN helper CID on a create failure" {
-    # .sh main guard: the `${CID:-}` reap form must appear EXACTLY twice -- once in
-    # the INT/TERM trap and once in the `if ! CID="$(docker create ...)"` error branch
-    # (the fix). Pre-fix the trap alone gave a single occurrence, so a bare presence
-    # grep would not discriminate; the count of 2 is fix-specific. (The cp-failure and
-    # post-copy cleanups use the unguarded `${CID}` form, so they are not counted.)
-    local n
-    n="$(grep -cF 'docker rm -f "${CID:-}"' "${REPO_ROOT}/${RESTORE_SH}")"
-    [ "${n}" -eq 2 ] || { echo "FAIL: restore_from_backup.sh has ${n} \${CID:-} reap sites, expected 2 (INT/TERM trap + create-failure error branch). A missing error-branch reap leaks the helper container."; return 1; }
-    # .ps1 main guard: the try/finally reaps $Cid on every exit path (incl. a create
-    # that failed after emitting a CID).
+    # Copy-then-swap (2026-10-01): the per-CID `${CID:-}` reaps are gone. Every
+    # prepare-phase helper is created with the restore label, and a reaper removes
+    # every container carrying it (exact `--filter label=` match) before a temp volume
+    # is removed -- so a CID printed by a create that then failed is reaped too.
+    # .sh: labelled helper create, the reaper, and its call in the temp cleanup.
+    run grep -cF 'if ! CID="$(docker create --label "${RESTORE_LABEL}=${VOLUME_NAME}" -v "${TEMP_VOLUME_NAME}:/dest" busybox)"; then' "${REPO_ROOT}/${RESTORE_SH}"
+    assert_output "1"
+    run grep -cF 'docker ps -aq --filter "label=${RESTORE_LABEL}=${lbl}" 2>/dev/null | while IFS= read -r id; do' "${REPO_ROOT}/${RESTORE_SH}"
+    assert_output "1"
+    run grep -cF 'if [ -n "${id}" ]; then docker rm -f "${id}" > /dev/null 2>&1 || true; fi' "${REPO_ROOT}/${RESTORE_SH}"
+    assert_output "1"
+    # The whole function body (it grew in review round 2: the reap now sits in the
+    # not-careful branch -- SF2 -- further down than a fixed `grep -A` window).
+    run awk '/^_restore_remove_temps\(\) \{$/{f=1} f; f && /^\}$/{exit}' "${REPO_ROOT}/${RESTORE_SH}"
+    assert_output --partial '_restore_reap_helpers'
+    # .ps1: the same labelled create, the reaper, its call in the cleanup, and the
+    # inline reap of the captured $Cid right after the copy.
+    run grep -cF '$cidLines = @(docker create --label "$RestoreLabel=$VolumeName" -v "${TempVolumeName}:/dest" busybox 2>$null)' "${REPO_ROOT}/${RESTORE_PS1}"
+    assert_output "1"
+    # Review round 2: the reap reads the IDs from STDOUT only (the split helper), so a
+    # stderr line is never taken for a container ID.
+    run grep -cF "Invoke-DaafRestoreDockerSplit -DockerArgs @('ps', '-aq', '--filter', \"label=\$RestoreLabel=\$lbl\")" "${REPO_ROOT}/${RESTORE_PS1}"
+    assert_output "1"
+    run awk '/^function Invoke-DaafRestoreTempCleanup \{$/{f=1} f; f && /^\}$/{exit}' "${REPO_ROOT}/${RESTORE_PS1}"
+    assert_output --partial 'Invoke-DaafRestoreHelperReap'
     run grep -F 'docker rm -f $Cid' "${REPO_ROOT}/${RESTORE_PS1}"
     assert_success
 }
@@ -470,8 +489,9 @@ _container_tmp_refs() { grep -cE '(^|[ >])/tmp/' "$1" || true; }
 # ===========================================================================
 # 7b. READ ERRORS make a count UNAVAILABLE, never a short "exact" count (F1, round 2)
 # ===========================================================================
-# A pipeline's status is its LAST command's (awk), and busybox's pipefail default is
-# unverified, so a `find` read error used to be silent: review round 2 reproduced,
+# A pipeline's status is its LAST command's (awk): busybox ash supports `set -o pipefail`
+# (ASH_BASH_COMPAT, default y; source-read, not executed under busybox), but these
+# programs do not turn it on, so a `find` read error used to be silent: review round 2 reproduced,
 # under dash, a program that printed a short BACKUP_FILES with BACKUP_SENTINEL=1 and
 # exit 0 -- which the backup trusted as EXACT (false "missing files", even the fatal
 # short-copy branch). Both counts now send the count's stderr to /tmp/count_err and
@@ -721,10 +741,17 @@ extract_tree_count() {
 # $HadWarnings), mirroring the backup twins. The banner strings must be identical,
 # and so must the set of WARNING messages the twins can print (first lines, with
 # variable references normalized to <v>), so a WARNING added to one twin only
-# fails here. The latch assignments are pinned by count: 7 in the .sh, 8 in the
+# fails here. The latch assignments are pinned by count: 6 in the .sh, 7 in the
 # .ps1, whose extra latch is the LOWER-BOUND scan count (the .sh refuses such a
 # backup instead). Adding a success-path WARNING means adding its latch and
 # updating these counts (and the .ps1 count in restore_from_backup.Tests.ps1).
+# Copy-then-swap (2026-10-01) changed the SET but not the counts: the two Claude
+# clear/restore WARNINGs became fatal ERRORs (decision D2), and two latched WARNINGs
+# were added (free space that could not be checked; a temp copy that could not be
+# removed after a verified restore). Review round 1 (dispatch #7) removed one latch
+# from each twin: the post-restore "File count mismatch" WARNING (1% tolerance against
+# the backup count) became an exact comparison with the checked temp copy's count,
+# whose failure is the after-swap ERROR path (7 -> 6 in the .sh, 8 -> 7 in the .ps1).
 # Lines are matched with grep -E + sed (no GNU-only `\|`), so busybox also works.
 
 _restore_banners() {
@@ -757,7 +784,7 @@ _restore_warning_set() {
     _restore_warning_set "${REPO_ROOT}/${RESTORE_SH}"  > "${TEST_DIR}/w_sh.txt"
     _restore_warning_set "${REPO_ROOT}/${RESTORE_PS1}" > "${TEST_DIR}/w_ps1.txt"
     # Non-trivial extraction (the two variable-bearing messages normalized alike).
-    [ "$(grep -c . "${TEST_DIR}/w_sh.txt")" -ge 8 ] || { echo "FAIL: too few WARNING lines extracted from the .sh"; cat "${TEST_DIR}/w_sh.txt"; return 1; }
+    [ "$(grep -c . "${TEST_DIR}/w_sh.txt")" -ge 7 ] || { echo "FAIL: too few WARNING lines extracted from the .sh"; cat "${TEST_DIR}/w_sh.txt"; return 1; }
     grep -qF 'WARNING: Could not verify the restored file count: Docker hit <v> read error(s)' "${TEST_DIR}/w_sh.txt" || { echo "FAIL: variable normalization did not apply"; return 1; }
     run diff "${TEST_DIR}/w_sh.txt" "${TEST_DIR}/w_ps1.txt"
     if [ "${status}" -ne 0 ]; then
@@ -767,15 +794,15 @@ _restore_warning_set() {
     assert_success
 }
 
-@test "twin-parity: restore latch sites are pinned (7 in .sh, 8 in .ps1 incl. the lower-bound scan)" {
+@test "twin-parity: restore latch sites are pinned (6 in .sh, 7 in .ps1 incl. the lower-bound scan)" {
     run grep -c '^[[:space:]]*HAD_WARNINGS=0$' "${REPO_ROOT}/${RESTORE_SH}"
     assert_output "1"
     run grep -c '^[[:space:]]*HAD_WARNINGS=1$' "${REPO_ROOT}/${RESTORE_SH}"
-    assert_output "7"
+    assert_output "6"
     run grep -c '^[[:space:]]*\$HadWarnings = \$false$' "${REPO_ROOT}/${RESTORE_PS1}"
     assert_output "1"
     run grep -c '^[[:space:]]*\$HadWarnings = \$true$' "${REPO_ROOT}/${RESTORE_PS1}"
-    assert_output "8"
+    assert_output "7"
     # The .ps1-only latch sits in the lower-bound branch of the scan.
     run grep -A 12 -F '$TotalFilesIsLowerBound = $true' "${REPO_ROOT}/${RESTORE_PS1}"
     assert_output --partial '$HadWarnings = $true'
@@ -893,4 +920,556 @@ _exec_plus_in_parens() {
     [ "${#lines[@]}" -eq 2 ] || { echo "expected exactly 2 offenders, got:"; echo "${output}"; return 1; }
     [[ "${lines[0]}" == *'shapes.txt:1: find a \( -exec echo {} + \)' ]]
     [[ "${lines[1]}" == *'shapes.txt:2: find . \( -name x -o  -name y -exec rm {} + \)' ]]
+}
+
+# ===========================================================================
+# 12. RESTORE COPY-THEN-SWAP: the three container programs (2026-10-01)
+# ===========================================================================
+# restore_from_backup.{sh,ps1} copy the backup into a TEMPORARY volume, check it, and
+# only after the RESTORE confirmation replace the live volume inside Docker. Three
+# quote-free one-line programs drive that, defined once per twin as single-quoted
+# assignments (`NAME='...'` in the .sh, `$Name = '...'` in the .ps1):
+#   SPACE_PROGRAM / $SpaceProgram           free space + live/temp sizes (AVAIL_KB, ...)
+#   SWAP_PROGRAM / $SwapProgram             clear live, cp -a temp -> live, drop marker
+#   SWAP_VERIFY_PROGRAM / $SwapVerifyProgram  compare both trees (SWAP_VERIFY=MATCH)
+# They must be byte-identical across the twins and contain no `"` (Windows PS 5.1
+# native-argument rule). The swap must ignore INT/TERM/HUP from its first command
+# (`sh -c` as PID 1 still catches SIGINT, which would stop it after `rm` and before
+# `cp`, leaving live EMPTY) and every swap call must run with --sig-proxy=false.
+# The programs are also RUN below under the local sh -- dash + GNU coreutils/findutils;
+# busybox is NOT installed in this image, so busybox-only behavior (applet flags, the
+# paren-`-exec +` flush, section 11) is covered by text pins and a host probe, not here.
+
+_restore_prog_sh()  { sed -n "s/^$2='\(.*\)'\$/\1/p" "$1"; }
+_restore_prog_ps1() { sed -n "s/^\\\$$2 = '\(.*\)'\$/\1/p" "$1"; }
+_RESTORE_PROGS="SPACE_PROGRAM:SpaceProgram SWAP_PROGRAM:SwapProgram SWAP_VERIFY_PROGRAM:SwapVerifyProgram"
+
+# Exit 0 when all three programs are defined exactly once per twin, non-empty and
+# byte-identical; otherwise print the drift and exit 1. ($1 = .sh, $2 = .ps1)
+_restore_progs_identical() {
+    local pair s p rc=0
+    for pair in ${_RESTORE_PROGS}; do
+        if [ "$(grep -c "^${pair%%:*}='" "$1")" -ne 1 ]; then echo "DRIFT ${pair%%:*}: not defined exactly once in the .sh"; rc=1; fi
+        if [ "$(grep -c "^\\\$${pair##*:} = '" "$2")" -ne 1 ]; then echo "DRIFT \$${pair##*:}: not defined exactly once in the .ps1"; rc=1; fi
+        s="$(_restore_prog_sh "$1" "${pair%%:*}")"
+        p="$(_restore_prog_ps1 "$2" "${pair##*:}")"
+        if [ -z "${s}" ] || [ "${s}" != "${p}" ]; then
+            echo "DRIFT ${pair}:"; echo " sh:  ${s}"; echo " ps1: ${p}"; rc=1
+        fi
+    done
+    return "${rc}"
+}
+
+# Exit 0 when both twins' swap program starts with the INT/TERM/HUP trap and every
+# swap invocation (data + Claude) carries --sig-proxy=false. ($1 = .sh, $2 = .ps1)
+_swap_program_guarded() {
+    local rc=0 n m
+    if [[ "$(_restore_prog_sh "$1" SWAP_PROGRAM)" != 'trap : INT TERM HUP; '* ]]; then echo "sh SWAP_PROGRAM does not start with 'trap : INT TERM HUP; '"; rc=1; fi
+    if [[ "$(_restore_prog_ps1 "$2" SwapProgram)" != 'trap : INT TERM HUP; '* ]]; then echo "ps1 \$SwapProgram does not start with 'trap : INT TERM HUP; '"; rc=1; fi
+    n="$(grep -c 'sh -c "${SWAP_PROGRAM}"' "$1")"
+    m="$(grep 'sh -c "${SWAP_PROGRAM}"' "$1" | grep -c -- 'docker run --rm --sig-proxy=false --name ')"
+    if [ "${n}" -ne 2 ] || [ "${m}" -ne 2 ]; then echo "sh: ${n} swap call(s), ${m} with --sig-proxy=false (expected 2 and 2)"; rc=1; fi
+    n="$(grep -c "'sh', '-c', \$SwapProgram)" "$2")"
+    m="$(grep "'sh', '-c', \$SwapProgram)" "$2" | grep -c "@('run', '--rm', '--sig-proxy=false', '--name', ")"
+    if [ "${n}" -ne 2 ] || [ "${m}" -ne 2 ]; then echo "ps1: ${n} swap call(s), ${m} with --sig-proxy=false (expected 2 and 2)"; rc=1; fi
+    return "${rc}"
+}
+
+@test "twin-parity: the three copy-then-swap programs are byte-identical across the restore twins" {
+    run _restore_progs_identical "${REPO_ROOT}/${RESTORE_SH}" "${REPO_ROOT}/${RESTORE_PS1}"
+    assert_success
+    assert_output ""
+}
+
+@test "twin-parity: the three copy-then-swap programs contain zero double quotes and no single quote" {
+    local pair
+    for pair in ${_RESTORE_PROGS}; do
+        _restore_prog_sh "${REPO_ROOT}/${RESTORE_SH}" "${pair%%:*}" > "${TEST_DIR}/p.txt"
+        [ -s "${TEST_DIR}/p.txt" ]
+        run dquote_count < "${TEST_DIR}/p.txt"
+        assert_output "0"
+        run grep -c "'" "${TEST_DIR}/p.txt"
+        assert_output "0"
+    done
+}
+
+@test "twin-parity: the swap program ignores INT/TERM/HUP and every swap call has --sig-proxy=false" {
+    run _swap_program_guarded "${REPO_ROOT}/${RESTORE_SH}" "${REPO_ROOT}/${RESTORE_PS1}"
+    assert_success
+    assert_output ""
+}
+
+@test "twin-parity SELF-TEST: the program-identity and swap-guard pins flag perturbed twins" {
+    # (a) one token changed in the .ps1 swap program: identity must fail.
+    sed "s#^\(\$SwapProgram = .*\)cp -a /src/. /dest/#\1cp -R /src/. /dest/#" "${REPO_ROOT}/${RESTORE_PS1}" > "${TEST_DIR}/drift.ps1"
+    run grep -c 'cp -R /src/. /dest/' "${TEST_DIR}/drift.ps1"
+    assert_output "1"
+    run _restore_progs_identical "${REPO_ROOT}/${RESTORE_SH}" "${TEST_DIR}/drift.ps1"
+    assert_failure
+    assert_output --partial "DRIFT SWAP_PROGRAM:SwapProgram"
+    # (b) the trap removed from BOTH twins (identity still holds): the guard must fail.
+    sed 's#^SWAP_PROGRAM='"'"'trap : INT TERM HUP; #SWAP_PROGRAM='"'"'#' "${REPO_ROOT}/${RESTORE_SH}" > "${TEST_DIR}/notrap.sh"
+    sed "s#^\$SwapProgram = 'trap : INT TERM HUP; #\$SwapProgram = '#" "${REPO_ROOT}/${RESTORE_PS1}" > "${TEST_DIR}/notrap.ps1"
+    run _restore_progs_identical "${TEST_DIR}/notrap.sh" "${TEST_DIR}/notrap.ps1"
+    assert_success
+    run _swap_program_guarded "${TEST_DIR}/notrap.sh" "${TEST_DIR}/notrap.ps1"
+    assert_failure
+    assert_output --partial "does not start with"
+    # (c) --sig-proxy=false dropped from the .sh Claude swap call only.
+    sed 's#--sig-proxy=false --name "${CLAUDE_SWAP_CONTAINER_NAME}"#--name "${CLAUDE_SWAP_CONTAINER_NAME}"#' "${REPO_ROOT}/${RESTORE_SH}" > "${TEST_DIR}/noproxy.sh"
+    run cmp -s "${REPO_ROOT}/${RESTORE_SH}" "${TEST_DIR}/noproxy.sh"
+    assert_failure
+    run _swap_program_guarded "${TEST_DIR}/noproxy.sh" "${REPO_ROOT}/${RESTORE_PS1}"
+    assert_failure
+    assert_output --partial "sh: 2 swap call(s), 1 with --sig-proxy=false"
+}
+
+@test "twin-parity: the temp-copy check runs the SAME count program (same find predicate) as the post-restore check" {
+    local sh_live sh_temp ps_live ps_temp pred_live pred_temp
+    sh_live="$(sed -n "s/^VERIFY_OUTPUT=\"\$(docker run --rm -v \"\${VOLUME_NAME}:\/dest:ro\" busybox sh -c '\([^']*\)'.*/\1/p" "${REPO_ROOT}/${RESTORE_SH}")"
+    sh_temp="$(sed -n "s/^TEMP_VERIFY_OUTPUT=\"\$(docker run --rm --label \"\${RESTORE_LABEL}=\${VOLUME_NAME}\" -v \"\${TEMP_VOLUME_NAME}:\/dest:ro\" busybox sh -c '\([^']*\)'.*/\1/p" "${REPO_ROOT}/${RESTORE_SH}")"
+    ps_live="$(sed -n "s/^\$VerifyOutput = @(docker run --rm -v \"\${VolumeName}:\/dest:ro\" busybox sh -c '\([^']*\)'.*/\1/p" "${REPO_ROOT}/${RESTORE_PS1}")"
+    ps_temp="$(sed -n "s/^ *\$TempVerifyOutput = @(docker run --rm --label \"\$RestoreLabel=\$VolumeName\" -v \"\${TempVolumeName}:\/dest:ro\" busybox sh -c '\([^']*\)'.*/\1/p" "${REPO_ROOT}/${RESTORE_PS1}")"
+    [ -n "${sh_live}" ]
+    [ -n "${sh_temp}" ]
+    [ "${sh_temp}" = "${sh_live}" ] || { echo "DRIFT .sh temp vs live:"; echo " ${sh_temp}"; echo " ${sh_live}"; return 1; }
+    [ "${ps_temp}" = "${ps_live}" ] || { echo "DRIFT .ps1 temp vs live:"; echo " ${ps_temp}"; echo " ${ps_live}"; return 1; }
+    [ "${ps_temp}" = "${sh_temp}" ] || { echo "DRIFT temp .sh vs .ps1"; return 1; }
+    # The find predicate itself, named explicitly.
+    pred_live="$(printf '%s' "${sh_live}" | sed 's/.*n=\$(\(find [^|]*\)|.*/\1/')"
+    pred_temp="$(printf '%s' "${sh_temp}" | sed 's/.*n=\$(\(find [^|]*\)|.*/\1/')"
+    [ "${pred_temp}" = "${pred_live}" ]
+    [[ "${pred_temp}" == 'find /dest -type f ! -path /dest/.daaf-symlinks ! -path /dest/.daaf-permissions ! -path /dest/.daaf-claude-config/\* -exec stat -c %s {} + 2>/tmp/count_err '* ]]
+}
+
+@test "twin-parity: both restore twins derive the same temp/swap names, label and state marker" {
+    run grep -cxF 'TEMP_VOLUME_NAME="${VOLUME_NAME}-restore-tmp"' "${REPO_ROOT}/${RESTORE_SH}"
+    assert_output "1"
+    run grep -cxF 'CLAUDE_TEMP_VOLUME_NAME="${CLAUDE_VOLUME_NAME}-restore-tmp"' "${REPO_ROOT}/${RESTORE_SH}"
+    assert_output "1"
+    run grep -cxF 'SWAP_CONTAINER_NAME="${VOLUME_NAME}-restore-swap"' "${REPO_ROOT}/${RESTORE_SH}"
+    assert_output "1"
+    run grep -cxF 'CLAUDE_SWAP_CONTAINER_NAME="${CLAUDE_VOLUME_NAME}-restore-swap"' "${REPO_ROOT}/${RESTORE_SH}"
+    assert_output "1"
+    run grep -cxF 'RESTORE_LABEL="org.daaf.restore-tmp-for"' "${REPO_ROOT}/${RESTORE_SH}"
+    assert_output "1"
+    run grep -cxF 'SWAP_MARKER=".daaf-restore-swap-started"' "${REPO_ROOT}/${RESTORE_SH}"
+    assert_output "1"
+    run grep -cxF '$TempVolumeName = "${VolumeName}-restore-tmp"' "${REPO_ROOT}/${RESTORE_PS1}"
+    assert_output "1"
+    run grep -cxF '$ClaudeTempVolumeName = "${ClaudeVolumeName}-restore-tmp"' "${REPO_ROOT}/${RESTORE_PS1}"
+    assert_output "1"
+    run grep -cxF '$SwapContainerName = "${VolumeName}-restore-swap"' "${REPO_ROOT}/${RESTORE_PS1}"
+    assert_output "1"
+    run grep -cxF '$ClaudeSwapContainerName = "${ClaudeVolumeName}-restore-swap"' "${REPO_ROOT}/${RESTORE_PS1}"
+    assert_output "1"
+    run grep -cxF '$RestoreLabel = "org.daaf.restore-tmp-for"' "${REPO_ROOT}/${RESTORE_PS1}"
+    assert_output "1"
+    run grep -cxF '$SwapMarker = ".daaf-restore-swap-started"' "${REPO_ROOT}/${RESTORE_PS1}"
+    assert_output "1"
+    # The marker is a literal inside the shared programs (SYNC NOTE in both twins).
+    _restore_prog_sh "${REPO_ROOT}/${RESTORE_SH}" SWAP_PROGRAM > "${TEST_DIR}/swap.txt"
+    run grep -c 'rm -f /dest/.daaf-restore-swap-started$' "${TEST_DIR}/swap.txt"
+    assert_output "1"
+}
+
+# Point an extracted restore program at a fixture ($1): container /tmp/ -> $1/ctmp/,
+# /src and /dest -> $1/src and $1/dest, `cd /$t` -> `cd $1/$t`. The /tmp/ rewrite runs
+# first, on the program text only (TEST_DIR may sit under a folder named tmp).
+_localize_restore_prog() {
+    mkdir -p "$1/ctmp"
+    sed -e "s#/tmp/#$1/ctmp/#g" -e "s# /src# $1/src#g" -e "s# /dest# $1/dest#g" -e "s#cd /\\\$t#cd $1/\$t#"
+}
+
+# The fixture: every kind of entry the swap must carry (dotfile, symlink, executable,
+# a name with spaces, a nested EMPTY folder) plus the state marker in the temp copy and
+# an old file in the live copy. All under TEST_DIR (teardown removes it, symlink too).
+_make_swap_fixture() {
+    local f="$1"
+    mkdir -p "${f}/src/sub/empty" "${f}/dest/old"
+    printf 'a\n' > "${f}/src/top.txt"
+    printf '#!/bin/sh\n' > "${f}/src/sub/run.sh"
+    chmod 755 "${f}/src/sub/run.sh"
+    printf 'x\n' > "${f}/src/.dot"
+    printf 'y\n' > "${f}/src/sub/name with spaces"
+    ln -s top.txt "${f}/src/link.txt"
+    : > "${f}/src/.daaf-restore-swap-started"
+    printf 'old\n' > "${f}/dest/old/keep"
+}
+
+@test "twin-parity: SWAP_PROGRAM run under sh replaces the live tree with the temp copy and drops the marker" {
+    local f="${TEST_DIR}/sw"
+    _make_swap_fixture "${f}"
+    _restore_prog_sh "${REPO_ROOT}/${RESTORE_SH}" SWAP_PROGRAM | _localize_restore_prog "${f}" > "${TEST_DIR}/swap_run.sh"
+    run grep -cE '(^|[ >])/(src|dest|tmp)(/|[ ;]|$)' "${TEST_DIR}/swap_run.sh"
+    assert_output "0"
+    run "$(_run_shell)" "${TEST_DIR}/swap_run.sh"
+    assert_success
+    run ls -A "${f}/dest"
+    assert_output "$(printf '%s\n' .dot link.txt sub top.txt)"
+    [ -x "${f}/dest/sub/run.sh" ]
+    [ -L "${f}/dest/link.txt" ]
+    run readlink "${f}/dest/link.txt"
+    assert_output "top.txt"
+    [ -d "${f}/dest/sub/empty" ]
+    [ -f "${f}/dest/sub/name with spaces" ]
+    [ ! -e "${f}/dest/old" ]
+    [ ! -e "${f}/dest/.daaf-restore-swap-started" ]
+    # The temp copy is left as it was (the marker stays there: leftover evidence).
+    [ -e "${f}/src/.daaf-restore-swap-started" ]
+}
+
+@test "twin-parity: SWAP_VERIFY_PROGRAM run under sh prints MATCH after the swap and MISMATCH after a change" {
+    local f="${TEST_DIR}/sv" prog
+    _make_swap_fixture "${f}"
+    _restore_prog_sh "${REPO_ROOT}/${RESTORE_SH}" SWAP_PROGRAM | _localize_restore_prog "${f}" > "${TEST_DIR}/swap_run.sh"
+    _restore_prog_sh "${REPO_ROOT}/${RESTORE_SH}" SWAP_VERIFY_PROGRAM | _localize_restore_prog "${f}" > "${TEST_DIR}/verify_run.sh"
+    run grep -cE '(^|[ >])/(src|dest|tmp)(/|[ ;]|$)' "${TEST_DIR}/verify_run.sh"
+    assert_output "0"
+    run "$(_run_shell)" "${TEST_DIR}/swap_run.sh"
+    assert_success
+    # 8 entries per side: 5 non-directories (.dot, link.txt, top.txt, sub/run.sh,
+    # sub/name with spaces), 2 directories below the root (sub, sub/empty), 1 link
+    # target; the root folder and the marker are left out.
+    run "$(_run_shell)" "${TEST_DIR}/verify_run.sh"
+    assert_success
+    assert_output "$(printf '%s\n' SWAP_VERIFY=MATCH SWAP_VERIFY_ENTRIES=8:8)"
+    # A mode change, a size change and a link-target change each MISMATCH. (An owner
+    # change needs root here; it lands in the same %u:%g columns as the mode.)
+    chmod 600 "${f}/dest/sub/run.sh"
+    run "$(_run_shell)" "${TEST_DIR}/verify_run.sh"
+    assert_output --partial "SWAP_VERIFY=MISMATCH"
+    chmod 755 "${f}/dest/sub/run.sh"
+    printf 'more\n' >> "${f}/dest/top.txt"
+    run "$(_run_shell)" "${TEST_DIR}/verify_run.sh"
+    assert_output --partial "SWAP_VERIFY=MISMATCH"
+    printf 'a\n' > "${f}/dest/top.txt"
+    ln -sfn sub "${f}/dest/link.txt"
+    run "$(_run_shell)" "${TEST_DIR}/verify_run.sh"
+    assert_output --partial "SWAP_VERIFY=MISMATCH"
+    ln -sfn top.txt "${f}/dest/link.txt"
+    run "$(_run_shell)" "${TEST_DIR}/verify_run.sh"
+    assert_output "$(printf '%s\n' SWAP_VERIFY=MATCH SWAP_VERIFY_ENTRIES=8:8)"
+    # A listing that hits a read error is neither MATCH nor MISMATCH.
+    if [ "$(id -u)" -ne 0 ]; then
+        chmod 000 "${f}/dest/sub/empty"
+        run "$(_run_shell)" "${TEST_DIR}/verify_run.sh"
+        chmod 755 "${f}/dest/sub/empty"
+        assert_output --partial "SWAP_VERIFY_ERRORS="
+        refute_output --partial "SWAP_VERIFY=MATCH"
+    fi
+}
+
+@test "twin-parity: SPACE_PROGRAM run under sh prints AVAIL_KB and LIVE_KB, plus SRC_KB only when /src is mounted" {
+    local f="${TEST_DIR}/sp" live_kb src_kb
+    mkdir -p "${f}/dest" "${f}/src"
+    head -c 50000 /dev/zero > "${f}/dest/a.bin"
+    head -c 90000 /dev/zero > "${f}/src/b.bin"
+    live_kb="$(du -sk "${f}/dest" | awk '{print $1}')"
+    src_kb="$(du -sk "${f}/src" | awk '{print $1}')"
+    _restore_prog_sh "${REPO_ROOT}/${RESTORE_SH}" SPACE_PROGRAM | _localize_restore_prog "${f}" > "${TEST_DIR}/space_run.sh"
+    run grep -cE '(^|[ >])/(src|dest|tmp)(/|[ ;]|$)' "${TEST_DIR}/space_run.sh"
+    assert_output "0"
+    run "$(_run_shell)" "${TEST_DIR}/space_run.sh"
+    assert_success
+    [ "${#lines[@]}" -eq 3 ]
+    [[ "${lines[0]}" =~ ^AVAIL_KB=[0-9]+$ ]]
+    [ "${lines[1]}" = "LIVE_KB=${live_kb}" ]
+    [ "${lines[2]}" = "SRC_KB=${src_kb}" ]
+    # Without a /src mount (the first check), no SRC_KB line.
+    mv "${f}/src" "${f}/src_off"
+    run "$(_run_shell)" "${TEST_DIR}/space_run.sh"
+    assert_success
+    [ "${#lines[@]}" -eq 2 ]
+    [ "${lines[1]}" = "LIVE_KB=${live_kb}" ]
+    refute_output --partial "SRC_KB="
+}
+
+# ===========================================================================
+# Swap-time running-container re-check (2026-10-01, dispatch #6)
+# ===========================================================================
+# Right after RESTORE and before the state marker and the swaps, both restore twins
+# re-run `docker ps --filter volume=<live> --filter volume=<claude>`. Two rules, the
+# same in both twins: (a) container names come from STDOUT only (the .ps1 once read
+# them through `2>&1`, so a failing `docker ps` listed its own error text as a
+# "container"); (b) a FAILED `docker ps` is "could not check", never "nothing is
+# running" (the .sh once ignored the failure with `|| true` and swapped anyway): it
+# refuses with the same three ERROR lines, removes the temp volumes, exit 1.
+# Behaviour is tested in restore_from_backup.bats / restore_from_backup.Tests.ps1;
+# these pins hold the twins' text and structure together.
+
+# The refusal's ERROR lines from one twin (first quoted string per line, variable
+# references normalized to <v>, like _restore_warning_set).
+_could_not_check_msg() {
+    grep -A 2 -F 'ERROR: Could not check whether DAAF is running' "$1" \
+    | sed -e 's/^[^"]*"\([^"]*\)".*/\1/' \
+          -e 's/\${[A-Za-z_][A-Za-z_0-9]*}/<v>/g' \
+          -e 's/\$[A-Za-z_][A-Za-z_0-9]*/<v>/g'
+}
+
+# Exit 0 (no output) when both twins' re-check reads stdout only and refuses on a
+# failed `docker ps`. ($1 = .sh, $2 = .ps1)
+_swap_recheck_guarded() {
+    local rc=0 l
+    l="$(grep -F 'RUNNING_NOW="$(docker ps --filter ' "$1")"
+    if [ "$(printf '%s\n' "${l}" | grep -c .)" -ne 1 ]; then
+        echo "sh: expected exactly one swap-time docker ps re-check"; rc=1
+    elif [[ "${l}" != *' 2>/dev/null)" || RUNNING_NOW_EXIT=$?' ]]; then
+        echo "sh: the re-check must read stdout only and capture its exit code (no || true)"; rc=1
+    fi
+    grep -qxF 'if [ "${RUNNING_NOW_EXIT}" -ne 0 ]; then' "$1" || { echo "sh: no refusal on a failed docker ps"; rc=1; }
+    l="$(grep -F '$runningNowLines = @(docker ps --filter ' "$2")"
+    if [ "$(printf '%s\n' "${l}" | grep -c .)" -ne 1 ]; then
+        echo "ps1: expected exactly one swap-time docker ps re-check"; rc=1
+    elif [[ "${l}" != *' 2>$null)' ]]; then
+        echo "ps1: the re-check must read stdout only (2>\$null, never 2>&1)"; rc=1
+    fi
+    grep -qF '$runningNowExit = $LASTEXITCODE' "$2" || { echo "ps1: the re-check's exit code is not captured"; rc=1; }
+    grep -qF 'if ($runningNowExit -ne 0) {' "$2" || { echo "ps1: no refusal on a failed docker ps"; rc=1; }
+    return "${rc}"
+}
+
+@test "twin-parity: both restore twins refuse with the same text when docker ps fails (startup, then swap time)" {
+    # 2026-10-02: the STARTUP running-container check refuses a failed `docker ps` too
+    # (first block; nothing has been created yet); the swap-time re-check is the second.
+    local expected
+    expected="$(printf '%s\n' \
+        'ERROR: Could not check whether DAAF is running (docker ps failed, exit <v>),' \
+        '       so the restore cannot start safely. This restore has not changed anything.' \
+        '       Make sure Docker Desktop is running, then run the restore again.' \
+        '--' \
+        'ERROR: Could not check whether DAAF is running (docker ps failed, exit <v>),' \
+        '       so your data cannot be replaced safely. Make sure Docker Desktop is running,' \
+        '       then run the restore again.')"
+    run _could_not_check_msg "${REPO_ROOT}/${RESTORE_SH}"
+    assert_output "${expected}"
+    run _could_not_check_msg "${REPO_ROOT}/${RESTORE_PS1}"
+    assert_output "${expected}"
+}
+
+@test "twin-parity: the swap-time re-check reads names from stdout only and refuses on a failed docker ps (both twins)" {
+    run _swap_recheck_guarded "${REPO_ROOT}/${RESTORE_SH}" "${REPO_ROOT}/${RESTORE_PS1}"
+    assert_success
+    assert_output ""
+}
+
+@test "twin-parity SELF-TEST: the re-check guard flags an ignored failure (.sh) and a merged stderr (.ps1)" {
+    sed 's#2>/dev/null)" || RUNNING_NOW_EXIT=\$?#2>/dev/null || true)"#' "${REPO_ROOT}/${RESTORE_SH}" > "${TEST_DIR}/ignore.sh"
+    run cmp -s "${REPO_ROOT}/${RESTORE_SH}" "${TEST_DIR}/ignore.sh"
+    assert_failure
+    run _swap_recheck_guarded "${TEST_DIR}/ignore.sh" "${REPO_ROOT}/${RESTORE_PS1}"
+    assert_failure
+    assert_output --partial "sh: the re-check must read stdout only and capture its exit code"
+    sed 's#^\(.*\$runningNowLines = @(docker ps .*\) 2>\$null)$#\1 2>\&1)#' "${REPO_ROOT}/${RESTORE_PS1}" > "${TEST_DIR}/merge.ps1"
+    run cmp -s "${REPO_ROOT}/${RESTORE_PS1}" "${TEST_DIR}/merge.ps1"
+    assert_failure
+    run _swap_recheck_guarded "${REPO_ROOT}/${RESTORE_SH}" "${TEST_DIR}/merge.ps1"
+    assert_failure
+    assert_output --partial "ps1: the re-check must read stdout only"
+}
+
+# The STARTUP running-container check (2026-10-02): the same two rules as the swap-time
+# re-check -- names from STDOUT only, and a FAILED `docker ps` refuses (exit 1, before
+# anything is created). Exit 0 (no output) when both twins hold. ($1 = .sh, $2 = .ps1)
+_startup_check_guarded() {
+    local rc=0 l
+    l="$(grep -F 'RUNNING_CONTAINERS="$(docker ps --filter ' "$1")"
+    if [ "$(printf '%s\n' "${l}" | grep -c .)" -ne 1 ]; then
+        echo "sh: expected exactly one startup docker ps check"; rc=1
+    elif [[ "${l}" != *' 2>/dev/null)" || RUNNING_CONTAINERS_EXIT=$?' ]]; then
+        echo "sh: the startup check must read stdout only and capture its exit code (no || true)"; rc=1
+    fi
+    grep -qxF 'if [ "${RUNNING_CONTAINERS_EXIT}" -ne 0 ]; then' "$1" || { echo "sh: no startup refusal on a failed docker ps"; rc=1; }
+    l="$(grep -F '$RunningContainers = @(docker ps --filter ' "$2")"
+    if [ "$(printf '%s\n' "${l}" | grep -c .)" -ne 1 ]; then
+        echo "ps1: expected exactly one startup docker ps check"; rc=1
+    elif [[ "${l}" != *' 2>$null)' ]]; then
+        echo "ps1: the startup check must read stdout only (2>\$null, never 2>&1)"; rc=1
+    fi
+    grep -qF '$runningContainersExit = $LASTEXITCODE' "$2" || { echo "ps1: the startup check's exit code is not captured"; rc=1; }
+    grep -qF 'if ($runningContainersExit -ne 0) {' "$2" || { echo "ps1: no startup refusal on a failed docker ps"; rc=1; }
+    return "${rc}"
+}
+
+@test "twin-parity: the startup running-container check reads names from stdout only and refuses on a failed docker ps (both twins)" {
+    run _startup_check_guarded "${REPO_ROOT}/${RESTORE_SH}" "${REPO_ROOT}/${RESTORE_PS1}"
+    assert_success
+    assert_output ""
+}
+
+@test "twin-parity SELF-TEST: the startup guard flags an ignored failure (.sh) and an unread exit code (.ps1)" {
+    sed 's#2>/dev/null)" || RUNNING_CONTAINERS_EXIT=\$?#2>/dev/null || true)"#' "${REPO_ROOT}/${RESTORE_SH}" > "${TEST_DIR}/ignore.sh"
+    run cmp -s "${REPO_ROOT}/${RESTORE_SH}" "${TEST_DIR}/ignore.sh"
+    assert_failure
+    run _startup_check_guarded "${TEST_DIR}/ignore.sh" "${REPO_ROOT}/${RESTORE_PS1}"
+    assert_failure
+    assert_output --partial "sh: the startup check must read stdout only and capture its exit code"
+    sed '/^\$runningContainersExit = \$LASTEXITCODE$/d' "${REPO_ROOT}/${RESTORE_PS1}" > "${TEST_DIR}/noexit.ps1"
+    run cmp -s "${REPO_ROOT}/${RESTORE_PS1}" "${TEST_DIR}/noexit.ps1"
+    assert_failure
+    run _startup_check_guarded "${REPO_ROOT}/${RESTORE_SH}" "${TEST_DIR}/noexit.ps1"
+    assert_failure
+    assert_output --partial "ps1: the startup check's exit code is not captured"
+}
+
+# The backup twins' closing hint describes the restore as it now works (copy into a
+# temporary volume, check, replace only after confirmation), identically in both.
+@test "twin-parity: both backup twins describe the copy-then-swap restore in the same closing text" {
+    local l
+    for l in 'The restore script lets you pick which backup to restore from. It first' \
+             'copies the backup into a temporary Docker volume and checks it there; only' \
+             'after you confirm does it replace your current DAAF data.'; do
+        run grep -cxF "echo \"${l}\"" "${REPO_ROOT}/${BACKUP_SH}"
+        assert_output "1"
+        run grep -cxF "Write-Host \"${l}\"" "${REPO_ROOT}/${BACKUP_PS1}"
+        assert_output "1"
+    done
+    # The pre-copy-then-swap wording is gone from both.
+    run grep -lF 'clearing the volume before copying' "${REPO_ROOT}/${BACKUP_SH}" "${REPO_ROOT}/${BACKUP_PS1}"
+    assert_failure
+}
+
+# ===========================================================================
+# 13. REVIEW ROUND 1 (dispatch #7): the swap only ever uses THIS run's checked copy
+# ===========================================================================
+# The REAL changed programs, run under the local sh (dash + GNU; busybox is not
+# installed here -- see the host probe doc) against self-cleaning fixtures in TEST_DIR.
+
+@test "twin-parity B1: SWAP_PROGRAM erases NOTHING when /src lacks the state marker (exit 3, live untouched)" {
+    # Review round 2 (S1): exit 3 -- a code nothing else in the program uses -- so the
+    # host can tell "nothing was replaced" from a failed rm/cp (exit 1).
+    local f="${TEST_DIR}/nm"
+    _make_swap_fixture "${f}"
+    rm -f "${f}/src/.daaf-restore-swap-started"
+    _restore_prog_sh "${REPO_ROOT}/${RESTORE_SH}" SWAP_PROGRAM | _localize_restore_prog "${f}" > "${TEST_DIR}/swap_run.sh"
+    run "$(_run_shell)" "${TEST_DIR}/swap_run.sh"
+    assert_failure 3
+    run cat "${f}/dest/old/keep"
+    assert_output "old"
+    [ ! -e "${f}/dest/top.txt" ]
+}
+
+@test "twin-parity B1: SWAP_PROGRAM against an EMPTY /src (a vanished temp re-created empty) leaves live untouched (exit 3)" {
+    local f="${TEST_DIR}/em"
+    mkdir -p "${f}/src" "${f}/dest/old"
+    printf 'old\n' > "${f}/dest/old/keep"
+    _restore_prog_sh "${REPO_ROOT}/${RESTORE_SH}" SWAP_PROGRAM | _localize_restore_prog "${f}" > "${TEST_DIR}/swap_run.sh"
+    run "$(_run_shell)" "${TEST_DIR}/swap_run.sh"
+    assert_failure 3
+    run cat "${f}/dest/old/keep"
+    assert_output "old"
+}
+
+@test "twin-parity B1: SWAP_VERIFY_PROGRAM on two EMPTY trees prints MATCH with ENTRIES 0:0 (what the host must reject)" {
+    local f="${TEST_DIR}/ee"
+    mkdir -p "${f}/src" "${f}/dest"
+    _restore_prog_sh "${REPO_ROOT}/${RESTORE_SH}" SWAP_VERIFY_PROGRAM | _localize_restore_prog "${f}" > "${TEST_DIR}/verify_run.sh"
+    run "$(_run_shell)" "${TEST_DIR}/verify_run.sh"
+    assert_success
+    assert_output "$(printf '%s\n' SWAP_VERIFY=MATCH SWAP_VERIFY_ENTRIES=0:0)"
+}
+
+@test "twin-parity B1: both twins require SWAP_VERIFY_ENTRIES n:n, and n > 0 for the data volume" {
+    run grep -cF "if ! _restore_swap_checked \"\${SWAP_VERIFY_OUTPUT}\" nonempty; then" "${REPO_ROOT}/${RESTORE_SH}"
+    assert_output "1"
+    run grep -cF "if ! _restore_swap_checked \"\${SWAP_VERIFY_OUTPUT}\"; then" "${REPO_ROOT}/${RESTORE_SH}"
+    assert_output "1"
+    run grep -cF "if (-not (Test-DaafRestoreSwapChecked -Lines \$swapCheck -NonEmpty)) {" "${REPO_ROOT}/${RESTORE_PS1}"
+    assert_output "1"
+    run grep -cF "if (-not (Test-DaafRestoreSwapChecked -Lines \$swapCheck)) {" "${REPO_ROOT}/${RESTORE_PS1}"
+    assert_output "1"
+    # The old MATCH-only checks are gone.
+    run grep -c "grep -qx 'SWAP_VERIFY=MATCH'" "${REPO_ROOT}/${RESTORE_SH}"
+    assert_output "0"
+}
+
+@test "twin-parity B1: SWAP_VERIFY_PROGRAM reports a list that could not be written (failed sort) as an ERROR, never MATCH" {
+    local f="${TEST_DIR}/sf"
+    _make_swap_fixture "${f}"
+    mkdir -p "${TEST_DIR}/shim"
+    printf '#!/bin/sh\necho "sort: write failed: No space left on device" >&2\nexit 2\n' > "${TEST_DIR}/shim/sort"
+    chmod +x "${TEST_DIR}/shim/sort"
+    _restore_prog_sh "${REPO_ROOT}/${RESTORE_SH}" SWAP_VERIFY_PROGRAM | _localize_restore_prog "${f}" > "${TEST_DIR}/verify_run.sh"
+    run env PATH="${TEST_DIR}/shim:${PATH}" "$(_run_shell)" "${TEST_DIR}/verify_run.sh"
+    assert_output --partial "SWAP_VERIFY_ERRORS="
+    refute_output --partial "SWAP_VERIFY=MATCH"
+    # Both failed list writes were recorded in the program's error file (the listing
+    # commands' own broken-pipe errors land there too, so the total varies).
+    run grep -cx 'LIST_FAILED_src' "${f}/ctmp/err"
+    assert_output "1"
+    run grep -cx 'LIST_FAILED_dest' "${f}/ctmp/err"
+    assert_output "1"
+}
+
+@test "twin-parity B1: both twins create temp volumes with the per-run identity label and re-check it" {
+    run grep -cF 'RESTORE_RUN_LABEL="org.daaf.restore-run"' "${REPO_ROOT}/${RESTORE_SH}"
+    assert_output "1"
+    run grep -cF '$RestoreRunLabel = "org.daaf.restore-run"' "${REPO_ROOT}/${RESTORE_PS1}"
+    assert_output "1"
+    run grep -cF -- '--label "${RESTORE_RUN_LABEL}=${RESTORE_RUN_ID}"' "${REPO_ROOT}/${RESTORE_SH}"
+    assert_output "2"
+    run grep -cF "'--label', \"\$RestoreRunLabel=\$RestoreRunId\"" "${REPO_ROOT}/${RESTORE_PS1}"
+    assert_output "2"
+    # `{{.Labels}}` passes Windows PowerShell 5.1 unchanged: no space, no quote.
+    run grep -cF "docker volume inspect --format '{{.Labels}}'" "${REPO_ROOT}/${RESTORE_SH}" "${REPO_ROOT}/${RESTORE_PS1}"
+    assert_output --partial "restore_from_backup.sh:1"
+    assert_output --partial "restore_from_backup.ps1:1"
+}
+
+@test "twin-parity I3/S3: both twins print the same new plain-language lines" {
+    local l
+    for l in 'This restore did not change anything, but your DAAF data may still be' \
+             'incomplete from the earlier restore. Run the restore again to finish it.' \
+             'If another restore window is still open, answer n.' \
+             '       If this keeps happening, restart Docker Desktop and try again.' \
+             '       Close any other restore window, then run this restore again.' \
+             '       something else while this restore was running -- for example, a restore' \
+             '       started in another window. It was not used, and nothing was removed.' \
+             '       and was created by this restore, so it was left as it is (it may belong to'; do
+        run grep -cF "${l}" "${REPO_ROOT}/${RESTORE_SH}"
+        [ "${output}" -ge 1 ]
+        run grep -cF "${l}" "${REPO_ROOT}/${RESTORE_PS1}"
+        [ "${output}" -ge 1 ]
+    done
+}
+
+# Review round 3 (2026-10-01). I-1: ONLY the swap program's own exit 3 is "nothing was
+# replaced" -- Docker's 125 can follow a daemon restart mid-swap, after the rm ran --
+# so neither twin's code (comments aside) treats 125 specially any more. S-a: the
+# Claude-after-data text says the old login may be gone once the Claude swap ran.
+# S-c: the careful-cleanup flag is set before the swap-started flag is cleared.
+@test "twin-parity round 3 (I-1): both twins classify ONLY data-swap exit 3 as 'nothing replaced'; no code line mentions 125" {
+    run grep -cxF 'if [ "${SWAP_EXIT}" -eq 3 ]; then' "${REPO_ROOT}/${RESTORE_SH}"
+    assert_output "1"
+    run grep -cxF '        if ($swapExit -eq 3) {' "${REPO_ROOT}/${RESTORE_PS1}"
+    assert_output "1"
+    run grep -cE '^[[:space:]]*[^#[:space:]].*125' "${REPO_ROOT}/${RESTORE_SH}"
+    assert_output "0"
+    run grep -cE '^[[:space:]]*[^#[:space:]].*125' "${REPO_ROOT}/${RESTORE_PS1}"
+    assert_output "0"
+}
+
+@test "twin-parity round 3 (S-a): both twins print the same 'old login may be gone' lines, keyed on the Claude swap having run" {
+    local l
+    for l in '       login and session history were not restored."' \
+             '       Your previous Claude Code login may also be gone now; running the restore again"' \
+             "       puts the backup's login and history back.\"" \
+             '       The checked copy of the backup is"'; do
+        run grep -cF "${l}" "${REPO_ROOT}/${RESTORE_SH}"
+        assert_output "1"
+        run grep -cF "${l}" "${REPO_ROOT}/${RESTORE_PS1}"
+        assert_output "1"
+    done
+    # Set from the Claude swap's exit (anything but 3), in both twins.
+    run grep -cxF '    if [ "${SWAP_EXIT}" -ne 3 ]; then CLAUDE_SWAP_RAN=1; fi' "${REPO_ROOT}/${RESTORE_SH}"
+    assert_output "1"
+    run grep -cxF '            if ($swapExit -ne 3) { $ClaudeSwapRan = $true }' "${REPO_ROOT}/${RESTORE_PS1}"
+    assert_output "1"
+}
+
+@test "twin-parity round 3 (S-c): the .ps1 sets the careful-cleanup flag BEFORE it clears the swap-started flag (as the .sh)" {
+    run bash -c "grep -A 2 -xF '        if (\$swapExit -eq 3) {' '${REPO_ROOT}/${RESTORE_PS1}' | tail -n 2"
+    assert_output "$(printf '%s\n' '            $TempCleanupCareful = $true' '            $SwapStarted = $false')"
+    run bash -c "sed -n '/^_restore_fail_swap_not_run() {\$/,/^}\$/p' '${REPO_ROOT}/${RESTORE_SH}' | sed -n '2,3p'"
+    assert_output "$(printf '%s\n' '    TEMP_CLEANUP_CAREFUL=1' '    SWAP_STARTED=0')"
 }
