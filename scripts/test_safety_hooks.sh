@@ -75,6 +75,17 @@
 #         verbatim except `/workspace` -> `/daaf` (rows marked site-adapted).
 #       Rows that exercise site values (`/daaf`, `.git` forms, benchmarks/
 #       harness/hooks) FAIL against the starter-kit variant by design.
+#   17. 2026-10-02 section 10 env-disclosure guard (FC241-FC280) — the
+#       accidental environment-disclosure block (hook marker
+#       ENV_DISCLOSURE_GUARD). Four categories: A whole-env dump
+#       (env/set/export -p/printenv), B credential-named value to output/file
+#       (incl. the 0a heredoc and 0c excised-span accumulator paths), C
+#       /proc/<pid>/environ read, D interpreter one-liner env print. Credential-
+#       named cases build their names from split fragments via fake_env10_cmd
+#       (tests/bash/helpers/fake_shapes.bash); no whole credential-shaped name
+#       literal appears here. All rows are site-neutral. Mirrored 1:1 in
+#       tests/bash/bash_safety.bats. Cases FAIL against a live hook that
+#       predates section 10 by design.
 #
 # CASE ACCOUNTING: the TOTAL printed by this runner is AUTHORITATIVE; do not
 # derive a case count by grepping this file. The identity is
@@ -84,14 +95,21 @@
 # because the two gates time a probe script rather than classifying one
 # command's exit code, so they increment TOTAL directly instead of calling
 # `run_case`. (`^run_case` also matches the `run_case_raw` rows, which is
-# intended: they are cases too.) Verified 2026-09-27 (FC240 added):
-# 749 − 2 + 2 = 749 = TOTAL.
+# intended: they are cases too.) Verified 2026-10-02 (FC241-FC280 added, the
+# section-10 env-disclosure block): 789 − 2 + 2 = 789 = TOTAL.
 #
 # Each case builds a PreToolUse JSON envelope with jq and pipes it to the hook,
 # then classifies the hook's exit code: 2 = BLOCK, 0 = ALLOW (an "ask"
 # permissionDecision in stdout is classified ASK, retained for harness parity
 # with the source battery though bash-safety.sh never emits it).
 set -uo pipefail
+
+# The 2026-10-02 section-10 env-disclosure rows (FC241-FC280) build their
+# credential-NAMED cases from split fragments at run time via the shared
+# fake_shapes helper (fake_env10_cmd), so no whole credential-shaped name
+# literal lives in this file. Resolved from THIS file's location so a
+# starter-kit checkout (which shares the hook body) works too.
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/tests/bash/helpers/fake_shapes.bash"
 
 FAIL=0
 TOTAL=0
@@ -883,6 +901,84 @@ run_case_raw "$B" ALLOW "FC238 one non-Bash Read object on raw stdin"           
 # Mirrored in tests/bash/bash_safety.bats. A change that flips it must update
 # both pins, the return rows and the BOUNDARIES.md row.
 run_case_raw "$B" ALLOW "FC240 non-string tool_name (array) with an rm-root command" '{"tool_name":["Bash"],"tool_input":{"command":"rm -rf /"}}'
+
+
+# ===========================================================================
+# 2026-10-02 section 10 accidental environment-disclosure guard (FC241-FC280)
+# ===========================================================================
+# Mirrored 1:1 in scripts/test_safety_hooks.sh and tests/bash/bash_safety.bats.
+# Section 10 (hook marker ENV_DISCLOSURE_GUARD) blocks the FUNCTIONAL accidental
+# shapes that would dump the environment or a credential-named value where it
+# lands in the audit log, a session archive or a file. Four categories mirror
+# run_with_capture.sh's env-print scan: A whole-env dump, B credential-named
+# value to output/file, C /proc/<pid>/environ read, D interpreter one-liner
+# env print. The credential-named cases build their names from split fragments
+# via the shared helper tests/bash/helpers/fake_shapes.bash (fake_env10_cmd).
+echo "=== bash-safety: section 10 category A -- whole-environment dump (BLOCK) and filtered-inspection controls (ALLOW) ==="
+run_case "$B" BLOCK "FC241 A bare env at end of string"                                    'env'
+run_case "$B" BLOCK "FC242 A bare set at end of string"                                    'set'
+run_case "$B" BLOCK "FC243 A bare printenv at end of string"                               'printenv'
+run_case "$B" BLOCK "FC244 export -p at end of string"                                     'export -p'
+run_case "$B" BLOCK "FC245 env redirected into a file"                                     'env > envdump.txt'
+run_case "$B" BLOCK "FC246 set then a terminator and echo"                                 'set; echo done'
+run_case "$B" ALLOW "FC247 env running a program stays allowed"                            'env FOO=1 python3 run.py'
+run_case "$B" ALLOW "FC248 env piped into grep PATH is filtered inspection"                'env | grep PATH'
+run_case "$B" ALLOW "FC249 set piped into wc -l is filtered inspection"                    'set | wc -l'
+echo "=== bash-safety: section 10 category B -- credential-named value to output or a file (BLOCK) via fragment-assembled builders ==="
+# One BLOCK row per section-10 keyword (KEY APIKEY TOKEN SECRET PASSWORD PASSWD
+# PASSPHRASE CREDENTIAL CREDS DSN PAT), across the print verbs and both
+# name-literal forms, plus the two accumulator paths.
+fake_env10_cmd echo key APP
+run_case "$B" BLOCK "FC250 echo expanding a KEY-suffixed name"                             "$FS_TEXT"
+fake_env10_cmd echo_braced token SERVICE
+run_case "$B" BLOCK "FC251 echo of a braced TOKEN-suffixed name"                           "$FS_TEXT"
+fake_env10_cmd printf password DB
+run_case "$B" BLOCK "FC252 printf of a PASSWORD-suffixed name"                             "$FS_TEXT"
+fake_env10_cmd declare_p secret MY
+run_case "$B" BLOCK "FC253 declare -p of a SECRET-suffixed name"                           "$FS_TEXT"
+fake_env10_cmd typeset_p creds X
+run_case "$B" BLOCK "FC254 typeset -p of a CREDS-suffixed name"                            "$FS_TEXT"
+fake_env10_cmd printenv apikey APP
+run_case "$B" BLOCK "FC255 printenv of an APIKEY-suffixed name"                            "$FS_TEXT"
+fake_env10_cmd heredoc key APP
+run_case "$B" BLOCK "FC256 accumulator 0a heredoc body expanding a KEY-suffixed name"      "$FS_TEXT"
+fake_env10_cmd grep_redirect key APP
+run_case "$B" BLOCK "FC257 accumulator 0c grep span with a KEY-suffixed name redirected to a file" "$FS_TEXT"
+fake_env10_cmd echo passphrase USER
+run_case "$B" BLOCK "FC258 echo of a PASSPHRASE-suffixed name"                             "$FS_TEXT"
+fake_env10_cmd echo dsn DB
+run_case "$B" BLOCK "FC259 echo of a DSN-suffixed name"                                    "$FS_TEXT"
+fake_env10_cmd echo pat GH
+run_case "$B" BLOCK "FC260 echo of a PAT-suffixed name"                                    "$FS_TEXT"
+fake_env10_cmd echo passwd SYS
+run_case "$B" BLOCK "FC261 echo of a PASSWD-suffixed name"                                 "$FS_TEXT"
+fake_env10_cmd echo credential AWS
+run_case "$B" BLOCK "FC262 echo of a CREDENTIAL-suffixed name"                             "$FS_TEXT"
+fake_env10_cmd plural key API
+run_case "$B" ALLOW "FC263 echo of a plural KEYS-suffixed name stays allowed"              "$FS_TEXT"
+fake_env10_cmd presence key X_API
+run_case "$B" ALLOW "FC264 a presence check of a credential name stays allowed"            "$FS_TEXT"
+run_case "$B" ALLOW "FC265 echo of a single-segment PATH stays allowed"                    'echo $PATH'
+run_case "$B" ALLOW "FC266 echo of a plain string stays allowed"                           'echo "hello world"'
+fake_env10_cmd loop_fp token SERVICE
+run_case "$B" BLOCK "FC267 uppercase loop variable ending in a credential segment echoed"  "$FS_TEXT"
+fake_env10_cmd squote_fp key APP
+run_case "$B" BLOCK "FC268 single-quoted single-token credential span that 0c canonicalizes" "$FS_TEXT"
+fake_env10_cmd stress key
+run_case "$B" BLOCK "FC269 a long credential-shaped identifier echoed stresses grep -E against backtracking" "$FS_TEXT"
+echo "=== bash-safety: section 10 category C -- process-environment file read (BLOCK) ==="
+run_case "$B" BLOCK "FC270 cat of proc self environ"                                       'cat /proc/self/environ'
+run_case "$B" BLOCK "FC271 tr reading proc pid environ"                                    'tr "\0" "\n" < /proc/1/environ'
+run_case "$B" ALLOW "FC272 cat of proc self status is not the environ file"                'cat /proc/self/status'
+echo "=== bash-safety: section 10 category D -- interpreter one-liner environment print (BLOCK) and controls (ALLOW) ==="
+run_case "$B" BLOCK "FC273 python3 printing the whole os.environ"                          'python3 -c "import os; print(os.environ)"'
+run_case "$B" BLOCK "FC274 Rscript printing the whole Sys.getenv"                          'Rscript -e "print(Sys.getenv())"'
+run_case "$B" BLOCK "FC275 node printing the whole process.env"                            'node -e "console.log(process.env)"'
+run_case "$B" BLOCK "FC276 perl printing keys of ENV"                                      'perl -e "print for keys %ENV"'
+run_case "$B" BLOCK "FC277 ruby printing ENV as a hash"                                    'ruby -e "pp ENV.to_h"'
+run_case "$B" ALLOW "FC278 python3 version has no env token"                               'python3 --version'
+run_case "$B" ALLOW "FC279 grep for os.environ has no interpreter gate"                    'grep -rn os.environ src/app.py'
+run_case "$B" ALLOW "FC280 python3 reading a single env var falls through"                 'python3 -c "import os; print(os.environ['"'"'X'"'"'])"'
 
 # ===========================================================================
 # 2026-09-26 starter-kit permanent rows (PT*, R4*, R5*) -- ported from their tests/test-safety-hooks.sh

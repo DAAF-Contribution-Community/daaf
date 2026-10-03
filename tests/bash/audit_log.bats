@@ -39,6 +39,21 @@
 # writes the all-"unknown" record. The "(_c)" tests fail on the _b hook by
 # design until _c is installed; run them against
 #   research/2026-09-24_FrameworkDev_ClaudeCode_Upgrade_2.1.281/hook_patches/hooks_c/audit-log.sh
+# Revision _d (2026-10-01): inline-literal gaps F1 closed (rule 9 accepts a
+# hyphenated api-key header name and a segment-bounded pass / passphrase key;
+# new rule 10 credential-flag; new rule 11 url-userinfo) and the F4 counter
+# false positive fixed (a purely numeric value on a token-named key is kept).
+# Review fixes (2026-10-02): quoted rule-9 values run to the closing quote,
+# rule 11 runs to the last "@", and new rule 12 redacts the password part of
+# curl --user / -u (curl commands only, incl. a backslash line continuation).
+# _d was installed 2026-10-02; all "(_d)" cases pass on the live hook.
+# The "(_d)" tests build every credential-shaped fixture at run time with
+# tests/bash/helpers/fake_shapes.bash (read its NO-LITERAL RULE before adding
+# a case) and check outcomes with its masked checks only -- never
+# assert_output / refute_output on a generated value. The gap cases and the
+# F4 counter case fail on the _c hook by design until _d is installed; run
+# them against
+#   research/2026-09-24_FrameworkDev_ClaudeCode_Upgrade_2.1.281/hook_patches/hooks_d/audit-log.sh
 #
 # SCRIPT UNDER TEST is parameterized for pre-deployment testing of a draft:
 #   AUDIT_LOG_SH=/path/to/draft.sh bats audit_log.bats
@@ -47,6 +62,7 @@
 # ============================================================================
 
 load 'test_helper'
+load 'helpers/fake_shapes'
 
 AUDIT_LOG_SH="${AUDIT_LOG_SH:-${REPO_ROOT}/.claude/hooks/audit-log.sh}"
 OUTPUT_SCANNER_SH="${OUTPUT_SCANNER_SH:-${REPO_ROOT}/.claude/hooks/output-scanner.sh}"
@@ -738,6 +754,335 @@ _make_fault_copy() {
     run tail -1 "$LOG_FILE"
     refute_output --partial "$ENV_FAKE_VAL"
     assert_output --partial "[REDACTED:env:DAAFTEST_FAKE_CREDENTIAL]"
+}
+
+# =========================================================================
+# Inline-literal gaps F1 and the F4 counter (2026-10-01, revision _d)
+#
+# Every credential-shaped fixture below is BUILT AT RUN TIME by
+# helpers/fake_shapes.bash (split name fragments + sha256-derived filler)
+# and checked with fake_expect_redacted / fake_expect_kept, which print
+# nothing on success and only a MASKED line on failure. Benign fixtures
+# (non-matches) may use assert_output. Nothing here echoes a generated value.
+# =========================================================================
+
+# Log $1 as a Bash command; LINE = the whole logged record. Prints nothing.
+_d_log_bash() {
+    _bash_target "$1" >/dev/null
+    LINE="$(tail -1 "$LOG_FILE")"
+}
+
+# Log $3 as field $2 of tool $1; LINE = the whole logged record.
+_d_log_tool() {
+    _emit "$(jq -nc --arg t "$1" --arg f "$2" --arg v "$3" '{session_id:"s",tool_name:$t,tool_input:{($f):$v}}')"
+    LINE="$(tail -1 "$LOG_FILE")"
+}
+
+@test "fake_shapes helper (_d): passes shellcheck at -S warning" {
+    if ! command -v shellcheck >/dev/null 2>&1; then
+        skip "shellcheck not installed (probe: command -v shellcheck)"
+    fi
+    run shellcheck -x -S warning "${REPO_ROOT}/tests/bash/helpers/fake_shapes.bash"
+    assert_success
+}
+
+# Sourced by a plain `set -uo pipefail` shell it prints nothing, its builders
+# work, and a failing check prints a masked report that never holds the value.
+@test "fake_shapes helper (_d): silent when sourced under set -u; a failing check prints only a masked line" {
+    run bash -c 'set -uo pipefail
+        . "$1"
+        fake_api_key_header
+        [ "${#FS_VALUE}" -eq 32 ] || exit 3
+        fake_expect_redacted selftest "$FS_TEXT" && exit 4
+        exit 0' _ "${REPO_ROOT}/tests/bash/helpers/fake_shapes.bash"
+    [ "$status" -eq 0 ]
+    fake_api_key_header
+    [[ "$output" == *'case "selftest"'* ]]
+    [[ "$output" == *"<fake>"* ]]
+    [[ "$output" != *"$FS_VALUE"* ]]
+    [[ "$output" != *"${FS_VALUE:0:8}"* ]]
+    run bash -c 'set -uo pipefail; . "$1"' _ "${REPO_ROOT}/tests/bash/helpers/fake_shapes.bash"
+    [ "$status" -eq 0 ]
+    [ -z "$output" ]
+}
+
+@test "F1a (_d): API-key request header value is redacted, header name kept" {
+    fake_api_key_header
+    _d_log_bash "$FS_TEXT"
+    fake_expect_redacted "F1a header" "$LINE"
+    [[ "$LINE" == *"${FS_NAME}: [REDACTED:credential-assignment]"* ]]
+}
+
+@test "F1b (_d): password flag values are redacted (space, 1-3 chars, quoted with a space, multi-word, short =)" {
+    fake_password_flag
+    _d_log_bash "$FS_TEXT"
+    fake_expect_redacted "F1b space" "$LINE"
+    [[ "$LINE" == *"${FS_NAME} [REDACTED:credential-flag] --host"* ]]
+    fake_password_flag 3
+    _d_log_bash "$FS_TEXT"
+    fake_expect_redacted "F1b short" "$LINE"
+    fake_password_flag 1 space "--db-""pass"
+    _d_log_bash "$FS_TEXT"
+    fake_expect_redacted "F1b one char, multi-word flag" "$LINE"
+    fake_password_flag 20 quoted
+    _d_log_bash "$FS_TEXT"
+    fake_expect_redacted "F1b quoted" "$LINE"
+    fake_password_flag 16 space "--client-""secret"
+    _d_log_bash "$FS_TEXT"
+    fake_expect_redacted "F1b client secret flag" "$LINE"
+    fake_password_flag 16 space "--api-""key"
+    _d_log_bash "$FS_TEXT"
+    fake_expect_redacted "F1b api-key flag" "$LINE"
+    fake_password_flag 3 equals
+    _d_log_bash "$FS_TEXT"
+    fake_expect_redacted "F1b short equals" "$LINE"
+}
+
+# An 8+-character "=" value is caught by rule 9 first; rule 10 must not
+# relabel it.
+@test "F1b (_d): a long --flag=value keeps the credential-assignment marker" {
+    fake_password_flag 24 equals
+    _d_log_bash "$FS_TEXT"
+    fake_expect_redacted "F1b long equals" "$LINE"
+    [[ "$LINE" != *"[REDACTED:credential-flag]"* ]]
+}
+
+@test "F1b (_d): non-matches kept: plural and longer flags, a VAR reference, stdin, bypass" {
+    local pw="--pass""word"
+    run _bash_target "llm --max-tokens 4096 --token-file ./t.txt --bypass cache"
+    assert_output "llm --max-tokens 4096 --token-file ./t.txt --bypass cache"
+    run _bash_target "mysql ${pw} \"\$DB_PW\" -h db"
+    assert_output "mysql ${pw} \"\$DB_PW\" -h db"
+    run _bash_target "mysql ${pw} - -h db"
+    assert_output "mysql ${pw} - -h db"
+}
+
+@test "F1c (_d): URL userinfo password is redacted; scheme, user and host kept (Bash and WebFetch)" {
+    fake_url_userinfo
+    _d_log_bash "$FS_TEXT"
+    fake_expect_redacted "F1c bash" "$LINE"
+    [[ "$LINE" == *"://${FS_NAME}:[REDACTED:url-userinfo]@db.example.invalid:5432/analytics"* ]]
+    fake_url_userinfo 1
+    _d_log_bash "$FS_TEXT"
+    fake_expect_redacted "F1c one char" "$LINE"
+    fake_url_userinfo 24
+    _d_log_tool WebFetch url "${FS_TEXT#psql }"
+    fake_expect_redacted "F1c webfetch" "$LINE"
+}
+
+@test "F1c (_d): non-matches kept: a port after the host, user-only git userinfo" {
+    run _bash_target "curl https://example.invalid:8080/x && git clone ssh://git@example.invalid/o/r"
+    assert_output "curl https://example.invalid:8080/x && git clone ssh://git@example.invalid/o/r"
+}
+
+@test "F1d (_d): PASS / PASSPHRASE / bare pass assignments are redacted" {
+    fake_pass_assignment
+    _d_log_bash "$FS_TEXT"
+    fake_expect_redacted "F1d DB_PASS" "$LINE"
+    [[ "$LINE" == *"${FS_NAME}=[REDACTED:credential-assignment]"* ]]
+    fake_pass_assignment 16 "GPG_""PASS""PHRASE"
+    _d_log_bash "$FS_TEXT"
+    fake_expect_redacted "F1d PASSPHRASE" "$LINE"
+    fake_pass_assignment 12 "pa""ss"
+    _d_log_bash "$FS_TEXT"
+    fake_expect_redacted "F1d bare pass" "$LINE"
+}
+
+@test "F1d (_d): non-matches kept: bypass, compass, passenger keys" {
+    run _bash_target "echo bypass=abcdefghij compass=abcdefghij passenger=abcdefghij"
+    assert_output "echo bypass=abcdefghij compass=abcdefghij passenger=abcdefghij"
+}
+
+@test "F4 (_d): a numeric token counter is kept unredacted (plain and JSON-style)" {
+    fake_token_counter
+    _d_log_bash "$FS_TEXT"
+    fake_expect_kept "F4 counter" "$LINE"
+    [[ "$LINE" != *"[REDACTED:"* ]]
+    fake_token_counter 12
+    FS_TEXT="echo '{\"input_tokens\": ${FS_VALUE}}'"
+    FS_NEEDLE="input_tokens\\\": ${FS_VALUE}"
+    _d_log_bash "$FS_TEXT"
+    fake_expect_kept "F4 json counter" "$LINE"
+}
+
+# The exemption is for token-named keys and numeric values only.
+@test "F4 (_d): a non-numeric token assignment and a numeric password are still redacted" {
+    fake_token_assignment
+    _d_log_bash "$FS_TEXT"
+    fake_expect_redacted "F4 sibling" "$LINE"
+    fake_digits 12 daaf-fake-numeric-pw
+    FS_VALUE="$FS_FILL"
+    FS_TEXT="export DB_""PASS""WORD=${FS_VALUE}"
+    FS_NEEDLE="=${FS_VALUE}"
+    FS_MARKER="credential-assignment"
+    _d_log_bash "$FS_TEXT"
+    fake_expect_redacted "F4 numeric password" "$LINE"
+}
+
+# Rules 10 and 11 run after the earlier rules and the value step; a value
+# that already is a [REDACTED: marker must keep its family.
+@test "no relabel (_d): earlier markers survive the new rules (sk- key after --api-key, env values in flag, header and userinfo)" {
+    fake_filler 24 daaf-fake-sk
+    FS_VALUE="$FS_FILL"
+    FS_TEXT="tool --api-""key sk-""${FS_VALUE} --verbose"
+    FS_NEEDLE="${FS_VALUE}"
+    _d_log_bash "$FS_TEXT"
+    fake_expect_redacted "relabel sk" "$LINE" api-key
+    [[ "$LINE" != *"[REDACTED:credential-flag]"* ]]
+    # An Agent description, not a Bash command: the markers lengthen the text
+    # past the Bash 200-char cut.
+    local hdr="X-""Api""-Key" pw="--pass""word" sch="post""gres"
+    _emit_isolated "$AUDIT_LOG_SH" \
+        "$(jq -nc --arg c "tool ${pw} ${ENV_FAKE_VAL} -H \"${hdr}: ${ENV_FAKE_VAL}\" ${sch}://u:${ENV_FAKE_VAL}@h.invalid/d" '{session_id:"s",tool_name:"Agent",tool_input:{description:$c}}')" \
+        "DAAFTEST_FAKE_PASSWORD=${ENV_FAKE_VAL}"
+    run jq -r '.target' < <(tail -1 "$LOG_FILE")
+    assert_output "tool ${pw} [REDACTED:env:DAAFTEST_FAKE_PASSWORD] -H \"${hdr}: [REDACTED:env:DAAFTEST_FAKE_PASSWORD]\" ${sch}://u:[REDACTED:env:DAAFTEST_FAKE_PASSWORD]@h.invalid/d"
+}
+
+# Rule 11 accepts an earlier marker as the user part, so a password after a
+# user name redacted by the value step is still caught.
+@test "F1c (_d): a password after a user name already redacted by the value step is redacted too" {
+    local sch="post""gres"
+    fake_filler 16 daaf-fake-userinfo-after-env
+    FS_VALUE="$FS_FILL"
+    FS_TEXT="${sch}://${ENV_FAKE_VAL}:${FS_VALUE}@h.invalid/d"
+    FS_NEEDLE=":${FS_VALUE}@"
+    FS_MARKER="url-userinfo"
+    _emit_isolated "$AUDIT_LOG_SH" \
+        "$(jq -nc --arg c "$FS_TEXT" '{session_id:"s",tool_name:"Agent",tool_input:{description:$c}}')" \
+        "DAAFTEST_FAKE_USER_TOKEN=${ENV_FAKE_VAL}"
+    LINE="$(tail -1 "$LOG_FILE")"
+    fake_expect_redacted "F1c env user" "$LINE"
+    [[ "$LINE" == *"://[REDACTED:env:DAAFTEST_FAKE_USER_TOKEN]:[REDACTED:url-userinfo]@h.invalid/d"* ]]
+}
+
+# Documented residuals (README_d § 9): pinned so a change is noticed.
+@test "residuals (_d): short -p flag, user-name-only userinfo and a header value under 8 chars are NOT redacted" {
+    fake_filler 12 daaf-fake-short-flag
+    FS_VALUE="$FS_FILL"
+    FS_TEXT="mysql -u app -p ${FS_VALUE} -h db"
+    FS_NEEDLE="-p ${FS_VALUE} -h"
+    _d_log_bash "$FS_TEXT"
+    fake_expect_kept "residual -p" "$LINE"
+    fake_filler 24 daaf-fake-user-only
+    FS_VALUE="$FS_FILL"
+    FS_TEXT="git clone https://${FS_VALUE}@git.example.invalid/o/r"
+    FS_NEEDLE="//${FS_VALUE}@"
+    _d_log_bash "$FS_TEXT"
+    fake_expect_kept "residual user-only" "$LINE"
+    fake_api_key_header 6
+    _d_log_bash "$FS_TEXT"
+    fake_expect_kept "residual short header" "$LINE"
+}
+
+# --- Revision _d review fixes (2026-10-02, Phase 4 reviews) ---
+
+# Review N2: with no builder run there is no needle, so both checks must fail
+# (not pass vacuously), and the report must not abort under set -u.
+@test "fake_shapes helper (_d): checks fail closed with no builder run, and the report survives set -u" {
+    run bash -c 'set -uo pipefail
+        . "$1"
+        fake_expect_kept nobuilder "plain text" && exit 4
+        fake_expect_redacted nobuilder "plain text" credential-flag && exit 5
+        exit 0' _ "${REPO_ROOT}/tests/bash/helpers/fake_shapes.bash"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *'case "nobuilder": expected kept: no needle set'* ]]
+    [[ "$output" == *'case "nobuilder": expected redacted: no needle set'* ]]
+    [[ "$output" != *"unbound variable"* ]]
+}
+
+# Review W1: a quoted "=" value with a space. Rule 9 takes an 8+-character
+# first word; it must now run on to the closing quote instead of leaving the
+# rest of the quoted value in the log.
+@test "F1b/F1d (_d): a quoted = value with a space is redacted whole (flag and assignment)" {
+    fake_password_flag 20 quoted_equals
+    _d_log_bash "$FS_TEXT"
+    fake_expect_redacted "W1 flag quoted equals" "$LINE"
+    [[ "$LINE" == *"${FS_NAME}='[REDACTED:credential-assignment]' --host"* ]]
+    fake_password_flag 10 quoted_equals
+    _d_log_bash "$FS_TEXT"
+    fake_expect_redacted "W1 flag quoted equals, short first word" "$LINE"
+    fake_pass_assignment 24 "" daaf-fake-pass-quoted quoted
+    _d_log_bash "$FS_TEXT"
+    fake_expect_redacted "W1 PASS quoted" "$LINE"
+    [[ "$LINE" == *"${FS_NAME}='[REDACTED:credential-assignment]'"* ]]
+}
+
+# Review W2: curl's --user / -u "name:password". Only the part after the
+# first colon is replaced; the user name is kept.
+@test "F1b (_d): curl --user / -u password is redacted, user name kept (long, short, attached, line continuation)" {
+    fake_curl_user
+    _d_log_bash "$FS_TEXT"
+    fake_expect_redacted "W2 curl --user" "$LINE"
+    [[ "$LINE" == *"${FS_NAME}:[REDACTED:credential-flag] https"* ]]
+    fake_curl_user 12 short
+    _d_log_bash "$FS_TEXT"
+    fake_expect_redacted "W2 curl -u" "$LINE"
+    fake_curl_user 3 attached
+    _d_log_bash "$FS_TEXT"
+    fake_expect_redacted "W2 curl -u attached, short value" "$LINE"
+    fake_curl_user 16 continued
+    _d_log_bash "$FS_TEXT"
+    fake_expect_redacted "W2 curl --user after a line continuation" "$LINE"
+}
+
+# The curl rule is scoped to a curl command: a uid:gid or host:path value on
+# another command's --user / -u is untouched, the scan stops at && ; | and at
+# a newline that is not a line continuation, and a variable reference or
+# --user-agent is not matched.
+@test "F1b (_d): non-matches kept: non-curl --user uid:gid, -u host:path after && or a newline, curl --user-agent, a VAR password" {
+    run _bash_target "podman exec --user 1000:1000 ctr id && rsync -u host:/src ./dst"
+    assert_output "podman exec --user 1000:1000 ctr id && rsync -u host:/src ./dst"
+    run _bash_target "curl -s https://example.invalid/a && rsync -u host:/src ./dst; ls -u a:b"
+    assert_output "curl -s https://example.invalid/a && rsync -u host:/src ./dst; ls -u a:b"
+    run _bash_target "curl -s https://example.invalid/a"$'\n'"rsync -u host:/src ./dst"
+    assert_output "curl -s https://example.invalid/a"$'\n'"rsync -u host:/src ./dst"
+    run _bash_target "curl -A x --user-agent ua:5 https://example.invalid/a"
+    assert_output "curl -A x --user-agent ua:5 https://example.invalid/a"
+    run _bash_target "curl -u \"app:\$API_PW\" https://example.invalid/a"
+    assert_output "curl -u \"app:\$API_PW\" https://example.invalid/a"
+}
+
+# Review W3: a raw "@" inside a userinfo password; the password runs to the
+# LAST "@" before the host.
+@test "F1c (_d): a userinfo password holding a raw @ is redacted whole" {
+    fake_url_userinfo 20 at
+    _d_log_bash "$FS_TEXT"
+    fake_expect_redacted "W3 raw at" "$LINE"
+    [[ "$LINE" == *"://${FS_NAME}:[REDACTED:url-userinfo]@db.example.invalid:5432/analytics"* ]]
+}
+
+@test "F1c (_d): non-matches kept: an @ in the path or query of an ordinary URL" {
+    run _bash_target "curl https://example.invalid:8080/a/b@c?x=y@z && curl http://example.invalid/u@v#w@x"
+    assert_output "curl https://example.invalid:8080/a/b@c?x=y@z && curl http://example.invalid/u@v#w@x"
+}
+
+# Consistency review W1: rule 11 has no "$" / "-" exclusion. A userinfo
+# password that is a variable reference or starts with "-" is redacted
+# (accepted over-redaction, README_d R17); pinned so a change is noticed.
+@test "F1c (_d): a userinfo VAR reference or dash-led password IS redacted (accepted over-redaction)" {
+    local sch="post""gres"
+    run _bash_target "psql ${sch}://u:\$PGPW@h.invalid/d && psql ${sch}://u:-x@h.invalid/d"
+    assert_output "psql ${sch}://u:[REDACTED:url-userinfo]@h.invalid/d && psql ${sch}://u:[REDACTED:url-userinfo]@h.invalid/d"
+}
+
+# Review W3, documented residuals (README_d R16): a raw "/" in the password
+# ends the authority match, and an e-mail-style user name (an "@" before the
+# colon) is not matched. Pinned so a change is noticed.
+@test "residuals (_d): a userinfo password with a raw / and an e-mail-style user name are NOT redacted" {
+    local sch="post""gres"
+    fake_filler 16 daaf-fake-slash-pw
+    FS_VALUE="${FS_FILL:0:8}/${FS_FILL:8}"
+    FS_TEXT="psql ${sch}://app:${FS_VALUE}@db.example.invalid/d"
+    FS_NEEDLE=":${FS_VALUE}@"
+    _d_log_bash "$FS_TEXT"
+    fake_expect_kept "residual raw slash" "$LINE"
+    fake_filler 16 daaf-fake-email-user
+    FS_VALUE="$FS_FILL"
+    FS_TEXT="psql ${sch}://app@example.invalid:${FS_VALUE}@db.example.invalid/d"
+    FS_NEEDLE=":${FS_VALUE}@"
+    _d_log_bash "$FS_TEXT"
+    fake_expect_kept "residual e-mail user" "$LINE"
 }
 
 # =========================================================================

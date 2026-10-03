@@ -281,7 +281,102 @@
 #           (d) comment corrections (SEG_OPEN_Q users and quote-survival
 #               sources, §5 opener history, §4 receiver boundary).
 #
+#   CHANGE LEDGER — section 10 accidental environment-disclosure guard (2026-10-02)
+#     E1  New section 10 (ENV_DISCLOSURE_GUARD), placed after section 9, before
+#         the final allow. Four categories mirror run_with_capture.sh's env-
+#         print scan: A whole-env dump (bare env/set/export -p/printenv, no
+#         operand); B credential-named value to output/file (echo/printf + an
+#         unescaped $NAME, or declare -p/typeset -p/printenv NAME); C a
+#         /proc/<pid>/environ read; D an interpreter one-liner printing a whole-
+#         env object. Functional accidental shapes only, not an adversarial
+#         sieve (same posture as section 8b's _EF1 / R5-T1).
+#     E2  "credential-named" is decided WITHOUT the SECRET-NAME-VOCAB carriers
+#         (orchestrator decision 2026-10-01 after a repo NAME census): an
+#         UPPERCASE name whose LAST underscore segment is one of KEY APIKEY
+#         TOKEN SECRET PASSWORD PASSWD PASSPHRASE CREDENTIAL CREDS DSN PAT;
+#         single-segment names, plurals, and ..._SESSION/..._AUTH/..._COOKIE are
+#         exempt. bash-safety carries NO vocab copy and no carrier marker, so
+#         the "does NOT carry it" comments in output-scanner.sh / audit-log.sh
+#         stay accurate.
+#     E3  Additive accumulator (_ENV10_ACC): 0a records an unquoted-delimiter
+#         data-consumer heredoc body; 0c records a double-quoted excised span
+#         containing `$`. Category B scans it alongside SCAN_CMD. NO stage-0
+#         classification changed - the accumulator only keeps a copy, so no
+#         ALLOW->BLOCK or BLOCK->ALLOW shift in sections 1-9 is possible.
+#     E4  grep -E for all section-10 matching (not bash `=~`) to avoid nested-
+#         quantifier backtracking; a cheap bash substring prefilter skips the
+#         greps on the common path.
+#     E5  (_c, 2026-10-03, task B3 FP gate) category D's bare ENVIRON token
+#         gained a trailing boundary ([^A-Z0-9_[]|$). Without it, an interpreter
+#         one-liner naming an identifier that merely STARTS with ENVIRON
+#         (ENVIRONMENT, ENVIRON_LABEL) false-blocked (measured against the
+#         recorded-session + docs corpora). A pure tightening of a new section-10
+#         alternative: it can only turn a section-10 block into an allow, never
+#         create a block, so no ALLOW->BLOCK is introduced and no section-1..9
+#         behavior changes. awk whole-env forms (`print ENVIRON`, `for (k in
+#         ENVIRON)`) still match via the EOL / `)` / space boundary.
+#     E6  (_d, 2026-10-03, COMMENT-ONLY — no code change) documentation
+#         refinements to the section-10 residual notes, proven comment-only
+#         (diff against _c touches `#`-lines only): (1) the B3-gate accepted-FP
+#         note now names the grep/regex SEARCH-PATTERN class explicitly — a
+#         grep whose quoted pattern contains the /proc/<pid>/environ path, a
+#         regex alternation ending `|env)`, a jq filter containing `(set)`, and
+#         a `python -c` string naming a whole-env token — and flags that these
+#         shapes recur in hook-maintenance / search work; (2) the category-B
+#         accepted-FP wording is broadened from "an uppercase loop variable"
+#         to any uppercase variable whose last `_`-segment is a credential
+#         keyword, echoed/printed (e.g. $CACHE_KEY, $SORT_KEY, $SESSION_TOKEN);
+#         (3) the `2>`-redirect sink exclusion is named next to the pipe
+#         exclusion in both the header residuals and the section 10 design
+#         comment. No regex, accumulator, prefilter, or stage-0 rule changed.
+#
 #   DOCUMENTED RESIDUALS (merged from both projects; all ALLOW today)
+#     Section 10 env-disclosure guard (2026-10-02; ALLOW today unless noted):
+#     - A value copied into another variable first, a name computed at run
+#       time, or a lowercase environment name (category B is uppercase-only).
+#     - A dump written to a file BY an interpreter, and process-listing env
+#       display (`ps eww`) are not modelled.
+#     - `declare`/`typeset`/`compgen` listing forms other than `-p`, and bare
+#       `export`, are not matched (names-only listings must stay allowed).
+#     - A whole-env dump PIPED into a filter (`env | grep PATH`, `set | wc -l`)
+#       is allowed: category A treats only a terminal or a file as a sink, not
+#       a pipe, so filtered inspection is not interfered with (pinned FC28).
+#       A `2>`-redirect is likewise not a sink: `env 2>f` is not matched (the
+#       `2` sits before the `>`, outside category A's `([;&)]|>|$)` sink set),
+#       so a dump whose stdout is not captured stays allowed — a miss, not an
+#       FP, documented here for parity with the pipe exclusion.
+#     - A 0a bail (oversized/kinked heredoc) loses the receiver link, so its
+#       body is not accumulated.
+#     - Secrets passed into a network request are a sanctioned use, out of
+#       scope. Adversarial bypass shapes are out of scope by decision.
+#     - ACCEPTED FALSE POSITIVES (BLOCK today): any uppercase variable (not
+#       only a loop variable) whose last `_`-segment is a credential keyword,
+#       echoed or printed — e.g. $CACHE_KEY, $SORT_KEY, $SESSION_TOKEN block
+#       just as $DB_PASSWORD does; the suffix set was chosen knowingly by the
+#       2026-10-01 NAME census, and each block message names a safe
+#       alternative. Also: a single-quoted single-token span that 0c
+#       canonicalizes.
+#     - ACCEPTED FALSE POSITIVES (BLOCK today; task B3 FP gate, 2026-10-03):
+#       an env-disclosure token sitting inside a quoted DATA argument that a
+#       nested-quote shape kept out of stage-0 excision, so section 10 reads it
+#       as an action. This is a SEARCH-PATTERN class that recurs specifically
+#       in hook-maintenance / grep work, where the quoted argument is itself a
+#       search pattern or interpreter string that merely NAMES an env token
+#       rather than acting on one. The shapes seen in this repo's own dev work:
+#         * a `grep` whose quoted pattern contains the `/proc/<pid>/environ`
+#           path (category C matches the path literal anywhere);
+#         * a regex alternation ending `...|env)` — e.g. a grep
+#           `(txt|json|env)` — where category A reads the trailing `)` as a
+#           subshell/segment terminator after `env`;
+#         * a jq filter containing `(set)` such as `Bash(set)` (same
+#           `)`-after-`set` read as category A);
+#         * a `python -c "..."` string that also names a whole-env token
+#           (category D's interpreter gate AND the token both land in the span).
+#       Root cause is stage-0 quote excision not reaching these nested-quote
+#       spans, not the section-10 regexes; narrowing A/C/D to defeat it safely
+#       needs a stage-0 change, deferred as out of scope for this guard.
+#       Measured rate of the category-A/C data-token FPs: 4 / 1060 gated
+#       recorded-session commands.
 #     - Variable-indirected command text evaluated later: `A='sudo id' eval
 #       "$A"`, `A='docker run alpine' eval "$A"`, `A='pip install x' eval
 #       "$A"` (DAAF r3 A01/A05/A15). A KEEP'd `VAR=` value is command-anchored
@@ -744,12 +839,23 @@ _exec_recurs() {
         -e "(^|[[:space:];&|])chmod([[:space:]]+-[^[:space:];&|]+)*[[:space:]]+([^[:space:];&|]*[+=][^[:space:];&|]*x[^[:space:];&|]*|[0-7]*[1357][0-7]*)([[:space:]]+[^[:space:];&|]+)*[[:space:]]+${_fq}"
 }
 
+# §10 ENV-DISCLOSURE ACCUMULATOR (added with §10, 2026-10-02): stage 0a/0c
+# EXCISE or `;`-join text that the shell would NOT execute, but that text can
+# still expand a `$NAME` and so DISCLOSE a value. §10 cannot see such a span in
+# SCAN_CMD once it is excised. This additive accumulator records the bodies of
+# the two excised shapes that still expand (an unquoted-delimiter data-consumer
+# heredoc body; a double-quoted data span containing `$`) so §10 can scan them
+# for credential-named expansions (category B). It changes NO stage-0
+# classification — it only keeps a copy. Empty on the common path.
+_ENV10_ACC=""
+
 CMD_SCAN="$CMD"
 if [[ "$CMD" == *'<<'* && "$CMD" == *$'\n'* && ${#CMD} -le 40000 ]]; then
     _hd_bail=0
     _hd_out=""
     _hd_delim=""      # active terminator; empty = not inside a body
     _hd_keep=0        # 1 = this body is CODE (keep, `;`-join)
+    _hd_dc=0          # 1 = receiver is a DATA consumer (for the §10 accumulator)
     _hd_quoted=0      # 1 = delimiter was quoted
     _hd_open=""       # the opener line (F11a)
     _hd_body=""       # accumulated body lines (newline separated)
@@ -783,6 +889,14 @@ if [[ "$CMD" == *'<<'* && "$CMD" == *$'\n'* && ${#CMD} -le 40000 ]]; then
                         _hd_out+="; ${_hd_b}"$'\n'
                     done <<< "$_hd_body"
                     _hd_out+="; ${_hd_t}"$'\n'
+                fi
+                # §10 (additive): an UNQUOTED-delimiter heredoc fed to a data
+                # consumer still expands `$NAME` in its body, whether 0a excised
+                # it (inert data) or kept it (a pipe-into-shell flipped _hd_keep,
+                # which is why _hd_dc is a separate flag). Record the body so §10
+                # can scan it for credential-named expansions (category B).
+                if [[ $_hd_dc -eq 1 && $_hd_quoted -eq 0 ]]; then
+                    _ENV10_ACC+="${_hd_body}"$'\n'
                 fi
                 _hd_delim=""
                 _hd_body=""
@@ -893,8 +1007,10 @@ if [[ "$CMD" == *'<<'* && "$CMD" == *$'\n'* && ${#CMD} -le 40000 ]]; then
             break
         done
         _hd_keep=1
+        _hd_dc=0          # reset per heredoc; set only for a data-consumer receiver
         if [[ "$HEREDOC_DATA_CONSUMERS" == *" ${_hd_recv} "* ]]; then
             _hd_keep=0
+            _hd_dc=1      # §10: body still expands $NAME even though it is data
         elif [[ "$_hd_recv" == "git" ]] && [[ "$_hd_pre" == *"git commit"* ]]; then
             _hd_keep=0
         fi
@@ -1396,6 +1512,14 @@ while [[ $_qs_skip -eq 0 && $_iter -lt 64 ]]; do
          && { { [[ "$_qs_body" == *" "* ]] && { [[ "$_qs_lt" =~ $_DATACONS_RE ]] \
          || { [[ "$_qs_lt" =~ $_MSGFLAG_RE ]] && [[ "$_qs_left" == *"git commit"* ]]; }; }; } \
          || [[ "$_qs_lt" =~ $_GITDATA_RE ]]; }; then
+        # §10 (additive): a DOUBLE-quoted data span excised here still has its
+        # `$NAME` expanded by the shell (a span with `${`/`$(`/backtick was
+        # already KEPT by the rule-5b branch above, so a surviving `$` is a bare
+        # $NAME). Record it so §10 can scan it for credential-named expansions
+        # (category B). Single-quoted spans cannot expand, so they are skipped.
+        if [[ "${_qs_span:0:1}" == "$_DQ" && "$_qs_body" == *'$'* ]]; then
+            _ENV10_ACC+="${_qs_body}"$'\n'
+        fi
         _qs_repl=" __QARG__ "
     else
         _qs_repl="$_qs_body"
@@ -2387,6 +2511,150 @@ REMOTION_MSG
 )
     _rm_msg="${_rm_msg//@ROOT@/"$SITE_ROOT"}"
     block "${_rm_msg//@RDIR@/"$SITE_REMOTION_DIR"}"
+fi
+
+# ---------------------------------------------------------------------------
+# 10. ACCIDENTAL ENVIRONMENT-DISCLOSURE GUARD (added 2026-10-02)
+#     Marker for the regression battery: ENV_DISCLOSURE_GUARD
+#
+#     PURPOSE. Everything a command prints or writes can land in an audit log,
+#     a session archive, or a file. This container's environment holds real API
+#     keys. This guard blocks the FUNCTIONAL, accidental shapes that would dump
+#     the environment or a credential-named value — the same posture as
+#     run_with_capture.sh's pre-execution env-print scan, but for shell commands
+#     typed at the command line. It is NOT an adversarial sieve: obfuscated or
+#     indirected shapes are out of scope (see RESIDUALS). The design priority is
+#     to not interfere with regular work, so every clause is narrow and every
+#     block message names the CATEGORY and a SAFE ALTERNATIVE, never the matched
+#     text (the battery and bats both echo a block message, so it must carry no
+#     credential-shaped substring).
+#
+#     FOUR CATEGORIES (mirroring run_with_capture.sh):
+#       A  Whole-environment dump: a bare `env` / `set` / `export -p` /
+#          `printenv` in command position with NO operand (only flags, then a
+#          terminator, pipe or redirect). The same command followed by a program
+#          to run stays allowed (`env FOO=1 cmd`, `env -i python x.py`).
+#       B  A credential-named variable sent to output or a file. Two shapes:
+#          an `echo`/`printf` whose segment then expands an UNESCAPED `$NAME`
+#          (or `${NAME}`); and a name-literal print form (`declare -p NAME`,
+#          `typeset -p NAME`, `printenv NAME`). "credential-named" = an
+#          UPPERCASE name whose LAST underscore segment is one of KEY, APIKEY,
+#          TOKEN, SECRET, PASSWORD, PASSWD, PASSPHRASE, CREDENTIAL, CREDS, DSN,
+#          PAT. Single-segment names (no underscore) are exempt — a bare
+#          $TOKEN/$PATH/$HOME is almost always benign — and so are plurals
+#          (…_KEYS, …_TOKENS), …_SESSION, …_AUTH, …_COOKIE (orchestrator
+#          decision 2026-10-01 after a repo-wide NAME census: of 23 names that
+#          hit the earlier shared vocab, only the `*_API_KEY` family were real
+#          credentials). Path-valued credential variables are conventionally
+#          named `*_CREDENTIALS` / `*_FILE` / `*_PATH`, whose last segment is a
+#          plural or is not in the set, so they fall out naturally (B4). B scans
+#          SCAN_CMD AND the §10 accumulator (the stage-0-excised spans that still
+#          expand). Case-SENSITIVE: lowercase shell names are usually loop or
+#          local variables, so matching them would cause many false positives.
+#       C  Process-environment file read: any `/proc/<pid>/environ` path. There
+#          is no benign need to read it here.
+#       D  Interpreter one-liner that prints a whole environment object. Same
+#          AND-shape as §8b: an interpreter in command position AND a whole-env
+#          token anywhere (os.environ, Sys.getenv(), process.env, %ENV, ENVIRON,
+#          ENV.<method>). Neither alone blocks (`python3 --version`, or a
+#          `grep os.environ file.py`, both pass). Case-SENSITIVE so prose like
+#          "environment" never matches the uppercase %ENV/ENVIRON tokens, and so
+#          single-variable reads (os.environ["X"], process.env.X, $ENV{X},
+#          ENV["X"], ENVIRON["X"]) fall through as benign. ENVIRON carries a
+#          trailing boundary ([^A-Z0-9_[]|$) so an interpreter one-liner that
+#          merely names an identifier STARTING with ENVIRON (ENVIRONMENT,
+#          ENVIRON_LABEL) is not false-blocked; awk's whole-env forms (bare
+#          `print ENVIRON`, `for (k in ENVIRON)`) still match (trailing EOL or
+#          `)` / space is in the boundary class).
+#
+#     WHY AN ACCUMULATOR. Stage 0a/0c EXCISE heredoc and double-quoted data
+#     spans as shell-inert, but the shell still expands `$NAME` inside an
+#     unquoted-delimiter heredoc body and a double-quoted span. Widening the
+#     stage-0 rules would pull prose into the word-anywhere guards; instead a
+#     purely additive accumulator (_ENV10_ACC, populated in 0a and 0c above)
+#     keeps a copy of exactly those spans for category B. No stage-0
+#     classification changed. A/C/D scan SCAN_CMD only — a whole-env token or a
+#     /proc path sitting in an excised DATA span is text, not an action, so
+#     scanning the accumulator for them would only add false positives.
+#
+#     FAIL-CLOSED. Over 20,000 chars 0c is skipped and text stays visible in
+#     SCAN_CMD, so §10 still sees it (fail-closed). A 0a bail loses the receiver
+#     link, so a body is not accumulated (residual). The ERR trap does not fire
+#     inside an `if` condition, so the regression suites pin at least one BLOCK
+#     row per category to catch a malformed regex.
+#
+#     ACCEPTED FALSE POSITIVES (BLOCK today): any uppercase variable (not only
+#     a loop variable) whose last `_`-segment is a credential keyword, echoed
+#     or printed (e.g. $CACHE_KEY, $SORT_KEY, $SESSION_TOKEN); a single-quoted
+#     single-token span that 0c canonicalizes. RESIDUALS (ALLOW today): a
+#     whole-env dump PIPED into a filter (`env | grep PATH`, `set | wc -l`) — a
+#     pipe is not treated as a sink, so filtered inspection stays allowed
+#     (category A sinks are a terminal or a file only); likewise a `2>`
+#     stderr-redirect (`env 2>f`) is not a sink (the `2` sits before the `>`,
+#     outside the `([;&)]|>|$)` set), so it stays allowed — a miss, not an FP;
+#     a value first copied into another
+#     variable; a name computed at run time; lowercase environment names; a
+#     dump written to a file by an interpreter; `declare`/`compgen`/`typeset`
+#     listing forms other than `-p`; bare `export`; a 0a bail body; secrets
+#     passed into a network request (sanctioned use). Adversarial coverage is
+#     functional-only, as for §8b's _EF1 / R5-T1.
+#
+#     PERF. A cheap bash-only substring prefilter skips the greps entirely on
+#     the common path (no env/set/export/proc/ENV/`$`/declare/typeset present).
+#     Vocab matching uses grep -E, not bash `=~`, to avoid nested-quantifier
+#     backtracking on long identifiers (the audit-log W1 jq lesson).
+_ENV10_NAME='[A-Z][A-Z0-9]*(_[A-Z0-9]+)*_(KEY|APIKEY|TOKEN|SECRET|PASSWORD|PASSWD|PASSPHRASE|CREDENTIAL|CREDS|DSN|PAT)'
+# A credential-named parameter expansion: $NAME or ${NAME}, with a trailing
+# boundary so plurals (…_KEYS) do not match. Used for the accumulator scan,
+# where the preceding char is guaranteed non-backslash: the leading ([^\]|^)
+# rejects an escaped \$ when the span starts mid-string.
+_ENV10_EXP='([^\]|^)[$]\{?('"$_ENV10_NAME"')(\}|[^A-Z0-9_]|$)'
+# The expansion TAIL (no leading guard) and the MID run between a print verb's
+# space and the `$`: any text not crossing a segment end whose LAST char (if
+# any) is NOT a backslash, so an escaped `\$` is not matched even when the `$`
+# follows the verb's separating space directly.
+_ENV10_EXPTAIL='[$]\{?('"$_ENV10_NAME"')(\}|[^A-Z0-9_]|$)'
+_ENV10_MID='([^;&|]*[^\;&|])?'
+# A: a variable-listing command with no operand (flags only), then a TERMINAL
+# or FILE sink — a segment end (`; & )`, newline-as-`;`, end of string) or a
+# redirect (`>`). A PIPE is deliberately NOT a sink here: `env | grep PATH`,
+# `set | wc -l` are benign filtered inspection (pinned ALLOW, e.g. FC28), and
+# blocking them would interfere with regular work.
+_ENV10_A_RE="${SEG_OPEN}${WRAPPED}((env|set)|export[[:space:]]+-p|printenv)[[:space:]]*([;&)]|>|\$)"
+# B shape 1: echo/printf whose SAME segment then expands a credential name.
+_ENV10_B_PRINT="${SEG_OPEN}${WRAPPED}(echo|printf)[[:space:]]${_ENV10_MID}${_ENV10_EXPTAIL}"
+# B shape 2: a name-literal print form naming a credential variable.
+_ENV10_B_NAME="${SEG_OPEN}${WRAPPED}((declare|typeset)[[:space:]]+-[A-Za-z]*p[A-Za-z]*[[:space:]]+|printenv[[:space:]]+(-0[[:space:]]+)?)(${_ENV10_NAME})([^A-Z0-9_]|\$)"
+# C: a /proc/<pid>/environ path anywhere.
+_ENV10_C_RE='/proc/[^[:space:]/]+/environ'
+# D: an interpreter in command position (gate) AND a whole-env token (anywhere).
+_ENV10_D_INTERP="${SEG_OPEN}${WRAPPED}([^[:space:]/;&|]*/)?(python[0-9.]*|Rscript[0-9.]*|R|node|nodejs|perl[0-9.]*|ruby[0-9.]*|gawk|mawk|awk)\\b"
+_ENV10_D_TOK='os\.environ([^._A-Za-z0-9[]|\.(items|values|copy|keys)|$)|Sys\.getenv\([[:space:]]*(\)|names|unset)|process\.env([^._A-Za-z0-9[]|$)|%ENV|ENVIRON([^A-Z0-9_[]|$)|ENV\.(to_h|to_a|each_pair|each|inspect|keys|values|sort)'
+
+# Combined text for category B (SCAN_CMD plus the stage-0-excised spans).
+_env10_all="$SCAN_CMD"$'\n'"$_ENV10_ACC"
+
+if [[ "$_env10_all" == *'$'* || "$_env10_all" == *env* || "$_env10_all" == *set* \
+   || "$_env10_all" == *export* || "$_env10_all" == *proc* || "$_env10_all" == *ENV* \
+   || "$_env10_all" == *getenv* || "$_env10_all" == *declare* || "$_env10_all" == *typeset* ]]; then
+    if echo "$SCAN_CMD" | grep -qE "$_ENV10_A_RE"; then
+        block "Accidental whole-environment disclosure (category: environment dump). A bare env / set / export -p / printenv writes every variable — including this container's real API keys — to output or a file, where it lands in the audit log and backups. To confirm a variable is set without revealing it, test its presence with [ -n \"\${VAR:+set}\" ]; to list names only, use compgen -v; to run a program under a modified environment, give env a command to run."
+    fi
+    # B over SCAN_CMD needs the printing verb or name-literal form; B over the
+    # accumulator needs only the expansion itself, because every span in the
+    # accumulator was already an ARGUMENT to a data consumer that prints or
+    # writes it (its verb is not part of the recorded span).
+    if echo "$SCAN_CMD" | grep -qE "$_ENV10_B_PRINT" \
+       || echo "$SCAN_CMD" | grep -qE "$_ENV10_B_NAME" \
+       || { [[ -n "$_ENV10_ACC" ]] && echo "$_ENV10_ACC" | grep -qE "$_ENV10_EXP"; }; then
+        block "Accidental credential disclosure (category: credential-named variable sent to output or a file). Expanding a variable whose name ends in KEY/APIKEY/TOKEN/SECRET/PASSWORD/PASSWD/PASSPHRASE/CREDENTIAL/CREDS/DSN/PAT, and echoing it or writing it to a file, would copy the secret into the permanent audit record. Confirm the credential is configured by printing its presence or length instead ([ -n \"\${NAME:+set}\" ] or \${#NAME}), and pass the value straight to the program that needs it rather than echoing it."
+    fi
+    if echo "$SCAN_CMD" | grep -qE "$_ENV10_C_RE"; then
+        block "Accidental environment disclosure (category: process-environment file read). Reading a /proc/<pid>/environ file exposes that process's entire environment, credentials included. There is no benign need to read it here; to check a variable, print its presence or length instead."
+    fi
+    if echo "$SCAN_CMD" | grep -qE "$_ENV10_D_INTERP" && echo "$SCAN_CMD" | grep -qE "$_ENV10_D_TOK"; then
+        block "Accidental environment disclosure (category: interpreter one-liner environment print). An inline interpreter command that prints a whole environment object (os.environ, Sys.getenv(), process.env, %ENV, ENV, ENVIRON) writes every variable, credentials included, to output. Print a single variable's presence or length instead, or move the logic into a script run via run_with_capture.sh, which scans for environment prints."
+    fi
 fi
 
 # ---------------------------------------------------------------------------

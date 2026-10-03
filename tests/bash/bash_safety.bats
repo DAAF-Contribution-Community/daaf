@@ -52,6 +52,17 @@
 #     `/workspace` -> `/daaf` where the row is about the project root). Rows
 #     that exercise site values FAIL against the starter-kit variant by design.
 #
+#   2026-10-02 (section-10 block at the end, FC241-FC280) -- the accidental
+#     environment-disclosure guard (hook marker ENV_DISCLOSURE_GUARD). Four
+#     categories, tagged §10-A/B/C/D: A whole-env dump, B credential-named value
+#     to output/file (incl. the 0a heredoc and 0c excised-span accumulator
+#     paths), C /proc/<pid>/environ read, D interpreter one-liner env print.
+#     Mirrored 1:1 with scripts/test_safety_hooks.sh. Credential-named cases
+#     build their names from split fragments via fake_env10_cmd (loaded above),
+#     so no whole credential-shaped name literal appears here. All rows are
+#     site-neutral; the BLOCK rows FAIL against a live hook that predates
+#     section 10 by design.
+#
 # CONTRACT: text that merely DESCRIBES a dangerous command must NOT false-block
 # (ALLOW, exit 0) when its receiver is provably a data consumer; anything that
 # can actually expand or execute stays intact and still BLOCKS (exit 2);
@@ -73,6 +84,11 @@
 # ============================================================================
 
 load 'test_helper'
+# The 2026-10-02 section-10 env-disclosure cases (FC241-FC280) build their
+# credential-NAMED fixtures from split fragments via fake_env10_cmd, so no whole
+# credential-shaped name literal appears in this file (the helper's NO-LITERAL
+# RULE). Shared with audit_log.bats.
+load 'helpers/fake_shapes'
 
 # Path to the script under test (override to test a proposed/deliverable copy).
 BASH_SAFETY_SH="${BASH_SAFETY_SH:-${REPO_ROOT}/.claude/hooks/bash-safety.sh}"
@@ -2876,6 +2892,256 @@ _MOUNT_MSG="Filesystem mount/chroot is not permitted"
     _run_hook_raw '{"tool_name":["Bash"],"tool_input":{"command":"rm -rf /"}}'
     assert_success
 }
+
+# ===========================================================================
+# 2026-10-02 section 10 accidental environment-disclosure guard (FC241-FC280)
+# ===========================================================================
+
+# Mirrored 1:1 in scripts/test_safety_hooks.sh and tests/bash/bash_safety.bats.
+# Section 10 (hook marker ENV_DISCLOSURE_GUARD) blocks the FUNCTIONAL accidental
+# shapes that would dump the environment or a credential-named value where it
+# lands in the audit log, a session archive or a file. Four categories mirror
+# run_with_capture.sh's env-print scan: A whole-env dump, B credential-named
+# value to output/file, C /proc/<pid>/environ read, D interpreter one-liner
+# env print. The credential-named cases build their names from split fragments
+# via the shared helper tests/bash/helpers/fake_shapes.bash (fake_env10_cmd).
+# ---------------------------------------------------------------------------
+# section 10 category A -- whole-environment dump (BLOCK) and filtered-inspection controls (ALLOW)
+# ---------------------------------------------------------------------------
+
+@test "§10-A FC241: A bare env at end of string: BLOCK" {
+    _run_hook 'env'
+    assert_failure
+}
+
+@test "§10-A FC242: A bare set at end of string: BLOCK" {
+    _run_hook 'set'
+    assert_failure
+}
+
+@test "§10-A FC243: A bare printenv at end of string: BLOCK" {
+    _run_hook 'printenv'
+    assert_failure
+}
+
+@test "§10-A FC244: export -p at end of string: BLOCK" {
+    _run_hook 'export -p'
+    assert_failure
+}
+
+@test "§10-A FC245: env redirected into a file: BLOCK" {
+    _run_hook 'env > envdump.txt'
+    assert_failure
+}
+
+@test "§10-A FC246: set then a terminator and echo: BLOCK" {
+    _run_hook 'set; echo done'
+    assert_failure
+}
+
+@test "§10-A FC247: env running a program stays allowed: ALLOW" {
+    _run_hook 'env FOO=1 python3 run.py'
+    assert_success
+}
+
+@test "§10-A FC248: env piped into grep PATH is filtered inspection: ALLOW today" {
+    _run_hook 'env | grep PATH'
+    assert_success
+}
+
+@test "§10-A FC249: set piped into wc -l is filtered inspection: ALLOW today" {
+    _run_hook 'set | wc -l'
+    assert_success
+}
+
+# ---------------------------------------------------------------------------
+# section 10 category B -- credential-named value to output or a file (BLOCK) via fragment-assembled builders
+# ---------------------------------------------------------------------------
+
+# One BLOCK row per section-10 keyword (KEY APIKEY TOKEN SECRET PASSWORD PASSWD
+# PASSPHRASE CREDENTIAL CREDS DSN PAT), across the print verbs and both
+# name-literal forms, plus the two accumulator paths.
+@test "§10-B FC250: echo expanding a KEY-suffixed name: BLOCK" {
+    fake_env10_cmd echo key APP
+    _run_hook "$FS_TEXT"
+    assert_failure
+}
+
+@test "§10-B FC251: echo of a braced TOKEN-suffixed name: BLOCK" {
+    fake_env10_cmd echo_braced token SERVICE
+    _run_hook "$FS_TEXT"
+    assert_failure
+}
+
+@test "§10-B FC252: printf of a PASSWORD-suffixed name: BLOCK" {
+    fake_env10_cmd printf password DB
+    _run_hook "$FS_TEXT"
+    assert_failure
+}
+
+@test "§10-B FC253: declare -p of a SECRET-suffixed name: BLOCK" {
+    fake_env10_cmd declare_p secret MY
+    _run_hook "$FS_TEXT"
+    assert_failure
+}
+
+@test "§10-B FC254: typeset -p of a CREDS-suffixed name: BLOCK" {
+    fake_env10_cmd typeset_p creds X
+    _run_hook "$FS_TEXT"
+    assert_failure
+}
+
+@test "§10-B FC255: printenv of an APIKEY-suffixed name: BLOCK" {
+    fake_env10_cmd printenv apikey APP
+    _run_hook "$FS_TEXT"
+    assert_failure
+}
+
+@test "§10-B FC256: accumulator 0a heredoc body expanding a KEY-suffixed name: BLOCK" {
+    fake_env10_cmd heredoc key APP
+    _run_hook "$FS_TEXT"
+    assert_failure
+}
+
+@test "§10-B FC257: accumulator 0c grep span with a KEY-suffixed name redirected to a file: BLOCK" {
+    fake_env10_cmd grep_redirect key APP
+    _run_hook "$FS_TEXT"
+    assert_failure
+}
+
+@test "§10-B FC258: echo of a PASSPHRASE-suffixed name: BLOCK" {
+    fake_env10_cmd echo passphrase USER
+    _run_hook "$FS_TEXT"
+    assert_failure
+}
+
+@test "§10-B FC259: echo of a DSN-suffixed name: BLOCK" {
+    fake_env10_cmd echo dsn DB
+    _run_hook "$FS_TEXT"
+    assert_failure
+}
+
+@test "§10-B FC260: echo of a PAT-suffixed name: BLOCK" {
+    fake_env10_cmd echo pat GH
+    _run_hook "$FS_TEXT"
+    assert_failure
+}
+
+@test "§10-B FC261: echo of a PASSWD-suffixed name: BLOCK" {
+    fake_env10_cmd echo passwd SYS
+    _run_hook "$FS_TEXT"
+    assert_failure
+}
+
+@test "§10-B FC262: echo of a CREDENTIAL-suffixed name: BLOCK" {
+    fake_env10_cmd echo credential AWS
+    _run_hook "$FS_TEXT"
+    assert_failure
+}
+
+@test "§10-B FC263: echo of a plural KEYS-suffixed name stays allowed: ALLOW" {
+    fake_env10_cmd plural key API
+    _run_hook "$FS_TEXT"
+    assert_success
+}
+
+@test "§10-B FC264: a presence check of a credential name stays allowed: ALLOW" {
+    fake_env10_cmd presence key X_API
+    _run_hook "$FS_TEXT"
+    assert_success
+}
+
+@test "§10-B FC265: echo of a single-segment PATH stays allowed: ALLOW" {
+    _run_hook 'echo $PATH'
+    assert_success
+}
+
+@test "§10-B FC266: echo of a plain string stays allowed: ALLOW" {
+    _run_hook 'echo "hello world"'
+    assert_success
+}
+
+@test "§10-B FC267: uppercase loop variable ending in a credential segment echoed: BLOCK today" {
+    fake_env10_cmd loop_fp token SERVICE
+    _run_hook "$FS_TEXT"
+    assert_failure
+}
+
+@test "§10-B FC268: single-quoted single-token credential span that 0c canonicalizes: BLOCK today" {
+    fake_env10_cmd squote_fp key APP
+    _run_hook "$FS_TEXT"
+    assert_failure
+}
+
+@test "§10-B FC269: a long credential-shaped identifier echoed stresses grep -E against backtracking: BLOCK" {
+    fake_env10_cmd stress key
+    _run_hook "$FS_TEXT"
+    assert_failure
+}
+
+# ---------------------------------------------------------------------------
+# section 10 category C -- process-environment file read (BLOCK)
+# ---------------------------------------------------------------------------
+
+@test "§10-C FC270: cat of proc self environ: BLOCK" {
+    _run_hook 'cat /proc/self/environ'
+    assert_failure
+}
+
+@test "§10-C FC271: tr reading proc pid environ: BLOCK" {
+    _run_hook 'tr "\0" "\n" < /proc/1/environ'
+    assert_failure
+}
+
+@test "§10-C FC272: cat of proc self status is not the environ file: ALLOW" {
+    _run_hook 'cat /proc/self/status'
+    assert_success
+}
+
+# ---------------------------------------------------------------------------
+# section 10 category D -- interpreter one-liner environment print (BLOCK) and controls (ALLOW)
+# ---------------------------------------------------------------------------
+
+@test "§10-D FC273: python3 printing the whole os.environ: BLOCK" {
+    _run_hook 'python3 -c "import os; print(os.environ)"'
+    assert_failure
+}
+
+@test "§10-D FC274: Rscript printing the whole Sys.getenv: BLOCK" {
+    _run_hook 'Rscript -e "print(Sys.getenv())"'
+    assert_failure
+}
+
+@test "§10-D FC275: node printing the whole process.env: BLOCK" {
+    _run_hook 'node -e "console.log(process.env)"'
+    assert_failure
+}
+
+@test "§10-D FC276: perl printing keys of ENV: BLOCK" {
+    _run_hook 'perl -e "print for keys %ENV"'
+    assert_failure
+}
+
+@test "§10-D FC277: ruby printing ENV as a hash: BLOCK" {
+    _run_hook 'ruby -e "pp ENV.to_h"'
+    assert_failure
+}
+
+@test "§10-D FC278: python3 version has no env token: ALLOW" {
+    _run_hook 'python3 --version'
+    assert_success
+}
+
+@test "§10-D FC279: grep for os.environ has no interpreter gate: ALLOW" {
+    _run_hook 'grep -rn os.environ src/app.py'
+    assert_success
+}
+
+@test "§10-D FC280: python3 reading a single env var falls through: ALLOW" {
+    _run_hook 'python3 -c "import os; print(os.environ['"'"'X'"'"'])"'
+    assert_success
+}
+
 
 
 # ===========================================================================

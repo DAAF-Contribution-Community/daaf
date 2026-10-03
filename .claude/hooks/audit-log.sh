@@ -40,6 +40,29 @@
 #   …SECRET=, …PASSWORD=; a $VAR reference is not a literal and is kept).
 #   When output-scanner.sh's patterns change, update redact() to match;
 #   tests/bash/audit_log.bats carries a cross-hook agreement test.
+#   [revision _d 2026-10-01: inline-literal gaps F1, counter false positive
+#   F4 (review follow-ups of 2026-09-24); review fixes 2026-10-02] Rule 9 now
+#   also takes a hyphenated api-key header name and a segment-bounded PASS /
+#   PASSPHRASE key name, keeps a purely numeric value on a token-named key
+#   ("tokens: <digits>" is a counter, not a credential; a numeric value on
+#   any other key is still redacted), and, when the value opens with a quote
+#   and its first 8+ characters match, runs on to the closing quote, so a
+#   quoted value with a space is not cut after its first word. Three
+#   log-side rules are added: rule 10, the value after a credential-named
+#   command-line flag (--password VALUE, also short values and quoted values
+#   with a space) -> [REDACTED:credential-flag]; rule 11, the password in URL
+#   userinfo (scheme://user:PASSWORD@host, up to the last "@" before the
+#   host) -> [REDACTED:url-userinfo]; rule 12, the part after the first colon
+#   of curl's --user / -u NAME:PASSWORD value, inside a curl command only ->
+#   [REDACTED:credential-flag]. Rules 10-12 accept values from one character
+#   and do not match a value that STARTS with a [REDACTED: marker. Not
+#   covered, by design: short flags (-p VALUE), user-name-only userinfo,
+#   header values under 8 characters, and rule-10 and rule-12 values that
+#   start with "$" or "-" (rule 11 has no such exclusion: a userinfo "$VAR"
+#   or "-x" password is redacted, accepted over-redaction). output-scanner.sh
+#   is unchanged: these are input-side shapes, and on the output side (docs,
+#   fixtures, example connection strings) they would add warning noise to an
+#   advisory hook; the cross-hook test requires only scanner -> audit-log.
 #
 # CAP, GUARD AND CUT [revision _c 2026-09-27: every target, try guard, tail
 # margin]
@@ -50,7 +73,14 @@
 #   far inside the 5 s hook timeout. It bounds FAILURE. Measured 2026-09-27
 #   (jq 1.7, the rules below): "token" repeated passes at 5,750 characters
 #   and errors from 6,000; the other rule-9 keywords error from 6,500 to
-#   7,500. Do not raise the cap past about 5,000. Before _c a long
+#   7,500. [revision _d] Re-measured 2026-10-01 for the _d rules: the new
+#   "pass" segment ("pass_" or "_pass" repeated) also errors from 6,000;
+#   dense flag, header, "://" and counter inputs never errored up to 8,000.
+#   Re-measured 2026-10-02 after the review fixes (rule 9 quoted branch,
+#   rule 11 to the last "@", rule 12): the figures above are unchanged, and
+#   dense quoted-value, "curl", "-u a:" and raw-"@" inputs never errored up
+#   to 8,000.
+#   Do not raise the cap past about 5,000. Before _c a long
 #   keyword-dense Grep pattern, Task description or URL was uncapped, the
 #   whole pass failed, and the record fell back to all-"unknown" (review W1).
 #   Two guards sit on the pattern step:
@@ -66,6 +96,10 @@
 #       first 200 characters (review NIT 1). 128 exceeds every rule's
 #       minimum secret length (at most 40) plus its key name; a key followed
 #       by a very long run of whitespace is the contrived exception.
+#       [revision _d] Rule 11 is a second exception: it needs the "@" AFTER
+#       the password, so a userinfo password cut by the cap never matches,
+#       and a password that starts more than 128 characters before the cap
+#       and runs past it is logged up to the margin (contrived).
 #   Bash commands are then cut to 200 characters; other targets are logged
 #   up to the cap less the margin (3,872 characters). The 200-char cut comes
 #   AFTER the pattern rules, so a secret straddling that boundary is
@@ -234,8 +268,12 @@ def redact_env:
 
 # redact_patterns: replace secret-shaped substrings with [REDACTED:<family>].
 # Rules 1-6 and 8 mirror output-scanner.sh's credential families (rule 1 and
-# rule 8 are supersets of the scanner's patterns); rules 7 and 9 are
-# log-side additions.
+# rule 8 are supersets of the scanner's patterns); rules 7 and 9-12 are
+# log-side additions. Rules 10-12 [revision _d] run last and do not match a
+# value that STARTS with a [REDACTED: marker, so they do not relabel what an
+# earlier rule (or the value step) produced. A marker further inside a
+# matched value is replaced together with it: the value stays redacted, under
+# the later rule's family.
 def redact_patterns:
   # 1. PEM private-key block: BEGIN through END, or to end of string.
   gsub("-----BEGIN[A-Z\\s]*PRIVATE KEY-----[\\s\\S]*?(?:-----END[A-Z\\s]*PRIVATE KEY-----|\\z)"; "[REDACTED:private-key]")
@@ -255,7 +293,67 @@ def redact_patterns:
   | gsub("(?<k>bearer\\s+)[A-Za-z0-9_\\-.~+/=]{16,}"; "\(.k)[REDACTED:bearer-token]"; "i")
   # 9. Literal value (8+ chars) assigned to a credential-named key. A $VAR
   #    reference does not match: "$" is outside the value character class.
-  | gsub("(?<k>\\b[A-Za-z0-9_]*(?:api_?key|secret|token|passw(?:or)?d)[A-Za-z0-9_]*[\"']?\\s*[=:]\\s*[\"']?)[A-Za-z0-9_\\-./+=:@~]{8,}"; "\(.k)[REDACTED:credential-assignment]"; "i");
+  #    [revision _d] The key may also hold "api-key" with a hyphen (an
+  #    API-key request header, F1a) and a segment-bounded "pass" or
+  #    "passphrase" (DB_PASS=, F1d): no letter or digit directly before or
+  #    after it, so bypass, compass and passenger do not match. F4: when the
+  #    key contains "token" and the value is purely numeric (digits with an
+  #    optional decimal part, the value step's numeric skip), the match is
+  #    kept unchanged, so a usage counter is not logged as a credential. A
+  #    numeric value on any other key (a numeric password) is still redacted.
+  #    [revision _d review fix W1] When an opening quote precedes the value
+  #    and a closing quote follows on the same line, the value runs from its
+  #    8+-character start to that quote, so "KEY='<8+> <rest>'" is not cut
+  #    after the first word. It only extends a match the unquoted branch
+  #    would make; a quoted value whose first word is under 8 characters is
+  #    still not matched here (rule 10 covers the --flag= form). The atomic
+  #    group keeps the search linear when no closing quote follows.
+  | gsub("(?<k>\\b[A-Za-z0-9_]*(?:api[_-]?key|secret|token|passw(?:or)?d|(?<![A-Za-z0-9])pass(?:phrase)?(?![A-Za-z0-9]))[A-Za-z0-9_]*[\"']?\\s*[=:]\\s*[\"']?)(?<v>(?<=[\"'])(?>[A-Za-z0-9_\\-./+=:@~]{8,}[^\"'\\n]*)(?=[\"'])|[A-Za-z0-9_\\-./+=:@~]{8,})";
+         if (.k | test("token"; "i")) and (.v | test("^[+-]?[0-9]+(?:[.][0-9]+)?$"))
+         then .k + .v
+         else "\(.k)[REDACTED:credential-assignment]" end; "i")
+  # 10. [revision _d, F1b] Value after a credential-named command-line flag.
+  #     At the start of a line or after whitespace: one or two dashes, up to
+  #     three words joined by "-" or "_", then a word ending in password,
+  #     passwd, passphrase, secret, token or api-key (also api_key, apikey),
+  #     or the whole word "pass"; then whitespace or "=". The value (1+
+  #     characters) runs to the next whitespace or quote; after an opening
+  #     quote it runs to the next quote or newline, so a quoted value with a
+  #     space is covered. Not matched: a value starting with "$" (a variable
+  #     reference, as in rule 9) or "-" (the next option, or stdin), and a
+  #     value that starts with a [REDACTED: marker. A plural or longer flag
+  #     (max-tokens, token-file) is not followed by whitespace or "=" right
+  #     after the keyword, so it never matches. Short flags (-p) are not
+  #     covered: too ambiguous. An 8+-character "=" value (quoted: to the
+  #     closing quote) is caught by rule 9 first and keeps the
+  #     credential-assignment marker.
+  | gsub("(?<k>(?:^|(?<=\\s))--?(?:[A-Za-z0-9]+[-_]){0,3}(?:[A-Za-z0-9]*(?:passw(?:or)?d|passphrase|secret|token|api[-_]?key)|pass)(?:\\s+|=)[\"']?)(?![$-]|\\[REDACTED:)(?:(?<=[\"'])[^\"'\\n]+|(?<![\"'])[^\\s\"']+)"; "\(.k)[REDACTED:credential-flag]"; "i")
+  # 11. [revision _d, F1c] Password in URL userinfo, scheme://user:PASSWORD@
+  #     host. The scheme, the user name and "@host" are kept; the password
+  #     (1+ characters) is replaced up to the LAST "@" before the host
+  #     [review fix W3], so a raw "@" inside the password is covered. A raw
+  #     "/", "?" or "#" ends the authority, so a password holding one is not
+  #     matched, and nor is an e-mail-style user name (an "@" before the
+  #     colon): documented residuals. The scheme must start after a
+  #     non-scheme character, which keeps the search linear on long letter
+  #     runs. The user part may itself be an earlier [REDACTED: marker; a
+  #     password that starts with a marker is not relabelled. A password
+  #     that starts with "$" or "-" IS redacted (no exclusion here, unlike
+  #     rules 10 and 12). User-name-only userinfo (no colon) is not matched.
+  | gsub("(?<k>(?<![A-Za-z0-9+.-])[A-Za-z][A-Za-z0-9+.-]*://(?:\\[REDACTED:[A-Za-z0-9:_.-]*\\]|[^\\s/?#@:\"'\\[\\]])*:)(?!\\[REDACTED:)[^\\s/?#\"']+(?=@)"; "\(.k)[REDACTED:url-userinfo]")
+  # 12. [revision _d review fix W2] curl's user option, --user NAME:PASSWORD
+  #     or -u NAME:PASSWORD (also -uNAME:PASSWORD): the part after the first
+  #     colon, up to the next whitespace or quote, is replaced; NAME is kept.
+  #     Scoped to a curl command: "curl" as a word, then the option later in
+  #     the same command (the scan stops at a newline that is not a "\"
+  #     line continuation, ";", "|", "&&" or a lone "&" before whitespace),
+  #     so a uid:gid or host:path value on another command's --user / -u is
+  #     never touched. Not matched: a value
+  #     with no colon (curl then prompts), a password that starts with "$",
+  #     "-" or a [REDACTED: marker, --user-agent, --proxy-user / -U, and a
+  #     -u inside a combined short-option group (-su). A quoted value with a
+  #     space in the password is replaced only up to the space.
+  | gsub("(?<k>\\bcurl\\b(?:[^\\n;|&]|&(?=[^&\\s])|\\\\\\n)*?\\s(?:--user\\s+|-u\\s*)[\"']?(?:\\[REDACTED:[A-Za-z0-9:_.-]*\\]|[^\\s:\"'\\[\\]])*:)(?![$-]|\\[REDACTED:)[^\\s\"']+"; "\(.k)[REDACTED:credential-flag]");
 
 # Pattern cap and tail margin (see CAP, GUARD AND CUT in the header). Do not
 # raise pattern_cap past about 5,000: keyword-dense text makes the rules
