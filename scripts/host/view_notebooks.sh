@@ -35,7 +35,16 @@ fi
 # -- the file holds API keys); shell env wins; absent file = no-op; CR stripped;
 # Bash 3.2 safe. Prefer the library function when daaf_lib.sh was sourced.
 if command -v load_daaf_settings >/dev/null 2>&1; then
-    load_daaf_settings
+    # An existing but unreadable file makes the loader return non-zero without
+    # printing anything (its open check silences only bash's raw "Permission
+    # denied" line), so say what to fix instead of exiting silently -- the same
+    # message daaf.sh gives at startup. The call keeps its stderr: any other
+    # loader error (a bug) must stay visible.
+    if ! load_daaf_settings; then
+        echo "ERROR: Cannot read environment_settings.txt -- make sure it is not open in another program and that you have permission to read it." >&2
+        echo "Fix that (or move the file aside), then run view_notebooks.sh again." >&2
+        exit 1
+    fi
 else
     _daaf_load_settings() {
         local settings_file="./environment_settings.txt"

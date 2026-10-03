@@ -15,6 +15,11 @@ setup() {
 }
 
 teardown() {
+    # The unreadable-settings test chmods the fixture to 000; give it its
+    # permissions back so the fixture tree is left in a normal state for removal.
+    if [ -e "${TEST_DIR}/environment_settings.txt" ]; then
+        chmod 644 "${TEST_DIR}/environment_settings.txt" 2>/dev/null || true
+    fi
     common_teardown
 }
 
@@ -64,6 +69,25 @@ teardown() {
     export DAAF_NESTED=1
     MOCK_DOCKER_INFO_EXIT=1
     run bash "${REPO_ROOT}/scripts/host/view_logs.sh"
+    refute_output --partial "Press Enter"
+}
+
+# --- Preflight: unreadable environment_settings.txt ---
+
+@test "view_logs.sh exits with a permissions message when environment_settings.txt is unreadable" {
+    # The loader's open check is silent, so the script must name the file and
+    # the fix itself rather than exit 1 with no output (a dry run otherwise
+    # succeeds, so exit 1 here means the settings load stopped it).
+    printf 'DAAF_PORT_LOGVIEWER=3002\n' > "${TEST_DIR}/environment_settings.txt"
+    chmod 000 "${TEST_DIR}/environment_settings.txt"
+    if [ -r "${TEST_DIR}/environment_settings.txt" ]; then
+        skip "chmod 000 does not block reads here (running as root?) -- cannot stage an unreadable settings file"
+    fi
+    run env DAAF_DRY_RUN=1 DAAF_NESTED=1 bash "${REPO_ROOT}/scripts/host/view_logs.sh" </dev/null
+    assert_failure 1
+    assert_output --partial "ERROR: Cannot read environment_settings.txt -- make sure it is not open in another program and that you have permission to read it."
+    assert_output --partial "Fix that (or move the file aside), then run view_logs.sh again."
+    refute_output --partial "Permission denied"
     refute_output --partial "Press Enter"
 }
 

@@ -12,7 +12,14 @@
 #   Import-DaafSettingsFile -- export the whitelisted DAAF_* vars (four multi-instance
 #                              keys + the DAAF_DEV build flag + the DAAF_BRANCH
 #                              updater ref + the DAAF_DATA_VOLUME_NAME data-volume
-#                              override) from environment_settings.txt
+#                              override) from environment_settings.txt, recording
+#                              which keys it adopted from the file (provenance
+#                              tracker $script:DaafKeysFromFile); throws if the
+#                              file exists but cannot be read
+#   Sync-DaafSettingsFile -- re-read environment_settings.txt after it was edited:
+#                              drop only the keys the loader adopted from the file,
+#                              then import again (user-set values keep winning);
+#                              throws on an unreadable file, like the loader
 #   Resolve-DaafDataVolumeName -- echo the resolved data-volume name, honoring the
 #                              optional DAAF_DATA_VOLUME_NAME full-name override
 #   Set-DaafSettingsKey -- insert/update a single KEY=value line in a settings
@@ -95,7 +102,22 @@ if (Get-Command Read-DaafLine -ErrorAction SilentlyContinue) { return }
 # regex on KEY=VALUE. CR is stripped for CRLF tolerance.
 #
 # PRECEDENCE: an already-set process env var WINS over the file value (matches
-# Docker Compose precedence: shell env > .env file). Absent file = no-op.
+# Docker Compose precedence: shell env > .env file). Absent file = no-op. A file
+# that exists but cannot be read (permissions, or locked by another program) =
+# a terminating error, nothing adopted: the read uses -ErrorAction Stop, so it
+# throws whatever the caller's $ErrorActionPreference is. Without that, a caller
+# running under 'Continue' would get a non-terminating error and the function
+# would carry on as if the file were empty. This is the twin of daaf_lib.sh's
+# non-zero return.
+#
+# PROVENANCE: every key this function adopts from the file is added (once) to the
+# script-scoped $script:DaafKeysFromFile list -- the PowerShell twin of daaf_lib.sh's
+# _DAAF_KEYS_FROM_FILE. Keys that were already set when the loader ran (a user's
+# own $env: value, or one adopted by an earlier call) are not re-adopted and so are
+# not re-recorded. Sync-DaafSettingsFile (below) uses that record to re-read an
+# edited file without a second hardcoded key list, so $known stays the single
+# source of truth. The tracker is read through Get-Variable so a first call under
+# the caller's Set-StrictMode never touches a never-assigned variable.
 function Import-DaafSettingsFile {
     [CmdletBinding()]
     param(
@@ -108,11 +130,17 @@ function Import-DaafSettingsFile {
 
     $known = @('DAAF_PROJECT_NAME', 'DAAF_PORT_MARIMO', 'DAAF_PORT_LOGVIEWER', 'DAAF_PORT_VSCODE', 'DAAF_DEV', 'DAAF_BRANCH', 'DAAF_DATA_VOLUME_NAME')
 
+    $tracked = @()
+    $trackerVar = Get-Variable -Name 'DaafKeysFromFile' -Scope Script -ErrorAction SilentlyContinue
+    if ($null -ne $trackerVar -and $null -ne $trackerVar.Value) { $tracked = @($trackerVar.Value) }
+
     # -Encoding UTF8 pins BOM-less UTF-8 decoding: a bare Get-Content on Windows
     # PowerShell 5.1 misreads BOM-less UTF-8 as legacy ANSI (cp1252), corrupting
     # any non-ASCII value. The write side (Set-DaafSettingsKey) is BOM-less UTF-8,
     # so reads must be pinned to match. Harmless on PS 7 (UTF-8 by default).
-    foreach ($rawLine in (Get-Content -LiteralPath $SettingsFile -Encoding UTF8)) {
+    # -ErrorAction Stop: an unreadable file throws here, before anything is
+    # adopted and before the tracker below is written (see PRECEDENCE above).
+    foreach ($rawLine in (Get-Content -LiteralPath $SettingsFile -Encoding UTF8 -ErrorAction Stop)) {
         $line = $rawLine -replace "`r", ""
         $trimmed = $line.Trim()
         if ($trimmed -eq "" -or $trimmed.StartsWith("#")) { continue }
@@ -137,8 +165,56 @@ function Import-DaafSettingsFile {
         $current = [Environment]::GetEnvironmentVariable($key, "Process")
         if ([string]::IsNullOrEmpty($current)) {
             Set-Item -Path ("Env:" + $key) -Value $val
+            # Record the adoption once (a duplicate KEY= line whose first value
+            # was empty is adopted again but never listed twice).
+            if ($tracked -notcontains $key) { $tracked += $key }
         }
     }
+
+    $script:DaafKeysFromFile = $tracked
+}
+
+# --- Settings Reload (after environment_settings.txt was edited) ---
+# PowerShell counterpart to daaf_lib.sh reload_daaf_settings. Re-read
+# environment_settings.txt in a long-running session (the Control Panel) so edited
+# DAAF_* values take effect. Calling Import-DaafSettingsFile a second time is NOT
+# enough: its "already-set env wins" rule would keep every value it adopted on the
+# first call, so a changed DAAF_PORT_MARIMO would be ignored by compose
+# interpolation while env_file handed the container the new value.
+#
+# Design (no second key list): remove exactly the keys recorded in
+# $script:DaafKeysFromFile, clear the record, and import again. Values the user set
+# before launching were never recorded, so they still win. A key deleted from the
+# file ends up unset, so the docker-compose.yml default applies again. Any key
+# added to $known later takes part automatically. Only DAAF_* names are ever
+# removed (defense in depth; the tracker is only written by the whitelist path).
+#
+# Throws what Import-DaafSettingsFile throws: a terminating error when the file
+# exists but cannot be read. The tracked keys are removed BEFORE the read, so on
+# that failure they stay unset and the tracker stays empty. A caller that must
+# keep its settings (the Control Panel's Restart Container) snapshots them first
+# and restores them on failure.
+#
+# Named Sync- (an approved verb outside PSScriptAnalyzer's
+# PSUseShouldProcessForStateChangingFunctions list) rather than Update-/Reset-,
+# which would demand SupportsShouldProcess ceremony for an in-process env refresh.
+# Strict-clean: the tracker is read through Get-Variable, never as a bare variable.
+function Sync-DaafSettingsFile {
+    [CmdletBinding()]
+    param(
+        [string]$SettingsFile = "./environment_settings.txt"
+    )
+
+    $trackerVar = Get-Variable -Name 'DaafKeysFromFile' -Scope Script -ErrorAction SilentlyContinue
+    if ($null -ne $trackerVar -and $null -ne $trackerVar.Value) {
+        foreach ($key in @($trackerVar.Value)) {
+            if ($key -like 'DAAF_*') {
+                Remove-Item -Path ("Env:" + $key) -ErrorAction SilentlyContinue
+            }
+        }
+    }
+    $script:DaafKeysFromFile = @()
+    Import-DaafSettingsFile -SettingsFile $SettingsFile
 }
 
 # --- Data Volume Name Resolver ---

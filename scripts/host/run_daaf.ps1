@@ -157,7 +157,9 @@ if ($Running -eq 0) {
                 if ($EnvModified -gt $ContainerStart) {
                     Write-Host ""
                     Write-Host "NOTE: Your environment_settings.txt file has been modified since this container was started." -ForegroundColor Yellow
-                    Write-Host "      To apply environment_settings.txt changes, close all DAAF sessions, then run:"
+                    Write-Host "      To apply environment_settings.txt changes, close all DAAF sessions, then choose"
+                    Write-Host "      `"Restart Container`" in the DAAF Control Panel (.\daaf.ps1), which does this for you."
+                    Write-Host "      Or run these commands yourself:"
                     Write-Host "        docker compose down"
                     Write-Host "        .\run_daaf.ps1"
                 }

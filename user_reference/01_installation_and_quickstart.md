@@ -330,6 +330,7 @@ The DAAF Control Panel is your launcher for any DAAF-related tools, but you can 
 | View session logs | `bash view_logs.sh` | `.\view_logs.ps1` |
 | Back up research | `bash backup_daaf.sh` | `.\backup_daaf.ps1` |
 | Update DAAF | `bash update_daaf.sh` | `.\update_daaf.ps1` |
+| Apply `environment_settings.txt` changes | Control Panel → **Restart Container** (or `docker compose down` → `bash run_daaf.sh`; single install — see [multi-instance](#running-multiple-daaf-instances)) | Control Panel → **Restart Container** (or `docker compose down` → `.\run_daaf.ps1`; single install — see [multi-instance](#running-multiple-daaf-instances)) |
 
 ---
 
@@ -835,7 +836,7 @@ irm https://raw.githubusercontent.com/DAAF-Contribution-Community/daaf/main/scri
 
 (These four variables are documented in `environment_settings_example.txt`. Any free ports work — the numbers above are just an example offset by 100. On macOS/Linux the `export` is what lets the values carry through the pipe into the installer; on Windows `$env:` values are process-scoped and carry through automatically.)
 
-After the install, `environment_settings.txt` in that second folder is the permanent home for these values — the installer seeded them there for you. To change them later, edit that file and recreate the container:
+After the install, `environment_settings.txt` in that second folder is the permanent home for these values — the installer seeded them there for you. To change them later, edit that file and recreate the container — choose **Restart Container** in that install's DAAF Control Panel (or, by hand):
 
 ```
 docker compose down
@@ -847,7 +848,7 @@ The DAAF launcher and control-panel scripts (`run_daaf`, `daaf`, the `view_*` br
 
 > **If you run bare `docker compose` commands directly** (outside the provided scripts) in a multi-instance folder, you must also create a `.env` file in that `daaf-docker` folder containing the same `DAAF_PROJECT_NAME` / `DAAF_PORT_*` lines. Docker Compose reads `.env` (and your shell environment) when resolving the `${...}` placeholders in `docker-compose.yml`, but it does **not** read `environment_settings.txt` for that purpose — that file only feeds the container's own environment. The DAAF scripts bridge this gap for you; bare `docker compose` does not.
 
-> **Changing these on an existing install** requires the same `docker compose down` + relaunch: the project name and published ports are baked in at container-creation time, so a running container will not adopt new values until it is recreated. Your data volume moves with the project name — renaming `DAAF_PROJECT_NAME` on an existing install points it at a *different* (empty) volume, so choose the name once, up front.
+> **Changing these on an existing install** requires recreating the container: the project name and published ports are baked in at container-creation time, so a running container will not adopt new values until it is recreated. For the ports, choose **Restart Container** in the DAAF Control Panel (or, by hand: `docker compose down`, then relaunch as above). Restart Container refuses a project-name change made in `environment_settings.txt`, for the reason that follows. Your data volume moves with the project name — renaming `DAAF_PROJECT_NAME` on an existing install points it at a *different* (empty) volume, so choose the name once, up front.
 
 ### Sharing One Research Workspace Across Two Installs (Advanced)
 
@@ -993,7 +994,7 @@ Your `daaf-docker` folder includes an `environment_settings_example.txt` templat
    ```
    Replace `your_openrouter_api_key_here` with your actual OpenRouter API key (format: `sk-or-v1-...`). Get one at [openrouter.ai/settings/keys](https://openrouter.ai/settings/keys). Note that `ANTHROPIC_API_KEY=` must be set to an empty value (not removed entirely) — this tells Claude Code to use the auth token instead of trying to authenticate directly with Anthropic.
 
-3. **Restart the container** to pick up the changes:
+3. **Restart the container** to pick up the changes: choose **Restart Container** in the DAAF Control Panel (or, by hand):
    ```bash
    docker compose down
    bash run_daaf.sh            # macOS / Linux
@@ -1093,7 +1094,7 @@ The two-tier routing described above works identically: map `ANTHROPIC_DEFAULT_O
 >
 > **GPT-6 Astra.** OpenAI's GPT-6 flagship (slug `openai/gpt-6-astra`) also runs on this route as a strong-tier option, with the same 1,050,000-token window (128,000-token max output). It joins DAAF's validated extended-horizon threshold profile at Sol parity (60%/300k, 75%/400k, 90%/500k). Pricing is $10 / $50 per M tokens in/out on standard context, rising to $20 / $75 above the 272k-input long-context threshold. One behavioral caveat: Astra does not support reasoning-effort `none` — the shim clamps a requested `none` to `low` for Astra. Since 2026-09-29, by user policy decision rather than validation, DAAF reads any flagship `-pro` slug (e.g. `openai/gpt-6-astra-pro`) with the same window and thresholds as its non-pro base, and treats `openai/gpt-6-sol` like `gpt-5.6-sol` and `openai/gpt-6-luna` like `gpt-5.6-luna`. The `-pro` cost caveat above still applies. The 2026-09-29 retest saw no prompt-length wall up to about 943,000 reported tokens (`gpt-6-astra-pro` untested), which is consistent with the catalogue's 1,050,000-token window, though that exact ceiling was not itself observed. DAAF's threshold reading does not correct for the `-pro` slugs' inflated token accounting, so warnings arrive earlier in real content terms.
 
-**Restart the container** (`docker compose down`, then `bash run_daaf.sh`) to pick up the changes. No rebuild is needed for OpenRouter — it is config-only.
+**Restart the container** to pick up the changes: choose **Restart Container** in the DAAF Control Panel (or, by hand: `docker compose down`, then `bash run_daaf.sh` / `.\run_daaf.ps1`). No rebuild is needed for OpenRouter — it is config-only.
 
 #### Option F: OpenAI API directly (DAAF provider shim)
 
@@ -1169,7 +1170,7 @@ Mirroring OpenAI Codex's "Fast mode" and API "Priority mode", you can turn on an
 CLAUDE_CODE_DISABLE_FAST_MODE=1
 ```
 
-Then rebuild the container (`bash daaf.sh` / `.\daaf.ps1` and select the Rebuild option), and start a **new Claude Code session** afterwards.
+Then recreate the container: choose **Restart Container** in the DAAF Control Panel (or, by hand: `docker compose down`, then `bash run_daaf.sh` / `.\run_daaf.ps1`), and start a **new Claude Code session** afterwards. No image rebuild is needed for this setting.
 
 **Then run the appropriate fast command for the shim** to check the current state, turn the boost on, or turn it off:
 
@@ -1198,7 +1199,7 @@ From the Claude Code prompt window, you can prefix the same command with `!`, fo
 
 *Why it matters:* the declaration keeps Claude Code and DAAF measuring utilization against the same real window. DAAF does **not** use `CLAUDE_CODE_AUTO_COMPACT_WINDOW` — automatic compaction stays off because it can disrupt orchestration. If a GPT session reports "Context limit reached" / "Prompt is too long" at low utilization, see the [technical FAQ entry on low-utilization context errors](07_faq_technical.md#q-my-gpt-session-says-context-limit-reached--prompt-is-too-long-at-low-utilization).
 
-**Optional 64K Claude Code output budget.** Claude Code defaults `CLAUDE_CODE_MAX_OUTPUT_TOKENS` to `32000` and supports a maximum of `64000`. If unusually long specialist work is being cut off, you may opt in by adding the plain decimal `CLAUDE_CODE_MAX_OUTPUT_TOKENS=64000` (the form supported by the pinned Claude Code 2.1.281) to the **host** `daaf-docker/environment_settings.txt` before Claude Code/the container starts, then recreate the container through the normal host flow. This is not free context: thinking tokens count toward the output budget, and raising the reservation leaves less context for conversation history and tool results, which can cause DAAF's context-pressure stop/restart guidance to fire earlier. Your provider or selected model may enforce a lower limit regardless. Keep specialist final returns bounded even with 64K enabled; prefer the default `32000` unless you have a concrete truncation problem. See the [technical FAQ entry](07_faq_technical.md#q-how-do-i-opt-in-to-a-64k-claude-code-output-budget) for the tradeoff summary.
+**Optional 64K Claude Code output budget.** Claude Code defaults `CLAUDE_CODE_MAX_OUTPUT_TOKENS` to `32000` and supports a maximum of `64000`. If unusually long specialist work is being cut off, you may opt in by adding the plain decimal `CLAUDE_CODE_MAX_OUTPUT_TOKENS=64000` (the form supported by the pinned Claude Code 2.1.281) to the **host** `daaf-docker/environment_settings.txt` before Claude Code/the container starts, then recreate the container with **Restart Container** in the DAAF Control Panel (or, by hand: `docker compose down`, then `bash run_daaf.sh` / `.\run_daaf.ps1`). This is not free context: thinking tokens count toward the output budget, and raising the reservation leaves less context for conversation history and tool results, which can cause DAAF's context-pressure stop/restart guidance to fire earlier. Your provider or selected model may enforce a lower limit regardless. Keep specialist final returns bounded even with 64K enabled; prefer the default `32000` unless you have a concrete truncation problem. See the [technical FAQ entry](07_faq_technical.md#q-how-do-i-opt-in-to-a-64k-claude-code-output-budget) for the tradeoff summary.
 
 ##### Under the hood / troubleshooting reference (Option F)
 
@@ -1256,7 +1257,7 @@ If that reports `codex: command not found`, your image predates the universal in
    CLAUDE_CODE_MAX_CONTEXT_TOKENS=919000
    ```
    In this mode `OPENAI_API_KEY` / `SHIM_BACKEND_API_KEY` are **ignored** — the OAuth token is the credential. Codex availability alone does not select this lane; both `DAAF_PROVIDER_SHIM=openai` and `SHIM_BACKEND_MODE=chatgpt` are explicit opt-ins. **Note the `CLAUDE_CODE_MAX_CONTEXT_TOKENS=919000`** above: unlike the API-key lane's full `1050000`, the ChatGPT/Codex backend caps input at 919,000 tokens (measured 2026-09-05 for both `gpt-5.6-sol` and `gpt-6-astra`), independent of the model's true 1M window on the API route — and no `[1m]` hint or client setting can raise it. For `gpt-6-sol` and `gpt-6-luna`, DAAF applies the same 919,000 cap by policy (inferred, not measured), and whether the subscription backend serves those two slugs has not been tested; if it rejects them, use `gpt-5.6-sol[1m]` / `gpt-5.6-luna[1m]`. Declaring `919000` keeps Claude Code and DAAF's utilization accounting aligned with that ceiling; a breach surfaces as a clean `invalid_request_error` (`context_length_exceeded`). Re-measure with `scripts/provider_shim/probe_context_ceiling.py` if OpenAI changes the backend.
-5. **Recreate the container** to apply (`docker compose down`, then `bash run_daaf.sh` / `.\run_daaf.ps1`). The shim reads `SHIM_BACKEND_MODE` at startup.
+5. **Recreate the container** to apply: choose **Restart Container** in the DAAF Control Panel (or, by hand: `docker compose down`, then `bash run_daaf.sh` / `.\run_daaf.ps1`). The shim reads `SHIM_BACKEND_MODE` at startup. If this is the first time you have turned the shim on, choose **Rebuild Container** instead, as in [Step 2 of the API-key lane](#option-f-openai-api-directly-daaf-provider-shim).
 
 **Confirm it's working.** After the container comes back up, check the shim log:
 
@@ -1352,7 +1353,7 @@ Then open `environment_settings.txt` in any text editor and uncomment/fill in th
 HARVARD_DATAVERSE_API_KEY=your_token_here
 ```
 
-The `environment_settings.txt` file is loaded automatically when the container starts. Edits to `environment_settings.txt` are not applied while the container is running — you need to recreate it to pick up changes:
+The `environment_settings.txt` file is applied automatically when the container is created. Edits to `environment_settings.txt` are not applied while the container is running — you need to recreate it to pick up changes. Choose **Restart Container** in the DAAF Control Panel (or, by hand):
 
 ```bash
 docker compose down
@@ -1400,14 +1401,14 @@ If you skip this step and later try to analyze election data, DAAF will inform y
 - **"service "daaf-docker" is not running"** — Make sure Docker Desktop is running and that you've started the container. The `run_daaf` script handles this automatically, but you can also confirm the container is running in the Docker Desktop app Containers panel on the left-side toolbar. If the container isn't listed, try running the installer again.
 - **Container seems really slow to build the first time** — The initial installation downloads base images and installs all packages. This is a one-time cost — subsequent starts are fast since Docker caches everything.
 - **"I can't find my research files on my computer"** — With Docker volumes, your research files live inside Docker's managed storage, not in the project folder on your computer. See **How to Manage DAAF Project Files and Output** above for more information.
-- **"Port 2718 already in use" when trying to view Marimo notebooks** — Another process is using that port. Either stop it, or move DAAF's notebook port by setting `DAAF_PORT_MARIMO` (e.g. `DAAF_PORT_MARIMO=3718`) in your `daaf-docker` folder's `environment_settings.txt`, then recreate the container (`docker compose down`, then `bash run_daaf.sh` / `.\run_daaf.ps1`). Prefer this over hand-editing `docker-compose.yml` — updates and rebuilds regenerate that file and would discard a manual port change.
+- **"Port 2718 already in use" when trying to view Marimo notebooks** — Another process is using that port. Either stop it, or move DAAF's notebook port by setting `DAAF_PORT_MARIMO` (e.g. `DAAF_PORT_MARIMO=3718`) in your `daaf-docker` folder's `environment_settings.txt`, then recreate the container: choose **Restart Container** in the DAAF Control Panel (or, by hand: `docker compose down`, then `bash run_daaf.sh` / `.\run_daaf.ps1`). Prefer this over hand-editing `docker-compose.yml` — updates and rebuilds regenerate that file and would discard a manual port change.
 - **"Port 2719 already in use" when trying to view session logs** — Same fix: stop the conflicting process, or set `DAAF_PORT_LOGVIEWER` (e.g. `DAAF_PORT_LOGVIEWER=3719`) in `environment_settings.txt` and recreate the container. Port 2719 is used by the DAAF Log Explorer (`generate_log_viewer.sh`).
 - **"Port 2720 already in use" when trying to open the browser-based code editor** — Same fix: stop the conflicting process, or set `DAAF_PORT_VSCODE` (e.g. `DAAF_PORT_VSCODE=3720`) in `environment_settings.txt` and recreate the container. Port 2720 is used by the browser-based code editor (`run_vscode.sh` / `run_vscode.ps1`).
 - **Permission denied errors inside the container (especially on macOS)** — If you see errors like `Permission denied` when Claude tries to read or write files, the Docker volume likely has files owned by root or your host UID instead of the container's `appuser` (UID 1000). This is a known issue with Docker Desktop on macOS. The `docker-compose.yml` includes an init service (`daaf-init`) that automatically fixes file ownership on every startup. To resolve this: stop the container (`docker compose down`), then restart it (`docker compose up -d`) — the init service will repair permissions before the main container starts. If you still have issues, you can fix permissions manually:
   ```bash
   docker run --rm -v "daaf_daaf-data:/daaf" busybox chown -R 1000:1000 /daaf
   ```
-- **Claude Code asks me to log in again** — This should be rare. Claude Code's authentication state lives in a dedicated Docker volume (`daaf-claude-config`, mounted at `/home/appuser/.claude`, with `CLAUDE_CONFIG_DIR` pointing there so credentials and `~/.claude.json` land in it too). That volume persists across container restarts, `docker compose down`, and image rebuilds — so a normal restart or update should not lose your login. If you *are* prompted to log in again after a routine restart, just complete `/login` once; it will persist from then on. Two things to know: (1) running `docker compose down -v` (note the `-v`) or manually deleting the volume erases this state — avoid `-v` unless you intend to wipe everything; (2) if you prefer key-based auth that never needs an interactive login, configure your credentials in the `environment_settings.txt` file (see [**Configure authentication via environment_settings.txt**](#configure-authentication-via-environment_settingstxt) above), which sets authentication from the environment on every start.
+- **Claude Code asks me to log in again** — This should be rare. Claude Code's authentication state lives in a dedicated Docker volume (`daaf-claude-config`, mounted at `/home/appuser/.claude`, with `CLAUDE_CONFIG_DIR` pointing there so credentials and `~/.claude.json` land in it too). That volume persists across container restarts, `docker compose down`, and image rebuilds — so a normal restart or update should not lose your login. If you *are* prompted to log in again after a routine restart, just complete `/login` once; it will persist from then on. Two things to know: (1) running `docker compose down -v` (note the `-v`) or manually deleting the volume erases this state — avoid `-v` unless you intend to wipe everything; (2) if you prefer key-based auth that never needs an interactive login, configure your credentials in the `environment_settings.txt` file (see [**Configure authentication via environment_settings.txt**](#configure-authentication-via-environment_settingstxt) above), which sets authentication from the environment. That file is applied when the container is created, so after editing it choose **Restart Container** in the DAAF Control Panel (or, by hand: `docker compose down`, then `bash run_daaf.sh` / `.\run_daaf.ps1`); a plain `docker compose restart` does not pick up the change.
 - **OpenRouter: "model not found" or authentication errors** — Double-check three things: (1) `ANTHROPIC_BASE_URL` must be exactly `https://openrouter.ai/api` with no `/v1` suffix (the `/v1` variant is for OpenAI-compatible tools, not Claude Code), (2) your OpenRouter key must be in `ANTHROPIC_AUTH_TOKEN`, with `ANTHROPIC_API_KEY` set to an empty value (`ANTHROPIC_API_KEY=`), not removed entirely — if it's unset, Claude Code falls back to Anthropic's servers, and (3) if you previously logged in with Anthropic interactively, run `/logout` inside Claude Code to clear cached credentials. You can verify your connection is working by typing `/status` inside Claude Code and checking the [OpenRouter Activity Dashboard](https://openrouter.ai/activity) for incoming requests.
 
 ---

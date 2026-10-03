@@ -17,6 +17,11 @@ setup() {
 }
 
 teardown() {
+    # The unreadable-settings loader tests chmod the fixture to 000; give it its
+    # permissions back so the fixture tree is left in a normal state for removal.
+    if [ -e "${TEST_DIR}/environment_settings.txt" ]; then
+        chmod 644 "${TEST_DIR}/environment_settings.txt" 2>/dev/null || true
+    fi
     common_teardown
 }
 
@@ -486,6 +491,295 @@ teardown() {
     '
     assert_success
     assert_output --partial "NAME=UNSET"
+}
+
+@test "load_daaf_settings returns non-zero on an unreadable file and adopts nothing" {
+    # An existing file that cannot be opened must be a tested failure, not a
+    # silent no-op: under `set -e`, a caller's `if ! load_daaf_settings` runs the
+    # loader with errexit off, so only an explicit non-zero return reaches it.
+    # Nothing is adopted (the read never starts), so the env and tracker are
+    # exactly as before the call; an exported value is untouched.
+    printf 'DAAF_PROJECT_NAME=fromfile\nDAAF_PORT_MARIMO=3001\n' > "${TEST_DIR}/environment_settings.txt"
+    chmod 000 "${TEST_DIR}/environment_settings.txt"
+    if [ -r "${TEST_DIR}/environment_settings.txt" ]; then
+        skip "chmod 000 does not block reads here (running as root?) -- cannot stage an unreadable settings file"
+    fi
+    run bash -c '
+        set -Eeuo pipefail
+        trap "echo \"ERR_TRAP: \${BASH_COMMAND}\"" ERR
+        unset _DAAF_LIB_LOADED DAAF_PROJECT_NAME DAAF_PORT_MARIMO
+        source "'"${REPO_ROOT}"'/scripts/host/daaf_lib.sh"
+        export DAAF_DEV=7
+        if load_daaf_settings "./environment_settings.txt"; then
+            echo "RC=0"
+        else
+            echo "RC=nonzero"
+        fi
+        echo "NAME=${DAAF_PROJECT_NAME:-UNSET}"
+        echo "PORT=${DAAF_PORT_MARIMO:-UNSET}"
+        echo "DEV=${DAAF_DEV}"
+        echo "TRACKED=[${_DAAF_KEYS_FROM_FILE}]"
+    '
+    assert_success
+    assert_output --partial "RC=nonzero"
+    assert_output --partial "NAME=UNSET"
+    assert_output --partial "PORT=UNSET"
+    assert_output --partial "DEV=7"
+    assert_output --partial "TRACKED=[]"
+    # Tested in a condition, the failure never reaches the ERR trap.
+    refute_output --partial "ERR_TRAP"
+    # The open check is silent: the caller prints its own message, so bash's raw
+    # redirection error must not appear above it.
+    refute_output --partial "Permission denied"
+}
+
+@test "load_daaf_settings on an unreadable file returns a status in POSIX mode (POSIXLY_CORRECT)" {
+    # The silent open check must use a regular builtin (`true`), not `:`: in
+    # POSIX mode a redirection error on a special builtin exits the whole shell
+    # silently, so the caller never gets to print its message.
+    printf 'DAAF_PORT_MARIMO=3001\n' > "${TEST_DIR}/environment_settings.txt"
+    chmod 000 "${TEST_DIR}/environment_settings.txt"
+    if [ -r "${TEST_DIR}/environment_settings.txt" ]; then
+        skip "chmod 000 does not block reads here (running as root?) -- cannot stage an unreadable settings file"
+    fi
+    run env POSIXLY_CORRECT=1 bash -c '
+        set -Eeuo pipefail
+        unset _DAAF_LIB_LOADED DAAF_PORT_MARIMO
+        source "'"${REPO_ROOT}"'/scripts/host/daaf_lib.sh"
+        if load_daaf_settings "./environment_settings.txt"; then
+            echo "RC=0"
+        else
+            echo "RC=nonzero"
+        fi
+        echo "AFTER_CALL_REACHED"
+    '
+    assert_success
+    assert_output --partial "RC=nonzero"
+    assert_output --partial "AFTER_CALL_REACHED"
+    refute_output --partial "Permission denied"
+}
+
+@test "load_daaf_settings on an unreadable file still stops a plain set -e caller" {
+    # A caller that runs the loader unguarded is still ended by the non-zero
+    # return under `set -e`. The open check is silent, so such a caller exits
+    # without bash's raw "Permission denied" line -- and without any message.
+    # That is why every shipped caller tests the result and explains the failure
+    # itself (daaf.sh, view_quarto.sh, view_notebooks.sh, view_logs.sh,
+    # run_vscode.sh; each suite pins its message).
+    printf 'DAAF_PORT_MARIMO=3001\n' > "${TEST_DIR}/environment_settings.txt"
+    chmod 000 "${TEST_DIR}/environment_settings.txt"
+    if [ -r "${TEST_DIR}/environment_settings.txt" ]; then
+        skip "chmod 000 does not block reads here (running as root?) -- cannot stage an unreadable settings file"
+    fi
+    run bash -c '
+        set -euo pipefail
+        unset _DAAF_LIB_LOADED
+        source "'"${REPO_ROOT}"'/scripts/host/daaf_lib.sh"
+        load_daaf_settings "./environment_settings.txt"
+        echo "SHOULD_NOT_PRINT"
+    '
+    assert_failure
+    refute_output --partial "Permission denied"
+    refute_output --partial "SHOULD_NOT_PRINT"
+}
+
+@test "load_daaf_settings silences only the failed open, not later errors" {
+    # The 2>/dev/null is scoped to the open check alone. A copy of the library
+    # gets one extra stderr line just after that check (a stand-in for any
+    # loader bug); it must reach the caller, and the load must still succeed.
+    # The source-file seam (sed on a unique source line) does not depend on how
+    # `declare -f` formats the body, which differs across bash versions.
+    printf 'DAAF_PORT_MARIMO=3001\n' > "${TEST_DIR}/environment_settings.txt"
+    sed 's/^    local key val line$/    local key val line; echo "INJECTED_LOADER_STDERR" >\&2/' \
+        "${REPO_ROOT}/scripts/host/daaf_lib.sh" > "${TEST_DIR}/lib_injected.sh"
+    [ "$(grep -c 'INJECTED_LOADER_STDERR' "${TEST_DIR}/lib_injected.sh")" -eq 1 ]
+    run bash -c '
+        set -Eeuo pipefail
+        trap "echo \"ERR_TRAP: \${BASH_COMMAND}\"" ERR
+        unset _DAAF_LIB_LOADED DAAF_PORT_MARIMO
+        source "./lib_injected.sh"
+        if load_daaf_settings "./environment_settings.txt"; then
+            echo "RC=0"
+        else
+            echo "RC=nonzero"
+        fi
+        echo "PORT=${DAAF_PORT_MARIMO:-UNSET}"
+    '
+    assert_success
+    assert_output --partial "INJECTED_LOADER_STDERR"
+    assert_output --partial "RC=0"
+    assert_output --partial "PORT=3001"
+    refute_output --partial "ERR_TRAP"
+}
+
+@test "load_daaf_settings does not hide an unbound-variable bug from a guarded caller" {
+    # The shape a closing review found hidden: a nounset error inside the loader,
+    # called as `if ! load_daaf_settings`. Bash ends the script on it either way;
+    # the error text must be visible, and the caller's "cannot read" branch must
+    # not run in its place.
+    printf 'DAAF_PORT_MARIMO=3001\n' > "${TEST_DIR}/environment_settings.txt"
+    sed 's/^    local key val line$/    local key val line; : "${_DAAF_TEST_INJECTED_UNBOUND}"/' \
+        "${REPO_ROOT}/scripts/host/daaf_lib.sh" > "${TEST_DIR}/lib_injected.sh"
+    [ "$(grep -c '_DAAF_TEST_INJECTED_UNBOUND' "${TEST_DIR}/lib_injected.sh")" -eq 1 ]
+    run bash -c '
+        set -Eeuo pipefail
+        unset _DAAF_LIB_LOADED _DAAF_TEST_INJECTED_UNBOUND
+        source "./lib_injected.sh"
+        if ! load_daaf_settings "./environment_settings.txt"; then
+            echo "CALLER_SAYS_CANNOT_READ"
+        fi
+        echo "SHOULD_NOT_PRINT"
+    '
+    assert_failure
+    assert_output --partial "_DAAF_TEST_INJECTED_UNBOUND: unbound variable"
+    refute_output --partial "CALLER_SAYS_CANNOT_READ"
+    refute_output --partial "SHOULD_NOT_PRINT"
+}
+
+# =========================================================================
+# Settings provenance + reload (reload_daaf_settings)
+# =========================================================================
+# load_daaf_settings records which keys it adopted FROM THE FILE in
+# _DAAF_KEYS_FROM_FILE; reload_daaf_settings unsets exactly those and reloads,
+# so an edited file takes effect while user-exported values keep winning.
+
+@test "reload_daaf_settings picks up a value changed in the file after the first load" {
+    printf 'DAAF_PORT_MARIMO=3001\n' > "${TEST_DIR}/environment_settings.txt"
+    run bash -c '
+        unset _DAAF_LIB_LOADED DAAF_PORT_MARIMO
+        source "'"${REPO_ROOT}"'/scripts/host/daaf_lib.sh"
+        load_daaf_settings
+        echo "FIRST=${DAAF_PORT_MARIMO}"
+        printf "DAAF_PORT_MARIMO=3002\n" > ./environment_settings.txt
+        load_daaf_settings
+        echo "PLAIN_RELOAD=${DAAF_PORT_MARIMO}"
+        reload_daaf_settings
+        echo "AFTER_RELOAD=${DAAF_PORT_MARIMO}"
+    '
+    assert_success
+    assert_output --partial "FIRST=3001"
+    # A plain second load keeps the first value (already-set wins) -- the reason
+    # reload_daaf_settings exists.
+    assert_output --partial "PLAIN_RELOAD=3001"
+    assert_output --partial "AFTER_RELOAD=3002"
+}
+
+@test "reload_daaf_settings keeps a user-exported value winning over the file" {
+    printf 'DAAF_PROJECT_NAME=fromfile\n' > "${TEST_DIR}/environment_settings.txt"
+    run bash -c '
+        unset _DAAF_LIB_LOADED
+        source "'"${REPO_ROOT}"'/scripts/host/daaf_lib.sh"
+        export DAAF_PROJECT_NAME=fromshell
+        load_daaf_settings
+        printf "DAAF_PROJECT_NAME=edited\n" > ./environment_settings.txt
+        reload_daaf_settings
+        echo "NAME=${DAAF_PROJECT_NAME}"
+        echo "TRACKED=[${_DAAF_KEYS_FROM_FILE}]"
+    '
+    assert_success
+    assert_output --partial "NAME=fromshell"
+    # The user export was never adopted from the file, so it is never recorded.
+    assert_output --partial "TRACKED=[]"
+}
+
+@test "reload_daaf_settings unsets a key that was removed from the file" {
+    printf 'DAAF_PORT_VSCODE=3020\n' > "${TEST_DIR}/environment_settings.txt"
+    run bash -c '
+        unset _DAAF_LIB_LOADED DAAF_PORT_VSCODE
+        source "'"${REPO_ROOT}"'/scripts/host/daaf_lib.sh"
+        load_daaf_settings
+        printf "# DAAF_PORT_VSCODE removed\n" > ./environment_settings.txt
+        reload_daaf_settings
+        echo "PORT=${DAAF_PORT_VSCODE:-UNSET}"
+    '
+    assert_success
+    assert_output --partial "PORT=UNSET"
+}
+
+@test "load_daaf_settings tracks only file-adopted keys, without duplicates" {
+    # DAAF_DEV is pre-exported (not adopted); DAAF_PORT_MARIMO appears twice with an
+    # empty first value, so it is adopted twice but must be listed once.
+    printf 'DAAF_PROJECT_NAME=inst\nDAAF_PORT_MARIMO=\nDAAF_PORT_MARIMO=3001\nDAAF_DEV=1\n' \
+        > "${TEST_DIR}/environment_settings.txt"
+    run bash -c '
+        unset _DAAF_LIB_LOADED DAAF_PROJECT_NAME DAAF_PORT_MARIMO
+        source "'"${REPO_ROOT}"'/scripts/host/daaf_lib.sh"
+        export DAAF_DEV=0
+        load_daaf_settings
+        load_daaf_settings
+        reload_daaf_settings
+        load_daaf_settings
+        echo "TRACKED=[${_DAAF_KEYS_FROM_FILE}]"
+        echo "PORT=${DAAF_PORT_MARIMO}"
+        echo "DEV=${DAAF_DEV}"
+    '
+    assert_success
+    assert_output --partial "TRACKED=[DAAF_PROJECT_NAME DAAF_PORT_MARIMO]"
+    assert_output --partial "PORT=3001"
+    assert_output --partial "DEV=0"
+}
+
+@test "reload_daaf_settings propagates a read failure (tracked keys stay unset)" {
+    # The reload unsets the file-adopted keys BEFORE it reads, so on a read
+    # failure they stay unset and the tracker stays empty; a user-exported value
+    # (never tracked) keeps its value. Callers that must keep their settings
+    # snapshot first (daaf.sh handle_restart) -- this test pins what they undo.
+    printf 'DAAF_PORT_MARIMO=3001\n' > "${TEST_DIR}/environment_settings.txt"
+    chmod 000 "${TEST_DIR}/environment_settings.txt"
+    if [ -r "${TEST_DIR}/environment_settings.txt" ]; then
+        skip "chmod 000 does not block reads here (running as root?) -- cannot stage an unreadable settings file"
+    fi
+    chmod 644 "${TEST_DIR}/environment_settings.txt"
+    run bash -c '
+        set -Eeuo pipefail
+        trap "echo \"ERR_TRAP: \${BASH_COMMAND}\"" ERR
+        unset _DAAF_LIB_LOADED DAAF_PORT_MARIMO
+        source "'"${REPO_ROOT}"'/scripts/host/daaf_lib.sh"
+        export DAAF_PROJECT_NAME=fromshell
+        load_daaf_settings
+        echo "BEFORE=${DAAF_PORT_MARIMO} TRACKED=[${_DAAF_KEYS_FROM_FILE}]"
+        chmod 000 ./environment_settings.txt
+        if reload_daaf_settings; then
+            echo "RC=0"
+        else
+            echo "RC=nonzero"
+        fi
+        echo "PORT=${DAAF_PORT_MARIMO:-UNSET}"
+        echo "NAME=${DAAF_PROJECT_NAME}"
+        echo "TRACKED=[${_DAAF_KEYS_FROM_FILE}]"
+    '
+    assert_success
+    assert_output --partial "BEFORE=3001 TRACKED=[DAAF_PORT_MARIMO]"
+    assert_output --partial "RC=nonzero"
+    assert_output --partial "PORT=UNSET"
+    assert_output --partial "NAME=fromshell"
+    assert_output --partial "TRACKED=[]"
+    refute_output --partial "ERR_TRAP"
+}
+
+@test "reload_daaf_settings only ever unsets DAAF_* names (tampered tracker)" {
+    run bash -c '
+        unset _DAAF_LIB_LOADED
+        source "'"${REPO_ROOT}"'/scripts/host/daaf_lib.sh"
+        _DAAF_KEYS_FROM_FILE="HOME DAAF_PORT_MARIMO"
+        export DAAF_PORT_MARIMO=1234
+        reload_daaf_settings
+        echo "HOME_SET=${HOME:+yes}"
+        echo "PORT=${DAAF_PORT_MARIMO:-UNSET}"
+    '
+    assert_success
+    assert_output --partial "HOME_SET=yes"
+    assert_output --partial "PORT=UNSET"
+}
+
+@test "daaf_lib.sh resets the provenance tracker at load (an inherited value is ignored)" {
+    run env _DAAF_KEYS_FROM_FILE="DAAF_PROJECT_NAME" bash -c '
+        unset _DAAF_LIB_LOADED
+        source "'"${REPO_ROOT}"'/scripts/host/daaf_lib.sh"
+        echo "TRACKED=[${_DAAF_KEYS_FROM_FILE}]"
+    '
+    assert_success
+    assert_output --partial "TRACKED=[]"
 }
 
 # =========================================================================

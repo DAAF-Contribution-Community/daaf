@@ -135,7 +135,9 @@ else
             if [ -n "${_ctr_epoch}" ] && [ -n "${_env_epoch}" ] && [ "${_env_epoch}" -gt "${_ctr_epoch}" ]; then
                 echo ""
                 echo "NOTE: Your environment_settings.txt file has been modified since this container was started."
-                echo "      To apply environment_settings.txt changes, close all DAAF sessions, then run:"
+                echo "      To apply environment_settings.txt changes, close all DAAF sessions, then choose"
+                echo "      \"Restart Container\" in the DAAF Control Panel (bash daaf.sh), which does this for you."
+                echo "      Or run these commands yourself:"
                 echo "        docker compose down"
                 echo "        bash run_daaf.sh"
             fi

@@ -32,13 +32,37 @@ $DaafScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 # Bridge environment_settings.txt's DAAF_* keys into the process environment so
 # `docker compose` interpolation resolves the project name and published host
 # ports. See Import-DaafSettingsFile in daaf_lib.ps1 for the full rationale.
-Import-DaafSettingsFile
+# An existing but unreadable file makes the loader throw. This runs before the
+# main loop's try/catch, so say what to fix (the same two lines daaf.sh prints)
+# instead of ending on a raw exception. The pause follows the main loop catch's
+# rule: not nested, not a dry run, and only in an interactive console.
+try {
+    Import-DaafSettingsFile
+} catch {
+    Write-Host "ERROR: Cannot read environment_settings.txt -- make sure it is not open in another program and that you have permission to read it." -ForegroundColor Red
+    Write-Host "Fix that (or move the file aside), then start the DAAF Control Panel again."
+    try { $startupPauseOk = [Environment]::UserInteractive -and (-not [Console]::IsInputRedirected) }
+    catch { $startupPauseOk = $false }
+    if ((-not $env:DAAF_NESTED) -and ($env:DAAF_DRY_RUN -ne "1") -and $startupPauseOk) {
+        $null = Read-DaafLine "Press Enter to close"
+    }
+    exit 1
+}
 
 # Host-facing ports for browser URLs and status display (default to the fixed
 # container ports so existing single-instance installs behave identically).
-$DaafPortMarimo = if ($env:DAAF_PORT_MARIMO) { $env:DAAF_PORT_MARIMO } else { "2718" }
-$DaafPortLogViewer = if ($env:DAAF_PORT_LOGVIEWER) { $env:DAAF_PORT_LOGVIEWER } else { "2719" }
-$DaafPortVscode = if ($env:DAAF_PORT_VSCODE) { $env:DAAF_PORT_VSCODE } else { "2720" }
+# A function so the Restart Container handler can recompute them after reloading
+# environment_settings.txt; it assigns $script: variables so a call from inside a
+# handler updates the values the menu and URL builders read. (Like daaf.sh's
+# PANEL_PORT_* values from set_panel_ports, these are separate variables from the
+# $env:DAAF_PORT_* values the loader fills, so a display default can never mask a
+# reloaded file value -- no defaults record needed.)
+function Initialize-DaafPortDisplay {
+    $script:DaafPortMarimo = if ($env:DAAF_PORT_MARIMO) { $env:DAAF_PORT_MARIMO } else { "2718" }
+    $script:DaafPortLogViewer = if ($env:DAAF_PORT_LOGVIEWER) { $env:DAAF_PORT_LOGVIEWER } else { "2719" }
+    $script:DaafPortVscode = if ($env:DAAF_PORT_VSCODE) { $env:DAAF_PORT_VSCODE } else { "2720" }
+}
+Initialize-DaafPortDisplay
 
 # --- Dry-Run Support ---
 # When DAAF_DRY_RUN=1, simulate Docker for CI cross-platform smoke testing
@@ -336,7 +360,8 @@ function Show-DaafMenu {
     Write-Host "    8) Restore from Backup"
     Write-Host "    9) Check for Updates"
     Write-Host "   10) Rebuild Container"
-    Write-Host "   11) Stop Web Services"
+    Write-Host "   11) Restart Container"
+    Write-Host "   12) Stop Web Services"
 
     Write-Host ""
 
@@ -401,12 +426,13 @@ function Invoke-DaafChoice {
         "8"  { Invoke-DaafRestore }
         "9"  { Invoke-DaafUpdate }
         "10" { Invoke-DaafRebuild }
-        "11" { Invoke-DaafServiceStop }
+        "11" { Invoke-DaafRestart }
+        "12" { Invoke-DaafServiceStop }
         { $_ -in @("h", "H") } { Show-DaafHelp }
         { $_ -in @("q", "Q") } { Invoke-DaafQuit; $script:DaafMenuRunning = $false }
         "" { }  # Empty input -- just redraw
         default {
-            Write-Host "  Invalid choice. Please enter a number (1-11), h, or q."
+            Write-Host "  Invalid choice. Please enter a number (1-12), h, or q."
         }
     }
 }
@@ -934,7 +960,317 @@ function Invoke-DaafUpdate  { Invoke-DaafDelegate "update_daaf.ps1" }
 function Invoke-DaafRebuild { Invoke-DaafDelegate "rebuild_daaf.ps1" }
 
 # ============================================================================
-# Handler: Stop Services (option 11)
+# Handler: Restart Container (option 11)
+# ============================================================================
+
+# PowerShell counterpart to daaf.sh handle_restart -- see that function for the
+# full rationale. In short: Docker Compose reads environment_settings.txt (an
+# env_file) only when it CREATES the container, so applying an edit takes
+# `docker compose down` + `docker compose up -d`; `docker compose restart` would
+# keep the old environment. Same order as the bash twin:
+#   1. confirm (default No);
+#   2. project-name guard before any docker command -- an unreadable settings
+#      file is caught by the guard's probe and reported, nothing changed;
+#   3. down with the CURRENT settings (never -v);
+#   4. Sync-DaafSettingsFile -- if the file can no longer be read, restore the
+#      pre-restart settings snapshot and stop (the container stays stopped);
+#   5. project re-check -- if the reloaded file now names a different project
+#      (edited or deleted while `down` ran), restore the snapshot and stop
+#      WITHOUT `up`, which would otherwise start a different install;
+#   6. Initialize-DaafPortDisplay -> up -d -> readiness poll (30 x 2s, as
+#      rebuild_daaf.ps1) -> verify.
+#
+# Runs IN-PROCESS (no Start-Process delegation): `docker compose down` / `up -d`
+# and the `exec -T` readiness checks are non-interactive, so they need no console
+# handle inheritance. Named Invoke- rather than Restart-: PSScriptAnalyzer's
+# PSUseShouldProcessForStateChangingFunctions would demand SupportsShouldProcess
+# on a Restart-* function, which is wrong ceremony for a menu handler that has its
+# own confirmation prompt (same reasoning as Invoke-DaafServiceStop).
+#
+# PROJECT-NAME GUARD: environment variables are process-wide, so there is no
+# subshell to probe in as the bash twin does. Instead the handler takes ONE
+# settings snapshot up front (Get-DaafSettingsSnapshot below), the probe runs
+# Sync-DaafSettingsFile to see which DAAF_PROJECT_NAME the edited file resolves
+# to, and `finally` restores the snapshot, so the panel's environment is unchanged
+# whichever way the check goes. The same snapshot is restored after `down` when
+# the reload fails or names a different project: Sync-DaafSettingsFile removes
+# the file-adopted keys BEFORE it reads the file, so a read that throws part-way
+# would otherwise leave DAAF_PROJECT_NAME and the ports unset in the panel, and
+# the next Restart would then be refused by the guard with misleading advice.
+#
+# Every docker call uses the SilentlyContinue + $LASTEXITCODE pattern; a failure
+# prints guidance and returns to the menu rather than ending the panel. The
+# readiness poll keeps no temp log file, so a dry run writes nothing to disk.
+
+# Get-DaafSettingsSnapshot -- capture the panel's settings state: every DAAF_*
+# process variable (by name pattern, not a list of settings keys, so a key added
+# to the loader's whitelist later is covered automatically) plus the loader's
+# provenance tracker. Restore-DaafSettingsSnapshot puts exactly that state back.
+# The tracker is read through Get-Variable so a never-assigned tracker is safe
+# under Set-StrictMode. Restore- is not in PSUseShouldProcessForStateChangingFunctions'
+# verb list, so the pair needs no ShouldProcess ceremony.
+function Get-DaafSettingsSnapshot {
+    [CmdletBinding()]
+    [OutputType([hashtable])]
+    param()
+    $envValues = @{}
+    foreach ($item in @(Get-ChildItem -Path Env: | Where-Object { $_.Name -like 'DAAF_*' })) {
+        $envValues[$item.Name] = $item.Value
+    }
+    $tracker = @()
+    $trackerVar = Get-Variable -Name 'DaafKeysFromFile' -Scope Script -ErrorAction SilentlyContinue
+    if ($null -ne $trackerVar -and $null -ne $trackerVar.Value) { $tracker = @($trackerVar.Value) }
+    return @{ Env = $envValues; Tracker = $tracker }
+}
+
+function Restore-DaafSettingsSnapshot {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)]
+        [hashtable]$Snapshot
+    )
+    # Drop DAAF_* variables the snapshot did not have, then put back every
+    # snapshotted value (empty and unset are equivalent to every DAAF reader).
+    foreach ($item in @(Get-ChildItem -Path Env: | Where-Object { $_.Name -like 'DAAF_*' })) {
+        if (-not $Snapshot.Env.ContainsKey($item.Name)) {
+            Remove-Item -Path ("Env:" + $item.Name) -ErrorAction SilentlyContinue
+        }
+    }
+    foreach ($name in @($Snapshot.Env.Keys)) {
+        Set-Item -Path ("Env:" + $name) -Value $Snapshot.Env[$name]
+    }
+    $script:DaafKeysFromFile = @($Snapshot.Tracker)
+}
+
+function Invoke-DaafRestart {
+    Write-Host ""
+    Write-Host "  Restart Container"
+    Write-Host ""
+    Write-Host "  This applies the changes you made in environment_settings.txt by"
+    Write-Host "  stopping and recreating the DAAF container. It usually takes under a"
+    Write-Host "  minute and does not rebuild the image."
+    Write-Host ""
+    Write-Host "  It ENDS any open Claude Code session, container terminal, or web" -ForegroundColor Yellow
+    Write-Host "  service (notebooks, log viewer, VS Code) for this DAAF install --" -ForegroundColor Yellow
+    Write-Host "  including ones open in other windows. Save your work and close them" -ForegroundColor Yellow
+    Write-Host "  first." -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "  Your research files and your Claude Code login are kept (they live in"
+    Write-Host "  Docker volumes)."
+    Write-Host ""
+    Write-Host "  Settings marked `"rebuild required`" in environment_settings.txt (such as"
+    Write-Host "  DAAF_DEV, or turning on the provider shim for the first time), and"
+    Write-Host "  changes to the Dockerfile, packages, or docker-compose.yml, need Rebuild"
+    Write-Host "  Container instead."
+    Write-Host ""
+
+    # Default No: y or yes in any case, surrounding spaces ignored (same rule as
+    # daaf.sh; -notin is case-insensitive). EOF ($null) counts as No.
+    $answer = Read-DaafLine "  Restart the container now? [y/N]"
+    $answer = if ($null -ne $answer) { ([string]$answer).Trim() } else { "" }
+    if ($answer -notin @("y", "yes")) {
+        Write-Host "  Restart cancelled -- nothing was changed."
+        return
+    }
+
+    # Path handed to Sync-DaafSettingsFile by the guard probe and the post-down
+    # reload (the user-facing messages below name the file literally).
+    $settingsFile = "./environment_settings.txt"
+
+    # The panel's settings as they are now, before anything below touches them.
+    # Restored by the guard probe's `finally`, and after `down` when the reload
+    # fails or names a different project (see the header).
+    $preRestart = Get-DaafSettingsSnapshot
+
+    # --- Project-name guard (no docker command has run yet) ---
+    $activeProject = if ($env:DAAF_PROJECT_NAME) { $env:DAAF_PROJECT_NAME } else { "daaf" }
+    $fileProject = $activeProject
+    $readFailed = $false
+    try {
+        Sync-DaafSettingsFile -SettingsFile $settingsFile
+        $fileProject = if ($env:DAAF_PROJECT_NAME) { $env:DAAF_PROJECT_NAME } else { "daaf" }
+    } catch {
+        # Unreadable file (permissions, locked by an editor): report it here
+        # instead of letting it reach the main loop's "This is a bug" catch. The
+        # finally below still restores the environment snapshot.
+        $readFailed = $true
+    } finally {
+        Restore-DaafSettingsSnapshot -Snapshot $preRestart
+    }
+    if ($readFailed) {
+        Write-Host ""
+        Write-Host "  Cannot read environment_settings.txt -- make sure it is not open in another" -ForegroundColor Yellow
+        Write-Host "  program and that you have permission to read it." -ForegroundColor Yellow
+        Write-Host "  Nothing was changed." -ForegroundColor Yellow
+        return
+    }
+    if ($fileProject -ne $activeProject) {
+        Write-Host ""
+        Write-Host "  Restart stopped -- nothing was changed." -ForegroundColor Yellow
+        Write-Host ""
+        Write-Host "  With your current environment_settings.txt, this install would now use"
+        Write-Host "  the project name `"$fileProject`" (the default is `"daaf`" when the"
+        Write-Host "  file does not set one) instead of `"$activeProject`"."
+        Write-Host "  The project name decides which install and which research data volume"
+        Write-Host "  Docker uses. Restarting under a new name would stop this install and"
+        Write-Host "  start a DIFFERENT one in its place, so your current research would"
+        Write-Host "  appear to be missing."
+        Write-Host ""
+        Write-Host "  To keep this install: make environment_settings.txt use the project"
+        Write-Host "  name `"$activeProject`" again, then choose Restart Container again."
+        Write-Host "  To switch installs on purpose: quit this panel and follow `"Running"
+        Write-Host "  multiple DAAF instances`" in the Installation Guide"
+        Write-Host "  (user_reference/01_installation_and_quickstart.md)."
+        return
+    }
+
+    # --- Stop (current settings, so `down` targets the running project) ---
+    Write-Host ""
+    Write-Host "[1/3] Stopping the DAAF container..."
+    $downExit = $null
+    $savedEAP = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "SilentlyContinue"
+        docker compose down
+        $downExit = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $savedEAP
+    }
+    if ($downExit -ne 0) {
+        Write-Host ""
+        Write-Host "  Could not stop the container. Check the Docker message above and" -ForegroundColor Yellow
+        Write-Host "  make sure Docker Desktop is running, then try again." -ForegroundColor Yellow
+        return
+    }
+
+    # --- Reload the edited settings (compose interpolation + panel display) ---
+    # The file was readable a moment ago; if that changed, say so and stop
+    # rather than starting the container with stale settings. Sync-DaafSettingsFile
+    # has already removed the file-adopted keys when its read throws, so put the
+    # pre-restart snapshot back: the panel is then exactly as it was before `down`.
+    try {
+        Sync-DaafSettingsFile -SettingsFile $settingsFile
+    } catch {
+        Restore-DaafSettingsSnapshot -Snapshot $preRestart
+        Write-Host ""
+        Write-Host "  The container is stopped, but environment_settings.txt can no longer" -ForegroundColor Yellow
+        Write-Host "  be read. Make sure it is not open in another program and that you have" -ForegroundColor Yellow
+        Write-Host "  permission to read it, then choose Restart Container again (or Start" -ForegroundColor Yellow
+        Write-Host "  Claude Code, which starts the container)." -ForegroundColor Yellow
+        return
+    }
+
+    # --- Project re-check (the guard ran before `down`) ---
+    # If the file was edited or deleted while `down` ran, the reload may have
+    # adopted a different project name, and `up` would then start a DIFFERENT
+    # install. Restore the pre-restart settings and stop without `up`.
+    $reloadedProject = if ($env:DAAF_PROJECT_NAME) { $env:DAAF_PROJECT_NAME } else { "daaf" }
+    if ($reloadedProject -ne $activeProject) {
+        Restore-DaafSettingsSnapshot -Snapshot $preRestart
+        Write-Host ""
+        Write-Host "  The container is stopped, but it was not started again --" -ForegroundColor Yellow
+        Write-Host "  environment_settings.txt now names a different project." -ForegroundColor Yellow
+        Write-Host ""
+        Write-Host "  It changed while the container was stopping, and now gives the project"
+        Write-Host "  name `"$reloadedProject`" (the default is `"daaf`" when the file does not set one)"
+        Write-Host "  instead of `"$activeProject`"."
+        Write-Host "  Starting under the new name would start a DIFFERENT install, so your"
+        Write-Host "  current research would appear to be missing."
+        Write-Host ""
+        Write-Host "  To keep this install: make environment_settings.txt use the project"
+        Write-Host "  name `"$activeProject`" again, then choose Restart Container again."
+        Write-Host "  To switch installs on purpose: quit this panel and follow `"Running"
+        Write-Host "  multiple DAAF instances`" in the Installation Guide"
+        Write-Host "  (user_reference/01_installation_and_quickstart.md)."
+        return
+    }
+    Initialize-DaafPortDisplay
+
+    # --- Recreate ---
+    Write-Host ""
+    Write-Host "[2/3] Starting the container with your new settings..."
+    $upExit = $null
+    $savedEAP = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "SilentlyContinue"
+        docker compose up -d
+        $upExit = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $savedEAP
+    }
+    if ($upExit -ne 0) {
+        Write-Host ""
+        Write-Host "  The container was stopped but could not be started again. Check" -ForegroundColor Yellow
+        Write-Host "  the Docker message above (for example, a port that is already in use)," -ForegroundColor Yellow
+        Write-Host "  fix environment_settings.txt if needed, then choose Restart Container" -ForegroundColor Yellow
+        Write-Host "  again -- or choose Start Claude Code, which also starts the container." -ForegroundColor Yellow
+        return
+    }
+
+    # --- Wait for readiness (mirrors rebuild_daaf.ps1) ---
+    Write-Host ""
+    Write-Host "[3/3] Waiting for the container to be ready..."
+    $retries = 0
+    $maxRetries = 30
+    while ($true) {
+        $readyExit = $null
+        $savedEAP = $ErrorActionPreference
+        try {
+            $ErrorActionPreference = "SilentlyContinue"
+            docker compose exec -T daaf-docker true 2>$null | Out-Null
+            $readyExit = $LASTEXITCODE
+        } finally {
+            $ErrorActionPreference = $savedEAP
+        }
+        if ($readyExit -eq 0) { break }
+        $retries++
+        if ($retries -ge $maxRetries) {
+            # One more attempt to capture Docker's message for the user (held in
+            # memory, not a temp file). "$_" renders a PS 5.1 stderr ErrorRecord
+            # as its plain message text.
+            $savedEAP = $ErrorActionPreference
+            try {
+                $ErrorActionPreference = "SilentlyContinue"
+                $readyErr = @(docker compose exec -T daaf-docker true 2>&1 | ForEach-Object { "$_" })
+            } finally {
+                $ErrorActionPreference = $savedEAP
+            }
+            Write-Host ""
+            Write-Host "  The container did not become ready within 60 seconds." -ForegroundColor Yellow
+            $errLines = @($readyErr | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Last 5)
+            if ($errLines.Count -gt 0) {
+                Write-Host "  Docker reported:"
+                foreach ($errLine in $errLines) { Write-Host "    $errLine" }
+            }
+            Write-Host "  Check Docker Desktop for errors."
+            return
+        }
+        Start-Sleep -Seconds 2
+    }
+
+    $verifyExit = $null
+    $savedEAP = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "SilentlyContinue"
+        docker compose exec -T daaf-docker test -f /daaf/CLAUDE.md 2>&1 | Out-Null
+        $verifyExit = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $savedEAP
+    }
+    if ($verifyExit -ne 0) {
+        Write-Host ""
+        Write-Host "  The container restarted, but DAAF's files may not be intact." -ForegroundColor Yellow
+        Write-Host "  Choose Open Terminal in Container to take a look." -ForegroundColor Yellow
+        return
+    }
+
+    Write-Host ""
+    Write-Host "  Container restarted -- your environment_settings.txt changes are now in effect" -ForegroundColor Green
+    Write-Host "  (settings marked `"rebuild required`" still need Rebuild Container)." -ForegroundColor Green
+}
+
+# ============================================================================
+# Handler: Stop Services (option 12)
 # ============================================================================
 
 # Named with Invoke- (like the other menu handlers) rather than the natural
@@ -1085,9 +1421,18 @@ function Show-DaafHelp {
     Write-Host "     Rebuild the DAAF Docker container from the latest image."
     Write-Host "     Your data volume is preserved during rebuilds."
     Write-Host ""
-    Write-Host "  11) Stop Web Services" -ForegroundColor Cyan
-    Write-Host "      Stop any running web services (notebooks, log viewer,"
-    Write-Host "      VS Code) without stopping the container itself."
+    Write-Host "  11) Restart Container" -ForegroundColor Cyan
+    Write-Host "     Apply changes you made in environment_settings.txt (API keys,"
+    Write-Host "     provider settings, ports). Stops and recreates the container,"
+    Write-Host "     usually in under a minute -- no image build. It ends any open"
+    Write-Host "     Claude Code session or web service. Settings marked"
+    Write-Host "     `"rebuild required`" there (such as DAAF_DEV, or turning on the"
+    Write-Host "     provider shim for the first time), and changes to the Dockerfile,"
+    Write-Host "     packages, or docker-compose.yml, need Rebuild Container instead."
+    Write-Host ""
+    Write-Host "  12) Stop Web Services" -ForegroundColor Cyan
+    Write-Host "     Stop any running web services (notebooks, log viewer,"
+    Write-Host "     VS Code) without stopping the container itself."
     Write-Host ""
     Write-Host "  OTHER"
     Write-Host ""

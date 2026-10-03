@@ -20,8 +20,9 @@ START HERE (terminal - works everywhere):
 
 Run either of the following commands in your terminal when this folder
 is open. That opens the DAAF Control Panel - a menu with everything: starting
-Claude Code, notebooks, VS Code, session logs, backups, updates, and
-rebuilds. It is the only command you need to remember. Run it and
+Claude Code, notebooks, VS Code, session logs, backups, updates,
+restarts (to apply changes to environment_settings.txt), and rebuilds.
+It is the only command you need to remember. Run it and
 use the Help option to learn more about what each command does.
 
 The other scripts in this folder are helpers that the Control Panel

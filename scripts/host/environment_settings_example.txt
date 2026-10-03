@@ -12,7 +12,8 @@
 #   3. Apply your change. Most settings need a container recreate; a few need an
 #      image rebuild, and a few must be set BEFORE install -- each section's
 #      banner carries a lifecycle tag saying which (and the CONTENTS map below
-#      summarizes them). The usual recreate is:
+#      summarizes them). The usual recreate: choose "Restart Container" in the
+#      DAAF Control Panel, or, by hand:
 #          docker compose down
 #          bash run_daaf.sh    (macOS / Linux)   |   .\run_daaf.ps1   (Windows)
 #   Full walkthrough: user_reference/01_installation_and_quickstart.md
@@ -73,9 +74,10 @@
 # strictly true only for DAAF_PROJECT_NAME, which is fixed at creation time --
 # changing it on an existing install detaches it from its data volume. The PORT
 # keys CAN be changed later: set the new value here, then recreate the container
-# (docker compose down, then run_daaf.sh / run_daaf.ps1) per the header's recreate
-# guidance. DAAF_BRANCH is likewise read on every update, so it too can change at
-# any time.
+# per the header's recreate guidance ("Restart Container" in the DAAF Control
+# Panel, or, by hand: docker compose down, then run_daaf.sh / run_daaf.ps1).
+# DAAF_BRANCH is likewise read on every update, so it too can change at any
+# time.
 #
 # AUTO-SEEDING: at install time DAAF seeds this file for you from any DAAF_*
 # environment variables you had set for the install -- so if you exported
@@ -164,9 +166,10 @@
 #   4. CLAUDE_CODE_OAUTH_TOKEN (subscription)         -- Option B
 #   5. Interactive browser login (no env var needed)
 #
-# After changing auth, recreate the container (docker compose down, then
-# run_daaf.sh / run_daaf.ps1). To run OpenAI GPT models on your OWN OpenAI API
-# key or a ChatGPT subscription, see the provider shim in section [4].
+# After changing auth, recreate the container: choose "Restart Container" in
+# the DAAF Control Panel (or, by hand: docker compose down, then run_daaf.sh /
+# run_daaf.ps1). To run OpenAI GPT models on your OWN OpenAI API key or a
+# ChatGPT subscription, see the provider shim in section [4].
 #
 # ----------------------------------------------------------------------------
 # Option A: Anthropic API key (pay-per-use)
@@ -490,8 +493,10 @@
 #      sign in to ChatGPT, enter the code. No in-container browser, no
 #      localhost:1455 loopback, no port forwarding.
 #   4. SWITCH THE SHIM ON: set SHIM_BACKEND_MODE=chatgpt below, then recreate the
-#      container (docker compose down, then run_daaf.sh / run_daaf.ps1). The shim
-#      reads the mode at startup.
+#      container: choose "Restart Container" in the DAAF Control Panel (or, by
+#      hand: docker compose down, then run_daaf.sh / run_daaf.ps1). The shim
+#      reads the mode at startup. If this is the first time you turn the shim
+#      on, choose "Rebuild Container" instead (see the [4] banner above).
 #   5. CONFIRM IT WORKS: scripts/provider_shim/logs/shim.log shows
 #      backend_mode=chatgpt and healthy 200s; a GPT session runs.
 #

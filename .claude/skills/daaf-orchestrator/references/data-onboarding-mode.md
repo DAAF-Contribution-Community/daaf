@@ -353,7 +353,7 @@ When the user needs to set up an API key and it's not currently available in the
 > YOUR_API_KEY_NAME=your_key_here
 > ```
 > If you don't have an `environment_settings.txt` file yet, copy the template: `cp environment_settings_example.txt environment_settings.txt`
-> (or `Copy-Item environment_settings_example.txt environment_settings.txt` on Windows). Then recreate the container: `docker compose down` followed by `run_daaf`.
+> (or `Copy-Item environment_settings_example.txt environment_settings.txt` on Windows). Then recreate the container: choose **Restart Container** in the DAAF Control Panel (or, by hand: `docker compose down`, then `run_daaf`).
 
 **Alternative: Set for the current session only (temporary):**
 
