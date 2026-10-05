@@ -469,10 +469,13 @@ jobs:
           mkdir -p ./2026-06-18_daaf_backup
 
           echo "=== Smoke testing: scripts/host/daaf.sh (Control Panel) ==="
-          # Feed 'q' to quit the menu loop after the first draw. gather_status
-          # (which contains the historically fatal negative-subscript line) runs
-          # before the menu is displayed, so a single iteration exercises it.
-          out=$(printf 'q\n' | DAAF_DRY_RUN=1 /bin/bash scripts/host/daaf.sh 2>&1) || {
+          # gather_status (which contains the historically fatal negative-
+          # subscript line) runs before every menu draw. The input then drives
+          # option 11 (Restart Container) twice under 3.2 -- declined with
+          # ' No ' (the answer trim/lowercase path), then confirmed with ' YES '
+          # (a full dry-run restart: settings snapshot/restore arrays, reload,
+          # set_panel_ports, readiness poll) -- and quits with 'q'.
+          out=$(printf '11\n No \n11\n YES \nq\n' | DAAF_DRY_RUN=1 /bin/bash scripts/host/daaf.sh 2>&1) || {
             echo "FAILED: daaf.sh (exit code $?)"
             echo "$out"
             rm -rf ./2026-06-18_daaf_backup
@@ -492,6 +495,32 @@ jobs:
             echo "  PASS: output contains 'Goodbye!' (clean menu exit)"
           else
             echo "  FAIL: expected output to contain 'Goodbye!'"
+            failed=1
+          fi
+          if echo "$out" | grep -qF "Restart cancelled"; then
+            echo "  PASS: declined restart cancelled"
+          else
+            echo "  FAIL: expected 'Restart cancelled' for the ' No ' answer"
+            failed=1
+          fi
+          if echo "$out" | grep -qF "[DRY-RUN] docker compose down"; then
+            echo "  PASS: confirmed restart issued compose down"
+          else
+            echo "  FAIL: expected '[DRY-RUN] docker compose down'"
+            failed=1
+          fi
+          if echo "$out" | grep -qF "Container restarted"; then
+            echo "  PASS: confirmed restart completed"
+          else
+            echo "  FAIL: expected 'Container restarted' for the ' YES ' answer"
+            failed=1
+          fi
+          if echo "$out" | grep -qF "compose down -v"; then
+            echo "  FAIL: restart must never run 'docker compose down -v'"
+            failed=1
+          fi
+          if echo "$out" | grep -qF "unexpected failure"; then
+            echo "  FAIL: the panel's ERR trap fired"
             failed=1
           fi
 
@@ -830,14 +859,16 @@ jobs:
           echo "All lifecycle scripts ran under Bash 3.2."
 
       # daaf.sh Control Panel under 3.2: seed a backup dir to force the
-      # gather_status last-backup path (the historically fatal one), drive the
-      # menu loop with `q`, and require docker-compose.yml (present at repo root
-      # after checkout) for the preflight.
+      # gather_status last-backup path (the historically fatal one), drive
+      # option 11 (Restart Container) declined (' No ') and then confirmed
+      # (' YES ', a full dry-run restart incl. the settings snapshot/restore
+      # arrays and readiness poll), quit with `q`, and require docker-compose.yml
+      # (present at repo root after checkout) for the preflight.
       - name: Smoke test daaf.sh Control Panel (Bash 3.2)
         run: |
           mkdir -p ./2026-06-18_daaf_backup
           echo "=== Bash 3.2 smoke: scripts/host/daaf.sh (Control Panel) ==="
-          out=$(printf 'q\n' | DAAF_DRY_RUN=1 bash scripts/host/daaf.sh 2>&1) || {
+          out=$(printf '11\n No \n11\n YES \nq\n' | DAAF_DRY_RUN=1 bash scripts/host/daaf.sh 2>&1) || {
             echo "FAILED: daaf.sh (exit code $?) under Bash 3.2"
             echo "$out"
             rm -rf ./2026-06-18_daaf_backup
@@ -847,9 +878,14 @@ jobs:
           failed=0
           echo "$out" | grep -qF "DAAF Control Panel" || { echo "  FAIL: missing 'DAAF Control Panel'"; failed=1; }
           echo "$out" | grep -qF "Goodbye!" || { echo "  FAIL: missing 'Goodbye!'"; failed=1; }
+          echo "$out" | grep -qF "Restart cancelled" || { echo "  FAIL: missing 'Restart cancelled' (declined restart)"; failed=1; }
+          echo "$out" | grep -qF "[DRY-RUN] docker compose down" || { echo "  FAIL: missing '[DRY-RUN] docker compose down'"; failed=1; }
+          echo "$out" | grep -qF "Container restarted" || { echo "  FAIL: missing 'Container restarted' (confirmed restart)"; failed=1; }
+          if echo "$out" | grep -qF "compose down -v"; then echo "  FAIL: restart ran 'docker compose down -v'"; failed=1; fi
+          if echo "$out" | grep -qF "unexpected failure"; then echo "  FAIL: the panel's ERR trap fired"; failed=1; fi
           if [ "$failed" -ne 0 ]; then
             echo "--- captured output ---"
             echo "$out"
             exit 1
           fi
-          echo "daaf.sh Control Panel ran under Bash 3.2."
+          echo "daaf.sh Control Panel (incl. Restart Container) ran under Bash 3.2."
