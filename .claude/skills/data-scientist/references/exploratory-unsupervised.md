@@ -322,7 +322,7 @@ Following Lanza, Tan, and Bray (2013), this bias affects ALL downstream uses of 
 
 The bias is proportional to the misclassification rate. With well-separated clusters where assignment is unambiguous, the bias is modest. But with overlapping clusters — the common case in social science data — the bias can be substantial. Lanza, Tan, and Bray (2013) demonstrated attenuation ranging from -0.115 to -0.421 depending on measurement quality and class separation. This means that a true association of 0.50 could appear as anywhere from 0.08 to 0.39 when using hard cluster assignments.
 
-The bias is always in the direction of attenuation (toward zero), meaning that true associations are *underestimated*. A non-significant result in a classify-analyze framework may reflect classification error rather than a genuine null effect.
+In the setting Lanza, Tan, and Bray (2013) study (a multi-class latent variable predicting one distal outcome, with classes assigned from the indicators alone), the bias is in the direction of attenuation (toward zero), meaning that true associations are *underestimated*. A non-significant result in that setting may reflect classification error rather than a genuine null effect. Attenuation is not guaranteed in general, though. With more than one predictor, in nonlinear models, with differential (systematic) error, or with multi-category codes, misclassification can bias estimates away from zero or even flip their sign (TeBlunthuis, Hase, and Chan, 2024; van Smeden, Lash, and Groenwold, 2020).
 
 ### Practical Mitigations
 
@@ -341,6 +341,10 @@ The bias is always in the direction of attenuation (toward zero), meaning that t
 - Do NOT use cluster labels from one subsample to "predict" outcomes in another without first assessing cluster replicability across subsamples
 - Do NOT dismiss the problem because clusters "look well-separated" in a visualization — t-SNE and UMAP equalize cluster density and can make overlapping groups appear distinct
 - Do NOT use the same outcome variable both in the clustering step AND as the dependent variable in downstream regression — this creates circular reasoning where clusters are partly defined by the outcome, guaranteeing a spurious "association"
+
+### When the Classifier Is a Language Model or Annotation API
+
+The classify-analyze problem applies with equal force when the "classifier" is a language model or typed-judgment API that turns text into codes, ratings, or yes/no features. As with hard cluster assignments (Lanza, Tan, and Bray, 2013), treating a model's labels as observed data ignores classification error. Model annotation adds two complications. First, the error can be differential: it can correlate with the outcome or covariates even though the model never sees them, and it can then bias estimates away from zero or flip their sign, not merely attenuate them (TeBlunthuis, Hase, and Chan, 2024; van Smeden, Lash, and Groenwold, 2020). Second, high accuracy against human coders does not certify unbiased downstream estimates (Egami et al., 2024). The remedy parallels the posterior-probability mitigation above but goes further. Code a random or known-probability subsample by hand, then combine human and model labels with a design-based correction such as design-based supervised learning (DSL) or prediction-powered inference (PPI). Model-reported probabilities can replace hard labels only after their calibration has been checked against those human codes. See `./text-annotation-measurement.md` § 6 for the corrections, their assumptions, and their availability in DAAF.
 
 ## Causal Language Warnings for Unsupervised Methods
 
@@ -445,9 +449,15 @@ Wattenberg, M., Viegas, F., and Johnson, I. (2016). "How to Use t-SNE Effectivel
 
 ### The Classify-Analyze Problem
 
+Egami, N., Hinck, M., Stewart, B.M., and Wei, H. (2024). "Using large language model annotations for the social sciences: A general framework of using predicted variables in downstream analyses." Working paper, version of November 17, 2024. https://naokiegami.com/paper/dsl_ss.pdf (accessed 2026-10-06)
+
 Lanza, S.T., Tan, X., and Bray, B.C. (2013). "Latent class analysis with distal outcomes: A flexible model-based approach." *Structural Equation Modeling*, 20(1), 1-26.
 
 Skrondal, A. and Laake, P. (2001). "Regression among factor scores." *Psychometrika*, 66(4), 563-575.
+
+TeBlunthuis, N., Hase, V., and Chan, C.-h. (2024). "Misclassification in automated content analysis causes bias in regression. Can we fix it? Yes we can!" *Communication Methods and Measures*, 18(3), 278-299. https://doi.org/10.1080/19312458.2023.2293713
+
+van Smeden, M., Lash, T.L., and Groenwold, R.H.H. (2020). "Reflection on modern methods: Five myths about measurement error in epidemiological research." *International Journal of Epidemiology*, 49(1), 338-347. https://doi.org/10.1093/ije/dyz251
 
 ### Practitioner Guides
 

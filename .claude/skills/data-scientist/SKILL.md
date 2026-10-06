@@ -217,6 +217,18 @@ What task are you performing?
 │       │   → Read supervised-ml.md "Interpreting ML Models" + scikit-learn/tidymodels interpretation refs
 │       └─ Fairness assessment
 │           → Read supervised-ml.md "Fairness" + scikit-learn/tidymodels fairness refs
+├─ Coding / classifying / rating free text into analysis variables
+│   (open-ended survey responses, documents, comments, transcripts)
+│   └─ FIRST read ./references/text-annotation-measurement.md (annotation as measurement,
+│       human-coded validation sets, agreement metrics, LLM-specific checks,
+│       misclassification bias + DSL/PPI corrections, calibration, reproducibility,
+│       data governance, reporting)
+│       THEN, per the design agreed with the user (options, not a ranking):
+│       ├─ Trained classifier → Load `scikit-learn` skill (Python) or `tidymodels` skill (R),
+│       │   with ./references/supervised-ml.md
+│       └─ Typed judgments without task-specific training → Load `typesafe-ai` skill
+│       GATE: confirm with the user before sending research text to any paid external API;
+│       sensitive/PII text never goes to one — route to the `synthetic-data-workflow` skill
 ├─ Unsupervised analysis (clustering, dimensionality reduction, pattern discovery)
 │   └─ Stage 8.1 — FIRST read ./references/exploratory-unsupervised.md
 │       THEN load `scikit-learn` skill (Python) or `tidymodels` skill (R)
@@ -314,6 +326,7 @@ This skill assumes familiarity with:
 | `network-analysis.md` | Network/graph methodology: when a network frame fits, node/edge/directedness/weight conceptualization, centrality selection by research question, community detection + seed discipline, bipartite/two-mode data and projection, disconnected-graph and weights-as-distances guardrails, reproducibility; ERGM out of scope | **Any task involving relational/network data — centrality, community detection, paths/components, bipartite graphs, ego networks, or network visualization** |
 | `exploratory-unsupervised.md` | Cluster analysis, dimension reduction (PCA), Gaussian mixture models, nonlinear embeddings (t-SNE, UMAP), cluster validation, classify-analyze problem | Stage 8 tasks involving unsupervised methods, typology construction, or pattern discovery |
 | `supervised-ml.md` | Supervised ML methodology: prediction vs. inference (Shmueli 2010), bias-variance tradeoff, cross-validation for structured data (grouped, temporal, spatial), model selection, classification and ML regression methodology, ensemble methods, interpretation caveats (feature importance is not causation), algorithmic fairness and equity (impossibility theorems), deep learning orientation, reporting standards | Stage 8 tasks involving classification, prediction, risk scoring, ML-based variable selection, or any task where the goal is predicting outcomes rather than estimating causal parameters |
+| `text-annotation-measurement.md` | Measurement from text with model-based annotators (LLMs, typed-judgment APIs, trained classifiers): annotation as measurement and codebook design, human-coded validation sets, agreement/accuracy metrics (alpha vs. kappa), LLM-specific checks (prompt, option-order, label-name, version drift), misclassification bias direction, DSL/PPI corrections, probabilities vs. labels and calibration, reproducibility with hosted models, data governance for third-party APIs, reporting checklist | **Any task that codes, classifies, rates, or screens free text with a model so the result becomes an analysis variable** — read before designing the instrument |
 
 ### Validation Tracking
 
@@ -627,6 +640,9 @@ Am I predicting or explaining?
 │   ├─ Tabular data → Start with logistic regression baseline,
 │   │   then try HistGradientBoosting/LightGBM (Python) or ranger/xgboost (R)
 │   ├─ Text data → See supervised-ml.md "When Deep Learning Methods Are Appropriate"
+│   │   └─ Codes will become analysis variables? → also read
+│   │       ./references/text-annotation-measurement.md (annotation as measurement);
+│   │       `typesafe-ai` skill is a no-training option needing the same validation
 │   ├─ Need to explain predictions → scikit-learn/tidymodels interpretation refs (SHAP)
 │   └─ Need fairness assessment → scikit-learn/tidymodels fairness refs
 └─ Not sure → Read supervised-ml.md "Prediction vs. Inference"
@@ -1185,6 +1201,15 @@ Use narrative text chunks liberally:
 | Algorithmic fairness and bias | `./references/supervised-ml.md` |
 | Deep learning orientation | `./references/supervised-ml.md` |
 | Reporting standards for ML | `./references/supervised-ml.md` |
+| Text annotation as measurement (codebooks, LLM vs. classifier vs. hand coding) | `./references/text-annotation-measurement.md` |
+| Human-coded validation (gold) sets: sampling, size, blind coding, dev/test separation | `./references/text-annotation-measurement.md` |
+| Agreement and accuracy metrics for annotation (Krippendorff's alpha, kappa, per-class F1) | `./references/text-annotation-measurement.md` |
+| LLM annotation checks (prompt sensitivity, option order, label-name bias, version drift) | `./references/text-annotation-measurement.md` |
+| Misclassification bias from predicted variables; DSL / PPI / PPI++ corrections | `./references/text-annotation-measurement.md` |
+| Calibration of annotator probabilities; prevalence estimation from annotations | `./references/text-annotation-measurement.md` |
+| Reproducibility with hosted models (version pinning, nondeterminism, persistence) | `./references/text-annotation-measurement.md` |
+| Data governance for third-party AI APIs (FERPA, IRB, de-identification of free text) | `./references/text-annotation-measurement.md` |
+| Reporting model-based text annotation (GUIDE-LLM / TRIPOD-LLM-aligned checklist) | `./references/text-annotation-measurement.md` |
 | When a network frame is appropriate (relational vs. attribute questions) | `./references/network-analysis.md` |
 | Graph construction from edge lists | `./references/network-analysis.md` |
 | Centrality selection (degree, betweenness, closeness, eigenvector, PageRank) | `./references/network-analysis.md` |

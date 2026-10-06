@@ -250,10 +250,11 @@ A confident answer to a badly-posed question is confidently wrong. And from `/co
 > different system. The model is telling you it does not have enough information or the question is
 > not a good fit.
 
-**Observed constraint: confidence is a coarse band, not a ranking.** Because `confidence` is
-computed from 2 dp probabilities it takes only 45-87 distinct values across a 25,000-row run, with
-4,600-6,900 rows tied at exactly 1.00. The three-band usage above still works — that is what the
-grid supports. Ranking *within* the top band does not. See § 10 and `./api-reference.md` § 14.1.
+**Check whether confidence is a band or a ranking on your data.** Because `confidence` is
+computed from rounded probabilities (`./api-reference.md` § 8.5), it can take few distinct values
+and form large ties — including at the top. Banded thresholds like the three-band usage above can
+still work on a coarse grid; ranking *within* a band may not. Inspect the distinct-value count and
+tie blocks before ranking on it — see § "Evaluating fit for your task" below.
 
 **Thresholds scale with stakes, and there is no universal number.** Verbatim:
 
@@ -530,11 +531,11 @@ These are vendor-proposed use cases, not validated DAAF workflows.
   formula is undocumented and may change, and re-running costs money.
 - **Persist `usage`** so cost and token volume are auditable.
 - **Persist both the vendor `choice` and the code-computed argmax**, and say in the write-up which
-  one the analysis treats as the prediction. They disagree on ~0.04-0.16% of rows
-  (`./api-reference.md` § 14.2); recording one silently makes the result depend on an
-  undocumented tie-break.
-- **Persist a per-row retry flag.** Backoff absorbs 429s invisibly; without a `retry_count`
-  column, "did throttled rows differ in outcome?" is untestable after the fact (§ 14.4).
+  one the analysis treats as the prediction. They can disagree on rounding near-ties
+  (`./api-reference.md` § "Things to verify on your own calls"); recording one silently makes the
+  result depend on an undocumented tie-break.
+- **Persist a per-row retry count and final status.** Backoff absorbs 429s invisibly; without a
+  `retry_count` column, "did throttled rows differ in outcome?" is untestable after the fact.
 - **Validate against human coding.** Calibration is a property of groups of predictions, not of any
   single answer; a coded variable built from Jev needs the same inter-rater reliability treatment
   you would demand of any automated coder, on a human-coded subsample.
@@ -545,80 +546,100 @@ These are vendor-proposed use cases, not validated DAAF workflows.
 
 ---
 
-## 10. Design notes from a measured classification project (2026-09)
+## 10. Evaluating fit for your task
 
-**Evidence status: observations, not vendor documentation.** These come from a two-stage text
-classification project run against `jev-1.13.0` in September 2026 (~100,000 calls, paired
-significance tests on 7,598-28,267 item evaluations). They are one model version on one task
-family; treat the direction as informative and the exact magnitudes as workload-specific. Wire-
-level quirks from the same project are in `./api-reference.md` § 14.
+How well Jev serves a particular task is data- and context-dependent: it varies with the option
+set, the class balance, the length and noise of the `state`, the model version, and what the
+application does with the answer. This section lists things to think about and verify, not
+results to rely on. Wire-level checks (rounding, argmax, headers, rate limits, auth) are in
+`./api-reference.md` § "Things to verify on your own calls".
 
-### 10.1 Prompt wording is close to immaterial; option criteria carry the signal
+**Start with a labelled pilot.** Before committing to a design, run a representative, human-labelled
+sample — large enough for the comparisons you plan, including per-class ones — through the exact
+question set you intend to use, persisting the full
+response per item (`model`, `usage`, `probabilities`, `choice`, `confidence`, retry count). Every
+check below runs on that pilot, and the same file later documents the design decision. Pilot
+calls cost money — confirm the size with the user first.
 
-Two prompt variants — a sparse structured prompt and a verbose, heavily-formatted directive
-prompt with role/task/focus framing — were run at full scale over identical items with
-byte-identical option sets:
+### Confidence: band or ranking?
 
-| Level | Sparse | Verbose | Paired test |
-|-------|--------|---------|-------------|
-| Group (8 options) | — | — | McNemar **p = 0.64** — indistinguishable |
-| Leaf (up to 40 options) | +0.94 pp | — | p = 1.4e-14, **favouring sparse** |
+`confidence` is derived from rounded probabilities, so it may take few distinct values and form
+large tie blocks. Before using it to **rank**, route the top-k, "act on the most confident X%," or
+draw coverage-accuracy curves:
 
-A third variant (a plain prose template) was indistinguishable from the structured sparse variant
-on a 1,000-item A/B (p = 0.38). Per-item confidence correlated r = 0.93-0.97 across variants.
+- Count the distinct `confidence` values and the size of the largest tie blocks (especially at the
+  top). A coverage curve over a heavily tied score is a staircase, and "the top 10%" may be one
+  undifferentiated block.
+- Banded thresholds (§ 4's three-band usage, § 5.2's floor plus per-action gates) can still work on
+  a coarse grid — check accuracy *within* each band on the pilot.
+- If you need a finer ranking, a statistic derived from the full distribution (top-2 margin,
+  entropy) may help but inherits the same rounding; recalibration against held-out labels
+  (e.g. isotonic regression) is the other option. Measure either on held-out data.
 
-**Reading:** for a classification question with well-specified option criteria, effort spent
-rewording `instructions` is largely wasted — and elaboration can cost a point at fine grain. The
-leverage is in the **option set**: the completeness of the options, the discriminating detail in
-each option's criteria description, and whether an `other` escape hatch exists. This is consistent
-with the vendor's own framing that criteria are an extension of the instruction (§ 2), but it is
-stronger than the docs claim: here the criteria did essentially *all* the work.
+### Metric choice under rounded probabilities
 
-This is a design note, not a rule. It was measured on classification with explicit rubrics; a task
-whose difficulty lives in the *question* rather than the *answer space* may well behave differently.
+Rounded probabilities can be exactly `0.00`, including for the true label. Log-loss and NLL on raw
+values are then infinite or undefined:
 
-### 10.2 Batching items per call: worth it for small option sets only
+- If you report a log-scale metric, floor or clip the probabilities first (e.g. to half the grid
+  step), say so, and recognise that the number then partly reflects the floor you chose.
+- Brier score and expected calibration error (ECE) do not need flooring and are often the better
+  default.
+- When comparing against a model that emits continuous probabilities, state the rounding
+  explicitly: the comparison is not like-for-like, especially for log-scale and ranking metrics.
 
-Jev's state can be an array, so several items can share one call (array state, one question per
-item). Measured at N = 10 / 25 / 50 items per call against single-item calls:
+### Calibration: which event?
 
-| Option-set size | Criteria repeated per question | Criteria once in shared state |
-|-----------------|-------------------------------|-------------------------------|
-| **8 options** | No accuracy loss (p > 0.13); **-23% tokens/item** | **-1.2 to -1.5 pp**; **-58% tokens/item** |
-| **up to 40 options** | **-3 to -4 pp** (p <= 0.005); breaches the 64k/32k budget at N >= 25 | **-3 to -4 pp**; -77% tokens |
+The vendor describes `confidence` and `probabilities` as calibrated, and "calibration is measured
+across groups of predictions" (§ 4). Calibration also depends on **which event you score
+against**. With a single gold label, "the chosen option is the gold label" is one event; with a
+multi-label truth (several acceptable answers per item), "the chosen option is *any* acceptable
+label" is a different event with a different calibration curve. Compute calibration for the event
+your application actually acts on, and say which one in the write-up.
 
-No positional effect was detected (items early and late in a batch scored alike).
+### Batching many items into one call
 
-**Reading:** batching is a genuine free win at small option sets with criteria repeated per
-question — a 23% token cut for no measurable accuracy cost. It is *not* free at large option sets:
-every configuration tested lost 3-4 points, and repeating per-option criteria across 25+ questions
-runs into the token budget. Moving criteria into shared state is the big token lever (-58% to
--77%) but is never free — it costs 1.2-1.5 pp even in the favourable case, plausibly because the
-model no longer sees the rubric attached to the question it is answering.
+A `state` can be an array, so several items can share one call (one question per item). This
+trades tokens against possible accuracy change, and the trade is workload-specific:
 
-Decide this deliberately per workload rather than adopting batching as a default, and if you do
-batch, verify positionally (does item 50 score like item 1?) before trusting a long batch.
+- Accuracy may shift relative to single-item calls, plausibly more so for large option sets with
+  long per-option criteria. Moving shared criteria into the `state` saves more tokens but means
+  the model no longer sees the rubric attached to the question it is answering.
+- Long batches with repeated criteria can run into the request token budget (§ 7 context limits:
+  64k for all state and questions, 32k for state plus the longest question).
+- Check for **positional effects** — does an item late in the batch score like the same item
+  placed first?
+- Pilot batched vs single-item calls on the same labelled items with a paired comparison before
+  adopting batching. Note this is different from batching *questions* about one state (§ 5.1),
+  which the vendor documents as the default.
 
-### 10.3 Selective prediction is not available on raw confidence
+### Instruction wording vs option criteria
 
-The 2 dp probability grid makes `confidence` too coarse to rank on at scale: top-decile confidence
-routing and coverage-accuracy curves collapse because thousands of items tie at 1.00. In head-to-
-head comparison a TF-IDF baseline — with 25,000 distinct confidence values on 25,000 items —
-ranked better at matched coverage across most of the coverage range, despite Jev being
-competitive or better on raw accuracy and much better calibrated in aggregate (ECE 0.075-0.11 vs
-0.144).
+Wording effects should be measured, not assumed. A reasonable hypothesis to check — consistent
+with the vendor's "treat the criteria as an extension of the instruction" (§ 2) — is that for
+classification with well-specified option criteria, the completeness and discriminating detail of
+the **option set** (including an `other` escape hatch) matter more than how the `instructions`
+are phrased. Test it on your task: run instruction variants over the same labelled items with
+identical option sets, and compare with a paired test rather than eyeballing two accuracies. A
+task whose difficulty lives in the question rather than the answer space may behave differently.
 
-**If a workflow depends on "act automatically on the most confident X%," Jev confidence alone will
-not deliver it.** Options: derive a finer statistic from the full distribution (top-2 margin,
-entropy — though these inherit the same grid), recalibrate against held-out labels (isotonic
-regression), or accept coarse banding instead of ranking. Budget for this in the design, because
-it is not discoverable until you plot a coverage curve and find it is a staircase.
+### Class-level checks
 
-### 10.4 Metric choice under 2 dp probabilities
+Aggregate accuracy can hide where a classifier fails. On the pilot:
 
-Rows where the true label received probability `0.00` were 20.5% of one evaluation. **Log-loss and
-NLL are therefore not meaningful on raw Jev probabilities** — they are infinite or undefined
-without flooring, and flooring makes the number an artifact of the floor you chose. Prefer Brier
-score and ECE, which are unaffected by the grid, and state the rounding explicitly whenever Jev
-probabilities are compared against a continuous-probability baseline: the comparison is not
-like-for-like, and a reviewer will ask.
+- Build a per-class confusion matrix. Option sets with **semantically overlapping categories**
+  deserve particular attention — confusion concentrates between neighbours, and sharpening the
+  criteria that separate them is often the fix.
+- Check **rare classes** separately; with few pilot examples their accuracy estimates are noisy,
+  so report counts alongside rates.
+- When comparing against a **trained classifier**, the trade-off can depend on how much labelled
+  training data each class has: a supervised model may do well on well-supported classes and
+  poorly on sparse ones, and a criteria-driven model may not follow the same pattern. Evaluate on
+  your own data, stratified by class support, rather than relying on a single headline number
+  from anyone else's comparison.
+
+### Cost against value
+
+Estimate cost from `usage.input_tokens` on the pilot (`./api-reference.md` § 11). For large option
+sets the `criteria` text tends to dominate input tokens, so trimming criteria saves money but may
+change accuracy — measure both on the same pilot before choosing.

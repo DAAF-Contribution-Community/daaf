@@ -9,11 +9,12 @@ corpus of `docs.typesafe.ai` captured **2026-09-17**, observing model version **
 - Where the corpus did not carry a fact, this file says **"not captured in the 2026-09-17
   snapshot"** rather than inferring it.
 
-> **Read § 14 first if you are writing validation code.** That section records behaviour observed
-> directly across ~100,000 live calls in 2026-09 that the docs do not describe — 2-decimal-place
-> probability rounding, `choice` occasionally differing from the argmax, a missing request-id
-> header on a 503, and token-rate (not request-rate) 429s. Where § 14 and the docs disagree, § 14
-> is the observation and wins.
+> **Read "Things to verify on your own calls" (the final section) before writing validation
+> code.** It covers behaviour the docs do not describe or under-specify — rounded probabilities,
+> `choice` occasionally differing from the argmax of the returned distribution, a request-id
+> header that can be absent on error responses, rate limits with both a token and a request leg,
+> auth pre-flight, and cost estimation. These were verified against the live API, but serving
+> behaviour and model versions change, so check them against a pilot of your own responses.
 
 **Truth hierarchy:** live API response > current `docs.typesafe.ai` > this file. Re-fetch with
 `bash /daaf/scripts/web_fetch.sh https://docs.typesafe.ai/llms-full.txt {DEST_DIR}` when anything
@@ -78,7 +79,7 @@ The exact `Accept` and user-agent string values used on the wire are **not captu
 
 | Header | Meaning |
 |--------|---------|
-| `x-typesafe-request-id` | Per-request identifier; capture it and include it in any bug report to the vendor. **Not always present** — observed absent on a `503` (§ 14.3). Always read it with `.get()` and expect `None` |
+| `x-typesafe-request-id` | Per-request identifier; capture it and include it in any bug report to the vendor. **Not guaranteed present** — it may be missing on some error responses (e.g. a `503`). Always read it with `.get()` and expect `None` |
 | `Retry-After` | Server-requested wait before retry (see § 10) |
 | `retry-after-ms` | Millisecond-precision variant of the same (see § 10) |
 
@@ -419,14 +420,15 @@ Source: `https://docs.typesafe.ai/api`
 | `answers` | `map<string, Answer>` | "One Answer per question, keyed by the same ids you used in questions." |
 | `usage` | `object` | `input_tokens` (integer), `output_tokens` (integer) |
 
-**Versioned-ID claim: CONFIRMED live.** The `/models` page states the response's `model` field
-"reports the versioned ID that answered," while every example response in the 2026-09-17 snapshot
-echoes the alias `"model": "jev-latest"` back. The live API follows the prose, not the examples:
-a request sending `"model": "jev-latest"` returned `"model": "jev-1.13.0"` (observed 2026-09-18,
-smoke test). **So the response `model` field is the right thing to persist for provenance** — it
-tells you which concrete version answered even when the request sent an alias. Pin the concrete
+**Alias resolution (verified against the live API).** The `/models` page states the response's
+`model` field "reports the versioned ID that answered," while every example response in the
+2026-09-17 snapshot echoes the alias `"model": "jev-latest"` back. The live API follows the prose,
+not the examples: a request sending `"model": "jev-latest"` reports a concrete versioned ID (e.g.
+`"jev-1.13.0"`). **So the response `model` field is the right thing to persist for provenance** —
+it tells you which concrete version answered even when the request sent an alias. Pin the concrete
 version in the *request* for any run whose outputs will be persisted; record the *response* field
-regardless. Pattern E in `./request-patterns.md` is the alias-resolution probe.
+regardless, and check it on your first call rather than assuming. Pattern E in
+`./request-patterns.md` is the alias-resolution probe.
 
 > Every answer carries a `type` matching its question. Choice and Score answers also carry a
 > `confidence` between 0 to 1, derived from the answer's probability distribution.
@@ -462,9 +464,9 @@ Verbatim example response:
 | Field | Type | Meaning |
 |-------|------|---------|
 | `type` | `"choice"` | |
-| `choice` | string | "The highest-probability option." **Observed: not always the argmax of the returned distribution** — see § 14.2 |
-| `probabilities` | `map<string, number>` | "Every option mapped to its probability (floats that sum to 1)." **Observed: rounded to 2 dp, so the sum lands within ~0.02 of 1, not at 1** — see § 14.1 |
-| `confidence` | number | "How certain the model is, derived from probabilities." Inherits the 2 dp grid, so it ties heavily — § 14.1 |
+| `choice` | string | "The highest-probability option." **May not always equal the argmax of the returned (rounded) distribution** — see "Things to verify on your own calls" |
+| `probabilities` | `map<string, number>` | "Every option mapped to its probability (floats that sum to 1)." **May be rounded (e.g. to 2 dp), so the sum lands near 1 within a rounding tolerance, not at float precision** — see § 8.5 |
+| `confidence` | number | "How certain the model is, derived from probabilities." Derived from the rounded distribution, so it can take few distinct values and tie — see § 8.5 |
 
 Verbatim example response:
 
@@ -490,7 +492,7 @@ Verbatim example response:
 | `type` | `"score"` | |
 | `score` | number | "The probability-weighted answer across the levels; can land between levels." |
 | `legend` | `map<string, string>` | "Each level number mapped back to its description." |
-| `probabilities` | `map<string, number>` | "Each level (string key) mapped to its probability (floats that sum to 1)." **Observed: 2 dp rounded, same as choice** — § 14.1 |
+| `probabilities` | `map<string, number>` | "Each level (string key) mapped to its probability (floats that sum to 1)." **May be rounded, same as choice** — see § 8.5 |
 | `confidence` | number | "How certain the model is, derived from probabilities." |
 
 Verbatim example response:
@@ -524,6 +526,41 @@ Source: `https://docs.typesafe.ai/sdk/javascript/api/interfaces/Usage`
 | `output_tokens` | integer/number | "Number of output tokens used." |
 
 Only `input_tokens` is billed (§ 11). `output_tokens` is reported but free.
+
+### 8.5 Rounded probabilities and validation tolerances
+
+The docs describe `probabilities` as "floats that sum to 1". Verified against the live API,
+`choice` and `score` probabilities can come back **rounded** — to 2 decimal places (`0.87`, `0.02`,
+`0.00`) when this skill was last updated — rather than at float precision. Rounding precision is
+not documented and could change, so treat it as something to measure on your own responses, not a
+contract. Consequences for code:
+
+- **A sum-to-1 check needs a rounding tolerance, never float precision.** A well-formed
+  distribution can sum to 0.99 or 1.01, so a `1e-6` assertion fails in normal operation. With
+  `d`-decimal rounding each value is off by at most half a grid step, so the worst-case sum error
+  is `0.5 * 10**-d * n_options`. Set the tolerance from the option (or level) count:
+
+  ```python
+  # INTENT: Tolerate probability rounding when checking that a distribution sums to 1.
+  # REASONING: Each of n values is rounded to the nearest grid step (0.01 at 2 dp), so the
+  #   worst-case sum error is half a step per value. A 0.02 floor keeps tiny option sets from
+  #   being over-tight. The bound is loose for wide option sets — that is the price of a
+  #   correct worst case.
+  # ASSUMES: 2 dp rounding and n_options = number of options (choice) or levels (score) sent.
+  #   Measure the sums on a pilot of your own responses and adjust if precision differs.
+  PROB_SUM_TOL = max(0.02, 0.005 * n_options)
+  assert abs(sum(probs.values()) - 1.0) <= PROB_SUM_TOL
+  ```
+
+- **Rounded probabilities can be exactly `0.00`**, including for an option that turns out to be
+  correct, so log-scale metrics on raw values can be infinite. See `./design-patterns.md`
+  § "Evaluating fit for your task" for metric choice.
+- **`confidence` is derived from the rounded distribution**, so it can take only a limited set of
+  values and form large ties. Coarse thresholds still work; ranking within a tie does not.
+- **`choice` vs argmax.** Near-ties that collapse after rounding mean the vendor's `choice` may not
+  always equal the argmax of the returned distribution — see "Things to verify on your own calls".
+- **Score probability keys are strings of level indices** (`"0"`, `"1"`, ...), and **noul answers
+  carry no `confidence`** (§ 8.1) — both are structural facts to assert in validation code.
 
 ---
 
@@ -561,10 +598,10 @@ structurally invalid required data," with a `field_path` "such as `answers.tone.
 i.e. even a `200` can carry a malformed body, which is why the validation asserts in
 `./request-patterns.md` § F matter.
 
-**`503 Service Unavailable` occurs in practice** and is in neither list above. One was observed in
-a 16,296-call run (2026-09-18); a single retry succeeded. Keep `503` in the retryable set — the
-recommended set `{429, 500, 502, 503, 504, 529}` already covers it. Note that the `503` carried
-**no `x-typesafe-request-id` header** (§ 14.3).
+**`503 Service Unavailable` can occur** although it is in neither list above (verified against
+the live API). Treat it as transient and keep it in the retryable set — the recommended set
+`{429, 500, 502, 503, 504, 529}` already covers it. Such error responses may arrive **without an
+`x-typesafe-request-id` header** (§ 2), so error-path logging must not assume the header exists.
 
 The **exact JSON shape of an error body** is not captured in the 2026-09-17 snapshot; the docs
 describe it only as "a JSON body describing what went wrong" and "the body details the offending
@@ -592,17 +629,21 @@ Verbatim from `/models`:
 > limit returns `429 Too Many Requests`. Our client SDKs retry with backoff by default and honor
 > the `retry-after` header when the response carries one.
 
-Observed limits for Jev 1.13, from the `/models` pricing/limits table:
+Limits for Jev 1.13 as stated in the `/models` pricing/limits table at snapshot:
 
 | Model | Rate limits |
 |-------|-------------|
 | Jev 1.13 (`jev-1.13.0`) | 250,000 tokens per second / 1,200 requests per minute |
 
-**Observed: the binding limit is the token rate, not the request rate** (§ 14.4). Size concurrency
-by *tokens per second*, not calls per second: at ~16 concurrent workers, short (~1,000-token)
-prompts produced **zero** 429s across a 28,267-call run, while ~3,000-token prompts at the same
-concurrency produced **1,288** 429s across a 31,307-call run. Exponential backoff absorbed all of
-them, but see § 14.4 on persisting a per-row retry flag so the absorption is auditable.
+**Either leg can bind, and which one binds depends on prompt length.** Because a request over
+*either* limit returns `429`, long prompts (large `state`, or many options with detailed
+`criteria`) can hit the token-per-second leg at a concurrency that is comfortably inside the
+request-per-minute leg for short prompts. Size concurrency by *tokens per second*, not calls per
+second: measure mean `usage.input_tokens` on a pilot, then estimate
+`workers ≈ token_limit_per_sec / (mean_input_tokens * calls_per_sec_per_worker)` and leave
+headroom. Doubling prompt size roughly halves the safe worker count. Backoff will usually absorb
+occasional 429s, but absorbed retries are invisible in the output unless you persist a per-row
+retry count and final status — see "Things to verify on your own calls".
 
 Backoff parameters the vendor SDK uses, from `/sdk/python/api/retries` — a reasonable template for
 a hand-rolled policy:
@@ -644,7 +685,7 @@ Verbatim:
 > **Price:** Charged per input token. Output tokens are free. A Btok is a billion tokens and an
 > Mtok is a million tokens.
 
-Observed figures from the `/models` table (recovered from the page's raw HTML; the text extract
+Figures from the `/models` table at snapshot (recovered from the page's raw HTML; the text extract
 dropped the table):
 
 | Model | Versioned ID | Price (per Btok / per Mtok) |
@@ -654,18 +695,15 @@ dropped the table):
 No other model's pricing appears in the 2026-09-17 snapshot. Prices change; re-fetch
 `https://docs.typesafe.ai/models.md` before relying on these for a budget.
 
-**Observed per-call cost (2026-09, classification workload).** Input-only billing was confirmed
-against the vendor dashboard (billed request and token counts reconciled exactly with script
-logs). Useful anchors for sizing a run:
-
-| Workload | Input tokens per call | Cost |
-|----------|----------------------|------|
-| One `choice` question, 8 options, criteria included | ~1,010 | — |
-| One `choice` question, 40 options, criteria included | ~2,980 | — |
-| Two-stage classification (8-option stage 1 + 40-option stage 2) | ~4,000 combined | **~$0.18-0.19 per 1,000 items** |
-
-Leaf-level option criteria dominate the bill: the 40-option stage costs ~3x the 8-option stage
-purely in criteria tokens. That is the lever § 14.5 discusses for batching.
+**Estimate cost from a pilot, not from a guess.** Input tokens per call depend heavily on your
+`state` length and on how many options you send with how much `criteria` text, so there is no
+useful generic per-call figure. Run a small pilot, read `usage.input_tokens` from every response,
+and multiply the mean by the planned call count and the current price. For `choice` questions with
+large option sets, the option `criteria` text tends to dominate input tokens — check that in the
+pilot, because trimming or restructuring criteria is then the main cost lever (with accuracy
+trade-offs to measure; see `./design-patterns.md` § "Evaluating fit for your task"). Before a large
+run, reconcile the pilot's summed `input_tokens` against the vendor dashboard so the estimate rests
+on what was actually billed.
 
 **Cost implication:** the `state` is billed on every request it appears in, and questions are
 cheap by comparison. Batching N questions against one state costs roughly one state's tokens
@@ -691,7 +729,7 @@ Source: `https://docs.typesafe.ai/models`
 | Name | Kind | Notes |
 |------|------|-------|
 | `jev-latest` | alias | The SDK default (`DEFAULT_MODEL = 'jev-latest'`); moves with releases |
-| `jev-1.13.0` | pinned versioned ID | Stable; the version observed at snapshot |
+| `jev-1.13.0` | pinned versioned ID | Stable; the version documented at snapshot |
 
 **DAAF rule:** anything whose output enters a research artifact must pin the versioned ID, and
 must record the response's `model` field alongside the results. `jev-latest` is fine for
@@ -719,15 +757,15 @@ Per-entry fields, from the JS SDK's `ModelCard` interface
 
 So the expected body is approximately `{"models": [{"name": ..., "description": ...,
 "release_date": ...}, ...]}`. The top-level key `models` was inferred from the SDK type
-description at snapshot and is now **confirmed live** (2026-09-18): `GET /v1/models` returned a
-`{"models": [...]}` envelope listing two aliases, **`jev-latest` and `jev-preview`**. Versioned
-IDs such as `jev-1.13.0` do not appear in the list but are accepted in the `model` field.
+description at snapshot and has been **verified against the live API**: `GET /v1/models` returns a
+`{"models": [...]}` envelope listing aliases (e.g. `jev-latest`). Versioned IDs such as
+`jev-1.13.0` may be accepted in the `model` field even when they are not listed — check by making
+one pinned call and reading the response's `model` field.
 
 > **`GET /v1/models` is not an authentication check.** It is cheap and it is tempting, but a
-> public model-listing endpoint can return `200` regardless of key validity — that failure mode
-> bit this project on a *different* vendor's API, where an expired key still got `200` from the
-> public model list while every authenticated route returned `401`. See § 14.6 for the pre-flight
-> pattern that actually verifies a key.
+> model-listing endpoint can return `200` regardless of key validity — on some APIs an expired key
+> still gets `200` from the model list while every authenticated route returns `401`. See
+> "Things to verify on your own calls" for the pre-flight pattern that actually verifies a key.
 
 ---
 
@@ -747,160 +785,120 @@ IDs such as `jev-1.13.0` do not appear in the list but are accepted in the `mode
 
 ---
 
-## 14. Observed API behaviour (2026-09)
+## 14. Things to verify on your own calls
 
-**Evidence status: these are observations, not documentation.** Everything in this section was
-observed directly across roughly 100,000 live `jev-1.13.0` calls during a text-classification
-project in September 2026 (DAAF project
-`research/2026-09-18_AdHoc_Typesafe_Classifier_Experiments`), with per-call responses persisted to
-parquet and independently re-derived by adversarial code review. Where this section contradicts
-the 2026-09-17 docs snapshot, the observation is the stronger evidence — but it is *one model
-version over one workload*, so re-check rather than assume permanence. Sample sizes are given for
-every claim.
+The docs leave several behaviours undocumented or under-specified. Each item below has been
+verified against the live API, but none is a vendor guarantee, and serving behaviour can change
+between model versions and releases. Before relying on any of them, run a small pilot, persist
+every response (including `model`, `usage`, and the full `probabilities`) to parquet, and check
+the item against your own data. Analytic cautions — confidence ranking, metric choice,
+calibration, batching items per call, class-level checks — are in `./design-patterns.md`
+§ "Evaluating fit for your task".
 
-### 14.1 Probabilities are rounded to 2 decimal places
+### Probability rounding and the sum tolerance
 
-`probabilities` values come back on a 0.01 grid (`0.87`, `0.02`, `0.00`), not at float precision.
-Consequences, all load-bearing:
+Check the decimal precision of the returned probabilities and the spread of
+`sum(probabilities) - 1` across your pilot. Set the validation tolerance from the option count as
+in § 8.5 — never `1e-6` — and tighten it only if your own sums support a sharper bound.
 
-**A `1e-6` sum assertion fails in normal operation.** A well-formed distribution routinely sums to
-0.99 or 1.01. Use a rounding-scale tolerance instead:
+### `choice` vs the code-computed argmax
 
-```python
-# INTENT: Tolerate 2 dp rounding when checking that a distribution sums to 1.
-# REASONING: Each of n options is independently rounded to the nearest 0.01, so the worst-case
-#   sum error is 0.005 * n. 0.02 held for option sets up to ~8; scale the bound for wider sets.
-# ASSUMES: n_options is the number of options (choice) or levels (score) that were requested.
-PROB_SUM_TOL = max(0.02, 0.5 * n_options * 0.01)
-assert abs(sum(probs.values()) - 1.0) <= PROB_SUM_TOL
-```
-
-0.02 was sufficient at up to ~8 options. At 40 options the bound genuinely needs to grow — the
-formula above gives 0.20 there, which is loose but correct; tighten it empirically if you want a
-sharper drift detector on a wide option set.
-
-**Rows with a true-label probability of exactly `0.00` are common** — 20.5% of rows in one
-7,598-row evaluation. Any log-loss or NLL computed on raw Jev probabilities is therefore infinite
-or undefined. **Floor the probabilities before any log-scale metric** (e.g. clip to 0.005, half
-the grid step), and say so in the write-up; Brier score and ECE are unaffected and are the better
-default choices.
-
-**`confidence` inherits the grid, so it ties massively.** Because confidence is a statistic of a
-2 dp distribution it takes only a few dozen distinct values: 45-87 distinct confidence values
-across a 25,000-row evaluation, versus 25,000 distinct values for a TF-IDF baseline on the same
-rows. Tie blocks at `1.00` held **1,127 rows** in a 7,598-row run and **4,600-6,900 rows** in
-25,000-28,000-row runs.
-
-> **Known limitation — selective prediction.** Top-decile confidence ranking, coverage-accuracy
-> curves, and any "act on the most confident X%" routing are **not achievable** on raw Jev
-> confidence at scale: the top decile is a single undifferentiated tie block. Coarse three-band
-> thresholding (the vendor's documented pattern, § `./design-patterns.md` § 4) still works fine —
-> it is *ranking within a band* that breaks. If you need a ranking, derive your own statistic from
-> the full distribution (top-2 margin, entropy) and accept that it inherits the same grid, or
-> recalibrate against held-out labels.
-
-### 14.2 `choice` is not always the argmax of the distribution
-
-The docs define `choice` as "the highest-probability option." It usually is, but not always:
-
-| Run | Question shape | Mismatches |
-|-----|---------------|------------|
-| Stage 1 | 8 options | 12 / 28,267 (0.042%) |
-| Stage 2 | up to 40 options | 49 / 31,307 (0.157%) |
-| Stage 1 (verbose prompt variant) | 8 options | 14 / 28,267 (0.050%) |
-| Stage 2 (verbose prompt variant) | up to 40 options | 50 / 31,355 (0.160%) |
-| Earlier 16,296-call run | mixed | 18 |
-
-Mismatches concentrate on low-confidence rows (mean confidence 0.36 on mismatching stage-2 rows
-vs 0.81 elsewhere), consistent with them being near-ties that the 2 dp rounding collapses — the
-vendor's internal argmax is presumably taken on unrounded values the response never exposes.
-
-**Therefore `assert answer["choice"] == max(probs, key=probs.get)` is wrong** and will fail a
-long run. Instead: **decide explicitly which one your analysis uses, and persist both.**
+The docs define `choice` as "the highest-probability option." After rounding, near-ties can make
+the vendor `choice` differ from — or tie with another option for — the argmax of the *returned*
+distribution; the vendor presumably tie-breaks on unrounded values the response does not expose.
+An `assert answer["choice"] == max(probs, key=probs.get)` can therefore fail a long run on
+behaviour that is not schema drift. Instead, persist both, report (count) disagreements rather
+than asserting, and state in the write-up which column the analysis treats as the prediction:
 
 ```python
 # INTENT: Persist the vendor's choice AND the code-computed argmax as separate columns.
-# REASONING: They disagree on ~0.04-0.16% of rows (2 dp near-ties). Recording only one makes the
-#   analysis silently dependent on an undocumented tie-break; recording both makes the choice
-#   auditable and lets a reviewer quantify the disagreement.
+# REASONING: They can disagree on near-ties that collapse after rounding. Recording only one
+#   makes the analysis silently depend on an undocumented tie-break; recording both makes the
+#   choice auditable and lets a reviewer measure the disagreement on your own data.
 # ASSUMES: The analysis documents which column it treats as the prediction.
 "pred_label": answer["choice"],                      # vendor field
 "pred_label_argmax": max(probs, key=probs.get),      # code-computed from the returned dist
 ```
 
-### 14.3 `x-typesafe-request-id` is not always present
+Python's `max` breaks *exact* ties by dict order, so it is also worth counting rows whose top two
+returned probabilities are equal.
 
-A `503` response arrived with **no** `x-typesafe-request-id` header (observed once in a
-16,296-call run; the retry succeeded). The SDK docs already admit this — `TypeSafeAPIError
-.request_id` is documented as "the `x-typesafe-request-id` response header, **or `None` if
-absent**" — but it is easy to miss when hand-rolling HTTP.
+### `x-typesafe-request-id` may be absent
 
-**Any logging that reads the header must use `.get()` and tolerate `None`**, including the error
-paths inside a retry loop. `response.headers["x-typesafe-request-id"]` inside an exception handler
-raises a `KeyError` that masks the original failure, which is the worst possible time for it.
+The SDK documents `TypeSafeAPIError.request_id` as "the `x-typesafe-request-id` response header,
+**or `None` if absent**", and error responses (e.g. a `503`) can arrive without it. Read the header
+with `.get()` everywhere — especially inside retry loops and exception handlers, where
+`response.headers["x-typesafe-request-id"]` would raise a `KeyError` that masks the original
+failure at the worst possible moment.
 
-### 14.4 429 rate limiting is token-rate based, not request-rate based
+### Undocumented statuses
 
-Same concurrency (~16 workers), same account, two different prompt sizes:
+`503` can occur even though the HTTP docs list only `401`/`422`/`429`/`529` (§ 9). Retry the
+transient set `{429, 500, 502, 503, 504, 529}`; fail fast on `401` and `422`, which repeat
+identically. Log `response.text` (the error body) and the request id — never the request headers,
+which carry the bearer token.
 
-| Run | Prompt size | Calls | 429s |
-|-----|------------|-------|------|
-| Stage 1 | ~1,000 input tokens | 28,267 | **0** |
-| Stage 2 | ~3,000 input tokens | 31,307 | **1,288** |
+### Which rate-limit leg binds, and auditable retries
 
-This matches the documented limit pair (250k tokens/sec and 1,200 requests/min) with the *token*
-leg binding first. Exponential backoff with jitter absorbed all 1,288 with no failed rows.
-
-**Practical guidance:** size concurrency by *tokens per second*, not calls per second. Estimate
-`workers ~ token_budget_per_sec / (mean_input_tokens * calls_per_sec_per_worker)` and back off
-from there. Doubling prompt size means halving workers to hold the same token rate.
-
-**Persist a per-row retry flag.** This project did not, and adversarial review flagged it as
-unverifiable: with 1,288 absorbed 429s and no `retry_count` / `http_status` column, the question
-"did retried rows differ in outcome?" could not be answered from the persisted output at all. Add
-the column at negligible cost:
+Rate limits have a token leg and a request leg (§ 10). Long prompts can hit the token leg at a
+concurrency that is fine for short ones, so after the pilot, size concurrency by tokens per second
+from the measured `usage.input_tokens`. Backoff absorbs `429`s silently, so a reviewer cannot later
+ask "did throttled rows differ in outcome from clean ones?" unless the retry history is persisted
+per row:
 
 ```python
 # INTENT: Record how many retries each row absorbed and the final status.
 # REASONING: A silently-absorbed 429 is invisible in the output otherwise, so a reviewer cannot
 #   test whether throttled rows differ systematically from clean ones.
-"retry_count": attempt - 1,
+# ASSUMES: `attempt` is the zero-based retry-loop index at which the loop exited (as in
+#   request-patterns.md § C).
+"retry_count": attempt,
 "http_status_final": response.status_code,
 ```
 
-### 14.5 Batching many items per call: measured trade-offs
+### Model identity across a run
 
-Jev batches *questions*, and a state can be an array — so many items can share one call (state as
-an array of items, one question per item). Measured on 1,000 items at N = 10 / 25 / 50 per call:
+Check the response `model` on the first call (alias resolution, § 8) and assert a single value
+across a persisted run. An alias move mid-run, or a pinned ID the account does not accept, should
+fail loudly rather than silently mix versions in one output file.
 
-| Variant | 8-option stage | 40-option stage |
-|---------|---------------|-----------------|
-| **A** — criteria repeated in every question | No accuracy loss (delta +0.2 to +1.0 pp, p > 0.13); **-23% tokens/item** (1,012 → 782) | **-3 to -4 pp accuracy** in every cell (p <= 0.005); repeated criteria **breach the 64k/32k budget at N >= 25** for large option sets |
-| **B** — criteria stated once in shared state, bare option keys in questions | **-1.2 to -1.5 pp accuracy** (strict p 0.02-0.04), flat in N; **-58% tokens/item** (1,012 → 427) | -3 to -4 pp accuracy; **-77% tokens** (3,167 → 731) |
+### Auth pre-flight
 
-No convincing positional effect (items early vs late in the batch performed alike).
+Two checks look like auth checks but are not:
 
-**Reading:** batching is a real win for *small* option sets — Variant A at an 8-option question
-bought a 23% token cut for nothing measurable. For *large* option sets (tens of options with
-per-option criteria), batching cost 3-4 points of accuracy in every configuration tested and
-strains the token budget, so per-item calls remain the default there. Variant B's 58% saving is
-available if 1.2-1.5 pp is an acceptable trade for the workload — decide deliberately rather than
-by default, and note the shared-state form means the model no longer sees criteria attached to
-the question it is answering.
+1. **The variable can be present but empty.** A check for the variable's *name* passes when its
+   value is an empty string, and every call then returns `401`. Check presence *and*
+   non-emptiness without ever printing the value. From the shell, as a single command whose exit
+   status is 0 when the key is set and non-empty:
 
-### 14.6 Auth pre-flight: a general lesson
+   ```
+   [ -n "${TYPESAFE_API_KEY:+set}" ]
+   ```
 
-Two failure modes bit this project (on other vendors' APIs, but the lesson is API-agnostic and
-applies to `TYPESAFE_API_KEY` exactly the same way):
+   Inside a script, compute a boolean first and print only the boolean (a `print()` on the same
+   line as an `os.environ[...]` lookup of a credential-named variable is refused by
+   `run_with_capture.sh`'s pre-execution scan):
 
-1. **An environment variable can be present but empty.** A pre-flight that checked only for the
-   variable's *name* passed, then every call failed. Check the *value's length*:
-   `printenv TYPESAFE_API_KEY | wc -c` must be **> 1** (the count includes the trailing newline,
-   so an empty value yields 1). Never `echo` the value itself.
-2. **A public unauthenticated endpoint is not an auth check.** A model-list route returned `200`
-   with an expired key while every authenticated route returned `401`.
+   ```python
+   # INTENT: Confirm the key is configured without revealing it.
+   # REASONING: An empty value passes a name-only check; printing the value would put the
+   #   credential into the permanent execution log, so only a boolean is printed.
+   key_ok = "TYPESAFE_API_KEY" in os.environ and len(os.environ.get("TYPESAFE_API_KEY", "")) > 0
+   print("TYPESAFE_API_KEY set and non-empty:", key_ok)
+   ```
 
-**The only reliable pre-flight is one authenticated call whose body you validate:** send a minimal
-real request (tiny state, one noul question), assert `status_code == 200`, and assert the expected
-keys are in the parsed body. On Jev that costs a handful of input tokens — far less than
-discovering the problem 10,000 rows into a run.
+   Never `echo` or print the value, and avoid commands that read or dump the environment — DAAF's
+   safety hooks block them because anything printed lands in the permanent audit record.
+2. **A public or unauthenticated endpoint returning `200` is not an auth check** (§ 12).
+
+**The reliable pre-flight is one authenticated call whose body you validate:** send a minimal real
+request (tiny state, one noul question), assert `status_code == 200`, and assert the expected keys
+are in the parsed body. Pattern E in `./request-patterns.md` does this and doubles as the
+alias-resolution probe. It costs a handful of input tokens — far less than discovering the
+problem partway through a paid run.
+
+### Cost
+
+The billing basis is per input token (§ 11, vendor-stated). Estimate a run's cost from
+`usage.input_tokens` on a pilot, note how much of it is option `criteria` text, and reconcile the
+pilot's billed total against the vendor dashboard before scaling up.

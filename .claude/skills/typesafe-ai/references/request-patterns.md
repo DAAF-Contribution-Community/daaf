@@ -25,11 +25,13 @@ bash /daaf/scripts/run_with_capture.sh {PROJECT_DIR}/scripts/.../script.py
 - **Every call costs money** (per input token). Confirm with the user before running anything
   beyond a single smoke test, and always before a loop over rows.
 
-> **Validation tolerances here reflect observed behaviour, not the docs.** Jev rounds
-> probabilities to 2 decimal places, so these patterns assert a sum tolerance of ~0.02 rather than
-> float precision, and they do **not** assert that `choice` equals the argmax (it disagrees on
-> ~0.04-0.16% of rows). They also read `x-typesafe-request-id` with `.get()` because it is absent
-> on at least some error responses. Full evidence and sample sizes: `./api-reference.md` § 14.
+> **Validation tolerances here reflect live-API behaviour, not just the docs.** Probabilities can
+> come back rounded (2 decimal places when verified), so these patterns assert a sum tolerance
+> scaled to the option count rather than float precision, and they do **not** assert that `choice`
+> equals the argmax of the returned distribution (near-ties can collapse after rounding). They also
+> read `x-typesafe-request-id` with `.get()` because it can be absent on error responses. Check
+> each against your own responses: `./api-reference.md` § 8.5 and § "Things to verify on your own
+> calls".
 
 ---
 
@@ -53,17 +55,19 @@ ENDPOINT = "https://api.typesafe.ai/v1/systemone"
 
 # INTENT: Pin the model version rather than using the `jev-latest` alias.
 # REASONING: An alias moves when a release ships, so answers can change with no code change;
-#   pinning keeps results reproducible. The response's `model` field resolves aliases to a
-#   concrete version (confirmed live 2026-09-18), so persist it either way.
-# ASSUMES: jev-1.13.0 is accepted by the account (versioned IDs are accepted whether or not
-#   they appear in GET /v1/models, which lists only jev-latest and jev-preview).
+#   pinning keeps results reproducible. The response's `model` field resolves aliases to the
+#   concrete version that answered (verified against the live API), so persist it either way.
+# ASSUMES: jev-1.13.0 is accepted by the account (versioned IDs may be accepted even when they
+#   do not appear in GET /v1/models, which lists aliases) — check the response `model` field.
 MODEL = "jev-1.13.0"
 
-# INTENT: Tolerate 2 dp probability rounding when validating distributions.
-# REASONING: Jev returns probabilities on a 0.01 grid, so a well-formed distribution sums to
-#   0.99-1.01, not to 1 within float epsilon. A 1e-6 assert fails in normal operation.
-#   Worst-case sum error is 0.005 * n_options; scale the bound for wide option sets.
-# ASSUMES: Option/level counts here are small (<= 8); see api-reference.md § 14.1.
+# INTENT: Tolerate probability rounding when validating distributions.
+# REASONING: Probabilities can come back rounded (e.g. to 2 dp), so a well-formed distribution
+#   can sum to 0.99-1.01, not to 1 within float epsilon; a 1e-6 assert would fail in normal
+#   operation. With 2 dp rounding the worst-case sum error is 0.005 * n_options.
+# ASSUMES: 2 dp rounding and at most 4 options/levels in this pattern, so 0.02 covers the
+#   worst case. Set this from your option count (see api-reference.md § 8.5) and check it
+#   against the sums in your own responses.
 PROB_SUM_TOL = 0.02
 
 HEADERS = {
@@ -302,11 +306,12 @@ linearly with row count, so confirm the row count and a per-row token estimate w
 before running it. Run it against a small `head()` slice first.
 
 **If you parallelize this loop, size the worker count by tokens per second, not calls per
-second.** 429s are token-rate driven: at ~16 concurrent workers, ~1,000-token prompts produced
-zero 429s over 28,267 calls while ~3,000-token prompts produced 1,288 over 31,307 calls
-(`./api-reference.md` § 14.4). Doubling prompt size means roughly halving workers. The loop below
-is serial; the retry block is what makes a parallel version survivable, and the `retry_count`
-column is what makes the throttling auditable afterwards.
+second.** Rate limits have a token leg and a request leg, and long prompts can hit the token leg
+at a concurrency that is fine for short ones (`./api-reference.md` § 10). Measure mean
+`usage.input_tokens` on the `head()` slice first; doubling prompt size roughly halves the safe
+worker count. The loop below is serial; the retry block is what makes a parallel version
+survivable, and the `retry_count` column is what makes the throttling auditable afterwards (a
+loop that tolerates non-200 final outcomes should also persist the final HTTP status per row).
 
 ```python
 # --- Config ---
@@ -382,8 +387,9 @@ for row in df.iter_rows(named=True):
         if response.status_code == 200:
             break
         # INTENT: Read the request-id header defensively; it may be absent.
-        # REASONING: A 503 was observed carrying NO x-typesafe-request-id header, so bracket
-        #   access here would raise a KeyError that masks the real failure. `.get()` yields None.
+        # REASONING: Error responses (e.g. a 503) can arrive without an x-typesafe-request-id
+        #   header, so bracket access here would raise a KeyError that masks the real failure.
+        #   `.get()` yields None.
         request_id = response.headers.get("x-typesafe-request-id")
         if response.status_code not in (429, 500, 502, 503, 504, 529):
             raise RuntimeError(
@@ -421,16 +427,16 @@ for row in df.iter_rows(named=True):
     #   is recorded. Alias drift would otherwise be invisible in the output file.
     # INTENT: Persist a per-row retry flag alongside the answers.
     # REASONING: Backoff silently absorbs 429s, so without this column a reviewer cannot test
-    #   whether throttled rows differ in outcome from clean ones. Observed: 1,288 absorbed 429s
-    #   in one 31,307-call run were entirely unrecoverable from the output for this reason.
+    #   whether throttled rows differ in outcome from clean ones — the retry history is
+    #   unrecoverable from the output after the fact.
     # ASSUMES: `attempt` is the zero-based loop index at which the 200 arrived.
     records.append({
         "ticket_id": row["ticket_id"],
         "retry_count": attempt,
         "category": a["category"]["choice"],
         # INTENT: Persist the code-computed argmax next to the vendor's `choice`.
-        # REASONING: They disagree on ~0.04-0.16% of rows (2 dp near-ties collapse the ordering
-        #   the vendor tie-broke on unrounded values). Recording both makes the downstream
+        # REASONING: They can disagree on near-ties that collapse after rounding (the vendor
+        #   presumably tie-breaks on unrounded values). Recording both makes the downstream
         #   decision of which to treat as THE prediction explicit and auditable.
         # ASSUMES: The analysis documents which of the two columns it uses.
         "category_argmax": max(
@@ -491,9 +497,9 @@ HEADERS = {"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/js
 
 # INTENT: Retry the transient statuses only.
 # REASONING: /api documents 429 and 529 as "retry with exponential backoff"; 5xx transport
-#   errors are conventionally retryable too, and a 503 WAS observed live (undocumented, one in
-#   16,296 calls, succeeded on retry). 401 (bad key) and 422 (bad body) are deterministic
-#   — retrying them burns time and money to get the identical failure.
+#   errors are conventionally retryable too, and 503 can occur on the live API even though it
+#   is undocumented. 401 (bad key) and 422 (bad body) are deterministic — retrying them burns
+#   time and money to get the identical failure.
 # ASSUMES: The vendor SDK's own example policy omits 529, but the HTTP-API page explicitly
 #   instructs retrying it, so 529 is included here.
 RETRYABLE = {429, 500, 502, 503, 504, 529}
@@ -517,8 +523,8 @@ for attempt in range(1, MAX_ATTEMPTS + 1):
         break
 
     # INTENT: Read the request-id defensively — it is not guaranteed on error responses.
-    # REASONING: Observed absent on a 503. `.get()` yields None rather than raising inside the
-    #   error path, where a KeyError would mask the failure being reported.
+    # REASONING: It can be absent on error responses (e.g. a 503). `.get()` yields None rather
+    #   than raising inside the error path, where a KeyError would mask the failure being reported.
     request_id = response.headers.get("x-typesafe-request-id")
     if response.status_code not in RETRYABLE:
         # INTENT: Log the server's error body and the request id, never the request headers.
@@ -591,12 +597,13 @@ body = response.json()
 
 # --- Validate ---
 # INTENT: Tolerate either a {"models": [...]} envelope or a bare list.
-# REASONING: The envelope was confirmed live 2026-09-18 — GET /v1/models returned
-#   {"models": [...]} listing jev-latest and jev-preview. The bare-list fallback is kept as
-#   cheap insurance against a future schema change, not because the shape is in doubt.
+# REASONING: The {"models": [...]} envelope has been verified against the live API (it lists
+#   aliases). The bare-list fallback is kept as cheap insurance against a future schema
+#   change, not because the shape is in doubt.
 # ASSUMES: Each entry carries name / description / release_date, per the ModelCard interface.
 # NOTE: A 200 here is NOT proof the key is valid — validate auth with an authenticated
-#   evaluation call whose body you parse (see api-reference.md § 14.6).
+#   evaluation call whose body you parse (see api-reference.md § "Things to verify on your own
+#   calls" > Auth pre-flight).
 models = body["models"] if isinstance(body, dict) and "models" in body else body
 assert isinstance(models, list) and models, f"unexpected /v1/models body: {json.dumps(body)[:500]}"
 for m in models:
@@ -608,9 +615,10 @@ for m in models:
 
 # INTENT: Resolve the alias to a concrete version by making one cheap evaluation call and
 #   reading the response's `model` field.
-# REASONING: The response reports the versioned ID that actually answered — confirmed live
-#   2026-09-18, when a "jev-latest" request came back as "jev-1.13.0". This doubles as the
-#   only trustworthy auth pre-flight, because it is an AUTHENTICATED call with a parsed body.
+# REASONING: The response reports the versioned ID that actually answered (verified against
+#   the live API: a "jev-latest" request reports a versioned ID such as "jev-1.13.0"). This
+#   doubles as the only trustworthy auth pre-flight, because it is an AUTHENTICATED call with
+#   a parsed body.
 # ASSUMES: This costs a small number of input tokens — keep the probe state tiny.
 probe = requests.post(
     "https://api.typesafe.ai/v1/systemone",
@@ -679,22 +687,24 @@ for qid, question in questions.items():
         assert answer["choice"] in options, f"{qid}: choice not among supplied options"
         probs = answer["probabilities"]
         assert set(probs) == options, f"{qid}: probability keys differ from options"
-        # INTENT: Tolerate 2 dp rounding, scaled to the number of options.
-        # REASONING: Jev rounds each probability to 0.01, so worst-case sum error is
-        #   0.005 * n_options. A 1e-6 bound fails in normal operation; 0.02 held up to ~8
-        #   options, and the max() keeps wider option sets correct too.
-        tol = max(0.02, 0.5 * len(options) * 0.01)
+        # INTENT: Tolerate probability rounding, scaled to the number of options.
+        # REASONING: Probabilities can come back rounded (e.g. to 2 dp), so the worst-case sum
+        #   error is 0.005 * n_options; a 1e-6 bound would fail in normal operation. The 0.02
+        #   floor keeps tiny option sets from being over-tight.
+        # ASSUMES: 2 dp rounding — check the sums in your own responses (api-reference.md § 8.5).
+        tol = max(0.02, 0.005 * len(options))
         assert abs(sum(probs.values()) - 1.0) <= tol, f"{qid}: probabilities sum to {sum(probs.values())}"
         assert 0.0 <= answer["confidence"] <= 1.0, f"{qid}: confidence out of [0, 1]"
         # INTENT: REPORT, do not assert, when `choice` differs from the code-computed argmax.
-        # REASONING: The docs define `choice` as the highest-probability option, but it
-        #   disagrees on ~0.04-0.16% of rows — the vendor tie-breaks on unrounded values the
-        #   response never exposes, so this is expected behaviour, not drift. Asserting here
-        #   fails a long run for a known quirk; counting it keeps the quirk visible.
+        # REASONING: The docs define `choice` as the highest-probability option, but near-ties
+        #   that collapse after rounding can make it differ from the argmax of the returned
+        #   distribution (the vendor presumably tie-breaks on unrounded values), so this is
+        #   expected behaviour, not drift. Asserting here could fail a long run on that quirk;
+        #   reporting it keeps the disagreement visible and countable.
         # ASSUMES: The caller decides which field is THE prediction and persists both.
         if answer["choice"] != max(probs, key=probs.get):
             print(f"  NOTE {qid}: vendor choice {answer['choice']!r} != argmax "
-                  f"{max(probs, key=probs.get)!r} (2 dp near-tie; confidence "
+                  f"{max(probs, key=probs.get)!r} (rounding near-tie; confidence "
                   f"{answer['confidence']})")
 
     elif answer["type"] == "score":
@@ -708,9 +718,9 @@ for qid, question in questions.items():
             f"{qid}: probability keys {sorted(probs)} do not match level indices"
         )
         assert set(answer["legend"]) == set(probs), f"{qid}: legend keys differ from probability keys"
-        # INTENT: Same 2 dp rounding tolerance as for choice, scaled to the level count.
-        # REASONING: Score probabilities are rounded identically; see api-reference.md § 14.1.
-        tol = max(0.02, 0.5 * n_levels * 0.01)
+        # INTENT: Same rounding tolerance as for choice, scaled to the level count.
+        # REASONING: Score probabilities can be rounded identically; see api-reference.md § 8.5.
+        tol = max(0.02, 0.005 * n_levels)
         assert abs(sum(probs.values()) - 1.0) <= tol, f"{qid}: probabilities sum to {sum(probs.values())}"
         assert 0.0 <= answer["score"] <= n_levels - 1, f"{qid}: score outside level range"
         assert 0.0 <= answer["confidence"] <= 1.0, f"{qid}: confidence out of [0, 1]"
@@ -751,7 +761,9 @@ Notes:
   `||` chaining. Piping is permitted by that rule, but piping into `jq` here mainly costs
   readability on a one-line response — read the raw JSON instead.
 - `-sS` keeps the progress meter quiet while still surfacing errors.
-- A `401` means the env var is unset or wrong inside the container; check with
-  `printenv | grep -c TYPESAFE_API_KEY` (which prints a **count**, not the value — never
-  `echo $TYPESAFE_API_KEY`).
+- A `401` means the env var is unset, empty, or wrong inside the container. Check that it is set
+  and non-empty without revealing it: `[ -n "${TYPESAFE_API_KEY:+set}" ]` (exit status 0 means
+  set and non-empty). Never `echo $TYPESAFE_API_KEY` or dump the environment. If it is set and
+  you still get `401`, the key itself is wrong or expired — see `./api-reference.md`
+  § "Things to verify on your own calls" > Auth pre-flight.
 - This call costs money. Run it once.
