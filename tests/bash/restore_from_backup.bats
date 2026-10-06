@@ -95,10 +95,44 @@ teardown() {
 #   (2026-10-02, startup check)
 #   RM_FAIL=psstart       the startup `docker ps --filter volume=` itself fails (exit 125)
 #   RM_PS_START_STDERR=1  that startup check also prints a stderr line (exit 0)
+#   (fix pass #19, field test 2026-10-05: D1 holders, D3)
+#   RM_HOLDERS            containers that hold a volume, as listed by the holder check
+#                         `ps -a --filter volume=<X> --format {{.ID}} {{.State}}` (its own
+#                         arm; the format is ONE argument): space-separated words
+#                         <volume>=<id>:<state>, e.g. daaf_daaf-data-restore-tmp=c9be7425c57c:created.
+#                         A plain `rm <id>` removes a created/exited/dead holder from later
+#                         lists (${TEST_DIR}/holders_removed) and fails like the daemon for any
+#                         other state; a `volume rm` of a volume that still has a holder fails
+#                         "volume is in use" (field test, section 5) -- so a skipped holder
+#                         removal is observable.
+#   RM_HOLDERS_LATE       same form; listed only from the SECOND holder list of that volume on
+#                         (a holder that appeared after the leftover check pass)
+#   RM_HOLDERS_PS_FAIL    volume names whose holder list FAILS: stderr RM_HOLDERS_PS_SAID (may
+#                         hold several lines; default a daemon-down line), exit
+#                         RM_HOLDERS_PS_EXIT (default 1)
+#   RM_HOLDERS_PS_NOISE=1 a holder list that works also prints a stderr line (stdout only)
+#   RM_HOLDER_RM_FAIL     holder ids whose plain `rm <id>` fails (a daemon stderr line)
+#   RM_VOLUME_RM_SAID     stderr text printed by a `volume rm` that FAILS under RM_FAIL=tmprm /
+#                         leftoverrm (may hold several lines)
+#   RM_INTERRUPT_AT       claudeswap: the Claude swap call sends SIGINT to the script ($$)
+#   (fix round 7, review round 6, R5)
+#   RM_SWAP_RUNNING_AT_RM swap container names that are RUNNING by the time the leftover
+#                         path removes them (they were stopped at the check, before the
+#                         y/n prompt): a PLAIN `rm <name>` fails like the daemon; `rm -f`
+#                         would remove it (a mutant)
+#   (fix round 8, delta review of round 7, ISSUE 1)
+#   RM_SWAP_GONE_AT_RM    swap container names that VANISHED before the leftover path
+#                         removes them: a PLAIN `rm <name>` exits 1 with "No such container"
+#                         (docker CLI rm.go ignores not-found only for -f)
+#   RM_SWAP_REMOVING_AT_RM swap container names whose plain `rm <name>` exits 1 with the
+#                         daemon's "removal of container <name> is already in progress"
+#                         (moby daemon/delete.go)
 _mock_restore_docker() {
     unset DAAF_PROJECT_NAME DAAF_DATA_VOLUME_NAME
     : > "${TEST_DIR}/docker_calls.log"
     : > "${TEST_DIR}/helpers"
+    : > "${TEST_DIR}/holder_lists"
+    : > "${TEST_DIR}/holders_removed"
     rm -f "${TEST_DIR}/pause_armed" "${TEST_DIR}/cleanup_interrupted"
     docker() {
         local a="$*" st="${TEST_DIR}" mode v lbl cid
@@ -193,22 +227,39 @@ _mock_restore_docker() {
                     rm)
                         # RM_INTERRUPT_AT=pause: a SIGINT to the script ($$) 1 s from now,
                         # when it is waiting at the exit pause (armed once; fds closed so
-                        # the sleeper does not hold the pty open).
+                        # the sleeper does not hold the pty open). The sleeper is an EXEC'd
+                        # `sh -c` (fix pass #18/#19): the restore now reads this call's
+                        # stderr through `$(docker volume rm ... 2>&1 > /dev/null)`, and a
+                        # FORKED subshell would inherit bash's saved copy of that pipe, so
+                        # the substitution would block until the sleeper exits and the
+                        # SIGINT would land mid-cleanup instead of at the pause.
                         if [ "${RM_INTERRUPT_AT:-}" = pause ] && [ ! -f "${st}/pause_armed" ]; then
                             : > "${st}/pause_armed"
-                            ( sleep 1; kill -INT "$$" ) > /dev/null 2>&1 < /dev/null &
+                            sh -c 'sleep 1; kill -INT "$1"' sh "$$" > /dev/null 2>&1 < /dev/null &
                         fi
                         if [ "${RM_INTERRUPT_AT:-}" = cleanup ] && [ ! -f "${st}/cleanup_interrupted" ]; then
                             : > "${st}/cleanup_interrupted"
                             kill -INT "$$"
                         fi
+                        # D1: a volume that a container still references is "in use".
+                        lbl="$(_rm_holder_lines "${3:-}" | awk '{ print $1 }' | tr '\n' ' ' | sed 's/ $//')"
+                        if [ -n "${lbl}" ]; then
+                            echo "Error response from daemon: remove ${3:-}: volume is in use - [${lbl}]" >&2
+                            return 1
+                        fi
                         for v in ${RM_LEFTOVER:-}; do
                             if [ "${v}" = "${3:-}" ]; then
-                                if [ "${RM_FAIL:-}" = leftoverrm ]; then return 1; fi
+                                if [ "${RM_FAIL:-}" = leftoverrm ]; then
+                                    if [ -n "${RM_VOLUME_RM_SAID:-}" ]; then printf '%s\n' "${RM_VOLUME_RM_SAID}" >&2; fi
+                                    return 1
+                                fi
                                 return 0
                             fi
                         done
-                        if [ "${RM_FAIL:-}" = tmprm ]; then return 1; fi
+                        if [ "${RM_FAIL:-}" = tmprm ]; then
+                            if [ -n "${RM_VOLUME_RM_SAID:-}" ]; then printf '%s\n' "${RM_VOLUME_RM_SAID}" >&2; fi
+                            return 1
+                        fi
                         return 0
                         ;;
                 esac
@@ -245,6 +296,27 @@ _mock_restore_docker() {
                 return 0
                 ;;
             ps)
+                # D1 (fix pass #19): the holder list of a temp volume, STDOUT lines
+                # "<id> <state>" (RM_HOLDERS / RM_HOLDERS_LATE / RM_HOLDERS_PS_FAIL). Its own
+                # arm, before the others: it once fell into the startup-check branch. The
+                # format must arrive as ONE argument (a split one is a mock error, 99).
+                if [[ "${a}" == "ps -a --filter volume="*" --format {{.ID}} {{.State}}" ]]; then
+                    if [ "$#" -ne 6 ] || [ "${6:-}" != '{{.ID}} {{.State}}' ]; then
+                        echo "MOCK: unexpected holder-list argv ($# args): ${a}" >&2
+                        return 99
+                    fi
+                    v="${4#volume=}"
+                    for lbl in ${RM_HOLDERS_PS_FAIL:-}; do
+                        if [ "${lbl}" = "${v}" ]; then
+                            printf '%s\n' "${RM_HOLDERS_PS_SAID:-Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?}" >&2
+                            return "${RM_HOLDERS_PS_EXIT:-1}"
+                        fi
+                    done
+                    printf '%s\n' "${v}" >> "${st}/holder_lists"
+                    if [ "${RM_HOLDERS_PS_NOISE:-}" = 1 ]; then echo "WARNING: simulated docker config notice" >&2; fi
+                    _rm_holder_lines "${v}"
+                    return 0
+                fi
                 # The S3 exact-name lists (review round 2): `ps -a --format {{.Names}}`
                 # (all containers) and `ps --format {{.Names}}` (running only), STDOUT
                 # names one per line. Near-miss names prove the match is whole-line.
@@ -315,6 +387,50 @@ _mock_restore_docker() {
                 return 0
                 ;;
             rm)
+                # D1: a PLAIN `rm <id>` (no -f) is the holder removal; like the daemon it
+                # refuses a holder that is not stopped (daemon/delete.go).
+                if [ "${2:-}" != "-f" ]; then
+                    # R5: a swap container that started after the leftover check.
+                    for v in ${RM_SWAP_RUNNING_AT_RM:-}; do
+                        if [ "${v}" = "${2:-}" ]; then
+                            echo "Error response from daemon: cannot remove container \"/${2}\": container is running: stop the container before removing or force remove" >&2
+                            return 1
+                        fi
+                    done
+                    # Fix round 8: a swap container that vanished / is being removed.
+                    for v in ${RM_SWAP_GONE_AT_RM:-}; do
+                        if [ "${v}" = "${2:-}" ]; then
+                            echo "Error response from daemon: No such container: ${2}" >&2
+                            return 1
+                        fi
+                    done
+                    for v in ${RM_SWAP_REMOVING_AT_RM:-}; do
+                        if [ "${v}" = "${2:-}" ]; then
+                            echo "Error response from daemon: removal of container ${2} is already in progress" >&2
+                            return 1
+                        fi
+                    done
+                    for v in ${RM_HOLDER_RM_FAIL:-}; do
+                        if [ "${v}" = "${2:-}" ]; then
+                            echo "Error response from daemon: cannot remove container \"/${2}\": simulated failure" >&2
+                            return 1
+                        fi
+                    done
+                    mode=""
+                    for v in ${RM_HOLDERS:-} ${RM_HOLDERS_LATE:-}; do
+                        lbl="${v#*=}"
+                        if [ "${lbl%%:*}" = "${2:-}" ]; then mode="$(printf '%s' "${lbl#*:}" | tr '[:upper:]' '[:lower:]')"; fi
+                    done
+                    case "${mode}" in
+                        created|exited|dead|"") ;;
+                        *)
+                            echo "Error response from daemon: cannot remove container \"/${2:-}\": container is ${mode}: stop the container before removing or force remove" >&2
+                            return 1
+                            ;;
+                    esac
+                    printf '%s\n' "${2:-}" >> "${st}/holders_removed"
+                    return 0
+                fi
                 for v in "$@"; do cid="${v}"; done
                 awk -v c="${cid}" '$2 != c' "${st}/helpers" > "${st}/helpers.new"
                 mv "${st}/helpers.new" "${st}/helpers"
@@ -343,13 +459,15 @@ _mock_restore_docker() {
                         ;;
                     *"--name "*"-restore-swap"*)
                         if [[ "${a}" == *claude-config-restore-swap* ]]; then
+                            if [ "${RM_INTERRUPT_AT:-}" = claudeswap ]; then kill -INT "$$"; fi
                             if [ "${RM_FAIL:-}" = claudeswap ]; then return 1; fi
                             return "${RM_CLAUDE_SWAP_EXIT:-0}"
                         fi
                         if [ "${RM_INTERRUPT_AT:-}" = swap ]; then kill -INT "$$"; fi
                         if [ "${RM_INTERRUPT_AT:-}" = pause_swap ]; then
                             : > "${st}/pause_armed"
-                            ( sleep 1; kill -INT "$$" ) > /dev/null 2>&1 < /dev/null &
+                            # Exec'd sleeper, as in the `volume rm` arm (fix pass #19).
+                            sh -c 'sleep 1; kill -INT "$1"' sh "$$" > /dev/null 2>&1 < /dev/null &
                         fi
                         if [ "${RM_FAIL:-}" = swap ]; then return 1; fi
                         return "${RM_SWAP_EXIT:-0}"
@@ -451,7 +569,21 @@ _mock_restore_docker() {
         fi
         printf '%s' "${m}"
     }
-    export -f docker _rm_swap_state
+    # The "<id> <state>" holder lines of volume $1 (RM_HOLDERS, plus RM_HOLDERS_LATE once
+    # that volume was listed twice), minus the holders a plain `rm` already removed.
+    # Always exit 0 (it runs inside the script's `set -e` shell).
+    _rm_holder_lines() {
+        local w id words="${RM_HOLDERS:-}"
+        if [ "$(grep -cxF -- "$1" "${TEST_DIR}/holder_lists" || true)" -ge 2 ]; then words="${words} ${RM_HOLDERS_LATE:-}"; fi
+        for w in ${words}; do
+            [ "${w%%=*}" = "$1" ] || continue
+            id="${w#*=}"
+            if grep -qxF -- "${id%%:*}" "${TEST_DIR}/holders_removed"; then continue; fi
+            printf '%s %s\n' "${id%%:*}" "${id#*:}"
+        done
+        return 0
+    }
+    export -f docker _rm_swap_state _rm_holder_lines
 }
 
 # Print every logged docker call that WRITES to a LIVE volume (empty = none):
@@ -1832,9 +1964,18 @@ _RESTORE_SH_REL="scripts/host/restore_from_backup.sh"
     _mock_restore_docker
     run bash -c 'printf "1\nno\n" | bash "'"${REPO_ROOT}"'/'"${_RESTORE_SH_REL}"'"'
     assert_success
-    assert_output --partial "Restore cancelled. Your DAAF data has not been changed."
-    assert_output --partial "The temporary copy could not be removed. To free the space it uses, run:"
-    assert_output --partial "  docker volume rm daaf_daaf-data-restore-tmp"
+    # Fix pass #18 (field test 2026-10-05, D1): the kept-temp block, with no reason line
+    # when Docker gave none, and the hint for a volume Docker says is in use.
+    assert_output --partial "$(printf '%s\n' \
+        'Restore cancelled. Your DAAF data has not been changed.' \
+        'The temporary copy could not be removed.' \
+        'To free the space it uses, run:' \
+        '  docker volume rm daaf_daaf-data-restore-tmp' \
+        'If Docker says it is in use, first run' \
+        '  docker ps -a --filter volume=daaf_daaf-data-restore-tmp' \
+        'and remove each container it lists with docker rm <ID>, then try again.')"
+    refute_output --partial "The temporary copy could not be removed. To free the space it uses, run:"
+    refute_output --partial "Docker said:"
     _assert_no_live_write
 }
 
@@ -1973,9 +2114,14 @@ _RESTORE_SH_REL="scripts/host/restore_from_backup.sh"
     _mock_restore_docker
     run bash -c 'printf "1\nRESTORE\n" | bash "'"${REPO_ROOT}"'/'"${_RESTORE_SH_REL}"'"'
     assert_success
-    assert_output --partial "WARNING: Could not remove the temporary copy of your data (Docker volume(s): daaf_daaf-data-restore-tmp)."
-    assert_output --partial "Your DAAF data was restored. To free the space it uses, run:"
-    assert_output --partial "    docker volume rm daaf_daaf-data-restore-tmp"
+    # Fix pass #18: no reason line (Docker printed nothing), then the hint lines.
+    assert_output --partial "$(printf '%s\n' \
+        'WARNING: Could not remove the temporary copy of your data (Docker volume(s): daaf_daaf-data-restore-tmp).' \
+        '         Your DAAF data was restored. To free the space it uses, run:' \
+        '           docker volume rm daaf_daaf-data-restore-tmp' \
+        '         If Docker says it is in use, first run' \
+        '           docker ps -a --filter volume=daaf_daaf-data-restore-tmp' \
+        '         and remove each container it lists with docker rm <ID>, then try again.')"
     assert_output --partial "Restore completed WITH WARNINGS -- verify before relying on it"
     refute_output --partial "Restore complete!"
 }
@@ -2026,8 +2172,18 @@ _RESTORE_SH_REL="scripts/host/restore_from_backup.sh"
     assert_output --partial "       Your DAAF data has not been changed."
     assert_output --partial "       Make sure no other restore is running (and Docker Desktop is running), then"
     assert_output --partial "         docker volume rm daaf_daaf-data-restore-tmp"
-    # S3: a next step when the removal keeps failing (e.g. a hung helper container).
-    assert_output --partial "       If this keeps happening, restart Docker Desktop and try again."
+    # S3's next step for a removal that keeps failing is now the holder hint (fix pass
+    # #18, D1); the old "restart Docker Desktop" line is gone from this message. (A
+    # never-started holder does not go away on its own while Docker keeps running; a
+    # Docker restart is expected to remove it -- moby restore(), inference -- but the
+    # restore now removes such holders itself.)
+    assert_output --partial "$(printf '%s\n' \
+        '       If Docker says it is in use, first run' \
+        '         docker ps -a --filter volume=daaf_daaf-data-restore-tmp' \
+        '       and remove each container it lists with docker rm <ID>, then try again.')"
+    refute_output --partial "restart Docker Desktop"
+    # Docker printed nothing, so there is no "Docker said:" line.
+    refute_output --partial "Docker said:"
     refute_output --partial "Removed the leftover temporary copy."
     run grep -cE '^(volume create|create|cp) ' "${TEST_DIR}/docker_calls.log"
     assert_output "0"
@@ -2064,15 +2220,106 @@ _RESTORE_SH_REL="scripts/host/restore_from_backup.sh"
     assert_output --partial "  docker rm daaf_daaf-data-restore-swap"
 }
 
-@test "copy-then-swap: a stopped leftover swap container is removed on y (rm -f by its exact name)" {
+@test "copy-then-swap: a stopped leftover swap container is removed on y (a PLAIN rm by its exact name, never -f)" {
     _make_backup
     export DAAF_NESTED=1 RM_SWAP_CONTAINER=stopped
     _mock_restore_docker
     run bash -c 'printf "1\ny\nRESTORE\n" | bash "'"${REPO_ROOT}"'/'"${_RESTORE_SH_REL}"'"'
     assert_success
     assert_output --partial "Removed the leftover temporary copy."
-    run grep -cxF 'rm -f daaf_daaf-data-restore-swap' "${TEST_DIR}/docker_calls.log"
+    run grep -cxF 'rm daaf_daaf-data-restore-swap' "${TEST_DIR}/docker_calls.log"
     assert_output "1"
+    # Review round 6 (R5): never forced -- a swap started meanwhile under the same name
+    # must survive (see the R5 test below).
+    run grep -cE '^rm (-f|--force) .*-restore-swap$' "${TEST_DIR}/docker_calls.log"
+    assert_output "0"
+}
+
+@test "R5: a leftover swap container that became RUNNING after the prompt is NOT removed (plain rm refused); the run refuses, exit 1, no volume touched" {
+    # Stopped at the check, before the y/n prompt; running by the time the leftover path
+    # removes it (another window's restore started its swap under the same name). The
+    # daemon refuses a plain rm of a running container, so it survives; the restore stops
+    # with Docker's reason and touches no leftover volume.
+    _make_backup
+    export DAAF_NESTED=1 RM_SWAP_CONTAINER=stopped RM_LEFTOVER="daaf_daaf-data-restore-tmp" \
+        RM_SWAP_RUNNING_AT_RM="daaf_daaf-data-restore-swap"
+    _mock_restore_docker
+    run bash -c 'printf "1\ny\nRESTORE\n" | bash "'"${REPO_ROOT}"'/'"${_RESTORE_SH_REL}"'"'
+    assert_failure 1
+    assert_output --partial "$(printf '%s\n' \
+        '' \
+        'ERROR: Could not remove the temporary copy left by the earlier restore.' \
+        '       Docker said: Error response from daemon: cannot remove container "/daaf_daaf-data-restore-swap": container is running: stop the container before removing or force remove' \
+        '       This restore did not change anything, but your DAAF data may still be' \
+        '       incomplete from the earlier restore. Run the restore again to finish it.' \
+        '       Make sure no other restore is running (and Docker Desktop is running), then' \
+        '       run this restore again, or remove it yourself with:' \
+        '         docker rm daaf_daaf-data-restore-swap' \
+        '         docker volume rm daaf_daaf-data-restore-tmp' \
+        '       If Docker says it is in use, first run' \
+        '         docker ps -a --filter volume=daaf_daaf-data-restore-tmp' \
+        '       and remove each container it lists with docker rm <ID>, then try again.')"
+    refute_output --partial "docker rm -f"
+    refute_output --partial "Removed the leftover temporary copy."
+    # One plain rm attempt, never a forced one.
+    run grep -cxF 'rm daaf_daaf-data-restore-swap' "${TEST_DIR}/docker_calls.log"
+    assert_output "1"
+    run grep -cE '^rm (-f|--force) .*-restore-swap$' "${TEST_DIR}/docker_calls.log"
+    assert_output "0"
+    # The leftover volume is left alone: only the check pass listed its holders, and no
+    # volume was removed or created.
+    run grep -cxF 'ps -a --filter volume=daaf_daaf-data-restore-tmp --format {{.ID}} {{.State}}' "${TEST_DIR}/docker_calls.log"
+    assert_output "1"
+    run grep -cE '^(volume rm|volume create|create|cp) ' "${TEST_DIR}/docker_calls.log"
+    assert_output "0"
+    _assert_no_live_write
+}
+
+@test "R8: a leftover swap container that VANISHED before its removal (plain rm: No such container) counts as removed; the leftover volume is removed and the restore continues" {
+    # Delta review of round 7 (ISSUE 1): its --rm finished, Docker restarted, or another
+    # window removed it while the y/n prompt waited. docker CLI rm.go ignores not-found
+    # only for -f, so the plain rm exits 1 -- read as success, not as a failure.
+    _make_backup
+    export DAAF_NESTED=1 RM_SWAP_CONTAINER=stopped RM_LEFTOVER="daaf_daaf-data-restore-tmp" \
+        RM_SWAP_GONE_AT_RM="daaf_daaf-data-restore-swap"
+    _mock_restore_docker
+    run bash -c 'printf "1\ny\nRESTORE\n" | bash "'"${REPO_ROOT}"'/'"${_RESTORE_SH_REL}"'"'
+    assert_success
+    assert_output --partial "Removed the leftover temporary copy."
+    refute_output --partial "ERROR: Could not remove the temporary copy left by the earlier restore."
+    refute_output --partial "No such container"
+    assert_output --partial "  Restore complete!"
+    # One plain rm attempt, never a forced one; the leftover volume was removed (before
+    # the new temp was created).
+    run grep -cxF 'rm daaf_daaf-data-restore-swap' "${TEST_DIR}/docker_calls.log"
+    assert_output "1"
+    run grep -cE '^rm (-f|--force) .*-restore-swap$' "${TEST_DIR}/docker_calls.log"
+    assert_output "0"
+    local rmv crt
+    rmv="$(grep -nxF 'volume rm daaf_daaf-data-restore-tmp' "${TEST_DIR}/docker_calls.log" | head -n 1 | cut -d: -f1)"
+    crt="$(grep -nE '^volume create .*daaf_daaf-data-restore-tmp$' "${TEST_DIR}/docker_calls.log" | head -n 1 | cut -d: -f1)"
+    [ -n "${rmv}" ] && [ -n "${crt}" ] && [ "${rmv}" -lt "${crt}" ]
+}
+
+@test "R8: a leftover swap container whose removal is ALREADY IN PROGRESS refuses (exit 1) with Docker's reason; no volume touched" {
+    _make_backup
+    export DAAF_NESTED=1 RM_SWAP_CONTAINER=stopped RM_LEFTOVER="daaf_daaf-data-restore-tmp" \
+        RM_SWAP_REMOVING_AT_RM="daaf_daaf-data-restore-swap"
+    _mock_restore_docker
+    run bash -c 'printf "1\ny\nRESTORE\n" | bash "'"${REPO_ROOT}"'/'"${_RESTORE_SH_REL}"'"'
+    assert_failure 1
+    assert_output --partial "$(printf '%s\n' \
+        '' \
+        'ERROR: Could not remove the temporary copy left by the earlier restore.' \
+        '       Docker said: Error response from daemon: removal of container daaf_daaf-data-restore-swap is already in progress' \
+        '       This restore did not change anything, but your DAAF data may still be' \
+        '       incomplete from the earlier restore. Run the restore again to finish it.')"
+    refute_output --partial "Removed the leftover temporary copy."
+    run grep -cxF 'rm daaf_daaf-data-restore-swap' "${TEST_DIR}/docker_calls.log"
+    assert_output "1"
+    run grep -cE '^(volume rm|volume create|create|cp) ' "${TEST_DIR}/docker_calls.log"
+    assert_output "0"
+    _assert_no_live_write
 }
 
 @test "copy-then-swap: a RUNNING leftover swap container refuses (exit 1) before anything is created" {
@@ -2653,8 +2900,13 @@ _calls_after_data_swap() {
     run bash -c 'printf "1\nRESTORE\n" | bash "'"${REPO_ROOT}"'/'"${_RESTORE_SH_REL}"'"'
     assert_failure 1
     assert_output --partial "(exit 3), so NOTHING was replaced. Run the restore again."
-    assert_output --partial "       The temporary copy could not be removed. To free the space it uses, run:"
-    assert_output --partial "         docker volume rm daaf_daaf-data-restore-tmp"
+    assert_output --partial "$(printf '%s\n' \
+        '       The temporary copy could not be removed.' \
+        '       To free the space it uses, run:' \
+        '         docker volume rm daaf_daaf-data-restore-tmp' \
+        '       If Docker says it is in use, first run' \
+        '         docker ps -a --filter volume=daaf_daaf-data-restore-tmp' \
+        '       and remove each container it lists with docker rm <ID>, then try again.')"
     refute_output --partial "Your DAAF data may now be incomplete."
     # The marker was deleted BEFORE the (failed) removal, so the next run reports this
     # leftover as a restore that "stopped before it replaced anything".
@@ -3170,4 +3422,478 @@ _fallback_assert_failure() {
     run _fallback_assert_failure 0
     assert_failure 1
     assert_output --partial "assert_failure failed: expected non-zero exit"
+}
+
+# =========================================================================
+# --- Fix pass #19: field test 2026-10-05 (D1 holders, D3 wording) ---
+# =========================================================================
+# D1 (observed on Windows, field test results section 5): a Ctrl+C between `docker run`'s
+# create and start left a never-started ("Created"), unlabelled container that still
+# referenced the temp volume, so `docker volume rm` failed every time and the leftover
+# could never be removed. Removal now lists the holders (`ps -a --filter volume=<temp>
+# --format '{{.ID}} {{.State}}'`, stdout only), removes created / exited / dead ones with a
+# PLAIN `docker rm <id>` (never -f), then the volume. Any other state means another restore
+# may still be using it: nothing is removed. A failed list is "could not check", never "no
+# holders". Careful cleanup (TEMP_CLEANUP_CAREFUL) neither lists nor removes holders. The
+# mock fails `volume rm` while a holder remains, as the daemon did. D3: a Ctrl+C during the
+# Claude Code swap names the Claude state, not the data that was already replaced.
+
+_D1_DATA_TMP="daaf_daaf-data-restore-tmp"
+_D1_CLAUDE_TMP="daaf_daaf-claude-config-restore-tmp"
+
+# The removal-related docker calls in log order ($1 = log; $2 = how many, default all):
+# holder lists, label reaps, container removals, volume removals and creates (a create
+# is shown as `volume create <name>`, its per-run label dropped).
+_d1_calls() {
+    grep -E '^(ps -a --filter volume=|ps -aq --filter label=|rm |volume rm |volume create )' "$1" \
+    | sed -E 's/^volume create .* ([^ ]+)$/volume create \1/' \
+    | sed -n "1,${2:-\$}p"
+}
+
+# The same calls from the first holder list on.
+_d1_calls_from_list() {
+    _d1_calls "$1" | awk '/^ps -a --filter volume=/ { f = 1 } f'
+}
+
+# A holder-list call line for volume $1.
+_d1_list() { printf 'ps -a --filter volume=%s --format {{.ID}} {{.State}}' "$1"; }
+
+@test "D1: a leftover answered y whose temp a never-started (Created) container holds -> rm <id> BEFORE volume rm, removed, restore runs" {
+    # The deterministic replica of the field test's Run 5a recovery: there the leftover
+    # removal failed with "volume is in use - [c9be7425c57c...]" (the mock does the same
+    # while the holder remains).
+    _make_backup
+    export DAAF_NESTED=1 RM_LEFTOVER="${_D1_DATA_TMP}" RM_HOLDERS="${_D1_DATA_TMP}=c9be7425c57c:created"
+    _mock_restore_docker
+    run bash -c 'printf "1\ny\nRESTORE\n" | bash "'"${REPO_ROOT}"'/'"${_RESTORE_SH_REL}"'"'
+    assert_success
+    assert_output --partial "Removed the leftover temporary copy."
+    assert_output --partial "  Restore complete!"
+    refute_output --partial "Could not remove the temporary copy"
+    refute_output --partial "volume is in use"
+    # Check pass (nothing removed yet), the label reap, then the removal pass: a fresh
+    # list, the PLAIN rm of the holder, the volume -- and only then the new temp.
+    run _d1_calls "${TEST_DIR}/docker_calls.log" 7
+    assert_output "$(printf '%s\n' \
+        "$(_d1_list "${_D1_DATA_TMP}")" \
+        'ps -aq --filter label=org.daaf.restore-tmp-for=daaf_daaf-data' \
+        'ps -aq --filter label=org.daaf.restore-tmp-for=daaf_daaf-claude-config' \
+        "$(_d1_list "${_D1_DATA_TMP}")" \
+        'rm c9be7425c57c' \
+        "volume rm ${_D1_DATA_TMP}" \
+        "volume create ${_D1_DATA_TMP}")"
+    run grep -c -- '^rm -f c9be7425c57c$' "${TEST_DIR}/docker_calls.log"
+    assert_output "0"
+    run cat "${TEST_DIR}/holders_removed"
+    assert_output "c9be7425c57c"
+}
+
+@test "D1: exited and dead holders (any letter case) are removed the same way, per volume, before each volume rm" {
+    _make_backup
+    export DAAF_NESTED=1 RM_LEFTOVER="${_D1_DATA_TMP} ${_D1_CLAUDE_TMP}" \
+        RM_HOLDERS="${_D1_DATA_TMP}=e1:exited ${_D1_DATA_TMP}=d1:Dead ${_D1_CLAUDE_TMP}=c1:created"
+    _mock_restore_docker
+    run bash -c 'printf "1\ny\nRESTORE\n" | bash "'"${REPO_ROOT}"'/'"${_RESTORE_SH_REL}"'"'
+    assert_success
+    assert_output --partial "Removed the leftover temporary copy."
+    assert_output --partial "  Restore complete!"
+    run _d1_calls "${TEST_DIR}/docker_calls.log" 12
+    assert_output "$(printf '%s\n' \
+        "$(_d1_list "${_D1_DATA_TMP}")" \
+        "$(_d1_list "${_D1_CLAUDE_TMP}")" \
+        'ps -aq --filter label=org.daaf.restore-tmp-for=daaf_daaf-data' \
+        'ps -aq --filter label=org.daaf.restore-tmp-for=daaf_daaf-claude-config' \
+        "$(_d1_list "${_D1_DATA_TMP}")" \
+        'rm e1' \
+        'rm d1' \
+        "volume rm ${_D1_DATA_TMP}" \
+        "$(_d1_list "${_D1_CLAUDE_TMP}")" \
+        'rm c1' \
+        "volume rm ${_D1_CLAUDE_TMP}" \
+        "volume create ${_D1_DATA_TMP}")"
+}
+
+@test "D1: a running/paused/restarting/removing or UNKNOWN-state (weird) holder of a leftover refuses (exit 1) after the check pass, before the reap and the swap-container rm, removing NOTHING" {
+    _make_backup
+    export DAAF_NESTED=1
+    local s
+    # `weird` (review round 6, NIT6): a state not known to the script is taken as live,
+    # never as removable (the allow-list is created|exited|dead).
+    for s in running paused restarting removing weird; do
+        # The data temp's holder is removable; the CLAUDE temp's is not. Every leftover
+        # is checked before anything is removed, so the data holder survives too.
+        export RM_LEFTOVER="${_D1_DATA_TMP} ${_D1_CLAUDE_TMP}" RM_SWAP_CONTAINER=stopped \
+            RM_HOLDERS="${_D1_DATA_TMP}=s1:created ${_D1_CLAUDE_TMP}=r1:${s}"
+        _mock_restore_docker
+        run bash -c 'printf "1\ny\nRESTORE\n" | bash "'"${REPO_ROOT}"'/'"${_RESTORE_SH_REL}"'"'
+        echo "D1 busy state=${s}"
+        assert_failure 1
+        assert_output --partial "$(printf '%s\n' \
+            '' \
+            'ERROR: Something is still using the temporary copy left by the earlier restore' \
+            "       (Docker volume '${_D1_CLAUDE_TMP}'), so it was not removed. Another restore may" \
+            '       still be running.' \
+            '       This restore did not change anything, but your DAAF data may still be' \
+            '       incomplete from the earlier restore. Run the restore again to finish it.' \
+            '       Wait a few minutes and close any other restore window, then run this' \
+            '       restore again.')"
+        refute_output --partial "Removed the leftover temporary copy."
+        # Only the two holder lists: no label reap, no swap-container rm, no holder rm,
+        # no volume rm, nothing created.
+        run _d1_calls_from_list "${TEST_DIR}/docker_calls.log"
+        assert_output "$(printf '%s\n' "$(_d1_list "${_D1_DATA_TMP}")" "$(_d1_list "${_D1_CLAUDE_TMP}")")"
+        run grep -cE '^(rm|ps -aq|volume rm|volume create|create|cp) ' "${TEST_DIR}/docker_calls.log"
+        assert_output "0"
+        _assert_no_live_write
+    done
+    # A holder that started AFTER the check pass is caught by the removal pass's fresh
+    # list: the same refusal, after the reap, still with nothing removed.
+    export RM_LEFTOVER="${_D1_DATA_TMP}" RM_HOLDERS="" RM_HOLDERS_LATE="${_D1_DATA_TMP}=r9:running"
+    unset RM_SWAP_CONTAINER
+    _mock_restore_docker
+    run bash -c 'printf "1\ny\nRESTORE\n" | bash "'"${REPO_ROOT}"'/'"${_RESTORE_SH_REL}"'"'
+    assert_failure 1
+    assert_output --partial "       (Docker volume '${_D1_DATA_TMP}'), so it was not removed. Another restore may"
+    assert_output --partial "       Your DAAF data has not been changed."
+    run _d1_calls_from_list "${TEST_DIR}/docker_calls.log"
+    assert_output "$(printf '%s\n' \
+        "$(_d1_list "${_D1_DATA_TMP}")" \
+        'ps -aq --filter label=org.daaf.restore-tmp-for=daaf_daaf-data' \
+        'ps -aq --filter label=org.daaf.restore-tmp-for=daaf_daaf-claude-config' \
+        "$(_d1_list "${_D1_DATA_TMP}")")"
+}
+
+@test "D1: a docker ps that FAILS while checking a leftover's holders refuses (could not check, Docker said), exit 1, nothing removed" {
+    _make_backup
+    export DAAF_NESTED=1 RM_LEFTOVER="${_D1_DATA_TMP}" RM_HOLDERS_PS_FAIL="${_D1_DATA_TMP}" RM_HOLDERS_PS_EXIT=2 \
+        RM_HOLDERS="${_D1_DATA_TMP}=c9be7425c57c:created" \
+        RM_HOLDERS_PS_SAID=$'WARNING: simulated docker config notice\nCannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?   \n'
+    _mock_restore_docker
+    run bash -c 'printf "1\ny\nRESTORE\n" | bash "'"${REPO_ROOT}"'/'"${_RESTORE_SH_REL}"'"'
+    assert_failure 1
+    # Docker said = the LAST non-empty stderr line, trimmed.
+    assert_output --partial "$(printf '%s\n' \
+        '' \
+        'ERROR: Could not check what is using the temporary copy left by the earlier' \
+        "       restore (Docker volume '${_D1_DATA_TMP}'; docker ps failed, exit 2), so it was not removed." \
+        '       Docker said: Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?' \
+        '       Your DAAF data has not been changed.' \
+        '       Make sure Docker Desktop is running, then run this restore again.')"
+    refute_output --partial "Docker said: WARNING"
+    refute_output --partial "Removed the leftover temporary copy."
+    # A failed list is never "no holders": no reap, no rm, no volume rm, nothing created.
+    run grep -c "^$(_d1_list "${_D1_DATA_TMP}")\$" "${TEST_DIR}/docker_calls.log"
+    [ "${output}" -ge 1 ]
+    run grep -cE '^(rm|ps -aq|volume rm|volume create|create|cp) ' "${TEST_DIR}/docker_calls.log"
+    assert_output "0"
+    _assert_no_live_write
+}
+
+@test "D1: a stray stderr line from a holder list that works is not a holder (stdout only)" {
+    _make_backup
+    export DAAF_NESTED=1 RM_LEFTOVER="${_D1_DATA_TMP}" RM_HOLDERS_PS_NOISE=1 RM_HOLDERS="${_D1_DATA_TMP}=c9be7425c57c:created"
+    _mock_restore_docker
+    run bash -c 'printf "1\ny\nRESTORE\n" | bash "'"${REPO_ROOT}"'/'"${_RESTORE_SH_REL}"'"'
+    assert_success
+    assert_output --partial "Removed the leftover temporary copy."
+    refute_output --partial "simulated docker config notice"
+    run grep -cxF 'rm c9be7425c57c' "${TEST_DIR}/docker_calls.log"
+    assert_output "1"
+}
+
+@test "D1: cleanup after a prepare failure or a cancel at RESTORE removes a Created holder, then the temp (no kept-temp text)" {
+    _make_backup
+    export DAAF_NESTED=1 RM_HOLDERS="${_D1_DATA_TMP}=c9be7425c57c:created"
+    local m input
+    for m in prepfail cancel; do
+        unset RM_FAIL
+        if [ "${m}" = prepfail ]; then export RM_FAIL=cp; input='1\nRESTORE\n'; else input='1\nno\n'; fi
+        export D1_INPUT="${input}"
+        _mock_restore_docker
+        run bash -c 'printf "${D1_INPUT}" | bash "'"${REPO_ROOT}"'/'"${_RESTORE_SH_REL}"'"'
+        echo "D1 cleanup case=${m}"
+        if [ "${m}" = prepfail ]; then
+            assert_failure 1
+            assert_output --partial "ERROR: Copying the backup into Docker failed (see the message above)."
+            assert_output --partial "       Your DAAF data has not been changed."
+        else
+            assert_success
+            assert_output --partial "Restore cancelled. Your DAAF data has not been changed."
+        fi
+        refute_output --partial "The temporary copy could not be removed"
+        refute_output --partial "If Docker says it is in use"
+        run _d1_calls_from_list "${TEST_DIR}/docker_calls.log"
+        assert_output "$(printf '%s\n' "$(_d1_list "${_D1_DATA_TMP}")" 'rm c9be7425c57c' "volume rm ${_D1_DATA_TMP}")"
+        _assert_no_live_write
+    done
+}
+
+@test "D1: cleanup with a BUSY holder keeps the temp and prints the kept-temp block (prepare failure, cancel, Ctrl+C, unexpected exit)" {
+    _make_backup
+    export DAAF_NESTED=1 RM_HOLDERS="${_D1_DATA_TMP}=r1:running"
+    local m lead want input
+    for m in prepfail cancel interrupt crash; do
+        unset RM_FAIL RM_INTERRUPT_AT
+        lead=""
+        input='1\nRESTORE\n'
+        case "${m}" in
+            prepfail) export RM_FAIL=cp; lead="       "; want=1 ;;
+            cancel) input='1\nno\n'; want=0 ;;
+            interrupt) export RM_INTERRUPT_AT=cp; want=130 ;;
+            crash) export RM_FAIL=crash; want=7 ;;
+        esac
+        export D1_INPUT="${input}"
+        _mock_restore_docker
+        run bash -c 'printf "${D1_INPUT}" | bash "'"${REPO_ROOT}"'/'"${_RESTORE_SH_REL}"'"'
+        echo "D1 busy cleanup case=${m} status=${status} want=${want}"
+        [ "${status}" -eq "${want}" ]
+        assert_output --partial "$(printf '%s\n' \
+            "${lead}The temporary copy could not be removed." \
+            "${lead}Something is still using it; another restore may still be running." \
+            "${lead}To free the space it uses, run:" \
+            "${lead}  docker volume rm ${_D1_DATA_TMP}" \
+            "${lead}If Docker says it is in use, first run" \
+            "${lead}  docker ps -a --filter volume=${_D1_DATA_TMP}" \
+            "${lead}and remove each container it lists with docker rm <ID>, then try again.")"
+        refute_output --partial "Docker said:"
+        refute_output --partial "Its temporary copy was removed."
+        # The temp is kept: no holder rm, no volume rm.
+        run grep -cE "^(rm r1|volume rm ${_D1_DATA_TMP})\$" "${TEST_DIR}/docker_calls.log"
+        assert_output "0"
+        run grep -cxF "$(_d1_list "${_D1_DATA_TMP}")" "${TEST_DIR}/docker_calls.log"
+        assert_output "1"
+        _assert_no_live_write
+    done
+}
+
+@test "D1: cleanup whose holder list FAILS keeps the temps; the first failure's reason (exit + Docker said) and a two-volume hint" {
+    _make_full_backup
+    export DAAF_NESTED=1 RM_HOLDERS_PS_FAIL="${_D1_DATA_TMP}" RM_HOLDERS="${_D1_CLAUDE_TMP}=r2:running"
+    _mock_restore_docker
+    run bash -c 'printf "1\nno\n" | bash "'"${REPO_ROOT}"'/'"${_RESTORE_SH_REL}"'"'
+    assert_success
+    assert_output --partial "$(printf '%s\n' \
+        'Restore cancelled. Your DAAF data has not been changed.' \
+        'The temporary copy could not be removed.' \
+        'Could not check what is using it (docker ps failed, exit 1).' \
+        'Docker said: Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?' \
+        'To free the space it uses, run:' \
+        "  docker volume rm ${_D1_DATA_TMP} ${_D1_CLAUDE_TMP}" \
+        'If Docker says it is in use, first run' \
+        "  docker ps -a --filter volume=${_D1_DATA_TMP} --filter volume=${_D1_CLAUDE_TMP}" \
+        'and remove each container it lists with docker rm <ID>, then try again.')"
+    refute_output --partial "Something is still using it"
+    run grep -c '^volume rm ' "${TEST_DIR}/docker_calls.log"
+    assert_output "0"
+    run grep -c '^rm r2$' "${TEST_DIR}/docker_calls.log"
+    assert_output "0"
+}
+
+@test "D1: careful cleanup (swap exit 3, a refused new temp) lists and removes NO holder; an identity refusal touches nothing" {
+    local m
+    for m in exit3 newtemp identity; do
+        unset RM_SWAP_EXIT RM_TEMP_NOT_EMPTY RM_IDENTITY
+        _make_full_backup
+        export DAAF_NESTED=1 RM_HOLDERS="${_D1_DATA_TMP}=c9be7425c57c:created"
+        case "${m}" in
+            exit3) export RM_SWAP_EXIT=3 ;;
+            newtemp) export RM_TEMP_NOT_EMPTY=claude ;;
+            identity) export RM_IDENTITY=vanished_after_create ;;
+        esac
+        _mock_restore_docker
+        run bash -c 'printf "1\nRESTORE\n" | bash "'"${REPO_ROOT}"'/'"${_RESTORE_SH_REL}"'"'
+        echo "D1 careful case=${m}"
+        assert_failure 1
+        if [ "${m}" = identity ]; then
+            assert_output --partial "It was not used, and nothing was removed."
+        else
+            # The volume rm is still tried; the daemon says "in use", which is shown.
+            assert_output --partial "$(printf '%s\n' \
+                '       The temporary copy could not be removed.' \
+                "       Docker said: Error response from daemon: remove ${_D1_DATA_TMP}: volume is in use - [c9be7425c57c]" \
+                '       To free the space it uses, run:')"
+        fi
+        # No holder list and no holder removal (the temp may be another restore's).
+        run grep -c '^ps -a --filter volume=' "${TEST_DIR}/docker_calls.log"
+        assert_output "0"
+        run grep -c '^rm c9be7425c57c$' "${TEST_DIR}/docker_calls.log"
+        assert_output "0"
+        if [ "${m}" = identity ]; then
+            run grep -c '^volume rm ' "${TEST_DIR}/docker_calls.log"
+            assert_output "0"
+        else
+            run grep -cxF "volume rm ${_D1_DATA_TMP}" "${TEST_DIR}/docker_calls.log"
+            assert_output "1"
+        fi
+    done
+}
+
+@test "D1: final cleanup after a verified restore with a busy holder (or a failed list) -> WARNING with reason and hint, still restored, latched" {
+    _make_backup
+    export DAAF_NESTED=1
+    local m note
+    for m in busy listfail; do
+        unset RM_HOLDERS RM_HOLDERS_PS_FAIL
+        if [ "${m}" = busy ]; then
+            export RM_HOLDERS="${_D1_DATA_TMP}=r1:running"
+            note='         Something is still using it; another restore may still be running.'
+        else
+            export RM_HOLDERS_PS_FAIL="${_D1_DATA_TMP}"
+            note="$(printf '%s\n' \
+                '         Could not check what is using it (docker ps failed, exit 1).' \
+                '         Docker said: Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?')"
+        fi
+        _mock_restore_docker
+        run bash -c 'printf "1\nRESTORE\n" | bash "'"${REPO_ROOT}"'/'"${_RESTORE_SH_REL}"'"'
+        echo "D1 final case=${m}"
+        assert_success
+        assert_output --partial "$(printf '%s\n' \
+            "WARNING: Could not remove the temporary copy of your data (Docker volume(s): ${_D1_DATA_TMP})." \
+            "${note}" \
+            '         Your DAAF data was restored. To free the space it uses, run:' \
+            "           docker volume rm ${_D1_DATA_TMP}" \
+            '         If Docker says it is in use, first run' \
+            "           docker ps -a --filter volume=${_D1_DATA_TMP}" \
+            '         and remove each container it lists with docker rm <ID>, then try again.')"
+        assert_output --partial "Verified: 1 files in restored volume."
+        assert_output --partial "Files:    1 files in volume"
+        assert_output --partial "Restore completed WITH WARNINGS -- verify before relying on it"
+        refute_output --partial "Restore complete!"
+        run grep -cE "^(rm r1|volume rm ${_D1_DATA_TMP})\$" "${TEST_DIR}/docker_calls.log"
+        assert_output "0"
+    done
+}
+
+@test "D1: a failed leftover removal shows Docker's own reason as 'Docker said:' (volume in use; a holder rm that fails); no restart line" {
+    _make_backup
+    export DAAF_NESTED=1
+    local m said
+    for m in volumerm holderrm; do
+        unset RM_FAIL RM_VOLUME_RM_SAID RM_HOLDERS RM_HOLDER_RM_FAIL
+        export RM_LEFTOVER="${_D1_DATA_TMP}"
+        if [ "${m}" = volumerm ]; then
+            # The field test's text, after an earlier line and before a trailing blank one:
+            # the LAST non-empty line, trimmed.
+            export RM_FAIL=leftoverrm \
+                RM_VOLUME_RM_SAID=$'Error response from daemon: an earlier line\nError response from daemon: remove daaf_daaf-data-restore-tmp: volume is in use - [c9be7425c57cdf99]  \n'
+            said='Error response from daemon: remove daaf_daaf-data-restore-tmp: volume is in use - [c9be7425c57cdf99]'
+        else
+            export RM_HOLDERS="${_D1_DATA_TMP}=c9be7425c57c:created" RM_HOLDER_RM_FAIL=c9be7425c57c
+            said='Error response from daemon: cannot remove container "/c9be7425c57c": simulated failure'
+        fi
+        _mock_restore_docker
+        run bash -c 'printf "1\ny\nRESTORE\n" | bash "'"${REPO_ROOT}"'/'"${_RESTORE_SH_REL}"'"'
+        echo "D1 leftover failure case=${m}"
+        assert_failure 1
+        assert_output --partial "$(printf '%s\n' \
+            '' \
+            'ERROR: Could not remove the temporary copy left by the earlier restore.' \
+            "       Docker said: ${said}" \
+            '       Your DAAF data has not been changed.' \
+            '       Make sure no other restore is running (and Docker Desktop is running), then' \
+            '       run this restore again, or remove it yourself with:' \
+            "         docker volume rm ${_D1_DATA_TMP}" \
+            '       If Docker says it is in use, first run' \
+            "         docker ps -a --filter volume=${_D1_DATA_TMP}" \
+            '       and remove each container it lists with docker rm <ID>, then try again.')"
+        refute_output --partial "restart Docker Desktop"
+        refute_output --partial "an earlier line"
+        run grep -cE '^(volume create|create|cp) ' "${TEST_DIR}/docker_calls.log"
+        assert_output "0"
+        if [ "${m}" = holderrm ]; then
+            # The holder could not be removed, so the volume was not tried.
+            run grep -c '^volume rm ' "${TEST_DIR}/docker_calls.log"
+            assert_output "0"
+        fi
+    done
+}
+
+@test "D3: Ctrl+C during the Claude Code swap names the Claude state (data already replaced), exit 130, nothing removed; the data swap keeps its line" {
+    _make_full_backup
+    export DAAF_NESTED=1
+    local m
+    for m in claudeswap swap; do
+        export RM_INTERRUPT_AT="${m}"
+        _mock_restore_docker
+        run bash -c 'printf "1\nRESTORE\n" | bash "'"${REPO_ROOT}"'/'"${_RESTORE_SH_REL}"'"'
+        echo "D3 case=${m}"
+        assert_failure 130
+        if [ "${m}" = claudeswap ]; then
+            assert_output --partial "$(printf '%s\n' \
+                'Restore interrupted while the Claude Code state (login and session history) was being replaced.' \
+                'Your project files (DAAF data) were already replaced and checked.' \
+                'The replacement keeps running inside Docker until it finishes. Your backup' \
+                'folder 2026-01-01_daaf_backup/ is unchanged. Wait a few minutes, then run this restore' \
+                'again and choose the same backup:' \
+                '  bash restore_from_backup.sh')"
+            refute_output --partial "Restore interrupted while your DAAF data was being replaced."
+        else
+            assert_output --partial "$(printf '%s\n' \
+                'Restore interrupted while your DAAF data was being replaced.' \
+                'The replacement keeps running inside Docker until it finishes. Your backup')"
+            refute_output --partial "Claude Code state (login and session history) was being replaced"
+            refute_output --partial "were already replaced and checked"
+        fi
+        # No temp removal (and no holder list or reap) once a swap started.
+        run grep -cE '^(volume rm |ps -a --filter volume=|ps -aq )' "${TEST_DIR}/docker_calls.log"
+        assert_output "0"
+    done
+}
+
+@test "D1: the removal helper only ever removes this run's two temp names (name guard); its statuses (unit, real function text)" {
+    # The script's test mode returns before these functions are defined, so the real
+    # function text is extracted (as S-c does) and run with a logging docker stand-in.
+    sed -n -e '/^_restore_last_line() {$/,/^}$/p' -e '/^_restore_remove_volume() {$/,/^}$/p' \
+        "${REPO_ROOT}/${_RESTORE_SH_REL}" > "${TEST_DIR}/rmvol.sh"
+    run grep -cE '^(_restore_last_line|_restore_remove_volume)\(\) \{$' "${TEST_DIR}/rmvol.sh"
+    assert_output "2"
+    cat > "${TEST_DIR}/rmvol_driver.sh" <<'DRIVER'
+set -euo pipefail
+. "$1"
+LOG="$2"
+TEMP_VOLUME_NAME=x_daaf-data-restore-tmp
+CLAUDE_TEMP_VOLUME_NAME=x_daaf-claude-config-restore-tmp
+: > "${LOG}"
+docker() {
+    printf '%s\n' "$*" >> "${LOG}"
+    if [ "$1" = ps ]; then
+        if [ "${STUB_PS_EXIT:-0}" -ne 0 ]; then printf 'noise line\n  Daemon down  \n' >&2; return "${STUB_PS_EXIT}"; fi
+        printf '%s\n' "${STUB_HOLDERS:-}"
+    fi
+    return 0
+}
+try() {
+    local st=0
+    _restore_remove_volume "$@" || st=$?
+    echo "[$1] ${2:-plain}: status=${st} said=${RESTORE_RM_SAID} psexit=${RESTORE_RM_PS_EXIT} calls=$(tr '\n' '|' < "${LOG}")"
+    : > "${LOG}"
+}
+for n in x_daaf-data x_daaf-claude-config x_daaf-data-restore-tmp-old xx_daaf-data-restore-tmp ''; do
+    try "${n}"
+    try "${n}" careful
+done
+try x_daaf-data-restore-tmp careful
+STUB_HOLDERS='abc created' try x_daaf-claude-config-restore-tmp check
+STUB_HOLDERS=$'abc created\ndef Running' try x_daaf-data-restore-tmp
+STUB_HOLDERS='abc Exited' try x_daaf-data-restore-tmp
+STUB_PS_EXIT=4 try x_daaf-data-restore-tmp
+DRIVER
+    run bash "${TEST_DIR}/rmvol_driver.sh" "${TEST_DIR}/rmvol.sh" "${TEST_DIR}/rmvol.log"
+    assert_success
+    assert_output "$(printf '%s\n' \
+        '[x_daaf-data] plain: status=1 said= psexit=0 calls=' \
+        '[x_daaf-data] careful: status=1 said= psexit=0 calls=' \
+        '[x_daaf-claude-config] plain: status=1 said= psexit=0 calls=' \
+        '[x_daaf-claude-config] careful: status=1 said= psexit=0 calls=' \
+        '[x_daaf-data-restore-tmp-old] plain: status=1 said= psexit=0 calls=' \
+        '[x_daaf-data-restore-tmp-old] careful: status=1 said= psexit=0 calls=' \
+        '[xx_daaf-data-restore-tmp] plain: status=1 said= psexit=0 calls=' \
+        '[xx_daaf-data-restore-tmp] careful: status=1 said= psexit=0 calls=' \
+        '[] plain: status=1 said= psexit=0 calls=' \
+        '[] careful: status=1 said= psexit=0 calls=' \
+        '[x_daaf-data-restore-tmp] careful: status=0 said= psexit=0 calls=volume rm x_daaf-data-restore-tmp|' \
+        '[x_daaf-claude-config-restore-tmp] check: status=0 said= psexit=0 calls=ps -a --filter volume=x_daaf-claude-config-restore-tmp --format {{.ID}} {{.State}}|' \
+        '[x_daaf-data-restore-tmp] plain: status=2 said= psexit=0 calls=ps -a --filter volume=x_daaf-data-restore-tmp --format {{.ID}} {{.State}}|' \
+        '[x_daaf-data-restore-tmp] plain: status=0 said= psexit=0 calls=ps -a --filter volume=x_daaf-data-restore-tmp --format {{.ID}} {{.State}}|rm abc|volume rm x_daaf-data-restore-tmp|' \
+        '[x_daaf-data-restore-tmp] plain: status=3 said=Daemon down psexit=4 calls=ps -a --filter volume=x_daaf-data-restore-tmp --format {{.ID}} {{.State}}|ps -a --filter volume=x_daaf-data-restore-tmp --format {{.ID}} {{.State}}|')"
 }

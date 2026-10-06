@@ -86,9 +86,11 @@ Script behaving unexpectedly?
 │   ├─ Exit code masked → ./references/gotchas.md (local var=$(cmd))
 │   ├─ Variable empty/unset → ./references/bash-standards.md (nounset)
 │   ├─ Pipeline hiding failure → ./references/bash-standards.md (pipefail)
+│   ├─ $(fn 2>&1 > /dev/null) hangs until a background job ends → ./references/gotchas.md (forked subshell keeps the pipe)
 │   └─ cd went to wrong dir → ./references/gotchas.md (cd without || exit)
 ├─ PowerShell
 │   ├─ Native command error ignored → ./references/gotchas.md ($LASTEXITCODE)
+│   ├─ Native stderr missing from a 2>&1 capture on PS 5.1 → ./references/gotchas.md (SilentlyContinue drops it)
 │   ├─ Unexpected return value → ./references/gotchas.md (implicit returns)
 │   ├─ $null in ForEach loop → ./references/gotchas.md
 │   ├─ Validation not firing → ./references/gotchas.md (omitted params)
@@ -104,6 +106,7 @@ Script behaving unexpectedly?
     ├─ busybox find -exec {} + prints/does nothing → ./references/gotchas.md (-exec + inside \( \))
     ├─ Ctrl+C stopped a container's sh -c between commands → ./references/gotchas.md (--sig-proxy=false + trap : INT TERM HUP)
     ├─ docker volume create reused stale data / --filter name= matched too much → ./references/gotchas.md (exact-name inspect + labels)
+    ├─ docker volume rm says "volume is in use" after an interrupted run → ./references/gotchas.md (never-started Created container)
     ├─ A volume removed mid-run came back empty / two empty trees "matched" → ./references/gotchas.md (docker run -v re-creates a vanished volume)
     ├─ Space check passed but the host drive filled up → ./references/gotchas.md (in-container df on Docker Desktop)
     └─ PowerShell script exits 0 after Ctrl+C → ./references/gotchas.md (Ctrl+C inside try/finally)
@@ -222,8 +225,10 @@ Existing patterns in DAAF scripts that this skill codifies:
 | What to test and what to skip | `./references/testing.md` |
 | Bash exit code masking | `./references/gotchas.md` |
 | Bash set -e edge cases | `./references/gotchas.md` |
+| Bash `$(fn 2>&1 > /dev/null)` waits for a subshell `fn` left in the background (exec'd children drop the saved pipe) | `./references/gotchas.md` |
 | PowerShell `exit` in dot-sourced functions | `./references/gotchas.md` |
 | PowerShell $LASTEXITCODE vs $? | `./references/gotchas.md` |
+| Windows PowerShell 5.1 drops native stderr under `SilentlyContinue`, even with `2>&1` (bracket with `Continue`; pwsh 7 cannot reproduce it) | `./references/gotchas.md` |
 | PowerShell `$null` exit code read as success (unknown is not success) | `./references/gotchas.md` |
 | PowerShell `Start-Process -ArgumentList` array joined without quoting | `./references/gotchas.md` |
 | PowerShell `Start-Process -PassThru` `ExitCode` `$null` (cache `.Handle`) | `./references/gotchas.md` |
@@ -241,6 +246,7 @@ Existing patterns in DAAF scripts that this skill codifies:
 | Container `sh -c` as PID 1 still catches a forwarded Ctrl+C (`--sig-proxy=false` + `trap : INT TERM HUP` for destructive programs) | `./references/gotchas.md` |
 | PowerShell Ctrl+C inside `try`/`finally` runs the `finally`, then exits 0 (`[Environment]::Exit` only in a child process) | `./references/gotchas.md` |
 | `docker volume create` silently reuses a name; `docker volume ls --filter name=` is an unanchored regex (exact `inspect` + labels) | `./references/gotchas.md` |
+| Interrupted `docker run --rm` leaves a never-started (Created) container that keeps its volumes "in use" (`docker ps -a --filter volume=`, plain `docker rm`, then `docker volume rm`) | `./references/gotchas.md` |
 | `docker run -v NAME:/path` silently re-creates a vanished named volume, empty (per-run label checked before any mount; marker guard with its own exit code; nonzero entry counts) | `./references/gotchas.md` |
 | In-container `df` / `stat -f` on Docker Desktop measures the VM's virtual disk, not the host drive | `./references/gotchas.md` |
 | Detached-container (`docker run -d`) diagnostics routing | `./references/error-handling.md` |

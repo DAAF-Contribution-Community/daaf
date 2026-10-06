@@ -478,12 +478,180 @@ Describe "restore_from_backup.ps1 copy-then-swap structure" {
             $writable.Count | Should -Be 1 -Because "only the swap may write to `$$v"
             $writable[0] | Should -Match '--sig-proxy=false'
         }
-        # No volume create/rm of a live name: every `volume create` / `volume rm` names a
-        # temp volume (or a leftover temp volume, $tv). A create carries both labels.
-        foreach ($l in @($Lines | Where-Object { $_ -match "'volume', '(create|rm)'" })) {
-            $l | Should -Match "'volume', '(create|rm)'(, '--label', `"[^`"]+`")*, (\`$TempVolumeName|\`$ClaudeTempVolumeName|\`$tv)\)"
+        # No volume create/rm of a live name: every `volume create` names a temp volume,
+        # and the one `volume rm` (fix pass #18, D1) is $Name inside
+        # Invoke-DaafRestoreVolumeRemoval, whose FIRST statement refuses any name but this
+        # run's two temp names. A create carries both labels.
+        foreach ($l in @($Lines | Where-Object { $_ -match "'volume', 'create'" })) {
+            $l | Should -Match "'volume', 'create'(, '--label', `"[^`"]+`")*, (\`$TempVolumeName|\`$ClaudeTempVolumeName)\)"
         }
+        $rmLines = @($Lines | Where-Object { $_ -match "'volume', 'rm'" })
+        $rmLines.Count | Should -Be 1
+        $rmLines[0] | Should -Match ([regex]::Escape("@('volume', 'rm', `$Name)"))
+        $fn = $Ast.Find({
+            param($n) ($n -is [System.Management.Automation.Language.FunctionDefinitionAst]) -and ($n.Name -eq 'Invoke-DaafRestoreVolumeRemoval')
+        }, $true)
+        $fn | Should -Not -BeNullOrEmpty
+        $fn.Extent.Text | Should -Match ([regex]::Escape("@('volume', 'rm', `$Name)"))
+        $guard = $fn.Body.EndBlock.Statements[0].Extent.Text
+        $guard | Should -Match ('^' + [regex]::Escape('if (@($TempVolumeName, $ClaudeTempVolumeName) -cnotcontains $Name) {'))
+        $guard | Should -Match ([regex]::Escape("Result = 'failed'"))
         @($Lines | Where-Object { $_ -match "'volume', 'create', '--label', `"\`$RestoreLabel=[^`"]+`", '--label', `"\`$RestoreRunLabel=\`$RestoreRunId`"" }).Count | Should -Be 2
+    }
+
+    It "Invoke-DaafRestoreVolumeRemoval refuses any name but this run's two temp names, calling no docker" {
+        # The guard above, run: a live name (or any other) is 'failed' with no docker call.
+        $fn = $Ast.Find({
+            param($n) ($n -is [System.Management.Automation.Language.FunctionDefinitionAst]) -and ($n.Name -eq 'Invoke-DaafRestoreVolumeRemoval')
+        }, $true)
+        . ([scriptblock]::Create($fn.Extent.Text))
+        $dockerCalls = [System.Collections.Generic.List[string]]::new()
+        function docker { $dockerCalls.Add("$args"); $global:LASTEXITCODE = 0 }
+        foreach ($n in @($VolumeName, $ClaudeVolumeName, "$TempVolumeName-old", $TempVolumeName.ToUpperInvariant())) {
+            $res = Invoke-DaafRestoreVolumeRemoval -Name $n
+            $res.Result | Should -BeExactly 'failed' -Because "'$n' is not one of this run's temp names"
+        }
+        $dockerCalls.Count | Should -Be 0
+    }
+
+    It "D2: every capture whose docker stderr is READ (2>&1 into a variable) runs under 'Continue', never 'SilentlyContinue'" {
+        # Field test 2026-10-05 (D2): Windows PowerShell 5.1 drops a native command's
+        # stderr under SilentlyContinue even with 2>&1 (Run 3c lost its "Docker said:"
+        # line). pwsh 7 keeps it (engineer #18: 7.6 kept stderr even under
+        # SilentlyContinue), so no behavioural test here can catch a revert: this pin
+        # walks the EAP brackets instead. Each bracket opens with
+        # `$savedEAP = $ErrorActionPreference; $ErrorActionPreference = "<mode>"` and must
+        # close with `$ErrorActionPreference = $savedEAP` before the next one opens.
+        $open = '^\s*\$savedEAP = \$ErrorActionPreference; \$ErrorActionPreference = "(SilentlyContinue|Continue)"\s*$'
+        $close = '^\s*\$ErrorActionPreference = \$savedEAP\s*$'
+        $mode = $null
+        $brackets = [System.Collections.Generic.List[object]]::new()
+        $reads = [System.Collections.Generic.List[object]]::new()
+        for ($i = 0; $i -lt $Lines.Count; $i++) {
+            $l = $Lines[$i].TrimEnd("`r")
+            if ($l -match '^\s*#') { continue }
+            if ($l -match $open) {
+                $mode | Should -BeNullOrEmpty -Because "line $($i + 1) opens an EAP bracket before the previous one restored the saved value"
+                $mode = $Matches[1]
+                $brackets.Add([pscustomobject]@{ Mode = $mode; Line = $i + 1 })
+                continue
+            }
+            if ($l -match $close) {
+                $mode | Should -Not -BeNullOrEmpty -Because "line $($i + 1) restores an EAP that no bracket saved"
+                $mode = $null
+                continue
+            }
+            # A native docker call whose merged output is kept in a variable (any
+            # `$x = [@(]docker ... 2>&1` but `$null = docker ...`, which discards it).
+            $m = [regex]::Match($l, '(\$\w+)\s*=\s*(@\(\s*)?docker\s.*2>&1')
+            if ($m.Success -and $m.Groups[1].Value -ne '$null') {
+                $reads.Add([pscustomobject]@{ Var = $m.Groups[1].Value; Mode = $mode; Line = $i + 1 })
+            }
+            # Any other merged docker call must discard its output (`$null = docker`).
+            if ($l -match '\bdocker\s.*2>&1' -and -not $m.Success) {
+                $l | Should -Match '\$null = docker\s' -Because "line $($i + 1) merges docker's stderr without a capture or a discard"
+            }
+            # Inside a SilentlyContinue bracket, docker output is discarded or stdout-only.
+            if ($mode -eq 'SilentlyContinue' -and $l -match '\bdocker\s.*2>&1') {
+                $l | Should -Match '\$null = docker\s' -Because "line $($i + 1) reads docker's merged output under SilentlyContinue: $l"
+            }
+        }
+        $mode | Should -BeNullOrEmpty -Because 'the last EAP bracket must restore the saved value'
+        # The enumerated captures that READ Docker's merged text (fix pass #18): the two
+        # helpers ($out, $all), the scan count, docker cp, the temp check and the live
+        # count. Each is inside a 'Continue' bracket.
+        @($reads | ForEach-Object { $_.Var } | Sort-Object) | Should -Be @('$all', '$cpOut', '$out', '$ScanCountOutput', '$TempVerifyOutput', '$VerifyOutput')
+        foreach ($r in $reads) { $r.Mode | Should -BeExactly 'Continue' -Because "$($r.Var) (line $($r.Line)) reads Docker's stderr text" }
+        @($brackets | Where-Object { $_.Mode -eq 'Continue' }).Count | Should -Be 6
+        # Every other EAP assignment in the code is one of these brackets (no bare
+        # `$ErrorActionPreference = "SilentlyContinue"` elsewhere); the one "Stop" is the
+        # preamble's.
+        $assignments = @($Lines | Where-Object { $_ -notmatch '^\s*#' -and $_ -match '\$ErrorActionPreference\s*=\s*[''"]' })
+        @($assignments | Where-Object { $_ -match '\$ErrorActionPreference\s*=\s*[''"]Stop[''"]' }).Count | Should -Be 1
+        $assignments.Count | Should -Be ($brackets.Count + 1)
+    }
+
+    It "D2: the docker helpers keep stdout and stderr apart and restore the caller's EAP (Split: Err holds the stderr line)" -Skip:(($PSVersionTable.PSVersion.Major -lt 6) -or $IsWindows) {
+        foreach ($fnName in @('Invoke-DaafRestoreDocker', 'Invoke-DaafRestoreDockerSplit', 'Get-DaafRestoreDockerSaid')) {
+            $fnAst = $Ast.Find({
+                param($n) ($n -is [System.Management.Automation.Language.FunctionDefinitionAst]) -and ($n.Name -eq $fnName)
+            }, $true)
+            . ([scriptblock]::Create($fnAst.Extent.Text))
+        }
+        # A native fake (not a PowerShell function): the stderr line must cross the real
+        # native-command 2>&1 path as an ErrorRecord.
+        $bin = Join-Path $TestDrive 'd2bin'
+        $null = New-Item -ItemType Directory -Force -Path $bin
+        $fake = "#!/usr/bin/env bash`necho stdout-line`necho 'Error response from daemon: unexpected EOF' >&2`nexit 1`n"
+        [IO.File]::WriteAllText((Join-Path $bin 'docker'), $fake)
+        & chmod +x (Join-Path $bin 'docker')
+        $oldPath = $env:PATH
+        $oldEAP = $ErrorActionPreference
+        try {
+            $env:PATH = "$bin$([IO.Path]::PathSeparator)$oldPath"
+            # The script's own top-level setting: a stderr line must not become terminating.
+            $ErrorActionPreference = 'Stop'
+            $split = Invoke-DaafRestoreDockerSplit -DockerArgs @('cp', 'x', 'y')
+            $splitEAP = $ErrorActionPreference
+            $merged = Invoke-DaafRestoreDocker -DockerArgs @('cp', 'x', 'y')
+            $mergedExit = $LASTEXITCODE
+            $mergedEAP = $ErrorActionPreference
+        } finally {
+            $ErrorActionPreference = $oldEAP
+            $env:PATH = $oldPath
+        }
+        $split.Exit | Should -Be 1
+        @($split.Out) | Should -Be @('stdout-line')
+        @($split.Err) | Should -Be @('Error response from daemon: unexpected EOF')
+        $splitEAP | Should -BeExactly 'Stop'
+        $merged | Should -Contain 'stdout-line'
+        $merged | Should -Contain 'Error response from daemon: unexpected EOF'
+        $mergedExit | Should -Be 1
+        $mergedEAP | Should -BeExactly 'Stop'
+        Get-DaafRestoreDockerSaid -Lines $split.Err | Should -BeExactly 'Error response from daemon: unexpected EOF'
+    }
+
+    It "D2: 'Docker said:' is the last NON-EMPTY line, trimmed ('' when there is none)" {
+        $fnAst = $Ast.Find({
+            param($n) ($n -is [System.Management.Automation.Language.FunctionDefinitionAst]) -and ($n.Name -eq 'Get-DaafRestoreDockerSaid')
+        }, $true)
+        . ([scriptblock]::Create($fnAst.Extent.Text))
+        Get-DaafRestoreDockerSaid -Lines @('first', '  Error response from daemon: unexpected EOF  ', '', '   ') | Should -BeExactly 'Error response from daemon: unexpected EOF'
+        Get-DaafRestoreDockerSaid -Lines @('', '  ') | Should -BeExactly ''
+        Get-DaafRestoreDockerSaid -Lines @() | Should -BeExactly ''
+        Get-DaafRestoreDockerSaid -Lines $null | Should -BeExactly ''
+    }
+
+    It "R6: with -PreferCopyCause, the FIRST non-empty line saying 'denied' (any case) wins, whole; else the first Can't-add-file line; otherwise the last non-empty line" {
+        $fnAst = $Ast.Find({
+            param($n) ($n -is [System.Management.Automation.Language.FunctionDefinitionAst]) -and ($n.Name -eq 'Get-DaafRestoreDockerSaid')
+        }, $true)
+        . ([scriptblock]::Create($fnAst.Extent.Text))
+        $lines = @('noise', '  open C:\x\a.txt: Access is DENIED.  ', 'open C:\x\b.txt: Access is denied.', 'Error response from daemon: unexpected EOF', '')
+        Get-DaafRestoreDockerSaid -Lines $lines -PreferCopyCause | Should -BeExactly 'open C:\x\a.txt: Access is DENIED.'
+        # Without the switch: unchanged (the last non-empty line).
+        Get-DaafRestoreDockerSaid -Lines $lines | Should -BeExactly 'Error response from daemon: unexpected EOF'
+        # No "denied" line and no "Can't add file" line: the last non-empty line.
+        Get-DaafRestoreDockerSaid -Lines @('first', 'Error response from daemon: unexpected EOF', '  ') -PreferCopyCause | Should -BeExactly 'Error response from daemon: unexpected EOF'
+        Get-DaafRestoreDockerSaid -Lines @('', '  ') -PreferCopyCause | Should -BeExactly ''
+        # A long line is kept whole (never shortened).
+        $long = 'x' * 300 + ': Access is denied.'
+        Get-DaafRestoreDockerSaid -Lines @($long, 'last') -PreferCopyCause | Should -BeExactly $long
+        # Fix round 8 (delta review of round 7, SUGGESTION 2): Windows localises "Access is
+        # denied.", but Docker's "Can't add file" text is not -- on a non-English system the
+        # FIRST "Can't add file" line (it names the file) wins over "unexpected EOF".
+        $de = @(
+            'time="2026-10-05T16:04:31-04:00" level=error msg="Can''t add file C:\x\rt_n.txt to tar: open C:\x\rt_n.txt: Zugriff verweigert"',
+            'time="2026-10-05T16:04:31-04:00" level=error msg="Can''t add file C:\x\rt_top.txt to tar: archive/tar: missed writing 7 bytes"',
+            'Error response from daemon: unexpected EOF')
+        Get-DaafRestoreDockerSaid -Lines $de -PreferCopyCause | Should -BeExactly $de[0]
+        Get-DaafRestoreDockerSaid -Lines $de | Should -BeExactly 'Error response from daemon: unexpected EOF'
+        # A "denied" line still wins over an earlier "Can't add file" line.
+        Get-DaafRestoreDockerSaid -Lines @($de[1], 'open C:\x\rt_n.txt: Access is denied.', $de[2]) -PreferCopyCause | Should -BeExactly 'open C:\x\rt_n.txt: Access is denied.'
+        # docker cp is the one caller that prefers the cause line.
+        $Content | Should -Match ([regex]::Escape('$cpSaid = Get-DaafRestoreDockerSaid -Lines $cpOut -PreferCopyCause'))
+        @([regex]::Matches($Content, 'Get-DaafRestoreDockerSaid [^\r\n]*-PreferCopyCause')).Count | Should -Be 1
+        $Content | Should -Not -Match 'PreferDenied'
     }
 
     It "checks for leftovers by EXACT name (volume/container inspect), never an unanchored volume ls filter" {
@@ -846,8 +1014,8 @@ if [ -n "${FAKE_CALL_LOG:-}" ]; then
     printf '%s\n' "$(printf '%s' "$*" | tr '\n' ' ')" >> "${FAKE_CALL_LOG}"
 fi
 st="${FAKE_STATE:-.}"
-# FAKE_INTERRUPT_AT=cp|swap: send SIGINT to the calling pwsh (Ctrl+C stand-in), then
-# finish normally -- a real swap keeps running inside Docker after Ctrl+C.
+# FAKE_INTERRUPT_AT=cp|swap|claudeswap: send SIGINT to the calling pwsh (Ctrl+C
+# stand-in), then finish normally -- a real swap keeps running inside Docker after Ctrl+C.
 interrupt_here() {
     if [ "${FAKE_INTERRUPT_AT:-}" = "$1" ]; then kill -INT "${PPID}" 2>/dev/null; sleep 2; fi
 }
@@ -971,7 +1139,18 @@ case "${1:-}" in
                 fi
                 echo "${name}"; exit 0 ;;
             rm)
-                if [ "${FAKE_VOLUME_RM_EXIT:-0}" != "0" ]; then echo "Error response from daemon: volume is in use" >&2; exit "${FAKE_VOLUME_RM_EXIT}"; fi
+                # FAKE_VOLUME_RM_ERR: Docker's text for a FAKE_VOLUME_RM_EXIT failure.
+                if [ "${FAKE_VOLUME_RM_EXIT:-0}" != "0" ]; then echo "${FAKE_VOLUME_RM_ERR:-Error response from daemon: volume is in use}" >&2; exit "${FAKE_VOLUME_RM_EXIT}"; fi
+                # Like Docker: a volume that a container (in ANY state, created included)
+                # still references is "in use" and is not removed (field test D1).
+                for f in "${st}"/holder.*; do
+                    [ -e "${f}" ] || continue
+                    read -r hv hs < "${f}"
+                    if [ "${hv}" = "${3:-}" ]; then
+                        echo "Error response from daemon: remove ${3}: volume is in use - [${f##*/holder.}]" >&2
+                        exit 1
+                    fi
+                done
                 rm -f "${st}/vol.${3:-}" "${st}/marker.${3:-}"; exit 0 ;;
             ls)
                 # The S3 exact-name fallback uses `volume ls -q` (every name). Real
@@ -1010,6 +1189,35 @@ case "${1:-}" in
         echo "Error response from daemon: No such container: ${name}" >&2; exit 1 ;;
     ps)
         case "$*" in
+            # Fix pass #18 (field test 2026-10-05, D1): the containers that still reference
+            # a temp volume, `ps -a --filter volume=<X> --format {{.ID}} {{.State}}` (the
+            # format is ONE argument holding a space). Holders are state files
+            # "holder.<id>" holding "<volume> <state>" (Invoke-FakeRestore -Holders); a
+            # state "a>b" is listed as a and then becomes b (a holder that started since
+            # the previous listing). FAKE_HOLDER_PS_FAIL=<volume>|all makes the listing of
+            # that volume fail from its FAKE_HOLDER_PS_FAIL_FROM-th call on (default 1),
+            # with exit FAKE_HOLDER_PS_EXIT (default 1) and stderr FAKE_HOLDER_PS_ERR. A
+            # stray stderr line on success: IDs and states come from stdout only.
+            "ps -a --filter volume="*" --format {{.ID}} {{.State}}")
+                hvol="${4#volume=}"
+                n=$(( $(cat "${st}/psn.${hvol}" 2>/dev/null || echo 0) + 1 ))
+                echo "${n}" > "${st}/psn.${hvol}"
+                case "${FAKE_HOLDER_PS_FAIL:-}" in
+                    all|"${hvol}")
+                        if [ "${n}" -ge "${FAKE_HOLDER_PS_FAIL_FROM:-1}" ]; then
+                            echo "${FAKE_HOLDER_PS_ERR:-error during connect: fake docker ps failure}" >&2
+                            exit "${FAKE_HOLDER_PS_EXIT:-1}"
+                        fi ;;
+                esac
+                stray_warning
+                for f in "${st}"/holder.*; do
+                    [ -e "${f}" ] || continue
+                    read -r hv hs < "${f}"
+                    [ "${hv}" = "${hvol}" ] || continue
+                    echo "${f##*/holder.} ${hs%%>*}"
+                    case "${hs}" in *">"*) printf '%s %s\n' "${hv}" "${hs#*>}" > "${f}" ;; esac
+                done
+                exit 0 ;;
             # S3 exact-name fallback lists (every container / running ones only), names
             # on stdout. Modelled names: the default project's two swap containers.
             "ps -a --format {{.Names}}"|"ps --format {{.Names}}")
@@ -1062,11 +1270,96 @@ case "${1:-}" in
                 if [ "${FAKE_CLAUDE_CP_EXIT:-0}" != "0" ]; then echo "fake docker: claude copy failed" >&2; exit "${FAKE_CLAUDE_CP_EXIT}"; fi ;;
             *)
                 interrupt_here cp
-                if [ "${FAKE_CP_EXIT:-0}" != "0" ]; then echo "Error response from daemon: fake copy failure" >&2; exit "${FAKE_CP_EXIT}"; fi ;;
+                if [ "${FAKE_CP_EXIT:-0}" != "0" ]; then
+                    # FAKE_CP_STDERR=run3b: the field test's Run 3b text (Windows, an
+                    # unreadable file; paths shortened), then a blank and a whitespace-only
+                    # line -- "Docker said:" must be the LAST NON-EMPTY line (D2).
+                    # Review round 6 (R6): "Docker said:" is now the FIRST line that says
+                    # "denied" (it names the unreadable file); run3b_verbatim is the field
+                    # line exactly as Docker printed it (about 230 characters).
+                    if [ "${FAKE_CP_STDERR:-}" = "run3b" ]; then
+                        cat >&2 <<'RUN3B'
+time="2026-10-05T16:04:31-04:00" level=error msg="Can't add file C:\Users\u\rt_sub\deep\rt_n.txt to tar: open C:\Users\u\rt_sub\deep\rt_n.txt: Access is denied."
+time="2026-10-05T16:04:31-04:00" level=error msg="Can't add file C:\Users\u\rt_top.txt to tar: archive/tar: missed writing 7 bytes"
+time="2026-10-05T16:04:31-04:00" level=error msg="Can't close tar writer: archive/tar: missed writing 7 bytes"
+Error response from daemon: unexpected EOF
+RUN3B
+                        printf '\n   \n' >&2
+                    elif [ "${FAKE_CP_STDERR:-}" = "run3b_de" ]; then
+                        # Fix round 8: Run 3b on a German Windows (the OS error text is
+                        # localised; Docker's own "Can't add file" text is not).
+                        cat >&2 <<'RUN3B'
+time="2026-10-05T16:04:31-04:00" level=error msg="Can't add file C:\Users\u\rt_sub\deep\rt_n.txt to tar: open C:\Users\u\rt_sub\deep\rt_n.txt: Zugriff verweigert"
+time="2026-10-05T16:04:31-04:00" level=error msg="Can't add file C:\Users\u\rt_top.txt to tar: archive/tar: missed writing 7 bytes"
+time="2026-10-05T16:04:31-04:00" level=error msg="Can't close tar writer: archive/tar: missed writing 7 bytes"
+Error response from daemon: unexpected EOF
+RUN3B
+                    elif [ "${FAKE_CP_STDERR:-}" = "run3b_verbatim" ]; then
+                        cat >&2 <<'RUN3B'
+time="2026-10-05T16:04:31-04:00" level=error msg="Can't add file \\\\?\\C:\\Users\\brhki\\daaf-restoretest\\2026-10-01_daaf_backup\\rt_sub\\deep\\rt_n.txt to tar: open \\\\?\\C:\\Users\\brhki\\daaf-restoretest\\2026-10-01_daaf_backup\\rt_sub\\deep\\rt_n.txt: Access is denied."
+time="2026-10-05T16:04:31-04:00" level=error msg="Can't add file \\\\?\\C:\\Users\\brhki\\daaf-restoretest\\2026-10-01_daaf_backup\\rt_top.txt to tar: archive/tar: missed writing 7 bytes"
+time="2026-10-05T16:04:31-04:00" level=error msg="Can't close tar writer: archive/tar: missed writing 7 bytes"
+Error response from daemon: unexpected EOF
+RUN3B
+                    else
+                        echo "Error response from daemon: fake copy failure" >&2
+                    fi
+                    exit "${FAKE_CP_EXIT}"
+                fi ;;
         esac
         exit 0 ;;
     rm)
         if [ "${FAKE_RM_EXIT:-0}" != "0" ]; then echo "fake docker: rm failed" >&2; exit "${FAKE_RM_EXIT}"; fi
+        # Review round 6 (R5): FAKE_SWAP_RUNNING_AT_RM names swap containers that were
+        # stopped at the leftover check but are RUNNING when the leftover path removes
+        # them (another window's swap under the same name). Like the daemon, a plain
+        # `rm <name>` refuses; `rm -f` would remove it (only a mutant sends that).
+        if [ "${2:-}" != "-f" ]; then
+            for c in ${FAKE_SWAP_RUNNING_AT_RM:-}; do
+                if [ "${c}" = "${2:-}" ]; then
+                    echo "Error response from daemon: cannot remove container \"/${c}\": container is running: stop the container before removing or force remove" >&2
+                    exit 1
+                fi
+            done
+            # Fix round 8 (delta review of round 7, ISSUE 1): FAKE_SWAP_GONE_AT_RM names swap
+            # containers that VANISHED before the leftover path removes them (a plain rm of
+            # a missing container exits 1; docker CLI rm.go ignores not-found only for -f);
+            # FAKE_SWAP_REMOVING_AT_RM names ones the daemon is already removing
+            # (moby daemon/delete.go).
+            for c in ${FAKE_SWAP_GONE_AT_RM:-}; do
+                if [ "${c}" = "${2:-}" ]; then
+                    echo "Error response from daemon: No such container: ${c}" >&2
+                    exit 1
+                fi
+            done
+            for c in ${FAKE_SWAP_REMOVING_AT_RM:-}; do
+                if [ "${c}" = "${2:-}" ]; then
+                    echo "Error response from daemon: removal of container ${c} is already in progress" >&2
+                    exit 1
+                fi
+            done
+        fi
+        # A holder container (fix pass #18, D1). A plain `rm <id>` removes a stopped one
+        # (created, exited, dead); like the daemon (moby daemon/delete.go) it refuses a
+        # running, restarting or paused one, which only `rm -f` removes.
+        # FAKE_HOLDER_RM_EXIT: every plain holder `rm` fails, with Docker's text.
+        if [ "${2:-}" = "-f" ]; then hid="${3:-}"; else hid="${2:-}"; fi
+        if [ -n "${hid}" ] && [ -e "${st}/holder.${hid}" ]; then
+            read -r hv hs < "${st}/holder.${hid}"
+            if [ "${2:-}" != "-f" ]; then
+                if [ "${FAKE_HOLDER_RM_EXIT:-0}" != "0" ]; then
+                    echo "Error response from daemon: fake removal failure of container ${hid}" >&2
+                    exit "${FAKE_HOLDER_RM_EXIT}"
+                fi
+                case "${hs}" in
+                    created|exited|dead) ;;
+                    paused) echo "Error response from daemon: cannot remove container /${hid}: container is paused and must be unpaused first" >&2; exit 1 ;;
+                    *) echo "Error response from daemon: cannot remove container /${hid}: container is ${hs}: stop the container before removing or force remove" >&2; exit 1 ;;
+                esac
+            fi
+            rm -f "${st}/holder.${hid}"
+            echo "${hid}"
+        fi
         exit 0 ;;
     run)
         # A NAMED volume that does not exist is created (empty, no labels) when a container
@@ -1101,7 +1394,7 @@ case "${1:-}" in
         # data swap records that it ran (state file "swapped"; see FAKE_AFTER_SWAP_*).
         case "$*" in *"--sig-proxy=false"*)
             case "$*" in
-                *"claude-config-restore-swap"*) exit "${FAKE_CLAUDE_SWAP_EXIT:-0}" ;;
+                *"claude-config-restore-swap"*) interrupt_here claudeswap; exit "${FAKE_CLAUDE_SWAP_EXIT:-0}" ;;
                 *) : > "${st}/swapped"; interrupt_here swap; exit "${FAKE_SWAP_EXIT:-0}" ;;
             esac ;;
         esac
@@ -1233,14 +1526,15 @@ esac
         # the fixture's data-file count. Prompts are answered on stdin in order: the
         # backup number ("1"), the leftover y/n (only when -LeftoverAnswer is given; the
         # prompt appears only when a leftover exists), then -ConfirmAnswer (default RESTORE).
-        # -SeedVolumes pre-creates extra volumes (e.g. a leftover temp volume); -Fake
-        # passes extra FAKE_* switches. -EndInput: stdin ENDS after the backup number (and
+        # -SeedVolumes pre-creates extra volumes (e.g. a leftover temp volume); -Holders
+        # seeds containers that reference a volume; -Fake passes extra FAKE_* switches. -EndInput: stdin ENDS after the backup number (and
         # -LeftoverAnswer, when given), so the next Read-Host meets end of input. A string
         # piped to a native command gets ONE trailing newline appended (observed on pwsh
         # 7.6: "1" arrives as "1\n", "1`n" as "1\n\n" -- a blank line, not end of input),
         # so that stdin is joined with no trailing newline. Returns Output, ExitCode, Calls
-        # (the fake's call log, one line per docker call), Volumes (the volumes left) and
-        # Markers (the volumes that still hold the modelled state marker).
+        # (the fake's call log, one line per docker call), Volumes (the volumes left),
+        # Markers (the volumes that still hold the modelled state marker) and Holders (the
+        # IDs of the holder containers left).
         function Invoke-FakeRestore {
             param(
                 [int]$DataFiles = 3,
@@ -1259,7 +1553,10 @@ esac
                 [hashtable]$Fake = @{},
                 # -NotNested: run WITHOUT DAAF_NESTED (unset in the child, as when the
                 # user starts the script in their own window) instead of DAAF_NESTED=1.
-                [switch]$NotNested
+                [switch]$NotNested,
+                # -Holders: containers that reference a volume, each "<volume> <id> <state>"
+                # (fix pass #18, D1; see the fake's `ps -a --filter volume=` arm).
+                [string[]]$Holders = @()
             )
             $work = Join-Path $TestDrive ('restore-' + [guid]::NewGuid().ToString('N'))
             $bk = Join-Path $work '2026-01-01_daaf_backup'
@@ -1292,6 +1589,10 @@ esac
             $null = New-Item -ItemType Directory -Path $state
             foreach ($v in (@('daaf_daaf-data', 'daaf_daaf-claude-config') + $SeedVolumes)) {
                 [IO.File]::WriteAllText((Join-Path $state "vol.$v"), '')
+            }
+            foreach ($h in $Holders) {
+                $hv, $hid, $hs = $h -split ' '
+                [IO.File]::WriteAllText((Join-Path $state "holder.$hid"), "$hv $hs`n")
             }
             $callLog = Join-Path $work 'docker-calls.log'
             # `env -u DAAF_NESTED` (an option, so it comes first) removes it from the
@@ -1334,7 +1635,9 @@ esac
             $vols = @(Get-ChildItem -LiteralPath $state -Force -Filter 'vol.*' | ForEach-Object { $_.Name.Substring(4) })
             # Volumes that still hold the (modelled) state marker.
             $marks = @(Get-ChildItem -LiteralPath $state -Force -Filter 'marker.*' | ForEach-Object { $_.Name.Substring(7) })
-            [pscustomobject]@{ Output = $out; ExitCode = $code; Calls = $calls; Volumes = $vols; Markers = $marks }
+            # The holder containers left (IDs).
+            $held = @(Get-ChildItem -LiteralPath $state -Force -Filter 'holder.*' | ForEach-Object { $_.Name.Substring(7) })
+            [pscustomobject]@{ Output = $out; ExitCode = $code; Calls = $calls; Volumes = $vols; Markers = $marks; Holders = $held }
         }
 
         # Index of the first call-log line matching a regex (-1 when none).
@@ -1592,11 +1895,23 @@ esac
             @($r.Calls | Where-Object { $_ -match 'fake-docker-stderr-notice' }).Count | Should -Be 0
         }
 
-        It "a temp removal failure after a prepare failure prints the removal command (exit 1)" {
-            $r = Invoke-FakeRestore -DataFiles 3 -Fake @{ FAKE_CP_EXIT = '1'; FAKE_VOLUME_RM_EXIT = '1' }
+        It "a temp removal failure after a prepare failure prints the kept-temp block with Docker's text (exit 1)" {
+            # Fix pass #18 (D1/D2): the kept-temp block (indent 7 under an ERROR) says why
+            # (Docker's last stderr line) and how to find the container that holds it.
+            $r = Invoke-FakeRestore -DataFiles 3 -Fake @{ FAKE_CP_EXIT = '1'; FAKE_VOLUME_RM_EXIT = '1'; FAKE_VOLUME_RM_ERR = 'Error response from daemon: remove daaf_daaf-data-restore-tmp: volume is in use - [c9be7425c57c]' }
             $r.ExitCode | Should -Be 1
-            $r.Output | Should -BeLike "*The temporary copy could not be removed. To free the space it uses, run:*"
-            $r.Output | Should -BeLike "*docker volume rm daaf_daaf-data-restore-tmp*"
+            $block = @(
+                '       Your DAAF data has not been changed.',
+                '       The temporary copy could not be removed.',
+                '       Docker said: Error response from daemon: remove daaf_daaf-data-restore-tmp: volume is in use - [c9be7425c57c]',
+                '       To free the space it uses, run:',
+                '         docker volume rm daaf_daaf-data-restore-tmp',
+                '       If Docker says it is in use, first run',
+                '         docker ps -a --filter volume=daaf_daaf-data-restore-tmp',
+                '       and remove each container it lists with docker rm <ID>, then try again.')
+            $r.Output | Should -Match ((@($block | ForEach-Object { [regex]::Escape($_) })) -join '\r?\n')
+            # The old two-line form is gone.
+            $r.Output | Should -Not -BeLike "*The temporary copy could not be removed. To free the space it uses, run:*"
             Assert-LiveUntouched -Calls $r.Calls
         }
     }
@@ -1719,7 +2034,17 @@ esac
             $r = Invoke-FakeRestore -DataFiles 3 -ConfirmAnswer 'no' -Fake @{ FAKE_VOLUME_RM_EXIT = '1' }
             $r.ExitCode | Should -Be 0
             $r.Output | Should -BeLike "*Restore cancelled. Your DAAF data has not been changed.*"
-            $r.Output | Should -BeLike "*docker volume rm daaf_daaf-data-restore-tmp*"
+            # Fix pass #18 (string 1, no indent after a cancel).
+            $block = @(
+                'Restore cancelled. Your DAAF data has not been changed.',
+                'The temporary copy could not be removed.',
+                'Docker said: Error response from daemon: volume is in use',
+                'To free the space it uses, run:',
+                '  docker volume rm daaf_daaf-data-restore-tmp',
+                'If Docker says it is in use, first run',
+                '  docker ps -a --filter volume=daaf_daaf-data-restore-tmp',
+                'and remove each container it lists with docker rm <ID>, then try again.')
+            $r.Output | Should -Match ((@($block | ForEach-Object { [regex]::Escape($_) })) -join '\r?\n')
         }
 
         It "a container started on the live volume while preparing: refuse before the swap (exit 1)" {
@@ -1794,6 +2119,16 @@ esac
             $r.Output | Should -BeLike "*WARNING: Could not remove the temporary copy of your data (Docker volume(s): daaf_daaf-data-restore-tmp).*"
             $r.Output | Should -BeLike "*Your DAAF data was restored. To free the space it uses, run:*"
             $r.Output | Should -BeLike "*docker volume rm daaf_daaf-data-restore-tmp*"
+            # Fix pass #18 (string 2): Docker's text first, the holder hint last.
+            $block = @(
+                'WARNING: Could not remove the temporary copy of your data (Docker volume(s): daaf_daaf-data-restore-tmp).',
+                '         Docker said: Error response from daemon: volume is in use',
+                '         Your DAAF data was restored. To free the space it uses, run:',
+                '           docker volume rm daaf_daaf-data-restore-tmp',
+                '         If Docker says it is in use, first run',
+                '           docker ps -a --filter volume=daaf_daaf-data-restore-tmp',
+                '         and remove each container it lists with docker rm <ID>, then try again.')
+            $r.Output | Should -Match ((@($block | ForEach-Object { [regex]::Escape($_) })) -join '\r?\n')
             $r.Output | Should -BeLike "*Restore completed WITH WARNINGS -- verify before relying on it*"
             $r.Output | Should -Not -BeLike "*Restore complete!*"
         }
@@ -1819,6 +2154,9 @@ esac
         It "interrupted DURING the swap: the finally keeps the temp and explains how to finish" {
             $r = Invoke-FakeRestore -DataFiles 3 -Fake @{ FAKE_INTERRUPT_AT = 'swap' }
             $r.Output | Should -BeLike "*Restore interrupted while your DAAF data was being replaced.*"
+            # Fix pass #18 (D3): the Claude-phase text is only for the Claude swap.
+            $r.Output | Should -Not -BeLike "*Claude Code state (login and session history) was being replaced*"
+            $r.Output | Should -Not -BeLike "*were already replaced and checked*"
             $r.Output | Should -BeLike "*The replacement keeps running inside Docker until it finishes.*"
             $r.Output.Contains('.\restore_from_backup.ps1') | Should -BeTrue
             $r.Output | Should -Not -BeLike "*Restore complete*"
@@ -1832,6 +2170,46 @@ esac
             # The last line of the finally's text was printed before the process ended.
             $r.Output.Contains('  .\restore_from_backup.ps1') | Should -BeTrue
             $r.Markers | Should -Contain 'daaf_daaf-data-restore-tmp'
+        }
+
+        # Fix pass #18 (field test 2026-10-05, Run 7, D3): a Ctrl+C during the CLAUDE swap
+        # said "while your DAAF data was being replaced", though the data was already
+        # replaced and checked.
+        It "D3: interrupted DURING the Claude swap: names the Claude Code state, says the data was done; exit 130 under DAAF_NESTED" {
+            $r = Invoke-FakeRestore -DataFiles 3 -WithClaude -Fake @{ FAKE_INTERRUPT_AT = 'claudeswap' }
+            $r.ExitCode | Should -Be 130
+            $block = @(
+                'Restore interrupted while the Claude Code state (login and session history) was being replaced.',
+                'Your project files (DAAF data) were already replaced and checked.',
+                'The replacement keeps running inside Docker until it finishes. Your backup')
+            $r.Output | Should -Match ((@($block | ForEach-Object { [regex]::Escape($_) })) -join '\r?\n')
+            $r.Output | Should -Not -BeLike "*Restore interrupted while your DAAF data was being replaced.*"
+            $r.Output.Contains('  .\restore_from_backup.ps1') | Should -BeTrue
+            $r.Output | Should -Not -BeLike "*Restore complete*"
+            # The data swap and its comparison ran before the Claude swap began.
+            $dataCompare = Get-CallIndex $r.Calls '-v daaf_daaf-data-restore-tmp:/src:ro -v daaf_daaf-data:/dest:ro busybox sh -c export LC_ALL=C;'
+            $claudeSwap = Get-CallIndex $r.Calls '--name daaf_daaf-claude-config-restore-swap '
+            $dataCompare | Should -BeGreaterThan -1
+            $claudeSwap | Should -BeGreaterThan $dataCompare
+            # Nothing is removed once a swap started: both temps (and markers) are kept.
+            (Get-CallIndex $r.Calls '^volume rm ') | Should -Be -1
+            $r.Volumes | Should -Contain 'daaf_daaf-data-restore-tmp'
+            $r.Volumes | Should -Contain 'daaf_daaf-claude-config-restore-tmp'
+        }
+
+        It "D3: interrupted DURING the Claude swap, run on its own (no DAAF_NESTED): same text, exit 0 (known limit)" {
+            $r = Invoke-FakeRestore -DataFiles 3 -WithClaude -NotNested -Fake @{ FAKE_INTERRUPT_AT = 'claudeswap' }
+            $r.ExitCode | Should -Be 0
+            $r.Output | Should -BeLike "*Restore interrupted while the Claude Code state (login and session history) was being replaced.*"
+            $r.Output | Should -BeLike "*Your project files (DAAF data) were already replaced and checked.*"
+            $r.Output | Should -Not -BeLike "*Restore interrupted while your DAAF data was being replaced.*"
+        }
+
+        It "D3: interrupted DURING the DATA swap of a run WITH Claude state: the data text (unchanged)" {
+            $r = Invoke-FakeRestore -DataFiles 3 -WithClaude -Fake @{ FAKE_INTERRUPT_AT = 'swap' }
+            $r.ExitCode | Should -Be 130
+            $r.Output | Should -BeLike "*Restore interrupted while your DAAF data was being replaced.*"
+            $r.Output | Should -Not -BeLike "*Claude Code state (login and session history) was being replaced*"
         }
 
         It "run on its own (no DAAF_NESTED), interrupted while PREPARING: same text and cleanup, exit 0 (known limit)" {
@@ -1899,9 +2277,18 @@ esac
             $r.ExitCode | Should -Be 0
             $r.Output | Should -BeLike "*Restore cancelled. Your DAAF data has not been changed.*"
             $r.Output | Should -BeLike "*To remove the temporary copy later, run:*"
-            $r.Output | Should -BeLike "*  docker volume rm daaf_daaf-data-restore-tmp*"
+            # Fix pass #18 (string 3): the removal command, then how to find a holder.
+            $hint = @(
+                'To remove the temporary copy later, run:',
+                '  docker volume rm daaf_daaf-data-restore-tmp',
+                'If Docker says it is in use, first run',
+                '  docker ps -a --filter volume=daaf_daaf-data-restore-tmp',
+                'and remove each container it lists with docker rm <ID>, then try again.')
+            $r.Output | Should -Match ((@($hint | ForEach-Object { [regex]::Escape($_) })) -join '\r?\n')
             $r.Volumes | Should -Contain 'daaf_daaf-data-restore-tmp'
             (Get-CallIndex $r.Calls '^volume (create|rm) ') | Should -Be -1
+            # Answering n lists and removes no holder.
+            (Get-CallIndex $r.Calls '^ps -a --filter volume=') | Should -Be -1
             Assert-LiveUntouched -Calls $r.Calls
         }
 
@@ -1936,12 +2323,80 @@ esac
             Assert-LiveUntouched -Calls $r.Calls
         }
 
-        It "a STOPPED swap container counts as 'had started' and is removed on y" {
+        It "a STOPPED swap container counts as 'had started' and is removed on y (a PLAIN rm, never -f)" {
             $r = Invoke-FakeRestore -DataFiles 3 -LeftoverAnswer 'y' -Fake @{ FAKE_SWAP_CONTAINER = 'stopped' }
             $r.ExitCode | Should -Be 0
             $r.Output | Should -BeLike "*- Docker container 'daaf_daaf-data-restore-swap' (stopped)*"
             $r.Output | Should -BeLike "*That earlier restore had started replacing your DAAF data*"
-            (Get-CallIndex $r.Calls '^rm -f daaf_daaf-data-restore-swap$') | Should -BeGreaterThan -1
+            (Get-CallIndex $r.Calls '^rm daaf_daaf-data-restore-swap$') | Should -BeGreaterThan -1
+            # Review round 6 (R5): never forced (see the next test).
+            (Get-CallIndex $r.Calls '^rm (-f|--force) \S*-restore-swap$') | Should -Be -1
+        }
+
+        It "R5: a swap container that became RUNNING after the prompt is NOT removed (plain rm refused); the run refuses, exit 1, no volume touched" {
+            # Stopped at the check, before the y/n prompt; running by the time the leftover
+            # path removes it (another window's restore started its swap under the same
+            # name). The daemon refuses a plain rm of a running container, so it survives;
+            # the restore stops with Docker's reason and leaves the leftover volume alone.
+            $r = Invoke-FakeRestore -DataFiles 3 -SeedVolumes @('daaf_daaf-data-restore-tmp') -LeftoverAnswer 'y' -Fake @{ FAKE_SWAP_CONTAINER = 'stopped'; FAKE_SWAP_RUNNING_AT_RM = 'daaf_daaf-data-restore-swap' }
+            $r.ExitCode | Should -Be 1
+            $block = @(
+                'ERROR: Could not remove the temporary copy left by the earlier restore.',
+                '       Docker said: Error response from daemon: cannot remove container "/daaf_daaf-data-restore-swap": container is running: stop the container before removing or force remove',
+                '       This restore did not change anything, but your DAAF data may still be',
+                '       incomplete from the earlier restore. Run the restore again to finish it.',
+                '       Make sure no other restore is running (and Docker Desktop is running), then',
+                '       run this restore again, or remove it yourself with:',
+                '         docker rm daaf_daaf-data-restore-swap',
+                '         docker volume rm daaf_daaf-data-restore-tmp',
+                '       If Docker says it is in use, first run',
+                '         docker ps -a --filter volume=daaf_daaf-data-restore-tmp',
+                '       and remove each container it lists with docker rm <ID>, then try again.')
+            $r.Output | Should -Match ('\r?\n\r?\n' + ((@($block | ForEach-Object { [regex]::Escape($_) })) -join '\r?\n'))
+            $r.Output | Should -Not -BeLike "*docker rm -f*"
+            $r.Output | Should -Not -BeLike "*Removed the leftover temporary copy.*"
+            # One plain rm attempt, never a forced one.
+            @($r.Calls | Where-Object { $_ -match '^rm daaf_daaf-data-restore-swap$' }).Count | Should -Be 1
+            (Get-CallIndex $r.Calls '^rm (-f|--force) \S*-restore-swap$') | Should -Be -1
+            # The leftover volume is left alone: only the check pass listed its holders.
+            @($r.Calls | Where-Object { $_ -match '^ps -a --filter volume=daaf_daaf-data-restore-tmp ' }).Count | Should -Be 1
+            (Get-CallIndex $r.Calls '^(volume (rm|create)|create|cp) ') | Should -Be -1
+            $r.Volumes | Should -Contain 'daaf_daaf-data-restore-tmp'
+            Assert-LiveUntouched -Calls $r.Calls
+        }
+
+        It "R8: a swap container that VANISHED before its removal (plain rm: No such container) counts as removed; the leftover volume is removed and the restore continues" {
+            # Delta review of round 7 (ISSUE 1): its --rm finished, Docker restarted, or
+            # another window removed it while the y/n prompt waited.
+            $r = Invoke-FakeRestore -DataFiles 3 -SeedVolumes @('daaf_daaf-data-restore-tmp') -LeftoverAnswer 'y' -Fake @{ FAKE_SWAP_CONTAINER = 'stopped'; FAKE_SWAP_GONE_AT_RM = 'daaf_daaf-data-restore-swap' }
+            $r.ExitCode | Should -Be 0
+            $r.Output | Should -BeLike "*Removed the leftover temporary copy.*"
+            $r.Output | Should -Not -BeLike "*ERROR: Could not remove the temporary copy left by the earlier restore.*"
+            $r.Output | Should -Not -BeLike "*No such container*"
+            $r.Output | Should -BeLike "*  Restore complete!*"
+            # One plain rm attempt, never a forced one; the leftover volume was removed
+            # before the new temp was created.
+            @($r.Calls | Where-Object { $_ -match '^rm daaf_daaf-data-restore-swap$' }).Count | Should -Be 1
+            (Get-CallIndex $r.Calls '^rm (-f|--force) \S*-restore-swap$') | Should -Be -1
+            $rmVol = Get-CallIndex $r.Calls '^volume rm daaf_daaf-data-restore-tmp$'
+            $rmVol | Should -BeGreaterThan -1
+            $rmVol | Should -BeLessThan (Get-CallIndex $r.Calls '^volume create .*daaf_daaf-data-restore-tmp$')
+        }
+
+        It "R8: a swap container whose removal is ALREADY IN PROGRESS refuses, exit 1, with Docker's reason; no volume touched" {
+            $r = Invoke-FakeRestore -DataFiles 3 -SeedVolumes @('daaf_daaf-data-restore-tmp') -LeftoverAnswer 'y' -Fake @{ FAKE_SWAP_CONTAINER = 'stopped'; FAKE_SWAP_REMOVING_AT_RM = 'daaf_daaf-data-restore-swap' }
+            $r.ExitCode | Should -Be 1
+            $block = @(
+                'ERROR: Could not remove the temporary copy left by the earlier restore.',
+                '       Docker said: Error response from daemon: removal of container daaf_daaf-data-restore-swap is already in progress',
+                '       This restore did not change anything, but your DAAF data may still be',
+                '       incomplete from the earlier restore. Run the restore again to finish it.')
+            $r.Output | Should -Match ('\r?\n\r?\n' + ((@($block | ForEach-Object { [regex]::Escape($_) })) -join '\r?\n'))
+            $r.Output | Should -Not -BeLike "*Removed the leftover temporary copy.*"
+            @($r.Calls | Where-Object { $_ -match '^rm daaf_daaf-data-restore-swap$' }).Count | Should -Be 1
+            (Get-CallIndex $r.Calls '^(volume (rm|create)|create|cp) ') | Should -Be -1
+            $r.Volumes | Should -Contain 'daaf_daaf-data-restore-tmp'
+            Assert-LiveUntouched -Calls $r.Calls
         }
     }
 
@@ -2290,9 +2745,15 @@ esac
             $r = Invoke-FakeRestore -DataFiles 3 -Fake @{ FAKE_SWAP_CONTAINER = 'running' }
             $r.ExitCode | Should -Be 1
             $r.Output | Should -BeLike "*       If this keeps happening, restart Docker Desktop and try again.*"
+            # Fix pass #18 (string 4): the leftover-removal failure no longer suggests a
+            # Docker Desktop restart (a Docker restart is expected to clear a never-started
+            # holder -- moby restore(), inference -- but the restore now removes it itself,
+            # D1); it says what Docker said and how to find the holder instead.
             $r = Invoke-FakeRestore -DataFiles 3 -SeedVolumes @('daaf_daaf-data-restore-tmp') -LeftoverAnswer 'y' -Fake @{ FAKE_VOLUME_RM_EXIT = '1' }
             $r.ExitCode | Should -Be 1
-            $r.Output | Should -BeLike "*       If this keeps happening, restart Docker Desktop and try again.*"
+            $r.Output | Should -BeLike "*       Make sure no other restore is running (and Docker Desktop is running), then*"
+            $r.Output | Should -BeLike "*       If Docker says it is in use, first run*"
+            $r.Output | Should -Not -BeLike "*restart Docker Desktop*"
         }
 
         It "S2: after a verified restore, each temp's state marker is deleted BEFORE its volume rm; not on a cancel" {
@@ -2381,7 +2842,9 @@ esac
             (Get-CallIndex $after '^container inspect ') | Should -Be -1
             (Get-CallIndex $after '^ps -a --format ') | Should -Be -1
             # Careful cleanup: no label reap; per temp: identity check, marker rm -f, volume rm.
+            # Fix pass #18 (D1): and no holder listing, so no holder removal either.
             (Get-CallIndex $c '^ps -aq ') | Should -Be -1
+            (Get-CallIndex $c '^ps -a --filter volume=') | Should -Be -1
             foreach ($t in @('daaf_daaf-data-restore-tmp', 'daaf_daaf-claude-config-restore-tmp')) {
                 $te = [regex]::Escape($t)
                 $id = Get-CallIndex $after ('^volume inspect --format \{\{\.Labels\}\} ' + $te + '$')
@@ -2402,8 +2865,17 @@ esac
             $r = Invoke-FakeRestore -DataFiles 3 -Fake @{ FAKE_SWAP_EXIT = '3'; FAKE_VOLUME_RM_EXIT = '1' }
             $r.ExitCode | Should -Be 1
             $r.Output | Should -BeLike "*(exit 3), so NOTHING was replaced. Run the restore again.*"
-            $r.Output | Should -BeLike "*The temporary copy could not be removed. To free the space it uses, run:*"
-            $r.Output | Should -BeLike "*docker volume rm daaf_daaf-data-restore-tmp*"
+            # Fix pass #18: the kept-temp block (indent 7). Careful cleanup reads no holders,
+            # so the only note is Docker's own text.
+            $block = @(
+                '       The temporary copy could not be removed.',
+                '       Docker said: Error response from daemon: volume is in use',
+                '       To free the space it uses, run:',
+                '         docker volume rm daaf_daaf-data-restore-tmp',
+                '       If Docker says it is in use, first run',
+                '         docker ps -a --filter volume=daaf_daaf-data-restore-tmp')
+            $r.Output | Should -Match ((@($block | ForEach-Object { [regex]::Escape($_) })) -join '\r?\n')
+            (Get-CallIndex $r.Calls '^ps -a --filter volume=') | Should -Be -1
             $r.Output | Should -Not -BeLike "*incomplete*"
             $r.Volumes | Should -Contain 'daaf_daaf-data-restore-tmp'
             $r.Markers | Should -Not -Contain 'daaf_daaf-data-restore-tmp'
@@ -2644,6 +3116,382 @@ esac
             (Get-CallIndex $r.Calls '^run ') | Should -Be -1
             Assert-LiveUntouched -Calls $r.Calls
             $r.Volumes | Should -Not -Contain 'daaf_daaf-data-restore-tmp'
+        }
+    }
+
+    # ------------------------------------------------------------------------
+    # Fix pass #18 (Windows field test 2026-10-05), mirroring the bats "D1:"/"D2:" cases.
+    # D1: a Ctrl+C between `docker run`'s create and start left a never-started
+    # ("created") container referencing the temp volume, so every `docker volume rm`
+    # failed ("volume is in use"). Holders are listed with `docker ps -a --filter
+    # volume=<temp> --format {{.ID}} {{.State}}`: created/exited/dead ones are removed
+    # with a PLAIN `docker rm <id>` before `volume rm`; any other state is "busy" and
+    # nothing is removed; a failed list is "could not check", never "no holders";
+    # careful cleanup lists no holder. D2: Docker's error text reaches the messages.
+    # The fake keeps a volume "in use" while a holder references it, as Docker does.
+    # ------------------------------------------------------------------------
+
+    Context "D1: the leftover path removes stopped holders and refuses live ones" {
+        BeforeAll {
+            $script:PsData = '^ps -a --filter volume=daaf_daaf-data-restore-tmp --format \{\{\.ID\}\} \{\{\.State\}\}$'
+            $script:PsClaude = '^ps -a --filter volume=daaf_daaf-claude-config-restore-tmp --format \{\{\.ID\}\} \{\{\.State\}\}$'
+            # Indices of every call-log line matching a regex.
+            function Get-CallIndexList {
+                param([string[]]$Calls, [string]$Pattern)
+                @(for ($i = 0; $i -lt $Calls.Count; $i++) { if ($Calls[$i] -match $Pattern) { $i } })
+            }
+            function Get-BlockPattern {
+                param([string[]]$Block)
+                (@($Block | ForEach-Object { [regex]::Escape($_) })) -join '\r?\n'
+            }
+        }
+
+        It "leftover y + a never-started (created) holder: a plain 'docker rm' of its ID before 'volume rm', then the restore continues" {
+            $r = Invoke-FakeRestore -DataFiles 3 -SeedVolumes @('daaf_daaf-data-restore-tmp') -LeftoverAnswer 'y' -Holders @('daaf_daaf-data-restore-tmp c9be7425c57c created')
+            $r.ExitCode | Should -Be 0
+            $r.Output | Should -BeLike "*Removed the leftover temporary copy.*"
+            $r.Output | Should -BeLike "*  Restore complete!*"
+            $r.Output | Should -Not -BeLike "*Could not remove the temporary copy*"
+            $c = $r.Calls
+            # The check pass lists the holders BEFORE the label reap; the removal pass
+            # lists them again, then removes the holder, then the volume, then the run
+            # creates its own temp.
+            $lists = Get-CallIndexList $c $PsData
+            $reap = Get-CallIndex $c '^ps -aq --filter label='
+            $rmHolder = Get-CallIndex $c '^rm c9be7425c57c$'
+            $volRm = Get-CallIndex $c '^volume rm daaf_daaf-data-restore-tmp$'
+            $create = Get-CallIndex $c '^volume create .* daaf_daaf-data-restore-tmp$'
+            $lists.Count | Should -BeGreaterOrEqual 2
+            $reap | Should -BeGreaterThan $lists[0]
+            $lists[1] | Should -BeGreaterThan $reap
+            $rmHolder | Should -BeGreaterThan $lists[1]
+            $volRm | Should -BeGreaterThan $rmHolder
+            $create | Should -BeGreaterThan $volRm
+            # Never a forced removal of a holder.
+            (Get-CallIndex $c '^rm -f c9be7425c57c$') | Should -Be -1
+            $r.Holders | Should -Not -Contain 'c9be7425c57c'
+            Assert-LiveUntouched -Calls $c[0..($create - 1)]
+        }
+
+        It "leftover y + <Name>: each removed with a plain 'docker rm' of its ID before 'volume rm'" -ForEach @(
+            @{ Name = 'an exited holder'; Holders = @('daaf_daaf-data-restore-tmp aaa111 exited'); Ids = @('aaa111') },
+            @{ Name = 'a dead holder'; Holders = @('daaf_daaf-data-restore-tmp bbb222 dead'); Ids = @('bbb222') },
+            @{ Name = 'exited + dead + created holders'; Holders = @('daaf_daaf-data-restore-tmp aaa111 exited', 'daaf_daaf-data-restore-tmp bbb222 dead', 'daaf_daaf-data-restore-tmp ccc333 created'); Ids = @('aaa111', 'bbb222', 'ccc333') }
+        ) {
+            $r = Invoke-FakeRestore -DataFiles 3 -SeedVolumes @('daaf_daaf-data-restore-tmp') -LeftoverAnswer 'y' -Holders $Holders
+            $r.ExitCode | Should -Be 0
+            $r.Output | Should -BeLike "*Removed the leftover temporary copy.*"
+            $r.Output | Should -BeLike "*  Restore complete!*"
+            $volRm = Get-CallIndex $r.Calls '^volume rm daaf_daaf-data-restore-tmp$'
+            foreach ($id in $Ids) {
+                $rmHolder = Get-CallIndex $r.Calls ('^rm ' + $id + '$')
+                $rmHolder | Should -BeGreaterThan -1 -Because "$id is a stopped holder"
+                $volRm | Should -BeGreaterThan $rmHolder
+                (Get-CallIndex $r.Calls ('^rm -f ' + $id + '$')) | Should -Be -1
+            }
+            $r.Holders.Count | Should -Be 0
+        }
+
+        It "leftover y + a <State> holder: busy refusal, exit 1, NOTHING removed (the check pass runs before the reap)" -ForEach @(
+            @{ State = 'running' },
+            @{ State = 'paused' },
+            @{ State = 'restarting' },
+            @{ State = 'unknownstate' }
+        ) {
+            $r = Invoke-FakeRestore -DataFiles 3 -SeedVolumes @('daaf_daaf-data-restore-tmp') -LeftoverAnswer 'y' -Holders @("daaf_daaf-data-restore-tmp c9be7425c57c $State")
+            $r.ExitCode | Should -Be 1
+            $block = @(
+                'ERROR: Something is still using the temporary copy left by the earlier restore',
+                "       (Docker volume 'daaf_daaf-data-restore-tmp'), so it was not removed. Another restore may",
+                '       still be running.',
+                '       Your DAAF data has not been changed.',
+                '       Wait a few minutes and close any other restore window, then run this',
+                '       restore again.')
+            # Preceded by a blank line.
+            $r.Output | Should -Match ('\r?\n\r?\n' + (Get-BlockPattern $block))
+            $r.Output | Should -Not -BeLike "*Removed the leftover temporary copy.*"
+            $r.Output | Should -Not -BeLike "*Could not remove the temporary copy*"
+            $c = $r.Calls
+            # Only the check pass listed it; no label reap, no removal, nothing created.
+            (Get-CallIndexList $c $PsData).Count | Should -Be 1
+            (Get-CallIndex $c '^ps -aq ') | Should -Be -1
+            (Get-CallIndex $c '^rm ') | Should -Be -1
+            (Get-CallIndex $c '^volume (rm|create) ') | Should -Be -1
+            (Get-CallIndex $c '^(create|cp) ') | Should -Be -1
+            $r.Holders | Should -Contain 'c9be7425c57c'
+            $r.Volumes | Should -Contain 'daaf_daaf-data-restore-tmp'
+            Assert-LiveUntouched -Calls $c
+        }
+
+        It "two leftovers, the data temp's holder created and the Claude temp's running: refused at the CHECK pass, before the data holder is removed" {
+            $r = Invoke-FakeRestore -DataFiles 3 -WithClaude -SeedVolumes @('daaf_daaf-data-restore-tmp', 'daaf_daaf-claude-config-restore-tmp') -LeftoverAnswer 'y' -Holders @('daaf_daaf-data-restore-tmp c1c1c1 created', 'daaf_daaf-claude-config-restore-tmp c2c2c2 running')
+            $r.ExitCode | Should -Be 1
+            $r.Output | Should -BeLike "*ERROR: Something is still using the temporary copy left by the earlier restore*"
+            $r.Output | Should -BeLike "*(Docker volume 'daaf_daaf-claude-config-restore-tmp'), so it was not removed.*"
+            $c = $r.Calls
+            $dataList = Get-CallIndex $c $PsData
+            $claudeList = Get-CallIndex $c $PsClaude
+            $dataList | Should -BeGreaterThan -1
+            $claudeList | Should -BeGreaterThan $dataList
+            (Get-CallIndex $c '^rm ') | Should -Be -1
+            (Get-CallIndex $c '^ps -aq ') | Should -Be -1
+            (Get-CallIndex $c '^volume (rm|create) ') | Should -Be -1
+            $r.Holders | Should -Contain 'c1c1c1'
+            $r.Holders | Should -Contain 'c2c2c2'
+        }
+
+        It "leftover y + a holder list that FAILS: list-failed refusal with 'Docker said:', exit 1, nothing removed" {
+            $err = 'error during connect: this error may indicate that the docker daemon is not running'
+            $r = Invoke-FakeRestore -DataFiles 3 -SeedVolumes @('daaf_daaf-data-restore-tmp') -LeftoverAnswer 'y' -Holders @('daaf_daaf-data-restore-tmp c9be7425c57c created') -Fake @{ FAKE_HOLDER_PS_FAIL = 'daaf_daaf-data-restore-tmp'; FAKE_HOLDER_PS_EXIT = '7'; FAKE_HOLDER_PS_ERR = $err }
+            $r.ExitCode | Should -Be 1
+            $block = @(
+                'ERROR: Could not check what is using the temporary copy left by the earlier',
+                "       restore (Docker volume 'daaf_daaf-data-restore-tmp'; docker ps failed, exit 7), so it was not removed.",
+                "       Docker said: $err",
+                '       Your DAAF data has not been changed.',
+                '       Make sure Docker Desktop is running, then run this restore again.')
+            $r.Output | Should -Match ('\r?\n\r?\n' + (Get-BlockPattern $block))
+            # A failed list is never "no holders": nothing is reaped or removed.
+            (Get-CallIndex $r.Calls '^ps -aq ') | Should -Be -1
+            (Get-CallIndex $r.Calls '^rm ') | Should -Be -1
+            (Get-CallIndex $r.Calls '^volume (rm|create) ') | Should -Be -1
+            $r.Holders | Should -Contain 'c9be7425c57c'
+            $r.Volumes | Should -Contain 'daaf_daaf-data-restore-tmp'
+            Assert-LiveUntouched -Calls $r.Calls
+        }
+
+        It "a holder that changed after the check pass (<Name>): the removal pass refuses too, the holder and volume are kept" -ForEach @(
+            @{ Name = 'it started'; State = 'created>running'; Fake = @{}; First = 'ERROR: Something is still using the temporary copy left by the earlier restore' },
+            @{ Name = 'its list now fails'; State = 'created'; Fake = @{ FAKE_HOLDER_PS_FAIL = 'daaf_daaf-data-restore-tmp'; FAKE_HOLDER_PS_FAIL_FROM = '2' }; First = 'ERROR: Could not check what is using the temporary copy left by the earlier' }
+        ) {
+            $r = Invoke-FakeRestore -DataFiles 3 -SeedVolumes @('daaf_daaf-data-restore-tmp') -LeftoverAnswer 'y' -Holders @("daaf_daaf-data-restore-tmp c9be7425c57c $State") -Fake $Fake
+            $r.ExitCode | Should -Be 1
+            $r.Output | Should -BeLike "*$First*"
+            (Get-CallIndexList $r.Calls $PsData).Count | Should -Be 2
+            (Get-CallIndex $r.Calls '^rm c9be7425c57c$') | Should -Be -1
+            (Get-CallIndex $r.Calls '^volume (rm|create) ') | Should -Be -1
+            $r.Holders | Should -Contain 'c9be7425c57c'
+            $r.Volumes | Should -Contain 'daaf_daaf-data-restore-tmp'
+        }
+
+        It "leftover removal fails at the holder's 'docker rm': ERROR with Docker's text and the hint, no restart advice, nothing created" {
+            $r = Invoke-FakeRestore -DataFiles 3 -SeedVolumes @('daaf_daaf-data-restore-tmp') -LeftoverAnswer 'y' -Holders @('daaf_daaf-data-restore-tmp c9be7425c57c created') -Fake @{ FAKE_HOLDER_RM_EXIT = '1' }
+            $r.ExitCode | Should -Be 1
+            $block = @(
+                'ERROR: Could not remove the temporary copy left by the earlier restore.',
+                '       Docker said: Error response from daemon: fake removal failure of container c9be7425c57c',
+                '       Your DAAF data has not been changed.',
+                '       Make sure no other restore is running (and Docker Desktop is running), then',
+                '       run this restore again, or remove it yourself with:',
+                '         docker volume rm daaf_daaf-data-restore-tmp',
+                '       If Docker says it is in use, first run',
+                '         docker ps -a --filter volume=daaf_daaf-data-restore-tmp',
+                '       and remove each container it lists with docker rm <ID>, then try again.')
+            $r.Output | Should -Match (Get-BlockPattern $block)
+            $r.Output | Should -Not -BeLike "*restart Docker Desktop*"
+            # The volume is not tried once its holder could not be removed.
+            (Get-CallIndex $r.Calls '^volume rm ') | Should -Be -1
+            (Get-CallIndex $r.Calls '^volume create ') | Should -Be -1
+            Assert-LiveUntouched -Calls $r.Calls
+        }
+
+        It "leftover 'volume rm' fails with Docker's text (string 4): 'Docker said:' present, the old restart line absent" {
+            $err = 'Error response from daemon: remove daaf_daaf-data-restore-tmp: volume is in use - [c9be7425c57cdf9986582df00a33e2026ee81d442191780062ad3bbb49f30ec5]'
+            $r = Invoke-FakeRestore -DataFiles 3 -SeedVolumes @('daaf_daaf-data-restore-tmp') -LeftoverAnswer 'y' -Fake @{ FAKE_SWAP_CONTAINER = 'stopped'; FAKE_VOLUME_RM_EXIT = '1'; FAKE_VOLUME_RM_ERR = $err }
+            $r.ExitCode | Should -Be 1
+            $block = @(
+                'ERROR: Could not remove the temporary copy left by the earlier restore.',
+                "       Docker said: $err",
+                '       This restore did not change anything, but your DAAF data may still be',
+                '       incomplete from the earlier restore. Run the restore again to finish it.',
+                '       Make sure no other restore is running (and Docker Desktop is running), then',
+                '       run this restore again, or remove it yourself with:',
+                '         docker rm daaf_daaf-data-restore-swap',
+                '         docker volume rm daaf_daaf-data-restore-tmp',
+                '       If Docker says it is in use, first run',
+                '         docker ps -a --filter volume=daaf_daaf-data-restore-tmp',
+                '       and remove each container it lists with docker rm <ID>, then try again.')
+            $r.Output | Should -Match (Get-BlockPattern $block)
+            $r.Output | Should -Not -BeLike "*If this keeps happening, restart Docker Desktop and try again.*"
+            (Get-CallIndex $r.Calls '^volume create ') | Should -Be -1
+        }
+    }
+
+    Context "D1: the cleanup paths remove stopped holders; a busy or unlisted temp is kept with the reason" {
+        BeforeAll {
+            function Get-BlockPattern {
+                param([string[]]$Block)
+                (@($Block | ForEach-Object { [regex]::Escape($_) })) -join '\r?\n'
+            }
+        }
+
+        It "<Name> with a created holder on the temp: holder removed with 'docker rm', then the temp; no kept-temp text" -ForEach @(
+            @{ Name = 'a prepare failure'; Fake = @{ FAKE_CP_EXIT = '1' }; Confirm = 'RESTORE'; Exit = 1; Expect = '*ERROR: Copying the backup into Docker failed.*' },
+            @{ Name = 'a cancel at RESTORE'; Fake = @{}; Confirm = 'no'; Exit = 0; Expect = '*Restore cancelled. Your DAAF data has not been changed.*' },
+            @{ Name = 'a verified restore (final cleanup)'; Fake = @{}; Confirm = 'RESTORE'; Exit = 0; Expect = '*  Restore complete!*' }
+        ) {
+            $r = Invoke-FakeRestore -DataFiles 3 -ConfirmAnswer $Confirm -Holders @('daaf_daaf-data-restore-tmp c9be7425c57c created') -Fake $Fake
+            $r.ExitCode | Should -Be $Exit
+            $r.Output | Should -BeLike $Expect
+            $r.Output | Should -Not -BeLike "*The temporary copy could not be removed.*"
+            $r.Output | Should -Not -BeLike "*Could not remove the temporary copy*"
+            $r.Output | Should -Not -BeLike "*WITH WARNINGS*"
+            $list = Get-CallIndex $r.Calls '^ps -a --filter volume=daaf_daaf-data-restore-tmp --format \{\{\.ID\}\} \{\{\.State\}\}$'
+            $rmHolder = Get-CallIndex $r.Calls '^rm c9be7425c57c$'
+            $volRm = Get-CallIndex $r.Calls '^volume rm daaf_daaf-data-restore-tmp$'
+            $list | Should -BeGreaterThan -1
+            $rmHolder | Should -BeGreaterThan $list
+            $volRm | Should -BeGreaterThan $rmHolder
+            (Get-CallIndex $r.Calls '^rm -f c9be7425c57c$') | Should -Be -1
+            $r.Holders.Count | Should -Be 0
+            $r.Volumes | Should -Not -Contain 'daaf_daaf-data-restore-tmp'
+        }
+
+        It "<Name> with a <Why>: the kept-temp block with its note and the hint; holder and temp kept" -ForEach @(
+            @{ Name = 'a prepare failure'; Why = 'running holder'; Confirm = 'RESTORE'; Exit = 1; L = '       '; Fake = @{ FAKE_CP_EXIT = '1' }; Holder = 'running'
+               Notes = @('Something is still using it; another restore may still be running.'); First = '       Your DAAF data has not been changed.' },
+            @{ Name = 'a prepare failure'; Why = 'failed holder list'; Confirm = 'RESTORE'; Exit = 1; L = '       '; Fake = @{ FAKE_CP_EXIT = '1'; FAKE_HOLDER_PS_FAIL = 'daaf_daaf-data-restore-tmp'; FAKE_HOLDER_PS_EXIT = '7'; FAKE_HOLDER_PS_ERR = 'error during connect: fake' }; Holder = 'created'
+               Notes = @('Could not check what is using it (docker ps failed, exit 7).', 'Docker said: error during connect: fake'); First = '       Your DAAF data has not been changed.' },
+            @{ Name = 'a cancel at RESTORE'; Why = 'paused holder'; Confirm = 'no'; Exit = 0; L = ''; Fake = @{}; Holder = 'paused'
+               Notes = @('Something is still using it; another restore may still be running.'); First = 'Restore cancelled. Your DAAF data has not been changed.' },
+            @{ Name = 'a cancel at RESTORE'; Why = 'failed holder list'; Confirm = 'no'; Exit = 0; L = ''; Fake = @{ FAKE_HOLDER_PS_FAIL = 'all'; FAKE_HOLDER_PS_EXIT = '125'; FAKE_HOLDER_PS_ERR = 'error during connect: fake' }; Holder = 'created'
+               Notes = @('Could not check what is using it (docker ps failed, exit 125).', 'Docker said: error during connect: fake'); First = 'Restore cancelled. Your DAAF data has not been changed.' }
+        ) {
+            $r = Invoke-FakeRestore -DataFiles 3 -ConfirmAnswer $Confirm -Holders @("daaf_daaf-data-restore-tmp c9be7425c57c $Holder") -Fake $Fake
+            $r.ExitCode | Should -Be $Exit
+            $block = @($First, "${L}The temporary copy could not be removed.")
+            foreach ($n in $Notes) { $block += "$L$n" }
+            $block += @(
+                "${L}To free the space it uses, run:",
+                "$L  docker volume rm daaf_daaf-data-restore-tmp",
+                "${L}If Docker says it is in use, first run",
+                "$L  docker ps -a --filter volume=daaf_daaf-data-restore-tmp",
+                "${L}and remove each container it lists with docker rm <ID>, then try again.")
+            $r.Output | Should -Match (Get-BlockPattern $block)
+            (Get-CallIndex $r.Calls '^rm c9be7425c57c$') | Should -Be -1
+            (Get-CallIndex $r.Calls '^volume rm daaf_daaf-data-restore-tmp$') | Should -Be -1
+            $r.Holders | Should -Contain 'c9be7425c57c'
+            $r.Volumes | Should -Contain 'daaf_daaf-data-restore-tmp'
+            Assert-LiveUntouched -Calls $r.Calls
+        }
+
+        It "a cancel with BOTH temps held by running containers: one note (the first failure), both names in the hint" {
+            $r = Invoke-FakeRestore -DataFiles 3 -WithClaude -ConfirmAnswer 'no' -Holders @('daaf_daaf-data-restore-tmp d1d1d1 running', 'daaf_daaf-claude-config-restore-tmp c2c2c2 running')
+            $r.ExitCode | Should -Be 0
+            $block = @(
+                'The temporary copy could not be removed.',
+                'Something is still using it; another restore may still be running.',
+                'To free the space it uses, run:',
+                '  docker volume rm daaf_daaf-data-restore-tmp daaf_daaf-claude-config-restore-tmp',
+                'If Docker says it is in use, first run',
+                '  docker ps -a --filter volume=daaf_daaf-data-restore-tmp --filter volume=daaf_daaf-claude-config-restore-tmp',
+                'and remove each container it lists with docker rm <ID>, then try again.')
+            $r.Output | Should -Match (Get-BlockPattern $block)
+            ([regex]::Matches($r.Output, 'Something is still using it')).Count | Should -Be 1
+            (Get-CallIndex $r.Calls '^volume rm ') | Should -Be -1
+        }
+
+        It "interrupted while PREPARING with a running holder on the temp: the finally keeps it, with the note and the hint" -Skip:($IsMacOS) {
+            $r = Invoke-FakeRestore -DataFiles 3 -Holders @('daaf_daaf-data-restore-tmp c9be7425c57c running') -Fake @{ FAKE_INTERRUPT_AT = 'cp' }
+            $r.ExitCode | Should -Be 130
+            $block = @(
+                'Restore interrupted. Your DAAF data has not been changed.',
+                'The temporary copy could not be removed.',
+                'Something is still using it; another restore may still be running.',
+                'To free the space it uses, run:',
+                '  docker volume rm daaf_daaf-data-restore-tmp',
+                'If Docker says it is in use, first run',
+                '  docker ps -a --filter volume=daaf_daaf-data-restore-tmp',
+                'and remove each container it lists with docker rm <ID>, then try again.')
+            $r.Output | Should -Match (Get-BlockPattern $block)
+            $r.Volumes | Should -Contain 'daaf_daaf-data-restore-tmp'
+        }
+
+        It "careful cleanup (a refused new Claude temp) lists NO holder and removes none: <Name>" -ForEach @(
+            @{ Name = 'no holder: the data temp is removed'; Holders = @(); Kept = $false },
+            @{ Name = 'a created holder: it is left alone, and so is the data temp (Docker: in use)'; Holders = @('daaf_daaf-data-restore-tmp c9be7425c57c created'); Kept = $true }
+        ) {
+            $r = Invoke-FakeRestore -DataFiles 3 -WithClaude -Holders $Holders -Fake @{ FAKE_TEMP_NOT_EMPTY = 'claude' }
+            $r.ExitCode | Should -Be 1
+            $r.Output | Should -BeLike "*new temporary Docker volume 'daaf_daaf-claude-config-restore-tmp' is empty*"
+            (Get-CallIndex $r.Calls '^ps -a --filter volume=') | Should -Be -1
+            (Get-CallIndex $r.Calls '^ps -aq ') | Should -Be -1
+            (Get-CallIndex $r.Calls '^rm c9be7425c57c$') | Should -Be -1
+            # Careful mode still tries the volume itself (after its identity check).
+            (Get-CallIndex $r.Calls '^volume rm daaf_daaf-data-restore-tmp$') | Should -BeGreaterThan -1
+            if ($Kept) {
+                $r.Volumes | Should -Contain 'daaf_daaf-data-restore-tmp'
+                $r.Holders | Should -Contain 'c9be7425c57c'
+                $r.Output | Should -BeLike "*       Docker said: Error response from daemon: remove daaf_daaf-data-restore-tmp: volume is in use - ``[c9be7425c57c``]*"
+                $r.Output | Should -Not -BeLike "*Something is still using it*"
+            } else {
+                $r.Volumes | Should -Not -Contain 'daaf_daaf-data-restore-tmp'
+                $r.Output | Should -Not -BeLike "*The temporary copy could not be removed.*"
+            }
+        }
+
+        It "a verified restore whose temp is held by a <Why>: WARNING (string 2) with the note, exit 0, holder and temp kept" -ForEach @(
+            @{ Why = 'running container'; Holder = 'running'; Fake = @{}; Notes = @('Something is still using it; another restore may still be running.') },
+            @{ Why = 'container that cannot be listed'; Holder = 'created'; Fake = @{ FAKE_HOLDER_PS_FAIL = 'daaf_daaf-data-restore-tmp'; FAKE_HOLDER_PS_EXIT = '1'; FAKE_HOLDER_PS_ERR = 'error during connect: fake' }; Notes = @('Could not check what is using it (docker ps failed, exit 1).', 'Docker said: error during connect: fake') }
+        ) {
+            $r = Invoke-FakeRestore -DataFiles 3 -Holders @("daaf_daaf-data-restore-tmp c9be7425c57c $Holder") -Fake $Fake
+            $r.ExitCode | Should -Be 0
+            $block = @('WARNING: Could not remove the temporary copy of your data (Docker volume(s): daaf_daaf-data-restore-tmp).')
+            foreach ($n in $Notes) { $block += "         $n" }
+            $block += @(
+                '         Your DAAF data was restored. To free the space it uses, run:',
+                '           docker volume rm daaf_daaf-data-restore-tmp',
+                '         If Docker says it is in use, first run',
+                '           docker ps -a --filter volume=daaf_daaf-data-restore-tmp',
+                '         and remove each container it lists with docker rm <ID>, then try again.')
+            $r.Output | Should -Match (Get-BlockPattern $block)
+            $r.Output | Should -BeLike "*Restore completed WITH WARNINGS -- verify before relying on it*"
+            (Get-CallIndex $r.Calls '^rm c9be7425c57c$') | Should -Be -1
+            (Get-CallIndex $r.Calls '^volume rm daaf_daaf-data-restore-tmp$') | Should -Be -1
+            $r.Holders | Should -Contain 'c9be7425c57c'
+            $r.Volumes | Should -Contain 'daaf_daaf-data-restore-tmp'
+        }
+    }
+
+    Context "D2: Docker's error text reaches the message" {
+        It "a failed docker cp (the field test's Run 3b text, <Name>) shows its 'Access is denied' line as 'Docker said:', whole" -ForEach @(
+            @{ Name = 'paths shortened'; Stderr = 'run3b'
+               Said = 'time="2026-10-05T16:04:31-04:00" level=error msg="Can''t add file C:\Users\u\rt_sub\deep\rt_n.txt to tar: open C:\Users\u\rt_sub\deep\rt_n.txt: Access is denied."' },
+            @{ Name = 'verbatim, about 230 characters'; Stderr = 'run3b_verbatim'
+               Said = 'time="2026-10-05T16:04:31-04:00" level=error msg="Can''t add file \\\\?\\C:\\Users\\brhki\\daaf-restoretest\\2026-10-01_daaf_backup\\rt_sub\\deep\\rt_n.txt to tar: open \\\\?\\C:\\Users\\brhki\\daaf-restoretest\\2026-10-01_daaf_backup\\rt_sub\\deep\\rt_n.txt: Access is denied."' }
+        ) {
+            # Review round 6 (R6): docker cp's "denied" line names the unreadable file; its
+            # last line ("unexpected EOF") is only the consequence. The line is not
+            # shortened (it keeps the file's path).
+            $r = Invoke-FakeRestore -DataFiles 3 -Fake @{ FAKE_CP_EXIT = '1'; FAKE_CP_STDERR = $Stderr }
+            $r.ExitCode | Should -Be 1
+            $block = @(
+                'ERROR: Copying the backup into Docker failed.',
+                "       Docker said: $Said",
+                '       Your DAAF data has not been changed.')
+            $r.Output | Should -Match ((@($block | ForEach-Object { [regex]::Escape($_) })) -join '\r?\n')
+            $r.Output | Should -Not -BeLike "*Docker said: Error response from daemon: unexpected EOF*"
+            # Exactly one "Docker said:" line, and it is not empty.
+            ([regex]::Matches($r.Output, 'Docker said:')).Count | Should -Be 1
+            $r.Output | Should -Not -Match 'Docker said:\s*\r?\n'
+        }
+
+        It "a failed docker cp on a non-English Windows (localised 'denied' text) shows its first Can't-add-file line, not 'unexpected EOF'" {
+            # Fix round 8 (delta review of round 7, SUGGESTION 2).
+            $r = Invoke-FakeRestore -DataFiles 3 -Fake @{ FAKE_CP_EXIT = '1'; FAKE_CP_STDERR = 'run3b_de' }
+            $r.ExitCode | Should -Be 1
+            $block = @(
+                'ERROR: Copying the backup into Docker failed.',
+                '       Docker said: time="2026-10-05T16:04:31-04:00" level=error msg="Can''t add file C:\Users\u\rt_sub\deep\rt_n.txt to tar: open C:\Users\u\rt_sub\deep\rt_n.txt: Zugriff verweigert"',
+                '       Your DAAF data has not been changed.')
+            $r.Output | Should -Match ((@($block | ForEach-Object { [regex]::Escape($_) })) -join '\r?\n')
+            $r.Output | Should -Not -BeLike "*Docker said: Error response from daemon: unexpected EOF*"
+            ([regex]::Matches($r.Output, 'Docker said:')).Count | Should -Be 1
+        }
+
+        It "a failed docker cp with no 'denied' and no Can't-add-file line still shows its LAST NON-EMPTY line" {
+            $r = Invoke-FakeRestore -DataFiles 3 -Fake @{ FAKE_CP_EXIT = '1' }
+            $r.Output | Should -BeLike "*       Docker said: Error response from daemon: fake copy failure*"
         }
     }
 }

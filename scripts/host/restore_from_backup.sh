@@ -602,6 +602,12 @@ SWAP_STARTED=0
 # 1 once every swap and its metadata check passed (the INT handler's wording).
 SWAPS_DONE=0
 TEMP_REMOVE_FAILED=0
+# Why a temp volume was kept (message lines, newline-separated; field test 2026-10-05,
+# D1/D2).
+TEMP_REMOVE_NOTE=""
+# 1 once the Claude Code state swap phase began: the data volume was already replaced
+# and checked (the INT handler's wording; field test 2026-10-05, D3).
+CLAUDE_SWAP_PHASE=0
 # 1 once a pre-swap cleanup ran (or was deliberately skipped), so the EXIT handler
 # does not repeat it.
 TEMP_CLEANUP_TRIED=0
@@ -671,29 +677,143 @@ _restore_reap_helpers() {
 # longer carries this run's identity label is left alone (and no longer counted as
 # this run's), consistency review round 2 (SF2).
 _restore_remove_temps() {
-    local unmark=0
+    local unmark=0 rm_mode="" rm_status
     if [ "${SWAP_STARTED}" -eq 1 ] && [ "${1:-}" != "final" ]; then return 0; fi
     TEMP_CLEANUP_TRIED=1
     TEMP_REMOVE_FAILED=0
+    TEMP_REMOVE_NOTE=""
     if [ "${1:-}" = "final" ] || [ "${MARKERS_WRITTEN}" -eq 1 ]; then unmark=1; fi
     if [ "${TEMP_CLEANUP_CAREFUL}" -eq 1 ]; then
+        rm_mode=careful
         if [ "${TEMP_CREATED}" -eq 1 ] && ! _restore_temp_is_ours "${TEMP_VOLUME_NAME}"; then TEMP_CREATED=0; fi
         if [ "${CLAUDE_TEMP_CREATED}" -eq 1 ] && ! _restore_temp_is_ours "${CLAUDE_TEMP_VOLUME_NAME}"; then CLAUDE_TEMP_CREATED=0; fi
     else
         _restore_reap_helpers
     fi
+    # Field test 2026-10-05, D1: each removal goes through _restore_remove_volume
+    # (stopped holders first, then the volume); careful cleanup removes no holder. A temp
+    # that is kept stays this run's (TEMP_CREATED) and its reason is kept for the message.
     if [ "${TEMP_CREATED}" -eq 1 ]; then
         if [ "${unmark}" -eq 1 ]; then
             docker run --rm --label "${RESTORE_LABEL}=${VOLUME_NAME}" -v "${TEMP_VOLUME_NAME}:/dest" busybox rm -f "/dest/${SWAP_MARKER}" > /dev/null 2>&1 || true
         fi
-        if docker volume rm "${TEMP_VOLUME_NAME}" > /dev/null 2>&1; then TEMP_CREATED=0; else TEMP_REMOVE_FAILED=1; fi
+        rm_status=0
+        _restore_remove_volume "${TEMP_VOLUME_NAME}" "${rm_mode}" || rm_status=$?
+        if [ "${rm_status}" -eq 0 ]; then TEMP_CREATED=0; else TEMP_REMOVE_FAILED=1; _restore_note_removal "${rm_status}"; fi
     fi
     if [ "${CLAUDE_TEMP_CREATED}" -eq 1 ]; then
         if [ "${unmark}" -eq 1 ]; then
             docker run --rm --label "${RESTORE_LABEL}=${CLAUDE_VOLUME_NAME}" -v "${CLAUDE_TEMP_VOLUME_NAME}:/dest" busybox rm -f "/dest/${SWAP_MARKER}" > /dev/null 2>&1 || true
         fi
-        if docker volume rm "${CLAUDE_TEMP_VOLUME_NAME}" > /dev/null 2>&1; then CLAUDE_TEMP_CREATED=0; else TEMP_REMOVE_FAILED=1; fi
+        rm_status=0
+        _restore_remove_volume "${CLAUDE_TEMP_VOLUME_NAME}" "${rm_mode}" || rm_status=$?
+        if [ "${rm_status}" -eq 0 ]; then CLAUDE_TEMP_CREATED=0; else TEMP_REMOVE_FAILED=1; _restore_note_removal "${rm_status}"; fi
     fi
+}
+
+# The last non-empty line of Docker's stderr text $1, trimmed (empty when there is
+# none): the "Docker said:" text of a failure message (field test 2026-10-05, D2).
+_restore_last_line() {
+    printf '%s\n' "$1" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' | grep . | tail -n 1 || true
+}
+
+# Field test 2026-10-05, D1: remove temp volume $1 together with the STOPPED containers
+# that still reference it. A Ctrl+C between `docker run`'s create and start leaves a
+# never-started ("created") container -- `--rm` acts only on exit, and an unlabelled one
+# (the swap check, the space check, the marker probe) escapes the label reap -- which
+# keeps the volume "in use"; it does not go away on its own while Docker keeps running
+# (a Docker restart is expected to remove it: moby restore(), inference). Holders come
+# from STDOUT only (a stderr line is not an ID): `docker ps -a --filter volume=<temp>`.
+# Moby's `volume` filter matches a mount's volume NAME (a bind's source) or its
+# DESTINATION exactly, several values OR'd (daemon/list.go, read 2026-10-05); a temp
+# name never starts with "/", so it cannot match a destination. A holder in `created`,
+# `exited` or `dead` is removed with a PLAIN `docker rm` (never -f): the daemon refuses a
+# running one (daemon/delete.go: "stop the container before removing or force remove"),
+# so a container that started since the list survives, and `docker rm` never removes a
+# NAMED volume (the live one stays). Any other state -- running, restarting, paused,
+# removing, or one not known here -- means another restore may still be using it:
+# nothing is removed. A failed list is "could not check", never "no holders". $2 =
+# careful (cleanup, SF2: the temp may be another restore's; no holder is removed) |
+# check (list only) | empty. Only this run's two temp names are ever removed. Returns
+# 0 removed (check: removable), 1 a removal failed, 2 in use, 3 the list failed; sets
+# RESTORE_RM_SAID (Docker's last stderr line) and RESTORE_RM_PS_EXIT (docker ps's exit).
+_restore_remove_volume() {
+    local holders said id state ids="" status=0
+    RESTORE_RM_SAID=""
+    RESTORE_RM_PS_EXIT=0
+    if [ "$1" != "${TEMP_VOLUME_NAME}" ] && [ "$1" != "${CLAUDE_TEMP_VOLUME_NAME}" ]; then return 1; fi
+    if [ "${2:-}" != careful ]; then
+        holders="$(docker ps -a --filter "volume=$1" --format '{{.ID}} {{.State}}' 2>/dev/null)" || status=$?
+        if [ "${status}" -ne 0 ]; then
+            RESTORE_RM_PS_EXIT="${status}"
+            # The error text, read by a second call only now that the first failed.
+            said="$(docker ps -a --filter "volume=$1" --format '{{.ID}} {{.State}}' 2>&1 > /dev/null)" || true
+            RESTORE_RM_SAID="$(_restore_last_line "${said}")"
+            return 3
+        fi
+        while read -r id state _; do
+            [ -n "${id}" ] || continue
+            case "$(printf '%s' "${state:-}" | tr '[:upper:]' '[:lower:]')" in
+                created|exited|dead) ids="${ids:+${ids} }${id}" ;;
+                *) return 2 ;;
+            esac
+        done <<EOF
+$(printf '%s\n' "${holders}" | tr -d '\r')
+EOF
+        if [ "${2:-}" = check ]; then return 0; fi
+        for id in ${ids}; do
+            if ! said="$(docker rm "${id}" 2>&1 > /dev/null)"; then
+                RESTORE_RM_SAID="$(_restore_last_line "${said}")"
+                return 1
+            fi
+        done
+    fi
+    if ! said="$(docker volume rm "$1" 2>&1 > /dev/null)"; then
+        RESTORE_RM_SAID="$(_restore_last_line "${said}")"
+        return 1
+    fi
+    return 0
+}
+
+# Record why a temp volume was kept ($1 = _restore_remove_volume's status), once per
+# cleanup: the first failure's reason is shown.
+_restore_note_removal() {
+    if [ -n "${TEMP_REMOVE_NOTE}" ]; then return 0; fi
+    case "$1" in
+        2) TEMP_REMOVE_NOTE="Something is still using it; another restore may still be running." ;;
+        3) TEMP_REMOVE_NOTE="Could not check what is using it (docker ps failed, exit ${RESTORE_RM_PS_EXIT})." ;;
+    esac
+    if [ -n "${RESTORE_RM_SAID}" ]; then
+        TEMP_REMOVE_NOTE="${TEMP_REMOVE_NOTE:+${TEMP_REMOVE_NOTE}
+}Docker said: ${RESTORE_RM_SAID}"
+    fi
+}
+
+# How to remove temp volume(s) $2 (space-separated) by hand (field test 2026-10-05,
+# D1): the removal command, then -- for a volume Docker says is in use -- how to find
+# and remove the container that holds it. $1 is the message's indent; commands get two
+# more. Prints to stdout; callers redirect.
+_restore_remove_hint() {
+    local tv filters=""
+    for tv in $2; do filters="${filters} --filter volume=${tv}"; done
+    echo "${1}  docker volume rm $2"
+    echo "${1}If Docker says it is in use, first run"
+    echo "${1}  docker ps -a${filters}"
+    echo "${1}and remove each container it lists with docker rm <ID>, then try again."
+}
+
+# The "kept temporary copy" lines after a cleanup that could not remove one: why (when
+# known), and how to remove it by hand. $1 is the message's indent. Prints to stdout.
+_restore_kept_temp_hint() {
+    local line
+    echo "${1}The temporary copy could not be removed."
+    if [ -n "${TEMP_REMOVE_NOTE}" ]; then
+        while IFS= read -r line; do echo "${1}${line}"; done <<EOF
+${TEMP_REMOVE_NOTE}
+EOF
+    fi
+    echo "${1}To free the space it uses, run:"
+    _restore_remove_hint "$1" "$(_restore_kept_temps)"
 }
 
 # Exit 0 when the multi-line text $1 has a line that is exactly $2 (CRs ignored). A
@@ -743,10 +863,7 @@ _restore_fail_before_swap() {
     for line in "$@"; do echo "${line}" >&2; done
     _restore_remove_temps
     _restore_unchanged "       " "       " >&2
-    if [ "${TEMP_REMOVE_FAILED}" -eq 1 ]; then
-        echo "       The temporary copy could not be removed. To free the space it uses, run:" >&2
-        echo "         docker volume rm $(_restore_kept_temps)" >&2
-    fi
+    if [ "${TEMP_REMOVE_FAILED}" -eq 1 ]; then _restore_kept_temp_hint "       " >&2; fi
     exit 1
 }
 
@@ -854,7 +971,14 @@ _restore_on_interrupt() {
         echo "this restore again and choose the same backup:" >&2
         echo "  ${RERUN_COMMAND}" >&2
     elif [ "${SWAP_STARTED}" -eq 1 ]; then
-        echo "Restore interrupted while your DAAF data was being replaced." >&2
+        # Field test 2026-10-05, D3: during the Claude Code state phase the data volume
+        # was already replaced and checked -- say so.
+        if [ "${CLAUDE_SWAP_PHASE}" -eq 1 ]; then
+            echo "Restore interrupted while the Claude Code state (login and session history) was being replaced." >&2
+            echo "Your project files (DAAF data) were already replaced and checked." >&2
+        else
+            echo "Restore interrupted while your DAAF data was being replaced." >&2
+        fi
         echo "The replacement keeps running inside Docker until it finishes. Your backup" >&2
         echo "folder ${SELECTED_NAME}/ is unchanged. Wait a few minutes, then run this restore" >&2
         echo "again and choose the same backup:" >&2
@@ -862,10 +986,7 @@ _restore_on_interrupt() {
     else
         _restore_remove_temps
         _restore_unchanged "Restore interrupted. " "" >&2
-        if [ "${TEMP_REMOVE_FAILED}" -eq 1 ]; then
-            echo "The temporary copy could not be removed. To free the space it uses, run:" >&2
-            echo "  docker volume rm $(_restore_kept_temps)" >&2
-        fi
+        if [ "${TEMP_REMOVE_FAILED}" -eq 1 ]; then _restore_kept_temp_hint "" >&2; fi
     fi
     exit 130
 }
@@ -892,8 +1013,7 @@ _restore_on_exit() {
         echo "The restore stopped before replacing anything (see the message above)." >&2
         _restore_unchanged "" "" >&2
         if [ "${TEMP_REMOVE_FAILED}" -eq 1 ]; then
-            echo "The temporary copy could not be removed. To free the space it uses, run:" >&2
-            echo "  docker volume rm $(_restore_kept_temps)" >&2
+            _restore_kept_temp_hint "" >&2
         else
             echo "Its temporary copy was removed." >&2
         fi
@@ -927,7 +1047,28 @@ _restore_inspect_failed() {
     echo "       and try again." >&2
     exit 1
 }
-# Exit 0 when the inspect error text $1 says the object does not exist.
+# A leftover temp volume $1 that something still uses ($2 = 2) or whose users could not
+# be listed ($2 = 3, see _restore_remove_volume): refuse, exit 1 (field test
+# 2026-10-05, D1).
+_restore_leftover_refusal() {
+    echo "" >&2
+    if [ "$2" -eq 2 ]; then
+        echo "ERROR: Something is still using the temporary copy left by the earlier restore" >&2
+        echo "       (Docker volume '$1'), so it was not removed. Another restore may" >&2
+        echo "       still be running." >&2
+        _restore_unchanged "       " "       " >&2
+        echo "       Wait a few minutes and close any other restore window, then run this" >&2
+        echo "       restore again." >&2
+    else
+        echo "ERROR: Could not check what is using the temporary copy left by the earlier" >&2
+        echo "       restore (Docker volume '$1'; docker ps failed, exit ${RESTORE_RM_PS_EXIT}), so it was not removed." >&2
+        if [ -n "${RESTORE_RM_SAID}" ]; then echo "       Docker said: ${RESTORE_RM_SAID}" >&2; fi
+        _restore_unchanged "       " "       " >&2
+        echo "       Make sure Docker Desktop is running, then run this restore again." >&2
+    fi
+    exit 1
+}
+# Exit 0 when the inspect (or leftover rm) error text $1 says the object does not exist.
 _restore_is_not_found() {
     case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" in
         *"no such volume"*|*"no such container"*|*"no such object"*) return 0 ;;
@@ -1024,22 +1165,65 @@ if [ -n "${LEFTOVER_VOLUMES}${LEFTOVER_CONTAINERS}" ]; then
         _restore_unchanged "Restore cancelled. " ""
         echo "To remove the temporary copy later, run:"
         if [ -n "${LEFTOVER_CONTAINERS}" ]; then echo "  docker rm ${LEFTOVER_CONTAINERS}"; fi
-        if [ -n "${LEFTOVER_VOLUMES}" ]; then echo "  docker volume rm ${LEFTOVER_VOLUMES}"; fi
+        if [ -n "${LEFTOVER_VOLUMES}" ]; then _restore_remove_hint "" "${LEFTOVER_VOLUMES}"; fi
         exit 0
     fi
+    # Field test 2026-10-05, D1: a never-started container left by the earlier restore's
+    # Ctrl+C still references its temp volume (and the live one), so `docker volume rm`
+    # failed every time. Every leftover volume's holders are listed FIRST, before anything
+    # is removed: one in use (or a list that fails) refuses here, with nothing removed;
+    # stopped ones are removed with the volume below (_restore_remove_volume).
+    for tv in ${LEFTOVER_VOLUMES}; do
+        RM_STATUS=0
+        _restore_remove_volume "${tv}" check || RM_STATUS=$?
+        if [ "${RM_STATUS}" -ne 0 ]; then _restore_leftover_refusal "${tv}" "${RM_STATUS}"; fi
+    done
     _restore_reap_helpers
     LEFTOVER_FAILED=0
-    for sc in ${LEFTOVER_CONTAINERS}; do docker rm -f "${sc}" > /dev/null 2>&1 || LEFTOVER_FAILED=1; done
-    for tv in ${LEFTOVER_VOLUMES}; do docker volume rm "${tv}" > /dev/null 2>&1 || LEFTOVER_FAILED=1; done
+    LEFTOVER_SAID=""
+    # Review round 6 (R5): each leftover swap container -- found NOT running before the
+    # prompt -- is removed with a PLAIN `docker rm` (never -f). The y/n prompt can wait
+    # for any length of time, and a restore started meanwhile in another window runs its
+    # swap under the SAME name; the daemon refuses to remove a running container without
+    # -f (daemon/delete.go: "stop the container before removing or force remove"), so
+    # that swap is never killed. A failed removal stops here: no leftover volume is
+    # touched (a running swap may be using the temp) and the failure message below shows
+    # Docker's reason. Delta review of round 7 (ISSUE 1): a swap container that is GONE by
+    # now (its --rm finished, Docker restarted, another window removed it) counts as
+    # removed. A plain rm of a missing container exits 1 with "No such container" (docker
+    # CLI cli/command/container/rm.go at v29.1.3 ignores not-found only for -f), so that
+    # text is read as success here. Any other failure -- still running, or a removal
+    # already in progress -- still stops here with nothing removed.
+    for sc in ${LEFTOVER_CONTAINERS}; do
+        if ! RM_SAID="$(docker rm "${sc}" 2>&1 > /dev/null)"; then
+            if _restore_is_not_found "${RM_SAID}"; then continue; fi
+            LEFTOVER_FAILED=1
+            if [ -z "${LEFTOVER_SAID}" ]; then LEFTOVER_SAID="$(_restore_last_line "${RM_SAID}")"; fi
+        fi
+    done
+    if [ "${LEFTOVER_FAILED}" -eq 0 ]; then
+        for tv in ${LEFTOVER_VOLUMES}; do
+            RM_STATUS=0
+            _restore_remove_volume "${tv}" || RM_STATUS=$?
+            case "${RM_STATUS}" in
+                0) ;;
+                2|3) _restore_leftover_refusal "${tv}" "${RM_STATUS}" ;;
+                *)
+                    LEFTOVER_FAILED=1
+                    if [ -z "${LEFTOVER_SAID}" ]; then LEFTOVER_SAID="${RESTORE_RM_SAID}"; fi
+                    ;;
+            esac
+        done
+    fi
     if [ "${LEFTOVER_FAILED}" -ne 0 ]; then
         echo "" >&2
         echo "ERROR: Could not remove the temporary copy left by the earlier restore." >&2
+        if [ -n "${LEFTOVER_SAID}" ]; then echo "       Docker said: ${LEFTOVER_SAID}" >&2; fi
         _restore_unchanged "       " "       " >&2
         echo "       Make sure no other restore is running (and Docker Desktop is running), then" >&2
         echo "       run this restore again, or remove it yourself with:" >&2
-        if [ -n "${LEFTOVER_CONTAINERS}" ]; then echo "         docker rm -f ${LEFTOVER_CONTAINERS}" >&2; fi
-        if [ -n "${LEFTOVER_VOLUMES}" ]; then echo "         docker volume rm ${LEFTOVER_VOLUMES}" >&2; fi
-        echo "       If this keeps happening, restart Docker Desktop and try again." >&2
+        if [ -n "${LEFTOVER_CONTAINERS}" ]; then echo "         docker rm ${LEFTOVER_CONTAINERS}" >&2; fi
+        if [ -n "${LEFTOVER_VOLUMES}" ]; then _restore_remove_hint "       " "${LEFTOVER_VOLUMES}" >&2; fi
         exit 1
     fi
     echo "Removed the leftover temporary copy."
@@ -1386,10 +1570,7 @@ if [ "${CONFIRM}" != "RESTORE" ]; then
     _restore_remove_temps
     echo ""
     _restore_unchanged "Restore cancelled. " ""
-    if [ "${TEMP_REMOVE_FAILED}" -eq 1 ]; then
-        echo "The temporary copy could not be removed. To free the space it uses, run:"
-        echo "  docker volume rm $(_restore_kept_temps)"
-    fi
+    if [ "${TEMP_REMOVE_FAILED}" -eq 1 ]; then _restore_kept_temp_hint ""; fi
     exit 0
 fi
 
@@ -1480,6 +1661,9 @@ fi
 # Same swap program and check as the data volume, right after it (before the live
 # count check, the same order as the .ps1 twin).
 if [ "${HAS_CLAUDE_BACKUP}" -eq 1 ]; then
+    # Field test 2026-10-05, D3: from here an interrupt says the Claude Code state was
+    # being replaced (the data volume already is, and was checked).
+    CLAUDE_SWAP_PHASE=1
     echo ""
     echo "Replacing the Claude Code state..."
     # Right before the Claude swap: still our volume? (The data volume is already
@@ -1572,8 +1756,13 @@ if [ "${TEMP_REMOVE_FAILED}" -eq 1 ]; then
     KEPT_TEMPS="$(_restore_kept_temps)"
     echo "" >&2
     echo "WARNING: Could not remove the temporary copy of your data (Docker volume(s): ${KEPT_TEMPS})." >&2
+    if [ -n "${TEMP_REMOVE_NOTE}" ]; then
+        while IFS= read -r NOTE_LINE; do echo "         ${NOTE_LINE}" >&2; done <<EOF
+${TEMP_REMOVE_NOTE}
+EOF
+    fi
     echo "         Your DAAF data was restored. To free the space it uses, run:" >&2
-    echo "           docker volume rm ${KEPT_TEMPS}" >&2
+    _restore_remove_hint "         " "${KEPT_TEMPS}" >&2
     HAD_WARNINGS=1
 fi
 

@@ -506,7 +506,9 @@ echo BACKUP_SENTINEL=$seen
 '@
 Write-Host ""
 Write-Host "Scanning backup..."
-$savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+# 'Continue', not 'SilentlyContinue': the merged output is read (field test 2026-10-05,
+# D2 -- see Invoke-DaafRestoreDocker).
+$savedEAP = $ErrorActionPreference; $ErrorActionPreference = "Continue"
 $ScanCountOutput = @(docker run --rm -v "${SelectedPath}:/b:ro" busybox sh -c $BackupCountProgram 2>&1)
 $scanCountExit = $LASTEXITCODE
 $ErrorActionPreference = $savedEAP
@@ -584,6 +586,11 @@ $TempCreated = $false
 $ClaudeTempCreated = $false
 $SwapStarted = $false
 $TempRemoveFailed = $false
+# Why a temp volume was kept (message lines; field test 2026-10-05, D1/D2).
+$TempRemoveNote = @()
+# $true once the Claude Code state swap phase began: the data volume was already
+# replaced and checked (the interrupt text says so; field test 2026-10-05, D3).
+$ClaudeSwapPhase = $false
 # $true once the state marker may have been written into a temp volume (see
 # Invoke-DaafRestoreTempCleanup); the .sh twin's MARKERS_WRITTEN.
 $MarkersWritten = $false
@@ -593,13 +600,23 @@ $MarkersWritten = $false
 $TempCleanupCareful = $false
 $RerunCommand = ".\restore_from_backup.ps1"
 
-# Run docker with the given arguments inside the usual SilentlyContinue bracket (docker
-# writes progress to stderr); returns stdout+stderr as strings. $LASTEXITCODE is
-# docker's exit code on return.
+# Run docker with the given arguments, stdout and stderr merged; returns them as
+# strings. $LASTEXITCODE is docker's exit code on return.
+# Field test 2026-10-05, D2: the bracket is 'Continue', NOT 'SilentlyContinue'. Windows
+# PowerShell 5.1 DROPS a native command's stderr lines under SilentlyContinue even with
+# 2>&1 (field probe: one line fewer than under Continue), so every Docker error text
+# this script read was lost there -- no "Docker said:" line, and no "no such ..." match.
+# Under Continue the stderr lines stay in the merged stream (Windows PowerShell 5.1 field
+# probe: CONTINUE_LINES=2); as ErrorRecords on pwsh 7.6 (observed), inferred for 5.1.
+# With 2>&1 into a variable nothing reaches the console and nothing is terminating
+# (pwsh 7.6 repro under the script's top-level 'Stop'; untested on 5.1 beyond the field
+# probe -- inference). The old value is restored after.
+# (Captures that read stdout only, `2>$null`, and calls whose output is discarded keep
+# SilentlyContinue: they read no stderr text.)
 function Invoke-DaafRestoreDocker {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string[]]$DockerArgs)
-    $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+    $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "Continue"
     $out = @(docker @DockerArgs 2>&1 | ForEach-Object { "$_" })
     $ErrorActionPreference = $savedEAP
     return $out
@@ -610,11 +627,13 @@ function Invoke-DaafRestoreDocker {
 # stdout lines as strings (observed on pwsh 7.6; Windows PowerShell 5.1 wraps native
 # stderr the same way, inferred from its NativeCommandError behaviour). Use it wherever
 # a VALUE in the output is matched, so a stray stderr line (a Docker config WARNING)
-# can never be read as that value. Returns Out, Err (string arrays) and Exit.
+# can never be read as that value. Returns Out, Err (string arrays) and Exit. 'Continue'
+# for the same reason as above (field test 2026-10-05, D2): under SilentlyContinue,
+# Windows PowerShell 5.1 left Err empty.
 function Invoke-DaafRestoreDockerSplit {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string[]]$DockerArgs)
-    $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+    $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "Continue"
     $all = @(docker @DockerArgs 2>&1)
     $code = $LASTEXITCODE
     $ErrorActionPreference = $savedEAP
@@ -669,6 +688,7 @@ function Invoke-DaafRestoreTempCleanup {
     param([switch]$Final)
     if ($script:SwapStarted -and -not $Final) { return }
     $script:TempRemoveFailed = $false
+    $script:TempRemoveNote = @()
     $unmark = ($Final -or $script:MarkersWritten)
     if ($script:TempCleanupCareful) {
         if ($script:TempCreated -and -not (Test-DaafRestoreTempIdentity -Name $TempVolumeName)) { $script:TempCreated = $false }
@@ -676,16 +696,144 @@ function Invoke-DaafRestoreTempCleanup {
     } else {
         Invoke-DaafRestoreHelperReap
     }
+    # Field test 2026-10-05, D1: each removal goes through Invoke-DaafRestoreVolumeRemoval
+    # (stopped holders first, then the volume); careful cleanup removes no holder. A temp
+    # that is kept stays this run's ($TempCreated) and its reason is kept for the message.
     if ($script:TempCreated) {
         if ($unmark) { $null = Invoke-DaafRestoreDocker -DockerArgs @('run', '--rm', '--label', "$RestoreLabel=$VolumeName", '-v', "${TempVolumeName}:/dest", 'busybox', 'rm', '-f', "/dest/$SwapMarker") }
-        $null = Invoke-DaafRestoreDocker -DockerArgs @('volume', 'rm', $TempVolumeName)
-        if ($LASTEXITCODE -eq 0) { $script:TempCreated = $false } else { $script:TempRemoveFailed = $true }
+        $removal = Invoke-DaafRestoreVolumeRemoval -Name $TempVolumeName -KeepHolders:$script:TempCleanupCareful
+        if ($removal.Result -eq 'removed') { $script:TempCreated = $false } else {
+            $script:TempRemoveFailed = $true
+            if ($script:TempRemoveNote.Count -eq 0) { $script:TempRemoveNote = @(Get-DaafRestoreRemovalNote -Removal $removal) }
+        }
     }
     if ($script:ClaudeTempCreated) {
         if ($unmark) { $null = Invoke-DaafRestoreDocker -DockerArgs @('run', '--rm', '--label', "$RestoreLabel=$ClaudeVolumeName", '-v', "${ClaudeTempVolumeName}:/dest", 'busybox', 'rm', '-f', "/dest/$SwapMarker") }
-        $null = Invoke-DaafRestoreDocker -DockerArgs @('volume', 'rm', $ClaudeTempVolumeName)
-        if ($LASTEXITCODE -eq 0) { $script:ClaudeTempCreated = $false } else { $script:TempRemoveFailed = $true }
+        $removal = Invoke-DaafRestoreVolumeRemoval -Name $ClaudeTempVolumeName -KeepHolders:$script:TempCleanupCareful
+        if ($removal.Result -eq 'removed') { $script:ClaudeTempCreated = $false } else {
+            $script:TempRemoveFailed = $true
+            if ($script:TempRemoveNote.Count -eq 0) { $script:TempRemoveNote = @(Get-DaafRestoreRemovalNote -Removal $removal) }
+        }
     }
+}
+
+# The last non-empty line of Docker's stderr text, trimmed ('' when there is none): the
+# "Docker said:" text of a failure message (field test 2026-10-05, D2).
+# -PreferCopyCause (docker cp only; review round 6, R6): the line that names the CAUSE
+# wins over the last line, which is only the consequence (field test Run 3b: "Can't
+# add file ...rt_n.txt to tar: open ...\rt_n.txt: Access is denied.", then "Error
+# response from daemon: unexpected EOF"). In order: (1) the FIRST non-empty line that
+# contains "denied" (case-insensitive); else (2) the FIRST non-empty line that contains
+# "Can't add file" (delta review of round 7, SUGGESTION 2: Windows localises "Access is
+# denied.", so (1) can miss on a non-English system, but Docker's own "Can't add file"
+# text is not localised and names the file); else (3) the last non-empty line. The line
+# is NOT shortened, although it can be long (about 230 characters in Run 3b): it names
+# the file to fix, a deep path can fill most of it, and the console wraps it; any fixed
+# cut could lose that path.
+function Get-DaafRestoreDockerSaid {
+    [CmdletBinding()]
+    param([AllowNull()][object[]]$Lines, [switch]$PreferCopyCause)
+    $said = @(@($Lines) | ForEach-Object { "$_".Trim() } | Where-Object { $_ -ne '' })
+    if ($said.Count -eq 0) { return '' }
+    if ($PreferCopyCause) {
+        $denied = @($said | Where-Object { $_ -match 'denied' })
+        if ($denied.Count -gt 0) { return $denied[0] }
+        $cantAdd = @($said | Where-Object { $_.Contains("Can't add file") })
+        if ($cantAdd.Count -gt 0) { return $cantAdd[0] }
+    }
+    return $said[$said.Count - 1]
+}
+
+# Field test 2026-10-05, D1: remove temp volume -Name together with the STOPPED
+# containers that still reference it. A Ctrl+C between `docker run`'s create and start
+# leaves a never-started ("created") container -- `--rm` acts only on exit, and an
+# unlabelled one (the swap check, the space check, the marker probe) escapes the label
+# reap -- which keeps the volume "in use"; it does not go away on its own while Docker
+# keeps running (a Docker restart is expected to remove it: moby restore(), inference).
+# Holders come from STDOUT only (a stderr line is not an ID): `docker ps -a --filter
+# volume=<temp>`. Moby's `volume` filter matches a mount's volume NAME (a bind's source)
+# or its DESTINATION exactly, several values OR'd (daemon/list.go, read 2026-10-05);
+# a temp name never starts with "/", so it cannot match a destination. A holder in
+# `created`, `exited` or `dead` is removed with a PLAIN `docker rm` (never -f): the daemon
+# refuses a running one (daemon/delete.go: "stop the container before removing or
+# force remove"), so a container that started since the list survives, and `docker rm`
+# never removes a NAMED volume (the live one stays). Any other state -- running,
+# restarting, paused, removing, or one not known here -- means another restore may
+# still be using it: nothing is removed. A failed list is "could not check", never "no
+# holders". -KeepHolders (careful cleanup, SF2: the temp may be another restore's)
+# skips the holders; -CheckOnly only lists them. Only this run's two temp names are ever
+# removed. Returns Result (removed | removable (-CheckOnly) | busy | listfailed |
+# failed), Said (Docker's last stderr line, '' when none) and PsExit (docker ps's exit).
+function Invoke-DaafRestoreVolumeRemoval {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Name, [switch]$KeepHolders, [switch]$CheckOnly)
+    if (@($TempVolumeName, $ClaudeTempVolumeName) -cnotcontains $Name) {
+        return [pscustomobject]@{ Result = 'failed'; Said = ''; PsExit = 0 }
+    }
+    $holderIds = @()
+    if (-not $KeepHolders) {
+        $holders = Invoke-DaafRestoreDockerSplit -DockerArgs @('ps', '-a', '--filter', "volume=$Name", '--format', '{{.ID}} {{.State}}')
+        if ($holders.Exit -ne 0) {
+            return [pscustomobject]@{ Result = 'listfailed'; Said = (Get-DaafRestoreDockerSaid -Lines $holders.Err); PsExit = $holders.Exit }
+        }
+        foreach ($line in $holders.Out) {
+            $fields = @("$line".Trim() -split '\s+')
+            if ($fields[0] -eq '') { continue }
+            $state = ''
+            if ($fields.Count -ge 2) { $state = $fields[1].ToLowerInvariant() }
+            if (@('created', 'exited', 'dead') -notcontains $state) {
+                return [pscustomobject]@{ Result = 'busy'; Said = ''; PsExit = 0 }
+            }
+            $holderIds += $fields[0]
+        }
+    }
+    if ($CheckOnly) { return [pscustomobject]@{ Result = 'removable'; Said = ''; PsExit = 0 } }
+    foreach ($id in $holderIds) {
+        $rmHolder = Invoke-DaafRestoreDockerSplit -DockerArgs @('rm', $id)
+        if ($rmHolder.Exit -ne 0) {
+            return [pscustomobject]@{ Result = 'failed'; Said = (Get-DaafRestoreDockerSaid -Lines $rmHolder.Err); PsExit = 0 }
+        }
+    }
+    $rmVolume = Invoke-DaafRestoreDockerSplit -DockerArgs @('volume', 'rm', $Name)
+    if ($rmVolume.Exit -ne 0) {
+        return [pscustomobject]@{ Result = 'failed'; Said = (Get-DaafRestoreDockerSaid -Lines $rmVolume.Err); PsExit = 0 }
+    }
+    return [pscustomobject]@{ Result = 'removed'; Said = ''; PsExit = 0 }
+}
+
+# Why a temp volume was kept, as message lines (none when Docker gave no reason).
+function Get-DaafRestoreRemovalNote {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][object]$Removal)
+    $note = @()
+    if ($Removal.Result -eq 'busy') { $note += "Something is still using it; another restore may still be running." }
+    if ($Removal.Result -eq 'listfailed') { $note += "Could not check what is using it (docker ps failed, exit $($Removal.PsExit))." }
+    if ($Removal.Said -ne '') { $note += "Docker said: $($Removal.Said)" }
+    return $note
+}
+
+# How to remove temp volume(s) -Volumes by hand (field test 2026-10-05, D1): the
+# removal command, then -- for a volume Docker says is in use -- how to find and remove
+# the container that holds it. -Lead is the message's indent; commands get two more.
+function Write-DaafRestoreRemoveHint {
+    [CmdletBinding()]
+    param([string]$Lead = '', [string]$Volumes = '')
+    $filters = @(@($Volumes -split ' ' | Where-Object { $_ -ne '' }) | ForEach-Object { "--filter volume=$_" }) -join ' '
+    Write-Host "$Lead  docker volume rm $Volumes"
+    Write-Host "${Lead}If Docker says it is in use, first run"
+    Write-Host "$Lead  docker ps -a $filters"
+    Write-Host "${Lead}and remove each container it lists with docker rm <ID>, then try again."
+}
+
+# The "kept temporary copy" lines after a cleanup that could not remove one: why (when
+# known), and how to remove it by hand. -Lead is the message's indent.
+function Write-DaafRestoreKeptTempHint {
+    [CmdletBinding()]
+    param([string]$Lead = '')
+    Write-Host "${Lead}The temporary copy could not be removed."
+    foreach ($noteLine in $script:TempRemoveNote) { Write-Host "$Lead$noteLine" }
+    Write-Host "${Lead}To free the space it uses, run:"
+    Write-DaafRestoreRemoveHint -Lead $Lead -Volumes (Get-DaafRestoreKeptTempList)
 }
 
 # The temp volumes this run still holds, space-separated (for removal commands).
@@ -740,8 +888,8 @@ function Test-DaafRestoreTempIdentity {
     return (@($text -split ' ') -ccontains "${RestoreRunLabel}:$RestoreRunId")
 }
 
-# $true when inspect output says the object does not exist (case-insensitive). Any
-# other failure is "could not check", never "absent".
+# $true when inspect (or leftover rm) output says the object does not exist
+# (case-insensitive). Any other failure is "could not check", never "absent".
 function Test-DaafRestoreNotFound {
     [CmdletBinding()]
     param([AllowNull()][object[]]$Lines)
@@ -823,6 +971,28 @@ function Write-DaafRestoreInspectFailure {
     Write-Host "       This restore has not changed anything. Make sure Docker Desktop is running,"
     Write-Host "       then run the restore again. If this keeps happening, restart Docker Desktop"
     Write-Host "       and try again."
+}
+
+# A leftover temp volume that something still uses (-Removal.Result busy) or whose users
+# could not be listed (listfailed): refuse (field test 2026-10-05, D1). The caller exits 1.
+function Write-DaafRestoreLeftoverRefusal {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$Volume, [Parameter(Mandatory)][object]$Removal)
+    Write-Host ""
+    if ($Removal.Result -eq 'busy') {
+        Write-Host "ERROR: Something is still using the temporary copy left by the earlier restore" -ForegroundColor Red
+        Write-Host "       (Docker volume '$Volume'), so it was not removed. Another restore may"
+        Write-Host "       still be running."
+        Write-DaafRestoreUnchanged -First '       ' -Indent '       '
+        Write-Host "       Wait a few minutes and close any other restore window, then run this"
+        Write-Host "       restore again."
+    } else {
+        Write-Host "ERROR: Could not check what is using the temporary copy left by the earlier" -ForegroundColor Red
+        Write-Host "       restore (Docker volume '$Volume'; docker ps failed, exit $($Removal.PsExit)), so it was not removed."
+        if ($Removal.Said -ne '') { Write-Host "       Docker said: $($Removal.Said)" }
+        Write-DaafRestoreUnchanged -First '       ' -Indent '       '
+        Write-Host "       Make sure Docker Desktop is running, then run this restore again."
+    }
 }
 
 # --- (1) Leftovers from an earlier restore ---
@@ -911,28 +1081,67 @@ if (($LeftoverVolumes.Count + $LeftoverContainers.Count) -gt 0) {
         Write-DaafRestoreUnchanged -First 'Restore cancelled. '
         Write-Host "To remove the temporary copy later, run:"
         if ($LeftoverContainers.Count -gt 0) { Write-Host "  docker rm $($LeftoverContainers -join ' ')" }
-        if ($LeftoverVolumes.Count -gt 0) { Write-Host "  docker volume rm $($LeftoverVolumes -join ' ')" }
+        if ($LeftoverVolumes.Count -gt 0) { Write-DaafRestoreRemoveHint -Lead '' -Volumes ($LeftoverVolumes -join ' ') }
         Wait-AndExit 0
+    }
+    # Field test 2026-10-05, D1: a never-started container left by the earlier restore's
+    # Ctrl+C still references its temp volume (and the live one), so `docker volume rm`
+    # failed every time. Every leftover volume's holders are listed FIRST, before anything
+    # is removed: one in use (or a list that fails) refuses here, with nothing removed;
+    # stopped ones are removed with the volume below (Invoke-DaafRestoreVolumeRemoval).
+    foreach ($tv in $LeftoverVolumes) {
+        $leftoverCheck = Invoke-DaafRestoreVolumeRemoval -Name $tv -CheckOnly
+        if ($leftoverCheck.Result -ne 'removable') {
+            Write-DaafRestoreLeftoverRefusal -Volume $tv -Removal $leftoverCheck
+            Wait-AndExit 1
+        }
     }
     Invoke-DaafRestoreHelperReap
     $LeftoverFailed = $false
+    $LeftoverSaid = ''
+    # Review round 6 (R5): each leftover swap container -- found NOT running before the
+    # prompt -- is removed with a PLAIN `docker rm` (never -f). The y/n prompt can wait
+    # for any length of time, and a restore started meanwhile in another window runs its
+    # swap under the SAME name; the daemon refuses to remove a running container without
+    # -f (daemon/delete.go: "stop the container before removing or force remove"), so
+    # that swap is never killed. A failed removal stops here: no leftover volume is
+    # touched (a running swap may be using the temp) and the failure message below shows
+    # Docker's reason. Delta review of round 7 (ISSUE 1): a swap container that is GONE by
+    # now (its --rm finished, Docker restarted, another window removed it) counts as
+    # removed. A plain rm of a missing container exits 1 with "No such container" (docker
+    # CLI cli/command/container/rm.go at v29.1.3 ignores not-found only for -f), so that
+    # text is read as success here. Any other failure -- still running, or a removal
+    # already in progress -- still stops here with nothing removed.
     foreach ($sc in $LeftoverContainers) {
-        $null = Invoke-DaafRestoreDocker -DockerArgs @('rm', '-f', $sc)
-        if ($LASTEXITCODE -ne 0) { $LeftoverFailed = $true }
+        $scRemoval = Invoke-DaafRestoreDockerSplit -DockerArgs @('rm', $sc)
+        if ($scRemoval.Exit -ne 0) {
+            if (Test-DaafRestoreNotFound -Lines $scRemoval.Err) { continue }
+            $LeftoverFailed = $true
+            if ($LeftoverSaid -eq '') { $LeftoverSaid = Get-DaafRestoreDockerSaid -Lines $scRemoval.Err }
+        }
     }
-    foreach ($tv in $LeftoverVolumes) {
-        $null = Invoke-DaafRestoreDocker -DockerArgs @('volume', 'rm', $tv)
-        if ($LASTEXITCODE -ne 0) { $LeftoverFailed = $true }
+    if (-not $LeftoverFailed) {
+        foreach ($tv in $LeftoverVolumes) {
+            $leftoverRemoval = Invoke-DaafRestoreVolumeRemoval -Name $tv
+            if ($leftoverRemoval.Result -eq 'busy' -or $leftoverRemoval.Result -eq 'listfailed') {
+                Write-DaafRestoreLeftoverRefusal -Volume $tv -Removal $leftoverRemoval
+                Wait-AndExit 1
+            }
+            if ($leftoverRemoval.Result -ne 'removed') {
+                $LeftoverFailed = $true
+                if ($LeftoverSaid -eq '') { $LeftoverSaid = $leftoverRemoval.Said }
+            }
+        }
     }
     if ($LeftoverFailed) {
         Write-Host ""
         Write-Host "ERROR: Could not remove the temporary copy left by the earlier restore." -ForegroundColor Red
+        if ($LeftoverSaid -ne '') { Write-Host "       Docker said: $LeftoverSaid" }
         Write-DaafRestoreUnchanged -First '       ' -Indent '       '
         Write-Host "       Make sure no other restore is running (and Docker Desktop is running), then"
         Write-Host "       run this restore again, or remove it yourself with:"
-        if ($LeftoverContainers.Count -gt 0) { Write-Host "         docker rm -f $($LeftoverContainers -join ' ')" }
-        if ($LeftoverVolumes.Count -gt 0) { Write-Host "         docker volume rm $($LeftoverVolumes -join ' ')" }
-        Write-Host "       If this keeps happening, restart Docker Desktop and try again."
+        if ($LeftoverContainers.Count -gt 0) { Write-Host "         docker rm $($LeftoverContainers -join ' ')" }
+        if ($LeftoverVolumes.Count -gt 0) { Write-DaafRestoreRemoveHint -Lead '       ' -Volumes ($LeftoverVolumes -join ' ') }
         Wait-AndExit 1
     }
     Write-Host "Removed the leftover temporary copy."
@@ -1047,15 +1256,18 @@ try {
         if ($cidLines.Count -gt 0) { $Cid = "$($cidLines[$cidLines.Count - 1])".Trim() }
         if (-not $createOk -or $Cid -eq '') { $PrepFail = @("ERROR: Could not create the helper container for the copy."); break }
         # Only docker cp's text status line reaches stdout (the data goes over the daemon
-        # API pipe), so a synchronous inline call is pipeline-safe on PS 5.1.
-        $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+        # API pipe), so a synchronous inline call is pipeline-safe on PS 5.1. 'Continue'
+        # keeps docker cp's error text for the "Docker said:" line: under SilentlyContinue
+        # Windows PowerShell 5.1 dropped it (field test 2026-10-05, Run 3c, D2).
+        $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "Continue"
         $cpOut = @(docker cp "${SelectedPath}/." "${Cid}:/dest/" 2>&1 | ForEach-Object { "$_" })
         $copyOk = ($LASTEXITCODE -eq 0)
         $null = docker rm -f $Cid 2>&1
         $ErrorActionPreference = $savedEAP
         if (-not $copyOk) {
             $PrepFail = @("ERROR: Copying the backup into Docker failed.")
-            if ($cpOut.Count -gt 0) { $PrepFail += "       Docker said: $($cpOut[$cpOut.Count - 1])" }
+            $cpSaid = Get-DaafRestoreDockerSaid -Lines $cpOut -PreferCopyCause
+            if ($cpSaid -ne '') { $PrepFail += "       Docker said: $cpSaid" }
             break
         }
 
@@ -1122,7 +1334,7 @@ try {
         # read errors) is a lower bound that must be reached. Unreadable or short: stop
         # before anything is replaced.
         Write-Host "Checking the temporary copy..."
-        $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+        $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "Continue"
         $TempVerifyOutput = @(docker run --rm --label "$RestoreLabel=$VolumeName" -v "${TempVolumeName}:/dest:ro" busybox sh -c 'set -e; : > /tmp/count_err; n=$(find /dest -type f ! -path /dest/.daaf-symlinks ! -path /dest/.daaf-permissions ! -path /dest/.daaf-claude-config/\* -exec stat -c %s {} + 2>/tmp/count_err | wc -l); if test -s /tmp/count_err; then echo RESTORED_COUNT_ERRORS=$(grep -c ^ /tmp/count_err); else echo RESTORED_FILES=$((n)); fi' 2>&1)
         $tempVerifyExit = $LASTEXITCODE
         $ErrorActionPreference = $savedEAP
@@ -1287,7 +1499,9 @@ try {
         # --- (5) Replace the live volumes inside Docker ---
         # ONE named, unlabelled container per volume, --sig-proxy=false, so a Ctrl+C is
         # never forwarded into the swap: it ends only the docker client (PowerShell 7
-        # source; inferred, not observed, for Windows PowerShell 5.1), and the swap
+        # source; OBSERVED on Windows PowerShell 5.1.26100 with Docker 29.1.3 in the
+        # 2026-10-05 field test, Runs 5a and 7: a console Ctrl+C ended the client, the
+        # swap ran to its end, and the finally's text printed in full), and the swap
         # itself runs to the end inside Docker. From here on nothing deletes a temp
         # volume except the final cleanup. A Ctrl+C anywhere inside this try (preparing,
         # at the prompt, or during the swap) prints the right text from the finally
@@ -1328,6 +1542,9 @@ try {
 
         # --- (5b) Replace the Claude Code state volume (same program and check) ---
         if ($HasClaudeBackup) {
+            # Field test 2026-10-05, D3: from here an interrupt says the Claude Code state
+            # was being replaced (the data volume already is, and was checked).
+            $ClaudeSwapPhase = $true
             Write-Host ""
             Write-Host "Replacing the Claude Code state..."
             # Right before the Claude swap: still our volume? The data volume is already
@@ -1380,17 +1597,19 @@ try {
     if (-not $ReachedEnd) {
         Write-Host ""
         if ($SwapStarted) {
-            Write-Host "Restore interrupted while your DAAF data was being replaced." -ForegroundColor Red
+            if ($ClaudeSwapPhase) {
+                Write-Host "Restore interrupted while the Claude Code state (login and session history) was being replaced." -ForegroundColor Red
+                Write-Host "Your project files (DAAF data) were already replaced and checked."
+            } else {
+                Write-Host "Restore interrupted while your DAAF data was being replaced." -ForegroundColor Red
+            }
             Write-Host "The replacement keeps running inside Docker until it finishes. Your backup"
             Write-Host "folder $SelectedName\ is unchanged. Wait a few minutes, then run this restore"
             Write-Host "again and choose the same backup:"
             Write-Host "  $RerunCommand"
         } else {
             Write-DaafRestoreUnchanged -First 'Restore interrupted. '
-            if ($TempRemoveFailed) {
-                Write-Host "The temporary copy could not be removed. To free the space it uses, run:"
-                Write-Host "  docker volume rm $(Get-DaafRestoreKeptTempList)"
-            }
+            if ($TempRemoveFailed) { Write-DaafRestoreKeptTempHint -Lead '' }
         }
     }
     # Interrupt exit code. A Ctrl+C stops the script right after this finally: nothing
@@ -1410,8 +1629,12 @@ try {
     # the post-swap count/cleanup below still exits 0 (pwsh -File exits 0 on SIGINT). [Environment]::Exit, not `exit`, because no `exit` statement runs
     # inside this try/finally (see the section comment above). Verified under pwsh 7.6 on
     # Linux (a SIGINT during a native command or a cmdlet: 10 of 10 runs exited 130 with
-    # the finally's text printed in full; `exit 130` behaved the same there); Windows
-    # PowerShell 5.1 and a real console Ctrl+C on Windows are untested (inference).
+    # the finally's text printed in full; `exit 130` behaved the same there). Windows
+    # PowerShell 5.1.26100 with Docker 29.1.3 (field test 2026-10-05, Runs 5a and 7,
+    # OBSERVED): a real console Ctrl+C during a swap ended only the docker client; the
+    # swap ran to its end and this finally's text printed in full. The exit code was not
+    # captured there (130 on 5.1 is inference), and from the Control Panel the panel
+    # itself ended too.
     $Interrupted = (-not $ReachedEnd) -and (-not $Faulted) -and ($null -eq $PrepFail) -and ($null -eq $SwapFail) -and (-not $Cancelled) -and ($null -eq $ChangedTemp)
     if ($Interrupted -and $env:DAAF_NESTED) { [Environment]::Exit(130) }
 }
@@ -1429,19 +1652,13 @@ if ($null -ne $PrepFail) {
     Write-Host ""
     foreach ($line in $PrepFail) { Write-Host $line -ForegroundColor Red }
     Write-DaafRestoreUnchanged -First '       ' -Indent '       '
-    if ($TempRemoveFailed) {
-        Write-Host "       The temporary copy could not be removed. To free the space it uses, run:"
-        Write-Host "         docker volume rm $(Get-DaafRestoreKeptTempList)"
-    }
+    if ($TempRemoveFailed) { Write-DaafRestoreKeptTempHint -Lead '       ' }
     Wait-AndExit 1
 }
 if ($Cancelled) {
     Write-Host ""
     Write-DaafRestoreUnchanged -First 'Restore cancelled. '
-    if ($TempRemoveFailed) {
-        Write-Host "The temporary copy could not be removed. To free the space it uses, run:"
-        Write-Host "  docker volume rm $(Get-DaafRestoreKeptTempList)"
-    }
+    if ($TempRemoveFailed) { Write-DaafRestoreKeptTempHint -Lead '' }
     Wait-AndExit 0
 }
 if ($null -ne $SwapFail) {
@@ -1456,7 +1673,7 @@ if ($null -ne $SwapFail) {
 # so a name holding a newline counts once. Quote-free (Windows argv), and textually
 # identical to restore_from_backup.sh's program (tests/bash/backup_twin_parity.bats).
 Write-Host "Verifying restore..."
-$savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+$savedEAP = $ErrorActionPreference; $ErrorActionPreference = "Continue"
 $VerifyOutput = @(docker run --rm -v "${VolumeName}:/dest:ro" busybox sh -c 'set -e; : > /tmp/count_err; n=$(find /dest -type f ! -path /dest/.daaf-symlinks ! -path /dest/.daaf-permissions ! -path /dest/.daaf-claude-config/\* -exec stat -c %s {} + 2>/tmp/count_err | wc -l); if test -s /tmp/count_err; then echo RESTORED_COUNT_ERRORS=$(grep -c ^ /tmp/count_err); else echo RESTORED_FILES=$((n)); fi' 2>&1)
 $verifyExit = $LASTEXITCODE
 $ErrorActionPreference = $savedEAP
@@ -1524,8 +1741,9 @@ if ($TempRemoveFailed) {
     $KeptTemps = Get-DaafRestoreKeptTempList
     Write-Host ""
     Write-Host "WARNING: Could not remove the temporary copy of your data (Docker volume(s): $KeptTemps)." -ForegroundColor Yellow
+    foreach ($noteLine in $TempRemoveNote) { Write-Host "         $noteLine" }
     Write-Host "         Your DAAF data was restored. To free the space it uses, run:"
-    Write-Host "           docker volume rm $KeptTemps"
+    Write-DaafRestoreRemoveHint -Lead '         ' -Volumes $KeptTemps
     $HadWarnings = $true
 }
 

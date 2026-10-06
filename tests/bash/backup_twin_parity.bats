@@ -1473,3 +1473,337 @@ _startup_check_guarded() {
     run bash -c "sed -n '/^_restore_fail_swap_not_run() {\$/,/^}\$/p' '${REPO_ROOT}/${RESTORE_SH}' | sed -n '2,3p'"
     assert_output "$(printf '%s\n' '    TEMP_CLEANUP_CAREFUL=1' '    SWAP_STARTED=0')"
 }
+
+# ===========================================================================
+# 14. FIELD TEST 2026-10-05 (fix pass #18): D1 holders, D3 wording
+# ===========================================================================
+# D1: a never-started (Created) container that still referenced a temp volume blocked
+# its removal (it does not go away on its own while Docker keeps running; a Docker
+# restart is expected to remove it -- moby restore(), inference). Both twins now list a
+# temp's holders (`docker ps -a --filter
+# volume=<temp> --format '{{.ID}} {{.State}}'`, stdout only), remove created / exited /
+# dead ones with a PLAIN `docker rm <id>` (never -f), then the volume; any other state
+# refuses, and a failed list is "could not check". D3: a Ctrl+C during the Claude Code
+# swap names the Claude state. Pinned here: every new user-visible string (strings 1-7
+# of the fix-pass-18 report) VERBATIM in both twins, the D1 argv shape, the check-before-
+# removal order on the leftover path, and the D3 flag's place. (D2 is .ps1-only: Pester.)
+# Behaviour: restore_from_backup.bats ("D1:" / "D3:") and restore_from_backup.Tests.ps1.
+# The latch pins above (6 / 7) are unchanged by this pass: the new reason and hint lines
+# extend the existing temp-removal WARNING, they add no latch.
+
+# A function's body: .sh `name() {` ... `}`; .ps1 `function Name {` ... `}`.
+_fn_body_sh()  { sed -n "/^$2() {\$/,/^}\$/p" "$1"; }
+_fn_body_ps1() { sed -n "/^function $2 {\$/,/^}\$/p" "$1"; }
+
+# The message text of a function body (stdin): the first "..." string after each echo /
+# Write-Host, variable references ($(...), ${...}, $name, $1) normalized to <v>.
+_msg_text() {
+    grep -E '(echo|Write-Host) "' \
+    | sed -E -e 's/.*(echo|Write-Host) "([^"]*)".*/\2/' \
+             -e 's/\$\([^)]*\)/<v>/g' \
+             -e 's/\$\{[A-Za-z_0-9]*\}/<v>/g' \
+             -e 's/\$[A-Za-z_][A-Za-z_0-9]*/<v>/g' \
+             -e 's/\$[0-9]/<v>/g'
+}
+
+# The new user-visible strings, each a fragment that must occur in BOTH twins' source
+# (fix-pass-18 report strings 1-7; a variable part ends the fragment).
+_D1_D3_STRINGS=(
+    'The temporary copy could not be removed."'
+    'To free the space it uses, run:"'
+    'Something is still using it; another restore may still be running."'
+    'Could not check what is using it (docker ps failed, exit '
+    'Docker said: '
+    '  docker volume rm '
+    'If Docker says it is in use, first run"'
+    '  docker ps -a'
+    'and remove each container it lists with docker rm <ID>, then try again."'
+    '         Your DAAF data was restored. To free the space it uses, run:"'
+    'ERROR: Could not remove the temporary copy left by the earlier restore."'
+    '       Docker said: '
+    'ERROR: Something is still using the temporary copy left by the earlier restore"'
+    "'), so it was not removed. Another restore may\""
+    '       still be running."'
+    '       Wait a few minutes and close any other restore window, then run this"'
+    'ERROR: Could not check what is using the temporary copy left by the earlier"'
+    '; docker ps failed, exit '
+    '), so it was not removed."'
+    '       Make sure Docker Desktop is running, then run this restore again."'
+    'Restore interrupted while the Claude Code state (login and session history) was being replaced."'
+    'Your project files (DAAF data) were already replaced and checked."'
+)
+
+# Exit 0 (no output) when every string above occurs in both twins and the replaced
+# texts are gone from both. ($1 = .sh, $2 = .ps1)
+_d1_d3_strings_pinned() {
+    local rc=0 s f
+    for s in "${_D1_D3_STRINGS[@]}"; do
+        for f in "$1" "$2"; do
+            grep -qF -- "${s}" "${f}" || { echo "MISSING in ${f##*/}: ${s}"; rc=1; }
+        done
+    done
+    for f in "$1" "$2"; do
+        # The old two-line kept-temp text, and the restart line of the leftover-removal
+        # failure: the running-swap refusal's line is now the only unwrapped copy (exactly
+        # one; the inspect refusal keeps the restart advice too, wrapped over two lines).
+        if grep -qF 'The temporary copy could not be removed. To free' "${f}"; then echo "OLD kept-temp text in ${f##*/}"; rc=1; fi
+        [ "$(grep -cF 'If this keeps happening, restart Docker Desktop and try again."' "${f}")" -eq 1 ] || { echo "restart line count != 1 in ${f##*/}"; rc=1; }
+    done
+    return "${rc}"
+}
+
+@test "twin-parity D1/D3: every new user-visible string is present VERBATIM in both restore twins; the replaced texts are gone" {
+    run _d1_d3_strings_pinned "${REPO_ROOT}/${RESTORE_SH}" "${REPO_ROOT}/${RESTORE_PS1}"
+    assert_success
+    assert_output ""
+}
+
+@test "twin-parity D1: the refusal, kept-temp and hint helpers print the same text in both twins (normalized)" {
+    local pair sh ps1 n
+    for pair in _restore_leftover_refusal:Write-DaafRestoreLeftoverRefusal \
+                _restore_kept_temp_hint:Write-DaafRestoreKeptTempHint \
+                _restore_remove_hint:Write-DaafRestoreRemoveHint; do
+        sh="${pair%%:*}"; ps1="${pair#*:}"
+        _fn_body_sh "${REPO_ROOT}/${RESTORE_SH}" "${sh}" | _msg_text > "${TEST_DIR}/m_sh.txt"
+        _fn_body_ps1 "${REPO_ROOT}/${RESTORE_PS1}" "${ps1}" | _msg_text > "${TEST_DIR}/m_ps1.txt"
+        n="$(grep -c . "${TEST_DIR}/m_sh.txt" || true)"
+        [ "${n}" -ge 3 ] || { echo "FAIL: ${sh}: too few message lines extracted (${n})"; return 1; }
+        # The ONE known source difference: the .sh carries the filters' leading space in
+        # the variable (`-a${filters}`), the .ps1 in the template (`-a $filters`, the
+        # filters joined with ' '); both print `docker ps -a --filter volume=<t1>[ --filter
+        # volume=<t2>]`. That line is compared through the per-twin pins below.
+        run diff <(grep -v '  docker ps -a' "${TEST_DIR}/m_sh.txt") <(grep -v '  docker ps -a' "${TEST_DIR}/m_ps1.txt")
+        if [ "${status}" -ne 0 ]; then echo "DRIFT in ${sh} / ${ps1}:"; echo "${output}"; fi
+        assert_success
+    done
+    run grep -cxF '    for tv in $2; do filters="${filters} --filter volume=${tv}"; done' "${REPO_ROOT}/${RESTORE_SH}"
+    assert_output "1"
+    run grep -cxF '    echo "${1}  docker ps -a${filters}"' "${REPO_ROOT}/${RESTORE_SH}"
+    assert_output "1"
+    run grep -cxF "    \$filters = @(@(\$Volumes -split ' ' | Where-Object { \$_ -ne '' }) | ForEach-Object { \"--filter volume=\$_\" }) -join ' '" "${REPO_ROOT}/${RESTORE_PS1}"
+    assert_output "1"
+    run grep -cxF '    Write-Host "$Lead  docker ps -a $filters"' "${REPO_ROOT}/${RESTORE_PS1}"
+    assert_output "1"
+}
+
+@test "twin-parity D1: every message site uses the shared hint helpers (cancel, leftover failure, kept temp, final WARNING)" {
+    local l
+    for l in '_restore_remove_hint "" "${LEFTOVER_VOLUMES}"' \
+             '_restore_remove_hint "       " "${LEFTOVER_VOLUMES}" >&2' \
+             '_restore_remove_hint "$1" "$(_restore_kept_temps)"' \
+             '_restore_remove_hint "         " "${KEPT_TEMPS}" >&2' \
+             'if [ -n "${LEFTOVER_SAID}" ]; then echo "       Docker said: ${LEFTOVER_SAID}" >&2; fi' \
+             'while IFS= read -r NOTE_LINE; do echo "         ${NOTE_LINE}" >&2; done <<EOF'; do
+        run grep -cF -- "${l}" "${REPO_ROOT}/${RESTORE_SH}"
+        assert_output "1"
+    done
+    for l in "Write-DaafRestoreRemoveHint -Lead '' -Volumes (\$LeftoverVolumes -join ' ')" \
+             "Write-DaafRestoreRemoveHint -Lead '       ' -Volumes (\$LeftoverVolumes -join ' ')" \
+             'Write-DaafRestoreRemoveHint -Lead $Lead -Volumes (Get-DaafRestoreKeptTempList)' \
+             "Write-DaafRestoreRemoveHint -Lead '         ' -Volumes \$KeptTemps" \
+             "if (\$LeftoverSaid -ne '') { Write-Host \"       Docker said: \$LeftoverSaid\" }" \
+             'foreach ($noteLine in $TempRemoveNote) { Write-Host "         $noteLine" }'; do
+        run grep -cF -- "${l}" "${REPO_ROOT}/${RESTORE_PS1}"
+        assert_output "1"
+    done
+    # The kept-temp block replaced the old two lines at every site: .sh 1 at indent 7
+    # (_restore_fail_before_swap) + 3 unindented (interrupt, EXIT handler, cancel); .ps1 1
+    # + 2 (its finally covers both the interrupt and the unexpected exit; cancel).
+    run grep -cF '_restore_kept_temp_hint "       " >&2' "${REPO_ROOT}/${RESTORE_SH}"
+    assert_output "1"
+    run grep -cF '_restore_kept_temp_hint ""' "${REPO_ROOT}/${RESTORE_SH}"
+    assert_output "3"
+    run grep -cF "Write-DaafRestoreKeptTempHint -Lead '       '" "${REPO_ROOT}/${RESTORE_PS1}"
+    assert_output "1"
+    run grep -cF "Write-DaafRestoreKeptTempHint -Lead ''" "${REPO_ROOT}/${RESTORE_PS1}"
+    assert_output "2"
+}
+
+# Exit 0 (no output) when both twins' removal helper has the D1 shape. ($1 = .sh, $2 = .ps1)
+_d1_argv_guarded() {
+    local rc=0 b
+    b="$(_fn_body_sh "$1" _restore_remove_volume)"
+    [ -n "${b}" ] || { echo "sh: _restore_remove_volume not found"; return 1; }
+    # The holder list (exit code captured, never `|| true`) and its stderr re-read.
+    [ "$(printf '%s\n' "${b}" | grep -cF "docker ps -a --filter \"volume=\$1\" --format '{{.ID}} {{.State}}'")" -eq 2 ] || { echo "sh: expected the holder list twice (list + stderr re-read)"; rc=1; }
+    printf '%s\n' "${b}" | grep -qF -- "--format '{{.ID}} {{.State}}' 2>/dev/null)\" || status=\$?" || { echo "sh: the holder list must read stdout only and capture its exit code"; rc=1; }
+    printf '%s\n' "${b}" | grep -qxF '            return 3' || { echo "sh: a failed list must return 3 (could not check)"; rc=1; }
+    printf '%s\n' "${b}" | grep -qxF '                created|exited|dead) ids="${ids:+${ids} }${id}" ;;' || { echo "sh: only created|exited|dead may be removable"; rc=1; }
+    printf '%s\n' "${b}" | grep -qxF '                *) return 2 ;;' || { echo "sh: any other state must be busy (2)"; rc=1; }
+    [ "$(printf '%s\n' "${b}" | grep -cF 'docker rm "${id}"')" -eq 1 ] || { echo "sh: expected one plain docker rm of a holder"; rc=1; }
+    if printf '%s\n' "${b}" | grep -qE 'rm -f|--force'; then echo "sh: a holder must never be force-removed"; rc=1; fi
+    printf '%s\n' "${b}" | grep -qxF '    if [ "${2:-}" != careful ]; then' || { echo "sh: careful mode must skip the holders"; rc=1; }
+    printf '%s\n' "${b}" | grep -qxF '    if [ "$1" != "${TEMP_VOLUME_NAME}" ] && [ "$1" != "${CLAUDE_TEMP_VOLUME_NAME}" ]; then return 1; fi' || { echo "sh: no temp-name guard"; rc=1; }
+    # Every temp-volume removal in the script goes through the helper.
+    [ "$(grep -cE '^[^#]*docker volume rm "' "$1")" -eq 1 ] || { echo "sh: a docker volume rm outside _restore_remove_volume"; rc=1; }
+    b="$(_fn_body_ps1 "$2" Invoke-DaafRestoreVolumeRemoval)"
+    [ -n "${b}" ] || { echo "ps1: Invoke-DaafRestoreVolumeRemoval not found"; return 1; }
+    printf '%s\n' "${b}" | grep -qF "Invoke-DaafRestoreDockerSplit -DockerArgs @('ps', '-a', '--filter', \"volume=\$Name\", '--format', '{{.ID}} {{.State}}')" || { echo "ps1: the holder list argv"; rc=1; }
+    printf '%s\n' "${b}" | grep -qF 'foreach ($line in $holders.Out) {' || { echo "ps1: holders must come from stdout (Out) only"; rc=1; }
+    printf '%s\n' "${b}" | grep -qF "return [pscustomobject]@{ Result = 'listfailed';" || { echo "ps1: a failed list must be listfailed"; rc=1; }
+    printf '%s\n' "${b}" | grep -qF "if (@('created', 'exited', 'dead') -notcontains \$state) {" || { echo "ps1: only created|exited|dead may be removable"; rc=1; }
+    [ "$(printf '%s\n' "${b}" | grep -cF "Invoke-DaafRestoreDockerSplit -DockerArgs @('rm', \$id)")" -eq 1 ] || { echo "ps1: expected one plain docker rm of a holder"; rc=1; }
+    if printf '%s\n' "${b}" | grep -qE "'-f'|--force"; then echo "ps1: a holder must never be force-removed"; rc=1; fi
+    printf '%s\n' "${b}" | grep -qF 'if (-not $KeepHolders) {' || { echo "ps1: careful mode must skip the holders"; rc=1; }
+    printf '%s\n' "${b}" | grep -qF 'if (@($TempVolumeName, $ClaudeTempVolumeName) -cnotcontains $Name) {' || { echo "ps1: no temp-name guard"; rc=1; }
+    [ "$(grep -cF "@('volume', 'rm'," "$2")" -eq 1 ] || { echo "ps1: a volume rm outside Invoke-DaafRestoreVolumeRemoval"; rc=1; }
+    # Careful cleanup is wired to both temps in both twins.
+    [ "$(grep -cF '_restore_remove_volume "${TEMP_VOLUME_NAME}" "${rm_mode}"' "$1")" -eq 1 ] && [ "$(grep -cF '_restore_remove_volume "${CLAUDE_TEMP_VOLUME_NAME}" "${rm_mode}"' "$1")" -eq 1 ] && grep -qxF '        rm_mode=careful' "$1" || { echo "sh: careful cleanup not wired to both temps"; rc=1; }
+    [ "$(grep -cF -- '-KeepHolders:$script:TempCleanupCareful' "$2")" -eq 2 ] || { echo "ps1: careful cleanup not wired to both temps"; rc=1; }
+    return "${rc}"
+}
+
+@test "twin-parity D1: both twins list holders with ps -a --filter volume= '{{.ID}} {{.State}}' and remove only stopped ones with a PLAIN rm" {
+    run _d1_argv_guarded "${REPO_ROOT}/${RESTORE_SH}" "${REPO_ROOT}/${RESTORE_PS1}"
+    assert_success
+    assert_output ""
+}
+
+# The line numbers of the leftover path's check pass, label reap and swap-container rm
+# in one twin must increase in that order. ($1 = file, $2..$4 = the three exact lines)
+_in_order() {
+    local a b c
+    a="$(grep -nxF -- "$2" "$1" | cut -d: -f1)"
+    b="$(grep -nxF -- "$3" "$1" | cut -d: -f1)"
+    c="$(grep -nF -- "$4" "$1" | cut -d: -f1)"
+    [ "$(printf '%s\n' "${a}" | grep -c .)" -eq 1 ] && [ "$(printf '%s\n' "${b}" | grep -c .)" -eq 1 ] && [ "$(printf '%s\n' "${c}" | grep -c .)" -eq 1 ] || { echo "anchor not unique in ${1##*/}: ${a}/${b}/${c}"; return 1; }
+    [ "${a}" -lt "${b}" ] && [ "${b}" -lt "${c}" ] || { echo "order in ${1##*/}: check ${a}, reap ${b}, rm ${c}"; return 1; }
+}
+
+@test "twin-parity D1: on the leftover path both twins check every holder BEFORE the label reap and the swap-container rm" {
+    run _in_order "${REPO_ROOT}/${RESTORE_SH}" \
+        '        _restore_remove_volume "${tv}" check || RM_STATUS=$?' \
+        '    _restore_reap_helpers' \
+        'RM_SAID="$(docker rm "${sc}" 2>&1 > /dev/null)"'
+    assert_success
+    # The check pass refuses at once (nothing removed) on busy or a failed list.
+    run grep -cxF '        if [ "${RM_STATUS}" -ne 0 ]; then _restore_leftover_refusal "${tv}" "${RM_STATUS}"; fi' "${REPO_ROOT}/${RESTORE_SH}"
+    assert_output "1"
+    run _in_order "${REPO_ROOT}/${RESTORE_PS1}" \
+        '        $leftoverCheck = Invoke-DaafRestoreVolumeRemoval -Name $tv -CheckOnly' \
+        '    Invoke-DaafRestoreHelperReap' \
+        "\$scRemoval = Invoke-DaafRestoreDockerSplit -DockerArgs @('rm', \$sc)"
+    assert_success
+}
+
+# Review round 6 (R5): the leftover swap containers -- found NOT running before an
+# unbounded y/n wait -- are removed with a PLAIN `docker rm` in both twins (the daemon
+# refuses a running one without -f, so another window's swap started meanwhile under the
+# same name survives); a failed removal skips the volume removal; and the manual hint
+# prints the same plain command. Fix round 8 (delta review of round 7, ISSUE 1): in both
+# twins a "No such container" failure of that rm (the container vanished meanwhile)
+# counts as removed, through the shared not-found classifier, as the FIRST statement
+# of the failure branch. Exit 0 (no output) when both twins have that shape.
+# ($1 = .sh, $2 = .ps1)
+_r5_swap_rm_plain() {
+    local rc=0
+    [ "$(grep -cF 'RM_SAID="$(docker rm "${sc}" 2>&1 > /dev/null)"' "$1")" -eq 1 ] || { echo "sh: expected one plain docker rm of a leftover swap container"; rc=1; }
+    grep -A1 -F 'if ! RM_SAID="$(docker rm "${sc}" 2>&1 > /dev/null)"; then' "$1" | grep -qxF '            if _restore_is_not_found "${RM_SAID}"; then continue; fi' || { echo "sh: a vanished leftover swap container (No such container) must count as removed"; rc=1; }
+    [ "$(grep -A2 -F "\$scRemoval = Invoke-DaafRestoreDockerSplit -DockerArgs @('rm', \$sc)" "$2" | sed -n '2,3p')" = "$(printf '%s\n' '        if ($scRemoval.Exit -ne 0) {' '            if (Test-DaafRestoreNotFound -Lines $scRemoval.Err) { continue }')" ] || { echo "ps1: a vanished leftover swap container (No such container) must count as removed"; rc=1; }
+    if grep -E '^[^#]*docker rm (-f|--force) "\$\{sc\}"' "$1" > /dev/null; then echo "sh: a leftover swap container must never be force-removed"; rc=1; fi
+    grep -qxF '    if [ "${LEFTOVER_FAILED}" -eq 0 ]; then' "$1" || { echo "sh: a failed swap-container rm must skip the volume removal"; rc=1; }
+    [ "$(grep -cF 'echo "         docker rm ${LEFTOVER_CONTAINERS}" >&2' "$1")" -eq 1 ] || { echo "sh: the leftover-failure hint must print a plain docker rm"; rc=1; }
+    [ "$(grep -cF "Invoke-DaafRestoreDockerSplit -DockerArgs @('rm', \$sc)" "$2")" -eq 1 ] || { echo "ps1: expected one plain docker rm of a leftover swap container"; rc=1; }
+    if grep -E "^[^#]*@\('rm', '(-f|--force)', \\\$sc\)" "$2" > /dev/null; then echo "ps1: a leftover swap container must never be force-removed"; rc=1; fi
+    grep -qxF '    if (-not $LeftoverFailed) {' "$2" || { echo "ps1: a failed swap-container rm must skip the volume removal"; rc=1; }
+    [ "$(grep -cF "Write-Host \"         docker rm \$(\$LeftoverContainers -join ' ')\"" "$2")" -eq 1 ] || { echo "ps1: the leftover-failure hint must print a plain docker rm"; rc=1; }
+    # No forced removal hint is printed anywhere in either twin.
+    if grep -E '^[^#]*(echo|Write-Host) "[^"]*docker rm -f' "$1" "$2" > /dev/null; then echo "a printed 'docker rm -f' hint remains"; rc=1; fi
+    return "${rc}"
+}
+
+@test "twin-parity R5: both twins remove a leftover swap container with a PLAIN docker rm, count a vanished one as removed, skip the volumes when it fails, and print a plain hint" {
+    run _r5_swap_rm_plain "${REPO_ROOT}/${RESTORE_SH}" "${REPO_ROOT}/${RESTORE_PS1}"
+    assert_success
+    assert_output ""
+}
+
+@test "twin-parity R5 SELF-TEST: the pin flags a forced swap-container rm (either twin) and a forced hint" {
+    sed 's/RM_SAID="\$(docker rm "\${sc}"/RM_SAID="$(docker rm -f "${sc}"/' "${REPO_ROOT}/${RESTORE_SH}" > "${TEST_DIR}/r5force.sh"
+    run cmp -s "${REPO_ROOT}/${RESTORE_SH}" "${TEST_DIR}/r5force.sh"
+    assert_failure
+    run _r5_swap_rm_plain "${TEST_DIR}/r5force.sh" "${REPO_ROOT}/${RESTORE_PS1}"
+    assert_failure
+    assert_output --partial "sh: a leftover swap container must never be force-removed"
+    sed "s/@('rm', \\\$sc)/@('rm', '-f', \$sc)/" "${REPO_ROOT}/${RESTORE_PS1}" > "${TEST_DIR}/r5force.ps1"
+    run cmp -s "${REPO_ROOT}/${RESTORE_PS1}" "${TEST_DIR}/r5force.ps1"
+    assert_failure
+    run _r5_swap_rm_plain "${REPO_ROOT}/${RESTORE_SH}" "${TEST_DIR}/r5force.ps1"
+    assert_failure
+    assert_output --partial "ps1: a leftover swap container must never be force-removed"
+    sed 's/echo "         docker rm \${LEFTOVER_CONTAINERS}"/echo "         docker rm -f ${LEFTOVER_CONTAINERS}"/' "${REPO_ROOT}/${RESTORE_SH}" > "${TEST_DIR}/r5hint.sh"
+    run cmp -s "${REPO_ROOT}/${RESTORE_SH}" "${TEST_DIR}/r5hint.sh"
+    assert_failure
+    run _r5_swap_rm_plain "${TEST_DIR}/r5hint.sh" "${REPO_ROOT}/${RESTORE_PS1}"
+    assert_failure
+    assert_output --partial "a printed 'docker rm -f' hint remains"
+}
+
+@test "twin-parity R8 SELF-TEST: the pin flags a twin that no longer counts a vanished swap container as removed" {
+    grep -vxF '            if _restore_is_not_found "${RM_SAID}"; then continue; fi' "${REPO_ROOT}/${RESTORE_SH}" > "${TEST_DIR}/r8gone.sh" || true
+    run cmp -s "${REPO_ROOT}/${RESTORE_SH}" "${TEST_DIR}/r8gone.sh"
+    assert_failure
+    run _r5_swap_rm_plain "${TEST_DIR}/r8gone.sh" "${REPO_ROOT}/${RESTORE_PS1}"
+    assert_failure
+    assert_output "sh: a vanished leftover swap container (No such container) must count as removed"
+    grep -vxF '            if (Test-DaafRestoreNotFound -Lines $scRemoval.Err) { continue }' "${REPO_ROOT}/${RESTORE_PS1}" > "${TEST_DIR}/r8gone.ps1" || true
+    run cmp -s "${REPO_ROOT}/${RESTORE_PS1}" "${TEST_DIR}/r8gone.ps1"
+    assert_failure
+    run _r5_swap_rm_plain "${REPO_ROOT}/${RESTORE_SH}" "${TEST_DIR}/r8gone.ps1"
+    assert_failure
+    assert_output "ps1: a vanished leftover swap container (No such container) must count as removed"
+}
+
+@test "twin-parity D3: both twins set the Claude-phase flag once, after the data swap's check and before 'Replacing the Claude Code state...'" {
+    run _in_order "${REPO_ROOT}/${RESTORE_SH}" \
+        'if ! _restore_swap_checked "${SWAP_VERIFY_OUTPUT}" nonempty; then' \
+        '    CLAUDE_SWAP_PHASE=1' \
+        'echo "Replacing the Claude Code state..."'
+    assert_success
+    run grep -cE '^[[:space:]]*CLAUDE_SWAP_PHASE=1$' "${REPO_ROOT}/${RESTORE_SH}"
+    assert_output "1"
+    run grep -cxF '        if [ "${CLAUDE_SWAP_PHASE}" -eq 1 ]; then' "${REPO_ROOT}/${RESTORE_SH}"
+    assert_output "1"
+    run _in_order "${REPO_ROOT}/${RESTORE_PS1}" \
+        '        if (-not (Test-DaafRestoreSwapChecked -Lines $swapCheck -NonEmpty)) {' \
+        '            $ClaudeSwapPhase = $true' \
+        'Write-Host "Replacing the Claude Code state..."'
+    assert_success
+    run grep -cE '^[[:space:]]*\$ClaudeSwapPhase = \$true$' "${REPO_ROOT}/${RESTORE_PS1}"
+    assert_output "1"
+    run grep -cxF '            if ($ClaudeSwapPhase) {' "${REPO_ROOT}/${RESTORE_PS1}"
+    assert_output "1"
+}
+
+@test "twin-parity SELF-TEST: the D1/D3 pins flag a reworded string, a forced holder rm, a live state taken as stopped, and a moved flag" {
+    # (a) one twin's new string reworded
+    sed 's/another restore may still be running\./another restore may be running./' "${REPO_ROOT}/${RESTORE_PS1}" > "${TEST_DIR}/word.ps1"
+    run cmp -s "${REPO_ROOT}/${RESTORE_PS1}" "${TEST_DIR}/word.ps1"
+    assert_failure
+    run _d1_d3_strings_pinned "${REPO_ROOT}/${RESTORE_SH}" "${TEST_DIR}/word.ps1"
+    assert_failure
+    assert_output --partial "MISSING in word.ps1: Something is still using it; another restore may still be running."
+    # (b) a holder force-removed (.sh)
+    sed 's/said="\$(docker rm "\${id}"/said="$(docker rm -f "${id}"/' "${REPO_ROOT}/${RESTORE_SH}" > "${TEST_DIR}/force.sh"
+    run cmp -s "${REPO_ROOT}/${RESTORE_SH}" "${TEST_DIR}/force.sh"
+    assert_failure
+    run _d1_argv_guarded "${TEST_DIR}/force.sh" "${REPO_ROOT}/${RESTORE_PS1}"
+    assert_failure
+    assert_output --partial "sh: a holder must never be force-removed"
+    # (c) a running holder taken as removable (.ps1)
+    sed "s/@('created', 'exited', 'dead') -notcontains/@('created', 'exited', 'dead', 'running') -notcontains/" "${REPO_ROOT}/${RESTORE_PS1}" > "${TEST_DIR}/live.ps1"
+    run cmp -s "${REPO_ROOT}/${RESTORE_PS1}" "${TEST_DIR}/live.ps1"
+    assert_failure
+    run _d1_argv_guarded "${REPO_ROOT}/${RESTORE_SH}" "${TEST_DIR}/live.ps1"
+    assert_failure
+    assert_output --partial "ps1: only created|exited|dead may be removable"
+    # (d) the D3 flag set too late (after the Claude swap message) in the .sh
+    awk '/^    CLAUDE_SWAP_PHASE=1$/ { held = $0; next } { print } /echo "Replacing the Claude Code state..."/ && held != "" { print held; held = "" }' "${REPO_ROOT}/${RESTORE_SH}" > "${TEST_DIR}/late.sh"
+    run cmp -s "${REPO_ROOT}/${RESTORE_SH}" "${TEST_DIR}/late.sh"
+    assert_failure
+    run _in_order "${TEST_DIR}/late.sh" \
+        'if ! _restore_swap_checked "${SWAP_VERIFY_OUTPUT}" nonempty; then' \
+        '    CLAUDE_SWAP_PHASE=1' \
+        'echo "Replacing the Claude Code state..."'
+    assert_failure
+}
