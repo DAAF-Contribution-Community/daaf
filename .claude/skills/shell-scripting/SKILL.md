@@ -25,7 +25,7 @@ Coding quality standards and best practices for all `.sh` (Bash) and `.ps1` (Pow
 | `powershell-standards.md` | Preambles, dual error system, defensive coding, PSScriptAnalyzer | Writing or reviewing any `.ps1` file |
 | `error-handling.md` | Fail-closed philosophy, output conventions, exit codes, Docker errors, dependency validation | Designing error paths for any script |
 | `testing.md` | BATS, Pester, CI workflows, Docker mocking, test taxonomy, DAAF safety-hook regression batteries | Setting up or running script tests; writing or modifying a `bash-safety.sh` / `enforce-single-command.sh` hook |
-| `gotchas.md` | Bash traps, PowerShell surprises, cross-platform pitfalls | Debugging unexpected script behavior |
+| `gotchas.md` | Bash traps, PowerShell surprises, cross-platform and test-suite pitfalls | Debugging unexpected script behavior |
 
 ### Reading Order
 
@@ -91,6 +91,7 @@ Script behaving unexpectedly?
 ├─ PowerShell
 │   ├─ Native command error ignored → ./references/gotchas.md ($LASTEXITCODE)
 │   ├─ Native stderr missing from a 2>&1 capture on PS 5.1 → ./references/gotchas.md (SilentlyContinue drops it)
+│   ├─ "Program ... ended with non-zero exit code" line / NativeCommandExitException → ./references/gotchas.md ($PSNativeCommandUseErrorActionPreference)
 │   ├─ Unexpected return value → ./references/gotchas.md (implicit returns)
 │   ├─ $null in ForEach loop → ./references/gotchas.md
 │   ├─ Validation not firing → ./references/gotchas.md (omitted params)
@@ -109,6 +110,8 @@ Script behaving unexpectedly?
     ├─ docker volume rm says "volume is in use" after an interrupted run → ./references/gotchas.md (never-started Created container)
     ├─ A volume removed mid-run came back empty / two empty trees "matched" → ./references/gotchas.md (docker run -v re-creates a vanished volume)
     ├─ Space check passed but the host drive filled up → ./references/gotchas.md (in-container df on Docker Desktop)
+    ├─ A container image behaves differently than when tested → ./references/gotchas.md (upstream re-push/retag: pin by digest)
+    ├─ "Docker is not running" / API version errors with a mismatched CLI and Engine → ./references/gotchas.md (Docker 29 API floor)
     └─ PowerShell script exits 0 after Ctrl+C → ./references/gotchas.md (Ctrl+C inside try/finally)
 ```
 
@@ -124,6 +127,7 @@ Testing shell scripts?
 │   ├─ Pester setup → ./references/testing.md
 │   ├─ Mocking native commands → ./references/testing.md
 │   └─ What to test → ./references/testing.md
+├─ Every end-to-end test fails after a new startup docker call → ./references/gotchas.md (Testing Gotchas: silent mock default arm)
 └─ CI integration
     ├─ GitHub Actions matrix → ./references/testing.md
     ├─ Lint-only vs full test → ./references/testing.md
@@ -228,7 +232,8 @@ Existing patterns in DAAF scripts that this skill codifies:
 | Bash `$(fn 2>&1 > /dev/null)` waits for a subshell `fn` left in the background (exec'd children drop the saved pipe) | `./references/gotchas.md` |
 | PowerShell `exit` in dot-sourced functions | `./references/gotchas.md` |
 | PowerShell $LASTEXITCODE vs $? | `./references/gotchas.md` |
-| Windows PowerShell 5.1 drops native stderr under `SilentlyContinue`, even with `2>&1` (bracket with `Continue`; pwsh 7 cannot reproduce it) | `./references/gotchas.md` |
+| Windows PowerShell 5.1 drops native stderr under `SilentlyContinue`, even with `2>&1` (bracket with `Continue`; pwsh 7 cannot reproduce it: from 7.2 the preference no longer applies to redirected native stderr) | `./references/gotchas.md` |
+| `$PSNativeCommandUseErrorActionPreference` (pwsh 7.4+): a native nonzero exit adds an error line or throws; set it to `$false` in scripts that read `$LASTEXITCODE` | `./references/gotchas.md` |
 | PowerShell `$null` exit code read as success (unknown is not success) | `./references/gotchas.md` |
 | PowerShell `Start-Process -ArgumentList` array joined without quoting | `./references/gotchas.md` |
 | PowerShell `Start-Process -PassThru` `ExitCode` `$null` (cache `.Handle`) | `./references/gotchas.md` |
@@ -249,4 +254,7 @@ Existing patterns in DAAF scripts that this skill codifies:
 | Interrupted `docker run --rm` leaves a never-started (Created) container that keeps its volumes "in use" (`docker ps -a --filter volume=`, plain `docker rm`, then `docker volume rm`) | `./references/gotchas.md` |
 | `docker run -v NAME:/path` silently re-creates a vanished named volume, empty (per-run label checked before any mount; marker guard with its own exit code; nonzero entry counts) | `./references/gotchas.md` |
 | In-container `df` / `stat -f` on Docker Desktop measures the VM's virtual disk, not the host drive | `./references/gotchas.md` |
+| Upstream images re-push and retag (busybox `latest` moved to 1.38.0, `1.37.0` re-pushed): pin by digest, one constant per script plus compose, parity test | `./references/gotchas.md` |
+| Docker 29 API floor: a 29.x client cannot talk to an Engine below 25.0 (startup `docker version` check; a mismatched pair can look like "not running") | `./references/gotchas.md` |
+| A new startup docker call fails every test mock whose default arm prints nothing (add the arm to the shared mock and every inline one) | `./references/gotchas.md` |
 | Detached-container (`docker run -d`) diagnostics routing | `./references/error-handling.md` |

@@ -1402,10 +1402,11 @@ SH
         docker() {
             local all_args="$*"
             # Record exec calls AND the ownership-repair docker run, in call
-            # order, for the ordering assertion below.
+            # order, for the ordering assertion below. The repair runs the pinned
+            # helper image (DAAF_BUSYBOX_PIN, fix pass #26), never a bare busybox.
             case "$all_args" in
                 *"exec"*) echo "${all_args}" >> "${CALLLOG}" ;;
-                *"run"*"busybox chown"*) echo "${all_args}" >> "${CALLLOG}" ;;
+                *"run"*"${DAAF_BUSYBOX_PIN} chown"*) echo "${all_args}" >> "${CALLLOG}" ;;
             esac
             case "$all_args" in
                 "info") return 0 ;;
@@ -1430,7 +1431,7 @@ SH
     # The chown must be recorded and precede the first era-detection git op.
     # Revert the fix -> no chown line -> chown_line empty -> assertion fails.
     local chown_line firstgit_line
-    chown_line=$(grep -n 'busybox chown' "${calllog}" | head -1 | cut -d: -f1)
+    chown_line=$(grep -nF "${DAAF_BUSYBOX_PIN} chown" "${calllog}" | head -1 | cut -d: -f1)
     firstgit_line=$(grep -n 'remote get-url origin' "${calllog}" | head -1 | cut -d: -f1)
     [ -n "${chown_line}" ]
     [ -n "${firstgit_line}" ]
@@ -1439,7 +1440,7 @@ SH
 
 @test "migrate: ownership repair command, daaf-init parity rationale, and warn-and-continue policy are present" {
     # Source-level pins (revert-the-fix-and-it-fails).
-    run grep -cF 'busybox chown -R 1000:1000 /daaf' "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
+    run grep -cF '"${BUSYBOX_IMAGE}" chown -R 1000:1000 /daaf' "${REPO_ROOT}/scripts/host/migrate_daaf.sh"
     assert_success
     [ "${output}" -ge 1 ]
     run grep -cF 'daaf-init' "${REPO_ROOT}/scripts/host/migrate_daaf.sh"

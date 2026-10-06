@@ -102,6 +102,14 @@ SYMLINKS_MANIFEST=".daaf-symlinks"
 # (see "Capture the executable-permission manifest" below). Declared here because
 # the backup-folder count excludes it too.
 PERMISSIONS_MANIFEST=".daaf-permissions"
+# The helper image every container step runs, PINNED by digest: busybox 1.37.0,
+# multi-arch OCI index (amd64, arm64/v8 and others), the tested digest below. Pinned
+# because the untagged `busybox` (latest) moved to the untested busybox 1.38.0 on
+# 2026-09-23 (research/2026-10-01_FrameworkDev_RestoreCopyThenSwap/scoping/
+# 04_F1_compat_audit.md). The same string is in backup_daaf.{sh,ps1},
+# restore_from_backup.{sh,ps1}, migrate_daaf.{sh,ps1} and docker-compose.yml (daaf-init):
+# keep every copy identical (a parity test enforces it).
+BUSYBOX_IMAGE='busybox:1.37.0@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e'
 TODAY=$(date +%Y-%m-%d)
 # Name-handling switch for the staging program (see UNCREATABLE NAMES in the
 # STAGE_PROGRAM comments below), passed as `-e DAAF_STAGE_NAMES=...`. This twin NEVER removes a
@@ -229,6 +237,8 @@ if [ "${DAAF_DRY_RUN:-}" = "1" ]; then
     docker() {
         case "$*" in
             "info") return 0 ;;
+            "version --format"*) echo "29.1.3 29.1.3"; return 0 ;;
+            "image inspect "*) return 0 ;;
             *"volume inspect"*) return 0 ;;
             *"run --rm"*"find /source"*)
                 # Scan: file count, du -sk, du -sh, logical KB, special-file count
@@ -283,7 +293,73 @@ fi
 
 if ! docker info &> /dev/null; then
     echo "ERROR: Docker Desktop does not seem to be running. Please start it and try again."
+    # Old-Engine hint (F1; review round 9): a client of 25 or newer that cannot talk to an
+    # Engine older than 25.0 (Docker 29 removed the older API versions) also fails
+    # `docker info`, so the version check below is never reached. Read the versions
+    # (stdout only, the last non-empty line); when the client's major reads as 25 or newer
+    # and the Engine's version is empty or cannot be read, add a hint. The message above and
+    # the exit code stay the same (and its stream: stdout here, as above). Same text as the
+    # .ps1 twin and restore_from_backup.{sh,ps1}.
+    DOCKER_INFO_FAIL_LINE="$(docker version --format '{{.Client.Version}} {{.Server.Version}}' 2>/dev/null | tr -d '\r' | awk 'NF {l=$0} END {print l}')" || true
+    DOCKER_INFO_FAIL_CLIENT="$(printf '%s\n' "${DOCKER_INFO_FAIL_LINE}" | awk '{print $1}')"
+    DOCKER_INFO_FAIL_SERVER="$(printf '%s\n' "${DOCKER_INFO_FAIL_LINE}" | awk '{print $2}')"
+    DOCKER_INFO_FAIL_CLIENT_MAJOR="${DOCKER_INFO_FAIL_CLIENT%%.*}"
+    DOCKER_INFO_FAIL_SERVER_MAJOR="${DOCKER_INFO_FAIL_SERVER%%.*}"
+    case "${DOCKER_INFO_FAIL_CLIENT_MAJOR}" in
+        ''|*[!0-9]*|??????*) ;;
+        *)
+            if [ "${DOCKER_INFO_FAIL_CLIENT_MAJOR}" -ge 25 ]; then
+                case "${DOCKER_INFO_FAIL_SERVER_MAJOR}" in
+                    ''|*[!0-9]*|??????*)
+                        echo "       If Docker is running, its Docker Engine may be older than 25.0 (Docker client ${DOCKER_INFO_FAIL_CLIENT})."
+                        echo "       The backup needs Docker 25.0 or newer (Docker Desktop 4.27.1 or newer)."
+                        ;;
+                esac
+            fi
+            ;;
+    esac
     exit 1
+fi
+
+# --- Docker version check (F1 compatibility; audit 04, section 3) ---
+# Docker 29 removed API versions below 1.44: a 29.x client cannot drive an Engine older
+# than 25.0, and a 29.0-29.2 Engine refuses an older client. So read both versions
+# (stdout only, the last non-empty line) and refuse, before anything is created, when
+# either side's major version is below 25 or cannot be read. A major other than the
+# tested 29 only prints a NOTE (no HAD_WARNINGS latch) and continues. Same rule and
+# wording as the .ps1 twin and restore_from_backup.{sh,ps1} (script name varied).
+DOCKER_VERSION_LINE="$(docker version --format '{{.Client.Version}} {{.Server.Version}}' 2>/dev/null | tr -d '\r' | awk 'NF {l=$0} END {print l}')" || true
+DOCKER_CLIENT_VERSION="$(printf '%s\n' "${DOCKER_VERSION_LINE}" | awk '{print $1}')"
+DOCKER_SERVER_VERSION="$(printf '%s\n' "${DOCKER_VERSION_LINE}" | awk '{print $2}')"
+DOCKER_VERSION_STATE="ok"
+for docker_v in "${DOCKER_CLIENT_VERSION}" "${DOCKER_SERVER_VERSION}"; do
+    docker_major="${docker_v%%.*}"
+    case "${docker_major}" in
+        ''|*[!0-9]*|??????*) DOCKER_VERSION_STATE="unreadable" ;;
+        *)
+            if [ "${docker_major}" -lt 25 ]; then
+                if [ "${DOCKER_VERSION_STATE}" != "unreadable" ]; then DOCKER_VERSION_STATE="old"; fi
+            elif [ "${docker_major}" -ne 29 ] && [ "${DOCKER_VERSION_STATE}" = "ok" ]; then
+                DOCKER_VERSION_STATE="untested"
+            fi
+            ;;
+    esac
+done
+if [ "${DOCKER_VERSION_STATE}" = "old" ] || [ "${DOCKER_VERSION_STATE}" = "unreadable" ]; then
+    if [ "${DOCKER_VERSION_STATE}" = "old" ]; then
+        echo "ERROR: This Docker version is too old for the backup (Docker client ${DOCKER_CLIENT_VERSION:-unknown}, Docker Engine ${DOCKER_SERVER_VERSION:-unknown})." >&2
+    else
+        echo "ERROR: Could not read the Docker version (Docker client ${DOCKER_CLIENT_VERSION:-unknown}, Docker Engine ${DOCKER_SERVER_VERSION:-unknown})." >&2
+    fi
+    echo "       The backup needs Docker 25.0 or newer, for both the Docker client and Docker Engine" >&2
+    echo "       (Docker Desktop 4.27.1 or newer). Update Docker, then run the backup again." >&2
+    echo "       (Docker Desktop or Docker Engine is required; Podman is not supported.)" >&2
+    echo "       Nothing was changed." >&2
+    exit 1
+fi
+if [ "${DOCKER_VERSION_STATE}" = "untested" ]; then
+    echo "NOTE: The backup has not been tested with this Docker version (Docker client ${DOCKER_CLIENT_VERSION}, Docker Engine ${DOCKER_SERVER_VERSION}; tested: 29). Continuing."
+    echo ""
 fi
 
 # Check the volume exists
@@ -291,6 +367,30 @@ if ! docker volume inspect "${VOLUME_NAME}" &> /dev/null; then
     echo "ERROR: Docker volume '${VOLUME_NAME}' not found."
     echo "Have you run the DAAF installer yet?"
     exit 1
+fi
+
+# --- Helper image check (F1 compatibility; audit 04, section 3) ---
+# Every container step runs the pinned ${BUSYBOX_IMAGE}. Make sure it is on this computer
+# NOW, before the backup folder is created and before the long scan and staging steps:
+# when it is missing, download it here with its progress showing, so an offline computer
+# is refused with nothing changed instead of failing partway (`docker run` exits 125
+# when it cannot pull). Docker's last stderr line is shown when the download fails. Same
+# as the .ps1 twin and restore_from_backup.{sh,ps1}.
+if ! docker image inspect "${BUSYBOX_IMAGE}" > /dev/null 2>&1; then
+    echo "Downloading the small helper image busybox that the backup needs..."
+    BUSYBOX_PULL_EXIT=0
+    # stdout (the progress) to the terminal through fd 3; stderr captured.
+    { BUSYBOX_PULL_SAID="$(docker pull "${BUSYBOX_IMAGE}" 2>&1 1>&3 3>&-)"; } 3>&1 || BUSYBOX_PULL_EXIT=$?
+    if [ "${BUSYBOX_PULL_EXIT}" -ne 0 ]; then
+        BUSYBOX_PULL_SAID="$(printf '%s\n' "${BUSYBOX_PULL_SAID}" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' | grep . | tail -n 1)" || true
+        echo "" >&2
+        echo "ERROR: The backup needs the small helper image busybox and could not download it." >&2
+        echo "       Check the internet connection and that Docker Desktop is running, then run the backup again." >&2
+        if [ -n "${BUSYBOX_PULL_SAID}" ]; then echo "       Docker said: ${BUSYBOX_PULL_SAID}" >&2; fi
+        echo "       Nothing was changed." >&2
+        exit 1
+    fi
+    echo ""
 fi
 
 # --- Generate date-versioned backup name ---
@@ -343,7 +443,7 @@ echo "Scanning Docker volume..."
 # hardcoded literals (SYNC NOTE: update them by hand if SYMLINKS_MANIFEST,
 # PERMISSIONS_MANIFEST or CLAUDE_SUBDIR changes); tests/bash/backup_twin_parity.bats
 # pins the predicate against the .ps1 twin's scan and the snapshot count.
-SCAN_OUTPUT=$(docker run --rm -v "${VOLUME_NAME}:/source:ro" busybox sh -c 'cd /source && c=$(find . -type f ! -path ./.daaf-symlinks ! -path ./.daaf-permissions ! -path ./.daaf-claude-config/\* -exec stat -c %s {} + | awk "{n++; s+=\$1} END {print n+0, int(s/1024)}") && echo ${c% *} && du -sk /source && du -sh /source && echo ${c#* } && find /source \( -type p -o -type s -o -type b -o -type c \) | wc -l') || {
+SCAN_OUTPUT=$(docker run --rm -v "${VOLUME_NAME}:/source:ro" "${BUSYBOX_IMAGE}" sh -c 'cd /source && c=$(find . -type f ! -path ./.daaf-symlinks ! -path ./.daaf-permissions ! -path ./.daaf-claude-config/\* -exec stat -c %s {} + | awk "{n++; s+=\$1} END {print n+0, int(s/1024)}") && echo ${c% *} && du -sk /source && du -sh /source && echo ${c#* } && find /source \( -type p -o -type s -o -type b -o -type c \) | wc -l') || {
     echo ""
     echo "ERROR: Could not scan Docker volume."
     exit 1
@@ -638,7 +738,7 @@ echo "Preparing volume snapshot (staging + symlink strip)... (this may take a wh
 # an empty backup folder and no explanation. Capture into STAGE_CID inside the `if`
 # so a launch failure falls into the fatal ERROR path below (precedent:
 # restore_from_backup.sh's `if ! CID="$(docker create ...)"` guard).
-if ! STAGE_CID="$(docker run -d -v "${VOLUME_NAME}:/source:ro" -e "DAAF_STAGE_NAMES=${STAGE_NAMES_MODE}" busybox sh -c "${STAGE_PROGRAM}")"; then
+if ! STAGE_CID="$(docker run -d -v "${VOLUME_NAME}:/source:ro" -e "DAAF_STAGE_NAMES=${STAGE_NAMES_MODE}" "${BUSYBOX_IMAGE}" sh -c "${STAGE_PROGRAM}")"; then
     echo "" >&2
     echo "ERROR: Could not start the staging container for a symlink-safe backup." >&2
     echo "       No backup files were written. Check Docker Desktop for errors and re-run." >&2
@@ -1082,7 +1182,7 @@ if docker volume inspect "${CLAUDE_VOLUME_NAME}" &> /dev/null; then
     # (mirrors backup_daaf.ps1's $claudeStageStartOk flag + finally-reap pattern).
     # Assigning inside the `if` condition keeps `set -e` from aborting on a launch
     # failure while still capturing whatever the substitution produced.
-    if CLAUDE_STAGE_CID="$(docker run -d -v "${CLAUDE_VOLUME_NAME}:/source:ro" -e "DAAF_STAGE_NAMES=${STAGE_NAMES_MODE}" busybox sh -c "${STAGE_PROGRAM}")"; then
+    if CLAUDE_STAGE_CID="$(docker run -d -v "${CLAUDE_VOLUME_NAME}:/source:ro" -e "DAAF_STAGE_NAMES=${STAGE_NAMES_MODE}" "${BUSYBOX_IMAGE}" sh -c "${STAGE_PROGRAM}")"; then
         CLAUDE_STAGE_START_OK=1
     else
         CLAUDE_STAGE_START_OK=0
@@ -1180,7 +1280,7 @@ fi
 # (PERMISSIONS_MANIFEST is declared in the Configuration section.)
 echo ""
 echo "Recording executable-permission manifest..."
-if EXEC_PATHS=$(docker run --rm -v "${VOLUME_NAME}:/source:ro" busybox sh -c 'find /source -type f -perm -0100' 2>/dev/null); then
+if EXEC_PATHS=$(docker run --rm -v "${VOLUME_NAME}:/source:ro" "${BUSYBOX_IMAGE}" sh -c 'find /source -type f -perm -0100' 2>/dev/null); then
     # Strip the leading "/source/" from each path so entries are volume-relative,
     # then write LF-terminated (printf, not echo -e). An empty result is fine --
     # a zero-line manifest still signals to restore that this backup DOES preserve

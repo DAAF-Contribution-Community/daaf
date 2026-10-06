@@ -614,6 +614,62 @@ $NonInteractive = $true
         $addIdx | Should -BeLessThan $eraIdx
     }
 
+    It "the ownership repair's docker run names the PINNED helper image (pass #26, full fake run)" {
+        # The mock records every `docker run` / `docker create` argv, one argument per
+        # line between markers; the only image argument must be the pinned string.
+        $env:DAAF_NESTED = "1"
+        $pinned = 'busybox:1.37.0@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e'
+        $callLog = Join-Path $script:TestDir "docker_run_calls.log"
+        $wrapperScript = Join-Path $script:TestDir "test_wrapper.ps1"
+        Set-Content -Path $wrapperScript -Value @'
+$ErrorActionPreference = "Stop"
+[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+function docker {
+    $argStr = $args -join ' '
+    $global:LASTEXITCODE = 0
+    if ($args.Count -gt 0 -and ($args[0] -eq 'run' -or $args[0] -eq 'create')) {
+        Add-Content -Path $CallLog -Value (@('--- call') + @($args | ForEach-Object { "$_" }))
+    }
+    switch -Wildcard ($argStr) {
+        "*info*" { return }
+        "*volume inspect*" { return }
+        "*ps -a*--filter*volume=*--format*" { Write-Output "daaf-test-1" }
+        "*inspect*--format*Status*" { Write-Output "running" }
+        "*exec*git -C /daaf remote get-url*upstream*" { $global:LASTEXITCODE = 1; return }
+        "*exec*git -C /daaf remote get-url*origin*" {
+            Write-Output "https://github.com/DAAF-Contribution-Community/daaf.git"
+        }
+        default { return }
+    }
+}
+function Invoke-WebRequest {
+    param([switch]$UseBasicParsing, [string]$Uri, [string]$OutFile)
+    $null = $UseBasicParsing, $Uri
+    if ($OutFile) {
+        $parentDir = Split-Path $OutFile -Parent
+        if ($parentDir -and -not (Test-Path $parentDir)) {
+            New-Item -ItemType Directory -Path $parentDir -Force | Out-Null
+        }
+        Set-Content -Path $OutFile -Value "exit 0"
+    }
+}
+$NonInteractive = $true
+'@
+        Add-Content -Path $wrapperScript -Value "`$CallLog = '$callLog'"
+        Add-Content -Path $wrapperScript -Value ". '$RepoRoot/scripts/host/migrate_daaf.ps1'"
+        $output = & pwsh -NoProfile -File $wrapperScript *>&1
+        $outputStr = $output | Out-String
+        $LASTEXITCODE | Should -BeIn @(0, $null)
+        $outputStr | Should -BeLike "*Ownership repaired*"
+        $logLines = @(Get-Content $callLog)
+        $calls = @(($logLines -join "`n") -split '(?m)^--- call\n' | Where-Object { $_ -ne '' } | ForEach-Object { , @($_.TrimEnd("`n") -split "`n") })
+        $calls.Count | Should -Be 1
+        $argv = $calls[0]
+        $argv[0] | Should -BeExactly 'run'
+        (@($argv | Where-Object { $_ -like 'busybox*' }) -join ' ') | Should -BeExactly $pinned
+        ($argv[4..($argv.Count - 1)] -join ' ') | Should -BeExactly "$pinned chown -R 1000:1000 /daaf"
+    }
+
     It "Era 2 path (ZIP-based) detects and reports correctly" {
         $env:DAAF_NESTED = "1"
         $wrapperScript = Join-Path $script:TestDir "test_wrapper.ps1"
@@ -1216,14 +1272,51 @@ Describe "migrate_daaf.ps1 volume ownership repair (section 4c)" {
     }
 
     It "issues the daaf-init-parity ownership repair on the DAAF volume" {
-        $Content | Should -Match ([regex]::Escape('busybox chown -R 1000:1000 /daaf'))
+        # Pass #26: the helper image is the pinned $BusyboxImage (busybox 1.37.0 by digest).
+        $Content | Should -Match ([regex]::Escape('docker run --rm -v "${VolumeName}:/daaf" $BusyboxImage chown -R 1000:1000 /daaf'))
         $Content | Should -Match 'daaf-init'
+    }
+
+    It "pins the helper image by digest in one constant, used by the one docker run (pass #26)" {
+        $Content | Should -MatchExactly ([regex]::Escape("`$BusyboxImage = 'busybox:1.37.0@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e'"))
+        $code = @(($Content -split "`n") | Where-Object { $_ -notmatch '^\s*#' })
+        @($code | Where-Object { $_ -match '\bdocker run ' }).Count | Should -Be 1
+        # No code line names the image other than through the constant.
+        @($code | Where-Object { $_ -match '\bbusybox\b' -and $_ -notmatch '^\$BusyboxImage = ' }).Count | Should -Be 0
+    }
+
+    It "sets `$PSNativeCommandUseErrorActionPreference = `$false at top level, right after `$ErrorActionPreference = 'Stop' and before the first docker call (review fix round 9)" {
+        # Same line as backup_daaf.ps1 / restore_from_backup.ps1: on pwsh 7.4+ a native
+        # nonzero exit must never become an error record or a throw (the script reads
+        # $LASTEXITCODE itself); an ordinary, unused variable on Windows PowerShell 5.1.
+        $path = "$RepoRoot/scripts/host/migrate_daaf.ps1"
+        $tokens = $null
+        $parseErrors = $null
+        $ast = [System.Management.Automation.Language.Parser]::ParseFile($path, [ref]$tokens, [ref]$parseErrors)
+        @($parseErrors).Count | Should -Be 0
+        $assign = @($ast.FindAll({
+            param($n) ($n -is [System.Management.Automation.Language.AssignmentStatementAst]) -and ($n.Left.Extent.Text -eq '$PSNativeCommandUseErrorActionPreference')
+        }, $true))
+        $assign.Count | Should -Be 1
+        $assign[0].Right.Extent.Text | Should -BeExactly '$false'
+        # Top level (the script's own statement list), not inside a function or block.
+        $assign[0].Parent | Should -Be $ast.EndBlock
+        # The statement right before it is the script-wide 'Stop'.
+        $stmts = @($ast.EndBlock.Statements)
+        $at = [array]::IndexOf($stmts, $assign[0])
+        $at | Should -BeGreaterThan 0
+        $stmts[$at - 1].Extent.Text | Should -BeExactly '$ErrorActionPreference = "Stop"'
+        $dockerCalls = @($ast.FindAll({
+            param($n) ($n -is [System.Management.Automation.Language.CommandAst]) -and ($n.GetCommandName() -eq 'docker')
+        }, $true) | Sort-Object { $_.Extent.StartOffset })
+        $dockerCalls.Count | Should -BeGreaterThan 0
+        $assign[0].Extent.StartOffset | Should -BeLessThan $dockerCalls[0].Extent.StartOffset
     }
 
     It "repairs ownership before the era-detection git probe" {
         # Source-order pin: the chown must appear before the first
         # `Invoke-ContainerGit remote get-url origin` (era detection).
-        $chownPos = $Content.IndexOf('busybox chown -R 1000:1000 /daaf')
+        $chownPos = $Content.IndexOf('$BusyboxImage chown -R 1000:1000 /daaf')
         $eraPos = $Content.IndexOf('Invoke-ContainerGit remote get-url origin')
         $chownPos | Should -BeGreaterThan -1
         $eraPos | Should -BeGreaterThan -1

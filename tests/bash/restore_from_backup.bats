@@ -8,6 +8,12 @@
 
 load 'test_helper'
 
+# Fix pass #26 pinned the helper image: every `docker run`/`create` now carries
+# DAAF_BUSYBOX_PIN (test_helper.bash) where it used to say `busybox`, and the mock's call
+# log records it verbatim. BB_RE is that string escaped for grep -E / grep (BRE) patterns
+# (test_helper's DAAF_BUSYBOX_PIN_RE), so a log pattern still names the exact image.
+BB_RE="${DAAF_BUSYBOX_PIN_RE}"
+
 setup() {
     common_setup
     mock_docker
@@ -135,6 +141,7 @@ _mock_restore_docker() {
     : > "${TEST_DIR}/holders_removed"
     rm -f "${TEST_DIR}/pause_armed" "${TEST_DIR}/cleanup_interrupted"
     docker() {
+        if mock_docker_shared_arms "$@"; then return "${MOCK_DOCKER_ARM_STATUS}"; fi
         local a="$*" st="${TEST_DIR}" mode v lbl cid
         printf '%s\n' "${a//$'\n'/ }" >> "${st}/docker_calls.log"
         case "$1" in
@@ -148,7 +155,7 @@ _mock_restore_docker() {
                             for v in "$@"; do :; done
                             if [[ "${v}" == *claude-config-restore-tmp ]]; then mode="${RM_CLAUDE_IDENTITY:-ok}"; else mode="${RM_IDENTITY:-ok}"; fi
                             if [ "${mode}" = vanished_after_marker ]; then
-                                if grep -q -- "-v ${v}:/dest busybox touch /dest/.daaf-restore-swap-started" "${st}/docker_calls.log"; then mode=vanished; else mode=ok; fi
+                                if grep -qF -- "-v ${v}:/dest ${DAAF_BUSYBOX_PIN} touch /dest/.daaf-restore-swap-started" "${st}/docker_calls.log"; then mode=vanished; else mode=ok; fi
                             fi
                             if [ "${mode}" = vanished_after_swap ]; then
                                 if grep -q -- "--sig-proxy=false --name [^ ]* -v ${v}:/src:ro " "${st}/docker_calls.log"; then mode=vanished; else mode=ok; fi
@@ -875,7 +882,8 @@ _make_backup() {
     # `ln -sf --` inside that region -- proving the replay is wired for the second
     # volume, not just referenced globally.
     # Copy-then-swap: the replay runs on the Claude TEMP volume (prepared before the swap).
-    run bash -c "awk '/Restore the Claude Code state volume/{f=1} f' \"${REPO_ROOT}/scripts/host/restore_from_backup.sh\" | grep -c 'CLAUDE_TEMP_VOLUME_NAME}:/dest\" busybox sh -c'"
+    # The image is the pinned constant (fix pass #26), never a bare `busybox`.
+    run bash -c "awk '/Restore the Claude Code state volume/{f=1} f' \"${REPO_ROOT}/scripts/host/restore_from_backup.sh\" | grep -cF 'CLAUDE_TEMP_VOLUME_NAME}:/dest\" \"\${BUSYBOX_IMAGE}\" sh -c'"
     assert_success
     assert_output "1"
     run bash -c "awk '/Restore the Claude Code state volume/{f=1} f' \"${REPO_ROOT}/scripts/host/restore_from_backup.sh\" | grep -c 'ln -sf -- '"
@@ -977,7 +985,7 @@ _make_backup() {
     assert_success
     assert_output --partial "Restoring symlinks"
     # The replay ran against the temp copy, never the live volume.
-    run grep -E 'daaf_daaf-data-restore-tmp:/dest busybox sh -c .*ln -sf' "${TEST_DIR}/docker_calls.log"
+    run grep -E "daaf_daaf-data-restore-tmp:/dest ${BB_RE} sh -c .*ln -sf" "${TEST_DIR}/docker_calls.log"
     assert_success
 }
 
@@ -1092,6 +1100,7 @@ _make_backup() {
 
     # Override docker to return a container name for ps --filter
     docker() {
+        if mock_docker_shared_arms "$@"; then return "${MOCK_DOCKER_ARM_STATUS}"; fi
         case "$1" in
             info)   return 0 ;;
             volume) return 0 ;;
@@ -1162,6 +1171,7 @@ _make_backup() {
     MOCK_DOCKER_VOLUME_EXIT=0
 
     docker() {
+        if mock_docker_shared_arms "$@"; then return "${MOCK_DOCKER_ARM_STATUS}"; fi
         case "$1" in
             info)   return 0 ;;
             volume) return 0 ;;
@@ -1194,6 +1204,7 @@ _make_backup() {
     MOCK_DOCKER_VOLUME_EXIT=0
 
     docker() {
+        if mock_docker_shared_arms "$@"; then return "${MOCK_DOCKER_ARM_STATUS}"; fi
         case "$1" in
             info)   return 0 ;;
             volume) return 0 ;;
@@ -1231,7 +1242,7 @@ _make_backup() {
     run grep -c '^volume rm ' "${TEST_DIR}/docker_calls.log"
     assert_output "0"
     # The swap ran with --sig-proxy=false under its fixed, unlabelled name.
-    run grep -cE '^run --rm --sig-proxy=false --name daaf_daaf-data-restore-swap -v daaf_daaf-data-restore-tmp:/src:ro -v daaf_daaf-data:/dest busybox sh -c trap : INT TERM HUP; ' "${TEST_DIR}/docker_calls.log"
+    run grep -cE "^run --rm --sig-proxy=false --name daaf_daaf-data-restore-swap -v daaf_daaf-data-restore-tmp:/src:ro -v daaf_daaf-data:/dest ${BB_RE} sh -c trap : INT TERM HUP; " "${TEST_DIR}/docker_calls.log"
     assert_output "1"
 }
 
@@ -1335,7 +1346,7 @@ _make_backup() {
     run bash -c 'printf "1\nRESTORE\n" | bash "'"${REPO_ROOT}"'/scripts/host/restore_from_backup.sh"'
     assert_success
     assert_output --partial "Restoring executable permissions"
-    run grep -E 'daaf_daaf-data-restore-tmp:/dest busybox sh -c .*chmod 644' "${TEST_DIR}/docker_calls.log"
+    run grep -E "daaf_daaf-data-restore-tmp:/dest ${BB_RE} sh -c .*chmod 644" "${TEST_DIR}/docker_calls.log"
     assert_success
 }
 
@@ -1449,6 +1460,7 @@ _make_locked_backup() {
     export DAAF_NESTED=1
     # Log every docker call: the refusal must precede any temp-volume create or copy.
     docker() {
+        if mock_docker_shared_arms "$@"; then return "${MOCK_DOCKER_ARM_STATUS}"; fi
         printf '%s\n' "$*" >> "${TEST_DIR}/docker_calls.log"
         case "$1" in
             info|volume|ps) return 0 ;;
@@ -1489,6 +1501,7 @@ _make_locked_backup() {
 # Log every docker call so a test can prove no volume was touched.
 _mock_logging_docker() {
     docker() {
+        if mock_docker_shared_arms "$@"; then return "${MOCK_DOCKER_ARM_STATUS}"; fi
         printf '%s\n' "$*" >> "${TEST_DIR}/docker_calls.log"
         return 0
     }
@@ -2819,8 +2832,8 @@ _RESTORE_SH_REL="scripts/host/restore_from_backup.sh"
     assert_success
     local t
     for t in daaf_daaf-data-restore-tmp daaf_daaf-claude-config-restore-tmp; do
-        run bash -c "grep -n -e '-v ${t}:/dest busybox rm -f /dest/.daaf-restore-swap-started' -e '^volume rm ${t}\$' '${TEST_DIR}/docker_calls.log' | cut -d: -f2-"
-        [[ "${lines[0]}" == *"-v ${t}:/dest busybox rm -f /dest/.daaf-restore-swap-started"* ]]
+        run bash -c "grep -n -e '-v ${t}:/dest ${BB_RE} rm -f /dest/.daaf-restore-swap-started' -e '^volume rm ${t}\$' '${TEST_DIR}/docker_calls.log' | cut -d: -f2-"
+        [[ "${lines[0]}" == *"-v ${t}:/dest ${DAAF_BUSYBOX_PIN} rm -f /dest/.daaf-restore-swap-started"* ]]
         [ "${lines[1]}" = "volume rm ${t}" ]
     done
     # Not on a cancel (no marker was written then). assert_success + the cancel line make
@@ -2887,9 +2900,9 @@ _calls_after_data_swap() {
     assert_output "$(printf '%s\n' \
         'volume inspect --format {{.Labels}} daaf_daaf-data-restore-tmp' \
         'volume inspect --format {{.Labels}} daaf_daaf-claude-config-restore-tmp' \
-        'run --rm --label org.daaf.restore-tmp-for=daaf_daaf-data -v daaf_daaf-data-restore-tmp:/dest busybox rm -f /dest/.daaf-restore-swap-started' \
+        "run --rm --label org.daaf.restore-tmp-for=daaf_daaf-data -v daaf_daaf-data-restore-tmp:/dest ${DAAF_BUSYBOX_PIN} rm -f /dest/.daaf-restore-swap-started" \
         'volume rm daaf_daaf-data-restore-tmp' \
-        'run --rm --label org.daaf.restore-tmp-for=daaf_daaf-claude-config -v daaf_daaf-claude-config-restore-tmp:/dest busybox rm -f /dest/.daaf-restore-swap-started' \
+        "run --rm --label org.daaf.restore-tmp-for=daaf_daaf-claude-config -v daaf_daaf-claude-config-restore-tmp:/dest ${DAAF_BUSYBOX_PIN} rm -f /dest/.daaf-restore-swap-started" \
         'volume rm daaf_daaf-claude-config-restore-tmp')"
 }
 
@@ -2913,7 +2926,7 @@ _calls_after_data_swap() {
     run _calls_after_data_swap "${TEST_DIR}/docker_calls.log"
     assert_output "$(printf '%s\n' \
         'volume inspect --format {{.Labels}} daaf_daaf-data-restore-tmp' \
-        'run --rm --label org.daaf.restore-tmp-for=daaf_daaf-data -v daaf_daaf-data-restore-tmp:/dest busybox rm -f /dest/.daaf-restore-swap-started' \
+        "run --rm --label org.daaf.restore-tmp-for=daaf_daaf-data -v daaf_daaf-data-restore-tmp:/dest ${DAAF_BUSYBOX_PIN} rm -f /dest/.daaf-restore-swap-started" \
         'volume rm daaf_daaf-data-restore-tmp')"
 }
 
@@ -2927,7 +2940,7 @@ _calls_after_data_swap() {
     refute_output --partial "The temporary copy could not be removed"
     run grep -cxF 'volume rm daaf_daaf-data-restore-tmp' "${TEST_DIR}/docker_calls.log"
     assert_output "0"
-    run grep -c -- '-v daaf_daaf-data-restore-tmp:/dest busybox rm -f /dest/.daaf-restore-swap-started' "${TEST_DIR}/docker_calls.log"
+    run grep -c -- '-v daaf_daaf-data-restore-tmp:/dest [^ ]* rm -f /dest/.daaf-restore-swap-started' "${TEST_DIR}/docker_calls.log"
     assert_output "0"
     run grep -cxF 'volume rm daaf_daaf-claude-config-restore-tmp' "${TEST_DIR}/docker_calls.log"
     assert_output "1"
@@ -2955,7 +2968,7 @@ _calls_after_data_swap() {
     assert_output ""
     run grep -c '^volume rm ' "${TEST_DIR}/docker_calls.log"
     assert_output "0"
-    run grep -c 'busybox rm -f /dest/.daaf-restore-swap-started' "${TEST_DIR}/docker_calls.log"
+    run grep -c -- ':/dest [^ ]* rm -f /dest/.daaf-restore-swap-started' "${TEST_DIR}/docker_calls.log"
     assert_output "0"
 }
 
@@ -2974,7 +2987,7 @@ _calls_after_data_swap() {
         refute_output --partial "NOTHING was replaced"
         run grep -c '^volume rm ' "${TEST_DIR}/docker_calls.log"
         assert_output "0"
-        run grep -c 'busybox rm -f /dest/.daaf-restore-swap-started' "${TEST_DIR}/docker_calls.log"
+        run grep -c -- ':/dest [^ ]* rm -f /dest/.daaf-restore-swap-started' "${TEST_DIR}/docker_calls.log"
         assert_output "0"
     done
 }
@@ -2997,7 +3010,7 @@ _calls_after_data_swap() {
         refute_output --partial "NOTHING was replaced"
         run grep -c '^volume rm ' "${TEST_DIR}/docker_calls.log"
         assert_output "0"
-        run grep -c 'busybox rm -f /dest/.daaf-restore-swap-started' "${TEST_DIR}/docker_calls.log"
+        run grep -c -- ':/dest [^ ]* rm -f /dest/.daaf-restore-swap-started' "${TEST_DIR}/docker_calls.log"
         assert_output "0"
         # No container inspect or exact-name list once the swap ran.
         run _calls_after_data_swap "${TEST_DIR}/docker_calls.log"
@@ -3174,10 +3187,10 @@ _calls_after_data_swap() {
     assert_failure 1
     assert_output --partial "ERROR: The temporary copy of the backup in Docker (volume 'daaf_daaf-data-restore-tmp') was changed by"
     assert_output --partial "It was not used, and nothing was removed."
-    run grep -c -- '-v daaf_daaf-claude-config-restore-tmp:/dest busybox rm -f /dest/.daaf-restore-swap-started' "${TEST_DIR}/docker_calls.log"
+    run grep -c -- "-v daaf_daaf-claude-config-restore-tmp:/dest ${BB_RE} rm -f /dest/.daaf-restore-swap-started" "${TEST_DIR}/docker_calls.log"
     assert_output "1"
     # The changed (data) temp is not touched; nothing is removed or reaped; no swap.
-    run grep -c -- '-v daaf_daaf-data-restore-tmp:/dest busybox rm -f /dest/.daaf-restore-swap-started' "${TEST_DIR}/docker_calls.log"
+    run grep -c -- '-v daaf_daaf-data-restore-tmp:/dest [^ ]* rm -f /dest/.daaf-restore-swap-started' "${TEST_DIR}/docker_calls.log"
     assert_output "0"
     run grep -c '^volume rm ' "${TEST_DIR}/docker_calls.log"
     assert_output "0"
@@ -3208,10 +3221,10 @@ _calls_after_data_swap() {
     assert_output --partial "ERROR: Could not prepare the temporary copy for the final step."
     local t
     for t in daaf_daaf-data-restore-tmp daaf_daaf-claude-config-restore-tmp; do
-        run bash -c "grep -e '-v ${t}:/dest busybox rm -f /dest/.daaf-restore-swap-started' -e '^volume rm ${t}\$' '${TEST_DIR}/docker_calls.log'"
+        run bash -c "grep -e '-v ${t}:/dest ${BB_RE} rm -f /dest/.daaf-restore-swap-started' -e '^volume rm ${t}\$' '${TEST_DIR}/docker_calls.log'"
         assert_success
         [ "${#lines[@]}" -eq 2 ]
-        [[ "${lines[0]}" == *"-v ${t}:/dest busybox rm -f /dest/.daaf-restore-swap-started" ]]
+        [[ "${lines[0]}" == *"-v ${t}:/dest ${DAAF_BUSYBOX_PIN} rm -f /dest/.daaf-restore-swap-started" ]]
         [ "${lines[1]}" = "volume rm ${t}" ]
     done
     _assert_no_live_write
@@ -3896,4 +3909,321 @@ DRIVER
         '[x_daaf-data-restore-tmp] plain: status=2 said= psexit=0 calls=ps -a --filter volume=x_daaf-data-restore-tmp --format {{.ID}} {{.State}}|' \
         '[x_daaf-data-restore-tmp] plain: status=0 said= psexit=0 calls=ps -a --filter volume=x_daaf-data-restore-tmp --format {{.ID}} {{.State}}|rm abc|volume rm x_daaf-data-restore-tmp|' \
         '[x_daaf-data-restore-tmp] plain: status=3 said=Daemon down psexit=4 calls=ps -a --filter volume=x_daaf-data-restore-tmp --format {{.ID}} {{.State}}|ps -a --filter volume=x_daaf-data-restore-tmp --format {{.ID}} {{.State}}|')"
+}
+
+# =========================================================================
+# --- Fix pass #26 (F1 compatibility): version check, helper image check, pin ---
+# =========================================================================
+# Right after `docker info` the restore reads `docker version` and refuses (exit 1,
+# nothing changed) when the client or Engine major is below 25 or cannot be read; any
+# major other than the tested 29 prints a NOTE and continues (no WARNING latch). After
+# the volume check it makes sure the PINNED helper image is present (`docker pull` when
+# `image inspect` fails; refuse when the pull fails) -- all of it BEFORE any prompt. Every
+# docker mock here delegates those calls to test_helper's mock_docker_shared_arms
+# (MOCK_DOCKER_VERSION / _IMAGE_INSPECT_EXIT / _PULL_*); MOCK_DOCKER_ARGV_LOG records
+# the exact argv of EVERY call, which the restore mock's own log does not.
+
+# The restore's version-refusal block for client $1 / Engine $2 ($3 = "old" | "read").
+_f1_restore_version_refusal() {
+    local first
+    if [ "$3" = old ]; then
+        first="ERROR: This Docker version is too old for the restore (Docker client $1, Docker Engine $2)."
+    else
+        first="ERROR: Could not read the Docker version (Docker client $1, Docker Engine $2)."
+    fi
+    printf '%s\n' "${first}" \
+        '       The restore needs Docker 25.0 or newer, for both the Docker client and Docker Engine' \
+        '       (Docker Desktop 4.27.1 or newer). Update Docker, then run the restore again.' \
+        '       (Docker Desktop or Docker Engine is required; Podman is not supported.)' \
+        '       Nothing was changed.'
+}
+
+# Byte offset of $2 in $1 (-1 when absent): orders text that may share an output line.
+_f1_offset() {
+    local pre
+    case "$1" in *"$2"*) ;; *) echo -1; return 0 ;; esac
+    pre="${1%%"$2"*}"
+    echo "${#pre}"
+}
+
+@test "F1 version: 29.x on both sides prints no NOTE; another major >= 25 (client or Engine) prints the NOTE once and the restore runs to the end" {
+    _make_backup
+    export DAAF_NESTED=1
+    local c v note
+    # "<docker version stdout>|<expected NOTE, empty = none>". The multi-line case: only
+    # the LAST non-empty stdout line is the version (a notice line above it is ignored).
+    for c in \
+        "29.1.3 29.1.3|" \
+        "29.0.0 29.4.1|" \
+        $'WARNING: a notice line\n29.1.3 29.1.3\n|' \
+        "25.0.2 29.1.3|NOTE: The restore has not been tested with this Docker version (Docker client 25.0.2, Docker Engine 29.1.3; tested: 29). Continuing." \
+        "29.1.3 28.5.1|NOTE: The restore has not been tested with this Docker version (Docker client 29.1.3, Docker Engine 28.5.1; tested: 29). Continuing." \
+        "30.0.0 30.0.0|NOTE: The restore has not been tested with this Docker version (Docker client 30.0.0, Docker Engine 30.0.0; tested: 29). Continuing."; do
+        v="${c%%|*}"
+        note="${c#*|}"
+        export MOCK_DOCKER_VERSION="${v}"
+        _mock_restore_docker
+        run bash -c 'printf "1\nRESTORE\n" | bash "'"${REPO_ROOT}"'/'"${_RESTORE_SH_REL}"'"'
+        echo "case version=[${v}]"
+        assert_success
+        assert_output --partial "  Restore complete!"
+        refute_output --partial "WITH WARNINGS"
+        refute_output --partial "ERROR:"
+        if [ -z "${note}" ]; then
+            refute_output --partial "NOTE: The restore has not been tested"
+        else
+            assert_output --partial "${note}"
+            [ "$(grep -c 'NOTE: The restore has not been tested' <<< "${output}")" -eq 1 ]
+        fi
+    done
+}
+
+@test "F1 version: a client or Engine below 25 refuses, exit 1, the exact ERROR lines on stderr, and NO docker call after info + version" {
+    _make_backup
+    export DAAF_NESTED=1 MOCK_DOCKER_ARGV_LOG="${TEST_DIR}/argv.log"
+    local v
+    for v in "24.0.7 29.1.3" "29.1.3 24.0.7" "20.10.24 20.10.24"; do
+        export MOCK_DOCKER_VERSION="${v}"
+        : > "${MOCK_DOCKER_ARGV_LOG}"
+        _mock_restore_docker
+        # stderr ONLY (stdout to /dev/null): the refusal is exactly these five lines.
+        run bash -c 'printf "1\nRESTORE\n" | bash "'"${REPO_ROOT}"'/'"${_RESTORE_SH_REL}"'" 2>&1 > /dev/null'
+        echo "case version=[${v}]"
+        assert_failure 1
+        assert_output "$(_f1_restore_version_refusal "${v% *}" "${v#* }" old)"
+        run mock_docker_argv_show "${MOCK_DOCKER_ARGV_LOG}"
+        assert_output "$(printf '%s\n' '[info]' '[version] [--format] [{{.Client.Version}} {{.Server.Version}}]')"
+    done
+}
+
+@test "F1 version: an empty, partial or unparsable version refuses with 'Could not read', exit 1, nothing after info + version" {
+    _make_backup
+    export DAAF_NESTED=1 MOCK_DOCKER_ARGV_LOG="${TEST_DIR}/argv.log"
+    local c v shown exitc
+    # "<stdout>|<exit>|<client shown> <Engine shown>". "24.0.7 abc": unreadable wins
+    # over too-old (the Engine side cannot be judged at all).
+    for c in "|0|unknown unknown" "|1|unknown unknown" "29.1.3|0|29.1.3 unknown" "abc def|0|abc def" "v29.1.3 29.1.3|0|v29.1.3 29.1.3" "24.0.7 abc|0|24.0.7 abc"; do
+        v="${c%%|*}"
+        exitc="${c#*|}"; exitc="${exitc%%|*}"
+        shown="${c##*|}"
+        export MOCK_DOCKER_VERSION="${v}" MOCK_DOCKER_VERSION_EXIT="${exitc}"
+        : > "${MOCK_DOCKER_ARGV_LOG}"
+        _mock_restore_docker
+        run bash -c 'printf "1\nRESTORE\n" | bash "'"${REPO_ROOT}"'/'"${_RESTORE_SH_REL}"'" 2>&1 > /dev/null'
+        echo "case version=[${v}] exit=${exitc}"
+        assert_failure 1
+        assert_output "$(_f1_restore_version_refusal "${shown% *}" "${shown#* }" read)"
+        run mock_docker_argv_show "${MOCK_DOCKER_ARGV_LOG}"
+        assert_output "$(printf '%s\n' '[info]' '[version] [--format] [{{.Client.Version}} {{.Server.Version}}]')"
+    done
+}
+
+# Review fix round 9 (ISSUE 1): a client of 25 or newer that cannot talk to an Engine
+# older than 25.0 fails `docker info` itself, so the version check above is never
+# reached. The info-failure branch reads `docker version` too and, when the client's
+# major parses as >= 25 and the Engine's version is empty or unparsable, adds these two
+# lines (client $1) after the unchanged "not running" line. Same exit 1.
+_f1_restore_info_hint() {
+    printf '%s\n' \
+        "       If Docker is running, its Docker Engine may be older than 25.0 (Docker client $1)." \
+        '       The restore needs Docker 25.0 or newer (Docker Desktop 4.27.1 or newer).'
+}
+
+@test "F1 info hint: docker info fails, client >= 25 and an empty or unparsable Engine -> the 'not running' line plus the old-Engine hint on stderr, exit 1, nothing after info + version" {
+    export DAAF_NESTED=1 MOCK_DOCKER_INFO_EXIT=1 MOCK_DOCKER_ARGV_LOG="${TEST_DIR}/argv.log"
+    local c v exitc client
+    # "<docker version stdout>|<its exit>|<client shown>". A real 29.x client facing an
+    # old Engine prints its own version and fails on the server part (inference: not
+    # observed against a real old Engine), hence the nonzero exits; only the LAST
+    # non-empty stdout line counts.
+    for c in "29.1.3|1|29.1.3" "29.1.3 |1|29.1.3" "25.0.0 abc|0|25.0.0" $'WARNING: a notice\n30.0.1|1|30.0.1' "29|1|29" "29.1.3 v24.0.7|1|29.1.3"; do
+        v="${c%%|*}"
+        exitc="${c#*|}"; exitc="${exitc%%|*}"
+        client="${c##*|}"
+        export MOCK_DOCKER_VERSION="${v}" MOCK_DOCKER_VERSION_EXIT="${exitc}"
+        : > "${MOCK_DOCKER_ARGV_LOG}"
+        # stderr ONLY (stdout to /dev/null): the "not running" line and the hint.
+        run bash -c 'bash "'"${REPO_ROOT}"'/'"${_RESTORE_SH_REL}"'" < /dev/null 2>&1 > /dev/null'
+        echo "case version=[${v}] exit=${exitc}"
+        assert_failure 1
+        assert_output "$(printf '%s\n' 'ERROR: Docker Desktop does not seem to be running. Please start it and try again.'; _f1_restore_info_hint "${client}")"
+        run mock_docker_argv_show "${MOCK_DOCKER_ARGV_LOG}"
+        assert_output "$(printf '%s\n' '[info]' '[version] [--format] [{{.Client.Version}} {{.Server.Version}}]')"
+    done
+}
+
+@test "F1 info hint: docker info fails and the client is below 25, unparsable or absent, or the Engine version reads -> ONLY the unchanged 'not running' line, exit 1" {
+    export DAAF_NESTED=1 MOCK_DOCKER_INFO_EXIT=1 MOCK_DOCKER_ARGV_LOG="${TEST_DIR}/argv.log"
+    local c v exitc
+    # "24.0.7": client below 25. "", "abc", "v29.1.3", "123456.0": no parsable client
+    # (a major of six or more digits is unparsable in both twins). "29.1.3 29.1.3" and
+    # "29.1.3 24.0.7": the Engine's version reads, so the hint does not apply.
+    for c in "24.0.7|1" "|1" "abc|1" "v29.1.3|1" "123456.0|1" "29.1.3 29.1.3|0" "29.1.3 24.0.7|0"; do
+        v="${c%%|*}"
+        exitc="${c#*|}"
+        export MOCK_DOCKER_VERSION="${v}" MOCK_DOCKER_VERSION_EXIT="${exitc}"
+        : > "${MOCK_DOCKER_ARGV_LOG}"
+        run bash -c 'bash "'"${REPO_ROOT}"'/'"${_RESTORE_SH_REL}"'" < /dev/null 2>&1 > /dev/null'
+        echo "case version=[${v}] exit=${exitc}"
+        assert_failure 1
+        assert_output 'ERROR: Docker Desktop does not seem to be running. Please start it and try again.'
+        run mock_docker_argv_show "${MOCK_DOCKER_ARGV_LOG}"
+        assert_output "$(printf '%s\n' '[info]' '[version] [--format] [{{.Client.Version}} {{.Server.Version}}]')"
+    done
+}
+
+@test "F1 image: a present helper image is inspected by its pinned name right after the volume check and NOT pulled" {
+    _make_backup
+    export DAAF_NESTED=1 MOCK_DOCKER_ARGV_LOG="${TEST_DIR}/argv.log"
+    : > "${MOCK_DOCKER_ARGV_LOG}"
+    _mock_restore_docker
+    run bash -c 'printf "1\nRESTORE\n" | bash "'"${REPO_ROOT}"'/'"${_RESTORE_SH_REL}"'"'
+    assert_success
+    assert_output --partial "  Restore complete!"
+    refute_output --partial "Downloading the small helper image"
+    run bash -c "mock_docker_argv_show '${MOCK_DOCKER_ARGV_LOG}' | head -n 5"
+    [ "${lines[0]}" = '[info]' ]
+    [ "${lines[1]}" = '[version] [--format] [{{.Client.Version}} {{.Server.Version}}]' ]
+    [ "${lines[2]}" = '[volume] [inspect] [daaf_daaf-data]' ]
+    [ "${lines[3]}" = "[image] [inspect] [${DAAF_BUSYBOX_PIN}]" ]
+    [[ "${lines[4]}" == "[ps] "* ]]
+    run grep -c '^pull' "${MOCK_DOCKER_ARGV_LOG}"
+    assert_output "0"
+}
+
+@test "F1 image: a missing helper image is pulled (pinned name, progress shown) before anything else, then the restore runs to the end" {
+    _make_backup
+    export DAAF_NESTED=1 MOCK_DOCKER_ARGV_LOG="${TEST_DIR}/argv.log" MOCK_DOCKER_IMAGE_INSPECT_EXIT=1
+    : > "${MOCK_DOCKER_ARGV_LOG}"
+    _mock_restore_docker
+    run bash -c 'printf "1\nRESTORE\n" | bash "'"${REPO_ROOT}"'/'"${_RESTORE_SH_REL}"'"'
+    assert_success
+    assert_output --partial "$(printf '%s\n' \
+        'Downloading the small helper image busybox that the restore needs...' \
+        '1.37.0: Pulling from library/busybox' \
+        "Status: Downloaded newer image for ${DAAF_BUSYBOX_PIN}")"
+    assert_output --partial "  Restore complete!"
+    refute_output --partial "ERROR:"
+    run bash -c "mock_docker_argv_show '${MOCK_DOCKER_ARGV_LOG}' | head -n 6"
+    [ "${lines[3]}" = "[image] [inspect] [${DAAF_BUSYBOX_PIN}]" ]
+    [ "${lines[4]}" = "[pull] [${DAAF_BUSYBOX_PIN}]" ]
+    [[ "${lines[5]}" == "[ps] "* ]]
+    run grep -c '^pull' "${MOCK_DOCKER_ARGV_LOG}"
+    assert_output "1"
+}
+
+@test "F1 image: a failed pull refuses, exit 1, with Docker's last line and 'Nothing was changed.', before ANY volume, container or prompt" {
+    _make_backup
+    export DAAF_NESTED=1 MOCK_DOCKER_ARGV_LOG="${TEST_DIR}/argv.log" MOCK_DOCKER_IMAGE_INSPECT_EXIT=1 MOCK_DOCKER_PULL_EXIT=1
+    local said
+    # Docker's LAST non-empty stderr line, trimmed, is the one shown.
+    export MOCK_DOCKER_PULL_STDERR=$'Using default tag: noise\n  Error response from daemon: Get "https://registry-1.docker.io/v2/": dial tcp: lookup registry-1.docker.io: no such host  \n\n'
+    said='Error response from daemon: Get "https://registry-1.docker.io/v2/": dial tcp: lookup registry-1.docker.io: no such host'
+    : > "${MOCK_DOCKER_ARGV_LOG}"
+    _mock_restore_docker
+    run bash -c 'printf "1\nRESTORE\n" | bash "'"${REPO_ROOT}"'/'"${_RESTORE_SH_REL}"'" 2>&1 > /dev/null'
+    assert_failure 1
+    assert_output "$(printf '%s\n' '' \
+        'ERROR: The restore needs the small helper image busybox and could not download it.' \
+        '       Check the internet connection and that Docker Desktop is running, then run the restore again.' \
+        "       Docker said: ${said}" \
+        '       Nothing was changed.')"
+    # Nothing was created or run: the calls end with the failed pull.
+    run mock_docker_argv_show "${MOCK_DOCKER_ARGV_LOG}"
+    assert_output "$(printf '%s\n' '[info]' '[version] [--format] [{{.Client.Version}} {{.Server.Version}}]' \
+        '[volume] [inspect] [daaf_daaf-data]' "[image] [inspect] [${DAAF_BUSYBOX_PIN}]" "[pull] [${DAAF_BUSYBOX_PIN}]")"
+    # A pull that failed with nothing on stderr: no "Docker said:" line at all.
+    export MOCK_DOCKER_PULL_STDERR=""
+    _mock_restore_docker
+    run bash -c 'printf "1\nRESTORE\n" | bash "'"${REPO_ROOT}"'/'"${_RESTORE_SH_REL}"'"'
+    assert_failure 1
+    assert_output --partial "$(printf '%s\n' \
+        'Downloading the small helper image busybox that the restore needs...' '' \
+        'ERROR: The restore needs the small helper image busybox and could not download it.' \
+        '       Check the internet connection and that Docker Desktop is running, then run the restore again.' \
+        '       Nothing was changed.')"
+    refute_output --partial "Docker said:"
+    refute_output --partial "Available backups"
+    _assert_no_live_write
+}
+
+@test "F1 order: the version NOTE and the image download come BEFORE the three prompts (stop, backup number, RESTORE), each asked once (real pty)" {
+    # `read -p` prints its prompt only on a terminal, so run under `script` for a pty.
+    command -v script > /dev/null || skip "script (util-linux) not installed"
+    _make_backup
+    export DAAF_NESTED=1 RM_RUNNING=daaf-daaf-docker-1 MOCK_DOCKER_VERSION="30.0.0 30.0.0" MOCK_DOCKER_IMAGE_INSPECT_EXIT=1
+    _mock_restore_docker
+    run bash -c 'printf "y\n1\nRESTORE\n" | env -u CI SHELL=/bin/bash script -qec "bash \"'"${REPO_ROOT}"'/'"${_RESTORE_SH_REL}"'\"" /dev/null'
+    assert_success
+    assert_output --partial "  Restore complete!"
+    local note dl p1 p2 p3
+    note="$(_f1_offset "${output}" 'NOTE: The restore has not been tested with this Docker version')"
+    dl="$(_f1_offset "${output}" 'Downloading the small helper image busybox that the restore needs...')"
+    p1="$(_f1_offset "${output}" 'Stop the container now? (y/n): ')"
+    p2="$(_f1_offset "${output}" 'Enter backup number to restore (1-1): ')"
+    p3="$(_f1_offset "${output}" 'Type RESTORE to confirm, or anything else to cancel: ')"
+    echo "offsets note=${note} download=${dl} stop=${p1} number=${p2} RESTORE=${p3}"
+    # One assertion per line: a failing [ ] that is not the LAST command of an && list
+    # does not trip bats' errexit, so a chained form would pass vacuously.
+    [ "${note}" -ge 0 ]
+    [ "${note}" -lt "${dl}" ]
+    [ "${dl}" -lt "${p1}" ]
+    [ "${p1}" -lt "${p2}" ]
+    [ "${p2}" -lt "${p3}" ]
+    # Exactly three prompts, no fourth (no leftover prompt, no repeat).
+    [ "$(grep -oE 'Stop the container now\? \(y/n\): |Enter backup number to restore \(1-1\): |Type RESTORE to confirm, or anything else to cancel: |Remove it and continue\? \(y/n\): ' <<< "${output}" | wc -l)" -eq 3 ]
+}
+
+@test "F1 order: the CI answers y / 1 / RESTORE (piped, running container) still drive a full restore" {
+    # ci-integration.yml: printf 'y\n1\nRESTORE\n' | bash restore_from_backup.sh. The new
+    # checks read no input, so each answer still reaches its own prompt.
+    _make_backup
+    export DAAF_NESTED=1 RM_RUNNING=daaf-daaf-docker-1 MOCK_DOCKER_IMAGE_INSPECT_EXIT=1
+    _mock_restore_docker
+    run bash -c 'printf "y\n1\nRESTORE\n" | bash "'"${REPO_ROOT}"'/'"${_RESTORE_SH_REL}"'"'
+    assert_success
+    assert_output --partial "container is currently running"
+    assert_output --partial "Stopping containers"
+    assert_output --partial "  Restore complete!"
+    [ -f "${TEST_DIR}/composed_down" ]
+    run grep -c -- '--sig-proxy=false --name daaf_daaf-data-restore-swap ' "${TEST_DIR}/docker_calls.log"
+    assert_output "1"
+}
+
+@test "F1 pin: every docker run/create image argument is the pinned busybox digest, never a bare busybox (full restore, and a leftover answered y)" {
+    _make_full_backup
+    export DAAF_NESTED=1 MOCK_DOCKER_ARGV_LOG="${TEST_DIR}/argv.log" MOCK_DOCKER_IMAGE_INSPECT_EXIT=1
+    local scenario n
+    for scenario in full leftover; do
+        unset RM_LEFTOVER RM_LEFTOVER_MARKER
+        : > "${MOCK_DOCKER_ARGV_LOG}"
+        if [ "${scenario}" = leftover ]; then
+            export RM_LEFTOVER=daaf_daaf-data-restore-tmp RM_LEFTOVER_MARKER=yes
+            _mock_restore_docker
+            run bash -c 'printf "1\ny\nRESTORE\n" | bash "'"${REPO_ROOT}"'/'"${_RESTORE_SH_REL}"'"'
+        else
+            _mock_restore_docker
+            run bash -c 'printf "1\nRESTORE\n" | bash "'"${REPO_ROOT}"'/'"${_RESTORE_SH_REL}"'"'
+        fi
+        echo "scenario=${scenario}"
+        assert_success
+        assert_output --partial "  Restore complete!"
+        run mock_docker_argv_images "${MOCK_DOCKER_ARGV_LOG}"
+        n="${#lines[@]}"
+        echo "run/create calls: ${n}"
+        # Non-vacuous: copy, strip, chown, both replays + probes, counts, markers, swaps...
+        [ "${n}" -ge 20 ]
+        run bash -c "mock_docker_argv_images '${MOCK_DOCKER_ARGV_LOG}' | grep -vxF -- '${DAAF_BUSYBOX_PIN}'"
+        assert_output ""
+        # No argument anywhere names another busybox (bare, :latest, another digest).
+        run awk -F '\037' -v pin="${DAAF_BUSYBOX_PIN}" '{ for (i = 1; i < NF; i++) if ($i ~ /^busybox([:@]|$)/ && $i != pin) print }' "${MOCK_DOCKER_ARGV_LOG}"
+        assert_output ""
+        run grep -c "^image"$'\037'"inspect"$'\037'"${DAAF_BUSYBOX_PIN}"$'\037'"\$" "${MOCK_DOCKER_ARGV_LOG}"
+        assert_output "1"
+        run grep -c "^pull"$'\037'"${DAAF_BUSYBOX_PIN}"$'\037'"\$" "${MOCK_DOCKER_ARGV_LOG}"
+        assert_output "1"
+    done
+    # The leftover scenario did run the leftover's marker probe (a busybox `run`).
+    run grep -c 'test ! -e /src/.daaf-restore-swap-started' "${MOCK_DOCKER_ARGV_LOG}"
+    assert_output "1"
 }

@@ -732,9 +732,24 @@ Describe "backup_daaf.ps1 count helpers and verification structure" {
 
     Context "Uncreatable-name switch and latch wiring" {
         It "passes DAAF_STAGE_NAMES=win AFTER the -v for BOTH staging launches (data + Claude)" {
-            $Content | Should -Match ([regex]::Escape('$StageCid = (docker run -d -v "${VolumeName}:/source:ro" -e DAAF_STAGE_NAMES=win busybox sh -c $StageProgram 2>&1'))
-            $Content | Should -Match ([regex]::Escape('$ClaudeStageCid = (docker run -d -v "${ClaudeVolumeName}:/source:ro" -e DAAF_STAGE_NAMES=win busybox sh -c $StageProgram 2>&1'))
-            @([regex]::Matches($Content, 'busybox sh -c \$StageProgram')).Count | Should -Be 2
+            # Pass #26: the pinned $BusyboxImage, and the CID read from stdout only (2>$null).
+            $Content | Should -Match ([regex]::Escape('$stageCidLines = @(docker run -d -v "${VolumeName}:/source:ro" -e DAAF_STAGE_NAMES=win $BusyboxImage sh -c $StageProgram 2>$null)'))
+            $Content | Should -Match ([regex]::Escape('$claudeCidLines = @(docker run -d -v "${ClaudeVolumeName}:/source:ro" -e DAAF_STAGE_NAMES=win $BusyboxImage sh -c $StageProgram 2>$null)'))
+            @([regex]::Matches($Content, '\$BusyboxImage sh -c \$StageProgram')).Count | Should -Be 2
+        }
+        It "reads both staging CIDs and both docker wait statuses from STDOUT ONLY, the last non-empty line (pass #26)" {
+            # Audit 04: under `2>&1 | Select-Object -Last 1` a stderr line that arrived
+            # after the CID (or the status) replaced it. The four captures discard stderr
+            # and take the last non-empty stdout line; no `run -d` / `wait` merges stderr.
+            $Content | Should -Match ([regex]::Escape('$stageWaitLines = @(docker wait $StageCid 2>$null)'))
+            $Content | Should -Match ([regex]::Escape('$claudeWaitLines = @(docker wait $ClaudeStageCid 2>$null)'))
+            $Content | Should -Match ([regex]::Escape('foreach ($cidLine in $stageCidLines) { if ("$cidLine".Trim() -ne '''') { $StageCid = "$cidLine".Trim() } }'))
+            $Content | Should -Match ([regex]::Escape('foreach ($cidLine in $claudeCidLines) { if ("$cidLine".Trim() -ne '''') { $ClaudeStageCid = "$cidLine".Trim() } }'))
+            $Content | Should -Match ([regex]::Escape('foreach ($waitLine in $stageWaitLines) { if ("$waitLine".Trim() -ne '''') { $StageStatusRaw = "$waitLine".Trim() } }'))
+            $Content | Should -Match ([regex]::Escape('foreach ($waitLine in $claudeWaitLines) { if ("$waitLine".Trim() -ne '''') { $ClaudeStageStatusRaw = "$waitLine".Trim() } }'))
+            $code = @(($Content -split "`n") | Where-Object { $_ -notmatch '^\s*#' })
+            @($code | Where-Object { $_ -match 'docker (run -d|wait) ' -and $_ -match '2>&1' }).Count | Should -Be 0
+            @($code | Where-Object { $_ -match 'docker (run -d|wait) ' -and $_ -match 'Select-Object -Last 1' }).Count | Should -Be 0
         }
         It "latches HadWarnings from the name report for both volumes (each called exactly once)" {
             $data = "if (Write-DaafNameReport -Lines `$StageDoneLog -Where 'Docker volume' -ExpectMarker) { `$HadWarnings = `$true }"
@@ -859,7 +874,7 @@ Describe "backup_daaf.ps1 count helpers and verification structure" {
             $Content | Should -Match ([regex]::Escape('$Fallback = Measure-DaafBackupTree -Root $HostPath ' + $args3))
         }
         It "counts the host folder container-side via a read-only bind mount, by direct invocation" {
-            $Content | Should -Match ([regex]::Escape('@(docker run --rm -v "${HostPath}:/b:ro" busybox sh -c $BackupCountProgram 2>&1)'))
+            $Content | Should -Match ([regex]::Escape('@(docker run --rm -v "${HostPath}:/b:ro" $BusyboxImage sh -c $BackupCountProgram 2>&1)'))
             $Content | Should -Match ([regex]::Escape('$HostCountExit = $LASTEXITCODE'))
         }
         It "the backup-folder count uses the staged count's exact predicate and single-pass KB formula" {
@@ -890,9 +905,13 @@ Describe "backup_daaf.ps1 count helpers and verification structure" {
             $Content | Should -Match ([regex]::Escape('$ClaudeFallback = Measure-DaafBackupTree -Root $ClaudeDestPath -ExcludeRootFiles @($SymlinksManifest, $PermissionsManifest) -ExcludeRootDirs @($ClaudeSubDir)'))
         }
         It "starts the staging container's try/finally before docker wait (no leak window)" {
-            $cidIdx = $Content.IndexOf('$stageStartOk = ($LASTEXITCODE -eq 0')
+            # Pass #26: the start check reads the cached exit code and the wait status is
+            # captured stdout-only; the order pinned here is unchanged.
+            $cidIdx = $Content.IndexOf('$stageStartOk = ($stageRunExit -eq 0')
+            $cidIdx | Should -BeGreaterThan -1
             $tryIdx = $Content.IndexOf('try {', $cidIdx)
-            $waitIdx = $Content.IndexOf('$StageStatusRaw = (docker wait $StageCid')
+            $waitIdx = $Content.IndexOf('$stageWaitLines = @(docker wait $StageCid')
+            $waitIdx | Should -BeGreaterThan -1
             $finallyIdx = $Content.IndexOf('} finally {', $waitIdx)
             $rmIdx = $Content.IndexOf('$null = docker rm -f $StageCid 2>&1', $finallyIdx)
             $tryIdx | Should -BeGreaterThan $cidIdx
@@ -931,7 +950,7 @@ Describe "backup_daaf.ps1 count helpers and verification structure" {
             # long-path segment: the grouped `{ ... || echo 0; }` must turn that into 0
             # rather than failing the whole `&&` chain ("Could not scan").
             $line = @(($Content -split "`n") | Where-Object { $_ -match '^\$ScanOutput = docker run' })[0]
-            $m = [regex]::Match($line, 'busybox sh -c "(.*)"\s*$')
+            $m = [regex]::Match($line, '\$BusyboxImage sh -c "(.*)"\s*$')
             $m.Success | Should -BeTrue
             # Set-Variable: the value is consumed by ExpandString, which the analyzer's
             # used-variable rule cannot see.
@@ -1051,19 +1070,58 @@ Describe "backup_daaf.ps1 end-to-end copy path (fake docker)" -Skip:(($PSVersion
     BeforeAll {
         . "$PSScriptRoot/TestHelper.ps1"
         $script:SavedEnv = @{}
-        foreach ($k in @('PATH', 'DAAF_DRY_RUN', 'DAAF_NESTED', 'DAAF_TEST_MODE', 'DAAF_PROJECT_NAME', 'DAAF_DATA_VOLUME_NAME')) {
+        foreach ($k in @('PATH', 'DAAF_DRY_RUN', 'DAAF_NESTED', 'DAAF_TEST_MODE', 'DAAF_PROJECT_NAME', 'DAAF_DATA_VOLUME_NAME', 'DAAF_TEST_ALLOW_CORE_NONWINDOWS')) {
             $script:SavedEnv[$k] = [Environment]::GetEnvironmentVariable($k, 'Process')
         }
         Remove-Item Env:DAAF_DRY_RUN, Env:DAAF_TEST_MODE, Env:DAAF_PROJECT_NAME, Env:DAAF_DATA_VOLUME_NAME -ErrorAction SilentlyContinue
         $env:DAAF_NESTED = "1"
+        # The script's edition guard (pass #26) refuses pwsh on Linux/macOS; this TEST-ONLY
+        # bypass lets these runs reach the fake docker (Invoke-FakeBackup -NoEditionBypass
+        # removes it for the guard's own tests).
+        $env:DAAF_TEST_ALLOW_CORE_NONWINDOWS = "1"
+        # The pinned helper image: every `docker run` must name exactly this string
+        # (backup_daaf.ps1's $BusyboxImage).
+        $script:PinnedImage = 'busybox:1.37.0@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e'
 
         $script:FakeBin = Join-Path $TestDrive 'bin'
         $null = New-Item -ItemType Directory -Force -Path $script:FakeBin
         $fakeDocker = @'
 #!/usr/bin/env bash
 # Fake docker for backup_daaf.Tests.ps1 (end-to-end). FAKE_* env vars drive it.
+# Every call is appended to FAKE_CALL_LOG as ONE line (newlines inside arguments, e.g.
+# the multi-line $StageProgram, are folded to spaces).
+if [ -n "${FAKE_CALL_LOG:-}" ]; then
+    printf '%s\n' "$(printf '%s' "$*" | tr '\n' ' ')" >> "${FAKE_CALL_LOG}"
+fi
 case "${1:-}" in
-    info) exit 0 ;;
+    # FAKE_INFO_FAIL=1 (review fix round 9): Docker cannot be reached, `docker info` fails.
+    info)
+        if [ "${FAKE_INFO_FAIL:-0}" = "1" ]; then echo "Cannot connect to the Docker daemon" >&2; exit 1; fi
+        exit 0 ;;
+    # Pass #26 startup checks. FAKE_DOCKER_VERSION: what `version --format ...` prints
+    # (default "29.1.3 29.1.3", the tested version; "none" prints nothing).
+    # FAKE_DOCKER_VERSION_EXIT (review fix round 9): its exit code; a nonzero exit also
+    # prints a server error on stderr AFTER the stdout, which must never be read as the
+    # version (the script reads stdout only).
+    version)
+        v="${FAKE_DOCKER_VERSION:-29.1.3 29.1.3}"
+        if [ "${v}" != "none" ]; then printf '%s\n' "${v}"; fi
+        if [ "${FAKE_DOCKER_VERSION_EXIT:-0}" != "0" ]; then echo "Error response from daemon: client version 1.52 is too new. Maximum supported API version is 1.43" >&2; fi
+        exit "${FAKE_DOCKER_VERSION_EXIT:-0}" ;;
+    # FAKE_IMAGE_ABSENT=1: the pinned helper image is not on this computer (inspect fails).
+    image)
+        if [ "${FAKE_IMAGE_ABSENT:-0}" = "1" ]; then echo "Error response from daemon: No such image: ${!#}" >&2; exit 1; fi
+        exit 0 ;;
+    # The download: progress on stdout; FAKE_PULL_FAIL=1 fails it with Docker's offline
+    # text on stderr (the "Docker said:" line).
+    pull)
+        echo "1.37.0: Pulling from library/busybox"
+        if [ "${FAKE_PULL_FAIL:-0}" = "1" ]; then
+            echo 'Error response from daemon: Get "https://registry-1.docker.io/v2/": dial tcp: lookup registry-1.docker.io: no such host' >&2
+            exit 1
+        fi
+        echo "Status: Downloaded newer image for ${!#}"
+        exit 0 ;;
     volume)
         # Data volume exists; the Claude-config volume does not (skip that block).
         case "$*" in *claude-config*) exit 1 ;; esac
@@ -1072,6 +1130,15 @@ case "${1:-}" in
         if [ "${2:-}" = "-d" ]; then
             # FAKE_RUN_D_LOG records the staging launch's arguments (the name switch).
             if [ -n "${FAKE_RUN_D_LOG:-}" ]; then printf '%s\n' "$*" >> "${FAKE_RUN_D_LOG}"; fi
+            # FAKE_STAGE_STDERR=1: a stray stderr line before AND after the ID (the pauses
+            # keep that order when a caller merges the streams): the CID must come from
+            # stdout only (pass #26).
+            if [ "${FAKE_STAGE_STDERR:-0}" = "1" ]; then
+                echo "WARNING: fake docker notice before the ID" >&2; sleep 0.3
+                echo stagecid0000; sleep 0.3
+                echo "WARNING: fake docker notice after the ID" >&2
+                exit 0
+            fi
             echo stagecid0000; exit 0
         fi
         # Permission-manifest scan: no exec files.
@@ -1107,7 +1174,15 @@ case "${1:-}" in
         if [ -n "${FAKE_SPECIAL:-}" ]; then printf '%s\n' "${FAKE_SPECIAL}"; fi
         if [ -n "${FAKE_LONG:-}" ]; then printf '%s\n' "${FAKE_LONG}"; fi
         exit 0 ;;
-    wait) echo 0; exit 0 ;;
+    wait)
+        # FAKE_STAGE_STDERR=1: stray stderr lines around the status, as for `run -d`.
+        if [ "${FAKE_STAGE_STDERR:-0}" = "1" ]; then
+            echo "WARNING: fake docker notice before the status" >&2; sleep 0.3
+            echo 0; sleep 0.3
+            echo "WARNING: fake docker notice after the status" >&2
+            exit 0
+        fi
+        echo 0; exit 0 ;;
     logs)
         # Snapshot markers from the (detached) staging container's log.
         [ "${FAKE_LOGS_FAIL:-0}" = "1" ] && exit 1
@@ -1153,7 +1228,22 @@ esac
         function Invoke-FakeBackup {
             param([int]$ScanCount, [string]$Special = "", [int]$CpFiles, [int]$CpExit = 0, [string]$WorkPrefix = "run-",
                 [string]$StageLog = "", [string]$Long = "", [switch]$CountFail, [switch]$LogsFail,
-                [switch]$EmptyMount, [switch]$NoManifest, [switch]$Locked, [switch]$NoNameMarkers, [int]$CpSleep = 0)
+                [switch]$EmptyMount, [switch]$NoManifest, [switch]$Locked, [switch]$NoNameMarkers, [int]$CpSleep = 0,
+                # Pass #26: -DockerVersion (the fake's `version` output; '' = the default
+                # "29.1.3 29.1.3", 'none' = nothing), -ImageAbsent / -PullFail (the helper
+                # image check), -StageStderr (stray stderr around `run -d` and `wait`),
+                # -NoEditionBypass (run without DAAF_TEST_ALLOW_CORE_NONWINDOWS) and
+                # -DryRun (DAAF_DRY_RUN=1). Review fix round 9: -InfoFail (`docker info`
+                # fails) and -DockerVersionExit (the fake `version`'s exit code; nonzero
+                # also writes a server error on stderr).
+                [string]$DockerVersion = '', [switch]$ImageAbsent, [switch]$PullFail, [switch]$StageStderr,
+                [switch]$NoEditionBypass, [switch]$DryRun, [switch]$InfoFail, [int]$DockerVersionExit = 0)
+            if ($DockerVersion -ne '') { $env:FAKE_DOCKER_VERSION = $DockerVersion } else { Remove-Item Env:FAKE_DOCKER_VERSION -ErrorAction SilentlyContinue }
+            if ($InfoFail) { $env:FAKE_INFO_FAIL = "1" } else { $env:FAKE_INFO_FAIL = "0" }
+            $env:FAKE_DOCKER_VERSION_EXIT = "$DockerVersionExit"
+            if ($ImageAbsent) { $env:FAKE_IMAGE_ABSENT = "1" } else { $env:FAKE_IMAGE_ABSENT = "0" }
+            if ($PullFail) { $env:FAKE_PULL_FAIL = "1" } else { $env:FAKE_PULL_FAIL = "0" }
+            if ($StageStderr) { $env:FAKE_STAGE_STDERR = "1" } else { $env:FAKE_STAGE_STDERR = "0" }
             $env:FAKE_SCAN_COUNT = "$ScanCount"
             $env:FAKE_CP_FILES = "$CpFiles"
             $env:FAKE_CP_EXIT = "$CpExit"
@@ -1179,18 +1269,29 @@ esac
             # $WorkPrefix controls whether the backup destination path has a space.
             $work = Join-Path $TestDrive ($WorkPrefix + [guid]::NewGuid().ToString('N'))
             $null = New-Item -ItemType Directory -Path $work
+            # The call log sits next to (not in) the working dir, which must stay empty
+            # when a run refuses before creating the backup folder.
+            $callLog = "$work.calls.log"
+            $env:FAKE_CALL_LOG = $callLog
+            if ($NoEditionBypass) { Remove-Item Env:DAAF_TEST_ALLOW_CORE_NONWINDOWS -ErrorAction SilentlyContinue }
+            if ($DryRun) { $env:DAAF_DRY_RUN = "1" }
             Push-Location -LiteralPath $work
             try {
                 $out = & "$RepoRoot/scripts/host/backup_daaf.ps1" *>&1 | Out-String
                 $code = $LASTEXITCODE
             } finally {
                 Pop-Location
+                $env:DAAF_TEST_ALLOW_CORE_NONWINDOWS = "1"
+                Remove-Item Env:DAAF_DRY_RUN, Env:FAKE_CALL_LOG -ErrorAction SilentlyContinue
                 # Re-open any locked fixture folder so TestDrive cleanup can remove it.
                 foreach ($lk in @(Get-ChildItem -LiteralPath $work -Recurse -Directory -Filter 'locked' -ErrorAction SilentlyContinue)) {
                     & chmod 755 $lk.FullName
                 }
             }
-            [pscustomobject]@{ Output = $out; ExitCode = $code }
+            $calls = @()
+            if (Test-Path -LiteralPath $callLog) { $calls = @(Get-Content -LiteralPath $callLog) }
+            # Calls: the fake's call log (one line per docker call); Work: the working dir.
+            [pscustomobject]@{ Output = $out; ExitCode = $code; Calls = $calls; Work = $work }
         }
     }
 
@@ -1199,6 +1300,8 @@ esac
             [Environment]::SetEnvironmentVariable($k, $script:SavedEnv[$k], 'Process')
         }
         Remove-Item Env:FAKE_SCAN_COUNT, Env:FAKE_CP_FILES, Env:FAKE_CP_EXIT, Env:FAKE_SPECIAL, Env:FAKE_LONG, Env:FAKE_STAGE_LOG, Env:FAKE_COUNT_FAIL, Env:FAKE_LOGS_FAIL, Env:FAKE_EMPTY_MOUNT, Env:FAKE_CP_NO_MANIFEST, Env:FAKE_CP_LOCKED, Env:FAKE_CP_SLEEP -ErrorAction SilentlyContinue
+        Remove-Item Env:FAKE_DOCKER_VERSION, Env:FAKE_IMAGE_ABSENT, Env:FAKE_PULL_FAIL, Env:FAKE_STAGE_STDERR, Env:FAKE_CALL_LOG -ErrorAction SilentlyContinue
+        Remove-Item Env:FAKE_INFO_FAIL, Env:FAKE_DOCKER_VERSION_EXIT -ErrorAction SilentlyContinue
     }
 
     # --- Review round 1 fixes (B1 empty bind mount, I2 wording, I3 lower bound) ---
@@ -1457,7 +1560,7 @@ esac
             $r = Invoke-FakeBackup -ScanCount 3 -CpFiles 3 -StageLog 'STAGED_FILES=3\nSTAGED_KB=0\n'
             $r.ExitCode | Should -Be 0
             $recorded = Get-Content -LiteralPath $env:FAKE_RUN_D_LOG -Raw
-            $recorded | Should -Match '(?m)^run -d -v daaf_daaf-data:/source:ro -e DAAF_STAGE_NAMES=win busybox sh -c set -e'
+            $recorded | Should -Match ('(?m)^run -d -v daaf_daaf-data:/source:ro -e DAAF_STAGE_NAMES=win ' + [regex]::Escape($script:PinnedImage) + ' sh -c set -e')
         } finally {
             Remove-Item Env:FAKE_RUN_D_LOG -ErrorAction SilentlyContinue
         }
@@ -1536,6 +1639,293 @@ esac
         $r.ExitCode | Should -Be 0
         $r.Output | Should -BeLike "*Progress: 3 / 3 files (100%)*"
         $r.Output | Should -BeLike "*Backup complete!*"
+    }
+
+    # --- Pass #26 (F1 compatibility, audit 04): the startup Docker version check, the
+    # pinned helper image (inspect, then pull when missing), the edition guard, and the
+    # stdout-only staging CID and wait status. ---
+    Context "pass #26: Docker version check" {
+        BeforeAll {
+            $script:VersionCall = 'version --format {{.Client.Version}} {{.Server.Version}}'
+            $script:OkLog = 'STAGED_FILES=3\nSTAGED_KB=0\n'
+        }
+
+        It "the tested version (29 on both sides) is silent and the backup runs" {
+            $r = Invoke-FakeBackup -ScanCount 3 -CpFiles 3 -StageLog $script:OkLog
+            $r.ExitCode | Should -Be 0
+            $r.Calls[0] | Should -BeExactly 'info'
+            $r.Calls[1] | Should -BeExactly $script:VersionCall
+            $r.Output | Should -Not -BeLike "*Docker version*"
+            $r.Output | Should -BeLike "*Backup complete!*"
+        }
+
+        It "<Ver> (supported, untested) prints the NOTE and continues" -ForEach @(
+            @{ Ver = '25.0.2 29.1.3'; Client = '25.0.2'; Engine = '29.1.3' },
+            @{ Ver = '30.0.0 30.0.0'; Client = '30.0.0'; Engine = '30.0.0' }
+        ) {
+            $r = Invoke-FakeBackup -ScanCount 3 -CpFiles 3 -StageLog $script:OkLog -DockerVersion $Ver
+            $r.ExitCode | Should -Be 0
+            $r.Output | Should -BeLike "*NOTE: The backup has not been tested with this Docker version (Docker client $Client, Docker Engine $Engine; tested: 29). Continuing.*"
+            # A NOTE, not a warning: the plain banner.
+            $r.Output | Should -BeLike "*Backup complete!*"
+        }
+
+        It "<Ver> (older than 25 on the <Side> side) is refused with exit 1, nothing created, and NO further docker call" -ForEach @(
+            @{ Ver = '24.0.7 29.1.3'; Side = 'client'; Client = '24.0.7'; Engine = '29.1.3' },
+            @{ Ver = '29.1.3 24.0.7'; Side = 'Engine'; Client = '29.1.3'; Engine = '24.0.7' }
+        ) {
+            $r = Invoke-FakeBackup -ScanCount 3 -CpFiles 3 -StageLog $script:OkLog -DockerVersion $Ver
+            $r.ExitCode | Should -Be 1
+            $block = @(
+                "ERROR: This Docker version is too old for the backup (Docker client $Client, Docker Engine $Engine).",
+                '       The backup needs Docker 25.0 or newer, for both the Docker client and Docker Engine',
+                '       (Docker Desktop 4.27.1 or newer). Update Docker, then run the backup again.',
+                '       (Docker Desktop or Docker Engine is required; Podman is not supported.)',
+                '       Nothing was changed.')
+            $r.Output | Should -Match ((@($block | ForEach-Object { [regex]::Escape($_) })) -join '\r?\n')
+            ($r.Calls -join '|') | Should -BeExactly ('info|' + $script:VersionCall)
+            @(Get-ChildItem -LiteralPath $r.Work -Force).Count | Should -Be 0
+        }
+
+        It "an empty version answer is refused as 'Could not read' (unknown on both sides), with no further docker call" {
+            $r = Invoke-FakeBackup -ScanCount 3 -CpFiles 3 -StageLog $script:OkLog -DockerVersion 'none'
+            $r.ExitCode | Should -Be 1
+            $r.Output | Should -BeLike "*ERROR: Could not read the Docker version (Docker client unknown, Docker Engine unknown).*"
+            $block = @(
+                '       (Docker Desktop 4.27.1 or newer). Update Docker, then run the backup again.',
+                '       (Docker Desktop or Docker Engine is required; Podman is not supported.)',
+                '       Nothing was changed.')
+            $r.Output | Should -Match ((@($block | ForEach-Object { [regex]::Escape($_) })) -join '\r?\n')
+            $r.Output | Should -Not -BeLike "*too old*"
+            ($r.Calls -join '|') | Should -BeExactly ('info|' + $script:VersionCall)
+        }
+
+        # Review fix round 9 (ISSUE 1): a client of 25 or newer that cannot talk to an Engine
+        # older than 25.0 fails `docker info` itself, so the version check is never reached.
+        # The info-failure branch reads `docker version` (stdout only) and adds the old-Engine
+        # hint when the client's major parses as >= 25 and the Engine's version is empty or
+        # unparsable. The nonzero version exits also write a server error on stderr AFTER the
+        # stdout: read as the version, it would suppress the hint.
+        It "docker info fails, version <Name> (client >= 25, Engine empty or unparsable) -> the 'not running' line plus the old-Engine hint, exit 1, nothing after info + version" -ForEach @(
+            @{ Name = "'29.1.3'"; Ver = '29.1.3'; VerExit = 1; Client = '29.1.3' },
+            @{ Name = "'29.1.3 ' (trailing space)"; Ver = '29.1.3 '; VerExit = 1; Client = '29.1.3' },
+            @{ Name = "'25.0.0 abc'"; Ver = '25.0.0 abc'; VerExit = 0; Client = '25.0.0' },
+            @{ Name = 'a notice line, then 30.0.1'; Ver = "WARNING: a notice`n30.0.1"; VerExit = 1; Client = '30.0.1' },
+            @{ Name = "'29.1.3 v24.0.7'"; Ver = '29.1.3 v24.0.7'; VerExit = 1; Client = '29.1.3' }
+        ) {
+            $r = Invoke-FakeBackup -ScanCount 3 -CpFiles 3 -StageLog $script:OkLog -InfoFail -DockerVersion $Ver -DockerVersionExit $VerExit
+            $r.ExitCode | Should -Be 1
+            $block = @(
+                'ERROR: Docker Desktop does not seem to be running. Please start it and try again.',
+                "       If Docker is running, its Docker Engine may be older than 25.0 (Docker client $Client).",
+                '       The backup needs Docker 25.0 or newer (Docker Desktop 4.27.1 or newer).')
+            # The three lines, in order, and the last output of the run.
+            $r.Output.TrimEnd() | Should -Match (((@($block | ForEach-Object { [regex]::Escape($_) })) -join '\r?\n') + '$')
+            ($r.Calls -join '|') | Should -BeExactly ('info|' + $script:VersionCall)
+            @(Get-ChildItem -LiteralPath $r.Work -Force).Count | Should -Be 0
+        }
+
+        It "docker info fails, version <Name> -> ONLY the unchanged 'not running' line, exit 1" -ForEach @(
+            @{ Name = "'24.0.7' (client below 25)"; Ver = '24.0.7'; VerExit = 1 },
+            @{ Name = 'with no output'; Ver = 'none'; VerExit = 1 },
+            @{ Name = "'abc' (client unparsable)"; Ver = 'abc'; VerExit = 1 },
+            @{ Name = "'v29.1.3' (client unparsable)"; Ver = 'v29.1.3'; VerExit = 1 },
+            @{ Name = "'123456.0' (six-digit major)"; Ver = '123456.0'; VerExit = 1 },
+            @{ Name = "'29.1.3 29.1.3' (the Engine version reads)"; Ver = '29.1.3 29.1.3'; VerExit = 0 },
+            @{ Name = "'29.1.3 24.0.7' (the Engine version reads)"; Ver = '29.1.3 24.0.7'; VerExit = 0 }
+        ) {
+            $r = Invoke-FakeBackup -ScanCount 3 -CpFiles 3 -StageLog $script:OkLog -InfoFail -DockerVersion $Ver -DockerVersionExit $VerExit
+            $r.ExitCode | Should -Be 1
+            $r.Output.TrimEnd() | Should -Match ([regex]::Escape('ERROR: Docker Desktop does not seem to be running. Please start it and try again.') + '$')
+            $r.Output | Should -Not -BeLike "*If Docker is running*"
+            $r.Output | Should -Not -BeLike "*needs Docker 25.0*"
+            ($r.Calls -join '|') | Should -BeExactly ('info|' + $script:VersionCall)
+        }
+    }
+
+    Context "pass #26: the pinned helper image" {
+        BeforeAll {
+            $script:OkLog = 'STAGED_FILES=3\nSTAGED_KB=0\n'
+            $script:ImgRe = [regex]::Escape($script:PinnedImage)
+        }
+
+        It "an image already present is inspected (pinned name, before the scan and the folder) and not downloaded" {
+            $r = Invoke-FakeBackup -ScanCount 3 -CpFiles 3 -StageLog $script:OkLog
+            $r.ExitCode | Should -Be 0
+            $inspect = @($r.Calls | ForEach-Object { $_ }).IndexOf("image inspect $($script:PinnedImage)")
+            $inspect | Should -BeGreaterThan -1
+            @($r.Calls | Where-Object { $_ -match '^image inspect ' }).Count | Should -Be 1
+            @($r.Calls | Where-Object { $_ -match '^pull ' }).Count | Should -Be 0
+            $r.Output | Should -Not -BeLike "*Downloading the small helper image*"
+            $firstRun = -1
+            for ($i = 0; $i -lt $r.Calls.Count; $i++) { if ($r.Calls[$i] -match '^run ') { $firstRun = $i; break } }
+            $inspect | Should -BeLessThan $firstRun
+        }
+
+        It "a missing image is downloaded (the Downloading line and Docker's progress shown) and the backup runs" {
+            $r = Invoke-FakeBackup -ScanCount 3 -CpFiles 3 -StageLog $script:OkLog -ImageAbsent
+            $r.ExitCode | Should -Be 0
+            $r.Output | Should -BeLike "*Downloading the small helper image busybox that the backup needs...*"
+            $r.Output | Should -BeLike "*1.37.0: Pulling from library/busybox*"
+            $r.Output | Should -BeLike "*Status: Downloaded newer image for $($script:PinnedImage)*"
+            $inspect = @($r.Calls | ForEach-Object { $_ }).IndexOf("image inspect $($script:PinnedImage)")
+            $r.Calls[$inspect + 1] | Should -BeExactly "pull $($script:PinnedImage)"
+            $r.Output | Should -BeLike "*Backup complete!*"
+        }
+
+        It "a failed download is refused (exit 1, Docker said:, Nothing was changed.) before the folder or any container is created" {
+            $r = Invoke-FakeBackup -ScanCount 3 -CpFiles 3 -StageLog $script:OkLog -ImageAbsent -PullFail
+            $r.ExitCode | Should -Be 1
+            $block = @(
+                'ERROR: The backup needs the small helper image busybox and could not download it.',
+                '       Check the internet connection and that Docker Desktop is running, then run the backup again.',
+                '       Docker said: Error response from daemon: Get "https://registry-1.docker.io/v2/": dial tcp: lookup registry-1.docker.io: no such host',
+                '       Nothing was changed.')
+            $r.Output | Should -Match ((@($block | ForEach-Object { [regex]::Escape($_) })) -join '\r?\n')
+            $r.Calls[$r.Calls.Count - 1] | Should -BeExactly "pull $($script:PinnedImage)"
+            @($r.Calls | Where-Object { $_ -match '^(run|create|cp|wait|logs|rm) ' }).Count | Should -Be 0
+            # No backup folder (nor anything else) was created.
+            @(Get-ChildItem -LiteralPath $r.Work -Force).Count | Should -Be 0
+            $r.Output | Should -Not -BeLike "*Scanning Docker volume*"
+        }
+
+        It "every docker run names exactly the pinned image (full run: scan, staging, folder count, manifest scan)" {
+            $r = Invoke-FakeBackup -ScanCount 3 -CpFiles 3 -StageLog $script:OkLog
+            $r.ExitCode | Should -Be 0
+            $runs = @($r.Calls | Where-Object { $_ -match '^(run|create) ' })
+            foreach ($c in $runs) {
+                (@(($c -split ' ') | Where-Object { $_ -like 'busybox*' }) -join ' ') | Should -BeExactly $script:PinnedImage -Because "every container call names the pinned image: $c"
+            }
+            # Coverage: the four container calls of a data-only backup were all seen.
+            foreach ($p in @(":/source:ro $($script:ImgRe) sh -c cd /source && ", "^run -d .* $($script:ImgRe) sh -c set -e", ":/b:ro $($script:ImgRe) sh -c ", ":/source:ro $($script:ImgRe) sh -c find /source -type f -perm -0100$")) {
+                @($runs | Where-Object { $_ -match $p }).Count | Should -Be 1 -Because "a container call matching '$p' is exercised"
+            }
+            $runs.Count | Should -Be 4
+        }
+    }
+
+    Context "pass #26: the staging CID and wait status come from stdout only" {
+        It "stray stderr lines around 'docker run -d' and 'docker wait' replace neither the CID nor the status" {
+            $r = Invoke-FakeBackup -ScanCount 3 -CpFiles 3 -StageLog 'STAGED_FILES=3\nSTAGED_KB=0\n' -StageStderr
+            $r.ExitCode | Should -Be 0
+            # Every later use of the CID names the stdout ID, never a stderr line.
+            $r.Calls | Should -Contain 'wait stagecid0000'
+            $r.Calls | Should -Contain 'logs stagecid0000'
+            @($r.Calls | Where-Object { $_ -like 'cp stagecid0000:/staging/. *' }).Count | Should -Be 1
+            $r.Calls | Should -Contain 'rm -f stagecid0000'
+            @($r.Calls | Where-Object { $_ -match 'WARNING' }).Count | Should -Be 0
+            # The status read as 0: the snapshot was used and the backup completed.
+            $r.Output | Should -Not -BeLike "*ERROR*"
+            $r.Output | Should -BeLike "*Snapshot: 3 files.*"
+            $r.Output | Should -BeLike "*Backup complete!*"
+        }
+    }
+
+    Context "pass #26: the edition guard (this .ps1 is for Windows)" {
+        It "under pwsh on Linux/macOS WITHOUT the test bypass it refuses (exit 1), names the .sh twin, before ANY docker call" {
+            $r = Invoke-FakeBackup -ScanCount 3 -CpFiles 3 -StageLog 'STAGED_FILES=3\nSTAGED_KB=0\n' -NoEditionBypass
+            $r.ExitCode | Should -Be 1
+            $block = @(
+                'ERROR: This PowerShell script is for Windows. On macOS or Linux, run the backup with:',
+                '         bash backup_daaf.sh',
+                '       Nothing was changed.')
+            $r.Output | Should -Match ((@($block | ForEach-Object { [regex]::Escape($_) })) -join '\r?\n')
+            $r.Calls.Count | Should -Be 0
+            @(Get-ChildItem -LiteralPath $r.Work -Force).Count | Should -Be 0
+            # The bypass is back for the rest of this Describe.
+            $env:DAAF_TEST_ALLOW_CORE_NONWINDOWS | Should -BeExactly '1'
+        }
+
+        It "with DAAF_DRY_RUN=1 (the CI smoke run) it is NOT refused, even without the bypass" {
+            $r = Invoke-FakeBackup -ScanCount 3 -CpFiles 3 -StageLog 'STAGED_FILES=3\nSTAGED_KB=0\n' -NoEditionBypass -DryRun
+            $r.Output | Should -Not -BeLike "*This PowerShell script is for Windows*"
+            $r.Output | Should -BeLike "*``[DRY-RUN``]*"
+            # The dry run's own docker stand-in answers: the fake on PATH is never called.
+            $r.Calls.Count | Should -Be 0
+            $r.ExitCode | Should -BeIn @(0, $null)
+        }
+    }
+}
+
+# ============================================================================
+# Pass #26 (F1 compatibility, audit 04): static pins on the script's own text and AST
+# (what a pwsh-on-Linux run cannot show: Windows PowerShell 5.1 StrictMode safety of the
+# guard, statement order).
+# ============================================================================
+
+Describe "backup_daaf.ps1 pass #26 static pins (image constant, native-error preference, edition guard)" {
+    BeforeAll {
+        . "$PSScriptRoot/TestHelper.ps1"
+        $script:Path = "$RepoRoot/scripts/host/backup_daaf.ps1"
+        $script:Content = Get-Content $script:Path -Raw
+        $tokens = $null
+        $parseErrors = $null
+        $script:Ast = [System.Management.Automation.Language.Parser]::ParseFile($script:Path, [ref]$tokens, [ref]$parseErrors)
+        $script:PinnedImage = 'busybox:1.37.0@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e'
+        $script:DockerCalls = @($script:Ast.FindAll({
+            param($n) ($n -is [System.Management.Automation.Language.CommandAst]) -and ($n.GetCommandName() -eq 'docker')
+        }, $true) | Sort-Object { $_.Extent.StartOffset })
+        $script:GuardIf = $script:Ast.Find({
+            param($n) ($n -is [System.Management.Automation.Language.IfStatementAst]) -and ($n.Clauses[0].Item1.Extent.Text -match 'PSEdition')
+        }, $true)
+    }
+
+    It "defines the pinned image once, and no code line names the image except through it" {
+        $Content | Should -MatchExactly ([regex]::Escape("`$BusyboxImage = '$($script:PinnedImage)'"))
+        $code = @(($Content -split "`n") | Where-Object { $_ -notmatch '^\s*#' })
+        @($code | Where-Object { $_ -match '^\$BusyboxImage = ' }).Count | Should -Be 1
+        @($code | Where-Object { $_ -cmatch '\bbusybox\b' -and $_ -notmatch '^\$BusyboxImage = ' -and $_ -notmatch '^\s*Write-Host "[^"]*helper image busybox' }).Count | Should -Be 0
+        # Every docker run in the file names $BusyboxImage (the Claude staging launch, which
+        # the E2E fake does not reach, included).
+        $runLines = @($code | Where-Object { $_ -match '\bdocker run ' })
+        $runLines.Count | Should -Be 5
+        foreach ($l in $runLines) { $l | Should -Match '\$BusyboxImage sh -c ' }
+    }
+
+    It "sets `$PSNativeCommandUseErrorActionPreference = `$false at top level BEFORE the first docker call" {
+        $assign = @($script:Ast.FindAll({
+            param($n) ($n -is [System.Management.Automation.Language.AssignmentStatementAst]) -and ($n.Left.Extent.Text -eq '$PSNativeCommandUseErrorActionPreference')
+        }, $true))
+        $assign.Count | Should -Be 1
+        $assign[0].Right.Extent.Text | Should -BeExactly '$false'
+        $assign[0].Parent | Should -Be $script:Ast.EndBlock
+        $script:DockerCalls.Count | Should -BeGreaterThan 0
+        $assign[0].Extent.StartOffset | Should -BeLessThan $script:DockerCalls[0].Extent.StartOffset
+    }
+
+    It "guards the edition with `$PSVersionTable.PSEdition -eq 'Core' -and -not `$IsWindows, in that order" {
+        $script:GuardIf | Should -Not -BeNullOrEmpty
+        $cond = $script:GuardIf.Clauses[0].Item1.Extent.Text
+        $cond | Should -BeExactly ("`$PSVersionTable.PSEdition -eq 'Core' -and -not `$IsWindows -and `$env:DAAF_DRY_RUN -ne '1' -and `$env:DAAF_TEST_ALLOW_CORE_NONWINDOWS -ne '1'")
+        $script:GuardIf.Parent | Should -Be $script:Ast.EndBlock
+        $script:GuardIf.Extent.StartOffset | Should -BeGreaterThan $Content.IndexOf('Set-StrictMode -Version 3.0')
+        $topDocker = @($script:DockerCalls | Where-Object {
+            $p = $_.Parent; $inFn = $false
+            while ($null -ne $p) { if ($p -is [System.Management.Automation.Language.FunctionDefinitionAst]) { $inFn = $true; break }; $p = $p.Parent }
+            -not $inFn
+        })
+        $topDocker.Count | Should -BeGreaterThan 0
+        $script:GuardIf.Extent.StartOffset | Should -BeLessThan $topDocker[0].Extent.StartOffset
+    }
+
+    It "the guard condition is StrictMode-safe where `$IsWindows does not exist (Windows PowerShell 5.1) and decides correctly" {
+        # See the restore suite's twin test: each automatic value is replaced by a literal,
+        # and $IsWindows (absent on 5.1) by a name that is never set, which StrictMode 3.0
+        # refuses to read. The -and must stop before reading it.
+        $cond = $script:GuardIf.Clauses[0].Item1.Extent.Text
+        $eval = {
+            param([string]$Edition, [string]$IsWin, [string]$Dry, [string]$Bypass)
+            $t = $cond.Replace('$PSVersionTable.PSEdition', "'$Edition'").Replace('$env:DAAF_DRY_RUN', "'$Dry'").Replace('$env:DAAF_TEST_ALLOW_CORE_NONWINDOWS', "'$Bypass'")
+            if ($IsWin -eq 'undefined') { $t = $t.Replace('$IsWindows', '$DaafF1NeverDefinedVariable') } else { $t = $t.Replace('$IsWindows', "`$$IsWin") }
+            & { Set-StrictMode -Version 3.0; & ([scriptblock]::Create($t)) }
+        }
+        { & { Set-StrictMode -Version 3.0; $null = $DaafF1NeverDefinedVariable } } | Should -Throw
+        { & $eval 'Desktop' 'undefined' '0' '0' } | Should -Not -Throw
+        (& $eval 'Desktop' 'undefined' '0' '0') | Should -BeFalse
+        (& $eval 'Core' 'true' '0' '0') | Should -BeFalse
+        (& $eval 'Core' 'false' '0' '0') | Should -BeTrue
+        (& $eval 'Core' 'false' '1' '0') | Should -BeFalse
+        (& $eval 'Core' 'false' '0' '1') | Should -BeFalse
     }
 }
 
@@ -1624,12 +2014,14 @@ Describe "backup/restore .ps1 docker programs under PowerShell's own expansion (
         . "$PSScriptRoot/TestHelper.ps1"
         $script:BackupText = [IO.File]::ReadAllText("$RepoRoot/scripts/host/backup_daaf.ps1")
         $script:RestoreText = [IO.File]::ReadAllText("$RepoRoot/scripts/host/restore_from_backup.ps1")
+        # The pinned helper image (pass #26): the lifted lines name $BusyboxImage.
+        $script:PinnedImage = 'busybox:1.37.0@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e'
     }
 
     It "the REAL scan line hands docker the literal `${c% *} and `${c#* }, and interpolates ONLY `$LongPathMinRel" {
         $lines = @(($script:BackupText -split "`r?`n") | Where-Object { $_ -match '^\$ScanOutput = docker run' })
         $lines.Count | Should -Be 1
-        $m = [regex]::Match($lines[0], 'busybox sh -c "(.*)"\s*$')
+        $m = [regex]::Match($lines[0], '\$BusyboxImage sh -c "(.*)"\s*$')
         $m.Success | Should -BeTrue
         $literal = $m.Groups[1].Value
         # At source level the only UNESCAPED `$` in the double-quoted program is
@@ -1644,12 +2036,14 @@ Describe "backup/restore .ps1 docker programs under PowerShell's own expansion (
         # used-variable rule cannot see.
         Set-Variable -Name VolumeName -Value 'my vol_daaf-data'
         Set-Variable -Name LongPathMinRel -Value 173
+        Set-Variable -Name BusyboxImage -Value $script:PinnedImage
         . ([scriptblock]::Create($lines[0]))
 
         $argv = @($cap['Argv'])
         $argv.Count | Should -Be 8
         $argv[0] | Should -BeExactly 'run'
         $argv[3] | Should -BeExactly 'my vol_daaf-data:/source:ro'
+        $argv[4] | Should -BeExactly $script:PinnedImage
         $argv[6] | Should -BeExactly '-c'
         $prog = [string]$argv[7]
         $prog.Contains('echo ${c% *}') | Should -BeTrue
@@ -1691,11 +2085,13 @@ Describe "backup/restore .ps1 docker programs under PowerShell's own expansion (
         $cap = @{}
         function docker { $cap['Argv'] = $args; 'RESTORED_FILES=1' }
         Set-Variable -Name VolumeName -Value 'my vol_daaf-data'
+        Set-Variable -Name BusyboxImage -Value $script:PinnedImage
         . ([scriptblock]::Create($lines[0]))
 
         $argv = @($cap['Argv'])
         $argv.Count | Should -Be 8
         $argv[3] | Should -BeExactly 'my vol_daaf-data:/dest:ro'
+        $argv[4] | Should -BeExactly $script:PinnedImage
         $prog = [string]$argv[7]
         $prog.Contains(': > /tmp/count_err;') | Should -BeTrue
         $prog.Contains('2>/tmp/count_err | wc -l') | Should -BeTrue

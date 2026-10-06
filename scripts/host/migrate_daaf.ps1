@@ -30,6 +30,11 @@
 
 #Requires -Version 5.1
 $ErrorActionPreference = "Stop"
+# pwsh 7.4+ only (an ordinary, unused variable on Windows PowerShell 5.1): never turn a
+# native command's nonzero exit into an error record or a throw. The native calls here
+# read $LASTEXITCODE themselves (same line as backup_daaf.ps1 and restore_from_backup.ps1;
+# audit 04: under 'Stop' with this set to $true, pwsh 7.6 threw NativeCommandExitException).
+$PSNativeCommandUseErrorActionPreference = $false
 
 # Ensure TLS 1.2 for GitHub downloads (required on PowerShell 5.1)
 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
@@ -64,6 +69,15 @@ $RawBase = "https://raw.githubusercontent.com/$Repo/$Branch"
 # name, so deriving or overriding it here would only risk missing the volume the
 # migration is meant to find.
 $VolumeName = "daaf_daaf-data"
+# The helper image of the volume ownership repair (section 4c), PINNED by digest:
+# busybox 1.37.0, multi-arch OCI index (amd64, arm64/v8 and others), the tested digest
+# below. Pinned because the untagged `busybox` (latest) moved to the untested busybox
+# 1.38.0 on 2026-09-23 (research/2026-10-01_FrameworkDev_RestoreCopyThenSwap/scoping/
+# 04_F1_compat_audit.md). The same string is in backup_daaf.{sh,ps1},
+# restore_from_backup.{sh,ps1}, migrate_daaf.{sh,ps1} and docker-compose.yml (daaf-init):
+# keep every copy identical (a parity test enforces it). No `"`, space or trailing `\`,
+# so it passes to docker.exe unchanged on Windows PowerShell 5.1.
+$BusyboxImage = 'busybox:1.37.0@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e'
 $ContainerName = ""
 $BackupCompleted = $false
 $IsFork = $false
@@ -780,7 +794,7 @@ Write-Host "  Volume ownership repair"
 Write-Host "-------------------------------------------"
 Write-Host ""
 Write-Host "Repairing /daaf ownership for the container user (uid 1000)..."
-docker run --rm -v "${VolumeName}:/daaf" busybox chown -R 1000:1000 /daaf
+docker run --rm -v "${VolumeName}:/daaf" $BusyboxImage chown -R 1000:1000 /daaf
 if ($LASTEXITCODE -eq 0) {
     Write-Host "  Ownership repaired: $VolumeName -> 1000:1000 (daaf-init parity)"
 } else {

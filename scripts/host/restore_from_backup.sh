@@ -167,6 +167,14 @@ SWAP_PROGRAM='trap : INT TERM HUP; test -f /src/.daaf-restore-swap-started || ex
 # folder itself and the state marker are left out. busybox applets assumed: stat -c,
 # readlink, sort, cmp, grep.
 SWAP_VERIFY_PROGRAM='export LC_ALL=C; : > /tmp/err || exit 4; for t in src dest; do cd /$t 2>>/tmp/err && { find . ! -path ./.daaf-restore-swap-started ! -type d -exec stat -c %f:%u:%g:%s:%n {} + ; find . ! -path . -type d -exec stat -c %f:%u:%g:%n {} + ; find . -type l -exec readlink {} \; ; } 2>>/tmp/err | sort 2>>/tmp/err > /tmp/$t.lst || echo LIST_FAILED_$t >> /tmp/err; done; if test -s /tmp/err; then echo SWAP_VERIFY_ERRORS=$(grep -c ^ /tmp/err); elif cmp -s /tmp/src.lst /tmp/dest.lst; then echo SWAP_VERIFY=MATCH; else echo SWAP_VERIFY=MISMATCH; fi; echo SWAP_VERIFY_ENTRIES=$(grep -c ^ /tmp/src.lst):$(grep -c ^ /tmp/dest.lst)'
+# The helper image every container step above and below runs, PINNED by digest: busybox
+# 1.37.0, multi-arch OCI index (amd64, arm64/v8 and others), the tested digest below.
+# Pinned because the untagged `busybox` (latest) moved to the untested busybox 1.38.0 on
+# 2026-09-23 (research/2026-10-01_FrameworkDev_RestoreCopyThenSwap/scoping/
+# 04_F1_compat_audit.md). The same string is in backup_daaf.{sh,ps1},
+# restore_from_backup.{sh,ps1}, migrate_daaf.{sh,ps1} and docker-compose.yml (daaf-init):
+# keep every copy identical (a parity test enforces it).
+BUSYBOX_IMAGE='busybox:1.37.0@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e'
 
 # --- Host-side backup-folder count (never silent) ---
 # A textually identical copy of backup_daaf.sh's _daaf_tree_count, from its
@@ -216,6 +224,8 @@ if [ "${DAAF_DRY_RUN:-}" = "1" ]; then
     docker() {
         case "$*" in
             "info") return 0 ;;
+            "version --format"*) echo "29.1.3 29.1.3"; return 0 ;;
+            "image inspect "*) return 0 ;;
             *"volume inspect"*) return 0 ;;
             *"ps --filter"*) return 0 ;;
             *"run --rm"*"rm -rf"*) return 0 ;;
@@ -257,13 +267,102 @@ fi
 
 if ! docker info &> /dev/null; then
     echo "ERROR: Docker Desktop does not seem to be running. Please start it and try again." >&2
+    # Old-Engine hint (F1; review round 9): a client of 25 or newer that cannot talk to an
+    # Engine older than 25.0 (Docker 29 removed the older API versions) also fails
+    # `docker info`, so the version check below is never reached. Read the versions
+    # (stdout only, the last non-empty line); when the client's major reads as 25 or newer
+    # and the Engine's version is empty or cannot be read, add a hint. The message above and
+    # the exit code stay the same. Same text as the .ps1 twin and backup_daaf.{sh,ps1}.
+    DOCKER_INFO_FAIL_LINE="$(docker version --format '{{.Client.Version}} {{.Server.Version}}' 2>/dev/null | tr -d '\r' | awk 'NF {l=$0} END {print l}')" || true
+    DOCKER_INFO_FAIL_CLIENT="$(printf '%s\n' "${DOCKER_INFO_FAIL_LINE}" | awk '{print $1}')"
+    DOCKER_INFO_FAIL_SERVER="$(printf '%s\n' "${DOCKER_INFO_FAIL_LINE}" | awk '{print $2}')"
+    DOCKER_INFO_FAIL_CLIENT_MAJOR="${DOCKER_INFO_FAIL_CLIENT%%.*}"
+    DOCKER_INFO_FAIL_SERVER_MAJOR="${DOCKER_INFO_FAIL_SERVER%%.*}"
+    case "${DOCKER_INFO_FAIL_CLIENT_MAJOR}" in
+        ''|*[!0-9]*|??????*) ;;
+        *)
+            if [ "${DOCKER_INFO_FAIL_CLIENT_MAJOR}" -ge 25 ]; then
+                case "${DOCKER_INFO_FAIL_SERVER_MAJOR}" in
+                    ''|*[!0-9]*|??????*)
+                        echo "       If Docker is running, its Docker Engine may be older than 25.0 (Docker client ${DOCKER_INFO_FAIL_CLIENT})." >&2
+                        echo "       The restore needs Docker 25.0 or newer (Docker Desktop 4.27.1 or newer)." >&2
+                        ;;
+                esac
+            fi
+            ;;
+    esac
     exit 1
+fi
+
+# --- Docker version check (F1 compatibility; audit 04, section 3) ---
+# Docker 29 removed API versions below 1.44: a 29.x client cannot drive an Engine older
+# than 25.0, and a 29.0-29.2 Engine refuses an older client. So read both versions
+# (stdout only, the last non-empty line) and refuse, before any prompt and before
+# anything is created, when either side's major version is below 25 or cannot be read.
+# A major other than the tested 29 only prints a NOTE (no WARNING latch) and continues.
+# Same rule and wording as the .ps1 twin and backup_daaf.{sh,ps1} (script name varied).
+DOCKER_VERSION_LINE="$(docker version --format '{{.Client.Version}} {{.Server.Version}}' 2>/dev/null | tr -d '\r' | awk 'NF {l=$0} END {print l}')" || true
+DOCKER_CLIENT_VERSION="$(printf '%s\n' "${DOCKER_VERSION_LINE}" | awk '{print $1}')"
+DOCKER_SERVER_VERSION="$(printf '%s\n' "${DOCKER_VERSION_LINE}" | awk '{print $2}')"
+DOCKER_VERSION_STATE="ok"
+for docker_v in "${DOCKER_CLIENT_VERSION}" "${DOCKER_SERVER_VERSION}"; do
+    docker_major="${docker_v%%.*}"
+    case "${docker_major}" in
+        ''|*[!0-9]*|??????*) DOCKER_VERSION_STATE="unreadable" ;;
+        *)
+            if [ "${docker_major}" -lt 25 ]; then
+                if [ "${DOCKER_VERSION_STATE}" != "unreadable" ]; then DOCKER_VERSION_STATE="old"; fi
+            elif [ "${docker_major}" -ne 29 ] && [ "${DOCKER_VERSION_STATE}" = "ok" ]; then
+                DOCKER_VERSION_STATE="untested"
+            fi
+            ;;
+    esac
+done
+if [ "${DOCKER_VERSION_STATE}" = "old" ] || [ "${DOCKER_VERSION_STATE}" = "unreadable" ]; then
+    if [ "${DOCKER_VERSION_STATE}" = "old" ]; then
+        echo "ERROR: This Docker version is too old for the restore (Docker client ${DOCKER_CLIENT_VERSION:-unknown}, Docker Engine ${DOCKER_SERVER_VERSION:-unknown})." >&2
+    else
+        echo "ERROR: Could not read the Docker version (Docker client ${DOCKER_CLIENT_VERSION:-unknown}, Docker Engine ${DOCKER_SERVER_VERSION:-unknown})." >&2
+    fi
+    echo "       The restore needs Docker 25.0 or newer, for both the Docker client and Docker Engine" >&2
+    echo "       (Docker Desktop 4.27.1 or newer). Update Docker, then run the restore again." >&2
+    echo "       (Docker Desktop or Docker Engine is required; Podman is not supported.)" >&2
+    echo "       Nothing was changed." >&2
+    exit 1
+fi
+if [ "${DOCKER_VERSION_STATE}" = "untested" ]; then
+    echo "NOTE: The restore has not been tested with this Docker version (Docker client ${DOCKER_CLIENT_VERSION}, Docker Engine ${DOCKER_SERVER_VERSION}; tested: 29). Continuing."
+    echo ""
 fi
 
 if ! docker volume inspect "${VOLUME_NAME}" &> /dev/null; then
     echo "ERROR: Docker volume '${VOLUME_NAME}' not found." >&2
     echo "Have you run the DAAF installer yet?" >&2
     exit 1
+fi
+
+# --- Helper image check (F1 compatibility; audit 04, section 3) ---
+# Every container step runs the pinned ${BUSYBOX_IMAGE}. Make sure it is on this computer
+# NOW, before any prompt and before the temporary copy is prepared: when it is missing,
+# download it here with its progress showing, so an offline computer is refused with
+# nothing changed instead of failing partway (`docker run` exits 125 when it cannot pull).
+# Docker's last stderr line is shown when the download fails. Same as the .ps1 twin and
+# backup_daaf.{sh,ps1}.
+if ! docker image inspect "${BUSYBOX_IMAGE}" > /dev/null 2>&1; then
+    echo "Downloading the small helper image busybox that the restore needs..."
+    BUSYBOX_PULL_EXIT=0
+    # stdout (the progress) to the terminal through fd 3; stderr captured.
+    { BUSYBOX_PULL_SAID="$(docker pull "${BUSYBOX_IMAGE}" 2>&1 1>&3 3>&-)"; } 3>&1 || BUSYBOX_PULL_EXIT=$?
+    if [ "${BUSYBOX_PULL_EXIT}" -ne 0 ]; then
+        BUSYBOX_PULL_SAID="$(printf '%s\n' "${BUSYBOX_PULL_SAID}" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' | grep . | tail -n 1)" || true
+        echo "" >&2
+        echo "ERROR: The restore needs the small helper image busybox and could not download it." >&2
+        echo "       Check the internet connection and that Docker Desktop is running, then run the restore again." >&2
+        if [ -n "${BUSYBOX_PULL_SAID}" ]; then echo "       Docker said: ${BUSYBOX_PULL_SAID}" >&2; fi
+        echo "       Nothing was changed." >&2
+        exit 1
+    fi
+    echo ""
 fi
 
 # --- Check for running containers using the volume ---
@@ -695,7 +794,7 @@ _restore_remove_temps() {
     # that is kept stays this run's (TEMP_CREATED) and its reason is kept for the message.
     if [ "${TEMP_CREATED}" -eq 1 ]; then
         if [ "${unmark}" -eq 1 ]; then
-            docker run --rm --label "${RESTORE_LABEL}=${VOLUME_NAME}" -v "${TEMP_VOLUME_NAME}:/dest" busybox rm -f "/dest/${SWAP_MARKER}" > /dev/null 2>&1 || true
+            docker run --rm --label "${RESTORE_LABEL}=${VOLUME_NAME}" -v "${TEMP_VOLUME_NAME}:/dest" "${BUSYBOX_IMAGE}" rm -f "/dest/${SWAP_MARKER}" > /dev/null 2>&1 || true
         fi
         rm_status=0
         _restore_remove_volume "${TEMP_VOLUME_NAME}" "${rm_mode}" || rm_status=$?
@@ -703,7 +802,7 @@ _restore_remove_temps() {
     fi
     if [ "${CLAUDE_TEMP_CREATED}" -eq 1 ]; then
         if [ "${unmark}" -eq 1 ]; then
-            docker run --rm --label "${RESTORE_LABEL}=${CLAUDE_VOLUME_NAME}" -v "${CLAUDE_TEMP_VOLUME_NAME}:/dest" busybox rm -f "/dest/${SWAP_MARKER}" > /dev/null 2>&1 || true
+            docker run --rm --label "${RESTORE_LABEL}=${CLAUDE_VOLUME_NAME}" -v "${CLAUDE_TEMP_VOLUME_NAME}:/dest" "${BUSYBOX_IMAGE}" rm -f "/dest/${SWAP_MARKER}" > /dev/null 2>&1 || true
         fi
         rm_status=0
         _restore_remove_volume "${CLAUDE_TEMP_VOLUME_NAME}" "${rm_mode}" || rm_status=$?
@@ -941,7 +1040,7 @@ _restore_refuse_changed_temp() {
     if [ "${MARKERS_WRITTEN}" -eq 1 ]; then
         for tv in $(_restore_kept_temps); do
             if [ "${tv}" != "$1" ] && _restore_temp_is_ours "${tv}"; then
-                docker run --rm -v "${tv}:/dest" busybox rm -f "/dest/${SWAP_MARKER}" > /dev/null 2>&1 || true
+                docker run --rm -v "${tv}:/dest" "${BUSYBOX_IMAGE}" rm -f "/dest/${SWAP_MARKER}" > /dev/null 2>&1 || true
             fi
         done
     fi
@@ -1134,7 +1233,7 @@ if [ -n "${LEFTOVER_VOLUMES}${LEFTOVER_CONTAINERS}" ]; then
     if [ -n "${LEFTOVER_CONTAINERS}" ]; then SWAP_EVIDENCE=1; fi
     for tv in ${LEFTOVER_VOLUMES}; do
         PROBE_EXIT=0
-        docker run --rm -v "${tv}:/src:ro" busybox sh -c "test ! -e /src/${SWAP_MARKER} || exit 3" > /dev/null 2>&1 || PROBE_EXIT=$?
+        docker run --rm -v "${tv}:/src:ro" "${BUSYBOX_IMAGE}" sh -c "test ! -e /src/${SWAP_MARKER} || exit 3" > /dev/null 2>&1 || PROBE_EXIT=$?
         if [ "${PROBE_EXIT}" -eq 3 ]; then SWAP_EVIDENCE=1
         elif [ "${PROBE_EXIT}" -ne 0 ] && [ "${SWAP_EVIDENCE}" -eq 0 ]; then SWAP_EVIDENCE=2; fi
     done
@@ -1248,7 +1347,7 @@ SPACE_MARGIN_KB=$(( NEED_B_KB / 10 ))
 if [ "${SPACE_MARGIN_KB}" -lt 1048576 ]; then SPACE_MARGIN_KB=1048576; fi
 SPACE_KNOWN=0
 SPACE_EXIT=0
-SPACE_OUTPUT="$(docker run --rm -v "${VOLUME_NAME}:/dest:ro" busybox sh -c "${SPACE_PROGRAM}" 2>&1 | tr -d '\r')" || SPACE_EXIT=$?
+SPACE_OUTPUT="$(docker run --rm -v "${VOLUME_NAME}:/dest:ro" "${BUSYBOX_IMAGE}" sh -c "${SPACE_PROGRAM}" 2>&1 | tr -d '\r')" || SPACE_EXIT=$?
 AVAIL_KB="$(printf '%s\n' "${SPACE_OUTPUT}" | sed -n 's/^AVAIL_KB=\([0-9][0-9]*\)$/\1/p' | tail -n 1)"
 LIVE_KB="$(printf '%s\n' "${SPACE_OUTPUT}" | sed -n 's/^LIVE_KB=\([0-9][0-9]*\)$/\1/p' | tail -n 1)"
 PEAK_KB="${NEED_B_KB}"
@@ -1302,7 +1401,7 @@ _restore_check_new_temp() {
     # STDOUT only (review round 2): a stray stderr line (a Docker config WARNING) once
     # made every new temp look non-empty. A `find` that hits an error still exits
     # nonzero, so a listing that could not be made still fails the check.
-    listing="$(docker run --rm --label "${RESTORE_LABEL}=$2" -v "$1:/dest:ro" busybox find /dest -mindepth 1 2>/dev/null)" || status=$?
+    listing="$(docker run --rm --label "${RESTORE_LABEL}=$2" -v "$1:/dest:ro" "${BUSYBOX_IMAGE}" find /dest -mindepth 1 2>/dev/null)" || status=$?
     if [ "${status}" -eq 0 ] && [ -z "${listing}" ] && _restore_temp_is_ours "$1"; then return 0; fi
     # SF2 (review round 2): the volume under that name may be another restore's, so its
     # prepare helpers are not reaped either; this run's own other temps are removed only
@@ -1322,7 +1421,7 @@ TEMP_CREATED=1
 CID=""
 # Guarded: an unguarded `CID="$(docker create ...)"` under `set -e` would abort with
 # no message. A CID printed by a create that then failed is reaped by label.
-if ! CID="$(docker create --label "${RESTORE_LABEL}=${VOLUME_NAME}" -v "${TEMP_VOLUME_NAME}:/dest" busybox)"; then
+if ! CID="$(docker create --label "${RESTORE_LABEL}=${VOLUME_NAME}" -v "${TEMP_VOLUME_NAME}:/dest" "${BUSYBOX_IMAGE}")"; then
     _restore_fail_before_swap "ERROR: Could not create the helper container for the copy."
 fi
 if ! docker cp "${SELECTED_PATH}/." "${CID}:/dest/"; then
@@ -1335,7 +1434,7 @@ docker rm -f "${CID}" > /dev/null 2>&1 || true
 # --- Step 3b: Strip the Claude subfolder from the temporary DATA copy ---
 # `docker cp` copied the whole backup, including "${CLAUDE_SUBDIR}/"; it belongs in
 # the Claude volume (prepared below), not the data volume.
-if ! docker run --rm --label "${RESTORE_LABEL}=${VOLUME_NAME}" -v "${TEMP_VOLUME_NAME}:/dest" busybox rm -rf "/dest/${CLAUDE_SUBDIR}"; then
+if ! docker run --rm --label "${RESTORE_LABEL}=${VOLUME_NAME}" -v "${TEMP_VOLUME_NAME}:/dest" "${BUSYBOX_IMAGE}" rm -rf "/dest/${CLAUDE_SUBDIR}"; then
     _restore_fail_before_swap "ERROR: Failed to remove the ${CLAUDE_SUBDIR} subfolder from the temporary copy."
 fi
 
@@ -1343,7 +1442,7 @@ fi
 # `docker cp` wrote the files as root; the volume must be owned by appuser (UID 1000),
 # mirroring the daaf-init service in docker-compose.yml (restore must not depend on
 # it having run). The swap (`cp -a`) carries this ownership into the live volume.
-if ! docker run --rm --label "${RESTORE_LABEL}=${VOLUME_NAME}" -v "${TEMP_VOLUME_NAME}:/dest" busybox chown -R 1000:1000 /dest; then
+if ! docker run --rm --label "${RESTORE_LABEL}=${VOLUME_NAME}" -v "${TEMP_VOLUME_NAME}:/dest" "${BUSYBOX_IMAGE}" chown -R 1000:1000 /dest; then
     _restore_fail_before_swap "ERROR: Failed to set file ownership in the temporary copy."
 fi
 
@@ -1365,9 +1464,9 @@ fi
 # `tr -d` would corrupt multi-byte UTF-8 names), and the manifest is removed after.
 # Replay failure stays a latched WARNING (the copy is intact; only permissions may be
 # off), as before copy-then-swap -- it does not stop the restore.
-if docker run --rm --label "${RESTORE_LABEL}=${VOLUME_NAME}" -v "${TEMP_VOLUME_NAME}:/dest:ro" busybox test -f "/dest/${PERMISSIONS_MANIFEST}"; then
+if docker run --rm --label "${RESTORE_LABEL}=${VOLUME_NAME}" -v "${TEMP_VOLUME_NAME}:/dest:ro" "${BUSYBOX_IMAGE}" test -f "/dest/${PERMISSIONS_MANIFEST}"; then
     echo "Restoring executable permissions from ${PERMISSIONS_MANIFEST}..."
-    if ! docker run --rm --label "${RESTORE_LABEL}=${VOLUME_NAME}" -v "${TEMP_VOLUME_NAME}:/dest" busybox sh -c '
+    if ! docker run --rm --label "${RESTORE_LABEL}=${VOLUME_NAME}" -v "${TEMP_VOLUME_NAME}:/dest" "${BUSYBOX_IMAGE}" sh -c '
         set -e
         manifest="/dest/'"${PERMISSIONS_MANIFEST}"'"
         # Normalize every regular file to 644 (directories are untouched: -type f).
@@ -1410,9 +1509,9 @@ fi
 # `set -f` (no globbing) + an empty global IFS (no word splitting); `IFS=$tab` scopes
 # field splitting to the `read` alone. Same program, byte for byte after the manifest
 # splice, as the Claude replay below and the .ps1 twin's $symlinkReplayScript.
-if docker run --rm --label "${RESTORE_LABEL}=${VOLUME_NAME}" -v "${TEMP_VOLUME_NAME}:/dest:ro" busybox test -f "/dest/${SYMLINKS_MANIFEST}"; then
+if docker run --rm --label "${RESTORE_LABEL}=${VOLUME_NAME}" -v "${TEMP_VOLUME_NAME}:/dest:ro" "${BUSYBOX_IMAGE}" test -f "/dest/${SYMLINKS_MANIFEST}"; then
     echo "Restoring symlinks from ${SYMLINKS_MANIFEST}..."
-    if ! docker run --rm --label "${RESTORE_LABEL}=${VOLUME_NAME}" -v "${TEMP_VOLUME_NAME}:/dest" busybox sh -c '
+    if ! docker run --rm --label "${RESTORE_LABEL}=${VOLUME_NAME}" -v "${TEMP_VOLUME_NAME}:/dest" "${BUSYBOX_IMAGE}" sh -c '
         set -ef
         IFS=
         cr=$(printf \\r)
@@ -1444,7 +1543,7 @@ fi
 # is replaced.
 echo "Checking the temporary copy..."
 TEMP_VERIFY_EXIT=0
-TEMP_VERIFY_OUTPUT="$(docker run --rm --label "${RESTORE_LABEL}=${VOLUME_NAME}" -v "${TEMP_VOLUME_NAME}:/dest:ro" busybox sh -c 'set -e; : > /tmp/count_err; n=$(find /dest -type f ! -path /dest/.daaf-symlinks ! -path /dest/.daaf-permissions ! -path /dest/.daaf-claude-config/\* -exec stat -c %s {} + 2>/tmp/count_err | wc -l); if test -s /tmp/count_err; then echo RESTORED_COUNT_ERRORS=$(grep -c ^ /tmp/count_err); else echo RESTORED_FILES=$((n)); fi' 2>&1 | tr -d '\r')" || TEMP_VERIFY_EXIT=$?
+TEMP_VERIFY_OUTPUT="$(docker run --rm --label "${RESTORE_LABEL}=${VOLUME_NAME}" -v "${TEMP_VOLUME_NAME}:/dest:ro" "${BUSYBOX_IMAGE}" sh -c 'set -e; : > /tmp/count_err; n=$(find /dest -type f ! -path /dest/.daaf-symlinks ! -path /dest/.daaf-permissions ! -path /dest/.daaf-claude-config/\* -exec stat -c %s {} + 2>/tmp/count_err | wc -l); if test -s /tmp/count_err; then echo RESTORED_COUNT_ERRORS=$(grep -c ^ /tmp/count_err); else echo RESTORED_FILES=$((n)); fi' 2>&1 | tr -d '\r')" || TEMP_VERIFY_EXIT=$?
 TEMP_COUNT="$(printf '%s\n' "${TEMP_VERIFY_OUTPUT}" | sed -n 's/^RESTORED_FILES=\([0-9][0-9]*\)$/\1/p' | tail -n 1)"
 if [ "${TEMP_VERIFY_EXIT}" -ne 0 ]; then TEMP_COUNT=""; fi
 if [ -z "${TEMP_COUNT}" ]; then
@@ -1472,13 +1571,13 @@ if [ "${HAS_CLAUDE_BACKUP}" -eq 1 ]; then
     CLAUDE_TEMP_CREATED=1
     CLAUDE_CID=""
     CLAUDE_CREATE_OK=0
-    if CLAUDE_CID="$(docker create --label "${RESTORE_LABEL}=${CLAUDE_VOLUME_NAME}" -v "${CLAUDE_TEMP_VOLUME_NAME}:/dest" busybox)"; then
+    if CLAUDE_CID="$(docker create --label "${RESTORE_LABEL}=${CLAUDE_VOLUME_NAME}" -v "${CLAUDE_TEMP_VOLUME_NAME}:/dest" "${BUSYBOX_IMAGE}")"; then
         CLAUDE_CREATE_OK=1
     fi
     CLAUDE_PREP_OK=0
     if [ "${CLAUDE_CREATE_OK}" -eq 1 ] \
         && docker cp "${CLAUDE_BACKUP_PATH}/." "${CLAUDE_CID}:/dest/" \
-        && docker run --rm --label "${RESTORE_LABEL}=${CLAUDE_VOLUME_NAME}" -v "${CLAUDE_TEMP_VOLUME_NAME}:/dest" busybox chown -R 1000:1000 /dest; then
+        && docker run --rm --label "${RESTORE_LABEL}=${CLAUDE_VOLUME_NAME}" -v "${CLAUDE_TEMP_VOLUME_NAME}:/dest" "${BUSYBOX_IMAGE}" chown -R 1000:1000 /dest; then
         CLAUDE_PREP_OK=1
     fi
     # Best-effort reap of the captured CID (also reaped by label on failure).
@@ -1489,8 +1588,8 @@ if [ "${HAS_CLAUDE_BACKUP}" -eq 1 ]; then
     fi
     # Replay the Claude volume's own symlink manifest (it sits at the Claude subfolder
     # root, so it copied into this volume's root). Same program and semantics as 3e.
-    if docker run --rm --label "${RESTORE_LABEL}=${CLAUDE_VOLUME_NAME}" -v "${CLAUDE_TEMP_VOLUME_NAME}:/dest:ro" busybox test -f "/dest/${SYMLINKS_MANIFEST}"; then
-        if ! docker run --rm --label "${RESTORE_LABEL}=${CLAUDE_VOLUME_NAME}" -v "${CLAUDE_TEMP_VOLUME_NAME}:/dest" busybox sh -c '
+    if docker run --rm --label "${RESTORE_LABEL}=${CLAUDE_VOLUME_NAME}" -v "${CLAUDE_TEMP_VOLUME_NAME}:/dest:ro" "${BUSYBOX_IMAGE}" test -f "/dest/${SYMLINKS_MANIFEST}"; then
+        if ! docker run --rm --label "${RESTORE_LABEL}=${CLAUDE_VOLUME_NAME}" -v "${CLAUDE_TEMP_VOLUME_NAME}:/dest" "${BUSYBOX_IMAGE}" sh -c '
             set -ef
             IFS=
             cr=$(printf \\r)
@@ -1519,7 +1618,7 @@ fi
 # F + L >= S + margin. Unmeasurable -> said at the prompt below.
 SWAP_SPACE_KNOWN=0
 SPACE_EXIT=0
-SPACE_OUTPUT="$(docker run --rm -v "${VOLUME_NAME}:/dest:ro" -v "${TEMP_VOLUME_NAME}:/src:ro" busybox sh -c "${SPACE_PROGRAM}" 2>&1 | tr -d '\r')" || SPACE_EXIT=$?
+SPACE_OUTPUT="$(docker run --rm -v "${VOLUME_NAME}:/dest:ro" -v "${TEMP_VOLUME_NAME}:/src:ro" "${BUSYBOX_IMAGE}" sh -c "${SPACE_PROGRAM}" 2>&1 | tr -d '\r')" || SPACE_EXIT=$?
 AVAIL_KB="$(printf '%s\n' "${SPACE_OUTPUT}" | sed -n 's/^AVAIL_KB=\([0-9][0-9]*\)$/\1/p' | tail -n 1)"
 LIVE_KB="$(printf '%s\n' "${SPACE_OUTPUT}" | sed -n 's/^LIVE_KB=\([0-9][0-9]*\)$/\1/p' | tail -n 1)"
 SRC_KB="$(printf '%s\n' "${SPACE_OUTPUT}" | sed -n 's/^SRC_KB=\([0-9][0-9]*\)$/\1/p' | tail -n 1)"
@@ -1604,7 +1703,7 @@ done
 # leftover temp volume shows whether a swap may have run (see SWAP_MARKER).
 MARKERS_WRITTEN=1
 for tv in $(_restore_kept_temps); do
-    if ! docker run --rm --label "${RESTORE_LABEL}=${VOLUME_NAME}" -v "${tv}:/dest" busybox touch "/dest/${SWAP_MARKER}"; then
+    if ! docker run --rm --label "${RESTORE_LABEL}=${VOLUME_NAME}" -v "${tv}:/dest" "${BUSYBOX_IMAGE}" touch "/dest/${SWAP_MARKER}"; then
         _restore_fail_before_swap "ERROR: Could not prepare the temporary copy for the final step."
     fi
 done
@@ -1645,13 +1744,13 @@ echo "Replacing your DAAF data with the checked copy..."
 echo "  Do not close this window or quit Docker Desktop until this step finishes."
 SWAP_STARTED=1
 SWAP_EXIT=0
-docker run --rm --sig-proxy=false --name "${SWAP_CONTAINER_NAME}" -v "${TEMP_VOLUME_NAME}:/src:ro" -v "${VOLUME_NAME}:/dest" busybox sh -c "${SWAP_PROGRAM}" || SWAP_EXIT=$?
+docker run --rm --sig-proxy=false --name "${SWAP_CONTAINER_NAME}" -v "${TEMP_VOLUME_NAME}:/src:ro" -v "${VOLUME_NAME}:/dest" "${BUSYBOX_IMAGE}" sh -c "${SWAP_PROGRAM}" || SWAP_EXIT=$?
 if [ "${SWAP_EXIT}" -eq 3 ]; then
     _restore_fail_swap_not_run "${SWAP_EXIT}"
 elif [ "${SWAP_EXIT}" -ne 0 ]; then
     _restore_fail_after_swap "ERROR: Replacing your DAAF data did not complete (exit ${SWAP_EXIT})."
 fi
-SWAP_VERIFY_OUTPUT="$(docker run --rm -v "${TEMP_VOLUME_NAME}:/src:ro" -v "${VOLUME_NAME}:/dest:ro" busybox sh -c "${SWAP_VERIFY_PROGRAM}" 2>&1 | tr -d '\r')" || true
+SWAP_VERIFY_OUTPUT="$(docker run --rm -v "${TEMP_VOLUME_NAME}:/src:ro" -v "${VOLUME_NAME}:/dest:ro" "${BUSYBOX_IMAGE}" sh -c "${SWAP_VERIFY_PROGRAM}" 2>&1 | tr -d '\r')" || true
 if ! _restore_swap_checked "${SWAP_VERIFY_OUTPUT}" nonempty; then
     _restore_fail_after_swap "ERROR: After replacing your DAAF data, it could not be confirmed to match the" \
         "       checked copy (file names, sizes, permissions and owners)."
@@ -1676,7 +1775,7 @@ if [ "${HAS_CLAUDE_BACKUP}" -eq 1 ]; then
             "       window -- so it was not used."
     fi
     SWAP_EXIT=0
-    docker run --rm --sig-proxy=false --name "${CLAUDE_SWAP_CONTAINER_NAME}" -v "${CLAUDE_TEMP_VOLUME_NAME}:/src:ro" -v "${CLAUDE_VOLUME_NAME}:/dest" busybox sh -c "${SWAP_PROGRAM}" || SWAP_EXIT=$?
+    docker run --rm --sig-proxy=false --name "${CLAUDE_SWAP_CONTAINER_NAME}" -v "${CLAUDE_TEMP_VOLUME_NAME}:/src:ro" -v "${CLAUDE_VOLUME_NAME}:/dest" "${BUSYBOX_IMAGE}" sh -c "${SWAP_PROGRAM}" || SWAP_EXIT=$?
     # Exit 3 is the program's own refusal before its rm (the live Claude state is
     # untouched); any other outcome means the swap ran and may have erased it (S-a).
     if [ "${SWAP_EXIT}" -ne 3 ]; then CLAUDE_SWAP_RAN=1; fi
@@ -1684,7 +1783,7 @@ if [ "${HAS_CLAUDE_BACKUP}" -eq 1 ]; then
         _restore_fail_claude_after_data "ERROR: Replacing the Claude Code state (login and session history) did not" \
             "       complete (exit ${SWAP_EXIT})."
     fi
-    SWAP_VERIFY_OUTPUT="$(docker run --rm -v "${CLAUDE_TEMP_VOLUME_NAME}:/src:ro" -v "${CLAUDE_VOLUME_NAME}:/dest:ro" busybox sh -c "${SWAP_VERIFY_PROGRAM}" 2>&1 | tr -d '\r')" || true
+    SWAP_VERIFY_OUTPUT="$(docker run --rm -v "${CLAUDE_TEMP_VOLUME_NAME}:/src:ro" -v "${CLAUDE_VOLUME_NAME}:/dest:ro" "${BUSYBOX_IMAGE}" sh -c "${SWAP_VERIFY_PROGRAM}" 2>&1 | tr -d '\r')" || true
     if ! _restore_swap_checked "${SWAP_VERIFY_OUTPUT}"; then
         _restore_fail_claude_after_data "ERROR: After replacing the Claude Code state, it could not be confirmed to match" \
             "       the checked copy."
@@ -1712,7 +1811,7 @@ SWAPS_DONE=1
 # only this check could not run.
 echo "Verifying restore..."
 VERIFY_EXIT=0
-VERIFY_OUTPUT="$(docker run --rm -v "${VOLUME_NAME}:/dest:ro" busybox sh -c 'set -e; : > /tmp/count_err; n=$(find /dest -type f ! -path /dest/.daaf-symlinks ! -path /dest/.daaf-permissions ! -path /dest/.daaf-claude-config/\* -exec stat -c %s {} + 2>/tmp/count_err | wc -l); if test -s /tmp/count_err; then echo RESTORED_COUNT_ERRORS=$(grep -c ^ /tmp/count_err); else echo RESTORED_FILES=$((n)); fi' 2>&1 | tr -d '\r')" || VERIFY_EXIT=$?
+VERIFY_OUTPUT="$(docker run --rm -v "${VOLUME_NAME}:/dest:ro" "${BUSYBOX_IMAGE}" sh -c 'set -e; : > /tmp/count_err; n=$(find /dest -type f ! -path /dest/.daaf-symlinks ! -path /dest/.daaf-permissions ! -path /dest/.daaf-claude-config/\* -exec stat -c %s {} + 2>/tmp/count_err | wc -l); if test -s /tmp/count_err; then echo RESTORED_COUNT_ERRORS=$(grep -c ^ /tmp/count_err); else echo RESTORED_FILES=$((n)); fi' 2>&1 | tr -d '\r')" || VERIFY_EXIT=$?
 RESTORED_COUNT="$(printf '%s\n' "${VERIFY_OUTPUT}" | sed -n 's/^RESTORED_FILES=\([0-9][0-9]*\)$/\1/p' | tail -n 1)"
 RESTORED_ERRORS="$(printf '%s\n' "${VERIFY_OUTPUT}" | sed -n 's/^RESTORED_COUNT_ERRORS=\([0-9][0-9]*\)$/\1/p' | tail -n 1)"
 if [ "${VERIFY_EXIT}" -ne 0 ]; then RESTORED_COUNT=""; fi

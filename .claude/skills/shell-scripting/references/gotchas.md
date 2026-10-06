@@ -1,6 +1,6 @@
 # Gotchas
 
-Known pitfalls and surprising behaviors in Bash, PowerShell, and cross-platform scripting. Each entry includes the problem, why it happens, and the fix.
+Known pitfalls and surprising behaviors in Bash, PowerShell, and cross-platform scripting, plus test-suite pitfalls. Each entry includes the problem, why it happens, and the fix.
 
 ---
 
@@ -304,7 +304,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 ```
 
-**Why it happens:** PowerShell treats native executables as black boxes. Their stderr output and exit codes are outside PowerShell's error handling system (unless `$PSNativeCommandUseErrorActionPreference = $true` in PS 7.4+).
+**Why it happens:** PowerShell treats native executables as black boxes. Their stderr output and exit codes are outside PowerShell's error handling system (unless `$PSNativeCommandUseErrorActionPreference = $true` in PS 7.4+; see that entry below).
 
 ---
 
@@ -330,16 +330,49 @@ $ErrorActionPreference = $saved
 - The same day, on the same host, the restore's copy failure printed no `Docker said:` line (Run 3c).
 - On pwsh 7.6 / Linux, a raw `2>&1` capture under `SilentlyContinue` kept the line (`lines=2 errorrecords=1`, fix pass #18), so the drop is specific to 5.1.
 
-**Why it happens:** not established. The probe shows the effect, not the mechanism. Treat it as a difference between PowerShell versions that you cannot reason your way to from pwsh 7 behavior or documentation.
+**Why it happens (sourced, 2026-10-06):** PowerShell 7.2 changed how redirected native stderr is handled. Microsoft's [about_Preference_Variables](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_preference_variables) says: "Beginning in PowerShell 7.2, error records redirected from native commands, like when using redirection operators (2>&1), aren't written to the $Error variable and the preference variable $ErrorActionPreference doesn't affect the redirected output." (fetched to `research/2026-10-01_FrameworkDev_RestoreCopyThenSwap/web/compat/2026-10-06T153036Z_learn-microsoft-com_about-preference-variables-powershell-microsoft-learn_0309d393.md`, lines 212-215). So on Windows PowerShell 5.1 the preference still applies to each redirected stderr record, and `SilentlyContinue` suppresses it before it reaches the capture; from 7.2 on it does not, which is why pwsh 7 keeps the line. The page states the 7.2 change; that 5.1 drops the record *because* the preference applies there is inference from "Beginning in PowerShell 7.2" plus the field probe above. The same page goes on: "PowerShell 7.4 added a feature that allows you to control how messages written to stderr are handled", which is the next entry.
 
 **Fix:**
 1. Use `'Continue'`, not `'SilentlyContinue'`, in any bracket whose merged capture you read for stderr text, and restore the previous value right after. Under `Continue`, with `2>&1` into a variable, nothing reached the console and nothing was terminating under a top-level `'Stop'` (observed on pwsh 7.6; on 5.1, inferred from the field probe).
 2. A bracket around a capture that reads stdout only (`2>$null`), or whose output is discarded, can keep `SilentlyContinue`: it reads no stderr text.
 3. pwsh 7 cannot reproduce the drop, so a behavioral test on Linux cannot guard against it. Guard it structurally instead (a test that reads the script text), and confirm on a real Windows PowerShell 5.1 host when you can.
 
-**Where it lives in DAAF:** `scripts/host/restore_from_backup.ps1`: `Invoke-DaafRestoreDocker`, `Invoke-DaafRestoreDockerSplit`, and the inline `$ScanCountOutput`, `$cpOut`, `$TempVerifyOutput` and `$VerifyOutput` captures use `Continue` (fix pass #18, D2).
+**Where it lives in DAAF:** `scripts/host/restore_from_backup.ps1`: `Invoke-DaafRestoreDocker`, `Invoke-DaafRestoreDockerSplit`, and the inline `$ScanCountOutput`, `$cpOut`, `$TempVerifyOutput` and `$VerifyOutput` captures use `Continue` (fix pass #18, D2). Since follow-up pass #26, the helper-image download in `restore_from_backup.ps1` and `backup_daaf.ps1` does too (`$pullAll`, read for its `Docker said:` line). The structural pin that guards these brackets also constrains their form: the first shape of that capture, `docker pull ... 2>&1 | ForEach-Object` with no assignment, was rejected by the pin, so the pull was reshaped as a `$pullAll = @(...)` capture the pin recognises.
 
 **Severity:** Medium. Data is not at risk, but every diagnostic built from Docker's text is lost on the PowerShell most Windows users run, and logic that matches error text quietly takes its fallback path.
+
+---
+
+### `$PSNativeCommandUseErrorActionPreference` (pwsh 7.4+) Turns a Native Nonzero Exit Into an Error Record
+
+**The problem:** In PowerShell 7.4 and later, when `$PSNativeCommandUseErrorActionPreference` is `$true`, a native command that exits nonzero also raises a PowerShell error, handled by `$ErrorActionPreference`. A script written to read `$LASTEXITCODE` itself (every DAAF host script) then gets an extra line in its `2>&1` captures, or a throw under a script-wide `'Stop'`. It is off by default (observed: `pwsh -NoProfile` 7.6.3 printed `value=[False]`), so the risk is a value set outside the script, for example in a profile or a calling session (inference: not observed in the field). Windows PowerShell 5.1 does not have the feature.
+
+```powershell
+# BAD (pwsh 7.4+, if the variable is $true): a script that classifies exit codes itself
+$ErrorActionPreference = 'Stop'
+docker volume inspect nosuch          # throws NativeCommandExitException before your check runs
+if ($LASTEXITCODE -ne 0) { ... }
+
+# GOOD: switch it off once, right after the preamble, in every script that reads $LASTEXITCODE
+$ErrorActionPreference = 'Stop'
+$PSNativeCommandUseErrorActionPreference = $false   # an ordinary, unused variable on 5.1
+```
+
+**Why it happens (sourced, 2026-10-06):** about_Preference_Variables: "When $PSNativeCommandUseErrorActionPreference is $true, native commands with non-zero exit codes issue errors according to $ErrorActionPreference." Its own example disables it for a command that uses nonzero codes for information: "Some native commands, like robocopy use non-zero exit codes to represent information other than errors. In these cases, you can temporarily disable the behavior and prevent non-zero exit codes from issuing errors." (`research/2026-10-01_FrameworkDev_RestoreCopyThenSwap/web/compat/2026-10-06T153036Z_learn-microsoft-com_about-preference-variables-powershell-microsoft-learn_0309d393.md`, lines 586-592.)
+
+**Repro (pwsh 7.6.3 on Linux, compatibility audit 04, `research/2026-10-01_FrameworkDev_RestoreCopyThenSwap/scoping/04_F1_compat_audit.md`, dependency table):** with the variable set to `$true` and a native `sh` that exits 3:
+- Under `Continue`, the `2>&1` capture gained a third line: `Program "sh" ended with non-zero exit code: 3 (0x03).` A script that shows the last captured line as `Docker said:` would have shown that line instead of Docker's message.
+- Under `SilentlyContinue`, the capture held 2 lines.
+- Under `Stop`, with no preference bracket around the call, it threw `NativeCommandExitException`.
+
+**Fix:**
+1. Set `$PSNativeCommandUseErrorActionPreference = $false` right after `$ErrorActionPreference = 'Stop'` in every script that classifies native exit codes itself. It is a plain assignment that a 5.1 script also accepts.
+2. Keep reading `$LASTEXITCODE` immediately after each native call; the preference variable only stops PowerShell from adding its own error on top.
+3. Where a single command needs the feature on, set it inside a script block (`& { ... }`): the change is local to that block, as the documentation's robocopy example shows.
+
+**Where it lives in DAAF:** `scripts/host/restore_from_backup.ps1` and `backup_daaf.ps1` (follow-up pass #26), and `migrate_daaf.ps1` (review fix round 9), right after the `$ErrorActionPreference` line.
+
+**Severity:** Low-Medium. Low in DAAF (every docker call there sits in a preference bracket, so it could not throw; only the extra line could leak into a `Docker said:` text). Higher for a script that calls native commands under a bare `'Stop'`.
 
 ---
 
@@ -866,7 +899,7 @@ find /staging \( -type p -o -type s -o -type b -o -type c \) -exec rm -f {} +
 
 `-exec ... \;` (one run per path, not batched) is not affected.
 
-**Why it happens (from source, not executed here):** in busybox `findutils/find.c`, `flush_exec_plus()` runs the pending batch of every `func_exec` action it finds by walking `G.actions`, the top-level OR branches and their AND lists; a `\( \)` group is a single `func_paren` action whose own `subexpr` action list it never visits ([busybox find.c, `mirror/busybox` master](https://github.com/mirror/busybox/blob/master/findutils/find.c), read on 2026-09-30). Alpine's downstream patch documents the symptom: `touch a; busybox find a \( -exec echo {} + \)` "didn't output anything but should output a" ([Alpine aports MR !75008](https://gitlab.alpinelinux.org/alpine/aports/-/merge_requests/75008), not yet upstreamed when read). The unpinned `busybox` image DAAF uses is the upstream (glibc) build, and it is affected: see the field evidence below.
+**Why it happens (from source, not executed here):** in busybox `findutils/find.c`, `flush_exec_plus()` runs the pending batch of every `func_exec` action it finds by walking `G.actions`, the top-level OR branches and their AND lists; a `\( \)` group is a single `func_paren` action whose own `subexpr` action list it never visits ([busybox find.c, `mirror/busybox` master](https://github.com/mirror/busybox/blob/master/findutils/find.c), read on 2026-09-30). Alpine's downstream patch documents the symptom: `touch a; busybox find a \( -exec echo {} + \)` "didn't output anything but should output a" ([Alpine aports MR !75008](https://gitlab.alpinelinux.org/alpine/aports/-/merge_requests/75008), not yet upstreamed when read). The `busybox` image DAAF uses is the upstream (glibc) build, and it is affected: see the field evidence below. (Since follow-up pass #26 DAAF pins it by digest to `busybox:1.37.0`, whose per-architecture digests equal `1.37.0-glibc`'s on Docker Hub; see "Upstream images re-push and retag" below. Per the compatibility audit the bug was still present in 1.37.0.)
 
 **Field evidence (2026-10-01, Windows host, Docker 29.1.3, the `busybox` image as pulled that day):** a one-shot probe (`research/2026-09-29_FrameworkDev_BackupLongPathCount/2026-09-30_busybox_host_probe.md`) printed `CANARY_PARENS=0` for `find /source -name keep.txt \( -exec echo {} + \) | wc -l` and `CONTROL_TOPLEVEL=1` for the same `-exec` at the top level, with no error line in the output. So the batch inside the parentheses never ran and printed nothing. The probe did not capture `find`'s exit status. The same probe ran the fixed staging program (top-level `-o` branches) under that busybox in both name modes, and its output matched the expected listing exactly.
 
@@ -1074,6 +1107,102 @@ a=$(stat -f -c %a /dest) && s=$(stat -f -c %S /dest) && echo AVAIL_KB=$((a*s/102
 
 ---
 
+### Upstream Images Re-Push and Retag: a Tag Is Not the Image You Tested
+
+**The problem:** `docker run busybox` means `busybox:latest`, and a tag is a pointer the publisher can move at any time. Even a version tag such as `busybox:1.37.0` can be rebuilt and re-pushed under the same name. A script that names an image by tag runs whatever the computer has cached, or whatever the registry serves on the day of a fresh pull. Two computers, or one computer before and after `docker image prune`, can run different programs, and "field-tested" stops meaning anything.
+
+```bash
+# BAD: whatever `latest` (or a re-pushed version tag) points to today
+docker run --rm -v "${VOL}:/source:ro" busybox sh -c '...'
+
+# GOOD: one pinned reference, defined once per script, digest included
+BUSYBOX_IMAGE='busybox:1.37.0@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e'
+docker run --rm -v "${VOL}:/source:ro" "${BUSYBOX_IMAGE}" sh -c '...'
+```
+
+With `name:tag@sha256:...`, Docker uses the digest and the tag is only a label for readers (inference from Docker's reference format; the combined form was not exercised against a real daemon in pass #26, see Fix item 4).
+
+**Field evidence (Docker Hub API, fetched 2026-10-06; compatibility audit 04, `research/2026-10-01_FrameworkDev_RestoreCopyThenSwap/scoping/04_F1_compat_audit.md`, section 0; JSON under `.../web/compat/`):**
+- `latest`, `1`, `1.38` and `1.38.0` all pointed to index `sha256:fd7dc98638c8…`, pushed `2026-09-23T07:57`-`07:58`. busybox.net lists that release as "13 May 2026 -- BusyBox 1.38.0 (unstable)", and its changelog touches areas DAAF's restore relies on (ash signal handling, `cp`, `cmp`).
+- `1.37.0` and `1.37` pointed to index `sha256:bdf57e528e45…` (`application/vnd.oci.image.index.v1+json`), also pushed 2026-09-23 (`tag_last_pushed` `2026-09-23T07:57:44`). So the version tag itself was re-pushed.
+- Every DAAF field test ran busybox 1.37.0 under digest `1487d0af…`. A search of all 219 tags, matching index and per-architecture digests, found it on none (`1487d0af hits: []`). That it was an earlier push of `1.37.0`/`latest` is inference: Docker Hub keeps only current digests.
+- Consequence: from 2026-09-23 a fresh install that pulled `busybox` got the untested 1.38.0, and even `busybox:1.37.0` was a different artifact from the field-tested one.
+
+**Fix:**
+1. Pin by digest: `name:tag@sha256:<index digest>`. Use the multi-architecture index digest (the one the tag points to), not one platform's, so the same string works on amd64 and Apple silicon (`bdf57e52…` lists amd64, arm64/v8 and others).
+2. Keep **one** source of truth: a single constant per script (`BUSYBOX_IMAGE` / `$BusyboxImage`), with every `docker run`/`create` going through it, and the same literal in any compose file (`docker-compose.yml`'s `daaf-init` `image:`). Otherwise compose keeps pulling the moving tag into the same image cache the scripts read.
+3. Guard the copies with a parity test that extracts every occurrence and asserts exactly one distinct value. Also re-check source-text tests: pins keyed on the bare token (`busybox sh -c`, `'busybox',`) stop matching once calls go through the constant (pass #26 broke 12 bats pins and about 15 Pester pins this way, across the restore, backup and migrate suites).
+4. When the pinned image may be missing, check for it before anything changes, and pull it with visible progress (see "The Docker 29 API floor" for the startup check that runs just before). Confirm once on a real host that `docker image inspect <name:tag@digest>` exits 0 after a pull: if it ever failed for an image that is present, every run would pull again and an offline computer would be refused (pass #26 WARNING, inference).
+5. A digest pin freezes security fixes too. Re-pin on purpose, re-run the field probes on the new digest, and note the date.
+
+**Where it lives in DAAF:** `BUSYBOX_IMAGE` in `scripts/host/backup_daaf.sh` and `restore_from_backup.sh`, `$BusyboxImage` in their `.ps1` twins, the same constant in `migrate_daaf.{sh,ps1}`, and `daaf-init`'s `image:` in `docker-compose.yml` (follow-up pass #26). The backup and restore scripts check for the image after their Docker version check and before anything is created, and download it when missing (`Downloading the small helper image busybox that the restore needs...`).
+
+**Severity:** High. A silent change of the program that erases and copies the user's data, between a test and a user's run.
+
+---
+
+### The Docker 29 API Floor: a 29.x Client Cannot Talk to an Engine Older Than 25.0
+
+**The problem:** Docker 29 removed support for Engine API versions below 1.44 (Docker 25.0). A Docker 29.x CLI cannot drive an Engine older than 25.0, and a 29.0-29.2 Engine refuses a client older than 25.0. This bites mismatched pairs: a Homebrew `docker` CLI with an older Colima, Rancher Desktop or distro engine, or an old Docker Desktop with a newer CLI on the `PATH`. The symptom can be misleading. In DAAF the first Docker call is `docker info`, so such a pair most likely fails there and the user sees `ERROR: Docker Desktop does not seem to be running. Please start it and try again.`, never reaching the version check (inference from the code path, noted by the pass #26 engineer; not reproduced against a real mismatched pair). Fix item 4 below adds a hint to that message.
+
+```bash
+# GOOD: after `docker info` succeeds, read both versions from stdout only and gate on the majors
+docker version --format '{{.Client.Version}} {{.Server.Version}}' 2>/dev/null
+# 29.1.3 29.1.3   -> continue
+# 24.0.7 29.1.3   -> refuse: older than 25.0 on one side
+# 30.0.0 30.0.0   -> NOTE: not tested with this version; continue
+```
+
+**Why it happens (Docker Engine 29 release notes, fetched 2026-10-06 to `research/2026-10-01_FrameworkDev_RestoreCopyThenSwap/web/compat/2026-10-06T152953Z_docs-docker-com_docker-engine-version-29-release-notes-docker-docs_1be52d7c.md`):**
+- 29.0.0, line 540: "The daemon now requires API version v1.44 or later (Docker v25.0+)."
+- 29.0.0, line 724: "client: remove support for negotiating API version < v1.44 (docker 25.0)."; line 727: "daemon: raise minimum API version to v1.44."; line 849: "Remove API version compatibility for API version < v1.44 (Docker v24.0 and older)."
+- 29.3.0, line 372: "Lower minimum API version from v1.44 to v1.40 (Docker 19.03)." That relaxes only the daemon side: a 29.3+ Engine accepts older clients again, but the 29.x client still cannot negotiate below 1.44.
+- Docker Desktop 4.27.0 shipped Engine 25.0.0; DAAF names 4.27.1 (Engine 25.0.2, which also carries the CVE-2024-24557 fix) as the minimum. 4.27.1's upgrade line reads "Docker Engine v25.0.2 which contains a fix for CVE-2024-24557, ..." (Docker Desktop release notes, `.../web/compat/2026-10-06T153137Z_docs-docker-com_docker-desktop-release-notes-docker-docs_46c5da5e.md`, line 2185). 4.27.0's "Docker Engine v25.0.0" appears only in the raw HTML (`..._46c5da5e.html`, the `Docker Engine v25.0.0</a>` link under the 4.27.0 Upgrades list); the Markdown extract dropped that list. Per audit 04, 4.26.x shipped 24.0.7.
+
+**Fix:**
+1. Run one `docker version --format '{{.Client.Version}} {{.Server.Version}}'` right after the `docker info` check, stdout only, last non-empty line. The `--format` value has no `"`, so Windows PowerShell 5.1 passes it unchanged (observed in the busybox host probe's Step 0, which printed `29.1.3 29.1.3`).
+2. Refuse, with nothing changed, when either major is below 25 or does not parse. DAAF requires 25 on **both** sides even though a 29.3+ Engine would accept an older client: one rule is simpler to explain, and it covers older features too (`{{.State}}` in `docker ps` since 20.10, `AutoRemove` since API 1.25).
+3. For a major other than the tested one, print a NOTE and continue. Never block newer versions on a guess.
+4. Add a hint in the `docker info` failure branch, so a mismatched pair is not reported only as "not running": read the same `docker version --format` line there, and when the client's major parses as 25 or newer while the Engine's version is empty or does not parse, say the Engine may be older than 25.0 and give the minimum. Start the hint with "If Docker is running", because Docker that is simply stopped gives the same reading. Keep the original message and exit code.
+
+**Where it lives in DAAF:** the `Docker version check` block in `scripts/host/backup_daaf.{sh,ps1}` and `restore_from_backup.{sh,ps1}`, identical wording with the script name varied: `ERROR: This Docker version is too old for the restore (...)`, `ERROR: Could not read the Docker version (...)`, `The restore needs Docker 25.0 or newer, for both the Docker client and Docker Engine` / `(Docker Desktop 4.27.1 or newer). Update Docker, then run the restore again.` / `(Docker Desktop or Docker Engine is required; Podman is not supported.)`, and the `NOTE: The restore has not been tested with this Docker version (...; tested: 29). Continuing.` line (follow-up pass #26; the Podman line from review fix round 9). The old-Engine hint (fix item 4) sits in the `docker info` failure branch just above: `If Docker is running, its Docker Engine may be older than 25.0 (Docker client <c>).` / `The restore needs Docker 25.0 or newer (Docker Desktop 4.27.1 or newer).` (review fix round 9; tested with stand-in docker output only, not against a real mismatched pair).
+
+**Severity:** Medium. Nothing is damaged (every call fails), but without the check the error is opaque, and with a mismatched pair it can look like Docker is not running at all.
+
+---
+
+## Testing Gotchas
+
+### A New Startup Docker Call Makes Every Silent Docker Mock Fail Closed
+
+**The problem:** Test suites stub `docker` with a `case` whose default arm succeeds with nothing on stdout (`*) return 0` in bash; in PowerShell a `switch` `default` arm that only returns, or only writes to the host). That is fine for calls whose result is the exit code. A new startup call whose result is its **stdout** (here `docker version --format ...`, which must print two versions) gets the empty default, and a fail-closed script correctly refuses: every end-to-end test then stops at the new check, long before the behavior it tests.
+
+```bash
+# BAD: each test file grows its own inline docker() with a silent default, none knows `version`
+docker() { case "$1" in info) return 0 ;; *) return 0 ;; esac; }
+
+# GOOD: one shared arm in the shared mock (and in every inline mock that cannot use it)
+docker() {
+    case "$*" in
+        "version --format"*) echo "29.1.3 29.1.3"; return 0 ;;
+        ...
+        *) return 0 ;;
+    esac
+}
+```
+
+**Field evidence (follow-up pass #26, 2026-10-06; `research/2026-10-01_FrameworkDev_RestoreCopyThenSwap/engineer_reports/26_engineer26_COMPLETED.md`):** after the version and image checks were added, the bats run printed `1..391` with 198 ok and 193 not ok. 181 of the failures were this cause (178 matched on `ERROR: Could not read the Docker version`; 3 inferred). The Pester restore suite had 180 failures, first at the PowerShell edition guard and, with the test-only bypass set, at the version check. The scripts were correct; only the mocks lacked the arm. `backup_daaf.bats` alone has 24 inline `docker()` mocks (`grep -c -E '^\s*docker\(\)'` printed `24` on 2026-10-06).
+
+**Fix:**
+1. When a script gains a startup docker call, add its arm to the shared mock (`mock_docker` in `tests/bash/test_helper.bash`) in the same change, and to every inline mock that shadows it. Grep the test tree for `docker()` and for PowerShell `function docker` before calling the script change done.
+2. The script's own `DAAF_DRY_RUN` mock needs the arm too (pass #26 added `"version --format"*` and `"image inspect "*` arms there), or the CI dry-run smoke fails the same way.
+3. Prefer shared mocks to inline ones: one place to update.
+4. Expect a matching edit for each new guard that is not a docker call. Pass #26's PowerShell edition guard needed a test-only environment variable (`DAAF_TEST_ALLOW_CORE_NONWINDOWS=1`) in the Pester harnesses that run the real script under pwsh on Linux.
+
+**Severity:** Medium (test-suite only). It hides nothing, because the run fails loudly, but a large red run invites wholesale "fixes" that could mask a real regression. Classify failures by cause before changing tests.
+
+---
+
 ## Quick Lookup
 
 | Gotcha | Language | Severity | ShellCheck/Analyzer |
@@ -1089,7 +1218,8 @@ a=$(stat -f -c %a /dest) && s=$(stat -f -c %S /dest) && echo AVAIL_KB=$((a*s/102
 | `$?` for native commands | PowerShell | High | — |
 | Expression context breaks TTY | PowerShell | High | — |
 | `$ErrorActionPreference` scope | PowerShell | High | — |
-| PS 5.1 drops native stderr under `SilentlyContinue`, even with `2>&1` (bracket with `Continue`) | PowerShell | Medium | — |
+| PS 5.1 drops native stderr under `SilentlyContinue`, even with `2>&1` (bracket with `Continue`; 7.2+ no longer applies the preference to redirected native stderr) | PowerShell | Medium | — |
+| `$PSNativeCommandUseErrorActionPreference` (7.4+) adds an error line or throws on a native nonzero exit (set it to `$false`) | PowerShell | Low-Medium | — |
 | Embedded `"` in native args | PowerShell | High | — |
 | `Start-Process -ArgumentList` array joined unquoted | PowerShell | High | — |
 | `Start-Process -PassThru` `ExitCode` `$null` (no `.Handle`) | PowerShell | Medium-High | — |
@@ -1112,3 +1242,6 @@ a=$(stat -f -c %a /dest) && s=$(stat -f -c %S /dest) && echo AVAIL_KB=$((a*s/102
 | Interrupted `docker run --rm` leaves a never-started (Created) container holding its volumes (`docker ps -a --filter volume=` + plain `docker rm`) | Cross-platform | Medium | — |
 | `docker run -v NAME:/path` silently re-creates a vanished named volume, empty (check identity before any mount) | Cross-platform | High | — |
 | In-container `df` on Docker Desktop reports the VM's virtual disk, not the host drive | Cross-platform | Medium | — |
+| Upstream images re-push and retag: pin by digest (`name:tag@sha256:...`), one constant per script plus compose, parity test | Cross-platform | High | — |
+| Docker 29 API floor: a 29.x client cannot talk to an Engine below 25.0 (startup `docker version` check; can look like "not running") | Cross-platform | Medium | — |
+| A new startup docker call fails every mock whose default arm prints nothing (add a shared mock arm) | Testing | Medium | — |

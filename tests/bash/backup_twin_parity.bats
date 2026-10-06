@@ -16,7 +16,7 @@
 #
 #   2. restore SYMLINK_REPLAY -- recreates the stripped symlinks from the manifest.
 #      In restore_from_backup.sh it is inlined at TWO volume-bound call sites as a
-#      multi-line `busybox sh -c '...'` block (with the same manifest splice); in
+#      multi-line `"${BUSYBOX_IMAGE}" sh -c '...'` block (with the same manifest splice); in
 #      restore_from_backup.ps1 it is ONE `$symlinkReplayScript = "..."` variable
 #      (backtick-escaped `$, `; `-joined single line) reused at TWO call sites.
 #      The two forms are the same command STREAM (identical after treating `;` and
@@ -35,7 +35,7 @@
 # add a second, drift-prone copy of the same parsing for no additional coverage.
 #
 # ROBUSTNESS: programs are located by their delimiters/anchors (assignment
-# markers, here-string fences, `busybox sh -c '` openers), never by hardcoded
+# markers, here-string fences, `"${BUSYBOX_IMAGE}" sh -c '` openers), never by hardcoded
 # line numbers -- so the tests survive line drift in the host scripts.
 #
 # KNOWN FRAGILITY (deliberate trade-off): the extraction resolves the manifest
@@ -103,7 +103,8 @@ extract_backup_ps1() {
 }
 
 # restore SYMLINK_REPLAY from restore_from_backup.sh (first replay call site).
-# The replay block is the `busybox sh -c '` whose first body line is `set -ef`
+# The replay block is the `"${BUSYBOX_IMAGE}" sh -c '` (the pinned helper image, fix
+# pass #26; it was a bare `busybox` before) whose first body line is `set -ef`
 # (distinguishing it from the `set -e` permissions replay and the `rm -rf` clear).
 # Terminator: the trimmed line that STARTS with a single quote (i.e. `'; then`).
 extract_restore_sh() {
@@ -112,7 +113,7 @@ extract_restore_sh() {
     sed "s|/dest/'\"\${SYMLINKS_MANIFEST}\"'|/dest/${m}|g" "${f}" \
     | awk '
         BEGIN { inp=0; started=0 }
-        inp==0 && /busybox sh -c \047$/ { inp=1; started=0; next }
+        inp==0 && /"[$][{]BUSYBOX_IMAGE[}]" sh -c \047$/ { inp=1; started=0; next }
         inp==1 {
             body=$0; sub(/^[[:space:]]+/, "", body)
             if (started==0) {
@@ -189,7 +190,7 @@ dquote_count() { tr -cd '"' | wc -c | tr -d '[:space:]'; }
     extract_restore_sh  "${REPO_ROOT}/${RESTORE_SH}"  | canon > "${TEST_DIR}/r_sh.txt"
     extract_restore_ps1 "${REPO_ROOT}/${RESTORE_PS1}" | canon > "${TEST_DIR}/r_ps1.txt"
 
-    [ -s "${TEST_DIR}/r_sh.txt" ] || { echo "FAIL: restore .sh replay extraction empty -- 'busybox sh -c' + 'set -ef' block not found"; return 1; }
+    [ -s "${TEST_DIR}/r_sh.txt" ] || { echo "FAIL: restore .sh replay extraction empty -- '\"\${BUSYBOX_IMAGE}\" sh -c' + 'set -ef' block not found"; return 1; }
     [ -s "${TEST_DIR}/r_ps1.txt" ] || { echo "FAIL: restore .ps1 \$symlinkReplayScript extraction empty -- assignment not found"; return 1; }
 
     run diff "${TEST_DIR}/r_sh.txt" "${TEST_DIR}/r_ps1.txt"
@@ -221,11 +222,11 @@ dquote_count() { tr -cd '"' | wc -c | tr -d '[:space:]'; }
 # BOTH the data volume AND the Claude state volume.
 
 @test "twin-parity: restore .sh invokes the replay at exactly 2 volume-bound call sites" {
-    # A replay call site is a `busybox sh -c '` block whose first body line is
-    # `set -ef` (the replay marker) -- distinct from the `set -e` permissions
+    # A replay call site is a `"${BUSYBOX_IMAGE}" sh -c '` block whose first body line
+    # is `set -ef` (the replay marker) -- distinct from the `set -e` permissions
     # replay and the `rm -rf` volume-clear blocks. Count via a 1-line lookahead.
     local n
-    n="$(grep -A1 "busybox sh -c '\$" "${REPO_ROOT}/${RESTORE_SH}" | grep -c 'set -ef')"
+    n="$(grep -A1 '"[$]{BUSYBOX_IMAGE}" sh -c '"'"'$' "${REPO_ROOT}/${RESTORE_SH}" | grep -c 'set -ef')"
     [ "${n}" -eq 2 ] || { echo "FAIL: restore_from_backup.sh has ${n} symlink-replay call sites, expected 2 (data volume + Claude volume). A missing Claude-volume replay is the historical twin-parity break."; return 1; }
 }
 
@@ -241,12 +242,14 @@ dquote_count() { tr -cd '"' | wc -c | tr -d '[:space:]'; }
     # symlinks replayed, not the same volume twice. Copy-then-swap (2026-10-01): the
     # replays run on the TEMPORARY copies, before the swap, so they bind the temp names.
     local data_sites claude_sites
-    data_sites="$(grep -A1 '"${TEMP_VOLUME_NAME}:/dest" busybox sh -c '"'"'$' "${REPO_ROOT}/${RESTORE_SH}" | grep -c 'set -ef')"
-    claude_sites="$(grep -A1 '"${CLAUDE_TEMP_VOLUME_NAME}:/dest" busybox sh -c '"'"'$' "${REPO_ROOT}/${RESTORE_SH}" | grep -c 'set -ef')"
+    data_sites="$(grep -A1 '"${TEMP_VOLUME_NAME}:/dest" "[$]{BUSYBOX_IMAGE}" sh -c '"'"'$' "${REPO_ROOT}/${RESTORE_SH}" | grep -c 'set -ef')"
+    claude_sites="$(grep -A1 '"${CLAUDE_TEMP_VOLUME_NAME}:/dest" "[$]{BUSYBOX_IMAGE}" sh -c '"'"'$' "${REPO_ROOT}/${RESTORE_SH}" | grep -c 'set -ef')"
     [ "${data_sites}" -eq 1 ] || { echo "FAIL: expected exactly 1 data-volume (\${TEMP_VOLUME_NAME}) replay site, found ${data_sites}"; return 1; }
     [ "${claude_sites}" -eq 1 ] || { echo "FAIL: expected exactly 1 Claude-volume (\${CLAUDE_TEMP_VOLUME_NAME}) replay site, found ${claude_sites}"; return 1; }
     # No replay may bind a LIVE volume (`docker run` lines only; the swap mounts live).
-    run grep -cE -- '-v "\$\{(CLAUDE_)?VOLUME_NAME\}:/dest" busybox sh -c .$' "${REPO_ROOT}/${RESTORE_SH}"
+    # Any image word ([^ ]+), so this absence check cannot pass just because the image
+    # text changed (it was a bare `busybox` before fix pass #26).
+    run grep -cE -- '-v "\$\{(CLAUDE_)?VOLUME_NAME\}:/dest" [^ ]+ sh -c .$' "${REPO_ROOT}/${RESTORE_SH}"
     assert_output "0"
 }
 
@@ -353,7 +356,7 @@ dquote_count() { tr -cd '"' | wc -c | tr -d '[:space:]'; }
     # every container carrying it (exact `--filter label=` match) before a temp volume
     # is removed -- so a CID printed by a create that then failed is reaped too.
     # .sh: labelled helper create, the reaper, and its call in the temp cleanup.
-    run grep -cF 'if ! CID="$(docker create --label "${RESTORE_LABEL}=${VOLUME_NAME}" -v "${TEMP_VOLUME_NAME}:/dest" busybox)"; then' "${REPO_ROOT}/${RESTORE_SH}"
+    run grep -cF 'if ! CID="$(docker create --label "${RESTORE_LABEL}=${VOLUME_NAME}" -v "${TEMP_VOLUME_NAME}:/dest" "${BUSYBOX_IMAGE}")"; then' "${REPO_ROOT}/${RESTORE_SH}"
     assert_output "1"
     run grep -cF 'docker ps -aq --filter "label=${RESTORE_LABEL}=${lbl}" 2>/dev/null | while IFS= read -r id; do' "${REPO_ROOT}/${RESTORE_SH}"
     assert_output "1"
@@ -365,7 +368,7 @@ dquote_count() { tr -cd '"' | wc -c | tr -d '[:space:]'; }
     assert_output --partial '_restore_reap_helpers'
     # .ps1: the same labelled create, the reaper, its call in the cleanup, and the
     # inline reap of the captured $Cid right after the copy.
-    run grep -cF '$cidLines = @(docker create --label "$RestoreLabel=$VolumeName" -v "${TempVolumeName}:/dest" busybox 2>$null)' "${REPO_ROOT}/${RESTORE_PS1}"
+    run grep -cF '$cidLines = @(docker create --label "$RestoreLabel=$VolumeName" -v "${TempVolumeName}:/dest" $BusyboxImage 2>$null)' "${REPO_ROOT}/${RESTORE_PS1}"
     assert_output "1"
     # Review round 2: the reap reads the IDs from STDOUT only (the split helper), so a
     # stderr line is never taken for a container ID.
@@ -611,8 +614,8 @@ _SCAN_PRED='find . -type f ! -path ./.daaf-symlinks ! -path ./.daaf-permissions 
 # file counting in both restore twins, textually identical.
 @test "twin-parity: the post-restore volume count program is identical in both restore twins" {
     local sh_prog ps_prog
-    sh_prog="$(sed -n "s/^VERIFY_OUTPUT=\"\$(docker run --rm -v \"\${VOLUME_NAME}:\/dest:ro\" busybox sh -c '\([^']*\)'.*/\1/p" "${REPO_ROOT}/${RESTORE_SH}")"
-    ps_prog="$(sed -n "s/^\$VerifyOutput = @(docker run --rm -v \"\${VolumeName}:\/dest:ro\" busybox sh -c '\([^']*\)'.*/\1/p" "${REPO_ROOT}/${RESTORE_PS1}")"
+    sh_prog="$(sed -n "s/^VERIFY_OUTPUT=\"\$(docker run --rm -v \"\${VOLUME_NAME}:\/dest:ro\" \"\${BUSYBOX_IMAGE}\" sh -c '\([^']*\)'.*/\1/p" "${REPO_ROOT}/${RESTORE_SH}")"
+    ps_prog="$(sed -n "s/^\$VerifyOutput = @(docker run --rm -v \"\${VolumeName}:\/dest:ro\" \$BusyboxImage sh -c '\([^']*\)'.*/\1/p" "${REPO_ROOT}/${RESTORE_PS1}")"
     [ -n "${sh_prog}" ] || { echo "FAIL: restore .sh verify program not found"; return 1; }
     [ "${sh_prog}" = "${ps_prog}" ] || { echo "DRIFT:"; echo " sh:  ${sh_prog}"; echo " ps1: ${ps_prog}"; return 1; }
     [[ "${sh_prog}" == 'set -e; : > /tmp/count_err; n=$(find /dest -type f ! -path /dest/.daaf-symlinks ! -path /dest/.daaf-permissions ! -path /dest/.daaf-claude-config/\* -exec stat -c %s {} + 2>/tmp/count_err | wc -l); if test -s /tmp/count_err; then echo RESTORED_COUNT_ERRORS=$(grep -c ^ /tmp/count_err); else echo RESTORED_FILES=$((n)); fi' ]]
@@ -1026,10 +1029,10 @@ _swap_program_guarded() {
 
 @test "twin-parity: the temp-copy check runs the SAME count program (same find predicate) as the post-restore check" {
     local sh_live sh_temp ps_live ps_temp pred_live pred_temp
-    sh_live="$(sed -n "s/^VERIFY_OUTPUT=\"\$(docker run --rm -v \"\${VOLUME_NAME}:\/dest:ro\" busybox sh -c '\([^']*\)'.*/\1/p" "${REPO_ROOT}/${RESTORE_SH}")"
-    sh_temp="$(sed -n "s/^TEMP_VERIFY_OUTPUT=\"\$(docker run --rm --label \"\${RESTORE_LABEL}=\${VOLUME_NAME}\" -v \"\${TEMP_VOLUME_NAME}:\/dest:ro\" busybox sh -c '\([^']*\)'.*/\1/p" "${REPO_ROOT}/${RESTORE_SH}")"
-    ps_live="$(sed -n "s/^\$VerifyOutput = @(docker run --rm -v \"\${VolumeName}:\/dest:ro\" busybox sh -c '\([^']*\)'.*/\1/p" "${REPO_ROOT}/${RESTORE_PS1}")"
-    ps_temp="$(sed -n "s/^ *\$TempVerifyOutput = @(docker run --rm --label \"\$RestoreLabel=\$VolumeName\" -v \"\${TempVolumeName}:\/dest:ro\" busybox sh -c '\([^']*\)'.*/\1/p" "${REPO_ROOT}/${RESTORE_PS1}")"
+    sh_live="$(sed -n "s/^VERIFY_OUTPUT=\"\$(docker run --rm -v \"\${VOLUME_NAME}:\/dest:ro\" \"\${BUSYBOX_IMAGE}\" sh -c '\([^']*\)'.*/\1/p" "${REPO_ROOT}/${RESTORE_SH}")"
+    sh_temp="$(sed -n "s/^TEMP_VERIFY_OUTPUT=\"\$(docker run --rm --label \"\${RESTORE_LABEL}=\${VOLUME_NAME}\" -v \"\${TEMP_VOLUME_NAME}:\/dest:ro\" \"\${BUSYBOX_IMAGE}\" sh -c '\([^']*\)'.*/\1/p" "${REPO_ROOT}/${RESTORE_SH}")"
+    ps_live="$(sed -n "s/^\$VerifyOutput = @(docker run --rm -v \"\${VolumeName}:\/dest:ro\" \$BusyboxImage sh -c '\([^']*\)'.*/\1/p" "${REPO_ROOT}/${RESTORE_PS1}")"
+    ps_temp="$(sed -n "s/^ *\$TempVerifyOutput = @(docker run --rm --label \"\$RestoreLabel=\$VolumeName\" -v \"\${TempVolumeName}:\/dest:ro\" \$BusyboxImage sh -c '\([^']*\)'.*/\1/p" "${REPO_ROOT}/${RESTORE_PS1}")"
     [ -n "${sh_live}" ]
     [ -n "${sh_temp}" ]
     [ "${sh_temp}" = "${sh_live}" ] || { echo "DRIFT .sh temp vs live:"; echo " ${sh_temp}"; echo " ${sh_live}"; return 1; }
@@ -1806,4 +1809,336 @@ _r5_swap_rm_plain() {
         '    CLAUDE_SWAP_PHASE=1' \
         'echo "Replacing the Claude Code state..."'
     assert_failure
+}
+
+# ===========================================================================
+# F1 (fix pass #26): pinned helper image, version/image checks, PS hardening
+# ===========================================================================
+# research/2026-10-01_FrameworkDev_RestoreCopyThenSwap/scoping/04_F1_compat_audit.md:
+# the untagged `busybox` moved to the untested 1.38.0, so ONE digest-pinned string lives
+# in 7 places (the BUSYBOX_IMAGE / $BusyboxImage constant of backup, restore and migrate
+# .sh + .ps1, and docker-compose.yml's daaf-init image:). The backup/restore twins share
+# a startup Docker version check and a helper-image check whose user-facing text must be
+# verbatim identical (script name varied), and both Windows twins carry the PowerShell 7
+# hardening line and an edition guard that runs before any docker call. The bats runtime
+# tests exercise the .sh twins; these source pins are what cover the .ps1 twins here.
+
+MIGRATE_SH="scripts/host/migrate_daaf.sh"
+MIGRATE_PS1="scripts/host/migrate_daaf.ps1"
+COMPOSE_YML="docker-compose.yml"
+
+# "<place> <value>" for every definition of the pinned string under root $1 (one line
+# per definition, so a duplicate constant shows up as an extra line).
+_busybox_pin_places() {
+    local root="$1" f
+    for f in "${BACKUP_SH}" "${RESTORE_SH}" "${MIGRATE_SH}"; do
+        sed -n "s|^BUSYBOX_IMAGE='\([^']*\)'\$|${f} \1|p" "${root}/${f}"
+    done
+    for f in "${BACKUP_PS1}" "${RESTORE_PS1}" "${MIGRATE_PS1}"; do
+        sed -n "s|^\$BusyboxImage = '\([^']*\)'\$|${f} \1|p" "${root}/${f}"
+    done
+    # The daaf-init service's image: (up to the next service or top-level key).
+    awk '/^  daaf-init:[[:space:]]*$/ { s = 1; next }
+         s && /^  ?[^ #]/ { exit }
+         s && /^    image:/ { print "docker-compose.yml(daaf-init) " $2; exit }' "${root}/${COMPOSE_YML}"
+}
+
+# The pin check under root $1: exactly 7 definitions, one distinct string, equal to the
+# tested DAAF_BUSYBOX_PIN (test_helper.bash), shaped busybox:X.Y.Z@sha256:<64 hex>.
+_check_busybox_pin() {
+    local places n distinct
+    places="$(_busybox_pin_places "$1")"
+    n="$(printf '%s\n' "${places}" | grep -c .)" || true
+    if [ "${n}" -ne 7 ]; then echo "FAIL: expected 7 pinned-image definitions, found ${n}:"; printf '%s\n' "${places}"; return 1; fi
+    distinct="$(printf '%s\n' "${places}" | awk '{ print $2 }' | LC_ALL=C sort -u)"
+    if [ "$(printf '%s\n' "${distinct}" | grep -c .)" -ne 1 ]; then
+        echo "FAIL: the pinned busybox string differs between places:"; printf '%s\n' "${places}"; return 1
+    fi
+    if [ "${distinct}" != "${DAAF_BUSYBOX_PIN}" ]; then
+        echo "FAIL: the pin ${distinct} is not the tested ${DAAF_BUSYBOX_PIN} (a deliberate change updates tests/bash/test_helper.bash too)"; return 1
+    fi
+    [[ "${distinct}" =~ ^busybox:[0-9]+\.[0-9]+\.[0-9]+@sha256:[0-9a-f]{64}$ ]] || { echo "FAIL: ${distinct} is not name:tag@sha256:<64 hex>"; return 1; }
+}
+
+@test "F1 pin: ONE digest-pinned busybox string, identical in all 7 places (3 .sh + 3 .ps1 constants + compose daaf-init)" {
+    run _busybox_pin_places "${REPO_ROOT}"
+    printf '%s\n' "${output}"
+    run _check_busybox_pin "${REPO_ROOT}"
+    assert_success
+}
+
+@test "F1 pin: no other busybox reference -- every image use goes through the constant (all 6 scripts, compose)" {
+    local f
+    # Non-comment lines that name busybox, minus the constant itself and the user-facing
+    # "helper image busybox" text: a bare `busybox` image argument (e.g. one reverted
+    # call site in a .ps1, which no bats run exercises) shows up here.
+    for f in "${BACKUP_SH}" "${BACKUP_PS1}" "${RESTORE_SH}" "${RESTORE_PS1}" "${MIGRATE_SH}" "${MIGRATE_PS1}"; do
+        run bash -c "grep -n 'busybox' '${REPO_ROOT}/${f}' | grep -vE '^[0-9]+:[[:space:]]*#' | grep -v \"^[0-9]*:BUSYBOX_IMAGE='\" | grep -v \"^[0-9]*:\\\$BusyboxImage = '\" | grep -vF 'helper image busybox'"
+        echo "file=${f}"
+        assert_output ""
+    done
+    # Each script really routes its docker calls through the constant (non-vacuous).
+    run grep -c '"${BUSYBOX_IMAGE}"' "${REPO_ROOT}/${MIGRATE_SH}"
+    [ "${output}" -ge 1 ]
+    run grep -c ' \$BusyboxImage[ ,)]' "${REPO_ROOT}/${MIGRATE_PS1}"
+    [ "${output}" -ge 1 ]
+    # compose: no service runs another busybox.
+    run bash -c "grep -nE '^[[:space:]]*image:[[:space:]]*busybox' '${REPO_ROOT}/${COMPOSE_YML}' | grep -vF -- '${DAAF_BUSYBOX_PIN}'"
+    assert_output ""
+}
+
+@test "F1 pin SELF-TEST: a digest changed in any ONE of the 7 places, a duplicate constant, or a consistently changed pin all FAIL the check" {
+    local target f root="${TEST_DIR}/pin" digest bad
+    digest="${DAAF_BUSYBOX_PIN#*@sha256:}"
+    # Same length, last hex digit changed.
+    case "${digest}" in *0) bad="${digest%?}1" ;; *) bad="${digest%?}0" ;; esac
+    for target in "${BACKUP_SH}" "${BACKUP_PS1}" "${RESTORE_SH}" "${RESTORE_PS1}" "${MIGRATE_SH}" "${MIGRATE_PS1}" "${COMPOSE_YML}"; do
+        rm -rf "${root}"
+        mkdir -p "${root}/scripts/host"
+        for f in "${BACKUP_SH}" "${BACKUP_PS1}" "${RESTORE_SH}" "${RESTORE_PS1}" "${MIGRATE_SH}" "${MIGRATE_PS1}" "${COMPOSE_YML}"; do
+            cp "${REPO_ROOT}/${f}" "${root}/${f}"
+        done
+        # The unperturbed copy passes (so a failure below is the perturbation's).
+        run _check_busybox_pin "${root}"
+        assert_success
+        sed -i "s/${digest}/${bad}/" "${root}/${target}"
+        run grep -c "${bad}" "${root}/${target}"
+        assert_output "1"
+        run _check_busybox_pin "${root}"
+        echo "perturbed=${target}"
+        assert_failure
+        assert_output --partial "differs between places"
+    done
+    # A second definition of the constant in one script: 8 definitions.
+    rm -rf "${root}"
+    mkdir -p "${root}/scripts/host"
+    for f in "${BACKUP_SH}" "${BACKUP_PS1}" "${RESTORE_SH}" "${RESTORE_PS1}" "${MIGRATE_SH}" "${MIGRATE_PS1}" "${COMPOSE_YML}"; do
+        cp "${REPO_ROOT}/${f}" "${root}/${f}"
+    done
+    printf "BUSYBOX_IMAGE='%s'\n" "${DAAF_BUSYBOX_PIN}" >> "${root}/${RESTORE_SH}"
+    run _check_busybox_pin "${root}"
+    assert_failure
+    assert_output --partial "expected 7 pinned-image definitions, found 8"
+    # All 7 changed together (a consistent re-pin) still fails against the tested pin.
+    for f in "${BACKUP_SH}" "${BACKUP_PS1}" "${RESTORE_SH}" "${RESTORE_PS1}" "${MIGRATE_SH}" "${MIGRATE_PS1}" "${COMPOSE_YML}"; do
+        cp "${REPO_ROOT}/${f}" "${root}/${f}"
+        sed -i "s/${digest}/${bad}/" "${root}/${f}"
+    done
+    run _check_busybox_pin "${root}"
+    assert_failure
+    assert_output --partial "is not the tested"
+}
+
+# The two F1 blocks of a backup/restore twin ($1): the version check (its heading up to
+# the volume check) and the image check (its heading up to the next `# --- ` heading),
+# comment lines dropped.
+_f1_blocks() {
+    awk '
+        /^# --- Docker version check/ { blk = 1 }
+        blk == 1 && /docker volume inspect/ { blk = 0 }
+        /^# --- Helper image check/ { blk = 2; print; next }
+        blk == 2 && /^# --- / { blk = 0 }
+        blk { print }
+    ' "$1" | grep -v '^[[:space:]]*#'
+}
+
+# The user-facing lines of those blocks, in order: every echo "..." / Write-Host "..."
+# literal, minus the .ps1's `Write-Host "$_"` (it relays docker pull's own progress, which
+# the .sh shows through fd 3). Variables become placeholders: <C>/<S> the client/Engine
+# version as read, <C?>/<S?> the same with the "unknown" fallback (.sh ${X:-unknown},
+# .ps1 $dockerClientShown), <SAID> Docker's last stderr line. $2 = "name" also replaces
+# "the backup" / "the restore" with "the <SCRIPT>" (the one allowed difference).
+_f1_messages() {
+    _f1_blocks "$1" \
+    | sed -n -e 's/^.*echo "\([^"]*\)".*$/\1/p' -e 's/^.*Write-Host "\([^"]*\)".*$/\1/p' \
+    | grep -vxF '$_' \
+    | sed -e 's/\${DOCKER_CLIENT_VERSION:-unknown}/<C?>/g' -e 's/\${DOCKER_SERVER_VERSION:-unknown}/<S?>/g' \
+          -e 's/\${DOCKER_CLIENT_VERSION}/<C>/g' -e 's/\${DOCKER_SERVER_VERSION}/<S>/g' -e 's/\${BUSYBOX_PULL_SAID}/<SAID>/g' \
+          -e 's/\$dockerClientShown/<C?>/g' -e 's/\$dockerServerShown/<S?>/g' \
+          -e 's/\$DockerClientVersion/<C>/g' -e 's/\$DockerServerVersion/<S>/g' -e 's/\$pullSaid/<SAID>/g' \
+    | if [ "${2:-}" = name ]; then sed -e 's/\([Tt]he\) \(backup\|restore\)\b/\1 <SCRIPT>/g'; else cat; fi
+}
+
+@test "F1 twins: the version-check and image-check messages are verbatim identical in all four backup/restore twins (script name varied)" {
+    local f
+    for f in "${BACKUP_SH}" "${BACKUP_PS1}" "${RESTORE_SH}" "${RESTORE_PS1}"; do
+        _f1_messages "${REPO_ROOT}/${f}" > "${TEST_DIR}/$(basename "${f}").msg"
+        _f1_messages "${REPO_ROOT}/${f}" name > "${TEST_DIR}/$(basename "${f}").named"
+    done
+    # Non-vacuous: every message of both blocks was found (8 + 7 lines, blanks included;
+    # the Podman line is review fix round 9's).
+    run grep -c '' "${TEST_DIR}/restore_from_backup.sh.msg"
+    assert_output "15"
+    run cat "${TEST_DIR}/restore_from_backup.sh.msg"
+    assert_output --partial 'ERROR: This Docker version is too old for the restore (Docker client <C?>, Docker Engine <S?>).'
+    assert_output --partial "$(printf '%s\n' \
+        '       (Docker Desktop 4.27.1 or newer). Update Docker, then run the restore again.' \
+        '       (Docker Desktop or Docker Engine is required; Podman is not supported.)' \
+        '       Nothing was changed.')"
+    assert_output --partial 'NOTE: The restore has not been tested with this Docker version (Docker client <C>, Docker Engine <S>; tested: 29). Continuing.'
+    assert_output --partial '       Docker said: <SAID>'
+    # .sh == .ps1 per script, exactly.
+    run diff "${TEST_DIR}/backup_daaf.sh.msg" "${TEST_DIR}/backup_daaf.ps1.msg"
+    assert_success
+    run diff "${TEST_DIR}/restore_from_backup.sh.msg" "${TEST_DIR}/restore_from_backup.ps1.msg"
+    assert_success
+    # backup == restore once the script name is varied.
+    run diff "${TEST_DIR}/backup_daaf.sh.named" "${TEST_DIR}/restore_from_backup.sh.named"
+    assert_success
+    run grep -c 'restore' "${TEST_DIR}/restore_from_backup.sh.named"
+    assert_output "0"
+}
+
+@test "F1 twins: the same thresholds (refuse < 25, NOTE != 29), the same docker version format, and inspect/pull of the constant in all four twins" {
+    local f
+    for f in "${BACKUP_SH}" "${BACKUP_PS1}" "${RESTORE_SH}" "${RESTORE_PS1}"; do
+        _f1_blocks "${REPO_ROOT}/${f}" > "${TEST_DIR}/blocks"
+        echo "file=${f}"
+        run grep -c -- '-lt 25' "${TEST_DIR}/blocks"
+        assert_output "1"
+        run grep -c -- '-ne 29' "${TEST_DIR}/blocks"
+        assert_output "1"
+        run grep -cF "docker version --format '{{.Client.Version}} {{.Server.Version}}'" "${TEST_DIR}/blocks"
+        assert_output "1"
+        case "${f}" in
+            *.sh)
+                run grep -cF 'docker image inspect "${BUSYBOX_IMAGE}" > /dev/null 2>&1' "${TEST_DIR}/blocks"
+                assert_output "1"
+                run grep -cF 'docker pull "${BUSYBOX_IMAGE}" 2>&1 1>&3 3>&-' "${TEST_DIR}/blocks"
+                assert_output "1"
+                ;;
+            *.ps1)
+                run grep -cF '$null = docker image inspect $BusyboxImage 2>&1' "${TEST_DIR}/blocks"
+                assert_output "1"
+                run grep -cF '$pullAll = @(docker pull $BusyboxImage 2>&1 | ForEach-Object {' "${TEST_DIR}/blocks"
+                assert_output "1"
+                ;;
+        esac
+    done
+}
+
+# The `docker info` failure branch of twin $1 (review fix round 9, ISSUE 1): from the
+# "not running" line to the branch's own exit (`exit 1` / `Wait-AndExit 1`), comments
+# dropped.
+_f1_info_branch() {
+    awk '
+        /ERROR: Docker Desktop does not seem to be running/ { on = 1 }
+        on { print }
+        on && /^[[:space:]]*(exit 1|Wait-AndExit 1)[[:space:]]*$/ { exit }
+    ' "$1" | grep -v '^[[:space:]]*#'
+}
+
+# Its user-facing lines, in order, the client version as <C>; $2 = "name" also replaces
+# "the backup" / "the restore" with "the <SCRIPT>" (the one allowed difference).
+_f1_info_messages() {
+    _f1_info_branch "$1" \
+    | sed -n -e 's/^.*echo "\([^"]*\)".*$/\1/p' -e 's/^.*Write-Host "\([^"]*\)".*$/\1/p' \
+    | sed -e 's/\${DOCKER_INFO_FAIL_CLIENT}/<C>/g' -e 's/\$infoFailClient/<C>/g' \
+    | if [ "${2:-}" = name ]; then sed -e 's/\([Tt]he\) \(backup\|restore\)\b/\1 <SCRIPT>/g'; else cat; fi
+}
+
+@test "F1 twins: the docker-info failure branch's old-Engine hint is verbatim identical in all four twins (script name varied), with the same rule" {
+    local f
+    for f in "${BACKUP_SH}" "${BACKUP_PS1}" "${RESTORE_SH}" "${RESTORE_PS1}"; do
+        _f1_info_messages "${REPO_ROOT}/${f}" > "${TEST_DIR}/$(basename "${f}").imsg"
+        _f1_info_messages "${REPO_ROOT}/${f}" name > "${TEST_DIR}/$(basename "${f}").inamed"
+        _f1_info_branch "${REPO_ROOT}/${f}" > "${TEST_DIR}/branch"
+        echo "file=${f}"
+        # The same read (stdout only) and the same rule: client major >= 25 (exactly one
+        # comparison), the Engine's version empty or unparsable.
+        run grep -cF "docker version --format '{{.Client.Version}} {{.Server.Version}}'" "${TEST_DIR}/branch"
+        assert_output "1"
+        run grep -c -- '-ge 25' "${TEST_DIR}/branch"
+        assert_output "1"
+        case "${f}" in
+            *.sh)
+                run grep -cF '2>/dev/null' "${TEST_DIR}/branch"
+                assert_output "1"
+                run grep -cF "''|*[!0-9]*|??????*)" "${TEST_DIR}/branch"
+                assert_output "2"
+                ;;
+            *.ps1)
+                run grep -cF '2>$null' "${TEST_DIR}/branch"
+                assert_output "1"
+                run grep -cF -- "\$infoFailServer -notmatch '^\\d{1,5}(\\.|\$)'" "${TEST_DIR}/branch"
+                assert_output "1"
+                ;;
+        esac
+    done
+    # Exactly the "not running" line plus the two hint lines (non-vacuous).
+    run cat "${TEST_DIR}/restore_from_backup.sh.imsg"
+    assert_output "$(printf '%s\n' \
+        'ERROR: Docker Desktop does not seem to be running. Please start it and try again.' \
+        '       If Docker is running, its Docker Engine may be older than 25.0 (Docker client <C>).' \
+        '       The restore needs Docker 25.0 or newer (Docker Desktop 4.27.1 or newer).')"
+    # .sh == .ps1 per script, exactly.
+    run diff "${TEST_DIR}/backup_daaf.sh.imsg" "${TEST_DIR}/backup_daaf.ps1.imsg"
+    assert_success
+    run diff "${TEST_DIR}/restore_from_backup.sh.imsg" "${TEST_DIR}/restore_from_backup.ps1.imsg"
+    assert_success
+    # backup == restore once the script name is varied.
+    run diff "${TEST_DIR}/backup_daaf.sh.inamed" "${TEST_DIR}/restore_from_backup.sh.inamed"
+    assert_success
+    run grep -c 'restore' "${TEST_DIR}/restore_from_backup.sh.inamed"
+    assert_output "0"
+}
+
+# Line of the edition guard in .ps1 $1, and the first line OUTSIDE a function body and
+# the DAAF_DRY_RUN mock block (both top-level blocks closed by a column-0 `}`) that runs
+# docker; prints "<guard line> <docker line> <docker line text>".
+_ps1_guard_and_first_docker() {
+    local guard
+    guard="$(grep -nxF "if (\$PSVersionTable.PSEdition -eq 'Core' -and -not \$IsWindows -and \$env:DAAF_DRY_RUN -ne '1' -and \$env:DAAF_TEST_ALLOW_CORE_NONWINDOWS -ne '1') {" "$1" | cut -d: -f1)"
+    awk -v g="${guard}" '
+        /^(function |if \(\$env:DAAF_DRY_RUN )/ { skip = 1 }
+        skip { if (/^}/) skip = 0; next }
+        /^[[:space:]]*#/ { next }
+        /(^|[^A-Za-z0-9_-])docker [a-z]/ { print g, NR, $0; exit }
+    ' "$1"
+}
+
+@test "F1 PowerShell: both backup and restore .ps1 set \$PSNativeCommandUseErrorActionPreference = \$false and carry the edition guard (exact text)" {
+    local f op sh
+    for f in "${BACKUP_PS1}" "${RESTORE_PS1}"; do
+        case "${f}" in *backup_daaf*) op=backup; sh=backup_daaf.sh ;; *) op=restore; sh=restore_from_backup.sh ;; esac
+        echo "file=${f}"
+        run grep -cxF '$PSNativeCommandUseErrorActionPreference = $false' "${REPO_ROOT}/${f}"
+        assert_output "1"
+        # The guard: PSEdition is tested BEFORE $IsWindows (5.1 has no $IsWindows; -and
+        # short-circuits on 'Desktop'), with the dry-run and test-only bypasses.
+        run grep -A4 -xF "if (\$PSVersionTable.PSEdition -eq 'Core' -and -not \$IsWindows -and \$env:DAAF_DRY_RUN -ne '1' -and \$env:DAAF_TEST_ALLOW_CORE_NONWINDOWS -ne '1') {" "${REPO_ROOT}/${f}"
+        assert_output "$(printf '%s\n' \
+            "if (\$PSVersionTable.PSEdition -eq 'Core' -and -not \$IsWindows -and \$env:DAAF_DRY_RUN -ne '1' -and \$env:DAAF_TEST_ALLOW_CORE_NONWINDOWS -ne '1') {" \
+            "    Write-Host \"ERROR: This PowerShell script is for Windows. On macOS or Linux, run the ${op} with:\" -ForegroundColor Red" \
+            "    Write-Host \"         bash ${sh}\"" \
+            '    Write-Host "       Nothing was changed."' \
+            '    Wait-AndExit 1')"
+    done
+}
+
+@test "F1 PowerShell: the edition guard (and the native-command line) come BEFORE the first docker call in both .ps1 twins" {
+    local f g d pl
+    for f in "${BACKUP_PS1}" "${RESTORE_PS1}"; do
+        run _ps1_guard_and_first_docker "${REPO_ROOT}/${f}"
+        echo "file=${f} -> ${output}"
+        read -r g d _ <<< "${output}"
+        [ -n "${g}" ]
+        [ -n "${d}" ]
+        [ "${g}" -lt "${d}" ]
+        # The first docker call is the daemon check.
+        [[ "${output}" == *'$null = docker info 2>&1' ]]
+        pl="$(grep -nxF '$PSNativeCommandUseErrorActionPreference = $false' "${REPO_ROOT}/${f}" | cut -d: -f1)"
+        [ "${pl}" -lt "${d}" ]
+    done
+}
+
+@test "F1 PowerShell SELF-TEST: a docker call placed above the edition guard is caught" {
+    local g
+    cp "${REPO_ROOT}/${RESTORE_PS1}" "${TEST_DIR}/moved.ps1"
+    g="$(grep -nF "if (\$PSVersionTable.PSEdition -eq 'Core'" "${TEST_DIR}/moved.ps1" | cut -d: -f1)"
+    sed -i "${g}i \$null = docker version 2>&1" "${TEST_DIR}/moved.ps1"
+    run _ps1_guard_and_first_docker "${TEST_DIR}/moved.ps1"
+    local gl dl
+    read -r gl dl _ <<< "${output}"
+    [ "${dl}" -lt "${gl}" ]
 }

@@ -90,8 +90,8 @@ Describe "restore_from_backup.ps1" {
             $Content | Should -Match 'docker create'
             $Content | Should -Match 'docker cp'
             $Content | Should -Not -Match 'cp -a /source'
-            $Content | Should -Match ([regex]::Escape('docker create --label "$RestoreLabel=$VolumeName" -v "${TempVolumeName}:/dest" busybox 2>$null'))
-            $Content | Should -Match ([regex]::Escape('docker create --label "$RestoreLabel=$ClaudeVolumeName" -v "${ClaudeTempVolumeName}:/dest" busybox 2>$null'))
+            $Content | Should -Match ([regex]::Escape('docker create --label "$RestoreLabel=$VolumeName" -v "${TempVolumeName}:/dest" $BusyboxImage 2>$null'))
+            $Content | Should -Match ([regex]::Escape('docker create --label "$RestoreLabel=$ClaudeVolumeName" -v "${ClaudeTempVolumeName}:/dest" $BusyboxImage 2>$null'))
         }
 
         It "repairs ownership on BOTH temporary copies after docker cp writes as root" {
@@ -100,8 +100,8 @@ Describe "restore_from_backup.ps1" {
             # on the temp volumes (the swap's `cp -a` carries ownership into live).
             $chownLines = @(($Content -split "`n") | Where-Object { $_ -match [regex]::Escape("'chown', '-R', '1000:1000', '/dest'") })
             $chownLines.Count | Should -Be 2
-            ($chownLines -join "`n") | Should -Match ([regex]::Escape('"${TempVolumeName}:/dest", ''busybox'', ''chown'''))
-            ($chownLines -join "`n") | Should -Match ([regex]::Escape('"${ClaudeTempVolumeName}:/dest", ''busybox'', ''chown'''))
+            ($chownLines -join "`n") | Should -Match ([regex]::Escape('"${TempVolumeName}:/dest", $BusyboxImage, ''chown'''))
+            ($chownLines -join "`n") | Should -Match ([regex]::Escape('"${ClaudeTempVolumeName}:/dest", $BusyboxImage, ''chown'''))
         }
 
         It "replays executable permissions from the manifest (Step 3d)" {
@@ -157,7 +157,7 @@ Describe "restore_from_backup.ps1" {
             # the links into the live volumes. The invocation lines now start
             # `$null = docker run --rm --label ...`, which the pattern still matches.
             $invokeLines = ($Content -split "`n") | Where-Object {
-                $_ -match 'docker run .*-v "\$\{[A-Za-z]+\}:/dest".*busybox sh -c \$symlinkReplayScript'
+                $_ -match 'docker run .*-v "\$\{[A-Za-z]+\}:/dest".*\$BusyboxImage sh -c \$symlinkReplayScript'
             }
             @($invokeLines).Count | Should -Be 2
             ($invokeLines -join "`n") | Should -Match '\$\{TempVolumeName\}:/dest"'
@@ -216,7 +216,7 @@ Describe "restore_from_backup.ps1" {
         It "counts the SELECTED backup container-side (authoritative), with a never-silent fallback" {
             # 2026-09-29: Windows PowerShell 5.1 Get-ChildItem undercounted a backup
             # with long paths (72,834 vs 73,021) -- a spurious post-restore mismatch.
-            $Content | Should -Match ([regex]::Escape('@(docker run --rm -v "${SelectedPath}:/b:ro" busybox sh -c $BackupCountProgram 2>&1)'))
+            $Content | Should -Match ([regex]::Escape('@(docker run --rm -v "${SelectedPath}:/b:ro" $BusyboxImage sh -c $BackupCountProgram 2>&1)'))
             $Content | Should -Match ([regex]::Escape("Get-DaafCountMarker -Lines `$ScanCountOutput -Name 'BACKUP_FILES'"))
             $Content | Should -Match ([regex]::Escape('$ScanFallback = Measure-DaafBackupTree -Root $SelectedPath'))
             $Content | Should -Match ([regex]::Escape('$TotalFilesLabel = "$TotalFiles+"'))
@@ -289,7 +289,7 @@ Describe "restore_from_backup.ps1" {
             # FU2 (2026-09-30): the count's stderr is captured in-container and the result
             # is a marker (RESTORED_FILES / RESTORED_COUNT_ERRORS) parsed with
             # Get-DaafCountMarker -- a merged stderr line can no longer read as "0 files".
-            $Content | Should -MatchExactly ([regex]::Escape("busybox sh -c 'set -e; : > /tmp/count_err; n=`$(find /dest -type f ! -path /dest/.daaf-symlinks ! -path /dest/.daaf-permissions ! -path /dest/.daaf-claude-config/\* -exec stat -c %s {} + 2>/tmp/count_err | wc -l); if test -s /tmp/count_err; then echo RESTORED_COUNT_ERRORS=`$(grep -c ^ /tmp/count_err); else echo RESTORED_FILES=`$((n)); fi' 2>&1)"))
+            $Content | Should -MatchExactly ([regex]::Escape("`$BusyboxImage sh -c 'set -e; : > /tmp/count_err; n=`$(find /dest -type f ! -path /dest/.daaf-symlinks ! -path /dest/.daaf-permissions ! -path /dest/.daaf-claude-config/\* -exec stat -c %s {} + 2>/tmp/count_err | wc -l); if test -s /tmp/count_err; then echo RESTORED_COUNT_ERRORS=`$(grep -c ^ /tmp/count_err); else echo RESTORED_FILES=`$((n)); fi' 2>&1)"))
             $Content | Should -MatchExactly ([regex]::Escape("`$RestoredCount = Get-DaafCountMarker -Lines `$VerifyOutput -Name 'RESTORED_FILES'"))
             $Content | Should -MatchExactly ([regex]::Escape('WARNING: Could not verify the restored file count'))
             $Content | Should -Not -Match ([regex]::Escape("'find /dest -type f | wc -l'"))
@@ -456,9 +456,9 @@ Describe "restore_from_backup.ps1 copy-then-swap structure" {
         $liveLine = @($Lines | Where-Object { $_ -match '^\$VerifyOutput = @\(docker run ' })
         $tempLine.Count | Should -Be 1
         $liveLine.Count | Should -Be 1
-        $tempLine[0] | Should -Match ([regex]::Escape('-v "${TempVolumeName}:/dest:ro" busybox sh -c '''))
-        $liveLine[0] | Should -Match ([regex]::Escape('-v "${VolumeName}:/dest:ro" busybox sh -c '''))
-        $progRe = "busybox sh -c '([^']*)' 2>&1\)"
+        $tempLine[0] | Should -Match ([regex]::Escape('-v "${TempVolumeName}:/dest:ro" $BusyboxImage sh -c '''))
+        $liveLine[0] | Should -Match ([regex]::Escape('-v "${VolumeName}:/dest:ro" $BusyboxImage sh -c '''))
+        $progRe = "\`$BusyboxImage sh -c '([^']*)' 2>&1\)"
         $tempProg = [regex]::Match($tempLine[0], $progRe).Groups[1].Value
         $liveProg = [regex]::Match($liveLine[0], $progRe).Groups[1].Value
         $tempProg | Should -Not -BeNullOrEmpty
@@ -466,8 +466,8 @@ Describe "restore_from_backup.ps1 copy-then-swap structure" {
     }
 
     It "runs each swap in ONE named container with --sig-proxy=false (temp :ro, live writable)" {
-        $Content | Should -Match ([regex]::Escape("@('run', '--rm', '--sig-proxy=false', '--name', `$SwapContainerName, '-v', `"`${TempVolumeName}:/src:ro`", '-v', `"`${VolumeName}:/dest`", 'busybox', 'sh', '-c', `$SwapProgram)"))
-        $Content | Should -Match ([regex]::Escape("@('run', '--rm', '--sig-proxy=false', '--name', `$ClaudeSwapContainerName, '-v', `"`${ClaudeTempVolumeName}:/src:ro`", '-v', `"`${ClaudeVolumeName}:/dest`", 'busybox', 'sh', '-c', `$SwapProgram)"))
+        $Content | Should -Match ([regex]::Escape("@('run', '--rm', '--sig-proxy=false', '--name', `$SwapContainerName, '-v', `"`${TempVolumeName}:/src:ro`", '-v', `"`${VolumeName}:/dest`", `$BusyboxImage, 'sh', '-c', `$SwapProgram)"))
+        $Content | Should -Match ([regex]::Escape("@('run', '--rm', '--sig-proxy=false', '--name', `$ClaudeSwapContainerName, '-v', `"`${ClaudeTempVolumeName}:/src:ro`", '-v', `"`${ClaudeVolumeName}:/dest`", `$BusyboxImage, 'sh', '-c', `$SwapProgram)"))
         # The swap containers carry no label, so a label reap can never kill one.
         @($Lines | Where-Object { $_ -match '--sig-proxy=false' -and $_ -match 'RestoreLabel' }).Count | Should -Be 0
     }
@@ -559,10 +559,13 @@ Describe "restore_from_backup.ps1 copy-then-swap structure" {
         $mode | Should -BeNullOrEmpty -Because 'the last EAP bracket must restore the saved value'
         # The enumerated captures that READ Docker's merged text (fix pass #18): the two
         # helpers ($out, $all), the scan count, docker cp, the temp check and the live
-        # count. Each is inside a 'Continue' bracket.
-        @($reads | ForEach-Object { $_.Var } | Sort-Object) | Should -Be @('$all', '$cpOut', '$out', '$ScanCountOutput', '$TempVerifyOutput', '$VerifyOutput')
+        # count; pass #26 added the helper-image download ($pullAll: its stderr lines
+        # give the "Docker said:" line when the pull fails). Each is inside a 'Continue'
+        # bracket.
+        @($reads | ForEach-Object { $_.Var } | Sort-Object) | Should -Be @('$all', '$cpOut', '$out', '$pullAll', '$ScanCountOutput', '$TempVerifyOutput', '$VerifyOutput')
         foreach ($r in $reads) { $r.Mode | Should -BeExactly 'Continue' -Because "$($r.Var) (line $($r.Line)) reads Docker's stderr text" }
-        @($brackets | Where-Object { $_.Mode -eq 'Continue' }).Count | Should -Be 6
+        @($reads | Where-Object { $_.Var -eq '$pullAll' -and $_.Mode -eq 'Continue' }).Count | Should -Be 1 -Because 'the pull capture reads the stderr of a failed download'
+        @($brackets | Where-Object { $_.Mode -eq 'Continue' }).Count | Should -Be 7
         # Every other EAP assignment in the code is one of these brackets (no bare
         # `$ErrorActionPreference = "SilentlyContinue"` elsewhere); the one "Stop" is the
         # preamble's.
@@ -1000,6 +1003,11 @@ Describe "restore_from_backup.ps1 dry-run mode" {
 Describe "restore_from_backup.ps1 end-to-end count paths (fake docker)" -Skip:(($PSVersionTable.PSVersion.Major -lt 6) -or $IsWindows) {
     BeforeAll {
         . "$PSScriptRoot/TestHelper.ps1"
+        # The pinned helper image (pass #26): every `docker run` / `docker create` must
+        # name exactly this string (restore_from_backup.ps1's $BusyboxImage). $ImgRe is
+        # its regex form; Get-CallIndex expands {IMG} in a pattern to it.
+        $script:PinnedImage = 'busybox:1.37.0@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e'
+        $script:ImgRe = [regex]::Escape($script:PinnedImage)
         $script:FakeBin = Join-Path $TestDrive 'bin'
         $null = New-Item -ItemType Directory -Force -Path $script:FakeBin
         $fakeDocker = @'
@@ -1014,6 +1022,10 @@ if [ -n "${FAKE_CALL_LOG:-}" ]; then
     printf '%s\n' "$(printf '%s' "$*" | tr '\n' ' ')" >> "${FAKE_CALL_LOG}"
 fi
 st="${FAKE_STATE:-.}"
+# The pinned helper image (pass #26): @PINNED_IMAGE@ is replaced with the test file's
+# $PinnedImage when this fake is written, so the plain-argument arms below match only
+# the pinned string (a bare `busybox` falls through to "unmodelled run").
+img='@PINNED_IMAGE@'
 # FAKE_INTERRUPT_AT=cp|swap|claudeswap: send SIGINT to the calling pwsh (Ctrl+C
 # stand-in), then finish normally -- a real swap keeps running inside Docker after Ctrl+C.
 interrupt_here() {
@@ -1075,7 +1087,34 @@ mount_vol() {
     done
 }
 case "${1:-}" in
-    info) exit 0 ;;
+    # FAKE_INFO_FAIL=1 (review fix round 9): Docker cannot be reached, `docker info` fails.
+    info)
+        if [ "${FAKE_INFO_FAIL:-0}" = "1" ]; then echo "Cannot connect to the Docker daemon" >&2; exit 1; fi
+        exit 0 ;;
+    # Pass #26 startup checks. FAKE_DOCKER_VERSION: what `version --format ...` prints
+    # (default "29.1.3 29.1.3", the tested version; "none" prints nothing).
+    # FAKE_DOCKER_VERSION_EXIT (review fix round 9): its exit code; a nonzero exit also
+    # prints a server error on stderr AFTER the stdout, which must never be read as the
+    # version (the script reads stdout only).
+    version)
+        v="${FAKE_DOCKER_VERSION:-29.1.3 29.1.3}"
+        if [ "${v}" != "none" ]; then printf '%s\n' "${v}"; fi
+        if [ "${FAKE_DOCKER_VERSION_EXIT:-0}" != "0" ]; then echo "Error response from daemon: client version 1.52 is too new. Maximum supported API version is 1.43" >&2; fi
+        exit "${FAKE_DOCKER_VERSION_EXIT:-0}" ;;
+    # FAKE_IMAGE_ABSENT=1: the pinned helper image is not on this computer (inspect fails).
+    image)
+        if [ "${FAKE_IMAGE_ABSENT:-0}" = "1" ]; then echo "Error response from daemon: No such image: ${!#}" >&2; exit 1; fi
+        exit 0 ;;
+    # The download: progress on stdout; FAKE_PULL_FAIL=1 fails it with Docker's offline
+    # text on stderr (the "Docker said:" line).
+    pull)
+        echo "1.37.0: Pulling from library/busybox"
+        if [ "${FAKE_PULL_FAIL:-0}" = "1" ]; then
+            echo 'Error response from daemon: Get "https://registry-1.docker.io/v2/": dial tcp: lookup registry-1.docker.io: no such host' >&2
+            exit 1
+        fi
+        echo "Status: Downloaded newer image for ${!#}"
+        exit 0 ;;
     volume)
         case "${2:-}" in
             inspect)
@@ -1478,12 +1517,12 @@ RUN3B
         case "$*" in
             *" test -f /dest/.daaf-permissions")
                 [ "${FAKE_PERMS_MANIFEST:-0}" = "1" ] && exit 0; exit 1 ;;
-            *"claude-config-restore-tmp:/dest:ro busybox test -f /dest/.daaf-symlinks")
+            *"claude-config-restore-tmp:/dest:ro ${img} test -f /dest/.daaf-symlinks")
                 [ "${FAKE_CLAUDE_SYMLINKS_MANIFEST:-0}" = "1" ] && exit 0; exit 1 ;;
             *" test -f /dest/.daaf-symlinks")
                 [ "${FAKE_SYMLINKS_MANIFEST:-0}" = "1" ] && exit 0; exit 1 ;;
             *" rm -rf /dest/.daaf-claude-config") exit "${FAKE_STRIP_EXIT:-0}" ;;
-            *"claude-config-restore-tmp:/dest busybox chown -R 1000:1000 /dest") exit "${FAKE_CLAUDE_CHOWN_EXIT:-0}" ;;
+            *"claude-config-restore-tmp:/dest ${img} chown -R 1000:1000 /dest") exit "${FAKE_CLAUDE_CHOWN_EXIT:-0}" ;;
             *" chown -R 1000:1000 /dest") exit "${FAKE_CHOWN_EXIT:-0}" ;;
             # The state marker is modelled per volume ("marker.<volume>"): the write
             # creates it, the marker `rm -f` (cleanup unmark / S2) deletes it.
@@ -1497,13 +1536,13 @@ RUN3B
                 : > "${st}/marker.${v}"
                 exit 0 ;;
             # S2: the final cleanup deletes the marker from each temp before `volume rm`.
-            *" busybox rm -f /dest/.daaf-restore-swap-started")
+            *" ${img} rm -f /dest/.daaf-restore-swap-started")
                 rm -f "${st}/marker.$(mount_vol /dest "$@")"
                 exit 0 ;;
             # I2: a NEW temp must be empty. FAKE_TEMP_NOT_EMPTY=data|claude lists a stray
             # file in that temp; FAKE_EMPTY_CHECK_EXIT makes the check itself fail;
             # FAKE_FIND_STDERR=1 adds a stray stderr line to a successful, empty listing.
-            *" busybox find /dest -mindepth 1")
+            *" ${img} find /dest -mindepth 1")
                 if [ "${FAKE_EMPTY_CHECK_EXIT:-0}" != "0" ]; then echo "fake docker: empty check failed" >&2; exit "${FAKE_EMPTY_CHECK_EXIT}"; fi
                 if [ "${FAKE_FIND_STDERR:-0}" = "1" ]; then stray_warning; fi
                 case "$*:${FAKE_TEMP_NOT_EMPTY:-}" in
@@ -1519,7 +1558,7 @@ RUN3B
 esac
 '@
         $fakePath = Join-Path $script:FakeBin 'docker'
-        [System.IO.File]::WriteAllText($fakePath, ($fakeDocker -replace "`r", ""))
+        [System.IO.File]::WriteAllText($fakePath, (($fakeDocker -replace "`r", "").Replace('@PINNED_IMAGE@', $script:PinnedImage)))
         & chmod +x $fakePath
 
         # Runs the real script against a fresh fixture. -Restored / -TempCount default to
@@ -1556,7 +1595,12 @@ esac
                 [switch]$NotNested,
                 # -Holders: containers that reference a volume, each "<volume> <id> <state>"
                 # (fix pass #18, D1; see the fake's `ps -a --filter volume=` arm).
-                [string[]]$Holders = @()
+                [string[]]$Holders = @(),
+                # -NoEditionBypass: run WITHOUT DAAF_TEST_ALLOW_CORE_NONWINDOWS=1 (unset in
+                # the child), so the Windows-only edition guard (pass #26) applies under
+                # pwsh on Linux/macOS. By default the child gets the bypass: these runs
+                # exercise the script past the guard with the fake docker.
+                [switch]$NoEditionBypass
             )
             $work = Join-Path $TestDrive ('restore-' + [guid]::NewGuid().ToString('N'))
             $bk = Join-Path $work '2026-01-01_daaf_backup'
@@ -1595,10 +1639,13 @@ esac
                 [IO.File]::WriteAllText((Join-Path $state "holder.$hid"), "$hv $hs`n")
             }
             $callLog = Join-Path $work 'docker-calls.log'
-            # `env -u DAAF_NESTED` (an option, so it comes first) removes it from the
-            # child's environment.
-            $envLines = @('DAAF_NESTED=1')
-            if ($NotNested) { $envLines = @('-u', 'DAAF_NESTED') }
+            # `env -u NAME` (an option, so every one comes before the assignments) removes
+            # NAME from the child's environment.
+            $envLines = @()
+            if ($NotNested) { $envLines += @('-u', 'DAAF_NESTED') }
+            if ($NoEditionBypass) { $envLines += @('-u', 'DAAF_TEST_ALLOW_CORE_NONWINDOWS') }
+            if (-not $NotNested) { $envLines += 'DAAF_NESTED=1' }
+            if (-not $NoEditionBypass) { $envLines += 'DAAF_TEST_ALLOW_CORE_NONWINDOWS=1' }
             $envLines += @(
                 "PATH=$($script:FakeBin)$([IO.Path]::PathSeparator)$env:PATH",
                 # Pin the default names (live: daaf_daaf-data / daaf_daaf-claude-config).
@@ -1640,9 +1687,12 @@ esac
             [pscustomobject]@{ Output = $out; ExitCode = $code; Calls = $calls; Volumes = $vols; Markers = $marks; Holders = $held }
         }
 
-        # Index of the first call-log line matching a regex (-1 when none).
+        # Index of the first call-log line matching a regex (-1 when none). {IMG} in the
+        # pattern stands for the pinned helper image (its regex-escaped $PinnedImage), so
+        # a call that names any other image (a bare `busybox`) does not match.
         function Get-CallIndex {
             param([string[]]$Calls, [string]$Pattern)
+            $Pattern = $Pattern.Replace('{IMG}', $script:ImgRe)
             for ($i = 0; $i -lt $Calls.Count; $i++) { if ($Calls[$i] -match $Pattern) { return $i } }
             return -1
         }
@@ -1705,11 +1755,11 @@ esac
         $c = $r.Calls
         $create = Get-CallIndex $c '^volume create --label org\.daaf\.restore-tmp-for=daaf_daaf-data --label org\.daaf\.restore-run=\d{14}-\d+-[0-9a-f]{32} daaf_daaf-data-restore-tmp$'
         $cp = Get-CallIndex $c '^cp .*/2026-01-01_daaf_backup/\. fakecid0000:/dest/$'
-        $tempCount = Get-CallIndex $c '-v daaf_daaf-data-restore-tmp:/dest:ro busybox sh -c set -e; : > /tmp/count_err'
-        $mark = Get-CallIndex $c '-v daaf_daaf-data-restore-tmp:/dest busybox touch /dest/\.daaf-restore-swap-started$'
-        $swap = Get-CallIndex $c '^run --rm --sig-proxy=false --name daaf_daaf-data-restore-swap -v daaf_daaf-data-restore-tmp:/src:ro -v daaf_daaf-data:/dest busybox sh -c trap : INT TERM HUP; '
-        $compare = Get-CallIndex $c '-v daaf_daaf-data-restore-tmp:/src:ro -v daaf_daaf-data:/dest:ro busybox sh -c export LC_ALL=C;'
-        $liveCount = Get-CallIndex $c '^run --rm -v daaf_daaf-data:/dest:ro busybox sh -c set -e; : > /tmp/count_err'
+        $tempCount = Get-CallIndex $c '-v daaf_daaf-data-restore-tmp:/dest:ro {IMG} sh -c set -e; : > /tmp/count_err'
+        $mark = Get-CallIndex $c '-v daaf_daaf-data-restore-tmp:/dest {IMG} touch /dest/\.daaf-restore-swap-started$'
+        $swap = Get-CallIndex $c '^run --rm --sig-proxy=false --name daaf_daaf-data-restore-swap -v daaf_daaf-data-restore-tmp:/src:ro -v daaf_daaf-data:/dest {IMG} sh -c trap : INT TERM HUP; '
+        $compare = Get-CallIndex $c '-v daaf_daaf-data-restore-tmp:/src:ro -v daaf_daaf-data:/dest:ro {IMG} sh -c export LC_ALL=C;'
+        $liveCount = Get-CallIndex $c '^run --rm -v daaf_daaf-data:/dest:ro {IMG} sh -c set -e; : > /tmp/count_err'
         $remove = Get-CallIndex $c '^volume rm daaf_daaf-data-restore-tmp$'
         foreach ($i in @($create, $cp, $tempCount, $mark, $swap, $compare, $liveCount, $remove)) { $i | Should -BeGreaterThan -1 }
         $cp | Should -BeGreaterThan $create
@@ -1973,7 +2023,7 @@ esac
             $r.Output | Should -BeLike "*Claude Code state prepared.*"
             $r.Output | Should -BeLike "*Claude Code state restored.*"
             $r.Output | Should -BeLike "*  Restore complete!*"
-            (Get-CallIndex $r.Calls '^run --rm --sig-proxy=false --name daaf_daaf-claude-config-restore-swap -v daaf_daaf-claude-config-restore-tmp:/src:ro -v daaf_daaf-claude-config:/dest busybox sh -c trap : INT TERM HUP; ') | Should -BeGreaterThan -1
+            (Get-CallIndex $r.Calls '^run --rm --sig-proxy=false --name daaf_daaf-claude-config-restore-swap -v daaf_daaf-claude-config-restore-tmp:/src:ro -v daaf_daaf-claude-config:/dest {IMG} sh -c trap : INT TERM HUP; ') | Should -BeGreaterThan -1
             # Both prepared before the first swap; the Claude copy comes from the subfolder.
             $firstSwap = Get-CallIndex $r.Calls '--sig-proxy=false'
             (Get-CallIndex $r.Calls '^cp .*/\.daaf-claude-config/\. fakecid0000:/dest/$') | Should -BeLessThan $firstSwap
@@ -2187,7 +2237,7 @@ esac
             $r.Output.Contains('  .\restore_from_backup.ps1') | Should -BeTrue
             $r.Output | Should -Not -BeLike "*Restore complete*"
             # The data swap and its comparison ran before the Claude swap began.
-            $dataCompare = Get-CallIndex $r.Calls '-v daaf_daaf-data-restore-tmp:/src:ro -v daaf_daaf-data:/dest:ro busybox sh -c export LC_ALL=C;'
+            $dataCompare = Get-CallIndex $r.Calls '-v daaf_daaf-data-restore-tmp:/src:ro -v daaf_daaf-data:/dest:ro {IMG} sh -c export LC_ALL=C;'
             $claudeSwap = Get-CallIndex $r.Calls '--name daaf_daaf-claude-config-restore-swap '
             $dataCompare | Should -BeGreaterThan -1
             $claudeSwap | Should -BeGreaterThan $dataCompare
@@ -2306,7 +2356,7 @@ esac
             $r.ExitCode | Should -Be 0
             $r.Output | Should -BeLike "*That earlier restore had started replacing your DAAF data, so your current*"
             $r.Output | Should -Not -BeLike "*stopped before it replaced anything*"
-            (Get-CallIndex $r.Calls '^run --rm -v daaf_daaf-data-restore-tmp:/src:ro busybox sh -c test ! -e /src/\.daaf-restore-swap-started \|\| exit 3$') | Should -BeGreaterThan -1
+            (Get-CallIndex $r.Calls '^run --rm -v daaf_daaf-data-restore-tmp:/src:ro {IMG} sh -c test ! -e /src/\.daaf-restore-swap-started \|\| exit 3$') | Should -BeGreaterThan -1
         }
 
         It "a leftover whose marker cannot be checked says so" {
@@ -2422,7 +2472,7 @@ esac
 
         It "the space check mounts the live volume read-only" {
             $r = Invoke-FakeRestore -DataFiles 3
-            (Get-CallIndex $r.Calls '^run --rm -v daaf_daaf-data:/dest:ro busybox sh -c a=\$\(stat -f -c %a /dest\)') | Should -BeGreaterThan -1
+            (Get-CallIndex $r.Calls '^run --rm -v daaf_daaf-data:/dest:ro {IMG} sh -c a=\$\(stat -f -c %a /dest\)') | Should -BeGreaterThan -1
         }
 
         It "too little space for the SWAP (re-check with the temp copy in place) stops before RESTORE" {
@@ -2453,7 +2503,7 @@ esac
             $r.Output | Should -BeLike "*Restoring executable permissions from .daaf-permissions...*"
             $r.Output | Should -Not -BeLike "*Could not fully replay executable permissions*"
             $r.Output | Should -BeLike "*  Restore complete!*"
-            (Get-CallIndex $r.Calls '-v daaf_daaf-data-restore-tmp:/dest busybox sh -c set -e; manifest=/dest/\.daaf-permissions; find /dest -type f -exec chmod 644') | Should -BeGreaterThan -1
+            (Get-CallIndex $r.Calls '-v daaf_daaf-data-restore-tmp:/dest {IMG} sh -c set -e; manifest=/dest/\.daaf-permissions; find /dest -type f -exec chmod 644') | Should -BeGreaterThan -1
         }
 
         It "permission replay fails: latched WARNING, exit 0" {
@@ -2471,7 +2521,7 @@ esac
             $r.Output | Should -BeLike "*WARNING: Could not fully replay symlinks from the manifest.*"
             $r.Output | Should -BeLike "*Your data was copied intact; only symbolic links may be missing.*"
             $r.Output | Should -BeLike "*Restore completed WITH WARNINGS -- verify before relying on it*"
-            (Get-CallIndex $r.Calls '-v daaf_daaf-data-restore-tmp:/dest busybox sh -c set -ef; IFS=;') | Should -BeGreaterThan -1
+            (Get-CallIndex $r.Calls '-v daaf_daaf-data-restore-tmp:/dest {IMG} sh -c set -ef; IFS=;') | Should -BeGreaterThan -1
         }
 
         It "Claude-state symlink replay fails: latched WARNING, exit 0" {
@@ -2479,7 +2529,7 @@ esac
             $r.ExitCode | Should -Be 0
             $r.Output | Should -BeLike "*WARNING: Could not fully replay Claude state symlinks.*"
             $r.Output | Should -BeLike "*Restore completed WITH WARNINGS -- verify before relying on it*"
-            (Get-CallIndex $r.Calls '-v daaf_daaf-claude-config-restore-tmp:/dest busybox sh -c set -ef; IFS=;') | Should -BeGreaterThan -1
+            (Get-CallIndex $r.Calls '-v daaf_daaf-claude-config-restore-tmp:/dest {IMG} sh -c set -ef; IFS=;') | Should -BeGreaterThan -1
         }
     }
 
@@ -2662,7 +2712,7 @@ esac
             # SF2 (review round 2): careful cleanup -- no label reap, and the data temp is
             # removed only after an identity check made AFTER the Claude refusal.
             (Get-CallIndex $r.Calls '^ps -aq ') | Should -Be -1
-            $claudeRefusal = Get-CallIndex $r.Calls 'claude-config-restore-tmp:/dest:ro busybox find /dest -mindepth 1$'
+            $claudeRefusal = Get-CallIndex $r.Calls 'claude-config-restore-tmp:/dest:ro {IMG} find /dest -mindepth 1$'
             $after = @($r.Calls[($claudeRefusal + 1)..($r.Calls.Count - 1)])
             $idCheck = Get-CallIndex $after '^volume inspect --format \{\{\.Labels\}\} daaf_daaf-data-restore-tmp$'
             $rmData = Get-CallIndex $after '^volume rm daaf_daaf-data-restore-tmp$'
@@ -2760,12 +2810,12 @@ esac
             $r = Invoke-FakeRestore -DataFiles 3 -WithClaude
             $r.ExitCode | Should -Be 0
             foreach ($t in @('daaf_daaf-data-restore-tmp', 'daaf_daaf-claude-config-restore-tmp')) {
-                $unmark = Get-CallIndex $r.Calls ("-v $([regex]::Escape($t)):/dest busybox rm -f /dest/\.daaf-restore-swap-started$")
+                $unmark = Get-CallIndex $r.Calls ("-v $([regex]::Escape($t)):/dest {IMG} rm -f /dest/\.daaf-restore-swap-started$")
                 $rmVol = Get-CallIndex $r.Calls ('^volume rm ' + [regex]::Escape($t) + '$')
                 $unmark | Should -BeGreaterThan -1
                 $rmVol | Should -BeGreaterThan $unmark
                 # The unmark runs after every check (after the live count).
-                $unmark | Should -BeGreaterThan (Get-CallIndex $r.Calls '^run --rm -v daaf_daaf-data:/dest:ro busybox sh -c set -e; : > /tmp/count_err')
+                $unmark | Should -BeGreaterThan (Get-CallIndex $r.Calls '^run --rm -v daaf_daaf-data:/dest:ro {IMG} sh -c set -e; : > /tmp/count_err')
             }
             $r = Invoke-FakeRestore -DataFiles 3 -WithClaude -ConfirmAnswer 'no'
             (Get-CallIndex $r.Calls 'rm -f /dest/\.daaf-restore-swap-started') | Should -Be -1
@@ -2848,7 +2898,7 @@ esac
             foreach ($t in @('daaf_daaf-data-restore-tmp', 'daaf_daaf-claude-config-restore-tmp')) {
                 $te = [regex]::Escape($t)
                 $id = Get-CallIndex $after ('^volume inspect --format \{\{\.Labels\}\} ' + $te + '$')
-                $unmark = Get-CallIndex $after ('-v ' + $te + ':/dest busybox rm -f /dest/\.daaf-restore-swap-started$')
+                $unmark = Get-CallIndex $after ('-v ' + $te + ':/dest {IMG} rm -f /dest/\.daaf-restore-swap-started$')
                 $rm = Get-CallIndex $after ('^volume rm ' + $te + '$')
                 $id | Should -BeGreaterThan -1 -Because "$t is identity-checked before removal"
                 $unmark | Should -BeGreaterThan $id -Because "$t loses its marker after the identity check"
@@ -2913,7 +2963,7 @@ esac
             # The marker stays: it is the evidence that a swap may have started.
             $r.Markers | Should -Contain 'daaf_daaf-data-restore-tmp'
             $swap = Get-CallIndex $r.Calls '--sig-proxy=false'
-            @($r.Calls[($swap + 1)..($r.Calls.Count - 1)] | Where-Object { $_ -match '^volume rm |^rm -f |busybox rm -f ' }).Count | Should -Be 0
+            @($r.Calls[($swap + 1)..($r.Calls.Count - 1)] | Where-Object { $_ -match ('^volume rm |^rm -f |' + $script:ImgRe + ' rm -f ') }).Count | Should -Be 0
             # No container probe or exact-name list once the swap ran (nothing to decide).
             @($r.Calls[($swap + 1)..($r.Calls.Count - 1)] | Where-Object { $_ -match '^container inspect |^ps -a --format ' }).Count | Should -Be 0
         }
@@ -2987,7 +3037,7 @@ esac
             for ($i = 0; $i -lt $c.Count; $i++) { if ($c[$i] -match 'touch /dest/\.daaf-restore-swap-started$') { $lastMark = $i } }
             $claudeId = -1
             for ($i = 0; $i -lt $c.Count; $i++) { if ($c[$i] -ceq 'volume inspect --format {{.Labels}} daaf_daaf-claude-config-restore-tmp') { $claudeId = $i } }
-            $unmark = Get-CallIndex $c '-v daaf_daaf-claude-config-restore-tmp:/dest busybox rm -f /dest/\.daaf-restore-swap-started$'
+            $unmark = Get-CallIndex $c '-v daaf_daaf-claude-config-restore-tmp:/dest {IMG} rm -f /dest/\.daaf-restore-swap-started$'
             $lastMark | Should -BeGreaterThan -1
             $claudeId | Should -BeGreaterThan $lastMark
             $unmark | Should -BeGreaterThan $claudeId
@@ -3003,7 +3053,7 @@ esac
             $r = Invoke-FakeRestore -DataFiles 3 -WithClaude -Fake @{ FAKE_IDENTITY = 'vanished_after_marker'; FAKE_CLAUDE_IDENTITY = 'vanished_after_marker' }
             $r.ExitCode | Should -Be 1
             $r.Output | Should -BeLike "*It was not used, and nothing was removed.*"
-            (Get-CallIndex $r.Calls 'busybox rm -f /dest/\.daaf-restore-swap-started$') | Should -Be -1
+            (Get-CallIndex $r.Calls '{IMG} rm -f /dest/\.daaf-restore-swap-started$') | Should -Be -1
             (Get-CallIndex $r.Calls '^volume rm ') | Should -Be -1
         }
 
@@ -3015,7 +3065,7 @@ esac
             $r.ExitCode | Should -Be 1
             $r.Output | Should -BeLike "*ERROR: Could not prepare the temporary copy for the final step.*"
             $r.Output | Should -BeLike "*Your DAAF data has not been changed.*"
-            $unmark = Get-CallIndex $r.Calls '-v daaf_daaf-data-restore-tmp:/dest busybox rm -f /dest/\.daaf-restore-swap-started$'
+            $unmark = Get-CallIndex $r.Calls '-v daaf_daaf-data-restore-tmp:/dest {IMG} rm -f /dest/\.daaf-restore-swap-started$'
             $rm = Get-CallIndex $r.Calls '^volume rm daaf_daaf-data-restore-tmp$'
             $unmark | Should -BeGreaterThan -1
             $rm | Should -BeGreaterThan $unmark
@@ -3493,6 +3543,287 @@ esac
             $r = Invoke-FakeRestore -DataFiles 3 -Fake @{ FAKE_CP_EXIT = '1' }
             $r.Output | Should -BeLike "*       Docker said: Error response from daemon: fake copy failure*"
         }
+    }
+
+    # --- Pass #26 (F1 compatibility, audit 04): the startup Docker version check, the
+    # pinned helper image (inspect, then pull when missing), and the edition guard. ---
+    Context "pass #26: Docker version check" {
+        BeforeAll {
+            $script:VersionCall = 'version --format {{.Client.Version}} {{.Server.Version}}'
+        }
+
+        It "the tested version (29 on both sides) is silent and the restore runs" {
+            $r = Invoke-FakeRestore -DataFiles 3
+            $r.ExitCode | Should -Be 0
+            $r.Calls[0] | Should -BeExactly 'info'
+            $r.Calls[1] | Should -BeExactly $script:VersionCall
+            $r.Output | Should -Not -BeLike "*has not been tested with this Docker version*"
+            $r.Output | Should -Not -BeLike "*Docker version*"
+            $r.Output | Should -BeLike "*  Restore complete!*"
+        }
+
+        It "<Ver> (supported, untested) prints the NOTE and continues" -ForEach @(
+            @{ Ver = '25.0.2 29.1.3'; Client = '25.0.2'; Engine = '29.1.3' },
+            @{ Ver = '30.0.0 30.0.0'; Client = '30.0.0'; Engine = '30.0.0' }
+        ) {
+            $r = Invoke-FakeRestore -DataFiles 3 -Fake @{ FAKE_DOCKER_VERSION = $Ver }
+            $r.ExitCode | Should -Be 0
+            $r.Output | Should -BeLike "*NOTE: The restore has not been tested with this Docker version (Docker client $Client, Docker Engine $Engine; tested: 29). Continuing.*"
+            $r.Output | Should -Not -BeLike "*ERROR:*"
+            $r.Output | Should -BeLike "*  Restore complete!*"
+        }
+
+        It "<Ver> (older than 25 on the <Side> side) is refused with exit 1 and NO further docker call" -ForEach @(
+            @{ Ver = '24.0.7 29.1.3'; Side = 'client'; Client = '24.0.7'; Engine = '29.1.3' },
+            @{ Ver = '29.1.3 24.0.7'; Side = 'Engine'; Client = '29.1.3'; Engine = '24.0.7' }
+        ) {
+            $r = Invoke-FakeRestore -DataFiles 3 -Fake @{ FAKE_DOCKER_VERSION = $Ver }
+            $r.ExitCode | Should -Be 1
+            $block = @(
+                "ERROR: This Docker version is too old for the restore (Docker client $Client, Docker Engine $Engine).",
+                '       The restore needs Docker 25.0 or newer, for both the Docker client and Docker Engine',
+                '       (Docker Desktop 4.27.1 or newer). Update Docker, then run the restore again.',
+                '       (Docker Desktop or Docker Engine is required; Podman is not supported.)',
+                '       Nothing was changed.')
+            $r.Output | Should -Match ((@($block | ForEach-Object { [regex]::Escape($_) })) -join '\r?\n')
+            # The version check is the last docker call: nothing is inspected, listed,
+            # created or run after it.
+            ($r.Calls -join '|') | Should -BeExactly ('info|' + $script:VersionCall)
+            (@($r.Volumes | Sort-Object) -join ' ') | Should -BeExactly 'daaf_daaf-claude-config daaf_daaf-data'
+        }
+
+        It "an empty version answer is refused as 'Could not read' (unknown on both sides), with no further docker call" {
+            $r = Invoke-FakeRestore -DataFiles 3 -Fake @{ FAKE_DOCKER_VERSION = 'none' }
+            $r.ExitCode | Should -Be 1
+            $r.Output | Should -BeLike "*ERROR: Could not read the Docker version (Docker client unknown, Docker Engine unknown).*"
+            $block = @(
+                '       (Docker Desktop 4.27.1 or newer). Update Docker, then run the restore again.',
+                '       (Docker Desktop or Docker Engine is required; Podman is not supported.)',
+                '       Nothing was changed.')
+            $r.Output | Should -Match ((@($block | ForEach-Object { [regex]::Escape($_) })) -join '\r?\n')
+            $r.Output | Should -Not -BeLike "*too old*"
+            ($r.Calls -join '|') | Should -BeExactly ('info|' + $script:VersionCall)
+        }
+
+        # Review fix round 9 (ISSUE 1): a client of 25 or newer that cannot talk to an Engine
+        # older than 25.0 fails `docker info` itself, so the version check is never reached.
+        # The info-failure branch reads `docker version` (stdout only) and adds the old-Engine
+        # hint when the client's major parses as >= 25 and the Engine's version is empty or
+        # unparsable. The nonzero version exits also write a server error on stderr AFTER the
+        # stdout: read as the version, it would suppress the hint.
+        It "docker info fails, version <Name> (client >= 25, Engine empty or unparsable) -> the 'not running' line plus the old-Engine hint, exit 1, nothing after info + version" -ForEach @(
+            @{ Name = "'29.1.3'"; Ver = '29.1.3'; VerExit = '1'; Client = '29.1.3' },
+            @{ Name = "'29.1.3 ' (trailing space)"; Ver = '29.1.3 '; VerExit = '1'; Client = '29.1.3' },
+            @{ Name = "'25.0.0 abc'"; Ver = '25.0.0 abc'; VerExit = '0'; Client = '25.0.0' },
+            @{ Name = 'a notice line, then 30.0.1'; Ver = "WARNING: a notice`n30.0.1"; VerExit = '1'; Client = '30.0.1' },
+            @{ Name = "'29' (major only)"; Ver = '29'; VerExit = '1'; Client = '29' },
+            @{ Name = "'29.1.3 v24.0.7'"; Ver = '29.1.3 v24.0.7'; VerExit = '1'; Client = '29.1.3' }
+        ) {
+            $r = Invoke-FakeRestore -DataFiles 3 -Fake @{ FAKE_INFO_FAIL = '1'; FAKE_DOCKER_VERSION = $Ver; FAKE_DOCKER_VERSION_EXIT = $VerExit }
+            $r.ExitCode | Should -Be 1
+            $block = @(
+                'ERROR: Docker Desktop does not seem to be running. Please start it and try again.',
+                "       If Docker is running, its Docker Engine may be older than 25.0 (Docker client $Client).",
+                '       The restore needs Docker 25.0 or newer (Docker Desktop 4.27.1 or newer).')
+            # The three lines, in order, and the last output of the run.
+            $r.Output.TrimEnd() | Should -Match (((@($block | ForEach-Object { [regex]::Escape($_) })) -join '\r?\n') + '$')
+            ($r.Calls -join '|') | Should -BeExactly ('info|' + $script:VersionCall)
+            (@($r.Volumes | Sort-Object) -join ' ') | Should -BeExactly 'daaf_daaf-claude-config daaf_daaf-data'
+        }
+
+        It "docker info fails, version <Name> -> ONLY the unchanged 'not running' line, exit 1" -ForEach @(
+            @{ Name = "'24.0.7' (client below 25)"; Ver = '24.0.7'; VerExit = '1' },
+            @{ Name = 'with no output'; Ver = 'none'; VerExit = '1' },
+            @{ Name = "'abc' (client unparsable)"; Ver = 'abc'; VerExit = '1' },
+            @{ Name = "'v29.1.3' (client unparsable)"; Ver = 'v29.1.3'; VerExit = '1' },
+            @{ Name = "'123456.0' (six-digit major)"; Ver = '123456.0'; VerExit = '1' },
+            @{ Name = "'29.1.3 29.1.3' (the Engine version reads)"; Ver = '29.1.3 29.1.3'; VerExit = '0' },
+            @{ Name = "'29.1.3 24.0.7' (the Engine version reads)"; Ver = '29.1.3 24.0.7'; VerExit = '0' }
+        ) {
+            $r = Invoke-FakeRestore -DataFiles 3 -Fake @{ FAKE_INFO_FAIL = '1'; FAKE_DOCKER_VERSION = $Ver; FAKE_DOCKER_VERSION_EXIT = $VerExit }
+            $r.ExitCode | Should -Be 1
+            $r.Output.TrimEnd() | Should -Match ([regex]::Escape('ERROR: Docker Desktop does not seem to be running. Please start it and try again.') + '$')
+            $r.Output | Should -Not -BeLike "*If Docker is running*"
+            $r.Output | Should -Not -BeLike "*needs Docker 25.0*"
+            ($r.Calls -join '|') | Should -BeExactly ('info|' + $script:VersionCall)
+        }
+    }
+
+    Context "pass #26: the pinned helper image" {
+        It "an image already present is inspected (pinned name, before any prompt or change) and not downloaded" {
+            $r = Invoke-FakeRestore -DataFiles 3
+            $r.ExitCode | Should -Be 0
+            $inspect = Get-CallIndex $r.Calls ('^image inspect ' + $script:ImgRe + '$')
+            $inspect | Should -BeGreaterThan -1
+            @($r.Calls | Where-Object { $_ -match '^image inspect ' }).Count | Should -Be 1
+            @($r.Calls | Where-Object { $_ -match '^pull ' }).Count | Should -Be 0
+            $r.Output | Should -Not -BeLike "*Downloading the small helper image*"
+            # Before the running-container check, any create and any container run.
+            $inspect | Should -BeLessThan (Get-CallIndex $r.Calls '^ps ')
+            $inspect | Should -BeLessThan (Get-CallIndex $r.Calls '^volume create ')
+            $inspect | Should -BeLessThan (Get-CallIndex $r.Calls '^run ')
+            $inspect | Should -BeGreaterThan (Get-CallIndex $r.Calls '^volume inspect daaf_daaf-data$')
+        }
+
+        It "a missing image is downloaded (the Downloading line and Docker's progress shown) and the restore runs" {
+            $r = Invoke-FakeRestore -DataFiles 3 -Fake @{ FAKE_IMAGE_ABSENT = '1' }
+            $r.ExitCode | Should -Be 0
+            $r.Output | Should -BeLike "*Downloading the small helper image busybox that the restore needs...*"
+            $r.Output | Should -BeLike "*1.37.0: Pulling from library/busybox*"
+            $r.Output | Should -BeLike "*Status: Downloaded newer image for $($script:PinnedImage)*"
+            $inspect = Get-CallIndex $r.Calls ('^image inspect ' + $script:ImgRe + '$')
+            $r.Calls[$inspect + 1] | Should -BeExactly "pull $($script:PinnedImage)"
+            $r.Output | Should -BeLike "*  Restore complete!*"
+        }
+
+        It "a failed download is refused (exit 1, Docker said:, Nothing was changed.) before anything is created or run" {
+            $r = Invoke-FakeRestore -DataFiles 3 -Fake @{ FAKE_IMAGE_ABSENT = '1'; FAKE_PULL_FAIL = '1' }
+            $r.ExitCode | Should -Be 1
+            $block = @(
+                'ERROR: The restore needs the small helper image busybox and could not download it.',
+                '       Check the internet connection and that Docker Desktop is running, then run the restore again.',
+                '       Docker said: Error response from daemon: Get "https://registry-1.docker.io/v2/": dial tcp: lookup registry-1.docker.io: no such host',
+                '       Nothing was changed.')
+            $r.Output | Should -Match ((@($block | ForEach-Object { [regex]::Escape($_) })) -join '\r?\n')
+            # The download is the last docker call: no prompt was reached, nothing created.
+            $r.Calls[$r.Calls.Count - 1] | Should -BeExactly "pull $($script:PinnedImage)"
+            @($r.Calls | Where-Object { $_ -match '^(run|create|cp|ps|rm) |^volume (create|rm) ' }).Count | Should -Be 0
+            (@($r.Volumes | Sort-Object) -join ' ') | Should -BeExactly 'daaf_daaf-claude-config daaf_daaf-data'
+            $r.Output | Should -Not -BeLike "*Type RESTORE to confirm*"
+            Assert-LiveUntouched -Calls $r.Calls
+        }
+
+        It "every docker run / create names exactly the pinned image (full runs: leftover, Claude state, both replays, swaps, cancel)" {
+            $runs = @(
+                (Invoke-FakeRestore -DataFiles 3 -WithClaude -SeedVolumes @('daaf_daaf-data-restore-tmp') -LeftoverAnswer 'y' -Fake @{ FAKE_PERMS_MANIFEST = '1'; FAKE_SYMLINKS_MANIFEST = '1'; FAKE_CLAUDE_SYMLINKS_MANIFEST = '1' }),
+                (Invoke-FakeRestore -DataFiles 3 -WithClaude -ConfirmAnswer 'no')
+            )
+            $runs[0].ExitCode | Should -Be 0
+            $all = @($runs | ForEach-Object { $_.Calls })
+            $containerCalls = @($all | Where-Object { $_ -match '^(run|create) ' })
+            foreach ($c in $containerCalls) {
+                (@(($c -split ' ') | Where-Object { $_ -like 'busybox*' }) -join ' ') | Should -BeExactly $script:PinnedImage -Because "every container call names the pinned image: $c"
+            }
+            # Coverage: every kind of container call the restore makes was seen.
+            foreach ($p in @('^create ', '{IMG} sh -c test ! -e /src/', '{IMG} find /dest -mindepth 1$', '{IMG} rm -rf /dest/', '{IMG} chown -R 1000:1000 /dest$',
+                    '{IMG} test -f /dest/\.daaf-permissions$', '{IMG} sh -c set -e; manifest=', '{IMG} sh -c set -ef; IFS=;', '{IMG} sh -c a=\$\(stat -f',
+                    '{IMG} sh -c set -e; : > /tmp/count_err', '{IMG} touch /dest/', '--sig-proxy=false .* {IMG} sh -c trap ', '{IMG} sh -c export LC_ALL=C;',
+                    '{IMG} rm -f /dest/\.daaf-restore-swap-started$', ':/b:ro {IMG} sh -c ')) {
+                (Get-CallIndex $all $p) | Should -BeGreaterThan -1 -Because "a container call matching '$p' is exercised"
+            }
+            $containerCalls.Count | Should -BeGreaterThan 20
+        }
+    }
+
+    Context "pass #26: the edition guard (this .ps1 is for Windows)" {
+        It "under pwsh on Linux/macOS WITHOUT the test bypass it refuses (exit 1), names the .sh twin, before ANY docker call" {
+            $r = Invoke-FakeRestore -DataFiles 3 -NoEditionBypass
+            $r.ExitCode | Should -Be 1
+            $block = @(
+                'ERROR: This PowerShell script is for Windows. On macOS or Linux, run the restore with:',
+                '         bash restore_from_backup.sh',
+                '       Nothing was changed.')
+            $r.Output | Should -Match ((@($block | ForEach-Object { [regex]::Escape($_) })) -join '\r?\n')
+            $r.Calls.Count | Should -Be 0
+            # Before the banner too: nothing else ran.
+            $r.Output | Should -Not -BeLike "*DAAF Restore from Backup*"
+            (@($r.Volumes | Sort-Object) -join ' ') | Should -BeExactly 'daaf_daaf-claude-config daaf_daaf-data'
+        }
+
+        It "with DAAF_DRY_RUN=1 (the CI smoke run) it is NOT refused, even without the bypass" {
+            $r = Invoke-FakeRestore -DataFiles 3 -NoEditionBypass -Fake @{ DAAF_DRY_RUN = '1' }
+            $r.Output | Should -Not -BeLike "*This PowerShell script is for Windows*"
+            $r.Output | Should -BeLike "*DAAF Restore from Backup*"
+            $r.Output | Should -BeLike "*``[DRY-RUN``]*"
+            # The dry run's own docker stand-in answers: the fake on PATH is never called.
+            $r.Calls.Count | Should -Be 0
+            $r.ExitCode | Should -Be 0
+        }
+    }
+}
+
+# ============================================================================
+# Pass #26 (F1 compatibility, audit 04): static pins on the script's own text and AST.
+# The E2E contexts above run the checks; these pin what a pwsh-on-Linux run cannot show
+# (Windows PowerShell 5.1 StrictMode safety of the guard, statement order).
+# ============================================================================
+
+Describe "restore_from_backup.ps1 pass #26 static pins (image constant, native-error preference, edition guard)" {
+    BeforeAll {
+        . "$PSScriptRoot/TestHelper.ps1"
+        $script:Path = "$RepoRoot/scripts/host/restore_from_backup.ps1"
+        $script:Content = Get-Content $script:Path -Raw
+        $tokens = $null
+        $parseErrors = $null
+        $script:Ast = [System.Management.Automation.Language.Parser]::ParseFile($script:Path, [ref]$tokens, [ref]$parseErrors)
+        $script:PinnedImage = 'busybox:1.37.0@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e'
+        # Every `docker ...` command in the file (functions included), in source order.
+        $script:DockerCalls = @($script:Ast.FindAll({
+            param($n) ($n -is [System.Management.Automation.Language.CommandAst]) -and ($n.GetCommandName() -eq 'docker')
+        }, $true) | Sort-Object { $_.Extent.StartOffset })
+        $script:GuardIf = $script:Ast.Find({
+            param($n) ($n -is [System.Management.Automation.Language.IfStatementAst]) -and ($n.Clauses[0].Item1.Extent.Text -match 'PSEdition')
+        }, $true)
+    }
+
+    It "defines the pinned image once, and no code line names the image except through it" {
+        $Content | Should -MatchExactly ([regex]::Escape("`$BusyboxImage = '$($script:PinnedImage)'"))
+        $code = @(($Content -split "`n") | Where-Object { $_ -notmatch '^\s*#' })
+        @($code | Where-Object { $_ -match '^\$BusyboxImage = ' }).Count | Should -Be 1
+        # The only other code lines that say "busybox" are the user-facing helper-image text.
+        @($code | Where-Object { $_ -cmatch '\bbusybox\b' -and $_ -notmatch '^\$BusyboxImage = ' -and $_ -notmatch '^\s*Write-Host "[^"]*helper image busybox' }).Count | Should -Be 0
+        # The constant sits ABOVE the DAAF_TEST_MODE guard, so a dot-sourcing test sees it.
+        $Content.IndexOf('$BusyboxImage = ') | Should -BeLessThan $Content.IndexOf('$env:DAAF_TEST_MODE -eq "1"')
+    }
+
+    It "sets `$PSNativeCommandUseErrorActionPreference = `$false at top level BEFORE the first docker call" {
+        $assign = @($script:Ast.FindAll({
+            param($n) ($n -is [System.Management.Automation.Language.AssignmentStatementAst]) -and ($n.Left.Extent.Text -eq '$PSNativeCommandUseErrorActionPreference')
+        }, $true))
+        $assign.Count | Should -Be 1
+        $assign[0].Right.Extent.Text | Should -BeExactly '$false'
+        # Top level (the script's own statement list), not inside a function or block.
+        $assign[0].Parent | Should -Be $script:Ast.EndBlock
+        $script:DockerCalls.Count | Should -BeGreaterThan 0
+        $assign[0].Extent.StartOffset | Should -BeLessThan $script:DockerCalls[0].Extent.StartOffset
+    }
+
+    It "guards the edition with `$PSVersionTable.PSEdition -eq 'Core' -and -not `$IsWindows, in that order" {
+        $script:GuardIf | Should -Not -BeNullOrEmpty
+        $cond = $script:GuardIf.Clauses[0].Item1.Extent.Text
+        $cond | Should -BeExactly ("`$PSVersionTable.PSEdition -eq 'Core' -and -not `$IsWindows -and `$env:DAAF_DRY_RUN -ne '1' -and `$env:DAAF_TEST_ALLOW_CORE_NONWINDOWS -ne '1'")
+        # At top level, after Set-StrictMode, and before every top-level docker call.
+        $script:GuardIf.Parent | Should -Be $script:Ast.EndBlock
+        $script:GuardIf.Extent.StartOffset | Should -BeGreaterThan $Content.IndexOf('Set-StrictMode -Version 3.0')
+        $topDocker = @($script:DockerCalls | Where-Object {
+            $p = $_.Parent; $inFn = $false
+            while ($null -ne $p) { if ($p -is [System.Management.Automation.Language.FunctionDefinitionAst]) { $inFn = $true; break }; $p = $p.Parent }
+            -not $inFn
+        })
+        $topDocker.Count | Should -BeGreaterThan 0
+        $script:GuardIf.Extent.StartOffset | Should -BeLessThan $topDocker[0].Extent.StartOffset
+    }
+
+    It "the guard condition is StrictMode-safe where `$IsWindows does not exist (Windows PowerShell 5.1) and decides correctly" {
+        # Evaluated with each automatic value replaced by a literal: on 5.1 PSEdition is
+        # 'Desktop' and $IsWindows is UNDEFINED (stood in for by a name that is never set),
+        # which under Set-StrictMode -Version 3.0 throws if it is read. The -and must stop
+        # before reading it.
+        $cond = $script:GuardIf.Clauses[0].Item1.Extent.Text
+        $eval = {
+            param([string]$Edition, [string]$IsWin, [string]$Dry, [string]$Bypass)
+            $t = $cond.Replace('$PSVersionTable.PSEdition', "'$Edition'").Replace('$env:DAAF_DRY_RUN', "'$Dry'").Replace('$env:DAAF_TEST_ALLOW_CORE_NONWINDOWS', "'$Bypass'")
+            if ($IsWin -eq 'undefined') { $t = $t.Replace('$IsWindows', '$DaafF1NeverDefinedVariable') } else { $t = $t.Replace('$IsWindows', "`$$IsWin") }
+            & { Set-StrictMode -Version 3.0; & ([scriptblock]::Create($t)) }
+        }
+        # Sanity: the stand-in really is undefined and really throws under strict mode.
+        { & { Set-StrictMode -Version 3.0; $null = $DaafF1NeverDefinedVariable } } | Should -Throw
+        { & $eval 'Desktop' 'undefined' '0' '0' } | Should -Not -Throw
+        (& $eval 'Desktop' 'undefined' '0' '0') | Should -BeFalse
+        (& $eval 'Core' 'true' '0' '0') | Should -BeFalse
+        (& $eval 'Core' 'false' '0' '0') | Should -BeTrue
+        (& $eval 'Core' 'false' '1' '0') | Should -BeFalse
+        (& $eval 'Core' 'false' '0' '1') | Should -BeFalse
     }
 }
 

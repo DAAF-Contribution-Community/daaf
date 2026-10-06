@@ -291,6 +291,7 @@ teardown() {
     # Model a nonzero staging exit (`docker wait` prints "1"): the backup must abort
     # fatally with an ERROR, because nothing useful was produced.
     docker() {
+        if mock_docker_shared_arms "$@"; then return "${MOCK_DOCKER_ARM_STATUS}"; fi
         case "$1" in
             info)   return 0 ;;
             volume) return 0 ;;
@@ -322,6 +323,7 @@ teardown() {
     # scan reports 1 source file; the completion count must be 1 (manifest
     # excluded) -- with no file-count-mismatch WARNING.
     docker() {
+        if mock_docker_shared_arms "$@"; then return "${MOCK_DOCKER_ARM_STATUS}"; fi
         case "$1" in
             info)   return 0 ;;
             volume) return 0 ;;
@@ -480,6 +482,7 @@ _relocate_stage_program() {
 # backup. Logical KB 0 in the scan and STAGED_KB=0 keep the size check neutral.
 _mock_snapshot_docker() {
     docker() {
+        if mock_docker_shared_arms "$@"; then return "${MOCK_DOCKER_ARM_STATUS}"; fi
         case "$1" in
             info)   return 0 ;;
             volume) return 0 ;;
@@ -603,6 +606,7 @@ _mock_snapshot_docker() {
     # zero-tolerance check.
     export DAAF_NESTED=1
     docker() {
+        if mock_docker_shared_arms "$@"; then return "${MOCK_DOCKER_ARM_STATUS}"; fi
         case "$1" in
             info|volume) return 0 ;;
             run)
@@ -637,6 +641,7 @@ _mock_snapshot_docker() {
     # is merely NAMED .daaf-symlinks is Claude state and counts.
     export DAAF_NESTED=1
     docker() {
+        if mock_docker_shared_arms "$@"; then return "${MOCK_DOCKER_ARM_STATUS}"; fi
         case "$1" in
             info|volume) return 0 ;;
             run)
@@ -705,6 +710,7 @@ _mock_snapshot_docker() {
     # NAMED .daaf-symlinks deeper in the tree is data and must be counted.
     export DAAF_NESTED=1
     docker() {
+        if mock_docker_shared_arms "$@"; then return "${MOCK_DOCKER_ARM_STATUS}"; fi
         case "$1" in
             info|volume) return 0 ;;
             run)
@@ -753,7 +759,7 @@ _mock_snapshot_docker() {
     printf 'beta\n' > "${src}/sub/b.txt"
     mkfifo "${src}/sub/p.fifo"
     local prog
-    prog="$(sed -n "s/^SCAN_OUTPUT=\$(docker run --rm -v \"\${VOLUME_NAME}:\/source:ro\" busybox sh -c '\(.*\)') || {\$/\1/p" "${f}")"
+    prog="$(sed -n "s/^SCAN_OUTPUT=\$(docker run --rm -v \"\${VOLUME_NAME}:\/source:ro\" \"\${BUSYBOX_IMAGE}\" sh -c '\(.*\)') || {\$/\1/p" "${f}")"
     [ -n "${prog}" ] || { echo "FAIL: scan program not found in backup_daaf.sh"; return 1; }
     run sh -c "${prog//\/source/${src}}"
     assert_success
@@ -777,7 +783,7 @@ _mock_snapshot_docker() {
     : > "${src}/.daaf-symlinks"
     head -c 5000 /dev/zero > "${src}/.daaf-claude-config/c.json"
     local prog
-    prog="$(sed -n "s/^SCAN_OUTPUT=\$(docker run --rm -v \"\${VOLUME_NAME}:\/source:ro\" busybox sh -c '\(.*\)') || {\$/\1/p" "${f}")"
+    prog="$(sed -n "s/^SCAN_OUTPUT=\$(docker run --rm -v \"\${VOLUME_NAME}:\/source:ro\" \"\${BUSYBOX_IMAGE}\" sh -c '\(.*\)') || {\$/\1/p" "${f}")"
     [ -n "${prog}" ] || { echo "FAIL: scan program not found in backup_daaf.sh"; return 1; }
     run sh -c "${prog//\/source/${src}}"
     assert_success
@@ -889,6 +895,7 @@ _mock_snapshot_docker() {
     # 5th scan line = 3 special files. The note appears; it is informational (the
     # banner stays plain -- stale FIFOs are expected, not a backup defect).
     docker() {
+        if mock_docker_shared_arms "$@"; then return "${MOCK_DOCKER_ARM_STATUS}"; fi
         case "$1" in
             info)   return 0 ;;
             volume) return 0 ;;
@@ -930,6 +937,7 @@ _mock_snapshot_docker() {
     # false) -- so the refute on that text is what makes this test catch its removal.
     # SCAN_LINE5 drives the mock: "__NONE__" omits the 5th line entirely.
     docker() {
+        if mock_docker_shared_arms "$@"; then return "${MOCK_DOCKER_ARM_STATUS}"; fi
         case "$1" in
             info)   return 0 ;;
             volume) return 0 ;;
@@ -1117,6 +1125,7 @@ _mock_snapshot_docker() {
     # `docker run -d` (staging) + `docker wait` + `docker cp`, so the mock models
     # staging launch (returns a CID), wait (exit 0), and cp.
     docker() {
+        if mock_docker_shared_arms "$@"; then return "${MOCK_DOCKER_ARM_STATUS}"; fi
         case "$1" in
             info)   return 0 ;;
             volume) return 0 ;;
@@ -1163,6 +1172,7 @@ _mock_snapshot_docker() {
     # Custom docker mock: staging (`run -d` -> CID, `wait` -> 0) then `docker cp`
     # creates files so FILE_COUNT > 0.
     docker() {
+        if mock_docker_shared_arms "$@"; then return "${MOCK_DOCKER_ARM_STATUS}"; fi
         case "$1" in
             info)   return 0 ;;
             volume) return 0 ;;
@@ -1202,6 +1212,7 @@ _mock_snapshot_docker() {
     # Custom docker mock: staging (`run -d` -> CID, `wait` -> 0) then `docker cp`
     # creates a file so the script reaches success.
     docker() {
+        if mock_docker_shared_arms "$@"; then return "${MOCK_DOCKER_ARM_STATUS}"; fi
         case "$1" in
             info)   return 0 ;;
             volume) return 0 ;;
@@ -1243,6 +1254,7 @@ _mock_snapshot_docker() {
     # call by the "-perm" substring, and returns two exec paths under /source
     # (which the script strips to volume-relative before writing).
     docker() {
+        if mock_docker_shared_arms "$@"; then return "${MOCK_DOCKER_ARM_STATUS}"; fi
         case "$1" in
             info)   return 0 ;;
             volume) return 0 ;;
@@ -1298,6 +1310,7 @@ _mock_snapshot_docker() {
     # ... find -perm -0100` call is distinguished from the scan call by the "-perm"
     # substring; the data copy creates a file so FILE_COUNT > 0 and the script succeeds.
     docker() {
+        if mock_docker_shared_arms "$@"; then return "${MOCK_DOCKER_ARM_STATUS}"; fi
         case "$1" in
             info)   return 0 ;;
             volume) return 0 ;;
@@ -1380,6 +1393,7 @@ _mock_snapshot_docker() {
     # Custom docker mock: staging succeeds (`run -d` -> CID, `wait` -> 0), scan
     # succeeds, the `docker cp` copy fails (non-zero exit) and creates no files.
     docker() {
+        if mock_docker_shared_arms "$@"; then return "${MOCK_DOCKER_ARM_STATUS}"; fi
         case "$1" in
             info)   return 0 ;;
             volume) return 0 ;;
@@ -1416,6 +1430,7 @@ _mock_snapshot_docker() {
     # the Note is the ONLY warning source -- the banner assertion below then fails if
     # the Note branch stops setting HAD_WARNINGS.
     docker() {
+        if mock_docker_shared_arms "$@"; then return "${MOCK_DOCKER_ARM_STATUS}"; fi
         case "$1" in
             info)   return 0 ;;
             volume) return 0 ;;
@@ -1473,6 +1488,7 @@ _mock_snapshot_docker() {
     # truncated, so the script must abort fatally, naming the partial folder and
     # telling the user to delete it -- not pass it off as usable.
     docker() {
+        if mock_docker_shared_arms "$@"; then return "${MOCK_DOCKER_ARM_STATUS}"; fi
         case "$1" in
             info)   return 0 ;;
             volume) return 0 ;;
@@ -1520,6 +1536,7 @@ _mock_snapshot_docker() {
     # still exits 0 and never prints the fatal short-copy error. Logical KB is 0 so
     # the size check is skipped, isolating the file-count signal.
     docker() {
+        if mock_docker_shared_arms "$@"; then return "${MOCK_DOCKER_ARM_STATUS}"; fi
         case "$1" in
             info)   return 0 ;;
             volume) return 0 ;;
@@ -1560,6 +1577,7 @@ _mock_snapshot_docker() {
     # size check), Claude state and permission manifest both succeed -- must print
     # the plain "Backup complete!" banner and NOT the WITH-WARNINGS variant.
     docker() {
+        if mock_docker_shared_arms "$@"; then return "${MOCK_DOCKER_ARM_STATUS}"; fi
         case "$1" in
             info)   return 0 ;;
             volume) return 0 ;;
@@ -1598,6 +1616,7 @@ _mock_snapshot_docker() {
 
     # Custom docker mock: scan returns garbage output
     docker() {
+        if mock_docker_shared_arms "$@"; then return "${MOCK_DOCKER_ARM_STATUS}"; fi
         case "$1" in
             info)   return 0 ;;
             volume) return 0 ;;
@@ -1634,6 +1653,7 @@ _mock_snapshot_docker() {
     # The data-volume `docker run -d` prints a CID but exits nonzero. The error
     # branch must run `docker rm -f stagecid0000` before `exit 1`.
     docker() {
+        if mock_docker_shared_arms "$@"; then return "${MOCK_DOCKER_ARM_STATUS}"; fi
         printf '%s\n' "$*" >> "${TEST_DIR}/docker_calls.log"
         case "$1" in
             info)   return 0 ;;
@@ -1672,6 +1692,7 @@ _mock_snapshot_docker() {
     # not in the whole argument list, because the staging program text itself names
     # the ".daaf-claude-config" folder in its count exclusions.
     docker() {
+        if mock_docker_shared_arms "$@"; then return "${MOCK_DOCKER_ARM_STATUS}"; fi
         printf '%s\n' "$*" >> "${TEST_DIR}/docker_calls.log"
         case "$1" in
             info)   return 0 ;;
@@ -1722,6 +1743,7 @@ _mock_snapshot_docker() {
     # clamp (tolerance 0) a diff of 1 would warn. Logical KB 0 skips the size check,
     # isolating the count signal.
     docker() {
+        if mock_docker_shared_arms "$@"; then return "${MOCK_DOCKER_ARM_STATUS}"; fi
         case "$1" in
             info)   return 0 ;;
             volume) return 0 ;;
@@ -1764,6 +1786,7 @@ _mock_snapshot_docker() {
 # so these skip there. NO_MANIFEST=1 omits the root .daaf-symlinks (FU4).
 _mock_locked_copy_docker() {
     docker() {
+        if mock_docker_shared_arms "$@"; then return "${MOCK_DOCKER_ARM_STATUS}"; fi
         case "$1" in
             info)   return 0 ;;
             volume) return 0 ;;
@@ -2135,6 +2158,7 @@ _names_fixture() {
 # staging status `docker wait` prints (default 0).
 _mock_names_docker() {
     docker() {
+        if mock_docker_shared_arms "$@"; then return "${MOCK_DOCKER_ARM_STATUS}"; fi
         case "$1" in
             info)   return 0 ;;
             volume) return 0 ;;
@@ -2178,7 +2202,7 @@ _mock_names_docker() {
     run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
     assert_success
     # Both staging launches (data + Claude) carry the switch AFTER the -v, value empty.
-    run grep -c -- '-d -v [^ ]*:/source:ro -e DAAF_STAGE_NAMES= busybox sh -c' "${RUN_D_ARGS_FILE}"
+    run grep -c -- "-d -v [^ ]*:/source:ro -e DAAF_STAGE_NAMES= ${DAAF_BUSYBOX_PIN_RE} sh -c" "${RUN_D_ARGS_FILE}"
     assert_output "2"
     rm -f "${RUN_D_ARGS_FILE}"
     uname() { echo Darwin; }
@@ -2186,7 +2210,7 @@ _mock_names_docker() {
     run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
     assert_success
     assert_output --partial "Backup complete!"
-    run grep -c -- '-d -v [^ ]*:/source:ro -e DAAF_STAGE_NAMES=casewarn busybox sh -c' "${RUN_D_ARGS_FILE}"
+    run grep -c -- "-d -v [^ ]*:/source:ro -e DAAF_STAGE_NAMES=casewarn ${DAAF_BUSYBOX_PIN_RE} sh -c" "${RUN_D_ARGS_FILE}"
     assert_output "2"
     # D1: removal is Windows-only -- the .sh twin has no way to request it.
     run grep -c 'DAAF_STAGE_NAMES=win' "${REPO_ROOT}/scripts/host/backup_daaf.sh"
@@ -2506,4 +2530,233 @@ _mock_names_docker() {
     ccall="$(grep -nF '_daaf_case_report "${CLAUDE_STAGE_DONE_LOG}"' "${f}" | cut -d: -f1)"
     valid="$(grep -n 'The data volume backup above is still valid' "${f}" | cut -d: -f1)"
     [ "${ccall}" -gt "${valid}" ]
+}
+
+# =========================================================================
+# --- Fix pass #26 (F1 compatibility): version check, helper image check, pin ---
+# =========================================================================
+# Right after `docker info` the backup reads `docker version` and refuses (exit 1,
+# nothing created) when the client or Engine major is below 25 or cannot be read; any
+# major other than the tested 29 prints a NOTE and continues (no WARNING latch). After
+# the volume check it makes sure the PINNED helper image is present (`docker pull` when
+# `image inspect` fails; refuse when the pull fails) -- before the backup folder is
+# created and before the scan. Every docker mock here delegates those calls to
+# test_helper's mock_docker_shared_arms; MOCK_DOCKER_ARGV_LOG records every call's argv.
+# The clean-run fixture is _mock_snapshot_docker with matching markers (see above).
+
+_f1_backup_clean_env() {
+    export DAAF_NESTED=1 SCAN_COUNT=2 CP_FILES=2 STAGE_LOG_TEXT='STAGED_FILES=2\nSTAGED_KB=0\n'
+    export MOCK_DOCKER_ARGV_LOG="${TEST_DIR}/argv.log"
+    : > "${MOCK_DOCKER_ARGV_LOG}"
+    _mock_snapshot_docker
+}
+
+# No backup folder was created in the working directory (TEST_DIR).
+_f1_no_backup_folder() {
+    local d
+    for d in "${TEST_DIR}"/*_daaf_backup; do
+        if [ -e "${d}" ]; then echo "unexpected backup folder: ${d}"; return 1; fi
+    done
+}
+
+# The backup's version-refusal block for client $1 / Engine $2 ($3 = "old" | "read").
+_f1_backup_version_refusal() {
+    local first
+    if [ "$3" = old ]; then
+        first="ERROR: This Docker version is too old for the backup (Docker client $1, Docker Engine $2)."
+    else
+        first="ERROR: Could not read the Docker version (Docker client $1, Docker Engine $2)."
+    fi
+    printf '%s\n' "${first}" \
+        '       The backup needs Docker 25.0 or newer, for both the Docker client and Docker Engine' \
+        '       (Docker Desktop 4.27.1 or newer). Update Docker, then run the backup again.' \
+        '       (Docker Desktop or Docker Engine is required; Podman is not supported.)' \
+        '       Nothing was changed.'
+}
+
+@test "F1 version (backup): 29.x prints no NOTE; another major >= 25 prints the NOTE once and the backup completes cleanly" {
+    local c v note
+    for c in \
+        "29.1.3 29.1.3|" \
+        $'WARNING: a notice line\n29.0.0 29.4.1\n|' \
+        "25.0.2 29.1.3|NOTE: The backup has not been tested with this Docker version (Docker client 25.0.2, Docker Engine 29.1.3; tested: 29). Continuing." \
+        "30.0.0 30.0.0|NOTE: The backup has not been tested with this Docker version (Docker client 30.0.0, Docker Engine 30.0.0; tested: 29). Continuing."; do
+        v="${c%%|*}"
+        note="${c#*|}"
+        rm -rf "${TEST_DIR:?}"/*_daaf_backup
+        _f1_backup_clean_env
+        export MOCK_DOCKER_VERSION="${v}"
+        run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+        echo "case version=[${v}]"
+        assert_success
+        assert_output --partial "Backup complete!"
+        refute_output --partial "WITH WARNINGS"
+        refute_output --partial "ERROR:"
+        if [ -z "${note}" ]; then
+            refute_output --partial "NOTE: The backup has not been tested"
+        else
+            assert_output --partial "${note}"
+            [ "$(grep -c 'NOTE: The backup has not been tested' <<< "${output}")" -eq 1 ]
+        fi
+    done
+}
+
+@test "F1 version (backup): below 25 or unreadable refuses, exit 1, the exact ERROR lines on stderr, NO docker call after info + version, no folder" {
+    local c v kind shown
+    # "<docker version stdout>|<old|read>|<client shown> <Engine shown>"
+    for c in "24.0.7 29.1.3|old|24.0.7 29.1.3" "29.1.3 24.0.7|old|29.1.3 24.0.7" "|read|unknown unknown" "29.1.3|read|29.1.3 unknown" "abc def|read|abc def"; do
+        v="${c%%|*}"
+        kind="${c#*|}"; kind="${kind%%|*}"
+        shown="${c##*|}"
+        _f1_backup_clean_env
+        export MOCK_DOCKER_VERSION="${v}"
+        run bash -c 'bash "'"${REPO_ROOT}"'/scripts/host/backup_daaf.sh" 2>&1 > /dev/null'
+        echo "case version=[${v}]"
+        assert_failure 1
+        assert_output "$(_f1_backup_version_refusal "${shown% *}" "${shown#* }" "${kind}")"
+        run mock_docker_argv_show "${MOCK_DOCKER_ARGV_LOG}"
+        assert_output "$(printf '%s\n' '[info]' '[version] [--format] [{{.Client.Version}} {{.Server.Version}}]')"
+        _f1_no_backup_folder
+    done
+}
+
+# Review fix round 9 (ISSUE 1): the old-Engine hint in the `docker info` failure branch
+# (see restore_from_backup.bats, "F1 info hint"). The backup prints its "not running"
+# line on STDOUT, and the hint follows it there. Client $1.
+_f1_backup_info_hint() {
+    printf '%s\n' \
+        "       If Docker is running, its Docker Engine may be older than 25.0 (Docker client $1)." \
+        '       The backup needs Docker 25.0 or newer (Docker Desktop 4.27.1 or newer).'
+}
+
+@test "F1 info hint (backup): docker info fails, client >= 25 and an empty or unparsable Engine -> the 'not running' line plus the old-Engine hint (stdout), exit 1, nothing after info + version, no folder" {
+    export DAAF_NESTED=1 MOCK_DOCKER_INFO_EXIT=1 MOCK_DOCKER_ARGV_LOG="${TEST_DIR}/argv.log"
+    local c v exitc client
+    # "<docker version stdout>|<its exit>|<client shown>"
+    for c in "29.1.3|1|29.1.3" "29.1.3 |1|29.1.3" "25.0.0 abc|0|25.0.0" $'WARNING: a notice\n30.0.1|1|30.0.1' "29.1.3 v24.0.7|1|29.1.3"; do
+        v="${c%%|*}"
+        exitc="${c#*|}"; exitc="${exitc%%|*}"
+        client="${c##*|}"
+        export MOCK_DOCKER_VERSION="${v}" MOCK_DOCKER_VERSION_EXIT="${exitc}"
+        : > "${MOCK_DOCKER_ARGV_LOG}"
+        # stdout only, its last 3 lines (the banner is above them); stderr must be empty.
+        run bash -c 'bash "'"${REPO_ROOT}"'/scripts/host/backup_daaf.sh" < /dev/null 2> "'"${TEST_DIR}"'/stderr.txt" | tail -n 3; exit "${PIPESTATUS[0]}"'
+        echo "case version=[${v}] exit=${exitc}"
+        assert_failure 1
+        assert_output "$(printf '%s\n' 'ERROR: Docker Desktop does not seem to be running. Please start it and try again.'; _f1_backup_info_hint "${client}")"
+        [ ! -s "${TEST_DIR}/stderr.txt" ]
+        run mock_docker_argv_show "${MOCK_DOCKER_ARGV_LOG}"
+        assert_output "$(printf '%s\n' '[info]' '[version] [--format] [{{.Client.Version}} {{.Server.Version}}]')"
+        _f1_no_backup_folder
+    done
+}
+
+@test "F1 info hint (backup): docker info fails and the client is below 25, unparsable or absent, or the Engine version reads -> ONLY the unchanged 'not running' line, exit 1" {
+    export DAAF_NESTED=1 MOCK_DOCKER_INFO_EXIT=1 MOCK_DOCKER_ARGV_LOG="${TEST_DIR}/argv.log"
+    local c v exitc
+    for c in "24.0.7|1" "|1" "abc|1" "v29.1.3|1" "123456.0|1" "29.1.3 29.1.3|0" "29.1.3 24.0.7|0"; do
+        v="${c%%|*}"
+        exitc="${c#*|}"
+        export MOCK_DOCKER_VERSION="${v}" MOCK_DOCKER_VERSION_EXIT="${exitc}"
+        : > "${MOCK_DOCKER_ARGV_LOG}"
+        run bash -c 'bash "'"${REPO_ROOT}"'/scripts/host/backup_daaf.sh" < /dev/null 2>&1 | tail -n 2; exit "${PIPESTATUS[0]}"'
+        echo "case version=[${v}] exit=${exitc}"
+        assert_failure 1
+        # The line before the ERROR is the banner's blank line: nothing else was printed.
+        assert_output "$(printf '%s\n' '' 'ERROR: Docker Desktop does not seem to be running. Please start it and try again.')"
+        refute_output --partial "If Docker is running"
+        run mock_docker_argv_show "${MOCK_DOCKER_ARGV_LOG}"
+        assert_output "$(printf '%s\n' '[info]' '[version] [--format] [{{.Client.Version}} {{.Server.Version}}]')"
+    done
+}
+
+@test "F1 image (backup): present -> inspected by the pinned name after the volume check, never pulled; missing -> pulled before the scan, then the backup completes" {
+    _f1_backup_clean_env
+    run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_success
+    refute_output --partial "Downloading the small helper image"
+    run bash -c "mock_docker_argv_show '${MOCK_DOCKER_ARGV_LOG}' | head -n 4"
+    [ "${lines[0]}" = '[info]' ]
+    [ "${lines[1]}" = '[version] [--format] [{{.Client.Version}} {{.Server.Version}}]' ]
+    # The volume name follows the compose project name (DAAF_PROJECT_NAME / the repo's
+    # docker-compose.yml), so only its shape is pinned here.
+    [[ "${lines[2]}" =~ ^\[volume\]\ \[inspect\]\ \[[^\ ]+daaf-data\]$ ]]
+    [ "${lines[3]}" = "[image] [inspect] [${DAAF_BUSYBOX_PIN}]" ]
+    run grep -c '^pull' "${MOCK_DOCKER_ARGV_LOG}"
+    assert_output "0"
+
+    rm -rf "${TEST_DIR:?}"/*_daaf_backup
+    _f1_backup_clean_env
+    export MOCK_DOCKER_IMAGE_INSPECT_EXIT=1
+    run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_success
+    assert_output --partial "$(printf '%s\n' \
+        'Downloading the small helper image busybox that the backup needs...' \
+        '1.37.0: Pulling from library/busybox' \
+        "Status: Downloaded newer image for ${DAAF_BUSYBOX_PIN}")"
+    assert_output --partial "Backup complete!"
+    # The pull is the 5th call; every `run` (scan, staging, manifest) comes after it.
+    run bash -c "mock_docker_argv_show '${MOCK_DOCKER_ARGV_LOG}' | grep -n -e '^\[pull\]' -e '^\[run\]' | head -n 2"
+    [ "${lines[0]}" = "5:[pull] [${DAAF_BUSYBOX_PIN}]" ]
+    [[ "${lines[1]}" == *":[run] "* ]]
+    run grep -c '^pull' "${MOCK_DOCKER_ARGV_LOG}"
+    assert_output "1"
+}
+
+@test "F1 image (backup): a failed pull refuses, exit 1, with Docker's last line and 'Nothing was changed.'; no folder, no scan, no container" {
+    local said
+    _f1_backup_clean_env
+    export MOCK_DOCKER_IMAGE_INSPECT_EXIT=1 MOCK_DOCKER_PULL_EXIT=1
+    export MOCK_DOCKER_PULL_STDERR=$'Using default tag: noise\n  Error response from daemon: Get "https://registry-1.docker.io/v2/": net/http: TLS handshake timeout  \n\n'
+    said='Error response from daemon: Get "https://registry-1.docker.io/v2/": net/http: TLS handshake timeout'
+    run bash -c 'bash "'"${REPO_ROOT}"'/scripts/host/backup_daaf.sh" 2>&1 > /dev/null'
+    assert_failure 1
+    assert_output "$(printf '%s\n' '' \
+        'ERROR: The backup needs the small helper image busybox and could not download it.' \
+        '       Check the internet connection and that Docker Desktop is running, then run the backup again.' \
+        "       Docker said: ${said}" \
+        '       Nothing was changed.')"
+    # Exactly five calls, ending with the failed pull (volume name: see the test above).
+    run mock_docker_argv_show "${MOCK_DOCKER_ARGV_LOG}"
+    [ "${#lines[@]}" -eq 5 ]
+    [ "${lines[0]}" = '[info]' ]
+    [ "${lines[1]}" = '[version] [--format] [{{.Client.Version}} {{.Server.Version}}]' ]
+    [[ "${lines[2]}" =~ ^\[volume\]\ \[inspect\]\ \[[^\ ]+daaf-data\]$ ]]
+    [ "${lines[3]}" = "[image] [inspect] [${DAAF_BUSYBOX_PIN}]" ]
+    [ "${lines[4]}" = "[pull] [${DAAF_BUSYBOX_PIN}]" ]
+    _f1_no_backup_folder
+    # Nothing on Docker's stderr: no "Docker said:" line.
+    _f1_backup_clean_env
+    export MOCK_DOCKER_PULL_STDERR=""
+    run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_failure 1
+    assert_output --partial "$(printf '%s\n' \
+        'Downloading the small helper image busybox that the backup needs...' '' \
+        'ERROR: The backup needs the small helper image busybox and could not download it.' \
+        '       Check the internet connection and that Docker Desktop is running, then run the backup again.' \
+        '       Nothing was changed.')"
+    refute_output --partial "Docker said:"
+    refute_output --partial "Scanning Docker volume"
+    _f1_no_backup_folder
+}
+
+@test "F1 pin (backup): every docker run image argument is the pinned busybox digest, never a bare busybox (full backup with Claude state)" {
+    _f1_backup_clean_env
+    export MOCK_DOCKER_IMAGE_INSPECT_EXIT=1
+    run bash "${REPO_ROOT}/scripts/host/backup_daaf.sh"
+    assert_success
+    assert_output --partial "Backup complete!"
+    run mock_docker_argv_images "${MOCK_DOCKER_ARGV_LOG}"
+    echo "run calls: ${#lines[@]}"
+    # Scan, data staging, Claude staging, executable-permission manifest.
+    [ "${#lines[@]}" -ge 4 ]
+    run bash -c "mock_docker_argv_images '${MOCK_DOCKER_ARGV_LOG}' | grep -vxF -- '${DAAF_BUSYBOX_PIN}'"
+    assert_output ""
+    run awk -F '\037' -v pin="${DAAF_BUSYBOX_PIN}" '{ for (i = 1; i < NF; i++) if ($i ~ /^busybox([:@]|$)/ && $i != pin) print }' "${MOCK_DOCKER_ARGV_LOG}"
+    assert_output ""
+    # Both staging launches really ran (data + Claude), so all four run sites were hit.
+    run grep -c "^run"$'\037'"-d"$'\037' "${MOCK_DOCKER_ARGV_LOG}"
+    assert_output "2"
+    run grep -c "^pull"$'\037'"${DAAF_BUSYBOX_PIN}"$'\037'"\$" "${MOCK_DOCKER_ARGV_LOG}"
+    assert_output "1"
 }

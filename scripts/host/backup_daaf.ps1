@@ -18,6 +18,21 @@
 
 #Requires -Version 5.1
 $ErrorActionPreference = "Stop"
+# pwsh 7.4+ only (an ordinary, unused variable on Windows PowerShell 5.1): never turn a
+# native command's nonzero exit into an error record or a throw. Every docker call here
+# reads $LASTEXITCODE itself (audit 04: under 'Stop' with this set to $true, pwsh 7.6
+# threw NativeCommandExitException; under 'Continue' it added a "Program ... ended with
+# non-zero exit code" line that could become the "Docker said:" text).
+$PSNativeCommandUseErrorActionPreference = $false
+# The helper image every container step runs, PINNED by digest: busybox 1.37.0,
+# multi-arch OCI index (amd64, arm64/v8 and others), the tested digest below. Pinned
+# because the untagged `busybox` (latest) moved to the untested busybox 1.38.0 on
+# 2026-09-23 (research/2026-10-01_FrameworkDev_RestoreCopyThenSwap/scoping/
+# 04_F1_compat_audit.md). The same string is in backup_daaf.{sh,ps1},
+# restore_from_backup.{sh,ps1}, migrate_daaf.{sh,ps1} and docker-compose.yml (daaf-init):
+# keep every copy identical (a parity test enforces it). No `"`, space or trailing `\`,
+# so it passes to docker.exe unchanged on Windows PowerShell 5.1.
+$BusyboxImage = 'busybox:1.37.0@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e'
 
 function Wait-AndExit {
     param([int]$Code = 0)
@@ -54,6 +69,8 @@ if ($env:DAAF_DRY_RUN -eq "1") {
                 Write-Output "BACKUP_SENTINEL=1"
                 return
             }
+            "version --format*" { Write-Output "29.1.3 29.1.3"; return }
+            "image inspect *" { return }
             "*info*" { return }
             "*volume inspect*" { return }
             "run -d*" {
@@ -321,6 +338,24 @@ if ($env:DAAF_TEST_MODE -eq "1") {
 # and missing-property reads.
 Set-StrictMode -Version 3.0
 
+# --- Platform guard (F1 compatibility; audit 04) ---
+# This is the Windows twin, written and tested for Windows PowerShell 5.1 (and pwsh on
+# Windows); under pwsh on macOS it would, for example, strip file names that are legal
+# there (DAAF_STAGE_NAMES=win). Under PowerShell 7 on macOS or Linux, refuse before
+# anything else happens and point to the .sh twin. Short-circuit order matters: on
+# Windows PowerShell 5.1 PSEdition is 'Desktop', so `-and` stops before reading
+# $IsWindows, an automatic variable that does not exist there (a strict-mode error if it
+# were read). Skipped for DAAF_DRY_RUN=1 (the CI smoke run under pwsh on Linux/macOS:
+# Docker is mocked and nothing is changed) and for DAAF_TEST_ALLOW_CORE_NONWINDOWS=1, a
+# TEST-ONLY hook for the Pester suites, which run the real script with a fake docker
+# under pwsh on Linux.
+if ($PSVersionTable.PSEdition -eq 'Core' -and -not $IsWindows -and $env:DAAF_DRY_RUN -ne '1' -and $env:DAAF_TEST_ALLOW_CORE_NONWINDOWS -ne '1') {
+    Write-Host "ERROR: This PowerShell script is for Windows. On macOS or Linux, run the backup with:" -ForegroundColor Red
+    Write-Host "         bash backup_daaf.sh"
+    Write-Host "       Nothing was changed."
+    Wait-AndExit 1
+}
+
 # --- Configuration ---
 # The Docker named volume is project-prefixed: "<project>_daaf-data". Compose
 # derives the prefix from the project name (default "daaf"), so a second instance
@@ -401,7 +436,75 @@ $null = docker info 2>&1
 $ErrorActionPreference = $savedEAP
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Docker Desktop does not seem to be running. Please start it and try again." -ForegroundColor Red
+    # Old-Engine hint (F1; review round 9): same rule and text as the .sh twin (see there)
+    # and restore_from_backup.{sh,ps1}. A client of 25 or newer that cannot talk to an Engine
+    # older than 25.0 also fails `docker info`, so the version check below is never reached.
+    # Stdout only (2>$null), the last non-empty line; the hint is added only when the
+    # client's major reads as 25 or newer and the Engine's version is empty or cannot be read.
+    $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+    $infoFailVersionOut = @(docker version --format '{{.Client.Version}} {{.Server.Version}}' 2>$null)
+    $ErrorActionPreference = $savedEAP
+    $infoFailVersionLine = ''
+    foreach ($versionLine in $infoFailVersionOut) { if ("$versionLine".Trim() -ne '') { $infoFailVersionLine = "$versionLine".Trim() } }
+    $infoFailParts = @(-split $infoFailVersionLine)
+    $infoFailClient = ''
+    $infoFailServer = ''
+    if ($infoFailParts.Count -ge 1) { $infoFailClient = $infoFailParts[0] }
+    if ($infoFailParts.Count -ge 2) { $infoFailServer = $infoFailParts[1] }
+    if ($infoFailClient -match '^(\d{1,5})(\.|$)' -and [int]$Matches[1] -ge 25 -and $infoFailServer -notmatch '^\d{1,5}(\.|$)') {
+        Write-Host "       If Docker is running, its Docker Engine may be older than 25.0 (Docker client $infoFailClient)."
+        Write-Host "       The backup needs Docker 25.0 or newer (Docker Desktop 4.27.1 or newer)."
+    }
     Wait-AndExit 1
+}
+
+# --- Docker version check (F1 compatibility; audit 04, section 3) ---
+# Same rule and wording as the .sh twin (see there) and restore_from_backup.{sh,ps1}:
+# refuse when either side's major version is below 25 or cannot be read; a major other
+# than the tested 29 only prints a NOTE (no $HadWarnings latch). Stdout only (2>$null),
+# so a stderr line can never be read as a version; the last non-empty line. The --format
+# value has no `"` (Windows PowerShell 5.1 native-argument rule).
+$savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+$dockerVersionOut = @(docker version --format '{{.Client.Version}} {{.Server.Version}}' 2>$null)
+$ErrorActionPreference = $savedEAP
+$dockerVersionLine = ''
+foreach ($versionLine in $dockerVersionOut) { if ("$versionLine".Trim() -ne '') { $dockerVersionLine = "$versionLine".Trim() } }
+$dockerVersionParts = @(-split $dockerVersionLine)
+$DockerClientVersion = ''
+$DockerServerVersion = ''
+if ($dockerVersionParts.Count -ge 1) { $DockerClientVersion = $dockerVersionParts[0] }
+if ($dockerVersionParts.Count -ge 2) { $DockerServerVersion = $dockerVersionParts[1] }
+$DockerVersionState = 'ok'
+foreach ($dockerV in @($DockerClientVersion, $DockerServerVersion)) {
+    $dockerMajor = -1
+    if ($dockerV -match '^(\d{1,5})(\.|$)') { $dockerMajor = [int]$Matches[1] }
+    if ($dockerMajor -lt 0) {
+        $DockerVersionState = 'unreadable'
+    } elseif ($dockerMajor -lt 25) {
+        if ($DockerVersionState -ne 'unreadable') { $DockerVersionState = 'old' }
+    } elseif ($dockerMajor -ne 29 -and $DockerVersionState -eq 'ok') {
+        $DockerVersionState = 'untested'
+    }
+}
+if ($DockerVersionState -eq 'old' -or $DockerVersionState -eq 'unreadable') {
+    $dockerClientShown = 'unknown'
+    if ($DockerClientVersion -ne '') { $dockerClientShown = $DockerClientVersion }
+    $dockerServerShown = 'unknown'
+    if ($DockerServerVersion -ne '') { $dockerServerShown = $DockerServerVersion }
+    if ($DockerVersionState -eq 'old') {
+        Write-Host "ERROR: This Docker version is too old for the backup (Docker client $dockerClientShown, Docker Engine $dockerServerShown)." -ForegroundColor Red
+    } else {
+        Write-Host "ERROR: Could not read the Docker version (Docker client $dockerClientShown, Docker Engine $dockerServerShown)." -ForegroundColor Red
+    }
+    Write-Host "       The backup needs Docker 25.0 or newer, for both the Docker client and Docker Engine"
+    Write-Host "       (Docker Desktop 4.27.1 or newer). Update Docker, then run the backup again."
+    Write-Host "       (Docker Desktop or Docker Engine is required; Podman is not supported.)"
+    Write-Host "       Nothing was changed."
+    Wait-AndExit 1
+}
+if ($DockerVersionState -eq 'untested') {
+    Write-Host "NOTE: The backup has not been tested with this Docker version (Docker client $DockerClientVersion, Docker Engine $DockerServerVersion; tested: 29). Continuing."
+    Write-Host ""
 }
 
 $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
@@ -411,6 +514,42 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Docker volume '$VolumeName' not found." -ForegroundColor Red
     Write-Host "Have you run the DAAF installer yet?"
     Wait-AndExit 1
+}
+
+# --- Helper image check (F1 compatibility; audit 04, section 3) ---
+# Same as the .sh twin (see there): make sure the pinned $BusyboxImage is on this
+# computer before the backup folder is created and before the long scan and staging
+# steps; download it here (progress shown) when missing, and refuse with nothing changed
+# when that fails. The pull's stdout lines are shown as they arrive and its stderr lines
+# are kept for the "Docker said:" line, so the bracket is 'Continue' (field test
+# 2026-10-05, D2: Windows PowerShell 5.1 drops native stderr under SilentlyContinue,
+# even with 2>&1).
+$savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+$null = docker image inspect $BusyboxImage 2>&1
+$imageInspectExit = $LASTEXITCODE
+$ErrorActionPreference = $savedEAP
+if ($imageInspectExit -ne 0) {
+    Write-Host "Downloading the small helper image busybox that the backup needs..."
+    # Each stdout line is shown as it arrives (Write-Host inside the pipeline); every line
+    # is also kept, and the ErrorRecords (stderr) give the "Docker said:" line.
+    $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "Continue"
+    $pullAll = @(docker pull $BusyboxImage 2>&1 | ForEach-Object {
+        if ($_ -isnot [System.Management.Automation.ErrorRecord]) { Write-Host "$_" }
+        $_
+    })
+    $pullExit = $LASTEXITCODE
+    $ErrorActionPreference = $savedEAP
+    if ($pullExit -ne 0) {
+        $pullSaid = ''
+        foreach ($pullLine in @($pullAll | Where-Object { $_ -is [System.Management.Automation.ErrorRecord] })) { if ("$pullLine".Trim() -ne '') { $pullSaid = "$pullLine".Trim() } }
+        Write-Host ""
+        Write-Host "ERROR: The backup needs the small helper image busybox and could not download it." -ForegroundColor Red
+        Write-Host "       Check the internet connection and that Docker Desktop is running, then run the backup again."
+        if ($pullSaid -ne '') { Write-Host "       Docker said: $pullSaid" }
+        Write-Host "       Nothing was changed."
+        Wait-AndExit 1
+    }
+    Write-Host ""
 }
 
 # --- Generate date-versioned backup name ---
@@ -479,7 +618,7 @@ Write-Host "Scanning Docker volume..."
 # three names are hardcoded literals (see the SYNC NOTE in the Configuration section),
 # matching the .sh twin's scan; tests/bash/backup_twin_parity.bats pins the predicate.
 $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-$ScanOutput = docker run --rm -v "${VolumeName}:/source:ro" busybox sh -c "cd /source && c=`$(find . -type f ! -path ./.daaf-symlinks ! -path ./.daaf-permissions ! -path ./.daaf-claude-config/\* -exec stat -c %s {} + | awk '{n++; s+=`$1} END {print n+0, int(s/1024)}') && echo `${c% *} && du -sk /source && du -sh /source && echo `${c#* } && find /source \( -type p -o -type s -o -type b -o -type c \) | wc -l && { find /source -type f | awk -v m=$LongPathMinRel '{if (length(`$0) - 8 >= m) n++} END {print n+0}' || echo 0; }"
+$ScanOutput = docker run --rm -v "${VolumeName}:/source:ro" $BusyboxImage sh -c "cd /source && c=`$(find . -type f ! -path ./.daaf-symlinks ! -path ./.daaf-permissions ! -path ./.daaf-claude-config/\* -exec stat -c %s {} + | awk '{n++; s+=`$1} END {print n+0, int(s/1024)}') && echo `${c% *} && du -sk /source && du -sh /source && echo `${c#* } && find /source \( -type p -o -type s -o -type b -o -type c \) | wc -l && { find /source -type f | awk -v m=$LongPathMinRel '{if (length(`$0) - 8 >= m) n++} END {print n+0}' || echo 0; }"
 $ErrorActionPreference = $savedEAP
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Could not scan Docker volume." -ForegroundColor Red
@@ -777,11 +916,18 @@ Write-Host "Preparing volume snapshot (staging + symlink strip)... (this may tak
 # CID; `docker wait` blocks until the staging program finishes and prints its exit
 # status, which MUST be checked -- a nonzero status means staging failed before any
 # host bytes were written, so the backup aborts fatally (nothing useful produced).
+# The CID comes from STDOUT ONLY, the last non-empty line (audit 04, "stderr/stdout
+# ordering"): with `2>&1 | Select-Object -Last 1`, a stderr line that arrived after the
+# CID (pwsh 7.6 repro: the merged order differs between Continue and SilentlyContinue)
+# replaced it, and the helper then leaked. Nothing here shows Docker's text, so stderr is
+# discarded (restore_from_backup.ps1 reads its helper CID the same way).
 $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-$StageCid = (docker run -d -v "${VolumeName}:/source:ro" -e DAAF_STAGE_NAMES=win busybox sh -c $StageProgram 2>&1 | Select-Object -Last 1)
-if ($null -ne $StageCid) { $StageCid = "$StageCid".Trim() }
-$stageStartOk = ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrEmpty($StageCid))
+$stageCidLines = @(docker run -d -v "${VolumeName}:/source:ro" -e DAAF_STAGE_NAMES=win $BusyboxImage sh -c $StageProgram 2>$null)
+$stageRunExit = $LASTEXITCODE
 $ErrorActionPreference = $savedEAP
+$StageCid = ''
+foreach ($cidLine in $stageCidLines) { if ("$cidLine".Trim() -ne '') { $StageCid = "$cidLine".Trim() } }
+$stageStartOk = ($stageRunExit -eq 0 -and -not [string]::IsNullOrEmpty($StageCid))
 if (-not $stageStartOk) {
     if (-not [string]::IsNullOrEmpty($StageCid)) {
         $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
@@ -811,9 +957,14 @@ $ExpectedKB = $VolumeLogicalKB
 # The staging log, kept for the name report after the copy (Write-DaafNameReport).
 $StageDoneLog = @()
 try {
+    # The status from STDOUT ONLY, the last non-empty line (as for the CID above): a late
+    # stderr line can no longer stand in for it (it failed closed to 1 before, but only
+    # by luck of the parse).
     $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-    $StageStatusRaw = (docker wait $StageCid 2>&1 | Select-Object -Last 1)
+    $stageWaitLines = @(docker wait $StageCid 2>$null)
     $ErrorActionPreference = $savedEAP
+    $StageStatusRaw = $null
+    foreach ($waitLine in $stageWaitLines) { if ("$waitLine".Trim() -ne '') { $StageStatusRaw = "$waitLine".Trim() } }
     # Gate on TryParse's BOOLEAN return. [int]::TryParse writes 0 into the [ref] on a
     # parse FAILURE (not just a parse of "0"), so the old `$null = TryParse(...)` form
     # silently overwrote the fail-closed default with 0 whenever `docker wait` emitted a
@@ -1093,7 +1244,7 @@ echo BACKUP_SENTINEL=$seen
 Write-Host ""
 Write-Host "Verifying the backup (counting files inside Docker)..."
 $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-$HostCountOutput = @(docker run --rm -v "${HostPath}:/b:ro" busybox sh -c $BackupCountProgram 2>&1)
+$HostCountOutput = @(docker run --rm -v "${HostPath}:/b:ro" $BusyboxImage sh -c $BackupCountProgram 2>&1)
 $HostCountExit = $LASTEXITCODE
 $ErrorActionPreference = $savedEAP
 $FileCount = $null
@@ -1411,15 +1562,20 @@ if ($claudeVolumeExists) {
     $ClaudeStageDoneLog = @()
     $claudeStagedOk = $false
     try {
+        # CID and wait status from STDOUT ONLY, the last non-empty line (see the data
+        # volume's staging launch above).
         $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-        $ClaudeStageCid = (docker run -d -v "${ClaudeVolumeName}:/source:ro" -e DAAF_STAGE_NAMES=win busybox sh -c $StageProgram 2>&1 | Select-Object -Last 1)
-        if ($null -ne $ClaudeStageCid) { $ClaudeStageCid = "$ClaudeStageCid".Trim() }
-        $claudeStageStartOk = ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrEmpty($ClaudeStageCid))
+        $claudeCidLines = @(docker run -d -v "${ClaudeVolumeName}:/source:ro" -e DAAF_STAGE_NAMES=win $BusyboxImage sh -c $StageProgram 2>$null)
+        $claudeRunExit = $LASTEXITCODE
         $ErrorActionPreference = $savedEAP
+        foreach ($cidLine in $claudeCidLines) { if ("$cidLine".Trim() -ne '') { $ClaudeStageCid = "$cidLine".Trim() } }
+        $claudeStageStartOk = ($claudeRunExit -eq 0 -and -not [string]::IsNullOrEmpty($ClaudeStageCid))
         if ($claudeStageStartOk) {
             $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-            $ClaudeStageStatusRaw = (docker wait $ClaudeStageCid 2>&1 | Select-Object -Last 1)
+            $claudeWaitLines = @(docker wait $ClaudeStageCid 2>$null)
             $ErrorActionPreference = $savedEAP
+            $ClaudeStageStatusRaw = $null
+            foreach ($waitLine in $claudeWaitLines) { if ("$waitLine".Trim() -ne '') { $ClaudeStageStatusRaw = "$waitLine".Trim() } }
             # Gate on TryParse's BOOLEAN return (see the data-volume staging block
             # above): a parse failure writes 0 into the [ref], which would flip this
             # gate from "skip the copy" to "copy a partial staged tree." Parse into a
@@ -1530,7 +1686,7 @@ if ($claudeVolumeExists) {
 Write-Host ""
 Write-Host "Recording executable-permission manifest..."
 $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-$ExecPathsRaw = docker run --rm -v "${VolumeName}:/source:ro" busybox sh -c 'find /source -type f -perm -0100' 2>$null
+$ExecPathsRaw = docker run --rm -v "${VolumeName}:/source:ro" $BusyboxImage sh -c 'find /source -type f -perm -0100' 2>$null
 $manifestScanOk = ($LASTEXITCODE -eq 0)
 $ErrorActionPreference = $savedEAP
 if ($manifestScanOk) {

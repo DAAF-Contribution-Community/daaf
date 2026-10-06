@@ -7,12 +7,16 @@
 # Companion workflow: ci-scripts.yml handles lint, unit tests, and cross-platform
 # dry-run smoke tests (no Docker required).
 #
-# Four jobs:
+# Six jobs:
 #   1. lifecycle-test       - Full lifecycle: install -> run -> backup -> update -> rebuild
 #   2. migrate-era1         - Migration of clone-based installations (origin remote present)
 #   3. migrate-era2         - Migration of ZIP-based installations (no remote, requires graft)
 #   4. failure-resilience   - Graceful failure handling and edge cases
-#   5: Smoke Suite          - run R + Python skill smokes inside the built image
+#   5. smoke-suite          - run R + Python skill smokes inside the built image
+#   6. restore-failure-paths - restore failure paths field-tested on Windows
+#                             (leftover holders, swap container), plus the backup
+#                             and restore startup checks (helper-image download,
+#                             Docker version) and busybox pin consistency
 #
 # Not tested here:
 #   - view_logs.sh/ps1: Invokes `docker compose logs --follow`, which is a
@@ -990,5 +994,450 @@ jobs:
         run: |
           if [ -d daaf-docker ]; then
             cd daaf-docker
+            docker compose down -v --rmi local --remove-orphans
+          fi
+
+  # ---------------------------------------------------------------------------
+  # Job 6: Restore failure paths on real Docker
+  # ---------------------------------------------------------------------------
+  # The restore FAILURE paths that were field-tested by hand on Windows
+  # (research/2026-10-01_FrameworkDev_RestoreCopyThenSwap/
+  # 2026-10-06_restore_windows_recheck.md, Checks B-D), plus the backup and
+  # restore startup checks (helper-image download, Docker version), run against
+  # the runner's REAL Docker so
+  # that a new Docker release that changes container states, `docker volume rm`
+  # refusals or image references breaks CI instead of a user's restore.
+  #
+  # Its own install, like the other jobs. The lifecycle job is left alone: its
+  # later steps (update, rebuild, backup suffixes) keep their exact behaviour,
+  # and here exactly ONE backup folder exists when the restores answer "1"
+  # (a failed backup leaves an empty dated folder, so the lifecycle job's later
+  # folder list is not a stable choice).
+  #
+  # restore_from_backup.sh asks, in this order, and each prompt only when its
+  # condition holds: "Stop the container now? (y/n)" (only while DAAF is
+  # running), the backup number, "Remove it and continue? (y/n)" (only when a
+  # leftover temporary copy exists), then "Type RESTORE". DAAF is stopped before
+  # the restore steps below, so the first prompt never appears. Answers come from
+  # a file so the exit code is the script's own (not a pipeline's).
+  #
+  # Every step prints the captured output, asserts the exit code and key lines
+  # (grep -F), and removes what it created; the final cleanup runs always().
+  # Never `docker system prune` / `docker volume prune`.
+  restore-failure-paths:
+    name: Restore Failure Paths (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Install DAAF via install.sh
+        run: bash scripts/host/install.sh
+
+      # Same loop as the other jobs, but the status is captured first: this job's
+      # shell runs with pipefail, under which `docker compose ps | grep -q` can
+      # report a SIGPIPE'd pipeline as failed even when "Up" matched.
+      - name: Verify container is running
+        working-directory: daaf-docker
+        run: |
+          for i in 1 2 3 4 5; do
+            status=$(docker compose ps)
+            if grep -q "Up" <<< "$status"; then exit 0; fi
+            echo "Waiting for container to be ready (attempt $i/5)..."
+            sleep 3
+          done
+          echo "ERROR: Container did not reach running state"
+          docker compose ps
+          exit 1
+
+      # The only backup folder in this job until the image-check backup below, so
+      # backup number 1 is always this one.
+      - name: Create the baseline backup
+        working-directory: daaf-docker
+        timeout-minutes: 10
+        run: |
+          set -u
+          bash backup_daaf.sh
+          count=$(find . -maxdepth 1 -type d -name '*_daaf_backup' | wc -l)
+          ls -d ./*_daaf_backup
+          if [ "$count" -ne 1 ]; then
+            echo "::error::Expected exactly 1 backup folder, found $count"
+            exit 1
+          fi
+
+      # The installed restore script resolves its own names (environment_settings.txt,
+      # DAAF_PROJECT_NAME, DAAF_DATA_VOLUME_NAME). DAAF_TEST_MODE=1 makes it return
+      # before its first docker call, so the names are read from it, not re-derived.
+      - name: Resolve the restore's volume names and the pinned helper image
+        working-directory: daaf-docker
+        run: |
+          set -u
+          mapfile -t names < <(DAAF_TEST_MODE=1 bash -c '. ./restore_from_backup.sh && printf "%s\n" "${VOLUME_NAME}" "${TEMP_VOLUME_NAME}" "${SWAP_CONTAINER_NAME}" "${CLAUDE_TEMP_VOLUME_NAME}" "${CLAUDE_SWAP_CONTAINER_NAME}" "${BUSYBOX_IMAGE}"')
+          printf '  %s\n' "${names[@]}"
+          if [ "${#names[@]}" -ne 6 ]; then
+            echo "::error::Could not read the names from restore_from_backup.sh (got ${#names[@]} of 6)"
+            exit 1
+          fi
+          # The data volume must be the one DAAF really mounts at /daaf.
+          cid=$(docker compose ps -q daaf-docker)
+          mounted=$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/daaf"}}{{.Name}}{{end}}{{end}}' "$cid")
+          echo "Volume mounted at /daaf: $mounted"
+          if [ "$mounted" != "${names[0]}" ]; then
+            echo "::error::The restore targets '${names[0]}' but DAAF mounts '$mounted' at /daaf"
+            exit 1
+          fi
+          {
+            echo "DATA_VOL=${names[0]}"
+            echo "TEMP_VOL=${names[1]}"
+            echo "SWAP_CT=${names[2]}"
+            echo "CLAUDE_TEMP_VOL=${names[3]}"
+            echo "CLAUDE_SWAP_CT=${names[4]}"
+            echo "BUSYBOX_IMAGE=${names[5]}"
+          } >> "$GITHUB_ENV"
+
+      # One digest everywhere: the compose daaf-init `image:` line and every
+      # BUSYBOX_IMAGE / $BusyboxImage constant, in the INSTALLED copies (what
+      # install.sh downloaded into daaf-docker/) and in the checkout. Also no other
+      # digest-pinned busybox reference in any of those files.
+      - name: Pin consistency (one busybox digest in compose and every constant)
+        run: |
+          set -u
+          pin="$BUSYBOX_IMAGE"
+          echo "Pin (installed restore_from_backup.sh): $pin"
+          if ! grep -Eq '^busybox:[0-9][0-9.]*@sha256:[0-9a-f]{64}$' <<< "$pin"; then
+            echo "::error::BUSYBOX_IMAGE is not a name:tag@sha256:<64 hex> pin: '$pin'"
+            exit 1
+          fi
+          bad=0
+          for f in daaf-docker/docker-compose.yml daaf-docker/backup_daaf.sh daaf-docker/restore_from_backup.sh \
+                   docker-compose.yml scripts/host/backup_daaf.sh scripts/host/restore_from_backup.sh \
+                   scripts/host/migrate_daaf.sh scripts/host/backup_daaf.ps1 \
+                   scripts/host/restore_from_backup.ps1 scripts/host/migrate_daaf.ps1; do
+            case "$f" in
+              *.sh)  vals=$(sed -n "s/^BUSYBOX_IMAGE='\([^']*\)'\$/\1/p" "$f") ;;
+              *.ps1) vals=$(sed -n "s/^\$BusyboxImage = '\([^']*\)'\$/\1/p" "$f") ;;
+              *)     vals=$(sed -n 's/^[[:space:]]*image:[[:space:]]*\(busybox[^[:space:]]*\).*$/\1/p' "$f") ;;
+            esac
+            n=$(printf '%s\n' "$vals" | grep -c . || true)
+            others=$(grep -oE "busybox:[^[:space:]'\"]*@sha256:[0-9a-f]{64}" "$f" | sort -u | grep -vxF "$pin" || true)
+            if [ "$n" -ne 1 ] || [ "$vals" != "$pin" ]; then
+              echo "::error file=$f::Expected exactly one pinned busybox line equal to the pin; found $n: $vals"
+              bad=1
+            elif [ -n "$others" ]; then
+              echo "::error file=$f::Another busybox digest in this file: $others"
+              bad=1
+            else
+              echo "OK  $f"
+            fi
+          done
+          exit "$bad"
+
+      - name: Stop DAAF and check that no leftover exists yet
+        working-directory: daaf-docker
+        run: |
+          set -u
+          docker compose down
+          running=$(docker ps --filter "volume=$DATA_VOL" --format '{{.Names}}')
+          if [ -n "$running" ]; then
+            echo "::error::Still running on $DATA_VOL: $running"
+            exit 1
+          fi
+          for v in "$TEMP_VOL" "$CLAUDE_TEMP_VOL"; do
+            if docker volume inspect "$v" > /dev/null 2>&1; then
+              echo "::error::Volume $v exists before the tests"
+              exit 1
+            fi
+          done
+          for c in "$SWAP_CT" "$CLAUDE_SWAP_CT"; do
+            if docker container inspect "$c" > /dev/null 2>&1; then
+              echo "::error::Container $c exists before the tests"
+              exit 1
+            fi
+          done
+          echo "DAAF stopped; no leftover temporary copy or swap container."
+
+      # Version check visibility. A real run, not DAAF_DRY_RUN (whose docker mock
+      # prints a fixed 29.1.3). Empty stdin: the run must pass every startup check
+      # (version, volume, helper image) and reach the backup list, then stop at the
+      # empty backup-number answer (exit 1, "Invalid selection"). A NOTE for a
+      # Docker major other than the tested 29 is allowed: logged, never a failure.
+      - name: "Version check: the runner's Docker is accepted (NOTE allowed)"
+        working-directory: daaf-docker
+        timeout-minutes: 5
+        run: |
+          set -u
+          docker version
+          line=$(docker version --format '{{.Client.Version}} {{.Server.Version}}')
+          echo "::notice title=Runner Docker version::client and engine: $line"
+          log="$RUNNER_TEMP/restore_version.log"
+          set +e
+          bash restore_from_backup.sh < /dev/null > "$log" 2>&1
+          rc=$?
+          set -e
+          echo "restore exit code: $rc"; echo "----- captured -----"; cat "$log"; echo "--------------------"
+          if grep -F -e 'too old for the restore' -e 'Could not read the Docker version' "$log"; then
+            echo "::error::The restore refused this runner's Docker ($line)"
+            exit 1
+          fi
+          if ! grep -qF 'Available backups (newest first):' "$log"; then
+            echo "::error::The restore did not reach the backup list"
+            exit 1
+          fi
+          if [ "$rc" -ne 1 ] || ! grep -qF "ERROR: Invalid selection ''." "$log"; then
+            echo "::error::Expected exit 1 at the empty backup-number answer (got $rc)"
+            exit 1
+          fi
+          cmaj=${line%% *}; cmaj=${cmaj%%.*}
+          smaj=${line##* }; smaj=${smaj%%.*}
+          if grep -qF 'NOTE: The restore has not been tested with this Docker version' "$log"; then
+            echo "::notice title=Untested Docker major::$(grep -F 'NOTE: The restore has not been tested' "$log")"
+            if [ "$cmaj" = 29 ] && [ "$smaj" = 29 ]; then
+              echo "::warning::The NOTE was printed although client and engine are both 29 ($line)"
+            fi
+          elif [ "$cmaj" != 29 ] || [ "$smaj" != 29 ]; then
+            echo "::warning::No NOTE although the Docker major is not 29 ($line)"
+          fi
+
+      # D1 (Windows re-check, Check B): a never-started ("Created") container that
+      # still references the leftover temp volume. Docker refuses `docker volume rm`
+      # while it exists; the restore must remove it (plain docker rm) and complete.
+      # Answers: 1 (backup), y (leftover prompt), RESTORE.
+      - name: "D1: a never-started holder of a leftover temp copy is removed and the restore completes"
+        working-directory: daaf-docker
+        timeout-minutes: 10
+        run: |
+          set -u
+          log="$RUNNER_TEMP/restore_d1.log"
+          docker volume create "$TEMP_VOL"
+          holder=$(docker create -v "$TEMP_VOL:/src" "$BUSYBOX_IMAGE")
+          echo "Holder: $holder"
+          docker ps -a --filter "volume=$TEMP_VOL" --format '{{.ID}} | {{.Status}}'
+          state=$(docker inspect --format '{{.State.Status}}' "$holder")
+          if [ "$state" != created ]; then
+            echo "::error::Holder state is '$state', expected 'created'"
+            exit 1
+          fi
+          # The setup must reproduce D1: Docker refuses to remove the held volume.
+          if docker volume rm "$TEMP_VOL"; then
+            echo "::error::docker volume rm succeeded, so this setup does not reproduce D1"
+            exit 1
+          fi
+          printf '1\ny\nRESTORE\n' > "$RUNNER_TEMP/answers_d1"
+          set +e
+          bash restore_from_backup.sh < "$RUNNER_TEMP/answers_d1" > "$log" 2>&1
+          rc=$?
+          set -e
+          echo "restore exit code: $rc"; echo "----- captured -----"; cat "$log"; echo "--------------------"
+          fails=0
+          if [ "$rc" -ne 0 ]; then echo "::error::Expected exit 0, got $rc"; fails=1; fi
+          for want in "  - Docker volume '$TEMP_VOL'" 'Removed the leftover temporary copy.' 'Restore complete!'; do
+            if ! grep -qF -e "$want" "$log"; then echo "::error::Missing from the output: $want"; fails=1; fi
+          done
+          if grep -nE '^(ERROR|WARNING):' "$log"; then echo "::error::ERROR or WARNING line in the output"; fails=1; fi
+          if docker container inspect "$holder" > /dev/null 2>&1; then echo "::error::The holder $holder still exists"; fails=1; fi
+          for v in "$TEMP_VOL" "$CLAUDE_TEMP_VOL"; do
+            if docker volume inspect "$v" > /dev/null 2>&1; then echo "::error::Temp volume $v still exists"; fails=1; fi
+          done
+          if ! docker run --rm -v "$DATA_VOL:/v:ro" "$BUSYBOX_IMAGE" test -f /v/CLAUDE.md; then
+            echo "::error::CLAUDE.md missing from $DATA_VOL after the restore"; fails=1
+          fi
+          exit "$fails"
+
+      # Windows re-check, Check C: a RUNNING holder. The restore must refuse after the
+      # leftover prompt (exit 1) and remove nothing. Answers: 1, y.
+      - name: "Running holder: the restore refuses and removes nothing"
+        working-directory: daaf-docker
+        timeout-minutes: 10
+        run: |
+          set -u
+          log="$RUNNER_TEMP/restore_running_holder.log"
+          docker volume create "$TEMP_VOL"
+          docker run -d --name ci_restore_holder -v "$TEMP_VOL:/src" "$BUSYBOX_IMAGE" sleep 300
+          docker ps -a --filter "volume=$TEMP_VOL" --format '{{.ID}} | {{.Status}} | {{.Names}}'
+          if [ "$(docker inspect --format '{{.State.Running}}' ci_restore_holder)" != true ]; then
+            echo "::error::ci_restore_holder is not running"
+            exit 1
+          fi
+          printf '1\ny\n' > "$RUNNER_TEMP/answers_running_holder"
+          set +e
+          bash restore_from_backup.sh < "$RUNNER_TEMP/answers_running_holder" > "$log" 2>&1
+          rc=$?
+          set -e
+          echo "restore exit code: $rc"; echo "----- captured -----"; cat "$log"; echo "--------------------"
+          fails=0
+          if [ "$rc" -ne 1 ]; then echo "::error::Expected exit 1, got $rc"; fails=1; fi
+          for want in 'ERROR: Something is still using the temporary copy left by the earlier restore' \
+                      "(Docker volume '$TEMP_VOL'), so it was not removed."; do
+            if ! grep -qF -e "$want" "$log"; then echo "::error::Missing from the output: $want"; fails=1; fi
+          done
+          for unwanted in 'Removed the leftover temporary copy.' 'Preparing a temporary copy of the backup inside Docker...'; do
+            if grep -qF -e "$unwanted" "$log"; then echo "::error::Unexpected in the output: $unwanted"; fails=1; fi
+          done
+          if ! docker volume inspect "$TEMP_VOL" > /dev/null 2>&1; then echo "::error::Temp volume $TEMP_VOL was removed"; fails=1; fi
+          if [ "$(docker inspect --format '{{.State.Running}}' ci_restore_holder 2>/dev/null)" != true ]; then
+            echo "::error::ci_restore_holder is no longer running"; fails=1
+          fi
+          # Leave the runner clean for the next step.
+          docker rm -f ci_restore_holder
+          docker volume rm "$TEMP_VOL"
+          exit "$fails"
+
+      # Windows re-check, Check D (R5): a STOPPED leftover swap container. The restore
+      # removes it (plain docker rm), prepares, and is cancelled at RESTORE (exit 0).
+      # Answers: 1, y, no.
+      - name: "R5: a stopped leftover swap container is removed; cancel at RESTORE"
+        working-directory: daaf-docker
+        timeout-minutes: 10
+        run: |
+          set -u
+          log="$RUNNER_TEMP/restore_swap_container.log"
+          docker create --name "$SWAP_CT" "$BUSYBOX_IMAGE"
+          state=$(docker inspect --format '{{.State.Status}}' "$SWAP_CT")
+          if [ "$state" != created ]; then
+            echo "::error::$SWAP_CT state is '$state', expected 'created'"
+            exit 1
+          fi
+          printf '1\ny\nno\n' > "$RUNNER_TEMP/answers_swap_container"
+          set +e
+          bash restore_from_backup.sh < "$RUNNER_TEMP/answers_swap_container" > "$log" 2>&1
+          rc=$?
+          set -e
+          echo "restore exit code: $rc"; echo "----- captured -----"; cat "$log"; echo "--------------------"
+          fails=0
+          if [ "$rc" -ne 0 ]; then echo "::error::Expected exit 0, got $rc"; fails=1; fi
+          for want in "  - Docker container '$SWAP_CT' (stopped)" \
+                      'Removed the leftover temporary copy.' \
+                      'Restore cancelled. This restore did not change anything, but your DAAF data may still be' \
+                      'incomplete from the earlier restore. Run the restore again to finish it.'; do
+            if ! grep -qF -e "$want" "$log"; then echo "::error::Missing from the output: $want"; fails=1; fi
+          done
+          if grep -nE '^ERROR:' "$log"; then echo "::error::ERROR line in the output"; fails=1; fi
+          if docker container inspect "$SWAP_CT" > /dev/null 2>&1; then echo "::error::$SWAP_CT still exists"; fails=1; fi
+          for v in "$TEMP_VOL" "$CLAUDE_TEMP_VOL"; do
+            if docker volume inspect "$v" > /dev/null 2>&1; then echo "::error::Temp volume $v still exists"; fails=1; fi
+          done
+          exit "$fails"
+
+      # Helper-image check, backup side: with the pinned image gone, the backup must
+      # download it (progress shown) and complete. Then `docker image inspect` by the
+      # full name:tag@digest must exit 0 -- the compatibility audit's open question
+      # (if it did not, every run would re-download, and an offline computer would be
+      # refused).
+      - name: "Image check: the backup downloads the missing pinned busybox"
+        working-directory: daaf-docker
+        timeout-minutes: 10
+        run: |
+          set -u
+          log="$RUNNER_TEMP/backup_pull.log"
+          docker image ls --digests busybox
+          img_id=$(docker image inspect --format '{{.Id}}' "$BUSYBOX_IMAGE" 2>/dev/null || true)
+          echo "Image ID before removal: ${img_id:-<inspect by the pinned reference failed>}"
+          if [ -n "$img_id" ]; then
+            mapfile -t users < <(docker ps -aq --filter "ancestor=$img_id" || true)
+            if [ "${#users[@]}" -gt 0 ]; then docker rm -f "${users[@]}"; fi
+            docker rmi "$BUSYBOX_IMAGE" || docker rmi -f "$img_id"
+          fi
+          if docker image inspect "$BUSYBOX_IMAGE" > /dev/null 2>&1; then
+            echo "::error::Could not remove $BUSYBOX_IMAGE before the test"
+            exit 1
+          fi
+          before=$(find . -maxdepth 1 -type d -name '*_daaf_backup' | wc -l)
+          set +e
+          bash backup_daaf.sh > "$log" 2>&1
+          rc=$?
+          set -e
+          echo "backup exit code: $rc"; echo "----- captured -----"; cat "$log"; echo "--------------------"
+          after=$(find . -maxdepth 1 -type d -name '*_daaf_backup' | wc -l)
+          fails=0
+          if [ "$rc" -ne 0 ]; then echo "::error::Expected exit 0, got $rc"; fails=1; fi
+          if ! grep -qF 'Downloading the small helper image busybox that the backup needs...' "$log"; then
+            echo "::error::The backup did not announce the helper-image download"; fails=1
+          fi
+          if ! grep -qE 'Backup complete!|Backup completed WITH WARNINGS' "$log"; then
+            echo "::error::The backup did not complete"; fails=1
+          elif grep -qF 'Backup completed WITH WARNINGS' "$log"; then
+            echo "::warning::The backup completed WITH WARNINGS (see the output above)"
+          fi
+          if [ "$after" -ne $((before + 1)) ]; then echo "::error::Expected one new backup folder ($before -> $after)"; fails=1; fi
+          if docker image inspect "$BUSYBOX_IMAGE" > /dev/null; then
+            echo "OK: docker image inspect $BUSYBOX_IMAGE exits 0 after the pull"
+            docker image inspect --format '{{.Id}} tags={{json .RepoTags}} digests={{json .RepoDigests}}' "$BUSYBOX_IMAGE"
+          else
+            echo "::error::docker image inspect by name:tag@digest fails after a pull: every run would re-download the helper image"
+            fails=1
+          fi
+          exit "$fails"
+
+      # Helper-image check, restore side: the download happens before the first
+      # prompt. Answers: 1, no (cancel at RESTORE, so nothing is replaced).
+      - name: "Image check: the restore downloads the missing pinned busybox before any prompt"
+        working-directory: daaf-docker
+        timeout-minutes: 10
+        run: |
+          set -u
+          log="$RUNNER_TEMP/restore_pull.log"
+          img_id=$(docker image inspect --format '{{.Id}}' "$BUSYBOX_IMAGE" 2>/dev/null || true)
+          echo "Image ID before removal: ${img_id:-<inspect by the pinned reference failed>}"
+          if [ -n "$img_id" ]; then
+            mapfile -t users < <(docker ps -aq --filter "ancestor=$img_id" || true)
+            if [ "${#users[@]}" -gt 0 ]; then docker rm -f "${users[@]}"; fi
+            docker rmi "$BUSYBOX_IMAGE" || docker rmi -f "$img_id"
+          fi
+          if docker image inspect "$BUSYBOX_IMAGE" > /dev/null 2>&1; then
+            echo "::error::Could not remove $BUSYBOX_IMAGE before the test"
+            exit 1
+          fi
+          printf '1\nno\n' > "$RUNNER_TEMP/answers_restore_pull"
+          set +e
+          bash restore_from_backup.sh < "$RUNNER_TEMP/answers_restore_pull" > "$log" 2>&1
+          rc=$?
+          set -e
+          echo "restore exit code: $rc"; echo "----- captured -----"; cat "$log"; echo "--------------------"
+          fails=0
+          if [ "$rc" -ne 0 ]; then echo "::error::Expected exit 0, got $rc"; fails=1; fi
+          for want in 'Downloading the small helper image busybox that the restore needs...' \
+                      'Restore cancelled. Your DAAF data has not been changed.'; do
+            if ! grep -qF -e "$want" "$log"; then echo "::error::Missing from the output: $want"; fails=1; fi
+          done
+          dl=$(grep -nF 'Downloading the small helper image busybox' "$log" | head -n 1 | cut -d: -f1 || true)
+          list=$(grep -nF 'Available backups (newest first):' "$log" | head -n 1 | cut -d: -f1 || true)
+          if [ -z "$dl" ] || [ -z "$list" ] || [ "$dl" -ge "$list" ]; then
+            echo "::error::The download did not come before the backup list (lines ${dl:-none} / ${list:-none})"; fails=1
+          fi
+          if ! docker image inspect "$BUSYBOX_IMAGE" > /dev/null; then
+            echo "::error::docker image inspect by name:tag@digest fails after the restore's pull"; fails=1
+          fi
+          for v in "$TEMP_VOL" "$CLAUDE_TEMP_VOL"; do
+            if docker volume inspect "$v" > /dev/null 2>&1; then echo "::error::Temp volume $v still exists"; fails=1; fi
+          done
+          exit "$fails"
+
+      # --- Cleanup ---
+      # Removes only what this job created, by exact name: the holder, the two swap
+      # container names, the containers holding the two temp volumes, those volumes,
+      # then the compose project (as in the other jobs). Never a prune.
+      - name: Docker cleanup
+        if: always()
+        run: |
+          if [ -d daaf-docker ]; then
+            cd daaf-docker
+            docker rm -f ci_restore_holder > /dev/null 2>&1 || true
+            for c in "${SWAP_CT:-}" "${CLAUDE_SWAP_CT:-}"; do
+              if [ -n "$c" ]; then docker rm -f "$c" > /dev/null 2>&1 || true; fi
+            done
+            for v in "${TEMP_VOL:-}" "${CLAUDE_TEMP_VOL:-}"; do
+              if [ -n "$v" ]; then
+                docker ps -aq --filter "volume=$v" | xargs -r docker rm -f > /dev/null 2>&1 || true
+                docker volume rm "$v" > /dev/null 2>&1 || true
+              fi
+            done
             docker compose down -v --rmi local --remove-orphans
           fi

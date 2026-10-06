@@ -23,6 +23,12 @@
 
 #Requires -Version 5.1
 $ErrorActionPreference = "Stop"
+# pwsh 7.4+ only (an ordinary, unused variable on Windows PowerShell 5.1): never turn a
+# native command's nonzero exit into an error record or a throw. Every docker call here
+# reads $LASTEXITCODE itself (audit 04: under 'Stop' with this set to $true, pwsh 7.6
+# threw NativeCommandExitException; under 'Continue' it added a "Program ... ended with
+# non-zero exit code" line that could become the "Docker said:" text).
+$PSNativeCommandUseErrorActionPreference = $false
 
 function Wait-AndExit {
     param([int]$Code = 0)
@@ -129,6 +135,15 @@ $SwapMarker = ".daaf-restore-swap-started"
 $SpaceProgram = 'a=$(stat -f -c %a /dest) && s=$(stat -f -c %S /dest) && echo AVAIL_KB=$((a*s/1024)) && set -- $(du -sk /dest) && echo LIVE_KB=$1 && if test -d /src; then set -- $(du -sk /src) && echo SRC_KB=$1; fi'
 $SwapProgram = 'trap : INT TERM HUP; test -f /src/.daaf-restore-swap-started || exit 3; rm -rf /dest/* /dest/.[!.]* /dest/..?* && cp -a /src/. /dest/ && rm -f /dest/.daaf-restore-swap-started'
 $SwapVerifyProgram = 'export LC_ALL=C; : > /tmp/err || exit 4; for t in src dest; do cd /$t 2>>/tmp/err && { find . ! -path ./.daaf-restore-swap-started ! -type d -exec stat -c %f:%u:%g:%s:%n {} + ; find . ! -path . -type d -exec stat -c %f:%u:%g:%n {} + ; find . -type l -exec readlink {} \; ; } 2>>/tmp/err | sort 2>>/tmp/err > /tmp/$t.lst || echo LIST_FAILED_$t >> /tmp/err; done; if test -s /tmp/err; then echo SWAP_VERIFY_ERRORS=$(grep -c ^ /tmp/err); elif cmp -s /tmp/src.lst /tmp/dest.lst; then echo SWAP_VERIFY=MATCH; else echo SWAP_VERIFY=MISMATCH; fi; echo SWAP_VERIFY_ENTRIES=$(grep -c ^ /tmp/src.lst):$(grep -c ^ /tmp/dest.lst)'
+# The helper image every container step runs, PINNED by digest: busybox 1.37.0,
+# multi-arch OCI index (amd64, arm64/v8 and others), the tested digest below. Pinned
+# because the untagged `busybox` (latest) moved to the untested busybox 1.38.0 on
+# 2026-09-23 (research/2026-10-01_FrameworkDev_RestoreCopyThenSwap/scoping/
+# 04_F1_compat_audit.md). The same string is in backup_daaf.{sh,ps1},
+# restore_from_backup.{sh,ps1}, migrate_daaf.{sh,ps1} and docker-compose.yml (daaf-init):
+# keep every copy identical (a parity test enforces it). No `"`, space or trailing `\`,
+# so it passes to docker.exe unchanged on Windows PowerShell 5.1.
+$BusyboxImage = 'busybox:1.37.0@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e'
 #
 # SYNC NOTE: the container-side count programs below cannot use these variables and
 # hardcode the literals ".daaf-symlinks", ".daaf-permissions" and ".daaf-claude-config":
@@ -158,6 +173,8 @@ if ($env:DAAF_DRY_RUN -eq "1") {
                 Write-Output "BACKUP_SENTINEL=1"
                 return
             }
+            "version --format*" { Write-Output "29.1.3 29.1.3"; return }
+            "image inspect *" { return }
             "*info*" { return }
             "*volume inspect*" { return }
             "*ps --filter*" { return }
@@ -254,6 +271,22 @@ if ($env:DAAF_TEST_MODE -eq "1") {
 # and missing-property reads.
 Set-StrictMode -Version 3.0
 
+# --- Platform guard (F1 compatibility; audit 04) ---
+# This is the Windows twin, written and tested for Windows PowerShell 5.1 (and pwsh on
+# Windows). Under PowerShell 7 on macOS or Linux, refuse before anything else happens
+# and point to the .sh twin. Short-circuit order matters: on Windows PowerShell 5.1
+# PSEdition is 'Desktop', so `-and` stops before reading $IsWindows, an automatic
+# variable that does not exist there (a strict-mode error if it were read). Skipped for
+# DAAF_DRY_RUN=1 (the CI smoke run under pwsh on Linux/macOS: Docker is mocked and
+# nothing is changed) and for DAAF_TEST_ALLOW_CORE_NONWINDOWS=1, a TEST-ONLY hook for the
+# Pester suites, which run the real script with a fake docker under pwsh on Linux.
+if ($PSVersionTable.PSEdition -eq 'Core' -and -not $IsWindows -and $env:DAAF_DRY_RUN -ne '1' -and $env:DAAF_TEST_ALLOW_CORE_NONWINDOWS -ne '1') {
+    Write-Host "ERROR: This PowerShell script is for Windows. On macOS or Linux, run the restore with:" -ForegroundColor Red
+    Write-Host "         bash restore_from_backup.sh"
+    Write-Host "       Nothing was changed."
+    Wait-AndExit 1
+}
+
 Write-Host ""
 Write-Host "=========================================="
 Write-Host "  DAAF Restore from Backup"
@@ -272,7 +305,75 @@ $null = docker info 2>&1
 $ErrorActionPreference = $savedEAP
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Docker Desktop does not seem to be running. Please start it and try again." -ForegroundColor Red
+    # Old-Engine hint (F1; review round 9): same rule and text as the .sh twin (see there)
+    # and backup_daaf.{sh,ps1}. A client of 25 or newer that cannot talk to an Engine older
+    # than 25.0 also fails `docker info`, so the version check below is never reached. Stdout
+    # only (2>$null), the last non-empty line; the hint is added only when the client's
+    # major reads as 25 or newer and the Engine's version is empty or cannot be read.
+    $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+    $infoFailVersionOut = @(docker version --format '{{.Client.Version}} {{.Server.Version}}' 2>$null)
+    $ErrorActionPreference = $savedEAP
+    $infoFailVersionLine = ''
+    foreach ($versionLine in $infoFailVersionOut) { if ("$versionLine".Trim() -ne '') { $infoFailVersionLine = "$versionLine".Trim() } }
+    $infoFailParts = @(-split $infoFailVersionLine)
+    $infoFailClient = ''
+    $infoFailServer = ''
+    if ($infoFailParts.Count -ge 1) { $infoFailClient = $infoFailParts[0] }
+    if ($infoFailParts.Count -ge 2) { $infoFailServer = $infoFailParts[1] }
+    if ($infoFailClient -match '^(\d{1,5})(\.|$)' -and [int]$Matches[1] -ge 25 -and $infoFailServer -notmatch '^\d{1,5}(\.|$)') {
+        Write-Host "       If Docker is running, its Docker Engine may be older than 25.0 (Docker client $infoFailClient)."
+        Write-Host "       The restore needs Docker 25.0 or newer (Docker Desktop 4.27.1 or newer)."
+    }
     Wait-AndExit 1
+}
+
+# --- Docker version check (F1 compatibility; audit 04, section 3) ---
+# Same rule and wording as the .sh twin (see there) and backup_daaf.{sh,ps1}: refuse when
+# either side's major version is below 25 or cannot be read; a major other than the
+# tested 29 only prints a NOTE. Stdout only (2>$null), so a stderr line can never be read
+# as a version; the last non-empty line. The --format value has no `"` (Windows
+# PowerShell 5.1 native-argument rule).
+$savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+$dockerVersionOut = @(docker version --format '{{.Client.Version}} {{.Server.Version}}' 2>$null)
+$ErrorActionPreference = $savedEAP
+$dockerVersionLine = ''
+foreach ($versionLine in $dockerVersionOut) { if ("$versionLine".Trim() -ne '') { $dockerVersionLine = "$versionLine".Trim() } }
+$dockerVersionParts = @(-split $dockerVersionLine)
+$DockerClientVersion = ''
+$DockerServerVersion = ''
+if ($dockerVersionParts.Count -ge 1) { $DockerClientVersion = $dockerVersionParts[0] }
+if ($dockerVersionParts.Count -ge 2) { $DockerServerVersion = $dockerVersionParts[1] }
+$DockerVersionState = 'ok'
+foreach ($dockerV in @($DockerClientVersion, $DockerServerVersion)) {
+    $dockerMajor = -1
+    if ($dockerV -match '^(\d{1,5})(\.|$)') { $dockerMajor = [int]$Matches[1] }
+    if ($dockerMajor -lt 0) {
+        $DockerVersionState = 'unreadable'
+    } elseif ($dockerMajor -lt 25) {
+        if ($DockerVersionState -ne 'unreadable') { $DockerVersionState = 'old' }
+    } elseif ($dockerMajor -ne 29 -and $DockerVersionState -eq 'ok') {
+        $DockerVersionState = 'untested'
+    }
+}
+if ($DockerVersionState -eq 'old' -or $DockerVersionState -eq 'unreadable') {
+    $dockerClientShown = 'unknown'
+    if ($DockerClientVersion -ne '') { $dockerClientShown = $DockerClientVersion }
+    $dockerServerShown = 'unknown'
+    if ($DockerServerVersion -ne '') { $dockerServerShown = $DockerServerVersion }
+    if ($DockerVersionState -eq 'old') {
+        Write-Host "ERROR: This Docker version is too old for the restore (Docker client $dockerClientShown, Docker Engine $dockerServerShown)." -ForegroundColor Red
+    } else {
+        Write-Host "ERROR: Could not read the Docker version (Docker client $dockerClientShown, Docker Engine $dockerServerShown)." -ForegroundColor Red
+    }
+    Write-Host "       The restore needs Docker 25.0 or newer, for both the Docker client and Docker Engine"
+    Write-Host "       (Docker Desktop 4.27.1 or newer). Update Docker, then run the restore again."
+    Write-Host "       (Docker Desktop or Docker Engine is required; Podman is not supported.)"
+    Write-Host "       Nothing was changed."
+    Wait-AndExit 1
+}
+if ($DockerVersionState -eq 'untested') {
+    Write-Host "NOTE: The restore has not been tested with this Docker version (Docker client $DockerClientVersion, Docker Engine $DockerServerVersion; tested: 29). Continuing."
+    Write-Host ""
 }
 
 $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
@@ -282,6 +383,41 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Docker volume '$VolumeName' not found." -ForegroundColor Red
     Write-Host "Have you run the DAAF installer yet?"
     Wait-AndExit 1
+}
+
+# --- Helper image check (F1 compatibility; audit 04, section 3) ---
+# Same as the .sh twin (see there): make sure the pinned $BusyboxImage is on this
+# computer before any prompt and before the temporary copy is prepared; download it
+# here (progress shown) when missing, and refuse with nothing changed when that fails.
+# The pull's stdout lines are shown as they arrive and its stderr lines are kept for the
+# "Docker said:" line, so the bracket is 'Continue' (field test 2026-10-05, D2: Windows
+# PowerShell 5.1 drops native stderr under SilentlyContinue, even with 2>&1).
+$savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
+$null = docker image inspect $BusyboxImage 2>&1
+$imageInspectExit = $LASTEXITCODE
+$ErrorActionPreference = $savedEAP
+if ($imageInspectExit -ne 0) {
+    Write-Host "Downloading the small helper image busybox that the restore needs..."
+    # Each stdout line is shown as it arrives (Write-Host inside the pipeline); every line
+    # is also kept, and the ErrorRecords (stderr) give the "Docker said:" line.
+    $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "Continue"
+    $pullAll = @(docker pull $BusyboxImage 2>&1 | ForEach-Object {
+        if ($_ -isnot [System.Management.Automation.ErrorRecord]) { Write-Host "$_" }
+        $_
+    })
+    $pullExit = $LASTEXITCODE
+    $ErrorActionPreference = $savedEAP
+    if ($pullExit -ne 0) {
+        $pullSaid = ''
+        foreach ($pullLine in @($pullAll | Where-Object { $_ -is [System.Management.Automation.ErrorRecord] })) { if ("$pullLine".Trim() -ne '') { $pullSaid = "$pullLine".Trim() } }
+        Write-Host ""
+        Write-Host "ERROR: The restore needs the small helper image busybox and could not download it." -ForegroundColor Red
+        Write-Host "       Check the internet connection and that Docker Desktop is running, then run the restore again."
+        if ($pullSaid -ne '') { Write-Host "       Docker said: $pullSaid" }
+        Write-Host "       Nothing was changed."
+        Wait-AndExit 1
+    }
+    Write-Host ""
 }
 
 # --- Check for running containers using the volume ---
@@ -509,7 +645,7 @@ Write-Host "Scanning backup..."
 # 'Continue', not 'SilentlyContinue': the merged output is read (field test 2026-10-05,
 # D2 -- see Invoke-DaafRestoreDocker).
 $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "Continue"
-$ScanCountOutput = @(docker run --rm -v "${SelectedPath}:/b:ro" busybox sh -c $BackupCountProgram 2>&1)
+$ScanCountOutput = @(docker run --rm -v "${SelectedPath}:/b:ro" $BusyboxImage sh -c $BackupCountProgram 2>&1)
 $scanCountExit = $LASTEXITCODE
 $ErrorActionPreference = $savedEAP
 $TotalFiles = $null
@@ -700,7 +836,7 @@ function Invoke-DaafRestoreTempCleanup {
     # (stopped holders first, then the volume); careful cleanup removes no holder. A temp
     # that is kept stays this run's ($TempCreated) and its reason is kept for the message.
     if ($script:TempCreated) {
-        if ($unmark) { $null = Invoke-DaafRestoreDocker -DockerArgs @('run', '--rm', '--label', "$RestoreLabel=$VolumeName", '-v', "${TempVolumeName}:/dest", 'busybox', 'rm', '-f', "/dest/$SwapMarker") }
+        if ($unmark) { $null = Invoke-DaafRestoreDocker -DockerArgs @('run', '--rm', '--label', "$RestoreLabel=$VolumeName", '-v', "${TempVolumeName}:/dest", $BusyboxImage, 'rm', '-f', "/dest/$SwapMarker") }
         $removal = Invoke-DaafRestoreVolumeRemoval -Name $TempVolumeName -KeepHolders:$script:TempCleanupCareful
         if ($removal.Result -eq 'removed') { $script:TempCreated = $false } else {
             $script:TempRemoveFailed = $true
@@ -708,7 +844,7 @@ function Invoke-DaafRestoreTempCleanup {
         }
     }
     if ($script:ClaudeTempCreated) {
-        if ($unmark) { $null = Invoke-DaafRestoreDocker -DockerArgs @('run', '--rm', '--label', "$RestoreLabel=$ClaudeVolumeName", '-v', "${ClaudeTempVolumeName}:/dest", 'busybox', 'rm', '-f', "/dest/$SwapMarker") }
+        if ($unmark) { $null = Invoke-DaafRestoreDocker -DockerArgs @('run', '--rm', '--label', "$RestoreLabel=$ClaudeVolumeName", '-v', "${ClaudeTempVolumeName}:/dest", $BusyboxImage, 'rm', '-f', "/dest/$SwapMarker") }
         $removal = Invoke-DaafRestoreVolumeRemoval -Name $ClaudeTempVolumeName -KeepHolders:$script:TempCleanupCareful
         if ($removal.Result -eq 'removed') { $script:ClaudeTempCreated = $false } else {
             $script:TempRemoveFailed = $true
@@ -955,7 +1091,7 @@ function Clear-DaafRestoreOwnMarker {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$Name)
     if (Test-DaafRestoreTempIdentity -Name $Name) {
-        $null = Invoke-DaafRestoreDocker -DockerArgs @('run', '--rm', '-v', "${Name}:/dest", 'busybox', 'rm', '-f', "/dest/$SwapMarker")
+        $null = Invoke-DaafRestoreDocker -DockerArgs @('run', '--rm', '-v', "${Name}:/dest", $BusyboxImage, 'rm', '-f', "/dest/$SwapMarker")
     }
 }
 
@@ -1050,7 +1186,7 @@ if (($LeftoverVolumes.Count + $LeftoverContainers.Count) -gt 0) {
     $SwapEvidence = 0
     if ($LeftoverContainers.Count -gt 0) { $SwapEvidence = 1 }
     foreach ($tv in $LeftoverVolumes) {
-        $null = Invoke-DaafRestoreDocker -DockerArgs @('run', '--rm', '-v', "${tv}:/src:ro", 'busybox', 'sh', '-c', "test ! -e /src/$SwapMarker || exit 3")
+        $null = Invoke-DaafRestoreDocker -DockerArgs @('run', '--rm', '-v', "${tv}:/src:ro", $BusyboxImage, 'sh', '-c', "test ! -e /src/$SwapMarker || exit 3")
         if ($LASTEXITCODE -eq 3) { $SwapEvidence = 1 }
         elseif ($LASTEXITCODE -ne 0 -and $SwapEvidence -eq 0) { $SwapEvidence = 2 }
     }
@@ -1158,7 +1294,7 @@ if ($HasClaudeBackup) {
     $NeedBKB += $claudeMeasure.KB
 }
 $SpaceMarginKB = [long][math]::Max([math]::Floor($NeedBKB / 10), 1048576)
-$SpaceOutput = @(Invoke-DaafRestoreDocker -DockerArgs @('run', '--rm', '-v', "${VolumeName}:/dest:ro", 'busybox', 'sh', '-c', $SpaceProgram))
+$SpaceOutput = @(Invoke-DaafRestoreDocker -DockerArgs @('run', '--rm', '-v', "${VolumeName}:/dest:ro", $BusyboxImage, 'sh', '-c', $SpaceProgram))
 $spaceExit = $LASTEXITCODE
 $AvailKB = Get-DaafCountMarker -Lines $SpaceOutput -Name 'AVAIL_KB'
 $LiveKB = Get-DaafCountMarker -Lines $SpaceOutput -Name 'LIVE_KB'
@@ -1204,7 +1340,7 @@ $Faulted = $false             # an unexpected error ended the try (set by its ca
 function Test-DaafRestoreNewTemp {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$Name, [Parameter(Mandatory)][string]$Live)
-    $listing = Invoke-DaafRestoreDockerSplit -DockerArgs @('run', '--rm', '--label', "$RestoreLabel=$Live", '-v', "${Name}:/dest:ro", 'busybox', 'find', '/dest', '-mindepth', '1')
+    $listing = Invoke-DaafRestoreDockerSplit -DockerArgs @('run', '--rm', '--label', "$RestoreLabel=$Live", '-v', "${Name}:/dest:ro", $BusyboxImage, 'find', '/dest', '-mindepth', '1')
     if ($listing.Exit -ne 0) { return $false }
     if (@($listing.Out | Where-Object { "$_".Trim() -ne '' }).Count -gt 0) { return $false }
     return (Test-DaafRestoreTempIdentity -Name $Name)
@@ -1249,7 +1385,7 @@ try {
         # folded a stderr warning line into it). A CID from a create that then failed is
         # reaped by label with the temp volume.
         $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-        $cidLines = @(docker create --label "$RestoreLabel=$VolumeName" -v "${TempVolumeName}:/dest" busybox 2>$null)
+        $cidLines = @(docker create --label "$RestoreLabel=$VolumeName" -v "${TempVolumeName}:/dest" $BusyboxImage 2>$null)
         $createOk = ($LASTEXITCODE -eq 0)
         $ErrorActionPreference = $savedEAP
         $Cid = ''
@@ -1272,11 +1408,11 @@ try {
         }
 
         # Step 3b: strip the Claude subfolder from the temporary DATA copy.
-        $null = Invoke-DaafRestoreDocker -DockerArgs @('run', '--rm', '--label', "$RestoreLabel=$VolumeName", '-v', "${TempVolumeName}:/dest", 'busybox', 'rm', '-rf', "/dest/$ClaudeSubDir")
+        $null = Invoke-DaafRestoreDocker -DockerArgs @('run', '--rm', '--label', "$RestoreLabel=$VolumeName", '-v', "${TempVolumeName}:/dest", $BusyboxImage, 'rm', '-rf', "/dest/$ClaudeSubDir")
         if ($LASTEXITCODE -ne 0) { $PrepFail = @("ERROR: Failed to remove the $ClaudeSubDir subfolder from the temporary copy."); break }
 
         # Step 3c: repair ownership (appuser, UID 1000, mirroring daaf-init).
-        $null = Invoke-DaafRestoreDocker -DockerArgs @('run', '--rm', '--label', "$RestoreLabel=$VolumeName", '-v', "${TempVolumeName}:/dest", 'busybox', 'chown', '-R', '1000:1000', '/dest')
+        $null = Invoke-DaafRestoreDocker -DockerArgs @('run', '--rm', '--label', "$RestoreLabel=$VolumeName", '-v', "${TempVolumeName}:/dest", $BusyboxImage, 'chown', '-R', '1000:1000', '/dest')
         if ($LASTEXITCODE -ne 0) { $PrepFail = @("ERROR: Failed to set file ownership in the temporary copy."); break }
 
         # Step 3d: replay executable permissions from the manifest. When it is PRESENT,
@@ -1287,12 +1423,12 @@ try {
         # No `"` in the program (Windows argv); sh variables are backtick-escaped and
         # $PermissionsManifest (a fixed constant) is interpolated by PowerShell. Replay
         # failure stays a latched WARNING (the copy is intact).
-        $null = Invoke-DaafRestoreDocker -DockerArgs @('run', '--rm', '--label', "$RestoreLabel=$VolumeName", '-v', "${TempVolumeName}:/dest:ro", 'busybox', 'test', '-f', "/dest/$PermissionsManifest")
+        $null = Invoke-DaafRestoreDocker -DockerArgs @('run', '--rm', '--label', "$RestoreLabel=$VolumeName", '-v', "${TempVolumeName}:/dest:ro", $BusyboxImage, 'test', '-f', "/dest/$PermissionsManifest")
         if ($LASTEXITCODE -eq 0) {
             Write-Host "Restoring executable permissions from $PermissionsManifest..."
             $replayScript = "set -e; manifest=/dest/$PermissionsManifest; find /dest -type f -exec chmod 644 {} +; cr=`$(printf '\r'); bom=`$(printf '\357\273\277'); while IFS= read -r p; do p=`${p%`$cr}; p=`${p#`$bom}; [ -z `$p ] && continue; [ -e /dest/`$p ] && chmod 755 /dest/`$p; done < `$manifest; rm -f `$manifest"
             $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-            $null = docker run --rm --label "$RestoreLabel=$VolumeName" -v "${TempVolumeName}:/dest" busybox sh -c $replayScript 2>&1
+            $null = docker run --rm --label "$RestoreLabel=$VolumeName" -v "${TempVolumeName}:/dest" $BusyboxImage sh -c $replayScript 2>&1
             $replayOk = ($LASTEXITCODE -eq 0)
             $ErrorActionPreference = $savedEAP
             if (-not $replayOk) {
@@ -1310,12 +1446,12 @@ try {
 
         # Step 3e: replay symlinks from the manifest (no manifest, no action; failure is
         # a latched WARNING).
-        $null = Invoke-DaafRestoreDocker -DockerArgs @('run', '--rm', '--label', "$RestoreLabel=$VolumeName", '-v', "${TempVolumeName}:/dest:ro", 'busybox', 'test', '-f', "/dest/$SymlinksManifest")
+        $null = Invoke-DaafRestoreDocker -DockerArgs @('run', '--rm', '--label', "$RestoreLabel=$VolumeName", '-v', "${TempVolumeName}:/dest:ro", $BusyboxImage, 'test', '-f', "/dest/$SymlinksManifest")
         $symlinkManifestPresent = ($LASTEXITCODE -eq 0)
         if ($symlinkManifestPresent) {
             Write-Host "Restoring symlinks from $SymlinksManifest..."
             $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-            $null = docker run --rm --label "$RestoreLabel=$VolumeName" -v "${TempVolumeName}:/dest" busybox sh -c $symlinkReplayScript 2>&1
+            $null = docker run --rm --label "$RestoreLabel=$VolumeName" -v "${TempVolumeName}:/dest" $BusyboxImage sh -c $symlinkReplayScript 2>&1
             $symlinkReplayOk = ($LASTEXITCODE -eq 0)
             $ErrorActionPreference = $savedEAP
             if (-not $symlinkReplayOk) {
@@ -1335,7 +1471,7 @@ try {
         # before anything is replaced.
         Write-Host "Checking the temporary copy..."
         $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "Continue"
-        $TempVerifyOutput = @(docker run --rm --label "$RestoreLabel=$VolumeName" -v "${TempVolumeName}:/dest:ro" busybox sh -c 'set -e; : > /tmp/count_err; n=$(find /dest -type f ! -path /dest/.daaf-symlinks ! -path /dest/.daaf-permissions ! -path /dest/.daaf-claude-config/\* -exec stat -c %s {} + 2>/tmp/count_err | wc -l); if test -s /tmp/count_err; then echo RESTORED_COUNT_ERRORS=$(grep -c ^ /tmp/count_err); else echo RESTORED_FILES=$((n)); fi' 2>&1)
+        $TempVerifyOutput = @(docker run --rm --label "$RestoreLabel=$VolumeName" -v "${TempVolumeName}:/dest:ro" $BusyboxImage sh -c 'set -e; : > /tmp/count_err; n=$(find /dest -type f ! -path /dest/.daaf-symlinks ! -path /dest/.daaf-permissions ! -path /dest/.daaf-claude-config/\* -exec stat -c %s {} + 2>/tmp/count_err | wc -l); if test -s /tmp/count_err; then echo RESTORED_COUNT_ERRORS=$(grep -c ^ /tmp/count_err); else echo RESTORED_FILES=$((n)); fi' 2>&1)
         $tempVerifyExit = $LASTEXITCODE
         $ErrorActionPreference = $savedEAP
         $TempCount = Get-DaafCountMarker -Lines $TempVerifyOutput -Name 'RESTORED_FILES'
@@ -1365,7 +1501,7 @@ try {
             if (-not (Test-DaafRestoreNewTemp -Name $ClaudeTempVolumeName -Live $ClaudeVolumeName)) { $PrepFail = @(Get-DaafRestoreNewTempFailure -Name $ClaudeTempVolumeName); $TempCleanupCareful = $true; break }
             $ClaudeTempCreated = $true
             $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-            $claudeCidLines = @(docker create --label "$RestoreLabel=$ClaudeVolumeName" -v "${ClaudeTempVolumeName}:/dest" busybox 2>$null)
+            $claudeCidLines = @(docker create --label "$RestoreLabel=$ClaudeVolumeName" -v "${ClaudeTempVolumeName}:/dest" $BusyboxImage 2>$null)
             $claudeCreateOk = ($LASTEXITCODE -eq 0)
             $ClaudeCid = ''
             if ($claudeCidLines.Count -gt 0) { $ClaudeCid = "$($claudeCidLines[$claudeCidLines.Count - 1])".Trim() }
@@ -1377,13 +1513,13 @@ try {
             if (-not [string]::IsNullOrEmpty($ClaudeCid)) { $null = docker rm -f $ClaudeCid 2>&1 }
             $ErrorActionPreference = $savedEAP
             if (-not $claudeCpOk) { $PrepFail = $claudeFail; break }
-            $null = Invoke-DaafRestoreDocker -DockerArgs @('run', '--rm', '--label', "$RestoreLabel=$ClaudeVolumeName", '-v', "${ClaudeTempVolumeName}:/dest", 'busybox', 'chown', '-R', '1000:1000', '/dest')
+            $null = Invoke-DaafRestoreDocker -DockerArgs @('run', '--rm', '--label', "$RestoreLabel=$ClaudeVolumeName", '-v', "${ClaudeTempVolumeName}:/dest", $BusyboxImage, 'chown', '-R', '1000:1000', '/dest')
             if ($LASTEXITCODE -ne 0) { $PrepFail = $claudeFail; break }
             # The Claude volume's own symlink manifest (at the Claude subfolder root).
-            $null = Invoke-DaafRestoreDocker -DockerArgs @('run', '--rm', '--label', "$RestoreLabel=$ClaudeVolumeName", '-v', "${ClaudeTempVolumeName}:/dest:ro", 'busybox', 'test', '-f', "/dest/$SymlinksManifest")
+            $null = Invoke-DaafRestoreDocker -DockerArgs @('run', '--rm', '--label', "$RestoreLabel=$ClaudeVolumeName", '-v', "${ClaudeTempVolumeName}:/dest:ro", $BusyboxImage, 'test', '-f', "/dest/$SymlinksManifest")
             if ($LASTEXITCODE -eq 0) {
                 $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "SilentlyContinue"
-                $null = docker run --rm --label "$RestoreLabel=$ClaudeVolumeName" -v "${ClaudeTempVolumeName}:/dest" busybox sh -c $symlinkReplayScript 2>&1
+                $null = docker run --rm --label "$RestoreLabel=$ClaudeVolumeName" -v "${ClaudeTempVolumeName}:/dest" $BusyboxImage sh -c $symlinkReplayScript 2>&1
                 $claudeReplayOk = ($LASTEXITCODE -eq 0)
                 $ErrorActionPreference = $savedEAP
                 if (-not $claudeReplayOk) {
@@ -1397,7 +1533,7 @@ try {
 
         # Re-check the free space with the temporary copy in place: the swap needs
         # F + L >= S + margin. Unmeasurable -> said at the prompt.
-        $SpaceOutput = @(Invoke-DaafRestoreDocker -DockerArgs @('run', '--rm', '-v', "${VolumeName}:/dest:ro", '-v', "${TempVolumeName}:/src:ro", 'busybox', 'sh', '-c', $SpaceProgram))
+        $SpaceOutput = @(Invoke-DaafRestoreDocker -DockerArgs @('run', '--rm', '-v', "${VolumeName}:/dest:ro", '-v', "${TempVolumeName}:/src:ro", $BusyboxImage, 'sh', '-c', $SpaceProgram))
         $spaceExit = $LASTEXITCODE
         $AvailKB = Get-DaafCountMarker -Lines $SpaceOutput -Name 'AVAIL_KB'
         $LiveKB = Get-DaafCountMarker -Lines $SpaceOutput -Name 'LIVE_KB'
@@ -1482,7 +1618,7 @@ try {
         $markOk = $true
         $MarkersWritten = $true
         foreach ($tv in @((Get-DaafRestoreKeptTempList) -split ' ' | Where-Object { $_ -ne '' })) {
-            $null = Invoke-DaafRestoreDocker -DockerArgs @('run', '--rm', '--label', "$RestoreLabel=$VolumeName", '-v', "${tv}:/dest", 'busybox', 'touch', "/dest/$SwapMarker")
+            $null = Invoke-DaafRestoreDocker -DockerArgs @('run', '--rm', '--label', "$RestoreLabel=$VolumeName", '-v', "${tv}:/dest", $BusyboxImage, 'touch', "/dest/$SwapMarker")
             if ($LASTEXITCODE -ne 0) { $markOk = $false }
         }
         if (-not $markOk) { $PrepFail = @("ERROR: Could not prepare the temporary copy for the final step."); break }
@@ -1511,7 +1647,7 @@ try {
         Write-Host "Replacing your DAAF data with the checked copy..."
         Write-Host "  Do not close this window or quit Docker Desktop until this step finishes."
         $SwapStarted = $true
-        $null = Invoke-DaafRestoreDocker -DockerArgs @('run', '--rm', '--sig-proxy=false', '--name', $SwapContainerName, '-v', "${TempVolumeName}:/src:ro", '-v', "${VolumeName}:/dest", 'busybox', 'sh', '-c', $SwapProgram)
+        $null = Invoke-DaafRestoreDocker -DockerArgs @('run', '--rm', '--sig-proxy=false', '--name', $SwapContainerName, '-v', "${TempVolumeName}:/src:ro", '-v', "${VolumeName}:/dest", $BusyboxImage, 'sh', '-c', $SwapProgram)
         $swapExit = $LASTEXITCODE
         # S1 (review round 2): a swap that provably replaced NOTHING -- ONLY exit 3, the
         # program's own refusal before its rm -- is not the after-swap path: careful
@@ -1533,7 +1669,7 @@ try {
             break
         }
         if ($swapExit -ne 0) { $SwapFail = @("ERROR: Replacing your DAAF data did not complete (exit $swapExit)."); break }
-        $swapCheck = @(Invoke-DaafRestoreDocker -DockerArgs @('run', '--rm', '-v', "${TempVolumeName}:/src:ro", '-v', "${VolumeName}:/dest:ro", 'busybox', 'sh', '-c', $SwapVerifyProgram))
+        $swapCheck = @(Invoke-DaafRestoreDocker -DockerArgs @('run', '--rm', '-v', "${TempVolumeName}:/src:ro", '-v', "${VolumeName}:/dest:ro", $BusyboxImage, 'sh', '-c', $SwapVerifyProgram))
         if (-not (Test-DaafRestoreSwapChecked -Lines $swapCheck -NonEmpty)) {
             $SwapFail = @("ERROR: After replacing your DAAF data, it could not be confirmed to match the",
                 "       checked copy (file names, sizes, permissions and owners).")
@@ -1559,7 +1695,7 @@ try {
                     "       window -- so it was not used.")
                 break
             }
-            $null = Invoke-DaafRestoreDocker -DockerArgs @('run', '--rm', '--sig-proxy=false', '--name', $ClaudeSwapContainerName, '-v', "${ClaudeTempVolumeName}:/src:ro", '-v', "${ClaudeVolumeName}:/dest", 'busybox', 'sh', '-c', $SwapProgram)
+            $null = Invoke-DaafRestoreDocker -DockerArgs @('run', '--rm', '--sig-proxy=false', '--name', $ClaudeSwapContainerName, '-v', "${ClaudeTempVolumeName}:/src:ro", '-v', "${ClaudeVolumeName}:/dest", $BusyboxImage, 'sh', '-c', $SwapProgram)
             $swapExit = $LASTEXITCODE
             # Exit 3 is the program's own refusal before its rm (the live Claude state is
             # untouched); any other outcome means the swap ran and may have erased it (S-a).
@@ -1569,7 +1705,7 @@ try {
                     "       complete (exit $swapExit).")
                 break
             }
-            $swapCheck = @(Invoke-DaafRestoreDocker -DockerArgs @('run', '--rm', '-v', "${ClaudeTempVolumeName}:/src:ro", '-v', "${ClaudeVolumeName}:/dest:ro", 'busybox', 'sh', '-c', $SwapVerifyProgram))
+            $swapCheck = @(Invoke-DaafRestoreDocker -DockerArgs @('run', '--rm', '-v', "${ClaudeTempVolumeName}:/src:ro", '-v', "${ClaudeVolumeName}:/dest:ro", $BusyboxImage, 'sh', '-c', $SwapVerifyProgram))
             if (-not (Test-DaafRestoreSwapChecked -Lines $swapCheck)) {
                 $SwapFail = @("ERROR: After replacing the Claude Code state, it could not be confirmed to match",
                     "       the checked copy.")
@@ -1674,7 +1810,7 @@ if ($null -ne $SwapFail) {
 # identical to restore_from_backup.sh's program (tests/bash/backup_twin_parity.bats).
 Write-Host "Verifying restore..."
 $savedEAP = $ErrorActionPreference; $ErrorActionPreference = "Continue"
-$VerifyOutput = @(docker run --rm -v "${VolumeName}:/dest:ro" busybox sh -c 'set -e; : > /tmp/count_err; n=$(find /dest -type f ! -path /dest/.daaf-symlinks ! -path /dest/.daaf-permissions ! -path /dest/.daaf-claude-config/\* -exec stat -c %s {} + 2>/tmp/count_err | wc -l); if test -s /tmp/count_err; then echo RESTORED_COUNT_ERRORS=$(grep -c ^ /tmp/count_err); else echo RESTORED_FILES=$((n)); fi' 2>&1)
+$VerifyOutput = @(docker run --rm -v "${VolumeName}:/dest:ro" $BusyboxImage sh -c 'set -e; : > /tmp/count_err; n=$(find /dest -type f ! -path /dest/.daaf-symlinks ! -path /dest/.daaf-permissions ! -path /dest/.daaf-claude-config/\* -exec stat -c %s {} + 2>/tmp/count_err | wc -l); if test -s /tmp/count_err; then echo RESTORED_COUNT_ERRORS=$(grep -c ^ /tmp/count_err); else echo RESTORED_FILES=$((n)); fi' 2>&1)
 $verifyExit = $LASTEXITCODE
 $ErrorActionPreference = $savedEAP
 # Markers, not a bare number: the old `2>&1` + TryParse of the whole output turned any

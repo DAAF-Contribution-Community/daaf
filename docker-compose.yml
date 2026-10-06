@@ -2,7 +2,7 @@ name: ${DAAF_PROJECT_NAME:-daaf}   # Override in environment_settings.txt to run
 
 services:
   daaf-init:
-    image: busybox
+    image: busybox:1.37.0@sha256:bdf57e528e45e4433820e045b29b4597825a1c9e38353532d90a01445013f82e   # Pinned: same string as BUSYBOX_IMAGE in scripts/host/{backup_daaf,restore_from_backup,migrate_daaf}.{sh,ps1} (see the comment there)
     volumes:
       - daaf-data:/daaf
       - daaf-claude-config:/claude-config   # Repair ownership of the Claude state volume too
