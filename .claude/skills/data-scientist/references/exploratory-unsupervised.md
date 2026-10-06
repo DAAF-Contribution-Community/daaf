@@ -147,7 +147,7 @@ Three levels of validation should all be assessed. Following Rousseeuw (1987) an
 - **Initialization sensitivity**: K-means with a single random start can converge to a local optimum. Following Steinley's (2006) synthesis, always use a minimum of 25-50 random starts and retain the solution with the lowest inertia.
 - **Over-interpreting clusters**: Clusters are descriptive summaries, not natural kinds. Different variables, algorithms, and parameters produce different clusterings of the same data (Hennig, 2015). Acknowledge this explicitly in reporting.
 - **The "Salsa effect"**: When cluster profiles are parallel — all variables simply higher or lower across clusters — the clustering may merely stratify a severity continuum rather than identify distinct subgroups. Following Sinha et al. (2021), examine whether cluster profiles cross or diverge, not just whether they differ in level.
-- **Treating cluster membership as "known"**: Using hard assignments in subsequent regression introduces classification error and attenuates associations. See [The Classify-Analyze Problem](#the-classify-analyze-problem).
+- **Treating cluster membership as "known"**: Using hard assignments in subsequent regression introduces classification error, which typically attenuates associations in the hard-cluster setting and can bias them away from zero in others. See [The Classify-Analyze Problem](#the-classify-analyze-problem).
 - **Naming-induced reification**: Once clusters receive evocative labels ("resilient," "at-risk," "disengaged"), researchers tend to reason about the labels as if they described causally coherent groups. Always include caveats that labels are shorthand descriptions. See [Causal Language Warnings](#causal-language-warnings-for-unsupervised-methods).
 
 ### Reporting Standards
@@ -310,7 +310,7 @@ This is the single most important methodological pitfall in applied unsupervised
 
 ### The Core Issue
 
-When observations are assigned to clusters and those assignments are treated as "known" in subsequent regression or ANOVA, the resulting estimates are biased. The fundamental problem: classification error — the uncertainty in group assignment — is ignored. Hard cluster labels treat probabilistic membership as certain, which attenuates true associations toward zero.
+When observations are assigned to clusters and those assignments are treated as "known" in subsequent regression or ANOVA, the resulting estimates are biased. The fundamental problem: classification error — the uncertainty in group assignment — is ignored. Hard cluster labels treat probabilistic membership as certain, which typically attenuates true associations toward zero in the hard-cluster setting (see [Magnitude of the Bias](#magnitude-of-the-bias) for when it does not).
 
 Following Lanza, Tan, and Bray (2013), this bias affects ALL downstream uses of cluster membership:
 - Cluster membership as a predictor in regression
@@ -320,7 +320,7 @@ Following Lanza, Tan, and Bray (2013), this bias affects ALL downstream uses of 
 
 ### Magnitude of the Bias
 
-The bias is proportional to the misclassification rate. With well-separated clusters where assignment is unambiguous, the bias is modest. But with overlapping clusters — the common case in social science data — the bias can be substantial. Lanza, Tan, and Bray (2013) demonstrated attenuation ranging from -0.115 to -0.421 depending on measurement quality and class separation. This means that a true association of 0.50 could appear as anywhere from 0.08 to 0.39 when using hard cluster assignments.
+Lanza, Tan, and Bray (2013) studied the bias by simulation (five latent classes, eight binary indicators; binary, continuous, and count distal outcomes). Their bias measure is per class: the estimated outcome proportion or mean within each latent class minus its true value, not the shrinkage of an association coefficient. Whenever the true effect was nonzero, the two classify-analyze approaches (maximum-probability assignment and multiple pseudo-class draws) attenuated the effect of class on the outcome. The bias grew as the true class-outcome association grew stronger, and better measurement quality (sharper class separation) reduced it substantially, by more than half in their design. Larger samples did not reduce it for either classify-analyze approach. One cell gives the scale: for a binary outcome with moderate measurement quality, n = 1,000, and a large effect, maximum-probability assignment underestimated the outcome proportion in Latent Class 4 by 0.115 (true value 0.447), against 0.061 for their model-based approach (their Table 3). With well-separated clusters, where assignment is unambiguous, expect modest bias; with overlapping clusters, expect more.
 
 In the setting Lanza, Tan, and Bray (2013) study (a multi-class latent variable predicting one distal outcome, with classes assigned from the indicators alone), the bias is in the direction of attenuation (toward zero), meaning that true associations are *underestimated*. A non-significant result in that setting may reflect classification error rather than a genuine null effect. Attenuation is not guaranteed in general, though. With more than one predictor, in nonlinear models, with differential (systematic) error, or with multi-category codes, misclassification can bias estimates away from zero or even flip their sign (TeBlunthuis, Hase, and Chan, 2024; van Smeden, Lash, and Groenwold, 2020).
 
@@ -337,7 +337,7 @@ In the setting Lanza, Tan, and Bray (2013) study (a multi-class latent variable 
 ### What NOT to Do
 
 - Do NOT treat K-means labels as a categorical variable in regression without acknowledging the classify-analyze limitation and reporting sensitivity analyses
-- Do NOT claim that associations between cluster membership and outcomes are precise point estimates — they are attenuated by classification error
+- Do NOT claim that associations between cluster membership and outcomes are precise point estimates — classification error biases them, typically toward zero in the hard-cluster setting (see [Magnitude of the Bias](#magnitude-of-the-bias))
 - Do NOT use cluster labels from one subsample to "predict" outcomes in another without first assessing cluster replicability across subsamples
 - Do NOT dismiss the problem because clusters "look well-separated" in a visualization — t-SNE and UMAP equalize cluster density and can make overlapping groups appear distinct
 - Do NOT use the same outcome variable both in the clustering step AND as the dependent variable in downstream regression — this creates circular reasoning where clusters are partly defined by the outcome, guaranteeing a spurious "association"
@@ -436,6 +436,8 @@ Ahlquist, J.S. and Breunig, C. (2012). "Model-based clustering and typologies in
 Jolliffe, I.T. (2002). *Principal Component Analysis*, 2nd Edition. Springer.
 
 Horn, J.L. (1965). "A rationale and test for the number of factors in factor analysis." *Psychometrika*, 30(2), 179-185.
+
+Glorfeld, L.W. (1995). "An improvement on Horn's parallel analysis methodology for selecting the correct number of factors to retain." *Educational and Psychological Measurement*, 55(3), 377-393. https://doi.org/10.1177/0013164495055003002
 
 > **Implementation note:** Parallel analysis implementation guidance is available in the scikit-learn skill's `decomposition.md` reference (Python-only depth; R: see the tidymodels skill's `unsupervised.md` for the PCA workflow — it does not cover parallel analysis).
 

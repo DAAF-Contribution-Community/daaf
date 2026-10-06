@@ -1,6 +1,6 @@
 # AI Use Disclosure Reference
 
-This document provides framework-wide guidance for attributing and disclosing AI use in all work produced with DAAF. It follows the **GUIDE-LLM** reporting checklist (Feuerriegel et al., 2026), a consensus-based standard for transparent AI use in behavioral and social science research.
+This document provides framework-wide guidance for attributing and disclosing AI use in all work produced with DAAF. It follows the **GUIDE-LLM** reporting checklist (Feuerriegel et al., 2026, *Nature Human Behaviour*), a consensus-based standard for transparent AI use in behavioral and social science research.
 
 **Loading trigger:** Referenced by the report-writer agent (Stage 11) and available to all modes that produce user-facing deliverables.
 
@@ -14,26 +14,26 @@ DAAF's architecture already captures a rich audit trail — immutable scripts, i
 
 ## GUIDE-LLM Checklist: DAAF Mapping
 
-The table below maps each GUIDE-LLM core item to its DAAF artifact source and indicates whether the report-writer agent can auto-populate it (`[AUTO]`) or whether the researcher must provide the content (`[RESEARCHER]`).
+The table below maps each GUIDE-LLM core item to its DAAF artifact source and indicates whether the report-writer agent can auto-populate it (`[AUTO]`) or whether the researcher must provide the content (`[RESEARCHER]`). In both tables below, the item names and descriptions are GUIDE-LLM's own wording, from https://llm-checklist.com/checklist/ (accessed 2026-10-06); the DAAF Source, DAAF Advantage, and Populated By columns are DAAF's mapping and additions, not checklist text.
 
 ### Core Items
 
 | GUIDE-LLM Item | Description | DAAF Source | Populated By |
 |---|---|---|---|
-| **A.1** | Purpose of LLM use | Plan.md (research question + methodology) | `[AUTO]` — report-writer derives from Plan.md |
+| **A.1** | LLMs were used in this project for … | Plan.md (research question + methodology) | `[AUTO]` — report-writer derives from Plan.md |
 | **A.2** | Human-in-the-loop vs. fully automated | DAAF architecture (checkpoint gates) | `[AUTO]` — always "Human-in-the-loop" for Full Pipeline |
-| **B.1** | Model name, provider, version, date of access | Session metadata + CLAUDE.md | `[AUTO]` — orchestrator provides session model ID, specialist (subagent) model IDs, and session date(s); see "Multi-Model Sessions" below |
-| **B.2** | Access method (API/web/local) | DAAF architecture | `[AUTO]` — always "Claude Code CLI (local execution via API)" |
-| **B.3** | Parameters (temperature, max tokens, seed) | DAAF architecture | `[AUTO]` — "Default API parameters; no user-configured overrides" |
-| **B.4** | Fine-tuning or customization | DAAF framework files | `[AUTO]` — reference to DAAF skills, agents, and system instructions |
-| **B.5** | Session state retention | STATE.md + session archives | `[AUTO]` — "Stateful within sessions; STATE.md tracks cross-session continuity" |
-| **C.1** | Exact prompts reported | Agent `.md` files, skill files | `[AUTO]` — reference to version-controlled prompt files in DAAF repository |
-| **C.2** | System-wide instructions | CLAUDE.md | `[AUTO]` — reference to CLAUDE.md in repository |
+| **B.1** | Model name, provider, size, version/ID, date of access, source link | Session metadata + CLAUDE.md | `[AUTO]` — orchestrator provides session model ID, specialist (subagent) model IDs, and session date(s); see "Multi-Model Sessions" below |
+| **B.2** | API/web/local access; chat vs. separate call mode | DAAF architecture | `[AUTO]` — always "Claude Code CLI (local execution via API)" |
+| **B.3** | Relevant parameters (temperature, max tokens, seed, runs) | DAAF architecture | `[AUTO]` — "Default API parameters; no user-configured overrides" |
+| **B.4** | Describe any fine-tuning or customization | DAAF framework files | `[AUTO]` — reference to DAAF skills, agents, and system instructions |
+| **B.5** | Whether the LLM session retained state across interactions | STATE.md + session archives | `[AUTO]` — "Stateful within sessions; STATE.md tracks cross-session continuity" |
+| **C.1** | Exact prompt(s) reported | Agent `.md` files, skill files | `[AUTO]` — reference to version-controlled prompt files in DAAF repository |
+| **C.2** | System-wide instructions (if any) | CLAUDE.md | `[AUTO]` — reference to CLAUDE.md in repository |
 | **D.1** | Handling of personal/sensitive data | Safety guardrails in CLAUDE.md | `[RESEARCHER]` — researcher must confirm what data was processed and any PII considerations |
 | **E.1** | Human validation of LLM outputs | QA checkpoints + user gates | `[AUTO]` — derived from STATE.md checkpoint statuses and QA summary |
-| **E.2** | Filtering, reformatting, or post-processing | Script execution logs | `[RESEARCHER]` — researcher documents any manual edits made to AI-generated outputs after delivery |
-| **F.1** | Code/scripts shared | Marimo notebook (or Quarto notebook for R) + `scripts/` archive | `[AUTO]` — file paths from project structure |
-| **G.1** | Funding, support, or relevant relationships | N/A — external to DAAF | `[RESEARCHER]` — researcher must disclose funding sources, API cost disclosure, and any relevant relationships |
+| **E.2** | Any filtering, reformatting, or other post-processing | Script execution logs | `[RESEARCHER]` — researcher documents any manual edits made to AI-generated outputs after delivery |
+| **F.1** | Code/notebooks/scripts for LLM calls shared | Marimo notebook (or Quarto notebook for R) + `scripts/` archive | `[AUTO]` — file paths from project structure |
+| **G.1** | Funding, support, or relevant relationships | N/A — external to DAAF | `[RESEARCHER]` — researcher must disclose funding sources and any relevant relationships. DAAF addition (not GUIDE-LLM item text): also disclose API costs; the nearest GUIDE-LLM item is the optional "Computational resources" |
 
 ### Optional Items
 
@@ -42,10 +42,10 @@ The table below maps each GUIDE-LLM core item to its DAAF artifact source and in
 | Justification for LLM choice | DAAF framework selection rationale | `[RESEARCHER]` — why DAAF/Claude was chosen over alternatives |
 | Rationale for prompt design | Agent `.md` files document behavioral protocols; skills document domain knowledge injection | `[AUTO]` — reference to agent and skill architecture |
 | Comparison against other methods/LLMs | Not captured by default | `[RESEARCHER]` — if applicable |
-| Training data leakage risks | Mitigated by data-driven validation (assert statements, QA checkpoints) | `[RESEARCHER]` — assess for specific analysis context |
-| Risk of bias or systematic differences | LEARNINGS.md + Limitations section | `[AUTO]` partial — LEARNINGS.md entries; `[RESEARCHER]` for interpretation |
+| Training data leakage risks addressed | Mitigated by data-driven validation (assert statements, QA checkpoints) | `[RESEARCHER]` — assess for specific analysis context |
+| Risk of bias or systematic differences affecting conclusions | LEARNINGS.md + Limitations section | `[AUTO]` partial — LEARNINGS.md entries; `[RESEARCHER]` for interpretation |
 | Conversation transcripts | Session archives via `archive-session.sh` | `[AUTO]` — reference to archived session transcripts |
-| Ethical implications | Not captured by default | `[RESEARCHER]` — if applicable |
+| Ethical implications of the research | Not captured by default | `[RESEARCHER]` — if applicable |
 | Computational resources | Session logs (duration, token usage) | `[AUTO]` partial — available from session archives |
 
 ---
@@ -211,7 +211,9 @@ AI disclosure requirements vary across journals and are evolving rapidly. The fo
 
 When referencing the GUIDE-LLM framework in publications, use:
 
-> Feuerriegel, S., Barrie, C., Crockett, M. J., Globig, L. K., McLoughlin, K. L., Mirea, D.-M., Spirling, A., Yang, D., ..., Rathje, S., & Ribeiro, M. H. (2026). A consensus-based reporting checklist for large language models in behavioral and social science. Available at: https://llm-checklist.com/
+> Feuerriegel, S., Barrie, C., Crockett, M. J., … Ribeiro, M. H. (2026). A reporting checklist for large language models in behavioural science. *Nature Human Behaviour*, 10(7), 1182–1186. https://doi.org/10.1038/s41562-026-02492-7
+
+Checklist website: https://llm-checklist.com/ (accessed 2026-10-06).
 
 ---
 

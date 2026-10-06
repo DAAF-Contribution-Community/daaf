@@ -357,7 +357,7 @@ Copy this template to `STATE.md` in the project folder when starting a Full Pipe
 
 | Standard | Citation | Rationale | Stage | Script |
 |----------|----------|-----------|-------|--------|
-| GUIDE-LLM | Feuerriegel, S. et al. (2026). "Generative AI Models in Science: Risks and Opportunities -- The GUIDE-LLM Checklist." | AI disclosure framework | — | — |
+| GUIDE-LLM | Feuerriegel, S. et al. (2026). "A Reporting Checklist for Large Language Models in Behavioural Science." *Nature Human Behaviour*, 10(7), 1182-1186. https://doi.org/10.1038/s41562-026-02492-7 | AI disclosure framework | — | — |
 
 ---
 
